@@ -53,35 +53,38 @@ async function cleanup(admin, seeded) {
 
 // Every frame for `ms`: the first page's top, the Survey bar's bottom and the
 // Survey panel's left edge (null while not drawn, or in a tab behind, which
-// keeps its layout: docs/TAB-SWITCHING.md S9). With `fromFirstPage`, the `ms`
-// count starts at the first frame that shows the page (giving up 10 s after
-// the call), so the whole window watches the document once it is back.
-function startRecording(page, ms, { fromFirstPage = false } = {}) {
-  return page.evaluate(({ duration, waitForPage }) => new Promise((resolve) => {
+// keeps its layout: docs/TAB-SWITCHING.md S9). With `from` ('page' or 'bar'),
+// the `ms` count starts at the first frame where that key is drawn (giving up
+// 10 s after the call), so the window always covers what is being watched
+// however long the clicks before it take. Frame times stay counted from the
+// call, so frames before that point keep their real spacing.
+function startRecording(page, ms, { from = null } = {}) {
+  return page.evaluate(({ duration, waitFor }) => new Promise((resolve) => {
     const out = [];
     const called = performance.now();
-    let t0 = called;
-    let started = !waitForPage;
+    let startedAt = waitFor ? null : called;
     const rectOf = (sel) => {
       const n = [...document.querySelectorAll(sel)].find((el) => !el.closest('[data-tab-behind]'));
       const r = n?.getBoundingClientRect();
       return r && r.width > 0 && r.height > 0 ? r : null;
     };
     const tick = () => {
+      const now = performance.now();
       const pg = rectOf('.survey-pdfjs-page-div[data-page-number="1"]');
-      if (!started && pg) { started = true; t0 = performance.now(); }
-      out.push({
-        t: performance.now() - t0,
+      const frame = {
+        t: now - called,
         page: pg ? pg.top : null,
         bar: rectOf('[data-viewer-top-push="true"]')?.bottom ?? null,
         panel: rectOf('#survey-rail-panel')?.left ?? null,
-      });
-      const waiting = !started && performance.now() - called < 10_000;
-      if (waiting || performance.now() - t0 < duration) requestAnimationFrame(tick);
+      };
+      out.push(frame);
+      if (startedAt === null && frame[waitFor] !== null) startedAt = now;
+      const waiting = startedAt === null && now - called < 10_000;
+      if (waiting || (startedAt !== null && now - startedAt < duration)) requestAnimationFrame(tick);
       else resolve(out);
     };
     requestAnimationFrame(tick);
-  }), { duration: ms, waitForPage: fromFirstPage });
+  }), { duration: ms, waitFor: from });
 }
 
 // The biggest move between two frames, per 60 Hz frame: a dev build on a
@@ -113,7 +116,10 @@ test('the Survey bar makes room as it comes down, and a tab switch leaves the do
     const before = await page.evaluate(() => document.querySelector('.survey-pdfjs-page-div[data-page-number="1"]').getBoundingClientRect().top);
 
     // Into Survey at the top of the document.
-    let recording = startRecording(page, 1500);
+    // The window runs until 1.5 s after the bar first shows: on a busy runner
+    // the Survey and template clicks alone took up to 2.5 s, and a window
+    // counted from before them ended before the bar came down.
+    let recording = startRecording(page, 1500, { from: 'bar' });
     await page.getByRole('button', { name: 'Survey', exact: true }).first().click();
     await page.getByText(seeded.templateName, { exact: true }).first().click().catch(() => {});
     let frames = await recording;
@@ -137,7 +143,7 @@ test('the Survey bar makes room as it comes down, and a tab switch leaves the do
     // for every element it creates, which makes this one render several times
     // slower here than in the app people use, and a 900 ms window counted
     // from the click then saw a single frame.
-    recording = startRecording(page, 900, { fromFirstPage: true });
+    recording = startRecording(page, 900, { from: 'page' });
     await tabs.getByText(seeded.docName, { exact: true }).click();
     frames = (await recording).filter((f) => f.page !== null);
     console.log('[motion] back', JSON.stringify({ first: frames[0], last: frames.at(-1), panelStep: steps(frames, 'panel') }));
