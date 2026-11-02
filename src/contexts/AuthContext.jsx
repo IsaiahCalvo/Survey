@@ -582,8 +582,10 @@ export const AuthProvider = ({ children }) => {
   // signed out here, and the sign-in form says why. The server's sign-in
   // hook refuses such tokens too once it is switched on; this covers the
   // app either way. Any error lets the session stand.
+  // It waits for the plan lookup to finish so it never competes with the
+  // sign-in's own start-up requests (the hub re-renders as those land).
   useEffect(() => {
-    if (!user?.id || user.is_anonymous || !isSupabaseAvailable()) return undefined;
+    if (!user?.id || user.is_anonymous || loadingTier || !isSupabaseAvailable()) return undefined;
     let cancelled = false;
     supabase.rpc('my_sign_in_needs_sso').then(({ data, error }) => {
       if (cancelled || error) return;
@@ -592,7 +594,7 @@ export const AuthProvider = ({ children }) => {
       signOut().catch(() => {});
     }, () => {});
     return () => { cancelled = true; };
-  }, [user?.id]);
+  }, [user?.id, loadingTier]);
 
   // Export kits assigned to this account (custom builds library); removed on sign-out.
   useEffect(() => {
