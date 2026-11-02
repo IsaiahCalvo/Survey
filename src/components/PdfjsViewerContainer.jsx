@@ -5366,9 +5366,14 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // a menu or another scrolling list, which keep the key. Drawboard does the
   // same; before this the key did nothing once a toolbar button had focus.
   // Presses while gliding add up (each counts from where the glide is going).
+  // Launch polish 2026-11-02 (old idea #816): Home / End glide to the first /
+  // last page the same way, as in Acrobat and Drawboard. A toolbar, tab strip
+  // or radio group that moves focus with Home / End keeps the key.
   useEffect(() => {
     const onKeyDown = (event) => {
-      if (event.key !== 'PageDown' && event.key !== 'PageUp') return;
+      const isPageKey = event.key === 'PageDown' || event.key === 'PageUp';
+      const isEndKey = event.key === 'Home' || event.key === 'End';
+      if (!isPageKey && !isEndKey) return;
       if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
       const el = scrollerRef.current;
       if (!el || !el.isConnected || isInTabBehind(el) || el.clientHeight <= 0 || el.getClientRects().length === 0) return;
@@ -5376,10 +5381,18 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       if (target && target !== document.body && target !== document.documentElement && !el.contains(target)) {
         if (isEditableTarget(target)) return;
         if (target.closest('[role="menu"], [role="listbox"], [role="slider"], [role="dialog"], [role="tree"], [role="grid"]')) return;
+        if (isEndKey && target.closest('[role="toolbar"], [role="tablist"], [role="radiogroup"], [role="menubar"], [role="spinbutton"]')) return;
         for (let node = target; node && node !== document.body; node = node.parentElement) {
           const overflowY = window.getComputedStyle(node).overflowY;
           if ((overflowY === 'auto' || overflowY === 'scroll') && node.scrollHeight > node.clientHeight + 1) return;
         }
+      }
+      if (isEndKey) {
+        const last = numPagesRef.current || topsRef.current.length;
+        if (!(last > 0)) return;
+        event.preventDefault();
+        goToPage(event.key === 'Home' ? 1 : last, { smooth: true });
+        return;
       }
       event.preventDefault();
       zoomGlideFinishRef.current?.();
@@ -5393,7 +5406,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [cancelPanInertia, glideScrollTopTo]);
+  }, [cancelPanInertia, glideScrollTopTo, goToPage]);
 
   // A glide never outlives the viewer.
   useEffect(() => () => { pageGlideRef.current?.cancel('cancel'); }, []);

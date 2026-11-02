@@ -104,7 +104,7 @@ import { CHROME_GLYPH, FONT_FAMILY, RAIL_CARET, RAIL_CONTROL, RAIL_CONTROL_GLYPH
 // Owner 2026-09-22: undo/redo draw at 14 (the phone's HISTORY_GLYPH) - see MobilePdfViewerChrome.
 const HISTORY_GLYPH = 14;
 import { TooltipChipHost, TooltipContext, TooltipProvider, makeTooltipBinding } from './components/Tooltip';
-import { useViewerTopOverlayRef } from './utils/viewerTopOverlay.js';
+import { useViewerTopOverlayRef, subscribeViewerTopOverlays } from './utils/viewerTopOverlay.js';
 import DismissBarrier from './components/DismissBarrier.jsx';
 import PencilModeControl, { usePencilMode } from './components/PencilModeControl.jsx';
 import { PinIcon, getPinnedToolsStore, usePinnedTools } from './pinnedTools/pinnedToolsShared.jsx';
@@ -2591,6 +2591,19 @@ export default function App({ devPreviewReturnTab = null }) {
       // banner hangs below the chrome, so it anchors as if row 2 were always
       // up while Select is armed: picking or dropping a mark never moves it.
       let bannerTop = chromeBottom;
+      // Phone (launch polish 2026-11-02): the tool settings strip
+      // (.mobile-pdf-properties) drops in over the page under the header,
+      // outside the sub-toolbar host, so the notice hung from the header and
+      // the strip covered its heading (iPhone walk, Count tool). Hang it
+      // under the strip's painted band instead (its box is 8px taller).
+      if (isMobileViewer) {
+        document.querySelectorAll('.mobile-pdf-properties').forEach((strip) => {
+          const rect = strip.getBoundingClientRect();
+          if (rect.height > 0 && rect.top < window.innerHeight / 3) {
+            bannerTop = Math.max(bannerTop, rect.bottom - 8);
+          }
+        });
+      }
       const formatRow = subHost?.querySelector?.('[data-chrome-format-row="true"]');
       if (reserveFormatRowForBanner && formatRow && formatRow.style.display === 'none') {
         const barH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--chrome-bar-h')) || 36;
@@ -2618,10 +2631,14 @@ export default function App({ devPreviewReturnTab = null }) {
       });
     }
 
+    // The phone strips register as top overlays when they mount and unmount.
+    const offTopOverlays = isMobileViewer ? subscribeViewerTopOverlays(scheduleUpdate) : null;
+
     return () => {
       if (rafId) window.cancelAnimationFrame(rafId);
       window.removeEventListener('resize', scheduleUpdate);
       observer.disconnect();
+      offTopOverlays?.();
     };
   }, [
     isViewerVisible,
