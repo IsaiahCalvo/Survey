@@ -77,9 +77,16 @@ name: Build and tests
 #   test shard      27 + 78          = 105s -> 2 min, and there are four   = 8
 #   isolated        27 + 45 + 26     =  98s -> 2 min                       = 2
 #   ci-gate         27 + 14 + gate   =  49s -> 1 min                       = 1
+#   changes         ~10s, pull requests only                 -> 1 min      = 1
 #   ------------------------------------------------------------------------
 #   push to main    8 + 2 + 1                                              = 11
-#   pull request    8 + 1        (isolated does not run — see its `if:`)   =  9
+#   pull request    8 + 1 + 1    (isolated does not run — see its `if:`)   = 10
+#
+# (2026-11-01 — `changes` is new: main's ruleset requires "Build the app and
+# gate the run", and a pull request that paths-ignore skipped never reported it,
+# so it hung forever. Pull requests now always run; `changes` spots a
+# docs-only one, which then pays 2 minutes — changes + an empty gate — instead
+# of 10. Docs-only pull requests are rare and not booked below.)
 #
 # WHY FOUR SHARDS AND NOT THREE. Three is not cheaper, it is dearer, because
 # the rounding is per job:
@@ -109,15 +116,16 @@ name: Build and tests
 #   budget.saving.paths_ignore_runs: 1     # 1 of 189 first-parent commits in
 #                                          # the window touches nothing outside
 #                                          # root-level *.md and graphify-out/**
+#                                          # (main pushes only since 2026-11-01)
 #   budget.projected_ci_runs: 104          # 75 on main, 29 on pull requests
 #
 # THE MONTH:
 #
 #   budget.billed_minutes.main_run: 11
-#   budget.billed_minutes.pull_request_run: 9
+#   budget.billed_minutes.pull_request_run: 10
 #   75 main runs x 11                                              =   825
-#   29 pull-request runs x 9                                       =   261
-#   budget.projected_ci_minutes: 1086
+#   29 pull-request runs x 10                                      =   290
+#   budget.projected_ci_minutes: 1115
 #   budget.other_workflow_minutes: 343
 #     (Deploy production 255, License check 28, Dependabot Updates 35,
 #      Toggle auth CAPTCHA 9, the since-deleted eraser probe 16 — every one at
@@ -126,10 +134,10 @@ name: Build and tests
 #      schedule will not keep costing 35 minutes and the eraser probe workflow
 #      no longer exists. Those are real savings and they are deliberately NOT
 #      booked, so the number below is a ceiling rather than a hope.)
-#   budget.projected_all_in_minutes: 1429
+#   budget.projected_all_in_minutes: 1458
 #
-# 1,429 of 2,000, against a 1,500 target. The headroom is 571 minutes of
-# allowance and 71 minutes of target, and it is built on no saving that has not
+# 1,458 of 2,000, against a 1,500 target. The headroom is 542 minutes of
+# allowance and 42 minutes of target, and it is built on no saving that has not
 # already happened.
 #
 # WHAT IS DELIBERATELY NOT CLAIMED. `paths-ignore` below stays narrow: `docs/**`
@@ -147,18 +155,19 @@ name: Build and tests
 on:
   push:
     branches: [main]
-    # 2026-09-15 — pushes and pull requests that touch ONLY these never change
-    # what gets built or tested, and on the Free plan every skipped run is 9 to
-    # 11 billed runner-minutes kept. `*.md` has no slash in it, so it matches
-    # root-level notes only, not docs/*.md. The two lists are written out twice
-    # on purpose: YAML anchors are not supported in GitHub Actions workflows.
+    # 2026-09-15 — pushes that touch ONLY these never change what gets built or
+    # tested, and every skipped run is 11 billed runner-minutes kept. `*.md` has
+    # no slash in it, so it matches root-level notes only, not docs/*.md.
     paths-ignore:
       - '*.md'
       - 'graphify-out/**'
+  # 2026-11-01 — NO paths-ignore on pull requests. Main's ruleset ("Main
+  # checks") requires "Build the app and gate the run", and a workflow that
+  # paths-ignore skips reports nothing at all, so a docs-only pull request sat
+  # waiting for that check forever. Pull requests now always run; the `changes`
+  # job below spots a docs-only one (scripts/ci-docs-only.mjs, same two places
+  # as the list above) and the gate passes without building.
   pull_request:
-    paths-ignore:
-      - '*.md'
-      - 'graphify-out/**'
   # 2026-09-15 — added so .github/workflows/dependabot-auto-merge.yml can
   # re-run this workflow on main after it squash-merges a bump. GitHub creates
   # NO workflow run for a push made with the repository's GITHUB_TOKEN, so the
@@ -175,7 +184,7 @@ on:
 run-name: >-
   ${{ github.event_name == 'pull_request'
       && format('Build and tests — PR #{0}: {1}', github.event.pull_request.number, github.event.pull_request.title)
-      || format('Build and tests — main: {0}', github.sha) }}
+      || format('Build and tests — {0}: {1}', github.ref_name, github.sha) }}
 
 permissions:
   contents: read
@@ -195,6 +204,47 @@ env:
   DENO_VERSION: v2.7.5
 
 jobs:
+  # 2026-11-01 — pull requests only. Lists the changed files and says whether
+  # they are ALL root-level *.md or graphify-out/** (and that no test or script
+  # names one of them). If so, the shards, the isolated suites and the build are
+  # skipped and the gate passes on its own, so a docs-only pull request still
+  # reports the check main requires. Any doubt — an API error, a huge list, a
+  # failure of this job — means the full run.
+  changes:
+    name: Check whether this pull request only changes notes
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      docs_only: ${{ steps.decide.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            scripts
+            tests
+
+      - name: List the changed files and decide
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          CHANGED_FILES: ${{ github.event.pull_request.changed_files }}
+        run: |
+          set -uo pipefail
+          if ! gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files" \
+            --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/changed.txt"; then
+            echo "Could not list the changed files — running everything."
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          node scripts/ci-docs-only.mjs "$CHANGED_FILES" < "$RUNNER_TEMP/changed.txt" \
+            || echo "docs_only=false" >> "$GITHUB_OUTPUT"
+
   # The bulk of the suite, split four ways. `--shard=N/M` is a deterministic
   # longest-processing-time partition of every non-timing-sensitive file:
   # stable ordering, every file in exactly one shard, nothing dropped.
@@ -206,6 +256,9 @@ jobs:
   # quarter of today's load and nothing runs beside anything else.
   test:
     name: Tests (shard ${{ matrix.shard }})
+    needs: changes
+    # `changes` is skipped off pull requests; !cancelled() runs the shards then.
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -267,7 +320,8 @@ jobs:
   # re-run has run_attempt > 1 — that is the escape hatch, and it is one click.
   isolated:
     name: Slow isolated suites and speed measurements
-    if: github.event_name != 'pull_request' || github.run_attempt != '1'
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' && (github.event_name != 'pull_request' || github.run_attempt != '1') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     outputs:
@@ -336,22 +390,28 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     if: always()
-    needs: [test, isolated]
+    needs: [changes, test, isolated]
     env:
+      # A pull request that only changes notes: nothing to build, and the
+      # shards and isolated suites were skipped on purpose (see `changes`).
+      DOCS_ONLY: ${{ needs.changes.outputs.docs_only == 'true' }}
       # Was this pull request opened by the bot? (Stays true across re-runs.)
       IS_DEPENDENCY_BUMP: ${{ github.actor == 'dependabot[bot]' }}
       TEST_RESULT: ${{ needs.test.result }}
       ISOLATED_RESULT: ${{ needs.isolated.result }}
       PERF_RESULT: ${{ needs.isolated.outputs.perf || 'not run' }}
     steps:
-      - uses: actions/checkout@v7
+      - if: env.DOCS_ONLY != 'true'
+        uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v7
+      - if: env.DOCS_ONLY != 'true'
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+      - if: env.DOCS_ONLY != 'true'
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version: ${{ env.DENO_VERSION }}
 
@@ -359,6 +419,7 @@ jobs:
       # function sources so a new import busts it and an unchanged tree reuses
       # the whole module graph.
       - name: Cache Deno modules
+        if: env.DOCS_ONLY != 'true'
         uses: actions/cache@v6
         with:
           path: ~/.cache/deno
@@ -367,6 +428,7 @@ jobs:
             deno-${{ runner.os }}-${{ env.DENO_VERSION }}-
 
       - name: Verify release contract
+        if: env.DOCS_ONLY != 'true'
         run: node scripts/release-integrity.mjs --static
 
       # 2026-10-20 — a new migration numbered before the newest one on main
@@ -374,12 +436,13 @@ jobs:
       # deploy (#879 did this). Pull requests only: on main it has already
       # landed.
       - name: New migrations sort after the newest on the base branch
-        if: github.event_name == 'pull_request'
+        if: env.DOCS_ONLY != 'true' && github.event_name == 'pull_request'
         run: |
           git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
           node scripts/check-migration-order.mjs "origin/${{ github.base_ref }}"
 
       - name: Install dependencies
+        if: env.DOCS_ONLY != 'true'
         # Use `install` (not `ci`) to sidestep the npm optional-deps bug
         # (npm/cli#4828), matching the release workflow.
         run: npm install --include=optional --no-audit --no-fund
@@ -400,7 +463,7 @@ jobs:
         # THERE (actor is still the bot), and the bump would land having had its
         # licences checked by nobody. The two conditions are exact complements:
         # actor == bot → this step runs; actor != bot → license-gate.yml runs.
-        if: github.actor == 'dependabot[bot]' || github.triggering_actor == 'dependabot[bot]'
+        if: env.DOCS_ONLY != 'true' && (github.actor == 'dependabot[bot]' || github.triggering_actor == 'dependabot[bot]')
         run: npm run check:licenses
 
       # Vite's on-disk cache (dependency pre-bundling + transform results).
@@ -408,6 +471,7 @@ jobs:
       # big win, but it costs ~1s and keeps the build fast if the config ever
       # grows a heavier pre-bundle step.
       - name: Cache Vite build artifacts
+        if: env.DOCS_ONLY != 'true'
         uses: actions/cache@v6
         with:
           path: node_modules/.vite
@@ -416,9 +480,11 @@ jobs:
             vite-${{ runner.os }}-
 
       - name: Type-check Supabase functions
+        if: env.DOCS_ONLY != 'true'
         run: deno check --config supabase/functions/deno.json supabase/functions/*/index.ts
 
       - name: Build web bundle
+        if: env.DOCS_ONLY != 'true'
         run: npm run build
         env:
           NODE_OPTIONS: --max-old-space-size=8192
@@ -429,6 +495,7 @@ jobs:
       # Fails on a big jump in app size (scripts/bundle-budget.mjs says how
       # big, and how to raise the budget when the growth is intended).
       - name: Check the app's size budget
+        if: env.DOCS_ONLY != 'true'
         run: node scripts/bundle-budget.mjs
 
       - name: Explain this run in plain English
@@ -449,7 +516,12 @@ jobs:
             echo "time, plus one machine for the few slow tests that need to be"
             echo "left alone and for the speed measurements."
             echo
-            if [ "${ISOLATED_RESULT}" = "skipped" ]; then
+            if [ "${DOCS_ONLY}" = "true" ]; then
+              echo "**This pull request only changes notes** (root-level .md files"
+              echo "or graphify-out), and no test reads them, so there was nothing"
+              echo "to build or test. The check passes so the pull request can be"
+              echo "merged."
+            elif [ "${ISOLATED_RESULT}" = "skipped" ]; then
               echo "**This run was a pull request, so the slow isolated tests and"
               echo "the speed measurements were left out.** They run in full on"
               echo "main the moment the change lands, which is the commit that"
@@ -474,8 +546,8 @@ jobs:
             echo "failure, re-run this job on its own before investigating: it"
             echo "can go red simply because the shared machine was busy."
             echo
-            if [ "${TEST_RESULT}" != "success" ] \
-              || { [ "${ISOLATED_RESULT}" != "success" ] && [ "${ISOLATED_RESULT}" != "skipped" ]; }; then
+            if [ "${DOCS_ONLY}" != "true" ] && { [ "${TEST_RESULT}" != "success" ] \
+              || { [ "${ISOLATED_RESULT}" != "success" ] && [ "${ISOLATED_RESULT}" != "skipped" ]; }; }; then
               echo "Something above went red. Open the job marked with a red X —"
               echo "its name says which part broke: one of the four test shards,"
               echo "or the slow isolated tests."
@@ -485,7 +557,11 @@ jobs:
       - name: Require every blocking CI job to have succeeded
         shell: bash
         run: |
-          echo "test=$TEST_RESULT isolated=$ISOLATED_RESULT perf=$PERF_RESULT"
+          echo "test=$TEST_RESULT isolated=$ISOLATED_RESULT perf=$PERF_RESULT docs_only=$DOCS_ONLY"
+          if [ "$DOCS_ONLY" = "true" ] && [ "$TEST_RESULT" = "skipped" ] && [ "$ISOLATED_RESULT" = "skipped" ]; then
+            echo "Only notes changed; nothing to build or test."
+            exit 0
+          fi
           failed=0
           if [ "$TEST_RESULT" != "success" ]; then failed=1; fi
           # `isolated` is skipped by design on an ordinary pull request; every

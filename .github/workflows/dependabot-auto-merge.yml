@@ -53,9 +53,23 @@ name: Dependabot auto-merge
 # default branch, and workflow_run chains cannot be nested more than three
 # deep. It excludes nothing on the grounds of what triggered the upstream run.)
 #
-# That dispatched run has event == 'workflow_dispatch' and actor
-# 'github-actions[bot]', so the `if:` below skips it and this workflow cannot
-# loop.
+# That dispatched run has event == 'workflow_dispatch' on main, so the `if:`
+# below skips it and this workflow cannot loop.
+#
+# 2026-11-01 — BRINGING A BUMP UP TO DATE FIRST. Since 2026-10-28 main's
+# ruleset ("Main checks") requires "Build the app and gate the run" on a branch
+# that is up to date with main, and nothing here could update one: Dependabot
+# rebases only on a conflict, so a green bump that had fallen behind main sat
+# open for good. Now, when every guard holds but the bump is behind main, this
+# asks GitHub to merge main into it (the update-branch REST call) and then
+# dispatches "Build and tests" on the bump's branch — the merge commit was
+# pushed with GITHUB_TOKEN, so, as above, nothing else would test it. That run
+# leaves the required check on the new head commit, and when it finishes green
+# this workflow runs again (event workflow_dispatch on a dependabot/ branch,
+# accepted by the `if:` below) and merges. If main moved again meanwhile, it
+# repeats; every round needs a green run, so a red one stops it. Once this
+# pushes to a bump, Dependabot stops rebasing that one on its own; comment
+# "@dependabot recreate" on it if it is ever left behind.
 
 on:
   workflow_run:
@@ -73,12 +87,14 @@ jobs:
   merge:
     name: Merge a green dependency bump
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'pull_request' &&
-      github.event.workflow_run.actor.login == 'dependabot[bot]' &&
-      github.event.workflow_run.head_repository.full_name == github.repository
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      ((github.event.workflow_run.event == 'pull_request' &&
+        github.event.workflow_run.actor.login == 'dependabot[bot]') ||
+       (github.event.workflow_run.event == 'workflow_dispatch' &&
+        startsWith(github.event.workflow_run.head_branch, 'dependabot/')))
     # 2026-09-15 — serialise the merges. Dependabot opens its bumps in one
     # batch, so several "Build and tests" runs finish within seconds of each
     # other; every bump edits package.json and package-lock.json, so without a
@@ -132,6 +148,24 @@ jobs:
             echo "No open pull request on $HEAD_BRANCH — nothing to merge."
             exit 0
           fi
+
+          # Right after main moves GitHub may still be working out whether the
+          # bump merges cleanly and answers UNKNOWN. Nothing would wake this
+          # workflow again, so give it half a minute rather than leave the bump.
+          for attempt in 1 2 3 4 5 6; do
+            if [ "$(jq -r '.mergeable' <<< "$pr_json" 2>/dev/null)" != "UNKNOWN" ]; then
+              break
+            fi
+            echo "GitHub is still checking whether it merges; waiting (try $attempt)."
+            sleep 5
+            pr_json="$(gh pr list --repo "$REPO" --head "$HEAD_BRANCH" --state open \
+              --json number,title,body,headRefOid,author,isDraft,mergeable,mergeStateStatus \
+              --jq '.[0] // empty')" || pr_json=""
+            if [ -z "$pr_json" ]; then
+              echo "The pull request could not be read again — leaving this bump alone."
+              exit 0
+            fi
+          done
 
           echo "Candidate pull request: $pr_json"
 
@@ -224,6 +258,67 @@ jobs:
               echo "This dependency update passed its checks but was **not** merged"
               echo "automatically, because: $detail"
             } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # Main's ruleset only merges a branch that is up to date with main.
+          # If this bump is behind, merge main into it, re-test that commit,
+          # and let the green run bring us back here (see the note at the top).
+          behind=""
+          if ! behind="$(gh api "repos/$REPO/compare/main...$TESTED_SHA" --jq '.behind_by')"; then
+            echo "Could not compare the bump with main — leaving it open."
+            exit 0
+          fi
+          if [ "${behind:-0}" != "0" ]; then
+            echo "Pull request #$detail is $behind commit(s) behind main; bringing it up to date."
+            if ! gh api -X PUT "repos/$REPO/pulls/$detail/update-branch" \
+              -f expected_head_sha="$TESTED_SHA" > /dev/null; then
+              echo "GitHub would not update #$detail from main — leaving it open."
+              {
+                echo "## Left open for you"
+                echo
+                echo "This dependency update passed its checks but is behind main, and"
+                echo "GitHub would not bring it up to date automatically."
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+
+            # The update is asynchronous; wait for the new head commit so the
+            # run below tests it and not the old one.
+            new_head=""
+            for attempt in $(seq 1 24); do
+              sleep 5
+              head_now="$(gh pr view "$detail" --repo "$REPO" --json headRefOid --jq '.headRefOid')" || continue
+              if [ -n "$head_now" ] && [ "$head_now" != "$TESTED_SHA" ]; then
+                new_head="$head_now"
+                break
+              fi
+            done
+            if [ -z "$new_head" ]; then
+              echo "::warning::Asked GitHub to update #$detail from main, but its head did not move within two minutes."
+              exit 0
+            fi
+
+            started=0
+            for attempt in 1 2 3; do
+              if gh workflow run ci.yml --repo "$REPO" --ref "$HEAD_BRANCH"; then
+                started=1
+                break
+              fi
+              echo "Dispatch attempt $attempt failed; retrying."
+              sleep 5
+            done
+            if [ "$started" -eq 1 ]; then
+              {
+                echo "## Brought up to date"
+                echo
+                echo "Dependency update #$detail was behind main, so main was merged"
+                echo "into it ($new_head) and its checks were started again. It merges"
+                echo "on its own once they pass."
+              } >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "::warning::Updated #$detail from main but could not start Build and tests on $HEAD_BRANCH. Run it by hand from the Actions tab on that branch."
+            fi
             exit 0
           fi
 
