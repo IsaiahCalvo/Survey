@@ -10,10 +10,12 @@
 // hands-free with no window; the chat lives hidden and keeps listening. The
 // typing dots beside the mic swap the Survey panel for the chat (`view`
 // 'chat', drawn inside `host`); a tap outside or Back swaps it back.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from '../Icons';
 import { supabase } from '../supabaseClient';
+import { AuthContext } from '../contexts/AuthContext';
+import { AI_NOTICE_VERSION, hasAiConsent } from '../legal/legalVersions';
 import { classifyMediaFile } from '../services/surveyMediaService';
 import { answerSetFor, templateHasTypedItems } from '../services/answerSets.js';
 import { createSurveyAgentToolbox, surveyAgentBridge } from '../agent/surveyAgentTools.js';
@@ -27,7 +29,7 @@ import { canSpeakReplies, createAgentVoice, unlockPlayback } from '../agent/agen
 import { letGoOfWarmMic, startHandsFreeMic } from '../agent/handsFreeMic.js';
 import { createTurnJoiner, joinTurnText, joinWavs } from '../agent/turnJoiner.js';
 import { createHoldToTalk } from '../agent/holdToTalk.js';
-import { createVoiceLog, loggedCaller, sendVoiceLog } from '../agent/voiceLog.js';
+import { createVoiceLog, loggedCaller, reportAgentAnswer, sendVoiceLog } from '../agent/voiceLog.js';
 import { startNativeHandsFree } from '../agent/nativeHandsFree.js';
 import { loadNativeSpeech } from '../agent/nativeSpeechLoader.js';
 import { isSureHearing, sharesMicSafely, startDeviceHearing } from '../agent/deviceHearing.js';
@@ -180,6 +182,25 @@ export default function SurveyAgentPanel({
   onActivity = () => {},
 }) {
   const tip = useTooltip();
+  // Nothing goes to the AI providers until the person has read who gets what
+  // and said yes (Apple 5.1.2(i); privacy policy, "AI assistant"). The yes is
+  // kept on the account with the notice's version.
+  const auth = useContext(AuthContext);
+  const aiConsented = hasAiConsent(auth?.user);
+  const [consentSaving, setConsentSaving] = useState(false);
+  const [consentError, setConsentError] = useState('');
+  const allowAi = async () => {
+    if (!auth?.updateProfile) return;
+    setConsentError('');
+    setConsentSaving(true);
+    try {
+      await auth.updateProfile({ ai_assistant_consent: { version: AI_NOTICE_VERSION, at: new Date().toISOString() } });
+    } catch (err) {
+      setConsentError(err?.message || 'Could not save that. Try again.');
+    } finally {
+      setConsentSaving(false);
+    }
+  };
   const [usageLeft, setUsageLeft] = useState(null);
   // The last few spoken turns with times, for "Send voice log"; sent by
   // itself once a session when hearing or the model fails.
@@ -317,6 +338,16 @@ export default function SurveyAgentPanel({
   };
 
   const markEntry = (id, patch) => setEntries((list) => list.map((e) => (e.id === id ? { ...e, ...patch } : e)));
+
+  const reportEntry = async (entry) => {
+    markEntry(entry.id, { reported: 'sending' });
+    const list = entriesRef.current;
+    const at = list.findIndex((e) => e.id === entry.id);
+    const asked = list.slice(0, at < 0 ? list.length : at).reverse().find((e) => e.role === 'user')?.text || '';
+    const release = typeof __BUILD_STAMP__ !== 'undefined' ? __BUILD_STAMP__ : null;
+    const ok = await reportAgentAnswer(supabase, { answer: entry.text, asked, release }).catch(() => false);
+    markEntry(entry.id, { reported: ok ? 'sent' : 'failed' });
+  };
 
   // Runs one message through the agent. Returns the reply text, or null when
   // nothing was answered (error, or queued for lack of signal).
@@ -1017,8 +1048,9 @@ export default function SurveyAgentPanel({
     setPendingFiles((list) => list.filter((f) => f.id !== id));
   };
 
-  const ready = status?.enabled && !status?.over_cap;
-  const statusText = !status ? 'Connecting...'
+  const ready = status?.enabled && !status?.over_cap && aiConsented;
+  const statusText = !aiConsented ? null
+    : !status ? 'Connecting...'
     : !status.enabled || status.over_cap ? surveyAgentErrorText(status.reason)
       : queued ? (waitReasonRef.current === 'busy_try_again'
         ? `Busy for a moment. ${queued === 1 ? '1 message is' : `${queued} messages are`} waiting and will send shortly.`
@@ -1097,7 +1129,26 @@ export default function SurveyAgentPanel({
         </button>
       </header>
       <div className="survey-agent__list" ref={listRef} aria-live="polite">
-        {!entries.length && (
+        {!aiConsented && (
+          <div className="survey-agent__consent" data-testid="survey-agent-consent">
+            <span className="survey-agent__badge is-big" aria-hidden="true"><SparkleIcon /></span>
+            <p className="survey-agent__hello">Before you start</p>
+            <p className="survey-agent__hint">
+              The agent uses AI from outside companies. What you type or say, voice recordings, photos you add, and the survey data it needs to answer go to Groq, which runs the AI model, and to OpenAI if Groq can&rsquo;t turn your speech into text. They use it only to answer you. Answers can be wrong, so check them.{' '}
+              <a href="/privacy.html" target="_blank" rel="noreferrer">Privacy policy</a>
+            </p>
+            {consentError ? <p className="survey-agent__status" role="alert">{consentError}</p> : null}
+            <div className="survey-agent__suggestions">
+              <button type="button" className="survey-agent__suggestion is-primary" disabled={consentSaving || !auth?.updateProfile} onClick={allowAi}>
+                {consentSaving ? 'Saving…' : 'Allow and continue'}
+              </button>
+              <button type="button" className="survey-agent__suggestion" onClick={onClose}>
+                Not now
+              </button>
+            </div>
+          </div>
+        )}
+        {aiConsented && !entries.length && (
           <div className="survey-agent__empty">
             <span className="survey-agent__badge is-big" aria-hidden="true"><SparkleIcon /></span>
             <p className="survey-agent__hello">What do you see?</p>
@@ -1140,6 +1191,16 @@ export default function SurveyAgentPanel({
                     ? <span className="survey-agent__undone">{entry.undone === 'partly' ? 'Undone, later edits kept' : 'Undone'}</span>
                     : <button type="button" className="survey-agent__undo" onClick={() => undoEntry(entry)}><Icon name="undo" size={12} color="currentColor" />Undo</button>}
                 </div>
+              ) : null}
+              {entry.role === 'agent' && entry.text ? (
+                <button
+                  type="button"
+                  className="survey-agent__report"
+                  disabled={entry.reported === 'sending' || entry.reported === 'sent'}
+                  onClick={() => reportEntry(entry)}
+                >
+                  {entry.reported === 'sent' ? 'Reported. Thanks' : entry.reported === 'failed' ? 'Could not report. Try again' : entry.reported === 'sending' ? 'Reporting…' : 'Report answer'}
+                </button>
               ) : null}
               {entry.summary ? (
                 <button type="button" className="survey-agent__undo survey-agent__save" onClick={() => saveSummary(entry.summary)}>

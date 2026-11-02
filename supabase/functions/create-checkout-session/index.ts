@@ -245,6 +245,17 @@ Deno.serve(async (req) => {
             };
         }
 
+        // Auto-renewal terms beside the pay button (US ROSCA and state
+        // auto-renewal laws; Terms of Service, "Subscriptions, free trial and
+        // billing"). Stripe already shows the price and billing period above.
+        sessionParams.custom_text = {
+            submit: {
+                message: tier === 'pro'
+                    ? 'Your 7-day free trial starts today. Unless you cancel before it ends, it becomes a paid subscription at the price shown and renews automatically each billing period until you cancel. Cancel any time in Survey under Settings, Subscription. We email you to confirm.'
+                    : 'Your subscription renews automatically each billing period at the price shown until you cancel. Cancel any time in Survey under Settings, Subscription. We email you to confirm.',
+            },
+        };
+
         const session = await stripe.checkout.sessions.create(sessionParams);
 
         return new Response(
