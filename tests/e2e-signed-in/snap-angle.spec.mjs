@@ -80,16 +80,21 @@ async function drawShiftLine(page, degrees, row = 0) {
 
 async function openAnnotationSettings(page) {
   const tab = page.getByRole('tab', { name: 'Annotations' });
-  // The hub can re-render while its library loads and shut the account menu
-  // under the pointer, so open it until Settings is really up.
+  const settings = page.locator('.account-settings-overlay');
+  // Open the account menu and pick Settings, again if the menu shut before
+  // the pick landed. Never while Settings is already coming up: it loads its
+  // code on first open (2-3 s on the dev server), and a second chip click
+  // then either hung behind the Settings overlay or left the account menu
+  // open under it, whose scrim then swallowed the next click on Home.
   await expect(async () => {
-    if (!(await tab.isVisible())) {
+    if (!(await settings.count())) {
       const item = page.getByRole('menuitem', { name: 'Settings' }).filter({ visible: true });
-      if (!(await item.count())) await profileChip(page, E2E_ACCOUNTS.owner).click();
+      if (!(await item.count())) await profileChip(page, E2E_ACCOUNTS.owner).click({ timeout: 2_000 });
       await item.first().click({ timeout: 2_000 });
     }
-    await expect(tab).toBeVisible({ timeout: 2_000 });
+    await expect(tab).toBeVisible({ timeout: 15_000 });
   }).toPass({ timeout: 45_000 });
+  await expect(page.locator('.profile-menu-scrim'), 'no account menu is left open under Settings').toHaveCount(0);
   await tab.click();
 }
 
