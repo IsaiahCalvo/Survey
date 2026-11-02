@@ -42,8 +42,6 @@ adb install -r android/app/build/outputs/apk/debug/app-debug.apk || fail "instal
 timeout 400 bash .github/native-flows/android-editor-project-menu.sh "$OUT" || fail "editor project menu"
 adb shell pm clear com.kalvoe.survey || fail "pm clear"
 maestro test --format junit --output "$OUT/report.xml" --test-output-dir "$OUT" .github/native-flows/android-signed-in.yaml || fail "signed-in flow"
-# TEMP (PR #1336 test): kill the emulator once to prove the rerun path.
-[ -n "${FAKE_EMULATOR_CRASH:-}" ] && [ "${OUT##*/}" != retry ] && { adb emu kill; sleep 5; timeout 20 adb shell true || fail "fake crash"; }
 for step in pen-mode counter-after-arrow delete-point snap voice-mic undo-toast-check; do
   timeout 300 bash ".github/native-flows/android-$step.sh" "$OUT" || fail "$step"
 done

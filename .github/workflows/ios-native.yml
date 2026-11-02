@@ -188,17 +188,12 @@ jobs:
 
   android-signed-in:
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
-    name: Android signed-in walk (local Supabase, export to share sheet) ${{ matrix.rep }}
+    name: Android signed-in walk (local Supabase, export to share sheet)
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        rep: [1, 2, 3, 4, 5, 6, 7, 8]
     # ~20 min of setup, then up to two walks (the second only after an emulator crash).
     timeout-minutes: 80
     env:
       OUT: ${{ github.workspace }}/android-flow-out
-      FAKE_EMULATOR_CRASH: ${{ matrix.rep == 8 && '1' || '' }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -254,8 +249,8 @@ jobs:
           profile: pixel_7
           disable-animations: true
           # swangle (ANGLE on SwiftShader Vulkan): the default swiftshader_indirect
-          # crashed the emulator in about a third of walks; swangle passed 5/5
-          # in a side-by-side run (PR #1336).
+          # crashed the emulator in about a third of walks; swangle ran 12 of 12
+          # clean in side-by-side runs (PR #1336).
           emulator-options: -no-window -gpu swangle_indirect -no-snapshot -noaudio -no-boot-anim
           script: bash .github/native-flows/android-signed-in-walk.sh "$OUT"
       - name: Reseed after a lost emulator or a failed emulator setup
@@ -292,7 +287,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: android-signed-in-results-${{ matrix.rep }}
+          name: android-signed-in-results
           path: android-flow-out
           retention-days: 7
 
