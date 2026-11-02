@@ -47,7 +47,7 @@ jobs:
       - name: Already checked this hour?
         id: mark
         if: github.event_name == 'workflow_run'
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: .backend-alerts-hour
           key: ${{ steps.hour.outputs.key }}
@@ -92,7 +92,7 @@ jobs:
 
       - name: Mark this hour checked
         run: mkdir -p .backend-alerts-hour && date -u +%FT%TZ > .backend-alerts-hour/at
-      - uses: actions/cache/save@v4
+      - uses: actions/cache/save@v6
         with:
           path: .backend-alerts-hour
           key: ${{ needs.due.outputs.key }}
