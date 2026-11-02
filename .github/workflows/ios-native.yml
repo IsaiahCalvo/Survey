@@ -190,7 +190,8 @@ jobs:
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     name: Android signed-in walk (local Supabase, export to share sheet)
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # ~20 min of setup, then up to two walks (the second only after an emulator crash).
+    timeout-minutes: 80
     env:
       OUT: ${{ github.workspace }}/android-flow-out
     steps:
@@ -224,9 +225,18 @@ jobs:
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      # The CI emulator process sometimes dies mid-walk (adb "error: closed",
+      # then port 5554 refused) with plenty of host memory left, and the SDK
+      # download now and then fails ("Error reading Zip content") before the
+      # emulator starts. The walk script marks the first case (emulator-lost)
+      # and its own start (walk-started); only in those two cases is the walk
+      # run once more on a fresh emulator. A failed check on a live emulator is
+      # not retried.
       - name: Walk the app on a Pixel emulator
+        id: walk
+        continue-on-error: true
         # A lost emulator leaves adb on "waiting for device"; fail fast instead
-        # of using the job's whole hour (the steps above take ~20 min).
+        # of using the job's whole budget.
         timeout-minutes: 30
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
@@ -238,32 +248,42 @@ jobs:
           arch: x86_64
           profile: pixel_7
           disable-animations: true
-          script: |
-            mkdir -p "$OUT"
-            adb reverse tcp:54421 tcp:54421
-            # A slow CI emulator pops "Pixel Launcher isn't responding" over the app.
-            adb shell settings put global hide_error_dialogs 1
-            adb install -r android/app/build/outputs/apk/debug/app-debug.apk
-            # Editor first, then wipe the app so the owner signs in fresh.
-            timeout 400 bash .github/native-flows/android-editor-project-menu.sh "$OUT" || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
-            adb shell pm clear com.kalvoe.survey
-            maestro test --format junit --output "$OUT/report.xml" --test-output-dir "$OUT" .github/native-flows/android-signed-in.yaml || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
-            timeout 300 bash .github/native-flows/android-pen-mode.sh "$OUT" || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
-            timeout 300 bash .github/native-flows/android-counter-after-arrow.sh "$OUT" || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
-            timeout 300 bash .github/native-flows/android-delete-point.sh "$OUT" || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
-            timeout 300 bash .github/native-flows/android-snap.sh "$OUT" || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
-            timeout 300 bash .github/native-flows/android-voice-mic.sh "$OUT" || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
-            timeout 300 bash .github/native-flows/android-undo-toast-check.sh "$OUT" || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
-            adb reverse --remove-all
-            maestro test --format junit --output "$OUT/report-offline.xml" --test-output-dir "$OUT" .github/native-flows/android-offline-relaunch.yaml || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
-            timeout 300 bash .github/native-flows/android-pdf-tools-offline.sh "$OUT" || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
-      # The emulator has twice died mid-walk (adb: port 5554 refused). Record
-      # whether the host's out-of-memory killer took it.
-      - name: Host memory check
-        if: failure()
+          # swangle (ANGLE on SwiftShader Vulkan): the default swiftshader_indirect
+          # crashed the emulator in about a third of walks; swangle ran 12 of 12
+          # clean in side-by-side runs (PR #1336).
+          emulator-options: -no-window -gpu swangle_indirect -no-snapshot -noaudio -no-boot-anim
+          script: bash .github/native-flows/android-signed-in-walk.sh "$OUT"
+      - name: Reseed after a lost emulator or a failed emulator setup
+        id: reseed
+        if: steps.walk.outcome == 'failure' && (hashFiles('android-flow-out/emulator-lost') != '' || hashFiles('android-flow-out/walk-started') == '')
+        run: npm run e2e:seed
+      - name: Walk again on a fresh emulator (the first one crashed)
+        id: walk2
+        if: steps.reseed.outcome == 'success'
+        timeout-minutes: 30
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 34
+          # Plain AOSP image: on google_apis, Play services sometimes dies during
+          # boot and Android kills our app with it (it holds the Play fonts
+          # provider the web view uses). Not something users hit.
+          target: default
+          arch: x86_64
+          profile: pixel_7
+          disable-animations: true
+          emulator-options: -no-window -gpu swangle_indirect -no-snapshot -noaudio -no-boot-anim
+          script: bash .github/native-flows/android-signed-in-walk.sh "$OUT/retry"
+      - name: Host memory and emulator crash files
+        if: steps.walk.outcome == 'failure'
         run: |
           free -m
           sudo dmesg | grep -iE "out of memory|killed process|oom" | tail -20 || true
+          cp -r /tmp/android-runner "$OUT/emu-crash" 2>/dev/null || true
+      - name: Fail unless a walk passed
+        if: steps.walk.outcome == 'failure' && steps.walk2.outcome != 'success'
+        run: |
+          echo "::error::the Android signed-in walk failed (see the walk steps above)"
+          exit 1
       - uses: actions/upload-artifact@v7
         if: always()
         with:
