@@ -311,6 +311,11 @@
   cursor: not-allowed;
 }
 
+/* Google and Microsoft stack with the form's own gap between them. */
+.auth-google-btn + .auth-google-btn {
+  margin-top: 8px;
+}
+
 /* Centered like the footer's links (design review 2026-10-27: it was the
    one left-aligned link on the card). */
 .auth-sso-link {

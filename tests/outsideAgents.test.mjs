@@ -82,12 +82,12 @@ test('agents cannot pay, open billing, delete the account, or export it', () => 
 
 test('survey-mcp read tools stay read-only; write tools are gated by flag + write scope', () => {
   const src = read('supabase/functions/survey-mcp/index.ts');
-  for (const name of ['list_projects', 'list_documents', 'list_survey_items', 'find_survey_items', 'get_survey_item', 'get_document_role', 'get_survey_context']) {
+  for (const name of ['list_projects', 'list_documents', 'list_survey_items', 'find_survey_items', 'get_survey_item', 'get_document_role', 'get_survey_context', 'export_survey']) {
     assert.match(src, new RegExp(`name: '${name}'`), name);
   }
   // READ_TOOLS are all read-only and contain no write tool.
   const readTools = src.slice(src.indexOf('const READ_TOOLS'), src.indexOf('const WRITE_TOOLS'));
-  assert.equal((readTools.match(/readOnlyHint: true/g) || []).length, 7);
+  assert.equal((readTools.match(/readOnlyHint: true/g) || []).length, 8);
   assert.doesNotMatch(readTools, /readOnlyHint: false/);
   assert.doesNotMatch(readTools, /set_answers|add_note|set_entity|create_item|undo_change/);
   // WRITE_TOOLS exist, are the five expected writes, and are not read-only.

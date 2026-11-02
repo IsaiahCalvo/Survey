@@ -22,6 +22,7 @@ import { retryAuthServerHiccups } from '../components/authFlow.js';
 import { pdfByteCache } from '../services/pdfByteCache.js';
 import { loadAccountExportKits } from '../services/exportFormats/accountKits.js';
 import { isFeatureOn } from '../featureFlags.js';
+import { clearCompanySignInRequired, markCompanySignInRequired } from '../utils/companySignIn.js';
 
 // Where Supabase sends the browser back after a Google or company sign-in.
 // In Electron window.location.origin may be file://, which can't take a
@@ -576,6 +577,25 @@ export const AuthProvider = ({ children }) => {
     window.electronAPI.setDeveloperMode(subscriptionTier === 'developer').catch(() => {});
   }, [subscriptionTier, loadingTier]);
 
+  // A company that requires its own sign-in (SSO) for its email domain: a
+  // session made any other way (password, Google, Microsoft, magic link) is
+  // signed out here, and the sign-in form says why. The server's sign-in
+  // hook refuses such tokens too once it is switched on; this covers the
+  // app either way. Any error lets the session stand.
+  // It waits for the plan lookup to finish so it never competes with the
+  // sign-in's own start-up requests (the hub re-renders as those land).
+  useEffect(() => {
+    if (!user?.id || user.is_anonymous || loadingTier || !isSupabaseAvailable()) return undefined;
+    let cancelled = false;
+    supabase.rpc('my_sign_in_needs_sso').then(({ data, error }) => {
+      if (cancelled || error) return;
+      if (data !== true) { clearCompanySignInRequired(); return; }
+      markCompanySignInRequired(user.email);
+      signOut().catch(() => {});
+    }, () => {});
+    return () => { cancelled = true; };
+  }, [user?.id, loadingTier]);
+
   // Export kits assigned to this account (custom builds library); removed on sign-out.
   useEffect(() => {
     if (!user?.id || !isSupabaseAvailable()) return undefined;
@@ -711,6 +731,27 @@ export const AuthProvider = ({ children }) => {
       console.error('OAuth error:', err);
       throw err;
     }
+  };
+
+  // Sign in with Microsoft (Supabase's "azure" provider). Work, school and
+  // personal Microsoft accounts all work when the Azure app allows them.
+  const signInWithMicrosoft = async () => {
+    if (!isSupabaseAvailable()) {
+      throw new Error('Supabase is not configured');
+    }
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'azure',
+      options: {
+        redirectTo: authRedirectTarget(),
+        skipBrowserRedirect: false,
+        // Supabase needs the email scope from Microsoft to make the account.
+        scopes: 'email',
+        // Same as Google: always let the person pick which account.
+        queryParams: { prompt: 'select_account' },
+      },
+    });
+    if (error) throw error;
+    return data;
   };
 
   // Sign in with SSO
@@ -897,6 +938,7 @@ export const AuthProvider = ({ children }) => {
     signUp,
     signIn,
     signInWithGoogle,
+    signInWithMicrosoft,
     signInWithSSO,
     signOut,
     unlinkProvider,

@@ -93,6 +93,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Company workspace: people, roles, seats, shared storage and activity log (Enterprise)',
     stage: 'beta',
   }),
+  'microsoft-sign-in': Object.freeze({
+    label: 'Sign in with Microsoft (work, school or personal account)',
+    stage: 'beta',
+  }),
   'export-modes': Object.freeze({
     label: 'Export PDF choices: annotated, flattened or plain, and which pages',
     stage: 'beta',

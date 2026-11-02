@@ -33,11 +33,12 @@ export const USER_TEMPLATES = [
   'document-shared',
   'permission-changed',
   'access-removed',
+  'company-invite',
 ];
 
 // Invite-class templates additionally require a paid tier ("Free users cannot
 // create invites" — KAL-31 locked spec, previously UI-only).
-export const INVITE_TEMPLATES = ['document-invite', 'document-shared'];
+export const INVITE_TEMPLATES = ['document-invite', 'document-shared', 'company-invite'];
 
 // Per-user sends per rolling hour (see claim_email_send). Generous enough for
 // bulk team invites, far too small for a spam relay.
@@ -90,6 +91,7 @@ export function pickBindingInviteRow(rows, nowMs = Date.now()) {
  * @param {{
  *   findInviteRowForRecipient: (email: string) => Promise<{ revokedAt: string|null, acceptedAt: string|null, expiresAt: string|null }|null>,
  *   findActiveCollaboratorForRecipient: (email: string) => Promise<object|null>,
+ *   findCompanyInviteForRecipient?: (email: string) => Promise<object|null>,
  *   claimSendBudget: (template: string, recipient: string, isInvite: boolean) => Promise<'allowed'|'rate_limited'|'invite_blocked_free_tier'|'error'>,
  *   now?: () => number,
  * }} deps
@@ -117,7 +119,12 @@ export async function authorizeUserSend({ template, to }, deps) {
     && (!invite.expiresAt || new Date(invite.expiresAt).getTime() > nowMs);
 
   let bound = false;
-  if (template === 'document-invite') {
+  if (template === 'company-invite') {
+    // An open company workspace invite to this address that the caller can
+    // see (owners and admins of that company only, by RLS).
+    bound = typeof deps.findCompanyInviteForRecipient === 'function'
+      && !!(await deps.findCompanyInviteForRecipient(recipient));
+  } else if (template === 'document-invite') {
     // A pending (unrevoked, unaccepted, unexpired) invite must exist.
     bound = inviteIsFresh;
   } else if (template === 'document-shared') {
@@ -203,6 +210,8 @@ export function userTemplateSubject(template, data = {}) {
       return `Your access to ${doc} changed`;
     case 'access-removed':
       return `Your access to ${doc} was removed`;
+    case 'company-invite':
+      return `${subjectName(data?.inviterName, 'A Survey user')} invited you to join ${subjectName(data?.companyName, 'a company')} on Survey`;
     default:
       return 'Notification from Survey';
   }
