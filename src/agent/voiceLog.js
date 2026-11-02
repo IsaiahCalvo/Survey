@@ -136,6 +136,19 @@ export function voiceLogPlatform({ nav = globalThis.navigator, win = globalThis.
  * Store the log (survey_agent_voice_logs, readable by the sender and the
  * team). Returns true when saved. A log too big is cut to its newest turns.
  */
+// "Report" on an agent answer: the answer, what was asked just before it, and
+// an optional note go to the team in the same table as voice logs.
+export async function reportAgentAnswer(supabase, { answer, asked = '', release = null, platform = voiceLogPlatform() } = {}) {
+  if (!supabase?.from || !answer) return false;
+  const { error } = await supabase.from('survey_agent_voice_logs').insert({
+    reason: 'report',
+    release: release ? String(release).slice(0, 64) : null,
+    platform: String(platform || '').slice(0, 240),
+    log: { report: { answer: String(answer).slice(0, 4000), asked: String(asked || '').slice(0, 2000), at: new Date().toISOString() } },
+  });
+  return !error;
+}
+
 export async function sendVoiceLog(supabase, log, { reason = 'manual', release = null, platform = voiceLogPlatform() } = {}) {
   if (!supabase?.from || !log || log.isEmpty()) return false;
   const snap = log.snapshot();

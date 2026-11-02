@@ -92,6 +92,13 @@ test('the agent learns a name and a wording for the project, and people can see 
   await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
   const panel = page.getByRole('region', { name: 'Survey agent' });
   const input = panel.getByRole('textbox', { name: 'Message the Survey agent' });
+  // The AI notice comes first (once per account); nothing is sent until it is allowed.
+  const allow = panel.getByRole('button', { name: 'Allow and continue' });
+  await expect(allow.or(input)).toBeVisible({ timeout: 30_000 });
+  if (await allow.isVisible()) {
+    await expect(input).toBeDisabled();
+    await allow.click();
+  }
   await expect(input).toBeEnabled({ timeout: 30_000 });
   const say = async (text, answer) => {
     await input.fill(text);

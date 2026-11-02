@@ -4,6 +4,9 @@ import { getSupabaseSession } from '../supabaseClient.js';
 const DEFAULT_ENDPOINT = '/api/analytics/track';
 const HOSTED_PROXY_ENDPOINT = 'https://surveytool.app/api/analytics/track';
 const SESSION_STORAGE_KEY = 'survey-analytics-session-id';
+// Settings -> Privacy -> "Send usage statistics". Per device, on unless the
+// person turns it off (privacy policy, "Usage statistics").
+export const USAGE_STATS_OFF_KEY = 'survey-usage-stats-off';
 const BLOCKED_PROPERTY = /(?:email|filename|fileName|token|password|authorization|content|annotation)/i;
 const URL_VALUE = /\b(?:https?|file):\/\/[^\s<>"'`]+/gi;
 const EMAIL_VALUE = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
@@ -13,6 +16,17 @@ const KNOWN_KEY_VALUE = /\b(?:anpk_|sk_(?:live|test)_|sb_(?:secret|publishable)_
 const NAMED_SECRET_VALUE = /\b(?:access[_-]?token|refresh[_-]?token|id[_-]?token|api[_-]?key|authorization|password|secret|signature|sig)\b\s*(?:=|:)\s*["']?[^\s,"'}]+["']?/gi;
 const ABSOLUTE_PATH_VALUE = /(?:\/[A-Za-z0-9._ -]+){2,}\/[A-Za-z0-9._ -]+|\b[A-Z]:\\(?:[^\\\r\n]+\\)*[^\\\r\n]+/g;
 const DOCUMENT_NAME_VALUE = /\b[^\s<>"'`/\\]+\.(?:pdf|docx?|xlsx?|pptx?|png|jpe?g|tiff?)\b/gi;
+
+export const readUsageStatsOff = () => {
+  try { return globalThis.window?.localStorage?.getItem(USAGE_STATS_OFF_KEY) === '1'; } catch { return false; }
+};
+
+export const writeUsageStatsOff = (off) => {
+  try {
+    if (off) window.localStorage.setItem(USAGE_STATS_OFF_KEY, '1');
+    else window.localStorage.removeItem(USAGE_STATS_OFF_KEY);
+  } catch { /* storage blocked: the switch just won't stick */ }
+};
 
 const analyticsRateLimiter = createAnalyticsRateLimiter();
 let lastDeliveryWarningAt = 0;
@@ -128,6 +142,9 @@ const getSessionId = () => {
 
 const deliverSurveyAnalyticsEvent = async (event, properties = {}) => {
   if (typeof window === 'undefined' || typeof fetch !== 'function') return false;
+  // Turned off in Settings: nothing leaves the device. The phone apps' queued
+  // events get a non-retryable nack below, so they drop instead of piling up.
+  if (readUsageStatsOff()) return Promise.resolve({ ok: false, reason: 'turned_off', status: 0, disabled: true });
   // Hard client ceiling: analytics must never create an unbounded event bill or
   // error-loop storm. No retries and no session replay are installed here.
   if (!analyticsRateLimiter.allow()) return false;
