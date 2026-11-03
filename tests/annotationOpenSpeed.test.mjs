@@ -268,6 +268,74 @@ test('the saved copy is previewed before the open finishes, and the preview writ
   assert.equal(emptyPreviews.length, 0);
 });
 
+// Owner 2026-11-03: "they all need to load at the same time". The early
+// paint carries the Survey markers and spaces too, so they never show after
+// the other marks; a document holding only those is previewed as well.
+test('the early paint carries Survey markers and spaces with the marks', async () => {
+  const documentId = 'open-speed-preview-kinds';
+  const cloud = createCloud(documentId);
+  const alice = cloud.makeClient('user-a');
+  const outbox = createMemoryAnnotationOutbox();
+  const marker = { pageNumber: 1, bounds: { x: 5, y: 5, width: 20, height: 20 }, categoryId: 'c1' };
+  const space = { id: 's1', name: 'Level 2', pages: [1] };
+
+  const first = await open(alice, { documentId, outboxStore: outbox, clientId: 'k1' });
+  first.applyByPage({ 1: { objects: [rect('m1')] } });
+  first.applySurveyMarkers({ 'marker-1': marker });
+  first.setMeta('spaces', [space]);
+  await first.drain();
+  await first.flushSnapshot();
+  await first.destroy();
+
+  for (const [label, client, store, stage] of [
+    ['reopen', alice, outbox, 'local-copy'],
+    ['cold', cloud.makeClient('user-b'), createMemoryAnnotationOutbox(), 'cloud-snapshot'],
+  ]) {
+    const previews = [];
+    const handle = await open(client, {
+      documentId,
+      outboxStore: store,
+      clientId: `k-${label}`,
+      onPreview: (byPage, info) => previews.push({ byPage, info }),
+    });
+    try {
+      assert.ok(previews.length >= 1, `${label}: an early paint`);
+      const { byPage, info } = previews[0];
+      assert.equal(info.stage, stage);
+      assert.deepEqual(ids(byPage), ['m1']);
+      assert.deepEqual(Object.keys(info.surveyMarkers || {}), ['marker-1'], `${label}: markers in the same paint`);
+      assert.deepEqual((info.spaces || []).map((s) => s.id), ['s1'], `${label}: spaces in the same paint`);
+    } finally {
+      await handle.destroy();
+    }
+  }
+
+  // Only Survey markers: still painted early, with no other marks.
+  const onlyId = 'open-speed-preview-markers-only';
+  const onlyCloud = createCloud(onlyId);
+  const bob = onlyCloud.makeClient('user-a');
+  const writer = await open(bob, { documentId: onlyId, outboxStore: createMemoryAnnotationOutbox(), clientId: 'o1' });
+  writer.applySurveyMarkers({ 'marker-2': marker });
+  await writer.drain();
+  await writer.flushSnapshot();
+  await writer.destroy();
+  const onlyPreviews = [];
+  const reader = await open(onlyCloud.makeClient('user-c'), {
+    documentId: onlyId,
+    outboxStore: createMemoryAnnotationOutbox(),
+    clientId: 'o2',
+    onPreview: (byPage, info) => onlyPreviews.push({ byPage, info }),
+  });
+  try {
+    assert.equal(onlyPreviews.length, 1);
+    assert.deepEqual(onlyPreviews[0].byPage, {});
+    assert.deepEqual(Object.keys(onlyPreviews[0].info.surveyMarkers), ['marker-2']);
+    assert.equal(onlyPreviews[0].info.spaces, null);
+  } finally {
+    await reader.destroy();
+  }
+});
+
 test('outbox compaction stores the accepted state as-is only when it holds everything saved', async () => {
   const outbox = createMemoryAnnotationOutbox();
   const documentId = 'compaction-fast-path';

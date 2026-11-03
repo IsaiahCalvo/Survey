@@ -2310,15 +2310,27 @@ async function emitOpenPreview(state, stage) {
   const onPreview = state.onPreview;
   if (!onPreview || state.destroyed) return false;
   let byPage;
+  let surveyMarkers;
+  let spaces;
   try {
-    if (getAnnotationsMap(state.doc).size === 0) return false;
-    byPage = docToByPage(state.doc);
+    // Owner 2026-11-03: every kind of mark shows in the same frame, so the
+    // early paint carries the Survey markers and spaces too (they used to
+    // wait for the whole open while the other marks were already up).
+    surveyMarkers = docToSurveyMarkers(state.doc);
+    spaces = getMetaValue(state.doc, LIVE_SPACES_META_KEY);
+    const hasMarks = getAnnotationsMap(state.doc).size > 0;
+    const hasSurvey = !!surveyMarkers && Object.keys(surveyMarkers).length > 0;
+    const hasSpaces = Array.isArray(spaces) && spaces.length > 0;
+    if (!hasMarks && !hasSurvey && !hasSpaces) return false;
+    byPage = hasMarks ? docToByPage(state.doc) : {};
+    if (!hasSurvey) surveyMarkers = null;
+    if (!hasSpaces) spaces = null;
   } catch (error) {
     console.warn('[annotationDocSync] open preview read failed', error?.message);
     return false;
   }
   try {
-    onPreview(byPage, { stage });
+    onPreview(byPage, { stage, surveyMarkers, spaces });
   } catch (error) {
     console.warn('[annotationDocSync] open preview failed', error?.message);
     return false;

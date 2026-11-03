@@ -1,0 +1,22 @@
+/*
+ * Page and marks in one frame (owner 2026-11-03: "if a PDF loads up and the
+ * page is visible, then the annotations need to also be visible ... one and
+ * one").
+ *
+ * 1. A page's marks overlay shows only once the page's canvas holds a bitmap
+ *    of the page: PdfPageCanvas sets data-raster-shown in the same task that
+ *    copies the bitmap in, so drawing and marks reach the screen together.
+ * 2. While the document's saved marks are not known yet (the store has
+ *    neither shown its saved copy nor finished opening), the viewer carries
+ *    data-hold-pages: every page stays a blank sheet. The overlay stays shown,
+ *    so a mark drawn meanwhile is visible.
+ *
+ * Opacity, not visibility: a descendant cannot override it.
+ */
+.survey-pdfjs-page-div:not([data-raster-shown]) > [data-pdfjs-page-overlay-host] {
+  opacity: 0;
+}
+
+[data-hold-pages="true"] .survey-pdfjs-page-div > :not([data-pdfjs-page-overlay-host]) {
+  opacity: 0;
+}

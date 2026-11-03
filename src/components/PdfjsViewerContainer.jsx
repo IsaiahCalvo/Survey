@@ -24,6 +24,7 @@
  * method or callback (PDFViewer assumes the handle never throws).
  */
 import { registerAgentViewer } from '../agent/webmcp';
+import '../styles/pageReveal.css';
 import {
   forwardRef,
   memo,
@@ -470,6 +471,16 @@ function blitRaster(dst, src, width = src.width, height = src.height) {
 // to lift (kind 'sharpen' in pageRasterQueue). A page with nothing to show
 // draws at once (kind 'fill'). Every bitmap at rest is one bitmap pixel per
 // screen pixel.
+// Owner 2026-11-03: a page's PDF drawing and its marks show in the same
+// frame, never one without the other. The page div carries
+// data-raster-shown from the moment its canvas holds a bitmap of the page
+// (set in the same task that copies the bitmap in), and the marks overlay
+// stays hidden until then (styles/pageReveal.css).
+function markPageRasterShown(canvas) {
+  const pageDiv = canvas?.parentElement;
+  if (pageDiv && !pageDiv.hasAttribute('data-raster-shown')) pageDiv.setAttribute('data-raster-shown', 'true');
+}
+
 const PdfPageCanvas = memo(function PdfPageCanvas({ pdf, pageIndex, pageW, pageH, renderScale, rotation, onRaster, isMobileSurface, rasterQueue }) {
   const canvasRef = useRef(null);
   const taskRef = useRef(null);
@@ -524,6 +535,7 @@ const PdfPageCanvas = memo(function PdfPageCanvas({ pdf, pageIndex, pageW, pageH
         blitRaster(c, pick.use.canvas);
         shownRef.current = { id: pageId, scale: pick.use.scale };
       }
+      markPageRasterShown(c);
       return done;
     }
     if (pick.action === 'shrink') {
@@ -543,12 +555,14 @@ const PdfPageCanvas = memo(function PdfPageCanvas({ pdf, pageIndex, pageW, pageH
         blitRaster(c, pick.use.canvas, width, height);
       }
       shownRef.current = { id: pageId, scale: want };
+      markPageRasterShown(c);
       return done;
     }
     if (pick.action === 'placeholder' && !pick.use.onCanvas) {
       touch(pick.use);
       blitRaster(c, pick.use.canvas);
       shownRef.current = { id: pageId, scale: pick.use.scale };
+      markPageRasterShown(c);
     }
     if (shownRef.current?.id !== pageId) {
       // A page the user just rotated: turn its upright bitmap now, so the page
@@ -567,6 +581,7 @@ const PdfPageCanvas = memo(function PdfPageCanvas({ pdf, pageIndex, pageW, pageH
         turnCtx.rotate((upright.rotation * Math.PI) / 180);
         turnCtx.drawImage(uprightCanvas, -uprightCanvas.width / 2, -uprightCanvas.height / 2);
         turnCtx.restore();
+        markPageRasterShown(c);
       }
     }
     // A page already showing something only needs sharpening, which waits for
@@ -661,6 +676,7 @@ const PdfPageCanvas = memo(function PdfPageCanvas({ pdf, pageIndex, pageW, pageH
           blitRaster(canvas, target);
         }
         shownRef.current = { id: pageId, scale: want };
+        markPageRasterShown(canvas);
         // Keep the rendered bitmap so a scroll-return repaints instantly on
         // EVERY surface. Mobile used to release it here, which is why a page
         // leaving the mount window came back as an undrawn white canvas; the
@@ -678,6 +694,8 @@ const PdfPageCanvas = memo(function PdfPageCanvas({ pdf, pageIndex, pageW, pageH
           page: pageIndex + 1,
         });
         /* a page may unmount mid-render; never throw out of the engine */
+        // A page that cannot be drawn still shows its marks.
+        if (!cancelled) markPageRasterShown(canvasRef.current);
       } finally {
         turn?.release();
         if (target && !targetRetained) releaseRasterCanvas(target);
@@ -697,7 +715,13 @@ const PdfPageCanvas = memo(function PdfPageCanvas({ pdf, pageIndex, pageW, pageH
   // collects canvases late and caps their total memory). Crash hunt 2026-10-07.
   useEffect(() => {
     const el = canvasRef.current;
-    return () => releaseRasterCanvas(el);
+    const pageDiv = el?.parentElement || null;
+    return () => {
+      releaseRasterCanvas(el);
+      // Unmounted (left the mount window): the page shows its blank sheet
+      // again, so its marks wait for the next bitmap too.
+      pageDiv?.removeAttribute('data-raster-shown');
+    };
   }, []);
   // A page on screen keeps its pdf.js data (utils/pdfPageCacheTrim.js).
   useEffect(() => {
@@ -1388,6 +1412,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   textMarkupOpacity = null,
   textSelectionLayerActive = false,
   textSelectionLayerInteractive = textSelectionLayerActive,
+  // Owner 2026-11-03: while the document's saved marks are still unknown the
+  // pages show as blank sheets (no PDF drawing), so a page never shows
+  // without its marks (styles/pageReveal.css). The marks you draw meanwhile
+  // still show.
+  holdPagesForMarks = false,
   // Pan over text (utils/panTextSelect.js): mount the text layer under Pan so a
   // mouse / pen resting on text can select it, as Drawboard's Pan does.
   panTextHoverSelect = false,
@@ -5911,6 +5940,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       className={`${className}${isMobileSurface ? ' survey-pdfjs-mobile-surface' : ''}`}
       data-mobile-pdf-surface={phoneLayout ? 'true' : 'false'}
       data-touch-pdf-surface={touchSurface ? 'true' : 'false'}
+      data-hold-pages={holdPagesForMarks ? 'true' : undefined}
       data-text-selection={interactionMode === 'TextSelection' ? 'true' : 'false'}
       // Read by the shared dismiss rules (src/components/dismissRules.js, R2):
       // with a popover open, a press on the bare page only closes it — except
