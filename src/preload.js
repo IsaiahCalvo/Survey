@@ -43,6 +43,16 @@ function saveLogSnapshotOnce(payload) {
   return trackedRequest;
 }
 
+// Same key and shape as src/services/sheetSyncClaim.js (rememberClaim).
+ipcRenderer.on('sheetSync:consent', (_event, finish) => {
+  if (!finish || typeof finish.code !== 'string' || !/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(finish.code)) return;
+  try {
+    window.localStorage.setItem('survey-sheet-sync-claim', JSON.stringify({
+      provider: finish.provider === 'msgraph' ? 'msgraph' : 'google', code: finish.code, at: Date.now(),
+    }));
+  } catch (_e) { /* storage off */ }
+});
+
 contextBridge.exposeInMainWorld('electronAPI', {
   openFile: (options) => ipcRenderer.invoke('dialog:openFile', options),
   saveFile: (options) => ipcRenderer.invoke('dialog:saveFile', options),
@@ -72,6 +82,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const subscription = (event, data) => callback(data);
     ipcRenderer.on('fileWatcher:error', subscription);
     return () => ipcRenderer.removeListener('fileWatcher:error', subscription);
+  },
+
+  // Live sheet sign-in: the main process reads the consent window's last page
+  // (src/electron/sheetSyncConsent.cjs). The code is saved below, where the
+  // connect loop looks; this tells the app about a refusal or error too.
+  onSheetSyncConsent: (callback) => {
+    const subscription = (_event, finish) => callback(finish);
+    ipcRenderer.on('sheetSync:consent', subscription);
+    return () => ipcRenderer.removeListener('sheetSync:consent', subscription);
   },
 
   // App lifecycle APIs

@@ -4295,11 +4295,13 @@ const SurveySpacesRail = ({
                           onPick={handleSurveyReport}
                         />
                       )}
-                      {sheetSyncOn && pdfFile?.id && (
+                      {/* Shown as soon as the PDF is, even before it has its
+                          account id, so it never pops in after Export data. */}
+                      {sheetSyncOn && pdfFile && (
                         <SheetSyncButton
                           className={mobileMode ? 'mobile-survey-foot__export' : 'survey-rail__foot-export'}
                           phone={mobileMode}
-                          documentId={pdfFile.id}
+                          documentId={pdfFile.id || null}
                           template={selectedTemplate}
                           markers={surveyMarkers}
                           documentName={pdfFile?.name || ''}

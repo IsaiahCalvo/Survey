@@ -9,6 +9,7 @@ const { isTrustedElectronAnalyticsSender } = require('./electronAnalyticsBridge'
 const { writeFileAtomic } = require('./electron/atomicFileWriter.cjs');
 const { createTrustedIpcMain } = require('./electron/trustedIpc.cjs');
 const { isClearableDirectory, isOpenableSpreadsheet, isPathAllowed } = require('./electron/fsPathGuard.cjs');
+const { watchSheetSyncConsent } = require('./electron/sheetSyncConsent.cjs');
 
 const DEV_PORT = process.env.DEV_PORT || '5173';
 const SURVEY_ANALYTICS_PROXY_URL = 'https://surveytool.app/api/analytics/track';
@@ -492,6 +493,12 @@ function createWindow() {
       // Unparseable URL — deny silently.
     }
     return { action: 'deny' };
+  });
+
+  // Live sheet sign-in: read the one-time code off the consent window's last
+  // page so nobody has to type it (src/electron/sheetSyncConsent.cjs).
+  win.webContents.on('did-create-window', (child) => {
+    watchSheetSyncConsent(child, win.webContents);
   });
 
   if (process.env.NODE_ENV === 'development') {

@@ -29,6 +29,15 @@
                 <data android:scheme="https" android:host="surveytool.app" android:pathPrefix="/invite/" />
             </intent-filter>
 
+            <!-- The live-sheet sign-in page's "Open Survey" button hands the
+                 sign-in code back here (src/mobile/nativeDeepLinks.js). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.kalvoe.survey" android:host="sheet-connected" />
+            </intent-filter>
+
         </activity>
 
         <provider

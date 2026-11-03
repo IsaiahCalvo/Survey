@@ -16461,7 +16461,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
             if (lastChecklistCol >= firstChecklistCol) {
               for (let col = firstChecklistCol; col <= lastChecklistCol; col++) {
                 if (itemKind(checklistItems[col - firstChecklistCol]) !== 'choice') continue;
-                const colLetter = String.fromCharCode(64 + col);
+                const colLetter = worksheet.getColumn(col).letter;
                 const range = `${colLetter}2:${colLetter}1000`;
                 excelAnswerFills(answerSetFor(selectedTemplate)).forEach(({ value, argb }, i) => {
                   worksheet.addConditionalFormatting({
@@ -16490,7 +16490,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
             entities.forEach((entity, index) => {
               if (!entity.name || !entity.color) return;
 
-              const entityColLetter = String.fromCharCode(64 + entityColIndex);
+              const entityColLetter = worksheet.getColumn(entityColIndex).letter;
               const range = `${entityColLetter}2:${entityColLetter}1000`;
 
               let hexColor = getHexFromColor(entity.color);
@@ -16521,7 +16521,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
             });
 
             // Add Conditional Formatting for Duplicate Names (Item column; D now that Row ID is A)
-            const itemColLetter = String.fromCharCode(64 + itemColIndex);
+            const itemColLetter = worksheet.getColumn(itemColIndex).letter;
             const duplicateRange = `${itemColLetter}2:${itemColLetter}1000`;
 
             worksheet.addConditionalFormatting({

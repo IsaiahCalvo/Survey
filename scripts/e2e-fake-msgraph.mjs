@@ -23,6 +23,39 @@ const json = (status, body) => new Response(body === undefined ? null : JSON.str
 });
 const gErr = (status, code, message) => json(status, { error: { code, message } });
 
+// The sheets (names and header rows) of an uploaded .xlsx. Only reads what
+// liveWorkbook.js writes: stored (uncompressed) entries, inline-string headers.
+function uploadedSheets(bytes) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const decoder = new TextDecoder();
+  const parts = {};
+  for (let at = 0; at + 30 <= bytes.length && view.getUint32(at, true) === 0x04034b50;) {
+    const size = view.getUint32(at + 18, true);
+    const nameLength = view.getUint16(at + 26, true);
+    const start = at + 30 + nameLength + view.getUint16(at + 28, true);
+    parts[decoder.decode(bytes.subarray(at + 30, at + 30 + nameLength))] = decoder.decode(bytes.subarray(start, start + size));
+    at = start + size;
+  }
+  const unescape = (t) => t.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+  const names = [...(parts['xl/workbook.xml'] || '').matchAll(/<sheet name="([^"]*)"/g)].map((m) => unescape(m[1]));
+  return names.map((name, i) => {
+    const xml = parts[`xl/worksheets/sheet${i + 1}.xml`] || '';
+    const row = /<row r="1">(.*?)<\/row>/.exec(xml)?.[1] || '';
+    const letter = (n) => { let out = ''; for (let x = n; x > 0; x = Math.floor((x - 1) / 26)) out = String.fromCharCode(65 + ((x - 1) % 26)) + out; return out; };
+    const cols = [...xml.matchAll(/<col min="(\d+)"[^>]*?style="(\d+)"[^>]*?\/>/g)];
+    return {
+      name,
+      header: [...row.matchAll(/<t[^>]*>([^<]*)<\/t>/g)].map((m) => unescape(m[1])),
+      hidden: cols.filter((m) => /hidden="1"/.test(m[0])).map((m) => `${letter(+m[1])}:${letter(+m[1])}`),
+      frozen: Number(/ySplit="(\d+)"/.exec(xml)?.[1] || 0),
+      // Column styles 2 and 3 are text ("@") in liveWorkbook.js.
+      textColumns: cols.filter((m) => m[2] === '2' || m[2] === '3').map((m) => `${letter(+m[1])}2:${letter(+m[1])}1000`),
+      validations: Object.fromEntries([...xml.matchAll(/<dataValidation [^>]*sqref="([^"]+)"[^>]*><formula1>"(.*?)"<\/formula1>/g)]
+        .map((m) => [m[1], unescape(m[2]).replace(/""/g, '"')])),
+    };
+  });
+}
+
 export function resetFakeMsgraph() {
   store.files.clear();
   store.codes.clear();
@@ -180,7 +213,14 @@ export async function fakeMsgraphHandler(req) {
     let name = `${put[1]}.xlsx`;
     for (let i = 1; names.has(name.toLowerCase()); i += 1) name = `${put[1]} ${i}.xlsx`;
     const id = `FAKEITEM${store.next++}`;
-    const f = { name, version: 1, sheets: [newSheet('Sheet1', 0)] };
+    const sheets = uploadedSheets(new Uint8Array(await req.arrayBuffer()))
+      .map(({ name: sheetName, header, hidden, frozen, textColumns, validations }, i) => {
+        const sheet = newSheet(sheetName, i);
+        if (header.length) sheet.cells[0] = header;
+        Object.assign(sheet, { hidden, frozen, textColumns, validations });
+        return sheet;
+      });
+    const f = { name, version: 1, sheets: sheets.length ? sheets : [newSheet('Sheet1', 0)] };
     store.files.set(id, f);
     return json(201, itemJson(id, f));
   }

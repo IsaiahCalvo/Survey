@@ -4,7 +4,7 @@
 // web and the desktop app all write to the linked Google Sheet.
 import { supabase } from '../supabaseClient';
 import { getExportKit, DEFAULT_EXPORT_KIT_ID } from './exportFormats/registry.js';
-import { answerSetFor } from './answerSets.js';
+import { answerSetFor, excelAnswerFills } from './answerSets.js';
 
 const FUNCTION = 'sheet-sync';
 
@@ -18,17 +18,26 @@ export function sheetLayoutInput(template) {
     },
     kit: getExportKit(template.exportKitId) || getExportKit(DEFAULT_EXPORT_KIT_ID),
     answerValues: answerSetFor(template).map((a) => String(a.value)),
+    // The answers' colours, so the live Excel workbook looks like Export data's.
+    answerFills: excelAnswerFills(answerSetFor(template)).map((f) => ({ value: String(f.value), argb: f.argb })),
   };
 }
 
 export const sheetTemplateId = (template) => (template ? String(template.supabaseId || template.id || '') : '');
 
-async function errorMessage(error, fallback) {
+const OFFLINE = 'Could not reach the sheet sync. Check your connection.';
+// The server answered, but not with its own words (it ran out of time or
+// memory, say): that is not the person's connection.
+const SERVER_TROUBLE = 'The sheet sync hit a problem on our side. Try again in a moment.';
+
+async function errorMessage(error) {
   try {
     const body = await error?.context?.json?.();
     if (body?.error) return String(body.error);
   } catch { /* not JSON */ }
-  return fallback;
+  // supabase-js: FunctionsFetchError = never reached the server.
+  if (error?.name === 'FunctionsFetchError' || !error?.context) return OFFLINE;
+  return SERVER_TROUBLE;
 }
 
 /** Call one sheet-sync action; resolves to the server's answer, or { error }. */
@@ -36,10 +45,10 @@ export async function sheetSyncCall(action, body = {}, client = supabase) {
   if (!client?.functions?.invoke) return { error: 'Not signed in.' };
   try {
     const { data, error } = await client.functions.invoke(FUNCTION, { body: { action, ...body } });
-    if (error) return { error: await errorMessage(error, 'Could not reach the sheet sync. Check your connection.') };
+    if (error) return { error: await errorMessage(error) };
     return data || {};
   } catch {
-    return { error: 'Could not reach the sheet sync. Check your connection.' };
+    return { error: OFFLINE };
   }
 }
 
