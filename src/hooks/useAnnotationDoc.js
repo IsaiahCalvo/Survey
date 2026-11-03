@@ -498,10 +498,19 @@ export function useAnnotationDoc({
           whenFirstPageDrawn: () => (
             cancelled ? null : whenFirstPageDrawnRef.current?.()
           ),
-          onPreview: (previewByPage) => {
+          onPreview: (previewByPage, { surveyMarkers: previewSurvey = null, spaces: previewSpaces = null } = {}) => {
             if (cancelled) return;
             if (prePreviewRef.current.byPage === null) {
               prePreviewRef.current = { documentId, byPage: byPageRef.current || {} };
+            }
+            // What the viewer held before the early paint first showed each
+            // document-level kind (the hydrate puts it back when the store
+            // no longer has it, and never seeds the store from the paint).
+            if (previewSurvey && !('surveyMarkers' in prePreviewRef.current)) {
+              prePreviewRef.current = { ...prePreviewRef.current, surveyMarkers: surveyMarkersRef.current };
+            }
+            if (previewSpaces && !('spaces' in prePreviewRef.current)) {
+              prePreviewRef.current = { ...prePreviewRef.current, spaces: spacesRef.current };
             }
             const calloutList = deriveCalloutsFromByPage(previewByPage);
             const projected = calloutList.length > 0
@@ -521,7 +530,30 @@ export function useAnnotationDoc({
                   : projected,
               )
             ));
-            if (openingBaseline) openingEditsRef.current = { ...openingBaseline, byPage: projected };
+            // Owner 2026-11-03: Survey markers and spaces paint in the same
+            // frame as the other marks (same opening-edits merge as below).
+            if (previewSurvey) {
+              setSurveyMarkers((previousMarkers) => (
+                openingBaseline
+                  ? mergeOpeningKeyedEdits({ next: previewSurvey, baseline: openingBaseline.surveyMarkers, current: previousMarkers })
+                  : previewSurvey
+              ));
+            }
+            if (previewSpaces) {
+              setSpaces((previousSpaces) => (
+                openingBaseline
+                  ? mergeOpeningListEdits({ next: previewSpaces, baseline: openingBaseline.spaces, current: previousSpaces })
+                  : previewSpaces
+              ));
+            }
+            if (openingBaseline) {
+              openingEditsRef.current = {
+                ...openingBaseline,
+                byPage: projected,
+                ...(previewSurvey ? { surveyMarkers: previewSurvey } : {}),
+                ...(previewSpaces ? { spaces: previewSpaces } : {}),
+              };
+            }
             setInitialHydration((previous) => (
               previous?.ready && previous.documentId === documentId
                 ? previous
@@ -739,6 +771,29 @@ export function useAnnotationDoc({
           ? mergeOpeningMarkEdits({ next, baseline: openingBaseline.byPage, current })
           : next
       );
+      // The early paint may have shown Survey markers / spaces the store no
+      // longer has (deleted meanwhile): put back what the viewer held before
+      // that paint (plus the user's edits since) and seed only that.
+      const surveyMarkersBeforePreview = () => {
+        if (!('surveyMarkers' in prePreviewRef.current)) return surveyMarkersRef.current;
+        const before = prePreviewRef.current.surveyMarkers || {};
+        const next = openingBaseline
+          ? mergeOpeningKeyedEdits({ next: before, baseline: openingBaseline.surveyMarkers, current: surveyMarkersRef.current })
+          : before;
+        surveyMarkersRef.current = next;
+        setSurveyMarkers(next);
+        return next;
+      };
+      const spacesBeforePreview = () => {
+        if (!('spaces' in prePreviewRef.current)) return spacesRef.current;
+        const before = prePreviewRef.current.spaces || [];
+        const next = openingBaseline
+          ? mergeOpeningListEdits({ next: before, baseline: openingBaseline.spaces, current: spacesRef.current })
+          : before;
+        spacesRef.current = next;
+        setSpaces(next);
+        return next;
+      };
       if (count > 0 || hasMetaCallouts || hasSpaces || hasSurvey) {
         // Durable store wins — paint from it. Callout groups arrive inside
         // storeByPage (and count toward `count`) like every other object.
@@ -800,11 +855,11 @@ export function useAnnotationDoc({
         // (first open after each kind's migration shipped), seed it from the
         // per-device state the viewer already loaded so nothing is dropped.
         if (!hasSpaces) {
-          const curSpaces = spacesRef.current;
+          const curSpaces = spacesBeforePreview();
           if (Array.isArray(curSpaces) && curSpaces.length > 0) handle.setMeta(SPACES_KEY, curSpaces);
         }
         if (!hasSurvey) {
-          const curSurvey = surveyMarkersRef.current;
+          const curSurvey = surveyMarkersBeforePreview();
           if (curSurvey && Object.keys(curSurvey).length > 0) handle.applySurveyMarkers(curSurvey);
         }
       } else {
@@ -826,9 +881,9 @@ export function useAnnotationDoc({
             setAnnotationsByPage(result.normalizedByPage);
           }
         }
-        const curSpaces = spacesRef.current;
+        const curSpaces = spacesBeforePreview();
         if (Array.isArray(curSpaces) && curSpaces.length > 0) handle.setMeta(SPACES_KEY, curSpaces);
-        const curSurvey = surveyMarkersRef.current;
+        const curSurvey = surveyMarkersBeforePreview();
         if (curSurvey && Object.keys(curSurvey).length > 0) handle.applySurveyMarkers(curSurvey);
       }
 
