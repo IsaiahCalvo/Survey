@@ -145,6 +145,22 @@ export function rowRuns(cells) {
 }
 
 /**
+ * Side-by-side columns that get the same value from `valueOf` (null = none),
+ * as { from, to, value } runs: one Graph call per run instead of per column.
+ */
+export function columnRuns(columns, valueOf) {
+  const runs = [];
+  (columns || []).forEach((column, index) => {
+    const value = valueOf(column);
+    if (value === null || value === undefined) return;
+    const last = runs[runs.length - 1];
+    if (last && last.to === index - 1 && last.value === value) last.to = index;
+    else runs.push({ from: index, to: index, value });
+  });
+  return runs;
+}
+
+/**
  * @param {object} options
  * @param {() => Promise<string>} options.getAccessToken  the linking person's Graph token
  * @param {typeof fetch} [options.fetch]
@@ -157,7 +173,10 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
   const checkedBusiness = new Set();
   const lastEditors = new Map(); // fileId -> { name, email, me, at }, from the last item read
 
-  async function call(method, path, { body, headers = {}, where = path, raw = false } = {}) {
+  // `discard`: the caller needs no answer. Graph answers a range write with the
+  // whole range (values, text, formulas, formats...), which for a big range is
+  // tens of megabytes; on success the body is dropped unread.
+  async function call(method, path, { body, headers = {}, where = path, raw = false, discard = false } = {}) {
     const token = await getAccessToken();
     const response = await fetchImpl(`${baseUrl}/${path}`, {
       method,
@@ -168,6 +187,10 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
       },
       body: body === undefined ? undefined : raw ? body : JSON.stringify(body),
     });
+    if (discard && response.ok) {
+      try { await response.body?.cancel?.(); } catch { /* already closed */ }
+      return null;
+    }
     const text = await response.text();
     let parsed = null;
     try { parsed = text ? JSON.parse(text) : null; } catch { parsed = null; }
@@ -230,12 +253,14 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
   async function writeRow(fileId, sheetId, row, col, values) {
     const address = `${cellAddress(row, col)}:${cellAddress(row, col + values.length - 1)}`;
     await workbook(fileId, 'PATCH', `${sheetPath(sheetId)}/range(address='${address}')`, {
-      body: { values: [values] }, where: 'write',
+      body: { values: [values] }, where: 'write', discard: true,
     });
   }
 
   // One sheet per scope (layout.js shape): header row, hidden Row ID column, and a
-  // drop-down on pick-one answer columns and the entity column.
+  // drop-down on pick-one answer columns and the entity column. Side-by-side
+  // columns that need the same thing share one call, so a sheet takes a handful
+  // of calls however many columns it has.
   async function addSheet(fileId, scope, layout) {
     const added = await workbook(fileId, 'POST', 'worksheets/add', { body: { name: scope.title }, where: 'addSheet' });
     const columns = scope.columns || (scope.header || []).map((h) => ({ header: typeof h === 'string' ? h : h?.title ?? '' }));
@@ -244,29 +269,28 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
     await writeRow(fileId, added.id, 0, 0, columns.map((c) => cellValueForWrite(c.header ?? '')));
     const path = sheetPath(added.id);
     if (columns[0]?.key === 'rowId') {
-      await workbook(fileId, 'PATCH', `${path}/range(address='A:A')`, { body: { columnHidden: true }, where: 'hideRowId' });
+      // One cell hides its whole column. Never address the column itself
+      // ('A:A'): Graph answers with all 1,048,576 rows of it, which ran the
+      // edge function out of memory on the first real workbook (Nov 3).
+      await workbook(fileId, 'PATCH', `${path}/range(address='A1')`, { body: { columnHidden: true }, where: 'hideRowId', discard: true });
     }
     // Text columns as text ("@"), the way Google's are: a PM typing 00123
     // or 1/2 in a note keeps what they typed instead of a number or a date.
-    const textRows = Array.from({ length: DROP_DOWN_ROWS - 1 }, () => ['@']);
-    for (const [index, column] of columns.entries()) {
-      if (!isTextColumn(column)) continue;
-      const letter = columnLetter(index);
-      await workbook(fileId, 'PATCH', `${path}/range(address='${letter}2:${letter}${DROP_DOWN_ROWS}')`, {
-        body: { numberFormat: textRows }, where: 'textFormat',
+    for (const run of columnRuns(columns, (column) => (isTextColumn(column) ? '@' : null))) {
+      const width = run.to - run.from + 1;
+      const formats = Array.from({ length: DROP_DOWN_ROWS - 1 }, () => Array(width).fill('@'));
+      await workbook(fileId, 'PATCH', `${path}/range(address='${columnLetter(run.from)}2:${columnLetter(run.to)}${DROP_DOWN_ROWS}')`, {
+        body: { numberFormat: formats }, where: 'textFormat', discard: true,
       }).catch(() => {});
     }
-    for (const [index, column] of columns.entries()) {
-      const choices = dropDownChoices(column, layout);
-      if (!choices) continue;
-      const letter = columnLetter(index);
+    for (const run of columnRuns(columns, (column) => dropDownChoices(column, layout))) {
       // A nicety: a workbook without drop-downs still syncs.
-      await workbook(fileId, 'PATCH', `${path}/range(address='${letter}2:${letter}${DROP_DOWN_ROWS}')/dataValidation`, {
-        body: { rule: { list: { inCellDropDown: true, source: choices } }, errorAlert: { showAlert: false } },
-        where: 'dropDown',
+      await workbook(fileId, 'PATCH', `${path}/range(address='${columnLetter(run.from)}2:${columnLetter(run.to)}${DROP_DOWN_ROWS}')/dataValidation`, {
+        body: { rule: { list: { inCellDropDown: true, source: run.value } }, errorAlert: { showAlert: false } },
+        where: 'dropDown', discard: true,
       }).catch(() => {});
     }
-    await workbook(fileId, 'POST', `${path}/freezePanes/freezeRows`, { body: { count: 1 }, where: 'freezeHeader' }).catch(() => {});
+    await workbook(fileId, 'POST', `${path}/freezePanes/freezeRows`, { body: { count: 1 }, where: 'freezeHeader', discard: true }).catch(() => {});
     return added.id;
   }
 
@@ -357,7 +381,7 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
         if (!width) continue;
         const values = batch.rows.map((row) => Array.from({ length: width }, (_, c) => cellValueForWrite(row[c])));
         const address = `${cellAddress(start, 0)}:${cellAddress(start + values.length - 1, width - 1)}`;
-        await workbook(fileId, 'PATCH', `${sheetPath(batch.sheetId)}/range(address='${address}')`, { body: { values }, where: 'appendRows' });
+        await workbook(fileId, 'PATCH', `${sheetPath(batch.sheetId)}/range(address='${address}')`, { body: { values }, where: 'appendRows', discard: true });
       }
     },
 
@@ -366,7 +390,7 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
       const sorted = [...(rows || [])].sort((a, b) => b.row - a.row);
       for (const { sheetId, row } of sorted) {
         const n = row + 1;
-        await workbook(fileId, 'POST', `${sheetPath(sheetId)}/range(address='${n}:${n}')/delete`, { body: { shift: 'Up' }, where: 'deleteRows' });
+        await workbook(fileId, 'POST', `${sheetPath(sheetId)}/range(address='${n}:${n}')/delete`, { body: { shift: 'Up' }, where: 'deleteRows', discard: true });
       }
     },
 
@@ -396,7 +420,7 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
       for (const scope of scopes) sheetIds[scope.scopeId] = await addSheet(fileId, scope, layout);
       // The blank file's own first sheet goes once the real ones exist.
       const starter = blank?.value?.[0];
-      if (starter && scopes.length) await workbook(fileId, 'DELETE', sheetPath(starter.id), { where: 'deleteStarter' });
+      if (starter && scopes.length) await workbook(fileId, 'DELETE', sheetPath(starter.id), { where: 'deleteStarter', discard: true });
       return { fileId, url: created.webUrl, sheetIds };
     },
 
