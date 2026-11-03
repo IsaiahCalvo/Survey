@@ -89,7 +89,9 @@ export function scaledGroupFontSize(fontSize, axisScaleX, axisScaleY) {
  * @param {boolean} [p.keepProportions]  Shift, or a member that needs it
  * @param {number} [p.minScaleX]  smallest |sx| allowed
  * @param {number} [p.minScaleY]  smallest |sy| allowed
- * @returns {{ sx: number, sy: number }} positive scales (a group never flips)
+ * @returns {{ sx: number, sy: number }} signed scales: a grabber dragged past
+ *   the opposite side flips the group (owner 2026-11-03), never thinner than
+ *   the floor on the way through
  */
 export function resolveGroupResizeScale({
   handleId,
@@ -103,9 +105,12 @@ export function resolveGroupResizeScale({
   const affectsY = handleAffectsY(handleId);
   let x = affectsX && Number.isFinite(sx) ? sx : 1;
   let y = affectsY && Number.isFinite(sy) ? sy : 1;
-  // A group never mirrors: past the fixed side it stops at its minimum.
-  x = Math.max(x, 0);
-  y = Math.max(y, 0);
+  // Owner 2026-11-03: a group flips like one mark. Exactly zero ("on the
+  // fixed side") counts as the unflipped side.
+  const signX = x < 0 ? -1 : 1;
+  const signY = y < 0 ? -1 : 1;
+  x = Math.abs(x);
+  y = Math.abs(y);
   if (keepProportions) {
     if (CORNERS.has(handleId)) {
       const locked = lockAspectToBiggerMove(x, y, 1, 1);
@@ -126,12 +131,46 @@ export function resolveGroupResizeScale({
   if (keepProportions) {
     const floor = Math.max(minScaleX, minScaleY);
     const k = Math.max(x, floor);
-    return { sx: k, sy: k };
+    return { sx: signX * k, sy: signY * k };
   }
   return {
-    sx: affectsX ? Math.max(x, minScaleX) : 1,
-    sy: affectsY ? Math.max(y, minScaleY) : 1,
+    sx: affectsX ? signX * Math.max(x, minScaleX) : 1,
+    sy: affectsY ? signY * Math.max(y, minScaleY) : 1,
   };
+}
+
+/**
+ * A member's turn after the group flips. Mirroring one of the frame's axes
+ * turns a mark the other way (about the frame's own turn); a mark lying
+ * sideways in the frame (90 / 270) mirrors along its own other axis instead
+ * and keeps its turn. Both axes = a half turn, which the member's own flips
+ * already make, so the turn stays.
+ *
+ * @param {number} angle       the member's turn, degrees
+ * @param {number} sx          the frame's signed x scale
+ * @param {number} sy          the frame's signed y scale
+ * @param {number} [frameAngle] the frame's own turn (a turned group), degrees
+ */
+export function mirroredMemberAngle(angle, sx, sy, frameAngle = 0) {
+  const a = Number(angle) || 0;
+  if ((sx < 0) === (sy < 0)) return a;
+  const f = Number(frameAngle) || 0;
+  if (isSideways(a - f)) return a;
+  const m = 2 * f - a;
+  return m === 0 ? 0 : ((m % 360) + 360) % 360;
+}
+
+/**
+ * A counter pin's pointer angle (degrees, 0 = right, 90 = down) after the
+ * group flips: its nub mirrors with the frame.
+ */
+export function mirroredPointerAngle(pointerAngle, sx, sy, frameAngle = 0) {
+  const f = Number(frameAngle) || 0;
+  let b = (Number.isFinite(Number(pointerAngle)) ? Number(pointerAngle) : 225) - f;
+  if (sx < 0) b = 180 - b;
+  if (sy < 0) b = -b;
+  const a = b + f;
+  return ((a % 360) + 360) % 360;
 }
 
 /**
@@ -192,8 +231,11 @@ export function scaleCalloutForGroup(orig, scalePoint, sx, sy, handleId, page, p
   const box = orig.box;
   const centre = scalePoint(box.left + box.width / 2, box.top + box.height / 2);
   const scalesFont = textScalesFontFor(handleId);
-  const width = scalesFont ? scaledTextBoxLength(box.width, sx, padding) : box.width * sx;
-  const height = box.height * sy;
+  // A flipped group moves the box over but keeps its words the right way round.
+  const ax = Math.abs(sx);
+  const ay = Math.abs(sy);
+  const width = scalesFont ? scaledTextBoxLength(box.width, ax, padding) : box.width * ax;
+  const height = box.height * ay;
   const patch = {
     arrowTip: { x: tip.x / W, y: tip.y / H },
     knee: { x: knee.x / W, y: knee.y / H },
@@ -216,9 +258,11 @@ export function scaleCalloutForGroup(orig, scalePoint, sx, sy, handleId, page, p
 export function scaleMarkerBoundsForGroup(bounds, scalePoint, sx, sy) {
   const axis = memberAxisScale(bounds.angle || 0, sx, sy);
   const centre = scalePoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
-  const width = bounds.width * axis.x;
-  const height = bounds.height * axis.y;
-  return { ...bounds, x: centre.x - width / 2, y: centre.y - height / 2, width, height };
+  const width = bounds.width * Math.abs(axis.x);
+  const height = bounds.height * Math.abs(axis.y);
+  const next = { ...bounds, x: centre.x - width / 2, y: centre.y - height / 2, width, height };
+  if (bounds.angle != null) next.angle = mirroredMemberAngle(bounds.angle, sx, sy);
+  return next;
 }
 
 // A line's ends (and bend) on the page as drawn. Stored ends are offsets

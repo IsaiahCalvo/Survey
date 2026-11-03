@@ -85,7 +85,7 @@ import { broadcastPageSelection } from '../utils/historyMarkFilter.js';
 // (stackedMarks), interleaved with every other mark.
 import { HANDLE_FILL, HANDLE_RING, HANDLE_RING_INVALID, HANDLE_RADIUS, HANDLE_RADIUS_SECONDARY } from '../utils/handleStyle';
 import { getMarkHitBandWidth, getSvgMatrixMaxScale, resolveHandleHitPadPageSize } from '../utils/handleHitPad.js';
-import { clampResizeScale } from '../utils/resizeMinimum.js';
+import { clampResizeScale, signedLineResizeScale } from '../utils/resizeMinimum.js';
 import { shouldAutoSelectAfterCommit } from '../utils/autoSelectAfterCommit.js';
 import { canToolGrabSelection, isSelectFamilyTool, isSelectionGestureActive } from '../utils/selectModes.js';
 import { liftedMoveIndices as liftedMoveIndicesFor, liftTranslate } from '../utils/dragLift.js';
@@ -6173,8 +6173,9 @@ const SVGAnnotationLayerBody = memo(({
         const absY1 = cy + (obj.y1 ?? 0);
         const absX2 = cx + (obj.x2 ?? 0);
         const absY2 = cy + (obj.y2 ?? 0);
-        const sx = Math.max(0.01, Math.abs(vr.scaleX));
-        const sy = Math.max(0.01, Math.abs(vr.scaleY));
+        // Signed: past the opposite side the line mirrors (owner 2026-11-03).
+        const sx = signedLineResizeScale(vr.scaleX);
+        const sy = signedLineResizeScale(vr.scaleY);
         // Step 1: scale endpoints + stored midpoint around the LOCAL
         // anchor in pre-rotation frame. This produces a naive new
         // shape whose local anchor stayed put but whose curve-
@@ -6248,6 +6249,10 @@ const SVGAnnotationLayerBody = memo(({
         renderElement = renderCounter(renderObj, i);
       } else if (objectType === 'path' && Array.isArray(renderObj.path) && renderObj.path.length > 0) {
         renderElement = renderPath(renderObj, i);
+      } else if (isPdfStampProxy(renderObj)) {
+        // A stamp follows the grabber too; it is drawn the right way round
+        // even when a grabber has passed the opposite side.
+        renderElement = <image {...getPdfStampProxySvgProps(renderObj)} data-pdf-stamp-proxy="true" data-symbol-stamp={isSymbolStamp(renderObj) ? renderObj.data.symbolStamp.id : undefined} />;
       } else if (objectType === 'rect') {
         renderElement = renderRect(renderObj, i);
       } else if (objectType === 'line') {
@@ -8653,8 +8658,8 @@ const SVGAnnotationLayerBody = memo(({
               const absY1 = cy + (obj.y1 ?? 0);
               const absX2 = cx + (obj.x2 ?? 0);
               const absY2 = cy + (obj.y2 ?? 0);
-              const sx = Math.max(0.01, Math.abs(vr.scaleX));
-              const sy = Math.max(0.01, Math.abs(vr.scaleY));
+              const sx = signedLineResizeScale(vr.scaleX);
+              const sy = signedLineResizeScale(vr.scaleY);
               const naiveX1 = vr.anchorX + (absX1 - vr.anchorX) * sx;
               const naiveY1 = vr.anchorY + (absY1 - vr.anchorY) * sy;
               const naiveX2 = vr.anchorX + (absX2 - vr.anchorX) * sx;

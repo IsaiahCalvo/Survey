@@ -12,8 +12,13 @@
  * The floor is in PAGE units (it is part of the mark, so it scales with the
  * page like the mark does — project zoom convention). It is never larger than
  * the mark already was: a hairline pen stroke is not blown up to 4 units just
- * because a corner was touched. Shapes that cannot mirror (a text box, an
- * arrow group, a counter) stop at the floor on the fixed side instead.
+ * because a corner was touched.
+ *
+ * Owner 2026-11-03: every mark flips. Shapes, lines, arrows and ink mirror.
+ * Anything with words or a picture in it (a text box, a callout's box, a
+ * photo, a stamp, a counter's number) passes through and keeps growing on the
+ * other side, but its words and picture stay the right way round. Drawboard
+ * mirrors the letters; that leaves text you cannot read, so Survey does not.
  */
 
 /** The smallest a resized mark may get along either axis, in page units. */
@@ -66,6 +71,20 @@ export function clampResizeScale(scale, {
   // the fixed corner") counts as the unflipped side.
   const sign = s < 0 ? -1 : 1;
   return sign * Math.max(Math.abs(s), floor);
+}
+
+/**
+ * A line's resize scale with its sign kept, so a line in box mode mirrors when
+ * a grabber passes the opposite side (owner 2026-11-03: "every annotation").
+ * The magnitude never drops below 0.01, as before, so the ends never meet.
+ *
+ * @param {number} scale  signed axis scale from the resize drag
+ * @returns {number}
+ */
+export function signedLineResizeScale(scale) {
+  const s = Number(scale);
+  if (!Number.isFinite(s)) return 1;
+  return (s < 0 ? -1 : 1) * Math.max(0.01, Math.abs(s));
 }
 
 /**
