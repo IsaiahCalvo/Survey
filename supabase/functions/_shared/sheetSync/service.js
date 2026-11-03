@@ -22,7 +22,7 @@
 //     markers as the field tech (append_annotation_update checks the role);
 //   * unlink: the person who linked it, or the document's owner.
 import { buildSyncLayout, layoutProblems } from './layout.js';
-import { runSheetRound } from './round.js';
+import { initialsOf, runSheetRound } from './round.js';
 import { encryptToken, decryptToken } from './tokenCrypto.js';
 import {
   googleEndpoints, googleAuthUrl, googleSheetsProvider, exchangeGoogleCode, refreshGoogleToken, revokeGoogleToken,
@@ -42,7 +42,13 @@ const SNAPSHOT_ENC_GZIP = 2;
 // Rounds a link runs at most this often unless someone presses Sync now: every
 // device of every survey a person linked shares that person's Google quota
 // (60 reads a minute), and the whole app shares 300.
+// Rounds per link at most this often. Excel's "has it changed?" check is one
+// cheap file read (its version moves within a second or two of an edit in
+// Excel for the web, measured 2026-11-03), so an open survey can ask often;
+// Google rounds read the whole sheet each time (#1312) and keep the slower
+// pace for its read quota.
 const MIN_ROUND_GAP_MS = 8000;
+const MIN_ROUND_GAP_MS_EXCEL = 2500;
 const MIN_FORCED_GAP_MS = 2000; // "Sync now" pressed again and again
 const LEASE_SECONDS = 120;
 const STATE_TTL_MS = 10 * 60 * 1000;
@@ -232,7 +238,7 @@ export async function handleSheetSync(req, deps) {
     let raw;
     try { raw = await req.json(); } catch { return json({ error: 'invalid_json' }, 400); }
     const parsed = parseBody({
-      action: s.enum(['status', 'connect', 'claim', 'disconnect', 'link', 'sync', 'choose', 'unlink']),
+      action: s.enum(['status', 'connect', 'claim', 'disconnect', 'link', 'sync', 'choose', 'unlink', 'folders']),
       documentId: s.string({ max: 64, pattern: UUID, optional: true }),
       templateId: s.string({ max: 128, optional: true }),
       template: s.record({ maxBytes: 1024 * 1024, optional: true }),
@@ -241,6 +247,8 @@ export async function handleSheetSync(req, deps) {
       // The answers' cell colours ({ value, argb }) for the Excel workbook.
       answerFills: s.any({ maxBytes: 4 * 1024 }),
       title: s.string({ max: 200, optional: true }),
+      // An Excel workbook's OneDrive folder, "A/B" from the drive's top.
+      folder: s.string({ max: 400, optional: true }),
       markerId: s.string({ max: 200, optional: true }),
       choice: s.enum(['app', 'sheet', 'putBack', 'putBackTab'], { optional: true }),
       scopeId: s.string({ max: 300, optional: true }),
@@ -275,6 +283,7 @@ export async function handleSheetSync(req, deps) {
       case 'sync': return json(await syncLink(ctx));
       case 'choose': return json(await chooseConflict(ctx));
       case 'unlink': return json(await unlinkSheet(ctx));
+      case 'folders': return json(await listFolders(ctx));
       default: return json({ error: 'unknown_action' }, 400);
     }
   } catch (err) {
@@ -626,6 +635,27 @@ async function signingFor(ctx, documentId) {
   return { keyId: row.key_id, secret: row.secret_b64, signingDocId: row.signing_doc_id };
 }
 
+// The linker's initials, the way the app makes them (PDFViewer
+// getUserInitials): first and last name, else the full name, else the email.
+const initialsCache = new Map();
+async function initialsFor(ctx, userId) {
+  if (!userId) return '';
+  if (initialsCache.has(userId)) return initialsCache.get(userId);
+  let out = '';
+  try {
+    const { data } = (await ctx.service.auth?.admin?.getUserById?.(userId)) || {};
+    const user = data?.user;
+    const md = user?.user_metadata || {};
+    const first = md.first_name || md.firstName || '';
+    const last = md.last_name || md.lastName || '';
+    out = first || last
+      ? `${first.charAt(0)}${last.charAt(0)}`.toUpperCase()
+      : initialsOf(md.full_name || md.name || String(user?.email || '').split('@')[0]);
+  } catch { out = ''; }
+  initialsCache.set(userId, out);
+  return out;
+}
+
 function markerStore(ctx, documentId) {
   let before = {};
   return {
@@ -663,6 +693,8 @@ const publicLink = (link, userId, role = null) => {
     provider: link.provider,
     fileUrl: link.file_url,
     title: link.title,
+    // Where the file lives: an Excel workbook's OneDrive folder ('' = top).
+    folder: link.provider === 'msgraph' ? (typeof link.state?.folder === 'string' ? link.state.folder : 'Survey') : null,
     status: link.status,
     lastRoundAt: link.last_round_at,
     lastError: link.last_error,
@@ -698,6 +730,27 @@ async function statusFor(ctx, round = null) {
   };
 }
 
+// "A/B" with each name cleaned the way OneDrive allows; null when not given.
+export function cleanFolder(raw) {
+  if (raw == null) return null;
+  const parts = String(raw).split('/').map((p) => p.replace(/[\\:*?"<>|#%]/g, '-').trim()).filter((p) => p && p !== '.' && p !== '..');
+  return parts.slice(0, 12).map((p) => p.slice(0, 120)).join('/');
+}
+
+// The folders inside one OneDrive folder, for "Save in" before making a
+// workbook (owner 2026-11-03: "I wasn't able to select where I was going to save").
+async function listFolders(ctx) {
+  if (ctx.provider !== 'msgraph') throw new SyncError('Only Excel workbooks can pick a folder.', 400, 'not_supported');
+  await requireBeta(ctx);
+  let provider;
+  try { provider = await providerFor(ctx, ctx.user.id, 'msgraph'); } catch (err) {
+    if (err instanceof SyncError) throw err;
+    throw new SyncError('Connect Microsoft first.', 409, 'not_connected');
+  }
+  const folder = cleanFolder(ctx.body.folder) ?? '';
+  return { folder, folders: await provider.listFolders(folder) };
+}
+
 async function linkSheet(ctx) {
   const { documentId, templateId } = ctx.body;
   await requireEditor(ctx, documentId);
@@ -716,7 +769,8 @@ async function linkSheet(ctx) {
   const signing = await signingFor(ctx, documentId);
   const title = ctx.body.title || 'Survey';
   let made;
-  try { made = await provider.createFile({ title, layout, answerFills: answerFillsFrom(ctx.body) }); } catch (err) {
+  const folder = ctx.provider === 'msgraph' ? cleanFolder(ctx.body.folder) : null;
+  try { made = await provider.createFile({ title, layout, answerFills: answerFillsFrom(ctx.body), ...(folder != null ? { folder } : {}) }); } catch (err) {
     if (err?.code === 'personal-onedrive') {
       throw new SyncError('This Microsoft account has a personal OneDrive. Live sync needs a work or school Microsoft 365 account.', 409, 'personal-onedrive');
     }
@@ -732,7 +786,7 @@ async function linkSheet(ctx) {
     // The real file name: OneDrive adds " 1" when the name is taken.
     title: made.title || title,
     layout,
-    state: { sheetIds: made.sheetIds, lastWriteAt: new Date().toISOString() },
+    state: { sheetIds: made.sheetIds, lastWriteAt: new Date().toISOString(), ...(made.folder != null ? { folder: made.folder } : {}) },
     created_by: ctx.user.id,
   }).select(LINK_COLUMNS).single();
   if (error) {
@@ -774,7 +828,7 @@ async function runRoundFor(ctx, link, { provider = null, signing = null, force =
   if (!leaseToken) {
     // Sync now skips the wait between rounds, never Google's "slow down".
     if (link.backoff_until && new Date(link.backoff_until).getTime() > Date.now()) return { status: 'waiting' };
-    const gap = force ? MIN_FORCED_GAP_MS : MIN_ROUND_GAP_MS;
+    const gap = force ? MIN_FORCED_GAP_MS : link.provider === 'msgraph' ? MIN_ROUND_GAP_MS_EXCEL : MIN_ROUND_GAP_MS;
     if (link.last_round_at && Date.now() - new Date(link.last_round_at).getTime() < gap) {
       return { status: 'recent', retryInMs: gap - (Date.now() - new Date(link.last_round_at).getTime()) };
     }
@@ -800,9 +854,10 @@ async function runRoundFor(ctx, link, { provider = null, signing = null, force =
     const p = provider || await providerFor(ctx, link.connection_user_id, link.provider);
     const sign = signing || await signingFor(ctx, link.document_id);
     const store = markerStore(ctx, link.document_id);
+    const fillBy = await initialsFor(ctx, link.connection_user_id);
     let result = null;
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      result = await runSheetRound({ link, provider: p, loadMarkers: store.load, saveMarkers: store.save, signing: sign, force: force || attempt > 0 || Boolean(change) });
+      result = await runSheetRound({ link, provider: p, loadMarkers: store.load, saveMarkers: store.save, signing: sign, force: force || attempt > 0 || Boolean(change), fillBy });
       if (result.status !== 'retry') break;
     }
     if (result.status === 'synced') {
@@ -866,6 +921,16 @@ const SWEEP_TIERS = [
   [7 * 24 * 60 * 60 * 1000, 30 * 60 * 1000],
   [Infinity, 6 * 60 * 60 * 1000],
 ];
+// Excel's check is one cheap file read, so a workbook is looked at every
+// minute for a day after it last changed, not only for the first hour.
+const SWEEP_TIERS_EXCEL = [
+  [24 * 60 * 60 * 1000, 60 * 1000],
+  [7 * 24 * 60 * 60 * 1000, 5 * 60 * 1000],
+  [Infinity, 30 * 60 * 1000],
+];
+// The cron fires once a minute: a link due a few seconds after a sweep runs
+// in that sweep, not the next one (it waited two minutes for a one-minute tier).
+const SWEEP_SLACK_MS = 15 * 1000;
 const SWEEP_MAX_LINKS = 30;
 const SWEEP_PARALLEL = 4;
 
@@ -896,7 +961,8 @@ function secretsMatch(a, b) {
 /** When a link is next due for a background round (ms since epoch). */
 export function sweepDueAt(link, now = Date.now()) {
   const changed = link.last_change_at ? new Date(link.last_change_at).getTime() : 0;
-  const every = SWEEP_TIERS.find(([within]) => now - changed < within)[1];
+  const tiers = link.provider === 'msgraph' ? SWEEP_TIERS_EXCEL : SWEEP_TIERS;
+  const every = tiers.find(([within]) => now - changed < within)[1];
   const last = link.last_round_at ? new Date(link.last_round_at).getTime() : 0;
   return last + every;
 }
@@ -924,7 +990,7 @@ async function sweep(req, deps) {
   if (typeof body.linkId === 'string' && UUID.test(body.linkId)) {
     const { data: link } = await service.from('sheet_sync_links').select(LINK_COLUMNS).eq('id', body.linkId).maybeSingle();
     if (!link || link.status !== 'active') return json({ status: 'skipped' });
-    if (Date.now() < sweepDueAt(link)) return json({ status: 'recent' });
+    if (Date.now() + SWEEP_SLACK_MS < sweepDueAt(link)) return json({ status: 'recent' });
     const ctx = {
       ...deps, fetchImpl, service, body: {}, provider: link.provider, providerGiven: true,
       user: { id: link.connection_user_id }, userDb: asUser(service, link.connection_user_id),
@@ -942,13 +1008,13 @@ async function sweep(req, deps) {
   // Which sheets are due: live, not waiting out a "slow down", not mid-round.
   const now = Date.now();
   const { data: links } = await service.from('sheet_sync_links')
-    .select('id, last_round_at, last_change_at, backoff_until, lease_until')
+    .select('id, provider, last_round_at, last_change_at, backoff_until, lease_until')
     .eq('status', 'active')
     .order('last_round_at', { ascending: true, nullsFirst: true })
     .limit(500);
   const due = (links || []).filter((l) => (!l.backoff_until || new Date(l.backoff_until).getTime() <= now)
     && (!l.lease_until || new Date(l.lease_until).getTime() <= now)
-    && sweepDueAt(l, now) <= now).slice(0, SWEEP_MAX_LINKS);
+    && sweepDueAt(l, now) <= now + SWEEP_SLACK_MS).slice(0, SWEEP_MAX_LINKS);
   const results = [];
   let stop = false;
   const queue = [...due];
@@ -1031,8 +1097,10 @@ async function unlinkSheet(ctx) {
   const role = await roleOf(ctx, documentId);
   const link = await linkFor(ctx, documentId, templateId);
   if (!link) return statusFor(ctx);
-  if (role !== 'owner' && link.connection_user_id !== ctx.user.id) {
-    throw new SyncError('Only the person who linked this sheet, or the survey\'s owner, can unlink it.', 403, 'not_allowed');
+  // It stops for everyone on the survey, so only its owners and editors may
+  // (owner 2026-11-03), plus the person who linked it.
+  if (role !== 'owner' && role !== 'editor' && link.connection_user_id !== ctx.user.id) {
+    throw new SyncError('Only the survey\'s owners and editors can stop syncing.', 403, 'not_allowed');
   }
   // The sheet itself stays in the person's Google Drive; it just stops syncing.
   await ctx.service.from('sheet_sync_links').delete().eq('id', link.id);

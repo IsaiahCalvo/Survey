@@ -239,10 +239,18 @@ test('the Survey panel makes a live Excel workbook', async ({ page }) => {
     await expect(button).toBeVisible({ timeout: 60_000 });
     await expect(button).toHaveAttribute('data-sheet-sync-state', 'connected');
     await button.click();
-    const panel = page.getByRole('dialog', { name: 'Live sheet sync' });
-    await expect(panel.getByText('Signed in as pm@contoso.example')).toBeVisible();
-    await panel.getByRole('button', { name: 'Make a live Excel workbook' }).click();
-    await expect(panel.getByRole('link', { name: 'Open workbook' })).toBeVisible({ timeout: 30_000 });
+    const panel = page.getByRole('dialog', { name: 'Live sync' });
+    await expect(panel.getByText('pm@contoso.example', { exact: true })).toBeVisible();
+    // Pick where it is saved (owner 2026-11-03: "I wasn't able to select where").
+    await expect(panel.getByText('Save in OneDrive › Survey')).toBeVisible();
+    await panel.getByRole('button', { name: 'Change' }).click();
+    await panel.getByRole('button', { name: 'OneDrive', exact: true }).click();
+    await panel.getByRole('listitem').filter({ hasText: 'Jobs' }).click();
+    await panel.getByRole('button', { name: 'Save here' }).click();
+    await expect(panel.getByText('Save in OneDrive › Jobs')).toBeVisible();
+    await panel.getByRole('button', { name: 'Make Excel workbook' }).click();
+    await expect(panel.getByRole('link', { name: 'Open in Excel' })).toBeVisible({ timeout: 30_000 });
+    await expect(panel.getByText('OneDrive › Jobs', { exact: true })).toBeVisible();
     await expect(button).toHaveAttribute('data-sheet-sync-state', 'active');
     await expect(button).toContainText('Live in Excel');
 
@@ -252,8 +260,20 @@ test('the Survey panel makes a live Excel workbook', async ({ page }) => {
     expect(tab.rows[0]).toEqual(['Row ID', 'Changed By', 'Changed Date', 'Item', ...E2E_SURVEY.checklist.map((c) => c.text), 'Entity', 'Notes']);
     expect(tab.rows.some((r) => r[3] === E2E_SURVEY.itemName)).toBe(true);
     await panel.getByRole('button', { name: 'Sync now' }).click();
-    await expect(panel.getByRole('button', { name: 'Sync now' })).toBeEnabled({ timeout: 30_000 });
+    await expect(panel.getByRole('button', { name: 'Sync now' })).not.toHaveAttribute('aria-busy', 'true', { timeout: 30_000 });
     await expect(panel.getByRole('alert')).toHaveCount(0);
+
+    // Stopping asks first and says it is for everyone.
+    await panel.getByRole('button', { name: 'More' }).click();
+    await panel.getByRole('menuitem', { name: 'Stop syncing…' }).click();
+    await expect(panel.getByText('Stop syncing for everyone?')).toBeVisible();
+    await panel.getByRole('button', { name: 'Keep syncing' }).click();
+    await expect(panel.getByRole('link', { name: 'Open in Excel' })).toBeVisible();
+    await panel.getByRole('button', { name: 'More' }).click();
+    await panel.getByRole('menuitem', { name: 'Stop syncing…' }).click();
+    await panel.getByRole('button', { name: 'Stop syncing' }).click();
+    await expect(panel.getByRole('button', { name: 'Make Excel workbook' })).toBeVisible({ timeout: 30_000 });
+    await expect(button).toContainText('Live sync');
   } finally {
     await adminClient().from('sheet_sync_links').delete().eq('document_id', E2E_SURVEY.documentId);
     await adminClient().from('sheet_sync_connections').delete().eq('user_id', await userId(E2E_ACCOUNTS.owner)).eq('provider', 'msgraph');

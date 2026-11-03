@@ -334,4 +334,7 @@ test('the background sweep checks busy sheets every minute and quiet ones rarely
   // Never changed or long quiet: every 6 hours; never synced: due now.
   assert.equal(due({ last_change_at: null, last_round_at: at(min) }), 359);
   assert.ok(due({ last_change_at: null, last_round_at: null }) < 0);
+  // Excel (one cheap check): every minute for a day after a change.
+  assert.equal(due({ provider: 'msgraph', last_change_at: at(180 * min), last_round_at: at(0.5 * min) }), 0.5);
+  assert.equal(due({ provider: 'msgraph', last_change_at: at(3 * 1440 * min), last_round_at: at(min) }), 4);
 });

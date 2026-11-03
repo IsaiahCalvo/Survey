@@ -65,6 +65,29 @@ export function sheetEditorLabel(editor, { selfEmail = null, lastWriteAt = null 
   return who ? `${who} (sheet)` : SHEET_EDITOR_UNKNOWN;
 }
 
+/**
+ * Markers of this sheet whose Changed By or Changed Date is blank (saved
+ * before the app stamped them, owner 2026-11-03: "Changed By and Changed
+ * Date didn't show") get the linker's initials and today, once, the way
+ * Export data fills them. Returns the markers to write.
+ */
+export function fillBlankStamps(layout, markers, by, at) {
+  if (!by) return {};
+  const scopes = layout?.scopes || [];
+  const inSheet = (m) => scopes.some((sc) => String(m?.moduleId ?? '') === String(sc.moduleId ?? '') && String(m?.categoryId ?? '') === String(sc.categoryId ?? ''));
+  const out = {};
+  for (const [id, m] of Object.entries(markers || {})) {
+    if (!m || typeof m !== 'object' || !inSheet(m)) continue;
+    const needBy = !String(m.changedBy ?? '').trim();
+    const needAt = !String(m.changedDate ?? '').trim();
+    if (!needBy && !needAt) continue;
+    out[id] = { ...m, ...(needBy ? { changedBy: by } : {}), ...(needAt ? { changedDate: at } : {}) };
+  }
+  return out;
+}
+
+export { initialsOf };
+
 const hasWork = (plan) => plan.cellWrites.length || plan.appends.length || plan.deletes.length || plan.headerAdds.length;
 
 /**
@@ -79,11 +102,13 @@ const hasWork = (plan) => plan.cellWrites.length || plan.appends.length || plan.
  * @returns {Promise<{status:'idle'|'synced'|'retry', summary?:object, patch?:object}>}
  *   `patch` is what to store on the link (baseline, state, remote_version, app_hash).
  */
-export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, signing, force = false, now = new Date(), newMarkerId }) {
+export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, signing, force = false, now = new Date(), newMarkerId, fillBy = '' }) {
   assertProvider(provider);
   const layout = link.layout;
   const version = await provider.getVersion(link.file_id);
-  const markers = (await loadMarkers()) || {};
+  const loaded = (await loadMarkers()) || {};
+  const fills = fillBlankStamps(layout, loaded, fillBy, now.toISOString());
+  const markers = Object.keys(fills).length ? { ...loaded, ...fills } : loaded;
   const appHash = await appHashOf(layout, markers);
   const state = { ...(link.state || {}) };
   const pendingChoices = Object.keys(state.choices || {}).length > 0;
@@ -144,7 +169,8 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
     }
     wroteAt = new Date().toISOString();
   }
-  if (Object.keys(plan.markerWrites).length) await saveMarkers(plan.markerWrites);
+  const writes = { ...fills, ...plan.markerWrites };
+  if (Object.keys(writes).length) await saveMarkers(writes);
 
   const after = { ...markers, ...plan.markerWrites };
   return {
@@ -152,7 +178,13 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
     summary: plan.summary,
     patch: {
       baseline: plan.baseline,
-      state: wroteAt ? { ...plan.state, lastWriteAt: wroteAt } : plan.state,
+      // The engine rebuilds its own keys; where the file was saved (the
+      // "Save in" folder) is the link's and rides along.
+      state: {
+        ...(typeof link.state?.folder === 'string' ? { folder: link.state.folder } : {}),
+        ...plan.state,
+        ...(wroteAt ? { lastWriteAt: wroteAt } : {}),
+      },
       // The version read BEFORE the grid: if the sheet changed during the
       // round (including our own writes), the next round reads it again.
       remote_version: version,

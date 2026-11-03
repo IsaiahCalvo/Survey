@@ -12,7 +12,9 @@
   margin-top: 8px;
   transform: translate(-50%, 0);
   box-sizing: border-box;
-  width: min(340px, calc(100vw - 16px));
+  /* The real width comes from the survey rail (SheetSyncButton.jsx). */
+  width: min(320px, calc(100vw - 16px));
+  max-width: calc(100vw - 16px);
   max-height: min(560px, calc(100vh - 24px));
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -28,10 +30,11 @@
 }
 
 .sheet-sync-head {
+  position: relative;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 10px;
-  padding: 14px 16px 12px;
+  padding: 12px 12px 10px 14px;
 }
 .sheet-sync-head__text { flex: 1; min-width: 0; }
 .sheet-sync-title {
@@ -231,3 +234,173 @@
   margin: 4px 0;
 }
 .sheet-sync-skeleton.is-short { width: 60%; }
+
+/* Round 2 (owner 2026-11-03: "ugly as hell", "wordy", "should fit within the
+   survey window"): a compact card no wider than the survey rail. One file
+   row, one gold "Open in Excel", Sync now as an icon, Stop syncing behind ⋯
+   with a confirm. */
+.sheet-sync-body {
+  padding: 10px 14px 14px;
+  border-top: 1px solid var(--border);
+}
+.sheet-sync-body .sheet-sync-note:first-child { margin-top: 0; }
+.sheet-sync-service-block + .sheet-sync-service-block { padding-top: 12px; }
+
+.sheet-sync-file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.sheet-sync-file__text { flex: 1; min-width: 0; }
+.sheet-sync-file .sheet-sync-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sheet-sync-row > .sheet-sync-grow { flex: 1 1 0; min-width: 0; }
+.sheet-sync-row:first-child { margin-top: 0; }
+.sheet-sync-file + .sheet-sync-row { margin-top: 10px; }
+
+.sheet-sync-icon-btn {
+  flex: none;
+  width: 32px;
+  min-width: 32px;
+  padding: 0;
+}
+.sheet-sync-row > .sheet-sync-icon-btn { flex: none; }
+.sheet-sync-icon-btn[aria-busy='true'] { cursor: progress; }
+.sheet-sync-icon-btn--quiet {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  width: 28px;
+  min-width: 28px;
+  margin-left: auto;
+  border: 0;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .sheet-sync-icon-btn--quiet:hover { background: var(--hover); color: var(--text-1); }
+}
+.sheet-sync-icon-btn--quiet[aria-expanded='true'] { background: var(--hover); color: var(--text-1); }
+
+.sheet-sync-menu {
+  position: absolute;
+  top: calc(100% - 4px);
+  right: 10px;
+  z-index: 1;
+  min-width: 160px;
+  padding: 4px;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px);
+  box-shadow: var(--shadow-popover);
+}
+.sheet-sync-menu__item {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-1);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .sheet-sync-menu__item:hover { background: var(--hover); }
+}
+.sheet-sync-menu__item.is-danger { color: var(--danger-text); }
+
+.sheet-sync-confirm { border-top: 0; padding-top: 14px; }
+.sheet-sync-confirm__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+.sheet-sync-confirm .sheet-sync-note { margin-top: 6px; }
+.sheet-sync-row > .sheet-sync-btn--danger,
+.sheet-sync-confirm .sheet-sync-row > .sheet-sync-btn { flex: 1 1 0; }
+
+.sheet-sync-btn--danger {
+  background: var(--danger-fill);
+  border-color: var(--danger-fill);
+  color: var(--on-danger);
+}
+@media (hover: hover) {
+  .sheet-sync-btn--danger:not(:disabled):hover { background: var(--danger-press); border-color: var(--danger-press); }
+}
+.sheet-sync-btn--danger.is-busy,
+.sheet-sync-btn--danger.is-busy:hover { background: var(--danger-fill); border-color: var(--danger-fill); color: var(--on-danger); }
+
+/* "Save in OneDrive › Survey  Change" */
+.sheet-sync-place {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.sheet-sync-place > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.sheet-sync-place + .sheet-sync-btn--block { margin-top: 10px; }
+
+/* Folder picker. */
+.sheet-sync-crumbs {
+  font-size: 12px;
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+}
+.sheet-sync-crumb {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  cursor: pointer;
+}
+.sheet-sync-crumb:hover { color: var(--text-1); text-decoration: underline; }
+.sheet-sync-folder-list {
+  margin-top: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px);
+  padding: 4px;
+}
+.sheet-sync-folder {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-1);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.sheet-sync-folder > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (hover: hover) {
+  .sheet-sync-folder:hover { background: var(--hover); }
+}
+.sheet-sync-empty { margin: 6px 4px; font-size: 12px; color: var(--text-3); }
+.sheet-sync-folders .sheet-sync-row > .sheet-sync-btn { flex: 1 1 0; }
+
+.sheet-sync-error-line {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--danger-text);
+}

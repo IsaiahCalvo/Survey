@@ -47,7 +47,15 @@ function fakeGraph({ driveType = 'business' } = {}) {
     if (!/^Bearer tok-\d+$/.test(init.headers.Authorization)) return json(401, { error: { code: 'InvalidAuthenticationToken' } });
 
     if (method === 'GET' && path.startsWith('me/drive?')) return json(200, { id: 'b!drive', driveType });
-    const put = /^me\/drive\/root:\/Survey\/(.+)\.xlsx:\/content/.exec(path);
+    // Folders: GET .../children on the top or on a path; ?folders= lists them.
+    const kids = /^me\/drive\/root(?::\/(.+):)?\/children\?/.exec(path);
+    if (method === 'GET' && kids) {
+      const at = kids[1] || '';
+      const names = (state.folders?.[at]) ?? null;
+      if (!names) return json(404, { error: { code: 'itemNotFound' } });
+      return json(200, { value: [...names.map((name) => ({ name, folder: { childCount: 0 } })), { name: 'notes.docx', file: {} }] });
+    }
+    const put = /^me\/drive\/root:\/(.+)\.xlsx:\/content/.exec(path);
     if (method === 'PUT' && put) {
       const book = await new ExcelJS.Workbook().xlsx.load(Buffer.from(init.body));
       const itemId = `NEW-${state.files.size + 1}`;
@@ -58,6 +66,7 @@ function fakeGraph({ driveType = 'business' } = {}) {
         return sheet(ws.name, i, header.length ? [header] : []);
       }));
       state.files.get(itemId).book = book;
+      state.files.get(itemId).path = put[1];
       // OneDrive's rename on a name clash: "Fire-Level 1 1.xlsx".
       const fileName = `${decodeURIComponent(put[1].split('/').pop()).replace(/\.xlsx$/i, '')} 1.xlsx`;
       return json(201, { id: itemId, name: fileName, webUrl: `https://x.sharepoint.com/${put[1]}`, parentReference: { driveId: 'b!drive', driveType } });
@@ -394,4 +403,24 @@ test('columnRuns groups neighbours with the same value', () => {
   assert.deepEqual(columnRuns(cols, (c) => c.v), [
     { from: 0, to: 1, value: 't' }, { from: 3, to: 4, value: 'x' }, { from: 5, to: 5, value: 't' },
   ]);
+});
+
+test('a workbook goes in the folder picked, and folders can be listed', async () => {
+  const graph = fakeGraph();
+  graph.folders = { '': ['Survey', 'Jobs', 'Clients'], Jobs: ['2026 Hospital'] };
+  const p = provider(graph);
+  // Only folders, sorted; files are left out.
+  assert.deepEqual(await p.listFolders(''), ['Clients', 'Jobs', 'Survey']);
+  assert.deepEqual(await p.listFolders('Jobs'), ['2026 Hospital']);
+  assert.deepEqual(await p.listFolders('Gone'), [], 'a folder that is not there lists nothing');
+  const layout = { scopes: [{ scopeId: 'm:c', title: 'Doors', columns: [{ key: 'rowId', header: 'Row ID' }] }], entities: [], answerValues: [] };
+  const made = await p.createFile({ title: 'Floor 2 survey', layout, folder: 'Jobs/2026 Hospital' });
+  assert.equal(made.folder, 'Jobs/2026 Hospital');
+  assert.equal(graph.files.get('NEW-1').path, 'Jobs/2026 Hospital/Floor 2 survey');
+  const top = await p.createFile({ title: 'Top', layout, folder: '' });
+  assert.equal(top.folder, '');
+  assert.equal(graph.files.get('NEW-2').path, 'Top');
+  const plain = await p.createFile({ title: 'Plain', layout });
+  assert.equal(plain.folder, 'Survey', 'the Survey folder by default');
+  assert.equal(graph.files.get('NEW-3').path, 'Survey/Plain');
 });

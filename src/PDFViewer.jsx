@@ -590,6 +590,7 @@ import {
   saveCachedOcrResult,
 } from './utils/localOcrProvider.js';
 import { isInTabBehind } from './utils/tabBehind.js';
+import { stampChangedSurveyMarkers } from './services/surveyMarkerStamp.js';
 
 // Every open tab keeps its viewer mounted, and a tab behind keeps real sizes at
 // the same screen spot (utils/tabBehind.js). Look this tab's pages and
@@ -8448,7 +8449,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const [surveyResponses, setSurveyResponses] = useState({}); // { [itemId]: { selection: 'Y'|'N'|'N/A', note: { text, photos, videos } } }
   const [pendingSurveyMarker, setPendingSurveyMarker] = useState(null); // { pageNumber, x, y, width, height, id }
   const [showSpaceSelection, setShowSpaceSelection] = useState(false);
-  const [surveyMarkers, setSurveyMarkers] = useState({}); // { [annotationId]: { pageNumber, bounds, categoryId, spaceId, checklistResponses: { [itemId]: { selection, note } } } }
+  const [surveyMarkers, setSurveyMarkersRaw] = useState({}); // { [annotationId]: { pageNumber, bounds, categoryId, spaceId, checklistResponses: { [itemId]: { selection, note } } } }
+  // Local edits stamp Changed By / Changed Date (surveyMarkerStamp.js); the
+  // durable store's own loads and other screens' edits use the raw setter.
+  const surveyMarkerStampByRef = useRef('');
+  const setSurveyMarkers = useCallback((update) => {
+    setSurveyMarkersRaw((prev) => stampChangedSurveyMarkers(
+      prev,
+      typeof update === 'function' ? update(prev) : update,
+      { by: surveyMarkerStampByRef.current },
+    ));
+  }, []);
   // UX: print shows exactly what the screen shows. Survey Markers are visible
   // only inside a template, and only the selected module's set (clean slate per
   // module — owner rule, 2026-09-02), so print carries that set and nothing
@@ -15936,6 +15947,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
 
     return `${firstInitial}${lastInitial}`;
   }, [user]);
+  surveyMarkerStampByRef.current = getUserInitials();
 
   // Sync user profile data if missing (e.g. from Google login)
   useEffect(() => {
@@ -21868,7 +21880,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     spaces,
     setSpaces,
     surveyMarkers,
-    setSurveyMarkers,
+    setSurveyMarkers: setSurveyMarkersRaw,
     eraseEffectConsumer: consumeEraseOutboxEffect,
     onHistoryQuarantine: handleAnnotationHistoryQuarantine,
     // The unscaled per-page PDF pixel sizes the SVG layer inverts callouts
@@ -23584,7 +23596,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     const loadedSurveyMarkers = isCloudBackedDoc
       ? (isSamePdfReload ? previousSurveyMarkersForSamePdf : {})
       : loadSurveyMarkers(id);
-    setSurveyMarkers(loadedSurveyMarkers);
+    // Raw: opening a file is not an edit, so nothing gets Changed By stamped.
+    setSurveyMarkersRaw(loadedSurveyMarkers);
     // Cloud-backed docs use the CRDT/Y.Doc snapshot as the annotation source.
     // Loading the older annotationsByPage_* localStorage cache here causes a
     // visible stale-state flash: correct smooth Drawboard paths hydrate, then a
