@@ -207,7 +207,14 @@ export async function fakeMsgraphHandler(req) {
     return json(200, { id: 'fake-ms-user', displayName: 'Pat Manager', mail: FAKE_MS_EMAIL, userPrincipalName: FAKE_MS_EMAIL });
   }
   if (method === 'GET' && path === '/v1.0/me/drive') return json(200, { id: DRIVE, driveType: store.driveType });
-  const put = /^\/v1\.0\/me\/drive\/root:\/Survey\/(.+)\.xlsx:\/content$/.exec(path);
+  // Folders for "Save in": the top holds Survey and Jobs; the rest are empty.
+  const kids = /^\/v1\.0\/me\/drive\/root(?::\/(.+):)?\/children$/.exec(path);
+  if (method === 'GET' && kids) {
+    const at = kids[1] || '';
+    const names = at === '' ? ['Jobs', 'Survey'] : [];
+    return json(200, { value: names.map((name) => ({ name, folder: { childCount: 0 } })) });
+  }
+  const put = /^\/v1\.0\/me\/drive\/root:\/(?:.+\/)?([^/]+)\.xlsx:\/content$/.exec(path);
   if (method === 'PUT' && put) {
     const names = new Set([...store.files.values()].map((f) => f.name.toLowerCase()));
     let name = `${put[1]}.xlsx`;

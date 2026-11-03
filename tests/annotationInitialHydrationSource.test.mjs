@@ -13,8 +13,10 @@ test('cloud-backed survey highlights hydrate from the durable Y.Doc, not the leg
   // durable Y.Doc (useAnnotationDoc) then paints them. They are NO LONGER read
   // from the legacy document_annotations table on open.
   assert.match(APP_SOURCE, /const loadedSurveyMarkers = isCloudBackedDoc\s*\?\s*\(isSamePdfReload \? previousSurveyMarkersForSamePdf : \{\}\)\s*:\s*loadSurveyMarkers\(id\);/);
-  // useAnnotationDoc now owns highlight hydrate + capture + realtime.
-  assert.match(APP_SOURCE, /useAnnotationDoc\(\{[\s\S]*?surveyMarkers,\s*setSurveyMarkers,/);
+  // useAnnotationDoc now owns highlight hydrate + capture + realtime. It gets
+  // the raw setter: a doc load or a peer's edit is not this person's edit, so
+  // it must not stamp Changed By / Changed Date (surveyMarkerStamp.js).
+  assert.match(APP_SOURCE, /useAnnotationDoc\(\{[\s\S]*?surveyMarkers,\s*setSurveyMarkers: setSurveyMarkersRaw,/);
   // The legacy survey-marker SELECT is retired (no document_annotations read).
   assert.doesNotMatch(APP_SOURCE, /loadAnnotationsFromSupabase\(documentId\)/);
   // The hydration-ready signal is now sourced from the annotation doc.

@@ -16,6 +16,13 @@ const GRAPH = 'https://graph.microsoft.com/v1.0';
 // Graph closes a saving session after about 5 minutes idle; reopen a bit before.
 const SESSION_TTL_MS = 4 * 60 * 1000;
 
+
+// "A/B" -> "A/B/" with each name URL-encoded; '' -> '' (the drive's top).
+function folderPath(folder) {
+  const parts = String(folder || '').split('/').filter(Boolean);
+  return parts.length ? `${parts.map(encodeURIComponent).join('/')}/` : '';
+}
+
 export function msgraphFileId(driveId, itemId) {
   if (!driveId || !itemId) throw new Error('msgraph: drive id and item id are required');
   return `drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(itemId)}`;
@@ -395,12 +402,31 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
       }
     },
 
+    // The folders inside one folder of the person's OneDrive, by name.
+    async listFolders(folder = '') {
+      const path = folder ? `me/drive/root:/${folderPath(folder).replace(/\/$/, '')}:/children` : 'me/drive/root/children';
+      const out = [];
+      let next = `${path}?$select=name,folder&$top=200`;
+      for (let page = 0; next && page < 5; page += 1) {
+        let res;
+        try { res = await call('GET', next, { where: 'folders' }); } catch (err) {
+          if (err?.status === 404) return [];
+          throw err;
+        }
+        for (const it of res?.value || []) if (it?.folder) out.push(String(it.name));
+        const link = res?.['@odata.nextLink'];
+        next = link ? link.replace(/^https:\/\/graph\.microsoft\.com\/v1\.0\//, '') : null;
+      }
+      return out.sort((a, b) => a.localeCompare(b));
+    },
+
     /**
-     * Makes a new workbook in the linking person's OneDrive (folder "Survey"), one
-     * sheet per scope with its header row. A personal OneDrive can hold it but can't
-     * be synced cell by cell, so it is refused before anything is made.
+     * Makes a new workbook in the linking person's OneDrive, one sheet per scope
+     * with its header row. `folder`: "A/B" under the drive's top ('' = the top
+     * itself); default "Survey". A personal OneDrive can hold it but can't be
+     * synced cell by cell, so it is refused before anything is made.
      */
-    async createFile({ title, layout, answerFills }) {
+    async createFile({ title, layout, answerFills, folder = 'Survey' }) {
       const drive = await call('GET', 'me/drive?$select=id,driveType', { where: 'drive' });
       if (drive?.driveType === 'personal') {
         throw Object.assign(new Error('Microsoft only allows cell edits on work or school files.'), {
@@ -414,7 +440,7 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
       const built = buildLiveWorkbook({ ...(layout || {}), scopes }, { answerFills });
       const created = await call(
         'PUT',
-        `me/drive/root:/Survey/${encodeURIComponent(safeTitle)}.xlsx:/content?@microsoft.graph.conflictBehavior=rename`,
+        `me/drive/root:/${folderPath(folder)}${encodeURIComponent(safeTitle)}.xlsx:/content?@microsoft.graph.conflictBehavior=rename`,
         { body: built.bytes, raw: true, headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }, where: 'createFile' },
       );
       const fileId = msgraphFileId(created.parentReference.driveId, created.id);
@@ -428,7 +454,7 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
           if (sheet) sheetIds[scope.scopeId] = sheet.id;
         });
       }
-      return { fileId, url: created.webUrl, sheetIds, title: String(created.name || '').replace(/\.xlsx$/i, '') || undefined };
+      return { fileId, url: created.webUrl, sheetIds, folder: String(folder || ''), title: String(created.name || '').replace(/\.xlsx$/i, '') || undefined };
     },
 
     /** `scopes` from the layout; `layout` (optional) supplies the drop-down lists. */

@@ -231,9 +231,9 @@ test('two-way live sync between a survey and a Google Sheet', async () => {
     // Viewers never run rounds.
     expect((await call(viewerToken, 'sync', { ...ids, force: true })).status).toBe(403);
 
-    // Stop syncing: only the owner or the person who linked it.
-    expect((await call(editorToken, 'unlink', ids)).status).toBe(403);
-    expect((await call(ownerToken, 'unlink', ids)).body.link).toBeNull();
+    // Stop syncing: owners and editors (it stops for everyone), never viewers.
+    expect((await call(viewerToken, 'unlink', ids)).status).toBe(403);
+    expect((await call(editorToken, 'unlink', ids)).body.link).toBeNull();
   } finally {
     await admin.from('sheet_sync_links').delete().eq('document_id', doc.id);
     await admin.from('documents').delete().eq('id', doc.id);
@@ -423,7 +423,7 @@ test('the Survey panel finishes a Google sign-in from the consent tab', async ({
     await expect(button).toBeVisible({ timeout: 60_000 });
     await expect(button).toHaveAttribute('data-sheet-sync-state', 'none');
     await button.click();
-    const panel = page.getByRole('dialog', { name: 'Live sheet sync' });
+    const panel = page.getByRole('dialog', { name: 'Live sync' });
     // The fake consent page says yes at once; the tab lands on the app's page,
     // which hands the code to this tab through the site's storage.
     const consentTab = context.waitForEvent('page');
@@ -433,7 +433,7 @@ test('the Survey panel finishes a Google sign-in from the consent tab', async ({
     await expect(tab.locator('#code')).toHaveText(/^[A-Z0-9]{4}-[A-Z0-9]{4}$/);
     expect(tab.url(), 'the code leaves the address bar').not.toContain('#code=');
     await expect(button).toHaveAttribute('data-sheet-sync-state', 'connected', { timeout: 30_000 });
-    await expect(panel.getByText(`Signed in as ${E2E_ACCOUNTS.owner.email}`)).toBeVisible();
+    await expect(panel.getByText(E2E_ACCOUNTS.owner.email, { exact: true })).toBeVisible();
     // The web tab never needed the code box.
     await expect(panel.getByLabel(/Type the code/)).toHaveCount(0);
   } finally {
@@ -455,7 +455,7 @@ test('consent given in another browser: the panel takes the typed code', async (
     const button = page.locator('[data-sheet-sync-state]').filter({ visible: true }).first();
     await expect(button).toBeVisible({ timeout: 60_000 });
     await button.click();
-    const panel = page.getByRole('dialog', { name: 'Live sheet sync' });
+    const panel = page.getByRole('dialog', { name: 'Live sync' });
     // The consent page opens somewhere this tab cannot hear from (the way the
     // desktop and phone apps open the system browser): keep its address and
     // say yes from outside.
@@ -480,7 +480,7 @@ test('consent given in another browser: the panel takes the typed code', async (
     await box.fill(code.toLowerCase());
     await panel.getByRole('button', { name: 'Finish' }).click();
     await expect(button).toHaveAttribute('data-sheet-sync-state', 'connected', { timeout: 30_000 });
-    await expect(panel.getByText(`Signed in as ${E2E_ACCOUNTS.owner.email}`)).toBeVisible();
+    await expect(panel.getByText(E2E_ACCOUNTS.owner.email, { exact: true })).toBeVisible();
   } finally {
     await adminClient().from('sheet_sync_connections').delete().eq('user_id', ownerId);
     await adminClient().from('sheet_sync_pending_connections').delete().eq('user_id', ownerId);
@@ -503,10 +503,10 @@ test('the Survey panel makes a live Google Sheet and keeps it in step', async ({
     await expect(button).toBeVisible({ timeout: 60_000 });
     await expect(button).toHaveAttribute('data-sheet-sync-state', 'connected');
     await button.click();
-    const panel = page.getByRole('dialog', { name: 'Live sheet sync' });
-    await expect(panel.getByText(`Signed in as ${E2E_ACCOUNTS.owner.email}`)).toBeVisible();
-    await panel.getByRole('button', { name: 'Make a live Google Sheet' }).click();
-    await expect(panel.getByRole('link', { name: 'Open sheet' })).toBeVisible({ timeout: 30_000 });
+    const panel = page.getByRole('dialog', { name: 'Live sync' });
+    await expect(panel.getByText(E2E_ACCOUNTS.owner.email, { exact: true })).toBeVisible();
+    await panel.getByRole('button', { name: 'Make Google Sheet' }).click();
+    await expect(panel.getByRole('link', { name: 'Open in Sheets' })).toBeVisible({ timeout: 30_000 });
     await expect(button).toHaveAttribute('data-sheet-sync-state', 'active');
 
     // The sheet has the survey's item, in its category's tab.
@@ -518,18 +518,18 @@ test('the Survey panel makes a live Google Sheet and keeps it in step', async ({
     expect(tab.rows.some((r) => r[3] === E2E_SURVEY.itemName)).toBe(true);
     await expect(panel.getByRole('button', { name: 'Sync now' })).toBeEnabled();
     await panel.getByRole('button', { name: 'Sync now' }).click();
-    await expect(panel.getByRole('button', { name: 'Sync now' })).toBeEnabled({ timeout: 30_000 });
+    await expect(panel.getByRole('button', { name: 'Sync now' })).not.toHaveAttribute('aria-busy', 'true', { timeout: 30_000 });
     await expect(panel.getByRole('alert')).toHaveCount(0);
 
     // The PM deletes the category's tab: the panel says so and puts it back.
     await fake(`/files/${fileId}/delete-tab`, { title: tab.title });
     await expect(async () => {
       await panel.getByRole('button', { name: 'Sync now' }).click();
-      await expect(panel.getByRole('button', { name: 'Put the tab back' })).toBeVisible({ timeout: 3_000 });
+      await expect(panel.getByRole('button', { name: 'Put it back' })).toBeVisible({ timeout: 3_000 });
     }).toPass({ timeout: 30_000 });
-    await expect(panel.getByText(`The ${tab.title} tab was deleted in the sheet.`)).toBeVisible();
-    await panel.getByRole('button', { name: 'Put the tab back' }).click();
-    await expect(panel.getByRole('button', { name: 'Put the tab back' })).toHaveCount(0, { timeout: 30_000 });
+    await expect(panel.getByText(`The ${tab.title} tab was deleted.`)).toBeVisible();
+    await panel.getByRole('button', { name: 'Put it back' }).click();
+    await expect(panel.getByRole('button', { name: 'Put it back' })).toHaveCount(0, { timeout: 30_000 });
     const rebuilt = (await fake(`/files/${fileId}`)).sheets.find((s) => s.title === tab.title);
     expect(rebuilt.rows.some((r) => r[3] === E2E_SURVEY.itemName)).toBe(true);
   } finally {
