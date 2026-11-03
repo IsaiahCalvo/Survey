@@ -246,6 +246,7 @@ export async function handleSheetSync(req, deps) {
       force: s.boolean({ optional: true }),
       provider: s.enum(['google', 'msgraph'], { optional: true }),
       code: s.string({ max: 32, optional: true }),
+      client: s.enum(['web', 'desktop', 'phone'], { optional: true }),
     }, raw);
     if (!parsed.ok) return json({ error: 'invalid_request', detail: parsed.error }, 400);
 
@@ -292,6 +293,11 @@ const googleConfig = (env) => {
 
 const tokenKey = (env) => env.SHEET_SYNC_TOKEN_KEY || env.SUPABASE_SERVICE_ROLE_KEY;
 
+// Which app pressed Connect, carried through the sign-in so the last page
+// knows how to hand the person back: the phone app gets an "Open Survey"
+// button (its own link scheme), the desktop app reads the page itself.
+const appParam = (state) => (state?.c === 'phone' || state?.c === 'desktop' ? `&app=${state.c}` : '');
+
 const appOrigins = (env) => (env.SHEET_SYNC_APP_ORIGINS ? env.SHEET_SYNC_APP_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean) : DEFAULT_APP_ORIGINS);
 
 async function connectGoogle(ctx) {
@@ -301,7 +307,7 @@ async function connectGoogle(ctx) {
   // Desktop and phone apps have no web origin to come back to; they land on
   // the website's "connected" page and poll status.
   const origin = appOrigins(ctx.env).includes(ctx.body.appOrigin) ? ctx.body.appOrigin : appOrigins(ctx.env)[0];
-  const state = await signState(g.clientSecret, { u: ctx.user.id, o: origin, e: Date.now() + STATE_TTL_MS, n: crypto.randomUUID() });
+  const state = await signState(g.clientSecret, { u: ctx.user.id, o: origin, c: ctx.body.client, e: Date.now() + STATE_TTL_MS, n: crypto.randomUUID() });
   return { url: googleAuthUrl({ endpoints: g.endpoints, clientId: g.clientId, redirectUri: g.redirectUri, state, loginHint: ctx.user.email }) };
 }
 
@@ -309,13 +315,15 @@ async function oauthCallback(url, deps) {
   const { env } = deps;
   const g = googleConfig(env);
   const fallback = appOrigins(env)[0];
+  let app = '';
   const back = (origin, result, claim = '') => new Response(null, {
     status: 302,
-    headers: { Location: `${origin}/google-connected.html?result=${encodeURIComponent(result)}${claimFragment(claim)}`, 'Cache-Control': 'no-store' },
+    headers: { Location: `${origin}/google-connected.html?result=${encodeURIComponent(result)}${app}${claimFragment(claim)}`, 'Cache-Control': 'no-store' },
   });
   if (!g.configured) return back(fallback, 'not_configured');
   const state = await readState(g.clientSecret, url.searchParams.get('state'));
   if (!state?.u) return back(fallback, 'expired');
+  app = appParam(state);
   const origin = appOrigins(env).includes(state.o) ? state.o : fallback;
   if (url.searchParams.get('error')) return back(origin, 'cancelled');
   const code = url.searchParams.get('code');
@@ -440,7 +448,7 @@ async function connectMicrosoft(ctx) {
   if (!ms) throw new SyncError('Microsoft 365 is not set up on this server yet.', 503, 'not_configured');
   await requireBeta(ctx);
   const origin = appOrigins(ctx.env).includes(ctx.body.appOrigin) ? ctx.body.appOrigin : appOrigins(ctx.env)[0];
-  const state = await signState(ms.clientSecret, { u: ctx.user.id, o: origin, e: Date.now() + STATE_TTL_MS, n: crypto.randomUUID() });
+  const state = await signState(ms.clientSecret, { u: ctx.user.id, o: origin, c: ctx.body.client, e: Date.now() + STATE_TTL_MS, n: crypto.randomUUID() });
   return { url: buildMsgraphAuthorizeUrl(ms, state, { loginHint: ctx.user.email }) };
 }
 
@@ -448,13 +456,15 @@ async function msgraphCallback(url, deps) {
   const { env } = deps;
   const ms = msgraphConfig(env);
   const fallback = appOrigins(env)[0];
+  let app = '';
   const back = (origin, result, claim = '') => new Response(null, {
     status: 302,
-    headers: { Location: `${origin}/google-connected.html?provider=msgraph&result=${encodeURIComponent(result)}${claimFragment(claim)}`, 'Cache-Control': 'no-store' },
+    headers: { Location: `${origin}/google-connected.html?provider=msgraph&result=${encodeURIComponent(result)}${app}${claimFragment(claim)}`, 'Cache-Control': 'no-store' },
   });
   if (!ms) return back(fallback, 'not_configured');
   const state = await readState(ms.clientSecret, url.searchParams.get('state'));
   if (!state?.u) return back(fallback, 'expired');
+  app = appParam(state);
   const origin = appOrigins(env).includes(state.o) ? state.o : fallback;
   if (url.searchParams.get('error')) return back(origin, 'cancelled');
   const code = url.searchParams.get('code');

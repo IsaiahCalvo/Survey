@@ -1,0 +1,231 @@
+/* The live sheet panel (SheetSyncButton.jsx). A floating card: --surface-3,
+   --shadow-popover, --border, --radius-md (docs/DESIGN-GUIDE.md). Owner
+   2026-11-03: the old panel "looks like shit" - a cramped list of grey lines
+   with white-on-gold buttons whose words vanished while they worked. Now: a
+   header, one row per service with its logo, one gold action, and a busy
+   button that keeps its words. */
+
+.sheet-sync-panel {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-top: 8px;
+  transform: translate(-50%, 0);
+  box-sizing: border-box;
+  width: min(340px, calc(100vw - 16px));
+  max-height: min(560px, calc(100vh - 24px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+  box-shadow: var(--shadow-popover);
+  color: var(--text-1);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: left;
+}
+
+.sheet-sync-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px 16px 12px;
+}
+.sheet-sync-head__text { flex: 1; min-width: 0; }
+.sheet-sync-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+.sheet-sync-sub {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.sheet-sync-section {
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+}
+.sheet-sync-section:last-child { padding-bottom: 16px; }
+
+/* One service: logo, name, who is signed in. */
+.sheet-sync-service {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.sheet-sync-logo {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm, 6px);
+  background: var(--surface-1);
+}
+.sheet-sync-service__text { flex: 1; min-width: 0; }
+.sheet-sync-name {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+.sheet-sync-meta {
+  margin: 1px 0 0;
+  font-size: 12px;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sheet-sync-note {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+/* Buttons: the home button system's numbers (hub.css), at panel size. */
+.sheet-sync-btn {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text-1);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 100ms var(--ease-standard, ease-out), border-color 100ms var(--ease-standard, ease-out), color 100ms var(--ease-standard, ease-out);
+}
+.sheet-sync-btn--block { display: flex; width: 100%; margin-top: 12px; }
+.sheet-sync-btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+@media (hover: hover) {
+  .sheet-sync-btn:not(:disabled):not([aria-disabled='true']):hover { background: var(--hover); }
+  .sheet-sync-btn--primary:not(:disabled):not([aria-disabled='true']):hover { background: var(--accent-light); border-color: var(--accent-light); }
+}
+.sheet-sync-btn:not(:disabled):not([aria-disabled='true']):active { background: var(--pressed); }
+.sheet-sync-btn--primary:not(:disabled):not([aria-disabled='true']):active { background: var(--accent-press); border-color: var(--accent-press); }
+.sheet-sync-btn:disabled {
+  border-color: var(--border);
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+.sheet-sync-btn--primary:disabled { background: var(--disabled-fill); }
+/* Working: the gold stays and so do the words, with a spinner beside them. */
+.sheet-sync-btn.is-busy,
+.sheet-sync-btn.is-busy:hover {
+  cursor: progress;
+}
+.sheet-sync-btn--primary.is-busy,
+.sheet-sync-btn--primary.is-busy:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.sheet-sync-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.sheet-sync-row > .sheet-sync-btn { flex: 1 1 auto; }
+
+/* A quiet word: Disconnect, Stop syncing. */
+.sheet-sync-link {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.sheet-sync-link:hover { color: var(--text-1); }
+.sheet-sync-link:disabled { color: var(--text-disabled); cursor: not-allowed; }
+.sheet-sync-link.is-danger { color: var(--danger-text); }
+
+/* Live state. */
+.sheet-sync-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.sheet-sync-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success);
+  flex: none;
+}
+.sheet-sync-dot.is-paused { background: var(--text-3); }
+.sheet-sync-dot.is-broken { background: var(--danger); }
+
+/* Something waiting for the person: a conflict, a deleted row or tab. */
+.sheet-sync-item {
+  padding: 10px 12px;
+  margin-top: 8px;
+  border-radius: var(--radius-sm, 6px);
+  background: var(--surface-2);
+}
+.sheet-sync-item__title { margin: 0 0 4px; font-size: 13px; color: var(--text-1); }
+.sheet-sync-item__line { margin: 0 0 2px; font-size: 12px; color: var(--text-2); }
+.sheet-sync-item .sheet-sync-row { margin-top: 8px; }
+
+.sheet-sync-error {
+  margin: 0;
+  padding: 10px 16px 14px;
+  border-top: 1px solid var(--border);
+  color: var(--danger-text);
+  font-size: 12px;
+}
+
+/* The code box, only when the sign-in happened somewhere this app cannot
+   hear from (another browser or device). */
+.sheet-sync-code { margin-top: 12px; }
+.sheet-sync-code label { display: block; margin: 0 0 6px; font-size: 12px; color: var(--text-2); }
+.sheet-sync-code__row { display: flex; gap: 8px; }
+.sheet-sync-code input {
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-1);
+  color: var(--text-1);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+}
+
+.sheet-sync-skeleton {
+  height: 12px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  margin: 4px 0;
+}
+.sheet-sync-skeleton.is-short { width: 60%; }

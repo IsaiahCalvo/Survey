@@ -23,12 +23,19 @@ export function sheetLayoutInput(template) {
 
 export const sheetTemplateId = (template) => (template ? String(template.supabaseId || template.id || '') : '');
 
-async function errorMessage(error, fallback) {
+const OFFLINE = 'Could not reach the sheet sync. Check your connection.';
+// The server answered, but not with its own words (it ran out of time or
+// memory, say): that is not the person's connection.
+const SERVER_TROUBLE = 'The sheet sync hit a problem on our side. Try again in a moment.';
+
+async function errorMessage(error) {
   try {
     const body = await error?.context?.json?.();
     if (body?.error) return String(body.error);
   } catch { /* not JSON */ }
-  return fallback;
+  // supabase-js: FunctionsFetchError = never reached the server.
+  if (error?.name === 'FunctionsFetchError' || !error?.context) return OFFLINE;
+  return SERVER_TROUBLE;
 }
 
 /** Call one sheet-sync action; resolves to the server's answer, or { error }. */
@@ -36,10 +43,10 @@ export async function sheetSyncCall(action, body = {}, client = supabase) {
   if (!client?.functions?.invoke) return { error: 'Not signed in.' };
   try {
     const { data, error } = await client.functions.invoke(FUNCTION, { body: { action, ...body } });
-    if (error) return { error: await errorMessage(error, 'Could not reach the sheet sync. Check your connection.') };
+    if (error) return { error: await errorMessage(error) };
     return data || {};
   } catch {
-    return { error: 'Could not reach the sheet sync. Check your connection.' };
+    return { error: OFFLINE };
   }
 }
 
