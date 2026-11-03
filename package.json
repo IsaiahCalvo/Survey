@@ -132,6 +132,7 @@
       "src/electron/msalAuthMain.js",
       "src/electron/msalCacheStore.cjs",
       "src/electron/oauthWindowPolicy.cjs",
+      "src/electron/sheetSyncConsent.cjs",
       "src/electron/trustedIpc.cjs",
       "src/preload.js",
       "package.json",

@@ -349,25 +349,6 @@ const summarizeImportedSvgAnnotationForDebug = (obj, index) => ({
   regionId: obj?.regionId || null,
 });
 
-const shouldPrioritizeLiveReveal = (obj) => {
-  const type = String(obj?.type || '').toLowerCase();
-  if (type === 'circle' || type === 'ellipse') {
-    const fill = String(obj?.fill || '').trim().toLowerCase();
-    return !!fill && fill !== 'none' && fill !== 'transparent';
-  }
-  if (type !== 'path' || !Array.isArray(obj?.path) || obj.path.length === 0) {
-    return false;
-  }
-  try {
-    const attrs = renderPathToSvgAttrs(obj);
-    const fill = String(attrs?.fill || '').trim().toLowerCase();
-    const stroke = String(attrs?.stroke || '').trim().toLowerCase();
-    return isFilledInkOutlineAttrs(attrs) && !!fill && fill !== 'none' && stroke === 'none';
-  } catch {
-    return false;
-  }
-};
-
 const normalizeDegreesValue = (value) => {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return 0;
@@ -5943,31 +5924,13 @@ const SVGAnnotationLayerBody = memo(({
   const objectCount = filteredAnnotations.length;
   const calloutCount = filteredCallouts.length;
 
-  // 2026-05-03 — Time-sliced reveal. UX: on first paint of a heavy page
-  // (12k+ pen strokes from a survey doc) the browser used to lock up for
-  // ~1-2 seconds while React mounted every <path>. Now we paint in waves
-  // of REVEAL_STEP per animation frame: the user sees strokes appear
-  // progressively, the browser stays responsive, and total time-to-full
-  // is the same. The initial seed of REVEAL_STEP means small pages
-  // (under the seed) render in one shot — no staging tax. revealCount
-  // never decreases, so a subsequent edit that adds a single annotation
-  // catches the new entry on the next frame without re-staging the
-  // already-painted set.
-  const REVEAL_STEP = 300;
-  const [revealCount, setRevealCount] = useState(REVEAL_STEP);
-  useEffect(() => {
-    if (revealCount >= filteredAnnotations.length) return;
-    const handle = requestAnimationFrame(() => {
-      setRevealCount((c) => Math.min(c + REVEAL_STEP, filteredAnnotations.length));
-    });
-    return () => cancelAnimationFrame(handle);
-  }, [revealCount, filteredAnnotations.length]);
-  const stagedAnnotations = useMemo(() => {
-    if (revealCount >= filteredAnnotations.length) return filteredAnnotations;
-    return filteredAnnotations.filter((entry, position) => (
-      position < revealCount || shouldPrioritizeLiveReveal(entry?.obj)
-    ));
-  }, [filteredAnnotations, revealCount]);
+  // Owner 2026-11-03: "they all need to load at the same time". Every mark
+  // of a page mounts in the same frame. (2026-05-03 to 2026-11-03 a heavy
+  // page mounted in waves of 300 a frame with filled shapes first, so on a
+  // busy sheet some kinds of mark showed a second or two before others.)
+  // The page's PDF drawing shows in that frame too: the overlay stays hidden
+  // until the page's bitmap is on its canvas (styles/pageReveal.css).
+  const stagedAnnotations = filteredAnnotations;
 
   const importedDebugRows = useMemo(() => (
     filteredAnnotations

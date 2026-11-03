@@ -2,6 +2,12 @@
 // link opens the installed app, which gets an `appUrlOpen` event instead of a
 // page load. The app routes by pathname at boot (see main.jsx), so load the
 // same path inside the web view. The web and Electron builds are untouched.
+//
+// The app's own scheme (com.kalvoe.survey://) carries one thing back: the code
+// that finishes a live-sheet sign-in, from the "Open Survey" button on the
+// consent page's last screen (public/google-connected.html). It is saved where
+// the connect loop looks (src/services/sheetSyncClaim.js), so nobody types it.
+import { rememberClaim } from '../services/sheetSyncClaim.js';
 
 const APP_HOSTS = new Set(['surveytool.app', 'www.surveytool.app']);
 const APP_PATH = /^\/invite\/[^/?#]+/;
@@ -15,10 +21,28 @@ export function deepLinkRoute(url) {
   return `${parsed.pathname}${parsed.search}${parsed.hash}`;
 }
 
+export const APP_SCHEME = 'com.kalvoe.survey';
+
+/** { provider, code } from com.kalvoe.survey://sheet-connected?..., else null. */
+export function sheetSyncClaimFromUrl(url) {
+  let parsed;
+  try { parsed = new URL(url); } catch { return null; }
+  if (parsed.protocol !== `${APP_SCHEME}:`) return null;
+  // Android and iOS put "sheet-connected" in the host; be lenient about a path form.
+  const where = (parsed.hostname || parsed.pathname.replace(/^\/+/, '')).toLowerCase();
+  if (where !== 'sheet-connected') return null;
+  const provider = parsed.searchParams.get('provider');
+  const code = (parsed.searchParams.get('code') || '').toUpperCase();
+  if ((provider !== 'google' && provider !== 'msgraph') || !/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(code)) return null;
+  return { provider, code };
+}
+
 export function installNativeDeepLinks(win = typeof window !== 'undefined' ? window : null) {
   if (!win?.Capacitor?.isNativePlatform?.()) return false;
   import('@capacitor/app').then(({ App }) => {
     App.addListener('appUrlOpen', ({ url }) => {
+      const claim = sheetSyncClaimFromUrl(url);
+      if (claim) { rememberClaim(claim.provider, claim.code); return; }
       const route = deepLinkRoute(url);
       if (route) win.location.assign(route);
     });

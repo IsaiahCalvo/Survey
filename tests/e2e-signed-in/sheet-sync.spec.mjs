@@ -430,13 +430,12 @@ test('the Survey panel finishes a Google sign-in from the consent tab', async ({
     await panel.getByRole('button', { name: 'Connect Google' }).click();
     const tab = await consentTab;
     await tab.waitForURL(/google-connected\.html\?result=finish/, { timeout: 30_000 });
-    await expect(tab.getByRole('heading', { name: 'Almost done' })).toBeVisible();
     await expect(tab.locator('#code')).toHaveText(/^[A-Z0-9]{4}-[A-Z0-9]{4}$/);
     expect(tab.url(), 'the code leaves the address bar').not.toContain('#code=');
     await expect(button).toHaveAttribute('data-sheet-sync-state', 'connected', { timeout: 30_000 });
     await expect(panel.getByText(`Signed in as ${E2E_ACCOUNTS.owner.email}`)).toBeVisible();
     // The web tab never needed the code box.
-    await expect(panel.getByLabel(/the browser shows a code/)).toHaveCount(0);
+    await expect(panel.getByLabel(/Type the code/)).toHaveCount(0);
   } finally {
     await adminClient().from('sheet_sync_connections').delete().eq('user_id', ownerId);
   }
@@ -472,8 +471,9 @@ test('consent given in another browser: the panel takes the typed code', async (
     const code = new URL(callback.headers.get('location')).hash.replace('#code=', '');
     expect(code).toMatch(/^[A-Z0-9]{4}-[A-Z0-9]{4}$/);
 
-    const box = panel.getByLabel(/the browser shows a code/);
-    await expect(box).toBeVisible({ timeout: 30_000 });
+    await panel.getByRole('button', { name: 'Enter its code' }).click({ timeout: 40_000 });
+    const box = panel.getByLabel(/Type the code/);
+    await expect(box).toBeVisible();
     await box.fill('ZZZZ-ZZZZ');
     await panel.getByRole('button', { name: 'Finish' }).click();
     await expect(panel.getByRole('alert')).toHaveText(/does not match/);

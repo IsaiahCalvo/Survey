@@ -143,6 +143,7 @@ import TemplateOverwriteWarningModal from './components/TemplateOverwriteWarning
 import TextLayer from './TextLayer';
 import UnsupportedAnnotationsNotice from './components/UnsupportedAnnotationsNotice';
 import { ANNOTATION_HYDRATION_PENDING, ANNOTATION_HYDRATION_READY_LOCAL } from './utils/annotationHydrationGate';
+import { PAGE_MARKS_HOLD_MAX_MS, shouldHoldPagesForMarks } from './utils/pageMarksHold.js';
 import { BORDERS, COLORS, SHADOWS, TYPOGRAPHY } from './theme';
 import { ConfirmDeleteModal } from './components/collab/ConfirmDeleteModal.jsx';
 import { DEFAULT_ZOOM_PREFERENCES, ZOOM_MODES, clampScale, createZoomController, loadZoomPreferences, saveZoomPreferences } from './utils/zoomController';
@@ -16460,7 +16461,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
             if (lastChecklistCol >= firstChecklistCol) {
               for (let col = firstChecklistCol; col <= lastChecklistCol; col++) {
                 if (itemKind(checklistItems[col - firstChecklistCol]) !== 'choice') continue;
-                const colLetter = String.fromCharCode(64 + col);
+                const colLetter = worksheet.getColumn(col).letter;
                 const range = `${colLetter}2:${colLetter}1000`;
                 excelAnswerFills(answerSetFor(selectedTemplate)).forEach(({ value, argb }, i) => {
                   worksheet.addConditionalFormatting({
@@ -16489,7 +16490,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
             entities.forEach((entity, index) => {
               if (!entity.name || !entity.color) return;
 
-              const entityColLetter = String.fromCharCode(64 + entityColIndex);
+              const entityColLetter = worksheet.getColumn(entityColIndex).letter;
               const range = `${entityColLetter}2:${entityColLetter}1000`;
 
               let hexColor = getHexFromColor(entity.color);
@@ -16520,7 +16521,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
             });
 
             // Add Conditional Formatting for Duplicate Names (Item column; D now that Row ID is A)
-            const itemColLetter = String.fromCharCode(64 + itemColIndex);
+            const itemColLetter = worksheet.getColumn(itemColIndex).letter;
             const duplicateRange = `${itemColLetter}2:${itemColLetter}1000`;
 
             worksheet.addConditionalFormatting({
@@ -21891,6 +21892,31 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     documentLocked,
     whenFirstPageDrawn: pageDrawnSignal.whenDrawn,
   });
+  // Owner 2026-11-03: a page and its saved marks show in the same frame. The
+  // pages stay blank sheets until the store has painted (or loaded) the
+  // document's marks; never longer than PAGE_MARKS_HOLD_MAX_MS
+  // (utils/pageMarksHold.js, styles/pageReveal.css).
+  const pageMarksStoreEnabled = Boolean(cloudSyncEnabled && pdfFile?.id && user?.id);
+  const [pageMarksHoldExpiredFor, setPageMarksHoldExpiredFor] = useState(null);
+  // Marks this device already shows for the document (its own saved copy,
+  // loaded with the PDF) count as known: the page shows with them.
+  const viewerShowsMarks = useMemo(() => (
+    Object.values(annotationsByPage || {}).some((page) => (page?.objects?.length || 0) > 0)
+    || Object.keys(surveyMarkers || {}).length > 0
+  ), [annotationsByPage, surveyMarkers]);
+  const holdPagesForMarksUnbounded = shouldHoldPagesForMarks({
+    storeEnabled: pageMarksStoreEnabled,
+    documentId: pdfFile?.id || null,
+    hydration: normalAnnotationHydration,
+    viewerShowsMarks,
+  });
+  const holdPagesForMarks = holdPagesForMarksUnbounded && pageMarksHoldExpiredFor !== pdfFile?.id;
+  useEffect(() => {
+    if (!holdPagesForMarksUnbounded || !pdfFile?.id) return undefined;
+    const holdDocumentId = pdfFile.id;
+    const timer = setTimeout(() => setPageMarksHoldExpiredFor(holdDocumentId), PAGE_MARKS_HOLD_MAX_MS);
+    return () => clearTimeout(timer);
+  }, [holdPagesForMarksUnbounded, pdfFile?.id]);
   // Read by Save: whether the shared document already keeps this work safe
   // (its store on this device, or every change already in the cloud).
   const annotationDocHoldsWorkRef = useRef(() => false);
@@ -37751,6 +37777,7 @@ ${pageBlocks}
                     id={pdfjsViewerElementId}
                     ref={pdfjsViewerRef}
                     tabActive={isActive !== false}
+                    holdPagesForMarks={holdPagesForMarks}
                     className={`survey-pdfjs-viewer ${activeTool === 'select' ? 'survey-pdfjs-select-mode' : 'survey-pdfjs-standard-mode'}`}
                     documentSource={pdfDoc}
                     visiblePageNumbers={activeSpacePages}

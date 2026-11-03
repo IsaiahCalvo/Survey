@@ -10,6 +10,7 @@
 // fileId is `drives/<driveId>/items/<itemId>` (driveIds hold `!`, so no short form).
 // Rows and columns are 0-based from A1; row 0 is the header.
 import { cellError } from './contract.js';
+import { buildLiveWorkbook } from './liveWorkbook.js';
 
 const GRAPH = 'https://graph.microsoft.com/v1.0';
 // Graph closes a saving session after about 5 minutes idle; reopen a bit before.
@@ -399,7 +400,7 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
      * sheet per scope with its header row. A personal OneDrive can hold it but can't
      * be synced cell by cell, so it is refused before anything is made.
      */
-    async createFile({ title, layout }) {
+    async createFile({ title, layout, answerFills }) {
       const drive = await call('GET', 'me/drive?$select=id,driveType', { where: 'drive' });
       if (drive?.driveType === 'personal') {
         throw Object.assign(new Error('Microsoft only allows cell edits on work or school files.'), {
@@ -407,21 +408,27 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
         });
       }
       const safeTitle = String(title || 'Survey').replace(/[\\/:*?"<>|#%]/g, '-').slice(0, 120);
+      // The whole workbook, formatted like the app's Export data workbook, in
+      // one upload (liveWorkbook.js): no per-sheet set-up calls.
+      const scopes = layout?.scopes || layout?.sheets || [];
+      const built = buildLiveWorkbook({ ...(layout || {}), scopes }, { answerFills });
       const created = await call(
         'PUT',
         `me/drive/root:/Survey/${encodeURIComponent(safeTitle)}.xlsx:/content?@microsoft.graph.conflictBehavior=rename`,
-        { body: blankWorkbookBytes(), raw: true, headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }, where: 'createFile' },
+        { body: built.bytes, raw: true, headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }, where: 'createFile' },
       );
       const fileId = msgraphFileId(created.parentReference.driveId, created.id);
       checkedBusiness.add(fileId);
-      const scopes = layout?.scopes || layout?.sheets || [];
       const sheetIds = {};
-      const blank = await workbook(fileId, 'GET', 'worksheets?$select=id,name', { where: 'worksheets' });
-      for (const scope of scopes) sheetIds[scope.scopeId] = await addSheet(fileId, scope, layout);
-      // The blank file's own first sheet goes once the real ones exist.
-      const starter = blank?.value?.[0];
-      if (starter && scopes.length) await workbook(fileId, 'DELETE', sheetPath(starter.id), { where: 'deleteStarter', discard: true });
-      return { fileId, url: created.webUrl, sheetIds };
+      if (scopes.length) {
+        const sheets = await workbook(fileId, 'GET', 'worksheets?$select=id,name,position', { where: 'worksheets' });
+        const byPosition = [...(sheets?.value || [])].sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+        scopes.forEach((scope, i) => {
+          const sheet = byPosition.find((s) => s.name === built.sheetNames[i]) || byPosition[i];
+          if (sheet) sheetIds[scope.scopeId] = sheet.id;
+        });
+      }
+      return { fileId, url: created.webUrl, sheetIds, title: String(created.name || '').replace(/\.xlsx$/i, '') || undefined };
     },
 
     /** `scopes` from the layout; `layout` (optional) supplies the drop-down lists. */

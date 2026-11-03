@@ -238,6 +238,8 @@ export async function handleSheetSync(req, deps) {
       template: s.record({ maxBytes: 1024 * 1024, optional: true }),
       kit: s.record({ maxBytes: 64 * 1024, optional: true }),
       answerValues: s.array(s.string({ max: 80 }), { max: 20, optional: true }),
+      // The answers' cell colours ({ value, argb }) for the Excel workbook.
+      answerFills: s.any({ maxBytes: 4 * 1024 }),
       title: s.string({ max: 200, optional: true }),
       markerId: s.string({ max: 200, optional: true }),
       choice: s.enum(['app', 'sheet', 'putBack', 'putBackTab'], { optional: true }),
@@ -246,6 +248,7 @@ export async function handleSheetSync(req, deps) {
       force: s.boolean({ optional: true }),
       provider: s.enum(['google', 'msgraph'], { optional: true }),
       code: s.string({ max: 32, optional: true }),
+      client: s.enum(['web', 'desktop', 'phone'], { optional: true }),
     }, raw);
     if (!parsed.ok) return json({ error: 'invalid_request', detail: parsed.error }, 400);
 
@@ -292,6 +295,11 @@ const googleConfig = (env) => {
 
 const tokenKey = (env) => env.SHEET_SYNC_TOKEN_KEY || env.SUPABASE_SERVICE_ROLE_KEY;
 
+// Which app pressed Connect, carried through the sign-in so the last page
+// knows how to hand the person back: the phone app gets an "Open Survey"
+// button (its own link scheme), the desktop app reads the page itself.
+const appParam = (state) => (state?.c === 'phone' || state?.c === 'desktop' ? `&app=${state.c}` : '');
+
 const appOrigins = (env) => (env.SHEET_SYNC_APP_ORIGINS ? env.SHEET_SYNC_APP_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean) : DEFAULT_APP_ORIGINS);
 
 async function connectGoogle(ctx) {
@@ -301,7 +309,7 @@ async function connectGoogle(ctx) {
   // Desktop and phone apps have no web origin to come back to; they land on
   // the website's "connected" page and poll status.
   const origin = appOrigins(ctx.env).includes(ctx.body.appOrigin) ? ctx.body.appOrigin : appOrigins(ctx.env)[0];
-  const state = await signState(g.clientSecret, { u: ctx.user.id, o: origin, e: Date.now() + STATE_TTL_MS, n: crypto.randomUUID() });
+  const state = await signState(g.clientSecret, { u: ctx.user.id, o: origin, c: ctx.body.client, e: Date.now() + STATE_TTL_MS, n: crypto.randomUUID() });
   return { url: googleAuthUrl({ endpoints: g.endpoints, clientId: g.clientId, redirectUri: g.redirectUri, state, loginHint: ctx.user.email }) };
 }
 
@@ -309,13 +317,15 @@ async function oauthCallback(url, deps) {
   const { env } = deps;
   const g = googleConfig(env);
   const fallback = appOrigins(env)[0];
+  let app = '';
   const back = (origin, result, claim = '') => new Response(null, {
     status: 302,
-    headers: { Location: `${origin}/google-connected.html?result=${encodeURIComponent(result)}${claimFragment(claim)}`, 'Cache-Control': 'no-store' },
+    headers: { Location: `${origin}/google-connected.html?result=${encodeURIComponent(result)}${app}${claimFragment(claim)}`, 'Cache-Control': 'no-store' },
   });
   if (!g.configured) return back(fallback, 'not_configured');
   const state = await readState(g.clientSecret, url.searchParams.get('state'));
   if (!state?.u) return back(fallback, 'expired');
+  app = appParam(state);
   const origin = appOrigins(env).includes(state.o) ? state.o : fallback;
   if (url.searchParams.get('error')) return back(origin, 'cancelled');
   const code = url.searchParams.get('code');
@@ -440,7 +450,7 @@ async function connectMicrosoft(ctx) {
   if (!ms) throw new SyncError('Microsoft 365 is not set up on this server yet.', 503, 'not_configured');
   await requireBeta(ctx);
   const origin = appOrigins(ctx.env).includes(ctx.body.appOrigin) ? ctx.body.appOrigin : appOrigins(ctx.env)[0];
-  const state = await signState(ms.clientSecret, { u: ctx.user.id, o: origin, e: Date.now() + STATE_TTL_MS, n: crypto.randomUUID() });
+  const state = await signState(ms.clientSecret, { u: ctx.user.id, o: origin, c: ctx.body.client, e: Date.now() + STATE_TTL_MS, n: crypto.randomUUID() });
   return { url: buildMsgraphAuthorizeUrl(ms, state, { loginHint: ctx.user.email }) };
 }
 
@@ -448,13 +458,15 @@ async function msgraphCallback(url, deps) {
   const { env } = deps;
   const ms = msgraphConfig(env);
   const fallback = appOrigins(env)[0];
+  let app = '';
   const back = (origin, result, claim = '') => new Response(null, {
     status: 302,
-    headers: { Location: `${origin}/google-connected.html?provider=msgraph&result=${encodeURIComponent(result)}${claimFragment(claim)}`, 'Cache-Control': 'no-store' },
+    headers: { Location: `${origin}/google-connected.html?provider=msgraph&result=${encodeURIComponent(result)}${app}${claimFragment(claim)}`, 'Cache-Control': 'no-store' },
   });
   if (!ms) return back(fallback, 'not_configured');
   const state = await readState(ms.clientSecret, url.searchParams.get('state'));
   if (!state?.u) return back(fallback, 'expired');
+  app = appParam(state);
   const origin = appOrigins(env).includes(state.o) ? state.o : fallback;
   if (url.searchParams.get('error')) return back(origin, 'cancelled');
   const code = url.searchParams.get('code');
@@ -532,6 +544,16 @@ async function linkFor(ctx, documentId, templateId, { anyProvider = !ctx.provide
 
 const providerName = (provider) => (provider === 'msgraph' ? 'Microsoft 365' : 'Google');
 const sheetName = (provider) => (provider === 'msgraph' ? 'Excel workbook' : 'Google Sheet');
+
+// { value, argb } pairs from the app (answerSets.js excelAnswerFills), kept
+// only when well formed; the workbook falls back to Y / N / N/A by tone.
+function answerFillsFrom(body) {
+  const fills = Array.isArray(body.answerFills) ? body.answerFills : [];
+  return fills
+    .filter((f) => f && typeof f.value === 'string' && f.value.length <= 80 && /^[0-9A-Fa-f]{8}$/.test(String(f.argb || '')))
+    .slice(0, 20)
+    .map((f) => ({ value: f.value, argb: String(f.argb).toUpperCase() }));
+}
 
 function layoutFrom(body) {
   if (!body.template || !body.kit) return null;
@@ -694,7 +716,7 @@ async function linkSheet(ctx) {
   const signing = await signingFor(ctx, documentId);
   const title = ctx.body.title || 'Survey';
   let made;
-  try { made = await provider.createFile({ title, layout }); } catch (err) {
+  try { made = await provider.createFile({ title, layout, answerFills: answerFillsFrom(ctx.body) }); } catch (err) {
     if (err?.code === 'personal-onedrive') {
       throw new SyncError('This Microsoft account has a personal OneDrive. Live sync needs a work or school Microsoft 365 account.', 409, 'personal-onedrive');
     }
@@ -707,7 +729,8 @@ async function linkSheet(ctx) {
     connection_user_id: ctx.user.id,
     file_id: made.fileId,
     file_url: made.url,
-    title,
+    // The real file name: OneDrive adds " 1" when the name is taken.
+    title: made.title || title,
     layout,
     state: { sheetIds: made.sheetIds, lastWriteAt: new Date().toISOString() },
     created_by: ctx.user.id,
