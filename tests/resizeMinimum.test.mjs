@@ -15,6 +15,7 @@ import {
   clampResizeScale,
   minResizeScale,
   mirrorPointsInBox,
+  signedLineResizeScale,
 } from '../src/utils/resizeMinimum.js';
 
 test('the floor is 4 page units', () => {
@@ -123,4 +124,12 @@ test('an open cloud mirrored on one axis also reverses its order (crowns follow 
 
 test('a pointer exactly on the fixed corner counts as the unflipped side', () => {
   assert.equal(clampResizeScale(0, { rawSize: 100, startScale: -1 }), 0.04);
+});
+
+test('a line in box mode keeps the sign of its scale, so it mirrors (owner 2026-11-03)', () => {
+  assert.equal(signedLineResizeScale(-2), -2);
+  assert.equal(signedLineResizeScale(1.5), 1.5);
+  assert.equal(signedLineResizeScale(-0.001), -0.01);
+  assert.equal(signedLineResizeScale(0), 0.01);
+  assert.equal(signedLineResizeScale(Number.NaN), 1);
 });

@@ -175,7 +175,9 @@ import {
   MIN_RESIZE_PAGE_UNITS,
   buildPointsShapeResize,
   clampResizeScale,
+  signedLineResizeScale,
 } from '../utils/resizeMinimum.js';
+import { placeCounterInResizeBox } from '../utils/counterGeometry.js';
 import { resolveTextDoubleClick } from '../utils/selectModes.js';
 import { useCrossPageMove } from './useCrossPageMove.js';
 import { isCopyDragEvent, subscribeMoveModifier, getMoveModifierHeld } from '../utils/moveModifier.js';
@@ -189,6 +191,8 @@ import {
   isTextMark,
   markNeedsUniformGroupScale,
   memberAxisScale,
+  mirroredMemberAngle,
+  mirroredPointerAngle,
   resolveGroupResizeScale,
   scaleCalloutForGroup,
   scaleMarkerBoundsForGroup,
@@ -3013,8 +3017,9 @@ export function useSVGInteraction({
       // Drawboard rules + tldraw's tilted-mark rule (utils/groupResize.js):
       // an edge scales one axis; Shift, a photo, text (not from a side) or a
       // mark tilted off a right angle keeps the proportions, following the
-      // bigger move. A group never mirrors, and no member gets thinner than
-      // 4 page units (or its own size) on the way down.
+      // bigger move. Past the fixed side the group flips (owner 2026-11-03:
+      // every mark flips), and no member gets thinner than 4 page units (or
+      // its own size) on the way through.
       const { sx, sy } = resolveGroupResizeScale({
         handleId: ds.handleId,
         sx: origDx === 0 ? 1 : liveDx / origDx,
@@ -3088,6 +3093,13 @@ export function useSVGInteraction({
           target.scaleX = 1;
           target.scaleY = 1;
           target.radius = newR;
+          // A flipped group mirrors the pin's nub; its number stays upright.
+          if (sx < 0 || sy < 0) {
+            target.data = {
+              ...(target.data || {}),
+              pointerAngle: mirroredPointerAngle(orig.pointerAngle, sx, sy, hasPersistRot ? persist.angle : 0),
+            };
+          }
         } else {
           // Scale the shape's VISIBLE CENTER in world, then place the
           // origin from it.
@@ -3098,10 +3110,32 @@ export function useSVGInteraction({
           // mark's own axis scales. A mark turned 90 / 270 takes the frame's
           // scales swapped; any other tilt only ever sees a uniform scale
           // (groupResize.js), so it never shears.
-          const axis = memberAxisScale(orig.angle, sx, sy);
+          //
+          // A flipped group (a negative scale) keeps |scale| on each mark
+          // and mirrors it instead: a points shape's points flip in its own
+          // box, and a mark turns the other way (mirroredMemberAngle). Text,
+          // photos and stamps stay the right way round.
+          const signedAxis = memberAxisScale(orig.angle, sx, sy);
+          const axis = { x: Math.abs(signedAxis.x), y: Math.abs(signedAxis.y) };
           const newVisible = scalePoint(orig.aabbCenterX, orig.aabbCenterY);
           target.left = newVisible.x - (orig.aabbCenterX - orig.left) * axis.x;
           target.top = newVisible.y - (orig.aabbCenterY - orig.top) * axis.y;
+          if (sx < 0 || sy < 0) {
+            const frameAngle = hasPersistRot ? persist.angle : 0;
+            target.angle = mirroredMemberAngle(orig.angle, sx, sy, frameAngle);
+            if ((objType === 'polygon' || objType === 'polyline') && Array.isArray(target.points)) {
+              // Which of its own axes the points flip on: the frame's
+              // scales seen from the shape's turn inside the frame.
+              const flipAxis = memberAxisScale((orig.angle || 0) - frameAngle, sx, sy);
+              const mirrored = buildPointsShapeResize(
+                { ...target, scaleX: 1, scaleY: 1 },
+                { scaleX: flipAxis.x < 0 ? -1 : 1, scaleY: flipAxis.y < 0 ? -1 : 1, left: 0, top: 0 },
+                { pointsLocalMinX: 0, pointsPathOffsetX: 0, pointsLocalMinY: 0, pointsPathOffsetY: 0 },
+              );
+              target.points = mirrored.points;
+              target.data = mirrored.data;
+            }
+          }
           if (orig.isText) {
             // Text reflows instead of stretching: the box takes the scale.
             // From a corner / top / bottom the font scales with the frame
@@ -3782,8 +3816,10 @@ export function useSVGInteraction({
         // jumping back up on release.
         const counterBaseR = ds.originalProps?.counterBaseRadius || objForFlip?.radius || 14;
         const safeUniformScale = Math.max(4 / counterBaseR, uniformScale || 1);
-        newScaleX = safeUniformScale;
-        newScaleY = safeUniformScale;
+        // Owner 2026-11-03: a grabber dragged past the opposite side flips
+        // the pin over to the other side (placeCounterInResizeBox).
+        newScaleX = (affectsX && newScaleX < 0 ? -1 : 1) * safeUniformScale;
+        newScaleY = (affectsY && newScaleY < 0 ? -1 : 1) * safeUniformScale;
       }
 
       // Paths use a page-affine resize and therefore preserve signed scale
@@ -3794,21 +3830,20 @@ export function useSVGInteraction({
       const isExactPathResize = typeForFlip === 'path';
       // w63 (Acrobat / Figma / Drawboard): dragging a grabber past the
       // opposite side FLIPS the mark — it mirrors and keeps growing on the
-      // other side of the fixed corner. Rect, ellipse, cloud, polygon /
-      // polyline and pen / highlighter ink mirror. A text box, a counter and
-      // anything else stop at the minimum on the fixed side (text never
-      // mirrors). Every mark keeps at least MIN_RESIZE_PAGE_UNITS (4) on each
-      // axis — or its own starting size, if it was already thinner — so a
-      // drag that ends on the opposite corner never leaves an unfindable dot.
+      // other side of the fixed corner. Owner 2026-11-03: every mark does
+      // this. Rect, ellipse, cloud, polygon / polyline, line / arrow (box
+      // mode) and pen / highlighter ink mirror. A text box, a photo or stamp
+      // and a counter pass through the same way, but their words and pictures
+      // stay the right way round (the save keeps |scale|). Every mark keeps at
+      // least MIN_RESIZE_PAGE_UNITS (4) on each axis — or its own starting
+      // size, if it was already thinner — so a drag that ends on the
+      // opposite corner never leaves an unfindable dot.
       const isPointsResize = !!ds.originalProps.isPointsShape;
       const isTextResize = typeForFlip === 'textbox' || typeForFlip === 'i-text' || typeForFlip === 'text';
-      const supportsFlip = !isCounterResize && (
-        typeForFlip === 'rect'
-        || typeForFlip === 'circle'
-        || typeForFlip === 'ellipse'
-        || isExactPathResize
-        || isPointsResize
-      );
+      // An old-style arrow (type 'group': a line child plus a head) draws from
+      // its children's ends, which a box resize does not rewrite, so it still
+      // stops at the floor (re-drawn arrows are lines and flip).
+      const supportsFlip = !isCounterResize && typeForFlip !== 'group';
       if (!isCounterResize) {
         // A text box keeps room for at least one character at its font size.
         const textFloor = isTextResize
@@ -3880,11 +3915,23 @@ export function useSVGInteraction({
       let resizeCommitLeft = newLeft;
       let resizeCommitTop = newTop;
       let counterNewRadius = null;
+      let counterPointerAngle = null;
       if (isCounterResize) {
         const baseRadius = ds.originalProps?.counterBaseRadius || objForFlip?.radius || 14;
         counterNewRadius = baseRadius * Math.abs(newScaleX);
-        const counterTipExtension = counterNewRadius * 0.5;
-        resizeCommitTop = newTop + counterTipExtension;
+        // The resize box is turned to the nub (box angle = pointer + 90); the
+        // bubble sits in its lower part, or its upper part once flipped.
+        const placed = placeCounterInResizeBox({
+          centerX: newCenterX,
+          centerY: newCenterY,
+          radius: counterNewRadius,
+          boxAngleDeg: origAngleDeg,
+          pointerAngle: objForFlip?.data?.pointerAngle,
+          flipY: affectsY && newScaleY < 0,
+        });
+        resizeCommitLeft = placed.left;
+        resizeCommitTop = placed.top;
+        counterPointerAngle = placed.pointerAngle;
       }
 
       // Store resize state for commit on pointerup. `anchorX/Y` = the point
@@ -3897,6 +3944,7 @@ export function useSVGInteraction({
         newLeft: resizeCommitLeft,
         newTop: resizeCommitTop,
         counterNewRadius,
+        counterPointerAngle,
         pathResizePageMatrix,
         anchorX: resizeAnchorX,
         anchorY: resizeAnchorY,
@@ -3957,9 +4005,25 @@ export function useSVGInteraction({
       // instead of drifting off the page.
       let visualLeft = newLeft;
       let visualTop = newTop;
-      if (isCounterResize) {
-        visualLeft = resizeCommitLeft;
-        visualTop = resizeCommitTop;
+      if (isCounterResize && objForFlip) {
+        // Paint the pin exactly as it will be saved (size, place, nub).
+        setVisualTransform({
+          id: ds.annotationIndex,
+          dx: 0,
+          dy: 0,
+          previewObjects: {
+            [ds.annotationIndex]: {
+              ...objForFlip,
+              radius: counterNewRadius,
+              scaleX: 1,
+              scaleY: 1,
+              left: resizeCommitLeft,
+              top: resizeCommitTop,
+              data: { ...(objForFlip.data || {}), pointerAngle: counterPointerAngle },
+            },
+          },
+        });
+        return;
       }
       if (ds.originalProps.isPointsShape) {
         // w63: a points shape shows (and saves) its flip by mirroring its
@@ -5260,8 +5324,9 @@ export function useSVGInteraction({
           //      back into Fabric convention (bbox of chord +
           //      offset-from-center endpoints + absolute midpoint).
           const ep = getLineEndpoints(obj);
-          const sx = Math.max(0.01, Math.abs(newScaleX));
-          const sy = Math.max(0.01, Math.abs(newScaleY));
+          // Signed: a grabber dragged past the opposite side mirrors the line.
+          const sx = signedLineResizeScale(newScaleX);
+          const sy = signedLineResizeScale(newScaleY);
           // Canvas audit chunk 3: the scale origin the preview used (the
           // mark's centre for an Alt resize).
           const lax = ds.currentResize.anchorX ?? ds.anchorX;
@@ -5317,17 +5382,21 @@ export function useSVGInteraction({
           obj.scaleY = 1;
           obj.left = newLeft;
           obj.top = newTop;
+          if (ds.currentResize.counterPointerAngle != null) {
+            obj.data = { ...(obj.data || {}), pointerAngle: ds.currentResize.counterPointerAngle };
+          }
         } else if (objType === 'textbox' || objType === 'i-text' || objType === 'text') {
           // Text: absorb scale into width/height so text reflows instead of stretching.
           // Honor the user's chosen size — do NOT re-tighten to fit current text.
           // If the user resized the box oversized, that was deliberate. KAL-397:
           // the box's auto-fit mark (Settings -> Annotations -> "Fit text boxes
           // to their text") is cleared here, so a later re-edit keeps this size.
-          // Note: text does not support flip (scale is clamped positive upstream)
-          // so the ratio below is always positive.
-          obj.width = (obj.width || 100) * (newScaleX / (ds.originalProps.scaleX || 1));
+          // Owner 2026-11-03: a grabber dragged past the opposite side moves
+          // the box over to that side (newLeft / newTop already sit there),
+          // but the words stay the right way round, so only |scale| is kept.
+          obj.width = (obj.width || 100) * Math.abs(newScaleX / (ds.originalProps.scaleX || 1));
           if (obj.height) {
-            obj.height = obj.height * (newScaleY / (ds.originalProps.scaleY || 1));
+            obj.height = obj.height * Math.abs(newScaleY / (ds.originalProps.scaleY || 1));
           }
           obj.scaleX = 1;
           obj.scaleY = 1;
@@ -5870,7 +5939,16 @@ export function useSVGInteraction({
     // pure transform surface; never arm the gesture. (Whole-shape move is
     // guarded in handlePointerMove, which all drag modes flow through.)
     if (document.body.getAttribute('data-readonly') === 'true') return;
-    e.target.setPointerCapture(e.pointerId);
+    // Capture on the page's own SVG, not on the grabber. A grabber can leave
+    // the DOM mid-drag: a frame dragged through itself (owner 2026-11-03,
+    // every mark flips) passes through thin, where the small-frame tier hides
+    // edge grabbers. A captured node that unmounts drops the capture, and a
+    // release off the page then never ended the drag.
+    try {
+      (svgRef.current || e.target).setPointerCapture(e.pointerId);
+    } catch (_) {
+      try { e.target.setPointerCapture(e.pointerId); } catch (__) { /* optional */ }
+    }
 
     // UX: 2026-04-20 — Group transform branch. When 2+ items are selected
     // (annotations + callouts combined), the multi-selection's outer dashed
