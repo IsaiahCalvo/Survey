@@ -40,6 +40,7 @@ import {
   isBeyondMoveThreshold,
   reportDroppedMove,
 } from '../utils/moveCommit.js';
+import { clampResizeEdge } from '../utils/pageEdgeRules.js';
 // Phase 15 LINE-01/02/03 + ARROW-01/02/03 — midpoint drag mode + endpoint
 // auto-revert on collinear geometry. Pure-math from lineGeometry, drag
 // helpers from lineDragMath (unit-tested in tests/lineDragMath.test.mjs).
@@ -3761,6 +3762,33 @@ export function useSVGInteraction({
         resizePtrX += off.dx;
         resizePtrY += off.dy;
       }
+      // Owner 2026-11-02 (copy Drawboard, utils/pageEdgeRules.js): the dragged
+      // side of an upright mark stops at the page edge. The side sits at the
+      // pointer plus its grab offset (same as the snap above). A tilted mark
+      // and a counter keep their free resize.
+      const resizeStartBox = ds.resizeStartBox;
+      if (resizeStartBox && !resizeIsCounter && (resizeAngleMod < 0.01 || resizeAngleMod > 359.99)) {
+        const gox = ds.resizeGrabOffset?.dx || 0;
+        const goy = ds.resizeGrabOffset?.dy || 0;
+        if (affectsX) {
+          const side = isLeftHandle ? gox : -gox;
+          resizePtrX = clampResizeEdge(resizePtrX + side, {
+            pageSize: pageWidth,
+            startLow: resizeStartBox.left,
+            startHigh: resizeStartBox.left + resizeStartBox.width,
+            centre: fromCentre ? ds.centerX : null,
+          }) - side;
+        }
+        if (affectsY) {
+          const side = isTopHandle ? goy : -goy;
+          resizePtrY = clampResizeEdge(resizePtrY + side, {
+            pageSize: pageHeight,
+            startLow: resizeStartBox.top,
+            startHigh: resizeStartBox.top + resizeStartBox.height,
+            centre: fromCentre ? ds.centerY : null,
+          }) - side;
+        }
+      }
       // Un-rotate pointer relative to world anchor, into shape's local frame.
       const ptrDxWorld = resizePtrX - worldAnchorX;
       const ptrDyWorld = resizePtrY - worldAnchorY;
@@ -6667,6 +6695,9 @@ export function useSVGInteraction({
       startSVGPoint: svgPoint,
       resizeGrabOffset: resizeGrabOffsetValue,
       rotateGrabOffsetDeg: rotateGrabOffsetValue,
+      // The mark's box at grab time: a side already past the page edge may
+      // stay there (pageEdgeRules.clampResizeEdge).
+      resizeStartBox: mode === 'resize' && bbox ? { left: bbox.left, top: bbox.top, width: bbox.width, height: bbox.height } : null,
       originalProps: {
         // Imported + points-based + line shapes: use visible-bbox left/top so
         // the resize formula (which produces a new left/top in visible-space)

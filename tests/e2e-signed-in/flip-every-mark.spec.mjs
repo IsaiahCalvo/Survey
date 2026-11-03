@@ -92,7 +92,9 @@ test('a text box and a line in box mode flip past the opposite side; the words s
   await page.keyboard.type('Door 12');
   await page.keyboard.press('Escape');
   const textId = await newMarkId(page, before);
-  await drawMark(page, 'l', at(0.14, 0.88), at(0.29, 0.94));
+  // Far enough in that the flipped line still fits on the page: a resize
+  // stops at the page edge (src/utils/pageEdgeRules.js).
+  await drawMark(page, 'l', at(0.24, 0.88), at(0.39, 0.94));
   const lineId = await newMarkId(page, before);
   await page.waitForTimeout(1200);
 
