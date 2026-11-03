@@ -9,6 +9,8 @@ import {
   isSideways,
   markNeedsUniformGroupScale,
   memberAxisScale,
+  mirroredMemberAngle,
+  mirroredPointerAngle,
   resolveGroupResizeScale,
   scaleCalloutForGroup,
   scaleMarkerBoundsForGroup,
@@ -33,9 +35,52 @@ test('kept proportions follow the bigger move; an edge grows both axes', () => {
   assert.deepEqual(resolveGroupResizeScale({ handleId: 'mt', sx: 1, sy: 0.75, keepProportions: true }), { sx: 0.75, sy: 0.75 });
 });
 
-test('a group never mirrors and stops at its floor', () => {
-  assert.deepEqual(resolveGroupResizeScale({ handleId: 'br', sx: -0.5, sy: 0.5, minScaleX: 0.1, minScaleY: 0.2 }), { sx: 0.1, sy: 0.5 });
+test('a group flips past the fixed side and never gets thinner than its floor (owner 2026-11-03)', () => {
+  assert.deepEqual(resolveGroupResizeScale({ handleId: 'br', sx: -0.5, sy: 0.5, minScaleX: 0.1, minScaleY: 0.2 }), { sx: -0.5, sy: 0.5 });
+  assert.deepEqual(resolveGroupResizeScale({ handleId: 'br', sx: -0.05, sy: 0.5, minScaleX: 0.1, minScaleY: 0.2 }), { sx: -0.1, sy: 0.5 });
   assert.deepEqual(resolveGroupResizeScale({ handleId: 'br', sx: 0.01, sy: 0.02, keepProportions: true, minScaleX: 0.1, minScaleY: 0.2 }), { sx: 0.2, sy: 0.2 });
+  // Kept proportions: each axis keeps its own side; an edge only flips its own axis.
+  assert.deepEqual(resolveGroupResizeScale({ handleId: 'br', sx: -2, sy: 1.2, keepProportions: true }), { sx: -2, sy: 2 });
+  assert.deepEqual(resolveGroupResizeScale({ handleId: 'mr', sx: -1.5, sy: 1, keepProportions: true }), { sx: -1.5, sy: 1.5 });
+  assert.deepEqual(resolveGroupResizeScale({ handleId: 'mt', sx: 1, sy: -0.75, keepProportions: true }), { sx: 0.75, sy: -0.75 });
+  // Exactly on the fixed side counts as unflipped.
+  assert.deepEqual(resolveGroupResizeScale({ handleId: 'mr', sx: 0, sy: 1, minScaleX: 0.1 }), { sx: 0.1, sy: 1 });
+});
+
+test('a flipped group turns its members the other way, except sideways ones', () => {
+  assert.equal(mirroredMemberAngle(30, -1, 1), 330);
+  assert.equal(mirroredMemberAngle(30, 1, -1), 330);
+  assert.equal(mirroredMemberAngle(30, -1, -1), 30, 'both axes = half turn, the member keeps its turn');
+  assert.equal(mirroredMemberAngle(0, -1, 1), 0);
+  assert.equal(mirroredMemberAngle(90, -1, 1), 90, 'sideways mark mirrors along its own other axis');
+  assert.equal(mirroredMemberAngle(270, 1, -1), 270);
+  // In a turned frame the mirror line is the frame's own axis.
+  assert.equal(mirroredMemberAngle(50, -1, 1, 20), 350);
+  assert.equal(mirroredMemberAngle(110, -1, 1, 20), 110, 'sideways inside the frame');
+});
+
+test('a flipped group mirrors a counter pin nub', () => {
+  assert.equal(mirroredPointerAngle(225, -1, 1), 315);
+  assert.equal(mirroredPointerAngle(225, 1, -1), 135);
+  assert.equal(mirroredPointerAngle(225, -1, -1), 45);
+  assert.equal(mirroredPointerAngle(undefined, -1, 1), 315, 'default nub is 225');
+  assert.equal(mirroredPointerAngle(0, -1, 1, 90), 0, 'frame turned 90: its x runs down the page, so a right-pointing nub stays');
+  assert.equal(mirroredPointerAngle(90, -1, 1, 90), 270);
+});
+
+test('a flipped group keeps callout boxes and Survey Marker boxes the right way round', () => {
+  const scalePoint = (x, y) => ({ x: 100 - x, y });
+  const callout = scaleCalloutForGroup(
+    { tip: { x: 10, y: 10 }, knee: { x: 20, y: 10 }, box: { left: 30, top: 0, width: 40, height: 20 }, fontSize: 12 },
+    scalePoint, -1, 1, 'mr', { width: 100, height: 100 }, 2,
+  );
+  assert.ok(Math.abs(callout.textBoxWidth * 100 - 40) < 1e-9);
+  assert.ok(Math.abs(callout.textBoxPosition.x * 100 - 30) < 1e-9);
+  assert.ok(Math.abs(callout.arrowTip.x * 100 - 90) < 1e-9);
+  const marker = scaleMarkerBoundsForGroup({ x: 10, y: 0, width: 20, height: 10, angle: 30 }, scalePoint, -1, 1);
+  assert.equal(marker.width, 20);
+  assert.equal(marker.x, 70);
+  assert.equal(marker.angle, 330);
 });
 
 test('the floor keeps every member at least 4 page units (or its own size)', () => {

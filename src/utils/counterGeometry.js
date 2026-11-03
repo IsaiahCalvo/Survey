@@ -119,3 +119,39 @@ export function createCounterDragPreview(overlayEl, drag) {
     drag.previewText = text;
     updateCounterDragPreview(drag);
   }
+
+/**
+ * Where a counter pin sits after a box-mode resize, and which way it points.
+ *
+ * The resize box of a counter is turned so its nub points to the box's top
+ * (box angle = pointerAngle + 90): 2r wide, 2.5r tall, the bubble in the
+ * lower 2r. Dragging a grabber past the opposite side flips the box. Across
+ * the box's width the pin is symmetric, so it just passes through; across its
+ * height the pin turns over, so its nub points the other way. The number is
+ * drawn upright either way.
+ *
+ * @param {object} p
+ * @param {number} p.centerX       the new box centre, page units
+ * @param {number} p.centerY
+ * @param {number} p.radius        the new bubble radius
+ * @param {number} p.boxAngleDeg   the box's turn (pointerAngle + 90)
+ * @param {number} p.pointerAngle  the pin's pointer angle at drag start
+ * @param {boolean} p.flipY        true when the box flipped across its height
+ * @returns {{ left: number, top: number, pointerAngle: number }}
+ */
+export function placeCounterInResizeBox({ centerX, centerY, radius, boxAngleDeg, pointerAngle, flipY }) {
+  const r = Math.abs(Number(radius) || 0);
+  const rad = ((Number(boxAngleDeg) || 0) * Math.PI) / 180;
+  // The bubble's centre sits 0.25r below the box centre (local frame), or
+  // above it once the pin has turned over.
+  const localY = (flipY ? -1 : 1) * r * 0.25;
+  const bodyX = centerX - localY * Math.sin(rad);
+  const bodyY = centerY + localY * Math.cos(rad);
+  const startAngle = pointerAngle != null && Number.isFinite(Number(pointerAngle)) ? Number(pointerAngle) : 225;
+  const nextAngle = flipY ? startAngle + 180 : startAngle;
+  return {
+    left: bodyX - r,
+    top: bodyY - r,
+    pointerAngle: ((nextAngle % 360) + 360) % 360,
+  };
+}
