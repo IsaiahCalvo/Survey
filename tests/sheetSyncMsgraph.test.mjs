@@ -6,7 +6,7 @@ import ExcelJS from 'exceljs';
 
 import {
   blankWorkbookBytes, cellValueForWrite, columnLetter, createMsGraphProvider, dropDownChoices, msgraphFileId,
-  parseMsgraphFileId, rowRuns,
+  columnRuns, parseMsgraphFileId, rowRuns,
 } from '../supabase/functions/_shared/sheetSync/providers/msgraph.js';
 
 const BASE = 'https://graph.test/v1.0';
@@ -106,9 +106,13 @@ function fakeGraph({ driveType = 'business' } = {}) {
     }
     const range = /^\/range\(address='([^']+)'\)(\/delete|\/dataValidation)?/.exec(tail);
     if (method === 'POST' && tail === '/freezePanes/freezeRows') { target.frozen = JSON.parse(init.body).count; return json(200, {}); }
-    if (range && method === 'PATCH' && /^[A-Z]+:[A-Z]+$/.test(range[1])) {
+    if (range && method === 'PATCH' && JSON.parse(init.body).columnHidden !== undefined) {
+      // Graph answers a whole-column address with all 1,048,576 rows; the
+      // provider must hide through one cell instead.
+      assert.ok(!/^[A-Z]+:[A-Z]+$/.test(range[1]), 'never a whole-column address');
       target.hidden = target.hidden || [];
-      if (JSON.parse(init.body).columnHidden) target.hidden.push(range[1]);
+      const col = /^([A-Z]+)/.exec(range[1])[1];
+      if (JSON.parse(init.body).columnHidden) target.hidden.push(`${col}:${col}`);
       return json(200, {});
     }
     if (range && range[2] === '/dataValidation') {
@@ -323,4 +327,42 @@ test('no drop-down when Excel could not hold the list', () => {
 test('the built-in blank workbook is a real .xlsx', async () => {
   const book = await new ExcelJS.Workbook().xlsx.load(Buffer.from(blankWorkbookBytes()));
   assert.deepEqual(book.worksheets.map((w) => w.name), ['Sheet1']);
+});
+
+test('range writes are never read back, and side-by-side columns share one call', async () => {
+  const graph = fakeGraph();
+  const realFetch = graph.fetch;
+  let cancelled = 0;
+  // Graph answers a range write with the whole range; reading that for a big
+  // range ran the edge function out of memory (Nov 3). The answer must be dropped.
+  graph.fetch = async (url, init) => {
+    const res = await realFetch(url, init);
+    if (init.method !== 'PATCH' || !res.ok) return res;
+    return { ...res, text: async () => { throw new Error('range answer was read'); }, body: { cancel: async () => { cancelled += 1; } } };
+  };
+  const p = provider(graph);
+  const layout = {
+    scopes: [{ scopeId: 'm:a', title: 'A', columns: [
+      { key: 'rowId', header: 'Row ID' }, { key: 'item', header: 'Item' }, { key: 'entity', header: 'Entity' },
+      { key: 'answer:q1', header: 'Q1' }, { key: 'answer:q2', header: 'Q2' }, { key: 'answer:h', header: 'Height', item: { kind: 'number' } },
+      { key: 'notes', header: 'Notes' },
+    ] }],
+    entities: [{ id: 'e1', name: 'Door' }],
+    answerValues: ['Pass', 'Fail'],
+  };
+  await p.createFile({ title: 'Runs', layout });
+  assert.ok(cancelled > 0, 'answers dropped unread');
+  const formats = graph.calls.filter((c) => c.startsWith('PATCH') && /2:[A-Z]+1000'\)$/.test(c));
+  assert.equal(formats.length, 2, `two text runs (A-E, G), got ${formats.join(' | ')}`);
+  const drops = graph.calls.filter((c) => c.endsWith('/dataValidation'));
+  assert.equal(drops.length, 2, 'entity alone, then Q1-Q2 together');
+  assert.ok(drops.some((c) => c.includes("D2:E1000")));
+  assert.equal(graph.files.get('NEW-1').sheets[0].hidden[0], 'A:A');
+});
+
+test('columnRuns groups neighbours with the same value', () => {
+  const cols = ['t', 't', null, 'x', 'x', 't'].map((v) => ({ v }));
+  assert.deepEqual(columnRuns(cols, (c) => c.v), [
+    { from: 0, to: 1, value: 't' }, { from: 3, to: 4, value: 'x' }, { from: 5, to: 5, value: 't' },
+  ]);
 });

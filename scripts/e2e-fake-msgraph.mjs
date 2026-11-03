@@ -40,6 +40,10 @@ function typed(value) {
 }
 
 const colIndex = (letters) => [...letters].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1;
+const colName = (index) => { let n = index + 1; let out = ''; while (n > 0) { out = String.fromCharCode(65 + ((n - 1) % 26)) + out; n = Math.floor((n - 1) / 26); } return out; };
+// 'B2:D1000' -> ['B2:B1000', 'C2:C1000', 'D2:D1000']: one entry per column, however
+// the provider groups its calls.
+const perColumn = (a) => Array.from({ length: a.c2 - a.c1 + 1 }, (_, i) => `${colName(a.c1 + i)}${a.r1 + 1}:${colName(a.c1 + i)}${a.r2 + 1}`);
 function parseAddress(address) {
   const rows = /^(\d+):(\d+)$/.exec(address);
   if (rows) return { r1: +rows[1] - 1, r2: +rows[2] - 1, wholeRows: true };
@@ -226,15 +230,19 @@ export async function fakeMsgraphHandler(req) {
   const range = /^\/range\(address='([^']+)'\)(\/delete|\/dataValidation)?$/.exec(tail);
   const a = range && parseAddress(range[1]);
   if (!a) return gErr(400, 'BadRequest', `fake msgraph: no route for ${method} ${path}`);
-  if (range[2] === '/dataValidation' && method === 'PATCH') { sheet.validations[range[1]] = body?.rule?.list?.source || ''; return json(200, {}); }
+  if (range[2] === '/dataValidation' && method === 'PATCH') {
+    for (const key of perColumn(a)) sheet.validations[key] = body?.rule?.list?.source || '';
+    return json(200, {});
+  }
   if (range[2] === '/delete' && method === 'POST') {
     if (!a.wholeRows) return gErr(400, 'BadRequest', 'fake msgraph: only whole-row deletes');
     sheet.cells.splice(a.r1, a.r2 - a.r1 + 1);
     touch(f);
     return json(204);
   }
-  if (method === 'PATCH' && a.wholeCols) {
-    if (body?.columnHidden) sheet.hidden.push(range[1]);
+  // Hiding works on any range and hides its whole columns, as in Excel.
+  if (method === 'PATCH' && body?.columnHidden !== undefined) {
+    if (body.columnHidden) for (let c = a.c1; c <= a.c2; c += 1) sheet.hidden.push(`${colName(c)}:${colName(c)}`);
     return json(200, {});
   }
   if (method === 'PATCH' && body?.numberFormat && !body?.values) {
@@ -242,7 +250,7 @@ export async function fakeMsgraphHandler(req) {
     if (formats.length !== a.r2 - a.r1 + 1 || formats.some((line) => line.length !== a.c2 - a.c1 + 1)) {
       return gErr(400, 'InvalidArgument', 'The number of rows or columns in the input array doesn\'t match the size or dimensions of the range.');
     }
-    sheet.textColumns = [...new Set([...(sheet.textColumns || []), range[1]])];
+    sheet.textColumns = [...new Set([...(sheet.textColumns || []), ...perColumn(a)])];
     return json(200, {});
   }
   if (method === 'PATCH') {
