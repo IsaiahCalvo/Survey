@@ -352,3 +352,22 @@ test('rounds read only the synced sheets, not a big sheet the PM added', async (
   assert.equal(reads.length, Object.keys(ctx.link.state.sheetIds).length, 'one read per synced sheet');
   assert.ok(!reads.some((c) => c.includes('pm-notes')), 'the PM\'s own sheet is never read');
 });
+
+test('where the workbook was saved survives every round, and blank stamps are filled once', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101', { changedBy: '', changedDate: '' }) } });
+  ctx.link.state = { ...ctx.link.state, folder: 'Jobs/2026' };
+  let n = 0;
+  const round = () => runSheetRound({
+    link: ctx.link, provider: ctx.provider, signing, fillBy: 'IC',
+    loadMarkers: async () => structuredClone(ctx.markers),
+    saveMarkers: async (writes) => { Object.assign(ctx.markers, mergeMarkerWrites(ctx.markers, ctx.markers, writes)); },
+    newMarkerId: () => `new-${++n}`,
+  }).then((res) => { if (res.patch) Object.assign(ctx.link, res.patch); return res; });
+  await round(); await round();
+  assert.equal(ctx.link.state.folder, 'Jobs/2026');
+  assert.equal(ctx.markers.d1.changedBy, 'IC');
+  assert.match(ctx.markers.d1.changedDate, /^\d{4}-\d\d-\d\dT/);
+  const sheet = await ctx.sheet();
+  const r = await ctx.rowOf('d1');
+  assert.equal(sheet.rows[r][sheet.rows[0].indexOf('Changed By')], 'IC', 'the sheet shows it');
+});

@@ -178,7 +178,13 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
     summary: plan.summary,
     patch: {
       baseline: plan.baseline,
-      state: wroteAt ? { ...plan.state, lastWriteAt: wroteAt } : plan.state,
+      // The engine rebuilds its own keys; where the file was saved (the
+      // "Save in" folder) is the link's and rides along.
+      state: {
+        ...(typeof link.state?.folder === 'string' ? { folder: link.state.folder } : {}),
+        ...plan.state,
+        ...(wroteAt ? { lastWriteAt: wroteAt } : {}),
+      },
       // The version read BEFORE the grid: if the sheet changed during the
       // round (including our own writes), the next round reads it again.
       remote_version: version,
