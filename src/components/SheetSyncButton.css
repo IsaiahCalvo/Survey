@@ -182,6 +182,8 @@
 }
 .sheet-sync-dot.is-paused { background: var(--text-3); }
 .sheet-sync-dot.is-broken { background: var(--danger); }
+/* Where the file lives, so nobody has to hunt for it. */
+.sheet-sync-where { margin-top: 6px; white-space: normal; overflow-wrap: anywhere; }
 
 /* Something waiting for the person: a conflict, a deleted row or tab. */
 .sheet-sync-item {

@@ -238,6 +238,8 @@ export async function handleSheetSync(req, deps) {
       template: s.record({ maxBytes: 1024 * 1024, optional: true }),
       kit: s.record({ maxBytes: 64 * 1024, optional: true }),
       answerValues: s.array(s.string({ max: 80 }), { max: 20, optional: true }),
+      // The answers' cell colours ({ value, argb }) for the Excel workbook.
+      answerFills: s.any({ maxBytes: 4 * 1024 }),
       title: s.string({ max: 200, optional: true }),
       markerId: s.string({ max: 200, optional: true }),
       choice: s.enum(['app', 'sheet', 'putBack', 'putBackTab'], { optional: true }),
@@ -543,6 +545,16 @@ async function linkFor(ctx, documentId, templateId, { anyProvider = !ctx.provide
 const providerName = (provider) => (provider === 'msgraph' ? 'Microsoft 365' : 'Google');
 const sheetName = (provider) => (provider === 'msgraph' ? 'Excel workbook' : 'Google Sheet');
 
+// { value, argb } pairs from the app (answerSets.js excelAnswerFills), kept
+// only when well formed; the workbook falls back to Y / N / N/A by tone.
+function answerFillsFrom(body) {
+  const fills = Array.isArray(body.answerFills) ? body.answerFills : [];
+  return fills
+    .filter((f) => f && typeof f.value === 'string' && f.value.length <= 80 && /^[0-9A-Fa-f]{8}$/.test(String(f.argb || '')))
+    .slice(0, 20)
+    .map((f) => ({ value: f.value, argb: String(f.argb).toUpperCase() }));
+}
+
 function layoutFrom(body) {
   if (!body.template || !body.kit) return null;
   let layout;
@@ -704,7 +716,7 @@ async function linkSheet(ctx) {
   const signing = await signingFor(ctx, documentId);
   const title = ctx.body.title || 'Survey';
   let made;
-  try { made = await provider.createFile({ title, layout }); } catch (err) {
+  try { made = await provider.createFile({ title, layout, answerFills: answerFillsFrom(ctx.body) }); } catch (err) {
     if (err?.code === 'personal-onedrive') {
       throw new SyncError('This Microsoft account has a personal OneDrive. Live sync needs a work or school Microsoft 365 account.', 409, 'personal-onedrive');
     }
@@ -717,7 +729,8 @@ async function linkSheet(ctx) {
     connection_user_id: ctx.user.id,
     file_id: made.fileId,
     file_url: made.url,
-    title,
+    // The real file name: OneDrive adds " 1" when the name is taken.
+    title: made.title || title,
     layout,
     state: { sheetIds: made.sheetIds, lastWriteAt: new Date().toISOString() },
     created_by: ctx.user.id,

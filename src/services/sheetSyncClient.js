@@ -4,7 +4,7 @@
 // web and the desktop app all write to the linked Google Sheet.
 import { supabase } from '../supabaseClient';
 import { getExportKit, DEFAULT_EXPORT_KIT_ID } from './exportFormats/registry.js';
-import { answerSetFor } from './answerSets.js';
+import { answerSetFor, excelAnswerFills } from './answerSets.js';
 
 const FUNCTION = 'sheet-sync';
 
@@ -18,6 +18,8 @@ export function sheetLayoutInput(template) {
     },
     kit: getExportKit(template.exportKitId) || getExportKit(DEFAULT_EXPORT_KIT_ID),
     answerValues: answerSetFor(template).map((a) => String(a.value)),
+    // The answers' colours, so the live Excel workbook looks like Export data's.
+    answerFills: excelAnswerFills(answerSetFor(template)).map((f) => ({ value: String(f.value), argb: f.argb })),
   };
 }
 

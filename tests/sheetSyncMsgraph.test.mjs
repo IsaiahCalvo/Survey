@@ -51,8 +51,16 @@ function fakeGraph({ driveType = 'business' } = {}) {
     if (method === 'PUT' && put) {
       const book = await new ExcelJS.Workbook().xlsx.load(Buffer.from(init.body));
       const itemId = `NEW-${state.files.size + 1}`;
-      state.addFile(itemId, book.worksheets.map((ws, i) => sheet(ws.name, i)));
-      return json(201, { id: itemId, webUrl: `https://x.sharepoint.com/${put[1]}`, parentReference: { driveId: 'b!drive', driveType } });
+      // The upload carries the header row; keep it as the sheet's cells.
+      state.addFile(itemId, book.worksheets.map((ws, i) => {
+        const header = [];
+        ws.getRow(1).eachCell({ includeEmpty: true }, (cell, col) => { header[col - 1] = cell.value ?? ''; });
+        return sheet(ws.name, i, header.length ? [header] : []);
+      }));
+      state.files.get(itemId).book = book;
+      // OneDrive's rename on a name clash: "Fire-Level 1 1.xlsx".
+      const fileName = `${decodeURIComponent(put[1].split('/').pop()).replace(/\.xlsx$/i, '')} 1.xlsx`;
+      return json(201, { id: itemId, name: fileName, webUrl: `https://x.sharepoint.com/${put[1]}`, parentReference: { driveId: 'b!drive', driveType } });
     }
 
     const m = /^drives\/([^/]+)\/items\/([^/?]+)(.*)$/.exec(path);
@@ -298,20 +306,40 @@ test('creates a workbook in the Survey folder with one sheet per scope', async (
       ] },
       { scopeId: 'm:cat2', title: 'Fire - L2', columns: [{ key: 'rowId', header: 'Row ID' }, { key: 'notes', header: 'Notes' }] },
     ],
-    entities: [{ id: 'e1', name: 'Smoke detector' }, { id: 'e2', name: 'Pull station' }],
+    entities: [{ id: 'e1', name: 'Smoke detector', color: 'rgba(255, 0, 0, 0.4)' }, { id: 'e2', name: 'Pull station' }],
     answerValues: ['Pass', 'Fail', 'N/A'],
   };
-  const made = await p.createFile({ title: 'Fire/Level 1', layout });
+  const made = await p.createFile({ title: 'Fire/Level 1', layout, answerFills: [
+    { value: 'Pass', argb: 'FFCEEED0' }, { value: 'Fail', argb: 'FFF6C9CE' }, { value: 'N/A', argb: 'FFA6A6A6' },
+  ] });
   assert.match(made.fileId, /^drives\/b!drive\/items\/NEW-1$/);
   assert.match(made.url, /Fire-Level%201|Fire-Level 1/);
+  assert.equal(made.title, 'Fire-Level 1 1', 'the name OneDrive really gave it, shown in the panel');
   const file = graph.files.get('NEW-1');
-  assert.deepEqual(file.sheets.map((s) => s.name), ['Fire - L1', 'Fire - L2'], 'starter sheet removed');
+  assert.deepEqual(file.sheets.map((s) => s.name), ['Fire - L1', 'Fire - L2']);
   assert.deepEqual(file.sheets[0].cells[0], ['Row ID', 'Item', 'Entity', 'Works?', 'Note']);
-  assert.deepEqual(file.sheets[0].hidden, ['A:A'], 'Row ID column hidden');
-  assert.equal(file.sheets[0].frozen, 1, 'header row frozen');
-  assert.deepEqual(file.sheets[0].validation, { 'C2:C1000': 'Smoke detector,Pull station', 'D2:D1000': 'Pass,Fail,N/A' });
   assert.deepEqual(file.sheets[1].cells[0], ['Row ID', 'Notes']);
   assert.deepEqual(made.sheetIds, { 'm:cat1': '{Fire - L1-id}', 'm:cat2': '{Fire - L2-id}' });
+  // One upload and one look-up: no per-sheet set-up calls (owner: "needs to be nearly instant").
+  assert.deepEqual(graph.calls.filter((c) => !c.startsWith('POST') || !c.endsWith('createSession')).map((c) => c.split('?')[0].replace(/drives\/[^ ]+\/workbook\//, 'workbook/')),
+    ['GET me/drive', 'PUT me/drive/root:/Survey/Fire-Level 1.xlsx:/content', 'GET workbook/worksheets']);
+  // Formatted like the app's Export data workbook.
+  const ws = file.book.worksheets[0];
+  assert.equal(ws.getColumn(1).hidden, true, 'Row ID column hidden');
+  assert.equal(ws.views[0].state, 'frozen');
+  assert.equal(ws.views[0].ySplit, 1);
+  assert.equal(ws.getCell('A1').fill.fgColor.argb, 'FFBFBFBF', 'grey header');
+  assert.equal(ws.getCell('B1').border.top.style, 'thin');
+  assert.equal(ws.getColumn(2).width, 24);
+  assert.equal(ws.getColumn(5).width, 15);
+  assert.equal(ws.getCell('C2').dataValidation.formulae[0], '"Smoke detector,Pull station"');
+  assert.equal(ws.getCell('D2').dataValidation.formulae[0], '"Pass,Fail,N/A"');
+  assert.equal(ws.getCell('E2').dataValidation?.type, undefined, 'a typed answer has no list');
+  const rules = ws.conditionalFormattings.flatMap((cf) => cf.rules.map((r) => ({ ref: cf.ref, ...r })));
+  assert.ok(rules.some((r) => r.ref === 'B2:B1000' && /COUNTIF/.test(r.formulae[0])), 'repeated item names in red');
+  assert.ok(rules.some((r) => r.ref === 'A2:E1000' && /COUNTA/.test(r.formulae[0])), 'borders on rows with data');
+  assert.deepEqual(rules.filter((r) => r.ref === 'D2:D1000').map((r) => r.formulae[0]), ['"Pass"', '"Fail"', '"N/A"']);
+  assert.deepEqual(rules.filter((r) => r.ref === 'C2:C1000').map((r) => [r.formulae[0], r.style.fill.bgColor.argb]), [['"Smoke detector"', 'FFFF0000']], 'each entity in its colour');
   const more = await p.addTabs(made.fileId, [{ scopeId: 'm:cat3', title: 'Fire - L3', columns: [{ key: 'rowId', header: 'Row ID' }] }], layout);
   assert.deepEqual(more, { 'm:cat3': '{Fire - L3-id}' });
 });
@@ -329,7 +357,7 @@ test('the built-in blank workbook is a real .xlsx', async () => {
   assert.deepEqual(book.worksheets.map((w) => w.name), ['Sheet1']);
 });
 
-test('range writes are never read back, and side-by-side columns share one call', async () => {
+test('a tab added later: range writes are never read back, and side-by-side columns share one call', async () => {
   const graph = fakeGraph();
   const realFetch = graph.fetch;
   let cancelled = 0;
@@ -350,14 +378,15 @@ test('range writes are never read back, and side-by-side columns share one call'
     entities: [{ id: 'e1', name: 'Door' }],
     answerValues: ['Pass', 'Fail'],
   };
-  await p.createFile({ title: 'Runs', layout });
+  const made = await p.createFile({ title: 'Runs', layout: { ...layout, scopes: [] } });
+  await p.addTabs(made.fileId, layout.scopes, layout);
   assert.ok(cancelled > 0, 'answers dropped unread');
   const formats = graph.calls.filter((c) => c.startsWith('PATCH') && /2:[A-Z]+1000'\)$/.test(c));
   assert.equal(formats.length, 2, `two text runs (A-E, G), got ${formats.join(' | ')}`);
   const drops = graph.calls.filter((c) => c.endsWith('/dataValidation'));
   assert.equal(drops.length, 2, 'entity alone, then Q1-Q2 together');
   assert.ok(drops.some((c) => c.includes("D2:E1000")));
-  assert.equal(graph.files.get('NEW-1').sheets[0].hidden[0], 'A:A');
+  assert.equal(graph.files.get('NEW-1').sheets.find((sh) => sh.name === 'A').hidden[0], 'A:A');
 });
 
 test('columnRuns groups neighbours with the same value', () => {

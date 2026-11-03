@@ -401,6 +401,11 @@ export default function SheetSyncButton({ className, phone = false, documentId, 
             <span className={`sheet-sync-dot${state === 'paused' ? ' is-paused' : state === 'broken' ? ' is-broken' : ''}`} />
             {link.lastRoundAt ? `Synced ${syncedAgo(link.lastRoundAt)}` : state === 'live' ? 'Starting…' : state === 'paused' ? 'Paused' : 'Stopped'}
           </span>
+          {link.title && (
+            <p className="sheet-sync-meta sheet-sync-where">
+              {excelLink ? `OneDrive › Survey › ${link.title}.xlsx` : `Google Drive › ${link.title}`}
+            </p>
+          )}
           <div className="sheet-sync-row">
             {link.fileUrl && (
               <a href={link.fileUrl} target="_blank" rel="noopener noreferrer" className="sheet-sync-btn sheet-sync-btn--primary">
