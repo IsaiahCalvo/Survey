@@ -277,9 +277,10 @@ test('real SVG commit seams use object transforms for move and resize', () => {
   assert.match(source, /action:\s*'group-move'[\s\S]*?commitInkObjectMove|commitInkObjectMove[\s\S]*?action:\s*'group-move'/);
   assert.match(source, /action:\s*'scale'[\s\S]*?commitInkObjectResize|commitInkObjectResize[\s\S]*?action:\s*'scale'/);
   assert.match(source, /groupPageMatrix[\s\S]*?applyPageAffineToInkObject/);
-  // 2026-10-22 (multi-select resize, Drawboard rules): a group never mirrors
-  // and stops when its smallest member reaches 4 page units; the scale is
-  // never zero, so the group's page matrix stays invertible for ink.
+  // 2026-10-22 (multi-select resize, Drawboard rules): a group stops shrinking
+  // when its smallest member reaches 4 page units (since 2026-11-03 it flips
+  // through, owner ask); the scale is never zero, so the group's page matrix
+  // stays invertible for ink.
   assert.match(source, /const \{ sx, sy \} = resolveGroupResizeScale\(\{[\s\S]*?minScaleX: ds\.groupResizeMinScale/);
   const groupResize = readFileSync(new URL('../src/utils/groupResize.js', import.meta.url), 'utf8');
   assert.match(groupResize, /const MIN_GROUP_SCALE = 1e-6;/, 'a group scale is never zero');
@@ -290,10 +291,12 @@ test('real SVG commit seams use object transforms for move and resize', () => {
   // thinner, so microscopic geometry is never blown up. The zero-matrix guard
   // moved into clampResizeScale (tests/resizeMinimum.test.mjs). The old
   // "only guards the singular zero" regex was replaced for that reason, not to
-  // make a failing test pass.
+  // make a failing test pass. RULED 2026-11-03 (owner: "every annotation"):
+  // every single mark flips except a counter (which turns over instead) and an
+  // old-style 'group' arrow, so the path is no longer listed by name.
   assert.match(
     source,
-    /isExactPathResize\s*=\s*typeForFlip\s*===\s*'path'[\s\S]*?supportsFlip[\s\S]*?\|\|\s*isExactPathResize[\s\S]*?clampResizeScale\(newScaleX,[\s\S]*?allowFlip:\s*supportsFlip/,
+    /isExactPathResize\s*=\s*typeForFlip\s*===\s*'path'[\s\S]*?const supportsFlip = !isCounterResize && typeForFlip !== 'group';[\s\S]*?clampResizeScale\(newScaleX,[\s\S]*?allowFlip:\s*supportsFlip/,
     'single path resize keeps signed scales (flip) with the shared 4-unit floor',
   );
   assert.match(
