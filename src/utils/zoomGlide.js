@@ -56,11 +56,14 @@ function hermiteSlope(gap, slope, u) {
 }
 
 /** A new glide from the scale on screen (`from`) toward `to`. */
-export function createZoomGlide({ from, to, now = 0, mode = 'tween' } = {}) {
+export function createZoomGlide({ from, to, now = 0, mode = 'tween', durationMs } = {}) {
   const start = positive(from);
   const target = positive(to, start);
   return {
     mode: mode === 'chase' ? 'chase' : 'tween',
+    // A tween's length. Buttons and keys use ZOOM_GLIDE_MS; a jump to a search
+    // hit or a Survey Marker (viewerFlyTo.js) takes a little longer.
+    durationMs: positive(durationMs, ZOOM_GLIDE_MS),
     from: start,
     shown: start,
     target,
@@ -100,6 +103,10 @@ export function retargetZoomGlide(glide, { to, now = 0, mode } = {}) {
   return {
     ...glide,
     mode: nextMode,
+    // A press or notch during a jump's glide is an ordinary zoom from here on:
+    // the usual length, and the jump's sideways move stops where it is shown.
+    durationMs: ZOOM_GLIDE_MS,
+    pan: null,
     from,
     target,
     slope,
@@ -128,14 +135,15 @@ export function stepZoomGlide(glide, now) {
     shown = done ? target : target * Math.exp(-left);
     velocity = done ? 0 : left / ZOOM_CHASE_TAU_MS;
   } else {
+    const duration = positive(glide.durationMs, ZOOM_GLIDE_MS);
     const elapsed = Math.max(MIN_STEP_MS, t - glide.t0);
-    const u = Math.min(1, elapsed / ZOOM_GLIDE_MS);
+    const u = Math.min(1, elapsed / duration);
     done = u >= 1;
     const from = positive(glide.from);
     const gap = Math.log(target / from);
     const slope = Number.isFinite(glide.slope) ? glide.slope : 3 * gap;
     shown = done ? target : from * Math.exp(hermite(gap, slope, u));
-    velocity = done ? 0 : hermiteSlope(gap, slope, u) / ZOOM_GLIDE_MS;
+    velocity = done ? 0 : hermiteSlope(gap, slope, u) / duration;
   }
   return { ...glide, shown, velocity, lastT: t, done };
 }
