@@ -27,14 +27,21 @@ test('selected counter colors route through the series update contract', () => {
   );
 });
 
-test('counter start is published and remains editable only for a one-pin series', () => {
-  assert.match(
+// Owner 2026-11-09 ("I could start it from number 2 ... renumber
+// everything"): the start number is editable for a count of any size, and the
+// whole count renumbers from it through the one series-update contract.
+test('counter start is published and editable for any count, renumbering the whole count', () => {
+  assert.doesNotMatch(
     VIEWER_SOURCE,
     /if \(\(series\?\.count \|\| 0\) !== 1\) return;/,
   );
   assert.match(
     VIEWER_SOURCE,
-    /handleCounterGroupUpdateRef\.current\?\.\(seriesId, \{ seriesStart: parsed \}\);/,
+    /const result = handleSetCounterSeriesStartRef\.current\?\.\(seriesId, parsed\);/,
+  );
+  assert.match(
+    VIEWER_SOURCE,
+    /handleCounterGroupUpdateRef\.current\?\.\(seriesId, \{ seriesStart \}\);/,
   );
   assert.match(VIEWER_SOURCE, /selectedCounterSeriesId,/);
   assert.match(
@@ -48,7 +55,7 @@ test('counter start is published and remains editable only for a one-pin series'
 
   assert.match(
     APP_SHELL_SOURCE,
-    /const startLocked = bottomToolbarApi\.selectedCounterSeriesSize !== 1;/,
+    /const startLocked = !\(bottomToolbarApi\.selectedCounterSeriesSize >= 1\);/,
   );
   assert.match(APP_SHELL_SOURCE, /disabled=\{startLocked\}/);
   assert.match(APP_SHELL_SOURCE, /aria-label="Counter start number"/);

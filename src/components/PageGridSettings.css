@@ -26,26 +26,46 @@
 }
 .page-grid-settings__switch[aria-checked="true"] .page-grid-settings__knob { background: var(--accent); }
 .page-grid-settings__switch[aria-checked="true"] .page-grid-settings__knob::after { transform: translateX(12px); background: var(--accent-text, #15110a); }
-.page-grid-settings__label { color: var(--text-3); font-size: 11px; font-weight: 600; }
+/* Fine / Normal / Wide: the app's one ButtonGroup row (dropdownLook rule). */
+/* The spacing slider: the app's slim slider (thin track, 12px thumb), the
+   part left of the thumb in the accent. */
+.page-grid-settings__slider {
+  -webkit-appearance: none; appearance: none; width: 100%; height: 16px; margin: 0;
+  background: transparent; cursor: pointer;
+}
+.page-grid-settings__slider::-webkit-slider-runnable-track {
+  height: 4px; border-radius: 999px;
+  background: linear-gradient(to right, var(--accent) 0 var(--fill, 50%), var(--surface-3, rgba(255, 255, 255, 0.14)) var(--fill, 50%) 100%);
+}
+.page-grid-settings__slider::-moz-range-track { height: 4px; border-radius: 999px; background: var(--surface-3, rgba(255, 255, 255, 0.14)); }
+.page-grid-settings__slider::-moz-range-progress { height: 4px; border-radius: 999px; background: var(--accent); }
+.page-grid-settings__slider::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 12px; height: 12px; margin-top: -4px;
+  border-radius: 50%; background: var(--text-1); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+.page-grid-settings__slider::-moz-range-thumb { width: 12px; height: 12px; border: 0; border-radius: 50%; background: var(--text-1); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4); }
+.page-grid-settings__slider:focus-visible { outline: none; }
+.page-grid-settings__slider:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px var(--focus); }
 .page-grid-settings__custom { display: flex; align-items: center; gap: 6px; color: var(--text-2); }
 .page-grid-settings__custom input,
 .page-grid-settings__custom select {
   min-width: 0; height: 28px; padding: 0 6px; border: 1px solid var(--border); border-radius: 6px;
   background: var(--surface-1); color: var(--text-1); font: inherit;
 }
-.page-grid-settings__custom input { width: 64px; }
+.page-grid-settings__custom input { width: 72px; text-align: center; font-variant-numeric: tabular-nums; }
 .page-grid-settings__custom select,
 .page-grid-settings__custom .value-select { flex: 1; }
 .page-grid-settings__custom .value-select .chrome-pill { height: 28px; }
 .page-grid-settings__hint { margin: 0; color: var(--text-3); font-size: 11px; line-height: 1.4; }
 .page-grid-settings.is-phone { font-size: 13px; padding: 2px 6px 8px; }
 /* The phone menu is narrow: two by two. */
-.page-grid-settings.is-phone .page-grid-settings__custom { flex-wrap: wrap; }
 .page-grid-settings.is-phone .page-grid-settings__custom input { flex: 1; width: auto; }
 .page-grid-settings.is-phone .page-grid-settings__switch,
 .page-grid-settings.is-phone .page-grid-settings__custom input,
 .page-grid-settings.is-phone .page-grid-settings__custom select { min-height: 44px; }
-.page-grid-settings__seg > button { padding: 4px 2px; min-height: 40px; }
+.page-grid-settings.is-phone .page-grid-settings__presets button { min-height: 44px; }
+.page-grid-settings.is-phone .page-grid-settings__slider { height: 32px; }
+.page-grid-settings.is-phone .page-grid-settings__slider::-webkit-slider-thumb { width: 22px; height: 22px; margin-top: -9px; }
 @media (prefers-reduced-motion: reduce) {
   .page-grid-settings__knob, .page-grid-settings__knob::after { transition: none; }
 }

@@ -304,7 +304,7 @@ export default function CommentsPanel({
       || (located?.annotation ? historyAnnotationInkBox(located.annotation) : null);
     const picked = located && typeof selectHistoryMark === 'function' ? selectHistoryMark(markId) : false;
     const focus = () => {
-      const focused = typeof focusHistoryMark === 'function' ? focusHistoryMark(page, box, { glide: true }) : false;
+      const focused = typeof focusHistoryMark === 'function' ? focusHistoryMark(page, box, { animate: true }) : false;
       if (!focused) onNavigateToPage?.(page, { fallback: 'nearest', bypassActiveSpace: true });
     };
     // Picking a mark brings up its style row above the page; centre in the

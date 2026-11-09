@@ -46,7 +46,7 @@ import { clampResizeEdge } from '../utils/pageEdgeRules.js';
 // helpers from lineDragMath (unit-tested in tests/lineDragMath.test.mjs).
 import { shouldSnapToLinear, getMidpoint } from '../utils/lineGeometry.js';
 import { movePolyVertexPoints } from '../utils/polyDraft.js';
-import { insertSplineCorner, keepPivot, moveSplineCorner, polySplineStep, splineSpanMidpoint } from '../utils/polySpline.js';
+import { insertSplineCorner, isBezierSpline, keepPivot, markBezierSpline, moveSplineCorner, moveSplineHandle, polySplineStep, splineSpanMidpoint, splineSpans } from '../utils/polySpline.js';
 import { collectEndpointCandidates, resolveDrawSnap, drawSnapEventOptions } from '../utils/drawSnap.js';
 // UX 2026-09-09: a cloud polygon/polyline vertex drag replays the approved
 // studio's moveVertex(): only the dragged vertex's corner is re-fitted and the
@@ -3342,10 +3342,12 @@ export function useSVGInteraction({
       // makes the corner jump under the cursor on the first move (Drawboard).
       if (!ds.startLocal) ds.startLocal = toLocal(ds.startSVGPoint);
       const pointerLocal = toLocal(svgPoint);
-      const grabbed = ds.originalPoints[ds.vertexIndex];
+      const grabbed = ds.curveHandle ? ds.curveHandle.start : ds.originalPoints[ds.vertexIndex];
       let localX = grabbed.x + pointerLocal.x - ds.startLocal.x;
       let localY = grabbed.y + pointerLocal.y - ds.startLocal.y;
-      {
+      // A curve handle goes where the pointer takes it: Shift is already
+      // down to show it, so no angle snap.
+      if (!ds.curveHandle) {
         // Snap in page space: forward-map local -> world, snap, map back.
         const toWorld = (p) => {
           const ox = scaleX * (p.x - pathOffsetX) - oldRotCx;
@@ -3366,9 +3368,11 @@ export function useSVGInteraction({
       // polyline draft module: the dragged point is replaced, every other
       // point is copied through byte-for-byte so no neighbour drifts.
       // A curved polyline moves the clicked corner and draws its curve again.
-      const newPoints = ds.splineStep
-        ? moveSplineCorner(ds.originalPoints, ds.splineStep, ds.vertexIndex, { x: localX, y: localY })
-        : movePolyVertexPoints(ds.originalPoints, ds.vertexIndex, { x: localX, y: localY });
+      const newPoints = ds.curveHandle
+        ? moveSplineHandle(ds.originalPoints, ds.splineStep, ds.curveHandle.span, ds.curveHandle.which, { x: localX, y: localY })
+        : ds.splineStep
+          ? moveSplineCorner(ds.originalPoints, ds.splineStep, ds.vertexIndex, { x: localX, y: localY }, ds.splineBezier)
+          : movePolyVertexPoints(ds.originalPoints, ds.vertexIndex, { x: localX, y: localY });
 
       // UX 2026-04-20: keep the world rotation pivot anchored when a vertex
       // moves on a ROTATED polygon. The renderer re-derives rotCenter from
@@ -3396,6 +3400,8 @@ export function useSVGInteraction({
       targetObj.points = newPoints;
       targetObj.left = newLeft;
       targetObj.top = newTop;
+      // Bent by hand: corner edits now keep these handles (polySpline.js).
+      if (ds.curveHandle) targetObj.data = markBezierSpline(targetObj.data);
       // Cloud parity: the engine sees this vertex at (local - pathOffset) *
       // scale (cloudPolyEnginePoints), so hand moveVertex the same number and
       // carry the studio's per-vertex arrays on the object for every renderer.
@@ -6318,7 +6324,7 @@ export function useSVGInteraction({
       if (splineStep) {
         // The new curve's box can differ from the old one; keepPivot holds a
         // turned line's corners where they were (Codex review on #1214).
-        obj = keepPivot(obj, obj.points, insertSplineCorner(obj.points, splineStep, segmentIndex, splineSpanMidpoint(obj.points, splineStep, segmentIndex)));
+        obj = keepPivot(obj, obj.points, insertSplineCorner(obj.points, splineStep, segmentIndex, splineSpanMidpoint(obj.points, splineStep, segmentIndex), isBezierSpline(obj)));
         handleId = `vertex-${(segmentIndex + 1) * splineStep}`;
       } else {
         const from = obj.points[segmentIndex];
@@ -6417,8 +6423,23 @@ export function useSVGInteraction({
     // the shape's full transform chain so pointermove can map world pointer
     // coords back into the shape's local-points frame and rewrite just the
     // one point being dragged. All other points stay where they were.
-    if (typeof handleId === 'string' && handleId.startsWith('vertex-')) {
-      const vertexIndex = parseInt(handleId.slice('vertex-'.length), 10);
+    // A curve handle (Shift on a picked curved polyline, as in Takeoff) rides
+    // the same drag: `curve-handle-<span>-c1|c2` bends one span by hand.
+    const curveHandleMatch = typeof handleId === 'string' ? /^curve-handle-(\d+)-(c1|c2)$/.exec(handleId) : null;
+    if (typeof handleId === 'string' && (handleId.startsWith('vertex-') || curveHandleMatch)) {
+      const handleStep = curveHandleMatch ? polySplineStep(obj) : 0;
+      const curveHandle = curveHandleMatch && handleStep
+        ? (() => {
+            const span = Number(curveHandleMatch[1]);
+            const which = curveHandleMatch[2];
+            const at = splineSpans(obj.points, handleStep)[span]?.[which];
+            return at ? { span, which, start: at } : null;
+          })()
+        : null;
+      if (curveHandleMatch && !curveHandle) return;
+      const vertexIndex = curveHandle
+        ? (curveHandle.which === 'c1' ? curveHandle.span : curveHandle.span + 1) * handleStep
+        : parseInt(handleId.slice('vertex-'.length), 10);
       if (Number.isFinite(vertexIndex) && Array.isArray(obj.points) && obj.points[vertexIndex]) {
         // Capture on the page SVG, as for the bend handle above.
         try { svgRef.current?.setPointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
@@ -6449,6 +6470,8 @@ export function useSVGInteraction({
           ctmInverse,
           vertexIndex,
           splineStep,
+          splineBezier: isBezierSpline(obj),
+          curveHandle,
           cloudVertexEdit,
           // Per-field sync (2026-09-24): the release writes only this mark's
           // own change (drag start → last frame) onto the page as it is then.

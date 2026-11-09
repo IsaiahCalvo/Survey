@@ -56,6 +56,7 @@ const DRAG_START_PX = 6;
 const SETTLE_EASING = 'cubic-bezier(0.25, 0.55, 0.35, 1)';
 const DOCK_MORPH_MS = 320;
 const DOCK_MORPH_EASING = 'cubic-bezier(0.4, 0, 0.2, 1)';
+const DOCK_MORPH_MIN_MS = 300;
 const ZONES_FADE_OUT_MS = 240;
 const PIN_SLIDE_MS = 180;
 const PIN_GAP_PX = 2; // .pinned-dock__pins gap
@@ -164,6 +165,13 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
     if (!current || !pin) return;
     setSession(armPin(current, sessionRef.current, pin));
   }, [setSession]);
+
+  // Survey mode has its own pins (owner 2026-11-09): the dock shows the
+  // survey set while Survey is on and the markup set everywhere else.
+  const surveyOn = Boolean(api?.showSurveyPanel);
+  useEffect(() => {
+    store.setPinSet(surveyOn ? 'survey' : 'markup');
+  }, [store, surveyOn]);
 
   // Leave the pin when another tool is armed or the document changes.
   useEffect(() => {
@@ -387,6 +395,7 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
       const from = dock.getBoundingClientRect();
       morphRef.current?.cancel();
       morphRef.current = null;
+      const snap = snapshotDock(dock);
       dock.style.transition = 'none';
       dock.style.removeProperty('translate');
       dock.style.scale = '1';
@@ -395,7 +404,7 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
         setZonesLeaving(true);
         if (drop && drag.target) store.setPlacement(drag.target);
       });
-      settleInto(dock, from, drag.root);
+      settleInto(dock, from, drag.root, snap);
     };
     const up = (ev) => finish(ev, true);
     const cancel = (ev) => finish(ev, false);
@@ -421,7 +430,9 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
         [{ width: `${from.width}px`, height: `${from.height}px` }, { width: `${to.width}px`, height: `${to.height}px` }],
         { duration: DOCK_MORPH_MS, easing: DOCK_MORPH_EASING },
       );
-      listRef.current?.animate?.([{ opacity: 0.3 }, { opacity: 1 }], { duration: DOCK_MORPH_MS, easing: DOCK_MORPH_EASING });
+      // Its tools reflow at once inside the clipped box: keep them out of
+      // sight for the first third, then fade them in as the box settles.
+      listRef.current?.animate?.([{ opacity: 0 }, { opacity: 0, offset: 0.35 }, { opacity: 1 }], { duration: DOCK_MORPH_MS, easing: DOCK_MORPH_EASING });
     }
     drag.place();
   }, [dockDrag?.target, Boolean(dockDrag)]);
@@ -434,10 +445,69 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
     return () => window.clearTimeout(timer);
   }, [zonesLeaving]);
 
+  // The dock as drawn now (its tools in their current shape), for the morph.
+  const snapshotDock = (dock) => (dock ? { clone: dock.cloneNode(true), width: dock.offsetWidth, height: dock.offsetHeight } : null);
+
+  // Shape change (owner 2026-11-09: "buttery smooth ... every permutation").
+  // Growing the real dock's box from a column to a row reflowed its tools at
+  // once and, anchored by its shell, swung through the middle of the page.
+  // Instead a stand-in box with the dock's own look glides and reshapes from
+  // where the dock was to where it lands, the old tools fading out and the
+  // new ones fading in at its centre; then the real dock, already in place,
+  // takes over on the same pixels.
+  const morphInto = (dock, from, to, area, snap, done) => {
+    const host = shellRef.current?.parentElement;
+    if (!host || typeof dock.animate !== 'function' || !(snap?.width > 0) || !(snap?.height > 0)) return false;
+    const hostRect = host.getBoundingClientRect();
+    const clampTo = (value, min, max) => (max < min ? value : Math.min(max, Math.max(min, value)));
+    const cx = area ? clampTo(from.left + from.width / 2, area.left + from.width / 2, area.left + area.width - from.width / 2) : from.left + from.width / 2;
+    const cy = area ? clampTo(from.top + from.height / 2, area.top + from.height / 2, area.top + area.height - from.height / 2) : from.top + from.height / 2;
+    const box = (left, top, width, height) => ({
+      left: `${left - hostRect.left}px`, top: `${top - hostRect.top}px`, width: `${width}px`, height: `${height}px`,
+    });
+    const start = box(cx - from.width / 2, cy - from.height / 2, from.width, from.height);
+    const end = box(to.left, to.top, to.width, to.height);
+    const layer = (node, width, height, scale) => {
+      node.removeAttribute('id');
+      node.setAttribute('aria-hidden', 'true');
+      node.inert = true;
+      node.className = `${node.className} pinned-dock-morph__layer`;
+      node.style.cssText = `width:${width}px;height:${height}px;scale:${scale}`;
+      return node;
+    };
+    const oldLayer = layer(snap.clone, snap.width, snap.height, Math.min(from.width / snap.width, from.height / snap.height));
+    const newLayer = layer(dock.cloneNode(true), dock.offsetWidth, dock.offsetHeight, 1);
+    const plate = document.createElement('div');
+    plate.className = 'pinned-dock-morph';
+    plate.setAttribute('aria-hidden', 'true');
+    plate.dataset.pinnedDockMorph = 'true';
+    Object.assign(plate.style, start);
+    plate.append(oldLayer, newLayer);
+    host.appendChild(plate);
+    dock.style.opacity = '0';
+    const duration = Math.max(DOCK_MORPH_MIN_MS, dropDurationMs(from, to));
+    const options = { duration, easing: SETTLE_EASING, fill: 'forwards' };
+    plate.animate([start, end], options);
+    oldLayer.animate([{ opacity: 1 }, { opacity: 0, offset: 0.55 }, { opacity: 0 }], options);
+    newLayer.animate([{ opacity: 0 }, { opacity: 0, offset: 0.25 }, { opacity: 1 }], options);
+    let finished = false;
+    const timer = window.setTimeout(() => finish(), duration + 20);
+    function finish() {
+      if (finished) return;
+      finished = true;
+      window.clearTimeout(timer);
+      plate.remove();
+      dock.style.removeProperty('opacity');
+      done();
+    }
+    settleCleanupRef.current = finish;
+    return true;
+  };
+
   // FLIP: start the docked box where the dragged one was and glide it home.
   // The start is kept inside the page area (`area`), so a dock let go half
   // off an edge does not swing in from outside.
-  const settleInto = (dock, from, area = null) => {
+  const settleInto = (dock, from, area = null, snap = null) => {
     const clear = () => {
       dock.style.removeProperty('transition');
       dock.style.removeProperty('transform');
@@ -459,6 +529,9 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
     const unfolds = typeof dock.animate === 'function'
       && (Math.abs(from.width - to.width) > 1 || Math.abs(from.height - to.height) > 1)
       && Math.abs(sx - sy) > 0.03;
+    // A change of shape (column <-> row, or a longer or shorter dock) morphs
+    // a stand-in box instead, its old and new tools crossfading inside it.
+    if (unfolds && snap && morphInto(dock, from, to, area, snap, clear)) return;
     const scale = Math.abs(sx - sy) <= 0.03 ? (sx + sy) / 2 : 1;
     const clampTo = (value, min, max) => (max < min ? value : Math.min(max, Math.max(min, value)));
     const fromX = area
@@ -508,8 +581,9 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
     event.preventDefault();
     const dock = dockRef.current;
     const from = dock?.getBoundingClientRect();
+    const snap = snapshotDock(dock);
     flushSync(() => store.setPlacement(next));
-    if (dock && from) settleInto(dock, from);
+    if (dock && from) settleInto(dock, from, null, snap);
   };
 
   // --- pin drag (reorder) ---------------------------------------------------
@@ -834,6 +908,7 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
           hiddenPins={hidden}
           renderPin={renderPin}
           compact={state.compact}
+          pinSet={state.pinSet}
           editing={editing}
           currentKind={currentKind}
           onPinCurrent={pinCurrent}
@@ -845,15 +920,17 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
             closeMenu();
             const dock = dockRef.current;
             const from = dock?.getBoundingClientRect();
+            const snap = snapshotDock(dock);
             flushSync(() => store.setPlacement(next));
-            if (dock && from) settleInto(dock, from);
+            if (dock && from) settleInto(dock, from, null, snap);
           }}
           onToggleCompact={() => {
             closeMenu();
             const dock = dockRef.current;
             const from = dock?.getBoundingClientRect();
+            const snap = snapshotDock(dock);
             flushSync(() => store.setCompact(!state.compact));
-            if (dock && from) settleInto(dock, from);
+            if (dock && from) settleInto(dock, from, null, snap);
           }}
           onToggleEditing={() => { setEditing((value) => !value); closeMenu(); }}
           onHide={() => { closeMenu(); setEditing(false); store.setVisible(false); }}
@@ -881,7 +958,7 @@ function menuPosition(rect, placement, width = 240) {
 }
 
 function PinnedToolsMenu({
-  menuRef, menu, placement, phone, pins, hiddenPins, renderPin, compact, editing, currentKind, onPinCurrent, onAdd,
+  menuRef, menu, placement, phone, pins, hiddenPins, renderPin, compact, pinSet, editing, currentKind, onPinCurrent, onAdd,
   onUnpin, onDuplicate, onMoveToStart, onPlacement, onToggleCompact, onToggleEditing, onHide, api,
 }) {
   // The "+N" grid: five pins a row, each the dock's own pin button.
@@ -926,6 +1003,9 @@ function PinnedToolsMenu({
   if (menu.kind === 'settings') {
     return (
       <div ref={menuRef} role="menu" aria-label="Pinned tools menu" className="pinned-dock-menu" style={style} data-pinned-tools-settings="true">
+        {pinSet === 'survey' ? (
+          <p className="pinned-dock-menu__note" data-pin-set-note="survey">Survey pins: these show only in Survey mode.</p>
+        ) : null}
         {phone ? null : (
           <>
             <div className="pinned-dock-menu__heading">Dock</div>

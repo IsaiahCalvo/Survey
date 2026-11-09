@@ -39,7 +39,7 @@ import {
 } from './MobileSurveyRail.jsx';
 import { railButtonPressed } from '../utils/toolbarToolPressed.js';
 import { formatPageTotal } from '../utils/pageTotalLabel.js';
-import { MOBILE_MEASURE_ITEMS, applyMobileMeasurePick, applyMobileShapePick, isMobileShapeToolActive } from './mobileShapeRail.js';
+import { applyMobileMeasurePick, applyMobileShapePick, isMobileShapeToolActive, mobileMeasureItems } from './mobileShapeRail.js';
 import './mobilePdfViewer.css';
 import { useTooltip } from '../components/Tooltip';
 import { SECTION_DONE_ICON } from '../components/SectionIconButton.jsx';
@@ -3083,7 +3083,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                         color: 'var(--text-2)',
                       }}
                     >
-                      {MOBILE_MEASURE_ITEMS.map((m) => (
+                      {mobileMeasureItems(isFeatureOn('measure-depth')).map((m) => (
                         <button
                           key={m.key}
                           type="button"

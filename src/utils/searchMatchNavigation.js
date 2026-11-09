@@ -5,21 +5,28 @@
  * zoomed in and centered on whatever it is that it found"):
  *   - a picked match lands in the middle of the part of the PDF you can
  *     actually see — not under the open side panel, not under the phone sheet;
- *   - the view zooms in to a comfortable reading size for that line of text,
- *     but never zooms OUT (if you are already closer than that, it just
- *     centers);
+ *   - the view zooms in a little, to a comfortable reading size for that line
+ *     of text with the paragraphs around it still on screen (owner
+ *     2026-11-09), but never zooms OUT (if you are already closer than that,
+ *     it just centers);
  *   - the result list shows a short line of text centered on the match.
  * Kept free of React/DOM so the rules are unit-tested (tests/searchMatchNavigation.test.mjs).
  */
 
-// On-screen height we aim for a matched line of text, in CSS px. 18px reads
-// like body text on a laptop; the phone uses a touch smaller target because
-// its viewport is a third as wide and 18px there already fills a lot of it.
-export const SEARCH_READABLE_TEXT_PX = 18;
-export const SEARCH_READABLE_TEXT_PX_PHONE = 16;
+// On-screen height we aim for a matched line of text, in CSS px. Owner
+// 2026-11-09: "It shouldn't zoom in so much ... you want to read the
+// surrounding paragraphs." 14px reads like small body text on a laptop and
+// leaves room for the paragraphs around the hit (it was 18px); the phone's
+// viewport is a third as wide, so a touch smaller there.
+export const SEARCH_READABLE_TEXT_PX = 14;
+export const SEARCH_READABLE_TEXT_PX_PHONE = 13;
 // Never jump past this zoom for a search hit, however small the text is —
 // deeper zooms are for a person to choose, not for a jump to surprise them.
-export const SEARCH_MAX_AUTO_SCALE = 4;
+export const SEARCH_MAX_AUTO_SCALE = 3;
+// Nor past this many times the zoom that fits the whole page, so you still
+// see where on the sheet the hit is. Survey Markers may go a little closer
+// (SURVEY_LOCATE_MAX_FIT_MULTIPLE in PDFViewer).
+export const SEARCH_MAX_FIT_MULTIPLE = 2.5;
 // The match (plus a little context) must stay inside this share of the
 // visible width, so a long phrase is never zoomed so far it runs off-screen.
 export const SEARCH_MAX_MATCH_WIDTH_SHARE = 0.7;
@@ -38,7 +45,12 @@ const finite = (value, fallback = 0) => {
  * @param {number} input.visibleWidth   width of the unobstructed PDF area, CSS px
  * @param {number} [input.targetTextPx] desired on-screen line height
  * @param {number} [input.maxScale]     hard ceiling
- * @returns {number} the scale to use (>= currentScale)
+ * @param {number} [input.floorScale]   never land below this zoom: the zoom you
+ *   had before the search first zoomed in (defaults to currentScale, i.e. a
+ *   jump never zooms out). Owner 2026-11-09: stepping from a hit in tiny text
+ *   to one in a big title comes back out toward that zoom instead of showing
+ *   the title blown up.
+ * @returns {number} the scale to use (>= floorScale)
  */
 export function resolveReadableSearchScale({
   currentScale,
@@ -47,8 +59,10 @@ export function resolveReadableSearchScale({
   visibleWidth,
   targetTextPx = SEARCH_READABLE_TEXT_PX,
   maxScale = SEARCH_MAX_AUTO_SCALE,
+  floorScale,
 } = {}) {
   const current = Math.max(0.01, finite(currentScale, 1));
+  const floor = Math.max(0.01, Math.min(current, finite(floorScale, current)));
   const height = finite(lineHeight, 0);
   if (!(height > 0)) return current;
 
@@ -58,9 +72,10 @@ export function resolveReadableSearchScale({
   if (width > 0 && visible > 0) {
     target = Math.min(target, (visible * SEARCH_MAX_MATCH_WIDTH_SHARE) / width);
   }
-  target = Math.min(target, Math.max(current, finite(maxScale, SEARCH_MAX_AUTO_SCALE)));
-  // Never zoom out: a jump only ever brings the text closer.
-  return Math.max(current, target);
+  target = Math.min(target, Math.max(floor, finite(maxScale, SEARCH_MAX_AUTO_SCALE)));
+  // Never below the floor: a jump never zooms out past where you were before
+  // the search started zooming.
+  return Math.max(floor, target);
 }
 
 /**
