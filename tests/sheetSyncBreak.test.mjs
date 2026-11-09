@@ -536,3 +536,21 @@ test('a totals line typed under the items is not made an item, and new items go 
   const quiet = await ctx.round({ force: true });
   assert.deepEqual(Object.values(quiet.summary).filter(Boolean), []);
 });
+
+// Slow networks: a call that never answers used to hold the round (and its
+// lease, and the person's panel) until the platform killed the function.
+test('a Microsoft or Google call that hangs gives up and counts as busy', async () => {
+  const { createMsGraphProvider } = await import('../supabase/functions/_shared/sheetSync/providers/msgraph.js');
+  const { fetchWithTimeout } = await import('../supabase/functions/_shared/sheetSync/providers/contract.js');
+  const hang = (_url, init) => new Promise((_, reject) => {
+    init.signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })));
+  });
+  const ms = createMsGraphProvider({ getAccessToken: async () => 't', fetch: hang, baseUrl: 'http://x.test/v1.0', timeoutMs: 30 });
+  await assert.rejects(ms.getVersion('drives/d1/items/i1'), (err) => err.status === 504 && err.code === 'timeout');
+  const g = googleSheetsProvider({ endpoints: { sheets: 'http://g.test', drive: 'http://g.test' }, getAccessToken: async () => 't', fetchImpl: hang, timeoutMs: 30 });
+  await assert.rejects(g.getVersion('f1'), (err) => err.status === 504 && err.code === 'timeout');
+  // A fast answer is untouched, and a real network error is not a timeout.
+  const ok = await fetchWithTimeout(async () => ({ ok: true }), 'http://x.test', {}, 30);
+  assert.equal(ok.ok, true);
+  await assert.rejects(fetchWithTimeout(async () => { throw new TypeError('network down'); }, 'http://x.test', {}, 30), (err) => err instanceof TypeError);
+});

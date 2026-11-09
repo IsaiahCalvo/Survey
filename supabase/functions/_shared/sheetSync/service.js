@@ -957,6 +957,7 @@ async function runRoundFor(ctx, link, { provider = null, signing = null, force =
       : refused ? `The linked ${what} is no longer shared with the person who linked it, or they can no longer edit it. An editor with access to the file can keep it syncing with their own account.`
       : status === 404 ? `The linked ${what} was deleted or is no longer shared with the person who linked it.`
       : status === 429 ? `${who} asked us to slow down. Syncing again in a minute.`
+      : err?.code === 'timeout' ? `${who} did not answer in time (a slow connection). Syncing again in a moment.`
       : isBusy(status, err) ? `${who} is busy right now. Syncing again in a moment.`
       : status === 413 ? `The linked ${what} is too big to sync (over 250,000 cells in its synced tabs). Delete rows or tabs you no longer need.`
       : status === 409 && err?.code === 'personal-onedrive' ? 'This workbook is on a personal OneDrive, which cannot sync cell by cell.'

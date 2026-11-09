@@ -9,7 +9,7 @@
 //
 // fileId is `drives/<driveId>/items/<itemId>` (driveIds hold `!`, so no short form).
 // Rows and columns are 0-based from A1; row 0 is the header.
-import { cellError } from './contract.js';
+import { cellError, fetchWithTimeout, REQUEST_TIMEOUT_MS } from './contract.js';
 import { buildLiveWorkbook, excelSheetNames } from './liveWorkbook.js';
 import { trackingChoices } from '../layout.js';
 
@@ -223,7 +223,7 @@ export function columnRuns(columns, valueOf) {
  * @param {string} [options.baseUrl]  for tests
  * @param {() => number} [options.now]
  */
-export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globalThis.fetch, baseUrl = GRAPH, now = Date.now } = {}) {
+export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globalThis.fetch, baseUrl = GRAPH, now = Date.now, timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
   if (typeof getAccessToken !== 'function') throw new Error('msgraph: getAccessToken is required');
   const sessions = new Map(); // fileId → { id, at }
   const checkedBusiness = new Set();
@@ -234,7 +234,7 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
   // tens of megabytes; on success the body is dropped unread.
   async function call(method, path, { body, headers = {}, where = path, raw = false, discard = false } = {}) {
     const token = await getAccessToken();
-    const response = await fetchImpl(`${baseUrl}/${path}`, {
+    const response = await fetchWithTimeout(fetchImpl, `${baseUrl}/${path}`, {
       method,
       headers: {
         Authorization: `Bearer ${token}`,
@@ -242,7 +242,7 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
         ...headers,
       },
       body: body === undefined ? undefined : raw ? body : JSON.stringify(body),
-    });
+    }, timeoutMs);
     if (discard && response.ok) {
       try { await response.body?.cancel?.(); } catch { /* already closed */ }
       return null;

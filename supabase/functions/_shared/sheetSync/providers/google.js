@@ -8,7 +8,7 @@
 // writes per minute per person, 300 per project. A round costs one Drive
 // call when nothing changed, plus one read and at most three writes when
 // something did; the runner spaces rounds out, and a 429 backs it off.
-import { providerError, cellError } from './contract.js';
+import { providerError, cellError, fetchWithTimeout, REQUEST_TIMEOUT_MS } from './contract.js';
 import { trackingChoices } from '../layout.js';
 
 export const GOOGLE_SCOPES = Object.freeze(['openid', 'email', 'https://www.googleapis.com/auth/drive.file']);
@@ -203,17 +203,17 @@ const hideRowIdColumn = (sheetId, scope) => {
  * A provider bound to one person's Google sign-in.
  * @param {{ endpoints: object, getAccessToken: () => Promise<string>, fetchImpl?: typeof fetch }} opts
  */
-export function googleSheetsProvider({ endpoints, getAccessToken, fetchImpl = fetch }) {
+export function googleSheetsProvider({ endpoints, getAccessToken, fetchImpl = fetch, timeoutMs = REQUEST_TIMEOUT_MS }) {
   const columnCounts = new Map(); // `${fileId}:${sheetId}` -> columns, from the last read
   const lastEditors = new Map(); // fileId -> { name, email, me, at }, from the last getVersion
 
   async function call(url, { method = 'GET', body } = {}) {
     const token = await getAccessToken();
-    const res = await fetchImpl(url, {
+    const res = await fetchWithTimeout(fetchImpl, url, {
       method,
       headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
       body: body ? JSON.stringify(body) : undefined,
-    });
+    }, timeoutMs);
     if (res.ok) return res.status === 204 ? {} : res.json();
     const err = await res.json().catch(() => ({}));
     const reason = err?.error?.errors?.[0]?.reason || err?.error?.status || '';
