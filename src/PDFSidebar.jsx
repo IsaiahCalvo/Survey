@@ -247,6 +247,7 @@ const PDFSidebar = React.forwardRef(({
   getHistoryMarkIndex = null,
   locateHistoryMark = null,
   focusHistoryMark = null,
+  selectHistoryMark = null,
   mobileMode = false,
   // False while another tab is in front (AppShell keeps every open tab's rail
   // mounted, TabChromeSlot): a hidden rail leaves the shared page settings and
@@ -394,6 +395,9 @@ const PDFSidebar = React.forwardRef(({
   const [bookmarksHeadHost, setBookmarksHeadHost] = useState(null);
   const [spacesHeadHost, setSpacesHeadHost] = useState(null);
   const [historyHeadHost, setHistoryHeadHost] = useState(null);
+  const [commentsHeadHost, setCommentsHeadHost] = useState(null);
+  const [layersHeadHost, setLayersHeadHost] = useState(null);
+  const [libraryHeadHost, setLibraryHeadHost] = useState(null);
   const [searchSelectOnFocus, setSearchSelectOnFocus] = useState(true);
   const [mobileSpacesPageRows, setMobileSpacesPageRows] = useState(0);
   // 2026-07-12 (demo parity defect #4): the spaces sheet follows its REAL
@@ -515,8 +519,8 @@ const PDFSidebar = React.forwardRef(({
     { id: 'pages', label: 'Pages', icon: 'pages' },
     { id: 'search', label: mobileMode ? 'Search' : 'Search text', icon: 'search' },
     { id: 'bookmarks', label: 'Bookmarks', icon: 'bookmark' },
-    { id: 'spaces', label: 'Spaces', icon: 'layers' },
-    ...(layersEnabled ? [{ id: 'layers', label: 'Layers', icon: 'shapes' }] : []),
+    { id: 'spaces', label: 'Spaces', icon: 'spaces' },
+    ...(layersEnabled ? [{ id: 'layers', label: 'Layers', icon: 'layers' }] : []),
     ...(markLibraryEnabled ? [{ id: 'library', label: 'Library', icon: 'library' }] : []),
     ...(commentsOn ? [{ id: 'comments', label: 'Comments', icon: 'comment' }] : []),
   ];
@@ -547,7 +551,7 @@ const PDFSidebar = React.forwardRef(({
   // vy>0.65) + spring-back + slide-down exit, replacing the old flat 48px
   // touchend delta. Demo SurveySetupSheet.tsx:51-96 / inv-demo §17.
   const mobileStandalonePanel = mobileMode && activeTab === 'spaces'
-    ? { label: 'Spaces', icon: 'layers' }
+    ? { label: 'Spaces', icon: 'spaces' }
     : mobileMode && activeTab === 'history'
       ? { label: 'History', icon: 'history' }
       : null;
@@ -944,6 +948,9 @@ const PDFSidebar = React.forwardRef(({
               <h2 className="left-rail__title">{PANEL_TITLES[activeTab]}</h2>
               <div ref={setBookmarksHeadHost} className="left-rail__head-actions" hidden={activeTab !== 'bookmarks'} />
               <div ref={setSpacesHeadHost} className="left-rail__head-actions" hidden={activeTab !== 'spaces'} />
+              <div ref={setCommentsHeadHost} className="left-rail__head-actions" hidden={activeTab !== 'comments'} />
+              <div ref={setLayersHeadHost} className="left-rail__head-actions" hidden={activeTab !== 'layers'} />
+              <div ref={setLibraryHeadHost} className="left-rail__head-actions" hidden={activeTab !== 'library'} />
               <div ref={setHistoryHeadHost} className="left-rail__head-actions left-rail__head-actions--grow" hidden={activeTab !== 'history'} />
               <span className="left-rail__head-fill" aria-hidden="true" />
               <SectionIconButton
@@ -1120,6 +1127,7 @@ const PDFSidebar = React.forwardRef(({
                   onLayersChange={onLayersChange}
                   onActiveLayerChange={onActiveLayerChange}
                   readOnly={!canEditLayers}
+                  headActionsHost={mobileMode ? null : layersHeadHost}
                 />
               </div>
             )}
@@ -1127,7 +1135,7 @@ const PDFSidebar = React.forwardRef(({
             {markLibraryEnabled && activeTab === 'library' && (
               <div style={{ display: 'flex', flex: 1, flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
                 <Suspense fallback={null}>
-                  <MarkLibraryPanel phone={mobileMode} />
+                  <MarkLibraryPanel phone={mobileMode} headActionsHost={mobileMode ? null : libraryHeadHost} />
                 </Suspense>
               </div>
             )}
@@ -1142,8 +1150,10 @@ const PDFSidebar = React.forwardRef(({
                   canWrite={canEditLayers}
                   locateHistoryMark={locateHistoryMark}
                   focusHistoryMark={focusHistoryMark}
+                  selectHistoryMark={selectHistoryMark}
                   onNavigateToPage={onNavigateToPage}
                   focusRequest={commentsFocusRequest}
+                  headActionsHost={mobileMode ? null : commentsHeadHost}
                 />
               </div>
             )}

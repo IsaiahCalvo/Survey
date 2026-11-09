@@ -114,7 +114,7 @@ import { TEMPLATE_EDITOR_REQUEST_EVENT, takeTemplateEditorRequest } from './temp
 import './TemplatesEditor.css';
 import DismissBarrier from '../components/DismissBarrier';
 import ValueSelect from '../components/ValueSelect.jsx';
-import { ownKitCopyFor, templateOwnKitOf } from '../services/exportFormats/ownKitCopy.js';
+import { OWN_KIT_PREFIX, ownKitCopyFor, templateOwnKitOf } from '../services/exportFormats/ownKitCopy.js';
 import { checkboxProps } from '../utils/keyActivate';
 import SharedTemplateBadge from '../components/SharedTemplateBadge.jsx';
 import { isSmartFillBetaEnabled } from '../survey/smartFillFlag.js';
@@ -332,33 +332,49 @@ const buildRich = (templates, mint = (_key, prefix) => newId(prefix)) => templat
 
 /* Owner 2026-10-27: "auto-mark as complete is a toggle". On (the default),
    a marker turns Complete by itself once every checklist line is done; off,
-   Complete is only set by hand. Neither way takes Complete away. */
-function AutoCompleteSwitch({ template, onToggle, phone = false }) {
+   Complete is only set by hand. Neither way takes Complete away.
+   Owner 2026-11-09: the switch sits on the title's line so the sentence under
+   it has the full width, and the words say what happens; a template without
+   a Complete entity gets a button that adds one. */
+function AutoCompleteSwitch({ template, onToggle, onAddComplete, phone = false }) {
   const on = autoCompleteOn(template);
   const complete = findCompleteEntity(template.roster);
+  const name = complete?.role || 'Complete';
   const id = `template-auto-complete-${phone ? 'phone' : 'desk'}-${template.id}`;
   return (
-    <div className={`template-auto-complete${phone ? ' template-auto-complete--phone' : ''}`} data-auto-complete={on ? 'on' : 'off'}>
-      <div className="template-auto-complete__copy">
+    <div
+      className={`template-auto-complete${phone ? ' template-auto-complete--phone' : ''}`}
+      data-auto-complete={on ? 'on' : 'off'}
+      data-auto-complete-ready={complete ? 'true' : 'false'}
+    >
+      <div className="template-auto-complete__row">
         <div className="template-auto-complete__title" id={id}>Auto-mark as Complete</div>
-        <p className="template-auto-complete__hint">
-          {!complete
-            ? 'Add an entity named Complete to use this.'
-            : on
-              ? `Items turn ${complete.role || 'Complete'} once every line is done.`
-              : `Set ${complete.role || 'Complete'} by hand.`}
-        </p>
+        <button
+          type="button"
+          className="template-auto-complete__switch"
+          role="switch"
+          aria-checked={on}
+          aria-labelledby={id}
+          onClick={onToggle}
+        >
+          <span className="template-auto-complete__track" aria-hidden="true" />
+        </button>
       </div>
-      <button
-        type="button"
-        className="template-auto-complete__switch"
-        role="switch"
-        aria-checked={on}
-        aria-labelledby={id}
-        onClick={onToggle}
-      >
-        <span className="template-auto-complete__track" aria-hidden="true" />
-      </button>
+      <p className="template-auto-complete__hint">
+        {!complete ? (
+          <>
+            Turns items Complete once every line is answered. Needs a Complete entity
+            {onAddComplete ? (
+              <>
+                {': '}
+                <button type="button" className="template-auto-complete__add" onClick={onAddComplete}>Add it</button>
+              </>
+            ) : '.'}
+          </>
+        ) : on
+          ? `Items turn ${name} once every line is answered.`
+          : `Items turn ${name} only when set by hand.`}
+      </p>
     </div>
   );
 }
@@ -1060,11 +1076,17 @@ export default function TemplatesEditor({
     const own = ownKitCopyFor(getExportKit(v));
     return { ...rest, exportKitId: v, ...(own ? { ownExportKit: own } : {}) };
   });
+  // A line under the names that do not say what they hold (owner 2026-11-09).
+  const exportKitDetail = (k) => {
+    if (k.id === DEFAULT_EXPORT_KIT_ID) return 'The item name, a column for each checklist line, then Entity and Notes';
+    if (String(k.id).startsWith(OWN_KIT_PREFIX)) return 'Made from your own spreadsheet';
+    return undefined;
+  };
   const exportKitPicker = (tpl, phone = false) => ({
     value: tpl.exportKitId || DEFAULT_EXPORT_KIT_ID,
     options: [
-      ...exportKitOptions.map((k) => ({ value: k.id, label: k.label || k.id })),
-      ...(ownLayouts ? [{ value: OWN_LAYOUT, label: 'Your own sheet…' }] : []),
+      ...exportKitOptions.map((k) => ({ value: k.id, label: k.label || k.id, detail: exportKitDetail(k) })),
+      ...(ownLayouts ? [{ value: OWN_LAYOUT, label: 'Use your own spreadsheet…', detail: 'Pick the sheet your company already uses; Survey fills in its columns' }] : []),
     ],
     onPick: (v) => {
       if (v === OWN_LAYOUT) { setOwnLayoutFor({ id: tpl.id, phone }); return; }
@@ -1074,6 +1096,7 @@ export default function TemplatesEditor({
   const ownLayoutDialog = (t, phone) => (ownLayouts && ownLayoutFor?.id === t.id && ownLayoutFor.phone === phone ? (
     <Suspense fallback={null}>
       <OwnExcelLayoutDialog
+        lineNames={(t.modules || []).flatMap((m) => (m.categories || []).flatMap((c) => (c.items || []).filter((it) => !it.archived).map((it) => it.text)))}
         onSaved={(kitId) => { pickExportKit(t.id, kitId); setOwnLayoutFor(null); }}
         onClose={() => setOwnLayoutFor(null)}
       />
@@ -1081,7 +1104,7 @@ export default function TemplatesEditor({
   ) : null);
   const reportKitPicker = (tpl) => ({
     value: tpl.reportKitId || DEFAULT_REPORT_KIT_ID,
-    options: listReportKits().map((k) => ({ value: k.id, label: k.label })),
+    options: listReportKits().map((k) => ({ value: k.id, label: k.label, detail: k.description })),
     onPick: (v) => mutateTpl(tpl.id, (t) => {
       const { reportKitId: _r, ...rest } = t;
       return v === DEFAULT_REPORT_KIT_ID ? rest : { ...rest, reportKitId: v };
@@ -2123,6 +2146,11 @@ export default function TemplatesEditor({
     /* Open the new entity's colour picker so it reads as "freshly added". */
     setTimeout(() => setOpenColor(id), 0);
   };
+  // "Add Complete" under the Auto-mark switch: a green Complete entity.
+  const addCompleteEntity = () => {
+    if (!tpl || findCompleteEntity(tpl.roster)) return;
+    mutateTpl(tpl.id, (t) => ({ ...t, roster: [...t.roster, { id: newId('e'), role: 'Complete', color: ENTITY_COLORS[3] }] }));
+  };
   const renameEntity = (eid, role) => {
     const v = role.trim();
     if (!v || !tpl) return;
@@ -2744,14 +2772,17 @@ export default function TemplatesEditor({
               <div className="micro" style={{ textAlign: 'right', flex: '0 1 auto', minWidth: 72, maxWidth: '50%' }}>
                 <div>{orderedMods.length} {orderedMods.length === 1 ? 'module' : 'modules'}</div>
                 {/* Excel layout (export kit). Only shown once there is a choice. */}
+                {/* Each pill says what it picks (owner 2026-11-09: a bare
+                    "Full report" pill said nothing). */}
                 {exportKitOptions.length > 1 && (
                   <div className="hub-template-picker">
+                    <span className="hub-template-picker__label" aria-hidden="true">Excel layout</span>
                     <ValueSelect
                       look="pill"
                       width="auto"
                       className="hub-export-kit"
                       label="Excel layout"
-                      hint="Excel layout for this template. A linked workbook picks it up on its next full export."
+                      hint="The columns of this template's Excel export and live sheet"
                       {...pickerValueProps(exportKitPicker(tpl))}
                     />
                   </div>
@@ -2759,12 +2790,13 @@ export default function TemplatesEditor({
                 {/* Report layout (report kit) for the Report button. */}
                 {surveyReport && (
                   <div className="hub-template-picker">
+                    <span className="hub-template-picker__label" aria-hidden="true">Report layout</span>
                     <ValueSelect
                       look="pill"
                       width="auto"
                       className="hub-report-kit"
                       label="Report layout"
-                      hint="What the PowerPoint report for this template shows."
+                      hint="What the survey's Report button puts in the report"
                       {...pickerValueProps(reportKitPicker(tpl))}
                     />
                   </div>
@@ -3360,7 +3392,7 @@ export default function TemplatesEditor({
                 </SortableRearrangeList>
                 )}
               </div>
-              {tpl && <AutoCompleteSwitch template={tpl} onToggle={() => mutateTpl(tpl.id, (t) => { const { autoComplete: _a, ...rest } = t; return autoCompleteOn(t) ? { ...rest, autoComplete: false } : rest; })} />}
+              {tpl && <AutoCompleteSwitch template={tpl} onAddComplete={addCompleteEntity} onToggle={() => mutateTpl(tpl.id, (t) => { const { autoComplete: _a, ...rest } = t; return autoCompleteOn(t) ? { ...rest, autoComplete: false } : rest; })} />}
             </div>
           </aside>
 
@@ -3991,7 +4023,7 @@ export default function TemplatesEditor({
                     })}
                   </SortableRearrangeList>
                 )}
-                <AutoCompleteSwitch phone template={tpl} onToggle={() => mutateTpl(tpl.id, (t) => { const { autoComplete: _a, ...rest } = t; return autoCompleteOn(t) ? { ...rest, autoComplete: false } : rest; })} />
+                <AutoCompleteSwitch phone template={tpl} onAddComplete={addCompleteEntity} onToggle={() => mutateTpl(tpl.id, (t) => { const { autoComplete: _a, ...rest } = t; return autoCompleteOn(t) ? { ...rest, autoComplete: false } : rest; })} />
                     </section>
                   </div>
                 </div>

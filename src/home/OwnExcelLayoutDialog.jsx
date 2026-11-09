@@ -3,17 +3,18 @@ import DialogCard, { DIALOG_FIELD_STYLE, DIALOG_LABEL_STYLE } from '../component
 import { C } from '../uiPalette';
 import ValueSelect from '../components/ValueSelect.jsx';
 import { listExportKits } from '../services/exportFormats/registry.js';
-import { OWN_KIT_CHOICES, OWN_KIT_LIMITS, buildOwnKit, ownKitId, readSheetHeaders } from '../services/exportFormats/ownKits.js';
+import { OWN_KIT_CHOICES, OWN_KIT_LIMITS, buildOwnKit, followsChecklistColumn, guessOwnKitMatches, isRowIdHeader, ownKitId, readSheetHeaders } from '../services/exportFormats/ownKits.js';
 
 const LEAVE_OUT = '';
 
 /**
- * "Your own Excel layout" (Nightly beta 'own-excel-layouts', plan 2026-10-27,
- * step 1): pick the sheet your company uses, say which of its columns Survey
- * fills with what, save. The layout is kept on the account and picked for
- * this template.
+ * "Use your own spreadsheet" (Nightly beta 'own-excel-layouts', plan
+ * 2026-10-27, step 1): pick the sheet your company uses, say which of its
+ * columns Survey fills with what, save. The layout is kept on the account and
+ * picked for this template. The common columns come filled in from their
+ * names (guessOwnKitMatches); `lineNames` are the template's checklist lines.
  */
-export default function OwnExcelLayoutDialog({ store, onSaved, onClose }) {
+export default function OwnExcelLayoutDialog({ store, onSaved, onClose, lineNames = [] }) {
   const fileRef = useRef(null);
   const [label, setLabel] = useState('');
   const [headers, setHeaders] = useState(null);
@@ -29,7 +30,7 @@ export default function OwnExcelLayoutDialog({ store, onSaved, onClose }) {
       const found = await readSheetHeaders(await file.arrayBuffer());
       if (!found.length) throw new Error('That sheet has no column names in its first rows.');
       setHeaders(found);
-      setMatches(found.map(() => LEAVE_OUT));
+      setMatches(guessOwnKitMatches(found, lineNames));
       setLabel((cur) => cur || file.name.replace(/\.xlsx$/i, '').slice(0, OWN_KIT_LIMITS.label));
     } catch (err) {
       setError(/zip|central directory|signature/i.test(err.message || '') ? 'That file is not an Excel workbook (.xlsx).' : err.message);
@@ -57,13 +58,22 @@ export default function OwnExcelLayoutDialog({ store, onSaved, onClose }) {
 
   const matched = matches.filter(Boolean).length;
   const busy = state !== 'idle';
+  // Their columns after the Checklist answers column that are named like
+  // checklist lines: those lines fill them, so they need no choice.
+  const checklistAt = matches.indexOf('checklist');
+  const followsChecklist = (i) => checklistAt >= 0 && i > checklistAt && !matches[i]
+    && followsChecklistColumn(headers?.[i], headers?.[checklistAt], lineNames);
+  const options = [
+    { value: LEAVE_OUT, label: 'Leave empty', detail: 'Survey writes nothing in this column' },
+    ...OWN_KIT_CHOICES.map((c) => ({ value: c.field, label: c.label, detail: c.detail })),
+  ];
   return (
     <DialogCard
-      title="Your own Excel layout"
-      message="Pick the sheet your company uses, then say what Survey puts in each of its columns."
+      title="Use your own spreadsheet"
+      message="Pick a spreadsheet your company already uses. Survey reads the column names in its top row; then say what Survey writes in each column."
       onClose={onClose}
       busy={state === 'saving'}
-      width={480}
+      width={500}
       footer={(
         <>
           <button type="button" className="hub-btn dialog-touch-pad" onClick={onClose} disabled={state === 'saving'}>Cancel</button>
@@ -82,7 +92,7 @@ export default function OwnExcelLayoutDialog({ store, onSaved, onClose }) {
         onChange={(e) => { pickFile(e.target.files?.[0]); e.target.value = ''; }}
       />
       <button type="button" className="hub-btn dialog-touch-pad own-layout__pick" onClick={() => fileRef.current?.click()} disabled={busy}>
-        {state === 'reading' ? 'Reading…' : headers ? 'Pick another sheet' : 'Pick your Excel sheet'}
+        {state === 'reading' ? 'Reading…' : headers ? 'Pick another spreadsheet' : 'Pick your spreadsheet (.xlsx)'}
       </button>
       {headers ? (
         <>
@@ -96,22 +106,28 @@ export default function OwnExcelLayoutDialog({ store, onSaved, onClose }) {
             onChange={(e) => setLabel(e.target.value)}
           />
           <div className="own-layout__table" role="group" aria-label="Your columns">
-            <div className="own-layout__head"><span>Your column</span><span>Survey puts in it</span></div>
+            <div className="own-layout__head"><span>Column in your sheet</span><span>What Survey writes there</span></div>
             {headers.map((header, i) => (
               <div key={`${i}-${header}`} className="own-layout__row">
                 <span className="own-layout__header">{header}</span>
-                <ValueSelect
-                  width="100%"
-                  label={`Survey puts in ${header}`}
-                  value={matches[i] || LEAVE_OUT}
-                  options={[{ value: LEAVE_OUT, label: 'Nothing (left out)' }, ...OWN_KIT_CHOICES.map((c) => ({ value: c.field, label: c.label }))]}
-                  onChange={(v) => match(i, v)}
-                />
+                {isRowIdHeader(header) ? (
+                  <span className="own-layout__fixed">Survey's own row ID (always added)</span>
+                ) : followsChecklist(i) ? (
+                  <span className="own-layout__fixed">Checklist answer (that line)</span>
+                ) : (
+                  <ValueSelect
+                    width="100%"
+                    label={`What Survey writes in ${header}`}
+                    value={matches[i] || LEAVE_OUT}
+                    options={options}
+                    onChange={(v) => match(i, v)}
+                  />
+                )}
               </div>
             ))}
           </div>
           <p className="own-layout__note">
-            Checklist lines fill one column each, from that column on. Columns left as Nothing are not in the export. Survey always adds a hidden Row ID column first, then Changed by and Changed date, so it can read the sheet back. Anything you don't match goes after your columns.
+            Survey filled in the columns it could tell from their names; change any of them. To read the sheet back, Survey also keeps a hidden Row ID column and fills Who changed it and Date changed. Anything you don't place goes after your columns.
           </p>
         </>
       ) : null}

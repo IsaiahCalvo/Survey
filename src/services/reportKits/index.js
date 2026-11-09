@@ -24,11 +24,11 @@ const kit = (id, label, description, blocks) => Object.freeze({
 });
 
 export const BUILT_IN_REPORT_KITS = Object.freeze([
-  kit(DEFAULT_REPORT_KIT_ID, 'Full report', 'Totals, a bar chart and a table per category, then the items with issues',
+  kit(DEFAULT_REPORT_KIT_ID, 'Full report', 'Totals, a chart and a table for each category, then every item with an issue (a red answer)',
     [{ type: 'cover' }, { type: 'totals' }, { type: 'chart', style: 'stacked' }, { type: 'table' }, { type: 'issues' }]),
-  kit('progress-report', 'Progress', 'Totals, a pie of the whole survey and a table per category; no issue list',
+  kit('progress-report', 'Progress summary', 'How far along the survey is: totals, a pie chart and a table. No issue list',
     [{ type: 'cover' }, { type: 'totals' }, { type: 'chart', style: 'pie' }, { type: 'table' }]),
-  kit('issues-report', 'Issues list', 'Only the items with issues, for the crew fixing them',
+  kit('issues-report', 'Issues only', 'Just the items with an issue (a red answer), for the crew fixing them',
     [{ type: 'cover' }, { type: 'issues' }]),
 ]);
 

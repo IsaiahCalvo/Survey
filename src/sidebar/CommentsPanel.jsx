@@ -8,8 +8,10 @@
  * replies keep their place. Clicking a thread's label zooms to its mark the
  * way History does. Viewers read; editors post (the server checks both).
  */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Icon from '../Icons';
+import SectionIconButton from '../components/SectionIconButton.jsx';
 import './CommentsPanel.css';
 import { supabase } from '../supabaseClient';
 import { useTooltip } from '../components/Tooltip';
@@ -31,7 +33,7 @@ import {
   notifyCommentMentions,
   personLabel,
 } from '../services/markComments.js';
-import { historyTypeKey } from '../utils/historyFeed.js';
+import { historyGlyphFor, historyTypeKey } from '../utils/historyFeed.js';
 import { historyMarkFilterNoun } from '../utils/historyMarkFilter.js';
 import { historyAnnotationInkBox } from '../utils/historyGeometry.js';
 import { measureMarkBox } from '../components/revisions/historyPageOverlay.js';
@@ -49,8 +51,13 @@ function timeLabel(iso) {
   return at.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-/** A text box that offers people as you type "@". */
-function CommentBox({ people, placeholder, initial = '', initialMentions = [], submitLabel, onSubmit, onCancel, autoFocus = false, busy = false }) {
+/**
+ * A text box that offers people as you type "@". It grows with its text.
+ * `inline` (editing a posted comment): no buttons of its own and the body's
+ * own type, so the words stay where they were; the comment's head carries
+ * Cancel / Save, which call submit() / onCancel through the ref.
+ */
+const CommentBox = forwardRef(function CommentBox({ people, placeholder, initial = '', initialMentions = [], submitLabel, onSubmit, onCancel, autoFocus = false, busy = false, inline = false, onDirtyChange = null }, ref) {
   const [text, setText] = useState(initial);
   const [picked, setPicked] = useState(() => people.filter((p) => initialMentions.includes(p.id)));
   const [mention, setMention] = useState(null);
@@ -86,14 +93,31 @@ function CommentBox({ people, placeholder, initial = '', initialMentions = [], s
       setMention(null);
     }
   };
+  useImperativeHandle(ref, () => ({ submit }));
+  const canSubmit = Boolean(text.trim()) && !busy;
+  useEffect(() => { onDirtyChange?.(canSubmit); }, [canSubmit, onDirtyChange]);
+
+  // Grow with the text (no inner scroll bar, no jump when a line wraps).
+  useLayoutEffect(() => {
+    const area = areaRef.current;
+    if (!area) return;
+    area.style.height = 'auto';
+    area.style.height = `${area.scrollHeight}px`;
+  }, [text]);
+  // Editing starts with the caret after the last word.
+  useLayoutEffect(() => {
+    const area = areaRef.current;
+    if (!autoFocus || !area) return;
+    area.focus({ preventScroll: true });
+    area.setSelectionRange(area.value.length, area.value.length);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="comments-box">
+    <div className={`comments-box${inline ? ' comments-box--inline' : ''}`}>
       <textarea
         ref={areaRef}
-        autoFocus={autoFocus}
         value={text}
-        rows={2}
+        rows={1}
         maxLength={MARK_COMMENT_MAX_CHARS}
         placeholder={placeholder}
         aria-label={placeholder}
@@ -130,18 +154,22 @@ function CommentBox({ people, placeholder, initial = '', initialMentions = [], s
           ))}
         </div>
       )}
-      <div className="comments-box__actions">
-        {onCancel && <button type="button" className="hub-btn" onClick={onCancel}>Cancel</button>}
-        <button type="button" className="hub-btn hub-btn--primary" data-comment-submit="true" disabled={!text.trim() || busy} onClick={submit}>
-          {submitLabel}
-        </button>
-      </div>
+      {!inline && (
+        <div className="comments-box__actions">
+          {onCancel && <button type="button" className="comments-text-btn" onClick={onCancel}>Cancel</button>}
+          <button type="button" className="comments-text-btn comments-text-btn--primary" data-comment-submit="true" disabled={!canSubmit} onClick={submit}>
+            {submitLabel}
+          </button>
+        </div>
+      )}
     </div>
   );
-}
+});
 
 function CommentItem({ comment, peopleById, mine, canWrite, onEdit, onDelete, onCopyLink, editing, setEditing, people, tip }) {
   const author = peopleById.get(comment.authorId);
+  const boxRef = useRef(null);
+  const [canSave, setCanSave] = useState(true);
   if (comment.deletedAt) {
     return (
       <div className="comments-item comments-item--deleted" data-comment-id={comment.id}>
@@ -150,36 +178,47 @@ function CommentItem({ comment, peopleById, mine, canWrite, onEdit, onDelete, on
     );
   }
   return (
-    <div className="comments-item" data-comment-id={comment.id}>
+    <div className={`comments-item${editing ? ' is-editing' : ''}`} data-comment-id={comment.id}>
       <div className="comments-item__head">
         <span className="comments-item__author">{comment.authorId ? personLabel(author) : 'Former member'}</span>
         <span className="comments-item__time">
           {timeLabel(comment.createdAt)}{comment.editedAt ? ' · edited' : ''}
         </span>
-        <span className="comments-item__tools">
-          <button type="button" className="comments-icon" aria-label="Copy link to comment" {...tip('Copy link')} onClick={() => onCopyLink(comment)}>
-            <Icon name="formatHyperlink" size={13} />
-          </button>
-          {mine && canWrite && !editing && (
-            <>
-              <button type="button" className="comments-icon" aria-label="Edit comment" {...tip('Edit')} onClick={() => setEditing(comment.id)}>
-                <Icon name="edit" size={13} />
-              </button>
-              <button type="button" className="comments-icon" aria-label="Delete comment" {...tip('Delete')} onClick={() => onDelete(comment)}>
-                <Icon name="trash" size={13} />
-              </button>
-            </>
-          )}
-        </span>
+        {/* Editing swaps the icons for Cancel / Save in the same row, so
+            nothing below moves (owner 2026-11-09: "it shifts things around"). */}
+        {editing ? (
+          <span className="comments-item__tools">
+            <button type="button" className="comments-text-btn" onClick={() => setEditing(null)}>Cancel</button>
+            <button type="button" className="comments-text-btn comments-text-btn--primary" data-comment-submit="true" disabled={!canSave} onClick={() => boxRef.current?.submit()}>Save</button>
+          </span>
+        ) : (
+          <span className="comments-item__tools">
+            <button type="button" className="comments-icon" aria-label="Copy link to comment" {...tip('Copy link')} onClick={() => onCopyLink(comment)}>
+              <Icon name="formatHyperlink" size={14} />
+            </button>
+            {mine && canWrite && (
+              <>
+                <button type="button" className="comments-icon" aria-label="Edit comment" {...tip('Edit')} onClick={() => setEditing(comment.id)}>
+                  <Icon name="edit" size={14} />
+                </button>
+                <button type="button" className="comments-icon" aria-label="Delete comment" {...tip('Delete')} onClick={() => onDelete(comment)}>
+                  <Icon name="trash" size={14} />
+                </button>
+              </>
+            )}
+          </span>
+        )}
       </div>
       {editing ? (
         <CommentBox
+          ref={boxRef}
+          inline
           people={people}
           initial={comment.body}
           initialMentions={comment.mentions}
           placeholder="Edit comment"
-          submitLabel="Save"
           autoFocus
+          onDirtyChange={setCanSave}
           onCancel={() => setEditing(null)}
           onSubmit={(body, mentions) => onEdit(comment, body, mentions)}
         />
@@ -204,8 +243,11 @@ export default function CommentsPanel({
   canWrite = false,
   locateHistoryMark = null,
   focusHistoryMark = null,
+  selectHistoryMark = null,
   onNavigateToPage = null,
   focusRequest = null,
+  // Desktop: the rail's title row, where the + for a page comment sits.
+  headActionsHost = null,
 }) {
   const tip = useTooltip();
   const [askConfirm, confirmDialog] = useConfirmDialog();
@@ -217,6 +259,8 @@ export default function CommentsPanel({
   const [editing, setEditing] = useState(null);
   const [busy, setBusy] = useState(false);
   const [highlightId, setHighlightId] = useState(null);
+  // The thread whose mark was last shown on the page (it stays marked).
+  const [activeThreadId, setActiveThreadId] = useState(null);
   const listRef = useRef(null);
   const userId = user?.id || null;
 
@@ -240,23 +284,39 @@ export default function CommentsPanel({
     return () => window.clearTimeout(timer);
   }, [highlightId, isActive, comments]);
 
-  const markLabel = useCallback((markId, pageNumber) => {
-    if (!markId) return `Page ${pageNumber}`;
+  // What a thread hangs off: its words and the mark kind's own glyph.
+  const markTarget = useCallback((markId, pageNumber) => {
+    if (!markId) return { label: `Page ${pageNumber}`, icon: 'pages' };
     const located = typeof locateHistoryMark === 'function' ? locateHistoryMark(markId) : null;
-    if (!located) return `Removed mark · page ${pageNumber}`;
+    if (!located) return { label: `Removed mark · page ${pageNumber}`, icon: 'shapes' };
     const typeKey = located.kind === 'surveyMarker' ? 'surveyMarker' : historyTypeKey(located.annotation?.type, located.annotation);
     const noun = historyMarkFilterNoun([{ id: markId, typeKey }]).replace(/^this /, '');
-    return `${capitalize(noun)} · page ${located.pageNumber || pageNumber}`;
+    return { label: `${capitalize(noun)} · page ${located.pageNumber || pageNumber}`, icon: historyGlyphFor(typeKey) };
   }, [locateHistoryMark]);
+  const markLabel = (markId, pageNumber) => markTarget(markId, pageNumber).label;
 
+  // Owner 2026-11-09: the zoom to the mark glides, and the mark is picked
+  // so you can see which one the comment means.
   const goTo = useCallback((markId, pageNumber) => {
     const located = markId && typeof locateHistoryMark === 'function' ? locateHistoryMark(markId) : null;
     const page = located?.pageNumber || pageNumber;
     const box = (markId && typeof document !== 'undefined' ? measureMarkBox(document, markId, page) : null)
       || (located?.annotation ? historyAnnotationInkBox(located.annotation) : null);
-    const focused = typeof focusHistoryMark === 'function' ? focusHistoryMark(page, box) : false;
-    if (!focused) onNavigateToPage?.(page, { fallback: 'nearest', bypassActiveSpace: true });
-  }, [focusHistoryMark, locateHistoryMark, onNavigateToPage]);
+    const picked = located && typeof selectHistoryMark === 'function' ? selectHistoryMark(markId) : false;
+    const focus = () => {
+      const focused = typeof focusHistoryMark === 'function' ? focusHistoryMark(page, box, { glide: true }) : false;
+      if (!focused) onNavigateToPage?.(page, { fallback: 'nearest', bypassActiveSpace: true });
+    };
+    // Picking a mark brings up its style row above the page; centre in the
+    // view that is left once that row is in (Locate on page waits the same
+    // three frames).
+    if (picked && typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      const raf = window.requestAnimationFrame;
+      raf(() => raf(() => raf(focus)));
+    } else {
+      focus();
+    }
+  }, [focusHistoryMark, locateHistoryMark, onNavigateToPage, selectHistoryMark]);
 
   const linkOrigin = typeof window !== 'undefined' ? window.location.origin : undefined;
   const post = async ({ body, mentions, markId = null, pageNumber, threadId = null }) => {
@@ -309,13 +369,30 @@ export default function CommentsPanel({
 
   const itemProps = { peopleById, people, canWrite, onEdit: edit, onDelete: remove, onCopyLink: copyLink, setEditing, tip };
 
-  return (
-    <div className="comments-panel" data-testid="comments-panel" ref={listRef}>
-      {canWrite && !draft && (
-        <button type="button" className="hub-btn comments-new" onClick={() => setDraft({ markId: null, pageNumber: pageNum || 1 })}>
+  const newPageComment = () => setDraft({ markId: null, pageNumber: pageNum || 1 });
+  const newButton = canWrite && !draft ? (
+    headActionsHost
+      ? createPortal(
+        <SectionIconButton action="add" label={`Comment on page ${pageNum || 1}`} data-comment-new="true" onClick={newPageComment} />,
+        headActionsHost,
+      )
+      : (
+        <button type="button" className="comments-text-btn comments-new" data-comment-new="true" onClick={newPageComment}>
           <Icon name="plus" size={14} /> Comment on page {pageNum || 1}
         </button>
-      )}
+      )
+  ) : null;
+  // A press anywhere on a thread (not on its buttons or a text box) shows its mark.
+  const openThread = (event, thread) => {
+    if (event.target.closest?.('button, textarea, input, a, [role="listbox"]')) return;
+    if (typeof window !== 'undefined' && String(window.getSelection?.() || '')) return;
+    setActiveThreadId(thread.id);
+    goTo(thread.markId, thread.pageNumber);
+  };
+
+  return (
+    <div className="comments-panel" data-testid="comments-panel" ref={listRef}>
+      {newButton}
       {draft && (
         <div className="comments-thread comments-thread--draft" data-comment-draft={draft.markId || `page-${draft.pageNumber}`}>
           <div className="comments-thread__target">{markLabel(draft.markId, draft.pageNumber)}</div>
@@ -342,13 +419,21 @@ export default function CommentsPanel({
         </div>
       )}
       {threads.map((thread) => (
+        // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- the label button is the keyboard way in
         <div
           key={thread.id}
-          className={`comments-thread${[thread.root, ...thread.replies].some((c) => c.id === highlightId) ? ' is-highlighted' : ''}`}
+          className={`comments-thread${[thread.root, ...thread.replies].some((c) => c.id === highlightId) ? ' is-highlighted' : ''}${activeThreadId === thread.id ? ' is-active' : ''}`}
           data-comment-thread={thread.id}
+          onClick={(event) => openThread(event, thread)}
         >
-          <button type="button" className="comments-thread__target comments-thread__target--link" onClick={() => goTo(thread.markId, thread.pageNumber)}>
-            {markLabel(thread.markId, thread.pageNumber)}
+          <button
+            type="button"
+            className="comments-thread__target comments-thread__target--link"
+            {...tip(thread.markId ? 'Show on the page' : `Go to page ${thread.pageNumber}`)}
+            onClick={() => { setActiveThreadId(thread.id); goTo(thread.markId, thread.pageNumber); }}
+          >
+            <Icon name={markTarget(thread.markId, thread.pageNumber).icon} size={13} />
+            <span>{markLabel(thread.markId, thread.pageNumber)}</span>
           </button>
           <CommentItem comment={thread.root} mine={thread.root.authorId === userId} editing={editing === thread.root.id} {...itemProps} />
           {thread.replies.map((reply) => (
@@ -373,7 +458,7 @@ export default function CommentsPanel({
               />
             </div>
           ) : (
-            <button type="button" className="hub-btn comments-reply-btn" data-comment-reply={thread.id} onClick={() => setReplyingTo(thread.id)}>
+            <button type="button" className="comments-text-btn comments-reply-btn" data-comment-reply={thread.id} onClick={() => setReplyingTo(thread.id)}>
               Reply
             </button>
           ))}

@@ -7,16 +7,20 @@
   min-height: 0;
   overflow-y: auto;
   padding: 8px;
-  gap: 8px;
+  gap: 6px;
   color: var(--text-2);
   font-size: 13px;
 }
 
 .comments-empty {
-  padding: 12px 8px;
+  /* An empty side panel says so like Search, Bookmarks and History: one
+     centred quiet line, 32px down (tests/sidePanelEmptyState.test.mjs). */
+  margin: 0;
+  padding: 32px 20px;
+  text-align: center;
   color: var(--text-3);
-  font-size: 12px;
-  line-height: 1.5;
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 .comments-icon:focus-visible,
@@ -28,17 +32,75 @@
 
 .comments-new {
   align-self: flex-start;
+}
+
+/* Quiet word buttons (Reply, Cancel, Save, Post): the rail's own size, so a
+   thread is not a stack of big boxed buttons (owner 2026-11-09). */
+.comments-text-btn {
+  display: inline-flex;
+  align-items: center;
   gap: 4px;
+  height: 24px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-2);
+  font: 500 var(--font-size-md)/1 var(--font-ui);
+  cursor: pointer;
+}
+
+.comments-text-btn--primary {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.comments-text-btn:disabled {
+  color: var(--text-3);
+  cursor: default;
+}
+
+.comments-text-btn:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+@media (hover: hover) {
+  .comments-text-btn:not(:disabled):hover {
+    background: var(--hover);
+    color: var(--text-1);
+  }
+  .comments-text-btn--primary:not(:disabled):hover {
+    color: var(--accent-light);
+  }
 }
 
 .comments-thread {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 8px;
+  gap: 4px;
+  padding: 6px 8px 4px;
   border-radius: var(--radius-md);
-  background: var(--surface-2);
-  transition: box-shadow 200ms ease-out;
+  background: transparent;
+  cursor: pointer;
+  transition: box-shadow 200ms ease-out, background-color 150ms ease-out;
+}
+
+.comments-thread--draft {
+  padding-bottom: 6px;
+  cursor: default;
+}
+
+@media (hover: hover) {
+  .comments-thread:not(.comments-thread--draft):not(.is-active):hover {
+    background: var(--hover);
+  }
+}
+
+/* The thread whose mark is shown on the page now: the selected-row colour. */
+.comments-thread.is-active,
+.comments-thread--draft {
+  background: var(--surface-3);
 }
 
 .comments-thread.is-highlighted {
@@ -56,18 +118,26 @@
 }
 
 .comments-thread__target--link {
-  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0 0 0 -4px;
+  padding: 2px 4px;
   border: 0;
+  border-radius: var(--radius-xs);
   background: transparent;
   cursor: pointer;
-  text-decoration: underline;
-  text-decoration-color: transparent;
+}
+
+.comments-thread__target--link > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 @media (hover: hover) {
   .comments-thread__target--link:hover {
+    background: var(--hover);
     color: var(--text-1);
-    text-decoration-color: currentColor;
   }
 }
 
@@ -87,7 +157,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  min-height: 24px;
+  height: 24px;
 }
 
 .comments-item__author {
@@ -108,7 +178,21 @@
 
 .comments-item__tools {
   display: inline-flex;
+  align-items: center;
   gap: 2px;
+}
+
+/* The tools show on hover or focus only, so a list of comments reads as
+   words, not a row of icons per line (touch keeps them). */
+@media (hover: hover) {
+  .comments-item:not(.is-editing) .comments-item__tools {
+    opacity: 0;
+    transition: opacity 120ms ease-out;
+  }
+  .comments-thread:hover .comments-item:not(.is-editing) .comments-item__tools,
+  .comments-item:focus-within .comments-item__tools {
+    opacity: 1;
+  }
 }
 
 .comments-icon {
@@ -150,6 +234,7 @@
 
 .comments-reply-btn {
   align-self: flex-start;
+  margin-left: -6px;
 }
 
 .comments-box {
@@ -160,16 +245,36 @@
 }
 
 .comments-box textarea {
+  display: block;
   width: 100%;
   min-height: 52px;
+  max-height: 240px;
   box-sizing: border-box;
-  resize: vertical;
+  resize: none;
   padding: 6px 8px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   background: var(--surface-1);
   color: var(--text-1);
-  font: 13px/1.45 var(--font-ui);
+  font: var(--font-size-base)/1.45 var(--font-ui);
+}
+
+/* Editing a posted comment: the words stay exactly where they were (the
+   body's own type and line height; the frame sits outside the text box). */
+.comments-box--inline textarea {
+  min-height: 0;
+  margin: 0 -6px;
+  width: calc(100% + 12px);
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: var(--surface-1);
+  box-shadow: 0 0 0 1px var(--border-strong);
+}
+
+.comments-box--inline textarea:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 2px var(--focus);
 }
 
 .comments-box textarea:focus-visible {
@@ -180,7 +285,7 @@
 .comments-box__actions {
   display: flex;
   justify-content: flex-end;
-  gap: 6px;
+  gap: 2px;
 }
 
 .comments-mentions {

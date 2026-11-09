@@ -49,3 +49,164 @@
 @media (prefers-reduced-motion: reduce) {
   .layers-opacity__step { transition: none; }
 }
+
+/* The panel (2026-11-09 polish): two sections with the rail's section heads,
+   32px rows like every rail list, tools that show on hover (always on touch),
+   the selected layer on surface-3 like the selected search hit. */
+.layers-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px;
+  gap: 16px;
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.layers-panel__section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.layers-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 24px;
+  padding: 0 4px;
+}
+
+.layers-panel__title {
+  font: var(--sheet-section);
+  color: var(--text-3);
+}
+
+.layers-panel__meta {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.layers-panel__text-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  font: 500 12px/1 var(--font-ui);
+  cursor: pointer;
+}
+
+.layers-panel__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.layers-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: var(--row-h, 32px);
+  padding: 0 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text-2);
+}
+
+.layers-row.is-active {
+  background: var(--surface-3);
+  color: var(--text-1);
+}
+
+.layers-row:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.layers-row__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.layers-row.is-hidden .layers-row__name {
+  color: var(--text-3);
+}
+
+.layers-row__input {
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+  padding: 0 6px;
+  font: inherit;
+  color: inherit;
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+}
+
+.layers-row__tools {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.layers-row__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+}
+
+.layers-row.is-hidden .layers-row__eye {
+  color: var(--text-3);
+}
+
+.layers-row__btn:focus-visible,
+.layers-panel__text-btn:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.layers-panel__note {
+  margin: 2px 4px 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-3);
+}
+
+@media (hover: hover) {
+  .layers-row:not(.is-active):hover { background: var(--hover); }
+  .layers-row__btn:hover,
+  .layers-panel__text-btn:hover { color: var(--text-1); background: var(--hover); }
+  .layers-row__tools { opacity: 0; transition: opacity 120ms ease-out; }
+  .layers-row:hover .layers-row__tools,
+  .layers-row:focus-within .layers-row__tools,
+  .layers-row.is-active .layers-row__tools { opacity: 1; }
+}
+
+@media (pointer: coarse) {
+  .layers-row { min-height: 44px; }
+  .layers-row__btn { width: 36px; height: 36px; }
+  .layers-panel__text-btn { height: 36px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .layers-row__tools { transition: none; }
+}

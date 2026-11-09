@@ -19,6 +19,7 @@
  * place it (the database enforces the same rules).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Icon from '../Icons.jsx';
 import { useTooltip } from '../components/Tooltip.jsx';
 import SectionIconButton, { SelectModeButtons } from '../components/SectionIconButton.jsx';
@@ -197,7 +198,7 @@ function LibraryTile({
   );
 }
 
-export default function MarkLibraryPanel({ phone = false }) {
+export default function MarkLibraryPanel({ phone = false, headActionsHost = null }) {
   const state = useMarkLibrary();
   const tip = useTooltip();
   const armedId = useArmedId();
@@ -384,40 +385,50 @@ export default function MarkLibraryPanel({ phone = false }) {
     return 'Nothing saved yet. Pick marks on a page, right-click them and choose Save to library.';
   })();
 
+  const headActions = (
+    <span className="mark-library__head-actions">
+      <SectionIconButton
+        action="select"
+        label={selectMode ? 'Done' : 'Select'}
+        active={selectMode}
+        nothingToSelect={!items.length}
+        onClick={() => setSelectMode((on) => !on)}
+      />
+      {!selectMode && (
+        <SectionIconButton icon="moreHorizontal" action="more" label="Library options" onClick={openPanelMenu} />
+      )}
+    </span>
+  );
+
   return (
     <div className="mark-library" data-mark-library-panel="" data-testid="mark-library-panel">
-      <div className="mark-library__head">
-        {state.projectId ? (
-          <div className="mark-library__tabs" role="tablist" aria-label="Library">
-            {['personal', 'project'].map((id) => (
-              <button
-                key={id}
-                type="button"
-                role="tab"
-                aria-selected={library === id}
-                className={`mark-library__tab${library === id ? ' is-active' : ''}`}
-                disabled={id === 'project' && !hasProject}
-                {...(id === 'project' && !hasProject ? tip('You are not on this document\'s project team', 'below') : {})}
-                onClick={() => markLibraryStore.setView({ library: id })}
-              >
-                {id === 'personal' ? 'Personal' : 'Project'}
-              </button>
-            ))}
-          </div>
-        ) : <span className="mark-library__title">Personal</span>}
-        <span className="mark-library__head-actions">
-          <SectionIconButton
-            action="select"
-            label={selectMode ? 'Done' : 'Select'}
-            active={selectMode}
-            nothingToSelect={!items.length}
-            onClick={() => setSelectMode((on) => !on)}
-          />
-          {!selectMode && (
-            <SectionIconButton icon="moreHorizontal" action="more" label="Library options" onClick={openPanelMenu} />
-          )}
-        </span>
-      </div>
+      {/* Desktop: Select and the options menu sit in the rail head beside the
+          "Library" title like every other panel's actions; the panel's own
+          head row is left only for the Personal / Project switch. */}
+      {headActionsHost && createPortal(headActions, headActionsHost)}
+      {(state.projectId || !headActionsHost) && (
+        <div className="mark-library__head">
+          {state.projectId ? (
+            <div className="mark-library__tabs" role="tablist" aria-label="Library">
+              {['personal', 'project'].map((id) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={library === id}
+                  className={`mark-library__tab${library === id ? ' is-active' : ''}`}
+                  disabled={id === 'project' && !hasProject}
+                  {...(id === 'project' && !hasProject ? tip('You are not on this document\'s project team', 'below') : {})}
+                  onClick={() => markLibraryStore.setView({ library: id })}
+                >
+                  {id === 'personal' ? 'Personal' : 'Project'}
+                </button>
+              ))}
+            </div>
+          ) : <span className="mark-library__title">Personal</span>}
+          {!headActionsHost && headActions}
+        </div>
+      )}
       {selectMode && (
         <div className="mark-library__select-row">
           <span className="mark-library__count">{selected.size} selected</span>

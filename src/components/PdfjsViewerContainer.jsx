@@ -3204,6 +3204,15 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     if (!glide || !gestureRef.current) { zoomGlideRef.current = null; return; }
     const next = stepZoomGlide(glide, now);
     zoomGlideRef.current = next;
+    // A fly-to (focusPageRect `glide`) slides its pivot to the view's middle
+    // in step with the zoom, so the mark arrives centred as the zoom lands.
+    const fly = gestureRef.current.flyTo;
+    if (fly) {
+      const span = Math.log(fly.to / fly.from);
+      const u = next.done || !span ? 1 : Math.max(0, Math.min(1, Math.log(next.shown / fly.from) / span));
+      gestureRef.current.currentCursorX = fly.fromX + (fly.toX - fly.fromX) * u;
+      gestureRef.current.currentCursorY = fly.fromY + (fly.toY - fly.fromY) * u;
+    }
     liveZoomRef.current = next.shown / scaleRef.current;
     setLiveZoom(liveZoomRef.current);
     if (!next.done) {
@@ -5287,6 +5296,37 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const viewCx = side.left + bandW / 2;
     const viewCy = inset + bandH / 2;
     const before = scaleRef.current;
+    // `glide` (Comments, owner 2026-11-09: "that animation needs to be
+    // smooth"): the zoom glide of the +/- buttons, pivoting on the mark's
+    // centre while that pivot slides to the middle of the view, so the mark
+    // flies to where the instant path would put it. Reduced motion, a live
+    // pinch, or no change of zoom keep the instant path.
+    if (options.glide && !prefersReducedMotion() && Math.abs(target - before) > 1e-4
+      && (!gestureRef.current || zoomGlideRef.current)) {
+      zoomGlideCancelRef.current?.();
+      const contentX = getPageLeftAtScale(i, before) + cx * before;
+      const contentY = topAt(i, before) + cy * before;
+      const fromX = contentX - el.scrollLeft;
+      const fromY = contentY - el.scrollTop;
+      panMomentumRef.current?.cancel('zoom');
+      gestureRef.current = {
+        regime: 'glide',
+        originScale: before,
+        originCursorX: fromX,
+        originCursorY: fromY,
+        originContentX: contentX,
+        originContentY: contentY,
+        currentCursorX: fromX,
+        currentCursorY: fromY,
+        flyTo: { fromX, fromY, toX: viewCx, toY: viewCy, from: before, to: target },
+      };
+      // zoomGeneration contract: signal at zoom START, as every zoom does.
+      cb.current.onZoomPhase?.('gesture-start', { atPct: Math.round(before * 100), source: 'imperative' });
+      setZoomInteraction(true);
+      zoomGlideRef.current = createZoomGlide({ from: before, to: target, now: performance.now(), mode: 'tween' });
+      scheduleZoomGlideFrame();
+      return true;
+    }
     if (Math.abs(target - before) > 1e-4) applyAnchoredScale(target, viewCx, viewCy);
     const s = scaleRef.current;
     const left = getPageLeftAtScale(i, s) + cx * s - viewCx;
@@ -5298,7 +5338,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       el.scrollTop = Math.min(Math.max(0, top), Math.max(0, el.scrollHeight - el.clientHeight));
     }
     return true;
-  }, [applyAnchoredScale, cancelPanInertia, getPageLeftAtScale, getHorizontalScrollMax, isMobileSurface]);
+  }, [applyAnchoredScale, cancelPanInertia, getPageLeftAtScale, getHorizontalScrollMax, isMobileSurface, scheduleZoomGlideFrame, setZoomInteraction]);
 
   // Drawboard canvas audit chunk 6: glide scrollTop to `top` over 250 ms
   // (utils/pageScrollGlide.js has the rules), or point a glide already running

@@ -29331,6 +29331,35 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     return false;
   }, []);
 
+  //   selectHistoryMark(id)  picks one mark where it is now, so a Comments
+  //                          row shows which mark it means (owner 2026-11-09:
+  //                          "it should actually select the annotation").
+  //                          Same broadcast a paste uses; any tool keeps.
+  const selectHistoryMark = useCallback((markId) => {
+    if (markId == null) return false;
+    const id = String(markId);
+    const entry = getHistoryMarkIndex().get(id);
+    const pageNumber = Number(entry?.pageNumber);
+    if (!entry || !Number.isFinite(pageNumber) || pageNumber < 1) return false;
+    if (entry.kind === 'callout') {
+      setAnnotationSelectionClearToken((token) => token + 1);
+      setSelectedCalloutIds(new Set([id]));
+      return true;
+    }
+    if (entry.kind === 'surveyMarker') {
+      setSelectedCalloutIds(new Set());
+      setPendingSvgSelection({ pageNumber, annotationIndices: [], surveyMarkerIds: [id], exclusive: true, tick: Date.now() });
+      return true;
+    }
+    if (entry.kind !== 'mark') return false;
+    const page = (annotationsByPageRef.current || {})[pageNumber] || (annotationsByPageRef.current || {})[String(pageNumber)];
+    const index = (page?.objects || []).findIndex((candidate) => String(getHistoryAnnotationId(candidate)) === id);
+    if (index < 0) return false;
+    setSelectedCalloutIds(new Set());
+    setPendingSvgSelection({ pageNumber, annotationIndices: [index], surveyMarkerIds: [], exclusive: true, tick: Date.now() });
+    return true;
+  }, [getHistoryMarkIndex]);
+
   // Read through a ref: the tombstone list is a new array after every capture,
   // and the import effect must not be cancelled mid-import by that churn.
   const durableDeletedPdfAnnotationsRef = useRef(durableDeletedPdfAnnotations);
@@ -36749,6 +36778,7 @@ ${pageBlocks}
       getHistoryMarkIndex,
       locateHistoryMark,
       focusHistoryMark,
+      selectHistoryMark,
       layersEnabled,
       layerState,
       activeLayerId: effectiveActiveLayerId,
@@ -36863,6 +36893,7 @@ ${pageBlocks}
     getHistoryMarkIndex,
     locateHistoryMark,
     focusHistoryMark,
+    selectHistoryMark,
   ]);
 
   // UX 2026-05-29: Publish the active PDF viewer's right-rail data to the App
