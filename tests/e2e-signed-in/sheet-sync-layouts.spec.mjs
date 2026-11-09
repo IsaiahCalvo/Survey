@@ -8,6 +8,9 @@
 import { signInToken } from './accountFixtures.mjs';
 import { E2E_ACCOUNTS, E2E_BASE_URL, E2E_SURVEY } from './accounts.mjs';
 import { adminClient, expect, functionUrl, test } from './helpers.mjs';
+import * as Y from 'yjs';
+import { docToSurveyMarkers } from '../../supabase/functions/_shared/surveyMarkerDocSync.js';
+import { pgHexToBytes } from '../../supabase/functions/_shared/pgBytea.js';
 
 const FLAG = 'sheet-team-sync';
 const SHOTS = process.env.E2E_SHEET_SYNC_SHOTS || '';
@@ -22,12 +25,24 @@ const LAYOUTS = [
   { name: 'phone app, 390px', use: { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 }, phone: true, app: true },
 ];
 
-const fake = async (path, body) => {
-  const res = await fetch(`${functionUrl('e2e-fake-msgraph')}/__fake${path}`, body
+const fakeAt = (fn) => async (path, body) => {
+  const res = await fetch(`${functionUrl(fn)}/__fake${path}`, body
     ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }
     : undefined);
   return res.json();
 };
+const fake = fakeAt('e2e-fake-msgraph');
+const fakeGoogle = fakeAt('e2e-fake-google');
+
+// The survey's markers as the annotation log has them.
+async function markersOf(documentId) {
+  const doc = new Y.Doc();
+  const { data, error } = await adminClient().from('annotation_updates')
+    .select('seq, data').eq('document_id', documentId).order('seq', { ascending: true });
+  if (error) throw error;
+  for (const row of data) Y.applyUpdate(doc, pgHexToBytes(row.data));
+  return docToSurveyMarkers(doc);
+}
 
 async function userId(account) {
   const { data } = await adminClient().auth.admin.listUsers();
@@ -131,7 +146,7 @@ test.afterAll(async () => {
 });
 
 for (const layout of LAYOUTS) {
-  test.describe(`live Excel sync, ${layout.name}`, () => {
+  test.describe(`live sync, ${layout.name}`, () => {
     test.use(layout.use);
 
     test('connect Microsoft, make the workbook, settle what waits, stop', async ({ page, context, browser }) => {
@@ -262,6 +277,115 @@ for (const layout of LAYOUTS) {
         await admin.from('sheet_sync_connections').delete().eq('user_id', ownerId);
         await admin.from('sheet_sync_pending_connections').delete().eq('user_id', ownerId);
         await fake('/reset', {});
+      }
+    });
+
+    test('connect Google, make the sheet, a deleted tab, a PM edit, a trashed sheet', async ({ page, context, browser }) => {
+      test.setTimeout(180_000);
+      if (process.env.E2E_FUNCTIONS_URL) {
+        await page.route('**/functions/v1/sheet-sync', (route) => route.fallback({ url: functionUrl('sheet-sync') }));
+      }
+      const admin = adminClient();
+      const ownerId = await userId(E2E_ACCOUNTS.owner);
+      await admin.from('sheet_sync_links').delete().eq('document_id', E2E_SURVEY.documentId);
+      await admin.from('sheet_sync_connections').delete().eq('user_id', ownerId);
+      const shot = async (name) => { if (SHOTS) await page.screenshot({ path: `${SHOTS}/${layout.name.replace(/[^a-z0-9]+/gi, '-')}-g${name}.png` }); };
+      const tap = (locator) => press(layout, locator);
+      try {
+        await page.addInitScript(() => window.localStorage.setItem('survey.flag.sheet-team-sync', '1'));
+        await signInAt(page, E2E_ACCOUNTS.owner, layout.app ? '/?mobileNav=tabs&nativeShell=capacitor' : '/');
+        const button = await openSurveyPanel(page, layout);
+        await expect(button).toHaveAttribute('data-sheet-sync-state', 'none');
+        await tap(button);
+        const panel = page.getByRole('dialog', { name: 'Live sync' });
+        await expect(panel.getByRole('button', { name: 'Connect Google' })).toBeVisible();
+
+        if (layout.app) {
+          let consentUrl = null;
+          await context.route('**/o/oauth2/v2/auth**', (route) => { consentUrl = route.request().url(); return route.abort(); });
+          const consentTab = context.waitForEvent('page');
+          await tap(panel.getByRole('button', { name: 'Connect Google' }));
+          const tab = await consentTab;
+          await expect.poll(() => consentUrl, { timeout: 15_000 }).toBeTruthy();
+          await tab.close();
+          const consent = await fetch(consentUrl, { redirect: 'manual' });
+          const callback = await fetch(consent.headers.get('location'), { redirect: 'manual' });
+          const landed = callback.headers.get('location');
+          expect(landed).toContain('app=phone');
+          const other = await browser.newContext({ viewport: layout.use.viewport, isMobile: true, hasTouch: true });
+          const browserPage = await other.newPage();
+          await browserPage.goto(landed);
+          await expect(browserPage.getByRole('link', { name: /Open Survey/ })).toHaveAttribute('href', /^com\.kalvoe\.survey:\/\/sheet-connected\?provider=google&code=/);
+          const code = (await browserPage.locator('#code').textContent()).trim();
+          await other.close();
+          await tap(panel.getByRole('button', { name: 'Enter its code' }).first());
+          await panel.getByLabel(/Type the code/).fill(code);
+          await tap(panel.getByRole('button', { name: 'Finish' }));
+        } else {
+          const consentTab = context.waitForEvent('page');
+          await tap(panel.getByRole('button', { name: 'Connect Google' }));
+          const tab = await consentTab;
+          await tab.waitForURL(/google-connected\.html\?result=finish/, { timeout: 30_000 });
+          await tab.close();
+        }
+        await expect(button).toHaveAttribute('data-sheet-sync-state', 'connected', { timeout: 40_000 });
+        await expect(panel.getByText(E2E_ACCOUNTS.owner.email, { exact: true })).toBeVisible();
+        expect(await spills(page), 'panel, Google connected').toEqual([]);
+        await shot('1-connected');
+
+        await tap(panel.getByRole('button', { name: 'Make Google Sheet' }));
+        await expect(panel.getByRole('link', { name: 'Open in Sheets' })).toBeVisible({ timeout: 30_000 });
+        await expect(button).toHaveAttribute('data-sheet-sync-state', 'active');
+        expect(await spills(page), 'panel, Google live').toEqual([]);
+        if (layout.use.hasTouch) expect(await smallButtons(page), 'Google live, touch targets').toEqual([]);
+        await shot('2-live');
+
+        const { files } = await fakeGoogle('/files');
+        const fileId = files.at(-1);
+        const title = `${E2E_SURVEY.categoryName} - ${E2E_SURVEY.moduleName}`;
+        let file = await fakeGoogle(`/files/${fileId}`);
+        let tab = file.sheets.find((x) => x.title === title);
+        const row = tab.rows.findIndex((r) => r[3] === E2E_SURVEY.itemName);
+        expect(row).toBeGreaterThan(0);
+
+        // The PM deletes the tab: the panel says so and puts it back.
+        await fakeGoogle(`/files/${fileId}/delete-tab`, { title });
+        await expect(async () => {
+          await tap(panel.getByRole('button', { name: 'Sync now' }));
+          await expect(panel.getByRole('button', { name: 'Put it back' })).toBeVisible({ timeout: 3_000 });
+        }).toPass({ timeout: 30_000 });
+        expect(await spills(page), 'panel, Google tab deleted').toEqual([]);
+        if (layout.use.hasTouch) expect(await smallButtons(page), 'Google tab deleted, touch targets').toEqual([]);
+        await shot('3-tab-deleted');
+        await tap(panel.getByRole('button', { name: 'Put it back' }));
+        await expect(panel.getByRole('button', { name: 'Put it back' })).toHaveCount(0, { timeout: 30_000 });
+        file = await fakeGoogle(`/files/${fileId}`);
+        tab = file.sheets.find((x) => x.title === title);
+        expect(tab.rows.some((r) => r[3] === E2E_SURVEY.itemName)).toBe(true);
+
+        // A PM's note in the sheet reaches the item.
+        const notesCol = tab.rows[0].indexOf('Notes');
+        const at = tab.rows.findIndex((r) => r[3] === E2E_SURVEY.itemName);
+        const note = `From Sheets on ${layout.name}`;
+        await fakeGoogle(`/files/${fileId}/edit`, { title, edits: [{ row: at, col: notesCol, value: note }] });
+        await expect(async () => {
+          await tap(panel.getByRole('button', { name: 'Sync now' }));
+          await expect(panel.getByRole('button', { name: 'Sync now' })).not.toHaveAttribute('aria-busy', 'true', { timeout: 10_000 });
+          expect(JSON.stringify(await markersOf(E2E_SURVEY.documentId))).toContain(note);
+        }).toPass({ timeout: 45_000 });
+
+        // The PM trashes the sheet: the link stops and says why.
+        await fakeGoogle(`/files/${fileId}/trash`, {});
+        await tap(panel.getByRole('button', { name: 'Sync now' }));
+        await expect(panel.getByText('Sync stopped')).toBeVisible({ timeout: 30_000 });
+        await expect(panel.getByText(/was deleted or is no longer shared/)).toBeVisible();
+        expect(await spills(page), 'panel, Google sheet trashed').toEqual([]);
+        await shot('4-trashed');
+      } finally {
+        await admin.from('sheet_sync_links').delete().eq('document_id', E2E_SURVEY.documentId);
+        await admin.from('sheet_sync_connections').delete().eq('user_id', ownerId);
+        await admin.from('sheet_sync_pending_connections').delete().eq('user_id', ownerId);
+        await fakeGoogle('/reset', {});
       }
     });
 
