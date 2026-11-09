@@ -5743,7 +5743,7 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
 }
 
 /* Preview pane: double-clicking a row opens the file. Mouse/trackpad only;
-   a touch screen opens on tap and has no double-click. */
+   on a touch screen a tap opens it (DocumentsLedger onDesktopRowClick). */
 .documents-preview-open-hint {
   flex: none;
   margin-top: 8px;
