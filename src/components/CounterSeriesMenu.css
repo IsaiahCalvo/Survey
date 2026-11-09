@@ -41,7 +41,7 @@
   justify-content: center;
   transition: transform 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
 }
-.counter-list__pin-glyph { width: 22px; height: 22px; display: block; overflow: visible; }
+.counter-list__pin-glyph { width: 22px; height: 22px; display: block; overflow: visible; filter: drop-shadow(0 0 0.5px rgba(0, 0, 0, 0.45)); }
 .counter-list__pin[aria-expanded='true'] { box-shadow: 0 0 0 1.5px var(--accent); }
 .counter-list__pin:active { transform: scale(0.92); }
 .counter-list__name {

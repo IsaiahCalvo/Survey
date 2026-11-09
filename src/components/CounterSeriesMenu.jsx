@@ -29,7 +29,7 @@ function CounterPinGlyph({ fill, numberColor, label }) {
   const text = String(label);
   const fontSize = text.length > 2 ? 5.2 : text.length > 1 ? 6.2 : 7.4;
   return <svg className="counter-list__pin-glyph" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
-    <path d={PIN_GLYPH.pathD} fill={fill} stroke="rgba(0,0,0,0.18)" strokeWidth="0.6" />
+    <path d={PIN_GLYPH.pathD} fill={fill} stroke="none" />
     <text x="10" y="10" dy="0.36em" textAnchor="middle" fill={numberColor} fontSize={fontSize} fontWeight="700" fontFamily="system-ui, sans-serif">{text}</text>
   </svg>;
 }
