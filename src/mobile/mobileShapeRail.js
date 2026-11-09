@@ -11,6 +11,22 @@ export const MOBILE_MEASURE_ITEMS = [
   { key: 'scale', label: 'Page scale…', icon: 'measureScale' },
 ];
 
+// Nightly 'measure-depth': Polylength after Length, Wall area and Volume after
+// Perimeter, in the desktop menu's order.
+export function mobileMeasureItems(depthToolsOn = false) {
+  if (!depthToolsOn) return MOBILE_MEASURE_ITEMS;
+  const [length, area, perimeter, scale] = MOBILE_MEASURE_ITEMS;
+  return [
+    length,
+    { key: 'polylength', label: 'Polylength', icon: 'polyline' },
+    area,
+    perimeter,
+    { key: 'wallArea', label: 'Wall area', icon: 'measurePerimeter' },
+    { key: 'volume', label: 'Volume', icon: 'measureArea' },
+    scale,
+  ];
+}
+
 /** Whether a Shapes strip button shows pressed. */
 export function isMobileShapeToolActive(id, { activeTool, lineBorderStyle, measureMode, measureScaleDialogOpen } = {}) {
   if (id === 'measure') return !!measureMode || !!measureScaleDialogOpen;
