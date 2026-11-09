@@ -547,6 +547,10 @@ const BLEND_MODE_SAMPLES = Object.freeze({
   uniform: BLEND_SAMPLE_SOLID,
 });
 
+// The phone hub's panels: the dock's middle button names and lights the one
+// that is open (beta panels show in the hub's tab row when their flag is on).
+const MOBILE_HUB_PANELS = Object.freeze(['pages', 'search', 'bookmarks', 'layers', 'library', 'comments', 'markups']);
+
 export default function App({ devPreviewReturnTab = null }) {
   useEffect(() => schedulePdfViewerPrefetch(loadPDFViewerModule), []);
 
@@ -2412,7 +2416,7 @@ export default function App({ devPreviewReturnTab = null }) {
   }, [leftRailApi, rightRailApi, activeTabId, activeTab?.file]);
 
   const toggleMobileDocumentHub = useCallback(() => {
-    const activePanel = ['pages', 'search', 'bookmarks'].includes(mobileDocumentPanelState.activePanel)
+    const activePanel = MOBILE_HUB_PANELS.includes(mobileDocumentPanelState.activePanel)
       ? mobileDocumentPanelState.activePanel
       : 'pages';
     openMobileDocumentPanel(activePanel);
@@ -5389,7 +5393,7 @@ export default function App({ devPreviewReturnTab = null }) {
             onOpenPanel={openMobileDocumentPanel}
             onToggleHub={toggleMobileDocumentHub}
             onOpenSurvey={openMobileSurveyPanel}
-            hubMode={['pages', 'search', 'bookmarks'].includes(mobileDocumentPanelState.activePanel) ? mobileDocumentPanelState.activePanel : 'pages'}
+            hubMode={MOBILE_HUB_PANELS.includes(mobileDocumentPanelState.activePanel) ? mobileDocumentPanelState.activePanel : 'pages'}
             spacesActive={Boolean(leftRailApi?.activeSpaceId)}
             surveyActive={Boolean(rightRailApi?.showSurveyPanel)}
             openPanel={mobileSurveyPanelOpen
@@ -5397,7 +5401,7 @@ export default function App({ devPreviewReturnTab = null }) {
               : (mobileDocumentPanelState.isOpen
                 ? (mobileDocumentPanelState.activePanel === 'spaces'
                   ? 'spaces'
-                  : (['pages', 'search', 'bookmarks'].includes(mobileDocumentPanelState.activePanel) ? 'hub' : null))
+                  : (MOBILE_HUB_PANELS.includes(mobileDocumentPanelState.activePanel) ? 'hub' : null))
                 : null)}
           />
         )}
