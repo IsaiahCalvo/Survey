@@ -102,6 +102,12 @@ test('versions: only supersede_document links copies, and the viewer lists and c
     await page.keyboard.press('Shift+ArrowDown');
     await expect(canvas).toHaveAttribute('data-compare-offset', '1,10');
     await page.screenshot({ path: test.info().outputPath('version-compare.png') });
+    // One Show choice: only v1, then both again.
+    const showOnlyOld = compare.getByRole('radio', { name: 'Show only v1' });
+    await showOnlyOld.click();
+    await expect(showOnlyOld).toHaveAttribute('aria-checked', 'true');
+    await compare.getByRole('radio', { name: 'Show v1 and v2' }).click();
+    await expect(compare.locator('[data-compare-zoom]')).toHaveText(/^\d+%$/);
     await page.keyboard.press('Escape');
     await expect(compare).toBeHidden();
 

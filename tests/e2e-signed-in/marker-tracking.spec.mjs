@@ -167,6 +167,12 @@ test('tracking: status, assigned to and due date on a survey item, with list chi
     await expect(page.getByTestId('survey-tracking').getByRole('button', { name: 'Assigned to', exact: true })).toHaveAttribute('data-value', seeded.editorId);
     await page.screenshot({ path: test.info().outputPath('marker-tracking.png') });
 
+    // The due date is a pill like the other two; its x clears it.
+    await expect(page.getByTestId('survey-tracking').getByRole('button', { name: /^Due date, / })).toBeVisible();
+    await page.getByTestId('survey-tracking').getByRole('button', { name: 'Clear due date' }).click();
+    await expect(page.getByTestId('survey-tracking').getByRole('button', { name: 'Set a due date' })).toBeVisible();
+    await expect.poll(async () => (await storedTracking(page, seeded.docId))['track-a']?.due ?? null, { timeout: 20_000 }).toBeNull();
+
     // Back to nothing set: the field goes away.
     await pick(page, page.getByTestId('survey-tracking'), 'Status', 'Open');
     await pick(page, page.getByTestId('survey-tracking'), 'Assigned to', 'Nobody');

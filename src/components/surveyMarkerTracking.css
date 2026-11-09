@@ -85,7 +85,7 @@
 }
 
 .survey-tracking-badge.is-active {
-  color: var(--accent-text);
+  color: var(--accent);
   box-shadow: inset 0 0 0 1px var(--border-strong);
 }
 
@@ -129,7 +129,62 @@
 
 /* Selected = gold ink on a neutral raised fill (selected states are gold ink only). */
 .survey-tracking-chip[aria-pressed="true"] {
-  color: var(--accent-text);
+  color: var(--accent);
   background: var(--surface-3);
   font-weight: 600;
+}
+
+/* Desktop due date pill (DueDatePill): looks like the Status / Assigned to
+   pills; the date input under it only hosts the system picker. */
+.survey-tracking__due {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.survey-tracking__due-pill {
+  --chrome-pill-w: 100%;
+  width: 100%;
+  min-width: 0;
+}
+
+.survey-tracking__due.has-date .survey-tracking__due-pill {
+  padding-right: 26px;
+}
+
+.survey-tracking__due.is-empty .survey-tracking__due-pill {
+  color: var(--text-3);
+}
+
+.survey-tracking__due-clear {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  color: var(--text-3);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.survey-tracking__due-clear:hover {
+  color: var(--text-1);
+  background: var(--hover);
+}
+
+.survey-tracking__due-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  pointer-events: none;
 }

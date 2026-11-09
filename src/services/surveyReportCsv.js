@@ -2,9 +2,12 @@
 // survey item with its category, status and issue lines. Opens in Excel,
 // Google Sheets or Numbers; the numbers match the PowerPoint report.
 import { summarizeSurvey } from './surveySummary.js';
+import { itemFollowUp } from './surveyReportPptx.js';
+import { todayKey } from '../utils/markerTracking.js';
 
 const STATUS_LABEL = { done: 'Done', partly: 'Partly done', notStarted: 'Not started' };
-export const SURVEY_REPORT_CSV_HEADER = ['Category', 'Item', 'Status', 'Lines answered', 'Lines', 'Issues'];
+// Follow-up: the item's status / who has it / due date; Note: its note.
+export const SURVEY_REPORT_CSV_HEADER = ['Category', 'Item', 'Status', 'Lines answered', 'Lines', 'Issues', 'Follow-up', 'Note'];
 
 // Quote every text cell; a leading = + - @ is made plain text so a
 // spreadsheet never runs it as a formula.
@@ -15,13 +18,15 @@ function cell(value) {
   return `"${v.replace(/"/g, '""')}"`;
 }
 
-export function surveyReportCsv({ template, markers } = {}) {
+export function surveyReportCsv({ template, markers, people = [], when = new Date() } = {}) {
   const summary = summarizeSurvey({ template, markers, rows: true });
+  const today = todayKey(when);
   const lines = [SURVEY_REPORT_CSV_HEADER.map(cell).join(',')];
   for (const c of summary.categories) {
     for (const r of c.rows) {
       const issues = r.issues.map((l) => `${l.text}: ${l.answer}`).join('; ');
-      lines.push([c.name, r.name, STATUS_LABEL[r.status], r.answered, r.total, issues].map(cell).join(','));
+      const follow = itemFollowUp(markers?.[r.id], { people, today });
+      lines.push([c.name, r.name, STATUS_LABEL[r.status], r.answered, r.total, issues, follow.tracking, follow.note].map(cell).join(','));
     }
   }
   // A byte-order mark so Excel reads it as UTF-8 (units like °F).

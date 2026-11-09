@@ -67,7 +67,7 @@ test('flag on: CSV downloads the report as a table, one row per item', async ({ 
   const file = await download;
   expect(file.suggestedFilename()).toBe(`${E2E_SURVEY.templateName} report.csv`);
   const rows = (await (await import('node:fs/promises')).readFile(await file.path(), 'utf8')).replace(/^\uFEFF/, '').trim().split('\r\n');
-  expect(rows[0]).toBe('"Category","Item","Status","Lines answered","Lines","Issues"');
+  expect(rows[0]).toBe('"Category","Item","Status","Lines answered","Lines","Issues","Follow-up","Note"');
   expect(rows.length).toBeGreaterThan(1);
   expect(rows[1]).toContain(`"${E2E_SURVEY.categoryName}"`);
 });

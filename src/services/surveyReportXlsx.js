@@ -4,7 +4,8 @@
 // (one row per item, as the CSV). ExcelJS cannot write charts, so the chart
 // parts are added to the saved file with JSZip; the chart reads its numbers
 // from the Summary cells, so it stays live when someone edits them.
-import { surveyReportPlan } from './surveyReportPptx.js';
+import { itemFollowUp, surveyReportPlan } from './surveyReportPptx.js';
+import { todayKey } from '../utils/markerTracking.js';
 import { reportKitFor } from './reportKits/index.js';
 import { summarizeSurvey } from './surveySummary.js';
 
@@ -184,9 +185,12 @@ export async function buildSurveyReportXlsx({ ExcelJS, JSZip }, input) {
 
   if (types.has('issues')) {
     const issues = wb.addWorksheet('Issues');
-    issues.columns = [{ header: 'Category', width: 30 }, { header: 'Item', width: 24 }, { header: 'Lines with a problem answer', width: 80 }];
+    issues.columns = [
+      { header: 'Category', width: 30 }, { header: 'Item', width: 24 }, { header: 'Lines with a problem answer', width: 80 },
+      ...(plan.hasFollowUp ? [{ header: 'Follow-up', width: 36 }, { header: 'Note', width: 60 }] : []),
+    ];
     issues.getRow(1).font = { bold: true };
-    plan.issueRows.forEach((r) => issues.addRow([r.category, r.item, r.lines]));
+    plan.issueRows.forEach((r) => issues.addRow([r.category, r.item, r.lines, ...(plan.hasFollowUp ? [r.tracking, r.note] : [])]));
     if (!plan.issueRows.length) issues.addRow(['No issues found.']);
   }
 
@@ -194,10 +198,14 @@ export async function buildSurveyReportXlsx({ ExcelJS, JSZip }, input) {
   items.columns = [
     { header: 'Category', width: 30 }, { header: 'Item', width: 24 }, { header: 'Status', width: 14 },
     { header: 'Lines answered', width: 15 }, { header: 'Lines', width: 8 }, { header: 'Issues', width: 60 },
+    { header: 'Follow-up', width: 36 }, { header: 'Note', width: 60 },
   ];
   items.getRow(1).font = { bold: true };
   for (const c of summarizeSurvey({ template: input?.template, markers: input?.markers, rows: true }).categories) {
-    for (const r of c.rows) items.addRow([c.name, r.name, STATUS_LABEL[r.status], r.answered, r.total, r.issues.map((l) => `${l.text}: ${l.answer}`).join('; ')]);
+    for (const r of c.rows) {
+      const follow = itemFollowUp(input?.markers?.[r.id], { people: input?.people, today: todayKey(input?.when || new Date()) });
+      items.addRow([c.name, r.name, STATUS_LABEL[r.status], r.answered, r.total, r.issues.map((l) => `${l.text}: ${l.answer}`).join('; '), follow.tracking, follow.note]);
+    }
   }
 
   const buffer = await wb.xlsx.writeBuffer();

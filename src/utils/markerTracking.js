@@ -75,6 +75,14 @@ export function dueLabel(due, today = todayKey()) {
   return `Due ${month} ${d}${sameYear ? '' : `, ${y}`}`;
 }
 
+/** The due day as the date pill shows it: "Nov 3", or "Nov 3, 2027" in another year. */
+export function shortDayLabel(due, today = todayKey()) {
+  if (!due || !DATE_KEY.test(due)) return '';
+  const [y, m, d] = due.split('-').map(Number);
+  const month = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][m - 1];
+  return Number(today.slice(0, 4)) === y ? `${month} ${d}` : `${month} ${d}, ${y}`;
+}
+
 export const EMPTY_TRACKING_FILTER = Object.freeze({ mine: false, overdue: false, hideDone: false });
 
 export function trackingFilterActive(filter) {

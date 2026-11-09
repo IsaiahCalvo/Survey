@@ -263,8 +263,17 @@
 }
 
 @media (max-width: 640px) {
+  /* Three small tiles in one row, not three full-width cards that push
+     People below the fold on a phone. */
   .company-stats {
-    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  .company-stat {
+    padding: 8px;
+    gap: 4px;
+  }
+  .company-stat-value {
+    font-size: 13px;
   }
   .company-row {
     flex-wrap: wrap;

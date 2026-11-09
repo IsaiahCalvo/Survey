@@ -200,3 +200,15 @@ test('text-markup transactions: a mark moved to another page keeps its (default)
   const viewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
   assert.match(viewer, /saveContext\?\.action !== 'move-to-page' && saveContext\?\.action !== 'move-region'/);
 });
+
+test('selectableMarkIndices skips hidden marks and marks on hidden layers', async () => {
+  const { selectableMarkIndices, hiddenLayerIdSet, addLayer, setLayerVisible } = await import('../src/utils/layers.js');
+  const { state, layer } = addLayer(null, { name: 'Walls', id: 'layer-w' });
+  const objects = [{ id: 'a' }, { id: 'b', layerId: 'layer-w' }, { id: 'c', visible: false }, null, { id: 'd', layerId: 'gone' }];
+  assert.deepEqual(selectableMarkIndices(objects, hiddenLayerIdSet(state)), [0, 1, 4]);
+  const hidden = hiddenLayerIdSet(setLayerVisible(state, layer.id, false));
+  assert.deepEqual(selectableMarkIndices(objects, hidden), [0, 4]);
+  const defaultHidden = hiddenLayerIdSet(setLayerVisible(state, 'default', false));
+  assert.deepEqual(selectableMarkIndices(objects, defaultHidden), [1]);
+  assert.deepEqual(selectableMarkIndices(undefined, null), []);
+});
