@@ -157,6 +157,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Measure: Polylength, Wall area and Volume (area or outline x a depth)',
     stage: 'beta',
   }),
+  'align-marks': Object.freeze({
+    label: 'Align and space picked marks (mark menu)',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

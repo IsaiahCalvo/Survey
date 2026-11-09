@@ -60,6 +60,8 @@ import { reorderSelectionInStack } from '../utils/annotationFamilyRules.js';
 import { resolveMenuTargets, sameMenuTargets, stampMenuTargetIds } from '../utils/selectionRemap.js';
 import { pageHasTransform } from '../utils/disabledActions.js';
 import { PICK_ANY_TOOLS } from '../utils/selectModes.js';
+import { isFeatureOn } from '../featureFlags.js';
+import { requestArrangeSelection } from '../utils/alignMarks.js';
 import { contextMenuInputOf, isTouchMenuInput } from '../utils/touchLongPress.js';
 import { PageMenuList } from '../sidebar/PageActionsMenu.jsx';
 import { availableActions, buildCanvasPageItems, buildPageMenuItems, runPageMenuAction } from '../sidebar/pageMenuItems.js';
@@ -188,7 +190,7 @@ export function useAnnotationContextMenu({ getPageObjects = null } = {}) {
 // targets (touchTargets.css + annotationContextMenu.css).
 // Design review 2026-10-27: the rows under the icon row carry an icon too,
 // like every other action menu (components/MenuRows.jsx picks by label).
-const MARK_ROW_ICONS = { arrange: 'layers', lock: 'lock', unlock: 'lock', saveToLibrary: 'library' };
+const MARK_ROW_ICONS = { arrange: 'layers', align: 'alignLeft', lock: 'lock', unlock: 'lock', saveToLibrary: 'library' };
 const markRowIcon = (it) => MARK_ROW_ICONS[it.key] || menuIconFor(it.label);
 const MENU_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter'];
 
@@ -198,14 +200,19 @@ function MarkMenuBody({ layout, touchRows }) {
   const arrangeRowRef = useRef(null);
   const submenuRef = useRef(null);
   const focusSubmenuOnOpenRef = useRef(false);
-  const [arrangeOpen, setArrangeOpen] = useState(false);
+  // The open submenu row's key ('arrange', 'align'), or null. One at a time.
+  const [openKey, setOpenKey] = useState(null);
+  const arrangeOpen = openKey != null;
+  const setArrangeOpen = (open, key = null) => setOpenKey(open ? key : null);
   // Hover opens / closes Arrange for a real mouse only. A finger's tap also
   // sends compatibility mouse events (and the browser re-sends them when the
   // submenu appears), which shut the submenu the tap had just opened.
-  const onMouseHover = (open) => (event) => {
-    if (event.pointerType === 'mouse') setArrangeOpen(open);
+  const onMouseHover = (open, key = null) => (event) => {
+    if (event.pointerType === 'mouse') setArrangeOpen(open, key);
   };
-  const arrange = layout.rows.find((row) => row.submenu) || null;
+  const arrange = layout.rows.find((row) => row.submenu && row.key === openKey)
+    || layout.rows.find((row) => row.submenu) || null;
+  const isSubmenuKey = (key) => layout.rows.some((row) => row.submenu && row.key === key);
 
   const focusEl = (el) => { try { el?.focus({ preventScroll: true }); } catch { /* detached */ } };
 
@@ -239,7 +246,7 @@ function MarkMenuBody({ layout, touchRows }) {
       focusSubmenuOnOpenRef.current = false;
       focusEl(sub.querySelector('[data-submenu-key]:not([aria-disabled="true"])'));
     }
-  }, [arrangeOpen, touchRows]);
+  }, [openKey, touchRows]);
 
   useEffect(() => {
     const onKeyDown = (event) => {
@@ -253,10 +260,11 @@ function MarkMenuBody({ layout, touchRows }) {
         if (!inMenu) return;
         handled();
         if (active.getAttribute('aria-disabled') === 'true') return;
-        if (active.getAttribute('data-menu-key') === 'arrange') {
-          // Enter on Arrange opens it with its first item focused.
-          if (arrangeOpen) focusEl(submenuRef.current?.querySelector('[data-submenu-key]:not([aria-disabled="true"])'));
-          else { focusSubmenuOnOpenRef.current = true; setArrangeOpen(true); }
+        const enterKey = active.getAttribute('data-menu-key');
+        if (isSubmenuKey(enterKey)) {
+          // Enter on a submenu row opens it with its first item focused.
+          if (openKey === enterKey) focusEl(submenuRef.current?.querySelector('[data-submenu-key]:not([aria-disabled="true"])'));
+          else { focusSubmenuOnOpenRef.current = true; setArrangeOpen(true, enterKey); }
           return;
         }
         active.click();
@@ -282,13 +290,13 @@ function MarkMenuBody({ layout, touchRows }) {
         return;
       }
       const activeKey = inMenu ? active.getAttribute('data-menu-key') : null;
-      if (event.key === 'ArrowRight' && activeKey === 'arrange') {
-        if (arrange?.disabled) return;
-        if (arrangeOpen) {
+      if (event.key === 'ArrowRight' && isSubmenuKey(activeKey)) {
+        if (layout.rows.find((row) => row.key === activeKey)?.disabled) return;
+        if (openKey === activeKey) {
           focusEl(submenuRef.current?.querySelector('[data-submenu-key]:not([aria-disabled="true"])'));
         } else {
           focusSubmenuOnOpenRef.current = true;
-          setArrangeOpen(true);
+          setArrangeOpen(true, activeKey);
         }
         return;
       }
@@ -305,12 +313,12 @@ function MarkMenuBody({ layout, touchRows }) {
       if (!next) return;
       const rows = stops.filter((keys) => keys.length > 0);
       const key = rows[next.row]?.[next.col];
-      if (key !== 'arrange') setArrangeOpen(false);
+      if (key !== openKey) setArrangeOpen(false);
       focusEl(root.querySelector(`[data-menu-key="${key}"]`));
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [layout, arrange, arrangeOpen]);
+  }, [layout, arrange, openKey]);
 
   // The hint sits above the icon row, clear of the rows below it.
   const tipFor = (label) => (touchRows ? {} : tip(label, 'above'));
@@ -343,17 +351,17 @@ function MarkMenuBody({ layout, touchRows }) {
       {layout.rows.map((it) => (it.submenu ? (
         <div key={it.key} className="annotation-menu-subhost">
           <div
-            ref={arrangeRowRef}
+            ref={openKey === it.key ? arrangeRowRef : undefined}
             role="menuitem"
             tabIndex={-1}
             data-menu-key={it.key}
             aria-haspopup="menu"
-            aria-expanded={arrangeOpen ? 'true' : 'false'}
+            aria-expanded={openKey === it.key ? 'true' : 'false'}
             aria-disabled={it.disabled ? 'true' : undefined}
-            className={`annotation-menu-row${arrangeOpen ? ' is-open' : ''}`}
+            className={`annotation-menu-row${openKey === it.key ? ' is-open' : ''}`}
             // A mouse opens it on hover; a finger or pen taps it.
-            onPointerEnter={it.disabled ? undefined : onMouseHover(true)}
-            onClick={it.disabled ? undefined : () => setArrangeOpen((open) => (touchRows ? !open : true))}
+            onPointerEnter={it.disabled ? undefined : onMouseHover(true, it.key)}
+            onClick={it.disabled ? undefined : () => setOpenKey((open) => (touchRows && open === it.key ? null : it.key))}
           >
             {markRowIcon(it) && <Icon name={markRowIcon(it)} size={14} color="currentColor" />}
             <span>{it.label}</span>
@@ -361,7 +369,7 @@ function MarkMenuBody({ layout, touchRows }) {
               <Icon name="chevronRight" size={14} color="currentColor" />
             </span>
           </div>
-          {arrangeOpen && (
+          {openKey === it.key && (
             <div ref={submenuRef} role="menu" aria-label={it.label} className="annotation-menu-submenu">
               {it.submenu.map((sub) => (
                 <div
@@ -1135,6 +1143,26 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           deleteSelectedCallouts();
         }, groupHasEditable),
         ...lockMenuItems(groupMembers, familySelection),
+        // Nightly 'align-marks' (Drawboard PDF Pro audit 2026-11-09): line the
+        // picked marks up, or space them evenly. The page's layer moves them
+        // (one Undo step); spacing needs three or more.
+        ...(isFeatureOn('align-marks') ? (() => {
+          const movable = groupMembers.filter((m) => !isUserLocked(m.obj)).length;
+          const align = (mode, label) => item(label, `align${mode[0].toUpperCase()}${mode.slice(1)}`,
+            () => requestArrangeSelection(ctx.pageNumber, 'align', mode), movable >= 2);
+          const spread = (mode, label) => item(label, `distribute${mode[0].toUpperCase()}${mode.slice(1)}`,
+            () => requestArrangeSelection(ctx.pageNumber, 'distribute', mode), movable >= 3);
+          return [
+            align('left', 'Align left'),
+            align('center', 'Align centres'),
+            align('right', 'Align right'),
+            align('top', 'Align top'),
+            align('middle', 'Align middles'),
+            align('bottom', 'Align bottom'),
+            spread('horizontal', 'Space evenly across'),
+            spread('vertical', 'Space evenly down'),
+          ];
+        })() : []),
         sep(),
         item('Bring to front', 'bringToFront', () => {
           reorderAll('front');

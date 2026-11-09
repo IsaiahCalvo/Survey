@@ -31725,6 +31725,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         }
       }
     }
+    // Align / distribute: `moves` = { [id]: { dx, dy } }, each marker its own.
+    if (patch.moves && typeof patch.moves === 'object') {
+      for (const [rawId, delta] of Object.entries(patch.moves)) {
+        const id = String(rawId);
+        const record = next[id];
+        const dx = Number(delta?.dx) || 0;
+        const dy = Number(delta?.dy) || 0;
+        if ((dx === 0 && dy === 0) || !record?.bounds || !mayEdit(record)) continue;
+        const moved = translateSurveyMarkerRecord(record, dx, dy);
+        next[id] = moved;
+        const existing = changes.find((change) => change.id === id);
+        if (existing) existing.after = moved;
+        else changes.push({ id, before: current[id], after: moved });
+      }
+    }
     // A group resize: `bounds` = { [id]: new box }, merged onto each box.
     if (patch.bounds && typeof patch.bounds === 'object') {
       for (const [id, bounds] of Object.entries(patch.bounds)) {
