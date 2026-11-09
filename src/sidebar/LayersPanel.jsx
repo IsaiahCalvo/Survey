@@ -7,6 +7,7 @@
  * and Add layer. All edits go out as one whole next state through
  * onLayersChange; the pure rules live in utils/layers.js.
  */
+import EyeGlyph from '../components/EyeGlyph.jsx';
 import React, { useCallback, useState } from 'react';
 import Icon from '../Icons';
 import './LayersPanel.css';
@@ -20,15 +21,6 @@ import {
   setLayerVisible,
   setPdfOpacity,
 } from '../utils/layers.js';
-
-function EyeIcon({ open }) {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
-      {open ? <circle cx="12" cy="12" r="3" /> : <line x1="3" y1="3" x2="21" y2="21" />}
-    </svg>
-  );
-}
 
 const PDF_OPACITY_STEPS = [[100, '100%'], [75, '75%'], [50, '50%'], [25, '25%'], [0, 'Off']];
 
@@ -158,7 +150,7 @@ export default function LayersPanel({ layerState, activeLayerId, onLayersChange,
                 aria-pressed={!layer.visible}
                 onClick={(e) => { e.stopPropagation(); commit(setLayerVisible(state, layer.id, !layer.visible)); }}
               >
-                <EyeIcon open={layer.visible} />
+                <EyeGlyph open={layer.visible} />
               </button>
               {editingId === layer.id ? (
                 <input

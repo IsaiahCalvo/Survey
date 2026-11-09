@@ -177,6 +177,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Hold Shift while drawing a rectangle or ellipse for a square or circle',
     stage: 'beta',
   }),
+  'hide-marks': Object.freeze({
+    label: 'Hide all marks from the right rail, with a chip to bring them back',
+    stage: 'beta',
+  }),
   'tab-keys': Object.freeze({
     label: 'Alt+Shift+] and Alt+Shift+[ step through the open documents',
     stage: 'beta',

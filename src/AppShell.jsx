@@ -111,6 +111,9 @@ import { PinIcon, getPinnedToolsStore, usePinnedTools } from './pinnedTools/pinn
 import { isFeatureOn } from './featureFlags.js';
 import { installViewerBack } from './utils/backNavigation.js';
 import { steppedTabId, tabStepForKey } from './utils/tabKeys.js';
+import { setMarksHidden, useMarksHidden } from './utils/marksHidden.js';
+import EyeGlyph from './components/EyeGlyph.jsx';
+import './styles/marksHidden.css';
 import { isTypingTarget } from './utils/typingTarget.js';
 import { usePolylineCurve } from './hooks/usePolylineCurve.js';
 import { POLYLINE_CURVE_SET_EVENT } from './utils/polySpline.js';
@@ -2175,6 +2178,10 @@ export default function App({ devPreviewReturnTab = null }) {
     return () => window.removeEventListener(RENAME_OPEN_DOCUMENT_EVENT, rename);
   }, [signedInForRename]);
   const isViewerVisible = activeTab && !activeTab.isHome && selectedPDF && currentView === 'viewer';
+  // Hide all marks (Nightly, 'hide-marks'): an eye in the right rail and a
+  // chip over the page while they are hidden (utils/marksHidden.js).
+  const [hideMarksEnabled] = useState(() => isFeatureOn('hide-marks'));
+  const allMarksHidden = useMarksHidden();
   // Alt+Shift+] / [ steps through the open documents (Nightly, 'tab-keys').
   const [tabKeysEnabled] = useState(() => isFeatureOn('tab-keys'));
   useEffect(() => {
@@ -5381,6 +5388,19 @@ export default function App({ devPreviewReturnTab = null }) {
                         <SnappingGlyph size={RAIL_CONTROL_GLYPH} off={!on} />
                       </button>
                     )} />
+                    {hideMarksEnabled && (
+                      <button
+                        type="button"
+                        onClick={() => setMarksHidden(!allMarksHidden)}
+                        aria-label="Hide all marks"
+                        aria-pressed={allMarksHidden}
+                        data-hide-marks-toggle="true"
+                        {...chromeTip(allMarksHidden ? 'Show all marks' : 'Hide all marks', 'left')}
+                        style={{ ...footerBtn(), color: allMarksHidden ? 'var(--text-1)' : 'var(--text-3)' }}
+                      >
+                        <EyeGlyph open={!allMarksHidden} size={RAIL_CONTROL_GLYPH} />
+                      </button>
+                    )}
                     {/* drawboardAudit C2: the Pencil-only switch sits where
                         Drawboard keeps it - the utility end of the bar holding
                         the page controls. Nothing renders (no rule either)
@@ -5488,6 +5508,12 @@ export default function App({ devPreviewReturnTab = null }) {
           covered the zoom controls; that pill is gone, and the sheet itself
           renders nothing until it is opened.) */}
       <KeyboardShortcutsOverlay />
+      {hideMarksEnabled && allMarksHidden && Boolean(isViewerVisible) && (
+        <div className="marks-hidden-chip" role="status" data-marks-hidden-chip="">
+          <span>Marks hidden</span>
+          <button type="button" onClick={() => setMarksHidden(false)}>Show</button>
+        </div>
+      )}
       {exportModesEnabled && (
         <ExportPdfDialog
           open={exportPdfDialogOpen && Boolean(bottomToolbarApi?.exportPdfWithOptions)}

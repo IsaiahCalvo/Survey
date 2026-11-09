@@ -1,0 +1,34 @@
+/* "Hide all marks" (src/utils/marksHidden.js, Nightly flag 'hide-marks'). */
+html[data-marks-hidden] [data-svg-annotation-layer],
+html[data-marks-hidden] [data-lightweight-annotation-overlay] {
+  visibility: hidden !important;
+}
+
+.marks-hidden-chip {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 5400;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 6px 6px 12px;
+  border-radius: 999px;
+  background: var(--panel-bg, #1c1f26);
+  color: var(--text-1, #fff);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+  font-size: 13px;
+}
+
+.marks-hidden-chip button {
+  font: inherit;
+  font-weight: 500;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
+  background: var(--accent, #2f7cf6);
+  color: var(--accent-ink, #fff);
+}
