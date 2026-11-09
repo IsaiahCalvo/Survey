@@ -22,6 +22,7 @@
  * 'delete', 'backspace', 'arrows', 'click', 'drag').
  */
 import { TOOL_SHORTCUTS } from './toolShortcuts.js';
+import { isFeatureOn } from '../featureFlags.js';
 
 /** A tool binding from toolShortcuts.js written as a chord. */
 export const toolChord = (shortcut) => [
@@ -138,6 +139,9 @@ export const SHORTCUT_SECTIONS = [
       { chords: ['mod+shift+p'], label: 'Print a flattened copy' },
       { chords: ['mod+o'], label: 'Open a PDF', desktopAppOnly: true },
       { chords: ['mod+shift+e'], label: 'Export annotated PDF', desktopAppOnly: true },
+      // Nightly ('tab-keys'): shown only while the flag is on.
+      { chords: ['alt+shift+]'], label: 'Next open document', flag: 'tab-keys' },
+      { chords: ['alt+shift+['], label: 'Previous open document', flag: 'tab-keys' },
     ],
   },
   {
@@ -195,7 +199,8 @@ export function shortcutSectionsFor({ isDesktopApp = false } = {}) {
   return SHORTCUT_SECTIONS
     .map((section) => ({
       ...section,
-      items: section.items.filter((item) => isDesktopApp || !item.desktopAppOnly),
+      items: section.items.filter((item) => (isDesktopApp || !item.desktopAppOnly)
+        && (!item.flag || isFeatureOn(item.flag))),
     }))
     .filter((section) => section.items.length > 0);
 }

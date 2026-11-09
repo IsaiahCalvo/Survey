@@ -110,6 +110,8 @@ import PencilModeControl, { usePencilMode } from './components/PencilModeControl
 import { PinIcon, getPinnedToolsStore, usePinnedTools } from './pinnedTools/pinnedToolsShared.jsx';
 import { isFeatureOn } from './featureFlags.js';
 import { installViewerBack } from './utils/backNavigation.js';
+import { steppedTabId, tabStepForKey } from './utils/tabKeys.js';
+import { isTypingTarget } from './utils/typingTarget.js';
 import { usePolylineCurve } from './hooks/usePolylineCurve.js';
 import { POLYLINE_CURVE_SET_EVENT } from './utils/polySpline.js';
 import { sanitizeZoomInput } from './utils/pageNavigationMath.js';
@@ -2173,6 +2175,22 @@ export default function App({ devPreviewReturnTab = null }) {
     return () => window.removeEventListener(RENAME_OPEN_DOCUMENT_EVENT, rename);
   }, [signedInForRename]);
   const isViewerVisible = activeTab && !activeTab.isHome && selectedPDF && currentView === 'viewer';
+  // Alt+Shift+] / [ steps through the open documents (Nightly, 'tab-keys').
+  const [tabKeysEnabled] = useState(() => isFeatureOn('tab-keys'));
+  useEffect(() => {
+    if (!tabKeysEnabled) return undefined;
+    const onKey = (event) => {
+      const step = tabStepForKey(event);
+      if (!step || isTypingTarget(event.target)) return;
+      const ids = tabsRef.current.filter((tab) => !tab.isHome).map((tab) => tab.id);
+      const next = steppedTabId(ids, activeTabIdRef.current, step);
+      if (!next || next === activeTabIdRef.current) return;
+      event.preventDefault();
+      stableTabClick(next);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [tabKeysEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
   // Back (browser gesture, Android button) closes the open sheet, then the
   // document, instead of leaving Survey (Nightly, 'back-button').
   const [backButtonEnabled] = useState(() => isFeatureOn('back-button'));

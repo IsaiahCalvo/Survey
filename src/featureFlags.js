@@ -177,6 +177,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Hold Shift while drawing a rectangle or ellipse for a square or circle',
     stage: 'beta',
   }),
+  'tab-keys': Object.freeze({
+    label: 'Alt+Shift+] and Alt+Shift+[ step through the open documents',
+    stage: 'beta',
+  }),
   'back-button': Object.freeze({
     label: 'Back (browser or Android) closes the open sheet, then the document, instead of leaving Survey',
     stage: 'beta',
