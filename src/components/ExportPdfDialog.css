@@ -1,0 +1,59 @@
+/* Export PDF (ExportPdfDialog.jsx), owner 2026-11-09: "have it look a little
+   more professional". Mark choices are the app's ButtonGroup with a small page
+   picture of the chosen way under it; pages
+   are a print-dialog style list; the foot says what will be made. */
+.xpdf-head-icon {
+  flex: none; width: 32px; height: 32px; border-radius: 8px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent);
+}
+.xpdf-body { display: flex; flex-direction: column; gap: 18px; }
+.xpdf-section { display: flex; flex-direction: column; gap: 8px; }
+.xpdf-label { font-size: 12px; font-weight: 600; color: var(--text-2); }
+
+.xpdf-modes { width: 100%; }
+/* Under the choice row: a small page picture of the chosen way, and what it
+   means, so the row itself stays the app's one ButtonGroup. */
+.xpdf-mode-detail {
+  display: flex; align-items: center; gap: 12px; padding: 8px 12px 8px 8px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--surface-1);
+}
+.xpdf-mode-detail p { margin: 0; font-size: 12px; line-height: 1.45; color: var(--text-2); }
+.xpdf-preview { flex: none; width: 64px; height: 48px; border-radius: 6px; background: var(--surface-3, rgba(255,255,255,0.05)); }
+.xpdf-preview__page { fill: #ffffff; stroke: rgba(0, 0, 0, 0.12); }
+.xpdf-preview__lines { stroke: #c7cdd6; stroke-width: 1.6; stroke-linecap: round; fill: none; }
+.xpdf-preview__mark { fill: rgba(239, 68, 68, 0.18); stroke: #ef4444; stroke-width: 1.4; }
+.xpdf-preview__handles rect { fill: #ffffff; stroke: #4a90e2; stroke-width: 1; }
+
+.xpdf-pages { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--surface-1); }
+.xpdf-page {
+  display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 0 12px;
+  border: 0; border-top: 1px solid var(--border); background: transparent; color: var(--text-1);
+  font: inherit; font-size: 13.5px; text-align: left; cursor: pointer;
+}
+.xpdf-page:first-child { border-top: 0; }
+.xpdf-page:disabled { cursor: default; color: var(--text-disabled, var(--text-3)); }
+.xpdf-page:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+@media (hover: hover) { .xpdf-page:not(:disabled):not(.is-on):hover { background: var(--hover); } }
+.xpdf-page.is-on { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.xpdf-radio {
+  flex: none; width: 16px; height: 16px; border-radius: 50%;
+  border: 1.5px solid var(--border-strong, var(--text-3)); box-sizing: border-box;
+  transition: border-width 120ms ease, border-color 120ms ease;
+}
+.xpdf-page.is-on .xpdf-radio { border: 5px solid var(--accent); }
+.xpdf-page__label { flex: 1 1 auto; min-width: 0; }
+.xpdf-page__detail { color: var(--text-3); font-size: 12px; }
+.xpdf-page__count {
+  min-width: 24px; padding: 1px 7px; border-radius: 999px; text-align: center;
+  background: var(--surface-3, rgba(255,255,255,0.08)); color: var(--text-2);
+  font-size: 12px; font-variant-numeric: tabular-nums;
+}
+.xpdf-custom { display: flex; flex-direction: column; gap: 2px; }
+.xpdf-custom .pdft-help.is-error { color: var(--danger-text); }
+.xpdf-summary { margin-right: auto; font-size: 12.5px; color: var(--text-3); }
+.xpdf-go { display: inline-flex; align-items: center; gap: 6px; }
+@media (max-width: 560px) {
+  .xpdf-page { min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) { .xpdf-radio { transition: none; } }

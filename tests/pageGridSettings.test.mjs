@@ -65,3 +65,15 @@ test('each viewer sets grid steps on its own pages, not every open tab', async (
   assert.match(call.slice(0, 400), /\), container\);/);
   assert.match(viewer, /const container = pdfjsWrapperRef\.current;\n\s+if \(!gridSettingsEnabled \|\| !container\) return;/);
 });
+
+test('spacing slider: log scale per unit, round trips, tidy values', async () => {
+  const { pageGridSliderPosition, pageGridSliderValue, pageGridPresetValue } = await import('../src/utils/pageGrid.js');
+  for (const [v, unit] of [[0.5, 'in'], [2, 'in'], [10, 'mm'], [5, 'ft'], [1, 'm']]) {
+    assert.equal(pageGridSliderValue(pageGridSliderPosition(v, unit), unit), v);
+  }
+  assert.equal(pageGridSliderPosition(0, 'in'), 0);
+  assert.equal(pageGridSliderPosition(1e6, 'in'), 1000);
+  assert.equal(pageGridPresetValue('wide', 'in'), 1);
+  assert.equal(pageGridPresetValue('fine', 'mm'), 6.35);
+  assert.equal(pageGridPresetValue('normal', 'ft'), null);
+});
