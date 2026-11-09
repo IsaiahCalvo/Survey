@@ -61,6 +61,6 @@ test('the mark menu folds the align items into one Align row; the flag is beta a
   assert.deepEqual(align.submenu.map((s) => s.key), ['alignLeft', 'alignCenter', 'distributeHorizontal']);
   assert.equal(align.disabled, false);
   assert.equal(FEATURE_FLAGS['align-marks'].stage, 'beta');
-  const sql = readFileSync(new URL('../supabase/migrations/20261109210000_align_marks_flag.sql', import.meta.url), 'utf8');
+  const sql = readFileSync(new URL('../supabase/migrations/20261110101000_align_marks_flag.sql', import.meta.url), 'utf8');
   assert.match(sql, /'align-marks', 'off'/);
 });
