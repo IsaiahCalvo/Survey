@@ -7,7 +7,7 @@ import crypto from 'node:crypto';
 import { PDFDocument } from 'pdf-lib';
 import * as Y from 'yjs';
 import { bytesToPgHex } from '../../supabase/functions/_shared/pgBytea.js';
-import { E2E_ACCOUNTS, E2E_PROJECT } from './accounts.mjs';
+import { E2E_ACCOUNTS, E2E_DOCUMENT, E2E_PROJECT } from './accounts.mjs';
 import { RUN, makeUser, must } from './accountFixtures.mjs';
 import { adminClient, apiClientFor, expect, test } from './helpers.mjs';
 
@@ -154,5 +154,43 @@ test('guest links: one document, its role, only while the link lives, nothing el
     await admin.from('documents').delete().in('id', [docId, otherId]);
     await admin.storage.from('documents').remove([path]);
     if (visitorId) await admin.auth.admin.deleteUser(visitorId);
+  }
+});
+
+// An anonymous session has no email. The invite check used to compare the
+// invite's address against NULL, which never came out "different", so anyone
+// with an invite link meant for one person could take it in a private window
+// and become a lasting collaborator (migration 20261109200000).
+test('an invite link meant for one person cannot be taken by a guest session', async () => {
+  const admin = adminClient();
+  const owner = await apiClientFor(E2E_ACCOUNTS.owner);
+  const ownerId = (await owner.auth.getUser()).data.user.id;
+  const [{ id: templateId }] = await must('template', admin.from('templates').select('id').eq('user_id', ownerId).limit(1));
+  const kinds = [
+    ['document', 'document_invites', { document_id: E2E_DOCUMENT.id }, 'kal31_accept_document_invite'],
+    ['project', 'project_invites', { project_id: E2E_PROJECT.id }, 'kal31_accept_project_invite'],
+    ['template', 'template_invites', { template_id: templateId }, 'kal31_accept_template_invite'],
+  ];
+  const guest = await guestClient();
+  const guestId = (await guest.auth.getUser()).data.user.id;
+  const made = [];
+  try {
+    for (const [kind, table, target, rpc] of kinds) {
+      const token = `guest-probe-${kind}-${RUN}`;
+      const [row] = await must(`${kind} invite`, admin.from(table).insert({
+        ...target, token, created_by: ownerId, target_email: `invitee-${RUN}@example.com`,
+        role: 'viewer', intended_role: 'viewer', expires_at: new Date(Date.now() + 86_400_000).toISOString(),
+      }).select('id'));
+      made.push([table, row.id]);
+      const [answer] = await must(`${kind} accept`, guest.rpc(rpc, { invite_token: token }));
+      expect(answer.status, `${kind} invite`).toBe('wrong_account');
+      const [still] = await must(`${kind} invite after`, admin.from(table).select('accepted_at').eq('id', row.id));
+      expect(still.accepted_at, `${kind} invite stays open for its person`).toBeNull();
+    }
+    expect(await must('guest role', guest.rpc('get_my_document_role', { doc_id: E2E_DOCUMENT.id }))).toBeNull();
+    expect((await guest.from('documents').select('id').eq('id', E2E_DOCUMENT.id)).data).toEqual([]);
+  } finally {
+    for (const [table, id] of made) await admin.from(table).delete().eq('id', id);
+    await admin.auth.admin.deleteUser(guestId);
   }
 });
