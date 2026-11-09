@@ -453,3 +453,51 @@ test('a few answers cleared in the sheet still come in as a normal PM edit', asy
   assert.equal(ctx.markers.d1.note.text || '', '');
   assert.equal(ctx.link.state.heldErase, undefined);
 });
+
+// Real Excel, round 4: the heading row deleted, or the whole tab cleared,
+// left only "The Row ID column is missing", with no way back but Undo.
+test('a tab that lost its heading row is left alone, listed, and picked up again after Undo', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101', { note: { text: 'a' } }), d2: door('d2', 'D-102') } });
+  await ctx.round(); await ctx.round();
+  const header = (await ctx.sheet()).rows[0];
+  await fakeApi(`/files/${ctx.fileId}/delete-row`, { title: 'Doors - Level 1', row: 0 });
+  const before = JSON.stringify((await ctx.sheet()).rows);
+  ctx.markers.d1.note = { text: 'changed in the app meanwhile' };
+  const r = await ctx.round();
+  assert.equal(r.status, 'synced');
+  assert.equal(ctx.link.state.brokenTabs.length, 1);
+  assert.equal(JSON.stringify((await ctx.sheet()).rows), before, 'nothing written to the broken tab');
+  assert.equal(ctx.markers.d1.note.text, 'changed in the app meanwhile', 'nothing lost in the app');
+  // Undo in Excel: the heading row comes back; the tab syncs again.
+  await fakeApi(`/files/${ctx.fileId}/insert-row`, { title: 'Doors - Level 1', row: 0, values: header });
+  await ctx.round();
+  assert.deepEqual(ctx.link.state.brokenTabs, []);
+  const sheet = await ctx.sheet();
+  assert.equal(sheet.rows[await ctx.rowOf('d1')][await ctx.col('Notes')], 'changed in the app meanwhile');
+});
+
+test('a broken tab can be made again from the survey; the old one is left as it is', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101', { note: { text: 'keep me' } }), d2: door('d2', 'D-102') } });
+  await ctx.round(); await ctx.round();
+  const sheet0 = await ctx.sheet();
+  const edits = [];
+  sheet0.rows.forEach((row, r) => row.forEach((_, c) => edits.push({ row: r, col: c, value: '' })));
+  await ctx.edit(edits); // select all, Delete
+  await ctx.round();
+  const scopeId = ctx.link.state.brokenTabs[0];
+  assert.ok(scopeId);
+  // What the panel's "Make a new sheet" does (service chooseConflict putBackTab).
+  const { [scopeId]: _old, ...sheetIds } = ctx.link.state.sheetIds;
+  const baseline = Object.fromEntries(Object.entries(ctx.link.baseline).filter(([, b]) => b.scopeId !== scopeId));
+  ctx.link.state = { ...ctx.link.state, sheetIds, brokenTabs: [] };
+  ctx.link.baseline = baseline;
+  await ctx.round({ force: true });
+  const f = await fakeApi(`/files/${ctx.fileId}`);
+  const made = f.sheets.find((s) => s.name !== 'Doors - Level 1' && s.name.startsWith('Doors'));
+  assert.ok(made, `a new tab named apart from the old one (${f.sheets.map((s) => s.name).join(', ')})`);
+  assert.ok(made.rows.some((row) => row.includes('D-101') && row.includes('keep me')));
+  assert.ok(f.sheets.some((s) => s.name === 'Doors - Level 1'), 'the old tab is still there');
+  assert.equal(Object.keys(ctx.markers).length, 2);
+  await ctx.round();
+  assert.deepEqual(ctx.link.state.brokenTabs, []);
+});

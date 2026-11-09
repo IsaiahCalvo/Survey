@@ -396,6 +396,9 @@ export async function planSheetRound({
     stuck: { ...(state.stuck || {}) },
     problems: [],
     missingTabs: [],
+    // Tabs still there that lost their Row ID column or heading row (deleted,
+    // cleared, typed over): not synced until undone or rebuilt (putBackTab).
+    brokenTabs: [],
     heldErase: null,
   };
   const plan = {
@@ -478,7 +481,12 @@ export async function planSheetRound({
     next.headers[scope.scopeId] = Object.fromEntries(scope.columns.filter((c) => colOfKey.has(c.key)).map((c) => [c.key, c.header]));
     const rowIdCol = colOfKey.get('rowId');
     if (rowIdCol == null) {
-      next.problems.push({ scopeId: scope.scopeId, message: `The Row ID column is missing from "${sheet.title}", so it was not synced.` });
+      // Nothing is written to it, and what it last looked like is kept, so
+      // an Undo in the sheet is picked up again as it was.
+      next.brokenTabs.push(scope.scopeId);
+      next.headers[scope.scopeId] = remembered;
+      if (state.columnsSeen?.[scope.scopeId]) next.columnsSeen[scope.scopeId] = state.columnsSeen[scope.scopeId];
+      plan.headerAdds = plan.headerAdds.filter((h) => !sameId(h.sheetId, sheet.sheetId));
       continue;
     }
     // Say so when a column stopped syncing because its header was renamed or

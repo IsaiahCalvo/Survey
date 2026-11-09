@@ -262,7 +262,7 @@ export async function handleSheetSync(req, deps) {
       // A SharePoint/Teams folder link pasted into "Save in".
       folderLink: s.string({ max: 2000, optional: true }),
       markerId: s.string({ max: 200, optional: true }),
-      choice: s.enum(['app', 'sheet', 'putBack', 'putBackTab', 'blanksApp', 'blanksSheet'], { optional: true }),
+      choice: s.enum(['app', 'sheet', 'putBack', 'putBackAll', 'putBackTab', 'blanksApp', 'blanksSheet'], { optional: true }),
       scopeId: s.string({ max: 300, optional: true }),
       appOrigin: s.string({ max: 200, optional: true }),
       force: s.boolean({ optional: true }),
@@ -742,6 +742,7 @@ const publicLink = (link, userId, role = null) => {
     removedInSheet: editor ? Object.entries(link.state?.removedInSheet || {}).map(([markerId, r]) => ({ markerId, ...r })) : [],
     problems: editor ? (link.state?.problems || []).slice(0, 50) : [],
     missingTabs: (link.state?.missingTabs || []).map((scopeId) => ({ scopeId, title: titleOf(scopeId) })),
+    brokenTabs: (link.state?.brokenTabs || []).map((scopeId) => ({ scopeId, title: titleOf(scopeId) })),
     // Many answers blanked in the sheet at once, held: { count, items, at }.
     heldErase: editor && link.state?.heldErase ? link.state.heldErase : null,
   };
@@ -1223,8 +1224,8 @@ async function syncLink(ctx) {
 async function chooseConflict(ctx) {
   const { documentId, templateId, markerId, scopeId, choice } = ctx.body;
   await requireEditor(ctx, documentId);
-  const blanks = choice === 'blanksApp' || choice === 'blanksSheet';
-  if (!blanks && (choice === 'putBackTab' ? !scopeId : !markerId || !choice)) throw new SyncError('Say which row and which side.', 400, 'missing_choice');
+  const linkWide = choice === 'blanksApp' || choice === 'blanksSheet' || choice === 'putBackAll';
+  if (!linkWide && (choice === 'putBackTab' ? !scopeId : !markerId || !choice)) throw new SyncError('Say which row and which side.', 400, 'missing_choice');
   const link = await linkFor(ctx, documentId, templateId);
   if (!link) throw new SyncError('This survey has no linked sheet.', 404, 'not_linked');
   // The choice goes in under the lease, read fresh, so a round running at
@@ -1234,7 +1235,14 @@ async function chooseConflict(ctx) {
   let known = false;
   const change = (l) => {
     const state = { ...(l.state || {}) };
-    if (blanks) {
+    if (choice === 'putBackAll') {
+      // Every row deleted in the sheet (an older copy restored drops all the
+      // items added since): put back in one go.
+      const ids = Object.keys(state.removedInSheet || {});
+      known = ids.length > 0;
+      if (!known) return;
+      state.choices = { ...(state.choices || {}), ...Object.fromEntries(ids.map((id) => [id, 'putBack'])) };
+    } else if (linkWide) {
       // The held blanks: written back from the survey ('blanksApp'), or
       // cleared in the survey too ('blanksSheet'), in the round below.
       known = Boolean(state.heldErase);
@@ -1242,12 +1250,15 @@ async function chooseConflict(ctx) {
       state.eraseChoice = choice === 'blanksApp' ? 'app' : 'sheet';
     } else if (choice === 'putBackTab') {
       // "Put the tab back": forget the tab and its rows, so the next round
-      // makes the tab again and fills it from the survey.
-      known = (state.missingTabs || []).includes(scopeId) && state.sheetIds?.[scopeId] != null;
+      // makes the tab again and fills it from the survey. Also for a tab that
+      // lost its Row ID column or heading row: that one is left as it is for
+      // the PM, and the new tab is named apart from it.
+      known = ((state.missingTabs || []).includes(scopeId) || (state.brokenTabs || []).includes(scopeId)) && state.sheetIds?.[scopeId] != null;
       if (!known) return;
+      state.brokenTabs = (state.brokenTabs || []).filter((id) => id !== scopeId);
       const { [scopeId]: _gone, ...sheetIds } = state.sheetIds;
       state.sheetIds = sheetIds;
-      state.missingTabs = state.missingTabs.filter((id) => id !== scopeId);
+      state.missingTabs = (state.missingTabs || []).filter((id) => id !== scopeId);
       const baseline = { ...(l.baseline || {}) };
       for (const [id, b] of Object.entries(baseline)) if (b?.scopeId === scopeId) delete baseline[id];
       l.baseline = baseline;
