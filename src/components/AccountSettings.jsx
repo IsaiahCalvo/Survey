@@ -1073,7 +1073,7 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                           <ul>
                             <li>1 project</li>
                             <li>5 documents</li>
-                            <li>100MB storage</li>
+                            <li>100 MB storage</li>
                             <li>Basic annotations</li>
                             <li>PDF viewer</li>
                           </ul>
@@ -1093,7 +1093,7 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                             </button>
                           ) : (
                             <button className="account-btn-secondary" disabled>
-                              Downgrade available
+                              Included in your plan
                             </button>
                           )}
                         </div>
@@ -1138,7 +1138,7 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                             <li>Unlimited documents</li>
                             <li>10 GB storage</li>
                             <li>Survey tools</li>
-                            <li>Templates & regions</li>
+                            <li>Templates & Spaces</li>
                             <li>Export data</li>
                             <li>Share and edit together live</li>
                             <li>OneDrive integration</li>
