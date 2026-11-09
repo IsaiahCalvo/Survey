@@ -24,6 +24,9 @@ import { pdfjsAssetOptions } from '../utils/pdfjsAssets.js';
 export const STREAM_RANGE_CHUNK_BYTES = 256 * 1024;
 export const STREAM_OPEN_TIMEOUT_MS = 10_000;
 export const STREAM_SIGNED_URL_SECONDS = 10 * 60;
+// The whole-file stream hands pdf.js its bytes in pieces of at least this
+// size (fewer messages to the worker; still well ahead of the drawing).
+export const STREAM_PUSH_BYTES = 128 * 1024;
 
 /** Pure: should this cloud document be opened by streaming? */
 export function chooseCloudPdfOpenPath({
@@ -168,6 +171,19 @@ export async function probePdfPresentationTag(url, { fetchImpl = globalThis.fetc
  * full download. When the stored size is known we hand pdf.js a
  * PDFDataRangeTransport instead: each chunk it asks for is one ranged GET, and
  * no response header has to be readable.
+ *
+ * startFullStream() also reads the whole file in ONE plain GET and hands each
+ * piece to pdf.js as it lands (onDataProgressiveRead), the way pdf.js's own
+ * network loader streams. Without it the only way to the rest of the file was
+ * getData(), which asks for every missing chunk as one big range whose body
+ * pdf.js only sees once it has fully arrived, so page 1, any later page and
+ * text search all waited for the whole file (26 MB drawing at 50 Mbit: page 1
+ * at ~5.9 s, right after the last byte). Ranges still serve what pdf.js needs
+ * out of order (the xref at the end, page 1's objects) and win the bandwidth
+ * (the stream asks at low priority). `allBytes` resolves with `{ bytes }`, the
+ * whole file, once the stream ends; a stream that fails part way resumes by range, and
+ * if that fails too `allBytes` rejects (not permanent) and pdf.js keeps
+ * asking for what it needs by range.
  */
 export function createCloudRangeTransport({ pdfjsLib, url, length, fetchImpl = globalThis.fetch, onError = () => {}, retries = 3, retryDelayMs = 300 }) {
   const Base = pdfjsLib?.PDFDataRangeTransport;
@@ -218,9 +234,85 @@ export function createCloudRangeTransport({ pdfjsLib, url, length, fetchImpl = g
           onError(error instanceof Error ? error : new Error(String(error)));
         });
     }
-    abort() { failed = true; controller?.abort(); }
+    abort() {
+      failed = true;
+      controller?.abort();
+      rejectAllBytes(Object.assign(new Error('aborted'), { aborted: true }));
+    }
+    startFullStream() {
+      if (streamStarted) return this.allBytes;
+      streamStarted = true;
+      // Resolves with a box, not the bytes: pdf.js keeps this transport for
+      // the life of the document, and a promise would hold the whole file.
+      void readWholeFile(this).then((bytes) => resolveAllBytes({ bytes }), (error) => {
+        if (!error?.permanent || failed) { rejectAllBytes(error); return; }
+        failed = true;
+        controller?.abort();
+        rejectAllBytes(error);
+        onError(error);
+      });
+      return this.allBytes;
+    }
   }
-  return new CloudRangeTransport(length, null);
+  let streamStarted = false;
+  let resolveAllBytes;
+  let rejectAllBytes;
+  const allBytes = new Promise((resolve, reject) => { resolveAllBytes = resolve; rejectAllBytes = reject; });
+  allBytes.catch(() => {});
+  const mismatch = () => Object.assign(new Error('stream size mismatch'), { permanent: true });
+  // One plain GET for the whole file, fed to pdf.js in order. A drop part way
+  // resumes from the last byte by range (the end asks one byte past the stored
+  // size, so a longer file shows up as an extra byte).
+  async function readWholeFile(transport) {
+    const all = new Uint8Array(length);
+    let received = 0;
+    let pushed = 0;
+    const push = (force) => {
+      if (received - pushed < STREAM_PUSH_BYTES && !(force && received > pushed)) return;
+      transport.onDataProgressiveRead(all.slice(pushed, received));
+      pushed = received;
+    };
+    for (let tries = 0; received < length; tries += 1) {
+      if (failed) throw Object.assign(new Error('aborted'), { aborted: true });
+      try {
+        const headers = received > 0 ? { Range: `bytes=${received}-${length}` } : undefined;
+        const response = await fetchImpl(url, {
+          ...(headers ? { headers } : {}), cache: 'no-store', priority: 'low', signal: controller?.signal,
+        });
+        const expected = received > 0 ? 206 : 200;
+        if (response.status !== expected) throw new Error(`stream ${response.status}`);
+        const reader = response.body?.getReader?.();
+        if (!reader) {
+          const whole = new Uint8Array(await response.arrayBuffer());
+          if (received + whole.byteLength !== length) throw mismatch();
+          all.set(whole, received);
+          received = length;
+        } else {
+          for (;;) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            if (failed) { reader.cancel?.().catch?.(() => {}); throw Object.assign(new Error('aborted'), { aborted: true }); }
+            if (received + value.byteLength > length) { reader.cancel?.().catch?.(() => {}); throw mismatch(); }
+            all.set(value, received);
+            received += value.byteLength;
+            push(false);
+          }
+          // A body that ends early on a clean close is a shorter file.
+          if (received < length) throw mismatch();
+        }
+      } catch (error) {
+        if (error?.permanent || error?.aborted || failed) throw error;
+        if (tries + 1 >= retries) throw error;
+        await new Promise((resolve) => setTimeout(resolve, retryDelayMs * (tries + 1)));
+      }
+    }
+    push(true);
+    transport.onDataProgressiveDone();
+    return all;
+  }
+  const transport = new CloudRangeTransport(length, null);
+  transport.allBytes = allBytes;
+  return transport;
 }
 
 /** pdf.js options for a ranged, progressively loaded open. */
@@ -231,7 +323,10 @@ export function streamGetDocumentOptions(url, verbosity, { transport = null, len
     disableAutoFetch: false,
     ...(verbosity != null ? { verbosity } : {}),
   };
-  if (transport) return { ...shared, range: transport, length, disableStream: true };
+  // A transport that streams the whole file needs disableStream: false, or
+  // pdf.js ignores its in-order pieces (it then also stops its own one-chunk-
+  // at-a-time auto fetch: the stream brings everything).
+  if (transport) return { ...shared, range: transport, length, disableStream: typeof transport.startFullStream !== 'function' };
   return {
     url,
     ...shared,
@@ -312,10 +407,29 @@ export async function tryOpenCloudPdfStream({
     const [pdf] = await Promise.race([Promise.all([loadingTask.promise, tagPromise]), timeout]);
     if (brokenBeforeReturn) throw brokenBeforeReturn;
     openSettled = true;
-    if (typeof pdf?.getData === 'function') {
-      // The rest of the file keeps streaming in (disableAutoFetch: false);
-      // once it is all here, hand the bytes on (device cache, mirror check).
-      pdf.getData().then((bytes) => {
+    // Only now the whole-file read: started any sooner it shares the line with
+    // the few small ranges the open itself needs (trailer, xref, catalog) and
+    // slows them (26 MB drawing, 10 Mbit: page 1 at 5.7 s started at once,
+    // 4.0 s started here; 50 Mbit: 1.64 s vs 1.48 s).
+    transport?.startFullStream?.();
+    // The rest of the file keeps streaming in; once it is all here, hand the
+    // bytes on (device cache, mirror check). Never call getData() while the
+    // whole-file stream runs: it asks for every missing chunk as one big range
+    // and every page would wait for it.
+    const streamedBytes = transport?.allBytes
+      ? transport.allBytes.then((box) => {
+        const { bytes } = box;
+        box.bytes = null;
+        return bytes;
+      }, (error) => {
+        if (error?.aborted || loadingTask?.destroyed) throw error;
+        // A size mismatch already reloads by download (onStreamBroken).
+        if (error?.permanent) return new Promise(() => {});
+        return pdf.getData();
+      })
+      : null;
+    if (streamedBytes || typeof pdf?.getData === 'function') {
+      (streamedBytes || pdf.getData()).then((bytes) => {
         try { opened.onBytes?.(bytes); } finally { onAllBytes(bytes); }
       }).catch((error) => {
         // Closing the document (or opening another) destroys its loading
