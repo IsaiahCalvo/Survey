@@ -11,6 +11,7 @@
 // Rows and columns are 0-based from A1; row 0 is the header.
 import { cellError } from './contract.js';
 import { buildLiveWorkbook, excelSheetNames } from './liveWorkbook.js';
+import { trackingChoices } from '../layout.js';
 
 const GRAPH = 'https://graph.microsoft.com/v1.0';
 // Graph closes a saving session after about 5 minutes idle; reopen a bit before.
@@ -118,7 +119,7 @@ const BATCH_SIZE = 20;
 const DROP_DOWN_ROWS = 1000;
 const TEXT_KINDS = new Set(['choice', 'text', 'many']);
 // The same columns Google's provider formats as text (google.js textFormatRequests).
-const isTextColumn = (col) => ['rowId', 'changedBy', 'item', 'entity', 'notes'].includes(col?.key)
+const isTextColumn = (col) => ['rowId', 'changedBy', 'item', 'entity', 'notes', 'status', 'assignee'].includes(col?.key)
   || (String(col?.key || '').startsWith('answer:') && TEXT_KINDS.has(col.item?.kind || 'choice'));
 
 /**
@@ -131,6 +132,7 @@ export function dropDownChoices(column, layout) {
   let choices = null;
   if (key === 'entity') choices = (layout?.entities || []).map((e) => e?.name).filter(Boolean);
   else if (key.startsWith('answer:') && (!column.item?.kind || column.item.kind === 'choice')) choices = layout?.answerValues || null;
+  else choices = trackingChoices(column, layout);
   if (!choices?.length || choices.some((c) => String(c).includes(','))) return null;
   const source = choices.map(String).join(',');
   return source.length <= 255 ? source : null;

@@ -194,6 +194,11 @@ export function mergeMarkerWrites(fresh, before, writes) {
       } else if (key === 'note') {
         // A round sets the note's text; photos or anything else on the note stay.
         merged.note = mergeParts(now.note, was.note, next.note);
+      } else if (key === 'tracking') {
+        // Per part: a status typed in the sheet keeps an assignee picked in
+        // the app meanwhile.
+        const t = mergeParts(now.tracking, was.tracking, next.tracking);
+        if (t === undefined) delete merged.tracking; else merged.tracking = t;
       } else if (next[key] === undefined) {
         delete merged[key];
       } else {
@@ -244,6 +249,8 @@ export async function handleSheetSync(req, deps) {
       template: s.record({ maxBytes: 1024 * 1024, optional: true }),
       kit: s.record({ maxBytes: 64 * 1024, optional: true }),
       answerValues: s.array(s.string({ max: 80 }), { max: 20, optional: true }),
+      // Item tracking columns (Status, Assigned to, Due): the app's flag.
+      tracking: s.boolean({ optional: true }),
       // The answers' cell colours ({ value, argb }) for the Excel workbook.
       answerFills: s.any({ maxBytes: 4 * 1024 }),
       title: s.string({ max: 200, optional: true }),
@@ -566,11 +573,19 @@ function answerFillsFrom(body) {
     .map((f) => ({ value: f.value, argb: String(f.argb).toUpperCase() }));
 }
 
-function layoutFrom(body) {
+function layoutFrom(body, people = []) {
   if (!body.template || !body.kit) return null;
   let layout;
   try {
-    layout = buildSyncLayout({ template: body.template, kit: body.kit, answerValues: body.answerValues || ['Y', 'N', 'N/A'] });
+    layout = buildSyncLayout({
+      template: body.template,
+      kit: body.kit,
+      answerValues: body.answerValues || ['Y', 'N', 'N/A'],
+      // Item tracking columns (Status, Assigned to, Due) when the app has
+      // them on, and the document's people an item can be given to.
+      tracking: body.tracking === true,
+      people,
+    });
   } catch {
     throw new SyncError('This survey template cannot be laid out as a sheet.', 400, 'bad_layout');
   }
@@ -579,6 +594,22 @@ function layoutFrom(body) {
   const problems = layout.scopes.length ? layoutProblems(layout) : [];
   if (problems.length) throw new SyncError(`This survey template cannot be laid out as a sheet (${problems[0]}).`, 400, 'bad_layout');
   return layout;
+}
+
+// The layout a link or sync call asks for. With item tracking on (the app's
+// flag, sent as `tracking`), the people an item can be given to are read
+// here, as the caller sees them, not taken from the device.
+async function layoutFor(ctx, documentId) {
+  if (!ctx.body.template || !ctx.body.kit) return null;
+  let people = [];
+  if (ctx.body.tracking === true) {
+    const { data, error } = await ctx.userDb.rpc('mark_comment_people', { p_document_id: documentId });
+    // Without them every assigned item would read "Former member" and the
+    // sheet's names would be written over: no round instead.
+    if (error) throw new SyncError('Could not read who is on this document. Try again in a moment.', 503, 'people_unavailable');
+    people = (data || []).map((row) => ({ id: row.user_id, name: row.name || '', email: row.email || '' }));
+  }
+  return layoutFrom(ctx.body, people);
 }
 
 const ACCESS_TOKENS = new Map();
@@ -775,7 +806,7 @@ async function linkSheet(ctx) {
   await requireEditor(ctx, documentId);
   await requireBeta(ctx);
   if (!templateId) throw new SyncError('Say which survey template.', 400, 'missing_template');
-  const layout = layoutFrom(ctx.body);
+  const layout = await layoutFor(ctx, documentId);
   if (!layout?.scopes.length) throw new SyncError('This template has no categories to put in a sheet.', 400, 'empty_layout');
   // One sheet per survey + template, so two server writers never race.
   const existing = await linkFor(ctx, documentId, templateId, { anyProvider: true });
@@ -1172,7 +1203,7 @@ async function syncLink(ctx) {
   await requireEditor(ctx, documentId);
   const link = await linkFor(ctx, documentId, templateId);
   if (!link) throw new SyncError('This survey has no linked sheet.', 404, 'not_linked');
-  const layout = layoutFrom(ctx.body);
+  const layout = await layoutFor(ctx, documentId);
   if (layout && stable(layout) !== stable(link.layout)) {
     // The template changed (new category, line or entity): sync by the new layout.
     await ctx.service.from('sheet_sync_links').update({ layout }).eq('id', link.id);

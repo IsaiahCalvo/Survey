@@ -5,11 +5,12 @@
 import { supabase } from '../supabaseClient';
 import { getExportKit, DEFAULT_EXPORT_KIT_ID } from './exportFormats/registry.js';
 import { answerSetFor, excelAnswerFills } from './answerSets.js';
+import { isFeatureOn } from '../featureFlags.js';
 
 const FUNCTION = 'sheet-sync';
 
 /** What the server needs to lay the survey out as a sheet. */
-export function sheetLayoutInput(template) {
+export function sheetLayoutInput(template, { tracking = isFeatureOn('marker-tracking') } = {}) {
   if (!template) return null;
   return {
     template: {
@@ -20,6 +21,8 @@ export function sheetLayoutInput(template) {
     answerValues: answerSetFor(template).map((a) => String(a.value)),
     // The answers' colours, so the live Excel workbook looks like Export data's.
     answerFills: excelAnswerFills(answerSetFor(template)).map((f) => ({ value: String(f.value), argb: f.argb })),
+    // Item tracking on: the sheet gets Status, Assigned to and Due columns.
+    ...(tracking ? { tracking: true } : {}),
   };
 }
 

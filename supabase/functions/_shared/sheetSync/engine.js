@@ -21,16 +21,16 @@ import { canonicalizeCellValue, computeRowFingerprints } from '../matcher/rowFin
 import { detectFieldConflicts } from '../matcher/excelConflictDetect.js';
 import { generateRowIdToken, parseRowIdToken, verifyRowIdSignature } from '../matcher/rowIdToken.js';
 import { buildMarkerRowValues } from '../markerRowValues.js';
-import { checklistItemKind, itemAnswerFor } from '../kitShape.js';
+import { checklistItemKind, dateAnswerOf, itemAnswerFor } from '../kitShape.js';
 import { noteObjectOf } from '../surveyUndoApply.js';
-import { columnIsEditable } from './layout.js';
+import { TRACKING_STATUSES, columnIsEditable, personCellName } from './layout.js';
 import { isCellError } from './providers/contract.js';
 
-const SCALAR_KEYS = ['changedBy', 'changedDate', 'item', 'entity', 'notes'];
+const TRACKING_KEYS = ['status', 'assignee', 'due'];
+const SCALAR_KEYS = ['changedBy', 'changedDate', 'item', 'entity', 'notes', ...TRACKING_KEYS];
 // Changed By for a sheet edit when nobody can say who made it.
 export const SHEET_EDITOR_UNKNOWN = 'Sheet';
 const NUMBER_KINDS = new Set(['number', 'score', 'count']);
-const MAX_TEXT = 5000;
 // New items one round brings in from the sheet. A pasted block of thousands
 // of rows comes in over several rounds instead of one that runs out of time.
 export const MAX_NEW_ROWS_PER_ROUND = 300;
@@ -82,7 +82,11 @@ const printOf = (value) => `${FP_PREFIX}${cyrb53(canonicalizeCellValue(value))}`
 /** Per-field fingerprints of a record, in rowFingerprint's fieldFingerprints shape. */
 export function fieldPrintsOf(rec) {
   const out = {};
-  for (const k of SCALAR_KEYS) out[k] = printOf(rec?.[k]);
+  for (const k of SCALAR_KEYS) {
+    // Tracking cells only on a layout that has them, so other links' baselines stay as small as before.
+    if (rec?.[k] === undefined && TRACKING_KEYS.includes(k)) continue;
+    out[k] = printOf(rec?.[k]);
+  }
   out.answers = Object.fromEntries(Object.entries(rec?.answers || {}).map(([id, v]) => [String(id), printOf(v)]));
   return out;
 }
@@ -121,9 +125,33 @@ const fitCell = (v) => {
   return /[\uD800-\uDBFF]$/.test(cut) ? cut.slice(0, -1) : cut;
 };
 
-/** The row values the app shows for a marker, in rowFingerprint's record shape. */
-export function appRecordOf(marker, scope) {
+// A marker's tracking ({ status, assigneeId, due }), always whole; the same
+// rules as the app's readTracking (src/utils/markerTracking.js).
+const STATUS_VALUES = new Set(TRACKING_STATUSES.map((s) => s.value));
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+function trackingOf(marker) {
+  const raw = marker?.tracking && typeof marker.tracking === 'object' ? marker.tracking : {};
+  return {
+    status: STATUS_VALUES.has(raw.status) ? raw.status : 'open',
+    assigneeId: typeof raw.assigneeId === 'string' && raw.assigneeId ? raw.assigneeId : null,
+    due: typeof raw.due === 'string' && DAY.test(raw.due) ? raw.due : null,
+  };
+}
+const FORMER_MEMBER = 'Former member';
+
+/**
+ * The row values the app shows for a marker, in rowFingerprint's record shape,
+ * plus its tracking cells (`layout.people` names who it is assigned to).
+ */
+export function appRecordOf(marker, scope, layout = null) {
   const rec = buildMarkerRowValues({ marker, checklistItems: checklistOfScope(scope), moduleData: {} });
+  if (layout?.tracking) {
+    const t = trackingOf(marker);
+    rec.status = TRACKING_STATUSES.find((s) => s.value === t.status).label;
+    const person = t.assigneeId ? (layout.people || []).find((p) => p.id === t.assigneeId) : null;
+    rec.assignee = t.assigneeId ? (person ? personCellName(person) : FORMER_MEMBER) : '';
+    rec.due = t.due || '';
+  }
   for (const k of Object.keys(rec)) rec[k] = fitCell(rec[k]);
   if (rec.answers) rec.answers = Object.fromEntries(Object.entries(rec.answers).map(([id, v]) => [id, fitCell(v)]));
   return rec;
@@ -220,8 +248,26 @@ function checkboxCellAnswer(layout, column, raw) {
 // Turn one sheet cell into the app value for a field, or { error }.
 function sheetValueToApp(layout, column, raw) {
   const text = cellText(raw).replace(/\r\n?/g, '\n');
-  if (column.key === 'item' || column.key === 'notes') {
-    return { value: text.length > MAX_TEXT ? text.slice(0, MAX_TEXT) : text };
+  if (column.key === 'item' || column.key === 'notes') return { value: fitCell(text) };
+  if (column.key === 'status') {
+    const t = text.trim().toLowerCase().replace(/[\s_-]+/g, ' ');
+    if (!t) return { value: 'Open', status: 'open' };
+    const hit = TRACKING_STATUSES.find((s) => s.label.toLowerCase() === t || s.value.replace(/-/g, ' ') === t);
+    return hit ? { value: hit.label, status: hit.value } : { error: `"${text.trim()}" is not a status (use ${TRACKING_STATUSES.map((s) => s.label).join(', ')})` };
+  }
+  if (column.key === 'assignee') {
+    const t = text.trim().toLowerCase();
+    if (!t) return { value: '', assigneeId: null };
+    const people = layout.people || [];
+    const hit = people.find((p) => personCellName(p).toLowerCase() === t)
+      || people.find((p) => p.email && p.email.toLowerCase() === t);
+    if (hit) return { value: personCellName(hit), assigneeId: hit.id };
+    return { error: `"${text.trim()}" is not someone on this document, so "${column.header}" was not changed` };
+  }
+  if (column.key === 'due') {
+    if (!text.trim()) return { value: '', due: null };
+    const day = dateAnswerOf(text.trim());
+    return day ? { value: day, due: day } : { error: `"${text.trim()}" is not a date for "${column.header}"` };
   }
   if (column.key === 'entity') {
     const name = text.trim();
@@ -252,7 +298,17 @@ function sheetCellToApp(layout, column, raw) {
 }
 
 // Write one app-side field value onto a marker (a copy).
-function applyFieldToMarker(marker, key, conv) {
+function applyFieldToMarker(marker, key, conv, nowIso) {
+  if (key === 'status' || key === 'assignee' || key === 'due') {
+    const t = trackingOf(marker);
+    if (key === 'status') t.status = conv.status;
+    else if (key === 'assignee') t.assigneeId = conv.assigneeId;
+    else t.due = conv.due;
+    // Back to nothing set: no tracking at all, as the app keeps it.
+    if (t.status === 'open' && !t.assigneeId && !t.due) delete marker.tracking;
+    else marker.tracking = { ...t, updatedAt: nowIso, updatedBy: null };
+    return;
+  }
   if (key === 'item') marker.name = conv.value;
   else if (key === 'notes') marker.note = { ...noteObjectOf(marker.note ?? marker.notes), text: conv.value };
   else if (key === 'entity') {
@@ -450,7 +506,7 @@ export async function planSheetRound({
       plan.verify.push({ sheetId: sheet.sheetId, title: sheet.title, row: rowIndex, col, expect: was ?? null });
     };
     const rowFor = async (markerId, marker) => {
-      const rec = appRecordOf(marker, scope);
+      const rec = appRecordOf(marker, scope, layout);
       const out = new Array(width).fill('');
       for (const column of scope.columns) {
         const col = colOfKey.get(column.key);
@@ -618,12 +674,12 @@ export async function planSheetRound({
           continue;
         }
         conv[column.key] = c;
-        applyFieldToMarker(fresh, column.key, c);
+        applyFieldToMarker(fresh, column.key, c, nowIso);
       }
       if (!fresh.name) fresh.name = 'New item';
       plan.markerWrites[id] = fresh;
       plan.summary.created += 1;
-      const rec = appRecordOf(fresh, scope);
+      const rec = appRecordOf(fresh, scope, layout);
       nextBaseline[id] = { scopeId: scope.scopeId, fields: fieldPrintsOf(rec) };
       // The row gets its Row ID, and the app's own cells (dates, tidied values).
       plan.verify.push({ sheetId: sheet.sheetId, title: sheet.title, row: r, col: rowIdCol, token });
@@ -662,7 +718,7 @@ export async function planSheetRound({
     // ---- one matched row -------------------------------------------------
     async function mergeRow({ markerId, marker, row, r }) {
       const base = nextBaseline[markerId]?.fields || null;
-      const appRec = appRecordOf(marker, scope);
+      const appRec = appRecordOf(marker, scope, layout);
       const appFps = fieldPrintsOf(appRec);
       const sheetRec = sheetRecordOf(row, appRec);
       const sheetFps = fieldPrintsOf(sheetRec);
@@ -707,6 +763,16 @@ export async function planSheetRound({
         appNow: appFps,
         excelIn: sheetSide,
       });
+      // The tracking cells, which the Excel import's field list (shared with
+      // the app, so left as it is) does not know: the same rule, here.
+      for (const k of TRACKING_KEYS) {
+        const was = base?.[k];
+        const appSide = appFps[k] !== was;
+        const sheetSideChanged = sheetSide[k] !== was;
+        if (appSide) appChangedFields.push(k);
+        if (sheetSideChanged) excelChangedFields.push(k);
+        if (appSide && sheetSideChanged && appFps[k] !== sheetSide[k]) conflictFields.push(k);
+      }
       const appChangedSet = new Set(appChangedFields);
       const choice = next.choices[markerId];
       const conflicts = new Set(conflictFields.filter((k) => keys.includes(k)));
@@ -727,7 +793,7 @@ export async function planSheetRound({
           continue;
         }
         if (canonicalizeCellValue(getField(appRec, key) ?? '') === canonicalizeCellValue(conv.value)) continue;
-        applyFieldToMarker(updated, key, conv);
+        applyFieldToMarker(updated, key, conv, nowIso);
         appChanged = true;
         plan.summary.toApp += 1;
       }
@@ -742,7 +808,7 @@ export async function planSheetRound({
         plan.markerWrites[markerId] = updated;
       }
 
-      const finalRec = appChanged ? appRecordOf(updated, scope) : appRec;
+      const finalRec = appChanged ? appRecordOf(updated, scope, layout) : appRec;
       const finalFps = fieldPrintsOf(finalRec);
       const nextFields = base ? JSON.parse(JSON.stringify(base)) : {};
       for (const key of keys) {

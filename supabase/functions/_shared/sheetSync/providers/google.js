@@ -9,6 +9,7 @@
 // call when nothing changed, plus one read and at most three writes when
 // something did; the runner spaces rounds out, and a 429 backs it off.
 import { providerError, cellError } from './contract.js';
+import { trackingChoices } from '../layout.js';
 
 export const GOOGLE_SCOPES = Object.freeze(['openid', 'email', 'https://www.googleapis.com/auth/drive.file']);
 
@@ -153,6 +154,7 @@ function validationRequests(sheetId, scope, layout) {
     let values = null;
     if (col.key === 'entity') values = layout.entities.map((e) => e.name);
     else if (col.key.startsWith('answer:') && (!col.item?.kind || col.item.kind === 'choice')) values = layout.answerValues;
+    else values = trackingChoices(col, layout);
     if (!values?.length) return;
     out.push({
       setDataValidation: {
@@ -172,7 +174,7 @@ function validationRequests(sheetId, scope, layout) {
 function textFormatRequests(sheetId, scope) {
   const out = [];
   scope.columns.forEach((col, i) => {
-    const text = ['rowId', 'changedBy', 'item', 'entity', 'notes'].includes(col.key)
+    const text = ['rowId', 'changedBy', 'item', 'entity', 'notes', 'status', 'assignee'].includes(col.key)
       || (col.key.startsWith('answer:') && TEXT_KINDS.has(col.item?.kind || 'choice'));
     if (!text) return;
     out.push({

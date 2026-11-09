@@ -23,7 +23,7 @@ export async function appHashOf(layout, markers) {
   const rows = [];
   for (const [id, m] of Object.entries(markers || {})) {
     const scope = layout.scopes.find((s) => sameId(s.moduleId, m?.moduleId) && sameId(s.categoryId, m?.categoryId));
-    if (scope) rows.push([id, scope.scopeId, appRecordOf(m, scope)]);
+    if (scope) rows.push([id, scope.scopeId, appRecordOf(m, scope, layout)]);
   }
   rows.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
   return sha256Hex(stableStringify(rows));
