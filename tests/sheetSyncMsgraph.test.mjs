@@ -505,3 +505,29 @@ test('cells one under another in the same columns go out as one block (300 notes
   ]);
   assert.deepEqual(mixed.map((b) => [b.row, b.col, b.values.length, b.values[0].length]), [[4, 2, 1, 1], [1, 2, 2, 2], [5, 2, 1, 2]]);
 });
+
+test('a workbook the PM already has opens from its pasted link; folders, other files and bad links are told apart', async () => {
+  const graph = fakeGraph();
+  const book = 'https://kalvoe.sharepoint.com/:x:/s/Team/EabcBook?e=1';
+  graph.shared = {
+    [book]: { id: 'B1', name: 'Hospital tracker.xlsx', file: {}, webUrl: 'https://kalvoe.sharepoint.com/Team/Hospital%20tracker.xlsx', parentReference: { driveId: 'b!team', name: 'Jobs' } },
+    'https://kalvoe.sharepoint.com/:f:/s/Team/EabcFolder': { id: 'F1', name: 'Jobs', folder: { childCount: 2 }, parentReference: { driveId: 'b!team' } },
+    'https://kalvoe.sharepoint.com/:x:/s/Team/EabcOld': { id: 'O1', name: 'Old tracker.xls', file: {}, parentReference: { driveId: 'b!team' } },
+  };
+  const p = provider(graph);
+  assert.deepEqual(await p.openFile(book), {
+    fileId: 'drives/b!team/items/B1',
+    url: 'https://kalvoe.sharepoint.com/Team/Hospital%20tracker.xlsx',
+    title: 'Hospital tracker',
+    folderLabel: 'Jobs',
+  });
+  await assert.rejects(p.openFile('https://kalvoe.sharepoint.com/:f:/s/Team/EabcFolder'), (e) => e.code === 'not_a_file');
+  await assert.rejects(p.openFile('https://kalvoe.sharepoint.com/:x:/s/Team/EabcOld'), (e) => e.code === 'not_xlsx');
+  await assert.rejects(p.openFile('https://kalvoe.sharepoint.com/nope'), (e) => e.code === 'bad_file_link');
+});
+
+test('tabs added to a workbook are named apart from the sheets already in it', async () => {
+  const { namedApart } = await import('../supabase/functions/_shared/sheetSync/round.js');
+  const scopes = [{ scopeId: 'a', title: 'Doors - L1' }, { scopeId: 'b', title: 'Cameras - L1' }, { scopeId: 'c', title: 'Summary' }];
+  assert.deepEqual(namedApart(scopes, ['Summary', 'doors - l1', 'Doors - L1 (2)']).map((s) => s.title), ['Doors - L1 (3)', 'Cameras - L1', 'Summary (2)']);
+});

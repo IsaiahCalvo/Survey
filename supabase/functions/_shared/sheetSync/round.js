@@ -104,6 +104,17 @@ const hasWork = (plan) => plan.cellWrites.length || plan.appends.length || plan.
  */
 const isBlankValue = (v) => v == null || (typeof v !== 'object' && String(v).trim() === '');
 
+/** Scopes whose tab titles clash with `taken` (any case) get " (2)", " (3)"... */
+export function namedApart(scopes, taken) {
+  const used = new Set((taken || []).map((t) => String(t).toLowerCase()));
+  return scopes.map((scope) => {
+    let title = scope.title;
+    for (let n = 2; used.has(title.toLowerCase()); n += 1) title = `${scope.title.slice(0, 95)} (${n})`;
+    used.add(title.toLowerCase());
+    return title === scope.title ? scope : { ...scope, title };
+  });
+}
+
 /** Blanked answers in one round from which they are held (see planSheetRound). */
 export const BIG_ERASE = 10;
 
@@ -135,13 +146,7 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
     // Categories added to the template since the file was made (or a tab put
     // back) get a tab, named apart from the tabs already there: a clash makes
     // the provider refuse the whole call, round after round.
-    const used = new Set(grid.sheets.map((s) => String(s.title).toLowerCase()));
-    const named = newScopes.map((scope) => {
-      let title = scope.title;
-      for (let n = 2; used.has(title.toLowerCase()); n += 1) title = `${scope.title.slice(0, 95)} (${n})`;
-      used.add(title.toLowerCase());
-      return title === scope.title ? scope : { ...scope, title };
-    });
+    const named = namedApart(newScopes, grid.sheets.map((s) => s.title));
     const added = await provider.addTabs(link.file_id, named, layout).catch(protectedOnRefusal);
     state.sheetIds = { ...(state.sheetIds || {}), ...added };
     for (const scope of named) {

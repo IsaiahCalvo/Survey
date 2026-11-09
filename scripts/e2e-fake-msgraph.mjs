@@ -198,6 +198,23 @@ export async function fakeMsgraphHandler(req) {
     if (path === '/__fake/reset') { resetFakeMsgraph(); return json(200, { ok: true }); }
     if (path === '/__fake/files') return json(200, { files: [...store.files.keys()] });
     if (path === '/__fake/drive-type') { store.driveType = body?.driveType || 'business'; return json(200, { ok: true }); }
+    // A workbook the PM already has (their own sheets), and the link they'd
+    // paste for it. readOnly: shared with them for viewing only.
+    // The workbook moved to another library: a new item id, the same sheets
+    // (sheet ids travel with the workbook); the old id answers 404.
+    const mv = /^\/__fake\/files\/([^/]+)\/move$/.exec(path);
+    if (mv && store.files.has(mv[1])) {
+      const id = `FAKEITEM${store.next++}`;
+      store.files.set(id, store.files.get(mv[1]));
+      store.files.delete(mv[1]);
+      return json(200, { id, link: `https://contoso.sharepoint.example/:x:/r/${id}` });
+    }
+    if (path === '/__fake/make-file') {
+      const id = `FAKEITEM${store.next++}`;
+      const sheets = (body?.sheets || [{ name: 'Sheet1', rows: [] }]).map((sh, i) => Object.assign(newSheet(sh.name, i), { cells: (sh.rows || []).map((r) => [...r]) }));
+      store.files.set(id, { name: body?.name || 'Tracker.xlsx', version: 1, sheets, readOnly: Boolean(body?.readOnly) });
+      return json(200, { id, link: `https://contoso.sharepoint.example/:x:/r/${id}` });
+    }
     const m = /^\/__fake\/files\/([^/]+)(\/edit|\/sort|\/insert-row|\/delete-row)?$/.exec(path);
     const f = m && store.files.get(m[1]);
     if (!f) return json(404, { error: 'no such file' });
@@ -250,6 +267,16 @@ export async function fakeMsgraphHandler(req) {
     return json(201, itemJson(id, f));
   }
 
+  // A pasted link (Graph /shares): a workbook made with /__fake/make-file.
+  const share = /^\/v1\.0\/shares\/u!([^/]+)\/driveItem$/.exec(path);
+  if (method === 'GET' && share) {
+    const b64 = share[1].replace(/_/g, '/').replace(/-/g, '+');
+    const url = new TextDecoder().decode(Uint8Array.from(atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4)), (ch) => ch.charCodeAt(0)));
+    const hit = /\/:x:\/r\/([A-Z0-9]+)$/.exec(url);
+    const sf = hit && store.files.get(hit[1]);
+    if (!sf) return gErr(404, 'itemNotFound', 'The sharing link no longer exists.');
+    return json(200, { ...itemJson(hit[1], sf), file: { mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }, parentReference: { driveId: DRIVE, driveType: store.driveType, name: 'Jobs' } });
+  }
   const m = /^\/v1\.0\/drives\/([^/]+)\/items\/([^/]+)(.*)$/.exec(path);
   if (!m || m[1] !== DRIVE) return gErr(404, 'itemNotFound', 'The resource could not be found.');
   const f = store.files.get(m[2]);
@@ -273,6 +300,7 @@ export async function fakeMsgraphHandler(req) {
     return json(200, { value: f.sheets.map(({ id, name, position, visibility }) => ({ id, name, position, visibility })) });
   }
   if (method === 'POST' && wb === 'worksheets/add') {
+    if (f.readOnly) return gErr(403, 'AccessDenied', 'You cannot perform the requested operation.');
     const name = String(body?.name || `Sheet${f.sheets.length + 1}`);
     if (f.sheets.some((s) => s.name.toLowerCase() === name.toLowerCase())) return gErr(400, 'ItemAlreadyExists', 'A resource with the same name or identifier already exists.');
     const sheet = newSheet(name, f.sheets.length);

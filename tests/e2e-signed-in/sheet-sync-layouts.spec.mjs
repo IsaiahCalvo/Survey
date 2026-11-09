@@ -5,7 +5,8 @@
 // Microsoft, makes the live workbook, shows what waits on a choice, and stays
 // inside the screen. The fake Microsoft (scripts/e2e-fake-msgraph.mjs) stands
 // in for Microsoft.
-import { E2E_ACCOUNTS, E2E_SURVEY } from './accounts.mjs';
+import { signInToken } from './accountFixtures.mjs';
+import { E2E_ACCOUNTS, E2E_BASE_URL, E2E_SURVEY } from './accounts.mjs';
 import { adminClient, expect, functionUrl, test } from './helpers.mjs';
 
 const FLAG = 'sheet-team-sync';
@@ -97,6 +98,23 @@ const smallButtons = (page) => page.evaluate(() => {
     .filter((b) => b.getBoundingClientRect().height > 0 && b.getBoundingClientRect().height < 32)
     .map((b) => `"${(b.getAttribute('aria-label') || b.textContent || '').trim().slice(0, 30)}" ${Math.round(b.getBoundingClientRect().height)}px`);
 });
+
+// Connect Microsoft without the panel (the first test covers the panel's
+// connect on each layout): consent, callback, then claim the code.
+async function connectMicrosoftByApi() {
+  const token = await signInToken(E2E_ACCOUNTS.owner);
+  const call = async (action, body) => (await fetch(functionUrl('sheet-sync'), {
+    method: 'POST',
+    headers: { apikey: process.env.E2E_SUPABASE_ANON_KEY, authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ action, ...body }),
+  })).json();
+  const started = await call('connect', { appOrigin: E2E_BASE_URL, provider: 'msgraph' });
+  const consent = await fetch(started.url, { redirect: 'manual' });
+  const callback = await fetch(consent.headers.get('location'), { redirect: 'manual' });
+  const code = new URL(callback.headers.get('location')).hash.replace('#code=', '');
+  const claimed = await call('claim', { provider: 'msgraph', code });
+  expect(claimed).toMatchObject({ ok: true, provider: 'msgraph' });
+}
 
 let savedFlag = null;
 test.beforeAll(async () => {
@@ -243,6 +261,67 @@ for (const layout of LAYOUTS) {
         await admin.from('sheet_sync_links').delete().eq('document_id', E2E_SURVEY.documentId);
         await admin.from('sheet_sync_connections').delete().eq('user_id', ownerId);
         await admin.from('sheet_sync_pending_connections').delete().eq('user_id', ownerId);
+        await fake('/reset', {});
+      }
+    });
+
+    test('use a workbook the PM already has', async ({ page }) => {
+      test.setTimeout(150_000);
+      if (process.env.E2E_FUNCTIONS_URL) {
+        await page.route('**/functions/v1/sheet-sync', (route) => route.fallback({ url: functionUrl('sheet-sync') }));
+      }
+      const admin = adminClient();
+      const ownerId = await userId(E2E_ACCOUNTS.owner);
+      await admin.from('sheet_sync_links').delete().eq('document_id', E2E_SURVEY.documentId);
+      await connectMicrosoftByApi();
+      const shot = async (name) => { if (SHOTS) await page.screenshot({ path: `${SHOTS}/${layout.name.replace(/[^a-z0-9]+/gi, '-')}-${name}.png` }); };
+      try {
+        const book = await fake('/make-file', { name: 'Hospital tracker.xlsx', sheets: [{ name: 'Summary', rows: [['Job', 'Hospital']] }] });
+        await page.addInitScript(() => window.localStorage.setItem('survey.flag.sheet-team-sync', '1'));
+        await signInAt(page, E2E_ACCOUNTS.owner, layout.app ? '/?mobileNav=tabs&nativeShell=capacitor' : '/');
+        const button = await openSurveyPanel(page, layout);
+        await expect(button).toHaveAttribute('data-sheet-sync-state', 'connected', { timeout: 30_000 });
+        await press(layout, button);
+        const panel = page.getByRole('dialog', { name: 'Live sync' });
+        await press(layout, panel.getByRole('button', { name: 'Use a workbook I already have' }));
+        const box = panel.getByLabel(/Paste the link to an Excel workbook/);
+        await box.fill('https://contoso.sharepoint.example/nope');
+        await press(layout, panel.getByRole('button', { name: 'Add Survey’s sheets' }));
+        await expect(panel.getByRole('alert')).toHaveText(/could not open that link/);
+        expect(await spills(page), 'panel, pasted link refused').toEqual([]);
+        await shot('7-existing-refused');
+        await box.fill(book.link);
+        await press(layout, panel.getByRole('button', { name: 'Add Survey’s sheets' }));
+        await expect(panel.getByRole('link', { name: 'Open in Excel' })).toBeVisible({ timeout: 30_000 });
+        await expect(panel.getByText('Hospital tracker', { exact: false }).first()).toBeVisible();
+        expect(await spills(page), 'panel, linked to their workbook').toEqual([]);
+        await shot('8-existing-live');
+        const file = await fake(`/files/${book.id}`);
+        expect(file.sheets[0]).toMatchObject({ name: 'Summary', rows: [['Job', 'Hospital']] });
+        expect(file.sheets.length).toBeGreaterThan(1);
+
+        // The PM moves the workbook to another library: the link stops, and
+        // pasting the new link picks it up again.
+        const moved = await fake(`/files/${book.id}/move`, {});
+        await press(layout, panel.getByRole('button', { name: 'Sync now' }));
+        await expect(panel.getByText('Sync stopped')).toBeVisible({ timeout: 30_000 });
+        await press(layout, panel.getByRole('button', { name: 'Moved or copied the workbook? Paste its new link' }));
+        const where = panel.getByLabel(/Paste the link to the workbook where it is now/);
+        await where.fill(moved.link);
+        await expect(panel.getByRole('button', { name: 'Sync this workbook' })).toBeEnabled();
+        const field = await where.boundingBox();
+        const card = await panel.boundingBox();
+        expect(field.width, 'link box spans the card').toBeGreaterThan(card.width * 0.8);
+        if (layout.use.hasTouch) expect(field.height, 'link box finger-sized').toBeGreaterThanOrEqual(40);
+        expect(await spills(page), 'panel, find the moved workbook').toEqual([]);
+        await shot('9-relink');
+        await press(layout, panel.getByRole('button', { name: 'Sync this workbook' }));
+        await expect(panel.getByText('Live in Excel')).toBeVisible({ timeout: 30_000 });
+        expect(await spills(page), 'panel, live again after the move').toEqual([]);
+        if (layout.use.hasTouch) expect(await smallButtons(page), 'touch targets after the move').toEqual([]);
+      } finally {
+        await admin.from('sheet_sync_links').delete().eq('document_id', E2E_SURVEY.documentId);
+        await admin.from('sheet_sync_connections').delete().eq('user_id', ownerId);
         await fake('/reset', {});
       }
     });

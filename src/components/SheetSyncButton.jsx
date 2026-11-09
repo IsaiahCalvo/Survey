@@ -236,8 +236,12 @@ function useSheetSync({ documentId, template, markers, enabled }) {
     return true;
   }, []);
 
-  const link = useCallback((title, provider = 'google', folder = undefined) => run('link', async () => apply(await sheetSyncCall('link', {
-    ...ids, ...layoutInput, title, provider, ...(provider === 'msgraph' && folder != null ? { folder } : {}),
+  // `fileLink`: a workbook the PM already has (Excel only); Survey adds its
+  // sheets to it instead of making a new file.
+  const link = useCallback((title, provider = 'google', folder = undefined, fileLink = '') => run('link', async () => apply(await sheetSyncCall('link', {
+    ...ids, ...layoutInput, title, provider,
+    ...(provider === 'msgraph' && folder != null && !fileLink ? { folder } : {}),
+    ...(provider === 'msgraph' && fileLink ? { fileLink } : {}),
   })), provider), [apply, ids, layoutInput, run]);
   // The folders in one OneDrive or SharePoint folder, for "Save in";
   // `folderLink` opens a SharePoint/Teams folder link the person pasted.
@@ -257,6 +261,9 @@ function useSheetSync({ documentId, template, markers, enabled }) {
     const res = apply(await sheetSyncCall('takeover', ids));
     if (!res?.error) apply(await sheetSyncCall('sync', { ...ids, ...layoutInput, force: true }));
   }), [apply, ids, layoutInput, run]);
+  // A workbook moved to another library or put back as a copy: point the
+  // stopped link at it (Excel only).
+  const relink = useCallback((fileLink) => run('relink', async () => apply(await sheetSyncCall('relink', { ...ids, provider: 'msgraph', fileLink }))), [apply, ids, run]);
   const disconnect = useCallback((provider = 'google') => run('disconnect', async () => {
     const res = await sheetSyncCall('disconnect', { provider });
     if (res?.error) setError(res.error); else await refresh();
@@ -282,7 +289,7 @@ function useSheetSync({ documentId, template, markers, enabled }) {
 
   const linking = busy === 'link' ? busyFor : null;
   const connecting = busy === 'connect' ? busyFor : null;
-  return { status, busy, error, live, codeAsk, linking, connecting, connect, claimCode, link, folders, choose, putBackTab, chooseForLink, unlink, takeOver, disconnect, syncNow };
+  return { status, busy, error, live, codeAsk, linking, connecting, connect, claimCode, link, folders, choose, putBackTab, chooseForLink, unlink, takeOver, relink, disconnect, syncNow };
 }
 
 const GLYPH = { google: 'google', msgraph: 'microsoft' };
@@ -364,6 +371,39 @@ const folderPath = (folder, placeName) => {
 // Pick where a new workbook goes: walk OneDrive's folders (and SharePoint
 // folders added to it as shortcuts), or paste a SharePoint/Teams folder link,
 // then "Save here".
+// Linking a workbook the PM already has: paste its link; Survey adds its own
+// sheets next to theirs (owner 2026-11-09: "the best integration with Microsoft").
+function ExistingWorkbook({
+  busy, error, onLink, onCancel,
+  label = 'Paste the link to an Excel workbook (.xlsx) in OneDrive, SharePoint or Teams. Survey adds its own sheets and leaves yours as they are.',
+  action = 'Add Survey’s sheets', busyAction = 'Adding sheets…',
+}) {
+  const [pasted, setPasted] = useState('');
+  const submit = (e) => {
+    e?.preventDefault?.();
+    if (pasted.trim()) onLink(pasted.trim());
+  };
+  return (
+    <div className="sheet-sync-body sheet-sync-folders">
+      <form className="sheet-sync-code" onSubmit={submit}>
+        <label htmlFor="sheet-sync-file-link">{label}</label>
+        <input
+          id="sheet-sync-file-link"
+          type="url" inputMode="url"
+          placeholder="https://…sharepoint.com/…"
+          autoComplete="off" spellCheck={false}
+          value={pasted} onChange={(e) => setPasted(e.target.value)}
+        />
+      </form>
+      {error && <p className="sheet-sync-paste-error" role="alert">{error}</p>}
+      <div className="sheet-sync-row">
+        <ActionButton label="Cancel" disabled={busy} onClick={onCancel} />
+        <ActionButton primary label={action} busyLabel={busyAction} busy={busy} disabled={busy || !pasted.trim()} onClick={submit} />
+      </div>
+    </div>
+  );
+}
+
 function FolderPicker({ start, startName, load, onPick, onCancel }) {
   const [at, setAt] = useState(start || '');
   const [placeName, setPlaceName] = useState(isPlace(start) ? startName || '' : '');
@@ -571,6 +611,11 @@ export default function SheetSyncButton({ className, phone = false, documentId, 
               disabled={Boolean(busy)}
               onClick={() => sync.link(sheetTitle, provider, provider === 'msgraph' ? folder : undefined)}
             />
+            {provider === 'msgraph' && (
+              <p className="sheet-sync-place">
+                <button type="button" className="sheet-sync-link" disabled={Boolean(busy)} onClick={() => setView('existing')}>Use a workbook I already have</button>
+              </p>
+            )}
           </>
         ) : (
           <ActionButton
@@ -621,6 +666,18 @@ export default function SheetSyncButton({ className, phone = false, documentId, 
           />
         </div>
       </div>
+    );
+  } else if (link && view === 'relink' && link.status === 'broken') {
+    head = { title: 'Find the workbook' };
+    body = (
+      <ExistingWorkbook
+        busy={busy === 'relink'}
+        error={error}
+        label="Paste the link to the workbook where it is now. Survey checks it holds this survey’s sheets, then carries on syncing."
+        action="Sync this workbook" busyAction="Checking the workbook…"
+        onLink={async (url) => { const res = await sync.relink(url); if (res && !res.error) setView('main'); }}
+        onCancel={() => setView('main')}
+      />
     );
   } else if (link) {
     const state = link.status === 'active' ? 'live' : link.status === 'paused' ? 'paused' : 'broken';
@@ -703,6 +760,11 @@ export default function SheetSyncButton({ className, phone = false, documentId, 
             )
           )}
           {busy === 'connect' && sync.codeAsk && <ClaimCodeBox provider={sync.codeAsk} onClaim={sync.claimCode} />}
+          {link.status === 'broken' && excelLink && canEdit && status.microsoft?.connected && (
+            <p className="sheet-sync-place">
+              <button type="button" className="sheet-sync-link" disabled={Boolean(busy)} onClick={() => setView('relink')}>Moved or copied the workbook? Paste its new link</button>
+            </p>
+          )}
         </div>
         {(link.heldErase || link.conflicts.length > 0 || link.removedInSheet.length > 0 || (link.missingTabs || []).length > 0 || (link.brokenTabs || []).length > 0 || link.problems.length > 0) && (
           <div className="sheet-sync-body">
@@ -764,6 +826,16 @@ export default function SheetSyncButton({ className, phone = false, documentId, 
           </div>
         )}
       </>
+    );
+  } else if (view === 'existing') {
+    head = { title: 'Use your workbook' };
+    body = (
+      <ExistingWorkbook
+        busy={busy === 'link'}
+        error={error}
+        onLink={async (url) => { const res = await sync.link(sheetTitle, 'msgraph', undefined, url); if (res && !res.error) setView('main'); }}
+        onCancel={() => setView('main')}
+      />
     );
   } else if (view === 'folders') {
     head = { title: 'Save in' };
@@ -834,7 +906,7 @@ export default function SheetSyncButton({ className, phone = false, documentId, 
               </div>
             )}
             {body}
-            {error && status && <p role="alert" className="sheet-sync-error">{error}</p>}
+            {error && status && view !== 'existing' && view !== 'relink' && <p role="alert" className="sheet-sync-error">{error}</p>}
           </div>
         </AnchoredPopover>
       )}

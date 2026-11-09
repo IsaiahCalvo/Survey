@@ -297,3 +297,93 @@ test('the Survey panel makes a live Excel workbook', async ({ page }) => {
     await adminClient().from('sheet_sync_connections').delete().eq('user_id', await userId(E2E_ACCOUNTS.owner)).eq('provider', 'msgraph');
   }
 });
+
+test('a workbook the PM already has: Survey adds its sheets and leaves theirs alone', async () => {
+  test.setTimeout(120_000);
+  const admin = adminClient();
+  const ownerToken = await signInToken(E2E_ACCOUNTS.owner);
+  await connectMicrosoft(ownerToken);
+  const owner = await apiClientFor(E2E_ACCOUNTS.owner);
+  const doc = await addDocument(admin, { id: await userId(E2E_ACCOUNTS.owner) }, { projectId: E2E_PROJECT.id, name: `PM workbook ${RUN}.pdf` });
+  const ids = { documentId: doc.id, templateId: `e2e-pm-book-${RUN}`, ...LAYOUT, ...MS, title: 'Ignored for a pasted workbook' };
+  try {
+    await writeMarkers(owner, doc.id, { d1: { id: 'd1', name: 'D-101', moduleId: 'm1', categoryId: 'doors', pageNumber: 1, bounds: { x: 1, y: 1, width: 5, height: 5 }, checklistResponses: { c1: { selection: 'Y' } }, note: { text: 'From the field' } } });
+    // The PM's tracker: their own Summary sheet, and a sheet that happens to
+    // carry Survey's tab name.
+    const pmBook = await fake('/make-file', { name: 'Hospital tracker.xlsx', sheets: [
+      { name: 'Summary', rows: [['Job', 'Hospital'], ['Doors done', '=COUNTIF(\'Doors - Level 1 (2)\'!E:E,"Y")']] },
+      { name: TAB, rows: [['Their own notes']] },
+    ] });
+    // A bad link, and a workbook shared for viewing only, are refused plainly.
+    const bad = await call(ownerToken, 'link', { ...ids, fileLink: 'https://contoso.sharepoint.example/nope' });
+    expect(bad.status).toBe(400);
+    expect(bad.body.code).toBe('bad_file_link');
+    const viewOnly = await fake('/make-file', { name: 'View only.xlsx', readOnly: true });
+    const refused = await call(ownerToken, 'link', { ...ids, fileLink: viewOnly.link });
+    expect(refused.status, JSON.stringify(refused.body)).toBe(403);
+    expect(refused.body.error).toMatch(/can edit it/);
+    expect((await call(ownerToken, 'status', ids)).body.link, 'nothing linked after a refusal').toBeNull();
+
+    const linked = await call(ownerToken, 'link', { ...ids, fileLink: pmBook.link });
+    expect(linked.status, JSON.stringify(linked.body)).toBe(200);
+    expect(linked.body.link).toMatchObject({ provider: 'msgraph', title: 'Hospital tracker', status: 'active', folderLabel: 'Jobs' });
+    const file = await fake(`/files/${pmBook.id}`);
+    expect(file.sheets.map((s) => s.name)).toEqual(['Summary', TAB, `${TAB} (2)`]);
+    expect(file.sheets[0].rows[0]).toEqual(['Job', 'Hospital']);
+    expect(file.sheets[1].rows).toEqual([['Their own notes']]);
+    const ours = file.sheets[2];
+    expect(ours.rows[0].slice(0, 4)).toEqual(['Row ID', 'Changed By', 'Changed Date', 'Item']);
+    expect(ours.rows.some((r) => r.includes('D-101') && r.includes('From the field'))).toBe(true);
+    // And it syncs both ways from there.
+    const notesCol = ours.rows[0].indexOf('Notes');
+    const row = ours.rows.findIndex((r) => r.includes('D-101'));
+    await fake(`/files/${pmBook.id}/edit`, { title: `${TAB} (2)`, edits: [{ row, col: notesCol, value: 'PM in their own workbook' }] });
+    await syncNow(ownerToken, ids);
+    expect((await markersOf(owner, doc.id)).d1.note?.text).toBe('PM in their own workbook');
+  } finally {
+    await admin.from('sheet_sync_links').delete().eq('document_id', doc.id);
+    await admin.from('documents').delete().eq('id', doc.id);
+    await admin.from('sheet_sync_connections').delete().eq('user_id', await userId(E2E_ACCOUNTS.owner)).eq('provider', 'msgraph');
+  }
+});
+
+test('a workbook moved to another library is found again from its new link, and keeps syncing', async () => {
+  test.setTimeout(120_000);
+  const admin = adminClient();
+  const ownerToken = await signInToken(E2E_ACCOUNTS.owner);
+  await connectMicrosoft(ownerToken);
+  const owner = await apiClientFor(E2E_ACCOUNTS.owner);
+  const doc = await addDocument(admin, { id: await userId(E2E_ACCOUNTS.owner) }, { projectId: E2E_PROJECT.id, name: `Moved workbook ${RUN}.pdf` });
+  const ids = { documentId: doc.id, templateId: `e2e-moved-${RUN}`, ...LAYOUT, ...MS, title: 'Moved' };
+  try {
+    await writeMarkers(owner, doc.id, { d1: { id: 'd1', name: 'D-201', moduleId: 'm1', categoryId: 'doors', pageNumber: 1, bounds: { x: 1, y: 1, width: 5, height: 5 }, checklistResponses: {}, note: { text: 'Before the move' } } });
+    const linked = await call(ownerToken, 'link', ids);
+    expect(linked.status, JSON.stringify(linked.body)).toBe(200);
+    const { files } = await fake('/files');
+    const moved = await fake(`/files/${files.at(-1)}/move`, {});
+    // The old address is gone: the link stops and says so.
+    const stopped = await syncNow(ownerToken, ids);
+    expect(stopped.body.link.status).toBe('broken');
+    expect(stopped.body.link.lastError).toMatch(/deleted or is no longer shared/);
+    // Another workbook is refused; the moved one is taken.
+    const other = await fake('/make-file', { name: 'Other.xlsx' });
+    const wrong = await call(ownerToken, 'relink', { ...ids, fileLink: other.link });
+    expect(wrong.status, JSON.stringify(wrong.body)).toBe(409);
+    expect(wrong.body.code).toBe('not_same_file');
+    const found = await call(ownerToken, 'relink', { ...ids, fileLink: moved.link });
+    expect(found.status, JSON.stringify(found.body)).toBe(200);
+    expect(found.body.link).toMatchObject({ status: 'active', lastError: null });
+    // Rows, baselines and the PM's edits carry on in the moved workbook.
+    const file = await fake(`/files/${moved.id}`);
+    const tab = file.sheets.find((s) => s.name === TAB);
+    const row = tab.rows.findIndex((r) => r.includes('D-201'));
+    expect(tab.rows.filter((r) => r.includes('D-201')).length, 'no second copy of the row').toBe(1);
+    await fake(`/files/${moved.id}/edit`, { title: TAB, edits: [{ row, col: tab.rows[0].indexOf('Notes'), value: 'After the move' }] });
+    await syncNow(ownerToken, ids);
+    expect((await markersOf(owner, doc.id)).d1.note?.text).toBe('After the move');
+  } finally {
+    await admin.from('sheet_sync_links').delete().eq('document_id', doc.id);
+    await admin.from('documents').delete().eq('id', doc.id);
+    await admin.from('sheet_sync_connections').delete().eq('user_id', await userId(E2E_ACCOUNTS.owner)).eq('provider', 'msgraph');
+  }
+});

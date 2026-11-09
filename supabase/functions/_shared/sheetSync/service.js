@@ -25,7 +25,7 @@
 //     open the file (the linker left, lost access, or their sign-in ended),
 //     so the team keeps its workbook instead of starting a new one.
 import { buildSyncLayout, layoutProblems } from './layout.js';
-import { initialsOf, runSheetRound } from './round.js';
+import { initialsOf, namedApart, runSheetRound } from './round.js';
 import { encryptToken, decryptToken } from './tokenCrypto.js';
 import {
   googleEndpoints, googleAuthUrl, googleSheetsProvider, exchangeGoogleCode, refreshGoogleToken, revokeGoogleToken,
@@ -246,7 +246,7 @@ export async function handleSheetSync(req, deps) {
     let raw;
     try { raw = await req.json(); } catch { return json({ error: 'invalid_json' }, 400); }
     const parsed = parseBody({
-      action: s.enum(['status', 'connect', 'claim', 'disconnect', 'link', 'sync', 'choose', 'unlink', 'folders', 'takeover']),
+      action: s.enum(['status', 'connect', 'claim', 'disconnect', 'link', 'sync', 'choose', 'unlink', 'folders', 'takeover', 'relink']),
       documentId: s.string({ max: 64, pattern: UUID, optional: true }),
       templateId: s.string({ max: 128, optional: true }),
       template: s.record({ maxBytes: 1024 * 1024, optional: true }),
@@ -257,6 +257,7 @@ export async function handleSheetSync(req, deps) {
       // The answers' cell colours ({ value, argb }) for the Excel workbook.
       answerFills: s.any({ maxBytes: 4 * 1024 }),
       title: s.string({ max: 200, optional: true }),
+      fileLink: s.string({ max: 2000, optional: true }),
       // An Excel workbook's OneDrive folder, "A/B" from the drive's top.
       folder: s.string({ max: 400, optional: true }),
       // A SharePoint/Teams folder link pasted into "Save in".
@@ -296,6 +297,7 @@ export async function handleSheetSync(req, deps) {
       case 'choose': return json(await chooseConflict(ctx));
       case 'unlink': return json(await unlinkSheet(ctx));
       case 'takeover': return json(await takeOverLink(ctx));
+      case 'relink': return json(await relinkMovedFile(ctx));
       case 'folders': return json(await listFolders(ctx));
       default: return json({ error: 'unknown_action' }, 400);
     }
@@ -818,6 +820,7 @@ async function linkSheet(ctx) {
   // One sheet per survey + template, so two server writers never race.
   const existing = await linkFor(ctx, documentId, templateId, { anyProvider: true });
   if (existing) throw new SyncError(`This survey already has a linked ${sheetName(existing.provider)}.`, 409, 'already_linked');
+  if (ctx.body.fileLink && ctx.provider !== 'msgraph') throw new SyncError('Only Excel workbooks can be linked from a pasted link for now.', 400, 'not_supported');
   let provider;
   try { provider = await providerFor(ctx, ctx.user.id, ctx.provider); } catch (err) {
     if (err instanceof SyncError) throw err;
@@ -827,7 +830,26 @@ async function linkSheet(ctx) {
   const title = ctx.body.title || 'Survey';
   let made;
   const folder = ctx.provider === 'msgraph' ? cleanFolder(ctx.body.folder) : null;
-  try { made = await provider.createFile({ title, layout, answerFills: answerFillsFrom(ctx.body), ...(folder != null ? { folder } : {}) }); } catch (err) {
+  // A workbook the PM already has: Survey's sheets are added to it by the
+  // first round (named apart from the PM's own sheets, which stay as they are).
+  const fileLink = ctx.provider === 'msgraph' ? String(ctx.body.fileLink || '').trim() : '';
+  if (fileLink && !/^https:\/\/\S+$/i.test(fileLink)) throw new SyncError('Paste a link that starts with https://', 400, 'bad_file_link');
+  try {
+    if (fileLink) {
+      made = { ...(await provider.openFile(fileLink)), folder: '' };
+      // Survey's sheets go in now, named apart from the PM's: a personal
+      // OneDrive, or a workbook this account can only view, is refused here,
+      // before the link is saved.
+      const named = namedApart(layout.scopes, await provider.tabTitles(made.fileId));
+      made.sheetIds = await provider.addTabs(made.fileId, named, layout);
+    } else {
+      made = await provider.createFile({ title, layout, answerFills: answerFillsFrom(ctx.body), ...(folder != null ? { folder } : {}) });
+    }
+  } catch (err) {
+    if (['bad_file_link', 'not_a_file', 'not_xlsx'].includes(err?.code)) throw new SyncError(err.message, 400, err.code);
+    if (fileLink && [401, 403, 404].includes(Number(err?.status)) && !signInEnded(err)) {
+      throw new SyncError('Survey could not add its sheets to that workbook. Check that your Microsoft account can edit it (not just view it) and that it is not protected (Review > Protect Workbook).', 403, 'no_access');
+    }
     if (err?.code === 'personal-onedrive') {
       throw new SyncError('This Microsoft account has a personal OneDrive. Live sync needs a work or school Microsoft 365 account.', 409, 'personal-onedrive');
     }
@@ -1317,6 +1339,60 @@ async function takeOverLink(ctx) {
   if (!moved?.length) throw new SyncError('Someone else changed this live sheet just now. Try again.', 409, 'raced');
   log('taken_over', { provider: link.provider });
   return statusFor(ctx);
+}
+
+// A workbook moved to another library (OneDrive to SharePoint, say), or put
+// back as a copy, has a new file id, so the link stopped ("deleted or no
+// longer shared"). Pasting the new link points the link at it, as long as it
+// holds this survey's sheets (sheet ids travel with the workbook), so every
+// row, baseline and choice carries on. The caller's Microsoft sign-in syncs it
+// from then on.
+async function relinkMovedFile(ctx) {
+  const { documentId, templateId } = ctx.body;
+  await requireEditor(ctx, documentId);
+  const link = await linkFor(ctx, documentId, templateId);
+  if (!link) throw new SyncError('This survey has no linked sheet.', 404, 'not_linked');
+  if (link.provider !== 'msgraph') throw new SyncError('Only Excel workbooks can be found again from a link.', 400, 'not_supported');
+  if (link.status !== 'broken') throw new SyncError('This workbook is still syncing.', 409, 'not_stopped');
+  const pasted = String(ctx.body.fileLink || '').trim();
+  if (!/^https:\/\/\S+$/i.test(pasted)) throw new SyncError('Paste a link that starts with https://', 400, 'bad_file_link');
+  let p;
+  try { p = await providerFor(ctx, ctx.user.id, 'msgraph'); } catch (err) {
+    if (err instanceof SyncError) throw err;
+    if (signInEnded(err)) throw new SyncError('Connect Microsoft first, then paste the link again.', 401, 'reconnect');
+    throw err;
+  }
+  let found;
+  try {
+    found = await p.openFile(pasted);
+    const ids = new Set((await p.tabs(found.fileId)).map((t) => t.id));
+    const ours = Object.entries(link.state?.sheetIds || {}).filter(([scopeId]) => !(link.state?.missingTabs || []).includes(scopeId));
+    if (!ours.length || !ours.every(([, id]) => ids.has(String(id)))) {
+      throw new SyncError('That workbook does not have this survey\'s sheets. Paste the link to the workbook that was moved or copied.', 409, 'not_same_file');
+    }
+  } catch (err) {
+    if (err instanceof SyncError) throw err;
+    if (['bad_file_link', 'not_a_file', 'not_xlsx'].includes(err?.code)) throw new SyncError(err.message, 400, err.code);
+    if (signInEnded(err)) throw new SyncError('Your Microsoft sign-in stopped working. Connect Microsoft again.', 401, 'reconnect');
+    if ([401, 403, 404].includes(Number(err?.status))) throw new SyncError('Your Microsoft account can\'t open that workbook. Ask whoever owns it to share it with you so you can edit it.', 403, 'no_access');
+    if (err?.code === 'personal-onedrive') throw new SyncError('That workbook is on a personal OneDrive, which cannot sync cell by cell.', 409, 'personal-onedrive');
+    throw new SyncError('Could not reach that workbook just now. Try again in a moment.', 503, 'unreachable');
+  } finally {
+    await p?.close?.(found?.fileId || link.file_id);
+  }
+  const { refusedSince: _gone, ...state } = link.state || {};
+  if (found.folderLabel) state.folderLabel = found.folderLabel; else delete state.folderLabel;
+  state.folder = '';
+  const { data: moved } = await ctx.service.from('sheet_sync_links')
+    .update({
+      file_id: found.fileId, file_url: found.url, title: found.title || link.title,
+      connection_user_id: ctx.user.id, status: 'active', last_error: null, backoff_until: null, remote_version: null, state,
+    })
+    .eq('id', link.id).eq('file_id', link.file_id).select(LINK_COLUMNS);
+  if (!moved?.length) throw new SyncError('Someone else changed this live sheet just now. Try again.', 409, 'raced');
+  log('relinked', { provider: link.provider });
+  const round = await runRoundFor(ctx, moved[0], { force: true });
+  return statusFor(ctx, round);
 }
 
 async function unlinkSheet(ctx) {

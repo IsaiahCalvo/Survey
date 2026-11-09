@@ -387,6 +387,11 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
     return added.id;
   }
 
+  async function listTabs(fileId) {
+    const list = await workbook(fileId, 'GET', 'worksheets?$select=id,name', { where: 'worksheets' });
+    return (list?.value || []).map((s) => ({ id: String(s.id), name: String(s.name) }));
+  }
+
   return {
     provider: 'msgraph',
     capabilities: Object.freeze({ cellWrites: true }),
@@ -405,6 +410,14 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
     // `opts.sheetIds`: read only these sheets (the synced ones), so a big
     // sheet a PM added for their own notes costs no calls. A synced sheet
     // someone deleted is simply missing, which the round reports.
+    /** Every sheet in the workbook as { id, name } (no cells read). */
+    tabs: listTabs,
+
+    /** The names of every sheet in the workbook (no cells read). */
+    async tabTitles(fileId) {
+      return (await listTabs(fileId)).map((t) => t.name);
+    },
+
     async readGrid(fileId, { sheetIds = null } = {}) {
       const list = await workbook(fileId, 'GET', 'worksheets?$select=id,name,position,visibility', { where: 'worksheets' });
       const only = sheetIds?.length ? new Set(sheetIds.map(String)) : null;
@@ -550,6 +563,37 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
         throw Object.assign(new Error('That link is to a file. Paste the link to the folder it should go in.'), { status: 400, code: 'not_a_folder' });
       }
       return { folder: placeToken(it.parentReference?.driveId, it.id), name: String(it.name || 'Folder') };
+    },
+
+    /**
+     * A workbook the PM already has, from a pasted OneDrive, SharePoint or
+     * Teams link: { fileId, url, title }. Survey adds its own sheets to it
+     * (the round's new-tab path, named apart from the sheets already there)
+     * and leaves the PM's sheets as they are. Only .xlsx opens cell by cell.
+     */
+    async openFile(url) {
+      let it;
+      try {
+        it = await call('GET', `shares/${shareIdOf(url)}/driveItem?$select=id,name,file,folder,webUrl,parentReference`, { where: 'shares' });
+      } catch (err) {
+        if ([400, 403, 404].includes(Number(err?.status))) {
+          throw Object.assign(new Error('Survey could not open that link with your Microsoft sign-in. Copy the workbook\'s link from Excel (Share > Copy link) and try again.'), { status: 400, code: 'bad_file_link' });
+        }
+        throw err;
+      }
+      if (it?.folder || !it?.file) {
+        throw Object.assign(new Error('That link is to a folder. Paste the link to the workbook itself.'), { status: 400, code: 'not_a_file' });
+      }
+      if (!/\.xlsx$/i.test(String(it.name || ''))) {
+        throw Object.assign(new Error('Survey can sync .xlsx workbooks. In Excel, save it as an Excel Workbook (.xlsx) and paste its link again.'), { status: 400, code: 'not_xlsx' });
+      }
+      const place = String(it.parentReference?.name || '').trim();
+      return {
+        fileId: msgraphFileId(it.parentReference?.driveId, it.id),
+        url: it.webUrl || null,
+        title: String(it.name).replace(/\.xlsx$/i, ''),
+        ...(place && place !== 'root' ? { folderLabel: place } : {}),
+      };
     },
 
     /**
