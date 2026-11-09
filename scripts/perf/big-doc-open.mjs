@@ -23,6 +23,7 @@
 // THUMB=1 also waits for the viewer's page-1 thumbnail (markup) to be written
 // and reports when it landed (thumbAt, ms after the click) and its size.
 // REOPEN=1 times a second open of the same document in the same browser
+// (REOPEN_WAIT_MS=<ms> stays on the first open that long before closing)
 // profile (IndexedDB / HTTP cache warm, thumbnail already current).
 // PROFILE=<file.cpuprofile> records a CPU profile of the first run instead
 // (of its reopen with REOPEN=1).
@@ -288,6 +289,9 @@ async function oneRun(browser, size, { profile = null } = {}) {
   // With REOPEN=1, PROFILE records the reopen instead of the first open.
   let result = await openAndSettle(page, context, size, { profile: process.env.REOPEN ? null : profile });
   if (process.env.REOPEN) {
+    // REOPEN_WAIT_MS: stay on the document that long first (lets a streamed
+    // open finish downloading, so the reopen reads this device's copy).
+    if (process.env.REOPEN_WAIT_MS) await page.waitForTimeout(Number(process.env.REOPEN_WAIT_MS));
     // Close the document (back to Home, same profile), then open it again.
     const close = size === 'phone'
       ? page.getByRole('button', { name: 'Back to documents' })
