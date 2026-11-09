@@ -31,7 +31,8 @@ test('the plan holds the totals, a chart row per used category and the issues', 
   assert.deepEqual(plan.tiles.map((t) => t.value), [4, 2, 1, 1, 1]);
   assert.deepEqual(plan.chart.categories, ['Door', 'Camera']);
   assert.deepEqual(plan.chart.series.map((s) => s.values), [[2, 0], [1, 0], [0, 1]]);
-  assert.deepEqual(plan.issueRows.map(({ id, ...row }) => row), [{ category: 'Door', item: 'D-2', lines: 'Lock works: Fail' }]);
+  assert.deepEqual(plan.issueRows.map(({ id, ...row }) => row), [{ category: 'Door', item: 'D-2', lines: 'Lock works: Fail', tracking: '', note: '', followUp: '' }]);
+  assert.equal(plan.hasFollowUp, false);
 });
 
 const slideFiles = (zip) => Object.keys(zip.files).filter((f) => /^ppt\/slides\/slide\d+\.xml$/.test(f));
@@ -98,4 +99,24 @@ test('a report kit only names blocks the engine can draw', async () => {
   // A chart drawn on its own gets its own Progress slide.
   const zip = await JSZip.loadAsync(await buildSurveyReport(PptxGenJS, { template, markers: { d: marker('D-1', 'door', { a: 'Pass' }) }, kit: ok }).write({ outputType: 'nodebuffer' }));
   assert.equal(slideFiles(zip).length, 1);
+});
+
+test('an issue carries its follow-up: status, who has it, due date and note', async () => {
+  const { surveyReportPlan, itemFollowUp } = await import('../src/services/surveyReportPptx.js');
+  const template = { name: 'T', modules: [{ id: 'm', name: 'M', categories: [{ id: 'c', name: 'Door', checklist: [{ id: 'a', text: 'Lock works' }] }] }] };
+  const people = [{ id: 'u1', name: 'Eddie Editor', email: 'eddie@example.com' }];
+  const markers = {
+    d1: { name: 'D-1', categoryId: 'c', checklistResponses: { a: { selection: 'N' } }, note: { text: ' Strike plate  bent ' }, tracking: { status: 'in-progress', assigneeId: 'u1', due: '2026-11-08' } },
+    d2: { name: 'D-2', categoryId: 'c', checklistResponses: { a: { selection: 'N' } } },
+  };
+  const plan = surveyReportPlan({ template, markers, people, when: new Date(2026, 10, 9) });
+  assert.equal(plan.hasFollowUp, true);
+  const d1 = plan.issueRows.find((r) => r.item === 'D-1');
+  assert.equal(d1.tracking, 'In progress · Eddie Editor · 1 day late');
+  assert.equal(d1.note, 'Strike plate bent');
+  assert.equal(d1.followUp, 'In progress · Eddie Editor · 1 day late\nStrike plate bent');
+  assert.equal(plan.issueRows.find((r) => r.item === 'D-2').followUp, '');
+  assert.equal(itemFollowUp({ tracking: { status: 'done', due: '2026-11-03' } }, { today: '2026-11-09' }).tracking, 'Done · Was due Nov 3');
+  assert.equal(itemFollowUp({ tracking: { status: 'open', assigneeId: 'gone' } }, { people }).tracking, 'Open · Former member');
+  assert.equal(itemFollowUp({ note: 'plain string note' }).note, 'plain string note');
 });
