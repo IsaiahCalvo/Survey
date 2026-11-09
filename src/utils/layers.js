@@ -185,3 +185,10 @@ export function calloutsWithoutHiddenLayers(callouts, hiddenSet) {
   if (!hiddenSet || hiddenSet.size === 0 || !Array.isArray(callouts)) return callouts;
   return callouts.filter((c) => !isOnHiddenLayer(c, hiddenSet));
 }
+
+// Slots of the marks "Select all on page" (page menu, Ctrl+A) picks: the ones
+// that show. A mark on a hidden layer is not drawn, so it is never picked.
+export function selectableMarkIndices(objects, hiddenSet) {
+  if (!Array.isArray(objects)) return [];
+  return objects.flatMap((o, i) => (o && o.visible !== false && !isOnHiddenLayer(o, hiddenSet) ? [i] : []));
+}
