@@ -93,10 +93,8 @@ export const AvatarStack = ({ members, ids = [], size = 22 }) => (
 );
 
 /* Stylised PDF page placeholder — stands in for a real page render. */
-export const PdfThumb = ({ height = 110, marks = [], stamp = '', color = '#1f4a7a' }) => (
+export const PdfThumb = ({ height = 110, marks = [], stamp = '' }) => (
   <div className="pdf-thumb" style={{ height, width: '100%' }}>
-    <div className="ribbon" style={{ background: color }}></div>
-    <div className="ribbon-line"></div>
     {marks.map((m, i) => (
       m.type === 'swatch'
         ? <div key={i} className="swatch" style={{ left: m.x + '%', top: m.y + '%', width: m.w + '%', height: m.h + '%', background: m.color || 'rgba(216,168,78,0.4)' }}></div>
