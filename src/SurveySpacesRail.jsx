@@ -4699,7 +4699,7 @@ const SurveySpacesRail = ({
                           Bookmarks and Spaces, a 13px title where it was 18px. */}
                       <div className={mobileMode ? 'mobile-survey-head mobile-survey-head--picker' : 'survey-rail__head'}>
                         {mobileMode ? (
-                          /* Owner 2026-10-02 (phone = desktop): centred, 600. */
+                          /* Owner 2026-10-07: title on the left, 600, as on desktop. */
                           <h2 className="mobile-survey-head-title">Choose a survey template</h2>
                         ) : (
                           /* Owner 2026-10-07 (rail headers round): one rule for
