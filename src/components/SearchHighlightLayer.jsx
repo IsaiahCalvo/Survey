@@ -6,12 +6,28 @@ const MAX_RENDERED_RECTANGLES_PER_PAGE = 900;
 const INACTIVE_PAGE_MATCH_LIMIT = 60;
 const EMPTY_HIGHLIGHTS = [];
 
+// Owner 2026-11-09: "the selected item is gold, and the other found items are
+// also gold ... I don't really like the way that's working." Two colours, as
+// in Chrome and Edge find-in-page: every other hit is a pale yellow wash with
+// no edge, the one you are on is a solid orange with a dark orange edge. It
+// holds still (the old pulsing glow is gone) so you can read it.
+const OTHER_LOOK = Object.freeze({
+  fill: 'rgba(255, 235, 59, 0.32)',
+  stroke: 'none',
+  strokeWidth: 0,
+});
+const ACTIVE_LOOK = Object.freeze({
+  fill: 'rgba(255, 140, 0, 0.5)',
+  stroke: 'rgba(214, 90, 0, 1)',
+  strokeWidth: 1.5,
+});
+
 /**
  * SearchHighlightLayer renders highlight overlays for search matches on a PDF page.
  *
  * Key features:
- * - Renders all matches on the current page with yellow highlights
- * - Highlights the active/current match with a brighter golden color and glow effect
+ * - Renders all matches on the current page with a pale yellow wash
+ * - Shows the active/current match in solid orange with a dark orange edge
  * - Properly scales and positions highlights based on the page scale
  * - Uses pointer-events: none to not interfere with other interactions
  * - Positioned below annotation layers (z-index: 9) but above the canvas
@@ -26,7 +42,6 @@ const SearchHighlightLayer = memo(({
   activeMatchId = null,
   isActiveMatchOnThisPage = false,
   activeOnly = false,
-  activeGlowOnly = false,
   fillContainer = false
 }) => {
   const layerRef = useRef(null);
@@ -277,46 +292,29 @@ const SearchHighlightLayer = memo(({
         display: 'block'
       }}
     >
-      <defs>
-        <style>{`
-          @keyframes search-active-highlight-pulse {
-            from {
-              opacity: 0.62;
-              stroke-opacity: 0.72;
-            }
-            to {
-              opacity: 0.94;
-              stroke-opacity: 1;
-            }
-          }
-          .search-highlight-svg-rect {
-            shape-rendering: geometricPrecision;
-          }
-          .search-highlight-svg-active-pulse {
-            animation: search-active-highlight-pulse 1.05s ease-in-out infinite alternate;
-          }
-        `}</style>
-      </defs>
-      {preparedHighlights.map((match) => (
+      {/* The hit you are on paints last, over any hit it touches. */}
+      {[...preparedHighlights.filter((m) => !m.isActive), ...preparedHighlights.filter((m) => m.isActive)].map((match) => (
         <React.Fragment key={match.id}>
           {match.rectangles.map((rect, rectIndex) => {
             const isActive = match.isActive;
-            const shouldPulse = activeGlowOnly && isActive;
+            const look = isActive ? ACTIVE_LOOK : OTHER_LOOK;
 
             return (
               <rect
                 key={`${match.id}-${rectIndex}`}
-                className={`search-highlight-svg-rect${isActive ? ' search-highlight-svg-active' : ''}${shouldPulse ? ' search-highlight-svg-active-pulse' : ''}`}
+                className={`search-highlight-svg-rect${isActive ? ' search-highlight-svg-active' : ''}`}
+                data-search-highlight-current={isActive ? 'true' : undefined}
                 x={rect.x}
                 y={rect.y}
                 width={rect.width}
                 height={rect.height}
                 rx={1.5}
                 ry={1.5}
-                fill={isActive ? 'rgba(255, 216, 0, 0.58)' : 'rgba(255, 230, 0, 0.34)'}
-                stroke={isActive ? 'rgba(255, 160, 0, 0.95)' : 'rgba(255, 224, 80, 0.38)'}
-                strokeWidth={isActive ? 1.15 : 0.65}
+                fill={look.fill}
+                stroke={look.stroke}
+                strokeWidth={look.strokeWidth}
                 vectorEffect="non-scaling-stroke"
+                shapeRendering="geometricPrecision"
               />
             );
           })}
