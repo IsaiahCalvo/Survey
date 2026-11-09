@@ -64,7 +64,7 @@ p{margin:0 0 1em}
 .brand{display:flex;align-items:center;gap:10px;font:700 22px/1 var(--display);letter-spacing:-.02em;color:var(--ink);text-decoration:none}
 .brand img{width:30px;height:30px;border-radius:8px}
 .links{display:flex;gap:2px;margin-left:auto}
-.links a,.mnav a{color:var(--ink);text-decoration:none;font-weight:500;font-size:16px;padding:10px 14px;border-radius:6px}
+.links a,.mnav a{color:var(--ink);text-decoration:none;font-weight:500;font-size:16px;padding:10px 14px;border-radius:6px;white-space:nowrap}
 .links a:hover{background:var(--sheet)}
 .links a[aria-current="page"]{font-weight:600}
 .right{display:flex;align-items:center;gap:8px;padding-left:16px;margin-left:8px;border-left:1px solid var(--rule)}
@@ -273,7 +273,9 @@ tr:last-child>*{border-bottom:0}
   .panel{padding:48px}
   .sec{padding:80px 0}
 }
-@media (max-width:820px){
+/* Tablets in portrait (iPad 834px, Galaxy Tab 712px) get the menu button: the
+   five links, theme, Log in and Start free need about 1060px in one row. */
+@media (max-width:1080px){
   .links,.login{display:none}
   .right{border-left:0;padding-left:0;margin-left:auto}
   .menu{display:grid}
