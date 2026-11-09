@@ -17,6 +17,7 @@ import CounterSeriesMenu, { counterSeriesMenuWidth } from './components/CounterS
 import PageGridToggle, { PageGridGlyph } from './components/PageGridToggle';
 import DocumentVersionsButton, { DocumentVersionsDialogs, useDocumentVersions } from './components/DocumentVersionsButton.jsx';
 import { requestMarkCommentsFocus } from './services/markCommentsFocus.js';
+import { OPEN_VIEWER_SHARE_EVENT } from './utils/viewerShare.js';
 import { OPEN_EXPORT_PDF_EVENT } from './utils/exportPdfModes.js';
 import { PageGridMenu } from './components/PageGridSettings';
 import SnappingToggle, { SnappingGlyph, snappingLabel, useSnappingShortcut } from './components/SnappingToggle.jsx';
@@ -194,6 +195,11 @@ const PinnedToolsDockChunk = preloadedComponent(() => import('./components/Pinne
 const PinnedToolsDock = PinnedToolsDockChunk.Component;
 const ExportPdfDialogChunk = preloadedComponent(() => import('./components/ExportPdfDialog'));
 const ExportPdfDialog = ExportPdfDialogChunk.Component;
+// Share from inside a document (Nightly 'viewer-share'): the Home share dialogs.
+const ShareModalChunk = preloadedComponent(() => import('./home/ShareModal'));
+const ShareModal = ShareModalChunk.Component;
+const AccessManagementModalChunk = preloadedComponent(() => import('./home/AccessManagementModal'));
+const AccessManagementModal = AccessManagementModalChunk.Component;
 
 // Lazy boundary: the dashboard paints without pulling in the viewer (and its
 // fabric / annotation / Excel weight). The viewer chunk fetches the first time
@@ -2250,11 +2256,35 @@ export default function App({ devPreviewReturnTab = null }) {
   // components/ExportPdfDialog.jsx. The phone header asks with an event.
   const [exportModesEnabled] = useState(() => isFeatureOn('export-modes'));
   const [exportPdfDialogOpen, setExportPdfDialogOpen] = useState(false);
+  // Share from inside a document (Drawboard PDF Pro trial audit 2026-11-09:
+  // Drawboard shares from its viewer top bar; Survey only from Home). The
+  // owner gets Manage access, anyone else the plain Share dialog, as on Home.
+  const [viewerShareEnabled] = useState(() => isFeatureOn('viewer-share'));
+  const [viewerShare, setViewerShare] = useState(null);
+  const activeShareDocId = viewerShareEnabled ? persistableDocumentId(activeTab) : null;
+  const openViewerShare = () => {
+    if (!activeShareDocId || !user?.id) return;
+    const row = documents.find((d) => String(d?.id) === String(activeShareDocId))
+      || { id: activeShareDocId, name: activeTab?.name || '' };
+    setViewerShare({ item: row, name: row.name || activeTab?.name || '', manage: row.user_id === user.id });
+  };
   useEffect(() => {
     if (!canFetchChunksNow()) return;
     if (pinnedToolsEnabled) PinnedToolsDockChunk.load().catch(() => {});
     if (exportModesEnabled) ExportPdfDialogChunk.load().catch(() => {});
-  }, [pinnedToolsEnabled, exportModesEnabled]);
+    if (viewerShareEnabled) {
+      ShareModalChunk.load().catch(() => {});
+      AccessManagementModalChunk.load().catch(() => {});
+    }
+  }, [pinnedToolsEnabled, exportModesEnabled, viewerShareEnabled]);
+  const openViewerShareRef = useRef(openViewerShare);
+  openViewerShareRef.current = openViewerShare;
+  useEffect(() => {
+    if (!viewerShareEnabled) return undefined;
+    const open = () => openViewerShareRef.current();
+    window.addEventListener(OPEN_VIEWER_SHARE_EVENT, open);
+    return () => window.removeEventListener(OPEN_VIEWER_SHARE_EVENT, open);
+  }, [viewerShareEnabled]);
   useEffect(() => {
     if (!exportModesEnabled) return undefined;
     const open = () => setExportPdfDialogOpen(true);
@@ -3014,6 +3044,20 @@ export default function App({ devPreviewReturnTab = null }) {
                   onOpen={openSpacesFromChip}
                   onTurnOff={turnOffSpaceFromChip}
                 />
+              )}
+              {activeShareDocId && user?.id && (
+                <button
+                  type="button"
+                  data-viewer-share="true"
+                  className="chrome-control"
+                  aria-label="Share"
+                  aria-haspopup="dialog"
+                  {...chromeTip('Share this document', 'below')}
+                  onClick={openViewerShare}
+                  style={{ border: 'none', background: 'transparent', color: 'var(--text-2)', cursor: 'pointer' }}
+                >
+                  <Icon name="share" size={CHROME_GLYPH} />
+                </button>
               )}
               <DocumentVersionsButton state={documentVersions} tip={chromeTip} />
               {/* Export annotated PDF — browser-visible entry point for the
@@ -5572,6 +5616,28 @@ export default function App({ devPreviewReturnTab = null }) {
           fileName={activeTab?.name || activeTab?.file?.name || ''}
           onClose={() => setExportPdfDialogOpen(false)}
         />
+      )}
+      {viewerShareEnabled && viewerShare && (
+        // Over the open document, whose viewer sits at z-index 5000 (the
+        // Home dialogs' own 1300 only ever covers Home).
+        <div data-viewer-share-dialogs="" style={{ position: 'absolute', top: 0, left: 0, width: 0, zIndex: 6500 }}>
+        <Suspense fallback={null}>
+          <ShareModal
+            open={!viewerShare.manage}
+            kind="document"
+            name={viewerShare.name}
+            item={viewerShare.item}
+            onClose={() => setViewerShare(null)}
+          />
+          <AccessManagementModal
+            open={viewerShare.manage}
+            kind="document"
+            item={viewerShare.item}
+            user={user}
+            onClose={() => setViewerShare(null)}
+          />
+        </Suspense>
+        </div>
       )}
       <DocumentVersionsDialogs state={documentVersions} />
       <TooltipChipHost setterRef={shellTooltipSetterRef} />

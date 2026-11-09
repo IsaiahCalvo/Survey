@@ -45,6 +45,7 @@ import './mobilePdfViewer.css';
 import { useTooltip } from '../components/Tooltip';
 import { SECTION_DONE_ICON } from '../components/SectionIconButton.jsx';
 import { OPEN_EXPORT_PDF_EVENT } from '../utils/exportPdfModes.js';
+import { OPEN_VIEWER_SHARE_EVENT } from '../utils/viewerShare.js';
 import { RENAME_OPEN_DOCUMENT_EVENT } from '../tabs/tabStrip.js';
 import { usePolylineCurve } from '../hooks/usePolylineCurve.js';
 import { POLYLINE_CURVE_SET_EVENT } from '../utils/polySpline.js';
@@ -1094,6 +1095,22 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
               desktop top bar's Export (it was the share glyph here). */}
           <Icon name="download" size={HEADER_GLYPH} color="currentColor" />
         </button>
+        {/* Nightly (flag 'viewer-share'): share this document; AppShell owns
+            the dialog, as for Export's choices. */}
+        {isFeatureOn('viewer-share') && (
+          <button
+            type="button"
+            className="mobile-pdf-header__icon"
+            aria-label="Share"
+            data-viewer-share="true"
+            onClick={() => {
+              commitPanelTyping();
+              window.dispatchEvent(new CustomEvent(OPEN_VIEWER_SHARE_EVENT));
+            }}
+          >
+            <Icon name="share" size={HEADER_GLYPH} color="currentColor" />
+          </button>
+        )}
       </div>
 
       <div className="mobile-pdf-header__pages" ref={pagesRef}>
