@@ -113,7 +113,7 @@ test('a real PDF title block reads, upright or sideways, and the file name fills
 
 test('the flag is beta and seeded, the columns exist, and the upload asks in sheet mode', () => {
   assert.equal(FEATURE_FLAGS['sheet-revisions'].stage, 'beta');
-  const migration = readFileSync(new URL('../supabase/migrations/20261109200000_sheet_revisions.sql', import.meta.url), 'utf8');
+  const migration = readFileSync(new URL('../supabase/migrations/20261109203000_sheet_revisions.sql', import.meta.url), 'utf8');
   assert.match(migration, /add column if not exists sheet_number text/);
   assert.match(migration, /add column if not exists sheet_revision text/);
   assert.match(migration, /'sheet-revisions', 'off'/);
