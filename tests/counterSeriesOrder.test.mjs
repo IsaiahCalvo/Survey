@@ -68,9 +68,10 @@ test('counter order: the place travels with the pin in an exported PDF', () => {
   assert.equal(metadata.data.seriesOrder, 2);
 });
 
-test('counter order: the counts list is a beta flag (Survey Nightly only)', () => {
-  assert.equal(FEATURE_FLAGS['counter-list'].stage, 'beta');
-  const storage = { getItem: () => null };
-  assert.equal(isFeatureOn('counter-list', { storage, env: { VITE_RELEASE_CHANNEL: 'nightly' } }), true);
-  assert.equal(isFeatureOn('counter-list', { storage: { getItem: () => '1' }, env: {} }), false);
+test('counter order: the counts list follows the /flags row on every channel', () => {
+  assert.equal(FEATURE_FLAGS['counter-list'].stage, 'rollout');
+  const off = { getItem: () => null };
+  assert.equal(isFeatureOn('counter-list', { storage: off, env: {} }), false);
+  const on = { getItem: (k) => (k === 'survey.flags.server' ? JSON.stringify({ 'counter-list': true }) : null) };
+  assert.equal(isFeatureOn('counter-list', { storage: on, env: {} }), true);
 });

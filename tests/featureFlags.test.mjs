@@ -68,7 +68,7 @@ test('flags: older smart fill key and build env var still work on a dev server',
 
 test('flags: stable never shows a beta feature, even to testers or with an override', () => {
   const beta = Object.keys(FEATURE_FLAGS).filter((key) => FEATURE_FLAGS[key].stage === 'beta');
-  assert.ok(beta.includes('survey-agent') && beta.includes('mark-library') && beta.includes('layers'));
+  assert.ok(beta.includes('survey-agent') && beta.includes('mark-library') && beta.includes('guest-links'));
   const everything = Object.fromEntries(Object.keys(FEATURE_FLAGS).map((key) => [key, true]));
   for (const key of beta) {
     const def = FEATURE_FLAGS[key];
