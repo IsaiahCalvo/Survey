@@ -34,6 +34,7 @@ import { useViewerSideOccluderRef } from './utils/viewerSideOverlay.js';
 import { publishChromeInset } from './utils/chromeInsets.js';
 import SectionIconButton from './components/SectionIconButton.jsx';
 import { openKeyboardShortcuts } from './utils/keyboardShortcuts.js';
+import { readSearchTextAhead } from './utils/pdfSearchText.js';
 import {
   DEFAULT_PANEL_LAYOUT,
   browserStorage,
@@ -284,6 +285,12 @@ const PDFSidebar = React.forwardRef(({
   const [isCollapsed, setIsCollapsed] = useState(() => !initialLayoutRef.current.open);
   const [activeTab, setActiveTab] = useState(() => initialLayoutRef.current.panel); // 'pages' | 'search' | 'bookmarks' | 'spaces' | 'history'
   const [viewportWidth, setViewportWidth] = useState(() => (typeof window !== 'undefined' ? window.innerWidth : 1440));
+  // Speed: read the document's text for search in idle time a moment after it
+  // opens, so a search finds it ready (front tab only; shared per document).
+  React.useEffect(() => {
+    if (!pdfDoc || !tabActive) return undefined;
+    return readSearchTextAhead(pdfDoc, numPages);
+  }, [pdfDoc, numPages, tabActive]);
   React.useEffect(() => {
     if (mobileMode || typeof window === 'undefined') return undefined;
     const onResize = () => setViewportWidth(window.innerWidth);
