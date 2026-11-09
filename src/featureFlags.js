@@ -161,6 +161,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Align and space picked marks (mark menu)',
     stage: 'beta',
   }),
+  'markup-list': Object.freeze({
+    label: 'Markups list: every mark in one searchable list, by kind and person, with a CSV copy',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

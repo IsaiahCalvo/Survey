@@ -402,7 +402,7 @@ import { LAYERS_META_KEY, DEFAULT_LAYER_ID, DEFAULT_LAYER_STATE, normalizeLayerS
 import { PAGE_PRESENTATION_META_KEY, normalizePagePresentations, pagePresentationFrame, clientPointInPageFrame, clientPastePointInPageFrame } from './utils/pagePresentation.js';
 import { normalizePresentationPdf, pdfBytesHavePresentationTag } from './utils/pdfPagePresentation.js';
 import { chooseCloudPdfOpenPath, shouldRetryStreamedOpenWithDownload, tryOpenCloudPdfStream } from './services/cloudPdfStream.js';
-import { getAnnotationBBox, getGroupBBox } from './utils/svgBoundingBox.js';
+import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox } from './utils/svgBoundingBox.js';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
 import { usePageOperations } from './hooks/usePageOperations.js';
 import { usePageViewDocument } from './hooks/usePageViewDocument.js';
@@ -22062,6 +22062,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // signed-in person and document project; libraryDraft is the marks the
   // Save to library card is open for.
   const [markLibraryEnabled] = useState(() => isFeatureOn('mark-library'));
+  // Markups list (Nightly 'markup-list'): every mark in one rail panel.
+  const [markupListEnabled] = useState(() => isFeatureOn('markup-list'));
   const [libraryDraft, setLibraryDraft] = useState(null);
   useEffect(() => {
     if (!markLibraryEnabled || isActive === false) return;
@@ -29338,6 +29340,26 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     }
     return false;
   }, []);
+
+  // Markups list: go to a mark and pick it (a callout is shown, not picked).
+  const openMarkupRow = useCallback((row) => {
+    const page = Number(row?.pageNumber);
+    if (!Number.isFinite(page) || page < 1) return;
+    const objects = (annotationsByPageRef.current || {})[page]?.objects
+      || (annotationsByPageRef.current || {})[String(page)]?.objects || [];
+    // The row's slot may have moved since the list was built: find it by id.
+    let index = Number.isInteger(row.index) && objects[row.index] ? row.index : -1;
+    if (row.id && !String(row.id).startsWith('p')) {
+      const byId = objects.findIndex((o) => String(o?.id ?? o?.data?.id ?? o?.meta?.id) === String(row.id));
+      if (byId >= 0) index = byId;
+    }
+    const obj = index >= 0 ? objects[index] : null;
+    const box = obj ? getAnnotationWorldAABB(obj) : null;
+    focusHistoryMark(page, box && box.width >= 0 ? { left: box.left, top: box.top, width: Math.max(box.width, 1), height: Math.max(box.height, 1) } : null);
+    if (obj && obj?.data?.type !== 'callout') {
+      setPendingSvgSelection({ pageNumber: page, annotationIndices: [index], tick: Date.now() });
+    }
+  }, [focusHistoryMark]);
 
   // Read through a ref: the tombstone list is a new array after every capture,
   // and the import effect must not be cancelled mid-import by that churn.
@@ -36821,6 +36843,10 @@ ${pageBlocks}
       onActiveLayerChange: setActiveLayerId,
       canEditLayers: canRestoreFromHistory,
       markLibraryEnabled,
+      markupListEnabled,
+      annotationsByPage: markupListEnabled ? annotationsByPage : null,
+      onOpenMarkup: openMarkupRow,
+      pdfDisplayName,
     };
     onLeftRailApiChange((prev) => {
       if (prev) {
@@ -36843,6 +36869,10 @@ ${pageBlocks}
     onLeftRailApiChange,
     layersEnabled,
     markLibraryEnabled,
+    markupListEnabled,
+    annotationsByPage,
+    openMarkupRow,
+    pdfDisplayName,
     layerState,
     effectiveActiveLayerId,
     handleLayersChange,
