@@ -122,6 +122,7 @@ import {
   buildFreehandCommitJSON,
   buildLineCommitJSON,
   buildPolyShapeCommitJSON,
+  composeAnnotationColor,
 } from '../utils/annotationCreationCommit.js';
 import {
   POLY_DRAFT_TOOLS,
@@ -2693,6 +2694,7 @@ const SVGAnnotationLayerBody = memo(({
         authorId: viewerId,
         points,
         strokeColor,
+        strokeOpacity,
         highlightColor,
         strokeWidth: Number(strokeWidth) || 3,
         selectedModuleId,
@@ -7825,7 +7827,7 @@ const SVGAnnotationLayerBody = memo(({
                   id: liveId,
                   page: pageNumber,
                   tool,
-                  color: tool === 'highlighter' ? highlightColor : strokeColor,
+                  color: tool === 'highlighter' ? highlightColor : composeAnnotationColor(strokeColor, strokeOpacity),
                   width: tool === 'highlighter'
                     ? Math.max(Number(strokeWidth) || 3, 8)
                     : (Number(strokeWidth) || 3),
@@ -8358,6 +8360,7 @@ const SVGAnnotationLayerBody = memo(({
             ? Math.max(Number(strokeWidth) || 3, 8)
             : shapeCreation.tool === 'survey-marker-freehand' ? markerStrokeWidth
               : (Number(strokeWidth) || 3)}
+          strokeOpacity={shapeCreation.tool === 'pen' ? Math.max(0, Math.min(1, (strokeOpacity ?? 100) / 100)) : undefined}
           strokeLinecap="round"
           strokeLinejoin="round"
           style={{
