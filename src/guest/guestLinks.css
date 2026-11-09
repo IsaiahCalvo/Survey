@@ -157,7 +157,15 @@
 }
 
 .guest-join__terms a {
-  color: var(--accent-text);
+  /* --accent-text is the dark ink ON a gold fill: on this card it was near
+     black on near black. Links are quiet underlined text (tokens --link). */
+  color: var(--link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.guest-join__terms a:hover {
+  color: var(--link-hover);
 }
 
 .guest-join__actions {
@@ -195,4 +203,27 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   box-shadow: var(--shadow-dialog);
+}
+
+/* Desktop: the badge sits in the empty right end of the tab strip, so it
+   never covers the left rail's account button or the page. Phone keeps the
+   bottom-left corner (no tab strip there). */
+@media (min-width: 761px) and (pointer: fine) {
+  .guest-badge {
+    top: 3px;
+    right: 12px;
+    bottom: auto;
+    left: auto;
+    height: 26px;
+    padding: 0 3px 0 10px;
+    font-size: var(--font-size-sm);
+    box-shadow: none;
+  }
+
+  .guest-badge .hub-btn {
+    height: 20px;
+    min-height: 20px;
+    padding: 0 8px;
+    font-size: var(--font-size-sm);
+  }
 }
