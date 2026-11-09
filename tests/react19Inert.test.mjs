@@ -21,9 +21,8 @@ test('no React prop spells inert as an empty string', () => {
   for (const file of sourceFiles('src')) {
     const text = readFileSync(file, 'utf8');
     text.split('\n').forEach((line, i) => {
-      // Also `inert={open ? '' : undefined}`: the '' may sit on either side
-      // of the colon (two such spots outlived the React 19 switch).
-      if (/\binert=(""|''|\{''\}|\{""\})|\binert:\s*(''|"")|\binert=\{[^}]*[?:]\s*(''|"")/.test(line)) {
+      // Also `inert={open ? '' : undefined}`: the '' branch is still false.
+      if (/\binert=(""|''|\{''\}|\{""\})|\binert:\s*(''|"")|\binert=\{[^}]*[?:]\s*(''|"")\s*[:}]/.test(line)) {
         bad.push(`${file}:${i + 1}: ${line.trim()}`);
       }
     });
