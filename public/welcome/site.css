@@ -181,7 +181,7 @@ p{margin:0 0 1em}
 .feat{padding:72px 0;scroll-margin-top:84px}
 .feat+.feat{border-top:1px solid var(--rule)}
 .feat-grid{display:grid;grid-template-columns:5fr 7fr;gap:64px;align-items:center}
-.feat.flip .feat-grid>div{order:2}
+.feat.flip .feat-grid>div:first-child{order:2}
 .feat .lead{font-size:21px;color:var(--ink);font-weight:500;line-height:1.4}
 .feat p{color:var(--soft);font-size:17px}
 .grid6{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
@@ -485,3 +485,9 @@ tr:last-child>*{border-bottom:0}
   .sheet-float col.c-item{width:27%}.sheet-float col.c-a{width:21%}.sheet-float col.c-b{width:18%}
   .sf-head small{display:none}
 }
+/* a real shot with one floating status chip on it */
+.shot-wrap{position:relative}
+.chip-sm{left:20px;top:20px;padding:10px 14px 10px 10px;font-size:13.5px}
+.chip-sm .chip-dot{width:26px;height:26px}
+@media (max-width:560px){.chip-sm{left:10px;top:10px}}
+.feat p.kicker{color:var(--accent)}

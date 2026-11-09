@@ -114,7 +114,8 @@ const ONLY = [
     lead: 'Draw a region, turn the space on, and everything outside it steps back.',
     body: 'Markups made inside a space belong to it, so one sheet can carry the fit-out, the demolition and the services as separate work. We have not found this in any other PDF app.',
     ticks: ['A region per page, as a rectangle or freehand', 'Export a space on its own', 'Switch spaces on and off in one tap'],
-    img: 'spaces.webp', w: 1600, h: 1000, alt: 'A floor plan with a space turned on: the open office stays clear while the rest of the sheet is dimmed with a grey hatch', srcset: '/welcome/spaces-800.webp 800w, /welcome/spaces.webp 1600w' },
+    img: 'spaces.webp', w: 1223, h: 764, alt: 'A floor plan with the space Open office fit-out turned on: the open office stays clear while the rest of the sheet is dimmed with a grey hatch', srcset: '/welcome/spaces-800.webp 800w, /welcome/spaces.webp 1223w',
+    chip: ['Open office fit-out', 'Space on · 1 region'] },
   // Not "projects": Drawboard Projects has projects too (checked 2026-10-27).
   { id: 'templates', kicker: 'Survey templates', name: 'Set it up once. Use it on every job.',
     lead: 'A template holds what you check, the questions you ask and the tags you give each item.',
@@ -276,8 +277,8 @@ ${body}
 const shot = (t, cls = '') => `<figure class="shot ${cls}"><img src="/welcome/${t.img}"${t.srcset ? ` srcset="${t.srcset}" sizes="(max-width: 900px) 92vw, 640px"` : ''} width="${t.w}" height="${t.h}" loading="lazy" decoding="async" alt="${esc(t.alt)}" /></figure>`;
 
 const only = (f, i) => `<section class="sec feat${i % 2 ? ' flip' : ''}" id="${f.id}"><div class="wrap feat-grid">
-  <div><p class="kicker">${f.kicker}</p><h2>${f.name}</h2><p class="lead">${f.lead}</p><p>${f.body}</p>${f.ticks ? `<ul class="ticks">${f.ticks.map((t) => `<li>${t}</li>`).join('')}</ul>` : ''}</div>
-  ${f.img2 ? `<div class="duo">${shot(f)}${shot({ img: f.img2, w: f.w2, h: f.h2, alt: f.alt2, srcset: '/welcome/' + f.img2.replace('.webp', '-800.webp') + ' 800w, /welcome/' + f.img2 + ' 1600w' })}</div>` : shot(f)}
+  <div class="feat-copy"><p class="kicker">${f.kicker}</p><h2>${f.name}</h2><p class="lead">${f.lead}</p><p>${f.body}</p>${f.ticks ? `<ul class="ticks">${f.ticks.map((t) => `<li>${t}</li>`).join('')}</ul>` : ''}</div>
+  ${f.chip ? `<div class="shot-wrap">${shot(f)}<div class="float chip-float chip-sm" aria-hidden="true"><span class="chip-dot"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><span>${f.chip[0]}<small>${f.chip[1]}</small></span></div></div>` : f.img2 ? `<div class="duo">${shot(f)}${shot({ img: f.img2, w: f.w2, h: f.h2, alt: f.alt2, srcset: '/welcome/' + f.img2.replace('.webp', '-800.webp') + ' 800w, /welcome/' + f.img2 + ' 1600w' })}</div>` : shot(f)}
 </div></section>`;
 
 const cell = (v) => v === 'Not listed' ? '<span class="no">Not listed</span>' : `<span class="${v === 'Free' ? 'yes' : 'tier'}">${v}</span>`;
