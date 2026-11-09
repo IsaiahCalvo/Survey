@@ -26,3 +26,17 @@ html[data-page-grid="on"] .survey-pdfjs-page-div > .survey-pdfjs-page-canvas + d
 @media print {
     html[data-page-grid="on"] .survey-pdfjs-page-div > .survey-pdfjs-page-canvas + div::after { display: none; }
 }
+
+/* Fine / Normal / Wide glide (owner 2026-11-09): registered step variables
+   can transition, so the grid grows or shrinks to its new size. Only while
+   <html data-page-grid-animate> is on (a preset press), so a slider drag
+   follows the thumb with no lag. Only the shared step is registered: the
+   presets are paper sizes, and the per-page step (--page-grid-pt) must stay
+   unregistered so its var() fallback to the shared step still works. */
+@property --page-grid-base-pt { syntax: '<number>'; inherits: true; initial-value: 36; }
+html[data-page-grid-animate] {
+    transition: --page-grid-base-pt 360ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+    html[data-page-grid-animate] { transition: none; }
+}

@@ -1,21 +1,29 @@
 /**
- * Page grid settings (Nightly, flag 'grid-settings'; owner 2026-10-26):
- * how dense the grid is - Fine, Normal or Wide - or a custom spacing in paper
- * units (in, mm) or drawing units (ft, m) that follow each page's scale.
+ * Page grid settings (Nightly, flag 'grid-settings'; owner 2026-10-26,
+ * redesigned 2026-11-09): Show grid, then Fine / Normal / Wide in a row (the
+ * grid glides to its new size), a spacing slider that redraws the grid live,
+ * and the value with its unit: paper units (in, mm) or drawing units (ft, m)
+ * that follow each page's scale. Sliding or typing makes it a custom size.
  * Desktop: the rail's grid button opens this as a small card. Phone: the
  * same panel sits under the Page grid row of the zoom menu.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import AnchoredPopover from './AnchoredPopover';
-import ValueSelect from './ValueSelect.jsx';
 import ButtonGroup from './ButtonGroup.jsx';
+import ValueSelect from './ValueSelect.jsx';
 import {
     PAGE_GRID_DENSITIES,
     PAGE_GRID_SETTINGS_EVENT,
     PAGE_GRID_UNITS,
+    animateNextPageGridChange,
     applyPageGridSettings,
+    endPageGridPreview,
     loadPageGridSettings,
+    pageGridPresetValue,
+    pageGridSliderPosition,
+    pageGridSliderValue,
     pageGridUsesDrawingScale,
+    previewPageGridSettings,
     setPageGridSettings,
 } from '../utils/pageGrid';
 import './PageGridSettings.css';
@@ -28,18 +36,72 @@ export const usePageGridSettings = () => {
         window.addEventListener(PAGE_GRID_SETTINGS_EVENT, onEvent);
         return () => window.removeEventListener(PAGE_GRID_SETTINGS_EVENT, onEvent);
     }, [settings]);
-    const update = useCallback((patch) => setSettings((prev) => setPageGridSettings({ ...prev, ...patch })), []);
+    // Saving dispatches PAGE_GRID_SETTINGS_EVENT, which PDFViewer turns into
+    // its own setState, so it must run in the event handler, never inside a
+    // setState updater (React runs those during render: "Cannot update a
+    // component while rendering a different component").
+    const latestRef = useRef(settings);
+    useEffect(() => { latestRef.current = settings; }, [settings]);
+    const update = useCallback((patch) => {
+        const next = setPageGridSettings({ ...latestRef.current, ...patch });
+        latestRef.current = next;
+        setSettings(next);
+    }, []);
     return [settings, update];
 };
 
 export function PageGridSettingsPanel({ on, toggle, phone = false, showSwitch = true }) {
     const [settings, update] = usePageGridSettings();
-    const [draft, setDraft] = useState(String(settings.customValue));
-    useEffect(() => { setDraft(String(settings.customValue)); }, [settings.customValue]);
+    const preset = settings.density !== 'custom';
+    const paperUnit = !pageGridUsesDrawingScale({ ...settings, density: 'custom' });
+    // A preset is a paper size: with a drawing unit saved, the card shows it
+    // in inches. The field and slider show the preset's size, else the
+    // custom value.
+    const unit = preset && !paperUnit ? 'in' : settings.customUnit;
+    const shownValue = preset ? pageGridPresetValue(settings.density, unit) : settings.customValue;
+    const [draft, setDraft] = useState(String(shownValue));
+    useEffect(() => { setDraft(String(shownValue)); }, [shownValue]);
+    // A slider drag previews on the page each frame and saves once, on release.
+    const [dragValue, setDragValue] = useState(null);
+    const dragging = dragValue != null;
+    const sliderValue = dragging ? dragValue : shownValue;
+    const commitValue = (value) => {
+        endPageGridPreview();
+        if (value > 0 && Number.isFinite(value)) update({ customValue: value, customUnit: unit, density: 'custom' });
+    };
     const commitDraft = () => {
         const n = Number(draft);
-        if (n > 0 && Number.isFinite(n)) update({ customValue: n, density: 'custom' });
-        else setDraft(String(settings.customValue));
+        if (n > 0 && Number.isFinite(n)) commitValue(n);
+        else setDraft(String(shownValue));
+    };
+    const pickPreset = (density) => {
+        if (density === settings.density) return;
+        animateNextPageGridChange();
+        update({ density, customUnit: unit, customValue: pageGridPresetValue(density, unit) });
+    };
+    const onSlide = (event) => {
+        const value = pageGridSliderValue(event.target.value, unit);
+        setDragValue(value);
+        setDraft(String(value));
+        previewPageGridSettings({ ...settings, density: 'custom', customUnit: unit, customValue: value }, settings);
+    };
+    const endSlide = () => {
+        if (dragValue == null) return;
+        const value = dragValue;
+        setDragValue(null);
+        commitValue(value);
+    };
+    const unitOptions = PAGE_GRID_UNITS.map((u) => ({ value: u.id, label: u.label }));
+    const pickUnit = (customUnit) => {
+        // Keep the same paper size when moving between in and mm.
+        const fromPt = { in: 72, mm: 72 / 25.4 }[unit];
+        const toPt = { in: 72, mm: 72 / 25.4 }[customUnit];
+        if (fromPt && toPt) {
+            const v = Math.round(((shownValue * fromPt) / toPt) * 100) / 100;
+            update({ customUnit, customValue: v > 0 ? v : settings.customValue });
+            return;
+        }
+        update({ customUnit, density: 'custom' });
     };
     return (
         <div className={`page-grid-settings${phone ? ' is-phone' : ''}`} data-page-grid-settings="true">
@@ -49,48 +111,55 @@ export function PageGridSettingsPanel({ on, toggle, phone = false, showSwitch = 
                     <span className="page-grid-settings__knob" aria-hidden="true" />
                 </button>
             )}
-            <div className="page-grid-settings__label" id="page-grid-spacing">Spacing</div>
             <ButtonGroup
-                labelledBy="page-grid-spacing"
+                label="Grid spacing preset"
+                size="sm"
                 fill
-                className="page-grid-settings__seg"
+                className="page-grid-settings__presets"
                 value={settings.density}
-                options={[
-                    ...PAGE_GRID_DENSITIES.map((d) => ({ value: d.id, label: d.label, hint: d.hint, ariaLabel: `${d.label}, ${d.hint}` })),
-                    { value: 'custom', label: 'Custom', hint: `${settings.customValue} ${settings.customUnit}` },
-                ]}
-                onChange={(density) => update({ density })}
+                options={PAGE_GRID_DENSITIES.map((d) => ({ value: d.id, label: d.label, ariaLabel: `${d.label}, ${d.hint}` }))}
+                onChange={pickPreset}
             />
-            {settings.density === 'custom' && (
-                <div className="page-grid-settings__custom">
-                    <span>Every</span>
-                    <input
-                        type="number"
-                        inputMode="decimal"
-                        min="0"
-                        step="any"
-                        aria-label="Grid spacing"
-                        value={draft}
-                        onChange={(e) => setDraft(e.target.value)}
-                        onBlur={commitDraft}
-                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitDraft(); } }}
+            <input
+                type="range"
+                className="page-grid-settings__slider"
+                min="0"
+                max="1000"
+                step="1"
+                aria-label="Grid spacing"
+                aria-valuetext={`${sliderValue} ${unit}`}
+                value={pageGridSliderPosition(sliderValue, unit)}
+                onChange={onSlide}
+                onPointerUp={endSlide}
+                onKeyUp={endSlide}
+                onBlur={endSlide}
+                style={{ '--fill': `${pageGridSliderPosition(sliderValue, unit) / 10}%` }}
+            />
+            <div className="page-grid-settings__custom">
+                <input
+                    type="text"
+                    inputMode="decimal"
+                    aria-label="Grid spacing value"
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value.replace(/[^0-9.]/g, ''))}
+                    onBlur={commitDraft}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitDraft(); } }}
+                />
+                {phone ? (
+                    <select aria-label="Grid unit" value={unit} onChange={(e) => pickUnit(e.target.value)}>
+                        {unitOptions.map((u) => <option key={u.value} value={u.value}>{u.label}</option>)}
+                    </select>
+                ) : (
+                    <ValueSelect
+                        label="Grid unit"
+                        size="sm"
+                        className="page-grid-settings__unit"
+                        value={unit}
+                        options={unitOptions}
+                        onChange={pickUnit}
                     />
-                    {phone ? (
-                        <select aria-label="Grid unit" value={settings.customUnit} onChange={(e) => update({ customUnit: e.target.value, density: 'custom' })}>
-                            {PAGE_GRID_UNITS.map((u) => <option key={u.id} value={u.id}>{u.label}</option>)}
-                        </select>
-                    ) : (
-                        <ValueSelect
-                            label="Grid unit"
-                            size="sm"
-                            className="page-grid-settings__unit"
-                            value={settings.customUnit}
-                            options={PAGE_GRID_UNITS.map((u) => ({ value: u.id, label: u.label }))}
-                            onChange={(customUnit) => update({ customUnit, density: 'custom' })}
-                        />
-                    )}
-                </div>
-            )}
+                )}
+            </div>
             {pageGridUsesDrawingScale(settings) && (
                 <p className="page-grid-settings__hint">Follows each page's scale. Pages with no scale keep a 1/2 in grid.</p>
             )}

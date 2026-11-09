@@ -149,6 +149,11 @@ export default function AnnotationDropdown({
           sideOffset={6}
           collisionPadding={8}
           style={contentWidth ? { '--annotation-dropdown-width': contentWidth } : undefined}
+          onEscapeKeyDown={(event) => {
+            // A field in the menu that owns its Escape (an inline rename:
+            // Escape drops the edit) keeps the menu open.
+            if (event.target?.closest?.('[data-own-escape]')) event.preventDefault();
+          }}
           onOpenAutoFocus={(event) => {
             const keepEditorFocus = keepEditorFocusForCycleRef.current || shouldKeepEditorFocus();
             keepEditorFocusForCycleRef.current = keepEditorFocus;
