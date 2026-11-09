@@ -9,6 +9,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import AnchoredPopover from './AnchoredPopover';
+import ButtonGroup from './ButtonGroup.jsx';
 import ValueSelect from './ValueSelect.jsx';
 import {
     PAGE_GRID_DENSITIES,
@@ -110,25 +111,15 @@ export function PageGridSettingsPanel({ on, toggle, phone = false, showSwitch = 
                     <span className="page-grid-settings__knob" aria-hidden="true" />
                 </button>
             )}
-            <div className="page-grid-settings__presets" role="radiogroup" aria-label="Grid spacing preset">
-                {PAGE_GRID_DENSITIES.map((d) => {
-                    const checked = settings.density === d.id;
-                    return (
-                        <button
-                            key={d.id}
-                            type="button"
-                            role="radio"
-                            aria-checked={checked}
-                            aria-label={`${d.label}, ${d.hint}`}
-                            className={`page-grid-settings__preset${checked ? ' is-on' : ''}`}
-                            onClick={() => pickPreset(d.id)}
-                        >
-                            <span className="page-grid-settings__preset-swatch" style={{ '--swatch-step': `${Math.round(d.pt / 6)}px` }} aria-hidden="true" />
-                            <span>{d.label}</span>
-                        </button>
-                    );
-                })}
-            </div>
+            <ButtonGroup
+                label="Grid spacing preset"
+                size="sm"
+                fill
+                className="page-grid-settings__presets"
+                value={settings.density}
+                options={PAGE_GRID_DENSITIES.map((d) => ({ value: d.id, label: d.label, ariaLabel: `${d.label}, ${d.hint}` }))}
+                onChange={pickPreset}
+            />
             <input
                 type="range"
                 className="page-grid-settings__slider"

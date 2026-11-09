@@ -35,7 +35,7 @@
   width: 24px;
   height: 24px;
   margin: 0 2px 0 0;
-  border-radius: 5px;
+  border-radius: 6px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -101,7 +101,7 @@
   box-sizing: border-box;
   padding: 0 4px;
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: 6px;
   background: var(--surface-1, var(--surface-2));
   color: var(--text-1);
   font: 500 12px/1 var(--font-ui);

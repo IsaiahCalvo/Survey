@@ -1,5 +1,6 @@
 /* Export PDF (ExportPdfDialog.jsx), owner 2026-11-09: "have it look a little
-   more professional". Mark choices are cards with a small page picture; pages
+   more professional". Mark choices are the app's ButtonGroup with a small page
+   picture of the chosen way under it; pages
    are a print-dialog style list; the foot says what will be made. */
 .xpdf-head-icon {
   flex: none; width: 32px; height: 32px; border-radius: 8px;
@@ -10,19 +11,15 @@
 .xpdf-section { display: flex; flex-direction: column; gap: 8px; }
 .xpdf-label { font-size: 12px; font-weight: 600; color: var(--text-2); }
 
-.xpdf-modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.xpdf-mode {
-  position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
-  padding: 10px 12px 12px; border: 1px solid var(--border); border-radius: 10px;
-  background: var(--surface-1); color: inherit; font: inherit; text-align: left; cursor: pointer;
-  transition: border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
+.xpdf-modes { width: 100%; }
+/* Under the choice row: a small page picture of the chosen way, and what it
+   means, so the row itself stays the app's one ButtonGroup. */
+.xpdf-mode-detail {
+  display: flex; align-items: center; gap: 12px; padding: 8px 12px 8px 8px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--surface-1);
 }
-.xpdf-mode:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
-@media (hover: hover) { .xpdf-mode:not(.is-on):hover { border-color: var(--border-strong); background: var(--hover); } }
-.xpdf-mode.is-on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); background: color-mix(in srgb, var(--accent) 7%, var(--surface-1)); }
-.xpdf-mode__name { font-size: 13.5px; font-weight: 650; color: var(--text-1); }
-.xpdf-mode__short { font-size: 12px; line-height: 1.4; color: var(--text-3); }
-.xpdf-preview { width: 100%; height: 52px; margin: 0 0 4px; border-radius: 6px; background: var(--surface-3, rgba(255,255,255,0.05)); }
+.xpdf-mode-detail p { margin: 0; font-size: 12px; line-height: 1.45; color: var(--text-2); }
+.xpdf-preview { flex: none; width: 64px; height: 48px; border-radius: 6px; background: var(--surface-3, rgba(255,255,255,0.05)); }
 .xpdf-preview__page { fill: #ffffff; stroke: rgba(0, 0, 0, 0.12); }
 .xpdf-preview__lines { stroke: #c7cdd6; stroke-width: 1.6; stroke-linecap: round; fill: none; }
 .xpdf-preview__mark { fill: rgba(239, 68, 68, 0.18); stroke: #ef4444; stroke-width: 1.4; }
@@ -57,9 +54,6 @@
 .xpdf-summary { margin-right: auto; font-size: 12.5px; color: var(--text-3); }
 .xpdf-go { display: inline-flex; align-items: center; gap: 6px; }
 @media (max-width: 560px) {
-  .xpdf-modes { grid-template-columns: 1fr; }
-  .xpdf-mode { display: grid; grid-template-columns: 64px 1fr; grid-template-rows: auto auto; column-gap: 12px; row-gap: 2px; align-items: center; }
-  .xpdf-preview { grid-row: 1 / span 2; width: 64px; height: 48px; margin: 0; }
   .xpdf-page { min-height: 44px; }
 }
-@media (prefers-reduced-motion: reduce) { .xpdf-mode, .xpdf-radio { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .xpdf-radio { transition: none; } }

@@ -16,6 +16,7 @@ import MotionPresence from './MotionPresence.jsx';
 import { C } from '../uiPalette';
 import { EXPORT_MARK_MODES, parsePageList } from '../utils/exportPdfModes.js';
 import './PdfToolsDialog.css';
+import ButtonGroup from './ButtonGroup.jsx';
 import './ExportPdfDialog.css';
 
 // A small page picture for each mark choice: editable marks carry handles,
@@ -108,22 +109,18 @@ export default function ExportPdfDialog({ open, api, fileName = '', onClose }) {
           <div className="pdft-body xpdf-body">
             <div className="xpdf-section">
               <span className="xpdf-label" id="export-pdf-marks">Marks</span>
-              <div className="xpdf-modes" role="radiogroup" aria-labelledby="export-pdf-marks">
-                {EXPORT_MARK_MODES.map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={mode === m.id}
-                    aria-label={`${m.label}. ${m.short}`}
-                    className={`xpdf-mode${mode === m.id ? ' is-on' : ''}`}
-                    onClick={() => setMode(m.id)}
-                  >
-                    <MarkModePreview mode={m.id} />
-                    <span className="xpdf-mode__name">{m.label}</span>
-                    <span className="xpdf-mode__short">{m.short}</span>
-                  </button>
-                ))}
+              <ButtonGroup
+                labelledBy="export-pdf-marks"
+                fill
+                className="xpdf-modes"
+                value={mode}
+                options={EXPORT_MARK_MODES.map((m) => ({ value: m.id, label: m.label, ariaLabel: `${m.label}. ${m.short}` }))}
+                onChange={setMode}
+              />
+              {/* What the chosen way looks like on the page, and what it means. */}
+              <div className="xpdf-mode-detail" data-export-mode-detail={mode}>
+                <MarkModePreview mode={mode} />
+                <p>{EXPORT_MARK_MODES.find((m) => m.id === mode)?.short}</p>
               </div>
             </div>
             <div className="xpdf-section">
