@@ -1099,6 +1099,7 @@ export default function TemplatesEditor({
         lineNames={(t.modules || []).flatMap((m) => (m.categories || []).flatMap((c) => (c.items || []).filter((it) => !it.archived).map((it) => it.text)))}
         onSaved={(kitId) => { pickExportKit(t.id, kitId); setOwnLayoutFor(null); }}
         onClose={() => setOwnLayoutFor(null)}
+        phone={phone}
       />
     </Suspense>
   ) : null);

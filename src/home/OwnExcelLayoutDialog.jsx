@@ -14,7 +14,11 @@ const LEAVE_OUT = '';
  * picked for this template. The common columns come filled in from their
  * names (guessOwnKitMatches); `lineNames` are the template's checklist lines.
  */
-export default function OwnExcelLayoutDialog({ store, onSaved, onClose, lineNames = [] }) {
+// Phone: a native select per column (the phone's own picker, no hover chip),
+// at 16px so iOS does not zoom on focus.
+const PHONE_SELECT_STYLE = Object.freeze({ ...DIALOG_FIELD_STYLE, height: 44, fontSize: 16 });
+
+export default function OwnExcelLayoutDialog({ store, onSaved, onClose, lineNames = [], phone = false }) {
   const fileRef = useRef(null);
   const [label, setLabel] = useState('');
   const [headers, setHeaders] = useState(null);
@@ -114,6 +118,15 @@ export default function OwnExcelLayoutDialog({ store, onSaved, onClose, lineName
                   <span className="own-layout__fixed">Survey's own row ID (always added)</span>
                 ) : followsChecklist(i) ? (
                   <span className="own-layout__fixed">Checklist answer (that line)</span>
+                ) : phone ? (
+                  <select
+                    aria-label={`What Survey writes in ${header}`}
+                    value={matches[i] || LEAVE_OUT}
+                    onChange={(e) => match(i, e.target.value)}
+                    style={PHONE_SELECT_STYLE}
+                  >
+                    {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
                 ) : (
                   <ValueSelect
                     width="100%"
