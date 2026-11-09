@@ -5,9 +5,10 @@
 
 /* hub */
 .tgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}
-.tcard{display:block;text-decoration:none;color:inherit;background:var(--sheet);border-radius:var(--r-card);padding:20px 20px 22px}
+.tcard{display:block;text-decoration:none;color:inherit;background:var(--card);border:1px solid var(--card-line);box-shadow:var(--lift);border-radius:var(--r-card);padding:20px 20px 22px;transition:transform .15s}
+.tcard:hover{transform:translateY(-2px)}
 .tcard:hover h3{text-decoration:underline;text-underline-offset:4px}
-.tcard .ticon{color:var(--g,var(--ink));width:28px;height:28px;margin-bottom:14px}
+.tcard .ticon{color:#fff;width:40px;height:40px;padding:9px;border-radius:10px;background:linear-gradient(160deg,color-mix(in srgb,var(--g) 82%,#fff),var(--g));margin-bottom:14px;stroke-width:1.9}
 .tcard h3{margin:0 0 4px;font-size:19px}
 .tcard p{margin:0;color:var(--soft);font-size:15px;line-height:1.45}
 .hub-head{padding:48px 0 20px}
@@ -30,7 +31,7 @@
    for Stirling-style colored tiles, hues shifted so they are our own). */
 .g-pages{--g:#5266e3}.g-layout{--g:#8656dc}.g-size{--g:#e2622f}.g-to-pdf{--g:#119c94}
 .g-from-pdf{--g:#1994c6}.g-edit{--g:#3c9e4f}.g-fix{--g:#c47b16}.g-secure{--g:#dc4f73}
-.tico{flex:none;display:grid;place-items:center;width:30px;height:30px;border-radius:8px;background:var(--g,var(--sheet));color:#fff}
+.tico{flex:none;display:grid;place-items:center;width:30px;height:30px;border-radius:8px;background:linear-gradient(160deg,color-mix(in srgb,var(--g) 82%,#fff),var(--g));color:#fff;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
 .tico .ticon{width:18px;height:18px;stroke-width:2}
 .hub-sec [hidden]{display:none}
 /* Phones: two rows across inside each group, 44px tall to tap. */
@@ -43,7 +44,7 @@
   .tico{width:28px;height:28px}
 }
 .why{display:grid;grid-template-columns:repeat(4,1fr);gap:24px}
-.why>div{background:var(--sheet);border-radius:var(--r-card);padding:28px}
+.why>div{background:var(--card);border:1px solid var(--card-line);border-radius:var(--r-card);padding:28px}
 .why h3{margin:0 0 6px;font-size:20px}
 .why p{margin:0;color:var(--soft);font-size:16px}
 .steps{margin:0;grid-template-columns:repeat(3,1fr)}
@@ -53,10 +54,10 @@
 .tool-head{padding:48px 0 20px}
 .tool-head h1{font-size:clamp(34px,5vw,56px)}
 .tool-sec{padding-bottom:24px}
-.tool{background:var(--sheet);border-radius:var(--r-panel);min-height:300px;position:relative}
+.tool{background:var(--sheet);border:1px solid var(--card-line);border-radius:var(--r-panel);min-height:300px;position:relative}
 .tool.drop{outline:2px dashed var(--accent);outline-offset:4px}
 .dz{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;min-height:300px;padding:48px 20px;border-radius:var(--r-panel)}
-.dz>.ticon{width:44px;height:44px;color:var(--g,var(--ink));margin-bottom:18px}
+.dz>.ticon{width:64px;height:64px;padding:15px;border-radius:16px;color:#fff;background:linear-gradient(160deg,color-mix(in srgb,var(--g) 82%,#fff),var(--g));box-shadow:0 14px 30px -14px var(--g);margin-bottom:22px;stroke-width:1.8}
 .dz p{margin:0}
 .dz-or{color:var(--soft);margin-top:10px!important}
 .dz-safe{display:flex;align-items:center;gap:6px;margin-top:22px!important;font-size:14px;color:var(--soft)}
