@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { ORIGIN, SIGNUP, page, faqList, faqSchema } from './build-marketing.mjs';
 import { GROUPS, TOOLS, POPULAR } from './free-tools-catalog.mjs';
 import { BATCH } from './free-tools-faq.mjs';
+import { TOOL_ICONS } from './free-tool-icons.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', 'tools');
 
@@ -37,7 +38,9 @@ const ICONS = {
   unlock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 7.5-2"/>',
 };
 // An entry may bring its own icon paths as `iconSvg` instead of naming one here.
-const icon = (k, own) => `<svg class="ticon" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">${own || ICONS[k]}</svg>`;
+// Each tool's own glyph (scripts/free-tool-icons.mjs); the shared keys above
+// stay as a fallback for a tool added without one.
+const icon = (k, own, id) => `<svg class="ticon" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">${TOOL_ICONS[id] || own || ICONS[k]}</svg>`;
 
 // Other words people search for, so the hub search finds the tool.
 const ALSO = {
@@ -61,10 +64,10 @@ const ALSO = {
   'pdf-viewer': 'view open read reader online preview', 'pdf-to-pdfa': 'pdfa pdf/a archive archival iso 19005',
 };
 const keys = (t) => `${t.name} ${t.short} ${t.id.replace(/-/g, ' ')} ${ALSO[t.id] || ''} ${t.trade?.keys || ''}`.toLowerCase().replace(/"/g, '');
-const card = (t) => `<a class="tcard g-${t.group}" href="/tools/${t.id}" data-k="${keys(t)}">${icon(t.icon, t.iconSvg)}<h3>${t.name}</h3><p>${t.short}</p></a>`;
+const card = (t) => `<a class="tcard g-${t.group}" href="/tools/${t.id}" data-k="${keys(t)}">${icon(t.icon, t.iconSvg, t.id)}<h3>${t.name}</h3><p>${t.short}</p></a>`;
 // Hub rows: a small icon and the name, like Drawboard's and Stirling's lists,
 // so all the tools fit on about one screen. The one-line summary is the tooltip.
-const row = (t) => `<li><a class="trow g-${t.group}" href="/tools/${t.id}" title="${t.short.replace(/"/g, '&quot;')}" data-k="${keys(t)}"><span class="tico">${icon(t.icon, t.iconSvg)}</span>${t.name}</a></li>`;
+const row = (t) => `<li><a class="trow g-${t.group}" href="/tools/${t.id}" title="${t.short.replace(/"/g, '&quot;')}" data-k="${keys(t)}"><span class="tico">${icon(t.icon, t.iconSvg, t.id)}</span>${t.name}</a></li>`;
 const byId = (id) => TOOLS.find((t) => t.id === id);
 
 // Tools that go together, shown first under "More free PDF tools".
@@ -120,9 +123,9 @@ const WHY = [
 const why = () => `<div class="why">${WHY.map(([h, p]) => `<div><h3>${h}</h3><p>${p}</p></div>`).join('')}</div>`;
 
 const APP_PITCH = `<section class="sec"><div class="wrap custom">
-  <h2>Need to mark up the PDF too?</h2>
-  <p>Survey is a full PDF app for drawings. Add pens, shapes, clouds and count markers, and keep every sheet in sync on your computer, iPad and phone.</p>
-  <a class="btn ghost" href="${SIGNUP}">Open Survey free</a>
+  <div><h2>Need to mark up the PDF too?</h2>
+  <p>Survey is a full PDF app for drawings. Add pens, shapes, clouds and count markers, and keep every sheet in sync on your computer, tablet and phone.</p></div>
+  <a class="btn ghost lg" href="${SIGNUP}">Open Survey free</a>
 </div></section>`;
 
 const PICK = {
@@ -166,7 +169,7 @@ function toolPage(t) {
 <section class="tool-sec"><div class="wrap">
   <div class="tool g-${t.group}" id="tool" data-tool="${t.id}" data-accept="${t.accept}" data-action="${t.action}" data-next="${nextFor(t).map((o) => `${o.id}:${o.name}`).join('|')}"${many ? ' data-multiple' : ''}${t.batch ? ' data-batch' : ''}>
     <div class="dz" data-dz>
-      ${icon(t.icon, t.iconSvg)}
+      ${icon(t.icon, t.iconSvg, t.id)}
       <p class="dz-main"><label class="btn primary lg"><span data-pick>${PICK[t.accept][many ? 1 : 0]}</span><input type="file" hidden data-early accept="${PICK[t.accept][2]}"${many ? ' multiple' : ''} /></label></p>
       <p class="dz-or">or drop ${many ? 'them' : 'it'} here</p>
       <p class="dz-safe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Your files stay on this device</p>
