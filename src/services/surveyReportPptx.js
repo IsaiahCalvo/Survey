@@ -6,6 +6,7 @@
 // summarizeSurvey, the same source as the Excel Summary sheet and the agent.
 import { summarizeSurvey } from './surveySummary.js';
 import { reportKitFor } from './reportKits/index.js';
+import { dueLabel, readTracking, shortDayLabel, statusLabel, todayKey } from '../utils/markerTracking.js';
 
 // Status colors (done / partly / not started); each also has a legend label.
 const STATUS = Object.freeze({ done: '0CA30C', partly: 'FAB219', notStarted: 'A6A6A6' });
@@ -20,16 +21,22 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
  * What goes on each slide, as plain data (no PowerPoint yet), so it can be
  * tested and reused by other report formats later.
  */
-export function surveyReportPlan({ template, markers, documentName = '', when = new Date() } = {}) {
+export function surveyReportPlan({ template, markers, documentName = '', when = new Date(), people = [] } = {}) {
   const summary = summarizeSurvey({ template, markers });
   const title = `${template?.name || 'Survey'} report`;
   const t = summary.totals;
-  const issueRows = summary.categories.flatMap((c) => c.issues.map((issue) => ({
-    id: issue.id,
-    category: c.name,
-    item: issue.name,
-    lines: issue.lines.map((l) => `${l.text}: ${l.answer}`).join('; '),
-  })));
+  const today = todayKey(when);
+  const issueRows = summary.categories.flatMap((c) => c.issues.map((issue) => {
+    const follow = itemFollowUp(markers?.[issue.id], { people, today });
+    return {
+      id: issue.id,
+      category: c.name,
+      item: issue.name,
+      lines: issue.lines.map((l) => `${l.text}: ${l.answer}`).join('; '),
+      ...follow,
+      followUp: [follow.tracking, follow.note].filter(Boolean).join('\n'),
+    };
+  }));
   return {
     title,
     subtitle: [documentName, when.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })].filter(Boolean).join(' · '),
@@ -52,7 +59,31 @@ export function surveyReportPlan({ template, markers, documentName = '', when = 
     },
     categoryRows: summary.categories.map((c) => [c.name, c.items, c.done, c.partly, c.notStarted, c.issues.length]),
     issueRows,
+    // The Issues table grows a Follow-up column only when some issue has a
+    // note or a status / assignee / due date to show.
+    hasFollowUp: issueRows.some((r) => r.followUp),
   };
+}
+
+const noteText = (note) => String((typeof note === 'string' ? note : note?.text) || '').replace(/\s+/g, ' ').trim();
+
+/**
+ * An item's follow-up for the report: its status / who has it / due date (the
+ * Nightly marker tracking; nothing when untouched) and its note.
+ * people: [{ id, name, email }] of the document, to name the assignee.
+ */
+export function itemFollowUp(marker, { people = [], today = todayKey() } = {}) {
+  const parts = [];
+  if (marker?.tracking) {
+    const t = readTracking(marker);
+    if (t.status !== 'open' || t.assigneeId || t.due) parts.push(statusLabel(t.status));
+    if (t.assigneeId) {
+      const person = (people || []).find((p) => p.id === t.assigneeId);
+      parts.push(person ? (person.name || String(person.email || '').split('@')[0] || 'Someone') : 'Former member');
+    }
+    if (t.due) parts.push(t.status === 'done' ? `Was due ${shortDayLabel(t.due, today)}` : dueLabel(t.due, today));
+  }
+  return { tracking: parts.join(' · '), note: noteText(marker?.note) };
 }
 
 const text = (slide, value, opts) => slide.addText(String(value), { fontFace: FONT, color: INK, margin: 0, ...opts });
@@ -155,9 +186,11 @@ const BLOCKS = {
       note(slide, 'No issues found.', 1.2);
       return;
     }
-    const head = ['Category', 'Item', 'Lines with a problem answer'].map((h) => ({ text: h, options: { bold: true, color: MUTED } }));
-    slide.addTable([head, ...plan.issueRows.map((r) => [{ text: r.category }, { text: r.item }, { text: r.lines }])], {
-      x: 0.6, y: 1.2, w: 12.1, h: 5.9, colW: [2.6, 2.4, 7.1],
+    const follow = plan.hasFollowUp;
+    const head = ['Category', 'Item', 'Lines with a problem answer', ...(follow ? ['Follow-up'] : [])].map((h) => ({ text: h, options: { bold: true, color: MUTED } }));
+    const rows = plan.issueRows.map((r) => [{ text: r.category }, { text: r.item }, { text: r.lines }, ...(follow ? [{ text: r.followUp }] : [])]);
+    slide.addTable([head, ...rows], {
+      x: 0.6, y: 1.2, w: 12.1, h: 5.9, colW: follow ? [2.1, 1.8, 4.6, 3.6] : [2.6, 2.4, 7.1],
       fontFace: FONT, fontSize: 11, color: INK, border: { type: 'solid', pt: 0.5, color: RULE }, valign: 'top',
       autoPage: true, autoPageRepeatHeader: true, autoPageHeaderRows: 1, autoPageSlideStartY: 0.6,
     });

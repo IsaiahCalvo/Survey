@@ -75,3 +75,11 @@ test('the database mirror row keeps tracking and a cleared one goes away', () =>
   const cleared = buildSurveyMarkerRow({ documentId: 'd', userId: 'u1', annotationId: 'm1', annotation: { pageNumber: 1, bounds: {}, annotationData: { tracking } } });
   assert.equal('tracking' in JSON.parse(JSON.stringify(cleared.annotation_data)), false);
 });
+
+test('shortDayLabel: month and day, with the year only when it differs', async () => {
+  const { shortDayLabel } = await import('../src/utils/markerTracking.js');
+  assert.equal(shortDayLabel('2026-11-08', '2026-11-09'), 'Nov 8');
+  assert.equal(shortDayLabel('2027-01-03', '2026-11-09'), 'Jan 3, 2027');
+  assert.equal(shortDayLabel(null, '2026-11-09'), '');
+  assert.equal(shortDayLabel('11/08/2026', '2026-11-09'), '');
+});
