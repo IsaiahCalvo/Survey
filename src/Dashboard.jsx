@@ -378,18 +378,27 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       const { readUploadSheet } = await import('./home/readUploadTitleBlock.js');
       sheet = await readUploadSheet({ bytes, fileName, loadPdfjs });
       if (!sheet.sheetNumber) return { proceed: true, sheet: null };
-      const query = (columns) => {
-        const q = supabase
+      const query = (columns, sheetNumber = null) => {
+        let q = supabase
           .from('documents')
           .select(columns)
           .eq('user_id', user.id)
           .eq('archived', false)
-          .is('superseded_by', null)
-          .order('created_at', { ascending: false })
-          .limit(500);
+          .is('superseded_by', null);
+        // The saved readings are matched exactly on the server (no cap); the
+        // newest 500 are also checked by file name in the browser.
+        q = sheetNumber ? q.eq('sheet_number', sheetNumber) : q.order('created_at', { ascending: false }).limit(500);
         return projectId ? q.eq('project_id', projectId) : q.is('project_id', null);
       };
-      let { data: docs, error } = await query('id, name, content_sha256, archived, superseded_by, created_at, sheet_number, sheet_revision');
+      const withSheet = 'id, name, content_sha256, archived, superseded_by, created_at, sheet_number, sheet_revision';
+      let { data: docs, error } = await query(withSheet);
+      if (!error) {
+        const saved = await query(withSheet, sheet.sheetNumber);
+        if (!saved.error && saved.data?.length) {
+          const seen = new Set((docs || []).map((d) => d.id));
+          docs = [...(docs || []), ...saved.data.filter((d) => !seen.has(d.id))];
+        }
+      }
       // A server without the sheet columns yet: match on file names alone.
       if (error) ({ data: docs, error } = await query('id, name, content_sha256, archived, superseded_by, created_at'));
       if (error) throw error;

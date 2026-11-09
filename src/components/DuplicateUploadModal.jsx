@@ -89,7 +89,8 @@ const DuplicateUploadModal = ({
         </button>
       ))}
     >
-      {isVersion || isSheet ? 'A new version brings your marks across to the same spots. The old copy moves out of your active list.' : null}
+      {isVersion ? 'A new version brings your marks across to the same spots. The old copy moves out of your active list.' : null}
+      {isSheet ? 'Upload as new version brings your marks across to the same spots and moves the old copy out of your active list. Keep as its own file leaves both.' : null}
     </DialogCard>
   );
 };
