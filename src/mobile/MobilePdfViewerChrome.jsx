@@ -1,4 +1,5 @@
 import { CounterSeriesPicker } from '../components/CounterSeriesMenu.jsx';
+import { useBackLayer } from '../utils/backNavigation.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from '../Icons';
@@ -2683,6 +2684,9 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
   const [surveyListKind, setSurveyListKind] = useState(null);
   const [syncDetailsOpen, setSyncDetailsOpen] = useState(false);
   const [syncDetailsPosition, setSyncDetailsPosition] = useState(null);
+  // Back (browser / Android) closes an open rail flyout first ('back-button').
+  useBackLayer(Boolean(openCategory), () => setOpenCategory(null));
+  useBackLayer(moreOpen, () => setMoreOpen(false));
   const [hasTouchPointer, setHasTouchPointer] = useState(false);
   // Phase F (motion & feel): the active-users sheet gets the shared bottom-sheet
   // motion — finger-follow drag off the handle + dy>82/vy>0.65 dismiss + spring-

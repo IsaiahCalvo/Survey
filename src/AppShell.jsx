@@ -109,6 +109,7 @@ import DismissBarrier from './components/DismissBarrier.jsx';
 import PencilModeControl, { usePencilMode } from './components/PencilModeControl.jsx';
 import { PinIcon, getPinnedToolsStore, usePinnedTools } from './pinnedTools/pinnedToolsShared.jsx';
 import { isFeatureOn } from './featureFlags.js';
+import { installViewerBack } from './utils/backNavigation.js';
 import { usePolylineCurve } from './hooks/usePolylineCurve.js';
 import { POLYLINE_CURVE_SET_EVENT } from './utils/polySpline.js';
 import { sanitizeZoomInput } from './utils/pageNavigationMath.js';
@@ -2172,6 +2173,13 @@ export default function App({ devPreviewReturnTab = null }) {
     return () => window.removeEventListener(RENAME_OPEN_DOCUMENT_EVENT, rename);
   }, [signedInForRename]);
   const isViewerVisible = activeTab && !activeTab.isHome && selectedPDF && currentView === 'viewer';
+  // Back (browser gesture, Android button) closes the open sheet, then the
+  // document, instead of leaving Survey (Nightly, 'back-button').
+  const [backButtonEnabled] = useState(() => isFeatureOn('back-button'));
+  useEffect(() => {
+    if (!backButtonEnabled || !isViewerVisible) return undefined;
+    return installViewerBack(window, () => stableBack());
+  }, [backButtonEnabled, Boolean(isViewerVisible)]); // eslint-disable-line react-hooks/exhaustive-deps
   const isMobileViewer = Boolean(isNarrowShell && isViewerVisible);
   // Shift+S flips snapping (the rail's magnet button says the same).
   useSnappingShortcut(Boolean(isViewerVisible));

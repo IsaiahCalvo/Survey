@@ -173,6 +173,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Copy marks in one document and paste them in another',
     stage: 'beta',
   }),
+  'back-button': Object.freeze({
+    label: 'Back (browser or Android) closes the open sheet, then the document, instead of leaving Survey',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';
