@@ -45,7 +45,9 @@ export async function buildSurveyReportPdf(PDFLib, input) {
   const width = (s, size, f = font) => f.widthOfTextAtSize(s, size);
   const wrap = (value, size, maxWidth, f = font) => {
     const lines = [];
-    for (const para of safe(value).split('\n')) {
+    // Split before safe(): the fonts cannot draw a line break, so safe()
+    // would turn it into "?".
+    for (const para of String(value ?? '').split('\n').map(safe)) {
       let line = '';
       for (const word of para.split(/\s+/).filter(Boolean)) {
         const next = line ? `${line} ${word}` : word;
@@ -261,7 +263,11 @@ export async function buildSurveyReportPdf(PDFLib, input) {
         text(page, 'No issues found.', M, PAGE[1] - M - 60, { size: 13, color: MUTED });
         return;
       }
-      table('Issues', ['Category', 'Item', 'Lines with a problem answer'], plan.issueRows.map((r) => [r.category, r.item, r.lines]), [0.22, 0.2, 0.58], 10);
+      if (plan.hasFollowUp) {
+        table('Issues', ['Category', 'Item', 'Lines with a problem answer', 'Follow-up'], plan.issueRows.map((r) => [r.category, r.item, r.lines, r.followUp]), [0.17, 0.15, 0.38, 0.3], 10);
+      } else {
+        table('Issues', ['Category', 'Item', 'Lines with a problem answer'], plan.issueRows.map((r) => [r.category, r.item, r.lines]), [0.22, 0.2, 0.58], 10);
+      }
       return issueMaps();
     },
   };

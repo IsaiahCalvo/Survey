@@ -398,7 +398,7 @@ import { markLibraryStore } from './markLibrary/markLibraryStore.js';
 import { LIBRARY_PAYLOAD_MAX_BYTES, libraryPayloadBytes, libraryPayloadFromClipboard, planLibraryPlacement } from './markLibrary/markLibraryModel.js';
 import { fitPlacedTextBoxes, resolveLibraryDrop } from './markLibrary/markLibraryViewer.js';
 import { PAGE_GRID_SETTINGS_EVENT, applyPageGridPageSteps, applyPageGridSettings, loadPageGridSettings } from './utils/pageGrid';
-import { LAYERS_META_KEY, DEFAULT_LAYER_ID, DEFAULT_LAYER_STATE, normalizeLayerState, hiddenLayerIdSet, resolveActiveLayerId, withoutHiddenLayers, calloutsWithoutHiddenLayers, stampNewObjectsOnLayer, stampNewMarksByPage } from './utils/layers.js';
+import { LAYERS_META_KEY, DEFAULT_LAYER_ID, DEFAULT_LAYER_STATE, normalizeLayerState, hiddenLayerIdSet, resolveActiveLayerId, withoutHiddenLayers, calloutsWithoutHiddenLayers, stampNewObjectsOnLayer, stampNewMarksByPage, selectableMarkIndices } from './utils/layers.js';
 import { PAGE_PRESENTATION_META_KEY, normalizePagePresentations, pagePresentationFrame, clientPointInPageFrame, clientPastePointInPageFrame } from './utils/pagePresentation.js';
 import { normalizePresentationPdf, pdfBytesHavePresentationTag } from './utils/pdfPagePresentation.js';
 import { chooseCloudPdfOpenPath, shouldRetryStreamedOpenWithDownload, tryOpenCloudPdfStream } from './services/cloudPdfStream.js';
@@ -24026,6 +24026,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     if (!pdfFile || !pdfFile.projectId || !pdfId) {
       return;
     }
+    // Page, zoom and template on the document row belong to its owner; the
+    // database refuses anyone else (audit 2026-11-09: every editor/viewer save
+    // logged PGRST116), so a shared document's team skips this write.
+    if (pdfFile.user_id && user?.id && pdfFile.user_id !== user.id) {
+      return;
+    }
 
     try {
       // Update document metadata
@@ -24039,7 +24045,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       console.error('Error saving survey data to Supabase:', error);
       // Don't alert here to avoid interrupting the user flow, just log
     }
-  }, [pdfFile, pdfId, scale, pageNum, updateSupabaseDocument]);
+  }, [pdfFile, pdfId, scale, pageNum, updateSupabaseDocument, user?.id]);
 
   // UX 2026-04-22: File menu → "Export" — prompts for a new
   // file path and writes the currently-open PDF with annotations baked in.
@@ -27557,6 +27563,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           if (key === 'f') {
             e.preventDefault();
             pdfSidebarRef.current?.openSearchPanel({ focus: true, select: true });
+            return;
+          }
+          // Ctrl/Cmd+A = the page menu's "Select all on page" (Drawboard
+          // parity) under Pan or Select. Never the browser's select-all,
+          // which painted every label in the side panels blue. Spaces area
+          // editing answers Ctrl+A itself first (capture listener).
+          if (key === 'a' && !e.shiftKey
+            && !document.activeElement?.closest?.('[role="dialog"], [role="menu"], [role="alertdialog"]')) {
+            e.preventDefault();
+            const tool = activeToolRef.current;
+            if (tool !== 'pan' && tool !== 'select') return;
+            const page = pageNumRef.current || 1;
+            const annotationIndices = selectableMarkIndices(annotationsByPageRef.current?.[page]?.objects, hiddenLayerIdsRef.current);
+            if (!annotationIndices.length) return;
+            setPendingSvgSelection({ pageNumber: page, annotationIndices, surveyMarkerIds: [], exclusive: true, tick: Date.now() });
             return;
           }
           // Save document (Cmd/Ctrl+S)
@@ -37501,8 +37522,7 @@ ${pageBlocks}
           readOnly: Boolean(documentLocked) || yjsDocRole === 'viewer',
           handlers: {
             selectAll: (page) => {
-              const objects = annotationsByPageRef.current?.[page]?.objects || [];
-              const annotationIndices = objects.flatMap((o, i) => (o && o.visible !== false ? [i] : []));
+              const annotationIndices = selectableMarkIndices(annotationsByPageRef.current?.[page]?.objects, hiddenLayerIdsRef.current);
               setPendingSvgSelection({ pageNumber: page, annotationIndices, surveyMarkerIds: [], exclusive: true, tick: Date.now() });
             },
             pasteInPlace: (page) => {
