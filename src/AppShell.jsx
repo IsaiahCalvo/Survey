@@ -112,6 +112,7 @@ import { isFeatureOn } from './featureFlags.js';
 import { installViewerBack } from './utils/backNavigation.js';
 import { steppedTabId, tabStepForKey } from './utils/tabKeys.js';
 import { setMarksHidden, useMarksHidden } from './utils/marksHidden.js';
+import { enterBrowserFullscreen, isFocusModeKey, leaveBrowserFullscreen } from './utils/focusMode.js';
 import EyeGlyph from './components/EyeGlyph.jsx';
 import './styles/marksHidden.css';
 import { isTypingTarget } from './utils/typingTarget.js';
@@ -2182,6 +2183,39 @@ export default function App({ devPreviewReturnTab = null }) {
   // chip over the page while they are hidden (utils/marksHidden.js).
   const [hideMarksEnabled] = useState(() => isFeatureOn('hide-marks'));
   const allMarksHidden = useMarksHidden();
+  // Focus mode (Nightly, 'focus-mode'; utils/focusMode.js): no tab strip or
+  // side rails, browser full screen, an Exit chip that always shows.
+  const [focusModeEnabled] = useState(() => isFeatureOn('focus-mode'));
+  const [focusMode, setFocusMode] = useState(false);
+  const focusOn = focusModeEnabled && focusMode && Boolean(isViewerVisible) && !isNarrowShell;
+  const toggleFocusMode = useCallback((next) => {
+    setFocusMode((current) => {
+      const value = typeof next === 'boolean' ? next : !current;
+      if (value) enterBrowserFullscreen();
+      else leaveBrowserFullscreen();
+      return value;
+    });
+  }, []);
+  useEffect(() => {
+    if (!focusModeEnabled) return undefined;
+    const onKey = (event) => {
+      if (!isFocusModeKey(event) || isTypingTarget(event.target)) return;
+      // Capture, ahead of the viewer's Ctrl/Cmd+F (search) handler.
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      toggleFocusMode();
+    };
+    const onFullscreen = () => { if (!document.fullscreenElement) setFocusMode(false); };
+    window.addEventListener('keydown', onKey, true);
+    document.addEventListener('fullscreenchange', onFullscreen);
+    return () => {
+      window.removeEventListener('keydown', onKey, true);
+      document.removeEventListener('fullscreenchange', onFullscreen);
+    };
+  }, [focusModeEnabled, toggleFocusMode]);
+  useEffect(() => {
+    if (focusMode && !isViewerVisible) toggleFocusMode(false);
+  }, [focusMode, Boolean(isViewerVisible)]); // eslint-disable-line react-hooks/exhaustive-deps
   // Alt+Shift+] / [ steps through the open documents (Nightly, 'tab-keys').
   const [tabKeysEnabled] = useState(() => isFeatureOn('tab-keys'));
   useEffect(() => {
@@ -2856,7 +2890,7 @@ export default function App({ devPreviewReturnTab = null }) {
         />
       </div>
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }} {...viewerDropProps}>
-        {tabs.length > 0 && !isNarrowShell && ( // Desktop-only: mobile navigation lives inside the home/viewer chrome.
+        {tabs.length > 0 && !isNarrowShell && !focusOn && ( // Desktop-only: mobile navigation lives inside the home/viewer chrome.
           // KAL-65: the tab strip shows over the hub too, where the viewer's
           // chip host is not mounted, so it brings its own shared host.
           <TooltipProvider>
@@ -4655,7 +4689,7 @@ export default function App({ devPreviewReturnTab = null }) {
           <div
             id="chrome-left-host"
             style={{
-              display: isViewerVisible ? 'flex' : 'none',
+              display: isViewerVisible && !focusOn ? 'flex' : 'none',
               flexGrow: 0,
               flexBasis: isMobileViewer ? 'var(--mobile-rail-w)' : '48px',
               width: isMobileViewer ? 'var(--mobile-rail-w)' : '48px',
@@ -4940,7 +4974,7 @@ export default function App({ devPreviewReturnTab = null }) {
           <div
             id="chrome-right-host"
             style={{
-              display: isViewerVisible ? 'flex' : 'none',
+              display: isViewerVisible && !focusOn ? 'flex' : 'none',
               flexGrow: 0,
               flexBasis: isMobileViewer ? '0px' : '48px',
               flexShrink: 0,
@@ -5401,6 +5435,18 @@ export default function App({ devPreviewReturnTab = null }) {
                         <EyeGlyph open={!allMarksHidden} size={RAIL_CONTROL_GLYPH} />
                       </button>
                     )}
+                    {focusModeEnabled && (
+                      <button
+                        type="button"
+                        onClick={() => toggleFocusMode(true)}
+                        aria-label="Focus mode"
+                        data-focus-mode-toggle="true"
+                        {...chromeTip('Focus mode', 'left')}
+                        style={footerBtn()}
+                      >
+                        <Icon name="focusMode" size={RAIL_CONTROL_GLYPH} color="currentColor" />
+                      </button>
+                    )}
                     {/* drawboardAudit C2: the Pencil-only switch sits where
                         Drawboard keeps it - the utility end of the bar holding
                         the page controls. Nothing renders (no rule either)
@@ -5508,6 +5554,11 @@ export default function App({ devPreviewReturnTab = null }) {
           covered the zoom controls; that pill is gone, and the sheet itself
           renders nothing until it is opened.) */}
       <KeyboardShortcutsOverlay />
+      {focusOn && (
+        <button type="button" className="focus-mode-exit" data-focus-mode-exit="" onClick={() => toggleFocusMode(false)}>
+          Exit focus
+        </button>
+      )}
       {hideMarksEnabled && allMarksHidden && Boolean(isViewerVisible) && (
         <div className="marks-hidden-chip" role="status" data-marks-hidden-chip="">
           <span>Marks hidden</span>

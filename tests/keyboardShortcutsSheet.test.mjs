@@ -16,6 +16,7 @@ import {
 import { TOOL_SHORTCUTS } from '../src/utils/toolShortcuts.js';
 import { isRedoKeyEvent, isUndoKeyEvent } from '../src/utils/undoRedoHotkeys.js';
 import { tabStepForKey } from '../src/utils/tabKeys.js';
+import { isFocusModeKey } from '../src/utils/focusMode.js';
 import { isTypingTarget, nudgeDeltaForKey } from '../src/utils/annotationFamilyRules.js';
 import { isAnnotationSnapFree, isSnapFreeModifier } from '../src/utils/snapGuides.js';
 
@@ -220,6 +221,10 @@ const HANDLED = {
   'alt+drag': () => isSnapFreeModifier({ altKey: true }) && isAnnotationSnapFree({ altKey: true }),
   'mod+o': () => /accelerator: 'CmdOrCtrl\+O'/.test(SRC.electron) && /electronAPI\.onOpenPdfMenu\(/.test(SRC.dashboard),
   'mod+shift+e': () => /accelerator: 'CmdOrCtrl\+Shift\+E'/.test(SRC.electron) && /electronAPI\.onExportAnnotatedPdfMenu\(/.test(SRC.viewer),
+  // Nightly 'focus-mode': AppShell listens in the capture phase, ahead of
+  // the viewer's Cmd/Ctrl+F.
+  'mod+shift+f': () => isFocusModeKey(ev('F', { ctrlKey: true, shiftKey: true })) && !isFocusModeKey(ev('f', { ctrlKey: true }))
+    && /isFocusModeKey\(event\)/.test(SRC.shell) && /window\.addEventListener\('keydown', onKey, true\)/.test(SRC.shell),
   // Nightly 'tab-keys': by key code, and AppShell steps the tabs with it.
   'alt+shift+]': () => tabStepForKey(ev('}', { altKey: true, shiftKey: true, code: 'BracketRight' })) === 1
     && tabStepForKey(ev(']', { code: 'BracketRight' })) === 0 && /tabStepForKey\(event\)/.test(SRC.shell),
