@@ -104,6 +104,9 @@ const hasWork = (plan) => plan.cellWrites.length || plan.appends.length || plan.
  */
 const isBlankValue = (v) => v == null || (typeof v !== 'object' && String(v).trim() === '');
 
+/** Blanked answers in one round from which they are held (see planSheetRound). */
+export const BIG_ERASE = 10;
+
 export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, signing, force = false, now = new Date(), newMarkerId, fillBy = '' }) {
   assertProvider(provider);
   const layout = link.layout;
@@ -150,10 +153,17 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
   const sheetEditor = sheetEditorLabel(provider.lastEditor?.(link.file_id) ?? null, {
     selfEmail: provider.accountEmail ?? null, lastWriteAt: state.lastWriteAt ?? null,
   });
-  const plan = await planSheetRound({
+  const planArgs = {
     layout, grid, markers, baseline: link.baseline || {}, state, signing, now, sheetEditor,
     ...(newMarkerId ? { newMarkerId } : {}),
-  });
+  };
+  let plan = await planSheetRound(planArgs);
+  // Many filled answers blanked in the sheet at once: planned again with them
+  // held, so an older copy restored from version history (or a column cleared
+  // by mistake) can't wipe field work before an editor has looked.
+  if (plan.erasing >= BIG_ERASE && !state.eraseChoice && !state.heldErase) {
+    plan = await planSheetRound({ ...planArgs, holdErase: true });
+  }
 
   let wroteAt = state.lastWriteAt ?? null;
   let retry = false;

@@ -370,8 +370,18 @@ export async function planSheetRound({
   newMarkerId = () => `surveyMarker-${crypto.randomUUID()}`,
   sheetEditor = SHEET_EDITOR_UNKNOWN,
   now = new Date(),
+  holdErase = false,
 }) {
   const nextBaseline = { ...baseline };
+  // Many filled answers blanked in the sheet at once (an older copy restored
+  // from version history, a column cleared by mistake): held until an editor
+  // says which side is right, so field work is never wiped in one round.
+  // 'allow' = clear them in the app too; 'restore' = write the app's back.
+  const eraseMode = state.eraseChoice === 'sheet' ? 'allow'
+    : state.eraseChoice === 'app' ? 'restore'
+      : (holdErase || state.heldErase) ? 'hold' : 'count';
+  let erasing = 0;
+  const erasingItems = new Set();
   const next = {
     sheetIds: { ...(state.sheetIds || {}) },
     conflicts: { ...(state.conflicts || {}) },
@@ -386,6 +396,7 @@ export async function planSheetRound({
     stuck: { ...(state.stuck || {}) },
     problems: [],
     missingTabs: [],
+    heldErase: null,
   };
   const plan = {
     cellWrites: [], // { sheetId, title, row, col, value, markerId?, key? }   row/col are 0-based grid indexes
@@ -778,6 +789,21 @@ export async function planSheetRound({
           setFp(sheetSide, key, base ? getFp(base, key) : getFp(appFps, key));
         }
       }
+      // The sheet blanked a filled answer the app has not changed since both
+      // last agreed: counted, and held or put back (see eraseMode).
+      const heldKeys = new Set();
+      if (base) {
+        for (const key of keys) {
+          const column = scope.columns.find((c) => c.key === key);
+          if (stuckKeys.has(key) || errorKeys.has(key) || addedKeys.has(key) || !columnIsEditable(column) || !colOfKey.has(key)) continue;
+          if (!isBlankCell(row[colOfKey.get(key)]) || isBlankCell(cellValueFor(scope, key, appRec))) continue;
+          if (getFp(appFps, key) !== getFp(base, key) || getFp(sheetSide, key) === getFp(base, key)) continue;
+          erasing += 1;
+          erasingItems.add(markerId);
+          if (eraseMode === 'hold' || eraseMode === 'restore') setFp(sheetSide, key, getFp(base, key));
+          if (eraseMode === 'hold') heldKeys.add(key);
+        }
+      }
       const { conflictFields, excelChangedFields, appChangedFields } = detectFieldConflicts({
         baseline: base || {},
         appNow: appFps,
@@ -839,6 +865,7 @@ export async function planSheetRound({
         setFp(nextFields, key, getFp(finalFps, key));
         const col = colOfKey.get(key);
         if (col == null) continue;
+        if (heldKeys.has(key)) continue; // left blank in the sheet until an editor chooses
         if (stuckKeys.has(key)) {
           if (!isBlankCell(cellValueFor(scope, key, finalRec))) {
             next.problems.push({ markerId, scopeId: scope.scopeId, message: `${where(r)}: "${scope.columns.find((c) => c.key === key)?.header || key}" is inside merged cells, so Survey can't fill it in. Unmerge those cells to sync it.` });
@@ -899,5 +926,12 @@ export async function planSheetRound({
   }
 
   for (const flag of Object.keys(next.stuck)) if (!markers[flag.split('|')[0]]) delete next.stuck[flag];
+  delete next.eraseChoice; // used once
+  if (eraseMode === 'hold' && erasing) {
+    next.heldErase = { count: erasing, items: erasingItems.size, at: state.heldErase?.at || nowIso };
+  } else {
+    delete next.heldErase;
+  }
+  plan.erasing = erasing;
   return { ...plan, baseline: nextBaseline, state: next };
 }

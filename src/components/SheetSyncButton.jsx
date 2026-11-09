@@ -249,6 +249,7 @@ function useSheetSync({ documentId, template, markers, enabled }) {
   }, [apply]);
   const choose = useCallback((markerId, choice) => run('choose', async () => apply(await sheetSyncCall('choose', { ...ids, markerId, choice }))), [apply, ids, run]);
   const putBackTab = useCallback((scopeId) => run('choose', async () => apply(await sheetSyncCall('choose', { ...ids, scopeId, choice: 'putBackTab' }))), [apply, ids, run]);
+  const settleBlanks = useCallback((choice) => run('choose', async () => apply(await sheetSyncCall('choose', { ...ids, choice }))), [apply, ids, run]);
   const unlink = useCallback(() => run('unlink', async () => apply(await sheetSyncCall('unlink', ids))), [apply, ids, run]);
   // A stopped sheet kept going with this person's own sign-in (the one who
   // linked it left or their sign-in ended), then a round straight away.
@@ -281,7 +282,7 @@ function useSheetSync({ documentId, template, markers, enabled }) {
 
   const linking = busy === 'link' ? busyFor : null;
   const connecting = busy === 'connect' ? busyFor : null;
-  return { status, busy, error, live, codeAsk, linking, connecting, connect, claimCode, link, folders, choose, putBackTab, unlink, takeOver, disconnect, syncNow };
+  return { status, busy, error, live, codeAsk, linking, connecting, connect, claimCode, link, folders, choose, putBackTab, settleBlanks, unlink, takeOver, disconnect, syncNow };
 }
 
 const GLYPH = { google: 'google', msgraph: 'microsoft' };
@@ -530,7 +531,7 @@ export default function SheetSyncButton({ className, phone = false, documentId, 
     ? (shownLive ? (excelLink ? 'Live in Excel' : 'Live in Sheets') : 'Sync stopped')
     : 'Live sync';
   const icon = linkProvider ? GLYPH[linkProvider] : 'listChecks';
-  const waiting = (link?.conflicts?.length || 0) + (link?.removedInSheet?.length || 0) + (link?.missingTabs?.length || 0);
+  const waiting = (link?.conflicts?.length || 0) + (link?.removedInSheet?.length || 0) + (link?.missingTabs?.length || 0) + (link?.heldErase ? 1 : 0);
   const sheetTitle = documentName ? `${documentName.replace(/\.pdf$/i, '')} survey` : 'Survey';
 
   const pickFolder = (at, name = '') => {
@@ -703,8 +704,20 @@ export default function SheetSyncButton({ className, phone = false, documentId, 
           )}
           {busy === 'connect' && sync.codeAsk && <ClaimCodeBox provider={sync.codeAsk} onClaim={sync.claimCode} />}
         </div>
-        {(link.conflicts.length > 0 || link.removedInSheet.length > 0 || (link.missingTabs || []).length > 0 || link.problems.length > 0) && (
+        {(link.heldErase || link.conflicts.length > 0 || link.removedInSheet.length > 0 || (link.missingTabs || []).length > 0 || link.problems.length > 0) && (
           <div className="sheet-sync-body">
+            {link.heldErase && (
+              <div className="sheet-sync-item">
+                <p className="sheet-sync-item__title">{link.heldErase.count} {link.heldErase.count === 1 ? 'answer' : 'answers'} on {link.heldErase.items} {link.heldErase.items === 1 ? 'item' : 'items'} {link.heldErase.count === 1 ? 'was' : 'were'} cleared in the sheet at once</p>
+                <p className="sheet-sync-item__line">This happens when an older copy is restored or a column is cleared by mistake. They are kept here until you choose.</p>
+                {canEdit && (
+                  <div className="sheet-sync-row">
+                    <button type="button" className="sheet-sync-btn" disabled={Boolean(busy)} onClick={() => sync.settleBlanks('blanksApp')}>Put them back in the sheet</button>
+                    <button type="button" className="sheet-sync-btn" disabled={Boolean(busy)} onClick={() => sync.settleBlanks('blanksSheet')}>Clear them here too</button>
+                  </div>
+                )}
+              </div>
+            )}
             {link.conflicts.map((c) => (
               <div key={c.markerId} className="sheet-sync-item">
                 <p className="sheet-sync-item__title"><strong>{c.name || 'An item'}</strong> changed in both</p>
