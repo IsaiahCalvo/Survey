@@ -24026,6 +24026,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     if (!pdfFile || !pdfFile.projectId || !pdfId) {
       return;
     }
+    // Page, zoom and template on the document row belong to its owner; the
+    // database refuses anyone else (audit 2026-11-09: every editor/viewer save
+    // logged PGRST116), so a shared document's team skips this write.
+    if (pdfFile.user_id && user?.id && pdfFile.user_id !== user.id) {
+      return;
+    }
 
     try {
       // Update document metadata
@@ -24039,7 +24045,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       console.error('Error saving survey data to Supabase:', error);
       // Don't alert here to avoid interrupting the user flow, just log
     }
-  }, [pdfFile, pdfId, scale, pageNum, updateSupabaseDocument]);
+  }, [pdfFile, pdfId, scale, pageNum, updateSupabaseDocument, user?.id]);
 
   // UX 2026-04-22: File menu → "Export" — prompts for a new
   // file path and writes the currently-open PDF with annotations baked in.
