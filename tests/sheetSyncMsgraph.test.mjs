@@ -6,7 +6,7 @@ import ExcelJS from 'exceljs';
 
 import {
   blankWorkbookBytes, cellValueForWrite, columnLetter, createMsGraphProvider, dropDownChoices, msgraphFileId,
-  columnRuns, parseMsgraphFileId, rowRuns,
+  columnRuns, parseMsgraphFileId, rowRuns, cellBlocks,
 } from '../supabase/functions/_shared/sheetSync/providers/msgraph.js';
 
 const BASE = 'https://graph.test/v1.0';
@@ -53,9 +53,28 @@ function fakeGraph({ driveType = 'business' } = {}) {
       const at = kids[1] || '';
       const names = (state.folders?.[at]) ?? null;
       if (!names) return json(404, { error: { code: 'itemNotFound' } });
-      return json(200, { value: [...names.map((name) => ({ name, folder: { childCount: 0 } })), { name: 'notes.docx', file: {} }] });
+      const shortcuts = at ? [] : (state.shortcuts || []).map((sc) => ({ name: sc.name, remoteItem: { id: sc.itemId, folder: {}, parentReference: { driveId: sc.driveId } } }));
+      return json(200, { value: [...names.map((name) => ({ name, folder: { childCount: 0 } })), ...shortcuts, { name: 'notes.docx', file: {} }] });
     }
-    const put = /^me\/drive\/root:\/(.+)\.xlsx:\/content/.exec(path);
+    // A SharePoint library folder ("~drive~item" in the app): its children,
+    // its drive, its name, and /shares for a pasted link.
+    const remoteKids = /^drives\/([^/]+)\/items\/([^/:?]+)(?::\/(.+):)?\/children\?/.exec(path);
+    if (method === 'GET' && remoteKids && state.remote?.[remoteKids[2]]) {
+      const names = state.remote[remoteKids[2]].folders[remoteKids[3] || ''];
+      if (!names) return json(404, { error: { code: 'itemNotFound' } });
+      return json(200, { value: names.map((name) => ({ name, folder: {} })) });
+    }
+    const remoteDrive = /^drives\/([^/?]+)\?\$select=id,driveType$/.exec(path);
+    if (method === 'GET' && remoteDrive) return json(200, { id: remoteDrive[1], driveType: 'documentLibrary' });
+    const remoteName = /^drives\/[^/]+\/items\/([^/:?]+)\?\$select=name$/.exec(path);
+    if (method === 'GET' && remoteName && state.remote?.[remoteName[1]]) return json(200, { name: state.remote[remoteName[1]].name });
+    const share = /^shares\/u!([^/]+)\/driveItem/.exec(path);
+    if (method === 'GET' && share) {
+      const url = Buffer.from(share[1].replace(/_/g, '/').replace(/-/g, '+'), 'base64').toString();
+      const hit = state.shared?.[url];
+      return hit ? json(200, hit) : json(404, { error: { code: 'itemNotFound' } });
+    }
+    const put = /^(?:me\/drive\/root|drives\/[^/]+\/items\/[^/:]+):\/(.+)\.xlsx:\/content/.exec(path);
     if (method === 'PUT' && put) {
       const book = await new ExcelJS.Workbook().xlsx.load(Buffer.from(init.body));
       const itemId = `NEW-${state.files.size + 1}`;
@@ -67,11 +86,22 @@ function fakeGraph({ driveType = 'business' } = {}) {
       }));
       state.files.get(itemId).book = book;
       state.files.get(itemId).path = put[1];
+      state.files.get(itemId).at = path.split(':/')[0];
       // OneDrive's rename on a name clash: "Fire-Level 1 1.xlsx".
       const fileName = `${decodeURIComponent(put[1].split('/').pop()).replace(/\.xlsx$/i, '')} 1.xlsx`;
       return json(201, { id: itemId, name: fileName, webUrl: `https://x.sharepoint.com/${put[1]}`, parentReference: { driveId: 'b!drive', driveType } });
     }
 
+    if (method === 'POST' && path === '$batch') {
+      // Graph's JSON batch, run in order (the provider chains dependsOn).
+      const responses = [];
+      for (const r of JSON.parse(init.body).requests) {
+        const one = await state.fetch(`${BASE}${r.url}`, { method: r.method, headers: { ...r.headers, Authorization: init.headers.Authorization }, body: r.body === undefined ? undefined : JSON.stringify(r.body) });
+        const text = await one.text();
+        responses.push({ id: r.id, status: one.status, body: text ? JSON.parse(text) : null });
+      }
+      return json(200, { responses });
+    }
     const m = /^drives\/([^/]+)\/items\/([^/?]+)(.*)$/.exec(path);
     if (!m) return json(404, { error: { code: 'itemNotFound' } });
     const file = state.files.get(m[2]);
@@ -351,6 +381,13 @@ test('creates a workbook in the Survey folder with one sheet per scope', async (
   assert.deepEqual(rules.filter((r) => r.ref === 'C2:C1000').map((r) => [r.formulae[0], r.style.fill.bgColor.argb]), [['"Smoke detector"', 'FFFF0000']], 'each entity in its colour');
   const more = await p.addTabs(made.fileId, [{ scopeId: 'm:cat3', title: 'Fire - L3', columns: [{ key: 'rowId', header: 'Row ID' }] }], layout);
   assert.deepEqual(more, { 'm:cat3': '{Fire - L3-id}' });
+  // Excel refuses names over 31 characters or holding []:*?/\ (Google takes
+  // 100): a category added later with a long name failed every round.
+  const long = await p.addTabs(made.fileId, [
+    { scopeId: 'm:cat4', title: 'Fire Alarm Devices: East Wing - Level 3', columns: [{ key: 'rowId', header: 'Row ID' }] },
+    { scopeId: 'm:cat5', title: 'Fire - L1', columns: [{ key: 'rowId', header: 'Row ID' }] },
+  ], layout);
+  assert.deepEqual(long, { 'm:cat4': '{Fire Alarm Devices- East Wing --id}', 'm:cat5': '{Fire - L1 (2)-id}' }, 'Excel-safe, clear of the sheets already there');
 });
 
 test('no drop-down when Excel could not hold the list', () => {
@@ -410,9 +447,9 @@ test('a workbook goes in the folder picked, and folders can be listed', async ()
   graph.folders = { '': ['Survey', 'Jobs', 'Clients'], Jobs: ['2026 Hospital'] };
   const p = provider(graph);
   // Only folders, sorted; files are left out.
-  assert.deepEqual(await p.listFolders(''), ['Clients', 'Jobs', 'Survey']);
-  assert.deepEqual(await p.listFolders('Jobs'), ['2026 Hospital']);
-  assert.deepEqual(await p.listFolders('Gone'), [], 'a folder that is not there lists nothing');
+  assert.deepEqual(await p.listFolders(''), { folders: ['Clients', 'Jobs', 'Survey'], places: [] });
+  assert.deepEqual(await p.listFolders('Jobs'), { folders: ['2026 Hospital'], places: [] });
+  assert.deepEqual(await p.listFolders('Gone'), { folders: [], places: [] }, 'a folder that is not there lists nothing');
   const layout = { scopes: [{ scopeId: 'm:c', title: 'Doors', columns: [{ key: 'rowId', header: 'Row ID' }] }], entities: [], answerValues: [] };
   const made = await p.createFile({ title: 'Floor 2 survey', layout, folder: 'Jobs/2026 Hospital' });
   assert.equal(made.folder, 'Jobs/2026 Hospital');
@@ -423,4 +460,48 @@ test('a workbook goes in the folder picked, and folders can be listed', async ()
   const plain = await p.createFile({ title: 'Plain', layout });
   assert.equal(plain.folder, 'Survey', 'the Survey folder by default');
   assert.equal(graph.files.get('NEW-3').path, 'Survey/Plain');
+});
+
+test('SharePoint: a shortcut in My files or a pasted folder link is a place to save, browse and sync', async () => {
+  const graph = fakeGraph();
+  graph.folders = { '': ['Survey'] };
+  graph.shortcuts = [{ name: 'Kal Voe Team - Documents', driveId: 'b!team', itemId: 'TEAMROOT' }];
+  graph.remote = { TEAMROOT: { name: 'Documents', folders: { '': ['Jobs'], Jobs: ['2026 Hospital'] } } };
+  const link = 'https://kalvoe.sharepoint.com/:f:/s/Team/EabcFolder?e=x1';
+  graph.shared = {
+    [link]: { id: 'TEAMROOT', name: 'Documents', folder: { childCount: 1 }, parentReference: { driveId: 'b!team' } },
+    'https://kalvoe.sharepoint.com/:x:/s/Team/EabcFile': { id: 'F1', name: 'Book.xlsx', file: {}, parentReference: { driveId: 'b!team' } },
+  };
+  const p = provider(graph);
+  const top = await p.listFolders('');
+  assert.deepEqual(top.places, [{ name: 'Kal Voe Team - Documents', folder: '~b!team~TEAMROOT' }], 'the shortcut shows as a place');
+  assert.deepEqual((await p.listFolders('~b!team~TEAMROOT')).folders, ['Jobs']);
+  assert.deepEqual((await p.listFolders('~b!team~TEAMROOT/Jobs')).folders, ['2026 Hospital']);
+  assert.deepEqual(await p.resolveFolderLink(link), { folder: '~b!team~TEAMROOT', name: 'Documents' });
+  await assert.rejects(p.resolveFolderLink('https://kalvoe.sharepoint.com/:x:/s/Team/EabcFile'), (e) => e.code === 'not_a_folder');
+  await assert.rejects(p.resolveFolderLink('https://kalvoe.sharepoint.com/nope'), (e) => e.code === 'bad_folder_link');
+  const layout = { scopes: [{ scopeId: 'm:c', title: 'Doors', columns: [{ key: 'rowId', header: 'Row ID' }] }], entities: [], answerValues: [] };
+  const made = await p.createFile({ title: 'Floor 2', layout, folder: '~b!team~TEAMROOT/Jobs/2026 Hospital' });
+  const file = graph.files.get('NEW-1');
+  assert.equal(file.at, 'drives/b!team/items/TEAMROOT', 'made in the team library, not the person\'s OneDrive');
+  assert.equal(file.path, 'Jobs/2026 Hospital/Floor 2');
+  assert.equal(made.folderLabel, 'Documents › Jobs › 2026 Hospital');
+  assert.ok(graph.calls.includes('GET drives/b!team?$select=id,driveType'), 'the library\'s own drive is checked for work/school');
+});
+
+test('cells one under another in the same columns go out as one block (300 notes = one write)', () => {
+  const notes = Array.from({ length: 300 }, (_, i) => ({ sheetId: 's', row: i + 1, col: 7, value: `n${i}` }));
+  const blocks = cellBlocks(notes);
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0].row, 1);
+  assert.equal(blocks[0].values.length, 300);
+  assert.deepEqual(blocks[0].values[0], ["'n0"]);
+  // A gap or a different width starts a new block; side-by-side runs stack together.
+  const mixed = cellBlocks([
+    { row: 1, col: 2, value: 'a' }, { row: 1, col: 3, value: 'b' },
+    { row: 2, col: 2, value: 'c' }, { row: 2, col: 3, value: 'd' },
+    { row: 4, col: 2, value: 'e' },
+    { row: 5, col: 2, value: 'f' }, { row: 5, col: 3, value: 'g' },
+  ]);
+  assert.deepEqual(mixed.map((b) => [b.row, b.col, b.values.length, b.values[0].length]), [[4, 2, 1, 1], [1, 2, 2, 2], [5, 2, 1, 2]]);
 });

@@ -102,6 +102,8 @@ const hasWork = (plan) => plan.cellWrites.length || plan.appends.length || plan.
  * @returns {Promise<{status:'idle'|'synced'|'retry', summary?:object, patch?:object}>}
  *   `patch` is what to store on the link (baseline, state, remote_version, app_hash).
  */
+const isBlankValue = (v) => v == null || (typeof v !== 'object' && String(v).trim() === '');
+
 export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, signing, force = false, now = new Date(), newMarkerId, fillBy = '' }) {
   assertProvider(provider);
   const layout = link.layout;
@@ -162,6 +164,16 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
     }
     const headerWrites = plan.headerAdds.map((h) => ({ sheetId: h.sheetId, title: h.title, row: h.row ?? 0, col: h.col, value: h.header, header: true }));
     if (headerWrites.length || plan.cellWrites.length) await provider.writeCells(link.file_id, [...headerWrites, ...plan.cellWrites]);
+    // A write Excel accepts but does not keep (the hidden part of merged
+    // cells reads blank after): remembered, or the next round reads the blank
+    // as the PM clearing the cell and wipes the app's value.
+    const filled = plan.cellWrites.filter((c) => c.markerId && !isBlankValue(c.value));
+    if (filled.length) {
+      const back = await provider.readCells(link.file_id, filled);
+      filled.forEach((c, i) => {
+        if (isBlankValue(back[i])) plan.state.stuck = { ...(plan.state.stuck || {}), [`${c.markerId}|${c.key}`]: true };
+      });
+    }
     if (plan.appends.length) await provider.appendRows(link.file_id, plan.appends);
     if (plan.deletes.length) {
       const sorted = [...plan.deletes].sort((a, b) => (sameId(a.sheetId, b.sheetId) ? b.row - a.row : String(a.sheetId).localeCompare(String(b.sheetId))));
@@ -182,6 +194,7 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
       // "Save in" folder) is the link's and rides along.
       state: {
         ...(typeof link.state?.folder === 'string' ? { folder: link.state.folder } : {}),
+        ...(typeof link.state?.folderLabel === 'string' ? { folderLabel: link.state.folderLabel } : {}),
         ...plan.state,
         ...(wroteAt ? { lastWriteAt: wroteAt } : {}),
       },

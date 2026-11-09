@@ -172,6 +172,37 @@ function findHeaderRow(scope, rows, remembered = {}) {
   return 0;
 }
 
+const isChoiceColumn = (column) => Boolean(column?.key?.startsWith('answer:')) && checklistItemKind(column.item) === 'choice';
+const TICKED = ['y', 'yes', 'pass', 'ok', 'done', 'true', 'complete', 'completed', 'checked'];
+const CLEARED = ['n', 'no', 'fail', 'false'];
+
+/**
+ * The pick-one answer a checkbox means (Excel's Insert > Checkbox, or a
+ * TRUE/FALSE a PM typed): ticked is the set's yes-like answer (Y, Yes, Pass,
+ * OK, Done...), cleared its no-like one. A one-answer set ("Done") clears to
+ * blank. null when the set has no such answer.
+ */
+export function checkboxAnswerOf(answerValues, on) {
+  const values = (answerValues || []).map(String);
+  for (const word of on ? TICKED : CLEARED) {
+    const hit = values.find((v) => v.trim().toLowerCase() === word);
+    if (hit) return hit;
+  }
+  if (values.length === 1) return on ? values[0] : '';
+  return null;
+}
+
+// A checkbox cell's answer text, or null when the cell is not a checkbox.
+function checkboxCellAnswer(layout, column, raw) {
+  if (!isChoiceColumn(column)) return null;
+  const on = raw === true || (typeof raw === 'string' && raw.trim().toLowerCase() === 'true') ? true
+    : raw === false || (typeof raw === 'string' && raw.trim().toLowerCase() === 'false') ? false : null;
+  if (on === null) return null;
+  // A set that really holds "TRUE" / "FALSE" answers takes them as typed.
+  if (typeof raw === 'string' && layout.answerValues.some((v) => v.trim().toLowerCase() === raw.trim().toLowerCase())) return null;
+  return checkboxAnswerOf(layout.answerValues, on);
+}
+
 // Turn one sheet cell into the app value for a field, or { error }.
 function sheetValueToApp(layout, column, raw) {
   const text = cellText(raw).replace(/\r\n?/g, '\n');
@@ -187,6 +218,8 @@ function sheetValueToApp(layout, column, raw) {
   if (column.key.startsWith('answer:')) {
     const kind = checklistItemKind(column.item);
     if (kind === 'choice') {
+      const box = checkboxCellAnswer(layout, column, raw);
+      if (box != null) return { value: box };
       const t = text.trim();
       if (!t) return { value: '' };
       const hit = layout.answerValues.find((v) => v.toLowerCase() === t.toLowerCase());
@@ -277,11 +310,14 @@ export async function planSheetRound({
     gone: { ...(state.gone || {}) },
     columnsSeen: { ...(state.columnsSeen || {}) },
     headers: { ...(state.headers || {}) },
+    // "markerId|key" of cells that would not keep what Survey wrote (the
+    // hidden part of merged cells): left alone until they hold a value.
+    stuck: { ...(state.stuck || {}) },
     problems: [],
     missingTabs: [],
   };
   const plan = {
-    cellWrites: [], // { sheetId, title, row, col, value }   row/col are 0-based grid indexes
+    cellWrites: [], // { sheetId, title, row, col, value, markerId?, key? }   row/col are 0-based grid indexes
     // What must still be in the sheet when the writes go out: the Row ID next
     // to each write ({ token }) and the cell each write replaces ({ expect }).
     verify: [],     // { sheetId, title, row, col, token } | { sheetId, title, row, col, expect }
@@ -378,14 +414,25 @@ export async function planSheetRound({
         if (!columnIsEditable(column) || !colOfKey.has(column.key)) continue;
         const raw = row[colOfKey.get(column.key)];
         if (isCellError(raw)) continue; // a failed formula tells us nothing about the value
-        setField(rec, column.key, cellText(raw));
+        // A checkbox reads as the answer it means, so it never looks changed.
+        setField(rec, column.key, checkboxCellAnswer(layout, column, raw) ?? cellText(raw));
       }
       return rec;
     };
-    const writeCell = (rowIndex, key, value, was) => {
+    // What to put in a cell for `want`: a checkbox stays a checkbox (TRUE or
+    // FALSE) when the answer is one it can show, instead of turning into "Y".
+    const sheetWant = (key, want, was) => {
+      if (typeof was !== 'boolean') return want;
+      const column = scope.columns.find((c) => c.key === key);
+      if (!isChoiceColumn(column)) return want;
+      if (want === checkboxAnswerOf(layout.answerValues, true)) return true;
+      if (want === (checkboxAnswerOf(layout.answerValues, false) ?? '')) return false;
+      return want;
+    };
+    const writeCell = (rowIndex, key, value, was, markerId = null) => {
       const col = colOfKey.get(key);
       if (col == null) return;
-      plan.cellWrites.push({ sheetId: sheet.sheetId, title: sheet.title, row: rowIndex, col, value });
+      plan.cellWrites.push({ sheetId: sheet.sheetId, title: sheet.title, row: rowIndex, col, value, ...(markerId ? { markerId, key } : {}) });
       plan.verify.push({ sheetId: sheet.sheetId, title: sheet.title, row: rowIndex, col, expect: was ?? null });
     };
     const rowFor = async (markerId, marker) => {
@@ -571,8 +618,8 @@ export async function planSheetRound({
       for (const column of scope.columns) {
         if (column.key === 'rowId' || !colOfKey.has(column.key)) continue;
         if (columnIsEditable(column) && conv[column.key] === undefined) continue; // a bad value stays for the person to fix
-        const want = cellValueFor(scope, column.key, rec);
         const was = row[colOfKey.get(column.key)];
+        const want = sheetWant(column.key, cellValueFor(scope, column.key, rec), was);
         if (!sameCell(was, want)) writeCell(r, column.key, want, was);
       }
     }
@@ -618,10 +665,24 @@ export async function planSheetRound({
       // change to them is kept.
       const sheetSide = JSON.parse(JSON.stringify(sheetFps));
       const errorKeys = new Set();
+      // A cell that would not keep Survey's last write (merged cells) and is
+      // still blank: blank is not the PM clearing it, so it counts as
+      // unchanged and is not written again. Once it holds a value it syncs.
+      const stuckKeys = new Set();
+      for (const key of keys) {
+        const flag = `${markerId}|${key}`;
+        if (!next.stuck[flag]) continue;
+        if (colOfKey.has(key) && isBlankCell(row[colOfKey.get(key)])) stuckKeys.add(key);
+        else delete next.stuck[flag];
+      }
       for (const key of keys) {
         const column = scope.columns.find((c) => c.key === key);
         const errored = colOfKey.has(key) && isCellError(row[colOfKey.get(key)]);
         if (errored) errorKeys.add(key);
+        if (stuckKeys.has(key)) {
+          setFp(sheetSide, key, base ? getFp(base, key) : getFp(appFps, key));
+          continue;
+        }
         // A column added this round is blank in the sheet: nothing changed there yet.
         if (!columnIsEditable(column) || !colOfKey.has(key) || addedKeys.has(key) || errored) {
           setFp(sheetSide, key, base ? getFp(base, key) : getFp(appFps, key));
@@ -678,9 +739,15 @@ export async function planSheetRound({
         setFp(nextFields, key, getFp(finalFps, key));
         const col = colOfKey.get(key);
         if (col == null) continue;
-        const want = cellValueFor(scope, key, finalRec);
+        if (stuckKeys.has(key)) {
+          if (!isBlankCell(cellValueFor(scope, key, finalRec))) {
+            next.problems.push({ markerId, scopeId: scope.scopeId, message: `${where(r)}: "${scope.columns.find((c) => c.key === key)?.header || key}" is inside merged cells, so Survey can't fill it in. Unmerge those cells to sync it.` });
+          }
+          continue;
+        }
+        const want = sheetWant(key, cellValueFor(scope, key, finalRec), row[col]);
         if (!sameCell(row[col], want)) {
-          writeCell(r, key, want, row[col]);
+          writeCell(r, key, want, row[col], markerId);
           if (!fromSheet.has(key)) plan.summary.toSheet += 1;
         }
       }
@@ -731,5 +798,6 @@ export async function planSheetRound({
     if (!markers[id] && !plan.markerWrites[id] && !next.tombstones[id]) delete nextBaseline[id];
   }
 
+  for (const flag of Object.keys(next.stuck)) if (!markers[flag.split('|')[0]]) delete next.stuck[flag];
   return { ...plan, baseline: nextBaseline, state: next };
 }

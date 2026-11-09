@@ -175,6 +175,24 @@ export async function fakeMsgraphHandler(req) {
     });
   }
 
+  // --- Graph JSON batch: each request in order, through this same handler ---
+  if (method === 'POST' && /\/v1\.0\/\$batch$/.test(path)) {
+    const responses = [];
+    for (const r of body?.requests || []) {
+      const inner = new Request(`${url.origin}${url.pathname.replace(/\$batch$/, '').replace(/\/$/, '')}${r.url}`, {
+        method: r.method,
+        headers: { ...(r.headers || {}), authorization: req.headers.get('authorization') || '' },
+        body: r.body === undefined ? undefined : JSON.stringify(r.body),
+      });
+      const one = await fakeMsgraphHandler(inner);
+      const text = await one.text();
+      let parsed = null;
+      try { parsed = text ? JSON.parse(text) : null; } catch { parsed = text; }
+      responses.push({ id: r.id, status: one.status, headers: {}, body: parsed });
+    }
+    return json(200, { responses });
+  }
+
   // --- test hooks ----------------------------------------------------------
   if (path.startsWith('/__fake')) {
     if (path === '/__fake/reset') { resetFakeMsgraph(); return json(200, { ok: true }); }

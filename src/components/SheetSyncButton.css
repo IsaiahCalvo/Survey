@@ -226,6 +226,9 @@
   font-size: 13px;
   letter-spacing: 0.06em;
 }
+/* "Save in": the SharePoint/Teams folder link box under the folder list. */
+.sheet-sync-folders .sheet-sync-code input { font-family: inherit; letter-spacing: 0; }
+.sheet-sync-paste-error { margin: 6px 0 0; color: var(--danger-text); font-size: 12px; }
 
 .sheet-sync-skeleton {
   height: 12px;

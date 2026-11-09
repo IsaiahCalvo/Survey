@@ -338,3 +338,104 @@ test('the background sweep checks busy sheets every minute and quiet ones rarely
   assert.equal(due({ provider: 'msgraph', last_change_at: at(180 * min), last_round_at: at(0.5 * min) }), 0.5);
   assert.equal(due({ provider: 'msgraph', last_change_at: at(3 * 1440 * min), last_round_at: at(min) }), 4);
 });
+
+// Real-Excel break test, 2026-11-09 (/mnt/project-files/excel-sync/break-test-2026-11-09.md).
+test('a checkbox (TRUE / FALSE) in a pick-one column means Y / N and stays a checkbox', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101', { checklistResponses: { c1: { selection: 'N' } } }) } });
+  await ctx.round();
+  const locked = await ctx.col('Locked?');
+  tab(ctx).rows[1][locked] = true; // ticked
+  await ctx.round();
+  assert.equal(ctx.markers.d1.checklistResponses.c1.selection, 'Y', 'ticked means the yes answer');
+  assert.equal(tab(ctx).rows[1][locked], true, 'the checkbox is not turned into "Y"');
+  assert.deepEqual(ctx.link.state.problems, []);
+  const quiet = await ctx.round({ force: true });
+  assert.deepEqual(quiet.summary, { toSheet: 0, toApp: 0, created: 0, appended: 0, deleted: 0, conflicts: 0 }, 'a checkbox never looks changed again');
+  ctx.markers.d1.checklistResponses.c1 = { selection: 'N' };
+  await ctx.round();
+  assert.equal(tab(ctx).rows[1][locked], false, 'the app clearing it clears the checkbox');
+  ctx.markers.d1.checklistResponses.c1 = { selection: 'N/A' };
+  await ctx.round();
+  assert.equal(tab(ctx).rows[1][locked], 'N/A', 'an answer a checkbox cannot show is written as text');
+});
+
+test('a number typed with its own unit ("84 in") is taken; another unit is refused', async () => {
+  const t = template();
+  t.modules[0].categories[0].checklist[1].unit = 'in';
+  const layout = buildSyncLayout({ template: t, kit: defaultKit });
+  const ctx = await setup({ layout, markers: { d1: door('d1', 'D-101'), d2: door('d2', 'D-102') } });
+  await ctx.round();
+  const height = await ctx.col('Height');
+  await ctx.edit([{ row: await ctx.rowOf('d1'), col: height, value: '84 in' }, { row: await ctx.rowOf('d2'), col: height, value: '7 ft' }]);
+  await ctx.round();
+  assert.equal(ctx.markers.d1.checklistResponses.c2.selection, '84');
+  assert.equal(ctx.markers.d2.checklistResponses.c2?.selection ?? '', '');
+  assert.ok(ctx.link.state.problems.some((p) => /"7 ft" does not fit "Height"/.test(p.message)));
+});
+
+test('a Microsoft sign-in with nothing syncing is used every two weeks so it never runs out; a dead one is forgotten', async () => {
+  const { keepSignInsAlive } = await import('../supabase/functions/_shared/sheetSync/service.js');
+  const { encryptToken, decryptToken } = await import('../supabase/functions/_shared/sheetSync/tokenCrypto.js');
+  const env = { SUPABASE_URL: 'https://x.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'k'.repeat(40), MS_GRAPH_CLIENT_SECRET: 's' };
+  const key = env.SUPABASE_SERVICE_ROLE_KEY;
+  const now = Date.parse('2026-11-09T12:00:00Z');
+  const rows = [
+    { user_id: 'alive', refresh_token_enc: await encryptToken('rt-alive', key) },
+    { user_id: 'dead', refresh_token_enc: await encryptToken('rt-dead', key) },
+  ];
+  const writes = [];
+  const chain = (record) => {
+    const c = { filters: [], eq: (k, v) => { c.filters.push([k, v]); return c; }, lt: (k, v) => { c.lt = [k, v]; return c; }, order: () => c, limit: () => c,
+      then: (ok) => ok(record(c)) };
+    return c;
+  };
+  const service = { from: (table) => ({
+    select: () => chain((c) => { assert.deepEqual(c.lt, ['updated_at', new Date(now - 14 * 86400000).toISOString()]); return { data: rows }; }),
+    update: (patch) => chain((c) => { writes.push({ table, op: 'update', patch, filters: c.filters }); return {}; }),
+    delete: () => chain((c) => { writes.push({ table, op: 'delete', filters: c.filters }); return {}; }),
+  }) };
+  const fetchImpl = async (url, init) => {
+    const rt = new URLSearchParams(init.body).get('refresh_token');
+    if (rt === 'rt-dead') return new Response(JSON.stringify({ error: 'invalid_grant' }), { status: 400 });
+    return new Response(JSON.stringify({ access_token: 'at', refresh_token: 'rt-new', expires_in: 3600 }), { status: 200 });
+  };
+  const kept = await keepSignInsAlive({ env, service, fetchImpl }, now);
+  assert.equal(kept, 1);
+  const saved = writes.find((w) => w.op === 'update' && w.filters[0][1] === 'alive');
+  assert.equal(saved.patch.updated_at, new Date(now).toISOString());
+  assert.equal(await decryptToken(saved.patch.refresh_token_enc, key), 'rt-new');
+  assert.ok(writes.some((w) => w.op === 'delete' && w.table === 'sheet_sync_connections' && w.filters[0][1] === 'dead'), 'dead sign-in forgotten');
+  assert.ok(writes.some((w) => w.table === 'sheet_sync_links' && w.patch.status === 'broken'), 'its sheets say why they stopped');
+});
+
+test('a cell that will not keep what Survey writes (merged cells) never wipes the app value and stops being rewritten', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101'), d2: door('d2', 'D-102') } });
+  await ctx.round();
+  const notes = await ctx.col('Notes');
+  const hiddenRow = await ctx.rowOf('d2');
+  // Excel takes a write to the hidden part of a merged area and drops it.
+  const real = ctx.provider;
+  let dropped = 0;
+  const merged = Object.assign(Object.create(null), real, {
+    writeCells: async (fileId, cells) => real.writeCells(fileId, cells.filter((c) => {
+      const hit = c.row === hiddenRow && c.col === notes;
+      if (hit) dropped += 1;
+      return !hit;
+    })),
+  });
+  ctx.provider = merged;
+  ctx.markers.d2.note = { text: 'app note for D-102' };
+  await ctx.round();
+  assert.equal(dropped, 1);
+  const again = await ctx.round({ force: true });
+  assert.equal(ctx.markers.d2.note.text, 'app note for D-102', 'the blank cell is not read as the PM clearing it');
+  assert.equal(dropped, 1, 'not written again every round');
+  assert.equal(again.summary.toApp, 0);
+  assert.ok(ctx.link.state.problems.some((p) => /merged cells/.test(p.message)), 'the PM is told why');
+  // Unmerged and typed into: it syncs again.
+  ctx.provider = real;
+  await ctx.edit([{ row: hiddenRow, col: notes, value: 'PM typed after unmerge' }]);
+  await ctx.round();
+  assert.equal(ctx.markers.d2.note.text, 'PM typed after unmerge');
+  assert.deepEqual(ctx.link.state.stuck, {});
+});

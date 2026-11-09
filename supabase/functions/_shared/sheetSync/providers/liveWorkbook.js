@@ -54,9 +54,12 @@ export function excelArgb(color) {
   return null;
 }
 
-/** Excel sheet names: 31 characters, none of []:*?/\, no edge apostrophes, unique. */
-export function excelSheetNames(titles) {
-  const used = new Set();
+/**
+ * Excel sheet names: 31 characters, none of []:*?/\, no edge apostrophes, unique.
+ * `taken`: names already in the workbook, which new names keep clear of.
+ */
+export function excelSheetNames(titles, taken = []) {
+  const used = new Set((taken || []).map((t) => String(t).toLowerCase()));
   return titles.map((title, i) => {
     let base = String(title || '').replace(/[[\]:*?/\\]/g, '-').replace(/^'+|'+$/g, '').trim() || `Sheet ${i + 1}`;
     base = base.slice(0, 31).trim();
