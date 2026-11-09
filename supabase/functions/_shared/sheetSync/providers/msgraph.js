@@ -473,11 +473,18 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
     async appendRows(fileId, batches) {
       for (const batch of batches || []) {
         if (!batch?.rows?.length) continue;
-        const used = await usedRange(fileId, batch.sheetId, 'rowIndex,rowCount,values');
-        const empty = !used?.values?.length || (used.values.length === 1 && used.values[0].every((v) => v === ''));
-        const start = empty ? 0 : (used.rowIndex || 0) + (used.rowCount || 0);
         const width = Math.max(batch.width || 0, ...batch.rows.map((row) => row.length));
         if (!width) continue;
+        let start;
+        if (batch.before != null) {
+          // Above the PM's totals line (`before`), so it stays last.
+          start = batch.before;
+          await workbook(fileId, 'POST', `${sheetPath(batch.sheetId)}/range(address='${start + 1}:${start + batch.rows.length}')/insert`, { body: { shift: 'Down' }, where: 'appendRows', discard: true });
+        } else {
+          const used = await usedRange(fileId, batch.sheetId, 'rowIndex,rowCount,values');
+          const empty = !used?.values?.length || (used.values.length === 1 && used.values[0].every((v) => v === ''));
+          start = empty ? 0 : (used.rowIndex || 0) + (used.rowCount || 0);
+        }
         const values = batch.rows.map((row) => Array.from({ length: width }, (_, c) => cellValueForWrite(row[c])));
         const address = `${cellAddress(start, 0)}:${cellAddress(start + values.length - 1, width - 1)}`;
         await workbook(fileId, 'PATCH', `${sheetPath(batch.sheetId)}/range(address='${address}')`, { body: { values }, where: 'appendRows', discard: true });

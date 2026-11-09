@@ -518,3 +518,21 @@ test('a note longer than a cell holds is written cut to fit, keeps its full text
   assert.deepEqual(Object.values(quiet.summary).filter(Boolean), []);
   assert.equal(ctx.markers.d1.note.text.length, 40001, 'the app keeps its full note');
 });
+
+test('a totals line typed under the items is not made an item, and new items go above it', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101'), d2: door('d2', 'D-102') } });
+  await ctx.round();
+  const item = await ctx.col('Item');
+  const totalAt = tab(ctx).rows.length;
+  await ctx.edit([{ row: totalAt, col: item, value: 'Grand total' }, { row: totalAt, col: await ctx.col('Notes'), value: '2 doors' }]);
+  const r = await ctx.round();
+  assert.equal(r.summary.created, 0);
+  assert.ok(!Object.values(ctx.markers).some((m) => m.name === 'Grand total'));
+  ctx.markers.d3 = door('d3', 'D-103');
+  await ctx.round();
+  const rows = tab(ctx).rows;
+  assert.equal(rows[totalAt][item], 'D-103', 'the new item takes the totals line\'s place');
+  assert.equal(rows[totalAt + 1][item], 'Grand total', 'the totals line stays last');
+  const quiet = await ctx.round({ force: true });
+  assert.deepEqual(Object.values(quiet.summary).filter(Boolean), []);
+});

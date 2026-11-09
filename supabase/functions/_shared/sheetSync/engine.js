@@ -36,6 +36,7 @@ const NUMBER_KINDS = new Set(['number', 'score', 'count']);
 export const MAX_NEW_ROWS_PER_ROUND = 300;
 // How far down a tab the header row is looked for (a title row typed above it).
 const HEADER_SEARCH_ROWS = 10;
+const TOTALS_LABEL = /^(grand\s+|sub-?\s*)?totals?\b|^(sum|count|average|avg)\s*:?$/i;
 
 // Row IDs already checked by this server instance: the same tokens come back
 // every round, and an HMAC per row was a fifth of a big sheet's round.
@@ -564,6 +565,9 @@ export async function planSheetRound({
     }
 
     const appendRows = [];
+    // Rows that are not items (a totals line, a heading): new items go above
+    // the ones after the last item, so a totals line stays last.
+    const summaryRows = [];
     for (let r = headerAt + 1; r < rows.length; r += 1) {
       const row = rows[r] || [];
       if (!ids.has(r)) continue; // blank
@@ -646,7 +650,14 @@ export async function planSheetRound({
       // is not an item.
       const itemCol = colOfKey.get('item');
       if (!recreate && itemCol != null && isBlankCell(row[itemCol])) {
+        summaryRows.push(r);
         next.problems.push({ scopeId: scope.scopeId, message: `${where(r)} has no "${scope.columns.find((c) => c.key === 'item')?.header || 'Item'}", so it was not brought in.` });
+        continue;
+      }
+      // "Total", "Grand total", "Subtotal", "Sum"... typed under the items,
+      // with no Row ID: the PM's own totals line, not an item.
+      if (!token && itemCol != null && TOTALS_LABEL.test(cellText(row[itemCol]).trim())) {
+        summaryRows.push(r);
         continue;
       }
       if (!recreate && newRowsLeft <= 0) { newRowsWaiting += 1; continue; }
@@ -713,7 +724,16 @@ export async function planSheetRound({
       seenMarkers.add(markerId);
       plan.summary.appended += 1;
     }
-    if (appendRows.length) plan.appends.push({ sheetId: sheet.sheetId, title: sheet.title, rows: appendRows, width });
+    const notItems = new Set(summaryRows);
+    let lastItemRow = headerAt;
+    for (const r of ids.keys()) if (!notItems.has(r) && r > lastItemRow) lastItemRow = r;
+    const firstSummary = summaryRows.filter((r) => r > lastItemRow).sort((a, b) => a - b)[0];
+    if (appendRows.length) {
+      plan.appends.push({
+        sheetId: sheet.sheetId, title: sheet.title, rows: appendRows, width,
+        ...(firstSummary != null ? { before: firstSummary } : {}),
+      });
+    }
 
     // ---- one matched row -------------------------------------------------
     async function mergeRow({ markerId, marker, row, r }) {

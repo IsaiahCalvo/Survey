@@ -292,12 +292,18 @@ export async function fakeMsgraphHandler(req) {
   }
   if (method === 'GET' && tail.startsWith('/usedRange')) return json(200, usedRange(sheet));
   if (method === 'POST' && tail === '/freezePanes/freezeRows') { sheet.frozen = Number(body?.count) || 0; return json(204); }
-  const range = /^\/range\(address='([^']+)'\)(\/delete|\/dataValidation)?$/.exec(tail);
+  const range = /^\/range\(address='([^']+)'\)(\/delete|\/insert|\/dataValidation)?$/.exec(tail);
   const a = range && parseAddress(range[1]);
   if (!a) return gErr(400, 'BadRequest', `fake msgraph: no route for ${method} ${path}`);
   if (range[2] === '/dataValidation' && method === 'PATCH') {
     for (const key of perColumn(a)) sheet.validations[key] = body?.rule?.list?.source || '';
     return json(200, {});
+  }
+  if (range[2] === '/insert' && method === 'POST') {
+    if (!a.wholeRows) return gErr(400, 'BadRequest', 'fake msgraph: only whole-row inserts');
+    sheet.cells.splice(a.r1, 0, ...Array.from({ length: a.r2 - a.r1 + 1 }, () => []));
+    touch(f);
+    return json(204);
   }
   if (range[2] === '/delete' && method === 'POST') {
     if (!a.wholeRows) return gErr(400, 'BadRequest', 'fake msgraph: only whole-row deletes');

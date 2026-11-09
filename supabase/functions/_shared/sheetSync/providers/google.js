@@ -337,14 +337,24 @@ export function googleSheetsProvider({ endpoints, getAccessToken, fetchImpl = fe
     },
 
     async appendRows(fileId, appends) {
-      await batchUpdate(fileId, appends.map((a) => ({
+      await batchUpdate(fileId, appends.flatMap((a) => (a.before != null ? [
+        // Above the PM's totals line (`before`), so it stays last.
+        { insertDimension: { range: { sheetId: Number(a.sheetId), dimension: 'ROWS', startIndex: a.before, endIndex: a.before + a.rows.length }, inheritFromBefore: true } },
+        {
+          updateCells: {
+            start: { sheetId: Number(a.sheetId), rowIndex: a.before, columnIndex: 0 },
+            rows: a.rows.map((row) => ({ values: row.map(cellData) })),
+            fields: 'userEnteredValue',
+          },
+        },
+      ] : [{
         // After the last row with data in the tab, wherever people have typed.
         appendCells: {
           sheetId: Number(a.sheetId),
           rows: a.rows.map((row) => ({ values: row.map(cellData) })),
           fields: 'userEnteredValue',
         },
-      })));
+      }])));
     },
 
     async deleteRows(fileId, rows) {
