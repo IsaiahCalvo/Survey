@@ -169,6 +169,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'New text boxes and callouts wrap at spaces, not mid-word',
     stage: 'beta',
   }),
+  'paste-across-documents': Object.freeze({
+    label: 'Copy marks in one document and paste them in another',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

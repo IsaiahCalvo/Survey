@@ -391,6 +391,7 @@ import { bookmarkDeleteMessage, removeBookmarkWithDescendants, restoreRemovedBoo
 import { useYDoc } from './hooks/useYDoc.js';
 import { useZoomState } from './hooks/useZoomState';
 import { isFeatureOn } from './featureFlags.js';
+import { useMarkClipboard } from './utils/sharedMarkClipboard.js';
 // Beta 'mark-library' (Survey Nightly): save marks once, drop them on any page.
 import MarkLibraryPlacementLayer from './markLibrary/MarkLibraryPlacementLayer.jsx';
 import MarkLibrarySaveDialog from './markLibrary/MarkLibrarySaveDialog.jsx';
@@ -4139,18 +4140,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // Plan 14-03 through SVGAnnotationLayer's useSVGInteraction callout-part
   // drag mode + onSelectedCalloutIdsChange callback.
   const [selectedCalloutIds, setSelectedCalloutIds] = useState(() => new Set());
-  const [clipboardCallout, setClipboardCallout] = useState(null);
-  const [clipboardCalloutType, setClipboardCalloutType] = useState(null); // 'cut' | 'copy'
+  // Beta 'paste-across-documents': every open tab shares these clipboards
+  // (utils/sharedMarkClipboard.js); off, each viewer keeps its own.
+  const [pasteAcrossDocuments] = useState(() => isFeatureOn('paste-across-documents'));
+  const clipboardScope = { shared: pasteAcrossDocuments, documentId: pdfFile?.id || pdfFilePath || tabId || null };
+  const [clipboardCallout, setClipboardCallout] = useMarkClipboard('callout', clipboardScope);
+  const [clipboardCalloutType, setClipboardCalloutType] = useMarkClipboard('calloutType', clipboardScope); // 'cut' | 'copy'
   // UX: right-click Copy/Cut stashes a plain (non-callout) annotation here so
   // Paste can later drop a clone onto any page. Shape is { object, sourcePageNumber, mode }
   // where `object` is the Fabric JSON for that annotation and `mode` is 'copy' | 'cut'.
   // 'cut' differs from 'copy' only in that the original is removed at Copy time,
   // matching the callout clipboard contract at ~line 11085.
-  const [clipboardAnnotation, setClipboardAnnotation] = useState(null);
+  const [clipboardAnnotation, setClipboardAnnotation] = useMarkClipboard('annotation', clipboardScope);
   // w53: ONE clipboard for any family selection (marks + callouts + Survey
   // Markers, see utils/familyClipboard.js). Like the two above, only one of
   // the three is ever filled: the most recent Copy / Cut wins.
-  const [familyClipboard, setFamilyClipboard] = useState(null);
+  const [familyClipboard, setFamilyClipboard] = useMarkClipboard('family', clipboardScope);
   const familyClipboardRef = useRef(null);
   familyClipboardRef.current = familyClipboard;
   // Every annotation Copy writes the family clipboard (the one the page
