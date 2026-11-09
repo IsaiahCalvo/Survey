@@ -633,7 +633,8 @@ const SurveySpacesRail = ({
     if (proLocked('excel') || isReporting) return;
     setIsReporting(true);
     try {
-      const input = { template: selectedTemplate, markers: surveyMarkers, documentName: pdfFile?.name || '', kit: reportKitOf() };
+      // people: names the assignee in each item's follow-up (marker tracking).
+      const input = { template: selectedTemplate, markers: surveyMarkers, documentName: pdfFile?.name || '', kit: reportKitOf(), people: trackingPeople };
       // The PDF puts a crop of the plan beside each issue.
       if (format === 'pdf') await (await import('./services/surveyReportPdf.js')).downloadSurveyReportPdf({ ...input, planFile: pdfFile });
       else if (format === 'xlsx') await (await import('./services/surveyReportXlsx.js')).downloadSurveyReportXlsx(input);
@@ -1776,6 +1777,7 @@ const SurveySpacesRail = ({
       userId={user?.id || null}
       canEdit={canEditSurveyMarkers !== false}
       onChange={(patch) => updateSurveyMarkerTracking(annotationId, patch)}
+      tip={tip}
     />
   ) : null);
   const renderSurveyMarkerTrackingBadge = (annotationId) => (trackingOn ? (
