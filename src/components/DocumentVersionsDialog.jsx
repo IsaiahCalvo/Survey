@@ -39,7 +39,7 @@ export default function DocumentVersionsDialog({ versions, openId, onOpen, onCom
               data-version-row={version.versionNumber}
               style={{
                 display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px',
-                border: `1px solid ${isOpen ? C.ruleStrong : C.rule}`, borderRadius: 'var(--radius-sm)',
+                border: `1px solid ${C.rule}`, borderRadius: 'var(--radius-sm)',
                 background: isOpen ? C.deep : 'transparent',
               }}
             >

@@ -248,6 +248,8 @@
    * signals the button isn't actionable yet (waiting for both fields to fill,
    * or a submit is already in flight). It was `opacity: 0.5`; the palette has
    * one disabled look now and an opacity is not it. */
+  background: var(--disabled-fill);
+  border-color: var(--border);
   color: var(--text-disabled);
   cursor: not-allowed;
 }

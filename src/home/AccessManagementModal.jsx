@@ -432,7 +432,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
 
           <div style={{ padding: '12px 16px', borderTop: `1px solid ${C.rule}`, background: C.deep, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: 11, color: C.muted, letterSpacing: 0, fontWeight: 600 }}>
-              {members.length} member{members.length === 1 ? '' : 's'} · {emailPending.length} pending · {activeLinks.length} link{activeLinks.length === 1 ? '' : 's'}
+              {members.length} member{members.length === 1 ? '' : 's'} · {emailPending.length} pending · {activeLinks.length} share link{activeLinks.length === 1 ? '' : 's'}
             </span>
             <button onClick={onClose} className="hub-btn hub-btn--primary">Done</button>
           </div>
