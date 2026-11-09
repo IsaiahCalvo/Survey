@@ -177,6 +177,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Hold Shift while drawing a rectangle or ellipse for a square or circle',
     stage: 'beta',
   }),
+  'phone-mark-more': Object.freeze({
+    label: 'Phone: a More button on the picked-mark bar opens the full mark menu',
+    stage: 'beta',
+  }),
   'poly-back-step': Object.freeze({
     label: 'Backspace or Undo while placing a polygon or polyline takes the last point off',
     stage: 'beta',
