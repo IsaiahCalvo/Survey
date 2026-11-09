@@ -92,7 +92,9 @@ import { canToolGrabSelection, isSelectFamilyTool, isSelectionGestureActive } fr
 import { liftedMoveIndices as liftedMoveIndicesFor, liftTranslate } from '../utils/dragLift.js';
 import { createMarkWrapperCache, mapMarkWrappers, markWrapperIsLive } from '../utils/markWrapperCache.js';
 import { classifySelectionGrabTarget, isPageCalloutSelected, pageSelectionMarkGroups, resolvePagePress } from '../utils/toolPressRouting.js';
-import { dropStashedSelection, peekStashedSelection, stashPageSelection } from '../utils/pageSelectionPresence.js';
+import {
+  clearOtherPageSelections, dropStashedSelection, onOtherPageClear, peekStashedSelection, stashPageSelection,
+} from '../utils/pageSelectionPresence.js';
 import { useSelectionGrabHandoff } from '../hooks/useSelectionGrabHandoff.js';
 import { useRotateHandleClick } from '../hooks/useRotateHandleClick.js';
 import { useSelectionMoveCursor } from '../hooks/useSelectionMoveCursor.js';
@@ -1317,9 +1319,21 @@ const SVGAnnotationLayerBody = memo(({
     setSelectedSurveyMarkerId(null);
     if (isPageCalloutSelected(callouts, selectedCalloutIds, pageNumber)) onSelectedCalloutIdsChange?.(new Set());
   };
+  // A plain click on empty space on another page drops this page's pick
+  // (pageSelectionPresence.clearOtherPageSelections).
+  const clearForOtherPageRef = useRef(null);
+  clearForOtherPageRef.current = () => {
+    if (!pageHasSelection && !isPageCalloutSelected(callouts, selectedCalloutIds, pageNumber)) return;
+    clearPageSelection();
+  };
+  useEffect(() => onOtherPageClear((fromPage, fromDocument) => {
+    if (fromPage === pageNumber) return;
+    if (fromDocument && documentId && fromDocument !== documentId) return;
+    clearForOtherPageRef.current?.();
+  }), [pageNumber, documentId]);
   const applyPressFallback = (press) => {
     if (!press) return;
-    if (press.click === 'deselect') { clearPageSelection(); return; }
+    if (press.click === 'deselect') { clearPageSelection(); clearOtherPageSelections(pageNumber, documentId); return; }
     if (press.click !== 'select' && press.click !== 'add') return;
     const add = press.click === 'add';
     noteSelectionPick(press.calloutId != null ? `c:${press.calloutId}` : `a:${press.index}`, press);

@@ -8,6 +8,7 @@
  * Phase 9 Plan 02: Drag-to-move, resize-by-handle, rotation.
  * Phase 9 Plan 03: Multi-select group ops (group-move, group-delete), double-click edit trigger.
  */
+import { clearOtherPageSelections } from '../utils/pageSelectionPresence.js';
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, startTransition } from 'react';
 import { flushSync } from 'react-dom';
 import { screenToSVG, normalizeAngle, getInverseScale, inverseScaleFromWidth, clampInverseScale } from '../utils/svgTransformMath';
@@ -4660,6 +4661,7 @@ export function useSVGInteraction({
           deselectAll();
           onSelectedCalloutIdsChange?.(new Set());
           clearSelectedMarkers();
+          clearOtherPageSelections(pageNumber, documentId);
         }
         return;
       }
@@ -4734,6 +4736,7 @@ export function useSVGInteraction({
           deselectAll();
           if (onSelectedCalloutIdsChange) onSelectedCalloutIdsChange(new Set());
           clearSelectedMarkers();
+          clearOtherPageSelections(pageNumber, documentId);
         }
         return;
       }
