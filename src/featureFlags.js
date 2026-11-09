@@ -148,6 +148,11 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Live team sync with Google Sheets: phones, web and desktop write to the sheet',
     stage: 'beta',
   }),
+  // Drawboard Projects trial audit (2026-11-09): more measure tools.
+  'measure-depth': Object.freeze({
+    label: 'Measure: Polylength, Wall area and Volume (area or outline x a depth)',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

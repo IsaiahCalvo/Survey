@@ -84,10 +84,13 @@ import SurveyEntityBar from './components/SurveyEntityBar';
 import SurveyTemplateMenu from './components/SurveyTemplateMenu';
 import Icon from './Icons';
 import MeasureScaleDialog from './components/MeasureScaleDialog';
+import MeasureDepthDialog from './components/MeasureDepthDialog';
 import {
+  DEPTH_MEASURE_KINDS,
   MEASURE_SCALES_META_KEY,
-  POLYGON_MEASURE_KINDS,
   applyPageScale,
+  loadMeasureDepth,
+  rememberMeasureDepth,
   measureBaseTool,
   metaScaleForPage,
   nextMeasureScaleMeta,
@@ -3161,6 +3164,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   useEffect(() => {
     if (measureMode && activeTool !== measureBaseTool(measureMode)) setMeasureMode(null);
   }, [activeTool, measureMode]);
+  // Nightly 'measure-depth' (Drawboard Projects trial audit 2026-11-09):
+  // Polylength, Wall area and Volume. Picking Wall area or Volume (desktop
+  // menu or phone rail) asks for the depth first; it is remembered on this
+  // screen and stamped on each new measurement.
+  const [measureDepthEnabled] = useState(() => isFeatureOn('measure-depth'));
+  const [measureDepth, setMeasureDepth] = useState(() => loadMeasureDepth());
+  const [measureDepthDialog, setMeasureDepthDialog] = useState(null);
+  const prevMeasureModeRef = useRef(null);
+  useEffect(() => {
+    const prev = prevMeasureModeRef.current;
+    prevMeasureModeRef.current = measureMode;
+    if (measureMode && measureMode !== prev && DEPTH_MEASURE_KINDS.includes(measureMode)) {
+      setMeasureDepthDialog({ kind: measureMode });
+    }
+  }, [measureMode]);
   // Select-family mode for annotation gestures. PDF text keeps its existing
   // activeTool='text-select' path, so this state can grow without changing it.
   const [selectionMode, setSelectionMode] = useState(loadSelectMode);
@@ -37369,6 +37387,24 @@ ${pageBlocks}
           note before Submit. Lives here so it renders above every floating
           UI including the context menu below. */}
       <SaveLogBanner />
+      {measureDepthDialog && (
+        <MeasureDepthDialog
+          kind={measureDepthDialog.kind}
+          initialDepth={measureDepth}
+          scale={pageScaleFromObjects(annotationsByPageRef.current?.[pageNum]?.objects)
+            || metaScaleForPage(measureScaleMeta, pageNum)}
+          onApply={(depth) => {
+            setMeasureDepth(depth);
+            rememberMeasureDepth(depth);
+            setMeasureDepthDialog(null);
+          }}
+          onCancel={() => {
+            setMeasureDepthDialog(null);
+            setMeasureMode(null);
+            setActiveTool('pan');
+          }}
+        />
+      )}
       {measureScaleDialog && (
         <MeasureScaleDialog
           pageNumber={measureScaleDialog.pageNumber}
@@ -38719,6 +38755,7 @@ ${pageBlocks}
                                   onRequestEditMode={getSvgLayerPageHandlers(pageNumber).onRequestEditMode}
                                   activeTool={activeTool}
                                   measureMode={measureMode}
+                                  measureDepth={measureDepth}
                                   measureScale={metaScaleForPage(measureScaleMeta, pageNumber)}
                                   onMeasureCalibrate={handleMeasureCalibrateLine}
                                   // UX 2026-09-15 (Drawboard parity — Pan is a selection
@@ -39852,8 +39889,13 @@ ${pageBlocks}
                     // Length / Area / Page scale (calibrate or preset).
                     const measureItems = [
                       { key: 'length', label: 'Length', iconName: 'measureLength' },
+                      ...(measureDepthEnabled ? [{ key: 'polylength', label: 'Polylength', iconName: 'polyline' }] : []),
                       { key: 'area', label: 'Area', iconName: 'measureArea' },
                       { key: 'perimeter', label: 'Perimeter', iconName: 'measurePerimeter' },
+                      ...(measureDepthEnabled ? [
+                        { key: 'wallArea', label: 'Wall area', iconName: 'measurePerimeter' },
+                        { key: 'volume', label: 'Volume', iconName: 'measureArea' },
+                      ] : []),
                       { key: 'scale', label: 'Page scale…', iconName: 'measureScale' },
                     ];
                     const pressed = !!measureMode || !!measureScaleDialog;
@@ -39917,7 +39959,7 @@ ${pageBlocks}
                                   style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 40, justifyContent: 'flex-start', padding: '0 10px' }}
                                   onClick={(e) => {
                                     pick(m.key);
-                                    if (POLYGON_MEASURE_KINDS.includes(m.key)) releaseFocusForDraftTool(e.currentTarget);
+                                    if (m.key !== 'scale' && measureBaseTool(m.key) !== 'line') releaseFocusForDraftTool(e.currentTarget);
                                   }}
                                 >
                                   <Icon name={m.iconName} size={CHROME_GLYPH} />
