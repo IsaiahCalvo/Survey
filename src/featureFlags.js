@@ -30,8 +30,8 @@
 export const FEATURE_FLAGS = Object.freeze({
   // 2026-11-09 (owner: "get this onto production"): counter-list,
   // grid-settings, spline-polyline, export-modes, pinned-tools, layers,
-  // marker-tracking, document-versions, survey-report and microsoft-sign-in
-  // moved from beta to rollout after their /flags rows were turned on, so
+  // marker-tracking, document-versions, survey-report, guest-links and
+  // microsoft-sign-in moved from beta to rollout after their /flags rows were turned on, so
   // surveytool.app follows /flags for them.
   // On surveytool.app since 2026-11-09 (owner: "let's deploy it", with a
   // "Beta" tag under its tool icon).
@@ -145,7 +145,7 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'guest-links': Object.freeze({
     label: 'Guest links: open one document without an account, as viewer or editor, until a set time',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   // The app's Google Sheets (and later Microsoft 365) live sync panel; the
   // sheet-sync function also lets flag admins and Nightly testers link.
