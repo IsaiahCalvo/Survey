@@ -55,9 +55,9 @@ test('the report CSV: one row per item, its status and issues, safe in a spreads
   const rows = csv.slice(1).trim().split('\r\n');
   assert.equal(rows[0], SURVEY_REPORT_CSV_HEADER.map((h) => `"${h}"`).join(','));
   assert.deepEqual(rows.slice(1), [
-    '"Extinguishers","\'=FE-1","Partly done",1,2,""',
-    '"Extinguishers","FE ""3""","Not started",0,2,""',
-    '"Extinguishers","FE-2","Done",2,2,"Tag: N"',
+    '"Extinguishers","\'=FE-1","Partly done",1,2,"","",""',
+    '"Extinguishers","FE ""3""","Not started",0,2,"","",""',
+    '"Extinguishers","FE-2","Done",2,2,"Tag: N","",""',
   ]);
   assert.equal(surveyReportCsvFileName(template), 'Fire Life report.csv');
 });
