@@ -15,7 +15,8 @@ import Icon from '../Icons';
 import { emitTextSearchDiag } from '../utils/textSearchDiag';
 import { useTooltip } from '../components/Tooltip';
 import { ensureTextLayerStyles } from '../components/PdfjsTextLayer';
-import { buildSearchSnippet, needsTextItemSeparator } from '../utils/searchMatchNavigation';
+import { buildSearchSnippet } from '../utils/searchMatchNavigation';
+import { loadSearchPageData, readSearchTextAhead } from '../utils/pdfSearchText.js';
 import './searchTextPanel.css';
 
 // UX (owner 2026-09-23: "When I type something in, I should see related things
@@ -161,14 +162,15 @@ const createSearchTextMeasureLayer = (viewport) => {
 const cleanupTextLayerMeasurement = (pageData) => {
   const measurement = pageData?.textLayerMeasurement;
   if (!measurement) return;
-  try {
-    measurement.task?.cancel?.();
-  } catch {
-    // The task may already be complete.
+  for (const layer of measurement.layers || []) {
+    try {
+      layer.task?.cancel?.();
+    } catch {
+      // The task may already be complete.
+    }
+    layer.container?.remove?.();
   }
-  measurement.container?.remove?.();
   pageData.textLayerMeasurement = null;
-  pageData.textLayerMeasurementPromise = null;
 };
 
 const cleanupTextLayerMeasurements = (cache) => {
@@ -588,69 +590,100 @@ const refineTextRectWithRenderedInk = ({
   }
 };
 
-const ensureTextLayerMeasurement = async (pageData) => {
-  if (!pageData?.textContent || !pageData?.viewport || typeof document === 'undefined') {
-    return null;
-  }
-  if (pageData.textLayerMeasurement) {
-    return pageData.textLayerMeasurement;
-  }
-  if (pageData.textLayerMeasurementPromise) {
-    return pageData.textLayerMeasurementPromise;
-  }
-  if (typeof pdfjsLib.TextLayer !== 'function') {
-    return null;
-  }
-
-  pageData.textLayerMeasurementPromise = (async () => {
+// Speed (2026-11-09): the search measured a match by laying out the page's
+// WHOLE text layer off screen (pdf.js TextLayer: one canvas measureText per
+// text run, with a font switch each time). A drawing sheet has thousands of
+// runs, so a search spent ~19 of its 20 s in measureText (99-sheet set, 10
+// matches). A run's box depends only on that run, its font style and the
+// page viewport, so only the runs a match touches are laid out now; the rest
+// of the page never is. Runs are laid out for many pages at once with one
+// wait for fonts and layout.
+const ensureTextItemMeasurementsForPages = async (requests) => {
+  if (typeof document === 'undefined' || typeof pdfjsLib.TextLayer !== 'function') return;
+  const rendering = [];
+  for (const { pageData, itemIndices } of requests) {
+    if (!pageData?.textContent || !pageData?.viewport) continue;
+    const measurement = pageData.textLayerMeasurement || (pageData.textLayerMeasurement = { items: new Map(), layers: [], pending: new Map() });
+    const missing = [];
+    const waits = [];
+    for (const index of new Set(itemIndices)) {
+      if (measurement.items.has(index)) continue;
+      if (measurement.pending.has(index)) { waits.push(measurement.pending.get(index)); continue; }
+      if (typeof pageData.items?.[index]?.str !== 'string') continue;
+      missing.push(index);
+    }
+    rendering.push(...waits);
+    if (!missing.length) continue;
     const container = createSearchTextMeasureLayer(pageData.viewport);
-    if (!container) return null;
-
+    if (!container) continue;
     const task = new pdfjsLib.TextLayer({
-      textContentSource: pageData.textContent,
+      textContentSource: {
+        items: missing.map((index) => pageData.items[index]),
+        styles: pageData.styles,
+        lang: pageData.textContent.lang
+      },
       container,
       viewport: pageData.viewport
     });
-
-    try {
-      await withSearchTextMeasurementTimeout(task.render());
+    const layer = { container, task };
+    measurement.layers.push(layer);
+    const done = withSearchTextMeasurementTimeout(task.render()).then(() => {
       const textDivs = Array.from(task.textDivs || []);
       normalizeSearchTextMeasurementDivStyles(textDivs);
-      await waitForSearchTextFonts();
-      await waitForSearchTextLayout();
-      pageData.textLayerMeasurement = {
-        container,
-        task,
-        textDivs,
-        textContentItemsStr: Array.from(task.textContentItemsStr || [])
-      };
-      return pageData.textLayerMeasurement;
-    } catch (error) {
+      missing.forEach((index, at) => {
+        if (textDivs[at]) measurement.items.set(index, textDivs[at]);
+      });
+    }, (error) => {
       task.cancel?.();
       container.remove();
-      pageData.textLayerMeasurement = null;
-      pageData.textLayerMeasurementPromise = null;
+      measurement.layers = measurement.layers.filter((entry) => entry !== layer);
       throw error;
-    }
-  })();
+    }).finally(() => {
+      missing.forEach((index) => measurement.pending.delete(index));
+    });
+    const settled = done.then(() => undefined, () => undefined);
+    missing.forEach((index) => measurement.pending.set(index, settled));
+    rendering.push(done);
+  }
+  if (!rendering.length) return;
+  const outcomes = await Promise.allSettled(rendering);
+  await waitForSearchTextFonts();
+  await waitForSearchTextLayout();
+  const failure = outcomes.find((outcome) => outcome.status === 'rejected');
+  if (failure && outcomes.every((outcome) => outcome.status === 'rejected')) throw failure.reason;
+};
 
-  return pageData.textLayerMeasurementPromise;
+const matchItemIndices = (pageData, matchStart, matchLength) => {
+  const matchEnd = matchStart + matchLength;
+  const indices = [];
+  for (const rangeInfo of pageData?.ranges || []) {
+    if (rangeInfo.end <= matchStart) continue;
+    if (rangeInfo.start >= matchEnd) break;
+    indices.push(rangeInfo.itemIndex);
+  }
+  return indices;
 };
 
 const buildTextLayerRectanglesForMatch = async (pageData, matchStart, matchLength, pageNumber) => {
-  let measurement = null;
   try {
-    measurement = await ensureTextLayerMeasurement(pageData);
+    await ensureTextItemMeasurementsForPages([{ pageData, itemIndices: matchItemIndices(pageData, matchStart, matchLength) }]);
   } catch (error) {
     console.warn('[SearchTextPanel] Text-layer measurement unavailable; using metric bounds fallback:', error);
     return [];
   }
-  if (!measurement?.container || !Array.isArray(measurement.textDivs)) {
+  const measurement = pageData.textLayerMeasurement;
+  if (!measurement?.items?.size) {
     return [];
   }
 
   const matchEnd = matchStart + matchLength;
-  const containerRect = measurement.container.getBoundingClientRect();
+  const containerRects = new Map();
+  const containerRectFor = (textDiv) => {
+    const container = textDiv.parentElement;
+    if (!container) return null;
+    if (!containerRects.has(container)) containerRects.set(container, container.getBoundingClientRect());
+    return containerRects.get(container);
+  };
   const rectangles = [];
   const pageImageEntry = getRenderedPageImageCanvas(getPageImageHost(pageNumber));
   const selectionRects = buildRectanglesForMatch(pageData, matchStart, matchLength);
@@ -660,9 +693,10 @@ const buildTextLayerRectanglesForMatch = async (pageData, matchStart, matchLengt
     if (rangeInfo.end <= matchStart) continue;
     if (rangeInfo.start >= matchEnd) break;
 
-    const textDiv = measurement.textDivs[rangeInfo.textDivIndex];
+    const textDiv = measurement.items.get(rangeInfo.itemIndex);
     const textNode = getTextNodeForMeasurementDiv(textDiv);
-    if (!textNode) continue;
+    const containerRect = textNode ? containerRectFor(textDiv) : null;
+    if (!textNode || !containerRect) continue;
 
     const overlapStart = Math.max(rangeInfo.start, matchStart);
     const overlapEnd = Math.min(rangeInfo.end, matchEnd);
@@ -1324,108 +1358,20 @@ const SearchTextPanel = ({
     };
   }, [focusRequestToken, isActive, selectOnFocus]);
 
-  // Load page text data with caching
+  // Page text is read once per open document and shared (utils/pdfSearchText).
+  // The viewer starts reading it ahead a moment after the document opens.
   const loadPageData = useCallback(async (pageNumber) => {
     if (!pdfDoc) return null;
-
-    // Check cache first
-    if (pageDataCacheRef.current.has(pageNumber)) {
-      return pageDataCacheRef.current.get(pageNumber);
-    }
-
-    try {
-      const page = await pdfDoc.getPage(pageNumber);
-      const textContent = await page.getTextContent();
-      const viewport = page.getViewport({ scale: 1 });
-
-      let fullText = '';
-      const ranges = [];
-      let textDivIndex = 0;
-      let previousItem = null;
-      let pendingLineBreak = false;
-
-      (textContent.items || []).forEach((item, index) => {
-        if (typeof item?.str !== 'string') return;
-        const str = item.str || '';
-        const currentTextDivIndex = textDivIndex;
-        textDivIndex += 1;
-        if (!str) {
-          if (item.hasEOL) pendingLineBreak = true;
-          return;
-        }
-
-        // Separate labels that pdf.js hands over as neighbouring items with no
-        // space between them (common on drawings). The space sits OUTSIDE every
-        // range, so match → rectangle mapping is unchanged.
-        if (previousItem && (
-          (pendingLineBreak && !/\s$/.test(fullText) && !/^\s/.test(str)) ||
-          needsTextItemSeparator(previousItem, item)
-        )) {
-          fullText += ' ';
-        }
-        pendingLineBreak = Boolean(item.hasEOL);
-        previousItem = item;
-
-        const start = fullText.length;
-        fullText += str;
-        ranges.push({
-          start,
-          end: start + str.length,
-          itemIndex: index,
-          textDivIndex: currentTextDivIndex
-        });
-      });
-
-      const data = {
-        text: fullText,
-        textContent,
-        items: textContent.items || [],
-        styles: textContent.styles || {},
-        ranges,
-        viewport,
-        viewportTransform: viewport.transform,
-        textLayerMeasurement: null,
-        textLayerMeasurementPromise: null
-      };
-
-      // Cache the result
-      pageDataCacheRef.current.set(pageNumber, data);
-      return data;
-    } catch (error) {
-      console.error(`Error loading page ${pageNumber} text data:`, error);
-      return null;
-    }
+    const data = await loadSearchPageData(pdfDoc, pageNumber);
+    if (data) pageDataCacheRef.current.set(pageNumber, data);
+    return data;
   }, [pdfDoc]);
 
-  // Pre-cache pages in background
+  // Read the rest ahead too (no-op for pages already read or being read).
   useEffect(() => {
-    if (!pdfDoc) return;
-
-    let cancelled = false;
-
-    const preCachePages = async () => {
-      const batchSize = 5;
-      for (let i = 1; i <= numPages; i += batchSize) {
-        if (cancelled) break;
-        const batch = [];
-        for (let j = i; j < Math.min(i + batchSize, numPages + 1); j++) {
-          if (!pageDataCacheRef.current.has(j)) {
-            batch.push(loadPageData(j));
-          }
-        }
-        if (batch.length > 0) {
-          await Promise.all(batch);
-          await new Promise(resolve => setTimeout(resolve, 10));
-        }
-      }
-    };
-
-    const timer = setTimeout(preCachePages, 500);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [pdfDoc, numPages, loadPageData]);
+    if (!pdfDoc) return undefined;
+    return readSearchTextAhead(pdfDoc, numPages, { delayMs: 300 });
+  }, [pdfDoc, numPages]);
 
   // Optimized search function
   const performSearch = useCallback(async (query) => {
@@ -1502,8 +1448,39 @@ const SearchTextPanel = ({
       }
     }
 
+    // Lay out the text runs that matches touch for a group of pages at once
+    // (one wait for fonts and layout per group, not per page). The first
+    // group is small so the first rows show at once.
+    let measuredThrough = 0;
+    const measureAhead = async (fromPage) => {
+      const groupSize = fromPage === 1 ? 4 : 16;
+      const lastPage = Math.min(numPages, fromPage + groupSize - 1);
+      const requests = [];
+      for (let page = fromPage; page <= lastPage; page += 1) {
+        if (searchIdRef.current !== searchId) return;
+        if (nativeMatchesByPage?.get(page)?.length) continue;
+        const data = await loadPageData(page);
+        if (!data?.text) continue;
+        const text = data.text.toLowerCase();
+        const itemIndices = [];
+        for (let at = text.indexOf(normalizedQuery); at !== -1; at = text.indexOf(normalizedQuery, at + 1)) {
+          itemIndices.push(...matchItemIndices(data, at, normalizedQuery.length));
+        }
+        if (itemIndices.length) requests.push({ pageData: data, itemIndices });
+      }
+      measuredThrough = lastPage;
+      try {
+        await ensureTextItemMeasurementsForPages(requests);
+      } catch {
+        // Each match falls back to its own measurement or the metric estimate.
+      }
+    };
+
     try {
       for (let pageNumber = 1; pageNumber <= numPages; pageNumber++) {
+        if (searchIdRef.current !== searchId) return results;
+
+        if (pageNumber > measuredThrough) await measureAhead(pageNumber);
         if (searchIdRef.current !== searchId) return results;
 
         const pageData = await loadPageData(pageNumber);
