@@ -25,7 +25,8 @@ import { boxWorldBounds, markerIdsByGap } from '../utils/surveyMarkerFamily.js';
 import { isOnHiddenLayer, stampNewObjectsOnLayer } from '../utils/layers.js';
 import { cloneElement, memo, useId, useMemo, useEffect, useLayoutEffect, useRef, useState, useCallback, useSyncExternalStore } from 'react';
 import { createPortal, flushSync } from 'react-dom';
-import { POLYLINE_CURVE_SET_EVENT, polySplineStep, setPolylineCurve, splineSpanMidpoint } from '../utils/polySpline.js';
+import { POLYLINE_CURVE_SET_EVENT, polySplineStep, setPolylineCurve, splineSpanMidpoint, splineSpans } from '../utils/polySpline.js';
+import useShiftHeld from '../hooks/useShiftHeld.js';
 import { usePolylineCurve } from '../hooks/usePolylineCurve.js';
 import { canRemovePolyVertex, cloudPolyEdgeReach, insertPolyVertex, insertVertexOnNearestEdge, createPolyEdgePressGate, polyEdgeDebugEnabled, polyEdgeTouchStartMayArm, polyEdgeHitAtClient, polyVertexMenuLayout, removePolyVertex } from '../utils/polyVertices.js';
 import { contextMenuInputOf, isTouchMenuInput } from '../utils/touchLongPress.js';
@@ -504,13 +505,13 @@ const hoverGlowStrokeInset = (obj) => {
 const EMPTY_SURVEY_MARKER_IDS = new Set();
 
 import {
-  POLYGON_MEASURE_KINDS,
   buildMeasureLabel,
   layoutMeasureLabel,
   measureLineEndpoints,
   measureScaleBar,
   pageScaleFromObjects,
   stampMeasure,
+  isPolyMeasureFor,
 } from '../utils/measure/measureScale.js';
 import { useTooltip } from './Tooltip';
 
@@ -832,6 +833,8 @@ const SVGAnnotationLayerBody = memo(({
   // (or, for 'calibrate', hands the drawn line to onMeasureCalibrate).
   measureMode = null,
   measureScale = null,
+  // Depth (page scale units) stamped on a Wall area / Volume measurement.
+  measureDepth = null,
   onMeasureCalibrate,
   // w53 (2026-09-28) — Survey Markers in the one annotation family.
   // isSurveyMarkerFamilyMember(id): true for a SAVED marker (one still being
@@ -1915,6 +1918,11 @@ const SVGAnnotationLayerBody = memo(({
     return true;
   }, [annotations, onSaveAnnotations]);
   const selectedPolyIndex = selectedIds.size === 1 ? Array.from(selectedIds)[0] : null;
+  // Curve handles (owner 2026-11-09, as in Takeoff): with one curved
+  // polyline picked, holding Shift shows each span's two handles to bend it.
+  const curveHandlesShiftHeld = useShiftHeld(
+    selectedPolyIndex != null && polySplineStep(annotations?.objects?.[selectedPolyIndex]) > 0,
+  );
   // The toolbar's Curve switch on a picked polyline (Nightly). Every page
   // hears it; only the page holding the one picked polyline acts.
   useEffect(() => {
@@ -2907,8 +2915,8 @@ const SVGAnnotationLayerBody = memo(({
       curve: polylineCurve,
     });
     if (!builtJson) return false;
-    const rawJson = (tool === 'polygon' && POLYGON_MEASURE_KINDS.includes(measureMode))
-      ? stampMeasure(builtJson, measureMode, effectiveMeasureScale)
+    const rawJson = isPolyMeasureFor(tool, measureMode)
+      ? stampMeasure(builtJson, measureMode, effectiveMeasureScale, { depth: measureDepth })
       : builtJson;
 
     const json = stampAnnotationCreationIdentity(rawJson, { authorId: viewerId });
@@ -2932,7 +2940,7 @@ const SVGAnnotationLayerBody = memo(({
     });
     return true;
   }, [
-    effectiveMeasureScale, measureMode,
+    effectiveMeasureScale, measureMode, measureDepth,
     activeRegionId, activeTool, cloudIntensity, fillColor, fillOpacity, isRegionOverlayEnabled,
     lineBorderStyle, onSaveAnnotations, pageNumber, polylineCurve, selectAnnotation, selectedModuleId,
     selectedSpaceId, spaces, strokeColor, strokeOpacity, strokeWidth, viewerId,
@@ -8168,11 +8176,11 @@ const SVGAnnotationLayerBody = memo(({
           x2: shapeCreation.current.x - (shapeCreation.start.x + shapeCreation.current.x) / 2,
           y2: shapeCreation.current.y - (shapeCreation.start.y + shapeCreation.current.y) / 2,
         }, 'length', null), measureMode === 'calibrate' ? null : effectiveMeasureScale), 'measure-draft-length', clampInverseScale(inverseScale))}
-      {POLYGON_MEASURE_KINDS.includes(measureMode) && polyDraft && polyDraft.tool === 'polygon' && polyDraft.points.length >= 2
+      {polyDraft && isPolyMeasureFor(polyDraft.tool, measureMode) && polyDraft.points.length >= (polyDraft.tool === 'polyline' ? 1 : 2)
         && renderMeasureLabel(buildMeasureLabel(stampMeasure({
-          type: 'polygon',
+          type: polyDraft.tool,
           points: polyDraft.preview ? [...polyDraft.points, polyDraft.preview] : polyDraft.points,
-        }, measureMode, null), effectiveMeasureScale), `measure-draft-${measureMode}`, clampInverseScale(inverseScale))}
+        }, measureMode, null, { depth: measureDepth }), effectiveMeasureScale), `measure-draft-${measureMode}`, clampInverseScale(inverseScale))}
       {measureMode && measureMode !== 'calibrate' && effectiveMeasureScale
         && renderMeasureScaleBar(effectiveMeasureScale, height, clampInverseScale(inverseScale))}
       {polyDraft && polyDraft.points.length > 0 && (() => {
@@ -9227,6 +9235,54 @@ const SVGAnnotationLayerBody = memo(({
                   <path d={`M ${x - vHandleR * 0.35} ${y} H ${x + vHandleR * 0.35} M ${x} ${y - vHandleR * 0.35} V ${y + vHandleR * 0.35}`} stroke={HANDLE_RING} strokeWidth={vHandleIs} pointerEvents="none" />
                 </g>;
               })}
+              {/* Curve handles: Shift on a picked curve shows each span's two
+                  handles, dashed back to its corners (Takeoff). They stay
+                  while one is dragged, even if Shift is let go. */}
+              {splineStep > 0 && !modifierMoveActive && (dragState?.current?.active && dragState.current.curveHandle
+                ? dragState.current.annotationIndex === selectedIndex
+                : curveHandlesShiftHeld && interactionState === 'idle'
+                  && document.body.getAttribute('data-readonly') !== 'true' && !isUserLocked(obj)) && (() => {
+                const toWorld = (p) => {
+                  const sx = (p.x - pPathOffsetX) * pScaleX - pRotCenterX;
+                  const sy = (p.y - pPathOffsetY) * pScaleY - pRotCenterY;
+                  return { x: pLeft + pRotCenterX + sx * cosP - sy * sinP, y: pTop + pRotCenterY + sx * sinP + sy * cosP };
+                };
+                const spans = splineSpans(obj.points.map((p) => ({ x: Number(p?.x) || 0, y: Number(p?.y) || 0 })), splineStep);
+                const ctrlR = vHandleR * 0.8;
+                return (
+                  <g data-curve-handles="true">
+                    {spans.map((span, si) => [['c1', span.from], ['c2', span.to]].map(([which, anchor]) => {
+                      const a = toWorld(anchor);
+                      const c = toWorld(span[which]);
+                      const id = `curve-handle-${si}-${which}`;
+                      return (
+                        <g key={id}>
+                          <line x1={a.x} y1={a.y} x2={c.x} y2={c.y} stroke="#4a90e2" strokeWidth={1} strokeDasharray="4 4" vectorEffect="non-scaling-stroke" opacity={0.8} pointerEvents="none" />
+                          {vTouchHitR > 0 && (
+                            <circle data-handle-hit-pad={id} cx={c.x} cy={c.y} r={vTouchHitR * 0.8} fill="transparent" stroke="none" style={{ pointerEvents: 'auto', cursor: GRAB_HANDLE_CURSOR }} onPointerDown={(e) => { if (e.button === 2) return; e.stopPropagation(); handleHandlePointerDown(e, id); }} />
+                          )}
+                          {/* A curve handle bends the line; it is not a resize
+                              grabber, so it carries the hit-pad mark that every
+                              press router already treats as "on a handle". */}
+                          <circle
+                            data-handle-hit-pad={id}
+                            data-curve-handle={`${si}-${which}`}
+                            cx={c.x}
+                            cy={c.y}
+                            r={ctrlR}
+                            fill="#4a90e2"
+                            stroke="#ffffff"
+                            strokeWidth={1.5}
+                            vectorEffect="non-scaling-stroke"
+                            style={vHandleStyle}
+                            onPointerDown={(e) => { if (e.button === 2) return; e.stopPropagation(); handleHandlePointerDown(e, id); }}
+                          />
+                        </g>
+                      );
+                    }))}
+                  </g>
+                );
+              })()}
               {/* w58: Cmd / Ctrl held -> corner grabbers hide (move instead). */}
               {!modifierMoveActive && worldPoints.map((wp, i) => isCorner(i) && (
                 <g key={`vertex-${i}`}>

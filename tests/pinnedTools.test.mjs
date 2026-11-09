@@ -300,3 +300,50 @@ test('pinned tools: the compact choice is saved with the dock', () => {
   assert.equal(createPinnedToolsStore({ storage }).getState().compact, true);
   assert.equal(sanitizePinnedToolsState({ compact: 'yes' }).compact, false);
 });
+
+// ---- Survey mode's own pins (owner 2026-11-09) ----
+test('Survey mode keeps its own pins, started from the markup pins the first time', async () => {
+  const { createPinnedToolsStore, makePin } = await import('../src/pinnedTools/pinnedTools.js');
+  const mem = new Map();
+  const storage = { getItem: (k) => mem.get(k) ?? null, setItem: (k, v) => mem.set(k, v) };
+  const store = createPinnedToolsStore({ storage, key: 'k' });
+  store.addPin(makePin('pen', { color: '#ff0000', width: 2 }));
+  store.addPin(makePin('rect', { color: '#0000ff', width: 3 }));
+  assert.equal(store.getState().pinSet, 'markup');
+  const markupIds = store.getState().pins.map((p) => p.id);
+
+  store.setPinSet('survey');
+  const survey = store.getState();
+  assert.equal(survey.pinSet, 'survey');
+  assert.deepEqual(survey.pins.map((p) => p.kind), ['pen', 'rect']);
+  // New ids: arming a survey pin is not arming the markup one.
+  survey.pins.forEach((p) => assert.ok(!markupIds.includes(p.id)));
+
+  store.removePin(survey.pins[0].id);
+  store.addPin(makePin('highlighter', { color: '#ffff00', width: 8 }));
+  assert.deepEqual(store.getState().pins.map((p) => p.kind), ['rect', 'highlighter']);
+
+  store.setPinSet('markup');
+  assert.deepEqual(store.getState().pins.map((p) => p.kind), ['pen', 'rect']);
+  store.setPlacement('left');
+
+  // Saved: both sets and the shared dock settings survive a reload.
+  const again = createPinnedToolsStore({ storage, key: 'k' });
+  assert.deepEqual(again.getState().pins.map((p) => p.kind), ['pen', 'rect']);
+  assert.equal(again.getState().placement, 'left');
+  again.setPinSet('survey');
+  assert.deepEqual(again.getState().pins.map((p) => p.kind), ['rect', 'highlighter']);
+  assert.equal(again.getState().placement, 'left');
+});
+
+test('an old save with no survey set still loads; the state object is stable between changes', async () => {
+  const { createPinnedToolsStore, sanitizePinnedToolsState } = await import('../src/pinnedTools/pinnedTools.js');
+  assert.equal(sanitizePinnedToolsState({ pins: [] }).surveyPins, null);
+  const storage = { getItem: () => JSON.stringify({ visible: true, placement: 'bottom', pins: [{ id: 'a', kind: 'pen', style: {} }] }), setItem: () => {} };
+  const store = createPinnedToolsStore({ storage, key: 'k' });
+  const first = store.getState();
+  assert.equal(store.getState(), first);
+  assert.equal(first.pins.length, 1);
+  store.setPinSet('markup');
+  assert.equal(store.getState(), first);
+});

@@ -1,5 +1,6 @@
 /**
- * Measure tools (Length / Area / Perimeter) + page scale.
+ * Measure tools (Length / Area / Perimeter, and on Nightly Polylength,
+ * Wall area and Volume) + page scale.
  *
  * A scale is { ptPerUnit, unit, label }: how many PDF points one real unit
  * spans on the sheet. The math (real length -> points-per-unit, unit table)
@@ -19,12 +20,12 @@
 import { computeLineBboxCenter } from '../svgBoundingBox.js';
 
 export const MEASURE_UNITS = Object.freeze({
-  in: { inches: 1, label: 'in', area: 'sq in' },
-  ft: { inches: 12, label: 'ft', area: 'sq ft' },
-  yd: { inches: 36, label: 'yd', area: 'sq yd' },
-  mm: { inches: 1 / 25.4, label: 'mm', area: 'mm²' },
-  cm: { inches: 1 / 2.54, label: 'cm', area: 'cm²' },
-  m: { inches: 1 / 0.0254, label: 'm', area: 'm²' },
+  in: { inches: 1, label: 'in', area: 'sq in', volume: 'cu in' },
+  ft: { inches: 12, label: 'ft', area: 'sq ft', volume: 'cu ft' },
+  yd: { inches: 36, label: 'yd', area: 'sq yd', volume: 'cu yd' },
+  mm: { inches: 1 / 25.4, label: 'mm', area: 'mm²', volume: 'mm³' },
+  cm: { inches: 1 / 2.54, label: 'cm', area: 'cm²', volume: 'cm³' },
+  m: { inches: 1 / 0.0254, label: 'm', area: 'm²', volume: 'm³' },
 });
 
 const PT_PER_INCH = 72;
@@ -44,13 +45,54 @@ export const MEASURE_PRESETS = Object.freeze([
   { id: '1:100', label: '1:100', paperIn: (1 / 25.4) / 100 * 1000, unit: 'm' },
 ]);
 
-export const MEASURE_KINDS = Object.freeze(['length', 'area', 'perimeter']);
+// Drawboard Projects trial audit (2026-11-09, Nightly flag 'measure-depth'):
+// Polylength (an open run of segments), and Wall area / Volume, which take a
+// depth: wall area = perimeter x depth, volume = area x depth.
+export const MEASURE_KINDS = Object.freeze(['length', 'area', 'perimeter', 'polylength', 'wallArea', 'volume']);
 
-// Measure kinds drawn with the Polygon tool; the rest ride the Line tool.
-export const POLYGON_MEASURE_KINDS = Object.freeze(['area', 'perimeter']);
+// Measure kinds drawn with the Polygon tool; Polylength rides the Polyline
+// tool; the rest ride the Line tool.
+export const POLYGON_MEASURE_KINDS = Object.freeze(['area', 'perimeter', 'wallArea', 'volume']);
+export const POLYLINE_MEASURE_KINDS = Object.freeze(['polylength']);
+
+// Kinds that need a depth (in the page scale's unit) before they draw.
+export const DEPTH_MEASURE_KINDS = Object.freeze(['wallArea', 'volume']);
 
 export function measureBaseTool(kind) {
-  return POLYGON_MEASURE_KINDS.includes(kind) ? 'polygon' : 'line';
+  if (POLYGON_MEASURE_KINDS.includes(kind)) return 'polygon';
+  if (POLYLINE_MEASURE_KINDS.includes(kind)) return 'polyline';
+  return 'line';
+}
+
+/** Whether a measure kind commits on this base tool ('polygon' / 'polyline'). */
+export function isPolyMeasureFor(tool, kind) {
+  return (tool === 'polygon' || tool === 'polyline') && MEASURE_KINDS.includes(kind) && measureBaseTool(kind) === tool;
+}
+
+/** A usable depth: a finite number above zero, else null. */
+export function normalizeMeasureDepth(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+export const MEASURE_DEPTH_STORAGE_KEY = 'survey:measure-depth';
+
+export function loadMeasureDepth(storage = globalThis.localStorage) {
+  try {
+    return normalizeMeasureDepth(storage?.getItem(MEASURE_DEPTH_STORAGE_KEY)) || 1;
+  } catch {
+    return 1;
+  }
+}
+
+export function rememberMeasureDepth(depth, storage = globalThis.localStorage) {
+  const d = normalizeMeasureDepth(depth);
+  if (!d) return;
+  try {
+    storage?.setItem(MEASURE_DEPTH_STORAGE_KEY, String(d));
+  } catch {
+    // Private browsing can refuse storage; the depth still applies this session.
+  }
 }
 
 export const MEASURE_SCALES_META_KEY = 'measureScales';
@@ -98,6 +140,54 @@ export function formatMeasureArea(areaPt2, scale) {
   if (!isValidMeasureScale(scale)) return `${formatNumber(areaPt2 / (PT_PER_INCH * PT_PER_INCH))} sq in (no scale)`;
   const real = areaPt2 / (scale.ptPerUnit * scale.ptPerUnit);
   return `${real.toFixed(2)} ${MEASURE_UNITS[scale.unit].area}`;
+}
+
+/**
+ * Wall area: an outline of `perimeterPt` page points times `depth` real units
+ * (the page scale's unit). Without a scale the outline is read in paper inches
+ * and the depth in inches, and the text says so.
+ */
+export function formatMeasureWallArea(perimeterPt, depth, scale) {
+  const d = normalizeMeasureDepth(depth) || 0;
+  if (!isValidMeasureScale(scale)) return `${formatNumber((perimeterPt / PT_PER_INCH) * d)} sq in (no scale)`;
+  const real = (perimeterPt / scale.ptPerUnit) * d;
+  return `${real.toFixed(2)} ${MEASURE_UNITS[scale.unit].area}`;
+}
+
+/** Volume: an area of `areaPt2` square page points times `depth` real units. */
+export function formatMeasureVolume(areaPt2, depth, scale) {
+  const d = normalizeMeasureDepth(depth) || 0;
+  if (!isValidMeasureScale(scale)) return `${formatNumber((areaPt2 / (PT_PER_INCH * PT_PER_INCH)) * d)} cu in (no scale)`;
+  const real = (areaPt2 / (scale.ptPerUnit * scale.ptPerUnit)) * d;
+  return `${real.toFixed(2)} ${MEASURE_UNITS[scale.unit].volume}`;
+}
+
+/** Length of an open run of points (no closing edge). */
+export function polylineLengthPt(points) {
+  if (!Array.isArray(points) || points.length < 2) return 0;
+  let sum = 0;
+  for (let i = 1; i < points.length; i += 1) {
+    sum += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+  }
+  return sum;
+}
+
+/** The point halfway along an open run, where its label sits. */
+export function polylineMidpoint(points) {
+  if (!Array.isArray(points) || points.length === 0) return null;
+  const half = polylineLengthPt(points) / 2;
+  let walked = 0;
+  for (let i = 1; i < points.length; i += 1) {
+    const a = points[i - 1];
+    const b = points[i];
+    const seg = Math.hypot(b.x - a.x, b.y - a.y);
+    if (seg > 0 && walked + seg >= half) {
+      const t = (half - walked) / seg;
+      return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+    }
+    walked += seg;
+  }
+  return { ...points[0] };
 }
 
 /** Length of a closed polygon's outline, closing edge included. */
@@ -244,8 +334,23 @@ export function buildMeasureLabel(obj, scale) {
     };
   }
   const world = measurePolygonWorldPoints(obj);
+  if (kind === 'polylength') {
+    if (world.length < 2) return null;
+    const lengthPt = polylineLengthPt(world);
+    const at = polylineMidpoint(world);
+    return { kind, text: formatMeasureLength(lengthPt, scale), x: at.x, y: at.y, angle: 0, value: lengthPt };
+  }
   if (world.length < 3) return null;
   const c = polygonCentroid(world);
+  const depth = normalizeMeasureDepth(obj?.data?.measure?.depth);
+  if (kind === 'wallArea') {
+    const perimeterPt = polygonPerimeterPt(world);
+    return { kind, text: formatMeasureWallArea(perimeterPt, depth, scale), x: c.x, y: c.y, angle: 0, value: perimeterPt * (depth || 0) };
+  }
+  if (kind === 'volume') {
+    const areaPt2 = polygonAreaPt(world);
+    return { kind, text: formatMeasureVolume(areaPt2, depth, scale), x: c.x, y: c.y, angle: 0, value: areaPt2 * (depth || 0) };
+  }
   if (kind === 'perimeter') {
     const perimeterPt = polygonPerimeterPt(world);
     return { kind, text: formatMeasureLength(perimeterPt, scale), x: c.x, y: c.y, angle: 0, value: perimeterPt };
@@ -342,11 +447,16 @@ export function pageScaleFromObjects(objects) {
   return null;
 }
 
-/** Stamp measure metadata on a freshly built line / polygon commit JSON. */
-export function stampMeasure(json, kind, scale) {
+/**
+ * Stamp measure metadata on a freshly built line / polygon / polyline commit
+ * JSON. Wall area and Volume also keep their depth (page scale units).
+ */
+export function stampMeasure(json, kind, scale, { depth = null } = {}) {
   if (!json || !MEASURE_KINDS.includes(kind)) return json;
   const measure = { kind };
   if (isValidMeasureScale(scale)) measure.scale = { ...scale };
+  const d = normalizeMeasureDepth(depth);
+  if (d && DEPTH_MEASURE_KINDS.includes(kind)) measure.depth = d;
   return { ...json, data: { ...(json.data || {}), measure } };
 }
 

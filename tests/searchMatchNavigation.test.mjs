@@ -14,6 +14,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   SEARCH_MAX_AUTO_SCALE,
+  SEARCH_MAX_FIT_MULTIPLE,
+  SEARCH_READABLE_TEXT_PX,
   buildSearchSnippet,
   measureCenterOffset,
   needsTextItemSeparator,
@@ -25,11 +27,14 @@ const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 
 // ---------------------------------------------------------------- zoom choice
 
-test('a jump zooms in until the matched line reads at ~18px', () => {
+test('a jump zooms in only until the matched line reads at ~14px (owner 2026-11-09: zoom less)', () => {
   const scale = resolveReadableSearchScale({
     currentScale: 0.89, lineHeight: 8, matchWidth: 17, visibleWidth: 960,
   });
-  assert.equal(Math.round(scale * 100) / 100, 2.25);
+  assert.equal(Math.round(scale * 100) / 100, 1.75);
+  assert.equal(SEARCH_READABLE_TEXT_PX, 14);
+  assert.ok(SEARCH_MAX_AUTO_SCALE <= 3);
+  assert.ok(SEARCH_MAX_FIT_MULTIPLE <= 2.5);
 });
 
 test('a jump never zooms out', () => {
@@ -54,6 +59,22 @@ test('a jump is capped for tiny text', () => {
   assert.equal(resolveReadableSearchScale({
     currentScale: 0.3, lineHeight: 1, matchWidth: 3, visibleWidth: 960,
   }), SEARCH_MAX_AUTO_SCALE);
+});
+
+test('stepping to a hit in bigger text zooms back out, but never past the zoom you started at', () => {
+  // On 2.4x for tiny drawing text; the next hit is 20pt text.
+  const scale = resolveReadableSearchScale({
+    currentScale: 2.4, lineHeight: 20, matchWidth: 80, visibleWidth: 960, floorScale: 0.96,
+  });
+  assert.equal(scale, 0.96);
+  const mid = resolveReadableSearchScale({
+    currentScale: 2.4, lineHeight: 10, matchWidth: 40, visibleWidth: 960, floorScale: 0.96,
+  });
+  assert.ok(Math.abs(mid - 1.4) < 1e-9, `${mid}`);
+  // A floor above the zoom you are at is ignored (it never zooms out by itself).
+  assert.equal(resolveReadableSearchScale({
+    currentScale: 1, lineHeight: 40, matchWidth: 120, visibleWidth: 960, floorScale: 2,
+  }), 1);
 });
 
 test('no line height → no zoom change', () => {
@@ -187,18 +208,38 @@ test('picking a result on the phone closes the sheet; the query survives it', ()
   assert.match(panel, /const lastQueryByDocument = new Map\(\);/);
 });
 
-test('the viewer jump zooms through the normal zoom path and centres in the visible area', () => {
+test('the viewer jump animates through focusPageRect and centres in the visible area', () => {
   const start = viewer.indexOf('const navigateToMatch = useCallback(');
-  const jump = viewer.slice(start, viewer.indexOf('// First, navigate to the page', start));
-  assert.match(jump, /setScaleWithViewportPreservation\(targetScale, \{ preserveCenter: false, mode: ZOOM_MODES\.MANUAL \}\)/);
+  const jump = viewer.slice(start, viewer.indexOf('// Prevent recursive navigation', start));
+  // Owner 2026-11-09: scroll / pan + zoom there instead of snapping.
+  assert.match(jump, /viewer\.focusPageRect\(pageNumber, bounds, \{\s*animate: true,/);
+  assert.match(jump, /scale: targetScale, maxFitMultiple: SEARCH_MAX_FIT_MULTIPLE/);
+  assert.match(jump, /keepZoom: true/);
   assert.match(jump, /resolveReadableSearchScale\(/);
   assert.match(jump, /resolveViewerOcclusionInsets\(/);
   assert.match(jump, /data-viewer-occluder/);
   assert.match(jump, /topInset: insets\.top/);
   assert.match(jump, /bottomInset: insets\.bottom/);
+  // No more instant zoom-then-measure-then-centre.
+  assert.doesNotMatch(jump, /setScaleWithViewportPreservation\(targetScale/);
   // Newest jump wins — no "busy, ignore the click" guard on the pdf.js path.
   assert.match(jump, /textMatchNavTokenRef\.current = navToken/);
-  assert.ok(jump.indexOf('if (usePdfjsRenderer)') < jump.indexOf('isNavigatingToMatchRef.current'));
+  assert.doesNotMatch(jump, /isNavigatingToMatchRef\.current/);
+});
+
+test('the hit you are on is a different colour from the other hits and does not pulse', () => {
+  const layer = read('../src/components/SearchHighlightLayer.jsx');
+  const other = layer.match(/const OTHER_LOOK = Object\.freeze\(\{[\s\S]*?\}\);/)?.[0] || '';
+  const active = layer.match(/const ACTIVE_LOOK = Object\.freeze\(\{[\s\S]*?\}\);/)?.[0] || '';
+  const fillOf = (block) => block.match(/fill: 'rgba\((\d+), (\d+), (\d+)/)?.slice(1).map(Number);
+  const [or, og, ob] = fillOf(other);
+  const [ar, ag, ab] = fillOf(active);
+  // Yellow (red ≈ green) for the others, orange (green well under red) for the current one.
+  assert.ok(Math.abs(or - og) < 30 && ob < 100, 'other hits are yellow');
+  assert.ok(ar - ag > 90 && ab < 60, 'current hit is orange');
+  assert.match(active, /stroke: 'rgba\(/);
+  assert.match(other, /stroke: 'none'/);
+  assert.doesNotMatch(layer, /@keyframes|active-pulse|activeGlowOnly/);
 });
 
 test('clearing the search gives back the zoom the first jump replaced', () => {

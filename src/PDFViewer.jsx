@@ -84,10 +84,13 @@ import SurveyEntityBar from './components/SurveyEntityBar';
 import SurveyTemplateMenu from './components/SurveyTemplateMenu';
 import Icon from './Icons';
 import MeasureScaleDialog from './components/MeasureScaleDialog';
+import MeasureDepthDialog from './components/MeasureDepthDialog';
 import {
+  DEPTH_MEASURE_KINDS,
   MEASURE_SCALES_META_KEY,
-  POLYGON_MEASURE_KINDS,
   applyPageScale,
+  loadMeasureDepth,
+  rememberMeasureDepth,
   measureBaseTool,
   metaScaleForPage,
   nextMeasureScaleMeta,
@@ -115,6 +118,7 @@ import SearchHighlightLayer from './components/SearchHighlightLayer';
 import {
   SEARCH_READABLE_TEXT_PX,
   SEARCH_READABLE_TEXT_PX_PHONE,
+  SEARCH_MAX_FIT_MULTIPLE,
   measureCenterOffset,
   resolveReadableSearchScale,
   resolveViewerOcclusionInsets
@@ -625,10 +629,13 @@ function readWorkbookRegistration(workbook) {
 // timer there meant that dismissing an editor and tapping another annotation
 // inside the same 600ms selected nothing. See panQuickClickSuppressedRef.
 const PAN_EDIT_ENTRY_RESTORE_MS = 600;
-// Locate on page (owner note 2026-10-26, item 28): the marker takes about half
-// of the view you can see, never zoomed in past 800%.
-const SURVEY_LOCATE_FILL = 0.5;
-const SURVEY_LOCATE_MAX_SCALE = 8;
+// Locate on page. Owner 2026-11-09: "Those can zoom in, but not to that
+// degree" (it was half the view, up to 800%). The marker now takes about a
+// fifth of the view you can see, and the zoom stops at 3x the zoom that fits
+// the whole sheet, so you still see where on the sheet it is. That is a little
+// closer than a text search hit lands (searchMatchNavigation.js), never more.
+const SURVEY_LOCATE_FILL = 0.2;
+const SURVEY_LOCATE_MAX_FIT_MULTIPLE = 3;
 
 // w37: erase Undo/Redo visibility check with the viewer's JSON equality.
 const eraseTransitionChangedScreen = (result, before, meta) => (
@@ -3160,6 +3167,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   useEffect(() => {
     if (measureMode && activeTool !== measureBaseTool(measureMode)) setMeasureMode(null);
   }, [activeTool, measureMode]);
+  // Nightly 'measure-depth' (Drawboard Projects trial audit 2026-11-09):
+  // Polylength, Wall area and Volume. Picking Wall area or Volume (desktop
+  // menu or phone rail) asks for the depth first; it is remembered on this
+  // screen and stamped on each new measurement.
+  const [measureDepthEnabled] = useState(() => isFeatureOn('measure-depth'));
+  const [measureDepth, setMeasureDepth] = useState(() => loadMeasureDepth());
+  const [measureDepthDialog, setMeasureDepthDialog] = useState(null);
+  const prevMeasureModeRef = useRef(null);
+  useEffect(() => {
+    const prev = prevMeasureModeRef.current;
+    prevMeasureModeRef.current = measureMode;
+    if (measureMode && measureMode !== prev && DEPTH_MEASURE_KINDS.includes(measureMode)) {
+      setMeasureDepthDialog({ kind: measureMode });
+    }
+  }, [measureMode]);
   // Select-family mode for annotation gestures. PDF text keeps its existing
   // activeTool='text-select' path, so this state can grow without changing it.
   const [selectionMode, setSelectionMode] = useState(loadSelectMode);
@@ -3563,6 +3585,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const handleRenameCounterSeriesRef = useRef(null);
   const handleRecolorCounterSeriesRef = useRef(null);
   const handleReorderCounterSeriesRef = useRef(null);
+  const handleSetCounterSeriesStartRef = useRef(null);
   const counterSeriesActiveRef = useRef(isActive);
   counterSeriesActiveRef.current = isActive;
   const commitTextMarkupDocumentTransactionRef = useRef(null);
@@ -3601,6 +3624,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   ), []);
   const handleRecolorCounterSeriesFromToolbar = useCallback((seriesId, paint) => (
     handleRecolorCounterSeriesRef.current?.(seriesId, paint) || { ok: false, reason: 'unavailable' }
+  ), []);
+  const handleSetCounterSeriesStartFromToolbar = useCallback((seriesId, value) => (
+    handleSetCounterSeriesStartRef.current?.(seriesId, value) || { ok: false, reason: 'unavailable' }
   ), []);
   const handleReorderCounterSeriesFromToolbar = useCallback((orderedIds) => (
     handleReorderCounterSeriesRef.current?.(orderedIds) || { ok: false, reason: 'unavailable' }
@@ -9057,13 +9083,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       && annotation?.data?.type === 'counter';
     const seriesId = annotation?.data?.seriesId;
     if (!isCounter || !seriesId) return;
-    const series = getCounterSeriesList(annotationsByPageRef.current)
-      .find((item) => item.seriesId === seriesId);
-    // Historical counter rule: the start is configurable only before a
-    // second pin makes the sequence established.
-    if ((series?.count || 0) !== 1) return;
+    // Any count size now (owner 2026-11-09): the whole count renumbers from
+    // the new start (handleSetCounterSeriesStart).
     const parsed = Math.max(1, Math.floor(Number(value) || 1));
-    handleCounterGroupUpdateRef.current?.(seriesId, { seriesStart: parsed });
+    const result = handleSetCounterSeriesStartRef.current?.(seriesId, parsed);
+    if (result?.ok === false) return;
     setSelectedToolbarAnnotation((prev) => (prev
       ? {
           ...prev,
@@ -9072,7 +9096,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
             data: {
               ...(prev.annotation?.data || {}),
               seriesStart: parsed,
-              displayNumber: parsed,
+              // Its place in the count stays; only the start moves.
+              displayNumber: parsed + Math.max(0, (Number(prev.annotation?.data?.displayNumber) || 1) - (Number(prev.annotation?.data?.seriesStart) || 1)),
             },
           },
         }
@@ -25870,15 +25895,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
 
     if (usePdfjsRenderer) {
       // UX (owner 2026-09-23: "when I click, I should be directly brought to
-      // it, zoomed in and centered on whatever it is that it found"):
-      //   1. bring the match's page on screen;
-      //   2. zoom in (never out) to a comfortable reading size for that line of
-      //      text — through the normal viewer zoom (setScaleWithViewportPreservation
-      //      → magnificationModule.zoomTo), so the zoomGeneration signal and the
-      //      pdf.js commit lifecycle run exactly as for a toolbar zoom;
-      //   3. once the page has re-rendered at the new size, centre the match in
-      //      the part of the viewer you can see (beside the open side panel on
-      //      desktop; above the Search sheet on the phone while it stays open).
+      // it, zoomed in and centered on whatever it is that it found"; owner
+      // 2026-11-09: animate there and zoom less): one call to the viewer's
+      // focusPageRect with `animate`, which
+      //   1. scrolls to the match's page when it is not on screen;
+      //   2. slides the match to the middle of the part of the viewer you can
+      //      see (beside the open side panel on desktop; above the Search sheet
+      //      on the phone while it stays open) while it zooms to a comfortable
+      //      reading size for that line of text (never out past the zoom you
+      //      had before the first jump). The zoom goes
+      //      through the viewer's own glide, so the zoomGeneration signal fires
+      //      at its start and the page re-renders once, when it lands.
       // Every jump takes a token, so clicking or stepping quickly never queues
       // stale jumps — the newest one wins and older ones stop where they are.
       const navToken = textMatchNavTokenRef.current + 1;
@@ -25915,38 +25942,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         const pageSize = pageSizesRef.current?.[pageNumber] || {};
         if (!(pageRect.width > 0) || !(Number(pageSize.width) > 0)) return null;
         return { pageRect, renderedScale: pageRect.width / Number(pageSize.width) };
-      };
-      const centerNow = (behavior = 'auto', insets = resolveInsets()) => centerPageBoundsInViewer(pageNumber, bounds, {
-        behavior,
-        retryBehavior: 'auto',
-        maxRetries: 18,
-        retryDelay: 60,
-        navigateFirst: true,
-        leftInset: insets.left,
-        rightInset: insets.right,
-        topInset: insets.top,
-        bottomInset: insets.bottom
-      });
-      const waitFor = (predicate, onReady, { maxWaitMs = 1500 } = {}) => {
-        const startedAt = Date.now();
-        const tick = () => {
-          if (!isCurrentJump()) return;
-          const value = predicate();
-          if (value || Date.now() - startedAt >= maxWaitMs) {
-            onReady(value);
-            return;
-          }
-          // A frame, or 16ms when frames are throttled (unfocused window).
-          let stepped = false;
-          const step = () => {
-            if (stepped) return;
-            stepped = true;
-            tick();
-          };
-          window.requestAnimationFrame(step);
-          window.setTimeout(step, 16);
-        };
-        tick();
       };
       const reportLanding = (phase, extra = {}) => {
         if (typeof document === 'undefined') return;
@@ -25989,79 +25984,67 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         pdfDocumentKey: pdfSearchDocumentKey
       });
 
-      // Step 1: get the page on screen (it may be virtualized away).
-      if (!readPageGeometry()) {
+      const viewer = pdfjsViewerRef.current;
+      if (typeof viewer?.focusPageRect !== 'function') {
         goToPage(pageNumber, { bypassActiveSpace: true });
+        return;
       }
-      waitFor(readPageGeometry, (geometry) => {
-        const currentScale = Math.max(0.01, geometry?.renderedScale || Number(scaleRef.current) || Number(scale) || 1);
-        const container = containerRef.current;
-        const insets = resolveInsets();
-        const visibleWidth = Math.max(80, (Number(container?.clientWidth) || 0) - insets.left - insets.right);
-        const lineHeight = Number(match.lineHeight) > 0
-          ? Number(match.lineHeight)
-          : Math.max(1, Number(bounds.height) || 0);
-        const targetScale = resolveReadableSearchScale({
-          currentScale,
-          lineHeight,
-          matchWidth: Number(bounds.width) || 0,
-          visibleWidth,
-          targetTextPx: mobileMode ? SEARCH_READABLE_TEXT_PX_PHONE : SEARCH_READABLE_TEXT_PX
-        });
-        const shouldZoom = targetScale > currentScale * 1.02;
-
-        if (!shouldZoom) {
-          // Same zoom: glide when the match is close by, jump when it is far.
-          const pageRect = geometry?.pageRect;
-          const containerRect = container?.getBoundingClientRect?.();
-          const nearby = pageRect && containerRect &&
-            pageRect.bottom > containerRect.top && pageRect.top < containerRect.bottom;
-          centerNow(nearby ? 'smooth' : 'auto', insets);
-          window.setTimeout(() => {
-            if (isCurrentJump()) reportLanding('center', { zoomed: false, fromScale: currentScale });
-          }, nearby ? 480 : 60);
-          return;
-        }
-
-        if (searchZoomLevelRef.current === null) {
-          searchZoomLevelRef.current = currentScale;
-        }
-        // Put the match in the middle of the scroller first, so the zoom —
-        // which holds the scroller's centre still — grows the page around it.
-        centerNow('auto', { left: 0, right: 0, top: 0, bottom: 0 });
+      // Owner 2026-11-09: "it's just snapping to that line item, but I want it
+      // to be an animation. If it's on different pages, it should scroll to
+      // it ... It shouldn't zoom in so much ... you want to read the
+      // surrounding paragraphs." The viewer scrolls to the hit's page when it
+      // is not on screen, then slides the hit to the middle of the part you
+      // can see while it zooms in a little (viewerFlyTo.js); the zoom only
+      // goes as far as a comfortable reading size (resolveReadableSearchScale).
+      const container = containerRef.current;
+      const insets = resolveInsets();
+      const currentScale = Math.max(0.01, Number(scaleRef.current) || Number(scale) || 1);
+      const visibleWidth = Math.max(80, (Number(container?.clientWidth) || 0) - insets.left - insets.right);
+      const lineHeight = Number(match.lineHeight) > 0
+        ? Number(match.lineHeight)
+        : Math.max(1, Number(bounds.height) || 0);
+      const targetScale = resolveReadableSearchScale({
+        currentScale,
+        lineHeight,
+        matchWidth: Number(bounds.width) || 0,
+        visibleWidth,
+        targetTextPx: mobileMode ? SEARCH_READABLE_TEXT_PX_PHONE : SEARCH_READABLE_TEXT_PX,
+        // Back out toward (never past) the zoom you had before the first jump.
+        floorScale: searchZoomLevelRef.current ?? currentScale
+      });
+      const shouldZoom = Math.abs(targetScale / currentScale - 1) > 0.02;
+      if (shouldZoom && searchZoomLevelRef.current === null) {
+        searchZoomLevelRef.current = currentScale;
+      }
+      if (shouldZoom) {
         // MANUAL, like pressing zoom-in: a still-armed fit-to-page must not
         // snap the view back out a moment later (it did on the phone when the
         // Search sheet closed).
-        setScaleWithViewportPreservation(targetScale, { preserveCenter: false, mode: ZOOM_MODES.MANUAL });
-        // Step 3: wait for the committed zoom to reach the page, then centre
-        // in the visible area and check once more a frame later (the viewer
-        // re-anchors its scroll position in a layout pass after the commit).
-        waitFor(() => {
-          const next = readPageGeometry();
-          return next && Math.abs(next.renderedScale - targetScale) / targetScale < 0.015 ? next : null;
-        }, () => {
-          centerNow('auto');
-          window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
-            if (!isCurrentJump()) return;
-            centerPageBoundsInViewer(pageNumber, bounds, {
-              behavior: 'auto',
-              navigateFirst: false,
-              maxRetries: 4,
-              skipIfClosePx: 2,
-              ...(() => {
-                const finalInsets = resolveInsets();
-                return {
-                  leftInset: finalInsets.left,
-                  rightInset: finalInsets.right,
-                  topInset: finalInsets.top,
-                  bottomInset: finalInsets.bottom
-                };
-              })()
-            });
-            reportLanding('zoom-center', { zoomed: true, fromScale: currentScale, targetScale });
-          }));
-        });
-      });
+        cancelInitialFitPageRef.current?.();
+        zoomModeRef.current = ZOOM_MODES.MANUAL;
+      }
+      const focused = viewer.focusPageRect(pageNumber, bounds, {
+        animate: true,
+        ...(shouldZoom ? { scale: targetScale, maxFitMultiple: SEARCH_MAX_FIT_MULTIPLE } : { keepZoom: true }),
+        leftInset: insets.left,
+        rightInset: insets.right,
+        topInset: insets.top,
+        bottomInset: insets.bottom
+      }) === true;
+      if (!focused) {
+        goToPage(pageNumber, { bypassActiveSpace: true });
+        return;
+      }
+      // Diagnostics (and the end-to-end check) read where it came to rest.
+      window.setTimeout(() => {
+        if (isCurrentJump()) {
+          reportLanding(shouldZoom ? 'zoom-center' : 'center', {
+            zoomed: shouldZoom,
+            fromScale: currentScale,
+            ...(shouldZoom ? { targetScale } : {})
+          });
+        }
+      }, 1200);
       return;
     }
 
@@ -27139,6 +27122,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       onRenameCounterSeries: handleRenameCounterSeriesFromToolbar,
       onRecolorCounterSeries: handleRecolorCounterSeriesFromToolbar,
       onReorderCounterSeries: handleReorderCounterSeriesFromToolbar,
+      onSetCounterSeriesStart: handleSetCounterSeriesStartFromToolbar,
       selectedCounterSeriesId,
       selectedCounterSeriesSize: selectedCounterSeries?.count || 0,
       selectedCounterSeriesStart: selectedCounterSeriesId
@@ -27282,6 +27266,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     handleRenameCounterSeriesFromToolbar,
     handleRecolorCounterSeriesFromToolbar,
     handleReorderCounterSeriesFromToolbar,
+    handleSetCounterSeriesStartFromToolbar,
     handleSelectedCounterSeriesStartChange,
     fillColor,
     fillOpacity,
@@ -29359,7 +29344,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     const viewer = pdfjsViewerRef.current;
     if (box && typeof viewer?.focusPageRect === 'function') {
       // Keep the viewer's page state in step (page field, rail), then zoom.
-      if (typeof nav === 'function') {
+      // An animated move (Locate on page) skips the page jump: it scrolls
+      // there itself, and the viewer reports each page it passes.
+      if (typeof nav === 'function' && options.animate !== true) {
         try { nav(page, { fallback: 'nearest', bypassActiveSpace: true }); } catch { /* best-effort */ }
       }
       return viewer.focusPageRect(page, box, options) === true;
@@ -30194,6 +30181,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       appDebug(`[CSeries group-update] seriesId=${seriesId} patch=${JSON.stringify(patch)} -> NO matching pins (no-op)`);
       return;
     }
+    // A new start renumbers the count HERE, so the saved page and its undo
+    // step both hold the final numbers. Left to the save's renumber pass, the
+    // step recorded the old numbers and Undo then found the page changed
+    // under it and did nothing. Every pin of the count is on these pages.
+    if (Object.prototype.hasOwnProperty.call(patch, 'seriesStart')) {
+      const pins = [];
+      updates.forEach((update) => {
+        update.json.objects.forEach((obj, index) => {
+          if (obj?.data?.type === 'counter' && obj.data.seriesId === seriesId) pins.push({ update, index, obj });
+        });
+      });
+      pins.sort((a, b) => (Number(a.obj.data.createdAt) || 0) - (Number(b.obj.data.createdAt) || 0));
+      const start = Math.max(1, Math.floor(Number(patch.seriesStart) || 1));
+      pins.forEach(({ update, index, obj }, i) => {
+        if (obj.data.displayNumber === start + i) return;
+        update.json.objects[index] = { ...obj, data: { ...obj.data, displayNumber: start + i } };
+      });
+    }
     if (updates.length === 1) {
       const [{ pageKey, json }] = updates;
       const numericKey = Number(pageKey);
@@ -30275,6 +30280,26 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     return { ok: true };
   }, [user?.id, documentOwnerId, yjsUndoCtx?.userId]);
   handleRenameCounterSeriesRef.current = handleRenameCounterSeries;
+
+  // A count's start number (owner 2026-11-09: "start it from number 2 ...
+  // renumber everything"): the earliest pin's seriesStart, mirrored on every
+  // pin; the save's renumberCounters then renumbers the whole count. Any count
+  // size (the old rule only let a one-pin count change its start). Same rules
+  // as a rename; one undo step.
+  const handleSetCounterSeriesStart = useCallback((seriesId, value) => {
+    if (!counterSeriesActiveRef.current || !canRestoreFromHistoryRef.current) return { ok: false, reason: 'forbidden' };
+    const seriesStart = Math.floor(Number(value));
+    if (!Number.isFinite(seriesStart) || seriesStart < 1 || seriesStart > 99999) return { ok: false, reason: 'invalid-start' };
+    const series = getCounterSeriesList(annotationsByPageRef.current).find((item) => item.seriesId === seriesId);
+    if (!series) return { ok: false, reason: 'invalid-series' };
+    if (series.start === seriesStart) return { ok: true };
+    const viewerId = yjsUndoCtx?.userId || user?.id || null;
+    const permission = checkCounterSeriesEdit(annotationsByPageRef.current, seriesId, { viewerId, documentOwnerId });
+    if (!permission.ok) return permission;
+    handleCounterGroupUpdateRef.current?.(seriesId, { seriesStart });
+    return { ok: true };
+  }, [user?.id, documentOwnerId, yjsUndoCtx?.userId]);
+  handleSetCounterSeriesStartRef.current = handleSetCounterSeriesStart;
 
   // The counts list (beta 'counter-list', CounterSeriesMenu): recolour a
   // whole count's pin and number from its row. Same rules as a rename.
@@ -31423,19 +31448,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     // Owner note 2026-10-26 (item 28): "it doesn't automatically go to it
     // every single time and center on it ... It should zoom properly to the
     // extents of it as well, and it should do that on the first click."
-    // One synchronous move through the viewer's zoom-to-mark (the same one
-    // History rows use): the page, a zoom that makes the marker about half of
-    // the view you can see (never past 800%, never out past fitting the page),
-    // and the marker centred between the panels and tool strips. It is pure
-    // layout maths, so it does not wait for the page to draw and cannot land
-    // short the way the old measure-and-retry centring did.
+    // One move through the viewer's zoom-to-mark (the same one History rows
+    // use): the page, a zoom that makes the marker about a fifth of the view
+    // you can see (never past 3x the page fit, never out past fitting the
+    // page), and the marker centred between the panels and tool strips. The
+    // target is pure layout maths, so it does not wait for the page to draw
+    // and cannot land short the way the old measure-and-retry centring did.
     const token = surveyLocateTokenRef.current + 1;
     surveyLocateTokenRef.current = token;
     const focus = (insets = {}) => {
       if (surveyLocateTokenRef.current !== token) return;
+      // Owner 2026-11-09: "it should animate to that. It should pan and zoom
+      // to it" - the viewer scrolls to the marker's sheet, then pans and zooms
+      // onto it in one smooth move (viewerFlyTo.js).
       const focused = focusHistoryMark(pageNumber, bounds, {
         fill: SURVEY_LOCATE_FILL,
-        maxScale: SURVEY_LOCATE_MAX_SCALE,
+        maxFitMultiple: SURVEY_LOCATE_MAX_FIT_MULTIPLE,
+        animate: true,
         ...insets,
       });
       if (!focused) goToPage(pageNumber, { bypassActiveSpace: true });
@@ -37397,6 +37426,24 @@ ${pageBlocks}
           note before Submit. Lives here so it renders above every floating
           UI including the context menu below. */}
       <SaveLogBanner />
+      {measureDepthDialog && (
+        <MeasureDepthDialog
+          kind={measureDepthDialog.kind}
+          initialDepth={measureDepth}
+          scale={pageScaleFromObjects(annotationsByPageRef.current?.[pageNum]?.objects)
+            || metaScaleForPage(measureScaleMeta, pageNum)}
+          onApply={(depth) => {
+            setMeasureDepth(depth);
+            rememberMeasureDepth(depth);
+            setMeasureDepthDialog(null);
+          }}
+          onCancel={() => {
+            setMeasureDepthDialog(null);
+            setMeasureMode(null);
+            setActiveTool('pan');
+          }}
+        />
+      )}
       {measureScaleDialog && (
         <MeasureScaleDialog
           pageNumber={measureScaleDialog.pageNumber}
@@ -38187,7 +38234,6 @@ ${pageBlocks}
                               highlights={searchResultsByPage[pageNumber]}
                               activeMatchId={currentMatch?.id}
                               isActiveMatchOnThisPage={currentMatch?.pageNumber === pageNumber}
-                              activeGlowOnly
                               fillContainer
                             />
                           )}
@@ -38748,6 +38794,7 @@ ${pageBlocks}
                                   onRequestEditMode={getSvgLayerPageHandlers(pageNumber).onRequestEditMode}
                                   activeTool={activeTool}
                                   measureMode={measureMode}
+                                  measureDepth={measureDepth}
                                   measureScale={metaScaleForPage(measureScaleMeta, pageNumber)}
                                   onMeasureCalibrate={handleMeasureCalibrateLine}
                                   // UX 2026-09-15 (Drawboard parity — Pan is a selection
@@ -39881,8 +39928,13 @@ ${pageBlocks}
                     // Length / Area / Page scale (calibrate or preset).
                     const measureItems = [
                       { key: 'length', label: 'Length', iconName: 'measureLength' },
+                      ...(measureDepthEnabled ? [{ key: 'polylength', label: 'Polylength', iconName: 'polyline' }] : []),
                       { key: 'area', label: 'Area', iconName: 'measureArea' },
                       { key: 'perimeter', label: 'Perimeter', iconName: 'measurePerimeter' },
+                      ...(measureDepthEnabled ? [
+                        { key: 'wallArea', label: 'Wall area', iconName: 'measurePerimeter' },
+                        { key: 'volume', label: 'Volume', iconName: 'measureArea' },
+                      ] : []),
                       { key: 'scale', label: 'Page scale…', iconName: 'measureScale' },
                     ];
                     const pressed = !!measureMode || !!measureScaleDialog;
@@ -39946,7 +39998,7 @@ ${pageBlocks}
                                   style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 40, justifyContent: 'flex-start', padding: '0 10px' }}
                                   onClick={(e) => {
                                     pick(m.key);
-                                    if (POLYGON_MEASURE_KINDS.includes(m.key)) releaseFocusForDraftTool(e.currentTarget);
+                                    if (m.key !== 'scale' && measureBaseTool(m.key) !== 'line') releaseFocusForDraftTool(e.currentTarget);
                                   }}
                                 >
                                   <Icon name={m.iconName} size={CHROME_GLYPH} />

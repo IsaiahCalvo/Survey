@@ -85,6 +85,7 @@ import { computeDetailTileBox, resolveDetailTileStyle } from '../utils/pdfDetail
 import { LIVE_ZOOM_EVENT } from '../utils/liveZoomEvents.js';
 import { createZoomGlide, retargetZoomGlide, stepZoomGlide } from '../utils/zoomGlide.js';
 import { startPageGlide } from '../utils/pageScrollGlide.js';
+import { FLY_SCROLL_MS, flyDurationMs, flyPanAt, isPointInBand } from '../utils/viewerFlyTo.js';
 import { isLiveFormWidgetTarget } from '../utils/formWidgetPointerTargets.js';
 import { isSelectionGrabPress } from '../hooks/useSelectionGrabHandoff.js';
 import {
@@ -3223,6 +3224,15 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const next = stepZoomGlide(glide, now);
     zoomGlideRef.current = next;
     liveZoomRef.current = next.shown / scaleRef.current;
+    // A jump to a search hit / Survey Marker (focusPageRect `animate`): the
+    // target slides to the middle of the view while the page grows around it.
+    if (next.pan) {
+      const at = flyPanAt(next.pan, now);
+      const g = gestureRef.current;
+      g.currentCursorX = next.done ? next.pan.toX : at.x;
+      g.currentCursorY = next.done ? next.pan.toY : at.y;
+      setLiveGestureFrame((frame) => frame + 1);
+    }
     setLiveZoom(liveZoomRef.current);
     if (!next.done) {
       zoomGlideRafRef.current = requestAnimationFrame((t) => zoomGlideStepRef.current?.(t));
@@ -5241,6 +5251,64 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     }
   }, [tabActive]);
 
+  // ---- jump to a search hit / Survey Marker (owner 2026-11-09) -------------
+  // focusPageRect `animate`: the scroll step's glides (viewerFlyTo.js). A token
+  // per jump, so a newer jump, a pinch or a scroll stops an older one.
+  const flightRef = useRef({ token: 0, glides: [] });
+  const cancelFlight = useCallback(() => {
+    const flight = flightRef.current;
+    flight.token += 1;
+    const glides = flight.glides;
+    flight.glides = [];
+    glides.forEach((glide) => glide?.cancel('cancel'));
+  }, []);
+  // Glide the scroll position to (left, top) on both axes at once; `then` runs
+  // once both land, unless the person (or anything else) took over first.
+  const glideFlight = useCallback((horizontalMaxAt, left, top, screenW, screenH, token, then) => {
+    const el = scrollerRef.current;
+    if (!el || flightRef.current.token !== token) return;
+    const startScale = scaleRef.current;
+    const maxLeft = horizontalMaxAt(startScale);
+    const targets = {
+      left: Math.min(Math.max(0, left), maxLeft),
+      top: Math.min(Math.max(0, top), Math.max(0, el.scrollHeight - el.clientHeight)),
+    };
+    let open = 0;
+    let failed = false;
+    const finish = (reason) => {
+      open -= 1;
+      if (reason !== 'done' && reason !== 'instant') failed = true;
+      if (open > 0) return;
+      detectCurrentPage();
+      if (flightRef.current.token !== token) return;
+      flightRef.current.glides = [];
+      if (failed) { cancelFlight(); return; }
+      then?.();
+    };
+    const axes = ['top', 'left'].filter((axis) => {
+      const now = axis === 'left' ? el.scrollLeft : el.scrollTop;
+      return Math.abs(targets[axis] - now) >= 0.5;
+    });
+    if (!axes.length) { then?.(); return; }
+    open = axes.length;
+    pageGlideRef.current?.cancel('cancel');
+    pageGlideRef.current = null;
+    axes.forEach((axis) => {
+      const controller = startPageGlide({
+        el,
+        to: targets[axis],
+        axis,
+        screen: axis === 'left' ? screenW : screenH,
+        durationMs: FLY_SCROLL_MS,
+        shouldStop: () => Math.abs(scaleRef.current - startScale) > 1e-4
+          || Boolean(zoomGlideRef.current)
+          || Boolean(gestureRef.current),
+        onEnd: finish,
+      });
+      if (controller) flightRef.current.glides.push(controller);
+    });
+  }, [cancelFlight, detectCurrentPage]);
+
   // RULED 2026-09-28 owner: History option A — clicking a History row takes
   // you to the mark: its page, zoomed so the mark fills about 40% of the part
   // of the viewer you can see, centred there (prototype history-A.html
@@ -5266,6 +5334,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const w = Math.max(8, Number(rect.width) || 0);
     const h = Math.max(8, Number(rect.height) || 0);
     if (![x, y, w, h].every(Number.isFinite)) return false;
+    // A newer jump replaces one still moving: an older jump's scroll stops, and
+    // its pan + zoom (or any zoom glide) lands where it is shown, so this one
+    // starts from a laid-out page and can move smoothly too.
+    cancelFlight();
+    if (options.animate === true) zoomGlideFinishRef.current?.();
     cancelPanInertia(false);
     const extra = (key) => Math.max(0, Number(options[key]) || 0);
     const side = {
@@ -5295,15 +5368,103 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const wanted = Math.min((bandW * fill) / w, (bandH * fill) / h);
     const ceiling = Math.min(
       isMobileSurface ? MOBILE_MAX_SCALE : MAX_SCALE,
-      Number(options.maxScale) > 0 ? Number(options.maxScale) : fitScale * 4,
+      Number(options.maxScale) > 0
+        ? Number(options.maxScale)
+        : fitScale * (Number(options.maxFitMultiple) > 0 ? Number(options.maxFitMultiple) : 4),
     );
-    const target = options.keepZoom
-      ? scaleRef.current
-      : Math.max(fitScale, Math.min(wanted, ceiling));
+    // `scale`: the caller already picked the zoom (a search hit reads at a
+    // set text size), held under `maxFitMultiple` x the page fit but never
+    // below the zoom you are at; otherwise the mark fills `fill` of the free
+    // view, between the page fit and the ceiling.
+    let target;
+    if (options.keepZoom) target = scaleRef.current;
+    else if (Number(options.scale) > 0) {
+      target = Number(options.scale);
+      if (Number(options.maxFitMultiple) > 0) {
+        target = Math.min(target, Math.max(scaleRef.current, fitScale * Number(options.maxFitMultiple)));
+      }
+    } else target = Math.max(fitScale, Math.min(wanted, ceiling));
     const cx = x + w / 2;
     const cy = y + h / 2;
     const viewCx = side.left + bandW / 2;
     const viewCy = inset + bandH / 2;
+
+    // Owner 2026-11-09: the jump moves there instead of cutting to it
+    // (viewerFlyTo.js has the rules). A page hidden by an active Space, a zoom
+    // still being laid out or a live pinch takes the instant path below.
+    const canFly = options.animate === true
+      && !prefersReducedMotion()
+      && !d.hidden
+      && !gestureRef.current
+      && !pendingAnchorRef.current;
+    if (canFly) {
+      const maxScale = isMobileSurface ? MOBILE_MAX_SCALE : MAX_SCALE;
+      const minimumScale = getMinimumScaleForLayout(
+        dims,
+        containerHRef.current,
+        layoutMetricsRef.current,
+        floorWidth(containerWRef.current),
+      );
+      const finalScale = Math.min(maxScale, Math.max(minimumScale, target));
+      const token = flightRef.current.token;
+      const isCurrent = () => flightRef.current.token === token;
+      const pointAt = (s) => ({
+        x: getPageLeftAtScale(i, s) + cx * s,
+        y: topAt(i, s) + cy * s,
+      });
+      const band = { left: side.left, top: inset, width: bandW, height: bandH };
+
+      // Step 2: pan + zoom at once, on the live-zoom transform; one re-render
+      // when it lands (commitGesture, through the zoom glide's own landing).
+      const fly = () => {
+        if (!isCurrent()) return;
+        const s0 = scaleRef.current;
+        const p = pointAt(s0);
+        const sx = p.x - el.scrollLeft;
+        const sy = p.y - el.scrollTop;
+        if (Math.abs(finalScale - s0) < 1e-4) {
+          // Same zoom: a plain glide across and down.
+          glideFlight(getHorizontalScrollMax, p.x - viewCx, p.y - viewCy, bandW, bandH, token, null);
+          return;
+        }
+        const now = performance.now();
+        const durationMs = flyDurationMs({
+          fromScale: s0,
+          toScale: finalScale,
+          panPx: Math.hypot(viewCx - sx, viewCy - sy),
+          screenPx: Math.max(bandW, bandH),
+        });
+        panMomentumRef.current?.cancel('zoom');
+        gestureRef.current = {
+          regime: 'glide',
+          originScale: s0,
+          originCursorX: sx,
+          originCursorY: sy,
+          originContentX: p.x,
+          originContentY: p.y,
+          currentCursorX: sx,
+          currentCursorY: sy,
+        };
+        // zoomGeneration contract: signal at zoom START, as every zoom does.
+        cb.current.onZoomPhase?.('gesture-start', {
+          atPct: Math.round(s0 * 100),
+          source: 'imperative',
+        });
+        setZoomInteraction(true);
+        const glide = createZoomGlide({ from: s0, to: finalScale, now, mode: 'tween', durationMs });
+        glide.pan = { fromX: sx, fromY: sy, toX: viewCx, toY: viewCy, t0: now, durationMs };
+        zoomGlideRef.current = glide;
+        scheduleZoomGlideFrame();
+      };
+
+      // Step 1: not on screen → scroll to it first, at the zoom you are at.
+      const p0 = pointAt(scaleRef.current);
+      const onScreen = isPointInBand(p0.x - el.scrollLeft, p0.y - el.scrollTop, band);
+      if (onScreen) fly();
+      else glideFlight(getHorizontalScrollMax, p0.x - viewCx, p0.y - viewCy, bandW, bandH, token, fly);
+      return true;
+    }
+
     const before = scaleRef.current;
     if (Math.abs(target - before) > 1e-4) applyAnchoredScale(target, viewCx, viewCy);
     const s = scaleRef.current;
@@ -5316,7 +5477,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       el.scrollTop = Math.min(Math.max(0, top), Math.max(0, el.scrollHeight - el.clientHeight));
     }
     return true;
-  }, [applyAnchoredScale, cancelPanInertia, getPageLeftAtScale, getHorizontalScrollMax, isMobileSurface]);
+  }, [applyAnchoredScale, cancelFlight, cancelPanInertia, getPageLeftAtScale, getHorizontalScrollMax, glideFlight, isMobileSurface, scheduleZoomGlideFrame, setZoomInteraction]);
 
   // Drawboard canvas audit chunk 6: glide scrollTop to `top` over 250 ms
   // (utils/pageScrollGlide.js has the rules), or point a glide already running

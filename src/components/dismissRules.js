@@ -318,6 +318,9 @@ const onWindowPointerDown = (event) => {
 
 const onWindowKeyDown = (event) => {
   if (event.key !== 'Escape' || event.defaultPrevented) return;
+  // A field inside a popover that handles its own Escape (an inline rename:
+  // Escape drops the edit, the popover stays) marks itself data-own-escape.
+  if (event.target?.closest?.('[data-own-escape]')) return;
   // R5: only the topmost surface — the popover opened last. A surface that
   // owns its own Escape (escape: false) keeps it; nothing under it closes.
   const entry = openPopovers[openPopovers.length - 1];

@@ -1,4 +1,4 @@
-import CounterSeriesMenu from './components/CounterSeriesMenu.jsx';
+import CounterSeriesMenu, { counterSeriesMenuWidth } from './components/CounterSeriesMenu.jsx';
 // AppShell — application root: tab management, auth/entity state, chrome host
 // divs, the top-right zoom/page pill (reads bottomToolbarApi), and the router
 // between Dashboard (home) and PDFViewer (open document).
@@ -1179,6 +1179,8 @@ export default function App({ devPreviewReturnTab = null }) {
     if (!showCounterSeriesMenu || counterSeriesContextMenu) return undefined;
     const onKeyDown = (event) => {
       if (event.key !== 'Escape') return;
+      // An inline rename in the list keeps its Escape (drops the edit only).
+      if (event.target?.closest?.('[data-own-escape]')) return;
       event.preventDefault();
       setShowCounterSeriesMenu(false);
       counterSeriesMenuTriggerRef.current?.focus?.();
@@ -3978,7 +3980,7 @@ export default function App({ devPreviewReturnTab = null }) {
                            smallest thing in the bar. */
                         triggerContent={seriesLabel}
                         width="var(--chrome-field-w-series)"
-                        contentWidth="min(300px, calc(100vw - 24px))"
+                        contentWidth={counterSeriesMenuWidth()}
                         dataMarker="data-counter-series-menu"
                         outsideBoundarySelector="[data-counter-series-context-menu]"
                       >
@@ -4210,10 +4212,10 @@ export default function App({ devPreviewReturnTab = null }) {
                 {bottomToolbarApi.contextTool === 'counter'
                   && bottomToolbarApi.selectedCounterSeriesId
                   && bottomToolbarApi.onSelectedCounterSeriesStartChange && (() => {
-                    const startLocked = bottomToolbarApi.selectedCounterSeriesSize !== 1;
-                    const startTitle = startLocked
-                      ? 'Start number is set after a second counter is added'
-                      : 'Start number';
+                    // Any count size (owner 2026-11-09): a new start renumbers
+                    // every pin in the count.
+                    const startLocked = !(bottomToolbarApi.selectedCounterSeriesSize >= 1);
+                    const startTitle = 'Start number: the whole count renumbers from it';
                     return toolbarSlot('start', () => (
                       <label
                         style={{

@@ -28,11 +28,13 @@
 // migration (see supabase/migrations/20261021030000_feature_flags.sql).
 
 export const FEATURE_FLAGS = Object.freeze({
+  // On surveytool.app since 2026-11-09 (owner: "let's deploy it", with a
+  // "Beta" tag under its tool icon).
   'smart-fill': Object.freeze({
     label: 'Smart fill',
     legacyKey: 'SMART_FILL_BETA',
     env: 'VITE_ENABLE_SMART_FILL',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'survey-agent': Object.freeze({
     label: 'Survey agent',
@@ -144,6 +146,11 @@ export const FEATURE_FLAGS = Object.freeze({
   // sheet-sync function also lets flag admins and Nightly testers link.
   'sheet-team-sync': Object.freeze({
     label: 'Live team sync with Google Sheets: phones, web and desktop write to the sheet',
+    stage: 'beta',
+  }),
+  // Drawboard Projects trial audit (2026-11-09): more measure tools.
+  'measure-depth': Object.freeze({
+    label: 'Measure: Polylength, Wall area and Volume (area or outline x a depth)',
     stage: 'beta',
   }),
 });
