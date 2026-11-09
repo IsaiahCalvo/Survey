@@ -18,6 +18,7 @@ import PageGridToggle, { PageGridGlyph } from './components/PageGridToggle';
 import DocumentVersionsButton, { DocumentVersionsDialogs, useDocumentVersions } from './components/DocumentVersionsButton.jsx';
 import { requestMarkCommentsFocus } from './services/markCommentsFocus.js';
 import { OPEN_VIEWER_SHARE_EVENT } from './utils/viewerShare.js';
+import { HOME_DOWNLOAD_EVENT } from './utils/homeDownload.js';
 import { OPEN_EXPORT_PDF_EVENT } from './utils/exportPdfModes.js';
 import { PageGridMenu } from './components/PageGridSettings';
 import SnappingToggle, { SnappingGlyph, snappingLabel, useSnappingShortcut } from './components/SnappingToggle.jsx';
@@ -1921,20 +1922,43 @@ export default function App({ devPreviewReturnTab = null }) {
     };
     if (!inFront) handleTabClick(tabId);
   };
+  // Download from Home (Nightly 'home-download', utils/homeDownload.js): the
+  // row opens its document; the export waits for that document's viewer. The
+  // pending download names the document, since its tab may not exist yet.
+  useEffect(() => {
+    if (!isFeatureOn('home-download')) return undefined;
+    const onHomeDownload = (event) => {
+      const documentId = event?.detail?.documentId;
+      if (!documentId) return;
+      const openTab = tabsRef.current.find((t) => persistableDocumentId(t) === documentId);
+      pendingTabDownloadRef.current = {
+        documentId,
+        // An already-open document keeps its viewer (and its api) when it is
+        // brought up again; a new one must wait for a fresh api.
+        staleApi: openTab && !openTab.restorePending ? null : bottomToolbarApiRef.current,
+        wasLoaded: Boolean(openTab && !openTab.restorePending),
+        at: Date.now(),
+      };
+    };
+    window.addEventListener(HOME_DOWNLOAD_EVENT, onHomeDownload);
+    return () => window.removeEventListener(HOME_DOWNLOAD_EVENT, onHomeDownload);
+  }, []);
   useEffect(() => {
     const pending = pendingTabDownloadRef.current;
     if (!pending) return;
-    if (Date.now() - pending.at > 30000 || !tabs.some((t) => t.id === pending.tabId)) {
+    const pendingTabId = pending.tabId
+      ?? tabs.find((t) => persistableDocumentId(t) === pending.documentId)?.id;
+    if (Date.now() - pending.at > 30000 || (pending.tabId && !tabs.some((t) => t.id === pending.tabId))) {
       pendingTabDownloadRef.current = null;
       return;
     }
-    if (activeTabId !== pending.tabId || currentView !== 'viewer') return;
+    if (!pendingTabId || activeTabId !== pendingTabId || currentView !== 'viewer') return;
     const api = bottomToolbarApi;
     if (!api || api === pending.staleApi || typeof api.exportAnnotatedPdf !== 'function' || !(api.numPages > 0)) return;
     pendingTabDownloadRef.current = null;
     clearTimeout(tabDownloadTimerRef.current);
     tabDownloadTimerRef.current = setTimeout(() => {
-      if (activeTabIdRef.current !== pending.tabId) return;
+      if (activeTabIdRef.current !== pendingTabId) return;
       bottomToolbarApiRef.current?.exportAnnotatedPdf?.();
     }, pending.wasLoaded ? 0 : 1500);
   }, [bottomToolbarApi, activeTabId, currentView, tabs]);

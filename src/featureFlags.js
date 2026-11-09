@@ -185,6 +185,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Backspace or Undo while placing a polygon or polyline takes the last point off',
     stage: 'beta',
   }),
+  'home-download': Object.freeze({
+    label: 'Download a document, with its marks, from the Home list',
+    stage: 'beta',
+  }),
   'viewer-share': Object.freeze({
     label: 'Share from inside a document: a Share button in the viewer top bar',
     stage: 'beta',
