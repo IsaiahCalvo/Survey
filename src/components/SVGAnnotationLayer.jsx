@@ -466,13 +466,13 @@ const hoverGlowStrokeInset = (obj) => {
 const EMPTY_SURVEY_MARKER_IDS = new Set();
 
 import {
-  POLYGON_MEASURE_KINDS,
   buildMeasureLabel,
   layoutMeasureLabel,
   measureLineEndpoints,
   measureScaleBar,
   pageScaleFromObjects,
   stampMeasure,
+  isPolyMeasureFor,
 } from '../utils/measure/measureScale.js';
 import { useTooltip } from './Tooltip';
 
@@ -794,6 +794,8 @@ const SVGAnnotationLayerBody = memo(({
   // (or, for 'calibrate', hands the drawn line to onMeasureCalibrate).
   measureMode = null,
   measureScale = null,
+  // Depth (page scale units) stamped on a Wall area / Volume measurement.
+  measureDepth = null,
   onMeasureCalibrate,
   // w53 (2026-09-28) — Survey Markers in the one annotation family.
   // isSurveyMarkerFamilyMember(id): true for a SAVED marker (one still being
@@ -2864,8 +2866,8 @@ const SVGAnnotationLayerBody = memo(({
       curve: polylineCurve,
     });
     if (!builtJson) return false;
-    const rawJson = (tool === 'polygon' && POLYGON_MEASURE_KINDS.includes(measureMode))
-      ? stampMeasure(builtJson, measureMode, effectiveMeasureScale)
+    const rawJson = isPolyMeasureFor(tool, measureMode)
+      ? stampMeasure(builtJson, measureMode, effectiveMeasureScale, { depth: measureDepth })
       : builtJson;
 
     const json = stampAnnotationCreationIdentity(rawJson, { authorId: viewerId });
@@ -2889,7 +2891,7 @@ const SVGAnnotationLayerBody = memo(({
     });
     return true;
   }, [
-    effectiveMeasureScale, measureMode,
+    effectiveMeasureScale, measureMode, measureDepth,
     activeRegionId, activeTool, cloudIntensity, fillColor, fillOpacity, isRegionOverlayEnabled,
     lineBorderStyle, onSaveAnnotations, pageNumber, polylineCurve, selectAnnotation, selectedModuleId,
     selectedSpaceId, spaces, strokeColor, strokeOpacity, strokeWidth, viewerId,
@@ -8133,11 +8135,11 @@ const SVGAnnotationLayerBody = memo(({
           x2: shapeCreation.current.x - (shapeCreation.start.x + shapeCreation.current.x) / 2,
           y2: shapeCreation.current.y - (shapeCreation.start.y + shapeCreation.current.y) / 2,
         }, 'length', null), measureMode === 'calibrate' ? null : effectiveMeasureScale), 'measure-draft-length', clampInverseScale(inverseScale))}
-      {POLYGON_MEASURE_KINDS.includes(measureMode) && polyDraft && polyDraft.tool === 'polygon' && polyDraft.points.length >= 2
+      {polyDraft && isPolyMeasureFor(polyDraft.tool, measureMode) && polyDraft.points.length >= (polyDraft.tool === 'polyline' ? 1 : 2)
         && renderMeasureLabel(buildMeasureLabel(stampMeasure({
-          type: 'polygon',
+          type: polyDraft.tool,
           points: polyDraft.preview ? [...polyDraft.points, polyDraft.preview] : polyDraft.points,
-        }, measureMode, null), effectiveMeasureScale), `measure-draft-${measureMode}`, clampInverseScale(inverseScale))}
+        }, measureMode, null, { depth: measureDepth }), effectiveMeasureScale), `measure-draft-${measureMode}`, clampInverseScale(inverseScale))}
       {measureMode && measureMode !== 'calibrate' && effectiveMeasureScale
         && renderMeasureScaleBar(effectiveMeasureScale, height, clampInverseScale(inverseScale))}
       {polyDraft && polyDraft.points.length > 0 && (() => {
