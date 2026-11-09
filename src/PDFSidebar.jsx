@@ -154,6 +154,7 @@ const PANEL_TITLES = {
   layers: 'Layers',
   library: 'Library',
   comments: 'Comments',
+  markups: 'Markups',
 };
 
 const PDFSidebar = React.forwardRef(({

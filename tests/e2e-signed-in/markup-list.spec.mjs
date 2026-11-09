@@ -54,6 +54,7 @@ test('the Markups list shows, opens, follows and saves the marks', async ({ page
     await page.keyboard.press('Escape');
 
     await page.getByRole('button', { name: 'Markups', exact: true }).filter({ visible: true }).first().click();
+    await expect(page.getByRole('button', { name: 'Close Markups' }).filter({ visible: true })).toHaveCount(1);
     const panel = page.getByTestId('markups-panel');
     await expect(panel).toBeVisible();
     await expect(panel.locator('.markups-panel__summary')).toContainText('2 markups');

@@ -6,20 +6,22 @@ import { E2E_ACCOUNTS } from './accounts.mjs';
 import { RUN, must } from './accountFixtures.mjs';
 import { adminClient, apiClientFor } from './helpers.mjs';
 
-export async function seedSheet(label, { size = [612, 792] } = {}) {
+export async function seedSheet(label, { size = [612, 792], pages = 1 } = {}) {
   const admin = adminClient();
   const api = await apiClientFor(E2E_ACCOUNTS.owner);
   const { data: { user } } = await api.auth.getUser();
   const pdf = await PDFDocument.create();
   const font = await pdf.embedFont(StandardFonts.Helvetica);
-  pdf.addPage(size).drawText(`${label} sheet`, { x: 72, y: size[1] - 72, size: 20, font });
+  for (let n = 1; n <= pages; n += 1) {
+    pdf.addPage(size).drawText(pages > 1 ? `${label} sheet page ${n}` : `${label} sheet`, { x: 72, y: size[1] - 72, size: 20, font });
+  }
   const bytes = Buffer.from(await pdf.save());
   const id = crypto.randomUUID();
   const path = `${user.id}/${id}.pdf`;
   const name = `${label} ${RUN} ${id.slice(0, 6)}.pdf`;
   await must('upload', admin.storage.from('documents').upload(path, new Blob([bytes], { type: 'application/pdf' }), { contentType: 'application/pdf' }));
   await must('row', admin.from('documents').insert({
-    id, user_id: user.id, name, file_path: path, file_size: bytes.length, page_count: 1,
+    id, user_id: user.id, name, file_path: path, file_size: bytes.length, page_count: pages,
     content_sha256: crypto.createHash('sha256').update(bytes).digest('hex'),
   }));
   return {
