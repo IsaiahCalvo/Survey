@@ -7,6 +7,7 @@
 // sheets were plotted a little apart.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import DialogCard from './DialogCard.jsx';
+import ButtonGroup from './ButtonGroup.jsx';
 import { Icon } from '../home/HubShell';
 import { C } from '../uiPalette';
 import { Z_INDEX } from '../theme';
@@ -69,8 +70,12 @@ export default function VersionCompareDialog({ older, newer, onClose }) {
   // so the first zoom step leaves Fit from where the page really is.
   const drawnZoom = useRef(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
-  const [showOld, setShowOld] = useState(true);
-  const [showNew, setShowNew] = useState(true);
+  // Which sheets the overlay draws: 'both', 'old' or 'new'. One choice, so
+  // the page can never end up blank with both switched off.
+  const [show, setShow] = useState('both');
+  const showOld = show !== 'new';
+  const showNew = show !== 'old';
+  const [shownZoom, setShownZoom] = useState(null);
   const [busy, setBusy] = useState(true);
 
   useEffect(() => {
@@ -115,6 +120,7 @@ export default function VersionCompareDialog({ older, newer, onClose }) {
       canvas.width = Math.ceil(widthPt * pixelsPerPoint);
       canvas.height = Math.ceil(heightPt * pixelsPerPoint);
       drawnZoom.current = effectiveZoom;
+      setShownZoom(effectiveZoom);
       canvas.style.width = `${Math.round(widthPt * effectiveZoom)}px`;
       canvas.style.height = `${Math.round(heightPt * effectiveZoom)}px`;
       composeOverlay(canvas.getContext('2d'), {
@@ -148,9 +154,22 @@ export default function VersionCompareDialog({ older, newer, onClose }) {
     }
   }, [pageCount]);
 
-  const zoomBy = (factor) => {
-    setZoom(clampZoom((zoom ?? drawnZoom.current) * factor));
-  };
+  const zoomBy = useCallback((factor) => {
+    setZoom((current) => clampZoom((current ?? drawnZoom.current) * factor));
+  }, []);
+  // Ctrl/Cmd + wheel (and a trackpad pinch, which arrives as one) zooms the
+  // overlay, as it does on the page itself.
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return undefined;
+    const onWheel = (e) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      zoomBy(e.deltaY < 0 ? 1.1 : 1 / 1.1);
+    };
+    view.addEventListener('wheel', onWheel, { passive: false });
+    return () => view.removeEventListener('wheel', onWheel);
+  }, [zoomBy]);
   const iconButton = (label, icon, onClick, disabled = false) => (
     <button type="button" className="hub-icon-btn" aria-label={label} {...tip(label)} onClick={onClick} disabled={disabled}>
       <Icon name={icon} size={13} />
@@ -161,10 +180,11 @@ export default function VersionCompareDialog({ older, newer, onClose }) {
     <DialogCard
       title={`Compare v${older.versionNumber} with v${newer.versionNumber}`}
       message={(
-        <span>
-          <span style={swatch(COMPARE_OLD_INK)} />Only in v{older.versionNumber}
-          <span style={{ ...swatch(COMPARE_NEW_INK), marginLeft: 14 }} />Only in v{newer.versionNumber}
-          <span style={{ ...swatch('rgb(0, 0, 0)'), marginLeft: 14 }} />In both. Arrow keys nudge v{older.versionNumber} (Shift: 10 pt).
+        <span style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 14, rowGap: 2 }}>
+          <span><span style={swatch(COMPARE_OLD_INK)} />Only in v{older.versionNumber}</span>
+          <span><span style={swatch(COMPARE_NEW_INK)} />Only in v{newer.versionNumber}</span>
+          <span><span style={swatch('rgb(0, 0, 0)')} />In both</span>
+          <span style={{ color: C.muted }}>Arrow keys nudge v{older.versionNumber} into line (Shift: 10 pt)</span>
         </span>
       )}
       onClose={onClose}
@@ -180,18 +200,35 @@ export default function VersionCompareDialog({ older, newer, onClose }) {
             </span>
             {iconButton('Next page', 'chevronRight', () => setPageNumber((n) => Math.min(pageCount, n + 1)), pageNumber >= pageCount)}
             {iconButton('Zoom out', 'minus', () => zoomBy(1 / 1.25))}
-            {iconButton('Zoom in', 'plus', () => zoomBy(1.25))}
-            <button type="button" className="hub-btn dialog-touch-pad" onClick={() => setZoom(null)}>Fit</button>
-            <button type="button" className="hub-btn dialog-touch-pad" disabled={!offset.x && !offset.y} onClick={() => setOffset({ x: 0, y: 0 })}>
-              Reset nudge
+            <button
+              type="button"
+              className="hub-btn dialog-touch-pad nums"
+              data-compare-zoom="true"
+              aria-label="Fit page"
+              {...tip('Fit page')}
+              onClick={() => setZoom(null)}
+              style={{ minWidth: 58 }}
+            >
+              {shownZoom ? `${Math.round(shownZoom * 100)}%` : 'Fit'}
             </button>
+            {iconButton('Zoom in', 'plus', () => zoomBy(1.25))}
+            {(offset.x || offset.y) ? (
+              <button type="button" className="hub-btn dialog-touch-pad" onClick={() => setOffset({ x: 0, y: 0 })}>
+                Reset nudge
+              </button>
+            ) : null}
           </div>
-          <button type="button" className={`hub-btn dialog-touch-pad${showOld ? ' is-active' : ''}`} aria-pressed={showOld} onClick={() => setShowOld((v) => !v)}>
-            v{older.versionNumber}
-          </button>
-          <button type="button" className={`hub-btn dialog-touch-pad${showNew ? ' is-active' : ''}`} aria-pressed={showNew} onClick={() => setShowNew((v) => !v)}>
-            v{newer.versionNumber}
-          </button>
+          <ButtonGroup
+            label="Show"
+            size="sm"
+            value={show}
+            onChange={setShow}
+            options={[
+              { value: 'both', label: 'Both', ariaLabel: `Show v${older.versionNumber} and v${newer.versionNumber}` },
+              { value: 'old', label: `v${older.versionNumber}`, ariaLabel: `Show only v${older.versionNumber}` },
+              { value: 'new', label: `v${newer.versionNumber}`, ariaLabel: `Show only v${newer.versionNumber}` },
+            ]}
+          />
         </>
       )}
     >

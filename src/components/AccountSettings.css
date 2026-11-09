@@ -521,9 +521,15 @@
   transform: translateY(-1px);
 }
 
+/* A disabled gold button drops its gold: grey ink on the gold fill could not
+   be read ("Create" and "Invite" in Settings, Company before you type). One
+   disabled look, as .btn-primary:disabled in styles.css. */
 .account-btn-primary:disabled {
+  background: var(--disabled-fill);
+  border-color: var(--border);
   color: var(--text-disabled);
   cursor: not-allowed;
+  transform: none;
 }
 
 .account-btn-secondary {
@@ -795,6 +801,14 @@
    button in account settings no hover at all. */
 .account-btn-purple:hover {
   background: var(--accent-light);
+}
+
+/* Same disabled look as .account-btn-primary:disabled; after :hover so a
+   disabled button stays grey under the pointer. */
+.account-btn-purple:disabled {
+  background: var(--disabled-fill);
+  color: var(--text-disabled);
+  cursor: not-allowed;
 }
 
 /* The plan you are ON gets the gold outline; the plan you could buy gets the

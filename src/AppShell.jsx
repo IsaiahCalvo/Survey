@@ -4776,7 +4776,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 see. While a document is on screen the home is inert: no focus,
                 no clicks, not read out. display: contents, so the wrapper adds
                 no box and the layout is untouched. */}
-            <div inert={isViewerVisible ? '' : undefined} style={{ display: 'contents' }}>
+            <div inert={isViewerVisible} style={{ display: 'contents' }}>
             {/* KAL-65: the hub's own shared tooltip host - the viewer's chip
                 lives in PDFViewer and is not there when no document is open. */}
             <TooltipProvider>

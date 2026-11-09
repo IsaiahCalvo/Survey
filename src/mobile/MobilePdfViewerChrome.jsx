@@ -3443,7 +3443,7 @@ export function MobilePdfViewerDock({ onOpenPanel, onToggleHub, onOpenSurvey, hu
       className="mobile-pdf-dock"
       aria-label="Document panels"
       aria-hidden={covered ? 'true' : undefined}
-      inert={covered ? '' : undefined}
+      inert={covered}
     >
       <div className="mobile-pdf-dock__surface" aria-hidden="true" />
       <button
