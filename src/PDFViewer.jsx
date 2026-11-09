@@ -285,6 +285,7 @@ import { shouldAutoSelectAfterCommit } from './utils/autoSelectAfterCommit';
 import { isSurveyScopedHistoryEvent, resolveHistoryEntryContext } from './utils/historyContextRestore';
 import { projectAnnotationForHistoryPreview } from './utils/historyPreviewAnnotation';
 import { isUndoKeyEvent, isRedoKeyEvent, isUndoRedoBlocked } from './utils/undoRedoHotkeys';
+import { stepBackPolyDraftForUndo } from './utils/polyDraft.js';
 import { getCalloutSyncFingerprint } from './utils/calloutSyncPayload';
 import { isPlacedSurveyMarker } from './services/surveyMarkerSyncDiff';
 import { forceUnplacedImportedMarker, freezeGeometryFromOriginal } from './services/importFieldWhitelist';
@@ -3116,6 +3117,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       } else {
         e.stopPropagation();
       }
+      // A polygon / polyline being placed takes Undo as "last point off"
+      // (Nightly 'poly-back-step', utils/polyDraft.js).
+      if (isUndoCombo && stepBackPolyDraftForUndo()) return;
       // w57: an arrow-key nudge still waiting to save lands first, so Undo
       // takes back the nudge (this handler runs before the page layers').
       flushPendingNudges();

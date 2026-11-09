@@ -37,6 +37,8 @@ import { isFeatureOn } from '../featureFlags.js';
 // Shift draws a square or circle (Nightly, 'shift-square'); read only while
 // Shift is held.
 const shiftSquareOn = () => isFeatureOn('shift-square');
+// Backspace / Undo steps back one vertex while placing (Nightly, 'poly-back-step').
+const polyBackStepOn = () => isFeatureOn('poly-back-step');
 import { maxOf, minOf } from '../utils/arrayExtrema.js';
 import { resolveEditEntryKind } from '../utils/annotationEditRoute.js';
 import {
@@ -131,7 +133,9 @@ import {
   isPointNearPolyDraftFirstPoint,
   polyDraftFinishControlPoints,
   polyDraftHitRadii,
+  removeLastPolyDraftPoint,
   resolvePolyDraftFinish,
+  setPolyDraftUndo,
   updatePolyDraftPreview,
 } from '../utils/polyDraft.js';
 import { collectEndpointCandidates, resolveDrawSnap, drawSnapEventOptions } from '../utils/drawSnap.js';
@@ -3017,6 +3021,14 @@ const SVGAnnotationLayerBody = memo(({
   // the field's own Enter-to-blur never runs, so we blur it here: every one of
   // them commits its value on blur, which is what "Enter commits the field AND
   // finishes the draft" means. Escape blurs first as well, then cancels.
+  const stepBackPolyDraft = useCallback(() => {
+    if (!polyDraftRef.current) return false;
+    const next = removeLastPolyDraftPoint(polyDraftRef.current);
+    if (!next) { cancelPolyDraft(); return true; }
+    polyDraftRef.current = next;
+    setPolyDraft(next);
+    return true;
+  }, [cancelPolyDraft]);
   useEffect(() => {
     if (!polyDraftActive) return undefined;
     const onKeyDown = (e) => {
@@ -3031,11 +3043,22 @@ const SVGAnnotationLayerBody = memo(({
         e.stopPropagation();
         releaseFocusForDraftTool(e.target);
         cancelPolyDraft();
+      } else if (e.key === 'Backspace' && polyBackStepOn()) {
+        // Backspace takes the last vertex off, not a mark (Nightly,
+        // 'poly-back-step'); Undo does the same through the viewer.
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation?.();
+        stepBackPolyDraft();
       }
     };
     window.addEventListener('keydown', onKeyDown, true);
-    return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [polyDraftActive, commitPolyDraft, cancelPolyDraft]);
+    const releaseUndo = polyBackStepOn() ? setPolyDraftUndo(stepBackPolyDraft) : null;
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, true);
+      releaseUndo?.();
+    };
+  }, [polyDraftActive, commitPolyDraft, cancelPolyDraft, stepBackPolyDraft]);
 
   const commitShapeCreationRef = useRef(commitShapeCreation);
   useEffect(() => { commitShapeCreationRef.current = commitShapeCreation; }, [commitShapeCreation]);

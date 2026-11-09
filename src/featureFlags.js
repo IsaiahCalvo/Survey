@@ -177,6 +177,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Hold Shift while drawing a rectangle or ellipse for a square or circle',
     stage: 'beta',
   }),
+  'poly-back-step': Object.freeze({
+    label: 'Backspace or Undo while placing a polygon or polyline takes the last point off',
+    stage: 'beta',
+  }),
   'focus-mode': Object.freeze({
     label: 'Focus mode: hide the tab strip and side rails, full screen (Ctrl/Cmd+Shift+F)',
     stage: 'beta',
