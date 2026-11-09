@@ -174,3 +174,47 @@ test('versions: "Upload as new version" keeps the old copy as v1 instead of arch
     await admin.from('documents').delete().eq('name', name).eq('user_id', user.id);
   }
 });
+
+// The phone has no top bar, so the "v2" button is not there: version history
+// opens from the viewer's More document options menu.
+test.describe('versions on a phone', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+  test('the More menu lists the versions and compare fits the screen', async ({ page }) => {
+    test.setTimeout(180_000);
+    const admin = adminClient();
+    const api = await apiClientFor(E2E_ACCOUNTS.owner);
+    const { data: { user } } = await api.auth.getUser();
+    const name = `Phone versions ${RUN}.pdf`;
+    const v1 = await addVersion(admin, user.id, name, await sheetPdf('Phone A', { oldBox: true }));
+    const v2 = await addVersion(admin, user.id, name, await sheetPdf('Phone B', { extraBox: true }));
+    try {
+      await must('supersede', api.rpc('supersede_document', { p_old_document_id: v1, p_new_document_id: v2 }));
+      await page.addInitScript(() => localStorage.setItem('survey.flag.document-versions', '1'));
+      await signIn(page, E2E_ACCOUNTS.owner);
+      await page.getByText(name, { exact: true }).filter({ visible: true }).first().tap();
+      const openFile = page.getByRole('button', { name: 'Open file' }).filter({ visible: true });
+      if (await openFile.count()) await openFile.first().tap();
+      // The phone draws no text layer, so wait for the page overlay.
+      await expect(page.locator('[data-overlay-page="1"]').first()).toBeAttached({ timeout: 60_000 });
+
+      await page.getByRole('button', { name: 'More document options' }).filter({ visible: true }).first().tap();
+      const row = page.locator('[data-mobile-document-versions]');
+      await expect(row).toHaveText('Versions (v2 of 2)', { timeout: 30_000 });
+      await row.tap();
+      const list = page.locator('[data-document-versions]');
+      await expect(list.locator('[data-version-row]')).toHaveCount(2);
+      await list.locator('[data-version-compare-button="1"]').tap();
+      const compare = page.locator('[data-version-compare]');
+      await expect(compare).toContainText('Compare v1 with v2');
+      await expect(compare.locator('[data-compare-canvas]')).toHaveAttribute('aria-busy', 'false', { timeout: 60_000 });
+      const box = await compare.boundingBox();
+      expect(box.x).toBeGreaterThanOrEqual(-0.5);
+      expect(box.x + box.width).toBeLessThanOrEqual(390.5);
+      await page.screenshot({ path: test.info().outputPath('phone-version-compare.png') });
+    } finally {
+      await admin.from('documents').update({ superseded_by: null }).eq('id', v1);
+      await admin.from('documents').delete().in('id', [v1, v2]);
+    }
+  });
+});

@@ -2673,7 +2673,7 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
   );
 }
 
-export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedInUser = null, onOpenPanel, onAuxPanelStateChange, auxCloseRequestKey = 0 }) {
+export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedInUser = null, onOpenPanel, onAuxPanelStateChange, auxCloseRequestKey = 0, documentVersions = null }) {
   const tip = useTooltip();
   const [openCategory, setOpenCategory] = useState(null);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -3283,6 +3283,22 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                 <Icon name="edit" size={16} color="currentColor" />
                 Rename document…
               </button>
+              {/* Version history (flag 'document-versions'): the desktop opens
+                  the list from the "v2" button in the top bar, which the phone
+                  does not have, so a document with versions had no way in. */}
+              {documentVersions?.shown && (
+                <button
+                  type="button"
+                  data-mobile-document-versions="true"
+                  onClick={() => {
+                    setMoreOpen(false);
+                    documentVersions.showList?.();
+                  }}
+                >
+                  <Icon name="history" size={16} color="currentColor" />
+                  {`Versions (v${documentVersions.open?.versionNumber} of ${documentVersions.versions?.length})`}
+                </button>
+              )}
               {/* RULED 2026-09-22 (owner): "More = Export + Save log". Save log
                   used to be gated on window.Capacitor.isNativePlatform(), so the
                   menu on web mobile held ONE row and the ruling's second item

@@ -4641,6 +4641,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 onOpenPanel={openMobileDocumentPanel}
                 onAuxPanelStateChange={setMobileAuxPanel}
                 auxCloseRequestKey={mobileAuxCloseRequestKey}
+                documentVersions={documentVersions}
               />
             )}
             {railTabs.map((tab) => {

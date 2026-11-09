@@ -62,6 +62,8 @@ export default function VersionCompareDialog({ older, newer, onClose }) {
   const tip = useTooltip();
   const viewRef = useRef(null);
   const canvasRef = useRef(null);
+  // A keyboard-and-mouse screen gets the nudge hint; a phone has no arrow keys.
+  const [finePointer] = useState(() => typeof window === 'undefined' || !window.matchMedia || window.matchMedia('(pointer: fine)').matches);
   const [pdfs, setPdfs] = useState(null);
   const [failed, setFailed] = useState(null);
   const [pageNumber, setPageNumber] = useState(1);
@@ -184,7 +186,8 @@ export default function VersionCompareDialog({ older, newer, onClose }) {
           <span><span style={swatch(COMPARE_OLD_INK)} />Only in v{older.versionNumber}</span>
           <span><span style={swatch(COMPARE_NEW_INK)} />Only in v{newer.versionNumber}</span>
           <span><span style={swatch('rgb(0, 0, 0)')} />In both</span>
-          <span style={{ color: C.muted }}>Arrow keys nudge v{older.versionNumber} into line (Shift: 10 pt)</span>
+          {/* Only where there is a keyboard to nudge with: a phone has none. */}
+          {finePointer && <span style={{ color: C.muted }}>Arrow keys nudge v{older.versionNumber} into line (Shift: 10 pt)</span>}
         </span>
       )}
       onClose={onClose}

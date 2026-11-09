@@ -324,6 +324,14 @@
   min-height: 38px;
 }
 .pinned-dock-shell.is-phone .pinned-dock__pins { touch-action: pan-x; }
+/* The z-index above loses to the sheets in practice: they sit in another
+   stacking context, so the dock stood on top of the Pages sheet's Add / Paste
+   / Select row and the Survey sheet's Export data / Report row. While any
+   phone sheet is up the dock steps away, as the undo toast lifts away. */
+html:has(.mobile-pdf-sheet:not(.is-collapsed)) .pinned-dock-shell.is-phone {
+  visibility: hidden;
+  pointer-events: none;
+}
 .pinned-dock__folded.chrome-subcontrol {
   width: 38px;
   min-width: 38px;
