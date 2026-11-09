@@ -9216,10 +9216,13 @@ const SVGAnnotationLayerBody = memo(({
                         <g key={id}>
                           <line x1={a.x} y1={a.y} x2={c.x} y2={c.y} stroke="#4a90e2" strokeWidth={1} strokeDasharray="4 4" vectorEffect="non-scaling-stroke" opacity={0.8} pointerEvents="none" />
                           {vTouchHitR > 0 && (
-                            <circle data-resize-handle={id} data-handle-hit-pad={id} cx={c.x} cy={c.y} r={vTouchHitR * 0.8} fill="transparent" stroke="none" style={{ pointerEvents: 'auto', cursor: GRAB_HANDLE_CURSOR }} onPointerDown={(e) => { if (e.button === 2) return; e.stopPropagation(); handleHandlePointerDown(e, id); }} />
+                            <circle data-handle-hit-pad={id} cx={c.x} cy={c.y} r={vTouchHitR * 0.8} fill="transparent" stroke="none" style={{ pointerEvents: 'auto', cursor: GRAB_HANDLE_CURSOR }} onPointerDown={(e) => { if (e.button === 2) return; e.stopPropagation(); handleHandlePointerDown(e, id); }} />
                           )}
+                          {/* A curve handle bends the line; it is not a resize
+                              grabber, so it carries the hit-pad mark that every
+                              press router already treats as "on a handle". */}
                           <circle
-                            data-resize-handle={id}
+                            data-handle-hit-pad={id}
                             data-curve-handle={`${si}-${which}`}
                             cx={c.x}
                             cy={c.y}
