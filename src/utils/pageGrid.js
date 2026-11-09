@@ -151,3 +151,81 @@ export const applyPageGridPageSteps = (settings, scaleForPage, container = (type
         else div.style.removeProperty(PAGE_GRID_PAGE_VAR);
     });
 };
+
+/*
+ * The spacing slider (owner 2026-11-09: "underneath that, a slider ... you
+ * could just slide Custom, and it would dynamically show on the drawing").
+ * A log scale per unit, so small and large spacings both get room.
+ */
+export const PAGE_GRID_SLIDER_RANGE = Object.freeze({
+    in: { min: 0.05, max: 10 },
+    mm: { min: 1, max: 250 },
+    ft: { min: 0.25, max: 100 },
+    m: { min: 0.1, max: 30 },
+});
+const sliderRange = (unit) => PAGE_GRID_SLIDER_RANGE[unit] || PAGE_GRID_SLIDER_RANGE.in;
+/** Slider position 0..1000 for a value in `unit`. */
+export const pageGridSliderPosition = (value, unit) => {
+    const { min, max } = sliderRange(unit);
+    const v = Math.min(max, Math.max(min, Number(value) || min));
+    return Math.round((Math.log(v / min) / Math.log(max / min)) * 1000);
+};
+/** A tidy value in `unit` for a slider position 0..1000. */
+export const pageGridSliderValue = (position, unit) => {
+    const { min, max } = sliderRange(unit);
+    const t = Math.min(1, Math.max(0, Number(position) / 1000));
+    const raw = min * Math.pow(max / min, t);
+    const digits = raw < 1 ? 2 : raw < 10 ? 1 : 0;
+    const f = Math.pow(10, digits);
+    return Math.max(min, Math.round(raw * f) / f);
+};
+/** A preset's spacing in a paper unit (in, mm); null for drawing units. */
+export const pageGridPresetValue = (densityId, unit) => {
+    const preset = PAGE_GRID_DENSITIES.find((d) => d.id === densityId);
+    if (!preset || !PAPER_PT[unit]) return null;
+    const v = preset.pt / PAPER_PT[unit];
+    return Math.round(v * 100) / 100;
+};
+
+/**
+ * A slider drag's live frames: the grid on screen follows the thumb without
+ * saving or re-rendering the viewer. Paper sizes set the shared step; drawing
+ * sizes scale each page's own step by the change from the saved value.
+ */
+export const previewPageGridSettings = (draft, saved, {
+    root = (typeof document !== 'undefined' ? document.documentElement : null),
+    container = (typeof document !== 'undefined' ? document : null),
+} = {}) => {
+    const next = normalizePageGridSettings(draft);
+    applyPageGridSettings(next, root);
+    if (!pageGridUsesDrawingScale(next) || !container?.querySelectorAll) return;
+    const from = normalizePageGridSettings(saved);
+    const sameUnit = pageGridUsesDrawingScale(from) && from.customUnit === next.customUnit;
+    container.querySelectorAll('.survey-pdfjs-page-div[data-page-number]').forEach((div) => {
+        if (!div.dataset.pageGridSavedPt) div.dataset.pageGridSavedPt = div.style.getPropertyValue(PAGE_GRID_PAGE_VAR) || '';
+        const base = Number(div.dataset.pageGridSavedPt);
+        if (!sameUnit || !(base > 0)) return;
+        const step = clampStep(base * (next.customValue / from.customValue));
+        if (step) div.style.setProperty(PAGE_GRID_PAGE_VAR, String(step));
+    });
+};
+/** Ends a drag's preview (the saved settings take over again). */
+export const endPageGridPreview = (container = (typeof document !== 'undefined' ? document : null)) => {
+    container?.querySelectorAll?.('.survey-pdfjs-page-div[data-page-grid-saved-pt]').forEach((div) => { delete div.dataset.pageGridSavedPt; });
+};
+
+/*
+ * Fine / Normal / Wide glide (owner 2026-11-09: "switching ... should
+ * dynamically zoom in and out of the grid to show an animation of it growing
+ * and shrinking"): the step variables are registered properties
+ * (styles/pageGrid.css), so they can transition while this attribute is on.
+ */
+export const PAGE_GRID_ANIMATE_ATTR = 'data-page-grid-animate';
+export const PAGE_GRID_ANIMATE_MS = 360;
+let animateTimer = null;
+export const animateNextPageGridChange = (root = (typeof document !== 'undefined' ? document.documentElement : null)) => {
+    if (!root?.setAttribute) return;
+    root.setAttribute(PAGE_GRID_ANIMATE_ATTR, '');
+    if (animateTimer) clearTimeout(animateTimer);
+    animateTimer = setTimeout(() => { root.removeAttribute(PAGE_GRID_ANIMATE_ATTR); animateTimer = null; }, PAGE_GRID_ANIMATE_MS + 80);
+};
