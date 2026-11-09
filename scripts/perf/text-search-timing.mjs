@@ -14,6 +14,7 @@
 //   done     - the search finished ("Searching…" gone, count shown)
 //   count    - the status text at the end
 // NET=<latency ms>/<down Mbps> throttles the page's network.
+// PROFILE=<file.cpuprofile> saves a CPU profile of the last query.
 import fs from 'node:fs';
 import { chromium } from '@playwright/test';
 
@@ -23,6 +24,8 @@ const QUERIES = (process.env.QUERIES || 'corridor,output').split(',');
 const WAIT_MS = Number(process.env.WAIT_MS || 2000);
 const RUNS = Number(process.env.RUNS || 1);
 const NET = process.env.NET || null;
+// PROFILE=<file.cpuprofile>: CPU profile of the last query.
+const PROFILE = process.env.PROFILE || null;
 const exe = process.env.PW_CHROMIUM_PATH || (fs.existsSync('/opt/pw-browsers/chromium') ? '/opt/pw-browsers/chromium' : undefined);
 
 async function run(browser) {
@@ -49,6 +52,7 @@ async function run(browser) {
   // Page 1 drawn: its canvas grew past the default size.
   await page.waitForFunction(() => [...document.querySelectorAll('.survey-pdfjs-page-div canvas')].some((c) => c.width > 300), null, { timeout: 120_000, polling: 50 });
   const firstPage = Date.now() - t0;
+  const pageAt = await page.evaluate(() => performance.now());
   await page.waitForTimeout(WAIT_MS);
   await page.mouse.click(720, 500);
   await page.keyboard.press('Control+f');
@@ -57,6 +61,14 @@ async function run(browser) {
   for (const query of QUERIES) {
     await page.locator('.search-text-panel__input').fill('');
     await page.waitForTimeout(300);
+    const profiling = PROFILE && query === QUERIES[QUERIES.length - 1];
+    let cdp = null;
+    if (profiling) {
+      cdp = await context.newCDPSession(page);
+      await cdp.send('Profiler.enable');
+      await cdp.send('Profiler.setSamplingInterval', { interval: 500 });
+      await cdp.send('Profiler.start');
+    }
     const t = await page.evaluate(() => performance.now());
     await page.keyboard.type(query, { delay: 0 });
     const typedAt = await page.evaluate(() => performance.now());
@@ -67,11 +79,16 @@ async function run(browser) {
         const input = document.querySelector('.search-text-panel__input');
         const rows = document.querySelectorAll('.search-text-group');
         if (res.firstRow == null && rows.length && input?.value === query) res.firstRow = Math.round(now - typedAt);
-        const pending = document.querySelector('.search-text-panel__pending');
+        const status = document.querySelector('.search-text-panel__status')?.getAttribute('data-search-status');
         const count = document.querySelector('.search-text-panel__count')?.textContent || '';
-        if (res.firstRow != null && !pending && /match/.test(count)) {
-          res.done = Math.round(now - typedAt);
+        // Done = results shown, not searching, and nothing changed for 1.5 s
+        // (reported at the last change).
+        const key = `${status}|${count}|${rows.length}`;
+        if (key !== res.lastKey) { res.lastKey = key; res.lastChange = now; }
+        if (res.firstRow != null && status === 'results' && now - res.lastChange > 1500) {
+          res.done = Math.round(res.lastChange - typedAt);
           res.count = count;
+          delete res.lastKey; delete res.lastChange;
           resolve(res);
           return;
         }
@@ -81,9 +98,29 @@ async function run(browser) {
       tick();
     }), { typedAt, query });
     delete r.typingMs;
-    r.typing = Math.round(typedAt - t);
+    // RECTS=1: steps to a few matches and lists the highlight boxes drawn
+    // (page, x, y, w, h in page units), to compare two builds.
+    if (process.env.RECTS) {
+      r.rects = [];
+      for (const index of [0, 7, 25, 60, 110]) {
+        const row = page.locator(`[data-result-index="${index}"]`).first();
+        if (!(await row.count())) continue;
+        await row.click();
+        await page.waitForTimeout(2500);
+        r.rects.push(...await page.evaluate(() => [...document.querySelectorAll('.search-highlight-svg-rect')].map((el) => {
+          const host = el.closest('.survey-pdfjs-page-div');
+          return [host?.id || '?', ...['x', 'y', 'width', 'height'].map((a) => Math.round(Number(el.getAttribute(a)) * 10) / 10)].join(':');
+        })));
+      }
+      r.rects = [...new Set(r.rects)].sort();
+    }
     out[query] = r;
   }
+  // When the viewer's read-ahead of the text finished, ms after page 1.
+  out.textReadAfterPage1 = await page.evaluate((at) => {
+    const mark = performance.getEntriesByName('survey-search-text-read')[0];
+    return mark ? Math.round(mark.startTime - at) : null;
+  }, pageAt);
   await context.close();
   return out;
 }

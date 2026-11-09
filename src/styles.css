@@ -662,6 +662,29 @@ button,
   min-height: var(--chrome-sub-control-h);
 }
 
+/* A tool that ships as a beta (Smart fill): a small "Beta" under its glyph. */
+.has-beta-tag {
+  flex-direction: column;
+  gap: 1px;
+  line-height: 1;
+}
+.chrome-beta-tag {
+  font-size: 8px;
+  font-weight: 600;
+  line-height: 1;
+  opacity: 0.8;
+  pointer-events: none;
+}
+.chrome-beta-pill {
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  vertical-align: 1px;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
 /* PASS 7 (boards 8-15): the rule between two tool groups. It is a 1px hairline
    16px tall with 8px of clear space either side — the one break in a bar that
    otherwise runs on a 2px gutter. Intended UX: the eye reads "these belong
