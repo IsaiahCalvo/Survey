@@ -158,12 +158,40 @@
   background: var(--overlay-scrim);
   animation: pinned-dock-zones-in 200ms ease-out;
 }
+/* A keyframe, not a transition: switching from the fade-in animation to a
+   transition in the same frame dropped the veil at once (seen frame by frame,
+   2026-11-09). */
 .pinned-dock-zones.is-leaving {
-  opacity: 0;
-  animation: none;
-  transition: opacity 240ms ease-in-out;
+  animation: pinned-dock-zones-out 240ms ease-in-out forwards;
 }
 @keyframes pinned-dock-zones-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pinned-dock-zones-out { from { opacity: 1; } to { opacity: 0; } }
+
+/* The stand-in box the dock morphs through when it changes shape
+   (PinnedToolsDock morphInto): the dock's own surface, its old and new tools
+   crossfading at its centre. */
+.pinned-dock-morph {
+  position: absolute;
+  z-index: 5200;
+  pointer-events: none;
+  box-sizing: border-box;
+  overflow: hidden;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+  box-shadow: var(--shadow-popover);
+}
+.pinned-dock.pinned-dock-morph__layer {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  translate: -50% -50%;
+  max-width: none;
+  max-height: none;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
 .pinned-dock-zone {
   position: absolute;
   border: 2px dashed color-mix(in srgb, var(--accent) 60%, transparent);
@@ -237,6 +265,7 @@
   font: 600 10px/14px var(--font-ui);
   color: var(--text-3);
 }
+.pinned-dock-menu__note { margin: 0; padding: 6px 8px 4px; font: 400 11px/15px var(--font-ui); color: var(--text-3); }
 .pinned-dock-menu__rule { height: 1px; margin: 4px 2px; background: var(--border); }
 .pinned-dock-menu__grid {
   display: grid;
@@ -274,7 +303,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .pinned-dock-zones { animation: none; }
-  .pinned-dock-zones.is-leaving { transition: none; }
+  .pinned-dock-zones.is-leaving { animation: none; opacity: 0; }
   .pinned-dock-zone { transition: none; }
   .pinned-dock.is-reordering .pinned-dock__slot:not(.is-dragged) { transition: none; }
 }
