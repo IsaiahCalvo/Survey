@@ -149,6 +149,10 @@ export const FEATURE_FLAGS = Object.freeze({
     stage: 'beta',
   }),
   // Drawboard Projects trial audit (2026-11-09): more measure tools.
+  'sheet-revisions': Object.freeze({
+    label: 'Sheet revisions: read the sheet number from the title block on upload and offer it as a new version',
+    stage: 'beta',
+  }),
   'measure-depth': Object.freeze({
     label: 'Measure: Polylength, Wall area and Volume (area or outline x a depth)',
     stage: 'beta',
