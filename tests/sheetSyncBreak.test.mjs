@@ -6,7 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { buildSyncLayout } from '../supabase/functions/_shared/sheetSync/layout.js';
-import { MAX_NEW_ROWS_PER_ROUND, fieldPrintsOf } from '../supabase/functions/_shared/sheetSync/engine.js';
+import { MAX_CELL_CHARS, MAX_NEW_ROWS_PER_ROUND, fieldPrintsOf } from '../supabase/functions/_shared/sheetSync/engine.js';
 import { computeRowFingerprints } from '../supabase/functions/_shared/matcher/rowFingerprint.js';
 import { mergeMarkerWrites } from '../supabase/functions/_shared/sheetSync/service.js';
 import { googleSheetsProvider } from '../supabase/functions/_shared/sheetSync/providers/google.js';
@@ -488,4 +488,33 @@ test('only the token endpoint ending a sign-in counts as signed out; Excel\'s ow
   // Seen in a real 40-minute Excel run: createSession refused once, fine a minute later.
   assert.equal(signInEnded(Object.assign(new Error('You do not have permissions to open this file in the browser.'), { status: 401, code: 'FileOpenUserUnauthorized' })), false);
   assert.equal(signInEnded({ status: 403 }), false);
+});
+
+test('a protected tab refuses Survey\'s write: told apart from a lost share, and nothing is lost', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
+  await ctx.round();
+  const real = ctx.provider;
+  // Excel answers 403 AccessDenied to a write on a protected sheet (measured
+  // 11-09); Sheets answers 403 PERMISSION_DENIED for a protected range.
+  ctx.provider = Object.assign(Object.create(null), real, {
+    writeCells: async () => { throw Object.assign(new Error('You cannot perform the requested operation.'), { status: 403, code: 'AccessDenied' }); },
+  });
+  ctx.markers.d1.note = { text: 'app note while protected' };
+  const err = await ctx.round().then(() => null, (e) => e);
+  assert.equal(err?.status, 403);
+  assert.equal(err?.code, 'protected', 'a write refused after a good read is a protected tab');
+  assert.equal(ctx.markers.d1.note.text, 'app note while protected');
+  ctx.provider = real;
+  await ctx.round();
+  assert.equal((await ctx.sheet()).rows[await ctx.rowOf('d1')][await ctx.col('Notes')], 'app note while protected', 'it lands once unprotected');
+});
+
+test('a note longer than a cell holds is written cut to fit, keeps its full text in the app, and the next round is quiet', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101', { note: { text: `${'x'.repeat(39999)}🚪` } }) } });
+  await ctx.round();
+  const cell = (await ctx.sheet()).rows[await ctx.rowOf('d1')][await ctx.col('Notes')];
+  assert.equal(cell.length, MAX_CELL_CHARS, 'cut to fit an Excel cell (32,767)');
+  const quiet = await ctx.round({ force: true });
+  assert.deepEqual(Object.values(quiet.summary).filter(Boolean), []);
+  assert.equal(ctx.markers.d1.note.text.length, 40001, 'the app keeps its full note');
 });

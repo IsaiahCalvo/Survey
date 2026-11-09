@@ -119,6 +119,13 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
     return { status: 'idle' };
   }
 
+  // The grid reads fine, so a write refused after it is a protected tab,
+  // range or workbook (Excel: Review > Protect; Sheets: protected range), not
+  // a lost share. Nothing is saved, so every change waits for the next round.
+  const protectedOnRefusal = (err) => {
+    if (Number(err?.status) === 403) err.code = 'protected';
+    throw err;
+  };
   // Only the synced tabs, unless one has to be added (then every title counts).
   const grid = await provider.readGrid(link.file_id, newScopes.length ? {} : { sheetIds: Object.values(state.sheetIds || {}) });
   if (newScopes.length) {
@@ -132,7 +139,7 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
       used.add(title.toLowerCase());
       return title === scope.title ? scope : { ...scope, title };
     });
-    const added = await provider.addTabs(link.file_id, named, layout);
+    const added = await provider.addTabs(link.file_id, named, layout).catch(protectedOnRefusal);
     state.sheetIds = { ...(state.sheetIds || {}), ...added };
     for (const scope of named) {
       if (added[scope.scopeId] == null) continue;
@@ -149,7 +156,8 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
   });
 
   let wroteAt = state.lastWriteAt ?? null;
-  if (hasWork(plan)) {
+  let retry = false;
+  async function writePlan() {
     // A sort or row insert in the sheet since the read would move rows under
     // us, and a person typing would have their cell overwritten: check every
     // Row ID we write next to is still where it was, and every cell we write
@@ -160,7 +168,7 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
       const moved = checks.some((c, i) => ('expect' in c
         ? !sameCell(now2[i], c.expect)
         : String(now2[i] ?? '').trim() !== String(c.token ?? '').trim()));
-      if (moved) return { status: 'retry' };
+      if (moved) { retry = true; return; }
     }
     const headerWrites = plan.headerAdds.map((h) => ({ sheetId: h.sheetId, title: h.title, row: h.row ?? 0, col: h.col, value: h.header, header: true }));
     if (headerWrites.length || plan.cellWrites.length) await provider.writeCells(link.file_id, [...headerWrites, ...plan.cellWrites]);
@@ -181,6 +189,8 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
     }
     wroteAt = new Date().toISOString();
   }
+  if (hasWork(plan)) await writePlan().catch(protectedOnRefusal);
+  if (retry) return { status: 'retry' };
   const writes = { ...fills, ...plan.markerWrites };
   if (Object.keys(writes).length) await saveMarkers(writes);
 

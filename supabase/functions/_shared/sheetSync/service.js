@@ -910,10 +910,12 @@ async function runRoundFor(ctx, link, { provider = null, signing = null, force =
     const what = sheetName(link.provider);
     // The file refused (401 that is not a dead sign-in, or 403): give it a
     // grace period before calling the link broken; a short refusal is noise.
-    const refused = (status === 401 && !signInEnded(err)) || status === 403;
+    const locked = status === 403 && err?.code === 'protected';
+    const refused = !locked && ((status === 401 && !signInEnded(err)) || status === 403);
     const refusedSince = link.state?.refusedSince ? Date.parse(link.state.refusedSince) : null;
     const refusedLong = refused && refusedSince != null && Date.now() - refusedSince > REFUSED_GRACE_MS;
     const message = signInEnded(err) ? `The ${who} sign-in used for this sheet stopped working. The person who linked it needs to connect ${who} again.`
+      : locked ? `Someone protected the ${what} or one of its synced tabs, so Survey can't write to it. Nothing is lost: Survey writes the waiting changes once it's unprotected.`
       : refused && !refusedLong ? `${who} would not open the ${what} just now. Trying again in a minute.`
       : refused ? `The linked ${what} is no longer shared with the person who linked it, or they can no longer edit it.`
       : status === 404 ? `The linked ${what} was deleted or is no longer shared with the person who linked it.`
@@ -930,6 +932,7 @@ async function runRoundFor(ctx, link, { provider = null, signing = null, force =
     // Busy (Excel's file host often answers 503 "retry in 30 s"): this sheet
     // waits what Microsoft asks, 10 s to 2 min, instead of the next tick.
     if (isBusy(status, err)) patch.backoff_until = new Date(Date.now() + Math.min(Math.max(Number(err?.retryAfterMs) || 30_000, 10_000), 120_000)).toISOString();
+    if (locked) patch.backoff_until = new Date(Date.now() + 2 * 60_000).toISOString();
     if (change) Object.assign(patch, { state: link.state, baseline: link.baseline });
     if (refused && !refusedLong) {
       patch.backoff_until = new Date(Date.now() + 60_000).toISOString();

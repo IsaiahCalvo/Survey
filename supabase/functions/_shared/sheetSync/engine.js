@@ -110,9 +110,23 @@ const fieldsOf = (fps) => [
 
 const checklistOfScope = (scope) => scope.columns.filter((c) => c.key.startsWith('answer:')).map((c) => c.item);
 
+// Excel keeps at most 32,767 characters in a cell and cuts the rest (Sheets
+// 50,000). The app's side is compared and written cut to one limit under
+// both, so a longer note matches what the sheet holds instead of reading as
+// a change every round; the app keeps its full text unless the cell is edited.
+export const MAX_CELL_CHARS = 32000;
+const fitCell = (v) => {
+  if (typeof v !== 'string' || v.length <= MAX_CELL_CHARS) return v;
+  const cut = v.slice(0, MAX_CELL_CHARS);
+  return /[\uD800-\uDBFF]$/.test(cut) ? cut.slice(0, -1) : cut;
+};
+
 /** The row values the app shows for a marker, in rowFingerprint's record shape. */
 export function appRecordOf(marker, scope) {
-  return buildMarkerRowValues({ marker, checklistItems: checklistOfScope(scope), moduleData: {} });
+  const rec = buildMarkerRowValues({ marker, checklistItems: checklistOfScope(scope), moduleData: {} });
+  for (const k of Object.keys(rec)) rec[k] = fitCell(rec[k]);
+  if (rec.answers) rec.answers = Object.fromEntries(Object.entries(rec.answers).map(([id, v]) => [id, fitCell(v)]));
+  return rec;
 }
 
 /** The value written into a cell for a field of an app record. */
