@@ -146,6 +146,7 @@ import { isPdfStampProxy, pngDataUrlToBytes } from './pdfStampProxy.js';
 import {
   getSymbol, isSymbolStamp, symbolStampBox, symbolStampStrokeWidth, transformSymbolPath,
 } from './symbolLibrary.js';
+import { isNoSpaceCluster } from './textWrapMode.js';
 
 // ---------------------------------------------------------------------------
 // Linear operator append (2026-09-10).
@@ -5603,9 +5604,12 @@ const layoutFlattenedText = (obj, fonts) => {
     const tokens = [];
     clusters.forEach((cluster) => {
       const space = cluster === ' ' || cluster === '\t';
+      // A CJK character is a word of its own, as in the screen's CSS wrap
+      // (textWrapMode.js), so a line fills up before it breaks.
+      const alone = !space && isNoSpaceCluster(cluster);
       const last = tokens[tokens.length - 1];
-      if (last && last.space === space) last.clusters.push(cluster);
-      else tokens.push({ space, clusters: [cluster] });
+      if (last && !alone && !last.alone && last.space === space) last.clusters.push(cluster);
+      else tokens.push({ space, alone, clusters: [cluster] });
     });
     let line = '';
     tokens.forEach((token) => {

@@ -165,6 +165,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Markups list: every mark in one searchable list, by kind and person, with a CSV copy',
     stage: 'beta',
   }),
+  'word-wrap': Object.freeze({
+    label: 'New text boxes and callouts wrap at spaces, not mid-word',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

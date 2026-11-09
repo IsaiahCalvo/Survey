@@ -33811,6 +33811,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         let obj = buildNewTextCommitJSON({
           text, left: x, top: y, innerWrapWidth: wrapWidth - 2 * TEXT_PADDING, autoFit: false,
           fill: color || '#111827', stroke: 'transparent', strokeWidth: 0,
+          style: { wrapWords: isFeatureOn('word-wrap') },
           ...annotationScope(page),
         });
         if (!obj) return { ok: false, reason: 'empty' };
@@ -33957,6 +33958,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         callout.isSelected = false;
         callout.style = {
           ...defaultCalloutStyle,
+          ...(isFeatureOn('word-wrap') ? { wrapWords: true } : {}),
           ...(strokeColor ? { borderColor: strokeColor } : {}),
           ...(fillColor ? { fillColor } : {}),
         };
