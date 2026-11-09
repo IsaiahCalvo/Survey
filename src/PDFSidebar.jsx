@@ -1161,6 +1161,7 @@ const PDFSidebar = React.forwardRef(({
                   onNavigateToPage={onNavigateToPage}
                   focusRequest={commentsFocusRequest}
                   headActionsHost={mobileMode ? null : commentsHeadHost}
+                  onRequestSheetClose={mobileMode ? requestSheetClose : undefined}
                 />
               </div>
             )}

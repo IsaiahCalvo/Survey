@@ -245,6 +245,7 @@ export default function CommentsPanel({
   focusHistoryMark = null,
   selectHistoryMark = null,
   onNavigateToPage = null,
+  onRequestSheetClose = null,
   focusRequest = null,
   // Desktop: the rail's title row, where the + for a page comment sits.
   headActionsHost = null,
@@ -303,6 +304,10 @@ export default function CommentsPanel({
     const box = (markId && typeof document !== 'undefined' ? measureMarkBox(document, markId, page) : null)
       || (located?.annotation ? historyAnnotationInkBox(located.annotation) : null);
     const picked = located && typeof selectHistoryMark === 'function' ? selectHistoryMark(markId) : false;
+    // Phone: the sheet covers half the page, so it steps down first (as a
+    // Search hit does) and the mark lands in the whole view; reopen Comments
+    // and the thread is still marked.
+    if (typeof onRequestSheetClose === 'function') onRequestSheetClose();
     const focus = () => {
       const focused = typeof focusHistoryMark === 'function' ? focusHistoryMark(page, box, { animate: true }) : false;
       if (!focused) onNavigateToPage?.(page, { fallback: 'nearest', bypassActiveSpace: true });
@@ -316,7 +321,7 @@ export default function CommentsPanel({
     } else {
       focus();
     }
-  }, [focusHistoryMark, locateHistoryMark, onNavigateToPage, selectHistoryMark]);
+  }, [focusHistoryMark, locateHistoryMark, onNavigateToPage, onRequestSheetClose, selectHistoryMark]);
 
   const linkOrigin = typeof window !== 'undefined' ? window.location.origin : undefined;
   const post = async ({ body, mentions, markId = null, pageNumber, threadId = null }) => {

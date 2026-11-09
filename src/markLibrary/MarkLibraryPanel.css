@@ -325,3 +325,5 @@
   .mark-library-tag-chip { height: 32px; padding: 0 12px; }
   .mark-library__more { width: 36px; height: 36px; }
 }
+
+.mobile-pdf-sheet .mark-library__empty { font-size: 14px; }

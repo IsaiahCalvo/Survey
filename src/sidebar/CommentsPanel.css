@@ -326,3 +326,21 @@
   color: var(--text-3);
   font-size: 11px;
 }
+
+/* Phone sheet: the shared phone panel scale (tokens.css --sheet-*), like
+   Pages, Search and Bookmarks beside it: 14px text, 44px to tap. */
+.mobile-pdf-sheet .comments-panel {
+  padding: 8px 16px 16px;
+  font: var(--sheet-row-text);
+}
+.mobile-pdf-sheet .comments-empty { font-size: 14px; }
+.mobile-pdf-sheet .comments-text-btn { height: 44px; font: var(--sheet-row-title); }
+.mobile-pdf-sheet .comments-new { margin-left: -6px; }
+.mobile-pdf-sheet .comments-thread__target { font: var(--sheet-row-meta); }
+.mobile-pdf-sheet .comments-thread__target--link { min-height: 32px; }
+.mobile-pdf-sheet .comments-item__head { height: 44px; }
+.mobile-pdf-sheet .comments-item__author { font: var(--sheet-row-title-strong); }
+.mobile-pdf-sheet .comments-item__time { font: var(--sheet-row-meta); }
+.mobile-pdf-sheet .comments-icon { width: 44px; height: 44px; }
+.mobile-pdf-sheet .comments-item__body { font: var(--sheet-row-text); }
+.mobile-pdf-sheet .comments-box textarea { font-size: 16px; }

@@ -1141,6 +1141,13 @@ export default function TemplatesEditor({
     children: options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>),
   });
   const pickerValueProps = ({ value, options, onPick }) => ({ value, options, onChange: onPick });
+  // Phone: a native select can't show each choice's detail line, so the
+  // picked one's detail sits under the row.
+  const pickerDetail = ({ value, options }) => options.find((o) => o.value === value)?.detail || null;
+  const phonePickerDetail = (picker) => {
+    const detail = pickerDetail(picker);
+    return detail ? <small className="templates-mobile-option__detail">{detail}</small> : null;
+  };
   // Nightly: the list in use as chips on a labeled button; it opens the
   // picker of ready-made lists, which hands over to the editor below.
   const [answerPickerFor, setAnswerPickerFor] = useState(null);
@@ -3536,15 +3543,17 @@ export default function TemplatesEditor({
                   44px rows - the desktop header holding them is not rendered here. */}
               <div className="templates-mobile-template-options">
                 {exportKitOptions.length > 1 && (
-                  <label className="templates-mobile-option">
+                  <label className="templates-mobile-option templates-mobile-option--detailed">
                     <span>Excel layout</span>
                     <select aria-label="Excel layout" {...pickerSelectProps(exportKitPicker(tpl, true))} />
+                    {phonePickerDetail(exportKitPicker(tpl, true))}
                   </label>
                 )}
                 {surveyReport && (
-                  <label className="templates-mobile-option">
+                  <label className="templates-mobile-option templates-mobile-option--detailed">
                     <span>Report layout</span>
                     <select aria-label="Report layout" {...pickerSelectProps(reportKitPicker(tpl))} />
+                    {phonePickerDetail(reportKitPicker(tpl))}
                   </label>
                 )}
                 {customAnswers ? (

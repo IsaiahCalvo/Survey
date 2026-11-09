@@ -210,3 +210,20 @@
 @media (prefers-reduced-motion: reduce) {
   .layers-row__tools { transition: none; }
 }
+
+/* Phone sheet: the shared phone panel scale (tokens.css --sheet-*), so Layers
+   reads like Pages, Search and Bookmarks beside it: 14px rows, 44px to tap. */
+.mobile-pdf-sheet .layers-panel {
+  padding: 8px 16px 16px;
+  font: var(--sheet-row-text);
+}
+.mobile-pdf-sheet .layers-panel__head { min-height: 32px; padding: 0; }
+.mobile-pdf-sheet .layers-panel__title { font: var(--sheet-section); }
+.mobile-pdf-sheet .layers-panel__meta { font: var(--sheet-row-meta); }
+.mobile-pdf-sheet .layers-panel__text-btn { height: 44px; margin-right: -6px; font: var(--sheet-row-title); }
+.mobile-pdf-sheet .layers-row { min-height: var(--sheet-row-h); padding: 0; }
+.mobile-pdf-sheet .layers-row__name { font: var(--sheet-row-title); }
+.mobile-pdf-sheet .layers-row.is-active .layers-row__name { font: var(--sheet-row-title-strong); }
+.mobile-pdf-sheet .layers-row__btn { width: 44px; height: 44px; }
+.mobile-pdf-sheet .layers-row__input { height: 32px; font-size: 16px; }
+.mobile-pdf-sheet .layers-panel__note { margin: 4px 0 0; font: var(--sheet-row-meta); font-weight: 400; }
