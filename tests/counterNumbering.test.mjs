@@ -68,3 +68,16 @@ test('pickNextSeriesColor chooses first red then fills largest hue gap', () => {
   // Hue ~150 → midpoint wraps into the hh>=300 hslToHex branch.
   assert.match(pickNextSeriesColor(['#00ff80']), /^#[0-9a-f]{6}$/);
 });
+
+test('getCounterSeriesList gives each count the start number of its earliest pin', () => {
+  const pages = {
+    1: { objects: [
+      { type: 'circle', fill: '#f00', data: { type: 'counter', seriesId: 's', createdAt: 20, seriesStart: 1 } },
+      { type: 'circle', fill: '#f00', data: { type: 'counter', seriesId: 's', createdAt: 10, seriesStart: 7 } },
+      { type: 'circle', fill: '#00f', data: { type: 'counter', seriesId: 't', createdAt: 30 } },
+    ] },
+  };
+  const list = getCounterSeriesList(pages);
+  assert.equal(list.find((s) => s.seriesId === 's').start, 7);
+  assert.equal(list.find((s) => s.seriesId === 't').start, 1);
+});

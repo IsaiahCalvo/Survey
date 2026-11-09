@@ -6,6 +6,7 @@ import { isFeatureOn } from '../featureFlags.js';
 import { SortableRearrangeList, SortableRearrangeRow } from '../reorder/SortableRearrangeList.jsx';
 import DragRearrangeHandle from '../reorder/DragRearrangeHandle.jsx';
 import { moveItem } from '../reorder/flatReorderUtils.js';
+import { getCounterRenderGeometry } from '../utils/counterGeometry.js';
 import './CounterSeriesMenu.css';
 
 const CompactColorPicker = lazy(() => import('./CompactColorPicker.jsx'));
@@ -19,6 +20,26 @@ const EDIT_ERROR = {
   locked: 'Unlock all pins in this count before changing it.',
   default: 'This count could not be changed. Check your permission and try again.',
 };
+
+// The count's own pin shape (owner 2026-11-09: "it's just a circle, not the
+// actual shape"): the page's counter geometry, pointing the way a new pin
+// points (225 degrees), with the count's start number inside.
+const PIN_GLYPH = getCounterRenderGeometry(10, 10, 6.6, 225, 1);
+function CounterPinGlyph({ fill, numberColor, label }) {
+  const text = String(label);
+  const fontSize = text.length > 2 ? 5.2 : text.length > 1 ? 6.2 : 7.4;
+  return <svg className="counter-list__pin-glyph" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+    <path d={PIN_GLYPH.pathD} fill={fill} stroke="rgba(0,0,0,0.18)" strokeWidth="0.6" />
+    <text x="10" y="10" dy="0.36em" textAnchor="middle" fill={numberColor} fontSize={fontSize} fontWeight="700" fontFamily="system-ui, sans-serif">{text}</text>
+  </svg>;
+}
+
+/** The series pill's drop-down width: the list is a slim panel the width of
+ * the app's other colour popovers (owner 2026-11-09: "the dropdown is
+ * massive"); the classic menu keeps its old width. */
+export function counterSeriesMenuWidth() {
+  return isFeatureOn('counter-list') ? 'min(248px, calc(100vw - 24px))' : 'min(300px, calc(100vw - 24px))';
+}
 
 // The counts list under the counter tool's series pill (and the phone's).
 // Survey Nightly shows the new list (beta 'counter-list'); stable keeps the
@@ -52,6 +73,7 @@ function CounterSeriesList({ api, onClose }) {
   // A dropped row stays where it was dropped until the document catches up.
   const [optimisticIds, setOptimisticIds] = useState(null);
   const renameOwner = useRef(null);
+  const [startDraft, setStartDraft] = useState('');
 
   useEffect(() => {
     setRenaming(null);
@@ -93,6 +115,19 @@ function CounterSeriesList({ api, onClose }) {
     if (result?.ok === false) { setError(RENAME_ERROR[result.reason] || RENAME_ERROR.default); return; }
     setRenaming(null);
     setError('');
+  };
+
+  // Start number (owner 2026-11-09: "start it from number 2 ... renumber
+  // everything"): every pin in the count renumbers from it, one undo step.
+  const saveStart = (series) => {
+    const next = Math.floor(Number(startDraft));
+    if (!Number.isFinite(next) || next < 1) { setStartDraft(String(series.start || 1)); return; }
+    if (next === (series.start || 1)) return;
+    const result = api.onSetCounterSeriesStart?.(series.seriesId, next);
+    if (result?.ok === false) {
+      setStartDraft(String(series.start || 1));
+      setError(EDIT_ERROR[result.reason] || EDIT_ERROR.default);
+    } else setError('');
   };
 
   const removeSeries = (series) => {
@@ -169,20 +204,21 @@ function CounterSeriesList({ api, onClose }) {
                     aria-expanded={colorOpen}
                     data-counter-color-trigger="true"
                     data-drag-keep-fill=""
-                    {...tip('Pin and number colour', 'below')}
+                    {...tip('Colour and start number', 'below')}
                     onClick={() => {
                       setRenaming(null);
+                      setStartDraft(String(series.start || 1));
                       setColorRow(colorOpen ? null : { seriesId: series.seriesId, layer: 'fill' });
                     }}
-                    style={{ '--counter-pin-fill': fill, '--counter-pin-number': numberColor }}
                   >
-                    <span aria-hidden="true">1</span>
+                    <CounterPinGlyph fill={fill} numberColor={numberColor} label={series.start || 1} />
                   </button>
                   {renaming === series.seriesId
                     ? <input
                       className="counter-list__name-input"
                       autoFocus
                       aria-label="Count name"
+                      data-own-escape=""
                       maxLength={80}
                       value={name}
                       onFocus={(event) => event.currentTarget.select()}
@@ -225,6 +261,24 @@ function CounterSeriesList({ api, onClose }) {
                   </button>
                 </div>
                 {colorOpen && <div className="counter-list__colors" data-counter-color-panel="true">
+                  {typeof api.onSetCounterSeriesStart === 'function' && <label className="counter-list__start">
+                    <span>Start at</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      aria-label={`Start number of ${series.label}`}
+                      data-own-escape=""
+                      value={startDraft}
+                      onChange={(event) => setStartDraft(event.target.value.replace(/[^0-9]/g, '').slice(0, 5))}
+                      onBlur={() => saveStart(series)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') { event.preventDefault(); saveStart(series); }
+                        if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); setStartDraft(String(series.start || 1)); }
+                      }}
+                    />
+                    <small>{series.count > 1 ? `Pins ${series.start || 1}–${(series.start || 1) + series.count - 1}` : ''}</small>
+                  </label>}
                   <Suspense fallback={<div className="counter-list__colors-loading" />}>
                     <CompactColorPicker
                       color={layer === 'number' ? numberColor : fill}
@@ -281,7 +335,7 @@ function ClassicCounterSeriesMenu({ api, onClose }) {
     {rows.length === 0 && <p className="counter-series-menu__empty">Place a pin to start this count.</p>}
     {rows.map(series => <div className="counter-series-menu__row" key={series.seriesId}>
       {editing === series.seriesId ? <form onSubmit={save} className="counter-series-menu__rename">
-        <input autoFocus aria-label="Count name" maxLength={80} value={name} onChange={event => { setName(event.target.value); setError(''); }} onKeyDown={event => {
+        <input autoFocus aria-label="Count name" data-own-escape="" maxLength={80} value={name} onChange={event => { setName(event.target.value); setError(''); }} onKeyDown={event => {
           if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); setEditing(null); }
         }} />
         <div className="counter-series-menu__actions"><button type="submit">Save</button><button type="button" onClick={() => setEditing(null)}>Cancel</button></div>
