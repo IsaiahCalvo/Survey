@@ -11,8 +11,13 @@
  * different name. The document is reused either way; the only question is
  * whether to also keep the new name as an alias.
  *
+ * mode="sheet" (Nightly flag 'sheet-revisions'): a different file name, but
+ * its title block (or name) reads the same sheet number as an open document.
+ * Choices: keep it as its own document, or upload it as that sheet's new
+ * version. `sheet` = { label, revision, existingRevision }.
+ *
  * onResolve(choice) fires with 'open-existing' | 'new-version' | 'add-alias' |
- * 'skip-alias'; onClose() means the user backed out (Escape/backdrop) — for
+ * 'skip-alias' | 'keep-both'; onClose() means the user backed out (Escape/backdrop) — for
  * mode="version" the caller cancels the upload, for mode="alias" the caller
  * treats it like 'skip-alias'. This component just reports.
  */
@@ -21,25 +26,38 @@ import { Z_INDEX } from '../theme';
 
 const DuplicateUploadModal = ({
   isOpen,
-  mode, // 'version' | 'alias'
+  mode, // 'version' | 'alias' | 'sheet'
   incomingName = '',
   existingName = '',
   // version mode only: true when the existing doc's hash provably differs;
   // false for legacy rows with no hash yet (we can't claim "different").
   contentsKnownDifferent = true,
+  sheet = null,
   onResolve,
   onClose,
 }) => {
   if (!isOpen) return null;
 
   const isVersion = mode === 'version';
-  const title = isVersion ? 'You already have this file name' : 'You already have this file';
-  const body = isVersion
+  const isSheet = mode === 'sheet';
+  const sheetLabel = sheet?.label || '';
+  const revText = (rev) => (rev ? `, revision ${rev}` : '');
+  const title = isSheet
+    ? `New revision of sheet ${sheetLabel}?`
+    : (isVersion ? 'You already have this file name' : 'You already have this file');
+  const body = isSheet
+    ? `“${incomingName}” reads as sheet ${sheetLabel}${revText(sheet?.revision)}. “${existingName}” is the same sheet${revText(sheet?.existingRevision)}.`
+    : isVersion
     ? (contentsKnownDifferent
       ? `A document named “${existingName}” already exists here, but its contents are different from the file you picked.`
       : `A document named “${existingName}” already exists here. It was added before content checking, so we can’t tell whether your file matches it.`)
     : `The file you picked is identical to “${existingName}”, so that document will be opened. Keep “${incomingName}” as an extra name for it?`;
-  const actions = isVersion
+  const actions = isSheet
+    ? [
+        { id: 'keep-both', label: 'Keep as its own file', primary: false },
+        { id: 'new-version', label: 'Upload as new version', primary: true },
+      ]
+    : isVersion
     ? [
         // When we can't prove the contents differ, opening the existing copy
         // is the safe default action.
@@ -72,6 +90,7 @@ const DuplicateUploadModal = ({
       ))}
     >
       {isVersion ? 'A new version brings your marks across to the same spots. The old copy moves out of your active list.' : null}
+      {isSheet ? 'Upload as new version brings your marks across to the same spots and moves the old copy out of your active list. Keep as its own file leaves both.' : null}
     </DialogCard>
   );
 };
