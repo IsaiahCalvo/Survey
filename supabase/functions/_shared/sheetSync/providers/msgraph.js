@@ -303,7 +303,10 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
   // Many workbook calls in Graph's $batch (20 per request, run in order), so
   // a round writing 300 rows makes 15 requests, not 300: one at a time, a
   // big round ran for minutes, near the edge function's time limit.
-  async function workbookBatch(fileId, ops) {
+  // `parallel`: the ops touch different cells, so Graph may run them at once
+  // (200 scattered single-cell writes: 21 s chained, 12 s parallel, measured
+  // 11-09). Otherwise each waits for the one before (row deletes, in order).
+  async function workbookBatch(fileId, ops, { parallel = false } = {}) {
     for (let i = 0; i < ops.length; i += BATCH_SIZE) {
       const chunk = ops.slice(i, i + BATCH_SIZE);
       for (let attempt = 0; ; attempt += 1) {
@@ -314,7 +317,7 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
           url: `/${fileId}/workbook/${op.path}`,
           headers: { 'Content-Type': 'application/json', 'workbook-session-id': id },
           ...(op.body !== undefined ? { body: op.body } : {}),
-          ...(j ? { dependsOn: [String(j)] } : {}),
+          ...(j && !parallel ? { dependsOn: [String(j)] } : {}),
         }));
         const res = await call('POST', '$batch', { body: { requests }, where: 'batch' });
         const answers = [...(res?.responses || [])].sort((a, b) => Number(a.id) - Number(b.id));
@@ -466,7 +469,7 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
         for (const op of ops) await writeBlock(fileId, op.sheetId, op.block.row, op.block.col, op.block.values);
         return;
       }
-      await workbookBatch(fileId, ops);
+      await workbookBatch(fileId, ops, { parallel: true });
     },
 
     /** Adds rows under the last used row of each sheet. */
