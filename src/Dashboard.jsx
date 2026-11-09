@@ -344,10 +344,10 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
   // resolves as a cancel instead of hanging its awaiting upload forever.
   const [duplicateModal, setDuplicateModal] = useState(null);
   const duplicateModalRef = useRef(null);
-  const askDuplicateUpload = (mode, incomingName, existingName, knownDifferent = true) =>
+  const askDuplicateUpload = (mode, incomingName, existingName, knownDifferent = true, sheet = null) =>
     new Promise((resolve) => {
       duplicateModalRef.current?.resolve?.(duplicateModalRef.current.mode === 'alias' ? 'skip-alias' : 'cancel');
-      const next = { mode, incomingName, existingName, knownDifferent, resolve };
+      const next = { mode, incomingName, existingName, knownDifferent, sheet, resolve };
       duplicateModalRef.current = next;
       setDuplicateModal(next);
     });
@@ -367,7 +367,70 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
   //                                       so a failed create can't hide the
   //                                       old document)
   //   { proceed: false }                — handled here (opened existing) or canceled
-  const confirmSameNameDifferentContent = async ({ fileName, contentSha, projectId, openAfterUpload }) => {
+  // Sheet revisions (Nightly): no same-name copy, but the title block (or
+  // the file name) reads the same sheet number as an open document in the
+  // same place -> offer it as that sheet's new version. Never throws and never
+  // stops the upload on its own failure: it only ever adds an offer.
+  //   { proceed, archiveDocId?, sheet? } with sheet = the reading to save.
+  const confirmSameSheet = async ({ fileName, bytes, contentSha, projectId }) => {
+    let sheet = null;
+    try {
+      const { readUploadSheet } = await import('./home/readUploadTitleBlock.js');
+      sheet = await readUploadSheet({ bytes, fileName, loadPdfjs });
+      if (!sheet.sheetNumber) return { proceed: true, sheet: null };
+      const query = (columns, sheetNumber = null) => {
+        let q = supabase
+          .from('documents')
+          .select(columns)
+          .eq('user_id', user.id)
+          .eq('archived', false)
+          .is('superseded_by', null);
+        // The saved readings are matched exactly on the server (no cap); the
+        // newest 500 are also checked by file name in the browser.
+        q = sheetNumber ? q.eq('sheet_number', sheetNumber) : q.order('created_at', { ascending: false }).limit(500);
+        return projectId ? q.eq('project_id', projectId) : q.is('project_id', null);
+      };
+      const withSheet = 'id, name, content_sha256, archived, superseded_by, created_at, sheet_number, sheet_revision';
+      let { data: docs, error } = await query(withSheet);
+      if (!error) {
+        const saved = await query(withSheet, sheet.sheetNumber);
+        if (!saved.error && saved.data?.length) {
+          const seen = new Set((docs || []).map((d) => d.id));
+          docs = [...(docs || []), ...saved.data.filter((d) => !seen.has(d.id))];
+        }
+      }
+      // A server without the sheet columns yet: match on file names alone.
+      if (error) ({ data: docs, error } = await query('id, name, content_sha256, archived, superseded_by, created_at'));
+      if (error) throw error;
+      const { pickSameSheetDocument } = await import('./utils/titleBlock.js');
+      const match = pickSameSheetDocument({ sheetNumber: sheet.sheetNumber, sha: contentSha, name: fileName }, docs || []);
+      if (!match) return { proceed: true, sheet };
+      const choice = await askDuplicateUpload('sheet', fileName, match.doc.name, true, {
+        label: sheet.sheetLabel,
+        revision: sheet.revision,
+        existingRevision: match.revision,
+      });
+      if (choice === 'new-version') return { proceed: true, archiveDocId: match.doc.id, sheet };
+      if (choice === 'keep-both') return { proceed: true, sheet };
+      return { proceed: false }; // Escape/backdrop = cancel, like the same-name ask
+    } catch (err) {
+      console.warn('[sheet-revisions] sheet check skipped:', err?.message || err);
+      return { proceed: true, sheet };
+    }
+  };
+
+  // Save the sheet reading on the new row (Nightly). Best effort: an older
+  // server without the columns just answers an error.
+  const saveSheetReading = (documentId, sheet) => {
+    if (!documentId || !sheet?.sheetNumber) return;
+    supabase
+      .from('documents')
+      .update({ sheet_number: sheet.sheetNumber.slice(0, 40), sheet_revision: sheet.revision ? String(sheet.revision).slice(0, 12) : null })
+      .eq('id', documentId)
+      .then(({ error }) => { if (error) console.warn('[sheet-revisions] could not save the sheet number:', error.message); }, () => {});
+  };
+
+  const confirmSameNameDifferentContent = async ({ fileName, contentSha, projectId, openAfterUpload, bytes = null }) => {
     try {
       let query = supabase
         .from('documents')
@@ -385,7 +448,10 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         { name: fileName, sha: contentSha, projectId: projectId || null },
         candidates || []
       );
-      if (decision.kind !== 'version-ask') return { proceed: true };
+      if (decision.kind !== 'version-ask') {
+        if (bytes && isFeatureOn('sheet-revisions')) return confirmSameSheet({ fileName, bytes, contentSha, projectId });
+        return { proceed: true };
+      }
       const choice = await askDuplicateUpload('version', fileName, decision.doc.name, decision.knownDifferent);
       if (choice === 'open-existing') {
         if (openAfterUpload) await handleDocumentClick(decision.doc);
@@ -689,6 +755,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
           contentSha,
           projectId,
           openAfterUpload,
+          bytes: fileData,
         });
         if (!duplicateGate.proceed) {
           perfUpload.end(file.name);
@@ -715,6 +782,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
           perfUpload.end(file.name);
           return;
         }
+        if (resolvedDoc?.id === newDocId) saveSheetReading(newDocId, duplicateGate.sheet);
 
         // Decision 6: identical bytes deduped to a doc with a different name ->
         // offer to keep the new name as an alias, then open the EXISTING
@@ -857,8 +925,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     // the viewer opens with a real id (durable store + save shortcut work on a
     // fresh upload) and identical bytes dedup to one document.
     let contentSha;
+    let bytes = null;
     try {
-      const bytes = new Uint8Array(await readBlobAsArrayBuffer(file));
+      bytes = new Uint8Array(await readBlobAsArrayBuffer(file));
       contentSha = await computeContentSha256(bytes);
     } catch (hashErr) {
       console.error('Content hashing failed:', hashErr);
@@ -872,6 +941,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       contentSha,
       projectId,
       openAfterUpload,
+      bytes,
     });
     if (!duplicateGate.proceed) return 'skipped';
 
@@ -893,6 +963,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       setDashboardError('Couldn’t prepare the document in the cloud: ' + (createErr.message || 'Unknown error'));
       return 'failed';
     }
+    if (resolvedDoc?.id === newDocId) saveSheetReading(newDocId, duplicateGate.sheet);
 
     // Decision 6: identical bytes deduped to a doc with a different name ->
     // offer to keep the new name as an alias, then open the EXISTING document
@@ -2715,6 +2786,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         incomingName={duplicateModal?.incomingName}
         existingName={duplicateModal?.existingName}
         contentsKnownDifferent={duplicateModal?.knownDifferent !== false}
+        sheet={duplicateModal?.sheet}
         onResolve={settleDuplicateModal}
         onClose={() => settleDuplicateModal(duplicateModal?.mode === 'alias' ? 'skip-alias' : 'cancel')}
       />
