@@ -209,3 +209,33 @@
 .mobile-search-panel .search-text-result.is-active {
   box-shadow: -8px 0 0 var(--surface-3), 8px 0 0 var(--surface-3);
 }
+
+/* Match case / Whole word (Nightly, 'search-options'). */
+.search-text-panel__options {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.search-text-panel__option {
+  min-width: 28px;
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-3);
+  font: 500 12px/1 inherit;
+  cursor: pointer;
+}
+
+.search-text-panel__option:hover {
+  color: var(--text-1);
+  background: var(--hover);
+}
+
+.search-text-panel__option[aria-pressed="true"] {
+  color: var(--text-1);
+  border-color: var(--border-strong);
+  background: var(--surface-3, var(--hover));
+}

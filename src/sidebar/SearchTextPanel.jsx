@@ -17,6 +17,8 @@ import { useTooltip } from '../components/Tooltip';
 import { ensureTextLayerStyles } from '../components/PdfjsTextLayer';
 import { buildSearchSnippet } from '../utils/searchMatchNavigation';
 import { loadSearchPageData, readSearchTextAhead } from '../utils/pdfSearchText.js';
+import { searchMatchLength, searchMatchStarts } from '../utils/searchMatchOptions.js';
+import { isFeatureOn } from '../featureFlags.js';
 import './searchTextPanel.css';
 
 // UX (owner 2026-09-23: "When I type something in, I should see related things
@@ -1148,6 +1150,12 @@ const SearchTextPanel = ({
     const key = getPdfDocumentKey(pdfDoc, numPages, pdfDocumentKey);
     return (key && lastQueryByDocument.get(key)) || '';
   });
+  // Match case / Whole word (Nightly, 'search-options').
+  const [searchOptionsEnabled] = useState(() => isFeatureOn('search-options'));
+  const [matchCase, setMatchCase] = useState(false);
+  const [wholeWord, setWholeWord] = useState(false);
+  const matchOptionsRef = useRef({ matchCase: false, wholeWord: false });
+  matchOptionsRef.current = { matchCase, wholeWord };
   const [internalSearchResults, setInternalSearchResults] = useState([]);
   const [internalCurrentMatchIndex, setInternalCurrentMatchIndex] = useState(-1);
   const [isSearching, setIsSearching] = useState(false);
@@ -1172,7 +1180,7 @@ const SearchTextPanel = ({
   // When the panel remounts over results it already produced, mark that search
   // as done so the remount doesn't re-run (or clear) it.
   const lastPerformedSearchKeyRef = useRef(searchedQuery
-    ? `${getPdfDocumentKey(pdfDoc, numPages, pdfDocumentKey) || 'missing'}::${searchedQuery}`
+    ? `${getPdfDocumentKey(pdfDoc, numPages, pdfDocumentKey) || 'missing'}::${searchedQuery}::`
     : '');
 
   // Use external state if provided, otherwise use internal state
@@ -1431,14 +1439,18 @@ const SearchTextPanel = ({
     // A new query: the old "current match" belongs to the old results.
     setCurrentMatchIndex(-1, 'search-start');
 
-    const normalizedQuery = trimmedQuery.toLowerCase();
+    const matchOptions = matchOptionsRef.current;
+    const optionsOn = matchOptions.matchCase || matchOptions.wholeWord;
+    const queryLength = searchMatchLength(trimmedQuery, matchOptions);
     const results = [];
     let publishedCount = 0;
     let lastPublishAt = 0;
     const nativeMatchOffsetsByPage = new Map();
     let nativeMatchesByPage = null;
 
-    if (typeof onFindTextMatches === 'function') {
+    // The viewer's own finder knows neither option, so with one on every
+    // match is placed from the text layer instead.
+    if (typeof onFindTextMatches === 'function' && !optionsOn) {
       try {
         const nativeResults = await onFindTextMatches(trimmedQuery);
         if (searchIdRef.current !== searchId) return [];
@@ -1461,10 +1473,9 @@ const SearchTextPanel = ({
         if (nativeMatchesByPage?.get(page)?.length) continue;
         const data = await loadPageData(page);
         if (!data?.text) continue;
-        const text = data.text.toLowerCase();
         const itemIndices = [];
-        for (let at = text.indexOf(normalizedQuery); at !== -1; at = text.indexOf(normalizedQuery, at + 1)) {
-          itemIndices.push(...matchItemIndices(data, at, normalizedQuery.length));
+        for (const at of searchMatchStarts(data.text, trimmedQuery, matchOptions)) {
+          itemIndices.push(...matchItemIndices(data, at, queryLength));
         }
         if (itemIndices.length) requests.push({ pageData: data, itemIndices });
       }
@@ -1486,10 +1497,7 @@ const SearchTextPanel = ({
         const pageData = await loadPageData(pageNumber);
         if (!pageData || !pageData.text) continue;
 
-        const normalizedText = pageData.text.toLowerCase();
-        let searchIndex = normalizedText.indexOf(normalizedQuery);
-
-        while (searchIndex !== -1) {
+        for (const searchIndex of searchMatchStarts(pageData.text, trimmedQuery, matchOptions)) {
           const nativePageMatches = nativeMatchesByPage?.get(pageNumber) || [];
           const nativeMatchIndex = nativeMatchOffsetsByPage.get(pageNumber) || 0;
           const nativeMatch = nativePageMatches[nativeMatchIndex] || null;
@@ -1498,17 +1506,17 @@ const SearchTextPanel = ({
           const { snippet, matchIndex, matchLength: snippetMatchLength } = buildSearchSnippet(
             pageData.text,
             searchIndex,
-            searchIndex + normalizedQuery.length
+            searchIndex + queryLength
           );
-          const lineHeight = resolveMatchLineHeight(pageData, searchIndex, normalizedQuery.length);
+          const lineHeight = resolveMatchLineHeight(pageData, searchIndex, queryLength);
           const textLayerRectangles = nativeMatch?.rectangles?.length
             ? []
-            : await buildTextLayerRectanglesForMatch(pageData, searchIndex, normalizedQuery.length, pageNumber);
+            : await buildTextLayerRectanglesForMatch(pageData, searchIndex, queryLength, pageNumber);
           const rectangles = nativeMatch?.rectangles?.length
             ? nativeMatch.rectangles
             : (textLayerRectangles.length
               ? textLayerRectangles
-              : buildRectanglesForMatch(pageData, searchIndex, normalizedQuery.length));
+              : buildRectanglesForMatch(pageData, searchIndex, queryLength));
           const bounds = nativeMatch?.bounds || calculateMatchBounds(rectangles);
           const geometrySource = nativeMatch?.rectangles?.length
             ? 'native'
@@ -1520,7 +1528,7 @@ const SearchTextPanel = ({
             id: createResultId(),
             pageNumber,
             startIndex: searchIndex,
-            length: normalizedQuery.length,
+            length: queryLength,
             snippet,
             snippetMatchIndex: matchIndex,
             snippetMatchLength,
@@ -1529,8 +1537,6 @@ const SearchTextPanel = ({
             bounds,
             geometrySource
           });
-
-          searchIndex = normalizedText.indexOf(normalizedQuery, searchIndex + 1);
         }
 
         if (searchIdRef.current !== searchId) return results;
@@ -1607,7 +1613,7 @@ const SearchTextPanel = ({
   // Debounced search
   useEffect(() => {
     const trimmedQuery = (internalSearchQuery || '').trim();
-    const nextSearchKey = `${resolvedDocumentKey || 'missing'}::${trimmedQuery}`;
+    const nextSearchKey = `${resolvedDocumentKey || 'missing'}::${trimmedQuery}::${matchCase ? 'C' : ''}${wholeWord ? 'W' : ''}`;
     if (nextSearchKey === lastPerformedSearchKeyRef.current) {
       return undefined;
     }
@@ -1618,7 +1624,7 @@ const SearchTextPanel = ({
     }, trimmedQuery ? SEARCH_DEBOUNCE_MS : 0);
 
     return () => clearTimeout(timer);
-  }, [internalSearchQuery, performSearch, resolvedDocumentKey]);
+  }, [internalSearchQuery, performSearch, resolvedDocumentKey, matchCase, wholeWord]);
 
   // Navigate to match and trigger callback
   const navigateToMatch = useCallback((index, navigationOptions = undefined) => {
@@ -1861,6 +1867,32 @@ const SearchTextPanel = ({
             </button>
           )}
         </div>
+        {searchOptionsEnabled && (
+          <div className="search-text-panel__options" role="group" aria-label="Search options">
+            <button
+              type="button"
+              className="search-text-panel__option"
+              aria-pressed={matchCase}
+              aria-label="Match case"
+              data-search-option="case"
+              onClick={() => setMatchCase((on) => !on)}
+              {...tip('Match case', 'below')}
+            >
+              Aa
+            </button>
+            <button
+              type="button"
+              className="search-text-panel__option"
+              aria-pressed={wholeWord}
+              aria-label="Whole word"
+              data-search-option="word"
+              onClick={() => setWholeWord((on) => !on)}
+              {...tip('Whole word', 'below')}
+            >
+              <span style={{ textDecoration: 'underline', textUnderlineOffset: 2 }}>ab</span>
+            </button>
+          </div>
+        )}
 
         {/* Status line: one fixed-height row that is always there once you
             start typing, so the count appearing, changing or going away never
