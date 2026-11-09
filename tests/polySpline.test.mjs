@@ -142,3 +142,90 @@ test('adding a corner to a turned curve keeps the other corners in place', async
   const hook = readFileSync(new URL('../src/hooks/useSVGInteraction.js', import.meta.url), 'utf8');
   assert.match(hook, /obj = keepPivot\(obj, obj\.points, insertSplineCorner\(/);
 });
+
+// ---- Curve handles (owner 2026-11-09, Takeoff's Shift handles) ----
+import {
+  isBezierSpline, markBezierSpline, moveSplineHandle, sampleSplineSpans, splineSpans,
+} from '../src/utils/polySpline.js';
+
+const near = (a, b, tol = 1e-6) => Math.abs(a.x - b.x) <= tol && Math.abs(a.y - b.y) <= tol;
+
+test('handles read back out of the drawn curve: resampling them gives the same curve', () => {
+  const pts = sampleSpline(corners, SPLINE_STEP);
+  const spans = splineSpans(pts, SPLINE_STEP);
+  assert.equal(spans.length, corners.length - 1);
+  const again = sampleSplineSpans(spans, SPLINE_STEP);
+  assert.equal(again.length, pts.length);
+  again.forEach((p, i) => assert.ok(near(p, pts[i], 1e-6), `point ${i}`));
+});
+
+test('handles survive the 0.01 save rounding within a hair', () => {
+  const pts = sampleSpline(corners, SPLINE_STEP).map((p) => ({ x: Number(p.x.toFixed(2)), y: Number(p.y.toFixed(2)) }));
+  const exact = splineSpans(sampleSpline(corners, SPLINE_STEP), SPLINE_STEP);
+  splineSpans(pts, SPLINE_STEP).forEach((s, i) => {
+    assert.ok(near(s.c1, exact[i].c1, 0.05) && near(s.c2, exact[i].c2, 0.05), `span ${i}`);
+  });
+});
+
+test('dragging one handle bends only its own span; corners stay put', () => {
+  const pts = sampleSpline(corners, SPLINE_STEP);
+  const bent = moveSplineHandle(pts, SPLINE_STEP, 1, 'c1', { x: 70, y: 120 });
+  assert.equal(bent.length, pts.length);
+  assert.deepEqual(splineCorners(bent, SPLINE_STEP), corners);
+  // Spans 0 and 2 are untouched; span 1 moved toward the handle.
+  for (let i = 0; i <= 12; i += 1) assert.ok(near(bent[i], pts[i], 1e-6));
+  for (let i = 24; i < pts.length; i += 1) assert.ok(near(bent[i], pts[i], 1e-6));
+  assert.ok(Math.max(...bent.slice(13, 24).map((p) => p.y)) > Math.max(...pts.slice(13, 24).map((p) => p.y)) + 10);
+  assert.ok(near(splineSpans(bent, SPLINE_STEP)[1].c1, { x: 70, y: 120 }, 1e-6));
+});
+
+test('a hand-bent curve: moving a corner carries its handles and keeps far spans', () => {
+  const pts = moveSplineHandle(sampleSpline(corners, SPLINE_STEP), SPLINE_STEP, 1, 'c1', { x: 70, y: 120 });
+  const before = splineSpans(pts, SPLINE_STEP);
+  const moved = moveSplineCorner(pts, SPLINE_STEP, 2 * SPLINE_STEP, { x: 110, y: 10 }, true);
+  const after = splineSpans(moved, SPLINE_STEP);
+  assert.ok(near(after[1].c1, before[1].c1, 1e-6), 'far handle of span 1 kept');
+  assert.ok(near(after[1].c2, { x: before[1].c2.x + 10, y: before[1].c2.y + 10 }, 1e-6));
+  assert.ok(near(after[2].c1, { x: before[2].c1.x + 10, y: before[2].c1.y + 10 }, 1e-6));
+  for (let i = 0; i <= 12; i += 1) assert.ok(near(moved[i], pts[i], 1e-6), 'span 0 untouched');
+});
+
+test('a hand-bent curve: adding a corner keeps the shape, removing joins the spans', () => {
+  const pts = moveSplineHandle(sampleSpline(corners, SPLINE_STEP), SPLINE_STEP, 1, 'c2', { x: 90, y: -60 });
+  const mid = splineSpanMidpoint(pts, SPLINE_STEP, 1);
+  const added = insertSplineCorner(pts, SPLINE_STEP, 1, mid, true);
+  assert.equal(added.length, pts.length + SPLINE_STEP);
+  assert.ok(near(added[2 * SPLINE_STEP], mid, 1e-3));
+  // Split curve: its samples sit on the original span.
+  const orig = splineSpans(pts, SPLINE_STEP)[1];
+  const atT = (t) => {
+    const mt = 1 - t;
+    return {
+      x: mt ** 3 * orig.from.x + 3 * mt * mt * t * orig.c1.x + 3 * mt * t * t * orig.c2.x + t ** 3 * orig.to.x,
+      y: mt ** 3 * orig.from.y + 3 * mt * mt * t * orig.c1.y + 3 * mt * t * t * orig.c2.y + t ** 3 * orig.to.y,
+    };
+  };
+  assert.ok(near(added[SPLINE_STEP + 6], atT(0.25), 1e-3));
+  const removed = removeSplineCorner(added, SPLINE_STEP, 2 * SPLINE_STEP, true);
+  assert.equal(removed.length, pts.length);
+  assert.deepEqual(splineCorners(removed, SPLINE_STEP), corners);
+});
+
+test('the bent mark flag lives on data.spline and the edit helpers honour it', () => {
+  const obj = curved();
+  assert.equal(isBezierSpline(obj), false);
+  const data = markBezierSpline(obj.data);
+  assert.deepEqual(data.spline, { step: SPLINE_STEP, bezier: true });
+  assert.equal(markBezierSpline(data), data);
+  const bent = { ...obj, points: moveSplineHandle(obj.points, SPLINE_STEP, 0, 'c1', { x: 0, y: 60 }), data };
+  assert.equal(isBezierSpline(bent), true);
+  const two = removePolyVertex(bent, 3 * SPLINE_STEP);
+  assert.ok(two);
+  // Span 0's hand-set handle is still there after removing the last corner.
+  assert.ok(near(splineSpans(two.points, SPLINE_STEP)[0].c1, { x: 0, y: 60 }, 1e-6));
+  const plus = insertPolyVertex(bent, 6, 0.5);
+  assert.ok(plus);
+  // The side clicked is dense side 6 at its middle: t = 6.5 / 12 of span 0,
+  // so the split's first handle sits that far along the old one.
+  assert.ok(near(splineSpans(plus.points, SPLINE_STEP)[0].c1, { x: 0, y: 60 * (6.5 / 12) }, 1e-3));
+});

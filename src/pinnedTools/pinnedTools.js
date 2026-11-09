@@ -192,7 +192,13 @@ export const DEFAULT_PINNED_TOOLS_STATE = Object.freeze({
   // Compact dock: at most COMPACT_DOCK_SLOTS slots, the rest behind "+N".
   compact: false,
   pins: Object.freeze([]),
+  // Survey mode keeps its own pins (owner 2026-11-09). null until Survey is
+  // first opened with the dock, which starts it as a copy of the markup pins.
+  surveyPins: null,
 });
+
+/** The pin sets: markup (everywhere) and survey (while Survey mode is on). */
+export const PIN_SETS = Object.freeze(['markup', 'survey']);
 
 function sanitizePin(raw) {
   if (!raw || typeof raw !== 'object' || !pinKind(raw.kind)) return null;
@@ -209,11 +215,16 @@ export function sanitizePinnedToolsState(raw) {
   const pins = (Array.isArray(raw.pins) ? raw.pins : [])
     .map(sanitizePin)
     .filter((pin) => pin && !seen.has(pin.id) && seen.add(pin.id));
+  const surveySeen = new Set();
+  const surveyPins = Array.isArray(raw.surveyPins)
+    ? raw.surveyPins.map(sanitizePin).filter((pin) => pin && !surveySeen.has(pin.id) && surveySeen.add(pin.id))
+    : null;
   return {
     visible: typeof raw.visible === 'boolean' ? raw.visible : DEFAULT_PINNED_TOOLS_STATE.visible,
     placement: DOCK_PLACEMENTS.includes(raw.placement) ? raw.placement : DEFAULT_PINNED_TOOLS_STATE.placement,
     compact: typeof raw.compact === 'boolean' ? raw.compact : DEFAULT_PINNED_TOOLS_STATE.compact,
     pins,
+    surveyPins,
   };
 }
 
@@ -231,15 +242,39 @@ export function movePin(pins, from, to) {
  * null (private windows can refuse it); the dock then works for the session.
  */
 export function createPinnedToolsStore({ storage = safeStorage(), key = PINNED_TOOLS_STORAGE_KEY } = {}) {
-  let state = load(storage, key);
+  // `saved` is what localStorage holds; `state` is what the dock reads: the
+  // same, with `pins` being the set in use (`pinSet`).
+  let saved = load(storage, key);
+  let pinSet = 'markup';
+  const listKey = () => (pinSet === 'survey' ? 'surveyPins' : 'pins');
+  const view = () => ({ ...saved, pins: saved[listKey()] || [], pinSet });
+  let state = view();
   const listeners = new Set();
-  const commit = (next) => {
-    state = next;
-    try { storage?.setItem(key, JSON.stringify(state)); } catch { /* a full or blocked store must not block the dock */ }
+  const notify = () => {
+    state = view();
     listeners.forEach((listener) => listener());
+  };
+  // `next` is the dock's view; its `pins` go back to the set in use.
+  const commit = (next) => {
+    const { pins, pinSet: _set, ...rest } = next;
+    saved = { ...saved, ...rest, [listKey()]: pins };
+    try { storage?.setItem(key, JSON.stringify(saved)); } catch { /* a full or blocked store must not block the dock */ }
+    notify();
   };
   return {
     getState: () => state,
+    /** Switch the dock to the markup or the survey pins. */
+    setPinSet(next) {
+      if (!PIN_SETS.includes(next) || next === pinSet) return;
+      pinSet = next;
+      if (next === 'survey' && !Array.isArray(saved.surveyPins)) {
+        // First time in Survey: start from the markup pins, as new pins of
+        // their own, so the two sets part from here.
+        commit({ ...state, pins: saved.pins.map((pin) => ({ ...pin, id: newPinId() })) });
+        return;
+      }
+      notify();
+    },
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);

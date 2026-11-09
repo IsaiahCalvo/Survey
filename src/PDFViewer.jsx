@@ -3560,6 +3560,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const handleRenameCounterSeriesRef = useRef(null);
   const handleRecolorCounterSeriesRef = useRef(null);
   const handleReorderCounterSeriesRef = useRef(null);
+  const handleSetCounterSeriesStartRef = useRef(null);
   const counterSeriesActiveRef = useRef(isActive);
   counterSeriesActiveRef.current = isActive;
   const commitTextMarkupDocumentTransactionRef = useRef(null);
@@ -3598,6 +3599,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   ), []);
   const handleRecolorCounterSeriesFromToolbar = useCallback((seriesId, paint) => (
     handleRecolorCounterSeriesRef.current?.(seriesId, paint) || { ok: false, reason: 'unavailable' }
+  ), []);
+  const handleSetCounterSeriesStartFromToolbar = useCallback((seriesId, value) => (
+    handleSetCounterSeriesStartRef.current?.(seriesId, value) || { ok: false, reason: 'unavailable' }
   ), []);
   const handleReorderCounterSeriesFromToolbar = useCallback((orderedIds) => (
     handleReorderCounterSeriesRef.current?.(orderedIds) || { ok: false, reason: 'unavailable' }
@@ -9046,13 +9050,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       && annotation?.data?.type === 'counter';
     const seriesId = annotation?.data?.seriesId;
     if (!isCounter || !seriesId) return;
-    const series = getCounterSeriesList(annotationsByPageRef.current)
-      .find((item) => item.seriesId === seriesId);
-    // Historical counter rule: the start is configurable only before a
-    // second pin makes the sequence established.
-    if ((series?.count || 0) !== 1) return;
+    // Any count size now (owner 2026-11-09): the whole count renumbers from
+    // the new start (handleSetCounterSeriesStart).
     const parsed = Math.max(1, Math.floor(Number(value) || 1));
-    handleCounterGroupUpdateRef.current?.(seriesId, { seriesStart: parsed });
+    const result = handleSetCounterSeriesStartRef.current?.(seriesId, parsed);
+    if (result?.ok === false) return;
     setSelectedToolbarAnnotation((prev) => (prev
       ? {
           ...prev,
@@ -9061,7 +9063,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
             data: {
               ...(prev.annotation?.data || {}),
               seriesStart: parsed,
-              displayNumber: parsed,
+              // Its place in the count stays; only the start moves.
+              displayNumber: parsed + Math.max(0, (Number(prev.annotation?.data?.displayNumber) || 1) - (Number(prev.annotation?.data?.seriesStart) || 1)),
             },
           },
         }
@@ -27100,6 +27103,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       onRenameCounterSeries: handleRenameCounterSeriesFromToolbar,
       onRecolorCounterSeries: handleRecolorCounterSeriesFromToolbar,
       onReorderCounterSeries: handleReorderCounterSeriesFromToolbar,
+      onSetCounterSeriesStart: handleSetCounterSeriesStartFromToolbar,
       selectedCounterSeriesId,
       selectedCounterSeriesSize: selectedCounterSeries?.count || 0,
       selectedCounterSeriesStart: selectedCounterSeriesId
@@ -27243,6 +27247,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     handleRenameCounterSeriesFromToolbar,
     handleRecolorCounterSeriesFromToolbar,
     handleReorderCounterSeriesFromToolbar,
+    handleSetCounterSeriesStartFromToolbar,
     handleSelectedCounterSeriesStartChange,
     fillColor,
     fillOpacity,
@@ -30155,6 +30160,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       appDebug(`[CSeries group-update] seriesId=${seriesId} patch=${JSON.stringify(patch)} -> NO matching pins (no-op)`);
       return;
     }
+    // A new start renumbers the count HERE, so the saved page and its undo
+    // step both hold the final numbers. Left to the save's renumber pass, the
+    // step recorded the old numbers and Undo then found the page changed
+    // under it and did nothing. Every pin of the count is on these pages.
+    if (Object.prototype.hasOwnProperty.call(patch, 'seriesStart')) {
+      const pins = [];
+      updates.forEach((update) => {
+        update.json.objects.forEach((obj, index) => {
+          if (obj?.data?.type === 'counter' && obj.data.seriesId === seriesId) pins.push({ update, index, obj });
+        });
+      });
+      pins.sort((a, b) => (Number(a.obj.data.createdAt) || 0) - (Number(b.obj.data.createdAt) || 0));
+      const start = Math.max(1, Math.floor(Number(patch.seriesStart) || 1));
+      pins.forEach(({ update, index, obj }, i) => {
+        if (obj.data.displayNumber === start + i) return;
+        update.json.objects[index] = { ...obj, data: { ...obj.data, displayNumber: start + i } };
+      });
+    }
     if (updates.length === 1) {
       const [{ pageKey, json }] = updates;
       const numericKey = Number(pageKey);
@@ -30236,6 +30259,26 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     return { ok: true };
   }, [user?.id, documentOwnerId, yjsUndoCtx?.userId]);
   handleRenameCounterSeriesRef.current = handleRenameCounterSeries;
+
+  // A count's start number (owner 2026-11-09: "start it from number 2 ...
+  // renumber everything"): the earliest pin's seriesStart, mirrored on every
+  // pin; the save's renumberCounters then renumbers the whole count. Any count
+  // size (the old rule only let a one-pin count change its start). Same rules
+  // as a rename; one undo step.
+  const handleSetCounterSeriesStart = useCallback((seriesId, value) => {
+    if (!counterSeriesActiveRef.current || !canRestoreFromHistoryRef.current) return { ok: false, reason: 'forbidden' };
+    const seriesStart = Math.floor(Number(value));
+    if (!Number.isFinite(seriesStart) || seriesStart < 1 || seriesStart > 99999) return { ok: false, reason: 'invalid-start' };
+    const series = getCounterSeriesList(annotationsByPageRef.current).find((item) => item.seriesId === seriesId);
+    if (!series) return { ok: false, reason: 'invalid-series' };
+    if (series.start === seriesStart) return { ok: true };
+    const viewerId = yjsUndoCtx?.userId || user?.id || null;
+    const permission = checkCounterSeriesEdit(annotationsByPageRef.current, seriesId, { viewerId, documentOwnerId });
+    if (!permission.ok) return permission;
+    handleCounterGroupUpdateRef.current?.(seriesId, { seriesStart });
+    return { ok: true };
+  }, [user?.id, documentOwnerId, yjsUndoCtx?.userId]);
+  handleSetCounterSeriesStartRef.current = handleSetCounterSeriesStart;
 
   // The counts list (beta 'counter-list', CounterSeriesMenu): recolour a
   // whole count's pin and number from its row. Same rules as a rename.

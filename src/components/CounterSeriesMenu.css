@@ -26,36 +26,32 @@
 .counter-list__item { border-radius: var(--chrome-radius, 6px); background: var(--surface-2); }
 .counter-list__item.is-active { background: var(--surface-3); }
 .counter-list__item.is-open { background: var(--surface-3); }
-.counter-list__row { display: flex; align-items: center; gap: 2px; min-height: 32px; padding: 0 2px; }
+.counter-list__row { display: flex; align-items: center; gap: 2px; min-height: 30px; padding: 0 2px; }
 :where(.counter-list button) { border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; padding: 0; }
 .counter-list button:focus-visible, .counter-list input:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
-.counter-list__grip-space { width: 24px; flex: none; }
+.counter-list__grip-space { width: 20px; flex: none; }
 .counter-list__pin {
   flex: none;
-  width: 22px;
-  height: 22px;
-  margin: 0 4px 0 0;
-  border-radius: 999px;
+  width: 24px;
+  height: 24px;
+  margin: 0 2px 0 0;
+  border-radius: 6px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: var(--counter-pin-fill, #ef4444);
-  color: var(--counter-pin-number, #ffffff);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--text-1) 18%, transparent);
-  font: 700 11px/1 var(--font-ui);
-  font-variant-numeric: tabular-nums;
-  transition: transform 120ms ease, box-shadow 120ms ease;
+  transition: transform 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
 }
-.counter-list__pin[aria-expanded='true'] { box-shadow: 0 0 0 2px var(--surface-2), 0 0 0 3.5px var(--accent); }
+.counter-list__pin-glyph { width: 22px; height: 22px; display: block; overflow: visible; filter: drop-shadow(0 0 0.5px rgba(0, 0, 0, 0.45)); }
+.counter-list__pin[aria-expanded='true'] { box-shadow: 0 0 0 1.5px var(--accent); }
 .counter-list__pin:active { transform: scale(0.92); }
 .counter-list__name {
   flex: 1 1 auto;
   min-width: 0;
-  min-height: 28px;
+  min-height: 26px;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 6px;
+  gap: 6px;
+  padding: 0 4px;
   border-radius: 5px;
   text-align: left;
 }
@@ -77,8 +73,8 @@
 }
 .counter-list__icon {
   flex: none;
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -93,8 +89,27 @@
   .counter-list__icon:hover { background: var(--hover); color: var(--text-1); }
   .counter-list__icon.is-danger:hover { color: var(--danger-text); }
 }
-.counter-list__colors { padding: 2px 6px 8px; }
-.counter-list__colors-loading { height: 220px; }
+/* The colour picker at the size of every other annotation's picker: the
+   desktop picker's 188px content column (CompactColorPicker DESKTOP_CONTENT_W),
+   centred, instead of stretching its cells across the whole list. */
+.counter-list__colors { width: 188px; max-width: 100%; margin: 0 auto; padding: 4px 0 8px; box-sizing: content-box; }
+.counter-list__colors-loading { height: 200px; }
+.counter-list__start { display: flex; align-items: center; gap: 6px; margin: 0 0 8px; color: var(--text-3); font-size: 11px; }
+.counter-list__start input {
+  width: 46px;
+  height: 22px;
+  box-sizing: border-box;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-1, var(--surface-2));
+  color: var(--text-1);
+  font: 500 12px/1 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.counter-list__start input:focus { border-color: var(--accent); outline: none; }
+.counter-list__start small { margin-left: auto; font-size: 11px; font-variant-numeric: tabular-nums; }
 .counter-list__new {
   display: flex;
   align-items: center;
@@ -113,6 +128,8 @@
 @media (pointer: coarse) {
   .counter-list__row { min-height: 44px; }
   .counter-list__icon { width: 40px; height: 40px; }
-  .counter-list__pin { width: 28px; height: 28px; }
+  .counter-list__pin { width: 32px; height: 32px; }
+  .counter-list__pin-glyph { width: 26px; height: 26px; }
+  .counter-list__start input { height: 32px; width: 56px; font-size: 14px; }
   .counter-list__new { min-height: 44px; }
 }
