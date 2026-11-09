@@ -54,7 +54,7 @@ function writeJson(key, value) {
 function useSheetSync({ documentId, template, markers, enabled }) {
   const templateId = sheetTemplateId(template);
   const [status, setStatus] = useState(null);
-  const [busy, setBusy] = useState(null); // 'connect' | 'link' | 'sync' | 'choose' | 'unlink' | 'disconnect'
+  const [busy, setBusy] = useState(null); // 'connect' | 'link' | 'sync' | 'choose' | 'unlink' | 'takeover' | 'disconnect'
   const [error, setError] = useState(null);
   const [codeAsk, setCodeAsk] = useState(null); // provider whose code box shows while connecting
   const [busyFor, setBusyFor] = useState(null); // the provider a connect or link is for
@@ -250,6 +250,12 @@ function useSheetSync({ documentId, template, markers, enabled }) {
   const choose = useCallback((markerId, choice) => run('choose', async () => apply(await sheetSyncCall('choose', { ...ids, markerId, choice }))), [apply, ids, run]);
   const putBackTab = useCallback((scopeId) => run('choose', async () => apply(await sheetSyncCall('choose', { ...ids, scopeId, choice: 'putBackTab' }))), [apply, ids, run]);
   const unlink = useCallback(() => run('unlink', async () => apply(await sheetSyncCall('unlink', ids))), [apply, ids, run]);
+  // A stopped sheet kept going with this person's own sign-in (the one who
+  // linked it left or their sign-in ended), then a round straight away.
+  const takeOver = useCallback(() => run('takeover', async () => {
+    const res = apply(await sheetSyncCall('takeover', ids));
+    if (!res?.error) apply(await sheetSyncCall('sync', { ...ids, ...layoutInput, force: true }));
+  }), [apply, ids, layoutInput, run]);
   const disconnect = useCallback((provider = 'google') => run('disconnect', async () => {
     const res = await sheetSyncCall('disconnect', { provider });
     if (res?.error) setError(res.error); else await refresh();
@@ -275,7 +281,7 @@ function useSheetSync({ documentId, template, markers, enabled }) {
 
   const linking = busy === 'link' ? busyFor : null;
   const connecting = busy === 'connect' ? busyFor : null;
-  return { status, busy, error, live, codeAsk, linking, connecting, connect, claimCode, link, folders, choose, putBackTab, unlink, disconnect, syncNow };
+  return { status, busy, error, live, codeAsk, linking, connecting, connect, claimCode, link, folders, choose, putBackTab, unlink, takeOver, disconnect, syncNow };
 }
 
 const GLYPH = { google: 'google', msgraph: 'microsoft' };
@@ -673,6 +679,27 @@ export default function SheetSyncButton({ className, phone = false, documentId, 
               disabled={Boolean(busy)}
               onClick={() => sync.connect(link.provider)}
             />
+          )}
+          {link.status === 'broken' && !link.isConnectionOwner && canEdit && (
+            (excelLink ? status.microsoft : status.google)?.connected ? (
+              <ActionButton
+                primary block
+                label={`Keep syncing with my ${excelLink ? 'Microsoft' : 'Google'} account`}
+                busyLabel="Checking the file…"
+                busy={busy === 'takeover'}
+                disabled={Boolean(busy)}
+                onClick={() => sync.takeOver()}
+              />
+            ) : (
+              <ActionButton
+                block
+                label={`Connect ${excelLink ? 'Microsoft' : 'Google'} to keep it syncing`}
+                busyLabel={`Waiting for ${excelLink ? 'Microsoft' : 'Google'}…`}
+                busy={busy === 'connect'}
+                disabled={Boolean(busy)}
+                onClick={() => sync.connect(link.provider)}
+              />
+            )
           )}
           {busy === 'connect' && sync.codeAsk && <ClaimCodeBox provider={sync.codeAsk} onClaim={sync.claimCode} />}
         </div>

@@ -21,6 +21,9 @@
 //     the sheet with the sign-in of the person who linked it, and writes the
 //     markers as the field tech (append_annotation_update checks the role);
 //   * unlink: the person who linked it, or the document's owner.
+//   * take over a stopped link: any editor or owner whose own sign-in can
+//     open the file (the linker left, lost access, or their sign-in ended),
+//     so the team keeps its workbook instead of starting a new one.
 import { buildSyncLayout, layoutProblems } from './layout.js';
 import { initialsOf, runSheetRound } from './round.js';
 import { encryptToken, decryptToken } from './tokenCrypto.js';
@@ -243,7 +246,7 @@ export async function handleSheetSync(req, deps) {
     let raw;
     try { raw = await req.json(); } catch { return json({ error: 'invalid_json' }, 400); }
     const parsed = parseBody({
-      action: s.enum(['status', 'connect', 'claim', 'disconnect', 'link', 'sync', 'choose', 'unlink', 'folders']),
+      action: s.enum(['status', 'connect', 'claim', 'disconnect', 'link', 'sync', 'choose', 'unlink', 'folders', 'takeover']),
       documentId: s.string({ max: 64, pattern: UUID, optional: true }),
       templateId: s.string({ max: 128, optional: true }),
       template: s.record({ maxBytes: 1024 * 1024, optional: true }),
@@ -292,6 +295,7 @@ export async function handleSheetSync(req, deps) {
       case 'sync': return json(await syncLink(ctx));
       case 'choose': return json(await chooseConflict(ctx));
       case 'unlink': return json(await unlinkSheet(ctx));
+      case 'takeover': return json(await takeOverLink(ctx));
       case 'folders': return json(await listFolders(ctx));
       default: return json({ error: 'unknown_action' }, 400);
     }
@@ -796,7 +800,7 @@ async function listFolders(ctx) {
     if (err instanceof SyncError) throw err;
     if (err?.code === 'bad_folder_link' || err?.code === 'not_a_folder') throw new SyncError(err.message, 400, err.code);
     if (!signInEnded(err)) throw err;
-    await forgetDeadSignIn(ctx, ctx.user.id, 'msgraph', 'The Microsoft sign-in used for this sheet stopped working. The person who linked it needs to connect Microsoft again.');
+    await forgetDeadSignIn(ctx, ctx.user.id, 'msgraph', 'The Microsoft sign-in used for this sheet stopped working. The person who linked it can connect Microsoft again, or another editor can keep it syncing with their own account.');
     throw new SyncError('Your Microsoft sign-in has ended. Connect Microsoft again.', 401, 'reconnect');
   }
 }
@@ -826,7 +830,7 @@ async function linkSheet(ctx) {
     }
     if (signInEnded(err)) {
       const who = providerName(ctx.provider);
-      await forgetDeadSignIn(ctx, ctx.user.id, ctx.provider, `The ${who} sign-in used for this sheet stopped working. The person who linked it needs to connect ${who} again.`);
+      await forgetDeadSignIn(ctx, ctx.user.id, ctx.provider, `The ${who} sign-in used for this sheet stopped working. The person who linked it can connect ${who} again, or another editor can keep it syncing with their own account.`);
       throw new SyncError(`Your ${who} sign-in has ended. Connect ${who} again.`, 401, 'reconnect');
     }
     throw err;
@@ -901,7 +905,7 @@ async function runRoundFor(ctx, link, { provider = null, signing = null, force =
     // can still edit the survey. Someone removed from it keeps nothing.
     const { data: linkerRole } = await ctx.service.rpc('sheet_sync_user_role', { p_document_id: link.document_id, p_user_id: link.connection_user_id });
     if (linkerRole !== 'owner' && linkerRole !== 'editor') {
-      const message = `The person who linked this ${sheetName(link.provider)} is no longer an editor of this survey, so it stopped syncing. An editor can make a new live sheet.`;
+      const message = `The person who linked this ${sheetName(link.provider)} is no longer an editor of this survey, so it stopped syncing. An editor with access to the file can keep it syncing with their own account.`;
       await release({ status: 'broken', last_error: message, ...(change ? { state: link.state, baseline: link.baseline } : {}) });
       Object.assign(link, { status: 'broken', last_error: message });
       return { status: 'error', error: message };
@@ -945,10 +949,10 @@ async function runRoundFor(ctx, link, { provider = null, signing = null, force =
     const refused = !locked && ((status === 401 && !signInEnded(err)) || status === 403);
     const refusedSince = link.state?.refusedSince ? Date.parse(link.state.refusedSince) : null;
     const refusedLong = refused && refusedSince != null && Date.now() - refusedSince > REFUSED_GRACE_MS;
-    const message = signInEnded(err) ? `The ${who} sign-in used for this sheet stopped working. The person who linked it needs to connect ${who} again.`
+    const message = signInEnded(err) ? `The ${who} sign-in used for this sheet stopped working. The person who linked it can connect ${who} again, or another editor can keep it syncing with their own account.`
       : locked ? `Someone protected the ${what} or one of its synced tabs, so Survey can't write to it. Nothing is lost: Survey writes the waiting changes once it's unprotected.`
       : refused && !refusedLong ? `${who} would not open the ${what} just now. Trying again in a minute.`
-      : refused ? `The linked ${what} is no longer shared with the person who linked it, or they can no longer edit it.`
+      : refused ? `The linked ${what} is no longer shared with the person who linked it, or they can no longer edit it. An editor with access to the file can keep it syncing with their own account.`
       : status === 404 ? `The linked ${what} was deleted or is no longer shared with the person who linked it.`
       : status === 429 ? `${who} asked us to slow down. Syncing again in a minute.`
       : isBusy(status, err) ? `${who} is busy right now. Syncing again in a moment.`
@@ -1185,7 +1189,7 @@ export async function keepSignInsAlive(ctx, now = Date.now()) {
       } catch (err) {
         if (signInEnded(err)) {
           const who = providerName(provider);
-          await forgetDeadSignIn(ctx, row.user_id, provider, `The ${who} sign-in used for this sheet stopped working. The person who linked it needs to connect ${who} again.`);
+          await forgetDeadSignIn(ctx, row.user_id, provider, `The ${who} sign-in used for this sheet stopped working. The person who linked it can connect ${who} again, or another editor can keep it syncing with their own account.`);
         } else {
           // The provider unreachable: try this one again in a day, not every minute.
           await ctx.service.from('sheet_sync_connections')
@@ -1246,6 +1250,49 @@ async function chooseConflict(ctx) {
   };
   const round = await runRoundFor(ctx, link, { force: true, leaseToken: token, change });
   return statusFor(ctx, known ? round : null);
+}
+
+// A stopped link kept going with another editor's own sign-in: their account
+// must open the file now, or nothing changes. Only a stopped link, so a
+// working one is never moved off the person who made it.
+async function takeOverLink(ctx) {
+  const { documentId, templateId } = ctx.body;
+  await requireEditor(ctx, documentId);
+  const link = await linkFor(ctx, documentId, templateId);
+  if (!link) throw new SyncError('This survey has no linked sheet.', 404, 'not_linked');
+  const who = providerName(link.provider);
+  const what = sheetName(link.provider);
+  if (link.connection_user_id === ctx.user.id) throw new SyncError(`This ${what} already syncs with your ${who} sign-in. Connect ${who} again if it stopped.`, 409, 'already_yours');
+  if (link.status !== 'broken') throw new SyncError(`This ${what} is still syncing with the sign-in of the person who linked it.`, 409, 'not_stopped');
+  let p;
+  try {
+    p = await providerFor(ctx, ctx.user.id, link.provider);
+  } catch (err) {
+    if (err instanceof SyncError) throw err;
+    if (signInEnded(err)) throw new SyncError(`Connect ${who} first, then keep it syncing.`, 401, 'reconnect');
+    throw err;
+  }
+  try {
+    await p.getVersion(link.file_id);
+    const sheetIds = Object.values(link.state?.sheetIds || {}).slice(0, 1);
+    await p.readGrid(link.file_id, sheetIds.length ? { sheetIds } : {});
+  } catch (err) {
+    const status = Number(err?.status) || 500;
+    if (signInEnded(err)) throw new SyncError(`Your ${who} sign-in stopped working. Connect ${who} again.`, 401, 'reconnect');
+    if (status === 401 || status === 403 || status === 404) {
+      throw new SyncError(`Your ${who} account can't open "${link.title || what}". Ask whoever owns the file to share it with you so you can edit it, then try again.`, 403, 'no_access');
+    }
+    throw new SyncError(`Could not reach the ${what} just now. Try again in a moment.`, 503, 'unreachable');
+  } finally {
+    await p?.close?.(link.file_id);
+  }
+  const { refusedSince: _gone, ...state } = link.state || {};
+  const { data: moved } = await ctx.service.from('sheet_sync_links')
+    .update({ connection_user_id: ctx.user.id, status: 'active', last_error: null, backoff_until: null, state })
+    .eq('id', link.id).eq('connection_user_id', link.connection_user_id).select('id');
+  if (!moved?.length) throw new SyncError('Someone else changed this live sheet just now. Try again.', 409, 'raced');
+  log('taken_over', { provider: link.provider });
+  return statusFor(ctx);
 }
 
 async function unlinkSheet(ctx) {

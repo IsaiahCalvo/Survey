@@ -132,6 +132,7 @@ test.afterAll(async () => {
   if (savedFlag) await admin.from('feature_flags').upsert(savedFlag, { onConflict: 'key' });
   else await admin.from('feature_flags').update({ mode: 'off', tester_emails: [] }).eq('key', FLAG);
   await admin.from('sheet_sync_connections').delete().eq('user_id', await userId(E2E_ACCOUNTS.owner));
+  await admin.from('sheet_sync_connections').delete().eq('user_id', await userId(E2E_ACCOUNTS.editor));
 });
 
 test('two-way live sync between a survey and an Excel workbook on Microsoft 365', async () => {
@@ -215,7 +216,24 @@ test('two-way live sync between a survey and an Excel workbook on Microsoft 365'
     // Disconnecting Microsoft stops the link instead of failing quietly.
     expect((await call(ownerToken, 'disconnect', MS)).body).toEqual({ ok: true });
     const stopped = await call(editorToken, 'status', ids);
-    expect(stopped.body.link).toMatchObject({ provider: 'msgraph', status: 'broken' });
+    expect(stopped.body.link).toMatchObject({ provider: 'msgraph', status: 'broken', isConnectionOwner: false });
+
+    // Another editor keeps the same workbook going with their own sign-in,
+    // instead of the team starting a new one. A viewer can't.
+    expect((await call(viewerToken, 'takeover', ids)).status).toBe(403);
+    const notYet = await call(editorToken, 'takeover', ids);
+    expect(notYet.status, JSON.stringify(notYet.body)).toBe(401);
+    expect(notYet.body.code).toBe('reconnect');
+    await must('flag on for the editor too', admin.from('feature_flags').update({ tester_emails: [E2E_ACCOUNTS.owner.email, E2E_ACCOUNTS.editor.email] }).eq('key', FLAG));
+    await connectMicrosoft(editorToken);
+    const took = await call(editorToken, 'takeover', ids);
+    expect(took.status, JSON.stringify(took.body)).toBe(200);
+    expect(took.body.link).toMatchObject({ status: 'active', isConnectionOwner: true, lastError: null });
+    expect((await call(editorToken, 'takeover', ids)).status, 'already theirs').toBe(409);
+    await fake(`/files/${itemId}/edit`, { title: TAB, edits: [{ row: rowOf('00101'), col: col('Notes'), value: 'After the hand-over' }] });
+    const kept = await syncNow(editorToken, { ...ids, ...LAYOUT });
+    expect(kept.body.round.status).toBe('synced');
+    expect((await markersOf(owner, doc.id)).d1.note?.text).toBe('After the hand-over');
     expect((await call(ownerToken, 'unlink', ids)).body.link).toBeNull();
   } finally {
     await admin.from('sheet_sync_links').delete().eq('document_id', doc.id);
