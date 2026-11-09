@@ -9,6 +9,7 @@
 // laid over at once (trial audit 2026-11-09).
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import DialogCard from './DialogCard.jsx';
+import ValueSelect from './ValueSelect.jsx';
 import { Icon } from '../home/HubShell';
 import { C } from '../uiPalette';
 import { Z_INDEX } from '../theme';
@@ -392,19 +393,18 @@ export default function VersionCompareDialog({ older, newer, versions = [], onCl
           );
         })}
         {addable.length > 0 && layers.length < MAX_OVERLAYS && (
-          <label style={{ ...cardStyle(false), justifyContent: 'center', fontSize: 12, color: C.muted }}>
-            Lay over another
-            <select
-              aria-label="Lay over another version"
-              data-compare-add-layer="true"
+          <div data-compare-add-layer="true" style={{ ...cardStyle(false), justifyContent: 'center', fontSize: 12, color: C.muted, gap: 6 }}>
+            <span aria-hidden="true">Lay over another</span>
+            <ValueSelect
+              label="Lay over another version"
+              size="sm"
+              width="auto"
               value=""
-              onChange={(e) => addLayer(e.target.value)}
-              style={{ ...fieldStyle, width: 'auto' }}
-            >
-              <option value="" disabled>Pick a version</option>
-              {addable.map((v) => <option key={v.id} value={v.id}>v{v.versionNumber}</option>)}
-            </select>
-          </label>
+              placeholder="Pick a version"
+              options={addable.map((v) => ({ value: v.id, label: `v${v.versionNumber}` }))}
+              onChange={(id) => addLayer(id)}
+            />
+          </div>
         )}
       </div>
       <div
