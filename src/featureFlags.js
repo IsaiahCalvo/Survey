@@ -28,11 +28,13 @@
 // migration (see supabase/migrations/20261021030000_feature_flags.sql).
 
 export const FEATURE_FLAGS = Object.freeze({
+  // On surveytool.app since 2026-11-09 (owner: "let's deploy it", with a
+  // "Beta" tag under its tool icon).
   'smart-fill': Object.freeze({
     label: 'Smart fill',
     legacyKey: 'SMART_FILL_BETA',
     env: 'VITE_ENABLE_SMART_FILL',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'survey-agent': Object.freeze({
     label: 'Survey agent',

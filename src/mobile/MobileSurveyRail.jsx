@@ -377,7 +377,7 @@ export function MobileMarkerShapeChip({ armed, onArm, glyph = 17 }) {
     return () => setMarkerModeToolsShown(false);
   }, []);
   const shapes = smartFill
-    ? [...BUILT_IN_SHAPES, { mode: 'smartFill', label: smartFill.label || 'Smart fill', icon: smartFill.icon || 'smartFillDrop' }]
+    ? [...BUILT_IN_SHAPES, { mode: 'smartFill', label: smartFill.label || 'Smart fill', icon: smartFill.icon || 'smartFillDrop', beta: true }]
     : BUILT_IN_SHAPES;
   const current = shapes.find((shape) => shape.mode === shown) || shapes[0];
   const toggle = () => {
@@ -391,7 +391,7 @@ export function MobileMarkerShapeChip({ armed, onArm, glyph = 17 }) {
       <button
         ref={chipRef}
         type="button"
-        className={`mobile-pdf-tools__button mobile-pdf-tools__marker-shape${armed ? ' is-active' : ''}`}
+        className={`mobile-pdf-tools__button mobile-pdf-tools__marker-shape${armed ? ' is-active' : ''}${current.beta ? ' has-beta-tag' : ''}`}
         data-marker-draw-modes="phone"
         data-marker-draw-mode={current.mode}
         aria-label={`Survey Marker shape: ${current.label}`}
@@ -400,7 +400,8 @@ export function MobileMarkerShapeChip({ armed, onArm, glyph = 17 }) {
         {...tip(`Survey Marker shape: ${current.label}`, 'below')}
         onClick={toggle}
       >
-        <Icon name={current.icon} size={glyph} color="currentColor" />
+        <Icon name={current.icon} size={current.beta ? Math.max(12, glyph - 4) : glyph} color="currentColor" />
+        {current.beta && <span className="chrome-beta-tag" aria-hidden="true">Beta</span>}
       </button>
       {/* KAL-66 `menu`: from a keyboard, focus goes to the shape in use,
           Up / Down move, and Escape gives focus back to the chip. */}
@@ -432,7 +433,7 @@ export function MobileMarkerShapeChip({ armed, onArm, glyph = 17 }) {
               }}
             >
               <Icon name={shape.icon} size={16} color="currentColor" />
-              <span>{shape.label}</span>
+              <span>{shape.label}{shape.beta && <span className="chrome-beta-pill">Beta</span>}</span>
               <span className="mobile-pdf-tools__popover-check" aria-hidden="true">
                 {shape.mode === current.mode ? <Icon name="check" size={14} color="currentColor" /> : null}
               </span>

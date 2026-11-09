@@ -44,7 +44,7 @@ export default function SurveyMarkerModeTools({ chromeTip, glyphSize }) {
     return () => setMarkerModeToolsShown(false);
   }, []);
   const modes = smartFill
-    ? [...BUILT_IN_MODES, { mode: 'smartFill', label: smartFill.label, icon: smartFill.icon }]
+    ? [...BUILT_IN_MODES, { mode: 'smartFill', label: smartFill.label, icon: smartFill.icon, beta: true }]
     : BUILT_IN_MODES;
   return (
     <div
@@ -53,13 +53,13 @@ export default function SurveyMarkerModeTools({ chromeTip, glyphSize }) {
       aria-label="Survey marker drawing"
       style={{ display: 'flex', alignItems: 'center', gap: 'var(--chrome-tool-gap)' }}
     >
-      {modes.map(({ mode, label, icon }) => {
+      {modes.map(({ mode, label, icon, beta }) => {
         const selected = shown === mode;
         return (
           <button
             key={mode}
             type="button"
-            className={`btn chrome-subcontrol ${selected ? 'btn-active' : 'btn-ghost'}`}
+            className={`btn chrome-subcontrol ${selected ? 'btn-active' : 'btn-ghost'}${beta ? ' has-beta-tag' : ''}`}
             aria-pressed={selected}
             data-marker-draw-mode={mode}
             data-morph-icon={icon}
@@ -68,7 +68,10 @@ export default function SurveyMarkerModeTools({ chromeTip, glyphSize }) {
             {...(chromeTip ? chromeTip(label, 'below') : {})}
             aria-label={label}
           >
-            <Icon name={icon} size={glyphSize} />
+            {/* Smart fill is on surveytool.app as a beta (owner 2026-11-09:
+                "right underneath the icon, just have it say beta"). */}
+            <Icon name={icon} size={beta ? Math.max(12, (glyphSize || 18) - 4) : glyphSize} />
+            {beta && <span className="chrome-beta-tag" aria-hidden="true">Beta</span>}
           </button>
         );
       })}
