@@ -292,6 +292,10 @@
   .sheet-sync-icon-btn--quiet:hover { background: var(--hover); color: var(--text-1); }
 }
 .sheet-sync-icon-btn--quiet[aria-expanded='true'] { background: var(--hover); color: var(--text-1); }
+/* A finger needs more than 28px: the "More" button on phones and tablets. */
+@media (pointer: coarse) {
+  .sheet-sync-icon-btn--quiet { height: 40px; width: 40px; min-width: 40px; margin-right: -6px; }
+}
 
 .sheet-sync-menu {
   position: absolute;
