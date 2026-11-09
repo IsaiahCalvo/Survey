@@ -139,3 +139,13 @@ test('the phone app reloads a killed page quietly to the same place and hands ov
   assert.match(app, /Survey had to close/);
   assert.match(app, /if \(!loadError \|\| loadErrorKind === 'crash'\) return undefined;/);
 });
+
+test('browser ResizeObserver notices are not recorded as crashes', async () => {
+  const { isBrowserNotice } = await import('../src/utils/crashLog.js');
+  assert.equal(isBrowserNotice('ResizeObserver loop completed with undelivered notifications.'), true);
+  assert.equal(isBrowserNotice('ResizeObserver loop limit exceeded'), true);
+  assert.equal(isBrowserNotice('TypeError: x is undefined'), false);
+  assert.equal(isBrowserNotice(undefined), false);
+  const src = fs.readFileSync(new URL('../src/utils/crashLog.js', import.meta.url), 'utf8');
+  assert.match(src, /if \(isBrowserNotice\(event\.message\)\) return;/);
+});
