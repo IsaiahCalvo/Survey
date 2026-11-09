@@ -5726,7 +5726,7 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
    printed one letter per line), so there the person takes the first line and
    role / status / More the second. Rows sit in a flex column that scrolls, so
    they must not shrink below their content. */
-.access-grid { grid-template-columns: 30px 1fr 1fr 1fr 24px; flex-shrink: 0; }
+.access-grid { grid-template-columns: 30px minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) 24px; flex-shrink: 0; }
 /* The list under them keeps room for three rows (50px + 2px gap each, plus
    its 18px padding), so the dialog opens at the size it keeps: it used to
    open short with "Loading…", then grow ~100px and jump up (it is centred)

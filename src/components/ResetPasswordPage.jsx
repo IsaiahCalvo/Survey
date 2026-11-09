@@ -183,7 +183,6 @@ export default function ResetPasswordPage() {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
                   autoComplete="new-password"
                   disabled={submitting}
                   autoFocus
@@ -197,7 +196,6 @@ export default function ResetPasswordPage() {
                   type="password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="••••••••"
                   autoComplete="new-password"
                   disabled={submitting}
                   style={inputStyle()}
