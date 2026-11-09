@@ -151,6 +151,8 @@ export function getCounterSeriesList(annotationsByPage) {
           color: obj.fill || '#ef4444',
           numberColor: obj.data.numberColor || '#ffffff',
           firstCreatedAt: Number(obj.data.createdAt) || 0,
+          // The earliest pin's seriesStart: the number the count starts at.
+          start: Math.max(1, Math.floor(Number(obj.data.seriesStart) || 1)),
           name: String(obj.data.seriesName || '').trim(),
           order: null,
           count: 0,
@@ -162,7 +164,10 @@ export function getCounterSeriesList(annotationsByPage) {
       if (obj.data.seriesOrder != null && Number.isFinite(order) && entry.order == null) entry.order = order;
       if (!entry.name && obj.data.seriesName) entry.name = String(obj.data.seriesName).trim();
       const ts = Number(obj.data.createdAt) || 0;
-      if (ts && ts < entry.firstCreatedAt) entry.firstCreatedAt = ts;
+      if (ts && ts < entry.firstCreatedAt) {
+        entry.firstCreatedAt = ts;
+        entry.start = Math.max(1, Math.floor(Number(obj.data.seriesStart) || 1));
+      }
       // Fabric copies fill onto every pin, so any non-empty fill is valid.
       if (obj.fill) entry.color = obj.fill;
       if (obj.data.numberColor) entry.numberColor = obj.data.numberColor;

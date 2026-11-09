@@ -72,6 +72,73 @@ test('Curve bends a new polyline through its corners and can be turned off', asy
   await expect(page.locator(vertexHandles)).toHaveCount(4);
 });
 
+const pathPoints = (page) => page.locator('[data-svg-annotation-layer="1"] [data-shape-kind="polyline"]').first().evaluate((node) => {
+  const geo = node.matches('polyline,path') ? node : node.querySelector('polyline,path');
+  if (geo.tagName === 'polyline') return Array.from({ length: geo.points.numberOfItems }, (_, i) => { const p = geo.points.getItem(i); return [p.x, p.y]; });
+  return (geo.getAttribute('d').match(/-?\d+(\.\d+)?/g) || []).map(Number).reduce((acc, v, i, all) => (i % 2 ? acc : [...acc, [v, all[i + 1]]]), []);
+});
+
+test('Shift on a picked curve shows its handles; dragging one bends that span (Takeoff)', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (err) => errors.push(String(err)));
+  await page.keyboard.press('k');
+  await page.getByRole('switch', { name: 'Curve', exact: true }).click();
+  const box = await page.locator('[data-svg-annotation-layer="1"]').boundingBox();
+  const width = Math.min(box.width, 600), height = Math.min(box.height, 800);
+  for (const [x, y] of [[0.2, 0.3], [0.4, 0.2], [0.6, 0.35], [0.75, 0.25]]) await page.mouse.click(box.x + width * x, box.y + height * y);
+  await page.keyboard.press('Enter');
+  await expect.poll(() => shapePointCount(page)).toBe(37);
+  await page.keyboard.press('v');
+  await expect(page.locator(vertexHandles)).toHaveCount(4);
+
+  // No handles until Shift is held; then two per span (3 spans).
+  const handles = page.locator('circle[data-curve-handle]');
+  await expect(handles).toHaveCount(0);
+  await page.keyboard.down('Shift');
+  await expect(handles).toHaveCount(6);
+  await page.screenshot({ path: 'test-results/polyline-curve-handles.png' });
+
+  const before = await pathPoints(page);
+  const h = await page.locator('circle[data-curve-handle="1-c1"]').boundingBox();
+  await page.mouse.move(h.x + h.width / 2, h.y + h.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(h.x + h.width / 2, h.y + h.height / 2 + 80, { steps: 10 });
+  await page.mouse.up();
+  await page.keyboard.up('Shift');
+  await expect(handles).toHaveCount(0);
+  await page.screenshot({ path: 'test-results/polyline-curve-bent.png' });
+
+  const after = await pathPoints(page);
+  expect(after.length).toBe(before.length);
+  // Span 0 and span 2 keep their shape; span 1 dips toward the drag.
+  const moved = (i) => Math.hypot(after[i][0] - before[i][0], after[i][1] - before[i][1]);
+  for (let i = 0; i <= 12; i += 1) expect(moved(i)).toBeLessThan(0.6);
+  for (let i = 24; i < after.length; i += 1) expect(moved(i)).toBeLessThan(0.6);
+  expect(Math.max(...after.slice(13, 24).map((_, k) => moved(13 + k)))).toBeGreaterThan(8);
+  expect(after[15][1]).toBeGreaterThan(before[15][1]);
+
+  // A corner drag keeps the hand-set bend (the curve is not smoothed again).
+  const bentMid = after[18];
+  const corner = await page.locator(vertexHandles).nth(3).boundingBox();
+  await page.mouse.move(corner.x + corner.width / 2, corner.y + corner.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(corner.x + corner.width / 2 + 30, corner.y + corner.height / 2 - 20, { steps: 8 });
+  await page.mouse.up();
+  await expect.poll(async () => (await pathPoints(page)).length).toBe(37);
+  const afterCorner = await pathPoints(page);
+  expect(Math.hypot(afterCorner[18][0] - bentMid[0], afterCorner[18][1] - bentMid[1])).toBeLessThan(0.6);
+
+  // Undo twice: back to the smooth curve.
+  const undo = process.platform === 'darwin' ? 'Meta+z' : 'Control+z';
+  await page.keyboard.press(undo);
+  await page.keyboard.press(undo);
+  await expect.poll(async () => {
+    const pts = await pathPoints(page);
+    return Math.max(...pts.map((p, i) => Math.hypot(p[0] - before[i][0], p[1] - before[i][1])));
+  }).toBeLessThan(0.6);
+  expect(errors).toEqual([]);
+});
+
 test('Curve stays hidden without the Nightly flag', async ({ page }) => {
   await page.evaluate(() => localStorage.setItem('survey.flag.spline-polyline', '0'));
   await page.reload();
