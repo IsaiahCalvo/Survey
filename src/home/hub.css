@@ -409,24 +409,26 @@
 
 /* PDF page placeholder thumbnail */
 .survey-hub .pdf-thumb {
-  background: linear-gradient(180deg, var(--accent-light) 0 28%, #ffffff 28% 100%);
+  background: #ffffff;
   border-radius: 4px;
   position: relative;
   overflow: hidden;
   box-shadow: 0 4px 14px rgba(0,0,0,0.3);
 }
+/* Audit 2026-11-09: the stand-in shown while a page preview loads (or when
+   it cannot draw) is a plain sheet with a few faint lines of "text", so the
+   swap to the real page is quiet. It used to be a coloured header over a
+   grid, which read as a spreadsheet icon and flashed before every PDF. */
 .survey-hub .pdf-thumb::before {
   content: "";
-  position: absolute; inset: 0;
-  background:
-    repeating-linear-gradient(0deg, transparent 0 8px, rgba(20,20,20,0.04) 8px 9px),
-    repeating-linear-gradient(90deg, transparent 0 11px, rgba(20,20,20,0.05) 11px 12px);
+  position: absolute;
+  inset: 14% 16% 46% 16%;
+  background: repeating-linear-gradient(180deg, rgba(20,20,20,0.12) 0 2px, transparent 2px 7px);
 }
 /* The little fake document thumbnail is an ILLUSTRATION of a drawing, not
    chrome: its paper, its title block and its revision stamp keep their own
    colours, exactly as a real page would. */
-.survey-hub .pdf-thumb .ribbon { position: absolute; top: 0; left: 0; right: 0; height: 18%; background: #1f4a7a; }
-.survey-hub .pdf-thumb .ribbon-line { position: absolute; top: 22%; left: 8%; right: 8%; height: 4%; background: rgba(20,20,20,0.6); }
+
 .survey-hub .pdf-thumb .stamp { position: absolute; bottom: 6%; right: 6%; width: 28px; height: 14px; border: 1.4px solid var(--danger-fill); color: var(--danger-fill); border-radius: 2px; font-family: "JetBrains Mono", monospace; font-size: 8px; display: grid; place-items: center; }
 .survey-hub .pdf-thumb .mark { position: absolute; border: 1.5px solid var(--gold); border-radius: 2px; }
 .survey-hub .pdf-thumb .swatch { position: absolute; background: rgba(216,168,78,0.45); }
@@ -5042,6 +5044,11 @@ button[aria-label="Edit color"]:active > span,
 }
 .survey-hub .hub-new-btn.is-compact .hub-new-btn__noun {
   display: none;
+}
+/* The noun carries its own word space (&nbsp;), so take back the button's
+   6px flex gap; otherwise "New  project" shows a double-width gap. */
+.survey-hub .hub-new-btn .hub-new-btn__noun {
+  margin-left: -6px;
 }
 
 /* THE SECTION ACTIONS are icons since 2026-10-02 (owner: "The icons looked

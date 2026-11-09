@@ -334,6 +334,13 @@ export function recordShellNote(detail, { storage = store(), now = Date.now() } 
   }, { storage, now });
 }
 
+// Browser notices that arrive as window 'error' events but are not crashes.
+// "ResizeObserver loop completed with undelivered notifications" means one
+// resize callback changed layout and the browser finished the rest next
+// frame; nothing broke. It was most of the daily crash summary (issue #1053).
+const BROWSER_NOTICE = /^ResizeObserver loop (completed with undelivered notifications|limit exceeded)/i;
+export const isBrowserNotice = (message) => BROWSER_NOTICE.test(String(message || ''));
+
 const NETWORK_NOISE = /Failed to fetch|NetworkError|Load failed|AbortError|aborted|ERR_|timeout|timed out|offline|Network request failed|ResizeObserver loop|cancelled|canceled|RenderingCancelled/i;
 
 function labelForTarget(target) {
@@ -360,6 +367,7 @@ export function installCrashLog({ build = 'unknown', storage = null } = {}) {
   window.addEventListener('error', (event) => {
     if (!(event instanceof ErrorEvent)) return; // a failed image / script load
     if (!event.error && /^Script error\.?$/.test(event.message || '')) return;
+    if (isBrowserNotice(event.message)) return;
     recordCrash({ kind: 'error', error: event.error, message: event.message });
   });
   window.addEventListener('unhandledrejection', (event) => {

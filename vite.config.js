@@ -295,7 +295,14 @@ export default defineConfig(({ mode }) => {
   let gitHash = 'no-git';
   try {
     gitHash = execSync('git rev-parse --short HEAD', { cwd: __dirname }).toString().trim();
-  } catch { /* not a git checkout — keep placeholder */ }
+  } catch {
+    // Not a git checkout: production builds on Vercel from an upload with no
+    // .git, and deploy-production.yml hands the tested commit over as
+    // VERCEL_GIT_COMMIT_SHA. Without this every live crash report said
+    // "no-git" and could not be tied to a build (audit 2026-11-09).
+    const sha = (process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA || '').trim();
+    if (/^[0-9a-f]{7,40}$/i.test(sha)) gitHash = sha.slice(0, 7);
+  }
   let buildStamp = gitHash;
   if (mode === 'development') {
     const started = new Date().toTimeString().slice(0, 5);
