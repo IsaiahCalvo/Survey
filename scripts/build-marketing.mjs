@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { TOOLS as PDF_TOOLS, TOOL_PATHS } from './free-tools-catalog.mjs';
 import { WHATS_NEW } from './whats-new.mjs';
+import { toolIcon } from './free-tool-icons.mjs';
 
 // The app's own tool glyphs (scripts/dump-marketing-icons.mjs renders them).
 const ICONS = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'marketing-icons.json'), 'utf8'));
@@ -103,20 +104,24 @@ const TOOLS = [
 
 // The three things no other PDF app does. Real screenshots from the app.
 const ONLY = [
-  { id: 'surveys', kicker: 'Only in Survey', name: 'Site surveys that turn into data',
-    lead: 'Walk the site with the plan. Every answer lands in a spreadsheet.',
-    body: 'Build a checklist template once: the things you check and the questions you ask at each one. On site, drop a marker where each outlet, fitting or door is, answer Y, N or N/A, and add a note, a photo or a voice note. Export the data and you get a spreadsheet with one sheet per category plus a summary, ready for Excel, Google Sheets or anything that reads a spreadsheet. Link a Microsoft 365 workbook and edits made there come back onto the plan.',
+  { id: 'surveys', kicker: 'Site surveys', name: 'Every answer lands in a spreadsheet',
+    lead: 'Walk the site with the plan. Tap where each item is and answer as you go.',
+    body: 'Each marker carries its checklist: Y, N or N/A, a note, a photo or a voice note. Export the data and the office gets one spreadsheet, with a sheet per category and a summary.',
+    ticks: ['Opens in Excel, Google Sheets, Numbers and LibreOffice', 'Link a Microsoft 365 workbook and edits made there come back onto the plan', 'Counts and answers from every walk in one file'],
     img: 'survey.webp', w: 1600, h: 1000, alt: 'Survey with a floor plan on the left and the survey panel on the right: outlets and data points marked on the plan, and Data point 2 answered Patched Y, Tested N, with the note "Patch lead missing at desk 14. Re-check Friday."', srcset: '/welcome/survey-800.webp 800w, /welcome/survey.webp 1600w',
     img2: 'sheet.webp', w2: 1600, h2: 669, alt2: 'The exported spreadsheet: an Outlet sheet with Item, Faceplate fitted, Tested, Labelled, Entity and Notes columns, and a tab for every category plus a Summary' },
-  { id: 'spaces', kicker: 'Only in Survey', name: 'Spaces and regions',
-    lead: 'Work on one part of a sheet at a time.',
-    body: 'Name a space, pick its pages and draw a region on each one, as a rectangle or freehand. Turn the space on and everything outside the region dims. Markups made inside a space belong to it, so one sheet can carry the fit-out, the demolition and the services as separate work. Export a space on its own. We have not found this in any other PDF app.',
-    img: 'spaces.webp', w: 1600, h: 1000, alt: 'A floor plan with a space turned on: the open office stays clear while the rest of the sheet is dimmed with a grey hatch', srcset: '/welcome/spaces-800.webp 800w, /welcome/spaces.webp 1600w' },
+  { id: 'spaces', kicker: 'Spaces and regions', name: 'Work on one part of a sheet at a time',
+    lead: 'Draw a region, turn the space on, and everything outside it steps back.',
+    body: 'Markups made inside a space belong to it, so one sheet can carry the fit-out, the demolition and the services as separate work. We have not found this in any other PDF app.',
+    ticks: ['A region per page, as a rectangle or freehand', 'Export a space on its own', 'Switch spaces on and off in one tap'],
+    img: 'spaces.webp', w: 1223, h: 764, alt: 'A floor plan with the space Open office fit-out turned on: the open office stays clear while the rest of the sheet is dimmed with a grey hatch', srcset: '/welcome/spaces-800.webp 800w, /welcome/spaces.webp 1223w',
+    chip: ['Open office fit-out', 'Space on · 1 region'] },
   // Not "projects": Drawboard Projects has projects too (checked 2026-10-27).
-  { id: 'templates', kicker: 'Only in Survey', name: 'Survey templates',
-    lead: 'Set up a survey once. Use it on every project.',
-    body: 'A template holds the modules, the categories under each one, the checklist for each category and the tags you give each item, like Installed, Snag or Missing. Make one per kind of survey: electrical, fire, fit-out.',
-    img: 'template.webp', w: 1600, h: 625, alt: 'The template editor: Electrical site survey with Power, Lighting and Fire modules, an Outlet checklist of Faceplate fitted, Tested and Labelled, and the tags Installed, Snag and Missing', srcset: '/welcome/template-800.webp 800w, /welcome/template.webp 1600w' },
+  { id: 'templates', kicker: 'Survey templates', name: 'Set it up once. Use it on every job.',
+    lead: 'A template holds what you check, the questions you ask and the tags you give each item.',
+    body: 'Make one per kind of survey, like electrical, fire or fit-out, and every project starts from the same checklist. The whole team answers the same questions, so the data lines up.',
+    ticks: ['Modules, categories and a checklist for each', 'Tags like Installed, Snag or Missing', 'Shared with everyone on the project'],
+    img: 'template.webp', w: 1262, h: 625, alt: 'The template editor: Electrical site survey with Power, Lighting and Fire modules, an Outlet checklist of Faceplate fitted, Tested and Labelled, and the tags Installed, Snag and Missing', srcset: '/welcome/template-800.webp 800w, /welcome/template.webp 1262w' },
 ];
 
 // Every markup tool, free. Checked against the app: nothing here is gated.
@@ -261,7 +266,7 @@ ${body}
     <div><h2 class="fh">Get started</h2><a href="${APP}">Log in</a><a href="${SIGNUP}">Start free</a><a href="${MAIL}">Contact</a><a href="/status">Status</a></div>
     <div><h2 class="fh">Legal</h2><a href="/privacy.html">Privacy</a><a href="/terms.html">Terms</a><a href="/delete-account">Delete account</a></div>
   </div>
-  <p class="copy">© <span class="yr">2026</span> Survey</p>
+  <p class="copy">© <span class="yr">2026</span> Kal Voe LLC. Survey is made by Kal Voe LLC, New Jersey, United States.</p>
 </div></footer>
 <script src="/welcome/site.js" defer></script>${scripts}
 </body>
@@ -272,8 +277,8 @@ ${body}
 const shot = (t, cls = '') => `<figure class="shot ${cls}"><img src="/welcome/${t.img}"${t.srcset ? ` srcset="${t.srcset}" sizes="(max-width: 900px) 92vw, 640px"` : ''} width="${t.w}" height="${t.h}" loading="lazy" decoding="async" alt="${esc(t.alt)}" /></figure>`;
 
 const only = (f, i) => `<section class="sec feat${i % 2 ? ' flip' : ''}" id="${f.id}"><div class="wrap feat-grid">
-  <div><p class="kicker">${f.kicker}</p><h2>${f.name}</h2><p class="lead">${f.lead}</p><p>${f.body}</p></div>
-  ${f.img2 ? `<div class="duo">${shot(f)}${shot({ img: f.img2, w: f.w2, h: f.h2, alt: f.alt2, srcset: '/welcome/' + f.img2.replace('.webp', '-800.webp') + ' 800w, /welcome/' + f.img2 + ' 1600w' })}</div>` : shot(f)}
+  <div class="feat-copy"><p class="kicker">${f.kicker}</p><h2>${f.name}</h2><p class="lead">${f.lead}</p><p>${f.body}</p>${f.ticks ? `<ul class="ticks">${f.ticks.map((t) => `<li>${t}</li>`).join('')}</ul>` : ''}</div>
+  ${f.chip ? `<div class="shot-wrap">${shot(f)}<div class="float chip-float chip-sm" aria-hidden="true"><span class="chip-dot"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><span>${f.chip[0]}<small>${f.chip[1]}</small></span></div></div>` : f.img2 ? `<div class="duo">${shot(f)}${shot({ img: f.img2, w: f.w2, h: f.h2, alt: f.alt2, srcset: '/welcome/' + f.img2.replace('.webp', '-800.webp') + ' 800w, /welcome/' + f.img2 + ' 1600w' })}</div>` : shot(f)}
 </div></section>`;
 
 const cell = (v) => v === 'Not listed' ? '<span class="no">Not listed</span>' : `<span class="${v === 'Free' ? 'yes' : 'tier'}">${v}</span>`;
@@ -294,7 +299,7 @@ const devs = () => `<div class="devs">
 
 const plans = () => `<div class="plans">${PLANS.map((p) => `
   <article class="plan${p.best ? ' best' : ''}">
-    <h3>${p.name}</h3>${p.best ? '<p class="flag">Most picked</p>' : ''}
+    <h3>${p.name}</h3>${p.best ? '<p class="flag">Recommended</p>' : ''}
     <p class="amt">${p.price}<small>${p.per}</small></p>
     <p class="note">${p.note}</p>
     <ul>${p.items.map((i) => `<li>${i}</li>`).join('')}</ul>
@@ -311,76 +316,146 @@ export const cta = (h = 'Bring your next drawing set') => `<section class="band"
   <a class="btn primary lg" href="${SIGNUP}">Open Survey free</a>
 </div></section>`;
 
+// Free PDF tools called out on the home page and /features, each with its own glyph.
+const toolPicks = () => `<div class="grid6 picks">${FREE_TOOL_PICKS.map(([id, h, p]) => `<a class="pick g-${PDF_TOOLS.find((t) => t.id === id).group}" href="/tools/${id}"><span class="pick-ic">${toolIcon(id)}</span><span><b>${h}</b><span>${p}</span></span></a>`).join('')}</div>`;
+
 // ---------- Home ----------
+// Small line glyphs for the facts strip and the trust cards (24 grid, 1.7 stroke).
+const G = {
+  free: '<path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/>',
+  devices: '<rect x="2" y="4" width="14" height="10" rx="1.5"/><path d="M5 18h8"/><rect x="17" y="8" width="5" height="11" rx="1"/>',
+  pen: '<path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L8 19z"/><path d="M14.5 6.5l3 3"/>',
+  sheet: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/>',
+  roles: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.2a6.5 6.5 0 0 1 3.5 5.8"/>',
+  lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+  box: '<path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>',
+  key: '<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/>',
+};
+const svg = (k) => `<svg viewBox="0 0 24 24" aria-hidden="true">${G[k]}</svg>`;
+
+const FACTS = [
+  ['free', 'Every markup tool free', 'No trial, no time limit'],
+  ['devices', 'Any device', 'In the browser, nothing to install'],
+  ['pen', 'Made for the pen', 'The pen draws, fingers pan'],
+  ['sheet', 'Your data, your format', 'Spreadsheet (.xlsx) and CSV export'],
+];
+
+const HOW = [
+  ['step-template.webp', 'Set up the survey once', 'Build a template: the things you check, the questions to ask at each one and the tags to give them.', 'The template editor with an Outlet checklist of Faceplate fitted, Tested and Labelled'],
+  ['step-survey.webp', 'Walk the site with the plan', 'On a tablet or phone, tap where each item is and answer Y, N or N/A. Add a note, a photo or a voice note.', 'The survey panel beside the plan: Data point 2 answered Patched Y, Tested N, with a note'],
+  ['step-sheet.webp', 'Send the office the data', 'Export one spreadsheet with a sheet per category and a summary, ready for the report or the estimate.', 'The exported spreadsheet with Item, Faceplate fitted, Tested, Labelled, Entity and Notes columns'],
+];
+
+const TRUST = [
+  ['roles', 'Roles on every document', 'Owners, editors and viewers. The database checks every request against them, not just the screen.'],
+  ['lock', 'Encrypted', 'HTTPS on every connection. Drawings and data are stored encrypted.'],
+  ['box', 'Your data stays yours', 'Download everything in one ZIP, or delete your account yourself, any time.'],
+  ['key', 'Company sign-in', 'Single sign-on for your company email domain.', true],
+];
+
+// The hero's export card: the "Data point - Power" sheet a survey like the
+// one in the screenshot exports (same items, answers and note).
+const SHEET_ROWS = [
+  ['Data point 1', 'Y', 'Y', ''],
+  ['Data point 3', 'Y', 'Y', ''],
+  ['Data point 4', 'Y', '', 'Second outlet not reached'],
+  ['Data point 2', 'Y', 'N', 'Patch lead missing at desk 14. Re-check Friday.'],
+];
+const yn = (v) => `<td${v === 'Y' ? ' class="y"' : v === 'N' ? ' class="n"' : ''}>${v}</td>`;
+const heroSheet = () => `<div class="float sheet-float" aria-hidden="true">
+      <div class="sf-head"><span class="sf-ic"><svg viewBox="0 0 24 24"><path d="M4 9h16M4 15h16M10 4v16"/><rect x="4" y="4" width="16" height="16" rx="2"/></svg></span><b>Electrical_site_survey.xlsx</b><small>Exported just now</small></div>
+      <table><colgroup><col class="c-item" /><col class="c-a" /><col class="c-b" /><col /></colgroup>
+        <thead><tr><th>Item</th><th>Patched</th><th>Tested</th><th>Notes</th></tr></thead>
+        <tbody>${SHEET_ROWS.map((r, i) => `<tr${i === SHEET_ROWS.length - 1 ? ' class="new"' : ''}><td>${r[0]}</td>${yn(r[1])}${yn(r[2])}<td>${r[3]}</td></tr>`).join('')}</tbody>
+      </table>
+      <div class="sf-tabs"><span>Outlet - Power</span><span class="on">Data point - Power</span><span>Summary</span></div>
+    </div>`;
+
+// The Document access dialog, drawn in HTML so it reads sharp at any size.
+// Names are the app's own demo people (src/components/presenceIdentity.js).
+const ACCESS = [
+  ['OO', '#9dd2ba', 'Olive Owner', 'Project manager', 'Owner'],
+  ['ML', '#9ecaea', 'Maria Lopez', 'Field technician', 'Editor'],
+  ['DR', '#e8b99f', 'Devon Reid', 'Field technician', 'Editor'],
+  ['PN', '#d4b8e2', 'Priya Nair', 'Client', 'Viewer'],
+];
+const accessCard = () => `<div class="acc" role="img" aria-label="The Document access dialog for A-201 Level 2 Floor Plan.pdf: an owner, two editors and a viewer, with an Invite button">
+    <div class="acc-head"><div><small>Document access</small><b>A-201 Level 2 Floor Plan.pdf</b></div><span class="acc-btn">Invite</span></div>
+    ${ACCESS.map(([i, c, n, e, r]) => `<div class="acc-row"><span class="acc-av" style="background:${c}">${i}</span><div><b>${n}</b><small>${e}</small></div><span class="acc-role${r === 'Owner' ? ' own' : ''}">${r}</span></div>`).join('')}
+    <div class="acc-foot"><span>4 people</span><span>Changes save for everyone</span></div>
+  </div>`;
+
 const home = page({
   path: '/welcome',
   title: 'Survey: PDF markup and site surveys for construction drawings',
   desc: 'Mark up construction drawings with every tool free. Run site surveys on the plan and export the answers as a spreadsheet. Spaces and regions, count markers, teams. Computer, tablet and phone.',
   schema: [SOFTWARE, { '@type': 'WebSite', '@id': ORIGIN + '/#site', name: 'Survey', url: ORIGIN + '/welcome', publisher: { '@id': ORIGIN + '/#org' } }],
-  body: `<section class="hero"><div class="wrap hero-grid">
+  body: `<section class="hero hero-c"><div class="wrap">
   <div class="hero-copy">
-    <p class="kicker">PDF markup for construction drawings</p>
+    <p class="kicker">PDF markup and site surveys for construction</p>
     <h1>Mark up the plans. Survey the site. Export the data.</h1>
-    <p class="lede">Every markup tool is free, including the ones other apps charge for. Then Survey does what no other PDF app does: site surveys on the plan that export as a spreadsheet, and spaces that let you work on one part of a sheet at a time.</p>
-    <div class="cta"><a class="btn primary lg" href="${SIGNUP}">Open Survey free</a><a class="btn ghost lg" href="#surveys">See how surveys work</a></div>
-    <p class="fine">No card. No install. Computer, tablet and phone.</p>
+    <p class="lede">Survey puts the drawing set on every screen your crew uses. Every markup tool is free, and surveys done on the plan come back as a spreadsheet the office can use the same day.</p>
+    <div class="cta"><a class="btn primary lg" href="${SIGNUP}">Start free</a><a class="btn ghost lg" href="#how">See how it works</a></div>
+    <p class="fine">No card. Nothing to install. Computer, tablet and phone.</p>
   </div>
-  <div class="hero-stage">
-    <div class="frame"><img src="/welcome/hero.webp" srcset="/welcome/hero-800.webp 800w, /welcome/hero.webp 1600w" sizes="(max-width: 980px) 92vw, 760px" width="1600" height="1000" fetchpriority="high" decoding="async" alt="Survey with a marked-up floor plan: a revision cloud around the meeting room, numbered count markers on the desks, an arrow to a fire door and a callout that says Move counter to east wall" /></div>
+  <div class="stage">
+    <div class="win"><div class="win-bar"><i></i><i></i><i></i><span>surveytool.app</span></div><img src="/welcome/survey.webp" srcset="/welcome/survey-800.webp 800w, /welcome/survey.webp 1600w" sizes="(max-width: 1180px) 100vw, 1120px" width="1600" height="1000" fetchpriority="high" decoding="async" alt="Survey on a floor plan: outlets and data points marked on the plan, and the survey panel with Data point 2 answered Patched Y, Tested N and the note Patch lead missing at desk 14" /></div>
+    <div class="float chip-float" aria-hidden="true"><span class="chip-dot"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><span>Data point 2 answered<small>Patched Y · Tested N · 1 note</small></span></div>
+    ${heroSheet()}
   </div>
 </div></section>
 
-<section class="who"><div class="wrap"><p>Made for <span>electricians</span>, <span>surveyors</span>, <span>inspectors</span>, <span>general contractors</span>, <span>estimators</span> and <span>architects</span>.</p></div></section>
-
-<section class="lead-in" id="only"><div class="wrap">
-  <div class="head"><h2>What no other PDF app does</h2><p>Three things we built because site work needs them.</p></div>
+<section class="facts"><div class="wrap facts-row">
+  ${FACTS.map(([k, b, t]) => `<div>${svg(k)}<p><b>${b}</b><span>${t}</span></p></div>`).join('\n  ')}
 </div></section>
+
+<section class="sec" id="how"><div class="wrap">
+  <div class="head"><p class="eyebrow">How it works</p><h2>From drawing set to spreadsheet in three steps</h2><p>The same plan, the same checklist and the same answers, from the first walk to the final report.</p></div>
+  <ol class="how how-list">${HOW.map(([img, h, p, alt]) => `<li><figure><img src="/welcome/${img}" width="840" height="625" loading="lazy" decoding="async" alt="${esc(alt)}" /></figure><div><h3>${h}</h3><p>${p}</p></div></li>`).join('')}</ol>
+</div></section>
+
+<div class="band-soft">
 ${ONLY.map(only).join('\n')}
+</div>
 
 <section class="sec" id="tools"><div class="wrap">
-  <div class="head"><h2>Every markup tool, free</h2><p>Pen, partial eraser, polygon, cloud, callout, count, measure, OCR and page tools. Drawboard PDF charges for half of these. Survey does not.</p></div>
+  <div class="head"><p class="eyebrow">Markup</p><h2>Every markup tool, free</h2><p>Pen, eraser, shapes, clouds, callouts, counts, measuring, OCR and page tools. No trial and no time limit.</p></div>
   ${toolGrid()}
-  <p class="more-link"><a href="/features">All features</a></p>
+  <div class="free-note"><p>Callouts, measuring, OCR and page tools are paid extras in Drawboard PDF. In Survey they are free.</p><a href="/compare/drawboard">See the comparison</a></div>
 </div></section>
 
-<section class="sec tight" id="compare"><div class="wrap">
-  <div class="head"><h2>Side by side with Drawboard PDF</h2><p>The same markup tools, free in Survey. Then the things only Survey has.</p></div>
-  ${vsTable()}
-  <p class="more-link"><a href="/compare/drawboard">The full comparison</a></p>
-</div></section>
-
-<section class="sec"><div class="wrap"><div class="panel cool split-grid">
+<section class="sec band-soft" id="security"><div class="wrap trust">
   <div>
-    <h2>Work on the same drawings as a team</h2>
-    <p>Invite people as viewers or editors. Everyone sees the same markups and the same survey answers, on whatever device they have, and Pro teams edit together live.</p>
-    <ul class="ticks"><li>Viewers read, editors mark up</li><li>Survey answers from every walk land in one spreadsheet</li><li>Live editing together on Pro</li></ul>
-    <a class="btn ghost" href="/pricing">See the plans</a>
+    <p class="eyebrow">For teams and companies</p>
+    <h2>One set of drawings for the whole team</h2>
+    <p class="lede">Invite people as viewers or editors. Everyone sees the same markups and the same survey answers, live, on whatever device they have.</p>
+    <div class="trust-cards">${TRUST.map(([k, h, p, soon]) => `<div>${svg(k)}<h3>${h}${soon ? '<span class="soon">Coming soon</span>' : ''}</h3><p>${p}</p></div>`).join('')}</div>
   </div>
-  <figure class="shot"><img src="/welcome/access.webp" srcset="/welcome/access-600.webp 600w, /welcome/access.webp 1200w" sizes="(max-width: 980px) 92vw, 560px" width="1200" height="836" loading="lazy" decoding="async" alt="The Document Access dialog: an owner, two editors and a viewer on A-201 Level 2 Floor Plan.pdf, with an Invite button" /></figure>
-</div></div></section>
+  ${accessCard()}
+</div></section>
 
-<section class="sec tight"><div class="wrap">
-  <div class="head"><h2>Computer, tablet and phone</h2><p>Survey runs in the browser, so there is nothing to install. The same project and the same markups follow you from the desk to the site. On a tablet, the pen draws and your fingers move the sheet.</p></div>
+<section class="sec"><div class="wrap">
+  <div class="head"><p class="eyebrow">Devices</p><h2>Desk, truck and site</h2><p>Survey runs in the browser, so the same project and the same markups follow you everywhere. On a tablet, the pen draws and your fingers move the sheet.</p></div>
   ${devs()}
   <p class="more-link"><a href="/devices">How it works on each device</a></p>
 </div></section>
 
-<section class="sec"><div class="wrap">
-  <div class="head"><h2>How much does Survey cost?</h2><p>Every markup tool is free, with no time limit. Pro adds surveys, spaces, templates and sharing for $9.99 a month.</p></div>
+<section class="sec band-soft"><div class="wrap">
+  <div class="head"><p class="eyebrow">Pricing</p><h2>Start free. Pay when the team needs more.</h2><p>Every markup tool is free, with no time limit. Pro adds surveys, spaces, templates and sharing for $9.99 a month.</p></div>
   ${plans()}
   <p class="more-link"><a href="/pricing">Compare plans</a></p>
 </div></section>
 
-<section class="sec tight"><div class="wrap">
-  <div class="head"><h2>${PDF_TOOLS.length} free PDF tools, no sign-up</h2><p>Merge, split, compress, OCR, compare, sign and convert in your browser. Your files never leave your device.</p></div>
-  <div class="grid6">${FREE_TOOL_PICKS.map(([id, h, p]) => `<div><h3><a href="/tools/${id}">${h}</a></h3><p>${p}</p></div>`).join('')}</div>
+<section class="sec"><div class="wrap">
+  <div class="head"><p class="eyebrow">Free PDF tools</p><h2>${PDF_TOOLS.length} free PDF tools, no sign-up</h2><p>Merge, split, compress, OCR, compare, sign and convert in your browser. Your files never leave your device.</p></div>
+  ${toolPicks()}
   <p class="more-link"><a href="/tools">All free PDF tools</a></p>
 </div></section>
 
-<section class="sec"><div class="wrap custom">
-  <h2>Need Survey to fit how your company works?</h2>
-  <p>We build custom data exports, company survey templates and team roles. Tell us what your team does today and we will set it up.</p>
-  <a class="btn ghost" href="${MAIL}">Email us</a>
+<section class="sec tight"><div class="wrap custom">
+  <div><h2>Rolling Survey out across a company?</h2>
+  <p>We set up company survey templates, custom data exports and team roles, and help move your drawing sets over. Tell us how your team works today.</p></div>
+  <a class="btn ghost lg" href="${MAIL}">Talk to us</a>
 </div></section>
 ${cta()}`,
 });
@@ -416,7 +491,7 @@ ${TOOLS.map((t, i) => `<section class="sec feat${i % 2 ? ' flip' : ''}" id="${t.
 </div></section>
 <section class="sec" id="free-pdf-tools"><div class="wrap">
   <div class="head"><h2>Free PDF tools, no sign-up</h2><p>${PDF_TOOLS.length} tools that run in your browser. Your files never leave your device.</p></div>
-  <div class="grid6">${FREE_TOOL_PICKS.map(([id, h, p]) => `<div><h3><a href="/tools/${id}">${h}</a></h3><p>${p}</p></div>`).join('')}</div>
+  ${toolPicks()}
   <p class="more-link"><a href="/tools">All free PDF tools</a></p>
 </div></section>
 ${cta('Try every tool on your own drawings')}`,
@@ -460,7 +535,8 @@ const ROWS = [
   ['Priority support', '', '', 'Yes'],
   ['Company admin console and single sign-on', '', '', 'Coming soon'],
 ];
-const PRICE_FAQ = [FAQ[4], FAQ[5], FAQ[6]];
+// Is it free, can I cancel, can my team use it: the money questions.
+const PRICE_FAQ = [FAQ[7], FAQ[8], FAQ[9]];
 const pricing = page({
   path: '/pricing', crumb: 'Pricing',
   title: 'Pricing: Free, Pro $9.99 and Enterprise | Survey',
