@@ -127,7 +127,9 @@ async function main() {
   const owner = listed.users.find((u) => u.email === E2E_ACCOUNTS.owner.email);
   if (!owner) throw new Error('run `npm run e2e:seed` first');
 
-  const pdf = await buildPdf();
+  // BIG_DOC_PDF=<file> seeds a real drawing set instead of the generated one.
+  const pdf = process.env.BIG_DOC_PDF ? fs.readFileSync(process.env.BIG_DOC_PDF) : await buildPdf();
+  const pageCount = process.env.BIG_DOC_PDF ? (await PDFDocument.load(pdf, { ignoreEncryption: true })).getPageCount() : PAGES;
   const filePath = `${owner.id}/${BIG_DOC.id}.pdf`;
   await must('upload pdf', admin.storage.from('documents').upload(filePath, new Blob([pdf], { type: 'application/pdf' }), { contentType: 'application/pdf', upsert: true }));
   // Start from a clean document row every time (markups, WAL and snapshots
@@ -136,7 +138,7 @@ async function main() {
   const now = new Date().toISOString();
   await must('document', admin.from('documents').insert({
     id: BIG_DOC.id, user_id: owner.id, project_id: E2E_PROJECT.id, name: BIG_DOC.name, file_path: filePath,
-    file_size: pdf.length, page_count: PAGES, content_sha256: createHash('sha256').update(pdf).digest('hex'),
+    file_size: pdf.length, page_count: pageCount, content_sha256: createHash('sha256').update(pdf).digest('hex'),
     cutover_completed_at: now, embedded_import_completed_at: now,
   }));
   const rows = [];
@@ -191,7 +193,7 @@ async function main() {
     }));
   }
   console.log('[big-doc] snapshot', (snap.length / 1e6).toFixed(2), 'MB gz', JSON.stringify(stored));
-  console.log(`[big-doc] ${BIG_DOC.name}: ${PAGES} pages (${(pdf.length / 1e6).toFixed(1)} MB), ${rows.length} markups`);
+  console.log(`[big-doc] ${BIG_DOC.name}: ${pageCount} pages (${(pdf.length / 1e6).toFixed(1)} MB), ${rows.length} markups`);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });
