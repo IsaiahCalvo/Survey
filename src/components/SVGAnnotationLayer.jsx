@@ -31,7 +31,12 @@ import { usePolylineCurve } from '../hooks/usePolylineCurve.js';
 import { canRemovePolyVertex, cloudPolyEdgeReach, insertPolyVertex, insertVertexOnNearestEdge, createPolyEdgePressGate, polyEdgeDebugEnabled, polyEdgeTouchStartMayArm, polyEdgeHitAtClient, polyVertexMenuLayout, removePolyVertex } from '../utils/polyVertices.js';
 import { contextMenuInputOf, isTouchMenuInput } from '../utils/touchLongPress.js';
 import { deepClone } from '../utils/deepClone.js';
-import { clampPointToPage } from '../utils/pageEdgeRules.js';
+import { clampPointToPage, squareShapeEnd } from '../utils/pageEdgeRules.js';
+import { isFeatureOn } from '../featureFlags.js';
+
+// Shift draws a square or circle (Nightly, 'shift-square'); read only while
+// Shift is held.
+const shiftSquareOn = () => isFeatureOn('shift-square');
 import { maxOf, minOf } from '../utils/arrayExtrema.js';
 import { resolveEditEntryKind } from '../utils/annotationEditRoute.js';
 import {
@@ -2704,6 +2709,9 @@ const SVGAnnotationLayerBody = memo(({
     }
     // Drawboard: the drag-out end stays on the page (pageEdgeRules.js).
     end = clampPointToPage(end, width, height);
+    if (finalClientPoint?.shiftKey && state.start && (tool === 'rect' || tool === 'ellipse') && shiftSquareOn()) {
+      end = squareShapeEnd(state.start, end, width, height);
+    }
 
     if (tool === 'survey-marker') {
       const left = Math.min(state.start.x, end.x);
@@ -3109,6 +3117,10 @@ const SVGAnnotationLayerBody = memo(({
         }
         // Owner 2026-11-02 (copy Drawboard): a drawn shape stops at the page edge.
         point = clampPointToPage(point, width, height);
+        // Shift: a square or circle (Drawboard PDF Pro trial audit 2026-11-09).
+        if (point && e.shiftKey && draft?.start && (draft.tool === 'rect' || draft.tool === 'ellipse') && shiftSquareOn()) {
+          point = squareShapeEnd(draft.start, point, width, height);
+        }
         setShapeCreation((prev) => (prev ? {
           ...prev,
           ...(point ? { current: point } : {}),

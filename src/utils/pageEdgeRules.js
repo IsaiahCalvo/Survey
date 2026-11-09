@@ -58,3 +58,23 @@ export function clampResizeEdge(edge, { pageSize, startLow, startHigh, centre = 
   }
   return Math.max(lo, Math.min(hi, edge));
 }
+
+/**
+ * Shift while dragging out a rectangle or ellipse: a square or circle, on the
+ * larger of the two moves, and still inside the page (Drawboard PDF Pro trial
+ * audit 2026-11-09). The end point moves; the start stays.
+ */
+export function squareShapeEnd(start, point, pageWidth, pageHeight) {
+  if (!start || !point) return point;
+  const dx = point.x - start.x;
+  const dy = point.y - start.y;
+  let side = Math.max(Math.abs(dx), Math.abs(dy));
+  const sx = dx < 0 ? -1 : 1;
+  const sy = dy < 0 ? -1 : 1;
+  if (isPageSize(pageWidth, pageHeight)) {
+    const roomX = sx > 0 ? pageWidth - start.x : start.x;
+    const roomY = sy > 0 ? pageHeight - start.y : start.y;
+    side = Math.max(0, Math.min(side, roomX, roomY));
+  }
+  return { ...point, x: start.x + sx * side, y: start.y + sy * side };
+}
