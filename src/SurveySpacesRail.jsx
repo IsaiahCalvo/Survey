@@ -1776,6 +1776,7 @@ const SurveySpacesRail = ({
       userId={user?.id || null}
       canEdit={canEditSurveyMarkers !== false}
       onChange={(patch) => updateSurveyMarkerTracking(annotationId, patch)}
+      tip={tip}
     />
   ) : null);
   const renderSurveyMarkerTrackingBadge = (annotationId) => (trackingOn ? (
