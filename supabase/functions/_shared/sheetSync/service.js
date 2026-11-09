@@ -589,7 +589,7 @@ async function providerFor(ctx, connectionUserId, provider = 'google') {
   if (!g.configured) throw new SyncError('Google Sheets is not set up on this server yet.', 503, 'not_configured');
   const { data: row } = await ctx.service.from('sheet_sync_connections')
     .select('refresh_token_enc, account_email').eq('user_id', connectionUserId).eq('provider', 'google').maybeSingle();
-  if (!row) throw Object.assign(new Error('no connection'), { status: 401 });
+  if (!row) throw Object.assign(new Error('no connection'), { status: 401, code: 'reconnect' });
   const refreshToken = await decryptToken(row.refresh_token_enc, tokenKey(ctx.env));
   // Kept by this server instance between requests (an access token lasts an
   // hour), so a round is not also a call to Google's token endpoint.
@@ -611,7 +611,7 @@ async function msgraphProviderFor(ctx, connectionUserId) {
   if (!ms) throw new SyncError('Microsoft 365 is not set up on this server yet.', 503, 'not_configured');
   const { data: row } = await ctx.service.from('sheet_sync_connections')
     .select('refresh_token_enc, account_email').eq('user_id', connectionUserId).eq('provider', 'msgraph').maybeSingle();
-  if (!row) throw Object.assign(new Error('no connection'), { status: 401 });
+  if (!row) throw Object.assign(new Error('no connection'), { status: 401, code: 'reconnect' });
   let refreshToken = await decryptToken(row.refresh_token_enc, tokenKey(ctx.env));
   let access = null;
   const getAccessToken = async () => {
@@ -764,7 +764,7 @@ async function listFolders(ctx) {
   } catch (err) {
     if (err instanceof SyncError) throw err;
     if (err?.code === 'bad_folder_link' || err?.code === 'not_a_folder') throw new SyncError(err.message, 400, err.code);
-    if (Number(err?.status) !== 401) throw err;
+    if (!signInEnded(err)) throw err;
     await forgetDeadSignIn(ctx, ctx.user.id, 'msgraph', 'The Microsoft sign-in used for this sheet stopped working. The person who linked it needs to connect Microsoft again.');
     throw new SyncError('Your Microsoft sign-in has ended. Connect Microsoft again.', 401, 'reconnect');
   }
@@ -793,7 +793,7 @@ async function linkSheet(ctx) {
     if (err?.code === 'personal-onedrive') {
       throw new SyncError('This Microsoft account has a personal OneDrive. Live sync needs a work or school Microsoft 365 account.', 409, 'personal-onedrive');
     }
-    if (Number(err?.status) === 401) {
+    if (signInEnded(err)) {
       const who = providerName(ctx.provider);
       await forgetDeadSignIn(ctx, ctx.user.id, ctx.provider, `The ${who} sign-in used for this sheet stopped working. The person who linked it needs to connect ${who} again.`);
       throw new SyncError(`Your ${who} sign-in has ended. Connect ${who} again.`, 401, 'reconnect');
@@ -908,22 +908,33 @@ async function runRoundFor(ctx, link, { provider = null, signing = null, force =
     const status = Number(err?.status) || 500;
     const who = providerName(link.provider);
     const what = sheetName(link.provider);
-    const message = status === 401 ? `The ${who} sign-in used for this sheet stopped working. The person who linked it needs to connect ${who} again.`
+    // The file refused (401 that is not a dead sign-in, or 403): give it a
+    // grace period before calling the link broken; a short refusal is noise.
+    const refused = (status === 401 && !signInEnded(err)) || status === 403;
+    const refusedSince = link.state?.refusedSince ? Date.parse(link.state.refusedSince) : null;
+    const refusedLong = refused && refusedSince != null && Date.now() - refusedSince > REFUSED_GRACE_MS;
+    const message = signInEnded(err) ? `The ${who} sign-in used for this sheet stopped working. The person who linked it needs to connect ${who} again.`
+      : refused && !refusedLong ? `${who} would not open the ${what} just now. Trying again in a minute.`
+      : refused ? `The linked ${what} is no longer shared with the person who linked it, or they can no longer edit it.`
       : status === 404 ? `The linked ${what} was deleted or is no longer shared with the person who linked it.`
       : status === 429 ? `${who} asked us to slow down. Syncing again in a minute.`
-      : BUSY.has(status) ? `${who} is busy right now. Syncing again in a moment.`
+      : isBusy(status, err) ? `${who} is busy right now. Syncing again in a moment.`
       : status === 413 ? `The linked ${what} is too big to sync (over 250,000 cells in its synced tabs). Delete rows or tabs you no longer need.`
       : status === 409 && err?.code === 'personal-onedrive' ? 'This workbook is on a personal OneDrive, which cannot sync cell by cell.'
       : `Could not reach the ${what}. Trying again soon.`;
     const patch = { last_error: message };
-    if (status === 401) await forgetDeadSignIn(ctx, link.connection_user_id, link.provider, message);
-    if (status === 401 || status === 404) patch.status = 'broken';
+    if (signInEnded(err)) await forgetDeadSignIn(ctx, link.connection_user_id, link.provider, message);
+    if (signInEnded(err) || status === 404 || refusedLong) patch.status = 'broken';
     if (status === 409 && err?.code === 'personal-onedrive') patch.status = 'paused';
     if (status === 429) patch.backoff_until = new Date(Date.now() + 60_000).toISOString();
     // Busy (Excel's file host often answers 503 "retry in 30 s"): this sheet
     // waits what Microsoft asks, 10 s to 2 min, instead of the next tick.
-    if (BUSY.has(status)) patch.backoff_until = new Date(Date.now() + Math.min(Math.max(Number(err?.retryAfterMs) || 30_000, 10_000), 120_000)).toISOString();
+    if (isBusy(status, err)) patch.backoff_until = new Date(Date.now() + Math.min(Math.max(Number(err?.retryAfterMs) || 30_000, 10_000), 120_000)).toISOString();
     if (change) Object.assign(patch, { state: link.state, baseline: link.baseline });
+    if (refused && !refusedLong) {
+      patch.backoff_until = new Date(Date.now() + 60_000).toISOString();
+      patch.state = { ...(patch.state || link.state || {}), refusedSince: new Date(refusedSince ?? Date.now()).toISOString() };
+    }
     await release(patch);
     if (status === 429) {
       // The quota is the linker's, shared by every sheet they linked: all of
@@ -938,8 +949,18 @@ async function runRoundFor(ctx, link, { provider = null, signing = null, force =
 }
 
 // Microsoft's "busy, try later" answers (seen in testing: 503 on opening the
-// workbook, 504 on createSession), as opposed to a real failure.
+// workbook, 504 on createSession, and 500 "The workbook cannot be opened"
+// while several people had it open), as opposed to a real failure.
 const BUSY = new Set([502, 503, 504]);
+const REFUSED_GRACE_MS = 15 * 60 * 1000;
+const isBusy = (status, err) => BUSY.has(status) || (status === 500 && err?.code === 'GenericFileOpenError');
+
+// Only the token endpoint saying "invalid_grant" (code 'reconnect') means the
+// sign-in itself is over. Excel also answers 401 on its own now and then
+// ("FileOpenUserUnauthorized", seen once in a 40-minute real-Excel run, gone
+// a minute later): treating that as a dead sign-in signed the person out and
+// stopped every sheet they linked.
+export const signInEnded = (err) => Number(err?.status) === 401 && err?.code === 'reconnect';
 
 // A sign-in the provider no longer honours (access revoked, password changed,
 // unused for months): it is forgotten, so the panel offers "Connect … again"
@@ -1090,42 +1111,53 @@ async function sweep(req, deps) {
   return json({ due: due.length, results, kept });
 }
 
-// A Microsoft sign-in lasts 90 days from its last use. A linked sheet uses it
-// at least every 30 minutes, but a sign-in with nothing syncing (connected,
-// not linked yet, or every sheet paused) would run out unseen and the person
-// would find "Connect Microsoft again" months later. The sweep uses each such
-// sign-in once every two weeks, a few per minute, so it never runs out.
+// A sign-in runs out when unused: Microsoft's after 90 days, Google's after
+// six months (and after 7 days while the Google app is still in "Testing").
+// A linked sheet uses its sign-in at least every 30 minutes, but a sign-in
+// with nothing syncing (connected, not linked yet, or every sheet paused)
+// would run out unseen and the person would find "Connect again" months
+// later. The sweep uses each such sign-in once every two weeks, a few per
+// minute, so it never runs out.
 const KEEP_ALIVE_EVERY_MS = 14 * 24 * 60 * 60 * 1000;
 const KEEP_ALIVE_PER_SWEEP = 5;
 export async function keepSignInsAlive(ctx, now = Date.now()) {
   const ms = msgraphConfig(ctx.env);
-  if (!ms) return 0;
-  const { data: rows } = await ctx.service.from('sheet_sync_connections')
-    .select('user_id, refresh_token_enc')
-    .eq('provider', 'msgraph')
-    .lt('updated_at', new Date(now - KEEP_ALIVE_EVERY_MS).toISOString())
-    .order('updated_at', { ascending: true })
-    .limit(KEEP_ALIVE_PER_SWEEP);
+  const g = googleConfig(ctx.env);
+  // Use the sign-in once; the refresh token it hands back (Microsoft's
+  // change every time, Google's never), or null.
+  const refreshers = {
+    ...(ms ? { msgraph: async (old) => (await refreshMsgraphToken(ms, old, { fetch: ctx.fetchImpl })).refreshToken } : {}),
+    ...(g.configured ? { google: async (old) => { await refreshGoogleToken({ ...g, refreshToken: old, fetchImpl: ctx.fetchImpl }); return null; } } : {}),
+  };
   let kept = 0;
-  for (const row of rows || []) {
-    try {
-      const old = await decryptToken(row.refresh_token_enc, tokenKey(ctx.env));
-      const fresh = await refreshMsgraphToken(ms, old, { fetch: ctx.fetchImpl });
-      await ctx.service.from('sheet_sync_connections')
-        .update({
-          ...(fresh.refreshToken && fresh.refreshToken !== old ? { refresh_token_enc: await encryptToken(fresh.refreshToken, tokenKey(ctx.env)) } : {}),
-          updated_at: new Date(now).toISOString(),
-        })
-        .eq('user_id', row.user_id).eq('provider', 'msgraph');
-      kept += 1;
-    } catch (err) {
-      if (Number(err?.status) === 401) {
-        await forgetDeadSignIn(ctx, row.user_id, 'msgraph', 'The Microsoft sign-in used for this sheet stopped working. The person who linked it needs to connect Microsoft again.');
-      } else {
-        // Microsoft unreachable: try this one again in a day, not every minute.
+  for (const [provider, refresh] of Object.entries(refreshers)) {
+    const { data: rows } = await ctx.service.from('sheet_sync_connections')
+      .select('user_id, refresh_token_enc')
+      .eq('provider', provider)
+      .lt('updated_at', new Date(now - KEEP_ALIVE_EVERY_MS).toISOString())
+      .order('updated_at', { ascending: true })
+      .limit(KEEP_ALIVE_PER_SWEEP);
+    for (const row of rows || []) {
+      try {
+        const old = await decryptToken(row.refresh_token_enc, tokenKey(ctx.env));
+        const next = await refresh(old);
         await ctx.service.from('sheet_sync_connections')
-          .update({ updated_at: new Date(now - KEEP_ALIVE_EVERY_MS + 24 * 60 * 60 * 1000).toISOString() })
-          .eq('user_id', row.user_id).eq('provider', 'msgraph');
+          .update({
+            ...(next && next !== old ? { refresh_token_enc: await encryptToken(next, tokenKey(ctx.env)) } : {}),
+            updated_at: new Date(now).toISOString(),
+          })
+          .eq('user_id', row.user_id).eq('provider', provider);
+        kept += 1;
+      } catch (err) {
+        if (signInEnded(err)) {
+          const who = providerName(provider);
+          await forgetDeadSignIn(ctx, row.user_id, provider, `The ${who} sign-in used for this sheet stopped working. The person who linked it needs to connect ${who} again.`);
+        } else {
+          // The provider unreachable: try this one again in a day, not every minute.
+          await ctx.service.from('sheet_sync_connections')
+            .update({ updated_at: new Date(now - KEEP_ALIVE_EVERY_MS + 24 * 60 * 60 * 1000).toISOString() })
+            .eq('user_id', row.user_id).eq('provider', provider);
+        }
       }
     }
   }

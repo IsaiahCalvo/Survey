@@ -439,3 +439,53 @@ test('a cell that will not keep what Survey writes (merged cells) never wipes th
   assert.equal(ctx.markers.d2.note.text, 'PM typed after unmerge');
   assert.deepEqual(ctx.link.state.stuck, {});
 });
+
+test('an idle Google sign-in is kept alive too, and a dead one is forgotten', async () => {
+  const { keepSignInsAlive } = await import('../supabase/functions/_shared/sheetSync/service.js');
+  const { encryptToken } = await import('../supabase/functions/_shared/sheetSync/tokenCrypto.js');
+  const env = { SUPABASE_URL: 'https://x.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'k'.repeat(40), GOOGLE_SHEETS_CLIENT_ID: 'gid', GOOGLE_SHEETS_CLIENT_SECRET: 'gs', GOOGLE_OAUTH_TOKEN_URL: 'https://g.test/token' };
+  const key = env.SUPABASE_SERVICE_ROLE_KEY;
+  const now = Date.parse('2026-11-09T12:00:00Z');
+  const rows = { google: [
+    { user_id: 'g-alive', refresh_token_enc: await encryptToken('g-alive', key) },
+    { user_id: 'g-dead', refresh_token_enc: await encryptToken('g-dead', key) },
+  ] };
+  const writes = [];
+  const chain = (record) => {
+    const c = { filters: [], eq: (k, v) => { c.filters.push([k, v]); return c; }, lt: () => c, order: () => c, limit: () => c, then: (ok) => ok(record(c)) };
+    return c;
+  };
+  const service = { from: (table) => ({
+    select: () => chain((c) => ({ data: rows[c.filters.find(([k]) => k === 'provider')[1]] || [] })),
+    update: (patch) => chain((c) => { writes.push({ table, op: 'update', patch, filters: c.filters }); return {}; }),
+    delete: () => chain((c) => { writes.push({ table, op: 'delete', filters: c.filters }); return {}; }),
+  }) };
+  const asked = [];
+  const fetchImpl = async (url, init) => {
+    const rt = new URLSearchParams(init.body).get('refresh_token');
+    asked.push(`${url} ${rt}`);
+    if (rt === 'g-dead') return new Response(JSON.stringify({ error: 'invalid_grant' }), { status: 400 });
+    return new Response(JSON.stringify({ access_token: 'at', expires_in: 3600 }), { status: 200 });
+  };
+  assert.equal(await keepSignInsAlive({ env, service, fetchImpl }, now), 1);
+  assert.ok(asked.every((a) => a.startsWith('https://g.test/token')), 'Google sign-ins go to Google');
+  const saved = writes.find((w) => w.op === 'update' && w.filters[0][1] === 'g-alive');
+  assert.equal(saved.patch.updated_at, new Date(now).toISOString());
+  assert.equal(saved.patch.refresh_token_enc, undefined, 'Google keeps the same refresh token');
+  assert.ok(writes.some((w) => w.op === 'delete' && w.filters[0][1] === 'g-dead' && w.filters[1][1] === 'google'));
+  assert.ok(writes.some((w) => w.table === 'sheet_sync_links' && /Google sign-in/.test(w.patch.last_error || '')));
+});
+
+test('only the token endpoint ending a sign-in counts as signed out; Excel\'s own 401 does not', async () => {
+  const { signInEnded } = await import('../supabase/functions/_shared/sheetSync/service.js');
+  const { refreshGoogleToken, googleEndpoints } = await import('../supabase/functions/_shared/sheetSync/providers/google.js');
+  const { refreshMsgraphToken } = await import('../supabase/functions/_shared/sheetSync/msgraphAuth.js');
+  const deadToken = async () => new Response(JSON.stringify({ error: 'invalid_grant' }), { status: 400 });
+  const g = await refreshGoogleToken({ endpoints: googleEndpoints({ GOOGLE_OAUTH_TOKEN_URL: 'https://g.test/token' }), clientId: 'a', clientSecret: 'b', refreshToken: 'x', fetchImpl: deadToken }).catch((e) => e);
+  assert.equal(signInEnded(g), true, 'Google invalid_grant');
+  const m = await refreshMsgraphToken({ clientId: 'a', clientSecret: 'b', tokenUrl: 'https://m.test/token' }, 'x', { fetch: deadToken }).catch((e) => e);
+  assert.equal(signInEnded(m), true, 'Microsoft invalid_grant');
+  // Seen in a real 40-minute Excel run: createSession refused once, fine a minute later.
+  assert.equal(signInEnded(Object.assign(new Error('You do not have permissions to open this file in the browser.'), { status: 401, code: 'FileOpenUserUnauthorized' })), false);
+  assert.equal(signInEnded({ status: 403 }), false);
+});

@@ -57,7 +57,9 @@ async function tokenCall(endpoints, fetchImpl, form) {
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
     // invalid_grant: the person revoked access or the token expired.
-    throw providerError(`google token: ${body?.error || res.status}`, body?.error === 'invalid_grant' ? 401 : res.status);
+    const err = providerError(`google token: ${body?.error || res.status}`, body?.error === 'invalid_grant' ? 401 : res.status);
+    if (body?.error === 'invalid_grant') err.code = 'reconnect'; // the sign-in itself is over
+    throw err;
   }
   return body;
 }
