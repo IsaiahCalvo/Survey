@@ -150,6 +150,9 @@ test('a row press while offline waits for the connection, like the idle prefetch
 
 test('wiring: desktop rows and phone cards press-load the viewer', () => {
   const ledger = read('../src/home/DocumentsLedger.jsx');
-  assert.match(ledger, /onPointerDown=\{preloadPdfViewerNow\}\s*onClick=\{\(event\) => onDesktopRowClick\(event, d\)\}/);
+  // Desktop rows go through onRowPointerDown, which also notes the pointer
+  // type (a tablet tap opens the file) and then press-loads the viewer.
+  assert.match(ledger, /onPointerDown=\{onRowPointerDown\}\s*onClick=\{\(event\) => onDesktopRowClick\(event, d\)\}/);
+  assert.match(ledger, /const onRowPointerDown = \(event\) => \{[^}]*preloadPdfViewerNow\(event\);/);
   assert.match(ledger, /onPointerDown=\{preloadPdfViewerNow\}\s*onClick=\{\(\) => openMobileDoc\(d\)\}/);
 });
