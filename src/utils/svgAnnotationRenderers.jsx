@@ -478,12 +478,12 @@ export const renderPath = (obj, index) => {
   }
 
   const paperSource = obj?.paperSourceStroke;
-  const paperSurvivorD = paperCutsToSvgD(obj?.polygons);
-  if (
-    paperSurvivorD
-    && Array.isArray(paperSource?.path)
-    && paperSource.path.length > 0
-  ) {
+  // Survivor polygons only matter for an erased authored curve; reading them
+  // otherwise would rebuild an imported mark's outline (annotationMarkCodec).
+  const paperSurvivorD = Array.isArray(paperSource?.path) && paperSource.path.length > 0
+    ? paperCutsToSvgD(obj?.polygons)
+    : null;
+  if (paperSurvivorD) {
     // Partially erased authored curve (imported PDF ink, legacy curves): fill
     // the SURVIVOR polygons, the eraser's own verified output (even-odd).
     // 2026-10-06 (test plan 68): this used to paint the authored source curve

@@ -478,7 +478,7 @@ function drawPath(context, object, displayScale) {
   // was anti-aliased twice and thin lines drew 10-30% lighter than the
   // untouched original; a filled outline has one anti-aliased edge.
   const paperSource = object?.paperSourceStroke;
-  const paperSurvivors = object?.polygons;
+  const paperSurvivors = paperSource ? object?.polygons : null;
   if (
     Array.isArray(paperSource?.path)
     && paperSource.path.length > 0
