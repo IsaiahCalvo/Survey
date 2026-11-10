@@ -120,11 +120,13 @@ export const BIG_ERASE = 10;
 
 // Rows moved (a PM sort or row insert) between the round's check and its
 // writes, so some values may sit on other items' rows. Read the written tabs
-// again and, by Row ID, put each written value on its own item and put back
-// what was there before (from the round's starting read) wherever one of our
-// values landed on another item. A cell a person changed in the meantime is
-// left as it is. A few tries, in case the rows move again.
-export async function putMovedWritesRight({ provider, fileId, grid, writes, idChecks, tries = 3 }) {
+// again and, by Row ID, put each written value on its own item, and put back
+// what was there before (from the round's starting read) on the item each
+// misplaced value landed on (`landed`: the Row ID read back at each written
+// row right after the write). Only those cells are touched, so a person's
+// edit on any other item is left as it is. A few tries, in case the rows
+// move again.
+export async function putMovedWritesRight({ provider, fileId, grid, writes, idChecks, landed = new Map(), tries = 3 }) {
   const byId = (rows, col) => {
     const m = new Map();
     rows.forEach((r, i) => { const t = String(r?.[col] ?? '').trim(); if (t && i > 0 && !m.has(t)) m.set(t, i); });
@@ -141,29 +143,26 @@ export async function putMovedWritesRight({ provider, fileId, grid, writes, idCh
       // A moved or renamed column: the cells can't be matched up safely.
       const ours = writes.filter((w) => sameId(w.sheetId, sheetId) && !w.header && w.row > 0 && w.col !== idCol);
       if (ours.some((w) => !sameCell(after[0]?.[w.col], before[0]?.[w.col]))) continue;
-      const intended = new Map(); const writtenIn = new Map();
+      const beforeRow = byId(before, idCol); const afterRow = byId(after, idCol);
+      const want = new Map();
+      const tokenAt = (rows, r) => String(rows[r]?.[idCol] ?? '').trim();
       for (const w of ours) {
-        const t = String(before[w.row]?.[idCol] ?? '').trim();
-        if (t) intended.set(`${t}|${w.col}`, w.value);
-        if (!writtenIn.has(w.col)) writtenIn.set(w.col, []);
-        writtenIn.get(w.col).push(w.value);
+        const t = tokenAt(before, w.row);
+        if (t) want.set(`${t}|${w.col}`, { t, col: w.col, value: w.value });
       }
-      const beforeRow = byId(before, idCol);
-      after.forEach((row, r) => {
-        const t = String(row?.[idCol] ?? '').trim();
-        if (!t || r === 0 || !beforeRow.has(t)) return;
-        for (const [col, values] of writtenIn) {
-          const key = `${t}|${col}`;
-          const want = intended.has(key) ? intended.get(key) : before[beforeRow.get(t)]?.[col] ?? '';
-          const have = row[col];
-          if (sameCell(have, want)) continue;
-          // Ours to fix: our value is missing here, or a value we wrote sits
-          // on a row it wasn't meant for. Anything else is a person's edit.
-          if (!intended.has(key) && !values.some((v) => sameCell(have, v))) continue;
-          fixes.push({ sheetId, title, row: r, col, value: want });
-          fixIds.push({ sheetId, title, row: r, col: idCol, token: t });
-        }
-      });
+      for (const w of ours) {
+        const hit = String(landed.get(`${sheetId}|${w.row}`) ?? '').trim();
+        if (!hit || hit === tokenAt(before, w.row) || want.has(`${hit}|${w.col}`) || !beforeRow.has(hit)) continue;
+        // Our value landed on this item: put back its own, if ours is still there.
+        const r = afterRow.get(hit);
+        if (r != null && sameCell(after[r]?.[w.col], w.value)) want.set(`${hit}|${w.col}`, { t: hit, col: w.col, value: before[beforeRow.get(hit)]?.[w.col] ?? '' });
+      }
+      for (const { t, col, value } of want.values()) {
+        const r = afterRow.get(t);
+        if (r == null || sameCell(after[r]?.[col], value)) continue;
+        fixes.push({ sheetId, title, row: r, col, value });
+        fixIds.push({ sheetId, title, row: r, col: idCol, token: t });
+      }
     }
     if (!fixes.length) return { fixed: 0 };
     await provider.writeCells(fileId, fixes);
@@ -325,7 +324,8 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
     if (filled.length || idChecks.length) {
       const back = await provider.readCells(link.file_id, [...filled, ...idChecks]);
       if (offAt(back, filled.length)) {
-        await putMovedWritesRight({ provider, fileId: link.file_id, grid, writes: dataWrites, idChecks });
+        const landed = new Map(idChecks.map((c, i) => [`${c.sheetId}|${c.row}`, back[filled.length + i]]));
+        await putMovedWritesRight({ provider, fileId: link.file_id, grid, writes: dataWrites, idChecks, landed });
         retry = true; return;
       }
       filled.forEach((c, i) => {

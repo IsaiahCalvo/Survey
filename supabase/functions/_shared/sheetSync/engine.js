@@ -601,7 +601,10 @@ export async function planSheetRound({
     // a typo in the hidden Row ID made a duplicate of the item in Survey).
     const lostByName = new Map();
     for (const markerId of markersByScope.get(scope.scopeId) || []) {
-      if (copies.has(markerId) || nextBaseline[markerId]?.scopeId !== scope.scopeId || next.tombstones[markerId]) continue;
+      // An item already gone from the sheet in an earlier round is not
+      // matched: a new row typed later with its name is a new item, not the
+      // old one with its old answers.
+      if (copies.has(markerId) || nextBaseline[markerId]?.scopeId !== scope.scopeId || next.tombstones[markerId] || state.removedInSheet?.[markerId]) continue;
       const name = String(markers[markerId]?.name ?? '').trim().toLowerCase();
       if (!name) continue;
       lostByName.set(name, [...(lostByName.get(name) || []), markerId]);

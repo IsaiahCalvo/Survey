@@ -80,6 +80,22 @@ test('a Row ID typed over is matched back to its item by name, not made a second
   assert.ok(!ctx.link.state.removedInSheet?.d3, 'never listed as deleted');
 });
 
+test('a row deleted in an earlier round, then a new row typed with its name: a new item, the old one untouched', async () => {
+  const ctx = await setup({ markers: notes(3) });
+  await ctx.round();
+  tab(ctx).rows.splice(await ctx.rowOf('d3'), 1);
+  await ctx.round();
+  assert.ok(ctx.link.state.removedInSheet?.d3, 'listed as removed in the sheet');
+  const width = tab(ctx).rows[0].length;
+  const row = Array(width).fill('');
+  row[await ctx.col('Item')] = 'D-103';
+  tab(ctx).rows.push(row);
+  await ctx.round();
+  assert.equal(ctx.markers.d3.note.text, 'note 3', 'the old item keeps its note');
+  assert.equal(Object.values(ctx.markers).filter((m) => m.name === 'D-103').length, 2, 'the typed row is a new item');
+  assert.ok(ctx.link.state.removedInSheet?.d3, 'and the old one is still listed as removed');
+});
+
 test('two items with the same name: a broken Row ID is not guessed at', async () => {
   const ctx = await setup({ markers: { a: door('a', 'Door'), b: door('b', 'Door') } });
   await ctx.round();

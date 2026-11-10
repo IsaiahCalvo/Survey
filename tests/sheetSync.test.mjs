@@ -10,7 +10,7 @@ import { googleSheetsProvider } from '../supabase/functions/_shared/sheetSync/pr
 import { assertProvider } from '../supabase/functions/_shared/sheetSync/providers/contract.js';
 import { encryptToken, decryptToken } from '../supabase/functions/_shared/sheetSync/tokenCrypto.js';
 import { mergeMarkerWrites } from '../supabase/functions/_shared/sheetSync/service.js';
-import { putMovedRowIdsRight } from '../supabase/functions/_shared/sheetSync/round.js';
+import { putMovedRowIdsRight, putMovedWritesRight } from '../supabase/functions/_shared/sheetSync/round.js';
 import {
   defaultKit, endpoints, fakeApi, fakeGoogleFetch, template, setup, door,
 } from './helpers/sheetSyncHarness.mjs';
@@ -291,6 +291,18 @@ const oneTab = (rows) => ({
   rows,
   readGrid: async () => ({ sheets: [{ sheetId: '1', title: 'T', rows: rows.map((r) => [...r]) }] }),
   writeCells: async (_id, cells) => { for (const c of cells) rows[c.row][c.col] = c.value; },
+  readCells: async (_id, cells) => cells.map((c) => rows[c.row]?.[c.col] ?? ''),
+});
+
+test('value repair after a mid-write sort leaves a person\'s edit on another item alone, even the same value', async () => {
+  const before = [['Row ID', 'Item', 'Done'], ['t1', 'A', ''], ['t2', 'B', ''], ['t3', 'C', '']];
+  // Sorted Z-A before our "Y" for A went out, so it landed on C; meanwhile
+  // a PM set B to "Y" too.
+  const tab = oneTab([['Row ID', 'Item', 'Done'], ['t3', 'C', 'Y'], ['t2', 'B', 'Y'], ['t1', 'A', '']]);
+  const writes = [{ sheetId: '1', title: 'T', row: 1, col: 2, value: 'Y', markerId: 'a', key: 'answer:x' }];
+  const idChecks = [{ sheetId: '1', title: 'T', row: 1, col: 0, token: 't1' }];
+  await putMovedWritesRight({ provider: tab, fileId: 'f', grid: { sheets: [{ sheetId: '1', rows: before }] }, writes, idChecks, landed: new Map([['1|1', 't3']]) });
+  assert.deepEqual(tab.rows.slice(1).map((r) => [r[1], r[2]]), [['C', ''], ['B', 'Y'], ['A', 'Y']]);
 });
 
 test('Row ID repair finds the heading under a title row, renamed in case and moved', async () => {
