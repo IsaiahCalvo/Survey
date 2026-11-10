@@ -23,6 +23,7 @@ import PdfPageThumb from './PdfPageThumb';
 import { useThumbnailBackfill } from '../hooks/useThumbnailBackfill';
 import { useStorage } from '../hooks/useDatabase';
 import { getDocumentCollaborators, getDocumentOwnerProfile } from '../services/documentAnnotationService';
+import { supabase } from '../supabaseClient';
 import { documentTeamRows } from './documentTeam.js';
 import Spinner from '../components/Spinner';
 import DismissBarrier from '../components/DismissBarrier';
@@ -405,9 +406,19 @@ export default function DocumentsLedger({
   }, [teamDocId, teamOwnerIsMe]);
   const teamFresh = teamCollab.id === teamDocId;
   // Review status and owner need edit access (set_document_review checks
-  // 'editor'): a document shared to me as a viewer shows them read-only.
-  const myTeamRole = teamFresh ? (teamCollab.rows.find((r) => r.user_id === user?.id)?.role || null) : null;
-  const canEditReview = teamOwnerIsMe || myTeamRole !== 'viewer';
+  // user_can_access_document(..., 'editor')). Ask the server the same
+  // question, so access through a project counts and a missing or unknown
+  // role never shows editable fields that would fail to save.
+  const [reviewEditAccess, setReviewEditAccess] = useState({ id: null, ok: false });
+  useEffect(() => {
+    if (!reviewOn || !teamDocId || teamOwnerIsMe) return undefined;
+    let live = true;
+    supabase.rpc('user_can_access_document', { doc_id: teamDocId, required_role: 'editor' })
+      .then(({ data, error }) => { if (live) setReviewEditAccess({ id: teamDocId, ok: !error && data === true }); })
+      .catch(() => { if (live) setReviewEditAccess({ id: teamDocId, ok: false }); });
+    return () => { live = false; };
+  }, [reviewOn, teamDocId, teamOwnerIsMe]);
+  const canEditReview = teamOwnerIsMe || (reviewEditAccess.id === teamDocId && reviewEditAccess.ok);
   const teamRows = documentTeamRows(teamDocRaw, teamFresh ? teamCollab.rows : [], user, teamFresh ? teamCollab.owner : null);
   const renderTeam = (nameStyle) => teamRows.map((p) => (
     <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

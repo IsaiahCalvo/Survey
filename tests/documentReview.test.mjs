@@ -8,6 +8,7 @@ import {
   listDocumentReviews,
   mapReviewRows,
   markupCountLabel,
+  mergeFetchedReviews,
   passesReviewFilter,
   reviewFilterIsEmpty,
   reviewStatusCounts,
@@ -86,9 +87,11 @@ test('document-review is a Nightly beta flag; the table is written only through 
   }
 });
 
-test('a document shared to me as a viewer shows its review fields read-only', () => {
+test('review fields are editable only for the owner or when the server says I can edit (never on a missing role)', () => {
   const ledger = readFileSync(new URL('../src/home/DocumentsLedger.jsx', import.meta.url), 'utf8');
-  assert.match(ledger, /const canEditReview = teamOwnerIsMe \|\| myTeamRole !== 'viewer';/);
+  assert.match(ledger, /supabase\.rpc\('user_can_access_document', \{ doc_id: teamDocId, required_role: 'editor' \}\)/);
+  assert.match(ledger, /const canEditReview = teamOwnerIsMe \|\| \(reviewEditAccess\.id === teamDocId && reviewEditAccess\.ok\);/);
+  assert.doesNotMatch(ledger, /myTeamRole !== 'viewer'/);
   assert.equal((ledger.match(/people=\{reviewPeople\} canEdit=\{canEditReview\}/g) || []).length, 2);
   assert.doesNotMatch(ledger, /people=\{reviewPeople\} canEdit onSave/);
 });
@@ -101,4 +104,20 @@ test('a failed review save rolls back to what the server last confirmed', () => 
   assert.match(bits, /if \(!latest\(\)\) \{ pendingRef\.current\.get\(documentId\)\.confirmed = done; return; \}/);
   assert.match(bits, /setReviews\(\(m\) => new Map\(m\)\.set\(documentId, entry\.confirmed\)\);/);
   assert.doesNotMatch(bits, /set\(documentId, confirmed\)\)/);
+});
+
+test('a list read that began before a status change does not put the old status back', () => {
+  const fetched = new Map([
+    ['a', { status: 'open', ownerId: null, markupCount: 7 }],
+    ['b', { status: 'open', ownerId: null, markupCount: 2 }],
+  ]);
+  const shown = new Map([
+    ['a', { status: 'approved', ownerId: 'u1', ownerName: 'Pat', markupCount: 5 }],
+    ['b', { status: 'in-review', ownerId: null, markupCount: 2 }],
+  ]);
+  const merged = mergeFetchedReviews(fetched, shown, { changedSince: (id) => id === 'a' });
+  assert.deepEqual(merged.get('a'), { status: 'approved', ownerId: 'u1', ownerName: 'Pat', markupCount: 7 });
+  assert.deepEqual(merged.get('b'), { status: 'open', ownerId: null, markupCount: 2 });
+  const bits = readFileSync(new URL('../src/home/DocumentReviewBits.jsx', import.meta.url), 'utf8');
+  assert.match(bits, /changedSince: \(id\) => \(touchedRef\.current\.get\(id\) \|\| 0\) > startTick \|\| pendingRef\.current\.has\(id\)/);
 });
