@@ -3214,8 +3214,7 @@ const SVGAnnotationLayerBody = memo(({
     const onKeyDown = (e) => {
       // A draft left open in a tab behind keeps its points: Enter, Escape and
       // Backspace belong to the document in front.
-      if (!draftTabActiveRef.current) return;
-      if (!draftOwnsKeyboard(e.target)) return;
+      if (!draftTabActiveRef.current || !draftOwnsKeyboard(e.target)) return;
       if (e.key === 'Enter') {
         e.preventDefault();
         e.stopPropagation();

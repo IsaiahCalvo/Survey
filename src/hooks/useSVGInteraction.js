@@ -4866,6 +4866,18 @@ export function useSVGInteraction({
     const ds = dragStateRef.current;
     if (!ds.active) return;
     if (ds.mode === 'text-markup-horizontal' && e.pointerId !== ds.pointerId) return;
+    // A resize or turn left behind (a second finger turned the gesture into a
+    // pinch and its release never came here) whose mark is gone: drop it
+    // rather than commit onto nothing (R5 K1c: a later draw threw on
+    // obj.type). A move finds its mark by id below, so it is not dropped here.
+    if ((ds.mode === 'resize' || ds.mode === 'rotate')
+      && ds.annotationIndex != null && !annotations?.objects?.[ds.annotationIndex]) {
+      try { e.target?.releasePointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
+      dragStateRef.current = { ...ds, active: false, mode: null, currentResize: null, currentAngle: undefined };
+      setVisualTransform(null);
+      setInteractionState('idle');
+      return;
+    }
     markAnnotationPointerRelease(ds.diagGestureId, {
       action: ds.mode,
       handleId: ds.handleId || null,
@@ -5959,6 +5971,15 @@ export function useSVGInteraction({
     // The browser took the pointer (a system gesture, a touch it turned into
     // a scroll): the move is not saved, so its preview must not stay behind.
     if (dropActiveMoveDrag()) return;
+    // A resize or turn the browser took (a second finger became a pinch) is
+    // not saved either; nothing of it may linger for a later release (R5 K1c).
+    if (ds.active && (ds.mode === 'resize' || ds.mode === 'rotate')) {
+      if (ds.pointerId != null && e.pointerId != null && ds.pointerId !== e.pointerId) return;
+      dragStateRef.current = { ...ds, active: false, mode: null, currentResize: null, currentAngle: undefined };
+      setVisualTransform(null);
+      setInteractionState('idle');
+      return;
+    }
     if (!ds.active || ds.mode !== 'text-markup-horizontal') return;
     if (ds.pointerId != null && e.pointerId != null && ds.pointerId !== e.pointerId) return;
     try { e.target?.releasePointerCapture?.(e.pointerId); } catch (_) { /* optional */ }

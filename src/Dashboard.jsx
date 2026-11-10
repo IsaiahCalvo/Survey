@@ -999,6 +999,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     // before the Supabase row's id round-trips back. Without this, a quick
     // delete right after browser-input upload silently failed.
     file.user_id = user.id;
+    // `openAfterUpload` may be a question asked at the end: New's dialog
+    // closed with Back or Cancel while it was still making the file.
+    const wantsOpen = () => (typeof openAfterUpload === 'function' ? Boolean(openAfterUpload()) : Boolean(openAfterUpload));
 
     // Content fingerprint → resolve the document's identity BEFORE opening, so
     // the viewer opens with a real id (durable store + save shortcut work on a
@@ -1070,7 +1073,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         await archiveReplacedDocument(duplicateGate.archiveDocId, resolvedDoc.id);
       }
       if (askDuplicates) await maybeOfferAlias(resolvedDoc, file.name, contentSha);
-      if (openAfterUpload) await handleDocumentClick(resolvedDoc);
+      if (wantsOpen()) await handleDocumentClick(resolvedDoc);
       refetchAllDocuments();
       return 'existing';
     }
@@ -1084,7 +1087,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     file.supabaseFilePath = resolvedDoc.file_path ?? null;
     file.contentSha256 = resolvedDoc.content_sha256 ?? null; // thumbnail cache key
     file.uploadStartTime = performance.now();
-    if (openAfterUpload) onDocumentSelect(file);
+    if (wantsOpen()) onDocumentSelect(file);
 
     // OPTIMISTIC LIST UPDATE — carry both key spellings so the file shows
     // immediately in the project-grouped views (which read project_id).
@@ -1195,7 +1198,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
   // document (open: true -> each opens in a new tab). Non-PDFs are skipped
   // with a short note; the PDFs go one at a time through the same path as
   // the Upload button, so a duplicate ask waits for its answer.
-  const handleDroppedFiles = async (dropped, { projectId = null, projectName = null, open = false, sample = false } = {}) => {
+  const handleDroppedFiles = async (dropped, { projectId = null, projectName = null, open = false, sample = false, newDocument = false } = {}) => {
     let files = dropped;
     if (photoUploadOn) {
       const turned = await photosAsPdfs(files);
@@ -1224,7 +1227,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     }
     const targetProjectId = isUploadableProjectId(projectId) ? projectId : null;
     let checked = null;
-    if (isFeatureOn('upload-check')) {
+    // A blank document made with New skips the upload check and the sheet
+    // ask: it is never a new revision of a sheet (R4-C S1).
+    if (isFeatureOn('upload-check') && !newDocument) {
       checked = await askUploadCheck(pdfs.map(asPdfFile));
       if (!checked) return { added: 0, skipped: rejected.length + pdfs.length };
     }
@@ -1237,6 +1242,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
           projectId: targetProjectId,
           openAfterUpload: open,
           checkedSheet: checked ? checked[index].sheet : null,
+          // A blank document made with New is never a new revision of a
+          // sheet, and New already checked its name (R4-C S1).
+          askDuplicates: !newDocument,
         });
         if (status === 'added' || status === 'existing') added += 1;
       }

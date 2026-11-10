@@ -61,8 +61,14 @@ export function readSheetFromFileName(fileName) {
     const n = normalizeSheetNumber(`${letters}${m[3]}${m[4] || ''}`);
     if (n) { sheetNumber = n; break; }
   }
-  const rev = /(?:^|[\s_.()-])(?:rev(?:ision)?|r)[\s._-]?([A-Za-z0-9]{1,3})(?=$|[\s_.()-])/i.exec(name);
-  return { sheetNumber, revision: rev ? rev[1].toUpperCase() : null };
+  // A written-out "rev" / "revision" wins over a bare "r" tag: in
+  // "R4C A-101 Rev 1" the revision is 1, not 4C.
+  // A letter revision needs a gap ("Rev B"), so "Review" is not revision
+  // "IEW"; a bare "r" takes digits only, so "RFI" is not revision "FI".
+  const rev = /(?:^|[\s_.()-])rev(?:ision)?(?:[\s._-]+([A-Za-z0-9]{1,3})|(\d{1,3}))(?=$|[\s_.()-])/i.exec(name)
+    || /(?:^|[\s_.()-])r[\s._-]?(\d{1,3})(?=$|[\s_.()-])/i.exec(name);
+  const revValue = rev ? (rev[1] || rev[2]) : null;
+  return { sheetNumber, revision: revValue ? revValue.toUpperCase() : null };
 }
 
 function median(values) {

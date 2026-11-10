@@ -724,7 +724,7 @@ export default function DocumentsLedger({
       {newDocOpen && (
         <NewDocumentDialog
           existingNames={documents.map((d) => d?.name)}
-          onCreate={(file) => onDropFiles([file], { projectId: null, open: true })}
+          onCreate={(file, { open = true } = {}) => onDropFiles([file], { projectId: null, open, newDocument: true })}
           onClose={() => setNewDocOpen(false)}
         />
       )}

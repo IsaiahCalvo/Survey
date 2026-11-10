@@ -409,7 +409,8 @@ export function normalizeMeasureCaptionSize(value) {
 /** A label as stored: one trimmed line, at most 80 characters ('' = none). */
 export function normalizeMeasureLabelText(value) {
   if (typeof value !== 'string') return '';
-  return value.replace(/\s+/g, ' ').trim().slice(0, MEASURE_LABEL_MAX_CHARS);
+  // Cut on whole characters, so an emoji at the cap is never split (R5 N5c).
+  return splitGraphemes(value.replace(/\s+/g, ' ').trim()).slice(0, MEASURE_LABEL_MAX_CHARS).join('');
 }
 
 /** The caption lines picked for a kind, in the kind's order; null = unset. */
@@ -516,17 +517,26 @@ export function buildMeasureLabel(obj, scale) {
 }
 
 export const MEASURE_LABEL_WRAP_CHARS = 32;
+const graphemeSegmenter = typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function'
+  ? new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+  : null;
+/** Splits text into what a reader sees as single characters. */
+export function splitGraphemes(text) {
+  const str = String(text);
+  if (graphemeSegmenter) return Array.from(graphemeSegmenter.segment(str), (part) => part.segment);
+  return Array.from(str);
+}
 /** A long label breaks at spaces (or mid-word when one word is too long). */
 export function wrapMeasureLabelLine(text, max = MEASURE_LABEL_WRAP_CHARS) {
   const out = [];
   let line = '';
-  // Lengths count characters, not UTF-16 units, so an emoji is never cut
-  // in half.
-  const len = (s) => Array.from(s).length;
+  // Lengths count what a reader sees as one character (a grapheme), so an
+  // emoji is never cut in half: not a flag, a skin tone, a family or a keycap.
+  const len = (s) => splitGraphemes(s).length;
   for (let word of String(text).split(' ')) {
     while (len(word) > max) {
       if (line) { out.push(line); line = ''; }
-      const chars = Array.from(word);
+      const chars = splitGraphemes(word);
       out.push(chars.slice(0, max).join(''));
       word = chars.slice(max).join('');
     }
@@ -733,14 +743,15 @@ export function layoutMeasureLabel(label, unitsPerPx = 1, page = null) {
     cx += Math.sin(rad) * offset;
     cy -= Math.cos(rad) * offset;
   }
-  // Kept inside the page (a long caption near an edge ran off it), when the
-  // page is big enough to hold it.
+  // Kept inside the page (a long caption near an edge ran off it). A caption
+  // wider (or taller) than the page sits in its middle, so it overhangs both
+  // edges by the least it can instead of running off one side.
   if (page && page.width > 0 && page.height > 0) {
     const rad = ((label.angle || 0) * Math.PI) / 180;
     const halfW = (Math.abs(width * Math.cos(rad)) + Math.abs(height * Math.sin(rad))) / 2;
     const halfH = (Math.abs(width * Math.sin(rad)) + Math.abs(height * Math.cos(rad))) / 2;
-    if (page.width >= 2 * halfW) cx = Math.min(Math.max(cx, halfW), page.width - halfW);
-    if (page.height >= 2 * halfH) cy = Math.min(Math.max(cy, halfH), page.height - halfH);
+    cx = page.width >= 2 * halfW ? Math.min(Math.max(cx, halfW), page.width - halfW) : page.width / 2;
+    cy = page.height >= 2 * halfH ? Math.min(Math.max(cy, halfH), page.height - halfH) : page.height / 2;
   }
   // One line keeps the round pill; several get a card with the same corners.
   const radius = Math.min(height / 2, (fontPx / 2 + MEASURE_LABEL_PAD_Y_PX) * u);
