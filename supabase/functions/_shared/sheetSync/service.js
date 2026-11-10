@@ -32,7 +32,8 @@ import {
 } from './providers/google.js';
 import { createMsGraphProvider } from './providers/msgraph.js';
 import {
-  buildMsgraphAuthorizeUrl, exchangeMsgraphCode, fetchMsgraphAccount, msgraphAuthConfigFromEnv, refreshMsgraphToken,
+  buildMsgraphAdminConsentUrl, buildMsgraphAuthorizeUrl, exchangeMsgraphCode, fetchMsgraphAccount, fetchMsgraphDriveKind,
+  msgraphAuthConfigFromEnv, refreshMsgraphToken,
 } from './msgraphAuth.js';
 import { docToSurveyMarkers, syncSurveyMarkersToDoc } from '../surveyMarkerDocSync.js';
 import { bytesToPgHex, pgHexToBytes } from '../pgBytea.js';
@@ -54,7 +55,9 @@ const MIN_ROUND_GAP_MS = 8000;
 const MIN_ROUND_GAP_MS_EXCEL = 2500;
 const MIN_FORCED_GAP_MS = 2000; // "Sync now" pressed again and again
 const LEASE_SECONDS = 120;
-const STATE_TTL_MS = 10 * 60 * 1000;
+// Long enough for a first sign-in that sets up MFA (installing the
+// Authenticator app on a phone often takes more than 10 minutes).
+const STATE_TTL_MS = 30 * 60 * 1000;
 const CLAIM_TTL_MS = 10 * 60 * 1000;
 const CLAIM_MAX_TRIES = 5;
 // 8 letters from 32 (no 0/O, 1/I): about a trillion codes, five tries.
@@ -227,6 +230,7 @@ export async function handleSheetSync(req, deps) {
   try {
     if (req.method === 'GET' && url.pathname.endsWith('/oauth/callback')) return await oauthCallback(url, deps);
     if (req.method === 'GET' && url.pathname.endsWith('/oauth/msgraph/callback')) return await msgraphCallback(url, deps);
+    if (req.method === 'GET' && url.pathname.endsWith('/oauth/msgraph/admin')) return await msgraphAdminConsent(deps);
     if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
     if (url.pathname.endsWith('/sweep')) return await sweep(req, deps);
     const supabaseUrl = env.SUPABASE_URL;
@@ -259,7 +263,7 @@ export async function handleSheetSync(req, deps) {
       title: s.string({ max: 200, optional: true }),
       fileLink: s.string({ max: 2000, optional: true }),
       // An Excel workbook's OneDrive folder, "A/B" from the drive's top.
-      folder: s.string({ max: 400, optional: true }),
+      folder: s.string({ max: 1200, optional: true }),
       // A SharePoint/Teams folder link pasted into "Save in".
       folderLink: s.string({ max: 2000, optional: true }),
       markerId: s.string({ max: 200, optional: true }),
@@ -478,35 +482,70 @@ async function connectMicrosoft(ctx) {
   return { url: buildMsgraphAuthorizeUrl(ms, state, { loginHint: ctx.user.email }) };
 }
 
+// The address a person sends their company's Microsoft admin when Microsoft
+// says "Need admin approval": no Survey sign-in needed, it opens Microsoft's
+// approve-for-everyone page.
+const msgraphAdminLink = (env) => `${(env.SHEET_SYNC_PUBLIC_URL || `${String(env.SUPABASE_URL || '').replace(/\/$/, '')}/functions/v1/sheet-sync`).replace(/\/$/, '')}/oauth/msgraph/admin`;
+
+async function msgraphAdminConsent(deps) {
+  const ms = msgraphConfig(deps.env);
+  if (!ms) return new Response(null, { status: 302, headers: { Location: `${appOrigins(deps.env)[0]}/google-connected.html?provider=msgraph&result=not_configured`, 'Cache-Control': 'no-store' } });
+  const state = await signState(ms.clientSecret, { k: 'admin', e: Date.now() + STATE_TTL_MS, n: crypto.randomUUID() });
+  return new Response(null, { status: 302, headers: { Location: buildMsgraphAdminConsentUrl(ms, state), 'Cache-Control': 'no-store' } });
+}
+
 async function msgraphCallback(url, deps) {
   const { env } = deps;
   const ms = msgraphConfig(env);
   const fallback = appOrigins(env)[0];
   let app = '';
-  const back = (origin, result, claim = '') => new Response(null, {
-    status: 302,
-    headers: { Location: `${origin}/google-connected.html?provider=msgraph&result=${encodeURIComponent(result)}${app}${claimFragment(claim)}`, 'Cache-Control': 'no-store' },
-  });
+  const back = (origin, result, claim = '', extra = {}) => {
+    const more = Object.entries(extra).map(([k, v]) => `&${k}=${encodeURIComponent(v)}`).join('');
+    return new Response(null, {
+      status: 302,
+      headers: { Location: `${origin}/google-connected.html?provider=msgraph&result=${encodeURIComponent(result)}${app}${more}${claimFragment(claim)}`, 'Cache-Control': 'no-store' },
+    });
+  };
   if (!ms) return back(fallback, 'not_configured');
-  const state = await readState(ms.clientSecret, url.searchParams.get('state'));
-  if (!state?.u) return back(fallback, 'expired');
+  // An admin coming back from approving Survey for their company. Nothing is
+  // stored: Microsoft keeps the approval, and every Connect after it just works.
+  if (url.searchParams.has('admin_consent')) {
+    return back(fallback, /^true$/i.test(url.searchParams.get('admin_consent') || '') ? 'admin_approved' : 'admin_declined');
+  }
+  const rawState = url.searchParams.get('state');
+  const state = await readState(ms.clientSecret, rawState);
+  if (!state?.u) {
+    if (state?.k === 'admin') return back(fallback, url.searchParams.get('error') ? 'admin_declined' : 'admin_approved');
+    return back(fallback, 'expired');
+  }
   app = appParam(state);
   const origin = appOrigins(env).includes(state.o) ? state.o : fallback;
-  if (url.searchParams.get('error')) return back(origin, 'cancelled');
+  // "Need admin approval" comes back exactly like a cancel (checked against a
+  // real tenant 2026-11-10: error=access_denied&error_subcode=cancel), so the
+  // cancel page also offers the admin link.
+  if (url.searchParams.get('error')) return back(origin, 'cancelled', '', { admin: msgraphAdminLink(env) });
   const code = url.searchParams.get('code');
-  if (!code) return back(origin, 'cancelled');
+  if (!code) return back(origin, 'cancelled', '', { admin: msgraphAdminLink(env) });
   const fetchImpl = deps.fetchImpl || fetch;
   try {
     const tokens = await exchangeMsgraphCode(ms, code, { fetch: fetchImpl });
-    if (!tokens.scopes.some((sc) => /files\.readwrite/i.test(sc))) return back(origin, 'no_access');
+    if (!tokens.scopes.some((sc) => /files\.readwrite/i.test(sc))) return back(origin, 'no_access', '', { admin: msgraphAdminLink(env) });
+    // A home account (outlook.com...) can sign in but its files can't be
+    // synced: say so now, with a one-click "Use another account", instead of
+    // failing later at "Make workbook".
+    const drive = await fetchMsgraphDriveKind(tokens.accessToken, { fetch: fetchImpl, graphBase: ms.graphBase }).catch(() => 'unknown');
+    if (drive === 'personal') {
+      log('oauth_personal', { provider: 'msgraph' });
+      return back(origin, 'personal', '', { retry: buildMsgraphAuthorizeUrl(ms, rawState, { pickAccount: true }) });
+    }
     const account = await fetchMsgraphAccount(tokens.accessToken, { fetch: fetchImpl, graphBase: ms.graphBase });
     const service = deps.createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
     const claim = await parkSignIn(service, env, {
       userId: state.u, provider: 'msgraph', email: account.email, refreshToken: tokens.refreshToken, scopes: tokens.scopes.join(' '),
     });
-    return back(origin, 'finish', claim);
+    return back(origin, 'finish', claim, drive === 'none' ? { drive: 'none' } : {});
   } catch (err) {
-    log('oauth_failed', { provider: 'msgraph', status: err?.status, code: err?.code });
+    log('oauth_failed', { provider: 'msgraph', status: err?.status, code: err?.code, reason: err?.reason });
     return back(origin, err?.code === 'no_refresh_token' ? 'no_access' : 'failed');
   }
 }
@@ -619,6 +658,9 @@ async function layoutFor(ctx, documentId) {
 }
 
 const ACCESS_TOKENS = new Map();
+function dropCachedTokens(provider, userId) {
+  for (const key of ACCESS_TOKENS.keys()) if (key.startsWith(`${provider}:${userId}:`)) ACCESS_TOKENS.delete(key);
+}
 
 async function providerFor(ctx, connectionUserId, provider = 'google') {
   if (provider === 'msgraph') return msgraphProviderFor(ctx, connectionUserId);
@@ -650,10 +692,18 @@ async function msgraphProviderFor(ctx, connectionUserId) {
     .select('refresh_token_enc, account_email').eq('user_id', connectionUserId).eq('provider', 'msgraph').maybeSingle();
   if (!row) throw Object.assign(new Error('no connection'), { status: 401, code: 'reconnect' });
   let refreshToken = await decryptToken(row.refresh_token_enc, tokenKey(ctx.env));
-  let access = null;
+  // Kept by this server instance between requests, as for Google: an open
+  // survey asks for a round every 3 s, and each one used to start with a
+  // Microsoft token call (about 0.4 s, measured 2026-11-10) and a database
+  // write of the rotated refresh token. Keyed by account, so connecting a
+  // different Microsoft account never reuses the old one's token.
+  const cacheKey = `msgraph:${connectionUserId}:${row.account_email || ''}`;
+  let access = ACCESS_TOKENS.get(cacheKey) || null;
   const getAccessToken = async () => {
     if (access && access.expiresAt > Date.now() + 60_000) return access.accessToken;
     access = await refreshMsgraphToken(ms, refreshToken, { fetch: ctx.fetchImpl });
+    if (ACCESS_TOKENS.size > 500) ACCESS_TOKENS.clear();
+    ACCESS_TOKENS.set(cacheKey, { accessToken: access.accessToken, expiresAt: access.expiresAt });
     if (access.refreshToken && access.refreshToken !== refreshToken) {
       refreshToken = access.refreshToken;
       await ctx.service.from('sheet_sync_connections')
@@ -775,10 +825,13 @@ async function statusFor(ctx, round = null) {
 }
 
 // "A/B" with each name cleaned the way OneDrive allows; null when not given.
+// OneDrive for Business and SharePoint allow # and % in folder names (they
+// are URL-encoded on the way out); changing them made "Job #42" save into a
+// new "Job -42" folder next to it.
 export function cleanFolder(raw) {
   if (raw == null) return null;
-  const parts = String(raw).split('/').map((p) => p.replace(/[\\:*?"<>|#%]/g, '-').trim()).filter((p) => p && p !== '.' && p !== '..');
-  return parts.slice(0, 12).map((p) => p.slice(0, 120)).join('/');
+  const parts = String(raw).split('/').map((p) => p.replace(/[\\:*?"<>|]/g, '-').trim()).filter((p) => p && p !== '.' && p !== '..');
+  return parts.slice(0, 40).map((p) => p.slice(0, 250)).join('/');
 }
 
 // The folders inside one OneDrive folder, for "Save in" before making a
@@ -799,8 +852,8 @@ async function listFolders(ctx) {
       if (!/^https:\/\/\S+$/i.test(pasted)) throw new SyncError('Paste a link that starts with https://', 400, 'bad_folder_link');
       ({ folder, name } = await provider.resolveFolderLink(pasted));
     }
-    const { folders, places } = await provider.listFolders(folder);
-    return { folder, ...(name ? { name } : {}), folders, places };
+    const { folders, places, more, gone, noDrive } = await provider.listFolders(folder);
+    return { folder, ...(name ? { name } : {}), folders, places, ...(more ? { more } : {}), ...(gone ? { gone } : {}), ...(noDrive ? { noDrive } : {}) };
   } catch (err) {
     if (err instanceof SyncError) throw err;
     if (err?.code === 'bad_folder_link' || err?.code === 'not_a_folder') throw new SyncError(err.message, 400, err.code);
@@ -850,6 +903,7 @@ async function linkSheet(ctx) {
     if (fileLink && [401, 403, 404].includes(Number(err?.status)) && !signInEnded(err)) {
       throw new SyncError('Survey could not add its sheets to that workbook. Check that your Microsoft account can edit it (not just view it) and that it is not protected (Review > Protect Workbook).', 403, 'no_access');
     }
+    if (err?.code === 'folder_gone' || err?.code === 'no_onedrive') throw new SyncError(err.message, 409, err.code);
     if (err?.code === 'personal-onedrive') {
       throw new SyncError('This Microsoft account has a personal OneDrive. Live sync needs a work or school Microsoft 365 account.', 409, 'personal-onedrive');
     }
@@ -974,7 +1028,10 @@ async function runRoundFor(ctx, link, { provider = null, signing = null, force =
     const refused = !locked && ((status === 401 && !signInEnded(err)) || status === 403);
     const refusedSince = link.state?.refusedSince ? Date.parse(link.state.refusedSince) : null;
     const refusedLong = refused && refusedSince != null && Date.now() - refusedSince > REFUSED_GRACE_MS;
-    const message = signInEnded(err) ? `The ${who} sign-in used for this sheet stopped working. The person who linked it can connect ${who} again, or another editor can keep it syncing with their own account.`
+    const appSetup = err?.code === 'app_setup';
+    const message = signInEnded(err) && err?.reason === 'interaction_required' ? `${who} asks the person who linked this sheet to sign in again (a rule at their company). They can connect ${who} again, or another editor can keep it syncing with their own account.`
+      : signInEnded(err) ? `The ${who} sign-in used for this sheet stopped working. The person who linked it can connect ${who} again, or another editor can keep it syncing with their own account.`
+      : appSetup ? err.message
       : locked ? `Someone protected the ${what} or one of its synced tabs, so Survey can't write to it. Nothing is lost: Survey writes the waiting changes once it's unprotected.`
       : refused && !refusedLong ? `${who} would not open the ${what} just now. Trying again in a minute.`
       : refused ? `The linked ${what} is no longer shared with the person who linked it, or they can no longer edit it. An editor with access to the file can keep it syncing with their own account.`
@@ -987,13 +1044,21 @@ async function runRoundFor(ctx, link, { provider = null, signing = null, force =
       : status === 409 && err?.code === 'personal-onedrive' ? 'This workbook is on a personal OneDrive, which cannot sync cell by cell.'
       : `Could not reach the ${what}. Trying again soon.`;
     const patch = { last_error: message };
+    // Graph refused the token itself: get a fresh one next round, not the cached one.
+    if (status === 401 && !signInEnded(err)) dropCachedTokens(link.provider, link.connection_user_id);
     if (signInEnded(err)) await forgetDeadSignIn(ctx, link.connection_user_id, link.provider, message);
     if (signInEnded(err) || status === 404 || refusedLong) patch.status = 'broken';
     if (status === 409 && err?.code === 'personal-onedrive') patch.status = 'paused';
     if (status === 429) patch.backoff_until = new Date(Date.now() + 60_000).toISOString();
     // Busy (Excel's file host often answers 503 "retry in 30 s"): this sheet
     // waits what Microsoft asks, 10 s to 2 min, instead of the next tick.
-    if (isBusy(status, err)) patch.backoff_until = new Date(Date.now() + Math.min(Math.max(Number(err?.retryAfterMs) || 30_000, 10_000), 120_000)).toISOString();
+    // Survey's own Microsoft app refused (its secret expired or changed): the
+    // sign-ins are fine and kept; check again in 10 minutes, and say it loudly
+    // in the logs so it is fixed on our side.
+    if (appSetup) {
+      patch.backoff_until = new Date(Date.now() + 10 * 60_000).toISOString();
+      log('app_setup_broken', { provider: link.provider, reason: err?.reason });
+    } else if (isBusy(status, err)) patch.backoff_until = new Date(Date.now() + Math.min(Math.max(Number(err?.retryAfterMs) || 30_000, 10_000), 120_000)).toISOString();
     // Protected, or locked open (423) by someone's Excel: a person has to act,
     // so every 2 minutes is often enough. Neither marks the link broken.
     if (locked || status === 423) patch.backoff_until = new Date(Date.now() + 2 * 60_000).toISOString();
@@ -1035,6 +1100,7 @@ export const signInEnded = (err) => Number(err?.status) === 401 && err?.code ===
 // never showed), and every sheet it served says why it stopped instead of
 // failing one by one.
 async function forgetDeadSignIn(ctx, userId, provider, message) {
+  dropCachedTokens(provider, userId);
   try {
     await ctx.service.from('sheet_sync_connections').delete().eq('user_id', userId).eq('provider', provider);
     await ctx.service.from('sheet_sync_links').update({ status: 'broken', last_error: message })

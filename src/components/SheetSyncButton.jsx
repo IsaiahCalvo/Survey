@@ -11,7 +11,7 @@ import Spinner from './Spinner';
 import { useTooltip } from './Tooltip';
 import AnchoredPopover from './AnchoredPopover';
 import { sheetLayoutInput, sheetSyncCall, sheetTemplateId, syncedAgo } from '../services/sheetSyncClient.js';
-import { forgetClaim, readClaim } from '../services/sheetSyncClaim.js';
+import { CLAIM_KEY, forgetClaim, readClaim } from '../services/sheetSyncClaim.js';
 import { isNativeApp } from '../utils/proLock.js';
 import { isElectronApp } from '../utils/layoutMode.js';
 import './SheetSyncButton.css';
@@ -58,6 +58,10 @@ function useSheetSync({ documentId, template, markers, enabled }) {
   const [error, setError] = useState(null);
   const [codeAsk, setCodeAsk] = useState(null); // provider whose code box shows while connecting
   const [busyFor, setBusyFor] = useState(null); // the provider a connect or link is for
+  // { provider, url } when the browser blocked the sign-in window: the panel
+  // shows a link to open it with a tap (a tap is never blocked).
+  const [consentLink, setConsentLink] = useState(null);
+  const [connectNote, setConnectNote] = useState(null); // { provider, text } while connecting
   const inFlight = useRef(false);
   const again = useRef(false); // a change came in while a round was running
   const retryTimer = useRef(null);
@@ -172,49 +176,123 @@ function useSheetSync({ documentId, template, markers, enabled }) {
     try { return await fn(); } finally { setBusy(null); setBusyFor(null); }
   }, []);
 
+  // Finish a sign-in with its one-time code (sheetSyncClaim.js). The code is
+  // kept until the server has answered: a claim lost to a flaky connection
+  // used to drop the code, so the sign-in was lost and Connect had to start
+  // over. Another tab (or the phone app's own return) may have used the code
+  // first; then the account is connected already, which is a success too.
+  const claiming = useRef(new Set());
+  const claimNow = useCallback(async (provider, code) => {
+    if (claiming.current.has(code)) return { pending: true };
+    claiming.current.add(code);
+    try {
+      const res = await sheetSyncCall('claim', { provider, code });
+      if (!res?.error) { forgetClaim(); return { ok: true }; }
+      // No code from the server: it was never reached (offline, a hiccup).
+      // Keep the code and try again on the next look.
+      if (!res.code) return { retry: true, error: res.error };
+      const s = await sheetSyncCall('status', ids);
+      if ((provider === 'msgraph' ? s?.microsoft : s?.google)?.connected) { forgetClaim(); apply(s); return { ok: true }; }
+      forgetClaim();
+      return { error: res.error };
+    } finally {
+      claiming.current.delete(code);
+    }
+  }, [apply, ids]);
+
   // A sign-in finished while this survey was closed (the phone app was
-  // reopened from the consent page, say): finish it now.
+  // reopened from the consent page, say), or after the connect loop gave up
+  // (a long MFA set-up): finish it now, and whenever the consent tab leaves
+  // a code later.
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) return undefined;
     let stale = false;
-    (async () => {
+    const finishWaiting = async () => {
       for (const provider of ['google', 'msgraph']) {
         const code = readClaim(provider, Date.now() - 10 * 60 * 1000);
         if (!code || stale) continue;
-        forgetClaim();
-        const claimed = await sheetSyncCall('claim', { provider, code });
-        if (!stale && !claimed?.error) refresh();
+        const done = await claimNow(provider, code);
+        if (!stale && done.ok) refresh();
       }
-    })();
-    return () => { stale = true; };
-  }, [enabled, refresh]);
+    };
+    finishWaiting();
+    const onStorage = (event) => { if (event.key === CLAIM_KEY && event.newValue) finishWaiting(); };
+    const onBack = () => { if (document.visibilityState !== 'hidden') finishWaiting(); };
+    window.addEventListener('storage', onStorage);
+    window.addEventListener('online', finishWaiting);
+    window.addEventListener('focus', onBack);
+    return () => {
+      stale = true;
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('online', finishWaiting);
+      window.removeEventListener('focus', onBack);
+    };
+  }, [enabled, refresh, claimNow]);
 
   const connect = useCallback((provider = 'google') => run('connect', async () => {
     const who = provider === 'msgraph' ? 'Microsoft' : 'Google';
-    const res = await sheetSyncCall('connect', { appOrigin: window.location.origin, provider, client: clientKind() });
-    if (res?.error || !res?.url) { setError(res?.error || `Could not start ${who} sign-in.`); return; }
+    const kind = clientKind();
+    setConsentLink(null);
+    setConnectNote(null);
+    // On the web the sign-in tab is opened now, while the click still counts:
+    // opened after the server answers (an await, a cold start), Safari always
+    // and Chrome after ~5 s blocked it, and the panel waited 5 minutes for a
+    // tab that never opened. The desktop and phone apps send window.open to
+    // their own window or the system browser, so they open it once the
+    // address is known.
+    let tab = null;
+    if (kind === 'web') {
+      try { tab = window.open('', '_blank'); } catch { tab = null; }
+      if (tab) {
+        try {
+          tab.opener = null;
+          tab.document.title = `${who} | Survey`;
+          tab.document.body.style.cssText = 'margin:0;background:#0d0f14;color:#b7bec9;font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh';
+          tab.document.body.textContent = `Opening ${who} sign-in…`;
+        } catch { /* a blank tab still works */ }
+      }
+    }
+    const res = await sheetSyncCall('connect', { appOrigin: window.location.origin, provider, client: kind });
+    if (res?.error || !res?.url) {
+      try { tab?.close(); } catch { /* already closed */ }
+      setError(res?.error || `Could not start ${who} sign-in.`);
+      return;
+    }
     setError(null);
     const started = Date.now();
-    window.open(res.url, '_blank', 'noopener');
+    if (tab && !tab.closed) {
+      try { tab.location.replace(res.url); } catch { tab = null; }
+    }
+    if (kind === 'web' && (!tab || tab.closed)) setConsentLink({ provider, url: res.url });
+    if (kind !== 'web') window.open(res.url, '_blank', 'noopener');
     // The consent page opens in its own tab (the desktop app's own window, the
     // system browser on phones). Its code comes back on its own
     // (sheetSyncClaim.js); claim it, then watch for the sign-in to land.
     let refused = null;
     const stopListening = window.electronAPI?.onSheetSyncConsent?.((finish) => {
-      if (finish?.provider === provider && finish.result && finish.result !== 'finish' && finish.result !== 'connected') refused = finish.result;
+      if (finish?.provider !== provider || !finish.result || finish.result === 'finish' || finish.result === 'connected') return;
+      // A home account: the window offers "Use another account", so keep waiting.
+      if (finish.result === 'personal') {
+        setConnectNote({ provider, text: 'That is a personal Microsoft account. Pick your work or school account in the sign-in window.' });
+        return;
+      }
+      refused = finish.result;
     });
     try {
       while (Date.now() < started + CONNECT_POLL_FOR_MS) {
         await new Promise((r) => setTimeout(r, CONNECT_POLL_MS));
         if (refused) {
-          setError(refused === 'cancelled' ? `${who} was not connected: you stopped before saying yes.` : `${who} did not finish connecting. Try again.`);
+          setError(refused === 'cancelled'
+            ? `${who} was not connected: you stopped before saying yes.${provider === 'msgraph' ? ' If Microsoft said "Need admin approval", the sign-in window has a link for your IT admin.' : ''}`
+            : refused === 'no_access' ? `${who} was not connected: Survey needs permission to edit your files. If your company blocks new apps, the sign-in window has a link for your IT admin.`
+              : `${who} did not finish connecting. Try again.`);
           return;
         }
         const code = readClaim(provider, started);
         if (code) {
-          forgetClaim();
-          const claimed = await sheetSyncCall('claim', { provider, code });
-          if (claimed?.error) { setError(claimed.error); return; }
+          const done = await claimNow(provider, code);
+          if (done.error && !done.retry) { setError(done.error); return; }
+          if (done.ok) { await refresh(); return; }
         }
         const s = await sheetSyncCall('status', ids);
         if ((provider === 'msgraph' ? s?.microsoft : s?.google)?.connected) { apply(s); return; }
@@ -224,8 +302,10 @@ function useSheetSync({ documentId, template, markers, enabled }) {
     } finally {
       stopListening?.();
       setCodeAsk(null);
+      setConsentLink(null);
+      setConnectNote(null);
     }
-  }, provider), [apply, ids, run]);
+  }, provider), [apply, claimNow, ids, refresh, run]);
 
   // The code typed from the consent page, when it was opened in another
   // browser or device. The connect loop above sees the sign-in land.
@@ -289,7 +369,7 @@ function useSheetSync({ documentId, template, markers, enabled }) {
 
   const linking = busy === 'link' ? busyFor : null;
   const connecting = busy === 'connect' ? busyFor : null;
-  return { status, busy, error, live, codeAsk, linking, connecting, connect, claimCode, link, folders, choose, putBackTab, chooseForLink, unlink, takeOver, relink, disconnect, syncNow };
+  return { status, busy, error, live, codeAsk, consentLink, connectNote, linking, connecting, connect, claimCode, link, folders, choose, putBackTab, chooseForLink, unlink, takeOver, relink, disconnect, syncNow };
 }
 
 const GLYPH = { google: 'google', msgraph: 'microsoft' };
@@ -314,6 +394,22 @@ function ActionButton({ busy, busyLabel, label, primary = false, danger = false,
       <span>{busy ? busyLabel : label}</span>
     </button>
   );
+}
+
+// While a sign-in is open: what to do, a tap-to-open link when the browser
+// blocked the sign-in window, and a note when Microsoft picked a home account.
+function ConnectHelp({ provider, sync }) {
+  const blocked = sync.consentLink?.provider === provider ? sync.consentLink.url : null;
+  const note = sync.connectNote?.provider === provider ? sync.connectNote.text : null;
+  if (blocked) {
+    return (
+      <p className="sheet-sync-note">
+        Your browser stopped the sign-in window.{' '}
+        <a className="sheet-sync-link" href={blocked} target="_blank" rel="noopener noreferrer">Open {WHO[provider]} sign-in</a>
+      </p>
+    );
+  }
+  return <p className="sheet-sync-note">{note || `Say yes on the ${WHO[provider]} page. Survey finishes on its own.`}</p>;
 }
 
 function ClaimCodeBox({ provider, onClaim }) {
@@ -413,15 +509,20 @@ function FolderPicker({ start, startName, load, onPick, onCancel }) {
   const [pasted, setPasted] = useState('');
   const [pasteError, setPasteError] = useState('');
   const [opening, setOpening] = useState(false);
+  // 'gone' (moved or deleted since it was picked), 'noDrive' (an account with
+  // no OneDrive of its own), 'more' (a library bigger than one look lists).
+  const [note, setNote] = useState(null);
   useEffect(() => {
     let live = true;
     setList(null);
     setFailed(false);
+    setNote(null);
     load(at).then((res) => {
       if (!live) return;
       if (!res || res.error) { setFailed(true); setList([]); setPlaces([]); return; }
       setList(Array.isArray(res.folders) ? res.folders : []);
       setPlaces(Array.isArray(res.places) ? res.places : []);
+      setNote(res.gone ? 'gone' : res.noDrive ? 'noDrive' : res.more ? 'more' : null);
     });
     return () => { live = false; };
   }, [at, load]);
@@ -466,6 +567,13 @@ function FolderPicker({ start, startName, load, onPick, onCancel }) {
             <span className="sheet-sync-skeleton" />
             <span className="sheet-sync-skeleton is-short" />
           </>
+        ) : note === 'gone' ? (
+          <p className="sheet-sync-empty">
+            This folder was moved or deleted.{' '}
+            <button type="button" className="sheet-sync-link" onClick={() => { setPlaceName(''); setAt(''); }}>Back to OneDrive</button>
+          </p>
+        ) : note === 'noDrive' ? (
+          <p className="sheet-sync-empty">Your Microsoft account has no OneDrive. Paste a SharePoint or Teams folder link below.</p>
         ) : empty ? (
           <p className="sheet-sync-empty">{failed ? 'Could not open this folder.' : 'No folders here.'}</p>
         ) : (
@@ -482,6 +590,7 @@ function FolderPicker({ start, startName, load, onPick, onCancel }) {
                 <span>{name}</span>
               </button>
             ))}
+            {note === 'more' && <p className="sheet-sync-empty">More folders than fit here. To reach one that isn’t listed, paste its link below.</p>}
           </>
         )}
       </div>
@@ -501,7 +610,7 @@ function FolderPicker({ start, startName, load, onPick, onCancel }) {
       {pasteError && <p className="sheet-sync-paste-error" role="alert">{pasteError}</p>}
       <div className="sheet-sync-row">
         <ActionButton label="Cancel" onClick={onCancel} />
-        <ActionButton primary label="Save here" onClick={() => onPick(at, place ? placeName : '')} />
+        <ActionButton primary label="Save here" disabled={note === 'gone' || (note === 'noDrive' && !at)} onClick={() => onPick(at, place ? placeName : '')} />
       </div>
     </div>
   );
@@ -609,7 +718,13 @@ export default function SheetSyncButton({ className, phone = false, documentId, 
               label={makeLabel} busyLabel={makingLabel}
               busy={making}
               disabled={Boolean(busy)}
-              onClick={() => sync.link(sheetTitle, provider, provider === 'msgraph' ? folder : undefined)}
+              onClick={async () => {
+                const res = await sync.link(sheetTitle, provider, provider === 'msgraph' ? folder : undefined);
+                // The saved "Save in" folder is gone (or this account can't
+                // add to it), or the account has no OneDrive: pick another.
+                if (res?.code === 'folder_gone') { pickFolder('Survey'); setView('folders'); }
+                if (res?.code === 'no_onedrive') setView('folders');
+              }}
             />
             {provider === 'msgraph' && (
               <p className="sheet-sync-place">
@@ -626,7 +741,7 @@ export default function SheetSyncButton({ className, phone = false, documentId, 
             onClick={() => sync.connect(provider)}
           />
         )}
-        {connecting && <p className="sheet-sync-note">Say yes on the {WHO[provider]} page. Survey finishes on its own.</p>}
+        {connecting && <ConnectHelp provider={provider} sync={sync} />}
         {busy === 'connect' && sync.codeAsk === provider && <ClaimCodeBox provider={provider} onClaim={sync.claimCode} />}
       </div>
     );
@@ -759,6 +874,7 @@ export default function SheetSyncButton({ className, phone = false, documentId, 
               />
             )
           )}
+          {busy === 'connect' && sync.connecting && <ConnectHelp provider={sync.connecting} sync={sync} />}
           {busy === 'connect' && sync.codeAsk && <ClaimCodeBox provider={sync.codeAsk} onClaim={sync.claimCode} />}
           {link.status === 'broken' && excelLink && canEdit && status.microsoft?.connected && (
             <p className="sheet-sync-place">

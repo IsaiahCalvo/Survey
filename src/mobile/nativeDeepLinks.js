@@ -7,7 +7,7 @@
 // that finishes a live-sheet sign-in, from the "Open Survey" button on the
 // consent page's last screen (public/google-connected.html). It is saved where
 // the connect loop looks (src/services/sheetSyncClaim.js), so nobody types it.
-import { rememberClaim } from '../services/sheetSyncClaim.js';
+import { forgetClaim, rememberClaim } from '../services/sheetSyncClaim.js';
 
 const APP_HOSTS = new Set(['surveytool.app', 'www.surveytool.app']);
 const APP_PATH = /^\/invite\/[^/?#]+/;
@@ -37,12 +37,33 @@ export function sheetSyncClaimFromUrl(url) {
   return { provider, code };
 }
 
+// Phones often close the app while the person is in the browser saying yes
+// (Android frees memory; iOS after a while). The app then starts fresh on the
+// Documents list, and the code waited for a survey's sheet panel to open:
+// after 10 minutes the sign-in was lost. Finish it straight away instead; the
+// saved code stays for the panel if this try can't reach the server.
+export async function finishSignInNow(claim, call = null) {
+  try {
+    const sheetSyncCall = call || (await import('../services/sheetSyncClient.js')).sheetSyncCall;
+    const res = await sheetSyncCall('claim', claim);
+    // Done, or refused for good (expired, wrong): either way nothing to keep.
+    if (!res?.error || res.code) forgetClaim();
+    return res;
+  } catch {
+    return null;
+  }
+}
+
 export function installNativeDeepLinks(win = typeof window !== 'undefined' ? window : null) {
   if (!win?.Capacitor?.isNativePlatform?.()) return false;
   import('@capacitor/app').then(({ App }) => {
     App.addListener('appUrlOpen', ({ url }) => {
       const claim = sheetSyncClaimFromUrl(url);
-      if (claim) { rememberClaim(claim.provider, claim.code); return; }
+      if (claim) {
+        rememberClaim(claim.provider, claim.code);
+        finishSignInNow(claim);
+        return;
+      }
       const route = deepLinkRoute(url);
       if (route) win.location.assign(route);
     });
