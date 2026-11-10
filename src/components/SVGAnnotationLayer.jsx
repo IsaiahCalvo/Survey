@@ -7731,7 +7731,10 @@ const SVGAnnotationLayerBody = memo(({
               objects: annotations?.objects,
               hasSelection: pageHasSelection,
             });
-            if (press.click === 'add') {
+            // Shift-click adds the mark. With a tool whose drag draws (Shapes),
+            // wait for the release: a Shift-drag from a mark draws a square or
+            // circle (R3-F), a Shift-click still adds.
+            if (press.click === 'add' && press.drag === 'none') {
               applyPressFallback(press);
               e.preventDefault();
               return;
@@ -7748,7 +7751,7 @@ const SVGAnnotationLayerBody = memo(({
               e.preventDefault();
               return;
             }
-            if (press.click === 'select' || press.click === 'deselect') {
+            if (press.click === 'select' || press.click === 'deselect' || press.click === 'add') {
               pressFallback = { ...press, pointerType: e.pointerType, x: e.clientX, y: e.clientY };
             }
           }
