@@ -34,6 +34,8 @@ import {
   personLabel,
 } from '../services/markComments.js';
 import { historyGlyphFor, historyTypeKey } from '../utils/historyFeed.js';
+import { presenceInitials } from '../components/presenceIdentity.js';
+import { USER_INITIALS_INK, userColorFill } from '../utils/userColors.js';
 import { historyMarkFilterNoun } from '../utils/historyMarkFilter.js';
 import { historyAnnotationInkBox } from '../utils/historyGeometry.js';
 import { measureMarkBox } from '../components/revisions/historyPageOverlay.js';
@@ -180,6 +182,16 @@ function CommentItem({ comment, peopleById, mine, canWrite, onEdit, onDelete, on
   return (
     <div className={`comments-item${editing ? ' is-editing' : ''}`} data-comment-id={comment.id}>
       <div className="comments-item__head">
+        {/* Owner 2026-11-10 (Comments "very professional"): each comment
+            wears its author's face - their own pastel and initials, the same
+            disc as the presence row and the share list. */}
+        <span
+          className="comments-avatar"
+          aria-hidden="true"
+          style={comment.authorId ? { background: userColorFill(comment.authorId), color: USER_INITIALS_INK } : undefined}
+        >
+          {comment.authorId ? presenceInitials(personLabel(author)) : '?'}
+        </span>
         <span className="comments-item__author">{comment.authorId ? personLabel(author) : 'Former member'}</span>
         <span className="comments-item__time">
           {timeLabel(comment.createdAt)}{comment.editedAt ? ' · edited' : ''}
@@ -265,15 +277,34 @@ export default function CommentsPanel({
   const listRef = useRef(null);
   const userId = user?.id || null;
 
-  // Start a comment on a mark, or show one from a link.
+  // Start a comment on a mark, or show one from a link. A mark that already
+  // has a thread opens that thread (reply box ready) instead of a second one,
+  // as Drawboard does; the request waits until the comments have loaded.
+  const [pendingMarkRequest, setPendingMarkRequest] = useState(null);
   useEffect(() => {
     if (!focusRequest) return;
     if (focusRequest.commentId) {
       setHighlightId(focusRequest.commentId);
+    } else if (focusRequest.markId) {
+      setPendingMarkRequest(focusRequest);
     } else if (canWrite) {
-      setDraft({ markId: focusRequest.markId || null, pageNumber: Number(focusRequest.pageNumber) || pageNum || 1 });
+      setDraft({ markId: null, pageNumber: Number(focusRequest.pageNumber) || pageNum || 1 });
     }
   }, [focusRequest]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!pendingMarkRequest || status === 'loading' || status === 'idle') return;
+    const markId = String(pendingMarkRequest.markId);
+    const existing = threads.find((t) => t.markId != null && String(t.markId) === markId);
+    setPendingMarkRequest(null);
+    if (existing) {
+      setDraft(null);
+      setActiveThreadId(existing.id);
+      if (canWrite) setReplyingTo(existing.id);
+      setHighlightId(existing.root.id);
+    } else if (canWrite) {
+      setDraft({ markId, pageNumber: Number(pendingMarkRequest.pageNumber) || pageNum || 1 });
+    }
+  }, [pendingMarkRequest, status, threads, canWrite, pageNum]);
 
   // Bring a linked comment into view once it has loaded.
   useEffect(() => {
@@ -400,7 +431,10 @@ export default function CommentsPanel({
       {newButton}
       {draft && (
         <div className="comments-thread comments-thread--draft" data-comment-draft={draft.markId || `page-${draft.pageNumber}`}>
-          <div className="comments-thread__target">{markLabel(draft.markId, draft.pageNumber)}</div>
+          <div className="comments-thread__target">
+            <Icon name={markTarget(draft.markId, draft.pageNumber).icon} size={13} />
+            <span>{markLabel(draft.markId, draft.pageNumber)}</span>
+          </div>
           <CommentBox
             people={people}
             placeholder="Add a comment. Type @ to mention someone."

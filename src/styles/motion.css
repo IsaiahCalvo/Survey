@@ -37,7 +37,9 @@
    opens from (transform-origin: the corner nearest that button), and each
    row arrives a moment after the one above it. */
 @keyframes sv-menu-grow {
-  from { opacity: 0; scale: 0.94; }
+  /* 0.97, not 0.94 (2026-11-10 motion pass, after transitions.dev's
+     dropdown: a menu should seem to come from its button, not pop). */
+  from { opacity: 0; scale: 0.97; }
 }
 @keyframes sv-menu-row-in {
   from { opacity: 0; translate: 6px 0; }

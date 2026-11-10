@@ -22,6 +22,7 @@ import {
   subscribeLibraryPlacement,
 } from './markLibraryPlacement.js';
 import { libraryThumbnail, thumbnailFrame } from './markLibraryThumbnail.js';
+import { reviewStampPreviewItem } from './reviewStamps.js';
 
 // Page units → screen pixels for a page element (its annotation layer's
 // viewBox is the page size).
@@ -55,7 +56,7 @@ export default function MarkLibraryPlacementLayer({ active = false, rootRef = nu
     let cancelled = false;
     setPicture(null);
     if (!item || !active) return undefined;
-    libraryThumbnail(item, { px: 320 }).then((url) => { if (!cancelled) setPicture(url); });
+    libraryThumbnail(item.builtIn ? reviewStampPreviewItem(item) : item, { px: 320 }).then((url) => { if (!cancelled) setPicture(url); });
     return () => { cancelled = true; };
   }, [item, active]);
 

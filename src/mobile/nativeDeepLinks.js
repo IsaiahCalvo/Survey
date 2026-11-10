@@ -7,9 +7,15 @@
 // that finishes a live-sheet sign-in, from the "Open Survey" button on the
 // consent page's last screen (public/google-connected.html). It is saved where
 // the connect loop looks (src/services/sheetSyncClaim.js), so nobody types it.
-import { rememberClaim } from '../services/sheetSyncClaim.js';
+//
+// A file:// or content:// url is a PDF opened from another app ("Open in
+// Survey"); src/mobile/nativeOpenFile.js reads it for the home screen.
+import { forgetClaim, rememberClaim } from '../services/sheetSyncClaim.js';
 import { nativeBackAction } from '../utils/backNavigation.js';
 import { isFeatureOn } from '../featureFlags.js';
+
+// Kept here (tiny) so a plain link never loads the file reader.
+const isOpenedFileUrl = (url) => typeof url === 'string' && /^(file|content):\/\//i.test(url);
 
 const APP_HOSTS = new Set(['surveytool.app', 'www.surveytool.app']);
 const APP_PATH = /^\/invite\/[^/?#]+/;
@@ -39,12 +45,45 @@ export function sheetSyncClaimFromUrl(url) {
   return { provider, code };
 }
 
+// Phones often close the app while the person is in the browser saying yes
+// (Android frees memory; iOS after a while). The app then starts fresh on the
+// Documents list, and the code waited for a survey's sheet panel to open:
+// after 10 minutes the sign-in was lost. Finish it straight away instead; the
+// saved code stays for the panel if this try can't reach the server.
+export async function finishSignInNow(claim, call = null) {
+  try {
+    const sheetSyncCall = call || (await import('../services/sheetSyncClient.js')).sheetSyncCall;
+    const res = await sheetSyncCall('claim', claim);
+    // Done, or refused for good (expired, wrong): either way nothing to keep.
+    if (!res?.error || res.code) forgetClaim();
+    if (!res?.error && res?.replaced) (await import('../services/sheetSyncNotices.js')).announceAccountSwitch(claim.provider, res, { call: sheetSyncCall });
+    return res;
+  } catch {
+    return null;
+  }
+}
+
 export function installNativeDeepLinks(win = typeof window !== 'undefined' ? window : null) {
   if (!win?.Capacitor?.isNativePlatform?.()) return false;
   import('@capacitor/app').then(({ App }) => {
+    // A PDF opened from Files, Mail or Teams (src/mobile/nativeOpenFile.js).
+    const openFile = (url) => {
+      if (!isOpenedFileUrl(url)) return false;
+      Promise.all([import('@capacitor/filesystem'), import('./nativeOpenFile.js')])
+        .then(([{ Filesystem }, { receiveOpenedFile }]) => receiveOpenedFile(url, { Filesystem, win }))
+        .catch((err) => console.warn('[nativeDeepLinks] could not open file', err));
+      return true;
+    };
+    // A cold start may carry the file as the launch url instead of an event.
+    App.getLaunchUrl?.().then((launch) => { if (launch?.url) openFile(launch.url); }).catch(() => {});
     App.addListener('appUrlOpen', ({ url }) => {
+      if (openFile(url)) return;
       const claim = sheetSyncClaimFromUrl(url);
-      if (claim) { rememberClaim(claim.provider, claim.code); return; }
+      if (claim) {
+        rememberClaim(claim.provider, claim.code);
+        finishSignInNow(claim);
+        return;
+      }
       const route = deepLinkRoute(url);
       if (route) win.location.assign(route);
     });

@@ -134,6 +134,8 @@ export default function VersionCompareDialog({ older, newer, versions = [], onCl
   const tip = useTooltip();
   const viewRef = useRef(null);
   const canvasRef = useRef(null);
+  // A keyboard-and-mouse screen gets the nudge hint; a phone has no arrow keys.
+  const [finePointer] = useState(() => typeof window === 'undefined' || !window.matchMedia || window.matchMedia('(pointer: fine)').matches);
   const [pdfs, setPdfs] = useState({}); // version id -> pdf.js document
   const [failed, setFailed] = useState(null);
   const [pageNumber, setPageNumber] = useState(1);
@@ -155,6 +157,9 @@ export default function VersionCompareDialog({ older, newer, versions = [], onCl
   // Open each version once; a layer added later opens then.
   useEffect(() => {
     let cancelled = false;
+    // A new set of versions starts clean, so taking off a layer that would
+    // not open brings the overlay back.
+    setFailed(null);
     const missing = wanted.filter((v) => !pdfs[v.id]);
     if (!missing.length) return undefined;
     // A load that is cancelled (a layer added mid-open, unmount) or that
@@ -163,11 +168,11 @@ export default function VersionCompareDialog({ older, newer, versions = [], onCl
       .then((results) => {
         const opened = results.filter((r) => r.status === 'fulfilled').map((r) => r.value);
         const failure = results.find((r) => r.status === 'rejected');
-        if (cancelled || failure) {
+        if (cancelled) {
           for (const [, pdf] of opened) pdf?.destroy?.();
-          if (!cancelled) setFailed(failure.reason?.message || 'Could not open the versions');
           return;
         }
+        if (failure) setFailed(failure.reason?.message || 'Could not open the versions');
         setPdfs((current) => ({ ...current, ...Object.fromEntries(opened) }));
       });
     return () => { cancelled = true; };
@@ -306,7 +311,9 @@ export default function VersionCompareDialog({ older, newer, versions = [], onCl
               <span style={{ ...swatch(inkRgb(l.ink)), marginLeft: 14 }} />Only in v{l.version.versionNumber}
             </span>
           ))}
-          <span style={{ ...swatch('rgb(0, 0, 0)'), marginLeft: 14 }} />In both. Arrow keys move the chosen layer (Shift: 10 pt).
+          <span style={{ ...swatch('rgb(0, 0, 0)'), marginLeft: 14 }} />In both.
+          {/* Only where there is a keyboard to nudge with: a phone has none. */}
+          {finePointer && ' Arrow keys move the chosen layer (Shift: 10 pt).'}
         </span>
       )}
       onClose={onClose}

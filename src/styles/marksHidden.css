@@ -74,6 +74,9 @@ html[data-marks-hidden] [data-lightweight-annotation-overlay] {
   display: inline-flex;
   align-items: center;
   gap: 10px;
+  /* Its own width, not the half window a fixed box at left: 50% gets: the
+     line wrapped to two rows on a phone. */
+  width: max-content;
   max-width: calc(100vw - 32px);
   padding: 6px 6px 6px 12px;
   border-radius: 999px;
@@ -82,6 +85,20 @@ html[data-marks-hidden] [data-lightweight-annotation-overlay] {
   border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
   font-size: var(--font-size-sm, 13px);
+}
+
+/* Phones: both chips sit above the bottom bar, so with marks hidden the
+   scale chip steps up over the Marks hidden chip instead of covering it. */
+@media screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
+  html[data-marks-hidden] .measure-no-scale-chip {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 128px);
+  }
+  /* The pinned tools row stands on the bottom bar (PinnedToolsDock.css,
+     38px pins at bar + 8px) and covered the chip's words and its Set scale
+     button: the chip stands 8px above that row. */
+  html:not([data-marks-hidden]) body:has(.pinned-dock-shell.is-phone) .measure-no-scale-chip {
+    bottom: calc(var(--mobile-dock-bar-height, 46px) + 54px);
+  }
 }
 
 .measure-no-scale-chip button {

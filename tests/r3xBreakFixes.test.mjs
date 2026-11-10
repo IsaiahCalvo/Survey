@@ -25,15 +25,48 @@ test('Search keeps Match case / Whole word with the query across a remount', () 
 test('hiding marks drops the pick and blocks mark-changing keys', () => {
   const src = read('PDFViewer.jsx');
   assert.match(src, /if \(marksHidden\(\)\) clearAnnotationSelectionForContextChange\('marks-hidden'\)/);
-  assert.match(src, /if \(!marksHidden\(\) \|\| isTypingTarget\(event\.target\)\) return;/);
+  // Only the front viewer swallows the keys (Home and other tabs keep theirs).
+  assert.match(src, /if \(!marksHidden\(\) \|\| undoRedoKeyActiveRef\.current === false \|\| isTypingTarget\(event\.target\)\) return;/);
 });
 
 test('the Undo buttons step back a polygon point first', () => {
   const src = read('PDFViewer.jsx');
   const at = src.indexOf('const handleUndo = useCallback(() => {');
-  assert.match(src.slice(at, at + 400), /if \(stepBackPolyDraftForUndo\(\)\) return;/);
+  assert.match(src.slice(at, at + 400), /if \(stepBackPolyDraftForUndo\(polyDraftOwner\)\) return;/);
 });
 
 test('Back closes the mark menu before the document', () => {
   assert.match(read('hooks/useAnnotationContextMenu.jsx'), /useBackLayer\(Boolean\(annotationContextMenu\), closeAnnotationContextMenu\)/);
+});
+
+test('a polygon draft only takes and lights its own viewer\'s Undo', async () => {
+  const { setPolyDraftUndo, hasPolyDraftUndo, stepBackPolyDraftForUndo } = await import('../src/utils/polyDraft.js');
+  const front = {};
+  const behind = {};
+  let steps = 0;
+  const release = setPolyDraftUndo(() => { steps += 1; return true; }, behind);
+  assert.equal(hasPolyDraftUndo(front), false);
+  assert.equal(stepBackPolyDraftForUndo(front), false);
+  assert.equal(steps, 0);
+  assert.equal(hasPolyDraftUndo(behind), true);
+  assert.equal(stepBackPolyDraftForUndo(behind), true);
+  assert.equal(steps, 1);
+  release();
+  assert.equal(hasPolyDraftUndo(behind), false);
+});
+
+test('a draft in a tab behind ignores Enter, Escape and Backspace', () => {
+  const src = read('components/SVGAnnotationLayer.jsx');
+  assert.match(src, /if \(!draftTabActiveRef\.current\) return;\n\s*if \(!draftOwnsKeyboard\(e\.target\)\) return;/);
+});
+
+test('an open polygon draft is counted per viewer until released', async () => {
+  const { markPolyDraftOpen, hasOpenPolyDraft } = await import('../src/utils/polyDraft.js');
+  const viewer = {};
+  const release = markPolyDraftOpen(viewer);
+  assert.equal(hasOpenPolyDraft(viewer), true);
+  assert.equal(hasOpenPolyDraft({}), false);
+  release();
+  release();
+  assert.equal(hasOpenPolyDraft(viewer), false);
 });

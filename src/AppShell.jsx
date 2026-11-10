@@ -15,13 +15,19 @@ import CounterSeriesMenu, { counterSeriesMenuWidth } from './components/CounterS
 // (Note: CLAUDE.md still says the guard lives in AppShell; that line is stale.)
 
 import PageGridToggle, { PageGridGlyph } from './components/PageGridToggle';
+import DarkPagesToggle, { DarkPagesGlyph } from './components/DarkPagesToggle';
 import DocumentVersionsButton, { DocumentVersionsDialogs, useDocumentVersions } from './components/DocumentVersionsButton.jsx';
+import OlderVersionBar from './components/OlderVersionBar.jsx';
 import { requestMarkCommentsFocus } from './services/markCommentsFocus.js';
 import { OPEN_VIEWER_SHARE_EVENT } from './utils/viewerShare.js';
 import { HOME_DOWNLOAD_EVENT } from './utils/homeDownload.js';
 import { OPEN_EXPORT_PDF_EVENT } from './utils/exportPdfModes.js';
 import { PageGridMenu } from './components/PageGridSettings';
-import SnappingToggle, { SnappingGlyph, snappingLabel, useSnappingShortcut } from './components/SnappingToggle.jsx';
+import RailFlyout from './components/RailFlyout.jsx';
+import MenuGlide from './components/MenuGlide.jsx';
+import { chordKeycaps } from './utils/keyboardShortcuts.js';
+import { shortcutBinding } from './utils/customKeyboardShortcuts.js';
+import SnappingToggle, { SnappingGlyph, SnappingMenu, snappingLabel, useSnappingShortcut } from './components/SnappingToggle.jsx';
 import Dashboard from './Dashboard';
 import { createTabChromeCache } from './utils/tabChromeCache.js';
 import { captureTabSource, isCurrentTabSource } from './utils/tabSourceIdentity.js';
@@ -87,6 +93,9 @@ import { computeTextMarkupPickerPosition } from './utils/pdfTextMarkup.js';
 import { getLiveZoomViewerId, isLiveZoomEventForViewer, LIVE_ZOOM_EVENT } from './utils/liveZoomEvents.js';
 import { useAuth } from './contexts/AuthContext';
 import { supabase, isSupabaseAvailable } from './supabaseClient';
+import { storageDownloads } from './services/storageDownloads.js';
+import { pdfByteCache } from './services/pdfByteCache.js';
+import { remotePdfFileDescriptor } from './utils/pageOpSync.js';
 import { renameRows, subscribeDocumentNames } from './hooks/documentNameBus.js';
 import { lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import useStableHandler from './hooks/useStableHandler.js';
@@ -105,14 +114,29 @@ import { composeTextColor, splitTextColor } from './utils/textColorOpacity';
 import { CHROME_GLYPH, FONT_FAMILY, RAIL_CARET, RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_SPLIT_CONTROL_W, REVIEW_TOOL_IDS, ZOOM_MODE_OPTIONS, appDebug, coerceScrollMode, ensureRgbaOpacity, getWindowTrackpadInteractionDebugSavePayload, hexToRgba, writeSaveLogExtraFiles } from './viewerShared';
 // Owner 2026-09-22: undo/redo draw at 14 (the phone's HISTORY_GLYPH) - see MobilePdfViewerChrome.
 const HISTORY_GLYPH = 14;
+// The Page fit card shows each fit's shortcut (the keys PDFViewer's keydown
+// handler and the shortcuts sheet use; a remapped key shows its new keys).
+const FIT_MODE_CHORDS = Object.freeze({
+  [ZOOM_MODES.FIT_PAGE]: 'mod+0',
+  [ZOOM_MODES.FIT_WIDTH]: 'mod+1',
+  [ZOOM_MODES.FIT_HEIGHT]: 'mod+2',
+});
+const IS_MAC_KEYS = typeof navigator !== 'undefined' && /(Mac|iPhone|iPod|iPad)/i.test(`${navigator.platform || ''} ${navigator.userAgent || ''}`);
+// Mac shows ⌘0 tight, but a remapped chord with a named key keeps its
+// pluses (⌘+Shift+F, Alt+1) so the words don't run together.
+const fitChordLabel = (chord) => {
+  const caps = chordKeycaps(shortcutBinding(chord), { isMac: IS_MAC_KEYS });
+  const tight = IS_MAC_KEYS && caps.slice(0, -1).every((cap) => cap.length === 1);
+  return caps.join(tight ? '' : '+');
+};
 import { TooltipChipHost, TooltipContext, TooltipProvider, makeTooltipBinding } from './components/Tooltip';
 import { useViewerTopOverlayRef, subscribeViewerTopOverlays } from './utils/viewerTopOverlay.js';
 import DismissBarrier from './components/DismissBarrier.jsx';
 import PencilModeControl, { usePencilMode } from './components/PencilModeControl.jsx';
 import { PinIcon, getPinnedToolsStore, usePinnedTools } from './pinnedTools/pinnedToolsShared.jsx';
-import { isFeatureOn } from './featureFlags.js';
+import { FLAGS_CHANGED_EVENT, isFeatureOn } from './featureFlags.js';
 import { quickColoursForTool } from './utils/quickStylePresets.js';
-import { installHomeBack, installViewerBack } from './utils/backNavigation.js';
+import { installHomeBack, installViewerBack, useBackLayer } from './utils/backNavigation.js';
 import { steppedTabId, tabStepForKey } from './utils/tabKeys.js';
 import { setMarksHidden, useMarksHidden } from './utils/marksHidden.js';
 import { enterBrowserFullscreen, isFocusModeKey, leaveBrowserFullscreen } from './utils/focusMode.js';
@@ -1418,10 +1442,30 @@ export default function App({ devPreviewReturnTab = null }) {
 
   // Authentication state
   const { user, isAuthenticated, loading: authLoading, signOut: authSignOut } = useAuth();
-  // Guest links (Survey Nightly only, beta flag 'guest-links'): /?guest=<secret>
+  // Guest links (flag 'guest-links'): /?guest=<secret>
   // opens one shared document without an account (guest/GuestLinkGate.jsx).
-  const [guestLinksEnabled] = useState(() => isFeatureOn('guest-links'));
+  const [guestLinksEnabled, setGuestLinksEnabled] = useState(() => isFeatureOn('guest-links'));
   const [guestLinkToken] = useState(() => (typeof window === 'undefined' ? null : guestTokenFrom(window.location.href)));
+  // A guest usually opens the link in a browser that has never been to Survey,
+  // so the server's flag answers are not saved yet (flags are read once at
+  // load). Hold the sign-in card for a moment and open the guest card as soon
+  // as main.jsx's first flag refresh says the flag is on.
+  const [guestFlagWait, setGuestFlagWait] = useState(() => Boolean(guestLinkToken) && !guestLinksEnabled);
+  useEffect(() => {
+    if (guestLinksEnabled || !guestLinkToken) return undefined;
+    const check = () => {
+      if (!isFeatureOn('guest-links')) return;
+      setGuestLinksEnabled(true);
+      setGuestFlagWait(false);
+    };
+    check();
+    window.addEventListener(FLAGS_CHANGED_EVENT, check);
+    const giveUp = window.setTimeout(() => setGuestFlagWait(false), 4000);
+    return () => {
+      window.removeEventListener(FLAGS_CHANGED_EVENT, check);
+      window.clearTimeout(giveUp);
+    };
+  }, [guestLinksEnabled, guestLinkToken]);
   // "I have an account" on the guest card hands over to the normal sign-in.
   const [guestChoseSignIn, setGuestChoseSignIn] = useState(false);
   const guestJoinPending = Boolean(guestLinksEnabled && guestLinkToken && !user && !guestChoseSignIn);
@@ -1843,6 +1887,26 @@ export default function App({ devPreviewReturnTab = null }) {
     return newFile;
   }, [selectedPDF, activeTabId, replaceDocument]);
 
+  // Another window saved new bytes for a document open here (a page change
+  // there; Nightly 'page-op-sync', utils/pageOpSync.js). The tab gets a fresh
+  // cloud file for them, so its viewer reloads the PDF; the marks already
+  // came through the shared document.
+  const handleRemotePdfVersion = useCallback((targetTabId, { filePath, contentSha256 } = {}) => {
+    if (!targetTabId || !filePath) return;
+    storageDownloads(supabase).invalidate(filePath);
+    try { void Promise.resolve(pdfByteCache()?.removePath?.(filePath)).catch(() => {}); } catch { /* cache only */ }
+    const current = tabsRef.current.find((tab) => tab.id === targetTabId)?.file;
+    if (!current?.id) return;
+    const next = remotePdfFileDescriptor(current, { filePath, contentSha256 });
+    setTabs((prev) => prev.map((tab) => (tab.id === targetTabId && tab.file === current ? { ...tab, file: next } : tab)));
+    setSelectedPDF((selected) => (selected === current ? next : selected));
+    setDocuments((prev) => prev.map((document) => (
+      document?.id === current.id
+        ? { ...document, file_path: filePath, content_sha256: contentSha256 || null }
+        : document
+    )));
+  }, []);
+
   // ---- Desktop tab strip: close, menu, rename, download, restore ----------
   // Drawboard shell audit, Chunk C (2026-10-13). Every close a person makes -
   // the X, a middle-click, the tab menu's Close tab / Close other tabs / Close
@@ -2119,6 +2183,7 @@ export default function App({ devPreviewReturnTab = null }) {
   // drawing set a few dozen undo / redo presses held over 1 GB.
   const stableCreateTemplateRequest = useStableHandler(handleCreateTemplateRequest);
   const stableUpdatePDFFile = useStableHandler(handleUpdatePDFFile);
+  const stableRemotePdfVersion = useStableHandler(handleRemotePdfVersion);
   const stableUnsavedAnnotationsChange = useStableHandler(handleUnsavedAnnotationsChange);
   const stableAnnotationsExistChange = useStableHandler(handleAnnotationsExistChange);
   const stableViewStateChange = useStableHandler(handleViewStateChange);
@@ -2344,9 +2409,13 @@ export default function App({ devPreviewReturnTab = null }) {
     requestMarkCommentsFocus({ documentId: String(documentId), markId: item.id, pageNumber: item.pageNumber });
   }, [activeTab?.file?.id]);
   const documentVersions = useDocumentVersions(documentVersionsEnabled ? activeTab?.file?.id || null : null, handleDocumentSelect);
+  // An older version opens read-only, with a bar to the current one.
+  const olderVersionOpen = documentVersions.open && !documentVersions.open.isCurrent ? documentVersions.open : null;
+  const currentVersion = documentVersions.versions.find((v) => v.isCurrent) || null;
 
   // Page grid spacing (Survey Nightly only, beta flag 'grid-settings').
   const [gridSettingsEnabled] = useState(() => isFeatureOn('grid-settings'));
+  const [snapContentEnabled] = useState(() => isFeatureOn('snap-content'));
 
   const polylineCurve = usePolylineCurve();
   const pinnedTools = usePinnedTools();
@@ -2551,6 +2620,12 @@ export default function App({ devPreviewReturnTab = null }) {
     setMobileAuxCloseRequestKey((key) => key + 1);
     leftRailApi.ref.current.togglePanel(panelId);
   }, [leftRailApi, rightRailApi, activeTabId, activeTab?.file]);
+
+  // Phone: back closes an open Pages / History / Spaces sheet before it
+  // leaves the document (R3-Y: History closed the whole document).
+  useBackLayer(Boolean(isMobileViewer && mobileDocumentPanelState.isOpen), () => {
+    leftRailApi?.ref?.current?.closePanel?.();
+  });
 
   const toggleMobileDocumentHub = useCallback(() => {
     const activePanel = MOBILE_HUB_PANELS.includes(mobileDocumentPanelState.activePanel)
@@ -3175,6 +3250,9 @@ export default function App({ devPreviewReturnTab = null }) {
             <span {...chromeTip(topToolbarApi?.canUndo ? 'Undo' : 'Nothing to undo', 'below')} style={{ display: 'inline-flex' }}>
               <button
                 onClick={topToolbarApi?.onUndo || (() => {})}
+                // A mouse press does not take keyboard focus, so Enter (which
+                // finishes a polygon) never presses this button again (R4-A).
+                onMouseDown={(event) => event.preventDefault()}
                 disabled={!topToolbarApi?.canUndo}
                 // UX 2026-09-16: Undo/Redo take the shared top-bar control
                 // size and glyph like every other button in this row. They
@@ -3196,6 +3274,9 @@ export default function App({ devPreviewReturnTab = null }) {
             <span {...chromeTip(topToolbarApi?.canRedo ? 'Redo' : 'Nothing to redo', 'below')} style={{ display: 'inline-flex' }}>
               <button
                 onClick={topToolbarApi?.onRedo || (() => {})}
+                // A mouse press does not take keyboard focus, so Enter (which
+                // finishes a polygon) never presses this button again (R4-A).
+                onMouseDown={(event) => event.preventDefault()}
                 disabled={!topToolbarApi?.canRedo}
                 // UX 2026-09-16: see Undo — shared top-bar control size + glyph.
                 className="btn chrome-control chrome-history"
@@ -4057,7 +4138,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     neither. */}
                 {showsQuickColourDots(bottomToolbarApi) && annotationPaint && (
                   <QuickColourDots
-                    {...quickColoursForTool(bottomToolbarApi.contextTool || bottomToolbarApi.activeTool, toolQuickColoursOn)}
+                    {...quickColoursForTool(bottomToolbarApi.quickColourTool || bottomToolbarApi.contextTool || bottomToolbarApi.activeTool, toolQuickColoursOn)}
                     // w41: picked marks in different colours ring no dot.
                     value={bottomToolbarApi.selectionMixed?.strokeColor ? null : annotationPaint.quick.color}
                     customActive={bottomToolbarApi.selectionMixed?.strokeColor ? false : undefined}
@@ -4797,6 +4878,9 @@ export default function App({ devPreviewReturnTab = null }) {
                 onOpenPanel={openMobileDocumentPanel}
                 onAuxPanelStateChange={setMobileAuxPanel}
                 auxCloseRequestKey={mobileAuxCloseRequestKey}
+                versions={documentVersions.shown
+                  ? { label: `Versions (v${documentVersions.open.versionNumber} of ${documentVersions.versions.length})`, onOpen: documentVersions.showList }
+                  : null}
               />
             )}
             {railTabs.map((tab) => {
@@ -4988,6 +5072,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       documentId={tab.file?.id || null}
                       viewerUserId={user?.id || null}
                       isActive={isVisible}
+                      readOnlyWithoutLock={Boolean(tab.file?.superseded_by) || (tab.id === activeTabId && Boolean(olderVersionOpen))}
                       onLockStateChange={(isLocked) => {
                         setDocumentLockedByTab((current) => (
                           current[tab.id] === isLocked
@@ -5011,6 +5096,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       onLeftRailApiChange={chrome.left}
                       onRightRailApiChange={chrome.right}
                       onUpdatePDFFile={stableUpdatePDFFile}
+                      onRemotePdfVersion={stableRemotePdfVersion}
                       onCloseAfterFailure={stableTabClose}
                       onUnsavedAnnotationsChange={stableUnsavedAnnotationsChange}
                       onAnnotationsExistChange={stableAnnotationsExistChange}
@@ -5299,39 +5385,52 @@ export default function App({ devPreviewReturnTab = null }) {
               // Polish 3 (2026-10-04): corner and shadow are now the shared
               // popup tokens (--radius-md / --shadow-popover) that
               // AnnotationDropdown's popover uses.
-              const fitMenu = (anchorStyle) => (
-                <div role="menu" aria-label="Fit modes" style={{ position: 'absolute', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-popover)', minWidth: '140px', zIndex: 6000, padding: '2px', ...anchorStyle }}>
-                  {/* KAL-66: `menu` — opened from the keyboard, focus goes to
+              // Owner 2026-11-10 ("these pop-ups don't look integrated or
+              // professional"): the fit list is a RailFlyout now - the one
+              // rail card with a title, standing off the rail's edge like the
+              // grid card beside it - with the shared menu rows (13px, the
+              // MenuGlide hover strip), the current fit in gold ink with its
+              // tick, and each fit's shortcut on the right.
+              const fitMenu = () => (
+                <RailFlyout title="Page fit">
+                  <div role="menu" aria-label="Fit modes" className="rail-flyout__rows">
+                  {/* KAL-66: `menu` - opened from the keyboard, focus goes to
                       the current fit, arrows move, and focus returns to the
                       Fit options button when it closes. */}
                   {/* Focus handling only: PDFViewer's watchLightPopover already closes this
                       menu on an outside press / Escape. A second onDismiss here
                       toggled it back open on the same press. */}
                   <DismissBarrier active insideRefs={railFitMenuRefs} menu />
-                  {ZOOM_MODE_OPTIONS.map((option) => {
-                    if (option.id === ZOOM_MODES.MANUAL) return null;
+                  <MenuGlide />
+                  {ZOOM_MODE_OPTIONS.filter((option) => option.id !== ZOOM_MODES.MANUAL).map((option, index) => {
                     const isActive = option.id === api.zoomMode;
+                    const chord = FIT_MODE_CHORDS[option.id];
                     return (
                       <button
                         key={option.id}
+                        type="button"
                         onClick={() => api.handleZoomModeSelect(option.id)}
                         data-active={isActive}
                         // A menu row (touch audit 2026-10-13: 44px rows by
                         // finger, styles/touchTargets.css).
                         role="menuitemradio"
                         aria-checked={isActive}
-                        /* Owner 2026-10-02 (phone/desktop consistency): the
-                           phone's menu - a label, and a check on the chosen
-                           row (which steps up to --text-1). No fit glyphs on
-                           either platform; 28px rows here. */
-                        style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', minHeight: '28px', padding: '4px 9px', background: 'transparent', border: 'none', borderRadius: '4px', textAlign: 'left', cursor: 'pointer', color: isActive ? 'var(--text-1)' : 'var(--text-2)', fontSize: '11px', fontFamily: FONT_FAMILY }}
+                        /* Owner 2026-10-02 (phone/desktop consistency): a
+                           label, and a tick on the chosen row. No fit glyphs
+                           on either platform. */
+                        className="rail-flyout__row"
+                        style={{ '--menu-row': index }}
                       >
+                        <span className="rail-flyout__tick" aria-hidden="true">
+                          {isActive && <Icon name="check" size={RAIL_CONTROL_GLYPH} color="currentColor" />}
+                        </span>
                         <span>{option.label}</span>
-                        {isActive && <Icon name="check" size={RAIL_CONTROL_GLYPH} color="currentColor" />}
+                        {chord && <span className="rail-flyout__keys" aria-hidden="true">{fitChordLabel(chord)}</span>}
                       </button>
                     );
                   })}
-                </div>
+                  </div>
+                </RailFlyout>
               );
 
               // Owner 2026-10-07 (Drawboard rail): the Survey rail never
@@ -5458,7 +5557,7 @@ export default function App({ devPreviewReturnTab = null }) {
                           {renderFitIcon(fitIconMode, RAIL_CONTROL_GLYPH)}
                         </span>
                       </button>
-                      {api.isZoomMenuOpen && fitMenu({ right: '100%', bottom: 0, marginRight: '6px' })}
+                      {api.isZoomMenuOpen && fitMenu()}
                     </div>
                     {/* Drawboard gap #10: View > page grid overlay. */}
                     <PageGridToggle render={({ on, toggle }) => (gridSettingsEnabled ? (
@@ -5494,6 +5593,25 @@ export default function App({ devPreviewReturnTab = null }) {
                     ))} />
                     {/* Owner 2026-10-22: snapping's switch, beside the grid
                         (Bluebeam keeps SNAP and GRID side by side too). */}
+                    {snapContentEnabled ? (
+                      // Nightly (flag 'snap-content'): the magnet opens the
+                      // Snapping card - Marks and Drawing switches.
+                      <SnappingMenu renderButton={({ open, ref, onClick, on }) => (
+                        <button
+                          ref={ref}
+                          type="button"
+                          onClick={onClick}
+                          aria-label="Snapping"
+                          aria-haspopup="dialog"
+                          aria-expanded={open}
+                          data-snapping-toggle="true"
+                          {...chromeTip(open ? undefined : 'Snapping', 'left')}
+                          style={{ ...footerBtn(), color: on || open ? 'var(--text-1)' : 'var(--text-3)' }}
+                        >
+                          <SnappingGlyph size={RAIL_CONTROL_GLYPH} off={!on} />
+                        </button>
+                      )} />
+                    ) : (
                     <SnappingToggle render={({ on, toggle }) => (
                       <button
                         type="button"
@@ -5505,6 +5623,21 @@ export default function App({ devPreviewReturnTab = null }) {
                         style={{ ...footerBtn(), color: on ? 'var(--text-1)' : 'var(--text-3)' }}
                       >
                         <SnappingGlyph size={RAIL_CONTROL_GLYPH} off={!on} />
+                      </button>
+                    )} />
+                    )}
+                    {/* Nightly (flag 'dark-pages'): light-on-dark pages. */}
+                    <DarkPagesToggle render={({ on, toggle }) => (
+                      <button
+                        type="button"
+                        onClick={toggle}
+                        aria-label="Dark pages"
+                        aria-pressed={on}
+                        data-dark-pages-toggle="true"
+                        {...chromeTip(on ? 'Light pages' : 'Dark pages', 'left')}
+                        style={{ ...footerBtn(), color: on ? 'var(--text-1)' : 'var(--text-3)' }}
+                      >
+                        <DarkPagesGlyph size={RAIL_CONTROL_GLYPH} />
                       </button>
                     )} />
                     {hideMarksEnabled && (
@@ -5602,7 +5735,7 @@ export default function App({ devPreviewReturnTab = null }) {
         </Suspense>
       ) : null}
       <AuthModal
-        isOpen={showAuthModal && !guestJoinPending}
+        isOpen={showAuthModal && !guestJoinPending && !(guestFlagWait && !user)}
         initialMode={startsInSignUp() ? 'signup' : 'login'}
         onClose={() => setShowAuthModal(false)}
         onDismiss={!authPromptDismissed ? handleDismiss : null}
@@ -5681,6 +5814,12 @@ export default function App({ devPreviewReturnTab = null }) {
         </div>
       )}
       <DocumentVersionsDialogs state={documentVersions} />
+      {isViewerVisible && (olderVersionOpen || activeTab?.file?.superseded_by) && (
+        <OlderVersionBar
+          versionNumber={olderVersionOpen?.versionNumber || null}
+          onOpenCurrent={currentVersion ? () => documentVersions.openVersion(currentVersion) : null}
+        />
+      )}
       <TooltipChipHost setterRef={shellTooltipSetterRef} />
     </TooltipContext.Provider>
   );

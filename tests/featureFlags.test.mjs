@@ -121,7 +121,7 @@ test('flags: tester email list is tidied', () => {
 test('flags: every client flag is seeded in a migration', () => {
   const dir = new URL('../supabase/migrations/', import.meta.url);
   const sql = readdirSync(dir).filter((f) => f.endsWith('.sql')).map((f) => readFileSync(new URL(f, dir), 'utf8')).join('\n');
-  for (const key of Object.keys(FEATURE_FLAGS)) assert.match(sql, new RegExp(`\\('${key}', 'off'`), key);
+  for (const key of Object.keys(FEATURE_FLAGS)) assert.match(sql, new RegExp(`\\('${key}',\\s*'off'`), key);
 });
 
 const pgBin = ['/usr/lib/postgresql/16/bin', '/opt/homebrew/bin', '/usr/local/bin']

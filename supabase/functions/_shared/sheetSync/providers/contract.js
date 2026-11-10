@@ -40,6 +40,10 @@
 //     call of its own). `me` is true when it was the signed-in account (the
 //     linker, which is also who Survey writes as). Sheet edits are credited to
 //     this person in Changed By (round.js sheetEditorLabel).
+// - savesLate: true   (optional)
+//     A person's typing can reach the file a minute or more after they typed
+//     it (Excel on the web). The engine then holds a different value landing
+//     on a cell it just wrote as a conflict (engine.js RECENT_WRITE_MS).
 
 export const PROVIDER_METHODS = Object.freeze([
   'getVersion', 'readGrid', 'readCells', 'writeCells', 'appendRows', 'deleteRows', 'createFile', 'addTabs',

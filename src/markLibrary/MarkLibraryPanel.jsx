@@ -17,6 +17,10 @@
  * once. Deletes act at once with an Undo toast. A project item can be
  * changed by its author or a project owner; everyone in the project can
  * place it (the database enforces the same rules).
+ *
+ * With 'review-stamps' on, a third tab, Stamps, holds the built-in review
+ * stamps (reviewStamps.js): place one, or copy it to your library to change
+ * it. They are read-only here.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -37,6 +41,8 @@ import {
   subscribeLibraryPlacement,
 } from './markLibraryPlacement.js';
 import { libraryThumbnail } from './markLibraryThumbnail.js';
+import { isFeatureOn } from '../featureFlags.js';
+import { reviewStampItems, reviewStampPreviewItem } from './reviewStamps.js';
 import {
   LIBRARY_EXPORT_EXTENSION,
   LIBRARY_KIND_LABELS,
@@ -84,7 +90,9 @@ function useThumbnail(item, px) {
 }
 
 function Thumb({ item, px }) {
-  const url = useThumbnail(item, px);
+  // A review stamp pictures its {{tokens}} filled in, as it will land.
+  const shown = useMemo(() => (item?.builtIn ? reviewStampPreviewItem(item) : item), [item]);
+  const url = useThumbnail(shown, px);
   return (
     <span className="mark-library__thumb" aria-hidden="true">
       {url ? <img src={url} alt="" draggable={false} /> : <span className="mark-library__thumb-wait" />}
@@ -164,7 +172,7 @@ function LibraryTile({
           )}
         </span>
       )}
-      {payloadHasTokens(item.payload) && <span className="mark-library__badge" {...tip('Fills in {{tokens}} when placed', 'below')}>{'{ }'}</span>}
+      {!item.builtIn && payloadHasTokens(item.payload) && <span className="mark-library__badge" {...tip('Fills in {{tokens}} when placed', 'below')}>{'{ }'}</span>}
       {selectMode ? (
         <span className={`mark-library__check${selected ? ' is-on' : ''}`} aria-hidden="true">
           {selected ? <Icon name="check" size={12} color="currentColor" /> : null}
@@ -191,14 +199,16 @@ function LibraryTile({
     <SwipeActionsRow
       label={name}
       disabled={selectMode}
-      actions={buildSwipeActions({ onDelete: canChange ? () => onDelete([item.id]) : undefined })}
+      actions={buildSwipeActions({ onDelete: canChange && !item.builtIn ? () => onDelete([item.id]) : undefined })}
     >
       {body}
     </SwipeActionsRow>
   );
 }
 
-export default function MarkLibraryPanel({ phone = false, headActionsHost = null }) {
+// onPlaced: the phone slides its sheet down after a tap places an item, so
+// the item shows on the page instead of under the sheet.
+export default function MarkLibraryPanel({ phone = false, headActionsHost = null, onPlaced }) {
   const state = useMarkLibrary();
   const tip = useTooltip();
   const armedId = useArmedId();
@@ -211,22 +221,31 @@ export default function MarkLibraryPanel({ phone = false, headActionsHost = null
   const [askPrompt, promptDialog] = usePromptDialog();
   const fileRef = useRef(null);
 
+  const [stampsOn] = useState(() => isFeatureOn('review-stamps'));
+  const stampItems = useMemo(() => (stampsOn ? reviewStampItems() : []), [stampsOn]);
   const hasProject = Boolean(state.projectId && state.access.canRead);
-  const library = state.view.library === 'project' && hasProject ? 'project' : 'personal';
+  const library = state.view.library === 'stamps' && stampsOn
+    ? 'stamps'
+    : (state.view.library === 'project' && hasProject ? 'project' : 'personal');
+  const stampsTab = library === 'stamps';
   const bucket = library === 'project' ? state.project : state.personal;
-  const items = bucket.items;
+  const items = stampsTab ? stampItems : bucket.items;
   const otherLibrary = library === 'project' ? 'personal' : 'project';
-  const canAddHere = library === 'personal' || state.access.canAdd;
+  const canAddHere = !stampsTab && (library === 'personal' || state.access.canAdd);
   const canAddOther = otherLibrary === 'personal' || (state.projectId && state.access.canAdd);
 
-  useEffect(() => { setSelected(new Set()); setTag(null); }, [library]);
+  useEffect(() => { setSelected(new Set()); setTag(null); if (library === 'stamps') setSelectMode(false); }, [library]);
   useEffect(() => { if (!selectMode) setSelected(new Set()); }, [selectMode]);
 
   const tags = useMemo(() => libraryTagsOf(items), [items]);
+  // The built-in stamps keep their own order (most used reviews first).
   const visible = useMemo(
-    () => sortLibraryItems(filterLibraryItems(items, { query, tag }), state.view.sort, state.recents),
-    [items, query, tag, state.view.sort, state.recents],
+    () => (stampsTab
+      ? filterLibraryItems(items, { query, tag })
+      : sortLibraryItems(filterLibraryItems(items, { query, tag }), state.view.sort, state.recents)),
+    [items, query, tag, stampsTab, state.view.sort, state.recents],
   );
+  const tabIds = ['personal', ...(state.projectId ? ['project'] : []), ...(stampsOn ? ['stamps'] : [])];
   const groups = state.view.groupByTag ? groupLibraryItemsByTag(visible) : [{ tag: undefined, items: visible }];
   const layout = phone && state.view.layout === 'small' ? 'large' : state.view.layout;
 
@@ -298,7 +317,27 @@ export default function MarkLibraryPanel({ phone = false, headActionsHost = null
     await run(() => markLibraryStore.renameItem(item.id, answer));
   };
 
+  const copyStampTo = (item, target) => run(
+    () => markLibraryStore.addItems([{ library: target, name: item.name, tags: ['Review'], payload: item.payload }]),
+    (saved) => {
+      if (!saved?.length) return;
+      const where = target === 'project' ? `${state.access.projectName || 'the project'}'s library` : 'your library';
+      showToast(`Copied “${item.name}” to ${where}`, 'success');
+    },
+  );
+
   const openItemMenu = (item, point) => {
+    if (item.builtIn) {
+      setMenu({
+        point,
+        items: [
+          { label: 'Place in the middle of the page', icon: 'plus', onClick: () => placeLibraryItem(item, { center: true }) },
+          { label: 'Copy to personal', onClick: () => copyStampTo(item, 'personal') },
+          ...(state.projectId && state.access.canAdd ? [{ label: 'Copy to project', onClick: () => copyStampTo(item, 'project') }] : []),
+        ],
+      });
+      return;
+    }
     const canChange = markLibraryStore.canChange(item);
     const locked = canChange ? null : 'Only its author or a project owner can change this';
     const moveLabel = otherLibrary === 'project' ? 'Move to project' : 'Move to personal';
@@ -334,8 +373,8 @@ export default function MarkLibraryPanel({ phone = false, headActionsHost = null
           label: `Sort: ${s.label}`, ...choice(state.view.sort === s.id), onClick: () => markLibraryStore.setView({ sort: s.id }),
         })),
         { label: 'Group by tag', ...choice(state.view.groupByTag), onClick: () => markLibraryStore.setView({ groupByTag: !state.view.groupByTag }) },
-        { label: 'Import to library', icon: 'upload', disabled: !canAddHere, onClick: () => fileRef.current?.click() },
-        { label: 'Export library', icon: 'download', disabled: items.length === 0, onClick: () => exportItems(items) },
+        ...(stampsTab ? [] : [{ label: 'Import to library', icon: 'upload', disabled: !canAddHere, onClick: () => fileRef.current?.click() }]),
+        ...(stampsTab ? [] : [{ label: 'Export library', icon: 'download', disabled: items.length === 0, onClick: () => exportItems(items) }]),
       ],
     });
   };
@@ -357,7 +396,10 @@ export default function MarkLibraryPanel({ phone = false, headActionsHost = null
 
   const activate = (item, event) => {
     if (event?.pointerType === 'touch' || phone) {
-      if (placeLibraryItem(item, { center: true })) showToast(`Placed “${item.name}”`, 'info');
+      if (placeLibraryItem(item, { center: true })) {
+        showToast(`Placed “${item.name}”`, 'info');
+        onPlaced?.(item);
+      }
       return;
     }
     if (armedId === item.id) { disarmLibraryItem(); return; }
@@ -372,7 +414,7 @@ export default function MarkLibraryPanel({ phone = false, headActionsHost = null
     return next;
   });
 
-  const status = bucket.status;
+  const status = stampsTab ? 'ready' : bucket.status;
   const emptyText = (() => {
     if (status === 'loading' || status === 'idle') return 'Loading…';
     if (status === 'error') return 'Could not load the library. Check your connection.';
@@ -389,6 +431,7 @@ export default function MarkLibraryPanel({ phone = false, headActionsHost = null
 
   const headActions = (
     <span className="mark-library__head-actions">
+      {!stampsTab && (
       <SectionIconButton
         action="select"
         label={selectMode ? 'Done' : 'Select'}
@@ -396,6 +439,7 @@ export default function MarkLibraryPanel({ phone = false, headActionsHost = null
         nothingToSelect={!items.length}
         onClick={() => setSelectMode((on) => !on)}
       />
+      )}
       {!selectMode && (
         <SectionIconButton icon="moreHorizontal" action="more" label="Library options" onClick={openPanelMenu} />
       )}
@@ -406,13 +450,13 @@ export default function MarkLibraryPanel({ phone = false, headActionsHost = null
     <div className="mark-library" data-mark-library-panel="" data-testid="mark-library-panel">
       {/* Desktop: Select and the options menu sit in the rail head beside the
           "Library" title like every other panel's actions; the panel's own
-          head row is left only for the Personal / Project switch. */}
+          head row is left only for the Personal / Project / Stamps switch. */}
       {headActionsHost && createPortal(headActions, headActionsHost)}
-      {(state.projectId || !headActionsHost) && (
+      {(state.projectId || stampsOn || !headActionsHost) && (
         <div className="mark-library__head">
-          {state.projectId ? (
-            <div className="mark-library__tabs" role="tablist" aria-label="Library">
-              {['personal', 'project'].map((id) => (
+          {state.projectId || stampsOn ? (
+            <div className={`mark-library__tabs${tabIds.length === 3 ? ' mark-library__tabs--3' : ''}`} role="tablist" aria-label="Library">
+              {tabIds.map((id) => (
                 <button
                   key={id}
                   type="button"
@@ -423,7 +467,7 @@ export default function MarkLibraryPanel({ phone = false, headActionsHost = null
                   {...(id === 'project' && !hasProject ? tip('You are not on this document\'s project team', 'below') : {})}
                   onClick={() => markLibraryStore.setView({ library: id })}
                 >
-                  {id === 'personal' ? 'Personal' : 'Project'}
+                  {{ personal: 'Personal', project: 'Project', stamps: 'Stamps' }[id]}
                 </button>
               ))}
             </div>
@@ -456,7 +500,7 @@ export default function MarkLibraryPanel({ phone = false, headActionsHost = null
       <input
         className="mark-library__search"
         type="search"
-        placeholder={library === 'project' ? `Search ${state.access.projectName || 'project'} library` : 'Search your library'}
+        placeholder={stampsTab ? 'Search stamps' : (library === 'project' ? `Search ${state.access.projectName || 'project'} library` : 'Search your library')}
         aria-label="Search the library"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
@@ -506,8 +550,9 @@ export default function MarkLibraryPanel({ phone = false, headActionsHost = null
           <button type="button" className="hub-btn" onClick={() => exportItems(selectedItems)}>Export</button>
         </div>
       )}
-      {/* How to place an item means nothing while there is nothing to place. */}
-      {(items.length > 0 || armedId) && (
+      {/* How to place an item means nothing while there is nothing to place,
+          or while a press picks items instead of placing them. */}
+      {((items.length > 0 && !selectMode) || armedId) && (
       <div className="mark-library__hint">
         {armedId
           ? 'Click the page to place it. Esc lets go.'

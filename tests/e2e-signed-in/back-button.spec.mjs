@@ -81,7 +81,8 @@ for (const phone of [false, true]) {
       await signIn(page, E2E_ACCOUNTS.owner);
       const homeUrl = page.url();
       const homeMark = () => page.evaluate(() => Boolean(window.history.state?.surveyHomeBack));
-      expect(await homeMark()).toBe(false);
+      // A sheet that closed during sign-in takes its entry off 300 ms later.
+      await expect.poll(homeMark).toBe(false);
       const openSettings = async () => {
         await page.getByRole('button', { name: 'Open account menu' }).filter({ visible: true }).first().click();
         await page.getByRole('menuitem', { name: 'Settings' }).filter({ visible: true }).first().click();
