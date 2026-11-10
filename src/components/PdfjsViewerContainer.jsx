@@ -5443,12 +5443,16 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const bottomInset = Math.max(0, Math.min(el.clientHeight - inset - 80, Number(options.bottomInset) || 0));
     const bandH = Math.max(1, el.clientHeight - inset - bottomInset);
     const metrics = layoutMetricsRef.current;
+    // The page fit (the zoom floor and the base of the ceiling) is the view
+    // without the bottom sheet: fitted to the short strip above the phone
+    // Survey sheet the page shrank so far it could not scroll the mark up
+    // into that strip, and it stayed behind the sheet.
     const fitScale = computeFitScale({
       mode: 'fitPage',
       pageW: d.w,
       pageH: d.h,
       viewportW: bandW,
-      viewportH: bandH,
+      viewportH: bandH + bottomInset,
       padX: metrics.padX,
       gap: metrics.gap,
       padTop: metrics.padTop,
@@ -5475,6 +5479,15 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         target = Math.min(target, Math.max(scaleRef.current, fitScale * Number(options.maxFitMultiple)));
       }
     } else target = Math.max(fitScale, Math.min(wanted, ceiling));
+    // A bottom sheet over the last page: the viewer has no scroll room below
+    // it, so the page must be tall enough under the mark to fill the space
+    // from the strip's middle to the bottom, or the mark stops behind the
+    // sheet (phone "Locate on page" on a one-page sheet).
+    if (bottomInset > 0 && !options.keepZoom && i === dims.length - 1) {
+      const below = d.h - (y + h / 2);
+      const room = el.clientHeight - (inset + bandH / 2) - (Number(metrics.padBottom) || 0);
+      if (below > 0 && room > 0) target = Math.max(target, room / below);
+    }
     const cx = x + w / 2;
     const cy = y + h / 2;
     const viewCx = side.left + bandW / 2;

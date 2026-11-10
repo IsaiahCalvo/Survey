@@ -105,7 +105,13 @@ export function resolveViewerOcclusionInsets(containerRect, occluderRects = []) 
 
     const spansWidth = (right - left) >= cWidth * 0.6;
     const spansHeight = (bottom - top) >= cHeight * 0.6;
-    if (spansWidth && !spansHeight) {
+    // A phone sheet at its standard height covers more than 60% of the
+    // viewer's height, so "spans height" alone can't tell it from a side
+    // panel. One that runs edge to edge across but not top to bottom is a
+    // sheet; otherwise "Locate on page" centred the marker behind it.
+    const fullWidth = left <= cLeft + 1 && right >= cRight - 1;
+    const fullHeight = top <= cTop + 1 && bottom >= cBottom - 1;
+    if (spansWidth && (!spansHeight || (fullWidth && !fullHeight))) {
       // A sheet across the bottom (phone) or a bar across the top.
       if (bottom >= cBottom - 1) insets.bottom = Math.max(insets.bottom, cBottom - top);
       else if (top <= cTop + 1) insets.top = Math.max(insets.top, bottom - cTop);
