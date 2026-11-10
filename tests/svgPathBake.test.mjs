@@ -89,7 +89,9 @@ test('anything not fully understood keeps its transform', () => {
 });
 
 test('the SVG layer bakes only plain moved paths and keeps hit target and halo on the ink', () => {
-  assert.match(SVG_LAYER, /const translation = pureTranslationOf\(createInkPathAffine\(obj, obj\?\.path\)\.matrix\);/);
+  // The same matrix as the transform (computed once per mark: pathAffineOf).
+  assert.match(SVG_LAYER, /const translation = pureTranslationOf\(\(affine \|\| createInkPathAffine\(obj, obj\?\.path\)\)\.matrix\);/);
+  assert.match(SVG_LAYER, /const value = createInkPathAffine\(obj, path\);/);
   assert.match(SVG_LAYER, /let baked = renderElement\.type === 'path'/);
   assert.match(SVG_LAYER, /if \(!isBakedPathCurrent\(baked, renderObj\)\) baked = null;/);
   assert.match(SVG_LAYER, /d=\{targetD\}\s*\n\s*transform=\{targetTransform\}\s*\n\s*stroke="#4a90e2"/);

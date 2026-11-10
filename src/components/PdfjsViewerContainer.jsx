@@ -245,6 +245,13 @@ const DESKTOP_MAX_OVERSCAN_PAGES = 3;
 // MOBILE_MAX_CANVAS_AREA-clamped raster (~12 MiB), and the deep-zoom window
 // still tops out at three pages.
 const MOBILE_MAX_OVERSCAN_PAGES = 2;
+// A finger glide faster than this (px/ms; 16 px a frame at 60 Hz) keeps the
+// mounted pages as they are: a page it reaches stays a plain white sheet (no
+// drawing, no marks) until the glide slows under it. Mounting a page's
+// drawing and marks costs 100-400 ms on a phone CPU for a 150-1,000 mark
+// sheet, and the glide is moved by script, so every page that only flew
+// past stalled it (2026-11-10: 0.3-1.5 s stalls flinging a 36-sheet set).
+const GLIDE_MOUNT_HOLD_SPEED = 1;
 function resolveLayoutMetrics(isMobileSurface) {
   return isMobileSurface
     ? {
@@ -1769,6 +1776,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // edge bounce is easing): pages on screen may sharpen then.
   const glideSettlingRef = useRef(false);
   const glideTouchRef = useRef(false); // the running glide came from a finger
+  const fastGlideRef = useRef(false); // a finger glide over GLIDE_MOUNT_HOLD_SPEED: mounted pages held
+  const recomputeWindowRef = useRef(null);
   // What may draw right now (pageRasterQueue kinds): during a pinch or a
   // ctrl+wheel zoom nothing does (pages a pinch reveals are not mounted until
   // it ends anyway, and a draw slice costs a whole frame); while a pan, a
@@ -2295,11 +2304,17 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         last = visibleLast;
       }
     }
-    setRange((prev) => (prev[0] === first && prev[1] === last ? prev : [first, last]));
+    setRange((prev) => {
+      if (prev[0] === first && prev[1] === last) return prev;
+      // A fast finger glide keeps what is mounted (GLIDE_MOUNT_HOLD_SPEED).
+      if (fastGlideRef.current && prev[1] >= prev[0]) return prev;
+      return [first, last];
+    });
     detectCurrentPage();
     visiblePageRangeRef.current = [visibleFirst, visibleLast];
     rasterQueueRef.current?.pump();
   }, [layout, scale, detectCurrentPage, isMobileSurface]);
+  recomputeWindowRef.current = recomputeWindow;
 
   useLayoutEffect(() => {
     const el = scrollerRef.current;
@@ -3990,6 +4005,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     });
   };
   panMomentumHooksRef.current.velocity = (vx, vy) => {
+    const fast = glideTouchRef.current && Math.hypot(vx || 0, vy || 0) >= GLIDE_MOUNT_HOLD_SPEED;
+    if (fast) fastGlideRef.current = true;
+    else if (fastGlideRef.current) {
+      // Slowed down: mount what is on screen now.
+      fastGlideRef.current = false;
+      recomputeWindowRef.current?.();
+    }
     const settling = glideTouchRef.current && !elasticRef.current?.anim && isGlideSlowEnoughToSharpen(vx, vy);
     const startedSettling = settling && !glideSettlingRef.current;
     glideSettlingRef.current = settling;
@@ -4029,6 +4051,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       },
       onSettle: () => {
         glideSettlingRef.current = false;
+        if (fastGlideRef.current) {
+          fastGlideRef.current = false;
+          recomputeWindowRef.current?.();
+        }
         panMomentumHooksRef.current.restore?.();
       },
     });
