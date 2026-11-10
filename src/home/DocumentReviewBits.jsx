@@ -69,8 +69,13 @@ export function useDocumentReviews(enabled, ids) {
   const reviewsRef = useRef(reviews);
   reviewsRef.current = reviews;
   const save = useCallback((documentId, patch) => {
-    writeTickRef.current += 1;
-    touchedRef.current.set(documentId, writeTickRef.current);
+    // Marked again when the save answers: a list read that started while it
+    // was in flight may hold the old row, and must not put it back.
+    const touch = () => {
+      writeTickRef.current += 1;
+      touchedRef.current.set(documentId, writeTickRef.current);
+    };
+    touch();
     const pending = pendingRef.current.get(documentId);
     const confirmed = pending ? pending.confirmed : (reviewsRef.current.get(documentId) || { status: null, ownerId: null, markupCount: null });
     const wanted = { ...(pending ? pending.wanted : confirmed), ...patch };
@@ -82,7 +87,12 @@ export function useDocumentReviews(enabled, ids) {
       const latest = () => pendingRef.current.get(documentId) === entry;
       if (!latest()) return; // a later change will send this one's fields too
       try {
-        const saved = await setDocumentReview(supabase, { documentId, status: wanted.status, ownerId: wanted.ownerId });
+        let saved;
+        try {
+          saved = await setDocumentReview(supabase, { documentId, status: wanted.status, ownerId: wanted.ownerId });
+        } finally {
+          touch();
+        }
         const done = { ...saved, ownerName: saved.ownerId ? wanted.ownerName : null, markupCount: saved.markupCount ?? entry.confirmed.markupCount };
         if (!latest()) { pendingRef.current.get(documentId).confirmed = done; return; }
         pendingRef.current.delete(documentId);

@@ -11,6 +11,7 @@ import {
   kindOfObject,
   parseTyped,
   planTypedMove,
+  shiftRead,
   readTransform,
   resizeObjectTo,
   unionPageBox,
@@ -129,4 +130,22 @@ test('a beta flag with its migration, wired into the quick bar, the app shell an
   assert.match(read('src/components/SelectionQuickBar.jsx'), /data-selection-quick-expand/);
   assert.match(read('src/AppShell.jsx'), /<SelectionPropertiesPanel/);
   assert.match(read('src/components/SVGAnnotationLayer.jsx'), /TRANSFORM_SELECTION_EVENT/);
+});
+
+test('arrow steps and the blur after them measure from moves already sent', () => {
+  const read = { x: 10, y: 20, w: 5, h: 5 };
+  const sent = { dx: 0, dy: 0 };
+  const step = (field, value) => {
+    const move = planTypedMove(shiftRead(read, sent), field, value);
+    if (move) { sent.dx += move.dx; sent.dy += move.dy; }
+    return move;
+  };
+  assert.deepEqual(step('x', 11), { dx: 1, dy: 0 }); // ArrowUp
+  assert.deepEqual(step('x', 12), { dx: 1, dy: 0 }); // held: one more step, not two
+  assert.equal(step('x', 12), null); // the blur commits the same value
+  assert.deepEqual(step('y', 19), { dx: 0, dy: -1 });
+  assert.equal(shiftRead(read, { dx: 0, dy: 0 }), read);
+  const panel = readFileSync(new URL('../src/components/SelectionPropertiesPanel.jsx', import.meta.url), 'utf8');
+  assert.match(panel, /planTypedMove\(shiftRead\(transform, sent\), field, value\)/);
+  assert.match(panel, /if \(sentMoveRef\.current\.read !== transform\) sentMoveRef\.current = \{ read: transform, dx: 0, dy: 0 \};/);
 });

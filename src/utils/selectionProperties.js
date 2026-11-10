@@ -165,6 +165,12 @@ export function readTransform(objects, extraBoxes = []) {
   };
 }
 
+/** A Transform read moved by { dx, dy } (moves sent but not read back yet). */
+export function shiftRead(read, offset) {
+  if (!read || !offset || (!offset.dx && !offset.dy)) return read;
+  return { ...read, x: read.x + (offset.dx || 0), y: read.y + (offset.dy || 0) };
+}
+
 /** A typed X or Y as a move: { dx, dy }, or null when nothing changes. */
 export function planTypedMove(read, field, value) {
   if (!read || (field !== 'x' && field !== 'y')) return null;

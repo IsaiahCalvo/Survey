@@ -39,6 +39,7 @@ import {
   parseTyped,
   planTypedMove,
   readTransform,
+  shiftRead,
   wrapDegrees,
 } from '../utils/selectionProperties.js';
 import './SelectionPropertiesPanel.css';
@@ -221,9 +222,16 @@ export default function SelectionPropertiesPanel({
     [active, extraBoxes, picked.objects],
   );
 
+  // Moves sent since `transform` was last read. Arrow steps and the blur
+  // after them all measure from here, so a step the page has taken but the
+  // panel has not read back yet is not sent again.
+  const sentMoveRef = useRef({ read: null, dx: 0, dy: 0 });
+  if (sentMoveRef.current.read !== transform) sentMoveRef.current = { read: transform, dx: 0, dy: 0 };
   const commitMove = useCallback((field, value) => {
-    const move = planTypedMove(transform, field, value);
+    const sent = sentMoveRef.current;
+    const move = planTypedMove(shiftRead(transform, sent), field, value);
     if (!move || picked.pageNumber == null) return;
+    if (sent.read === transform) { sent.dx += move.dx; sent.dy += move.dy; }
     window.dispatchEvent(new CustomEvent(ARRANGE_SELECTION_EVENT, { detail: { pageNumber: picked.pageNumber, op: 'move', ...move } }));
   }, [picked.pageNumber, transform]);
 

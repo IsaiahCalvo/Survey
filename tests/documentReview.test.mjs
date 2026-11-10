@@ -121,3 +121,20 @@ test('a list read that began before a status change does not put the old status 
   const bits = readFileSync(new URL('../src/home/DocumentReviewBits.jsx', import.meta.url), 'utf8');
   assert.match(bits, /changedSince: \(id\) => \(touchedRef\.current\.get\(id\) \|\| 0\) > startTick \|\| pendingRef\.current\.has\(id\)/);
 });
+
+test('a list read that began while a save was in flight does not put the old status back', () => {
+  // The save marks the document again when it answers (success or failure),
+  // so a read started before the answer sees a newer tick than its own start.
+  const bits = readFileSync(new URL('../src/home/DocumentReviewBits.jsx', import.meta.url), 'utf8');
+  assert.match(bits, /saved = await setDocumentReview\(supabase, \{ documentId, status: wanted\.status, ownerId: wanted\.ownerId \}\);\s*\} finally \{\s*touch\(\);\s*\}/);
+  let tick = 0;
+  const touched = new Map();
+  const touch = (id) => { tick += 1; touched.set(id, tick); };
+  touch('a'); // save starts
+  const startTick = tick; // list read starts while the save is in flight
+  touch('a'); // save answers before the read does
+  const fetched = new Map([['a', { status: 'open', ownerId: null, markupCount: 3 }]]);
+  const shown = new Map([['a', { status: 'approved', ownerId: null, markupCount: 3 }]]);
+  const merged = mergeFetchedReviews(fetched, shown, { changedSince: (id) => (touched.get(id) || 0) > startTick });
+  assert.equal(merged.get('a').status, 'approved');
+});
