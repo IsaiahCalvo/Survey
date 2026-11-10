@@ -12,6 +12,7 @@
 //   4. keeps every new preview (worker or viewer-drawn) for the next open.
 import { pageThumbStamp, pageThumbStore } from '../services/pageThumbStore.js';
 import { openPageThumbRenderer, PAGE_THUMB_WORKER_MAX_BYTES } from './pageThumbRenderer.js';
+import { setPdfFileStamp } from './pdfFileStamp.js';
 
 // A streamed file must be all here within this long for the session.
 export const PAGE_PREVIEW_BYTES_WAIT_MS = 30_000;
@@ -76,6 +77,8 @@ export function createPagePreviewSession(base, {
   const stampPromise = givenStamp
     ? Promise.resolve(givenStamp)
     : bytesPromise.then((bytes) => (bytes && !stopped ? pageThumbStamp(bytes) : null));
+  // Shared with the other per-file device caches (search text).
+  setPdfFileStamp(base, stampPromise);
   const keptPromise = stampPromise.then(async (stamp) => {
     if (!stamp || stopped || store.isDisabled) return [];
     const rows = await store.loadDoc(stamp);

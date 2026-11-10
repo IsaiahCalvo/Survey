@@ -28,6 +28,7 @@ import {
   resolveLineEndingStyles,
   insetOpenPolylinePoints,
   lineEndingBodyInset,
+  arrowheadShapePathD,
 } from './lineRenderHelpers.js';
 // UX 2026-04-21: Imported revision-clouds rebuild their scalloped geometry
 // from the live effective box/points on every render so the number of humps
@@ -343,6 +344,12 @@ const buildPaperCutsSvgD = (polygons) => (polygons || [])
  * @param {number} index - Array index for key fallback
  * @returns {React.ReactElement|null}
  */
+// Drawboard's, measured live (2026-11-10): 2 px left and 2 px down, no blur,
+// black at 10%; revealed, a 2 px outline in the tape's colour at 50%.
+export const TAPE_SHADOW_FILTER = 'drop-shadow(-2px 2px 0 rgba(0, 0, 0, 0.1))';
+export const TAPE_REVEALED_OUTLINE_PX = 2;
+export const TAPE_REVEALED_OUTLINE_OPACITY = 0.5;
+
 export const renderPath = (obj, index) => {
   if (!Array.isArray(obj.path) || obj.path.length === 0) return null;
 
@@ -443,13 +450,40 @@ export const renderPath = (obj, index) => {
     }
   }
 
+  // Tape (beta 'tape-tool', Drawboard PDF): an opaque band with a hard drop
+  // shadow. Revealed (a tap under Pan or Select, saved on the mark as
+  // data.tapeRevealed), it is an outline in its own colour so what is under
+  // it shows.
+  if (obj?.data?.tape === true) {
+    const fill = obj.fill || attrs.fill;
+    const revealed = obj.data.tapeRevealed === true;
+    return (
+      <path
+        key={key}
+        d={d}
+        transform={transform}
+        data-tape={revealed ? 'revealed' : 'covered'}
+        fill={revealed ? 'none' : fill}
+        fillRule={attrs.fillRule || 'evenodd'}
+        stroke={revealed ? fill : 'none'}
+        strokeWidth={revealed ? TAPE_REVEALED_OUTLINE_PX : 0}
+        strokeOpacity={revealed ? TAPE_REVEALED_OUTLINE_OPACITY : undefined}
+        strokeLinejoin="round"
+        vectorEffect={revealed ? 'non-scaling-stroke' : undefined}
+        opacity={attrs.opacity}
+        shapeRendering="geometricPrecision"
+        style={revealed ? undefined : { filter: TAPE_SHADOW_FILTER }}
+      />
+    );
+  }
+
   const paperSource = obj?.paperSourceStroke;
-  const paperSurvivorD = paperCutsToSvgD(obj?.polygons);
-  if (
-    paperSurvivorD
-    && Array.isArray(paperSource?.path)
-    && paperSource.path.length > 0
-  ) {
+  // Survivor polygons only matter for an erased authored curve; reading them
+  // otherwise would rebuild an imported mark's outline (annotationMarkCodec).
+  const paperSurvivorD = Array.isArray(paperSource?.path) && paperSource.path.length > 0
+    ? paperCutsToSvgD(obj?.polygons)
+    : null;
+  if (paperSurvivorD) {
     // Partially erased authored curve (imported PDF ink, legacy curves): fill
     // the SURVIVOR polygons, the eraser's own verified output (even-odd).
     // 2026-10-06 (test plan 68): this used to paint the authored source curve
@@ -787,9 +821,20 @@ export const renderTextMarkup = (obj, index) => {
  *   of `.polygon`/`.polyline`/`.circle`/`.line`)
  * @returns {React.ReactElement|null}
  */
+// Drawboard's heads (Nightly 'line-endings') arrive as a list of shapes in
+// page units: paths and circles, each with its own paint.
+const renderArrowheadShapes = (spec) => (
+  <g>
+    {(spec.shapes || []).map((shape, i) => (shape.type === 'circle'
+      ? <circle key={i} cx={shape.cx} cy={shape.cy} r={shape.r} fill={shape.fill} stroke={shape.stroke} strokeWidth={shape.strokeWidth} />
+      : <path key={i} d={arrowheadShapePathD(shape)} fill={shape.fill} stroke={shape.stroke} strokeWidth={shape.strokeWidth} strokeLinejoin={shape.strokeLinejoin} strokeLinecap={shape.strokeLinecap} strokeMiterlimit={4} />))}
+  </g>
+);
+
 const renderArrowheadFromSpec = (spec) => {
   switch (spec.kind) {
     case 'none': return null;
+    case 'shapes': return renderArrowheadShapes(spec);
     case 'solidTriangle': return <polygon {...spec.polygon} />;
     case 'openTriangle': return <polygon {...spec.polygon} />;
     case 'openCircle': return <circle {...spec.circle} />;
@@ -1938,6 +1983,7 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
   const renderArrowheadEl = () => {
     switch (arrowheadSpec.kind) {
       case 'none': return null;
+      case 'shapes': return renderArrowheadShapes(arrowheadSpec);
       case 'solidTriangle': return <polygon {...arrowheadSpec.polygon} />;
       case 'openTriangle': return <polygon {...arrowheadSpec.polygon} />;
       case 'openCircle': return <circle {...arrowheadSpec.circle} />;

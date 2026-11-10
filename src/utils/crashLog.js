@@ -350,6 +350,88 @@ function labelForTarget(target) {
   return clip(label, 40);
 }
 
+// A freeze is the page's own thread stuck. A page the device PAUSED (laptop
+// asleep with the page open, the iPhone app behind a native sheet or the lock
+// screen) misses its timers just the same, and the freeze watch reported
+// those as freezes (issue #1053: iPhone "freezes" of 9.0-9.5 s again and
+// again, a desktop one of 117.5 s). A second timer on its own thread tells
+// them apart: it keeps ticking while the page's thread is stuck, and stops
+// with it when the whole page is paused.
+const HEARTBEAT_MS = 1000;
+const HEARTBEAT_KEEP = 400;
+const HEARTBEAT_WORKER = `setInterval(function () { postMessage(Date.now()); }, ${HEARTBEAT_MS});`;
+
+/**
+ * 'frozen' (the background timer kept ticking across [from, to]: the page's
+ * own thread was stuck), 'paused' (it missed a stretch too: the device paused
+ * the page) or 'unknown' (no background timer).
+ */
+export function classifyPageGap(ticks, from, to, { freezeMs = FREEZE_MS } = {}) {
+  if (!Array.isArray(ticks) || !ticks.length || !(ticks[0] < to)) return 'unknown';
+  let prev = Math.max(from, ticks.filter((t) => t <= from).pop() ?? from);
+  let longest = 0;
+  for (const t of ticks) {
+    if (t <= from || t >= to) continue;
+    longest = Math.max(longest, t - prev);
+    prev = t;
+  }
+  longest = Math.max(longest, to - prev);
+  return longest >= freezeMs / 2 ? 'paused' : 'frozen';
+}
+
+/**
+ * What ran during a freeze, from the browser's long animation frame timings
+ * (Chromium only): the longest frame overlapping [from, to] (epoch ms) and its
+ * longest scripts, as "file:line fn" without the address or query.
+ */
+export function describeLongFrames(entries, from, to, origin = 0) {
+  let worst = null;
+  for (const e of entries || []) {
+    const start = origin + e.startTime;
+    if (start + e.duration < from - 1000 || start > to + 1000) continue;
+    if (!worst || e.duration > worst.duration) worst = e;
+  }
+  if (!worst) return '';
+  const scripts = [...(worst.scripts || [])].sort((a, b) => b.duration - a.duration).slice(0, 3).map((sc) => {
+    const file = String(sc.sourceURL || '').split(/[?#]/)[0].split('/').pop() || '?';
+    const fn = sc.sourceFunctionName || sc.invoker || sc.invokerType || '?';
+    const at = sc.sourceCharPosition >= 0 ? `@${sc.sourceCharPosition}` : '';
+    return `${Math.round(sc.duration)} ms ${clip(fn, 60)} (${clip(file, 60)}${at})`;
+  });
+  const rest = Math.round(worst.duration - (worst.scripts || []).reduce((sum, sc) => sum + (sc.duration || 0), 0));
+  return [`long frame ${Math.round(worst.duration)} ms`, ...scripts, rest > 0 ? `${rest} ms outside scripts (style, layout, paint)` : null].filter(Boolean).join('\n');
+}
+
+function startHeartbeat() {
+  const ticks = [];
+  try {
+    if (typeof Worker !== 'function' || typeof Blob !== 'function' || typeof URL?.createObjectURL !== 'function') return ticks;
+    const url = URL.createObjectURL(new Blob([HEARTBEAT_WORKER], { type: 'text/javascript' }));
+    const worker = new Worker(url);
+    worker.onmessage = (event) => {
+      ticks.push(Number(event.data));
+      if (ticks.length > HEARTBEAT_KEEP) ticks.splice(0, ticks.length - HEARTBEAT_KEEP);
+    };
+    worker.onerror = () => { ticks.length = 0; };
+  } catch { /* no workers here: every gap counts as a freeze, as before */ }
+  return ticks;
+}
+
+function watchLongFrames() {
+  const frames = [];
+  try {
+    if (!PerformanceObserver.supportedEntryTypes?.includes('long-animation-frame')) return frames;
+    new PerformanceObserver((list) => {
+      for (const e of list.getEntries()) {
+        if (e.duration < 1000) continue;
+        frames.push({ startTime: e.startTime, duration: e.duration, scripts: (e.scripts || []).map((sc) => ({ duration: sc.duration, sourceURL: sc.sourceURL, sourceFunctionName: sc.sourceFunctionName, sourceCharPosition: sc.sourceCharPosition, invoker: sc.invoker, invokerType: sc.invokerType })) });
+        if (frames.length > 10) frames.shift();
+      }
+    }).observe({ type: 'long-animation-frame', buffered: true });
+  } catch { /* not this browser */ }
+  return frames;
+}
+
 /**
  * Install once, as early as possible (main.jsx). `build` names the build.
  */
@@ -397,6 +479,8 @@ export function installCrashLog({ build = 'unknown', storage = null } = {}) {
   window.addEventListener('pageshow', (event) => { if (event.persisted) writeLive(s()); });
 
   // Freeze watch + "alive" note.
+  const heartbeat = startHeartbeat();
+  const longFrames = watchLongFrames();
   let last = Date.now();
   let lastVisible = document.visibilityState !== 'hidden';
   let lastHref = '';
@@ -405,7 +489,15 @@ export function installCrashLog({ build = 'unknown', storage = null } = {}) {
     const visible = document.visibilityState !== 'hidden';
     const gap = now - last;
     if (gap >= FREEZE_MS && visible && lastVisible) {
-      recordCrash({ kind: 'freeze', message: `The page did not respond for ${(gap / 1000).toFixed(1)} s.` });
+      const from = last;
+      const seconds = (gap / 1000).toFixed(1);
+      // The background timer's ticks from the stuck stretch arrive once the
+      // page runs again: decide a moment later.
+      window.setTimeout(() => {
+        if (classifyPageGap(heartbeat, from, now) === 'paused') { noteAction(`page paused ${seconds} s`); return; }
+        const stack = describeLongFrames(longFrames, from, now, performance.timeOrigin || 0);
+        recordCrash({ kind: 'freeze', message: `The page did not respond for ${seconds} s.`, ...(stack ? { stack } : {}) });
+      }, 2 * HEARTBEAT_MS + 500);
     }
     last = now;
     lastVisible = visible;

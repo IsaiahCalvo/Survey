@@ -1,0 +1,30 @@
+/* Nightly 'stamp-tool': Drawboard's Stamp picker. The card shell is the
+   properties panel's (.props-panel); these are its tiles. */
+.stamp-card { max-height: calc(100vh - 140px); }
+.stamp-card__group { padding: 10px 12px 6px; font-weight: 600; }
+.stamp-card__grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 0 12px;
+}
+.stamp-card__tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 2 / 1;
+  padding: 4px;
+  border: 1px solid var(--chrome-border, rgba(255, 255, 255, 0.12));
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+}
+.stamp-card__tile[aria-selected='true'] {
+  border-color: #2f80ed;
+  box-shadow: 0 0 0 1px #2f80ed;
+}
+.stamp-card__stamp {
+  display: block;
+  width: 100%;
+  height: 100%;
+}

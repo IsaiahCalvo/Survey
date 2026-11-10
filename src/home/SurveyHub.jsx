@@ -82,6 +82,7 @@ export default function SurveyHub({
   onProjectPreferencesChange,
   onLockDocument,
   onPdfTools,
+  onSaveDeviceFile = null,
   onSettings,
   onSignOut,
   onSignIn,
@@ -229,6 +230,7 @@ export default function SurveyHub({
           onMoveCopy={onMoveCopyDocuments}
           onLockDocument={onLockDocument}
           onPdfTools={onPdfTools}
+          onSaveDeviceFile={onSaveDeviceFile}
           />
         )
       )}

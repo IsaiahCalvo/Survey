@@ -97,7 +97,7 @@ it in `.github/workflows/e2e-signed-in.yml` (manual dispatch, and pull requests
 that touch app/migration/E2E files). That workflow is informational: deploys do
 not depend on it.
 
-CI splits the specs across five machines at once, each with its own stack, and
+CI splits the specs across six machines at once, each with its own stack, and
 the `Signed-in E2E` check turns green only when every shard passed. The split
 (`scripts/e2e-signed-in-shard.mjs`) balances shards by the per-spec seconds in
 `tests/e2e-signed-in/spec-seconds.json`. A new spec with no entry still runs

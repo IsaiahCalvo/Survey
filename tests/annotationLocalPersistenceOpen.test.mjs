@@ -230,10 +230,13 @@ test('a cold open stores the snapshot bytes in the empty local copy without re-e
     );
     assert.ok(sameDocState(await storedCopy(dbName), handle.doc), 'the stored copy loads to the live state');
 
-    // The provider's store is attached again: a later edit is stored.
+    // A later edit is stored too, as its own bytes (2026-11-10): the copy in
+    // memory stays empty, so nothing decodes the snapshot again on this
+    // thread, and the stored updates still load to the live state.
     handle.applyByPage({ 1: { objects: [...handle.getByPage()[1].objects, rect('c4')] } });
     await handle.drain();
-    assert.ok(watch.seen.length > duringOpen, 'edits after the open reach the local copy');
+    assert.ok((await readStoredUpdates(dbName)).length > stored.length, 'edits after the open reach the local copy');
+    assert.equal(watch.seen.length, duringOpen, 'the local copy in memory was never filled');
     const reloaded = await storedCopy(dbName);
     assert.ok(sameDocState(reloaded, handle.doc), 'the edit is in the stored copy');
   } finally {

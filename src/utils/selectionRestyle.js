@@ -22,8 +22,10 @@
  */
 
 import { composeColorForPatch } from './annotationData.js';
+import { dashForLineStyle, isDashLineStyle, lineStyleForDash } from './lineStyleOptions.js';
 import { renderPathToSvgAttrs } from './svgPathAttrs.js';
 import { createInkAnnotation, boundsOfCommands } from './paperAnnotationGeometry.js';
+import { createVariableInk } from './productionPaperInk.js';
 import { isAbsoluteInkGeometry } from './inkGeometryTransform.js';
 import { cloudEngineKindForShape, toolSupportsCloudBorderStyle } from './pdfAnnotationAppearance.js';
 import { getAnnotationRenderIdentity } from './annotationStorageIdentity.js';
@@ -191,12 +193,7 @@ const lineStyleOf = (annotation) => {
     && (cloudEngineKindForShape(lower(annotation.type)) || lower(annotation.type) === 'textbox')) {
     return 'cloud';
   }
-  const dash = Array.isArray(annotation?.strokeDashArray) ? annotation.strokeDashArray : null;
-  if (dash && dash.length >= 2) {
-    if (Number(dash[0]) === 6) return 'dashed';
-    if (Number(dash[0]) === 2) return 'dotted';
-  }
-  return 'solid';
+  return lineStyleForDash(annotation?.strokeDashArray);
 };
 
 /**
@@ -292,12 +289,17 @@ export function rebuildInkAtWidth(annotation, width) {
   // The same pipeline and settings the stroke was drawn with (the pen commit
   // passes no sloppiness, i.e. 0; a stored one is honoured).
   const sloppiness = Number(annotation.sloppiness ?? annotation.data?.sloppiness) || 0;
-  const ink = createInkAnnotation(annotation.paperCenterline, {
-    id: annotation.id,
-    color: annotation.fill,
-    width: localWidth,
-    sloppiness,
-  });
+  // A Pro / Calligraphy stroke (Nightly 'pen-types') keeps its shape: the
+  // same width factors along the line, at the new width.
+  const penWidths = annotation.data?.penWidths;
+  const ink = Array.isArray(penWidths) && penWidths.length === annotation.paperCenterline.length
+    ? createVariableInk(annotation.paperCenterline, penWidths, { id: annotation.id, color: annotation.fill, width: localWidth })
+    : createInkAnnotation(annotation.paperCenterline, {
+      id: annotation.id,
+      color: annotation.fill,
+      width: localWidth,
+      sloppiness,
+    });
   if (!Array.isArray(ink?.cmds) || ink.cmds.length === 0) return null;
   const bounds = boundsOfCommands(ink.cmds);
   return {
@@ -310,10 +312,6 @@ export function rebuildInkAtWidth(annotation, width) {
   };
 }
 
-const DASH_FOR_STYLE = {
-  dashed: [6, 4],
-  dotted: [2, 4],
-};
 
 const mergeData = (annotation, dataPatch) => ({
   ...annotation,
@@ -388,10 +386,10 @@ export function applyRestyleChange(annotation, change) {
         if (current.lineStyle === 'cloud' && current.cloudIntensity === intensity) return null;
         return mergeData({ ...annotation, strokeDashArray: null }, { pdfCloudIntensity: intensity });
       }
-      if (style !== 'solid' && style !== 'dashed' && style !== 'dotted') return null;
+      if (style !== 'solid' && !isDashLineStyle(style)) return null;
       if (current.lineStyle === style) return null;
       return mergeData(
-        { ...annotation, strokeDashArray: DASH_FOR_STYLE[style] || null },
+        { ...annotation, strokeDashArray: dashForLineStyle(style) },
         { pdfCloudIntensity: null },
       );
     }

@@ -43,6 +43,18 @@ const ALLOWED = {
   // New blank document (beta 'new-document'): the phone branch keeps the
   // browser's wheel; desktop uses ValueSelect.
   'src/home/NewDocumentDialog.jsx': 1,
+  // Save to library card (beta 'mark-library'): the phone branch keeps the
+  // browser's wheel; desktop uses ValueSelect.
+  'src/markLibrary/MarkLibrarySaveDialog.jsx': 1,
+  // Projects Issues and Tasks fields (beta 'project-issues'): the phone
+  // branch keeps the browser's wheel; desktop uses ValueSelect.
+  'src/projectItems/ProjectItemsPanel.jsx': 1,
+  // Share dialog Sort by (beta 'share-extras'): the phone branch keeps the
+  // browser's wheel; desktop uses ValueSelect.
+  'src/home/AccessSortSelect.jsx': 1,
+  // Other templates page size (beta 'home-templates'): the phone branch
+  // keeps the browser's wheel; desktop uses ValueSelect.
+  'src/home/PaperTemplatesDialog.jsx': 1,
 };
 
 // A JSX <select> element at the start of a line (comments that mention

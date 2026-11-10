@@ -707,3 +707,40 @@ test('every 40 accepted rows the local compaction runs in the worker from the mi
   await handle.destroy();
   await idb.close();
 });
+
+test('a first open on this device saves its copy from the worker, not this thread', async () => {
+  // Another device wrote the marks and a checkpoint row.
+  const documentId = 'checkpoint-worker-open-receipt';
+  const cloud = createCloud(documentId);
+  const writer = await open(cloud, documentId, 'a');
+  await drawSome(writer, 2);
+  assert.equal(await writer.flushSnapshot(), true);
+  const written = writer.getByPage();
+  await writer.destroy();
+  __setCheckpointWorkerFactoryForTests(null);
+
+  // This device: empty IndexedDB, a checkpoint worker on the same database.
+  const idb = await idbPair();
+  const workers = [];
+  __setCheckpointWorkerFactoryForTests(() => {
+    const worker = new InProcessCheckpointWorker({ getOutbox: idb.getOutbox });
+    workers.push(worker);
+    return worker;
+  });
+  const handle = await open(cloud, documentId, 'b', { outboxStore: idb.page });
+  assert.deepEqual(markIds(handle.getByPage()), markIds(written), 'the open shows the marks');
+  let clean = null;
+  for (let i = 0; i < 100 && !clean?.checkpointUpdate; i += 1) {
+    await wait(50);
+    clean = await idb.page.loadCleanState(documentId, 'user-a');
+  }
+  assert.ok(workers[0].ops.includes('outbox-compact'), 'the receipt was written by the worker');
+  const rebuilt = createDetachedYDoc('rebuilt-open-receipt');
+  Y.applyUpdate(rebuilt, clean.checkpointUpdate);
+  const state = activeState(documentId);
+  assert.deepEqual(rebuilt.getMap(ANNOTATIONS_MAP).toJSON(), state.acceptedDoc.getMap(ANNOTATIONS_MAP).toJSON(), 'the saved copy is what the open accepted');
+  assert.equal(clean.snapshotIdentity?.atSeq, cloud.snapshot.at_seq, 'and it records the checkpoint row it holds');
+  assert.equal(clean.checkpointToken, state.cleanCheckpointToken, 'and this screen knows it is clean');
+  await handle.destroy();
+  await idb.close();
+});

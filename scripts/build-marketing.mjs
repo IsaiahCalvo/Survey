@@ -181,9 +181,9 @@ const FREE_TOOL_PICKS = [
 ];
 
 const PLANS = [
-  { name: 'Free', price: '$0', per: '/month', note: 'For trying Survey on one project', cta: 'Start free', items: ['1 project', '5 documents', '100MB storage', 'Every markup tool, including callouts, measuring and OCR', 'Count markers with totals', 'Works on every device'] },
-  { name: 'Pro', price: '$9.99', per: '/month', note: 'or $99 a year, which saves $20', cta: 'Start free, upgrade in the app', best: true, items: ['Unlimited projects', 'Unlimited documents', '10GB storage', 'Site surveys with data export', 'Spaces and regions', 'Templates', 'Share with viewers and editors', 'Live editing together', 'OneDrive'] },
-  { name: 'Enterprise', price: '$20', per: '/user/month', note: 'Minimum 3 users', cta: 'Email us', href: MAIL, items: ['Everything in Pro for every user', '1TB storage', 'Priority support', 'Company admin console and single sign-on: coming soon', 'Custom builds for your company'] },
+  { name: 'Free', price: '$0', per: '/month', note: 'For trying Survey on one project', cta: 'Start free', short: ['1 project, 5 documents, 100MB', 'Every markup tool, free', 'Count markers with totals'], items: ['1 project', '5 documents', '100MB storage', 'Every markup tool, including callouts, measuring and OCR', 'Count markers with totals', 'Works on every device'] },
+  { name: 'Pro', price: '$9.99', per: '/month', note: 'or $99 a year, which saves $20', yearly: ['$99', '/year', 'About $8.25 a month, billed once a year'], cta: 'Start free, upgrade in the app', best: true, short: ['Unlimited projects and documents, 10GB', 'Site surveys with data export', 'Spaces, regions and templates', 'Share and edit together live'], items: ['Unlimited projects', 'Unlimited documents', '10GB storage', 'Site surveys with data export', 'Spaces and regions', 'Templates', 'Share with viewers and editors', 'Live editing together', 'OneDrive'] },
+  { name: 'Enterprise', price: '$20', per: '/user/month', note: 'Minimum 3 users', cta: 'Email us', href: MAIL, short: ['Everything in Pro for every user', '1TB storage and priority support', 'Custom builds for your company'], items: ['Everything in Pro for every user', '1TB storage', 'Priority support', 'Company admin console and single sign-on: coming soon', 'Custom builds for your company'] },
 ];
 
 // One glyph that morphs: the sun's core grows while a masked "bite" slides in to
@@ -277,7 +277,7 @@ ${body}
 const shot = (t, cls = '') => `<figure class="shot ${cls}"><img src="/welcome/${t.img}"${t.srcset ? ` srcset="${t.srcset}" sizes="(max-width: 900px) 92vw, 640px"` : ''} width="${t.w}" height="${t.h}" loading="lazy" decoding="async" alt="${esc(t.alt)}" /></figure>`;
 
 const only = (f, i) => `<section class="sec feat${i % 2 ? ' flip' : ''}" id="${f.id}"><div class="wrap feat-grid">
-  <div class="feat-copy"><p class="kicker">${f.kicker}</p><h2>${f.name}</h2><p class="lead">${f.lead}</p><p>${f.body}</p>${f.ticks ? `<ul class="ticks">${f.ticks.map((t) => `<li>${t}</li>`).join('')}</ul>` : ''}</div>
+  <div class="feat-copy"><h2>${f.name}</h2><p class="lead">${f.lead}</p><p>${f.body}</p>${f.ticks ? `<ul class="ticks">${f.ticks.map((t) => `<li>${t}</li>`).join('')}</ul>` : ''}</div>
   ${f.chip ? `<div class="shot-wrap">${shot(f)}<div class="float chip-float chip-sm" aria-hidden="true"><span class="chip-dot"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><span>${f.chip[0]}<small>${f.chip[1]}</small></span></div></div>` : f.img2 ? `<div class="duo">${shot(f)}${shot({ img: f.img2, w: f.w2, h: f.h2, alt: f.alt2, srcset: '/welcome/' + f.img2.replace('.webp', '-800.webp') + ' 800w, /welcome/' + f.img2 + ' 1600w' })}</div>` : shot(f)}
 </div></section>`;
 
@@ -297,12 +297,15 @@ const devs = () => `<div class="devs">
   <figure class="dev dev-ph"><div class="scr"><img src="/welcome/app-phone.webp" width="780" height="1688" loading="lazy" decoding="async" alt="Survey on a phone, zoomed in on the open office with count markers and a callout" /></div><figcaption>Phone</figcaption></figure>
 </div>`;
 
-const plans = () => `<div class="plans">${PLANS.map((p) => `
+// Monthly or yearly. Only Pro has a yearly price; site.js swaps the words in
+// every [data-m][data-y] element when the switch changes.
+const billing = () => `<div class="bill" role="group" aria-label="Billing period"><span class="bill-pill" aria-hidden="true"></span><button type="button" aria-pressed="true" data-bill="m">Monthly</button><button type="button" aria-pressed="false" data-bill="y">Yearly <span>save $20</span></button></div>`;
+const plans = (compact = false) => `<div class="plans${compact ? ' plans-sm' : ''}">${PLANS.map((p) => `
   <article class="plan${p.best ? ' best' : ''}">
     <h3>${p.name}</h3>${p.best ? '<p class="flag">Recommended</p>' : ''}
-    <p class="amt">${p.price}<small>${p.per}</small></p>
-    <p class="note">${p.note}</p>
-    <ul>${p.items.map((i) => `<li>${i}</li>`).join('')}</ul>
+    <p class="amt">${p.yearly ? `<span class="swap" data-m="${p.price}" data-y="${p.yearly[0]}">${p.price}</span><small class="swap" data-m="${p.per}" data-y="${p.yearly[1]}">${p.per}</small>` : `${p.price}<small>${p.per}</small>`}</p>
+    <p class="note">${p.yearly ? `<span class="swap" data-m="${p.note}" data-y="${p.yearly[2]}">${p.note}</span>` : p.note}</p>
+    <ul>${(compact ? p.short : p.items).map((i) => `<li>${i}</li>`).join('')}</ul>
     <a class="btn ${p.best ? 'primary' : 'ghost'}" href="${p.href || SIGNUP}">${p.cta}</a>
   </article>`).join('')}
 </div>`;
@@ -310,11 +313,33 @@ const plans = () => `<div class="plans">${PLANS.map((p) => `
 export const faqList = (items) => `<div class="faq">${items.map(([q, a]) => `<details><summary><h3>${q}</h3></summary><p>${a}</p></details>`).join('')}</div>`;
 export const faqSchema = (items) => ({ '@type': 'FAQPage', mainEntity: items.map(([q, a]) => ({ '@type': 'Question', name: q, acceptedAnswer: { '@type': 'Answer', text: strip(a) } })) });
 
-export const cta = (h = 'Bring your next drawing set') => `<section class="band"><div class="wrap cta-band">
+// The closing band. On the home page it also carries the company line, which
+// used to be its own tinted panel just above it.
+export const cta = (h = 'Bring your next drawing set', company = false) => `<section class="band"><div class="wrap cta-band">
   <h2>${h}</h2>
   <p>Free to start. Nothing to install.</p>
-  <a class="btn primary lg" href="${SIGNUP}">Open Survey free</a>
+  <div class="cta-row"><a class="btn primary lg" href="${SIGNUP}">Open Survey free</a>${company ? `<a class="btn ghost lg" href="${MAIL}">Talk to us</a>` : ''}</div>${company ? `
+  <p class="cta-co">Rolling Survey out across a company? We set up survey templates, custom data exports and team roles, and help move your drawing sets over.</p>` : ''}
 </div></section>`;
+
+// Tabs that show one screenshot at a time. The active tab fills a thin bar and
+// moves on by itself while the section is on screen (site.js); a click, a key
+// or reduced motion stops that. Every panel is in the page, so the words and
+// pictures are there without script too.
+const showcase = (items, label) => `<div class="show" data-show>
+    <div class="show-tabs" role="tablist" aria-label="${esc(label)}">${items.map((f, i) => `
+      <div class="show-item${i ? '' : ' on'}" role="presentation">
+        <button class="show-tab" type="button" role="tab" id="tab-${f.id}" aria-controls="pane-${f.id}" aria-selected="${i ? 'false' : 'true'}" tabindex="${i ? '-1' : '0'}"><span class="show-name">${f.kicker || f.name}</span></button>
+        <div class="show-more"><div>${f.kicker ? `<p class="show-sub">${f.name}</p>` : ''}<p>${f.lead}</p>${f.ticks ? `<ul class="ticks">${f.ticks.map((t) => `<li>${t}</li>`).join('')}</ul>` : ''}</div></div>
+        <i class="show-bar" aria-hidden="true"></i>
+      </div>`).join('')}
+    </div>
+    <div class="show-stage">${items.map((f, i) => `
+      <div class="show-pane${i ? '' : ' on'}" role="tabpanel" id="pane-${f.id}" aria-labelledby="tab-${f.id}">
+        ${f.img2 ? `<div class="duo">${shot(f)}${shot({ img: f.img2, w: f.w2, h: f.h2, alt: f.alt2, srcset: '/welcome/' + f.img2.replace('.webp', '-800.webp') + ' 800w, /welcome/' + f.img2 + ' 1600w' })}</div>` : f.chip ? `<div class="shot-wrap">${shot(f)}<div class="float chip-float chip-sm" aria-hidden="true"><span class="chip-dot"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><span>${f.chip[0]}<small>${f.chip[1]}</small></span></div></div>` : shot(f)}
+      </div>`).join('')}
+    </div>
+  </div>`;
 
 // Free PDF tools called out on the home page and /features, each with its own glyph.
 const toolPicks = () => `<div class="grid6 picks">${FREE_TOOL_PICKS.map(([id, h, p]) => `<a class="pick g-${PDF_TOOLS.find((t) => t.id === id).group}" href="/tools/${id}"><span class="pick-ic">${toolIcon(id)}</span><span><b>${h}</b><span>${p}</span></span></a>`).join('')}</div>`;
@@ -340,12 +365,6 @@ const FACTS = [
   ['sheet', 'Your data, your format', 'Spreadsheet (.xlsx) and CSV export'],
 ];
 
-const HOW = [
-  ['step-template.webp', 'Set up the survey once', 'Build a template: the things you check, the questions to ask at each one and the tags to give them.', 'The template editor with an Outlet checklist of Faceplate fitted, Tested and Labelled'],
-  ['step-survey.webp', 'Walk the site with the plan', 'On a tablet or phone, tap where each item is and answer Y, N or N/A. Add a note, a photo or a voice note.', 'The survey panel beside the plan: Data point 2 answered Patched Y, Tested N, with a note'],
-  ['step-sheet.webp', 'Send the office the data', 'Export one spreadsheet with a sheet per category and a summary, ready for the report or the estimate.', 'The exported spreadsheet with Item, Faceplate fitted, Tested, Labelled, Entity and Notes columns'],
-];
-
 const TRUST = [
   ['roles', 'Roles on every document', 'Owners, editors and viewers. The database checks every request against them, not just the screen.'],
   ['lock', 'Encrypted', 'HTTPS on every connection. Drawings and data are stored encrypted.'],
@@ -353,6 +372,9 @@ const TRUST = [
   ['key', 'Company sign-in', 'Single sign-on for your company email domain.', true],
 ];
 
+// The hero acts out the product on one loop (site.css, .stage): the cursor
+// presses N for Tested on Data point 2, the answered chip slides in and the
+// same row lands in the exported sheet, then it all resets.
 // The hero's export card: the "Data point - Power" sheet a survey like the
 // one in the screenshot exports (same items, answers and note).
 const SHEET_ROWS = [
@@ -392,14 +414,14 @@ const home = page({
   schema: [SOFTWARE, { '@type': 'WebSite', '@id': ORIGIN + '/#site', name: 'Survey', url: ORIGIN + '/welcome', publisher: { '@id': ORIGIN + '/#org' } }],
   body: `<section class="hero hero-c"><div class="wrap">
   <div class="hero-copy">
-    <p class="kicker">PDF markup and site surveys for construction</p>
     <h1>Mark up the plans. Survey the site. Export the data.</h1>
-    <p class="lede">Survey puts the drawing set on every screen your crew uses. Every markup tool is free, and surveys done on the plan come back as a spreadsheet the office can use the same day.</p>
+    <p class="lede">PDF markup and site surveys for construction drawings, on every screen your crew uses. Every markup tool is free, and surveys done on the plan come back as a spreadsheet the office can use the same day.</p>
     <div class="cta"><a class="btn primary lg" href="${SIGNUP}">Start free</a><a class="btn ghost lg" href="#how">See how it works</a></div>
     <p class="fine">No card. Nothing to install. Computer, tablet and phone.</p>
   </div>
   <div class="stage">
-    <div class="win"><div class="win-bar"><i></i><i></i><i></i><span>surveytool.app</span></div><img src="/welcome/survey.webp" srcset="/welcome/survey-800.webp 800w, /welcome/survey.webp 1600w" sizes="(max-width: 1180px) 100vw, 1120px" width="1600" height="1000" fetchpriority="high" decoding="async" alt="Survey on a floor plan: outlets and data points marked on the plan, and the survey panel with Data point 2 answered Patched Y, Tested N and the note Patch lead missing at desk 14" /></div>
+    <div class="win"><div class="win-bar"><i></i><i></i><i></i><span>surveytool.app</span></div><div class="win-shot"><img src="/welcome/survey.webp" srcset="/welcome/survey-800.webp 800w, /welcome/survey.webp 1600w" sizes="(max-width: 1180px) 100vw, 1120px" width="1600" height="1000" fetchpriority="high" decoding="async" alt="Survey on a floor plan: outlets and data points marked on the plan, and the survey panel with Data point 2 answered Patched Y, Tested N and the note Patch lead missing at desk 14" />
+      <span class="demo-ring" aria-hidden="true"></span><svg class="demo-cursor" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3l14 8.2-6.3 1.4L9.6 19z"/></svg></div></div>
     <div class="float chip-float" aria-hidden="true"><span class="chip-dot"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><span>Data point 2 answered<small>Patched Y · Tested N · 1 note</small></span></div>
     ${heroSheet()}
   </div>
@@ -410,54 +432,44 @@ const home = page({
 </div></section>
 
 <section class="sec" id="how"><div class="wrap">
-  <div class="head"><p class="eyebrow">How it works</p><h2>From drawing set to spreadsheet in three steps</h2><p>The same plan, the same checklist and the same answers, from the first walk to the final report.</p></div>
-  <ol class="how how-list">${HOW.map(([img, h, p, alt]) => `<li><figure><img src="/welcome/${img}" width="840" height="625" loading="lazy" decoding="async" alt="${esc(alt)}" /></figure><div><h3>${h}</h3><p>${p}</p></div></li>`).join('')}</ol>
+  <div class="head"><h2>From the drawing set to a spreadsheet</h2><p>Three things we have not found in any other PDF app.</p></div>
+  ${showcase(ONLY, 'Only in Survey')}
 </div></section>
 
-<div class="band-soft">
-${ONLY.map(only).join('\n')}
-</div>
-
-<section class="sec" id="tools"><div class="wrap">
-  <div class="head"><p class="eyebrow">Markup</p><h2>Every markup tool, free</h2><p>Pen, eraser, shapes, clouds, callouts, counts, measuring, OCR and page tools. No trial and no time limit.</p></div>
+<section class="sec band-soft" id="tools"><div class="wrap tools-split">
+  <div class="tools-copy">
+    <h2>Every markup tool, free</h2>
+    <p>Pen, eraser, shapes, clouds, callouts, counts, measuring, OCR and page tools. No trial and no time limit.</p>
+    <p class="fine">Callouts, measuring, OCR and page tools are paid extras in Drawboard PDF. In Survey they are free. <a href="/compare/drawboard">See the comparison</a></p>
+  </div>
   ${toolGrid()}
-  <div class="free-note"><p>Callouts, measuring, OCR and page tools are paid extras in Drawboard PDF. In Survey they are free.</p><a href="/compare/drawboard">See the comparison</a></div>
 </div></section>
 
-<section class="sec band-soft" id="security"><div class="wrap trust">
+<section class="sec" id="security"><div class="wrap trust">
   <div>
-    <p class="eyebrow">For teams and companies</p>
     <h2>One set of drawings for the whole team</h2>
-    <p class="lede">Invite people as viewers or editors. Everyone sees the same markups and the same survey answers, live, on whatever device they have.</p>
+    <p class="lede">Invite people as viewers or editors. Everyone sees the same markups and survey answers, live, on any device.</p>
     <div class="trust-cards">${TRUST.map(([k, h, p, soon]) => `<div>${svg(k)}<h3>${h}${soon ? '<span class="soon">Coming soon</span>' : ''}</h3><p>${p}</p></div>`).join('')}</div>
   </div>
   ${accessCard()}
 </div></section>
 
-<section class="sec"><div class="wrap">
-  <div class="head"><p class="eyebrow">Devices</p><h2>Desk, truck and site</h2><p>Survey runs in the browser, so the same project and the same markups follow you everywhere. On a tablet, the pen draws and your fingers move the sheet.</p></div>
-  ${devs()}
-  <p class="more-link"><a href="/devices">How it works on each device</a></p>
-</div></section>
-
 <section class="sec band-soft"><div class="wrap">
-  <div class="head"><p class="eyebrow">Pricing</p><h2>Start free. Pay when the team needs more.</h2><p>Every markup tool is free, with no time limit. Pro adds surveys, spaces, templates and sharing for $9.99 a month.</p></div>
-  ${plans()}
-  <p class="more-link"><a href="/pricing">Compare plans</a></p>
+  <div class="head"><h2>Start free. Pay when the team needs more.</h2></div>
+  ${billing()}
+  ${plans(true)}
+  <p class="more-link"><a href="/pricing">Compare every plan</a></p>
 </div></section>
 
-<section class="sec"><div class="wrap">
-  <div class="head"><p class="eyebrow">Free PDF tools</p><h2>${PDF_TOOLS.length} free PDF tools, no sign-up</h2><p>Merge, split, compress, OCR, compare, sign and convert in your browser. Your files never leave your device.</p></div>
+<section class="sec"><div class="wrap tools-split picks-split">
+  <div class="tools-copy">
+    <h2>${PDF_TOOLS.length} free PDF tools, no sign-up</h2>
+    <p>Merge, split, compress, OCR, compare, sign and convert in your browser. Your files never leave your device.</p>
+    <p class="more-link"><a href="/tools">All free PDF tools</a></p>
+  </div>
   ${toolPicks()}
-  <p class="more-link"><a href="/tools">All free PDF tools</a></p>
 </div></section>
-
-<section class="sec tight"><div class="wrap custom">
-  <div><h2>Rolling Survey out across a company?</h2>
-  <p>We set up company survey templates, custom data exports and team roles, and help move your drawing sets over. Tell us how your team works today.</p></div>
-  <a class="btn ghost lg" href="${MAIL}">Talk to us</a>
-</div></section>
-${cta()}`,
+${cta('Bring your next drawing set', true)}`,
 });
 
 // ---------- Features ----------
@@ -469,17 +481,17 @@ const features = page({
   body: `<section class="page-head"><div class="wrap">
   <h1>Everything you do on a drawing set, in one app</h1>
   <p class="lede">Three things no other PDF app does, then every markup tool you would expect, free.</p>
-  <nav class="jump" aria-label="On this page">${[...ONLY.map((f) => [f.id, f.name]), ['tools', 'Every markup tool'], ['count', 'Count markers'], ['compare', 'Survey vs Drawboard PDF'], ['free-pdf-tools', 'Free PDF tools']].map(([id, n]) => `<a href="#${id}">${n}</a>`).join('')}</nav>
+  <nav class="jump" aria-label="On this page">${[...ONLY.map((f) => [f.id, f.kicker || f.name]), ['tools', 'Markup tools'], ['count', 'Count markers'], ['compare', 'Survey vs Drawboard'], ['free-pdf-tools', 'Free PDF tools']].map(([id, n]) => `<a href="#${id}">${n}</a>`).join('')}</nav>
 </div></section>
 ${ONLY.map(only).join('\n')}
 <section class="sec" id="tools"><div class="wrap">
   <div class="head"><h2>Every markup tool, free</h2><p>Nothing here is behind a paywall. Pick a tool, mark the sheet, keep going.</p></div>
   ${toolGrid()}
 </div></section>
-${TOOLS.map((t, i) => `<section class="sec feat${i % 2 ? ' flip' : ''}" id="${t.id}"><div class="wrap feat-grid">
-  <div><h2>${t.name}</h2><p class="lead">${t.lead}</p><p>${t.body}</p></div>
-  ${shot(t)}
-</div></section>`).join('\n')}
+<section class="sec band-soft" id="count"><div class="wrap">
+  <div class="head"><h2>Made for drawing sets</h2><p>Counts, ink, shapes and big sheets that stay quick.</p></div>
+  ${showcase(TOOLS.map((t) => ({ ...t, lead: t.lead + ' ' + t.body })), 'Markup tools')}
+</div></section>
 <section class="sec" id="compare"><div class="wrap">
   <div class="head"><h2>Survey vs Drawboard PDF</h2><p>The same tools, free in Survey. Then the things only Survey has.</p></div>
   ${vsTable()}
@@ -546,7 +558,7 @@ const pricing = page({
   <h1>Start free. Pay when you need more.</h1>
   <p class="lede">Every markup tool is free, with no time limit. Pro adds site surveys, spaces, templates and sharing for $9.99 a month or $99 a year. Enterprise costs $20 per user a month for teams of 3 or more.</p>
 </div></section>
-<section class="sec tight"><div class="wrap">${plans()}</div></section>
+<section class="sec tight"><div class="wrap">${billing()}${plans()}</div></section>
 <section class="sec"><div class="wrap">
   <h2 class="center">Compare plans</h2>
   <div class="tbl"><table>
@@ -672,17 +684,20 @@ const deleteAccount = page({
 });
 
 const longDate = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+// The newest two days stay open; older ones fold away so the page stays short.
+const newsDay = (day) => `<h2><time datetime="${day.date}">${longDate(day.date)}</time></h2><ul class="ticks">${day.items.map((item) => `<li>${esc(item)}</li>`).join('')}</ul>`;
 const whatsNew = page({
   path: '/whats-new', crumb: "What's new",
   title: "What's new | Survey",
   desc: 'Recent changes to Survey, newest first.',
   body: `<section class="page-head"><div class="wrap narrow"><h1>What's new</h1><p class="lede">Changes to Survey, newest first. Reload the app to get the latest.</p></div></section>
-<section class="sec tight"><div class="wrap narrow">${WHATS_NEW.map((day) => `<h2><time datetime="${day.date}">${longDate(day.date)}</time></h2><ul class="ticks">${day.items.map((item) => `<li>${esc(item)}</li>`).join('')}</ul>`).join('\n')}
+<section class="sec tight"><div class="wrap narrow">${WHATS_NEW.slice(0, 2).map(newsDay).join('\n')}
+${WHATS_NEW.length > 2 ? `<details class="older"><summary>Earlier changes</summary>${WHATS_NEW.slice(2).map(newsDay).join('\n')}</details>` : ''}
 <p class="fine">Something not working? <a href="/status">Check the status page</a> or <a href="${MAIL}">tell us</a>.</p></div></section>`,
 });
 
 // ---------- Use Survey with your AI ----------
-const MCP_URL = 'https://cvamwtpsuvxvjdnotbeg.supabase.co/functions/v1/survey-mcp';
+const MCP_URL = 'https://surveytool.app/mcp';
 const AI_FAQ = [
   ['Which AI tools can use Survey?',
     `Any that speak the open connector standard (MCP). Claude and ChatGPT both let you add a custom connector, which reads your drawings. It acts for you, with your plan and your role on each drawing.`],
@@ -744,7 +759,7 @@ const useWithAi = page({
 <section class="sec tight"><div class="wrap narrow">
   <h2>You are always in charge</h2>
   <p>An agent only ever has your rights. If you can only view a drawing, so can its agent.</p>
-  <p>To stop an agent: remove a Claude or ChatGPT connector, or any agent you let in with a sign-in, at <a href="${ORIGIN}/agent-link">surveytool.app/agent-link</a> — removal takes effect at once.</p>
+  <p>To stop an agent: remove a Claude or ChatGPT connector, or any agent you let in with a sign-in, at <a href="${ORIGIN}/agent-link">surveytool.app/agent-link</a>. Removal takes effect at once.</p>
 </div></section>
 
 <section class="sec tight"><div class="wrap narrow"><h2>Questions</h2>${faqList(AI_FAQ)}</div></section>
@@ -761,14 +776,14 @@ const useIndex = page({
   title: 'Use cases: field surveys, punch lists and as-builts | Survey',
   desc: 'How teams use Survey on construction drawings: field surveys, punch lists and as-built markups.',
   body: `<section class="page-head"><div class="wrap"><h1>What do people use Survey for?</h1><p class="lede">Most teams use Survey for one of three jobs on the drawing set.</p></div></section>
-<section class="sec tight"><div class="wrap dev-rows">${USES.map((u) => `<article><h2><a href="/use-cases/${u.slug}">${u.name}</a></h2><p>${u.desc}</p></article>`).join('')}</div></section>
+<section class="sec tight"><div class="wrap dev-rows">${USES.map((u) => `<a class="use-card" href="/use-cases/${u.slug}"><h2>${u.name}</h2><p>${u.desc}</p><span class="use-go">Read more</span></a>`).join('')}</div></section>
 ${cta()}`,
 });
 const usePages = Object.fromEntries(USES.map((u) => [`use-cases/${u.slug}/index.html`, page({
   path: `/use-cases/${u.slug}`, crumb: u.name,
   title: `${u.title} | Survey`, desc: u.desc,
   schema: [{ '@type': 'HowTo', name: `How to do ${u.name.toLowerCase()} with Survey`, step: u.steps.map(([n, t], i) => ({ '@type': 'HowToStep', position: i + 1, name: n, text: t })) }],
-  body: `<section class="page-head"><div class="wrap"><p class="kicker"><a href="/use-cases">Use cases</a></p><h1>${u.title}</h1><p class="lede">${u.lead}</p></div></section>
+  body: `<section class="page-head"><div class="wrap"><p class="back"><a href="/use-cases">All use cases</a></p><h1>${u.title}</h1><p class="lede">${u.lead}</p></div></section>
 <section class="sec tight"><div class="wrap"><h2>How does it work?</h2><ol class="steps">${u.steps.map(([n, t]) => `<li><h3>${n}</h3><p>${t}</p></li>`).join('')}</ol></div></section>
 <section class="sec tight"><div class="wrap feat-grid"><div><h2>The tools you'll use</h2><p>Count markers, the pen and highlighter, clouds and arrows, and text callouts. Every markup tool is free. Site surveys with data export are on Pro.</p><a class="btn ghost" href="/features">See every tool</a></div>${shot(TOOLS[0])}</div></section>
 ${cta()}`,

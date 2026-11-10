@@ -235,7 +235,10 @@ const TOOL_GROUPS = (() => {
   assert.ok(source, 'TOOL_GROUPS must stay a literal in MobilePdfViewerChrome.jsx');
   const groups = {};
   for (const [, id, body] of source[1].matchAll(/(\w+):\s*\{([\s\S]*?)\n  \},/g)) {
-    groups[id] = (body.match(/\{\s*id:\s*'/g) || []).length;
+    // A tool behind a Nightly flag (`flag: '…'`, off by default) is not in the
+    // default rail the live numbers were measured on (2026-11-10: Tape). With
+    // the flag on, Draw holds 4 chips (327px), still inside the budget.
+    groups[id] = (body.match(/\{\s*id:\s*'[^']*'[^}\n]*\}/g) || []).filter((tool) => !/\bflag:\s*'/.test(tool)).length;
   }
   assert.ok(Object.keys(groups).length >= 3, `expected the three tool groups, parsed ${JSON.stringify(groups)}`);
   return groups;

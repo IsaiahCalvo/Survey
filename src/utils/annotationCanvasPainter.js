@@ -308,7 +308,30 @@ function paintArrowheadSpec(context, spec) {
   if (!spec || spec.kind === 'none') return;
   context.save();
   if (typeof context.setLineDash === 'function') context.setLineDash([]);
-  if (spec.kind === 'solidTriangle' || spec.kind === 'openTriangle') {
+  if (spec.kind === 'shapes') {
+    // Drawboard's heads (Nightly 'line-endings'): page-space paths and circles.
+    for (const shape of spec.shapes || []) {
+      context.beginPath();
+      if (shape.type === 'circle') {
+        context.arc(shape.cx, shape.cy, shape.r, 0, Math.PI * 2);
+      } else {
+        shape.points.forEach((p, i) => (i === 0 ? context.moveTo(p.x, p.y) : context.lineTo(p.x, p.y)));
+        if (shape.closed) context.closePath();
+      }
+      if (shape.fill && shape.fill !== 'none') {
+        context.fillStyle = shape.fill;
+        context.fill();
+      }
+      if (shape.stroke && shape.stroke !== 'none' && shape.strokeWidth > 0) {
+        context.strokeStyle = shape.stroke;
+        context.lineWidth = shape.strokeWidth;
+        context.lineJoin = 'miter';
+        context.miterLimit = 4;
+        context.lineCap = 'butt';
+        context.stroke();
+      }
+    }
+  } else if (spec.kind === 'solidTriangle' || spec.kind === 'openTriangle') {
     const headSize = Math.max(8, (spec.sw || 0) * 3);
     context.translate(spec.tipX, spec.tipY);
     context.rotate(((spec.angleDeg || 0) * Math.PI) / 180);
@@ -455,7 +478,7 @@ function drawPath(context, object, displayScale) {
   // was anti-aliased twice and thin lines drew 10-30% lighter than the
   // untouched original; a filled outline has one anti-aliased edge.
   const paperSource = object?.paperSourceStroke;
-  const paperSurvivors = object?.polygons;
+  const paperSurvivors = paperSource ? object?.polygons : null;
   if (
     Array.isArray(paperSource?.path)
     && paperSource.path.length > 0

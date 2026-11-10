@@ -23,6 +23,7 @@
  * zoomGeneration signal (Stage 3 wires that); never throws out of a contract
  * method or callback (PDFViewer assumes the handle never throws).
  */
+import { stepMountWindow } from '../utils/mountWindowStep.js';
 import { registerAgentViewer } from '../agent/webmcp';
 import '../styles/pageReveal.css';
 import {
@@ -125,6 +126,7 @@ import { notePageDrawn, pageMounted, pageUnmounted, PAGE_CACHE_KEEP_MOBILE, PAGE
 import { isInTabBehind } from '../utils/tabBehind.js';
 import { isFeatureOn } from '../featureFlags.js';
 import { ZOOM_AREA_MIN_PX, boxBetween, isZoomToAreaStart, zoomToAreaPlan } from '../utils/zoomToArea.js';
+import { registerSpotlightViewer, spotlightViewMovedByHand } from '../services/annotationSpotlight.js';
 import { pdfjsAssetOptions } from '../utils/pdfjsAssets.js';
 import {
   compensateScrollLeftForColumnWidth,
@@ -245,6 +247,16 @@ const DESKTOP_MAX_OVERSCAN_PAGES = 3;
 // MOBILE_MAX_CANVAS_AREA-clamped raster (~12 MiB), and the deep-zoom window
 // still tops out at three pages.
 const MOBILE_MAX_OVERSCAN_PAGES = 2;
+// A finger glide faster than this (px/ms; 40 px a frame at 60 Hz) keeps the
+// mounted pages as they are: a page it reaches stays a plain white sheet (no
+// drawing, no marks) until the glide slows under it. Mounting a page's
+// drawing and marks costs 100-400 ms on a phone CPU for a 150-1,000 mark
+// sheet, and the glide is moved by script, so every page that only flew
+// past stalled it (2026-11-10: 0.3-1.5 s stalls flinging a 36-sheet set).
+// At this speed a phone-width sheet crosses the screen in about 0.1 s, less
+// than its mount costs; slower glides mount pages ahead as before, so they are
+// ready (or nearly) when the glide stops on them.
+const GLIDE_MOUNT_HOLD_SPEED = 2.5;
 function resolveLayoutMetrics(isMobileSurface) {
   return isMobileSurface
     ? {
@@ -1769,6 +1781,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // edge bounce is easing): pages on screen may sharpen then.
   const glideSettlingRef = useRef(false);
   const glideTouchRef = useRef(false); // the running glide came from a finger
+  const fastGlideRef = useRef(false); // a finger glide over GLIDE_MOUNT_HOLD_SPEED: mounted pages held
+  const recomputeWindowRef = useRef(null);
+  // After a fast glide slows: { step, frame } while the overscan mounts a page a frame.
+  const mountCatchUpRef = useRef(null);
+  // The range last asked for (ahead of the render that shows it).
+  const rangeNowRef = useRef(range);
   // What may draw right now (pageRasterQueue kinds): during a pinch or a
   // ctrl+wheel zoom nothing does (pages a pinch reveals are not mounted until
   // it ends anyway, and a draw slice costs a whole frame); while a pan, a
@@ -1983,7 +2001,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     };
     if (externalPdf && pdfRef.current === externalPdf) return unload;
     pendingViewportFitRef.current = null;
-    setPageSizes([]); setNumPages(0); setRange([0, -1]);
+    setPageSizes([]); setNumPages(0); rangeNowRef.current = [0, -1]; setRange(rangeNowRef.current);
     pageContainerMapRef.current = {};
     if (!externalPdf && !params) return undefined;
 
@@ -2295,11 +2313,35 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         last = visibleLast;
       }
     }
-    setRange((prev) => (prev[0] === first && prev[1] === last ? prev : [first, last]));
+    const catchUp = mountCatchUpRef.current;
+    if (catchUp && !fastGlideRef.current && visibleFirst !== -1) {
+      // One step per frame; calls between frames (scroll events) wait.
+      const prev = rangeNowRef.current;
+      const next = catchUp.step ? stepMountWindow(prev, [first, last], [visibleFirst, visibleLast]) : prev;
+      catchUp.step = false;
+      if (next[0] === first && next[1] === last) mountCatchUpRef.current = null;
+      else if (!catchUp.frame) {
+        catchUp.frame = requestAnimationFrame(() => {
+          const live = mountCatchUpRef.current;
+          if (!live) return;
+          live.frame = 0; live.step = true;
+          recomputeWindowRef.current?.();
+        });
+      }
+      first = next[0]; last = next[1];
+    }
+    const asked = rangeNowRef.current;
+    // A fast finger glide keeps what is mounted (GLIDE_MOUNT_HOLD_SPEED).
+    const hold = fastGlideRef.current && asked[1] >= asked[0];
+    if (!hold && (asked[0] !== first || asked[1] !== last)) {
+      rangeNowRef.current = [first, last];
+      setRange(rangeNowRef.current);
+    }
     detectCurrentPage();
     visiblePageRangeRef.current = [visibleFirst, visibleLast];
     rasterQueueRef.current?.pump();
   }, [layout, scale, detectCurrentPage, isMobileSurface]);
+  recomputeWindowRef.current = recomputeWindow;
 
   useLayoutEffect(() => {
     const el = scrollerRef.current;
@@ -3990,6 +4032,14 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     });
   };
   panMomentumHooksRef.current.velocity = (vx, vy) => {
+    const fast = glideTouchRef.current && Math.hypot(vx || 0, vy || 0) >= GLIDE_MOUNT_HOLD_SPEED;
+    if (fast) fastGlideRef.current = true;
+    else if (fastGlideRef.current) {
+      // Slowed down: mount what is on screen now, the overscan a page a frame.
+      fastGlideRef.current = false;
+      mountCatchUpRef.current = { step: true, frame: 0 };
+      recomputeWindowRef.current?.();
+    }
     const settling = glideTouchRef.current && !elasticRef.current?.anim && isGlideSlowEnoughToSharpen(vx, vy);
     const startedSettling = settling && !glideSettlingRef.current;
     glideSettlingRef.current = settling;
@@ -4029,6 +4079,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       },
       onSettle: () => {
         glideSettlingRef.current = false;
+        if (fastGlideRef.current) {
+          fastGlideRef.current = false;
+          mountCatchUpRef.current = { step: true, frame: 0 };
+          recomputeWindowRef.current?.();
+        }
         panMomentumHooksRef.current.restore?.();
       },
     });
@@ -5639,6 +5694,77 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     }
     return true;
   }, [applyAnchoredScale, cancelFlight, cancelPanInertia, getPageLeftAtScale, getHorizontalScrollMax, glideFlight, isMobileSurface, scheduleZoomGlideFrame, setZoomInteraction]);
+
+  // Spotlight (Nightly flag 'spotlight', annotationSpotlight.js). While this
+  // tab is in front the viewer tells the spotlight what you see (the view box
+  // in page units, measured from the scroller, never zoom x page size) and
+  // shows a presenter's box by fitting it into your own view. A pan, wheel,
+  // pinch or zoom key of yours pauses following.
+  const [spotlightOn] = useState(() => isFeatureOn('spotlight'));
+  const spotlightViewRef = useRef(null);
+  spotlightViewRef.current = {
+    readView: () => {
+      const el = scrollerRef.current;
+      const dims = dimsPtRef.current;
+      if (!el || !dims.length) return null;
+      const s = scaleRef.current;
+      if (!(s > 0)) return null;
+      const side = sideInsetRef.current;
+      const inset = Math.min(topInsetRef.current, el.clientHeight);
+      const bandW = Math.max(1, el.clientWidth - side.left - side.right);
+      const bandH = Math.max(1, el.clientHeight - inset);
+      const i = pageUnderContentY(el.scrollTop + inset + bandH / 2, s);
+      if (!dims[i] || dims[i].hidden) return null;
+      return {
+        page: i + 1,
+        rect: {
+          x: (el.scrollLeft + side.left - getPageLeftAtScale(i, s)) / s,
+          y: (el.scrollTop + inset - topAt(i, s)) / s,
+          width: bandW / s,
+          height: bandH / s,
+        },
+      };
+    },
+    showView: (page, rect) => {
+      const dims = dimsPtRef.current;
+      if (!dims.length || !(Number(page) >= 1) || Number(page) > dims.length) return false;
+      return focusPageRect(page, rect, { fill: 1, maxScale: Number.MAX_SAFE_INTEGER });
+    },
+  };
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!spotlightOn || !tabActive || !el || typeof window === 'undefined') return undefined;
+    const off = registerSpotlightViewer({
+      readView: () => spotlightViewRef.current?.readView() ?? null,
+      showView: (page, rect) => spotlightViewRef.current?.showView(page, rect) === true,
+    });
+    // On window, first in the capture order: the viewer's own gesture code
+    // may stop a touch or wheel before it reaches the scroller.
+    const inViewer = (event) => event.target instanceof Node && el.contains(event.target);
+    const moved = (event) => { if (inViewer(event)) spotlightViewMovedByHand(); };
+    const onPointerDown = (event) => {
+      if (!inViewer(event)) return;
+      if (event.pointerType === 'touch' || event.button === 1 || interactionModeRef.current === 'Pan') spotlightViewMovedByHand();
+    };
+    const onKey = (event) => {
+      const t = event.target;
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName || ''))) return;
+      const zoomKey = (event.ctrlKey || event.metaKey) && ['+', '=', '-', '_', '0'].includes(event.key);
+      if (zoomKey || ['PageUp', 'PageDown', 'Home', 'End'].includes(event.key)) spotlightViewMovedByHand();
+    };
+    const passive = { passive: true, capture: true };
+    window.addEventListener('wheel', moved, passive);
+    window.addEventListener('touchstart', moved, passive);
+    window.addEventListener('pointerdown', onPointerDown, true);
+    window.addEventListener('keydown', onKey, true);
+    return () => {
+      off();
+      window.removeEventListener('wheel', moved, passive);
+      window.removeEventListener('touchstart', moved, passive);
+      window.removeEventListener('pointerdown', onPointerDown, true);
+      window.removeEventListener('keydown', onKey, true);
+    };
+  }, [spotlightOn, tabActive]);
 
   // Drawboard canvas audit chunk 6: glide scrollTop to `top` over 250 ms
   // (utils/pageScrollGlide.js has the rules), or point a glide already running

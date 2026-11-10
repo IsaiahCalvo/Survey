@@ -1,0 +1,107 @@
+/* Spotlight (Nightly flag spotlight). Drawboard's presenter frame is a 1px
+   #5BD183 line round the canvas with a green tab in its top right corner
+   (about 149 x 28, rounded only bottom left), white 13px semi-bold text and a
+   round-ended Stop pill. The green is Spotlight's own: it means "live view",
+   not "picked" (gold) and not a status dot (--success). */
+:root { --spotlight-ink: #5bd183; --spotlight-on-ink: #0d2a18; }
+
+.spotlight-frame {
+  position: absolute;
+  inset: 0;
+  z-index: 5350;
+  border: 1px solid var(--spotlight-ink);
+  pointer-events: none;
+}
+.spotlight-tab {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 28px;
+  padding: 0 4px 0 12px;
+  border-bottom-left-radius: 4px;
+  background: var(--spotlight-ink);
+  color: var(--spotlight-on-ink);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: auto;
+}
+.spotlight-tab__stop {
+  height: 20px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--spotlight-on-ink) 18%, transparent);
+  color: var(--spotlight-on-ink);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.spotlight-tab__stop:hover { background: color-mix(in srgb, var(--spotlight-on-ink) 28%, transparent); }
+.spotlight-frame.is-phone .spotlight-tab { height: 32px; }
+.spotlight-frame.is-phone .spotlight-tab__stop { height: 26px; padding: 0 12px; }
+
+/* "Name is presenting · Follow": a quiet chip at the top centre of the
+   canvas, the shared panel surface. */
+.spotlight-chip {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5350;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 24px);
+  padding: 4px 4px 4px 10px;
+  background: var(--panel-bg, var(--surface-2));
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-popover);
+  color: var(--text-1);
+  font-size: 12px;
+}
+.spotlight-chip.is-phone { top: calc(var(--mobile-top-bar-height, 48px) + 8px); font-size: 13px; }
+.spotlight-chip__dot,
+.spotlight-me__dot { flex: none; width: 8px; height: 8px; border-radius: 999px; background: var(--spotlight-ink); }
+.spotlight-chip__text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spotlight-chip__btn {
+  flex: none;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-1);
+  font: inherit;
+  cursor: pointer;
+}
+.spotlight-chip.is-phone .spotlight-chip__btn { height: 36px; padding: 0 14px; }
+.spotlight-chip__btn:hover { background: var(--surface-3); }
+.spotlight-chip__btn.is-primary { border-color: transparent; background: var(--spotlight-ink); color: var(--spotlight-on-ink); font-weight: 600; }
+.spotlight-chip__btn.is-primary:hover { background: color-mix(in srgb, var(--spotlight-ink) 86%, white); }
+
+/* In the people list: one row under the names. */
+.spotlight-me {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: calc(100% - 8px);
+  height: var(--menu-item-h, 28px);
+  margin: 4px 4px 0;
+  padding: 0 8px;
+  border: none;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-1);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.spotlight-me:hover { background: var(--surface-3); }
+.spotlight-me.is-phone { width: 100%; height: 48px; margin: 8px 0 0; padding: 0 16px; font-size: 16px; }
