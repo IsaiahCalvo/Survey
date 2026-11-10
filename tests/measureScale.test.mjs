@@ -57,6 +57,11 @@ test('page scale is saved on measurements and re-stamped on change', () => {
   assert.equal(page.objects[1].data.measure.scale.ptPerUnit, 9, 'input not mutated');
   assert.equal(buildMeasureLabel(next.objects[1], pageScaleFromObjects(next.objects)).text, '5\' 0"');
   assert.equal(pageScaleFromObjects([plain]), null);
+  // The kept calibration line (stamped with no scale) takes the new scale too (R3-M B2).
+  const calib = stampMeasure(line({ x: 0, y: 0 }, { x: 90, y: 0 }), 'length', null);
+  const withLine = applyPageScale({ objects: [plain] }, scaleFromPreset('1/4'), [calib]);
+  assert.equal(withLine.objects[1].data.measure.scale.ptPerUnit, 18);
+  assert.equal(buildMeasureLabel(withLine.objects[1], withLine.objects[1].data.measure.scale).text, '5\' 0"');
 });
 
 test('length label pill: fixed screen size, above the midpoint, clear of handles', () => {

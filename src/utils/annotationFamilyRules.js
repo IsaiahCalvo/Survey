@@ -405,6 +405,27 @@ export function buildNudgedPage(currentPage, startObjects, dx, dy) {
   return merged;
 }
 
+/**
+ * Like buildNudgedPage, but each mark moves by its own delta (align and
+ * distribute): `moves` = { [startIndex]: { dx, dy } }. A mark with no move
+ * (or a zero one) is left as it is now.
+ */
+export function buildMovedPage(currentPage, startObjects, moves) {
+  const draggedObjects = [];
+  const moving = {};
+  for (const [indexKey, startObject] of Object.entries(startObjects || {})) {
+    const move = moves?.[indexKey];
+    if (!startObject || !move || (!move.dx && !move.dy)) continue;
+    draggedObjects[Number(indexKey)] = translateAnnotationForMove(startObject, move.dx || 0, move.dy || 0);
+    moving[indexKey] = startObject;
+  }
+  if (Object.keys(moving).length === 0) return null;
+  const merged = mergeDraggedMarksOntoPage(currentPage, { objects: draggedObjects }, moving);
+  if (!merged) return null;
+  roundCommittedAnnotationsGeometry(merged.annotations, merged.indexes);
+  return merged;
+}
+
 /** Page-unit boxes of the marks about to be nudged (for clampNudgeDelta). */
 export function getNudgeBoxes(startObjects) {
   return Object.values(startObjects || {})

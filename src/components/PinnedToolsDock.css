@@ -310,12 +310,14 @@
 
 /* Phone: one row standing on the phone's bottom bar (the page area runs
    under that bar; mobilePdfViewer.css --mobile-dock-bar-height), finger-sized
-   pins, no grip. Under the phone sheets (6500), so an open sheet covers it. */
+   pins, no grip. Under the phone sheets, so an open sheet covers it: a sheet's
+   own 6500 counts only inside its host, and the hosts are a 5600 stacking
+   context (mobilePdfViewer.css), so the row sits below 5600. */
 .pinned-dock-shell.is-phone {
   left: 8px;
   right: 8px;
   bottom: calc(var(--mobile-dock-bar-height, 46px) + 8px);
-  z-index: 5700;
+  z-index: 5500;
 }
 .pinned-dock-shell.is-phone .pinned-dock__pin.chrome-subcontrol {
   width: 38px;

@@ -21,7 +21,7 @@
  * free of React/fabric/DOM side effects.
  */
 import { calculateCalloutConnection } from './calloutGeometry.js';
-import { segmentGraphemes } from './textGraphemes.js';
+import { calloutWrapsWords, textWrapsWords, wrapParagraph } from './textWrapMode.js';
 import { renderPathToSvgAttrs, renderPathToSvgD } from './svgPathAttrs.js';
 import {
   ARROWHEAD_STYLES,
@@ -910,20 +910,10 @@ export function cssFirstBaseline(context, cssFontShorthand, lineHeightPx) {
 // the disagreement showed up as emoji mangling themselves the moment a zoom
 // gesture started and healing again when the SVG came back. Same splitter as
 // the PDF export wrapper (src/utils/textGraphemes.js).
-function wrapByGraphemeBreakAll(context, paragraph, innerWidth) {
-  const lines = [];
-  let line = '';
-  for (const cluster of segmentGraphemes(paragraph)) {
-    const candidate = line + cluster;
-    if (line && context.measureText(candidate).width > innerWidth) {
-      lines.push(line);
-      line = cluster;
-    } else {
-      line = candidate;
-    }
-  }
-  lines.push(line);
-  return lines;
+function wrapByGraphemeBreakAll(context, paragraph, innerWidth, wrapWords = false) {
+  // Word-wrap marks (beta 'word-wrap') break at spaces instead, with the same
+  // rules as their CSS twin (textWrapMode.js).
+  return wrapParagraph(paragraph, innerWidth, (value) => context.measureText(value).width, { wrapWords });
 }
 
 // Twin of renderText (svgAnnotationRenderers.jsx:964-1168): break-all wrap at
@@ -1039,7 +1029,7 @@ function drawText(context, object) {
   const lines = [];
   text.split(/\r?\n/).forEach((paragraph) => {
     if (!paragraph) { lines.push(''); return; }
-    lines.push(...wrapByGraphemeBreakAll(context, paragraph, innerWidth));
+    lines.push(...wrapByGraphemeBreakAll(context, paragraph, innerWidth, textWrapsWords(object)));
   });
 
   const lineHeightPx = fontSize * (toNumber(object.lineHeight, 1.16) || 1.16) * 1.13;
@@ -1690,7 +1680,7 @@ function drawCallout(context, callout, pageWidth, pageHeight, displayScale = 1) 
         lines.push('');
         return;
       }
-      lines.push(...wrapByGraphemeBreakAll(context, paragraph, maxTextWidth));
+      lines.push(...wrapByGraphemeBreakAll(context, paragraph, maxTextWidth, calloutWrapsWords(callout)));
     });
     const lineHeightPx = fontSize * (toNumber(callout.style?.lineHeight, 1) || 1) * 1.13;
     const availableHeight = boxHeightWithDescenders;
