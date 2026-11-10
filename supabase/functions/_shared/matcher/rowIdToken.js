@@ -87,8 +87,21 @@ const getSubtle = () => {
   return subtle;
 };
 
-const importHmacKey = (secret, usages) =>
-  getSubtle().importKey('raw', textEncoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, usages);
+// Imported keys, kept per secret: a live sheet sync signs and checks a Row ID
+// per row, and importing the same key for each was half of that work.
+const HMAC_KEYS = new Map();
+const importHmacKey = (secret, usages) => {
+  const cacheKey = `${usages.join(',')}:${secret}`;
+  let key = HMAC_KEYS.get(cacheKey);
+  if (!key) {
+    if (HMAC_KEYS.size >= 32) HMAC_KEYS.clear();
+    key = getSubtle().importKey('raw', textEncoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, usages);
+    // A failed import is not kept, so the next call tries again.
+    key.catch(() => HMAC_KEYS.delete(cacheKey));
+    HMAC_KEYS.set(cacheKey, key);
+  }
+  return key;
+};
 
 const signHead = async (head, secret) => {
   const key = await importHmacKey(secret, ['sign']);

@@ -8,7 +8,8 @@
 // writes per minute per person, 300 per project. A round costs one Drive
 // call when nothing changed, plus one read and at most three writes when
 // something did; the runner spaces rounds out, and a 429 backs it off.
-import { providerError, cellError } from './contract.js';
+import { providerError, cellError, fetchWithTimeout, REQUEST_TIMEOUT_MS } from './contract.js';
+import { trackingChoices } from '../layout.js';
 
 export const GOOGLE_SCOPES = Object.freeze(['openid', 'email', 'https://www.googleapis.com/auth/drive.file']);
 
@@ -57,7 +58,9 @@ async function tokenCall(endpoints, fetchImpl, form) {
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
     // invalid_grant: the person revoked access or the token expired.
-    throw providerError(`google token: ${body?.error || res.status}`, body?.error === 'invalid_grant' ? 401 : res.status);
+    const err = providerError(`google token: ${body?.error || res.status}`, body?.error === 'invalid_grant' ? 401 : res.status);
+    if (body?.error === 'invalid_grant') err.code = 'reconnect'; // the sign-in itself is over
+    throw err;
   }
   return body;
 }
@@ -151,6 +154,7 @@ function validationRequests(sheetId, scope, layout) {
     let values = null;
     if (col.key === 'entity') values = layout.entities.map((e) => e.name);
     else if (col.key.startsWith('answer:') && (!col.item?.kind || col.item.kind === 'choice')) values = layout.answerValues;
+    else values = trackingChoices(col, layout);
     if (!values?.length) return;
     out.push({
       setDataValidation: {
@@ -170,7 +174,7 @@ function validationRequests(sheetId, scope, layout) {
 function textFormatRequests(sheetId, scope) {
   const out = [];
   scope.columns.forEach((col, i) => {
-    const text = ['rowId', 'changedBy', 'item', 'entity', 'notes'].includes(col.key)
+    const text = ['rowId', 'changedBy', 'item', 'entity', 'notes', 'status', 'assignee'].includes(col.key)
       || (col.key.startsWith('answer:') && TEXT_KINDS.has(col.item?.kind || 'choice'));
     if (!text) return;
     out.push({
@@ -199,17 +203,17 @@ const hideRowIdColumn = (sheetId, scope) => {
  * A provider bound to one person's Google sign-in.
  * @param {{ endpoints: object, getAccessToken: () => Promise<string>, fetchImpl?: typeof fetch }} opts
  */
-export function googleSheetsProvider({ endpoints, getAccessToken, fetchImpl = fetch }) {
+export function googleSheetsProvider({ endpoints, getAccessToken, fetchImpl = fetch, timeoutMs = REQUEST_TIMEOUT_MS }) {
   const columnCounts = new Map(); // `${fileId}:${sheetId}` -> columns, from the last read
   const lastEditors = new Map(); // fileId -> { name, email, me, at }, from the last getVersion
 
   async function call(url, { method = 'GET', body } = {}) {
     const token = await getAccessToken();
-    const res = await fetchImpl(url, {
+    const res = await fetchWithTimeout(fetchImpl, url, {
       method,
       headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
       body: body ? JSON.stringify(body) : undefined,
-    });
+    }, timeoutMs);
     if (res.ok) return res.status === 204 ? {} : res.json();
     const err = await res.json().catch(() => ({}));
     const reason = err?.error?.errors?.[0]?.reason || err?.error?.status || '';
@@ -333,14 +337,24 @@ export function googleSheetsProvider({ endpoints, getAccessToken, fetchImpl = fe
     },
 
     async appendRows(fileId, appends) {
-      await batchUpdate(fileId, appends.map((a) => ({
+      await batchUpdate(fileId, appends.flatMap((a) => (a.before != null ? [
+        // Above the PM's totals line (`before`), so it stays last.
+        { insertDimension: { range: { sheetId: Number(a.sheetId), dimension: 'ROWS', startIndex: a.before, endIndex: a.before + a.rows.length }, inheritFromBefore: true } },
+        {
+          updateCells: {
+            start: { sheetId: Number(a.sheetId), rowIndex: a.before, columnIndex: 0 },
+            rows: a.rows.map((row) => ({ values: row.map(cellData) })),
+            fields: 'userEnteredValue',
+          },
+        },
+      ] : [{
         // After the last row with data in the tab, wherever people have typed.
         appendCells: {
           sheetId: Number(a.sheetId),
           rows: a.rows.map((row) => ({ values: row.map(cellData) })),
           fields: 'userEnteredValue',
         },
-      })));
+      }])));
     },
 
     async deleteRows(fileId, rows) {

@@ -21,9 +21,53 @@ const FIELD_TO_KEY = Object.freeze({
   notes: 'notes',
 });
 
+// Item tracking (status, who it is assigned to, due date; flag
+// 'marker-tracking'): three columns after the kit's own, when the app turns
+// them on. Keys are the engine's, not kit fields, so export kits stay as they are.
+export const TRACKING_COLUMNS = Object.freeze([
+  Object.freeze({ key: 'status', header: 'Status' }),
+  Object.freeze({ key: 'assignee', header: 'Assigned to' }),
+  Object.freeze({ key: 'due', header: 'Due' }),
+]);
+// The labels a Status cell shows, in the app's order (src/utils/markerTracking.js).
+export const TRACKING_STATUSES = Object.freeze([
+  Object.freeze({ value: 'open', label: 'Open' }),
+  Object.freeze({ value: 'in-progress', label: 'In progress' }),
+  Object.freeze({ value: 'done', label: 'Done' }),
+]);
+const TRACKING_KEYS = TRACKING_COLUMNS.map((c) => c.key);
+const MAX_PEOPLE = 500;
+
 // Cells a person may change in the sheet. Row ID, Changed By and Changed Date
 // are the app's own; a change made to them in the sheet is put back.
-export const SHEET_EDITABLE_KEYS = Object.freeze(['item', 'entity', 'notes']);
+export const SHEET_EDITABLE_KEYS = Object.freeze(['item', 'entity', 'notes', ...TRACKING_KEYS]);
+
+/** Who an item can be assigned to, as the layout keeps them: [{ id, name, email }]. */
+export function trackingPeopleOf(people) {
+  const out = [];
+  const seen = new Set();
+  for (const p of Array.isArray(people) ? people : []) {
+    const id = typeof p?.id === 'string' ? p.id.trim() : '';
+    if (!id || id.length > 100 || seen.has(id)) continue;
+    seen.add(id);
+    const name = typeof p.name === 'string' ? p.name.trim().slice(0, 200) : '';
+    const email = typeof p.email === 'string' ? p.email.trim().slice(0, 320) : '';
+    out.push({ id, name, email });
+    if (out.length >= MAX_PEOPLE) break;
+  }
+  // A steady order, so the same people never read as a changed layout.
+  return out.sort((a, b) => personCellName(a).localeCompare(personCellName(b)) || a.id.localeCompare(b.id));
+}
+
+/** The name an Assigned to cell shows for a person (the app's personLabel). */
+export const personCellName = (p) => (p?.name || (p?.email ? String(p.email).split('@')[0] : '') || 'Someone');
+
+/** The drop-down list a tracking column offers (Status, Assigned to), or null. */
+export function trackingChoices(column, layout) {
+  if (column?.key === 'status') return TRACKING_STATUSES.map((s) => s.label);
+  if (column?.key === 'assignee') return [...new Set((layout?.people || []).map(personCellName))];
+  return null;
+}
 
 const MAX_TITLE = 100; // Google's limit for a tab name
 const MAX_SCOPES = 200;
@@ -59,7 +103,7 @@ const checklistOf = (category) => {
  * @returns {{ scopes: Array<{scopeId, moduleId, categoryId, title, columns: Array<{key, header, item?}>}>,
  *             entities: Array<{id, name, color}>, answerValues: string[] }}
  */
-export function buildSyncLayout({ template, kit, answerValues = ['Y', 'N', 'N/A'] } = {}) {
+export function buildSyncLayout({ template, kit, answerValues = ['Y', 'N', 'N/A'], tracking = false, people = [] } = {}) {
   const kitErrors = validateExportKit(kit);
   if (kitErrors.length) throw new Error(`sheet layout: bad export kit (${kitErrors[0]})`);
   const modules = Array.isArray(template?.modules) ? template.modules
@@ -92,6 +136,7 @@ export function buildSyncLayout({ template, kit, answerValues = ['Y', 'N', 'N/A'
         }
         return { key: FIELD_TO_KEY[field], header: String(header ?? '') };
       });
+      if (tracking) columns.push(...TRACKING_COLUMNS.map((c) => ({ ...c })));
       // The kit's own columns keep their names; checklist lines give way.
       for (const c of columns) if (!c.key.startsWith('answer:')) c.header = uniqueHeader(c.header);
       for (const c of columns) if (c.key.startsWith('answer:')) c.header = uniqueHeader(c.header);
@@ -107,7 +152,12 @@ export function buildSyncLayout({ template, kit, answerValues = ['Y', 'N', 'N/A'
   const entities = (Array.isArray(template?.entities) ? template.entities : [])
     .filter((e) => e && e.id != null && e.name)
     .map((e) => ({ id: String(e.id), name: String(e.name), color: e.color ?? null }));
-  return { scopes, entities, answerValues: Array.isArray(answerValues) ? answerValues.map(String) : ['Y', 'N', 'N/A'] };
+  return {
+    scopes,
+    entities,
+    answerValues: Array.isArray(answerValues) ? answerValues.map(String) : ['Y', 'N', 'N/A'],
+    ...(tracking ? { tracking: true, people: trackingPeopleOf(people) } : {}),
+  };
 }
 
 /** Problems with a layout sent by a client; empty means it is usable. */
@@ -134,7 +184,7 @@ export function layoutProblems(layout) {
     const keys = new Set();
     for (const c of cols) {
       const ok = c && typeof c.key === 'string' && typeof c.header === 'string' && c.header.trim()
-        && (Object.values(FIELD_TO_KEY).includes(c.key) || /^answer:.{1,200}$/.test(c.key));
+        && (Object.values(FIELD_TO_KEY).includes(c.key) || TRACKING_KEYS.includes(c.key) || /^answer:.{1,200}$/.test(c.key));
       if (!ok) { problems.push('a column is malformed'); break; }
       if (keys.has(c.key)) { problems.push('a column is listed twice'); break; }
       keys.add(c.key);
@@ -142,6 +192,7 @@ export function layoutProblems(layout) {
   }
   if (!Array.isArray(layout.entities)) problems.push('layout needs an entities list');
   if (!Array.isArray(layout.answerValues)) problems.push('layout needs answer values');
+  if (layout.people !== undefined && (!Array.isArray(layout.people) || layout.people.length > MAX_PEOPLE)) problems.push('layout has a bad people list');
   return problems;
 }
 

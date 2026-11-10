@@ -226,6 +226,9 @@
   font-size: 13px;
   letter-spacing: 0.06em;
 }
+/* "Save in": the SharePoint/Teams folder link box under the folder list. */
+.sheet-sync-folders .sheet-sync-code input { display: block; width: 100%; font-family: inherit; letter-spacing: 0; }
+.sheet-sync-paste-error { margin: 6px 0 0; color: var(--danger-text); font-size: 12px; }
 
 .sheet-sync-skeleton {
   height: 12px;
@@ -289,6 +292,11 @@
   .sheet-sync-icon-btn--quiet:hover { background: var(--hover); color: var(--text-1); }
 }
 .sheet-sync-icon-btn--quiet[aria-expanded='true'] { background: var(--hover); color: var(--text-1); }
+/* A finger needs more than 28px: the "More" button on phones and tablets. */
+@media (pointer: coarse) {
+  .sheet-sync-icon-btn--quiet { height: 40px; width: 40px; min-width: 40px; margin-right: -6px; }
+  .sheet-sync-code input { height: 40px; }
+}
 
 .sheet-sync-menu {
   position: absolute;
