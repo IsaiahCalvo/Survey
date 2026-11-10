@@ -9,6 +9,8 @@
    without changing the layout.
 */
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { isFeatureOn } from '../featureFlags.js';
+import { requestHomeDownload } from '../utils/homeDownload.js';
 import { useTooltip } from '../components/Tooltip';
 import { createPortal } from 'react-dom';
 import { HubShell, Icon, Avatar, PdfThumb, Search, EmptyState } from './HubShell';
@@ -30,6 +32,8 @@ import { isPhoneLayout } from '../utils/layoutMode.js';
 import { canManageDocument, manageSelectionBlock } from './documentPermissions.js';
 import { activateOrExplain } from '../utils/disabledReasonToast.js';
 import MenuRows from '../components/MenuRows.jsx';
+import DialogCard from '../components/DialogCard.jsx';
+import NewDocumentDialog from './NewDocumentDialog.jsx';
 import sampleFloorPlanUrl from '../assets/sample-floor-plan.pdf?url';
 import useFileDropZone from '../hooks/useFileDropZone';
 import FileDropOverlay from '../components/FileDropOverlay';
@@ -246,6 +250,15 @@ export default function DocumentsLedger({
   /* Supabase storage helper — let PdfPageThumb fetch a document's bytes to
      render its real first page via the authenticated download (private bucket). */
   const { downloadDocument } = useStorage();
+  const [homeDownloadOn] = useState(() => isFeatureOn('home-download'));
+  // Nightly 'new-document': New makes a blank document (desktop) or opens a
+  // small New sheet with Upload and Blank document (phone).
+  const [newDocumentOn] = useState(() => isFeatureOn('new-document'));
+  const [newSheetOpen, setNewSheetOpen] = useState(false);
+  const [newDocOpen, setNewDocOpen] = useState(false);
+  const canCreateBlank = newDocumentOn && Boolean(onDropFiles);
+  // An upload still in flight (temp- id) has no saved row to open yet.
+  const canDownloadDoc = (raw) => Boolean(raw?.id) && !String(raw.id).startsWith('temp-');
 
   const projectNameById = useMemo(() => {
     const m = new Map();
@@ -326,7 +339,7 @@ export default function DocumentsLedger({
       const response = await fetch(sampleFloorPlanUrl);
       if (!response.ok) throw new Error(`sample drawing: HTTP ${response.status}`);
       const file = new File([await response.blob()], 'Sample floor plan.pdf', { type: 'application/pdf' });
-      await onDropFiles([file], { projectId: null, open: true });
+      await onDropFiles([file], { projectId: null, open: true, sample: true });
     } catch (error) {
       console.error('[DocumentsLedger] sample drawing failed', error);
     } finally {
@@ -653,12 +666,51 @@ export default function DocumentsLedger({
       <div className="documents-mobile-search-actions hub-mobile-search-actions">
         <Search placeholder="Search documents..." value={search} onChange={setSearch} width="100%" />
         {mobileSortControl}
-        <button className="btn primary hub-mobile-primary-action" disabled={uploadBusy} onClick={() => onUpload && onUpload()}>{uploadButtonBody}</button>
+        {canCreateBlank ? (
+          <button className="btn primary hub-mobile-primary-action" data-home-new="phone" disabled={uploadBusy} aria-haspopup="dialog" onClick={() => setNewSheetOpen(true)}>
+            {uploadBusy ? uploadButtonBody : (<><Icon name="plus" size={12} />New</>)}
+          </button>
+        ) : (
+          <button className="btn primary hub-mobile-primary-action" disabled={uploadBusy} onClick={() => onUpload && onUpload()}>{uploadButtonBody}</button>
+        )}
       </div>
       <div className="documents-desktop-search">
         <Search placeholder="Search documents..." value={search} onChange={setSearch} />
       </div>
+      {canCreateBlank && (
+        <button className="btn documents-desktop-new" data-home-new="desktop" disabled={uploadBusy} aria-haspopup="dialog" onClick={() => setNewDocOpen(true)}>
+          <Icon name="plus" size={12} />New
+        </button>
+      )}
       <button className="btn primary documents-desktop-upload" disabled={uploadBusy} onClick={() => onUpload && onUpload()}>{uploadButtonBody}</button>
+      {newSheetOpen && (
+        <DialogCard title="New" onClose={() => setNewSheetOpen(false)} width={320} atRoot cardProps={{ 'data-home-new-sheet': 'true' }}>
+          <div role="menu" aria-label="New" style={{ display: 'grid', gap: 4 }}>
+            {[
+              { key: 'upload', icon: 'upload', label: 'Upload PDF', run: () => onUpload && onUpload() },
+              { key: 'blank', icon: 'plus', label: 'Blank document', run: () => setNewDocOpen(true) },
+            ].map((row) => (
+              <button
+                key={row.key}
+                type="button"
+                role="menuitem"
+                className="hub-btn dialog-touch-pad"
+                style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 44, justifyContent: 'flex-start', width: '100%' }}
+                onClick={() => { setNewSheetOpen(false); row.run(); }}
+              >
+                <Icon name={row.icon} size={14} />{row.label}
+              </button>
+            ))}
+          </div>
+        </DialogCard>
+      )}
+      {newDocOpen && (
+        <NewDocumentDialog
+          existingNames={documents.map((d) => d?.name)}
+          onCreate={(file) => onDropFiles([file], { projectId: null, open: true })}
+          onClose={() => setNewDocOpen(false)}
+        />
+      )}
     </>
   );
 
@@ -1084,6 +1136,9 @@ export default function DocumentsLedger({
               <div style={{ display: 'flex', gap: 8, marginTop: 14, flex: 'none' }}>
                 <button className="btn primary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => onOpenDocument && onOpenDocument(previewDoc.raw)}>Open file</button>
                 <button className="btn documents-preview-share" aria-disabled={canManageDoc(previewDoc.raw) ? undefined : true} {...tip(canManageDoc(previewDoc.raw) ? 'Share' : 'Only the owner can share this', 'above')} onClick={() => activateOrExplain(manageSelectionBlock([previewDoc.raw], user?.id, 'share'), () => onShare && onShare([previewDoc.raw]))} aria-label="Share"><Icon name="share" size={16} /></button>
+                {homeDownloadOn && onOpenDocument && canDownloadDoc(previewDoc.raw) && (
+                  <button className="btn documents-preview-share" data-home-download="" {...tip('Download with marks', 'above')} onClick={() => { requestHomeDownload(previewDoc.raw.id); onOpenDocument(previewDoc.raw); }} aria-label="Download"><Icon name="download" size={16} /></button>
+                )}
               </div>
               {/* The row's double-click opens the file too; say so (mouse only). */}
               <div className="documents-preview-open-hint">Double-click a row to open it</div>
@@ -1160,6 +1215,9 @@ export default function DocumentsLedger({
               <div className="documents-mobile-detail-actions">
                 <button type="button" className="btn primary" onClick={() => { setMobileDetailId(null); onOpenDocument && onOpenDocument(mobileDetailDoc.raw); }}>Open file</button>
                 <button type="button" className="btn documents-preview-share" aria-disabled={canManageDoc(mobileDetailDoc.raw) ? undefined : true} {...tip(canManageDoc(mobileDetailDoc.raw) ? 'Share' : 'Only the owner can share this', 'above')} onClick={() => activateOrExplain(manageSelectionBlock([mobileDetailDoc.raw], user?.id, 'share'), () => { setMobileDetailId(null); onShare && onShare([mobileDetailDoc.raw]); })} aria-label="Share"><Icon name="share" size={18} /></button>
+                {homeDownloadOn && onOpenDocument && canDownloadDoc(mobileDetailDoc.raw) && (
+                  <button type="button" className="btn documents-preview-share" data-home-download="" onClick={() => { setMobileDetailId(null); requestHomeDownload(mobileDetailDoc.raw.id); onOpenDocument(mobileDetailDoc.raw); }} aria-label="Download"><Icon name="download" size={18} /></button>
+                )}
               </div>
             </section>
           </div>
@@ -1210,6 +1268,10 @@ export default function DocumentsLedger({
             { label: 'Copy', onClick: () => setClipboardDoc(doc.raw) },
             { label: 'Paste', disabled: !clipboardDoc, onClick: () => clipboardDoc && onDuplicate && onDuplicate([clipboardDoc]) },
             ...(onPdfTools ? [{ label: 'PDF tools…', onClick: () => onPdfTools([doc.raw]) }] : []),
+            ...(homeDownloadOn && onOpenDocument && canDownloadDoc(doc.raw) ? [{
+              label: 'Download',
+              onClick: () => { requestHomeDownload(doc.raw.id); onOpenDocument(doc.raw); },
+            }] : []),
             { label: 'Delete', danger: true, reason: manageSelectionBlock([doc.raw], user?.id, 'delete'), onClick: () => onDelete && onDelete([doc.raw]) },
             { label: 'Share', reason: manageSelectionBlock([doc.raw], user?.id, 'share'), onClick: () => onShare && onShare([doc.raw]) },
             {

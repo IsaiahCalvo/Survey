@@ -8,6 +8,8 @@
 // consent page's last screen (public/google-connected.html). It is saved where
 // the connect loop looks (src/services/sheetSyncClaim.js), so nobody types it.
 import { rememberClaim } from '../services/sheetSyncClaim.js';
+import { nativeBackAction } from '../utils/backNavigation.js';
+import { isFeatureOn } from '../featureFlags.js';
 
 const APP_HOSTS = new Set(['surveytool.app', 'www.surveytool.app']);
 const APP_PATH = /^\/invite\/[^/?#]+/;
@@ -45,6 +47,15 @@ export function installNativeDeepLinks(win = typeof window !== 'undefined' ? win
       if (claim) { rememberClaim(claim.provider, claim.code); return; }
       const route = deepLinkRoute(url);
       if (route) win.location.assign(route);
+    });
+    // Android back button: back through the page history (which closes an
+    // open sheet, then the document: src/utils/backNavigation.js), and at
+    // the bottom minimise with the flag on, else quit as before.
+    App.addListener('backButton', ({ canGoBack }) => {
+      const action = nativeBackAction({ canGoBack, enabled: isFeatureOn('back-button') });
+      if (action === 'back') win.history.back();
+      else if (action === 'minimize') App.minimizeApp();
+      else App.exitApp();
     });
   }).catch((err) => console.warn('[nativeDeepLinks] not started', err));
   return true;

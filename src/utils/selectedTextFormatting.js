@@ -20,6 +20,7 @@
 
 import { isTextColorValue } from './textColorOpacity.js';
 import { placeResizedCalloutBox } from './calloutGeometry.js';
+import { textWrapsWords, wrapTextCss } from './textWrapMode.js';
 
 const CALLOUT_FALLBACK = Object.freeze({
   fontColor: '#1e293b',
@@ -210,6 +211,7 @@ const calloutFont = (style) => ({
   lineHeight: (Number(style?.lineHeight) || 1) * 1.13,
   // buildCalloutTextContentStyle turns kerning and ligatures off.
   plainGlyphs: true,
+  wrapWords: style?.wrapWords === true,
 });
 
 /** A callout's stored box and leader in page units. */
@@ -326,6 +328,7 @@ export function refitTextboxToText(annotation, measure) {
       fontStyle: annotation.fontStyle || 'normal',
       // The text box renderer's line step: (lineHeight || 1.16) x 1.13.
       lineHeight: (Number(annotation.lineHeight) || 1.16) * 1.13,
+      wrapWords: textWrapsWords(annotation),
     },
     measure,
   });
@@ -343,13 +346,14 @@ export function refitTextboxToText(annotation, measure) {
 
 /**
  * Browser measurer: lays the text out off-screen with the renderers' wrap
- * rules (pre-wrap, break-all; callouts also drop kerning/ligatures) and reads scrollHeight,
+ * rules (pre-wrap, the mark's wrap mode; callouts also drop kerning/ligatures) and reads scrollHeight,
  * exactly what the live editor reads. Null outside a browser.
  * With `query: 'widestWord'` it returns the width of the widest single word
  * laid out on one line instead (refitCalloutToText widens a box to it).
  */
 export function measureTextLayoutHeight({
   text, innerWidth, fontSize, fontFamily, fontWeight, fontStyle, lineHeight, plainGlyphs = false, query = null,
+  wrapWords = false,
 }) {
   if (typeof document === 'undefined' || !document.body) return null;
   const el = document.createElement('div');
@@ -374,8 +378,7 @@ export function measureTextLayoutHeight({
       textRendering: 'geometricPrecision',
     } : {}),
     whiteSpace: 'pre-wrap',
-    wordWrap: 'break-word',
-    wordBreak: 'break-all',
+    ...wrapTextCss(wrapWords),
     boxSizing: 'border-box',
     padding: '0',
     margin: '0',

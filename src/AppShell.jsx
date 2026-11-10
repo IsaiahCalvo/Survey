@@ -17,6 +17,8 @@ import CounterSeriesMenu, { counterSeriesMenuWidth } from './components/CounterS
 import PageGridToggle, { PageGridGlyph } from './components/PageGridToggle';
 import DocumentVersionsButton, { DocumentVersionsDialogs, useDocumentVersions } from './components/DocumentVersionsButton.jsx';
 import { requestMarkCommentsFocus } from './services/markCommentsFocus.js';
+import { OPEN_VIEWER_SHARE_EVENT } from './utils/viewerShare.js';
+import { HOME_DOWNLOAD_EVENT } from './utils/homeDownload.js';
 import { OPEN_EXPORT_PDF_EVENT } from './utils/exportPdfModes.js';
 import { PageGridMenu } from './components/PageGridSettings';
 import RailFlyout from './components/RailFlyout.jsx';
@@ -121,6 +123,14 @@ import DismissBarrier from './components/DismissBarrier.jsx';
 import PencilModeControl, { usePencilMode } from './components/PencilModeControl.jsx';
 import { PinIcon, getPinnedToolsStore, usePinnedTools } from './pinnedTools/pinnedToolsShared.jsx';
 import { isFeatureOn } from './featureFlags.js';
+import { quickColoursForTool } from './utils/quickStylePresets.js';
+import { installHomeBack, installViewerBack } from './utils/backNavigation.js';
+import { steppedTabId, tabStepForKey } from './utils/tabKeys.js';
+import { setMarksHidden, useMarksHidden } from './utils/marksHidden.js';
+import { enterBrowserFullscreen, isFocusModeKey, leaveBrowserFullscreen } from './utils/focusMode.js';
+import EyeGlyph from './components/EyeGlyph.jsx';
+import './styles/marksHidden.css';
+import { isTypingTarget } from './utils/typingTarget.js';
 import { usePolylineCurve } from './hooks/usePolylineCurve.js';
 import { POLYLINE_CURVE_SET_EVENT } from './utils/polySpline.js';
 import { sanitizeZoomInput } from './utils/pageNavigationMath.js';
@@ -199,6 +209,11 @@ const PinnedToolsDockChunk = preloadedComponent(() => import('./components/Pinne
 const PinnedToolsDock = PinnedToolsDockChunk.Component;
 const ExportPdfDialogChunk = preloadedComponent(() => import('./components/ExportPdfDialog'));
 const ExportPdfDialog = ExportPdfDialogChunk.Component;
+// Share from inside a document (Nightly 'viewer-share'): the Home share dialogs.
+const ShareModalChunk = preloadedComponent(() => import('./home/ShareModal'));
+const ShareModal = ShareModalChunk.Component;
+const AccessManagementModalChunk = preloadedComponent(() => import('./home/AccessManagementModal'));
+const AccessManagementModal = AccessManagementModalChunk.Component;
 
 // Lazy boundary: the dashboard paints without pulling in the viewer (and its
 // fabric / annotation / Excel weight). The viewer chunk fetches the first time
@@ -558,6 +573,10 @@ const BLEND_MODE_SAMPLES = Object.freeze({
   layered: BLEND_SAMPLE_SEE_THROUGH,
   uniform: BLEND_SAMPLE_SOLID,
 });
+
+// The phone hub's panels: the dock's middle button names and lights the one
+// that is open (beta panels show in the hub's tab row when their flag is on).
+const MOBILE_HUB_PANELS = Object.freeze(['pages', 'search', 'bookmarks', 'layers', 'library', 'comments', 'markups']);
 
 export default function App({ devPreviewReturnTab = null }) {
   useEffect(() => schedulePdfViewerPrefetch(loadPDFViewerModule), []);
@@ -1916,20 +1935,43 @@ export default function App({ devPreviewReturnTab = null }) {
     };
     if (!inFront) handleTabClick(tabId);
   };
+  // Download from Home (Nightly 'home-download', utils/homeDownload.js): the
+  // row opens its document; the export waits for that document's viewer. The
+  // pending download names the document, since its tab may not exist yet.
+  useEffect(() => {
+    if (!isFeatureOn('home-download')) return undefined;
+    const onHomeDownload = (event) => {
+      const documentId = event?.detail?.documentId;
+      if (!documentId) return;
+      const openTab = tabsRef.current.find((t) => persistableDocumentId(t) === documentId);
+      pendingTabDownloadRef.current = {
+        documentId,
+        // An already-open document keeps its viewer (and its api) when it is
+        // brought up again; a new one must wait for a fresh api.
+        staleApi: openTab && !openTab.restorePending ? null : bottomToolbarApiRef.current,
+        wasLoaded: Boolean(openTab && !openTab.restorePending),
+        at: Date.now(),
+      };
+    };
+    window.addEventListener(HOME_DOWNLOAD_EVENT, onHomeDownload);
+    return () => window.removeEventListener(HOME_DOWNLOAD_EVENT, onHomeDownload);
+  }, []);
   useEffect(() => {
     const pending = pendingTabDownloadRef.current;
     if (!pending) return;
-    if (Date.now() - pending.at > 30000 || !tabs.some((t) => t.id === pending.tabId)) {
+    const pendingTabId = pending.tabId
+      ?? tabs.find((t) => persistableDocumentId(t) === pending.documentId)?.id;
+    if (Date.now() - pending.at > 30000 || (pending.tabId && !tabs.some((t) => t.id === pending.tabId))) {
       pendingTabDownloadRef.current = null;
       return;
     }
-    if (activeTabId !== pending.tabId || currentView !== 'viewer') return;
+    if (!pendingTabId || activeTabId !== pendingTabId || currentView !== 'viewer') return;
     const api = bottomToolbarApi;
     if (!api || api === pending.staleApi || typeof api.exportAnnotatedPdf !== 'function' || !(api.numPages > 0)) return;
     pendingTabDownloadRef.current = null;
     clearTimeout(tabDownloadTimerRef.current);
     tabDownloadTimerRef.current = setTimeout(() => {
-      if (activeTabIdRef.current !== pending.tabId) return;
+      if (activeTabIdRef.current !== pendingTabId) return;
       bottomToolbarApiRef.current?.exportAnnotatedPdf?.();
     }, pending.wasLoaded ? 0 : 1500);
   }, [bottomToolbarApi, activeTabId, currentView, tabs]);
@@ -2180,6 +2222,81 @@ export default function App({ devPreviewReturnTab = null }) {
     return () => window.removeEventListener(RENAME_OPEN_DOCUMENT_EVENT, rename);
   }, [signedInForRename]);
   const isViewerVisible = activeTab && !activeTab.isHome && selectedPDF && currentView === 'viewer';
+  // Hide all marks (Nightly, 'hide-marks'): an eye in the right rail and a
+  // chip over the page while they are hidden (utils/marksHidden.js).
+  const [hideMarksEnabled] = useState(() => isFeatureOn('hide-marks'));
+  const allMarksHidden = useMarksHidden();
+  // Focus mode (Nightly, 'focus-mode'; utils/focusMode.js): no tab strip or
+  // side rails, browser full screen, an Exit chip that always shows.
+  const [focusModeEnabled] = useState(() => isFeatureOn('focus-mode'));
+  const [focusMode, setFocusMode] = useState(false);
+  const focusOn = focusModeEnabled && focusMode && Boolean(isViewerVisible) && !isNarrowShell;
+  const toggleFocusMode = useCallback((next) => {
+    setFocusMode((current) => {
+      const value = typeof next === 'boolean' ? next : !current;
+      if (value) enterBrowserFullscreen();
+      else leaveBrowserFullscreen();
+      return value;
+    });
+  }, []);
+  useEffect(() => {
+    // Only while a document is open: on Home the chord is the browser's own.
+    if (!focusModeEnabled || !isViewerVisible) return undefined;
+    const onKey = (event) => {
+      if (!isFocusModeKey(event) || isTypingTarget(event.target)) return;
+      // Capture, ahead of the viewer's Ctrl/Cmd+F (search) handler.
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      toggleFocusMode();
+    };
+    const onFullscreen = () => { if (!document.fullscreenElement) setFocusMode(false); };
+    window.addEventListener('keydown', onKey, true);
+    document.addEventListener('fullscreenchange', onFullscreen);
+    return () => {
+      window.removeEventListener('keydown', onKey, true);
+      document.removeEventListener('fullscreenchange', onFullscreen);
+    };
+  }, [focusModeEnabled, toggleFocusMode, Boolean(isViewerVisible)]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The rails and tab strip come and go without a window resize when the
+  // browser refuses full screen, so tell the viewer the space changed; a
+  // fit zoom re-fits to it, a picked zoom stays.
+  useEffect(() => {
+    if (!focusModeEnabled) return undefined;
+    const frame = requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
+    return () => cancelAnimationFrame(frame);
+  }, [focusModeEnabled, focusOn]);
+  useEffect(() => {
+    if (focusMode && !isViewerVisible) toggleFocusMode(false);
+  }, [focusMode, Boolean(isViewerVisible)]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Alt+Shift+] / [ steps through the open documents (Nightly, 'tab-keys').
+  const [tabKeysEnabled] = useState(() => isFeatureOn('tab-keys'));
+  useEffect(() => {
+    if (!tabKeysEnabled) return undefined;
+    const onKey = (event) => {
+      const step = tabStepForKey(event);
+      if (!step || isTypingTarget(event.target)) return;
+      const ids = tabsRef.current.filter((tab) => !tab.isHome).map((tab) => tab.id);
+      const next = steppedTabId(ids, activeTabIdRef.current, step);
+      if (!next || next === activeTabIdRef.current) return;
+      event.preventDefault();
+      stableTabClick(next);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [tabKeysEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Back (browser gesture, Android button) closes the open sheet, then the
+  // document, instead of leaving Survey (Nightly, 'back-button').
+  const [backButtonEnabled] = useState(() => isFeatureOn('back-button'));
+  const [toolQuickColoursOn] = useState(() => isFeatureOn('tool-quick-colours'));
+  useEffect(() => {
+    if (!backButtonEnabled || !isViewerVisible) return undefined;
+    return installViewerBack(window, () => stableBack());
+  }, [backButtonEnabled, Boolean(isViewerVisible)]); // eslint-disable-line react-hooks/exhaustive-deps
+  // On home, back closes an open sheet or dialog (Settings, Share...) first.
+  useEffect(() => {
+    if (!backButtonEnabled || isViewerVisible) return undefined;
+    return installHomeBack(window);
+  }, [backButtonEnabled, Boolean(isViewerVisible)]); // eslint-disable-line react-hooks/exhaustive-deps
   const isMobileViewer = Boolean(isNarrowShell && isViewerVisible);
   // Shift+S flips snapping (the rail's magnet button says the same).
   useSnappingShortcut(Boolean(isViewerVisible));
@@ -2191,11 +2308,35 @@ export default function App({ devPreviewReturnTab = null }) {
   // components/ExportPdfDialog.jsx. The phone header asks with an event.
   const [exportModesEnabled] = useState(() => isFeatureOn('export-modes'));
   const [exportPdfDialogOpen, setExportPdfDialogOpen] = useState(false);
+  // Share from inside a document (Drawboard PDF Pro trial audit 2026-11-09:
+  // Drawboard shares from its viewer top bar; Survey only from Home). The
+  // owner gets Manage access, anyone else the plain Share dialog, as on Home.
+  const [viewerShareEnabled] = useState(() => isFeatureOn('viewer-share'));
+  const [viewerShare, setViewerShare] = useState(null);
+  const activeShareDocId = viewerShareEnabled ? persistableDocumentId(activeTab) : null;
+  const openViewerShare = () => {
+    if (!activeShareDocId || !user?.id) return;
+    const row = documents.find((d) => String(d?.id) === String(activeShareDocId))
+      || { id: activeShareDocId, name: activeTab?.name || '' };
+    setViewerShare({ item: row, name: row.name || activeTab?.name || '', manage: row.user_id === user.id });
+  };
   useEffect(() => {
     if (!canFetchChunksNow()) return;
     if (pinnedToolsEnabled) PinnedToolsDockChunk.load().catch(() => {});
     if (exportModesEnabled) ExportPdfDialogChunk.load().catch(() => {});
-  }, [pinnedToolsEnabled, exportModesEnabled]);
+    if (viewerShareEnabled) {
+      ShareModalChunk.load().catch(() => {});
+      AccessManagementModalChunk.load().catch(() => {});
+    }
+  }, [pinnedToolsEnabled, exportModesEnabled, viewerShareEnabled]);
+  const openViewerShareRef = useRef(openViewerShare);
+  openViewerShareRef.current = openViewerShare;
+  useEffect(() => {
+    if (!viewerShareEnabled) return undefined;
+    const open = () => openViewerShareRef.current();
+    window.addEventListener(OPEN_VIEWER_SHARE_EVENT, open);
+    return () => window.removeEventListener(OPEN_VIEWER_SHARE_EVENT, open);
+  }, [viewerShareEnabled]);
   useEffect(() => {
     if (!exportModesEnabled) return undefined;
     const open = () => setExportPdfDialogOpen(true);
@@ -2424,7 +2565,7 @@ export default function App({ devPreviewReturnTab = null }) {
   }, [leftRailApi, rightRailApi, activeTabId, activeTab?.file]);
 
   const toggleMobileDocumentHub = useCallback(() => {
-    const activePanel = ['pages', 'search', 'bookmarks'].includes(mobileDocumentPanelState.activePanel)
+    const activePanel = MOBILE_HUB_PANELS.includes(mobileDocumentPanelState.activePanel)
       ? mobileDocumentPanelState.activePanel
       : 'pages';
     openMobileDocumentPanel(activePanel);
@@ -2831,7 +2972,7 @@ export default function App({ devPreviewReturnTab = null }) {
         />
       </div>
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }} {...viewerDropProps}>
-        {tabs.length > 0 && !isNarrowShell && ( // Desktop-only: mobile navigation lives inside the home/viewer chrome.
+        {tabs.length > 0 && !isNarrowShell && !focusOn && ( // Desktop-only: mobile navigation lives inside the home/viewer chrome.
           // KAL-65: the tab strip shows over the hub too, where the viewer's
           // chip host is not mounted, so it brings its own shared host.
           <TooltipProvider>
@@ -2955,6 +3096,20 @@ export default function App({ devPreviewReturnTab = null }) {
                   onOpen={openSpacesFromChip}
                   onTurnOff={turnOffSpaceFromChip}
                 />
+              )}
+              {activeShareDocId && user?.id && (
+                <button
+                  type="button"
+                  data-viewer-share="true"
+                  className="chrome-control"
+                  aria-label="Share"
+                  aria-haspopup="dialog"
+                  {...chromeTip('Share this document', 'below')}
+                  onClick={openViewerShare}
+                  style={{ border: 'none', background: 'transparent', color: 'var(--text-2)', cursor: 'pointer' }}
+                >
+                  <Icon name="share" size={CHROME_GLYPH} />
+                </button>
               )}
               <DocumentVersionsButton state={documentVersions} tip={chromeTip} />
               {/* Export annotated PDF — browser-visible entry point for the
@@ -3914,6 +4069,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     neither. */}
                 {showsQuickColourDots(bottomToolbarApi) && annotationPaint && (
                   <QuickColourDots
+                    {...quickColoursForTool(bottomToolbarApi.contextTool || bottomToolbarApi.activeTool, toolQuickColoursOn)}
                     // w41: picked marks in different colours ring no dot.
                     value={bottomToolbarApi.selectionMixed?.strokeColor ? null : annotationPaint.quick.color}
                     customActive={bottomToolbarApi.selectionMixed?.strokeColor ? false : undefined}
@@ -4630,7 +4786,7 @@ export default function App({ devPreviewReturnTab = null }) {
           <div
             id="chrome-left-host"
             style={{
-              display: isViewerVisible ? 'flex' : 'none',
+              display: isViewerVisible && !focusOn ? 'flex' : 'none',
               flexGrow: 0,
               flexBasis: isMobileViewer ? 'var(--mobile-rail-w)' : '48px',
               width: isMobileViewer ? 'var(--mobile-rail-w)' : '48px',
@@ -4915,7 +5071,7 @@ export default function App({ devPreviewReturnTab = null }) {
           <div
             id="chrome-right-host"
             style={{
-              display: isViewerVisible ? 'flex' : 'none',
+              display: isViewerVisible && !focusOn ? 'flex' : 'none',
               flexGrow: 0,
               flexBasis: isMobileViewer ? '0px' : '48px',
               flexShrink: 0,
@@ -5376,6 +5532,31 @@ export default function App({ devPreviewReturnTab = null }) {
                         <SnappingGlyph size={RAIL_CONTROL_GLYPH} off={!on} />
                       </button>
                     )} />
+                    {hideMarksEnabled && (
+                      <button
+                        type="button"
+                        onClick={() => setMarksHidden(!allMarksHidden)}
+                        aria-label="Hide all marks"
+                        aria-pressed={allMarksHidden}
+                        data-hide-marks-toggle="true"
+                        {...chromeTip(allMarksHidden ? 'Show all marks' : 'Hide all marks', 'left')}
+                        style={{ ...footerBtn(), color: allMarksHidden ? 'var(--text-1)' : 'var(--text-3)' }}
+                      >
+                        <EyeGlyph open={!allMarksHidden} size={RAIL_CONTROL_GLYPH} />
+                      </button>
+                    )}
+                    {focusModeEnabled && (
+                      <button
+                        type="button"
+                        onClick={() => toggleFocusMode(true)}
+                        aria-label="Focus mode"
+                        data-focus-mode-toggle="true"
+                        {...chromeTip('Focus mode', 'left')}
+                        style={footerBtn()}
+                      >
+                        <Icon name="focusMode" size={RAIL_CONTROL_GLYPH} color="currentColor" />
+                      </button>
+                    )}
                     {/* drawboardAudit C2: the Pencil-only switch sits where
                         Drawboard keeps it - the utility end of the bar holding
                         the page controls. Nothing renders (no rule either)
@@ -5414,7 +5595,7 @@ export default function App({ devPreviewReturnTab = null }) {
             onOpenPanel={openMobileDocumentPanel}
             onToggleHub={toggleMobileDocumentHub}
             onOpenSurvey={openMobileSurveyPanel}
-            hubMode={['pages', 'search', 'bookmarks'].includes(mobileDocumentPanelState.activePanel) ? mobileDocumentPanelState.activePanel : 'pages'}
+            hubMode={MOBILE_HUB_PANELS.includes(mobileDocumentPanelState.activePanel) ? mobileDocumentPanelState.activePanel : 'pages'}
             spacesActive={Boolean(leftRailApi?.activeSpaceId)}
             surveyActive={Boolean(rightRailApi?.showSurveyPanel)}
             openPanel={mobileSurveyPanelOpen
@@ -5422,7 +5603,7 @@ export default function App({ devPreviewReturnTab = null }) {
               : (mobileDocumentPanelState.isOpen
                 ? (mobileDocumentPanelState.activePanel === 'spaces'
                   ? 'spaces'
-                  : (['pages', 'search', 'bookmarks'].includes(mobileDocumentPanelState.activePanel) ? 'hub' : null))
+                  : (MOBILE_HUB_PANELS.includes(mobileDocumentPanelState.activePanel) ? 'hub' : null))
                 : null)}
           />
         )}
@@ -5483,6 +5664,17 @@ export default function App({ devPreviewReturnTab = null }) {
           covered the zoom controls; that pill is gone, and the sheet itself
           renders nothing until it is opened.) */}
       <KeyboardShortcutsOverlay />
+      {focusOn && (
+        <button type="button" className="focus-mode-exit" data-focus-mode-exit="" onClick={() => toggleFocusMode(false)}>
+          Exit focus
+        </button>
+      )}
+      {hideMarksEnabled && allMarksHidden && Boolean(isViewerVisible) && (
+        <div className="marks-hidden-chip" role="status" data-marks-hidden-chip="">
+          <span>Marks hidden</span>
+          <button type="button" onClick={() => setMarksHidden(false)}>Show</button>
+        </div>
+      )}
       {exportModesEnabled && (
         <ExportPdfDialog
           open={exportPdfDialogOpen && Boolean(bottomToolbarApi?.exportPdfWithOptions)}
@@ -5490,6 +5682,28 @@ export default function App({ devPreviewReturnTab = null }) {
           fileName={activeTab?.name || activeTab?.file?.name || ''}
           onClose={() => setExportPdfDialogOpen(false)}
         />
+      )}
+      {viewerShareEnabled && viewerShare && (
+        // Over the open document, whose viewer sits at z-index 5000 (the
+        // Home dialogs' own 1300 only ever covers Home).
+        <div data-viewer-share-dialogs="" style={{ position: 'absolute', top: 0, left: 0, width: 0, zIndex: 6500 }}>
+        <Suspense fallback={null}>
+          <ShareModal
+            open={!viewerShare.manage}
+            kind="document"
+            name={viewerShare.name}
+            item={viewerShare.item}
+            onClose={() => setViewerShare(null)}
+          />
+          <AccessManagementModal
+            open={viewerShare.manage}
+            kind="document"
+            item={viewerShare.item}
+            user={user}
+            onClose={() => setViewerShare(null)}
+          />
+        </Suspense>
+        </div>
       )}
       <DocumentVersionsDialogs state={documentVersions} />
       <TooltipChipHost setterRef={shellTooltipSetterRef} />

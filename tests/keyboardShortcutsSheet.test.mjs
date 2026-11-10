@@ -15,6 +15,9 @@ import {
 } from '../src/utils/keyboardShortcuts.js';
 import { TOOL_SHORTCUTS } from '../src/utils/toolShortcuts.js';
 import { isRedoKeyEvent, isUndoKeyEvent } from '../src/utils/undoRedoHotkeys.js';
+import { tabStepForKey } from '../src/utils/tabKeys.js';
+import { measureKindForKey } from '../src/utils/measure/measureKeys.js';
+import { isFocusModeKey } from '../src/utils/focusMode.js';
 import { isTypingTarget, nudgeDeltaForKey } from '../src/utils/annotationFamilyRules.js';
 import { isAnnotationSnapFree, isSnapFreeModifier } from '../src/utils/snapGuides.js';
 
@@ -219,6 +222,23 @@ const HANDLED = {
   'alt+drag': () => isSnapFreeModifier({ altKey: true }) && isAnnotationSnapFree({ altKey: true }),
   'mod+o': () => /accelerator: 'CmdOrCtrl\+O'/.test(SRC.electron) && /electronAPI\.onOpenPdfMenu\(/.test(SRC.dashboard),
   'mod+shift+e': () => /accelerator: 'CmdOrCtrl\+Shift\+E'/.test(SRC.electron) && /electronAPI\.onExportAnnotatedPdfMenu\(/.test(SRC.viewer),
+  // Nightly 'focus-mode': AppShell listens in the capture phase, ahead of
+  // the viewer's Cmd/Ctrl+F.
+  'mod+shift+f': () => isFocusModeKey(ev('F', { ctrlKey: true, shiftKey: true })) && !isFocusModeKey(ev('f', { ctrlKey: true }))
+    && /isFocusModeKey\(event\)/.test(SRC.shell) && /window\.addEventListener\('keydown', onKey, true\)/.test(SRC.shell),
+  // Nightly 'zoom-to-area': the viewer starts a box on Ctrl/⌘+Shift and zooms on release.
+  'mod+shift+drag': () => /isZoomToAreaStart\(event\)/.test(read('src/components/PdfjsViewerContainer.jsx'))
+    && /zoomToAreaPlan\(\{/.test(read('src/components/PdfjsViewerContainer.jsx')),
+  // Nightly 'tab-keys': by key code, and AppShell steps the tabs with it.
+  'alt+shift+]': () => tabStepForKey(ev('}', { altKey: true, shiftKey: true, code: 'BracketRight' })) === 1
+    && tabStepForKey(ev(']', { code: 'BracketRight' })) === 0 && /tabStepForKey\(event\)/.test(SRC.shell),
+  'alt+shift+[': () => tabStepForKey(ev('{', { altKey: true, shiftKey: true, code: 'BracketLeft' })) === -1
+    && /steppedTabId\(/.test(SRC.shell),
+  // Nightly 'measure-keys': by key code; the viewer arms the measure kind.
+  'alt+shift+l': () => measureKindForKey(ev('¬', { altKey: true, shiftKey: true, code: 'KeyL' })) === 'length'
+    && /measureKindForKey\(e, \{ depth: measureDepthEnabled \}\)/.test(SRC.viewer),
+  'alt+shift+p': () => measureKindForKey(ev('∏', { altKey: true, shiftKey: true, code: 'KeyP' })) === 'perimeter',
+  'alt+shift+a': () => measureKindForKey(ev('Å', { altKey: true, shiftKey: true, code: 'KeyA' })) === 'area',
 };
 
 test('every row on the sheet has a key handler behind it', () => {

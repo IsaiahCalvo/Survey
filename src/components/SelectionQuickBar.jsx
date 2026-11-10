@@ -28,6 +28,7 @@
 //     (`phone`) the bar holds only Duplicate and Delete, sized for a finger
 //     (owner 2026-10-28: a visible Delete, like Drawboard; long press still
 //     opens the full menu).
+import { isFeatureOn } from '../featureFlags.js';
 import { isInTabBehind } from '../utils/tabBehind.js';
 import { resolveViewerOcclusionInsets } from '../utils/searchMatchNavigation.js';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -245,6 +246,7 @@ export default function SelectionQuickBar({
   const active = Boolean(enabled && items.length > 0 && !editingText);
   const activeRef = useRef(active);
   activeRef.current = active;
+  const [phoneMoreOn] = useState(() => isFeatureOn('phone-mark-more'));
   const phoneRef = useRef(phone);
   phoneRef.current = phone;
 
@@ -569,7 +571,9 @@ export default function SelectionQuickBar({
       {plan?.remove && button('Delete', 'trash', () => runKey('delete'))}
     </span>,
   );
-  if (plan?.more && !phone) {
+  // The phone gets More too (Nightly, 'phone-mark-more'): the same mark menu a
+  // long press opens, one tap away.
+  if (plan?.more && (!phone || phoneMoreOn)) {
     groups.push(
       <span key="more" className="selection-quick-bar__group">
         {button('More', 'more', openMore, { 'aria-haspopup': 'menu' })}
