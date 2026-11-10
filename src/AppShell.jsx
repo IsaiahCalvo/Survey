@@ -3206,6 +3206,9 @@ export default function App({ devPreviewReturnTab = null }) {
             <span {...chromeTip(topToolbarApi?.canUndo ? 'Undo' : 'Nothing to undo', 'below')} style={{ display: 'inline-flex' }}>
               <button
                 onClick={topToolbarApi?.onUndo || (() => {})}
+                // A mouse press does not take keyboard focus, so Enter (which
+                // finishes a polygon) never presses this button again (R4-A).
+                onMouseDown={(event) => event.preventDefault()}
                 disabled={!topToolbarApi?.canUndo}
                 // UX 2026-09-16: Undo/Redo take the shared top-bar control
                 // size and glyph like every other button in this row. They
@@ -3227,6 +3230,9 @@ export default function App({ devPreviewReturnTab = null }) {
             <span {...chromeTip(topToolbarApi?.canRedo ? 'Redo' : 'Nothing to redo', 'below')} style={{ display: 'inline-flex' }}>
               <button
                 onClick={topToolbarApi?.onRedo || (() => {})}
+                // A mouse press does not take keyboard focus, so Enter (which
+                // finishes a polygon) never presses this button again (R4-A).
+                onMouseDown={(event) => event.preventDefault()}
                 disabled={!topToolbarApi?.canRedo}
                 // UX 2026-09-16: see Undo — shared top-bar control size + glyph.
                 className="btn chrome-control chrome-history"

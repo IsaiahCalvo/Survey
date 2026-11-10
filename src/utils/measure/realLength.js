@@ -4,7 +4,7 @@
  *
  * Plans are dimensioned in feet and inches, so the box takes what is written
  * on them: 20', 20' 6", 20'-6", 20-6 (feet), 6", 12 1/2", 3/4", 20 ft 6 in,
- * as well as a plain number in the picked unit. A length with foot or inch
+ * 6 m, 3.5 cm, 450 mm, 2 yd, as well as a plain number in the picked unit. A length with foot or inch
  * marks is turned into the picked unit, so 20' with Metres picked reads 6.096.
  */
 import { MEASURE_UNITS } from './measureScale.js';
@@ -29,6 +29,17 @@ export function parseRealLength(input, unit) {
     .replace(/[’′‘`]/g, "'")
     .replace(/[”″“]|''/g, '"');
   if (!text) return null;
+  // 6 m, 3.5 cm, 450mm, 2 yd: a number with a unit word, turned into `unit`
+  // (R4-A: metric was refused with no reason).
+  const withUnit = text.match(/^(\d+(?:\.\d+)?|\.\d+)\s*(mm|millimet(?:er|re)s?|cm|centimet(?:er|re)s?|m|met(?:er|re)s?|yds?|yards?)\.?$/);
+  if (withUnit) {
+    const word = withUnit[2];
+    const from = word.startsWith('mm') || word.startsWith('milli') ? 'mm'
+      : word.startsWith('c') ? 'cm'
+        : word.startsWith('y') ? 'yd' : 'm';
+    const value = (Number(withUnit[1]) * MEASURE_UNITS[from].inches) / MEASURE_UNITS[unit].inches;
+    return Number.isFinite(value) && value > 0 ? value : null;
+  }
   const feetRe = new RegExp(`${NUM}\\s*(?:'|ft\\.?|feet|foot)`);
   const inchRe = new RegExp(`${NUM}\\s*(?:"|in\\.?|inch(?:es)?)`);
   const ft = text.match(feetRe);

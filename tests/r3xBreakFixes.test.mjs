@@ -25,7 +25,8 @@ test('Search keeps Match case / Whole word with the query across a remount', () 
 test('hiding marks drops the pick and blocks mark-changing keys', () => {
   const src = read('PDFViewer.jsx');
   assert.match(src, /if \(marksHidden\(\)\) clearAnnotationSelectionForContextChange\('marks-hidden'\)/);
-  assert.match(src, /if \(!marksHidden\(\) \|\| isTypingTarget\(event\.target\)\) return;/);
+  // Only the front viewer swallows the keys (Home and other tabs keep theirs).
+  assert.match(src, /if \(!marksHidden\(\) \|\| undoRedoKeyActiveRef\.current === false \|\| isTypingTarget\(event\.target\)\) return;/);
 });
 
 test('the Undo buttons step back a polygon point first', () => {

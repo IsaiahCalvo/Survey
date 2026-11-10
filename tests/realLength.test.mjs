@@ -41,3 +41,13 @@ test('paper length words', () => {
   assert.equal(paperLengthWords(72, true), '25.4 mm on paper');
   assert.equal(paperLengthWords(0), '');
 });
+
+test('metric and yard lengths with a unit are read and turned into the picked unit (R4-A)', () => {
+  assert.equal(parseRealLength('6 m', 'm'), 6);
+  assert.equal(parseRealLength('6m', 'm'), 6);
+  assert.ok(Math.abs(parseRealLength('3.5 cm', 'mm') - 35) < 1e-9);
+  assert.ok(Math.abs(parseRealLength('450mm', 'm') - 0.45) < 1e-9);
+  assert.ok(Math.abs(parseRealLength('2 yd', 'ft') - 6) < 1e-9);
+  assert.ok(Math.abs(parseRealLength('1 m', 'ft') - 3.2808398950131235) < 1e-9);
+  assert.equal(parseRealLength('0 m', 'm'), null);
+});

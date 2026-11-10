@@ -36,6 +36,7 @@ import { createPortal } from 'react-dom';
 import Icon from '../Icons';
 import { useTooltip } from './Tooltip';
 import { QuickColourDots, QuickPaintSwatch } from './QuickStyleControls';
+import { quickColoursForTool } from '../utils/quickStylePresets.js';
 import { SurveyEntitySwatch } from './SurveyEntityBar';
 import SurveyOverflowRow from './SurveyOverflowRow';
 import MeasureEditPopover from './MeasureEditPopover';
@@ -525,6 +526,7 @@ export default function SelectionQuickBar({
     groups.push(
       <span key="colour" className="selection-quick-bar__group" data-annotation-color-trigger>
         <QuickColourDots
+          {...quickColoursForTool(api?.quickColourTool || api?.contextTool, isFeatureOn('tool-quick-colours'))}
           value={api?.selectionMixed?.strokeColor ? null : paint.quick.color}
           customActive={api?.selectionMixed?.strokeColor ? false : undefined}
           onPick={(hex) => paint.quick.apply(hex, paint.quick.opacity)}

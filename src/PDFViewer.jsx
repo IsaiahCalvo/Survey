@@ -4279,9 +4279,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   useEffect(() => subscribeMarksHidden(() => {
     if (marksHidden()) clearAnnotationSelectionForContextChange('marks-hidden');
   }), [clearAnnotationSelectionForContextChange]);
+  // The eraser is not there while marks are hidden: it would rub out marks
+  // you cannot see (R4-A).
+  const allMarksHidden = useSyncExternalStore(subscribeMarksHidden, marksHidden, () => false);
   useEffect(() => {
     const onKey = (event) => {
-      if (!marksHidden() || isTypingTarget(event.target)) return;
+      // Only the front viewer: Home and other tabs keep their own keys.
+      if (!marksHidden() || undoRedoKeyActiveRef.current === false || isTypingTarget(event.target)) return;
       const key = String(event.key || '');
       const mod = event.ctrlKey || event.metaKey;
       const blocked = key === 'Delete' || key === 'Backspace' || (mod && /^[axdvgl]$/i.test(key));
@@ -38681,7 +38685,7 @@ ${pageBlocks}
                               />
                             </div>
                             )}
-                            {requiresLegacyAnnotationLayer && activeTool === 'eraser' && (
+                            {requiresLegacyAnnotationLayer && activeTool === 'eraser' && !allMarksHidden && (
                               <FabricEraserCanvas
                                 key={`erase-legacy-${pageNumber}`}
                                 pageNumber={pageNumber}
@@ -39207,7 +39211,7 @@ ${pageBlocks}
                               {/* Eraser Canvas — pointer/hit surface for erasing. The SVG layer
                                   stays visible beneath it until a stroke's live preview carves
                                   (onErasePreviewPresentation drives the per-page swap). */}
-                              {isEraserTool && (
+                              {isEraserTool && !allMarksHidden && (
                                 <FabricEraserCanvas
                                   key={`erase-${pageNumber}`}
                                   pageNumber={pageNumber}

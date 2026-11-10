@@ -3148,6 +3148,9 @@ const SVGAnnotationLayerBody = memo(({
   const polyPointerTypeRef = useRef('mouse');
   const stepBackPolyDraft = useCallback(() => {
     if (!polyDraftRef.current) return false;
+    // A draft left open on a tab you are not looking at never takes the
+    // front document's Undo.
+    if (!svgRef.current?.isConnected || svgRef.current.getClientRects().length === 0) return false;
     const next = removeLastPolyDraftPoint(polyDraftRef.current, { keepPreview: polyPointerTypeRef.current === 'mouse' });
     if (!next) { cancelPolyDraft(); return true; }
     polyDraftRef.current = next;

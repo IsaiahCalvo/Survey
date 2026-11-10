@@ -70,9 +70,12 @@ export function isPolyMeasureFor(tool, kind) {
 }
 
 /** A usable depth: a finite number above zero, else null. */
+export const MEASURE_DEPTH_MAX = 10000;
 export function normalizeMeasureDepth(value) {
   const n = Number(value);
-  return Number.isFinite(n) && n > 0 ? n : null;
+  // A depth past 10,000 drawing units is a typo (1e300 made the label
+  // unreadable), so it is refused like zero.
+  return Number.isFinite(n) && n > 0 && n <= MEASURE_DEPTH_MAX ? n : null;
 }
 
 export const MEASURE_DEPTH_STORAGE_KEY = 'survey:measure-depth';
@@ -462,7 +465,7 @@ export function buildMeasureLabel(obj, scale) {
     return base.text;
   };
   const lines = [];
-  if (label && shown.includes('label')) lines.push(label);
+  if (label && shown.includes('label')) lines.push(...wrapMeasureLabelLine(label));
   for (const field of readings) {
     const value = valueOf(field);
     // One reading reads bare, as today; several say which is which.
@@ -472,6 +475,24 @@ export function buildMeasureLabel(obj, scale) {
   const size = normalizeMeasureCaptionSize(measure.captionSize);
   if (size != null) out.fontPx = size;
   return out;
+}
+
+export const MEASURE_LABEL_WRAP_CHARS = 32;
+/** A long label breaks at spaces (or mid-word when one word is too long). */
+export function wrapMeasureLabelLine(text, max = MEASURE_LABEL_WRAP_CHARS) {
+  const out = [];
+  let line = '';
+  for (let word of String(text).split(' ')) {
+    while (word.length > max) {
+      if (line) { out.push(line); line = ''; }
+      out.push(word.slice(0, max));
+      word = word.slice(max);
+    }
+    if (!word) continue;
+    if (line && line.length + 1 + word.length > max) { out.push(line); line = word; } else line = line ? `${line} ${word}` : word;
+  }
+  if (line) out.push(line);
+  return out.length ? out : [String(text)];
 }
 
 function buildMeasureReading(obj, scale) {
