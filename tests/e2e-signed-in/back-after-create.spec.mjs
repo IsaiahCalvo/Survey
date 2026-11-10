@@ -38,8 +38,16 @@ for (const layout of ['desktop', 'phone']) {
           await page.goBack({ timeout: 5000 }).catch(() => {});
           await page.waitForTimeout(2500);
           expect(page.url().startsWith('http://127.0.0.1'), `Back ${delay} ms after Create stayed in Survey`).toBe(true);
+          // On a slow runner the dialog can still be "Creating..." here, and the
+          // document then opens late. Wait for the create to finish and for the
+          // document to show (if it opens) before going back to Home; clicking
+          // New behind the busy dialog hung the run until the test timeout.
+          await expect(dialog).toBeHidden({ timeout: 60_000 });
+          expect(page.url().startsWith('http://127.0.0.1'), `Back ${delay} ms after Create stayed in Survey once Create finished`).toBe(true);
+          const firstPage = page.locator('.survey-pdfjs-page-div[data-page-number="1"]').filter({ visible: true });
+          await firstPage.first().waitFor({ state: 'visible', timeout: 15_000 }).catch(() => {});
           // Back to Home for the next try (Back again if the document is still open).
-          if (await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').filter({ visible: true }).count()) {
+          if (await firstPage.count()) {
             await page.goBack({ timeout: 5000 }).catch(() => {});
             await page.waitForTimeout(1500);
             expect(page.url().startsWith('http://127.0.0.1')).toBe(true);
