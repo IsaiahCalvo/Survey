@@ -182,7 +182,7 @@ const FREE_TOOL_PICKS = [
 
 const PLANS = [
   { name: 'Free', price: '$0', per: '/month', note: 'For trying Survey on one project', cta: 'Start free', short: ['1 project, 5 documents, 100MB', 'Every markup tool, free', 'Count markers with totals'], items: ['1 project', '5 documents', '100MB storage', 'Every markup tool, including callouts, measuring and OCR', 'Count markers with totals', 'Works on every device'] },
-  { name: 'Pro', price: '$9.99', per: '/month', note: 'or $99 a year, which saves $20', cta: 'Start free, upgrade in the app', best: true, short: ['Unlimited projects and documents, 10GB', 'Site surveys with data export', 'Spaces, regions and templates', 'Share and edit together live'], items: ['Unlimited projects', 'Unlimited documents', '10GB storage', 'Site surveys with data export', 'Spaces and regions', 'Templates', 'Share with viewers and editors', 'Live editing together', 'OneDrive'] },
+  { name: 'Pro', price: '$9.99', per: '/month', note: 'or $99 a year, which saves $20', yearly: ['$99', '/year', 'About $8.25 a month, billed once a year'], cta: 'Start free, upgrade in the app', best: true, short: ['Unlimited projects and documents, 10GB', 'Site surveys with data export', 'Spaces, regions and templates', 'Share and edit together live'], items: ['Unlimited projects', 'Unlimited documents', '10GB storage', 'Site surveys with data export', 'Spaces and regions', 'Templates', 'Share with viewers and editors', 'Live editing together', 'OneDrive'] },
   { name: 'Enterprise', price: '$20', per: '/user/month', note: 'Minimum 3 users', cta: 'Email us', href: MAIL, short: ['Everything in Pro for every user', '1TB storage and priority support', 'Custom builds for your company'], items: ['Everything in Pro for every user', '1TB storage', 'Priority support', 'Company admin console and single sign-on: coming soon', 'Custom builds for your company'] },
 ];
 
@@ -297,11 +297,14 @@ const devs = () => `<div class="devs">
   <figure class="dev dev-ph"><div class="scr"><img src="/welcome/app-phone.webp" width="780" height="1688" loading="lazy" decoding="async" alt="Survey on a phone, zoomed in on the open office with count markers and a callout" /></div><figcaption>Phone</figcaption></figure>
 </div>`;
 
+// Monthly or yearly. Only Pro has a yearly price; site.js swaps the words in
+// every [data-m][data-y] element when the switch changes.
+const billing = () => `<div class="bill" role="group" aria-label="Billing period"><span class="bill-pill" aria-hidden="true"></span><button type="button" aria-pressed="true" data-bill="m">Monthly</button><button type="button" aria-pressed="false" data-bill="y">Yearly <span>save $20</span></button></div>`;
 const plans = (compact = false) => `<div class="plans${compact ? ' plans-sm' : ''}">${PLANS.map((p) => `
   <article class="plan${p.best ? ' best' : ''}">
     <h3>${p.name}</h3>${p.best ? '<p class="flag">Recommended</p>' : ''}
-    <p class="amt">${p.price}<small>${p.per}</small></p>
-    <p class="note">${p.note}</p>
+    <p class="amt">${p.yearly ? `<span class="swap" data-m="${p.price}" data-y="${p.yearly[0]}">${p.price}</span><small class="swap" data-m="${p.per}" data-y="${p.yearly[1]}">${p.per}</small>` : `${p.price}<small>${p.per}</small>`}</p>
+    <p class="note">${p.yearly ? `<span class="swap" data-m="${p.note}" data-y="${p.yearly[2]}">${p.note}</span>` : p.note}</p>
     <ul>${(compact ? p.short : p.items).map((i) => `<li>${i}</li>`).join('')}</ul>
     <a class="btn ${p.best ? 'primary' : 'ghost'}" href="${p.href || SIGNUP}">${p.cta}</a>
   </article>`).join('')}
@@ -326,8 +329,8 @@ export const cta = (h = 'Bring your next drawing set', company = false) => `<sec
 const showcase = (items, label) => `<div class="show" data-show>
     <div class="show-tabs" role="tablist" aria-label="${esc(label)}">${items.map((f, i) => `
       <div class="show-item${i ? '' : ' on'}" role="presentation">
-        <button class="show-tab" type="button" role="tab" id="tab-${f.id}" aria-controls="pane-${f.id}" aria-selected="${i ? 'false' : 'true'}" tabindex="${i ? '-1' : '0'}">${f.kicker ? `<span class="show-k">${f.kicker}</span>` : ''}<span class="show-name">${f.name}</span></button>
-        <div class="show-more"><div><p>${f.lead}</p>${f.ticks ? `<ul class="ticks">${f.ticks.map((t) => `<li>${t}</li>`).join('')}</ul>` : ''}</div></div>
+        <button class="show-tab" type="button" role="tab" id="tab-${f.id}" aria-controls="pane-${f.id}" aria-selected="${i ? 'false' : 'true'}" tabindex="${i ? '-1' : '0'}"><span class="show-name">${f.kicker || f.name}</span></button>
+        <div class="show-more"><div>${f.kicker ? `<p class="show-sub">${f.name}</p>` : ''}<p>${f.lead}</p>${f.ticks ? `<ul class="ticks">${f.ticks.map((t) => `<li>${t}</li>`).join('')}</ul>` : ''}</div></div>
         <i class="show-bar" aria-hidden="true"></i>
       </div>`).join('')}
     </div>
@@ -369,6 +372,9 @@ const TRUST = [
   ['key', 'Company sign-in', 'Single sign-on for your company email domain.', true],
 ];
 
+// The hero acts out the product on one loop (site.css, .stage): the cursor
+// presses N for Tested on Data point 2, the answered chip slides in and the
+// same row lands in the exported sheet, then it all resets.
 // The hero's export card: the "Data point - Power" sheet a survey like the
 // one in the screenshot exports (same items, answers and note).
 const SHEET_ROWS = [
@@ -408,14 +414,14 @@ const home = page({
   schema: [SOFTWARE, { '@type': 'WebSite', '@id': ORIGIN + '/#site', name: 'Survey', url: ORIGIN + '/welcome', publisher: { '@id': ORIGIN + '/#org' } }],
   body: `<section class="hero hero-c"><div class="wrap">
   <div class="hero-copy">
-    <p class="kicker">PDF markup and site surveys for construction</p>
     <h1>Mark up the plans. Survey the site. Export the data.</h1>
-    <p class="lede">Survey puts the drawing set on every screen your crew uses. Every markup tool is free, and surveys done on the plan come back as a spreadsheet the office can use the same day.</p>
+    <p class="lede">PDF markup and site surveys for construction drawings, on every screen your crew uses. Every markup tool is free, and surveys done on the plan come back as a spreadsheet the office can use the same day.</p>
     <div class="cta"><a class="btn primary lg" href="${SIGNUP}">Start free</a><a class="btn ghost lg" href="#how">See how it works</a></div>
     <p class="fine">No card. Nothing to install. Computer, tablet and phone.</p>
   </div>
   <div class="stage">
-    <div class="win"><div class="win-bar"><i></i><i></i><i></i><span>surveytool.app</span></div><img src="/welcome/survey.webp" srcset="/welcome/survey-800.webp 800w, /welcome/survey.webp 1600w" sizes="(max-width: 1180px) 100vw, 1120px" width="1600" height="1000" fetchpriority="high" decoding="async" alt="Survey on a floor plan: outlets and data points marked on the plan, and the survey panel with Data point 2 answered Patched Y, Tested N and the note Patch lead missing at desk 14" /></div>
+    <div class="win"><div class="win-bar"><i></i><i></i><i></i><span>surveytool.app</span></div><div class="win-shot"><img src="/welcome/survey.webp" srcset="/welcome/survey-800.webp 800w, /welcome/survey.webp 1600w" sizes="(max-width: 1180px) 100vw, 1120px" width="1600" height="1000" fetchpriority="high" decoding="async" alt="Survey on a floor plan: outlets and data points marked on the plan, and the survey panel with Data point 2 answered Patched Y, Tested N and the note Patch lead missing at desk 14" />
+      <span class="demo-ring" aria-hidden="true"></span><svg class="demo-cursor" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3l14 8.2-6.3 1.4L9.6 19z"/></svg></div></div>
     <div class="float chip-float" aria-hidden="true"><span class="chip-dot"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><span>Data point 2 answered<small>Patched Y · Tested N · 1 note</small></span></div>
     ${heroSheet()}
   </div>
@@ -426,13 +432,12 @@ const home = page({
 </div></section>
 
 <section class="sec" id="how"><div class="wrap">
-  <div class="head"><p class="eyebrow">Only in Survey</p><h2>From the drawing set to a spreadsheet</h2><p>Three things we have not found in any other PDF app.</p></div>
+  <div class="head"><h2>From the drawing set to a spreadsheet</h2><p>Three things we have not found in any other PDF app.</p></div>
   ${showcase(ONLY, 'Only in Survey')}
 </div></section>
 
 <section class="sec band-soft" id="tools"><div class="wrap tools-split">
   <div class="tools-copy">
-    <p class="eyebrow">Markup</p>
     <h2>Every markup tool, free</h2>
     <p>Pen, eraser, shapes, clouds, callouts, counts, measuring, OCR and page tools. No trial and no time limit.</p>
     <p class="fine">Callouts, measuring, OCR and page tools are paid extras in Drawboard PDF. In Survey they are free. <a href="/compare/drawboard">See the comparison</a></p>
@@ -442,7 +447,6 @@ const home = page({
 
 <section class="sec" id="security"><div class="wrap trust">
   <div>
-    <p class="eyebrow">For teams and companies</p>
     <h2>One set of drawings for the whole team</h2>
     <p class="lede">Invite people as viewers or editors. Everyone sees the same markups and survey answers, live, on any device.</p>
     <div class="trust-cards">${TRUST.map(([k, h, p, soon]) => `<div>${svg(k)}<h3>${h}${soon ? '<span class="soon">Coming soon</span>' : ''}</h3><p>${p}</p></div>`).join('')}</div>
@@ -451,14 +455,14 @@ const home = page({
 </div></section>
 
 <section class="sec band-soft"><div class="wrap">
-  <div class="head"><p class="eyebrow">Pricing</p><h2>Start free. Pay when the team needs more.</h2></div>
+  <div class="head"><h2>Start free. Pay when the team needs more.</h2></div>
+  ${billing()}
   ${plans(true)}
   <p class="more-link"><a href="/pricing">Compare every plan</a></p>
 </div></section>
 
 <section class="sec"><div class="wrap tools-split picks-split">
   <div class="tools-copy">
-    <p class="eyebrow">Free PDF tools</p>
     <h2>${PDF_TOOLS.length} free PDF tools, no sign-up</h2>
     <p>Merge, split, compress, OCR, compare, sign and convert in your browser. Your files never leave your device.</p>
     <p class="more-link"><a href="/tools">All free PDF tools</a></p>
@@ -554,7 +558,7 @@ const pricing = page({
   <h1>Start free. Pay when you need more.</h1>
   <p class="lede">Every markup tool is free, with no time limit. Pro adds site surveys, spaces, templates and sharing for $9.99 a month or $99 a year. Enterprise costs $20 per user a month for teams of 3 or more.</p>
 </div></section>
-<section class="sec tight"><div class="wrap">${plans()}</div></section>
+<section class="sec tight"><div class="wrap">${billing()}${plans()}</div></section>
 <section class="sec"><div class="wrap">
   <h2 class="center">Compare plans</h2>
   <div class="tbl"><table>

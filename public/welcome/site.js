@@ -124,4 +124,54 @@
     });
   }
 
+
+  // Header tightens once the page has scrolled.
+  var top = document.querySelector('.top');
+  if (top) {
+    var tick = false;
+    var onScroll = function () {
+      if (tick) return; tick = true;
+      requestAnimationFrame(function () { tick = false; top.classList.toggle('scrolled', window.scrollY > 8); });
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+  }
+
+  // Monthly / yearly switch: the white pill slides to the picked side and
+  // every price with a yearly form blurs out and back in with the new words.
+  var bills = document.querySelectorAll('.bill');
+  Array.prototype.forEach.call(bills, function (bill) {
+    var pill = bill.querySelector('.bill-pill');
+    var btns = bill.querySelectorAll('button[data-bill]');
+    var scope = bill.parentElement;
+    function place() {
+      var on = bill.querySelector('button[aria-pressed="true"]');
+      if (!on || !pill) return;
+      pill.style.width = on.offsetWidth + 'px';
+      pill.style.transform = 'translateX(' + (on.offsetLeft - 4) + 'px)';
+    }
+    function set(mode) {
+      Array.prototype.forEach.call(btns, function (b) { b.setAttribute('aria-pressed', String(b.dataset.bill === mode)); });
+      place();
+      var els = scope.querySelectorAll('.swap[data-' + mode + ']');
+      Array.prototype.forEach.call(els, function (el) {
+        var next = el.getAttribute('data-' + mode);
+        if (el.textContent === next) return;
+        if (reduce) { el.textContent = next; return; }
+        el.classList.add('out');
+        setTimeout(function () { el.textContent = next; el.classList.remove('out'); }, 150);
+      });
+    }
+    Array.prototype.forEach.call(btns, function (b) { b.addEventListener('click', function () { set(b.dataset.bill); }); });
+    place();
+    window.addEventListener('resize', place);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(place);
+  });
+
+  // The hero demo only plays while it is on screen.
+  var stage = document.querySelector('.stage');
+  if (stage && 'IntersectionObserver' in window) {
+    new IntersectionObserver(function (es) { stage.classList.toggle('paused', !es[0].isIntersecting); }).observe(stage);
+  }
+
 })();
