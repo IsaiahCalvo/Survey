@@ -245,7 +245,7 @@ test('a sort that lands after the check but before the write: values go back to 
     return p.writeCells(id, cells);
   } };
   const res = await ctx.round({ provider: sortingWrite });
-  assert.equal(res.status, 'synced');
+  assert.equal(res.status, 'retry', 'rows moved: plan again from a fresh read');
   const sheet = await ctx.sheet();
   const lockedCol = sheet.rows[0].indexOf('Locked?');
   const cell = (name) => sheet.rows.find((row) => row[3] === name)[lockedCol];
@@ -255,6 +255,53 @@ test('a sort that lands after the check but before the write: values go back to 
   assert.equal(quiet.summary.toApp, 0, 'nothing comes back to the app as a PM edit');
   assert.ok(!ctx.markers.d3.checklistResponses?.c1?.selection);
   assert.equal(ctx.markers.d1.checklistResponses.c1.selection, 'Y');
+});
+
+test('a sort that lands while a copied row gets its own Row ID: the Row ID stays with its row', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101'), d2: door('d2', 'D-102'), d3: door('d3', 'D-103') } });
+  await ctx.round(); await ctx.round();
+  const sheet = await ctx.sheet();
+  const at = sheet.rows.length; const item = sheet.rows[0].indexOf('Item');
+  // A copy of D-101's row (Row ID and all), named "A-copy" so a Z-A sort moves it.
+  await ctx.edit([{ row: at, col: 0, value: sheet.rows[1][0] }, { row: at, col: item, value: 'A-copy' }]);
+  let n = 0;
+  const p = ctx.provider;
+  const sortingIds = { ...p, writeCells: async (id, cells) => {
+    if (cells.some((c) => c.col === 0 && !c.header) && n++ === 0) await fakeApi(`/files/${ctx.fileId}/sort`, { title: 'Doors - Level 1' });
+    return p.writeCells(id, cells);
+  } };
+  const res = await ctx.round({ provider: sortingIds });
+  assert.equal(res.status, 'retry');
+  await ctx.round();
+  await ctx.round({ force: true });
+  const after = (await ctx.sheet()).rows;
+  const idOf = (name) => after.find((r) => r[item] === name)?.[0];
+  const ids = after.slice(1).map((r) => r[0]);
+  assert.equal(new Set(ids).size, ids.length, 'no Row ID twice');
+  for (const name of ['D-101', 'D-102', 'D-103']) assert.equal(ctx.markers[`d${name.slice(-1)}`].name, name, `${name} keeps its name`);
+  const copy = Object.values(ctx.markers).filter((m) => m.name === 'A-copy');
+  assert.equal(copy.length, 1, 'the copy is one new item');
+  assert.notEqual(idOf('A-copy'), idOf('D-101'));
+  assert.equal(Object.keys(ctx.markers).length, 4);
+});
+
+test('a sort right before rows are deleted: no other item\'s row is deleted', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101'), d2: door('d2', 'D-102'), d3: door('d3', 'D-103') } });
+  await ctx.round(); await ctx.round();
+  delete ctx.markers.d1;
+  let sorted = false;
+  const p = ctx.provider;
+  const sortingDelete = { ...p, readCells: async (id, cells) => {
+    // The last check before deleting: the PM sorts Z-A just then.
+    if (!sorted && cells.length === 1 && cells[0].token) { sorted = true; await fakeApi(`/files/${ctx.fileId}/sort`, { title: 'Doors - Level 1' }); }
+    return p.readCells(id, cells);
+  } };
+  const res = await ctx.round({ provider: sortingDelete });
+  assert.equal(res.status, 'retry');
+  await ctx.round();
+  const rows = (await ctx.sheet()).rows;
+  const names = rows.slice(1).map((r) => r[3]).filter(Boolean).sort();
+  assert.deepEqual(names, ['D-102', 'D-103'], 'only the deleted item\'s row went');
 });
 
 test('a new checklist line and a new category after linking: the sheet grows to match', async () => {
