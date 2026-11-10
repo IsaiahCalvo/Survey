@@ -1949,6 +1949,11 @@ const BookmarksPanel = ({
                 setShowCreateMenu(next);
                 setShowMobileFolderEditor(false);
                 setNewFolderName('');
+                // The phone line has no "current page" button (desktop has
+                // one), so it opens on the page you are looking at.
+                if (next && pageNum > 0) {
+                  setNewBookmarkPages(String(numPages ? Math.min(pageNum, numPages) : pageNum));
+                }
               }}
             />
           </SectionIconActions>
@@ -1987,6 +1992,9 @@ const BookmarksPanel = ({
               placeholder="Bookmark name"
               autoFocus={!restoringDraftRef.current}
               onChange={(event) => setNewBookmarkName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') handleCreateBookmark();
+              }}
             />
             <input
               type="number"
@@ -1997,6 +2005,9 @@ const BookmarksPanel = ({
               value={newBookmarkPages}
               placeholder="Page"
               onChange={(event) => setNewBookmarkPages(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') handleCreateBookmark();
+              }}
             />
             <button type="button" className="tertiary" disabled={!newBookmarkName.trim() || !String(newBookmarkPages).trim()} onClick={handleCreateBookmark}>Create</button>
           </div>
