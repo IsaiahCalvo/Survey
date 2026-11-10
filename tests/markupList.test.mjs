@@ -91,3 +91,33 @@ test('counters list as Counter, with their disc colour and an ISO time (R3-M B3)
   assert.equal(rows[0].createdAt, new Date(at).toISOString());
   assert.match(markupRowsToCsv(rows), /Counter,,#2563eb,,2026-/);
 });
+
+test('a callout lists its words, its border colour and when it was made', async () => {
+  const { calloutToAnnotationObject } = await import('../src/utils/calloutAnnotationBridge.js');
+  const callout = {
+    id: 'c9',
+    text: 'Check fixture spacing',
+    arrowTip: { x: 0.1, y: 0.1 }, knee: { x: 0.2, y: 0.2 },
+    textBoxPosition: { x: 0.3, y: 0.3 }, textBoxWidth: 0.2, textBoxHeight: 0.05,
+    style: { borderColor: '#DC2626', fontColor: '#DC2626' },
+    meta: { authorId: 'u1', createdAt: 1762750000000 },
+  };
+  const group = calloutToAnnotationObject(callout, { width: 612, height: 792 });
+  const [row] = buildMarkupRows({ 1: { objects: [group] } });
+  assert.equal(row.kind, 'callout');
+  assert.equal(row.text, 'Check fixture spacing');
+  assert.equal(row.color, '#DC2626');
+  assert.equal(row.createdAt, new Date(1762750000000).toISOString());
+  assert.equal(filterMarkupRows([row], { query: 'fixture' }).length, 1);
+  const csv = markupRowsToCsv([row]);
+  assert.match(csv, /Callout,Check fixture spacing,#DC2626,/);
+});
+
+test('rgb() colours are written as hex in the list and CSV', () => {
+  const rows = buildMarkupRows({ 1: { objects: [
+    { id: 'a', type: 'line', stroke: 'rgba(255, 0, 0, 1)' },
+    { id: 'b', type: 'line', stroke: 'rgba(0, 128, 255, 0.5)' },
+    { id: 'c', type: 'line', stroke: 'rgb(16,32,48)' },
+  ] } });
+  assert.deepEqual(rows.map((r) => r.color), ['#FF0000', '#0080FF80', '#102030']);
+});

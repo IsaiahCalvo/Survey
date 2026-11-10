@@ -53,21 +53,49 @@ function textOf(obj) {
   const raw = typeof obj?.text === 'string' ? obj.text
     : typeof data.text === 'string' ? data.text
       : typeof data.calloutText === 'string' ? data.calloutText
-        : typeof data.label === 'string' ? data.label : '';
-  return raw.replace(/\s+/g, ' ').trim();
+        : typeof data.label === 'string' ? data.label
+          // A callout is a group: its words ride on the box child and the
+          // callout record it was drawn from.
+          : typeof data.legacyCallout?.text === 'string' ? data.legacyCallout.text
+            : (calloutBoxOf(obj)?.text ?? '');
+  return String(raw).replace(/\s+/g, ' ').trim();
+}
+
+function calloutBoxOf(obj) {
+  if (obj?.data?.type !== 'callout' || !Array.isArray(obj?.objects)) return null;
+  return obj.objects.find((child) => child?.data?.calloutPart === 'textBox') || null;
+}
+
+// "rgba(255, 0, 0, 1)" reads as "#FF0000" (with an alpha pair when see-through),
+// the way every other colour in the list and the CSV is written.
+function plainColour(value) {
+  if (typeof value !== 'string') return value;
+  const m = value.trim().match(/^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:[\s,/]+([\d.]+%?))?\s*\)$/i);
+  if (!m) return value;
+  const hex = (n) => Math.max(0, Math.min(255, Math.round(Number(n)))).toString(16).padStart(2, '0').toUpperCase();
+  let alpha = m[4] == null ? 1 : (m[4].endsWith('%') ? Number(m[4].slice(0, -1)) / 100 : Number(m[4]));
+  if (!Number.isFinite(alpha)) alpha = 1;
+  const base = `#${hex(m[1])}${hex(m[2])}${hex(m[3])}`;
+  return alpha >= 1 ? base : `${base}${hex(alpha * 255)}`;
 }
 
 function colorOf(obj) {
   // A counter's colour is its disc (its ring is white).
   const counter = obj?.data?.type === 'counter' && typeof obj?.fill === 'string' && obj.fill !== 'transparent';
-  const c = counter ? obj.fill : (obj?.stroke && obj.stroke !== 'transparent' ? obj.stroke : obj?.fill);
-  return typeof c === 'string' && c !== 'transparent' ? c : null;
+  // A callout's colour is its border (the group itself has none).
+  const callout = obj?.data?.type === 'callout'
+    ? (obj.data.legacyCallout?.style?.borderColor || obj.data.legacyCallout?.style?.lineColor || calloutBoxOf(obj)?.stroke || null)
+    : null;
+  const c = callout || (counter ? obj.fill : (obj?.stroke && obj.stroke !== 'transparent' ? obj.stroke : obj?.fill));
+  return typeof c === 'string' && c !== 'transparent' && c !== '' ? plainColour(c) : null;
 }
 
 // One shape for Created: an ISO time, whether the mark kept a time string or
 // a raw epoch number (counters stamp Date.now()).
 function createdAtOf(obj) {
-  const raw = obj?.meta?.createdAt || obj?.data?.createdAt || null;
+  const legacy = obj?.data?.legacyCallout;
+  const raw = obj?.meta?.createdAt || obj?.data?.createdAt || legacy?.meta?.createdAt || legacy?.createdAt
+    || obj?.data?.measure?.createdAt || obj?.createdAt || null;
   if (raw == null || raw === '') return null;
   const asNumber = typeof raw === 'number' ? raw : (/^\d{10,13}$/.test(String(raw)) ? Number(raw) : null);
   if (asNumber != null) {
