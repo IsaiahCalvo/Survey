@@ -1,0 +1,119 @@
+/* Home extras (HomeLibraryBits.jsx): tags, Shared views, list sizes, Tiles.
+   Nightly flags home-tags / home-shared-views / home-columns. Gold = on, as
+   everywhere in Survey; it never changes on hover. */
+
+/* Side bar: views and Tags sit indented under Documents. */
+.survey-hub .home-nav-section { display: flex; flex-direction: column; gap: 1px; margin: 2px 0 6px; }
+.survey-hub .nav .home-nav-item { padding-left: 30px; font-size: 12px; }
+.survey-hub .nav .home-nav-item.is-tag { padding-left: 30px; gap: 6px; }
+.survey-hub .home-nav-item__label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.survey-hub .home-nav-item__count { flex: none; font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.survey-hub .nav .home-nav-group { margin-top: 6px; padding-left: 12px; gap: 4px; font-size: 11px; font-weight: 600; color: var(--text-3); }
+.survey-hub .home-nav-empty { padding: 4px 8px 4px 30px; font-size: 11px; color: var(--text-3); }
+
+/* Tag chips. */
+.home-tag-chip {
+  display: inline-flex; align-items: center; max-width: 100%;
+  height: 20px; padding: 0 7px; border-radius: 10px;
+  background: var(--surface-3); color: var(--text-2);
+  border: 1px solid var(--border);
+  font: 500 11px/1 var(--font-ui); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.home-tag-chip.is-more { color: var(--text-3); }
+.home-tag-chip.is-toggle { cursor: pointer; height: 26px; padding: 0 10px; font-size: 12px; }
+.home-tag-chip.is-toggle.is-on { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+
+.survey-hub .home-tag-cell {
+  display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%;
+  height: 26px; padding: 0 6px; margin-left: -6px; border: 0; border-radius: var(--radius-xs);
+  background: transparent; color: var(--text-2); font: 500 11px var(--font-ui); cursor: pointer; overflow: hidden;
+}
+.survey-hub .home-tag-cell.is-empty { color: var(--text-3); }
+@media (hover: hover) and (pointer: fine) {
+  .survey-hub .home-tag-cell:hover { background: var(--surface-3); }
+  .survey-hub .documents-ledger-row .home-tag-cell.is-empty { opacity: 0; }
+  .survey-hub .documents-ledger-row:hover .home-tag-cell.is-empty,
+  .survey-hub .documents-ledger-row.is-selected .home-tag-cell.is-empty,
+  .survey-hub .home-tag-cell.is-empty:focus-visible { opacity: 1; }
+}
+
+/* The Add tag popover (portalled to <body>). */
+.home-tag-popover {
+  position: fixed; z-index: 4100; width: 300px; max-width: calc(100vw - 16px);
+  padding: 12px; box-sizing: border-box;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-md);
+  box-shadow: var(--shadow-popover); color: var(--text-1); font-family: var(--font-ui);
+}
+.home-tag-popover__title { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.home-tag-popover__field {
+  display: flex; align-items: center; gap: 4px; margin-top: 10px;
+  height: 32px; padding: 0 2px 0 9px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--surface-1);
+}
+.home-tag-popover__field input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text-1); font: 13px var(--font-ui); }
+.home-tag-popover__field:focus-within { border-color: var(--accent); }
+.home-tag-popover__chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; max-height: 180px; overflow-y: auto; }
+.home-tag-popover__empty { margin-top: 10px; font-size: 12px; color: var(--text-3); }
+
+/* Phone filter chips: one row that scrolls sideways. */
+.survey-hub .home-filter-chips {
+  display: flex; gap: 6px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none;
+  padding: 2px 0 10px;
+}
+.survey-hub .home-filter-chips::-webkit-scrollbar { display: none; }
+.survey-hub .home-filter-chip {
+  flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 12px;
+  border-radius: 17px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2);
+  font: 500 13px var(--font-ui); cursor: pointer; white-space: nowrap;
+}
+.survey-hub .home-filter-chip.is-on { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.survey-hub .home-filter-chip__count { font-size: 11px; opacity: .75; font-variant-numeric: tabular-nums; }
+
+/* Desktop: the list's own view bar above the rows (view label + count,
+   list size button). */
+.survey-hub .home-list-bar { display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 14px; border-bottom: 1px solid var(--ink-500); }
+.survey-hub .home-list-bar__title { font-size: 12px; font-weight: 600; color: var(--text-1); display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.survey-hub .home-list-bar__clear { margin-left: 2px; }
+.survey-hub .home-list-bar__spacer { flex: 1; }
+.survey-hub .home-view-button { position: relative; display: inline-flex; }
+.survey-hub .home-view-menu { position: absolute; top: calc(100% + 4px); right: 0; min-width: 160px; }
+
+/* List sizes: Large and Compact change the row's height and thumbnail. */
+.survey-hub .documents-ledger-row.is-density-large { min-height: 76px; }
+.survey-hub .documents-ledger-row.is-density-compact .nums div + div { display: none; }
+.survey-hub .home-rel-time { font-size: 11px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 8px; }
+
+/* Tiles. */
+.survey-hub .home-tiles {
+  display: grid; gap: 12px; padding: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+}
+.survey-hub .home-tile {
+  display: flex; flex-direction: column; min-width: 0; border-radius: var(--radius-md);
+  border: 1px solid var(--border); background: var(--surface-2); cursor: pointer; overflow: hidden;
+}
+.survey-hub .home-tile.is-selected { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.survey-hub .home-tile__thumb { height: 150px; background: var(--surface-1); }
+.survey-hub .home-tile__foot { display: flex; align-items: flex-start; gap: 4px; padding: 8px 4px 8px 10px; }
+.survey-hub .home-tile__text { flex: 1; min-width: 0; }
+.survey-hub .home-tile__name { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.survey-hub .home-tile__meta { margin-top: 2px; font-size: 11px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.survey-hub .home-tile__tags { display: flex; gap: 4px; margin-top: 6px; overflow: hidden; }
+
+/* Phone card tags: a line of chips under the details. */
+.survey-hub .mobile-card-tags { display: flex; gap: 4px; margin-top: 4px; overflow: hidden; }
+
+@media screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
+  .survey-hub .home-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 2px 10px 12px; gap: 10px; }
+  .survey-hub .home-filter-chips { padding: 10px 10px 8px; scroll-padding-inline: 10px; }
+  .survey-hub .home-tile__thumb { height: 130px; }
+  .survey-hub .home-tile__name { font-size: 14px; }
+  .survey-hub .home-tile__meta { font-size: 12px; }
+  .survey-hub .home-view-menu { position: fixed; top: auto; right: 12px; }
+}
+
+/* Phone sort menu: a line between the sorts and the list sizes. */
+.survey-hub .home-sort-menu-separator { height: 1px; margin: 4px 0; background: var(--border); }
+
+.survey-hub .home-filter-chip,
+.survey-hub .home-tag-cell,
+.home-tag-chip.is-toggle { -webkit-tap-highlight-color: transparent; }

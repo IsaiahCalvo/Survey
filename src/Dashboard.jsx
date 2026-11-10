@@ -29,6 +29,7 @@ import { supersedeDocument } from './services/documentVersionService.js';
 import { isFeatureOn } from './featureFlags.js';
 import { moveOrCopyDocumentsAtomically, parseDocumentBatchRecovery } from './home/documentBatchOperations.js';
 import { mapAuthoritativeTemplateRows, persistTemplateSnapshot } from './home/templatePersistence.js';
+import { recordDocumentOpened } from './home/homeLibraryData.js';
 import { ownerDisplayName, parkForeignLocalExcelPath, sameTemplateConfig, sharedFromRow, splitTemplatesForSave, stripSharedFields } from './services/sharedTemplates.js';
 import { useAuth } from './contexts/AuthContext';
 import { useMSGraph } from './contexts/MSGraphContext';
@@ -1915,7 +1916,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
      use (no refactor). */
 
   // Open a document in the PDF viewer — reuse the existing open path.
-  const hubOpenDocument = (doc) => { if (doc) { dismissArchiveUndo(); handleDocumentClick(doc); } };
+  // Home's Last opened (Nightly 'home-columns') is stamped here, the one
+  // place Home and Projects open a document from.
+  const hubOpenDocument = (doc) => { if (doc) { dismissArchiveUndo(); recordDocumentOpened(doc.id); handleDocumentClick(doc); } };
 
   /* KAL-44 — count survey markers that reference a checklist item id across
      every document, so the templates editor can decide to archive vs hard-

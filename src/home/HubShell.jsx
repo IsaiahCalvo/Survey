@@ -553,7 +553,9 @@ const ProjectDropList = ({ projects = [], onDrop }) => {
 // go over the side bar still lands where the overlay says.
 // projectDrop (optional): { projects, onDrop(ids, project) } while documents
 // are dragged; the rail then lists the projects as drop targets.
-export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userName = 'You', userMeta = undefined, templatesLocked = false, mobileSwipeSurfaceRef = undefined, dropProps = undefined, projectDrop = null }) => {
+// documentsNav (optional): a node shown under Documents in the side bar (the
+// Home views and Tags list, Nightly flags home-shared-views / home-tags).
+export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userName = 'You', userMeta = undefined, templatesLocked = false, mobileSwipeSurfaceRef = undefined, dropProps = undefined, projectDrop = null, documentsNav = null }) => {
   const tip = useTooltip();
   const expoNativeShell = isExpoNativeShell();
 
@@ -628,7 +630,9 @@ export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userN
             {primaryNavItems.map(([key, icon, label, disabled]) => (
               key === 'projects' && projectDrop
                 ? [navBtn(key, icon, label, disabled), <ProjectDropList key="project-drop" projects={projectDrop.projects} onDrop={projectDrop.onDrop} />]
-                : navBtn(key, icon, label, disabled)
+                : key === 'documents' && documentsNav
+                  ? [navBtn(key, icon, label, disabled), <div key="documents-nav">{documentsNav}</div>]
+                  : navBtn(key, icon, label, disabled)
             ))}
           </nav>
           <nav className="nav nav-bottom">
