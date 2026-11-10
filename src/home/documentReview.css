@@ -27,8 +27,8 @@
   color: var(--tone); background: color-mix(in srgb, var(--tone) 16%, transparent);
 }
 .doc-review-owner {
-  flex: none; width: 16px; height: 16px; border-radius: 50%; display: inline-grid; place-items: center;
-  font-size: 8px; font-weight: 600; color: var(--text-1); background: var(--surface-3);
+  flex: none; width: 18px; height: 18px; border-radius: 50%; display: inline-grid; place-items: center;
+  font-size: var(--font-size-xs); font-weight: 600; color: var(--text-1); background: var(--surface-3);
 }
 .doc-review-marks { white-space: nowrap; }
 
