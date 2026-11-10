@@ -134,6 +134,7 @@
 .sheet-set-bar.is-phone .sheet-set-picker__row { min-height: 44px; }
 .sheet-set-picker__row:hover { background: var(--surface-3); color: var(--text-1); }
 .sheet-set-picker__row.is-picked { background: var(--surface-3); color: var(--text-1); }
+.sheet-set-picker__thumb-empty { width: 23px; height: 30px; flex: none; border-radius: 2px; background: var(--surface-3); }
 .sheet-set-picker__label { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .sheet-set-picker__number,
 .sheet-set-picker__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

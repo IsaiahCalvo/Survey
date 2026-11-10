@@ -1,6 +1,7 @@
 // The bar under a project sheet (Nightly flag 'sheet-set-view'), copied from
 // Drawboard Projects' bottom bar: previous and next sheet, the sheet picker
-// (the project's sheets by number, with a search field) and the view switch
+// (the project's sheets: a thumbnail, the number in bold and the name, with
+// a search field) and the view switch
 // (Single, List, Grid). On a phone, as Drawboard's, the three views fold
 // into one "View mode" menu and the arrows go (Shift+arrows and the picker
 // stay). Rules: sheetSet.js. Shown only while the open document is one of
@@ -9,6 +10,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Icon from '../Icons';
 import { useTooltip } from '../components/Tooltip';
+import PdfPageThumb from '../home/PdfPageThumb';
+import { useStorage } from '../hooks/useDatabase';
 import { filterSheets, sheetLabel, sheetPosition, sheetRowParts } from './sheetSet.js';
 import './sheetSet.css';
 
@@ -46,6 +49,7 @@ export default function SheetSetBar({ sheets, currentId, view = 'single', onView
   // tooltip host.
   const nearestTip = useTooltip();
   const tip = chromeTip || nearestTip;
+  const { downloadDocument } = useStorage();
   const { index, count } = sheetPosition(sheets, currentId);
   const current = index >= 0 ? sheets[index] : null;
   const [open, setOpen] = useState(false);
@@ -193,6 +197,13 @@ export default function SheetSetBar({ sheets, currentId, view = 'single', onView
                   className={`sheet-set-picker__row${here ? ' is-picked' : ''}`}
                   onClick={() => pick(doc)}
                 >
+                  <PdfPageThumb
+                    doc={doc}
+                    downloadDocument={downloadDocument}
+                    variant="row"
+                    height={30}
+                    fallback={<span className="sheet-set-picker__thumb-empty" aria-hidden="true" />}
+                  />
                   <span className="sheet-set-picker__label">
                     <b className="sheet-set-picker__number">{sheetRowParts(doc).number}</b>
                     {sheetRowParts(doc).name ? <span className="sheet-set-picker__name">{sheetRowParts(doc).name}</span> : null}

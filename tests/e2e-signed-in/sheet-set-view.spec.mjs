@@ -192,6 +192,8 @@ for (const layout of LAYOUTS) {
         await press(layout, bar.locator('[data-sheet-picker-button]'));
         const picker = bar.locator('[data-sheet-picker]');
         await expect(picker.getByRole('option')).toHaveCount(3);
+        // Each row leads with the sheet's page picture, as Drawboard's.
+        await expect(picker.getByRole('option').first().locator('img, .sheet-set-picker__thumb-empty')).toHaveCount(1);
         await picker.getByLabel('Search sheets').fill('a-1');
         await expect(picker.getByRole('option')).toHaveText([label(1), label(10)]);
         await shot(page, layout, '4-picker');
