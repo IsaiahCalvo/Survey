@@ -1,30 +1,29 @@
-/* Page grid settings card (PageGridSettings.jsx). The same light card as the
-   chrome's dropdowns: --surface-2, border, popover shadow, 6px corners. */
+/* Page grid settings card (PageGridSettings.jsx). On desktop it is a
+   RailFlyout (RailFlyout.css: the rail's one card look, titled, with the
+   switch in the title row); these rules lay out what sits inside it. */
 .page-grid-settings__card {
   width: 248px;
-  padding: 10px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md, 6px);
-  box-shadow: var(--shadow-popover);
-  color: var(--text-1);
-  font-family: var(--font-ui);
 }
+.page-grid-settings__card .page-grid-settings { padding: 4px 6px 6px; }
 .page-grid-settings { display: flex; flex-direction: column; gap: 8px; font-size: 12px; }
 .page-grid-settings__switch {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
   min-height: 28px; padding: 0 2px; border: 0; background: transparent;
   color: var(--text-1); font: inherit; cursor: pointer;
 }
+.page-grid-settings__switch.is-head { min-height: 28px; padding: 0 4px; }
+/* Off: an outlined track (a bare --surface-3 track all but vanished on the
+   card); on: gold. The account settings switch's look, card-sized. */
 .page-grid-settings__knob {
-  position: relative; width: 28px; height: 16px; flex: none; border-radius: 999px;
-  background: var(--surface-3, rgba(255, 255, 255, 0.12)); transition: background 0.15s;
+  position: relative; width: 28px; height: 16px; flex: none; border-radius: 999px; box-sizing: border-box;
+  background: var(--surface-3, rgba(255, 255, 255, 0.12)); box-shadow: inset 0 0 0 1px var(--border-strong);
+  transition: background var(--motion-state, 0.15s), box-shadow var(--motion-state, 0.15s);
 }
 .page-grid-settings__knob::after {
   content: ''; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px;
   border-radius: 50%; background: var(--text-1); transition: transform 0.15s;
 }
-.page-grid-settings__switch[aria-checked="true"] .page-grid-settings__knob { background: var(--accent); }
+.page-grid-settings__switch[aria-checked="true"] .page-grid-settings__knob { background: var(--accent); box-shadow: none; }
 .page-grid-settings__switch[aria-checked="true"] .page-grid-settings__knob::after { transform: translateX(12px); background: var(--accent-text, #15110a); }
 /* Fine / Normal / Wide: the app's one ButtonGroup row (dropdownLook rule). */
 /* The spacing slider: the app's slim slider (thin track, 12px thumb), the
@@ -47,25 +46,46 @@
 .page-grid-settings__slider:focus-visible { outline: none; }
 .page-grid-settings__slider:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px var(--focus); }
 .page-grid-settings__custom { display: flex; align-items: center; gap: 6px; color: var(--text-2); }
+/* The value and its unit read as one pair: the same 28px field look as the
+   unit pill beside it (fill, no edge, the chrome field corner). */
 .page-grid-settings__custom input,
 .page-grid-settings__custom select {
-  min-width: 0; height: 28px; padding: 0 6px; border: 1px solid var(--border); border-radius: 6px;
-  background: var(--surface-1); color: var(--text-1); font: inherit;
+  min-width: 0; height: 28px; padding: 0 6px; border: 0; border-radius: var(--radius-sm, 6px);
+  background: var(--surface-3); color: var(--text-1); font: inherit; box-sizing: border-box;
 }
+.page-grid-settings__custom input:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .page-grid-settings__custom input { width: 72px; text-align: center; font-variant-numeric: tabular-nums; }
 .page-grid-settings__custom select,
 .page-grid-settings__custom .value-select { flex: 1; }
-.page-grid-settings__custom .value-select .chrome-pill { height: 28px; }
+.page-grid-settings__custom .value-select .chrome-pill { height: 28px; border-radius: var(--radius-sm, 6px); }
 .page-grid-settings__hint { margin: 0; color: var(--text-3); font-size: 11px; line-height: 1.4; }
-.page-grid-settings.is-phone { font-size: 13px; padding: 2px 6px 8px; }
+.page-grid-settings.is-phone { font-size: 13px; padding: 0 0 6px; gap: 6px; }
+/* Phone presets: the zoom menu's own rows (44px, 14px calm grey; the chosen
+   one a step brighter with its tick), indented under Page grid. */
+.page-grid-settings__preset-rows { display: flex; flex-direction: column; }
+.page-grid-settings__preset-rows > button {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  min-height: var(--sheet-menu-item-h, 44px); padding: 0 9px 0 19px; border: 0; border-radius: 6px;
+  background: transparent; color: var(--text-3); font: var(--sheet-row-text); text-align: left; white-space: nowrap; cursor: pointer;
+}
+.page-grid-settings__preset-rows > button.is-active { color: var(--text-1); }
+.page-grid-settings__preset-rows > button:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.page-grid-settings.is-phone .page-grid-settings__slider { padding: 0 9px; box-sizing: border-box; }
+/* The value and its unit share the menu's 104px: the unit is a bare
+   centred word (no native arrow eating its room), the value takes the rest. */
+.page-grid-settings.is-phone .page-grid-settings__custom select {
+  flex: 0 0 52px; -webkit-appearance: none; appearance: none; padding: 0 4px; text-align: center; text-align-last: center;
+}
 /* The phone menu is narrow: two by two. */
 .page-grid-settings.is-phone .page-grid-settings__custom input { flex: 1; width: auto; }
 .page-grid-settings.is-phone .page-grid-settings__switch,
 .page-grid-settings.is-phone .page-grid-settings__custom input,
 .page-grid-settings.is-phone .page-grid-settings__custom select { min-height: 44px; }
-.page-grid-settings.is-phone .page-grid-settings__presets button { min-height: 44px; }
 .page-grid-settings.is-phone .page-grid-settings__slider { height: 32px; }
 .page-grid-settings.is-phone .page-grid-settings__slider::-webkit-slider-thumb { width: 22px; height: 22px; margin-top: -9px; }
 @media (prefers-reduced-motion: reduce) {
   .page-grid-settings__knob, .page-grid-settings__knob::after { transition: none; }
 }
+
+/* The rail button and its card share one positioned box (RailFlyout). */
+.page-grid-menu { position: relative; display: flex; }

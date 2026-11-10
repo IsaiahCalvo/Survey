@@ -7,8 +7,10 @@
  * Desktop: the rail's grid button opens this as a small card. Phone: the
  * same panel sits under the Page grid row of the zoom menu.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
-import AnchoredPopover from './AnchoredPopover';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import RailFlyout from './RailFlyout.jsx';
+import Icon from '../Icons';
+import { moveGroupFocus } from '../utils/radioGroupKeys.js';
 import ButtonGroup from './ButtonGroup.jsx';
 import ValueSelect from './ValueSelect.jsx';
 import {
@@ -21,6 +23,7 @@ import {
     loadPageGridSettings,
     pageGridPresetValue,
     pageGridSliderPosition,
+    pageGridSliderRawValue,
     pageGridSliderValue,
     pageGridUsesDrawingScale,
     previewPageGridSettings,
@@ -50,6 +53,52 @@ export const usePageGridSettings = () => {
     return [settings, update];
 };
 
+/*
+ * Eases the previewed spacing toward the slider's value, one step a frame,
+ * in log space (the slider is a log scale, so a fine grid and a wide one
+ * move alike). About 60 ms to cover most of a move: the grid keeps up with
+ * the thumb but never jumps. Reduced motion: straight there.
+ */
+const SPACING_EASE_MS = 60;
+const useSmoothedSpacing = (onFrame) => {
+    const state = useRef({ raf: 0, current: null, target: null, last: 0 });
+    const stop = useCallback(() => {
+        const s = state.current;
+        if (s.raf) cancelAnimationFrame(s.raf);
+        s.raf = 0;
+        s.current = null;
+    }, []);
+    useEffect(() => stop, [stop]);
+    const to = useCallback((target, from) => {
+        const s = state.current;
+        s.target = target;
+        if (s.current == null) s.current = from > 0 ? from : target;
+        const reduce = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+        if (reduce || typeof requestAnimationFrame === 'undefined') {
+            s.current = target;
+            onFrame(target);
+            return;
+        }
+        if (s.raf) return;
+        s.last = 0;
+        const step = (now) => {
+            const dt = s.last ? Math.min(64, now - s.last) : 16;
+            s.last = now;
+            const k = 1 - Math.exp(-dt / SPACING_EASE_MS);
+            const next = s.current * Math.pow(s.target / s.current, k);
+            const done = Math.abs(Math.log(s.target / next)) < 0.002;
+            s.current = done ? s.target : next;
+            onFrame(s.current);
+            s.raf = done ? 0 : requestAnimationFrame(step);
+        };
+        s.raf = requestAnimationFrame(step);
+    }, [onFrame]);
+    return useMemo(() => ({ to, stop }), [to, stop]);
+};
+
+/** The switch's track and knob (off: an outlined track, on: gold). */
+const PageGridKnob = () => <span className="page-grid-settings__knob" aria-hidden="true" />;
+
 export function PageGridSettingsPanel({ on, toggle, phone = false, showSwitch = true }) {
     const [settings, update] = usePageGridSettings();
     const preset = settings.density !== 'custom';
@@ -65,8 +114,23 @@ export function PageGridSettingsPanel({ on, toggle, phone = false, showSwitch = 
     const [dragValue, setDragValue] = useState(null);
     const dragging = dragValue != null;
     const sliderValue = dragging ? dragValue : shownValue;
-    const commitValue = (value) => {
+    // Owner 2026-11-10: the grid jumped while sliding ("very snappy ...
+    // jittery"). The thumb's value is rounded to a tidy number (0.1 in above
+    // an inch: a 10% jump per step) and each move snapped the grid straight
+    // there. The page now follows an eased, unrounded value instead, so the
+    // grid grows and shrinks smoothly; only the number shown is tidy.
+    const previewRef = useRef({ settings, unit });
+    previewRef.current = { settings, unit };
+    const smooth = useSmoothedSpacing(useCallback((value) => {
+        const { settings: saved, unit: u } = previewRef.current;
+        previewPageGridSettings({ ...saved, density: 'custom', customUnit: u, customValue: value }, saved);
+    }, []));
+    const commitValue = (value, { glide = false } = {}) => {
+        smooth.stop();
         endPageGridPreview();
+        // The eased preview may sit a hair off the tidy saved value; the
+        // saved step glides the last bit instead of jumping.
+        if (glide) animateNextPageGridChange();
         if (value > 0 && Number.isFinite(value)) update({ customValue: value, customUnit: unit, density: 'custom' });
     };
     const commitDraft = () => {
@@ -83,13 +147,13 @@ export function PageGridSettingsPanel({ on, toggle, phone = false, showSwitch = 
         const value = pageGridSliderValue(event.target.value, unit);
         setDragValue(value);
         setDraft(String(value));
-        previewPageGridSettings({ ...settings, density: 'custom', customUnit: unit, customValue: value }, settings);
+        smooth.to(pageGridSliderRawValue(event.target.value, unit), sliderValue);
     };
     const endSlide = () => {
         if (dragValue == null) return;
         const value = dragValue;
         setDragValue(null);
-        commitValue(value);
+        commitValue(value, { glide: true });
     };
     const unitOptions = PAGE_GRID_UNITS.map((u) => ({ value: u.id, label: u.label }));
     const pickUnit = (customUnit) => {
@@ -108,18 +172,44 @@ export function PageGridSettingsPanel({ on, toggle, phone = false, showSwitch = 
             {showSwitch && (
                 <button type="button" role="switch" aria-checked={on} className="page-grid-settings__switch" onClick={toggle}>
                     <span>Show grid</span>
-                    <span className="page-grid-settings__knob" aria-hidden="true" />
+                    <PageGridKnob />
                 </button>
             )}
-            <ButtonGroup
-                label="Grid spacing preset"
-                size="sm"
-                fill
-                className="page-grid-settings__presets"
-                value={settings.density}
-                options={PAGE_GRID_DENSITIES.map((d) => ({ value: d.id, label: d.label, ariaLabel: `${d.label}, ${d.hint}` }))}
-                onChange={pickPreset}
-            />
+            {phone ? (
+                // The phone's zoom menu is the page pill's width (owner
+                // 2026-10-02), too narrow for three joined buttons ("F N W").
+                // The presets are rows there, like the fit rows above them.
+                <div role="radiogroup" aria-label="Grid spacing preset" className="page-grid-settings__preset-rows" onKeyDown={moveGroupFocus}>
+                    {PAGE_GRID_DENSITIES.map((d) => {
+                        const chosen = settings.density === d.id;
+                        return (
+                            <button
+                                key={d.id}
+                                type="button"
+                                role="radio"
+                                aria-checked={chosen}
+                                aria-label={`${d.label}, ${d.hint}`}
+                                tabIndex={chosen || (settings.density === 'custom' && d.id === 'fine') ? 0 : -1}
+                                className={chosen ? 'is-active' : undefined}
+                                onClick={() => pickPreset(d.id)}
+                            >
+                                <span>{d.label}</span>
+                                {chosen && <Icon name="check" size={14} color="currentColor" />}
+                            </button>
+                        );
+                    })}
+                </div>
+            ) : (
+                <ButtonGroup
+                    label="Grid spacing preset"
+                    size="sm"
+                    fill
+                    className="page-grid-settings__presets"
+                    value={settings.density}
+                    options={PAGE_GRID_DENSITIES.map((d) => ({ value: d.id, label: d.label, ariaLabel: `${d.label}, ${d.hint}` }))}
+                    onChange={pickPreset}
+                />
+            )}
             <input
                 type="range"
                 className="page-grid-settings__slider"
@@ -167,12 +257,16 @@ export function PageGridSettingsPanel({ on, toggle, phone = false, showSwitch = 
     );
 }
 
-/** The rail's grid button with the settings card. `renderButton({ open, onClick, ref })`. */
+/**
+ * The rail's grid button with the settings card. `renderButton({ open, onClick, ref })`.
+ * Owner 2026-11-10: the card is a RailFlyout (titled, off the rail's edge,
+ * like Page fit above it) with the show/hide switch in its title row.
+ */
 export function PageGridMenu({ on, toggle, renderButton }) {
     const [open, setOpen] = useState(false);
+    const hostRef = useRef(null);
     const buttonRef = useRef(null);
     const cardRef = useRef(null);
-    const getAnchor = useCallback(() => buttonRef.current, []);
     useEffect(() => {
         if (!open) return undefined;
         const onPointerDown = (event) => {
@@ -195,21 +289,24 @@ export function PageGridMenu({ on, toggle, renderButton }) {
         };
     }, [open]);
     return (
-        <>
+        <div ref={hostRef} className="page-grid-menu">
             {renderButton({ open, ref: buttonRef, onClick: () => setOpen((v) => !v) })}
             {open && (
-                <AnchoredPopover getAnchor={getAnchor} gap={6}>
-                    <div
-                        ref={cardRef}
-                        role="dialog"
-                        aria-label="Page grid"
-                        className="page-grid-settings__card"
-                        style={{ position: 'absolute', top: '100%', left: '50%', marginTop: 6, transform: 'translate(-50%, 0)' }}
-                    >
-                        <PageGridSettingsPanel on={on} toggle={toggle} />
-                    </div>
-                </AnchoredPopover>
+                <RailFlyout
+                    cardRef={cardRef}
+                    role="dialog"
+                    aria-label="Page grid"
+                    title="Page grid"
+                    className="page-grid-settings__card"
+                    headerEnd={(
+                        <button type="button" role="switch" aria-checked={on} aria-label="Show grid" className="page-grid-settings__switch is-head" onClick={toggle}>
+                            <PageGridKnob />
+                        </button>
+                    )}
+                >
+                    <PageGridSettingsPanel on={on} toggle={toggle} showSwitch={false} />
+                </RailFlyout>
             )}
-        </>
+        </div>
     );
 }
