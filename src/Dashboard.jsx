@@ -471,10 +471,11 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
   // Save the sheet reading on the new row (Nightly). Best effort: an older
   // server without the columns just answers an error.
   const saveSheetReading = (documentId, sheet) => {
-    if (!documentId || !sheet?.sheetNumber) return;
+    // A revision typed without a sheet number is saved too (upload check).
+    if (!documentId || !(sheet?.sheetNumber || sheet?.revision)) return;
     supabase
       .from('documents')
-      .update({ sheet_number: sheet.sheetNumber.slice(0, 40), sheet_revision: sheet.revision ? String(sheet.revision).slice(0, 12) : null })
+      .update({ sheet_number: sheet.sheetNumber ? sheet.sheetNumber.slice(0, 40) : null, sheet_revision: sheet.revision ? String(sheet.revision).slice(0, 12) : null })
       .eq('id', documentId)
       .then(({ error }) => { if (error) console.warn('[sheet-revisions] could not save the sheet number:', error.message); }, () => {});
   };

@@ -108,6 +108,16 @@ test('document review: markup count, status and owner, filter chips', async ({ p
     await pickValue(page, panel, 'Review owner', 'Nobody');
     await expect.poll(() => reviewRow('plain'), { timeout: 20_000 }).toMatchObject({ status: null, owner_id: null });
 
+    // Status then owner back to back: the second save keeps the first (one
+    // call writes both, so they run in turn on the latest values).
+    await pickValue(page, panel, 'Review status', 'Approved');
+    await pickValue(page, panel, 'Review owner', 'Eddie Editor');
+    await expect.poll(async () => (await reviewRow('plain'))?.status, { timeout: 20_000 }).toBe('approved');
+    expect((await reviewRow('plain')).owner_id).not.toBeNull();
+    await pickValue(page, panel, 'Review status', 'No status');
+    await pickValue(page, panel, 'Review owner', 'Nobody');
+    await expect.poll(() => reviewRow('plain'), { timeout: 20_000 }).toMatchObject({ status: null, owner_id: null });
+
     // A stranger reads nothing.
     expect(await must('stranger list', stranger.rpc('list_document_reviews', { p_document_ids: [docs.marked.id] }))).toEqual([]);
 

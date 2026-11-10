@@ -6,7 +6,7 @@
    - ReviewLine: status chip, owner initials and "12 marks" under a name.
    - ReviewFields: Status and Owner pickers in the preview / phone details.
    - useReviewPeople: who can own a document's review. */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import ValueSelect from '../components/ValueSelect.jsx';
 import { isPhoneLayout } from '../utils/layoutMode.js';
@@ -49,18 +49,39 @@ export function useDocumentReviews(enabled, ids) {
       window.removeEventListener('focus', onFocus);
     };
   }, [key]);
-  const save = useCallback(async (documentId, patch) => {
-    const before = reviews.get(documentId) || { status: null, ownerId: null, markupCount: null };
-    const next = { ...before, ...patch };
-    setReviews((m) => new Map(m).set(documentId, next));
-    try {
-      const saved = await setDocumentReview(supabase, { documentId, status: next.status, ownerId: next.ownerId });
-      setReviews((m) => new Map(m).set(documentId, { ...saved, ownerName: saved.ownerId ? next.ownerName : null, markupCount: saved.markupCount ?? before.markupCount }));
-    } catch (err) {
-      setReviews((m) => new Map(m).set(documentId, before));
-      showToast(err?.message || 'Could not save the review status', 'warn');
-    }
-  }, [reviews]);
+  // Status and owner save through one call that writes both, so saves for a
+  // document run one at a time, each sending everything wanted so far (never
+  // a stale render's value), and only the last answer lands.
+  const reviewsRef = useRef(reviews);
+  reviewsRef.current = reviews;
+  const pendingRef = useRef(new Map()); // documentId -> { wanted, seq, confirmed, chain }
+  const save = useCallback((documentId, patch) => {
+    const pending = pendingRef.current.get(documentId);
+    const confirmed = pending ? pending.confirmed : (reviewsRef.current.get(documentId) || { status: null, ownerId: null, markupCount: null });
+    const wanted = { ...(pending ? pending.wanted : confirmed), ...patch };
+    const seq = (pending?.seq || 0) + 1;
+    const entry = { wanted, seq, confirmed, chain: null };
+    pendingRef.current.set(documentId, entry);
+    setReviews((m) => new Map(m).set(documentId, wanted));
+    const run = async () => {
+      const latest = () => pendingRef.current.get(documentId) === entry;
+      if (!latest()) return; // a later change will send this one's fields too
+      try {
+        const saved = await setDocumentReview(supabase, { documentId, status: wanted.status, ownerId: wanted.ownerId });
+        const done = { ...saved, ownerName: saved.ownerId ? wanted.ownerName : null, markupCount: saved.markupCount ?? confirmed.markupCount };
+        if (!latest()) { pendingRef.current.get(documentId).confirmed = done; return; }
+        pendingRef.current.delete(documentId);
+        setReviews((m) => new Map(m).set(documentId, done));
+      } catch (err) {
+        if (!latest()) return;
+        pendingRef.current.delete(documentId);
+        setReviews((m) => new Map(m).set(documentId, confirmed));
+        showToast(err?.message || 'Could not save the review status', 'warn');
+      }
+    };
+    entry.chain = (pending?.chain || Promise.resolve()).then(run, run);
+    return entry.chain;
+  }, []);
   return { reviews, save };
 }
 
