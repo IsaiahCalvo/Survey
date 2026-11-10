@@ -258,6 +258,31 @@ test('a sort that lands after the check but before the write: values go back to 
   assert.equal(ctx.markers.d1.checklistResponses.c1.selection, 'Y');
 });
 
+test('a sort that lands while a row typed in the sheet gets its stamps: they never stay on another item', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101'), d2: door('d2', 'D-102'), d3: door('d3', 'D-103') } });
+  await ctx.round(); await ctx.round();
+  const sheet = await ctx.sheet();
+  const at = sheet.rows.length; const item = sheet.rows[0].indexOf('Item');
+  await ctx.edit([{ row: at, col: item, value: 'New door' }]);
+  const d101 = [...sheet.rows.find((r) => r[item] === 'D-101')];
+  let n = 0;
+  const p = ctx.provider;
+  const sortingWrite = { ...p, writeCells: async (id, cells) => {
+    if (n++ === 0) await fakeApi(`/files/${ctx.fileId}/sort`, { title: 'Doors - Level 1' });
+    return p.writeCells(id, cells);
+  } };
+  const plan = [];
+  const watching = { ...sortingWrite, writeCells: async (id, cells) => { plan.push(...cells); return sortingWrite.writeCells(id, cells); } };
+  const res = await ctx.round({ provider: watching });
+  assert.ok(plan.some((c) => c.row === at && c.col !== 0), 'the new row gets cells of its own written');
+  assert.equal(res.status, 'retry');
+  const now = (await ctx.sheet()).rows.find((r) => r[item] === 'D-101');
+  assert.deepEqual(now.slice(0, d101.length), d101, 'D-101 is as it was');
+  await ctx.round(); await ctx.round({ force: true });
+  assert.equal(Object.values(ctx.markers).filter((m) => m.name === 'New door').length, 1);
+  assert.equal(ctx.markers.d1.changedBy, 'IC', 'D-101 never takes the new row\'s stamps');
+});
+
 test('a sort that lands while a copied row gets its own Row ID: the Row ID stays with its row', async () => {
   const ctx = await setup({ markers: { d1: door('d1', 'D-101'), d2: door('d2', 'D-102'), d3: door('d3', 'D-103') } });
   await ctx.round(); await ctx.round();

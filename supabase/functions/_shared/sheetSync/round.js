@@ -4,6 +4,7 @@
 // function, node tests and a future scheduled job run the same code.
 import { planSheetRound, appRecordOf, sameCell, SHEET_EDITOR_UNKNOWN } from './engine.js';
 import { assertProvider } from './providers/contract.js';
+import { applyClashes } from './concurrent.js';
 
 const sameId = (a, b) => a != null && b != null && String(a) === String(b);
 
@@ -233,18 +234,28 @@ export async function putMovedRowIdsRight({ provider, fileId, grid, idWrites }) 
   return { fixed: fixes.length };
 }
 
-export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, signing, force = false, now = new Date(), newMarkerId, fillBy = '' }) {
+/**
+ * `clashes()` (optional, read after loadMarkers): app edits made without
+ * seeing a value an earlier round brought in (see concurrent.js); `pulls()`
+ * (optional, read after saveMarkers): the writes to keep watching, saved on
+ * the link as state.pulls.
+ */
+export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, signing, force = false, now = new Date(), newMarkerId, fillBy = '', clashes: clashesOf = null, pulls: pullsOf = null }) {
   assertProvider(provider);
   const layout = link.layout;
   const version = await provider.getVersion(link.file_id);
   const loaded = (await loadMarkers()) || {};
+  const clashes = clashesOf?.() || {};
   const fills = fillBlankStamps(layout, loaded, fillBy, now.toISOString());
-  const markers = Object.keys(fills).length ? { ...loaded, ...fills } : loaded;
+  const stamped = Object.keys(fills).length ? { ...loaded, ...fills } : loaded;
+  // A blind edit Yjs dropped is put back as the app's side, and its cells
+  // compare against the value from before the sheet's change.
+  const { markers, baseline: roundBaseline } = applyClashes(stamped, link.baseline || {}, clashes);
   const appHash = await appHashOf(layout, markers);
   const state = { ...(link.state || {}) };
   const pendingChoices = Object.keys(state.choices || {}).length > 0;
   const newScopes = layout.scopes.filter((s) => state.sheetIds?.[s.scopeId] == null);
-  if (!force && !pendingChoices && !newScopes.length && version && version === link.remote_version && appHash === link.app_hash) {
+  if (!force && !Object.keys(clashes).length && !pendingChoices && !newScopes.length && version && version === link.remote_version && appHash === link.app_hash) {
     return { status: 'idle' };
   }
 
@@ -274,7 +285,7 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
     selfEmail: provider.accountEmail ?? null, lastWriteAt: state.lastWriteAt ?? null,
   });
   const planArgs = {
-    layout, grid, markers, baseline: link.baseline || {}, state, signing, now, sheetEditor,
+    layout, grid, markers, baseline: roundBaseline, state, signing, now, sheetEditor,
     ...(newMarkerId ? { newMarkerId } : {}),
   };
   let plan = await planSheetRound(planArgs);
@@ -317,15 +328,24 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
     const ownIds = new Set(idWrites.map((w) => `${w.sheetId}|${w.row}|${w.col}`));
     const idChecks = plan.cellWrites.length ? plan.verify.filter((c) => 'token' in c && !ownIds.has(`${c.sheetId}|${c.row}|${c.col}`)) : [];
     const offAt = (vals, from = 0) => idChecks.some((c, i) => String(vals[from + i] ?? '').trim() !== String(c.token ?? '').trim());
+    // The Row ID at every row a value went to, read back too: it says which
+    // item each value landed on, also on rows with no Row ID check (a row
+    // from the sheet getting its own Row ID, or one whose Row ID was typed
+    // over).
+    const idColOf = new Map(plan.verify.filter((c) => 'token' in c).map((c) => [String(c.sheetId), c.col]));
+    const landedCells = [...new Map(dataWrites.filter((w) => idColOf.has(String(w.sheetId)) && w.row > 0)
+      .map((w) => [`${w.sheetId}|${w.row}`, { sheetId: w.sheetId, title: w.title, row: w.row, col: idColOf.get(String(w.sheetId)) }])).values()];
+    const tokenBefore = (c) => String(grid.sheets.find((sh) => sameId(sh.sheetId, c.sheetId))?.rows?.[c.row]?.[c.col] ?? '').trim();
     // Rows moved: everything still to go (new rows, deletes, Row IDs) is by
     // row number, so put the values right and plan again from a fresh read.
     // A Row ID already written for an item this round doesn't save is made
     // into that item next round (engine: "recreate").
-    if (filled.length || idChecks.length) {
-      const back = await provider.readCells(link.file_id, [...filled, ...idChecks]);
-      if (offAt(back, filled.length)) {
-        const landed = new Map(idChecks.map((c, i) => [`${c.sheetId}|${c.row}`, back[filled.length + i]]));
-        await putMovedWritesRight({ provider, fileId: link.file_id, grid, writes: dataWrites, idChecks, landed });
+    if (filled.length || idChecks.length || landedCells.length) {
+      const back = await provider.readCells(link.file_id, [...filled, ...idChecks, ...landedCells]);
+      const at = filled.length + idChecks.length;
+      if (offAt(back, filled.length) || landedCells.some((c, i) => String(back[at + i] ?? '').trim() !== tokenBefore(c))) {
+        const landed = new Map(landedCells.map((c, i) => [`${c.sheetId}|${c.row}`, back[at + i]]));
+        await putMovedWritesRight({ provider, fileId: link.file_id, grid, writes: dataWrites, idChecks: landedCells, landed });
         retry = true; return;
       }
       filled.forEach((c, i) => {
@@ -355,7 +375,19 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
   if (hasWork(plan)) await writePlan().catch(protectedOnRefusal);
   if (retry) return { status: 'retry' };
   const writes = { ...fills, ...plan.markerWrites };
+  // A blind edit put back above and not otherwise written: written, so the
+  // survey shows what the sheet now gets.
+  for (const id of Object.keys(clashes)) {
+    if (!writes[id] && markers[id] !== stamped[id] && markers[id]) writes[id] = markers[id];
+  }
+  // Deleted in the app right after the sheet changed it: the row stays (the
+  // engine keeps a changed row), and says why.
+  for (const [id, c] of Object.entries(clashes)) {
+    if (!c.deleted || !plan.state.tombstones?.[id]) continue;
+    plan.state.problems = [{ markerId: id, scopeId: c.scopeId, message: `"${c.name || 'An item'}" was deleted in Survey just after its row was changed in the sheet, so the row was kept. Delete the row if it should go.` }, ...(plan.state.problems || [])].slice(0, 200);
+  }
   if (Object.keys(writes).length) await saveMarkers(writes);
+  const pulls = pullsOf?.();
 
   const after = { ...markers, ...plan.markerWrites };
   return {
@@ -370,6 +402,7 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
         ...(typeof link.state?.folderLabel === 'string' ? { folderLabel: link.state.folderLabel } : {}),
         ...plan.state,
         ...(wroteAt ? { lastWriteAt: wroteAt } : {}),
+        ...(pulls && Object.keys(pulls).length ? { pulls } : {}),
       },
       // The version read BEFORE the grid: if the sheet changed during the
       // round (including our own writes), the next round reads it again.
