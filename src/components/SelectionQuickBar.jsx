@@ -36,8 +36,10 @@ import { createPortal } from 'react-dom';
 import Icon from '../Icons';
 import { useTooltip } from './Tooltip';
 import { QuickColourDots, QuickPaintSwatch } from './QuickStyleControls';
+import { quickColoursForTool } from '../utils/quickStylePresets.js';
 import { SurveyEntitySwatch } from './SurveyEntityBar';
 import SurveyOverflowRow from './SurveyOverflowRow';
+import MeasureEditPopover from './MeasureEditPopover';
 import { watchLightPopover } from './dismissRules.js';
 import { useMenuFocus } from '../hooks/useMenuFocus.js';
 import { HISTORY_PAGE_SELECTION_EVENT } from '../utils/historyMarkFilter.js';
@@ -110,6 +112,19 @@ const visibleRect = (element) => {
   return rect && rect.width > 0 && rect.height > 0 ? rect : null;
 };
 
+// A perfectly level or upright line (a Shift-snapped length, say) has no
+// height or no width, so it framed nothing and the bar never showed for it.
+// It is framed as wide as its end grabbers instead.
+const HAIRLINE_PAD = 8;
+const cssEscape = (value) => String(value).replace(/["\\]/g, '\\$&');
+const hairlineRect = (element) => {
+  const rect = element?.getBoundingClientRect?.();
+  if (!rect || !(rect.width > 0 || rect.height > 0)) return null;
+  const padX = rect.width > 0 ? 0 : HAIRLINE_PAD;
+  const padY = rect.height > 0 ? 0 : HAIRLINE_PAD;
+  return { left: rect.left - padX, top: rect.top - padY, right: rect.right + padX, bottom: rect.bottom + padY };
+};
+
 /** The viewer area the bar must stay inside: under the tool bars. */
 function viewerBounds(phone = false) {
   const container = shownElement('[data-testid="pdf-container"]')
@@ -150,7 +165,7 @@ function turnCentre(grabber) {
  * move / resize / rotate is running, whether the picked tool may not touch it,
  * and whether a picked mark is locked.
  */
-function readSelection(items) {
+function readSelection(items, { measureEdit = false } = {}) {
   const pages = [...new Set(items.map((item) => item.pageNumber))];
   const rects = [];
   const handles = [];
@@ -189,17 +204,25 @@ function readSelection(items) {
     for (const item of items) {
       const selector = selectionItemSelector(item);
       const element = selector ? (pageLayer(item.pageNumber)?.querySelector(selector) || null) : null;
-      const rect = visibleRect(element);
+      const rect = visibleRect(element) || (measureEdit ? hairlineRect(element) : null);
       if (rect) rects.push(rect);
     }
   }
   // A degree box already open (it can be held inside the page, away from
-  // the spot selectionKeepOut keeps for it).
+  // the spot selectionKeepOut keeps for it), and a finger's move grip under
+  // the pick (Nightly 'box-drag-move').
   const open = [];
-  document.querySelectorAll('[data-rotation-input-field]').forEach((field) => {
+  document.querySelectorAll('[data-rotation-input-field], [data-box-move-grip]').forEach((field) => {
     const rect = visibleRect(field);
     if (rect) open.push(rect);
   });
+  // A picked measurement's caption pill sits off its line: keep it in view
+  // too, so a caption being edited (Measurement popover) is never covered.
+  for (const item of measureEdit ? items : []) {
+    const caption = pageLayer(item.pageNumber)?.querySelector(`[data-measure-for="${cssEscape(item.id)}"]`);
+    const rect = visibleRect(caption);
+    if (rect) open.push(rect);
+  }
   return { frame: selectionFrameRect(rects), gesture, gestureLayer, inert, locked, ...selectionKeepOut({ handles, extra: open }) };
 }
 
@@ -240,6 +263,9 @@ export default function SelectionQuickBar({
   const linePopoverRef = useRef(null);
   const [look, setLook] = useState({ visible: false, side: 'above', locked: false, readOnly: false });
   const [lineOpen, setLineOpen] = useState(false);
+  // The Measurement popover (Nightly 'measure-edit', MeasureEditPopover).
+  const [measureOpen, setMeasureOpen] = useState(false);
+  const closeMeasure = useCallback(() => setMeasureOpen(false), []);
   const itemsRef = useRef(items);
   itemsRef.current = items;
   const editingText = Boolean(api?.richTextEditor);
@@ -247,6 +273,10 @@ export default function SelectionQuickBar({
   const activeRef = useRef(active);
   activeRef.current = active;
   const [phoneMoreOn] = useState(() => isFeatureOn('phone-mark-more'));
+  // Nightly 'measure-edit': the bar also frames a level line and keeps clear of a
+  // picked measurement's caption (readSelection).
+  const [measureEditOn] = useState(() => isFeatureOn('measure-edit'));
+  const measureEditRef = useRef(measureEditOn);
   const phoneRef = useRef(phone);
   phoneRef.current = phone;
 
@@ -272,7 +302,7 @@ export default function SelectionQuickBar({
     }
     heldGestureRef.current = null;
     if (activeRef.current && !readOnly) {
-      const selection = readSelection(itemsRef.current);
+      const selection = readSelection(itemsRef.current, { measureEdit: measureEditRef.current });
       if (selection.gestureLayer) heldGestureRef.current = { layer: selection.gestureLayer, items: itemsRef.current };
       next.locked = selection.locked;
       if (selection.frame && !selection.gesture && !turningRef.current && !selection.inert) {
@@ -403,10 +433,13 @@ export default function SelectionQuickBar({
   useEffect(() => {
     if (!visible) setLineOpen(false);
   }, [visible]);
+  useEffect(() => {
+    if (!visible || !plan?.measure) setMeasureOpen(false);
+  }, [visible, plan?.measure]);
   // The bar's size changes with what it holds; place it again for that size.
   useLayoutEffect(() => {
     if (active) place();
-  }, [active, place, plan?.colour, plan?.width, plan?.style, plan?.remove]);
+  }, [active, place, plan?.colour, plan?.width, plan?.style, plan?.remove, plan?.measure]);
 
   // The Line popover's dismiss rules (outside press, Escape) are the app's.
   // KAL-66: opened from a keyboard, focus goes into it and Up / Down move
@@ -493,6 +526,7 @@ export default function SelectionQuickBar({
     groups.push(
       <span key="colour" className="selection-quick-bar__group" data-annotation-color-trigger>
         <QuickColourDots
+          {...quickColoursForTool(api?.quickColourTool || api?.contextTool, isFeatureOn('tool-quick-colours'))}
           value={api?.selectionMixed?.strokeColor ? null : paint.quick.color}
           customActive={api?.selectionMixed?.strokeColor ? false : undefined}
           onPick={(hex) => paint.quick.apply(hex, paint.quick.opacity)}
@@ -560,6 +594,29 @@ export default function SelectionQuickBar({
           onClick={() => setLineOpen((open) => !open)}
         >
           <Icon name={LINE_STYLE_SAMPLE_ICONS[styleMixed ? 'solid' : styleValue] || 'lineSampleSolid'} size={20} color="currentColor" />
+        </button>
+      </span>,
+    );
+  }
+  // Measurement (desktop and phone alike): one picked measurement's label,
+  // depth, caption lines and caption size.
+  if (plan?.measure) {
+    groups.push(
+      <span key="measure" className="selection-quick-bar__group" data-selection-quick-measure>
+        <button
+          type="button"
+          className={`selection-quick-bar__button${measureOpen ? ' is-open' : ''}`}
+          aria-label="Measurement"
+          aria-haspopup="dialog"
+          aria-expanded={measureOpen}
+          {...(measureOpen ? {} : chromeTip('Measurement', tipSide))}
+          onMouseDown={(event) => event.stopPropagation()}
+          onClick={() => {
+            setLineOpen(false);
+            setMeasureOpen((open) => !open);
+          }}
+        >
+          <Icon name="measureScale" size={20} color="currentColor" />
         </button>
       </span>,
     );
@@ -658,6 +715,17 @@ export default function SelectionQuickBar({
         </span>
       ))}
       {linePopover}
+      {measureOpen && visible && plan?.measure && (
+        <MeasureEditPopover
+          key={api?.selectedMeasure?.id || 'measure'}
+          measure={api?.selectedMeasure}
+          onPatch={api?.patchSelectedMeasure}
+          onClose={closeMeasure}
+          side={look.side === 'above' ? 'above' : 'below'}
+          tip={chromeTip}
+          tipSide={look.side === 'above' ? 'above' : 'below'}
+        />
+      )}
     </div>,
     document.body,
   );

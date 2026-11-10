@@ -4,7 +4,7 @@ import { E2E_ACCOUNTS } from './accounts.mjs';
 import { seedSheet } from './seedSheet.mjs';
 import { expect, signIn, test } from './helpers.mjs';
 
-for (const [on, key] of [[true, 'Backspace'], [true, 'Control+z'], [true, 'Undo button'], [false, 'Backspace']]) {
+for (const [on, key] of [[true, 'Backspace'], [true, 'Control+z'], [true, 'Undo button'], [true, 'Undo button, nothing before'], [false, 'Backspace']]) {
   test(`${key} while placing a polyline (${on ? 'flag on' : 'flag off'})`, async ({ page }) => {
     test.setTimeout(120_000);
     if (on) await page.addInitScript(() => localStorage.setItem('survey.flag.poly-back-step', '1'));
@@ -32,7 +32,7 @@ for (const [on, key] of [[true, 'Backspace'], [true, 'Control+z'], [true, 'Undo 
       await page.mouse.click(box.x + x, box.y + y);
       await page.waitForTimeout(120);
     }
-    if (key === 'Undo button') await page.getByRole('button', { name: 'Undo', exact: true }).filter({ visible: true }).first().click();
+    if (key.startsWith('Undo button')) await page.getByRole('button', { name: 'Undo', exact: true }).filter({ visible: true }).first().click();
     else await page.keyboard.press(key);
     await page.keyboard.press('Enter');
     await expect(marks).toHaveCount(before + 1);

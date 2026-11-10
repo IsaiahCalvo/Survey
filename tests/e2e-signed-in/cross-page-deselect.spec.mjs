@@ -41,7 +41,9 @@ for (const tool of ['v']) {
       await page.getByText(seeded.name, { exact: true }).filter({ visible: true }).first().click();
       await page.getByRole('button', { name: 'Open file' }).click();
       const pageDiv = (n) => page.locator(`.survey-pdfjs-page-div[data-page-number="${n}"]`).filter({ visible: true }).first();
-      await expect(page.getByText('Cross page 2').filter({ visible: true })).toBeVisible({ timeout: 60_000 });
+      // Exact: the document's own name ("Cross page <run>.pdf") also starts with
+      // "Cross page ", and a run id starting with 2 matched it too.
+      await expect(page.getByText('Cross page 2', { exact: true }).filter({ visible: true })).toBeVisible({ timeout: 60_000 });
       const b2 = await pageDiv(2).boundingBox();
       await page.keyboard.press('r');
       await page.mouse.move(b2.x + 150, b2.y + 80);

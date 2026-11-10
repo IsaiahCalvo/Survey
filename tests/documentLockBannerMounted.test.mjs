@@ -42,6 +42,10 @@ async function loadDocumentLockBanner() {
       "import { claimBodyReadOnly } from '../utils/readOnlyBodyReasons.js';",
       `import { claimBodyReadOnly } from ${JSON.stringify(readOnlyReasonsUrl)};`,
     )
+    .replace(
+      "import { useDocumentPeople } from '../hooks/useDocumentPeople.js';",
+      'const useDocumentPeople = (...args) => (globalThis.__documentLockTestPeople?.(...args) ?? []);',
+    )
     .replaceAll('import.meta.env.DEV', 'false');
 
   const transformed = await transformWithOxc(source, componentPath, { lang: 'jsx' });
@@ -128,9 +132,14 @@ test('inactive locked tab retains lock state without disabling active unlocked t
     assert.equal(document.body.getAttribute('data-readonly'), null);
     assert.equal(document.querySelector('[data-testid="kal49-lock-banner"]'), null);
 
+    globalThis.__documentLockTestPeople = (documentId, { enabled }) => (enabled && documentId === 'doc-hidden'
+      ? [{ id: 'owner', name: 'Olive Owner', email: null }]
+      : []);
     await renderTabs('doc-hidden');
     assert.equal(document.body.getAttribute('data-readonly'), 'true');
     assert.ok(document.querySelector('[data-testid="kal49-lock-banner"]'));
+    // The locker is named, never shown as a raw user id.
+    assert.match(document.querySelector('[data-testid="kal49-lock-banner"]').textContent, /by Olive Owner\./);
 
     await act(async () => root.unmount());
     assert.equal(document.body.getAttribute('data-readonly'), null);

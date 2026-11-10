@@ -27,6 +27,7 @@ import {
   subscribeDocumentLockState,
 } from '../services/documentLockService.js';
 import { claimBodyReadOnly } from '../utils/readOnlyBodyReasons.js';
+import { useDocumentPeople } from '../hooks/useDocumentPeople.js';
 
 function formatLockedAt(iso) {
   if (!iso) return '';
@@ -51,11 +52,20 @@ export default function DocumentLockBanner({
   viewerUserId,
   onLockStateChange,
   isActive = true,
+  // An older version (Nightly 'document-versions') is read-only too, with no
+  // lock row behind it: same zero-writes mode, its own bar (OlderVersionBar).
+  readOnlyWithoutLock = false,
 }) {
   const [lockedAt, setLockedAt] = useState(null);
   const [lockedBy, setLockedBy] = useState(null);
   const [lockedLabel, setLockedLabel] = useState(null);
-  const isLocked = lockedAt != null;
+  const isLocked = lockedAt != null || readOnlyWithoutLock === true;
+  // T8 deep test 2026-11-10: the banner named the locker by raw user id.
+  // Name them from the document's people list (owner + project members).
+  const needsLockerName = isLocked && Boolean(lockedBy) && lockedBy !== viewerUserId;
+  const people = useDocumentPeople(documentId, { enabled: needsLockerName });
+  const locker = needsLockerName ? people.find((p) => p.id === lockedBy) : null;
+  const lockerName = locker?.name || locker?.email || 'a teammate';
   const onLockStateChangeRef = useRef(onLockStateChange);
   const bodyClaimTokenRef = useRef(Symbol('document-lock-readonly'));
   onLockStateChangeRef.current = onLockStateChange;
@@ -164,7 +174,7 @@ export default function DocumentLockBanner({
   // Don't render anything when there's no document.
   if (!documentId || !isActive) return null;
 
-  if (!isLocked) return null;
+  if (lockedAt == null) return null;
 
   // Locked: top banner visible to ALL roles.
   return (
@@ -191,7 +201,7 @@ export default function DocumentLockBanner({
       <div>
         <strong>Document locked.</strong>{' '}
         Signed off {lockedAt ? `on ${formatLockedAt(lockedAt)}` : ''}
-        {lockedBy ? ` by ${lockedBy === viewerUserId ? 'you' : lockedBy}` : ''}.
+        {lockedBy ? ` by ${lockedBy === viewerUserId ? 'you' : lockerName}` : ''}.
         {lockedLabel ? ` Label: "${lockedLabel}".` : ''}{' '}
         Edits are disabled.
       </div>

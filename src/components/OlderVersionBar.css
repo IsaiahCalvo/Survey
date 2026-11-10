@@ -1,0 +1,52 @@
+/* Hangs under the top chrome between the rails, like the storage notice
+   (collab/StorageFailureBanner.css), as one calm neutral row. Its z-index
+   puts it over the document tab (5000) but under the rails and their menus
+   (5600), so the phone's More menu opens over it. */
+.older-version-bar {
+  position: fixed;
+  top: var(--app-banner-top, var(--app-chrome-top, 96px));
+  left: var(--app-sidebar-width, 48px);
+  right: var(--app-right-rail-width, 48px);
+  margin: 8px auto 0;
+  width: fit-content;
+  max-width: calc(100% - 16px);
+  z-index: 5550;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 6px 6px 14px;
+  background: var(--surface-1);
+  border: var(--alert-neutral-border);
+  border-radius: var(--alert-radius);
+  box-shadow: var(--shadow-popover);
+  color: var(--text-1);
+  font-size: var(--font-size-base);
+  line-height: 1.35;
+}
+.older-version-bar__text strong { font-weight: 600; }
+.older-version-bar__action {
+  flex-shrink: 0;
+  height: 28px;
+  padding: 0 12px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: var(--accent-text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.older-version-bar__action:hover { filter: brightness(1.05); }
+.older-version-bar__action:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+@media screen and (max-width: 599px), screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
+  .older-version-bar {
+    left: calc(var(--mobile-rail-w, 36px) + 8px);
+    right: 8px;
+    margin: 8px 0 0;
+    width: auto;
+    max-width: none;
+    padding: 8px 8px 8px 12px;
+  }
+  .older-version-bar__action { height: 32px; }
+}

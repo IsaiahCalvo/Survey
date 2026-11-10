@@ -163,9 +163,10 @@ test('phone layout (the shared screen rule) takes no drops; desktop does', () =>
 
 test('wiring: drops reuse the Upload button path, never a second one', () => {
   const dashboard = read('src/Dashboard.jsx');
-  assert.match(dashboard, /const uploadBrowserPdf = async \(file, \{ projectId = null, openAfterUpload = true, waitForStorage = false, askDuplicates = true \} = \{\}\) =>/);
+  assert.match(dashboard, /const uploadBrowserPdf = async \(file, \{ projectId = null, openAfterUpload = true, waitForStorage = false, askDuplicates = true, checkedSheet = null \} = \{\}\) =>/);
   assert.match(dashboard, /await uploadBrowserPdf\(file, \{ projectId, openAfterUpload \}\);/, 'the file picker goes through the shared path');
-  assert.match(dashboard, /await uploadBrowserPdf\(asPdfFile\(pdf\), \{/, 'drops go through the same path');
+  assert.match(dashboard, /await uploadBrowserPdf\(checked\[0\]\.file, \{ projectId, openAfterUpload, checkedSheet: checked\[0\]\.sheet \}\);/, 'the upload check (Nightly) goes through it too');
+  assert.match(dashboard, /await uploadBrowserPdf\(checked \? checked\[index\]\.file : asPdfFile\(pdf\), \{/, 'drops go through the same path');
   assert.match(dashboard, /uploadDroppedFiles: handleDroppedFiles/);
   assert.match(dashboard, /onDropFiles=\{handleDroppedFiles\}/);
   // The shared path still asks about duplicates and creates the row before opening.

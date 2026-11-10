@@ -187,6 +187,10 @@ import { useCrossPageMove } from './useCrossPageMove.js';
 import { isCopyDragEvent, subscribeMoveModifier, getMoveModifierHeld } from '../utils/moveModifier.js';
 import { isTextLikeAnnotation } from '../utils/toolPressRouting.js';
 import { lockTextboxSizeAfterResize } from '../utils/annotationPreferences.js';
+import { readSnapContent } from '../utils/annotationPreferences.js';
+import { isFeatureOn } from '../featureFlags.js';
+import { getMarkerShapePdfDocument } from '../survey/markerShapeProviders.js';
+import { getPageSnapContentIndex } from '../survey/snapContentIndex.js';
 import {
   groupResizeMinimumScale,
   handleAffectsX,
@@ -459,11 +463,16 @@ export function useSVGInteraction({
   // Endpoint / corner drag snapping (drawSnap.js): Shift locks the segment
   // from `anchor` to the snap angle (Settings, 15° by default); the point locks onto another line end or
   // corner within 8 screen px unless Alt / the snapping preference is off.
+  // Nightly 'snap-content': then onto the PDF's own line ends, midpoints and lines.
   const snapDraggedPoint = (ds, anchor, point, e) => {
+    const contentIndex = isFeatureOn('snap-content') && !isSnapFreeModifier(e) && readSnapContent()
+      ? getPageSnapContentIndex(getMarkerShapePdfDocument(), pageNumber)
+      : null;
     const r = resolveDrawSnap(anchor, point, {
       ...drawSnapEventOptions(e, inverseScale),
       endpointSnap: !isAnnotationSnapFree(e),
       candidates: ds.snapEndpoints || [],
+      contentSnap: contentIndex ? (p, tol, opts) => contentIndex.query(p.x, p.y, tol, opts) : null,
     });
     applySnapGuides(r.endpoint ? { lines: [], points: [], endpoint: r.endpoint } : null);
     return r.point;

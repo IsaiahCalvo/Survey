@@ -884,6 +884,19 @@ const paintAlpha = (paint, opacity = 1) => {
   return Math.max(0, Math.min(1, paintOpacity * objectOpacity));
 };
 
+// The /IC fill colour of a shape, or null for no fill. hexToRGB drops alpha,
+// so a see-through fill ('rgba(255,255,255,0)', 'none', fillOpacity 0) used to
+// export as /IC white, and Acrobat or Bluebeam drew white boxes over the
+// drawing (deep test 2026-11-10; the XFDF interior-color comes from /IC too).
+const visibleFillRGB = (fabricObj) => {
+  const fill = fabricObj?.fill;
+  if (!fill || typeof fill !== 'string') return null;
+  if (fill === 'transparent' || fill === 'none') return null;
+  if (paintAlpha(fill, 1) <= 0) return null;
+  if (fabricObj.fillOpacity != null && Number(fabricObj.fillOpacity) <= 0) return null;
+  return hexToRGB(fill);
+};
+
 const isFilledPaperInk = (fabricObj) => Boolean(
   fabricObj?.paperInkGeometry
   || fabricObj?.paperEraserGeometry
@@ -951,7 +964,9 @@ function measureContentsOf(fabricObj) {
   try {
     if (!getMeasureKind(fabricObj)) return '';
     const label = buildMeasureLabel(fabricObj, fabricObj?.data?.measure?.scale || null);
-    return label?.text ? String(label.text) : '';
+    // The caption as the page shows it (label and picked readings, one per
+    // line); with every line switched off, the plain reading still exports.
+    return String(label?.text || label?.reading || '');
   } catch {
     return '';
   }
@@ -2845,7 +2860,7 @@ const embedStampProxyImages = async (pdfDoc, objects, purpose) => {
 const createSquareAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {}) => {
   try {
     const color = hexToRGB(fabricObj.stroke || '#000000');
-    const fillColor = fabricObj.fill ? hexToRGB(fabricObj.fill) : null;
+    const fillColor = visibleFillRGB(fabricObj);
 
     const left = fabricObj.left || 0;
     const top = fabricObj.top || 0;
@@ -2904,7 +2919,7 @@ const createSquareAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
 const createCircleAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {}) => {
   try {
     const color = hexToRGB(fabricObj.stroke || '#000000');
-    const fillColor = fabricObj.fill ? hexToRGB(fabricObj.fill) : null;
+    const fillColor = visibleFillRGB(fabricObj);
     const counterMetadataJson = options.counterMetadataJson || null;
     const counterMetadata = options.counterMetadata || null;
 
@@ -3083,8 +3098,7 @@ const createEllipseAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = 
 
     const strokePaint = fabricObj.stroke || '#000000';
     const color = hexToRGB(strokePaint);
-    const hasFill = fabricObj.fill && fabricObj.fill !== 'transparent';
-    const fillColor = hasFill ? hexToRGB(fabricObj.fill) : null;
+    const fillColor = visibleFillRGB(fabricObj);
     const strokeWidth = Number(fabricObj.strokeWidth) || 1;
     const alpha = paintAlpha(strokePaint, fabricObj.opacity);
     // 2026-09-09: the /BBox used to be the EXACT ellipse box, so the outer half
@@ -3432,7 +3446,7 @@ const createHighlightAnnotation = (pdfDoc, page, fabricObj, pageHeight, options 
 const createPolygonAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {}) => {
   try {
     const color = hexToRGB(fabricObj.stroke || '#000000');
-    const fillColor = fabricObj.fill ? hexToRGB(fabricObj.fill) : null;
+    const fillColor = visibleFillRGB(fabricObj);
 
     // Extract points from Fabric.js polygon
     const points = fabricObj.points || [];

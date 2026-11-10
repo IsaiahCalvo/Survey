@@ -9,7 +9,11 @@ test('Cloud button arms the rectangle with the cloud line style', () => {
   assert.deepEqual(resolveShapeToolPick('cloud', 'solid'), { tool: 'rect', lineBorderStyle: 'cloud' });
   assert.deepEqual(resolveShapeToolPick('rect', 'cloud'), { tool: 'rect', lineBorderStyle: 'solid' });
   assert.deepEqual(resolveShapeToolPick('rect', 'dashed'), { tool: 'rect', lineBorderStyle: null });
-  assert.deepEqual(resolveShapeToolPick('polygon', 'cloud'), { tool: 'polygon', lineBorderStyle: null });
+  // Polygon (or any shape) after the Cloud tool draws plain lines again.
+  assert.deepEqual(resolveShapeToolPick('polygon', 'cloud', 'rect'), { tool: 'polygon', lineBorderStyle: 'solid' });
+  assert.deepEqual(resolveShapeToolPick('ellipse', 'cloud', 'rect'), { tool: 'ellipse', lineBorderStyle: 'solid' });
+  // A polygon cloud chosen from the Style menu survives picking Polygon again.
+  assert.deepEqual(resolveShapeToolPick('polygon', 'cloud', 'polygon'), { tool: 'polygon', lineBorderStyle: null });
   assert.equal(toolSupportsCloudBorderStyle('rect'), true);
   assert.equal(toolSupportsCloudBorderStyle('polygon'), true);
 });

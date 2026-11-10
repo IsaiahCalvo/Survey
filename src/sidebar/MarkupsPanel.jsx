@@ -4,10 +4,11 @@
  * 2026-11-09: both list a sheet's markups grouped by kind, with author,
  * search and export; Survey only had History (changes, not marks).
  *
- * Search by words (kind, text, "p3", author), narrow by kind or person,
- * click a row to go to the mark and pick it, copy the list as CSV. Reads the
- * live page lists, so it follows edits as they happen. Pure rules:
- * utils/markupList.js.
+ * Search by words (kind, text, measurement, "p3", author), narrow by kind,
+ * person or layer or to measurements only, see the measurements' totals,
+ * click a row to go to the mark and pick it, copy the list as CSV (with each
+ * measurement's quantity and unit). Reads the live page lists, so it follows
+ * edits as they happen. Pure rules: utils/markupList.js.
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import Icon from '../Icons';
@@ -23,6 +24,7 @@ import {
   filterMarkupRows,
   groupMarkupRows,
   markupRowsToCsv,
+  markupTotals,
 } from '../utils/markupList.js';
 
 function safeName(name) {
@@ -31,16 +33,21 @@ function safeName(name) {
 
 export default function MarkupsPanel({
   annotationsByPage = null,
+  layerState = null,
   viewerId = null,
   documentId = null,
   documentName = '',
   isActive = false,
   onOpenMark = null,
+  // Phone: the sheet steps down so the picked mark shows.
+  onRequestSheetClose = undefined,
 }) {
   const tip = useTooltip();
   const [query, setQuery] = useState('');
   const [kinds, setKinds] = useState(() => new Set());
   const [author, setAuthor] = useState('');
+  const [layer, setLayer] = useState('');
+  const [measuresOnly, setMeasuresOnly] = useState(false);
   const [closed, setClosed] = useState(() => new Set());
   const [people, setPeople] = useState([]);
 
@@ -57,19 +64,30 @@ export default function MarkupsPanel({
   const peopleById = useMemo(() => new Map(people.map((p) => [String(p.id), p])), [people]);
   const labelFor = useMemo(() => (id) => authorLabel(id, { viewerId, peopleById }), [viewerId, peopleById]);
   // Only build while the panel is in view: a big set has thousands of marks.
-  const rows = useMemo(() => (isActive ? buildMarkupRows(annotationsByPage) : []), [isActive, annotationsByPage]);
+  const rows = useMemo(() => (isActive ? buildMarkupRows(annotationsByPage, { layerState }) : []), [isActive, annotationsByPage, layerState]);
   const kindCounts = useMemo(() => groupMarkupRows(rows).map((g) => ({ kind: g.kind, label: g.label, count: g.rows.length })), [rows]);
   const authors = useMemo(() => {
     const ids = [...new Set(rows.map((r) => r.authorId || ''))];
     return ids.map((id) => ({ id, label: labelFor(id || null) })).sort((a, b) => a.label.localeCompare(b.label));
   }, [rows, labelFor]);
+  // Layers (Layers beta): only offered when the marks sit on more than one.
+  const layers = useMemo(() => {
+    const seen = new Map();
+    for (const row of rows) if (row.layerId && !seen.has(row.layerId)) seen.set(row.layerId, row.layerName || 'Layer');
+    return [...seen.entries()].map(([id, label]) => ({ id, label }));
+  }, [rows]);
+  const manyLayers = layers.length > 1;
+  const hasMeasures = useMemo(() => rows.some((r) => r.measure), [rows]);
   const shown = useMemo(() => filterMarkupRows(rows, {
     query,
     kinds,
     authors: author ? new Set([author]) : null,
+    layers: layer ? new Set([layer]) : null,
+    measuresOnly,
     labelFor,
-  }), [rows, query, kinds, author, labelFor]);
+  }), [rows, query, kinds, author, layer, measuresOnly, labelFor]);
   const groups = useMemo(() => groupMarkupRows(shown), [shown]);
+  const totals = useMemo(() => markupTotals(shown), [shown]);
 
   const toggleKind = (kind) => setKinds((prev) => {
     const next = new Set(prev);
@@ -100,7 +118,7 @@ export default function MarkupsPanel({
     }
   };
 
-  const filtered = query || kinds.size > 0 || author;
+  const filtered = query || kinds.size > 0 || author || layer || measuresOnly;
   const csvTip = tip('Save this list as CSV', 'below');
 
   return (
@@ -158,6 +176,34 @@ export default function MarkupsPanel({
         </div>
       )}
 
+      {(manyLayers || hasMeasures) && (
+        <div className="markups-panel__author" data-markups-more-filters="true">
+          {manyLayers && (
+            <>
+              <span aria-hidden="true">Layer</span>
+              <ValueSelect
+                label="Layer"
+                size="sm"
+                value={layer}
+                options={[{ value: '', label: 'All layers' }, ...layers.map((l) => ({ value: l.id, label: l.label }))]}
+                onChange={setLayer}
+              />
+            </>
+          )}
+          {hasMeasures && (
+            <button
+              type="button"
+              className={`markups-panel__chip${measuresOnly ? ' is-on' : ''}`}
+              aria-pressed={measuresOnly ? 'true' : 'false'}
+              data-markups-measures-only="true"
+              onClick={() => setMeasuresOnly((on) => !on)}
+            >
+              Measurements only
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="markups-panel__summary" aria-live="polite">
         {rows.length === 0
           ? 'No markups yet. Marks you draw show up here.'
@@ -165,11 +211,22 @@ export default function MarkupsPanel({
             ? `${shown.length} of ${rows.length} markups`
             : `${rows.length} ${rows.length === 1 ? 'markup' : 'markups'}`}
         {filtered && (
-          <button type="button" className="markups-panel__clear" onClick={() => { setQuery(''); setKinds(new Set()); setAuthor(''); }}>
+          <button type="button" className="markups-panel__clear" onClick={() => { setQuery(''); setKinds(new Set()); setAuthor(''); setLayer(''); setMeasuresOnly(false); }}>
             Clear
           </button>
         )}
       </div>
+
+      {totals.length > 0 && (
+        <div className="markups-panel__totals" data-markups-totals="true" aria-label="Measurement totals">
+          {totals.map((t) => (
+            <span key={`${t.kind}|${t.unit}`} className="markups-panel__total" data-markups-total={t.kind}>
+              <span className="markups-panel__total-name">{t.name}</span>
+              <span className="markups-panel__total-value">{t.quantity.toLocaleString()} {t.unit}</span>
+            </span>
+          ))}
+        </div>
+      )}
 
       <div className="markups-panel__list" role="list">
         {groups.map((group) => {
@@ -192,12 +249,18 @@ export default function MarkupsPanel({
                   type="button"
                   className="markups-panel__row"
                   data-markup-row={row.id}
-                  onClick={() => onOpenMark?.(row)}
+                  onClick={() => { onRequestSheetClose?.(); onOpenMark?.(row); }}
                 >
                   <span className="markups-panel__dot" style={{ background: row.color || 'var(--text-3)' }} aria-hidden="true" />
                   <span className="markups-panel__main">
-                    <span className="markups-panel__title">{row.text || row.kindLabel}</span>
-                    <span className="markups-panel__meta">{labelFor(row.authorId)}</span>
+                    <span className="markups-panel__title">
+                      {row.measure && row.text !== row.measure.text
+                        ? <><strong>{row.measure.text}</strong> {row.text}</>
+                        : (row.text || row.kindLabel)}
+                    </span>
+                    <span className="markups-panel__meta">
+                      {[row.measure ? row.measure.name : null, labelFor(row.authorId), manyLayers ? row.layerName : null].filter(Boolean).join(' · ')}
+                    </span>
                   </span>
                   <span className="markups-panel__page">p. {row.pageNumber}</span>
                 </button>

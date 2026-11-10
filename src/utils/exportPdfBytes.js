@@ -137,3 +137,32 @@ export async function deliverPdf(bytes, fileName, { title = 'Export PDF', electr
   setTimeout(() => URL.revokeObjectURL(url), 0);
   return 'downloaded';
 }
+
+/**
+ * A CSV beside the PDF (export filters' "Comments (.csv)"): the desktop app's
+ * Save As, else a download. Returns 'saved' | 'downloaded' | 'canceled'.
+ */
+export async function deliverCsv(text, fileName, { title = 'Save comments', electronAPI = typeof window !== 'undefined' ? window.electronAPI : null } = {}) {
+  // A byte-order mark so Excel reads the names and words as UTF-8.
+  const bytes = new TextEncoder().encode(`\uFEFF${text}`);
+  if (electronAPI?.saveFile) {
+    const result = await electronAPI.saveFile({
+      title,
+      defaultPath: fileName,
+      filters: [{ name: 'CSV files', extensions: ['csv'] }],
+      data: Array.from(bytes),
+    });
+    if (result?.canceled) return 'canceled';
+    if (result?.error) throw new Error(result.error);
+    return 'saved';
+  }
+  const url = URL.createObjectURL(new Blob([bytes], { type: 'text/csv;charset=utf-8' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+  return 'downloaded';
+}

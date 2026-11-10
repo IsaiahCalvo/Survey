@@ -1,12 +1,21 @@
 // The Markups list (Nightly flag 'markup-list', Drawboard Projects + PDF Pro
 // trial audit 2026-11-09): every mark in the document in one list, grouped
-// by kind, with who made it, a search, a kind filter and a CSV copy.
-// Drawboard has this; Survey only had History (changes, not marks).
+// by kind, with who made it, a search, kind / person / layer filters,
+// "measurements only", measurement totals and a CSV copy (with each
+// measurement's quantity and unit). Drawboard has this; Survey only had
+// History (changes, not marks).
 //
 // Pure part: the page lists in, rows out.
 import { historyTypeKey } from './historyFeed.js';
 import { getAnnotationAuthorId } from '../lib/collab/permissionScope.js';
-import { buildMeasureLabel, getMeasureKind } from './measure/measureScale.js';
+import { normalizeLayerState, resolveLayerId } from './layers.js';
+import {
+  MEASURE_UNITS,
+  buildMeasureLabel,
+  getMeasureKind,
+  isValidMeasureScale,
+  pageScaleFromObjects,
+} from './measure/measureScale.js';
 
 // Kinds the list shows, in this order, with their words.
 export const MARKUP_KINDS = Object.freeze([
@@ -47,7 +56,10 @@ function textOf(obj) {
   if (getMeasureKind(obj)) {
     try {
       const label = buildMeasureLabel(obj, data.measure?.scale || null);
-      if (label?.text) return String(label.text);
+      // A caption's lines read on one row; with every line switched off the
+      // row still shows the reading.
+      if (label?.text) return String(label.text).replace(/\s*\n\s*/g, ' · ');
+      if (label?.reading) return String(label.reading);
     } catch { /* a broken measure still lists, without its reading */ }
   }
   const raw = typeof obj?.text === 'string' ? obj.text
@@ -106,6 +118,44 @@ function createdAtOf(obj) {
   return String(raw);
 }
 
+const MEASURE_NAMES = {
+  length: 'Length',
+  perimeter: 'Perimeter',
+  polylength: 'Polylength',
+  area: 'Area',
+  wallArea: 'Wall area',
+  volume: 'Volume',
+};
+// What a quantity measures, so totals only add like with like.
+const DIMENSION = { length: 'length', perimeter: 'length', polylength: 'length', area: 'area', wallArea: 'area', volume: 'volume' };
+const PT_PER_INCH = 72;
+
+/**
+ * A measurement's real quantity: { kind, name, text, quantity, unit,
+ * dimension, scaled }. Without a page scale the quantity is in paper inches,
+ * as the label says.
+ */
+export function measureQuantity(object, pageScale = null) {
+  const kind = getMeasureKind(object);
+  if (!kind) return null;
+  const own = object?.data?.measure?.scale;
+  const scale = isValidMeasureScale(own) ? own : (isValidMeasureScale(pageScale) ? pageScale : null);
+  let label = null;
+  try { label = buildMeasureLabel(object, scale); } catch { label = null; }
+  if (!label || !Number.isFinite(label.value)) return null;
+  const dimension = DIMENSION[kind];
+  const per = scale ? scale.ptPerUnit : PT_PER_INCH;
+  const units = MEASURE_UNITS[scale ? scale.unit : 'in'] || MEASURE_UNITS.in;
+  // wallArea's value is perimeter x depth (depth already real); volume's is
+  // area x depth.
+  let quantity;
+  if (kind === 'wallArea') quantity = label.value / per;
+  else if (kind === 'volume' || kind === 'area') quantity = label.value / (per * per);
+  else quantity = label.value / per;
+  const unit = dimension === 'length' ? units.label : (dimension === 'area' ? units.area : units.volume);
+  return { kind, name: MEASURE_NAMES[kind], text: String(label.reading || label.text || ''), quantity: Math.round(quantity * 1000) / 1000, unit, dimension, scaled: Boolean(scale) };
+}
+
 function idOf(obj, pageNumber, index) {
   const id = obj?.id ?? obj?.data?.id ?? obj?.meta?.id;
   return id != null ? String(id) : `p${pageNumber}-i${index}`;
@@ -113,10 +163,13 @@ function idOf(obj, pageNumber, index) {
 
 /**
  * Every listable mark: { id, pageNumber, index, kind, kindLabel, text,
- * color, authorId, createdAt, calloutId }. Pages in order, marks in stacking
- * order. `byPage` = { [page]: { objects } }.
+ * color, authorId, createdAt, calloutId, measure, layerId, layerName }.
+ * Pages in order, marks in stacking order. `byPage` = { [page]: { objects } };
+ * `layerState` (Layers beta) names each mark's layer.
  */
-export function buildMarkupRows(byPage) {
+export function buildMarkupRows(byPage, { layerState = null } = {}) {
+  const layers = normalizeLayerState(layerState);
+  const layerNames = new Map(layers.layers.map((layer) => [layer.id, layer.name]));
   const rows = [];
   const pages = Object.keys(byPage || {})
     .map(Number)
@@ -125,11 +178,13 @@ export function buildMarkupRows(byPage) {
   for (const pageNumber of pages) {
     const objects = (byPage[pageNumber] || byPage[String(pageNumber)])?.objects;
     if (!Array.isArray(objects)) continue;
+    const pageScale = pageScaleFromObjects(objects);
     objects.forEach((obj, index) => {
       if (!obj || obj.visible === false || obj?.data?.helper) return;
       const kind = kindOf(obj);
       if (SKIP_KINDS.has(kind)) return;
       const listed = KIND_WORD[kind] ? kind : 'mark';
+      const layerId = layerState ? resolveLayerId(obj, layers) : null;
       rows.push({
         id: idOf(obj, pageNumber, index),
         pageNumber,
@@ -141,6 +196,9 @@ export function buildMarkupRows(byPage) {
         authorId: getAnnotationAuthorId(obj) || null,
         createdAt: createdAtOf(obj),
         calloutId: obj?.data?.type === 'callout' && obj?.data?.id != null ? String(obj.data.id) : null,
+        measure: listed === 'measure' ? measureQuantity(obj, pageScale) : null,
+        layerId,
+        layerName: layerId ? (layerNames.get(layerId) || '') : '',
       });
     });
   }
@@ -157,18 +215,27 @@ export function authorLabel(authorId, { viewerId = null, peopleById = null } = {
 }
 
 /**
- * Rows that match the search words (kind, text, page "p3" / "page 3", author)
- * and the picked kinds / authors. Empty filters keep everything.
+ * Rows that match the search words (kind, text, measurement, layer, page
+ * "p3" / "page 3", author) and the picked kinds / authors / layers, and only
+ * measurements when `measuresOnly`. Empty filters keep everything.
  */
-export function filterMarkupRows(rows, { query = '', kinds = null, authors = null, labelFor = null } = {}) {
+export function filterMarkupRows(rows, {
+  query = '', kinds = null, authors = null, layers = null, measuresOnly = false, labelFor = null,
+} = {}) {
   const words = String(query || '').toLowerCase().split(/\s+/).filter(Boolean);
   return (rows || []).filter((row) => {
     if (kinds && kinds.size > 0 && !kinds.has(row.kind)) return false;
     if (authors && authors.size > 0 && !authors.has(row.authorId || '')) return false;
+    if (layers && layers.size > 0 && !layers.has(row.layerId || '')) return false;
+    if (measuresOnly && !row.measure) return false;
     if (!words.length) return true;
     const hay = [
       row.kindLabel,
       row.text,
+      row.measure?.name,
+      row.measure?.text,
+      row.measure?.unit,
+      row.layerName,
       `p${row.pageNumber}`,
       `page ${row.pageNumber}`,
       labelFor ? labelFor(row.authorId) : '',
@@ -192,6 +259,27 @@ export function groupMarkupRows(rows) {
     });
 }
 
+/**
+ * Totals of the measurements in `rows`, like with like (same kind, same
+ * unit): [{ kind, name, unit, quantity, count }], in measure order.
+ */
+export function markupTotals(rows) {
+  const totals = new Map();
+  for (const row of rows || []) {
+    const m = row.measure;
+    if (!m) continue;
+    const key = `${m.kind}|${m.unit}`;
+    const item = totals.get(key) || { kind: m.kind, name: m.name, unit: m.unit, quantity: 0, count: 0 };
+    item.quantity += m.quantity;
+    item.count += 1;
+    totals.set(key, item);
+  }
+  const order = Object.keys(MEASURE_NAMES);
+  return [...totals.values()]
+    .map((t) => ({ ...t, quantity: Math.round(t.quantity * 100) / 100 }))
+    .sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind) || a.unit.localeCompare(b.unit));
+}
+
 function csvCell(value) {
   const text = value == null ? '' : String(value);
   // A leading = + - @ would run as a formula in a spreadsheet.
@@ -199,9 +287,12 @@ function csvCell(value) {
   return /[",\n\r]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 }
 
-/** The rows as CSV text (header + one line per mark). */
+/**
+ * The rows as CSV text (header + one line per mark). A measurement's
+ * Quantity is a plain number in its Unit, so a spreadsheet can add it up.
+ */
 export function markupRowsToCsv(rows, { labelFor = null } = {}) {
-  const lines = [['Page', 'Kind', 'Text', 'Colour', 'Author', 'Created'].join(',')];
+  const lines = [['Page', 'Kind', 'Text', 'Colour', 'Author', 'Created', 'Quantity', 'Unit', 'Layer'].join(',')];
   for (const row of rows || []) {
     lines.push([
       row.pageNumber,
@@ -210,6 +301,9 @@ export function markupRowsToCsv(rows, { labelFor = null } = {}) {
       row.color || '',
       labelFor ? labelFor(row.authorId) : (row.authorId || ''),
       row.createdAt || '',
+      row.measure ? row.measure.quantity : '',
+      row.measure?.unit || '',
+      row.layerName || '',
     ].map(csvCell).join(','));
   }
   return `${lines.join('\r\n')}\r\n`;
