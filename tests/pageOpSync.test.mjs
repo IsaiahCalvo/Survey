@@ -143,7 +143,7 @@ test('the viewer stamps its page changes and moves old-page marks after the relo
   const src = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
   assert.match(src, /pendingPdfVersion\(\{ writer: pageOpSync\.writer, operations: pageOpSync\.pendingOps \}\)/);
   assert.match(src, /savedPdfVersion\(\{ writer: sync\.writer, filePath: [^)]*, operations \}\)/);
-  assert.match(src, /if \(oldPagesFrame && Array\.isArray\(json\?\.objects\)\)/);
+  assert.match(src, /const handleSaveAnnotations = useCallback\(\(pageNumber, json, saveContext = null\) => \{\n    noteMarksOnOldPages\(pageNumber, json\);/);
   assert.match(src, /reframeMarks\(byPage, frame\.made, frame\.ops, transformPageState\)/);
   assert.match(src, /if \(draftOpen\) showToast\(/);
 });

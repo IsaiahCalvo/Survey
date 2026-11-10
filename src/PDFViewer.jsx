@@ -15223,6 +15223,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   }
   pageOpSyncRef.current.pdfFile = pdfFile;
   pageOpSyncRef.current.pdfDoc = pdfDoc;
+  // Another window changed the pages and this one has not reloaded yet: a
+  // mark new to a page was drawn on the old pages (handleSaveAnnotations
+  // calls this; the marks move with the pages after the reload).
+  const noteMarksOnOldPages = useCallback((pageNumber, json) => {
+    const frame = pageOpSyncRef.current?.frame;
+    if (!frame || !Array.isArray(json?.objects)) return;
+    const had = new Set((annotationsByPageRef.current?.[pageNumber]?.objects || []).map((obj) => obj?.data?.id));
+    for (const obj of json.objects) {
+      const id = obj?.data?.id;
+      if (id && !had.has(id)) frame.made.add(id);
+    }
+  }, []);
   const pageOpsBlocked = useCallback(() => (
     isPageOpBlocked(pageOpSyncRef.current.remote, Date.now()) ? PAGE_OP_BLOCKED_MESSAGE : null
   ), []);
@@ -28406,16 +28418,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   }, [clearLegacyRedoForNewStep, documentOwnerId, pushHistoryDebugEvent, user, pdfFile?.id, yjsUndoCtx?.userId, isBulkJournaledAnnotationId]);
 
   const handleSaveAnnotations = useCallback((pageNumber, json, saveContext = null) => {
-    // Another window changed the pages and this one has not reloaded yet: a
-    // mark new to this page was drawn on the old pages (page-op-sync).
-    const oldPagesFrame = pageOpSyncRef.current?.frame;
-    if (oldPagesFrame && Array.isArray(json?.objects)) {
-      const had = new Set((annotationsByPageRef.current?.[pageNumber]?.objects || []).map((obj) => obj?.data?.id));
-      for (const obj of json.objects) {
-        const id = obj?.data?.id;
-        if (id && !had.has(id)) oldPagesFrame.made.add(id);
-      }
-    }
+    noteMarksOnOldPages(pageNumber, json);
     // w53: a family action that also moves / restacks / creates Survey
     // Markers (saveContext.surveyMarkerFamily). The markers are written to
     // their own store first; their undo half rides the page's step (or is the
