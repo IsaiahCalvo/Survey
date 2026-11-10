@@ -54,7 +54,8 @@ export function markToolForAnnotation(annotation) {
   if (annotation.data?.type === 'callout') return 'callout';
   if (type === 'rect') return 'rect';
   if (type === 'ellipse' || (type === 'circle' && !isCounterMark(annotation))) return 'ellipse';
-  if (type === 'path') return 'pen';
+  // Tape (beta 'tape-tool') is pen ink with its own tool bar.
+  if (type === 'path') return annotation.data?.tape === true ? 'tape' : 'pen';
   if (type === 'textbox' || type === 'i-text' || type === 'text') return 'text';
   if (type === 'polygon') return 'rect';
   if (type === 'polyline') return 'line';

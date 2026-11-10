@@ -687,3 +687,30 @@ p,li{text-wrap:pretty}
 @keyframes demo-chip{0%,35%{opacity:0;transform:translateY(10px) scale(.97)}40%,84%{opacity:1;transform:none}90%,100%{opacity:0;transform:translateY(-4px)}}
 @keyframes demo-row{0%,40%{opacity:0;transform:translateY(6px);background:transparent}45%{opacity:1;transform:none;background:#e9f6ef}68%,84%{opacity:1;transform:none;background:transparent}90%,100%{opacity:0}}
 @media (max-width:560px){.demo-cursor,.demo-ring{display:none}}
+
+/* Follow-up pass: back links instead of small capitals, cards with no lift, folded change log */
+.back{margin:0 0 14px;font-size:15px;font-weight:500}
+.back a{color:var(--soft);text-decoration:none;display:inline-flex;align-items:center;gap:8px;transition:color .15s var(--ease)}
+.back a::before{content:"";width:7px;height:7px;border-left:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg);transition:transform .25s var(--ease)}
+.back a:hover{color:var(--ink)}
+.back a:hover::before{transform:translateX(-3px) rotate(45deg)}
+.measure>*{max-width:760px}
+.use-card{display:flex;flex-direction:column;background:var(--card);border:1px solid var(--card-line);border-radius:var(--r-card);padding:28px;text-decoration:none;transition:border-color .15s var(--ease)}
+.use-card:hover{border-color:var(--soft)}
+.use-card p{flex:1}
+.use-go{margin-top:18px;font-weight:600;font-size:15px;color:var(--ink)}
+.use-go::after{content:"";display:inline-block;width:7px;height:7px;margin-left:9px;border-right:2px solid currentColor;border-top:2px solid currentColor;transform:translateY(-1px) rotate(45deg);transition:transform .25s var(--ease)}
+.use-card:hover .use-go::after{transform:translate(3px,-1px) rotate(45deg)}
+.older{margin:32px 0 24px;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule)}
+.older summary{cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;padding:20px 0;font-weight:600;font-size:18px}
+.older summary::-webkit-details-marker{display:none}
+.older summary::after{content:"";width:10px;height:10px;border-right:2px solid var(--ink);border-bottom:2px solid var(--ink);transform:rotate(45deg);margin-right:6px;transition:transform .25s var(--ease)}
+.older[open] summary::after{transform:rotate(-135deg)}
+.older[open]{padding-bottom:8px}
+.feat{padding:56px 0}
+@media (max-width:720px){.feat{padding:40px 0}}
+@media (max-width:560px){
+  .jump{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin:24px -16px 0;padding:0 16px;scroll-padding-inline:16px}
+  .jump::-webkit-scrollbar{display:none}
+  .jump a{flex:none;padding:8px 14px;font-size:14px}
+}

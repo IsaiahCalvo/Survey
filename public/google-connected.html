@@ -141,8 +141,12 @@ p{margin:0}
   var retry = safeUrl(params.get('retry'), function (u) {
     return (u.protocol === 'https:' && u.hostname === 'login.microsoftonline.com') || local(u);
   });
+  // Survey's own functions host only (the link is shown to be sent to an IT
+  // admin, so a look-alike host in a crafted link must never appear here).
+  var FUNCTIONS_HOSTS = ['cvamwtpsuvxvjdnotbeg.supabase.co'];
   var admin = safeUrl(params.get('admin'), function (u) {
-    return (u.protocol === 'https:' || local(u)) && /\/functions\/v1\/sheet-sync\/oauth\/msgraph\/admin$/.test(u.pathname);
+    var host = (u.protocol === 'https:' && FUNCTIONS_HOSTS.indexOf(u.hostname) >= 0) || local(u);
+    return host && !u.search && !u.hash && /^\/functions\/v1\/sheet-sync\/oauth\/msgraph\/admin$/.test(u.pathname);
   });
 
   if (result !== 'finish') {

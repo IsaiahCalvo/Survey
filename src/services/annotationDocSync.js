@@ -122,6 +122,11 @@ import {
   setLiveCursorSink,
 } from './annotationLiveCursors.js';
 import {
+  SPOTLIGHT_VERSION,
+  applyRemoteSpotlight,
+  setSpotlightSink,
+} from './annotationSpotlight.js';
+import {
   bytesToPgHex,
   gunzipBytes as gunzip,
   mergeCheckpointWithUpdate,
@@ -5827,6 +5832,19 @@ function acquireLiveChannel(state) {
             && bus.send(payload)
           ),
         });
+        // Spotlight (Nightly): the presenter's view and who follows it go
+        // out on the same channel (annotationSpotlight.js).
+        state.unregisterSpotlightSink?.();
+        state.unregisterSpotlightSink = setSpotlightSink({
+          documentId: state.documentId,
+          writerId: state.writerId,
+          send: (payload) => (
+            state.liveBus === bus
+            && !state.destroyed
+            && !state.closePromise
+            && bus.send(payload)
+          ),
+        });
       }
     })
     .catch((error) => {
@@ -6178,6 +6196,11 @@ function onLivePreviewMessage(state, payload) {
   if (payload?.v === LIVE_CURSOR_VERSION) {
     // KAL-399: where another screen is pointing (its own rate guard).
     applyRemoteLiveCursor(state.documentId, payload, { ownWriterId: state.writerId });
+    return;
+  }
+  if (payload?.v === SPOTLIGHT_VERSION) {
+    // Spotlight: someone presenting, following or stopping (own rate guard).
+    applyRemoteSpotlight(state.documentId, payload, { ownWriterId: state.writerId });
     return;
   }
   if (!payload || payload.v !== 1) return;
@@ -6785,6 +6808,8 @@ function closeLivePreviews(state) {
   clearLiveStrokes(state.documentId);
   state.unregisterLiveCursorSink?.();
   state.unregisterLiveCursorSink = null;
+  state.unregisterSpotlightSink?.();
+  state.unregisterSpotlightSink = null;
   clearLiveCursors(state.documentId);
   if (state.livePreviews.size > 0 || state.liveEdits.size > 0 || state.liveMarkerEdits.size > 0) {
     state.livePreviews.clear();

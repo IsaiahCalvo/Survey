@@ -126,3 +126,24 @@ test('the flag is beta and seeded, the columns exist, and the upload asks in she
   assert.match(modal, /New revision of sheet/);
   assert.match(modal, /'keep-both'/);
 });
+
+test('a written-out "rev" wins over a bare R tag; same revisions keep the file by default; New skips the ask (R4-C S1)', () => {
+  assert.deepEqual(readSheetFromFileName('R4C rev desk A-101 Rev 1.pdf'), { sheetNumber: 'A101', revision: '1' });
+  assert.deepEqual(readSheetFromFileName('A-101 r3.pdf'), { sheetNumber: 'A101', revision: '3' });
+  const modal = readFileSync(new URL('../src/components/DuplicateUploadModal.jsx', import.meta.url), 'utf8');
+  assert.match(modal, /\{ id: 'keep-both', label: 'Keep as its own file', primary: sameRevision \}/);
+  assert.match(modal, /\{ id: 'new-version', label: 'Upload as new version', primary: !sameRevision \}/);
+  const ledger = readFileSync(new URL('../src/home/DocumentsLedger.jsx', import.meta.url), 'utf8');
+  assert.match(ledger, /onDropFiles\(\[file\], \{ projectId: null, open, newDocument: true \}\)/);
+  const dash = readFileSync(new URL('../src/Dashboard.jsx', import.meta.url), 'utf8');
+  assert.match(dash, /askDuplicates: !newDocument,/);
+});
+
+test('"Review" and "RFI" in a name are not revisions (R5 S1b)', () => {
+  assert.equal(readSheetFromFileName('A-101 Review set.pdf').revision, null);
+  assert.equal(readSheetFromFileName('A-101 RFI 12.pdf').revision, null);
+  assert.equal(readSheetFromFileName('A-101 Rev B.pdf').revision, 'B');
+  assert.equal(readSheetFromFileName('A-101 Rev1.pdf').revision, '1');
+  assert.equal(readSheetFromFileName('A-101 rev-C.pdf').revision, 'C');
+  assert.equal(readSheetFromFileName('A-101 Revision 2.pdf').revision, '2');
+});

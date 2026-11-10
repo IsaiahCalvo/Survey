@@ -36,6 +36,8 @@ import useVisibleViewportBox from './useVisibleViewportBox';
 import { C } from '../uiPalette';
 import { useTooltip } from '../components/Tooltip';
 import ValueSelect from '../components/ValueSelect.jsx';
+import { isFeatureOn } from '../featureFlags.js';
+import { cleanInviteMessage, INVITE_MESSAGE_MAX } from './accessRows.js';
 
 
 const KIND_LABEL = { document: 'document', project: 'project', template: 'template' };
@@ -69,6 +71,10 @@ export default function ShareModal({
   // Locked spec: single role selector, default Viewer.
   const [role, setRole] = useState('Viewer');
   const [emails, setEmails] = useState('');
+  // Share dialog extras (Nightly flag share-extras): the inviter's own words
+  // on the invite email, as in Drawboard's Add people.
+  const [extrasOn] = useState(() => isFeatureOn('share-extras'));
+  const [message, setMessage] = useState('');
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -98,6 +104,7 @@ export default function ShareModal({
     if (!open) {
       setRole('Viewer');
       setEmails('');
+      setMessage('');
       setError('');
       setSuccess('');
       setActiveInvite(null);
@@ -128,6 +135,8 @@ export default function ShareModal({
       email,
       currentUser,
       inviterName: currentUser?.user_metadata?.full_name || currentUser?.email || null,
+      // Only email invites carry the message; a link invite has no email.
+      ...(email && extrasOn ? { message: cleanInviteMessage(message) } : null),
     };
     if (kind === 'project') {
       return createProjectInvite({ projectId: targetId, projectName: name || '', ...common });
@@ -142,9 +151,12 @@ export default function ShareModal({
   // retry of the same invite, never a forced extra copy.
   const retryInviteEmail = (invite) => {
     const inviterName = currentUser?.user_metadata?.full_name || currentUser?.email || null;
-    if (kind === 'project') return resendProjectInvite(invite.id, { projectName: name || '', inviterName });
-    if (kind === 'template') return resendTemplateInvite(invite.id, { templateName: name || '', inviterName });
-    return resendDocumentInvite(invite.id, { documentName: name || '', inviterName });
+    // The note typed with the invite goes with the retry too (it stays in the
+    // box until every email sends).
+    const note = extrasOn ? cleanInviteMessage(message) : '';
+    if (kind === 'project') return resendProjectInvite(invite.id, { projectName: name || '', inviterName, message: note });
+    if (kind === 'template') return resendTemplateInvite(invite.id, { templateName: name || '', inviterName, message: note });
+    return resendDocumentInvite(invite.id, { documentName: name || '', inviterName, message: note });
   };
 
   // Honest placeholder until a real token is minted — never show a fake URL
@@ -202,12 +214,20 @@ export default function ShareModal({
     showSendOutcome(list.map((email, i) => ({ email, result: results[i] })));
   };
 
+  // Drawboard: Shift+Enter sends the invite; Enter alone still starts a line.
+  const sendOnShiftEnter = (e) => {
+    if (e.key !== 'Enter' || !e.shiftKey || e.nativeEvent?.isComposing) return;
+    e.preventDefault();
+    if (!busy && emails.trim() && !blockedReason) sendInvite();
+  };
+
   const showSendOutcome = (entries) => {
     const summary = summarizeInviteSend(entries, { roleLabel: role });
     if (summary.tone === 'success') {
       setSendEntries(null);
       setSuccess(summary.message);
       setEmails('');
+      setMessage('');
     } else {
       setSendEntries(entries);
     }
@@ -306,12 +326,34 @@ export default function ShareModal({
             <textarea
               value={emails}
               onChange={(e) => setEmails(e.target.value)}
+              onKeyDown={extrasOn ? sendOnShiftEnter : undefined}
               placeholder="name@example.com, name@example.com"
               rows={3}
               style={{ width: '100%', background: C.deep, border: `1px solid ${C.ruleStrong}`, borderRadius: 6, padding: '9px 11px', fontSize: 13, fontFamily: 'inherit', color: C.ink, resize: 'vertical', outline: 'none', minHeight: 72, lineHeight: 1.45, boxSizing: 'border-box' }}
             />
             <div style={{ fontSize: 11, color: C.muted, marginTop: 8, lineHeight: 1.4 }}>Separate addresses with commas. New users get an invite link; existing users get a direct-access link as {role.toLowerCase()}.</div>
           </div>
+
+          {extrasOn && (
+            <div data-share-message="">
+              <div style={{ ...fieldLabel, display: 'flex', justifyContent: 'space-between' }}>
+                <span>Message (optional)</span>
+                <span style={{ fontWeight: 400 }}>{message.length}/{INVITE_MESSAGE_MAX}</span>
+              </div>
+              <textarea
+                value={message}
+                onChange={(e) => setMessage(e.target.value.slice(0, INVITE_MESSAGE_MAX))}
+                onKeyDown={sendOnShiftEnter}
+                maxLength={INVITE_MESSAGE_MAX}
+                aria-label="Message"
+                data-testid="share-message"
+                placeholder="Add a note to the invite email"
+                rows={2}
+                style={{ width: '100%', background: C.deep, border: `1px solid ${C.ruleStrong}`, borderRadius: 6, padding: '9px 11px', fontSize: 13, fontFamily: 'inherit', color: C.ink, resize: 'vertical', outline: 'none', minHeight: 52, lineHeight: 1.45, boxSizing: 'border-box' }}
+              />
+              <div style={{ fontSize: 11, color: C.muted, marginTop: 8, lineHeight: 1.4 }}>Shows in the email as a note from you. Shift+Enter sends.</div>
+            </div>
+          )}
 
           {blockedReason && (
             <div style={{ background: 'var(--alert-danger-bg)', border: 'var(--alert-danger-border)', borderRadius: 'var(--alert-radius)', padding: '8px 10px', color: C.ink, fontSize: 12 }}>

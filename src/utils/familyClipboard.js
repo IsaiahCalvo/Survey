@@ -33,6 +33,25 @@ import {
 
 export const DUPLICATE_OFFSET_PAGE_UNITS = 16;
 
+/**
+ * Where a duplicate lands: 16 pt right and down, but never off the page (the
+ * Drawboard PDF Pro trial: Survey's copy of a mark in the bottom-right corner
+ * landed 16 pt past the edge, while Paste already kept it on). On an axis with
+ * no room past the copied group it steps the other way; with no room either
+ * way it moves only as far as fits.
+ * @param {{left, top, width, height}|null} extent  the copied group's box
+ */
+export function duplicateOffsetOnPage(extent, pageWidth, pageHeight, step = DUPLICATE_OFFSET_PAGE_UNITS) {
+  const axis = (start, size, limit) => {
+    if (![start, size].every(Number.isFinite) || !(limit > 0)) return step;
+    if (start + size + step <= limit + 1e-6) return step;
+    if (start - step >= -1e-6) return -step;
+    return Math.max(-start, Math.min(step, limit - start - size));
+  };
+  if (!extent) return { dx: step, dy: step };
+  return { dx: axis(extent.left, extent.width, pageWidth), dy: axis(extent.top, extent.height, pageHeight) };
+}
+
 // Import provenance a pasted callout must not keep (the keys
 // mintPastedCloneIdentity strips from a pasted mark).
 const CALLOUT_PROVENANCE_KEYS = [

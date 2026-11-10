@@ -103,7 +103,7 @@ import { createInkPathAffine } from './inkGeometryTransform.js';
 // Callout leader arrowheads export via the SAME shared spec the arrow tool,
 // SVG renderer, and canvas painter consume — one home for the head math
 // (buildArrowheadRenderSpec in lineRenderHelpers.js). Pure JS, Node-safe.
-import { ARROWHEAD_STYLES, buildArrowheadRenderSpec, buildCurvedLineBody, calloutLineDashArray, insetOpenPolylinePoints, lineEndingBodyInset, resolveLineEndingStyles } from './lineRenderHelpers.js';
+import { ARROWHEAD_STYLES, DRAWBOARD_HEAD_REACH, LINE_ENDING_SET_DRAWBOARD, arrowheadShapePathD, buildArrowheadRenderSpec, buildCurvedLineBody, calloutLineDashArray, insetOpenPolylinePoints, lineEndingBodyInset, resolveLineEndingStyles } from './lineRenderHelpers.js';
 import { getCounterLabelLayout } from './counterGeometry.js';
 import {
   adaptHighlight,
@@ -144,6 +144,7 @@ import {
 import { calculateCalloutConnection } from './calloutGeometry.js';
 import { computeLineBboxCenter, getLineEndpoints } from './svgBoundingBox.js';
 import { isPdfStampProxy, pngDataUrlToBytes } from './pdfStampProxy.js';
+import { jpegDataUrlToBytes } from './insertedImage.js';
 import {
   getSymbol, isSymbolStamp, symbolStampBox, symbolStampStrokeWidth, transformSymbolPath,
 } from './symbolLibrary.js';
@@ -2440,8 +2441,10 @@ const polyJoinPad = (points, strokeWidth, closed) => {
 // sizes every style off max(8, strokeWidth * 3); the solid/open triangle is the
 // longest (2/3 of that beyond the tip). One generous number covers all nine.
 const lineEndingPad = (obj, strokeWidth) => {
-  const { startStyle, endStyle } = resolveLineEndingStyles(obj);
+  const { startStyle, endStyle, geometry } = resolveLineEndingStyles(obj);
   if (startStyle === ARROWHEAD_STYLES.NONE && endStyle === ARROWHEAD_STYLES.NONE) return 0;
+  // Drawboard's heads (Nightly 'line-endings') scale with the width alone.
+  if (geometry === LINE_ENDING_SET_DRAWBOARD) return DRAWBOARD_HEAD_REACH * strokeWidth + strokeWidth;
   return Math.max(8, strokeWidth * 3) + strokeWidth;
 };
 
@@ -2844,9 +2847,11 @@ const embedStampProxyImages = async (pdfDoc, objects, purpose) => {
     const source = obj.src || obj.dataUrl;
     if (stampImages.has(source)) continue;
     const pngBytes = pngDataUrlToBytes(source);
-    if (!pngBytes) continue;
+    // Nightly 'insert-image': a placed photo is kept as a JPEG.
+    const jpegBytes = pngBytes ? null : jpegDataUrlToBytes(source);
+    if (!pngBytes && !jpegBytes) continue;
     try {
-      stampImages.set(source, await pdfDoc.embedPng(pngBytes));
+      stampImages.set(source, pngBytes ? await pdfDoc.embedPng(pngBytes) : await pdfDoc.embedJpg(jpegBytes));
     } catch (error) {
       console.warn(`Failed to embed imported stamp PNG for ${purpose}:`, error);
     }
@@ -3581,7 +3586,8 @@ const createPolyLineAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
 // write no /IC (ruled 2026-09-04: never swing the defect the other way).
 const applyLineEndingInteriorColor = (annotationDict, fabricObj, strokeColor) => {
   const { startStyle, endStyle, interiorColor } = resolveLineEndingStyles(fabricObj);
-  if (startStyle === ARROWHEAD_STYLES.SOLID_TRIANGLE || endStyle === ARROWHEAD_STYLES.SOLID_TRIANGLE) {
+  const filledHead = (style) => style === ARROWHEAD_STYLES.SOLID_TRIANGLE || style === ARROWHEAD_STYLES.R_CLOSED_ARROW;
+  if (filledHead(startStyle) || filledHead(endStyle)) {
     annotationDict.IC = [strokeColor.red, strokeColor.green, strokeColor.blue];
     return;
   }
@@ -3989,6 +3995,9 @@ const ARROWHEAD_STYLE_TO_PDF_LINE_ENDING = {
   [ARROWHEAD_STYLES.DIAMOND]: 'Diamond',
   [ARROWHEAD_STYLES.SLASH]: 'Slash',
   [ARROWHEAD_STYLES.SQUARE]: 'Square',
+  // Nightly 'line-endings' (Drawboard's grid): the two reverse heads.
+  [ARROWHEAD_STYLES.R_OPEN_ARROW]: 'ROpenArrow',
+  [ARROWHEAD_STYLES.R_CLOSED_ARROW]: 'RClosedArrow',
 };
 
 // Default matches defaultCalloutStyle (Callout/types.js) and the SVG/canvas
@@ -5327,6 +5336,24 @@ const drawArrowHead = (page, { x1, y1, x2, y2, pageHeight, color, width }) => {
 function drawFlattenedArrowheadSpec(page, spec, pageHeight) {
   if (!spec || spec.kind === 'none') return;
   const stroke = parsePdfDrawColor(spec.color || '#000000', '#000000');
+  if (spec.kind === 'shapes') {
+    // Drawboard's heads (Nightly 'line-endings'): one path per shape, mitre
+    // joins (the PDF default) and butt caps, filled heads painted only.
+    for (const shape of spec.shapes || []) {
+      const fill = shape.fill && shape.fill !== 'none' ? parsePdfDrawColor(shape.fill, null) : null;
+      const outlined = shape.stroke && shape.stroke !== 'none' && shape.strokeWidth > 0;
+      const paint = {
+        ...(fill ? { color: fill.color, opacity: fill.opacity } : {}),
+        ...(outlined ? { borderColor: stroke.color, borderOpacity: stroke.opacity, borderWidth: shape.strokeWidth, borderLineCap: LineCapStyle.Butt } : { borderWidth: 0 }),
+      };
+      if (shape.type === 'circle') {
+        page.drawCircle({ x: shape.cx, y: getPdfY(pageHeight, shape.cy), size: shape.r, ...paint });
+      } else {
+        drawSvgPathLinear(page, arrowheadShapePathD(shape), { x: 0, y: pageHeight, ...paint });
+      }
+    }
+    return;
+  }
   if (spec.kind === 'solidTriangle' || spec.kind === 'openTriangle') {
     // Same local triangle + rotation the shared spec's SVG transform encodes.
     const headSize = Math.max(8, (spec.sw || 0) * 3);
@@ -5426,8 +5453,8 @@ const drawFlattenedLine = (page, obj, pageHeight) => {
   // Shaft insets, round caps and bent bodies follow the screen exactly
   // (buildLineRenderSpec → lineEndingBodyInset / buildCurvedLineBody).
   const endingStyles = resolveLineEndingStyles(obj);
-  const startInset = lineEndingBodyInset(endingStyles.startStyle, width);
-  const endInset = lineEndingBodyInset(endingStyles.endStyle, width);
+  const startInset = lineEndingBodyInset(endingStyles.startStyle, width, endingStyles.geometry);
+  const endInset = lineEndingBodyInset(endingStyles.endStyle, width, endingStyles.geometry);
   const midpoint = resolvedMidpoint;
   const midpointOffset = midpoint
     ? (() => {
@@ -5477,7 +5504,7 @@ const drawFlattenedLine = (page, obj, pageHeight) => {
   // shared resolver as the screen, so print matches the screen).
   // Each head sits on the tangent at its own end (bent lines differ per end).
   const strokeHex = typeof obj?.stroke === 'string' ? obj.stroke : '#000000';
-  const headOptions = { fill: endingStyles.interiorColor };
+  const headOptions = { fill: endingStyles.interiorColor, geometry: endingStyles.geometry };
   drawFlattenedArrowheadSpec(page, buildArrowheadRenderSpec(endingStyles.endStyle, x2, y2, endAngleDeg, strokeHex, width, headOptions), pageHeight);
   drawFlattenedArrowheadSpec(page, buildArrowheadRenderSpec(endingStyles.startStyle, x1, y1, startAngleDeg, strokeHex, width, headOptions), pageHeight);
 };

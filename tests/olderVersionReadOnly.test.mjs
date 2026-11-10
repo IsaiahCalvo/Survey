@@ -41,7 +41,7 @@ test('an older version opens in the zero-writes lock mode with its own bar', () 
   // The lock banner itself only shows for a real lock.
   assert.match(banner, /if \(lockedAt == null\) return null;/);
   const shell = read('src/AppShell.jsx');
-  assert.match(shell, /readOnlyWithoutLock=\{Boolean\(tab\.file\?\.superseded_by\) \|\| \(tab\.id === activeTabId && Boolean\(olderVersionOpen\)\)\}/);
+  assert.match(shell, /readOnlyWithoutLock=\{Boolean\(tab\.file\?\.superseded_by\) \|\| supersededDocIds\.has\(tab\.file\?\.id\) \|\| \(tab\.id === activeTabId && Boolean\(olderVersionOpen\)\)\}/);
   assert.match(shell, /<OlderVersionBar/);
   // The phone's More menu lists Versions.
   assert.match(shell, /versions=\{documentVersions\.shown/);
@@ -71,4 +71,16 @@ test('a new version keeps its sharing, and an open old copy looks again for a ne
   const hook = readFileSync(new URL('../src/components/DocumentVersionsButton.jsx', import.meta.url), 'utf8');
   assert.match(hook, /VERSION_RECHECK_MS = 20_000/);
   assert.match(hook, /A newer version was uploaded, so this copy is now read-only\./);
+});
+
+test('a copy found superseded stays read-only after switching documents (Bugbot on #1385)', () => {
+  const hook = read('src/components/DocumentVersionsButton.jsx');
+  assert.match(hook, /export function useDocumentVersions\(documentId, onOpenVersion, onSuperseded = null\)/);
+  assert.match(hook, /if \(isCurrent === false\) onSupersededRef\.current\?\.\(documentId\);/);
+  const shell = read('src/AppShell.jsx');
+  assert.match(shell, /useDocumentVersions\([^\n]*handleDocumentSelect, markDocSuperseded\)/);
+  // The lock banner and the older-version bar read the set, not only the
+  // versions list that a document switch empties.
+  assert.match(shell, /readOnlyWithoutLock=\{Boolean\(tab\.file\?\.superseded_by\) \|\| supersededDocIds\.has\(tab\.file\?\.id\) \|\|/);
+  assert.match(shell, /olderVersionOpen \|\| activeTab\?\.file\?\.superseded_by \|\| supersededDocIds\.has\(activeTab\?\.file\?\.id\)/);
 });

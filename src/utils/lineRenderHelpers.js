@@ -28,6 +28,7 @@ import {
   calloutLineDashArray,
   calloutLineStyleFromDash,
 } from '../components/Callout/types.js';
+import { isFeatureOn } from '../featureFlags.js';
 
 // Re-exported (same pattern as ARROWHEAD_STYLES) so every render surface —
 // SVG renderer, canvas painter, pdf-lib export/flatten, edit adapter — pulls
@@ -52,6 +53,9 @@ export {
  */
 export function pdfLineEndingToArrowheadStyle(value, { hasInteriorColor = true } = {}) {
   const ending = String(value || '').replace(/^\//, '');
+  // Nightly 'line-endings': the reverse heads are drawn as themselves.
+  if (ending === 'ROpenArrow' && isFeatureOn('line-endings')) return ARROWHEAD_STYLES.R_OPEN_ARROW;
+  if (ending === 'RClosedArrow' && hasInteriorColor && isFeatureOn('line-endings')) return ARROWHEAD_STYLES.R_CLOSED_ARROW;
   if (ending === 'OpenArrow' || ending === 'ROpenArrow') return ARROWHEAD_STYLES.V_SHAPE;
   if (ending === 'ClosedArrow' || ending === 'RClosedArrow') {
     return hasInteriorColor ? ARROWHEAD_STYLES.SOLID_TRIANGLE : ARROWHEAD_STYLES.OPEN_TRIANGLE;
@@ -81,6 +85,108 @@ function getAbsoluteEndpoints(obj) {
     start: { x: centerX + (obj.x1 || 0), y: centerY + (obj.y1 || 0) },
     end: { x: centerX + (obj.x2 || 0), y: centerY + (obj.y2 || 0) },
   };
+}
+
+/**
+ * Nightly 'line-endings': the mark carries data.lineEndingSet = 'drawboard'
+ * when it was drawn (or its ends were picked) with Drawboard's Endings grid.
+ * Its heads then use Drawboard's measured sizes, all in units of the line
+ * width w (endings-and-pens.md, measured on pdf.drawboard.com 2026-11-10):
+ *   Slash 11.4w long, about 51 deg off the line, centred on the end
+ *   Square 4w side, far side on the end          Circle 4.4w across, touching the end
+ *   Open arrow arms 8w at +-30 deg, tip on the end, the line runs to the tip
+ *   Reverse open arrow arms 5.6w, its point back inside the line
+ *   Closed arrow 6.2w long x 7.2w wide, filled    Reverse closed 4.85w x 5.6w, filled
+ *   Diamond 5.3w across, far tip on the end       Butt 8w bar across the end
+ * Mitre joins and butt caps; each head is stroked with the line's own width.
+ * Marks without the marker keep the classic sizes below.
+ */
+export const LINE_ENDING_SET_DRAWBOARD = 'drawboard';
+
+export function lineEndingGeometryOf(obj) {
+  return obj?.data?.lineEndingSet === LINE_ENDING_SET_DRAWBOARD ? LINE_ENDING_SET_DRAWBOARD : null;
+}
+
+const SLASH_TILT_RAD = (129 * Math.PI) / 180; // 51 deg off the line, same turn as the classic slash
+const ARM_SPREAD_RAD = Math.PI / 6;
+
+// Local frame: +x runs along the line out through the end, the end at (0, 0).
+// Returns shapes in local units of `u`; the caller turns and places them.
+function drawboardHeadShapes(style) {
+  const c30 = Math.cos(ARM_SPREAD_RAD);
+  const s30 = Math.sin(ARM_SPREAD_RAD);
+  switch (style) {
+    case ARROWHEAD_STYLES.SLASH: {
+      const h = 5.7;
+      const dx = Math.cos(SLASH_TILT_RAD) * h;
+      const dy = Math.sin(SLASH_TILT_RAD) * h;
+      return [{ type: 'path', points: [[dx, dy], [-dx, -dy]], closed: false, paint: 'stroke' }];
+    }
+    case ARROWHEAD_STYLES.SQUARE:
+      return [{ type: 'path', points: [[0, -2], [0, 2], [-4, 2], [-4, -2]], closed: true, paint: 'interior' }];
+    case ARROWHEAD_STYLES.V_SHAPE:
+      return [{ type: 'path', points: [[-8 * c30, -8 * s30], [0, 0], [-8 * c30, 8 * s30]], closed: false, paint: 'stroke' }];
+    case ARROWHEAD_STYLES.R_OPEN_ARROW:
+      return [{ type: 'path', points: [[0, -5.6 * s30], [-5.6 * c30, 0], [0, 5.6 * s30]], closed: false, paint: 'stroke' }];
+    case ARROWHEAD_STYLES.OPEN_CIRCLE:
+      return [{ type: 'circle', cx: -2.2, cy: 0, r: 2.2, paint: 'interior' }];
+    case ARROWHEAD_STYLES.SOLID_TRIANGLE:
+      return [{ type: 'path', points: [[0, 0], [-6.2, -3.6], [-6.2, 3.6]], closed: true, paint: 'fill' }];
+    case ARROWHEAD_STYLES.OPEN_TRIANGLE:
+      return [{ type: 'path', points: [[0, 0], [-6.2, -3.6], [-6.2, 3.6]], closed: true, paint: 'interior' }];
+    case ARROWHEAD_STYLES.R_CLOSED_ARROW:
+      return [{ type: 'path', points: [[0, -2.8], [-4.85, 0], [0, 2.8]], closed: true, paint: 'fill' }];
+    case ARROWHEAD_STYLES.DIAMOND:
+      return [{ type: 'path', points: [[0, 0], [-2.65, -2.65], [-5.3, 0], [-2.65, 2.65]], closed: true, paint: 'interior' }];
+    case ARROWHEAD_STYLES.HORIZONTAL_LINE:
+      return [{ type: 'path', points: [[0, -4], [0, 4]], closed: false, paint: 'stroke' }];
+    default:
+      return null;
+  }
+}
+
+// How far back from the end the line stops under each Drawboard head, in
+// units of w (the far edge of a hollow head plus half the line's round cap;
+// a filled head's back edge). Open arrow, reverse open, slash and butt meet
+// the line at the end.
+const DRAWBOARD_BODY_INSET = {
+  [ARROWHEAD_STYLES.SQUARE]: 4.5,
+  [ARROWHEAD_STYLES.OPEN_CIRCLE]: 4.9,
+  [ARROWHEAD_STYLES.SOLID_TRIANGLE]: 6.2,
+  [ARROWHEAD_STYLES.OPEN_TRIANGLE]: 6.7,
+  [ARROWHEAD_STYLES.R_CLOSED_ARROW]: 4.85,
+  [ARROWHEAD_STYLES.DIAMOND]: 5.8,
+};
+
+/** Outward reach of any Drawboard head past its end point, in units of w. */
+export const DRAWBOARD_HEAD_REACH = 6.5;
+
+function buildShapesSpec(style, tipX, tipY, angleDeg, color, unit, strokeWidth, interiorFill, shared) {
+  const local = drawboardHeadShapes(style);
+  if (!local) return { kind: 'none' };
+  const rad = (angleDeg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const place = (lx, ly) => ({ x: tipX + (lx * cos - ly * sin) * unit, y: tipY + (lx * sin + ly * cos) * unit });
+  const shapes = local.map((shape) => {
+    const fill = shape.paint === 'fill' ? color : shape.paint === 'interior' ? interiorFill : 'none';
+    // A filled head is painted, not outlined, so it keeps its measured size.
+    const stroke = shape.paint === 'fill' ? 'none' : color;
+    const paint = { fill, stroke, strokeWidth: shape.paint === 'fill' ? 0 : strokeWidth, strokeLinejoin: 'miter', strokeLinecap: 'butt' };
+    if (shape.type === 'circle') {
+      const centre = place(shape.cx, shape.cy);
+      return { type: 'circle', cx: centre.x, cy: centre.y, r: shape.r * unit, ...paint };
+    }
+    return { type: 'path', points: shape.points.map(([lx, ly]) => place(lx, ly)), closed: shape.closed, ...paint };
+  });
+  return { kind: 'shapes', style, ...shared, unit, shapes };
+}
+
+/** SVG path data for one 'path' shape of a 'shapes' arrowhead spec. */
+export function arrowheadShapePathD(shape) {
+  const pts = Array.isArray(shape?.points) ? shape.points : [];
+  if (pts.length === 0) return '';
+  return `M ${pts.map((p) => `${p.x} ${p.y}`).join(' L ')}${shape.closed ? ' Z' : ''}`;
 }
 
 /**
@@ -124,6 +230,17 @@ export function buildArrowheadRenderSpec(style, tipX, tipY, angleDeg, color, sw,
   // Shared imperative args embedded on every spec — useful for tests that want
   // to re-derive geometry without duplicating the inputs.
   const shared = { tipX, tipY, angleDeg, color, sw };
+
+  // Nightly 'line-endings': Drawboard's sizes, in units of the line width.
+  if (options?.geometry === LINE_ENDING_SET_DRAWBOARD) {
+    const w = Math.max(0.25, Number(sw) || 1);
+    return buildShapesSpec(style, tipX, tipY, angleDeg, color, w, w, interiorFill, shared);
+  }
+  // The two reverse heads only exist in that grid; on a classic mark they take
+  // the classic size (an 8-unit open arrow arm is one headSize).
+  if (style === ARROWHEAD_STYLES.R_OPEN_ARROW || style === ARROWHEAD_STYLES.R_CLOSED_ARROW) {
+    return buildShapesSpec(style, tipX, tipY, angleDeg, color, headSize / 8, strokeWidth, interiorFill, shared);
+  }
 
   switch (style) {
     case ARROWHEAD_STYLES.SOLID_TRIANGLE:
@@ -316,7 +433,10 @@ export function resolveLineEndingStyles(obj) {
     ?? ARROWHEAD_STYLES.NONE;
   // Interior colour for Circle / Diamond / Square endings (imported /IC).
   const interiorColor = typeof obj?.data?.pdfInteriorColor === 'string' ? obj.data.pdfInteriorColor : null;
-  return { startStyle, endStyle, interiorColor };
+  // Nightly 'line-endings': Drawboard-sized heads; the key is only present on
+  // marks that carry the marker, so every older mark resolves exactly as before.
+  const geometry = lineEndingGeometryOf(obj);
+  return geometry ? { startStyle, endStyle, interiorColor, geometry } : { startStyle, endStyle, interiorColor };
 }
 
 // ---- Geometry shared by the screen renderer and the print flattener --------
@@ -411,9 +531,11 @@ export function insetOpenPolylinePoints(points, startInset = 0, endInset = 0) {
  * near edge plus the round cap. V and bar endings meet the shaft at the tip by
  * design (an open "->" or a "-|" terminator).
  */
-export function lineEndingBodyInset(style, sw) {
+export function lineEndingBodyInset(style, sw, geometry = null) {
   const width = Number(sw) || 2;
+  if (geometry === LINE_ENDING_SET_DRAWBOARD) return (DRAWBOARD_BODY_INSET[style] || 0) * Math.max(0.25, width);
   const headSize = Math.max(8, width * 3);
+  if (style === ARROWHEAD_STYLES.R_CLOSED_ARROW) return 4.85 * (headSize / 8);
   if (style === ARROWHEAD_STYLES.SOLID_TRIANGLE) return headSize / 3;
   if (style === ARROWHEAD_STYLES.OPEN_TRIANGLE) return headSize / 3 + width / 2;
   if (style === ARROWHEAD_STYLES.OPEN_CIRCLE) return headSize / 2 + width / 2;
@@ -428,8 +550,8 @@ export function buildLineRenderSpec(obj) {
   const { x: x2, y: y2 } = end;
   const strokeColor = obj.stroke || '#000';
   const sw = obj.strokeWidth || 2;
-  const { startStyle, endStyle: effectiveStyle, interiorColor } = resolveLineEndingStyles(obj);
-  const headOptions = { fill: interiorColor };
+  const { startStyle, endStyle: effectiveStyle, interiorColor, geometry } = resolveLineEndingStyles(obj);
+  const headOptions = { fill: interiorColor, geometry };
 
   const midpoint = obj.data?.midpoint;
   const isCurved = !!midpoint
@@ -444,7 +566,7 @@ export function buildLineRenderSpec(obj) {
     // the circle again").
     const body = buildCurvedLineBody(
       start, end, midpoint,
-      lineEndingBodyInset(startStyle, sw), lineEndingBodyInset(effectiveStyle, sw),
+      lineEndingBodyInset(startStyle, sw, geometry), lineEndingBodyInset(effectiveStyle, sw, geometry),
     );
     const angleDeg = body.endAngleDeg;
     return {
@@ -477,8 +599,8 @@ export function buildLineRenderSpec(obj) {
   const angleRad = Math.atan2(dy, dx);
   const angleDeg = angleRad * (180 / Math.PI);
 
-  const startInset = lineEndingBodyInset(startStyle, sw);
-  const endInset = lineEndingBodyInset(effectiveStyle, sw);
+  const startInset = lineEndingBodyInset(startStyle, sw, geometry);
+  const endInset = lineEndingBodyInset(effectiveStyle, sw, geometry);
   const lineStartX = x1 + startInset * Math.cos(angleRad);
   const lineStartY = y1 + startInset * Math.sin(angleRad);
   const lineEndX = x2 - endInset * Math.cos(angleRad);

@@ -32,6 +32,10 @@ async function loadSyncStatusChip() {
       `import { getCompactSyncStatusMessage, getSyncStatusViewModel } from ${JSON.stringify(viewModelUrl)};`,
     )
     .replace(
+      "import useBrowserOnline from '../hooks/useBrowserOnline.js';",
+      `import useBrowserOnline from ${JSON.stringify(pathToFileURL(path.join(repoRoot, 'src/hooks/useBrowserOnline.js')).href)};`,
+    )
+    .replace(
       "import Spinner from './Spinner';",
       'const Spinner = ({ size }) => <span data-testid="spinner" data-size={size} />;',
     )

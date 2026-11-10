@@ -6,7 +6,8 @@
 // made in the browser (utils/blankPdf.js) and goes through the same upload
 // as a dropped file, then opens.
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { showToast } from '../utils/toast';
 import BodyPortal from '../components/BodyPortal';
 import DialogCard, { DIALOG_FIELD_STYLE, DIALOG_LABEL_STYLE } from '../components/DialogCard.jsx';
 import ValueSelect from '../components/ValueSelect.jsx';
@@ -77,6 +78,14 @@ export default function NewDocumentDialog({ existingNames = [], onCreate, onClos
   const [paper, setPaper] = useState('blank');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // Back, Cancel or Escape while the file is being made close the dialog at
+  // once: the file is still made and listed, but it does not open over Home
+  // a moment later (R4-C follow-up), and a slow upload never traps the dialog.
+  const dismissedRef = useRef(false);
+  const dismiss = () => {
+    dismissedRef.current = true;
+    onClose();
+  };
 
   const box = blankPageBox(sizeId, orientation);
   const sketch = useMemo(() => {
@@ -94,10 +103,15 @@ export default function NewDocumentDialog({ existingNames = [], onCreate, onClos
     try {
       const bytes = await buildBlankPdf({ title, sizeId, orientation, pages: clampBlankPages(pages), paper });
       const file = new File([bytes], `${title}.pdf`, { type: 'application/pdf' });
-      await onCreate(file);
-      onClose();
+      await onCreate(file, { open: () => !dismissedRef.current });
+      if (dismissedRef.current) showToast(`“${title}” was made. It is in your documents.`, 'success');
+      else onClose();
     } catch (err) {
       console.error('[NewDocumentDialog] could not make the document', err);
+      if (dismissedRef.current) {
+        showToast('Could not make the document. Try again.', 'error');
+        return;
+      }
       setError('Could not make the document. Try again.');
       setBusy(false);
     }
@@ -110,13 +124,12 @@ export default function NewDocumentDialog({ existingNames = [], onCreate, onClos
       <DialogCard
         as="form"
         title="New blank document"
-        onClose={onClose}
-        busy={busy}
+        onClose={dismiss}
         width={400}
         cardProps={{ onSubmit: submit, 'data-new-document-dialog': 'true' }}
         footer={(
           <>
-            <button type="button" className="hub-btn dialog-touch-pad" disabled={busy} onClick={onClose}>Cancel</button>
+            <button type="button" className="hub-btn dialog-touch-pad" onClick={dismiss}>Cancel</button>
             <button type="submit" className="hub-btn hub-btn--primary dialog-touch-pad" disabled={busy || !name.trim()}>
               {busy ? (<><Spinner size={12} color="currentColor" />Creating…</>) : 'Create'}
             </button>

@@ -838,6 +838,9 @@ const publicLink = (link, userId, role = null) => {
     ...(typeof link.state?.folderLabel === 'string' ? { folderLabel: link.state.folderLabel } : {}),
     status: link.status,
     lastRoundAt: link.last_round_at,
+    // How long ago by the server's clock: a phone or laptop with a wrong clock
+    // showed "Synced 3 h ago" (or "just now" forever) right after a round.
+    lastRoundAgoMs: link.last_round_at ? Math.max(0, Date.now() - Date.parse(link.last_round_at)) : null,
     lastError: link.last_error,
     isConnectionOwner: link.connection_user_id === userId,
     conflicts: editor ? Object.entries(link.state?.conflicts || {}).map(([markerId, c]) => ({ markerId, ...c })) : [],

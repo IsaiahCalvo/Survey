@@ -90,6 +90,10 @@ export function subscribeDocumentLockState(documentId, onChange, client = supaba
         lockedAt: row.locked_at ?? null,
         lockedBy: row.locked_by ?? null,
         lockedLabel: row.locked_label ?? null,
+        // Only the owner still receives a row once it is archived (RLS), so
+        // this reaches the owner's other windows (the viewer's live Archive
+        // note); everyone else learns at their next refused edit.
+        archivedAt: row.user_archived_at ?? null,
       });
     })
     .subscribe();
