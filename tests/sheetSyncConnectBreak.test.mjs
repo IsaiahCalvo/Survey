@@ -194,11 +194,18 @@ test('the finish page only links to Microsoft\'s sign-in and Survey\'s own admin
   const good = run('?provider=msgraph&result=personal&retry=' + encodeURIComponent('https://login.microsoftonline.com/common/oauth2/v2.0/authorize?prompt=select_account'));
   assert.equal(good.retry.hidden, false);
   assert.match(good.retry.href, /^https:\/\/login\.microsoftonline\.com\//);
-  const admin = run('?provider=msgraph&result=cancelled&admin=' + encodeURIComponent('https://x.supabase.co/functions/v1/sheet-sync/oauth/msgraph/admin'));
+  const ours = 'https://cvamwtpsuvxvjdnotbeg.supabase.co/functions/v1/sheet-sync/oauth/msgraph/admin';
+  const admin = run('?provider=msgraph&result=cancelled&admin=' + encodeURIComponent(ours));
   assert.equal(admin.adminBox.hidden, false);
-  assert.equal(admin.adminLink.textContent, 'https://x.supabase.co/functions/v1/sheet-sync/oauth/msgraph/admin');
-  const fake = run('?provider=msgraph&result=cancelled&admin=' + encodeURIComponent('https://evil.example/phish'));
-  assert.equal(fake.adminBox.hidden, true);
+  assert.equal(admin.adminLink.textContent, ours);
+  assert.equal(run('?provider=msgraph&result=cancelled&admin=' + encodeURIComponent('http://127.0.0.1:8000/functions/v1/sheet-sync/oauth/msgraph/admin')).adminBox.hidden, false, 'local test stack');
+  for (const bad of [
+    'https://evil.example/phish',
+    // Same path on a look-alike host: shown to an IT admin as "the approval link".
+    'https://evil.example/functions/v1/sheet-sync/oauth/msgraph/admin',
+    'https://attacker.supabase.co/functions/v1/sheet-sync/oauth/msgraph/admin',
+    `${ours}?next=https://evil.example`,
+  ]) assert.equal(run('?provider=msgraph&result=cancelled&admin=' + encodeURIComponent(bad)).adminBox.hidden, true, bad);
   assert.equal(run('?provider=msgraph&result=admin_approved').title.textContent, 'Survey is approved');
 });
 
@@ -233,6 +240,11 @@ test('Save in: an account with no OneDrive is told to paste a SharePoint link', 
   assert.deepEqual(await provider.listFolders(''), { folders: [], places: [], noDrive: true });
   const unlicensed = graphFake([[/me\/drive\/root\/children/, [403, { error: { code: 'notAllowed' } }]]]);
   assert.equal((await unlicensed.provider.listFolders('')).noDrive, true);
+  // Save in opens on the default "Survey" folder, below the top.
+  const guestSurvey = graphFake([[/me\/drive\/root:\/Survey:\/children/, [401, { error: { code: 'accessDenied' } }]]]);
+  assert.equal((await guestSurvey.provider.listFolders('Survey')).noDrive, true);
+  const notYet = graphFake([[/me\/drive\/root:\/Survey:\/children/, [404, { error: { code: 'itemNotFound' } }]]]);
+  assert.deepEqual(await notYet.provider.listFolders('Survey'), { folders: [], places: [] }, 'a folder not made yet is fine');
   const badToken = graphFake([[/me\/drive\/root\/children/, [401, { error: { code: 'InvalidAuthenticationToken' } }]]]);
   await assert.rejects(badToken.provider.listFolders(''), (e) => e.status === 401, 'a token problem is not "no OneDrive"');
 });

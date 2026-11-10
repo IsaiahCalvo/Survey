@@ -619,7 +619,7 @@ function FolderPicker({ start, startName, load, onPick, onCancel }) {
       {pasteError && <p className="sheet-sync-paste-error" role="alert">{pasteError}</p>}
       <div className="sheet-sync-row">
         <ActionButton label="Cancel" onClick={onCancel} />
-        <ActionButton primary label="Save here" disabled={note === 'gone' || (note === 'noDrive' && !at)} onClick={() => onPick(at, place ? placeName : '')} />
+        <ActionButton primary label="Save here" disabled={note === 'gone' || note === 'noDrive'} onClick={() => onPick(at, place ? placeName : '')} />
       </div>
     </div>
   );
