@@ -628,6 +628,13 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
+    // Tape (beta 'tape-tool'): a strip of tape with torn ends.
+    tape: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M4.5 15.5 15.5 4.5l1.2 1.6 1.8-.2-.2 1.8 1.6 1.2L8.9 19.9l-1.2-1.6-1.8.2.2-1.8z" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
+        <path d="M9 13.5l4.5-4.5" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
     eraser: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ ...style, transform: 'rotate(270deg)' }} className={className}>
         <g transform="rotate(-45 12 12)">

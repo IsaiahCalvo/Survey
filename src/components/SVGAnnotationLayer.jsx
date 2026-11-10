@@ -442,7 +442,8 @@ const normalizeSurveyMarkerBoundsValue = (bounds) => {
 const SHAPE_CREATION_TOOLS = ['rect', 'ellipse', 'line', 'arrow', 'survey-marker'];
 // 'survey-marker-freehand' is the Survey Marker tool in its Freehand mode (owner
 // 2026-10-13): drawn with the same freehand gesture, committed as a marker.
-const FREEHAND_CREATION_TOOLS = ['pen', 'highlighter', 'survey-marker-freehand'];
+// 'tape' (beta 'tape-tool') is pen ink in an opaque pastel band.
+const FREEHAND_CREATION_TOOLS = ['pen', 'highlighter', 'tape', 'survey-marker-freehand'];
 // Click-to-place tools: each click drops a vertex instead of dragging out a
 // box, so they get their own draft state and their own finish rules
 // (src/utils/polyDraft.js) rather than riding the drag-out gesture above.
@@ -651,6 +652,9 @@ const SVGAnnotationLayerBody = memo(({
   // and the layer new marks go on (null / default = leave marks untagged).
   hiddenLayerIds = null,
   activeLayerId = null,
+  // Tape (beta 'tape-tool'): ids of tape marks this viewer has revealed with
+  // a Pan tap (drawn as outlines; per viewer, never saved).
+  revealedTapeIds = null,
   // Selection / interaction props (Phase 9)
   onSaveAnnotations: onSaveAnnotationsProp,   // (updatedJSON, saveContext) => void
   // Owner after Test 46: a picked mark dragged onto another page moves there
@@ -4381,7 +4385,8 @@ const SVGAnnotationLayerBody = memo(({
         // there are no callout objects in annotationsByPage, so this never matches.
         element = null;
       } else if (objectType === 'path' && Array.isArray(obj.path) && obj.path.length > 0) {
-        element = renderPath(obj, i);
+        element = renderPath(obj?.data?.tape === true && revealedTapeIds?.has(getAnnotationRenderIdentity(obj).annotationId)
+          ? { ...obj, __tapeRevealed: true } : obj, i);
       } else if (isPdfStampProxy(obj)) {
         element = <image {...getPdfStampProxySvgProps(obj)} data-pdf-stamp-proxy="true" data-symbol-stamp={isSymbolStamp(obj) ? obj.data.symbolStamp.id : undefined} />;
       } else if (objectType === 'rect') {
@@ -4480,6 +4485,7 @@ const SVGAnnotationLayerBody = memo(({
     isPageInRenderWindow,
     width,
     height,
+    revealedTapeIds,
   ]);
 
   useLayoutEffect(() => {
@@ -8075,7 +8081,8 @@ const SVGAnnotationLayerBody = memo(({
                   documentId,
                   id: liveId,
                   page: pageNumber,
-                  tool,
+                  // Tape shows to others as plain ink in its colour while drawn.
+                  tool: tool === 'tape' ? 'pen' : tool,
                   color: tool === 'highlighter' ? highlightColor : composeAnnotationColor(strokeColor, strokeOpacity),
                   width: tool === 'highlighter'
                     ? Math.max(Number(strokeWidth) || 3, 8)

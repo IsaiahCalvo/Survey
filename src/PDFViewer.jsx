@@ -282,7 +282,7 @@ import { fromFabricGroup, toFabricGroup } from './utils/calloutEditAdapter';
 import { getActivePageRegionId, getPageAnnotationVisibilityState, isAnnotationVisibleInSurveyMode, isSurveyVisibilityContext, normalizePageRegions, normalizeRegionVisibility, shouldStampActiveRegionId } from './utils/annotationVisibilityRules';
 // KAL-88 — shared creation scope stamp (Decision 11 companion); used by the
 // counter drop so counters scope exactly like pen/shape/text creations.
-import { applyScope as applyAnnotationCreationScope, applyPasteScope, buildBoundaryShapeCommitJSON, buildLineCommitJSON, buildPolyShapeCommitJSON } from './utils/annotationCreationCommit';
+import { applyScope as applyAnnotationCreationScope, applyPasteScope, buildBoundaryShapeCommitJSON, buildLineCommitJSON, buildPolyShapeCommitJSON, isTapeMark } from './utils/annotationCreationCommit';
 import { createCallout as makeCalloutDraft, defaultCalloutStyle } from './components/Callout/types';
 import { shouldAutoSelectAfterCommit } from './utils/autoSelectAfterCommit';
 import { isSurveyScopedHistoryEvent, resolveHistoryEntryContext } from './utils/historyContextRestore';
@@ -3196,6 +3196,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const [measureEditOn] = useState(() => isFeatureOn('measure-edit'));
   const [measureDepth, setMeasureDepth] = useState(() => loadMeasureDepth());
   const [measureDepthDialog, setMeasureDepthDialog] = useState(null);
+  // Tape (beta 'tape-tool', Drawboard PDF): a band that covers part of the
+  // page; a Pan tap reveals what is under it. Revealed tapes are per viewer.
+  const [tapeToolEnabled] = useState(() => isFeatureOn('tape-tool'));
+  const [revealedTapeIds, setRevealedTapeIds] = useState(() => new Set());
   const prevMeasureModeRef = useRef(null);
   useEffect(() => {
     const prev = prevMeasureModeRef.current;
@@ -3426,7 +3430,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     const el = document.elementFromPoint(x, y);
     if (el) {
       let forcedCursor = 'default';
-      if (activeTool === 'pen' || activeTool === 'highlighter' || activeTool === REGION_EDIT_TOOL) forcedCursor = 'crosshair';
+      if (activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'tape' || activeTool === REGION_EDIT_TOOL) forcedCursor = 'crosshair';
       else if (activeTool === 'eraser') forcedCursor = 'none';
       else if (activeTool === 'pan') forcedCursor = 'grab';
       // 'text-select' (KAL-239) shows the I-beam too: the mode is only discoverable
@@ -3446,7 +3450,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
 
   // Clear edit state when switching to drawing/eraser tools
   useEffect(() => {
-    if (activeTool === 'pen' || activeTool === 'highlighter' || NATIVE_TEXT_MARKUP_TOOLS.has(activeTool) || activeTool === 'eraser') {
+    if (activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'tape' || NATIVE_TEXT_MARKUP_TOOLS.has(activeTool) || activeTool === 'eraser') {
       setEditingAnnotation(null);
     }
   }, [activeTool]);
@@ -4445,6 +4449,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       }
       if (hit.kind !== 'annotation') return;
       if (typeof hit.annotationIndex !== 'number' || hit.pageNumber == null) return;
+      // Tape (Drawboard PDF): a Pan tap shows what is under it as an outline;
+      // another tap covers it again. Only this viewer's view changes.
+      const tapped = annotationsByPageRef.current?.[hit.pageNumber]?.objects?.[hit.annotationIndex];
+      if (isTapeMark(tapped)) {
+        const tapeId = getAnnotationRenderIdentity(tapped).annotationId;
+        if (tapeId) {
+          setRevealedTapeIds((previous) => {
+            const next = new Set(previous);
+            if (next.has(tapeId)) next.delete(tapeId); else next.add(tapeId);
+            return next;
+          });
+          return;
+        }
+      }
       panQuickClickAutoSelectAtRef.current = Date.now();
       if (!e.shiftKey) setSelectedCalloutIds((previous) => (previous instanceof Set && previous.size === 0 ? previous : new Set()));
       setPendingSvgSelection({
@@ -5707,7 +5725,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
 
   const [lastDrawTool, setLastDrawTool] = useState(() => {
     try {
-      return localStorage.getItem('lastDrawTool') || 'pen';
+      const saved = localStorage.getItem('lastDrawTool') || 'pen';
+      return saved === 'tape' && !isFeatureOn('tape-tool') ? 'pen' : saved;
     } catch (e) {
       return 'pen';
     }
@@ -5750,7 +5769,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     // indistinguishable from clicking the category button. The category
     // buttons' toggle-to-close still works: closing doesn't change the tool,
     // so this effect doesn't re-open.
-    if (['pen', 'highlighter', 'text-highlight', 'eraser'].includes(activeTool)) {
+    if (['pen', 'highlighter', 'text-highlight', 'tape', 'eraser'].includes(activeTool)) {
       setLastDrawTool(activeTool);
       setActiveCategoryDropdown((prev) => (prev === 'draw' ? prev : 'draw'));
       try {
@@ -6677,7 +6696,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     });
 
     const tool = activeToolRef.current;
-    if (tool === 'pen' || tool === 'highlighter' || tool === 'eraser') {
+    if (tool === 'pen' || tool === 'highlighter' || tool === 'tape' || tool === 'eraser') {
       setActiveTool('pan');
     }
     bumpOverlayLagEventTotal(reason === 'pdfjs-wheel-zoom' ? 'pdfjsWheelZoom' : 'overlayWheelZoom');
@@ -39361,6 +39380,7 @@ ${pageBlocks}
                                   layerVisibility={annotationLayerVisibility}
                                   hiddenLayerIds={hiddenLayerIds}
                                   activeLayerId={effectiveActiveLayerId}
+                                  revealedTapeIds={revealedTapeIds}
                                   onSaveAnnotations={getSvgLayerPageHandlers(pageNumber).onSaveAnnotations}
                                   onMoveMarksToPage={getSvgLayerPageHandlers(pageNumber).onMoveMarksToPage}
                                   onRequestEditMode={getSvgLayerPageHandlers(pageNumber).onRequestEditMode}
@@ -40267,6 +40287,7 @@ ${pageBlocks}
                 {[
                   { id: 'pen', label: 'Pen', iconName: 'pen' },
                   { id: 'highlighter', label: 'Highlighter', iconName: 'highlighter' },
+                  ...(tapeToolEnabled ? [{ id: 'tape', label: 'Tape', iconName: 'tape' }] : []),
                   { id: 'eraser', label: 'Eraser', iconName: 'eraser' }
                 ].map(t => {
                   const isHighlighter = t.id === 'highlighter';

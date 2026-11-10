@@ -17,7 +17,7 @@
 export const showsColorSwatch = (api) => {
   if (!api || api.activeTool === 'eraser' || api.richTextEditor) return false;
   const tool = api.contextTool;
-  if (['pen', 'highlighter', 'arrow', 'line', 'polyline', 'text-markup', 'text-select'].includes(tool)) return true;
+  if (['pen', 'highlighter', 'tape', 'arrow', 'line', 'polyline', 'text-markup', 'text-select'].includes(tool)) return true;
   if (tool === 'counter') return !!api.handleFillColorChange;
   return ['rect', 'ellipse', 'polygon', 'text', 'callout'].includes(tool) && !!api.handleFillColorChange;
 };
@@ -35,7 +35,7 @@ export const showsColorSwatch = (api) => {
  */
 export const showsQuickColourDots = (api) => (
   showsColorSwatch(api)
-  && ['pen', 'highlighter', 'arrow', 'line', 'polyline', 'text-markup', 'text-select'].includes(api.contextTool)
+  && ['pen', 'highlighter', 'tape', 'arrow', 'line', 'polyline', 'text-markup', 'text-select'].includes(api.contextTool)
 );
 
 /**

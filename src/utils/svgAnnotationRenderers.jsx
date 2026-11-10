@@ -343,6 +343,9 @@ const buildPaperCutsSvgD = (polygons) => (polygons || [])
  * @param {number} index - Array index for key fallback
  * @returns {React.ReactElement|null}
  */
+export const TAPE_SHADOW_FILTER = 'drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.28))';
+export const TAPE_REVEALED_OUTLINE_PX = 1.5;
+
 export const renderPath = (obj, index) => {
   if (!Array.isArray(obj.path) || obj.path.length === 0) return null;
 
@@ -441,6 +444,31 @@ export const renderPath = (obj, index) => {
     } catch (err) {
       console.warn('[InkNormDiag render] log failed:', err);
     }
+  }
+
+  // Tape (beta 'tape-tool', Drawboard PDF): an opaque band with a soft drop
+  // shadow. Revealed (a Pan tap, held per viewer by the page layer), it is an
+  // outline in its own colour so what is under it shows.
+  if (obj?.data?.tape === true) {
+    const fill = obj.fill || attrs.fill;
+    const revealed = obj.__tapeRevealed === true;
+    return (
+      <path
+        key={key}
+        d={d}
+        transform={transform}
+        data-tape={revealed ? 'revealed' : 'covered'}
+        fill={revealed ? 'none' : fill}
+        fillRule={attrs.fillRule || 'evenodd'}
+        stroke={revealed ? fill : 'none'}
+        strokeWidth={revealed ? TAPE_REVEALED_OUTLINE_PX : 0}
+        strokeLinejoin="round"
+        vectorEffect={revealed ? 'non-scaling-stroke' : undefined}
+        opacity={attrs.opacity}
+        shapeRendering="geometricPrecision"
+        style={revealed ? undefined : { filter: TAPE_SHADOW_FILTER }}
+      />
+    );
   }
 
   const paperSource = obj?.paperSourceStroke;

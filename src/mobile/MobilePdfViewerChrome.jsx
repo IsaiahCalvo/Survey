@@ -134,6 +134,7 @@ const TOOL_GROUPS = {
     tools: [
       { id: 'pen', label: 'Pen', icon: 'pen' },
       { id: 'highlighter', label: 'Highlighter', icon: 'highlighter' },
+      { id: 'tape', label: 'Tape', icon: 'tape', flag: 'tape-tool' },
       /* UX 2026-09-22 (owner, with the desktop rail): the tool is "Eraser". It
          was "Partial erase", which collided with the Partial half of the
          Partial / Whole toggle its own strip carries — two different things
@@ -180,7 +181,7 @@ const TOOL_TO_GROUP = Object.entries(TOOL_GROUPS).reduce((result, [groupId, grou
   return result;
 }, {});
 
-const WIDTH_TOOLS = new Set(['pen', 'highlighter', 'rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'text', 'callout', 'counter']);
+const WIDTH_TOOLS = new Set(['pen', 'highlighter', 'tape', 'rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'text', 'callout', 'counter']);
 const FILL_TOOLS = new Set(['rect', 'ellipse', 'polygon', 'text', 'callout', 'counter']);
 // UX 2026-09-09: polygon and polyline join the shape tools that get a border
 // style picker on mobile, so their Cloud option has somewhere to live.
@@ -3118,7 +3119,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                     />
                   </>
                 )}
-                {!regionApi && (TOOL_GROUPS[openCategory]?.tools || []).map((tool) => (openCategory === 'shape' ? (
+                {!regionApi && (TOOL_GROUPS[openCategory]?.tools || []).filter((tool) => !tool.flag || isFeatureOn(tool.flag)).map((tool) => (openCategory === 'shape' ? (
                   <RailButton
                     key={tool.id}
                     active={isMobileShapeToolActive(tool.id, { activeTool, lineBorderStyle: bottomToolbarApi?.lineBorderStyle, measureMode: bottomToolbarApi?.measureMode, measureScaleDialogOpen: bottomToolbarApi?.measureScaleDialogOpen })}

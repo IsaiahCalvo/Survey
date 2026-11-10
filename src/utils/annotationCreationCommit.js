@@ -379,7 +379,7 @@ export function buildLineCommitJSON({
  * Returns null when the sampled points compact to nothing (sub-0.01pt click).
  */
 export function buildFreehandCommitJSON({
-  tool, // 'pen' | 'highlighter'
+  tool, // 'pen' | 'highlighter' | 'tape'
   id,
   authorId,
   points,
@@ -391,10 +391,14 @@ export function buildFreehandCommitJSON({
   stampRegionId,
   activeRegionId,
 }) {
+  // Tape (beta 'tape-tool') is pen ink in an opaque pastel at its own width,
+  // marked data.tape so it draws with a shadow, a Pan tap reveals what is
+  // under it, and the partial eraser leaves it whole (Drawboard).
+  const tape = tool === 'tape';
   const json = createProductionPaperInk({
     ...PEN_FABRIC_RESIDUE,
     id,
-    tool,
+    tool: tape ? 'pen' : tool,
     // KAL-417: highlighters are permission-gated at partial-erase time.
     // Stamp their creator before the first collaborative publish so an editor
     // can modify their own stroke. Keep this narrow: KAL-435 owns the general
@@ -410,9 +414,12 @@ export function buildFreehandCommitJSON({
     color: tool === 'highlighter' ? highlightColor
       : ((strokeOpacity ?? 100) >= 100 ? strokeColor : composeAnnotationColor(strokeColor, strokeOpacity)),
     width: tool === 'highlighter' ? Math.max(strokeWidth, 8) : strokeWidth,
-    data: { id },
+    data: tape ? { id, tape: true } : { id },
   });
   if (!json) return null;
   applyScope(json, { selectedModuleId, stampRegionId, activeRegionId });
   return json;
 }
+
+/** A Tape mark (beta 'tape-tool'). */
+export const isTapeMark = (obj) => obj?.data?.tape === true;
