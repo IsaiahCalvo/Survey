@@ -61,7 +61,7 @@ import {
   createProductionBenchmarkPage,
   parseProductionBenchmarkConfig,
 } from './utils/productionAnnotationBenchmark.js';
-import { showToast } from './utils/toast';
+import { showToast, dismissToast } from './utils/toast';
 import { isDeviceDocumentId, DEVICE_ACTOR_ID } from './services/deviceFiles.js';
 import { openExternalDestination, withUpgradeHint } from './utils/accountPlatform.js';
 // ExcelJS (~1MB) is loaded on demand inside the three async export/sync handlers
@@ -385,6 +385,7 @@ import { compareSurveyMarkersForOrder } from './utils/surveyMarkerOrdering';
 import { splitImportedCalloutsFromPage } from './utils/calloutImportAdapter';
 import { supabase } from './supabaseClient';
 import { useAnnotationDoc } from './hooks/useAnnotationDoc.js';
+import useBrowserOnline from './hooks/useBrowserOnline.js';
 import { useAuth } from './contexts/AuthContext';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useDocumentPresenceList } from './hooks/useDocumentPresenceList.js';
@@ -22154,6 +22155,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     offlineCopyToastRef.current = pdfFile?.id;
     showToast('No signal: opened your offline copy. Changes are saved on this device and sync when you are back online.', 'info');
   }, [annotationOfflineCopy, isActive, pdfFile?.id]);
+  // Deep test 2026-11-10 (Drawboard shows a red "You are currently offline"
+  // banner): losing the signal with a cloud document open says so at once
+  // and stays up until the signal is back, then "You are back online".
+  const deviceOnline = useBrowserOnline();
+  const deviceOnlineRef = useRef(deviceOnline);
+  const offlineNoticeShown = !deviceOnline && isActive && !!cloudSyncEnabled
+    && !!pdfFile?.id && !isDeviceDocumentId(pdfFile?.id) && !annotationOfflineCopy;
+  useEffect(() => {
+    const cameBack = !deviceOnlineRef.current && deviceOnline;
+    deviceOnlineRef.current = deviceOnline;
+    if (offlineNoticeShown) {
+      showToast('You are offline. Keep working: your changes are saved on this device and sync when you are back online.', 'info', { id: 'device-offline-notice', duration: Infinity });
+      return () => dismissToast('device-offline-notice');
+    }
+    if (cameBack && isActive && cloudSyncEnabled && pdfFile?.id && !isDeviceDocumentId(pdfFile?.id)) {
+      showToast('You are back online. Your changes are syncing.', 'success');
+    }
+    return undefined;
+  }, [offlineNoticeShown, deviceOnline, isActive, cloudSyncEnabled, pdfFile?.id]);
   // Owner 2026-11-03: a page and its saved marks show in the same frame. The
   // pages stay blank sheets until the store has painted (or loaded) the
   // document's marks; never longer than PAGE_MARKS_HOLD_MAX_MS

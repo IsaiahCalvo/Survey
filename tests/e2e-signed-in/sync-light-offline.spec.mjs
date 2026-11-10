@@ -1,6 +1,6 @@
 // The sync light turns to "Offline" the moment the device loses its signal
 // (deep test 2026-11-10: it stayed green "Up to date" for about 17 s, until a
-// save failed). Checked on desktop, phone web and the phone app layouts.
+// save failed), with a notice that stays until the signal is back. Checked on desktop, phone web and the phone app layouts.
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -67,9 +67,16 @@ for (const layout of LAYOUTS) {
         const dropped = Date.now();
         await expect(light(/^Offline\b/)).toBeVisible({ timeout: 3_000 });
         expect(Date.now() - dropped).toBeLessThan(3_000);
+        // A notice says so too, and stays while the signal is gone.
+        const notice = page.getByText(/^You are offline\. Keep working/).filter({ visible: true }).first();
+        await expect(notice).toBeVisible({ timeout: 3_000 });
+        await page.waitForTimeout(8_000);
+        await expect(notice).toBeVisible();
 
         await context.setOffline(false);
         await expect(light(/^Up to date/)).toBeVisible({ timeout: 30_000 });
+        await expect(page.getByText(/^You are back online/).filter({ visible: true }).first()).toBeVisible({ timeout: 5_000 });
+        await expect(page.getByText(/^You are offline\. Keep working/).filter({ visible: true })).toHaveCount(0, { timeout: 5_000 });
       } finally {
         await context.setOffline(false).catch(() => {});
         await doc.remove();
