@@ -341,6 +341,14 @@ export const FEATURE_FLAGS = Object.freeze({
     label: "Line endings: Drawboard's ten heads for the start and end of a Line or Arrow, at Drawboard's sizes",
     stage: 'beta',
   }),
+  'pen-types': Object.freeze({
+    label: "Pen types: Drawboard's Basic (fixed), Pro (pressure or speed) and Calligraphy (direction) pens",
+    stage: 'beta',
+  }),
+  'typing-undo': Object.freeze({
+    label: 'Undo while typing steps back one word at a time, not the whole typing session',
+    stage: 'beta',
+  }),
   'tape-tool': Object.freeze({
     label: 'Tape: an opaque band that covers part of the page; tap it under Pan to see what is under it',
     stage: 'beta',
