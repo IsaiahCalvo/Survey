@@ -277,15 +277,34 @@ export default function CommentsPanel({
   const listRef = useRef(null);
   const userId = user?.id || null;
 
-  // Start a comment on a mark, or show one from a link.
+  // Start a comment on a mark, or show one from a link. A mark that already
+  // has a thread opens that thread (reply box ready) instead of a second one,
+  // as Drawboard does; the request waits until the comments have loaded.
+  const [pendingMarkRequest, setPendingMarkRequest] = useState(null);
   useEffect(() => {
     if (!focusRequest) return;
     if (focusRequest.commentId) {
       setHighlightId(focusRequest.commentId);
+    } else if (focusRequest.markId) {
+      setPendingMarkRequest(focusRequest);
     } else if (canWrite) {
-      setDraft({ markId: focusRequest.markId || null, pageNumber: Number(focusRequest.pageNumber) || pageNum || 1 });
+      setDraft({ markId: null, pageNumber: Number(focusRequest.pageNumber) || pageNum || 1 });
     }
   }, [focusRequest]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!pendingMarkRequest || status === 'loading' || status === 'idle') return;
+    const markId = String(pendingMarkRequest.markId);
+    const existing = threads.find((t) => t.markId != null && String(t.markId) === markId);
+    setPendingMarkRequest(null);
+    if (existing) {
+      setDraft(null);
+      setActiveThreadId(existing.id);
+      if (canWrite) setReplyingTo(existing.id);
+      setHighlightId(existing.root.id);
+    } else if (canWrite) {
+      setDraft({ markId, pageNumber: Number(pendingMarkRequest.pageNumber) || pageNum || 1 });
+    }
+  }, [pendingMarkRequest, status, threads, canWrite, pageNum]);
 
   // Bring a linked comment into view once it has loaded.
   useEffect(() => {
@@ -412,7 +431,10 @@ export default function CommentsPanel({
       {newButton}
       {draft && (
         <div className="comments-thread comments-thread--draft" data-comment-draft={draft.markId || `page-${draft.pageNumber}`}>
-          <div className="comments-thread__target">{markLabel(draft.markId, draft.pageNumber)}</div>
+          <div className="comments-thread__target">
+            <Icon name={markTarget(draft.markId, draft.pageNumber).icon} size={13} />
+            <span>{markLabel(draft.markId, draft.pageNumber)}</span>
+          </div>
           <CommentBox
             people={people}
             placeholder="Add a comment. Type @ to mention someone."

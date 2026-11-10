@@ -97,6 +97,26 @@
   min-width: 0;
 }
 
+/* Layer pick and "Measurements only" share a row; the pick takes the room. */
+.markups-panel__author[data-markups-more-filters] > .markups-panel__chip { flex: 0 0 auto; }
+.markups-panel__author[data-markups-more-filters] > span[aria-hidden] + * { flex: 1; min-width: 0; }
+
+/* Measurement totals, like with like ("Length 42.5 ft"). */
+.markups-panel__totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  font-size: 12px;
+}
+
+.markups-panel__total { display: inline-flex; gap: 6px; }
+.markups-panel__total-name { color: var(--text-3); }
+.markups-panel__total-value { color: var(--text-1); font-weight: 600; font-variant-numeric: tabular-nums; }
+.markups-panel__title strong { font-weight: 600; font-variant-numeric: tabular-nums; }
+
 .markups-panel__summary {
   display: flex;
   justify-content: space-between;

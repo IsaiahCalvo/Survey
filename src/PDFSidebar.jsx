@@ -452,7 +452,7 @@ const PDFSidebar = React.forwardRef(({
       setSearchSelectOnFocus(Boolean(select));
       setSearchFocusRequestToken((prev) => prev + 1);
     }
-  }, [layersEnabled, markLibraryEnabled, commentsOn]);
+  }, [layersEnabled, markLibraryEnabled, commentsOn, markupListEnabled]);
 
   const closePanel = useCallback(() => {
     userTouchedLayoutRef.current = true;
@@ -1181,11 +1181,13 @@ const PDFSidebar = React.forwardRef(({
               <div style={{ display: activeTab === 'markups' ? 'flex' : 'none', flex: 1, flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
                 <MarkupsPanel
                   annotationsByPage={annotationsByPage}
+                  layerState={layersEnabled ? layerState : null}
                   viewerId={currentUserId || user?.id || null}
                   documentId={documentId}
                   documentName={pdfDisplayName}
                   isActive={activeTab === 'markups' && !isCollapsed}
                   onOpenMark={onOpenMarkup}
+                  onRequestSheetClose={mobileMode ? requestSheetClose : undefined}
                 />
               </div>
             )}

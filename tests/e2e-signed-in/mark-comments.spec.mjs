@@ -124,6 +124,14 @@ test('comments: start on a mark, mention, live reply, link to a comment, edit an
     // The label zooms to the mark.
     await thread.locator('.comments-thread__target--link').click();
 
+    // The label also picks the mark; Comment on a mark that has a thread
+    // opens that thread's reply box, not a second thread.
+    await expect(commentButton).toBeVisible({ timeout: 10_000 });
+    await commentButton.click();
+    await expect(draft).toHaveCount(0);
+    await expect(thread.locator('[data-comment-input]')).toBeFocused();
+    await expect(panel.locator('[data-comment-thread]')).toHaveCount(2);
+
     // Edit my comment, then delete it: a stub stays above the reply.
     const rootItem = thread.locator(`[data-comment-id="${root.id}"]`);
     await rootItem.getByRole('button', { name: 'Edit comment' }).click();

@@ -232,6 +232,14 @@ export default function ArchiveScreen({
   const allSelected = isAllSelected(selectedIds, rows);
 
   const toggleRow = (id) => setSelectedIds((prev) => toggleSelection(prev, id));
+  /* T1 deep test 2026-11-10: a tap on an archived card did nothing on a
+     phone; Restore and Delete forever hid behind Select. A tap now turns
+     selection on with that card picked, so its two actions show at once. */
+  const pickMobileCard = (id) => {
+    if (selectMode) { toggleRow(id); return; }
+    setSelectMode(true);
+    setSelectedIds(new Set([id]));
+  };
 
   const previewDocument = (id) => {
     if (selectMode) return;
@@ -936,11 +944,11 @@ export default function ArchiveScreen({
         className={`archive-mobile-card${checked ? ' is-selected' : ''}`}
         role="button"
         tabIndex={0}
-        onClick={() => { if (selectMode) toggleRow(item.id); }}
+        onClick={() => pickMobileCard(item.id)}
         onKeyDown={(e) => {
           if (e.key !== 'Enter' && e.key !== ' ') return;
           e.preventDefault();
-          if (selectMode) toggleRow(item.id);
+          pickMobileCard(item.id);
         }}
       >
         {/* THREE grid children, ALWAYS — never conditionally rendered.

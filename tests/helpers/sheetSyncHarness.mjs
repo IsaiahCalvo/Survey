@@ -58,6 +58,7 @@ export async function setup({ markers = {}, layout = buildSyncLayout({ template:
       signing,
       newMarkerId: () => `new-${++n}`,
       force: opts.force,
+      ...(opts.now ? { now: opts.now } : {}),
     });
     if (result.patch) Object.assign(ctx.link, result.patch);
     return result;

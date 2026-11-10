@@ -122,6 +122,22 @@ const checklistOfScope = (scope) => scope.columns.filter((c) => c.key.startsWith
 // Excel also ends a cell at a NUL character (text pasted from some PDFs), so
 // NULs are left out the same way, or the rest would come back cut off.
 export const MAX_CELL_CHARS = 32000;
+
+// Excel on the web saves a typed cell seconds to over 2 minutes late. A PM's
+// value typed just before Survey wrote that cell can land over Survey's write
+// minutes later and read as a plain sheet edit, quietly replacing the field's newer value.
+// Survey's own cell writes are remembered this long; a different value
+// landing on one of them is held as a conflict instead. Excel only (the
+// provider's savesLate): Google saves as the person types.
+export const RECENT_WRITE_MS = 300_000;
+const RECENT_WRITE_MAX = 2000;
+function recentWritesOf(saved, nowMs) {
+  const kept = Object.entries(saved || {})
+    .filter(([, w]) => w && nowMs - Number(w.t) < RECENT_WRITE_MS)
+    .sort((a, b) => Number(b[1].t) - Number(a[1].t))
+    .slice(0, RECENT_WRITE_MAX);
+  return Object.fromEntries(kept);
+}
 const fitCell = (v) => {
   if (typeof v !== 'string') return v;
   if (v.includes('\u0000')) v = v.replace(/\u0000/g, '');
@@ -375,6 +391,7 @@ export async function planSheetRound({
   sheetEditor = SHEET_EDITOR_UNKNOWN,
   now = new Date(),
   holdErase = false,
+  lateSaves = false,
 }) {
   const nextBaseline = { ...baseline };
   // Many filled answers blanked in the sheet at once (an older copy restored
@@ -398,6 +415,9 @@ export async function planSheetRound({
     // "markerId|key" of cells that would not keep what Survey wrote (the
     // hidden part of merged cells): left alone until they hold a value.
     stuck: { ...(state.stuck || {}) },
+    // "markerId|key" -> { t, was, wrote }: cells Survey wrote lately (see
+    // RECENT_WRITE_MS), as fingerprints.
+    recentWrites: lateSaves ? recentWritesOf(state.recentWrites, now.getTime()) : {},
     problems: [],
     missingTabs: [],
     // Tabs still there that lost their Row ID column or heading row (deleted,
@@ -482,6 +502,15 @@ export async function planSheetRound({
       seen.add(column.key);
     }
     next.columnsSeen[scope.scopeId] = [...seen];
+    // A column that had gone (deleted, or its header renamed) and is back
+    // this round. When a PM puts a deleted column back blank, its blank cells
+    // are not the PM clearing every value (real Excel, 11-10: all 8 notes of
+    // a sheet were wiped): they count as unchanged, so the app fills them.
+    const lastHeaders = state.headers?.[scope.scopeId];
+    const backKeys = new Set(lastHeaders && Object.keys(lastHeaders).length
+      ? scope.columns.filter((c) => colOfKey.has(c.key) && !addedKeys.has(c.key) && !(c.key in lastHeaders)
+        && (state.columnsSeen?.[scope.scopeId] || []).includes(c.key)).map((c) => c.key)
+      : []);
     next.headers[scope.scopeId] = Object.fromEntries(scope.columns.filter((c) => colOfKey.has(c.key)).map((c) => [c.key, c.header]));
     const rowIdCol = colOfKey.get('rowId');
     if (rowIdCol == null) {
@@ -526,7 +555,10 @@ export async function planSheetRound({
     const writeCell = (rowIndex, key, value, was, markerId = null) => {
       const col = colOfKey.get(key);
       if (col == null) return;
-      plan.cellWrites.push({ sheetId: sheet.sheetId, title: sheet.title, row: rowIndex, col, value, ...(markerId ? { markerId, key } : {}) });
+      // Row ID writes carry the item's name, so a round whose rows moved
+      // under it can find which row the Row ID belongs on.
+      plan.cellWrites.push({ sheetId: sheet.sheetId, title: sheet.title, row: rowIndex, col, value, headerRow: headerAt, ...(markerId ? { markerId, key } : {}),
+        ...(key === 'rowId' ? { rowIdFor: String(sheet.rows?.[rowIndex]?.[colOfKey.get('item')] ?? '').trim(), itemCol: colOfKey.get('item') ?? -1 } : {}) });
       plan.verify.push({ sheetId: sheet.sheetId, title: sheet.title, row: rowIndex, col, expect: was ?? null });
     };
     const rowFor = async (markerId, marker) => {
@@ -585,6 +617,21 @@ export async function planSheetRound({
         }
       }
       ownRow.set(markerId, best);
+    }
+
+    // Items of this tab that were in the sheet and have no row now, by name.
+    // A row with a broken Row ID (typed over, cleared, pasted over) and one of
+    // these names is that item's row, not a second item (real Excel 11-10:
+    // a typo in the hidden Row ID made a duplicate of the item in Survey).
+    const lostByName = new Map();
+    for (const markerId of markersByScope.get(scope.scopeId) || []) {
+      // An item already gone from the sheet in an earlier round is not
+      // matched: a new row typed later with its name is a new item, not the
+      // old one with its old answers.
+      if (copies.has(markerId) || nextBaseline[markerId]?.scopeId !== scope.scopeId || next.tombstones[markerId] || state.removedInSheet?.[markerId]) continue;
+      const name = String(markers[markerId]?.name ?? '').trim().toLowerCase();
+      if (!name) continue;
+      lostByName.set(name, [...(lostByName.get(name) || []), markerId]);
     }
 
     const appendRows = [];
@@ -674,7 +721,23 @@ export async function planSheetRound({
       const itemCol = colOfKey.get('item');
       if (!recreate && itemCol != null && isBlankCell(row[itemCol])) {
         summaryRows.push(r);
-        next.problems.push({ scopeId: scope.scopeId, message: `${where(r)} has no "${scope.columns.find((c) => c.key === 'item')?.header || 'Item'}", so it was not brought in.` });
+        // An Excel table's Total Row says "Total" in its first column, which
+        // is Survey's hidden Row ID: a totals line, not a row to report.
+        const first = row.find((c) => !isBlankCell(c));
+        if (!TOTALS_LABEL.test(cellText(first).trim())) {
+          next.problems.push({ scopeId: scope.scopeId, message: `${where(r)} has no "${scope.columns.find((c) => c.key === 'item')?.header || 'Item'}", so it was not brought in.` });
+        }
+        continue;
+      }
+      const lost = !parsed && itemCol != null ? lostByName.get(cellText(row[itemCol]).trim().toLowerCase()) : null;
+      if (!recreate && lost?.length === 1 && markers[lost[0]] && !seenMarkers.has(lost[0])) {
+        const found = lost[0];
+        lostByName.delete(cellText(row[itemCol]).trim().toLowerCase());
+        seenMarkers.add(found);
+        delete next.removedInSheet[found];
+        await mergeRow({ markerId: found, marker: markers[found], row, r });
+        writeCell(r, 'rowId', await tokenFor(found, scope.scopeId), row[rowIdCol]);
+        next.problems.push({ markerId: found, scopeId: scope.scopeId, message: `${where(r)}: its Row ID was changed, so Survey matched it to "${markers[found].name}" by name and put the Row ID back.` });
         continue;
       }
       // "Total", "Grand total", "Subtotal", "Sum"... typed under the items,
@@ -750,7 +813,10 @@ export async function planSheetRound({
     const notItems = new Set(summaryRows);
     let lastItemRow = headerAt;
     for (const r of ids.keys()) if (!notItems.has(r) && r > lastItemRow) lastItemRow = r;
-    const firstSummary = summaryRows.filter((r) => r > lastItemRow).sort((a, b) => a - b)[0];
+    // Only a line just under the items (two blank rows at most) is their
+    // totals line. A note a PM typed far below (Z400) is not: new items
+    // inserted above it landed at row 400 (real Excel 11-10).
+    const firstSummary = summaryRows.filter((r) => r > lastItemRow && r <= lastItemRow + 3).sort((a, b) => a - b)[0];
     if (appendRows.length) {
       plan.appends.push({
         sheetId: sheet.sheetId, title: sheet.title, rows: appendRows, width,
@@ -760,7 +826,7 @@ export async function planSheetRound({
 
     // ---- one matched row -------------------------------------------------
     async function mergeRow({ markerId, marker, row, r }) {
-      const base = nextBaseline[markerId]?.fields || null;
+      let base = nextBaseline[markerId]?.fields || null;
       const appRec = appRecordOf(marker, scope, layout);
       const appFps = fieldPrintsOf(appRec);
       const sheetRec = sheetRecordOf(row, appRec);
@@ -796,8 +862,10 @@ export async function planSheetRound({
           setFp(sheetSide, key, base ? getFp(base, key) : getFp(appFps, key));
           continue;
         }
-        // A column added this round is blank in the sheet: nothing changed there yet.
-        if (!columnIsEditable(column) || !colOfKey.has(key) || addedKeys.has(key) || errored) {
+        // A column added this round is blank in the sheet: nothing changed
+        // there yet. Nor in a blank cell of a column that came back.
+        const backBlank = backKeys.has(key) && isBlankCell(row[colOfKey.get(key)]);
+        if (!columnIsEditable(column) || !colOfKey.has(key) || addedKeys.has(key) || errored || backBlank) {
           setFp(sheetSide, key, base ? getFp(base, key) : getFp(appFps, key));
         }
       }
@@ -814,6 +882,23 @@ export async function planSheetRound({
           erasingItems.add(markerId);
           if (eraseMode === 'hold' || eraseMode === 'restore') setFp(sheetSide, key, getFp(base, key));
           if (eraseMode === 'hold') heldKeys.add(key);
+        }
+      }
+      // A late save landing on a cell Survey just wrote, while the app still
+      // holds what Survey wrote: compared against the value from before
+      // Survey's write, so it is held as a conflict (and stays held, since the
+      // baseline keeps that value) instead of replacing the app's value.
+      if (base && lateSaves) {
+        let copied = false;
+        for (const key of keys) {
+          const w = next.recentWrites[`${markerId}|${key}`];
+          if (!w) continue;
+          const wrote = getFp(base, key);
+          if (w.wrote !== wrote || getFp(appFps, key) !== wrote) continue;
+          const sheetNow = getFp(sheetSide, key);
+          if (sheetNow === wrote || sheetNow === (w.was ?? null)) continue;
+          if (!copied) { base = JSON.parse(JSON.stringify(base)); copied = true; }
+          setFp(base, key, w.was ?? null);
         }
       }
       const { conflictFields, excelChangedFields, appChangedFields } = detectFieldConflicts({
@@ -887,7 +972,10 @@ export async function planSheetRound({
         const want = sheetWant(key, cellValueFor(scope, key, finalRec), row[col]);
         if (!sameCell(row[col], want)) {
           writeCell(r, key, want, row[col], markerId);
-          if (!fromSheet.has(key)) plan.summary.toSheet += 1;
+          if (!fromSheet.has(key)) {
+            plan.summary.toSheet += 1;
+            if (base && lateSaves && !isLegacyPrint(getFp(base, key))) next.recentWrites[`${markerId}|${key}`] = { t: now.getTime(), was: getFp(base, key), wrote: getFp(finalFps, key) };
+          }
         }
       }
       // Answers the layout no longer has stay in the baseline: a device still

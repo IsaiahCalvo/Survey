@@ -455,3 +455,128 @@ export function pixelsBeatVector(shape, ring) {
   const inside = minX >= shape.minX - 1 && maxX <= shape.maxX + 1 && minY >= shape.minY - 1 && maxY <= shape.maxY + 1;
   return inside && (maxX - minX) * (maxY - minY) < 0.6 * shape.width * shape.height;
 }
+
+// --- Straight segments for Snap to content (Nightly 'snap-content') ----------
+// Drawboard's "Snap to content": a drawn point lands on the PDF drawing's own
+// line ends, midpoints and straight lines. This reads every straight piece the
+// page strokes or fills (clip-only paths skipped, pieces wholly outside the
+// clip dropped) in page units. A curve gives only its two ends (as a
+// zero-length piece): its middle is not a straight line to slide along.
+export const SNAP_SEGMENT_CAP = 50000;
+// Pieces shorter than this (page units, ~0.2 mm) are below a screen pixel at
+// any working zoom; a run of them is kept as its two end points.
+export const SNAP_MIN_PIECE = 0.5;
+
+/**
+ * A resumable reader so a big sheet never blocks the main thread: `step(n,
+ * deadline)` reads up to n more operators, stopping early once `now()` passes
+ * `deadline` (checked between paths), and returns true once the list is done
+ * (or the cap is reached). `onSegment(x1, y1, x2, y2)` gets each piece as it is read.
+ * `count` is how many pieces were handed out; `truncated` is true when the
+ * cap stopped the read early.
+ */
+export function createStraightSegmentReader(operatorList, OPS, viewportTransform, onSegment, { maxSegments = SNAP_SEGMENT_CAP } = {}) {
+  const fnArray = operatorList?.fnArray || [];
+  const argsArray = operatorList?.argsArray || [];
+  const base = viewportTransform || [1, 0, 0, 1, 0, 0];
+  const stack = [];
+  let ctm = [1, 0, 0, 1, 0, 0];
+  let clip = null;
+  let pendingClip = false;
+  let i = 0;
+  const state = { count: 0, truncated: false, done: !OPS || !fnArray.length };
+  const emit = (a, b) => {
+    if (state.count >= maxSegments) { state.truncated = true; return; }
+    if (clip && (Math.max(a[0], b[0]) < clip[0] - 0.5 || Math.min(a[0], b[0]) > clip[2] + 0.5
+      || Math.max(a[1], b[1]) < clip[1] - 0.5 || Math.min(a[1], b[1]) > clip[3] + 0.5)) return;
+    if (!Number.isFinite(a[0] + a[1] + b[0] + b[1])) return;
+    state.count += 1;
+    onSegment(a[0], a[1], b[0], b[1]);
+  };
+  state.step = (maxOps = Infinity, deadline = Infinity, now = null) => {
+    const stop = Math.min(fnArray.length, i + maxOps);
+    for (; i < stop && !state.truncated; i += 1) {
+      if (now && (i & 7) === 0 && now() > deadline) break;
+      const fn = fnArray[i];
+      const args = argsArray[i];
+      if (fn === OPS.save) { stack.push({ ctm, clip }); continue; }
+      if (fn === OPS.restore) { const st = stack.pop(); if (st) ({ ctm, clip } = st); continue; }
+      if (fn === OPS.transform) { ctm = multiply(ctm, args); continue; }
+      if (fn === OPS.clip || fn === OPS.eoClip) { pendingClip = true; continue; }
+      if (fn === OPS.paintFormXObjectBegin) {
+        stack.push({ ctm, clip });
+        if (Array.isArray(args?.[0]) || ArrayBuffer.isView(args?.[0])) ctm = multiply(ctm, Array.from(args[0]));
+        continue;
+      }
+      if (fn === OPS.paintFormXObjectEnd) { const st = stack.pop(); if (st) ({ ctm, clip } = st); continue; }
+      if (fn !== OPS.constructPath) continue;
+      const paintOp = args?.[0];
+      const data = args?.[1]?.[0];
+      if (!data || typeof data.length !== 'number') { pendingClip = false; continue; }
+      const m = multiply(base, ctm);
+      const tx = (x, y) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
+      if (pendingClip) {
+        pendingClip = false;
+        const b = pathBox(data, tx);
+        if (b) clip = clip ? [Math.max(clip[0], b[0]), Math.max(clip[1], b[1]), Math.min(clip[2], b[2]), Math.min(clip[3], b[3])] : b;
+      }
+      if (paintOp === OPS.endPath) continue; // a clip, not drawn
+      let start = null;
+      let cur = null;
+      // Is `cur` already a target (the end of a line or of a curve)?
+      let curSeen = false;
+      // A run of tiny pieces (CAD text strokes, arcs exported as many short
+      // lines; most of a dense sheet) gives only its two ends, as points.
+      let runStart = null;
+      const flushRun = () => {
+        if (!runStart) return;
+        if (!curSeen || runStart !== cur) emit(runStart, runStart);
+        emit(cur, cur);
+        runStart = null;
+        curSeen = true;
+      };
+      for (let k = 0; k < data.length;) {
+        const code = data[k];
+        if (code === MOVE) {
+          flushRun();
+          cur = tx(data[k + 1], data[k + 2]); start = cur; curSeen = false; k += 3;
+        } else if (code === LINE) {
+          const next = tx(data[k + 1], data[k + 2]);
+          if (cur && Math.hypot(next[0] - cur[0], next[1] - cur[1]) < SNAP_MIN_PIECE) {
+            if (!runStart) runStart = cur;
+          } else {
+            flushRun();
+            if (cur) emit(cur, next);
+          }
+          cur = next; k += 3;
+          if (!runStart) curSeen = true;
+        } else if (code === CURVE || code === QUAD) {
+          flushRun();
+          const n = code === CURVE ? 6 : 4;
+          const next = tx(data[k + n - 1], data[k + n]);
+          if (cur && !curSeen) emit(cur, cur);
+          emit(next, next);
+          cur = next; curSeen = true; k += n + 1;
+        } else if (code === CLOSE) {
+          if (cur && start && Math.hypot(cur[0] - start[0], cur[1] - start[1]) >= SNAP_MIN_PIECE) { flushRun(); emit(cur, start); } else flushRun();
+          cur = start; curSeen = true; k += 1;
+        } else {
+          break; // unknown code: stop reading this path
+        }
+        if (state.truncated) break;
+      }
+      flushRun();
+    }
+    if (i >= fnArray.length || state.truncated) state.done = true;
+    return state.done;
+  };
+  return state;
+}
+
+/** Every straight piece at once (tests, small pages). Flat [x1, y1, x2, y2, ...]. */
+export function extractStraightSegments(operatorList, OPS, viewportTransform, opts = {}) {
+  const out = [];
+  const reader = createStraightSegmentReader(operatorList, OPS, viewportTransform, (x1, y1, x2, y2) => { out.push(x1, y1, x2, y2); }, opts);
+  reader.step(Infinity);
+  return { segments: out, count: reader.count, truncated: reader.truncated };
+}

@@ -108,6 +108,9 @@
 }
 
 .comments-thread__target {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   align-self: flex-start;
   max-width: 100%;
   overflow: hidden;

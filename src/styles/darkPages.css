@@ -1,0 +1,22 @@
+/*
+ * Dark pages (Nightly, flag 'dark-pages'; src/utils/darkPages.js). Inverts
+ * only the pdf.js page image - the base canvas (whose white paper background
+ * turns near-black) and the crisp deep-zoom tile over it. hue-rotate puts the
+ * colours back after the invert, so a red cloud on the drawing stays red-ish.
+ * invert(0.9), not 1: paper becomes a soft near-black and ink a soft white,
+ * easier on the eyes at night than pure black and white. The canvas's own
+ * drop shadow would invert into a white glow, so it is swapped for a light
+ * one that the filter turns dark again.
+ * Marks, the text layer and every overlay sit outside these two elements and
+ * keep their real colours. Never printed.
+ */
+html[data-dark-pages="on"] :is(.survey-pdfjs-page-canvas, .survey-pdfjs-detail-tile) {
+    filter: invert(0.9) hue-rotate(180deg);
+}
+html[data-dark-pages="on"] .survey-pdfjs-page-canvas {
+    box-shadow: 0 2px 14px rgba(255, 255, 255, 0.45) !important;
+}
+
+@media print {
+    html[data-dark-pages="on"] :is(.survey-pdfjs-page-canvas, .survey-pdfjs-detail-tile) { filter: none; }
+}

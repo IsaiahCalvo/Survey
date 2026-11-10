@@ -11,6 +11,7 @@
 import { loadPdfjs } from './utils/pdfWorkerConfig';
 import { resolveIncomingUpload, shouldOfferAlias, nextAvailableName } from './utils/incomingFileResolver';
 import DuplicateUploadModal from './components/DuplicateUploadModal';
+import UploadCheckModal from './components/UploadCheckModal.jsx';
 import Icon from './Icons';
 import DismissBarrier from './components/DismissBarrier';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -27,6 +28,8 @@ import { retryCompensatingCleanup, runCompensatingBatch } from './home/compensat
 import { readPdfPageCount, mapUploadsBounded } from './home/pdfUploadWork.js';
 import { supersedeDocument } from './services/documentVersionService.js';
 import { isFeatureOn } from './featureFlags.js';
+import { OPEN_FILE_EVENT, takeOpenedFiles } from './mobile/nativeOpenFile.js';
+import { PHOTO_ACCEPT, isPhotoFile, photoToPdfFile, photosAsPdfs } from './home/photoToPdf.js';
 import { moveOrCopyDocumentsAtomically, parseDocumentBatchRecovery } from './home/documentBatchOperations.js';
 import { mapAuthoritativeTemplateRows, persistTemplateSnapshot } from './home/templatePersistence.js';
 import { ownerDisplayName, parkForeignLocalExcelPath, sameTemplateConfig, sharedFromRow, splitTemplatesForSave, stripSharedFields } from './services/sharedTemplates.js';
@@ -357,6 +360,49 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     setDuplicateModal(null);
   };
 
+  // Upload check (Nightly, flag 'upload-check'; components/UploadCheckModal.jsx):
+  // after the pick, each PDF shows the name, sheet number and revision read
+  // from its title block, to fix before it uploads. Resolves to
+  // [{ file, sheet }] (file renamed when the name changed), or null on Cancel.
+  const [uploadCheck, setUploadCheck] = useState(null);
+  const uploadCheckRef = useRef(null);
+  const askUploadCheck = async (files) => {
+    const kit = await import('./home/uploadCheck.js');
+    uploadCheckRef.current?.resolve?.(null);
+    return new Promise((resolve) => {
+      const session = { files, resolve, kit };
+      uploadCheckRef.current = session;
+      setUploadCheck({ rows: kit.uploadCheckRows(files) });
+      import('./home/readUploadTitleBlock.js').then(({ readUploadSheet }) => mapUploadsBounded(files, async (file, index) => {
+        let reading = null;
+        try {
+          const bytes = new Uint8Array(await readBlobAsArrayBuffer(file));
+          reading = await readUploadSheet({ bytes, fileName: file.name, loadPdfjs });
+        } catch (err) {
+          console.warn('[upload-check] could not read the title block:', err?.message || err);
+        }
+        if (uploadCheckRef.current !== session) return;
+        setUploadCheck((current) => (current ? {
+          rows: current.rows.map((row, k) => (k === index ? kit.withSheetReading(row, reading) : row)),
+        } : current));
+      })).catch(() => {
+        if (uploadCheckRef.current !== session) return;
+        setUploadCheck((current) => (current ? { rows: current.rows.map((row) => kit.withSheetReading(row, null)) } : current));
+      });
+    });
+  };
+  const settleUploadCheck = (rows) => {
+    const session = uploadCheckRef.current;
+    uploadCheckRef.current = null;
+    setUploadCheck(null);
+    if (!session) return;
+    if (!rows) { session.resolve(null); return; }
+    session.resolve(session.files.map((file, index) => ({
+      file: session.kit.renamedFile(file, rows[index]),
+      sheet: session.kit.uploadSheet(rows[index]),
+    })));
+  };
+
   // Same name + different (or unknown) contents must PAUSE and ask before any
   // row is created (decision 6). Candidates come from a FRESH owner-scoped
   // query — the client-side lists can be stale, scoped to another project, or
@@ -372,12 +418,15 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
   // same place -> offer it as that sheet's new version. Never throws and never
   // stops the upload on its own failure: it only ever adds an offer.
   //   { proceed, archiveDocId?, sheet? } with sheet = the reading to save.
-  const confirmSameSheet = async ({ fileName, bytes, contentSha, projectId }) => {
-    let sheet = null;
+  const confirmSameSheet = async ({ fileName, bytes, contentSha, projectId, checkedSheet = null }) => {
+    let sheet = checkedSheet;
     try {
-      const { readUploadSheet } = await import('./home/readUploadTitleBlock.js');
-      sheet = await readUploadSheet({ bytes, fileName, loadPdfjs });
-      if (!sheet.sheetNumber) return { proceed: true, sheet: null };
+      // The upload check already asked: its answer stands, even "no sheet".
+      if (!checkedSheet) {
+        const { readUploadSheet } = await import('./home/readUploadTitleBlock.js');
+        sheet = await readUploadSheet({ bytes, fileName, loadPdfjs });
+      }
+      if (!sheet?.sheetNumber) return { proceed: true, sheet: sheet?.revision ? sheet : null };
       const query = (columns, sheetNumber = null) => {
         let q = supabase
           .from('documents')
@@ -422,15 +471,16 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
   // Save the sheet reading on the new row (Nightly). Best effort: an older
   // server without the columns just answers an error.
   const saveSheetReading = (documentId, sheet) => {
-    if (!documentId || !sheet?.sheetNumber) return;
+    // A revision typed without a sheet number is saved too (upload check).
+    if (!documentId || !(sheet?.sheetNumber || sheet?.revision)) return;
     supabase
       .from('documents')
-      .update({ sheet_number: sheet.sheetNumber.slice(0, 40), sheet_revision: sheet.revision ? String(sheet.revision).slice(0, 12) : null })
+      .update({ sheet_number: sheet.sheetNumber ? sheet.sheetNumber.slice(0, 40) : null, sheet_revision: sheet.revision ? String(sheet.revision).slice(0, 12) : null })
       .eq('id', documentId)
       .then(({ error }) => { if (error) console.warn('[sheet-revisions] could not save the sheet number:', error.message); }, () => {});
   };
 
-  const confirmSameNameDifferentContent = async ({ fileName, contentSha, projectId, openAfterUpload, bytes = null }) => {
+  const confirmSameNameDifferentContent = async ({ fileName, contentSha, projectId, openAfterUpload, bytes = null, checkedSheet = null }) => {
     try {
       let query = supabase
         .from('documents')
@@ -449,8 +499,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         candidates || []
       );
       if (decision.kind !== 'version-ask') {
-        if (bytes && isFeatureOn('sheet-revisions')) return confirmSameSheet({ fileName, bytes, contentSha, projectId });
-        return { proceed: true };
+        if (bytes && isFeatureOn('sheet-revisions')) return confirmSameSheet({ fileName, bytes, contentSha, projectId, checkedSheet });
+        return { proceed: true, sheet: checkedSheet };
       }
       const choice = await askDuplicateUpload('version', fileName, decision.doc.name, decision.knownDifferent);
       if (choice === 'open-existing') {
@@ -458,7 +508,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         return { proceed: false };
       }
       if (choice !== 'new-version') return { proceed: false }; // Escape/backdrop = cancel
-      return { proceed: true, archiveDocId: decision.doc.id };
+      return { proceed: true, archiveDocId: decision.doc.id, sheet: checkedSheet };
     } catch (err) {
       // Fail SAFE: cancel the upload rather than risk a silent duplicate or a
       // stuck file input further down the path.
@@ -484,12 +534,30 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         fromDocumentId: archiveDocId,
         toDocumentId: newDocId,
       });
-      if (total > 0) showToast(`Brought ${total} mark${total === 1 ? '' : 's'} across from the old version`, 'success');
+      // Comment threads follow the marks (Nightly, 'mark-comments').
+      const comments = isFeatureOn('mark-comments') ? await carryCommentsToReplacement(archiveDocId, newDocId) : 0;
+      const parts = [];
+      if (total > 0) parts.push(`${total} mark${total === 1 ? '' : 's'}`);
+      if (comments > 0) parts.push(`${comments} comment${comments === 1 ? '' : 's'}`);
+      if (parts.length) showToast(`Brought ${parts.join(' and ')} across from the old version`, 'success');
       return true;
     } catch (err) {
       console.error('Could not bring the marks across to the new version:', err);
       showToast('The new version was added, but its marks couldn’t come across, so the old copy stays in your list.');
       return false;
+    }
+  };
+
+  // Best effort: the marks already came across, so a failed comment copy only
+  // says so; the old copy keeps its threads either way.
+  const carryCommentsToReplacement = async (fromDocumentId, toDocumentId) => {
+    try {
+      const { carryMarkComments } = await import('./services/markComments.js');
+      return await carryMarkComments(supabase, fromDocumentId, toDocumentId);
+    } catch (err) {
+      console.error('Could not bring the comments across to the new version:', err);
+      showToast('The comments couldn’t come across. They are still on the old version.');
+      return 0;
     }
   };
 
@@ -711,7 +779,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         // Create File object
         perfUpload.mark('electron-dialog', 'Creating File object');
         const fileData = new Uint8Array(result.data);
-        const file = new File([fileData], result.fileName, { type: 'application/pdf' });
+        let file = new File([fileData], result.fileName, { type: 'application/pdf' });
         // 2026-04-30 fix: stamp the uploader's identity onto the in-memory File
         // so the per-user delete authority gate can resolve documentOwnerId
         // before the Supabase row's id round-trips back. Without this, a quick
@@ -721,6 +789,16 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         const filePath = result.filePath;
         perfUpload.mark('electron-dialog', 'File object created');
         perfUpload.end('electron-dialog');
+
+        // Upload check (Nightly): fix the name, sheet number and revision first.
+        let checkedSheet = null;
+        if (isFeatureOn('upload-check')) {
+          const checked = await askUploadCheck([file]);
+          if (!checked) return;
+          file = checked[0].file;
+          checkedSheet = checked[0].sheet;
+          if (user?.id) file.user_id = user.id;
+        }
 
         // Start upload timing for this specific file
         perfUpload.start(file.name);
@@ -756,6 +834,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
           projectId,
           openAfterUpload,
           bytes: fileData,
+          checkedSheet,
         });
         if (!duplicateGate.proceed) {
           perfUpload.end(file.name);
@@ -908,7 +987,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
   // file-input bookkeeping stays in handleFileUpload. Resolves to what
   // happened: 'added' | 'existing' (deduped to a document already there) |
   // 'skipped' (the user canceled the duplicate ask) | 'failed'.
-  const uploadBrowserPdf = async (file, { projectId = null, openAfterUpload = true, waitForStorage = false, askDuplicates = true } = {}) => {
+  const uploadBrowserPdf = async (file, { projectId = null, openAfterUpload = true, waitForStorage = false, askDuplicates = true, checkedSheet = null } = {}) => {
     if (!user) {
       setDashboardError('Please sign in to upload documents.');
       onShowAuthModal();
@@ -936,12 +1015,13 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     }
 
     // Decision 6 gate: same name + different contents -> ask first.
-    const duplicateGate = !askDuplicates ? { proceed: true } : await confirmSameNameDifferentContent({
+    const duplicateGate = !askDuplicates ? { proceed: true, sheet: checkedSheet } : await confirmSameNameDifferentContent({
       fileName: file.name,
       contentSha,
       projectId,
       openAfterUpload,
       bytes,
+      checkedSheet,
     });
     if (!duplicateGate.proceed) return 'skipped';
 
@@ -1063,8 +1143,20 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     return 'added';
   };
 
+  const [photoUploadOn] = useState(() => isFeatureOn('photo-upload'));
+
   const handleFileUpload = async (event) => {
-    const file = event.target.files?.[0];
+    let file = event.target.files?.[0];
+    // Photo or camera (flag 'photo-upload'): the photo becomes a one-page PDF.
+    if (file && photoUploadOn && isPhotoFile(file)) {
+      try {
+        file = await photoToPdfFile(file);
+      } catch (err) {
+        showToast(err?.message || 'Survey could not turn that photo into a PDF.', 'error');
+        event.target.value = '';
+        return;
+      }
+    }
     if (file && file.type === 'application/pdf') {
 
       if (!user) {
@@ -1085,6 +1177,13 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         projectId = selectedProjectId;
       }
 
+      if (isFeatureOn('upload-check')) {
+        event.target.value = '';
+        const checked = await askUploadCheck([file]);
+        if (!checked) return;
+        await uploadBrowserPdf(checked[0].file, { projectId, openAfterUpload, checkedSheet: checked[0].sheet });
+        return;
+      }
       await uploadBrowserPdf(file, { projectId, openAfterUpload });
     }
     // Reset input
@@ -1096,7 +1195,13 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
   // document (open: true -> each opens in a new tab). Non-PDFs are skipped
   // with a short note; the PDFs go one at a time through the same path as
   // the Upload button, so a duplicate ask waits for its answer.
-  const handleDroppedFiles = async (files, { projectId = null, projectName = null, open = false, sample = false } = {}) => {
+  const handleDroppedFiles = async (dropped, { projectId = null, projectName = null, open = false, sample = false } = {}) => {
+    let files = dropped;
+    if (photoUploadOn) {
+      const turned = await photosAsPdfs(files);
+      files = turned.files;
+      for (const message of turned.failed) showToast(message, 'error');
+    }
     const { pdfs, rejected } = splitDroppedFiles(files);
     const skipped = rejectedFilesMessage(rejected);
     if (skipped) showToast(skipped, 'info');
@@ -1118,14 +1223,20 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       return { added: 0, skipped: rejected.length };
     }
     const targetProjectId = isUploadableProjectId(projectId) ? projectId : null;
+    let checked = null;
+    if (isFeatureOn('upload-check')) {
+      checked = await askUploadCheck(pdfs.map(asPdfFile));
+      if (!checked) return { added: 0, skipped: rejected.length + pdfs.length };
+    }
     let added = 0;
     // Shows 'Uploading…' on the Upload button for the whole batch.
     setActiveUploads((count) => count + 1);
     try {
-      for (const pdf of pdfs) {
-        const status = await uploadBrowserPdf(asPdfFile(pdf), {
+      for (const [index, pdf] of pdfs.entries()) {
+        const status = await uploadBrowserPdf(checked ? checked[index].file : asPdfFile(pdf), {
           projectId: targetProjectId,
           openAfterUpload: open,
+          checkedSheet: checked ? checked[index].sheet : null,
         });
         if (status === 'added' || status === 'existing') added += 1;
       }
@@ -1135,6 +1246,33 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     if (targetProjectId && added > 0) showToast(addedToProjectMessage(added, projectName), 'success');
     return { added, skipped: rejected.length };
   };
+
+  // "Open in Survey" (flag 'open-in-survey'): a PDF opened from Files, Mail or
+  // Teams on a phone is parked by src/mobile/nativeOpenFile.js until someone
+  // is signed in here, then uploaded like a dropped PDF and opened.
+  const droppedFilesRef = useRef(handleDroppedFiles);
+  droppedFilesRef.current = handleDroppedFiles;
+  useEffect(() => {
+    // Only the phone apps fill the queue (src/mobile/nativeDeepLinks.js).
+    if (!user || typeof window === 'undefined') return undefined;
+    const drain = async () => {
+      const entries = takeOpenedFiles();
+      if (entries.length === 0) return;
+      if (!isFeatureOn('open-in-survey')) {
+        showToast('Survey cannot open files from other apps yet. Use Upload on Home.', 'info');
+        return;
+      }
+      for (const entry of entries) {
+        if (entry.error) showToast(entry.error, 'error');
+        else await droppedFilesRef.current([entry.file], { open: true });
+      }
+    };
+    const onOpened = () => { drain().catch((err) => console.warn('[Dashboard] open file failed', err)); };
+    onOpened();
+    window.addEventListener(OPEN_FILE_EVENT, onOpened);
+    return () => window.removeEventListener(OPEN_FILE_EVENT, onOpened);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   // Create Project flow
   const handleCreateProjectClick = () => {
@@ -2715,7 +2853,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       <input
         ref={fileInputRef}
         type="file"
-        accept="application/pdf"
+        accept={photoUploadOn ? PHOTO_ACCEPT : 'application/pdf'}
         onChange={handleFileUpload}
         style={{ display: 'none' }}
       />
@@ -2790,6 +2928,12 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         onRemoveFile={(index) => setProjectFiles((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}
         onCancel={handleCancelCreateProject}
         onConfirm={handleConfirmCreateProject}
+      />
+      <UploadCheckModal
+        rows={uploadCheck?.rows || null}
+        onChange={(rows) => setUploadCheck((current) => (current ? { rows } : current))}
+        onUpload={() => settleUploadCheck(uploadCheck?.rows || null)}
+        onCancel={() => settleUploadCheck(null)}
       />
       <DuplicateUploadModal
         isOpen={!!duplicateModal}

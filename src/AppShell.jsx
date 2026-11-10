@@ -15,7 +15,9 @@ import CounterSeriesMenu, { counterSeriesMenuWidth } from './components/CounterS
 // (Note: CLAUDE.md still says the guard lives in AppShell; that line is stale.)
 
 import PageGridToggle, { PageGridGlyph } from './components/PageGridToggle';
+import DarkPagesToggle, { DarkPagesGlyph } from './components/DarkPagesToggle';
 import DocumentVersionsButton, { DocumentVersionsDialogs, useDocumentVersions } from './components/DocumentVersionsButton.jsx';
+import OlderVersionBar from './components/OlderVersionBar.jsx';
 import { requestMarkCommentsFocus } from './services/markCommentsFocus.js';
 import { OPEN_VIEWER_SHARE_EVENT } from './utils/viewerShare.js';
 import { HOME_DOWNLOAD_EVENT } from './utils/homeDownload.js';
@@ -25,7 +27,7 @@ import RailFlyout from './components/RailFlyout.jsx';
 import MenuGlide from './components/MenuGlide.jsx';
 import { chordKeycaps } from './utils/keyboardShortcuts.js';
 import { shortcutBinding } from './utils/customKeyboardShortcuts.js';
-import SnappingToggle, { SnappingGlyph, snappingLabel, useSnappingShortcut } from './components/SnappingToggle.jsx';
+import SnappingToggle, { SnappingGlyph, SnappingMenu, snappingLabel, useSnappingShortcut } from './components/SnappingToggle.jsx';
 import Dashboard from './Dashboard';
 import { createTabChromeCache } from './utils/tabChromeCache.js';
 import { captureTabSource, isCurrentTabSource } from './utils/tabSourceIdentity.js';
@@ -91,6 +93,9 @@ import { computeTextMarkupPickerPosition } from './utils/pdfTextMarkup.js';
 import { getLiveZoomViewerId, isLiveZoomEventForViewer, LIVE_ZOOM_EVENT } from './utils/liveZoomEvents.js';
 import { useAuth } from './contexts/AuthContext';
 import { supabase, isSupabaseAvailable } from './supabaseClient';
+import { storageDownloads } from './services/storageDownloads.js';
+import { pdfByteCache } from './services/pdfByteCache.js';
+import { remotePdfFileDescriptor } from './utils/pageOpSync.js';
 import { renameRows, subscribeDocumentNames } from './hooks/documentNameBus.js';
 import { lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import useStableHandler from './hooks/useStableHandler.js';
@@ -131,7 +136,7 @@ import PencilModeControl, { usePencilMode } from './components/PencilModeControl
 import { PinIcon, getPinnedToolsStore, usePinnedTools } from './pinnedTools/pinnedToolsShared.jsx';
 import { isFeatureOn } from './featureFlags.js';
 import { quickColoursForTool } from './utils/quickStylePresets.js';
-import { installHomeBack, installViewerBack } from './utils/backNavigation.js';
+import { installHomeBack, installViewerBack, useBackLayer } from './utils/backNavigation.js';
 import { steppedTabId, tabStepForKey } from './utils/tabKeys.js';
 import { setMarksHidden, useMarksHidden } from './utils/marksHidden.js';
 import { enterBrowserFullscreen, isFocusModeKey, leaveBrowserFullscreen } from './utils/focusMode.js';
@@ -1862,6 +1867,26 @@ export default function App({ devPreviewReturnTab = null }) {
     return newFile;
   }, [selectedPDF, activeTabId, replaceDocument]);
 
+  // Another window saved new bytes for a document open here (a page change
+  // there; Nightly 'page-op-sync', utils/pageOpSync.js). The tab gets a fresh
+  // cloud file for them, so its viewer reloads the PDF; the marks already
+  // came through the shared document.
+  const handleRemotePdfVersion = useCallback((targetTabId, { filePath, contentSha256 } = {}) => {
+    if (!targetTabId || !filePath) return;
+    storageDownloads(supabase).invalidate(filePath);
+    try { void Promise.resolve(pdfByteCache()?.removePath?.(filePath)).catch(() => {}); } catch { /* cache only */ }
+    const current = tabsRef.current.find((tab) => tab.id === targetTabId)?.file;
+    if (!current?.id) return;
+    const next = remotePdfFileDescriptor(current, { filePath, contentSha256 });
+    setTabs((prev) => prev.map((tab) => (tab.id === targetTabId && tab.file === current ? { ...tab, file: next } : tab)));
+    setSelectedPDF((selected) => (selected === current ? next : selected));
+    setDocuments((prev) => prev.map((document) => (
+      document?.id === current.id
+        ? { ...document, file_path: filePath, content_sha256: contentSha256 || null }
+        : document
+    )));
+  }, []);
+
   // ---- Desktop tab strip: close, menu, rename, download, restore ----------
   // Drawboard shell audit, Chunk C (2026-10-13). Every close a person makes -
   // the X, a middle-click, the tab menu's Close tab / Close other tabs / Close
@@ -2138,6 +2163,7 @@ export default function App({ devPreviewReturnTab = null }) {
   // drawing set a few dozen undo / redo presses held over 1 GB.
   const stableCreateTemplateRequest = useStableHandler(handleCreateTemplateRequest);
   const stableUpdatePDFFile = useStableHandler(handleUpdatePDFFile);
+  const stableRemotePdfVersion = useStableHandler(handleRemotePdfVersion);
   const stableUnsavedAnnotationsChange = useStableHandler(handleUnsavedAnnotationsChange);
   const stableAnnotationsExistChange = useStableHandler(handleAnnotationsExistChange);
   const stableViewStateChange = useStableHandler(handleViewStateChange);
@@ -2363,9 +2389,13 @@ export default function App({ devPreviewReturnTab = null }) {
     requestMarkCommentsFocus({ documentId: String(documentId), markId: item.id, pageNumber: item.pageNumber });
   }, [activeTab?.file?.id]);
   const documentVersions = useDocumentVersions(documentVersionsEnabled ? activeTab?.file?.id || null : null, handleDocumentSelect);
+  // An older version opens read-only, with a bar to the current one.
+  const olderVersionOpen = documentVersions.open && !documentVersions.open.isCurrent ? documentVersions.open : null;
+  const currentVersion = documentVersions.versions.find((v) => v.isCurrent) || null;
 
   // Page grid spacing (Survey Nightly only, beta flag 'grid-settings').
   const [gridSettingsEnabled] = useState(() => isFeatureOn('grid-settings'));
+  const [snapContentEnabled] = useState(() => isFeatureOn('snap-content'));
 
   const polylineCurve = usePolylineCurve();
   const pinnedTools = usePinnedTools();
@@ -2570,6 +2600,12 @@ export default function App({ devPreviewReturnTab = null }) {
     setMobileAuxCloseRequestKey((key) => key + 1);
     leftRailApi.ref.current.togglePanel(panelId);
   }, [leftRailApi, rightRailApi, activeTabId, activeTab?.file]);
+
+  // Phone: back closes an open Pages / History / Spaces sheet before it
+  // leaves the document (R3-Y: History closed the whole document).
+  useBackLayer(Boolean(isMobileViewer && mobileDocumentPanelState.isOpen), () => {
+    leftRailApi?.ref?.current?.closePanel?.();
+  });
 
   const toggleMobileDocumentHub = useCallback(() => {
     const activePanel = MOBILE_HUB_PANELS.includes(mobileDocumentPanelState.activePanel)
@@ -3194,6 +3230,9 @@ export default function App({ devPreviewReturnTab = null }) {
             <span {...chromeTip(topToolbarApi?.canUndo ? 'Undo' : 'Nothing to undo', 'below')} style={{ display: 'inline-flex' }}>
               <button
                 onClick={topToolbarApi?.onUndo || (() => {})}
+                // A mouse press does not take keyboard focus, so Enter (which
+                // finishes a polygon) never presses this button again (R4-A).
+                onMouseDown={(event) => event.preventDefault()}
                 disabled={!topToolbarApi?.canUndo}
                 // UX 2026-09-16: Undo/Redo take the shared top-bar control
                 // size and glyph like every other button in this row. They
@@ -3215,6 +3254,9 @@ export default function App({ devPreviewReturnTab = null }) {
             <span {...chromeTip(topToolbarApi?.canRedo ? 'Redo' : 'Nothing to redo', 'below')} style={{ display: 'inline-flex' }}>
               <button
                 onClick={topToolbarApi?.onRedo || (() => {})}
+                // A mouse press does not take keyboard focus, so Enter (which
+                // finishes a polygon) never presses this button again (R4-A).
+                onMouseDown={(event) => event.preventDefault()}
                 disabled={!topToolbarApi?.canRedo}
                 // UX 2026-09-16: see Undo — shared top-bar control size + glyph.
                 className="btn chrome-control chrome-history"
@@ -4076,7 +4118,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     neither. */}
                 {showsQuickColourDots(bottomToolbarApi) && annotationPaint && (
                   <QuickColourDots
-                    {...quickColoursForTool(bottomToolbarApi.contextTool || bottomToolbarApi.activeTool, toolQuickColoursOn)}
+                    {...quickColoursForTool(bottomToolbarApi.quickColourTool || bottomToolbarApi.contextTool || bottomToolbarApi.activeTool, toolQuickColoursOn)}
                     // w41: picked marks in different colours ring no dot.
                     value={bottomToolbarApi.selectionMixed?.strokeColor ? null : annotationPaint.quick.color}
                     customActive={bottomToolbarApi.selectionMixed?.strokeColor ? false : undefined}
@@ -4816,6 +4858,9 @@ export default function App({ devPreviewReturnTab = null }) {
                 onOpenPanel={openMobileDocumentPanel}
                 onAuxPanelStateChange={setMobileAuxPanel}
                 auxCloseRequestKey={mobileAuxCloseRequestKey}
+                versions={documentVersions.shown
+                  ? { label: `Versions (v${documentVersions.open.versionNumber} of ${documentVersions.versions.length})`, onOpen: documentVersions.showList }
+                  : null}
               />
             )}
             {railTabs.map((tab) => {
@@ -5007,6 +5052,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       documentId={tab.file?.id || null}
                       viewerUserId={user?.id || null}
                       isActive={isVisible}
+                      readOnlyWithoutLock={Boolean(tab.file?.superseded_by) || (tab.id === activeTabId && Boolean(olderVersionOpen))}
                       onLockStateChange={(isLocked) => {
                         setDocumentLockedByTab((current) => (
                           current[tab.id] === isLocked
@@ -5030,6 +5076,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       onLeftRailApiChange={chrome.left}
                       onRightRailApiChange={chrome.right}
                       onUpdatePDFFile={stableUpdatePDFFile}
+                      onRemotePdfVersion={stableRemotePdfVersion}
                       onCloseAfterFailure={stableTabClose}
                       onUnsavedAnnotationsChange={stableUnsavedAnnotationsChange}
                       onAnnotationsExistChange={stableAnnotationsExistChange}
@@ -5526,6 +5573,25 @@ export default function App({ devPreviewReturnTab = null }) {
                     ))} />
                     {/* Owner 2026-10-22: snapping's switch, beside the grid
                         (Bluebeam keeps SNAP and GRID side by side too). */}
+                    {snapContentEnabled ? (
+                      // Nightly (flag 'snap-content'): the magnet opens the
+                      // Snapping card - Marks and Drawing switches.
+                      <SnappingMenu renderButton={({ open, ref, onClick, on }) => (
+                        <button
+                          ref={ref}
+                          type="button"
+                          onClick={onClick}
+                          aria-label="Snapping"
+                          aria-haspopup="dialog"
+                          aria-expanded={open}
+                          data-snapping-toggle="true"
+                          {...chromeTip(open ? undefined : 'Snapping', 'left')}
+                          style={{ ...footerBtn(), color: on || open ? 'var(--text-1)' : 'var(--text-3)' }}
+                        >
+                          <SnappingGlyph size={RAIL_CONTROL_GLYPH} off={!on} />
+                        </button>
+                      )} />
+                    ) : (
                     <SnappingToggle render={({ on, toggle }) => (
                       <button
                         type="button"
@@ -5537,6 +5603,21 @@ export default function App({ devPreviewReturnTab = null }) {
                         style={{ ...footerBtn(), color: on ? 'var(--text-1)' : 'var(--text-3)' }}
                       >
                         <SnappingGlyph size={RAIL_CONTROL_GLYPH} off={!on} />
+                      </button>
+                    )} />
+                    )}
+                    {/* Nightly (flag 'dark-pages'): light-on-dark pages. */}
+                    <DarkPagesToggle render={({ on, toggle }) => (
+                      <button
+                        type="button"
+                        onClick={toggle}
+                        aria-label="Dark pages"
+                        aria-pressed={on}
+                        data-dark-pages-toggle="true"
+                        {...chromeTip(on ? 'Light pages' : 'Dark pages', 'left')}
+                        style={{ ...footerBtn(), color: on ? 'var(--text-1)' : 'var(--text-3)' }}
+                      >
+                        <DarkPagesGlyph size={RAIL_CONTROL_GLYPH} />
                       </button>
                     )} />
                     {hideMarksEnabled && (
@@ -5713,6 +5794,12 @@ export default function App({ devPreviewReturnTab = null }) {
         </div>
       )}
       <DocumentVersionsDialogs state={documentVersions} />
+      {isViewerVisible && (olderVersionOpen || activeTab?.file?.superseded_by) && (
+        <OlderVersionBar
+          versionNumber={olderVersionOpen?.versionNumber || null}
+          onOpenCurrent={currentVersion ? () => documentVersions.openVersion(currentVersion) : null}
+        />
+      )}
       <TooltipChipHost setterRef={shellTooltipSetterRef} />
     </TooltipContext.Provider>
   );

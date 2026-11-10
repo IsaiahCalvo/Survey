@@ -95,11 +95,15 @@ export default function LayersPanel({ layerState, activeLayerId, onLayersChange,
       <section className="layers-panel__section" aria-labelledby="layers-pdf-head">
         <div className="layers-panel__head">
           <span id="layers-pdf-head" className="layers-panel__title">PDF page</span>
+          {/* The gold step already says it; a number shows only for a value
+              between the steps (older saves). */}
+          {!PDF_OPACITY_STEPS.some(([percent]) => percent === opacityPercent) && (
+            <span className="layers-panel__meta nums">{`${opacityPercent}%`}</span>
+          )}
         </div>
         {/* Owner 2026-11-10 (Layers "needs to be very professional and
             minimal"): the steps are the app's one ButtonGroup (the grid card
-            and every choice row use it), and the "100%" beside the head is
-            gone - the gold step already says it. */}
+            and every choice row use it). */}
         <ButtonGroup
           label="PDF content opacity"
           size="sm"
@@ -158,6 +162,14 @@ export default function LayersPanel({ layerState, activeLayerId, onLayersChange,
                     value={draftName}
                     aria-label="Layer name"
                     onFocus={(e) => e.target.select()}
+                    // A new layer's name must start selected, so typing
+                    // replaces it: the focus from the Add press can land
+                    // before the name is in the box ("Layer 1t4 layer").
+                    ref={(el) => {
+                      if (!el || el.dataset.namePicked) return;
+                      el.dataset.namePicked = 'true';
+                      requestAnimationFrame(() => { if (el.isConnected) { el.focus(); el.select(); } });
+                    }}
                     onClick={(e) => e.stopPropagation()}
                     onChange={(e) => setDraftName(e.target.value)}
                     onBlur={finishRename}
