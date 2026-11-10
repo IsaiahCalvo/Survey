@@ -5536,11 +5536,14 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     // from the strip's middle to the bottom, or the mark stops behind the
     // sheet (phone "Locate on page" on a one-page sheet).
     // (Pages hidden by an active Space add no height, so the last SHOWN page counts.)
+    // Only for a zoom this jump picks itself (not a search hit's set reading
+    // size), and never past this jump's own ceiling: a mark at the very foot
+    // of the page would otherwise send the view to the maximum zoom.
     const lastShown = !dims.slice(i + 1).some((dim) => !dim.hidden);
-    if (bottomInset > 0 && !options.keepZoom && lastShown) {
+    if (bottomInset > 0 && !options.keepZoom && !(Number(options.scale) > 0) && lastShown) {
       const below = d.h - (y + h / 2);
       const room = el.clientHeight - (inset + bandH / 2) - (Number(metrics.padBottom) || 0);
-      if (below > 0 && room > 0) target = Math.max(target, room / below);
+      if (below > 0 && room > 0) target = Math.max(target, Math.min(room / below, ceiling));
     }
     const cx = x + w / 2;
     const cy = y + h / 2;
