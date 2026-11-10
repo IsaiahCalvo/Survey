@@ -1,6 +1,8 @@
 /* The PDF content strength (owner 2026-10-26, #18): five steps, the app's
    one ButtonGroup (2026-11-10); numbers line up. */
 .layers-opacity > button { font-variant-numeric: tabular-nums; padding: 0 4px; }
+/* An older save between the steps: its number beside the head. */
+.layers-panel__meta { color: var(--text-3); font-size: 12px; font-variant-numeric: tabular-nums; }
 
 /* The panel (2026-11-09 polish): two sections with the rail's section heads,
    32px rows like every rail list, tools that show on hover (always on touch),

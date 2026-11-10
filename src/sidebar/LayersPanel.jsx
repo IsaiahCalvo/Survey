@@ -103,8 +103,7 @@ export default function LayersPanel({ layerState, activeLayerId, onLayersChange,
         </div>
         {/* Owner 2026-11-10 (Layers "needs to be very professional and
             minimal"): the steps are the app's one ButtonGroup (the grid card
-            and every choice row use it), and the "100%" beside the head is
-            gone - the gold step already says it. */}
+            and every choice row use it). */}
         <ButtonGroup
           label="PDF content opacity"
           size="sm"
