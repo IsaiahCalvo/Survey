@@ -317,7 +317,7 @@ export const LAYOUT_TESTS = [
   }],
 
   ['connect Google, make the sheet, a deleted tab, a PM edit, a trashed sheet', async ({ page, context, browser }, layout) => {
-    test.setTimeout(180_000);
+    test.setTimeout(240_000);
     if (process.env.E2E_FUNCTIONS_URL) {
       await page.route('**/functions/v1/sheet-sync', (route) => route.fallback({ url: functionUrl('sheet-sync') }));
     }
@@ -404,18 +404,21 @@ export const LAYOUT_TESTS = [
       const at = tab.rows.findIndex((r) => r[3] === E2E_SURVEY.itemName);
       const note = `From Sheets on ${layout.name}`;
       await fakeGoogle(`/files/${fileId}/edit`, { title, edits: [{ row: at, col: notesCol, value: note }] });
-      await expect(async () => {
-        await tap(panel.getByRole('button', { name: 'Sync now' }));
-        await expect(panel.getByRole('button', { name: 'Sync now' })).not.toHaveAttribute('aria-busy', 'true', { timeout: 10_000 });
-        expect(JSON.stringify(await markersOf(E2E_SURVEY.documentId))).toContain(note);
-      }).toPass({ timeout: 45_000 });
-      // Put the seeded item's note back: other specs expect it as seeded.
-      await fakeGoogle(`/files/${fileId}/edit`, { title, edits: [{ row: at, col: notesCol, value: tab.rows[at][notesCol] ?? '' }] });
-      await expect(async () => {
-        await tap(panel.getByRole('button', { name: 'Sync now' }));
-        await expect(panel.getByRole('button', { name: 'Sync now' })).not.toHaveAttribute('aria-busy', 'true', { timeout: 10_000 });
-        expect(JSON.stringify(await markersOf(E2E_SURVEY.documentId))).not.toContain(note);
-      }).toPass({ timeout: 45_000 });
+      // Press Sync now only while it is idle, then give the round time: on a
+      // slow runner a round can pass 10 s, and pressing again every time kept
+      // the button busy until the wait ran out.
+      const syncUntil = (ok) => expect(async () => {
+        if (await ok()) return;
+        const sync = panel.getByRole('button', { name: 'Sync now' });
+        if ((await sync.getAttribute('aria-busy')) !== 'true') await tap(sync);
+        await expect.poll(ok, { timeout: 15_000 }).toBe(true);
+      }).toPass({ timeout: 90_000 });
+      const noteIn = async () => JSON.stringify(await markersOf(E2E_SURVEY.documentId)).includes(note);
+      await syncUntil(noteIn);
+      // Put the seeded item's note back (seeded with none): other specs expect
+      // it as seeded. Not read from the sheet, which a retry finds changed.
+      await fakeGoogle(`/files/${fileId}/edit`, { title, edits: [{ row: at, col: notesCol, value: '' }] });
+      await syncUntil(async () => !(await noteIn()));
 
       // The PM trashes the sheet: the link stops and says why.
       await fakeGoogle(`/files/${fileId}/trash`, {});
