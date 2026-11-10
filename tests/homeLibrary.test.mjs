@@ -104,7 +104,7 @@ test('list size is remembered on this device', () => {
 });
 
 test('flags and migration: each Home extra has its own beta flag and a row', () => {
-  const sql = readFileSync(new URL('../supabase/migrations/20261110170000_home_library.sql', import.meta.url), 'utf8');
+  const sql = readFileSync(new URL('../supabase/migrations/20261110171000_home_library.sql', import.meta.url), 'utf8');
   for (const key of ['home-tags', 'home-shared-views', 'home-columns']) {
     assert.equal(FEATURE_FLAGS[key]?.stage, 'beta', key);
     assert.match(sql, new RegExp(`'${key}', 'off'`));

@@ -1,6 +1,6 @@
 /* Data for the Home extras (homeLibrary.js): your tags, when you last opened
    each document, and which of your documents you have shared. All three are
-   yours alone (migration 20261110170000_home_library.sql). A copy is kept on
+   yours alone (migration 20261110171000_home_library.sql). A copy is kept on
    the device so the list paints with them at once, then the server's answer
    replaces it. */
 import { useCallback, useEffect, useRef, useState } from 'react';
