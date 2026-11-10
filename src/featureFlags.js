@@ -300,6 +300,40 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Back (browser or Android) closes the open sheet, then the document, instead of leaving Survey',
     stage: 'beta',
   }),
+  // Drawboard Home parity (2026-11-10), one flag each so Isaiah can pick.
+  'home-tags': Object.freeze({
+    label: 'Home: your own tags on documents (row chips, Tags list, search by tag)',
+    stage: 'beta',
+  }),
+  'home-shared-views': Object.freeze({
+    label: 'Home: Shared by me and Shared with me filters',
+    stage: 'beta',
+  }),
+  'home-columns': Object.freeze({
+    label: 'Home: Last opened and Created columns, more sorts, list sizes',
+    stage: 'beta',
+  }),
+  // Drawboard Projects parity (2026-11-10).
+  'project-issues': Object.freeze({
+    label: 'Projects: Issues and Tasks lists with IDs, statuses, filters, archive, CSV and activity',
+    stage: 'beta',
+  }),
+  'share-extras': Object.freeze({
+    label: 'Share dialog: owner row with (you), sort by Role / Name / Activity, personal message on email invites',
+    stage: 'beta',
+  }),
+  'home-templates': Object.freeze({
+    label: 'Home New menu: Notebook paper in one tap and Other templates (ruled, Cornell, grids, graph, isometric, hex, music)',
+    stage: 'beta',
+  }),
+  'sheet-set-view': Object.freeze({
+    label: 'Project sheets as a set: previous / next sheet, sheet picker, Shift+Left / Right, List and Grid views, Open all',
+    stage: 'beta',
+  }),
+  spotlight: Object.freeze({
+    label: 'Spotlight: share your view from the people list; others follow your document, page and zoom (green frame, N following)',
+    stage: 'beta',
+  }),
   'page-op-sync': Object.freeze({
     label: 'Page changes in one window reload the PDF in the other windows that have it open',
     stage: 'beta',

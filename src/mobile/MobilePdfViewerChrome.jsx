@@ -26,6 +26,7 @@ import ActiveSpaceChip from '../sidebar/ActiveSpaceChip';
 import { ARROWHEAD_MENU_ORDER, ARROWHEAD_SHORT_LABELS } from '../components/Callout/types';
 import { ZOOM_MODE_OPTIONS, ensureRgbaOpacity, getCategoryGlyphLabel } from '../viewerShared';
 import { getMobileSyncPresentation, getMobileTextMarkupPresentation, normalizeMobilePresence } from './mobilePdfViewerModel.js';
+import SpotlightMeButton from '../spotlight/SpotlightMeButton.jsx';
 import { withDevFakePresence } from '../components/presenceIdentity.js';
 import { getSelectFamilyLabel, getSelectFamilyTransition, getSelectModeIconName, SELECT_MODE_OPTIONS } from '../utils/selectModes.js';
 import { useMobileSheetMotion } from './useMobileSheetMotion';
@@ -3543,6 +3544,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                 </div>
               ))}
             </div>
+            <SpotlightMeButton phone onDone={requestUsersSheetClose} />
           </section>
         </>
       )}

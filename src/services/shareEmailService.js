@@ -49,7 +49,7 @@ async function invokeSendEmail({ to, subject, template, data }) {
  * link. The caller can safely distinguish a definite unsent failure from an
  * uncertain transport outcome without exposing whether the account exists.
  */
-export async function sendInviteEmailSmart({ token, kind, name, inviterName }) {
+export async function sendInviteEmailSmart({ token, kind, name, inviterName, message = '' }) {
   if (!token) return { success: false, error: 'missing token' };
   const displayName = kind === 'project'
     ? (name ? `the project "${name}"` : 'a project')
@@ -62,6 +62,9 @@ export async function sendInviteEmailSmart({ token, kind, name, inviterName }) {
         token,
         displayName,
         inviterName: inviterName || 'A Survey user',
+        // The inviter's own words (share dialog, Nightly flag share-extras);
+        // left out when empty so older servers see the same body as before.
+        ...(typeof message === 'string' && message.trim() ? { message: message.trim() } : null),
       },
     });
     if (error) {

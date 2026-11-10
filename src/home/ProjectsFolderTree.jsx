@@ -50,7 +50,10 @@ import { isPhoneLayout } from '../utils/layoutMode.js';
 import useFileDropZone from '../hooks/useFileDropZone';
 import FileDropOverlay from '../components/FileDropOverlay';
 import { resolveProjectDropTarget } from '../utils/fileDrop.js';
+import { isFeatureOn } from '../featureFlags.js';
+import ProjectItemsPanel, { ProjectItemsTabs } from '../projectItems/ProjectItemsPanel.jsx';
 import { keyboardControlProps } from '../utils/keyboardActivation.js';
+import { SHEET_VIEW_EVENT, projectSheets, storedProjectOrder } from '../sheets/sheetSet.js';
 
 // Renders closed until someone picks Manage team, so it stays off the first
 // load; the chunk is fetched when the projects tree mounts.
@@ -475,6 +478,39 @@ export default function ProjectsFolderTree({
     return map;
   }, [members, ownerMember, collabByProject]);
   const lookupMember = (id) => memberById.get(id) || null;
+
+  /* Issues and Tasks (flag project-issues): a Files · Issues · Tasks row of
+     tabs over the open project. Your role decides what you may change; the
+     people you can assign are the owner and the active collaborators. */
+  const [issuesOn] = useState(() => isFeatureOn('project-issues'));
+  // Drawboard's "Open all" (Nightly, 'sheet-set-view'): the project's first
+  // sheet opens with every sheet beside it in the List view.
+  const [sheetSetOn] = useState(() => isFeatureOn('sheet-set-view'));
+  const openAllSheets = (project, files) => {
+    // The same set and order the viewer's sheet bar uses (sheetSet.js).
+    const sheets = projectSheets(files, project?.id, storedProjectOrder(projectPreferences, project?.id));
+    if (!sheets.length || !onOpenDocument) return;
+    // For that sheet only: if it never opens, no later sheet opens in List.
+    window.dispatchEvent(new CustomEvent(SHEET_VIEW_EVENT, { detail: { view: sheets.length > 1 ? 'list' : 'single', forDocId: sheets[0].id } }));
+    onOpenDocument(sheets[0]);
+  };
+  const [listTab, setListTab] = useState('files');
+  const projectRoleFor = (proj) => {
+    if (!proj || !user?.id) return 'viewer';
+    if (proj.user_id == null || proj.user_id === user.id) return 'owner';
+    const row = (collabByProject.get(proj.id) || []).find((r) => r?.user_id === user.id && (r.status == null || r.status === 'active'));
+    return row?.role === 'owner' || row?.role === 'editor' ? row.role : 'viewer';
+  };
+  const itemMembers = (proj) => {
+    if (!proj) return [];
+    const activeIds = new Set((collabByProject.get(proj.id) || [])
+      .filter((r) => r?.user_id != null && (r.status == null || r.status === 'active'))
+      .map((r) => r.user_id));
+    const ownerId = proj.user_id ?? user?.id ?? null;
+    return projectTeam(proj)
+      .filter((id) => id === ownerId || activeIds.has(id))
+      .map((id) => ({ id, name: lookupMember(id)?.name || 'Teammate' }));
+  };
 
   // Team member-ids for a project — owner first, then real collaborator rows
   // from `project_collaborators`, then any ids carried on the project row,
@@ -1192,9 +1228,26 @@ export default function ProjectsFolderTree({
                   {/* Manage Team — opens the Manage Team modal (NOT the share
                       link modal) for the currently open project. */}
                   <button className="btn" onClick={() => setTeamModalProject(open)}><Icon name="users" size={12} />Manage team</button>
+                  {sheetSetOn && openFiles.length > 1 ? (
+                    <button className="btn" data-open-all-sheets onClick={() => openAllSheets(open, openFiles)}><Icon name="pages" size={12} />Open all</button>
+                  ) : null}
                 </div>
               </div>
 
+              {issuesOn && <ProjectItemsTabs value={listTab} onChange={setListTab} />}
+              {issuesOn && listTab !== 'files' ? (isPhoneLayout() ? <div style={{ flex: 1 }} /> : (
+                <ProjectItemsPanel
+                  project={open}
+                  kind={listTab}
+                  user={user}
+                  role={projectRoleFor(open)}
+                  members={itemMembers(open)}
+                  lookupMember={lookupMember}
+                  documents={openFiles}
+                  onOpenDocument={onOpenDocument}
+                  phone={false}
+                />
+              )) : (
               <div className="projects-open-body" style={{ display: 'grid', gap: 0, flex: 1, overflow: 'hidden' }}>
                 {/* Files */}
                 <div className="slim-scroll" style={{ padding: '10px 14px', overflow: 'auto', position: 'relative' }}>
@@ -1376,6 +1429,7 @@ export default function ProjectsFolderTree({
                   })()}
                 </div>
               </div>
+              )}
             </>
           )}
           {!open && (
@@ -1429,12 +1483,29 @@ export default function ProjectsFolderTree({
                     </span>
                     <span>{mobileDrillAllFiles.length} {mobileDrillAllFiles.length === 1 ? 'file' : 'files'} · {projectLastEditedLabel(mobileDrillProject.id)}</span>
                   </div>
+                  {issuesOn && <ProjectItemsTabs value={listTab} onChange={setListTab} />}
+                  {issuesOn && listTab !== 'files' ? (
+                    <ProjectItemsPanel
+                      project={mobileDrillProject}
+                      kind={listTab}
+                      user={user}
+                      role={projectRoleFor(mobileDrillProject)}
+                      members={itemMembers(mobileDrillProject)}
+                      lookupMember={lookupMember}
+                      documents={mobileDrillAllFiles}
+                      onOpenDocument={onOpenDocument}
+                      phone
+                    />
+                  ) : (<>
                   <div className="projects-mobile-project-files-head">
                     <span>Files<b className="hub-section-count">{mobileDrillFiles.length}</b></span>
                     {/* Icons (owner 2026-10-02), Add last like every header:
                         [Team] [Add files]. */}
                     <SectionIconActions phone className="projects-mobile-project-files-actions">
                       <SectionIconButton phone action="team" icon="users" label="Manage team" onClick={() => setTeamModalProject(mobileDrillProject)} />
+                      {sheetSetOn && mobileDrillAllFiles.length > 1 ? (
+                        <SectionIconButton phone action="open-all" icon="pages" label="Open all" data-open-all-sheets onClick={() => openAllSheets(mobileDrillProject, mobileDrillAllFiles)} />
+                      ) : null}
                       <SectionIconButton phone action="add" label="Add files" onClick={() => addFiles(mobileDrillProject)} />
                     </SectionIconActions>
                   </div>
@@ -1466,6 +1537,7 @@ export default function ProjectsFolderTree({
                       </SortableRearrangeList>
                     )}
                   </div>
+                  </>)}
                 </div>
               </>
             ) : (

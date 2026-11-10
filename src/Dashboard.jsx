@@ -33,6 +33,7 @@ import { PHOTO_ACCEPT, isPhotoFile, photoToPdfFile, photosAsPdfs } from './home/
 import { deviceFilesOn, keepFileOnDevice, openDeviceFile, saveDeviceFileToAccount } from './home/deviceFileActions.js';
 import { moveOrCopyDocumentsAtomically, parseDocumentBatchRecovery } from './home/documentBatchOperations.js';
 import { mapAuthoritativeTemplateRows, persistTemplateSnapshot } from './home/templatePersistence.js';
+import { recordDocumentOpened } from './home/homeLibraryData.js';
 import { ownerDisplayName, parkForeignLocalExcelPath, sameTemplateConfig, sharedFromRow, splitTemplatesForSave, stripSharedFields } from './services/sharedTemplates.js';
 import { useAuth } from './contexts/AuthContext';
 import { useMSGraph } from './contexts/MSGraphContext';
@@ -911,7 +912,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         // viewer refreshes the same cached thumbnail the list shows.
         file.contentSha256 = resolvedDoc.content_sha256 ?? null;
         file.uploadStartTime = performance.now();
-        if (openAfterUpload) onDocumentSelect(file, filePath);
+        if (openAfterUpload) { recordDocumentOpened(resolvedDoc.id); onDocumentSelect(file, filePath); }
 
         // OPTIMISTIC LIST UPDATE — carry both key spellings so the file shows
         // immediately in the project-grouped views (which read project_id).
@@ -1091,7 +1092,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     file.supabaseFilePath = resolvedDoc.file_path ?? null;
     file.contentSha256 = resolvedDoc.content_sha256 ?? null; // thumbnail cache key
     file.uploadStartTime = performance.now();
-    if (wantsOpen()) onDocumentSelect(file);
+    if (wantsOpen()) { recordDocumentOpened(resolvedDoc.id); onDocumentSelect(file); }
 
     // OPTIMISTIC LIST UPDATE — carry both key spellings so the file shows
     // immediately in the project-grouped views (which read project_id).
@@ -1895,7 +1896,12 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     }
   };
 
-  const handleDocumentClick = async (doc) => {
+  // `options.replaceTabId` (sheet set view): open in that tab's place, so
+  // stepping through a project's sheets does not pile up tabs.
+  const handleDocumentClick = async (doc, options = undefined) => {
+    // Home's Last opened (flag home-columns): every open from Home, Projects,
+    // an upload or New lands here.
+    recordDocumentOpened(doc?.id);
     try {
       if (doc?.device_file) {
         const file = await openDeviceFile(doc);
@@ -1916,7 +1922,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
           // documents-table lookup (the documents array is Dashboard-scoped).
           doc.file.user_id = doc.user_id || doc.userId || null;
         }
-        onDocumentSelect(doc.file);
+        onDocumentSelect(doc.file, null, options);
         return;
       }
 
@@ -1940,7 +1946,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
           // authority gate (resolved in PDFViewer's documentOwnerId useMemo).
           user_id: doc.user_id || doc.userId || null,
           contentSha256: doc.content_sha256 ?? doc.contentSha256 ?? null, // thumbnail cache key
-        }, filePath);
+        }, filePath, options);
       } else if (doc.dataUrl) {
         // Legacy: Convert dataUrl back to blob, then to File
         const response = await fetch(doc.dataUrl);
@@ -1953,7 +1959,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         // Phase 35 Plan 03 — owner identity for delete authority gate.
         file.user_id = doc.user_id || doc.userId || null;
 
-        onDocumentSelect(file);
+        onDocumentSelect(file, null, options);
       } else {
         console.error('Document structure:', doc);
         throw new Error('Document has no filePath, file_path, or dataUrl');
@@ -2116,6 +2122,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     renameDocument: hubRenameDocument,
     // The viewer's "PDF tools…" (AppShell) opens the same dialog.
     openPdfTools,
+    // The sheet set bar (AppShell, flag 'sheet-set-view') opens a sheet by
+    // the same path as Home, in the open sheet's tab.
+    openDocument: (doc, options) => handleDocumentClick(doc, options),
   }));
 
   /* --- Survey Hub (home redesign) wiring -------------------------------
@@ -2126,6 +2135,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
      use (no refactor). */
 
   // Open a document in the PDF viewer — reuse the existing open path.
+  // Home's Last opened (Nightly 'home-columns') is stamped here, the one
+  // place Home and Projects open a document from.
   const hubOpenDocument = (doc) => { if (doc) { dismissArchiveUndo(); handleDocumentClick(doc); } };
 
   /* KAL-44 — count survey markers that reference a checklist item id across

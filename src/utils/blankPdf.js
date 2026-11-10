@@ -8,6 +8,8 @@
  * 100-page ARCH D grid stays small.
  */
 
+import { templateMarks } from '../home/paperTemplates.js';
+
 const MM = 72 / 25.4;
 
 export const BLANK_PAGE_SIZES = Object.freeze([
@@ -103,15 +105,25 @@ export async function buildBlankPdf({ title = 'Blank document', sizeId = 'letter
   doc.setCreationDate(now);
   doc.setModificationDate(now);
 
-  const marks = paperMarks(paper, box, metric);
+  // A paper template from Home > New (flag 'home-templates') has its own
+  // marks (home/paperTemplates.js); the four basic papers keep theirs.
+  const basic = BLANK_PAPERS.some((p) => p.id === paper);
+  const marks = basic ? paperMarks(paper, box, metric) : templateMarks(paper, box, metric);
   let pattern = null;
   if (marks.length) {
     const scratch = await PDFDocument.create();
     const sheet = scratch.addPage([box.width, box.height]);
     const color = rgb(0.72, 0.8, 0.9);
+    const tones = {
+      rule: { color, thickness: 0.5 },
+      major: { color: rgb(0.48, 0.62, 0.8), thickness: 0.75 },
+      margin: { color: rgb(0.88, 0.45, 0.45), thickness: 0.75 },
+      ink: { color: rgb(0.35, 0.35, 0.38), thickness: 0.6 },
+    };
     for (const m of marks) {
       if (m.kind === 'line') {
-        sheet.drawLine({ start: { x: m.x1, y: m.y1 }, end: { x: m.x2, y: m.y2 }, thickness: 0.5, color });
+        const tone = tones[m.tone] || tones.rule;
+        sheet.drawLine({ start: { x: m.x1, y: m.y1 }, end: { x: m.x2, y: m.y2 }, thickness: tone.thickness, color: tone.color });
       } else {
         sheet.drawLine({ start: { x: m.x, y: m.y }, end: { x: m.x, y: m.y }, thickness: 1.6, color, lineCap: LineCapStyle.Round });
       }

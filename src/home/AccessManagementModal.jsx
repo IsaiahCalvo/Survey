@@ -36,7 +36,8 @@ import {
 import { copyTextToClipboard } from '../utils/clipboard';
 import { grantRememberedDocumentTemplates } from '../services/sharedTemplates.js';
 import { supabase } from '../supabaseClient';
-import { accessInviteRows, memberIdentity } from './accessRows';
+import { accessInviteRows, memberIdentity, withOwnerRow, sortAccessMembers, openedLabel } from './accessRows';
+import AccessSortSelect from './AccessSortSelect.jsx';
 import { presenceInitials } from '../components/presenceIdentity.js';
 import { USER_INITIALS_INK, userColorFill } from '../utils/userColors.js';
 import { Icon } from './HubShell';
@@ -87,7 +88,7 @@ function labelForKind(kind) {
    row: the name and email on one line each (cut with an ellipsis, the full
    text in the chip), the role as a word, and every action in the row's More
    menu (the shared action menu, components/MenuRows.jsx). */
-function AccessRow({ rowProps, pending = false, avatar, primary, secondary, role, status, tip, menuOpen, onMenu, onCloseMenu, menuItems }) {
+function AccessRow({ rowProps, pending = false, avatar, primary, secondary, role, status, tip, menuOpen, onMenu, onCloseMenu, menuItems, you = false }) {
   // The menu is fixed to the window at the More button, so the scrolling list
   // never clips it.
   const [at, setAt] = useState(null);
@@ -95,9 +96,13 @@ function AccessRow({ rowProps, pending = false, avatar, primary, secondary, role
   const line = { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.3 };
   return (
     <div {...rowProps} className="access-grid" style={{ position: 'relative', display: 'grid', gap: 14, alignItems: 'center', padding: '8px 10px', borderRadius: 6, minHeight: 50, boxSizing: 'border-box', ...(pending ? { background: 'var(--surface-2)' } : null) }}>
-      <div data-user-avatar="" style={{ width: 30, height: 30, borderRadius: '50%', background: avatar.background, color: avatar.color, display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 600, flex: 'none' }}>{avatar.text}</div>
+      <div data-user-avatar="" style={{ position: 'relative', width: 30, height: 30, borderRadius: '50%', background: avatar.background, color: avatar.color, display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 600, flex: 'none' }}>
+        {avatar.text}
+        {/* Share extras: you are here now, so your own row wears the online dot. */}
+        {you ? <span data-online-dot="" aria-hidden="true" style={{ position: 'absolute', right: -1, bottom: -1, width: 9, height: 9, borderRadius: '50%', background: 'var(--success-text)', boxShadow: '0 0 0 2px var(--surface-1)' }} /> : null}
+      </div>
       <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <div {...tip(primary)} style={{ ...line, fontSize: 13, fontWeight: 600 }}>{primary}</div>
+        <div {...tip(primary)} style={{ ...line, fontSize: 13, fontWeight: 600 }}>{primary}{you ? <span data-you="" style={{ fontWeight: 400, color: C.muted }}> (you)</span> : null}</div>
         {secondary ? <div {...tip(secondary)} style={{ ...line, fontFamily: MONO_FONT, fontSize: 11, color: C.muted }}>{secondary}</div> : null}
       </div>
       <div style={{ ...line, fontSize: 12, color: C.inkSoft }}>{role}</div>
@@ -114,7 +119,7 @@ function AccessRow({ rowProps, pending = false, avatar, primary, secondary, role
   );
 }
 
-const NO_LIST = { documentId: null, members: [], invites: [], ownerProfile: null };
+const NO_LIST = { documentId: null, members: [], invites: [], ownerProfile: null, activity: null };
 
 export default function AccessManagementModal({ open, onClose, kind = 'document', item = null, user = null }) {
   const tip = useTooltip();
@@ -135,6 +140,11 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
   const members = fresh ? list.members : NO_LIST.members;
   const invites = fresh ? list.invites : NO_LIST.invites;
   const ownerProfile = fresh ? list.ownerProfile : null;
+  const activity = fresh ? list.activity : null;
+  // Share dialog extras (Nightly flag share-extras): the owner always listed
+  // first, "(you)" on your row, sort by Role / Name / Activity.
+  const [extrasOn] = useState(() => isFeatureOn('share-extras'));
+  const [sortKey, setSortKey] = useState('role');
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -158,16 +168,22 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
     setLoading(true);
     setError('');
     try {
-      const [colRes, invRes, owner] = await Promise.all([
+      const [colRes, invRes, owner, opens] = await Promise.all([
         getDocumentCollaborators(documentId),
         listDocumentInvites(documentId),
         getDocumentOwnerProfile(documentId).catch(() => null),
+        extrasOn
+          ? Promise.resolve(supabase.rpc('get_document_member_activity', { doc_id: documentId })).catch(() => null)
+          : null,
       ]);
       setList({
         documentId,
         members: Array.isArray(colRes?.data) ? colRes.data : [],
         invites: Array.isArray(invRes?.data) ? invRes.data : [],
         ownerProfile: owner || null,
+        activity: Array.isArray(opens?.data)
+          ? new Map(opens.data.map((r) => [r.user_id, r.last_opened_at]))
+          : null,
       });
     } catch (err) {
       console.error('[KAL-31] AccessManagementModal load failed:', err);
@@ -175,7 +191,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
     } finally {
       setLoading(false);
     }
-  }, [documentId]);
+  }, [documentId, extrasOn]);
 
   useEffect(() => {
     if (!open) return;
@@ -284,6 +300,15 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
   // member (e.g. their invite email failed after access was granted) is not
   // listed again as Pending with Resend. See accessRows.js.
   const { links: activeLinks, emails: emailPending } = accessInviteRows(invites, members);
+  const docOwnerId = item?.user_id || ownerProfile?.user_id || null;
+  const identOf = (m) => memberIdentity(m, { owner: ownerProfile, currentUser });
+  const shownMembers = extrasOn && fresh
+    ? sortAccessMembers(withOwnerRow(members, { ownerId: docOwnerId, ownerProfile, currentUser }), sortKey, {
+      ownerId: docOwnerId,
+      nameOf: (m) => identOf(m).primary,
+      activity,
+    })
+    : members;
 
   return (
     <>
@@ -299,11 +324,21 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
             <button onClick={onClose} aria-label="Close" {...tip('Close')} className="hub-icon-btn"><Icon name="close" size={13} /></button>
           </div>
 
+          {extrasOn && (
+            <div data-access-sort="" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '8px 18px', borderBottom: `1px solid ${C.rule}` }}>
+              <span style={{ fontSize: 12, fontWeight: 600 }}>People ({shownMembers.length})</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: C.muted }}>
+                Sort by
+                <AccessSortSelect value={sortKey} onChange={setSortKey} />
+              </span>
+            </div>
+          )}
+
           <div className="access-grid access-grid--head" style={{ display: 'grid', gap: 14, alignItems: 'center', padding: '8px 18px 6px', borderBottom: `1px solid ${C.rule}`, fontSize: 11, letterSpacing: 0, color: C.muted, fontWeight: 600 }}>
             <span />
             <span>Users</span>
             <span>Role</span>
-            <span>Status</span>
+            <span>{extrasOn ? 'Last opened' : 'Status'}</span>
             <span />
           </div>
 
@@ -313,26 +348,30 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
                 reopen, or after a change) keeps the rows where they are. */}
             {loading && !fresh && <div style={{ padding: '20px 12px', color: C.muted, fontSize: 12 }}>Loading collaborators…</div>}
 
-            {fresh && members.length === 0 && emailPending.length === 0 && activeLinks.length === 0 && (
+            {fresh && shownMembers.length === 0 && emailPending.length === 0 && activeLinks.length === 0 && (
               <div style={{ padding: '20px 12px', color: C.muted, fontSize: 12 }}>No collaborators yet. Use Invite to add one.</div>
             )}
 
             {/* Active collaborators. */}
-            {members.map((m) => {
+            {shownMembers.map((m) => {
               const rl = String(m.role || '').toLowerCase();
-              const ident = memberIdentity(m, { owner: ownerProfile, currentUser });
+              const ident = identOf(m);
+              const you = extrasOn && Boolean(currentUser?.id) && m.user_id === currentUser.id;
               const isLastOwner = rl === 'owner' && ownerCount <= 1;
               const menuKey = `m:${m.id || m.user_id}`;
               const email = m.email || m.user?.email || ident.secondary || (ident.primary.includes('@') ? ident.primary : '');
               return (
                 <AccessRow
                   key={m.id || `${m.user_id}-${m.document_id}`}
-                  rowProps={{ 'data-kal31-row': 'member', 'data-kal31-role': rl }}
+                  rowProps={{ 'data-kal31-row': 'member', 'data-kal31-role': rl, ...(extrasOn ? { 'data-access-user': m.user_id || '' } : null) }}
+                  you={you}
                   avatar={{ text: initialsOf(ident.primary), background: colorFor(m.user_id || m.user?.email || m.email), color: USER_INITIALS_INK }}
                   primary={ident.primary}
                   secondary={ident.secondary}
                   role={roleLabel(rl)}
-                  status={<span style={{ color: 'var(--text-2)' }}>{m.status === 'active' ? 'Active' : roleLabel(m.status || 'Active')}</span>}
+                  status={extrasOn
+                    ? <span data-access-opened="" style={{ color: 'var(--text-2)', fontWeight: 400 }}>{openedLabel(activity?.get(m.user_id))}</span>
+                    : <span style={{ color: 'var(--text-2)' }}>{m.status === 'active' ? 'Active' : roleLabel(m.status || 'Active')}</span>}
                   tip={tip}
                   menuOpen={openMenu === menuKey}
                   onMenu={() => setOpenMenu(openMenu === menuKey ? null : menuKey)}
@@ -341,7 +380,9 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
                   // say why instead of doing nothing (the old Remove button sat
                   // greyed out with no reason).
                   menuItems={[
-                    ...ROLES.filter((role) => role.toLowerCase() !== rl).map((role) => ({
+                    // Share extras: the document's own owner keeps it whatever
+                    // their row says, so their row offers only Copy email.
+                    ...(extrasOn && docOwnerId && m.user_id === docOwnerId ? [] : ROLES).filter((role) => role.toLowerCase() !== rl).map((role) => ({
                       label: `Make ${role.toLowerCase()}`,
                       disabled: busy,
                       reason: isLastOwner ? 'At least one owner must remain' : null,
@@ -352,7 +393,8 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
                       if (result.ok) { setError(''); setStatus('Email copied.'); }
                       else { setStatus(''); setError('Survey could not copy this email.'); }
                     } },
-                    { label: 'Remove access', danger: true, disabled: busy, reason: isLastOwner ? 'At least one owner must remain' : null, onClick: () => handleRemove(m) },
+                    (extrasOn && docOwnerId && m.user_id === docOwnerId) ? null
+                      : { label: 'Remove access', danger: true, disabled: busy, reason: isLastOwner ? 'At least one owner must remain' : null, onClick: () => handleRemove(m) },
                   ]}
                 />
               );
@@ -432,7 +474,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
 
           <div style={{ padding: '12px 16px', borderTop: `1px solid ${C.rule}`, background: C.deep, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: 11, color: C.muted, letterSpacing: 0, fontWeight: 600 }}>
-              {members.length} member{members.length === 1 ? '' : 's'} · {emailPending.length} pending · {activeLinks.length} share link{activeLinks.length === 1 ? '' : 's'}
+              {shownMembers.length} member{shownMembers.length === 1 ? '' : 's'} · {emailPending.length} pending · {activeLinks.length} share link{activeLinks.length === 1 ? '' : 's'}
             </span>
             <button onClick={onClose} className="hub-btn hub-btn--primary">Done</button>
           </div>
