@@ -133,6 +133,9 @@ import { formatPageTotal } from './utils/pageTotalLabel.js';
 import { requestTemplateEditor } from './home/templateEditorRequest';
 import SheetSetBar from './sheets/SheetSetBar.jsx';
 import SheetSetView from './sheets/SheetSetView.jsx';
+import SpotlightOverlay from './spotlight/SpotlightOverlay.jsx';
+import useSpotlight from './spotlight/useSpotlight.js';
+import { clearSpotlightGo, setSpotlightDocument, setSpotlightIdentity } from './services/annotationSpotlight.js';
 import { SHEET_VIEW_EVENT, clampGridColumns, projectSheets, sheetStepForKey, steppedSheet, storedProjectOrder, DEFAULT_GRID_COLUMNS } from './sheets/sheetSet.js';
 
 // The dot between the current page and the page total in the right-rail
@@ -2286,6 +2289,7 @@ export default function App({ devPreviewReturnTab = null }) {
   // Projects' previous / next sheet, sheet picker, Shift+Left / Right, List
   // and Grid views. Stepping opens the sheet in the open sheet's tab.
   const [sheetSetEnabled] = useState(() => isFeatureOn('sheet-set-view'));
+  const [spotlightEnabled] = useState(() => isFeatureOn('spotlight'));
   const [sheetView, setSheetView] = useState('single');
   const [sheetGridColumns, setSheetGridColumns] = useState(() => {
     try { return clampGridColumns(window.localStorage.getItem('survey.sheetGridColumns') || DEFAULT_GRID_COLUMNS); } catch (_e) { return DEFAULT_GRID_COLUMNS; }
@@ -2315,6 +2319,9 @@ export default function App({ devPreviewReturnTab = null }) {
     for (const tabId of tabIdsToDiscardOnClose(tabsRef.current, [fromTabId])) {
       window.dispatchEvent(new CustomEvent(DISCARD_LOCAL_DRAFT_EVENT, { detail: { tabId } }));
     }
+    // A presenter's followers hear "go" on this sheet's channel before the
+    // tab is replaced and the channel closes (Nightly 'spotlight').
+    if (spotlightEnabled) setSpotlightDocument(doc.id);
     await dashboardRef.current?.openDocument?.(doc, { replaceTabId: fromTabId });
   };
   const stepSheet = (step) => {
@@ -2337,15 +2344,30 @@ export default function App({ devPreviewReturnTab = null }) {
     if (sheetSetWasShownRef.current && !sheetSetShown) setSheetView('single');
     sheetSetWasShownRef.current = sheetSetShown;
   }, [sheetSetShown]);
+  // Open all asks for the List view for the sheet it opens. The view waits
+  // until that sheet is in front with its set; an open that fails (or never
+  // shows a set) leaves nothing behind for the next document.
+  const pendingSheetViewRef = useRef(null);
   useEffect(() => {
     if (!sheetSetEnabled) return undefined;
     const onView = (event) => {
       const view = event?.detail?.view;
-      if (view === 'single' || view === 'list' || view === 'grid') setSheetView(view);
+      if (view !== 'single' && view !== 'list' && view !== 'grid') return;
+      const forDocId = event?.detail?.forDocId;
+      if (forDocId == null) { setSheetView(view); return; }
+      pendingSheetViewRef.current = { view, docId: String(forDocId), at: Date.now() };
     };
     window.addEventListener(SHEET_VIEW_EVENT, onView);
     return () => window.removeEventListener(SHEET_VIEW_EVENT, onView);
   }, [sheetSetEnabled]);
+  useEffect(() => {
+    const pending = pendingSheetViewRef.current;
+    if (!pending || !isViewerVisible || sheetActiveDocId == null) return;
+    pendingSheetViewRef.current = null;
+    // Only the sheet it was asked for, and only soon after (a slow open is
+    // fine; a sheet opened much later is not the one Open all meant).
+    if (sheetSetShown && String(sheetActiveDocId) === pending.docId && Date.now() - pending.at < 120_000) setSheetView(pending.view);
+  }, [sheetSetShown, sheetActiveDocId, Boolean(isViewerVisible)]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!sheetSetShown) return undefined;
     const onKey = (event) => {
@@ -2372,6 +2394,30 @@ export default function App({ devPreviewReturnTab = null }) {
     return installHomeBack(window);
   }, [backButtonEnabled, Boolean(isViewerVisible)]); // eslint-disable-line react-hooks/exhaustive-deps
   const isMobileViewer = Boolean(isNarrowShell && isViewerVisible);
+  // Spotlight (Nightly 'spotlight', annotationSpotlight.js): present your
+  // view, or follow someone else's, on the document in front.
+  const spotlight = useSpotlight();
+  const spotlightDocId = spotlightEnabled && isViewerVisible ? (activeTab?.file?.id ?? null) : null;
+  useEffect(() => {
+    if (!spotlightEnabled) return;
+    setSpotlightIdentity({ userId: user?.id || null, name: user?.user_metadata?.full_name || user?.email || '' });
+  }, [spotlightEnabled, user?.id, user?.user_metadata?.full_name, user?.email]);
+  useEffect(() => {
+    if (!spotlightEnabled) return undefined;
+    if (spotlightDocId != null) { setSpotlightDocument(spotlightDocId); return undefined; }
+    // No document in front: presenting and following end, unless it was only
+    // the blink of one sheet replacing another in the same tab.
+    const timer = setTimeout(() => setSpotlightDocument(null), 1500);
+    return () => clearTimeout(timer);
+  }, [spotlightEnabled, spotlightDocId]);
+  // The presenter opened another document: a follower opens it too.
+  useEffect(() => {
+    const go = spotlight.go;
+    if (!spotlightEnabled || !go) return;
+    clearSpotlightGo(go.seq);
+    const doc = documents.find((d) => String(d?.id) === String(go.documentId));
+    if (doc) openSheet(doc);
+  }, [spotlightEnabled, spotlight.go]); // eslint-disable-line react-hooks/exhaustive-deps
   // Shift+S flips snapping (the rail's magnet button says the same).
   useSnappingShortcut(Boolean(isViewerVisible));
   useViewerReturnQuiet(Boolean(isViewerVisible), activeTabId);
@@ -5125,6 +5171,7 @@ export default function App({ devPreviewReturnTab = null }) {
             {pinnedToolsEnabled && isViewerVisible && (
               <PinnedToolsDock api={bottomToolbarApi} tip={chromeTip} phone={isMobileViewer} />
             )}
+            {spotlightEnabled && isViewerVisible && <SpotlightOverlay phone={isMobileViewer} />}
             {sheetSetShown && sheetView !== 'single' && (
               <SheetSetView
                 sheets={sheetSet}

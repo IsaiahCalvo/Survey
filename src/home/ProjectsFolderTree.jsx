@@ -485,7 +485,8 @@ export default function ProjectsFolderTree({
     // The same set and order the viewer's sheet bar uses (sheetSet.js).
     const sheets = projectSheets(files, project?.id, storedProjectOrder(projectPreferences, project?.id));
     if (!sheets.length || !onOpenDocument) return;
-    window.dispatchEvent(new CustomEvent(SHEET_VIEW_EVENT, { detail: { view: sheets.length > 1 ? 'list' : 'single' } }));
+    // For that sheet only: if it never opens, no later sheet opens in List.
+    window.dispatchEvent(new CustomEvent(SHEET_VIEW_EVENT, { detail: { view: sheets.length > 1 ? 'list' : 'single', forDocId: sheets[0].id } }));
     onOpenDocument(sheets[0]);
   };
   const [listTab, setListTab] = useState('files');

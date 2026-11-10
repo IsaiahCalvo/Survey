@@ -2,6 +2,7 @@
 // Drawboard Projects: sheet order, stepping, keys, picker search.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   projectSheets, steppedSheet, sheetPosition, sheetStepForKey, sheetLabel, sheetTitle,
   clampGridColumns, filterSheets, GRID_COLUMNS, storedProjectOrder,
@@ -69,4 +70,12 @@ test('grid shows 4 to 8 sheets a row; picker search', () => {
 
 test('flag is a Nightly beta', () => {
   assert.equal(FEATURE_FLAGS['sheet-set-view']?.stage, 'beta');
+});
+
+test('Open all asks for List only for the sheet it opens (a failed open leaves no List behind)', () => {
+  const tree = readFileSync(new URL('../src/home/ProjectsFolderTree.jsx', import.meta.url), 'utf8');
+  assert.match(tree, /SHEET_VIEW_EVENT, \{ detail: \{ view: [^}]*forDocId: sheets\[0\]\.id \} \}/);
+  const shell = readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
+  assert.match(shell, /pendingSheetViewRef\.current = \{ view, docId: String\(forDocId\)/);
+  assert.match(shell, /String\(sheetActiveDocId\) === pending\.docId/);
 });

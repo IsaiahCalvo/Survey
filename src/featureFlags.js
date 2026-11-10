@@ -279,6 +279,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Project sheets as a set: previous / next sheet, sheet picker, Shift+Left / Right, List and Grid views, Open all',
     stage: 'beta',
   }),
+  spotlight: Object.freeze({
+    label: 'Spotlight: share your view from the people list; others follow your document, page and zoom (green frame, N following)',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';
