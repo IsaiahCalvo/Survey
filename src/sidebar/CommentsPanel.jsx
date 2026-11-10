@@ -34,6 +34,8 @@ import {
   personLabel,
 } from '../services/markComments.js';
 import { historyGlyphFor, historyTypeKey } from '../utils/historyFeed.js';
+import { presenceInitials } from '../components/presenceIdentity.js';
+import { USER_INITIALS_INK, userColorFill } from '../utils/userColors.js';
 import { historyMarkFilterNoun } from '../utils/historyMarkFilter.js';
 import { historyAnnotationInkBox } from '../utils/historyGeometry.js';
 import { measureMarkBox } from '../components/revisions/historyPageOverlay.js';
@@ -180,6 +182,16 @@ function CommentItem({ comment, peopleById, mine, canWrite, onEdit, onDelete, on
   return (
     <div className={`comments-item${editing ? ' is-editing' : ''}`} data-comment-id={comment.id}>
       <div className="comments-item__head">
+        {/* Owner 2026-11-10 (Comments "very professional"): each comment
+            wears its author's face - their own pastel and initials, the same
+            disc as the presence row and the share list. */}
+        <span
+          className="comments-avatar"
+          aria-hidden="true"
+          style={comment.authorId ? { background: userColorFill(comment.authorId), color: USER_INITIALS_INK } : undefined}
+        >
+          {comment.authorId ? presenceInitials(personLabel(author)) : '?'}
+        </span>
         <span className="comments-item__author">{comment.authorId ? personLabel(author) : 'Former member'}</span>
         <span className="comments-item__time">
           {timeLabel(comment.createdAt)}{comment.editedAt ? ' · edited' : ''}

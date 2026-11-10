@@ -12,6 +12,7 @@ import { createPortal } from 'react-dom';
 import Icon from '../Icons';
 import './LayersPanel.css';
 import SectionIconButton from '../components/SectionIconButton.jsx';
+import ButtonGroup from '../components/ButtonGroup.jsx';
 import { useTooltip } from '../components/Tooltip.jsx';
 import { showToast } from '../utils/toast';
 import {
@@ -94,24 +95,24 @@ export default function LayersPanel({ layerState, activeLayerId, onLayersChange,
       <section className="layers-panel__section" aria-labelledby="layers-pdf-head">
         <div className="layers-panel__head">
           <span id="layers-pdf-head" className="layers-panel__title">PDF page</span>
-          <span className="layers-panel__meta nums">{opacityPercent === 0 ? 'Hidden' : `${opacityPercent}%`}</span>
         </div>
-        <div className="layers-opacity" role="radiogroup" aria-label="PDF content opacity">
-          {PDF_OPACITY_STEPS.map(([percent, word]) => (
-            <button
-              key={percent}
-              type="button"
-              role="radio"
-              aria-checked={opacityPercent === percent}
-              aria-label={percent === 0 ? 'Hide PDF content' : `PDF content ${percent}%`}
-              data-pdf-opacity={percent}
-              className={`layers-opacity__step${opacityPercent === percent ? ' is-active' : ''}`}
-              onClick={() => commit(setPdfOpacity(state, percent / 100))}
-            >
-              {word}
-            </button>
-          ))}
-        </div>
+        {/* Owner 2026-11-10 (Layers "needs to be very professional and
+            minimal"): the steps are the app's one ButtonGroup (the grid card
+            and every choice row use it), and the "100%" beside the head is
+            gone - the gold step already says it. */}
+        <ButtonGroup
+          label="PDF content opacity"
+          size="sm"
+          fill
+          className="layers-opacity"
+          value={PDF_OPACITY_STEPS.some(([p]) => p === opacityPercent) ? opacityPercent : null}
+          options={PDF_OPACITY_STEPS.map(([percent, word]) => ({
+            value: percent,
+            label: word,
+            ariaLabel: percent === 0 ? 'Hide PDF content' : `PDF content ${percent}%`,
+          }))}
+          onChange={(percent) => commit(setPdfOpacity(state, percent / 100))}
+        />
       </section>
 
       <section className="layers-panel__section" aria-labelledby="layers-markup-head">
