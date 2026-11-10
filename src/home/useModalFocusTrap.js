@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { openModalStack } from '../hooks/modalStack.js';
+import { notifyBackLayersChanged } from '../utils/backNavigation.js';
 
 const FOCUSABLE_SELECTOR = [
   'a[href]',
@@ -30,7 +31,7 @@ export default function useModalFocusTrap({ active, containerRef, initialFocusRe
 
     const returnFocus = returnFocusRef?.current || document.activeElement;
     const trap = { containerRef };
-    activeTrapStack.push(trap);
+    activeTrapStack.push(trap); notifyBackLayersChanged();
     const isTopmost = () => activeTrapStack[activeTrapStack.length - 1] === trap;
     const isLayerAboveTrap = (layer) => {
       const trapIndex = activeTrapStack.indexOf(trap);
@@ -113,7 +114,7 @@ export default function useModalFocusTrap({ active, containerRef, initialFocusRe
       document.removeEventListener('focusin', onFocusIn, true);
       const wasTopmost = isTopmost();
       const index = activeTrapStack.lastIndexOf(trap);
-      if (index >= 0) activeTrapStack.splice(index, 1);
+      if (index >= 0) activeTrapStack.splice(index, 1); notifyBackLayersChanged();
       requestAnimationFrame(() => {
         if (!wasTopmost || !returnFocus?.isConnected) return;
         const currentTop = activeTrapStack[activeTrapStack.length - 1];

@@ -28,6 +28,7 @@
  */
 import { useEffect, useRef } from 'react';
 import { openModalStack } from './modalStack.js';
+import { notifyBackLayersChanged } from '../utils/backNavigation.js';
 import { focusQuietly } from '../utils/quietFocus.js';
 
 const FOCUSABLE_SELECTOR = [
@@ -74,7 +75,7 @@ export const useFocusTrap = (containerRef, isOpen, { onEscape, autoFocus = true,
 
     openerRef.current = document.activeElement;
     const token = trapTokenRef.current;
-    openTraps.push(token);
+    openTraps.push(token); notifyBackLayersChanged();
 
     // Move focus in. Tried synchronously first, then retried on a timer for
     // dialogs whose content arrives a tick late (portals, lazy panels).
@@ -100,7 +101,7 @@ export const useFocusTrap = (containerRef, isOpen, { onEscape, autoFocus = true,
 
     return () => {
       const index = openTraps.indexOf(token);
-      if (index !== -1) openTraps.splice(index, 1);
+      if (index !== -1) openTraps.splice(index, 1); notifyBackLayersChanged();
       if (retryTimer) clearTimeout(retryTimer);
       // Back to the opener without popping its tooltip chip (quietFocus.js).
       focusQuietly(openerRef.current);

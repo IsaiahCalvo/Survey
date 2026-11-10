@@ -20,15 +20,25 @@ import { useEffect, useRef } from 'react';
 import { openModalStack } from '../hooks/modalStack.js';
 
 const MARK = 'surveyViewerBack';
+const HOME_MARK = 'surveyHomeBack';
 const layers = [];
+
+// Told whenever a layer or a dialog opens or closes (pushBackLayer here, and
+// the two focus-trap hooks for the shared dialog list).
+const layerListeners = new Set();
+export function notifyBackLayersChanged() {
+  layerListeners.forEach((listener) => { try { listener(); } catch { /* one bad listener */ } });
+}
 
 /** Register an open layer (a flyout with no Escape path); returns its removal. */
 export function pushBackLayer(close) {
   const entry = { close };
   layers.push(entry);
+  notifyBackLayersChanged();
   return () => {
     const index = layers.indexOf(entry);
     if (index !== -1) layers.splice(index, 1);
+    notifyBackLayersChanged();
   };
 }
 
@@ -105,6 +115,48 @@ export function installViewerBack(win, onLeave) {
     win.removeEventListener('popstate', onPop);
     if (active === session) active = null;
     if (hasMark(win)) {
+      quietBacks += 1;
+      win.history.back();
+    }
+  };
+}
+
+/**
+ * On the home screen (no document open): while a sheet or dialog is open
+ * (Settings, Share, a details sheet...), own one history entry, so back
+ * closes the top one instead of leaving Survey or minimising the app with it
+ * still open (Drawboard PDF Pro trial audit 2026-11-09, round 2). With
+ * nothing open there is no entry, and back does what it always did.
+ */
+export function installHomeBack(win) {
+  if (!win?.history?.pushState) return () => {};
+  installSwallow(win);
+  const hasHome = () => Boolean(win.history.state && win.history.state[HOME_MARK]);
+  let alive = true;
+  const sync = () => {
+    if (!alive) return;
+    const open = backLayerCount() > 0;
+    if (open && !hasHome() && quietBacks === 0) {
+      win.history.pushState({ ...(win.history.state || {}), [HOME_MARK]: true }, '');
+    } else if (!open && hasHome()) {
+      quietBacks += 1;
+      win.history.back();
+    }
+  };
+  const onPop = () => {
+    // Our entry was just taken off by back: close the top sheet. If more stay
+    // open, the change it makes puts the entry back (sync).
+    if (hasHome() || backLayerCount() === 0) return;
+    closeTopBackLayer(win.document);
+  };
+  layerListeners.add(sync);
+  win.addEventListener('popstate', onPop);
+  sync();
+  return () => {
+    alive = false;
+    layerListeners.delete(sync);
+    win.removeEventListener('popstate', onPop);
+    if (hasHome()) {
       quietBacks += 1;
       win.history.back();
     }

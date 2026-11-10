@@ -111,7 +111,7 @@ import DismissBarrier from './components/DismissBarrier.jsx';
 import PencilModeControl, { usePencilMode } from './components/PencilModeControl.jsx';
 import { PinIcon, getPinnedToolsStore, usePinnedTools } from './pinnedTools/pinnedToolsShared.jsx';
 import { isFeatureOn } from './featureFlags.js';
-import { installViewerBack } from './utils/backNavigation.js';
+import { installHomeBack, installViewerBack } from './utils/backNavigation.js';
 import { steppedTabId, tabStepForKey } from './utils/tabKeys.js';
 import { setMarksHidden, useMarksHidden } from './utils/marksHidden.js';
 import { enterBrowserFullscreen, isFocusModeKey, leaveBrowserFullscreen } from './utils/focusMode.js';
@@ -2268,6 +2268,11 @@ export default function App({ devPreviewReturnTab = null }) {
   useEffect(() => {
     if (!backButtonEnabled || !isViewerVisible) return undefined;
     return installViewerBack(window, () => stableBack());
+  }, [backButtonEnabled, Boolean(isViewerVisible)]); // eslint-disable-line react-hooks/exhaustive-deps
+  // On home, back closes an open sheet or dialog (Settings, Share...) first.
+  useEffect(() => {
+    if (!backButtonEnabled || isViewerVisible) return undefined;
+    return installHomeBack(window);
   }, [backButtonEnabled, Boolean(isViewerVisible)]); // eslint-disable-line react-hooks/exhaustive-deps
   const isMobileViewer = Boolean(isNarrowShell && isViewerVisible);
   // Shift+S flips snapping (the rail's magnet button says the same).

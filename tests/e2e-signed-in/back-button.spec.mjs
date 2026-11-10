@@ -71,3 +71,37 @@ test.describe('phone', () => {
     await expect(viewerShown(page)).toHaveCount(0, { timeout: 15_000 });
   });
 });
+
+for (const phone of [false, true]) {
+  test.describe(phone ? 'home, phone' : 'home, desktop', () => {
+    if (phone) test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+    test('back on home closes Settings first and stays in Survey', async ({ page }) => {
+      test.setTimeout(120_000);
+      await page.addInitScript(() => localStorage.setItem('survey.flag.back-button', '1'));
+      await signIn(page, E2E_ACCOUNTS.owner);
+      const homeUrl = page.url();
+      const homeMark = () => page.evaluate(() => Boolean(window.history.state?.surveyHomeBack));
+      expect(await homeMark()).toBe(false);
+      const openSettings = async () => {
+        await page.getByRole('button', { name: 'Open account menu' }).filter({ visible: true }).first().click();
+        await page.getByRole('menuitem', { name: 'Settings' }).filter({ visible: true }).first().click();
+      };
+      await openSettings();
+      const settings = page.locator('.account-settings-modal').filter({ visible: true });
+      await expect(settings).toHaveCount(1);
+      await expect.poll(homeMark).toBe(true);
+      await page.goBack();
+      await expect(settings).toHaveCount(0, { timeout: 10_000 });
+      expect(page.url()).toBe(homeUrl);
+      await expect(page.getByText(E2E_DOCUMENT.name, { exact: true }).filter({ visible: true }).first()).toBeVisible();
+      // Closed its own way (the X), the entry goes again quietly.
+      await openSettings();
+      await expect(settings).toHaveCount(1);
+      await expect.poll(homeMark).toBe(true);
+      await page.keyboard.press('Escape');
+      await expect(settings).toHaveCount(0);
+      await expect.poll(homeMark).toBe(false);
+      expect(page.url()).toBe(homeUrl);
+    });
+  });
+}
