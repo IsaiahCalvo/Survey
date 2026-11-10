@@ -134,7 +134,7 @@ test('a written-out "rev" wins over a bare R tag; same revisions keep the file b
   assert.match(modal, /\{ id: 'keep-both', label: 'Keep as its own file', primary: sameRevision \}/);
   assert.match(modal, /\{ id: 'new-version', label: 'Upload as new version', primary: !sameRevision \}/);
   const ledger = readFileSync(new URL('../src/home/DocumentsLedger.jsx', import.meta.url), 'utf8');
-  assert.match(ledger, /onDropFiles\(\[file\], \{ projectId: null, open: true, newDocument: true \}\)/);
+  assert.match(ledger, /onDropFiles\(\[file\], \{ projectId: null, open, newDocument: true \}\)/);
   const dash = readFileSync(new URL('../src/Dashboard.jsx', import.meta.url), 'utf8');
   assert.match(dash, /askDuplicates: !newDocument,/);
 });
