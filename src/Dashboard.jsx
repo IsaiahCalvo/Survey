@@ -1864,6 +1864,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     if (!user) { onShowAuthModal(); return; }
     if (!row?.id) return;
     showToast(`Saving ${row.name || 'document'} to your account…`, 'info');
+    let uploaded = null;
     try {
       const result = await saveDeviceFileToAccount({
         row,
@@ -1871,14 +1872,24 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         supabase,
         upload: async (file) => {
           const outcome = await uploadBrowserPdf(file, { openAfterUpload: false, waitForStorage: true, askDuplicates: false });
-          return outcome === 'added' || outcome === 'existing' ? file.id || null : null;
+          if (outcome !== 'added' && outcome !== 'existing') return null;
+          uploaded = file;
+          return file.id || null;
         },
       });
       if (result.ok) {
         showToast(`${row.name || 'Document'} is saved to your account`, 'success');
         refetchAllDocuments();
+        // Its tab closed for the move: the cloud copy opens in its place.
+        if (result.closedTabs && uploaded) {
+          void handleDocumentClick({ id: result.documentId, file: uploaded, user_id: user.id });
+        }
       } else {
         showToast('Couldn’t save it to your account. It is still on this device.', 'warn');
+        if (result.closedTabs) {
+          const again = await openDeviceFile(row).catch(() => null);
+          if (again) onDocumentSelect(again);
+        }
       }
     } catch (error) {
       console.error('[deviceFiles] save to account failed', error);

@@ -22085,7 +22085,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // empty/partial overwrite, no documentId-timing gate.
   // device-files (Nightly): a PDF opened with no account keeps its marks in
   // the store's device copy under one device actor.
-  const annotationActorId = user?.id || (isDeviceDocumentId(pdfFile?.id) ? DEVICE_ACTOR_ID : null);
+  const annotationActorId = isDeviceDocumentId(pdfFile?.id) ? DEVICE_ACTOR_ID : (user?.id || null);
   const {
     initialHydration: normalAnnotationHydration,
     deletedPdfAnnotations: durableDeletedPdfAnnotations,

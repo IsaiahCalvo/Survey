@@ -143,6 +143,27 @@ test('a kept document opens with no server; marks drawn then sync when it is bac
     await expect.poll(() => pageLines(page), { timeout: 5_000 }).toHaveLength(2);
     expect(await savedRows(kept.id)).toBe(rowsOnline);
 
+    // The device still says it is online, so the app asks the server again
+    // after 30 s. While the server stays out of reach, that try must not tear
+    // the open copy down: the tools never lock and the marks stay put.
+    await page.evaluate(() => {
+      window.__readonlyFlips = 0;
+      new MutationObserver((records) => { window.__readonlyFlips += records.length; })
+        .observe(document.body, { attributes: true, attributeFilter: ['data-readonly'] });
+    });
+    // A torn-down store reopens against the server first (its mark tables).
+    const storeReads = [];
+    const onRequest = (request) => { if (/\/rest\/v1\/annotation_/.test(request.url())) storeReads.push(request.url()); };
+    page.on('request', onRequest);
+    await page.waitForTimeout(35_000);
+    page.off('request', onRequest);
+    expect(storeReads).toEqual([]);
+    expect(await page.evaluate(() => window.__readonlyFlips)).toBe(0);
+    // The sync light (a compact dot when the side panel is closed) still
+    // reads Offline copy: the 30 s autosave's flush must not turn it to an error.
+    await expect(page.getByRole('button', { name: /^Offline copy/ }).filter({ visible: true }).first()).toBeVisible();
+    expect(await pageLines(page)).toHaveLength(2);
+
     // Restart again, still offline: both marks come back from the device copy.
     await page.reload({ waitUntil: 'domcontentloaded' });
     await expect(page.getByText(PAGE_TEXT).filter({ visible: true }).first()).toBeVisible({ timeout: 60_000 });

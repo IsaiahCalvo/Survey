@@ -13,7 +13,10 @@ import { showToast } from '../utils/toast';
    its device copy (y-indexeddb + accepted checkpoint) as part of any open. */
 async function warmMarksCopy(documentId, actorUserId) {
   if (!supabase || !documentId || !actorUserId) return;
-  const { openAnnotationDoc } = await import('../services/annotationDocSync.js');
+  const { openAnnotationDoc, isAnnotationDocLive } = await import('../services/annotationDocSync.js');
+  // An open viewer already keeps the device copy current; a second handle
+  // would add a second observer and IndexedDB writer on the same store.
+  if (isAnnotationDocLive(documentId, actorUserId)) return;
   const handle = await openAnnotationDoc({
     documentId,
     supabase,
