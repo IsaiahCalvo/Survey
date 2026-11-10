@@ -637,6 +637,28 @@ test('a PM\'s new row saved late over the row Survey just added keeps both items
   assert.deepEqual(Object.values(quiet.summary).filter(Boolean), []);
 });
 
+// Excel can land one save cell by cell: the Item first (split off as the PM's
+// item), the note a round later. That note is still held over the tech's.
+test('the rest of a PM\'s late save, landing after the row was split, is still held', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
+  ctx.provider = { ...ctx.provider, savesLate: true };
+  const t0 = Date.parse('2026-11-10T13:00:00Z');
+  await ctx.round({ now: new Date(t0) }); await ctx.round({ now: new Date(t0 + 1000), force: true });
+  ctx.markers.d2 = door('d2', 'D-102', { note: { text: 'tech note' } });
+  await ctx.round({ now: new Date(t0 + 5000) });
+  const row = await ctx.rowOf('d2');
+  const item = await ctx.col('Item'); const notes = await ctx.col('Notes');
+  await ctx.edit([{ row, col: item, value: 'D-120' }]);
+  const r = await ctx.round({ now: new Date(t0 + 50000), force: true });
+  assert.equal(r.summary.created, 1);
+  await ctx.edit([{ row, col: notes, value: 'PM typed' }]);
+  const later = await ctx.round({ now: new Date(t0 + 90000), force: true });
+  assert.equal(later.summary.created, 0, 'no second split');
+  assert.equal(ctx.markers.d2.name, 'D-102');
+  assert.equal(ctx.markers.d2.note.text, 'tech note', 'the tech\'s note is not taken');
+  assert.ok(ctx.link.state.conflicts?.d2, 'the late note is held');
+});
+
 test('a PM note saved late into the row Survey just added is held over a tech\'s note, and fills a blank one', async () => {
   const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
   ctx.provider = { ...ctx.provider, savesLate: true };

@@ -899,7 +899,7 @@ export async function planSheetRound({
       if (base && lateSaves && colOfKey.has('item')) {
         const fresh = next.recentWrites[`${markerId}|+row`];
         const typedName = cellText(row[colOfKey.get('item')]).trim();
-        if (fresh && now.getTime() - Number(fresh.t) <= NEW_ROW_TAKEOVER_MS && typedName
+        if (fresh && !fresh.took && now.getTime() - Number(fresh.t) <= NEW_ROW_TAKEOVER_MS && typedName
           && getFp(sheetSide, 'item') !== getFp(base, 'item') && getFp(appFps, 'item') === getFp(base, 'item')) {
           const typedKeys = keys.filter((k) => {
             const column = scope.columns.find((c) => c.key === k);
@@ -926,7 +926,8 @@ export async function planSheetRound({
           seenMarkers.add(id);
           next.recentWrites[`${id}|+row`] = { t: now.getTime() };
           for (const k of typedKeys) setFp(sheetSide, k, getFp(base, k));
-          delete next.recentWrites[`${markerId}|+row`];
+          // Still watched (the rest of that save may land later), but split once.
+          next.recentWrites[`${markerId}|+row`] = { ...fresh, took: true };
           next.problems.push({ markerId: id, scopeId: scope.scopeId, message: `${where(r)}: "${typedName}" was typed into the row Survey had just filled with "${String(marker.name || '')}" for a field tech. Both are kept: "${typedName}" is a new item in the row below.` });
         }
       }
