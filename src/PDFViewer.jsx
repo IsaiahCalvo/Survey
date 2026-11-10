@@ -21927,6 +21927,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     whenBulkImportSaved: annotationDocWhenBulkImportSaved,
     // w53: other screens' in-flight Survey Marker / spaces changes (draw only).
     liveMarkerOverlay,
+    // offline-docs: marks opened from this device's kept copy (no signal).
+    offlineCopy: annotationOfflineCopy,
   } = useAnnotationDoc({
     documentId: pdfFile?.id || null,
     userId: user?.id || null,
@@ -21968,6 +21970,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     documentLocked,
     whenFirstPageDrawn: pageDrawnSignal.whenDrawn,
   });
+  const offlineCopyToastRef = useRef(null);
+  useEffect(() => {
+    if (!annotationOfflineCopy) { offlineCopyToastRef.current = null; return; }
+    if (!isActive || offlineCopyToastRef.current === pdfFile?.id) return;
+    offlineCopyToastRef.current = pdfFile?.id;
+    showToast('No signal: opened your offline copy. Changes are saved on this device and sync when you are back online.', 'info');
+  }, [annotationOfflineCopy, isActive, pdfFile?.id]);
   // Owner 2026-11-03: a page and its saved marks show in the same frame. The
   // pages stay blank sheets until the store has painted (or loaded) the
   // document's marks; never longer than PAGE_MARKS_HOLD_MAX_MS

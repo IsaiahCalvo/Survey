@@ -157,6 +157,12 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Measure: Polylength, Wall area and Volume (area or outline x a depth)',
     stage: 'beta',
   }),
+  // Drawboard file model (2026-11-10, drawboard-trial/file-model.md): keep a
+  // document on this device so it opens with no signal; marks sync later.
+  'offline-docs': Object.freeze({
+    label: 'Available offline: keep a document on this device so it opens with no signal',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

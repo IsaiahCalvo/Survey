@@ -22,6 +22,8 @@
    `.survey-hub` root, those popups use literal hex colors, not CSS vars.
 */
 import { canManageProject, canManageProjectFile, projectSelectionCan } from './projectFilePermissions.js';
+import { useStorage } from '../hooks/useDatabase';
+import { useOfflineDocumentActions } from './offlineDocumentActions.js';
 import { activateOrExplain } from '../utils/disabledReasonToast.js';
 import MenuRows from '../components/MenuRows.jsx';
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
@@ -203,6 +205,9 @@ export default function ProjectsFolderTree({
   onShare,
   onShareDocument,
 }) {
+  // Nightly offline-docs: "Make available offline" in the file menu.
+  const { downloadDocument: downloadForOffline, fileStamp } = useStorage();
+  const offline = useOfflineDocumentActions({ userId: user?.id, downloadDocument: downloadForOffline, fileStamp });
   const tip = useTooltip();
   const [search, setSearch] = useState('');
   const [fileSearch, setFileSearch] = useState('');
@@ -2106,6 +2111,7 @@ export default function ProjectsFolderTree({
                 disabled: !canLock,
                 onClick: () => onLockDocument && onLockDocument(f),
               },
+              ...(offline.menuItem(f) ? [offline.menuItem(f)] : []),
             ]}
           />
         );

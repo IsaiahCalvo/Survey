@@ -20,6 +20,7 @@ import { MoveCopyModal, RenameModal } from './BulkModals';
 import PdfPageThumb from './PdfPageThumb';
 import { useThumbnailBackfill } from '../hooks/useThumbnailBackfill';
 import { useStorage } from '../hooks/useDatabase';
+import { useOfflineDocumentActions } from './offlineDocumentActions.js';
 import { getDocumentCollaborators, getDocumentOwnerProfile } from '../services/documentAnnotationService';
 import { documentTeamRows } from './documentTeam.js';
 import Spinner from '../components/Spinner';
@@ -197,6 +198,23 @@ const formatSize = (bytes) => {
   return n + ' B';
 };
 
+/* Nightly offline-docs: a small mark beside the name of a document kept on
+   this device (Drawboard shows a downloaded badge the same way). */
+function OfflineBadge({ leading = false }) {
+  const tip = useTooltip();
+  return (
+    <span
+      className="offline-doc-badge"
+      role="img"
+      aria-label="Available offline"
+      {...tip('Available offline on this device', 'below')}
+      style={{ display: 'inline-flex', alignItems: 'center', marginLeft: leading ? 0 : 6, marginRight: leading ? 5 : 0, flex: 'none', color: 'var(--text-secondary, #6b7280)', verticalAlign: 'middle' }}
+    >
+      <Icon name="download" size={12} />
+    </span>
+  );
+}
+
 export default function DocumentsLedger({
   documents = [],
   projects = [],
@@ -245,7 +263,9 @@ export default function DocumentsLedger({
 
   /* Supabase storage helper — let PdfPageThumb fetch a document's bytes to
      render its real first page via the authenticated download (private bucket). */
-  const { downloadDocument } = useStorage();
+  const { downloadDocument, fileStamp } = useStorage();
+  // Nightly offline-docs: "Make available offline" in the row menu.
+  const offline = useOfflineDocumentActions({ userId: user?.id, downloadDocument, fileStamp });
 
   const projectNameById = useMemo(() => {
     const m = new Map();
@@ -780,7 +800,8 @@ export default function DocumentsLedger({
         </div>
         <div style={{ minWidth: 0 }}>
           <div className="mobile-card-title">{d.name}</div>
-          <div className="mobile-card-meta">{mobileDocMeta(d)}</div>
+          {/* The title cuts long names off, so the phone shows the mark first in the meta line. */}
+          <div className="mobile-card-meta">{offline.isKept(d.id) && <OfflineBadge leading />}{mobileDocMeta(d)}</div>
         </div>
         <div style={{ display: 'grid', placeItems: 'center', minWidth: 0 }}>
           {renderMobileThumb(d)}
@@ -938,6 +959,7 @@ export default function DocumentsLedger({
                     </div>
                     <div style={stickyCell(isFilled)}>
                       <span style={{ fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{d.name}</span>
+                      {offline.isKept(d.id) && <OfflineBadge />}
                     </div>
                     <span className="meta documents-col-project" style={{ fontSize: 12, padding: '12px 12px 12px 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{/* Polish round 2 (2026-10-04): a file in no project leaves the cell
                         empty, as the phone row, the preview and the phone details
@@ -1217,6 +1239,7 @@ export default function DocumentsLedger({
               disabled: !canLock,
               onClick: () => onLockDocument && onLockDocument(doc.raw),
             },
+            ...(offline.menuItem(doc.raw) ? [offline.menuItem(doc.raw)] : []),
           ]}
         />
       );

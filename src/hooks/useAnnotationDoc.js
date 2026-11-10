@@ -64,6 +64,7 @@ import {
   annotationStoreCompactionReady,
 } from '../services/annotationStoreCompaction.js';
 import { isFeatureOn } from '../featureFlags.js';
+import { offlineDocuments, isNetworkFailure } from '../services/offlineDocuments.js';
 import { sealCutoverIfCovered } from '../services/legacyCutoverSeal.js';
 import { loadAllNonSurveyMarkerAnnotations } from '../services/annotationCloudSync.js';
 import { invalidateDocumentMetadata, resolveDocumentMetadata } from '../services/documentMetadataResolver.js';
@@ -403,6 +404,12 @@ export function useAnnotationDoc({
   // the open effect; the failure count is per document.
   const [openRetryTick, setOpenRetryTick] = useState(0);
   const openFailuresRef = useRef({ documentId: null, count: 0 });
+  // Available offline (beta flag offline-docs, 2026-11-10): a document this
+  // user keeps on the device opens its marks from the device copy when the
+  // server cannot be asked. Edits go to that copy; the next open with signal
+  // sends them (reconcilePersistedLocalState). True while this open is local.
+  const [offlineCopy, setOfflineCopy] = useState(false);
+  const offlineOpenRef = useRef({ documentId: null, networkFailed: false });
   const [deletedPdfAnnotations, setDeletedPdfAnnotations] = useState([]);
   const [syncStatus, setSyncStatus] = useState({ stage: 'idle', healthy: true, error: null });
   // w53: other screens' in-flight Survey Marker / spaces changes, DRAWN only
@@ -466,12 +473,28 @@ export function useAnnotationDoc({
     setSyncStatus({ stage: 'hydrating', healthy: true, error: null });
     setSyncQueueSize(0);
 
+    if (offlineOpenRef.current.documentId !== documentId) {
+      offlineOpenRef.current = { documentId, networkFailed: false };
+    }
+    let onBackOnline = null;
+
     (async () => {
       let handle;
+      // Only a kept document, with the flag on, and only once the server
+      // could not be asked (device offline, or this open just failed that way).
+      let openLocal = false;
+      if (supabase && isFeatureOn('offline-docs')) {
+        try {
+          await offlineDocuments().load(userId);
+          openLocal = offlineDocuments().isPinned(userId, documentId)
+            && (globalThis.navigator?.onLine === false || offlineOpenRef.current.networkFailed);
+        } catch { openLocal = false; }
+        if (cancelled) return;
+      }
       try {
         handle = await openAnnotationDoc({
           documentId,
-          supabase,
+          supabase: openLocal ? null : supabase,
           clientId: getClientId(),
           actorUserId: userId,
           // UX (w30, 2026-09-24): a mark drawn on one screen shows on every
@@ -479,7 +502,8 @@ export function useAnnotationDoc({
           // Figma and Drawboard feel, instead of after its database round
           // trip (~1 s, several seconds on a big document). Each small edit
           // is also broadcast; the log still decides what is saved.
-          livePreview: true,
+          livePreview: !openLocal,
+          enableRealtime: !openLocal,
           // Private channel (document members only). A dev build can use a
           // public topic for measuring before the channel policies exist:
           // localStorage 'survey:livePreviewPublicChannel' = '1'.
@@ -568,6 +592,18 @@ export function useAnnotationDoc({
         });
       } catch (err) {
         console.error('[useAnnotationDoc] open failed', err?.message);
+        if (
+          !cancelled
+          && !openLocal
+          && supabase
+          && isFeatureOn('offline-docs')
+          && isNetworkFailure(err)
+          && offlineDocuments().isPinned(userId, documentId)
+        ) {
+          // No signal and the document is kept: open the device copy now.
+          offlineOpenRef.current = { documentId, networkFailed: true };
+          return void setOpenRetryTick((tick) => tick + 1);
+        }
         if (!cancelled) {
           setSyncStatus({ stage: 'error', healthy: false, error: err?.message || 'sync failed' });
           setSyncQueueSize(0);
@@ -609,8 +645,25 @@ export function useAnnotationDoc({
       openFailuresRef.current = { documentId, count: 0 };
       if (cancelled) { try { await handle.destroy(); } catch { /* */ } return; }
       handleRef.current = handle;
+      setOfflineCopy(openLocal);
+      if (openLocal && typeof globalThis.addEventListener === 'function') {
+        // Back online: reopen with the server, which sends the device edits.
+        onBackOnline = () => {
+          if (cancelled) return;
+          offlineOpenRef.current = { documentId, networkFailed: false };
+          setOpenRetryTick((tick) => tick + 1);
+        };
+        globalThis.addEventListener('online', onBackOnline);
+      }
       const updateSyncStatus = (next) => {
         if (cancelled || !next) return;
+        if (openLocal) {
+          // Opened from the device copy: never "Up to date" until the server
+          // has the edits (syncStatusViewModel 'offline-copy').
+          setSyncStatus({ stage: 'offline-copy', healthy: true, error: null });
+          setSyncQueueSize(0);
+          return;
+        }
         setSyncStatus({
           stage: next.stage || (next.healthy === false ? 'error' : 'idle'),
           healthy: next.healthy !== false,
@@ -899,6 +952,8 @@ export function useAnnotationDoc({
     return () => {
       cancelled = true;
       if (retryTimer) clearTimeout(retryTimer);
+      if (onBackOnline) globalThis.removeEventListener?.('online', onBackOnline);
+      setOfflineCopy(false);
       openInProgressRef.current = false;
       hydratedRef.current = false;
       settleOpenWaiters(false);
@@ -1645,5 +1700,6 @@ export function useAnnotationDoc({
     status: syncStatus,
     queueSize: syncQueueSize,
     liveMarkerOverlay,
+    offlineCopy,
   };
 }
