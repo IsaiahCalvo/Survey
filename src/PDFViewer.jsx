@@ -4147,6 +4147,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // Plan 14-03 through SVGAnnotationLayer's useSVGInteraction callout-part
   // drag mode + onSelectedCalloutIdsChange callback.
   const [selectedCalloutIds, setSelectedCalloutIds] = useState(() => new Set());
+  const selectedCalloutPickRef = useRef(null);
+  selectedCalloutPickRef.current = selectedCalloutId ?? (selectedCalloutIds.size ? selectedCalloutIds.values().next().value : null);
   const [clipboardCallout, setClipboardCallout] = useState(null);
   const [clipboardCalloutType, setClipboardCalloutType] = useState(null); // 'cut' | 'copy'
   // UX: right-click Copy/Cut stashes a plain (non-callout) annotation here so
@@ -4299,8 +4301,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > QUICK_CLICK_PX) return;
         if (!e.target?.closest?.('[data-mobile-pdf-surface]')) return;
         if (isLiveFormWidgetTarget(e.target)) return;
+        // Callouts keep their pick apart from the toolbar's mark pick.
         const ownerPage = selectedToolbarAnnotationRef.current?.pageNumber
-          ?? selectedToolbarIndicesRef.current?.pageNumber;
+          ?? selectedToolbarIndicesRef.current?.pageNumber
+          ?? resolveCalloutPageNumber(selectedCalloutPickRef.current);
         if (ownerPage == null) return;
         const hit = resolveAnnotationAt(e);
         if (hit?.kind === 'page' && hit.pageNumber != null && hit.pageNumber !== ownerPage) {
@@ -4386,7 +4390,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       window.removeEventListener('pointerdown', onDown, true);
       window.removeEventListener('pointerup', onUp, true);
     };
-  }, [activeTool, clearAnnotationSelectionForContextChange]);
+  }, [activeTool, clearAnnotationSelectionForContextChange, resolveCalloutPageNumber]);
 
   // UX: Escape and grey-page backdrop clicks clear every selection mode alike.
   // UX 2026-10-02 (owner): which tools listen comes from the selection
