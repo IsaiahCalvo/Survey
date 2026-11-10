@@ -33,13 +33,15 @@ async function openDocument(page, name, text) {
   return page.locator('.survey-pdfjs-page-div[data-page-number="1"]');
 }
 
-async function drawLength(page, surface, x1, x2, y) {
+async function drawLength(page, surface, x1, x2, y, { dimPreview = false } = {}) {
   await page.locator('[data-measure-tool="menu"]').filter({ visible: true }).first().click();
   await page.locator('[data-measure-tool="length"]').click();
   const box = await surface.boundingBox();
   await page.mouse.move(box.x + x1, box.y + y);
   await page.mouse.down();
   await page.mouse.move(box.x + x2, box.y + y, { steps: 8 });
+  // The draft is the mark: the dimension line shows while dragging.
+  if (dimPreview) await expect(surface.locator('.shape-creation-preview [data-dimension-line] text[data-dimension-caption]')).toHaveCount(1);
   await page.mouse.up();
   // With 'measure-plus' a new Length is a dimension line with its caption
   // inline; without it, the old line and pill.
@@ -108,7 +110,7 @@ test('custom scale reads feet-inches, Units restamp the line, Set as default car
     await dialog.locator('[data-measure-apply]').click();
     await expect(dialog).toBeHidden();
 
-    const reading = await drawLength(page, surface, 150, 450, 300);
+    const reading = await drawLength(page, surface, 150, 450, 300, { dimPreview: true });
     // Drawboard's dimension line: offset line in two pieces round the caption,
     // two extension lines, two open chevrons, and no pill.
     const dimLine = surface.locator('[data-dimension-line]');

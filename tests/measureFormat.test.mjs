@@ -169,3 +169,9 @@ test('dimension line: stamped only on a new Length with the flag; drawn by rende
   assert.match(layer, /if \(isDimensionMeasure\(obj\)\) return;/);
   assert.match(read('src/utils/svgAnnotationRenderers.jsx'), /if \(spec\.kind !== 'curved' && isDimensionMeasure\(obj\)\) \{/);
 });
+
+test('dimension line: the drag draft is the dimension line and has no pill', () => {
+  const layer = read('src/components/SVGAnnotationLayer.jsx');
+  assert.match(layer, /measureMode === 'length' && shapeCreation\.tool === 'line' && isFeatureOn\('measure-plus'\)\s*\? stampMeasure\(draftJson, 'length', effectiveMeasureScale, \{ dim: true \}\)/);
+  assert.match(layer, /&& !\(measureMode === 'length' && isFeatureOn\('measure-plus'\)\)\s*&& renderMeasureLabel\(/);
+});

@@ -8612,7 +8612,7 @@ const SVGAnnotationLayerBody = memo(({
         // width, dash style and arrowheads are what lands on release. The
         // group is always mounted (even before the line has length) so the
         // draft is visible to the overlay watchdog in PDFViewer.
-        const previewJson = buildLineCommitJSON({
+        const draftJson = buildLineCommitJSON({
           tool: shapeCreation.tool,
           id: `creation-preview-p${pageNumber}`,
           start: shapeCreation.start,
@@ -8626,6 +8626,10 @@ const SVGAnnotationLayerBody = memo(({
           lineBorderStyle,
           cloudIntensity,
         });
+        // 'measure-plus': a Length draws as its dimension line while dragged.
+        const previewJson = draftJson && measureMode === 'length' && shapeCreation.tool === 'line' && isFeatureOn('measure-plus')
+          ? stampMeasure(draftJson, 'length', effectiveMeasureScale, { dim: true })
+          : draftJson;
         return (
           <g
             className="shape-creation-preview"
@@ -8658,6 +8662,7 @@ const SVGAnnotationLayerBody = memo(({
         </g>
       )}
       {measureMode && shapeCreation && shapeCreation.tool === 'line' && shapeCreation.start && shapeCreation.current
+        && !(measureMode === 'length' && isFeatureOn('measure-plus'))
         && renderMeasureLabel(buildMeasureLabel(stampMeasure({
           type: 'Line', left: Math.min(shapeCreation.start.x, shapeCreation.current.x), top: Math.min(shapeCreation.start.y, shapeCreation.current.y),
           width: Math.abs(shapeCreation.current.x - shapeCreation.start.x), height: Math.abs(shapeCreation.current.y - shapeCreation.start.y),
