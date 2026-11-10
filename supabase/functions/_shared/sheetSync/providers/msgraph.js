@@ -576,7 +576,12 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
           });
           start = endRow(used);
         }
-        await workbook(fileId, 'POST', insertPath(batch.sheetId, start, batch.rows.length, batch.listWidth || width), { body: { shift: 'Down' }, where: 'appendRows', discard: true });
+        // Above a totals line, whole rows (as measured in real Excel, so the
+        // whole line moves down together); under the list, the list's columns.
+        const path = batch.before != null
+          ? `${sheetPath(batch.sheetId)}/range(address='${start + 1}:${start + batch.rows.length}')/insert`
+          : insertPath(batch.sheetId, start, batch.rows.length, batch.listWidth || width);
+        await workbook(fileId, 'POST', path, { body: { shift: 'Down' }, where: 'appendRows', discard: true });
         const values = batch.rows.map((row) => Array.from({ length: width }, (_, c) => cellValueForWrite(row[c])));
         const address = `${cellAddress(start, 0)}:${cellAddress(start + values.length - 1, width - 1)}`;
         await workbook(fileId, 'PATCH', `${sheetPath(batch.sheetId)}/range(address='${address}')`, { body: { values }, where: 'appendRows', discard: true });
