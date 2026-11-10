@@ -5,6 +5,7 @@
  * Pure: the head's footprint comes from the same spec the page draws.
  */
 import { buildArrowheadRenderSpec } from './lineRenderHelpers.js';
+import { lineEndingCreateOptions } from './lineEndingDefaults.js';
 
 const pointsOf = (text) => String(text || '').trim().split(/\s+/).map((pair) => pair.split(',').map(Number))
   .filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y));
@@ -14,11 +15,24 @@ const pointsOf = (text) => String(text || '').trim().split(/\s+/).map((pair) => 
  * runs in at angleDeg, or null for no ending.
  * @returns {{ minX:number, minY:number, maxX:number, maxY:number } | null}
  */
-export function arrowheadBounds(style, tipX, tipY, angleDeg, strokeWidth) {
-  const spec = buildArrowheadRenderSpec(style, tipX, tipY, angleDeg, '#000', Number(strokeWidth) || 2);
+export function arrowheadBounds(style, tipX, tipY, angleDeg, strokeWidth, geometry = null) {
+  const spec = buildArrowheadRenderSpec(style, tipX, tipY, angleDeg, '#000', Number(strokeWidth) || 2, { geometry });
   if (!spec || spec.kind === 'none') return null;
   const pts = [];
   let pad = 0;
+  // Drawboard's heads (Nightly 'line-endings'): page-space shapes. A mitred
+  // corner can reach past its point by up to the miter limit (4) x half the
+  // stroke, so pad by that much for outlined shapes.
+  for (const shape of spec.shapes || []) {
+    if (shape.type === 'circle') {
+      pts.push([shape.cx - shape.r, shape.cy - shape.r], [shape.cx + shape.r, shape.cy + shape.r]);
+    } else {
+      for (const p of shape.points) pts.push([p.x, p.y]);
+    }
+    if (shape.stroke && shape.stroke !== 'none' && shape.strokeWidth > 0) {
+      pad = Math.max(pad, (shape.strokeWidth / 2) * (shape.type === 'circle' || (shape.points.length < 3) ? 1 : 2));
+    }
+  }
   const rad = (angleDeg * Math.PI) / 180;
   const cos = Math.cos(rad);
   const sin = Math.sin(rad);
@@ -62,12 +76,12 @@ export function keepArrowheadOnPage(start, end, options = {}) {
   return kept;
 }
 
-function keepArrowheadOnPageOnce(start, end, { style, strokeWidth, pageWidth, pageHeight } = {}) {
+function keepArrowheadOnPageOnce(start, end, { style, strokeWidth, pageWidth, pageHeight, geometry = null } = {}) {
   if (!start || !end || ![start.x, start.y, end.x, end.y].every(Number.isFinite)) return end;
   if (!(pageWidth > 0 && pageHeight > 0)) return end;
   if (Math.hypot(end.x - start.x, end.y - start.y) < 1e-6) return end;
   const angle = (Math.atan2(end.y - start.y, end.x - start.x) * 180) / Math.PI;
-  const box = arrowheadBounds(style, end.x, end.y, angle, strokeWidth);
+  const box = arrowheadBounds(style, end.x, end.y, angle, strokeWidth, geometry);
   if (!box) return end;
   let dx = 0;
   let dy = 0;
@@ -99,6 +113,13 @@ function keepArrowheadOnPageOnce(start, end, { style, strokeWidth, pageWidth, pa
  * as buildLineRenderSpec does). Any other tool's point comes back unchanged.
  */
 export function keepDrawnArrowOnPage(tool, start, end, { arrowheadStyle, strokeWidth, pageWidth, pageHeight } = {}) {
+  // Nightly 'line-endings': a Line or an Arrow with Drawboard's End head.
+  const drawboard = lineEndingCreateOptions(tool);
+  if (drawboard.endingSet) {
+    return keepArrowheadOnPage(start, end, {
+      style: drawboard.arrowheadStyle, strokeWidth: Number(strokeWidth) || 3, pageWidth, pageHeight, geometry: drawboard.endingSet,
+    });
+  }
   if (tool !== 'arrow') return end;
   const style = arrowheadStyle || 'solidTriangle';
   return keepArrowheadOnPage(start, end, { style, strokeWidth: Number(strokeWidth) || 3, pageWidth, pageHeight });

@@ -201,3 +201,18 @@ export function resizeObjectTo(object, field, value) {
   else next.scaleY = (Number(object.scaleY) || 1) * factor;
   return next;
 }
+
+/**
+ * Nightly 'line-endings': the line with one end's head set from Drawboard's
+ * grid. The mark takes Drawboard's sizes from then on (data.lineEndingSet);
+ * the other end keeps its head. Null for anything that is not a line.
+ */
+export function setLineEndingOn(object, side, style) {
+  if (!object || String(object.type || '').toLowerCase() !== 'line') return null;
+  if (side !== 'start' && side !== 'end') return null;
+  const key = side === 'start' ? 'startArrowheadStyle' : 'arrowheadStyle';
+  return {
+    ...object,
+    data: { ...(object.data || {}), [key]: style, lineEndingSet: 'drawboard' },
+  };
+}

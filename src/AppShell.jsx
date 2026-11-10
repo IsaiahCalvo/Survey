@@ -145,6 +145,7 @@ import { LINE_STYLE_SAMPLE_ICONS, lineStyleOptionsWith } from './utils/lineStyle
 import SelectionQuickBar from './components/SelectionQuickBar.jsx';
 import SelectionPropertiesPanel from './components/SelectionPropertiesPanel.jsx';
 import StampPickerCard from './components/StampPickerCard.jsx';
+import { LineEndingsMenu } from './components/LineEndingsPicker.jsx';
 import { isToolGroupPressed } from './utils/toolbarToolPressed.js';
 import { pendingInviteRedirect } from './utils/pendingInvite.js';
 import { useProLock } from './hooks/useProLock.js';
@@ -2955,6 +2956,11 @@ export default function App({ devPreviewReturnTab = null }) {
   // Owner 2026-10-26: with the text settings swapped in, row 2 holds them and
   // the Aa that swaps them back - none of the regular settings.
   const textSettingsSwapped = showTextFormatting && !surveyRowShown;
+  // Nightly 'line-endings': the Line / Arrow tool, or one picked line, gets
+  // Drawboard's Endings; several picked arrows keep the arrow ends pill.
+  const lineEndingsInBar = Boolean(bottomToolbarApi && isFeatureOn('line-endings')
+    && (bottomToolbarApi.contextTool === 'arrow' || bottomToolbarApi.contextTool === 'line')
+    && (bottomToolbarApi.selectionCount || 0) <= 1);
   const toolbarSlot = (id, render, { canCompact = true, label } = {}) => {
     if (textSettingsSwapped && id !== 'aa') return null;
     if (toolbarPlan.overflow.includes(id)) {
@@ -4627,7 +4633,13 @@ export default function App({ devPreviewReturnTab = null }) {
                     callout has one end) and the head tiles, None among them.
                     It writes the same two pieces of state as before (head
                     style, both ends), so nothing new is stored. */}
-                {(bottomToolbarApi.contextTool === 'arrow' || bottomToolbarApi.contextTool === 'callout') && bottomToolbarApi.setArrowheadStyle && (() => {
+                {/* Nightly 'line-endings': Drawboard's Endings (Start | End,
+                    ten heads) for the Line and Arrow tools, in place of the
+                    arrow ends pill. Callouts keep the pill. */}
+                {lineEndingsInBar && toolbarSlot('arrowhead', (compact) => (
+                  <LineEndingsMenu api={bottomToolbarApi} tool={bottomToolbarApi.contextTool} tip={chromeTip} compact={compact} />
+                ), { canCompact: true })}
+                {((bottomToolbarApi.contextTool === 'arrow' && !lineEndingsInBar) || bottomToolbarApi.contextTool === 'callout') && bottomToolbarApi.setArrowheadStyle && (() => {
                   const live = bottomToolbarApi.arrowheadStyle || 'none';
                   const options = ARROWHEAD_MENU_OPTIONS.some((option) => option.value === live)
                     ? ARROWHEAD_MENU_OPTIONS

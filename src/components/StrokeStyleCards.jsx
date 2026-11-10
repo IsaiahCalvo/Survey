@@ -37,6 +37,11 @@ function Head({ type, x, y, size, color, stroke, paper }) {
       return <path d={`M ${x} ${y} L ${x - h} ${y - h} L ${x - L} ${y} L ${x - h} ${y + h} Z`} fill={paper} stroke={color} strokeWidth={stroke} strokeLinejoin="round" />;
     case 'slash':
       return <path d={`M ${x - h} ${y + h} L ${x + h * 0.4} ${y - h}`} stroke={color} strokeWidth={stroke} strokeLinecap="round" />;
+    // Nightly 'line-endings': the heads that point back into the line.
+    case 'rOpenArrow':
+      return <path d={`M ${x} ${y - h} L ${x - L * 0.8} ${y} L ${x} ${y + h}`} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round" />;
+    case 'rClosedArrow':
+      return <path d={`M ${x} ${y - h} L ${x - L * 0.8} ${y} L ${x} ${y + h} Z`} fill={color} stroke={color} strokeWidth={Math.min(stroke, 1.5)} strokeLinejoin="round" />;
     default:
       return null;
   }

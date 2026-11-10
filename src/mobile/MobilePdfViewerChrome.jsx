@@ -12,6 +12,7 @@ import PageGridToggle from '../components/PageGridToggle';
 import DarkPagesToggle from '../components/DarkPagesToggle';
 import { PageGridSettingsPanel } from '../components/PageGridSettings';
 import { isFeatureOn } from '../featureFlags.js';
+import { LineEndingsPanel } from '../components/LineEndingsPicker.jsx';
 import { setStampPickerOpen, useStampPickerOpen } from '../components/StampPickerCard.jsx';
 import { quickColoursForTool } from '../utils/quickStylePresets.js';
 import SnappingToggle, { SnapContentToggle } from '../components/SnappingToggle.jsx';
@@ -1867,6 +1868,7 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
   const showBorderStyle = BORDER_STYLE_TOOLS.has(tool) && typeof api.setLineBorderStyle === 'function'
     && selectionCaps?.lineStyle !== false;
   const showArrowhead = (tool === 'arrow' || tool === 'callout') && typeof api.setArrowheadStyle === 'function';
+  const lineEndingsOn = (tool === 'arrow' || tool === 'line') && isFeatureOn('line-endings') && (api.selectionCount || 0) <= 1;
   const showStroke = !isEraser && (WIDTH_TOOLS.has(tool) || FILL_TOOLS.has(tool));
   const sizeLabel = isEraser || tool === 'counter' ? 'Size' : 'Width';
   const sizeValue = isEraser ? api.eraserSizeInputValue : api.strokeWidthInputValue;
@@ -2680,7 +2682,14 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
                 {/* Arrowhead (arrow, callout) and, for the arrow, its ends -
                     End / Both / None, the IDENTICAL control the desktop bar
                     carries. Every head is on show, drawn, not listed. */}
-                {showArrowhead && (
+                {/* Nightly 'line-endings': Drawboard's Endings (Start | End,
+                    ten heads) for the Line and Arrow, as on the desktop. */}
+                {lineEndingsOn && (
+                  <SheetSection>
+                    <LineEndingsPanel api={api} tool={tool} tip={tip} compact />
+                  </SheetSection>
+                )}
+                {showArrowhead && !lineEndingsOn && (
                   <SheetSection>
                     <SheetRow label="Head">
                       <SheetSegmented
@@ -3169,7 +3178,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                     label={tool.label}
                     disabled={tool.disabled}
                     data-morph-icon={tool.icon}
-                    data-tool-switch={tool.picker ? undefined : 'true'}
+                    data-tool-switch="true"
                     onClick={() => {
                       if (tool.disabled) return;
                       if (tool.picker) { setStampPickerOpen(!stampPickerOpen); return; }

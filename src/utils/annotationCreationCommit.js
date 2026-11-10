@@ -319,6 +319,9 @@ export function buildLineCommitJSON({
   strokeWidth,
   arrowheadStyle,
   arrowStartStyle = null,
+  // Nightly 'line-endings': 'drawboard' stamps both ends (Line and Arrow
+  // alike) and the marker that gives them Drawboard's sizes.
+  endingSet = null,
   lineBorderStyle,
   cloudIntensity,
   selectedModuleId,
@@ -361,7 +364,9 @@ export function buildLineCommitJSON({
     // Line and Arrow are separate tools — line starts with plain ends, arrow
     // starts with the picked head; both stay editable via the ending picker,
     // which writes data.arrowheadStyle explicitly on the committed object.
-    data: (tool === 'arrow' && arrowheadStyle)
+    data: endingSet
+      ? { id, arrowheadStyle: arrowheadStyle || 'none', startArrowheadStyle: arrowStartStyle || 'none', lineEndingSet: endingSet }
+      : (tool === 'arrow' && arrowheadStyle)
       ? { id, arrowheadStyle, ...(arrowStartStyle && arrowStartStyle !== 'none' ? { startArrowheadStyle: arrowStartStyle } : {}) }
       : { id },
   };

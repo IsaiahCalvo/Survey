@@ -28,6 +28,7 @@ import {
   resolveLineEndingStyles,
   insetOpenPolylinePoints,
   lineEndingBodyInset,
+  arrowheadShapePathD,
 } from './lineRenderHelpers.js';
 // UX 2026-04-21: Imported revision-clouds rebuild their scalloped geometry
 // from the live effective box/points on every render so the number of humps
@@ -820,9 +821,20 @@ export const renderTextMarkup = (obj, index) => {
  *   of `.polygon`/`.polyline`/`.circle`/`.line`)
  * @returns {React.ReactElement|null}
  */
+// Drawboard's heads (Nightly 'line-endings') arrive as a list of shapes in
+// page units: paths and circles, each with its own paint.
+const renderArrowheadShapes = (spec) => (
+  <g>
+    {(spec.shapes || []).map((shape, i) => (shape.type === 'circle'
+      ? <circle key={i} cx={shape.cx} cy={shape.cy} r={shape.r} fill={shape.fill} stroke={shape.stroke} strokeWidth={shape.strokeWidth} />
+      : <path key={i} d={arrowheadShapePathD(shape)} fill={shape.fill} stroke={shape.stroke} strokeWidth={shape.strokeWidth} strokeLinejoin={shape.strokeLinejoin} strokeLinecap={shape.strokeLinecap} strokeMiterlimit={4} />))}
+  </g>
+);
+
 const renderArrowheadFromSpec = (spec) => {
   switch (spec.kind) {
     case 'none': return null;
+    case 'shapes': return renderArrowheadShapes(spec);
     case 'solidTriangle': return <polygon {...spec.polygon} />;
     case 'openTriangle': return <polygon {...spec.polygon} />;
     case 'openCircle': return <circle {...spec.circle} />;
@@ -1971,6 +1983,7 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
   const renderArrowheadEl = () => {
     switch (arrowheadSpec.kind) {
       case 'none': return null;
+      case 'shapes': return renderArrowheadShapes(arrowheadSpec);
       case 'solidTriangle': return <polygon {...arrowheadSpec.polygon} />;
       case 'openTriangle': return <polygon {...arrowheadSpec.polygon} />;
       case 'openCircle': return <circle {...arrowheadSpec.circle} />;

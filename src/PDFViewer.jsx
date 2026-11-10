@@ -70,6 +70,7 @@ import ExcelSyncConfirmModal from './components/ExcelSyncConfirmModal';
 import SpaceSelectionDialog from './components/SpaceSelectionDialog';
 import TextEditOverlay from './components/TextEditOverlay';
 import { resolveNewMarkStyle, resolvePickBarTool, resolveToolbarCallout } from './utils/toolbarCalloutTarget.js';
+import { pickedLineEndsKey } from './utils/lineEndingDefaults.js';
 import { resolvePickBarValues } from './utils/pickBarValues.js';
 import FabricEraserCanvas from './components/FabricEraserCanvas';
 import FormFieldPropertiesPanel from './components/FormFieldPropertiesPanel';
@@ -27435,6 +27436,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       // w41: only while several marks are picked (the Arrow ends menu then
       // writes every picked arrow at once; see applyRestyleChange arrowEnds).
       setGroupArrowEnds: groupSummary ? handleGroupArrowEndsChange : null,
+      // Nightly 'line-endings': the one picked line's heads, as a string.
+      selectedLineEnds: groupSummary ? null : pickedLineEndsKey(selectedAnnot, selectedToolbarAnnotation?.pageNumber),
       onEnterTextEdit: handleEnterTextEditFromStrip,
       canEnterTextEdit: !groupSummary && !!(selectedToolbarCallout
         || (selectedToolbarAnnotation

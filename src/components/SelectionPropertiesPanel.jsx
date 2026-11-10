@@ -24,6 +24,7 @@ import { useSelectedItems, viewerBounds } from './SelectionQuickBar.jsx';
 import { isFeatureOn } from '../featureFlags.js';
 import { LINE_STYLE_SAMPLE_ICONS, lineStyleOptionsWith } from '../utils/lineStyleOptions.js';
 import { ARROWHEAD_MENU_ORDER, ARROWHEAD_SHORT_LABELS } from './Callout/types.js';
+import { LineEndingsPanel } from './LineEndingsPicker.jsx';
 import { ARRANGE_SELECTION_EVENT } from '../utils/alignMarks.js';
 import { getAnnotationAuthorId } from '../lib/collab/permissionScope.js';
 import { getAnnotationRenderIdentity } from '../utils/annotationStorageIdentity.js';
@@ -368,7 +369,11 @@ export default function SelectionPropertiesPanel({
                   })}
               </div>
             )}
-            {caps.arrowheads && (
+            {caps.arrowheads && isFeatureOn('line-endings') && api?.selectedLineEnds && (
+              // Nightly 'line-endings': Drawboard's Start | End grid of ten.
+              <LineEndingsPanel api={api} tool={api?.contextTool} tip={chromeTip} compact />
+            )}
+            {caps.arrowheads && !(isFeatureOn('line-endings') && api?.selectedLineEnds) && (
               <>
                 <div className="props-panel__row-label props-panel__sub">Endings</div>
                 <div className="props-panel__tiles" role="group" aria-label="Arrow end">

@@ -171,10 +171,11 @@ import SVGSelectionOverlay, { SelectionLockBadge } from './SVGSelectionOverlay';
 import { isUserLocked } from '../lib/collab/permissionScope.js';
 import { getTextMarkupRangeHandlePositions, getTextMarkupSelectionChrome } from '../utils/pdfTextMarkup.js';
 import RotationInputField from './RotationInputField';
-import { TRANSFORM_SELECTION_EVENT, canTypeTurn, resizeObjectTo } from '../utils/selectionProperties.js';
+import { TRANSFORM_SELECTION_EVENT, canTypeTurn, resizeObjectTo, setLineEndingOn } from '../utils/selectionProperties.js';
 import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox, isImportedPath, isAbsoluteCoordPath, getLineEndpoints, computeLineBboxCenter } from '../utils/svgBoundingBox';
 import { resolveMidpointHandlePosition } from '../utils/lineDragMath.js';
-import { buildArrowheadRenderSpec, resolveLineEndingStyles } from '../utils/lineRenderHelpers.js';
+import { buildArrowheadRenderSpec, resolveLineEndingStyles, arrowheadShapePathD } from '../utils/lineRenderHelpers.js';
+import { lineEndingCreateOptions } from '../utils/lineEndingDefaults.js';
 import { getCurvedPath, distanceToLineSegment, getCurveEndAngle } from '../utils/lineGeometry.js';
 import { ARROWHEAD_STYLES } from './Callout/types';
 import { renderPathToSvgAttrs, renderPathToSvgD, isFilledInkOutlineAttrs, getFilledInkHitTargetProps } from '../utils/svgPathAttrs.js';
@@ -474,6 +475,15 @@ const HOVER_HALO_OPACITY = 0.4;
 const renderArrowheadHalo = (spec, strokeWidth) => {
   if (!spec) return null;
   switch (spec.kind) {
+    case 'shapes':
+      // Drawboard's heads (Nightly 'line-endings'): each shape's outline.
+      return (
+        <g>
+          {(spec.shapes || []).map((shape, i) => (shape.type === 'circle'
+            ? <circle key={i} cx={shape.cx} cy={shape.cy} r={shape.r} fill="none" strokeWidth={strokeWidth} />
+            : <path key={i} d={arrowheadShapePathD(shape)} fill="none" strokeWidth={strokeWidth} strokeLinejoin="round" strokeLinecap="round" />))}
+        </g>
+      );
     case 'solidTriangle':
     case 'openTriangle':
     case 'diamond':
@@ -2896,7 +2906,7 @@ const SVGAnnotationLayerBody = memo(({
       activeRegionId,
     };
     let json = (tool === 'line' || tool === 'arrow')
-      ? buildLineCommitJSON({ ...shared, tool, arrowheadStyle, arrowStartStyle })
+      ? buildLineCommitJSON({ ...shared, tool, arrowheadStyle, arrowStartStyle, ...(measureMode ? {} : lineEndingCreateOptions(tool)) })
       : buildBoundaryShapeCommitJSON({ ...shared, tool, fillColor, fillOpacity });
     if (json && tool === 'line' && measureMode === 'calibrate') {
       const [a, b] = measureLineEndpoints(json);
@@ -3926,6 +3936,13 @@ const SVGAnnotationLayerBody = memo(({
       if (!object || object.locked) return;
       if (detail.op === 'turn' && canTypeTurn(object)) {
         t.handleRotationInputCommit(index, Number(detail.angle) || 0);
+      } else if (detail.op === 'ending') {
+        // Nightly 'line-endings': one end's head from Drawboard's grid.
+        const next = setLineEndingOn(object, detail.side, detail.style);
+        if (!next) return;
+        const updated = deepClone(t.annotations);
+        updated.objects[index] = next;
+        t.onSaveAnnotations(updated, { source: 'properties-panel', action: 'line-ending', checkpointPolicy: 'normal' });
       } else if (detail.op === 'size') {
         const next = resizeObjectTo(object, detail.field, detail.value);
         if (!next) return;
@@ -6840,10 +6857,10 @@ const SVGAnnotationLayerBody = memo(({
                     ? getCurveEndAngle({ x: ep.x2, y: ep.y2 }, { x: ep.x1, y: ep.y1 }, __mp)
                     : (Math.atan2(ep.y1 - ep.y2, ep.x1 - ep.x2) * 180 / Math.PI);
                   const endSpec = endings.endStyle && endings.endStyle !== ARROWHEAD_STYLES.NONE
-                    ? buildArrowheadRenderSpec(endings.endStyle, ep.x2, ep.y2, arrowAngleDeg, '#4a90e2', lineSw)
+                    ? buildArrowheadRenderSpec(endings.endStyle, ep.x2, ep.y2, arrowAngleDeg, '#4a90e2', lineSw, { geometry: endings.geometry })
                     : null;
                   const startSpec = endings.startStyle && endings.startStyle !== ARROWHEAD_STYLES.NONE
-                    ? buildArrowheadRenderSpec(endings.startStyle, ep.x1, ep.y1, startAngleDeg, '#4a90e2', lineSw)
+                    ? buildArrowheadRenderSpec(endings.startStyle, ep.x1, ep.y1, startAngleDeg, '#4a90e2', lineSw, { geometry: endings.geometry })
                     : null;
                   return (
                     <g
@@ -8460,6 +8477,7 @@ const SVGAnnotationLayerBody = memo(({
           strokeWidth: Number(strokeWidth) || 3,
           arrowheadStyle,
           arrowStartStyle,
+          ...(measureMode ? {} : lineEndingCreateOptions(shapeCreation.tool)),
           lineBorderStyle,
           cloudIntensity,
         });
