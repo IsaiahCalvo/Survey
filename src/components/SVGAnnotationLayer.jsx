@@ -172,7 +172,7 @@ import SVGSelectionOverlay, { SelectionLockBadge } from './SVGSelectionOverlay';
 import { isUserLocked } from '../lib/collab/permissionScope.js';
 import { getTextMarkupRangeHandlePositions, getTextMarkupSelectionChrome } from '../utils/pdfTextMarkup.js';
 import RotationInputField from './RotationInputField';
-import { TRANSFORM_SELECTION_EVENT, canTypeTurn, resizeObjectTo, setLineEndingOn } from '../utils/selectionProperties.js';
+import { TRANSFORM_SELECTION_EVENT, canTypeTurn, resizeObjectTo, scaleObjectBy, setLineEndingOn, turnScaleKeyStep, wrapDegrees } from '../utils/selectionProperties.js';
 import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox, isImportedPath, isAbsoluteCoordPath, getLineEndpoints, computeLineBboxCenter } from '../utils/svgBoundingBox';
 import { resolveMidpointHandlePosition } from '../utils/lineDragMath.js';
 import { buildArrowheadRenderSpec, resolveLineEndingStyles, arrowheadShapePathD } from '../utils/lineRenderHelpers.js';
@@ -3939,7 +3939,7 @@ const SVGAnnotationLayerBody = memo(({
   // Nightly 'properties-panel': the panel's typed R turns the one picked mark
   // (the degree box's own commit) and its typed W / H resize a box mark.
   const transformTargetRef = useRef(null);
-  transformTargetRef.current = { selectedAnnotationIndex, annotations, onSaveAnnotations, handleRotationInputCommit, pageNumber };
+  transformTargetRef.current = { selectedAnnotationIndex, annotations, onSaveAnnotations, handleRotationInputCommit, pageNumber, keysLive: isTabActive && editingAnnotationIndex == null && !editingCalloutId };
   useEffect(() => {
     const onTransform = (event) => {
       const detail = event?.detail || {};
@@ -3968,6 +3968,42 @@ const SVGAnnotationLayerBody = memo(({
     };
     window.addEventListener(TRANSFORM_SELECTION_EVENT, onTransform);
     return () => window.removeEventListener(TRANSFORM_SELECTION_EVENT, onTransform);
+  }, []);
+
+  // Nightly 'turn-scale-keys' (Drawboard KS-01 / 02): Ctrl / Cmd + Left /
+  // Right turn the one picked mark, Ctrl / Cmd + Up / Down scale a box mark.
+  // Each press is one save and one Undo step.
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if (e.defaultPrevented || !isFeatureOn('turn-scale-keys')) return;
+      const step = turnScaleKeyStep(e);
+      if (!step) return;
+      if (typeof document !== 'undefined') {
+        if (isTypingTarget(document.activeElement)) return;
+        if (document.body?.getAttribute('data-readonly') === 'true') return;
+      }
+      const t = transformTargetRef.current;
+      if (!t?.keysLive) return; // a tab behind, or a mark being edited
+      const index = t.selectedAnnotationIndex;
+      const object = Number.isInteger(index) ? t.annotations?.objects?.[index] : null;
+      if (!object || object.locked) return;
+      if (step.op === 'turn') {
+        if (!canTypeTurn(object)) return;
+        const pending = pendingOptimisticRotationRef.current;
+        const base = pending?.annotationIndex === index ? Number(pending.angle) : Number(object.angle);
+        e.preventDefault();
+        t.handleRotationInputCommit(index, wrapDegrees((Number.isFinite(base) ? base : 0) + step.by) ?? 0);
+        return;
+      }
+      const next = scaleObjectBy(object, step.factor);
+      if (!next) return;
+      e.preventDefault();
+      const updated = deepClone(t.annotations);
+      updated.objects[index] = next;
+      t.onSaveAnnotations(updated, { source: 'turn-scale-keys', action: 'resize', checkpointPolicy: 'normal' });
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
   // EDIT-12 Gap 1 fix (Plan 12-03): clear the optimistic visualTransform

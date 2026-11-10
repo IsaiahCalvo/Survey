@@ -157,3 +157,36 @@ test('without the flag there is no Expand menu', async ({ page }) => {
     await sheet.remove();
   }
 });
+
+// Nightly 'turn-scale-keys' (Drawboard Projects KS-01 / KS-02), read back
+// through the panel's R and W boxes. Desktop only: the keys need a keyboard.
+test('Ctrl / Cmd + Left / Right turn the picked mark, Up / Down scale it, each one Undo step', async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.addInitScript(() => localStorage.setItem('survey.flag.turn-scale-keys', '1'));
+  const { sheet, pageDiv, marks } = await open(page, 'Turn keys', true);
+  try {
+    const box = await pageDiv.boundingBox();
+    await page.getByRole('button', { name: 'Shapes', exact: true }).click();
+    await page.getByRole('button', { name: 'Rectangle', exact: true }).filter({ visible: true }).first().click();
+    await drawRect(page, box, 150, 200, 120, 60);
+    await expect(marks).toHaveCount(1);
+    await marquee(page, box, [120, 170], [320, 300]);
+    await page.locator('[data-selection-quick-expand]').click();
+    await expect(field(page, 'R')).toHaveValue('0');
+    const w0 = Number(await field(page, 'W').inputValue());
+
+    for (let i = 0; i < 3; i += 1) await page.keyboard.press('ControlOrMeta+ArrowRight');
+    await expect(field(page, 'R')).toHaveValue('3');
+    await page.keyboard.press('ControlOrMeta+Shift+ArrowLeft');
+    await expect(field(page, 'R')).toHaveValue('358');
+    await page.keyboard.press('ControlOrMeta+ArrowUp');
+    await expect.poll(async () => Number(await field(page, 'W').inputValue())).toBeCloseTo(w0 * 1.1, 0);
+    await page.keyboard.press('ControlOrMeta+z');
+    await expect.poll(async () => Number(await field(page, 'W').inputValue())).toBeCloseTo(w0, 0);
+    await expect(field(page, 'R')).toHaveValue('358');
+    await page.keyboard.press('ControlOrMeta+z');
+    await expect(field(page, 'R')).toHaveValue('3');
+  } finally {
+    await sheet.remove();
+  }
+});
