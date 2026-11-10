@@ -105,16 +105,53 @@ export function toStoredMarkObject(object) {
  */
 export function fromStoredMarkObject(object) {
   if (!isPlainRecord(object) || !isDerivedPolygonsMarker(object.polygons)) return object;
-  const derived = object.polygons === DERIVED_POLYGONS_MARKER
-    ? derivePolygonsFromPath(object.path, polygonFillRuleOf(object))
-    : null;
   const out = { ...object };
-  // An unknown marker (a newer build's) or a path the derivation cannot
-  // read: no polygons rather than a string where an array belongs. The
-  // renderer draws from `path`; polygons are clipping / hit-testing only.
-  if (Array.isArray(derived)) out.polygons = derived;
-  else delete out.polygons;
+  // An unknown marker (a newer build's): no polygons rather than a string
+  // where an array belongs. The renderer draws from `path`; polygons are
+  // clipping / hit-testing only.
+  if (object.polygons !== DERIVED_POLYGONS_MARKER) {
+    delete out.polygons;
+    return out;
+  }
+  // Rebuilt the first time something reads them (2026-11-10): an open
+  // decoded every imported ink mark's outline with polygon clipping (~0.12 s
+  // of a phone's cold open on a 36-sheet set) though only hit-testing and
+  // the eraser read them. The property is an ordinary enumerable one to
+  // every reader (spread, JSON, structured clone, Object.keys); on first
+  // read it turns into a plain data property. A path the derivation cannot
+  // read gives no polygons (the key reads as undefined).
+  const { path } = object;
+  const fillRule = polygonFillRuleOf(object);
+  let derived;
+  let done = false;
+  const derive = () => {
+    if (!done) {
+      done = true;
+      const value = derivePolygonsFromPath(path, fillRule);
+      derived = Array.isArray(value) ? value : undefined;
+    }
+    return derived;
+  };
+  Object.defineProperty(out, 'polygons', {
+    configurable: true,
+    enumerable: true,
+    get() {
+      const value = derive();
+      settle(this, value);
+      return value;
+    },
+    set(value) {
+      settle(this, value);
+    },
+  });
   return out;
+}
+
+function settle(target, value) {
+  try {
+    if (value === undefined) delete target.polygons;
+    else Object.defineProperty(target, 'polygons', { value, writable: true, enumerable: true, configurable: true });
+  } catch { /* frozen: keeps answering from the cached value */ }
 }
 
 /** True when the stored form of `object` differs from `object`. */

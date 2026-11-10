@@ -20,12 +20,12 @@ const SYNC_COLORS = {
   offline: 'var(--danger)',
 };
 
-export const getMobileSyncPresentation = (status, queueSize = 0, enabled = true) => {
+export const getMobileSyncPresentation = (status, queueSize = 0, enabled = true, options = undefined) => {
   if (!enabled) return { state: 'unavailable', label: 'Cloud sync unavailable', color: 'var(--text-disabled)' };
-  const view = getSyncStatusViewModel(status, queueSize, false);
+  const view = getSyncStatusViewModel(status, queueSize, false, options);
   return {
     ...view,
-    compactMessage: getCompactSyncStatusMessage(status, queueSize),
+    compactMessage: getCompactSyncStatusMessage(status, queueSize, options),
     color: SYNC_COLORS[view.state] || 'var(--text-disabled)',
   };
 };

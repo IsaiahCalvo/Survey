@@ -37,6 +37,9 @@ const isLegacyPencilBrushInk = (annotation) => {
  */
 export function isPartialEraseEligible(annotation) {
   if (!annotation || normalize(annotation.type) !== 'path') return false;
+  // Tape (beta 'tape-tool') is one band: the eraser takes it whole, never a
+  // bite (Drawboard: the partial eraser cuts ink and highlighter only).
+  if (annotation.data?.tape === true) return false;
   const hasPath = Array.isArray(annotation.path) && annotation.path.length > 0;
   const hasCommands = Array.isArray(annotation.cmds) && annotation.cmds.length > 0;
   const hasPolygons = Array.isArray(annotation.polygons) && annotation.polygons.length > 0;

@@ -2,7 +2,7 @@ import { createInkPathAffine } from './inkGeometryTransform.js';
 import { boundsOfPoints } from './arrayExtrema.js';
 import { normalizeOperationalInkPath } from './inkPathNormalization.js';
 import { commandsToPolylines, sweptDiskPolygon } from './paperAnnotationGeometry.js';
-import { buildArrowheadRenderSpec, ARROWHEAD_STYLES } from './lineRenderHelpers.js';
+import { buildArrowheadRenderSpec, ARROWHEAD_STYLES, lineEndingGeometryOf } from './lineRenderHelpers.js';
 import { distanceToLineSegment, getCurveEndAngle, getPointOnCurve } from './lineGeometry.js';
 import { computeLineBboxCenter, getAnnotationBBox, getLineEndpoints } from './svgBoundingBox.js';
 import { getCounterRenderGeometry } from './counterGeometry.js';
@@ -97,6 +97,17 @@ const pointsFromString = (value) => String(value || '').trim().split(/\s+/).map(
 
 const arrowheadOutlines = (spec) => {
   if (!spec || spec.kind === 'none') return [];
+  if (spec.kind === 'shapes') {
+    // Drawboard's heads (Nightly 'line-endings'): a filled shape hits on its
+    // area, an outline on its ring, an open path along its stroke.
+    return (spec.shapes || []).flatMap((shape) => {
+      const radius = (shape.stroke && shape.stroke !== 'none' ? Number(shape.strokeWidth) || 0 : 0) / 2;
+      if (shape.type === 'circle') return [ellipseOutline(shape.cx, shape.cy, shape.r, shape.r, 0, radius)];
+      const filled = shape.fill && shape.fill !== 'none';
+      if (!shape.closed) return strokeOutlines(shape.points, radius);
+      return filled || radius <= EPSILON ? [shape.points] : strokeOutlines(shape.points, radius, true);
+    });
+  }
   if (spec.kind === 'solidTriangle' || spec.kind === 'openTriangle' || spec.kind === 'diamond' || spec.kind === 'square') {
     const local = pointsFromString(spec.polygon?.points);
     const angle = Number(spec.angleDeg) || 0;
@@ -166,6 +177,7 @@ const geometryFromLine = (annotation, offset = { x: 0, y: 0 }) => {
     ...strokeOutlines(centerline, strokeWidth / 2),
     ...arrowheadOutlines(buildArrowheadRenderSpec(
       arrowStyle, end.x, end.y, arrowAngle, annotation.stroke || '#000', strokeWidth,
+      { geometry: lineEndingGeometryOf(annotation) },
     )),
   ];
   const angle = Number(annotation.angle) || 0;

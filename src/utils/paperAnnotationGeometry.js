@@ -371,7 +371,7 @@ const segmentIntersection = (
  * in the ordinary case. A self-crossing or tightly folded tube is rejected
  * and handled by the capsule-union fallback below.
  */
-const ringHasSelfIntersection = (ring) => {
+export const ringHasSelfIntersection = (ring) => {
   const edgeCount = ring.length - 1;
   if (edgeCount < 3) return true;
   let xSpan = 0;

@@ -15,6 +15,7 @@ import Spinner from './Spinner';
 import Icon from '../Icons';
 import DismissBarrier from './DismissBarrier';
 import { useTooltip } from './Tooltip';
+import useBrowserOnline from '../hooks/useBrowserOnline.js';
 
 /**
  * Cloud sync status indicator.
@@ -48,10 +49,11 @@ export default function SyncStatusChip({ status, queueSize = 0, enabled = true, 
   const manualTimerRef = useRef(null);
   const rootRef = useRef(null);
   const dismissInsideRefs = useMemo(() => [rootRef], []);
+  const offline = !useBrowserOnline();
 
   if (!enabled) return null;
-  const { state, label, detail, retryLabel } = getSyncStatusViewModel(status, queueSize, manualSyncing);
-  const compactMessage = getCompactSyncStatusMessage(status, queueSize);
+  const { state, label, detail, retryLabel } = getSyncStatusViewModel(status, queueSize, manualSyncing, { offline });
+  const compactMessage = getCompactSyncStatusMessage(status, queueSize, { offline });
 
 // UX 2026-09-17 (revision-2 palette, owner amendment b): the sync status DOT
 // keeps green / yellow / red. Everything else green in the chrome went gold,

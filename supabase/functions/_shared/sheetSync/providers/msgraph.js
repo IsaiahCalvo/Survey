@@ -164,6 +164,25 @@ function isSessionGone(error) {
     && /session/i.test(`${error.code || ''} ${error.message || ''}`);
 }
 
+/** Sorted column indexes as runs of neighbours: [0,1,2,5] -> [[0,2],[5,5]]. */
+function runsOf(cols) {
+  const runs = [];
+  for (const c of cols) {
+    const last = runs[runs.length - 1];
+    if (last && c === last[1] + 1) last[1] = c;
+    else runs.push([c, c]);
+  }
+  return runs;
+}
+
+// Excel won't move or blank the cells of a PivotTable: a whole-row delete or
+// insert, or a write, that crosses one a PM put beside the list answers 409
+// PivotTableRangeConflict (real Excel 11-10), every round.
+function isShiftBlocked(error) {
+  return [400, 409].includes(Number(error?.status))
+    && /PivotTable|InsertDeleteConflict/i.test(`${error.code || ''} ${error.message || ''}`);
+}
+
 /** Group cells by sheet, keeping the sheet's title for the caller. */
 function bySheet(cells) {
   const groups = new Map();
@@ -320,7 +339,8 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
   // sheets go fewer at a time so one answer stays a few megabytes.
   // `deadline`: stop between batches once past it (see WRITE_BUDGET_MS).
   // `allow`: statuses that answer null instead of failing the batch.
-  async function workbookBatch(fileId, ops, { parallel = false, size = BATCH_SIZE, deadline = null, allow = [] } = {}) {
+  // `refused`: what an allowed failure answers instead of null.
+  async function workbookBatch(fileId, ops, { parallel = false, size = BATCH_SIZE, deadline = null, allow = [], refused = null } = {}) {
     const bodies = [];
     for (let i = 0; i < ops.length; i += size) {
       if (deadline != null && i > 0 && now() > deadline) {
@@ -344,10 +364,12 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
         // The first real failure (later ones only say "424: an earlier one failed").
         const failed = answers.find((a) => Number(a.status) >= 300 && Number(a.status) !== 424 && !allow.includes(Number(a.status)))
           || (answers.length < chunk.length ? { status: 500, body: null } : null);
-        if (!failed) { sessions.set(fileId, { id, at: now() }); bodies.push(...answers.map((a) => (Number(a.status) < 300 ? a.body ?? null : null))); break; }
+        if (!failed) { sessions.set(fileId, { id, at: now() }); bodies.push(...answers.map((a) => (Number(a.status) < 300 ? a.body ?? null : refused))); break; }
         const headers = { get: (k) => failed.headers?.[k] ?? failed.headers?.[String(k).toLowerCase()] ?? failed.headers?.[String(k).replace(/^\w/, (c) => c.toUpperCase())] ?? null };
         const error = graphError(Number(failed.status), failed.body, headers, 'batch');
         if (attempt === 0 && isSessionGone(error)) { sessions.delete(fileId); continue; }
+        // In order, every op before the failed one went through.
+        if (!parallel && failed.id != null) error.done = i + Number(failed.id) - 1;
         throw error;
       }
     }
@@ -373,6 +395,43 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
     while (n > 0 && (row[n - 1] === '' || row[n - 1] == null)) n -= 1;
     return n;
   }));
+
+  // New rows fill the list's own columns (`listCols`), not every used one:
+  // blanks padded out to a PivotTable beside the list were refused (409).
+  const writeWidth = (batch, width) => (batch.listCols ? Math.max(batch.listCols, filledWidth(batch.rows)) : width);
+
+  // Rows from..to (0-based) of the list taken out: whole rows, or just the
+  // list's columns when Excel won't move a PivotTable beside it, or at last
+  // emptied, so a round never sticks on it (the engine skips blank rows).
+  async function cutRows(fileId, { sheetId, from, to, listCols, ownCols }) {
+    const whole = `${from + 1}:${to + 1}`;
+    const own = listCols ? `${cellAddress(from, 0)}:${cellAddress(to, listCols - 1)}` : null;
+    const steps = [[[whole], 'delete', { shift: 'Up' }]];
+    if (own) steps.push([[own], 'delete', { shift: 'Up' }], [[own], 'clear', { applyTo: 'Contents' }]);
+    if (ownCols?.length) steps.push([runsOf(ownCols).map(([a, b]) => `${cellAddress(from, a)}:${cellAddress(to, b)}`), 'clear', { applyTo: 'Contents' }]);
+    for (let i = 0; i < steps.length; i += 1) {
+      const [addresses, verb, body] = steps[i];
+      try {
+        for (const address of addresses) {
+          await workbook(fileId, 'POST', `${sheetPath(sheetId)}/range(address='${address}')/${verb}`, { body, where: 'deleteRows', discard: true });
+        }
+        return;
+      } catch (err) {
+        if (!isShiftBlocked(err) || i === steps.length - 1) throw err;
+      }
+    }
+  }
+
+  // New rows' values in Survey's own columns only, a run of columns at a
+  // time: the last resort when a write across the list hits a PivotTable.
+  async function writeOwnCols(fileId, sheetId, start, rows, ownCols) {
+    const ops = runsOf(ownCols).map(([a, b]) => ({
+      method: 'PATCH',
+      path: `${sheetPath(sheetId)}/range(address='${cellAddress(start, a)}:${cellAddress(start + rows.length - 1, b)}')?$select=address`,
+      body: { values: rows.map((row) => Array.from({ length: b - a + 1 }, (_, k) => cellValueForWrite(row[a + k]))) },
+    }));
+    await workbookBatch(fileId, ops, { parallel: true });
+  }
 
   async function writeBlock(fileId, sheetId, row, col, values) {
     const address = `${cellAddress(row, col)}:${cellAddress(row + values.length - 1, col + values[0].length - 1)}`;
@@ -540,35 +599,63 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
         // instead of two calls a tab one after another.
         const widthOf = (batch) => Math.max(batch.width || 0, ...batch.rows.map((row) => row.length));
         const ends = await workbookBatch(fileId, todo.map((b) => ({ method: 'GET', path: endPath(b.sheetId, filledWidth(b.rows)) })), { parallel: true, size: GRID_BATCH, allow: [404] });
+        const starts = todo.map((batch, i) => endRow(ends[i]));
         const writes = todo.map((batch, i) => {
-          const start = endRow(ends[i]);
-          const width = widthOf(batch);
+          const start = starts[i];
+          const width = writeWidth(batch, widthOf(batch));
           const values = batch.rows.map((row) => Array.from({ length: width }, (_, c) => cellValueForWrite(row[c])));
           const address = `${cellAddress(start, 0)}:${cellAddress(start + values.length - 1, width - 1)}`;
           return { method: 'PATCH', path: `${sheetPath(batch.sheetId)}/range(address='${address}')?$select=address`, body: { values } };
         });
-        await workbookBatch(fileId, writes, { parallel: true, size: GRID_BATCH });
+        // A tab whose write runs into a PivotTable (409) answers null here and
+        // gets Survey's own columns alone, at the same rows, as one tab does.
+        const REFUSED = Symbol('refused');
+        const answers = await workbookBatch(fileId, writes, { parallel: true, size: GRID_BATCH, allow: [409], refused: REFUSED });
+        for (const [i, batch] of todo.entries()) {
+          if (answers[i] !== REFUSED) continue;
+          if (!batch.ownCols?.length) throw Object.assign(new Error('The workbook refused new rows (409).'), { status: 409, code: 'PivotTableRangeConflict' });
+          await writeOwnCols(fileId, batch.sheetId, starts[i], batch.rows, batch.ownCols);
+        }
         return;
       }
       for (const batch of batches || []) {
         if (!batch?.rows?.length) continue;
         const width = Math.max(batch.width || 0, ...batch.rows.map((row) => row.length));
         if (!width) continue;
-        let start;
+        let start = null;
         if (batch.before != null) {
-          // Above the PM's totals line (`before`), so it stays last.
-          start = batch.before;
-          await workbook(fileId, 'POST', `${sheetPath(batch.sheetId)}/range(address='${start + 1}:${start + batch.rows.length}')/insert`, { body: { shift: 'Down' }, where: 'appendRows', discard: true });
-        } else {
+          // Above the PM's totals line (`before`), so it stays last. Whole
+          // rows, or just the list's columns when a PivotTable beside it
+          // won't move; failing both, the new items go at the end.
+          const n = batch.rows.length;
+          const opened = [`${batch.before + 1}:${batch.before + n}`];
+          if (batch.listCols) opened.push(`${cellAddress(batch.before, 0)}:${cellAddress(batch.before + n - 1, batch.listCols - 1)}`);
+          for (const address of opened) {
+            try {
+              await workbook(fileId, 'POST', `${sheetPath(batch.sheetId)}/range(address='${address}')/insert`, { body: { shift: 'Down' }, where: 'appendRows', discard: true });
+              start = batch.before;
+              break;
+            } catch (err) {
+              if (!isShiftBlocked(err)) throw err;
+            }
+          }
+        }
+        if (start == null) {
           const used = await workbook(fileId, 'GET', endPath(batch.sheetId, filledWidth(batch.rows)), { where: 'appendRows' }).catch((err) => {
             if (Number(err?.status) === 404) return null;
             throw err;
           });
           start = endRow(used);
         }
-        const values = batch.rows.map((row) => Array.from({ length: width }, (_, c) => cellValueForWrite(row[c])));
-        const address = `${cellAddress(start, 0)}:${cellAddress(start + values.length - 1, width - 1)}`;
-        await workbook(fileId, 'PATCH', `${sheetPath(batch.sheetId)}/range(address='${address}')`, { body: { values }, where: 'appendRows', discard: true });
+        const cols = writeWidth(batch, width);
+        const values = batch.rows.map((row) => Array.from({ length: cols }, (_, c) => cellValueForWrite(row[c])));
+        const address = `${cellAddress(start, 0)}:${cellAddress(start + values.length - 1, cols - 1)}`;
+        try {
+          await workbook(fileId, 'PATCH', `${sheetPath(batch.sheetId)}/range(address='${address}')`, { body: { values }, where: 'appendRows', discard: true });
+        } catch (err) {
+          if (!isShiftBlocked(err) || !batch.ownCols?.length) throw err;
+          await writeOwnCols(fileId, batch.sheetId, start, batch.rows, batch.ownCols);
+        }
       }
     },
 
@@ -577,16 +664,25 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
       // Rows next to each other on a tab go in one call ('7:9'), highest first.
       const runs = [];
       for (const [sheetId, group] of bySheet(rows)) {
+        const listCols = Math.max(0, ...group.map((r) => Number(r.listCols) || 0));
+        const ownCols = group.find((r) => r.ownCols?.length)?.ownCols || null;
         const sorted = [...new Set(group.map((r) => r.row))].sort((a, b) => b - a);
         for (const row of sorted) {
           const last = runs[runs.length - 1];
           if (last && last.sheetId === sheetId && last.from === row + 1) last.from = row;
-          else runs.push({ sheetId, from: row, to: row });
+          else runs.push({ sheetId, from: row, to: row, listCols, ownCols });
         }
       }
       const ops = runs.map(({ sheetId, from, to }) => ({ method: 'POST', path: `${sheetPath(sheetId)}/range(address='${from + 1}:${to + 1}')/delete`, body: { shift: 'Up' } }));
-      if (ops.length > 2) { await workbookBatch(fileId, ops, { deadline: now() + WRITE_BUDGET_MS }); return; }
-      for (const op of ops) await workbook(fileId, op.method, op.path, { body: op.body, where: 'deleteRows', discard: true });
+      let done = 0;
+      if (ops.length > 2) {
+        try { await workbookBatch(fileId, ops, { deadline: now() + WRITE_BUDGET_MS }); return; } catch (err) {
+          // A PivotTable beside the list stopped one: the rest go one by one.
+          if (!isShiftBlocked(err) || err.done == null) throw err;
+          done = err.done;
+        }
+      }
+      for (const run of runs.slice(done)) await cutRows(fileId, run);
     },
 
     // The folders inside one folder, by name. At the top of the person's
@@ -605,13 +701,17 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
           // was picked. (A OneDrive path that isn't there yet is fine: saving
           // makes it, as for the default "Survey" folder.)
           if (err?.status === 404 && target.driveId) return { folders: [], places: [], gone: true };
-          if (err?.status === 404 && target.sub) return { folders: [], places: [] };
           // An account with no OneDrive of its own (a guest, or no OneDrive
-          // licence: Graph answers 401 accessDenied / 403 notAllowed / 404 at
-          // the top of "my drive"). It can still save in SharePoint or Teams.
-          if (!target.driveId && !target.sub && [401, 403, 404].includes(Number(err?.status)) && !/token/i.test(String(err?.code || ''))) {
+          // licence: Graph answers 401 accessDenied / 403 notAllowed, or 404
+          // at the top of "my drive"). It can still save in SharePoint or
+          // Teams. Save in opens on the default "Survey" folder, so this is
+          // checked below the top too.
+          const status = Number(err?.status);
+          const tokenTrouble = /token/i.test(String(err?.code || ''));
+          if (!target.driveId && !tokenTrouble && ([401, 403].includes(status) || (status === 404 && !target.sub))) {
             return { folders: [], places: [], noDrive: true };
           }
+          if (status === 404 && target.sub) return { folders: [], places: [] };
           throw err;
         }
         for (const it of res?.value || []) {

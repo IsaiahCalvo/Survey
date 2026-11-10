@@ -22,7 +22,10 @@ import { MoveCopyModal, RenameModal } from './BulkModals';
 import PdfPageThumb from './PdfPageThumb';
 import { useThumbnailBackfill } from '../hooks/useThumbnailBackfill';
 import { useStorage } from '../hooks/useDatabase';
+import { useOfflineDocumentActions } from './offlineDocumentActions.js';
+import { useDeviceFileRows, deleteDeviceFile, renameDeviceFile } from './deviceFileActions.js';
 import { getDocumentCollaborators, getDocumentOwnerProfile } from '../services/documentAnnotationService';
+import { supabase } from '../supabaseClient';
 import { documentTeamRows } from './documentTeam.js';
 import Spinner from '../components/Spinner';
 import DismissBarrier from '../components/DismissBarrier';
@@ -34,6 +37,7 @@ import { activateOrExplain } from '../utils/disabledReasonToast.js';
 import MenuRows from '../components/MenuRows.jsx';
 import DialogCard from '../components/DialogCard.jsx';
 import NewDocumentDialog from './NewDocumentDialog.jsx';
+import PaperTemplatesDialog, { createNotebookPaperFile } from './PaperTemplatesDialog.jsx';
 import sampleFloorPlanUrl from '../assets/sample-floor-plan.pdf?url';
 import useFileDropZone from '../hooks/useFileDropZone';
 import FileDropOverlay from '../components/FileDropOverlay';
@@ -48,6 +52,12 @@ import {
 } from './documentSelection.js';
 import { keyboardControlProps } from '../utils/keyboardActivation.js';
 import { preloadPdfViewerNow } from '../utils/pdfViewerPrefetch.js';
+import {
+  DENSITY_ROW, HOME_SORTS, LIST_DENSITIES, firstSortDir, homeLedgerColumns, homeViewCounts, inHomeView,
+  matchesHomeSearch, readListView, relativeTime, sortHomeRows, tagCounts, writeListView,
+} from './homeLibrary.js';
+import { useHomeExtras } from './homeLibraryData.js';
+import { HomeFilterChips, HomeNavSection, HomeTiles, ListViewButton, TagCell, TagPopover } from './HomeLibraryBits.jsx';
 import { ReviewChips, ReviewFields, ReviewLine, useDocumentReviews, useReviewPeople } from './DocumentReviewBits.jsx';
 import { EMPTY_REVIEW_FILTER, passesReviewFilter, reviewFilterIsEmpty, reviewStatusCounts } from './documentReview.js';
 
@@ -203,6 +213,23 @@ const formatSize = (bytes) => {
   return n + ' B';
 };
 
+/* Nightly offline-docs: a small mark beside the name of a document kept on
+   this device (Drawboard shows a downloaded badge the same way). */
+function OfflineBadge({ leading = false }) {
+  const tip = useTooltip();
+  return (
+    <span
+      className="offline-doc-badge"
+      role="img"
+      aria-label="Available offline"
+      {...tip('Available offline on this device', 'below')}
+      style={{ display: 'inline-flex', alignItems: 'center', marginLeft: leading ? 0 : 6, marginRight: leading ? 5 : 0, flex: 'none', color: 'var(--text-secondary, #6b7280)', verticalAlign: 'middle' }}
+    >
+      <Icon name="download" size={12} />
+    </span>
+  );
+}
+
 export default function DocumentsLedger({
   documents = [],
   projects = [],
@@ -220,6 +247,7 @@ export default function DocumentsLedger({
   onMoveCopy,
   onLockDocument,
   onPdfTools,
+  onSaveDeviceFile = null,
 }) {
   const tip = useTooltip();
   const [selId, setSelId] = useState(null);
@@ -251,7 +279,16 @@ export default function DocumentsLedger({
 
   /* Supabase storage helper — let PdfPageThumb fetch a document's bytes to
      render its real first page via the authenticated download (private bucket). */
-  const { downloadDocument } = useStorage();
+  const { downloadDocument, fileStamp } = useStorage();
+  // Nightly offline-docs: "Make available offline" in the row menu.
+  const offline = useOfflineDocumentActions({ userId: user?.id, downloadDocument, fileStamp });
+
+  // Nightly device-files: PDFs opened with no account, kept on this device.
+  const deviceFileRows = useDeviceFileRows();
+  const listDocuments = useMemo(
+    () => (deviceFileRows.enabled && deviceFileRows.rows.length > 0 ? [...deviceFileRows.rows, ...documents] : documents),
+    [deviceFileRows.enabled, deviceFileRows.rows, documents],
+  );
   const [homeDownloadOn] = useState(() => isFeatureOn('home-download'));
   // Nightly 'new-document': New makes a blank document (desktop) or opens a
   // small New sheet with Upload and Blank document (phone).
@@ -259,8 +296,54 @@ export default function DocumentsLedger({
   const [newSheetOpen, setNewSheetOpen] = useState(false);
   const [newDocOpen, setNewDocOpen] = useState(false);
   const canCreateBlank = newDocumentOn && Boolean(onDropFiles);
+  // Nightly 'home-templates' (Drawboard's + menu > Create): Notebook paper in
+  // one tap and Other templates. New then opens a menu on desktop.
+  const [templatesOn] = useState(() => isFeatureOn('home-templates'));
+  const canCreateTemplates = templatesOn && Boolean(onDropFiles);
+  const canCreate = canCreateBlank || canCreateTemplates;
+  const [newMenu, setNewMenu] = useState(null);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const makeNotebookPaper = async () => {
+    try {
+      const file = await createNotebookPaperFile(documents.map((d) => d?.name));
+      await onDropFiles([file], { projectId: null, open: true });
+    } catch (err) {
+      console.error('[DocumentsLedger] notebook paper failed', err);
+      showToast('Could not make the notebook paper. Try again.', 'error');
+    }
+  };
+  const createItems = [
+    canCreateBlank && { key: 'blank', icon: 'plus', label: 'Blank document', run: () => setNewDocOpen(true) },
+    canCreateTemplates && { key: 'notebook', icon: 'document', label: 'Notebook paper', run: makeNotebookPaper },
+    canCreateTemplates && { key: 'templates', icon: 'template', label: 'Other templates', run: () => setTemplatesOpen(true) },
+  ].filter(Boolean);
   // An upload still in flight (temp- id) has no saved row to open yet.
   const canDownloadDoc = (raw) => Boolean(raw?.id) && !String(raw.id).startsWith('temp-');
+
+  /* Drawboard Home extras (Nightly, homeLibrary.js): personal tags, Shared
+     by me / Shared with me, Last opened + Created columns, more sorts and
+     list sizes. Each has its own flag; with all three off this list is
+     exactly what it was. */
+  const [tagsOn] = useState(() => isFeatureOn('home-tags'));
+  const [sharedViewsOn] = useState(() => isFeatureOn('home-shared-views'));
+  const [columnsOn] = useState(() => isFeatureOn('home-columns'));
+  const extrasOn = tagsOn || sharedViewsOn || columnsOn;
+  const homeExtras = useHomeExtras({ userId: user?.id || null, tags: tagsOn, opened: columnsOn, shared: sharedViewsOn });
+  const tagsReady = tagsOn && homeExtras.enabled;
+  const [homeView, setHomeView] = useState('all');
+  const [tagFilter, setTagFilter] = useState(null);
+  const [density, setDensity] = useState(() => (columnsOn ? readListView(globalThis.localStorage).density : 'medium'));
+  const changeDensity = (next) => { setDensity(next); writeListView(globalThis.localStorage, { density: next }); };
+  const [tagPopover, setTagPopover] = useState(null);
+  const [listWidth, setListWidth] = useState(0);
+  const listScrollRef = useRef(null);
+  useEffect(() => {
+    const el = listScrollRef.current;
+    if (!extrasOn || !el || typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(([entry]) => setListWidth(Math.round(entry.contentRect.width)));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [extrasOn]);
 
   const projectNameById = useMemo(() => {
     const m = new Map();
@@ -269,7 +352,7 @@ export default function DocumentsLedger({
   }, [projects]);
 
   // Map each real document into the shape the ledger markup expects.
-  const mapped = useMemo(() => documents.map((d, i) => {
+  const mapped = useMemo(() => listDocuments.map((d, i) => {
     // Use '' (not 0) as the empty fallback: Date.parse(0) coerces to the string
     // "0" and resolves to Jan 1 2000, whereas Date.parse('') is NaN → no date.
     const ms = Date.parse(d.updated_at || d.created_at || '') || 0;
@@ -278,7 +361,7 @@ export default function DocumentsLedger({
       raw: d,
       id: d.id,
       name: d.name,
-      project: projectNameById.get(d.project_id) || 'Sandbox',
+      project: d.device_file ? 'On this device' : (projectNameById.get(d.project_id) || 'Sandbox'),
       size: formatSize(d.file_size),
       sizeBytes: Number(d.file_size) || 0,
       pages: d.pages ?? d.page_count ?? null,
@@ -290,8 +373,11 @@ export default function DocumentsLedger({
       uploadedAbs: longDate(d.created_at),
       color: RIBBON[i % RIBBON.length],
       shared: !!d.shared,
+      createdMs: Date.parse(d.created_at || '') || 0,
+      openedMs: homeExtras.openedByDoc.get(d.id) || 0,
+      tags: homeExtras.tagsByDoc.get(d.id) || [],
     };
-  }), [documents, projects]);
+  }), [listDocuments, projects, homeExtras.openedByDoc, homeExtras.tagsByDoc]);
 
   // Document review (Nightly, flag 'document-review'; DocumentReviewBits.jsx):
   // status, owner and markup count under each name, chips to filter by them.
@@ -303,21 +389,50 @@ export default function DocumentsLedger({
 
   const onHeaderClick = (key) => {
     if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
-    else { setSortKey(key); setSortDir(key === 'edited' || key === 'size' ? 'desc' : 'asc'); }
+    else { setSortKey(key); setSortDir(columnsOn ? firstSortDir(key) : (key === 'edited' || key === 'size' ? 'desc' : 'asc')); }
   };
   const arrow = (key) => (sortKey === key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '');
 
+  const viewScope = { userId: user?.id || null, sharedByMeIds: homeExtras.sharedByMeIds };
+  const viewCounts = useMemo(
+    () => homeViewCounts(mapped.map((d) => d.raw), viewScope),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [mapped, user?.id, homeExtras.sharedByMeIds],
+  );
+  const tagRows = useMemo(
+    () => (tagsReady ? tagCounts(homeExtras.tagsByDoc, mapped.map((d) => d.id)) : []),
+    [tagsReady, homeExtras.tagsByDoc, mapped],
+  );
+  // A tag that no listed document carries any more stops filtering.
+  useEffect(() => {
+    if (tagFilter && !tagRows.some((row) => row.tag.toLowerCase() === tagFilter.toLowerCase())) setTagFilter(null);
+  }, [tagFilter, tagRows]);
   const docs = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const arr = mapped.filter((d) => (!q || (d.name || '').toLowerCase().includes(q))
-      && (!reviewOn || passesReviewFilter(reviews.get(d.id), reviewFilter, user?.id)));
+    let arr;
+    const reviewOk = (d) => !reviewOn || passesReviewFilter(reviews.get(d.id), reviewFilter, user?.id);
+    if (extrasOn) {
+      const tagKey = tagFilter ? tagFilter.toLowerCase() : null;
+      arr = mapped.filter((d) => (
+        (!sharedViewsOn || inHomeView(d.raw, { view: homeView, ...viewScope }))
+        && (!tagKey || d.tags.some((t) => t.toLowerCase() === tagKey))
+        && matchesHomeSearch(d.name, tagsReady ? d.tags : null, search)
+        && reviewOk(d)
+      ));
+      // The extra sorts (Last opened, Created, Pages) come with home-columns;
+      // without it the list sorts exactly as before.
+      if (columnsOn) return sortHomeRows(arr, sortKey, sortDir);
+    } else {
+      const q = search.trim().toLowerCase();
+      arr = mapped.filter((d) => (!q || (d.name || '').toLowerCase().includes(q)) && reviewOk(d));
+    }
     const sign = sortDir === 'asc' ? 1 : -1;
     if (sortKey === 'name') arr.sort((a, b) => sign * a.name.localeCompare(b.name));
     else if (sortKey === 'project') arr.sort((a, b) => sign * (a.project || '').localeCompare(b.project || ''));
     else if (sortKey === 'edited') arr.sort((a, b) => sign * (a.editedMs - b.editedMs));
     else if (sortKey === 'size') arr.sort((a, b) => sign * (a.sizeBytes - b.sizeBytes));
     return arr;
-  }, [mapped, search, sortKey, sortDir, reviewOn, reviews, reviewFilter, user?.id]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapped, search, sortKey, sortDir, extrasOn, columnsOn, homeView, tagFilter, sharedViewsOn, tagsReady, homeExtras.sharedByMeIds, reviewOn, reviews, reviewFilter, user?.id]);
   const mobileDetailDoc = docs.find((d) => d.id === mobileDetailId) || null;
 
   /* Idle thumbnail backfill (2026-09-23): fills missing thumbnails one at a
@@ -405,9 +520,19 @@ export default function DocumentsLedger({
   }, [teamDocId, teamOwnerIsMe]);
   const teamFresh = teamCollab.id === teamDocId;
   // Review status and owner need edit access (set_document_review checks
-  // 'editor'): a document shared to me as a viewer shows them read-only.
-  const myTeamRole = teamFresh ? (teamCollab.rows.find((r) => r.user_id === user?.id)?.role || null) : null;
-  const canEditReview = teamOwnerIsMe || myTeamRole !== 'viewer';
+  // user_can_access_document(..., 'editor')). Ask the server the same
+  // question, so access through a project counts and a missing or unknown
+  // role never shows editable fields that would fail to save.
+  const [reviewEditAccess, setReviewEditAccess] = useState({ id: null, ok: false });
+  useEffect(() => {
+    if (!reviewOn || !teamDocId || teamOwnerIsMe) return undefined;
+    let live = true;
+    supabase.rpc('user_can_access_document', { doc_id: teamDocId, required_role: 'editor' })
+      .then(({ data, error }) => { if (live) setReviewEditAccess({ id: teamDocId, ok: !error && data === true }); })
+      .catch(() => { if (live) setReviewEditAccess({ id: teamDocId, ok: false }); });
+    return () => { live = false; };
+  }, [reviewOn, teamDocId, teamOwnerIsMe]);
+  const canEditReview = teamOwnerIsMe || (reviewEditAccess.id === teamDocId && reviewEditAccess.ok);
   const teamRows = documentTeamRows(teamDocRaw, teamFresh ? teamCollab.rows : [], user, teamFresh ? teamCollab.owner : null);
   const renderTeam = (nameStyle) => teamRows.map((p) => (
     <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -445,7 +570,11 @@ export default function DocumentsLedger({
   };
   const clearDesktopSelection = () => { setSelDocs(new Set()); anchorRef.current = null; };
   // Delete = move to Archive (Dashboard: no confirm, an Undo toast instead).
-  const archiveSelected = async (raws) => {
+  const archiveSelected = async (allRaws) => {
+    // device-files: those are deleted from this device (with Undo), not archived.
+    const raws = allRaws.filter((raw) => !raw?.device_file);
+    allRaws.filter((raw) => raw?.device_file).forEach(deleteDeviceFile);
+    if (raws.length < allRaws.length && !raws.length) { clearDesktopSelection(); return; }
     if (!onDelete || !raws.length) return;
     const ran = await onDelete(raws);
     if (ran !== false) clearDesktopSelection();
@@ -544,15 +673,26 @@ export default function DocumentsLedger({
   // (.documents-ledger-grid.is-preview): a container query drops Size, then
   // Project, on narrow (tablet) list panes so the row's More button stays
   // on screen instead of scrolling off the right edge.
-  const grid = showPreview ? undefined : '32px 54px 2fr 1fr 1fr 1fr 36px';
-  const gridClass = `documents-ledger-grid${showPreview ? ' is-preview' : ''}`;
+  // With the Home extras on, the columns come from homeLedgerColumns (they
+  // drop one at a time as the list narrows) instead of the class templates.
+  const densityRow = DENSITY_ROW[density] || DENSITY_ROW.medium;
+  // Shared by me / with me adds no column, so on its own it keeps the
+  // original list layout.
+  const homeCols = (tagsReady || columnsOn)
+    ? homeLedgerColumns({ width: listWidth, opened: columnsOn, created: columnsOn, tags: tagsReady, thumb: densityRow.thumb })
+    : null;
+  const showTiles = columnsOn && density === 'tiles';
+  const grid = homeCols ? homeCols.template : (showPreview ? undefined : '32px 54px 2fr 1fr 1fr 1fr 36px');
+  const gridClass = homeCols
+    ? 'documents-ledger-grid home-ledger-grid'
+    : `documents-ledger-grid${showPreview ? ' is-preview' : ''}`;
   const stickyCell = (selected) => ({
     position: 'sticky', left: 0, zIndex: 2,
     background: selected ? 'var(--ink-600)' : 'var(--ink-700)',
     // Fades with its row (hub.css, 150ms): changed at once it showed as a
     // dark box over the name while the rest of the row faded (2026-10-27).
     transition: 'background-color 150ms var(--ease-standard)',
-    padding: '12px 14px',
+    ...(homeCols ? { padding: `${densityRow.pad}px 14px` } : { padding: '12px 14px' }),
     display: 'flex', alignItems: 'center', gap: 10,
     minWidth: 0,
   });
@@ -576,7 +716,7 @@ export default function DocumentsLedger({
     setPreviewOpen(true);
   };
 
-  const sortOptions = [
+  const sortOptions = columnsOn ? HOME_SORTS : [
     ['name', 'File'],
     ['project', 'Project'],
     ['edited', 'Last edited'],
@@ -667,6 +807,26 @@ export default function DocumentsLedger({
               <span>{sortKey === key ? (sortDir === 'asc' ? '↑' : '↓') : ''}</span>
             </button>
           ))}
+          {/* Phone: the list sizes share this menu (the header row has no
+              room for a fourth control). */}
+          {columnsOn ? (
+            <>
+              <div className="home-sort-menu-separator" role="separator" />
+              {LIST_DENSITIES.map(([key, label]) => (
+                <button
+                  key={`d:${key}`}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={density === key}
+                  className={density === key ? 'active' : ''}
+                  onClick={() => { changeDensity(key); setMobileSortOpen(false); }}
+                >
+                  <span>{label}</span>
+                  <span>{density === key ? '✓' : ''}</span>
+                </button>
+              ))}
+            </>
+          ) : null}
         </div>
       )}
     </span>
@@ -681,9 +841,9 @@ export default function DocumentsLedger({
   const actions = (
     <>
       <div className="documents-mobile-search-actions hub-mobile-search-actions">
-        <Search placeholder="Search documents..." value={search} onChange={setSearch} width="100%" />
+        <Search placeholder={tagsReady ? 'Search documents and tags...' : 'Search documents...'} value={search} onChange={setSearch} width="100%" />
         {mobileSortControl}
-        {canCreateBlank ? (
+        {canCreate ? (
           <button className="btn primary hub-mobile-primary-action" data-home-new="phone" disabled={uploadBusy} aria-haspopup="dialog" onClick={() => setNewSheetOpen(true)}>
             {uploadBusy ? uploadButtonBody : (<><Icon name="plus" size={12} />New</>)}
           </button>
@@ -692,12 +852,33 @@ export default function DocumentsLedger({
         )}
       </div>
       <div className="documents-desktop-search">
-        <Search placeholder="Search documents..." value={search} onChange={setSearch} />
+        <Search placeholder={tagsReady ? 'Search documents and tags...' : 'Search documents...'} value={search} onChange={setSearch} />
       </div>
-      {canCreateBlank && (
+      {canCreateTemplates ? (
+        <button
+          className="btn documents-desktop-new"
+          data-home-new="desktop"
+          disabled={uploadBusy}
+          aria-haspopup="menu"
+          aria-expanded={Boolean(newMenu)}
+          onClick={(e) => { const trigger = e.currentTarget; setNewMenu(newMenu ? null : { rect: trigger.getBoundingClientRect(), trigger, fromKeyboard: e.detail === 0 }); }}
+        >
+          <Icon name="plus" size={12} />New
+        </button>
+      ) : canCreateBlank && (
         <button className="btn documents-desktop-new" data-home-new="desktop" disabled={uploadBusy} aria-haspopup="dialog" onClick={() => setNewDocOpen(true)}>
           <Icon name="plus" size={12} />New
         </button>
+      )}
+      {newMenu && (
+        <DocumentActionMenu
+          anchorRect={newMenu.rect}
+          returnFocusTo={newMenu.trigger}
+          focusFirst={newMenu.fromKeyboard}
+          minWidth={190}
+          items={createItems.map((it) => ({ label: it.label, icon: it.icon, onClick: () => { setNewMenu(null); it.run(); } }))}
+          onClose={() => setNewMenu(null)}
+        />
       )}
       <button className="btn primary documents-desktop-upload" disabled={uploadBusy} onClick={() => onUpload && onUpload()}>{uploadButtonBody}</button>
       {newSheetOpen && (
@@ -705,7 +886,7 @@ export default function DocumentsLedger({
           <div role="menu" aria-label="New" style={{ display: 'grid', gap: 4 }}>
             {[
               { key: 'upload', icon: 'upload', label: 'Upload PDF', run: () => onUpload && onUpload() },
-              { key: 'blank', icon: 'plus', label: 'Blank document', run: () => setNewDocOpen(true) },
+              ...(canCreateTemplates ? createItems : [{ key: 'blank', icon: 'plus', label: 'Blank document', run: () => setNewDocOpen(true) }]),
             ].map((row) => (
               <button
                 key={row.key}
@@ -728,11 +909,22 @@ export default function DocumentsLedger({
           onClose={() => setNewDocOpen(false)}
         />
       )}
+      {templatesOpen && (
+        <PaperTemplatesDialog
+          existingNames={documents.map((d) => d?.name)}
+          onCreate={(file) => onDropFiles([file], { projectId: null, open: true })}
+          onClose={() => setTemplatesOpen(false)}
+        />
+      )}
     </>
   );
 
   const mobileDocMeta = (d) => (
-    [d.project === 'Sandbox' ? null : d.project, d.touchedAbs || d.lastEditedAbs, d.size]
+    [d.project === 'Sandbox' ? null : d.project,
+      columnsOn && sortKey === 'opened' && d.openedMs ? `Opened ${relativeTime(d.openedMs).toLowerCase()}`
+        : columnsOn && sortKey === 'created' && d.createdMs ? `Created ${relativeTime(d.createdMs).toLowerCase()}`
+          : (d.touchedAbs || d.lastEditedAbs),
+      d.size]
       .filter(Boolean)
       .join(' · ') || 'No details'
   );
@@ -813,6 +1005,7 @@ export default function DocumentsLedger({
      and Delete - the select-mode actions for just this one, with the same
      owner rules as its menu. Delete moves it to Archive with an Undo. */
   const documentSwipeActions = (d) => {
+    if (d.raw?.device_file) return buildSwipeActions({ onDelete: () => deleteDeviceFile(d.raw), can: { delete: true } });
     const pickOnly = () => setSelDocs(new Set([d.id]));
     return buildSwipeActions({
       lead: 'share',
@@ -849,7 +1042,11 @@ export default function DocumentsLedger({
         </div>
         <div style={{ minWidth: 0 }}>
           <div className="mobile-card-title">{d.name}</div>
-          <div className="mobile-card-meta">{mobileDocMeta(d)}</div>
+          {/* The title cuts long names off, so the phone shows the mark first in the meta line. */}
+          <div className="mobile-card-meta">{offline.isKept(d.id) && <OfflineBadge leading />}{mobileDocMeta(d)}</div>
+          {tagsReady && d.tags.length ? (
+            <div className="mobile-card-tags">{d.tags.slice(0, 3).map((tag) => <span key={tag} className="home-tag-chip">{tag}</span>)}</div>
+          ) : null}
           {reviewOn && <ReviewLine review={reviews.get(d.id)} />}
         </div>
         <div style={{ display: 'grid', placeItems: 'center', minWidth: 0 }}>
@@ -859,6 +1056,91 @@ export default function DocumentsLedger({
       </SwipeActionsRow>
     );
   };
+
+  // device-files: say plainly where these files live, with one way to keep them.
+  const deviceNotice = deviceFileRows.enabled && deviceFileRows.rows.length > 0 ? (
+    <div className="device-files-notice" role="note" style={{ display: 'flex', alignItems: 'center', gap: 10, margin: 8, padding: '8px 12px', borderRadius: 8, background: 'var(--ink-700, rgba(255,255,255,0.04))', border: '1px solid var(--ink-500, rgba(255,255,255,0.12))', fontSize: 12, lineHeight: 1.4 }}>
+      <Icon name="download" size={14} />
+      <span style={{ flex: 1, minWidth: 0 }}>
+        {user?.id
+          ? 'Files marked "On this device" are only in this browser. Save them to your account to keep them safe and use them anywhere.'
+          : 'These files are only on this device. Sign in to keep them safe and use them anywhere.'}
+      </span>
+      {!user?.id && onSaveDeviceFile && (
+        <button type="button" className="btn" onClick={() => onSaveDeviceFile(null)}>Sign in</button>
+      )}
+    </div>
+  ) : null;
+
+  /* Home extras: the Add tag popover, the extra columns and their header. */
+  const openTags = (list, rect) => {
+    if (!tagsReady || !list.length) return;
+    setDocMenu(null);
+    setTagPopover({ ids: list.map((d) => d.id), rect });
+  };
+  const HOME_HEAD_LABEL = { project: 'Project', opened: 'Last opened', created: 'Created', edited: 'Last edited', size: 'Size', tags: 'Tags' };
+  const homeHeaderCell = (key) => {
+    const label = HOME_HEAD_LABEL[key];
+    if (key === 'tags') return <span key={key} style={{ paddingRight: 8 }}>{label}</span>;
+    return (
+      <span
+        key={key}
+        data-home-col={key}
+        {...clickableProps(() => onHeaderClick(key))}
+        style={{ paddingRight: 8, cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: sortKey === key ? 'var(--bone-100)' : 'inherit' }}
+      >{label}{arrow(key)}</span>
+    );
+  };
+  const homeCell = (key, d) => {
+    if (key === 'project') {
+      return <span key={key} className="meta" style={{ fontSize: 12, paddingRight: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.project === 'Sandbox' ? null : d.project}</span>;
+    }
+    if (key === 'opened') return <span key={key} className="home-rel-time" data-home-opened={d.openedMs ? 'yes' : 'no'}>{d.openedMs ? relativeTime(d.openedMs) : '—'}</span>;
+    if (key === 'created') return <span key={key} className="home-rel-time">{d.createdMs ? relativeTime(d.createdMs) : '—'}</span>;
+    if (key === 'edited') {
+      return density === 'compact'
+        ? <span key={key} className="home-rel-time">{d.editedMs ? relativeTime(d.editedMs) : '—'}</span>
+        : (
+          <div key={key} className="nums" style={{ fontSize: 11, padding: '6px 0', lineHeight: 1.35 }}>
+            <div style={{ fontWeight: 600 }}>{d.touchedTime}</div>
+            <div style={{ color: 'var(--text-3)' }}>{d.touchedAbs}</div>
+          </div>
+        );
+    }
+    if (key === 'size') return <span key={key} className="nums" style={{ fontSize: 11 }}>{d.size}</span>;
+    if (key === 'tags') {
+      return (
+        <span key={key} style={{ minWidth: 0, display: 'flex', paddingRight: 8 }}>
+          <TagCell tags={d.tags} compact={density === 'compact'} onOpen={(rect) => openTags([d], rect)} />
+        </span>
+      );
+    }
+    return null;
+  };
+  const tileMeta = (d) => {
+    if (sortKey === 'opened' && d.openedMs) return `Opened ${relativeTime(d.openedMs).toLowerCase()}`;
+    if (sortKey === 'created' && d.createdMs) return `Created ${relativeTime(d.createdMs).toLowerCase()}`;
+    return [d.project === 'Sandbox' ? null : d.project, d.touchedAbs || d.lastEditedAbs].filter(Boolean).join(' · ');
+  };
+  const homeViews = sharedViewsOn ? ['all', 'shared-by-me', 'shared-with-me'] : [];
+  const pickHomeView = (next) => { setHomeView(next); setTagFilter(null); };
+  const documentsNav = (sharedViewsOn || tagsReady) ? (
+    <HomeNavSection
+      views={homeViews}
+      view={homeView}
+      counts={viewCounts}
+      tags={tagsReady ? tagRows : null}
+      tag={tagFilter}
+      onView={pickHomeView}
+      onTag={(tag) => setTagFilter((cur) => (cur && cur.toLowerCase() === tag.toLowerCase() ? null : tag))}
+    />
+  ) : null;
+  const filteredEmpty = (() => {
+    if (tagFilter) return `No documents tagged "${tagFilter}".`;
+    if (homeView === 'shared-by-me') return 'Documents you share with others show here.';
+    if (homeView === 'shared-with-me') return 'Documents others share with you show here.';
+    return 'No documents match your search.';
+  })();
 
   return (
     <>
@@ -872,6 +1154,7 @@ export default function DocumentsLedger({
       userName={user?.name || user?.email?.split('@')[0] || 'You'}
       templatesLocked={templatesLocked}
       dropProps={dropProps}
+      documentsNav={documentsNav}
       projectDrop={docDrag ? {
         projects,
         onDrop: (ids, project) => dropDocumentsOnProject(ids.length ? ids : docDrag.ids, project),
@@ -879,13 +1162,14 @@ export default function DocumentsLedger({
     >
       <div className="documents-ledger-body" style={{ padding: '0 8px 8px 8px', flex: 1, minHeight: 0 }}>
         <div ref={dropCardRef} className="card documents-desktop-card" style={{ display: 'grid', gridTemplateColumns: showPreview ? '2.2fr 1fr' : '1fr', height: '100%', overflow: 'hidden' }}>
-          <div className="slim-scroll documents-ledger-scroll" style={{ overflow: 'auto', borderRight: showPreview ? '1px solid var(--ink-500)' : 0 }}>
+          <div ref={listScrollRef} className="slim-scroll documents-ledger-scroll" style={{ overflow: 'auto', borderRight: showPreview ? '1px solid var(--ink-500)' : 0 }}>
+            {deviceNotice}
             <div>
               {reviewOn && mapped.length > 0 && (
                 <ReviewChips filter={reviewFilter} onChange={setReviewFilter} counts={reviewCounts} />
               )}
               <div className={gridClass} style={{ ...ledgerHeader, display: 'grid', gridTemplateColumns: grid, position: 'sticky', top: 0, zIndex: 3 }}>
-                <span className="documents-ledger-head-check" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {!showTiles && <span className="documents-ledger-head-check" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   {docSelectMode && docs.length > 0 && (
                     <button
                       type="button"
@@ -902,13 +1186,38 @@ export default function DocumentsLedger({
                       </span>
                     </button>
                   )}
-                </span>
-                <span></span>
-                <span {...clickableProps(() => onHeaderClick('name'))} style={{ padding: '0 14px', display: 'flex', alignItems: 'center', cursor: 'pointer', userSelect: 'none', color: sortKey === 'name' ? 'var(--bone-100)' : 'inherit' }}>File{arrow('name')}</span>
+                </span>}
+                {!showTiles && <span></span>}
+                {!showTiles && <span {...clickableProps(() => onHeaderClick('name'))} style={{ padding: '0 14px', display: 'flex', alignItems: 'center', cursor: 'pointer', userSelect: 'none', color: sortKey === 'name' ? 'var(--bone-100)' : 'inherit' }}>File{arrow('name')}</span>}
+                {showTiles ? (
+                  /* Tiles: no columns to head, so the header is a row of
+                     sorts (the same keys the list's headers sort by). */
+                  <span className="home-tiles-sorts" style={{ gridColumn: '1 / -2', display: 'flex', alignItems: 'center', gap: 16, padding: '0 14px', overflow: 'hidden' }}>
+                    <span style={{ color: 'var(--text-3)' }}>Sort by</span>
+                    {HOME_SORTS.filter(([key]) => key !== 'project').map(([key, label]) => (
+                      <span key={key} data-home-tile-sort={key} {...clickableProps(() => onHeaderClick(key))} style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap', color: sortKey === key ? 'var(--bone-100)' : 'inherit' }}>{label}{arrow(key)}</span>
+                    ))}
+                  </span>
+                ) : null}
+                {showTiles ? (
+                  <span style={{ display: 'flex', justifyContent: 'center' }}>
+                    <ListViewButton density={density} onChange={changeDensity} />
+                  </span>
+                ) : homeCols ? (
+                  <>
+                    {homeCols.keys.map(homeHeaderCell)}
+                    <span style={{ display: 'flex', justifyContent: 'center' }}>
+                      {columnsOn ? <ListViewButton density={density} onChange={changeDensity} /> : null}
+                    </span>
+                  </>
+                ) : (
+                  <>
                 <span className="documents-col-project" {...clickableProps(() => onHeaderClick('project'))} style={{ paddingRight: 12, cursor: 'pointer', userSelect: 'none', color: sortKey === 'project' ? 'var(--bone-100)' : 'inherit' }}>Project{arrow('project')}</span>
                 <span {...clickableProps(() => onHeaderClick('edited'))} style={{ cursor: 'pointer', userSelect: 'none', color: sortKey === 'edited' ? 'var(--bone-100)' : 'inherit' }}>Last edited{arrow('edited')}</span>
                 <span className="documents-col-size" {...clickableProps(() => onHeaderClick('size'))} style={{ cursor: 'pointer', userSelect: 'none', color: sortKey === 'size' ? 'var(--bone-100)' : 'inherit' }}>Size{arrow('size')}</span>
                 <span></span>
+                  </>
+                )}
               </div>
               {docs.length === 0 && (
                 mapped.length === 0 ? (
@@ -924,10 +1233,24 @@ export default function DocumentsLedger({
                     />
                   </div>
                 ) : (
-                  <div className="meta" style={{ padding: '24px 16px', fontSize: 12 }}>{reviewOn && !reviewFilterIsEmpty(reviewFilter) ? 'No documents match these filters.' : 'No documents match your search.'}</div>
+                  <div className="meta" style={{ padding: '24px 16px', fontSize: 12 }}>{reviewOn && !reviewFilterIsEmpty(reviewFilter) ? 'No documents match these filters.' : (extrasOn ? filteredEmpty : 'No documents match your search.')}</div>
                 )
               )}
-              {docs.map((d) => {
+              {showTiles && docs.length > 0 ? (
+                <HomeTiles
+                  docs={docs}
+                  selectedIds={selDocs}
+                  previewId={!bulkSelected && previewDoc ? previewDoc.id : null}
+                  downloadDocument={downloadDocument}
+                  metaFor={tileMeta}
+                  tagsByDoc={homeExtras.tagsByDoc}
+                  onTags={tagsReady}
+                  onClick={(event, d) => onDesktopRowClick(event, d)}
+                  onDoubleClick={(event, d) => { if (!docSelectMode) onOpenDocument && onOpenDocument(d.raw); }}
+                  onContextMenu={(event, d) => onDesktopRowContextMenu(event, d)}
+                  onMore={(event, d) => openDocMenu(event, d)}
+                />
+              ) : docs.map((d) => {
                 const isChecked = selDocs.has(d.id);
                 // The previewed row wears the gold edge; selected rows the
                 // selected fill. With nothing picked yet the previewed row
@@ -939,7 +1262,7 @@ export default function DocumentsLedger({
                   <SwipeActionsRow key={d.id} label={d.name} disabled={docSelectMode} actions={documentSwipeActions(d)}>
                   <div
                     data-document-id={d.id}
-                    className={`documents-ledger-row ${gridClass}${isFilled ? ' is-selected' : ''}${isDragging ? ' is-dragging' : ''}`}
+                    className={`documents-ledger-row ${gridClass}${isFilled ? ' is-selected' : ''}${isDragging ? ' is-dragging' : ''}${homeCols ? ` is-density-${density}` : ''}`}
                     // KAL-66: data-, not aria-selected - a plain div may not
                     // carry aria-selected (axe aria-allowed-attr); the row's
                     // checkbox is what announces the state.
@@ -971,7 +1294,7 @@ export default function DocumentsLedger({
                       // Skip layout/paint for off-screen rows. Intrinsic height ~50px:
                       // the two-line "last edited" cell dominates the 30px thumbnail.
                       contentVisibility: 'auto',
-                      containIntrinsicSize: '0 50px',
+                      containIntrinsicSize: `0 ${homeCols ? densityRow.height : 50}px`,
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 8px' }}>
@@ -1001,6 +1324,15 @@ export default function DocumentsLedger({
                         the preview pane; falls back to the stylised
                         placeholder on failure. */}
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {homeCols ? (
+                        <PdfPageThumb
+                          doc={d.raw}
+                          downloadDocument={downloadDocument}
+                          variant="row"
+                          height={densityRow.thumb}
+                          fallback={<div style={{ width: Math.round(densityRow.thumb * 0.77), height: densityRow.thumb, flex: 'none' }}><PdfThumb height={densityRow.thumb} stamp="" color={d.color} /></div>}
+                        />
+                      ) : (
                       <PdfPageThumb
                         doc={d.raw}
                         downloadDocument={downloadDocument}
@@ -1008,6 +1340,7 @@ export default function DocumentsLedger({
                         height={30}
                         fallback={<div style={{ width: 23, height: 30, flex: 'none' }}><PdfThumb height={30} stamp="" color={d.color} /></div>}
                       />
+                      )}
                     </div>
                     <div style={stickyCell(isFilled)}>
                       {reviewOn ? (
@@ -1018,7 +1351,10 @@ export default function DocumentsLedger({
                       ) : (
                         <span style={{ fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{d.name}</span>
                       )}
+                      {offline.isKept(d.id) && <OfflineBadge />}
                     </div>
+                    {homeCols ? homeCols.keys.map((key) => homeCell(key, d)) : (
+                    <>
                     <span className="meta documents-col-project" style={{ fontSize: 12, padding: '12px 12px 12px 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{/* Polish round 2 (2026-10-04): a file in no project leaves the cell
                         empty, as the phone row, the preview and the phone details
                         already do; it used to print a mono "N/A". */}
@@ -1028,6 +1364,8 @@ export default function DocumentsLedger({
                       <div style={{ color: 'var(--text-3)' }}>{d.touchedAbs}</div>
                     </div>
                     <span className="nums documents-col-size" style={{ fontSize: 11, padding: '12px 0' }}>{d.size}</span>
+                    </>
+                    )}
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <button
                         aria-haspopup="menu"
@@ -1085,6 +1423,11 @@ export default function DocumentsLedger({
                 <button type="button" className="hub-menu__item" onClick={() => { onDuplicate && onDuplicate(selectedRaw()); clearDesktopSelection(); }}>
                   <Icon name="duplicate" size={15} color="var(--ink-200)" />Duplicate
                 </button>
+                {tagsReady && (
+                  <button type="button" className="hub-menu__item" data-home-bulk-tags="" onClick={(event) => openTags(selectedDocs, event.currentTarget.getBoundingClientRect())}>
+                    <Icon name="tag" size={15} color="var(--ink-200)" />Add tags…
+                  </button>
+                )}
                 {onPdfTools && (
                   <button type="button" className="hub-menu__item" onClick={() => onPdfTools(selectedRaw(), 'merge')}>
                     <Icon name="copy" size={15} color="var(--ink-200)" />Merge into one PDF
@@ -1158,9 +1501,21 @@ export default function DocumentsLedger({
                   <div className="nums" style={{ fontSize: 12, marginTop: 3 }}>{previewDoc.lastEditedAbs}</div>
                 </div>
                 <div>
-                  <div className="section-label">Uploaded</div>
+                  <div className="section-label">{columnsOn ? 'Created' : 'Uploaded'}</div>
                   <div className="nums" style={{ fontSize: 12, marginTop: 3 }}>{previewDoc.uploadedAbs}</div>
                 </div>
+                {columnsOn ? (
+                  <div>
+                    <div className="section-label">Last opened</div>
+                    <div className="nums" data-home-preview-opened="" style={{ fontSize: 12, marginTop: 3 }}>{previewDoc.openedMs ? relativeTime(previewDoc.openedMs) : 'Not opened yet'}</div>
+                  </div>
+                ) : null}
+                {tagsReady ? (
+                  <div>
+                    <div className="section-label">Tags</div>
+                    <div style={{ marginTop: 3 }}><TagCell tags={previewDoc.tags} onOpen={(rect) => openTags([previewDoc], rect)} /></div>
+                  </div>
+                ) : null}
               </div>
               {/* Flexible spacer — soaks up spare height so the action buttons
                   stay pinned at the bottom while the Team and dates sit high,
@@ -1179,6 +1534,18 @@ export default function DocumentsLedger({
           )}
         </div>
         <div className="documents-mobile-list slim-scroll">
+          {deviceNotice}
+          {(sharedViewsOn || tagsReady) && mapped.length > 0 ? (
+            <HomeFilterChips
+              views={homeViews}
+              view={homeView}
+              counts={viewCounts}
+              tags={tagsReady ? tagRows : null}
+              tag={tagFilter}
+              onView={pickHomeView}
+              onTag={setTagFilter}
+            />
+          ) : null}
           {reviewOn && mapped.length > 0 && (
             <ReviewChips filter={reviewFilter} onChange={setReviewFilter} counts={reviewCounts} phone />
           )}
@@ -1194,10 +1561,24 @@ export default function DocumentsLedger({
                 {...sampleAction}
               />
             ) : (
-              <div className="meta" style={{ padding: '18px 4px', fontSize: 12 }}>{reviewOn && !reviewFilterIsEmpty(reviewFilter) ? 'No documents match these filters.' : 'No documents match your search.'}</div>
+              <div className="meta" style={{ padding: '18px 4px', fontSize: 12 }}>{reviewOn && !reviewFilterIsEmpty(reviewFilter) ? 'No documents match these filters.' : (extrasOn ? filteredEmpty : 'No documents match your search.')}</div>
             )
           )}
-          {docs.length > 0 && docs.map(renderMobileCard)}
+          {docs.length > 0 && (showTiles ? (
+            <HomeTiles
+              docs={docs}
+              selectedIds={selDocs}
+              previewId={null}
+              downloadDocument={downloadDocument}
+              metaFor={tileMeta}
+              tagsByDoc={homeExtras.tagsByDoc}
+              onTags={tagsReady}
+              onClick={(event, d) => openMobileDoc(d)}
+              onDoubleClick={() => {}}
+              onContextMenu={() => {}}
+              onMore={(event, d) => openDocMenu(event, d)}
+            />
+          ) : docs.map(renderMobileCard))}
         </div>
         {mobileDetailDoc ? (
           <div className="documents-mobile-detail-scrim" onClick={closeMobileDetail}>
@@ -1248,7 +1629,11 @@ export default function DocumentsLedger({
                   </div>
                 )}
                 <div><span>Last edited</span><strong>{mobileDetailDoc.lastEditedAbs}</strong></div>
-                <div><span>Uploaded</span><strong>{mobileDetailDoc.uploadedAbs}</strong></div>
+                <div><span>{columnsOn ? 'Created' : 'Uploaded'}</span><strong>{mobileDetailDoc.uploadedAbs}</strong></div>
+                {columnsOn ? <div><span>Last opened</span><strong>{mobileDetailDoc.openedMs ? relativeTime(mobileDetailDoc.openedMs) : 'Not opened yet'}</strong></div> : null}
+                {tagsReady ? (
+                  <div><span>Tags</span><TagCell tags={mobileDetailDoc.tags} onOpen={(rect) => openTags([mobileDetailDoc], rect)} /></div>
+                ) : null}
               </div>
               {/* Same pair as the desktop preview panel: a wide Open file,
                   then Share as an icon at the right (owner: icons over words
@@ -1282,7 +1667,7 @@ export default function DocumentsLedger({
       onClose={() => setRenameTarget(null)}
       title="Rename document"
       initialName={renameTarget?.name || ''}
-      onConfirm={(name) => onRename?.(renameTarget, name)}
+      onConfirm={(name) => (renameTarget?.device_file ? renameDeviceFile(renameTarget, name) : onRename?.(renameTarget, name))}
     />
     {docMenu && (() => {
       const doc = docs.find((d) => d.id === docMenu.id);
@@ -1296,11 +1681,18 @@ export default function DocumentsLedger({
           returnFocusTo={docMenu.trigger}
           focusFirst={Boolean(docMenu.fromKeyboard)}
           onClose={() => setDocMenu(null)}
-          items={(docMenu.ids?.length || 0) > 1 ? [
+          items={doc.raw?.device_file ? [
+            // device-files: only on this device, so only what works here.
+            { label: 'Open', onClick: () => onOpenDocument && onOpenDocument(doc.raw) },
+            { label: 'Rename', onClick: () => setRenameTarget(doc.raw) },
+            ...(onSaveDeviceFile ? [{ label: user?.id ? 'Save to my account' : 'Sign in to save to your account', onClick: () => onSaveDeviceFile(doc.raw) }] : []),
+            { label: 'Delete from this device', danger: true, onClick: () => deleteDeviceFile(doc.raw) },
+          ] : (docMenu.ids?.length || 0) > 1 ? [
             // Right-click inside a selection of two or more: the bulk actions.
             { label: 'Move to project…', onClick: () => { setMoveMode('move'); setMoveOpen(true); } },
             { label: 'Copy to project…', onClick: () => { setMoveMode('copy'); setMoveOpen(true); } },
             { label: 'Duplicate', onClick: () => { onDuplicate && onDuplicate(selectedRaw()); clearDesktopSelection(); } },
+            ...(tagsReady ? [{ label: 'Add tags…', onClick: () => openTags(docs.filter((x) => docMenu.ids.includes(x.id)), docMenu.rect || (docMenu.point ? { left: docMenu.point.x, right: docMenu.point.x, top: docMenu.point.y, bottom: docMenu.point.y } : null)) }] : []),
             ...(onPdfTools ? [{ label: 'Merge into one PDF', onClick: () => onPdfTools(selectedRaw(), 'merge') }] : []),
             { label: 'Share', reason: selectionBlock('share'), onClick: () => onShare && onShare(selectedRaw()) },
             { label: `Delete ${docMenu.ids.length} documents`, danger: true, reason: selectionBlock('delete'), onClick: () => archiveSelected(selectedRaw()) },
@@ -1309,6 +1701,7 @@ export default function DocumentsLedger({
             { label: 'Copy', onClick: () => setClipboardDoc(doc.raw) },
             { label: 'Paste', disabled: !clipboardDoc, onClick: () => clipboardDoc && onDuplicate && onDuplicate([clipboardDoc]) },
             ...(onPdfTools ? [{ label: 'PDF tools…', onClick: () => onPdfTools([doc.raw]) }] : []),
+            ...(tagsReady ? [{ label: doc.tags.length ? 'Edit tags…' : 'Add tag…', onClick: () => openTags([doc], docMenu.rect || (docMenu.point ? { left: docMenu.point.x, right: docMenu.point.x, top: docMenu.point.y, bottom: docMenu.point.y } : null)) }] : []),
             ...(homeDownloadOn && onOpenDocument && canDownloadDoc(doc.raw) ? [{
               label: 'Download',
               onClick: () => { requestHomeDownload(doc.raw.id); onOpenDocument(doc.raw); },
@@ -1320,10 +1713,21 @@ export default function DocumentsLedger({
               disabled: !canLock,
               onClick: () => onLockDocument && onLockDocument(doc.raw),
             },
+            ...(offline.menuItem(doc.raw) ? [offline.menuItem(doc.raw)] : []),
           ]}
         />
       );
     })()}
+    {tagPopover && (
+      <TagPopover
+        anchorRect={tagPopover.rect || { left: 16, right: 16, top: 80, bottom: 80 }}
+        docs={mapped.filter((d) => tagPopover.ids.includes(d.id))}
+        tagsByDoc={homeExtras.tagsByDoc}
+        onAdd={(ids, tags) => homeExtras.addTags(ids, tags).then((ok) => { if (!ok) showToast('Survey could not save that tag. Try again.', 'error'); })}
+        onRemove={(ids, tag) => homeExtras.removeTag(ids, tag).then((ok) => { if (!ok) showToast('Survey could not remove that tag. Try again.', 'error'); })}
+        onClose={() => setTagPopover(null)}
+      />
+    )}
     </>
   );
 }

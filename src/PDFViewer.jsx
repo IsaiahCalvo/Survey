@@ -61,7 +61,8 @@ import {
   createProductionBenchmarkPage,
   parseProductionBenchmarkConfig,
 } from './utils/productionAnnotationBenchmark.js';
-import { showToast } from './utils/toast';
+import { showToast, dismissToast } from './utils/toast';
+import { isDeviceDocumentId, DEVICE_ACTOR_ID } from './services/deviceFiles.js';
 import { openExternalDestination, withUpgradeHint } from './utils/accountPlatform.js';
 // ExcelJS (~1MB) is loaded on demand inside the three async export/sync handlers
 // below — see `await import('exceljs')` — so it stays out of the main viewer chunk.
@@ -70,6 +71,7 @@ import ExcelSyncConfirmModal from './components/ExcelSyncConfirmModal';
 import SpaceSelectionDialog from './components/SpaceSelectionDialog';
 import TextEditOverlay from './components/TextEditOverlay';
 import { resolveNewMarkStyle, resolvePickBarTool, resolveToolbarCallout } from './utils/toolbarCalloutTarget.js';
+import { pickedLineEndsKey } from './utils/lineEndingDefaults.js';
 import { resolvePickBarValues } from './utils/pickBarValues.js';
 import FabricEraserCanvas from './components/FabricEraserCanvas';
 import FormFieldPropertiesPanel from './components/FormFieldPropertiesPanel';
@@ -255,7 +257,7 @@ import {
 } from './utils/surveyMarkerFamily.js';
 import { overlayLiveSurveyMarkers } from './services/annotationLiveMarkers.js';
 import {
-  DUPLICATE_OFFSET_PAGE_UNITS,
+  duplicateOffsetOnPage,
   buildFamilyClipboard,
   makePastedMarkOwn,
   orderPastedFamily,
@@ -282,7 +284,8 @@ import { fromFabricGroup, toFabricGroup } from './utils/calloutEditAdapter';
 import { getActivePageRegionId, getPageAnnotationVisibilityState, isAnnotationVisibleInSurveyMode, isSurveyVisibilityContext, normalizePageRegions, normalizeRegionVisibility, shouldStampActiveRegionId } from './utils/annotationVisibilityRules';
 // KAL-88 — shared creation scope stamp (Decision 11 companion); used by the
 // counter drop so counters scope exactly like pen/shape/text creations.
-import { applyScope as applyAnnotationCreationScope, applyPasteScope, buildBoundaryShapeCommitJSON, buildLineCommitJSON, buildPolyShapeCommitJSON } from './utils/annotationCreationCommit';
+import { applyScope as applyAnnotationCreationScope, applyPasteScope, buildBoundaryShapeCommitJSON, buildLineCommitJSON, buildPolyShapeCommitJSON, isTapeMark, toggleTapeRevealed } from './utils/annotationCreationCommit';
+import { dashForLineStyle, isDashLineStyle } from './utils/lineStyleOptions.js';
 import { createCallout as makeCalloutDraft, defaultCalloutStyle } from './components/Callout/types';
 import { shouldAutoSelectAfterCommit } from './utils/autoSelectAfterCommit';
 import { isSurveyScopedHistoryEvent, resolveHistoryEntryContext } from './utils/historyContextRestore';
@@ -384,6 +387,9 @@ import { compareSurveyMarkersForOrder } from './utils/surveyMarkerOrdering';
 import { splitImportedCalloutsFromPage } from './utils/calloutImportAdapter';
 import { supabase } from './supabaseClient';
 import { useAnnotationDoc } from './hooks/useAnnotationDoc.js';
+import useBrowserOnline from './hooks/useBrowserOnline.js';
+import { claimBodyReadOnly } from './utils/readOnlyBodyReasons.js';
+import { subscribeDocumentLockState } from './services/documentLockService.js';
 import { useAuth } from './contexts/AuthContext';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useDocumentPresenceList } from './hooks/useDocumentPresenceList.js';
@@ -396,6 +402,8 @@ import { bookmarkDeleteMessage, removeBookmarkWithDescendants, restoreRemovedBoo
 import { useYDoc } from './hooks/useYDoc.js';
 import { useZoomState } from './hooks/useZoomState';
 import { isFeatureOn } from './featureFlags.js';
+import { setStampPickerOpen, useStampPickerOpen } from './components/StampPickerCard.jsx';
+import { pickImageToInsert } from './components/InsertImage.jsx';
 import { marksHidden, setMarksHidden, subscribeMarksHidden } from './utils/marksHidden.js';
 import { isTypingTarget } from './utils/typingTarget.js';
 import { useMarkClipboard } from './utils/sharedMarkClipboard.js';
@@ -3177,6 +3185,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
 
   // Annotation tools state
   const [activeTool, setActiveTool] = useState('pan');
+  // Nightly 'stamp-tool': whether the Stamp card is open (its Text group button).
+  const stampPickerOpen = useStampPickerOpen();
   // Measure tools ride on the Line / Polygon tools: measureMode only says the
   // commit is a measurement ('length' | 'area' | 'perimeter') or a calibration
   // line. measureScaleMeta is the document's saved scales, one page or all
@@ -3202,6 +3212,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const [measureEditOn] = useState(() => isFeatureOn('measure-edit'));
   const [measureDepth, setMeasureDepth] = useState(() => loadMeasureDepth());
   const [measureDepthDialog, setMeasureDepthDialog] = useState(null);
+  // Tape (beta 'tape-tool', Drawboard PDF): a band that covers part of the
+  // page; a Pan tap reveals what is under it. Revealed tapes are per viewer.
+  const [tapeToolEnabled] = useState(() => isFeatureOn('tape-tool'));
   const prevMeasureModeRef = useRef(null);
   useEffect(() => {
     const prev = prevMeasureModeRef.current;
@@ -3432,7 +3445,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     const el = document.elementFromPoint(x, y);
     if (el) {
       let forcedCursor = 'default';
-      if (activeTool === 'pen' || activeTool === 'highlighter' || activeTool === REGION_EDIT_TOOL) forcedCursor = 'crosshair';
+      if (activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'tape' || activeTool === REGION_EDIT_TOOL) forcedCursor = 'crosshair';
       else if (activeTool === 'eraser') forcedCursor = 'none';
       else if (activeTool === 'pan') forcedCursor = 'grab';
       // 'text-select' (KAL-239) shows the I-beam too: the mode is only discoverable
@@ -3452,7 +3465,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
 
   // Clear edit state when switching to drawing/eraser tools
   useEffect(() => {
-    if (activeTool === 'pen' || activeTool === 'highlighter' || NATIVE_TEXT_MARKUP_TOOLS.has(activeTool) || activeTool === 'eraser') {
+    if (activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'tape' || NATIVE_TEXT_MARKUP_TOOLS.has(activeTool) || activeTool === 'eraser') {
       setEditingAnnotation(null);
     }
   }, [activeTool]);
@@ -4457,6 +4470,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       }
       if (hit.kind !== 'annotation') return;
       if (typeof hit.annotationIndex !== 'number' || hit.pageNumber == null) return;
+      // Tape (Drawboard PDF): a Pan tap shows what is under it as an outline;
+      // another tap covers it again. The state is saved on the mark, so it
+      // is an Undo step, survives a reload and others see it, as in Drawboard.
+      const tapedPage = annotationsByPageRef.current?.[hit.pageNumber];
+      if (isTapeMark(tapedPage?.objects?.[hit.annotationIndex])) {
+        handleSaveAnnotations(hit.pageNumber, toggleTapeRevealed(tapedPage, hit.annotationIndex), {
+          source: 'tape:reveal', action: 'modify', checkpointPolicy: 'normal',
+        });
+        return;
+      }
       panQuickClickAutoSelectAtRef.current = Date.now();
       if (!e.shiftKey) setSelectedCalloutIds((previous) => (previous instanceof Set && previous.size === 0 ? previous : new Set()));
       setPendingSvgSelection({
@@ -5719,7 +5742,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
 
   const [lastDrawTool, setLastDrawTool] = useState(() => {
     try {
-      return localStorage.getItem('lastDrawTool') || 'pen';
+      const saved = localStorage.getItem('lastDrawTool') || 'pen';
+      return saved === 'tape' && !isFeatureOn('tape-tool') ? 'pen' : saved;
     } catch (e) {
       return 'pen';
     }
@@ -5762,7 +5786,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     // indistinguishable from clicking the category button. The category
     // buttons' toggle-to-close still works: closing doesn't change the tool,
     // so this effect doesn't re-open.
-    if (['pen', 'highlighter', 'text-highlight', 'eraser'].includes(activeTool)) {
+    if (['pen', 'highlighter', 'text-highlight', 'tape', 'eraser'].includes(activeTool)) {
       setLastDrawTool(activeTool);
       setActiveCategoryDropdown((prev) => (prev === 'draw' ? prev : 'draw'));
       try {
@@ -6689,7 +6713,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     });
 
     const tool = activeToolRef.current;
-    if (tool === 'pen' || tool === 'highlighter' || tool === 'eraser') {
+    if (tool === 'pen' || tool === 'highlighter' || tool === 'tape' || tool === 'eraser') {
       setActiveTool('pan');
     }
     bumpOverlayLagEventTotal(reason === 'pdfjs-wheel-zoom' ? 'pdfjsWheelZoom' : 'overlayWheelZoom');
@@ -9637,10 +9661,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         strokeDashArray: null,
         data: { pdfCloudIntensity: Math.max(1, Number(cloudIntensity) || 2) },
       });
-    } else if (next === 'dashed') {
-      handlePatchSelectedAnnotation({ strokeDashArray: [6, 4], data: { pdfCloudIntensity: null } });
-    } else if (next === 'dotted') {
-      handlePatchSelectedAnnotation({ strokeDashArray: [2, 4], data: { pdfCloudIntensity: null } });
+    } else if (isDashLineStyle(next)) {
+      handlePatchSelectedAnnotation({ strokeDashArray: dashForLineStyle(next), data: { pdfCloudIntensity: null } });
     } else {
       handlePatchSelectedAnnotation({ strokeDashArray: null, data: { pdfCloudIntensity: null } });
     }
@@ -9728,7 +9750,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         // blurring this field. Keep the live tool width current while typing;
         // persistence and selected-annotation edits remain blur-only.
         const minWidth = isCounterSize ? COUNTER_SIZE_MIN : 1;
-        const maxWidth = isCounterSize ? COUNTER_SIZE_MAX : 50;
+        const maxWidth = isCounterSize ? COUNTER_SIZE_MAX : (pickBarTool === 'tape' ? 100 : 50);
         setStrokeWidth(normalizeAnnotationSize(value, minWidth, maxWidth, widthDecimals));
       }
       publishToolbarDraft('strokeWidthInputValue', value);
@@ -9742,7 +9764,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     // blur-time DOM value so a fast edit cannot recommit a stale closure value.
     const isCounterSize = pickBarTool === 'counter' || getSelectedShapeMeta().isCounter;
     const minWidth = isCounterSize ? COUNTER_SIZE_MIN : 1;
-    const maxWidth = isCounterSize ? COUNTER_SIZE_MAX : 50;
+    const maxWidth = isCounterSize ? COUNTER_SIZE_MAX : (pickBarTool === 'tape' ? 100 : 50);
     const rawValue = String(event?.currentTarget?.value ?? strokeWidthInputValueRef.current ?? '').trim();
     // w41: an empty Width over picked marks of different widths means "leave
     // them" - never "set all of them to the minimum".
@@ -22117,6 +22139,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // for annotations (and callouts). Captures every change durably the instant it
   // happens and hydrates from the durable store on open — no clear-and-refan, no
   // empty/partial overwrite, no documentId-timing gate.
+  // device-files (Nightly): a PDF opened with no account keeps its marks in
+  // the store's device copy under one device actor.
+  const annotationActorId = user?.id || (isDeviceDocumentId(pdfFile?.id) ? DEVICE_ACTOR_ID : null);
   const {
     initialHydration: normalAnnotationHydration,
     deletedPdfAnnotations: durableDeletedPdfAnnotations,
@@ -22138,12 +22163,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     whenBulkImportSaved: annotationDocWhenBulkImportSaved,
     // w53: other screens' in-flight Survey Marker / spaces changes (draw only).
     liveMarkerOverlay,
+    // offline-docs: marks opened from this device's kept copy (no signal).
+    offlineCopy: annotationOfflineCopy,
+    editBlocked: annotationEditBlocked,
   } = useAnnotationDoc({
     documentId: pdfFile?.id || null,
-    userId: user?.id || null,
+    userId: annotationActorId,
     // The viewer remains mounted on a warm switch; keep its durable store and
     // unsaved capture live until the tab actually closes.
-    enabled: cloudSyncEnabled && !!pdfFile?.id && !!user?.id,
+    enabled: cloudSyncEnabled && !!pdfFile?.id && !!annotationActorId,
     isActive,
     // Slice 6 (2026-07-17): annotationsByPage carries callouts as projected
     // data.type==='callout' groups (R2.2 flip), and the hook persists them
@@ -22179,11 +22207,69 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     documentLocked,
     whenFirstPageDrawn: pageDrawnSignal.whenDrawn,
   });
+  const offlineCopyToastRef = useRef(null);
+  useEffect(() => {
+    if (!annotationOfflineCopy) { offlineCopyToastRef.current = null; return; }
+    if (!isActive || offlineCopyToastRef.current === pdfFile?.id) return;
+    offlineCopyToastRef.current = pdfFile?.id;
+    showToast('No signal: opened your offline copy. Changes are saved on this device and sync when you are back online.', 'info');
+  }, [annotationOfflineCopy, isActive, pdfFile?.id]);
+  // Deep test 2026-11-10: the owner archived or locked the document while
+  // this person had it open; the server turned their next mark down. Stop the
+  // tools and say why, instead of letting marks vanish one by one.
+  // Drawboard tells another open window at once when a document is deleted
+  // (PDF Pro run 11-10). The owner's other windows still get the row live
+  // once it is archived, so they say so without waiting for an edit.
+  const [archivedLive, setArchivedLive] = useState(false);
+  useEffect(() => {
+    setArchivedLive(false);
+    const documentId = pdfFile?.id;
+    if (!documentId || !cloudSyncEnabled || isDeviceDocumentId(documentId)) return undefined;
+    return subscribeDocumentLockState(documentId, (state) => setArchivedLive(Boolean(state?.archivedAt)));
+  }, [pdfFile?.id, cloudSyncEnabled]);
+  const editBlockedReason = annotationEditBlocked || (archivedLive ? 'archived' : null);
+  useEffect(() => {
+    if (!editBlockedReason || !isActive) return undefined;
+    const release = claimBodyReadOnly('annotation-edit-blocked');
+    const text = {
+      archived: 'This document was moved to Archive. Restore it from Archive to keep working on it.',
+      gone: 'This document was moved to Archive or deleted, or your access was removed. Your last change was not saved.',
+      locked: 'This document was locked. Your last change was not saved.',
+    }[editBlockedReason] || 'You can no longer edit this document. Your last change was not saved.';
+    showToast(text, 'error', { id: 'annotation-edit-blocked', duration: Infinity });
+    return () => {
+      release();
+      dismissToast('annotation-edit-blocked');
+    };
+  }, [editBlockedReason, isActive]);
+  // Deep test 2026-11-10 (Drawboard shows a red "You are currently offline"
+  // banner): losing the signal with a cloud document open says so at once
+  // and stays up until the signal is back, then "You are back online".
+  const deviceOnline = useBrowserOnline();
+  const deviceOnlineRef = useRef(deviceOnline);
+  // An open that failed with no signal says so, instead of "may be corrupted"
+  // (file-model.md follow-up, 2026-11-10).
+  const pdfLoadFailedOffline = Boolean(pdfLoadError) && pdfLoadError.kind !== 'pdfjs'
+    && (!deviceOnline || /failed to fetch|network|offline|internet|connection may have dropped/i.test(String(pdfLoadError.message || '')));
+  const offlineNoticeShown = !deviceOnline && isActive && !!cloudSyncEnabled
+    && !!pdfFile?.id && !isDeviceDocumentId(pdfFile?.id) && !annotationOfflineCopy;
+  useEffect(() => {
+    const cameBack = !deviceOnlineRef.current && deviceOnline;
+    deviceOnlineRef.current = deviceOnline;
+    if (offlineNoticeShown) {
+      showToast('You are offline. Keep working: your changes are saved on this device and sync when you are back online.', 'info', { id: 'device-offline-notice', duration: Infinity });
+      return () => dismissToast('device-offline-notice');
+    }
+    if (cameBack && isActive && cloudSyncEnabled && pdfFile?.id && !isDeviceDocumentId(pdfFile?.id)) {
+      showToast('You are back online. Your changes are syncing.', 'success');
+    }
+    return undefined;
+  }, [offlineNoticeShown, deviceOnline, isActive, cloudSyncEnabled, pdfFile?.id]);
   // Owner 2026-11-03: a page and its saved marks show in the same frame. The
   // pages stay blank sheets until the store has painted (or loaded) the
   // document's marks; never longer than PAGE_MARKS_HOLD_MAX_MS
   // (utils/pageMarksHold.js, styles/pageReveal.css).
-  const pageMarksStoreEnabled = Boolean(cloudSyncEnabled && pdfFile?.id && user?.id);
+  const pageMarksStoreEnabled = Boolean(cloudSyncEnabled && pdfFile?.id && annotationActorId);
   const [pageMarksHoldExpiredFor, setPageMarksHoldExpiredFor] = useState(null);
   // Marks this device already shows for the document (its own saved copy,
   // loaded with the PDF) count as known: the page shows with them.
@@ -22233,7 +22319,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // (its store on this device, or every change already in the cloud).
   const annotationDocHoldsWorkRef = useRef(() => false);
   annotationDocHoldsWorkRef.current = () => Boolean(
-    cloudSyncEnabled && pdfFile?.id && user?.id
+    cloudSyncEnabled && pdfFile?.id && annotationActorId
     && cloudSyncStatus?.healthy
     && (annotationDocHasLocalStore() || cloudSyncQueueSize === 0)
   );
@@ -22431,6 +22517,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // signed-in person and document project; libraryDraft is the marks the
   // Save to library card is open for.
   const [markLibraryEnabled] = useState(() => isFeatureOn('mark-library'));
+  const [stampToolEnabled] = useState(() => isFeatureOn('stamp-tool'));
+  const [insertImageEnabled] = useState(() => isFeatureOn('insert-image'));
   // Markups list (Nightly 'markup-list'): every mark in one rail panel.
   const [markupListEnabled] = useState(() => isFeatureOn('markup-list'));
   const [libraryDraft, setLibraryDraft] = useState(null);
@@ -27506,6 +27594,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       // w41: only while several marks are picked (the Arrow ends menu then
       // writes every picked arrow at once; see applyRestyleChange arrowEnds).
       setGroupArrowEnds: groupSummary ? handleGroupArrowEndsChange : null,
+      // Nightly 'line-endings': the one picked line's heads, as a string.
+      selectedLineEnds: groupSummary ? null : pickedLineEndsKey(selectedAnnot, selectedToolbarAnnotation?.pageNumber),
       onEnterTextEdit: handleEnterTextEditFromStrip,
       canEnterTextEdit: !groupSummary && !!(selectedToolbarCallout
         || (selectedToolbarAnnotation
@@ -33635,13 +33725,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       pageHeight: height,
     });
     if (!clipboard) return false;
-    let dx = Number.isFinite(offset?.dx) ? offset.dx : DUPLICATE_OFFSET_PAGE_UNITS;
-    let dy = Number.isFinite(offset?.dy) ? offset.dy : DUPLICATE_OFFSET_PAGE_UNITS;
-    // Cmd+D / menu Duplicate keeps the copy on the page, as paste does: a
-    // mark in the bottom-right corner gets its copy slid back inside.
-    if (!offset && clipboard.extent) {
-      ({ dx, dy } = clampNudgeDelta([clipboard.extent], dx, dy, width, height));
-    }
+    const onPage = duplicateOffsetOnPage(clipboard.extent, width, height);
+    const dx = Number.isFinite(offset?.dx) ? offset.dx : onPage.dx;
+    const dy = Number.isFinite(offset?.dy) ? offset.dy : onPage.dy;
     return commitFamilyPaste(offset?.toPage ?? pageNumber, clipboard, dx, dy);
   }, [collectFamilySelection, commitFamilyPaste]);
 
@@ -37453,7 +37539,8 @@ ${pageBlocks}
       canEditLayers: canRestoreFromHistory,
       markLibraryEnabled,
       markupListEnabled,
-      annotationsByPage: markupListEnabled ? annotationsByPage : null,
+      // The Markups list and the properties panel (Nightly) read the marks.
+      annotationsByPage: (markupListEnabled || isFeatureOn('properties-panel')) ? annotationsByPage : null,
       onOpenMarkup: openMarkupRow,
       pdfDisplayName,
     };
@@ -37958,15 +38045,17 @@ ${pageBlocks}
               <Icon name="document" size={48} />
             </div>
             <div style={{ fontSize: '18px', color: 'var(--text-2)', marginBottom: '8px', fontWeight: 500 }}>
-              Couldn’t open this PDF
+              {pdfLoadFailedOffline ? 'You’re offline' : 'Couldn’t open this PDF'}
             </div>
             <div style={{ fontSize: '13px', color: 'var(--text-3)', marginBottom: '8px' }}>
               {docName}
             </div>
             <div style={{ fontSize: '13px', color: 'var(--text-3)', marginBottom: '24px', lineHeight: 1.5 }}>
-              {pdfLoadError.kind === 'pdfjs'
-                ? 'The viewer couldn’t render this file. It may be corrupted or use an unsupported PDF feature.'
-                : 'The file couldn’t be parsed. It may be corrupted, encrypted, or not a valid PDF.'}
+              {pdfLoadFailedOffline
+                ? `This document isn’t kept on this device, so it needs a connection to open. Try again when you’re back online.${isFeatureOn('offline-docs') ? ' Next time, use Make available offline to open it with no signal.' : ''}`
+                : pdfLoadError.kind === 'pdfjs'
+                  ? 'The viewer couldn’t render this file. It may be corrupted or use an unsupported PDF feature.'
+                  : 'The file couldn’t be parsed. It may be corrupted, encrypted, or not a valid PDF.'}
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'center' }}>
               <button
@@ -38226,7 +38315,8 @@ ${pageBlocks}
         },
       })}
 
-      {markLibraryEnabled && (
+      {/* Nightly 'stamp-tool' places its presets the same way. */}
+      {(markLibraryEnabled || stampToolEnabled || insertImageEnabled) && (
         <MarkLibraryPlacementLayer active={isActive !== false} rootRef={pdfjsWrapperRef} place={placeLibraryItemAt} />
       )}
       {markLibraryEnabled && (
@@ -40362,6 +40452,7 @@ ${pageBlocks}
                 {[
                   { id: 'pen', label: 'Pen', iconName: 'pen' },
                   { id: 'highlighter', label: 'Highlighter', iconName: 'highlighter' },
+                  ...(tapeToolEnabled ? [{ id: 'tape', label: 'Tape', iconName: 'tape' }] : []),
                   { id: 'eraser', label: 'Eraser', iconName: 'eraser' }
                 ].map(t => {
                   const isHighlighter = t.id === 'highlighter';
@@ -41105,7 +41196,11 @@ ${pageBlocks}
               <>
                 {[
                   { id: 'text', label: 'Text', iconName: 'textBox' },
-                  { id: 'callout', label: 'Callout', iconName: 'callout' }
+                  { id: 'callout', label: 'Callout', iconName: 'callout' },
+                  // Nightly 'stamp-tool': opens Drawboard's Stamp card.
+                  ...(isFeatureOn('stamp-tool') ? [{ id: 'stamp', label: 'Stamp', iconName: 'stamp', picker: true }] : []),
+                  // Nightly 'insert-image': picks a picture and drops it on the page.
+                  ...(isFeatureOn('insert-image') ? [{ id: 'image', label: 'Image', iconName: 'image', action: true }] : []),
                   // TODO: Revisit the user-created Note tool later. Imported
                   // PDF Text/sticky-note annotations still render through
                   // pdfAnnotationImporter + the normal PDF annotation layers.
@@ -41122,9 +41217,19 @@ ${pageBlocks}
                   const caretAttr = isUnderlineMenu ? 'data-underline-caret-button' : 'data-strike-caret-button';
                   const isActiveUnderline = isUnderlineMenu && (activeTool === 'underline' || activeTool === 'squiggly');
                   const isActiveStrike = isStrikeMenu && activeTool === 'strikeout';
-                  const isActive = isActiveUnderline || isActiveStrike || activeTool === t.id;
+                  const isActive = t.picker ? stampPickerOpen : (isActiveUnderline || isActiveStrike || activeTool === t.id);
 
                   const onMainClick = (e) => {
+                    if (t.picker) {
+                      setStampPickerOpen(!stampPickerOpen);
+                      return;
+                    }
+                    if (t.action) {
+                      if (stampPickerOpen) setStampPickerOpen(false);
+                      pickImageToInsert();
+                      return;
+                    }
+                    if (stampPickerOpen) setStampPickerOpen(false);
                     if (isUnderlineMenu) {
                       e.stopPropagation();
                       setActiveTool(activeTool === 'squiggly' ? 'squiggly' : 'underline');

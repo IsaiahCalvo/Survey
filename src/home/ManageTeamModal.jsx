@@ -890,7 +890,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
             <span style={{ fontSize: 11, color: INK_200, letterSpacing: 0, fontWeight: 600 }}>
               {memberList.length} member{memberList.length === 1 ? "" : "s"}{pendingInvites.length ? ` · ${pendingInvites.length} pending` : ""}
             </span>
-            <button onClick={onClose} className="hub-btn hub-btn--primary">Done</button>
+            <button onClick={onClose} className="hub-btn">Done</button>
           </div>
         </div>
       </div>

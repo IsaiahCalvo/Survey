@@ -18,7 +18,9 @@ test('word buttons share the icon press model', () => {
 
 test('desktop Aa and Partial / Whole wear it', () => {
   assert.match(shell, /aria-label="Edit text"[\s\S]{0,120}data-press-label=""\s*>\s*<span>Aa<\/span>/);
-  assert.match(shell, /aria-label=\{full\}\s*data-press-label=""\s*>\s*<span>\{short\}<\/span>/);
+  // DELIBERATE CHANGE (2026-11-10, Nightly 'eraser-look'): the same buttons
+  // show Drawboard's icons under the flag and the words without it.
+  assert.match(shell, /aria-label=\{full\}\s*data-press-label=""\s*data-eraser-mode=\{mode\}\s*>\s*\{icon \? <Icon [^>]*\/> : <span>\{short\}<\/span>\}/);
 });
 
 test('phone Aa and the strip segments wear it', () => {

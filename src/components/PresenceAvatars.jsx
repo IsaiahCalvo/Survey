@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 // KAL-65: hover layers paint from the ONE shared tooltip surface so the people
 // list matches the sync status hint and the rail tooltips beside it.
 import { TOOLTIP_SURFACE } from './Tooltip';
+import SpotlightMeButton from '../spotlight/SpotlightMeButton.jsx';
 import {
   PRESENCE_STATE_LABEL,
   assignPresenceTints,
@@ -244,6 +245,8 @@ export default function PresenceAvatars({
                 </span>
               </div>
             ))}
+            {/* Nightly 'spotlight': share your view with the others here. */}
+            <SpotlightMeButton onDone={() => { setPinnedOpen(false); setHoverOpen(false); }} />
           </div>
         </div>
       )}

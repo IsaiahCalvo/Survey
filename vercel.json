@@ -4,6 +4,9 @@
     "deploymentEnabled": false
   },
   "rewrites": [
+    { "source": "/mcp", "destination": "https://cvamwtpsuvxvjdnotbeg.supabase.co/functions/v1/survey-mcp?via=site" },
+    { "source": "/mcp/.well-known/oauth-protected-resource", "destination": "https://cvamwtpsuvxvjdnotbeg.supabase.co/functions/v1/survey-mcp/.well-known/oauth-protected-resource?via=site" },
+    { "source": "/.well-known/oauth-protected-resource/mcp", "destination": "https://cvamwtpsuvxvjdnotbeg.supabase.co/functions/v1/survey-mcp/.well-known/oauth-protected-resource?via=site" },
     { "source": "/welcome", "destination": "/welcome/index.html" },
     { "source": "/features", "destination": "/features/index.html" },
     { "source": "/devices", "destination": "/devices/index.html" },
@@ -42,7 +45,7 @@
     {
       "source": "/((?:welcome|features|devices|pricing|faq|status|delete-account|whats-new|use-with-ai|use-cases|compare|tools)(?:/.*)?|(?:privacy|terms|404|google-connected)\\.html)",
       "headers": [
-        { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self' 'sha256-wsmnxD6kqdZZ/V2wQ85d92sMux2lvh7NN1y5/Y5SS5c=' 'sha256-WHLZ/YELHqy+opU9IqvqRd2140XchvBrOUUNPpZayho=' 'sha256-ZJ/3KoncXu7S1ZZjcELQ9DkWEtEIg1s9ty/WTogYPW8=' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self' data: blob: https://api.github.com; worker-src 'self' blob:; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" }
+        { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self' 'sha256-wsmnxD6kqdZZ/V2wQ85d92sMux2lvh7NN1y5/Y5SS5c=' 'sha256-WHLZ/YELHqy+opU9IqvqRd2140XchvBrOUUNPpZayho=' 'sha256-elZ4Aja5Hkq1Kd3D+fPP5jUgSXgIUGgD0TUGc15hE/4=' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self' data: blob: https://api.github.com; worker-src 'self' blob:; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" }
       ]
     },
     {

@@ -86,6 +86,8 @@ test('a Home tap hands the library row to the viewer without downloading it firs
       onDocumentSelect: (...args) => { calls.opens.push(args); },
       onDocumentOpenStart() {},
       onDocumentOpenEnd() {},
+      // Home extras (flag home-columns): a tap stamps Last opened first.
+      recordDocumentOpened: (id) => { calls.recorded = id; },
       deleteDocumentEverywhere: () => { calls.deletes++; },
       handleFileNotFound: () => { calls.deletes++; },
       setDocuments: () => { calls.listUpdates++; },
@@ -97,6 +99,7 @@ test('a Home tap hands the library row to the viewer without downloading it firs
   assert.equal(calls.deletes, 0);
   assert.equal(calls.listUpdates, 0);
   assert.equal(calls.opens.length, 1);
+  assert.equal(calls.recorded, 'doc-1');
   const [opened, filePath] = calls.opens[0];
   assert.equal(filePath, 'owner/hash.pdf');
   assert.equal(opened.id, 'doc-1');
@@ -126,6 +129,7 @@ for (const error of [
         // The open itself fails (the viewer could not take the document).
         onDocumentSelect: () => { throw error; },
         onDocumentOpenStart() {},
+        recordDocumentOpened() {},
         onDocumentOpenEnd: () => { calls.openEnds++; },
         deleteDocumentEverywhere: () => { calls.deletes++; },
         handleFileNotFound: () => { calls.deletes++; },

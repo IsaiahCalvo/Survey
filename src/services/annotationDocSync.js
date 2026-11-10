@@ -122,6 +122,11 @@ import {
   setLiveCursorSink,
 } from './annotationLiveCursors.js';
 import {
+  SPOTLIGHT_VERSION,
+  applyRemoteSpotlight,
+  setSpotlightSink,
+} from './annotationSpotlight.js';
+import {
   bytesToPgHex,
   gunzipBytes as gunzip,
   mergeCheckpointWithUpdate,
@@ -503,6 +508,10 @@ export async function openAnnotationDoc({
     // Cold open: the snapshot, then any later updates, waiting to go into
     // localPersistenceDoc once the open is done (deferSnapshotToLocalPersistence).
     deferredPersistence: null,
+    // Cold open, once the open is done: every update stored in the IndexedDB
+    // copy as its own bytes, in order, while localPersistenceDoc stays empty
+    // (null once that doc is filled). See storeLocalPersistenceRaw.
+    localPersistenceRaw: null,
     // The open's clean-cache receipt, written once the open is done (writeOpenReceipt).
     openReceiptPending: false,
     onLocalPersistenceUpdate: null,
@@ -1014,6 +1023,7 @@ export async function openAnnotationDoc({
 
 function destroyLocalPersistence(state) {
   state.deferredPersistence = null;
+  state.localPersistenceRaw = null;
   if (state.onLocalPersistenceUpdate) {
     try { state.doc.off('update', state.onLocalPersistenceUpdate); } catch { /* */ }
     state.onLocalPersistenceUpdate = null;
@@ -1051,6 +1061,7 @@ function attachLocalPersistenceMirror(state) {
     // local one until its checkpoint is stored) is written at once: fill the
     // copy with what waits for it first.
     if (state.deferredPersistence) flushDeferredPersistence(state);
+    if (storeLocalPersistenceRaw(state, update)) return;
     // This is one-way only: the provider observes `target`; no listener ever
     // applies target updates back to the live doc, so there is no update loop.
     Y.applyUpdate(target, update, HYDRATE_ORIGIN);
@@ -1075,6 +1086,7 @@ function releasePersistedCandidate(state) {
 // a way the alias does not allow for.
 function freezePersistedCandidate(state) {
   if (!state.persistedDocIsLocalPersistence || !state.persistedDoc) return;
+  fillLocalPersistence(state);
   const frozen = createDetachedYDoc(
     `persisted:${state.documentId}:${state.writerId}:frozen`,
   );
@@ -1096,6 +1108,7 @@ function applyToLocalPersistence(state, update) {
     return;
   }
   if (localPersistenceNearTrim(state)) freezePersistedCandidate(state);
+  if (storeLocalPersistenceRaw(state, update)) return;
   Y.applyUpdate(state.localPersistenceDoc, update, HYDRATE_ORIGIN);
 }
 
@@ -1147,11 +1160,7 @@ function applySnapshotToLocalPersistence(state, bytes) {
     doc.on('update', store);
   }
   if (docIsEmpty(doc)) return; // nothing applied: Yjs would emit nothing
-  // IndexedDB clones the whole buffer behind a view: store exact bytes.
-  const own = bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength
-    ? bytes
-    : bytes.slice();
-  store(own, HYDRATE_ORIGIN);
+  store(ownBytes(bytes), HYDRATE_ORIGIN);
 }
 
 // Open speed (cold open, 2026-10-27): filling this device's offline copy with
@@ -1172,11 +1181,73 @@ function deferSnapshotToLocalPersistence(state, bytes) {
   state.deferredPersistence = [bytes];
 }
 
+// IndexedDB clones the whole buffer behind a view: store exact bytes.
+function ownBytes(bytes) {
+  return bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength
+    ? bytes
+    : bytes.slice();
+}
+
+// Cold open, phones (2026-11-10): filling the empty IndexedDB copy decoded
+// the whole snapshot on this thread once more, one 0.35-0.5 s freeze a few
+// seconds after the open (big drawing set). Nothing reads that doc's content
+// after the open unless a rare path below asks for it, and y-indexeddb loads
+// a copy by applying its stored updates in order. So every update is stored
+// as its own bytes, in the order it would have been applied, and the doc
+// stays empty: a later load reaches the same state. The bytes are kept
+// (less memory than the filled doc) to fill the doc the first time something
+// does read it (fillLocalPersistence). y-indexeddb's own compaction re-reads
+// and applies every update stored since the load, which fills the doc too.
+function storeLocalPersistenceRaw(state, update) {
+  const raw = state.localPersistenceRaw;
+  if (!raw) return false;
+  const doc = state.localPersistenceDoc;
+  const store = idbStoreListener(state.idbProvider, doc);
+  if (!doc || !store || !state.idbProvider.db || !docIsEmpty(doc)) {
+    fillLocalPersistence(state);
+    return false;
+  }
+  const own = ownBytes(update);
+  raw.push(own);
+  store(own, HYDRATE_ORIGIN);
+  return true;
+}
+
+function fillLocalPersistence(state) {
+  const raw = state.localPersistenceRaw;
+  if (!raw) return;
+  state.localPersistenceRaw = null;
+  const doc = state.localPersistenceDoc;
+  if (!doc) return;
+  // Already stored: apply without the provider's store (Yjs skips what the
+  // doc already holds, such as after a compaction filled it).
+  const store = idbStoreListener(state.idbProvider, doc);
+  if (store) doc.off('update', store);
+  try {
+    Y.transact(doc, () => {
+      for (const update of raw) Y.applyUpdate(doc, update, HYDRATE_ORIGIN);
+    }, HYDRATE_ORIGIN);
+  } finally {
+    if (store) doc.on('update', store);
+  }
+}
+
 function flushDeferredPersistence(state) {
   const queued = state.deferredPersistence;
   if (!queued) return;
   state.deferredPersistence = null;
   if (!state.localPersistenceDoc) return;
+  const doc = state.localPersistenceDoc;
+  if (
+    !state.localPersistenceRaw
+    && idbStoreListener(state.idbProvider, doc)
+    && state.idbProvider.db
+    && docIsEmpty(doc)
+  ) {
+    state.localPersistenceRaw = [];
+    for (const update of queued) storeLocalPersistenceRaw(state, update);
+    return;
+  }
   applySnapshotToLocalPersistence(state, queued[0]);
   for (let i = 1; i < queued.length; i += 1) applyToLocalPersistence(state, queued[i]);
 }
@@ -2627,6 +2698,7 @@ async function loadFromBackend(state) {
     // w29: the saved copy hydrated into doc and acceptedDoc already contains
     // this exact row (startSnapshotPrefetch). Same baseline as applying it.
     if (state.localPersistenceDoc) {
+      fillLocalPersistence(state);
       // The local mirror normally receives the row too; give it whatever of
       // the accepted state it lacks (usually nothing).
       applyToLocalPersistence(
@@ -2711,6 +2783,11 @@ function writeOpenReceipt(state) {
 }
 
 async function writeOpenReceiptNow(state) {
+  // 2026-11-10: encoded and saved in the checkpoint worker, from its mirror
+  // of acceptedDoc as it is in this tick (same rule as the periodic
+  // compaction). On this thread it was one ~0.3-0.5 s task right after a
+  // first open on a phone, when the user starts to scroll.
+  if (await writeOpenReceiptInWorker(state)) return;
   const acceptedUpdate = encodeSnapshot(state.acceptedDoc);
   // The checkpoint body was not downloaded (already held locally): estimate
   // its gzipped size for the checkpoint debounce (w30; ~4:1 on real marks).
@@ -2735,6 +2812,42 @@ async function writeOpenReceiptNow(state) {
     },
   );
   noteCleanCompaction(state, compacted, token, outcome);
+}
+
+// True when the worker saved it (or decided there was nothing to save).
+async function writeOpenReceiptInWorker(state) {
+  if (
+    state.outbox?.storage !== 'indexeddb'
+    || !state.checkpointMirror
+    || state.checkpointMirror.broken
+    // No size known yet (no snapshot downloaded or held): the encode here
+    // sizes the checkpoint debounce, and such a document is small anyway.
+    || !state.lastSnapshotBytes
+  ) return false;
+  const token = newCleanCheckpointToken();
+  try {
+    const inWorker = compactAcceptedInWorker(state.checkpointMirror, {
+      documentId: state.documentId,
+      actorUserId: state.actorUserId,
+      update: null,
+      force: true,
+      expectedIncarnation: state.documentIncarnation,
+      expectedVector: Y.encodeStateVector(state.acceptedDoc),
+      options: {
+        covered: cleanCoverage(state),
+        identity: currentSnapshotIdentity(state),
+        token,
+      },
+    });
+    const result = inWorker ? await inWorker : null;
+    if (!result) return false;
+    const outcome = result.merged != null ? { merged: result.merged } : {};
+    noteCleanCompaction(state, result.compacted, token, outcome);
+    return true;
+  } catch (error) {
+    console.warn('[annotationDocSync] saving the opened copy in the worker failed; saving here', error?.message);
+    return false;
+  }
 }
 
 async function writeOpenReceiptWhenIdle(state) {
@@ -5708,6 +5821,19 @@ function acquireLiveChannel(state) {
             && bus.send(payload)
           ),
         });
+        // Spotlight (Nightly): the presenter's view and who follows it go
+        // out on the same channel (annotationSpotlight.js).
+        state.unregisterSpotlightSink?.();
+        state.unregisterSpotlightSink = setSpotlightSink({
+          documentId: state.documentId,
+          writerId: state.writerId,
+          send: (payload) => (
+            state.liveBus === bus
+            && !state.destroyed
+            && !state.closePromise
+            && bus.send(payload)
+          ),
+        });
       }
     })
     .catch((error) => {
@@ -6059,6 +6185,11 @@ function onLivePreviewMessage(state, payload) {
   if (payload?.v === LIVE_CURSOR_VERSION) {
     // KAL-399: where another screen is pointing (its own rate guard).
     applyRemoteLiveCursor(state.documentId, payload, { ownWriterId: state.writerId });
+    return;
+  }
+  if (payload?.v === SPOTLIGHT_VERSION) {
+    // Spotlight: someone presenting, following or stopping (own rate guard).
+    applyRemoteSpotlight(state.documentId, payload, { ownWriterId: state.writerId });
     return;
   }
   if (!payload || payload.v !== 1) return;
@@ -6666,6 +6797,8 @@ function closeLivePreviews(state) {
   clearLiveStrokes(state.documentId);
   state.unregisterLiveCursorSink?.();
   state.unregisterLiveCursorSink = null;
+  state.unregisterSpotlightSink?.();
+  state.unregisterSpotlightSink = null;
   clearLiveCursors(state.documentId);
   if (state.livePreviews.size > 0 || state.liveEdits.size > 0 || state.liveMarkerEdits.size > 0) {
     state.livePreviews.clear();
