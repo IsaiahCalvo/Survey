@@ -237,7 +237,10 @@ export function PageGridSettingsPanel({ on, toggle, phone = false, showSwitch = 
                 />
                 {phone ? (
                     <select aria-label="Grid unit" value={unit} onChange={(e) => pickUnit(e.target.value)}>
-                        {unitOptions.map((u) => <option key={u.value} value={u.value}>{u.label}</option>)}
+                        {/* The phone box is 52px wide: the short word only ("ft", not
+                            "ft (drawing)"); the hint below says drawing units follow
+                            each page's scale. */}
+                        {unitOptions.map((u) => <option key={u.value} value={u.value}>{u.value}</option>)}
                     </select>
                 ) : (
                     <ValueSelect
