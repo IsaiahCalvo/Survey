@@ -824,7 +824,8 @@ const BookmarksPanel = ({
   const [targetGroupId, setTargetGroupId] = useState(null);
   const [addToGroupBookmarks, setAddToGroupBookmarks] = useState([]);
   const menuRef = useRef(null);
-  const createMenuInsideRefs = useMemo(() => [menuRef], []);
+  const createMenuRef = useRef(null);
+  const createMenuInsideRefs = useMemo(() => [menuRef, createMenuRef], []);
 
   // Drag-and-drop state
   const [activeId, setActiveId] = useState(null);
@@ -2143,8 +2144,13 @@ const BookmarksPanel = ({
             aria-expanded={showCreateMenu}
             onClick={() => setShowCreateMenu(!showCreateMenu)}
           />
-              {showCreateMenu && (
-                <div style={{
+              {/* In the rail's title row the menu spans the row: the icons'
+                  own box is only as wide as two buttons (and their loadout
+                  effect makes it the positioned box), which squeezed the
+                  menu to 42px (Drawboard PDF Pro trial audit 2026-11-09). */}
+              {showCreateMenu && (() => {
+                const createMenu = (
+                <div ref={createMenuRef} style={{
                   position: 'absolute',
                   // Opens DOWN from the header now that Add lives there (was the
                   // footer bar, where it opened upward).
@@ -2282,7 +2288,10 @@ const BookmarksPanel = ({
                     </button>
                   </div>
                 </div>
-              )}
+                );
+                const row = headActionsHost?.parentElement;
+                return row ? createPortal(createMenu, row) : createMenu;
+              })()}
         </div>
       </>
       );

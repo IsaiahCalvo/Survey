@@ -122,11 +122,13 @@ export function QuickColourDots({
   platform = 'desktop',
   onOpenPicker,
   customActive,
+  colours = QUICK_COLOURS,
+  names = QUICK_COLOUR_NAMES,
 }) {
   const chromeTip = useTooltip();
   const current = normaliseQuickColour(value);
   const showCustom = typeof onOpenPicker === 'function';
-  const customIsCurrent = customActive ?? (showCustom && isCustomQuickColour(value));
+  const customIsCurrent = customActive ?? (showCustom && isCustomQuickColour(value, colours));
   return (
     <div
       className={`quick-style quick-style--colours quick-style--${platform}`}
@@ -134,8 +136,8 @@ export function QuickColourDots({
       role="group"
       aria-label="Color"
     >
-      {QUICK_COLOURS.map((colour) => {
-        const name = QUICK_COLOUR_NAMES[colour] || colour;
+      {colours.map((colour) => {
+        const name = names[colour] || colour;
         const isCurrent = normaliseQuickColour(colour) === current;
         return (
           <button

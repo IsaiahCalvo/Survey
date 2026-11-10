@@ -157,6 +157,98 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Measure: Polylength, Wall area and Volume (area or outline x a depth)',
     stage: 'beta',
   }),
+  'measure-scale-chip': Object.freeze({
+    label: 'Measure: a "No scale on this page" chip with Set scale while a measure tool is armed',
+    stage: 'beta',
+  }),
+  'eraser-keeps-shapes': Object.freeze({
+    label: 'Partial eraser only cuts ink and leaves shapes, text and callouts alone',
+    stage: 'beta',
+  }),
+  'tool-quick-colours': Object.freeze({
+    label: 'Highlighter quick colours are highlighter colours (yellow, green, pink)',
+    stage: 'beta',
+  }),
+  'measure-keys': Object.freeze({
+    label: 'Alt+Shift+L / P / A (and Q / V) pick a measure tool',
+    stage: 'beta',
+  }),
+  'align-marks': Object.freeze({
+    label: 'Align and space picked marks (mark menu)',
+    stage: 'beta',
+  }),
+  'markup-list': Object.freeze({
+    label: 'Markups list: every mark in one searchable list, by kind and person, with a CSV copy',
+    stage: 'beta',
+  }),
+  'word-wrap': Object.freeze({
+    label: 'New text boxes and callouts wrap at spaces, not mid-word',
+    stage: 'beta',
+  }),
+  'paste-across-documents': Object.freeze({
+    label: 'Copy marks in one document and paste them in another',
+    stage: 'beta',
+  }),
+  'shift-square': Object.freeze({
+    label: 'Hold Shift while drawing a rectangle or ellipse for a square or circle',
+    stage: 'beta',
+  }),
+  'phone-mark-more': Object.freeze({
+    label: 'Phone: a More button on the picked-mark bar opens the full mark menu',
+    stage: 'beta',
+  }),
+  'poly-back-step': Object.freeze({
+    label: 'Backspace or Undo while placing a polygon or polyline takes the last point off',
+    stage: 'beta',
+  }),
+  'home-download': Object.freeze({
+    label: 'Download a document, with its marks, from the Home list',
+    stage: 'beta',
+  }),
+  'new-document': Object.freeze({
+    label: 'New blank document from Home (size, pages, lined, grid or dots)',
+    stage: 'beta',
+  }),
+  'default-units': Object.freeze({
+    label: 'Default units setting: imperial or metric for page scale and new documents',
+    stage: 'beta',
+  }),
+  'menu-keys': Object.freeze({
+    label: 'Keys shown on the mark right-click menu rows',
+    stage: 'beta',
+  }),
+  'zoom-to-area': Object.freeze({
+    label: 'Zoom to an area: Ctrl+Shift+drag draws a box and the view fills with it',
+    stage: 'beta',
+  }),
+  'guest-sample': Object.freeze({
+    label: 'Try the sample drawing signed out, as a try-out that is not saved',
+    stage: 'beta',
+  }),
+  'viewer-share': Object.freeze({
+    label: 'Share from inside a document: a Share button in the viewer top bar',
+    stage: 'beta',
+  }),
+  'focus-mode': Object.freeze({
+    label: 'Focus mode: hide the tab strip and side rails, full screen (Ctrl/Cmd+Shift+F)',
+    stage: 'beta',
+  }),
+  'search-options': Object.freeze({
+    label: 'Search: Match case and Whole word',
+    stage: 'beta',
+  }),
+  'hide-marks': Object.freeze({
+    label: 'Hide all marks from the right rail, with a chip to bring them back',
+    stage: 'beta',
+  }),
+  'tab-keys': Object.freeze({
+    label: 'Alt+Shift+] and Alt+Shift+[ step through the open documents',
+    stage: 'beta',
+  }),
+  'back-button': Object.freeze({
+    label: 'Back (browser or Android) closes the open sheet, then the document, instead of leaving Survey',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

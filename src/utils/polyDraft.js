@@ -139,6 +139,19 @@ export function addPolyDraftPoint(draft, point, { shiftKey = false } = {}) {
 }
 
 /**
+ * Backspace (or Undo) while placing: take the last vertex off and pull the
+ * rubber band back to the one before (Drawboard PDF Pro trial audit
+ * 2026-11-09, both apps got this wrong). Null when only the first point was
+ * left, which ends the draft.
+ */
+export function removeLastPolyDraftPoint(draft) {
+  if (!draft || !isPolyDraftTool(draft.tool)) return draft;
+  if (draft.points.length <= 1) return null;
+  const points = draft.points.slice(0, -1);
+  return { ...draft, points, preview: draft.preview ? { ...draft.preview } : { ...points[points.length - 1] }, snapToFirst: false };
+}
+
+/**
  * Move the rubber-band end. When the cursor is inside the first vertex's
  * magnetic radius (and closing is legal) the preview snaps onto that vertex
  * so the user SEES the shape close before committing to the click.
@@ -284,4 +297,17 @@ export function normalizePolyPointsToLocal(points) {
     top: minY,
     points: list.map((p) => ({ x: p.x - minX, y: p.y - minY })),
   };
+}
+
+// Undo while placing (Nightly, 'poly-back-step'). The viewer's Cmd/Ctrl+Z
+// listener runs before any page layer's, so the page layer with a draft open
+// registers its step-back here and the viewer asks it first.
+let draftUndo = null;
+export function setPolyDraftUndo(stepBack) {
+  draftUndo = typeof stepBack === 'function' ? stepBack : null;
+  return () => { if (draftUndo === stepBack) draftUndo = null; };
+}
+/** True when a draft took the Undo (its last point came off). */
+export function stepBackPolyDraftForUndo() {
+  return draftUndo ? draftUndo() !== false : false;
 }
