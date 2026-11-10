@@ -533,12 +533,30 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         fromDocumentId: archiveDocId,
         toDocumentId: newDocId,
       });
-      if (total > 0) showToast(`Brought ${total} mark${total === 1 ? '' : 's'} across from the old version`, 'success');
+      // Comment threads follow the marks (Nightly, 'mark-comments').
+      const comments = isFeatureOn('mark-comments') ? await carryCommentsToReplacement(archiveDocId, newDocId) : 0;
+      const parts = [];
+      if (total > 0) parts.push(`${total} mark${total === 1 ? '' : 's'}`);
+      if (comments > 0) parts.push(`${comments} comment${comments === 1 ? '' : 's'}`);
+      if (parts.length) showToast(`Brought ${parts.join(' and ')} across from the old version`, 'success');
       return true;
     } catch (err) {
       console.error('Could not bring the marks across to the new version:', err);
       showToast('The new version was added, but its marks couldn’t come across, so the old copy stays in your list.');
       return false;
+    }
+  };
+
+  // Best effort: the marks already came across, so a failed comment copy only
+  // says so; the old copy keeps its threads either way.
+  const carryCommentsToReplacement = async (fromDocumentId, toDocumentId) => {
+    try {
+      const { carryMarkComments } = await import('./services/markComments.js');
+      return await carryMarkComments(supabase, fromDocumentId, toDocumentId);
+    } catch (err) {
+      console.error('Could not bring the comments across to the new version:', err);
+      showToast('The comments couldn’t come across. They are still on the old version.');
+      return 0;
     }
   };
 

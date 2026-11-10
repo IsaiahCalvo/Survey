@@ -2691,7 +2691,7 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
   );
 }
 
-export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedInUser = null, onOpenPanel, onAuxPanelStateChange, auxCloseRequestKey = 0 }) {
+export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedInUser = null, onOpenPanel, onAuxPanelStateChange, auxCloseRequestKey = 0, versions = null }) {
   const tip = useTooltip();
   const [openCategory, setOpenCategory] = useState(null);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -3301,6 +3301,22 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                 <Icon name="edit" size={16} color="currentColor" />
                 Rename document…
               </button>
+              {/* Version history (Nightly, flag 'document-versions'): the
+                  desktop's "v3" button, for the phone. Opens the same list,
+                  and from there an older version or the overlay compare. */}
+              {versions && (
+                <button
+                  type="button"
+                  data-mobile-document-versions="true"
+                  onClick={() => {
+                    setMoreOpen(false);
+                    versions.onOpen();
+                  }}
+                >
+                  <Icon name="history" size={16} color="currentColor" />
+                  {versions.label}
+                </button>
+              )}
               {/* RULED 2026-09-22 (owner): "More = Export + Save log". Save log
                   used to be gated on window.Capacitor.isNativePlatform(), so the
                   menu on web mobile held ONE row and the ruling's second item

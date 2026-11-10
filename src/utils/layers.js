@@ -97,6 +97,13 @@ export function resolveActiveLayerId(state, id) {
   return current.layers.some((l) => l.id === id) ? id : DEFAULT_LAYER_ID;
 }
 
+/** The active layer when it is hidden ({ id, name }), else null: a mark drawn now would not show. */
+export function hiddenActiveLayer(state, activeId) {
+  if (!activeId) return null;
+  const layer = normalizeLayerState(state).layers.find((l) => l.id === activeId);
+  return layer && !layer.visible ? { id: layer.id, name: layer.name } : null;
+}
+
 export function resolveLayerId(object, state) {
   const id = object?.layerId;
   if (id == null || id === '') return DEFAULT_LAYER_ID;

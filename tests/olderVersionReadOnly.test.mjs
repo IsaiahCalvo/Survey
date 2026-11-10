@@ -1,0 +1,62 @@
+// Drawboard deep test follow-ups: an older version opens read-only, comment
+// threads follow a new version, Versions on the phone, and a warning when a
+// mark lands on a hidden layer.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+
+import { addLayer, hiddenActiveLayer, setLayerVisible, DEFAULT_LAYER_ID } from '../src/utils/layers.js';
+import { carryMarkComments } from '../src/services/markComments.js';
+
+const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+
+test('hiddenActiveLayer names the active layer only while it is hidden', () => {
+  const { state, layer } = addLayer(null, { name: 'Electrical', id: 'layer-e' });
+  assert.equal(hiddenActiveLayer(state, 'layer-e'), null);
+  const hidden = setLayerVisible(state, 'layer-e', false);
+  assert.deepEqual(hiddenActiveLayer(hidden, layer.id), { id: 'layer-e', name: 'Electrical' });
+  assert.equal(hiddenActiveLayer(hidden, DEFAULT_LAYER_ID), null);
+  assert.deepEqual(hiddenActiveLayer(setLayerVisible(hidden, DEFAULT_LAYER_ID, false), DEFAULT_LAYER_ID), { id: DEFAULT_LAYER_ID, name: 'Default layer' });
+  assert.equal(hiddenActiveLayer(hidden, 'gone'), null);
+  assert.equal(hiddenActiveLayer(hidden, null), null);
+});
+
+test('carryMarkComments calls the function and reads the count', async () => {
+  const calls = [];
+  const client = { rpc: async (name, args) => { calls.push([name, args]); return { data: 3, error: null }; } };
+  assert.equal(await carryMarkComments(client, 'old', 'new'), 3);
+  assert.deepEqual(calls, [['carry_mark_comments', { p_from_document_id: 'old', p_to_document_id: 'new' }]]);
+});
+
+test('carryMarkComments: 0 on a server without the function, throws otherwise', async () => {
+  const missing = { rpc: async () => ({ data: null, error: { code: 'PGRST202', message: 'not found' } }) };
+  assert.equal(await carryMarkComments(missing, 'a', 'b'), 0);
+  const refused = { rpc: async () => ({ data: null, error: { code: '42501', message: 'Document not found' } }) };
+  await assert.rejects(carryMarkComments(refused, 'a', 'b'), /Document not found/);
+});
+
+test('an older version opens in the zero-writes lock mode with its own bar', () => {
+  const banner = read('src/components/DocumentLockBanner.jsx');
+  assert.match(banner, /const isLocked = lockedAt != null \|\| readOnlyWithoutLock === true;/);
+  // The lock banner itself only shows for a real lock.
+  assert.match(banner, /if \(lockedAt == null\) return null;/);
+  const shell = read('src/AppShell.jsx');
+  assert.match(shell, /readOnlyWithoutLock=\{Boolean\(tab\.file\?\.superseded_by\) \|\| \(tab\.id === activeTabId && Boolean\(olderVersionOpen\)\)\}/);
+  assert.match(shell, /<OlderVersionBar/);
+  // The phone's More menu lists Versions.
+  assert.match(shell, /versions=\{documentVersions\.shown/);
+  assert.match(read('src/mobile/MobilePdfViewerChrome.jsx'), /data-mobile-document-versions="true"/);
+});
+
+test('the markup count is never sent from a read-only (locked or older) copy', () => {
+  assert.match(read('src/PDFViewer.jsx'), /if \(yjsDocRole === 'viewer' \|\| yjsAccessRevoked \|\| documentLocked\) return undefined;/);
+});
+
+test('comment copy: editors of both copies only, no repeat copies, no repeat mention emails', () => {
+  const sql = read('supabase/migrations/20261110138000_carry_mark_comments.sql');
+  assert.match(sql, /user_can_access_document\(v_from\.id, 'editor'\)/);
+  assert.match(sql, /user_can_access_document\(v_to\.id, 'editor'\)/);
+  assert.match(sql, /ON CONFLICT \(document_id, carried_from\) WHERE carried_from IS NOT NULL DO NOTHING/);
+  assert.match(sql, /COALESCE\(c\.mentions_notified_at, now\(\)\)/);
+  assert.match(sql, /REVOKE ALL ON FUNCTION public\.carry_mark_comments\(uuid, uuid\) FROM PUBLIC, anon;/);
+});

@@ -398,7 +398,7 @@ import { markLibraryStore } from './markLibrary/markLibraryStore.js';
 import { LIBRARY_PAYLOAD_MAX_BYTES, libraryPayloadBytes, libraryPayloadFromClipboard, planLibraryPlacement } from './markLibrary/markLibraryModel.js';
 import { fitPlacedTextBoxes, resolveLibraryDrop } from './markLibrary/markLibraryViewer.js';
 import { PAGE_GRID_SETTINGS_EVENT, applyPageGridPageSteps, applyPageGridSettings, loadPageGridSettings } from './utils/pageGrid';
-import { LAYERS_META_KEY, DEFAULT_LAYER_ID, DEFAULT_LAYER_STATE, normalizeLayerState, hiddenLayerIdSet, resolveActiveLayerId, withoutHiddenLayers, calloutsWithoutHiddenLayers, stampNewObjectsOnLayer, stampNewMarksByPage, selectableMarkIndices } from './utils/layers.js';
+import { LAYERS_META_KEY, DEFAULT_LAYER_ID, DEFAULT_LAYER_STATE, normalizeLayerState, hiddenLayerIdSet, resolveActiveLayerId, withoutHiddenLayers, calloutsWithoutHiddenLayers, stampNewObjectsOnLayer, stampNewMarksByPage, selectableMarkIndices, hiddenActiveLayer, setLayerVisible } from './utils/layers.js';
 import { PAGE_PRESENTATION_META_KEY, normalizePagePresentations, pagePresentationFrame, clientPointInPageFrame, clientPastePointInPageFrame } from './utils/pagePresentation.js';
 import { normalizePresentationPdf, pdfBytesHavePresentationTag } from './utils/pdfPagePresentation.js';
 import { chooseCloudPdfOpenPath, shouldRetryStreamedOpenWithDownload, tryOpenCloudPdfStream } from './services/cloudPdfStream.js';
@@ -4041,6 +4041,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const handleSaveAnnotationsRef = useRef(null);
   const activeLayerIdRef = useRef(null);
   const hiddenLayerIdsRef = useRef(null);
+  const warnIfDrawnOnHiddenLayerRef = useRef(() => {});
 
   // R2.2 Slice 3 — the single commit gate for callout CREATE/EDIT/STYLE
   // mutations. Derives the target page's current callout list from
@@ -22005,7 +22006,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   );
   useEffect(() => {
     if (!documentReviewEnabled || !pdfFile?.id || !user?.id || !marksLoadedForCount) return undefined;
-    if (yjsDocRole === 'viewer' || yjsAccessRevoked) return undefined;
+    if (yjsDocRole === 'viewer' || yjsAccessRevoked || documentLocked) return undefined;
     const documentId = pdfFile.id;
     const timer = setTimeout(() => {
       import('./home/documentReview.js').then(({ countMarkups, reportMarkupCount }) => {
@@ -22017,7 +22018,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       }).catch(() => {});
     }, 3000);
     return () => clearTimeout(timer);
-  }, [documentReviewEnabled, pdfFile?.id, user?.id, marksLoadedForCount, yjsDocRole, yjsAccessRevoked, annotationsByPage, surveyMarkers]);
+  }, [documentReviewEnabled, pdfFile?.id, user?.id, marksLoadedForCount, yjsDocRole, yjsAccessRevoked, documentLocked, annotationsByPage, surveyMarkers]);
   // Read by Save: whether the shared document already keeps this work safe
   // (its store on this device, or every change already in the cloud).
   const annotationDocHoldsWorkRef = useRef(() => false);
@@ -22150,6 +22151,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   activeLayerIdRef.current = effectiveActiveLayerId;
   const hiddenLayerIds = useMemo(() => (layersEnabled ? hiddenLayerIdSet(layerState) : null), [layersEnabled, layerState]);
   hiddenLayerIdsRef.current = hiddenLayerIds;
+  // A mark drawn on a hidden layer would vanish as it lands: say so, once a
+  // burst, with a way to show the layer (Drawboard deep test). Called from
+  // the two places that put new marks on the active layer.
+  const hiddenLayerWarnAtRef = useRef(0);
+  const layerStateNowRef = useRef(layerState);
+  layerStateNowRef.current = layerState;
+  // `isNew()` says whether the commit adds a mark (only asked when the layer
+  // is hidden, so an ordinary commit pays nothing).
+  warnIfDrawnOnHiddenLayerRef.current = (isNew) => {
+    const hidden = hiddenActiveLayer(layerState, activeLayerIdRef.current);
+    if (!hidden || !isNew()) return;
+    const now = Date.now();
+    if (now - hiddenLayerWarnAtRef.current < 4000) return;
+    hiddenLayerWarnAtRef.current = now;
+    showToast(`“${hidden.name}” is hidden, so the new mark can’t be seen.`, 'info', {
+      action: { label: 'Show layer', onClick: () => handleLayersChange(setLayerVisible(layerStateNowRef.current, hidden.id, true)) },
+    });
+  };
   // Any write to the root's style restyles the whole page (~0.1 s on a big
   // drawing set), so a tab switch leaves the value for the tab coming to the
   // front to overwrite, and only a changed value is written
@@ -28166,6 +28185,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     if (Array.isArray(json?.objects) && activeLayerIdRef.current && !isUndoingRef.current
       && saveContext?.action !== 'move-to-page') {
       const stamped = stampNewObjectsOnLayer(annotationsByPageRef.current?.[pageNumber]?.objects, json.objects, activeLayerIdRef.current);
+      // (The default layer stamps nothing, so "new" is asked with a stand-in id.)
+      const objectsBeforeStamp = json.objects;
+      warnIfDrawnOnHiddenLayerRef.current(() => stampNewObjectsOnLayer(annotationsByPageRef.current?.[pageNumber]?.objects, objectsBeforeStamp, 'probe') !== objectsBeforeStamp);
       if (stamped !== json.objects) json = { ...json, objects: stamped };
     }
     const source_ = saveContext?.source || 'unknown';
@@ -28825,6 +28847,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     if (activeLayerIdRef.current && !isUndoingRef.current
       && saveContext?.action !== 'move-to-page' && saveContext?.action !== 'move-region') {
       const stampedByPage = stampNewMarksByPage(annotationsByPageRef.current, transaction.nextByPage, activeLayerIdRef.current);
+      const nextBeforeStamp = transaction.nextByPage;
+      warnIfDrawnOnHiddenLayerRef.current(() => stampNewMarksByPage(annotationsByPageRef.current, nextBeforeStamp, 'probe') !== nextBeforeStamp);
       if (stampedByPage !== transaction.nextByPage) {
         transaction = { ...transaction, nextByPage: stampedByPage, action: buildTextMarkupDocumentAction(annotationsByPageRef.current || {}, stampedByPage) || transaction.action };
       }
@@ -29536,6 +29560,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     if (!hydration || hydration.ready !== true) return undefined;
     if (hydration.documentId && hydration.documentId !== documentId) return undefined;
     if (embeddedImportFallbackDoneRef.current === documentId) return undefined;
+    // A locked document or an older version takes no writes; the import
+    // waits until it can be stored (the effect re-runs on unlock).
+    if (documentLocked) return undefined;
     const decision = embeddedImportDecision({
       // The document's owner may import even before the role RPC resolves.
       role: yjsDocRole ?? (documentOwnerId && user?.id && documentOwnerId === user.id ? 'owner' : null),
@@ -29663,7 +29690,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     })();
 
     return () => { cancelled = true; };
-  }, [normalAnnotationHydration, pdfFile, pdfDoc, handleSaveAnnotations, yjsDocRole, documentOwnerId, user?.id, excelSyncMetaGet, excelSyncMetaSet, annotationDocHasStoredMarks, annotationDocBeginBulkImport, annotationDocWhenBulkImportSaved]);
+  }, [normalAnnotationHydration, pdfFile, pdfDoc, handleSaveAnnotations, yjsDocRole, documentOwnerId, user?.id, excelSyncMetaGet, excelSyncMetaSet, annotationDocHasStoredMarks, annotationDocBeginBulkImport, annotationDocWhenBulkImportSaved, documentLocked]);
 
   // Keep this document's list thumbnail current (page 1 with its markup),
   // debounced after edits settle and never while drawing — see the hook.

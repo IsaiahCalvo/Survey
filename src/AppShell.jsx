@@ -17,6 +17,7 @@ import CounterSeriesMenu, { counterSeriesMenuWidth } from './components/CounterS
 import PageGridToggle, { PageGridGlyph } from './components/PageGridToggle';
 import DarkPagesToggle, { DarkPagesGlyph } from './components/DarkPagesToggle';
 import DocumentVersionsButton, { DocumentVersionsDialogs, useDocumentVersions } from './components/DocumentVersionsButton.jsx';
+import OlderVersionBar from './components/OlderVersionBar.jsx';
 import { requestMarkCommentsFocus } from './services/markCommentsFocus.js';
 import { OPEN_EXPORT_PDF_EVENT } from './utils/exportPdfModes.js';
 import { PageGridMenu } from './components/PageGridSettings';
@@ -2204,6 +2205,9 @@ export default function App({ devPreviewReturnTab = null }) {
     requestMarkCommentsFocus({ documentId: String(documentId), markId: item.id, pageNumber: item.pageNumber });
   }, [activeTab?.file?.id]);
   const documentVersions = useDocumentVersions(documentVersionsEnabled ? activeTab?.file?.id || null : null, handleDocumentSelect);
+  // An older version opens read-only, with a bar to the current one.
+  const olderVersionOpen = documentVersions.open && !documentVersions.open.isCurrent ? documentVersions.open : null;
+  const currentVersion = documentVersions.versions.find((v) => v.isCurrent) || null;
 
   // Page grid spacing (Survey Nightly only, beta flag 'grid-settings').
   const [gridSettingsEnabled] = useState(() => isFeatureOn('grid-settings'));
@@ -4642,6 +4646,9 @@ export default function App({ devPreviewReturnTab = null }) {
                 onOpenPanel={openMobileDocumentPanel}
                 onAuxPanelStateChange={setMobileAuxPanel}
                 auxCloseRequestKey={mobileAuxCloseRequestKey}
+                versions={documentVersions.shown
+                  ? { label: `Versions (v${documentVersions.open.versionNumber} of ${documentVersions.versions.length})`, onOpen: documentVersions.showList }
+                  : null}
               />
             )}
             {railTabs.map((tab) => {
@@ -4833,6 +4840,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       documentId={tab.file?.id || null}
                       viewerUserId={user?.id || null}
                       isActive={isVisible}
+                      readOnlyWithoutLock={Boolean(tab.file?.superseded_by) || (tab.id === activeTabId && Boolean(olderVersionOpen))}
                       onLockStateChange={(isLocked) => {
                         setDocumentLockedByTab((current) => (
                           current[tab.id] === isLocked
@@ -5482,6 +5490,12 @@ export default function App({ devPreviewReturnTab = null }) {
         />
       )}
       <DocumentVersionsDialogs state={documentVersions} />
+      {isViewerVisible && (olderVersionOpen || activeTab?.file?.superseded_by) && (
+        <OlderVersionBar
+          versionNumber={olderVersionOpen?.versionNumber || null}
+          onOpenCurrent={currentVersion ? () => documentVersions.openVersion(currentVersion) : null}
+        />
+      )}
       <TooltipChipHost setterRef={shellTooltipSetterRef} />
     </TooltipContext.Provider>
   );
