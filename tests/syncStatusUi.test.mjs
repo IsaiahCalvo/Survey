@@ -306,3 +306,21 @@ test('losing the signal turns the sync light to Offline at once, not after a fai
   assert.match(syncChipSource(), /useBrowserOnline\(\)/);
   assert.match(mobileChromeSource(), /useBrowserOnline\(\)/);
 });
+
+test('an edit the server turned down reads "Not saved" with the reason, never "safe on this device"', () => {
+  for (const reason of ['gone', 'locked', 'denied']) {
+    const view = getSyncStatusViewModel({ stage: 'blocked', reason }, 0);
+    assert.equal(view.state, 'offline');
+    assert.equal(view.label, 'Not saved');
+    assert.doesNotMatch(view.detail, /safe on this device/i);
+    assert.match(view.detail, /not saved/i);
+    assert.equal(getCompactSyncStatusMessage({ stage: 'blocked', reason }), view.detail);
+  }
+  assert.match(getSyncStatusViewModel({ stage: 'blocked', reason: 'gone' }).detail, /Archive/);
+  assert.match(getSyncStatusViewModel({ stage: 'blocked', reason: 'locked' }).detail, /locked/);
+  // A permission error no longer claims the change is safe.
+  const denied = getSyncStatusViewModel({ stage: 'error', error: 'new row violates row-level security policy' }, 0, false, { offline: false });
+  assert.doesNotMatch(denied.detail, /safe on this device/i);
+  // The shared-document status passes the blocked stage through.
+  assert.equal(combineCollaborationSyncStatus({ annotationStatus: { stage: 'blocked', reason: 'gone' }, transportState: 'connecting', isSharedDocument: true }).stage, 'blocked');
+});

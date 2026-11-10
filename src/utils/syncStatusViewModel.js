@@ -5,6 +5,12 @@
  * the sync engine's stage (idle/pending/hydrating/migrating/syncing/queued/error) plus queue depth
  * into a UI state ('syncing' | 'offline' | 'synced') and human label. Pairs with syncStatusTiming.
  */
+const BLOCKED_DETAIL = {
+  gone: 'This document was moved to Archive or deleted, or your access was removed. Your last change was not saved, and new changes can’t be.',
+  locked: 'This document was locked. Your last change was not saved, and new changes can’t be until it is unlocked.',
+  denied: 'You can no longer edit this document. Your last change was not saved.',
+};
+
 export function getSyncStatusViewModel(status, queueSize = 0, manualSyncing = false, { offline = browserReportsOffline() } = {}) {
   const stage = status?.stage || 'idle';
   const pendingCount = Math.max(0, Number(queueSize) || Number(status?.queueSize) || 0);
@@ -29,6 +35,16 @@ export function getSyncStatusViewModel(status, queueSize = 0, manualSyncing = fa
     };
   }
 
+  // The server turned an edit down and the document can't be changed any more.
+  if (stage === 'blocked') {
+    return {
+      state: 'offline',
+      label: 'Not saved',
+      detail: BLOCKED_DETAIL[status?.reason] || BLOCKED_DETAIL.denied,
+      retryLabel: '',
+    };
+  }
+
   // Available offline (offline-docs): opened from this device's kept copy.
   if (stage === 'offline-copy') {
     return {
@@ -46,7 +62,7 @@ export function getSyncStatusViewModel(status, queueSize = 0, manualSyncing = fa
     } else if (/realtime|network|offline|fetch|connection|websocket|channel/.test(errorText)) {
       detail = 'Survey cannot reach cloud backup right now. Your changes are safe on this device.';
     } else if (/permission|row.level.security|42501|access|authentication/.test(errorText)) {
-      detail = 'Cloud backup rejected this account’s access. Your changes are safe on this device.';
+      detail = 'Cloud backup turned this change down, so it was undone.';
     } else if (/quota|storage|indexeddb|database/.test(errorText)) {
       detail = 'Survey could not update its local backup queue. Keep this document open and retry.';
     }
@@ -131,6 +147,7 @@ export function getCompactSyncStatusMessage(status, queueSize = 0, { offline = b
   const errorText = String(status?.error?.message || status?.error || '').toLowerCase();
 
   if (stage === 'device-only') return 'Only on this device: sign in and save it to your account to keep it safe.';
+  if (stage === 'blocked') return BLOCKED_DETAIL[status?.reason] || BLOCKED_DETAIL.denied;
   if (stage === 'offline-copy') return 'Offline copy: changes are saved on this device and sync when you are back online.';
 
   if (stage === 'error') {
@@ -142,7 +159,7 @@ export function getCompactSyncStatusMessage(status, queueSize = 0, { offline = b
       return 'Cloud backup is offline; changes are safe and retrying.';
     }
     if (/permission|row.level.security|42501|access|authentication/.test(errorText)) {
-      return 'Cloud backup access failed; changes are safe locally.';
+      return 'Cloud backup turned this change down, so it was undone.';
     }
     if (/quota|storage|indexeddb|database/.test(errorText)) {
       return 'The backup queue needs attention; keep this document open.';

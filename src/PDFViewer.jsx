@@ -386,6 +386,7 @@ import { splitImportedCalloutsFromPage } from './utils/calloutImportAdapter';
 import { supabase } from './supabaseClient';
 import { useAnnotationDoc } from './hooks/useAnnotationDoc.js';
 import useBrowserOnline from './hooks/useBrowserOnline.js';
+import { claimBodyReadOnly } from './utils/readOnlyBodyReasons.js';
 import { useAuth } from './contexts/AuthContext';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useDocumentPresenceList } from './hooks/useDocumentPresenceList.js';
@@ -22107,6 +22108,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     liveMarkerOverlay,
     // offline-docs: marks opened from this device's kept copy (no signal).
     offlineCopy: annotationOfflineCopy,
+    editBlocked: annotationEditBlocked,
   } = useAnnotationDoc({
     documentId: pdfFile?.id || null,
     userId: annotationActorId,
@@ -22155,6 +22157,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     offlineCopyToastRef.current = pdfFile?.id;
     showToast('No signal: opened your offline copy. Changes are saved on this device and sync when you are back online.', 'info');
   }, [annotationOfflineCopy, isActive, pdfFile?.id]);
+  // Deep test 2026-11-10: the owner archived or locked the document while
+  // this person had it open; the server turned their next mark down. Stop the
+  // tools and say why, instead of letting marks vanish one by one.
+  useEffect(() => {
+    if (!annotationEditBlocked || !isActive) return undefined;
+    const release = claimBodyReadOnly('annotation-edit-blocked');
+    const text = {
+      gone: 'This document was moved to Archive or deleted, or your access was removed. Your last change was not saved.',
+      locked: 'This document was locked. Your last change was not saved.',
+    }[annotationEditBlocked] || 'You can no longer edit this document. Your last change was not saved.';
+    showToast(text, 'error', { id: 'annotation-edit-blocked', duration: Infinity });
+    return () => {
+      release();
+      dismissToast('annotation-edit-blocked');
+    };
+  }, [annotationEditBlocked, isActive]);
   // Deep test 2026-11-10 (Drawboard shows a red "You are currently offline"
   // banner): losing the signal with a cloud document open says so at once
   // and stays up until the signal is back, then "You are back online".
