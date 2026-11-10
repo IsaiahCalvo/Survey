@@ -54,10 +54,11 @@ function fakeViewer(prefs = {}) {
   return viewer;
 }
 
-test('pinned tools: follows its /flags row on every channel', () => {
-  assert.equal(FEATURE_FLAGS['pinned-tools'].stage, 'rollout');
-  assert.equal(isFeatureOn('pinned-tools', { storage: memoryStorage(), env: {} }), false);
-  assert.equal(isFeatureOn('pinned-tools', { storage: memoryStorage({ 'survey.flags.server': JSON.stringify({ 'pinned-tools': true }) }), env: {} }), true);
+test('pinned tools: a beta flag, so stable never shows it', () => {
+  assert.equal(FEATURE_FLAGS['pinned-tools'].stage, 'beta');
+  const storage = memoryStorage({ 'survey.flag.pinned-tools': '1' });
+  assert.equal(isFeatureOn('pinned-tools', { storage, env: {} }), false);
+  assert.equal(isFeatureOn('pinned-tools', { storage: memoryStorage(), env: { VITE_RELEASE_CHANNEL: 'nightly' } }), true);
   const migration = readFileSync(new URL('../supabase/migrations/20261025093000_pinned_tools_flag.sql', import.meta.url), 'utf8');
   assert.match(migration, /'pinned-tools', 'off'/);
 });

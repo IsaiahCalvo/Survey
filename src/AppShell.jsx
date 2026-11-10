@@ -1399,7 +1399,7 @@ export default function App({ devPreviewReturnTab = null }) {
 
   // Authentication state
   const { user, isAuthenticated, loading: authLoading, signOut: authSignOut } = useAuth();
-  // Guest links (flag 'guest-links', follows /flags): /?guest=<secret>
+  // Guest links (flag 'guest-links'): /?guest=<secret>
   // opens one shared document without an account (guest/GuestLinkGate.jsx).
   const [guestLinksEnabled, setGuestLinksEnabled] = useState(() => isFeatureOn('guest-links'));
   const [guestLinkToken] = useState(() => (typeof window === 'undefined' ? null : guestTokenFrom(window.location.href)));

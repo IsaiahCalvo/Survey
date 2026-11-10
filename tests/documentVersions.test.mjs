@@ -102,10 +102,10 @@ test('composeOverlay draws new, then old multiplied at the nudge in pixels', () 
   assert.deepEqual(ops, ['save', ['fill', 'lighten', 'rgb(255, 0, 0)', 0, 0, 10, 10], 'restore']);
 });
 
-test('version history follows /flags and has a matching server row', () => {
+test('version history is a beta flag with a matching server row', () => {
   const flag = FEATURE_FLAGS['document-versions'];
   assert.ok(flag, 'flag declared');
-  assert.equal(flag.stage, 'rollout');
+  assert.equal(flag.stage, 'beta');
   const sql = readFileSync(new URL('../supabase/migrations/20261028010000_document_versions.sql', import.meta.url), 'utf8');
   assert.match(sql, /\('document-versions', 'off'/);
 });

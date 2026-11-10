@@ -28,11 +28,6 @@
 // migration (see supabase/migrations/20261021030000_feature_flags.sql).
 
 export const FEATURE_FLAGS = Object.freeze({
-  // 2026-11-09 (owner: "get this onto production"): counter-list,
-  // grid-settings, spline-polyline, export-modes, pinned-tools, layers,
-  // marker-tracking, document-versions, survey-report, guest-links and
-  // microsoft-sign-in moved from beta to rollout after their /flags rows were turned on, so
-  // surveytool.app follows /flags for them.
   // On surveytool.app since 2026-11-09 (owner: "let's deploy it", with a
   // "Beta" tag under its tool icon).
   'smart-fill': Object.freeze({
@@ -82,19 +77,19 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'survey-report': Object.freeze({
     label: 'Survey report as a PowerPoint deck (cover, progress chart, issues)',
-    stage: 'rollout',
+    stage: 'beta',
   }),
   layers: Object.freeze({
     label: 'Layers panel (markup layers + PDF content opacity)',
-    stage: 'rollout',
+    stage: 'beta',
   }),
   'pinned-tools': Object.freeze({
     label: 'Pinned tools dock (favourite tools with their own colour and width)',
-    stage: 'rollout',
+    stage: 'beta',
   }),
   'counter-list': Object.freeze({
     label: 'Counts list: rename, recolour and reorder counts in one place',
-    stage: 'rollout',
+    stage: 'beta',
   }),
   'company-admin': Object.freeze({
     label: 'Company workspace: people, roles, seats, shared storage and activity log (Enterprise)',
@@ -102,19 +97,19 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'microsoft-sign-in': Object.freeze({
     label: 'Sign in with Microsoft (work, school or personal account)',
-    stage: 'rollout',
+    stage: 'beta',
   }),
   'export-modes': Object.freeze({
     label: 'Export PDF choices: annotated, flattened or plain, and which pages',
-    stage: 'rollout',
+    stage: 'beta',
   }),
   'grid-settings': Object.freeze({
     label: 'Page grid spacing: fine, normal, wide or custom (paper or drawing units)',
-    stage: 'rollout',
+    stage: 'beta',
   }),
   'spline-polyline': Object.freeze({
     label: 'Curved polyline: bend smoothly through the clicked corners',
-    stage: 'rollout',
+    stage: 'beta',
   }),
   'own-excel-layouts': Object.freeze({
     label: 'Your own Excel layout: upload your sheet and match its columns',
@@ -129,7 +124,7 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'document-versions': Object.freeze({
     label: 'Version history: a new version keeps the old ones, with old-over-new compare',
-    stage: 'rollout',
+    stage: 'beta',
   }),
   'mark-library': Object.freeze({
     label: 'Mark library: save marks to a personal or project library and drop them on any page',
@@ -141,11 +136,11 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'marker-tracking': Object.freeze({
     label: 'Survey items: status, assigned to and due date, with list filters',
-    stage: 'rollout',
+    stage: 'beta',
   }),
   'guest-links': Object.freeze({
     label: 'Guest links: open one document without an account, as viewer or editor, until a set time',
-    stage: 'rollout',
+    stage: 'beta',
   }),
   // The app's Google Sheets (and later Microsoft 365) live sync panel; the
   // sheet-sync function also lets flag admins and Nightly testers link.

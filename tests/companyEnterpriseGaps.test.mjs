@@ -155,8 +155,8 @@ test('migration: invite email claim is owner/admin only with a 10 minute resend 
   assert.match(claim, /interval '10 minutes'/);
 });
 
-test('Microsoft sign-in follows /flags (seeded off), hidden in the store apps', () => {
-  assert.equal(FEATURE_FLAGS['microsoft-sign-in']?.stage, 'rollout');
+test('Microsoft sign-in is a beta flag seeded off, hidden in the store apps', () => {
+  assert.equal(FEATURE_FLAGS['microsoft-sign-in']?.stage, 'beta');
   assert.match(MIGRATION, /\('microsoft-sign-in', 'off'/);
   const modal = read('src/components/AuthModal.jsx');
   assert.match(modal, /microsoftOn && !isGoogleSignInHidden\(\)/);
