@@ -172,7 +172,7 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
     setSession(armPin(current, sessionRef.current, pin));
   }, [setSession]);
 
-  // Number keys 1 to 9 arm the pins in their order (Drawboard PDF Pro trial
+  // Number keys 1 to 9 arm the pins in their order, and 0 the last (Drawboard PDF Pro trial
   // audit 2026-11-09: its favourites answer to the number keys). Not while
   // typing, not with a modifier (Ctrl+1 is Fit width), not on a phone.
   const pinsRef = useRef(pins);
@@ -184,9 +184,12 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
     const onKeyDown = (event) => {
       if (event.defaultPrevented || event.__surveyRemapped || event.repeat) return;
       if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
-      if (!/^[1-9]$/.test(event.key) || editingRef.current) return;
+      if (!/^[0-9]$/.test(event.key) || editingRef.current) return;
       if (isTypingTarget(event.target) || isTypingTarget(document.activeElement)) return;
-      const pin = pinsRef.current[Number(event.key) - 1];
+      // 0 arms the last pin, however many there are (Drawboard's 0 is its
+      // last favourites slot; R3-H 2026-11-10).
+      const list = pinsRef.current;
+      const pin = event.key === '0' ? list[list.length - 1] : list[Number(event.key) - 1];
       if (!pin || !apiRef.current) return;
       event.preventDefault();
       arm(pin);
