@@ -581,6 +581,32 @@ test('a sheet edit after the late-save window, or an Undo back to the old value,
   assert.equal(ctx.markers.d2.note.text, 'Old');
 });
 
+// Real Excel on the web, 11-10: a tech's note landed, then the PM's Replace
+// All ("note" to "NOTE") ran on a screen that hadn't pulled it yet and saved
+// 48 s later, one save carrying eleven cells. Only the tech's cell is held.
+test('a PM Replace All that saves late over a tech\'s note holds that note and takes the rest', async () => {
+  const notesOf = (n) => ({ note: { text: `note ${n}` } });
+  const ctx = await setup({ markers: Object.fromEntries([1, 2, 3, 4].map((n) => [`d${n}`, door(`d${n}`, `D-10${n}`, notesOf(n))])) });
+  ctx.provider = { ...ctx.provider, savesLate: true };
+  const t0 = Date.parse('2026-11-10T06:40:00Z');
+  await ctx.round({ now: new Date(t0) }); await ctx.round({ now: new Date(t0 + 1000), force: true });
+  const notes = await ctx.col('Notes');
+  ctx.markers.d3.note = { text: 'tech note 3' };
+  await ctx.round({ now: new Date(t0 + 6000) });
+  assert.equal((await ctx.sheet()).rows[await ctx.rowOf('d3')][notes], 'tech note 3');
+  // The late save: every note replaced, d3's from the stale "note 3", and the heading too.
+  const edits = [{ row: 0, col: notes, value: 'NOTEs' }];
+  for (const n of [1, 2, 3, 4]) edits.push({ row: await ctx.rowOf(`d${n}`), col: notes, value: `NOTE ${n}` });
+  await ctx.edit(edits);
+  const r = await ctx.round({ now: new Date(t0 + 54000), force: true });
+  assert.equal(r.summary.conflicts, 1, 'the tech\'s note is asked about, not lost');
+  assert.equal(ctx.markers.d3.note.text, 'tech note 3');
+  assert.deepEqual(ctx.link.state.conflicts.d3.fields.map((f) => [f.app, f.sheet]), [['tech note 3', 'NOTE 3']]);
+  for (const n of [1, 2, 4]) assert.equal(ctx.markers[`d${n}`].note.text, `NOTE ${n}`, 'the other replaced notes come in');
+  const quiet = await ctx.round({ now: new Date(t0 + 60000), force: true });
+  assert.equal(quiet.summary.toApp, 0, 'the renamed heading stays mapped');
+});
+
 test('a first write over an old-format baseline is not watched, so an Undo comes straight in', async () => {
   const ctx = await setup({ markers: { d1: door('d1', 'D-101', { note: { text: 'Old' } }) } });
   ctx.provider = { ...ctx.provider, savesLate: true };
