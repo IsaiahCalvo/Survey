@@ -123,6 +123,8 @@ import useCoarsePointer from '../hooks/useCoarsePointer.js';
 import { hasTouchInput } from '../utils/layoutMode.js';
 import { notePageDrawn, pageMounted, pageUnmounted, PAGE_CACHE_KEEP_MOBILE, PAGE_CACHE_KEEP_DESKTOP } from '../utils/pdfPageCacheTrim';
 import { isInTabBehind } from '../utils/tabBehind.js';
+import { isFeatureOn } from '../featureFlags.js';
+import { ZOOM_AREA_MIN_PX, boxBetween, isZoomToAreaStart, zoomToAreaPlan } from '../utils/zoomToArea.js';
 import { pdfjsAssetOptions } from '../utils/pdfjsAssets.js';
 import {
   compensateScrollLeftForColumnWidth,
@@ -5268,6 +5270,95 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     }
   }, [applyAnchoredScale, getPageLeftAtScale, getHorizontalScrollMax, phoneLayout]);
   zoomToScaleRef.current = zoomToScale;
+
+  // Nightly 'zoom-to-area' (Drawboard PDF Pro trial audit 2026-11-09):
+  // Ctrl+Shift+drag (⌘+Shift on a Mac) on bare page draws a box, and letting
+  // go zooms so the box fills the visible part of the viewer. Capture phase,
+  // so no tool also starts a stroke; Escape drops the box.
+  const [zoomToAreaOn] = useState(() => isFeatureOn('zoom-to-area'));
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!zoomToAreaOn || !el || typeof document === 'undefined') return undefined;
+    let drag = null;
+    const drawBox = () => {
+      if (!drag) return;
+      const b = boxBetween(drag.from, drag.to);
+      Object.assign(drag.node.style, { left: `${b.left}px`, top: `${b.top}px`, width: `${b.width}px`, height: `${b.height}px` });
+    };
+    const end = () => {
+      if (!drag) return;
+      drag.node.remove();
+      try { el.releasePointerCapture?.(drag.pointerId); } catch { /* already released */ }
+      drag = null;
+    };
+    const onDown = (event) => {
+      if (drag || !isZoomToAreaStart(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const node = document.createElement('div');
+      node.setAttribute('data-zoom-area-box', 'true');
+      Object.assign(node.style, {
+        position: 'fixed', zIndex: '5600', pointerEvents: 'none', boxSizing: 'border-box',
+        border: '1px solid var(--accent)', background: 'color-mix(in srgb, var(--accent) 12%, transparent)',
+      });
+      document.body.appendChild(node);
+      drag = { pointerId: event.pointerId, from: { x: event.clientX, y: event.clientY }, to: { x: event.clientX, y: event.clientY }, node };
+      try { el.setPointerCapture?.(event.pointerId); } catch { /* not capturable */ }
+      drawBox();
+    };
+    const onMove = (event) => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      event.preventDefault();
+      event.stopPropagation();
+      drag.to = { x: event.clientX, y: event.clientY };
+      drawBox();
+    };
+    const onUp = (event) => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const box = boxBetween(drag.from, { x: event.clientX, y: event.clientY });
+      end();
+      if (box.width < ZOOM_AREA_MIN_PX || box.height < ZOOM_AREA_MIN_PX) return;
+      const rect = el.getBoundingClientRect();
+      const side = sideInsetRef.current;
+      const inset = Math.min(topInsetRef.current, el.clientHeight);
+      const plan = zoomToAreaPlan({
+        box: { left: box.left - rect.left, top: box.top - rect.top, width: box.width, height: box.height },
+        view: { left: side.left, top: inset, width: Math.max(1, el.clientWidth - side.left - side.right), height: Math.max(1, el.clientHeight - inset) },
+        scale: scaleRef.current,
+      });
+      if (!plan) return;
+      const before = scaleRef.current;
+      applyAnchoredScale(plan.scale, plan.anchor.x, plan.anchor.y);
+      if (scaleRef.current !== before && pendingAnchorRef.current) {
+        pendingAnchorRef.current = {
+          ...pendingAnchorRef.current,
+          left: pendingAnchorRef.current.left + plan.shift.dx,
+          top: pendingAnchorRef.current.top + plan.shift.dy,
+        };
+      } else {
+        el.scrollBy({ left: plan.shift.dx, top: plan.shift.dy });
+      }
+    };
+    const onCancel = (event) => { if (drag && event.pointerId === drag.pointerId) end(); };
+    const onKey = (event) => {
+      if (drag && event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); end(); }
+    };
+    el.addEventListener('pointerdown', onDown, true);
+    el.addEventListener('pointermove', onMove, true);
+    el.addEventListener('pointerup', onUp, true);
+    el.addEventListener('pointercancel', onCancel, true);
+    window.addEventListener('keydown', onKey, true);
+    return () => {
+      end();
+      el.removeEventListener('pointerdown', onDown, true);
+      el.removeEventListener('pointermove', onMove, true);
+      el.removeEventListener('pointerup', onUp, true);
+      el.removeEventListener('pointercancel', onCancel, true);
+      window.removeEventListener('keydown', onKey, true);
+    };
+  }, [zoomToAreaOn, applyAnchoredScale]);
 
   // Phone: the open-time fit used page 1's size (the other sizes load behind
   // it). When a wider page arrives and you have not zoomed yet, fit again so

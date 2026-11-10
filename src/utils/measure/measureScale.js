@@ -463,10 +463,12 @@ export function stampMeasure(json, kind, scale, { depth = null } = {}) {
 /** New page JSON with every measurement re-stamped to `scale` (+ extra objects appended). */
 export function applyPageScale(pageJson, scale, extraObjects = []) {
   const objects = Array.isArray(pageJson?.objects) ? pageJson.objects : [];
-  const next = objects.map((obj) => (getMeasureKind(obj)
+  const restamp = (obj) => (getMeasureKind(obj)
     ? { ...obj, data: { ...obj.data, measure: { ...obj.data.measure, scale: { ...scale } } } }
-    : obj));
-  return { ...(pageJson || {}), objects: [...next, ...extraObjects] };
+    : obj);
+  // The kept calibration line is stamped too, or lists and exports that read
+  // the mark's own scale would show it unscaled (R3-M B2).
+  return { ...(pageJson || {}), objects: [...objects.map(restamp), ...(extraObjects || []).map(restamp)] };
 }
 
 /**

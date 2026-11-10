@@ -67,6 +67,7 @@ import { calloutBoxCloudStandIn, colorWithAlpha, textboxCloudStandIn } from './t
 import { getCounterLabelLayout } from './counterGeometry.js';
 import { getTextMarkupUnderlineInset } from './pdfTextMarkup.js';
 import { calloutAnchorSidesForKnee, calloutBoxAnchorPoint } from './calloutGeometry.js';
+import { calloutWrapsWords, textWrapsWords, wrapTextCss } from './textWrapMode.js';
 
 const __shapeClick = (e) => __captureShape(e.currentTarget, e);
 
@@ -1520,6 +1521,7 @@ export const buildPlainTextContentStyle = ({
   underline,
   linethrough,
   lineHeight,
+  wrapWords = false,
 }) => ({
   width: innerWidth,
   height: innerDisplayHeight,
@@ -1541,8 +1543,8 @@ export const buildPlainTextContentStyle = ({
   ].filter(Boolean).join(' ') || 'none',
   lineHeight: (lineHeight || 1.16) * 1.13,
   overflow: 'hidden',
-  wordWrap: 'break-word',
-  wordBreak: 'break-all',
+  // Break-anywhere for older marks, at spaces for word-wrap ones (textWrapMode.js).
+  ...wrapTextCss(wrapWords),
   whiteSpace: 'pre-wrap',
   padding: 0,
 });
@@ -1559,6 +1561,7 @@ export const buildCalloutTextContentStyle = ({
   linethrough,
   color,
   lineHeight,
+  wrapWords = false,
 }) => ({
   width: Math.max(0, innerWidth),
   height: Math.max(0, boxHeightWithDescenders),
@@ -1583,8 +1586,8 @@ export const buildCalloutTextContentStyle = ({
   ].filter(Boolean).join(' ') || 'none',
   color: color || '#000',
   overflow: 'hidden',
-  wordWrap: 'break-word',
-  wordBreak: 'break-all',
+  // Break-anywhere for older marks, at spaces for word-wrap ones (textWrapMode.js).
+  ...wrapTextCss(wrapWords),
   whiteSpace: 'pre-wrap',
   boxSizing: 'border-box',
   padding: 0,
@@ -1769,6 +1772,7 @@ export const renderText = (obj, index, liveBounds = null, hideText = false) => {
             underline: ((liveBounds && liveBounds.underline != null) ? liveBounds.underline : obj.underline),
             linethrough: ((liveBounds && liveBounds.linethrough != null) ? liveBounds.linethrough : obj.linethrough),
             lineHeight: obj.lineHeight,
+            wrapWords: textWrapsWords(obj),
           })}
         >
           {displayedText}
@@ -2168,6 +2172,7 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
                 linethrough: !!callout.style?.strikethrough,
                 color: callout.style?.fontColor || callout.style?.textColor,
                 lineHeight: callout.style?.lineHeight,
+                wrapWords: calloutWrapsWords(callout),
               })}
             >
               {(liveBounds && typeof liveBounds.text === 'string')

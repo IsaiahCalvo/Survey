@@ -195,8 +195,10 @@
   border-radius: var(--radius-sm, 6px);
   background: var(--surface-2);
 }
-.sheet-sync-item__title { margin: 0 0 4px; font-size: 13px; color: var(--text-1); }
-.sheet-sync-item__line { margin: 0 0 2px; font-size: 12px; color: var(--text-2); }
+.sheet-sync-item__title { margin: 0 0 4px; font-size: 13px; color: var(--text-1); overflow-wrap: anywhere; }
+/* anywhere: a value with no spaces (a pasted link, a long code) wraps
+   inside the card instead of running out past its edge. */
+.sheet-sync-item__line { margin: 0 0 2px; font-size: 12px; color: var(--text-2); overflow-wrap: anywhere; }
 .sheet-sync-item .sheet-sync-row { margin-top: 8px; }
 
 .sheet-sync-error {
@@ -226,6 +228,9 @@
   font-size: 13px;
   letter-spacing: 0.06em;
 }
+/* "Save in": the SharePoint/Teams folder link box under the folder list. */
+.sheet-sync-folders .sheet-sync-code input { display: block; width: 100%; font-family: inherit; letter-spacing: 0; }
+.sheet-sync-paste-error { margin: 6px 0 0; color: var(--danger-text); font-size: 12px; }
 
 .sheet-sync-skeleton {
   height: 12px;
@@ -289,6 +294,11 @@
   .sheet-sync-icon-btn--quiet:hover { background: var(--hover); color: var(--text-1); }
 }
 .sheet-sync-icon-btn--quiet[aria-expanded='true'] { background: var(--hover); color: var(--text-1); }
+/* A finger needs more than 28px: the "More" button on phones and tablets. */
+@media (pointer: coarse) {
+  .sheet-sync-icon-btn--quiet { height: 40px; width: 40px; min-width: 40px; margin-right: -6px; }
+  .sheet-sync-code input { height: 40px; }
+}
 
 .sheet-sync-menu {
   position: absolute;

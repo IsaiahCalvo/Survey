@@ -21,8 +21,8 @@ export function mobileMeasureItems(depthToolsOn = false) {
     { key: 'polylength', label: 'Polylength', icon: 'polyline' },
     area,
     perimeter,
-    { key: 'wallArea', label: 'Wall area', icon: 'measurePerimeter' },
-    { key: 'volume', label: 'Volume', icon: 'measureArea' },
+    { key: 'wallArea', label: 'Wall area', icon: 'measureWallArea' },
+    { key: 'volume', label: 'Volume', icon: 'measureVolume' },
     scale,
   ];
 }

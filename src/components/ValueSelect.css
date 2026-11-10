@@ -46,6 +46,33 @@
   font-weight: 500;
 }
 
+/* Options with a line of detail (what the choice does) under the name. */
+.value-select__menu--detailed {
+  width: 260px;
+  max-width: min(300px, calc(100vw - 24px));
+}
+
+.value-select__menu--detailed .annotation-dropdown__options > button {
+  height: auto;
+  padding-block: 5px;
+  white-space: normal;
+  text-align: left;
+}
+
+.value-select__option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.value-select__option-detail {
+  color: var(--text-3);
+  font-size: var(--font-size-sm);
+  font-weight: 400;
+  line-height: 1.35;
+}
+
 /* A finger needs 44px, and iOS zooms the page on any field under 16px. */
 @media (pointer: coarse) {
   .value-select--field .chrome-pill,

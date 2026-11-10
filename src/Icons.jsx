@@ -289,18 +289,27 @@ const ICON_RENDERERS = {
     areaRect: (size, color, style, className) => renderAreaToolGlyph('areaRect', size, color, style, className),
     areaFreehand: (size, color, style, className) => renderAreaToolGlyph('areaFreehand', size, color, style, className),
     areaPolygon: (size, color, style, className) => renderAreaToolGlyph('areaPolygon', size, color, style, className),
-    // Owner 2026-10-02: a Spaces region card's "edit areas" button. Hugeicons
+    // Owner 2026-11-09: the Spaces tab, dock button and space chip. Hugeicons
     // Select 02 (MIT): a plus, a box drawn as edges, and three square corner
-    // handles. Replaces the Draw pencil on each region card. The handles keep
-    // Hugeicons' rx 1 (the owner asked for the exact glyph), so they carry
+    // handles (it was the region card's "edit areas" button from 2026-10-02;
+    // the old Spaces glyph, three stacked sheets, went to Layers). The handles
+    // keep Hugeicons' rx 1 (the owner asked for the exact glyph), so they carry
     // data-icon-source="hugeicons" and the house 1/9 corner ratio skips them.
-    regionEdit: (size, color, style, className) => (
+    spaces: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
         <path d="M5 2V8M2 5H8" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
         <path d="M20 18L20 7M7 20H18M18 5H12M5 12V18" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
         <rect x="18" y="3" width="4" height="4" rx="1" stroke={color} strokeWidth="1.5" data-icon-source="hugeicons" />
         <rect x="18" y="18" width="4" height="4" rx="1" stroke={color} strokeWidth="1.5" data-icon-source="hugeicons" />
         <rect x="3" y="18" width="4" height="4" rx="1" stroke={color} strokeWidth="1.5" data-icon-source="hugeicons" />
+      </svg>
+    ),
+    // Owner 2026-11-09: a Spaces region card's "edit areas" button is an
+    // "edit" glyph (a pen over an open box), at the house 1.5 stroke.
+    regionEdit: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M11 4H6.5C5.12 4 4 5.12 4 6.5V17.5C4 18.88 5.12 20 6.5 20H17.5C18.88 20 20 18.88 20 17.5V13" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M18.38 3.62C19.21 2.79 20.55 2.79 21.38 3.62C22.21 4.45 22.21 5.79 21.38 6.62L12.5 15.5L9 16.5L10 13L18.38 3.62Z" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     ),
     // Owner 2026-10-13: the Survey Marker group's Smart fill (shown only while
@@ -819,6 +828,21 @@ const ICON_RENDERERS = {
         <circle cx="4" cy="18.5" r="1.5" fill={color} />
       </svg>
     ),
+    // Wall area: a wall of bricks standing on the floor line, so it no longer
+    // shares the Perimeter outline in the Measure menu.
+    measureWallArea: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M5 5.5H19V19.5H5Z" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
+        <path d="M5 10.2H19M5 14.8H19M12 5.5V10.2M8.5 10.2V14.8M15.5 10.2V14.8M12 14.8V19.5M2.5 19.5H21.5" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+    // Volume: a box, so it no longer shares the Area square.
+    measureVolume: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M4 9H15V20H4Z" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
+        <path d="M4 9L9 4H20V15L15 20M15 9L20 4" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
     measureScale: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
         <path d="M2 9H22V15H2Z" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
@@ -1304,6 +1328,12 @@ const ICON_RENDERERS = {
     fitPage: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
         <rect x="6" y="3" width="12" height="18" rx="1.33" stroke={color} strokeWidth="1.5" /><path d="M9 7H15M9 11H15M9 15H13" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+    // Focus mode (Nightly): four corners pulled out to the screen's edges.
+    focusMode: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
+        <path d="M4 9V4H9M15 4H20V9M20 15V20H15M9 20H4V15" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     ),
     mail: (size, color, style, className) => (

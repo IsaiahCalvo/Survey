@@ -38,8 +38,12 @@ test('the tab unsaved dot clears when cloud sync is up to date', async ({ page }
 
     // Still gone after a reload (the tab reopens on desktop).
     await page.reload();
+    // isVisible() does not wait, so right after the reload it answered "no"
+    // before the tab came back, and the double-click then hit the reopened
+    // viewer for the rest of the test. Wait for the tab to come back first.
     const close = page.getByRole('button', { name: `Close ${E2E_DOCUMENT.name}` });
-    if (!(await close.isVisible({ timeout: 30_000 }).catch(() => false))) {
+    const reopened = await close.waitFor({ state: 'visible', timeout: 30_000 }).then(() => true, () => false);
+    if (!reopened) {
       await page.getByText(E2E_DOCUMENT.name, { exact: true }).first().dblclick();
     }
     await expect(page.getByText('Type your name in the box:')).toBeVisible({ timeout: 60_000 });
@@ -49,13 +53,18 @@ test('the tab unsaved dot clears when cloud sync is up to date', async ({ page }
 
     // Hold sync back: a new edit shows the dot while it is not in the cloud,
     // then clears once sync catches up.
+    // Edits go up through the append_annotation_update RPC, so hold that back
+    // too; blocking only the table route let a fast sync clear the dot before
+    // the check could see it (CI shard 5, 2026-11-09).
     const block = (route) => route.abort('failed');
     await page.route('**/rest/v1/annotation_updates**', block);
+    await page.route('**/rest/v1/rpc/append_annotation_update**', block);
     await tool(page, 'Shapes', 'Rectangle');
     await dragPage(page, 1, [[260, 80], [300, 120], [340, 160]]);
     await page.keyboard.press('Escape');
     await expect(unsavedDot(page)).toBeVisible({ timeout: 15_000 });
     await page.unroute('**/rest/v1/annotation_updates**', block);
+    await page.unroute('**/rest/v1/rpc/append_annotation_update**', block);
     await page.keyboard.press('ControlOrMeta+s');
     await expect(upToDate(page)).toBeVisible({ timeout: 60_000 });
     await expect(unsavedDot(page)).toHaveCount(0, { timeout: 15_000 });

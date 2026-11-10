@@ -74,7 +74,7 @@ async function writeMarkers(client, documentId, markers) {
 }
 
 async function userId(account) {
-  const { data } = await adminClient().auth.admin.listUsers();
+  const { data } = await adminClient().auth.admin.listUsers({ perPage: 1000 });
   return data.users.find((u) => u.email === account.email).id;
 }
 
@@ -132,6 +132,7 @@ test.afterAll(async () => {
   if (savedFlag) await admin.from('feature_flags').upsert(savedFlag, { onConflict: 'key' });
   else await admin.from('feature_flags').update({ mode: 'off', tester_emails: [] }).eq('key', FLAG);
   await admin.from('sheet_sync_connections').delete().eq('user_id', await userId(E2E_ACCOUNTS.owner));
+  await admin.from('sheet_sync_connections').delete().eq('user_id', await userId(E2E_ACCOUNTS.editor));
 });
 
 test('two-way live sync between a survey and an Excel workbook on Microsoft 365', async () => {
@@ -215,7 +216,24 @@ test('two-way live sync between a survey and an Excel workbook on Microsoft 365'
     // Disconnecting Microsoft stops the link instead of failing quietly.
     expect((await call(ownerToken, 'disconnect', MS)).body).toEqual({ ok: true });
     const stopped = await call(editorToken, 'status', ids);
-    expect(stopped.body.link).toMatchObject({ provider: 'msgraph', status: 'broken' });
+    expect(stopped.body.link).toMatchObject({ provider: 'msgraph', status: 'broken', isConnectionOwner: false });
+
+    // Another editor keeps the same workbook going with their own sign-in,
+    // instead of the team starting a new one. A viewer can't.
+    expect((await call(viewerToken, 'takeover', ids)).status).toBe(403);
+    const notYet = await call(editorToken, 'takeover', ids);
+    expect(notYet.status, JSON.stringify(notYet.body)).toBe(401);
+    expect(notYet.body.code).toBe('reconnect');
+    await must('flag on for the editor too', admin.from('feature_flags').update({ tester_emails: [E2E_ACCOUNTS.owner.email, E2E_ACCOUNTS.editor.email] }).eq('key', FLAG));
+    await connectMicrosoft(editorToken);
+    const took = await call(editorToken, 'takeover', ids);
+    expect(took.status, JSON.stringify(took.body)).toBe(200);
+    expect(took.body.link).toMatchObject({ status: 'active', isConnectionOwner: true, lastError: null });
+    expect((await call(editorToken, 'takeover', ids)).status, 'already theirs').toBe(409);
+    await fake(`/files/${itemId}/edit`, { title: TAB, edits: [{ row: rowOf('00101'), col: col('Notes'), value: 'After the hand-over' }] });
+    const kept = await syncNow(editorToken, { ...ids, ...LAYOUT });
+    expect(kept.body.round.status).toBe('synced');
+    expect((await markersOf(owner, doc.id)).d1.note?.text).toBe('After the hand-over');
     expect((await call(ownerToken, 'unlink', ids)).body.link).toBeNull();
   } finally {
     await admin.from('sheet_sync_links').delete().eq('document_id', doc.id);
@@ -277,5 +295,364 @@ test('the Survey panel makes a live Excel workbook', async ({ page }) => {
   } finally {
     await adminClient().from('sheet_sync_links').delete().eq('document_id', E2E_SURVEY.documentId);
     await adminClient().from('sheet_sync_connections').delete().eq('user_id', await userId(E2E_ACCOUNTS.owner)).eq('provider', 'msgraph');
+  }
+});
+
+test('a workbook the PM already has: Survey adds its sheets and leaves theirs alone', async () => {
+  test.setTimeout(120_000);
+  const admin = adminClient();
+  const ownerToken = await signInToken(E2E_ACCOUNTS.owner);
+  await connectMicrosoft(ownerToken);
+  const owner = await apiClientFor(E2E_ACCOUNTS.owner);
+  const doc = await addDocument(admin, { id: await userId(E2E_ACCOUNTS.owner) }, { projectId: E2E_PROJECT.id, name: `PM workbook ${RUN}.pdf` });
+  const ids = { documentId: doc.id, templateId: `e2e-pm-book-${RUN}`, ...LAYOUT, ...MS, title: 'Ignored for a pasted workbook' };
+  try {
+    await writeMarkers(owner, doc.id, { d1: { id: 'd1', name: 'D-101', moduleId: 'm1', categoryId: 'doors', pageNumber: 1, bounds: { x: 1, y: 1, width: 5, height: 5 }, checklistResponses: { c1: { selection: 'Y' } }, note: { text: 'From the field' } } });
+    // The PM's tracker: their own Summary sheet, and a sheet that happens to
+    // carry Survey's tab name.
+    const pmBook = await fake('/make-file', { name: 'Hospital tracker.xlsx', sheets: [
+      { name: 'Summary', rows: [['Job', 'Hospital'], ['Doors done', '=COUNTIF(\'Doors - Level 1 (2)\'!E:E,"Y")']] },
+      { name: TAB, rows: [['Their own notes']] },
+    ] });
+    // A bad link, and a workbook shared for viewing only, are refused plainly.
+    const bad = await call(ownerToken, 'link', { ...ids, fileLink: 'https://contoso.sharepoint.example/nope' });
+    expect(bad.status).toBe(400);
+    expect(bad.body.code).toBe('bad_file_link');
+    const viewOnly = await fake('/make-file', { name: 'View only.xlsx', readOnly: true });
+    const refused = await call(ownerToken, 'link', { ...ids, fileLink: viewOnly.link });
+    expect(refused.status, JSON.stringify(refused.body)).toBe(403);
+    expect(refused.body.error).toMatch(/can edit it/);
+    expect((await call(ownerToken, 'status', ids)).body.link, 'nothing linked after a refusal').toBeNull();
+
+    const linked = await call(ownerToken, 'link', { ...ids, fileLink: pmBook.link });
+    expect(linked.status, JSON.stringify(linked.body)).toBe(200);
+    expect(linked.body.link).toMatchObject({ provider: 'msgraph', title: 'Hospital tracker', status: 'active', folderLabel: 'Jobs' });
+    const file = await fake(`/files/${pmBook.id}`);
+    expect(file.sheets.map((s) => s.name)).toEqual(['Summary', TAB, `${TAB} (2)`]);
+    expect(file.sheets[0].rows[0]).toEqual(['Job', 'Hospital']);
+    expect(file.sheets[1].rows).toEqual([['Their own notes']]);
+    const ours = file.sheets[2];
+    expect(ours.rows[0].slice(0, 4)).toEqual(['Row ID', 'Changed By', 'Changed Date', 'Item']);
+    expect(ours.rows.some((r) => r.includes('D-101') && r.includes('From the field'))).toBe(true);
+    // And it syncs both ways from there.
+    const notesCol = ours.rows[0].indexOf('Notes');
+    const row = ours.rows.findIndex((r) => r.includes('D-101'));
+    await fake(`/files/${pmBook.id}/edit`, { title: `${TAB} (2)`, edits: [{ row, col: notesCol, value: 'PM in their own workbook' }] });
+    await syncNow(ownerToken, ids);
+    expect((await markersOf(owner, doc.id)).d1.note?.text).toBe('PM in their own workbook');
+  } finally {
+    await admin.from('sheet_sync_links').delete().eq('document_id', doc.id);
+    await admin.from('documents').delete().eq('id', doc.id);
+    await admin.from('sheet_sync_connections').delete().eq('user_id', await userId(E2E_ACCOUNTS.owner)).eq('provider', 'msgraph');
+  }
+});
+
+test('a workbook moved to another library is found again from its new link, and keeps syncing', async () => {
+  test.setTimeout(120_000);
+  const admin = adminClient();
+  const ownerToken = await signInToken(E2E_ACCOUNTS.owner);
+  await connectMicrosoft(ownerToken);
+  const owner = await apiClientFor(E2E_ACCOUNTS.owner);
+  const doc = await addDocument(admin, { id: await userId(E2E_ACCOUNTS.owner) }, { projectId: E2E_PROJECT.id, name: `Moved workbook ${RUN}.pdf` });
+  const ids = { documentId: doc.id, templateId: `e2e-moved-${RUN}`, ...LAYOUT, ...MS, title: 'Moved' };
+  try {
+    await writeMarkers(owner, doc.id, { d1: { id: 'd1', name: 'D-201', moduleId: 'm1', categoryId: 'doors', pageNumber: 1, bounds: { x: 1, y: 1, width: 5, height: 5 }, checklistResponses: {}, note: { text: 'Before the move' } } });
+    const linked = await call(ownerToken, 'link', ids);
+    expect(linked.status, JSON.stringify(linked.body)).toBe(200);
+    const { files } = await fake('/files');
+    const moved = await fake(`/files/${files.at(-1)}/move`, {});
+    // The old address is gone: the link stops and says so.
+    const stopped = await syncNow(ownerToken, ids);
+    expect(stopped.body.link.status).toBe('broken');
+    expect(stopped.body.link.lastError).toMatch(/deleted or is no longer shared/);
+    // Another workbook is refused; the moved one is taken.
+    const other = await fake('/make-file', { name: 'Other.xlsx' });
+    const wrong = await call(ownerToken, 'relink', { ...ids, fileLink: other.link });
+    expect(wrong.status, JSON.stringify(wrong.body)).toBe(409);
+    expect(wrong.body.code).toBe('not_same_file');
+    const found = await call(ownerToken, 'relink', { ...ids, fileLink: moved.link });
+    expect(found.status, JSON.stringify(found.body)).toBe(200);
+    expect(found.body.link).toMatchObject({ status: 'active', lastError: null });
+    // Rows, baselines and the PM's edits carry on in the moved workbook.
+    const file = await fake(`/files/${moved.id}`);
+    const tab = file.sheets.find((s) => s.name === TAB);
+    const row = tab.rows.findIndex((r) => r.includes('D-201'));
+    expect(tab.rows.filter((r) => r.includes('D-201')).length, 'no second copy of the row').toBe(1);
+    await fake(`/files/${moved.id}/edit`, { title: TAB, edits: [{ row, col: tab.rows[0].indexOf('Notes'), value: 'After the move' }] });
+    await syncNow(ownerToken, ids);
+    expect((await markersOf(owner, doc.id)).d1.note?.text).toBe('After the move');
+  } finally {
+    await admin.from('sheet_sync_links').delete().eq('document_id', doc.id);
+    await admin.from('documents').delete().eq('id', doc.id);
+    await admin.from('sheet_sync_connections').delete().eq('user_id', await userId(E2E_ACCOUNTS.owner)).eq('provider', 'msgraph');
+  }
+});
+
+test('a phone that was offline while the PM edited the same cell does not quietly overwrite the PM', async () => {
+  test.setTimeout(120_000);
+  const admin = adminClient();
+  const ownerToken = await signInToken(E2E_ACCOUNTS.owner);
+  await connectMicrosoft(ownerToken);
+  const owner = await apiClientFor(E2E_ACCOUNTS.owner);
+  const doc = await addDocument(admin, { id: await userId(E2E_ACCOUNTS.owner) }, { projectId: E2E_PROJECT.id, name: `Offline phone ${RUN}.pdf` });
+  const ids = { documentId: doc.id, templateId: `e2e-offline-${RUN}`, ...LAYOUT, ...MS, title: 'Offline' };
+  try {
+    await writeMarkers(owner, doc.id, { d1: { id: 'd1', name: 'D-301', moduleId: 'm1', categoryId: 'doors', pageNumber: 1, bounds: { x: 1, y: 1, width: 5, height: 5 }, checklistResponses: {}, note: { text: 'Start' } } });
+    const linked = await call(ownerToken, 'link', ids);
+    expect(linked.status, JSON.stringify(linked.body)).toBe(200);
+    const { files } = await fake('/files');
+    const fileId = files.at(-1);
+
+    // The phone loads the survey, goes offline, and changes the note. Its
+    // change waits on the phone.
+    const phone = await loadDoc(owner, doc.id);
+    const phoneSv = Y.encodeStateVector(phone);
+    syncSurveyMarkersToDoc(phone, { ...docToSurveyMarkers(phone), d1: { ...docToSurveyMarkers(phone).d1, note: { text: 'Phone, offline' } } });
+    const held = Y.encodeStateAsUpdate(phone, phoneSv);
+
+    // Meanwhile the PM types a note in Excel, and a round brings it in.
+    let tab = (await fake(`/files/${fileId}`)).sheets.find((s) => s.name === TAB);
+    const row = tab.rows.findIndex((r) => r.includes('D-301'));
+    const notesCol = tab.rows[0].indexOf('Notes');
+    await fake(`/files/${fileId}/edit`, { title: TAB, edits: [{ row, col: notesCol, value: 'PM, later' }] });
+    await syncNow(ownerToken, ids);
+    expect((await markersOf(owner, doc.id)).d1.note?.text).toBe('PM, later');
+
+    // The phone comes back online and its held change lands.
+    await must('phone update', owner.rpc('append_annotation_update', {
+      p_document_id: doc.id, p_client_id: `e2e-phone-${randomUUID()}`, p_client_seq: 1, p_data: bytesToPgHex(held),
+    }));
+    const after = await syncNow(ownerToken, ids);
+    const app = (await markersOf(owner, doc.id)).d1.note?.text;
+    tab = (await fake(`/files/${fileId}`)).sheets.find((s) => s.name === TAB);
+    const sheet = tab.rows[row][notesCol];
+    console.log('[offline-phone]', JSON.stringify({ app, sheet, conflicts: after.body.link?.conflicts }));
+    // Either the two sides agree, or the clash waits on a choice. The PM's
+    // value is never replaced in Excel without anyone being asked.
+    const asked = (after.body.link?.conflicts || []).some((c) => c.markerId === 'd1');
+    expect(asked || app === sheet, `app "${app}" vs sheet "${sheet}"`).toBe(true);
+    expect(asked || sheet === 'PM, later', `the PM's later note was replaced by "${sheet}" without asking`).toBe(true);
+  } finally {
+    await admin.from('sheet_sync_links').delete().eq('document_id', doc.id);
+    await admin.from('documents').delete().eq('id', doc.id);
+    await admin.from('sheet_sync_connections').delete().eq('user_id', await userId(E2E_ACCOUNTS.owner)).eq('provider', 'msgraph');
+  }
+});
+
+test('a phone offline answering one line does not undo the PM\'s change to another line of the same item', async () => {
+  test.setTimeout(120_000);
+  const admin = adminClient();
+  const ownerToken = await signInToken(E2E_ACCOUNTS.owner);
+  await connectMicrosoft(ownerToken);
+  const owner = await apiClientFor(E2E_ACCOUNTS.owner);
+  const doc = await addDocument(admin, { id: await userId(E2E_ACCOUNTS.owner) }, { projectId: E2E_PROJECT.id, name: `Offline lines ${RUN}.pdf` });
+  const template = { ...TEMPLATE, modules: [{ ...TEMPLATE.modules[0], categories: [{ ...TEMPLATE.modules[0].categories[0], checklist: [{ id: 'c1', text: 'Locked?' }, { id: 'c2', text: 'Closer?' }] }] }] };
+  const ids = { documentId: doc.id, templateId: `e2e-offline2-${RUN}`, ...LAYOUT, template, ...MS, title: 'Offline lines' };
+  try {
+    await writeMarkers(owner, doc.id, { d1: { id: 'd1', name: 'D-302', moduleId: 'm1', categoryId: 'doors', pageNumber: 1, bounds: { x: 1, y: 1, width: 5, height: 5 }, checklistResponses: { c1: { selection: 'N' }, c2: { selection: 'N' } }, note: { text: '' } } });
+    const linked = await call(ownerToken, 'link', ids);
+    expect(linked.status, JSON.stringify(linked.body)).toBe(200);
+    const { files } = await fake('/files');
+    const fileId = files.at(-1);
+
+    // The phone, offline, answers Closer? = Y.
+    const phone = await loadDoc(owner, doc.id);
+    const phoneSv = Y.encodeStateVector(phone);
+    const was = docToSurveyMarkers(phone).d1;
+    syncSurveyMarkersToDoc(phone, { ...docToSurveyMarkers(phone), d1: { ...was, checklistResponses: { ...was.checklistResponses, c2: { selection: 'Y' } } } }, { fieldMaps: true });
+    const held = Y.encodeStateAsUpdate(phone, phoneSv);
+
+    // The PM answers Locked? = Y in Excel; a round brings it in.
+    let tab = (await fake(`/files/${fileId}`)).sheets.find((s) => s.name === TAB);
+    const row = tab.rows.findIndex((r) => r.includes('D-302'));
+    const lockedCol = tab.rows[0].indexOf('Locked?');
+    const closerCol = tab.rows[0].indexOf('Closer?');
+    await fake(`/files/${fileId}/edit`, { title: TAB, edits: [{ row, col: lockedCol, value: 'Y' }] });
+    await syncNow(ownerToken, ids);
+    expect((await markersOf(owner, doc.id)).d1.checklistResponses.c1?.selection).toBe('Y');
+
+    await must('phone update', owner.rpc('append_annotation_update', {
+      p_document_id: doc.id, p_client_id: `e2e-phone-${randomUUID()}`, p_client_seq: 1, p_data: bytesToPgHex(held),
+    }));
+    const after = await syncNow(ownerToken, ids);
+    const app = (await markersOf(owner, doc.id)).d1.checklistResponses;
+    tab = (await fake(`/files/${fileId}`)).sheets.find((s) => s.name === TAB);
+    console.log('[offline-lines]', JSON.stringify({ app, sheet: { locked: tab.rows[row][lockedCol], closer: tab.rows[row][closerCol] }, conflicts: after.body.link?.conflicts }));
+    expect(tab.rows[row][lockedCol], 'the PM\'s Locked? = Y stays in Excel').toBe('Y');
+    expect(app.c1?.selection, 'and in the app').toBe('Y');
+    expect(app.c2?.selection, 'the phone\'s Closer? = Y lands').toBe('Y');
+    expect(tab.rows[row][closerCol]).toBe('Y');
+  } finally {
+    await admin.from('sheet_sync_links').delete().eq('document_id', doc.id);
+    await admin.from('documents').delete().eq('id', doc.id);
+    await admin.from('sheet_sync_connections').delete().eq('user_id', await userId(E2E_ACCOUNTS.owner)).eq('provider', 'msgraph');
+  }
+});
+
+// Yjs settles two writes to one field by client id: the higher one shows. A
+// phone with a low id has its offline edit dropped by Yjs, one with a high id
+// has it shown; both, and an online edit that did see the round's value, are
+// covered here with per-field writes (the app's own, survey-marker-fields).
+for (const [label, phoneId] of [['the phone\'s edit shows', 0xfffffff0], ['Yjs keeps the PM\'s value', 1]]) {
+  test(`offline phone, per-field writes, ${label}: same cell asks, other line keeps both`, async () => {
+    test.setTimeout(120_000);
+    const admin = adminClient();
+    const ownerToken = await signInToken(E2E_ACCOUNTS.owner);
+    await connectMicrosoft(ownerToken);
+    const owner = await apiClientFor(E2E_ACCOUNTS.owner);
+    const doc = await addDocument(admin, { id: await userId(E2E_ACCOUNTS.owner) }, { projectId: E2E_PROJECT.id, name: `Offline ids ${phoneId} ${RUN}.pdf` });
+    const template = { ...TEMPLATE, modules: [{ ...TEMPLATE.modules[0], categories: [{ ...TEMPLATE.modules[0].categories[0], checklist: [{ id: 'c1', text: 'Locked?' }, { id: 'c2', text: 'Closer?' }] }] }] };
+    const ids = { documentId: doc.id, templateId: `e2e-offline3-${phoneId}-${RUN}`, ...LAYOUT, template, ...MS, title: 'Offline ids' };
+    try {
+      const start = { moduleId: 'm1', categoryId: 'doors', pageNumber: 1, bounds: { x: 1, y: 1, width: 5, height: 5 }, checklistResponses: { c1: { selection: 'N' }, c2: { selection: 'N' } } };
+      // Stored the way the app stores them now: one Y.Map entry per field.
+      const seed = await loadDoc(owner, doc.id);
+      const seedSv = Y.encodeStateVector(seed);
+      syncSurveyMarkersToDoc(seed, {
+        a1: { id: 'a1', name: 'D-401', ...start, note: { text: 'Start' } },
+        b1: { id: 'b1', name: 'D-402', ...start, note: { text: '' } },
+      }, { fieldMaps: true });
+      await must('seed', owner.rpc('append_annotation_update', { p_document_id: doc.id, p_client_id: `e2e-seed-${randomUUID()}`, p_client_seq: 1, p_data: bytesToPgHex(Y.encodeStateAsUpdate(seed, seedSv)) }));
+      const linked = await call(ownerToken, 'link', ids);
+      expect(linked.status, JSON.stringify(linked.body)).toBe(200);
+      const { files } = await fake('/files');
+      const fileId = files.at(-1);
+
+      // Offline: the phone changes D-401's note and answers D-402's Closer?.
+      const phone = await loadDoc(owner, doc.id);
+      phone.clientID = phoneId;
+      const phoneSv = Y.encodeStateVector(phone);
+      const was = docToSurveyMarkers(phone);
+      syncSurveyMarkersToDoc(phone, {
+        ...was,
+        a1: { ...was.a1, note: { text: 'Phone, offline' } },
+        b1: { ...was.b1, checklistResponses: { ...was.b1.checklistResponses, c2: { selection: 'Y' } } },
+      }, { fieldMaps: true });
+      const held = Y.encodeStateAsUpdate(phone, phoneSv);
+
+      // The PM types D-401's note and answers D-402's Locked? in Excel.
+      let tab = (await fake(`/files/${fileId}`)).sheets.find((sh) => sh.name === TAB);
+      const head = tab.rows[0];
+      const rowA = tab.rows.findIndex((r) => r.includes('D-401'));
+      const rowB = tab.rows.findIndex((r) => r.includes('D-402'));
+      const col = (h) => head.indexOf(h);
+      await fake(`/files/${fileId}/edit`, { title: TAB, edits: [{ row: rowA, col: col('Notes'), value: 'PM, later' }, { row: rowB, col: col('Locked?'), value: 'Y' }] });
+      await syncNow(ownerToken, ids);
+
+      await must('phone update', owner.rpc('append_annotation_update', { p_document_id: doc.id, p_client_id: `e2e-phone-${randomUUID()}`, p_client_seq: 1, p_data: bytesToPgHex(held) }));
+      const after = await syncNow(ownerToken, ids);
+      const app = await markersOf(owner, doc.id);
+      tab = (await fake(`/files/${fileId}`)).sheets.find((sh) => sh.name === TAB);
+      const conflicts = after.body.link?.conflicts || [];
+      console.log(`[offline-${phoneId}]`, JSON.stringify({ a: app.a1.note, b: app.b1.checklistResponses, sheetA: tab.rows[rowA][col('Notes')], sheetB: [tab.rows[rowB][col('Locked?')], tab.rows[rowB][col('Closer?')]], conflicts }));
+      // Same cell: asked, the PM's cell untouched, the phone's value kept in the app.
+      const askA = conflicts.find((c) => c.markerId === 'a1');
+      expect(askA?.fields?.map((f) => [f.app, f.sheet]), 'D-401 Notes waits on a choice').toEqual([['Phone, offline', 'PM, later']]);
+      expect(tab.rows[rowA][col('Notes')]).toBe('PM, later');
+      expect(app.a1.note?.text, 'the phone\'s note is not lost').toBe('Phone, offline');
+      // Other line: both kept, nothing asked.
+      expect(conflicts.some((c) => c.markerId === 'b1')).toBe(false);
+      expect(app.b1.checklistResponses.c1?.selection).toBe('Y');
+      expect(app.b1.checklistResponses.c2?.selection).toBe('Y');
+      expect([tab.rows[rowB][col('Locked?')], tab.rows[rowB][col('Closer?')]]).toEqual(['Y', 'Y']);
+
+      // A choice settles it (the PM's note in one run, the phone's in the
+      // other), and a round after asks nothing again.
+      const choice = phoneId === 1 ? 'sheet' : 'app';
+      const want = choice === 'sheet' ? 'PM, later' : 'Phone, offline';
+      const kept = await call(ownerToken, 'choose', { ...ids, markerId: 'a1', choice });
+      expect(kept.status, JSON.stringify(kept.body)).toBe(200);
+      const again = await syncNow(ownerToken, ids);
+      expect((again.body.link?.conflicts || []).some((c) => c.markerId === 'a1')).toBe(false);
+      expect((await markersOf(owner, doc.id)).a1.note?.text).toBe(want);
+      tab = (await fake(`/files/${fileId}`)).sheets.find((sh) => sh.name === TAB);
+      expect(tab.rows[rowA][col('Notes')]).toBe(want);
+    } finally {
+      await admin.from('sheet_sync_links').delete().eq('document_id', doc.id);
+      await admin.from('documents').delete().eq('id', doc.id);
+      await admin.from('sheet_sync_connections').delete().eq('user_id', await userId(E2E_ACCOUNTS.owner)).eq('provider', 'msgraph');
+    }
+  });
+}
+
+test('an edit made after seeing the PM\'s value is pushed without asking', async () => {
+  test.setTimeout(120_000);
+  const admin = adminClient();
+  const ownerToken = await signInToken(E2E_ACCOUNTS.owner);
+  await connectMicrosoft(ownerToken);
+  const owner = await apiClientFor(E2E_ACCOUNTS.owner);
+  const doc = await addDocument(admin, { id: await userId(E2E_ACCOUNTS.owner) }, { projectId: E2E_PROJECT.id, name: `Online after ${RUN}.pdf` });
+  const ids = { documentId: doc.id, templateId: `e2e-online-${RUN}`, ...LAYOUT, ...MS, title: 'Online after' };
+  try {
+    const seed = await loadDoc(owner, doc.id);
+    const seedSv = Y.encodeStateVector(seed);
+    syncSurveyMarkersToDoc(seed, { d1: { id: 'd1', name: 'D-501', moduleId: 'm1', categoryId: 'doors', pageNumber: 1, bounds: { x: 1, y: 1, width: 5, height: 5 }, checklistResponses: {}, note: { text: 'Start' } } }, { fieldMaps: true });
+    await must('seed', owner.rpc('append_annotation_update', { p_document_id: doc.id, p_client_id: `e2e-seed-${randomUUID()}`, p_client_seq: 1, p_data: bytesToPgHex(Y.encodeStateAsUpdate(seed, seedSv)) }));
+    expect((await call(ownerToken, 'link', ids)).status).toBe(200);
+    const { files } = await fake('/files');
+    const fileId = files.at(-1);
+    let tab = (await fake(`/files/${fileId}`)).sheets.find((sh) => sh.name === TAB);
+    const row = tab.rows.findIndex((r) => r.includes('D-501'));
+    const notesCol = tab.rows[0].indexOf('Notes');
+    await fake(`/files/${fileId}/edit`, { title: TAB, edits: [{ row, col: notesCol, value: 'PM, later' }] });
+    await syncNow(ownerToken, ids);
+
+    // A phone online loads the PM's note, then changes it, for either Yjs id.
+    for (const [n, phoneId] of [[1, 1], [2, 0xfffffff0]]) {
+      const phone = await loadDoc(owner, doc.id);
+      phone.clientID = phoneId + n;
+      const sv = Y.encodeStateVector(phone);
+      const was = docToSurveyMarkers(phone);
+      syncSurveyMarkersToDoc(phone, { ...was, d1: { ...was.d1, note: { text: `Phone, after ${n}` } } }, { fieldMaps: true });
+      await must('phone update', owner.rpc('append_annotation_update', { p_document_id: doc.id, p_client_id: `e2e-phone-${randomUUID()}`, p_client_seq: 1, p_data: bytesToPgHex(Y.encodeStateAsUpdate(phone, sv)) }));
+      const after = await syncNow(ownerToken, ids);
+      tab = (await fake(`/files/${fileId}`)).sheets.find((sh) => sh.name === TAB);
+      expect(after.body.link?.conflicts || [], 'nothing asked').toEqual([]);
+      expect(tab.rows[row][notesCol]).toBe(`Phone, after ${n}`);
+    }
+  } finally {
+    await admin.from('sheet_sync_links').delete().eq('document_id', doc.id);
+    await admin.from('documents').delete().eq('id', doc.id);
+    await admin.from('sheet_sync_connections').delete().eq('user_id', await userId(E2E_ACCOUNTS.owner)).eq('provider', 'msgraph');
+  }
+});
+
+test('an item deleted offline keeps its row when the PM changed it meanwhile, and says why', async () => {
+  test.setTimeout(120_000);
+  const admin = adminClient();
+  const ownerToken = await signInToken(E2E_ACCOUNTS.owner);
+  await connectMicrosoft(ownerToken);
+  const owner = await apiClientFor(E2E_ACCOUNTS.owner);
+  const doc = await addDocument(admin, { id: await userId(E2E_ACCOUNTS.owner) }, { projectId: E2E_PROJECT.id, name: `Offline delete ${RUN}.pdf` });
+  const ids = { documentId: doc.id, templateId: `e2e-offdel-${RUN}`, ...LAYOUT, ...MS, title: 'Offline delete' };
+  try {
+    const seed = await loadDoc(owner, doc.id);
+    const sv0 = Y.encodeStateVector(seed);
+    syncSurveyMarkersToDoc(seed, { d1: { id: 'd1', name: 'D-601', moduleId: 'm1', categoryId: 'doors', pageNumber: 1, bounds: { x: 1, y: 1, width: 5, height: 5 }, checklistResponses: {}, note: { text: 'Start' } } }, { fieldMaps: true });
+    await must('seed', owner.rpc('append_annotation_update', { p_document_id: doc.id, p_client_id: `e2e-seed-${randomUUID()}`, p_client_seq: 1, p_data: bytesToPgHex(Y.encodeStateAsUpdate(seed, sv0)) }));
+    expect((await call(ownerToken, 'link', ids)).status).toBe(200);
+    const { files } = await fake('/files');
+    const fileId = files.at(-1);
+    const phone = await loadDoc(owner, doc.id);
+    const sv = Y.encodeStateVector(phone);
+    syncSurveyMarkersToDoc(phone, {}, { fieldMaps: true });
+    const held = Y.encodeStateAsUpdate(phone, sv);
+    let tab = (await fake(`/files/${fileId}`)).sheets.find((sh) => sh.name === TAB);
+    const row = tab.rows.findIndex((r) => r.includes('D-601'));
+    await fake(`/files/${fileId}/edit`, { title: TAB, edits: [{ row, col: tab.rows[0].indexOf('Notes'), value: 'PM, important' }] });
+    await syncNow(ownerToken, ids);
+    await must('phone', owner.rpc('append_annotation_update', { p_document_id: doc.id, p_client_id: `e2e-phone-${randomUUID()}`, p_client_seq: 1, p_data: bytesToPgHex(held) }));
+    const after = await syncNow(ownerToken, ids);
+    tab = (await fake(`/files/${fileId}`)).sheets.find((sh) => sh.name === TAB);
+    expect(Object.keys(await markersOf(owner, doc.id)), 'the delete stands in Survey').toEqual([]);
+    expect(tab.rows.some((r) => r.includes('PM, important')), 'the PM\'s row is kept').toBe(true);
+    expect((after.body.link?.problems || []).map((p) => p.message).join(' ')).toContain('"D-601" was deleted in Survey just after its row was changed in the sheet');
+    // A delete with no sheet change since still takes the row away.
+    const doc2 = await loadDoc(owner, doc.id);
+    expect(Object.keys(docToSurveyMarkers(doc2))).toEqual([]);
+  } finally {
+    await admin.from('sheet_sync_links').delete().eq('document_id', doc.id);
+    await admin.from('documents').delete().eq('id', doc.id);
+    await admin.from('sheet_sync_connections').delete().eq('user_id', await userId(E2E_ACCOUNTS.owner)).eq('provider', 'msgraph');
   }
 });

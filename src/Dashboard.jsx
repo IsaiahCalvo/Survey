@@ -1096,11 +1096,22 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
   // document (open: true -> each opens in a new tab). Non-PDFs are skipped
   // with a short note; the PDFs go one at a time through the same path as
   // the Upload button, so a duplicate ask waits for its answer.
-  const handleDroppedFiles = async (files, { projectId = null, projectName = null, open = false } = {}) => {
+  const handleDroppedFiles = async (files, { projectId = null, projectName = null, open = false, sample = false } = {}) => {
     const { pdfs, rejected } = splitDroppedFiles(files);
     const skipped = rejectedFilesMessage(rejected);
     if (skipped) showToast(skipped, 'info');
     if (pdfs.length === 0) return { added: 0, skipped: rejected.length };
+    // Nightly 'guest-sample' (Drawboard PDF Pro trial audit 2026-11-10): the
+    // sample drawing opens for someone signed out too, as a try-out that is
+    // not saved, so they can mark up before making an account.
+    if (!user && sample && isFeatureOn('guest-sample')) {
+      onDocumentSelect(asPdfFile(pdfs[0]));
+      showToast('This is a try-out. Sign in to save your marks.', 'info', {
+        duration: 12000,
+        action: { label: 'Sign in', onClick: () => onShowAuthModal?.() },
+      });
+      return { added: 0, skipped: rejected.length };
+    }
     if (!user) {
       setDashboardError('Please sign in to upload documents.');
       onShowAuthModal();
