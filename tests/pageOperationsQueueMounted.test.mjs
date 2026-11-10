@@ -103,7 +103,7 @@ const initialState = () => ({
   regionOverlayDisabled: new Map(),
 });
 
-async function mountHarness({ persist, sourceFile = null, readPdfBytes }) {
+async function mountHarness({ persist, sourceFile = null, readPdfBytes, blocked = null }) {
   const { usePageOperations, cleanup } = await loadUsePageOperations();
   const root = createRoot(document.getElementById('root'));
   const committed = [];
@@ -130,12 +130,14 @@ async function mountHarness({ persist, sourceFile = null, readPdfBytes }) {
       setClipboardPage: setState,
       clipboardType: null,
       setClipboardType: setState,
+      blocked: Harness.blocked,
       flushDelayMs: 5,
     });
     return null;
   }
   Harness.pdfFile = sourceFile || await pdfFixture();
   Harness.persist = persist;
+  Harness.blocked = blocked;
   Harness.commit = (next, operation, step) => committed.push({ state: next, operation, step });
   Harness.restore = (view) => restored.push(view);
   await act(async () => root.render(React.createElement(Harness)));
@@ -337,4 +339,68 @@ test('a genuine save error rolls back through its captured tab owner callbacks',
     assert.equal(harness.committed.at(-1).operation.type,'rollback');assert.deepEqual(harness.committed.at(-1).state.pageNames,harness.state.pageNames);
     assert.deepEqual(harness.restored,['view-before-1']);assert.deepEqual(otherCommits,[]);assert.deepEqual(otherRestores,[]);
   }finally{release();await harness.teardown();teardownDom();}
+});
+
+// Nightly 'page-op-sync' (utils/pageOpSync.js): while another window is
+// changing this document's pages, page changes here are refused and change
+// nothing (no view swap, no commit, no save).
+test('a blocked page change is refused and changes nothing', async () => {
+  const teardownDom = setupDom();
+  const persisted = [];
+  let reason = 'Pages are being changed in another window.';
+  const harness = await mountHarness({ persist: async (file) => persisted.push(file), blocked: () => reason });
+  try {
+    let result;
+    await act(async () => {
+      result = await harness.api.handleRotatePage(1);
+      await harness.api.flushPageOperations();
+    });
+    assert.equal(result, false);
+    assert.deepEqual(harness.views, []);
+    assert.deepEqual(harness.committed, []);
+    assert.equal(persisted.length, 0);
+    reason = null;
+    await act(async () => {
+      result = await harness.api.handleRotatePage(1);
+      await harness.api.flushPageOperations();
+    });
+    assert.equal(result, true);
+    assert.equal(persisted.length, 1);
+  } finally {
+    await harness.teardown();
+    teardownDom();
+  }
+});
+
+test('the save says whether later page changes are still waiting', async () => {
+  const teardownDom = setupDom();
+  const seen = [];
+  let harness;
+  let releaseFirst;
+  const firstSave = new Promise((resolve) => { releaseFirst = resolve; });
+  harness = await mountHarness({
+    persist: async (file, info) => {
+      if (seen.length === 0) {
+        seen.push('first');
+        await firstSave;
+      } else seen.push('second');
+      seen.push(info?.hasMorePending?.());
+    },
+  });
+  try {
+    await act(async () => {
+      harness.api.handleRotatePage(1);
+      const flushed = harness.api.flushPageOperations();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      // Made while the first bytes upload: saved by the next batch.
+      harness.api.handleRotatePage(2);
+      releaseFirst();
+      await flushed;
+      await harness.api.flushPageOperations();
+    });
+    assert.deepEqual(seen, ['first', true, 'second', false]);
+  } finally {
+    await harness.teardown();
+    teardownDom();
+  }
 });

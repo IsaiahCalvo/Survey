@@ -15,8 +15,9 @@ const body = (src, start) => {
 };
 
 test('Paste in place reads the family clipboard', () => {
-  assert.match(viewer, /pasteInPlace: \(page\) => \{\s*const clip = familyClipboardRef\.current;/);
-  assert.match(menu, /canPasteInPlace: Boolean\(familyClipboard\)/);
+  // (Nothing pastes while every mark is hidden: the marksHidden() guard.)
+  assert.match(viewer, /pasteInPlace: \(page\) => \{\s*if \(marksHidden\(\)\) return;[^\n]*\n\s*const clip = familyClipboardRef\.current;/);
+  assert.match(menu, /canPasteInPlace: !pasteBlocked && Boolean\(familyClipboard\)/);
 });
 
 test('single-mark Copy (Cmd+C, toolbar) goes through copyFamilySelection', () => {

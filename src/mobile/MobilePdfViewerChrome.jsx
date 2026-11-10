@@ -9,10 +9,11 @@ import { ANNOTATION_SIZE_PRESETS } from '../components/AnnotationSizeControl';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from '../utils/annotationSize';
 import CompactColorPicker, { PRESET_COLORS } from '../components/CompactColorPicker';
 import PageGridToggle from '../components/PageGridToggle';
+import DarkPagesToggle from '../components/DarkPagesToggle';
 import { PageGridSettingsPanel } from '../components/PageGridSettings';
 import { isFeatureOn } from '../featureFlags.js';
 import { quickColoursForTool } from '../utils/quickStylePresets.js';
-import SnappingToggle from '../components/SnappingToggle.jsx';
+import SnappingToggle, { SnapContentToggle } from '../components/SnappingToggle.jsx';
 import { composeTextColor, splitTextColor } from '../utils/textColorOpacity';
 import { resolveFontSizeDraft } from '../utils/selectedTextFormatting.js';
 import { QuickColourDots, QuickPaintSwatch } from '../components/QuickStyleControls';
@@ -1044,6 +1045,10 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
     setPageEditing(false);
     setZoomOpen((open) => !open);
   };
+  // Back closes the zoom menu or the page-jump field before it leaves the
+  // document (R3-Y).
+  useBackLayer(zoomOpen, () => setZoomOpen(false));
+  useBackLayer(pageEditing, () => setPageEditing(false));
 
   return (
     /* UX 2026-09-21 (pass 7, board 1): the header does NOT show the PDF name.
@@ -1273,13 +1278,47 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
                     className={on ? 'is-active' : ''}
                     onClick={toggle}
                   >
-                    <span>Snapping</span>
+                    <span>{isFeatureOn('snap-content') ? 'Snap to marks' : 'Snapping'}</span>
                     {on && <Icon name="check" size={14} color="currentColor" />}
                   </button>
                 </div>
               )} />
+              {/* Nightly (flag 'dark-pages'): light-on-dark pages. */}
+              <DarkPagesToggle render={({ on, toggle }) => (
+                <div className="mobile-pdf-header__zoom-fits">
+                  <button
+                    type="button"
+                    aria-pressed={on}
+                    data-dark-pages-toggle="true"
+                    className={on ? 'is-active' : ''}
+                    onClick={toggle}
+                  >
+                    <span>Dark pages</span>
+                    {on && <Icon name="check" size={14} color="currentColor" />}
+                  </button>
+                </div>
+              )} />
+              {/* Nightly (flag 'snap-content'): snap to the PDF's own drawing. */}
+              {isFeatureOn('snap-content') && (
+                <SnapContentToggle render={({ on, toggle }) => (
+                  <div className="mobile-pdf-header__zoom-fits">
+                    <button
+                      type="button"
+                      aria-pressed={on}
+                      data-snapping-drawing="true"
+                      className={on ? 'is-active' : ''}
+                      onClick={toggle}
+                    >
+                      <span>Snap to drawing</span>
+                      {on && <Icon name="check" size={14} color="currentColor" />}
+                    </button>
+                  </div>
+                )} />
+              )}
             </div>
           )}
+          {/* Keeps dark pages applied while the menu above is closed. */}
+          <DarkPagesToggle render={() => null} />
         </div>
 
         <button
@@ -1302,6 +1341,9 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
           type="button"
           className="mobile-pdf-header__icon"
           aria-label="Undo"
+          // Keep focus where it was (a keyboard Enter then finishes a polygon,
+          // not presses Undo again), as the desktop buttons do.
+          onMouseDown={(event) => event.preventDefault()}
           disabled={!topToolbarApi?.canUndo}
           onClick={topToolbarApi?.onUndo || undefined}
         >
@@ -1312,6 +1354,9 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
           type="button"
           className="mobile-pdf-header__icon"
           aria-label="Redo"
+          // Keep focus where it was (a keyboard Enter then finishes a polygon,
+          // not presses Redo again), as the desktop buttons do.
+          onMouseDown={(event) => event.preventDefault()}
           disabled={!topToolbarApi?.canRedo}
           onClick={topToolbarApi?.onRedo || undefined}
         >
@@ -2177,7 +2222,7 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
       {!isEraser && showStroke && !isMultiColour && (
         <QuickColourDots
           platform="phone"
-          {...quickColoursForTool(api?.contextTool || api?.activeTool, isFeatureOn('tool-quick-colours'))}
+          {...quickColoursForTool(api?.quickColourTool || api?.contextTool || api?.activeTool, isFeatureOn('tool-quick-colours'))}
           value={quickColourShown}
           customActive={api.selectionMixed?.strokeColor ? false : undefined}
           onPick={applyQuickColour}
@@ -2696,7 +2741,7 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
   );
 }
 
-export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedInUser = null, onOpenPanel, onAuxPanelStateChange, auxCloseRequestKey = 0 }) {
+export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedInUser = null, onOpenPanel, onAuxPanelStateChange, auxCloseRequestKey = 0, versions = null }) {
   const tip = useTooltip();
   const [openCategory, setOpenCategory] = useState(null);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -3353,6 +3398,22 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                 <Icon name="edit" size={16} color="currentColor" />
                 Rename document…
               </button>
+              {/* Version history (Nightly, flag 'document-versions'): the
+                  desktop's "v3" button, for the phone. Opens the same list,
+                  and from there an older version or the overlay compare. */}
+              {versions && (
+                <button
+                  type="button"
+                  data-mobile-document-versions="true"
+                  onClick={() => {
+                    setMoreOpen(false);
+                    versions.onOpen();
+                  }}
+                >
+                  <Icon name="history" size={16} color="currentColor" />
+                  {versions.label}
+                </button>
+              )}
               {/* RULED 2026-09-22 (owner): "More = Export + Save log". Save log
                   used to be gated on window.Capacitor.isNativePlatform(), so the
                   menu on web mobile held ONE row and the ruling's second item

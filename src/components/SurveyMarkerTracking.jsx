@@ -3,9 +3,10 @@
 // Every change goes through `onChange(patch)`, which writes the marker's own
 // `tracking` field (utils/markerTracking.js). The people are those who can
 // open the document (mark_comment_people), so an item is only ever given to
-// someone who can see it.
-import { useRef } from 'react';
-import { MARKER_STATUSES, dueLabel, isOverdue, readTracking, shortDayLabel, todayKey } from '../utils/markerTracking.js';
+// someone who can see it. Under the line, "Activity" opens the item's log of
+// who changed what and when (Drawboard Projects keeps one per issue).
+import { useRef, useState } from 'react';
+import { MARKER_STATUSES, activityText, activityTimeLabel, dueLabel, isOverdue, readHistory, readTracking, shortDayLabel, todayKey } from '../utils/markerTracking.js';
 import Icon from '../Icons';
 import { personLabel } from '../services/markComments.js';
 import ValueSelect from './ValueSelect.jsx';
@@ -69,6 +70,50 @@ function DueDatePill({ due, today, canEdit, onPick, tip }) {
   );
 }
 
+function SurveyMarkerActivity({ marker, people, userId, today }) {
+  const [open, setOpen] = useState(false);
+  const history = readHistory(marker);
+  if (!history.length) return null;
+  const nameOf = (id) => {
+    if (!id) return 'nobody';
+    if (id === userId) return 'you';
+    const person = (people || []).find((p) => p.id === id);
+    return person ? personLabel(person) : 'a former member';
+  };
+  const whoDid = (id) => {
+    if (id && id === userId) return 'You';
+    const name = id ? nameOf(id) : 'Someone';
+    return name.charAt(0).toUpperCase() + name.slice(1);
+  };
+  const now = new Date();
+  return (
+    <div className="survey-tracking__activity" data-testid="survey-tracking-activity">
+      <button
+        type="button"
+        className="survey-tracking__activity-toggle"
+        aria-expanded={open}
+        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
+      >
+        <Icon name={open ? 'chevronDown' : 'chevronRight'} size={12} color="currentColor" />
+        <span>Activity</span>
+        <span className="survey-tracking__activity-count">{history.length}</span>
+      </button>
+      {open ? (
+        <ol className="survey-tracking__activity-list" aria-label="Activity">
+          {history.slice().reverse().map((entry, i) => (
+            <li key={`${entry.at}-${entry.field}-${i}`} className="survey-tracking__activity-item" data-activity-field={entry.field}>
+              <span className="survey-tracking__activity-text">
+                <strong>{whoDid(entry.by)}</strong> {activityText(entry, { nameOf, today })}
+              </span>
+              <time className="survey-tracking__activity-time" dateTime={entry.at}>{activityTimeLabel(entry.at, now)}</time>
+            </li>
+          ))}
+        </ol>
+      ) : null}
+    </div>
+  );
+}
+
 export default function SurveyMarkerTracking({ marker, people = [], userId = null, canEdit = true, onChange, variant = 'desktop', tip = null }) {
   const tracking = readTracking(marker);
   const phone = variant === 'phone';
@@ -125,6 +170,7 @@ export default function SurveyMarkerTracking({ marker, people = [], userId = nul
           <DueDatePill due={tracking.due} today={today} canEdit={canEdit} tip={tip} onPick={(due) => set({ due })} />
         )}
       </label>
+      <SurveyMarkerActivity marker={marker} people={people} userId={userId} today={today} />
     </div>
   );
 }

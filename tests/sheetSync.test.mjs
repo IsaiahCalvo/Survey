@@ -10,6 +10,7 @@ import { googleSheetsProvider } from '../supabase/functions/_shared/sheetSync/pr
 import { assertProvider } from '../supabase/functions/_shared/sheetSync/providers/contract.js';
 import { encryptToken, decryptToken } from '../supabase/functions/_shared/sheetSync/tokenCrypto.js';
 import { mergeMarkerWrites } from '../supabase/functions/_shared/sheetSync/service.js';
+import { putMovedRowIdsRight, putMovedWritesRight } from '../supabase/functions/_shared/sheetSync/round.js';
 import {
   defaultKit, endpoints, fakeApi, fakeGoogleFetch, template, setup, door,
 } from './helpers/sheetSyncHarness.mjs';
@@ -229,6 +230,174 @@ test('a sort in the sheet between read and write: nothing lands on the wrong row
   const lockedCol = sheet.rows[0].indexOf('Locked?');
   assert.equal(sheet.rows.find((row) => row[3] === 'D-101')[lockedCol], 'Y');
   assert.notEqual(sheet.rows.find((row) => row[3] === 'D-102')[lockedCol], 'Y');
+});
+
+test('a sort that lands after the check but before the write: values go back to their own items', async () => {
+  // Real Excel soak (2026-11-10): the sort came 400 ms into the round, after
+  // the Row ID check; the app's value sat on another item's row and the next
+  // round took it as a PM edit on both items.
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101'), d2: door('d2', 'D-102'), d3: door('d3', 'D-103') } });
+  await ctx.round(); await ctx.round();
+  ctx.markers.d1.checklistResponses = { c1: { selection: 'Y' } };
+  let sorted = false;
+  const p = ctx.provider;
+  const sortingWrite = { ...p, writeCells: async (id, cells) => {
+    if (!sorted) { sorted = true; await fakeApi(`/files/${ctx.fileId}/sort`, { title: 'Doors - Level 1' }); }
+    return p.writeCells(id, cells);
+  } };
+  const res = await ctx.round({ provider: sortingWrite });
+  assert.equal(res.status, 'retry', 'rows moved: plan again from a fresh read');
+  const sheet = await ctx.sheet();
+  const lockedCol = sheet.rows[0].indexOf('Locked?');
+  const cell = (name) => sheet.rows.find((row) => row[3] === name)[lockedCol];
+  assert.equal(cell('D-101'), 'Y', 'the value is on its own item');
+  assert.ok(!cell('D-103'), 'the item it landed on first is put back');
+  const quiet = await ctx.round({ force: true });
+  assert.equal(quiet.summary.toApp, 0, 'nothing comes back to the app as a PM edit');
+  assert.ok(!ctx.markers.d3.checklistResponses?.c1?.selection);
+  assert.equal(ctx.markers.d1.checklistResponses.c1.selection, 'Y');
+});
+
+test('a sort that lands while a row typed in the sheet gets its stamps: they never stay on another item', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101'), d2: door('d2', 'D-102'), d3: door('d3', 'D-103') } });
+  await ctx.round(); await ctx.round();
+  const sheet = await ctx.sheet();
+  const at = sheet.rows.length; const item = sheet.rows[0].indexOf('Item');
+  await ctx.edit([{ row: at, col: item, value: 'New door' }]);
+  const d101 = [...sheet.rows.find((r) => r[item] === 'D-101')];
+  let n = 0;
+  const p = ctx.provider;
+  const sortingWrite = { ...p, writeCells: async (id, cells) => {
+    if (n++ === 0) await fakeApi(`/files/${ctx.fileId}/sort`, { title: 'Doors - Level 1' });
+    return p.writeCells(id, cells);
+  } };
+  const plan = [];
+  const watching = { ...sortingWrite, writeCells: async (id, cells) => { plan.push(...cells); return sortingWrite.writeCells(id, cells); } };
+  const res = await ctx.round({ provider: watching });
+  assert.ok(plan.some((c) => c.row === at && c.col !== 0), 'the new row gets cells of its own written');
+  assert.equal(res.status, 'retry');
+  const now = (await ctx.sheet()).rows.find((r) => r[item] === 'D-101');
+  assert.deepEqual(now.slice(0, d101.length), d101, 'D-101 is as it was');
+  await ctx.round(); await ctx.round({ force: true });
+  assert.equal(Object.values(ctx.markers).filter((m) => m.name === 'New door').length, 1);
+  assert.equal(ctx.markers.d1.changedBy, 'IC', 'D-101 never takes the new row\'s stamps');
+});
+
+test('a sort that lands while a copied row gets its own Row ID: the Row ID stays with its row', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101'), d2: door('d2', 'D-102'), d3: door('d3', 'D-103') } });
+  await ctx.round(); await ctx.round();
+  const sheet = await ctx.sheet();
+  const at = sheet.rows.length; const item = sheet.rows[0].indexOf('Item');
+  // A copy of D-101's row (Row ID and all), named "A-copy" so a Z-A sort moves it.
+  await ctx.edit([{ row: at, col: 0, value: sheet.rows[1][0] }, { row: at, col: item, value: 'A-copy' }]);
+  let n = 0;
+  const p = ctx.provider;
+  const sortingIds = { ...p, writeCells: async (id, cells) => {
+    if (cells.some((c) => c.col === 0 && !c.header) && n++ === 0) await fakeApi(`/files/${ctx.fileId}/sort`, { title: 'Doors - Level 1' });
+    return p.writeCells(id, cells);
+  } };
+  const res = await ctx.round({ provider: sortingIds });
+  assert.equal(res.status, 'retry');
+  await ctx.round();
+  await ctx.round({ force: true });
+  const after = (await ctx.sheet()).rows;
+  const idOf = (name) => after.find((r) => r[item] === name)?.[0];
+  const ids = after.slice(1).map((r) => r[0]);
+  assert.equal(new Set(ids).size, ids.length, 'no Row ID twice');
+  for (const name of ['D-101', 'D-102', 'D-103']) assert.equal(ctx.markers[`d${name.slice(-1)}`].name, name, `${name} keeps its name`);
+  const copy = Object.values(ctx.markers).filter((m) => m.name === 'A-copy');
+  assert.equal(copy.length, 1, 'the copy is one new item');
+  assert.notEqual(idOf('A-copy'), idOf('D-101'));
+  assert.equal(Object.keys(ctx.markers).length, 4);
+});
+
+// A stand-in provider over one tab, for the Row ID repair on its own.
+const oneTab = (rows) => ({
+  rows,
+  readGrid: async () => ({ sheets: [{ sheetId: '1', title: 'T', rows: rows.map((r) => [...r]) }] }),
+  writeCells: async (_id, cells) => { for (const c of cells) rows[c.row][c.col] = c.value; },
+  readCells: async (_id, cells) => cells.map((c) => rows[c.row]?.[c.col] ?? ''),
+});
+
+test('value repair after a mid-write sort leaves a person\'s edit on another item alone, even the same value', async () => {
+  const before = [['Row ID', 'Item', 'Done'], ['t1', 'A', ''], ['t2', 'B', ''], ['t3', 'C', '']];
+  // Sorted Z-A before our "Y" for A went out, so it landed on C; meanwhile
+  // a PM set B to "Y" too.
+  const tab = oneTab([['Row ID', 'Item', 'Done'], ['t3', 'C', 'Y'], ['t2', 'B', 'Y'], ['t1', 'A', '']]);
+  const writes = [{ sheetId: '1', title: 'T', row: 1, col: 2, value: 'Y', markerId: 'a', key: 'answer:x' }];
+  const idChecks = [{ sheetId: '1', title: 'T', row: 1, col: 0, token: 't1' }];
+  await putMovedWritesRight({ provider: tab, fileId: 'f', grid: { sheets: [{ sheetId: '1', rows: before }] }, writes, idChecks, landed: new Map([['1|1', 't3']]) });
+  assert.deepEqual(tab.rows.slice(1).map((r) => [r[1], r[2]]), [['C', ''], ['B', 'Y'], ['A', 'Y']]);
+});
+
+test('value repair with no tab to look at reads nothing', async () => {
+  let reads = 0;
+  const tab = { ...oneTab([['Row ID']]), readGrid: async () => { reads += 1; return { sheets: [] }; } };
+  const res = await putMovedWritesRight({ provider: tab, fileId: 'f', grid: { sheets: [] }, writes: [], idChecks: [], landed: new Map() });
+  assert.equal(res.fixed, 0);
+  assert.equal(reads, 0, 'never a read of every tab');
+});
+
+test('value repair under a title row: a column moved meanwhile is left alone, not written into', async () => {
+  const before = [['Doors report'], ['Row ID', 'Item', 'Done'], ['t1', 'A', ''], ['t2', 'B', '']];
+  const tab = oneTab([['Doors report'], ['Row ID', 'Done', 'Item'], ['t2', '', 'Y'], ['t1', '', 'A']]);
+  const writes = [{ sheetId: '1', title: 'T', row: 2, col: 2, value: 'Y', headerRow: 1, markerId: 'a', key: 'answer:x' }];
+  const idChecks = [{ sheetId: '1', title: 'T', row: 2, col: 0, token: 't1' }];
+  await putMovedWritesRight({ provider: tab, fileId: 'f', grid: { sheets: [{ sheetId: '1', rows: before }] }, writes, idChecks, landed: new Map([['1|2', 't2']]) });
+  assert.equal(tab.rows[3][2], 'A', 'A\'s Item is never written over');
+});
+
+test('value repair after a sort in a round that also adds a column: the new heading is not taken as a moved column', async () => {
+  const before = [['Row ID', 'Item', 'Done'], ['t1', 'A', ''], ['t2', 'B', '']];
+  // The round added a "Signed off?" heading in D and wrote A's answer there,
+  // but a sort put B where A was.
+  const tab = oneTab([['Row ID', 'Item', 'Done', 'Signed off?'], ['t2', 'B', '', 'Y'], ['t1', 'A', '', '']]);
+  const headers = [{ sheetId: '1', title: 'T', row: 0, col: 3, value: 'Signed off?', header: true }];
+  const writes = [{ sheetId: '1', title: 'T', row: 1, col: 3, value: 'Y', headerRow: 0, markerId: 'a', key: 'answer:s' }];
+  const idChecks = [{ sheetId: '1', title: 'T', row: 1, col: 0 }];
+  await putMovedWritesRight({ provider: tab, fileId: 'f', grid: { sheets: [{ sheetId: '1', rows: before }] }, writes, idChecks, landed: new Map([['1|1', 't2']]), headers });
+  assert.deepEqual(tab.rows.slice(1).map((r) => [r[1], r[3]]), [['B', ''], ['A', 'Y']]);
+});
+
+test('Row ID repair finds the heading under a title row, renamed in case and moved', async () => {
+  const before = [['Doors report'], ['Row ID', 'Item', 'Notes'], ['', 'A-copy', ''], ['tokA', 'D-101', '']];
+  // Sorted Z-A, Item heading retyped as "item" and moved to the end, then our
+  // Row ID for A-copy landed on row 3, now D-101's.
+  const tab = oneTab([['Doors report'], ['Row ID', 'Notes', 'item'], ['tokNew', '', 'D-101'], ['', '', 'A-copy']]);
+  const idWrites = [{ sheetId: '1', title: 'T', row: 2, col: 0, value: 'tokNew', rowIdFor: 'A-copy', itemCol: 1, headerRow: 1 }];
+  await putMovedRowIdsRight({ provider: tab, fileId: 'f', grid: { sheets: [{ sheetId: '1', rows: before }] }, idWrites });
+  assert.equal(tab.rows[2][0], 'tokA', 'D-101 gets its own Row ID back');
+  assert.equal(tab.rows[3][0], 'tokNew', 'the new Row ID sits with A-copy');
+});
+
+test('Row ID repair: two Row IDs crossed by a sort both end on their own items', async () => {
+  const before = [['Row ID', 'Item'], ['', 'A1'], ['', 'B1']];
+  const tab = oneTab([['Row ID', 'Item'], ['tokA', 'B1'], ['tokB', 'A1']]);
+  const idWrites = [
+    { sheetId: '1', title: 'T', row: 1, col: 0, value: 'tokA', rowIdFor: 'A1', itemCol: 1, headerRow: 0 },
+    { sheetId: '1', title: 'T', row: 2, col: 0, value: 'tokB', rowIdFor: 'B1', itemCol: 1, headerRow: 0 },
+  ];
+  await putMovedRowIdsRight({ provider: tab, fileId: 'f', grid: { sheets: [{ sheetId: '1', rows: before }] }, idWrites });
+  assert.deepEqual(tab.rows.slice(1), [['tokB', 'B1'], ['tokA', 'A1']]);
+});
+
+test('a sort right before rows are deleted: no other item\'s row is deleted', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101'), d2: door('d2', 'D-102'), d3: door('d3', 'D-103') } });
+  await ctx.round(); await ctx.round();
+  delete ctx.markers.d1;
+  let sorted = false;
+  const p = ctx.provider;
+  const sortingDelete = { ...p, readCells: async (id, cells) => {
+    // The last check before deleting: the PM sorts Z-A just then.
+    if (!sorted && cells.length === 1 && cells[0].token) { sorted = true; await fakeApi(`/files/${ctx.fileId}/sort`, { title: 'Doors - Level 1' }); }
+    return p.readCells(id, cells);
+  } };
+  const res = await ctx.round({ provider: sortingDelete });
+  assert.equal(res.status, 'retry');
+  await ctx.round();
+  const rows = (await ctx.sheet()).rows;
+  const names = rows.slice(1).map((r) => r[3]).filter(Boolean).sort();
+  assert.deepEqual(names, ['D-102', 'D-103'], 'only the deleted item\'s row went');
 });
 
 test('a new checklist line and a new category after linking: the sheet grows to match', async () => {

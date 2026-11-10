@@ -155,6 +155,9 @@ export default function VersionCompareDialog({ older, newer, versions = [], onCl
   // Open each version once; a layer added later opens then.
   useEffect(() => {
     let cancelled = false;
+    // A new set of versions starts clean, so taking off a layer that would
+    // not open brings the overlay back.
+    setFailed(null);
     const missing = wanted.filter((v) => !pdfs[v.id]);
     if (!missing.length) return undefined;
     // A load that is cancelled (a layer added mid-open, unmount) or that
@@ -163,11 +166,11 @@ export default function VersionCompareDialog({ older, newer, versions = [], onCl
       .then((results) => {
         const opened = results.filter((r) => r.status === 'fulfilled').map((r) => r.value);
         const failure = results.find((r) => r.status === 'rejected');
-        if (cancelled || failure) {
+        if (cancelled) {
           for (const [, pdf] of opened) pdf?.destroy?.();
-          if (!cancelled) setFailed(failure.reason?.message || 'Could not open the versions');
           return;
         }
+        if (failure) setFailed(failure.reason?.message || 'Could not open the versions');
         setPdfs((current) => ({ ...current, ...Object.fromEntries(opened) }));
       });
     return () => { cancelled = true; };

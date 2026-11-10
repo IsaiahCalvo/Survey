@@ -55,6 +55,8 @@ import {
 } from './homeLibrary.js';
 import { useHomeExtras } from './homeLibraryData.js';
 import { HomeFilterChips, HomeNavSection, HomeTiles, ListViewButton, TagCell, TagPopover } from './HomeLibraryBits.jsx';
+import { ReviewChips, ReviewFields, ReviewLine, useDocumentReviews, useReviewPeople } from './DocumentReviewBits.jsx';
+import { EMPTY_REVIEW_FILTER, passesReviewFilter, reviewFilterIsEmpty, reviewStatusCounts } from './documentReview.js';
 
 const ledgerHeader = {
   background: 'var(--ink-700)',
@@ -347,6 +349,14 @@ export default function DocumentsLedger({
     };
   }), [documents, projects, homeExtras.openedByDoc, homeExtras.tagsByDoc]);
 
+  // Document review (Nightly, flag 'document-review'; DocumentReviewBits.jsx):
+  // status, owner and markup count under each name, chips to filter by them.
+  const [reviewOn] = useState(() => isFeatureOn('document-review'));
+  const documentIds = useMemo(() => documents.map((d) => d.id), [documents]);
+  const { reviews, save: saveReview } = useDocumentReviews(reviewOn, documentIds);
+  const [reviewFilter, setReviewFilter] = useState(EMPTY_REVIEW_FILTER);
+  const reviewCounts = useMemo(() => (reviewOn ? reviewStatusCounts(documentIds, reviews) : null), [reviewOn, documentIds, reviews]);
+
   const onHeaderClick = (key) => {
     if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     else { setSortKey(key); setSortDir(columnsOn ? firstSortDir(key) : (key === 'edited' || key === 'size' ? 'desc' : 'asc')); }
@@ -369,19 +379,21 @@ export default function DocumentsLedger({
   }, [tagFilter, tagRows]);
   const docs = useMemo(() => {
     let arr;
+    const reviewOk = (d) => !reviewOn || passesReviewFilter(reviews.get(d.id), reviewFilter, user?.id);
     if (extrasOn) {
       const tagKey = tagFilter ? tagFilter.toLowerCase() : null;
       arr = mapped.filter((d) => (
         (!sharedViewsOn || inHomeView(d.raw, { view: homeView, ...viewScope }))
         && (!tagKey || d.tags.some((t) => t.toLowerCase() === tagKey))
         && matchesHomeSearch(d.name, tagsReady ? d.tags : null, search)
+        && reviewOk(d)
       ));
       // The extra sorts (Last opened, Created, Pages) come with home-columns;
       // without it the list sorts exactly as before.
       if (columnsOn) return sortHomeRows(arr, sortKey, sortDir);
     } else {
       const q = search.trim().toLowerCase();
-      arr = mapped.filter((d) => !q || (d.name || '').toLowerCase().includes(q));
+      arr = mapped.filter((d) => (!q || (d.name || '').toLowerCase().includes(q)) && reviewOk(d));
     }
     const sign = sortDir === 'asc' ? 1 : -1;
     if (sortKey === 'name') arr.sort((a, b) => sign * a.name.localeCompare(b.name));
@@ -390,7 +402,7 @@ export default function DocumentsLedger({
     else if (sortKey === 'size') arr.sort((a, b) => sign * (a.sizeBytes - b.sizeBytes));
     return arr;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapped, search, sortKey, sortDir, extrasOn, columnsOn, homeView, tagFilter, sharedViewsOn, tagsReady, homeExtras.sharedByMeIds]);
+  }, [mapped, search, sortKey, sortDir, extrasOn, columnsOn, homeView, tagFilter, sharedViewsOn, tagsReady, homeExtras.sharedByMeIds, reviewOn, reviews, reviewFilter, user?.id]);
   const mobileDetailDoc = docs.find((d) => d.id === mobileDetailId) || null;
 
   /* Idle thumbnail backfill (2026-09-23): fills missing thumbnails one at a
@@ -458,6 +470,8 @@ export default function DocumentsLedger({
   const selectedDocs = docs.filter((d) => selDocs.has(d.id));
   const bulkSelected = !docSelectMode && selectedDocs.length >= 2;
   const previewDoc = !docSelectMode && selectedDocs.length === 1 ? selectedDocs[0] : sel;
+  // Who can own the review of the document in the preview (or phone details).
+  const reviewPeople = useReviewPeople(reviewOn ? (mobileDetailDoc?.id || previewDoc?.id || null) : null);
   // Team for the open preview (desktop panel or phone detail): owner + collaborators.
   const teamDocRaw = (mobileDetailDoc || previewDoc)?.raw || null;
   const teamDocId = teamDocRaw?.id || null;
@@ -475,6 +489,10 @@ export default function DocumentsLedger({
     return () => { live = false; };
   }, [teamDocId, teamOwnerIsMe]);
   const teamFresh = teamCollab.id === teamDocId;
+  // Review status and owner need edit access (set_document_review checks
+  // 'editor'): a document shared to me as a viewer shows them read-only.
+  const myTeamRole = teamFresh ? (teamCollab.rows.find((r) => r.user_id === user?.id)?.role || null) : null;
+  const canEditReview = teamOwnerIsMe || myTeamRole !== 'viewer';
   const teamRows = documentTeamRows(teamDocRaw, teamFresh ? teamCollab.rows : [], user, teamFresh ? teamCollab.owner : null);
   const renderTeam = (nameStyle) => teamRows.map((p) => (
     <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -983,6 +1001,7 @@ export default function DocumentsLedger({
           {tagsReady && d.tags.length ? (
             <div className="mobile-card-tags">{d.tags.slice(0, 3).map((tag) => <span key={tag} className="home-tag-chip">{tag}</span>)}</div>
           ) : null}
+          {reviewOn && <ReviewLine review={reviews.get(d.id)} />}
         </div>
         <div style={{ display: 'grid', placeItems: 'center', minWidth: 0 }}>
           {renderMobileThumb(d)}
@@ -1084,6 +1103,9 @@ export default function DocumentsLedger({
         <div ref={dropCardRef} className="card documents-desktop-card" style={{ display: 'grid', gridTemplateColumns: showPreview ? '2.2fr 1fr' : '1fr', height: '100%', overflow: 'hidden' }}>
           <div ref={listScrollRef} className="slim-scroll documents-ledger-scroll" style={{ overflow: 'auto', borderRight: showPreview ? '1px solid var(--ink-500)' : 0 }}>
             <div>
+              {reviewOn && mapped.length > 0 && (
+                <ReviewChips filter={reviewFilter} onChange={setReviewFilter} counts={reviewCounts} />
+              )}
               <div className={gridClass} style={{ ...ledgerHeader, display: 'grid', gridTemplateColumns: grid, position: 'sticky', top: 0, zIndex: 3 }}>
                 {!showTiles && <span className="documents-ledger-head-check" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   {docSelectMode && docs.length > 0 && (
@@ -1149,7 +1171,7 @@ export default function DocumentsLedger({
                     />
                   </div>
                 ) : (
-                  <div className="meta" style={{ padding: '24px 16px', fontSize: 12 }}>{extrasOn ? filteredEmpty : 'No documents match your search.'}</div>
+                  <div className="meta" style={{ padding: '24px 16px', fontSize: 12 }}>{reviewOn && !reviewFilterIsEmpty(reviewFilter) ? 'No documents match these filters.' : (extrasOn ? filteredEmpty : 'No documents match your search.')}</div>
                 )
               )}
               {showTiles && docs.length > 0 ? (
@@ -1259,7 +1281,14 @@ export default function DocumentsLedger({
                       )}
                     </div>
                     <div style={stickyCell(isFilled)}>
-                      <span style={{ fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{d.name}</span>
+                      {reviewOn ? (
+                        <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+                          <span style={{ fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{d.name}</span>
+                          <ReviewLine review={reviews.get(d.id)} />
+                        </div>
+                      ) : (
+                        <span style={{ fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{d.name}</span>
+                      )}
                     </div>
                     {homeCols ? homeCols.keys.map((key) => homeCell(key, d)) : (
                     <>
@@ -1397,6 +1426,11 @@ export default function DocumentsLedger({
                   {renderTeam({ fontSize: 12, fontWeight: 600 })}
                 </div>
               </div>
+              {reviewOn && (
+                <div style={{ marginTop: 14, flex: 'none' }} data-doc-review-panel="">
+                  <ReviewFields review={reviews.get(previewDoc.id)} people={reviewPeople} canEdit={canEditReview} onSave={(patch) => saveReview(previewDoc.id, patch)} />
+                </div>
+              )}
               {/* Last edited + Uploaded dates. */}
               <div style={{ marginTop: 14, flex: 'none', display: 'grid', gap: 10 }}>
                 <div>
@@ -1448,6 +1482,9 @@ export default function DocumentsLedger({
               onTag={setTagFilter}
             />
           ) : null}
+          {reviewOn && mapped.length > 0 && (
+            <ReviewChips filter={reviewFilter} onChange={setReviewFilter} counts={reviewCounts} phone />
+          )}
           {docs.length === 0 && (
             mapped.length === 0 ? (
               <EmptyState
@@ -1460,7 +1497,7 @@ export default function DocumentsLedger({
                 {...sampleAction}
               />
             ) : (
-              <div className="meta" style={{ padding: '18px 4px', fontSize: 12 }}>{extrasOn ? filteredEmpty : 'No documents match your search.'}</div>
+              <div className="meta" style={{ padding: '18px 4px', fontSize: 12 }}>{reviewOn && !reviewFilterIsEmpty(reviewFilter) ? 'No documents match these filters.' : (extrasOn ? filteredEmpty : 'No documents match your search.')}</div>
             )
           )}
           {docs.length > 0 && (showTiles ? (
@@ -1522,6 +1559,11 @@ export default function DocumentsLedger({
                     ))}
                   </div>
                 </div>
+                {reviewOn && (
+                  <div data-doc-review-panel="">
+                    <ReviewFields review={reviews.get(mobileDetailDoc.id)} people={reviewPeople} canEdit={canEditReview} onSave={(patch) => saveReview(mobileDetailDoc.id, patch)} />
+                  </div>
+                )}
                 <div><span>Last edited</span><strong>{mobileDetailDoc.lastEditedAbs}</strong></div>
                 <div><span>{columnsOn ? 'Created' : 'Uploaded'}</span><strong>{mobileDetailDoc.uploadedAbs}</strong></div>
                 {columnsOn ? <div><span>Last opened</span><strong>{mobileDetailDoc.openedMs ? relativeTime(mobileDetailDoc.openedMs) : 'Not opened yet'}</strong></div> : null}

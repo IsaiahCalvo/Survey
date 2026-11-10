@@ -103,6 +103,9 @@ export function usePageOperations({
   // (pageNumber) => { width, height } of the page as shown — a turn takes the
   // page's marks with it (utils/pageTurnMarks.js) and needs the frame.
   getPageSize = null,
+  // () => message | null — a reason page changes are refused right now
+  // (another window is changing this document's pages; utils/pageOpSync.js).
+  blocked = null,
   flushDelayMs = FLUSH_DELAY_MS,
 }) {
   // Undo / Redo (utils/pageOperationHistory.js): every page change the user
@@ -251,7 +254,11 @@ export function usePageOperations({
       ownFilesRef.current.add(newFile);
       producedFile = newFile;
       ownVersionRef.current = newFile;
-      await callbacks.onUpdatePDFFile(newFile);
+      // hasMorePending: page changes made while these bytes were uploading
+      // are saved by a later batch.
+      await callbacks.onUpdatePDFFile(newFile, {
+        hasMorePending: () => pendingRef.current.length > records.length,
+      });
       if (!isCurrent()) return;
       pdfFileRef.current = newFile;
       pendingRef.current = pendingRef.current.slice(records.length);
@@ -316,6 +323,13 @@ export function usePageOperations({
   const executeMutation = useCallback((requestedOperation, errorVerb, step = null) => {
     if (!pdfFileRef.current || !onUpdatePDFFile) {
       showToast('PDF file not available for manipulation', 'error');
+      return false;
+    }
+    const blockedReason = typeof blocked === 'function' ? blocked() : null;
+    if (blockedReason) {
+      // An Undo / Redo step reports false: the viewer says it can no longer
+      // be taken back (the other window's save resets these steps anyway).
+      if (!step) showToast(blockedReason, 'info');
       return false;
     }
     // A turn records the page's frame before it, so the marks turn with the
@@ -425,7 +439,7 @@ export function usePageOperations({
       showToast(`Error ${errorVerb} page: ${error.message}`, 'error');
       return false;
     }
-  }, [applyPageView, commitPageState, getPageSize, getPageState, onUpdatePDFFile, publishStatus, scheduleFlush]);
+  }, [applyPageView, blocked, commitPageState, getPageSize, getPageState, onUpdatePDFFile, publishStatus, scheduleFlush]);
 
   // Undo / Redo one page step (the viewer's timeline calls these). Returns
   // false when the step is no longer known (another document version was

@@ -77,5 +77,27 @@
 			</array>
 		</dict>
 	</array>
+	<!-- "Open in Survey": Survey shows up for PDFs in Files, Mail, Outlook and
+	     Teams. iOS copies the PDF into Documents/Inbox and opens the app with
+	     its file:// url; src/mobile/nativeOpenFile.js reads it, uploads it and
+	     deletes the copy. Opening in place is off, so Survey never edits the
+	     sender's file. -->
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>PDF document</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.adobe.pdf</string>
+			</array>
+		</dict>
+	</array>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<false/>
 </dict>
 </plist>

@@ -47,6 +47,7 @@ async function seedOwnerRows(admin, ids) {
   });
   await replace('document_history_events', 'client_event_id', 'rls-e1', { document_id: DOC, client_event_id: 'rls-e1', event_type: 'test', summary: 'rls' });
   await replace('document_revisions', 'document_id', DOC, { document_id: DOC, revision_number: 1, snapshot_json: {} });
+  await replace('document_reviews', 'document_id', DOC, { document_id: DOC, status: 'needs-review', markup_count: 1 });
   await replace('document_invites', 'document_id', DOC, { document_id: DOC, token: 'rls-doc-token', role: 'editor', intended_role: 'editor', expires_at: expires });
   await replace('project_invites', 'project_id', PROJECT, {
     project_id: PROJECT, token: 'rls-project-token', role: 'editor', intended_role: 'editor', created_by: owner, expires_at: expires,
@@ -119,6 +120,7 @@ const ownerRows = (ids) => ({
   document_annotations: ['document_id', DOC],
   document_history_events: ['document_id', DOC],
   document_revisions: ['document_id', DOC],
+  document_reviews: ['document_id', DOC],
   document_templates: ['document_id', DOC],
   doc_yjs_updates: ['document_id', DOC],
   doc_yjs_state: ['document_id', DOC],
@@ -186,7 +188,7 @@ const NOT_SWEPT = {
 // What a collaborator on the shared document may read; the rest stays the owner's.
 const SHARED_WITH_COLLABORATORS = new Set([
   'projects', 'documents', 'document_collaborators', 'project_collaborators', 'document_annotations',
-  'document_history_events', 'document_revisions', 'document_templates', 'doc_yjs_updates', 'doc_yjs_state',
+  'document_history_events', 'document_revisions', 'document_reviews', 'document_templates', 'doc_yjs_updates', 'doc_yjs_state',
   'document_presence', 'excel_workbook_registrations',
   // The agent's notes belong to the project, so its members read them.
   'survey_agent_memory',

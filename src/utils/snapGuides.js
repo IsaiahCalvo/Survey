@@ -33,6 +33,10 @@ export const SNAP_GUIDE_OVERHANG_PX = 24;
 export const SNAP_GUIDE_STROKE_PX = 1.9;
 export const SNAP_GUIDE_DASH_PX = 5;
 export const SNAP_MARK_HALF_PX = 2.83; // Drawboard: Math.SQRT1_2 * 4
+// Snap to content (Nightly 'snap-content'): the cross on a point of the PDF's
+// own drawing, not on a mark, so it gets its own colour (amber: away from the
+// selection blue of mark snaps and from the default red / pink ink).
+export const SNAP_CONTENT_COLOR = '#f08c00';
 /** Two values this close (page units) count as lined up (Drawboard: 0.01). */
 export const SNAP_ALIGN_EPS = 0.01;
 

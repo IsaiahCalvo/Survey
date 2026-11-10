@@ -32,6 +32,9 @@ const ALLOWED = {
   // Use your own spreadsheet (beta 'own-excel-layouts'): the phone branch
   // keeps the browser's wheel for each column; desktop uses ValueSelect.
   'src/home/OwnExcelLayoutDialog.jsx': 1,
+  // Review status / owner (beta 'document-review'): the phone branch keeps
+  // the browser's wheel; desktop uses ValueSelect.
+  'src/home/DocumentReviewBits.jsx': 1,
   // Admin-only page.
   'src/home/KitsAdminPage.jsx': 1,
   // Company roles picker (beta 'company-admin'): the coarse-pointer branch
