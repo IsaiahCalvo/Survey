@@ -439,31 +439,30 @@ export const useDocuments = (projectId = null, { enabled = true, listCache = fal
     }
 
     let projectDocuments = [];
-    if (!projectMemberRows.error) {
-      const roleByProject = new Map([
-        ...(projectMemberRows.data || []).map((row) => [row.project_id, row.role]),
-        ...(ownedProjectRows.error ? [] : (ownedProjectRows.data || []).map((row) => [row.id, 'owner'])),
-      ].filter(([id]) => id && (!projectId || id === projectId)));
-      if (roleByProject.size > 0) {
-        const projectResult = await readLibraryIdChunks([...roleByProject.keys()], (ids) => supabase
-          .from('documents')
-          .select('*')
-          .in('project_id', ids)
-          .neq('user_id', user.id)
-          .eq('archived', false)
-          .is('user_archived_at', null)
-          .is('superseded_by', null));
-        if (projectResult.error) {
-          console.warn('Error fetching project documents:', projectResult.error);
-        } else {
-          projectDocuments = (projectResult.data || []).map((doc) => ({
-            ...doc,
-            my_role: roleByProject.get(doc.project_id) || null,
-          }));
-        }
+    // Either read may fail on its own; the other still counts.
+    if (projectMemberRows.error) console.warn('Error fetching project memberships:', projectMemberRows.error);
+    if (ownedProjectRows.error) console.warn('Error fetching owned projects:', ownedProjectRows.error);
+    const roleByProject = new Map([
+      ...(projectMemberRows.error ? [] : (projectMemberRows.data || []).map((row) => [row.project_id, row.role])),
+      ...(ownedProjectRows.error ? [] : (ownedProjectRows.data || []).map((row) => [row.id, 'owner'])),
+    ].filter(([id]) => id && (!projectId || id === projectId)));
+    if (roleByProject.size > 0) {
+      const projectResult = await readLibraryIdChunks([...roleByProject.keys()], (ids) => supabase
+        .from('documents')
+        .select('*')
+        .in('project_id', ids)
+        .neq('user_id', user.id)
+        .eq('archived', false)
+        .is('user_archived_at', null)
+        .is('superseded_by', null));
+      if (projectResult.error) {
+        console.warn('Error fetching project documents:', projectResult.error);
+      } else {
+        projectDocuments = (projectResult.data || []).map((doc) => ({
+          ...doc,
+          my_role: roleByProject.get(doc.project_id) || null,
+        }));
       }
-    } else {
-      console.warn('Error fetching project memberships:', projectMemberRows.error);
     }
 
     // A document shared to you on its own keeps that role over the project's
