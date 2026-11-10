@@ -1577,12 +1577,12 @@ export default function App({ devPreviewReturnTab = null }) {
 
     // Sheet set view: a step to the next sheet takes the open sheet's place
     // in the strip instead of adding a tab.
+    // Decided on the newest strip (not this render's), so overlapping opens
+    // never replace a tab that is already gone.
     const replaceTabId = options?.replaceTabId;
-    if (replaceTabId && replaceTabId !== HOME_TAB_ID && tabs.some((tab) => tab.id === replaceTabId)) {
-      setTabs(prev => prev.map((tab) => (tab.id === replaceTabId ? newTab : tab)));
-    } else {
-      setTabs(prev => [...prev, newTab]);
-    }
+    setTabs(prev => (replaceTabId && replaceTabId !== HOME_TAB_ID && prev.some((tab) => tab.id === replaceTabId)
+      ? prev.map((tab) => (tab.id === replaceTabId ? newTab : tab))
+      : [...prev, newTab]));
     setActiveTabId(newTab.id);
     setSelectedPDF(file);
     setCurrentView('viewer');
@@ -2309,10 +2309,22 @@ export default function App({ devPreviewReturnTab = null }) {
   }, [sheetSetEnabled, sheetActiveDocId, documents, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const sheetSetRef = useRef(sheetSet);
   sheetSetRef.current = sheetSet;
+  // One sheet opens at a time: a step, pick or Spotlight "go" while another
+  // is still asking to close or loading waits for nothing and is dropped.
+  const sheetOpeningRef = useRef(false);
   const openSheet = async (doc) => {
     if (!doc) return;
     const open = tabsRef.current.find((tab) => !tab.isHome && String(tab.file?.id) === String(doc.id));
     if (open) { stableTabClick(open.id); return; }
+    if (sheetOpeningRef.current) return;
+    sheetOpeningRef.current = true;
+    try {
+      await openSheetNow(doc);
+    } finally {
+      sheetOpeningRef.current = false;
+    }
+  };
+  const openSheetNow = async (doc) => {
     const fromTabId = activeTabIdRef.current;
     const confirm = closeConfirmFor({ tabs: tabsRef.current, closingIds: [fromTabId], action: 'close' });
     if (confirm && !(await askTabConfirm(confirm))) return;
@@ -2405,11 +2417,14 @@ export default function App({ devPreviewReturnTab = null }) {
   useEffect(() => {
     if (!spotlightEnabled) return undefined;
     if (spotlightDocId != null) { setSpotlightDocument(spotlightDocId); return undefined; }
-    // No document in front: presenting and following end, unless it was only
-    // the blink of one sheet replacing another in the same tab.
+    // Home (or no tab): presenting and following end at once, so nothing
+    // opened from Home is sent to followers on the old sheet's channel.
+    if (!activeTab || activeTab.isHome || currentView !== 'viewer') { setSpotlightDocument(null); return undefined; }
+    // Otherwise a document is still loading in its tab: wait out the blink of
+    // one sheet replacing another.
     const timer = setTimeout(() => setSpotlightDocument(null), 1500);
     return () => clearTimeout(timer);
-  }, [spotlightEnabled, spotlightDocId]);
+  }, [spotlightEnabled, spotlightDocId, Boolean(activeTab?.isHome), Boolean(activeTab), currentView]); // eslint-disable-line react-hooks/exhaustive-deps
   // The presenter opened another document: a follower opens it too.
   useEffect(() => {
     const go = spotlight.go;

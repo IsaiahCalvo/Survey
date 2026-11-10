@@ -119,8 +119,15 @@ for (const layout of LAYOUTS) {
         await pick(page, layout, 'item-assignee-select', editorName);
         await detail.getByTestId('item-due').fill('2026-12-01');
         const tagInput = detail.getByLabel('Add tags');
-        await tagInput.fill('Fire, Level 2');
+        await tagInput.fill('Fire, Level 2, Temp, Old');
         await tagInput.press('Enter');
+        // Two removes in the same moment (before the screen redraws) both stick.
+        await expect(detail.getByRole('button', { name: 'Remove tag Old' })).toBeVisible();
+        await detail.evaluate((el) => {
+          el.querySelector('[aria-label="Remove tag Temp"]').click();
+          el.querySelector('[aria-label="Remove tag Old"]').click();
+        });
+        await expect(detail.getByRole('button', { name: /Remove tag (Temp|Old)/ })).toHaveCount(0);
         await pick(page, layout, 'item-link-select', docName);
         await expect(detail.locator('[data-item-links]')).toContainText(docName);
         await detail.getByTestId('item-comment-input').fill('Hinge screws stripped.');

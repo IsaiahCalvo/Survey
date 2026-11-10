@@ -169,10 +169,12 @@ function ItemDetail({
   const addTags = () => {
     const next = parseItemTags(tagDraft);
     if (!next.length) return;
-    const merged = [...(item.tags || [])];
-    for (const t of next) if (!merged.some((m) => m.toLowerCase() === t.toLowerCase())) merged.push(t);
     setTagDraft('');
-    save({ tags: merged.slice(0, 20) });
+    save((now) => {
+      const merged = [...(now.tags || [])];
+      for (const t of next) if (!merged.some((m) => m.toLowerCase() === t.toLowerCase())) merged.push(t);
+      return { tags: merged.slice(0, 20) };
+    });
   };
 
   const linkedIds = new Set((item.links || []).map((l) => l.document_id));
@@ -266,7 +268,7 @@ function ItemDetail({
               <span key={t} className="item-tag">
                 {t}
                 {canEdit && (
-                  <button type="button" aria-label={`Remove tag ${t}`} onClick={() => save({ tags: item.tags.filter((x) => x !== t) })}><Icon name="close" size={10} /></button>
+                  <button type="button" aria-label={`Remove tag ${t}`} onClick={() => save((now) => ({ tags: (now.tags || []).filter((x) => x !== t) }))}><Icon name="close" size={10} /></button>
                 )}
               </span>
             ))}
@@ -303,7 +305,7 @@ function ItemDetail({
                 <span>{docName(l.document_id)}</span>
               </button>
               {canEdit && (
-                <button type="button" className="hub-icon-btn" aria-label={`Unlink ${docName(l.document_id)}`} {...tip('Unlink')} onClick={() => save({ links: item.links.filter((x) => x.document_id !== l.document_id) })}><Icon name="close" size={12} /></button>
+                <button type="button" className="hub-icon-btn" aria-label={`Unlink ${docName(l.document_id)}`} {...tip('Unlink')} onClick={() => save((now) => ({ links: (now.links || []).filter((x) => x.document_id !== l.document_id) }))}><Icon name="close" size={12} /></button>
               )}
             </div>
           ))}
@@ -313,7 +315,7 @@ function ItemDetail({
               testId="item-link-select"
               value=""
               options={[{ value: '', label: 'Link a document…' }, ...unlinked.map((d) => ({ value: d.id, label: d.name }))]}
-              onChange={(id) => { if (id) save({ links: [...(item.links || []), { document_id: id }] }); }}
+              onChange={(id) => { if (id) save((now) => ({ links: [...(now.links || []).filter((x) => x.document_id !== id), { document_id: id }] })); }}
             />
           )}
           {!(item.links || []).length && !(canEdit && unlinked.length) && <span className="meta item-empty-line">No linked documents.</span>}

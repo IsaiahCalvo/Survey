@@ -57,15 +57,30 @@ export function useProjectItems({ projectId, enabled = true, client = defaultCli
   // other on screen.
   const fieldSaves = useRef(new Map()); // `${id}:${field}` -> save number
   const saveSeq = useRef(0);
-  const update = useCallback(async (id, patch) => {
+  const saveChains = useRef(new Map()); // item id -> the last save's promise
+  // `patch` may be a function of the item as it stands now (with every
+  // earlier unsaved change in it): two quick edits to one list, such as tags
+  // or links, then build on each other instead of the later one writing the
+  // earlier value back.
+  const update = useCallback(async (id, patchArg) => {
     if (!live) return { error: 'offline' };
+    const before = itemsRef.current.find((i) => i.id === id);
+    const patch = typeof patchArg === 'function' ? patchArg(before || {}) : patchArg;
+    if (!patch || !Object.keys(patch).length) return { error: null };
     const seq = ++saveSeq.current;
     const fields = Object.keys(patch);
     for (const f of fields) fieldSaves.current.set(`${id}:${f}`, seq);
-    const before = itemsRef.current.find((i) => i.id === id);
+    // The ref moves at once, so a second edit before the next render sees this one.
+    itemsRef.current = itemsRef.current.map((i) => (i.id === id ? { ...i, ...patch } : i));
     setItems((cur) => cur.map((i) => (i.id === id ? { ...i, ...patch } : i)));
-    const { data, error: err } = await client.from('project_items').update(patch).eq('id', id)
-      .select(ITEM_COLUMNS).single();
+    // One item's saves go to the server one after another: two in flight at
+    // once can land out of order, and the older list would win.
+    const prior = saveChains.current.get(id) || Promise.resolve();
+    const sent = prior.then(() => client.from('project_items').update(patch).eq('id', id).select(ITEM_COLUMNS).single());
+    const settled = sent.then(() => undefined, () => undefined);
+    saveChains.current.set(id, settled);
+    settled.then(() => { if (saveChains.current.get(id) === settled) saveChains.current.delete(id); });
+    const { data, error: err } = await sent.catch((e) => ({ data: null, error: e }));
     const mine = fields.filter((f) => fieldSaves.current.get(`${id}:${f}`) === seq);
     for (const f of mine) fieldSaves.current.delete(`${id}:${f}`);
     if (err) {
