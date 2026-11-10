@@ -75,6 +75,13 @@ async function seedOwnerRows(admin, ids) {
   // Home tags and Last opened (Nightly): personal rows, nobody else's.
   await replace('document_tags', 'user_id', owner, { user_id: owner, document_id: DOC, tag: 'rls sweep' });
   await replace('document_opens', 'user_id', owner, { user_id: owner, document_id: DOC });
+  // Project issues (Nightly): the project's members read them, the log comes
+  // from a trigger, and comments belong to an item.
+  await must('clear project_items', admin.from('project_items').delete().eq('project_id', PROJECT));
+  const { data: rlsItem, error: rlsItemError } = await admin.from('project_items')
+    .insert({ project_id: PROJECT, kind: 'issue', title: 'RLS sweep issue', created_by: owner }).select('id').single();
+  if (rlsItemError) throw new Error(`project_items: ${rlsItemError.message}`);
+  await must('project_item_comments', admin.from('project_item_comments').insert({ item_id: rlsItem.id, author_id: owner, body: 'rls sweep' }));
   await replace('mark_library_items', 'created_by', owner, {
     library: 'personal', created_by: owner, name: 'RLS sweep item', payload: { version: 1, items: [] },
   });
@@ -130,6 +137,9 @@ const ownerRows = (ids) => ({
   mark_library_items: ['created_by', ids.owner],
   document_tags: ['user_id', ids.owner],
   document_opens: ['user_id', ids.owner],
+  project_items: ['project_id', PROJECT],
+  project_item_events: ['project_id', PROJECT],
+  project_item_comments: ['project_id', PROJECT],
   organizations: ['id', ORG],
   organization_members: ['organization_id', ORG],
   organization_invites: ['organization_id', ORG],
@@ -151,6 +161,7 @@ const NOT_SWEPT = {
   rowid_signing_secrets: 'service only', survey_agent_daily_usage: 'service only',
   sheet_sync_connections: 'service only', sheet_sync_pending_connections: 'service only',
   sheet_sync_settings: 'service only',
+  project_item_counters: 'service only',
   // Their write triggers need a signed-in editor, so the service role cannot
   // seed a row. Reads need viewer access to the document.
   annotation_snapshots: 'editor writes only', annotation_updates: 'editor writes only',
@@ -179,6 +190,8 @@ const SHARED_WITH_COLLABORATORS = new Set([
   'document_presence', 'excel_workbook_registrations',
   // The agent's notes belong to the project, so its members read them.
   'survey_agent_memory',
+  // So do the project's issues, their log and their discussion.
+  'project_items', 'project_item_events', 'project_item_comments',
 ]);
 
 let admin;

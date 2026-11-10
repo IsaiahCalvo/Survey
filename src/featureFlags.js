@@ -262,6 +262,11 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Home: Last opened and Created columns, more sorts, list sizes',
     stage: 'beta',
   }),
+  // Drawboard Projects parity (2026-11-10).
+  'project-issues': Object.freeze({
+    label: 'Projects: Issues and Tasks lists with IDs, statuses, filters, archive, CSV and activity',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';
