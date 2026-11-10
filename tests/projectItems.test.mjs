@@ -148,9 +148,11 @@ test('migration: numbers never reused, server writes the log, owner deletes only
   // Delete: archived only, project owner only.
   assert.match(sql, /FOR DELETE TO authenticated\s+USING \(\s+archived_at IS NOT NULL[\s\S]*?user_can_access_project\(project_id, 'owner'\)/);
   // Guest-link and agent sessions never write.
-  assert.equal((sql.match(/NOT public\.is_guest_session\(\)/g) || []).length >= 4, true);
+  assert.equal((sql.match(/NOT public\.is_guest_session\(\)/g) || []).length >= 5, true);
   // Archive is the owner's; a viewer cannot comment.
   assert.match(sql, /only the project owner can archive/);
   assert.match(sql, /project_item_comments_insert[\s\S]*?user_can_access_project\(project_id, 'editor'\)/);
+  // Deleting your own comment needs the same: no guest or agent session, still on the project.
+  assert.match(sql, /project_item_comments_delete_own[\s\S]*?NOT public\.is_guest_session\(\)[\s\S]*?NOT public\.is_agent_session\(\)[\s\S]*?user_can_access_project\(project_id, 'editor'\)\s*\);/);
   assert.match(sql, /\('project-issues', 'off'/);
 });

@@ -51,17 +51,40 @@ export function useProjectItems({ projectId, enabled = true, client = defaultCli
     return { item: data };
   }, [client, live, projectId]);
 
+  // Each field remembers the newest save that touched it. A save that comes
+  // back late only writes back the fields no newer save has touched, so
+  // quick edits to the summary, status, assignee and so on never undo each
+  // other on screen.
+  const fieldSaves = useRef(new Map()); // `${id}:${field}` -> save number
+  const saveSeq = useRef(0);
   const update = useCallback(async (id, patch) => {
     if (!live) return { error: 'offline' };
+    const seq = ++saveSeq.current;
+    const fields = Object.keys(patch);
+    for (const f of fields) fieldSaves.current.set(`${id}:${f}`, seq);
     const before = itemsRef.current.find((i) => i.id === id);
     setItems((cur) => cur.map((i) => (i.id === id ? { ...i, ...patch } : i)));
     const { data, error: err } = await client.from('project_items').update(patch).eq('id', id)
       .select(ITEM_COLUMNS).single();
+    const mine = fields.filter((f) => fieldSaves.current.get(`${id}:${f}`) === seq);
+    for (const f of mine) fieldSaves.current.delete(`${id}:${f}`);
     if (err) {
-      if (before) setItems((cur) => cur.map((i) => (i.id === id ? before : i)));
+      if (before) {
+        setItems((cur) => cur.map((i) => {
+          if (i.id !== id) return i;
+          const back = { ...i };
+          for (const f of mine) back[f] = before[f];
+          return back;
+        }));
+      }
       return { error: err.message || 'save failed' };
     }
-    setItems((cur) => cur.map((i) => (i.id === id ? data : i)));
+    setItems((cur) => cur.map((i) => {
+      if (i.id !== id) return i;
+      const next = { ...i, updated_at: data.updated_at };
+      for (const f of mine) next[f] = data[f];
+      return next;
+    }));
     return { item: data };
   }, [client, live]);
 

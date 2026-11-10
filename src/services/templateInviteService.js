@@ -156,7 +156,7 @@ export async function revokeTemplateInvite(inviteId) {
  */
 export async function resendTemplateInvite(
   inviteId,
-  { templateName = null, inviterName = null, forceNewDelivery = false } = {},
+  { templateName = null, inviterName = null, forceNewDelivery = false, message = '' } = {},
 ) {
   const { data, error } = forceNewDelivery
     ? await supabase.rpc('rotate_invite_email_delivery', {
@@ -191,6 +191,7 @@ export async function resendTemplateInvite(
         kind: 'template',
         name: templateName || '',
         inviterName: inviterName || 'A Survey user',
+        message,
       });
       if (!emailResult?.success) {
         return {

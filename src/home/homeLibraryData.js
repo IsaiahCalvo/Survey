@@ -49,6 +49,10 @@ const EMPTY = { tags: new Map(), opened: new Map(), sharedByMe: new Set() };
    it off nothing reads Last opened, so nothing is written. A guest, a
    signed-out session or an offline device skips the server part. */
 const pendingOpens = new Map(); // documentId -> device time, until the server answers
+// documentId -> newest server time this page has heard. Server times only go
+// forward, so an answer that comes back late (an older open, or a read that
+// left before the write) never moves Last opened back.
+const serverOpens = new Map();
 
 export function recordDocumentOpened(documentId, { client = defaultClient, enabled } = {}) {
   if (!documentId || String(documentId).startsWith('temp-')) return;
@@ -62,10 +66,14 @@ export function recordDocumentOpened(documentId, { client = defaultClient, enabl
   emit({ documentId, at });
   Promise.resolve(client.rpc('mark_document_opened', { p_document_id: documentId }))
     .then((res) => {
-      if (pendingOpens.get(documentId) === at) pendingOpens.delete(documentId);
+      const newerPending = pendingOpens.has(documentId) && pendingOpens.get(documentId) !== at;
+      if (!newerPending) pendingOpens.delete(documentId);
       if (res?.error) { console.warn('[home] mark opened failed:', res.error.message); return; }
       const serverAt = Date.parse(res?.data || '');
-      if (serverAt) emit({ documentId, at: serverAt, server: true });
+      if (!serverAt || serverAt < (serverOpens.get(documentId) || 0)) return;
+      serverOpens.set(documentId, serverAt);
+      // A later open of the same document is still out: it will answer.
+      if (!newerPending) emit({ documentId, at: serverAt, server: true });
     })
     .catch(() => { if (pendingOpens.get(documentId) === at) pendingOpens.delete(documentId); });
 }
@@ -120,6 +128,7 @@ export function useHomeExtras({ userId, tags = false, opened = false, shared = f
       let openedMap = fresh.opened || cur.opened;
       if (fresh.opened) {
         openedMap = new Map(fresh.opened);
+        for (const [id, ms] of serverOpens) if ((openedMap.get(id) || 0) < ms) openedMap.set(id, ms);
         for (const [id, ms] of pendingOpens) if ((openedMap.get(id) || 0) < ms) openedMap.set(id, ms);
       }
       // While a tag write is out, the read may predate it: keep what is on

@@ -300,3 +300,14 @@ test('share extras: no message, no change (auth mailer, no message field)', asyn
   equal(calls.invite.length, 1);
   equal(calls.fallback.length, 0);
 });
+
+test('share extras: a message invite is charged once, by send-email, not here too', async () => {
+  const charged = [];
+  const { deps, calls } = makeDeps({
+    claimSendBudget: async (recipient) => { charged.push(recipient); return 'allowed'; },
+  });
+  const out = await handleSendInviteEmail(post({ token: 'tok123', message: 'See page 3' }), deps);
+  equal(out.status, 200);
+  deepStrictEqual(charged, []);
+  equal(calls.fallback.length, 1);
+});

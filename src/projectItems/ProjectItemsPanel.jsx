@@ -23,7 +23,7 @@ import { presenceInitials } from '../components/presenceIdentity.js';
 import { checkboxProps } from '../utils/keyActivate';
 import { keyboardControlProps } from '../utils/keyboardActivation.js';
 import { isPhoneLayout } from '../utils/layoutMode.js';
-import { showToast } from '../utils/toast';
+import { dismissToast, showToast } from '../utils/toast';
 import { saveFile } from '../tools/browser.js';
 import {
   ITEM_KINDS, ITEM_STATUSES, ITEM_SORTS, QUICK_FILTERS, STATUS_GROUPS,
@@ -463,18 +463,20 @@ export default function ProjectItemsPanel({
       action: { label: 'Undo', onClick: () => { data.archive(ids); } },
     });
   };
-  /* Delete cannot be undone on the server, so it waits for the toast: Undo
-     within its time keeps the items. */
+  /* Delete cannot be undone on the server, so it waits 5 s for Undo. The
+     toast is taken down when the 5 s are up (even if a hover paused its own
+     clock), so Undo is never on screen after the delete has gone out. */
   const deleteIds = (ids) => {
     if (ids.includes(openId)) setOpenId(null);
     setSel(new Set());
     let undone = false;
-    showToast(ids.length === 1 ? `${k.one} deleted` : `${ids.length} ${k.many.toLowerCase()} deleted`, 'info', {
+    const toastId = showToast(ids.length === 1 ? `${k.one} deleted` : `${ids.length} ${k.many.toLowerCase()} deleted`, 'info', {
       action: { label: 'Undo', onClick: () => { undone = true; } },
       duration: 5000,
     });
     setHiddenIds((cur) => new Set([...cur, ...ids]));
     setTimeout(async () => {
+      dismissToast(toastId);
       setHiddenIds((cur) => { const n = new Set(cur); ids.forEach((id) => n.delete(id)); return n; });
       if (undone) return;
       const res = await data.remove(ids);

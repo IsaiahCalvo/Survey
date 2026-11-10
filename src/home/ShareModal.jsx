@@ -151,9 +151,12 @@ export default function ShareModal({
   // retry of the same invite, never a forced extra copy.
   const retryInviteEmail = (invite) => {
     const inviterName = currentUser?.user_metadata?.full_name || currentUser?.email || null;
-    if (kind === 'project') return resendProjectInvite(invite.id, { projectName: name || '', inviterName });
-    if (kind === 'template') return resendTemplateInvite(invite.id, { templateName: name || '', inviterName });
-    return resendDocumentInvite(invite.id, { documentName: name || '', inviterName });
+    // The note typed with the invite goes with the retry too (it stays in the
+    // box until every email sends).
+    const note = extrasOn ? cleanInviteMessage(message) : '';
+    if (kind === 'project') return resendProjectInvite(invite.id, { projectName: name || '', inviterName, message: note });
+    if (kind === 'template') return resendTemplateInvite(invite.id, { templateName: name || '', inviterName, message: note });
+    return resendDocumentInvite(invite.id, { documentName: name || '', inviterName, message: note });
   };
 
   // Honest placeholder until a real token is minted — never show a fake URL

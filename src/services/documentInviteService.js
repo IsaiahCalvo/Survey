@@ -301,7 +301,7 @@ export async function revokeDocumentInvite(inviteId) {
  */
 export async function resendDocumentInvite(
   inviteId,
-  { documentName = null, inviterName = null, forceNewDelivery = false } = {},
+  { documentName = null, inviterName = null, forceNewDelivery = false, message = '' } = {},
 ) {
   try {
     // Read before refreshing. Existing-user grants deliberately retain the
@@ -376,6 +376,7 @@ export async function resendDocumentInvite(
         kind: 'document',
         name: documentName || '',
         inviterName: inviterName || 'A Survey user',
+        message,
       });
       if (!emailResult?.success) {
         return {

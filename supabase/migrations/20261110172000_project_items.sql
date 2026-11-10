@@ -338,7 +338,12 @@ CREATE POLICY project_item_comments_insert ON public.project_item_comments
 DROP POLICY IF EXISTS project_item_comments_delete_own ON public.project_item_comments;
 CREATE POLICY project_item_comments_delete_own ON public.project_item_comments
   FOR DELETE TO authenticated
-  USING (author_id = auth.uid());
+  USING (
+    NOT public.is_guest_session()
+    AND NOT public.is_agent_session()
+    AND author_id = auth.uid()
+    AND public.user_can_access_project(project_id, 'editor')
+  );
 
 GRANT SELECT, INSERT, DELETE ON public.project_item_comments TO authenticated;
 

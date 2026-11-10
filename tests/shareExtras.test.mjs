@@ -83,3 +83,20 @@ test('migration: activity only for members, never guests; flag row off', () => {
 test('flag is a Nightly beta', () => {
   assert.equal(FEATURE_FLAGS['share-extras']?.stage, 'beta');
 });
+
+test('retrying an unsent invite keeps the note (document, project, template)', () => {
+  for (const [file, fn] of [
+    ['src/services/documentInviteService.js', 'resendDocumentInvite'],
+    ['src/services/projectInviteService.js', 'resendProjectInvite'],
+    ['src/services/templateInviteService.js', 'resendTemplateInvite'],
+  ]) {
+    const src = readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
+    const body = src.slice(src.indexOf(`export async function ${fn}(`));
+    assert.match(body.slice(0, 300), /message = ''/, `${fn} takes a message`);
+    const call = body.slice(body.indexOf('sendInviteEmailSmart({'));
+    assert.match(call.slice(0, 260), /\n\s+message,\n/, `${fn} sends the message`);
+  }
+  const modal = readFileSync(new URL('../src/home/ShareModal.jsx', import.meta.url), 'utf8');
+  const retry = modal.slice(modal.indexOf('const retryInviteEmail'), modal.indexOf('const retryInviteEmail') + 700);
+  assert.equal((retry.match(/message: note/g) || []).length, 3);
+});

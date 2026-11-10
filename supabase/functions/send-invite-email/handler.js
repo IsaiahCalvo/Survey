@@ -186,7 +186,10 @@ export async function handleSendInviteEmail(input, deps) {
   // plan gate and per-person hourly cap. Charge the same budget here, or a
   // free account could mint invite rows and mail any address without limit
   // (and spend the project-wide auth email quota everyone's sign-in links use).
-  if (typeof deps.claimSendBudget === 'function') {
+  // An invite with a personal message never uses the auth mailer: it goes
+  // straight to send-email with the caller's token, which charges the plan
+  // gate and the hourly cap itself, so charging here too would count it twice.
+  if (!message && typeof deps.claimSendBudget === 'function') {
     let budget = 'error';
     try {
       budget = await deps.claimSendBudget(row.target_email);
