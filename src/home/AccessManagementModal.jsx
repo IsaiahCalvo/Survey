@@ -103,7 +103,9 @@ function AccessRow({ rowProps, pending = false, avatar, primary, secondary, role
       </div>
       <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
         <div {...tip(primary)} style={{ ...line, fontSize: 13, fontWeight: 600 }}>{primary}{you ? <span data-you="" style={{ fontWeight: 400, color: C.muted }}> (you)</span> : null}</div>
-        {secondary ? <div {...tip(secondary)} style={{ ...line, fontFamily: MONO_FONT, fontSize: 11, color: C.muted }}>{secondary}</div> : null}
+        {/* Mono only for a link (it reads character by character); an email
+            or a date is ordinary text, like the email rows below it. */}
+        {secondary ? <div {...tip(secondary)} style={{ ...line, ...(/^https?:/.test(secondary) ? { fontFamily: MONO_FONT, fontSize: 11 } : { fontSize: 12 }), color: C.muted }}>{secondary}</div> : null}
       </div>
       <div style={{ ...line, fontSize: 12, color: C.inkSoft }}>{role}</div>
       <div style={{ ...line, fontSize: 12, fontWeight: 600 }}>{status}</div>
@@ -476,7 +478,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
             <span style={{ fontSize: 11, color: C.muted, letterSpacing: 0, fontWeight: 600 }}>
               {shownMembers.length} member{shownMembers.length === 1 ? '' : 's'} · {emailPending.length} pending · {activeLinks.length} share link{activeLinks.length === 1 ? '' : 's'}
             </span>
-            <button onClick={onClose} className="hub-btn hub-btn--primary">Done</button>
+            <button onClick={onClose} className="hub-btn">Done</button>
           </div>
         </div>
       </div>
