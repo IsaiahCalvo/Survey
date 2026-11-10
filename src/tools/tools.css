@@ -226,3 +226,13 @@ button.ptile:hover{border-color:var(--rule)}
   .pvscroll{height:62vh;padding:8px;gap:8px}
   .pvpage{margin-left:0;width:100%}
 }
+
+/* Phone: steps and the four promises stay compact instead of four tall cards */
+@media (max-width:560px){
+  .tool-sec+.sec .steps li{display:grid;grid-template-columns:auto 1fr;column-gap:14px;align-items:start;padding:16px 18px}
+  .tool-sec+.sec .steps li::before{margin:0;width:28px;height:28px;font-size:14px}
+  .why{grid-template-columns:1fr 1fr;gap:12px}
+  .why>div{padding:16px}
+  .why h3{font-size:16px}
+  .why p{font-size:14px;line-height:1.45}
+}

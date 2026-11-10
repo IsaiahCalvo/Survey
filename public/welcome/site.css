@@ -709,3 +709,8 @@ p,li{text-wrap:pretty}
 .older[open]{padding-bottom:8px}
 .feat{padding:56px 0}
 @media (max-width:720px){.feat{padding:40px 0}}
+@media (max-width:560px){
+  .jump{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin:24px -16px 0;padding:0 16px;scroll-padding-inline:16px}
+  .jump::-webkit-scrollbar{display:none}
+  .jump a{flex:none;padding:8px 14px;font-size:14px}
+}

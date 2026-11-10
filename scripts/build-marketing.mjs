@@ -481,7 +481,7 @@ const features = page({
   body: `<section class="page-head"><div class="wrap">
   <h1>Everything you do on a drawing set, in one app</h1>
   <p class="lede">Three things no other PDF app does, then every markup tool you would expect, free.</p>
-  <nav class="jump" aria-label="On this page">${[...ONLY.map((f) => [f.id, f.name]), ['tools', 'Every markup tool'], ['count', 'Count markers'], ['compare', 'Survey vs Drawboard PDF'], ['free-pdf-tools', 'Free PDF tools']].map(([id, n]) => `<a href="#${id}">${n}</a>`).join('')}</nav>
+  <nav class="jump" aria-label="On this page">${[...ONLY.map((f) => [f.id, f.kicker || f.name]), ['tools', 'Markup tools'], ['count', 'Count markers'], ['compare', 'Survey vs Drawboard'], ['free-pdf-tools', 'Free PDF tools']].map(([id, n]) => `<a href="#${id}">${n}</a>`).join('')}</nav>
 </div></section>
 ${ONLY.map(only).join('\n')}
 <section class="sec" id="tools"><div class="wrap">
