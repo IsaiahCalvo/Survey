@@ -2865,6 +2865,27 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
       mutation?.disconnect();
     };
   }, [railMainEl]);
+  // A phone held sideways (Android, 360px tall) leaves the tool column about
+  // 100px: an opened group landed below it, hidden under the footer, so a tap
+  // where Measure was drawn opened History. Scroll the open group into view
+  // once it has glided open, keeping the chip above it in sight.
+  useEffect(() => {
+    const main = railMainEl;
+    const wrap = groupToolsEl;
+    if (!railGroupKey || !main || !wrap) return undefined;
+    const timer = setTimeout(() => {
+      // Sideways phones scroll the whole rail, not just its main part:
+      // move whichever box actually scrolls.
+      let box = main;
+      while (box && box !== document.body && box.scrollHeight <= box.clientHeight + 1) box = box.parentElement;
+      if (!box || box === document.body) return;
+      const m = box.getBoundingClientRect();
+      const w = wrap.getBoundingClientRect();
+      const delta = Math.min(w.bottom - m.bottom, w.top - 40 - m.top);
+      if (delta > 1) box.scrollTo({ top: box.scrollTop + delta, behavior: 'smooth' });
+    }, 230);
+    return () => clearTimeout(timer);
+  }, [railGroupKey, railMainEl, groupToolsEl]);
   const surveySlots = useMobileSurveyRailSlots({
     mainEl: railMainEl,
     anchorEl: surveyAnchorEl,
@@ -3097,7 +3118,12 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                       style={{
                         position: 'fixed',
                         left: Math.max(8, Math.min(measureMenuRect.left, window.innerWidth - 188)),
-                        top: Math.max(8, Math.min(measureMenuRect.top, window.innerHeight - 208)),
+                        // Clamp by the real menu height (7 rows with the
+                        // depth tools, not 4) plus the home-bar inset, so the
+                        // last row is never off the bottom of the screen.
+                        top: Math.max(8, Math.min(measureMenuRect.top, window.innerHeight - (mobileMeasureItems(isFeatureOn('measure-depth')).length * 44 + 10) - 42)),
+                        maxHeight: 'calc(100dvh - 16px)',
+                        overflowY: 'auto',
                         width: 180,
                         background: 'var(--surface-2)',
                         border: '1px solid var(--border)',

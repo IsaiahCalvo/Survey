@@ -365,7 +365,7 @@ export const useDocuments = (projectId = null, { enabled = true, listCache = fal
     // run them concurrently instead of as a 2-step waterfall. Supabase resolves
     // (never rejects) with {data,error}, so the throw-on-owned-error semantics
     // below are preserved (the dependent missingIds query stays sequential).
-    const [ownedRes, memberRows, guestRows] = await Promise.all([
+    const [ownedRes, memberRows, guestRows, projectMemberRows, ownedProjectRows] = await Promise.all([
       readLibraryRows(ownedQuery),
       readLibraryRows(() => supabase
         .from('document_collaborators')
@@ -380,6 +380,21 @@ export const useDocuments = (projectId = null, { enabled = true, listCache = fal
           .select('id, document_id')
           .eq('user_id', user.id))
         : Promise.resolve({ data: [], error: null }),
+      // A project member reaches every file in the project (the server's
+      // user_can_access_document allows it); without this read a viewer or
+      // editor of a shared project saw "Files 0" (deep test 2026-11-10).
+      readLibraryRows(() => supabase
+        .from('project_collaborators')
+        .select('project_id, role')
+        .eq('user_id', user.id)
+        .eq('status', 'active'), { cursorColumn: 'project_id' }),
+      // ...and an owner sees files a teammate uploaded into their project.
+      user.is_anonymous
+        ? Promise.resolve({ data: [], error: null })
+        : readLibraryRows(() => supabase
+          .from('projects')
+          .select('id')
+          .eq('user_id', user.id)),
     ]);
     const collaboratorRows = memberRows.error ? memberRows : {
       data: [...(memberRows.data || []), ...(guestRows.data || []).map((row) => ({ document_id: row.document_id, role: 'guest' }))],
@@ -426,9 +441,39 @@ export const useDocuments = (projectId = null, { enabled = true, listCache = fal
       console.warn('Error fetching collaborator documents:', collaboratorRows.error);
     }
 
+    let projectDocuments = [];
+    // Either read may fail on its own; the other still counts.
+    if (projectMemberRows.error) console.warn('Error fetching project memberships:', projectMemberRows.error);
+    if (ownedProjectRows.error) console.warn('Error fetching owned projects:', ownedProjectRows.error);
+    const roleByProject = new Map([
+      ...(projectMemberRows.error ? [] : (projectMemberRows.data || []).map((row) => [row.project_id, row.role])),
+      ...(ownedProjectRows.error ? [] : (ownedProjectRows.data || []).map((row) => [row.id, 'owner'])),
+    ].filter(([id]) => id && (!projectId || id === projectId)));
+    if (roleByProject.size > 0) {
+      const projectResult = await readLibraryIdChunks([...roleByProject.keys()], (ids) => supabase
+        .from('documents')
+        .select('*')
+        .in('project_id', ids)
+        .neq('user_id', user.id)
+        .eq('archived', false)
+        .is('user_archived_at', null)
+        .is('superseded_by', null));
+      if (projectResult.error) {
+        console.warn('Error fetching project documents:', projectResult.error);
+      } else {
+        projectDocuments = (projectResult.data || []).map((doc) => ({
+          ...doc,
+          my_role: roleByProject.get(doc.project_id) || null,
+        }));
+      }
+    }
+
+    // A document shared to you on its own keeps that role over the project's
+    // (it comes last, so it wins).
     const byId = new Map();
     for (const doc of [
       ...sortLibraryRows(data || [], 'updated_at'),
+      ...sortLibraryRows(projectDocuments, 'updated_at'),
       ...sortLibraryRows(collaboratorDocuments, 'updated_at'),
     ]) {
       byId.set(doc.id, doc);
