@@ -7,6 +7,8 @@ import {
   scaleFromCalibration,
   scaleFromPreset,
 } from '../utils/measure/measureScale.js';
+import { readUnits } from '../utils/annotationPreferences.js';
+import { isFeatureOn } from '../featureFlags.js';
 import { Icon } from '../home/HubShell';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import MotionPresence from './MotionPresence.jsx';
@@ -34,9 +36,12 @@ export default function MeasureScaleDialog({ pageNumber, pageCount = 1, lengthPt
   const tip = useTooltip();
   const cardRef = useRef(null);
   const [real, setReal] = useState('');
-  const [unit, setUnit] = useState(currentScale?.unit || 'ft');
+  // With no scale yet, start from the default units (Settings > Annotations).
+  // Nightly 'default-units': with the flag off a stored metric choice is ignored.
+  const [metric] = useState(() => isFeatureOn('default-units') && readUnits() === 'metric');
+  const [unit, setUnit] = useState(currentScale?.unit || (metric ? 'm' : 'ft'));
   const [preset, setPreset] = useState(
-    () => MEASURE_PRESETS.find((p) => p.label === currentScale?.label)?.id || '1/4',
+    () => MEASURE_PRESETS.find((p) => p.label === currentScale?.label)?.id || (metric ? '1:100' : '1/4'),
   );
   const [recent] = useState(() => loadRecentMeasureScales());
   const [recentPick, setRecentPick] = useState(null);

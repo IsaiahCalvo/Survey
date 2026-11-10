@@ -196,3 +196,16 @@ test('Photo and Signature lines: the answer follows the media; agents and import
   assert.equal(res.isError, true);
   assert.match(res.content, /photo line: it is filled in the app/);
 });
+
+test('a comma counts only as a thousands separator: "12,5" is refused, not read as 125', async () => {
+  const { itemAnswerFor } = await import('../supabase/functions/_shared/kitShape.js');
+  const number = { id: 'n', kind: 'number' };
+  const count = { id: 'c', kind: 'count' };
+  assert.equal(itemAnswerFor(number, '1,200.5'), '1200.5');
+  assert.equal(itemAnswerFor(number, '12,345,678'), '12345678');
+  assert.equal(itemAnswerFor(number, '12,5'), null);
+  assert.equal(itemAnswerFor(number, '1,2,3'), null);
+  assert.equal(itemAnswerFor(number, '1,20'), null);
+  assert.equal(itemAnswerFor(count, '1,000'), '1000');
+  assert.equal(itemAnswerFor(count, '10,0'), null);
+});

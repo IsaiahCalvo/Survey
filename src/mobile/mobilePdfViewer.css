@@ -3775,7 +3775,8 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
   color: var(--accent) !important;
 }
 
-/* Hide the word, not a mask icon: the Layers glyph is a <span aria-hidden> too. */
+/* The word under the glyph hides; a glyph drawn in its own span (Layers)
+   stays. */
 .mobile-pdf-hub-tabs .mobile-pdf-hub-tab > span:not([aria-hidden="true"]) { display: none !important; }
 
 /* Owner 2026-10-02: the sheet, the panel inside it and the bottom safe-inset

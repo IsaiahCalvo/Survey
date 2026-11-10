@@ -62,7 +62,10 @@ test('desktop and phone name the exports the same way', () => {
     assert.ok(desktop.includes(`'${label}'`), `desktop export menu lacks "${label}"`);
     assert.ok(phone.includes(label), `phone menu lacks "${label}"`);
   }
-  assert.doesNotMatch(phone, /<Icon name="share" size=\{HEADER_GLYPH\}/, 'phone Export should use the download glyph like desktop');
+  // The Nightly Share button (data-viewer-share) rightly draws the share
+  // glyph; the Export button beside it must not.
+  const phoneWithoutShare = phone.replace(/data-viewer-share="true"[\s\S]*?<\/button>/, '');
+  assert.doesNotMatch(phoneWithoutShare, /<Icon name="share" size=\{HEADER_GLYPH\}/, 'phone Export should use the download glyph like desktop');
 });
 
 test('a row menu opens under its More button, or above it near the bottom', () => {

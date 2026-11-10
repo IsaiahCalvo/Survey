@@ -56,6 +56,7 @@ import {
   widthOfTextRunsAtSize,
 } from './pdfUnicodeText.js';
 import { deepClone } from './deepClone.js';
+import { buildMeasureLabel, getMeasureKind } from './measure/measureScale.js';
 import { normalizePresentationPdf, reflectPdfPagePresentations } from './pdfPagePresentation.js';
 import {
   PDF_COUNTER_METADATA_KEY,
@@ -146,6 +147,7 @@ import { isPdfStampProxy, pngDataUrlToBytes } from './pdfStampProxy.js';
 import {
   getSymbol, isSymbolStamp, symbolStampBox, symbolStampStrokeWidth, transformSymbolPath,
 } from './symbolLibrary.js';
+import { isNoSpaceCluster } from './textWrapMode.js';
 
 // ---------------------------------------------------------------------------
 // Linear operator append (2026-09-10).
@@ -955,6 +957,19 @@ const pathCoordinateBounds = (path, polygons = [], centerline = []) => {
 // translate(left/top) → rotate around the scaled path-bounds center →
 // scale → translate(-pathOffset). PDF writers bake this transform once into
 // page-space coordinates because /InkList has no equivalent Fabric transform.
+// A measurement keeps its reading in the exported file: /Contents carries the
+// label the page shows ("20' 0\"", "12.5 ft²"), so other PDF apps list it
+// (R3-M B4: the values were lost on export).
+function measureContentsOf(fabricObj) {
+  try {
+    if (!getMeasureKind(fabricObj)) return '';
+    const label = buildMeasureLabel(fabricObj, fabricObj?.data?.measure?.scale || null);
+    return label?.text ? String(label.text) : '';
+  } catch {
+    return '';
+  }
+}
+
 export const createInkPageTransform = (fabricObj, path, polygons = [], centerline = []) => {
   const affine = createInkPathAffine(fabricObj, path, { polygons, centerline });
   const point = (x, y) => {
@@ -3461,7 +3476,7 @@ const createPolygonAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = 
       Vertices: vertices.map(n => PDFNumber.of(n)),
       C: [color.red, color.green, color.blue],
       Border: [0, 0, fabricObj.strokeWidth || 1],
-      Contents: pdfTextString(''),
+      Contents: pdfTextString(measureContentsOf(fabricObj)),
       P: page.ref,
     };
 
@@ -3530,7 +3545,7 @@ const createPolyLineAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
       Vertices: vertices.map(n => PDFNumber.of(n)),
       C: [color.red, color.green, color.blue],
       Border: [0, 0, fabricObj.strokeWidth || 1],
-      Contents: pdfTextString(''),
+      Contents: pdfTextString(measureContentsOf(fabricObj)),
       P: page.ref,
     };
     // A cloud polyline exports as /PolyLine + /BE cloudy; it draws rounded end
@@ -3605,7 +3620,7 @@ const createLineAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {})
       L: [x1, pageHeight - y1, x2, pageHeight - y2],
       C: [color.red, color.green, color.blue],
       Border: [0, 0, fabricObj.strokeWidth || 1],
-      Contents: pdfTextString(''),
+      Contents: pdfTextString(measureContentsOf(fabricObj)),
       P: page.ref,
     };
 
@@ -5615,9 +5630,12 @@ const layoutFlattenedText = (obj, fonts) => {
     const tokens = [];
     clusters.forEach((cluster) => {
       const space = cluster === ' ' || cluster === '\t';
+      // A CJK character is a word of its own, as in the screen's CSS wrap
+      // (textWrapMode.js), so a line fills up before it breaks.
+      const alone = !space && isNoSpaceCluster(cluster);
       const last = tokens[tokens.length - 1];
-      if (last && last.space === space) last.clusters.push(cluster);
-      else tokens.push({ space, clusters: [cluster] });
+      if (last && !alone && !last.alone && last.space === space) last.clusters.push(cluster);
+      else tokens.push({ space, alone, clusters: [cluster] });
     });
     let line = '';
     tokens.forEach((token) => {
