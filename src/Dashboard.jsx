@@ -51,6 +51,8 @@ import { lockDocument, unlockDocument } from './services/documentLockService.js'
 import { resolveDocumentMetadata } from './services/documentMetadataResolver.js';
 import { perfUpload } from './utils/performanceLogger';
 import { showToast } from './utils/toast';
+import DriveFilePicker from './components/DriveFilePicker.jsx';
+import { announceDriveLinkChanged, driveCall, fetchDrivePdf } from './services/driveFilesClient.js';
 import { archiveItems, restoreArchiveItems } from './services/archiveService';
 import { useUndoToast } from './hooks/useUndoToast.js';
 import { UndoToast } from './components/collab/UndoToast.jsx';
@@ -990,7 +992,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
   // file-input bookkeeping stays in handleFileUpload. Resolves to what
   // happened: 'added' | 'existing' (deduped to a document already there) |
   // 'skipped' (the user canceled the duplicate ask) | 'failed'.
-  const uploadBrowserPdf = async (file, { projectId = null, openAfterUpload = true, waitForStorage = false, askDuplicates = true, checkedSheet = null } = {}) => {
+  const uploadBrowserPdf = async (file, { projectId = null, openAfterUpload = true, waitForStorage = false, askDuplicates = true, checkedSheet = null, onDocument = null } = {}) => {
     if (!user) {
       if (deviceFilesOn() && await openOnDevice(file, { open: openAfterUpload })) return 'added';
       setDashboardError('Please sign in to upload documents.');
@@ -1054,6 +1056,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     // Whether this upload made the row (false when same bytes came back as an
     // existing document), so a caller's rollback never deletes someone's file.
     file.createdNew = resolvedDoc?.id === newDocId;
+    // The caller learns the document before it opens (drive-sync-back links it).
+    try { onDocument?.(resolvedDoc); } catch { /* caller's own */ }
 
     // Decision 6: identical bytes deduped to a doc with a different name ->
     // offer to keep the new name as an alias, then open the EXISTING document
@@ -1864,6 +1868,31 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     : activeSection === 'projects'
       ? projects.length > 0
       : templates.length > 0;
+
+  // drive-sync-back (Nightly): open a PDF from OneDrive. It becomes a normal
+  // Survey document (marks live in Survey, like Drawboard), linked to the
+  // OneDrive file so the viewer saves the marked-up PDF back to it.
+  const [drivePickerOpen, setDrivePickerOpen] = useState(false);
+  const canOpenFromDrive = Boolean(user) && isFeatureOn('drive-sync-back');
+  const openFromDrive = async (picked) => {
+    const got = await fetchDrivePdf(picked);
+    if (got.error) { showToast(got.error, 'warn'); return false; }
+    let documentId = null;
+    const outcome = await uploadBrowserPdf(got.file, {
+      openAfterUpload: true,
+      askDuplicates: false,
+      onDocument: (doc) => { documentId = doc?.id || null; },
+    });
+    if (!documentId || outcome === 'failed' || outcome === 'skipped') return false;
+    const linked = await driveCall('driveLink', { documentId, driveId: got.driveId, itemId: got.itemId, eTag: got.eTag });
+    if (linked?.error) {
+      showToast(`It opened, but won’t save back to OneDrive: ${linked.error}`, 'warn');
+    } else {
+      announceDriveLinkChanged(documentId);
+      showToast(`${got.file.name} opened from OneDrive. Your marks save back to it.`, 'success');
+    }
+    return true;
+  };
 
   // device-files (Nightly): with no account, a PDF opens and stays on this
   // device (Drawboard's "Temporary" files; home/deviceFileActions.js).
@@ -2956,6 +2985,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
 
   return (
     <>
+      {drivePickerOpen && (
+        <DriveFilePicker onPick={openFromDrive} onClose={() => setDrivePickerOpen(false)} />
+      )}
       <DismissBarrier
         active={showUserDropdown}
         insideRefs={userDropdownInsideRefs}
@@ -3000,6 +3032,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         isPro={!!features?.advancedSurvey}
         onOpenDocument={hubOpenDocument}
         onUpload={handleUploadClick}
+        onOpenFromDrive={canOpenFromDrive ? () => setDrivePickerOpen(true) : null}
         onDropFiles={handleDroppedFiles}
         uploadBusy={activeUploads > 0 || uploadInFlight}
         onCreateProject={handleCreateProjectClick}

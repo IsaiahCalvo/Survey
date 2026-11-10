@@ -410,6 +410,7 @@ import { readDefaultMeasureScale, saveDefaultMeasureScale, withDefaultMeasureSca
 import PagePinsLayer from './components/pins/PagePinsLayer.jsx';
 import { PinToolButton } from './components/pins/PinControls.jsx';
 import { LINK_EDIT_EVENT, applyLinkEdit, selectedLinkOf } from './utils/linkTool.js';
+import { announceLocalMarkEdit } from './utils/localMarkEdit.js';
 import { marksHidden, setMarksHidden, subscribeMarksHidden } from './utils/marksHidden.js';
 import { isTypingTarget } from './utils/typingTarget.js';
 import { useMarkClipboard } from './utils/sharedMarkClipboard.js';
@@ -22738,6 +22739,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     ).values(),
   ], annotationsByPage), [durableDeletedPdfAnnotations, locallyDeletedPdfAnnotations, annotationsByPage]);
 
+  // drive-sync-back (Nightly): a queued local edit tells the OneDrive
+  // save-back that this screen changed the marks (utils/localMarkEdit.js).
+  useEffect(() => {
+    if (cloudSyncStatus?.stage === 'pending' && pdfFile?.id) announceLocalMarkEdit(pdfFile.id);
+  }, [cloudSyncStatus, pdfFile?.id]);
+
   const displayedCloudSyncStatus = useMemo(() => combineCollaborationSyncStatus({
     annotationStatus: cloudSyncStatus,
     transportState: yjsTransportState,
@@ -24883,7 +24890,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     return bytesKit.deliverCsv(csv, filters.commentsCsvFileName(name));
   }, [pdfFile?.id, pdfFile?.name]);
 
-  const handleExportPdfWithOptions = useCallback(async ({ mode = 'annotated', pages = 'all', custom = '', filter = null, commentsCsv = false } = {}) => {
+  const handleExportPdfWithOptions = useCallback(async ({ mode = 'annotated', pages = 'all', custom = '', filter = null, commentsCsv = false, deliver = true } = {}) => {
     if (!pdfFile) {
       showToast('Open a PDF first.', 'warn');
       return { ok: false, error: 'Open a PDF first.' };
@@ -24962,6 +24969,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       if (!bytes) return { ok: false, error: 'Nothing to export.' };
       if (picked.pages) bytes = await bytesKit.keepOnlyPages(bytes, picked.pages);
       const fileName = modes.exportFileName(pdfDisplayNameRef.current || pdfFile.name, mode, picked.pages);
+      // deliver:false hands the bytes back (OneDrive save-back) instead of saving them.
+      if (!deliver) return { ok: true, bytes, fileName };
       const outcome = await bytesKit.deliverPdf(bytes, fileName, { title: 'Export PDF' });
       if (outcome === 'canceled') return { ok: false, canceled: true };
       if (exportFiltersEnabled && commentsCsv) {
