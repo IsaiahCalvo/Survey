@@ -607,6 +607,52 @@ test('a PM Replace All that saves late over a tech\'s note holds that note and t
   assert.equal(quiet.summary.toApp, 0, 'the renamed heading stays mapped');
 });
 
+// A PM typing a new item into the first empty row in Excel on the web while a
+// field tech adds one: Survey appends the tech's row there (Graph sees it
+// empty) and the PM's save lands on it later. It used to rename the tech's
+// item to the PM's, with the PM's note, and the PM's item was never made.
+test('a PM\'s new row saved late over the row Survey just added keeps both items', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
+  ctx.provider = { ...ctx.provider, savesLate: true };
+  const t0 = Date.parse('2026-11-10T13:00:00Z');
+  await ctx.round({ now: new Date(t0) }); await ctx.round({ now: new Date(t0 + 1000), force: true });
+  ctx.markers.d2 = door('d2', 'D-102', { note: { text: 'tech note' } });
+  await ctx.round({ now: new Date(t0 + 5000) });
+  const row = await ctx.rowOf('d2');
+  const item = await ctx.col('Item'); const notes = await ctx.col('Notes');
+  await ctx.edit([{ row, col: item, value: 'D-120' }, { row, col: notes, value: 'PM typed' }]);
+  const r = await ctx.round({ now: new Date(t0 + 50000), force: true });
+  assert.equal(r.summary.conflicts, 0);
+  assert.equal(r.summary.created, 1, 'the PM\'s row is a new item');
+  assert.equal(ctx.markers.d2.name, 'D-102', 'the tech\'s item keeps its name');
+  assert.equal(ctx.markers.d2.note.text, 'tech note', 'and its note');
+  const pm = Object.values(ctx.markers).find((m) => m.name === 'D-120');
+  assert.ok(pm, 'the PM\'s item is made');
+  assert.equal(pm.note.text, 'PM typed');
+  const rows = (await ctx.sheet()).rows;
+  assert.deepEqual([rows[row][item], rows[row][notes]], ['D-102', 'tech note'], 'the tech\'s row is put back');
+  assert.deepEqual([rows[row + 1][item], rows[row + 1][notes]], ['D-120', 'PM typed'], 'the PM\'s item goes in the row below');
+  assert.ok(ctx.link.state.problems.some((p) => /typed into the row Survey had just filled/.test(p.message)), 'the panel says what happened');
+  const quiet = await ctx.round({ now: new Date(t0 + 56000), force: true });
+  assert.deepEqual(Object.values(quiet.summary).filter(Boolean), []);
+});
+
+test('a rename of a just-added item after that window, or on Google, is a rename', async () => {
+  for (const late of [true, false]) {
+    const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
+    if (late) ctx.provider = { ...ctx.provider, savesLate: true };
+    const t0 = Date.parse('2026-11-10T13:00:00Z');
+    await ctx.round({ now: new Date(t0) }); await ctx.round({ now: new Date(t0 + 1000), force: true });
+    ctx.markers.d2 = door('d2', 'D-102');
+    await ctx.round({ now: new Date(t0 + 5000) });
+    await ctx.edit([{ row: await ctx.rowOf('d2'), col: await ctx.col('Item'), value: 'D-102A' }]);
+    const r = await ctx.round({ now: new Date(t0 + (late ? 200000 : 50000)), force: true });
+    assert.equal(r.summary.created, 0, late ? 'after the window' : 'Google');
+    assert.equal(ctx.markers.d2.name, 'D-102A');
+    assert.equal(Object.keys(ctx.markers).length, 2);
+  }
+});
+
 test('a first write over an old-format baseline is not watched, so an Undo comes straight in', async () => {
   const ctx = await setup({ markers: { d1: door('d1', 'D-101', { note: { text: 'Old' } }) } });
   ctx.provider = { ...ctx.provider, savesLate: true };
@@ -617,7 +663,7 @@ test('a first write over an old-format baseline is not watched, so an Undo comes
   ctx.link.baseline.d1.fields = (await computeRowFingerprints(appRecordOf(ctx.markers.d1, scope))).fieldFingerprints;
   ctx.markers.d1.note = { text: 'New' };
   await ctx.round({ now: new Date(t0 + 5000) });
-  assert.deepEqual(ctx.link.state.recentWrites, {}, 'an old-format "before" print could never match the sheet');
+  assert.deepEqual(Object.keys(ctx.link.state.recentWrites).filter((k) => !k.endsWith('|+row')), [], 'an old-format "before" print could never match the sheet');
   await ctx.edit([{ row: await ctx.rowOf('d1'), col: await ctx.col('Notes'), value: 'Old' }]);
   const r = await ctx.round({ now: new Date(t0 + 65000), force: true });
   assert.equal(r.summary.conflicts, 0);
