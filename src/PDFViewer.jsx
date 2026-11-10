@@ -405,12 +405,13 @@ import { LIBRARY_PAYLOAD_MAX_BYTES, libraryPayloadBytes, libraryPayloadFromClipb
 import { fitPlacedTextBoxes, resolveLibraryDrop } from './markLibrary/markLibraryViewer.js';
 import { PAGE_GRID_SETTINGS_EVENT, applyPageGridPageSteps, applyPageGridSettings, loadPageGridSettings } from './utils/pageGrid';
 import { LAYERS_META_KEY, DEFAULT_LAYER_ID, DEFAULT_LAYER_STATE, normalizeLayerState, hiddenLayerIdSet, resolveActiveLayerId, withoutHiddenLayers, calloutsWithoutHiddenLayers, stampNewObjectsOnLayer, stampNewMarksByPage, selectableMarkIndices } from './utils/layers.js';
-import { PAGE_PRESENTATION_META_KEY, normalizePagePresentations, pagePresentationFrame, clientPointInPageFrame, clientPastePointInPageFrame } from './utils/pagePresentation.js';
+import { PAGE_PRESENTATION_META_KEY, PDF_FILE_VERSION_META_KEY, normalizePagePresentations, pagePresentationFrame, clientPointInPageFrame, clientPastePointInPageFrame } from './utils/pagePresentation.js';
 import { normalizePresentationPdf, pdfBytesHavePresentationTag } from './utils/pdfPagePresentation.js';
 import { chooseCloudPdfOpenPath, shouldRetryStreamedOpenWithDownload, tryOpenCloudPdfStream } from './services/cloudPdfStream.js';
 import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox } from './utils/svgBoundingBox.js';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
 import { usePageOperations } from './hooks/usePageOperations.js';
+import { IDLE_REMOTE_PDF_STATE, PAGE_OP_BLOCKED_MESSAGE, PAGE_OP_SYNC_FLAG, clearedPdfVersion, isPageOpBlocked, newPdfVersionToken, operationRewritesPdf, pendingPdfVersion, remotePdfLoaded, remotePdfVersionStep, savedPdfVersion } from './utils/pageOpSync.js';
 import { usePageViewDocument } from './hooks/usePageViewDocument.js';
 import { getPageViewBase } from './utils/pageViewDocument.js';
 import { destroyPdfDocument, pdfOrDestroy } from './utils/destroyPdfDocument.js';
@@ -648,7 +649,7 @@ const eraseTransitionChangedScreen = (result, before, meta) => (
   eraseTransitionChangedScreenWith(result, before, meta, jsonEqual)
 );
 
-export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, onCloseAfterFailure, tabId, isActive, documentLocked = false, mobileMode = false, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, msGetAuthSignals, entities, setEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange }) {
+export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, onCloseAfterFailure, tabId, isActive, documentLocked = false, mobileMode = false, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, msGetAuthSignals, entities, setEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange, onRemotePdfVersion }) {
   // Phase 35 UAT diag — mirror current PDF filename to window so the dev-only
   // phase35Diag logger can prefix every gate decision with the file under test.
   // Production-stripped via import.meta.env.MODE check; tree-shakes from prod.
@@ -15124,11 +15125,33 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     regionOverlayDisabled: regionOverlayDisabled || new Map(),
   };
   const getPageStructureState = useCallback(() => pageStructureStateRef.current, []);
-  const persistPageMutationFile = useCallback((file) => {
+  // Page changes in two windows (Nightly 'page-op-sync', utils/pageOpSync.js):
+  // `writer` names this viewer (not getClientId(), which tabs share).
+  const pageOpSyncRef = useRef(null);
+  if (!pageOpSyncRef.current) {
+    pageOpSyncRef.current = { on: isFeatureOn(PAGE_OP_SYNC_FLAG), writer: newPdfVersionToken(), ownPending: false, remote: IDLE_REMOTE_PDF_STATE, docBeforeReload: null };
+  }
+  pageOpSyncRef.current.pdfFile = pdfFile;
+  pageOpSyncRef.current.pdfDoc = pdfDoc;
+  const pageOpsBlocked = useCallback(() => (
+    isPageOpBlocked(pageOpSyncRef.current.remote, Date.now()) ? PAGE_OP_BLOCKED_MESSAGE : null
+  ), []);
+  const persistPageMutationFile = useCallback((file, saveInfo) => {
     // The background save of a page operation: these bytes are already on
     // screen as a page view, so the load effect must not re-open them.
     markPageViewFileCurrent(file);
-    return onUpdatePDFFile?.(file, tabId);
+    const saving = onUpdatePDFFile?.(file, tabId);
+    const sync = pageOpSyncRef.current;
+    if (!sync.on) return saving;
+    return Promise.resolve(saving).then((saved) => {
+      const setMeta = pagePresentationMetaSetRef.current;
+      const result = saved || file;
+      if (setMeta && sync.ownPending && !saveInfo?.hasMorePending?.()) {
+        sync.ownPending = false;
+        setMeta(PDF_FILE_VERSION_META_KEY, savedPdfVersion({ writer: sync.writer, filePath: result?.supabaseFilePath || result?.filePath, contentSha256: result?.contentSha256 }), 'local');
+      }
+      return saved;
+    });
   }, [markPageViewFileCurrent, onUpdatePDFFile, tabId]);
   const commitPageStructureState = useCallback((next, operation, step = null) => {
     pageStructureStateRef.current = next;
@@ -15141,6 +15164,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     setPageNames(next.pageNames);
     setPageTransformations(next.pageTransformations);
     pagePresentationMetaSetRef.current?.(PAGE_PRESENTATION_META_KEY, normalizePagePresentations(next.pageTransformations), 'local');
+    const pageOpSync = pageOpSyncRef.current;
+    if (pageOpSync.on && pagePresentationMetaSetRef.current) {
+      if (operationRewritesPdf(operation)) {
+        pageOpSync.ownPending = true;
+        pagePresentationMetaSetRef.current(PDF_FILE_VERSION_META_KEY, pendingPdfVersion({ writer: pageOpSync.writer }), 'local');
+      } else if (operation?.type === 'rollback' && pageOpSync.ownPending) {
+        pageOpSync.ownPending = false;
+        pagePresentationMetaSetRef.current(PDF_FILE_VERSION_META_KEY, clearedPdfVersion({ writer: pageOpSync.writer }), 'local');
+      }
+    }
     setBookmarks(next.bookmarks);
     setSpaces(next.spaces);
     setRegionOverlayDisabled(next.regionOverlayDisabled);
@@ -15238,6 +15271,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     clipboardType,
     setClipboardType,
     getPageSize: getPageSizeForTurn,
+    blocked: pageOpSyncRef.current.on ? pageOpsBlocked : null,
   });
   // Export, print and redaction writers read bytes with source.arrayBuffer().
   // A cloud document's pdfFile is only metadata (filePath, no bytes), so
@@ -22086,6 +22120,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       ? acceptTemplateVersion(binding, selectedTemplate, true)
       : bindUsedTemplate(selectedTemplate, binding));
   }, [selectedTemplate, currentSurveyTemplateHasMarks, appTemplates, surveyTemplateRestorationReady, storeSurveyTemplateBinding, readSurveyTemplateBinding]);
+  // Another window's page change (utils/pageOpSync.js): refuse page changes
+  // while its bytes upload, then reload the PDF it saved.
+  useEffect(() => {
+    const sync = pageOpSyncRef.current;
+    if (!sync.on || !normalAnnotationHydration?.ready || normalAnnotationHydration.documentId !== pdfFile?.id) return undefined;
+    return subscribeDocumentMeta(PDF_FILE_VERSION_META_KEY, (value) => {
+      const step = remotePdfVersionStep(sync.remote, value, { writer: sync.writer, currentSha: sync.pdfFile?.contentSha256 || null, now: Date.now() });
+      sync.remote = step.state;
+      if (step.action !== 'reload') return;
+      sync.docBeforeReload = sync.pdfDoc;
+      onRemotePdfVersion?.(tabId, { filePath: step.version.filePath, contentSha256: step.version.contentSha256 });
+    });
+  }, [normalAnnotationHydration, pdfFile?.id, subscribeDocumentMeta, onRemotePdfVersion, tabId]);
+  useEffect(() => {
+    const sync = pageOpSyncRef.current;
+    if (!sync.remote.awaitSha || !pdfDoc || pdfDoc === sync.docBeforeReload) return;
+    sync.remote = remotePdfLoaded(sync.remote, pdfFile?.contentSha256);
+  }, [pdfDoc, pdfFile]);
   pagePresentationMetaSetRef.current = normalAnnotationHydration?.ready
     && normalAnnotationHydration.documentId === pdfFile?.id
     && canRestoreFromHistory ? excelSyncMetaSet : null;

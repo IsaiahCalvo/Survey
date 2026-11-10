@@ -253,6 +253,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Back (browser or Android) closes the open sheet, then the document, instead of leaving Survey',
     stage: 'beta',
   }),
+  'page-op-sync': Object.freeze({
+    label: 'Page changes in one window reload the PDF in the other windows that have it open',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

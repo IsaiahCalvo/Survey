@@ -87,6 +87,9 @@ import { computeTextMarkupPickerPosition } from './utils/pdfTextMarkup.js';
 import { getLiveZoomViewerId, isLiveZoomEventForViewer, LIVE_ZOOM_EVENT } from './utils/liveZoomEvents.js';
 import { useAuth } from './contexts/AuthContext';
 import { supabase, isSupabaseAvailable } from './supabaseClient';
+import { storageDownloads } from './services/storageDownloads.js';
+import { pdfByteCache } from './services/pdfByteCache.js';
+import { remotePdfFileDescriptor } from './utils/pageOpSync.js';
 import { renameRows, subscribeDocumentNames } from './hooks/documentNameBus.js';
 import { lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import useStableHandler from './hooks/useStableHandler.js';
@@ -1843,6 +1846,26 @@ export default function App({ devPreviewReturnTab = null }) {
     return newFile;
   }, [selectedPDF, activeTabId, replaceDocument]);
 
+  // Another window saved new bytes for a document open here (a page change
+  // there; Nightly 'page-op-sync', utils/pageOpSync.js). The tab gets a fresh
+  // cloud file for them, so its viewer reloads the PDF; the marks already
+  // came through the shared document.
+  const handleRemotePdfVersion = useCallback((targetTabId, { filePath, contentSha256 } = {}) => {
+    if (!targetTabId || !filePath) return;
+    storageDownloads(supabase).invalidate(filePath);
+    try { void Promise.resolve(pdfByteCache()?.removePath?.(filePath)).catch(() => {}); } catch { /* cache only */ }
+    const current = tabsRef.current.find((tab) => tab.id === targetTabId)?.file;
+    if (!current?.id) return;
+    const next = remotePdfFileDescriptor(current, { filePath, contentSha256 });
+    setTabs((prev) => prev.map((tab) => (tab.id === targetTabId && tab.file === current ? { ...tab, file: next } : tab)));
+    setSelectedPDF((selected) => (selected === current ? next : selected));
+    setDocuments((prev) => prev.map((document) => (
+      document?.id === current.id
+        ? { ...document, file_path: filePath, content_sha256: contentSha256 || null }
+        : document
+    )));
+  }, []);
+
   // ---- Desktop tab strip: close, menu, rename, download, restore ----------
   // Drawboard shell audit, Chunk C (2026-10-13). Every close a person makes -
   // the X, a middle-click, the tab menu's Close tab / Close other tabs / Close
@@ -2119,6 +2142,7 @@ export default function App({ devPreviewReturnTab = null }) {
   // drawing set a few dozen undo / redo presses held over 1 GB.
   const stableCreateTemplateRequest = useStableHandler(handleCreateTemplateRequest);
   const stableUpdatePDFFile = useStableHandler(handleUpdatePDFFile);
+  const stableRemotePdfVersion = useStableHandler(handleRemotePdfVersion);
   const stableUnsavedAnnotationsChange = useStableHandler(handleUnsavedAnnotationsChange);
   const stableAnnotationsExistChange = useStableHandler(handleAnnotationsExistChange);
   const stableViewStateChange = useStableHandler(handleViewStateChange);
@@ -5011,6 +5035,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       onLeftRailApiChange={chrome.left}
                       onRightRailApiChange={chrome.right}
                       onUpdatePDFFile={stableUpdatePDFFile}
+                      onRemotePdfVersion={stableRemotePdfVersion}
                       onCloseAfterFailure={stableTabClose}
                       onUnsavedAnnotationsChange={stableUnsavedAnnotationsChange}
                       onAnnotationsExistChange={stableAnnotationsExistChange}
