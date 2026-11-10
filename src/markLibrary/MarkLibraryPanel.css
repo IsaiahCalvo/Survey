@@ -54,15 +54,15 @@
   color: var(--text-2);
   background: transparent;
   border: 0;
-  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  border-radius: 0;
   font: 500 12px/1 var(--font-ui);
   cursor: pointer;
 }
 
-.mark-library__tab + .mark-library__tab {
-  border-left: 1px solid var(--border);
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-}
+.mark-library__tab + .mark-library__tab { border-left: 1px solid var(--border); }
+/* Only the outer ends round, so two or three tabs read as one control. */
+.mark-library__tab:first-child { border-top-left-radius: var(--radius-sm); border-bottom-left-radius: var(--radius-sm); }
+.mark-library__tab:last-child { border-top-right-radius: var(--radius-sm); border-bottom-right-radius: var(--radius-sm); }
 
 .mark-library__tab.is-active { color: var(--accent); }
 .mark-library__tab:disabled { color: var(--text-disabled); cursor: not-allowed; }
