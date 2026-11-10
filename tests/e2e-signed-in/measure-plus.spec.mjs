@@ -171,6 +171,14 @@ test('custom scale reads feet-inches, Units restamp the line, Set as default car
     await expect(leader).toHaveValue('41');
     await page.keyboard.press('Escape');
     await expect(card).toBeHidden();
+    // Right-click: Reset leader line puts it back at the default offset.
+    const segNow = await dimLine.locator('line').nth(2).boundingBox();
+    await page.mouse.click(segNow.x + segNow.width / 2, segNow.y + segNow.height / 2, { button: 'right' });
+    const menu = page.locator('[data-annotation-context-menu]');
+    await expect(menu).toBeVisible();
+    await menu.getByText('Reset leader line', { exact: true }).click();
+    await expect(menu).toBeHidden();
+    await expect.poll(async () => Math.round(Math.abs((await lineY()) - yBefore) * 100) / 100).toBe(0);
     await page.keyboard.press('Escape');
     await expect(reading).toHaveText(/^(?:[\d,]+′(?:-\d+(?: \d+\/\d)?″)?|(?:\d+ )?\d+(?:\/\d)?″)$/);
     const ftin = feetInches((await reading.textContent()).trim());

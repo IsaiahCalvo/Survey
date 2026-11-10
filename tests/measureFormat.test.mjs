@@ -227,3 +227,10 @@ test('dimension line: a leader pill replaces the bend grabber and drags the lead
   assert.match(hook, /action: 'leader-move',/);
   assert.match(hook, /originalLeader: null, currentLeader: null,/);
 });
+
+test('dimension line: right-click Reset leader line', () => {
+  const menu = read('src/hooks/useAnnotationContextMenu.jsx');
+  assert.match(menu, /isDimensionMeasure\(menuObj\) \? \[item\('Reset leader line', 'resetLeaderLine'/);
+  assert.match(menu, /measure\.dim = \{ \.\.\.measure\.dim, leader: DIMENSION_LEADER_PT \};/);
+  assert.match(menu, /menuObjEditable && dimensionLeader\(menuObj\) !== DIMENSION_LEADER_PT\)\] : \[\]\),/);
+});
