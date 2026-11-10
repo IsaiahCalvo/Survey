@@ -129,7 +129,7 @@ export default function AnswerSetEditor({ set, onCommit, onClose, phone = false,
           <button
             type="button"
             aria-label={`Remove answer ${i + 1}`}
-            className="hub-icon-btn is-danger"
+            className={`hub-icon-btn is-danger${phone ? ' hub-answer-set-editor__remove--phone' : ''}`}
             disabled={draft.length <= MIN_ANSWERS}
             onClick={() => update(draft.filter((_, j) => j !== i))}
           ><Icon name="close" size={11} /></button>
