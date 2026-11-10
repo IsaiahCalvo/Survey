@@ -330,6 +330,23 @@ test('value repair after a mid-write sort leaves a person\'s edit on another ite
   assert.deepEqual(tab.rows.slice(1).map((r) => [r[1], r[2]]), [['C', ''], ['B', 'Y'], ['A', 'Y']]);
 });
 
+test('value repair with no tab to look at reads nothing', async () => {
+  let reads = 0;
+  const tab = { ...oneTab([['Row ID']]), readGrid: async () => { reads += 1; return { sheets: [] }; } };
+  const res = await putMovedWritesRight({ provider: tab, fileId: 'f', grid: { sheets: [] }, writes: [], idChecks: [], landed: new Map() });
+  assert.equal(res.fixed, 0);
+  assert.equal(reads, 0, 'never a read of every tab');
+});
+
+test('value repair under a title row: a column moved meanwhile is left alone, not written into', async () => {
+  const before = [['Doors report'], ['Row ID', 'Item', 'Done'], ['t1', 'A', ''], ['t2', 'B', '']];
+  const tab = oneTab([['Doors report'], ['Row ID', 'Done', 'Item'], ['t2', '', 'Y'], ['t1', '', 'A']]);
+  const writes = [{ sheetId: '1', title: 'T', row: 2, col: 2, value: 'Y', headerRow: 1, markerId: 'a', key: 'answer:x' }];
+  const idChecks = [{ sheetId: '1', title: 'T', row: 2, col: 0, token: 't1' }];
+  await putMovedWritesRight({ provider: tab, fileId: 'f', grid: { sheets: [{ sheetId: '1', rows: before }] }, writes, idChecks, landed: new Map([['1|2', 't2']]) });
+  assert.equal(tab.rows[3][2], 'A', 'A\'s Item is never written over');
+});
+
 test('Row ID repair finds the heading under a title row, renamed in case and moved', async () => {
   const before = [['Doors report'], ['Row ID', 'Item', 'Notes'], ['', 'A-copy', ''], ['tokA', 'D-101', '']];
   // Sorted Z-A, Item heading retyped as "item" and moved to the end, then our

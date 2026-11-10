@@ -537,8 +537,8 @@ export async function planSheetRound({
       if (col == null) return;
       // Row ID writes carry the item's name, so a round whose rows moved
       // under it can find which row the Row ID belongs on.
-      plan.cellWrites.push({ sheetId: sheet.sheetId, title: sheet.title, row: rowIndex, col, value, ...(markerId ? { markerId, key } : {}),
-        ...(key === 'rowId' ? { rowIdFor: String(sheet.rows?.[rowIndex]?.[colOfKey.get('item')] ?? '').trim(), itemCol: colOfKey.get('item') ?? -1, headerRow: headerAt } : {}) });
+      plan.cellWrites.push({ sheetId: sheet.sheetId, title: sheet.title, row: rowIndex, col, value, headerRow: headerAt, ...(markerId ? { markerId, key } : {}),
+        ...(key === 'rowId' ? { rowIdFor: String(sheet.rows?.[rowIndex]?.[colOfKey.get('item')] ?? '').trim(), itemCol: colOfKey.get('item') ?? -1 } : {}) });
       plan.verify.push({ sheetId: sheet.sheetId, title: sheet.title, row: rowIndex, col, expect: was ?? null });
     };
     const rowFor = async (markerId, marker) => {

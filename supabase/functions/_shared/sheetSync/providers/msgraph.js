@@ -717,20 +717,31 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
     async addTabs(fileId, scopes) {
       if (!scopes?.length) return {};
       const list = await workbook(fileId, 'GET', 'worksheets?$select=name', { where: 'worksheets' });
-      const names = excelSheetNames(scopes.map((s) => s.title), (list?.value || []).map((s) => s.name));
-      // Every tab in one $batch, each after the one before (tab order kept).
-      const added = await workbookBatch(fileId, names.map((name) => ({ method: 'POST', path: 'worksheets/add', body: { name } })));
+      const had = new Set((list?.value || []).map((s) => s.name));
+      const names = excelSheetNames(scopes.map((s) => s.title), [...had]);
       const sheetIds = {};
       const setup = [];
-      scopes.forEach((scope, i) => {
-        const id = added[i]?.id;
-        if (id == null) throw Object.assign(new Error('Microsoft did not say which sheet it added.'), { status: 502 });
-        sheetIds[scope.scopeId] = id;
-        setup.push(...sheetSetupOps(id, scope));
-      });
+      try {
+        // Every tab in one $batch, each after the one before (tab order kept).
+        const added = await workbookBatch(fileId, names.map((name) => ({ method: 'POST', path: 'worksheets/add', body: { name } })));
+        scopes.forEach((scope, i) => {
+          const id = added[i]?.id;
+          if (id == null) throw Object.assign(new Error('Microsoft did not say which sheet it added.'), { status: 502 });
+          sheetIds[scope.scopeId] = id;
+          setup.push(...sheetSetupOps(id, scope));
+        });
+        await workbookBatch(fileId, setup.filter((op) => !op.optional), { parallel: true });
+      } catch (err) {
+        // Tabs added but not set up are taken away again: left there, they
+        // hold their names and the next round adds " (2)" copies beside them.
+        try {
+          const now = await workbook(fileId, 'GET', 'worksheets?$select=id,name', { where: 'worksheets' });
+          const ours = (now?.value || []).filter((s) => names.includes(s.name) && !had.has(s.name));
+          if (ours.length) await workbookBatch(fileId, ours.map((s) => ({ method: 'DELETE', path: sheetPath(s.id) })), { parallel: true });
+        } catch { /* the next round's names step around them */ }
+        throw err;
+      }
       // Text formats are a nicety: a refused one must not fail the tabs.
-      const needed = setup.filter((op) => !op.optional);
-      await workbookBatch(fileId, needed, { parallel: true });
       await workbookBatch(fileId, setup.filter((op) => op.optional), { parallel: true }).catch(() => {});
       return sheetIds;
     },

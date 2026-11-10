@@ -508,3 +508,28 @@ test('a broken tab can be made again from the survey; the old one is left as it 
   await ctx.round();
   assert.deepEqual(ctx.link.state.brokenTabs, []);
 });
+
+test('tabs added but not set up are taken away, so the next round adds them once, not " (2)"', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
+  await ctx.round();
+  let failed = false;
+  const failingSetup = async (input, init) => {
+    const req = input instanceof Request ? input : new Request(input, init);
+    if (!failed && new URL(req.url).pathname.endsWith('/$batch')) {
+      const body = await req.clone().json();
+      if ((body.requests || []).length && !body.requests.some((r) => /worksheets\/add$/.test(r.url) || r.method === 'DELETE')) {
+        failed = true;
+        return new Response(JSON.stringify({ responses: [{ id: '1', status: 500, body: { error: { code: 'InternalServerError', message: 'boom' } } }] }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+    }
+    return fakeMsgraphFetch(req);
+  };
+  const p = createMsGraphProvider({ getAccessToken: async () => 'fake-ms-access-1', fetch: failingSetup, baseUrl: BASE });
+  const scope = { ...ctx.link.layout.scopes[0], scopeId: 'extra', title: 'Extra - Level 1' };
+  await assert.rejects(() => p.addTabs(ctx.link.file_id, [scope]));
+  assert.ok(failed, 'the set-up call was the one refused');
+  const names = () => globalThis.__fakeMsgraph.files.get(ctx.fileId).sheets.map((s) => s.name);
+  assert.ok(!names().includes('Extra - Level 1'), 'the blank tab is taken away');
+  await p.addTabs(ctx.link.file_id, [scope]);
+  assert.deepEqual(names().filter((n) => n.startsWith('Extra')), ['Extra - Level 1'], 'added once, under its own name');
+});

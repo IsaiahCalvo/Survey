@@ -135,6 +135,8 @@ export async function putMovedWritesRight({ provider, fileId, grid, writes, idCh
   };
   const sheets = new Map();
   for (const c of idChecks) if (!sheets.has(String(c.sheetId))) sheets.set(String(c.sheetId), { col: c.col, title: c.title });
+  // No tab to look at (an empty list would read every tab in the workbook).
+  if (!sheets.size) return { fixed: 0 };
   for (let attempt = 0; attempt < tries; attempt++) {
     const now = await provider.readGrid(fileId, { sheetIds: [...sheets.keys()] });
     const fixes = []; const fixIds = [];
@@ -142,8 +144,8 @@ export async function putMovedWritesRight({ provider, fileId, grid, writes, idCh
       const before = grid.sheets.find((s) => sameId(s.sheetId, sheetId))?.rows || [];
       const after = now.sheets.find((s) => sameId(s.sheetId, sheetId))?.rows || [];
       // A moved or renamed column: the cells can't be matched up safely.
-      const ours = writes.filter((w) => sameId(w.sheetId, sheetId) && !w.header && w.row > 0 && w.col !== idCol);
-      if (ours.some((w) => !sameCell(after[0]?.[w.col], before[0]?.[w.col]))) continue;
+      const ours = writes.filter((w) => sameId(w.sheetId, sheetId) && !w.header && w.row > (w.headerRow ?? 0) && w.col !== idCol);
+      if (ours.some((w) => !sameCell(after[w.headerRow ?? 0]?.[w.col], before[w.headerRow ?? 0]?.[w.col]))) continue;
       const beforeRow = byId(before, idCol); const afterRow = byId(after, idCol);
       const want = new Map();
       const tokenAt = (rows, r) => String(rows[r]?.[idCol] ?? '').trim();
