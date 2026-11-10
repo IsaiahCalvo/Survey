@@ -3366,7 +3366,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     try {
       const prevTool = interactionDiagPrevToolRef.current;
       if (prevTool !== activeTool) {
-        console.log(`[InteractionDiag] tool-changed @ ${Math.round(performance.now())}ms from=${prevTool} to=${activeTool}` + (activeTool === 'pan' ? ' (pan-active → Pdfjs interactionMode=Pan)' : '') + (activeTool === 'eraser' ? ' (eraser-active → FabricEraserCanvas mounts)' : ''));
+        window.__APP_DEBUG === true && console.log(`[InteractionDiag] tool-changed @ ${Math.round(performance.now())}ms from=${prevTool} to=${activeTool}` + (activeTool === 'pan' ? ' (pan-active → Pdfjs interactionMode=Pan)' : '') + (activeTool === 'eraser' ? ' (eraser-active → FabricEraserCanvas mounts)' : ''));
         interactionDiagPrevToolRef.current = activeTool;
         // [EraserParityDiag] one maximally-complete environment + geometry dump
         // per eraser entry/exit, so a single pasted save-log answers every
@@ -3479,7 +3479,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     try {
       if (!isLoadingPDF && !interactionDiagReadyLoggedRef.current) {
         interactionDiagReadyLoggedRef.current = true;
-        console.log(`[InteractionDiag] interactive-ready @ ${Math.round(performance.now())}ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)`);
+        window.__APP_DEBUG === true && console.log(`[InteractionDiag] interactive-ready @ ${Math.round(performance.now())}ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)`);
       }
       if (isLoadingPDF) {
         // Re-arm for the next open of a different document.
@@ -3506,7 +3506,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       const requested = typeof next === 'function' ? '(updater-fn)' : String(next);
       const from = activeToolRef.current;
       const gated = interactionDiagLoadingRef.current === true;
-      console.log(`[InteractionDiag] tool-intent @ ${Math.round(performance.now())}ms requested=${requested} from=${from}` + (gated ? ' [BLOCKED? viewer still gated: isLoadingPDF=true]' : ''));
+      window.__APP_DEBUG === true && console.log(`[InteractionDiag] tool-intent @ ${Math.round(performance.now())}ms requested=${requested} from=${from}` + (gated ? ' [BLOCKED? viewer still gated: isLoadingPDF=true]' : ''));
     } catch (_e) { /* swallow */ }
     setActiveTool(next);
   }, []);
@@ -6673,7 +6673,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       if (nowMs - (interactionDiagZoomLogAtRef.current || 0) >= 150) {
         interactionDiagZoomLogAtRef.current = nowMs;
         const dir = (Number(event.deltaY) || 0) < 0 ? 'in' : 'out';
-        console.log(`[InteractionDiag] zoom-intent @ ${Math.round(nowMs)}ms dir=${dir} via=ctrl-wheel/pinch (cursor-zoom path)`);
+        window.__APP_DEBUG === true && console.log(`[InteractionDiag] zoom-intent @ ${Math.round(nowMs)}ms dir=${dir} via=ctrl-wheel/pinch (cursor-zoom path)`);
       }
     } catch (_e) { /* swallow */ }
 
@@ -7401,6 +7401,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
 
     const onPointerDown = (event) => {
       pointerDown = true;
+      // [InteractionDiag] (window.__APP_DEBUG only, 2026-11-10: printed on
+      // every touch in production, ~86 ms a swipe start on a slow phone CPU
+      // with the console attached.)
       // [InteractionDiag] POINTER on the viewer container. This is the
       // Pdfjs scroll/pan surface; pan is delegated to Pdfjs via
       // interactionMode="Pan" (set when activeTool==='pan'). Log the gesture
@@ -7419,7 +7422,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
             : (tgt.tagName || 'unknown').toLowerCase())
           : 'unknown';
         const family = tool === 'pan' ? 'pan-start' : 'pointer-down';
-        console.log(`[InteractionDiag] viewer-${family} @ ${Math.round(performance.now())}ms tool=${tool} button=${event.button} target=${layer}` + (gated ? ' [viewer still gated: isLoadingPDF=true]' : '') + (tool === 'pan' ? ` scrollTop=${Math.round(viewerContainer.scrollTop)} scrollLeft=${Math.round(viewerContainer.scrollLeft)}` : ''));
+        window.__APP_DEBUG === true && console.log(`[InteractionDiag] viewer-${family} @ ${Math.round(performance.now())}ms tool=${tool} button=${event.button} target=${layer}` + (gated ? ' [viewer still gated: isLoadingPDF=true]' : '') + (tool === 'pan' ? ` scrollTop=${Math.round(viewerContainer.scrollTop)} scrollLeft=${Math.round(viewerContainer.scrollLeft)}` : ''));
       } catch (_e) { /* swallow */ }
       trackpadInteractionDebugRef.current.pointerPanStart = {
         clientX: event.clientX,
@@ -7475,13 +7478,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       // gesture is dying — Pdfjs's Pan interactionMode is not scrolling
       // the container. This is the smoking gun for the "Pan does nothing" bug.
       try {
-        if (activeToolRef.current === 'pan' && start) {
+        if (window.__APP_DEBUG === true && activeToolRef.current === 'pan' && start) {
           const pdx = Math.round(event.clientX - start.clientX);
           const pdy = Math.round(event.clientY - start.clientY);
           const sdx = Math.round(viewerContainer.scrollLeft - start.scrollLeft);
           const sdy = Math.round(viewerContainer.scrollTop - start.scrollTop);
           const moved = sdx !== 0 || sdy !== 0;
-          console.log(`[InteractionDiag] pan-drag @ ${Math.round(performance.now())}ms pointerDelta=(${pdx},${pdy}) scrollDelta=(${sdx},${sdy}) ${moved ? 'MOVED' : 'NO-SCROLL (pan gesture not moving container)'}`);
+          window.__APP_DEBUG === true && console.log(`[InteractionDiag] pan-drag @ ${Math.round(performance.now())}ms pointerDelta=(${pdx},${pdy}) scrollDelta=(${sdx},${sdy}) ${moved ? 'MOVED' : 'NO-SCROLL (pan gesture not moving container)'}`);
         }
       } catch (_e) { /* swallow */ }
     };
@@ -7493,12 +7496,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         if (pointerDown) {
           const tool = activeToolRef.current;
           const start = trackpadInteractionDebugRef.current.pointerPanStart || null;
-          if (tool === 'pan' && start) {
+          if (window.__APP_DEBUG === true && tool === 'pan' && start) {
             const sdx = Math.round(viewerContainer.scrollLeft - start.scrollLeft);
             const sdy = Math.round(viewerContainer.scrollTop - start.scrollTop);
-            console.log(`[InteractionDiag] pan-end @ ${Math.round(performance.now())}ms totalScrollDelta=(${sdx},${sdy})` + (sdx === 0 && sdy === 0 ? ' [PAN DID NOTHING]' : ''));
+            window.__APP_DEBUG === true && console.log(`[InteractionDiag] pan-end @ ${Math.round(performance.now())}ms totalScrollDelta=(${sdx},${sdy})` + (sdx === 0 && sdy === 0 ? ' [PAN DID NOTHING]' : ''));
           } else {
-            console.log(`[InteractionDiag] pointer-end @ ${Math.round(performance.now())}ms tool=${tool}`);
+            window.__APP_DEBUG === true && console.log(`[InteractionDiag] pointer-end @ ${Math.round(performance.now())}ms tool=${tool}`);
           }
         }
       } catch (_e) { /* swallow */ }
@@ -22258,9 +22261,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     if (!sync.on || !normalAnnotationHydration?.ready || normalAnnotationHydration.documentId !== pdfFile?.id) return undefined;
     // The reload waits while a finger or button is down, or a polygon is
     // being placed, so work in progress here is not wiped (up to 30 s).
-    let pointerDown = false;
-    const onDown = () => { pointerDown = true; };
-    const onUp = () => { pointerDown = false; };
+    // Every pointer down counts (a pinch, a pen with a palm), so lifting one
+    // does not end another's gesture.
+    const pointersDown = new Set();
+    const onDown = (event) => { pointersDown.add(event.pointerId); };
+    const onUp = (event) => { pointersDown.delete(event.pointerId); };
     window.addEventListener('pointerdown', onDown, true);
     window.addEventListener('pointerup', onUp, true);
     window.addEventListener('pointercancel', onUp, true);
@@ -22268,7 +22273,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     let latest = null;
     const reload = (since) => {
       timer = null;
-      if ((pointerDown || hasOpenPolyDraft(polyDraftOwner)) && Date.now() - since < 30000) {
+      if ((pointersDown.size > 0 || hasOpenPolyDraft(polyDraftOwner)) && Date.now() - since < 30000) {
         timer = setTimeout(() => reload(since), 300);
         return;
       }
@@ -26744,7 +26749,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     // controller exists to apply it, and the resulting scale.
     try {
       const gated = interactionDiagLoadingRef.current === true;
-      console.log(`[InteractionDiag] zoom-intent @ ${Math.round(performance.now())}ms dir=in hasController=${!!controller}` + (gated ? ' [viewer still gated]' : ''));
+      window.__APP_DEBUG === true && console.log(`[InteractionDiag] zoom-intent @ ${Math.round(performance.now())}ms dir=in hasController=${!!controller}` + (gated ? ' [viewer still gated]' : ''));
     } catch (_e) { /* swallow */ }
     if (!controller) return;
     const measuredScale = reconcilePdfjsScaleFromRenderedPage('manual-zoom');
@@ -26753,14 +26758,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     const basisScale = glideTarget || measuredScale || scaleRef.current || manualZoomScaleRef.current || 1.0;
     const nextScale = clampScale(basisScale * TOOLBAR_ZOOM_STEP_FACTOR);
     controller.setScale(nextScale, { animate: true });
-    try { console.log(`[InteractionDiag] zoom-applied @ ${Math.round(performance.now())}ms dir=in from=${basisScale.toFixed(3)} to=${nextScale.toFixed(3)}`); } catch (_e) { /* swallow */ }
+    try { window.__APP_DEBUG === true && console.log(`[InteractionDiag] zoom-applied @ ${Math.round(performance.now())}ms dir=in from=${basisScale.toFixed(3)} to=${nextScale.toFixed(3)}`); } catch (_e) { /* swallow */ }
   }, [reconcilePdfjsScaleFromRenderedPage]);
 
   const zoomOut = useCallback(() => {
     const controller = zoomControllerRef.current;
     try {
       const gated = interactionDiagLoadingRef.current === true;
-      console.log(`[InteractionDiag] zoom-intent @ ${Math.round(performance.now())}ms dir=out hasController=${!!controller}` + (gated ? ' [viewer still gated]' : ''));
+      window.__APP_DEBUG === true && console.log(`[InteractionDiag] zoom-intent @ ${Math.round(performance.now())}ms dir=out hasController=${!!controller}` + (gated ? ' [viewer still gated]' : ''));
     } catch (_e) { /* swallow */ }
     if (!controller) return;
     const measuredScale = reconcilePdfjsScaleFromRenderedPage('manual-zoom');
@@ -26769,7 +26774,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     const basisScale = glideTarget || measuredScale || scaleRef.current || manualZoomScaleRef.current || 1.0;
     const nextScale = clampScale(basisScale / TOOLBAR_ZOOM_STEP_FACTOR);
     controller.setScale(nextScale, { animate: true });
-    try { console.log(`[InteractionDiag] zoom-applied @ ${Math.round(performance.now())}ms dir=out from=${basisScale.toFixed(3)} to=${nextScale.toFixed(3)}`); } catch (_e) { /* swallow */ }
+    try { window.__APP_DEBUG === true && console.log(`[InteractionDiag] zoom-applied @ ${Math.round(performance.now())}ms dir=out from=${basisScale.toFixed(3)} to=${nextScale.toFixed(3)}`); } catch (_e) { /* swallow */ }
   }, [reconcilePdfjsScaleFromRenderedPage]);
 
   const resetZoom = useCallback(() => {

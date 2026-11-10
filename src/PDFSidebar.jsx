@@ -1153,7 +1153,7 @@ const PDFSidebar = React.forwardRef(({
             {markLibraryEnabled && activeTab === 'library' && (
               <div style={{ display: 'flex', flex: 1, flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
                 <Suspense fallback={null}>
-                  <MarkLibraryPanel phone={mobileMode} headActionsHost={mobileMode ? null : libraryHeadHost} />
+                  <MarkLibraryPanel phone={mobileMode} headActionsHost={mobileMode ? null : libraryHeadHost} onPlaced={mobileMode ? () => closePanelSmoothly() : undefined} />
                 </Suspense>
               </div>
             )}

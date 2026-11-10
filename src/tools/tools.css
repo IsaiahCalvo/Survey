@@ -8,7 +8,7 @@
 .tcard{display:block;text-decoration:none;color:inherit;background:var(--card);border:1px solid var(--card-line);box-shadow:var(--lift);border-radius:var(--r-card);padding:20px 20px 22px;transition:transform .15s}
 .tcard:hover{transform:translateY(-2px)}
 .tcard:hover h3{text-decoration:underline;text-underline-offset:4px}
-.tcard .ticon{color:#fff;width:40px;height:40px;padding:9px;border-radius:10px;background:linear-gradient(160deg,color-mix(in srgb,var(--g) 82%,#fff),var(--g));margin-bottom:14px;stroke-width:1.9}
+.tcard .ticon{color:#fff;width:40px;height:40px;padding:9px;border-radius:10px;background:var(--g);margin-bottom:14px;stroke-width:1.9}
 .tcard h3{margin:0 0 4px;font-size:19px}
 .tcard p{margin:0;color:var(--soft);font-size:15px;line-height:1.45}
 .hub-head{padding:48px 0 20px}
@@ -31,7 +31,7 @@
    for Stirling-style colored tiles, hues shifted so they are our own). */
 .g-pages{--g:#5266e3}.g-layout{--g:#8656dc}.g-size{--g:#e2622f}.g-to-pdf{--g:#119c94}
 .g-from-pdf{--g:#1994c6}.g-edit{--g:#3c9e4f}.g-fix{--g:#c47b16}.g-secure{--g:#dc4f73}
-.tico{flex:none;display:grid;place-items:center;width:30px;height:30px;border-radius:8px;background:linear-gradient(160deg,color-mix(in srgb,var(--g) 82%,#fff),var(--g));color:#fff;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
+.tico{flex:none;display:grid;place-items:center;width:30px;height:30px;border-radius:8px;background:var(--g);color:#fff;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
 .tico .ticon{width:18px;height:18px;stroke-width:2}
 .hub-sec [hidden]{display:none}
 /* Phones: two rows across inside each group, 44px tall to tap. */
@@ -57,7 +57,7 @@
 .tool{background:var(--sheet);border:1px solid var(--card-line);border-radius:var(--r-panel);min-height:300px;position:relative}
 .tool.drop{outline:2px dashed var(--accent);outline-offset:4px}
 .dz{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;min-height:300px;padding:48px 20px;border-radius:var(--r-panel)}
-.dz>.ticon{width:64px;height:64px;padding:15px;border-radius:16px;color:#fff;background:linear-gradient(160deg,color-mix(in srgb,var(--g) 82%,#fff),var(--g));box-shadow:0 14px 30px -14px var(--g);margin-bottom:22px;stroke-width:1.8}
+.dz>.ticon{width:64px;height:64px;padding:15px;border-radius:16px;color:#fff;background:var(--g);box-shadow:0 14px 30px -14px var(--g);margin-bottom:22px;stroke-width:1.8}
 .dz p{margin:0}
 .dz-or{color:var(--soft);margin-top:10px!important}
 .dz-safe{display:flex;align-items:center;gap:6px;margin-top:22px!important;font-size:14px;color:var(--soft)}

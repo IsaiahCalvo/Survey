@@ -284,8 +284,8 @@ const TEXT_EDIT_TYPES = new Set(['textbox', 'i-text', 'text']);
  * erasing, hit testing, and PDF export. This wrapper only serializes its
  * Fabric-format matrix for SVG; viewBox remains the sole zoom transform.
  */
-export function buildFabricPathSvgTransform(obj) {
-  const { matrix } = createInkPathAffine(obj, obj?.path);
+export function buildFabricPathSvgTransform(obj, affine = null) {
+  const { matrix } = affine || createInkPathAffine(obj, obj?.path);
 
   // Let JavaScript emit its shortest round-trippable number. Absolute
   // zeroing/rounding changes valid microscopic transforms and can make a
@@ -300,8 +300,8 @@ export function buildFabricPathSvgTransform(obj) {
 // path data and no transform of its own (utils/svgPathBake.js — each
 // transformed element was its own paint chunk, the main per-frame cost of a
 // zoomed-out set of drawings). { d } or null (keep the transform).
-function resolveBakedFabricPath(obj) {
-  const translation = pureTranslationOf(createInkPathAffine(obj, obj?.path).matrix);
+function resolveBakedFabricPath(obj, affine = null) {
+  const translation = pureTranslationOf((affine || createInkPathAffine(obj, obj?.path)).matrix);
   if (!translation) return null;
   const d = translatePathSegmentsToD(obj.path, translation.tx, translation.ty);
   return d ? { d, path: obj.path, length: obj.path.length, last: obj.path[obj.path.length - 1] } : null;
@@ -320,10 +320,21 @@ const isBakedPathCurrent = (baked, obj) => !baked || (
 // leaves the mounted window and comes back reuses it, and warmMarkGeometry
 // can work it out for pages about to scroll into view.
 const sharedMarkGeometry = { bbox: new WeakMap(), pathTransform: new WeakMap(), bakedPath: new WeakMap() };
+// The path matrix both of those are made from, worked out once per mark
+// (it was computed twice: ~12% of a page's mount on a phone, 2026-11-10).
+const sharedPathAffine = new WeakMap();
+function pathAffineOf(obj) {
+  const kept = sharedPathAffine.get(obj);
+  const path = obj?.path;
+  if (kept && kept.path === path && kept.length === path?.length && kept.last === path?.[path.length - 1]) return kept.value;
+  const value = createInkPathAffine(obj, path);
+  sharedPathAffine.set(obj, { path, length: path?.length, last: path?.[path.length - 1], value });
+  return value;
+}
 function sharedGeometry(kind, target, compute) {
   const cache = sharedMarkGeometry[kind];
   if (cache.has(target)) return cache.get(target);
-  const value = compute(target);
+  const value = kind === 'bakedPath' || kind === 'pathTransform' ? compute(target, pathAffineOf(target)) : compute(target);
   cache.set(target, value);
   return value;
 }
@@ -344,8 +355,8 @@ export function warmMarkGeometry(objects, { from = 0, timeRemaining = () => Infi
     try {
       if (String(obj.type || '').toLowerCase() === 'path' && Array.isArray(obj.path) && obj.path.length > 0) {
         renderPathToSvgD(obj);
-        sharedGeometry('bakedPath', obj, resolveBakedFabricPath);
-        sharedGeometry('pathTransform', obj, buildFabricPathSvgTransform);
+        // A moved-only path is drawn from its baked data: no transform needed.
+        if (!sharedGeometry('bakedPath', obj, resolveBakedFabricPath)) sharedGeometry('pathTransform', obj, buildFabricPathSvgTransform);
       }
       sharedGeometry('bbox', obj, getAnnotationBBox);
     } catch { /* the page's own render reports a bad mark */ }
@@ -3276,7 +3287,8 @@ const SVGAnnotationLayerBody = memo(({
     const onKeyDown = (e) => {
       // A draft left open in a tab behind keeps its points: Enter, Escape and
       // Backspace belong to the document in front.
-      if (!draftTabActiveRef.current || !draftOwnsKeyboard(e.target)) return;
+      if (!draftTabActiveRef.current) return;
+      if (!draftOwnsKeyboard(e.target)) return;
       if (e.key === 'Enter') {
         e.preventDefault();
         e.stopPropagation();
@@ -7483,11 +7495,11 @@ const SVGAnnotationLayerBody = memo(({
             // outline polygon, so the whole stroke body must hover/click —
             // not just its edges. Predicate lives in svgPathAttrs.js.
             const isFilledPdfInkOutline = isFilledInkOutlineAttrs(pathAttrs);
-            const pathTransform = cachedMarkGeometry('pathTransform', renderObj, renderObj === obj, buildFabricPathSvgTransform);
             // Same baked geometry as the visible path (resolveBakedFabricPath):
             // hover halo and hit target stay exactly on the ink.
             const cachedBakedPath = cachedMarkGeometry('bakedPath', renderObj, renderObj === obj, resolveBakedFabricPath);
             const bakedPath = isBakedPathCurrent(cachedBakedPath, renderObj) ? cachedBakedPath : null;
+            const pathTransform = bakedPath ? undefined : cachedMarkGeometry('pathTransform', renderObj, renderObj === obj, buildFabricPathSvgTransform);
             const targetD = bakedPath ? bakedPath.d : pathD;
             const targetTransform = bakedPath ? undefined : pathTransform;
             const sw = renderObj.strokeWidth || 1;
