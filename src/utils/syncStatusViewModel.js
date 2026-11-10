@@ -5,7 +5,7 @@
  * the sync engine's stage (idle/pending/hydrating/migrating/syncing/queued/error) plus queue depth
  * into a UI state ('syncing' | 'offline' | 'synced') and human label. Pairs with syncStatusTiming.
  */
-export function getSyncStatusViewModel(status, queueSize = 0, manualSyncing = false) {
+export function getSyncStatusViewModel(status, queueSize = 0, manualSyncing = false, { offline = browserReportsOffline() } = {}) {
   const stage = status?.stage || 'idle';
   const pendingCount = Math.max(0, Number(queueSize) || Number(status?.queueSize) || 0);
   const errorText = String(status?.error?.message || status?.error || '').toLowerCase();
@@ -50,9 +50,10 @@ export function getSyncStatusViewModel(status, queueSize = 0, manualSyncing = fa
     } else if (/quota|storage|indexeddb|database/.test(errorText)) {
       detail = 'Survey could not update its local backup queue. Keep this document open and retry.';
     }
+    if (offline) detail = 'You are offline. Your changes are safe on this device and sync when you are back online.';
     return {
       state: 'offline',
-      label: pendingCount > 0 ? `Offline · ${pendingCount} saved locally` : 'Sync error',
+      label: pendingCount > 0 ? `Offline · ${pendingCount} saved locally` : (offline ? 'Offline' : 'Sync error'),
       detail,
       retryLabel: 'Backup is retrying automatically.',
     };
@@ -63,7 +64,7 @@ export function getSyncStatusViewModel(status, queueSize = 0, manualSyncing = fa
   // into "Offline · N saved locally" and flash the red dot on every save
   // (phone walk 2026-10-28: ~2 s of "Offline" after opening a big drawing
   // while online). A failed append turns the stage to 'error' instead.
-  if (stage === 'pending' && !browserReportsOffline()) {
+  if (stage === 'pending' && !offline) {
     return {
       state: 'syncing',
       label: 'Saving...',
@@ -103,6 +104,19 @@ export function getSyncStatusViewModel(status, queueSize = 0, manualSyncing = fa
     };
   }
 
+  // The device lost its signal: say so at once. Before, the light stayed
+  // green ("Up to date") until a save failed, about 17 s later (deep test
+  // 2026-11-10). Everything made before this is in the cloud; new changes
+  // wait on this device.
+  if (offline) {
+    return {
+      state: 'offline',
+      label: 'Offline',
+      detail: 'You are offline. New changes are saved on this device and sync when you are back online.',
+      retryLabel: 'Survey syncs as soon as the connection is back.',
+    };
+  }
+
   return {
     state: 'synced',
     label: 'Up to date',
@@ -111,7 +125,7 @@ export function getSyncStatusViewModel(status, queueSize = 0, manualSyncing = fa
   };
 }
 
-export function getCompactSyncStatusMessage(status, queueSize = 0) {
+export function getCompactSyncStatusMessage(status, queueSize = 0, { offline = browserReportsOffline() } = {}) {
   const stage = status?.stage || 'idle';
   const pendingCount = Math.max(0, Number(queueSize) || Number(status?.queueSize) || 0);
   const errorText = String(status?.error?.message || status?.error || '').toLowerCase();
@@ -120,6 +134,7 @@ export function getCompactSyncStatusMessage(status, queueSize = 0) {
   if (stage === 'offline-copy') return 'Offline copy: changes are saved on this device and sync when you are back online.';
 
   if (stage === 'error') {
+    if (offline) return 'You are offline; changes are safe on this device and sync when you are back.';
     if (/timed[_ -]?out|timeout/.test(errorText)) {
       return 'Cloud backup timed out; changes are safe and retrying.';
     }
@@ -135,7 +150,7 @@ export function getCompactSyncStatusMessage(status, queueSize = 0) {
     return 'Cloud backup failed; changes are safe and retrying.';
   }
 
-  if (stage === 'pending' && !browserReportsOffline()) return 'Changes are saved locally and backing up now.';
+  if (stage === 'pending' && !offline) return 'Changes are saved locally and backing up now.';
   if (pendingCount > 0 || stage === 'queued') {
     if (pendingCount === 1) return '1 change is safe locally and waiting to back up.';
     const count = pendingCount > 0 ? `${pendingCount} changes` : 'Changes';
@@ -147,6 +162,7 @@ export function getCompactSyncStatusMessage(status, queueSize = 0) {
       ? 'Checking this document’s cloud backup status.'
       : 'Loading and backing up this document.';
   }
+  if (offline) return 'You are offline; new changes are saved on this device and sync when you are back.';
   return 'Everything is backed up to the cloud.';
 }
 
