@@ -21,8 +21,11 @@
 //     the sheet with the sign-in of the person who linked it, and writes the
 //     markers as the field tech (append_annotation_update checks the role);
 //   * unlink: the person who linked it, or the document's owner.
+//   * take over a stopped link: any editor or owner whose own sign-in can
+//     open the file (the linker left, lost access, or their sign-in ended),
+//     so the team keeps its workbook instead of starting a new one.
 import { buildSyncLayout, layoutProblems } from './layout.js';
-import { initialsOf, runSheetRound } from './round.js';
+import { initialsOf, namedApart, runSheetRound } from './round.js';
 import { encryptToken, decryptToken } from './tokenCrypto.js';
 import {
   googleEndpoints, googleAuthUrl, googleSheetsProvider, exchangeGoogleCode, refreshGoogleToken, revokeGoogleToken,
@@ -194,6 +197,11 @@ export function mergeMarkerWrites(fresh, before, writes) {
       } else if (key === 'note') {
         // A round sets the note's text; photos or anything else on the note stay.
         merged.note = mergeParts(now.note, was.note, next.note);
+      } else if (key === 'tracking') {
+        // Per part: a status typed in the sheet keeps an assignee picked in
+        // the app meanwhile.
+        const t = mergeParts(now.tracking, was.tracking, next.tracking);
+        if (t === undefined) delete merged.tracking; else merged.tracking = t;
       } else if (next[key] === undefined) {
         delete merged[key];
       } else {
@@ -238,19 +246,24 @@ export async function handleSheetSync(req, deps) {
     let raw;
     try { raw = await req.json(); } catch { return json({ error: 'invalid_json' }, 400); }
     const parsed = parseBody({
-      action: s.enum(['status', 'connect', 'claim', 'disconnect', 'link', 'sync', 'choose', 'unlink', 'folders']),
+      action: s.enum(['status', 'connect', 'claim', 'disconnect', 'link', 'sync', 'choose', 'unlink', 'folders', 'takeover', 'relink']),
       documentId: s.string({ max: 64, pattern: UUID, optional: true }),
       templateId: s.string({ max: 128, optional: true }),
       template: s.record({ maxBytes: 1024 * 1024, optional: true }),
       kit: s.record({ maxBytes: 64 * 1024, optional: true }),
       answerValues: s.array(s.string({ max: 80 }), { max: 20, optional: true }),
+      // Item tracking columns (Status, Assigned to, Due): the app's flag.
+      tracking: s.boolean({ optional: true }),
       // The answers' cell colours ({ value, argb }) for the Excel workbook.
       answerFills: s.any({ maxBytes: 4 * 1024 }),
       title: s.string({ max: 200, optional: true }),
+      fileLink: s.string({ max: 2000, optional: true }),
       // An Excel workbook's OneDrive folder, "A/B" from the drive's top.
       folder: s.string({ max: 400, optional: true }),
+      // A SharePoint/Teams folder link pasted into "Save in".
+      folderLink: s.string({ max: 2000, optional: true }),
       markerId: s.string({ max: 200, optional: true }),
-      choice: s.enum(['app', 'sheet', 'putBack', 'putBackTab'], { optional: true }),
+      choice: s.enum(['app', 'sheet', 'putBack', 'putBackAll', 'putBackTab', 'blanksApp', 'blanksSheet'], { optional: true }),
       scopeId: s.string({ max: 300, optional: true }),
       appOrigin: s.string({ max: 200, optional: true }),
       force: s.boolean({ optional: true }),
@@ -283,6 +296,8 @@ export async function handleSheetSync(req, deps) {
       case 'sync': return json(await syncLink(ctx));
       case 'choose': return json(await chooseConflict(ctx));
       case 'unlink': return json(await unlinkSheet(ctx));
+      case 'takeover': return json(await takeOverLink(ctx));
+      case 'relink': return json(await relinkMovedFile(ctx));
       case 'folders': return json(await listFolders(ctx));
       default: return json({ error: 'unknown_action' }, 400);
     }
@@ -564,11 +579,19 @@ function answerFillsFrom(body) {
     .map((f) => ({ value: f.value, argb: String(f.argb).toUpperCase() }));
 }
 
-function layoutFrom(body) {
+function layoutFrom(body, people = []) {
   if (!body.template || !body.kit) return null;
   let layout;
   try {
-    layout = buildSyncLayout({ template: body.template, kit: body.kit, answerValues: body.answerValues || ['Y', 'N', 'N/A'] });
+    layout = buildSyncLayout({
+      template: body.template,
+      kit: body.kit,
+      answerValues: body.answerValues || ['Y', 'N', 'N/A'],
+      // Item tracking columns (Status, Assigned to, Due) when the app has
+      // them on, and the document's people an item can be given to.
+      tracking: body.tracking === true,
+      people,
+    });
   } catch {
     throw new SyncError('This survey template cannot be laid out as a sheet.', 400, 'bad_layout');
   }
@@ -579,6 +602,22 @@ function layoutFrom(body) {
   return layout;
 }
 
+// The layout a link or sync call asks for. With item tracking on (the app's
+// flag, sent as `tracking`), the people an item can be given to are read
+// here, as the caller sees them, not taken from the device.
+async function layoutFor(ctx, documentId) {
+  if (!ctx.body.template || !ctx.body.kit) return null;
+  let people = [];
+  if (ctx.body.tracking === true) {
+    const { data, error } = await ctx.userDb.rpc('mark_comment_people', { p_document_id: documentId });
+    // Without them every assigned item would read "Former member" and the
+    // sheet's names would be written over: no round instead.
+    if (error) throw new SyncError('Could not read who is on this document. Try again in a moment.', 503, 'people_unavailable');
+    people = (data || []).map((row) => ({ id: row.user_id, name: row.name || '', email: row.email || '' }));
+  }
+  return layoutFrom(ctx.body, people);
+}
+
 const ACCESS_TOKENS = new Map();
 
 async function providerFor(ctx, connectionUserId, provider = 'google') {
@@ -587,7 +626,7 @@ async function providerFor(ctx, connectionUserId, provider = 'google') {
   if (!g.configured) throw new SyncError('Google Sheets is not set up on this server yet.', 503, 'not_configured');
   const { data: row } = await ctx.service.from('sheet_sync_connections')
     .select('refresh_token_enc, account_email').eq('user_id', connectionUserId).eq('provider', 'google').maybeSingle();
-  if (!row) throw Object.assign(new Error('no connection'), { status: 401 });
+  if (!row) throw Object.assign(new Error('no connection'), { status: 401, code: 'reconnect' });
   const refreshToken = await decryptToken(row.refresh_token_enc, tokenKey(ctx.env));
   // Kept by this server instance between requests (an access token lasts an
   // hour), so a round is not also a call to Google's token endpoint.
@@ -609,7 +648,7 @@ async function msgraphProviderFor(ctx, connectionUserId) {
   if (!ms) throw new SyncError('Microsoft 365 is not set up on this server yet.', 503, 'not_configured');
   const { data: row } = await ctx.service.from('sheet_sync_connections')
     .select('refresh_token_enc, account_email').eq('user_id', connectionUserId).eq('provider', 'msgraph').maybeSingle();
-  if (!row) throw Object.assign(new Error('no connection'), { status: 401 });
+  if (!row) throw Object.assign(new Error('no connection'), { status: 401, code: 'reconnect' });
   let refreshToken = await decryptToken(row.refresh_token_enc, tokenKey(ctx.env));
   let access = null;
   const getAccessToken = async () => {
@@ -695,6 +734,8 @@ const publicLink = (link, userId, role = null) => {
     title: link.title,
     // Where the file lives: an Excel workbook's OneDrive folder ('' = top).
     folder: link.provider === 'msgraph' ? (typeof link.state?.folder === 'string' ? link.state.folder : 'Survey') : null,
+    // A SharePoint folder's name path ("Kal Voe Team › Jobs"); none for OneDrive.
+    ...(typeof link.state?.folderLabel === 'string' ? { folderLabel: link.state.folderLabel } : {}),
     status: link.status,
     lastRoundAt: link.last_round_at,
     lastError: link.last_error,
@@ -703,6 +744,9 @@ const publicLink = (link, userId, role = null) => {
     removedInSheet: editor ? Object.entries(link.state?.removedInSheet || {}).map(([markerId, r]) => ({ markerId, ...r })) : [],
     problems: editor ? (link.state?.problems || []).slice(0, 50) : [],
     missingTabs: (link.state?.missingTabs || []).map((scopeId) => ({ scopeId, title: titleOf(scopeId) })),
+    brokenTabs: (link.state?.brokenTabs || []).map((scopeId) => ({ scopeId, title: titleOf(scopeId) })),
+    // Many answers blanked in the sheet at once, held: { count, items, at }.
+    heldErase: editor && link.state?.heldErase ? link.state.heldErase : null,
   };
 };
 
@@ -747,8 +791,23 @@ async function listFolders(ctx) {
     if (err instanceof SyncError) throw err;
     throw new SyncError('Connect Microsoft first.', 409, 'not_connected');
   }
-  const folder = cleanFolder(ctx.body.folder) ?? '';
-  return { folder, folders: await provider.listFolders(folder) };
+  let folder = cleanFolder(ctx.body.folder) ?? '';
+  let name;
+  try {
+    const pasted = String(ctx.body.folderLink || '').trim();
+    if (pasted) {
+      if (!/^https:\/\/\S+$/i.test(pasted)) throw new SyncError('Paste a link that starts with https://', 400, 'bad_folder_link');
+      ({ folder, name } = await provider.resolveFolderLink(pasted));
+    }
+    const { folders, places } = await provider.listFolders(folder);
+    return { folder, ...(name ? { name } : {}), folders, places };
+  } catch (err) {
+    if (err instanceof SyncError) throw err;
+    if (err?.code === 'bad_folder_link' || err?.code === 'not_a_folder') throw new SyncError(err.message, 400, err.code);
+    if (!signInEnded(err)) throw err;
+    await forgetDeadSignIn(ctx, ctx.user.id, 'msgraph', 'The Microsoft sign-in used for this sheet stopped working. The person who linked it can connect Microsoft again, or another editor can keep it syncing with their own account.');
+    throw new SyncError('Your Microsoft sign-in has ended. Connect Microsoft again.', 401, 'reconnect');
+  }
 }
 
 async function linkSheet(ctx) {
@@ -756,11 +815,12 @@ async function linkSheet(ctx) {
   await requireEditor(ctx, documentId);
   await requireBeta(ctx);
   if (!templateId) throw new SyncError('Say which survey template.', 400, 'missing_template');
-  const layout = layoutFrom(ctx.body);
+  const layout = await layoutFor(ctx, documentId);
   if (!layout?.scopes.length) throw new SyncError('This template has no categories to put in a sheet.', 400, 'empty_layout');
   // One sheet per survey + template, so two server writers never race.
   const existing = await linkFor(ctx, documentId, templateId, { anyProvider: true });
   if (existing) throw new SyncError(`This survey already has a linked ${sheetName(existing.provider)}.`, 409, 'already_linked');
+  if (ctx.body.fileLink && ctx.provider !== 'msgraph') throw new SyncError('Only Excel workbooks can be linked from a pasted link for now.', 400, 'not_supported');
   let provider;
   try { provider = await providerFor(ctx, ctx.user.id, ctx.provider); } catch (err) {
     if (err instanceof SyncError) throw err;
@@ -770,9 +830,33 @@ async function linkSheet(ctx) {
   const title = ctx.body.title || 'Survey';
   let made;
   const folder = ctx.provider === 'msgraph' ? cleanFolder(ctx.body.folder) : null;
-  try { made = await provider.createFile({ title, layout, answerFills: answerFillsFrom(ctx.body), ...(folder != null ? { folder } : {}) }); } catch (err) {
+  // A workbook the PM already has: Survey's sheets are added to it by the
+  // first round (named apart from the PM's own sheets, which stay as they are).
+  const fileLink = ctx.provider === 'msgraph' ? String(ctx.body.fileLink || '').trim() : '';
+  if (fileLink && !/^https:\/\/\S+$/i.test(fileLink)) throw new SyncError('Paste a link that starts with https://', 400, 'bad_file_link');
+  try {
+    if (fileLink) {
+      made = { ...(await provider.openFile(fileLink)), folder: '' };
+      // Survey's sheets go in now, named apart from the PM's: a personal
+      // OneDrive, or a workbook this account can only view, is refused here,
+      // before the link is saved.
+      const named = namedApart(layout.scopes, await provider.tabTitles(made.fileId));
+      made.sheetIds = await provider.addTabs(made.fileId, named, layout);
+    } else {
+      made = await provider.createFile({ title, layout, answerFills: answerFillsFrom(ctx.body), ...(folder != null ? { folder } : {}) });
+    }
+  } catch (err) {
+    if (['bad_file_link', 'not_a_file', 'not_xlsx'].includes(err?.code)) throw new SyncError(err.message, 400, err.code);
+    if (fileLink && [401, 403, 404].includes(Number(err?.status)) && !signInEnded(err)) {
+      throw new SyncError('Survey could not add its sheets to that workbook. Check that your Microsoft account can edit it (not just view it) and that it is not protected (Review > Protect Workbook).', 403, 'no_access');
+    }
     if (err?.code === 'personal-onedrive') {
       throw new SyncError('This Microsoft account has a personal OneDrive. Live sync needs a work or school Microsoft 365 account.', 409, 'personal-onedrive');
+    }
+    if (signInEnded(err)) {
+      const who = providerName(ctx.provider);
+      await forgetDeadSignIn(ctx, ctx.user.id, ctx.provider, `The ${who} sign-in used for this sheet stopped working. The person who linked it can connect ${who} again, or another editor can keep it syncing with their own account.`);
+      throw new SyncError(`Your ${who} sign-in has ended. Connect ${who} again.`, 401, 'reconnect');
     }
     throw err;
   }
@@ -786,7 +870,7 @@ async function linkSheet(ctx) {
     // The real file name: OneDrive adds " 1" when the name is taken.
     title: made.title || title,
     layout,
-    state: { sheetIds: made.sheetIds, lastWriteAt: new Date().toISOString(), ...(made.folder != null ? { folder: made.folder } : {}) },
+    state: { sheetIds: made.sheetIds, lastWriteAt: new Date().toISOString(), ...(made.folder != null ? { folder: made.folder } : {}), ...(made.folderLabel ? { folderLabel: made.folderLabel } : {}) },
     created_by: ctx.user.id,
   }).select(LINK_COLUMNS).single();
   if (error) {
@@ -846,7 +930,7 @@ async function runRoundFor(ctx, link, { provider = null, signing = null, force =
     // can still edit the survey. Someone removed from it keeps nothing.
     const { data: linkerRole } = await ctx.service.rpc('sheet_sync_user_role', { p_document_id: link.document_id, p_user_id: link.connection_user_id });
     if (linkerRole !== 'owner' && linkerRole !== 'editor') {
-      const message = `The person who linked this ${sheetName(link.provider)} is no longer an editor of this survey, so it stopped syncing. An editor can make a new live sheet.`;
+      const message = `The person who linked this ${sheetName(link.provider)} is no longer an editor of this survey, so it stopped syncing. An editor with access to the file can keep it syncing with their own account.`;
       await release({ status: 'broken', last_error: message, ...(change ? { state: link.state, baseline: link.baseline } : {}) });
       Object.assign(link, { status: 'broken', last_error: message });
       return { status: 'error', error: message };
@@ -884,17 +968,40 @@ async function runRoundFor(ctx, link, { provider = null, signing = null, force =
     const status = Number(err?.status) || 500;
     const who = providerName(link.provider);
     const what = sheetName(link.provider);
-    const message = status === 401 ? `The ${who} sign-in used for this sheet stopped working. The person who linked it needs to connect ${who} again.`
+    // The file refused (401 that is not a dead sign-in, or 403): give it a
+    // grace period before calling the link broken; a short refusal is noise.
+    const locked = status === 403 && err?.code === 'protected';
+    const refused = !locked && ((status === 401 && !signInEnded(err)) || status === 403);
+    const refusedSince = link.state?.refusedSince ? Date.parse(link.state.refusedSince) : null;
+    const refusedLong = refused && refusedSince != null && Date.now() - refusedSince > REFUSED_GRACE_MS;
+    const message = signInEnded(err) ? `The ${who} sign-in used for this sheet stopped working. The person who linked it can connect ${who} again, or another editor can keep it syncing with their own account.`
+      : locked ? `Someone protected the ${what} or one of its synced tabs, so Survey can't write to it. Nothing is lost: Survey writes the waiting changes once it's unprotected.`
+      : refused && !refusedLong ? `${who} would not open the ${what} just now. Trying again in a minute.`
+      : refused ? `The linked ${what} is no longer shared with the person who linked it, or they can no longer edit it. An editor with access to the file can keep it syncing with their own account.`
       : status === 404 ? `The linked ${what} was deleted or is no longer shared with the person who linked it.`
       : status === 429 ? `${who} asked us to slow down. Syncing again in a minute.`
+      : status === 423 ? `Someone has the ${what} open in an app that locks it (often an older Excel on a computer). Survey syncs again once they close it.`
+      : err?.code === 'timeout' ? `${who} did not answer in time (a slow connection). Syncing again in a moment.`
+      : isBusy(status, err) ? `${who} is busy right now. Syncing again in a moment.`
       : status === 413 ? `The linked ${what} is too big to sync (over 250,000 cells in its synced tabs). Delete rows or tabs you no longer need.`
       : status === 409 && err?.code === 'personal-onedrive' ? 'This workbook is on a personal OneDrive, which cannot sync cell by cell.'
       : `Could not reach the ${what}. Trying again soon.`;
     const patch = { last_error: message };
-    if (status === 401 || status === 404) patch.status = 'broken';
+    if (signInEnded(err)) await forgetDeadSignIn(ctx, link.connection_user_id, link.provider, message);
+    if (signInEnded(err) || status === 404 || refusedLong) patch.status = 'broken';
     if (status === 409 && err?.code === 'personal-onedrive') patch.status = 'paused';
     if (status === 429) patch.backoff_until = new Date(Date.now() + 60_000).toISOString();
+    // Busy (Excel's file host often answers 503 "retry in 30 s"): this sheet
+    // waits what Microsoft asks, 10 s to 2 min, instead of the next tick.
+    if (isBusy(status, err)) patch.backoff_until = new Date(Date.now() + Math.min(Math.max(Number(err?.retryAfterMs) || 30_000, 10_000), 120_000)).toISOString();
+    // Protected, or locked open (423) by someone's Excel: a person has to act,
+    // so every 2 minutes is often enough. Neither marks the link broken.
+    if (locked || status === 423) patch.backoff_until = new Date(Date.now() + 2 * 60_000).toISOString();
     if (change) Object.assign(patch, { state: link.state, baseline: link.baseline });
+    if (refused && !refusedLong) {
+      patch.backoff_until = new Date(Date.now() + 60_000).toISOString();
+      patch.state = { ...(patch.state || link.state || {}), refusedSince: new Date(refusedSince ?? Date.now()).toISOString() };
+    }
     await release(patch);
     if (status === 429) {
       // The quota is the linker's, shared by every sheet they linked: all of
@@ -906,6 +1013,34 @@ async function runRoundFor(ctx, link, { provider = null, signing = null, force =
     log('round_failed', { status });
     return { status: 'error', error: message, ...(status === 429 ? { rateLimited: true } : {}) };
   }
+}
+
+// Microsoft's "busy, try later" answers (seen in testing: 503 on opening the
+// workbook, 504 on createSession, and 500 "The workbook cannot be opened"
+// while several people had it open), as opposed to a real failure.
+const BUSY = new Set([502, 503, 504]);
+const REFUSED_GRACE_MS = 15 * 60 * 1000;
+const isBusy = (status, err) => BUSY.has(status) || (status === 500 && err?.code === 'GenericFileOpenError');
+
+// Only the token endpoint saying "invalid_grant" (code 'reconnect') means the
+// sign-in itself is over. Excel also answers 401 on its own now and then
+// ("FileOpenUserUnauthorized", seen once in a 40-minute real-Excel run, gone
+// a minute later): treating that as a dead sign-in signed the person out and
+// stopped every sheet they linked.
+export const signInEnded = (err) => Number(err?.status) === 401 && err?.code === 'reconnect';
+
+// A sign-in the provider no longer honours (access revoked, password changed,
+// unused for months): it is forgotten, so the panel offers "Connect … again"
+// at once (before, the dead sign-in still counted as connected and the button
+// never showed), and every sheet it served says why it stopped instead of
+// failing one by one.
+async function forgetDeadSignIn(ctx, userId, provider, message) {
+  try {
+    await ctx.service.from('sheet_sync_connections').delete().eq('user_id', userId).eq('provider', provider);
+    await ctx.service.from('sheet_sync_links').update({ status: 'broken', last_error: message })
+      .eq('connection_user_id', userId).eq('provider', provider).eq('status', 'active');
+    log('sign_in_ended', { provider });
+  } catch { /* the round still reports it */ }
 }
 
 // ---- background sweep -------------------------------------------------------
@@ -1038,8 +1173,62 @@ async function sweep(req, deps) {
     }
   };
   await Promise.all(Array.from({ length: Math.min(SWEEP_PARALLEL, due.length) }, worker));
-  log('sweep', { due: due.length, ran: results.length, stopped: stop });
-  return json({ due: due.length, results });
+  const kept = await keepSignInsAlive({ ...deps, fetchImpl, service });
+  log('sweep', { due: due.length, ran: results.length, stopped: stop, kept });
+  return json({ due: due.length, results, kept });
+}
+
+// A sign-in runs out when unused: Microsoft's after 90 days, Google's after
+// six months (and after 7 days while the Google app is still in "Testing").
+// A linked sheet uses its sign-in at least every 30 minutes, but a sign-in
+// with nothing syncing (connected, not linked yet, or every sheet paused)
+// would run out unseen and the person would find "Connect again" months
+// later. The sweep uses each such sign-in once every two weeks, a few per
+// minute, so it never runs out.
+const KEEP_ALIVE_EVERY_MS = 14 * 24 * 60 * 60 * 1000;
+const KEEP_ALIVE_PER_SWEEP = 5;
+export async function keepSignInsAlive(ctx, now = Date.now()) {
+  const ms = msgraphConfig(ctx.env);
+  const g = googleConfig(ctx.env);
+  // Use the sign-in once; the refresh token it hands back (Microsoft's
+  // change every time, Google's never), or null.
+  const refreshers = {
+    ...(ms ? { msgraph: async (old) => (await refreshMsgraphToken(ms, old, { fetch: ctx.fetchImpl })).refreshToken } : {}),
+    ...(g.configured ? { google: async (old) => { await refreshGoogleToken({ ...g, refreshToken: old, fetchImpl: ctx.fetchImpl }); return null; } } : {}),
+  };
+  let kept = 0;
+  for (const [provider, refresh] of Object.entries(refreshers)) {
+    const { data: rows } = await ctx.service.from('sheet_sync_connections')
+      .select('user_id, refresh_token_enc')
+      .eq('provider', provider)
+      .lt('updated_at', new Date(now - KEEP_ALIVE_EVERY_MS).toISOString())
+      .order('updated_at', { ascending: true })
+      .limit(KEEP_ALIVE_PER_SWEEP);
+    for (const row of rows || []) {
+      try {
+        const old = await decryptToken(row.refresh_token_enc, tokenKey(ctx.env));
+        const next = await refresh(old);
+        await ctx.service.from('sheet_sync_connections')
+          .update({
+            ...(next && next !== old ? { refresh_token_enc: await encryptToken(next, tokenKey(ctx.env)) } : {}),
+            updated_at: new Date(now).toISOString(),
+          })
+          .eq('user_id', row.user_id).eq('provider', provider);
+        kept += 1;
+      } catch (err) {
+        if (signInEnded(err)) {
+          const who = providerName(provider);
+          await forgetDeadSignIn(ctx, row.user_id, provider, `The ${who} sign-in used for this sheet stopped working. The person who linked it can connect ${who} again, or another editor can keep it syncing with their own account.`);
+        } else {
+          // The provider unreachable: try this one again in a day, not every minute.
+          await ctx.service.from('sheet_sync_connections')
+            .update({ updated_at: new Date(now - KEEP_ALIVE_EVERY_MS + 24 * 60 * 60 * 1000).toISOString() })
+            .eq('user_id', row.user_id).eq('provider', provider);
+        }
+      }
+    }
+  }
+  return kept;
 }
 
 async function syncLink(ctx) {
@@ -1047,7 +1236,7 @@ async function syncLink(ctx) {
   await requireEditor(ctx, documentId);
   const link = await linkFor(ctx, documentId, templateId);
   if (!link) throw new SyncError('This survey has no linked sheet.', 404, 'not_linked');
-  const layout = layoutFrom(ctx.body);
+  const layout = await layoutFor(ctx, documentId);
   if (layout && stable(layout) !== stable(link.layout)) {
     // The template changed (new category, line or entity): sync by the new layout.
     await ctx.service.from('sheet_sync_links').update({ layout }).eq('id', link.id);
@@ -1060,7 +1249,8 @@ async function syncLink(ctx) {
 async function chooseConflict(ctx) {
   const { documentId, templateId, markerId, scopeId, choice } = ctx.body;
   await requireEditor(ctx, documentId);
-  if (choice === 'putBackTab' ? !scopeId : !markerId || !choice) throw new SyncError('Say which row and which side.', 400, 'missing_choice');
+  const linkWide = choice === 'blanksApp' || choice === 'blanksSheet' || choice === 'putBackAll';
+  if (!linkWide && (choice === 'putBackTab' ? !scopeId : !markerId || !choice)) throw new SyncError('Say which row and which side.', 400, 'missing_choice');
   const link = await linkFor(ctx, documentId, templateId);
   if (!link) throw new SyncError('This survey has no linked sheet.', 404, 'not_linked');
   // The choice goes in under the lease, read fresh, so a round running at
@@ -1070,14 +1260,30 @@ async function chooseConflict(ctx) {
   let known = false;
   const change = (l) => {
     const state = { ...(l.state || {}) };
-    if (choice === 'putBackTab') {
-      // "Put the tab back": forget the tab and its rows, so the next round
-      // makes the tab again and fills it from the survey.
-      known = (state.missingTabs || []).includes(scopeId) && state.sheetIds?.[scopeId] != null;
+    if (choice === 'putBackAll') {
+      // Every row deleted in the sheet (an older copy restored drops all the
+      // items added since): put back in one go.
+      const ids = Object.keys(state.removedInSheet || {});
+      known = ids.length > 0;
       if (!known) return;
+      state.choices = { ...(state.choices || {}), ...Object.fromEntries(ids.map((id) => [id, 'putBack'])) };
+    } else if (linkWide) {
+      // The held blanks: written back from the survey ('blanksApp'), or
+      // cleared in the survey too ('blanksSheet'), in the round below.
+      known = Boolean(state.heldErase);
+      if (!known) return;
+      state.eraseChoice = choice === 'blanksApp' ? 'app' : 'sheet';
+    } else if (choice === 'putBackTab') {
+      // "Put the tab back": forget the tab and its rows, so the next round
+      // makes the tab again and fills it from the survey. Also for a tab that
+      // lost its Row ID column or heading row: that one is left as it is for
+      // the PM, and the new tab is named apart from it.
+      known = ((state.missingTabs || []).includes(scopeId) || (state.brokenTabs || []).includes(scopeId)) && state.sheetIds?.[scopeId] != null;
+      if (!known) return;
+      state.brokenTabs = (state.brokenTabs || []).filter((id) => id !== scopeId);
       const { [scopeId]: _gone, ...sheetIds } = state.sheetIds;
       state.sheetIds = sheetIds;
-      state.missingTabs = state.missingTabs.filter((id) => id !== scopeId);
+      state.missingTabs = (state.missingTabs || []).filter((id) => id !== scopeId);
       const baseline = { ...(l.baseline || {}) };
       for (const [id, b] of Object.entries(baseline)) if (b?.scopeId === scopeId) delete baseline[id];
       l.baseline = baseline;
@@ -1090,6 +1296,103 @@ async function chooseConflict(ctx) {
   };
   const round = await runRoundFor(ctx, link, { force: true, leaseToken: token, change });
   return statusFor(ctx, known ? round : null);
+}
+
+// A stopped link kept going with another editor's own sign-in: their account
+// must open the file now, or nothing changes. Only a stopped link, so a
+// working one is never moved off the person who made it.
+async function takeOverLink(ctx) {
+  const { documentId, templateId } = ctx.body;
+  await requireEditor(ctx, documentId);
+  const link = await linkFor(ctx, documentId, templateId);
+  if (!link) throw new SyncError('This survey has no linked sheet.', 404, 'not_linked');
+  const who = providerName(link.provider);
+  const what = sheetName(link.provider);
+  if (link.connection_user_id === ctx.user.id) throw new SyncError(`This ${what} already syncs with your ${who} sign-in. Connect ${who} again if it stopped.`, 409, 'already_yours');
+  if (link.status !== 'broken') throw new SyncError(`This ${what} is still syncing with the sign-in of the person who linked it.`, 409, 'not_stopped');
+  let p;
+  try {
+    p = await providerFor(ctx, ctx.user.id, link.provider);
+  } catch (err) {
+    if (err instanceof SyncError) throw err;
+    if (signInEnded(err)) throw new SyncError(`Connect ${who} first, then keep it syncing.`, 401, 'reconnect');
+    throw err;
+  }
+  try {
+    await p.getVersion(link.file_id);
+    const sheetIds = Object.values(link.state?.sheetIds || {}).slice(0, 1);
+    await p.readGrid(link.file_id, sheetIds.length ? { sheetIds } : {});
+  } catch (err) {
+    const status = Number(err?.status) || 500;
+    if (signInEnded(err)) throw new SyncError(`Your ${who} sign-in stopped working. Connect ${who} again.`, 401, 'reconnect');
+    if (status === 401 || status === 403 || status === 404) {
+      throw new SyncError(`Your ${who} account can't open "${link.title || what}". Ask whoever owns the file to share it with you so you can edit it, then try again.`, 403, 'no_access');
+    }
+    throw new SyncError(`Could not reach the ${what} just now. Try again in a moment.`, 503, 'unreachable');
+  } finally {
+    await p?.close?.(link.file_id);
+  }
+  const { refusedSince: _gone, ...state } = link.state || {};
+  const { data: moved } = await ctx.service.from('sheet_sync_links')
+    .update({ connection_user_id: ctx.user.id, status: 'active', last_error: null, backoff_until: null, state })
+    .eq('id', link.id).eq('connection_user_id', link.connection_user_id).select('id');
+  if (!moved?.length) throw new SyncError('Someone else changed this live sheet just now. Try again.', 409, 'raced');
+  log('taken_over', { provider: link.provider });
+  return statusFor(ctx);
+}
+
+// A workbook moved to another library (OneDrive to SharePoint, say), or put
+// back as a copy, has a new file id, so the link stopped ("deleted or no
+// longer shared"). Pasting the new link points the link at it, as long as it
+// holds this survey's sheets (sheet ids travel with the workbook), so every
+// row, baseline and choice carries on. The caller's Microsoft sign-in syncs it
+// from then on.
+async function relinkMovedFile(ctx) {
+  const { documentId, templateId } = ctx.body;
+  await requireEditor(ctx, documentId);
+  const link = await linkFor(ctx, documentId, templateId);
+  if (!link) throw new SyncError('This survey has no linked sheet.', 404, 'not_linked');
+  if (link.provider !== 'msgraph') throw new SyncError('Only Excel workbooks can be found again from a link.', 400, 'not_supported');
+  if (link.status !== 'broken') throw new SyncError('This workbook is still syncing.', 409, 'not_stopped');
+  const pasted = String(ctx.body.fileLink || '').trim();
+  if (!/^https:\/\/\S+$/i.test(pasted)) throw new SyncError('Paste a link that starts with https://', 400, 'bad_file_link');
+  let p;
+  try { p = await providerFor(ctx, ctx.user.id, 'msgraph'); } catch (err) {
+    if (err instanceof SyncError) throw err;
+    if (signInEnded(err)) throw new SyncError('Connect Microsoft first, then paste the link again.', 401, 'reconnect');
+    throw err;
+  }
+  let found;
+  try {
+    found = await p.openFile(pasted);
+    const ids = new Set((await p.tabs(found.fileId)).map((t) => t.id));
+    const ours = Object.entries(link.state?.sheetIds || {}).filter(([scopeId]) => !(link.state?.missingTabs || []).includes(scopeId));
+    if (!ours.length || !ours.every(([, id]) => ids.has(String(id)))) {
+      throw new SyncError('That workbook does not have this survey\'s sheets. Paste the link to the workbook that was moved or copied.', 409, 'not_same_file');
+    }
+  } catch (err) {
+    if (err instanceof SyncError) throw err;
+    if (['bad_file_link', 'not_a_file', 'not_xlsx'].includes(err?.code)) throw new SyncError(err.message, 400, err.code);
+    if (signInEnded(err)) throw new SyncError('Your Microsoft sign-in stopped working. Connect Microsoft again.', 401, 'reconnect');
+    if ([401, 403, 404].includes(Number(err?.status))) throw new SyncError('Your Microsoft account can\'t open that workbook. Ask whoever owns it to share it with you so you can edit it.', 403, 'no_access');
+    if (err?.code === 'personal-onedrive') throw new SyncError('That workbook is on a personal OneDrive, which cannot sync cell by cell.', 409, 'personal-onedrive');
+    throw new SyncError('Could not reach that workbook just now. Try again in a moment.', 503, 'unreachable');
+  } finally {
+    await p?.close?.(found?.fileId || link.file_id);
+  }
+  const { refusedSince: _gone, ...state } = link.state || {};
+  if (found.folderLabel) state.folderLabel = found.folderLabel; else delete state.folderLabel;
+  state.folder = '';
+  const { data: moved } = await ctx.service.from('sheet_sync_links')
+    .update({
+      file_id: found.fileId, file_url: found.url, title: found.title || link.title,
+      connection_user_id: ctx.user.id, status: 'active', last_error: null, backoff_until: null, remote_version: null, state,
+    })
+    .eq('id', link.id).eq('file_id', link.file_id).select(LINK_COLUMNS);
+  if (!moved?.length) throw new SyncError('Someone else changed this live sheet just now. Try again.', 409, 'raced');
+  log('relinked', { provider: link.provider });
+  const round = await runRoundFor(ctx, moved[0], { force: true });
+  return statusFor(ctx, round);
 }
 
 async function unlinkSheet(ctx) {

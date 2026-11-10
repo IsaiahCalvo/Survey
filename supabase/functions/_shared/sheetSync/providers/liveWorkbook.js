@@ -17,13 +17,15 @@
 // No Excel library here: the edge function writes the parts by hand and zips
 // them stored (uncompressed), which Excel, Excel for the web and Graph all open.
 
+import { trackingChoices } from '../layout.js';
+
 export const FORMAT_ROWS = 1000; // matches the export and the Graph drop-downs
 
 const TEXT_KINDS = new Set(['choice', 'text', 'many']);
-const isTextColumn = (col) => ['rowId', 'changedBy', 'item', 'entity', 'notes'].includes(col?.key)
+const isTextColumn = (col) => ['rowId', 'changedBy', 'item', 'entity', 'notes', 'status', 'assignee'].includes(col?.key)
   || (String(col?.key || '').startsWith('answer:') && TEXT_KINDS.has(col.item?.kind || 'choice'));
 const isChoiceColumn = (col) => String(col?.key || '').startsWith('answer:') && (!col.item?.kind || col.item.kind === 'choice');
-const CENTRED = new Set(['rowId', 'changedBy', 'changedDate', 'item', 'entity']);
+const CENTRED = new Set(['rowId', 'changedBy', 'changedDate', 'item', 'entity', 'status', 'due']);
 const isCentred = (col) => CENTRED.has(col?.key) || String(col?.key || '').startsWith('answer:');
 
 // The export's answer colours by tone (src/services/answerSets.js TONE_FILL).
@@ -54,9 +56,12 @@ export function excelArgb(color) {
   return null;
 }
 
-/** Excel sheet names: 31 characters, none of []:*?/\, no edge apostrophes, unique. */
-export function excelSheetNames(titles) {
-  const used = new Set();
+/**
+ * Excel sheet names: 31 characters, none of []:*?/\, no edge apostrophes, unique.
+ * `taken`: names already in the workbook, which new names keep clear of.
+ */
+export function excelSheetNames(titles, taken = []) {
+  const used = new Set((taken || []).map((t) => String(t).toLowerCase()));
   return titles.map((title, i) => {
     let base = String(title || '').replace(/[[\]:*?/\\]/g, '-').replace(/^'+|'+$/g, '').trim() || `Sheet ${i + 1}`;
     base = base.slice(0, 31).trim();
@@ -76,6 +81,7 @@ function dropDown(column, layout) {
   let choices = null;
   if (column.key === 'entity') choices = (layout?.entities || []).map((e) => e?.name).filter(Boolean);
   else if (isChoiceColumn(column)) choices = layout?.answerValues || null;
+  else choices = trackingChoices(column, layout);
   if (!choices?.length || choices.some((c) => String(c).includes(','))) return null;
   const source = choices.map(String).join(',');
   return source.length <= 255 ? source : null;
