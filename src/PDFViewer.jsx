@@ -62,6 +62,7 @@ import {
   parseProductionBenchmarkConfig,
 } from './utils/productionAnnotationBenchmark.js';
 import { showToast } from './utils/toast';
+import { isDeviceDocumentId, DEVICE_ACTOR_ID } from './services/deviceFiles.js';
 import { openExternalDestination, withUpgradeHint } from './utils/accountPlatform.js';
 // ExcelJS (~1MB) is loaded on demand inside the three async export/sync handlers
 // below — see `await import('exceljs')` — so it stays out of the main viewer chunk.
@@ -22117,6 +22118,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // for annotations (and callouts). Captures every change durably the instant it
   // happens and hydrates from the durable store on open — no clear-and-refan, no
   // empty/partial overwrite, no documentId-timing gate.
+  // device-files (Nightly): a PDF opened with no account keeps its marks in
+  // the store's device copy under one device actor.
+  const annotationActorId = user?.id || (isDeviceDocumentId(pdfFile?.id) ? DEVICE_ACTOR_ID : null);
   const {
     initialHydration: normalAnnotationHydration,
     deletedPdfAnnotations: durableDeletedPdfAnnotations,
@@ -22138,12 +22142,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     whenBulkImportSaved: annotationDocWhenBulkImportSaved,
     // w53: other screens' in-flight Survey Marker / spaces changes (draw only).
     liveMarkerOverlay,
+    // offline-docs: marks opened from this device's kept copy (no signal).
+    offlineCopy: annotationOfflineCopy,
   } = useAnnotationDoc({
     documentId: pdfFile?.id || null,
-    userId: user?.id || null,
+    userId: annotationActorId,
     // The viewer remains mounted on a warm switch; keep its durable store and
     // unsaved capture live until the tab actually closes.
-    enabled: cloudSyncEnabled && !!pdfFile?.id && !!user?.id,
+    enabled: cloudSyncEnabled && !!pdfFile?.id && !!annotationActorId,
     isActive,
     // Slice 6 (2026-07-17): annotationsByPage carries callouts as projected
     // data.type==='callout' groups (R2.2 flip), and the hook persists them
@@ -22179,11 +22185,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     documentLocked,
     whenFirstPageDrawn: pageDrawnSignal.whenDrawn,
   });
+  const offlineCopyToastRef = useRef(null);
+  useEffect(() => {
+    if (!annotationOfflineCopy) { offlineCopyToastRef.current = null; return; }
+    if (!isActive || offlineCopyToastRef.current === pdfFile?.id) return;
+    offlineCopyToastRef.current = pdfFile?.id;
+    showToast('No signal: opened your offline copy. Changes are saved on this device and sync when you are back online.', 'info');
+  }, [annotationOfflineCopy, isActive, pdfFile?.id]);
   // Owner 2026-11-03: a page and its saved marks show in the same frame. The
   // pages stay blank sheets until the store has painted (or loaded) the
   // document's marks; never longer than PAGE_MARKS_HOLD_MAX_MS
   // (utils/pageMarksHold.js, styles/pageReveal.css).
-  const pageMarksStoreEnabled = Boolean(cloudSyncEnabled && pdfFile?.id && user?.id);
+  const pageMarksStoreEnabled = Boolean(cloudSyncEnabled && pdfFile?.id && annotationActorId);
   const [pageMarksHoldExpiredFor, setPageMarksHoldExpiredFor] = useState(null);
   // Marks this device already shows for the document (its own saved copy,
   // loaded with the PDF) count as known: the page shows with them.
@@ -22233,7 +22246,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // (its store on this device, or every change already in the cloud).
   const annotationDocHoldsWorkRef = useRef(() => false);
   annotationDocHoldsWorkRef.current = () => Boolean(
-    cloudSyncEnabled && pdfFile?.id && user?.id
+    cloudSyncEnabled && pdfFile?.id && annotationActorId
     && cloudSyncStatus?.healthy
     && (annotationDocHasLocalStore() || cloudSyncQueueSize === 0)
   );

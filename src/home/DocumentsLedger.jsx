@@ -22,6 +22,8 @@ import { MoveCopyModal, RenameModal } from './BulkModals';
 import PdfPageThumb from './PdfPageThumb';
 import { useThumbnailBackfill } from '../hooks/useThumbnailBackfill';
 import { useStorage } from '../hooks/useDatabase';
+import { useOfflineDocumentActions } from './offlineDocumentActions.js';
+import { useDeviceFileRows, deleteDeviceFile, renameDeviceFile } from './deviceFileActions.js';
 import { getDocumentCollaborators, getDocumentOwnerProfile } from '../services/documentAnnotationService';
 import { documentTeamRows } from './documentTeam.js';
 import Spinner from '../components/Spinner';
@@ -203,6 +205,23 @@ const formatSize = (bytes) => {
   return n + ' B';
 };
 
+/* Nightly offline-docs: a small mark beside the name of a document kept on
+   this device (Drawboard shows a downloaded badge the same way). */
+function OfflineBadge({ leading = false }) {
+  const tip = useTooltip();
+  return (
+    <span
+      className="offline-doc-badge"
+      role="img"
+      aria-label="Available offline"
+      {...tip('Available offline on this device', 'below')}
+      style={{ display: 'inline-flex', alignItems: 'center', marginLeft: leading ? 0 : 6, marginRight: leading ? 5 : 0, flex: 'none', color: 'var(--text-secondary, #6b7280)', verticalAlign: 'middle' }}
+    >
+      <Icon name="download" size={12} />
+    </span>
+  );
+}
+
 export default function DocumentsLedger({
   documents = [],
   projects = [],
@@ -220,6 +239,7 @@ export default function DocumentsLedger({
   onMoveCopy,
   onLockDocument,
   onPdfTools,
+  onSaveDeviceFile = null,
 }) {
   const tip = useTooltip();
   const [selId, setSelId] = useState(null);
@@ -251,7 +271,16 @@ export default function DocumentsLedger({
 
   /* Supabase storage helper — let PdfPageThumb fetch a document's bytes to
      render its real first page via the authenticated download (private bucket). */
-  const { downloadDocument } = useStorage();
+  const { downloadDocument, fileStamp } = useStorage();
+  // Nightly offline-docs: "Make available offline" in the row menu.
+  const offline = useOfflineDocumentActions({ userId: user?.id, downloadDocument, fileStamp });
+
+  // Nightly device-files: PDFs opened with no account, kept on this device.
+  const deviceFileRows = useDeviceFileRows();
+  const listDocuments = useMemo(
+    () => (deviceFileRows.enabled && deviceFileRows.rows.length > 0 ? [...deviceFileRows.rows, ...documents] : documents),
+    [deviceFileRows.enabled, deviceFileRows.rows, documents],
+  );
   const [homeDownloadOn] = useState(() => isFeatureOn('home-download'));
   // Nightly 'new-document': New makes a blank document (desktop) or opens a
   // small New sheet with Upload and Blank document (phone).
@@ -269,7 +298,7 @@ export default function DocumentsLedger({
   }, [projects]);
 
   // Map each real document into the shape the ledger markup expects.
-  const mapped = useMemo(() => documents.map((d, i) => {
+  const mapped = useMemo(() => listDocuments.map((d, i) => {
     // Use '' (not 0) as the empty fallback: Date.parse(0) coerces to the string
     // "0" and resolves to Jan 1 2000, whereas Date.parse('') is NaN → no date.
     const ms = Date.parse(d.updated_at || d.created_at || '') || 0;
@@ -278,7 +307,7 @@ export default function DocumentsLedger({
       raw: d,
       id: d.id,
       name: d.name,
-      project: projectNameById.get(d.project_id) || 'Sandbox',
+      project: d.device_file ? 'On this device' : (projectNameById.get(d.project_id) || 'Sandbox'),
       size: formatSize(d.file_size),
       sizeBytes: Number(d.file_size) || 0,
       pages: d.pages ?? d.page_count ?? null,
@@ -291,7 +320,7 @@ export default function DocumentsLedger({
       color: RIBBON[i % RIBBON.length],
       shared: !!d.shared,
     };
-  }), [documents, projects]);
+  }), [listDocuments, projects]);
 
   // Document review (Nightly, flag 'document-review'; DocumentReviewBits.jsx):
   // status, owner and markup count under each name, chips to filter by them.
@@ -445,7 +474,11 @@ export default function DocumentsLedger({
   };
   const clearDesktopSelection = () => { setSelDocs(new Set()); anchorRef.current = null; };
   // Delete = move to Archive (Dashboard: no confirm, an Undo toast instead).
-  const archiveSelected = async (raws) => {
+  const archiveSelected = async (allRaws) => {
+    // device-files: those are deleted from this device (with Undo), not archived.
+    const raws = allRaws.filter((raw) => !raw?.device_file);
+    allRaws.filter((raw) => raw?.device_file).forEach(deleteDeviceFile);
+    if (raws.length < allRaws.length && !raws.length) { clearDesktopSelection(); return; }
     if (!onDelete || !raws.length) return;
     const ran = await onDelete(raws);
     if (ran !== false) clearDesktopSelection();
@@ -813,6 +846,7 @@ export default function DocumentsLedger({
      and Delete - the select-mode actions for just this one, with the same
      owner rules as its menu. Delete moves it to Archive with an Undo. */
   const documentSwipeActions = (d) => {
+    if (d.raw?.device_file) return buildSwipeActions({ onDelete: () => deleteDeviceFile(d.raw), can: { delete: true } });
     const pickOnly = () => setSelDocs(new Set([d.id]));
     return buildSwipeActions({
       lead: 'share',
@@ -849,7 +883,8 @@ export default function DocumentsLedger({
         </div>
         <div style={{ minWidth: 0 }}>
           <div className="mobile-card-title">{d.name}</div>
-          <div className="mobile-card-meta">{mobileDocMeta(d)}</div>
+          {/* The title cuts long names off, so the phone shows the mark first in the meta line. */}
+          <div className="mobile-card-meta">{offline.isKept(d.id) && <OfflineBadge leading />}{mobileDocMeta(d)}</div>
           {reviewOn && <ReviewLine review={reviews.get(d.id)} />}
         </div>
         <div style={{ display: 'grid', placeItems: 'center', minWidth: 0 }}>
@@ -859,6 +894,21 @@ export default function DocumentsLedger({
       </SwipeActionsRow>
     );
   };
+
+  // device-files: say plainly where these files live, with one way to keep them.
+  const deviceNotice = deviceFileRows.enabled && deviceFileRows.rows.length > 0 ? (
+    <div className="device-files-notice" role="note" style={{ display: 'flex', alignItems: 'center', gap: 10, margin: 8, padding: '8px 12px', borderRadius: 8, background: 'var(--ink-700, rgba(255,255,255,0.04))', border: '1px solid var(--ink-500, rgba(255,255,255,0.12))', fontSize: 12, lineHeight: 1.4 }}>
+      <Icon name="download" size={14} />
+      <span style={{ flex: 1, minWidth: 0 }}>
+        {user?.id
+          ? 'Files marked "On this device" are only in this browser. Save them to your account to keep them safe and use them anywhere.'
+          : 'These files are only on this device. Sign in to keep them safe and use them anywhere.'}
+      </span>
+      {!user?.id && onSaveDeviceFile && (
+        <button type="button" className="btn" onClick={() => onSaveDeviceFile(null)}>Sign in</button>
+      )}
+    </div>
+  ) : null;
 
   return (
     <>
@@ -880,6 +930,7 @@ export default function DocumentsLedger({
       <div className="documents-ledger-body" style={{ padding: '0 8px 8px 8px', flex: 1, minHeight: 0 }}>
         <div ref={dropCardRef} className="card documents-desktop-card" style={{ display: 'grid', gridTemplateColumns: showPreview ? '2.2fr 1fr' : '1fr', height: '100%', overflow: 'hidden' }}>
           <div className="slim-scroll documents-ledger-scroll" style={{ overflow: 'auto', borderRight: showPreview ? '1px solid var(--ink-500)' : 0 }}>
+            {deviceNotice}
             <div>
               {reviewOn && mapped.length > 0 && (
                 <ReviewChips filter={reviewFilter} onChange={setReviewFilter} counts={reviewCounts} />
@@ -1018,6 +1069,7 @@ export default function DocumentsLedger({
                       ) : (
                         <span style={{ fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{d.name}</span>
                       )}
+                      {offline.isKept(d.id) && <OfflineBadge />}
                     </div>
                     <span className="meta documents-col-project" style={{ fontSize: 12, padding: '12px 12px 12px 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{/* Polish round 2 (2026-10-04): a file in no project leaves the cell
                         empty, as the phone row, the preview and the phone details
@@ -1179,6 +1231,7 @@ export default function DocumentsLedger({
           )}
         </div>
         <div className="documents-mobile-list slim-scroll">
+          {deviceNotice}
           {reviewOn && mapped.length > 0 && (
             <ReviewChips filter={reviewFilter} onChange={setReviewFilter} counts={reviewCounts} phone />
           )}
@@ -1282,7 +1335,7 @@ export default function DocumentsLedger({
       onClose={() => setRenameTarget(null)}
       title="Rename document"
       initialName={renameTarget?.name || ''}
-      onConfirm={(name) => onRename?.(renameTarget, name)}
+      onConfirm={(name) => (renameTarget?.device_file ? renameDeviceFile(renameTarget, name) : onRename?.(renameTarget, name))}
     />
     {docMenu && (() => {
       const doc = docs.find((d) => d.id === docMenu.id);
@@ -1296,7 +1349,13 @@ export default function DocumentsLedger({
           returnFocusTo={docMenu.trigger}
           focusFirst={Boolean(docMenu.fromKeyboard)}
           onClose={() => setDocMenu(null)}
-          items={(docMenu.ids?.length || 0) > 1 ? [
+          items={doc.raw?.device_file ? [
+            // device-files: only on this device, so only what works here.
+            { label: 'Open', onClick: () => onOpenDocument && onOpenDocument(doc.raw) },
+            { label: 'Rename', onClick: () => setRenameTarget(doc.raw) },
+            ...(onSaveDeviceFile ? [{ label: user?.id ? 'Save to my account' : 'Sign in to save to your account', onClick: () => onSaveDeviceFile(doc.raw) }] : []),
+            { label: 'Delete from this device', danger: true, onClick: () => deleteDeviceFile(doc.raw) },
+          ] : (docMenu.ids?.length || 0) > 1 ? [
             // Right-click inside a selection of two or more: the bulk actions.
             { label: 'Move to project…', onClick: () => { setMoveMode('move'); setMoveOpen(true); } },
             { label: 'Copy to project…', onClick: () => { setMoveMode('copy'); setMoveOpen(true); } },
@@ -1320,6 +1379,7 @@ export default function DocumentsLedger({
               disabled: !canLock,
               onClick: () => onLockDocument && onLockDocument(doc.raw),
             },
+            ...(offline.menuItem(doc.raw) ? [offline.menuItem(doc.raw)] : []),
           ]}
         />
       );

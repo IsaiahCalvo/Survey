@@ -313,6 +313,18 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Drag inside a picked mark to move it',
     stage: 'beta',
   }),
+  // Drawboard file model (2026-11-10, drawboard-trial/file-model.md): keep a
+  // document on this device so it opens with no signal; marks sync later.
+  'offline-docs': Object.freeze({
+    label: 'Available offline: keep a document on this device so it opens with no signal',
+    stage: 'beta',
+  }),
+  // Open a PDF with no account; it stays on this device until saved to an
+  // account (Drawboard's "Temporary" files, without their two-tab data loss).
+  'device-files': Object.freeze({
+    label: 'Open a PDF with no account (kept on this device)',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

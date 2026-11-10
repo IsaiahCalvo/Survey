@@ -20,7 +20,9 @@ import { documentNameSequence, renameRows, subscribeDocumentNames, withRenamesSi
 import { mergeOwnAndSharedTemplateRows, isSharedTemplateRow } from '../services/sharedTemplates.js';
 import { storageDownloads } from '../services/storageDownloads.js';
 import { replaceDocumentFile } from '../services/documentFileReplace.js';
-import { pdfByteCache, readPdfThroughCache, bindPdfCacheToAuth, seedPdfCacheFromUpload, pdfCacheStamp, pdfCacheKey, pdfCacheInfoSize } from '../services/pdfByteCache.js';
+import { pdfByteCache, readPdfThroughCache, bindPdfCacheToAuth, seedPdfCacheFromUpload, pdfCacheStamp, pdfCacheKey, pdfCacheInfoSize, isStorageRefusal } from '../services/pdfByteCache.js';
+import { offlineDocuments, readPdfWithOfflineCopy, bindOfflineDocumentsToAuth, OFFLINE_COPY_OPENED_EVENT } from '../services/offlineDocuments.js';
+import { isFeatureOn } from '../featureFlags.js';
 import { STREAM_SIGNED_URL_SECONDS, chooseCloudPdfOpenPath } from '../services/cloudPdfStream.js';
 import { resolveOpenDocumentSource } from '../services/openDocumentStreamSource.js';
 import { isPdfUploadPending, trackPdfUpload, waitForPdfUpload } from '../services/pendingPdfUploads.js';
@@ -38,6 +40,8 @@ import { readLibraryRows, readLibraryIdChunks, sortLibraryRows } from './library
 if (supabase) bindPdfCacheToAuth(supabase, pdfByteCache());
 // Same rule for page previews kept on the device (pageThumbStore.js).
 if (supabase) bindPdfCacheToAuth(supabase, pageThumbStore());
+// Nightly offline-docs: kept documents follow the same sign-out rule.
+if (supabase) bindOfflineDocumentsToAuth(supabase, offlineDocuments());
 // Same rule for the home lists' device copy (libraryListCache.js).
 if (supabase) bindLibraryListCacheToAuth(supabase);
 
@@ -993,7 +997,7 @@ export const useStorage = () => {
     // the server's access check" rule.
     await waitForPdfUpload(filePath);
     const actorId = user?.id ?? null;
-    return storageDownloads(supabase).read(actorId, filePath, () => readPdfThroughCache({
+    const readOnline = () => storageDownloads(supabase).read(actorId, filePath, () => readPdfThroughCache({
       cache: pdfByteCache(),
       actorId,
       path: filePath,
@@ -1010,6 +1014,23 @@ export const useStorage = () => {
         return data;
       },
     }));
+    // Nightly offline-docs: a document the user made available offline opens
+    // from its kept copy when there is no network (offlineDocuments.js).
+    if (!isFeatureOn('offline-docs')) return readOnline();
+    return readPdfWithOfflineCopy({
+      store: offlineDocuments(),
+      actorId,
+      path: filePath,
+      read: readOnline,
+      refusal: isStorageRefusal,
+      fetchStamp: async () => {
+        const { data, error } = await fetchStoredPdfInfo(filePath);
+        return error ? null : pdfCacheStamp(data);
+      },
+      onOfflineCopy: (detail) => {
+        try { globalThis.dispatchEvent?.(new CustomEvent(OFFLINE_COPY_OPENED_EVENT, { detail })); } catch { /* no DOM */ }
+      },
+    });
   }, [user?.id]);
 
   // Open speed: a source pdf.js can stream with range requests
@@ -1019,6 +1040,8 @@ export const useStorage = () => {
   // the device cache exactly as a download would. null = use downloadDocument.
   const openDocumentStream = useCallback(async (filePath) => {
     if (!isSupabaseAvailable()) return null;
+    // No network: nothing can stream; the download path opens a kept copy.
+    if (globalThis.navigator?.onLine === false) return null;
     await waitForPdfUpload(filePath);
     const actorId = user?.id ?? null;
     const cache = pdfByteCache();
@@ -1093,6 +1116,14 @@ export const useStorage = () => {
     void pdfByteCache().removePath(filePath);
   }, []);
 
+  // The stored file's version stamp (pdfCacheStamp), or null: what a kept
+  // offline copy is compared with (offlineDocuments.js).
+  const fileStamp = useCallback(async (filePath) => {
+    if (!filePath || !isSupabaseAvailable()) return null;
+    const { data, error } = await fetchStoredPdfInfo(filePath);
+    return error ? null : pdfCacheStamp(data);
+  }, []);
+
   return {
     uploadDocument,
     replaceDocument,
@@ -1100,6 +1131,7 @@ export const useStorage = () => {
     openDocumentStream,
     startOpenSource,
     deleteDocumentFile,
+    fileStamp,
   };
 };
 
