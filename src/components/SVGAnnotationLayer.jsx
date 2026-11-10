@@ -65,6 +65,7 @@ import {
   renderPolygon,
   renderPolyline,
   renderTextMarkup,
+  dimensionMarkLayout,
 } from '../utils/svgAnnotationRenderers';
 // UX 2026-09-09: cloud hover/hit geometry comes from the same resolver that
 // paints the cloud, so the grab surface is the scalloped outline itself.
@@ -6366,10 +6367,14 @@ const SVGAnnotationLayerBody = memo(({
   const applyLineEditPreview = useCallback((obj, lineEdit) => {
     if (!obj || !lineEdit) return obj;
     // measure-plus leader drag: only the dimension line's offset changes.
-    if (lineEdit.dimLeader != null) {
+    // A caption drag: only where the caption sits.
+    if (lineEdit.dimLeader != null || lineEdit.dimCaptionOffset) {
       if (!isDimensionMeasure(obj)) return obj;
       const measure = obj.data.measure;
-      return { ...obj, data: { ...obj.data, measure: { ...measure, dim: { ...measure.dim, leader: lineEdit.dimLeader } } } };
+      const dim = lineEdit.dimLeader != null
+        ? { ...measure.dim, leader: lineEdit.dimLeader }
+        : { ...measure.dim, captionOffset: lineEdit.dimCaptionOffset };
+      return { ...obj, data: { ...obj.data, measure: { ...measure, dim } } };
     }
     const nextData = { ...(obj.data || {}) };
     if (lineEdit.hasMidpoint && lineEdit.midpoint) {
@@ -9427,9 +9432,16 @@ const SVGAnnotationLayerBody = memo(({
             : undefined;
           // measure-plus: a dimension line has no bend grabber; a pill on the
           // dimension line drags its leader instead (Drawboard's offset grabber).
-          const dimGeo = isDimensionMeasure(selectionObj)
-            ? dimensionLineGeometry(ep, { leader: dimensionLeader(selectionObj) })
-            : null;
+          const dimLayout = isDimensionMeasure(selectionObj) ? dimensionMarkLayout(selectionObj, ep) : null;
+          const dimGeo = dimLayout?.geo || null;
+          // The caption takes a plain drag (grab cursor) to move it anywhere.
+          const captionGrab = dimGeo && dimLayout.lines.length > 0 ? {
+            x: dimGeo.caption.x + dx,
+            y: dimGeo.caption.y + dy,
+            angle: dimGeo.caption.angle,
+            w: dimLayout.captionWidth + 4,
+            h: dimLayout.captionHeight + 2,
+          } : null;
           // An inline caption sits mid-line, so the pill sits a quarter along.
           const pillAt = dimensionCaptionPlace(selectionObj) === 'above' ? 0.5 : 0.25;
           const leaderPill = dimGeo ? {
@@ -9445,6 +9457,20 @@ const SVGAnnotationLayerBody = memo(({
                   a dot still goes to that dot. */}
               {renderLineHitPad('p1', ep.x1 + dx, ep.y1 + dy)}
               {renderLineHitPad('p2', ep.x2 + dx, ep.y2 + dy)}
+              {captionGrab && (
+                <rect
+                  data-handle="dim-caption"
+                  x={captionGrab.x - captionGrab.w / 2}
+                  y={captionGrab.y - captionGrab.h / 2}
+                  width={captionGrab.w}
+                  height={captionGrab.h}
+                  transform={`rotate(${captionGrab.angle}, ${captionGrab.x}, ${captionGrab.y})`}
+                  fill="transparent"
+                  stroke="none"
+                  style={{ cursor: 'grab', pointerEvents: 'auto', touchAction: 'none' }}
+                  onPointerDown={(e) => { e.stopPropagation(); handleHandlePointerDown(e, 'dim-caption'); }}
+                />
+              )}
               {!dimGeo && renderLineHitPad('midpoint', midpointBase.x + dx, midpointBase.y + dy)}
               {leaderPill && renderLineHitPad('leader', leaderPill.x, leaderPill.y)}
               {/* Start handle (line start / arrow tail) */}

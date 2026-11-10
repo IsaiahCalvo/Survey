@@ -48,7 +48,7 @@ import { clampResizeEdge } from '../utils/pageEdgeRules.js';
 // auto-revert on collinear geometry. Pure-math from lineGeometry, drag
 // helpers from lineDragMath (unit-tested in tests/lineDragMath.test.mjs).
 import { shouldSnapToLinear, getMidpoint } from '../utils/lineGeometry.js';
-import { dimensionLeader, isDimensionMeasure, normalizeDimensionLeader } from '../utils/measure/dimensionLine.js';
+import { dimensionCaptionOffset, dimensionLeader, isDimensionMeasure, normalizeDimensionLeader } from '../utils/measure/dimensionLine.js';
 import { movePolyVertexPoints } from '../utils/polyDraft.js';
 import { insertSplineCorner, isBezierSpline, keepPivot, markBezierSpline, moveSplineCorner, moveSplineHandle, polySplineStep, splineSpanMidpoint, splineSpans } from '../utils/polySpline.js';
 import { collectEndpointCandidates, resolveDrawSnap, drawSnapEventOptions } from '../utils/drawSnap.js';
@@ -3746,6 +3746,18 @@ export function useSVGInteraction({
         lineEdit: { ...endpointData, midpoint: finalMid, hasMidpoint: !!finalMid },
       });
       setInteractionState('dragging');
+    } else if (ds.mode === 'dim-caption') {
+      const rad = ((ds.originalProps?.angle || 0) * Math.PI) / 180;
+      const wdx = svgPoint.x - ds.startSVGPoint.x;
+      const wdy = svgPoint.y - ds.startSVGPoint.y;
+      const round2 = (n) => Math.round(n * 100) / 100;
+      const offset = {
+        x: round2(ds.originalCaptionOffset.x + wdx * Math.cos(rad) + wdy * Math.sin(rad)),
+        y: round2(ds.originalCaptionOffset.y - wdx * Math.sin(rad) + wdy * Math.cos(rad)),
+      };
+      ds.currentCaptionOffset = offset;
+      setVisualTransform({ id: ds.annotationIndex, dx: 0, dy: 0, lineEdit: { dimCaptionOffset: offset } });
+      setInteractionState('dragging');
     } else if (ds.mode === 'leader') {
       // The world drag turned into the line's own frame (the mark may be
       // turned), then its part along the line's left normal.
@@ -5160,6 +5172,22 @@ export function useSVGInteraction({
         action: 'endpoint-move',
         checkpointPolicy: 'normal',
       });
+    } else if (ds.mode === 'dim-caption' && ds.currentCaptionOffset
+      && (ds.currentCaptionOffset.x !== ds.originalCaptionOffset.x || ds.currentCaptionOffset.y !== ds.originalCaptionOffset.y)) {
+      const updatedAnnotations = deepClone(annotations);
+      const targetObj = updatedAnnotations.objects[ds.annotationIndex];
+      if (isDimensionMeasure(targetObj)) {
+        const dim = { ...targetObj.data.measure.dim };
+        // Dropped back within 1 pt of the line's own spot: back on the line.
+        if (Math.hypot(ds.currentCaptionOffset.x, ds.currentCaptionOffset.y) < 1) delete dim.captionOffset;
+        else dim.captionOffset = ds.currentCaptionOffset;
+        targetObj.data.measure.dim = dim;
+        onSaveAnnotations(updatedAnnotations, {
+          source: 'object:modified',
+          action: 'caption-move',
+          checkpointPolicy: 'normal',
+        });
+      }
     } else if (ds.mode === 'leader' && ds.currentLeader != null && ds.currentLeader !== ds.originalLeader) {
       // One undo step; the mark keeps everything else as it is now.
       const updatedAnnotations = deepClone(annotations);
@@ -5998,6 +6026,7 @@ export function useSVGInteraction({
       originalMidpoint: null, currentMidpoint: null,
       // measure-plus leader drag: set at pointerdown, read at move and up.
       originalLeader: null, currentLeader: null,
+      originalCaptionOffset: null, currentCaptionOffset: null,
       // UX 2026-04-20: vertex-drag fields (polygon/polyline per-point drag).
       // Reset alongside the rest so the next drag starts clean.
       originalPoints: null, vertexIndex: null, insertedVertex: false,
@@ -6570,6 +6599,23 @@ export function useSVGInteraction({
     // measure-plus: the leader grabber on a dimension line. The drag moves the
     // line off its two points along their normal; past the points it flips
     // to the other side (a negative leader).
+    // measure-plus: a dimension line's caption, dragged anywhere (it keeps an
+    // elbow leader back to the line). The offset is kept in the line's frame.
+    if (handleId === 'dim-caption') {
+      if (!isDimensionMeasure(obj)) return;
+      dragStateRef.current = {
+        active: true,
+        mode: 'dim-caption',
+        handleId: 'dim-caption',
+        startSVGPoint: svgPoint,
+        originalCaptionOffset: dimensionCaptionOffset(obj) || { x: 0, y: 0 },
+        currentCaptionOffset: null,
+        annotationIndex: selectedIndex,
+        ctmInverse,
+        originalProps: { angle: obj.angle || 0 },
+      };
+      return;
+    }
     if (handleId === 'leader') {
       if (!isDimensionMeasure(obj)) return;
       dragStateRef.current = {
