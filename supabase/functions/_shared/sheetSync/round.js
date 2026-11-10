@@ -176,34 +176,59 @@ export async function putMovedWritesRight({ provider, fileId, grid, writes, idCh
 // Rows moved while this round wrote Row IDs. Each Row ID belongs on the row
 // whose Item it was written for: put it there, and put back the Row ID a
 // moved row had at the start of the round where one of ours landed on it.
-// Only names that appear once are trusted; anything else waits for the next
-// round's fresh read.
-export async function putMovedRowIdsRight({ provider, fileId, grid, idWrites, itemColOf }) {
+// Columns are found again by their headings (a title row above them, or a
+// column moved meanwhile, is fine). Only names that appear once are trusted;
+// anything else waits for the next round's fresh read. Where two fixes meet
+// on one cell, a Row ID put on its own item wins over a put-back.
+const headKey = (v) => String(v ?? '').trim().toLowerCase();
+export async function putMovedRowIdsRight({ provider, fileId, grid, idWrites }) {
   const sheetIds = [...new Set(idWrites.map((w) => String(w.sheetId)))];
   const now = await provider.readGrid(fileId, { sheetIds });
   const fixes = [];
   for (const sheetId of sheetIds) {
-    const item = itemColOf(sheetId);
-    if (item < 0) continue;
+    const mine = idWrites.filter((x) => sameId(x.sheetId, sheetId) && x.itemCol >= 0);
+    if (!mine.length) continue;
     const before = grid.sheets.find((s) => sameId(s.sheetId, sheetId))?.rows || [];
     const after = now.sheets.find((s) => sameId(s.sheetId, sheetId))?.rows || [];
-    const once = (rows) => {
+    const headBefore = mine[0].headerRow ?? 0;
+    const itemHead = headKey(before[headBefore]?.[mine[0].itemCol]);
+    const idHead = headKey(before[headBefore]?.[mine[0].col]);
+    if (!itemHead || !idHead) continue;
+    // The heading row and columns as they are now; unsure means wait.
+    const colIn = (row, want) => {
+      const at = (row || []).map(headKey).flatMap((h, i) => (h === want ? [i] : []));
+      return at.length === 1 ? at[0] : -1;
+    };
+    let headAfter = -1;
+    for (let r = 0; r < Math.min(after.length, 10) && headAfter < 0; r += 1) {
+      if (colIn(after[r], itemHead) >= 0 && colIn(after[r], idHead) >= 0) headAfter = r;
+    }
+    if (headAfter < 0) continue;
+    const itemBefore = mine[0].itemCol; const idBefore = mine[0].col;
+    const itemAfter = colIn(after[headAfter], itemHead); const idAfter = colIn(after[headAfter], idHead);
+    const once = (rows, head, item) => {
       const seen = new Map();
-      rows.forEach((r, i) => { const n = String(r?.[item] ?? '').trim(); if (i > 0 && n) seen.set(n, seen.has(n) ? -1 : i); });
+      rows.forEach((r, i) => { const n = String(r?.[item] ?? '').trim(); if (i > head && n) seen.set(n, seen.has(n) ? -1 : i); });
       return seen;
     };
-    const beforeAt = once(before); const afterAt = once(after);
-    for (const w of idWrites.filter((x) => sameId(x.sheetId, sheetId))) {
+    const beforeAt = once(before, headBefore, itemBefore); const afterAt = once(after, headAfter, itemAfter);
+    const title = mine[0].title;
+    const places = new Map();
+    const restores = new Map();
+    for (const w of mine) {
+      const token = String(w.value ?? '').trim();
       const target = afterAt.get(w.rowIdFor);
       after.forEach((r, i) => {
-        if (i === 0 || i === target || String(r?.[w.col] ?? '').trim() !== String(w.value ?? '').trim()) return;
-        const was = beforeAt.get(String(r?.[item] ?? '').trim());
-        if (was > 0) fixes.push({ sheetId, title: w.title, row: i, col: w.col, value: before[was]?.[w.col] ?? '' });
+        if (i <= headAfter || i === target || String(r?.[idAfter] ?? '').trim() !== token) return;
+        const was = beforeAt.get(String(r?.[itemAfter] ?? '').trim());
+        if (was > 0) restores.set(i, { sheetId, title, row: i, col: idAfter, value: before[was]?.[idBefore] ?? '' });
       });
-      if (target > 0 && String(after[target]?.[w.col] ?? '').trim() !== String(w.value ?? '').trim()) {
-        fixes.push({ sheetId, title: w.title, row: target, col: w.col, value: w.value });
+      if (target > 0 && String(after[target]?.[idAfter] ?? '').trim() !== token) {
+        places.set(target, { sheetId, title, row: target, col: idAfter, value: w.value });
       }
     }
+    for (const row of places.keys()) restores.delete(row);
+    fixes.push(...restores.values(), ...places.values());
   }
   if (fixes.length) await provider.writeCells(fileId, fixes);
   return { fixed: fixes.length };
@@ -261,13 +286,6 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
     plan = await planSheetRound({ ...planArgs, holdErase: true });
   }
 
-  // Where each synced tab's Item column is, from its heading row.
-  const itemColOf = (sheetId) => {
-    const scopeId = Object.keys(state.sheetIds || {}).find((k) => sameId(state.sheetIds[k], sheetId));
-    const header = layout.scopes.find((sc) => sc.scopeId === scopeId)?.columns.find((c) => c.key === 'item')?.header;
-    const head = grid.sheets.find((sh) => sameId(sh.sheetId, sheetId))?.rows?.[0] || [];
-    return header == null ? -1 : head.findIndex((h) => String(h ?? '').trim() === header);
-  };
   let wroteAt = state.lastWriteAt ?? null;
   let retry = false;
   async function writePlan() {
@@ -318,7 +336,7 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
       await provider.writeCells(link.file_id, idWrites);
       const now3 = await provider.readCells(link.file_id, [...idChecks, ...idWrites]);
       if (offAt(now3) || idWrites.some((w, i) => String(now3[idChecks.length + i] ?? '').trim() !== String(w.value ?? '').trim())) {
-        await putMovedRowIdsRight({ provider, fileId: link.file_id, grid, idWrites, itemColOf });
+        await putMovedRowIdsRight({ provider, fileId: link.file_id, grid, idWrites });
         retry = true; return;
       }
     }

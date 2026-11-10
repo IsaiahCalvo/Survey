@@ -10,6 +10,7 @@ import { googleSheetsProvider } from '../supabase/functions/_shared/sheetSync/pr
 import { assertProvider } from '../supabase/functions/_shared/sheetSync/providers/contract.js';
 import { encryptToken, decryptToken } from '../supabase/functions/_shared/sheetSync/tokenCrypto.js';
 import { mergeMarkerWrites } from '../supabase/functions/_shared/sheetSync/service.js';
+import { putMovedRowIdsRight } from '../supabase/functions/_shared/sheetSync/round.js';
 import {
   defaultKit, endpoints, fakeApi, fakeGoogleFetch, template, setup, door,
 } from './helpers/sheetSyncHarness.mjs';
@@ -283,6 +284,35 @@ test('a sort that lands while a copied row gets its own Row ID: the Row ID stays
   assert.equal(copy.length, 1, 'the copy is one new item');
   assert.notEqual(idOf('A-copy'), idOf('D-101'));
   assert.equal(Object.keys(ctx.markers).length, 4);
+});
+
+// A stand-in provider over one tab, for the Row ID repair on its own.
+const oneTab = (rows) => ({
+  rows,
+  readGrid: async () => ({ sheets: [{ sheetId: '1', title: 'T', rows: rows.map((r) => [...r]) }] }),
+  writeCells: async (_id, cells) => { for (const c of cells) rows[c.row][c.col] = c.value; },
+});
+
+test('Row ID repair finds the heading under a title row, renamed in case and moved', async () => {
+  const before = [['Doors report'], ['Row ID', 'Item', 'Notes'], ['', 'A-copy', ''], ['tokA', 'D-101', '']];
+  // Sorted Z-A, Item heading retyped as "item" and moved to the end, then our
+  // Row ID for A-copy landed on row 3, now D-101's.
+  const tab = oneTab([['Doors report'], ['Row ID', 'Notes', 'item'], ['tokNew', '', 'D-101'], ['', '', 'A-copy']]);
+  const idWrites = [{ sheetId: '1', title: 'T', row: 2, col: 0, value: 'tokNew', rowIdFor: 'A-copy', itemCol: 1, headerRow: 1 }];
+  await putMovedRowIdsRight({ provider: tab, fileId: 'f', grid: { sheets: [{ sheetId: '1', rows: before }] }, idWrites });
+  assert.equal(tab.rows[2][0], 'tokA', 'D-101 gets its own Row ID back');
+  assert.equal(tab.rows[3][0], 'tokNew', 'the new Row ID sits with A-copy');
+});
+
+test('Row ID repair: two Row IDs crossed by a sort both end on their own items', async () => {
+  const before = [['Row ID', 'Item'], ['', 'A1'], ['', 'B1']];
+  const tab = oneTab([['Row ID', 'Item'], ['tokA', 'B1'], ['tokB', 'A1']]);
+  const idWrites = [
+    { sheetId: '1', title: 'T', row: 1, col: 0, value: 'tokA', rowIdFor: 'A1', itemCol: 1, headerRow: 0 },
+    { sheetId: '1', title: 'T', row: 2, col: 0, value: 'tokB', rowIdFor: 'B1', itemCol: 1, headerRow: 0 },
+  ];
+  await putMovedRowIdsRight({ provider: tab, fileId: 'f', grid: { sheets: [{ sheetId: '1', rows: before }] }, idWrites });
+  assert.deepEqual(tab.rows.slice(1), [['tokB', 'B1'], ['tokA', 'A1']]);
 });
 
 test('a sort right before rows are deleted: no other item\'s row is deleted', async () => {
