@@ -3156,10 +3156,14 @@ const SVGAnnotationLayerBody = memo(({
     setPolyDraft(next);
     return true;
   }, [cancelPolyDraft]);
+  const draftTabActiveRef = useRef(isTabActive);
+  draftTabActiveRef.current = isTabActive;
   useEffect(() => {
     if (!polyDraftActive) return undefined;
     const onKeyDown = (e) => {
-      if (!draftOwnsKeyboard(e.target)) return;
+      // A draft left open in a tab behind keeps its points: Enter, Escape and
+      // Backspace belong to the document in front.
+      if (!draftTabActiveRef.current || !draftOwnsKeyboard(e.target)) return;
       if (e.key === 'Enter') {
         e.preventDefault();
         e.stopPropagation();

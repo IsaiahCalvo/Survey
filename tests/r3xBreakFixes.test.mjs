@@ -54,3 +54,8 @@ test('a polygon draft only takes and lights its own viewer\'s Undo', async () =>
   release();
   assert.equal(hasPolyDraftUndo(behind), false);
 });
+
+test('a draft in a tab behind ignores Enter, Escape and Backspace', () => {
+  const src = read('components/SVGAnnotationLayer.jsx');
+  assert.match(src, /if \(!draftTabActiveRef\.current \|\| !draftOwnsKeyboard\(e\.target\)\) return;/);
+});
