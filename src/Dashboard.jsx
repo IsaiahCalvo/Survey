@@ -1263,6 +1263,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         return;
       }
       for (const entry of entries) {
+        if (entry.disabled) continue;
         if (entry.error) showToast(entry.error, 'error');
         else await droppedFilesRef.current([entry.file], { open: true });
       }
