@@ -2228,7 +2228,8 @@ export default function App({ devPreviewReturnTab = null }) {
     });
   }, []);
   useEffect(() => {
-    if (!focusModeEnabled) return undefined;
+    // Only while a document is open: on Home the chord is the browser's own.
+    if (!focusModeEnabled || !isViewerVisible) return undefined;
     const onKey = (event) => {
       if (!isFocusModeKey(event) || isTypingTarget(event.target)) return;
       // Capture, ahead of the viewer's Ctrl/Cmd+F (search) handler.
@@ -2243,7 +2244,7 @@ export default function App({ devPreviewReturnTab = null }) {
       window.removeEventListener('keydown', onKey, true);
       document.removeEventListener('fullscreenchange', onFullscreen);
     };
-  }, [focusModeEnabled, toggleFocusMode]);
+  }, [focusModeEnabled, toggleFocusMode, Boolean(isViewerVisible)]); // eslint-disable-line react-hooks/exhaustive-deps
   // The rails and tab strip come and go without a window resize when the
   // browser refuses full screen, so tell the viewer the space changed; a
   // fit zoom re-fits to it, a picked zoom stays.

@@ -157,9 +157,19 @@ export default function VersionCompareDialog({ older, newer, versions = [], onCl
     let cancelled = false;
     const missing = wanted.filter((v) => !pdfs[v.id]);
     if (!missing.length) return undefined;
-    Promise.all(missing.map((v) => openVersionPdf(v.id).then((pdf) => [v.id, pdf])))
-      .then((opened) => { if (!cancelled) setPdfs((current) => ({ ...current, ...Object.fromEntries(opened) })); })
-      .catch((err) => { if (!cancelled) setFailed(err?.message || 'Could not open the versions'); });
+    // A load that is cancelled (a layer added mid-open, unmount) or that
+    // half-fails closes what it did open, so no pdf.js document is left behind.
+    Promise.allSettled(missing.map((v) => openVersionPdf(v.id).then((pdf) => [v.id, pdf])))
+      .then((results) => {
+        const opened = results.filter((r) => r.status === 'fulfilled').map((r) => r.value);
+        const failure = results.find((r) => r.status === 'rejected');
+        if (cancelled || failure) {
+          for (const [, pdf] of opened) pdf?.destroy?.();
+          if (!cancelled) setFailed(failure.reason?.message || 'Could not open the versions');
+          return;
+        }
+        setPdfs((current) => ({ ...current, ...Object.fromEntries(opened) }));
+      });
     return () => { cancelled = true; };
   }, [wantedKey]);
   const pdfsRef = useRef(pdfs);

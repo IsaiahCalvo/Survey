@@ -1387,7 +1387,10 @@ const SVGAnnotationLayerBody = memo(({
   };
   useEffect(() => onOtherPageClear((fromPage, fromDocument) => {
     if (fromPage === pageNumber) return;
-    if (fromDocument && documentId && fromDocument !== documentId) return;
+    // Same document only: ids must match, and a layer in a hidden tab (no
+    // id to compare for a local file) is never another page of this one.
+    if ((fromDocument || null) !== (documentId || null)) return;
+    if (!svgRef.current?.isConnected || svgRef.current.getClientRects().length === 0) return;
     clearForOtherPageRef.current?.();
   }), [pageNumber, documentId]);
   const applyPressFallback = (press) => {

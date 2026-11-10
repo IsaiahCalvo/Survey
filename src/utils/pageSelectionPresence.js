@@ -66,7 +66,10 @@ export function onOtherPageClear(listener) {
 }
 export function clearOtherPageSelections(pageNumber, documentId = null) {
   const page = Number(pageNumber);
-  if (stashedSelection && stashedSelection.pageNumber !== page) stashedSelection = null;
+  // Only this document's kept pick goes; a file with no id (local, unsaved)
+  // never clears another document's.
+  if (stashedSelection && stashedSelection.pageNumber !== page
+    && documentId && stashedSelection.documentId === documentId) stashedSelection = null;
   otherPageClearListeners.forEach((listener) => listener(page, documentId || null));
 }
 
