@@ -377,12 +377,14 @@ export default function MarkLibraryPanel({ phone = false, headActionsHost = null
     if (status === 'loading' || status === 'idle') return 'Loading…';
     if (status === 'error') return 'Could not load the library. Check your connection.';
     if (items.length && !visible.length) return 'Nothing matches.';
+    // Phones have no right-click: a press and hold opens the same mark menu.
+    const openMenu = phone ? 'press and hold one' : 'right-click them';
     if (library === 'project') {
       return state.access.canAdd
-        ? 'Nothing in the project library yet. Pick marks on a page, right-click them and choose Save to library, then pick the project.'
+        ? `Nothing in the project library yet. Pick marks on a page, ${openMenu} and choose Save to library, then pick the project.`
         : 'Your team has not saved anything here yet.';
     }
-    return 'Nothing saved yet. Pick marks on a page, right-click them and choose Save to library.';
+    return `Nothing saved yet. Pick marks on a page, ${openMenu} and choose Save to library.`;
   })();
 
   const headActions = (
@@ -504,6 +506,8 @@ export default function MarkLibraryPanel({ phone = false, headActionsHost = null
           <button type="button" className="hub-btn" onClick={() => exportItems(selectedItems)}>Export</button>
         </div>
       )}
+      {/* How to place an item means nothing while there is nothing to place. */}
+      {(items.length > 0 || armedId) && (
       <div className="mark-library__hint">
         {armedId
           ? 'Click the page to place it. Esc lets go.'
@@ -519,6 +523,7 @@ export default function MarkLibraryPanel({ phone = false, headActionsHost = null
           </ul>
         )}
       </div>
+      )}
       <input ref={fileRef} type="file" accept={`${LIBRARY_EXPORT_EXTENSION},application/json`} hidden onChange={onImportFile} />
       {menu && <ListItemContextMenu point={menu.point} items={menu.items} onClose={() => setMenu(null)} />}
       {promptDialog}

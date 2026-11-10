@@ -121,7 +121,7 @@ test('names and tags', () => {
   assert.deepEqual(cleanLibraryTags([' Electrical ', 'electrical', '', 'x'.repeat(50)]), ['Electrical', 'x'.repeat(40)]);
   assert.deepEqual(cleanLibraryTags('A, b ,a'), ['A', 'b']);
   assert.equal(defaultLibraryItemName(libraryPayloadFromClipboard(clipboard)), 'Approved {{date}}');
-  assert.equal(defaultLibraryItemName({ items: [{ kind: 'mark', object: rect() }] }), 'Shape');
+  assert.equal(defaultLibraryItemName({ items: [{ kind: 'mark', object: rect() }] }), 'Rectangle');
   assert.equal(defaultLibraryItemName({ items: [{ kind: 'mark', object: rect() }, { kind: 'mark', object: rect() }] }), '2 marks');
   assert.equal(libraryCopyName('Door tag', ['Door tag', 'Door tag copy']), 'Door tag copy 2');
 });

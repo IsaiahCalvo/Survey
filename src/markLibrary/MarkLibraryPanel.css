@@ -327,3 +327,5 @@
 }
 
 .mobile-pdf-sheet .mark-library__empty { font-size: 14px; }
+/* Same side gutter as Layers and Comments in the phone sheet. */
+.mobile-pdf-sheet .mark-library { padding: 8px 16px 16px; }
