@@ -21993,6 +21993,31 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     const timer = setTimeout(() => setPageMarksHoldExpiredFor(holdDocumentId), PAGE_MARKS_HOLD_MAX_MS);
     return () => clearTimeout(timer);
   }, [holdPagesForMarksUnbounded, pdfFile?.id]);
+
+  // Document review (Nightly, flag 'document-review'; home/documentReview.js):
+  // the documents list shows each document's markup count. Sent a few
+  // seconds after the marks settle, only once the saved marks are loaded
+  // (never the empty start), only by someone who can edit, only on change.
+  const [documentReviewEnabled] = useState(() => isFeatureOn('document-review'));
+  const reportedMarkupCountRef = useRef(null);
+  const marksLoadedForCount = Boolean(
+    normalAnnotationHydration?.ready === true && normalAnnotationHydration?.documentId === pdfFile?.id,
+  );
+  useEffect(() => {
+    if (!documentReviewEnabled || !pdfFile?.id || !user?.id || !marksLoadedForCount) return undefined;
+    if (yjsDocRole === 'viewer' || yjsAccessRevoked) return undefined;
+    const documentId = pdfFile.id;
+    const timer = setTimeout(() => {
+      import('./home/documentReview.js').then(({ countMarkups, reportMarkupCount }) => {
+        const count = countMarkups(annotationsByPage, surveyMarkers);
+        const last = reportedMarkupCountRef.current;
+        if (last && last.documentId === documentId && last.count === count) return;
+        reportedMarkupCountRef.current = { documentId, count };
+        reportMarkupCount(supabase, documentId, count);
+      }).catch(() => {});
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [documentReviewEnabled, pdfFile?.id, user?.id, marksLoadedForCount, yjsDocRole, yjsAccessRevoked, annotationsByPage, surveyMarkers]);
   // Read by Save: whether the shared document already keeps this work safe
   // (its store on this device, or every change already in the cloud).
   const annotationDocHoldsWorkRef = useRef(() => false);

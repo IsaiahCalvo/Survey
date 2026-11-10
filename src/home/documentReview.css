@@ -1,0 +1,40 @@
+/* Document review (DocumentReviewBits.jsx): chips above the documents list,
+   the line under each name, and the preview's Status / Owner pickers. */
+.doc-review-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px; }
+.doc-review-chips--phone { flex: none; flex-wrap: nowrap; overflow-x: auto; padding: 2px 0 4px; scrollbar-width: none; }
+.doc-review-chips--phone::-webkit-scrollbar { display: none; }
+.doc-review-chip {
+  display: inline-flex; align-items: center; gap: 6px; flex: none;
+  height: 24px; padding: 0 10px; font: inherit; font-size: 12px; color: var(--text-2);
+  background: var(--panel-well, var(--surface-3)); border: 0; border-radius: var(--radius-pill, 999px); cursor: pointer;
+}
+.doc-review-chips--phone .doc-review-chip { height: 36px; font-size: 14px; }
+/* Selected = gold ink on a neutral raised fill, like the item chips. */
+.doc-review-chip[aria-pressed="true"] { color: var(--accent); background: var(--surface-3); font-weight: 600; }
+.doc-review-chip__count { color: var(--text-3); font-weight: 400; }
+.doc-review-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+
+.doc-review-dot--amber, .doc-review-status--amber { --tone: #d9a03f; }
+.doc-review-dot--blue, .doc-review-status--blue { --tone: #6ea8e6; }
+.doc-review-dot--slate, .doc-review-status--slate { --tone: #9aa3b2; }
+.doc-review-dot--red, .doc-review-status--red { --tone: #e0726c; }
+.doc-review-dot--green, .doc-review-status--green { --tone: #5fbf7a; }
+.doc-review-dot { background: var(--tone); }
+
+.doc-review-line { display: flex; align-items: center; gap: 6px; min-width: 0; margin-top: 3px; font-size: 11px; color: var(--text-3); font-weight: 400; }
+.doc-review-status {
+  flex: none; padding: 0 6px; line-height: 16px; border-radius: 4px; font-weight: 600;
+  color: var(--tone); background: color-mix(in srgb, var(--tone) 16%, transparent);
+}
+.doc-review-owner {
+  flex: none; width: 16px; height: 16px; border-radius: 50%; display: inline-grid; place-items: center;
+  font-size: 8px; font-weight: 600; color: var(--text-1); background: var(--surface-3);
+}
+.doc-review-marks { white-space: nowrap; }
+
+.doc-review-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.doc-review-field { display: grid; gap: 4px; min-width: 0; }
+.doc-review-native {
+  height: 44px; padding: 0 10px; font: inherit; font-size: 16px; color: var(--text-1);
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-sm, 6px);
+}

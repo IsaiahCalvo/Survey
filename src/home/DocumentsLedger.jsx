@@ -44,6 +44,9 @@ import {
 } from './documentSelection.js';
 import { keyboardControlProps } from '../utils/keyboardActivation.js';
 import { preloadPdfViewerNow } from '../utils/pdfViewerPrefetch.js';
+import { isFeatureOn } from '../featureFlags.js';
+import { ReviewChips, ReviewFields, ReviewLine, useDocumentReviews, useReviewPeople } from './DocumentReviewBits.jsx';
+import { EMPTY_REVIEW_FILTER, passesReviewFilter, reviewFilterIsEmpty, reviewStatusCounts } from './documentReview.js';
 
 const ledgerHeader = {
   background: 'var(--ink-700)',
@@ -278,6 +281,14 @@ export default function DocumentsLedger({
     };
   }), [documents, projects]);
 
+  // Document review (Nightly, flag 'document-review'; DocumentReviewBits.jsx):
+  // status, owner and markup count under each name, chips to filter by them.
+  const [reviewOn] = useState(() => isFeatureOn('document-review'));
+  const documentIds = useMemo(() => documents.map((d) => d.id), [documents]);
+  const { reviews, save: saveReview } = useDocumentReviews(reviewOn, documentIds);
+  const [reviewFilter, setReviewFilter] = useState(EMPTY_REVIEW_FILTER);
+  const reviewCounts = useMemo(() => (reviewOn ? reviewStatusCounts(documentIds, reviews) : null), [reviewOn, documentIds, reviews]);
+
   const onHeaderClick = (key) => {
     if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     else { setSortKey(key); setSortDir(key === 'edited' || key === 'size' ? 'desc' : 'asc'); }
@@ -286,14 +297,15 @@ export default function DocumentsLedger({
 
   const docs = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const arr = mapped.filter((d) => !q || (d.name || '').toLowerCase().includes(q));
+    const arr = mapped.filter((d) => (!q || (d.name || '').toLowerCase().includes(q))
+      && (!reviewOn || passesReviewFilter(reviews.get(d.id), reviewFilter, user?.id)));
     const sign = sortDir === 'asc' ? 1 : -1;
     if (sortKey === 'name') arr.sort((a, b) => sign * a.name.localeCompare(b.name));
     else if (sortKey === 'project') arr.sort((a, b) => sign * (a.project || '').localeCompare(b.project || ''));
     else if (sortKey === 'edited') arr.sort((a, b) => sign * (a.editedMs - b.editedMs));
     else if (sortKey === 'size') arr.sort((a, b) => sign * (a.sizeBytes - b.sizeBytes));
     return arr;
-  }, [mapped, search, sortKey, sortDir]);
+  }, [mapped, search, sortKey, sortDir, reviewOn, reviews, reviewFilter, user?.id]);
   const mobileDetailDoc = docs.find((d) => d.id === mobileDetailId) || null;
 
   /* Idle thumbnail backfill (2026-09-23): fills missing thumbnails one at a
@@ -361,6 +373,8 @@ export default function DocumentsLedger({
   const selectedDocs = docs.filter((d) => selDocs.has(d.id));
   const bulkSelected = !docSelectMode && selectedDocs.length >= 2;
   const previewDoc = !docSelectMode && selectedDocs.length === 1 ? selectedDocs[0] : sel;
+  // Who can own the review of the document in the preview (or phone details).
+  const reviewPeople = useReviewPeople(reviewOn ? (mobileDetailDoc?.id || previewDoc?.id || null) : null);
   // Team for the open preview (desktop panel or phone detail): owner + collaborators.
   const teamDocRaw = (mobileDetailDoc || previewDoc)?.raw || null;
   const teamDocId = teamDocRaw?.id || null;
@@ -769,6 +783,7 @@ export default function DocumentsLedger({
         <div style={{ minWidth: 0 }}>
           <div className="mobile-card-title">{d.name}</div>
           <div className="mobile-card-meta">{mobileDocMeta(d)}</div>
+          {reviewOn && <ReviewLine review={reviews.get(d.id)} />}
         </div>
         <div style={{ display: 'grid', placeItems: 'center', minWidth: 0 }}>
           {renderMobileThumb(d)}
@@ -799,6 +814,9 @@ export default function DocumentsLedger({
         <div ref={dropCardRef} className="card documents-desktop-card" style={{ display: 'grid', gridTemplateColumns: showPreview ? '2.2fr 1fr' : '1fr', height: '100%', overflow: 'hidden' }}>
           <div className="slim-scroll documents-ledger-scroll" style={{ overflow: 'auto', borderRight: showPreview ? '1px solid var(--ink-500)' : 0 }}>
             <div>
+              {reviewOn && mapped.length > 0 && (
+                <ReviewChips filter={reviewFilter} onChange={setReviewFilter} counts={reviewCounts} />
+              )}
               <div className={gridClass} style={{ ...ledgerHeader, display: 'grid', gridTemplateColumns: grid, position: 'sticky', top: 0, zIndex: 3 }}>
                 <span className="documents-ledger-head-check" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   {docSelectMode && docs.length > 0 && (
@@ -839,7 +857,7 @@ export default function DocumentsLedger({
                     />
                   </div>
                 ) : (
-                  <div className="meta" style={{ padding: '24px 16px', fontSize: 12 }}>No documents match your search.</div>
+                  <div className="meta" style={{ padding: '24px 16px', fontSize: 12 }}>{reviewOn && !reviewFilterIsEmpty(reviewFilter) ? 'No documents match these filters.' : 'No documents match your search.'}</div>
                 )
               )}
               {docs.map((d) => {
@@ -925,7 +943,14 @@ export default function DocumentsLedger({
                       />
                     </div>
                     <div style={stickyCell(isFilled)}>
-                      <span style={{ fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{d.name}</span>
+                      {reviewOn ? (
+                        <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+                          <span style={{ fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{d.name}</span>
+                          <ReviewLine review={reviews.get(d.id)} />
+                        </div>
+                      ) : (
+                        <span style={{ fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{d.name}</span>
+                      )}
                     </div>
                     <span className="meta documents-col-project" style={{ fontSize: 12, padding: '12px 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{/* Polish round 2 (2026-10-04): a file in no project leaves the cell
                         empty, as the phone row, the preview and the phone details
@@ -1054,6 +1079,11 @@ export default function DocumentsLedger({
                   {renderTeam({ fontSize: 12, fontWeight: 600 })}
                 </div>
               </div>
+              {reviewOn && (
+                <div style={{ marginTop: 14, flex: 'none' }} data-doc-review-panel="">
+                  <ReviewFields review={reviews.get(previewDoc.id)} people={reviewPeople} canEdit onSave={(patch) => saveReview(previewDoc.id, patch)} />
+                </div>
+              )}
               {/* Last edited + Uploaded dates. */}
               <div style={{ marginTop: 14, flex: 'none', display: 'grid', gap: 10 }}>
                 <div>
@@ -1079,6 +1109,9 @@ export default function DocumentsLedger({
           )}
         </div>
         <div className="documents-mobile-list slim-scroll">
+          {reviewOn && mapped.length > 0 && (
+            <ReviewChips filter={reviewFilter} onChange={setReviewFilter} counts={reviewCounts} phone />
+          )}
           {docs.length === 0 && (
             mapped.length === 0 ? (
               <EmptyState
@@ -1091,7 +1124,7 @@ export default function DocumentsLedger({
                 {...sampleAction}
               />
             ) : (
-              <div className="meta" style={{ padding: '18px 4px', fontSize: 12 }}>No documents match your search.</div>
+              <div className="meta" style={{ padding: '18px 4px', fontSize: 12 }}>{reviewOn && !reviewFilterIsEmpty(reviewFilter) ? 'No documents match these filters.' : 'No documents match your search.'}</div>
             )
           )}
           {docs.length > 0 && docs.map(renderMobileCard)}
@@ -1139,6 +1172,11 @@ export default function DocumentsLedger({
                     ))}
                   </div>
                 </div>
+                {reviewOn && (
+                  <div data-doc-review-panel="">
+                    <ReviewFields review={reviews.get(mobileDetailDoc.id)} people={reviewPeople} canEdit onSave={(patch) => saveReview(mobileDetailDoc.id, patch)} />
+                  </div>
+                )}
                 <div><span>Last edited</span><strong>{mobileDetailDoc.lastEditedAbs}</strong></div>
                 <div><span>Uploaded</span><strong>{mobileDetailDoc.uploadedAbs}</strong></div>
               </div>

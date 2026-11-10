@@ -81,6 +81,7 @@ async function collectRows(admin: AdminClient, userId: string) {
       ...await readAll(() => admin.from('mark_comments').select('*').eq('author_id', userId).order('id')),
     ]),
     document_revisions: await readByIds(admin, 'document_revisions', '*', 'document_id', docIds),
+    document_reviews: await readByIds(admin, 'document_reviews', '*', 'document_id', docIds),
     document_history_events: await byUser(admin, 'document_history_events', '*', userId),
     survey_sessions: surveySessions,
     survey_items: await readByIds(admin, 'survey_items', '*', 'session_id', surveySessions.map((s) => s.id)),

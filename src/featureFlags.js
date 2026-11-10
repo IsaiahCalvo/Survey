@@ -173,6 +173,11 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Upload check: fix each file\'s name, sheet number and revision before it uploads',
     stage: 'beta',
   }),
+  // Drawboard Projects round 2 (2026-11-10): review status per drawing.
+  'document-review': Object.freeze({
+    label: 'Document review: status, owner and markup count on each document, with filter chips',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';
