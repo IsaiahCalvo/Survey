@@ -3196,8 +3196,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const cycleLassoTouchMode = useCallback(() => {
     setLassoTouchMode((current) => cycleLassoMode(current));
   }, []);
+  // Counts every tool request, so a late Escape-to-Pan can tell that a tool
+  // was picked after the Escape and must not override it.
+  const toolRequestSeqRef = useRef(0);
   const activateSelectFamilyMode = useCallback((mode) => {
     const next = getSelectFamilyTransition(mode);
+    toolRequestSeqRef.current += 1;
     setSelectionMode(next.selectionMode);
     setActiveTool(next.activeTool);
   }, []);
@@ -3460,9 +3464,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // decides whether the selection survives it. { tool, source } of the latest
   // request; read once by the tool-switch effect below.
   const toolSwitchRequestRef = useRef(null);
-  // Counts every tool request, so a late Escape-to-Pan can tell that a tool
-  // was picked after the Escape and must not override it.
-  const toolRequestSeqRef = useRef(0);
   const setActiveToolLogged = useCallback((next, { source } = {}) => {
     toolRequestSeqRef.current += 1;
     toolSwitchRequestRef.current = source && typeof next === 'string' ? { tool: next, source } : null;
@@ -4453,9 +4454,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           // Chrome runs input before timers, so a tool key pressed right
           // after Escape (C, T...) can land before this timer on a busy
           // machine. That newer pick wins; Pan must not undo it.
+          // Any other tool change since (a raw setActiveTool path) counts too.
           const seqAtEscape = toolRequestSeqRef.current;
+          const toolAtEscape = activeTool;
           window.setTimeout(() => {
-            if (event.defaultPrevented || toolRequestSeqRef.current !== seqAtEscape) return;
+            if (event.defaultPrevented || toolRequestSeqRef.current !== seqAtEscape || activeToolRef.current !== toolAtEscape) return;
             setActiveToolLogged('pan', { source: 'escape' });
           }, 0);
           return;

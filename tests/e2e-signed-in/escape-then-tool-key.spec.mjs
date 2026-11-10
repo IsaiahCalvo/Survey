@@ -40,7 +40,7 @@ test('a tool key pressed right after Escape is not undone by the late Pan', asyn
     await page.waitForTimeout(800);
     await page.evaluate(() => document.activeElement?.blur?.());
 
-    for (const [toolKey, key, tool] of [['h', 'c', 'counter'], ['r', 't', 'text'], ['p', 'o', 'ellipse']]) {
+    for (const [toolKey, key, tool] of [['h', 'c', 'counter'], ['r', 't', 'text'], ['p', 'o', 'ellipse'], ['l', 'v', 'select']]) {
       await page.keyboard.press(toolKey);
       await expect.poll(lastTool).not.toBe('pan');
       // Escape and the next key in one task: the key always lands before
