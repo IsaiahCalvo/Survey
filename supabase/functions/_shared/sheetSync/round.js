@@ -392,7 +392,10 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
   // engine keeps a changed row), and says why.
   for (const [id, c] of Object.entries(clashes)) {
     if (!c.deleted || !plan.state.tombstones?.[id]) continue;
-    plan.state.problems = [{ markerId: id, scopeId: c.scopeId, message: `"${c.name || 'An item'}" was deleted in Survey just after its row was changed in the sheet, so the row was kept. Delete the row if it should go.` }, ...(plan.state.problems || [])].slice(0, 200);
+    const p = { markerId: id, scopeId: c.scopeId, message: `"${c.name || 'An item'}" was deleted in Survey just after its row was changed in the sheet, so the row was kept. Delete the row if it should go.` };
+    plan.state.problems = [p, ...(plan.state.problems || [])].slice(0, 200);
+    // Once only, so it stays a while (engine NOTICE_MS) instead of one round.
+    plan.state.notices = [{ ...p, t: now.getTime() }, ...(plan.state.notices || []).filter((n) => n.message !== p.message)].slice(0, 20);
   }
   if (Object.keys(writes).length) await saveMarkers(writes);
   const pulls = pullsOf?.();

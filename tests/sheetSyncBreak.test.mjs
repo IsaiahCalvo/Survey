@@ -635,6 +635,9 @@ test('a PM\'s new row saved late over the row Survey just added keeps both items
   assert.ok(ctx.link.state.problems.some((p) => /typed into the row Survey had just filled/.test(p.message)), 'the panel says what happened');
   const quiet = await ctx.round({ now: new Date(t0 + 56000), force: true });
   assert.deepEqual(Object.values(quiet.summary).filter(Boolean), []);
+  assert.ok(ctx.link.state.problems.some((p) => /typed into the row Survey had just filled/.test(p.message)), 'and still says so a round later');
+  await ctx.round({ now: new Date(t0 + 50000 + 31 * 60_000), force: true });
+  assert.ok(!ctx.link.state.problems.some((p) => /typed into the row Survey had just filled/.test(p.message)), 'for half an hour');
 });
 
 // Excel can land one save cell by cell: the Item first (split off as the PM's
@@ -677,7 +680,7 @@ test('a PM note saved late into the row Survey just added is held over a tech\'s
   assert.equal(Object.keys(ctx.markers).length, 3, 'no new item without an Item');
 });
 
-test('a rename of a just-added item after that window, or on Google, is a rename', async () => {
+test('a rename of a just-added item after its window is a rename (3 min on Excel, 1 min on Google)', async () => {
   for (const late of [true, false]) {
     const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
     if (late) ctx.provider = { ...ctx.provider, savesLate: true };
@@ -686,11 +689,39 @@ test('a rename of a just-added item after that window, or on Google, is a rename
     ctx.markers.d2 = door('d2', 'D-102');
     await ctx.round({ now: new Date(t0 + 5000) });
     await ctx.edit([{ row: await ctx.rowOf('d2'), col: await ctx.col('Item'), value: 'D-102A' }]);
-    const r = await ctx.round({ now: new Date(t0 + (late ? 200000 : 50000)), force: true });
-    assert.equal(r.summary.created, 0, late ? 'after the window' : 'Google');
+    const r = await ctx.round({ now: new Date(t0 + (late ? 200000 : 70000)), force: true });
+    assert.equal(r.summary.created, 0, late ? 'Excel' : 'Google');
     assert.equal(ctx.markers.d2.name, 'D-102A');
     assert.equal(Object.keys(ctx.markers).length, 2);
   }
+});
+
+// Google: a PM's cell editor open on the first empty row commits over the row
+// Survey appended there in the meantime. Same split, shorter window.
+test('on Google, a PM\'s typing committed over the row Survey just added keeps both items', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
+  const t0 = Date.parse('2026-11-10T13:00:00Z');
+  await ctx.round({ now: new Date(t0) }); await ctx.round({ now: new Date(t0 + 1000), force: true });
+  ctx.markers.d2 = door('d2', 'D-102', { note: { text: 'tech note' } });
+  await ctx.round({ now: new Date(t0 + 5000) });
+  const row = await ctx.rowOf('d2');
+  const item = await ctx.col('Item'); const notes = await ctx.col('Notes');
+  await ctx.edit([{ row, col: item, value: 'D-120' }]);
+  const r = await ctx.round({ now: new Date(t0 + 20000), force: true });
+  assert.equal(r.summary.created, 1, 'the PM\'s row is a new item');
+  assert.equal(ctx.markers.d2.name, 'D-102');
+  assert.ok(Object.values(ctx.markers).some((m) => m.name === 'D-120'));
+  // The PM tabs on and types over the note Survey filled: held, not taken.
+  await ctx.edit([{ row, col: notes, value: 'PM typed' }]);
+  const later = await ctx.round({ now: new Date(t0 + 35000), force: true });
+  assert.equal(later.summary.created, 0);
+  assert.equal(ctx.markers.d2.note.text, 'tech note');
+  assert.ok(ctx.link.state.conflicts?.d2, 'the note is held');
+  // A note on an older row is an ordinary edit: nothing on Google is watched.
+  await ctx.edit([{ row: await ctx.rowOf('d1'), col: notes, value: 'PM on d1' }]);
+  await ctx.round({ now: new Date(t0 + 40000), force: true });
+  assert.equal(ctx.markers.d1.note.text, 'PM on d1');
+  assert.ok(Object.keys(ctx.link.state.recentWrites).every((k) => k.endsWith('|+row')), 'Google keeps only new-row watches');
 });
 
 test('a first write over an old-format baseline is not watched, so an Undo comes straight in', async () => {
@@ -744,4 +775,21 @@ test('a Microsoft or Google call that hangs gives up and counts as busy', async 
   const ok = await fetchWithTimeout(async () => ({ ok: true }), 'http://x.test', {}, 30);
   assert.equal(ok.ok, true);
   await assert.rejects(fetchWithTimeout(async () => { throw new TypeError('network down'); }, 'http://x.test', {}, 30), (err) => err instanceof TypeError);
+});
+
+// Something that happened once stays on the panel a while, even when it is
+// about an item that is gone ("deleted in Survey, so the row was kept").
+test('the kept-row notice for an item deleted just after a sheet edit stays for half an hour', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101'), d2: door('d2', 'D-102') } });
+  const t0 = Date.parse('2026-11-10T13:00:00Z');
+  await ctx.round({ now: new Date(t0) });
+  await ctx.edit([{ row: await ctx.rowOf('d2'), col: await ctx.col('Notes'), value: 'PM note' }]);
+  delete ctx.markers.d2;
+  await ctx.round({ now: new Date(t0 + 5000), force: true, clashes: { d2: { deleted: true, scopeId: ctx.link.baseline.d2.scopeId, name: 'D-102' } } });
+  const said = () => ctx.link.state.problems.some((p) => /deleted in Survey just after its row was changed/.test(p.message));
+  assert.ok(said(), 'the panel says why the row is still there');
+  await ctx.round({ now: new Date(t0 + 20000), force: true });
+  assert.ok(said(), 'and still does a round later');
+  await ctx.round({ now: new Date(t0 + 5000 + 31 * 60_000), force: true });
+  assert.ok(!said(), 'until half an hour has passed');
 });
