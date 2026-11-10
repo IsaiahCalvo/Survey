@@ -318,3 +318,67 @@ test('two page turns saved apart while the other window holds a drag both apply 
     await sheet.remove();
   }
 });
+
+test('a highlight made in the other window before its reload turns with the page', async ({ browser }) => {
+  test.setTimeout(300_000);
+  const sheet = await seedLandscapePdf('Page op highlight');
+  const arm = async (ctx) => ctx.addInitScript(() => {
+    try { localStorage.setItem('survey.flag.annotation-agent', '1'); } catch { /* none */ }
+    const tools = [];
+    window.__webmcpTools = tools;
+    Object.defineProperty(document, 'modelContext', {
+      configurable: true,
+      value: { registerTool: (tool) => { tools.push(tool); return { unregister() {} }; } },
+    });
+  });
+  const highlight = (p) => p.evaluate(async () => {
+    const tool = (window.__webmcpTools || []).find((t) => t.name === 'survey_add_highlight');
+    return tool.execute({ page: 1, search_text: 'Page op highlight sheet' });
+  });
+  const ctxA = await newWindow(browser);
+  const ctxB = await newWindow(browser);
+  await arm(ctxA);
+  await arm(ctxB);
+  let holdUploadsMs = 0;
+  await ctxA.route('**/storage/v1/object/**', async (route) => {
+    const method = route.request().method();
+    if (holdUploadsMs > 0 && (method === 'POST' || method === 'PUT')) await new Promise((r) => setTimeout(r, holdUploadsMs));
+    await route.fallback();
+  });
+  const a = await ctxA.newPage();
+  const b = await ctxB.newPage();
+  try {
+    await signIn(a, E2E_ACCOUNTS.owner);
+    await openDoc(a, sheet.name);
+    expect(await highlight(a)).toMatch(/Highlighted/);
+    await expect.poll(async () => (await markIds(a)).length).toBe(1);
+    const twin = (await markIds(a))[0];
+    await a.waitForTimeout(3000);
+    await signIn(b, E2E_ACCOUNTS.owner);
+    await openDoc(b, sheet.name);
+    await expect.poll(() => markRel(b, twin), { timeout: 20_000 }).not.toBeNull();
+
+    holdUploadsMs = 8000;
+    await rotateRight(a);
+    await expect.poll(() => isPortrait(a)).toBe(true);
+    await b.waitForTimeout(1500);
+    expect(await isPortrait(b)).toBe(false);
+    expect(await highlight(b)).toMatch(/Highlighted/);
+    await expect.poll(async () => (await markIds(b)).length).toBe(2);
+    const mine = (await markIds(b)).find((x) => x !== twin);
+    holdUploadsMs = 0;
+
+    await expect.poll(() => isPortrait(b), { timeout: 25_000 }).toBe(true);
+    for (const p of [b, a]) {
+      await expect.poll(async () => {
+        const t = await markRel(p, twin); const m = await markRel(p, mine);
+        return Boolean(t && m && Math.abs(t.cx - m.cx) < 0.03 && Math.abs(t.cy - m.cy) < 0.03);
+      }, { timeout: 15_000 }).toBe(true);
+    }
+    expectSameMark(await markRel(a, mine), await markRel(b, mine), 'A and B agree on the turned highlight');
+  } finally {
+    await ctxA.close();
+    await ctxB.close();
+    await sheet.remove();
+  }
+});
