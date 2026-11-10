@@ -18,9 +18,11 @@ import { serializeFabricObjectToRow } from '../../src/services/annotationTypeSer
 import { E2E_ACCOUNTS, E2E_PROJECT } from '../../tests/e2e-signed-in/accounts.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+// BIG_DOC_ID / BIG_DOC_NAME seed a second document beside the default one
+// (e.g. the 36-sheet set and a 300-page set at once).
 export const BIG_DOC = {
-  id: 'e2eb1600-0000-4000-8000-000000000201',
-  name: 'Big Drawing Set.pdf',
+  id: process.env.BIG_DOC_ID || 'e2eb1600-0000-4000-8000-000000000201',
+  name: process.env.BIG_DOC_NAME || 'Big Drawing Set.pdf',
 };
 const PAGES = Number(process.env.BIG_DOC_PAGES || 240);
 const MARKUPS = Number(process.env.BIG_DOC_MARKUPS || 4000);
@@ -95,11 +97,14 @@ async function buildPdf() {
   return Buffer.from(await doc.save());
 }
 
+// Marks are spread over the sheet (2592x1728 generated sheets; a real PDF's
+// first page size otherwise), kept clear of the right and bottom edges.
+let sheetSize = { width: 2592, height: 1728 };
 function markup(i, docId, userId) {
   const pageNumber = (i % HOT_PAGES) + 1;
   const id = `bigdoc-${i}`;
-  const left = 80 + ((i * 37) % 2200);
-  const top = 80 + ((i * 61) % 1400);
+  const left = 20 + ((i * 37) % Math.max(40, Math.round(sheetSize.width - 300)));
+  const top = 20 + ((i * 61) % Math.max(40, Math.round(sheetSize.height - 140)));
   let obj;
   switch (i % 4) {
     case 0: {
@@ -129,7 +134,9 @@ async function main() {
 
   // BIG_DOC_PDF=<file> seeds a real drawing set instead of the generated one.
   const pdf = process.env.BIG_DOC_PDF ? fs.readFileSync(process.env.BIG_DOC_PDF) : await buildPdf();
-  const pageCount = process.env.BIG_DOC_PDF ? (await PDFDocument.load(pdf, { ignoreEncryption: true })).getPageCount() : PAGES;
+  const loaded = process.env.BIG_DOC_PDF ? await PDFDocument.load(pdf, { ignoreEncryption: true }) : null;
+  const pageCount = loaded ? loaded.getPageCount() : PAGES;
+  if (loaded) sheetSize = loaded.getPage(0).getSize();
   const filePath = `${owner.id}/${BIG_DOC.id}.pdf`;
   await must('upload pdf', admin.storage.from('documents').upload(filePath, new Blob([pdf], { type: 'application/pdf' }), { contentType: 'application/pdf', upsert: true }));
   // Start from a clean document row every time (markups, WAL and snapshots

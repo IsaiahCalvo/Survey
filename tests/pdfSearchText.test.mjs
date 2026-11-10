@@ -90,6 +90,35 @@ test('without a side reader the read-ahead reads on the viewer document in idle 
   assert.equal(idles, 3);
 });
 
+test('the read-ahead waits while the viewer moves, on side readers and on the viewer document', async () => {
+  const doc = fakeDoc(4);
+  const side = fakeDoc(4, { label: 'side' });
+  let moving = true;
+  let release = null;
+  const waitForStill = () => (moving ? new Promise((resolve) => { release = () => { moving = false; resolve(); }; }) : null);
+  readSearchTextAhead(doc, 4, {
+    delayMs: 0,
+    sideReaders: 1,
+    openReader: async () => ({ doc: side, task: { destroy: async () => {} } }),
+    waitForIdle: async () => {},
+    waitForStill,
+  });
+  await settle(10);
+  assert.deepEqual(side.reads, [], 'no page read while the viewer moves');
+  release();
+  for (let i = 0; i < 30 && side.reads.length < 4; i += 1) await settle();
+  assert.deepEqual(side.reads, [1, 2, 3, 4], 'every page read once it is still, none skipped');
+
+  const plain = fakeDoc(2);
+  moving = true;
+  readSearchTextAhead(plain, 2, { delayMs: 0, openReader: async () => null, waitForIdle: async () => {}, waitForStill });
+  await settle(10);
+  assert.deepEqual(plain.reads, []);
+  release();
+  for (let i = 0; i < 30 && plain.reads.length < 2; i += 1) await settle();
+  assert.deepEqual(plain.reads, [1, 2]);
+});
+
 test('one read-ahead per document; stopping it stops the reads', async () => {
   const doc = fakeDoc(50);
   let opens = 0;

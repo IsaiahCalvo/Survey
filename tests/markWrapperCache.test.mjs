@@ -119,6 +119,7 @@ let React;
 let act;
 let createRoot;
 let SVGAnnotationLayer;
+let warmMarkGeometry;
 let mounted = null;
 
 before(async () => {
@@ -162,7 +163,7 @@ before(async () => {
     server: { middlewareMode: true, hmr: false },
     ssr: { external: ['@survey/shared'] },
   });
-  ({ default: SVGAnnotationLayer } = await vite.ssrLoadModule('/src/components/SVGAnnotationLayer.jsx'));
+  ({ default: SVGAnnotationLayer, warmMarkGeometry } = await vite.ssrLoadModule('/src/components/SVGAnnotationLayer.jsx'));
 });
 
 after(async () => { await vite?.close(); dom?.window.close(); });
@@ -279,4 +280,25 @@ test('selection and hover still repaint the marks they change', async () => {
   assert.ok(wrapper(3).querySelector('[data-hover-glow="rect"]'), 'multi-selection glow on the first member');
   assert.ok(wrapper(7).querySelector('[data-hover-glow="rect"]'), 'multi-selection glow on the added member');
   assert.equal(wrapper(0).querySelector('[data-hover-glow="rect"]'), null);
+});
+
+test('warmMarkGeometry works out marks ahead until the idle time runs low, then resumes', () => {
+  const ink = (id) => ({ type: 'path', id, left: 10, top: 10, path: [['M', 10, 10], ['Q', 20, 20, 30, 10], ['L', 40, 40]], stroke: '#d22', strokeWidth: 2 });
+  const objects = [ink('a'), null, rect('r', 5, 5), ink('b'), { type: 'path', path: 'broken' }];
+  let budget = 3;
+  const reached = warmMarkGeometry(objects, { timeRemaining: () => (budget-- > 0 ? 10 : 0) });
+  assert.equal(reached, 3, 'stops once the deadline is nearly spent');
+  assert.equal(warmMarkGeometry(objects, { from: reached }), objects.length, 'resumes where it stopped and skips bad marks');
+  assert.equal(warmMarkGeometry(undefined), 0);
+});
+
+test('the viewer warms the marks of the pages past the mounted window in idle time', async () => {
+  const fs = await import('node:fs');
+  const viewer = fs.readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
+  const at = viewer.indexOf('warmMarkGeometry(objects');
+  assert.ok(at > 0, 'PDFViewer calls warmMarkGeometry');
+  const effect = viewer.slice(viewer.lastIndexOf('useEffect(', at), viewer.indexOf('}, [pdfjsMountedPages, annotationsByPage]);', at));
+  assert.match(effect, /requestIdleCallback\(step\)/);
+  assert.match(effect, /deadline\.timeRemaining\(\)/);
+  assert.match(effect, /cancelIdleCallback\(idleId\)/);
 });
