@@ -419,7 +419,10 @@ export default function CommentsPanel({
       {newButton}
       {draft && (
         <div className="comments-thread comments-thread--draft" data-comment-draft={draft.markId || `page-${draft.pageNumber}`}>
-          <div className="comments-thread__target">{markLabel(draft.markId, draft.pageNumber)}</div>
+          <div className="comments-thread__target">
+            <Icon name={markTarget(draft.markId, draft.pageNumber).icon} size={13} />
+            <span>{markLabel(draft.markId, draft.pageNumber)}</span>
+          </div>
           <CommentBox
             people={people}
             placeholder="Add a comment. Type @ to mention someone."
