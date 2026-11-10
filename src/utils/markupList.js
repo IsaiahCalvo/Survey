@@ -53,10 +53,6 @@ function kindOf(obj) {
 
 function textOf(obj) {
   const data = obj?.data || {};
-  // A measurement someone named ("Room 101") lists by its name.
-  if (getMeasureKind(obj) && typeof data.measure?.label === 'string' && data.measure.label.trim()) {
-    return data.measure.label.replace(/\s+/g, ' ').trim();
-  }
   if (getMeasureKind(obj)) {
     try {
       const label = buildMeasureLabel(obj, data.measure?.scale || null);

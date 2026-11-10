@@ -175,10 +175,11 @@ test('CSV: a measurement\'s Quantity is a plain number in its Unit, beside its l
   assert.match(lines[5], /^2,Text box,Check valve,.*,,,Electrical$/);
 });
 
-test('a named measurement lists by its name, its reading kept', () => {
+test('a named measurement lists by its name and caption, its reading kept', () => {
   const named = stampMeasure({ type: 'polygon', points: ROOM, id: 'v1' }, 'area', QUARTER);
   named.data.measure.label = 'Room 101';
   const [row] = buildMarkupRows({ 1: { objects: [named] } });
-  assert.equal(row.text, 'Room 101');
+  // Its caption (#1381 'measure-edit': label, then reading) on one row.
+  assert.equal(row.text, 'Room 101 · 50.00 sq ft');
   assert.equal(row.measure.text, '50.00 sq ft');
 });
