@@ -135,6 +135,7 @@ import {
   createCheckpointMirror,
   prepareCheckpointUploadOffThread,
   requestMirrorCheckpoint,
+  requestMirrorState,
 } from './annotationCheckpointOffload.js';
 import {
   canSubstituteCheckpointBody,
@@ -343,6 +344,14 @@ function useCheckpointJsonBody(state) {
 // may have changed acceptedDoc part way: the mirror is no longer a copy, so
 // it is dropped (checkpoints are then encoded here, as before).
 function applyAcceptedUpdate(state, update) {
+  // Flag 'lazy-accepted-shadow': while acceptedDoc is unbuilt the bytes are
+  // kept and only the worker's mirror applies them (see defineLazyAcceptedDoc).
+  if (state.acceptedUnbuilt) {
+    state.acceptedUnbuilt.push(update);
+    applyToCheckpointMirror(state.checkpointMirror, update);
+    refreshAcceptedMirrorState(state);
+    return;
+  }
   try {
     Y.applyUpdate(state.acceptedDoc, update, HYDRATE_ORIGIN);
   } catch (error) {
@@ -465,6 +474,9 @@ export async function openAnnotationDoc({
   // Only a saved copy at least this big waits (tests lower it).
   firstPageWaitMinBytes = FIRST_PAGE_WAIT_MIN_BYTES,
   coldOpenWaitsForFirstPage = false,
+  // Flag 'lazy-accepted-shadow': acceptedDoc is built only when this thread
+  // reads it (defineLazyAcceptedDoc).
+  lazyAcceptedShadow = false,
   // w33: routine checkpoint thresholds (see CHECKPOINT_EVERY_ROWS); tests
   // shrink them: { everyRows, ownBytes, minTailRows, idleMs, dueQuietMs }.
   checkpointPolicy = null,
@@ -703,6 +715,7 @@ export async function openAnnotationDoc({
     legacyRecoveryPending: false,
     legacyUnresolvedEntries: 0,
   };  defineLazyStagedDoc(state);
+  if (lazyAcceptedShadow === true && state.checkpointMirror) defineLazyAcceptedDoc(state);
 
 
   // Everything below can fail (network, storage). A partially-opened state must
@@ -863,7 +876,16 @@ export async function openAnnotationDoc({
         state.rebaseLocalMutations = true;
         releasePersistedCandidate(state);
       } else {
-        await reconcilePersistedLocalState(state);
+        // Flag 'lazy-accepted-shadow': a saved copy holding nothing beyond
+        // what the cloud accepted (a first open that stored the rows it read)
+        // is let go without building acceptedDoc to compare.
+        if (await persistedCopyHeldByAccepted(state)) {
+          state.persistedReconciliationDone = true;
+          releasePersistedCandidate(state);
+          publishAcceptedAndVisiblePendingState(state);
+        } else {
+          await reconcilePersistedLocalState(state);
+        }
       }
       await yieldToMain();
       await reconcileLegacyLocalState(state);
@@ -1006,7 +1028,7 @@ export async function openAnnotationDoc({
       window.removeEventListener('pagehide', state.onPageHide);
     }
     try { await state.outbox?.close?.(); } catch { /* */ }
-    try { state.acceptedDoc.destroy(); } catch { /* */ }
+    destroyAcceptedDoc(state);
     breakCheckpointMirror(state.checkpointMirror);
     try { state.stagedDocRaw?.destroy(); } catch { /* */ }
     releasePersistedCandidate(state);
@@ -1823,7 +1845,7 @@ function recordCoveringClock(records, client, clock, excludeKey) {
 
 function causalDependenciesForUpdate(state, update, excludeKey = null) {
   const dependencies = new Set();
-  const acceptedVector = Y.decodeStateVector(Y.encodeStateVector(state.acceptedDoc));
+  const acceptedVector = acceptedStateVectorMap(state);
   const records = [...state.appendRecords.values()];
   const decoded = Y.decodeUpdate(update);
   // Exact clock spans of this update's own structs, per client.
@@ -2116,7 +2138,7 @@ async function settleAcceptedRecord(
           update: null,
           force: false,
           expectedIncarnation: state.documentIncarnation,
-          expectedVector: Y.encodeStateVector(state.acceptedDoc),
+          expectedVector: acceptedVectorForWorker(state),
           options: {
             covered: cleanCoverage(state),
             identity: currentSnapshotIdentity(state),
@@ -2794,7 +2816,25 @@ async function writeOpenReceiptNow(state) {
   // compaction). On this thread it was one ~0.3-0.5 s task right after a
   // first open on a phone, when the user starts to scroll.
   if (await writeOpenReceiptInWorker(state)) return;
-  const acceptedUpdate = encodeSnapshot(state.acceptedDoc);
+  // Flag 'lazy-accepted-shadow': an unbuilt acceptedDoc is encoded from the
+  // worker's mirror (posted in this tick: exactly acceptedDoc as it is now,
+  // like the coverage and identity below).
+  const fromMirror = state.acceptedUnbuilt ? requestMirrorCheckpoint(state.checkpointMirror, null) : null;
+  let acceptedUpdate = null;
+  const covered = cleanCoverage(state);
+  const identity = currentSnapshotIdentity(state);
+  if (fromMirror) {
+    try {
+      acceptedUpdate = (await fromMirror).update;
+    } catch (error) {
+      // Skip the receipt rather than build acceptedDoc here for it: it only
+      // saves the next open a download.
+      console.warn('[annotationDocSync] encoding the opened copy in the worker failed', error?.message);
+      breakCheckpointMirror(state.checkpointMirror);
+      return;
+    }
+  }
+  acceptedUpdate ||= encodeSnapshot(state.acceptedDoc);
   // The checkpoint body was not downloaded (already held locally): estimate
   // its gzipped size for the checkpoint debounce (w30; ~4:1 on real marks).
   if (!state.lastSnapshotBytes) state.lastSnapshotBytes = Math.round(acceptedUpdate.length / 4);
@@ -2812,8 +2852,8 @@ async function writeOpenReceiptNow(state) {
       // when IndexedDB still holds exactly them the receipt is acceptedUpdate
       // alone, without re-merging ~20 MB; and it contains the snapshot row
       // just applied (or already held), recorded so the next open can skip it.
-      covered: cleanCoverage(state),
-      identity: currentSnapshotIdentity(state),
+      covered,
+      identity,
       token,
     },
   );
@@ -2838,7 +2878,7 @@ async function writeOpenReceiptInWorker(state) {
       update: null,
       force: true,
       expectedIncarnation: state.documentIncarnation,
-      expectedVector: Y.encodeStateVector(state.acceptedDoc),
+      expectedVector: acceptedVectorForWorker(state),
       options: {
         covered: cleanCoverage(state),
         identity: currentSnapshotIdentity(state),
@@ -3254,6 +3294,174 @@ function resetStagedToAccepted(state) {
 // would have been given. On a big set that is one full copy of the marks
 // (~26 MB at 4,000 marks) a view-only session never needs. Code that only
 // compares against the staged state reads stagedView instead.
+// Flag 'lazy-accepted-shadow' (2026-11-10): the accepted shadow is one more
+// full copy of every mark; applying the cloud snapshot to it was ~0.34 s on a
+// phone at every cold open, though the checkpoint worker already keeps the
+// same copy (its mirror) and does the checkpoints and the saved copy from it.
+// With the flag acceptedDoc stays unbuilt: its updates are kept (the same
+// bytes, in order, go to the mirror) and applied the first time something on
+// this thread reads it. Yjs updates commute, so that builds the same document.
+// A view-only session never builds it. A worker request needs no state vector
+// from it while unbuilt: the mirror holds exactly the kept updates, which
+// expectedApplied already checks (acceptedVectorForWorker).
+let acceptedBuilds = 0;
+function defineLazyAcceptedDoc(state) {
+  let doc = state.acceptedDoc;
+  state.acceptedUnbuilt = [];
+  Object.defineProperty(state, 'acceptedDoc', {
+    enumerable: true,
+    configurable: true,
+    get() {
+      const kept = state.acceptedUnbuilt;
+      if (kept) {
+        state.acceptedUnbuilt = null;
+        acceptedBuilds += 1;
+        try {
+          for (const update of kept) Y.applyUpdate(doc, update, HYDRATE_ORIGIN);
+        } catch (error) {
+          // As a failed eager apply: the mirror is no longer a copy.
+          breakCheckpointMirror(state.checkpointMirror);
+          throw error;
+        }
+      }
+      return doc;
+    },
+    set(next) {
+      doc = next;
+    },
+  });
+}
+
+// What the worker last said acceptedDoc holds (its mirror's state vector,
+// snapshot and whether structs wait there for others), asked again after
+// every kept update. Code on this thread that needs acceptedDoc's vector or
+// snapshot uses it, so an edit, which needs the vector to name its
+// dependencies, does not build acceptedDoc. Updates kept since that answer
+// (an own edit just accepted, a peer's row) are worked into the vector here
+// when each of their structs would integrate at once (advanceStateVector).
+// Otherwise acceptedDoc is built and read, as without the flag.
+// One question at a time: updates kept while one is out are asked about once
+// it is answered (a long tail of rows at open is not one question per row).
+function refreshAcceptedMirrorState(state) {
+  if (state.acceptedMirrorStateAsking) {
+    state.acceptedMirrorStateStale = true;
+    return;
+  }
+  state.acceptedMirrorStateAsking = true;
+  state.acceptedMirrorStateStale = false;
+  queueMicrotask(() => {
+    const asked = state.acceptedUnbuilt && !state.destroyed ? requestMirrorState(state.checkpointMirror) : null;
+    if (!asked) {
+      state.acceptedMirrorStateAsking = false;
+      return;
+    }
+    asked.then((reply) => {
+      const known = state.acceptedMirrorState;
+      if (known && (known.applied > reply.applied || (known.applied === reply.applied && known.snapshot))) return;
+      state.acceptedMirrorState = {
+        applied: reply.applied,
+        stateVector: Y.decodeStateVector(reply.stateVector),
+        snapshot: Y.decodeSnapshot(reply.snapshot),
+        pending: Boolean(reply.pending),
+      };
+    }, () => { /* unknown: acceptedDoc is built when read */ })
+      .finally(() => {
+        state.acceptedMirrorStateAsking = false;
+        if (state.acceptedMirrorStateStale) refreshAcceptedMirrorState(state);
+      });
+  });
+}
+
+// The worker's answer, if it is usable for this thread right now.
+function knownAcceptedMirrorState(state) {
+  const known = state.acceptedMirrorState;
+  const mirror = state.checkpointMirror;
+  const kept = state.acceptedUnbuilt;
+  if (!kept || !known || !mirror || mirror.broken || known.pending) return null;
+  // Every kept update went to the mirror, and nothing else did.
+  if (kept.length !== mirror.applied || known.applied > mirror.applied) return null;
+  return known;
+}
+
+// acceptedDoc's snapshot when the worker's answer covers every kept update.
+function currentAcceptedMirrorState(state) {
+  const known = knownAcceptedMirrorState(state);
+  return known && known.snapshot && known.applied === state.checkpointMirror.applied ? known : null;
+}
+
+// acceptedDoc's state vector (a Map) without building it, or null.
+function knownAcceptedStateVector(state) {
+  const known = knownAcceptedMirrorState(state);
+  if (!known) return null;
+  const applied = state.checkpointMirror.applied;
+  if (known.applied === applied) return known.stateVector;
+  const advanced = advanceStateVector(known.stateVector, state.acceptedUnbuilt.slice(known.applied));
+  if (!advanced) return null;
+  state.acceptedMirrorState = { applied, stateVector: advanced, snapshot: null, pending: false };
+  return advanced;
+}
+
+// acceptedDoc's state vector, decoded (a Map).
+function acceptedStateVectorMap(state) {
+  return knownAcceptedStateVector(state) || Y.decodeStateVector(Y.encodeStateVector(state.acceptedDoc));
+}
+
+// The state vector of a document with state vector `vector` and no structs
+// waiting, after `updates` are applied to it; null when any struct of them
+// would wait (a clock gap or a missing origin, right origin or parent): only
+// the document itself then knows. A struct integrates when it starts at or
+// below its client's clock and every struct it names is held (Yjs
+// Item.getMissing); a GC struct names none.
+function advanceStateVector(vector, updates) {
+  const next = new Map(vector);
+  const held = (id) => id == null || typeof id !== 'object' || id.clock < (next.get(id.client) || 0);
+  for (const update of updates) {
+    const queues = new Map();
+    for (const struct of Y.decodeUpdate(update).structs) {
+      if (struct instanceof Y.Skip) return null;
+      const client = struct.id.client;
+      if (!queues.has(client)) queues.set(client, []);
+      queues.get(client).push(struct);
+    }
+    let progress = true;
+    while (progress) {
+      progress = false;
+      for (const queue of queues.values()) {
+        while (queue.length > 0) {
+          const struct = queue[0];
+          const client = struct.id.client;
+          const clock = next.get(client) || 0;
+          if (struct.id.clock > clock) break;
+          const end = struct.id.clock + struct.length;
+          if (end > clock && struct instanceof Y.Item) {
+            // A struct partly held integrates from `clock` on, with the held
+            // part as its origin.
+            const origin = struct.id.clock < clock ? null : struct.origin;
+            if (!held(origin) || !held(struct.rightOrigin) || !held(struct.parent)) break;
+          }
+          if (end > clock) next.set(client, end);
+          queue.shift();
+          progress = true;
+        }
+      }
+    }
+    for (const queue of queues.values()) if (queue.length > 0) return null;
+  }
+  return next;
+}
+
+// acceptedDoc's state vector for a request to the checkpoint worker: null
+// (no check there beyond the update count) while it is unbuilt.
+function acceptedVectorForWorker(state) {
+  return state.acceptedUnbuilt ? null : Y.encodeStateVector(state.acceptedDoc);
+}
+
+// Drop acceptedDoc at close without building it.
+function destroyAcceptedDoc(state) {
+  state.acceptedUnbuilt = null;
+  try { state.acceptedDoc.destroy(); } catch { /* */ }
+}
+
 let stagedBuilds = 0;
 function defineLazyStagedDoc(state) {
   Object.defineProperty(state, 'stagedDoc', {
@@ -3266,8 +3474,13 @@ function defineLazyStagedDoc(state) {
           `staged:${state.documentId}:${state.writerId}:${state.localMutationOrdinal || 0}`,
         );
         if (state.stagedSeeded) {
-          // w29: the encoding of acceptedDoc the open just made, when unchanged.
-          Y.applyUpdate(doc, takeAcceptedEncoding(state) || encodeSnapshot(state.acceptedDoc), HYDRATE_ORIGIN);
+          if (state.acceptedUnbuilt) {
+            // acceptedDoc unbuilt: the same updates build the same state.
+            for (const update of state.acceptedUnbuilt) Y.applyUpdate(doc, update, HYDRATE_ORIGIN);
+          } else {
+            // w29: the encoding of acceptedDoc the open just made, when unchanged.
+            Y.applyUpdate(doc, takeAcceptedEncoding(state) || encodeSnapshot(state.acceptedDoc), HYDRATE_ORIGIN);
+          }
           for (const update of state.unbuiltStagedUpdates) Y.applyUpdate(doc, update, HYDRATE_ORIGIN);
         }
         state.unbuiltStagedUpdates = [];
@@ -3324,7 +3537,12 @@ const KEPT_STAGED_PRUNE_MIN = 32;
 function pruneKeptStagedUpdates(state) {
   const kept = state.unbuiltStagedUpdates;
   if (state.stagedDocRaw || kept.length < (state.keptStagedPruneAt || KEPT_STAGED_PRUNE_MIN)) return;
-  const accepted = Y.snapshot(state.acceptedDoc);
+  // Flag 'lazy-accepted-shadow': an unbuilt acceptedDoc is not built for
+  // this; the worker's snapshot of it is used, or the pass waits for one.
+  const accepted = state.acceptedUnbuilt
+    ? currentAcceptedMirrorState(state)?.snapshot
+    : Y.snapshot(state.acceptedDoc);
+  if (!accepted) return;
   state.unbuiltStagedUpdates = kept.filter((update) => !Y.snapshotContainsUpdate(accepted, update));
   state.keptStagedPruneAt = Math.max(KEPT_STAGED_PRUNE_MIN, state.unbuiltStagedUpdates.length * 2);
 }
@@ -3457,7 +3675,7 @@ function captureSnapshotOptions(state) {
   // it is in this tick (no mirror: encoded here, as before).
   const pendingSnapshot = requestMirrorCheckpoint(
     state.checkpointMirror,
-    Y.encodeStateVector(state.acceptedDoc),
+    acceptedVectorForWorker(state),
     { asJsonBody: useCheckpointJsonBody(state) },
   );
   pendingSnapshot?.catch(() => {}); // awaited (and its failure handled) in writeSnapshotOnce
@@ -3478,6 +3696,11 @@ function captureSnapshotOptions(state) {
 // authorized backend accepts it; 42501 rolls it back to cloud truth.
 function stagePersistedLocalDifferences(state) {
   if (!state.persistedDoc) return null;
+  // Nothing saved on this device (a first open): nothing to stage, without
+  // reading the staged state (flag 'lazy-accepted-shadow': that would build
+  // acceptedDoc). Same answer as below: an empty update.
+  const persistedStore = state.persistedDoc.store;
+  if (persistedStore.clients.size === 0 && !persistedStore.pendingStructs && !persistedStore.pendingDs) return null;
   const localOnly = Y.encodeStateAsUpdate(
     state.persistedDoc,
     Y.encodeStateVector(stagedView(state)),
@@ -3529,6 +3752,32 @@ function stagePersistedLocalDifferences(state) {
     update: new Uint8Array(localOnly),
     snapshot: encodeSnapshot(state.stagedDoc),
   };
+}
+
+// True when acceptedDoc is unbuilt (staged too, so staged holds it) and the
+// worker's mirror shows that the frozen saved copy holds no struct and no
+// deletion it lacks: stagePersistedLocalDifferences would find nothing.
+// False means "not known": the caller reconciles as usual.
+async function persistedCopyHeldByAccepted(state) {
+  if (!state.acceptedUnbuilt || state.stagedDocRaw || !state.persistedDoc || state.destroyed) return false;
+  if (state.quarantinedLocalHistory || state.persistedReconciliationDone) return false;
+  // An empty copy needs no question (stagePersistedLocalDifferences sees it).
+  if (state.persistedDoc.store.clients.size === 0) return false;
+  const asked = requestMirrorState(state.checkpointMirror);
+  if (!asked) return false;
+  let reply;
+  try {
+    reply = await asked;
+  } catch {
+    return false;
+  }
+  if (!state.persistedDoc || state.destroyed || state.persistedReconciliationDone) return false;
+  if (reply.pending) return false;
+  // The staged state may have grown since (rows applied meanwhile): an older
+  // accepted state that already holds the copy still proves it.
+  const localOnly = Y.decodeUpdate(Y.encodeStateAsUpdate(state.persistedDoc, reply.stateVector));
+  if (localOnly.structs.length > 0) return false;
+  return deleteSetCoveredBy(localOnly.ds, Y.decodeSnapshot(reply.snapshot).ds);
 }
 
 // Every deleted range in `inner` lies inside a deleted range of `outer`.
@@ -3837,6 +4086,35 @@ function publishAcceptedAndVisiblePendingState(state) {
   // 2026-10-07: an import on its way to its checkpoint is pending too.
   const bulkPending = state.bulk?.pending || [];
   if (records.length === 0 && bulkPending.length === 0) {
+    // Flag 'lazy-accepted-shadow': with acceptedDoc unbuilt, the worker's
+    // mirror says whether the live doc already equals it (it nearly always
+    // does). If it does not, or the worker fails, this runs again with
+    // acceptedDoc built, over whatever is pending by then.
+    const known = currentAcceptedMirrorState(state);
+    if (known) {
+      if (Y.equalSnapshots(known.snapshot, Y.snapshot(state.doc))) {
+        state.lastByPage = null;
+        notifyChange(state);
+        return;
+      }
+      void state.acceptedDoc;
+    }
+    const fromMirror = !known && state.acceptedUnbuilt ? requestMirrorState(state.checkpointMirror) : null;
+    if (fromMirror) {
+      const liveAtRequest = Y.snapshot(state.doc);
+      fromMirror.then(({ snapshot }) => Y.equalSnapshots(Y.decodeSnapshot(snapshot), liveAtRequest), () => false)
+        .then((same) => {
+          if (state.destroyed) return;
+          if (same && Y.equalSnapshots(liveAtRequest, Y.snapshot(state.doc))) {
+            state.lastByPage = null;
+            notifyChange(state);
+            return;
+          }
+          if (state.acceptedUnbuilt) void state.acceptedDoc;
+          publishAcceptedAndVisiblePendingState(state);
+        });
+      return;
+    }
     // Nothing pending to show: the projection is acceptedDoc itself (w29, no
     // ~20 MB copy on every open).
     publishProjectedStateIfChanged(state, state.acceptedDoc);
@@ -4091,7 +4369,7 @@ function scheduleBulkFold(state, delayMs = 0) {
 
 function pruneAcceptedBulkClients(state) {
   if (state.bulk.unaccepted.size === 0) return;
-  const accepted = Y.decodeStateVector(Y.encodeStateVector(state.acceptedDoc));
+  const accepted = acceptedStateVectorMap(state);
   for (const [client, end] of [...state.bulk.unaccepted]) {
     if ((Number(accepted.get(client)) || 0) >= end) state.bulk.unaccepted.delete(client);
   }
@@ -4282,7 +4560,24 @@ function noteBulkCheckpointNotice(state) {
   if (!notice || notice === state.lastBulkNoticeSeen) return;
   state.lastBulkNoticeSeen = notice;
   if (!Array.isArray(notice.clients) || notice.clients.length === 0) return;
-  const accepted = Y.decodeStateVector(Y.encodeStateVector(state.acceptedDoc));
+  // Flag 'lazy-accepted-shadow': while acceptedDoc is unbuilt its vector
+  // comes from the worker's mirror (the same updates), not from building it.
+  const knownVector = knownAcceptedStateVector(state);
+  const fromMirror = !knownVector && state.acceptedUnbuilt ? requestMirrorState(state.checkpointMirror) : null;
+  if (fromMirror) {
+    fromMirror.then(
+      ({ stateVector }) => adoptBulkCheckpointIfMissing(state, notice, Y.decodeStateVector(stateVector)),
+      () => adoptBulkCheckpointIfMissing(state, notice, null),
+    );
+    return;
+  }
+  adoptBulkCheckpointIfMissing(state, notice, knownVector);
+}
+
+// `accepted`: acceptedDoc's decoded state vector, or null to read it here.
+function adoptBulkCheckpointIfMissing(state, notice, accepted) {
+  if (state.destroyed) return;
+  if (!accepted) accepted = Y.decodeStateVector(Y.encodeStateVector(state.acceptedDoc));
   const missing = notice.clients.some(([client, clock]) => (
     (Number(accepted.get(Number(client))) || 0) < Number(clock)
   ));
@@ -5176,7 +5471,7 @@ async function writeSnapshotOnce(state, {
   if (mergeAcceptedAtStart && snapshotUpdate) {
     mergedInWorker = requestMirrorCheckpoint(
       state.checkpointMirror,
-      Y.encodeStateVector(state.acceptedDoc),
+      acceptedVectorForWorker(state),
       { asJsonBody, extraUpdate: snapshotUpdate },
     );
     if (!mergedInWorker) {
@@ -5204,7 +5499,7 @@ async function writeSnapshotOnce(state, {
   const encodesAccepted = !snapshotUpdate && !repairsGapAtStart;
   const withBulk = encodesAccepted && bulkUpdate ? bulkUpdate : null;
   const mirrorCheckpoint = mergedInWorker || (encodesAccepted
-    ? requestMirrorCheckpoint(state.checkpointMirror, Y.encodeStateVector(state.acceptedDoc), { asJsonBody, extraUpdate: withBulk })
+    ? requestMirrorCheckpoint(state.checkpointMirror, acceptedVectorForWorker(state), { asJsonBody, extraUpdate: withBulk })
     : null);
   let updateAtStart = snapshotUpdate || (
     repairsGapAtStart ? encodeRepairCheckpoint(state) : (mirrorCheckpoint ? null : encodeSnapshot(state.acceptedDoc))
@@ -7736,7 +8031,7 @@ function buildHandle(state) {
       flushDeferredPersistence(state);
       destroyLocalPersistence(state);
       try { await state.outbox?.close?.(); } catch { /* */ }
-      try { state.acceptedDoc.destroy(); } catch { /* */ }
+      destroyAcceptedDoc(state);
       breakCheckpointMirror(state.checkpointMirror);
       try { state.stagedDocRaw?.destroy(); } catch { /* */ }
       releasePersistedCandidate(state);
@@ -7898,6 +8193,8 @@ export const __test = {
   causalDependenciesForUpdate,
   clockRangeDecodeCount: () => clockRangeDecodes,
   stagedBuildCount: () => stagedBuilds,
+  acceptedBuildCount: () => acceptedBuilds,
+  advanceStateVector,
   keptStagedUpdateCount: (handle) => testStates.get(handle)?.unbuiltStagedUpdates.length ?? null,
   bytesToPgHex,
   pgHexToBytes,

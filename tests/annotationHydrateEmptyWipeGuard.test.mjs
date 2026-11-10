@@ -298,14 +298,19 @@ test('annotationDocSync: snapshots claim only a cloud-accepted or explicitly sta
   );
   // 2026-10-06: the accepted-state bytes come from acceptedDoc itself, or from
   // the checkpoint worker's mirror of acceptedDoc (requested in the same tick,
-  // checked against acceptedDoc's state vector there).
+  // checked against acceptedDoc's state vector there; with acceptedDoc unbuilt
+  // under flag 'lazy-accepted-shadow', against the update count only).
   assert.match(
     SYNC_SOURCE,
     /let updateAtStart = snapshotUpdate \|\| \(\s*repairsGapAtStart \? encodeRepairCheckpoint\(state\) : \(mirrorCheckpoint \? null : encodeSnapshot\(state\.acceptedDoc\)\)\s*\);/,
   );
   assert.match(
     SYNC_SOURCE,
-    /requestMirrorCheckpoint\(state\.checkpointMirror, Y\.encodeStateVector\(state\.acceptedDoc\)[,)]/,
+    /requestMirrorCheckpoint\(state\.checkpointMirror, acceptedVectorForWorker\(state\)[,)]/,
+  );
+  assert.match(
+    SYNC_SOURCE,
+    /function acceptedVectorForWorker\(state\) \{\s*return state\.acceptedUnbuilt \? null : Y\.encodeStateVector\(state\.acceptedDoc\);/,
   );
   assert.doesNotMatch(SYNC_SOURCE, /gzip\(encodeSnapshot\(state\.doc\)\)/);
 });
