@@ -3,6 +3,8 @@ import { useBackLayer } from '../utils/backNavigation.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from '../Icons';
+import EyeGlyph from '../components/EyeGlyph.jsx';
+import { setMarksHidden, useMarksHidden } from '../utils/marksHidden.js';
 import { ANNOTATION_SIZE_PRESETS } from '../components/AnnotationSizeControl';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from '../utils/annotationSize';
 import CompactColorPicker, { PRESET_COLORS } from '../components/CompactColorPicker';
@@ -2697,6 +2699,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
   const tip = useTooltip();
   const [openCategory, setOpenCategory] = useState(null);
   const [moreOpen, setMoreOpen] = useState(false);
+  const allMarksHidden = useMarksHidden();
   const [presenceOpen, setPresenceOpen] = useState(false);
   // Phone survey round (2026-10-13): the long-list sheet ('categories' |
   // 'entities' | 'templates') - MobileSurveyRail.jsx.
@@ -3290,6 +3293,23 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                 <Icon name="document" size={16} color="currentColor" />
                 PDF tools…
               </button>
+              {/* Hide all marks (Nightly 'hide-marks'): the phone has no
+                  right rail, so its eye lives here. The chip over the page
+                  brings them back. */}
+              {isFeatureOn('hide-marks') && (
+                <button
+                  type="button"
+                  data-mobile-hide-marks=""
+                  aria-pressed={allMarksHidden}
+                  onClick={() => {
+                    setMoreOpen(false);
+                    setMarksHidden(!allMarksHidden);
+                  }}
+                >
+                  <EyeGlyph open={!allMarksHidden} size={16} />
+                  {allMarksHidden ? 'Show marks' : 'Hide marks'}
+                </button>
+              )}
               {/* The phone has no tab strip to right-click, so the open
                   document is renamed from here (owner 2026-10-29: everything
                   with a name can be renamed). AppShell opens the same dialog

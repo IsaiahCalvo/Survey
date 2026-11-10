@@ -33,6 +33,16 @@ html[data-marks-hidden] [data-lightweight-annotation-overlay] {
   color: var(--accent-ink, #fff);
 }
 
+/* Phones: clear of the bottom tool bar. The chip is a direct child of #root,
+   whose phone frame rule (home/hub.css) makes every such child full height. */
+@media screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
+  #root.survey-hub-mobile-scroll-root > div.marks-hidden-chip[data-marks-hidden-chip],
+  #root > .marks-hidden-chip {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 76px);
+    height: auto !important;
+  }
+}
+
 /* Focus mode's way out (src/utils/focusMode.js): always on screen. */
 .focus-mode-exit {
   position: fixed;
