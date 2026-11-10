@@ -538,3 +538,24 @@ test('signing in with a different Microsoft account says how many workbooks move
   assert.equal(same.ok, true);
   assert.equal(same.replaced, undefined);
 });
+
+// ---- a device clock that is hours off --------------------------------------
+
+test('"Synced … ago" uses the server\'s clock: a phone 3 h slow or fast still reads "just now"', async () => {
+  const { linkSyncedAgo, syncedAgo } = await import('../src/services/sheetSyncTime.js');
+  const serverNow = Date.parse('2026-11-10T15:00:00Z');
+  const link = { lastRoundAt: new Date(serverNow - 2000).toISOString(), lastRoundAgoMs: 2000 };
+  for (const skew of [-3 * 3600_000, 0, 3 * 3600_000]) {
+    const deviceNow = serverNow + skew;
+    const got = { ...link, receivedAt: deviceNow };
+    assert.equal(linkSyncedAgo(got, deviceNow), 'just now', `skew ${skew}`);
+    assert.equal(linkSyncedAgo(got, deviceNow + 120_000), '2 min ago', `skew ${skew}, two minutes on`);
+  }
+  // Before: the device clock alone was used.
+  assert.equal(syncedAgo(link.lastRoundAt, serverNow + 3 * 3600_000), '3 h ago');
+  // An old server answer without the age falls back to the device clock.
+  assert.equal(linkSyncedAgo({ lastRoundAt: link.lastRoundAt }, serverNow + 10_000), '12 s ago');
+  assert.equal(linkSyncedAgo({}), '');
+  const src = readFileSync(new URL('../supabase/functions/_shared/sheetSync/service.js', import.meta.url), 'utf8');
+  assert.match(src, /lastRoundAgoMs: link\.last_round_at \?/);
+});
