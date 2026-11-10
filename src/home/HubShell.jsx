@@ -66,9 +66,15 @@ export const Icon = ({ name, size = 14, color, contentType, style, className }) 
    user id); `color` overrides it only where a screen has already resolved
    colours for a group. Never gold (gold = selected), never grey (grey =
    inactive). Weight 600 like the viewer's presence faces. */
-export const Avatar = ({ initials, id = null, color = null, ink = USER_INITIALS_INK, size = 22 }) => (
-  <div data-drag-keep-fill data-user-avatar="" style={{ width: size, height: size, borderRadius: '50%', background: color || userColorFill(id ?? initials), color: ink, display: 'grid', placeItems: 'center', fontSize: size * 0.42, fontWeight: 600, flex: 'none' }}>{initials}</div>
-);
+/* Under 18px two initials drew at about 6px (the project rows' 14px stacks),
+   too small to read: those faces show one letter at a readable size. */
+export const Avatar = ({ initials, id = null, color = null, ink = USER_INITIALS_INK, size = 22 }) => {
+  const tiny = size < 18;
+  const label = tiny && typeof initials === 'string' && !/^\+\d+$/.test(initials) ? initials.slice(0, 1) : initials;
+  return (
+    <div data-drag-keep-fill data-user-avatar="" style={{ width: size, height: size, borderRadius: '50%', background: color || userColorFill(id ?? initials), color: ink, display: 'grid', placeItems: 'center', fontSize: tiny ? size * 0.6 : size * 0.42, fontWeight: 600, flex: 'none' }}>{label}</div>
+  );
+};
 
 /* Overlapping row of avatars — used to preview a team compactly.
    UX 2026-09-22: the ring that separates one overlapping avatar from the next.

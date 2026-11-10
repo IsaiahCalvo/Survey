@@ -887,8 +887,9 @@
   border-bottom-color: var(--accent);
 }
 
-/* Mobile */
-@media (max-width: 768px) {
+/* Mobile: a narrow window, or the phone layout in any orientation (a
+   sideways phone is 844-915 wide and missed the sheet and its 44px close pad). */
+@media (max-width: 768px), screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
   /* Polish round 5: the page below is full-screen, but the overlay's 20px
      padding left it floating as a square-cornered card with a sliver of the
      hub showing round it. On a phone the overlay has no padding; the page
@@ -1087,7 +1088,7 @@
   user-select: text;
   -webkit-user-select: text;
 }
-@media (max-width: 768px) {
+@media (max-width: 768px), screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
   .crash-reports-item summary {
     grid-template-columns: auto 1fr;
   }
