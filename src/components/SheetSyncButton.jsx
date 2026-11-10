@@ -728,6 +728,12 @@ export default function SheetSyncButton({ className, phone = false, documentId, 
             )}
           </div>
           {link.lastError && <p className="sheet-sync-error-line">{link.lastError}</p>}
+          {/* Real Excel on the web, 11-10: "Format as Table" was refused ("Can't
+              Save Your Changes", unsaved typing lost) when a sync write landed
+              first; Data > Filter was fine (0 of 3). */}
+          {excelLink && shownLive && (
+            <p className="sheet-sync-note">For filter buttons in Excel on the web, use Data › Filter. Format as Table may not save while the team is syncing.</p>
+          )}
           {link.status === 'broken' && link.isConnectionOwner && !(excelLink ? status.microsoft : status.google)?.connected && (
             <ActionButton
               primary block

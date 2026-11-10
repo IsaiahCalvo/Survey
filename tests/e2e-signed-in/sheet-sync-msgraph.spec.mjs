@@ -269,6 +269,7 @@ test('the Survey panel makes a live Excel workbook', async ({ page }) => {
     await panel.getByRole('button', { name: 'Make Excel workbook' }).click();
     await expect(panel.getByRole('link', { name: 'Open in Excel' })).toBeVisible({ timeout: 30_000 });
     await expect(panel.getByText('OneDrive › Jobs', { exact: true })).toBeVisible();
+    await expect(panel.getByText(/use Data › Filter\. Format as Table may not save/)).toBeVisible();
     await expect(button).toHaveAttribute('data-sheet-sync-state', 'active');
     await expect(button).toContainText('Live in Excel');
 
