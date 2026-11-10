@@ -118,6 +118,61 @@ export function namedApart(scopes, taken) {
 /** Blanked answers in one round from which they are held (see planSheetRound). */
 export const BIG_ERASE = 10;
 
+// Rows moved (a PM sort or row insert) between the round's check and its
+// writes, so some values may sit on other items' rows. Read the written tabs
+// again and, by Row ID, put each written value on its own item and put back
+// what was there before (from the round's starting read) wherever one of our
+// values landed on another item. A cell a person changed in the meantime is
+// left as it is. A few tries, in case the rows move again.
+export async function putMovedWritesRight({ provider, fileId, grid, writes, idChecks, tries = 3 }) {
+  const byId = (rows, col) => {
+    const m = new Map();
+    rows.forEach((r, i) => { const t = String(r?.[col] ?? '').trim(); if (t && i > 0 && !m.has(t)) m.set(t, i); });
+    return m;
+  };
+  const sheets = new Map();
+  for (const c of idChecks) if (!sheets.has(String(c.sheetId))) sheets.set(String(c.sheetId), { col: c.col, title: c.title });
+  for (let attempt = 0; attempt < tries; attempt++) {
+    const now = await provider.readGrid(fileId, { sheetIds: [...sheets.keys()] });
+    const fixes = []; const fixIds = [];
+    for (const [sheetId, { col: idCol, title }] of sheets) {
+      const before = grid.sheets.find((s) => sameId(s.sheetId, sheetId))?.rows || [];
+      const after = now.sheets.find((s) => sameId(s.sheetId, sheetId))?.rows || [];
+      // A moved or renamed column: the cells can't be matched up safely.
+      const ours = writes.filter((w) => sameId(w.sheetId, sheetId) && !w.header && w.row > 0 && w.col !== idCol);
+      if (ours.some((w) => !sameCell(after[0]?.[w.col], before[0]?.[w.col]))) continue;
+      const intended = new Map(); const writtenIn = new Map();
+      for (const w of ours) {
+        const t = String(before[w.row]?.[idCol] ?? '').trim();
+        if (t) intended.set(`${t}|${w.col}`, w.value);
+        if (!writtenIn.has(w.col)) writtenIn.set(w.col, []);
+        writtenIn.get(w.col).push(w.value);
+      }
+      const beforeRow = byId(before, idCol);
+      after.forEach((row, r) => {
+        const t = String(row?.[idCol] ?? '').trim();
+        if (!t || r === 0 || !beforeRow.has(t)) return;
+        for (const [col, values] of writtenIn) {
+          const key = `${t}|${col}`;
+          const want = intended.has(key) ? intended.get(key) : before[beforeRow.get(t)]?.[col] ?? '';
+          const have = row[col];
+          if (sameCell(have, want)) continue;
+          // Ours to fix: our value is missing here, or a value we wrote sits
+          // on a row it wasn't meant for. Anything else is a person's edit.
+          if (!intended.has(key) && !values.some((v) => sameCell(have, v))) continue;
+          fixes.push({ sheetId, title, row: r, col, value: want });
+          fixIds.push({ sheetId, title, row: r, col: idCol, token: t });
+        }
+      });
+    }
+    if (!fixes.length) return { fixed: 0 };
+    await provider.writeCells(fileId, fixes);
+    const ids = await provider.readCells(fileId, fixIds);
+    if (fixIds.every((c, i) => String(ids[i] ?? '').trim() === c.token)) return { fixed: fixes.length };
+  }
+  return { fixed: -1 };
+}
+
 export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, signing, force = false, now = new Date(), newMarkerId, fillBy = '' }) {
   assertProvider(provider);
   const layout = link.layout;
@@ -189,13 +244,24 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
     if (headerWrites.length || plan.cellWrites.length) await provider.writeCells(link.file_id, [...headerWrites, ...plan.cellWrites]);
     // A write Excel accepts but does not keep (the hidden part of merged
     // cells reads blank after): remembered, or the next round reads the blank
-    // as the PM clearing the cell and wipes the app's value.
+    // as the PM clearing the cell and wipes the app's value. The Row IDs next
+    // to the writes are read again in the same call: a sort that landed
+    // between the check above and the write put values on other items' rows.
     const filled = plan.cellWrites.filter((c) => c.markerId && !isBlankValue(c.value));
-    if (filled.length) {
-      const back = await provider.readCells(link.file_id, filled);
-      filled.forEach((c, i) => {
-        if (isBlankValue(back[i])) plan.state.stuck = { ...(plan.state.stuck || {}), [`${c.markerId}|${c.key}`]: true };
-      });
+    // (A Row ID cell this round writes itself, a copied row getting its own,
+    // isn't a moved row.)
+    const ownIds = new Set(plan.cellWrites.map((w) => `${w.sheetId}|${w.row}|${w.col}`));
+    const idChecks = plan.cellWrites.length ? plan.verify.filter((c) => 'token' in c && !ownIds.has(`${c.sheetId}|${c.row}|${c.col}`)) : [];
+    if (filled.length || idChecks.length) {
+      const back = await provider.readCells(link.file_id, [...filled, ...idChecks]);
+      const rowsMoved = idChecks.some((c, i) => String(back[filled.length + i] ?? '').trim() !== String(c.token ?? '').trim());
+      if (rowsMoved) {
+        await putMovedWritesRight({ provider, fileId: link.file_id, grid, writes: plan.cellWrites, idChecks });
+      } else {
+        filled.forEach((c, i) => {
+          if (isBlankValue(back[i])) plan.state.stuck = { ...(plan.state.stuck || {}), [`${c.markerId}|${c.key}`]: true };
+        });
+      }
     }
     if (plan.appends.length) await provider.appendRows(link.file_id, plan.appends);
     if (plan.deletes.length) {

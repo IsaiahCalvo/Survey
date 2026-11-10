@@ -231,6 +231,32 @@ test('a sort in the sheet between read and write: nothing lands on the wrong row
   assert.notEqual(sheet.rows.find((row) => row[3] === 'D-102')[lockedCol], 'Y');
 });
 
+test('a sort that lands after the check but before the write: values go back to their own items', async () => {
+  // Real Excel soak (2026-11-10): the sort came 400 ms into the round, after
+  // the Row ID check; the app's value sat on another item's row and the next
+  // round took it as a PM edit on both items.
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101'), d2: door('d2', 'D-102'), d3: door('d3', 'D-103') } });
+  await ctx.round(); await ctx.round();
+  ctx.markers.d1.checklistResponses = { c1: { selection: 'Y' } };
+  let sorted = false;
+  const p = ctx.provider;
+  const sortingWrite = { ...p, writeCells: async (id, cells) => {
+    if (!sorted) { sorted = true; await fakeApi(`/files/${ctx.fileId}/sort`, { title: 'Doors - Level 1' }); }
+    return p.writeCells(id, cells);
+  } };
+  const res = await ctx.round({ provider: sortingWrite });
+  assert.equal(res.status, 'synced');
+  const sheet = await ctx.sheet();
+  const lockedCol = sheet.rows[0].indexOf('Locked?');
+  const cell = (name) => sheet.rows.find((row) => row[3] === name)[lockedCol];
+  assert.equal(cell('D-101'), 'Y', 'the value is on its own item');
+  assert.ok(!cell('D-103'), 'the item it landed on first is put back');
+  const quiet = await ctx.round({ force: true });
+  assert.equal(quiet.summary.toApp, 0, 'nothing comes back to the app as a PM edit');
+  assert.ok(!ctx.markers.d3.checklistResponses?.c1?.selection);
+  assert.equal(ctx.markers.d1.checklistResponses.c1.selection, 'Y');
+});
+
 test('a new checklist line and a new category after linking: the sheet grows to match', async () => {
   const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
   await ctx.round(); await ctx.round();
