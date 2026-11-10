@@ -637,6 +637,24 @@ test('a PM\'s new row saved late over the row Survey just added keeps both items
   assert.deepEqual(Object.values(quiet.summary).filter(Boolean), []);
 });
 
+test('a PM note saved late into the row Survey just added is held over a tech\'s note, and fills a blank one', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
+  ctx.provider = { ...ctx.provider, savesLate: true };
+  const t0 = Date.parse('2026-11-10T13:00:00Z');
+  await ctx.round({ now: new Date(t0) }); await ctx.round({ now: new Date(t0 + 1000), force: true });
+  ctx.markers.d2 = door('d2', 'D-102', { note: { text: 'tech note' } });
+  ctx.markers.d3 = door('d3', 'D-103');
+  await ctx.round({ now: new Date(t0 + 5000) });
+  const notes = await ctx.col('Notes');
+  await ctx.edit([{ row: await ctx.rowOf('d2'), col: notes, value: 'PM typed' }, { row: await ctx.rowOf('d3'), col: notes, value: 'PM on blank' }]);
+  const r = await ctx.round({ now: new Date(t0 + 50000), force: true });
+  assert.equal(r.summary.conflicts, 1);
+  assert.equal(ctx.markers.d2.note.text, 'tech note', 'the tech\'s note is not replaced');
+  assert.deepEqual(ctx.link.state.conflicts.d2.fields.map((f) => [f.app, f.sheet]), [['tech note', 'PM typed']]);
+  assert.equal(ctx.markers.d3.note.text, 'PM on blank', 'a cell the tech left blank just takes the PM\'s note');
+  assert.equal(Object.keys(ctx.markers).length, 3, 'no new item without an Item');
+});
+
 test('a rename of a just-added item after that window, or on Google, is a rename', async () => {
   for (const late of [true, false]) {
     const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });

@@ -936,8 +936,14 @@ export async function planSheetRound({
       // baseline keeps that value) instead of replacing the app's value.
       if (base && lateSaves) {
         let copied = false;
+        // Cells of a row Survey appended count as written over a blank cell,
+        // so a late PM value on a filled one (a note typed into that empty
+        // row) is held too; on a cell Survey left blank it just comes in.
+        const appended = next.recentWrites[`${markerId}|+row`];
+        const blankPrints = appended && now.getTime() - Number(appended.t) <= NEW_ROW_TAKEOVER_MS ? fieldPrintsOf({}) : null;
         for (const key of keys) {
-          const w = next.recentWrites[`${markerId}|${key}`];
+          let w = next.recentWrites[`${markerId}|${key}`];
+          if (!w && blankPrints && getFp(base, key) !== getFp(blankPrints, key)) w = { wrote: getFp(base, key), was: getFp(blankPrints, key) };
           if (!w) continue;
           const wrote = getFp(base, key);
           if (w.wrote !== wrote || getFp(appFps, key) !== wrote) continue;
