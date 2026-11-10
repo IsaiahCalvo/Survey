@@ -143,6 +143,7 @@ import { showsColourRule, showsPaintSwatch, showsQuickColourDots } from './utils
 import { isAreaEditing, REGION_TOOLBAR_OPENING_STATE, resolveToolBarGroup, showsFormatRow, showsSurveyRow } from './utils/toolbarRows.js';
 import { LINE_STYLE_SAMPLE_ICONS, lineStyleOptionsWith } from './utils/lineStyleOptions.js';
 import SelectionQuickBar from './components/SelectionQuickBar.jsx';
+import SelectionPropertiesPanel from './components/SelectionPropertiesPanel.jsx';
 import { isToolGroupPressed } from './utils/toolbarToolPressed.js';
 import { pendingInviteRedirect } from './utils/pendingInvite.js';
 import { useProLock } from './hooks/useProLock.js';
@@ -5750,6 +5751,17 @@ export default function App({ devPreviewReturnTab = null }) {
           rightRailApi?.rememberSurveyEntity?.(entityId);
           (markerIds || []).forEach((markerId) => rightRailApi?.surveyEntityApplyRef?.current?.(markerId, entityId));
         }}
+        tip={chromeTip}
+      />
+      {/* Nightly 'properties-panel': Drawboard's Expand menu card. */}
+      <SelectionPropertiesPanel
+        enabled={Boolean(isViewerVisible && bottomToolbarApi)}
+        phone={Boolean(isMobileViewer)}
+        api={bottomToolbarApi}
+        paint={annotationPaint}
+        onOpenColourPicker={toggleAnnotationColourPicker}
+        annotationsByPage={leftRailApi?.annotationsByPage || null}
+        viewerId={signedInUserId}
         tip={chromeTip}
       />
 

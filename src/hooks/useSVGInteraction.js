@@ -1557,7 +1557,11 @@ export function useSVGInteraction({
         }
       }
       const boxes = members.map((m) => m.box);
-      const moves = detail.op === 'distribute' ? planDistribute(boxes, detail.mode) : planAlign(boxes, detail.mode);
+      // 'move': the properties panel's typed X / Y moves every picked mark
+      // by the same step (Nightly 'properties-panel').
+      const moves = detail.op === 'move'
+        ? boxes.map(() => ({ dx: Number(detail.dx) || 0, dy: Number(detail.dy) || 0 }))
+        : detail.op === 'distribute' ? planDistribute(boxes, detail.mode) : planAlign(boxes, detail.mode);
       if (isNoopPlan(moves)) return;
       const shapeMoves = {};
       const markerMoves = {};
@@ -1590,7 +1594,7 @@ export function useSVGInteraction({
         if ((merged || markerPatch) && typeof now.onSaveAnnotations === 'function') {
           now.onSaveAnnotations(merged ? merged.annotations : now.annotations, {
             source: 'object:modified',
-            action: detail.op === 'distribute' ? 'distribute' : 'align',
+            action: detail.op === 'distribute' ? 'distribute' : detail.op === 'move' ? 'move' : 'align',
             checkpointPolicy: 'normal',
             ...(markerPatch || {}),
           });

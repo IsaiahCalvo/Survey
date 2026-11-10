@@ -37371,7 +37371,8 @@ ${pageBlocks}
       canEditLayers: canRestoreFromHistory,
       markLibraryEnabled,
       markupListEnabled,
-      annotationsByPage: markupListEnabled ? annotationsByPage : null,
+      // The Markups list and the properties panel (Nightly) read the marks.
+      annotationsByPage: (markupListEnabled || isFeatureOn('properties-panel')) ? annotationsByPage : null,
       onOpenMarkup: openMarkupRow,
       pdfDisplayName,
     };

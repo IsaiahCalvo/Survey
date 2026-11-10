@@ -508,17 +508,34 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
+    // Nightly 'properties-panel': Expand menu (a card with a panel at its
+    // right) and Collapse menu (the same card, panel shut).
+    expandMenu: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <rect x="3.5" y="4.5" width="17" height="15" rx="1.67" stroke={color} strokeWidth="1.5" />
+        <path d="M14 4.5V19.5" stroke={color} strokeWidth="1.5" />
+        <path d="M16.5 9H18M16.5 12H18M16.5 15H18" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+
+    panelRight: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <rect x="3.5" y="4.5" width="17" height="15" rx="1.67" stroke={color} strokeWidth="1.5" />
+        <path d="M14 4.5V19.5" stroke={color} strokeWidth="1.5" />
+      </svg>
+    ),
+
     // Nightly 'eraser-look': Drawboard's two eraser mode buttons, a whole
     // stroke (Full) and the same stroke broken up (Partial).
     eraserModeFull: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <path d="M3 15C6 8 9 7 12 12C15 17 18 16 21 9" stroke={color} strokeWidth="2" strokeLinecap="round" />
+        <path d="M3 15C6 8 9 7 12 12C15 17 18 16 21 9" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
       </svg>
     ),
 
     eraserModePartial: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <path d="M3 15C6 8 9 7 12 12C15 17 18 16 21 9" stroke={color} strokeWidth="2" strokeLinecap="round" strokeDasharray="2 3.2" />
+        <path d="M3 15C6 8 9 7 12 12C15 17 18 16 21 9" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeDasharray="2 3" />
       </svg>
     ),
 

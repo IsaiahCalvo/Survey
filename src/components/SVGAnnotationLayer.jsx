@@ -166,6 +166,7 @@ import SVGSelectionOverlay, { SelectionLockBadge } from './SVGSelectionOverlay';
 import { isUserLocked } from '../lib/collab/permissionScope.js';
 import { getTextMarkupRangeHandlePositions, getTextMarkupSelectionChrome } from '../utils/pdfTextMarkup.js';
 import RotationInputField from './RotationInputField';
+import { TRANSFORM_SELECTION_EVENT, canTypeTurn, resizeObjectTo } from '../utils/selectionProperties.js';
 import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox, isImportedPath, isAbsoluteCoordPath, getLineEndpoints, computeLineBboxCenter } from '../utils/svgBoundingBox';
 import { resolveMidpointHandlePosition } from '../utils/lineDragMath.js';
 import { buildArrowheadRenderSpec, resolveLineEndingStyles } from '../utils/lineRenderHelpers.js';
@@ -3891,6 +3892,33 @@ const SVGAnnotationLayerBody = memo(({
     pageNumber,
     surveyMarkers,
   ]);
+
+  // Nightly 'properties-panel': the panel's typed R turns the one picked mark
+  // (the degree box's own commit) and its typed W / H resize a box mark.
+  const transformTargetRef = useRef(null);
+  transformTargetRef.current = { selectedAnnotationIndex, annotations, onSaveAnnotations, handleRotationInputCommit, pageNumber };
+  useEffect(() => {
+    const onTransform = (event) => {
+      const detail = event?.detail || {};
+      const t = transformTargetRef.current;
+      if (!t || Number(detail.pageNumber) !== Number(t.pageNumber)) return;
+      if (typeof document !== 'undefined' && document.body?.getAttribute('data-readonly') === 'true') return;
+      const index = t.selectedAnnotationIndex;
+      const object = Number.isInteger(index) ? t.annotations?.objects?.[index] : null;
+      if (!object || object.locked) return;
+      if (detail.op === 'turn' && canTypeTurn(object)) {
+        t.handleRotationInputCommit(index, Number(detail.angle) || 0);
+      } else if (detail.op === 'size') {
+        const next = resizeObjectTo(object, detail.field, detail.value);
+        if (!next) return;
+        const updated = deepClone(t.annotations);
+        updated.objects[index] = next;
+        t.onSaveAnnotations(updated, { source: 'properties-panel', action: 'resize', checkpointPolicy: 'normal' });
+      }
+    };
+    window.addEventListener(TRANSFORM_SELECTION_EVENT, onTransform);
+    return () => window.removeEventListener(TRANSFORM_SELECTION_EVENT, onTransform);
+  }, []);
 
   // EDIT-12 Gap 1 fix (Plan 12-03): clear the optimistic visualTransform
   // once the persisted annotation angle catches up to the pending commit.
