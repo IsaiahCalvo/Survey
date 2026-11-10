@@ -809,10 +809,14 @@ const BookmarksPanel = ({
   // panel opens); a line you open afterwards does, as before.
   const restoringDraftRef = useRef(Boolean(draftSeed));
   useEffect(() => { restoringDraftRef.current = false; }, []);
+  // The page Add filled in by itself: a line holding only that is not a
+  // half-typed bookmark, so it is not kept when the sheet closes.
+  const autoBookmarkPagesRef = useRef(null);
   useEffect(() => {
     if (!mobileMode) return;
+    const onlyAutoPage = !newBookmarkName && newBookmarkPages === autoBookmarkPagesRef.current;
     writeMobileBookmarkDraft(draftKey, {
-      showCreateMenu, newBookmarkName, newBookmarkPages, showMobileFolderEditor,
+      showCreateMenu, newBookmarkName, newBookmarkPages: onlyAutoPage ? '' : newBookmarkPages, showMobileFolderEditor,
       newFolderName, mobileEditingBookmarkId, mobileEditName, mobileEditPage,
     });
   }, [mobileMode, draftKey, showCreateMenu, newBookmarkName, newBookmarkPages, showMobileFolderEditor,
@@ -1952,7 +1956,9 @@ const BookmarksPanel = ({
                 // The phone line has no "current page" button (desktop has
                 // one), so it opens on the page you are looking at.
                 if (next && pageNum > 0) {
-                  setNewBookmarkPages(String(numPages ? Math.min(pageNum, numPages) : pageNum));
+                  const autoPage = String(numPages ? Math.min(pageNum, numPages) : pageNum);
+                  autoBookmarkPagesRef.current = autoPage;
+                  setNewBookmarkPages(autoPage);
                 }
               }}
             />
