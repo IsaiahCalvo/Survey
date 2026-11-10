@@ -77,3 +77,22 @@ test('spacing slider: log scale per unit, round trips, tidy values', async () =>
   assert.equal(pageGridPresetValue('fine', 'mm'), 6.35);
   assert.equal(pageGridPresetValue('normal', 'ft'), null);
 });
+
+// Owner 2026-11-10: sliding was "very snappy ... jittery". The thumb's value
+// is tidy (0.1 in steps above an inch, a 10% jump each), so the page must draw
+// an unrounded value that moves in small steps, eased toward the thumb.
+test('spacing slider: the page follows an unrounded, eased value', async () => {
+  const { pageGridSliderRawValue, pageGridSliderValue } = await import('../src/utils/pageGrid.js');
+  let worst = 0;
+  for (let p = 600; p < 1000; p += 1) {
+    const step = pageGridSliderRawValue(p + 1, 'in') / pageGridSliderRawValue(p, 'in');
+    worst = Math.max(worst, step);
+  }
+  assert.ok(worst < 1.006, `one slider step moves the grid ${((worst - 1) * 100).toFixed(2)}%, under 0.6%`);
+  assert.ok(Math.abs(pageGridSliderRawValue(700, 'in') - pageGridSliderValue(700, 'in')) / pageGridSliderValue(700, 'in') < 0.05);
+  const { readFileSync } = await import('node:fs');
+  const panel = readFileSync(new URL('../src/components/PageGridSettings.jsx', import.meta.url), 'utf8');
+  assert.match(panel, /smooth\.to\(pageGridSliderRawValue\(event\.target\.value, unit\)/, 'a slide eases the preview toward the raw value');
+  assert.match(panel, /prefers-reduced-motion: reduce/, 'reduced motion goes straight there');
+  assert.match(panel, /commitValue\(value, \{ glide: true \}\)/, 'release glides to the tidy saved value');
+});

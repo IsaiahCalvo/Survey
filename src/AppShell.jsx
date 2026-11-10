@@ -23,6 +23,10 @@ import { OPEN_VIEWER_SHARE_EVENT } from './utils/viewerShare.js';
 import { HOME_DOWNLOAD_EVENT } from './utils/homeDownload.js';
 import { OPEN_EXPORT_PDF_EVENT } from './utils/exportPdfModes.js';
 import { PageGridMenu } from './components/PageGridSettings';
+import RailFlyout from './components/RailFlyout.jsx';
+import MenuGlide from './components/MenuGlide.jsx';
+import { chordKeycaps } from './utils/keyboardShortcuts.js';
+import { shortcutBinding } from './utils/customKeyboardShortcuts.js';
 import SnappingToggle, { SnappingGlyph, SnappingMenu, snappingLabel, useSnappingShortcut } from './components/SnappingToggle.jsx';
 import Dashboard from './Dashboard';
 import { createTabChromeCache } from './utils/tabChromeCache.js';
@@ -110,6 +114,14 @@ import { composeTextColor, splitTextColor } from './utils/textColorOpacity';
 import { CHROME_GLYPH, FONT_FAMILY, RAIL_CARET, RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_SPLIT_CONTROL_W, REVIEW_TOOL_IDS, ZOOM_MODE_OPTIONS, appDebug, coerceScrollMode, ensureRgbaOpacity, getWindowTrackpadInteractionDebugSavePayload, hexToRgba, writeSaveLogExtraFiles } from './viewerShared';
 // Owner 2026-09-22: undo/redo draw at 14 (the phone's HISTORY_GLYPH) - see MobilePdfViewerChrome.
 const HISTORY_GLYPH = 14;
+// The Page fit card shows each fit's shortcut (the keys PDFViewer's keydown
+// handler and the shortcuts sheet use; a remapped key shows its new keys).
+const FIT_MODE_CHORDS = Object.freeze({
+  [ZOOM_MODES.FIT_PAGE]: 'mod+0',
+  [ZOOM_MODES.FIT_WIDTH]: 'mod+1',
+  [ZOOM_MODES.FIT_HEIGHT]: 'mod+2',
+});
+const IS_MAC_KEYS = typeof navigator !== 'undefined' && /(Mac|iPhone|iPod|iPad)/i.test(`${navigator.platform || ''} ${navigator.userAgent || ''}`);
 import { TooltipChipHost, TooltipContext, TooltipProvider, makeTooltipBinding } from './components/Tooltip';
 import { useViewerTopOverlayRef, subscribeViewerTopOverlays } from './utils/viewerTopOverlay.js';
 import DismissBarrier from './components/DismissBarrier.jsx';
@@ -5346,39 +5358,52 @@ export default function App({ devPreviewReturnTab = null }) {
               // Polish 3 (2026-10-04): corner and shadow are now the shared
               // popup tokens (--radius-md / --shadow-popover) that
               // AnnotationDropdown's popover uses.
-              const fitMenu = (anchorStyle) => (
-                <div role="menu" aria-label="Fit modes" style={{ position: 'absolute', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-popover)', minWidth: '140px', zIndex: 6000, padding: '2px', ...anchorStyle }}>
-                  {/* KAL-66: `menu` — opened from the keyboard, focus goes to
+              // Owner 2026-11-10 ("these pop-ups don't look integrated or
+              // professional"): the fit list is a RailFlyout now - the one
+              // rail card with a title, standing off the rail's edge like the
+              // grid card beside it - with the shared menu rows (13px, the
+              // MenuGlide hover strip), the current fit in gold ink with its
+              // tick, and each fit's shortcut on the right.
+              const fitMenu = () => (
+                <RailFlyout title="Page fit">
+                  <div role="menu" aria-label="Fit modes" className="rail-flyout__rows">
+                  {/* KAL-66: `menu` - opened from the keyboard, focus goes to
                       the current fit, arrows move, and focus returns to the
                       Fit options button when it closes. */}
                   {/* Focus handling only: PDFViewer's watchLightPopover already closes this
                       menu on an outside press / Escape. A second onDismiss here
                       toggled it back open on the same press. */}
                   <DismissBarrier active insideRefs={railFitMenuRefs} menu />
-                  {ZOOM_MODE_OPTIONS.map((option) => {
-                    if (option.id === ZOOM_MODES.MANUAL) return null;
+                  <MenuGlide />
+                  {ZOOM_MODE_OPTIONS.filter((option) => option.id !== ZOOM_MODES.MANUAL).map((option, index) => {
                     const isActive = option.id === api.zoomMode;
+                    const chord = FIT_MODE_CHORDS[option.id];
                     return (
                       <button
                         key={option.id}
+                        type="button"
                         onClick={() => api.handleZoomModeSelect(option.id)}
                         data-active={isActive}
                         // A menu row (touch audit 2026-10-13: 44px rows by
                         // finger, styles/touchTargets.css).
                         role="menuitemradio"
                         aria-checked={isActive}
-                        /* Owner 2026-10-02 (phone/desktop consistency): the
-                           phone's menu - a label, and a check on the chosen
-                           row (which steps up to --text-1). No fit glyphs on
-                           either platform; 28px rows here. */
-                        style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', minHeight: '28px', padding: '4px 9px', background: 'transparent', border: 'none', borderRadius: '4px', textAlign: 'left', cursor: 'pointer', color: isActive ? 'var(--text-1)' : 'var(--text-2)', fontSize: '11px', fontFamily: FONT_FAMILY }}
+                        /* Owner 2026-10-02 (phone/desktop consistency): a
+                           label, and a tick on the chosen row. No fit glyphs
+                           on either platform. */
+                        className="rail-flyout__row"
+                        style={{ '--menu-row': index }}
                       >
+                        <span className="rail-flyout__tick" aria-hidden="true">
+                          {isActive && <Icon name="check" size={RAIL_CONTROL_GLYPH} color="currentColor" />}
+                        </span>
                         <span>{option.label}</span>
-                        {isActive && <Icon name="check" size={RAIL_CONTROL_GLYPH} color="currentColor" />}
+                        {chord && <span className="rail-flyout__keys" aria-hidden="true">{chordKeycaps(shortcutBinding(chord), { isMac: IS_MAC_KEYS }).join(IS_MAC_KEYS ? '' : '+')}</span>}
                       </button>
                     );
                   })}
-                </div>
+                  </div>
+                </RailFlyout>
               );
 
               // Owner 2026-10-07 (Drawboard rail): the Survey rail never
@@ -5505,7 +5530,7 @@ export default function App({ devPreviewReturnTab = null }) {
                           {renderFitIcon(fitIconMode, RAIL_CONTROL_GLYPH)}
                         </span>
                       </button>
-                      {api.isZoomMenuOpen && fitMenu({ right: '100%', bottom: 0, marginRight: '6px' })}
+                      {api.isZoomMenuOpen && fitMenu()}
                     </div>
                     {/* Drawboard gap #10: View > page grid overlay. */}
                     <PageGridToggle render={({ on, toggle }) => (gridSettingsEnabled ? (
