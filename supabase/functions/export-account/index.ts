@@ -36,11 +36,12 @@ async function readAll(build: () => any): Promise<any[]> {
   return rows;
 }
 
-async function readByIds(admin: AdminClient, table: string, columns: string, column: string, ids: string[]) {
+// `order` must be a column the table has: a table keyed by document has no id.
+async function readByIds(admin: AdminClient, table: string, columns: string, column: string, ids: string[], order = 'id') {
   const rows: any[] = [];
   for (let offset = 0; offset < ids.length; offset += ID_CHUNK) {
     const chunk = ids.slice(offset, offset + ID_CHUNK);
-    rows.push(...await readAll(() => admin.from(table).select(columns).in(column, chunk).order('id')));
+    rows.push(...await readAll(() => admin.from(table).select(columns).in(column, chunk).order(order)));
   }
   return rows;
 }
@@ -81,7 +82,7 @@ async function collectRows(admin: AdminClient, userId: string) {
       ...await readAll(() => admin.from('mark_comments').select('*').eq('author_id', userId).order('id')),
     ]),
     document_revisions: await readByIds(admin, 'document_revisions', '*', 'document_id', docIds),
-    document_reviews: await readByIds(admin, 'document_reviews', '*', 'document_id', docIds),
+    document_reviews: await readByIds(admin, 'document_reviews', '*', 'document_id', docIds, 'document_id'),
     document_history_events: await byUser(admin, 'document_history_events', '*', userId),
     survey_sessions: surveySessions,
     survey_items: await readByIds(admin, 'survey_items', '*', 'session_id', surveySessions.map((s) => s.id)),
