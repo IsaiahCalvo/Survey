@@ -333,6 +333,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Polygon and Polyline: with a mark picked, the first click drops the pick and places the first point',
     stage: 'beta',
   }),
+  'stamp-tool': Object.freeze({
+    label: "Stamp tool: Drawboard's twelve preset stamps in a Stamp card; pick one, then click the page to drop it",
+    stage: 'beta',
+  }),
   'tape-tool': Object.freeze({
     label: 'Tape: an opaque band that covers part of the page; tap it under Pan to see what is under it',
     stage: 'beta',

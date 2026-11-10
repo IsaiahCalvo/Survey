@@ -397,6 +397,7 @@ import { bookmarkDeleteMessage, removeBookmarkWithDescendants, restoreRemovedBoo
 import { useYDoc } from './hooks/useYDoc.js';
 import { useZoomState } from './hooks/useZoomState';
 import { isFeatureOn } from './featureFlags.js';
+import { setStampPickerOpen, useStampPickerOpen } from './components/StampPickerCard.jsx';
 import { marksHidden, setMarksHidden, subscribeMarksHidden } from './utils/marksHidden.js';
 import { isTypingTarget } from './utils/typingTarget.js';
 import { useMarkClipboard } from './utils/sharedMarkClipboard.js';
@@ -3172,6 +3173,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
 
   // Annotation tools state
   const [activeTool, setActiveTool] = useState('pan');
+  // Nightly 'stamp-tool': whether the Stamp card is open (its Text group button).
+  const stampPickerOpen = useStampPickerOpen();
   // Measure tools ride on the Line / Polygon tools: measureMode only says the
   // commit is a measurement ('length' | 'area' | 'perimeter') or a calibration
   // line. measureScaleMeta is the document's saved scales, one page or all
@@ -22356,6 +22359,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // signed-in person and document project; libraryDraft is the marks the
   // Save to library card is open for.
   const [markLibraryEnabled] = useState(() => isFeatureOn('mark-library'));
+  const [stampToolEnabled] = useState(() => isFeatureOn('stamp-tool'));
   // Markups list (Nightly 'markup-list'): every mark in one rail panel.
   const [markupListEnabled] = useState(() => isFeatureOn('markup-list'));
   const [libraryDraft, setLibraryDraft] = useState(null);
@@ -38141,7 +38145,8 @@ ${pageBlocks}
         },
       })}
 
-      {markLibraryEnabled && (
+      {/* Nightly 'stamp-tool' places its presets the same way. */}
+      {(markLibraryEnabled || stampToolEnabled) && (
         <MarkLibraryPlacementLayer active={isActive !== false} rootRef={pdfjsWrapperRef} place={placeLibraryItemAt} />
       )}
       {markLibraryEnabled && (
@@ -41021,7 +41026,9 @@ ${pageBlocks}
               <>
                 {[
                   { id: 'text', label: 'Text', iconName: 'textBox' },
-                  { id: 'callout', label: 'Callout', iconName: 'callout' }
+                  { id: 'callout', label: 'Callout', iconName: 'callout' },
+                  // Nightly 'stamp-tool': opens Drawboard's Stamp card.
+                  ...(isFeatureOn('stamp-tool') ? [{ id: 'stamp', label: 'Stamp', iconName: 'stamp', picker: true }] : []),
                   // TODO: Revisit the user-created Note tool later. Imported
                   // PDF Text/sticky-note annotations still render through
                   // pdfAnnotationImporter + the normal PDF annotation layers.
@@ -41038,9 +41045,14 @@ ${pageBlocks}
                   const caretAttr = isUnderlineMenu ? 'data-underline-caret-button' : 'data-strike-caret-button';
                   const isActiveUnderline = isUnderlineMenu && (activeTool === 'underline' || activeTool === 'squiggly');
                   const isActiveStrike = isStrikeMenu && activeTool === 'strikeout';
-                  const isActive = isActiveUnderline || isActiveStrike || activeTool === t.id;
+                  const isActive = t.picker ? stampPickerOpen : (isActiveUnderline || isActiveStrike || activeTool === t.id);
 
                   const onMainClick = (e) => {
+                    if (t.picker) {
+                      setStampPickerOpen(!stampPickerOpen);
+                      return;
+                    }
+                    if (stampPickerOpen) setStampPickerOpen(false);
                     if (isUnderlineMenu) {
                       e.stopPropagation();
                       setActiveTool(activeTool === 'squiggly' ? 'squiggly' : 'underline');

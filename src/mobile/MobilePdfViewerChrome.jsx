@@ -12,6 +12,7 @@ import PageGridToggle from '../components/PageGridToggle';
 import DarkPagesToggle from '../components/DarkPagesToggle';
 import { PageGridSettingsPanel } from '../components/PageGridSettings';
 import { isFeatureOn } from '../featureFlags.js';
+import { setStampPickerOpen, useStampPickerOpen } from '../components/StampPickerCard.jsx';
 import { quickColoursForTool } from '../utils/quickStylePresets.js';
 import SnappingToggle, { SnapContentToggle } from '../components/SnappingToggle.jsx';
 import { composeTextColor, splitTextColor } from '../utils/textColorOpacity';
@@ -170,6 +171,9 @@ const TOOL_GROUPS = {
     tools: [
       { id: 'text', label: 'Text', icon: 'textBox' },
       { id: 'callout', label: 'Callout', icon: 'callout' },
+      // Nightly 'stamp-tool': opens Drawboard's Stamp card; a tap on a stamp
+      // drops it in the middle of the page in view (a finger only pans).
+      { id: 'stamp', label: 'Stamp', icon: 'stamp', flag: 'stamp-tool', picker: true },
     ],
   },
 };
@@ -2961,6 +2965,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
   const markerArmed = activeTool === 'survey-marker';
 
   const [measureMenuRect, setMeasureMenuRect] = useState(null);
+  const stampPickerOpen = useStampPickerOpen();
   const selectTool = (toolId) => {
     bottomToolbarApi?.setActiveTool?.(toolId);
     bottomToolbarApi?.setActiveCategoryDropdown?.(null);
@@ -3158,14 +3163,19 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                 ) : (
                   <RailButton
                     key={tool.id}
-                    active={activeTool === tool.id}
+                    active={tool.picker ? stampPickerOpen : activeTool === tool.id}
                     icon={tool.icon}
                     glyph={SUBTOOL_GLYPH}
                     label={tool.label}
                     disabled={tool.disabled}
                     data-morph-icon={tool.icon}
-                    data-tool-switch="true"
-                    onClick={() => { if (!tool.disabled) selectTool(tool.id); }}
+                    data-tool-switch={tool.picker ? undefined : 'true'}
+                    onClick={() => {
+                      if (tool.disabled) return;
+                      if (tool.picker) { setStampPickerOpen(!stampPickerOpen); return; }
+                      if (stampPickerOpen) setStampPickerOpen(false);
+                      selectTool(tool.id);
+                    }}
                   />
                 )))}
                 {measureMenuRect && createPortal(

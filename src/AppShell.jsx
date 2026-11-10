@@ -144,6 +144,7 @@ import { isAreaEditing, REGION_TOOLBAR_OPENING_STATE, resolveToolBarGroup, shows
 import { LINE_STYLE_SAMPLE_ICONS, lineStyleOptionsWith } from './utils/lineStyleOptions.js';
 import SelectionQuickBar from './components/SelectionQuickBar.jsx';
 import SelectionPropertiesPanel from './components/SelectionPropertiesPanel.jsx';
+import StampPickerCard from './components/StampPickerCard.jsx';
 import { isToolGroupPressed } from './utils/toolbarToolPressed.js';
 import { pendingInviteRedirect } from './utils/pendingInvite.js';
 import { useProLock } from './hooks/useProLock.js';
@@ -5764,6 +5765,8 @@ export default function App({ devPreviewReturnTab = null }) {
         viewerId={signedInUserId}
         tip={chromeTip}
       />
+      {/* Nightly 'stamp-tool': Drawboard's Stamp card (the Text group's Stamp button opens it). */}
+      <StampPickerCard enabled={Boolean(isViewerVisible && isFeatureOn('stamp-tool'))} phone={Boolean(isMobileViewer)} tip={chromeTip} />
 
       {/* KAL-444: one shortcuts sheet for Home AND the viewer — inside a
           document is where every one of those keys applies. (It was kept off

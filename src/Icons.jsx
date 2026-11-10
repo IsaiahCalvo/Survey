@@ -518,6 +518,15 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
+    // Nightly 'stamp-tool': a rubber stamp (handle, base, the mark under it).
+    stamp: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M10 11V8.5a2 2 0 1 1 4 0V11" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+        <rect x="4.75" y="11" width="14.5" height="4.5" rx="0.5" stroke={color} strokeWidth="1.5" />
+        <path d="M5.5 19H18.5" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+
     panelRight: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
         <rect x="3.5" y="4.5" width="17" height="15" rx="1.67" stroke={color} strokeWidth="1.5" />

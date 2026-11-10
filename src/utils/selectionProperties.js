@@ -76,7 +76,7 @@ export function kindOfObject(object, typeKey = null) {
   if (data.type === 'text-markup') return 'text-markup';
   if (data.type === 'counter') return 'counter';
   if (data.measure || data.measurement || data.type === 'measurement') return 'measure';
-  if (data.type === 'stamp' || data.stamp) return 'stamp';
+  if (data.type === 'stamp' || data.stamp || data.stampPreset) return 'stamp';
   const type = String(object.type || '').toLowerCase();
   if (type === 'path') {
     if (data.tape === true) return 'tape';
