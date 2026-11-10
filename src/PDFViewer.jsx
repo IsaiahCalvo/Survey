@@ -3076,8 +3076,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const rendererModeRef = useRef(rendererMode);
   rendererModeRef.current = rendererMode;
 
-  // Keyboard shortcut: Ctrl+Shift+V toggles renderer mode
+  // Dev-only key: Ctrl+Shift+V toggles renderer mode. Shipped builds keep only
+  // the ?renderer= URL switch, so the key never flips people into the debug
+  // canvas view (Drawboard and most PDF apps use it for paste in place).
   useEffect(() => {
+    if (!import.meta.env.DEV) return undefined;
     const handleRendererToggle = (e) => {
       if (e.ctrlKey && e.shiftKey && e.key === 'V') {
         e.preventDefault();
@@ -3595,6 +3598,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   }, []);
   const selectedToolbarAnnotationRef = useRef(selectedToolbarAnnotation);
   useEffect(() => { selectedToolbarAnnotationRef.current = selectedToolbarAnnotation; }, [selectedToolbarAnnotation]);
+  const selectedToolbarIndicesRef = useRef(selectedToolbarIndices);
+  selectedToolbarIndicesRef.current = selectedToolbarIndices;
   // The series-update callback is declared after handleSaveAnnotations. Early
   // toolbar handlers reach it through this ref so they can keep their current
   // declaration order without introducing a first-render TDZ crash.
@@ -4160,6 +4165,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // Plan 14-03 through SVGAnnotationLayer's useSVGInteraction callout-part
   // drag mode + onSelectedCalloutIdsChange callback.
   const [selectedCalloutIds, setSelectedCalloutIds] = useState(() => new Set());
+  const selectedCalloutPickRef = useRef(null);
+  // Survey markers keep their own pick (set lower down, read at click time).
+  const pickedSurveyMarkerPageRef = useRef(null);
+  selectedCalloutPickRef.current = selectedCalloutId ?? (selectedCalloutIds.size ? selectedCalloutIds.values().next().value : null);
   // Beta 'paste-across-documents': every open tab shares these clipboards
   // (utils/sharedMarkClipboard.js); off, each viewer keeps its own.
   const [pasteAcrossDocuments] = useState(() => isFeatureOn('paste-across-documents'));
@@ -4328,6 +4337,27 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       const start = downAt;
       downAt = null;
       if (!start) return;
+      if (activeTool === 'select') {
+        // A click on empty page under Select also drops a pick that lives on
+        // ANOTHER page: each page's layer only clears its own (Drawboard
+        // clears any pick; deep test 2026-11-10).
+        if (e.shiftKey || e.altKey) return;
+        if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > QUICK_CLICK_PX) return;
+        if (!e.target?.closest?.('[data-mobile-pdf-surface]')) return;
+        if (isLiveFormWidgetTarget(e.target)) return;
+        // Callouts and Survey markers keep their picks apart from the
+        // toolbar's mark pick.
+        const ownerPage = selectedToolbarAnnotationRef.current?.pageNumber
+          ?? selectedToolbarIndicesRef.current?.pageNumber
+          ?? resolveCalloutPageNumber(selectedCalloutPickRef.current)
+          ?? pickedSurveyMarkerPageRef.current;
+        if (ownerPage == null) return;
+        const hit = resolveAnnotationAt(e);
+        if (hit?.kind === 'page' && hit.pageNumber != null && hit.pageNumber !== ownerPage) {
+          clearAnnotationSelectionForContextChange('select-other-page-empty-click');
+        }
+        return;
+      }
       if (activeTool !== 'pan') return;
       // The second click of a double-click must not re-arm Select behind the
       // editor that just opened. This handler re-subscribes on every tool
@@ -4406,7 +4436,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       window.removeEventListener('pointerdown', onDown, true);
       window.removeEventListener('pointerup', onUp, true);
     };
-  }, [activeTool, clearAnnotationSelectionForContextChange]);
+  }, [activeTool, clearAnnotationSelectionForContextChange, resolveCalloutPageNumber]);
 
   // UX: Escape and grey-page backdrop clicks clear every selection mode alike.
   // UX 2026-10-02 (owner): which tools listen comes from the selection
@@ -8616,6 +8646,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // Owner 2026-10-22: a Survey Marker picked under Select or Pan brings up the
   // survey bar, as a picked counter brings up the counter's bar.
   const pickedSurveyMarker = usePickedSurveyMarker();
+  pickedSurveyMarkerPageRef.current = pickedSurveyMarker?.pageNumber ?? null;
   // Owner note 2026-10-26 (item 38, "everything gets pushed and comes back"):
   // Locate on page, or a click from one marker to the next, swaps the pick
   // through a render with nothing picked. The survey bar left for it and came
@@ -27423,6 +27454,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       // Rule 12 (utils/selectModes.js): every tool letter below switches
       // through this and says so (a switch other than Select <-> Pan drops
       // the selection, owner 2026-10-04).
+      // Keys belong to an open modal (shortcut sheet, any dialog card): no
+      // tool letters, zoom or Delete acting on the page behind it.
+      // Only a modal that holds focus counts: one still fading out (or
+      // mounted but idle) must not swallow the next tool key.
+      if ([...document.querySelectorAll('[role="dialog"][aria-modal="true"]')].some((d) => d.contains(document.activeElement) || d.contains(e.target))) return;
       const setActiveTool = (tool) => setActiveToolLogged(tool, { source: 'shortcut-key' });
       const activeElement = document.activeElement;
       const isFormField =
@@ -33196,8 +33232,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       pageHeight: height,
     });
     if (!clipboard) return false;
-    const dx = Number.isFinite(offset?.dx) ? offset.dx : DUPLICATE_OFFSET_PAGE_UNITS;
-    const dy = Number.isFinite(offset?.dy) ? offset.dy : DUPLICATE_OFFSET_PAGE_UNITS;
+    let dx = Number.isFinite(offset?.dx) ? offset.dx : DUPLICATE_OFFSET_PAGE_UNITS;
+    let dy = Number.isFinite(offset?.dy) ? offset.dy : DUPLICATE_OFFSET_PAGE_UNITS;
+    // Cmd+D / menu Duplicate keeps the copy on the page, as paste does: a
+    // mark in the bottom-right corner gets its copy slid back inside.
+    if (!offset && clipboard.extent) {
+      ({ dx, dy } = clampNudgeDelta([clipboard.extent], dx, dy, width, height));
+    }
     return commitFamilyPaste(offset?.toPage ?? pageNumber, clipboard, dx, dy);
   }, [collectFamilySelection, commitFamilyPaste]);
 
@@ -37524,7 +37565,7 @@ ${pageBlocks}
                 ? 'The viewer couldn’t render this file. It may be corrupted or use an unsupported PDF feature.'
                 : 'The file couldn’t be parsed. It may be corrupted, encrypted, or not a valid PDF.'}
             </div>
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'center' }}>
               <button
                 type="button"
                 onClick={() => {
@@ -37543,6 +37584,7 @@ ${pageBlocks}
                   fontSize: '13px',
                   fontWeight: 600,
                   cursor: 'pointer',
+                  whiteSpace: 'nowrap',
                   fontFamily: FONT_FAMILY
                 }}
               >
@@ -37578,10 +37620,11 @@ ${pageBlocks}
                   fontSize: '13px',
                   fontWeight: 500,
                   cursor: 'pointer',
+                  whiteSpace: 'nowrap',
                   fontFamily: FONT_FAMILY
                 }}
               >
-                Back to dashboard
+                Back to documents
               </button>
             </div>
           </div>
@@ -40258,7 +40301,7 @@ ${pageBlocks}
                       data-morph-icon={t.iconName}
                       data-tool-switch="true"
                       onClick={(e) => {
-                        const pick = resolveShapeToolPick(t.id, lineBorderStyle);
+                        const pick = resolveShapeToolPick(t.id, lineBorderStyle, activeTool);
                         if (pick.lineBorderStyle) setLineBorderStyle(pick.lineBorderStyle);
                         setActiveTool(pick.tool);
                         setMeasureMode(null);

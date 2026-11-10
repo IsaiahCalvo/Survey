@@ -157,6 +157,14 @@ export default function LayersPanel({ layerState, activeLayerId, onLayersChange,
                     value={draftName}
                     aria-label="Layer name"
                     onFocus={(e) => e.target.select()}
+                    // A new layer's name must start selected, so typing
+                    // replaces it: the focus from the Add press can land
+                    // before the name is in the box ("Layer 1t4 layer").
+                    ref={(el) => {
+                      if (!el || el.dataset.namePicked) return;
+                      el.dataset.namePicked = 'true';
+                      requestAnimationFrame(() => { if (el.isConnected) { el.focus(); el.select(); } });
+                    }}
                     onClick={(e) => e.stopPropagation()}
                     onChange={(e) => setDraftName(e.target.value)}
                     onBlur={finishRename}

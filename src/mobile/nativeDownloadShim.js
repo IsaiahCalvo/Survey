@@ -4,6 +4,8 @@
 // file to the app's cache folder and open the system share sheet (Save to
 // Files, AirDrop, Mail...). The web and Electron builds are untouched.
 
+import { showToast } from '../utils/toast.js';
+
 export function installNativeDownloadShim(win = typeof window !== 'undefined' ? window : null) {
   if (!win?.Capacitor?.isNativePlatform?.()) return false;
   const proto = win.HTMLAnchorElement?.prototype;
@@ -16,6 +18,8 @@ export function installNativeDownloadShim(win = typeof window !== 'undefined' ? 
     if (name === null || !/^(blob|data):/.test(href)) return originalClick.call(this);
     shareDownload(href, name || 'download').catch((err) => {
       console.warn('[nativeDownload] share failed', err);
+      // The export sheet has already closed, so say so instead of nothing.
+      showToast(`Couldn't share ${name || 'the file'}. Try again.`, 'error');
     });
   };
   return true;

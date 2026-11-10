@@ -202,8 +202,7 @@ export function polygonPerimeterPt(points) {
   return sum;
 }
 
-export function polygonAreaPt(points) {
-  if (!Array.isArray(points) || points.length < 3) return 0;
+function shoelaceAreaPt(points) {
   let sum = 0;
   for (let i = 0; i < points.length; i += 1) {
     const a = points[i];
@@ -211,6 +210,45 @@ export function polygonAreaPt(points) {
     sum += a.x * b.y - b.x * a.y;
   }
   return Math.abs(sum) / 2;
+}
+
+// Where segment ab properly crosses segment cd (not at an end), or null.
+function segmentCrossing(a, b, c, d) {
+  const rx = b.x - a.x; const ry = b.y - a.y;
+  const sx = d.x - c.x; const sy = d.y - c.y;
+  const den = rx * sy - ry * sx;
+  if (Math.abs(den) < 1e-12) return null;
+  const t = ((c.x - a.x) * sy - (c.y - a.y) * sx) / den;
+  const u = ((c.x - a.x) * ry - (c.y - a.y) * rx) / den;
+  const eps = 1e-9;
+  if (t <= eps || t >= 1 - eps || u <= eps || u >= 1 - eps) return null;
+  return { x: a.x + t * rx, y: a.y + t * ry };
+}
+
+// A shape whose outline crosses itself (a bow tie) cancels to 0 under the
+// plain shoelace sum (deep test 2026-11-10: it read 0.00 mm²). Split it at
+// each crossing into simple loops and add their areas.
+function splitLoopAreaPt(points, depth) {
+  const n = points.length;
+  if (n < 3) return 0;
+  if (depth < 64) {
+    for (let i = 0; i < n; i += 1) {
+      for (let j = i + 2; j < n; j += 1) {
+        if (i === 0 && j === n - 1) continue; // neighbours through the closing edge
+        const x = segmentCrossing(points[i], points[(i + 1) % n], points[j], points[(j + 1) % n]);
+        if (!x) continue;
+        const first = [...points.slice(0, i + 1), x, ...points.slice(j + 1)];
+        const second = [x, ...points.slice(i + 1, j + 1)];
+        return splitLoopAreaPt(first, depth + 1) + splitLoopAreaPt(second, depth + 1);
+      }
+    }
+  }
+  return shoelaceAreaPt(points);
+}
+
+export function polygonAreaPt(points) {
+  if (!Array.isArray(points) || points.length < 3) return 0;
+  return points.length > 200 ? shoelaceAreaPt(points) : splitLoopAreaPt(points, 0);
 }
 
 function polygonCentroid(points) {
