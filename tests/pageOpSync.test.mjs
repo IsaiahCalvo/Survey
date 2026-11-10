@@ -170,6 +170,40 @@ test('every run of page changes before the reload counts, in order; an Undo of a
   // A run that cannot travel stops all moving.
   frame = noteFramePageChanges(frame, normalizePdfVersion(pendingPdfVersion({ writer: 'A', operations: null, batch: 'run3' })));
   assert.equal(framePageChanges(frame), null);
-  // Undo of a delete travels as a page put back after afterPage.
-  assert.deepEqual(stampableOperation({ type: 'restore', afterPage: 0, fromPage: 1, from: { annotationsByPage: {} } }), { type: 'insert', afterPage: 0 });
+  // Undo of a delete travels without its page state.
+  assert.deepEqual(stampableOperation({ type: 'restore', afterPage: 0, fromPage: 1, from: { annotationsByPage: {} } }), { type: 'restore', afterPage: 0, fromPage: 1 });
+});
+
+test('a delete then its Undo leaves a mark drawn in the other window where it was', async () => {
+  const { reframeMarks, stampableOperation } = await import('../src/utils/pageOpSync.js');
+  const { transformPageState } = await import('../src/utils/pageAnnotationReindex.js');
+  const byPage = {
+    2: { objects: [{ type: 'rect', left: 20, top: 20, width: 5, height: 5, data: { id: 'mine' } }] },
+    3: { objects: [{ type: 'rect', left: 30, top: 30, width: 5, height: 5, data: { id: 'later' } }] },
+  };
+  const del = stampableOperation({ type: 'delete', page: 2 });
+  const back = stampableOperation({ type: 'restore', afterPage: 1, fromPage: 2, from: { annotationsByPage: {} } });
+  const kept = reframeMarks(byPage, new Set(['mine', 'later']), [del, back], transformPageState);
+  assert.deepEqual(kept[2].map((o) => o.data.id), ['mine']);
+  assert.deepEqual(kept[3].map((o) => o.data.id), ['later']);
+  // In one batch too.
+  const batched = reframeMarks(byPage, new Set(['mine']), [stampableOperation({ type: 'batch', operations: [del] }), back], transformPageState);
+  assert.deepEqual(batched[2].map((o) => o.data.id), ['mine']);
+  // No delete seen here: the page comes back as a new page after afterPage.
+  const shifted = reframeMarks(byPage, new Set(['mine']), [{ type: 'restore', afterPage: 1, fromPage: 2 }], transformPageState);
+  assert.deepEqual(shifted[3].map((o) => o.data.id), ['later', 'mine']);
+});
+
+test('stamps from an older client without a run name count once per run', async () => {
+  const { framePageChanges, noteFramePageChanges, normalizePdfVersion, pendingPdfVersion, savedPdfVersion } = await import('../src/utils/pageOpSync.js');
+  const turn = { type: 'rotate', page: 1, delta: 90 };
+  let frame = null;
+  frame = noteFramePageChanges(frame, normalizePdfVersion(pendingPdfVersion({ writer: 'A', operations: [turn] })));
+  frame = noteFramePageChanges(frame, normalizePdfVersion(pendingPdfVersion({ writer: 'A', operations: [turn, turn] })));
+  frame = noteFramePageChanges(frame, normalizePdfVersion(savedPdfVersion({ writer: 'A', filePath: 'p', contentSha256: 's', operations: [turn, turn] })));
+  assert.equal(framePageChanges(frame).length, 2);
+  // The writer's next run adds to it.
+  frame = noteFramePageChanges(frame, normalizePdfVersion(pendingPdfVersion({ writer: 'A', operations: [turn] })));
+  frame = noteFramePageChanges(frame, normalizePdfVersion(savedPdfVersion({ writer: 'A', filePath: 'q', contentSha256: 't', operations: [turn] })));
+  assert.equal(framePageChanges(frame).length, 3);
 });

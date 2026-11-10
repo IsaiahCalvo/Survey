@@ -95,7 +95,10 @@ test('Back or Cancel while New is making the file closes it, and the file does n
 
 test('a drag left behind by a second finger is dropped, never committed onto a missing mark (R5 K1c)', () => {
   const src = read('hooks/useSVGInteraction.js');
-  assert.match(src, /if \(\(ds\.mode === 'resize' \|\| ds\.mode === 'rotate' \|\| ds\.mode === 'move'\)\n      && ds\.annotationIndex != null && !annotations\?\.objects\?\.\[ds\.annotationIndex\]\) \{/);
+  assert.match(src, /if \(\(ds\.mode === 'resize' \|\| ds\.mode === 'rotate'\)\n      && ds\.annotationIndex != null && !annotations\?\.objects\?\.\[ds\.annotationIndex\]\) \{\n\s+try \{ e\.target\?\.releasePointerCapture/);
+  // A move finds its mark by id at release, so a colleague deleting an
+  // earlier mark mid-drag never drops it.
+  assert.match(src, /const moveIndex = resolveMarkIndex\(annotations\?\.objects, ds\.annotationIndex, ds\.markId\);/);
   assert.match(src, /if \(ds\.active && \(ds\.mode === 'resize' \|\| ds\.mode === 'rotate'\)\) \{[\s\S]{0,300}currentResize: null, currentAngle: undefined \};/);
 });
 

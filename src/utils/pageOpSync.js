@@ -57,10 +57,12 @@ export function savedPdfVersion({ writer, token = newPdfVersionToken(), filePath
 const STAMP_OP_TYPES = new Set(['rotate', 'insert', 'delete', 'move', 'reorder', 'duplicate', 'copy', 'batch']);
 export const STAMP_OPERATIONS_MAX_CHARS = 8_000;
 export function stampableOperation(operation) {
-  // An Undo of a delete puts the page back with its old marks; for marks
-  // drawn elsewhere that is a page added after `afterPage` (R5 N6e).
+  // An Undo of a delete puts the page back with its old marks. It travels
+  // without that page state: reframeMarks puts back the other window's own
+  // marks from just before the matching delete (R5 N6e).
   if (operation?.type === 'restore' && Number.isInteger(Number(operation.afterPage))) {
-    return { type: 'insert', afterPage: Number(operation.afterPage) };
+    const fromPage = Number(operation.fromPage);
+    return { type: 'restore', afterPage: Number(operation.afterPage), fromPage: Number.isInteger(fromPage) ? fromPage : Number(operation.afterPage) + 1 };
   }
   if (operation?.type === 'batch' && (operation.operations || []).some((step) => step?.type === 'restore')) {
     const steps = (operation.operations || []).map((step) => stampableOperation(step));
@@ -68,6 +70,7 @@ export function stampableOperation(operation) {
   }
   if (!operation || typeof operation !== 'object' || !STAMP_OP_TYPES.has(operation.type)) return null;
   if (operation.type === 'batch' && !(operation.operations || []).every((step) => stampableOperation(step))) return null;
+  if (operation.type === 'restore') return null;
   try {
     const text = JSON.stringify(operation);
     return text.length <= STAMP_OPERATIONS_MAX_CHARS ? JSON.parse(text) : null;
@@ -95,7 +98,23 @@ export function reframeMarks(annotationsByPage, ids, operations, transform) {
     annotationsByPage: picked, surveyMarkers: {}, annotations: {}, pageNames: {},
     pageTransformations: {}, bookmarks: [], spaces: [], regionOverlayDisabled: new Map(),
   };
-  for (const operation of operations) model = transform(model, operation);
+  // A delete then its Undo leaves this window's marks where they were: the
+  // restore puts back the page slice from just before that delete.
+  const beforeDelete = new Map();
+  const steps = [];
+  const flatten = (op) => { if (op?.type === 'batch') (op.operations || []).forEach(flatten); else steps.push(op); };
+  operations.forEach(flatten);
+  for (const step of steps) {
+    if (step?.type === 'delete') beforeDelete.set(Number(step.page), model);
+    if (step?.type === 'restore') {
+      const from = beforeDelete.get(Number(step.fromPage));
+      model = from
+        ? transform(model, { ...step, from })
+        : transform(model, { type: 'insert', afterPage: step.afterPage });
+      continue;
+    }
+    model = transform(model, step);
+  }
   const changed = {};
   const take = (page) => {
     if (!changed[page]) changed[page] = (Array.isArray(byPage[page]?.objects) ? byPage[page].objects : []).filter((obj) => !ids.has(obj?.data?.id));
@@ -136,7 +155,18 @@ export function normalizePdfVersion(value) {
 export function noteFramePageChanges(frame, version) {
   const next = frame || { made: new Set(), batches: new Map() };
   if (!next.batches) next.batches = new Map();
-  next.batches.set(version?.batch || `token:${version?.token}`, Array.isArray(version?.operations) ? version.operations : null);
+  if (!next.openRuns) next.openRuns = new Map();
+  let key = version?.batch;
+  if (!key) {
+    // An older client names no run: its pending stamps and the saved stamp
+    // that ends them are one run (a writer's next pending starts another),
+    // so the same changes are not counted twice.
+    const writer = String(version?.writer || '');
+    key = next.openRuns.get(writer) || `token:${version?.token}`;
+    if (version?.pending) next.openRuns.set(writer, key);
+    else next.openRuns.delete(writer);
+  }
+  next.batches.set(key, Array.isArray(version?.operations) ? version.operations : null);
   return next;
 }
 export function framePageChanges(frame) {

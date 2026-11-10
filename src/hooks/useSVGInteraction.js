@@ -4866,12 +4866,14 @@ export function useSVGInteraction({
     const ds = dragStateRef.current;
     if (!ds.active) return;
     if (ds.mode === 'text-markup-horizontal' && e.pointerId !== ds.pointerId) return;
-    // A drag left behind (a second finger turned the gesture into a pinch and
-    // its release never came here) whose mark is gone: drop it rather than
-    // commit onto nothing (R5 K1c: a later draw threw on obj.type).
-    if ((ds.mode === 'resize' || ds.mode === 'rotate' || ds.mode === 'move')
+    // A resize or turn left behind (a second finger turned the gesture into a
+    // pinch and its release never came here) whose mark is gone: drop it
+    // rather than commit onto nothing (R5 K1c: a later draw threw on
+    // obj.type). A move finds its mark by id below, so it is not dropped here.
+    if ((ds.mode === 'resize' || ds.mode === 'rotate')
       && ds.annotationIndex != null && !annotations?.objects?.[ds.annotationIndex]) {
-      dragStateRef.current = { ...ds, active: false, mode: null, crossPage: undefined, copyDrag: false };
+      try { e.target?.releasePointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
+      dragStateRef.current = { ...ds, active: false, mode: null, currentResize: null, currentAngle: undefined };
       setVisualTransform(null);
       setInteractionState('idle');
       return;
