@@ -51,4 +51,77 @@
     menu.setAttribute('aria-expanded', String(open));
   });
 
+
+  // Tabbed showcase: click or arrow keys pick a tab; while the block is on
+  // screen and nobody has touched it, the active tab's bar fills and the next
+  // tab follows. Reduced motion keeps it still.
+  var shows = document.querySelectorAll('[data-show]');
+  Array.prototype.forEach.call(shows, function (show) {
+    var items = show.querySelectorAll('.show-item');
+    var tabs = show.querySelectorAll('.show-tab');
+    var panes = show.querySelectorAll('.show-pane');
+    var cur = 0;
+    function pick(n, focus) {
+      cur = (n + tabs.length) % tabs.length;
+      for (var i = 0; i < tabs.length; i++) {
+        var on = i === cur;
+        items[i].classList.toggle('on', on);
+        tabs[i].setAttribute('aria-selected', String(on));
+        tabs[i].tabIndex = on ? 0 : -1;
+        panes[i].classList.toggle('on', on);
+      }
+      if (focus) tabs[cur].focus();
+    }
+    function stop() { show.classList.remove('auto'); }
+    Array.prototype.forEach.call(tabs, function (t, i) {
+      t.addEventListener('click', function () { stop(); pick(i); });
+      t.addEventListener('keydown', function (e) {
+        var k = e.key, n = null;
+        if (k === 'ArrowDown' || k === 'ArrowRight') n = cur + 1;
+        else if (k === 'ArrowUp' || k === 'ArrowLeft') n = cur - 1;
+        else if (k === 'Home') n = 0;
+        else if (k === 'End') n = tabs.length - 1;
+        if (n === null) return;
+        e.preventDefault(); stop(); pick(n, true);
+      });
+    });
+    if (reduce || !('IntersectionObserver' in window)) return;
+    show.classList.add('auto', 'paused');
+    show.addEventListener('animationend', function (e) {
+      if (e.animationName === 'show-fill' && show.classList.contains('auto')) pick(cur + 1);
+    });
+    // A mouse resting on the block holds the current tab.
+    var seen = false;
+    function sync() { show.classList.toggle('paused', !seen || show.classList.contains('hold')); }
+    show.addEventListener('pointerenter', function (e) { if (e.pointerType === 'mouse') { show.classList.add('hold'); sync(); } });
+    show.addEventListener('pointerleave', function () { show.classList.remove('hold'); sync(); });
+    new IntersectionObserver(function (es) { seen = es[0].isIntersecting; sync(); }, { threshold: 0.35 }).observe(show);
+  });
+
+  // Blocks below the first screen rise in once as they scroll into view.
+  // Anything already on screen when the page opens is left alone, so nothing
+  // blinks on load.
+  if (!reduce && 'IntersectionObserver' in window) {
+    var sel = '.sec .head, .show, .tools-copy, .toolgrid > div, .picks > a, .trust > *, .plans > .plan, .feat-grid > *, .grid6 > div, .dev-rows article, .steps li, .vs article, .tbl, .faq details, .cta-band, .devs > figure';
+    var els = document.querySelectorAll(sel);
+    var io = new IntersectionObserver(function (es) {
+      es.forEach(function (e) {
+        if (!e.isIntersecting) return;
+        var t = e.target;
+        t.classList.add('in');
+        io.unobserve(t);
+        // Drop the stagger once it has played, so hovers are not delayed.
+        setTimeout(function () { t.style.transitionDelay = ''; }, 1100);
+      });
+    }, { rootMargin: '0px 0px -8% 0px' });
+    var vh = window.innerHeight;
+    Array.prototype.forEach.call(els, function (el) {
+      if (el.getBoundingClientRect().top < vh) return;
+      var sibs = el.parentElement ? Array.prototype.indexOf.call(el.parentElement.children, el) : 0;
+      el.style.transitionDelay = Math.min(sibs, 5) * 60 + 'ms';
+      el.classList.add('rv');
+      io.observe(el);
+    });
+  }
+
 })();
