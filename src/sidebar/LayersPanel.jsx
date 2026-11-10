@@ -94,7 +94,11 @@ export default function LayersPanel({ layerState, activeLayerId, onLayersChange,
       <section className="layers-panel__section" aria-labelledby="layers-pdf-head">
         <div className="layers-panel__head">
           <span id="layers-pdf-head" className="layers-panel__title">PDF page</span>
-          <span className="layers-panel__meta nums">{opacityPercent === 0 ? 'Hidden' : `${opacityPercent}%`}</span>
+          {/* The gold step already says it; a number shows only for a value
+              between the steps (older saves). */}
+          {!PDF_OPACITY_STEPS.some(([percent]) => percent === opacityPercent) && (
+            <span className="layers-panel__meta nums">{`${opacityPercent}%`}</span>
+          )}
         </div>
         <div className="layers-opacity" role="radiogroup" aria-label="PDF content opacity">
           {PDF_OPACITY_STEPS.map(([percent, word]) => (
