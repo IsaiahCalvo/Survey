@@ -818,7 +818,7 @@ export default function SheetSyncButton({ className, phone = false, documentId, 
             ))}
             {link.problems.length > 0 && (
               <div className="sheet-sync-item">
-                <p className="sheet-sync-item__title">Not brought in from the sheet:</p>
+                <p className="sheet-sync-item__title">Check these in the sheet:</p>
                 {link.problems.slice(0, 5).map((p, i) => <p key={i} className="sheet-sync-item__line">{p.message}</p>)}
                 {link.problems.length > 5 && <p className="sheet-sync-item__line">and {link.problems.length - 5} more.</p>}
               </div>

@@ -115,6 +115,9 @@ const spills = (page) => page.evaluate(() => {
     const r = el.getBoundingClientRect();
     if (!r.width || !r.height) continue;
     if (r.right > width + 1 || r.left < -1) out.push(`${el.tagName.toLowerCase()} "${(el.getAttribute('aria-label') || el.textContent || '').trim().slice(0, 30)}" ${Math.round(r.left)}..${Math.round(r.right)}`);
+    // Text wider than its own line (a long link with no spaces) runs out
+    // of the card even when the line's box fits.
+    if (el.tagName === 'P' && el.scrollWidth > el.clientWidth + 1) out.push(`p "${el.textContent.trim().slice(0, 30)}" text ${el.scrollWidth}px in ${el.clientWidth}px`);
   }
   return out;
 });
@@ -266,11 +269,24 @@ for (const layout of LAYOUTS) {
             { markerId: 'gone-2', at, name: 'D-9-02' },
           ],
           brokenTabs: [{ scopeId: 'x', title: link.missingTabs?.[0]?.title || `${E2E_SURVEY.categoryName} - ${E2E_SURVEY.moduleName}` }],
+          // A phone that was offline and the PM both changed a note; one with
+          // a long unbroken value (a pasted link) must wrap, not spill.
+          conflicts: [{ markerId: 'clash-1', scopeId: 'x', name: 'D-9-03', at, fields: [
+            { key: 'notes', header: 'Notes', app: 'Phone, offline', sheet: 'https://contoso.sharepoint.example/sites/jobs/Shared%20Documents/Level-2/door-schedule-rev-7-final-final.pdf' },
+          ] }],
+          problems: [
+            { message: '"D-9-04" was deleted in Survey just after its row was changed in the sheet, so the row was kept. Delete the row if it should go.' },
+            ...Array.from({ length: 5 }, (_, i) => ({ message: `Row ${20 + i} has no "Item", so it was not brought in.` })),
+          ],
         });
         await press(layout, panel.getByRole('button', { name: 'Sync now' }));
         await expect(panel.getByText('14 answers on 9 items were cleared in the sheet at once')).toBeVisible({ timeout: 30_000 });
         await expect(panel.getByRole('button', { name: 'Put all 2 rows back' })).toBeVisible();
         await expect(panel.getByRole('button', { name: 'Make a new sheet' })).toBeVisible();
+        await expect(panel.getByText('changed in both')).toBeVisible();
+        await expect(panel.getByRole('button', { name: 'Keep mine' })).toBeVisible();
+        await expect(panel.getByText('Check these in the sheet:')).toBeVisible();
+        await expect(panel.getByText('and 1 more.')).toBeVisible();
         expect(await spills(page), 'panel, waiting items').toEqual([]);
         if (layout.use.hasTouch) expect(await smallButtons(page), 'buttons big enough to tap').toEqual([]);
         await shot('6-waiting');
