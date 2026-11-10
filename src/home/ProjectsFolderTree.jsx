@@ -51,6 +51,7 @@ import { resolveProjectDropTarget } from '../utils/fileDrop.js';
 import { isFeatureOn } from '../featureFlags.js';
 import ProjectItemsPanel, { ProjectItemsTabs } from '../projectItems/ProjectItemsPanel.jsx';
 import { keyboardControlProps } from '../utils/keyboardActivation.js';
+import { SHEET_VIEW_EVENT, projectSheets, storedProjectOrder } from '../sheets/sheetSet.js';
 
 // Renders closed until someone picks Manage team, so it stays off the first
 // load; the chunk is fetched when the projects tree mounts.
@@ -477,6 +478,16 @@ export default function ProjectsFolderTree({
      tabs over the open project. Your role decides what you may change; the
      people you can assign are the owner and the active collaborators. */
   const [issuesOn] = useState(() => isFeatureOn('project-issues'));
+  // Drawboard's "Open all" (Nightly, 'sheet-set-view'): the project's first
+  // sheet opens with every sheet beside it in the List view.
+  const [sheetSetOn] = useState(() => isFeatureOn('sheet-set-view'));
+  const openAllSheets = (project, files) => {
+    // The same set and order the viewer's sheet bar uses (sheetSet.js).
+    const sheets = projectSheets(files, project?.id, storedProjectOrder(projectPreferences, project?.id));
+    if (!sheets.length || !onOpenDocument) return;
+    window.dispatchEvent(new CustomEvent(SHEET_VIEW_EVENT, { detail: { view: sheets.length > 1 ? 'list' : 'single' } }));
+    onOpenDocument(sheets[0]);
+  };
   const [listTab, setListTab] = useState('files');
   const projectRoleFor = (proj) => {
     if (!proj || !user?.id) return 'viewer';
@@ -1199,6 +1210,9 @@ export default function ProjectsFolderTree({
                   {/* Manage Team — opens the Manage Team modal (NOT the share
                       link modal) for the currently open project. */}
                   <button className="btn" onClick={() => setTeamModalProject(open)}><Icon name="users" size={12} />Manage team</button>
+                  {sheetSetOn && openFiles.length > 1 ? (
+                    <button className="btn" data-open-all-sheets onClick={() => openAllSheets(open, openFiles)}><Icon name="pages" size={12} />Open all</button>
+                  ) : null}
                 </div>
               </div>
 
@@ -1471,6 +1485,9 @@ export default function ProjectsFolderTree({
                         [Team] [Add files]. */}
                     <SectionIconActions phone className="projects-mobile-project-files-actions">
                       <SectionIconButton phone action="team" icon="users" label="Manage team" onClick={() => setTeamModalProject(mobileDrillProject)} />
+                      {sheetSetOn && mobileDrillAllFiles.length > 1 ? (
+                        <SectionIconButton phone action="open-all" icon="pages" label="Open all" data-open-all-sheets onClick={() => openAllSheets(mobileDrillProject, mobileDrillAllFiles)} />
+                      ) : null}
                       <SectionIconButton phone action="add" label="Add files" onClick={() => addFiles(mobileDrillProject)} />
                     </SectionIconActions>
                   </div>

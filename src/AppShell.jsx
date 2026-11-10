@@ -131,6 +131,9 @@ import { pendingInviteRedirect } from './utils/pendingInvite.js';
 import { useProLock } from './hooks/useProLock.js';
 import { formatPageTotal } from './utils/pageTotalLabel.js';
 import { requestTemplateEditor } from './home/templateEditorRequest';
+import SheetSetBar from './sheets/SheetSetBar.jsx';
+import SheetSetView from './sheets/SheetSetView.jsx';
+import { SHEET_VIEW_EVENT, clampGridColumns, projectSheets, sheetStepForKey, steppedSheet, storedProjectOrder, DEFAULT_GRID_COLUMNS } from './sheets/sheetSet.js';
 
 // The dot between the current page and the page total in the right-rail
 // footer: a drawn 2px circle in the total's grey (see the rail audit note at
@@ -1508,7 +1511,7 @@ export default function App({ devPreviewReturnTab = null }) {
   // Generate unique tab ID
   const generateTabId = () => `tab-${randomUUID()}`;
 
-  const handleDocumentSelect = (file, filePath = null) => {
+  const handleDocumentSelect = (file, filePath = null, options = undefined) => {
     setPendingDocumentOpen(null);
     if (!file) {
       console.error('No file provided to handleDocumentSelect');
@@ -1569,7 +1572,14 @@ export default function App({ devPreviewReturnTab = null }) {
       viewState: null // Initialize view state
     };
 
-    setTabs(prev => [...prev, newTab]);
+    // Sheet set view: a step to the next sheet takes the open sheet's place
+    // in the strip instead of adding a tab.
+    const replaceTabId = options?.replaceTabId;
+    if (replaceTabId && replaceTabId !== HOME_TAB_ID && tabs.some((tab) => tab.id === replaceTabId)) {
+      setTabs(prev => prev.map((tab) => (tab.id === replaceTabId ? newTab : tab)));
+    } else {
+      setTabs(prev => [...prev, newTab]);
+    }
     setActiveTabId(newTab.id);
     setSelectedPDF(file);
     setCurrentView('viewer');
@@ -2272,6 +2282,82 @@ export default function App({ devPreviewReturnTab = null }) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [tabKeysEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A project's sheets as one set (Nightly, 'sheet-set-view'): Drawboard
+  // Projects' previous / next sheet, sheet picker, Shift+Left / Right, List
+  // and Grid views. Stepping opens the sheet in the open sheet's tab.
+  const [sheetSetEnabled] = useState(() => isFeatureOn('sheet-set-view'));
+  const [sheetView, setSheetView] = useState('single');
+  const [sheetGridColumns, setSheetGridColumns] = useState(() => {
+    try { return clampGridColumns(window.localStorage.getItem('survey.sheetGridColumns') || DEFAULT_GRID_COLUMNS); } catch (_e) { return DEFAULT_GRID_COLUMNS; }
+  });
+  const sheetActiveTab = sheetSetEnabled ? tabs.find((tab) => tab.id === activeTabId && !tab.isHome) : null;
+  const sheetActiveDocId = sheetActiveTab?.file?.id ?? null;
+  const sheetSet = useMemo(() => {
+    if (!sheetSetEnabled || sheetActiveDocId == null) return [];
+    const row = documents.find((d) => String(d?.id) === String(sheetActiveDocId));
+    const projectId = row?.project_id ?? sheetActiveTab?.file?.projectId ?? sheetActiveTab?.file?.project_id ?? null;
+    // Home keeps each person's own Files order (Dashboard's project
+    // preferences); stepping follows it, as Drawboard follows its list.
+    let preferences = null;
+    try { preferences = JSON.parse(window.localStorage.getItem(`survey-project-preferences:${user?.id || 'guest'}`) || 'null'); } catch (_e) { preferences = null; }
+    const set = projectSheets(documents, projectId, storedProjectOrder(preferences, projectId));
+    return set.length > 1 && set.some((d) => String(d.id) === String(sheetActiveDocId)) ? set : [];
+  }, [sheetSetEnabled, sheetActiveDocId, documents, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const sheetSetRef = useRef(sheetSet);
+  sheetSetRef.current = sheetSet;
+  const openSheet = async (doc) => {
+    if (!doc) return;
+    const open = tabsRef.current.find((tab) => !tab.isHome && String(tab.file?.id) === String(doc.id));
+    if (open) { stableTabClick(open.id); return; }
+    const fromTabId = activeTabIdRef.current;
+    const confirm = closeConfirmFor({ tabs: tabsRef.current, closingIds: [fromTabId], action: 'close' });
+    if (confirm && !(await askTabConfirm(confirm))) return;
+    for (const tabId of tabIdsToDiscardOnClose(tabsRef.current, [fromTabId])) {
+      window.dispatchEvent(new CustomEvent(DISCARD_LOCAL_DRAFT_EVENT, { detail: { tabId } }));
+    }
+    await dashboardRef.current?.openDocument?.(doc, { replaceTabId: fromTabId });
+  };
+  const stepSheet = (step) => {
+    const currentId = tabsRef.current.find((tab) => tab.id === activeTabIdRef.current)?.file?.id;
+    const next = steppedSheet(sheetSetRef.current, currentId, step);
+    if (next) openSheet(next);
+  };
+  const stableStepSheet = useStableHandler(stepSheet);
+  const openSheetSingle = useStableHandler((doc) => { setSheetView('single'); openSheet(doc); });
+  const chooseSheetGridColumns = useStableHandler((n) => {
+    const next = clampGridColumns(n);
+    setSheetGridColumns(next);
+    try { window.localStorage.setItem('survey.sheetGridColumns', String(next)); } catch (_e) { /* private mode */ }
+  });
+  const sheetSetShown = sheetSet.length > 1 && Boolean(isViewerVisible);
+  // Leaving the set (Home, another tab, a loose file) goes back to the single
+  // view, so the next sheet opened is not hidden behind an old List.
+  const sheetSetWasShownRef = useRef(false);
+  useEffect(() => {
+    if (sheetSetWasShownRef.current && !sheetSetShown) setSheetView('single');
+    sheetSetWasShownRef.current = sheetSetShown;
+  }, [sheetSetShown]);
+  useEffect(() => {
+    if (!sheetSetEnabled) return undefined;
+    const onView = (event) => {
+      const view = event?.detail?.view;
+      if (view === 'single' || view === 'list' || view === 'grid') setSheetView(view);
+    };
+    window.addEventListener(SHEET_VIEW_EVENT, onView);
+    return () => window.removeEventListener(SHEET_VIEW_EVENT, onView);
+  }, [sheetSetEnabled]);
+  useEffect(() => {
+    if (!sheetSetShown) return undefined;
+    const onKey = (event) => {
+      const step = sheetStepForKey(event);
+      if (!step || isTypingTarget(event.target) || event.target?.closest?.('[role="dialog"]')) return;
+      // Shift+arrows also nudge a picked mark by 10; that handler claims the
+      // key (preventDefault), so the sheet only changes when nothing else did.
+      setTimeout(() => { if (!event.defaultPrevented) stableStepSheet(step); }, 0);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [sheetSetShown, stableStepSheet]);
   // Back (browser gesture, Android button) closes the open sheet, then the
   // document, instead of leaving Survey (Nightly, 'back-button').
   const [backButtonEnabled] = useState(() => isFeatureOn('back-button'));
@@ -4924,7 +5010,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 />
               <div ref={setTextFormatRowEl} data-chrome-text-format-row="true" />
             </div>
-            <div ref={viewerDropAreaRef} style={{ flex: 1, minWidth: 0, overflow: 'hidden', position: 'relative' }}>
+            <div ref={viewerDropAreaRef} data-sheet-set-host style={{ flex: 1, minWidth: 0, overflow: 'hidden', position: 'relative' }}>
             {/* Polish 3 (2026-10-04): the home screen stays mounted under an
                 open document (the viewer layer covers it), but it was still in
                 the Tab order - a keyboard user tabbed from the tool bar into
@@ -5038,6 +5124,29 @@ export default function App({ devPreviewReturnTab = null }) {
             })}
             {pinnedToolsEnabled && isViewerVisible && (
               <PinnedToolsDock api={bottomToolbarApi} tip={chromeTip} phone={isMobileViewer} />
+            )}
+            {sheetSetShown && sheetView !== 'single' && (
+              <SheetSetView
+                sheets={sheetSet}
+                currentId={sheetActiveDocId}
+                view={sheetView}
+                columns={sheetGridColumns}
+                onColumns={chooseSheetGridColumns}
+                onOpen={openSheetSingle}
+                phone={isMobileViewer}
+              />
+            )}
+            {sheetSetShown && (
+              <SheetSetBar
+                sheets={sheetSet}
+                currentId={sheetActiveDocId}
+                view={sheetView}
+                onView={setSheetView}
+                onStep={stableStepSheet}
+                onPick={openSheetSingle}
+                phone={isMobileViewer}
+                tip={chromeTip}
+              />
             )}
             {pendingDocumentOpen && currentView !== 'viewer' && (
               // Covers the home (and takes its taps) while the PDF downloads;

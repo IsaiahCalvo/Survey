@@ -275,6 +275,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Home New menu: Notebook paper in one tap and Other templates (ruled, Cornell, grids, graph, isometric, hex, music)',
     stage: 'beta',
   }),
+  'sheet-set-view': Object.freeze({
+    label: 'Project sheets as a set: previous / next sheet, sheet picker, Shift+Left / Right, List and Grid views, Open all',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

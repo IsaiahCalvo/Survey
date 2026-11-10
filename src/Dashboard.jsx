@@ -1702,7 +1702,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       ? projects.length > 0
       : templates.length > 0;
 
-  const handleDocumentClick = async (doc) => {
+  // `options.replaceTabId` (sheet set view): open in that tab's place, so
+  // stepping through a project's sheets does not pile up tabs.
+  const handleDocumentClick = async (doc, options = undefined) => {
     // Home's Last opened (flag home-columns): every open from Home, Projects,
     // an upload or New lands here.
     recordDocumentOpened(doc?.id);
@@ -1720,7 +1722,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
           // documents-table lookup (the documents array is Dashboard-scoped).
           doc.file.user_id = doc.user_id || doc.userId || null;
         }
-        onDocumentSelect(doc.file);
+        onDocumentSelect(doc.file, null, options);
         return;
       }
 
@@ -1744,7 +1746,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
           // authority gate (resolved in PDFViewer's documentOwnerId useMemo).
           user_id: doc.user_id || doc.userId || null,
           contentSha256: doc.content_sha256 ?? doc.contentSha256 ?? null, // thumbnail cache key
-        }, filePath);
+        }, filePath, options);
       } else if (doc.dataUrl) {
         // Legacy: Convert dataUrl back to blob, then to File
         const response = await fetch(doc.dataUrl);
@@ -1757,7 +1759,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         // Phase 35 Plan 03 — owner identity for delete authority gate.
         file.user_id = doc.user_id || doc.userId || null;
 
-        onDocumentSelect(file);
+        onDocumentSelect(file, null, options);
       } else {
         console.error('Document structure:', doc);
         throw new Error('Document has no filePath, file_path, or dataUrl');
@@ -1920,6 +1922,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     renameDocument: hubRenameDocument,
     // The viewer's "PDF tools…" (AppShell) opens the same dialog.
     openPdfTools,
+    // The sheet set bar (AppShell, flag 'sheet-set-view') opens a sheet by
+    // the same path as Home, in the open sheet's tab.
+    openDocument: (doc, options) => handleDocumentClick(doc, options),
   }));
 
   /* --- Survey Hub (home redesign) wiring -------------------------------
