@@ -173,6 +173,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Alt+Shift+L / P / A (and Q / V) pick a measure tool',
     stage: 'beta',
   }),
+  'calibrate-entry': Object.freeze({
+    label: "Calibrate takes feet-inches (20' 6\", 20-6) and shows the traced paper length",
+    stage: 'beta',
+  }),
   'align-marks': Object.freeze({
     label: 'Align and space picked marks (mark menu)',
     stage: 'beta',
