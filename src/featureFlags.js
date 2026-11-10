@@ -267,6 +267,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Projects: Issues and Tasks lists with IDs, statuses, filters, archive, CSV and activity',
     stage: 'beta',
   }),
+  'share-extras': Object.freeze({
+    label: 'Share dialog: owner row with (you), sort by Role / Name / Activity, personal message on email invites',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

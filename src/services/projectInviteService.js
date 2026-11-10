@@ -55,7 +55,7 @@ function newToken() {
  *
  * @returns {Promise<{success: boolean, invite?: object, error?: string}>}
  */
-export async function createProjectInvite({ projectId, role, email = null, currentUser, projectName = null, inviterName = null }) {
+export async function createProjectInvite({ projectId, role, email = null, currentUser, projectName = null, inviterName = null, message = '' }) {
   if (!projectId) return { success: false, error: 'Missing projectId' };
   if (!currentUser?.id) return { success: false, error: 'Must be signed in' };
 
@@ -95,6 +95,7 @@ export async function createProjectInvite({ projectId, role, email = null, curre
         kind: 'project',
         name: projectName || '',
         inviterName: inviterName || currentUser.email || 'A Survey user',
+        message,
       });
     } catch (mailErr) {
       emailResult = {

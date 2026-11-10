@@ -77,3 +77,87 @@ export function memberIdentity(member, { owner = null, currentUser = null } = {}
   const secondary = name && email ? email : '';
   return { primary, secondary, title: [name, email].filter(Boolean).join(' · ') || fallback };
 }
+
+/* ---- Share dialog extras (Nightly flag share-extras) -------------------
+ * Drawboard's share dialog always lists the owner first, marks your own row
+ * "(you)", and sorts the people by Role, Name or Activity (Role first).
+ * Tests: tests/shareExtras.test.mjs. */
+
+export const ACCESS_SORTS = Object.freeze([
+  Object.freeze({ key: 'role', label: 'Role' }),
+  Object.freeze({ key: 'name', label: 'Name' }),
+  Object.freeze({ key: 'activity', label: 'Activity' }),
+]);
+
+const ROLE_RANK = { owner: 0, editor: 1, commenter: 2, viewer: 3 };
+
+/**
+ * The member list with the document's owner in it. Documents made before
+ * sharing often have no collaborator row for their owner, so the dialog said
+ * "No collaborators yet" while the owner plainly had it. A stand-in row is
+ * added from the owner profile (or your own account when it is yours).
+ */
+export function withOwnerRow(members, { ownerId = null, ownerProfile = null, currentUser = null } = {}) {
+  const list = Array.isArray(members) ? members : [];
+  const id = ownerId || ownerProfile?.user_id || null;
+  if (!id) return list;
+  if (list.some((m) => (m?.user_id || m?.user?.id) === id)) return list;
+  const mine = currentUser?.id === id;
+  const email = ownerProfile?.email || (mine ? currentUser?.email : '') || '';
+  return [{ id: `owner:${id}`, user_id: id, role: 'owner', status: 'active', email, standIn: true }, ...list];
+}
+
+/**
+ * Members in the chosen order. The document's owner always comes first, as
+ * in Drawboard; the rest go by role (Owner, Editor, Viewer), by name, or by
+ * who opened the document most recently (never opened last).
+ * @param activity Map of user id -> last opened ISO time
+ */
+export function sortAccessMembers(members, key = 'role', { ownerId = null, nameOf = (m) => m?.email || '', activity = null } = {}) {
+  const list = Array.isArray(members) ? [...members] : [];
+  const name = (m) => String(nameOf(m) || '').toLowerCase();
+  const byName = (a, b) => name(a).localeCompare(name(b));
+  const opened = (m) => {
+    const t = activity?.get?.(m?.user_id);
+    const ms = t ? Date.parse(t) : NaN;
+    return Number.isFinite(ms) ? ms : -Infinity;
+  };
+  const isOwner = (m) => Boolean(ownerId) && m?.user_id === ownerId;
+  return list.sort((a, b) => {
+    if (isOwner(a) !== isOwner(b)) return isOwner(a) ? -1 : 1;
+    if (key === 'name') return byName(a, b);
+    if (key === 'activity') return (opened(b) - opened(a)) || byName(a, b);
+    const ra = ROLE_RANK[norm(a?.role)] ?? 9;
+    const rb = ROLE_RANK[norm(b?.role)] ?? 9;
+    return (ra - rb) || byName(a, b);
+  });
+}
+
+/** "Opened 5 mins ago" for a member row; "Not opened yet" without a time. */
+export function openedLabel(iso, now = Date.now()) {
+  const ms = iso ? Date.parse(iso) : NaN;
+  if (!Number.isFinite(ms)) return 'Not opened yet';
+  const mins = Math.floor(Math.max(0, now - ms) / 60000);
+  if (mins < 1) return 'Opened just now';
+  if (mins < 60) return `Opened ${mins} min${mins === 1 ? '' : 's'} ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `Opened ${hours} hour${hours === 1 ? '' : 's'} ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return 'Opened yesterday';
+  if (days < 30) return `Opened ${days} days ago`;
+  return `Opened ${new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`;
+}
+
+/** The personal message on an email invite: plain text, at most 500
+ *  characters, line breaks kept (at most one blank line in a row). */
+export const INVITE_MESSAGE_MAX = 500;
+export function cleanInviteMessage(raw) {
+  if (typeof raw !== 'string') return '';
+  return raw
+    .replace(/\r\n?/g, '\n')
+    .replace(/[\t\x00-\x09\x0b-\x1f\x7f]/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+    .slice(0, INVITE_MESSAGE_MAX)
+    .trim();
+}

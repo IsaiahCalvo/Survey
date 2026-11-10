@@ -55,7 +55,7 @@ function newToken() {
  *
  * @returns {Promise<{success: boolean, invite?: object, error?: string}>}
  */
-export async function createTemplateInvite({ templateId, role, email = null, currentUser, templateName = null, inviterName = null }) {
+export async function createTemplateInvite({ templateId, role, email = null, currentUser, templateName = null, inviterName = null, message = '' }) {
   if (!templateId) return { success: false, error: 'Missing templateId' };
   if (!currentUser?.id) return { success: false, error: 'Must be signed in' };
 
@@ -95,6 +95,7 @@ export async function createTemplateInvite({ templateId, role, email = null, cur
         kind: 'template',
         name: templateName || '',
         inviterName: inviterName || currentUser.email || 'A Survey user',
+        message,
       });
     } catch (mailErr) {
       emailResult = {

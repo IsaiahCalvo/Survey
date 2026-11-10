@@ -108,7 +108,7 @@ async function markExistingUserInviteAccepted(invite, knownGrant = null) {
  *
  * @returns {Promise<{success: boolean, invite?: object, error?: string}>}
  */
-export async function createDocumentInvite({ documentId, role, email = null, currentUser, documentName = null, inviterName = null }) {
+export async function createDocumentInvite({ documentId, role, email = null, currentUser, documentName = null, inviterName = null, message = '' }) {
   if (!documentId) return { success: false, error: 'Missing documentId' };
   if (!currentUser?.id) return { success: false, error: 'Must be signed in' };
 
@@ -207,6 +207,7 @@ export async function createDocumentInvite({ documentId, role, email = null, cur
         kind: 'document',
         name: documentName || '',
         inviterName: inviterName || currentUser.email || 'A Survey user',
+        message,
       });
     } catch (mailErr) {
       emailResult = {

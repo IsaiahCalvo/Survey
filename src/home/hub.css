@@ -5756,6 +5756,11 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
    role / status / More the second. Rows sit in a flex column that scrolls, so
    they must not shrink below their content. */
 .access-grid { grid-template-columns: 30px minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) 24px; flex-shrink: 0; }
+/* Share extras (flag share-extras): the phone's own list for Sort by. */
+.access-sort-native {
+  height: 32px; padding: 0 8px; min-width: 104px; font: inherit; font-size: 12px;
+  background: var(--surface-1); color: var(--text-1); border: 1px solid var(--border-strong); border-radius: 6px;
+}
 /* The list under them keeps room for three rows (50px + 2px gap each, plus
    its 18px padding), so the dialog opens at the size it keeps: it used to
    open short with "Loading…", then grow ~100px and jump up (it is centred)
