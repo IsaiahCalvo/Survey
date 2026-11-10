@@ -111,22 +111,23 @@
   white-space: nowrap;
 }
 
-/* The template picker's prompt is centred on the sheet at 600, like the
-   desktop rail's (owner 2026-10-02). Three columns keep it on the sheet's
-   true centre line with Exit Survey on the right. */
+/* The template picker's prompt sits on the left at 600, like every other
+   sheet and panel title (Spaces, History, people; owner 2026-10-07 "one rule
+   for every panel title row - the title on the left"). It was centred from
+   the 2026-10-02 round, which the desktop rail left on 10-07. */
 .mobile-survey-sheet .mobile-survey-head--picker {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(max-content, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 
 .mobile-survey-sheet .mobile-survey-head--picker > h2.mobile-survey-head-title {
-  grid-column: 2;
-  text-align: center;
+  grid-column: 1;
+  text-align: left;
   font-weight: 600;
 }
 
 .mobile-survey-sheet .mobile-survey-head--picker > .mobile-survey-head-actions {
-  grid-column: 3;
+  grid-column: 2;
   justify-self: end;
 }
 
