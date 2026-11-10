@@ -225,6 +225,9 @@ const HANDLED = {
   // the viewer's Cmd/Ctrl+F.
   'mod+shift+f': () => isFocusModeKey(ev('F', { ctrlKey: true, shiftKey: true })) && !isFocusModeKey(ev('f', { ctrlKey: true }))
     && /isFocusModeKey\(event\)/.test(SRC.shell) && /window\.addEventListener\('keydown', onKey, true\)/.test(SRC.shell),
+  // Nightly 'zoom-to-area': the viewer starts a box on Ctrl/⌘+Shift and zooms on release.
+  'mod+shift+drag': () => /isZoomToAreaStart\(event\)/.test(read('src/components/PdfjsViewerContainer.jsx'))
+    && /zoomToAreaPlan\(\{/.test(read('src/components/PdfjsViewerContainer.jsx')),
   // Nightly 'tab-keys': by key code, and AppShell steps the tabs with it.
   'alt+shift+]': () => tabStepForKey(ev('}', { altKey: true, shiftKey: true, code: 'BracketRight' })) === 1
     && tabStepForKey(ev(']', { code: 'BracketRight' })) === 0 && /tabStepForKey\(event\)/.test(SRC.shell),

@@ -201,6 +201,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Keys shown on the mark right-click menu rows',
     stage: 'beta',
   }),
+  'zoom-to-area': Object.freeze({
+    label: 'Zoom to an area: Ctrl+Shift+drag draws a box and the view fills with it',
+    stage: 'beta',
+  }),
   'viewer-share': Object.freeze({
     label: 'Share from inside a document: a Share button in the viewer top bar',
     stage: 'beta',

@@ -55,6 +55,8 @@ export const SHORTCUT_SECTIONS = [
       // UX: a fit mode re-fits whenever the window changes size; this keeps
       // the zoom where it is instead.
       { chords: ['mod+m'], label: 'Keep this zoom (stop fitting)' },
+      // Nightly ('zoom-to-area'): shown only while the flag is on.
+      { chords: ['mod+shift+drag'], label: 'Zoom to an area', flag: 'zoom-to-area' },
       { chords: ['space'], label: 'Hold to pan' },
       // Drawboard canvas audit chunk 6: one view at a time, gliding.
       { chords: ['pageup'], label: 'Scroll up one screen' },
