@@ -238,9 +238,34 @@ export function watchWrites(doc, markersMap, fresh, written, layout, now = Date.
   return out;
 }
 
+const mergeCells = (a, b) => {
+  const out = { ...(a || {}), ...(b || {}) };
+  if (a?.answers || b?.answers) out.answers = { ...(a?.answers || {}), ...(b?.answers || {}) };
+  return out;
+};
+
+const sameAt = (a, b) => Array.isArray(a) && Array.isArray(b) && a[0] === b[0] && a[1] === b[1];
+
+// A later round's field writes join the marker's earlier ones, so an
+// offline edit to a field written two rounds ago is still caught. A newer
+// whole-marker write, another scope or a marker written over in between
+// starts the watch afresh.
+function mergeWatch(old, add) {
+  if (!old || !add.fields || !old.fields || add.root) return add;
+  if (old.scopeId !== add.scopeId || !sameAt(old.rootAt, add.rootAt)) return add;
+  return {
+    ...old,
+    ...add,
+    cells: mergeCells(old.cells, add.cells),
+    fields: { ...old.fields, ...add.fields },
+    fieldCells: { ...(old.fieldCells || {}), ...(add.fieldCells || {}) },
+  };
+}
+
 /** Old pulls plus new ones, newest kept when over the cap. */
 export function keepWatched(pulls, added, now = Date.now()) {
-  const all = { ...(pulls || {}), ...(added || {}) };
+  const all = { ...(pulls || {}) };
+  for (const [id, entry] of Object.entries(added || {})) all[id] = mergeWatch(all[id], entry);
   const ids = Object.keys(all).filter((id) => now - Number(all[id]?.t) < WATCH_MS);
   ids.sort((a, b) => Number(all[b].t) - Number(all[a].t));
   return Object.fromEntries(ids.slice(0, WATCH_MAX).map((id) => [id, all[id]]));

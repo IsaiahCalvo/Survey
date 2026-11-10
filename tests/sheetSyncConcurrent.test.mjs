@@ -135,3 +135,33 @@ test('watched writes expire and are capped', () => {
   assert.equal(Object.keys(kept).length, 1000);
   assert.ok(kept.m0 && !kept.m1100, 'the newest are kept');
 });
+
+test('a later round writing another field keeps watching the first one', () => {
+  const start = door('d1', 'D-1', { note: { text: 'Start' }, checklistResponses: { c1: { selection: 'N' } } });
+  const { phone, round, load } = scene({ phoneId: 900, roundId: 500, start });
+  const first = roundWrites(round, { ...start, note: { text: 'PM' } });
+  const afterFirst = { ...start, note: { text: 'PM' } };
+  const second = roundWrites(round, { ...afterFirst, checklistResponses: { c1: { selection: 'Y' } } });
+  const pulls = keepWatched(keepWatched({}, first.pulls), second.pulls);
+  assert.ok(pulls.d1.fields.note && pulls.d1.fields.checklistResponses, 'both writes are watched');
+
+  const sv = Y.encodeStateVector(phone);
+  syncSurveyMarkersToDoc(phone, { d1: { ...start, note: { text: 'Phone' } } }, { fieldMaps: true });
+  const server = load(1);
+  Y.applyUpdate(server, first.update);
+  Y.applyUpdate(server, second.update);
+  Y.applyUpdate(server, Y.encodeStateAsUpdate(phone, sv));
+  const { clashes } = checkWatched(getSurveyMarkersMap(server), pulls, docToSurveyMarkers(server));
+  assert.ok(clashes.d1, 'the phone never saw the PM\'s note');
+  assert.equal(clashes.d1.cells.notes, printsOf(start).notes);
+  assert.equal(clashes.d1.cells.answers, undefined, 'the answer line the phone left alone is not rewound');
+});
+
+test('a newer whole-marker write or another scope starts the watch afresh', () => {
+  const now = Date.parse('2026-11-10T00:00:00Z');
+  const old = { d1: { t: now - 10, scopeId: 's', rootAt: [1, 1], cells: { notes: 'a' }, fields: { note: { at: [5, 1] } }, fieldCells: { note: { notes: 'a' } } } };
+  const moved = keepWatched(old, { d1: { t: now, scopeId: 's', rootAt: [2, 1], cells: { x: 'b' }, fields: { x: { at: [5, 2] } }, fieldCells: { x: { x: 'b' } } } }, now);
+  assert.deepEqual(Object.keys(moved.d1.fields), ['x']);
+  const root = keepWatched(old, { d1: { t: now, scopeId: 's', cells: { x: 'b' }, root: { at: [5, 3] } } }, now);
+  assert.equal(root.d1.fields, undefined);
+});
