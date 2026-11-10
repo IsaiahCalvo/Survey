@@ -50,7 +50,7 @@ export const SHORTCUT_SECTIONS = [
       { chords: ['mod+0'], label: 'Fit page' },
       { chords: ['mod+1'], label: 'Fit width' },
       // Nightly ('focus-mode'): shown only while the flag is on.
-      { chords: ['mod+shift+f'], label: 'Focus mode', flag: 'focus-mode' },
+      { chords: ['mod+shift+f'], label: 'Full screen', flag: 'focus-mode' },
       { chords: ['mod+2'], label: 'Fit height' },
       // UX: a fit mode re-fits whenever the window changes size; this keeps
       // the zoom where it is instead.
