@@ -40012,8 +40012,8 @@ ${pageBlocks}
                       { key: 'area', label: 'Area', iconName: 'measureArea' },
                       { key: 'perimeter', label: 'Perimeter', iconName: 'measurePerimeter' },
                       ...(measureDepthEnabled ? [
-                        { key: 'wallArea', label: 'Wall area', iconName: 'measurePerimeter' },
-                        { key: 'volume', label: 'Volume', iconName: 'measureArea' },
+                        { key: 'wallArea', label: 'Wall area', iconName: 'measureWallArea' },
+                        { key: 'volume', label: 'Volume', iconName: 'measureVolume' },
                       ] : []),
                       { key: 'scale', label: 'Page scale…', iconName: 'measureScale' },
                     ];
