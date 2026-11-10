@@ -191,14 +191,34 @@ const isoDay = (y, m, d) => {
   return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d ? `${y}-${pad2(m)}-${pad2(d)}` : null;
 };
 
-/** A date answer as "YYYY-MM-DD" from "2026-10-22", "10/22/2026" or a Date; null if none. */
+const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+const monthOf = (word) => {
+  const w = String(word).toLowerCase().replace(/\.$/, '');
+  // Three letters, "Sept" or the full name; "Novem" or "Marc" do not count.
+  const i = MONTHS.findIndex((name) => w === name || w === name.slice(0, 3) || (w === 'sept' && name === 'september'));
+  return i + 1;
+};
+const fullYear = (y) => (y.length === 2 ? 2000 + Number(y) : Number(y));
+
+/**
+ * A date answer as "YYYY-MM-DD"; null if none. Reads a Date, "2026-10-22",
+ * "2026/10/22", US "10/22/2026" or "10/22/26", and the shown text of Excel's
+ * date formats: "Nov 10, 2026", "Monday, November 10, 2026", "10-Nov-2026",
+ * "10-Nov-26", "10 November 2026".
+ */
 export function dateAnswerOf(raw) {
   if (raw instanceof Date) return Number.isNaN(raw.getTime()) ? null : raw.toISOString().slice(0, 10);
   const s = String(raw ?? '').trim();
-  let m = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:T.*)?$/.exec(s);
+  let m = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:T.*)?$/.exec(s);
   if (m) return isoDay(+m[1], +m[2], +m[3]);
-  m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s); // US month/day/year
-  if (m) return isoDay(+m[3], +m[1], +m[2]);
+  m = /^(\d{1,2})\/(\d{1,2})\/(\d{4}|\d{2})$/.exec(s); // US month/day/year
+  if (m) return isoDay(fullYear(m[3]), +m[1], +m[2]);
+  // An optional weekday first ("Monday, " / "Mon "), then month-name forms.
+  const t = s.replace(/^[a-z]+\.?,?\s+(?=[a-z]{3}|\d)/i, (w) => (monthOf(w.replace(/[.,\s]+$/, '')) ? w : ''));
+  m = /^([a-z]+\.?)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})$/i.exec(t); // Nov 10, 2026
+  if (m && monthOf(m[1])) return isoDay(+m[3], monthOf(m[1]), +m[2]);
+  m = /^(\d{1,2})[-\s]([a-z]+\.?)[-\s,]+(\d{4}|\d{2})$/i.exec(t); // 10-Nov-2026, 10 November 2026
+  if (m && monthOf(m[2])) return isoDay(fullYear(m[3]), monthOf(m[2]), +m[1]);
   return null;
 }
 
