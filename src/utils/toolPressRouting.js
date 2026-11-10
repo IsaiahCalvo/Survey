@@ -90,7 +90,8 @@ export function resolvePagePress(nativeEvent, { tool, pageNumber, objects, hasSe
  */
 export function classifySelectionGrabTarget(el, svg, { selectedIds, selectedCalloutIds, selectedMarkerIds, objects } = {}) {
   if (!el || !svg || !svg.contains(el)) return null;
-  if (el.closest('[data-resize-handle], [data-handle-hit-pad], [data-rotation-handle], [data-text-range-handle-hit-target]')) {
+  // ('box-drag-move' adds the pick's move zone and a finger's move grip.)
+  if (el.closest('[data-resize-handle], [data-handle-hit-pad], [data-rotation-handle], [data-text-range-handle-hit-target], [data-box-drag-move-zone], [data-box-move-grip]')) {
     return { key: 'handle', text: false, index: null, calloutId: null, el };
   }
   const callout = el.closest('[data-callout-id]');

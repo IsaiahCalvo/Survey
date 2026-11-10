@@ -151,6 +151,14 @@ function fakeGraph({ driveType = 'business' } = {}) {
         valueTypes: box((r, c) => (/^#(N\/A|REF!|VALUE!|DIV\/0!)$/.test(String(rows[r]?.[c] ?? '')) ? 'Error' : 'String')),
       });
     }
+    const colsUsed = /^\/range\(address='([A-Z]+):([A-Z]+)'\)\/usedRange/.exec(tail);
+    if (method === 'GET' && colsUsed) {
+      const letter = (l) => [...l].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1;
+      const [c1, c2] = [letter(colsUsed[1]), letter(colsUsed[2])];
+      const used = target.cells.map((row, r) => ((row || []).some((v, c) => c >= c1 && c <= c2 && v !== '' && v != null) ? r : -1)).filter((r) => r >= 0);
+      if (!used.length) return json(404, { error: { code: 'ItemNotFound' } });
+      return json(200, { rowIndex: used[0], rowCount: used[used.length - 1] - used[0] + 1 });
+    }
     const range = /^\/range\(address='([^']+)'\)(\/delete|\/dataValidation)?/.exec(tail);
     if (method === 'POST' && tail === '/freezePanes/freezeRows') { target.frozen = JSON.parse(init.body).count; return json(200, {}); }
     if (range && method === 'PATCH' && JSON.parse(init.body).columnHidden !== undefined) {
@@ -173,6 +181,10 @@ function fakeGraph({ driveType = 'business' } = {}) {
         target.cells.splice(a.r1, a.r2 - a.r1 + 1);
         state.cTag += 1;
         return json(204);
+      }
+      if (method === 'PATCH' && JSON.parse(init.body).numberFormat && !JSON.parse(init.body).values) {
+        target.textRuns = [...(target.textRuns || []), range[1]];
+        return json(200, { address: range[1] });
       }
       if (method === 'PATCH') {
         const { values } = JSON.parse(init.body);
@@ -403,36 +415,44 @@ test('the built-in blank workbook is a real .xlsx', async () => {
   assert.deepEqual(book.worksheets.map((w) => w.name), ['Sheet1']);
 });
 
-test('a tab added later: range writes are never read back, and side-by-side columns share one call', async () => {
+test('tabs added later go out in three batches, with small answers and no dead calls', async () => {
   const graph = fakeGraph();
-  const realFetch = graph.fetch;
-  let cancelled = 0;
-  // Graph answers a range write with the whole range; reading that for a big
-  // range ran the edge function out of memory (Nov 3). The answer must be dropped.
-  graph.fetch = async (url, init) => {
-    const res = await realFetch(url, init);
-    if (init.method !== 'PATCH' || !res.ok) return res;
-    return { ...res, text: async () => { throw new Error('range answer was read'); }, body: { cancel: async () => { cancelled += 1; } } };
-  };
   const p = provider(graph);
   const layout = {
-    scopes: [{ scopeId: 'm:a', title: 'A', columns: [
+    scopes: ['A', 'B', 'C'].map((t) => ({ scopeId: `m:${t}`, title: t, columns: [
       { key: 'rowId', header: 'Row ID' }, { key: 'item', header: 'Item' }, { key: 'entity', header: 'Entity' },
       { key: 'answer:q1', header: 'Q1' }, { key: 'answer:q2', header: 'Q2' }, { key: 'answer:h', header: 'Height', item: { kind: 'number' } },
       { key: 'notes', header: 'Notes' },
-    ] }],
+    ] })),
     entities: [{ id: 'e1', name: 'Door' }],
     answerValues: ['Pass', 'Fail'],
   };
   const made = await p.createFile({ title: 'Runs', layout: { ...layout, scopes: [] } });
-  await p.addTabs(made.fileId, layout.scopes, layout);
-  assert.ok(cancelled > 0, 'answers dropped unread');
-  const formats = graph.calls.filter((c) => c.startsWith('PATCH') && /2:[A-Z]+1000'\)$/.test(c));
-  assert.equal(formats.length, 2, `two text runs (A-E, G), got ${formats.join(' | ')}`);
-  const drops = graph.calls.filter((c) => c.endsWith('/dataValidation'));
-  assert.equal(drops.length, 2, 'entity alone, then Q1-Q2 together');
-  assert.ok(drops.some((c) => c.includes("D2:E1000")));
-  assert.equal(graph.files.get('NEW-1').sheets.find((sh) => sh.name === 'A').hidden[0], 'A:A');
+  const before = graph.calls.length;
+  const ids = await p.addTabs(made.fileId, layout.scopes, layout);
+  const calls = graph.calls.slice(before);
+  assert.deepEqual(Object.keys(ids), ['m:A', 'm:B', 'm:C']);
+  const sheets = graph.files.get('NEW-1').sheets;
+  assert.deepEqual(['A', 'B', 'C'].map((t) => sheets.find((sh) => sh.name === t)?.id), Object.values(ids), 'ids match the tabs, in order');
+  for (const t of ['A', 'B', 'C']) {
+    const sh = sheets.find((x) => x.name === t);
+    assert.deepEqual(sh.cells[0], ['Row ID', 'Item', 'Entity', 'Q1', 'Q2', 'Height', 'Notes']);
+    assert.equal(sh.hidden[0], 'A:A');
+  }
+  // One GET of the tab names and three batches (adds, set-up, text formats),
+  // not about nine calls a tab.
+  // (The fake logs each request inside a batch too.)
+  assert.equal(calls.filter((c) => c.endsWith('$batch')).length, 3, calls.join(' | '));
+  const direct = calls.filter((c) => !c.endsWith('$batch') && !/worksheets\/add|range\(/.test(c));
+  assert.ok(direct.length <= 2, `only the session and the tab names outside a batch: ${direct.join(' | ')}`);
+  // Graph has no data-validation or freeze-panes API: never asked.
+  assert.ok(!graph.calls.some((c) => /dataValidation|freezePanes/.test(c)), 'no dead calls');
+  // Range writes ask for the address only, so Graph does not echo whole ranges.
+  const writes = graph.calls.filter((c) => /PATCH .*range\(/.test(c));
+  assert.ok(writes.length && writes.every((c) => c.includes('$select=address')), writes.join(' | '));
+  const formats = writes.filter((c) => /2:[A-Z]+1000'\)/.test(c));
+  assert.equal(formats.length, 6, `two text runs (A-E, G) a tab, got ${formats.join(' | ')}`);
+  assert.deepEqual(sheets.find((x) => x.name === 'B').textRuns, ['A2:E1000', 'G2:G1000']);
 });
 
 test('columnRuns groups neighbours with the same value', () => {

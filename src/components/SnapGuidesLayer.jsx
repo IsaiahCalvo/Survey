@@ -21,9 +21,34 @@ import {
   SNAP_GUIDE_STROKE_PX,
   SNAP_GUIDE_DASH_PX,
   SNAP_MARK_HALF_PX,
+  SNAP_CONTENT_COLOR,
 } from '../utils/snapGuides.js';
 
 export const SNAP_GUIDE_COLOR = HANDLE_RING;
+
+function ContentSnapMark({ endpoint, k }) {
+  const half = (endpoint.coarse ? 9 : 5) * k;
+  const { x, y } = endpoint;
+  const cross = `M${fmt(x - half)},${fmt(y - half)}L${fmt(x + half)},${fmt(y + half)}`
+    + `M${fmt(x + half)},${fmt(y - half)}L${fmt(x - half)},${fmt(y + half)}`;
+  const seg = Array.isArray(endpoint.segment) && endpoint.kind !== 'end' ? endpoint.segment : null;
+  return (
+    <g data-snap-guides="true" pointerEvents="none" style={{ pointerEvents: 'none' }}>
+      {seg && (
+        <line
+          data-snap-content-guide="true"
+          x1={seg[0]} y1={seg[1]} x2={seg[2]} y2={seg[3]}
+          stroke={SNAP_CONTENT_COLOR}
+          strokeWidth={SNAP_GUIDE_STROKE_PX * k}
+          strokeDasharray={`${SNAP_GUIDE_DASH_PX * k} ${SNAP_GUIDE_DASH_PX * k}`}
+          fill="none"
+        />
+      )}
+      <path d={cross} stroke="#ffffff" strokeWidth={3 * k} strokeLinecap="round" fill="none" />
+      <path data-snap-content={endpoint.kind || 'end'} d={cross} stroke={SNAP_CONTENT_COLOR} strokeWidth={1.5 * k} strokeLinecap="round" fill="none" />
+    </g>
+  );
+}
 
 const fmt = (n) => (Math.round(n * 1000) / 1000);
 
@@ -34,6 +59,7 @@ export default function SnapGuidesLayer({ guides, inverseScale = 1 }) {
   const endpoint = guides?.endpoint || null;
   if (!guides?.lines?.length) {
     if (!endpoint) return null;
+    if (endpoint.content) return <ContentSnapMark endpoint={endpoint} k={k} />;
     // Touch / pen: a ring that clears a fingertip (r 16 vs 5 screen px).
     const r = (endpoint.coarse ? 16 : 5) * k;
     const w = endpoint.coarse ? 2.5 : 1.5;

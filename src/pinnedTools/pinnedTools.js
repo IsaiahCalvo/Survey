@@ -34,6 +34,33 @@ export const PINNABLE_TOOLS = Object.freeze([
 
 const KIND_BY_ID = new Map(PINNABLE_TOOLS.map((entry) => [entry.id, entry]));
 
+// Other words people type for a tool in the "Pin a tool" search.
+const PIN_KIND_WORDS = Object.freeze({
+  pen: 'ink draw freehand pencil marker sketch',
+  highlighter: 'highlight marker',
+  eraser: 'erase rubber delete',
+  rect: 'square box rectangle',
+  ellipse: 'circle oval round',
+  polygon: 'shape area outline',
+  cloud: 'revision cloud bubble',
+  polyline: 'path lines run',
+  line: 'straight dimension',
+  arrow: 'pointer leader',
+  counter: 'count number tally',
+  text: 'type note words label',
+  callout: 'note leader label comment',
+});
+
+/** The pinnable tools whose name, group or other words hold every typed word. */
+export function matchPinKinds(query) {
+  const words = String(query || '').toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return PINNABLE_TOOLS;
+  return PINNABLE_TOOLS.filter((kind) => {
+    const hay = `${kind.label} ${kind.group} ${PIN_KIND_WORDS[kind.id] || ''}`.toLowerCase();
+    return words.every((word) => hay.includes(word));
+  });
+}
+
 // One rule for every pin (owner 2026-10-27, "they all follow the same
 // rules"): a pin keeps what the settings row shows for its tool - the colour
 // dot, the size box and the Style picker - and shows the colour as its glyph
@@ -200,12 +227,26 @@ export const DEFAULT_PINNED_TOOLS_STATE = Object.freeze({
 /** The pin sets: markup (everywhere) and survey (while Survey mode is on). */
 export const PIN_SETS = Object.freeze(['markup', 'survey']);
 
+// Each kind's starting width: the viewer's own (useDatabase
+// DEFAULT_TOOL_PREFERENCES; the eraser's Size box starts at 20). A pin saved
+// before its tool kept a width (the eraser before 2026-10-29; Polyline,
+// Polygon and Text before 2026-10-27) held none, so it showed no number in
+// its corner for good: the armed pin only takes edits once it has settings.
+export const PIN_DEFAULT_WIDTH = Object.freeze({
+  pen: 3, highlighter: 20, eraser: 20, rect: 2, ellipse: 2, polygon: 2, cloud: 2.5,
+  polyline: 2, line: 2, arrow: 2, counter: 14, text: 1, callout: 2,
+});
+
 function sanitizePin(raw) {
   if (!raw || typeof raw !== 'object' || !pinKind(raw.kind)) return null;
+  const style = pinStyleFor(raw.kind, raw.style || {});
+  if (!Number.isFinite(style.strokeWidth) && PIN_DEFAULT_WIDTH[raw.kind] !== undefined) {
+    style.strokeWidth = PIN_DEFAULT_WIDTH[raw.kind];
+  }
   return {
     id: typeof raw.id === 'string' && raw.id ? raw.id.slice(0, 80) : newPinId(),
     kind: raw.kind,
-    style: pinStyleFor(raw.kind, raw.style || {}),
+    style,
   };
 }
 

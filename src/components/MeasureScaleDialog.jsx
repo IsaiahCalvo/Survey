@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { paperLengthWords, parseRealLength } from '../utils/measure/realLength.js';
 import { createPortal } from 'react-dom';
 import {
   MEASURE_PRESETS,
@@ -47,8 +48,12 @@ export default function MeasureScaleDialog({ pageNumber, pageCount = 1, lengthPt
   const [recentPick, setRecentPick] = useState(null);
   const [allPages, setAllPages] = useState(false);
   const calibrating = Number.isFinite(lengthPt) && lengthPt > 0;
+  // Nightly 'calibrate-entry': the box takes feet-inches as plans write them
+  // (20' 6", 20-6, 6") and says what the traced line is on paper.
+  const [entryOn] = useState(() => isFeatureOn('calibrate-entry'));
+  const realValue = entryOn ? parseRealLength(real, unit) : real;
   const scale = calibrating
-    ? scaleFromCalibration(lengthPt, real, unit)
+    ? scaleFromCalibration(lengthPt, realValue, unit)
     : (recentPick != null ? recent[recentPick] : scaleFromPreset(preset));
   useFocusTrap(cardRef, true, { onEscape: onCancel });
   const submit = (e) => {
@@ -99,18 +104,22 @@ export default function MeasureScaleDialog({ pageNumber, pageCount = 1, lengthPt
           <div className="measure-scale__body">
             {calibrating ? (
               <>
-                <label className="measure-scale__label" htmlFor="measure-real-length">Real length of the line you drew</label>
+                <label className="measure-scale__label" htmlFor="measure-real-length">
+                  Real length of the line you drew
+                  {entryOn && <span data-measure-paper-length="" style={{ color: 'var(--text-3)', fontWeight: 400 }}> ({paperLengthWords(lengthPt, ['m', 'cm', 'mm'].includes(unit))})</span>}
+                </label>
                 <input
                   id="measure-real-length"
                   autoFocus
                   data-autofocus
                   data-measure-real-length="true"
                   className="measure-scale__field"
-                  type="number"
-                  inputMode="decimal"
-                  min="0"
-                  step="any"
-                  placeholder="0"
+                  type={entryOn ? 'text' : 'number'}
+                  inputMode={entryOn ? 'text' : 'decimal'}
+                  autoComplete="off"
+                  min={entryOn ? undefined : '0'}
+                  step={entryOn ? undefined : 'any'}
+                  placeholder={entryOn ? (unit === 'ft' ? `e.g. 20' 6"` : '0') : '0'}
                   value={real}
                   onChange={(e) => setReal(e.target.value)}
                   style={{ fontSize: 16 }}

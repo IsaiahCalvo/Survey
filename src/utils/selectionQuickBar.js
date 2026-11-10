@@ -202,10 +202,18 @@ export function planSelectionQuickBar({ items, api, entityCount = 0, locked = fa
   const style = !locked && !anyNoPaint && every(STYLE_KINDS)
     && typeof api?.setLineBorderStyle === 'function'
     && caps?.lineStyle !== false;
+  // Measurement (Nightly 'measure-edit'): exactly one measurement picked, and
+  // the published pick is that very mark (api.selectedMeasure).
+  const measure = !locked && list.length === 1
+    && typeof api?.patchSelectedMeasure === 'function'
+    && api?.selectedMeasure?.mark != null
+    && String(api.selectedMeasure.id) === String(list[0].id);
   return {
     colour,
     width: Boolean(width),
     style: Boolean(style),
+    // Only present when shown, so every other pick plans exactly as before.
+    ...(measure ? { measure: true } : {}),
     duplicate: true,
     remove: !locked,
     more: true,

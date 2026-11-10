@@ -179,6 +179,15 @@ export const pageGridSliderValue = (position, unit) => {
     const f = Math.pow(10, digits);
     return Math.max(min, Math.round(raw * f) / f);
 };
+/**
+ * The unrounded value at a slider position: what the page draws while the
+ * thumb moves, so the grid changes size smoothly between the tidy values.
+ */
+export const pageGridSliderRawValue = (position, unit) => {
+    const { min, max } = sliderRange(unit);
+    const t = Math.min(1, Math.max(0, Number(position) / 1000));
+    return min * Math.pow(max / min, t);
+};
 /** A preset's spacing in a paper unit (in, mm); null for drawing units. */
 export const pageGridPresetValue = (densityId, unit) => {
     const preset = PAGE_GRID_DENSITIES.find((d) => d.id === densityId);

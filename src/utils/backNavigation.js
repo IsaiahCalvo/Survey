@@ -104,7 +104,16 @@ export function installViewerBack(win, onLeave) {
   installSwallow(win);
   const session = { win };
   active = session;
-  if (!hasMark(win) && quietBacks === 0) pushMark(win);
+  if (!hasMark(win) && quietBacks === 0) {
+    // Opened from a home dialog (New document, Create): take its entry over
+    // in place. Backing it off first and pushing a new one raced a quick
+    // Back, and the two backs left Survey (R4-A/R4-B B2).
+    if (win.history.state && win.history.state[HOME_MARK] && win.history.replaceState) {
+      win.history.replaceState({ ...win.history.state, [HOME_MARK]: false, [MARK]: true }, '');
+    } else {
+      pushMark(win);
+    }
+  }
   const onPop = () => {
     if (active !== session) return;
     if (closeTopBackLayer(win.document)) {
@@ -146,13 +155,24 @@ export function installHomeBack(win) {
     quietBacks += 1;
     win.history.back();
   };
+  // The entry comes off a moment later, not at once: a document opening from
+  // the dialog takes it over instead (installViewerBack), so no back runs.
+  const later = (fn, ms) => (typeof win.setTimeout === 'function' ? win.setTimeout(fn, ms) : setTimeout(fn, ms));
+  let takeOffTimer = null;
+  const scheduleTakeOff = () => {
+    if (takeOffTimer) return;
+    takeOffTimer = later(() => {
+      takeOffTimer = null;
+      if (hasHome() && !leaving && (!alive || backLayerCount() === 0)) takeOff();
+    }, 300);
+  };
   const sync = () => {
     if (!alive) return;
     const open = backLayerCount() > 0;
     if (open && !hasHome() && quietBacks === 0) {
       win.history.pushState({ ...(win.history.state || {}), [HOME_MARK]: true }, '');
     } else if (!open && owns()) {
-      takeOff();
+      scheduleTakeOff();
     }
   };
   // A sheet that hands over to a dialog (New, then Blank document) took the
@@ -167,6 +187,10 @@ export function installHomeBack(win) {
     // open, the change it makes puts the entry back (sync).
     if (hasHome() || backLayerCount() === 0) return;
     closeTopBackLayer(win.document);
+    // A dialog that is busy (New document while it creates) ignores the
+    // Escape: it stays open with no entry under it, and a later back left
+    // Survey (R3-Z). Look again once it has had time to close.
+    win.setTimeout?.(sync, 250);
   };
   layerListeners.add(sync);
   win.addEventListener('popstate', onPop);
@@ -176,7 +200,7 @@ export function installHomeBack(win) {
     layerListeners.delete(sync);
     quietListeners.delete(afterQuiet);
     win.removeEventListener('popstate', onPop);
-    if (owns()) takeOff();
+    if (owns()) scheduleTakeOff();
   };
 }
 
