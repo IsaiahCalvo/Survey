@@ -9506,6 +9506,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     }
   }, [pickBarTool, pdfId, updateToolPreference, handlePatchSelectedAnnotation, handlePatchSelectedCallout]);
 
+  // The Cloud border belongs to the tool it was armed on (the Cloud tool arms
+  // Rectangle + Cloud; the Style menu clouds the current tool). Switching to
+  // another tool drops it back to a plain line, so Polygon, Text, Callout or an
+  // Area measure picked after Cloud no longer come out clouded (deep test
+  // 2026-11-10, R3-X).
+  const cloudOwnerToolRef = useRef(null);
+  useEffect(() => {
+    cloudOwnerToolRef.current = lineBorderStyle === 'cloud' ? activeTool : null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lineBorderStyle]);
+  useEffect(() => {
+    if (lineBorderStyle === 'cloud' && cloudOwnerToolRef.current !== null && cloudOwnerToolRef.current !== activeTool) {
+      cloudOwnerToolRef.current = null;
+      setLineBorderStyle('solid');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTool]);
+
   const handleLineBorderStyleChange = useCallback((next) => {
     setLineBorderStyle(next);
     // UX (2026-07-17, callout line style): a selected callout takes the Style

@@ -161,6 +161,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Measure: a "No scale on this page" chip with Set scale while a measure tool is armed',
     stage: 'beta',
   }),
+  'eraser-keeps-shapes': Object.freeze({
+    label: 'Partial eraser only cuts ink and leaves shapes, text and callouts alone',
+    stage: 'beta',
+  }),
   'align-marks': Object.freeze({
     label: 'Align and space picked marks (mark menu)',
     stage: 'beta',

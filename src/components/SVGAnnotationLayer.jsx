@@ -1545,13 +1545,17 @@ const SVGAnnotationLayerBody = memo(({
     const coalesced = nativeEvent.getCoalescedEvents?.() || [];
     const events = coalesced.length ? coalesced : [nativeEvent];
     for (const sample of events) {
-      const point = screenToSVG(svgRef.current, sample.clientX, sample.clientY);
+      // Ink stops at the page edge (docs/page-edge rules, as shapes do): a
+      // drag out past the edge runs along it instead of keeping points nobody
+      // can see that stretch the mark's box into the gutter.
+      const raw = screenToSVG(svgRef.current, sample.clientX, sample.clientY);
+      const point = raw && width > 0 && height > 0 ? clampPointToPage(raw, width, height) : raw;
       const previous = freehandPointsRef.current[freehandPointsRef.current.length - 1];
       if (point && (!previous || Math.hypot(point.x - previous.x, point.y - previous.y) >= 0.2)) {
         freehandPointsRef.current.push(point);
       }
     }
-  }, []);
+  }, [width, height]);
 
   const [rotInputVisible, setRotInputVisible] = useState(false);
   const rotInputHoverTimerRef = useRef(null);
