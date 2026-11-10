@@ -327,6 +327,11 @@ async function drag(cdp, from, dx, dy, moves = 60) {
 async function gesture(page, cdp, name, profile) {
   // spaces: make one space of pages 2-6 first (not measured), then the
   // gesture turns it on and off.
+  // On a phone the spaces list is a sheet behind "Open spaces".
+  if (name === 'spaces' && !(await page.getByRole('switch', { name: 'Turn on space' }).filter({ visible: true }).count())) {
+    const openSpaces = page.getByRole('button', { name: 'Open spaces', exact: true }).filter({ visible: true }).first();
+    if (await openSpaces.count()) { await openSpaces.click(); await sleep(800); }
+  }
   if (name === 'spaces' && !(await page.getByRole('switch', { name: 'Turn on space' }).filter({ visible: true }).count())) {
     const btn = (label) => page.getByRole('button', { name: label, exact: true }).filter({ visible: true }).first();
     await btn('Spaces').click();
