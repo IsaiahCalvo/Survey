@@ -6,6 +6,7 @@ import { ANNOTATION_SIZE_PRESETS } from '../components/AnnotationSizeControl';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from '../utils/annotationSize';
 import CompactColorPicker, { PRESET_COLORS } from '../components/CompactColorPicker';
 import PageGridToggle from '../components/PageGridToggle';
+import DarkPagesToggle from '../components/DarkPagesToggle';
 import { PageGridSettingsPanel } from '../components/PageGridSettings';
 import { isFeatureOn } from '../featureFlags.js';
 import SnappingToggle from '../components/SnappingToggle.jsx';
@@ -1256,8 +1257,25 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
                   </button>
                 </div>
               )} />
+              {/* Nightly (flag 'dark-pages'): light-on-dark pages. */}
+              <DarkPagesToggle render={({ on, toggle }) => (
+                <div className="mobile-pdf-header__zoom-fits">
+                  <button
+                    type="button"
+                    aria-pressed={on}
+                    data-dark-pages-toggle="true"
+                    className={on ? 'is-active' : ''}
+                    onClick={toggle}
+                  >
+                    <span>Dark pages</span>
+                    {on && <Icon name="check" size={14} color="currentColor" />}
+                  </button>
+                </div>
+              )} />
             </div>
           )}
+          {/* Keeps dark pages applied while the menu above is closed. */}
+          <DarkPagesToggle render={() => null} />
         </div>
 
         <button

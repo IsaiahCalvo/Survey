@@ -188,6 +188,11 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Photo or camera: Upload takes photos too and turns each into a one-page PDF',
     stage: 'beta',
   }),
+  // Drawboard phone apps (2026-11-10): night / glare reading.
+  'dark-pages': Object.freeze({
+    label: 'Dark pages: show PDF pages light-on-dark (marks keep their colours)',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

@@ -15,6 +15,7 @@ import CounterSeriesMenu, { counterSeriesMenuWidth } from './components/CounterS
 // (Note: CLAUDE.md still says the guard lives in AppShell; that line is stale.)
 
 import PageGridToggle, { PageGridGlyph } from './components/PageGridToggle';
+import DarkPagesToggle, { DarkPagesGlyph } from './components/DarkPagesToggle';
 import DocumentVersionsButton, { DocumentVersionsDialogs, useDocumentVersions } from './components/DocumentVersionsButton.jsx';
 import { requestMarkCommentsFocus } from './services/markCommentsFocus.js';
 import { OPEN_EXPORT_PDF_EVENT } from './utils/exportPdfModes.js';
@@ -5349,6 +5350,20 @@ export default function App({ devPreviewReturnTab = null }) {
                         style={{ ...footerBtn(), color: on ? 'var(--text-1)' : 'var(--text-3)' }}
                       >
                         <SnappingGlyph size={RAIL_CONTROL_GLYPH} off={!on} />
+                      </button>
+                    )} />
+                    {/* Nightly (flag 'dark-pages'): light-on-dark pages. */}
+                    <DarkPagesToggle render={({ on, toggle }) => (
+                      <button
+                        type="button"
+                        onClick={toggle}
+                        aria-label="Dark pages"
+                        aria-pressed={on}
+                        data-dark-pages-toggle="true"
+                        {...chromeTip(on ? 'Light pages' : 'Dark pages', 'left')}
+                        style={{ ...footerBtn(), color: on ? 'var(--text-1)' : 'var(--text-3)' }}
+                      >
+                        <DarkPagesGlyph size={RAIL_CONTROL_GLYPH} />
                       </button>
                     )} />
                     {/* drawboardAudit C2: the Pencil-only switch sits where
