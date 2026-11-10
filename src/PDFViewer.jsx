@@ -37556,12 +37556,21 @@ ${pageBlocks}
           2026-11-09): a measure tool armed on a page with no scale says so,
           with a way to set one, instead of quietly reading 1:1 inches. */}
       {measureScaleChipOn && isActive !== false && measureMode && !measureScaleDialog && !measureDepthDialog
-        && !isValidMeasureScale(pageScaleFromObjects(annotationsByPage?.[pageNum]?.objects) || metaScaleForPage(measureScaleMeta, pageNum))
+        && (measureMode === 'calibrate'
+          || !isValidMeasureScale(pageScaleFromObjects(annotationsByPage?.[pageNum]?.objects) || metaScaleForPage(measureScaleMeta, pageNum)))
         && createPortal(
-          <div className="measure-no-scale-chip" role="status" data-measure-no-scale="">
-            <span>No scale set. Lengths read 1:1.</span>
-            <button type="button" onClick={() => setMeasureScaleDialog({ pageNumber: pageNum })}>Set scale</button>
-          </div>,
+          measureMode === 'calibrate' ? (
+            // Calibrating: say what to do, with a way out.
+            <div className="measure-no-scale-chip" role="status" data-measure-calibrating="">
+              <span>Draw along a length you know.</span>
+              <button type="button" onClick={() => { setMeasureMode(null); setActiveTool('pan'); }}>Cancel</button>
+            </div>
+          ) : (
+            <div className="measure-no-scale-chip" role="status" data-measure-no-scale="">
+              <span>No scale set. Lengths read 1:1.</span>
+              <button type="button" onClick={() => setMeasureScaleDialog({ pageNumber: pageNum })}>Set scale</button>
+            </div>
+          ),
           document.body,
         )}
       {measureDepthDialog && (

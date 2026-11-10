@@ -57,3 +57,23 @@ test('flag off: no chip', async ({ page }) => {
     await sheet.remove();
   }
 });
+
+test('calibrating: the chip says what to do, and Cancel puts the tool down', async ({ page }) => {
+  test.setTimeout(150_000);
+  const sheet = await openSheet(page, true);
+  try {
+    await armLength(page);
+    await page.locator('[data-measure-no-scale]').getByRole('button', { name: 'Set scale' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Set page scale' });
+    await dialog.getByText('Calibrate instead').click();
+    await expect(dialog).toBeHidden();
+    const chip = page.locator('[data-measure-calibrating]');
+    await expect(chip).toContainText('Draw along a length you know');
+    await expect(page.locator('[data-measure-no-scale]')).toHaveCount(0);
+    await chip.getByRole('button', { name: 'Cancel' }).click();
+    await expect(chip).toHaveCount(0);
+    await expect(page.locator('[data-measure-no-scale]')).toHaveCount(0);
+  } finally {
+    await sheet.remove();
+  }
+});

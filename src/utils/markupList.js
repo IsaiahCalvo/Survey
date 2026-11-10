@@ -37,6 +37,7 @@ const SKIP_KINDS = new Set(['space', 'region', 'formField', 'surveyMarker']);
 function kindOf(obj) {
   const data = obj?.data || {};
   if (getMeasureKind(obj)) return 'measure';
+  if (data.type === 'counter') return 'counter'; // drawn as a circle, listed as what it is
   const type = data.type === 'callout' ? 'callout' : (data.type === 'text-markup' ? 'text-markup' : obj?.type);
   return historyTypeKey(type, obj);
 }
@@ -57,8 +58,24 @@ function textOf(obj) {
 }
 
 function colorOf(obj) {
-  const c = obj?.stroke && obj.stroke !== 'transparent' ? obj.stroke : obj?.fill;
+  // A counter's colour is its disc (its ring is white).
+  const counter = obj?.data?.type === 'counter' && typeof obj?.fill === 'string' && obj.fill !== 'transparent';
+  const c = counter ? obj.fill : (obj?.stroke && obj.stroke !== 'transparent' ? obj.stroke : obj?.fill);
   return typeof c === 'string' && c !== 'transparent' ? c : null;
+}
+
+// One shape for Created: an ISO time, whether the mark kept a time string or
+// a raw epoch number (counters stamp Date.now()).
+function createdAtOf(obj) {
+  const raw = obj?.meta?.createdAt || obj?.data?.createdAt || null;
+  if (raw == null || raw === '') return null;
+  const asNumber = typeof raw === 'number' ? raw : (/^\d{10,13}$/.test(String(raw)) ? Number(raw) : null);
+  if (asNumber != null) {
+    const ms = asNumber < 1e12 ? asNumber * 1000 : asNumber;
+    const date = new Date(ms);
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  }
+  return String(raw);
 }
 
 function idOf(obj, pageNumber, index) {
@@ -94,7 +111,7 @@ export function buildMarkupRows(byPage) {
         text: textOf(obj),
         color: colorOf(obj),
         authorId: getAnnotationAuthorId(obj) || null,
-        createdAt: obj?.meta?.createdAt || obj?.data?.createdAt || null,
+        createdAt: createdAtOf(obj),
         calloutId: obj?.data?.type === 'callout' && obj?.data?.id != null ? String(obj.data.id) : null,
       });
     });

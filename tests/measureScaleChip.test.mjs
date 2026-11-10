@@ -17,13 +17,20 @@ test('the chip is a Nightly beta flag with a seed migration', () => {
 
 test('the chip only shows while measuring on a page with no valid scale', () => {
   assert.match(viewer, /const \[measureScaleChipOn\] = useState\(\(\) => isFeatureOn\('measure-scale-chip'\)\)/);
-  const at = viewer.indexOf('className="measure-no-scale-chip"');
+  const at = viewer.indexOf('data-measure-no-scale=""');
   assert.ok(at > 0);
   const gate = viewer.slice(viewer.lastIndexOf('{measureScaleChipOn', at), at);
   assert.match(gate, /measureMode/);
   assert.match(gate, /!measureScaleDialog/);
   assert.match(gate, /!isValidMeasureScale\(/);
   assert.match(viewer.slice(at, at + 400), /setMeasureScaleDialog\(\{ pageNumber: pageNum \}\)/);
+});
+
+test('while calibrating the chip says what to do, with Cancel', () => {
+  const at = viewer.indexOf('data-measure-calibrating=""');
+  assert.ok(at > 0);
+  assert.match(viewer.slice(at, at + 300), /Draw along a length you know\./);
+  assert.match(viewer.slice(at, at + 300), /setMeasureMode\(null\); setActiveTool\('pan'\)/);
 });
 
 test('the chip uses theme tokens and the small type size', () => {

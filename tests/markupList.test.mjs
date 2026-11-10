@@ -78,3 +78,16 @@ test('panel and flag are wired', () => {
   assert.ok(PANEL_IDS.includes('markups'));
   assert.equal(FEATURE_FLAGS['markup-list']?.stage, 'beta');
 });
+
+test('counters list as Counter, with their disc colour and an ISO time (R3-M B3)', async () => {
+  const { buildMarkupRows, markupRowsToCsv } = await import('../src/utils/markupList.js');
+  const at = 1794273682855;
+  const rows = buildMarkupRows({
+    1: { objects: [{ type: 'circle', id: 'c1', fill: '#2563eb', stroke: '#ffffff', radius: 14, data: { type: 'counter', createdAt: at, displayNumber: 1 } }] },
+  });
+  assert.equal(rows[0].kind, 'counter');
+  assert.equal(rows[0].kindLabel, 'Counter');
+  assert.equal(rows[0].color, '#2563eb');
+  assert.equal(rows[0].createdAt, new Date(at).toISOString());
+  assert.match(markupRowsToCsv(rows), /Counter,,#2563eb,,2026-/);
+});
