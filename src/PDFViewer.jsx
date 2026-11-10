@@ -3391,6 +3391,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     // Settle any previous override FIRST so the prevCursor captured below is
     // the element's real inline cursor, not a leftover forced value.
     runPendingCursorRestore();
+    // No cursor to show when the main input cannot hover (phones, touch
+    // tablets): skip the hit test, a forced layout in the same frame as the
+    // tool switch (~45 ms on a marked sheet at phone size, 2026-11-09).
+    let cannotHover = false;
+    try { cannotHover = Boolean(window.matchMedia?.('(hover: none)')?.matches); } catch { cannotHover = false; }
+    if (cannotHover) return runPendingCursorRestore;
     const { x, y } = lastPointerPosRef.current;
     const el = document.elementFromPoint(x, y);
     if (el) {

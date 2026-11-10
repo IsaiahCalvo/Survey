@@ -383,11 +383,21 @@ async function gesture(page, cdp, name, profile) {
     await toggle.click();
     await sleep(1200);
   } else if (name === 'survey') {
-    const button = page.getByRole('button', { name: 'Survey', exact: true }).filter({ visible: true }).first();
-    if (await button.isEnabled().catch(() => false)) {
-      await button.click();
+    // Desktop: the Survey button, Escape leaves. Phone: "Open survey", tap again.
+    const phoneButton = page.getByRole('button', { name: 'Open survey', exact: true }).filter({ visible: true }).first();
+    if (await phoneButton.count()) {
+      await phoneButton.click();
       await sleep(1200);
-      await page.keyboard.press('Escape');
+      const close = page.getByRole('button', { name: /^(Close survey|Close|Done)$/ }).filter({ visible: true }).first();
+      if (await close.count()) await close.click(); else await page.keyboard.press('Escape');
+      await sleep(1200);
+    } else {
+      const button = page.getByRole('button', { name: 'Survey', exact: true }).filter({ visible: true }).first();
+      if (await button.isEnabled().catch(() => false)) {
+        await button.click();
+        await sleep(1200);
+        await page.keyboard.press('Escape');
+      }
     }
   }
   const inputMs = Date.now() - t0;
