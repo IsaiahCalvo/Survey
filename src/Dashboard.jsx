@@ -1195,7 +1195,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
   // document (open: true -> each opens in a new tab). Non-PDFs are skipped
   // with a short note; the PDFs go one at a time through the same path as
   // the Upload button, so a duplicate ask waits for its answer.
-  const handleDroppedFiles = async (dropped, { projectId = null, projectName = null, open = false, sample = false } = {}) => {
+  const handleDroppedFiles = async (dropped, { projectId = null, projectName = null, open = false, sample = false, newDocument = false } = {}) => {
     let files = dropped;
     if (photoUploadOn) {
       const turned = await photosAsPdfs(files);
@@ -1224,7 +1224,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     }
     const targetProjectId = isUploadableProjectId(projectId) ? projectId : null;
     let checked = null;
-    if (isFeatureOn('upload-check')) {
+    // A blank document made with New skips the upload check and the sheet
+    // ask: it is never a new revision of a sheet (R4-C S1).
+    if (isFeatureOn('upload-check') && !newDocument) {
       checked = await askUploadCheck(pdfs.map(asPdfFile));
       if (!checked) return { added: 0, skipped: rejected.length + pdfs.length };
     }
@@ -1237,6 +1239,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
           projectId: targetProjectId,
           openAfterUpload: open,
           checkedSheet: checked ? checked[index].sheet : null,
+          // A blank document made with New is never a new revision of a
+          // sheet, and New already checked its name (R4-C S1).
+          askDuplicates: !newDocument,
         });
         if (status === 'added' || status === 'existing') added += 1;
       }
