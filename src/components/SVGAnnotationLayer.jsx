@@ -176,6 +176,8 @@ import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox, isImportedPath
 import { resolveMidpointHandlePosition } from '../utils/lineDragMath.js';
 import { buildArrowheadRenderSpec, resolveLineEndingStyles, arrowheadShapePathD } from '../utils/lineRenderHelpers.js';
 import { lineEndingCreateOptions } from '../utils/lineEndingDefaults.js';
+import { activePenType, penWidthFactors } from '../utils/penTypes.js';
+import { variableWidthPreviewD } from '../utils/penWidthInk.js';
 import { getCurvedPath, distanceToLineSegment, getCurveEndAngle } from '../utils/lineGeometry.js';
 import { ARROWHEAD_STYLES } from './Callout/types';
 import { renderPathToSvgAttrs, renderPathToSvgD, isFilledInkOutlineAttrs, getFilledInkHitTargetProps } from '../utils/svgPathAttrs.js';
@@ -1609,6 +1611,7 @@ const SVGAnnotationLayerBody = memo(({
 
   // Coalesced page-space sampling with the fabric canvas's exact 0.2-page-px
   // dedupe (FabricDrawingCanvas.appendPointerSamples parity).
+  const variablePenRef = useRef(false);
   const appendCoalescedPagePoints = useCallback((nativeEvent) => {
     if (!svgRef.current) return;
     const coalesced = nativeEvent.getCoalescedEvents?.() || [];
@@ -1621,7 +1624,11 @@ const SVGAnnotationLayerBody = memo(({
       const point = raw && width > 0 && height > 0 ? clampPointToPage(raw, width, height) : raw;
       const previous = freehandPointsRef.current[freehandPointsRef.current.length - 1];
       if (point && (!previous || Math.hypot(point.x - previous.x, point.y - previous.y) >= 0.2)) {
-        freehandPointsRef.current.push(point);
+        // Pen types (Nightly): Pro reads speed or pressure, so keep the time,
+        // pressure and pointer kind with each point (never saved).
+        freehandPointsRef.current.push(variablePenRef.current
+          ? { ...point, t: sample.timeStamp, p: sample.pressure, k: sample.pointerType }
+          : point);
       }
     }
   }, [width, height]);
@@ -2854,6 +2861,7 @@ const SVGAnnotationLayerBody = memo(({
         selectedModuleId,
         stampRegionId,
         activeRegionId,
+        penType: activePenType(),
       });
       endLiveStroke(Boolean(json), points);
       if (json) dispatchCommit(json);
@@ -8094,6 +8102,7 @@ const SVGAnnotationLayerBody = memo(({
                 pageNumber,
               });
               freehandPointsRef.current = [];
+              variablePenRef.current = false;
               appendCoalescedPagePoints(e.nativeEvent);
               // docs/GESTURE-CONTRACT.md D2: a press that travels past the
               // shape drag threshold (10 px finger, 6 px mouse / pen) draws
@@ -8131,6 +8140,7 @@ const SVGAnnotationLayerBody = memo(({
               });
               if (isFreehandCreationTool) {
                 freehandPointsRef.current = [];
+                variablePenRef.current = tool === 'pen' && activePenType() !== 'basic';
                 appendCoalescedPagePoints(e.nativeEvent);
                 // w32: other screens see this stroke grow while it is drawn.
                 const liveId = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
@@ -8681,7 +8691,28 @@ const SVGAnnotationLayerBody = memo(({
           })}
         </g>
       )}
+      {/* Pen types (Nightly): a Pro or Calligraphy stroke draws its varying
+          width as it goes, from the same factors the saved ink uses. */}
+      {shapeCreation && shapeCreation.tool === 'pen' && variablePenRef.current && !smartInkRef.current.fit
+        && freehandPointsRef.current.length > 0 && (() => {
+        const w = Number(strokeWidth) || 3;
+        const pts = freehandPointsRef.current;
+        const factors = penWidthFactors(pts, activePenType(), w) || pts.map(() => 1);
+        return (
+          <path
+            className="freehand-creation-preview"
+            data-preview-tick={shapeCreation.tick}
+            data-pen-type={activePenType()}
+            d={variableWidthPreviewD(pts, factors.map((f) => Math.max(0.25, (w * f) / 2)))}
+            fill={strokeColor}
+            fillOpacity={Math.max(0, Math.min(1, (strokeOpacity ?? 100) / 100))}
+            fillRule="nonzero"
+            style={{ pointerEvents: 'none' }}
+          />
+        );
+      })()}
       {shapeCreation && FREEHAND_CREATION_TOOLS.includes(shapeCreation.tool)
+        && !(shapeCreation.tool === 'pen' && variablePenRef.current && !smartInkRef.current.fit)
         && freehandPointsRef.current.length > 0 && (
         <polyline
           className="freehand-creation-preview"

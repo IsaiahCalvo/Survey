@@ -13,6 +13,7 @@ import DarkPagesToggle from '../components/DarkPagesToggle';
 import { PageGridSettingsPanel } from '../components/PageGridSettings';
 import { isFeatureOn } from '../featureFlags.js';
 import { LineEndingsPanel } from '../components/LineEndingsPicker.jsx';
+import PenTypeTiles from '../components/PenTypePicker.jsx';
 import { setStampPickerOpen, useStampPickerOpen } from '../components/StampPickerCard.jsx';
 import { quickColoursForTool } from '../utils/quickStylePresets.js';
 import SnappingToggle, { SnapContentToggle } from '../components/SnappingToggle.jsx';
@@ -2682,6 +2683,13 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
                 {/* Arrowhead (arrow, callout) and, for the arrow, its ends -
                     End / Both / None, the IDENTICAL control the desktop bar
                     carries. Every head is on show, drawn, not listed. */}
+                {/* Nightly 'pen-types': Drawboard's Basic / Pro /
+                    Calligraphy pens, a setting of the armed Pen. */}
+                {tool === 'pen' && api.activeTool === 'pen' && isFeatureOn('pen-types') && (
+                  <SheetSection>
+                    <PenTypeTiles tip={tip} />
+                  </SheetSection>
+                )}
                 {/* Nightly 'line-endings': Drawboard's Endings (Start | End,
                     ten heads) for the Line and Arrow, as on the desktop. */}
                 {lineEndingsOn && (

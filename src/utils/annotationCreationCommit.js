@@ -10,6 +10,7 @@
  *
  * Pure JS — Node test runner imports this directly.
  */
+import { penWidthFactors } from './penTypes.js';
 import {
   computeDrawnBoundaryShapePreviewGeometry,
   tagDrawnCenteredStrokeGeometry,
@@ -393,7 +394,12 @@ export function buildFreehandCommitJSON({
   selectedModuleId,
   stampRegionId,
   activeRegionId,
+  // Nightly 'pen-types': 'pro' or 'calligraphy' varies the Pen's width.
+  penType = 'basic',
 }) {
+  const variablePen = tool === 'pen' && (penType === 'pro' || penType === 'calligraphy');
+  const factors = variablePen ? penWidthFactors(points, penType, strokeWidth) : null;
+  const inkPoints = factors ? points.map((p, i) => ({ x: p.x, y: p.y, f: factors[i] })) : points;
   // Tape (beta 'tape-tool') is pen ink in an opaque pastel at its own width,
   // marked data.tape so it draws with a shadow, a Pan tap reveals what is
   // under it, and the partial eraser leaves it whole (Drawboard).
@@ -409,7 +415,7 @@ export function buildFreehandCommitJSON({
     ...(tool === 'highlighter' && typeof authorId === 'string' && authorId
       ? { meta: { authorId } }
       : {}),
-    points,
+    points: inkPoints,
     // The pen honours the picked opacity (Drawboard PDF Pro trial audit
     // 2026-11-09: Survey drew new ink at 100% whatever opacity was set). The
     // highlighter keeps its own fixed highlightColor.
@@ -417,7 +423,7 @@ export function buildFreehandCommitJSON({
     color: tool === 'highlighter' ? highlightColor
       : ((strokeOpacity ?? 100) >= 100 ? strokeColor : composeAnnotationColor(strokeColor, strokeOpacity)),
     width: tool === 'highlighter' ? Math.max(strokeWidth, 8) : strokeWidth,
-    data: tape ? { id, tape: true } : { id },
+    data: tape ? { id, tape: true } : (factors ? { id, penType } : { id }),
   });
   if (!json) return null;
   applyScope(json, { selectedModuleId, stampRegionId, activeRegionId });

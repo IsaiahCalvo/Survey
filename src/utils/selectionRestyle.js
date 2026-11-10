@@ -25,6 +25,7 @@ import { composeColorForPatch } from './annotationData.js';
 import { dashForLineStyle, isDashLineStyle, lineStyleForDash } from './lineStyleOptions.js';
 import { renderPathToSvgAttrs } from './svgPathAttrs.js';
 import { createInkAnnotation, boundsOfCommands } from './paperAnnotationGeometry.js';
+import { createVariableInk } from './productionPaperInk.js';
 import { isAbsoluteInkGeometry } from './inkGeometryTransform.js';
 import { cloudEngineKindForShape, toolSupportsCloudBorderStyle } from './pdfAnnotationAppearance.js';
 import { getAnnotationRenderIdentity } from './annotationStorageIdentity.js';
@@ -288,12 +289,17 @@ export function rebuildInkAtWidth(annotation, width) {
   // The same pipeline and settings the stroke was drawn with (the pen commit
   // passes no sloppiness, i.e. 0; a stored one is honoured).
   const sloppiness = Number(annotation.sloppiness ?? annotation.data?.sloppiness) || 0;
-  const ink = createInkAnnotation(annotation.paperCenterline, {
-    id: annotation.id,
-    color: annotation.fill,
-    width: localWidth,
-    sloppiness,
-  });
+  // A Pro / Calligraphy stroke (Nightly 'pen-types') keeps its shape: the
+  // same width factors along the line, at the new width.
+  const penWidths = annotation.data?.penWidths;
+  const ink = Array.isArray(penWidths) && penWidths.length === annotation.paperCenterline.length
+    ? createVariableInk(annotation.paperCenterline, penWidths, { id: annotation.id, color: annotation.fill, width: localWidth })
+    : createInkAnnotation(annotation.paperCenterline, {
+      id: annotation.id,
+      color: annotation.fill,
+      width: localWidth,
+      sloppiness,
+    });
   if (!Array.isArray(ink?.cmds) || ink.cmds.length === 0) return null;
   const bounds = boundsOfCommands(ink.cmds);
   return {

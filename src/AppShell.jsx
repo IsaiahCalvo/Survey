@@ -146,6 +146,7 @@ import SelectionQuickBar from './components/SelectionQuickBar.jsx';
 import SelectionPropertiesPanel from './components/SelectionPropertiesPanel.jsx';
 import StampPickerCard from './components/StampPickerCard.jsx';
 import { LineEndingsMenu } from './components/LineEndingsPicker.jsx';
+import { PenTypeMenu } from './components/PenTypePicker.jsx';
 import { isToolGroupPressed } from './utils/toolbarToolPressed.js';
 import { pendingInviteRedirect } from './utils/pendingInvite.js';
 import { useProLock } from './hooks/useProLock.js';
@@ -4359,6 +4360,11 @@ export default function App({ devPreviewReturnTab = null }) {
                     width is a pill showing the stroke it will draw, the value
                     with its unit, and a chevron onto the list. */}
 
+                {/* Nightly 'pen-types': Drawboard's three pens (a tool
+                    setting, so only while the Pen is armed). */}
+                {isFeatureOn('pen-types') && bottomToolbarApi.activeTool === 'pen' && toolbarSlot('pen', (compact) => (
+                  <PenTypeMenu tip={chromeTip} compact={compact} />
+                ))}
                 {(bottomToolbarApi.contextTool === 'pen'
                   || bottomToolbarApi.contextTool === 'highlighter'
                   || bottomToolbarApi.contextTool === 'tape'
@@ -4633,12 +4639,6 @@ export default function App({ devPreviewReturnTab = null }) {
                     callout has one end) and the head tiles, None among them.
                     It writes the same two pieces of state as before (head
                     style, both ends), so nothing new is stored. */}
-                {/* Nightly 'line-endings': Drawboard's Endings (Start | End,
-                    ten heads) for the Line and Arrow tools, in place of the
-                    arrow ends pill. Callouts keep the pill. */}
-                {lineEndingsInBar && toolbarSlot('arrowhead', (compact) => (
-                  <LineEndingsMenu api={bottomToolbarApi} tool={bottomToolbarApi.contextTool} tip={chromeTip} compact={compact} />
-                ), { canCompact: true })}
                 {((bottomToolbarApi.contextTool === 'arrow' && !lineEndingsInBar) || bottomToolbarApi.contextTool === 'callout') && bottomToolbarApi.setArrowheadStyle && (() => {
                   const live = bottomToolbarApi.arrowheadStyle || 'none';
                   const options = ARROWHEAD_MENU_OPTIONS.some((option) => option.value === live)
@@ -4736,6 +4736,12 @@ export default function App({ devPreviewReturnTab = null }) {
                   />
                   ), { canCompact: !anyMixed });
                 })()}
+                {/* Nightly 'line-endings': Drawboard's Endings (Start | End,
+                    ten heads) for the Line and Arrow tools, in place of the
+                    arrow ends pill. Callouts keep the pill. */}
+                {lineEndingsInBar && toolbarSlot('arrowhead', (compact) => (
+                  <LineEndingsMenu api={bottomToolbarApi} tool={bottomToolbarApi.contextTool} tip={chromeTip} compact={compact} />
+                ), { canCompact: true })}
                 {/* PASS 7 (2026-09-22 review): the rule that closes the value
                     group before "Aa". Every other group in bars 1-3 is fenced
                     off by a hairline — colour | numbers | style — but the Aa sat
