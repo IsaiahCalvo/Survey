@@ -9,6 +9,7 @@ import {
   keepTextLayer,
   restoreTextLayer,
   textContentInSlices,
+  whenViewerStill,
   textLayerKey,
 } from '../src/utils/pdfjsTextLayerCache.js';
 
@@ -118,4 +119,59 @@ test('an empty page and a cancelled build both finish', async () => {
   await reader.read();
   await reader.cancel(new Error('cancelled'));
   assert.deepEqual(await reader.read(), { value: undefined, done: true });
+});
+
+test('a run of cheap slices grows the next slice at most twofold', async () => {
+  const sizes = [];
+  await readLikeTextLayer(textContentInSlices(content(4000)), (slice) => { sizes.push(slice.items.length); });
+  for (let i = 1; i < sizes.length - 1; i += 1) assert.ok(sizes[i] <= sizes[i - 1] * 2, `slice ${i}: ${sizes[i]} <= 2 x ${sizes[i - 1]}`);
+});
+
+test('every slice waits while the viewer says it is moving', async () => {
+  const log = [];
+  let release = null;
+  let waits = 0;
+  const waitForStill = () => {
+    waits += 1;
+    if (waits !== 2) return null;
+    log.push('held');
+    return new Promise((resolve) => { release = () => { log.push('released'); resolve(); }; });
+  };
+  const reading = readLikeTextLayer(textContentInSlices(content(300), { waitForStill }), (slice) => log.push(`slice:${slice.items.length}`));
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.deepEqual(log, ['slice:64', 'held'], 'the second slice waits for the viewer to be still');
+  release();
+  await reading;
+  assert.equal(log[2], 'released');
+  assert.ok(log.length > 3);
+});
+
+test('whenViewerStill waits for a quiet viewer, or its limit', async () => {
+  assert.equal(whenViewerStill(null), null);
+  const listeners = {};
+  const scroller = {
+    dataset: {},
+    addEventListener(type, fn) { listeners[type] = fn; },
+  };
+  assert.equal(whenViewerStill(scroller), null, 'a still viewer needs no wait');
+  listeners.wheel();
+  let done = false;
+  const wait = whenViewerStill(scroller, { quietMs: 40 }).then(() => { done = true; });
+  // Keep scrolling for a while: the wait holds.
+  for (let i = 0; i < 4; i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    listeners.scroll();
+  }
+  assert.equal(done, false, 'still scrolling');
+  await wait;
+  assert.equal(done, true, 'resolves once the scrolling stops');
+
+  scroller.dataset.pdfjsMoving = 'true';
+  assert.ok(whenViewerStill(scroller, { quietMs: 10 }), 'the moving flag alone holds it');
+  let limited = false;
+  const capped = whenViewerStill(scroller, { quietMs: 10, maxMs: 60 }).then(() => { limited = true; });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(limited, false, 'held while the flag is up');
+  await capped;
+  assert.equal(limited, true, 'a flag that never clears stops holding after the limit');
 });
