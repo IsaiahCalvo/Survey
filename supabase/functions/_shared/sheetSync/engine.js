@@ -141,6 +141,16 @@ export const NEW_ROW_TAKEOVER_MS = 180_000;
 // open time plus a round (15 to 30 s) apart, so a shorter window.
 export const NEW_ROW_TAKEOVER_LIVE_MS = 60_000;
 const isRowWatch = (key) => key.endsWith('|+row');
+// Problems are rebuilt every round (a missing column says so again each
+// time). Something that happened once (a row split, a Row ID put back)
+// would show for one round, a few seconds, so it stays this long instead.
+export const NOTICE_MS = 30 * 60_000;
+const NOTICE_MAX = 20;
+function noticesOf(saved, nowMs) {
+  return (Array.isArray(saved) ? saved : [])
+    .filter((n) => n && typeof n.message === 'string' && nowMs - Number(n.t) < NOTICE_MS)
+    .slice(0, NOTICE_MAX);
+}
 function recentWritesOf(saved, nowMs) {
   const kept = Object.entries(saved || {})
     .filter(([, w]) => w && nowMs - Number(w.t) < RECENT_WRITE_MS)
@@ -434,11 +444,16 @@ export async function planSheetRound({
     recentWrites: Object.fromEntries(Object.entries(recentWritesOf(state.recentWrites, now.getTime()))
       .filter(([k]) => lateSaves || isRowWatch(k))),
     problems: [],
+    // Things that happened once, shown for NOTICE_MS: { t, message, markerId?, scopeId? }.
+    notices: noticesOf(state.notices, now.getTime()),
     missingTabs: [],
     // Tabs still there that lost their Row ID column or heading row (deleted,
     // cleared, typed over): not synced until undone or rebuilt (putBackTab).
     brokenTabs: [],
     heldErase: null,
+  };
+  const notice = (p) => {
+    next.notices = [{ ...p, t: now.getTime() }, ...next.notices.filter((n) => n.message !== p.message)].slice(0, NOTICE_MAX);
   };
   const plan = {
     cellWrites: [], // { sheetId, title, row, col, value, markerId?, key? }   row/col are 0-based grid indexes
@@ -752,7 +767,7 @@ export async function planSheetRound({
         delete next.removedInSheet[found];
         await mergeRow({ markerId: found, marker: markers[found], row, r });
         writeCell(r, 'rowId', await tokenFor(found, scope.scopeId), row[rowIdCol]);
-        next.problems.push({ markerId: found, scopeId: scope.scopeId, message: `${where(r)}: its Row ID was changed, so Survey matched it to "${markers[found].name}" by name and put the Row ID back.` });
+        notice({ markerId: found, scopeId: scope.scopeId, message: `${where(r)}: its Row ID was changed, so Survey matched it to "${markers[found].name}" by name and put the Row ID back.` });
         continue;
       }
       // "Total", "Grand total", "Subtotal", "Sum"... typed under the items,
@@ -942,7 +957,7 @@ export async function planSheetRound({
           for (const k of typedKeys) setFp(sheetSide, k, getFp(base, k));
           // Still watched (the rest of that save may land later), but split once.
           next.recentWrites[`${markerId}|+row`] = { ...fresh, took: true };
-          next.problems.push({ markerId: id, scopeId: scope.scopeId, message: `${where(r)}: "${typedName}" was typed into the row Survey had just filled with "${String(marker.name || '')}" for a field tech. Both are kept: "${typedName}" is a new item in the row below.` });
+          notice({ markerId: id, scopeId: scope.scopeId, message: `${where(r)}: "${typedName}" was typed into the row Survey had just filled with "${String(marker.name || '')}" for a field tech. Both are kept: "${typedName}" is a new item in the row below.` });
         }
       }
       // A late save landing on a cell Survey just wrote, while the app still
@@ -1081,7 +1096,8 @@ export async function planSheetRound({
   }
   // At most 200 problems, each short: they are saved with the link and sent
   // with every status, and a sheet can hold any amount of text.
-  next.problems = next.problems.slice(0, 200).map((p) => ({ ...p, message: displayOf(p.message) }));
+  const shown = next.notices.filter((n) => !n.markerId || markers[n.markerId] || plan.markerWrites[n.markerId]).map(({ t, ...p }) => p);
+  next.problems = [...shown, ...next.problems].slice(0, 200).map((p) => ({ ...p, message: displayOf(p.message) }));
 
   // Conflicts and lists of markers that no longer exist go away.
   for (const id of Object.keys(next.conflicts)) if (!markers[id]) delete next.conflicts[id];

@@ -635,6 +635,9 @@ test('a PM\'s new row saved late over the row Survey just added keeps both items
   assert.ok(ctx.link.state.problems.some((p) => /typed into the row Survey had just filled/.test(p.message)), 'the panel says what happened');
   const quiet = await ctx.round({ now: new Date(t0 + 56000), force: true });
   assert.deepEqual(Object.values(quiet.summary).filter(Boolean), []);
+  assert.ok(ctx.link.state.problems.some((p) => /typed into the row Survey had just filled/.test(p.message)), 'and still says so a round later');
+  await ctx.round({ now: new Date(t0 + 50000 + 31 * 60_000), force: true });
+  assert.ok(!ctx.link.state.problems.some((p) => /typed into the row Survey had just filled/.test(p.message)), 'for half an hour');
 });
 
 // Excel can land one save cell by cell: the Item first (split off as the PM's
