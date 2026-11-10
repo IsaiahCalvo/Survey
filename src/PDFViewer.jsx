@@ -3486,9 +3486,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // decides whether the selection survives it. { tool, source } of the latest
   // request; read once by the tool-switch effect below.
   const toolSwitchRequestRef = useRef(null);
-  // Counts tool requests, so a deferred switch (Escape's put-the-tool-down)
-  // can tell that a newer pick came in before it ran.
-  const toolRequestSeqRef = useRef(0);
   const setActiveToolLogged = useCallback((next, { source } = {}) => {
     toolRequestSeqRef.current += 1;
     toolSwitchRequestRef.current = source && typeof next === 'string' ? { tool: next, source } : null;
