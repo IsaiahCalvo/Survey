@@ -81,7 +81,9 @@ export function useProjectItems({ projectId, enabled = true, client = defaultCli
     }
     setItems((cur) => cur.map((i) => {
       if (i.id !== id) return i;
-      const next = { ...i, updated_at: data.updated_at };
+      // updated_at only moves forward: a slow, older save never rewinds it.
+      const newer = !i.updated_at || (data.updated_at && Date.parse(data.updated_at) > Date.parse(i.updated_at));
+      const next = { ...i, updated_at: newer ? data.updated_at : i.updated_at };
       for (const f of mine) next[f] = data[f];
       return next;
     }));

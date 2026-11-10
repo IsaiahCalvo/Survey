@@ -156,3 +156,11 @@ test('migration: numbers never reused, server writes the log, owner deletes only
   assert.match(sql, /project_item_comments_delete_own[\s\S]*?NOT public\.is_guest_session\(\)[\s\S]*?NOT public\.is_agent_session\(\)[\s\S]*?user_can_access_project\(project_id, 'editor'\)\s*\);/);
   assert.match(sql, /\('project-issues', 'off'/);
 });
+
+test('a slow, older save never rewinds updated_at; an old Activity read never replaces a newer one', () => {
+  const data = readFileSync(new URL('../src/projectItems/projectItemsData.js', import.meta.url), 'utf8');
+  assert.match(data, /Date\.parse\(data\.updated_at\) > Date\.parse\(i\.updated_at\)/);
+  assert.match(data, /updated_at: newer \? data\.updated_at : i\.updated_at/);
+  const panel = readFileSync(new URL('../src/projectItems/ProjectItemsPanel.jsx', import.meta.url), 'utf8');
+  assert.match(panel, /if \(read === eventsReadRef\.current\) setEvents\(res\.events\)/);
+});

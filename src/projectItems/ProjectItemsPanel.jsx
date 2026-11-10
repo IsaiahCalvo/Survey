@@ -144,9 +144,13 @@ function ItemDetail({
   const today = localDay();
   const k = ITEM_KINDS[kind];
 
+  // Only the newest Activity read is shown: an older one that comes back
+  // late never replaces a fuller log.
+  const eventsReadRef = useRef(0);
   const refreshEvents = useCallback(async () => {
+    const read = ++eventsReadRef.current;
     const res = await loadItemEvents(item.id);
-    setEvents(res.events);
+    if (read === eventsReadRef.current) setEvents(res.events);
   }, [item.id]);
   const refreshComments = useCallback(async () => {
     const res = await loadItemComments(item.id);
