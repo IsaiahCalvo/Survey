@@ -227,12 +227,26 @@ export const DEFAULT_PINNED_TOOLS_STATE = Object.freeze({
 /** The pin sets: markup (everywhere) and survey (while Survey mode is on). */
 export const PIN_SETS = Object.freeze(['markup', 'survey']);
 
+// Each kind's starting width: the viewer's own (useDatabase
+// DEFAULT_TOOL_PREFERENCES; the eraser's Size box starts at 20). A pin saved
+// before its tool kept a width (the eraser before 2026-10-29; Polyline,
+// Polygon and Text before 2026-10-27) held none, so it showed no number in
+// its corner for good: the armed pin only takes edits once it has settings.
+export const PIN_DEFAULT_WIDTH = Object.freeze({
+  pen: 3, highlighter: 20, eraser: 20, rect: 2, ellipse: 2, polygon: 2, cloud: 2.5,
+  polyline: 2, line: 2, arrow: 2, counter: 14, text: 1, callout: 2,
+});
+
 function sanitizePin(raw) {
   if (!raw || typeof raw !== 'object' || !pinKind(raw.kind)) return null;
+  const style = pinStyleFor(raw.kind, raw.style || {});
+  if (!Number.isFinite(style.strokeWidth) && PIN_DEFAULT_WIDTH[raw.kind] !== undefined) {
+    style.strokeWidth = PIN_DEFAULT_WIDTH[raw.kind];
+  }
   return {
     id: typeof raw.id === 'string' && raw.id ? raw.id.slice(0, 80) : newPinId(),
     kind: raw.kind,
-    style: pinStyleFor(raw.kind, raw.style || {}),
+    style,
   };
 }
 

@@ -7,7 +7,7 @@ import test from 'node:test';
 import {
   PINNABLE_TOOLS, chooseDockPlacement, createPinnedToolsStore, dropDurationMs, magnetPull, makePin, movePin,
   pinBadge, pinDescription, pinFaceColor, pinKindForTool, pinStyleFor, reorderIndexAt, reorderShift,
-  sanitizePinnedToolsState, slotsThatFit, visiblePinCount, COMPACT_DOCK_SLOTS, CARRIED_DOCK_SLOTS,
+  PIN_DEFAULT_WIDTH, sanitizePinnedToolsState, slotsThatFit, visiblePinCount, COMPACT_DOCK_SLOTS, CARRIED_DOCK_SLOTS,
 } from '../src/pinnedTools/pinnedTools.js';
 import { armPin, endPinSession, pinEditFromViewer, sessionStatus, startingStyleFor } from '../src/pinnedTools/pinSession.js';
 import { FEATURE_FLAGS, isFeatureOn } from '../src/featureFlags.js';
@@ -359,4 +359,31 @@ test('the Pin a tool search matches names, groups and everyday words', async () 
   assert.deepEqual(ids('revision cloud'), ['cloud']);
   assert.deepEqual(ids('draw'), ['pen', 'highlighter', 'eraser']);
   assert.deepEqual(ids('zzz'), []);
+});
+
+test('a pin saved with no width gets its tool\'s starting width, so its corner number shows', () => {
+  const state = sanitizePinnedToolsState({
+    pins: PINNABLE_TOOLS.map((kind) => ({ id: `old-${kind.id}`, kind: kind.id, style: {} })),
+  });
+  for (const pin of state.pins) {
+    assert.equal(pin.style.strokeWidth, PIN_DEFAULT_WIDTH[pin.kind], pin.kind);
+    assert.ok(pinBadge(pin), `${pin.kind} shows a number`);
+  }
+  // A saved width is kept.
+  const kept = sanitizePinnedToolsState({ pins: [{ id: 'e', kind: 'eraser', style: { strokeWidth: 55 } }] });
+  assert.equal(kept.pins[0].style.strokeWidth, 55);
+});
+
+test('pin starting widths match the viewer\'s tool defaults', () => {
+  const src = readFileSync(new URL('../src/hooks/useDatabase.js', import.meta.url), 'utf8');
+  const block = src.slice(src.indexOf('const DEFAULT_TOOL_PREFERENCES = {'));
+  for (const kind of PINNABLE_TOOLS) {
+    if (kind.id === 'eraser') continue; // the eraser's Size box (eraserSize) starts at 20
+    const key = kind.lineStyle === 'cloud' ? 'cloud' : kind.tool;
+    const m = new RegExp(`\\n  ${key}: \\{[^}]*strokeWidth: ([\\d.]+)`).exec(block);
+    assert.ok(m, `default for ${key}`);
+    assert.equal(PIN_DEFAULT_WIDTH[kind.id], Number(m[1]), kind.id);
+  }
+  const viewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
+  assert.match(viewer, /const \[eraserSize, setEraserSize\] = useState\(20\)/);
 });
