@@ -904,6 +904,36 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-tools__main::-webkit-scrollbar { display: none; }
 
+/* A phone on its side (iPhone 14 landscape: 390px tall) leaves the rail about
+   300px. The footer (More, sync, History, people) kept its full height at the
+   bottom, so the tool column above it scrolled inside a ~100px window: Draw,
+   Shapes and Text were cut in half at its edge and an open group's Pen,
+   Highlighter and Eraser sat out of sight. On a short screen the whole rail
+   scrolls as one column instead - tools first, footer after them - keeping the
+   owner's "scroll rather than compress" rule (2026-10-01) with nothing cut.
+   The popovers are position: fixed, so the rail's overflow never clips them. */
+@media (orientation: landscape) and (max-height: 500px) {
+  /* The rail's scroll box ends at the dock's top edge, so a chip scrolled
+     to the bottom is never hidden behind the dock. */
+  .mobile-pdf-tools {
+    height: calc(100% - var(--mobile-viewer-dock-height));
+    padding-bottom: 8px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+  }
+  .mobile-pdf-tools::-webkit-scrollbar { display: none; }
+  .mobile-pdf-tools__main {
+    flex: none;
+    overflow: visible;
+  }
+  .mobile-pdf-tools__footer {
+    flex: none;
+    margin-top: 12px;
+  }
+}
+
 /* More tools below the fold (the rail scrolls): fade the column's last 18px
    as the hint. Set by MobilePdfViewerChrome; gone once scrolled to the end. */
 .mobile-pdf-tools__main[data-more-below='true'] {
@@ -1490,7 +1520,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
      body stack (Arial off Apple). */
   font-family: var(--font-ui);
   left: calc(var(--mobile-rail-w) + 3px);
-  width: min(245px, calc(100vw - var(--mobile-rail-w) - 14px));
+  /* 272: "Export review package (ZIP)" fits on one line at 15px. */
+  width: min(272px, calc(100vw - var(--mobile-rail-w) - 14px));
   padding: 6px;
   color: var(--text-2);
   background: var(--surface-2);

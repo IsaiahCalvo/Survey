@@ -1155,7 +1155,7 @@ export default function ProjectsFolderTree({
         <div ref={openPaneRef} data-project-drop-pane className="card projects-open-pane" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           {open && (
             <>
-              <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--ink-500)', display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div className="projects-open-head" style={{ padding: '14px 18px', borderBottom: '1px solid var(--ink-500)', display: 'flex', alignItems: 'center', gap: 14 }}>
                 <span style={{ width: 4, height: 36, background: 'var(--gold)', borderRadius: 2, flex: 'none' }}></span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   {/* Inline rename field. Typing raises Cancel / Save in the
@@ -1180,7 +1180,7 @@ export default function ProjectsFolderTree({
                   />
                   </span>
                 </div>
-                <div style={{ display: 'flex', gap: 8, flex: 'none' }}>
+                <div className="projects-open-actions" style={{ display: 'flex', gap: 8, flex: 'none' }}>
                   {/* Add files — opens the OS file picker; picked PDFs are
                       added to this project's document list. */}
                   <button className="btn" onClick={() => addFiles(open)}><Icon name="upload" size={12} />Add files</button>
