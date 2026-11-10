@@ -926,7 +926,7 @@ export async function planSheetRound({
           writeCell(r, key, want, row[col], markerId);
           if (!fromSheet.has(key)) {
             plan.summary.toSheet += 1;
-            if (base && lateSaves) next.recentWrites[`${markerId}|${key}`] = { t: now.getTime(), was: getFp(base, key), wrote: getFp(finalFps, key) };
+            if (base && lateSaves && !isLegacyPrint(getFp(base, key))) next.recentWrites[`${markerId}|${key}`] = { t: now.getTime(), was: getFp(base, key), wrote: getFp(finalFps, key) };
           }
         }
       }

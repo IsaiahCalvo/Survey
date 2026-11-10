@@ -568,12 +568,34 @@ test('a sheet edit after the late-save window, or an Undo back to the old value,
   ctx.markers.d1.note = { text: 'App note' };
   ctx.markers.d2.note = { text: 'New' };
   await ctx.round({ now: new Date(t0 + 5000) });
-  await ctx.edit([{ row: await ctx.rowOf('d1'), col: notes, value: 'PM later' }, { row: await ctx.rowOf('d2'), col: notes, value: 'Old' }]);
-  // d2 is an Undo inside the window; d1 lands after it.
+  // d2: the PM undoes Survey's write inside the window.
+  await ctx.edit([{ row: await ctx.rowOf('d2'), col: notes, value: 'Old' }]);
+  const undo = await ctx.round({ now: new Date(t0 + 65000), force: true });
+  assert.equal(undo.summary.conflicts, 0, 'an Undo is not held');
+  assert.equal(ctx.markers.d2.note.text, 'Old');
+  // d1: the PM types after the window has passed.
+  await ctx.edit([{ row: await ctx.rowOf('d1'), col: notes, value: 'PM later' }]);
   const r = await ctx.round({ now: new Date(t0 + 5000 + 310000), force: true });
   assert.equal(r.summary.conflicts, 0);
   assert.equal(ctx.markers.d1.note.text, 'PM later');
   assert.equal(ctx.markers.d2.note.text, 'Old');
+});
+
+test('a first write over an old-format baseline is not watched, so an Undo comes straight in', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101', { note: { text: 'Old' } }) } });
+  ctx.provider = { ...ctx.provider, savesLate: true };
+  const t0 = Date.parse('2026-11-10T03:00:00Z');
+  await ctx.round({ now: new Date(t0) });
+  const scope = ctx.link.layout.scopes[0];
+  const { appRecordOf } = await import('../supabase/functions/_shared/sheetSync/engine.js');
+  ctx.link.baseline.d1.fields = (await computeRowFingerprints(appRecordOf(ctx.markers.d1, scope))).fieldFingerprints;
+  ctx.markers.d1.note = { text: 'New' };
+  await ctx.round({ now: new Date(t0 + 5000) });
+  assert.deepEqual(ctx.link.state.recentWrites, {}, 'an old-format "before" print could never match the sheet');
+  await ctx.edit([{ row: await ctx.rowOf('d1'), col: await ctx.col('Notes'), value: 'Old' }]);
+  const r = await ctx.round({ now: new Date(t0 + 65000), force: true });
+  assert.equal(r.summary.conflicts, 0);
+  assert.equal(ctx.markers.d1.note.text, 'Old');
 });
 
 test('a totals line typed under the items is not made an item, and new items go above it', async () => {
