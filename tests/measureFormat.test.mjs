@@ -175,3 +175,43 @@ test('dimension line: the drag draft is the dimension line and has no pill', () 
   assert.match(layer, /measureMode === 'length' && shapeCreation\.tool === 'line' && isFeatureOn\('measure-plus'\)\s*\? stampMeasure\(draftJson, 'length', effectiveMeasureScale, \{ dim: true \}\)/);
   assert.match(layer, /&& !\(measureMode === 'length' && isFeatureOn\('measure-plus'\)\)\s*&& renderMeasureLabel\(/);
 });
+
+test('dimension line: Leader and Inline / Above are edited on dimension marks only', async () => {
+  const { stampMeasure, applyMeasureEdit } = await import('../src/utils/measure/measureScale.js');
+  const dl = await import('../src/utils/measure/dimensionLine.js');
+  assert.equal(dl.normalizeDimensionLeader('24,5'), 24.5);
+  assert.equal(dl.normalizeDimensionLeader('-8.126'), -8.13, 'negative flips the side');
+  assert.equal(dl.normalizeDimensionLeader('99999'), dl.DIMENSION_LEADER_MAX_PT);
+  assert.equal(dl.normalizeDimensionLeader('-0'), 0);
+  assert.equal(dl.normalizeDimensionLeader('abc'), null);
+  assert.equal(dl.normalizeDimensionLeader(''), null);
+  const line = { type: 'Line', x1: -50, y1: 0, x2: 50, y2: 0, left: 0, top: 0, width: 100, height: 0 };
+  const dim = stampMeasure(line, 'length', null, { dim: true });
+  const longer = applyMeasureEdit(dim, { leader: '30' });
+  assert.equal(dl.dimensionLeader(longer), 30);
+  assert.equal(applyMeasureEdit(dim, { leader: 'x' }), dim, 'a bad leader changes nothing');
+  const above = applyMeasureEdit(dim, { captionPlace: 'above' });
+  assert.equal(dl.dimensionCaptionPlace(above), 'above');
+  assert.equal(dl.dimensionCaptionPlace(applyMeasureEdit(above, { captionPlace: 'inline' })), 'inline');
+  assert.equal(applyMeasureEdit(above, { captionPlace: 'inline' }).data.measure.dim.caption, undefined);
+  // A plain Length has no dim to edit.
+  const plain = stampMeasure(line, 'length', null);
+  assert.equal(applyMeasureEdit(plain, { leader: 30, captionPlace: 'above' }), plain);
+  // Above keeps the line whole and sets the caption beside it, past the line.
+  const g = dl.dimensionLineGeometry({ x1: 0, y1: 100, x2: 200, y2: 100 }, { captionWidth: 40, captionHeight: 21.6, place: 'above' });
+  assert.equal(g.segments.length, 1);
+  assert.equal(+g.caption.y.toFixed(2), +(84.69 - 10.8 - 2).toFixed(2));
+  // Flipped side: the caption follows below.
+  const flip = dl.dimensionLineGeometry({ x1: 0, y1: 100, x2: 200, y2: 100 }, { leader: -15.31, captionWidth: 40, place: 'above' });
+  assert.ok(flip.caption.y > flip.a.y);
+  // Caption size S / M / L scales the 9 pt caption from Medium.
+  const { MEASURE_LABEL_FONT_PX } = await import('../src/utils/measure/measureScale.js');
+  assert.equal(MEASURE_LABEL_FONT_PX, 12, 'dimensionLine.js scales from this base');
+  assert.equal(dl.dimensionCaptionPt(dim), 9);
+  assert.equal(dl.dimensionCaptionPt(applyMeasureEdit(dim, { captionSize: 16 })), 12);
+  // Wiring: the card shows the fields for dimension marks only.
+  const card = read('src/components/MeasureEditPopover.jsx');
+  assert.match(card, /\{isDim && \(\s*<label className="measure-edit__field">\s*<span className="measure-edit__name">Leader<\/span>/);
+  assert.match(card, /onClick=\{\(\) => onPatch\?\.\(\{ captionPlace: place \}\)\}/);
+  assert.match(read('src/utils/svgAnnotationRenderers.jsx'), /place: dimensionCaptionPlace\(obj\),/);
+});

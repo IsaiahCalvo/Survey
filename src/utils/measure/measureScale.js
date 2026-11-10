@@ -18,7 +18,7 @@
  */
 
 import { computeLineBboxCenter } from '../svgBoundingBox.js';
-import { DIMENSION_LEADER_PT } from './dimensionLine.js';
+import { DIMENSION_LEADER_PT, normalizeDimensionLeader } from './dimensionLine.js';
 import {
   MEASURE_LINE_PREFIXES,
   formatDisplayArea,
@@ -482,6 +482,18 @@ export function applyMeasureEdit(obj, changes = {}) {
   if (hasOwn(changes, 'depth') && DEPTH_MEASURE_KINDS.includes(kind)) {
     const depth = normalizeMeasureDepth(changes.depth);
     if (depth) measure.depth = depth;
+  }
+  if (kind === 'length' && measure.dim && typeof measure.dim === 'object') {
+    // Dimension-line marks only (measure-plus): the leader and caption place.
+    if (hasOwn(changes, 'leader')) {
+      const leader = normalizeDimensionLeader(changes.leader);
+      if (leader != null) measure.dim = { ...measure.dim, leader };
+    }
+    if (hasOwn(changes, 'captionPlace')) {
+      const dim = { ...measure.dim };
+      if (changes.captionPlace === 'above') dim.caption = 'above'; else delete dim.caption;
+      measure.dim = dim;
+    }
   }
   const keys = new Set([...Object.keys(before), ...Object.keys(measure)]);
   if ([...keys].every((key) => JSON.stringify(before[key]) === JSON.stringify(measure[key]))) return obj;

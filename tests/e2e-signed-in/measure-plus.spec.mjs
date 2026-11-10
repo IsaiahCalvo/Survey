@@ -77,6 +77,8 @@ test('custom scale reads feet-inches, Units restamp the line, Set as default car
   test.setTimeout(240_000);
   await page.addInitScript(() => {
     localStorage.setItem('survey.flag.measure-plus', '1');
+    // The Measurement card (its own beta flag) carries Leader and Inline / Above.
+    localStorage.setItem('survey.flag.measure-edit', '1');
     if (!sessionStorage.getItem('measure-plus-reset')) {
       localStorage.removeItem('survey.measure.defaultScale');
       sessionStorage.setItem('measure-plus-reset', '1');
@@ -127,6 +129,27 @@ test('custom scale reads feet-inches, Units restamp the line, Set as default car
     const seg = await dimLine.locator('line').nth(2).boundingBox();
     await page.mouse.click(seg.x + seg.width / 2, seg.y + seg.height / 2);
     await expect(bar).toBeVisible();
+    // Measurement card: Leader moves the line off the points; Above keeps it
+    // whole with the caption beside it; Inline breaks it again.
+    await bar.getByRole('button', { name: 'Measurement' }).click();
+    const card = page.getByRole('dialog', { name: 'Measurement' });
+    const leader = card.locator('[data-measure-edit-leader]');
+    await expect(leader).toHaveValue('15.31');
+    const lineY = async () => Number(await dimLine.locator('line').nth(2).getAttribute('y1'));
+    const yBefore = await lineY();
+    await leader.fill('40');
+    await leader.press('Enter');
+    await expect.poll(async () => Math.round(Math.abs((await lineY()) - yBefore) * 100) / 100).toBe(24.69);
+    await leader.press('ArrowUp');
+    await expect(leader).toHaveValue('41');
+    await card.locator('[data-measure-edit-place="above"]').click();
+    await expect(card.locator('[data-measure-edit-place="above"]')).toHaveAttribute('aria-pressed', 'true');
+    await expect(dimLine.locator('line')).toHaveCount(3);
+    await page.screenshot({ path: test.info().outputPath('measure-plus-above.png') });
+    await card.locator('[data-measure-edit-place="inline"]').click();
+    await expect(dimLine.locator('line')).toHaveCount(4);
+    await page.keyboard.press('Escape');
+    await expect(card).toBeHidden();
     await page.keyboard.press('Escape');
     await expect(reading).toHaveText(/^(?:[\d,]+′(?:-\d+(?: \d+\/\d)?″)?|(?:\d+ )?\d+(?:\/\d)?″)$/);
     const ftin = feetInches((await reading.textContent()).trim());

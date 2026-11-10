@@ -17,6 +17,11 @@ export const DIMENSION_EXTENSION_PT = 0.5;
 export const DIMENSION_EXTENSION_PAST_PT = 2;
 // Space each side of the caption where the line stops.
 const CAPTION_GAP_PAD_PT = 3;
+// Leaders past this (either side) are clamped: far longer than any caption.
+export const DIMENSION_LEADER_MAX_PT = 1000;
+export const DIMENSION_CAPTION_PLACES = Object.freeze(['inline', 'above']);
+// Space between the line and a caption sitting beside it.
+const CAPTION_LIFT_PAD_PT = 2;
 // Helvetica's average advance is about 0.55 em; primes and digits sit near it.
 const CHAR_EM = 0.55;
 
@@ -30,6 +35,30 @@ export function isDimensionMeasure(obj) {
 export function dimensionLeader(obj) {
   const n = Number(obj?.data?.measure?.dim?.leader);
   return Number.isFinite(n) ? n : DIMENSION_LEADER_PT;
+}
+
+/** A typed leader (points) as stored: two decimals, clamped; null if not a number. */
+export function normalizeDimensionLeader(value) {
+  if (value == null || value === '') return null;
+  const n = Number(String(value).trim().replace(',', '.'));
+  if (!Number.isFinite(n)) return null;
+  const clamped = Math.max(-DIMENSION_LEADER_MAX_PT, Math.min(DIMENSION_LEADER_MAX_PT, n));
+  return Math.round(clamped * 100) / 100 || 0;
+}
+
+/** Where a mark's caption sits: 'inline' (the line breaks round it) or 'above'. */
+export function dimensionCaptionPlace(obj) {
+  return obj?.data?.measure?.dim?.caption === 'above' ? 'above' : 'inline';
+}
+
+// The caption size buttons (S / M / L = 10 / 12 / 16 px pills) scale the
+// 9 pt caption from Medium (measureScale.js MEASURE_LABEL_FONT_PX).
+const CAPTION_SIZE_BASE_PX = 12;
+
+/** A mark's caption size (points): 9 pt at Medium, scaled by S / L. */
+export function dimensionCaptionPt(obj) {
+  const px = Number(obj?.data?.measure?.captionSize);
+  return Number.isFinite(px) && px > 0 ? (DIMENSION_CAPTION_PT * px) / CAPTION_SIZE_BASE_PX : DIMENSION_CAPTION_PT;
 }
 
 /** The width (points) a caption of `text` takes at `fontPt`. */
@@ -46,10 +75,17 @@ export function dimensionCaptionWidth(text, fontPt = DIMENSION_CAPTION_PT) {
  *             round the caption when it fits)
  *   extensions two [from, to] lines, from each clicked point to just past
  *   chevrons  two open arrowheads as point lists [wing, tip, wing]
+ * `place` 'above' keeps the line whole and sets the caption beside it.
  *   caption   { x, y, angle } centre and reading angle (degrees, kept so the
  *             text never reads upside down once `turn` is added)
  */
-export function dimensionLineGeometry({ x1, y1, x2, y2 }, { leader = DIMENSION_LEADER_PT, captionWidth = 0, turn = 0 } = {}) {
+export function dimensionLineGeometry({ x1, y1, x2, y2 }, {
+  leader = DIMENSION_LEADER_PT,
+  captionWidth = 0,
+  captionHeight = DIMENSION_CAPTION_PT,
+  place = 'inline',
+  turn = 0,
+} = {}) {
   const dx = x2 - x1;
   const dy = y2 - y1;
   const len = Math.hypot(dx, dy);
@@ -78,8 +114,9 @@ export function dimensionLineGeometry({ x1, y1, x2, y2 }, { leader = DIMENSION_L
   const chevrons = [chevron(a, ux, uy), chevron(b, -ux, -uy)];
   const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
   const gapHalf = captionWidth > 0 ? captionWidth / 2 + CAPTION_GAP_PAD_PT : 0;
-  // Break the line only when the caption leaves room for the chevrons.
-  const segments = gapHalf > 0 && len / 2 - gapHalf > L
+  // Break the line only when the caption sits inline and leaves room for
+  // the chevrons.
+  const segments = place !== 'above' && gapHalf > 0 && len / 2 - gapHalf > L
     ? [
       [a, { x: mid.x - ux * gapHalf, y: mid.y - uy * gapHalf }],
       [{ x: mid.x + ux * gapHalf, y: mid.y + uy * gapHalf }, b],
@@ -88,9 +125,10 @@ export function dimensionLineGeometry({ x1, y1, x2, y2 }, { leader = DIMENSION_L
   let angle = (Math.atan2(dy, dx) * 180) / Math.PI;
   const screen = ((((angle + (Number(turn) || 0)) % 360) + 540) % 360) - 180;
   if (screen > 90 || screen <= -90) angle += 180;
-  // A caption that does not fit between the chevrons sits just outside the line.
+  // An Above caption, or one that does not fit between the chevrons, sits
+  // beside the line on the side away from the clicked points.
   const outside = segments.length === 1 && gapHalf > 0;
-  const lift = outside ? (DIMENSION_CAPTION_PT * 0.8) * side : 0;
+  const lift = outside ? (Math.max(0, captionHeight) / 2 + CAPTION_LIFT_PAD_PT) * side : 0;
   return {
     a,
     b,

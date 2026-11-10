@@ -11,9 +11,10 @@ import React from 'react';
 import { isLinkMark, linkMarkPaint } from './linkMarkPaint.js';
 import { buildMeasureLabel } from './measure/measureScale.js';
 import {
-  DIMENSION_CAPTION_PT,
   DIMENSION_EXTENSION_PT,
+  dimensionCaptionPt,
   dimensionCaptionWidth,
+  dimensionCaptionPlace,
   dimensionLeader,
   dimensionLineGeometry,
   isDimensionMeasure,
@@ -951,16 +952,18 @@ function renderDimensionLine(obj, spec, key, opacity, rotateTransform, dashArray
   const { x1, y1, x2, y2, stroke, strokeWidth } = spec.line;
   const label = buildMeasureLabel(obj, obj.data?.measure?.scale || null);
   const lines = label ? (Array.isArray(label.lines) ? label.lines : [String(label.text)]) : [];
-  const fontPt = DIMENSION_CAPTION_PT;
+  const fontPt = dimensionCaptionPt(obj);
   const captionWidth = Math.max(0, ...lines.map((line) => dimensionCaptionWidth(line, fontPt)));
+  const lineHeight = fontPt * 1.2;
   const geo = dimensionLineGeometry({ x1, y1, x2, y2 }, {
     leader: dimensionLeader(obj),
     captionWidth,
+    captionHeight: lines.length * lineHeight,
+    place: dimensionCaptionPlace(obj),
     turn: obj.angle ?? 0,
   });
   if (!geo) return <g key={key} />;
   const sw = strokeWidth || 1;
-  const lineHeight = fontPt * 1.2;
   return (
     <g key={key} opacity={opacity} transform={rotateTransform} data-dimension-line="true">
       {geo.extensions.map(([p, q], i) => (
