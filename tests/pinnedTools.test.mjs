@@ -347,3 +347,16 @@ test('an old save with no survey set still loads; the state object is stable bet
   store.setPinSet('markup');
   assert.equal(store.getState(), first);
 });
+
+test('the Pin a tool search matches names, groups and everyday words', async () => {
+  const { matchPinKinds, PINNABLE_TOOLS } = await import('../src/pinnedTools/pinnedTools.js');
+  const ids = (q) => matchPinKinds(q).map((k) => k.id);
+  assert.equal(matchPinKinds('').length, PINNABLE_TOOLS.length);
+  assert.equal(matchPinKinds('   ').length, PINNABLE_TOOLS.length);
+  assert.deepEqual(ids('circle'), ['ellipse']);
+  assert.deepEqual(ids('SQUARE'), ['rect']);
+  assert.ok(ids('note').includes('text') && ids('note').includes('callout'));
+  assert.deepEqual(ids('revision cloud'), ['cloud']);
+  assert.deepEqual(ids('draw'), ['pen', 'highlighter', 'eraser']);
+  assert.deepEqual(ids('zzz'), []);
+});

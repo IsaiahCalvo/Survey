@@ -28,7 +28,6 @@ import { watchLightPopover } from './dismissRules.js';
 import { useMenuFocus } from '../hooks/useMenuFocus.js';
 import { withOwnHandlers } from './Tooltip.jsx';
 import {
-  PINNABLE_TOOLS,
   CARRIED_DOCK_SLOTS,
   COMPACT_DOCK_SLOTS,
   chooseDockPlacement,
@@ -36,6 +35,7 @@ import {
   dropDurationMs,
   magnetPull,
   makePin,
+  matchPinKinds,
   pinBadge,
   pinDescription,
   pinFaceColor,
@@ -961,6 +961,9 @@ function PinnedToolsMenu({
   menuRef, menu, placement, phone, pins, hiddenPins, renderPin, compact, pinSet, editing, currentKind, onPinCurrent, onAdd,
   onUnpin, onDuplicate, onMoveToStart, onPlacement, onToggleCompact, onToggleEditing, onHide, api,
 }) {
+  // The picker's search words; a fresh picker starts empty.
+  const [query, setQuery] = useState('');
+  useEffect(() => { if (menu.kind !== 'add') setQuery(''); }, [menu.kind]);
   // The "+N" grid: five pins a row, each the dock's own pin button.
   const moreColumns = Math.min(5, Math.max(1, hiddenPins.length));
   const width = menu.kind === 'add' ? 264 : menu.kind === 'more' ? moreColumns * 34 + 10 : 200;
@@ -1033,6 +1036,8 @@ function PinnedToolsMenu({
     );
   }
   const groups = ['Draw', 'Shapes', 'Text'];
+  const found = matchPinKinds(query);
+  const searching = query.trim().length > 0;
   const currentStyle = currentKind && typeof api?.readToolStyle === 'function'
     ? api.readToolStyle(currentKind.tool, currentKind.lineStyle)
     : null;
@@ -1053,11 +1058,42 @@ function PinnedToolsMenu({
           <div className="pinned-dock-menu__rule" />
         </>
       ) : null}
-      {groups.map((group) => (
+      {/* Drawboard's add-tool sheet has a search: type a name ("circle",
+          "cloud", "note") and Enter pins the first match. Not focused on a
+          phone, so the keyboard only comes up when asked for. */}
+      <div className="pinned-dock-menu__search">
+        <Icon name="search" size={14} color="currentColor" />
+        <input
+          type="search"
+          value={query}
+          placeholder="Find a tool"
+          aria-label="Find a tool"
+          data-pin-search="true"
+          autoFocus={!phone}
+          enterKeyHint="done"
+          onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && searching && found.length) {
+              event.preventDefault();
+              onAdd(found[0].id);
+            } else if (event.key === 'ArrowDown') {
+              event.preventDefault();
+              menuRef.current?.querySelector('[data-pin-kind]')?.focus();
+            }
+          }}
+        />
+      </div>
+      {searching && !found.length ? (
+        <p className="pinned-dock-menu__note" data-pin-search-empty="true">No tool matches “{query.trim()}”.</p>
+      ) : null}
+      {groups.map((group) => {
+        const kinds = found.filter((kind) => kind.group === group);
+        if (!kinds.length) return null;
+        return (
         <div key={group} role="group" aria-label={group}>
           <div className="pinned-dock-menu__heading">{group}</div>
           <div className="pinned-dock-menu__grid">
-            {PINNABLE_TOOLS.filter((kind) => kind.group === group).map((kind) => (
+            {kinds.map((kind) => (
               <button key={kind.id} type="button" role="menuitem" data-pin-kind={kind.id} onClick={() => onAdd(kind.id)}>
                 <Icon name={kind.iconName} size={16} color="currentColor" />
                 <span>{kind.label}</span>
@@ -1065,7 +1101,8 @@ function PinnedToolsMenu({
             ))}
           </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

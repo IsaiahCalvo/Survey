@@ -34,6 +34,33 @@ export const PINNABLE_TOOLS = Object.freeze([
 
 const KIND_BY_ID = new Map(PINNABLE_TOOLS.map((entry) => [entry.id, entry]));
 
+// Other words people type for a tool in the "Pin a tool" search.
+const PIN_KIND_WORDS = Object.freeze({
+  pen: 'ink draw freehand pencil marker sketch',
+  highlighter: 'highlight marker',
+  eraser: 'erase rubber delete',
+  rect: 'square box rectangle',
+  ellipse: 'circle oval round',
+  polygon: 'shape area outline',
+  cloud: 'revision cloud bubble',
+  polyline: 'path lines run',
+  line: 'straight dimension',
+  arrow: 'pointer leader',
+  counter: 'count number tally',
+  text: 'type note words label',
+  callout: 'note leader label comment',
+});
+
+/** The pinnable tools whose name, group or other words hold every typed word. */
+export function matchPinKinds(query) {
+  const words = String(query || '').toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return PINNABLE_TOOLS;
+  return PINNABLE_TOOLS.filter((kind) => {
+    const hay = `${kind.label} ${kind.group} ${PIN_KIND_WORDS[kind.id] || ''}`.toLowerCase();
+    return words.every((word) => hay.includes(word));
+  });
+}
+
 // One rule for every pin (owner 2026-10-27, "they all follow the same
 // rules"): a pin keeps what the settings row shows for its tool - the colour
 // dot, the size box and the Style picker - and shows the colour as its glyph
