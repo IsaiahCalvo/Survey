@@ -149,6 +149,7 @@ import { useProLock } from './hooks/useProLock.js';
 import { formatPageTotal } from './utils/pageTotalLabel.js';
 import { requestTemplateEditor } from './home/templateEditorRequest';
 import SheetSetBar from './sheets/SheetSetBar.jsx';
+import { recordDocumentOpened } from './home/homeLibraryData.js';
 import SheetSetView from './sheets/SheetSetView.jsx';
 import SpotlightOverlay from './spotlight/SpotlightOverlay.jsx';
 import useSpotlight from './spotlight/useSpotlight.js';
@@ -1679,6 +1680,8 @@ export default function App({ devPreviewReturnTab = null }) {
       fileToOpen,
       documentToOpen.filePath || documentToOpen.file_path || null,
     );
+    // Last opened (Nightly 'home-columns') counts a share link's open too.
+    recordDocumentOpened(documentToOpen.id);
 
     const url = new URL(window.location.href);
     // A mention email links to one comment (Nightly, 'mark-comments').
@@ -2347,17 +2350,24 @@ export default function App({ devPreviewReturnTab = null }) {
   }, [sheetSetEnabled, sheetActiveDocId, documents, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const sheetSetRef = useRef(sheetSet);
   sheetSetRef.current = sheetSet;
-  // One sheet opens at a time: a step, pick or Spotlight "go" while another
-  // is still asking to close or loading waits for nothing and is dropped.
+  // One sheet opens at a time. A step, pick or Spotlight "go" that comes
+  // while another is still asking to close or loading waits, and only the
+  // latest one waiting opens next (a presenter's last sheet always arrives).
   const sheetOpeningRef = useRef(false);
+  const sheetWaitingRef = useRef(null);
   const openSheet = async (doc) => {
     if (!doc) return;
-    const open = tabsRef.current.find((tab) => !tab.isHome && String(tab.file?.id) === String(doc.id));
-    if (open) { stableTabClick(open.id); return; }
-    if (sheetOpeningRef.current) return;
+    if (sheetOpeningRef.current) { sheetWaitingRef.current = doc; return; }
     sheetOpeningRef.current = true;
     try {
-      await openSheetNow(doc);
+      let next = doc;
+      while (next) {
+        sheetWaitingRef.current = null;
+        const open = tabsRef.current.find((tab) => !tab.isHome && String(tab.file?.id) === String(next.id));
+        if (open) stableTabClick(open.id);
+        else await openSheetNow(next);
+        next = sheetWaitingRef.current;
+      }
     } finally {
       sheetOpeningRef.current = false;
     }

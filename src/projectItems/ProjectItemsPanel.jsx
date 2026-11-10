@@ -152,12 +152,16 @@ function ItemDetail({
     const res = await loadItemEvents(item.id);
     if (read === eventsReadRef.current) setEvents(res.events);
   }, [item.id]);
+  // Only the newest read lands: a slow answer for the item shown before
+  // never replaces this item's thread.
+  const commentsReadRef = useRef(0);
   const refreshComments = useCallback(async () => {
+    const read = ++commentsReadRef.current;
     const res = await loadItemComments(item.id);
-    setComments(res.comments);
+    if (read === commentsReadRef.current) setComments(res.comments);
   }, [item.id]);
 
-  useEffect(() => { setTab('discussion'); setCommentDraft(''); setTagDraft(''); refreshComments(); refreshEvents(); }, [item.id, refreshComments, refreshEvents]);
+  useEffect(() => { setTab('discussion'); setCommentDraft(''); setTagDraft(''); setComments([]); setEvents([]); refreshComments(); refreshEvents(); }, [item.id, refreshComments, refreshEvents]);
   // A saved change adds a line to the Activity tab.
   useEffect(() => { refreshEvents(); }, [item.updated_at, refreshEvents]);
 
@@ -477,7 +481,14 @@ export default function ProjectItemsPanel({
     setSel(new Set());
     let undone = false;
     const toastId = showToast(ids.length === 1 ? `${k.one} deleted` : `${ids.length} ${k.many.toLowerCase()} deleted`, 'info', {
-      action: { label: 'Undo', onClick: () => { undone = true; } },
+      action: {
+        label: 'Undo',
+        onClick: () => {
+          undone = true;
+          // The rows come back at once, not when the 5 s are up.
+          setHiddenIds((cur) => { const n = new Set(cur); ids.forEach((id) => n.delete(id)); return n; });
+        },
+      },
       duration: 5000,
     });
     setHiddenIds((cur) => new Set([...cur, ...ids]));
