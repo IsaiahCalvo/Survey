@@ -67,3 +67,13 @@ test('upload-check is a Nightly beta flag with a migration row', () => {
   const sql = readFileSync(new URL('../supabase/migrations/20261110132000_upload_check_flag.sql', import.meta.url), 'utf8');
   assert.match(sql, /'upload-check'/);
 });
+
+test('Upload pressed while the title block is still reading gives no sheet, so the upload reads it', () => {
+  const [row] = uploadCheckRows([{ name: 'A-101.pdf' }]);
+  assert.equal(row.reading, true);
+  assert.equal(uploadSheet({ ...row, sheet: '', revision: '' }), null);
+  // Anything typed while it reads still stands.
+  assert.equal(uploadSheet({ ...row, sheet: 'a 101', revision: '' }).sheetNumber, 'A101');
+  // Read and empty: the person checked, there is none.
+  assert.deepEqual(uploadSheet({ ...row, reading: false, sheet: '', revision: '' }), { sheetNumber: null, sheetLabel: null, revision: null });
+});

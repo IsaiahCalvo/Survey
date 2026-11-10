@@ -92,3 +92,18 @@ test('the phone apps register for PDFs', () => {
   assert.match(plist, /<key>CFBundleDocumentTypes<\/key>[\s\S]*com\.adobe\.pdf/);
   assert.match(plist, /<key>LSSupportsOpeningDocumentsInPlace<\/key>\s*<false\/>/);
 });
+
+test('the same Inbox url opened again later is a new open, not a repeat', async (t) => {
+  resetOpenedFilesForTest();
+  const win = fakeWin();
+  const Filesystem = { readFile: async () => ({ data: PDF_B64 }), deleteFile: async () => {} };
+  const url = 'file:///var/mobile/Documents/Inbox/A-101.pdf';
+  let now = 1_000_000;
+  t.mock.method(Date, 'now', () => now);
+  assert.equal(await receiveOpenedFile(url, { Filesystem, win }), true);
+  now += 1000;
+  assert.equal(await receiveOpenedFile(url, { Filesystem, win }), false);
+  now += 10_000;
+  assert.equal(await receiveOpenedFile(url, { Filesystem, win }), true);
+  assert.equal(takeOpenedFiles().length, 2);
+});

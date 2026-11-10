@@ -9,7 +9,10 @@ export const OPEN_FILE_EVENT = 'survey:native-open-file';
 export const FALLBACK_NAME = 'Shared PDF.pdf';
 
 const queue = [];
-const seen = new Set();
+// Launch url and appUrlOpen can both carry one open; the same url later is a
+// new open (iOS reuses Documents/Inbox/<name>.pdf once the copy is gone).
+const SAME_OPEN_MS = 5000;
+const seen = new Map();
 
 /** True for a url the app should read as an opened file. */
 export function isOpenedFileUrl(url) {
@@ -63,8 +66,10 @@ export function takeOpenedFiles() {
  * The same url is read once even when both the launch url and the event carry it.
  */
 export async function receiveOpenedFile(url, { Filesystem, win = typeof window !== 'undefined' ? window : null } = {}) {
-  if (!isOpenedFileUrl(url) || seen.has(url)) return false;
-  seen.add(url);
+  if (!isOpenedFileUrl(url)) return false;
+  const now = Date.now();
+  if (now - (seen.get(url) ?? -Infinity) < SAME_OPEN_MS) return false;
+  seen.set(url, now);
   const name = openedFileName(url);
   try {
     const { data } = await Filesystem.readFile({ path: url });

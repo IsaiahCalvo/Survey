@@ -85,3 +85,10 @@ test('document-review is a Nightly beta flag; the table is written only through 
     assert.match(sql, new RegExp(`FUNCTION public\\.${fn}\\([^)]*\\)\\s+RETURNS[\\s\\S]*?SET search_path = ''`), `${fn} pins search_path`);
   }
 });
+
+test('a document shared to me as a viewer shows its review fields read-only', () => {
+  const ledger = readFileSync(new URL('../src/home/DocumentsLedger.jsx', import.meta.url), 'utf8');
+  assert.match(ledger, /const canEditReview = teamOwnerIsMe \|\| myTeamRole !== 'viewer';/);
+  assert.equal((ledger.match(/people=\{reviewPeople\} canEdit=\{canEditReview\}/g) || []).length, 2);
+  assert.doesNotMatch(ledger, /people=\{reviewPeople\} canEdit onSave/);
+});

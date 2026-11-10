@@ -392,6 +392,10 @@ export default function DocumentsLedger({
     return () => { live = false; };
   }, [teamDocId, teamOwnerIsMe]);
   const teamFresh = teamCollab.id === teamDocId;
+  // Review status and owner need edit access (set_document_review checks
+  // 'editor'): a document shared to me as a viewer shows them read-only.
+  const myTeamRole = teamFresh ? (teamCollab.rows.find((r) => r.user_id === user?.id)?.role || null) : null;
+  const canEditReview = teamOwnerIsMe || myTeamRole !== 'viewer';
   const teamRows = documentTeamRows(teamDocRaw, teamFresh ? teamCollab.rows : [], user, teamFresh ? teamCollab.owner : null);
   const renderTeam = (nameStyle) => teamRows.map((p) => (
     <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1093,7 +1097,7 @@ export default function DocumentsLedger({
               </div>
               {reviewOn && (
                 <div style={{ marginTop: 14, flex: 'none' }} data-doc-review-panel="">
-                  <ReviewFields review={reviews.get(previewDoc.id)} people={reviewPeople} canEdit onSave={(patch) => saveReview(previewDoc.id, patch)} />
+                  <ReviewFields review={reviews.get(previewDoc.id)} people={reviewPeople} canEdit={canEditReview} onSave={(patch) => saveReview(previewDoc.id, patch)} />
                 </div>
               )}
               {/* Last edited + Uploaded dates. */}
@@ -1186,7 +1190,7 @@ export default function DocumentsLedger({
                 </div>
                 {reviewOn && (
                   <div data-doc-review-panel="">
-                    <ReviewFields review={reviews.get(mobileDetailDoc.id)} people={reviewPeople} canEdit onSave={(patch) => saveReview(mobileDetailDoc.id, patch)} />
+                    <ReviewFields review={reviews.get(mobileDetailDoc.id)} people={reviewPeople} canEdit={canEditReview} onSave={(patch) => saveReview(mobileDetailDoc.id, patch)} />
                   </div>
                 )}
                 <div><span>Last edited</span><strong>{mobileDetailDoc.lastEditedAbs}</strong></div>

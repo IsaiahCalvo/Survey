@@ -56,6 +56,9 @@ export function uploadFileName(row) {
 export function uploadSheet(row) {
   const raw = String(row?.sheet || '').trim();
   const revision = String(row?.revision || '').trim().slice(0, REVISION_MAX) || null;
+  // Upload pressed before the title block was read, nothing typed: give no
+  // answer, so the upload reads it itself (the same-sheet offer still runs).
+  if (!raw && !revision && row?.reading) return null;
   if (!raw) return { sheetNumber: null, sheetLabel: null, revision };
   const strict = normalizeSheetNumber(raw);
   const sheetNumber = (strict || raw.toUpperCase().replace(/\s+/g, '')).slice(0, SHEET_NUMBER_MAX);
