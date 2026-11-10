@@ -142,6 +142,7 @@ const DESKTOP = {
 const PHONE_GESTURES = {
   fling: { label: 'swipe fling, fit zoom', act: (c, at) => touchSwipe(c, at, 0, -500, 6) },
   flingBack: { label: 'swipe fling back', act: (c, at) => touchSwipe(c, at, 0, 500, 6) },
+  flingHard: { label: 'hard swipe fling, many sheets', act: (c, at) => touchSwipe(c, at, 0, -660, 6) },
   zoomIn: { label: 'pinch in to ~400%', act: async (c, at) => { await pinch(c, at, 2.2); await pinch(c, at, 2.0); } },
   panDeep: { label: 'swipe-pan at ~400%', act: (c, at) => touchSwipe(c, at, -250, -300, 8) },
   zoomMax: { label: 'pinch to max and past', act: async (c, at) => { for (let i = 0; i < 3; i += 1) await pinch(c, at, 2.2); await pinch(c, at, 1.8); } },
