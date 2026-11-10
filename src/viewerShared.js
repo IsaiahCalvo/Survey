@@ -1186,6 +1186,35 @@ export const measurePdfjsPageScale = (pageNumber, pageSizes, pageContainers, fal
   return Math.max(0.1, Math.round(measuredScale * 100000) / 100000);
 };
 
+// Same container-aware measurement as measurePdfjsPageScale, for the overlay
+// render loop that asks for every mounted page on every viewer render. Reading
+// clientWidth there forced a layout per page per render: on phones, where a
+// swipe mounts and unmounts short pages, it cost ~360 ms of a 3 s swipe
+// (2026-11-09). The page host's box comes from its inline width and display
+// (PdfjsViewerContainer), and the canvas fills it, so the measured value is
+// kept until one of those, the page size or the canvas changes. Only real
+// measurements are kept: a hidden or unlaid page measures again next time.
+export const measurePdfjsPageScaleCached = (pageNumber, pageSizes, pageContainers, fallbackScale = 1, cache = null) => {
+  const pageHost = Number.isFinite(pageNumber) ? pageContainers?.[pageNumber] : null;
+  const pageSize = pageHost ? pageSizes?.[pageNumber] : null;
+  const hostStyle = pageHost?.style;
+  if (!cache || !pageHost || !pageSize || !hostStyle?.width) {
+    return measurePdfjsPageScale(pageNumber, pageSizes, pageContainers, fallbackScale);
+  }
+  const contentBox =
+    pageHost.querySelector?.('.survey-pdfjs-page-canvas') ||
+    pageHost.querySelector?.('canvas') ||
+    pageHost;
+  const key = `${hostStyle.width}|${hostStyle.display}|${pageSize.width}`;
+  const kept = cache.get(pageHost);
+  if (kept && kept.key === key && kept.contentBox === contentBox) return kept.value;
+  const hostWidth = contentBox?.clientWidth || pageHost.clientWidth || 0;
+  const value = measurePdfjsPageScale(pageNumber, pageSizes, pageContainers, fallbackScale);
+  if (hostWidth > 0) cache.set(pageHost, { key, contentBox, value });
+  else cache.delete(pageHost);
+  return value;
+};
+
 export const measurePdfjsPageHostScale = (pageNumber, pageSizes, pageContainers, fallbackScale = 1) => {
   const safeFallback = Number.isFinite(fallbackScale) && fallbackScale > 0 ? fallbackScale : 1;
   if (!Number.isFinite(pageNumber)) {

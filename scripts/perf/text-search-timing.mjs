@@ -15,8 +15,10 @@
 //   count    - the status text at the end
 // NET=<latency ms>/<down Mbps> throttles the page's network.
 // PROFILE=<file.cpuprofile> saves a CPU profile of the last query.
+// PHONE=iphone|pixel runs it at phone size with touch (mobile web layout);
+// APP=ios|android adds the phone-app shell's marker (mobile app layout).
 import fs from 'node:fs';
-import { chromium } from '@playwright/test';
+import { chromium, devices } from '@playwright/test';
 
 const BASE = process.env.BASE || 'http://127.0.0.1:5241';
 const DOC_NAME = process.env.BIG_DOC_NAME || 'Big Drawing Set.pdf';
@@ -26,10 +28,17 @@ const RUNS = Number(process.env.RUNS || 1);
 const NET = process.env.NET || null;
 // PROFILE=<file.cpuprofile>: CPU profile of the last query.
 const PROFILE = process.env.PROFILE || null;
+const PHONE = process.env.PHONE ? (process.env.PHONE === 'pixel' ? devices['Pixel 7'] : devices['iPhone 13']) : null;
+const APP = process.env.APP || null;
 const exe = process.env.PW_CHROMIUM_PATH || (fs.existsSync('/opt/pw-browsers/chromium') ? '/opt/pw-browsers/chromium' : undefined);
 
 async function run(browser) {
-  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const context = await browser.newContext(PHONE ? { ...PHONE } : { viewport: { width: 1440, height: 900 } });
+  if (APP) {
+    await context.addInitScript((platform) => {
+      window.Capacitor = { isNativePlatform: () => true, getPlatform: () => platform, isPluginAvailable: () => false, Plugins: {}, registerPlugin: () => new Proxy({}, { get: () => async () => ({}) }) };
+    }, APP);
+  }
   // Local e2e stack accounts only; every non-local request is aborted.
   await context.route((u) => !['data:', 'blob:'].includes(u.protocol) && !['127.0.0.1', 'localhost'].includes(u.hostname), (r) => r.abort('blockedbyclient'));
   const page = await context.newPage();
@@ -48,14 +57,21 @@ async function run(browser) {
   await dialog.waitFor({ state: 'hidden', timeout: 60_000 });
   await page.getByText(DOC_NAME, { exact: true }).filter({ visible: true }).first().click();
   const t0 = Date.now();
-  await page.getByRole('button', { name: 'Open file' }).first().click();
+  // A phone opens the file on the tap; desktop asks "Open file".
+  if (!PHONE) await page.getByRole('button', { name: 'Open file' }).first().click();
   // Page 1 drawn: its canvas grew past the default size.
   await page.waitForFunction(() => [...document.querySelectorAll('.survey-pdfjs-page-div canvas')].some((c) => c.width > 300), null, { timeout: 120_000, polling: 50 });
   const firstPage = Date.now() - t0;
   const pageAt = await page.evaluate(() => performance.now());
   await page.waitForTimeout(WAIT_MS);
-  await page.mouse.click(720, 500);
-  await page.keyboard.press('Control+f');
+  if (PHONE) {
+    await page.getByRole('button', { name: 'Open pages, search, and bookmarks' }).click();
+    await page.getByRole('tab', { name: 'Search' }).or(page.getByRole('button', { name: 'Search', exact: true })).first().click();
+    await page.locator('.search-text-panel__input').click();
+  } else {
+    await page.mouse.click(720, 500);
+    await page.keyboard.press('Control+f');
+  }
   await page.waitForFunction(() => document.activeElement?.matches?.('.search-text-panel__input'), null, { timeout: 30_000 });
   const out = { firstPage };
   for (const query of QUERIES) {
@@ -98,6 +114,7 @@ async function run(browser) {
       tick();
     }), { typedAt, query });
     delete r.typingMs;
+    if (cdp) { const { profile } = await cdp.send('Profiler.stop'); fs.writeFileSync(PROFILE, JSON.stringify(profile)); }
     // RECTS=1: steps to a few matches and lists the highlight boxes drawn
     // (page, x, y, w, h in page units), to compare two builds.
     if (process.env.RECTS) {
