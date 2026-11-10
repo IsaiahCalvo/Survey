@@ -530,6 +530,15 @@ export async function planSheetRound({
       }
     }
     const mappedCols = new Set(colOfKey.values());
+    // The list's own columns: Survey's, plus any headed column of the PM's
+    // right next to them. When a PivotTable beside the list stops a
+    // whole-row delete or insert (real Excel 11-10: every round failed),
+    // rows are cut or opened across just these.
+    let listCols = Math.max(...mappedCols) + 1;
+    while (listCols < header.length && !isBlankCell(header[listCols])) listCols += 1;
+    // Survey's own columns alone: the last resort when even those rows won't
+    // move (a column added past the PivotTable).
+    const ownCols = [...mappedCols].sort((a, b) => a - b);
 
     const sheetRecordOf = (row, base) => {
       const rec = { ...base, answers: { ...(base.answers || {}) } };
@@ -682,7 +691,7 @@ export async function planSheetRound({
             // Baseline kept, so an undo of the delete picks the row up again.
             next.tombstones[markerId] = { at: nowIso, scopeId: scope.scopeId };
           } else {
-            plan.deletes.push({ sheetId: sheet.sheetId, title: sheet.title, row: r, token, rowIdCol });
+            plan.deletes.push({ sheetId: sheet.sheetId, title: sheet.title, row: r, token, rowIdCol, listCols, ownCols });
             plan.summary.deleted += 1;
             delete nextBaseline[markerId];
             next.gone[markerId] = nowIso;
@@ -703,7 +712,7 @@ export async function planSheetRound({
           continue;
         }
         plan.verify.push({ sheetId: sheet.sheetId, title: sheet.title, row: r, col: rowIdCol, token });
-        plan.deletes.push({ sheetId: sheet.sheetId, title: sheet.title, row: r, token, rowIdCol });
+        plan.deletes.push({ sheetId: sheet.sheetId, title: sheet.title, row: r, token, rowIdCol, listCols, ownCols });
         plan.summary.deleted += 1;
         continue;
       }
@@ -819,7 +828,7 @@ export async function planSheetRound({
     const firstSummary = summaryRows.filter((r) => r > lastItemRow && r <= lastItemRow + 3).sort((a, b) => a - b)[0];
     if (appendRows.length) {
       plan.appends.push({
-        sheetId: sheet.sheetId, title: sheet.title, rows: appendRows, width,
+        sheetId: sheet.sheetId, title: sheet.title, rows: appendRows, width, listCols, ownCols,
         ...(firstSummary != null ? { before: firstSummary } : {}),
       });
     }

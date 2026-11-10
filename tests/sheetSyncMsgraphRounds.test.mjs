@@ -537,3 +537,80 @@ test('tabs added but not set up are taken away, so the next round adds them once
   await p.addTabs(ctx.link.file_id, [scope]);
   assert.deepEqual(names().filter((n) => n.startsWith('Extra')), ['Extra - Level 1'], 'added once, under its own name');
 });
+
+// Real Excel 11-10: a PM put a PivotTable beside the list (Insert >
+// PivotTable > Existing worksheet). Excel then refused every new item (rows
+// padded with blanks out to the pivot), every deleted item (whole-row delete)
+// and every insert above a Total line (whole-row insert): 409, every round.
+// A pivot still being laid out holds its box with nothing in most cells, so
+// the rows beside it look like plain list rows (a row with a PM's value
+// beside it is never deleted anyway).
+const pivotRows = [['Row Labels', 'Count of Notes'], ...Array.from({ length: 7 }, () => ['', ''])];
+const pivotIntact = (sheet, col) => sheet.rows[0][col] === 'Row Labels' && sheet.rows[0][col + 1] === 'Count of Notes';
+
+test('a PivotTable beside the list: new items, a deleted item and items above a Total line still sync', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101'), d2: door('d2', 'D-102'), d3: door('d3', 'D-103') } });
+  await ctx.round(); await ctx.round();
+  const at = (await ctx.sheet()).rows[0].length + 2;
+  await fakeApi(`/files/${ctx.fileId}/pivot`, { title: 'Doors - Level 1', at: { row: 0, col: at }, rows: pivotRows });
+
+  ctx.markers.d4 = door('d4', 'D-104');
+  const added = await ctx.round();
+  assert.equal(added.status, 'synced');
+  let sheet = await ctx.sheet();
+  assert.ok(sheet.rows.some((r) => r[3] === 'D-104'), 'the new item is in');
+  assert.ok(pivotIntact(sheet, at), 'the pivot is untouched');
+
+  delete ctx.markers.d2;
+  const removed = await ctx.round();
+  assert.equal(removed.status, 'synced');
+  sheet = await ctx.sheet();
+  assert.equal(sheet.rows.filter((r) => r[3] === 'D-102').length, 0, 'the deleted item\'s row is gone');
+  assert.deepEqual(sheet.rows.filter((r) => /^D-/.test(r[3] ?? '')).map((r) => r[3]), ['D-101', 'D-103', 'D-104'], 'the list closes up');
+  assert.ok(pivotIntact(sheet, at), 'the pivot is untouched');
+
+  const below = sheet.rows.findIndex((r, i) => i > 0 && !(r || []).slice(0, at).some((v) => v !== '' && v != null));
+  await ctx.edit([{ row: below, col: 0, value: 'Total' }]);
+  ctx.markers.d5 = door('d5', 'D-105');
+  const above = await ctx.round();
+  assert.equal(above.status, 'synced');
+  sheet = await ctx.sheet();
+  const items = sheet.rows.map((r) => r[3]);
+  assert.equal(items.indexOf('D-105') + 1, sheet.rows.findIndex((r) => r[0] === 'Total'), 'the new item goes right above the Total line');
+  assert.ok(pivotIntact(sheet, at), 'the pivot is untouched');
+  assert.equal((await ctx.round({ force: true })).status, 'synced', 'and the next round is quiet');
+});
+
+test('a PivotTable right against the list: a deleted item is emptied and a new item still goes in', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101'), d2: door('d2', 'D-102'), d3: door('d3', 'D-103') } });
+  await ctx.round(); await ctx.round();
+  const at = (await ctx.sheet()).rows[0].length;
+  await fakeApi(`/files/${ctx.fileId}/pivot`, { title: 'Doors - Level 1', at: { row: 0, col: at }, rows: pivotRows });
+
+  delete ctx.markers.d2;
+  ctx.markers.d4 = door('d4', 'D-104', { note: { text: 'from the field' } });
+  const result = await ctx.round();
+  assert.equal(result.status, 'synced');
+  const sheet = await ctx.sheet();
+  assert.equal(sheet.rows.filter((r) => r[3] === 'D-102').length, 0, 'the deleted item\'s cells are emptied');
+  const notes = sheet.rows[0].indexOf('Notes');
+  assert.equal(sheet.rows.find((r) => r[3] === 'D-104')?.[notes], 'from the field', 'the new item is in');
+  assert.ok(pivotIntact(sheet, at), 'the pivot is untouched');
+  const again = await ctx.round({ force: true });
+  assert.equal(again.status, 'synced');
+  assert.deepEqual(Object.keys(ctx.markers).sort(), ['d1', 'd3', 'd4'], 'the emptied row brings nothing back');
+});
+
+test('a PivotTable beside the top of the list: rows deleted in one go below it, the rest beside it, none twice', async () => {
+  const markers = Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`d${i + 1}`, door(`d${i + 1}`, `D-${101 + i}`)]));
+  const ctx = await setup({ markers });
+  await ctx.round(); await ctx.round();
+  const at = (await ctx.sheet()).rows[0].length + 1;
+  await fakeApi(`/files/${ctx.fileId}/pivot`, { title: 'Doors - Level 1', at: { row: 0, col: at }, rows: pivotRows.slice(0, 4) });
+  for (const id of ['d2', 'd5', 'd7']) delete ctx.markers[id];
+  const result = await ctx.round();
+  assert.equal(result.status, 'synced');
+  const sheet = await ctx.sheet();
+  assert.deepEqual(sheet.rows.filter((r) => /^D-/.test(r[3] ?? '')).map((r) => r[3]), ['D-101', 'D-103', 'D-104', 'D-106', 'D-108']);
+  assert.ok(pivotIntact(sheet, at), 'the pivot is untouched');
+});
