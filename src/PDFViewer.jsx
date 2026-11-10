@@ -22178,6 +22178,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // and stays up until the signal is back, then "You are back online".
   const deviceOnline = useBrowserOnline();
   const deviceOnlineRef = useRef(deviceOnline);
+  // An open that failed with no signal says so, instead of "may be corrupted"
+  // (file-model.md follow-up, 2026-11-10).
+  const pdfLoadFailedOffline = Boolean(pdfLoadError) && pdfLoadError.kind !== 'pdfjs'
+    && (!deviceOnline || /failed to fetch|network|offline|internet|connection may have dropped/i.test(String(pdfLoadError.message || '')));
   const offlineNoticeShown = !deviceOnline && isActive && !!cloudSyncEnabled
     && !!pdfFile?.id && !isDeviceDocumentId(pdfFile?.id) && !annotationOfflineCopy;
   useEffect(() => {
@@ -37914,15 +37918,17 @@ ${pageBlocks}
               <Icon name="document" size={48} />
             </div>
             <div style={{ fontSize: '18px', color: 'var(--text-2)', marginBottom: '8px', fontWeight: 500 }}>
-              Couldn’t open this PDF
+              {pdfLoadFailedOffline ? 'You’re offline' : 'Couldn’t open this PDF'}
             </div>
             <div style={{ fontSize: '13px', color: 'var(--text-3)', marginBottom: '8px' }}>
               {docName}
             </div>
             <div style={{ fontSize: '13px', color: 'var(--text-3)', marginBottom: '24px', lineHeight: 1.5 }}>
-              {pdfLoadError.kind === 'pdfjs'
-                ? 'The viewer couldn’t render this file. It may be corrupted or use an unsupported PDF feature.'
-                : 'The file couldn’t be parsed. It may be corrupted, encrypted, or not a valid PDF.'}
+              {pdfLoadFailedOffline
+                ? `This document isn’t kept on this device, so it needs a connection to open. Try again when you’re back online.${isFeatureOn('offline-docs') ? ' Next time, use Make available offline to open it with no signal.' : ''}`
+                : pdfLoadError.kind === 'pdfjs'
+                  ? 'The viewer couldn’t render this file. It may be corrupted or use an unsupported PDF feature.'
+                  : 'The file couldn’t be parsed. It may be corrupted, encrypted, or not a valid PDF.'}
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'center' }}>
               <button
