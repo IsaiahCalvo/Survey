@@ -47,6 +47,9 @@ const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pr
 // closes; tapping a result closes the sheet, so without this, reopening Search
 // came back empty and the results you were stepping through were gone.
 const lastQueryByDocument = new Map();
+// Match case / Whole word ride with the query, so a remount over case-matched
+// results shows the toggles that made them.
+const lastOptionsByDocument = new Map();
 
 // Search result ID generator
 const createResultId = (() => {
@@ -1152,8 +1155,8 @@ const SearchTextPanel = ({
   });
   // Match case / Whole word (Nightly, 'search-options').
   const [searchOptionsEnabled] = useState(() => isFeatureOn('search-options'));
-  const [matchCase, setMatchCase] = useState(false);
-  const [wholeWord, setWholeWord] = useState(false);
+  const [matchCase, setMatchCase] = useState(() => !!lastOptionsByDocument.get(getPdfDocumentKey(pdfDoc, numPages, pdfDocumentKey))?.matchCase);
+  const [wholeWord, setWholeWord] = useState(() => !!lastOptionsByDocument.get(getPdfDocumentKey(pdfDoc, numPages, pdfDocumentKey))?.wholeWord);
   const matchOptionsRef = useRef({ matchCase: false, wholeWord: false });
   matchOptionsRef.current = { matchCase, wholeWord };
   const [internalSearchResults, setInternalSearchResults] = useState([]);
@@ -1180,7 +1183,7 @@ const SearchTextPanel = ({
   // When the panel remounts over results it already produced, mark that search
   // as done so the remount doesn't re-run (or clear) it.
   const lastPerformedSearchKeyRef = useRef(searchedQuery
-    ? `${getPdfDocumentKey(pdfDoc, numPages, pdfDocumentKey) || 'missing'}::${searchedQuery}::`
+    ? `${getPdfDocumentKey(pdfDoc, numPages, pdfDocumentKey) || 'missing'}::${searchedQuery}::${matchCase ? 'C' : ''}${wholeWord ? 'W' : ''}`
     : '');
 
   // Use external state if provided, otherwise use internal state
@@ -1198,6 +1201,10 @@ const SearchTextPanel = ({
   useEffect(() => {
     if (resolvedDocumentKey) lastQueryByDocument.set(resolvedDocumentKey, internalSearchQuery || '');
   }, [resolvedDocumentKey, internalSearchQuery]);
+
+  useEffect(() => {
+    if (resolvedDocumentKey) lastOptionsByDocument.set(resolvedDocumentKey, { matchCase, wholeWord });
+  }, [resolvedDocumentKey, matchCase, wholeWord]);
 
   useEffect(() => {
     currentMatchIndexRef.current = Number.isFinite(currentMatchIndex) ? currentMatchIndex : -1;

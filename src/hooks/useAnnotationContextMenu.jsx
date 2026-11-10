@@ -23,6 +23,7 @@ import MenuGlide from '../components/MenuGlide.jsx';
 import { menuIconFor } from '../utils/menuItems.js';
 import { queryFrontTab } from '../utils/tabBehind.js';
 import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
+import { useBackLayer } from '../utils/backNavigation.js';
 import { createPortal } from 'react-dom';
 import Icon from '../Icons';
 import { useTooltip } from '../components/Tooltip';
@@ -90,6 +91,9 @@ export function useAnnotationContextMenu({ getPageObjects = null } = {}) {
   const closeAnnotationContextMenu = useCallback(() => {
     setAnnotationContextMenu(null);
   }, []);
+  // Back (phone gesture, Android button) closes the menu, not the document
+  // (Nightly 'back-button'; it has no focus trap, so it registers itself).
+  useBackLayer(Boolean(annotationContextMenu), closeAnnotationContextMenu);
 
   // Register the global annotation right-click handler. contextMenuDiagnostics.js
   // resolves (pageNumber, annotationIndex) from the click target and invokes this

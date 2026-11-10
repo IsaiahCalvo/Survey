@@ -69,6 +69,32 @@ export function turnPageObject(obj, delta, size) {
   const turn = quarterTurnPoint(delta, size);
   const type = String(obj.type || '').toLowerCase();
   if (obj?.data?.type === 'callout') return turnCallout(obj, turn, size) || obj;
+  // Text markup (highlight, underline, strikeout, squiggly, redact) draws from
+  // its quads, in page space, and ignores left / top / angle: turn every quad
+  // corner. Corner roles hold, since the words turn with the page.
+  if (obj?.data?.type === 'text-markup' && Array.isArray(obj.data.quads) && obj.data.quads.length) {
+    const quads = obj.data.quads.map((q) => {
+      const next = { ...q };
+      for (const n of [1, 2, 3, 4]) {
+        const p = turn({ x: Number(q[`x${n}`]) || 0, y: Number(q[`y${n}`]) || 0 });
+        next[`x${n}`] = p.x;
+        next[`y${n}`] = p.y;
+      }
+      return next;
+    });
+    const xs = quads.flatMap((q) => [q.x1, q.x2, q.x3, q.x4]);
+    const ys = quads.flatMap((q) => [q.y1, q.y2, q.y3, q.y4]);
+    const left = Math.min(...xs);
+    const top = Math.min(...ys);
+    return {
+      ...obj,
+      left,
+      top,
+      width: Math.max(...xs) - left,
+      height: Math.max(...ys) - top,
+      data: { ...obj.data, quads },
+    };
+  }
   if (type === 'line') {
     const { p1, p2, mid } = lineWorldPoints(obj);
     const next = { ...obj, ...packLineWorldPoints(turn(p1), turn(p2)) };
@@ -115,6 +141,12 @@ function turnRegion(region, delta, size) {
   const coords = Array.isArray(region?.coordinates) ? region.coordinates : null;
   if (!coords || coords.length < 2) return region;
   const turn = quarterTurnPoint(delta, size);
+  // A merged area keeps its parts and its centre for Unmerge: they turn too.
+  const extra = {};
+  if (Array.isArray(region.sourceRegions)) extra.sourceRegions = region.sourceRegions.map((r) => turnRegion(r, delta, size));
+  if (region.originCenter && Number.isFinite(Number(region.originCenter.x))) {
+    extra.originCenter = turn({ x: Number(region.originCenter.x), y: Number(region.originCenter.y) });
+  }
   const points = [];
   for (let i = 0; i + 1 < coords.length; i += 2) points.push(turn({ x: coords[i], y: coords[i + 1] }));
   if (region.shapeType === 'rectangular') {
@@ -122,9 +154,9 @@ function turnRegion(region, delta, size) {
     const ys = points.map((p) => p.y);
     const minX = Math.min(...xs); const maxX = Math.max(...xs);
     const minY = Math.min(...ys); const maxY = Math.max(...ys);
-    return { ...region, coordinates: [minX, minY, maxX, minY, maxX, maxY, minX, maxY] };
+    return { ...region, ...extra, coordinates: [minX, minY, maxX, minY, maxX, maxY, minX, maxY] };
   }
-  return { ...region, coordinates: points.flatMap((p) => [p.x, p.y]) };
+  return { ...region, ...extra, coordinates: points.flatMap((p) => [p.x, p.y]) };
 }
 
 const onPage = (value, page) => asPage(value?.pageNumber ?? value?.pageId ?? value?.page) === page;

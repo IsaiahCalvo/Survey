@@ -393,6 +393,8 @@ import { bookmarkDeleteMessage, removeBookmarkWithDescendants, restoreRemovedBoo
 import { useYDoc } from './hooks/useYDoc.js';
 import { useZoomState } from './hooks/useZoomState';
 import { isFeatureOn } from './featureFlags.js';
+import { marksHidden, subscribeMarksHidden } from './utils/marksHidden.js';
+import { isTypingTarget } from './utils/typingTarget.js';
 import { useMarkClipboard } from './utils/sharedMarkClipboard.js';
 // Beta 'mark-library' (Survey Nightly): save marks once, drop them on any page.
 import MarkLibraryPlacementLayer from './markLibrary/MarkLibraryPlacementLayer.jsx';
@@ -4256,6 +4258,26 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       window.__phase29InteractionState.scalingId = null;
       window.__phase29InteractionState.editCanvasId = null;
     }
+  }, []);
+
+  // Hide all marks (Nightly 'hide-marks'): hiding drops the pick, and while
+  // the marks are hidden the keys that change marks do nothing, so nothing
+  // you cannot see is deleted, cut, pasted or picked by Ctrl+A.
+  useEffect(() => subscribeMarksHidden(() => {
+    if (marksHidden()) clearAnnotationSelectionForContextChange('marks-hidden');
+  }), [clearAnnotationSelectionForContextChange]);
+  useEffect(() => {
+    const onKey = (event) => {
+      if (!marksHidden() || isTypingTarget(event.target)) return;
+      const key = String(event.key || '');
+      const mod = event.ctrlKey || event.metaKey;
+      const blocked = key === 'Delete' || key === 'Backspace' || (mod && /^[axdvgl]$/i.test(key));
+      if (!blocked) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   }, []);
 
   // UX: pan-mode quick-click → select annotation; Pan stays armed (Drawboard rule 2, 2026-10-02).
@@ -14188,6 +14210,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // session. During that brief window (and when CRDT is off) Cmd+Z is a no-op,
   // matching the empty-stack-silent contract.
   const handleUndo = useCallback(() => {
+    // The Undo buttons (phone header, toolbar) step back a polygon / polyline
+    // point too, like Ctrl/Cmd+Z (Nightly 'poly-back-step', utils/polyDraft.js).
+    if (stepBackPolyDraftForUndo()) return;
     if (deferUntilEraseCommitsFinish(handleUndo)) return;
     recordAnnotationUndoRedo('undo', {
       localUndoDepth: localAnnotationUndoRef.current.length,

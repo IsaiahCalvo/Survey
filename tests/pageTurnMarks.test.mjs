@@ -118,3 +118,35 @@ test('a callout turns its leader and keeps its card upright', async () => {
   close(read.textBoxHeight * W, 0.1 * H, 'card height');
   assert.equal(read.text, 'note');
 });
+
+test('a text highlight turns its quads with the words (R3-X bug 2)', () => {
+  const quad = { x1: 100, y1: 50, x2: 300, y2: 50, x3: 100, y3: 70, x4: 300, y4: 70 };
+  const obj = { type: 'group', left: 100, top: 50, width: 200, height: 20, angle: 0, data: { type: 'text-markup', markupType: 'underline', quads: [quad] } };
+  const turned = turnPageObject(obj, 90, { width: W, height: H });
+  const q = turned.data.quads[0];
+  // Clockwise: (x, y) -> (H - y, x). The baseline (3 -> 4) is still the words' bottom edge.
+  close(q.x1, H - 50, 'x1'); close(q.y1, 100, 'y1');
+  close(q.x3, H - 70, 'x3'); close(q.y3, 100, 'y3');
+  close(q.x4, H - 70, 'x4'); close(q.y4, 300, 'y4');
+  close(turned.left, H - 70, 'left'); close(turned.top, 100, 'top');
+  close(turned.width, 20, 'width'); close(turned.height, 200, 'height');
+  assert.equal(turned.angle, 0, 'quads carry the turn, not the angle');
+  let back = obj;
+  for (let i = 0; i < 4; i += 1) {
+    const size = i % 2 === 0 ? { width: W, height: H } : { width: H, height: W };
+    back = turnPageObject(back, 90, size);
+  }
+  for (const k of Object.keys(quad)) close(back.data.quads[0][k], quad[k], `four turns ${k}`);
+});
+
+test('a merged Spaces area turns its parts and centre, so Unmerge lands right', () => {
+  const part = { shapeType: 'rectangular', coordinates: [10, 10, 50, 10, 50, 30, 10, 30] };
+  const state = {
+    annotationsByPage: {},
+    spaces: [{ id: 's', assignedPages: [{ pageId: 1, regions: [{ shapeType: 'polygon', coordinates: [10, 10, 50, 10, 50, 30, 10, 30], sourceRegions: [part], originCenter: { x: 30, y: 20 } }] }] }],
+  };
+  const next = turnPageMarks(state, 1, 90, { width: W, height: H });
+  const region = next.spaces[0].assignedPages[0].regions[0];
+  close(region.originCenter.x, H - 20, 'centre x'); close(region.originCenter.y, 30, 'centre y');
+  assert.deepEqual(region.sourceRegions[0].coordinates.map((v) => Math.round(v)), [H - 30, 10, H - 10, 10, H - 10, 50, H - 30, 50]);
+});

@@ -14,6 +14,7 @@ import Spinner from '../components/Spinner';
 import { C } from '../uiPalette';
 import { isPhoneLayout } from '../utils/layoutMode.js';
 import { readUnits } from '../utils/annotationPreferences.js';
+import { isFeatureOn } from '../featureFlags.js';
 import {
   BLANK_PAGE_SIZES, BLANK_PAPERS, MAX_BLANK_PAGES, blankPageBox, buildBlankPdf, clampBlankPages, uniqueDocumentName,
 } from '../utils/blankPdf.js';
@@ -70,7 +71,7 @@ function ChoiceRow({ label, options, value, onChange, disabled }) {
 export default function NewDocumentDialog({ existingNames = [], onCreate, onClose }) {
   const phone = isPhoneLayout();
   const [name, setName] = useState(() => uniqueDocumentName('Blank document', existingNames));
-  const [sizeId, setSizeId] = useState(() => (readUnits() === 'metric' ? 'a4' : 'letter'));
+  const [sizeId, setSizeId] = useState(() => (isFeatureOn('default-units') && readUnits() === 'metric' ? 'a4' : 'letter'));
   const [orientation, setOrientation] = useState('portrait');
   const [pages, setPages] = useState('1');
   const [paper, setPaper] = useState('blank');
@@ -87,7 +88,7 @@ export default function NewDocumentDialog({ existingNames = [], onCreate, onClos
   const submit = async (event) => {
     event.preventDefault();
     if (busy) return;
-    const title = uniqueDocumentName(name, existingNames);
+    const title = uniqueDocumentName(String(name).trim().replace(/\.pdf$/i, ''), existingNames);
     setBusy(true);
     setError('');
     try {

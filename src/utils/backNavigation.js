@@ -78,6 +78,8 @@ const pushMark = (win) => win.history.pushState({ ...(win.history.state || {}), 
 let quietBacks = 0;
 let active = null;
 const swallowing = new WeakSet();
+// Told after a quiet back has landed (history.state is the entry below now).
+const quietListeners = new Set();
 
 function installSwallow(win) {
   if (swallowing.has(win)) return;
@@ -89,6 +91,7 @@ function installSwallow(win) {
     // A document opened again before the quiet back finished: give it its
     // entry back.
     if (active && active.win === win && !hasMark(win)) pushMark(win);
+    quietListeners.forEach((listener) => { try { listener(); } catch { /* one bad listener */ } });
   }, true);
 }
 
@@ -131,18 +134,34 @@ export function installViewerBack(win, onLeave) {
 export function installHomeBack(win) {
   if (!win?.history?.pushState) return () => {};
   installSwallow(win);
+  // history.back() lands later (popstate), so until it does the entry still
+  // reads as ours: `leaving` says it is already on its way out, so nothing
+  // backs twice (two backs stepped past Survey's own first entry, R3-X).
+  let leaving = false;
   const hasHome = () => Boolean(win.history.state && win.history.state[HOME_MARK]);
+  const owns = () => hasHome() && !leaving;
   let alive = true;
+  const takeOff = () => {
+    leaving = true;
+    quietBacks += 1;
+    win.history.back();
+  };
   const sync = () => {
     if (!alive) return;
     const open = backLayerCount() > 0;
     if (open && !hasHome() && quietBacks === 0) {
       win.history.pushState({ ...(win.history.state || {}), [HOME_MARK]: true }, '');
-    } else if (!open && hasHome()) {
-      quietBacks += 1;
-      win.history.back();
+    } else if (!open && owns()) {
+      takeOff();
     }
   };
+  // A sheet that hands over to a dialog (New, then Blank document) took the
+  // entry off as it closed; once that back lands, the dialog gets its own.
+  const afterQuiet = () => {
+    leaving = false;
+    sync();
+  };
+  quietListeners.add(afterQuiet);
   const onPop = () => {
     // Our entry was just taken off by back: close the top sheet. If more stay
     // open, the change it makes puts the entry back (sync).
@@ -155,11 +174,9 @@ export function installHomeBack(win) {
   return () => {
     alive = false;
     layerListeners.delete(sync);
+    quietListeners.delete(afterQuiet);
     win.removeEventListener('popstate', onPop);
-    if (hasHome()) {
-      quietBacks += 1;
-      win.history.back();
-    }
+    if (owns()) takeOff();
   };
 }
 
@@ -179,4 +196,5 @@ export function resetBackNavigationForTests() {
   layers.length = 0;
   quietBacks = 0;
   active = null;
+  quietListeners.clear();
 }
