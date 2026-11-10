@@ -103,15 +103,22 @@ export function reframeMarks(annotationsByPage, ids, operations, transform) {
     pageTransformations: {}, bookmarks: [], spaces: [], regionOverlayDisabled: new Map(),
   };
   // A delete then its Undo leaves this window's marks where they were: the
-  // restore puts back the page slice from just before that delete.
+  // restore puts back the page slice from just before that delete. Two
+  // deletes can share a page number (delete 2, then the page that slid into
+  // 2), so each number keeps a stack and a restore takes the newest delete,
+  // the order Undo puts pages back in.
   const beforeDelete = new Map();
   const steps = [];
   const flatten = (op) => { if (op?.type === 'batch') (op.operations || []).forEach(flatten); else steps.push(op); };
   operations.forEach(flatten);
   for (const step of steps) {
-    if (step?.type === 'delete') beforeDelete.set(Number(step.page), model);
+    if (step?.type === 'delete') {
+      const key = Number(step.page);
+      if (!beforeDelete.has(key)) beforeDelete.set(key, []);
+      beforeDelete.get(key).push(model);
+    }
     if (step?.type === 'restore') {
-      const from = beforeDelete.get(Number(step.fromPage));
+      const from = beforeDelete.get(Number(step.fromPage))?.pop();
       model = from
         ? transform(model, { ...step, from })
         : transform(model, { type: 'insert', afterPage: step.afterPage });
@@ -181,6 +188,33 @@ export function framePageChanges(frame) {
     out.push(...ops);
   }
   return out;
+}
+
+/**
+ * Splits a frame at a reload: `taken` holds the runs `keys` (the page
+ * changes the loaded bytes carry), `rest` the runs that came after, still to
+ * load. Both keep the marks noted so far, which sit on the pages as they were
+ * before `taken` (unless `taken` cannot travel). Either is null when it has
+ * no runs.
+ */
+export function splitFramePageChanges(frame, keys) {
+  if (!frame?.batches?.size) return { taken: null, rest: null };
+  const want = new Set(keys || []);
+  const taken = new Map();
+  const rest = new Map();
+  for (const [key, ops] of frame.batches) (want.has(key) ? taken : rest).set(key, ops);
+  // A run that could not travel moves none of the marks noted so far, so the
+  // later runs must not move them either: those start with no marks.
+  const stuck = [...taken.values()].some((ops) => !Array.isArray(ops));
+  const restFrame = rest.size ? { ...frame, batches: rest } : null;
+  if (restFrame && stuck) {
+    restFrame.made = new Set();
+    if (restFrame.madeMarkers) restFrame.madeMarkers = new Set();
+  }
+  return {
+    taken: taken.size ? { ...frame, batches: taken } : null,
+    rest: restFrame,
+  };
 }
 
 export const IDLE_REMOTE_PDF_STATE = Object.freeze({ blockedUntil: 0, pendingToken: null, awaitSha: null });
