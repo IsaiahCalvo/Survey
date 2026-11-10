@@ -92,3 +92,13 @@ test('a document shared to me as a viewer shows its review fields read-only', ()
   assert.equal((ledger.match(/people=\{reviewPeople\} canEdit=\{canEditReview\}/g) || []).length, 2);
   assert.doesNotMatch(ledger, /people=\{reviewPeople\} canEdit onSave/);
 });
+
+test('a failed review save rolls back to what the server last confirmed', () => {
+  const bits = readFileSync(new URL('../src/home/DocumentReviewBits.jsx', import.meta.url), 'utf8');
+  // An earlier save that lands while a later one waits records its row on the
+  // later entry; the later one's failure rolls back to that, not to the
+  // values it saw when it was queued.
+  assert.match(bits, /if \(!latest\(\)\) \{ pendingRef\.current\.get\(documentId\)\.confirmed = done; return; \}/);
+  assert.match(bits, /setReviews\(\(m\) => new Map\(m\)\.set\(documentId, entry\.confirmed\)\);/);
+  assert.doesNotMatch(bits, /set\(documentId, confirmed\)\)/);
+});

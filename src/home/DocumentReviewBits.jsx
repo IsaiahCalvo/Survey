@@ -68,14 +68,16 @@ export function useDocumentReviews(enabled, ids) {
       if (!latest()) return; // a later change will send this one's fields too
       try {
         const saved = await setDocumentReview(supabase, { documentId, status: wanted.status, ownerId: wanted.ownerId });
-        const done = { ...saved, ownerName: saved.ownerId ? wanted.ownerName : null, markupCount: saved.markupCount ?? confirmed.markupCount };
+        const done = { ...saved, ownerName: saved.ownerId ? wanted.ownerName : null, markupCount: saved.markupCount ?? entry.confirmed.markupCount };
         if (!latest()) { pendingRef.current.get(documentId).confirmed = done; return; }
         pendingRef.current.delete(documentId);
         setReviews((m) => new Map(m).set(documentId, done));
       } catch (err) {
         if (!latest()) return;
         pendingRef.current.delete(documentId);
-        setReviews((m) => new Map(m).set(documentId, confirmed));
+        // An earlier save that landed while this one waited updated
+        // entry.confirmed; roll back to that, never to the queue-time value.
+        setReviews((m) => new Map(m).set(documentId, entry.confirmed));
         showToast(err?.message || 'Could not save the review status', 'warn');
       }
     };
