@@ -22,7 +22,8 @@ test('rows and header use the access-grid class, not inline five-column grids', 
 });
 
 test('phone layout puts the person on its own line and keeps rows from shrinking', () => {
-  assert.match(css, /\.access-grid \{ grid-template-columns: 30px 1fr 1fr 1fr 24px; flex-shrink: 0; \}/);
+  // The person column gets twice the room: an email is far longer than "Editor" or "Active".
+  assert.match(css, /\.access-grid \{ grid-template-columns: 30px minmax\(0, 2fr\) minmax\(0, 1fr\) minmax\(0, 1fr\) 24px; flex-shrink: 0; \}/);
   const phone = css.slice(css.indexOf('@media (max-width: 600px) {\n  .access-grid'));
   assert.match(phone, /grid-template-columns: 30px minmax\(0, 1fr\) auto auto/);
   assert.match(phone, /\.access-grid > :nth-child\(2\) \{ grid-column: 2 \/ -1; \}/);

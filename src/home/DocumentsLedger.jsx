@@ -407,10 +407,22 @@ export default function DocumentsLedger({
     else if (next.selected.size) setSelId([...next.selected][next.selected.size - 1]);
     setPreviewOpen(true);
   };
+  // A tablet (iPad, Android tablet) gets this desktop list but has no
+  // double-click: a tap only showed the preview, and the "Double-click a row"
+  // hint is hidden on touch, so opening a file took a hunt for "Open file".
+  // A finger or pen tap opens the file, as on a phone and in Drawboard.
+  const rowPointerTypeRef = useRef('');
+  const onRowPointerDown = (event) => {
+    rowPointerTypeRef.current = event.pointerType || '';
+    preloadPdfViewerNow(event);
+  };
   const onDesktopRowClick = (event, d) => {
     if (docSelectMode) { toggleDocSel(d.id); return; }
     if (!event.shiftKey && !event.metaKey && !event.ctrlKey) {
-      setSelId(d.id); setPreviewOpen(true); clearDesktopSelection(); return;
+      setSelId(d.id); setPreviewOpen(true); clearDesktopSelection();
+      const pointerType = event.nativeEvent?.pointerType || rowPointerTypeRef.current;
+      if ((pointerType === 'touch' || pointerType === 'pen') && onOpenDocument) onOpenDocument(d.raw);
+      return;
     }
     applySelection(selectionModeFromEvent(event), d);
   };
@@ -916,7 +928,7 @@ export default function DocumentsLedger({
                     onDragEnd={onRowDragEnd}
                     // Shift/Ctrl-click must not paint a text selection across rows.
                     onMouseDown={(event) => { if (event.shiftKey || event.metaKey || event.ctrlKey) event.preventDefault(); }}
-                    onPointerDown={preloadPdfViewerNow}
+                    onPointerDown={onRowPointerDown}
                     onClick={(event) => onDesktopRowClick(event, d)}
                     {...keyboardControlProps()}
                     onContextMenu={(event) => onDesktopRowContextMenu(event, d)}

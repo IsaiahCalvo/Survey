@@ -745,7 +745,6 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                             type="password"
                             value={newPassword}
                             onChange={(e) => setNewPassword(e.target.value)}
-                            placeholder="••••••••"
                             disabled={loading}
                             autoComplete="new-password"
                           />
@@ -761,7 +760,6 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                             type="password"
                             value={confirmPassword}
                             onChange={(e) => setConfirmPassword(e.target.value)}
-                            placeholder="••••••••"
                             disabled={loading}
                             autoComplete="new-password"
                           />
@@ -1197,7 +1195,8 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                             <li>Everything in Pro for every user</li>
                             <li>1 TB storage</li>
                             <li>Priority support</li>
-                            <li>Admin console and SSO: coming soon</li>
+                            <li>Company single sign-on (SSO)</li>
+                            <li>Admin console: coming soon</li>
                             <li>Custom integrations</li>
                           </ul>
                         </div>
