@@ -46,7 +46,8 @@ test('move to layer: a rectangle moves to Layer 1 and hides with it; Undo brings
     if ((await layersButton.getAttribute('aria-expanded')) !== 'true') await layersButton.click();
     const panel = page.getByTestId('layers-panel');
     await expect(panel).toBeVisible();
-    await panel.getByRole('button', { name: 'Add layer' }).click();
+    // The + sits in the rail head since #1357 (inline in the panel on a phone).
+    await page.locator('[data-layer-add]').filter({ visible: true }).first().click();
     await page.keyboard.press('Enter');
     await panel.locator('[data-layer-id="default"]').click();
     await expect(panel.locator('[data-layer-id="default"]')).toHaveAttribute('aria-checked', 'true');
