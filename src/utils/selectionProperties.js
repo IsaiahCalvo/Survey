@@ -222,3 +222,52 @@ export function setLineEndingOn(object, side, style) {
     data: { ...(object.data || {}), [key]: style, lineEndingSet: 'drawboard' },
   };
 }
+
+/**
+ * Nightly 'turn-scale-keys' (Drawboard Projects KS-01 / KS-02): with a mark
+ * picked, Ctrl / Cmd + Left / Right turn it 1° (5° with Shift, measured in
+ * the Projects trial) and Ctrl / Cmd + Up / Down make it 10% bigger or
+ * smaller. Returns { op: 'turn', by } | { op: 'scale', factor } | null.
+ */
+export const KEY_TURN_STEP = 1;
+export const KEY_TURN_STEP_LARGE = 5;
+export const KEY_SCALE_STEP = 1.1;
+export function turnScaleKeyStep(event) {
+  if (!event || event.altKey) return null;
+  if (!(event.ctrlKey || event.metaKey)) return null;
+  const turn = event.shiftKey ? KEY_TURN_STEP_LARGE : KEY_TURN_STEP;
+  switch (event.key) {
+    case 'ArrowLeft': return { op: 'turn', by: -turn };
+    case 'ArrowRight': return { op: 'turn', by: turn };
+    case 'ArrowUp': return event.shiftKey ? null : { op: 'scale', factor: KEY_SCALE_STEP };
+    case 'ArrowDown': return event.shiftKey ? null : { op: 'scale', factor: 1 / KEY_SCALE_STEP };
+    default: return null;
+  }
+}
+
+/**
+ * One box mark (the kinds typed W / H can size) made `factor` times bigger
+ * about its centre, so it grows or shrinks in place. Text takes the size
+ * in its box and its font. Null when nothing would change or it would go
+ * under 1 pt.
+ */
+export function scaleObjectBy(object, factor) {
+  const f = Number(factor);
+  if (!canTypeSize(object) || !Number.isFinite(f) || f <= 0 || Math.abs(f - 1) < 1e-6) return null;
+  const before = getAnnotationBBox(object);
+  if (!(before.width > 0) || !(before.height > 0)) return null;
+  if (Math.min(before.width, before.height) * f < MIN_TYPED_SIZE) return null;
+  const next = { ...object };
+  if (String(object.type || '').toLowerCase() === 'textbox') {
+    next.width = (Number(object.width) || 0) * f;
+    if (Number.isFinite(Number(object.height))) next.height = Number(object.height) * f;
+    if (Number.isFinite(Number(object.fontSize))) next.fontSize = Number(object.fontSize) * f;
+  } else {
+    next.scaleX = (Number(object.scaleX) || 1) * f;
+    next.scaleY = (Number(object.scaleY) || 1) * f;
+  }
+  const after = getAnnotationBBox(next);
+  next.left = (Number(object.left) || 0) + (before.left + before.width / 2) - (after.left + after.width / 2);
+  next.top = (Number(object.top) || 0) + (before.top + before.height / 2) - (after.top + after.height / 2);
+  return next;
+}
