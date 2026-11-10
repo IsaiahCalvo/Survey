@@ -5483,7 +5483,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     // it, so the page must be tall enough under the mark to fill the space
     // from the strip's middle to the bottom, or the mark stops behind the
     // sheet (phone "Locate on page" on a one-page sheet).
-    if (bottomInset > 0 && !options.keepZoom && i === dims.length - 1) {
+    // (Pages hidden by an active Space add no height, so the last SHOWN page counts.)
+    const lastShown = !dims.slice(i + 1).some((dim) => !dim.hidden);
+    if (bottomInset > 0 && !options.keepZoom && lastShown) {
       const below = d.h - (y + h / 2);
       const room = el.clientHeight - (inset + bandH / 2) - (Number(metrics.padBottom) || 0);
       if (below > 0 && room > 0) target = Math.max(target, room / below);
