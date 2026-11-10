@@ -166,7 +166,7 @@ import SheetSetView from './sheets/SheetSetView.jsx';
 import SpotlightOverlay from './spotlight/SpotlightOverlay.jsx';
 import useSpotlight from './spotlight/useSpotlight.js';
 import { clearSpotlightGo, setSpotlightDocument, setSpotlightIdentity } from './services/annotationSpotlight.js';
-import { SHEET_VIEW_EVENT, clampGridColumns, projectSheets, sheetStepForKey, steppedSheet, storedProjectOrder, DEFAULT_GRID_COLUMNS } from './sheets/sheetSet.js';
+import { SHEET_VIEW_EVENT, narrowSheets, parseGridColumns, projectSheets, sheetStepForKey, steppedSheet, storedProjectOrder } from './sheets/sheetSet.js';
 
 // The dot between the current page and the page total in the right-rail
 // footer: a drawn 2px circle in the total's grey (see the rail audit note at
@@ -2367,8 +2367,11 @@ export default function App({ devPreviewReturnTab = null }) {
   const [spotlightEnabled] = useState(() => isFeatureOn('spotlight'));
   const [sheetView, setSheetView] = useState('single');
   const [sheetGridColumns, setSheetGridColumns] = useState(() => {
-    try { return clampGridColumns(window.localStorage.getItem('survey.sheetGridColumns') || DEFAULT_GRID_COLUMNS); } catch (_e) { return DEFAULT_GRID_COLUMNS; }
+    try { return parseGridColumns(window.localStorage.getItem('survey.sheetGridColumns')); } catch (_e) { return parseGridColumns(null); }
   });
+  // The sheets Open all chose (the list as it stood, or the ticked rows);
+  // the set stays narrowed to them while one of them is open.
+  const [sheetSetIds, setSheetSetIds] = useState(null);
   const sheetActiveTab = sheetSetEnabled ? tabs.find((tab) => tab.id === activeTabId && !tab.isHome) : null;
   const sheetActiveDocId = sheetActiveTab?.file?.id ?? null;
   const sheetSet = useMemo(() => {
@@ -2379,9 +2382,9 @@ export default function App({ devPreviewReturnTab = null }) {
     // preferences); stepping follows it, as Drawboard follows its list.
     let preferences = null;
     try { preferences = JSON.parse(window.localStorage.getItem(`survey-project-preferences:${user?.id || 'guest'}`) || 'null'); } catch (_e) { preferences = null; }
-    const set = projectSheets(documents, projectId, storedProjectOrder(preferences, projectId));
+    const set = narrowSheets(projectSheets(documents, projectId, storedProjectOrder(preferences, projectId)), sheetSetIds, sheetActiveDocId);
     return set.length > 1 && set.some((d) => String(d.id) === String(sheetActiveDocId)) ? set : [];
-  }, [sheetSetEnabled, sheetActiveDocId, documents, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sheetSetEnabled, sheetActiveDocId, documents, user?.id, sheetSetIds]); // eslint-disable-line react-hooks/exhaustive-deps
   const sheetSetRef = useRef(sheetSet);
   sheetSetRef.current = sheetSet;
   // One sheet opens at a time. A step, pick or Spotlight "go" that comes
@@ -2425,8 +2428,11 @@ export default function App({ devPreviewReturnTab = null }) {
   };
   const stableStepSheet = useStableHandler(stepSheet);
   const openSheetSingle = useStableHandler((doc) => { setSheetView('single'); openSheet(doc); });
+  // A press in List / Grid makes that sheet the current one and stays there,
+  // as Drawboard; a double press (or View single) shows it alone.
+  const makeSheetCurrent = useStableHandler((doc) => { openSheet(doc); });
   const chooseSheetGridColumns = useStableHandler((n) => {
-    const next = clampGridColumns(n);
+    const next = parseGridColumns(n);
     setSheetGridColumns(next);
     try { window.localStorage.setItem('survey.sheetGridColumns', String(next)); } catch (_e) { /* private mode */ }
   });
@@ -2435,7 +2441,7 @@ export default function App({ devPreviewReturnTab = null }) {
   // view, so the next sheet opened is not hidden behind an old List.
   const sheetSetWasShownRef = useRef(false);
   useEffect(() => {
-    if (sheetSetWasShownRef.current && !sheetSetShown) setSheetView('single');
+    if (sheetSetWasShownRef.current && !sheetSetShown) { setSheetView('single'); setSheetSetIds(null); }
     sheetSetWasShownRef.current = sheetSetShown;
   }, [sheetSetShown]);
   // Open all asks for the List view for the sheet it opens. The view waits
@@ -2449,7 +2455,8 @@ export default function App({ devPreviewReturnTab = null }) {
       if (view !== 'single' && view !== 'list' && view !== 'grid') return;
       const forDocId = event?.detail?.forDocId;
       if (forDocId == null) { setSheetView(view); return; }
-      pendingSheetViewRef.current = { view, docId: String(forDocId), at: Date.now() };
+      const ids = Array.isArray(event?.detail?.ids) ? event.detail.ids.map(String) : null;
+      pendingSheetViewRef.current = { view, docId: String(forDocId), ids, at: Date.now() };
     };
     window.addEventListener(SHEET_VIEW_EVENT, onView);
     return () => window.removeEventListener(SHEET_VIEW_EVENT, onView);
@@ -2460,7 +2467,10 @@ export default function App({ devPreviewReturnTab = null }) {
     pendingSheetViewRef.current = null;
     // Only the sheet it was asked for, and only soon after (a slow open is
     // fine; a sheet opened much later is not the one Open all meant).
-    if (sheetSetShown && String(sheetActiveDocId) === pending.docId && Date.now() - pending.at < 120_000) setSheetView(pending.view);
+    if (String(sheetActiveDocId) === pending.docId && Date.now() - pending.at < 120_000) {
+      setSheetSetIds(pending.ids);
+      if (sheetSetShown) setSheetView(pending.view);
+    }
   }, [sheetSetShown, sheetActiveDocId, Boolean(isViewerVisible)]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!sheetSetShown) return undefined;
@@ -5333,6 +5343,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 view={sheetView}
                 columns={sheetGridColumns}
                 onColumns={chooseSheetGridColumns}
+                onPick={makeSheetCurrent}
                 onOpen={openSheetSingle}
                 phone={isMobileViewer}
               />

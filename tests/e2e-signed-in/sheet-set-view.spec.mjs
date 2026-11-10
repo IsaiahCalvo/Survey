@@ -1,9 +1,12 @@
 // A project's sheets as one set (Nightly flag sheet-set-view), copied from
 // Drawboard Projects: "Open all" opens the first sheet with the List view;
-// Grid shows 4 to 8 a row (2 on a phone); a sheet opens in the single view;
-// the bar's arrows, Shift+Left / Right and the picker step through the set in
-// the open sheet's tab. Every layout: desktop, tablet, phone web on iPhone
-// and Android sizes, the phone app on iOS and Android.
+// Grid's Auto puts min(sheets, 4) on a row, or the number typed; a press
+// makes a sheet current and stays, View single shows it alone; the bar's
+// arrows (not on a phone, where the views fold into one View mode menu),
+// Shift+Left / Right and the picker step through the set in the open sheet's
+// tab. "Open 2 selected" opens only the ticked rows, as a grid if picked.
+// Every layout: desktop, tablet, phone web on iPhone and Android sizes, the
+// phone app on iOS and Android.
 import crypto from 'node:crypto';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { E2E_ACCOUNTS } from './accounts.mjs';
@@ -71,6 +74,22 @@ async function seedProject(admin, ownerId, slug, names) {
   };
 }
 
+// The bar's view buttons, or on a phone its View mode menu.
+async function chooseView(layout, bar, view) {
+  if (layout.phone) {
+    await press(layout, bar.locator('[data-sheet-view-menu]'));
+    await press(layout, bar.locator(`[data-sheet-view-menu-list] [data-sheet-view="${view}"]`));
+    await expect(bar.locator('[data-sheet-view-menu-list]')).toHaveCount(0);
+  } else {
+    await press(layout, bar.locator(`[data-sheet-view="${view}"]`));
+  }
+}
+const VIEW_NAMES = { single: 'Single sheet', list: 'List of sheets', grid: 'Grid of sheets' };
+async function expectView(layout, bar, view) {
+  if (layout.phone) await expect(bar.locator('[data-sheet-view-menu]')).toHaveAttribute('aria-label', `View mode: ${VIEW_NAMES[view]}`);
+  else await expect(bar.locator(`[data-sheet-view="${view}"]`)).toHaveAttribute('aria-checked', 'true');
+}
+
 async function openProject(page, layout, projectId, anyDocName) {
   if (layout.phone && !layout.app) {
     // Phone web: the title is the menu of hub sections.
@@ -116,45 +135,54 @@ for (const layout of LAYOUTS) {
         await expect(cards).toHaveText([label(1), label(2), label(10)]);
         const bar = visible(page.locator('[data-sheet-set-bar]'));
         await expect(bar.locator('[data-sheet-count]')).toHaveText('1 / 3');
-        await expect(bar.locator('[data-sheet-view="list"]')).toHaveAttribute('aria-checked', 'true');
+        await expectView(layout, bar, 'list');
+        // A phone has no arrows (Drawboard's phone bar): the picker and keys step.
+        if (layout.phone) await expect(bar.locator('[data-sheet-step]')).toHaveCount(0);
         await expect(cards.first()).toHaveAttribute('aria-current', 'page');
         // Each sheet shows its first page.
         await expect(cards.first().locator('img')).toBeVisible({ timeout: 45_000 });
         await shot(page, layout, '1-list');
 
-        // 2. Grid: 4 to 8 a row on a wide screen, 2 on a phone.
-        await press(layout, bar.locator('[data-sheet-view="grid"]'));
+        // 2. Grid: Auto is min(sheets, 4) = 3 a row; a typed number sets it.
+        await chooseView(layout, bar, 'grid');
         const gridView = page.locator('[data-sheet-set-view="grid"]');
         await expect(gridView).toBeVisible();
         const columns = () => gridView.locator('.sheet-set-view__scroll').evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(' ').length);
-        if (layout.phone) {
-          await expect(gridView.locator('[data-sheet-columns]')).toHaveCount(0);
-          await expect.poll(columns).toBe(2);
-        } else {
-          await expect.poll(columns).toBe(4);
-          await press(layout, gridView.locator('[data-sheet-columns="6"]'));
+        await expect.poll(columns).toBe(3);
+        await expect(gridView.locator('[data-sheet-columns-auto]')).toHaveAttribute('aria-checked', 'true');
+        if (!layout.phone) {
+          const box = gridView.locator('[data-sheet-columns-input]');
+          await box.fill('6');
+          await box.press('Enter');
           await expect.poll(columns).toBe(6);
+          await expect(gridView.locator('[data-sheet-columns-auto]')).toHaveAttribute('aria-checked', 'false');
+          await press(layout, gridView.locator('[data-sheet-columns-auto]'));
+          await expect.poll(columns).toBe(3);
         }
         await expect(gridView.locator('[data-sheet-card] img')).toHaveCount(3, { timeout: 45_000 });
         await shot(page, layout, '2-grid');
 
-        // 3. A sheet opens in the single view, in the same tab.
+        // 3. A press makes a sheet current and stays in the Grid; View single
+        //    then shows it alone, in the same tab.
         await press(layout, gridView.locator(`[data-sheet-card="${seed.ids[2]}"]`));
-        await expect(gridView).toHaveCount(0);
         await expect(bar.locator('[data-sheet-count]')).toHaveText('2 / 3');
-        await expect(bar.locator('[data-sheet-view="single"]')).toHaveAttribute('aria-checked', 'true');
+        await expect(gridView.locator(`[data-sheet-card="${seed.ids[2]}"]`)).toHaveAttribute('aria-current', 'page');
+        await expect(gridView).toBeVisible();
+        await chooseView(layout, bar, 'single');
+        await expect(gridView).toHaveCount(0);
+        await expectView(layout, bar, 'single');
         await expect(page.locator('[data-viewer-tab]')).toHaveCount(1);
         await expect(visible(page.locator('.survey-pdfjs-page-div[data-page-number]'))).toBeVisible({ timeout: 60_000 });
 
-        // 4. Next to the last sheet; the arrow stops there.
-        await press(layout, bar.locator('[data-sheet-step="next"]'));
-        await expect(bar.locator('[data-sheet-count]')).toHaveText('3 / 3');
-        await expect(bar.locator('[data-sheet-step="next"]')).toBeDisabled();
-        await expect(page.locator('[data-viewer-tab]')).toHaveCount(1);
-        await shot(page, layout, '3-single');
-
-        // 5. Shift+Left steps back (a keyboard: desktop and tablet).
         if (!layout.phone) {
+          // 4. Next to the last sheet; the arrow stops there.
+          await press(layout, bar.locator('[data-sheet-step="next"]'));
+          await expect(bar.locator('[data-sheet-count]')).toHaveText('3 / 3');
+          await expect(bar.locator('[data-sheet-step="next"]')).toBeDisabled();
+          await expect(page.locator('[data-viewer-tab]')).toHaveCount(1);
+          await shot(page, layout, '3-single');
+
+          // 5. Shift+Left steps back (a keyboard: desktop and tablet).
           await expect(visible(page.locator('.survey-pdfjs-page-div[data-page-number]'))).toBeVisible({ timeout: 60_000 });
           await page.keyboard.press('Shift+ArrowLeft');
           await expect(bar.locator('[data-sheet-count]')).toHaveText('2 / 3');
@@ -170,7 +198,7 @@ for (const layout of LAYOUTS) {
         await press(layout, picker.locator(`[data-sheet-option="${seed.ids[1]}"]`));
         await expect(picker).toHaveCount(0);
         await expect(bar.locator('[data-sheet-count]')).toHaveText('1 / 3');
-        await expect(bar.locator('[data-sheet-step="prev"]')).toBeDisabled();
+        if (!layout.phone) await expect(bar.locator('[data-sheet-step="prev"]')).toBeDisabled();
         await expect(page.locator('[data-viewer-tab]')).toHaveCount(1);
       } finally {
         await seed.remove();
@@ -178,6 +206,42 @@ for (const layout of LAYOUTS) {
     });
   });
 }
+
+test.describe('Sheet set view, Open 2 selected', () => {
+  test.use(LAYOUTS[0].use);
+  test('two ticked rows open as their own set, as a grid', async ({ page }) => {
+    test.setTimeout(180_000);
+    const admin = adminClient();
+    const ownerId = await userIdOf(admin, E2E_ACCOUNTS.owner);
+    const names = ['C-1 pick.pdf', 'C-2 pick.pdf', 'C-3 pick.pdf'];
+    const seed = await seedProject(admin, ownerId, 'pick', names);
+    await page.addInitScript(() => localStorage.setItem('survey.flag.sheet-set-view', '1'));
+    try {
+      await signInAt(page, E2E_ACCOUNTS.owner, '/');
+      await openProject(page, LAYOUTS[0], seed.projectId, names[0]);
+      const openAll = visible(page.locator('[data-open-all-sheets]'));
+      await expect(openAll).toHaveText('Open all');
+      await visible(page.locator('.projects-open-body [data-section-action="select"]')).click();
+      await page.getByRole('checkbox', { name: `Select ${names[0]}` }).click();
+      // One tick still opens everything.
+      await expect(openAll).toHaveText('Open all');
+      await page.getByRole('checkbox', { name: `Select ${names[2]}` }).click();
+      await expect(openAll).toHaveText('Open 2 selected');
+      await visible(page.locator('[data-open-all-view="grid"]')).click();
+      await openAll.click();
+      const gridView = page.locator('[data-sheet-set-view="grid"]');
+      await expect(gridView).toBeVisible({ timeout: 60_000 });
+      await expect(gridView.locator('[data-sheet-card]')).toHaveText(['C-1 pick', 'C-3 pick']);
+      const bar = visible(page.locator('[data-sheet-set-bar]'));
+      await expect(bar.locator('[data-sheet-count]')).toHaveText('1 / 2');
+      await press(LAYOUTS[0], bar.locator('[data-sheet-step="next"]'));
+      await expect(bar.locator('[data-sheet-count]')).toHaveText('2 / 2');
+      await expect(bar.locator('[data-sheet-step="next"]')).toBeDisabled();
+    } finally {
+      await seed.remove();
+    }
+  });
+});
 
 test.describe('Sheet set view, flag off', () => {
   test.use(LAYOUTS[0].use);
