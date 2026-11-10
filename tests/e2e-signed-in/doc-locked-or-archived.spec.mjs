@@ -77,6 +77,9 @@ test('a lock reaches the other person at once', async ({ page }) => {
     await expect(page.getByText('Document locked.').filter({ visible: true }).first()).toBeVisible({ timeout: 5_000 });
     expect(Date.now() - at).toBeLessThan(5_000);
     await expect.poll(() => page.evaluate(() => document.body.getAttribute('data-readonly'))).toBe('true');
+    // It names who locked it, not their raw user id.
+    await expect(page.getByText(`by ${E2E_ACCOUNTS.owner.label}`).filter({ visible: true }).first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(doc.ownerId)).toHaveCount(0);
   } finally {
     await doc.remove();
   }
