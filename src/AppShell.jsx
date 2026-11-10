@@ -145,6 +145,7 @@ import { LINE_STYLE_SAMPLE_ICONS, lineStyleOptionsWith } from './utils/lineStyle
 import SelectionQuickBar from './components/SelectionQuickBar.jsx';
 import SelectionPropertiesPanel from './components/SelectionPropertiesPanel.jsx';
 import StampPickerCard from './components/StampPickerCard.jsx';
+import InsertImagePasteHost from './components/InsertImage.jsx';
 import { LineEndingsMenu } from './components/LineEndingsPicker.jsx';
 import { PenTypeMenu } from './components/PenTypePicker.jsx';
 import { isToolGroupPressed } from './utils/toolbarToolPressed.js';
@@ -5785,6 +5786,8 @@ export default function App({ devPreviewReturnTab = null }) {
       />
       {/* Nightly 'stamp-tool': Drawboard's Stamp card (the Text group's Stamp button opens it). */}
       <StampPickerCard enabled={Boolean(isViewerVisible && isFeatureOn('stamp-tool'))} phone={Boolean(isMobileViewer)} tip={chromeTip} />
+      {/* Nightly 'insert-image': a picture pasted from the clipboard becomes an image mark. */}
+      <InsertImagePasteHost enabled={Boolean(isViewerVisible && isFeatureOn('insert-image'))} />
 
       {/* KAL-444: one shortcuts sheet for Home AND the viewer — inside a
           document is where every one of those keys applies. (It was kept off

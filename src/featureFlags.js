@@ -353,6 +353,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Drawing a shape, moving a mark or box selecting near the edge of the view scrolls it',
     stage: 'beta',
   }),
+  'insert-image': Object.freeze({
+    label: 'Image: put a picture from a file or the clipboard on the page as a mark you can move, resize and rotate',
+    stage: 'beta',
+  }),
   'tape-tool': Object.freeze({
     label: 'Tape: an opaque band that covers part of the page; tap it under Pan to see what is under it',
     stage: 'beta',

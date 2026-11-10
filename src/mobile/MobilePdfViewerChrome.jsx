@@ -15,6 +15,7 @@ import { isFeatureOn } from '../featureFlags.js';
 import { LineEndingsPanel } from '../components/LineEndingsPicker.jsx';
 import PenTypeTiles from '../components/PenTypePicker.jsx';
 import { setStampPickerOpen, useStampPickerOpen } from '../components/StampPickerCard.jsx';
+import { pickImageToInsert } from '../components/InsertImage.jsx';
 import { quickColoursForTool } from '../utils/quickStylePresets.js';
 import SnappingToggle, { SnapContentToggle } from '../components/SnappingToggle.jsx';
 import { composeTextColor, splitTextColor } from '../utils/textColorOpacity';
@@ -176,6 +177,8 @@ const TOOL_GROUPS = {
       // Nightly 'stamp-tool': opens Drawboard's Stamp card; a tap on a stamp
       // drops it in the middle of the page in view (a finger only pans).
       { id: 'stamp', label: 'Stamp', icon: 'stamp', flag: 'stamp-tool', picker: true },
+      // Nightly 'insert-image': picks a photo or picture and drops it mid-page.
+      { id: 'image', label: 'Image', icon: 'image', flag: 'insert-image', action: true },
     ],
   },
 };
@@ -3190,6 +3193,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                     onClick={() => {
                       if (tool.disabled) return;
                       if (tool.picker) { setStampPickerOpen(!stampPickerOpen); return; }
+                      if (tool.action) { if (stampPickerOpen) setStampPickerOpen(false); pickImageToInsert(); return; }
                       if (stampPickerOpen) setStampPickerOpen(false);
                       selectTool(tool.id);
                     }}

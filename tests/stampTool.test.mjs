@@ -53,7 +53,7 @@ test('a beta flag with its migration; Stamp in the desktop and phone Text group;
   assert.match(read('supabase/migrations/20261110148000_stamp_tool_flag.sql'), /\('stamp-tool', 'off'/);
   const viewer = read('src/PDFViewer.jsx');
   assert.match(viewer, /isFeatureOn\('stamp-tool'\) \? \[\{ id: 'stamp', label: 'Stamp', iconName: 'stamp', picker: true \}\]/);
-  assert.match(viewer, /\(markLibraryEnabled \|\| stampToolEnabled\) && \(\s*<MarkLibraryPlacementLayer/);
+  assert.match(viewer, /\(markLibraryEnabled \|\| stampToolEnabled(?: \|\| insertImageEnabled)?\) && \(\s*<MarkLibraryPlacementLayer/);
   assert.match(read('src/mobile/MobilePdfViewerChrome.jsx'), /\{ id: 'stamp', label: 'Stamp', icon: 'stamp', flag: 'stamp-tool', picker: true \}/);
   assert.match(read('src/AppShell.jsx'), /<StampPickerCard enabled=\{Boolean\(isViewerVisible && isFeatureOn\('stamp-tool'\)\)\}/);
 });

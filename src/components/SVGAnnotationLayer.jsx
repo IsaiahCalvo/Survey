@@ -222,6 +222,7 @@ import { useMoveModifierHeld, resolveModifierMoveZone, isPointInBoxes, isCopyDra
 import { BOX_DRAG_MOVE_FLAG, boxDragMoveKind, boxMoveGripGlyphPath, boxMoveGripPlacement } from '../utils/boxDragMove.js';
 import { getPdfStampProxySvgProps, isPdfStampProxy } from '../utils/pdfStampProxy.js';
 import { isSymbolStamp } from '../utils/symbolLibrary.js';
+import { isInsertedImage } from '../utils/insertedImage.js';
 import { canGroupResizeMember } from '../utils/groupResize.js';
 import { isClientPointNearRect } from '../utils/selectionPointerOwnership.js';
 import { forwardClickToFormWidget, liveFormWidgetAtPoint } from '../utils/formWidgetPointerTargets.js';
@@ -9007,7 +9008,8 @@ const SVGAnnotationLayerBody = memo(({
         const textMarkupSelectionChrome = getTextMarkupSelectionChrome(selectionObj);
         // KAL-407: a library symbol is a stamp you placed, so it resizes and
         // rotates like a shape; only stamps imported from the PDF stay locked.
-        const isLockedStampProxy = isPdfStampProxy(selectionObj) && !isSymbolStamp(selectionObj);
+        // Nightly 'insert-image': a placed picture is yours too, so it moves like a shape.
+        const isLockedStampProxy = isPdfStampProxy(selectionObj) && !isSymbolStamp(selectionObj) && !isInsertedImage(selectionObj);
 
         // Apply visualTransform to bbox so overlay follows annotation live during drag/resize/rotate
         // UX 2026-09-09: the object the selection chrome (cloud cusps / hull)

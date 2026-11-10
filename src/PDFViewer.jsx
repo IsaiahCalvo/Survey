@@ -399,6 +399,7 @@ import { useYDoc } from './hooks/useYDoc.js';
 import { useZoomState } from './hooks/useZoomState';
 import { isFeatureOn } from './featureFlags.js';
 import { setStampPickerOpen, useStampPickerOpen } from './components/StampPickerCard.jsx';
+import { pickImageToInsert } from './components/InsertImage.jsx';
 import { marksHidden, setMarksHidden, subscribeMarksHidden } from './utils/marksHidden.js';
 import { isTypingTarget } from './utils/typingTarget.js';
 import { useMarkClipboard } from './utils/sharedMarkClipboard.js';
@@ -22361,6 +22362,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // Save to library card is open for.
   const [markLibraryEnabled] = useState(() => isFeatureOn('mark-library'));
   const [stampToolEnabled] = useState(() => isFeatureOn('stamp-tool'));
+  const [insertImageEnabled] = useState(() => isFeatureOn('insert-image'));
   // Markups list (Nightly 'markup-list'): every mark in one rail panel.
   const [markupListEnabled] = useState(() => isFeatureOn('markup-list'));
   const [libraryDraft, setLibraryDraft] = useState(null);
@@ -38149,7 +38151,7 @@ ${pageBlocks}
       })}
 
       {/* Nightly 'stamp-tool' places its presets the same way. */}
-      {(markLibraryEnabled || stampToolEnabled) && (
+      {(markLibraryEnabled || stampToolEnabled || insertImageEnabled) && (
         <MarkLibraryPlacementLayer active={isActive !== false} rootRef={pdfjsWrapperRef} place={placeLibraryItemAt} />
       )}
       {markLibraryEnabled && (
@@ -41032,6 +41034,8 @@ ${pageBlocks}
                   { id: 'callout', label: 'Callout', iconName: 'callout' },
                   // Nightly 'stamp-tool': opens Drawboard's Stamp card.
                   ...(isFeatureOn('stamp-tool') ? [{ id: 'stamp', label: 'Stamp', iconName: 'stamp', picker: true }] : []),
+                  // Nightly 'insert-image': picks a picture and drops it on the page.
+                  ...(isFeatureOn('insert-image') ? [{ id: 'image', label: 'Image', iconName: 'image', action: true }] : []),
                   // TODO: Revisit the user-created Note tool later. Imported
                   // PDF Text/sticky-note annotations still render through
                   // pdfAnnotationImporter + the normal PDF annotation layers.
@@ -41053,6 +41057,11 @@ ${pageBlocks}
                   const onMainClick = (e) => {
                     if (t.picker) {
                       setStampPickerOpen(!stampPickerOpen);
+                      return;
+                    }
+                    if (t.action) {
+                      if (stampPickerOpen) setStampPickerOpen(false);
+                      pickImageToInsert();
                       return;
                     }
                     if (stampPickerOpen) setStampPickerOpen(false);

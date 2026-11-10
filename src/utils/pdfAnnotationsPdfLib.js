@@ -144,6 +144,7 @@ import {
 import { calculateCalloutConnection } from './calloutGeometry.js';
 import { computeLineBboxCenter, getLineEndpoints } from './svgBoundingBox.js';
 import { isPdfStampProxy, pngDataUrlToBytes } from './pdfStampProxy.js';
+import { jpegDataUrlToBytes } from './insertedImage.js';
 import {
   getSymbol, isSymbolStamp, symbolStampBox, symbolStampStrokeWidth, transformSymbolPath,
 } from './symbolLibrary.js';
@@ -2846,9 +2847,11 @@ const embedStampProxyImages = async (pdfDoc, objects, purpose) => {
     const source = obj.src || obj.dataUrl;
     if (stampImages.has(source)) continue;
     const pngBytes = pngDataUrlToBytes(source);
-    if (!pngBytes) continue;
+    // Nightly 'insert-image': a placed photo is kept as a JPEG.
+    const jpegBytes = pngBytes ? null : jpegDataUrlToBytes(source);
+    if (!pngBytes && !jpegBytes) continue;
     try {
-      stampImages.set(source, await pdfDoc.embedPng(pngBytes));
+      stampImages.set(source, pngBytes ? await pdfDoc.embedPng(pngBytes) : await pdfDoc.embedJpg(jpegBytes));
     } catch (error) {
       console.warn(`Failed to embed imported stamp PNG for ${purpose}:`, error);
     }
