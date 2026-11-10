@@ -127,13 +127,13 @@ test('comments are a rollout flag with a server row, a rail panel id, and a ment
   assert.match(config, /\[functions\.notify-comment-mentions\]\s*verify_jwt = false/);
 });
 
-test('copied comment link: the page address on the web, Nightly from desktop or the phone app', () => {
+test('copied comment link: the page address on the web, surveytool.app from desktop or the phone app', () => {
   assert.equal(commentShareUrl({ origin: 'https://surveytool-nightly.vercel.app', pathname: '/' }, 'd1', 'c1'),
     'https://surveytool-nightly.vercel.app/?docId=d1&comment=c1');
   assert.equal(commentShareUrl({ origin: 'http://127.0.0.1:5199', pathname: '/' }, 'd1', 'c1'), 'http://127.0.0.1:5199/?docId=d1&comment=c1');
   for (const origin of ['null', 'file://', 'capacitor://localhost', undefined]) {
     assert.equal(commentShareUrl({ origin, pathname: '/Users/x/app/index.html' }, 'd1', 'c1'),
-      'https://surveytool-nightly.vercel.app/?docId=d1&comment=c1');
+      'https://surveytool.app/?docId=d1&comment=c1');
   }
 });
 
