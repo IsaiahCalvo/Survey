@@ -216,7 +216,6 @@ import {
 import { TEXT_PADDING } from '../utils/textEditCommit.js';
 import { fitTextBoxToWords, growTextBoxToFit, isTextSideHandle } from '../utils/textBoxFit.js';
 import { measureTextContentHeight } from '../utils/textContentMeasure.js';
-import { isFeatureOn } from '../featureFlags.js';
 
 // Last inverse scale measured per page width (page units), shared by every
 // page layer: pages of one set share a width and a zoom.

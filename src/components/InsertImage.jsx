@@ -38,7 +38,7 @@ export async function imageFileToDataUrl(file, { maxPx = INSERTED_IMAGE_MAX_PX, 
     canvas.width = size.width;
     canvas.height = size.height;
     const ctx = canvas.getContext('2d');
-    if (fill) { ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, size.width, size.height); }
+    if (fill) { ctx.fillStyle = 'white'; ctx.fillRect(0, 0, size.width, size.height); }
     ctx.drawImage(bitmap, 0, 0, size.width, size.height);
   };
   try {

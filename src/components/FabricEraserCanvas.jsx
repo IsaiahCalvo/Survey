@@ -2918,7 +2918,7 @@ const FabricEraserCanvas = memo(({
           <g ref={lookHaloLayerRef} data-eraser-look-halos="true" />
           <g opacity={ERASER_TRAIL_OPACITY} data-eraser-look-trail="true" fill="none" strokeLinecap="round" strokeLinejoin="round">
             <path ref={lookTrailOuterRef} stroke={ERASER_TRAIL_EDGE} />
-            <path ref={lookTrailInnerRef} stroke="#ffffff" />
+            <path ref={lookTrailInnerRef} stroke="white" />
           </g>
         </svg>
       )}
