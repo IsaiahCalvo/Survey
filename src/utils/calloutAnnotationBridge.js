@@ -49,6 +49,7 @@
 import { sanitizeFontFamily } from './calloutEditAdapter.js';
 import { getCalloutSyncFingerprint } from './calloutSyncPayload.js';
 import { calloutLineDashArray, calloutLineStyleFromDash } from './lineRenderHelpers.js';
+import { calloutWrapsWords } from './textWrapMode.js';
 
 // ---------------------------------------------------------------------------
 // Helpers for reading legacy-tolerant callout fields
@@ -247,7 +248,8 @@ export function calloutToAnnotationObject(callout, pageSize) {
     linethrough: !!(style.strikethrough || style.linethrough),
     fill: style.fontColor || '#1e293b',
     text: callout.text || '',
-    splitByGrapheme: true,
+    // Older callouts break anywhere; word-wrap ones at spaces (textWrapMode.js).
+    splitByGrapheme: !calloutWrapsWords(callout),
     stroke,
     strokeWidth: Math.max(1, strokeWidth * 0.7),
     strokeUniform: true,
@@ -611,6 +613,8 @@ export function annotationObjectToCallout(obj, pageSize) {
     // group→callout round trip keeps dashed/dotted callouts dashed.
     lineStyle: calloutLineStyleFromDash(line1.strokeDashArray || line2.strokeDashArray),
   };
+  // Word wrap rides on the box child's fabric switch (textWrapMode.js).
+  if (textbox.splitByGrapheme === false) style.wrapWords = true;
   // w43: Cloud rides on the box child (the leaders carry no dash for it).
   if (textbox.data?.calloutCloudIntensity != null) {
     style.lineStyle = 'cloud';

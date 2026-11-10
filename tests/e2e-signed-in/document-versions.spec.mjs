@@ -92,21 +92,43 @@ test('versions: only supersede_document links copies, and the viewer lists and c
       }
       return n;
     });
-    // The box only v2 has is blue, the line both share is black, v1's own box red.
-    expect(inks.blue, JSON.stringify(inks)).toBeGreaterThan(500);
+    // As in Drawboard: the box only v2 (new) has is red, v1's own box blue,
+    // the line both share black.
+    expect(inks.red, JSON.stringify(inks)).toBeGreaterThan(500);
     expect(inks.dark, JSON.stringify(inks)).toBeGreaterThan(500);
-    expect(inks.red, JSON.stringify(inks)).toBeGreaterThan(300);
+    expect(inks.blue, JSON.stringify(inks)).toBeGreaterThan(300);
 
     await canvas.click();
     await page.keyboard.press('ArrowRight');
     await page.keyboard.press('Shift+ArrowDown');
     await expect(canvas).toHaveAttribute('data-compare-offset', '1,10');
+
+    // Each layer takes its own ink, and the older one can be scaled and turned.
+    const v1Card = compare.locator('[data-compare-layer="1"]');
+    await v1Card.locator('[data-compare-ink="green"]').click();
+    await v1Card.getByLabel('Scale').fill('50');
+    await v1Card.getByLabel('Scale').press('Enter');
+    await v1Card.getByLabel('Turn').fill('90');
+    await v1Card.getByLabel('Turn').press('Enter');
+    await expect(canvas).toHaveAttribute('data-compare-transform', '50,90');
+    await expect(canvas).toHaveAttribute('aria-busy', 'false');
+    const greens = await canvas.evaluate((el) => {
+      const { data } = el.getContext('2d').getImageData(0, 0, el.width, el.height);
+      let n = 0;
+      for (let i = 0; i < data.length; i += 4) if (data[i + 1] > 120 && data[i] < 60 && data[i + 2] < 120) n += 1;
+      return n;
+    });
+    expect(greens).toBeGreaterThan(100);
+    await v1Card.getByRole('button', { name: 'Reset' }).click();
+    await expect(canvas).toHaveAttribute('data-compare-offset', '0,0');
+    await expect(canvas).toHaveAttribute('data-compare-transform', '100,0');
     await page.screenshot({ path: test.info().outputPath('version-compare.png') });
-    // One Show choice: only v1, then both again.
-    const showOnlyOld = compare.getByRole('radio', { name: 'Show only v1' });
-    await showOnlyOld.click();
-    await expect(showOnlyOld).toHaveAttribute('aria-checked', 'true');
-    await compare.getByRole('radio', { name: 'Show v1 and v2' }).click();
+    // Each layer hides and shows on its own.
+    const showV1 = v1Card.getByRole('button', { name: 'Show v1' });
+    await showV1.click();
+    await expect(showV1).toHaveAttribute('aria-pressed', 'false');
+    await showV1.click();
+    await expect(showV1).toHaveAttribute('aria-pressed', 'true');
     await expect(compare.locator('[data-compare-zoom]')).toHaveText(/^\d+%$/);
     await page.keyboard.press('Escape');
     await expect(compare).toBeHidden();

@@ -828,6 +828,21 @@ const ICON_RENDERERS = {
         <circle cx="4" cy="18.5" r="1.5" fill={color} />
       </svg>
     ),
+    // Wall area: a wall of bricks standing on the floor line, so it no longer
+    // shares the Perimeter outline in the Measure menu.
+    measureWallArea: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M5 5.5H19V19.5H5Z" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
+        <path d="M5 10.2H19M5 14.8H19M12 5.5V10.2M8.5 10.2V14.8M15.5 10.2V14.8M12 14.8V19.5M2.5 19.5H21.5" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+    // Volume: a box, so it no longer shares the Area square.
+    measureVolume: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M4 9H15V20H4Z" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
+        <path d="M4 9L9 4H20V15L15 20M15 9L20 4" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
     measureScale: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
         <path d="M2 9H22V15H2Z" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
@@ -1313,6 +1328,12 @@ const ICON_RENDERERS = {
     fitPage: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
         <rect x="6" y="3" width="12" height="18" rx="1.33" stroke={color} strokeWidth="1.5" /><path d="M9 7H15M9 11H15M9 15H13" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+    // Focus mode (Nightly): four corners pulled out to the screen's edges.
+    focusMode: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
+        <path d="M4 9V4H9M15 4H20V9M20 15V20H15M9 20H4V15" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     ),
     mail: (size, color, style, className) => (

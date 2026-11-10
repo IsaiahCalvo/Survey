@@ -76,7 +76,7 @@ async function writeMarkers(client, documentId, markers) {
 }
 
 async function userId(account) {
-  const { data } = await adminClient().auth.admin.listUsers();
+  const { data } = await adminClient().auth.admin.listUsers({ perPage: 1000 });
   return data.users.find((u) => u.email === account.email).id;
 }
 

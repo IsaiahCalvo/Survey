@@ -3769,7 +3769,9 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
   color: var(--accent) !important;
 }
 
-.mobile-pdf-hub-tabs .mobile-pdf-hub-tab > span { display: none !important; }
+/* The word under the glyph hides; a glyph drawn in its own span (Layers)
+   stays. */
+.mobile-pdf-hub-tabs .mobile-pdf-hub-tab > span:not([aria-hidden="true"]) { display: none !important; }
 
 /* Owner 2026-10-02: the sheet, the panel inside it and the bottom safe-inset
    band are all --sheet-bg now, so the old "darker stripe" patches (two :has()

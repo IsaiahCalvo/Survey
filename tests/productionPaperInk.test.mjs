@@ -215,3 +215,18 @@ test('app PDF metadata does not truncate a long erased polygon ring', () => {
   assert.equal(metadata.geometry.polygons[0][0].length, ring.length);
   assert.equal(metadata.geometry.path.length, object.path.length);
 });
+
+test('a pen stroke keeps the picked opacity; the highlighter keeps its own colour', () => {
+  const points = [{ x: 10, y: 30 }, { x: 110, y: 30 }];
+  const pen = buildFreehandCommitJSON({
+    tool: 'pen', id: 'pen-op', points, strokeColor: '#d11b2d', strokeOpacity: 50, strokeWidth: 3,
+  });
+  assert.equal(pen.fill, 'rgba(209, 27, 45, 0.5)');
+  const full = buildFreehandCommitJSON({ tool: 'pen', id: 'pen-full', points, strokeColor: '#d11b2d', strokeWidth: 3 });
+  assert.equal(full.fill, '#d11b2d');
+  const hl = buildFreehandCommitJSON({
+    tool: 'highlighter', id: 'hl-op', points, strokeColor: '#d11b2d', strokeOpacity: 50,
+    highlightColor: 'rgba(255, 235, 59, 0.45)', strokeWidth: 20,
+  });
+  assert.equal(hl.fill, 'rgba(255, 235, 59, 0.45)');
+});
