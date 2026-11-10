@@ -21,7 +21,7 @@ import { OPEN_VIEWER_SHARE_EVENT } from './utils/viewerShare.js';
 import { HOME_DOWNLOAD_EVENT } from './utils/homeDownload.js';
 import { OPEN_EXPORT_PDF_EVENT } from './utils/exportPdfModes.js';
 import { PageGridMenu } from './components/PageGridSettings';
-import SnappingToggle, { SnappingGlyph, snappingLabel, useSnappingShortcut } from './components/SnappingToggle.jsx';
+import SnappingToggle, { SnappingGlyph, SnappingMenu, snappingLabel, useSnappingShortcut } from './components/SnappingToggle.jsx';
 import Dashboard from './Dashboard';
 import { createTabChromeCache } from './utils/tabChromeCache.js';
 import { captureTabSource, isCurrentTabSource } from './utils/tabSourceIdentity.js';
@@ -2371,6 +2371,7 @@ export default function App({ devPreviewReturnTab = null }) {
 
   // Page grid spacing (Survey Nightly only, beta flag 'grid-settings').
   const [gridSettingsEnabled] = useState(() => isFeatureOn('grid-settings'));
+  const [snapContentEnabled] = useState(() => isFeatureOn('snap-content'));
 
   const polylineCurve = usePolylineCurve();
   const pinnedTools = usePinnedTools();
@@ -5525,6 +5526,25 @@ export default function App({ devPreviewReturnTab = null }) {
                     ))} />
                     {/* Owner 2026-10-22: snapping's switch, beside the grid
                         (Bluebeam keeps SNAP and GRID side by side too). */}
+                    {snapContentEnabled ? (
+                      // Nightly (flag 'snap-content'): the magnet opens the
+                      // Snapping card - Marks and Drawing switches.
+                      <SnappingMenu renderButton={({ open, ref, onClick, on }) => (
+                        <button
+                          ref={ref}
+                          type="button"
+                          onClick={onClick}
+                          aria-label="Snapping"
+                          aria-haspopup="dialog"
+                          aria-expanded={open}
+                          data-snapping-toggle="true"
+                          {...chromeTip(open ? undefined : 'Snapping', 'left')}
+                          style={{ ...footerBtn(), color: on || open ? 'var(--text-1)' : 'var(--text-3)' }}
+                        >
+                          <SnappingGlyph size={RAIL_CONTROL_GLYPH} off={!on} />
+                        </button>
+                      )} />
+                    ) : (
                     <SnappingToggle render={({ on, toggle }) => (
                       <button
                         type="button"
@@ -5538,6 +5558,7 @@ export default function App({ devPreviewReturnTab = null }) {
                         <SnappingGlyph size={RAIL_CONTROL_GLYPH} off={!on} />
                       </button>
                     )} />
+                    )}
                     {hideMarksEnabled && (
                       <button
                         type="button"

@@ -39,6 +39,9 @@ import { isFeatureOn } from '../featureFlags.js';
 const shiftSquareOn = () => isFeatureOn('shift-square');
 // Backspace / Undo steps back one vertex while placing (Nightly, 'poly-back-step').
 const polyBackStepOn = () => isFeatureOn('poly-back-step');
+// Snap to the PDF's own drawing (Nightly, 'snap-content'; snapContentIndex.js).
+import { getPageSnapContentIndex } from '../survey/snapContentIndex.js';
+import { readSnapContent } from '../utils/annotationPreferences.js';
 import { maxOf, minOf } from '../utils/arrayExtrema.js';
 import { resolveEditEntryKind } from '../utils/annotationEditRoute.js';
 import {
@@ -1502,15 +1505,22 @@ const SVGAnnotationLayerBody = memo(({
   // preference off disables that pull). `drawSnapEndpoint` is the indicator.
   const [drawSnapEndpoint, setDrawSnapEndpoint] = useState(null);
   const drawSnapObjects = annotations?.objects;
+  // Nightly 'snap-content': then onto the PDF's own line ends, midpoints and
+  // lines (the Snapping menu's "Drawing" switch; Alt skips it too).
+  const [snapContentFlag] = useState(() => isFeatureOn('snap-content'));
   const resolveCreationSnap = useCallback((anchor, point, e) => {
     if (!point) return point;
     const endpointSnap = !isAnnotationSnapFree(e);
+    const contentIndex = snapContentFlag && !isSnapFreeModifier(e) && readSnapContent()
+      ? getPageSnapContentIndex(getMarkerShapePdfDocument(), pageNumber)
+      : null;
     const r = resolveDrawSnap(anchor, point, {
       ...drawSnapEventOptions(e, inverseScale),
       endpointSnap,
       candidates: endpointSnap
         ? collectEndpointCandidates(drawSnapObjects, { include: new Set(renderedAnnotationEntriesRef.current.map((entry) => entry.index)) })
         : [],
+      contentSnap: contentIndex ? (p, tol, opts) => contentIndex.query(p.x, p.y, tol, opts) : null,
     });
     setDrawSnapEndpoint((prev) => {
       const next = r.endpoint;
@@ -1518,7 +1528,7 @@ const SVGAnnotationLayerBody = memo(({
       return next;
     });
     return r.point;
-  }, [drawSnapObjects, inverseScale]);
+  }, [drawSnapObjects, inverseScale, snapContentFlag, pageNumber]);
   const freehandPointsRef = useRef([]);
   // w32: the in-progress stroke streamed to other screens (ghost ink there,
   // annotationLiveStrokes.js); ended on commit or cancel.
@@ -3055,6 +3065,45 @@ const SVGAnnotationLayerBody = memo(({
   useEffect(() => {
     if (!shapeCreation && !polyDraftActive) setDrawSnapEndpoint(null);
   }, [shapeCreation, polyDraftActive]);
+  // Nightly 'snap-content': with a line, arrow, polyline, polygon or measure
+  // tool armed, read this page's drawing into its snap index once the page is
+  // on screen (so the first point already snaps), and show where the first
+  // point would land while the pointer hovers (Drawboard's crosses).
+  const snapHoverTool = snapContentFlag && !shapeCreation && !polyDraftActive
+    && (((activeTool === 'line' || activeTool === 'arrow') && isShapeCreationTool) || isPolyCreationTool);
+  useEffect(() => {
+    if (!snapContentFlag) return undefined;
+    if (!snapHoverTool) {
+      if (!shapeCreationRef.current && !polyDraftRef.current) setDrawSnapEndpoint(null);
+      return undefined;
+    }
+    const el = svgRef.current;
+    if (!el) return undefined;
+    const warm = () => { getPageSnapContentIndex(getMarkerShapePdfDocument(), pageNumber); };
+    let observer = null;
+    if (typeof IntersectionObserver === 'undefined') warm();
+    else {
+      observer = new IntersectionObserver((entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        observer.disconnect();
+        warm();
+      });
+      observer.observe(el);
+    }
+    const onMove = (e) => {
+      if (e.buttons || e.pointerType === 'touch') return;
+      const point = screenToSVG(el, e.clientX, e.clientY);
+      if (point) resolveCreationSnap(null, point, e);
+    };
+    const onLeave = () => setDrawSnapEndpoint(null);
+    el.addEventListener('pointermove', onMove);
+    el.addEventListener('pointerleave', onLeave);
+    return () => {
+      observer?.disconnect();
+      el.removeEventListener('pointermove', onMove);
+      el.removeEventListener('pointerleave', onLeave);
+    };
+  }, [snapContentFlag, snapHoverTool, pageNumber, resolveCreationSnap]);
 
   // Enter finishes, Escape cancels. Capture phase + stopPropagation so an
   // in-progress draft consumes Escape before the viewer's "clear selection"

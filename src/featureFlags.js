@@ -257,6 +257,11 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Page changes in one window reload the PDF in the other windows that have it open',
     stage: 'beta',
   }),
+  // Drawboard PDF Pro trial (2026-11-10): "Snap to content" beside "Snap to annotations".
+  'snap-content': Object.freeze({
+    label: "Snap to the PDF's own drawing: line ends, midpoints and along straight lines (Snapping menu: Marks / Drawing)",
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

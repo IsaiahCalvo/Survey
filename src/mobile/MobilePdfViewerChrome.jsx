@@ -12,7 +12,7 @@ import PageGridToggle from '../components/PageGridToggle';
 import { PageGridSettingsPanel } from '../components/PageGridSettings';
 import { isFeatureOn } from '../featureFlags.js';
 import { quickColoursForTool } from '../utils/quickStylePresets.js';
-import SnappingToggle from '../components/SnappingToggle.jsx';
+import SnappingToggle, { SnapContentToggle } from '../components/SnappingToggle.jsx';
 import { composeTextColor, splitTextColor } from '../utils/textColorOpacity';
 import { resolveFontSizeDraft } from '../utils/selectedTextFormatting.js';
 import { QuickColourDots, QuickPaintSwatch } from '../components/QuickStyleControls';
@@ -1276,11 +1276,28 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
                     className={on ? 'is-active' : ''}
                     onClick={toggle}
                   >
-                    <span>Snapping</span>
+                    <span>{isFeatureOn('snap-content') ? 'Snap to marks' : 'Snapping'}</span>
                     {on && <Icon name="check" size={14} color="currentColor" />}
                   </button>
                 </div>
               )} />
+              {/* Nightly (flag 'snap-content'): snap to the PDF's own drawing. */}
+              {isFeatureOn('snap-content') && (
+                <SnapContentToggle render={({ on, toggle }) => (
+                  <div className="mobile-pdf-header__zoom-fits">
+                    <button
+                      type="button"
+                      aria-pressed={on}
+                      data-snapping-drawing="true"
+                      className={on ? 'is-active' : ''}
+                      onClick={toggle}
+                    >
+                      <span>Snap to drawing</span>
+                      {on && <Icon name="check" size={14} color="currentColor" />}
+                    </button>
+                  </div>
+                )} />
+              )}
             </div>
           )}
         </div>
