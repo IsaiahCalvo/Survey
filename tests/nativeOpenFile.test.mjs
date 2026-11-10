@@ -85,12 +85,38 @@ test('the deep link handler sends file urls to the reader before anything else',
   assert.match(src, /import\('@capacitor\/filesystem'\)/);
 });
 
-test('the phone apps register for PDFs', () => {
-  const manifest = readFileSync(new URL('../android/app/src/main/AndroidManifest.xml', import.meta.url), 'utf8');
-  assert.match(manifest, /<data android:scheme="content" \/>\s*<data android:scheme="file" \/>\s*<data android:mimeType="application\/pdf" \/>/);
-  const plist = readFileSync(new URL('../ios/App/App/Info.plist', import.meta.url), 'utf8');
-  assert.match(plist, /<key>CFBundleDocumentTypes<\/key>[\s\S]*com\.adobe\.pdf/);
-  assert.match(plist, /<key>LSSupportsOpeningDocumentsInPlace<\/key>\s*<false\/>/);
+// Beta flags never turn on in the stable phone apps, so a PDF handler there
+// would list Survey under "Open with" only to refuse the file (Bugbot on
+// #1381, bundle 1 audit 2026-11-10). The apps register for PDFs exactly when
+// 'open-in-survey' has left beta.
+test('the phone apps register for PDFs only once open-in-survey leaves beta', () => {
+  const flags = readFileSync(new URL('../src/featureFlags.js', import.meta.url), 'utf8');
+  const block = flags.slice(flags.indexOf("'open-in-survey': Object.freeze({"));
+  const stage = /stage: '(\w+)'/.exec(block)?.[1];
+  assert.ok(stage, 'open-in-survey has a stage');
+  const strip = (text) => text.replace(/<!--[\s\S]*?-->/g, '');
+  const manifest = strip(readFileSync(new URL('../android/app/src/main/AndroidManifest.xml', import.meta.url), 'utf8'));
+  const plist = strip(readFileSync(new URL('../ios/App/App/Info.plist', import.meta.url), 'utf8'));
+  const android = /<data android:scheme="content" \/>\s*<data android:scheme="file" \/>\s*<data android:mimeType="application\/pdf" \/>/.test(manifest);
+  const ios = /<key>CFBundleDocumentTypes<\/key>[\s\S]*com\.adobe\.pdf/.test(plist);
+  assert.equal(android, stage !== 'beta', `Android PDF handler while the flag is ${stage}`);
+  assert.equal(ios, stage !== 'beta', `iOS PDF document type while the flag is ${stage}`);
+  if (ios) assert.match(plist, /<key>LSSupportsOpeningDocumentsInPlace<\/key>\s*<false\/>/);
+});
+
+test('with the flag off an opened file is neither read nor deleted', async () => {
+  resetOpenedFilesForTest();
+  const win = fakeWin();
+  const calls = [];
+  const Filesystem = { readFile: async () => { calls.push('read'); return { data: PDF_B64 }; }, deleteFile: async () => { calls.push('delete'); } };
+  assert.equal(await receiveOpenedFile('file:///var/mobile/Documents/Inbox/Off.pdf', { Filesystem, win, enabled: false }), true);
+  assert.deepEqual(calls, []);
+  assert.deepEqual(takeOpenedFiles(), [{ disabled: true }]);
+});
+
+test('the deep link handler passes the open-in-survey flag to the reader', () => {
+  const src = readFileSync(new URL('../src/mobile/nativeDeepLinks.js', import.meta.url), 'utf8');
+  assert.match(src, /receiveOpenedFile\(url, \{ Filesystem, win, enabled: isFeatureOn\('open-in-survey'\) \}\)/);
 });
 
 test('the same Inbox url opened again later is a new open, not a repeat', async (t) => {
