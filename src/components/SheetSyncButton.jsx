@@ -876,7 +876,9 @@ export default function SheetSyncButton({ className, phone = false, documentId, 
         <span>{label}{waiting ? ` (${waiting})` : ''}</span>
       </button>
       {open && (
-        <AnchoredPopover getAnchor={getAnchor} gap={8}>
+        // 7200: the popover layer the phone dock (6750) stays under; the
+        // default 6500 let the dock cover the card's foot on a sideways phone.
+        <AnchoredPopover getAnchor={getAnchor} gap={8} zIndex={7200}>
           <div ref={panelRef} role="dialog" aria-label="Live sync" className="sheet-sync-panel" style={{ width }}>
             {head && (
               <div className="sheet-sync-head">

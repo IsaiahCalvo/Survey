@@ -23,6 +23,9 @@ const LAYOUTS = [
   // The phone app's layout: bottom tabs, and Survey knows it is the app (the
   // consent page opens in the system browser and comes back with a code).
   { name: 'phone app, 390px', use: { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 }, phone: true, app: true },
+  // A phone turned sideways: little height, and the bottom dock over the page.
+  { name: 'phone web landscape 844x390', use: { viewport: { width: 844, height: 390 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 }, phone: true, app: false },
+  { name: 'phone app landscape 844x390', use: { viewport: { width: 844, height: 390 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 }, phone: true, app: true },
 ];
 
 const fakeAt = (fn) => async (path, body) => {
@@ -45,7 +48,7 @@ async function markersOf(documentId) {
 }
 
 async function userId(account) {
-  const { data } = await adminClient().auth.admin.listUsers();
+  const { data } = await adminClient().auth.admin.listUsers({ perPage: 1000 });
   return data.users.find((u) => u.email === account.email).id;
 }
 
@@ -103,6 +106,11 @@ const spills = (page) => page.evaluate(() => {
   const box = panel.getBoundingClientRect();
   if (box.left < -1 || box.right > width + 1) out.push(`panel ${Math.round(box.left)}..${Math.round(box.right)} of ${width}`);
   if (box.top < -1 || box.top > height - 40) out.push(`panel top ${Math.round(box.top)} of ${height}`);
+  // Nothing (a bottom bar, a dock) may be drawn over the card's lower edge,
+  // or what is last in it can't be reached.
+  const edgeY = Math.min(box.bottom, height) - 4;
+  const over = document.elementFromPoint(box.left + box.width / 2, edgeY);
+  if (over && !panel.contains(over)) out.push(`panel bottom covered at y=${Math.round(edgeY)} by ${over.tagName.toLowerCase()}.${[...over.classList].join('.')}`);
   for (const el of panel.querySelectorAll('button, a, input, p, label')) {
     const r = el.getBoundingClientRect();
     if (!r.width || !r.height) continue;
