@@ -414,6 +414,10 @@ export function useAnnotationDoc({
   // server cannot be asked. Edits go to that copy; the next open with signal
   // sends them (reconcilePersistedLocalState). True while this open is local.
   const [offlineCopy, setOfflineCopy] = useState(false);
+  // 'gone' | 'locked' | 'denied' once the server turns an edit down (42501):
+  // the document was moved to Archive or deleted, locked, or this person's
+  // access was lowered. The viewer then stops the tools and says why.
+  const [editBlocked, setEditBlocked] = useState(null);
   const offlineOpenRef = useRef({ documentId: null, networkFailed: false });
   const [deletedPdfAnnotations, setDeletedPdfAnnotations] = useState([]);
   const [syncStatus, setSyncStatus] = useState({ stage: 'idle', healthy: true, error: null });
@@ -493,6 +497,7 @@ export function useAnnotationDoc({
       offlineOpenRef.current = { ...offlineOpenRef.current, documentId, networkFailed: false };
       setOpenRetryTick((tick) => tick + 1);
     };
+    let blockedReason = null;
     let onBackOnline = null;
     if (!isDeviceDocumentId(documentId) && supabase && isFeatureOn('offline-docs')
       && typeof globalThis.addEventListener === 'function') {
@@ -692,6 +697,7 @@ export function useAnnotationDoc({
       }
       const updateSyncStatus = (next) => {
         if (cancelled || !next) return;
+        if (blockedReason) return; // stays "Not saved" (stage 'blocked')
         if (openLocal) {
           // Opened from the device copy: never "Up to date" until the server
           // has the edits (syncStatusViewModel 'offline-copy' / 'device-only').
@@ -711,6 +717,19 @@ export function useAnnotationDoc({
       unsubscribeHistoryQuarantine = handle.onHistoryQuarantine?.((event) => {
         if (cancelled) return;
         onHistoryQuarantineRef.current?.(event);
+        // Deep test 2026-11-10: a mark made after the owner archived or locked
+        // the document vanished with only "your changes are safe on this
+        // device". Ask why the server said no, then say so.
+        if (String(event?.code || '') === '42501' && supabase && !openLocal && !blockedReason) {
+          supabase.from('documents').select('id, locked_at').eq('id', documentId).maybeSingle()
+            .then(({ data, error }) => {
+              if (cancelled || error) return;
+              blockedReason = !data ? 'gone' : (data.locked_at ? 'locked' : 'denied');
+              setEditBlocked(blockedReason);
+              setSyncStatus({ stage: 'blocked', healthy: false, error: null, reason: blockedReason });
+              setSyncQueueSize(0);
+            }, () => {});
+        }
       }) || null;
 
       // Remote ops (other devices) → reflect into React state.
@@ -990,6 +1009,7 @@ export function useAnnotationDoc({
       if (offlineRetryTimer) clearTimeout(offlineRetryTimer);
       if (onBackOnline) globalThis.removeEventListener?.('online', onBackOnline);
       setOfflineCopy(false);
+      setEditBlocked(null);
       openInProgressRef.current = false;
       hydratedRef.current = false;
       settleOpenWaiters(false);
@@ -1748,5 +1768,6 @@ export function useAnnotationDoc({
     queueSize: syncQueueSize,
     liveMarkerOverlay,
     offlineCopy,
+    editBlocked,
   };
 }

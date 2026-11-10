@@ -61,7 +61,7 @@ import {
   createProductionBenchmarkPage,
   parseProductionBenchmarkConfig,
 } from './utils/productionAnnotationBenchmark.js';
-import { showToast } from './utils/toast';
+import { showToast, dismissToast } from './utils/toast';
 import { isDeviceDocumentId, DEVICE_ACTOR_ID } from './services/deviceFiles.js';
 import { openExternalDestination, withUpgradeHint } from './utils/accountPlatform.js';
 // ExcelJS (~1MB) is loaded on demand inside the three async export/sync handlers
@@ -387,6 +387,9 @@ import { compareSurveyMarkersForOrder } from './utils/surveyMarkerOrdering';
 import { splitImportedCalloutsFromPage } from './utils/calloutImportAdapter';
 import { supabase } from './supabaseClient';
 import { useAnnotationDoc } from './hooks/useAnnotationDoc.js';
+import useBrowserOnline from './hooks/useBrowserOnline.js';
+import { claimBodyReadOnly } from './utils/readOnlyBodyReasons.js';
+import { subscribeDocumentLockState } from './services/documentLockService.js';
 import { useAuth } from './contexts/AuthContext';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useDocumentPresenceList } from './hooks/useDocumentPresenceList.js';
@@ -22162,6 +22165,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     liveMarkerOverlay,
     // offline-docs: marks opened from this device's kept copy (no signal).
     offlineCopy: annotationOfflineCopy,
+    editBlocked: annotationEditBlocked,
   } = useAnnotationDoc({
     documentId: pdfFile?.id || null,
     userId: annotationActorId,
@@ -22210,6 +22214,57 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     offlineCopyToastRef.current = pdfFile?.id;
     showToast('No signal: opened your offline copy. Changes are saved on this device and sync when you are back online.', 'info');
   }, [annotationOfflineCopy, isActive, pdfFile?.id]);
+  // Deep test 2026-11-10: the owner archived or locked the document while
+  // this person had it open; the server turned their next mark down. Stop the
+  // tools and say why, instead of letting marks vanish one by one.
+  // Drawboard tells another open window at once when a document is deleted
+  // (PDF Pro run 11-10). The owner's other windows still get the row live
+  // once it is archived, so they say so without waiting for an edit.
+  const [archivedLive, setArchivedLive] = useState(false);
+  useEffect(() => {
+    setArchivedLive(false);
+    const documentId = pdfFile?.id;
+    if (!documentId || !cloudSyncEnabled || isDeviceDocumentId(documentId)) return undefined;
+    return subscribeDocumentLockState(documentId, (state) => setArchivedLive(Boolean(state?.archivedAt)));
+  }, [pdfFile?.id, cloudSyncEnabled]);
+  const editBlockedReason = annotationEditBlocked || (archivedLive ? 'archived' : null);
+  useEffect(() => {
+    if (!editBlockedReason || !isActive) return undefined;
+    const release = claimBodyReadOnly('annotation-edit-blocked');
+    const text = {
+      archived: 'This document was moved to Archive. Restore it from Archive to keep working on it.',
+      gone: 'This document was moved to Archive or deleted, or your access was removed. Your last change was not saved.',
+      locked: 'This document was locked. Your last change was not saved.',
+    }[editBlockedReason] || 'You can no longer edit this document. Your last change was not saved.';
+    showToast(text, 'error', { id: 'annotation-edit-blocked', duration: Infinity });
+    return () => {
+      release();
+      dismissToast('annotation-edit-blocked');
+    };
+  }, [editBlockedReason, isActive]);
+  // Deep test 2026-11-10 (Drawboard shows a red "You are currently offline"
+  // banner): losing the signal with a cloud document open says so at once
+  // and stays up until the signal is back, then "You are back online".
+  const deviceOnline = useBrowserOnline();
+  const deviceOnlineRef = useRef(deviceOnline);
+  // An open that failed with no signal says so, instead of "may be corrupted"
+  // (file-model.md follow-up, 2026-11-10).
+  const pdfLoadFailedOffline = Boolean(pdfLoadError) && pdfLoadError.kind !== 'pdfjs'
+    && (!deviceOnline || /failed to fetch|network|offline|internet|connection may have dropped/i.test(String(pdfLoadError.message || '')));
+  const offlineNoticeShown = !deviceOnline && isActive && !!cloudSyncEnabled
+    && !!pdfFile?.id && !isDeviceDocumentId(pdfFile?.id) && !annotationOfflineCopy;
+  useEffect(() => {
+    const cameBack = !deviceOnlineRef.current && deviceOnline;
+    deviceOnlineRef.current = deviceOnline;
+    if (offlineNoticeShown) {
+      showToast('You are offline. Keep working: your changes are saved on this device and sync when you are back online.', 'info', { id: 'device-offline-notice', duration: Infinity });
+      return () => dismissToast('device-offline-notice');
+    }
+    if (cameBack && isActive && cloudSyncEnabled && pdfFile?.id && !isDeviceDocumentId(pdfFile?.id)) {
+      showToast('You are back online. Your changes are syncing.', 'success');
+    }
+    return undefined;
+  }, [offlineNoticeShown, deviceOnline, isActive, cloudSyncEnabled, pdfFile?.id]);
   // Owner 2026-11-03: a page and its saved marks show in the same frame. The
   // pages stay blank sheets until the store has painted (or loaded) the
   // document's marks; never longer than PAGE_MARKS_HOLD_MAX_MS
@@ -37979,15 +38034,17 @@ ${pageBlocks}
               <Icon name="document" size={48} />
             </div>
             <div style={{ fontSize: '18px', color: 'var(--text-2)', marginBottom: '8px', fontWeight: 500 }}>
-              Couldn’t open this PDF
+              {pdfLoadFailedOffline ? 'You’re offline' : 'Couldn’t open this PDF'}
             </div>
             <div style={{ fontSize: '13px', color: 'var(--text-3)', marginBottom: '8px' }}>
               {docName}
             </div>
             <div style={{ fontSize: '13px', color: 'var(--text-3)', marginBottom: '24px', lineHeight: 1.5 }}>
-              {pdfLoadError.kind === 'pdfjs'
-                ? 'The viewer couldn’t render this file. It may be corrupted or use an unsupported PDF feature.'
-                : 'The file couldn’t be parsed. It may be corrupted, encrypted, or not a valid PDF.'}
+              {pdfLoadFailedOffline
+                ? `This document isn’t kept on this device, so it needs a connection to open. Try again when you’re back online.${isFeatureOn('offline-docs') ? ' Next time, use Make available offline to open it with no signal.' : ''}`
+                : pdfLoadError.kind === 'pdfjs'
+                  ? 'The viewer couldn’t render this file. It may be corrupted or use an unsupported PDF feature.'
+                  : 'The file couldn’t be parsed. It may be corrupted, encrypted, or not a valid PDF.'}
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'center' }}>
               <button

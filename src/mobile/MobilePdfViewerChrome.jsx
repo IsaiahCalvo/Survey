@@ -2,6 +2,7 @@ import { CounterSeriesPicker } from '../components/CounterSeriesMenu.jsx';
 import { useBackLayer } from '../utils/backNavigation.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import useBrowserOnline from '../hooks/useBrowserOnline.js';
 import Icon from '../Icons';
 import EyeGlyph from '../components/EyeGlyph.jsx';
 import { setMarksHidden, useMarksHidden } from '../utils/marksHidden.js';
@@ -2829,11 +2830,13 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
     leftRailApi?.currentUserDisplayName,
     signedInUser,
   ]);
+  const deviceOnline = useBrowserOnline();
   const sync = useMemo(() => getMobileSyncPresentation(
     leftRailApi?.cloudSyncStatus,
     leftRailApi?.cloudSyncQueueSize,
     leftRailApi?.cloudSyncEnabled !== false,
-  ), [leftRailApi?.cloudSyncStatus, leftRailApi?.cloudSyncQueueSize, leftRailApi?.cloudSyncEnabled]);
+    { offline: !deviceOnline },
+  ), [leftRailApi?.cloudSyncStatus, leftRailApi?.cloudSyncQueueSize, leftRailApi?.cloudSyncEnabled, deviceOnline]);
 
   useEffect(() => {
     const coarseQuery = window.matchMedia?.('(pointer: coarse)');

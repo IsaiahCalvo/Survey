@@ -3,9 +3,11 @@ export function combineCollaborationSyncStatus({
   transportState,
   isSharedDocument,
 }) {
-  // Opened from this device's kept copy (offline-docs): the server cannot be
-  // asked, so whether the document is shared is unknown and does not matter.
-  if (annotationStatus?.stage === 'offline-copy' || annotationStatus?.stage === 'device-only') return annotationStatus;
+  // Opened from this device's kept copy (offline-docs) or kept only on this
+  // device: the server cannot be asked, so whether the document is shared is
+  // unknown and does not matter. 'blocked' (the server turned an edit down)
+  // outranks any transport state.
+  if (['offline-copy', 'device-only', 'blocked'].includes(annotationStatus?.stage)) return annotationStatus;
   if (annotationStatus?.stage === 'error' || annotationStatus?.healthy === false) {
     return annotationStatus;
   }

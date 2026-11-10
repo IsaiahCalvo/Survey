@@ -234,7 +234,10 @@ for (const layout of [
 
         // Not kept: the PDF does not open from any stale copy.
         await startOpen(page, notKept.name);
-        await expect(page.getByText('Couldn’t open this PDF').filter({ visible: true }).first()).toBeVisible({ timeout: 60_000 });
+        // It says the device is offline, not that the file may be corrupted.
+        await expect(page.getByText('You’re offline').filter({ visible: true }).first()).toBeVisible({ timeout: 60_000 });
+        await expect(page.getByText(/isn’t kept on this device/).filter({ visible: true }).first()).toBeVisible();
+        await expect(page.getByText(/may be corrupted/)).toHaveCount(0);
       } finally {
         await kept.remove();
         await notKept.remove();
