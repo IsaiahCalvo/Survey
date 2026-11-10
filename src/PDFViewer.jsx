@@ -22147,9 +22147,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     if (!sync.on || !normalAnnotationHydration?.ready || normalAnnotationHydration.documentId !== pdfFile?.id) return undefined;
     // The reload waits while a finger or button is down, or a polygon is
     // being placed, so work in progress here is not wiped (up to 30 s).
-    let pointerDown = false;
-    const onDown = () => { pointerDown = true; };
-    const onUp = () => { pointerDown = false; };
+    // Every pointer down counts (a pinch, a pen with a palm), so lifting one
+    // does not end another's gesture.
+    const pointersDown = new Set();
+    const onDown = (event) => { pointersDown.add(event.pointerId); };
+    const onUp = (event) => { pointersDown.delete(event.pointerId); };
     window.addEventListener('pointerdown', onDown, true);
     window.addEventListener('pointerup', onUp, true);
     window.addEventListener('pointercancel', onUp, true);
@@ -22157,7 +22159,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     let latest = null;
     const reload = (since) => {
       timer = null;
-      if ((pointerDown || hasOpenPolyDraft(polyDraftOwner)) && Date.now() - since < 30000) {
+      if ((pointersDown.size > 0 || hasOpenPolyDraft(polyDraftOwner)) && Date.now() - since < 30000) {
         timer = setTimeout(() => reload(since), 300);
         return;
       }
