@@ -34,6 +34,9 @@ const ALLOWED = {
   // Company roles picker (beta 'company-admin'): the coarse-pointer branch
   // keeps the browser's wheel; desktop uses ValueSelect.
   'src/components/company/CompanyPanel.jsx': 1,
+  // Save to library card (beta 'mark-library'): the phone branch keeps the
+  // browser's wheel; desktop uses ValueSelect.
+  'src/markLibrary/MarkLibrarySaveDialog.jsx': 1,
 };
 
 // A JSX <select> element at the start of a line (comments that mention
