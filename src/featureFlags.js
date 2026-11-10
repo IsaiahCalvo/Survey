@@ -169,6 +169,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Highlighter quick colours are highlighter colours (yellow, green, pink)',
     stage: 'beta',
   }),
+  'measure-keys': Object.freeze({
+    label: 'Alt+Shift+L / P / A (and Q / V) pick a measure tool',
+    stage: 'beta',
+  }),
   'align-marks': Object.freeze({
     label: 'Align and space picked marks (mark menu)',
     stage: 'beta',

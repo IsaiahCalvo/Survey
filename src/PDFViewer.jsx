@@ -287,6 +287,7 @@ import { isSurveyScopedHistoryEvent, resolveHistoryEntryContext } from './utils/
 import { projectAnnotationForHistoryPreview } from './utils/historyPreviewAnnotation';
 import { isUndoKeyEvent, isRedoKeyEvent, isUndoRedoBlocked } from './utils/undoRedoHotkeys';
 import { stepBackPolyDraftForUndo } from './utils/polyDraft.js';
+import { measureKeyBadge, measureKindForKey } from './utils/measure/measureKeys.js';
 import { getCalloutSyncFingerprint } from './utils/calloutSyncPayload';
 import { isPlacedSurveyMarker } from './services/surveyMarkerSyncDiff';
 import { forceUnplacedImportedMarker, freezeGeometryFromOriginal } from './services/importFieldWhitelist';
@@ -3181,6 +3182,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // screen and stamped on each new measurement.
   const [measureDepthEnabled] = useState(() => isFeatureOn('measure-depth'));
   const [measureScaleChipOn] = useState(() => isFeatureOn('measure-scale-chip'));
+  const [measureKeysOn] = useState(() => isFeatureOn('measure-keys'));
   const [measureDepth, setMeasureDepth] = useState(() => loadMeasureDepth());
   const [measureDepthDialog, setMeasureDepthDialog] = useState(null);
   const prevMeasureModeRef = useRef(null);
@@ -27433,6 +27435,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         return;
       }
 
+      // Alt+Shift+L / P / A (and Q / V with measure depth) arm a measure tool,
+      // the same as its Measure menu row (Nightly 'measure-keys').
+      if (measureKeysOn && e.altKey && e.shiftKey && !isFormField) {
+        const measureKind = measureKindForKey(e, { depth: measureDepthEnabled });
+        if (measureKind) {
+          if (document.body.getAttribute('data-readonly') === 'true') return;
+          e.preventDefault();
+          setActiveTool(measureBaseTool(measureKind));
+          setMeasureMode(measureKind);
+          return;
+        }
+      }
+
       // 'V' key to switch to Selection Tool (only when no modifiers are pressed)
       if ((e.key === 'v' || e.key === 'V') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
         // Don't trigger if user is focused on an input field, textbox, or callout
@@ -40160,8 +40175,8 @@ ${pageBlocks}
                               style={{
                                 position: 'fixed',
                                 top: measureMenuRect.top,
-                                left: Math.max(8, Math.min(measureMenuRect.left, window.innerWidth - 188)),
-                                width: 180,
+                                left: Math.max(8, Math.min(measureMenuRect.left, window.innerWidth - (measureKeysOn ? 238 : 188))),
+                                width: measureKeysOn ? 230 : 180,
                                 background: 'var(--surface-2)',
                                 border: '1px solid var(--border)',
                                 borderRadius: '6px',
@@ -40186,6 +40201,11 @@ ${pageBlocks}
                                 >
                                   <Icon name={m.iconName} size={CHROME_GLYPH} />
                                   {m.label}
+                                  {measureKeysOn && measureKeyBadge(m.key, { depth: measureDepthEnabled }) && (
+                                    <span data-measure-key="" style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-3)' }}>
+                                      {measureKeyBadge(m.key, { depth: measureDepthEnabled })}
+                                    </span>
+                                  )}
                                 </button>
                               ))}
                             </div>

@@ -116,6 +116,15 @@ export const SHORTCUT_SECTIONS = [
     ],
   },
   {
+    // Nightly ('measure-keys'): shown only while the flag is on.
+    title: 'Measure',
+    items: [
+      { chords: ['alt+shift+l'], label: 'Length', flag: 'measure-keys' },
+      { chords: ['alt+shift+p'], label: 'Perimeter', flag: 'measure-keys' },
+      { chords: ['alt+shift+a'], label: 'Area', flag: 'measure-keys' },
+    ],
+  },
+  {
     // UX: these keys only act while a polygon or polyline is being placed —
     // listed separately so they read as part of that flow.
     title: 'Polygon & Polyline',
