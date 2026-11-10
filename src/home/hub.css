@@ -5695,6 +5695,13 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
   .projects-open-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
   .projects-open-team { border-left: 0; border-top: 1px solid var(--ink-500); max-height: 240px; }
 }
+/* Narrow pane (iPad portrait): Add files and Manage team took the header
+   row and cut the project name to a few letters ("E2E Sa..."). They drop
+   to their own row under the name, lined up with it past the gold bar. */
+@container (max-width: 480px) {
+  .projects-open-head { flex-wrap: wrap; row-gap: 10px; }
+  .projects-open-actions { width: calc(100% - 18px); margin-left: 18px; }
+}
 .projects-file-grid { grid-template-columns: 24px minmax(0, 1fr) 90px 90px 28px; }
 .projects-file-editor-label-short { display: none; }
 @container (max-width: 480px) {
