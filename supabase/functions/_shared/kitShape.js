@@ -191,14 +191,34 @@ const isoDay = (y, m, d) => {
   return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d ? `${y}-${pad2(m)}-${pad2(d)}` : null;
 };
 
-/** A date answer as "YYYY-MM-DD" from "2026-10-22", "10/22/2026" or a Date; null if none. */
+const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+const monthOf = (word) => {
+  const w = String(word).toLowerCase().replace(/\.$/, '');
+  // Three letters, "Sept" or the full name; "Novem" or "Marc" do not count.
+  const i = MONTHS.findIndex((name) => w === name || w === name.slice(0, 3) || (w === 'sept' && name === 'september'));
+  return i + 1;
+};
+const fullYear = (y) => (y.length === 2 ? 2000 + Number(y) : Number(y));
+
+/**
+ * A date answer as "YYYY-MM-DD"; null if none. Reads a Date, "2026-10-22",
+ * "2026/10/22", US "10/22/2026" or "10/22/26", and the shown text of Excel's
+ * date formats: "Nov 10, 2026", "Monday, November 10, 2026", "10-Nov-2026",
+ * "10-Nov-26", "10 November 2026".
+ */
 export function dateAnswerOf(raw) {
   if (raw instanceof Date) return Number.isNaN(raw.getTime()) ? null : raw.toISOString().slice(0, 10);
   const s = String(raw ?? '').trim();
-  let m = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:T.*)?$/.exec(s);
+  let m = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:T.*)?$/.exec(s);
   if (m) return isoDay(+m[1], +m[2], +m[3]);
-  m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s); // US month/day/year
-  if (m) return isoDay(+m[3], +m[1], +m[2]);
+  m = /^(\d{1,2})\/(\d{1,2})\/(\d{4}|\d{2})$/.exec(s); // US month/day/year
+  if (m) return isoDay(fullYear(m[3]), +m[1], +m[2]);
+  // An optional weekday first ("Monday, " / "Mon "), then month-name forms.
+  const t = s.replace(/^[a-z]+\.?,?\s+(?=[a-z]{3}|\d)/i, (w) => (monthOf(w.replace(/[.,\s]+$/, '')) ? w : ''));
+  m = /^([a-z]+\.?)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})$/i.exec(t); // Nov 10, 2026
+  if (m && monthOf(m[1])) return isoDay(+m[3], monthOf(m[1]), +m[2]);
+  m = /^(\d{1,2})[-\s]([a-z]+\.?)[-\s,]+(\d{4}|\d{2})$/i.exec(t); // 10-Nov-2026, 10 November 2026
+  if (m && monthOf(m[2])) return isoDay(fullYear(m[3]), monthOf(m[2]), +m[1]);
   return null;
 }
 
@@ -206,11 +226,18 @@ export function dateAnswerOf(raw) {
  * A typed answer as saved: '' for blank, the trimmed text, or a plain number
  * ("1,200" -> "1200"). null when a number item gets no number.
  */
+// Commas only as thousands separators ("1,200", "12,345.5"). "12,5" (a
+// decimal comma) or "1,2,3" is refused rather than read as 125 or 123.
+const THOUSANDS = /^[+-]?\d{1,3}(,\d{3})+(\.\d*)?$/;
+const withoutThousands = (s) => (s.includes(',') ? (THOUSANDS.test(s) ? s.replace(/,/g, '') : null) : s);
+
 export function typedAnswerFor(kind, raw) {
   const s = String(raw ?? '').trim();
   if (!s) return '';
   if (kind !== 'number') return s.slice(0, TYPED_ANSWER_MAX);
-  const n = Number(s.replace(/,/g, ''));
+  const bare = withoutThousands(s);
+  if (bare == null) return null;
+  const n = Number(bare);
   return Number.isFinite(n) && /\d/.test(s) ? String(n) : null;
 }
 
@@ -227,7 +254,8 @@ export function itemAnswerFor(item, raw) {
   if (kind === 'photo') return photoAnswerOf(raw);
   if (kind === 'signature') return signatureAnswerOf(raw);
   if (kind === 'score' || kind === 'count') {
-    const n = Number(String(raw).trim().replace(/,/g, ''));
+    const bare = withoutThousands(String(raw).trim());
+    const n = bare == null ? NaN : Number(bare);
     if (!Number.isInteger(n)) return null;
     if (kind === 'score') return n >= 1 && n <= scoreScaleOf(item) ? String(n) : null;
     return n >= 0 ? String(n) : null;

@@ -21,6 +21,7 @@ import LayersPanel from './sidebar/LayersPanel';
 // Beta 'mark-library' (Survey Nightly): loads only when the flag is on.
 const MarkLibraryPanel = lazy(() => import('./markLibrary/MarkLibraryPanel'));
 import CommentsPanel from './sidebar/CommentsPanel';
+import MarkupsPanel from './sidebar/MarkupsPanel';
 import { OPEN_MARK_COMMENTS_EVENT, takePendingMarkCommentsFocus } from './services/markCommentsFocus.js';
 import SyncStatusChip from './components/SyncStatusChip';
 import PresenceAvatars from './components/PresenceAvatars';
@@ -153,6 +154,7 @@ const PANEL_TITLES = {
   layers: 'Layers',
   library: 'Library',
   comments: 'Comments',
+  markups: 'Markups',
 };
 
 const PDFSidebar = React.forwardRef(({
@@ -266,6 +268,12 @@ const PDFSidebar = React.forwardRef(({
   markLibraryEnabled = false,
   // Comments panel ('mark-comments' flag, Nightly). Needs a cloud document.
   commentsEnabled = false,
+  // Markups list ('markup-list' flag, Nightly): the live page lists and how
+  // to open one mark (go to it and pick it).
+  markupListEnabled = false,
+  annotationsByPage = null,
+  onOpenMarkup = null,
+  pdfDisplayName = '',
 }, ref) => {
   const commentsOn = Boolean(commentsEnabled && documentId);
   // Chunk D (owner 2026-10-13): the desktop rail comes back as it was left -
@@ -279,6 +287,7 @@ const PDFSidebar = React.forwardRef(({
     initialLayoutRef.current = (stored.panel === 'history' && !documentId) || (stored.panel === 'layers' && !layersEnabled)
       || (stored.panel === 'library' && !markLibraryEnabled)
       || (stored.panel === 'comments' && !commentsOn)
+      || (stored.panel === 'markups' && !markupListEnabled)
       ? { ...stored, panel: 'pages' }
       : stored;
   }
@@ -371,7 +380,7 @@ const PDFSidebar = React.forwardRef(({
     if (!userTouchedLayoutRef.current) {
       setIsCollapsed(!stored.open);
       setActiveTab((stored.panel === 'history' && !documentId) || (stored.panel === 'layers' && !layersEnabled)
-        || (stored.panel === 'library' && !markLibraryEnabled) || (stored.panel === 'comments' && !commentsOn) ? 'pages' : stored.panel);
+        || (stored.panel === 'library' && !markLibraryEnabled) || (stored.panel === 'comments' && !commentsOn) || (stored.panel === 'markups' && !markupListEnabled) ? 'pages' : stored.panel);
     }
     // documentId is read once, as the stored layout lands.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -433,6 +442,7 @@ const PDFSidebar = React.forwardRef(({
       || (panelId === 'layers' && layersEnabled)
       || (panelId === 'library' && markLibraryEnabled)
       || (panelId === 'comments' && commentsOn)
+      || (panelId === 'markups' && markupListEnabled)
       ? panelId
       : 'pages';
     userTouchedLayoutRef.current = true;
@@ -442,7 +452,7 @@ const PDFSidebar = React.forwardRef(({
       setSearchSelectOnFocus(Boolean(select));
       setSearchFocusRequestToken((prev) => prev + 1);
     }
-  }, [layersEnabled, markLibraryEnabled, commentsOn]);
+  }, [layersEnabled, markLibraryEnabled, commentsOn, markupListEnabled]);
 
   const closePanel = useCallback(() => {
     userTouchedLayoutRef.current = true;
@@ -530,6 +540,7 @@ const PDFSidebar = React.forwardRef(({
     ...(layersEnabled ? [{ id: 'layers', label: 'Layers', icon: 'layers' }] : []),
     ...(markLibraryEnabled ? [{ id: 'library', label: 'Library', icon: 'library' }] : []),
     ...(commentsOn ? [{ id: 'comments', label: 'Comments', icon: 'comment' }] : []),
+    ...(markupListEnabled ? [{ id: 'markups', label: 'Markups', icon: 'listChecks' }] : []),
   ];
 
   const toggleHistoryPanel = useCallback(() => {
@@ -1161,6 +1172,21 @@ const PDFSidebar = React.forwardRef(({
                   onNavigateToPage={onNavigateToPage}
                   focusRequest={commentsFocusRequest}
                   headActionsHost={mobileMode ? null : commentsHeadHost}
+                  onRequestSheetClose={mobileMode ? requestSheetClose : undefined}
+                />
+              </div>
+            )}
+
+            {markupListEnabled && (
+              <div style={{ display: activeTab === 'markups' ? 'flex' : 'none', flex: 1, flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+                <MarkupsPanel
+                  annotationsByPage={annotationsByPage}
+                  layerState={layersEnabled ? layerState : null}
+                  viewerId={currentUserId || user?.id || null}
+                  documentId={documentId}
+                  documentName={pdfDisplayName}
+                  isActive={activeTab === 'markups' && !isCollapsed}
+                  onOpenMark={onOpenMarkup}
                   onRequestSheetClose={mobileMode ? requestSheetClose : undefined}
                 />
               </div>

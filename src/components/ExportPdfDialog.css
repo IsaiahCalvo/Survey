@@ -57,3 +57,15 @@
   .xpdf-page { min-height: 44px; }
 }
 @media (prefers-reduced-motion: reduce) { .xpdf-radio { transition: none; } }
+
+/* Export filters (flag 'export-filters'): Who / Layers / Comments rows are
+   the page list's rows with a square tick. */
+.xpdf-check {
+  flex: none; width: 16px; height: 16px; border-radius: 4px; box-sizing: border-box;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1.5px solid var(--border-strong, var(--text-3)); color: var(--accent-text);
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+.xpdf-page.is-on .xpdf-check { background: var(--accent); border-color: var(--accent); }
+.xpdf-page[data-last-on="true"] { cursor: default; }
+@media (prefers-reduced-motion: reduce) { .xpdf-check { transition: none; } }

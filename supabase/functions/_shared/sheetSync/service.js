@@ -34,7 +34,8 @@ import { createMsGraphProvider } from './providers/msgraph.js';
 import {
   buildMsgraphAuthorizeUrl, exchangeMsgraphCode, fetchMsgraphAccount, msgraphAuthConfigFromEnv, refreshMsgraphToken,
 } from './msgraphAuth.js';
-import { docToSurveyMarkers, syncSurveyMarkersToDoc } from '../surveyMarkerDocSync.js';
+import { docToSurveyMarkers, getSurveyMarkersMap, syncSurveyMarkersToDoc } from '../surveyMarkerDocSync.js';
+import { checkWatched, keepWatched, watchWrites } from './concurrent.js';
 import { bytesToPgHex, pgHexToBytes } from '../pgBytea.js';
 import { parseBody, s } from '../inputSchema.js';
 import { GUEST_REFUSED_MESSAGE, isGuestUser } from '../guestSession.js';
@@ -126,8 +127,10 @@ async function gunzip(bytes) {
 
 // The document's annotation Y.Doc from its snapshot + WAL tail, the same load
 // the app and survey-mcp do.
-async function loadAnnotationDoc(db, Y, documentId) {
-  const doc = new Y.Doc();
+// `keepDeleted`: replaced values stay readable (concurrent.js reads an edit
+// Yjs dropped).
+async function loadAnnotationDoc(db, Y, documentId, { keepDeleted = false } = {}) {
+  const doc = new Y.Doc(keepDeleted ? { gc: false } : {});
   const { data: snap, error: snapErr } = await db.from('annotation_snapshots')
     .select('snapshot, at_seq, encoding_version').eq('document_id', documentId).maybeSingle();
   if (snapErr) throw new SyncError('Could not open the survey.', 500, 'doc_read');
@@ -695,13 +698,21 @@ async function initialsFor(ctx, userId) {
   return out;
 }
 
-function markerStore(ctx, documentId) {
+// `link` (optional): the values its rounds bring in are watched for app
+// edits made without seeing them (concurrent.js).
+function markerStore(ctx, documentId, link = null) {
   let before = {};
+  let pulls = link?.state?.pulls || {};
+  let clashes = {};
   return {
     load: async () => {
-      before = docToSurveyMarkers(await loadAnnotationDoc(ctx.userDb, ctx.Y, documentId));
+      const doc = await loadAnnotationDoc(ctx.userDb, ctx.Y, documentId, { keepDeleted: Boolean(link) });
+      before = docToSurveyMarkers(doc);
+      if (link) ({ pulls, clashes } = checkWatched(getSurveyMarkersMap(doc), link.state?.pulls, before));
       return before;
     },
+    clashes: () => clashes,
+    pulls: () => keepWatched(pulls, {}),
     save: async (writes) => {
       const doc = await loadAnnotationDoc(ctx.userDb, ctx.Y, documentId);
       const fresh = docToSurveyMarkers(doc);
@@ -717,6 +728,7 @@ function markerStore(ctx, documentId) {
         p_data: bytesToPgHex(ctx.Y.encodeStateAsUpdate(doc, sv)),
       });
       if (error) throw new SyncError('Could not save the sheet\'s changes to the survey (is it locked?).', 409, 'doc_write');
+      if (link?.layout) pulls = keepWatched(pulls, watchWrites(doc, getSurveyMarkersMap(doc), fresh, merged, link.layout));
     },
   };
 }
@@ -937,11 +949,11 @@ async function runRoundFor(ctx, link, { provider = null, signing = null, force =
     }
     const p = provider || await providerFor(ctx, link.connection_user_id, link.provider);
     const sign = signing || await signingFor(ctx, link.document_id);
-    const store = markerStore(ctx, link.document_id);
+    const store = markerStore(ctx, link.document_id, link);
     const fillBy = await initialsFor(ctx, link.connection_user_id);
     let result = null;
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      result = await runSheetRound({ link, provider: p, loadMarkers: store.load, saveMarkers: store.save, signing: sign, force: force || attempt > 0 || Boolean(change), fillBy });
+      result = await runSheetRound({ link, provider: p, loadMarkers: store.load, saveMarkers: store.save, clashes: store.clashes, pulls: store.pulls, signing: sign, force: force || attempt > 0 || Boolean(change), fillBy });
       if (result.status !== 'retry') break;
     }
     if (result.status === 'synced') {
@@ -981,6 +993,7 @@ async function runRoundFor(ctx, link, { provider = null, signing = null, force =
       : status === 404 ? `The linked ${what} was deleted or is no longer shared with the person who linked it.`
       : status === 429 ? `${who} asked us to slow down. Syncing again in a minute.`
       : status === 423 ? `Someone has the ${what} open in an app that locks it (often an older Excel on a computer). Survey syncs again once they close it.`
+      : err?.code === 'partial' ? `Survey is saving a big batch of changes to the ${what}. The rest go in within a minute.`
       : err?.code === 'timeout' ? `${who} did not answer in time (a slow connection). Syncing again in a moment.`
       : isBusy(status, err) ? `${who} is busy right now. Syncing again in a moment.`
       : status === 413 ? `The linked ${what} is too big to sync (over 250,000 cells in its synced tabs). Delete rows or tabs you no longer need.`

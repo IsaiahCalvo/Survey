@@ -1,14 +1,19 @@
 import { CounterSeriesPicker } from '../components/CounterSeriesMenu.jsx';
+import { useBackLayer } from '../utils/backNavigation.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from '../Icons';
+import EyeGlyph from '../components/EyeGlyph.jsx';
+import { setMarksHidden, useMarksHidden } from '../utils/marksHidden.js';
 import { ANNOTATION_SIZE_PRESETS } from '../components/AnnotationSizeControl';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from '../utils/annotationSize';
 import CompactColorPicker, { PRESET_COLORS } from '../components/CompactColorPicker';
 import PageGridToggle from '../components/PageGridToggle';
+import DarkPagesToggle from '../components/DarkPagesToggle';
 import { PageGridSettingsPanel } from '../components/PageGridSettings';
 import { isFeatureOn } from '../featureFlags.js';
-import SnappingToggle from '../components/SnappingToggle.jsx';
+import { quickColoursForTool } from '../utils/quickStylePresets.js';
+import SnappingToggle, { SnapContentToggle } from '../components/SnappingToggle.jsx';
 import { composeTextColor, splitTextColor } from '../utils/textColorOpacity';
 import { resolveFontSizeDraft } from '../utils/selectedTextFormatting.js';
 import { QuickColourDots, QuickPaintSwatch } from '../components/QuickStyleControls';
@@ -44,6 +49,7 @@ import './mobilePdfViewer.css';
 import { useTooltip } from '../components/Tooltip';
 import { SECTION_DONE_ICON } from '../components/SectionIconButton.jsx';
 import { OPEN_EXPORT_PDF_EVENT } from '../utils/exportPdfModes.js';
+import { OPEN_VIEWER_SHARE_EVENT } from '../utils/viewerShare.js';
 import { RENAME_OPEN_DOCUMENT_EVENT } from '../tabs/tabStrip.js';
 import { usePolylineCurve } from '../hooks/usePolylineCurve.js';
 import { POLYLINE_CURVE_SET_EVENT } from '../utils/polySpline.js';
@@ -1038,6 +1044,10 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
     setPageEditing(false);
     setZoomOpen((open) => !open);
   };
+  // Back closes the zoom menu or the page-jump field before it leaves the
+  // document (R3-Y).
+  useBackLayer(zoomOpen, () => setZoomOpen(false));
+  useBackLayer(pageEditing, () => setPageEditing(false));
 
   return (
     /* UX 2026-09-21 (pass 7, board 1): the header does NOT show the PDF name.
@@ -1093,6 +1103,22 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
               desktop top bar's Export (it was the share glyph here). */}
           <Icon name="download" size={HEADER_GLYPH} color="currentColor" />
         </button>
+        {/* Nightly (flag 'viewer-share'): share this document; AppShell owns
+            the dialog, as for Export's choices. */}
+        {isFeatureOn('viewer-share') && (
+          <button
+            type="button"
+            className="mobile-pdf-header__icon"
+            aria-label="Share"
+            data-viewer-share="true"
+            onClick={() => {
+              commitPanelTyping();
+              window.dispatchEvent(new CustomEvent(OPEN_VIEWER_SHARE_EVENT));
+            }}
+          >
+            <Icon name="share" size={HEADER_GLYPH} color="currentColor" />
+          </button>
+        )}
       </div>
 
       <div className="mobile-pdf-header__pages" ref={pagesRef}>
@@ -1251,13 +1277,47 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
                     className={on ? 'is-active' : ''}
                     onClick={toggle}
                   >
-                    <span>Snapping</span>
+                    <span>{isFeatureOn('snap-content') ? 'Snap to marks' : 'Snapping'}</span>
                     {on && <Icon name="check" size={14} color="currentColor" />}
                   </button>
                 </div>
               )} />
+              {/* Nightly (flag 'dark-pages'): light-on-dark pages. */}
+              <DarkPagesToggle render={({ on, toggle }) => (
+                <div className="mobile-pdf-header__zoom-fits">
+                  <button
+                    type="button"
+                    aria-pressed={on}
+                    data-dark-pages-toggle="true"
+                    className={on ? 'is-active' : ''}
+                    onClick={toggle}
+                  >
+                    <span>Dark pages</span>
+                    {on && <Icon name="check" size={14} color="currentColor" />}
+                  </button>
+                </div>
+              )} />
+              {/* Nightly (flag 'snap-content'): snap to the PDF's own drawing. */}
+              {isFeatureOn('snap-content') && (
+                <SnapContentToggle render={({ on, toggle }) => (
+                  <div className="mobile-pdf-header__zoom-fits">
+                    <button
+                      type="button"
+                      aria-pressed={on}
+                      data-snapping-drawing="true"
+                      className={on ? 'is-active' : ''}
+                      onClick={toggle}
+                    >
+                      <span>Snap to drawing</span>
+                      {on && <Icon name="check" size={14} color="currentColor" />}
+                    </button>
+                  </div>
+                )} />
+              )}
             </div>
           )}
+          {/* Keeps dark pages applied while the menu above is closed. */}
+          <DarkPagesToggle render={() => null} />
         </div>
 
         <button
@@ -1280,6 +1340,9 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
           type="button"
           className="mobile-pdf-header__icon"
           aria-label="Undo"
+          // Keep focus where it was (a keyboard Enter then finishes a polygon,
+          // not presses Undo again), as the desktop buttons do.
+          onMouseDown={(event) => event.preventDefault()}
           disabled={!topToolbarApi?.canUndo}
           onClick={topToolbarApi?.onUndo || undefined}
         >
@@ -1290,6 +1353,9 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
           type="button"
           className="mobile-pdf-header__icon"
           aria-label="Redo"
+          // Keep focus where it was (a keyboard Enter then finishes a polygon,
+          // not presses Redo again), as the desktop buttons do.
+          onMouseDown={(event) => event.preventDefault()}
           disabled={!topToolbarApi?.canRedo}
           onClick={topToolbarApi?.onRedo || undefined}
         >
@@ -2155,6 +2221,7 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
       {!isEraser && showStroke && !isMultiColour && (
         <QuickColourDots
           platform="phone"
+          {...quickColoursForTool(api?.quickColourTool || api?.contextTool || api?.activeTool, isFeatureOn('tool-quick-colours'))}
           value={quickColourShown}
           customActive={api.selectionMixed?.strokeColor ? false : undefined}
           onPick={applyQuickColour}
@@ -2673,16 +2740,20 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
   );
 }
 
-export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedInUser = null, onOpenPanel, onAuxPanelStateChange, auxCloseRequestKey = 0 }) {
+export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedInUser = null, onOpenPanel, onAuxPanelStateChange, auxCloseRequestKey = 0, versions = null }) {
   const tip = useTooltip();
   const [openCategory, setOpenCategory] = useState(null);
   const [moreOpen, setMoreOpen] = useState(false);
+  const allMarksHidden = useMarksHidden();
   const [presenceOpen, setPresenceOpen] = useState(false);
   // Phone survey round (2026-10-13): the long-list sheet ('categories' |
   // 'entities' | 'templates') - MobileSurveyRail.jsx.
   const [surveyListKind, setSurveyListKind] = useState(null);
   const [syncDetailsOpen, setSyncDetailsOpen] = useState(false);
   const [syncDetailsPosition, setSyncDetailsPosition] = useState(null);
+  // Back (browser / Android) closes an open rail flyout first ('back-button').
+  useBackLayer(Boolean(openCategory), () => setOpenCategory(null));
+  useBackLayer(moreOpen, () => setMoreOpen(false));
   const [hasTouchPointer, setHasTouchPointer] = useState(false);
   // Phase F (motion & feel): the active-users sheet gets the shared bottom-sheet
   // motion — finger-follow drag off the handle + dy>82/vy>0.65 dismiss + spring-
@@ -2839,6 +2910,27 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
       mutation?.disconnect();
     };
   }, [railMainEl]);
+  // A phone held sideways (Android, 360px tall) leaves the tool column about
+  // 100px: an opened group landed below it, hidden under the footer, so a tap
+  // where Measure was drawn opened History. Scroll the open group into view
+  // once it has glided open, keeping the chip above it in sight.
+  useEffect(() => {
+    const main = railMainEl;
+    const wrap = groupToolsEl;
+    if (!railGroupKey || !main || !wrap) return undefined;
+    const timer = setTimeout(() => {
+      // Sideways phones scroll the whole rail, not just its main part:
+      // move whichever box actually scrolls.
+      let box = main;
+      while (box && box !== document.body && box.scrollHeight <= box.clientHeight + 1) box = box.parentElement;
+      if (!box || box === document.body) return;
+      const m = box.getBoundingClientRect();
+      const w = wrap.getBoundingClientRect();
+      const delta = Math.min(w.bottom - m.bottom, w.top - 40 - m.top);
+      if (delta > 1) box.scrollTo({ top: box.scrollTop + delta, behavior: 'smooth' });
+    }, 230);
+    return () => clearTimeout(timer);
+  }, [railGroupKey, railMainEl, groupToolsEl]);
   const surveySlots = useMobileSurveyRailSlots({
     mainEl: railMainEl,
     anchorEl: surveyAnchorEl,
@@ -3071,7 +3163,12 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                       style={{
                         position: 'fixed',
                         left: Math.max(8, Math.min(measureMenuRect.left, window.innerWidth - 188)),
-                        top: Math.max(8, Math.min(measureMenuRect.top, window.innerHeight - 208)),
+                        // Clamp by the real menu height (7 rows with the
+                        // depth tools, not 4) plus the home-bar inset, so the
+                        // last row is never off the bottom of the screen.
+                        top: Math.max(8, Math.min(measureMenuRect.top, window.innerHeight - (mobileMeasureItems(isFeatureOn('measure-depth')).length * 44 + 10) - 42)),
+                        maxHeight: 'calc(100dvh - 16px)',
+                        overflowY: 'auto',
                         width: 180,
                         background: 'var(--surface-2)',
                         border: '1px solid var(--border)',
@@ -3267,6 +3364,23 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                 <Icon name="document" size={16} color="currentColor" />
                 PDF tools…
               </button>
+              {/* Hide all marks (Nightly 'hide-marks'): the phone has no
+                  right rail, so its eye lives here. The chip over the page
+                  brings them back. */}
+              {isFeatureOn('hide-marks') && (
+                <button
+                  type="button"
+                  data-mobile-hide-marks=""
+                  aria-pressed={allMarksHidden}
+                  onClick={() => {
+                    setMoreOpen(false);
+                    setMarksHidden(!allMarksHidden);
+                  }}
+                >
+                  <EyeGlyph open={!allMarksHidden} size={16} />
+                  {allMarksHidden ? 'Show marks' : 'Hide marks'}
+                </button>
+              )}
               {/* The phone has no tab strip to right-click, so the open
                   document is renamed from here (owner 2026-10-29: everything
                   with a name can be renamed). AppShell opens the same dialog
@@ -3283,6 +3397,22 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                 <Icon name="edit" size={16} color="currentColor" />
                 Rename document…
               </button>
+              {/* Version history (Nightly, flag 'document-versions'): the
+                  desktop's "v3" button, for the phone. Opens the same list,
+                  and from there an older version or the overlay compare. */}
+              {versions && (
+                <button
+                  type="button"
+                  data-mobile-document-versions="true"
+                  onClick={() => {
+                    setMoreOpen(false);
+                    versions.onOpen();
+                  }}
+                >
+                  <Icon name="history" size={16} color="currentColor" />
+                  {versions.label}
+                </button>
+              )}
               {/* RULED 2026-09-22 (owner): "More = Export + Save log". Save log
                   used to be gated on window.Capacitor.isNativePlatform(), so the
                   menu on web mobile held ONE row and the ruling's second item
@@ -3432,9 +3562,9 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
 }
 
 export function MobilePdfViewerDock({ onOpenPanel, onToggleHub, onOpenSurvey, hubMode = 'pages', hubOpen = false, spacesActive, surveyActive, covered = false, openPanel = null }) {
-  const hubLabels = { pages: 'Pages', search: 'Search', bookmarks: 'Bookmarks' };
+  const hubLabels = { pages: 'Pages', search: 'Search', bookmarks: 'Bookmarks', layers: 'Layers', library: 'Library', comments: 'Comments', markups: 'Markups' };
   // Pages draws the desktop rail's Pages glyph (PDFSidebar), not the document.
-  const hubIcons = { pages: 'pages', search: 'search', bookmarks: 'bookmark' };
+  const hubIcons = { pages: 'pages', search: 'search', bookmarks: 'bookmark', layers: 'shapes', library: 'library', comments: 'comment', markups: 'listChecks' };
   // `covered`: a phone panel is open over the dock. The dock stays mounted
   // under it (so it is already in place when the panel slides away - see
   // AppShell), but takes no focus, taps or screen-reader reads meanwhile.

@@ -484,10 +484,11 @@ export default function ProjectsFolderTree({
   const projectTeam = useCallback((proj) => {
     if (!proj) return [];
     const projMembers = Array.isArray(proj.members) ? proj.members : [];
-    const rawOwnerId = proj.user_id ?? null;
-    const ownerId = rawOwnerId != null && memberById.has(rawOwnerId)
-      ? rawOwnerId
-      : (projMembers[0] ?? user?.id ?? rawOwnerId ?? null);
+    // The row's user_id IS the owner, even when they are not in the
+    // directory (a project shared with you): falling back to the signed-in
+    // user here made every viewer the "Owner" and the real owner a
+    // "Teammate" (deep test 2026-11-10).
+    const ownerId = proj.user_id ?? projMembers[0] ?? user?.id ?? null;
     const ids = [];
     if (ownerId != null) ids.push(ownerId);
     (collabByProject.get(proj.id) || []).forEach((r) => {
@@ -496,6 +497,17 @@ export default function ProjectsFolderTree({
     projMembers.forEach((id) => { if (id != null && !ids.includes(id)) ids.push(id); });
     return ids;
   }, [user?.id, memberById, collabByProject]);
+
+  // A member's role IN THIS project: the owner, else their own
+  // project_collaborators row. The directory holds one record per person, so
+  // its role cannot answer this (you own one project and view another).
+  const memberRoleIn = useCallback((proj, id) => {
+    if (!proj || id == null) return 'Member';
+    if (id === projectTeam(proj)[0]) return 'Owner';
+    const row = (collabByProject.get(proj.id) || []).find((r) => r?.user_id === id);
+    const role = String(row?.role || '');
+    return role ? role.charAt(0).toUpperCase() + role.slice(1) : 'Member';
+  }, [projectTeam, collabByProject]);
 
   // Seed member records for the Manage Team modal — owner first, resolved
   // against the directory. The modal fetches its own live collaborator +
@@ -509,18 +521,18 @@ export default function ProjectsFolderTree({
       : '';
     return projectTeam(teamModalProject).map((id) => {
       const m = memberById.get(id) || null;
-      const name = m?.name || 'Teammate';
+      const name = m?.name || (memberRoleIn(teamModalProject, id) === 'Owner' ? 'Project owner' : 'Teammate');
       return {
         id,
         name,
         initials: m ? initialsOf(m.name) : '—',
         email: m?.email || '',
-        role: m?.role || 'Member',
+        role: memberRoleIn(teamModalProject, id),
         color: m?.color || userColorFill(id),
         added,
       };
     });
-  }, [teamModalProject, memberById, projectTeam]);
+  }, [teamModalProject, memberById, projectTeam, memberRoleIn]);
 
   /* ---- Project-list mutations (local state) ---------------------------- */
 
@@ -1345,7 +1357,7 @@ export default function ProjectsFolderTree({
                       <div style={{ display: 'grid', gap: 8 }}>
                         {team.map((m) => {
                           const mem = lookupMember(m);
-                          const memName = mem?.name || 'Teammate';
+                          const memName = mem?.name || (memberRoleIn(open, m) === 'Owner' ? 'Project owner' : 'Teammate');
                           return (
                             <div key={m} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                               <Avatar initials={mem ? initialsOf(mem.name) : '—'} size={22} id={m} />
@@ -1353,7 +1365,7 @@ export default function ProjectsFolderTree({
                                 <div style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{memName}</div>
                                 <div className="meta" style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                   <span style={{ width: 5, height: 5, borderRadius: '50%', background: mem?.online ? 'var(--success)' : 'var(--text-disabled)', flex: 'none' }}></span>
-                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{mem?.role || 'Member'}</span>
+                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{memberRoleIn(open, m)}</span>
                                 </div>
                               </div>
                             </div>
@@ -1978,13 +1990,13 @@ export default function ProjectsFolderTree({
             <div style={{ display: 'grid', gap: 8 }}>
               {projectTeam(open).map((m) => {
                 const mem = lookupMember(m);
-                const memName = mem?.name || 'Teammate';
+                const memName = mem?.name || (memberRoleIn(open, m) === 'Owner' ? 'Project owner' : 'Teammate');
                 return (
                   <div key={`mobile-team-${m}`} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <Avatar initials={mem ? initialsOf(mem.name) : '—'} size={22} id={m} />
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 12, fontWeight: 600 }}>{memName}</div>
-                      <div className="meta" style={{ fontSize: 11 }}>{mem?.role || 'Member'}</div>
+                      <div className="meta" style={{ fontSize: 11 }}>{memberRoleIn(open, m)}</div>
                     </div>
                   </div>
                 );
@@ -2014,13 +2026,13 @@ export default function ProjectsFolderTree({
             <div style={{ display: 'grid', gap: 8 }}>
               {projectTeam(open).map((m) => {
                 const mem = lookupMember(m);
-                const memName = mem?.name || 'Teammate';
+                const memName = mem?.name || (memberRoleIn(open, m) === 'Owner' ? 'Project owner' : 'Teammate');
                 return (
                   <div key={`team-layout-${m}`} className="projects-mobile-member-row">
                     <Avatar initials={mem ? initialsOf(mem.name) : '—'} size={24} id={m} />
                     <div>
                       <div>{memName}</div>
-                      <span>{mem?.role || 'Member'}</span>
+                      <span>{memberRoleIn(open, m)}</span>
                     </div>
                   </div>
                 );
@@ -2052,6 +2064,10 @@ export default function ProjectsFolderTree({
         if (!proj) return null;
         const projPinned = pinnedIds.has(proj.id);
         const ownerOnly = canManageProject(proj, user?.id) ? null : 'Only the project owner can do this';
+        // A viewer can't rename the project or add files (the server refuses
+        // them); editors and owners can.
+        const myRole = String(proj.my_role || memberRoleIn(proj, user?.id)).toLowerCase();
+        const viewerBlocked = myRole === 'viewer' ? 'Viewers can look but not change this project' : null;
         return (
           <PopupMenu
             anchorRect={teamMenu.rect}
@@ -2060,13 +2076,13 @@ export default function ProjectsFolderTree({
             items={[
               // "Add member" opens the invite/share popup — same flow as
               // "Get link to project". Only "Manage project" opens the modal.
-              { label: 'Rename', onClick: () => setRenameTarget({ kind: 'project', id: proj.id, name: proj.name || '' }) },
+              { label: 'Rename', reason: viewerBlocked, onClick: () => setRenameTarget({ kind: 'project', id: proj.id, name: proj.name || '' }) },
               { label: 'Duplicate', onClick: () => duplicateProjects([proj.id]) },
               { label: 'Share', reason: ownerOnly, onClick: () => onShare?.(proj) },
               { label: 'Delete', danger: true, reason: ownerOnly, onClick: () => { void deleteProjects([proj.id]); } },
               { icon: 'users', label: 'Add member', reason: ownerOnly, onClick: () => onShare && onShare(proj) },
               { label: 'Get link to project', onClick: () => onShare && onShare(proj) },
-              { icon: 'upload', label: 'Upload files', onClick: () => { setOpenId(proj.id); addFiles(proj); } },
+              { icon: 'upload', label: 'Upload files', reason: viewerBlocked, onClick: () => { setOpenId(proj.id); addFiles(proj); } },
               {
                 // Pin / unpin — toggles local pinned state; the row floats to
                 // the top of the list and shows a pin icon when pinned.

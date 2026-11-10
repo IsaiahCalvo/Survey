@@ -42,6 +42,12 @@
   max-width: 200px;
 }
 
+/* Personal / Project / Stamps (review-stamps beta): three in one row. */
+.mark-library__tabs--3 {
+  grid-template-columns: 1fr 1fr 1fr;
+  max-width: 260px;
+}
+
 .mark-library__tab {
   height: 24px;
   padding: 0 8px;

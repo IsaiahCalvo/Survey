@@ -73,7 +73,9 @@ import {
 } from '../utils/panAxisRules.js';
 import { trackSurveyAnalyticsEvent } from '../utils/surveyAnalytics';
 import PdfjsTextLayer from './PdfjsTextLayer';
-import { getPageViewBase, getPageViewSizes, pageViewKey, pageViewUprightKey } from '../utils/pageViewDocument.js';
+import { getPageViewBase, getPageViewSizes, pageViewEntry, pageViewKey, pageViewUprightKey } from '../utils/pageViewDocument.js';
+import { createPagePreviewSession, decodeKeptPreview } from '../utils/pagePreviewSession.js';
+import { pageThumbWorkerSupported } from '../utils/pageThumbRenderer.js';
 import { destroyPdfDocument } from '../utils/destroyPdfDocument.js';
 import {
   getWidthFitMinimumScale,
@@ -121,6 +123,8 @@ import useCoarsePointer from '../hooks/useCoarsePointer.js';
 import { hasTouchInput } from '../utils/layoutMode.js';
 import { notePageDrawn, pageMounted, pageUnmounted, PAGE_CACHE_KEEP_MOBILE, PAGE_CACHE_KEEP_DESKTOP } from '../utils/pdfPageCacheTrim';
 import { isInTabBehind } from '../utils/tabBehind.js';
+import { isFeatureOn } from '../featureFlags.js';
+import { ZOOM_AREA_MIN_PX, boxBetween, isZoomToAreaStart, zoomToAreaPlan } from '../utils/zoomToArea.js';
 import { pdfjsAssetOptions } from '../utils/pdfjsAssets.js';
 import {
   compensateScrollLeftForColumnWidth,
@@ -184,6 +188,9 @@ const PAN_START_EVENT = 'survey-pdfjs-pan-start';
 const PAN_END_EVENT = 'survey-pdfjs-pan-end';
 // A finger glide slowed under GLIDE_SHARPEN_SPEED: the deep-zoom tile may draw.
 const GLIDE_SETTLING_EVENT = 'survey-pdfjs-glide-settling';
+// A zoom-limit ease or an edge spring finished: the view stands still at its
+// real scale, so the deep-zoom tile draws for what is on screen now.
+const ELASTIC_SETTLED_EVENT = 'survey-pdfjs-elastic-settled';
 const ZOOM_START_EVENT = 'survey-pdfjs-zoom-start';
 const ZOOM_END_EVENT = 'survey-pdfjs-zoom-end';
 const PINCH_START_EVENT = 'survey-pdfjs-pinch-start';
@@ -393,7 +400,20 @@ function pageThumbGet(pageId) {
 // Keep a thumbnail of `src` (drawn at `srcScale`) for this page, unless one
 // at least as sharp is already kept. A sharper source is shrunk to the
 // thumbnail scale with one image copy.
-function pageThumbOffer(pageId, src, srcScale, thumbScale, maxBytes) {
+// Pages waiting for a preview (nothing drawn yet), and listeners for every
+// new preview (the device store keeps them: utils/pagePreviewSession.js).
+const PAGE_THUMB_WAITERS = new Map(); // pageId -> Set<fn>
+const PAGE_THUMB_LISTENERS = new Set(); // fn(pageId, entry, meta)
+function waitForPageThumb(pageId, fn) {
+  let set = PAGE_THUMB_WAITERS.get(pageId);
+  if (!set) { set = new Set(); PAGE_THUMB_WAITERS.set(pageId, set); }
+  set.add(fn);
+  return () => {
+    set.delete(fn);
+    if (!set.size && PAGE_THUMB_WAITERS.get(pageId) === set) PAGE_THUMB_WAITERS.delete(pageId);
+  };
+}
+function pageThumbOffer(pageId, src, srcScale, thumbScale, maxBytes, meta = null) {
   if (!src?.width || !(srcScale > 0) || !(thumbScale > 0)) return;
   const existing = PAGE_THUMBS.get(pageId);
   const scale = Math.min(srcScale, thumbScale);
@@ -407,7 +427,8 @@ function pageThumbOffer(pageId, src, srcScale, thumbScale, maxBytes) {
     pageThumbBytesTotal -= existing.bytes;
     releaseRasterCanvas(existing.canvas);
   }
-  PAGE_THUMBS.set(pageId, { canvas, scale, bytes });
+  const entry = { canvas, scale, bytes };
+  PAGE_THUMBS.set(pageId, entry);
   pageThumbBytesTotal += bytes;
   while (pageThumbBytesTotal > maxBytes && PAGE_THUMBS.size > 1) {
     const oldestKey = PAGE_THUMBS.keys().next().value;
@@ -416,6 +437,10 @@ function pageThumbOffer(pageId, src, srcScale, thumbScale, maxBytes) {
     pageThumbBytesTotal -= oldest.bytes;
     releaseRasterCanvas(oldest.canvas);
   }
+  if (PAGE_THUMBS.get(pageId) !== entry) return;
+  for (const fn of PAGE_THUMB_LISTENERS) { try { fn(pageId, entry, meta); } catch { /* a listener never breaks a draw */ } }
+  const waiting = PAGE_THUMB_WAITERS.get(pageId);
+  if (waiting) for (const fn of [...waiting]) { try { fn(); } catch { /* noop */ } }
 }
 
 // Normalize the app's documentSource into pdf.js getDocument params. The app
@@ -577,6 +602,20 @@ const PdfPageCanvas = memo(function PdfPageCanvas({ pdf, pageIndex, pageW, pageH
       shownRef.current = { id: pageId, scale: pick.use.scale };
       markPageRasterShown(c);
     }
+    // Nothing to show yet: show the page's preview the moment one arrives
+    // (the device store or the preview worker), until the draw below lands.
+    let stopWaiting = null;
+    if (shownRef.current?.id !== pageId) {
+      stopWaiting = waitForPageThumb(pageId, () => {
+        if (cancelled || myGen !== genRef.current || shownRef.current?.id === pageId) return;
+        const preview = pageThumbGet(pageId);
+        const canvas = canvasRef.current;
+        if (!preview || !canvas) return;
+        blitRaster(canvas, preview.canvas);
+        shownRef.current = { id: pageId, scale: preview.scale };
+        markPageRasterShown(canvas);
+      });
+    }
     if (shownRef.current?.id !== pageId) {
       // A page the user just rotated: turn its upright bitmap now, so the page
       // shows rotated in the same frame; the sharp raster replaces it below.
@@ -716,6 +755,7 @@ const PdfPageCanvas = memo(function PdfPageCanvas({ pdf, pageIndex, pageW, pageH
     })();
     return () => {
       cancelled = true;
+      stopWaiting?.();
       if (taskRef.current) { try { taskRef.current.cancel(); } catch { /* noop */ } }
       turn?.release();
     };
@@ -842,6 +882,13 @@ const DetailTile = memo(function DetailTile({ pdf, pageIndex, scale, rotation, l
     lastRenderStartedAtRef.current = performance.now();
 
     const hr = host.getBoundingClientRect();
+    // A zoom-limit ease (or an edge spring) draws the pages under a transform
+    // the box math below does not know about: the tile would be drawn for the
+    // wrong part of the page, and nothing redrew it once the ease ended, so a
+    // spring-back from past the maximum zoom left the view on the blurry base
+    // (owner 2026-11-10). Wait: ELASTIC_SETTLED_EVENT draws it when it ends.
+    const laidOutWidth = host.offsetWidth;
+    if (laidOutWidth > 0 && Math.abs(hr.width / (laidOutWidth * liveZoom) - 1) > 0.002) return;
     const sr = scroller.getBoundingClientRect();
     const vx = Math.max(0, sr.left - hr.left);
     const vy = Math.max(0, sr.top - hr.top);
@@ -975,10 +1022,12 @@ const DetailTile = memo(function DetailTile({ pdf, pageIndex, scale, rotation, l
     window.addEventListener(PAN_START_EVENT, onPanStart);
     window.addEventListener(PAN_END_EVENT, onPanEnd);
     window.addEventListener(GLIDE_SETTLING_EVENT, onPanEnd);
+    window.addEventListener(ELASTIC_SETTLED_EVENT, onPanEnd);
     return () => {
       window.removeEventListener(PAN_START_EVENT, onPanStart);
       window.removeEventListener(PAN_END_EVENT, onPanEnd);
       window.removeEventListener(GLIDE_SETTLING_EVENT, onPanEnd);
+      window.removeEventListener(ELASTIC_SETTLED_EVENT, onPanEnd);
     };
   }, [render]);
 
@@ -2997,7 +3046,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const zoomed = had && Math.abs((elasticRef.current.z || 1) - 1) > 1e-4;
     elasticRef.current = null;
     if (zoomed) publishElasticZoom(1);
-    if (had && render) setLiveGestureFrame((frame) => frame + 1);
+    if (had && render) {
+      setLiveGestureFrame((frame) => frame + 1);
+      // Once that frame has dropped the leftover transform.
+      requestAnimationFrame(() => window.dispatchEvent(new Event(ELASTIC_SETTLED_EVENT)));
+    }
   }, [publishElasticZoom]);
 
   const stepElastic = useCallback((now) => {
@@ -3031,6 +3084,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     if (done) elasticRef.current = null;
     else elasticRafRef.current = requestAnimationFrame(stepElastic);
     paintLiveFrame();
+    if (done) window.dispatchEvent(new Event(ELASTIC_SETTLED_EVENT));
   }, [paintLiveFrame, publishElasticZoom]);
 
   // Start (or retarget) the return home from the CURRENT leftover.
@@ -5217,6 +5271,95 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   }, [applyAnchoredScale, getPageLeftAtScale, getHorizontalScrollMax, phoneLayout]);
   zoomToScaleRef.current = zoomToScale;
 
+  // Nightly 'zoom-to-area' (Drawboard PDF Pro trial audit 2026-11-09):
+  // Ctrl+Shift+drag (⌘+Shift on a Mac) on bare page draws a box, and letting
+  // go zooms so the box fills the visible part of the viewer. Capture phase,
+  // so no tool also starts a stroke; Escape drops the box.
+  const [zoomToAreaOn] = useState(() => isFeatureOn('zoom-to-area'));
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!zoomToAreaOn || !el || typeof document === 'undefined') return undefined;
+    let drag = null;
+    const drawBox = () => {
+      if (!drag) return;
+      const b = boxBetween(drag.from, drag.to);
+      Object.assign(drag.node.style, { left: `${b.left}px`, top: `${b.top}px`, width: `${b.width}px`, height: `${b.height}px` });
+    };
+    const end = () => {
+      if (!drag) return;
+      drag.node.remove();
+      try { el.releasePointerCapture?.(drag.pointerId); } catch { /* already released */ }
+      drag = null;
+    };
+    const onDown = (event) => {
+      if (drag || !isZoomToAreaStart(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const node = document.createElement('div');
+      node.setAttribute('data-zoom-area-box', 'true');
+      Object.assign(node.style, {
+        position: 'fixed', zIndex: '5600', pointerEvents: 'none', boxSizing: 'border-box',
+        border: '1px solid var(--accent)', background: 'color-mix(in srgb, var(--accent) 12%, transparent)',
+      });
+      document.body.appendChild(node);
+      drag = { pointerId: event.pointerId, from: { x: event.clientX, y: event.clientY }, to: { x: event.clientX, y: event.clientY }, node };
+      try { el.setPointerCapture?.(event.pointerId); } catch { /* not capturable */ }
+      drawBox();
+    };
+    const onMove = (event) => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      event.preventDefault();
+      event.stopPropagation();
+      drag.to = { x: event.clientX, y: event.clientY };
+      drawBox();
+    };
+    const onUp = (event) => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const box = boxBetween(drag.from, { x: event.clientX, y: event.clientY });
+      end();
+      if (box.width < ZOOM_AREA_MIN_PX || box.height < ZOOM_AREA_MIN_PX) return;
+      const rect = el.getBoundingClientRect();
+      const side = sideInsetRef.current;
+      const inset = Math.min(topInsetRef.current, el.clientHeight);
+      const plan = zoomToAreaPlan({
+        box: { left: box.left - rect.left, top: box.top - rect.top, width: box.width, height: box.height },
+        view: { left: side.left, top: inset, width: Math.max(1, el.clientWidth - side.left - side.right), height: Math.max(1, el.clientHeight - inset) },
+        scale: scaleRef.current,
+      });
+      if (!plan) return;
+      const before = scaleRef.current;
+      applyAnchoredScale(plan.scale, plan.anchor.x, plan.anchor.y);
+      if (scaleRef.current !== before && pendingAnchorRef.current) {
+        pendingAnchorRef.current = {
+          ...pendingAnchorRef.current,
+          left: pendingAnchorRef.current.left + plan.shift.dx,
+          top: pendingAnchorRef.current.top + plan.shift.dy,
+        };
+      } else {
+        el.scrollBy({ left: plan.shift.dx, top: plan.shift.dy });
+      }
+    };
+    const onCancel = (event) => { if (drag && event.pointerId === drag.pointerId) end(); };
+    const onKey = (event) => {
+      if (drag && event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); end(); }
+    };
+    el.addEventListener('pointerdown', onDown, true);
+    el.addEventListener('pointermove', onMove, true);
+    el.addEventListener('pointerup', onUp, true);
+    el.addEventListener('pointercancel', onCancel, true);
+    window.addEventListener('keydown', onKey, true);
+    return () => {
+      end();
+      el.removeEventListener('pointerdown', onDown, true);
+      el.removeEventListener('pointermove', onMove, true);
+      el.removeEventListener('pointerup', onUp, true);
+      el.removeEventListener('pointercancel', onCancel, true);
+      window.removeEventListener('keydown', onKey, true);
+    };
+  }, [zoomToAreaOn, applyAnchoredScale]);
+
   // Phone: the open-time fit used page 1's size (the other sizes load behind
   // it). When a wider page arrives and you have not zoomed yet, fit again so
   // the widest sheet's edges are on screen (resolveFitPageWidth).
@@ -5586,8 +5729,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       const el = scrollerRef.current;
       if (!el || !el.isConnected || isInTabBehind(el) || el.clientHeight <= 0 || el.getClientRects().length === 0) return;
       const target = event.target instanceof Element ? event.target : null;
+      // A text mark's editor lives inside the scroller, so check typing first:
+      // Home / End / PgUp / PgDn move the caret there, never the page.
+      if (target && (isEditableTarget(target) || isEditableTarget(document.activeElement))) return;
       if (target && target !== document.body && target !== document.documentElement && !el.contains(target)) {
-        if (isEditableTarget(target)) return;
         if (target.closest('[role="menu"], [role="listbox"], [role="slider"], [role="dialog"], [role="tree"], [role="grid"]')) return;
         if (isEndKey && target.closest('[role="toolbar"], [role="tablist"], [role="radiogroup"], [role="menubar"], [role="spinbutton"]')) return;
         for (let node = target; node && node !== document.body; node = node.parentElement) {
@@ -5795,6 +5940,120 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     };
   }, [goToPage, focusPageRect, zoomToScale, glideZoomTo, applyAnchoredScale, getThumbnailDataUrl]);
 
+  // Page previews kept on the device and drawn on their own thread
+  // (utils/pagePreviewSession.js, 2026-11-09). A reopened file shows every
+  // page's preview at once; a new one gets them from the preview worker
+  // beside the page draws, instead of in line with them on this thread
+  // (heavy sheets: ~1-3 s each, so pages scrolled into view right after
+  // opening stayed white). Phones, small computers and files the worker
+  // cannot open keep the in-line prefetch below.
+  const [previewWorker, setPreviewWorker] = useState('off'); // 'pending' | 'on' | 'off'
+  const previewSessionRef = useRef(null);
+  useEffect(() => () => { previewSessionRef.current?.stop(); previewSessionRef.current = null; }, []);
+  useEffect(() => {
+    const pdf = pdfRef.current;
+    if (!pdf || pageSizes.length === 0) return undefined;
+    const base = getPageViewBase(pdf);
+    let session = previewSessionRef.current;
+    if (!session || session.base !== base) {
+      session?.stop();
+      const useWorker = !isMobileSurface && pageThumbWorkerSupported();
+      const source = latestActiveSourceRef.current;
+      const sourceBytes = source instanceof Uint8Array || source instanceof ArrayBuffer ? source : null;
+      session = createPagePreviewSession(base, {
+        source: sourceBytes,
+        useWorker,
+        workerSrc: new URL(pdfWorker, window.location.href).href,
+        assetOptions: pdfjsAssetOptions(pdfjsLib),
+      });
+      session.base = base;
+      previewSessionRef.current = session;
+      // 'pending' (in-line prefetch held) only when the bytes are here now: a
+      // streamed file's worker waits for the whole download (up to 30 s), and
+      // the in-line prefetch covers that wait until the worker says 'on'.
+      setPreviewWorker(useWorker && sourceBytes ? 'pending' : 'off');
+    }
+    let cancelled = false;
+    const docKey = rasterDocKey(pdf);
+    const maxBytes = pageThumbsMaxBytes(isMobileSurface);
+    const pageKeyOf = (index) => `${pageViewKey(pdf, index)}:r${rotation}`;
+    const pageIdOf = (index) => `${docKey}:${pageKeyOf(index)}`;
+    const indexByKey = new Map();
+    for (let index = 0; index < pageSizes.length; index += 1) indexByKey.set(pageKeyOf(index), index);
+    // Every new preview of this file is kept for the next open.
+    const keepNew = (pageId, entry, meta) => {
+      if (meta?.fromDevice || !pageId.startsWith(`${docKey}:`)) return;
+      const pageKey = pageId.slice(docKey.length + 1);
+      if (!indexByKey.has(pageKey)) return;
+      session.keep(pageKey, { canvas: entry.canvas, blob: meta?.blob || null, scale: entry.scale });
+    };
+    PAGE_THUMB_LISTENERS.add(keepNew);
+    const plan = () => planThumbPrefetch(pageSizes, {
+      focus: Math.max(0, (currentPageRef.current || 1) - 1),
+      maxBytes: maxBytes * 0.8,
+      skip: (index) => Boolean(pageThumbGet(pageIdOf(index))),
+    });
+    (async () => {
+      // 1. Previews kept on the device, nearest the reader first.
+      const kept = await session.kept();
+      if (cancelled || session.stopped) return;
+      if (kept.length) {
+        const byKey = new Map(kept.map((row) => [row.pageKey, row]));
+        const order = plan().filter((index) => byKey.has(pageKeyOf(index)));
+        for (let at = 0; at < order.length && !cancelled; at += 8) {
+          const chunk = order.slice(at, at + 8);
+          const bitmaps = await Promise.all(chunk.map((index) => decodeKeptPreview(byKey.get(pageKeyOf(index)))));
+          bitmaps.forEach((bitmap, k) => {
+            if (!bitmap) return;
+            const { scale } = byKey.get(pageKeyOf(chunk[k]));
+            if (!cancelled && scale > 0) pageThumbOffer(pageIdOf(chunk[k]), bitmap, scale, scale, maxBytes, { fromDevice: true });
+            try { bitmap.close?.(); } catch { /* noop */ }
+          });
+        }
+      }
+      // 2. The rest from the preview worker, nearest the reader first.
+      const failed = new Set();
+      const done = () => {
+        // Every preview drawn (or the worker keeps failing): end the worker
+        // and let the in-line prefetch cover any page that still lacks one.
+        session.releaseRenderer();
+        if (previewSessionRef.current === session) setPreviewWorker('off');
+      };
+      const missing = () => plan().find((i) => !failed.has(i) && !pageViewEntry(pdf, i + 1)?.blank);
+      if (cancelled || session.stopped) return;
+      if (missing() == null) { done(); return; }
+      const renderer = await session.renderer();
+      if (cancelled || session.stopped) return;
+      if (!renderer) { done(); return; }
+      if (previewSessionRef.current === session) setPreviewWorker('on');
+      for (;;) {
+        if (cancelled || session.stopped) return;
+        const index = missing();
+        if (index == null) { done(); return; }
+        const entry = pageViewEntry(pdf, index + 1);
+        const size = pageSizes[index];
+        const thumbScale = thumbRasterScale(size?.w, size?.h);
+        const pageId = pageIdOf(index);
+        if (!entry || !(thumbScale > 0)) { failed.add(index); continue; }
+        const result = await renderer.render(entry.src, thumbScale, (entry.rot || 0) + rotation);
+        if (!result) {
+          // A page the worker cannot draw is left to the viewer's own draw.
+          failed.add(index);
+          if (failed.size >= 3) { done(); return; }
+          continue;
+        }
+        if (!cancelled && !pageThumbGet(pageId)) {
+          pageThumbOffer(pageId, result.bitmap, thumbScale, thumbScale, maxBytes, { blob: result.blob });
+        }
+        try { result.bitmap.close?.(); } catch { /* noop */ }
+      }
+    })().catch(() => { /* a closed document */ });
+    return () => {
+      cancelled = true;
+      PAGE_THUMB_LISTENERS.delete(keepNew);
+    };
+  }, [pageSizes, rotation, isMobileSurface]);
+
   // Owner 2026-10-07 (far zoom: "maybe a more blurry version"): draw every
   // page's small thumbnail ahead of need, nearest the reader first, at the
   // lowest priority of the shared drawing queue (kind 'prefetch': it waits
@@ -5807,6 +6066,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const pdf = pdfRef.current;
     const queue = rasterQueueRef.current;
     if (!pdf || !queue || pageSizes.length === 0) return undefined;
+    // The preview worker draws them (or is opening): not in line here.
+    if (previewWorker !== 'off') return undefined;
     let cancelled = false;
     let turn = null;
     let task = null;
@@ -5876,7 +6137,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       try { task?.cancel(); } catch { /* noop */ }
       turn?.release();
     };
-  }, [pageSizes, rotation, isMobileSurface]);
+  }, [pageSizes, rotation, isMobileSurface, previewWorker]);
 
   // WebMCP: let a browser AI agent read the page count and move pages.
   useEffect(() => registerAgentViewer({

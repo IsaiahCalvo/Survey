@@ -120,6 +120,14 @@ test('tracking: status, assigned to and due date on a survey item, with list chi
     await rowOf(page, 'Door B').getByRole('button', { name: 'Expand marker details' }).click();
     await pick(page, page.getByTestId('survey-tracking'), 'Status', 'Done');
     await pick(page, page.getByTestId('survey-tracking'), 'Assigned to', `${E2E_ACCOUNTS.owner.label} (me)`);
+    // Its Activity log, newest first.
+    const activity = page.getByTestId('survey-tracking-activity');
+    await activity.getByRole('button', { name: /Activity/ }).click();
+    const entries = activity.getByRole('listitem');
+    await expect(entries).toHaveCount(2);
+    await expect(entries.first()).toContainText('You took it on');
+    await expect(entries.nth(1)).toContainText('You set the status to Done');
+    await page.screenshot({ path: test.info().outputPath('marker-tracking-activity.png') });
     await rowOf(page, 'Door B').getByRole('button', { name: 'Collapse marker details' }).click();
     await expect(rowOf(page, 'Door B').locator('[data-tracking-badge]')).toHaveText('Me');
 
@@ -130,6 +138,10 @@ test('tracking: status, assigned to and due date on a survey item, with list chi
     await expect(rows).toHaveCount(1);
     await expect(rowOf(page, 'Door A')).toHaveCount(1);
     await chip('overdue').click();
+    // Nothing is due in the next 3 days (A is late, B has no date).
+    await chip('dueSoon').click();
+    await expect(rows).toHaveCount(0);
+    await chip('dueSoon').click();
     await chip('hideDone').click();
     await expect(rows).toHaveCount(1);
     await expect(rowOf(page, 'Door B')).toHaveCount(0);
@@ -173,11 +185,17 @@ test('tracking: status, assigned to and due date on a survey item, with list chi
     await expect(page.getByTestId('survey-tracking').getByRole('button', { name: 'Set a due date' })).toBeVisible();
     await expect.poll(async () => (await storedTracking(page, seeded.docId))['track-a']?.due ?? null, { timeout: 20_000 }).toBeNull();
 
-    // Back to nothing set: the field goes away.
+    // Back to nothing set: the field stays with its Activity, the badge goes.
     await pick(page, page.getByTestId('survey-tracking'), 'Status', 'Open');
     await pick(page, page.getByTestId('survey-tracking'), 'Assigned to', 'Nobody');
-    await page.getByTestId('survey-tracking').locator('[data-tracking-due]').fill('');
-    await expect.poll(async () => (await storedTracking(page, seeded.docId))['track-a'], { timeout: 20_000 }).toBeNull();
+    await expect.poll(async () => { const t = (await storedTracking(page, seeded.docId))['track-a']; return t ? t.assigneeId : 'missing'; }, { timeout: 20_000 }).toBeNull();
+    const finalA = (await storedTracking(page, seeded.docId))['track-a'];
+    expect(finalA).toMatchObject({ status: 'open', assigneeId: null, due: null });
+    expect(finalA.history.map((e) => e.field)).toEqual(['status', 'assigneeId', 'due', 'due', 'status', 'assigneeId']);
+    await page.getByTestId('survey-tracking-activity').getByRole('button', { name: /Activity/ }).click();
+    await expect(page.getByTestId('survey-tracking-activity').getByRole('listitem').first()).toContainText(`took it off ${E2E_ACCOUNTS.editor.label}`);
+    await rowOf(page, 'Door A').getByRole('button', { name: 'Collapse marker details' }).click();
+    await expect(rowOf(page, 'Door A').locator('[data-tracking-badge]')).toHaveCount(0);
   } finally {
     await admin.from('documents').delete().eq('id', seeded.docId);
     await admin.storage.from('documents').remove([seeded.filePath]);

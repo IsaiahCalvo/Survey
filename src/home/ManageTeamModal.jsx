@@ -446,7 +446,10 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
   // An open row menu or the search box get Escape first through the shared
   // dismiss rules; the ref check below is a belt-and-braces guard.
   const mainCardRef = React.useRef(null);
+  // avoidTextFields: focusing "Find a teammate…" on open made its typing
+  // barrier swallow the first tap and popped the phone keyboard.
   useFocusTrap(mainCardRef, Boolean(open), {
+    avoidTextFields: true,
     onEscape: () => { if (!transientDismissActiveRef.current) onClose?.(); },
   });
 
@@ -503,6 +506,13 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
   /* Last-owner protection mirrors AccessManagementModal: the creator counts
      as an owner, so ownerCount is creator + collaborator owners. */
   const ownerCount = memberList.filter((m) => String(m.role).toLowerCase() === 'owner').length;
+  // Only an owner changes roles or removes people (the database refuses
+  // anyone else). A viewer or editor still sees the list, View activity and
+  // Copy email (deep test 2026-11-10: they were offered both, saw "Updated",
+  // and the change email went out though nothing changed).
+  const myId = currentUser?.id ?? null;
+  const canManageMembers = myId != null && memberList.some((m) => m.userId === myId
+    && (m.isCreator || String(m.role).toLowerCase() === 'owner'));
 
   if (!open) return null;
 
@@ -734,7 +744,9 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                 )}
               </div>
             )}
-            <button onClick={toggleEdit} className="hub-btn hub-btn--tertiary">{editMode ? "Done" : "Edit"}</button>
+            {(canManageMembers || editMode) && (
+              <button onClick={toggleEdit} className="hub-btn hub-btn--tertiary">{editMode ? "Done" : "Edit"}</button>
+            )}
           </div>
 
           {/* Column headers */}
@@ -808,7 +820,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                     <div data-manage-team-dismiss-surface="true" className="hub-menu" onClick={(e) => e.stopPropagation()} style={{ left: menuPos.left, top: menuPos.top, zIndex: 1400, width: 180 }}>
                       {[
                         { label: "Invite user", onClick: () => { setOpenMenu(null); setInviteOpen(true); } },
-                        ...(m.isCreator ? [] : [{ label: "Change role", onClick: () => { setOpenMenu(null); setEditMode(true); setOpenRoleSel(m.id); } }]),
+                        ...(m.isCreator || !canManageMembers ? [] : [{ label: "Change role", onClick: () => { setOpenMenu(null); setEditMode(true); setOpenRoleSel(m.id); } }]),
                         { label: "View activity", onClick: () => { setOpenMenu(null); setActivityFor(m); } },
                         { label: "Copy email", disabled: !m.email, onClick: async () => {
                           setOpenMenu(null);
@@ -816,7 +828,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                           if (result.ok) { setError(''); setStatus('Email copied.'); }
                           else { setStatus(''); setError('Survey could not copy this email.'); }
                         } },
-                        ...(m.isCreator ? [] : [{ label: "Remove from team", danger: true, onClick: () => { setOpenMenu(null); removeMember(m.id); } }]),
+                        ...(m.isCreator || !canManageMembers ? [] : [{ label: "Remove from team", danger: true, onClick: () => { setOpenMenu(null); removeMember(m.id); } }]),
                       ].map(it => (
                         <button key={it.label} disabled={it.disabled || busy} onClick={it.onClick} className={`hub-menu__item${it.danger ? " is-danger" : ""}`}><TeamMenuIcon label={it.label} />{it.label}</button>
                       ))}

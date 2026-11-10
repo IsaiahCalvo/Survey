@@ -1432,7 +1432,8 @@
     white-space: nowrap;
   }
 
-  .survey-hub .documents-desktop-upload {
+  .survey-hub .documents-desktop-upload,
+  .survey-hub .documents-desktop-new {
     display: none;
   }
 
@@ -1639,6 +1640,9 @@
 
   .survey-hub .documents-mobile-sort-menu button {
     width: 100%;
+    /* A phone menu row is 44 tall to a finger, like every other phone menu
+       (--sheet-menu-item-h); it was 33. */
+    min-height: 44px;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -4429,7 +4433,9 @@
   background: var(--pressed);
 }
 
-@media (max-width: 860px) {
+/* 860px blocks also follow the phone layout rule (layoutMode.js): a sideways
+   Pixel is 915 wide but still in the phone layout, and got the desktop header. */
+@media (max-width: 860px), screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
   .survey-hub .hub-section-menu > button:not([aria-disabled='true']):active,
   .survey-hub .mobile-header-select-button:active,
   .survey-hub .mobile-home-tabs button:not(.active):active,
@@ -4526,7 +4532,7 @@
    always stands 22px tall, whether the pair is showing or not, and the pair
    is drawn at 22px inside it, so it appearing moves nothing: not the title,
    not the panels below. */
-@media (min-width: 861px) {
+@media screen and (min-width: 861px) and (min-device-width: 600px) and (min-device-height: 600px) {
   .survey-hub .header .header-subtitle {
     min-height: 22px;
     display: flex;
@@ -4575,7 +4581,7 @@
 
 /* Phone Entities sheet, slimmed (owner 2026-09-23). The head is one 44px line;
    the panel's own header is one 36px toolbar (Select left, New entity right). */
-@media (max-width: 860px) {
+@media (max-width: 860px), screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
   .survey-hub .templates-mobile-entity-modal-head {
     padding: 6px 8px 6px 14px !important;
     min-height: 44px;
@@ -4600,7 +4606,7 @@
     margin-left: auto;
   }
 }
-@media (max-width: 860px) {
+@media (max-width: 860px), screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
   /* The section is a grid whose 8px gap also fell after the list, around the
      drag library's two invisible helper nodes — the "invisible row" under the
      last entity. The rows are parted by lines, so the grid needs no gap. */
@@ -4619,14 +4625,14 @@
     inset: -8px;
   }
 }
-@media (max-width: 860px) {
+@media (max-width: 860px), screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
   /* The sheet was held at least 360px tall, so a short list was stretched and
      left an empty band under its last row. It hugs its rows now (up to the
      same 74dvh cap), and the rows stay at the top of their section. */
   .survey-hub .templates-mobile-entity-modal { min-height: 0 !important; }
   .survey-hub .templates-mobile-entity-panel { align-content: start !important; }
 }
-@media (max-width: 860px) {
+@media (max-width: 860px), screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
   /* The X is the plain hub icon button — no outline, no gold (those belonged
      to the old "Close" text button that sat here). */
   .survey-hub .templates-mobile-entity-modal-head .hub-icon-btn {
@@ -4639,7 +4645,7 @@
     place-items: center;
   }
 }
-@media (max-width: 860px) {
+@media (max-width: 860px), screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
   /* The last row's invisible 44px tap pads (grip / More ::after, 4px above
      and below the 36px row) poked 4px out of the list, which made the
      sheet's section scrollable by 4px — so a drag held at the bottom kept
@@ -4649,7 +4655,7 @@
     overflow: clip;
   }
 }
-@media (max-width: 860px) {
+@media (max-width: 860px), screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
   /* Owner 2026-09-23: the Entities sheet was "a little wide". 360px wide at
      most, centred; its colour picker uses the compact 8-column layout (same as
      the desktop column) instead of the 12-column phone sheet layout. */
@@ -5068,7 +5074,7 @@ button[aria-label="Edit color"]:active > span,
    its own stylesheet; the SECTION HEADER ICONS block at the end of this file
    only keeps the older hub button rules off it. */
 
-@media (max-width: 860px) {
+@media (max-width: 860px), screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
 }
 
 /* ---------- PHONE: section headers ---------- */
@@ -5308,7 +5314,7 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
 /* The page header's Select (Documents, Projects, Templates, Archive) is one
    element on desktop and phone, so the phone size comes from the width the
    phone header already switches at. */
-@media (max-width: 860px) {
+@media (max-width: 860px), screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
   .survey-hub .section-icon-btn.section-icon-btn.mobile-header-select-button {
     width: 36px;
     height: 36px;
@@ -5348,7 +5354,7 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
    not drop. A glyph has no text baseline, so the box would sit ON the text
    baseline (its middle 4px above the words'); it steps down to centre on
    them. */
-@media (min-width: 861px) {
+@media screen and (min-width: 861px) and (min-device-width: 600px) and (min-device-height: 600px) {
   .survey-hub .section-icon-btn.section-icon-btn.mobile-header-select-button {
     margin-block: -10px -8px;
     top: 4px;

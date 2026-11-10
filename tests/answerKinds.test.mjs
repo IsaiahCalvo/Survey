@@ -40,6 +40,15 @@ test('answers are saved clean, or refused when they do not fit', () => {
   assert.equal(typedAnswer(date, 'soon'), null);
   assert.equal(typedAnswer(date, ''), '');
   assert.equal(dateAnswerOf(new Date('2026-10-22T00:00:00Z')), '2026-10-22');
+  // Excel shows dates in the column's format, and Graph hands back that text
+  // (real Excel, 2026-11-10): long and d-mmm-yy forms must read as dates.
+  for (const shown of ['Nov 10, 2026', 'November 10, 2026', 'Monday, November 10, 2026', 'Mon, Nov 10, 2026',
+    '10-Nov-2026', '10-Nov-26', '10 November 2026', '2026/11/10', '11/10/26', 'Nov. 10, 2026']) {
+    assert.equal(dateAnswerOf(shown), '2026-11-10', shown);
+  }
+  for (const notADate of ['Feb 30, 2026', 'Novem 10, 2026', 'Hello 10, 2026', '13/40/2026', 'Nov 2026']) {
+    assert.equal(dateAnswerOf(notADate), null, notADate);
+  }
 });
 
 test('done once answered; an issue past the line the item sets', () => {
@@ -195,4 +204,17 @@ test('Photo and Signature lines: the answer follows the media; agents and import
   const res = await box.run('set_answers', { item_id: 'x', answers: [{ checklist_item_id: 'p', value: '1 photo' }] });
   assert.equal(res.isError, true);
   assert.match(res.content, /photo line: it is filled in the app/);
+});
+
+test('a comma counts only as a thousands separator: "12,5" is refused, not read as 125', async () => {
+  const { itemAnswerFor } = await import('../supabase/functions/_shared/kitShape.js');
+  const number = { id: 'n', kind: 'number' };
+  const count = { id: 'c', kind: 'count' };
+  assert.equal(itemAnswerFor(number, '1,200.5'), '1200.5');
+  assert.equal(itemAnswerFor(number, '12,345,678'), '12345678');
+  assert.equal(itemAnswerFor(number, '12,5'), null);
+  assert.equal(itemAnswerFor(number, '1,2,3'), null);
+  assert.equal(itemAnswerFor(number, '1,20'), null);
+  assert.equal(itemAnswerFor(count, '1,000'), '1000');
+  assert.equal(itemAnswerFor(count, '10,0'), null);
 });

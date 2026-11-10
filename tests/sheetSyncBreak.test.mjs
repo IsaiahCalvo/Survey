@@ -519,6 +519,85 @@ test('a note longer than a cell holds is written cut to fit, keeps its full text
   assert.equal(ctx.markers.d1.note.text.length, 40001, 'the app keeps its full note');
 });
 
+test('a NUL in a note (pasted from a PDF) is left out of the cell, so Excel never sends back the note cut short', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'Door\u0000 A', { note: { text: 'first\u0000second' } }) } });
+  await ctx.round();
+  const row = (await ctx.sheet()).rows[1];
+  assert.equal(row[await ctx.col('Notes')], 'firstsecond');
+  assert.equal(row[await ctx.col('Item')], 'Door A');
+  const quiet = await ctx.round({ force: true });
+  assert.deepEqual(Object.values(quiet.summary).filter(Boolean), []);
+  assert.equal(ctx.markers.d1.note.text, 'first\u0000second', 'the app keeps its text');
+});
+
+test('a PM value saved late by Excel on the web over a cell Survey just wrote is held as a conflict, not pulled in', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101', { note: { text: 'Start' } }) } });
+  ctx.provider = { ...ctx.provider, savesLate: true };
+  const t0 = Date.parse('2026-11-10T03:00:00Z');
+  await ctx.round({ now: new Date(t0) }); await ctx.round({ now: new Date(t0 + 1000), force: true });
+  const notes = await ctx.col('Notes');
+  const row = await ctx.rowOf('d1');
+  // The PM types in Excel on the web (not saved yet); a second later the field tech changes the note.
+  ctx.markers.d1.note = { text: 'App note' };
+  await ctx.round({ now: new Date(t0 + 5000) });
+  assert.equal((await ctx.sheet()).rows[row][notes], 'App note');
+  // A minute later Excel's save lands over Survey's write.
+  await ctx.edit([{ row, col: notes, value: 'PM web note' }]);
+  const held = await ctx.round({ now: new Date(t0 + 65000), force: true });
+  assert.equal(held.summary.conflicts, 1, 'asked, not pulled in');
+  assert.equal(ctx.markers.d1.note.text, 'App note', 'the field note is kept');
+  assert.equal((await ctx.sheet()).rows[row][notes], 'PM web note', 'the PM cell is left alone');
+  assert.deepEqual(ctx.link.state.conflicts.d1.fields.map((f) => [f.app, f.sheet]), [['App note', 'PM web note']]);
+  // Still held a round later, after the window.
+  await ctx.round({ now: new Date(t0 + 700000), force: true });
+  assert.ok(ctx.link.state.conflicts.d1);
+  assert.equal(ctx.markers.d1.note.text, 'App note');
+  // Keep mine: the field note goes back to the sheet.
+  ctx.link.state.choices = { d1: 'app' };
+  await ctx.round({ now: new Date(t0 + 701000), force: true });
+  assert.equal((await ctx.sheet()).rows[row][notes], 'App note');
+  assert.equal(ctx.link.state.conflicts.d1, undefined);
+});
+
+test('a sheet edit after the late-save window, or an Undo back to the old value, still comes in as a PM edit', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101', { note: { text: 'Start' } }), d2: door('d2', 'D-102', { note: { text: 'Old' } }) } });
+  ctx.provider = { ...ctx.provider, savesLate: true };
+  const t0 = Date.parse('2026-11-10T03:00:00Z');
+  await ctx.round({ now: new Date(t0) }); await ctx.round({ now: new Date(t0 + 1000), force: true });
+  const notes = await ctx.col('Notes');
+  ctx.markers.d1.note = { text: 'App note' };
+  ctx.markers.d2.note = { text: 'New' };
+  await ctx.round({ now: new Date(t0 + 5000) });
+  // d2: the PM undoes Survey's write inside the window.
+  await ctx.edit([{ row: await ctx.rowOf('d2'), col: notes, value: 'Old' }]);
+  const undo = await ctx.round({ now: new Date(t0 + 65000), force: true });
+  assert.equal(undo.summary.conflicts, 0, 'an Undo is not held');
+  assert.equal(ctx.markers.d2.note.text, 'Old');
+  // d1: the PM types after the window has passed.
+  await ctx.edit([{ row: await ctx.rowOf('d1'), col: notes, value: 'PM later' }]);
+  const r = await ctx.round({ now: new Date(t0 + 5000 + 310000), force: true });
+  assert.equal(r.summary.conflicts, 0);
+  assert.equal(ctx.markers.d1.note.text, 'PM later');
+  assert.equal(ctx.markers.d2.note.text, 'Old');
+});
+
+test('a first write over an old-format baseline is not watched, so an Undo comes straight in', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101', { note: { text: 'Old' } }) } });
+  ctx.provider = { ...ctx.provider, savesLate: true };
+  const t0 = Date.parse('2026-11-10T03:00:00Z');
+  await ctx.round({ now: new Date(t0) });
+  const scope = ctx.link.layout.scopes[0];
+  const { appRecordOf } = await import('../supabase/functions/_shared/sheetSync/engine.js');
+  ctx.link.baseline.d1.fields = (await computeRowFingerprints(appRecordOf(ctx.markers.d1, scope))).fieldFingerprints;
+  ctx.markers.d1.note = { text: 'New' };
+  await ctx.round({ now: new Date(t0 + 5000) });
+  assert.deepEqual(ctx.link.state.recentWrites, {}, 'an old-format "before" print could never match the sheet');
+  await ctx.edit([{ row: await ctx.rowOf('d1'), col: await ctx.col('Notes'), value: 'Old' }]);
+  const r = await ctx.round({ now: new Date(t0 + 65000), force: true });
+  assert.equal(r.summary.conflicts, 0);
+  assert.equal(ctx.markers.d1.note.text, 'Old');
+});
+
 test('a totals line typed under the items is not made an item, and new items go above it', async () => {
   const ctx = await setup({ markers: { d1: door('d1', 'D-101'), d2: door('d2', 'D-102') } });
   await ctx.round();

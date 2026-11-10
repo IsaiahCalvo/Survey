@@ -9,6 +9,8 @@
    without changing the layout.
 */
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { isFeatureOn } from '../featureFlags.js';
+import { requestHomeDownload } from '../utils/homeDownload.js';
 import { useTooltip } from '../components/Tooltip';
 import { createPortal } from 'react-dom';
 import { HubShell, Icon, Avatar, PdfThumb, Search, EmptyState } from './HubShell';
@@ -32,6 +34,8 @@ import { isPhoneLayout } from '../utils/layoutMode.js';
 import { canManageDocument, manageSelectionBlock } from './documentPermissions.js';
 import { activateOrExplain } from '../utils/disabledReasonToast.js';
 import MenuRows from '../components/MenuRows.jsx';
+import DialogCard from '../components/DialogCard.jsx';
+import NewDocumentDialog from './NewDocumentDialog.jsx';
 import sampleFloorPlanUrl from '../assets/sample-floor-plan.pdf?url';
 import useFileDropZone from '../hooks/useFileDropZone';
 import FileDropOverlay from '../components/FileDropOverlay';
@@ -46,6 +50,8 @@ import {
 } from './documentSelection.js';
 import { keyboardControlProps } from '../utils/keyboardActivation.js';
 import { preloadPdfViewerNow } from '../utils/pdfViewerPrefetch.js';
+import { ReviewChips, ReviewFields, ReviewLine, useDocumentReviews, useReviewPeople } from './DocumentReviewBits.jsx';
+import { EMPTY_REVIEW_FILTER, passesReviewFilter, reviewFilterIsEmpty, reviewStatusCounts } from './documentReview.js';
 
 const ledgerHeader = {
   background: 'var(--ink-700)',
@@ -268,6 +274,15 @@ export default function DocumentsLedger({
   const { downloadDocument, fileStamp } = useStorage();
   // Nightly offline-docs: "Make available offline" in the row menu.
   const offline = useOfflineDocumentActions({ userId: user?.id, downloadDocument, fileStamp });
+  const [homeDownloadOn] = useState(() => isFeatureOn('home-download'));
+  // Nightly 'new-document': New makes a blank document (desktop) or opens a
+  // small New sheet with Upload and Blank document (phone).
+  const [newDocumentOn] = useState(() => isFeatureOn('new-document'));
+  const [newSheetOpen, setNewSheetOpen] = useState(false);
+  const [newDocOpen, setNewDocOpen] = useState(false);
+  const canCreateBlank = newDocumentOn && Boolean(onDropFiles);
+  // An upload still in flight (temp- id) has no saved row to open yet.
+  const canDownloadDoc = (raw) => Boolean(raw?.id) && !String(raw.id).startsWith('temp-');
 
   // Nightly device-files: PDFs opened with no account, kept on this device.
   const deviceFileRows = useDeviceFileRows();
@@ -307,6 +322,14 @@ export default function DocumentsLedger({
     };
   }), [listDocuments, projects]);
 
+  // Document review (Nightly, flag 'document-review'; DocumentReviewBits.jsx):
+  // status, owner and markup count under each name, chips to filter by them.
+  const [reviewOn] = useState(() => isFeatureOn('document-review'));
+  const documentIds = useMemo(() => documents.map((d) => d.id), [documents]);
+  const { reviews, save: saveReview } = useDocumentReviews(reviewOn, documentIds);
+  const [reviewFilter, setReviewFilter] = useState(EMPTY_REVIEW_FILTER);
+  const reviewCounts = useMemo(() => (reviewOn ? reviewStatusCounts(documentIds, reviews) : null), [reviewOn, documentIds, reviews]);
+
   const onHeaderClick = (key) => {
     if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     else { setSortKey(key); setSortDir(key === 'edited' || key === 'size' ? 'desc' : 'asc'); }
@@ -315,14 +338,15 @@ export default function DocumentsLedger({
 
   const docs = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const arr = mapped.filter((d) => !q || (d.name || '').toLowerCase().includes(q));
+    const arr = mapped.filter((d) => (!q || (d.name || '').toLowerCase().includes(q))
+      && (!reviewOn || passesReviewFilter(reviews.get(d.id), reviewFilter, user?.id)));
     const sign = sortDir === 'asc' ? 1 : -1;
     if (sortKey === 'name') arr.sort((a, b) => sign * a.name.localeCompare(b.name));
     else if (sortKey === 'project') arr.sort((a, b) => sign * (a.project || '').localeCompare(b.project || ''));
     else if (sortKey === 'edited') arr.sort((a, b) => sign * (a.editedMs - b.editedMs));
     else if (sortKey === 'size') arr.sort((a, b) => sign * (a.sizeBytes - b.sizeBytes));
     return arr;
-  }, [mapped, search, sortKey, sortDir]);
+  }, [mapped, search, sortKey, sortDir, reviewOn, reviews, reviewFilter, user?.id]);
   const mobileDetailDoc = docs.find((d) => d.id === mobileDetailId) || null;
 
   /* Idle thumbnail backfill (2026-09-23): fills missing thumbnails one at a
@@ -355,7 +379,7 @@ export default function DocumentsLedger({
       const response = await fetch(sampleFloorPlanUrl);
       if (!response.ok) throw new Error(`sample drawing: HTTP ${response.status}`);
       const file = new File([await response.blob()], 'Sample floor plan.pdf', { type: 'application/pdf' });
-      await onDropFiles([file], { projectId: null, open: true });
+      await onDropFiles([file], { projectId: null, open: true, sample: true });
     } catch (error) {
       console.error('[DocumentsLedger] sample drawing failed', error);
     } finally {
@@ -390,6 +414,8 @@ export default function DocumentsLedger({
   const selectedDocs = docs.filter((d) => selDocs.has(d.id));
   const bulkSelected = !docSelectMode && selectedDocs.length >= 2;
   const previewDoc = !docSelectMode && selectedDocs.length === 1 ? selectedDocs[0] : sel;
+  // Who can own the review of the document in the preview (or phone details).
+  const reviewPeople = useReviewPeople(reviewOn ? (mobileDetailDoc?.id || previewDoc?.id || null) : null);
   // Team for the open preview (desktop panel or phone detail): owner + collaborators.
   const teamDocRaw = (mobileDetailDoc || previewDoc)?.raw || null;
   const teamDocId = teamDocRaw?.id || null;
@@ -407,6 +433,10 @@ export default function DocumentsLedger({
     return () => { live = false; };
   }, [teamDocId, teamOwnerIsMe]);
   const teamFresh = teamCollab.id === teamDocId;
+  // Review status and owner need edit access (set_document_review checks
+  // 'editor'): a document shared to me as a viewer shows them read-only.
+  const myTeamRole = teamFresh ? (teamCollab.rows.find((r) => r.user_id === user?.id)?.role || null) : null;
+  const canEditReview = teamOwnerIsMe || myTeamRole !== 'viewer';
   const teamRows = documentTeamRows(teamDocRaw, teamFresh ? teamCollab.rows : [], user, teamFresh ? teamCollab.owner : null);
   const renderTeam = (nameStyle) => teamRows.map((p) => (
     <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -686,12 +716,51 @@ export default function DocumentsLedger({
       <div className="documents-mobile-search-actions hub-mobile-search-actions">
         <Search placeholder="Search documents..." value={search} onChange={setSearch} width="100%" />
         {mobileSortControl}
-        <button className="btn primary hub-mobile-primary-action" disabled={uploadBusy} onClick={() => onUpload && onUpload()}>{uploadButtonBody}</button>
+        {canCreateBlank ? (
+          <button className="btn primary hub-mobile-primary-action" data-home-new="phone" disabled={uploadBusy} aria-haspopup="dialog" onClick={() => setNewSheetOpen(true)}>
+            {uploadBusy ? uploadButtonBody : (<><Icon name="plus" size={12} />New</>)}
+          </button>
+        ) : (
+          <button className="btn primary hub-mobile-primary-action" disabled={uploadBusy} onClick={() => onUpload && onUpload()}>{uploadButtonBody}</button>
+        )}
       </div>
       <div className="documents-desktop-search">
         <Search placeholder="Search documents..." value={search} onChange={setSearch} />
       </div>
+      {canCreateBlank && (
+        <button className="btn documents-desktop-new" data-home-new="desktop" disabled={uploadBusy} aria-haspopup="dialog" onClick={() => setNewDocOpen(true)}>
+          <Icon name="plus" size={12} />New
+        </button>
+      )}
       <button className="btn primary documents-desktop-upload" disabled={uploadBusy} onClick={() => onUpload && onUpload()}>{uploadButtonBody}</button>
+      {newSheetOpen && (
+        <DialogCard title="New" onClose={() => setNewSheetOpen(false)} width={320} atRoot cardProps={{ 'data-home-new-sheet': 'true' }}>
+          <div role="menu" aria-label="New" style={{ display: 'grid', gap: 4 }}>
+            {[
+              { key: 'upload', icon: 'upload', label: 'Upload PDF', run: () => onUpload && onUpload() },
+              { key: 'blank', icon: 'plus', label: 'Blank document', run: () => setNewDocOpen(true) },
+            ].map((row) => (
+              <button
+                key={row.key}
+                type="button"
+                role="menuitem"
+                className="hub-btn dialog-touch-pad"
+                style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 44, justifyContent: 'flex-start', width: '100%' }}
+                onClick={() => { setNewSheetOpen(false); row.run(); }}
+              >
+                <Icon name={row.icon} size={14} />{row.label}
+              </button>
+            ))}
+          </div>
+        </DialogCard>
+      )}
+      {newDocOpen && (
+        <NewDocumentDialog
+          existingNames={documents.map((d) => d?.name)}
+          onCreate={(file) => onDropFiles([file], { projectId: null, open: true })}
+          onClose={() => setNewDocOpen(false)}
+        />
+      )}
     </>
   );
 
@@ -816,6 +885,7 @@ export default function DocumentsLedger({
           <div className="mobile-card-title">{d.name}</div>
           {/* The title cuts long names off, so the phone shows the mark first in the meta line. */}
           <div className="mobile-card-meta">{offline.isKept(d.id) && <OfflineBadge leading />}{mobileDocMeta(d)}</div>
+          {reviewOn && <ReviewLine review={reviews.get(d.id)} />}
         </div>
         <div style={{ display: 'grid', placeItems: 'center', minWidth: 0 }}>
           {renderMobileThumb(d)}
@@ -862,6 +932,9 @@ export default function DocumentsLedger({
           <div className="slim-scroll documents-ledger-scroll" style={{ overflow: 'auto', borderRight: showPreview ? '1px solid var(--ink-500)' : 0 }}>
             {deviceNotice}
             <div>
+              {reviewOn && mapped.length > 0 && (
+                <ReviewChips filter={reviewFilter} onChange={setReviewFilter} counts={reviewCounts} />
+              )}
               <div className={gridClass} style={{ ...ledgerHeader, display: 'grid', gridTemplateColumns: grid, position: 'sticky', top: 0, zIndex: 3 }}>
                 <span className="documents-ledger-head-check" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   {docSelectMode && docs.length > 0 && (
@@ -902,7 +975,7 @@ export default function DocumentsLedger({
                     />
                   </div>
                 ) : (
-                  <div className="meta" style={{ padding: '24px 16px', fontSize: 12 }}>No documents match your search.</div>
+                  <div className="meta" style={{ padding: '24px 16px', fontSize: 12 }}>{reviewOn && !reviewFilterIsEmpty(reviewFilter) ? 'No documents match these filters.' : 'No documents match your search.'}</div>
                 )
               )}
               {docs.map((d) => {
@@ -988,7 +1061,14 @@ export default function DocumentsLedger({
                       />
                     </div>
                     <div style={stickyCell(isFilled)}>
-                      <span style={{ fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{d.name}</span>
+                      {reviewOn ? (
+                        <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+                          <span style={{ fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{d.name}</span>
+                          <ReviewLine review={reviews.get(d.id)} />
+                        </div>
+                      ) : (
+                        <span style={{ fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{d.name}</span>
+                      )}
                       {offline.isKept(d.id) && <OfflineBadge />}
                     </div>
                     <span className="meta documents-col-project" style={{ fontSize: 12, padding: '12px 12px 12px 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{/* Polish round 2 (2026-10-04): a file in no project leaves the cell
@@ -1118,6 +1198,11 @@ export default function DocumentsLedger({
                   {renderTeam({ fontSize: 12, fontWeight: 600 })}
                 </div>
               </div>
+              {reviewOn && (
+                <div style={{ marginTop: 14, flex: 'none' }} data-doc-review-panel="">
+                  <ReviewFields review={reviews.get(previewDoc.id)} people={reviewPeople} canEdit={canEditReview} onSave={(patch) => saveReview(previewDoc.id, patch)} />
+                </div>
+              )}
               {/* Last edited + Uploaded dates. */}
               <div style={{ marginTop: 14, flex: 'none', display: 'grid', gap: 10 }}>
                 <div>
@@ -1136,6 +1221,9 @@ export default function DocumentsLedger({
               <div style={{ display: 'flex', gap: 8, marginTop: 14, flex: 'none' }}>
                 <button className="btn primary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => onOpenDocument && onOpenDocument(previewDoc.raw)}>Open file</button>
                 <button className="btn documents-preview-share" aria-disabled={canManageDoc(previewDoc.raw) ? undefined : true} {...tip(canManageDoc(previewDoc.raw) ? 'Share' : 'Only the owner can share this', 'above')} onClick={() => activateOrExplain(manageSelectionBlock([previewDoc.raw], user?.id, 'share'), () => onShare && onShare([previewDoc.raw]))} aria-label="Share"><Icon name="share" size={16} /></button>
+                {homeDownloadOn && onOpenDocument && canDownloadDoc(previewDoc.raw) && (
+                  <button className="btn documents-preview-share" data-home-download="" {...tip('Download with marks', 'above')} onClick={() => { requestHomeDownload(previewDoc.raw.id); onOpenDocument(previewDoc.raw); }} aria-label="Download"><Icon name="download" size={16} /></button>
+                )}
               </div>
               {/* The row's double-click opens the file too; say so (mouse only). */}
               <div className="documents-preview-open-hint">Double-click a row to open it</div>
@@ -1144,6 +1232,9 @@ export default function DocumentsLedger({
         </div>
         <div className="documents-mobile-list slim-scroll">
           {deviceNotice}
+          {reviewOn && mapped.length > 0 && (
+            <ReviewChips filter={reviewFilter} onChange={setReviewFilter} counts={reviewCounts} phone />
+          )}
           {docs.length === 0 && (
             mapped.length === 0 ? (
               <EmptyState
@@ -1156,7 +1247,7 @@ export default function DocumentsLedger({
                 {...sampleAction}
               />
             ) : (
-              <div className="meta" style={{ padding: '18px 4px', fontSize: 12 }}>No documents match your search.</div>
+              <div className="meta" style={{ padding: '18px 4px', fontSize: 12 }}>{reviewOn && !reviewFilterIsEmpty(reviewFilter) ? 'No documents match these filters.' : 'No documents match your search.'}</div>
             )
           )}
           {docs.length > 0 && docs.map(renderMobileCard)}
@@ -1204,6 +1295,11 @@ export default function DocumentsLedger({
                     ))}
                   </div>
                 </div>
+                {reviewOn && (
+                  <div data-doc-review-panel="">
+                    <ReviewFields review={reviews.get(mobileDetailDoc.id)} people={reviewPeople} canEdit={canEditReview} onSave={(patch) => saveReview(mobileDetailDoc.id, patch)} />
+                  </div>
+                )}
                 <div><span>Last edited</span><strong>{mobileDetailDoc.lastEditedAbs}</strong></div>
                 <div><span>Uploaded</span><strong>{mobileDetailDoc.uploadedAbs}</strong></div>
               </div>
@@ -1213,6 +1309,9 @@ export default function DocumentsLedger({
               <div className="documents-mobile-detail-actions">
                 <button type="button" className="btn primary" onClick={() => { setMobileDetailId(null); onOpenDocument && onOpenDocument(mobileDetailDoc.raw); }}>Open file</button>
                 <button type="button" className="btn documents-preview-share" aria-disabled={canManageDoc(mobileDetailDoc.raw) ? undefined : true} {...tip(canManageDoc(mobileDetailDoc.raw) ? 'Share' : 'Only the owner can share this', 'above')} onClick={() => activateOrExplain(manageSelectionBlock([mobileDetailDoc.raw], user?.id, 'share'), () => { setMobileDetailId(null); onShare && onShare([mobileDetailDoc.raw]); })} aria-label="Share"><Icon name="share" size={18} /></button>
+                {homeDownloadOn && onOpenDocument && canDownloadDoc(mobileDetailDoc.raw) && (
+                  <button type="button" className="btn documents-preview-share" data-home-download="" onClick={() => { setMobileDetailId(null); requestHomeDownload(mobileDetailDoc.raw.id); onOpenDocument(mobileDetailDoc.raw); }} aria-label="Download"><Icon name="download" size={18} /></button>
+                )}
               </div>
             </section>
           </div>
@@ -1269,6 +1368,10 @@ export default function DocumentsLedger({
             { label: 'Copy', onClick: () => setClipboardDoc(doc.raw) },
             { label: 'Paste', disabled: !clipboardDoc, onClick: () => clipboardDoc && onDuplicate && onDuplicate([clipboardDoc]) },
             ...(onPdfTools ? [{ label: 'PDF tools…', onClick: () => onPdfTools([doc.raw]) }] : []),
+            ...(homeDownloadOn && onOpenDocument && canDownloadDoc(doc.raw) ? [{
+              label: 'Download',
+              onClick: () => { requestHomeDownload(doc.raw.id); onOpenDocument(doc.raw); },
+            }] : []),
             { label: 'Delete', danger: true, reason: manageSelectionBlock([doc.raw], user?.id, 'delete'), onClick: () => onDelete && onDelete([doc.raw]) },
             { label: 'Share', reason: manageSelectionBlock([doc.raw], user?.id, 'share'), onClick: () => onShare && onShare([doc.raw]) },
             {

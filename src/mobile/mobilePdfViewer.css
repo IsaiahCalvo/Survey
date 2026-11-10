@@ -1531,7 +1531,13 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   z-index: 7200;
 }
 
-.mobile-pdf-tools__popover.is-more { bottom: calc(var(--mobile-viewer-dock-height) + 80px); }
+.mobile-pdf-tools__popover.is-more {
+  bottom: calc(var(--mobile-viewer-dock-height) + 80px);
+  /* Landscape is short: pinned from the bottom with no cap, the top rows ran
+     under the header. Cap it below the header and let it scroll. */
+  max-height: calc(100dvh - var(--mobile-viewer-dock-height) - 80px - var(--app-chrome-top, 34px) - 8px);
+  overflow-y: auto;
+}
 .mobile-pdf-tools__popover.is-presence { bottom: calc(var(--mobile-viewer-dock-height) + 8px); }
 
 /* A phone menu item (owner 2026-10-02, UI consistency audit): 44 tall at
@@ -3769,7 +3775,9 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
   color: var(--accent) !important;
 }
 
-.mobile-pdf-hub-tabs .mobile-pdf-hub-tab > span { display: none !important; }
+/* The word under the glyph hides; a glyph drawn in its own span (Layers)
+   stays. */
+.mobile-pdf-hub-tabs .mobile-pdf-hub-tab > span:not([aria-hidden="true"]) { display: none !important; }
 
 /* Owner 2026-10-02: the sheet, the panel inside it and the bottom safe-inset
    band are all --sheet-bg now, so the old "darker stripe" patches (two :has()

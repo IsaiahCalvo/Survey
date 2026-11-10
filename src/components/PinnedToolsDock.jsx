@@ -27,8 +27,8 @@ import Icon from '../Icons.jsx';
 import { watchLightPopover } from './dismissRules.js';
 import { useMenuFocus } from '../hooks/useMenuFocus.js';
 import { withOwnHandlers } from './Tooltip.jsx';
+import { isTypingTarget } from '../utils/typingTarget.js';
 import {
-  PINNABLE_TOOLS,
   CARRIED_DOCK_SLOTS,
   COMPACT_DOCK_SLOTS,
   chooseDockPlacement,
@@ -36,6 +36,7 @@ import {
   dropDurationMs,
   magnetPull,
   makePin,
+  matchPinKinds,
   pinBadge,
   pinDescription,
   pinFaceColor,
@@ -98,6 +99,11 @@ function GripIcon({ vertical }) {
   );
 }
 
+/** A pin's hint: its words, then the number key that arms it (1 to 9). */
+export function pinTipText(description, index, phone = false) {
+  return !phone && index >= 0 && index < 9 ? `${description}  ${index + 1}` : description;
+}
+
 export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone = false }) {
   const store = suppliedStore || getPinnedToolsStore();
   const state = usePinnedTools(store);
@@ -115,6 +121,26 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
   const [menu, setMenu] = useState(null); // { kind: 'add' | 'settings' | 'pin', pinId?, rect }
   const [editing, setEditing] = useState(false);
   const [pinDrag, setPinDrag] = useState(null); // { pinId, index, offset }
+  // Escape ends "Edit pins" like every other mode (an open dock menu takes
+  // the Escape first and closes itself). The viewer's capture-phase Escape
+  // asks "survey-cancel-selection-gesture" first; claiming it there keeps
+  // that same Escape from also dropping the pick or putting the tool down.
+  // The plain keydown listener covers a screen with no viewer listening.
+  useEffect(() => {
+    if (!editing) return undefined;
+    const onCancelAsk = (e) => {
+      if (menu) return;
+      setEditing(false);
+      if (e.detail) e.detail.cancelled = true;
+    };
+    const onKey = (e) => { if (e.key === 'Escape' && !menu) setEditing(false); };
+    window.addEventListener('survey-cancel-selection-gesture', onCancelAsk);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('survey-cancel-selection-gesture', onCancelAsk);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [editing, menu]);
   const [, setSessionTick] = useState(0);
 
   const shellRef = useRef(null);
@@ -165,6 +191,32 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
     if (!current || !pin) return;
     setSession(armPin(current, sessionRef.current, pin));
   }, [setSession]);
+
+  // Number keys 1 to 9 arm the pins in their order, and 0 the last (Drawboard PDF Pro trial
+  // audit 2026-11-09: its favourites answer to the number keys). Not while
+  // typing, not with a modifier (Ctrl+1 is Fit width), not on a phone.
+  const pinsRef = useRef(pins);
+  pinsRef.current = pins;
+  const editingRef = useRef(editing);
+  editingRef.current = editing;
+  useEffect(() => {
+    if (!visible || phone) return undefined;
+    const onKeyDown = (event) => {
+      if (event.defaultPrevented || event.__surveyRemapped || event.repeat) return;
+      if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+      if (!/^[0-9]$/.test(event.key) || editingRef.current) return;
+      if (isTypingTarget(event.target) || isTypingTarget(document.activeElement)) return;
+      // 0 arms the last pin, however many there are (Drawboard's 0 is its
+      // last favourites slot; R3-H 2026-11-10).
+      const list = pinsRef.current;
+      const pin = event.key === '0' ? list[list.length - 1] : list[Number(event.key) - 1];
+      if (!pin || !apiRef.current) return;
+      event.preventDefault();
+      arm(pin);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [visible, phone, arm]);
 
   // Survey mode has its own pins (owner 2026-11-09): the dock shows the
   // survey set while Survey is on and the markup set everywhere else.
@@ -767,7 +819,7 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
           data-pin-width={badge || undefined}
           data-pin-armed={pressed ? 'true' : undefined}
           data-tool-switch="true"
-          {...withOwnHandlers(bindTip(description, inMenu ? 'above' : tipSide), inMenu ? {} : {
+          {...withOwnHandlers(bindTip(pinTipText(description, index, phone), inMenu ? 'above' : tipSide), inMenu ? {} : {
             onPointerDown: (event) => onPinPointerDown(event, pin, index),
             onKeyDown: (event) => onPinKeyDown(event, pin, index),
           })}
@@ -961,6 +1013,9 @@ function PinnedToolsMenu({
   menuRef, menu, placement, phone, pins, hiddenPins, renderPin, compact, pinSet, editing, currentKind, onPinCurrent, onAdd,
   onUnpin, onDuplicate, onMoveToStart, onPlacement, onToggleCompact, onToggleEditing, onHide, api,
 }) {
+  // The picker's search words; a fresh picker starts empty.
+  const [query, setQuery] = useState('');
+  useEffect(() => { if (menu.kind !== 'add') setQuery(''); }, [menu.kind]);
   // The "+N" grid: five pins a row, each the dock's own pin button.
   const moreColumns = Math.min(5, Math.max(1, hiddenPins.length));
   const width = menu.kind === 'add' ? 264 : menu.kind === 'more' ? moreColumns * 34 + 10 : 200;
@@ -1033,6 +1088,8 @@ function PinnedToolsMenu({
     );
   }
   const groups = ['Draw', 'Shapes', 'Text'];
+  const found = matchPinKinds(query);
+  const searching = query.trim().length > 0;
   const currentStyle = currentKind && typeof api?.readToolStyle === 'function'
     ? api.readToolStyle(currentKind.tool, currentKind.lineStyle)
     : null;
@@ -1053,11 +1110,42 @@ function PinnedToolsMenu({
           <div className="pinned-dock-menu__rule" />
         </>
       ) : null}
-      {groups.map((group) => (
+      {/* Drawboard's add-tool sheet has a search: type a name ("circle",
+          "cloud", "note") and Enter pins the first match. Not focused on a
+          phone, so the keyboard only comes up when asked for. */}
+      <div className="pinned-dock-menu__search">
+        <Icon name="search" size={14} color="currentColor" />
+        <input
+          type="search"
+          value={query}
+          placeholder="Find a tool"
+          aria-label="Find a tool"
+          data-pin-search="true"
+          autoFocus={!phone}
+          enterKeyHint="done"
+          onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && searching && found.length) {
+              event.preventDefault();
+              onAdd(found[0].id);
+            } else if (event.key === 'ArrowDown') {
+              event.preventDefault();
+              menuRef.current?.querySelector('[data-pin-kind]')?.focus();
+            }
+          }}
+        />
+      </div>
+      {searching && !found.length ? (
+        <p className="pinned-dock-menu__note" data-pin-search-empty="true">No tool matches “{query.trim()}”.</p>
+      ) : null}
+      {groups.map((group) => {
+        const kinds = found.filter((kind) => kind.group === group);
+        if (!kinds.length) return null;
+        return (
         <div key={group} role="group" aria-label={group}>
           <div className="pinned-dock-menu__heading">{group}</div>
           <div className="pinned-dock-menu__grid">
-            {PINNABLE_TOOLS.filter((kind) => kind.group === group).map((kind) => (
+            {kinds.map((kind) => (
               <button key={kind.id} type="button" role="menuitem" data-pin-kind={kind.id} onClick={() => onAdd(kind.id)}>
                 <Icon name={kind.iconName} size={16} color="currentColor" />
                 <span>{kind.label}</span>
@@ -1065,7 +1153,8 @@ function PinnedToolsMenu({
             ))}
           </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

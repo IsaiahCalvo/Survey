@@ -24,7 +24,7 @@ test('production create-project action renders an accessible dialog with optiona
   // Touch screens get 44px targets from hub.css: the field (dialog-prompt-input),
   // the footer buttons (dialog-touch-pad), Remove (dialog-close-touch-pad).
   assert.match(modal, /className="dialog-prompt-input"/);
-  assert.equal((modal.match(/className="hub-btn[^"]*dialog-touch-pad"/g) || []).length, 2, 'Cancel and Create project');
+  assert.equal((modal.match(/className="hub-btn[^"]*dialog-touch-pad"/g) || []).length, 3, 'Choose PDFs, Cancel and Create project');
   assert.match(modal, /dialog-close-touch-pad" aria-label=\{`Remove /);
 });
 

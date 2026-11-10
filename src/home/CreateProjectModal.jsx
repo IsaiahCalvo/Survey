@@ -19,6 +19,7 @@ export default function CreateProjectModal({
   open,
 }) {
   const inputRef = useRef(null);
+  const fileInputRef = useRef(null);
   if (!open) return null;
   const canSubmit = !!name.trim() && !busy;
 
@@ -69,22 +70,40 @@ export default function CreateProjectModal({
           />
         </label>
 
-        <label style={{ display: 'block' }}>
-          <span style={DIALOG_LABEL_STYLE}>PDF files (optional)</span>
+        {/* T7 deep test 2026-11-10: the browser's own "Choose Files / No
+            file chosen" text read as a stray system control on the phone.
+            The real input stays (hidden) and the app's button opens it; the
+            chosen names show as the rows below. */}
+        <div>
+          <span id="create-project-files-label" style={DIALOG_LABEL_STYLE}>PDF files (optional)</span>
           <input
+            ref={fileInputRef}
             data-testid="create-project-files"
             className="create-project-file-input"
             type="file"
             accept="application/pdf"
             multiple
             disabled={busy}
+            tabIndex={-1}
+            aria-hidden="true"
             onChange={(event) => {
               onFilesChange?.(Array.from(event.target.files || []));
               event.target.value = '';
             }}
-            style={{ width: '100%', boxSizing: 'border-box', color: COLORS.muted, font: 'inherit', fontSize: 12 }}
+            style={{ position: 'absolute', width: 1, height: 1, opacity: 0, overflow: 'hidden', pointerEvents: 'none' }}
           />
-        </label>
+          <button
+            type="button"
+            disabled={busy}
+            aria-labelledby="create-project-files-label create-project-files-pick"
+            onClick={() => fileInputRef.current?.click()}
+            className="hub-btn dialog-touch-pad"
+            style={{ gap: 6 }}
+          >
+            <Icon name="plus" size={13} />
+            <span id="create-project-files-pick">{files.length > 0 ? 'Add more PDFs' : 'Choose PDFs'}</span>
+          </button>
+        </div>
 
         {files.length > 0 ? (
           <div aria-label="Selected PDF files" style={{ display: 'grid', gap: 4 }}>

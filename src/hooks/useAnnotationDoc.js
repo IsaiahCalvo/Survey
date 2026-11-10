@@ -1389,9 +1389,20 @@ export function useAnnotationDoc({
       if (timer) clearTimeout(timer);
       timer = null;
     };
+    // The check decodes every stored mark (tens of ms on a marked set): run
+    // it when the page is idle, not in the middle of a scroll or a toggle
+    // the timer happened to land on (phone Spaces toggle, 2026-11-09).
+    const runWhenIdle = () => {
+      if (finished) return;
+      if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+        window.requestIdleCallback(() => run(), { timeout: 3_000 });
+      } else {
+        run();
+      }
+    };
     const schedule = (ms) => {
       if (finished || timer) return;
-      timer = setTimeout(() => { timer = null; run(); }, ms);
+      timer = setTimeout(() => { timer = null; runWhenIdle(); }, ms);
     };
     function onMeta() {
       // Observers run inside Yjs's transaction cleanup: act from a fresh task.

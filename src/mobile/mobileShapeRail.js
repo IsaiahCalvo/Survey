@@ -21,8 +21,8 @@ export function mobileMeasureItems(depthToolsOn = false) {
     { key: 'polylength', label: 'Polylength', icon: 'polyline' },
     area,
     perimeter,
-    { key: 'wallArea', label: 'Wall area', icon: 'measurePerimeter' },
-    { key: 'volume', label: 'Volume', icon: 'measureArea' },
+    { key: 'wallArea', label: 'Wall area', icon: 'measureWallArea' },
+    { key: 'volume', label: 'Volume', icon: 'measureVolume' },
     scale,
   ];
 }
@@ -36,7 +36,7 @@ export function isMobileShapeToolActive(id, { activeTool, lineBorderStyle, measu
 
 /** Apply a Shapes strip tap (not Measure) through the bottom-toolbar API. */
 export function applyMobileShapePick(id, api) {
-  const pick = resolveShapeToolPick(id, api?.lineBorderStyle);
+  const pick = resolveShapeToolPick(id, api?.lineBorderStyle, api?.activeTool);
   // The raw tool setter: setLineBorderStyle would also restyle a selected shape.
   if (pick.lineBorderStyle) api?.setToolLineBorderStyle?.(pick.lineBorderStyle);
   api?.setMeasureMode?.(null);

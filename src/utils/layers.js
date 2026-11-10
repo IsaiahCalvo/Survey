@@ -61,9 +61,20 @@ function newLayerId() {
   return `layer-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+// Two layers with one name can't be told apart in the list: a taken name
+// gets " 2", " 3" (ignoring case), the same way Layer 1, Layer 2 count up.
+function distinctName(layers, name, selfId = null) {
+  const taken = new Set(layers.filter((l) => l.id !== selfId).map((l) => l.name.toLowerCase()));
+  if (!taken.has(name.toLowerCase())) return name;
+  for (let i = 2; ; i++) {
+    const next = `${name.slice(0, NAME_MAX - String(i).length - 1)} ${i}`;
+    if (!taken.has(next.toLowerCase())) return next;
+  }
+}
+
 export function addLayer(state, { name, id = newLayerId() } = {}) {
   const current = normalizeLayerState(state);
-  const layer = { id: String(id), name: cleanName(name, nextLayerName(current)), visible: true };
+  const layer = { id: String(id), name: distinctName(current.layers, cleanName(name, nextLayerName(current))), visible: true };
   return { state: normalizeLayerState({ ...current, layers: [...current.layers, layer] }), layer };
 }
 
@@ -71,7 +82,7 @@ export function renameLayer(state, id, name) {
   const current = normalizeLayerState(state);
   return {
     ...current,
-    layers: current.layers.map((l) => (l.id === id ? { ...l, name: cleanName(name, l.name) } : l)),
+    layers: current.layers.map((l) => (l.id === id ? { ...l, name: distinctName(current.layers, cleanName(name, l.name), l.id) } : l)),
   };
 }
 
@@ -95,6 +106,13 @@ export function setPdfOpacity(state, opacity) {
 export function resolveActiveLayerId(state, id) {
   const current = normalizeLayerState(state);
   return current.layers.some((l) => l.id === id) ? id : DEFAULT_LAYER_ID;
+}
+
+/** The active layer when it is hidden ({ id, name }), else null: a mark drawn now would not show. */
+export function hiddenActiveLayer(state, activeId) {
+  if (!activeId) return null;
+  const layer = normalizeLayerState(state).layers.find((l) => l.id === activeId);
+  return layer && !layer.visible ? { id: layer.id, name: layer.name } : null;
 }
 
 export function resolveLayerId(object, state) {
