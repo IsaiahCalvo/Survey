@@ -42,6 +42,15 @@ body:has([data-annotation-context-menu]) .selection-quick-bar {
   visibility: hidden;
 }
 
+/* Phones: an open bottom sheet (pages, comments, survey) covers the page, so
+   the bar steps aside, as the pinned tools dock does, instead of floating over
+   the sheet's own rows. The mark stays picked and the bar is back when the
+   sheet closes. */
+html:has(.mobile-pdf-sheet:not(.is-collapsed)) .selection-quick-bar {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 /* Hidden: still laid out (so it can be measured and placed before it shows),
    never seen, never pressed. */
 .selection-quick-bar[data-visible='false'] {

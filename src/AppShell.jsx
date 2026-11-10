@@ -127,7 +127,7 @@ import { useViewerTopOverlayRef, subscribeViewerTopOverlays } from './utils/view
 import DismissBarrier from './components/DismissBarrier.jsx';
 import PencilModeControl, { usePencilMode } from './components/PencilModeControl.jsx';
 import { PinIcon, getPinnedToolsStore, usePinnedTools } from './pinnedTools/pinnedToolsShared.jsx';
-import { isFeatureOn } from './featureFlags.js';
+import { FLAGS_CHANGED_EVENT, isFeatureOn } from './featureFlags.js';
 import { quickColoursForTool } from './utils/quickStylePresets.js';
 import { installHomeBack, installViewerBack, useBackLayer } from './utils/backNavigation.js';
 import { steppedTabId, tabStepForKey } from './utils/tabKeys.js';
@@ -1435,10 +1435,30 @@ export default function App({ devPreviewReturnTab = null }) {
 
   // Authentication state
   const { user, isAuthenticated, loading: authLoading, signOut: authSignOut } = useAuth();
-  // Guest links (Survey Nightly only, beta flag 'guest-links'): /?guest=<secret>
+  // Guest links (flag 'guest-links'): /?guest=<secret>
   // opens one shared document without an account (guest/GuestLinkGate.jsx).
-  const [guestLinksEnabled] = useState(() => isFeatureOn('guest-links'));
+  const [guestLinksEnabled, setGuestLinksEnabled] = useState(() => isFeatureOn('guest-links'));
   const [guestLinkToken] = useState(() => (typeof window === 'undefined' ? null : guestTokenFrom(window.location.href)));
+  // A guest usually opens the link in a browser that has never been to Survey,
+  // so the server's flag answers are not saved yet (flags are read once at
+  // load). Hold the sign-in card for a moment and open the guest card as soon
+  // as main.jsx's first flag refresh says the flag is on.
+  const [guestFlagWait, setGuestFlagWait] = useState(() => Boolean(guestLinkToken) && !guestLinksEnabled);
+  useEffect(() => {
+    if (guestLinksEnabled || !guestLinkToken) return undefined;
+    const check = () => {
+      if (!isFeatureOn('guest-links')) return;
+      setGuestLinksEnabled(true);
+      setGuestFlagWait(false);
+    };
+    check();
+    window.addEventListener(FLAGS_CHANGED_EVENT, check);
+    const giveUp = window.setTimeout(() => setGuestFlagWait(false), 4000);
+    return () => {
+      window.removeEventListener(FLAGS_CHANGED_EVENT, check);
+      window.clearTimeout(giveUp);
+    };
+  }, [guestLinksEnabled, guestLinkToken]);
   // "I have an account" on the guest card hands over to the normal sign-in.
   const [guestChoseSignIn, setGuestChoseSignIn] = useState(false);
   const guestJoinPending = Boolean(guestLinksEnabled && guestLinkToken && !user && !guestChoseSignIn);
@@ -5708,7 +5728,7 @@ export default function App({ devPreviewReturnTab = null }) {
         </Suspense>
       ) : null}
       <AuthModal
-        isOpen={showAuthModal && !guestJoinPending}
+        isOpen={showAuthModal && !guestJoinPending && !(guestFlagWait && !user)}
         initialMode={startsInSignUp() ? 'signup' : 'login'}
         onClose={() => setShowAuthModal(false)}
         onDismiss={!authPromptDismissed ? handleDismiss : null}
