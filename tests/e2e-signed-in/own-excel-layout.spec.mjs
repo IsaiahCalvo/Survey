@@ -45,14 +45,14 @@ async function openTemplate(page) {
   return layout;
 }
 
-test('flag off: no "Your own sheet" choice', async ({ page }) => {
+test('flag off: no "Use your own spreadsheet" choice', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('survey.flag.own-excel-layouts', '0'));
   await signIn(page, E2E_ACCOUNTS.owner);
   const layout = await openTemplate(page);
   await layout.click();
   const list = page.getByRole('listbox', { name: 'Excel layout' });
   await expect(list.getByRole('option', { name: /Wireless lock schedule/ })).toHaveCount(1);
-  await expect(list.getByRole('option', { name: /Your own sheet/ })).toHaveCount(0);
+  await expect(list.getByRole('option', { name: /Use your own spreadsheet/ })).toHaveCount(0);
 });
 
 test('make a layout from your own sheet, pick it, and Export data uses it', async ({ page }) => {
@@ -60,21 +60,25 @@ test('make a layout from your own sheet, pick it, and Export data uses it', asyn
   await signIn(page, E2E_ACCOUNTS.owner);
   const layout = await openTemplate(page);
   await layout.click();
-  await page.getByRole('listbox', { name: 'Excel layout' }).getByRole('option', { name: 'Your own sheet…' }).click();
+  await page.getByRole('listbox', { name: 'Excel layout' }).getByRole('option', { name: /^Use your own spreadsheet…/ }).click();
 
-  const dialog = page.getByRole('dialog', { name: 'Your own Excel layout' });
+  const dialog = page.getByRole('dialog', { name: 'Use your own spreadsheet' });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'Save layout' })).toBeDisabled();
   await dialog.getByLabel('Your Excel sheet').setInputFiles(await theirSheet());
   await expect(dialog.getByLabel('Layout name')).toHaveValue('Acme door schedule');
-  const pick = async (column, choice) => {
-    await dialog.getByRole('button', { name: `Survey puts in ${column}`, exact: true }).click();
-    await page.getByRole('listbox', { name: `Survey puts in ${column}` }).getByRole('option', { name: choice, exact: true }).click();
-  };
-  await pick('Door No.', 'Item name');
-  await pick('Checks', 'Checklist lines');
-  await pick('Remarks', 'Notes');
-  await pick('Inspected by', 'Changed by');
+  const select = (column) => dialog.getByRole('button', { name: `What Survey writes in ${column}`, exact: true });
+  // The common columns come filled in from their names.
+  await expect(select('Door No.')).toHaveAttribute('data-value', 'name');
+  await expect(select('Remarks')).toHaveAttribute('data-value', 'notes');
+  await expect(select('Inspected by')).toHaveAttribute('data-value', 'changed_by');
+  await expect(select('Checks')).toHaveAttribute('data-value', '');
+  // Each choice says what lands in the column.
+  await select('Checks').click();
+  const list = page.getByRole('listbox', { name: 'What Survey writes in Checks' });
+  await expect(list.getByRole('option', { name: /^Checklist answers/ })).toContainText('One answer per column');
+  await list.getByRole('option', { name: /^Checklist answers/ }).click();
+  await expect(select('Checks')).toHaveAttribute('data-value', 'checklist');
   await page.screenshot({ path: 'test-results/own-excel-layout.png' });
   await dialog.getByRole('button', { name: 'Save layout' }).click();
   await expect(dialog).toBeHidden();

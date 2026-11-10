@@ -383,7 +383,6 @@ export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' })
                 spellCheck={false}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
                 required
                 disabled={loading}
               />
@@ -408,7 +407,6 @@ export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' })
                 spellCheck={false}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="••••••••"
                 required
                 disabled={loading}
               />

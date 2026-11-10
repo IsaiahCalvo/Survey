@@ -64,6 +64,9 @@ const ALLOWED = {
   'src/reorder/DragRearrangeHandle.jsx': 1,
   'src/sidebar/BookmarksPanel.jsx': 2,
   'src/sidebar/SearchTextPanel.jsx': 1,
+  // A comment thread card: a press anywhere on it shows its mark; the card's
+  // own "Show on the page" <button> does the same from the keyboard.
+  'src/sidebar/CommentsPanel.jsx': 1,
   'src/sidebar/SpacesPanel.jsx': 1,
 };
 

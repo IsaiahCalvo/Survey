@@ -23,6 +23,7 @@
  * it. They are read-only here.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Icon from '../Icons.jsx';
 import { useTooltip } from '../components/Tooltip.jsx';
 import SectionIconButton, { SelectModeButtons } from '../components/SectionIconButton.jsx';
@@ -205,7 +206,7 @@ function LibraryTile({
   );
 }
 
-export default function MarkLibraryPanel({ phone = false }) {
+export default function MarkLibraryPanel({ phone = false, headActionsHost = null }) {
   const state = useMarkLibrary();
   const tip = useTooltip();
   const armedId = useArmedId();
@@ -413,50 +414,62 @@ export default function MarkLibraryPanel({ phone = false }) {
     if (status === 'loading' || status === 'idle') return 'Loading…';
     if (status === 'error') return 'Could not load the library. Check your connection.';
     if (items.length && !visible.length) return 'Nothing matches.';
+    // Phones have no right-click: a press and hold opens the same mark menu.
+    const openMenu = phone ? 'press and hold one' : 'right-click them';
     if (library === 'project') {
       return state.access.canAdd
-        ? 'Nothing in the project library yet. Pick marks on a page, right-click them and choose Save to library, then pick the project.'
+        ? `Nothing in the project library yet. Pick marks on a page, ${openMenu} and choose Save to library, then pick the project.`
         : 'Your team has not saved anything here yet.';
     }
-    return 'Nothing saved yet. Pick marks on a page, right-click them and choose Save to library.';
+    return `Nothing saved yet. Pick marks on a page, ${openMenu} and choose Save to library.`;
   })();
+
+  const headActions = (
+    <span className="mark-library__head-actions">
+      {!stampsTab && (
+      <SectionIconButton
+        action="select"
+        label={selectMode ? 'Done' : 'Select'}
+        active={selectMode}
+        nothingToSelect={!items.length}
+        onClick={() => setSelectMode((on) => !on)}
+      />
+      )}
+      {!selectMode && (
+        <SectionIconButton icon="moreHorizontal" action="more" label="Library options" onClick={openPanelMenu} />
+      )}
+    </span>
+  );
 
   return (
     <div className="mark-library" data-mark-library-panel="" data-testid="mark-library-panel">
-      <div className="mark-library__head">
-        {state.projectId || stampsOn ? (
-          <div className={`mark-library__tabs${tabIds.length === 3 ? ' mark-library__tabs--3' : ''}`} role="tablist" aria-label="Library">
-            {tabIds.map((id) => (
-              <button
-                key={id}
-                type="button"
-                role="tab"
-                aria-selected={library === id}
-                className={`mark-library__tab${library === id ? ' is-active' : ''}`}
-                disabled={id === 'project' && !hasProject}
-                {...(id === 'project' && !hasProject ? tip('You are not on this document\'s project team', 'below') : {})}
-                onClick={() => markLibraryStore.setView({ library: id })}
-              >
-                {{ personal: 'Personal', project: 'Project', stamps: 'Stamps' }[id]}
-              </button>
-            ))}
-          </div>
-        ) : <span className="mark-library__title">Personal</span>}
-        <span className="mark-library__head-actions">
-          {!stampsTab && (
-          <SectionIconButton
-            action="select"
-            label={selectMode ? 'Done' : 'Select'}
-            active={selectMode}
-            nothingToSelect={!items.length}
-            onClick={() => setSelectMode((on) => !on)}
-          />
-          )}
-          {!selectMode && (
-            <SectionIconButton icon="moreHorizontal" action="more" label="Library options" onClick={openPanelMenu} />
-          )}
-        </span>
-      </div>
+      {/* Desktop: Select and the options menu sit in the rail head beside the
+          "Library" title like every other panel's actions; the panel's own
+          head row is left only for the Personal / Project / Stamps switch. */}
+      {headActionsHost && createPortal(headActions, headActionsHost)}
+      {(state.projectId || stampsOn || !headActionsHost) && (
+        <div className="mark-library__head">
+          {state.projectId || stampsOn ? (
+            <div className={`mark-library__tabs${tabIds.length === 3 ? ' mark-library__tabs--3' : ''}`} role="tablist" aria-label="Library">
+              {tabIds.map((id) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={library === id}
+                  className={`mark-library__tab${library === id ? ' is-active' : ''}`}
+                  disabled={id === 'project' && !hasProject}
+                  {...(id === 'project' && !hasProject ? tip('You are not on this document\'s project team', 'below') : {})}
+                  onClick={() => markLibraryStore.setView({ library: id })}
+                >
+                  {{ personal: 'Personal', project: 'Project', stamps: 'Stamps' }[id]}
+                </button>
+              ))}
+            </div>
+          ) : <span className="mark-library__title">Personal</span>}
+          {!headActionsHost && headActions}
+        </div>
+      )}
       {selectMode && (
         <div className="mark-library__select-row">
           <span className="mark-library__count">{selected.size} selected</span>
@@ -532,6 +545,8 @@ export default function MarkLibraryPanel({ phone = false }) {
           <button type="button" className="hub-btn" onClick={() => exportItems(selectedItems)}>Export</button>
         </div>
       )}
+      {/* How to place an item means nothing while there is nothing to place. */}
+      {(items.length > 0 || armedId) && (
       <div className="mark-library__hint">
         {armedId
           ? 'Click the page to place it. Esc lets go.'
@@ -547,6 +562,7 @@ export default function MarkLibraryPanel({ phone = false }) {
           </ul>
         )}
       </div>
+      )}
       <input ref={fileRef} type="file" accept={`${LIBRARY_EXPORT_EXTENSION},application/json`} hidden onChange={onImportFile} />
       {menu && <ListItemContextMenu point={menu.point} items={menu.items} onClose={() => setMenu(null)} />}
       {promptDialog}

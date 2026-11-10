@@ -3473,7 +3473,7 @@ export function MobilePdfViewerDock({ onOpenPanel, onToggleHub, onOpenSurvey, hu
         aria-expanded={openPanel === 'spaces'}
         onClick={() => onOpenPanel?.('spaces')}
       >
-        <Icon name="layers" size={DOCK_GLYPH} color="currentColor" />
+        <Icon name="spaces" size={DOCK_GLYPH} color="currentColor" />
       </button>
       <button
         type="button"
