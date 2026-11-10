@@ -32,6 +32,8 @@ test('a tool key pressed right after Escape is not undone by the late Pan', asyn
     if (m) changes.push(m[1]);
   });
   const lastTool = () => changes[changes.length - 1];
+  // The [InteractionDiag] lines only print with the debug switch on (#1384).
+  await page.addInitScript(() => { window.__APP_DEBUG = true; });
   try {
     await signIn(page, E2E_ACCOUNTS.owner);
     await page.getByText(`${name}.pdf`, { exact: true }).filter({ visible: true }).first().click();

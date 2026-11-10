@@ -206,7 +206,10 @@ const KeyboardShortcutsOverlay = () => {
               >
                 {section.category}
               </h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {/* 2026-11-10 polish: one list per section with hairlines
+                  between rows, not a boxed card per row inside the dialog's
+                  card (cards in cards read busy). */}
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
                 {section.items.map((item, itemIdx) => (
                   <div
                     key={itemIdx}
@@ -215,10 +218,9 @@ const KeyboardShortcutsOverlay = () => {
                       justifyContent: 'space-between',
                       alignItems: 'center',
                       gap: '12px',
-                      padding: '8px 12px',
-                      background: COLORS.background.tertiary,
-                      borderRadius: BORDERS.radius.md,
-                      border: `1px solid ${COLORS.border.default}`,
+                      minHeight: '40px',
+                      padding: '4px 2px',
+                      borderTop: itemIdx === 0 ? 'none' : `1px solid ${COLORS.border.default}`,
                     }}
                   >
                     <div
@@ -249,7 +251,7 @@ const KeyboardShortcutsOverlay = () => {
                                 setBindingError(error || '');
                                 if (!error) { setBindingTick(bindingTick + 1); event.currentTarget.blur(); }
                               }}
-                              style={{ width: '132px', border: '1px solid var(--border-1)', borderRadius: '6px', background: 'var(--surface-1)', color: 'var(--text-1)', padding: '7px', textAlign: 'center', cursor: 'pointer', fontSize: '12px' }}
+                              style={{ width: '132px', border: '1px solid var(--border-strong)', borderRadius: '6px', background: 'var(--surface-1)', color: 'var(--text-1)', padding: '7px', textAlign: 'center', cursor: 'pointer', fontSize: '12px' }}
                             />
                           ) : keys.map((key, keyIdx) => <kbd key={keyIdx} style={{ padding: '2px 7px', color: COLORS.text.secondary }}>{key}</kbd>)}
                           {shortcutBinding(item.chords[groupIdx]) !== item.chords[groupIdx] && <button type="button" aria-label={`Reset shortcut for ${item.description}`} onClick={() => { setBindingError(resetShortcut(item.chords[groupIdx]) || ''); setBindingTick(bindingTick + 1); }}>Reset</button>}

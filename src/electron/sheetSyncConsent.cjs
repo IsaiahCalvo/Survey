@@ -64,10 +64,17 @@ const READ_SAVED_CLAIM = "(() => { try { return localStorage.getItem('survey-she
 function watchSheetSyncConsent(child, appContents, { closeDelayMs = 900 } = {}) {
   if (!child || !child.webContents || !appContents) return;
   let done = false;
+  let lastSent = '';
   const deliver = (finish) => {
     if (done || !finish) return;
     if (finish.result === 'finish' && !finish.code) return; // wait for the code
-    done = true;
+    // Only a finished sign-in ends the watch. A personal Microsoft account
+    // gets "Use another account" on the page, so the same window can still
+    // reach the finish page; the app must hear that one too.
+    const key = `${finish.result}:${finish.code || ''}`;
+    if (key === lastSent) return;
+    lastSent = key;
+    if (finish.result === 'finish' || finish.result === 'connected') done = true;
     try {
       if (!appContents.isDestroyed()) appContents.send('sheetSync:consent', finish);
     } catch (_e) { /* app window gone */ }
