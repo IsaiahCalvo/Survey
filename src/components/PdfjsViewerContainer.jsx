@@ -477,9 +477,21 @@ function blitRaster(dst, src, width = src.width, height = src.height) {
 // data-raster-shown from the moment its canvas holds a bitmap of the page
 // (set in the same task that copies the bitmap in), and the marks overlay
 // stays hidden until then (styles/pageReveal.css).
+// The reverse holds too: the drawing stays a blank sheet until the page's
+// marks layer has mounted (it sets data-marks-layer; pageReveal.css). Faster
+// scrolling let a bitmap reach the screen ~0.1 s before its marks
+// (2026-11-09). A page whose layer never mounts shows after MARKS_LAYER_WAIT_MS.
+const MARKS_LAYER_WAIT_MS = 500;
 function markPageRasterShown(canvas) {
   const pageDiv = canvas?.parentElement;
-  if (pageDiv && !pageDiv.hasAttribute('data-raster-shown')) pageDiv.setAttribute('data-raster-shown', 'true');
+  if (pageDiv && !pageDiv.hasAttribute('data-raster-shown')) {
+    pageDiv.setAttribute('data-raster-shown', 'true');
+    if (!pageDiv.hasAttribute('data-marks-layer')) {
+      setTimeout(() => {
+        if (pageDiv.isConnected && !pageDiv.hasAttribute('data-marks-layer')) pageDiv.setAttribute('data-marks-layer', 'late');
+      }, MARKS_LAYER_WAIT_MS);
+    }
+  }
 }
 
 const PdfPageCanvas = memo(function PdfPageCanvas({ pdf, pageIndex, pageW, pageH, renderScale, rotation, onRaster, isMobileSurface, rasterQueue }) {
@@ -722,6 +734,7 @@ const PdfPageCanvas = memo(function PdfPageCanvas({ pdf, pageIndex, pageW, pageH
       // Unmounted (left the mount window): the page shows its blank sheet
       // again, so its marks wait for the next bitmap too.
       pageDiv?.removeAttribute('data-raster-shown');
+      if (pageDiv?.getAttribute('data-marks-layer') === 'late') pageDiv.removeAttribute('data-marks-layer');
     };
   }, []);
   // A page on screen keeps its pdf.js data (utils/pdfPageCacheTrim.js).
@@ -1007,7 +1020,7 @@ const VIEWPORT_SCROLLBAR_HOLD_MS = 700;
 // scroller, so the scroller's own pointer/wheel listeners never see them: a
 // thumb drag or a rail wheel would otherwise write scrollTop every pointermove
 // while a coast wrote it every frame, and the two would fight each other.
-function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false, onScrollbarGrab }) {
+function ViewportScrollbars({ scrollerRef, previewMetrics, contentKey = null, disabled = false, onScrollbarGrab }) {
   const scrollbarGrabRef = useRef(onScrollbarGrab);
   scrollbarGrabRef.current = onScrollbarGrab;
   const takeScrollerFromGlide = useCallback(() => { scrollbarGrabRef.current?.(); }, []);
@@ -1027,7 +1040,12 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false, onS
   const verticalThumbRef = useRef(null);
 
   // UX: page-fit layout can change content without resizing the scroller itself.
-  // Reconcile after each layout commit, before paint, so fitting axes unmount at once.
+  // Reconcile after a layout commit that changed the content's size (zoom,
+  // page list, live zoom), before paint, so fitting axes unmount at once.
+  // Not after every commit: reading the scroll size forces a layout, and a
+  // scroll commits on every page it mounts (36-sheet set, 2026-11-09: ~350 ms
+  // of forced layout per 3 s of scrolling). Scrolling itself is measured in
+  // the scroll handler's frame; a box resize by the ResizeObserver below.
   useLayoutEffect(() => {
     const scroller = scrollerRef.current;
     if (!scroller || disabled) return;
@@ -1037,7 +1055,7 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false, onS
       scrollLeft: scroller.scrollLeft, scrollTop: scroller.scrollTop,
     };
     setMeasuredMetrics(previous => Object.keys(metrics).every(key => previous[key] === metrics[key]) ? previous : metrics);
-  });
+  }, [contentKey, disabled, scrollerRef]);
 
   const requestFrame = useCallback(() => {
     if (frameRef.current) return;
@@ -6271,6 +6289,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     <ViewportScrollbars
       scrollerRef={scrollerRef}
       previewMetrics={scrollbarPreviewMetrics}
+      contentKey={`${layout.contentW}|${layout.contentHeight}|${layout.padTop}|${renderedLiveZoom}|${liveTranslateX}|${liveTranslateY}|${numPages}`}
       disabled={isMobileSurface}
       onScrollbarGrab={stopGlideForScrollbar}
     />

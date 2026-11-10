@@ -293,6 +293,45 @@ const isBakedPathCurrent = (baked, obj) => !baked || (
   && baked.last === obj.path[obj.path.length - 1]
 );
 
+// Per-mark geometry (bounds, path matrix, moved-only path data), keyed by the
+// committed mark object (immutable state; a live preview builds new objects
+// and is always computed fresh). Shared by every page's layer, so a page that
+// leaves the mounted window and comes back reuses it, and warmMarkGeometry
+// can work it out for pages about to scroll into view.
+const sharedMarkGeometry = { bbox: new WeakMap(), pathTransform: new WeakMap(), bakedPath: new WeakMap() };
+function sharedGeometry(kind, target, compute) {
+  const cache = sharedMarkGeometry[kind];
+  if (cache.has(target)) return cache.get(target);
+  const value = compute(target);
+  cache.set(target, value);
+  return value;
+}
+
+/**
+ * Works out the geometry a page's layer needs for `objects` ahead of the page
+ * mounting (36-sheet set, 2026-11-09: ~80 ms of the ~100 ms a page with 150
+ * marks cost as it scrolled into view). Stops when `timeRemaining()` (an idle
+ * deadline's) runs low; returns how many objects it finished, to resume from.
+ */
+export function warmMarkGeometry(objects, { from = 0, timeRemaining = () => Infinity, reserveMs = 2 } = {}) {
+  const list = Array.isArray(objects) ? objects : [];
+  let index = from;
+  for (; index < list.length; index += 1) {
+    if (timeRemaining() <= reserveMs) break;
+    const obj = list[index];
+    if (!obj || typeof obj !== 'object') continue;
+    try {
+      if (String(obj.type || '').toLowerCase() === 'path' && Array.isArray(obj.path) && obj.path.length > 0) {
+        renderPathToSvgD(obj);
+        sharedGeometry('bakedPath', obj, resolveBakedFabricPath);
+        sharedGeometry('pathTransform', obj, buildFabricPathSvgTransform);
+      }
+      sharedGeometry('bbox', obj, getAnnotationBBox);
+    } catch { /* the page's own render reports a bad mark */ }
+  }
+  return index;
+}
+
 const hasVisiblePaint = (value) => {
   if (value == null) return false;
   const normalized = String(value).trim().toLowerCase();
@@ -841,6 +880,16 @@ const SVGAnnotationLayerBody = memo(({
   // Refs
   // ---------------------------------------------------------------------------
   const svgRef = useRef(null);
+  // Page and marks in one frame (styles/pageReveal.css): the page's drawing
+  // waits for this layer to be on the page.
+  useLayoutEffect(() => {
+    const pageDiv = svgRef.current?.closest?.('.survey-pdfjs-page-div');
+    if (!pageDiv) return undefined;
+    pageDiv.setAttribute('data-marks-layer', 'true');
+    return () => {
+      if (pageDiv.getAttribute('data-marks-layer') === 'true') pageDiv.removeAttribute('data-marks-layer');
+    };
+  }, []);
   const importedDebugRef = useRef(null);
   // Tracks an in-flight counter rotation drag so pointermove updates can carry
   // the counter center (in viewBox/page space) without recomputing it each frame.
@@ -6076,18 +6125,10 @@ const SVGAnnotationLayerBody = memo(({
   // scroll re-render) — most of the layer's cost on a heavily marked page.
   // Cached only for the committed objects this layer was handed (immutable
   // state); live previews build new objects and are always computed fresh.
-  const markGeometryCacheRef = useRef(null);
   const markWrapperCacheRef = useRef(null);
-  if (!markGeometryCacheRef.current) {
-    markGeometryCacheRef.current = { bbox: new WeakMap(), pathTransform: new WeakMap(), bakedPath: new WeakMap() };
-  }
   const cachedMarkGeometry = (kind, target, committed, compute) => {
     if (!committed || !target || typeof target !== 'object') return compute(target);
-    const cache = markGeometryCacheRef.current[kind];
-    if (cache.has(target)) return cache.get(target);
-    const value = compute(target);
-    cache.set(target, value);
-    return value;
+    return sharedGeometry(kind, target, compute);
   };
 
   // ---------------------------------------------------------------------------

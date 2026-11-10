@@ -8,6 +8,7 @@
 // so it goes with the document), one read per page, and is read ahead in idle
 // time a moment after the document opens, so a search finds it ready.
 import { needsTextItemSeparator } from './searchMatchNavigation.js';
+import { whenViewersStill } from './viewerMotion.js';
 
 const pagesByDocument = new WeakMap();
 
@@ -185,6 +186,11 @@ export function readSearchTextAhead(pdfDoc, numPages, {
   waitForIdle = idle,
   openReader = openSideReader,
   sideReaders = defaultSideReaders(),
+  // Each page waits while the viewer moves: the reads took the CPU (side
+  // readers) and the worker (viewer reads) from the pages scrolling into
+  // view, which stayed white for seconds in the first ~20 s after opening a
+  // 99-sheet set (2026-11-09).
+  waitForStill = whenViewersStill,
 } = {}) {
   const entry = pdfDoc ? entryFor(pdfDoc) : null;
   // One read-ahead per document: a second caller (the Search panel opening
@@ -209,6 +215,14 @@ export function readSearchTextAhead(pdfDoc, numPages, {
     };
     const readOnSide = async (sideDoc) => {
       for (let pageNumber = nextPage(); pageNumber != null && !stopped; pageNumber = nextPage()) {
+        const still = waitForStill?.();
+        if (still) {
+          // Hand the page back while waiting: a search may want it sooner.
+          cursor = Math.min(cursor, pageNumber);
+          await still;
+          if (stopped) return;
+          continue;
+        }
         const read = (async () => {
           const page = await sideDoc.getPage(pageNumber);
           const textContent = await page.getTextContent();
@@ -231,7 +245,10 @@ export function readSearchTextAhead(pdfDoc, numPages, {
       if (entry.done.has(pageNumber)) continue;
       if (entry.pending.has(pageNumber)) { await entry.pending.get(pageNumber); continue; }
       await waitForIdle(1000);
+      const still = waitForStill?.();
+      if (still) await still;
       if (stopped) return;
+      if (entry.done.has(pageNumber)) continue;
       await loadSearchPageData(pdfDoc, pageNumber);
     }
     // For speed checks (scripts/perf/text-search-timing.mjs).
