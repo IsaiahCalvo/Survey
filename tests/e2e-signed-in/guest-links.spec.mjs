@@ -1,4 +1,4 @@
-// Guest links (Nightly, flag 'guest-links'), end to end in the app: the owner
+// Guest links (flag 'guest-links'), end to end in the app: the owner
 // makes a link in Document access; someone with no account opens it in a fresh
 // browser, types a name, joins, and lands in that document as a guest. The
 // database rules are covered in guest-links-security.spec.mjs.
@@ -47,9 +47,11 @@ test('owner makes a guest link; a guest with no account joins and opens the docu
     await expect(section.locator('[data-guest-link]')).toContainText('Mark up and comment');
     await expect(section.locator('[data-guest-link]')).toContainText('Nobody yet');
 
-    // The guest: a browser that has never signed in.
+    // The guest: a browser that has never signed in or been to Survey, so it
+    // has no saved flag answers and no override; the flag is on for everyone
+    // at /flags, as on surveytool.app, and the guest card still opens.
+    await must('flag on for everyone', admin.from('feature_flags').upsert({ key: 'guest-links', mode: 'on' }).select('key'));
     const guest = await guestContext.newPage();
-    await guest.addInitScript(FLAG);
     await guest.goto(url, { waitUntil: 'domcontentloaded' });
     const join = guest.getByTestId('guest-join');
     await expect(join).toBeVisible({ timeout: 60_000 });
@@ -88,6 +90,7 @@ test('owner makes a guest link; a guest with no account joins and opens the docu
     await guest.getByTestId('guest-badge').getByRole('button', { name: 'Leave' }).click();
     await expect(guest.getByTestId('guest-badge')).toHaveCount(0, { timeout: 30_000 });
   } finally {
+    await admin.from('feature_flags').update({ mode: 'off' }).eq('key', 'guest-links');
     await guestContext.close();
     await admin.from('documents').delete().eq('id', docId);
     await admin.storage.from('documents').remove([path]);

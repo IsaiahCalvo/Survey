@@ -31,12 +31,12 @@
 }
 
 .mark-library__tabs {
+  /* 2026-11-10 polish: the app's one joined-choice look (ButtonGroup). */
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 2px;
-  padding: 2px;
-  background: var(--surface-3);
-  border-radius: 8px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   min-width: 0;
   flex: 1;
   max-width: 200px;
@@ -49,15 +49,20 @@
 }
 
 .mark-library__tab {
-  height: 24px;
+  height: 26px;
   padding: 0 8px;
   color: var(--text-2);
   background: transparent;
   border: 0;
-  border-radius: 4px;
-  font: 600 12px/1 var(--font-ui);
+  border-radius: 0;
+  font: 500 12px/1 var(--font-ui);
   cursor: pointer;
 }
+
+.mark-library__tab + .mark-library__tab { border-left: 1px solid var(--border); }
+/* Only the outer ends round, so two or three tabs read as one control. */
+.mark-library__tab:first-child { border-top-left-radius: var(--radius-sm); border-bottom-left-radius: var(--radius-sm); }
+.mark-library__tab:last-child { border-top-right-radius: var(--radius-sm); border-bottom-right-radius: var(--radius-sm); }
 
 .mark-library__tab.is-active { color: var(--accent); }
 .mark-library__tab:disabled { color: var(--text-disabled); cursor: not-allowed; }

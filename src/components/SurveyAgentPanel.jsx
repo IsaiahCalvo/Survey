@@ -289,9 +289,12 @@ export default function SurveyAgentPanel({
     return () => { live = false; };
   }, [call, voice]);
 
+  // Follow the newest message. Before the first one the list is the
+  // welcome card, which reads from its heading down (on a phone's half
+  // sheet, scrolling it to the end cut off "What do you see?").
   useEffect(() => {
     const el = listRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (el && (entries.length > 0 || busy)) el.scrollTop = el.scrollHeight;
   }, [entries, busy]);
 
   // The box grows with what is typed, up to its CSS max height.
@@ -1109,19 +1112,28 @@ export default function SurveyAgentPanel({
       <header className="survey-agent__head">
         <span className="survey-agent__badge" aria-hidden="true"><SparkleIcon /></span>
         <span className="survey-agent__title">Survey agent <span className="survey-agent__beta">Beta</span></span>
-        {logState !== null || entries.length > 0 ? (
-          <button
-            type="button"
-            className="survey-agent__log"
-            disabled={logState === 'sending'}
-            onClick={() => sendLogRef.current('manual')}
-          >
-            {logState === 'sent' ? 'Voice log sent' : logState === 'failed' ? 'Could not send. Try again' : logState === 'sending' ? 'Sending…' : 'Send voice log'}
-          </button>
-        ) : null}
+        {/* Icons, not text links: with "Send voice log" and "Learned" as
+            words the name and its Beta pill were cut off ("Survey a…") in
+            the 320px side panel and on phones. */}
+        {logState !== null || entries.length > 0 ? (() => {
+          const logLabel = logState === 'sent' ? 'Voice log sent' : logState === 'failed' ? 'Could not send the voice log. Try again' : logState === 'sending' ? 'Sending the voice log…' : 'Send voice log';
+          return (
+            <button
+              type="button"
+              className="survey-agent__icon"
+              aria-label={logLabel}
+              data-log-state={logState || 'idle'}
+              {...tip(logLabel, 'below')}
+              disabled={logState === 'sending'}
+              onClick={() => sendLogRef.current('manual')}
+            >
+              <Icon name={logState === 'sent' ? 'check' : logState === 'failed' ? 'retry' : 'upload'} size={16} color="currentColor" />
+            </button>
+          );
+        })() : null}
         {surveyAgentBridge.current?.projectId ? (
-          <button type="button" className="survey-agent__log" onClick={() => setLearnedOpen(true)}>
-            Learned
+          <button type="button" className="survey-agent__icon" aria-label="Learned" {...tip('What the agent learned on this project', 'below')} onClick={() => setLearnedOpen(true)}>
+            <Icon name="lightbulbOn" size={16} color="currentColor" />
           </button>
         ) : null}
         <button type="button" className="survey-agent__icon" aria-label={host ? 'Back to Survey' : 'Close Survey agent'} onClick={onClose}>

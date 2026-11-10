@@ -62,6 +62,7 @@ test('code exchange needs a refresh token; refresh keeps the old one if none com
 test('an ended sign-in says to reconnect (401) so the runner marks the link', async () => {
   const ended = tokenEndpoint({ error: 'invalid_grant' }, 400);
   await assert.rejects(refreshMsgraphToken(CONFIG, 'r1', { fetch: ended.fetch }), (e) => e.status === 401 && e.code === 'reconnect');
+  // Survey's own app secret failing is not the person's sign-in ending.
   const other = tokenEndpoint({ error: 'invalid_client' }, 401);
-  await assert.rejects(refreshMsgraphToken(CONFIG, 'r1', { fetch: other.fetch }), (e) => e.code === 'invalid_client');
+  await assert.rejects(refreshMsgraphToken(CONFIG, 'r1', { fetch: other.fetch }), (e) => e.code === 'app_setup' && e.reason === 'invalid_client');
 });

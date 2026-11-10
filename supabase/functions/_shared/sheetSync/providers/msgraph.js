@@ -16,6 +16,8 @@ import { trackingChoices } from '../layout.js';
 const GRAPH = 'https://graph.microsoft.com/v1.0';
 // Graph closes a saving session after about 5 minutes idle; reopen a bit before.
 const SESSION_TTL_MS = 4 * 60 * 1000;
+// "Save in" lists up to 10 pages of 200 folders in one folder.
+const FOLDER_PAGES = 10;
 
 
 // "A/B" -> "A/B/" with each name URL-encoded; '' -> '' (the drive's top).
@@ -607,10 +609,20 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
       const folders = [];
       const places = [];
       let next = `${path}?$select=name,folder,remoteItem&$top=200`;
-      for (let page = 0; next && page < 5; page += 1) {
+      for (let page = 0; next && page < FOLDER_PAGES; page += 1) {
         let res;
         try { res = await call('GET', next, { where: 'folders' }); } catch (err) {
-          if (err?.status === 404) return { folders: [], places: [] };
+          // A SharePoint/Teams folder renamed away, moved or deleted since it
+          // was picked. (A OneDrive path that isn't there yet is fine: saving
+          // makes it, as for the default "Survey" folder.)
+          if (err?.status === 404 && target.driveId) return { folders: [], places: [], gone: true };
+          if (err?.status === 404 && target.sub) return { folders: [], places: [] };
+          // An account with no OneDrive of its own (a guest, or no OneDrive
+          // licence: Graph answers 401 accessDenied / 403 notAllowed / 404 at
+          // the top of "my drive"). It can still save in SharePoint or Teams.
+          if (!target.driveId && !target.sub && [401, 403, 404].includes(Number(err?.status)) && !/token/i.test(String(err?.code || ''))) {
+            return { folders: [], places: [], noDrive: true };
+          }
           throw err;
         }
         for (const it of res?.value || []) {
@@ -624,7 +636,9 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
       }
       folders.sort((a, b) => a.localeCompare(b));
       places.sort((a, b) => a.name.localeCompare(b.name));
-      return { folders, places };
+      // A library with more folders than one look lists: say so, so the panel
+      // can point to the paste-a-link box instead of a list that looks whole.
+      return { folders, places, ...(next ? { more: true } : {}) };
     },
 
     /**
@@ -687,7 +701,17 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
      */
     async createFile({ title, layout, answerFills, folder = 'Survey' }) {
       const target = folderTarget(folder);
-      const drive = await call('GET', target.driveId ? `drives/${target.driveId}?$select=id,driveType` : 'me/drive?$select=id,driveType', { where: 'drive' });
+      let drive;
+      try {
+        drive = await call('GET', target.driveId ? `drives/${target.driveId}?$select=id,driveType` : 'me/drive?$select=id,driveType', { where: 'drive' });
+      } catch (err) {
+        if ([401, 403, 404].includes(Number(err?.status)) && !/token/i.test(String(err?.code || ''))) {
+          throw target.driveId
+            ? Object.assign(new Error('Survey could not open that folder with your Microsoft sign-in. It may have been moved or deleted, or you lost access. Pick another folder under Save in.'), { status: 409, code: 'folder_gone' })
+            : Object.assign(new Error('Your Microsoft account has no OneDrive. Paste a SharePoint or Teams folder link under Save in, or use a workbook you already have.'), { status: 409, code: 'no_onedrive' });
+        }
+        throw err;
+      }
       if (drive?.driveType === 'personal') {
         throw Object.assign(new Error('Microsoft only allows cell edits on work or school files.'), {
           status: 409, code: 'personal-onedrive',
@@ -698,11 +722,23 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
       // one upload (liveWorkbook.js): no per-sheet set-up calls.
       const scopes = layout?.scopes || layout?.sheets || [];
       const built = buildLiveWorkbook({ ...(layout || {}), scopes }, { answerFills });
-      const created = await call(
-        'PUT',
-        `${target.base}:/${folderPath(target.sub)}${encodeURIComponent(safeTitle)}.xlsx:/content?@microsoft.graph.conflictBehavior=rename`,
-        { body: built.bytes, raw: true, headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }, where: 'createFile' },
-      );
+      let created;
+      try {
+        created = await call(
+          'PUT',
+          `${target.base}:/${folderPath(target.sub)}${encodeURIComponent(safeTitle)}.xlsx:/content?@microsoft.graph.conflictBehavior=rename`,
+          { body: built.bytes, raw: true, headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }, where: 'createFile' },
+        );
+      } catch (err) {
+        // A SharePoint/Teams folder picked earlier that is gone now, or that
+        // this account can only view.
+        if (target.driveId && [403, 404].includes(Number(err?.status))) {
+          throw Object.assign(new Error(err.status === 404
+            ? 'That folder was moved or deleted. Pick another folder under Save in.'
+            : 'You can view that folder but not add files to it. Pick another folder under Save in.'), { status: 409, code: 'folder_gone' });
+        }
+        throw err;
+      }
       const fileId = msgraphFileId(created.parentReference.driveId, created.id);
       checkedBusiness.add(fileId);
       const sheetIds = {};

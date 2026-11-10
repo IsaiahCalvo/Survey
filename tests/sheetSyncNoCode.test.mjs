@@ -153,5 +153,6 @@ test('the last page learns which app pressed Connect (phone and desktop only)', 
   assert.equal(await landing('/oauth/callback', undefined), 'https://surveytool.app/google-connected.html?result=cancelled');
   assert.equal(await landing('/oauth/callback', 'evil&x=1'), 'https://surveytool.app/google-connected.html?result=cancelled');
   const ms = await landing('/oauth/msgraph/callback', 'phone');
-  assert.equal(ms, 'https://surveytool.app/google-connected.html?provider=msgraph&result=cancelled&app=phone');
+  // A cancel may be Microsoft's "Need admin approval": the page offers the admin link.
+  assert.equal(ms, `https://surveytool.app/google-connected.html?provider=msgraph&result=cancelled&app=phone&admin=${encodeURIComponent('https://x.supabase.co/functions/v1/sheet-sync/oauth/msgraph/admin')}`);
 });

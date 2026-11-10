@@ -214,7 +214,8 @@ test('two-way live sync between a survey and an Excel workbook on Microsoft 365'
     expect(after.refresh_token_enc).not.toBe(stored.refresh_token_enc);
 
     // Disconnecting Microsoft stops the link instead of failing quietly.
-    expect((await call(ownerToken, 'disconnect', MS)).body).toEqual({ ok: true });
+    // It acts at once and hands back a code for the panel's Undo.
+    expect((await call(ownerToken, 'disconnect', MS)).body).toEqual({ ok: true, undoCode: expect.stringMatching(/^[A-Z0-9]{8}$/) });
     const stopped = await call(editorToken, 'status', ids);
     expect(stopped.body.link).toMatchObject({ provider: 'msgraph', status: 'broken', isConnectionOwner: false });
 
