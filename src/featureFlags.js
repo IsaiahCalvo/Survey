@@ -165,6 +165,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Partial eraser only cuts ink and leaves shapes, text and callouts alone',
     stage: 'beta',
   }),
+  'tool-quick-colours': Object.freeze({
+    label: 'Highlighter quick colours are highlighter colours (yellow, green, pink)',
+    stage: 'beta',
+  }),
   'align-marks': Object.freeze({
     label: 'Align and space picked marks (mark menu)',
     stage: 'beta',

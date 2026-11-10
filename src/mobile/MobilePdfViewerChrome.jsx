@@ -9,6 +9,7 @@ import CompactColorPicker, { PRESET_COLORS } from '../components/CompactColorPic
 import PageGridToggle from '../components/PageGridToggle';
 import { PageGridSettingsPanel } from '../components/PageGridSettings';
 import { isFeatureOn } from '../featureFlags.js';
+import { quickColoursForTool } from '../utils/quickStylePresets.js';
 import SnappingToggle from '../components/SnappingToggle.jsx';
 import { composeTextColor, splitTextColor } from '../utils/textColorOpacity';
 import { resolveFontSizeDraft } from '../utils/selectedTextFormatting.js';
@@ -2173,6 +2174,7 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
       {!isEraser && showStroke && !isMultiColour && (
         <QuickColourDots
           platform="phone"
+          {...quickColoursForTool(api?.contextTool || api?.activeTool, isFeatureOn('tool-quick-colours'))}
           value={quickColourShown}
           customActive={api.selectionMixed?.strokeColor ? false : undefined}
           onPick={applyQuickColour}

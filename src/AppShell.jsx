@@ -111,6 +111,7 @@ import DismissBarrier from './components/DismissBarrier.jsx';
 import PencilModeControl, { usePencilMode } from './components/PencilModeControl.jsx';
 import { PinIcon, getPinnedToolsStore, usePinnedTools } from './pinnedTools/pinnedToolsShared.jsx';
 import { isFeatureOn } from './featureFlags.js';
+import { quickColoursForTool } from './utils/quickStylePresets.js';
 import { installHomeBack, installViewerBack } from './utils/backNavigation.js';
 import { steppedTabId, tabStepForKey } from './utils/tabKeys.js';
 import { setMarksHidden, useMarksHidden } from './utils/marksHidden.js';
@@ -2265,6 +2266,7 @@ export default function App({ devPreviewReturnTab = null }) {
   // Back (browser gesture, Android button) closes the open sheet, then the
   // document, instead of leaving Survey (Nightly, 'back-button').
   const [backButtonEnabled] = useState(() => isFeatureOn('back-button'));
+  const [toolQuickColoursOn] = useState(() => isFeatureOn('tool-quick-colours'));
   useEffect(() => {
     if (!backButtonEnabled || !isViewerVisible) return undefined;
     return installViewerBack(window, () => stableBack());
@@ -4046,6 +4048,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     neither. */}
                 {showsQuickColourDots(bottomToolbarApi) && annotationPaint && (
                   <QuickColourDots
+                    {...quickColoursForTool(bottomToolbarApi.contextTool || bottomToolbarApi.activeTool, toolQuickColoursOn)}
                     // w41: picked marks in different colours ring no dot.
                     value={bottomToolbarApi.selectionMixed?.strokeColor ? null : annotationPaint.quick.color}
                     customActive={bottomToolbarApi.selectionMixed?.strokeColor ? false : undefined}
