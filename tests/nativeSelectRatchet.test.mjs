@@ -40,6 +40,9 @@ const ALLOWED = {
   // New blank document (beta 'new-document'): the phone branch keeps the
   // browser's wheel; desktop uses ValueSelect.
   'src/home/NewDocumentDialog.jsx': 1,
+  // Projects Issues and Tasks fields (beta 'project-issues'): the phone
+  // branch keeps the browser's wheel; desktop uses ValueSelect.
+  'src/projectItems/ProjectItemsPanel.jsx': 1,
 };
 
 // A JSX <select> element at the start of a line (comments that mention

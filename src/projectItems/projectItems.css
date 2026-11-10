@@ -24,7 +24,7 @@
 .project-items.is-phone .project-items__chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
 .project-items__chips::-webkit-scrollbar { display: none; }
 .item-chip {
-  flex: none; height: 26px; padding: 0 10px; border-radius: 13px; border: 1px solid var(--border);
+  flex: none; height: 26px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--border);
   background: transparent; color: var(--text-2); font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap;
   display: inline-flex; align-items: center;
 }
@@ -83,7 +83,7 @@
 .item-links-count { display: inline-flex; align-items: center; gap: 4px; color: var(--text-2); }
 
 .item-tag {
-  display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: 11px;
+  display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: 999px;
   background: var(--surface-3); color: var(--text-2); font-size: 11px; white-space: nowrap; flex: none;
 }
 .item-tag.is-small { height: 18px; padding: 0 6px; font-size: 10px; }
@@ -168,14 +168,14 @@
 .item-sheet-scrim { position: absolute; inset: 0; border: 0; padding: 0; background: rgba(0, 0, 0, 0.5); cursor: default; }
 .item-detail.is-sheet {
   position: relative; width: auto; max-height: calc(100% - 48px); height: calc(100% - 48px); border-left: 0;
-  border-radius: 14px 14px 0 0; padding-bottom: env(safe-area-inset-bottom);
+  border-radius: 16px 16px 0 0; padding-bottom: env(safe-area-inset-bottom);
 }
 .item-detail.is-sheet .item-fields { grid-template-columns: 96px 1fr; }
 .item-detail.is-sheet .item-date, .item-detail.is-sheet .item-tag-input { height: 36px; font-size: 14px; }
 .item-detail.is-sheet .item-description, .item-detail.is-sheet .item-comment-box textarea { font-size: 14px; }
 @media (min-width: 700px) {
   .survey-hub.item-sheet-layer { justify-content: center; align-items: center; }
-  .item-detail.is-sheet { width: min(520px, calc(100% - 48px)); border-radius: 14px; height: min(720px, calc(100% - 48px)); }
+  .item-detail.is-sheet { width: min(520px, calc(100% - 48px)); border-radius: 16px; height: min(720px, calc(100% - 48px)); }
 }
 
 /* In the phone's project card the page scrolls, not the list. */

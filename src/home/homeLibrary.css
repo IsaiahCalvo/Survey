@@ -62,7 +62,7 @@
 .survey-hub .home-filter-chips::-webkit-scrollbar { display: none; }
 .survey-hub .home-filter-chip {
   flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 12px;
-  border-radius: 17px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2);
+  border-radius: 999px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2);
   font: 500 13px var(--font-ui); cursor: pointer; white-space: nowrap;
 }
 .survey-hub .home-filter-chip.is-on { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
