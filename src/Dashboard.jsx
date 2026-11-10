@@ -999,6 +999,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     // before the Supabase row's id round-trips back. Without this, a quick
     // delete right after browser-input upload silently failed.
     file.user_id = user.id;
+    // `openAfterUpload` may be a question asked at the end: New's dialog
+    // closed with Back or Cancel while it was still making the file.
+    const wantsOpen = () => (typeof openAfterUpload === 'function' ? Boolean(openAfterUpload()) : Boolean(openAfterUpload));
 
     // Content fingerprint → resolve the document's identity BEFORE opening, so
     // the viewer opens with a real id (durable store + save shortcut work on a
@@ -1070,7 +1073,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         await archiveReplacedDocument(duplicateGate.archiveDocId, resolvedDoc.id);
       }
       if (askDuplicates) await maybeOfferAlias(resolvedDoc, file.name, contentSha);
-      if (openAfterUpload) await handleDocumentClick(resolvedDoc);
+      if (wantsOpen()) await handleDocumentClick(resolvedDoc);
       refetchAllDocuments();
       return 'existing';
     }
@@ -1084,7 +1087,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     file.supabaseFilePath = resolvedDoc.file_path ?? null;
     file.contentSha256 = resolvedDoc.content_sha256 ?? null; // thumbnail cache key
     file.uploadStartTime = performance.now();
-    if (openAfterUpload) onDocumentSelect(file);
+    if (wantsOpen()) onDocumentSelect(file);
 
     // OPTIMISTIC LIST UPDATE — carry both key spellings so the file shows
     // immediately in the project-grouped views (which read project_id).

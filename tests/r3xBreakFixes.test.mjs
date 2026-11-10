@@ -80,3 +80,15 @@ test('an open polygon draft is counted per viewer until released', async () => {
   release();
   assert.equal(hasOpenPolyDraft(viewer), false);
 });
+
+test('Back or Cancel while New is making the file closes it, and the file does not open later', () => {
+  const dialog = read('home/NewDocumentDialog.jsx');
+  assert.match(dialog, /await onCreate\(file, \{ open: \(\) => !dismissedRef\.current \}\);/);
+  assert.match(dialog, /onClose=\{dismiss\}/);
+  assert.doesNotMatch(dialog, /busy=\{busy\}/);
+  assert.match(dialog, /<button type="button" className="hub-btn dialog-touch-pad" onClick=\{dismiss\}>Cancel<\/button>/);
+  assert.match(read('home/DocumentsLedger.jsx'), /onCreate=\{\(file, \{ open = true \} = \{\}\) => onDropFiles\(\[file\], \{ projectId: null, open, newDocument: true \}\)\}/);
+  const dash = read('Dashboard.jsx');
+  assert.match(dash, /const wantsOpen = \(\) => \(typeof openAfterUpload === 'function' \? Boolean\(openAfterUpload\(\)\) : Boolean\(openAfterUpload\)\);/);
+  assert.match(dash, /if \(wantsOpen\(\)\) onDocumentSelect\(file\);/);
+});
