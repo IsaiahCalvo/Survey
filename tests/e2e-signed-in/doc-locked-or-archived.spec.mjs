@@ -104,3 +104,27 @@ test('moved to Archive: the other person is told why, and the tools stop', async
     await doc.remove();
   }
 });
+
+test('the owner\'s other window is told at once when the document goes to Archive, and freed by Undo', async ({ page }) => {
+  test.setTimeout(150_000);
+  const doc = await seedDocument('archived owner window');
+  try {
+    await signIn(page, E2E_ACCOUNTS.owner);
+    await page.getByText(doc.name, { exact: true }).filter({ visible: true }).first().click();
+    const openFile = page.getByRole('button', { name: 'Open file' });
+    if (await openFile.isVisible().catch(() => false)) await openFile.click();
+    await expect(page.locator(`${PAGE} canvas`).first()).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByRole('button', { name: /^Up to date/ }).filter({ visible: true }).first()).toBeVisible({ timeout: 30_000 });
+
+    await doc.update({ user_archived_at: new Date().toISOString() });
+    await expect(page.getByText(/^This document was moved to Archive\. Restore it/).filter({ visible: true }).first()).toBeVisible({ timeout: 5_000 });
+    await expect.poll(() => page.evaluate(() => document.body.getAttribute('data-readonly'))).toBe('true');
+
+    // Undo (restore from Archive) frees the tools again.
+    await doc.update({ user_archived_at: null });
+    await expect.poll(() => page.evaluate(() => document.body.getAttribute('data-readonly')), { timeout: 10_000 }).toBeNull();
+    await expect(page.getByText(/^This document was moved to Archive\. Restore it/).filter({ visible: true })).toHaveCount(0, { timeout: 5_000 });
+  } finally {
+    await doc.remove();
+  }
+});

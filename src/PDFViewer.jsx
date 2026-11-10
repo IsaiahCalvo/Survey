@@ -387,6 +387,7 @@ import { supabase } from './supabaseClient';
 import { useAnnotationDoc } from './hooks/useAnnotationDoc.js';
 import useBrowserOnline from './hooks/useBrowserOnline.js';
 import { claimBodyReadOnly } from './utils/readOnlyBodyReasons.js';
+import { subscribeDocumentLockState } from './services/documentLockService.js';
 import { useAuth } from './contexts/AuthContext';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useDocumentPresenceList } from './hooks/useDocumentPresenceList.js';
@@ -22160,19 +22161,31 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // Deep test 2026-11-10: the owner archived or locked the document while
   // this person had it open; the server turned their next mark down. Stop the
   // tools and say why, instead of letting marks vanish one by one.
+  // Drawboard tells another open window at once when a document is deleted
+  // (PDF Pro run 11-10). The owner's other windows still get the row live
+  // once it is archived, so they say so without waiting for an edit.
+  const [archivedLive, setArchivedLive] = useState(false);
   useEffect(() => {
-    if (!annotationEditBlocked || !isActive) return undefined;
+    setArchivedLive(false);
+    const documentId = pdfFile?.id;
+    if (!documentId || !cloudSyncEnabled || isDeviceDocumentId(documentId)) return undefined;
+    return subscribeDocumentLockState(documentId, (state) => setArchivedLive(Boolean(state?.archivedAt)));
+  }, [pdfFile?.id, cloudSyncEnabled]);
+  const editBlockedReason = annotationEditBlocked || (archivedLive ? 'archived' : null);
+  useEffect(() => {
+    if (!editBlockedReason || !isActive) return undefined;
     const release = claimBodyReadOnly('annotation-edit-blocked');
     const text = {
+      archived: 'This document was moved to Archive. Restore it from Archive to keep working on it.',
       gone: 'This document was moved to Archive or deleted, or your access was removed. Your last change was not saved.',
       locked: 'This document was locked. Your last change was not saved.',
-    }[annotationEditBlocked] || 'You can no longer edit this document. Your last change was not saved.';
+    }[editBlockedReason] || 'You can no longer edit this document. Your last change was not saved.';
     showToast(text, 'error', { id: 'annotation-edit-blocked', duration: Infinity });
     return () => {
       release();
       dismissToast('annotation-edit-blocked');
     };
-  }, [annotationEditBlocked, isActive]);
+  }, [editBlockedReason, isActive]);
   // Deep test 2026-11-10 (Drawboard shows a red "You are currently offline"
   // banner): losing the signal with a cloud document open says so at once
   // and stays up until the signal is back, then "You are back online".
