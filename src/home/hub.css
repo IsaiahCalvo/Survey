@@ -3193,6 +3193,18 @@
     font-size: 14px;
     color: var(--text-2);
   }
+  .survey-hub .templates-mobile-option--detailed {
+    flex-wrap: wrap;
+    row-gap: 0;
+    padding-top: 4px;
+    padding-bottom: 10px;
+  }
+  .survey-hub .templates-mobile-option__detail {
+    flex-basis: 100%;
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--text-3);
+  }
   .survey-hub .templates-mobile-option + .templates-mobile-option {
     border-top: 1px solid var(--rule);
   }
@@ -5662,8 +5674,17 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
 .hub-template-picker {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
   max-width: 100%;
   margin-top: 4px;
+}
+/* What the pill picks, in the quiet label ink, before it. */
+.hub-template-picker__label {
+  flex: none;
+  color: var(--text-3);
+  font: 500 var(--font-size-sm)/1 var(--font-ui);
+  white-space: nowrap;
 }
 .hub-template-picker .annotation-dropdown {
   flex: 0 1 auto;

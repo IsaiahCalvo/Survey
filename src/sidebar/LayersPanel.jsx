@@ -3,14 +3,17 @@
  *
  * "PDF content" row with five opacity steps, then the markup layers: pick the
  * active layer (new marks go there), show / hide, rename (double-click or the
- * pencil), delete (with confirm; its marks fall back to the default layer),
- * and Add layer. All edits go out as one whole next state through
+ * pencil), delete (act first with an Undo toast; its marks fall back to the
+ * default layer), and Add layer (the + in the rail head; inline on phone). All edits go out as one whole next state through
  * onLayersChange; the pure rules live in utils/layers.js.
  */
 import React, { useCallback, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Icon from '../Icons';
 import './LayersPanel.css';
-import { useConfirmDialog } from '../components/dialogPrompts';
+import SectionIconButton from '../components/SectionIconButton.jsx';
+import { useTooltip } from '../components/Tooltip.jsx';
+import { showToast } from '../utils/toast';
 import {
   DEFAULT_LAYER_ID,
   addLayer,
@@ -32,37 +35,11 @@ function EyeIcon({ open }) {
 
 const PDF_OPACITY_STEPS = [[100, '100%'], [75, '75%'], [50, '50%'], [25, '25%'], [0, 'Off']];
 
-const rowStyle = (active) => ({
-  display: 'flex',
-  alignItems: 'center',
-  gap: 6,
-  minHeight: 36,
-  padding: '0 8px',
-  borderRadius: 6,
-  cursor: 'pointer',
-  background: active ? 'var(--hover)' : 'transparent',
-  boxShadow: active ? 'inset 2px 0 0 var(--accent)' : 'none',
-});
-
-const iconButton = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  width: 28,
-  height: 28,
-  border: 'none',
-  borderRadius: 6,
-  background: 'transparent',
-  color: 'var(--text-2)',
-  cursor: 'pointer',
-  flexShrink: 0,
-};
-
-export default function LayersPanel({ layerState, activeLayerId, onLayersChange, onActiveLayerChange, readOnly = false }) {
+export default function LayersPanel({ layerState, activeLayerId, onLayersChange, onActiveLayerChange, readOnly = false, headActionsHost = null }) {
   const state = normalizeLayerState(layerState);
   const [editingId, setEditingId] = useState(null);
   const [draftName, setDraftName] = useState('');
-  const [askConfirm, confirmDialog] = useConfirmDialog();
+  const tip = useTooltip();
 
   const commit = useCallback((next) => { onLayersChange?.(next); }, [onLayersChange]);
 
@@ -84,30 +61,40 @@ export default function LayersPanel({ layerState, activeLayerId, onLayersChange,
     setDraftName(layer.name);
   };
 
+  // Act first, Undo after (the app's rule instead of a confirm). The layer's
+  // marks keep their layer id, so putting the old state back restores them.
   const handleDelete = (layer) => {
-    askConfirm({
-      title: `Delete ${layer.name}?`,
-      message: 'The layer is removed for everyone. Its markups are kept and move to the default layer.',
-      confirmLabel: 'Delete',
-      danger: true,
-    }).then((confirmed) => {
-      if (!confirmed) return;
-      commit(deleteLayer(state, layer.id));
-      if (activeLayerId === layer.id) onActiveLayerChange?.(DEFAULT_LAYER_ID);
+    const before = state;
+    const wasActive = activeLayerId === layer.id;
+    commit(deleteLayer(state, layer.id));
+    if (wasActive) onActiveLayerChange?.(DEFAULT_LAYER_ID);
+    showToast(`Deleted ${layer.name}`, 'info', {
+      action: {
+        label: 'Undo',
+        onClick: () => {
+          commit(before);
+          if (wasActive) onActiveLayerChange?.(layer.id);
+        },
+      },
     });
   };
 
   const opacityPercent = Math.round(state.pdfOpacity * 100);
+  const addInHead = Boolean(headActionsHost) && !readOnly;
 
   return (
-    <div data-testid="layers-panel" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflowY: 'auto', padding: 8, gap: 8, color: 'var(--text-2)', fontSize: 13 }}>
+    <div data-testid="layers-panel" className="layers-panel">
+      {addInHead && createPortal(
+        <SectionIconButton action="add" label="Add layer" data-layer-add="true" onClick={handleAdd} />,
+        headActionsHost,
+      )}
       {/* Owner 2026-10-26 (issue note #18): "I don't like the slider". The
           PDF's strength is five steps now, one press each, the current one
           gold like every pick in the chrome; Off leaves only the markups. */}
-      <div style={{ padding: '8px', borderRadius: 6, background: 'var(--surface-2)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-          <span style={{ fontWeight: 600 }}>PDF content</span>
-          <span style={{ color: 'var(--text-3)' }}>{opacityPercent === 0 ? 'Hidden' : `${opacityPercent}%`}</span>
+      <section className="layers-panel__section" aria-labelledby="layers-pdf-head">
+        <div className="layers-panel__head">
+          <span id="layers-pdf-head" className="layers-panel__title">PDF page</span>
+          <span className="layers-panel__meta nums">{opacityPercent === 0 ? 'Hidden' : `${opacityPercent}%`}</span>
         </div>
         <div className="layers-opacity" role="radiogroup" aria-label="PDF content opacity">
           {PDF_OPACITY_STEPS.map(([percent, word]) => (
@@ -125,79 +112,81 @@ export default function LayersPanel({ layerState, activeLayerId, onLayersChange,
             </button>
           ))}
         </div>
-      </div>
+      </section>
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 8px' }}>
-        <span style={{ fontWeight: 600 }}>Markup layers</span>
-        {!readOnly && (
-          <button type="button" style={{ ...iconButton, width: 'auto', padding: '0 8px', gap: 4 }} onClick={handleAdd} aria-label="Add layer">
-            <Icon name="plus" size={14} /> Add layer
-          </button>
-        )}
-      </div>
+      <section className="layers-panel__section" aria-labelledby="layers-markup-head">
+        <div className="layers-panel__head">
+          <span id="layers-markup-head" className="layers-panel__title">Markup layers</span>
+          {!readOnly && !addInHead && (
+            <button type="button" className="layers-panel__text-btn" data-layer-add="true" onClick={handleAdd}>
+              <Icon name="plus" size={14} /> Add layer
+            </button>
+          )}
+        </div>
 
-      <div role="radiogroup" aria-label="Active layer" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {state.layers.map((layer) => {
-          const active = layer.id === activeLayerId;
-          return (
-            <div
-              key={layer.id}
-              role="radio"
-              aria-checked={active}
-              tabIndex={0}
-              data-layer-id={layer.id}
-              style={rowStyle(active)}
-              onClick={() => onActiveLayerChange?.(layer.id)}
-              onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && editingId !== layer.id) { e.preventDefault(); onActiveLayerChange?.(layer.id); } }}
-              onDoubleClick={() => startRename(layer)}
-            >
-              <button
-                type="button"
-                style={{ ...iconButton, color: layer.visible ? 'var(--text-2)' : 'var(--text-3)' }}
-                aria-label={layer.visible ? `Hide ${layer.name}` : `Show ${layer.name}`}
-                aria-pressed={!layer.visible}
-                onClick={(e) => { e.stopPropagation(); commit(setLayerVisible(state, layer.id, !layer.visible)); }}
+        <div role="radiogroup" aria-label="Active layer" className="layers-panel__list">
+          {state.layers.map((layer) => {
+            const active = layer.id === activeLayerId;
+            const editing = editingId === layer.id;
+            return (
+              <div
+                key={layer.id}
+                role="radio"
+                aria-checked={active}
+                tabIndex={0}
+                data-layer-id={layer.id}
+                className={`layers-row${active ? ' is-active' : ''}${layer.visible ? '' : ' is-hidden'}${editing ? ' is-editing' : ''}`}
+                onClick={() => onActiveLayerChange?.(layer.id)}
+                onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !editing) { e.preventDefault(); onActiveLayerChange?.(layer.id); } }}
+                onDoubleClick={() => startRename(layer)}
               >
-                <EyeIcon open={layer.visible} />
-              </button>
-              {editingId === layer.id ? (
-                <input
-                  autoFocus
-                  value={draftName}
-                  aria-label="Layer name"
-                  onClick={(e) => e.stopPropagation()}
-                  onChange={(e) => setDraftName(e.target.value)}
-                  onBlur={finishRename}
-                  onKeyDown={(e) => {
-                    e.stopPropagation();
-                    if (e.key === 'Enter') finishRename();
-                    if (e.key === 'Escape') setEditingId(null);
-                  }}
-                  style={{ flex: 1, minWidth: 0, font: 'inherit', padding: '2px 4px', border: '1px solid var(--border-strong)', borderRadius: 4, background: 'var(--surface-1)', color: 'inherit' }}
-                />
-              ) : (
-                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: layer.visible ? 1 : 0.55 }}>
-                  {layer.name}
-                </span>
-              )}
-              {!readOnly && editingId !== layer.id && (
-                <button type="button" style={iconButton} aria-label={`Rename ${layer.name}`} onClick={(e) => { e.stopPropagation(); startRename(layer); }}>
-                  <Icon name="edit" size={14} />
+                <button
+                  type="button"
+                  className="layers-row__btn layers-row__eye"
+                  aria-label={layer.visible ? `Hide ${layer.name}` : `Show ${layer.name}`}
+                  aria-pressed={!layer.visible}
+                  {...tip(layer.visible ? 'Hide' : 'Show', 'below')}
+                  onClick={(e) => { e.stopPropagation(); commit(setLayerVisible(state, layer.id, !layer.visible)); }}
+                >
+                  <EyeIcon open={layer.visible} />
                 </button>
-              )}
-              {!readOnly && layer.id !== DEFAULT_LAYER_ID && editingId !== layer.id && (
-                <button type="button" style={iconButton} aria-label={`Delete ${layer.name}`} onClick={(e) => { e.stopPropagation(); handleDelete(layer); }}>
-                  <Icon name="trash" size={14} />
-                </button>
-              )}
-            </div>
-          );
-        })}
-      </div>
-      <div style={{ padding: '0 8px', color: 'var(--text-3)', fontSize: 12 }}>
-        New markups go on the selected layer. Hidden layers are left out of exports.
-      </div>
-      {confirmDialog}
+                {editing ? (
+                  <input
+                    autoFocus
+                    className="layers-row__input"
+                    value={draftName}
+                    aria-label="Layer name"
+                    onFocus={(e) => e.target.select()}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => setDraftName(e.target.value)}
+                    onBlur={finishRename}
+                    onKeyDown={(e) => {
+                      e.stopPropagation();
+                      if (e.key === 'Enter') finishRename();
+                      if (e.key === 'Escape') setEditingId(null);
+                    }}
+                  />
+                ) : (
+                  <span className="layers-row__name">{layer.name}</span>
+                )}
+                {!readOnly && !editing && (
+                  <span className="layers-row__tools">
+                    <button type="button" className="layers-row__btn" aria-label={`Rename ${layer.name}`} {...tip('Rename', 'below')} onClick={(e) => { e.stopPropagation(); startRename(layer); }}>
+                      <Icon name="edit" size={14} />
+                    </button>
+                    {layer.id !== DEFAULT_LAYER_ID && (
+                      <button type="button" className="layers-row__btn" aria-label={`Delete ${layer.name}`} {...tip('Delete', 'below')} onClick={(e) => { e.stopPropagation(); handleDelete(layer); }}>
+                        <Icon name="trash" size={14} />
+                      </button>
+                    )}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <p className="layers-panel__note">New markups go on the selected layer. Hidden layers are left out of exports.</p>
+      </section>
     </div>
   );
 }

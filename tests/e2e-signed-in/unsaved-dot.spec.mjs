@@ -49,13 +49,18 @@ test('the tab unsaved dot clears when cloud sync is up to date', async ({ page }
 
     // Hold sync back: a new edit shows the dot while it is not in the cloud,
     // then clears once sync catches up.
+    // Edits go up through the append_annotation_update RPC, so hold that back
+    // too; blocking only the table route let a fast sync clear the dot before
+    // the check could see it (CI shard 5, 2026-11-09).
     const block = (route) => route.abort('failed');
     await page.route('**/rest/v1/annotation_updates**', block);
+    await page.route('**/rest/v1/rpc/append_annotation_update**', block);
     await tool(page, 'Shapes', 'Rectangle');
     await dragPage(page, 1, [[260, 80], [300, 120], [340, 160]]);
     await page.keyboard.press('Escape');
     await expect(unsavedDot(page)).toBeVisible({ timeout: 15_000 });
     await page.unroute('**/rest/v1/annotation_updates**', block);
+    await page.unroute('**/rest/v1/rpc/append_annotation_update**', block);
     await page.keyboard.press('ControlOrMeta+s');
     await expect(upToDate(page)).toBeVisible({ timeout: 60_000 });
     await expect(unsavedDot(page)).toHaveCount(0, { timeout: 15_000 });
