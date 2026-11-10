@@ -193,6 +193,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'New blank document from Home (size, pages, lined, grid or dots)',
     stage: 'beta',
   }),
+  'default-units': Object.freeze({
+    label: 'Default units setting: imperial or metric for page scale and new documents',
+    stage: 'beta',
+  }),
   'viewer-share': Object.freeze({
     label: 'Share from inside a document: a Share button in the viewer top bar',
     stage: 'beta',

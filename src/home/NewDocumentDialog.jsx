@@ -13,6 +13,7 @@ import ValueSelect from '../components/ValueSelect.jsx';
 import Spinner from '../components/Spinner';
 import { C } from '../uiPalette';
 import { isPhoneLayout } from '../utils/layoutMode.js';
+import { readUnits } from '../utils/annotationPreferences.js';
 import {
   BLANK_PAGE_SIZES, BLANK_PAPERS, MAX_BLANK_PAGES, blankPageBox, buildBlankPdf, clampBlankPages, uniqueDocumentName,
 } from '../utils/blankPdf.js';
@@ -69,7 +70,7 @@ function ChoiceRow({ label, options, value, onChange, disabled }) {
 export default function NewDocumentDialog({ existingNames = [], onCreate, onClose }) {
   const phone = isPhoneLayout();
   const [name, setName] = useState(() => uniqueDocumentName('Blank document', existingNames));
-  const [sizeId, setSizeId] = useState('letter');
+  const [sizeId, setSizeId] = useState(() => (readUnits() === 'metric' ? 'a4' : 'letter'));
   const [orientation, setOrientation] = useState('portrait');
   const [pages, setPages] = useState('1');
   const [paper, setPaper] = useState('blank');
