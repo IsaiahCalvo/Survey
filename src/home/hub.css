@@ -1432,7 +1432,8 @@
     white-space: nowrap;
   }
 
-  .survey-hub .documents-desktop-upload {
+  .survey-hub .documents-desktop-upload,
+  .survey-hub .documents-desktop-new {
     display: none;
   }
 

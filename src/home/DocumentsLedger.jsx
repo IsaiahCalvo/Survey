@@ -32,6 +32,8 @@ import { isPhoneLayout } from '../utils/layoutMode.js';
 import { canManageDocument, manageSelectionBlock } from './documentPermissions.js';
 import { activateOrExplain } from '../utils/disabledReasonToast.js';
 import MenuRows from '../components/MenuRows.jsx';
+import DialogCard from '../components/DialogCard.jsx';
+import NewDocumentDialog from './NewDocumentDialog.jsx';
 import sampleFloorPlanUrl from '../assets/sample-floor-plan.pdf?url';
 import useFileDropZone from '../hooks/useFileDropZone';
 import FileDropOverlay from '../components/FileDropOverlay';
@@ -249,6 +251,12 @@ export default function DocumentsLedger({
      render its real first page via the authenticated download (private bucket). */
   const { downloadDocument } = useStorage();
   const [homeDownloadOn] = useState(() => isFeatureOn('home-download'));
+  // Nightly 'new-document': New makes a blank document (desktop) or opens a
+  // small New sheet with Upload and Blank document (phone).
+  const [newDocumentOn] = useState(() => isFeatureOn('new-document'));
+  const [newSheetOpen, setNewSheetOpen] = useState(false);
+  const [newDocOpen, setNewDocOpen] = useState(false);
+  const canCreateBlank = newDocumentOn && Boolean(onDropFiles);
   // An upload still in flight (temp- id) has no saved row to open yet.
   const canDownloadDoc = (raw) => Boolean(raw?.id) && !String(raw.id).startsWith('temp-');
 
@@ -646,12 +654,51 @@ export default function DocumentsLedger({
       <div className="documents-mobile-search-actions hub-mobile-search-actions">
         <Search placeholder="Search documents..." value={search} onChange={setSearch} width="100%" />
         {mobileSortControl}
-        <button className="btn primary hub-mobile-primary-action" disabled={uploadBusy} onClick={() => onUpload && onUpload()}>{uploadButtonBody}</button>
+        {canCreateBlank ? (
+          <button className="btn primary hub-mobile-primary-action" data-home-new="phone" disabled={uploadBusy} aria-haspopup="dialog" onClick={() => setNewSheetOpen(true)}>
+            {uploadBusy ? uploadButtonBody : (<><Icon name="plus" size={12} />New</>)}
+          </button>
+        ) : (
+          <button className="btn primary hub-mobile-primary-action" disabled={uploadBusy} onClick={() => onUpload && onUpload()}>{uploadButtonBody}</button>
+        )}
       </div>
       <div className="documents-desktop-search">
         <Search placeholder="Search documents..." value={search} onChange={setSearch} />
       </div>
+      {canCreateBlank && (
+        <button className="btn documents-desktop-new" data-home-new="desktop" disabled={uploadBusy} aria-haspopup="dialog" onClick={() => setNewDocOpen(true)}>
+          <Icon name="plus" size={12} />New
+        </button>
+      )}
       <button className="btn primary documents-desktop-upload" disabled={uploadBusy} onClick={() => onUpload && onUpload()}>{uploadButtonBody}</button>
+      {newSheetOpen && (
+        <DialogCard title="New" onClose={() => setNewSheetOpen(false)} width={320} atRoot cardProps={{ 'data-home-new-sheet': 'true' }}>
+          <div role="menu" aria-label="New" style={{ display: 'grid', gap: 4 }}>
+            {[
+              { key: 'upload', icon: 'upload', label: 'Upload PDF', run: () => onUpload && onUpload() },
+              { key: 'blank', icon: 'plus', label: 'Blank document', run: () => setNewDocOpen(true) },
+            ].map((row) => (
+              <button
+                key={row.key}
+                type="button"
+                role="menuitem"
+                className="hub-btn dialog-touch-pad"
+                style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 44, justifyContent: 'flex-start', width: '100%' }}
+                onClick={() => { setNewSheetOpen(false); row.run(); }}
+              >
+                <Icon name={row.icon} size={14} />{row.label}
+              </button>
+            ))}
+          </div>
+        </DialogCard>
+      )}
+      {newDocOpen && (
+        <NewDocumentDialog
+          existingNames={documents.map((d) => d?.name)}
+          onCreate={(file) => onDropFiles([file], { projectId: null, open: true })}
+          onClose={() => setNewDocOpen(false)}
+        />
+      )}
     </>
   );
 

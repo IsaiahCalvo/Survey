@@ -189,6 +189,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Download a document, with its marks, from the Home list',
     stage: 'beta',
   }),
+  'new-document': Object.freeze({
+    label: 'New blank document from Home (size, pages, lined, grid or dots)',
+    stage: 'beta',
+  }),
   'viewer-share': Object.freeze({
     label: 'Share from inside a document: a Share button in the viewer top bar',
     stage: 'beta',
