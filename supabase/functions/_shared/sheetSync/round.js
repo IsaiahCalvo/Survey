@@ -171,6 +171,7 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
   });
   const planArgs = {
     layout, grid, markers, baseline: roundBaseline, state, signing, now, sheetEditor,
+    lateSaves: provider.savesLate === true,
     ...(newMarkerId ? { newMarkerId } : {}),
   };
   let plan = await planSheetRound(planArgs);

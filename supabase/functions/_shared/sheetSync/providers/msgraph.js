@@ -402,6 +402,9 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
       return meta?.cTag ?? null;
     },
 
+    // Excel on the web saves typed cells 4 to 90 s late (measured 11-10).
+    savesLate: true,
+
     // Who last changed the workbook, as the last getVersion saw it.
     lastEditor(fileId) {
       return lastEditors.get(fileId) || null;

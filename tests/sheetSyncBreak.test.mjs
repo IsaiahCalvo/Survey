@@ -530,6 +530,52 @@ test('a NUL in a note (pasted from a PDF) is left out of the cell, so Excel neve
   assert.equal(ctx.markers.d1.note.text, 'first\u0000second', 'the app keeps its text');
 });
 
+test('a PM value saved late by Excel on the web over a cell Survey just wrote is held as a conflict, not pulled in', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101', { note: { text: 'Start' } }) } });
+  ctx.provider = { ...ctx.provider, savesLate: true };
+  const t0 = Date.parse('2026-11-10T03:00:00Z');
+  await ctx.round({ now: new Date(t0) }); await ctx.round({ now: new Date(t0 + 1000), force: true });
+  const notes = await ctx.col('Notes');
+  const row = await ctx.rowOf('d1');
+  // The PM types in Excel on the web (not saved yet); a second later the field tech changes the note.
+  ctx.markers.d1.note = { text: 'App note' };
+  await ctx.round({ now: new Date(t0 + 5000) });
+  assert.equal((await ctx.sheet()).rows[row][notes], 'App note');
+  // A minute later Excel's save lands over Survey's write.
+  await ctx.edit([{ row, col: notes, value: 'PM web note' }]);
+  const held = await ctx.round({ now: new Date(t0 + 65000), force: true });
+  assert.equal(held.summary.conflicts, 1, 'asked, not pulled in');
+  assert.equal(ctx.markers.d1.note.text, 'App note', 'the field note is kept');
+  assert.equal((await ctx.sheet()).rows[row][notes], 'PM web note', 'the PM cell is left alone');
+  assert.deepEqual(ctx.link.state.conflicts.d1.fields.map((f) => [f.app, f.sheet]), [['App note', 'PM web note']]);
+  // Still held a round later, after the window.
+  await ctx.round({ now: new Date(t0 + 400000), force: true });
+  assert.ok(ctx.link.state.conflicts.d1);
+  assert.equal(ctx.markers.d1.note.text, 'App note');
+  // Keep mine: the field note goes back to the sheet.
+  ctx.link.state.choices = { d1: 'app' };
+  await ctx.round({ now: new Date(t0 + 401000), force: true });
+  assert.equal((await ctx.sheet()).rows[row][notes], 'App note');
+  assert.equal(ctx.link.state.conflicts.d1, undefined);
+});
+
+test('a sheet edit after the late-save window, or an Undo back to the old value, still comes in as a PM edit', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101', { note: { text: 'Start' } }), d2: door('d2', 'D-102', { note: { text: 'Old' } }) } });
+  ctx.provider = { ...ctx.provider, savesLate: true };
+  const t0 = Date.parse('2026-11-10T03:00:00Z');
+  await ctx.round({ now: new Date(t0) }); await ctx.round({ now: new Date(t0 + 1000), force: true });
+  const notes = await ctx.col('Notes');
+  ctx.markers.d1.note = { text: 'App note' };
+  ctx.markers.d2.note = { text: 'New' };
+  await ctx.round({ now: new Date(t0 + 5000) });
+  await ctx.edit([{ row: await ctx.rowOf('d1'), col: notes, value: 'PM later' }, { row: await ctx.rowOf('d2'), col: notes, value: 'Old' }]);
+  // d2 is an Undo inside the window; d1 lands after it.
+  const r = await ctx.round({ now: new Date(t0 + 5000 + 200000), force: true });
+  assert.equal(r.summary.conflicts, 0);
+  assert.equal(ctx.markers.d1.note.text, 'PM later');
+  assert.equal(ctx.markers.d2.note.text, 'Old');
+});
+
 test('a totals line typed under the items is not made an item, and new items go above it', async () => {
   const ctx = await setup({ markers: { d1: door('d1', 'D-101'), d2: door('d2', 'D-102') } });
   await ctx.round();

@@ -122,6 +122,22 @@ const checklistOfScope = (scope) => scope.columns.filter((c) => c.key.startsWith
 // Excel also ends a cell at a NUL character (text pasted from some PDFs), so
 // NULs are left out the same way, or the rest would come back cut off.
 export const MAX_CELL_CHARS = 32000;
+
+// Excel on the web saves a typed cell 4 to 90 s late. A PM's value typed just
+// before Survey wrote that cell can land over Survey's write a minute later
+// and read as a plain sheet edit, quietly replacing the field's newer value.
+// Survey's own cell writes are remembered this long; a different value
+// landing on one of them is held as a conflict instead. Excel only (the
+// provider's savesLate): Google saves as the person types.
+export const RECENT_WRITE_MS = 150_000;
+const RECENT_WRITE_MAX = 2000;
+function recentWritesOf(saved, nowMs) {
+  const kept = Object.entries(saved || {})
+    .filter(([, w]) => w && nowMs - Number(w.t) < RECENT_WRITE_MS)
+    .sort((a, b) => Number(b[1].t) - Number(a[1].t))
+    .slice(0, RECENT_WRITE_MAX);
+  return Object.fromEntries(kept);
+}
 const fitCell = (v) => {
   if (typeof v !== 'string') return v;
   if (v.includes('\u0000')) v = v.replace(/\u0000/g, '');
@@ -375,6 +391,7 @@ export async function planSheetRound({
   sheetEditor = SHEET_EDITOR_UNKNOWN,
   now = new Date(),
   holdErase = false,
+  lateSaves = false,
 }) {
   const nextBaseline = { ...baseline };
   // Many filled answers blanked in the sheet at once (an older copy restored
@@ -398,6 +415,9 @@ export async function planSheetRound({
     // "markerId|key" of cells that would not keep what Survey wrote (the
     // hidden part of merged cells): left alone until they hold a value.
     stuck: { ...(state.stuck || {}) },
+    // "markerId|key" -> { t, was, wrote }: cells Survey wrote lately (see
+    // RECENT_WRITE_MS), as fingerprints.
+    recentWrites: lateSaves ? recentWritesOf(state.recentWrites, now.getTime()) : {},
     problems: [],
     missingTabs: [],
     // Tabs still there that lost their Row ID column or heading row (deleted,
@@ -760,7 +780,7 @@ export async function planSheetRound({
 
     // ---- one matched row -------------------------------------------------
     async function mergeRow({ markerId, marker, row, r }) {
-      const base = nextBaseline[markerId]?.fields || null;
+      let base = nextBaseline[markerId]?.fields || null;
       const appRec = appRecordOf(marker, scope, layout);
       const appFps = fieldPrintsOf(appRec);
       const sheetRec = sheetRecordOf(row, appRec);
@@ -814,6 +834,23 @@ export async function planSheetRound({
           erasingItems.add(markerId);
           if (eraseMode === 'hold' || eraseMode === 'restore') setFp(sheetSide, key, getFp(base, key));
           if (eraseMode === 'hold') heldKeys.add(key);
+        }
+      }
+      // A late save landing on a cell Survey just wrote, while the app still
+      // holds what Survey wrote: compared against the value from before
+      // Survey's write, so it is held as a conflict (and stays held, since the
+      // baseline keeps that value) instead of replacing the app's value.
+      if (base && lateSaves) {
+        let copied = false;
+        for (const key of keys) {
+          const w = next.recentWrites[`${markerId}|${key}`];
+          if (!w) continue;
+          const wrote = getFp(base, key);
+          if (w.wrote !== wrote || getFp(appFps, key) !== wrote) continue;
+          const sheetNow = getFp(sheetSide, key);
+          if (sheetNow === wrote || sheetNow === (w.was ?? null)) continue;
+          if (!copied) { base = JSON.parse(JSON.stringify(base)); copied = true; }
+          setFp(base, key, w.was ?? null);
         }
       }
       const { conflictFields, excelChangedFields, appChangedFields } = detectFieldConflicts({
@@ -887,7 +924,10 @@ export async function planSheetRound({
         const want = sheetWant(key, cellValueFor(scope, key, finalRec), row[col]);
         if (!sameCell(row[col], want)) {
           writeCell(r, key, want, row[col], markerId);
-          if (!fromSheet.has(key)) plan.summary.toSheet += 1;
+          if (!fromSheet.has(key)) {
+            plan.summary.toSheet += 1;
+            if (base && lateSaves) next.recentWrites[`${markerId}|${key}`] = { t: now.getTime(), was: getFp(base, key), wrote: getFp(finalFps, key) };
+          }
         }
       }
       // Answers the layout no longer has stay in the baseline: a device still

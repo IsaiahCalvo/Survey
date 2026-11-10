@@ -10,6 +10,7 @@ import { runSheetRound } from '../supabase/functions/_shared/sheetSync/round.js'
 import { assertProvider } from '../supabase/functions/_shared/sheetSync/providers/contract.js';
 import { createMsGraphProvider, parseMsgraphFileId } from '../supabase/functions/_shared/sheetSync/providers/msgraph.js';
 import { mergeMarkerWrites } from '../supabase/functions/_shared/sheetSync/service.js';
+import { RECENT_WRITE_MS } from '../supabase/functions/_shared/sheetSync/engine.js';
 import defaultKit from '../src/services/exportFormats/kits/defaultSurvey.js';
 import { fakeMsgraphFetch, resetFakeMsgraph } from '../scripts/e2e-fake-msgraph.mjs';
 
@@ -59,6 +60,7 @@ async function setup({ markers = {}, layout = buildSyncLayout({ template: templa
       signing,
       newMarkerId: () => `new-${++n}`,
       force: opts.force,
+      ...(opts.now ? { now: opts.now } : {}),
     });
     if (result.patch) Object.assign(ctx.link, result.patch);
     return result;
@@ -115,13 +117,15 @@ test('a field tech answer reaches the sheet; a PM edit reaches the app; both lan
   assert.equal(sheet.rows[r][await ctx.col('Notes')], 'Hinge squeaks');
   assert.equal(ctx.markers.d1.note.text, 'Hinge squeaks');
   assert.equal(ctx.markers.d1.checklistResponses.c1.selection, 'N');
-  // The PM picks an entity and fixes the item name; "y" is tidied to "Y".
+  // Later, the PM picks an entity and fixes the item name; "y" is tidied to
+  // "Y". (Inside the late-save window, changing the "N" Survey just wrote
+  // would be asked about instead; see sheetSyncBreak.)
   await ctx.edit([
     { row: r, col: await ctx.col('Entity'), value: 'missing' },
     { row: r, col: await ctx.col('Item'), value: 'D-101A' },
     { row: r, col: await ctx.col('Locked?'), value: 'y' },
   ]);
-  await ctx.round({ force: true });
+  await ctx.round({ force: true, now: new Date(Date.now() + RECENT_WRITE_MS + 1000) });
   assert.equal(ctx.markers.d1.entityId, 'e2');
   assert.equal(ctx.markers.d1.entityName, 'Missing');
   assert.equal(ctx.markers.d1.name, 'D-101A');
