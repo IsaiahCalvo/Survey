@@ -339,7 +339,7 @@ export default function DocumentsLedger({
       const response = await fetch(sampleFloorPlanUrl);
       if (!response.ok) throw new Error(`sample drawing: HTTP ${response.status}`);
       const file = new File([await response.blob()], 'Sample floor plan.pdf', { type: 'application/pdf' });
-      await onDropFiles([file], { projectId: null, open: true });
+      await onDropFiles([file], { projectId: null, open: true, sample: true });
     } catch (error) {
       console.error('[DocumentsLedger] sample drawing failed', error);
     } finally {

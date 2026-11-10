@@ -205,6 +205,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Zoom to an area: Ctrl+Shift+drag draws a box and the view fills with it',
     stage: 'beta',
   }),
+  'guest-sample': Object.freeze({
+    label: 'Try the sample drawing signed out, as a try-out that is not saved',
+    stage: 'beta',
+  }),
   'viewer-share': Object.freeze({
     label: 'Share from inside a document: a Share button in the viewer top bar',
     stage: 'beta',
