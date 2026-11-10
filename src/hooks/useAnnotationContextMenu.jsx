@@ -23,6 +23,7 @@ import MenuGlide from '../components/MenuGlide.jsx';
 import { menuIconFor } from '../utils/menuItems.js';
 import { queryFrontTab } from '../utils/tabBehind.js';
 import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
+import { useBackLayer } from '../utils/backNavigation.js';
 import { createPortal } from 'react-dom';
 import Icon from '../Icons';
 import { useTooltip } from '../components/Tooltip';
@@ -61,10 +62,14 @@ import { reorderSelectionInStack } from '../utils/annotationFamilyRules.js';
 import { resolveMenuTargets, sameMenuTargets, stampMenuTargetIds } from '../utils/selectionRemap.js';
 import { pageHasTransform } from '../utils/disabledActions.js';
 import { PICK_ANY_TOOLS } from '../utils/selectModes.js';
+import { isFeatureOn } from '../featureFlags.js';
+import { requestArrangeSelection } from '../utils/alignMarks.js';
 import { contextMenuInputOf, isTouchMenuInput } from '../utils/touchLongPress.js';
 import { PageMenuList } from '../sidebar/PageActionsMenu.jsx';
 import { availableActions, buildCanvasPageItems, buildPageMenuItems, runPageMenuAction } from '../sidebar/pageMenuItems.js';
 import { keyboardControlProps } from '../utils/keyboardActivation.js';
+import { menuKeyHint } from '../utils/menuKeyHints.js';
+import { shortcutBinding } from '../utils/customKeyboardShortcuts.js';
 
 // w61: `getPageObjects(pageNumber)` (optional) returns the page's mark list,
 // so the menu can note which marks it was opened on (by id) and still act on
@@ -87,6 +92,9 @@ export function useAnnotationContextMenu({ getPageObjects = null } = {}) {
   const closeAnnotationContextMenu = useCallback(() => {
     setAnnotationContextMenu(null);
   }, []);
+  // Back (phone gesture, Android button) closes the menu, not the document
+  // (Nightly 'back-button'; it has no focus trap, so it registers itself).
+  useBackLayer(Boolean(annotationContextMenu), closeAnnotationContextMenu);
 
   // Register the global annotation right-click handler. contextMenuDiagnostics.js
   // resolves (pageNumber, annotationIndex) from the click target and invokes this
@@ -189,27 +197,42 @@ export function useAnnotationContextMenu({ getPageObjects = null } = {}) {
 // targets (touchTargets.css + annotationContextMenu.css).
 // Design review 2026-10-27: the rows under the icon row carry an icon too,
 // like every other action menu (components/MenuRows.jsx picks by label).
-const MARK_ROW_ICONS = { arrange: 'layers', moveToLayer: 'layers', lock: 'lock', unlock: 'lock', saveToLibrary: 'library' };
+const MARK_ROW_ICONS = { arrange: 'layers', moveToLayer: 'layers', align: 'alignLeft', lock: 'lock', unlock: 'lock', saveToLibrary: 'library' };
 const markRowIcon = (it) => MARK_ROW_ICONS[it.key] || menuIconFor(it.label);
 const MENU_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter'];
 
+const MENU_IS_MAC = typeof navigator !== 'undefined'
+  && /(Mac|iPhone|iPod|iPad)/i.test(`${navigator.platform || ''} ${navigator.userAgent || ''}`);
+
 function MarkMenuBody({ layout, touchRows }) {
   const tip = useTooltip();
+  // Nightly 'menu-keys': each item's key on its row and in its hint. Not on
+  // a finger- or pen-opened menu, which has no keyboard to hand.
+  const [keysOn] = useState(() => isFeatureOn('menu-keys'));
+  const keyOf = (key) => (keysOn && !touchRows ? menuKeyHint(key, { isMac: MENU_IS_MAC, binding: shortcutBinding }) : null);
+  const keyCap = (key) => {
+    const hint = keyOf(key);
+    return hint ? <span className="annotation-menu-key" aria-hidden="true">{hint}</span> : null;
+  };
   const rootRef = useRef(null);
   // The row whose submenu is open (Arrange, or Move to layer with the
   // 'layers' beta), its element, and the open submenu's element.
   const subRowRefs = useRef({});
   const submenuRef = useRef(null);
   const focusSubmenuOnOpenRef = useRef(false);
-  const [openSub, setOpenSub] = useState(null);
-  // Hover opens / closes a submenu for a real mouse only. A finger's tap also
+  // The open submenu row's key ('arrange', 'align', 'moveToLayer'), or null.
+  // One at a time.
+  const [openKey, setOpenKey] = useState(null);
+  const setArrangeOpen = (open, key = null) => setOpenKey(open ? key : null);
+  // Hover opens / closes Arrange for a real mouse only. A finger's tap also
   // sends compatibility mouse events (and the browser re-sends them when the
   // submenu appears), which shut the submenu the tap had just opened.
-  const onMouseHover = (key) => (event) => {
-    if (event.pointerType === 'mouse') setOpenSub(key);
+  const onMouseHover = (open, key = null) => (event) => {
+    if (event.pointerType === 'mouse') setArrangeOpen(open, key);
   };
-  const subRows = layout.rows.filter((row) => row.submenu);
-  const isSubKey = (key) => subRows.some((row) => row.key === key && !row.disabled);
+  const arrange = layout.rows.find((row) => row.submenu && row.key === openKey)
+    || layout.rows.find((row) => row.submenu) || null;
+  const isSubmenuKey = (key) => layout.rows.some((row) => row.submenu && row.key === key);
 
   const focusEl = (el) => { try { el?.focus({ preventScroll: true }); } catch { /* detached */ } };
 
@@ -217,9 +240,9 @@ function MarkMenuBody({ layout, touchRows }) {
   // left when the right side (less the desktop right rail) has no room; kept
   // above the bottom of the window.
   useLayoutEffect(() => {
-    if (!openSub) return;
+    if (!openKey) return;
     const sub = submenuRef.current;
-    const row = subRowRefs.current[openSub];
+    const row = subRowRefs.current[openKey];
     const panel = rootRef.current?.closest('[data-annotation-context-menu]');
     if (!sub || !row || !panel) return;
     const pr = panel.getBoundingClientRect();
@@ -243,7 +266,7 @@ function MarkMenuBody({ layout, touchRows }) {
       focusSubmenuOnOpenRef.current = false;
       focusEl(sub.querySelector('[data-submenu-key]:not([aria-disabled="true"])'));
     }
-  }, [openSub, touchRows]);
+  }, [openKey, touchRows]);
 
   useEffect(() => {
     const onKeyDown = (event) => {
@@ -258,10 +281,10 @@ function MarkMenuBody({ layout, touchRows }) {
         handled();
         if (active.getAttribute('aria-disabled') === 'true') return;
         const enterKey = active.getAttribute('data-menu-key');
-        if (isSubKey(enterKey)) {
+        if (isSubmenuKey(enterKey)) {
           // Enter on a submenu row opens it with its first item focused.
-          if (openSub === enterKey) focusEl(submenuRef.current?.querySelector('[data-submenu-key]:not([aria-disabled="true"])'));
-          else { focusSubmenuOnOpenRef.current = true; setOpenSub(enterKey); }
+          if (openKey === enterKey) focusEl(submenuRef.current?.querySelector('[data-submenu-key]:not([aria-disabled="true"])'));
+          else { focusSubmenuOnOpenRef.current = true; setArrangeOpen(true, enterKey); }
           return;
         }
         active.click();
@@ -273,8 +296,8 @@ function MarkMenuBody({ layout, touchRows }) {
         const subItems = [...(submenuRef.current?.querySelectorAll('[data-submenu-key]:not([aria-disabled="true"])') || [])];
         const at = subItems.indexOf(active);
         if (event.key === 'ArrowLeft') {
-          const back = subRowRefs.current[openSub];
-          setOpenSub(null);
+          const back = subRowRefs.current[openKey];
+          setArrangeOpen(false);
           focusEl(back);
         } else if (subItems.length > 0) {
           const n = subItems.length;
@@ -288,13 +311,13 @@ function MarkMenuBody({ layout, touchRows }) {
         return;
       }
       const activeKey = inMenu ? active.getAttribute('data-menu-key') : null;
-      if (event.key === 'ArrowRight' && subRows.some((row) => row.key === activeKey)) {
-        if (!isSubKey(activeKey)) return;
-        if (openSub === activeKey) {
+      if (event.key === 'ArrowRight' && isSubmenuKey(activeKey)) {
+        if (layout.rows.find((row) => row.key === activeKey)?.disabled) return;
+        if (openKey === activeKey) {
           focusEl(submenuRef.current?.querySelector('[data-submenu-key]:not([aria-disabled="true"])'));
         } else {
           focusSubmenuOnOpenRef.current = true;
-          setOpenSub(activeKey);
+          setArrangeOpen(true, activeKey);
         }
         return;
       }
@@ -311,21 +334,25 @@ function MarkMenuBody({ layout, touchRows }) {
       if (!next) return;
       const rows = stops.filter((keys) => keys.length > 0);
       const key = rows[next.row]?.[next.col];
-      if (key !== openSub) setOpenSub(null);
+      if (key !== openKey) setArrangeOpen(false);
       focusEl(root.querySelector(`[data-menu-key="${key}"]`));
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [layout, openSub]);
+  }, [layout, arrange, openKey]);
 
   // The hint sits above the icon row, clear of the rows below it.
-  const tipFor = (label) => (touchRows ? {} : tip(label, 'above'));
+  const tipFor = (label, key) => {
+    if (touchRows) return {};
+    const hint = keyOf(key);
+    return tip(hint ? `${label} (${hint})` : label, 'above');
+  };
   return (
     <div ref={rootRef} className="annotation-menu-body">
       <MenuGlide />
       <div role="group" aria-label="Edit" className="annotation-menu-quick">
         {layout.quick.map((it) => {
-          const hint = tipFor(it.label);
+          const hint = tipFor(it.label, it.key);
           return (
           <button
             key={it.key}
@@ -338,7 +365,7 @@ function MarkMenuBody({ layout, touchRows }) {
             className={`annotation-menu-icon${it.key === 'delete' ? ' annotation-menu-icon--danger' : ''}`}
             onClick={it.disabled ? undefined : it.onClick}
             {...hint}
-            onPointerEnter={(e) => { onMouseHover(null)(e); hint.onPointerEnter?.(e); }}
+            onPointerEnter={(e) => { onMouseHover(false)(e); hint.onPointerEnter?.(e); }}
           >
             <Icon name={QUICK_ACTION_ICONS[it.key]} size={16} color="currentColor" />
           </button>
@@ -354,12 +381,12 @@ function MarkMenuBody({ layout, touchRows }) {
             tabIndex={-1}
             data-menu-key={it.key}
             aria-haspopup="menu"
-            aria-expanded={openSub === it.key ? 'true' : 'false'}
+            aria-expanded={openKey === it.key ? 'true' : 'false'}
             aria-disabled={it.disabled ? 'true' : undefined}
-            className={`annotation-menu-row${openSub === it.key ? ' is-open' : ''}`}
+            className={`annotation-menu-row${openKey === it.key ? ' is-open' : ''}`}
             // A mouse opens it on hover; a finger or pen taps it.
-            onPointerEnter={it.disabled ? undefined : onMouseHover(it.key)}
-            onClick={it.disabled ? undefined : () => setOpenSub((open) => (touchRows && open === it.key ? null : it.key))}
+            onPointerEnter={it.disabled ? undefined : onMouseHover(true, it.key)}
+            onClick={it.disabled ? undefined : () => setOpenKey((open) => (touchRows && open === it.key ? null : it.key))}
           >
             {markRowIcon(it) && <Icon name={markRowIcon(it)} size={14} color="currentColor" />}
             <span>{it.label}</span>
@@ -367,7 +394,7 @@ function MarkMenuBody({ layout, touchRows }) {
               <Icon name="chevronRight" size={14} color="currentColor" />
             </span>
           </div>
-          {openSub === it.key && (
+          {openKey === it.key && (
             <div ref={submenuRef} role="menu" aria-label={it.label} className="annotation-menu-submenu">
               {it.submenu.map((sub) => (
                 <div
@@ -380,6 +407,7 @@ function MarkMenuBody({ layout, touchRows }) {
                   onClick={sub.disabled ? undefined : sub.onClick}
                 >
                   {sub.label}
+                  {keyCap(sub.key)}
                 </div>
               ))}
             </div>
@@ -393,11 +421,12 @@ function MarkMenuBody({ layout, touchRows }) {
           data-menu-key={it.key}
           aria-disabled={it.disabled ? 'true' : undefined}
           className="annotation-menu-row"
-          onPointerEnter={onMouseHover(null)}
+          onPointerEnter={onMouseHover(false)}
           onClick={it.disabled ? undefined : it.onClick}
         >
           {markRowIcon(it) && <Icon name={markRowIcon(it)} size={14} color="currentColor" />}
           {it.label}
+          {keyCap(it.key)}
         </div>
       )))}
     </div>
@@ -1180,6 +1209,26 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           deleteSelectedCallouts();
         }, groupHasEditable),
         ...lockMenuItems(groupMembers, familySelection),
+        // Nightly 'align-marks' (Drawboard PDF Pro audit 2026-11-09): line the
+        // picked marks up, or space them evenly. The page's layer moves them
+        // (one Undo step); spacing needs three or more.
+        ...(isFeatureOn('align-marks') ? (() => {
+          const movable = groupMembers.filter((m) => !isUserLocked(m.obj)).length;
+          const align = (mode, label) => item(label, `align${mode[0].toUpperCase()}${mode.slice(1)}`,
+            () => requestArrangeSelection(ctx.pageNumber, 'align', mode), movable >= 2);
+          const spread = (mode, label) => item(label, `distribute${mode[0].toUpperCase()}${mode.slice(1)}`,
+            () => requestArrangeSelection(ctx.pageNumber, 'distribute', mode), movable >= 3);
+          return [
+            align('left', 'Align left'),
+            align('center', 'Align centres'),
+            align('right', 'Align right'),
+            align('top', 'Align top'),
+            align('middle', 'Align middles'),
+            align('bottom', 'Align bottom'),
+            spread('horizontal', 'Space evenly across'),
+            spread('vertical', 'Space evenly down'),
+          ];
+        })() : []),
         sep(),
         item('Bring to front', 'bringToFront', () => {
           reorderAll('front');

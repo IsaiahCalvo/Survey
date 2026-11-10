@@ -27,6 +27,7 @@ import Icon from '../Icons.jsx';
 import { watchLightPopover } from './dismissRules.js';
 import { useMenuFocus } from '../hooks/useMenuFocus.js';
 import { withOwnHandlers } from './Tooltip.jsx';
+import { isTypingTarget } from '../utils/typingTarget.js';
 import {
   CARRIED_DOCK_SLOTS,
   COMPACT_DOCK_SLOTS,
@@ -98,6 +99,11 @@ function GripIcon({ vertical }) {
   );
 }
 
+/** A pin's hint: its words, then the number key that arms it (1 to 9). */
+export function pinTipText(description, index, phone = false) {
+  return !phone && index >= 0 && index < 9 ? `${description}  ${index + 1}` : description;
+}
+
 export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone = false }) {
   const store = suppliedStore || getPinnedToolsStore();
   const state = usePinnedTools(store);
@@ -165,6 +171,32 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
     if (!current || !pin) return;
     setSession(armPin(current, sessionRef.current, pin));
   }, [setSession]);
+
+  // Number keys 1 to 9 arm the pins in their order, and 0 the last (Drawboard PDF Pro trial
+  // audit 2026-11-09: its favourites answer to the number keys). Not while
+  // typing, not with a modifier (Ctrl+1 is Fit width), not on a phone.
+  const pinsRef = useRef(pins);
+  pinsRef.current = pins;
+  const editingRef = useRef(editing);
+  editingRef.current = editing;
+  useEffect(() => {
+    if (!visible || phone) return undefined;
+    const onKeyDown = (event) => {
+      if (event.defaultPrevented || event.__surveyRemapped || event.repeat) return;
+      if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+      if (!/^[0-9]$/.test(event.key) || editingRef.current) return;
+      if (isTypingTarget(event.target) || isTypingTarget(document.activeElement)) return;
+      // 0 arms the last pin, however many there are (Drawboard's 0 is its
+      // last favourites slot; R3-H 2026-11-10).
+      const list = pinsRef.current;
+      const pin = event.key === '0' ? list[list.length - 1] : list[Number(event.key) - 1];
+      if (!pin || !apiRef.current) return;
+      event.preventDefault();
+      arm(pin);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [visible, phone, arm]);
 
   // Survey mode has its own pins (owner 2026-11-09): the dock shows the
   // survey set while Survey is on and the markup set everywhere else.
@@ -767,7 +799,7 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
           data-pin-width={badge || undefined}
           data-pin-armed={pressed ? 'true' : undefined}
           data-tool-switch="true"
-          {...withOwnHandlers(bindTip(description, inMenu ? 'above' : tipSide), inMenu ? {} : {
+          {...withOwnHandlers(bindTip(pinTipText(description, index, phone), inMenu ? 'above' : tipSide), inMenu ? {} : {
             onPointerDown: (event) => onPinPointerDown(event, pin, index),
             onKeyDown: (event) => onPinKeyDown(event, pin, index),
           })}

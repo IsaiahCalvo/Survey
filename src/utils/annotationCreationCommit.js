@@ -384,6 +384,7 @@ export function buildFreehandCommitJSON({
   authorId,
   points,
   strokeColor,
+  strokeOpacity = 100,
   highlightColor,
   strokeWidth,
   selectedModuleId,
@@ -402,9 +403,12 @@ export function buildFreehandCommitJSON({
       ? { meta: { authorId } }
       : {}),
     points,
-    // Parity quirk preserved: the fabric brush color was never composed with
-    // strokeOpacity for pen, and highlighter used the fixed highlightColor.
-    color: tool === 'highlighter' ? highlightColor : strokeColor,
+    // The pen honours the picked opacity (Drawboard PDF Pro trial audit
+    // 2026-11-09: Survey drew new ink at 100% whatever opacity was set). The
+    // highlighter keeps its own fixed highlightColor.
+    // At 100% the plain hex is kept so full-strength ink saves as before.
+    color: tool === 'highlighter' ? highlightColor
+      : ((strokeOpacity ?? 100) >= 100 ? strokeColor : composeAnnotationColor(strokeColor, strokeOpacity)),
     width: tool === 'highlighter' ? Math.max(strokeWidth, 8) : strokeWidth,
     data: { id },
   });

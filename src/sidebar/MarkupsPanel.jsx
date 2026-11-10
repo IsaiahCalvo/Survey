@@ -1,256 +1,273 @@
-// Markups panel (Nightly, flag 'markup-list'; Drawboard deep test gap):
-// every mark on the document, page by page, with search, filters (type, who,
-// layer, measurements only), measurement totals and a CSV of what is shown.
-// A press on a row picks the mark and glides to it, as a comment does.
-// The list itself is pure (markupList/markupList.js); the marks come from the
-// viewer through getMarkupSnapshot, read again while the panel is open.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+/**
+ * MarkupsPanel - every mark in the document in one list (behind the
+ * 'markup-list' flag, Nightly). Drawboard Projects + PDF Pro trial audit
+ * 2026-11-09: both list a sheet's markups grouped by kind, with author,
+ * search and export; Survey only had History (changes, not marks).
+ *
+ * Search by words (kind, text, measurement, "p3", author), narrow by kind,
+ * person or layer or to measurements only, see the measurements' totals,
+ * click a row to go to the mark and pick it, copy the list as CSV (with each
+ * measurement's quantity and unit). Reads the live page lists, so it follows
+ * edits as they happen. Pure rules: utils/markupList.js.
+ */
+import React, { useEffect, useMemo, useState } from 'react';
 import Icon from '../Icons';
-import SectionIconButton from '../components/SectionIconButton.jsx';
-import { useTooltip } from '../components/Tooltip';
-import { useDocumentPeople } from '../hooks/useDocumentPeople.js';
-import { personLabel } from '../services/markComments.js';
-import { showToast } from '../utils/toast';
-import { historyAnnotationInkBox } from '../utils/historyGeometry.js';
-import { measureMarkBox } from '../components/revisions/historyPageOverlay.js';
-import {
-  filterMarkupRows,
-  markupCsv,
-  markupCsvFileName,
-  markupFacets,
-  markupRows,
-  markupTotals,
-} from '../markupList/markupList.js';
+import ValueSelect from '../components/ValueSelect';
 import './MarkupsPanel.css';
+import { supabase } from '../supabaseClient';
+import { useTooltip } from '../components/Tooltip';
+import { showToast } from '../utils/toast';
+import { listCommentPeople } from '../services/markComments.js';
+import {
+  authorLabel,
+  buildMarkupRows,
+  filterMarkupRows,
+  groupMarkupRows,
+  markupRowsToCsv,
+  markupTotals,
+} from '../utils/markupList.js';
 
-const REFRESH_MS = 800;
-const EMPTY = Object.freeze({ annotationsByPage: {}, surveyMarkers: {}, layerState: null, documentName: '' });
-
-function toggleIn(list, id) {
-  if (!Array.isArray(list)) return [id];
-  const next = list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
-  return next.length ? next : null;
-}
-
-function FilterGroup({ title, items, chosen, onToggle, testId }) {
-  if (items.length < 2 && !(Array.isArray(chosen) && chosen.length)) return null;
-  return (
-    <div className="markups-filter-group" role="group" aria-label={title} data-markups-filter={testId}>
-      <span className="markups-filter-group__title">{title}</span>
-      <div className="markups-chips">
-        {items.map((item) => {
-          const on = Array.isArray(chosen) && chosen.includes(item.id);
-          return (
-            <button
-              key={item.id}
-              type="button"
-              className={`markups-chip${on ? ' is-on' : ''}`}
-              aria-pressed={on}
-              onClick={() => onToggle(item.id)}
-            >
-              {item.label}
-              <span className="markups-chip__count nums">{item.count}</span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
+function safeName(name) {
+  return String(name || 'document').replace(/\.pdf$/i, '').replace(/[^\w.-]+/g, '_').slice(0, 80) || 'document';
 }
 
 export default function MarkupsPanel({
+  annotationsByPage = null,
+  layerState = null,
+  viewerId = null,
   documentId = null,
+  documentName = '',
   isActive = false,
-  getMarkupSnapshot = null,
-  locateHistoryMark = null,
-  focusHistoryMark = null,
-  selectHistoryMark = null,
-  onNavigateToPage = null,
-  headActionsHost = null,
+  onOpenMark = null,
+  // Phone: the sheet steps down so the picked mark shows.
   onRequestSheetClose = undefined,
-  phone = false,
 }) {
   const tip = useTooltip();
-  const people = useDocumentPeople(documentId, { enabled: Boolean(documentId && isActive) });
-  const nameOf = useCallback((id) => personLabel(people.find((p) => p.id === id) || null), [people]);
-
-  // Read the marks again while open; only a changed store rebuilds the list.
-  const [snapshot, setSnapshot] = useState(EMPTY);
-  const lastRef = useRef(null);
-  useEffect(() => {
-    if (!isActive || typeof getMarkupSnapshot !== 'function') return undefined;
-    const read = () => {
-      const next = getMarkupSnapshot() || EMPTY;
-      const last = lastRef.current;
-      if (last && last.annotationsByPage === next.annotationsByPage && last.surveyMarkers === next.surveyMarkers
-        && last.layerState === next.layerState) return;
-      lastRef.current = next;
-      setSnapshot(next);
-    };
-    read();
-    const timer = window.setInterval(read, REFRESH_MS);
-    return () => window.clearInterval(timer);
-  }, [isActive, getMarkupSnapshot]);
-
-  const rows = useMemo(() => markupRows(snapshot), [snapshot]);
-  const facets = useMemo(() => markupFacets(rows, { nameOf }), [rows, nameOf]);
   const [query, setQuery] = useState('');
-  const [filters, setFilters] = useState({ types: null, authors: null, layers: null, measuresOnly: false });
-  const [filtersOpen, setFiltersOpen] = useState(false);
-  const shown = useMemo(() => filterMarkupRows(rows, { query, ...filters }, { nameOf }), [rows, query, filters, nameOf]);
+  const [kinds, setKinds] = useState(() => new Set());
+  const [author, setAuthor] = useState('');
+  const [layer, setLayer] = useState('');
+  const [measuresOnly, setMeasuresOnly] = useState(false);
+  const [closed, setClosed] = useState(() => new Set());
+  const [people, setPeople] = useState([]);
+
+  // Names for the people on the document (best effort; ids still group).
+  useEffect(() => {
+    if (!isActive || !documentId) return undefined;
+    let live = true;
+    listCommentPeople(supabase, documentId)
+      .then((list) => { if (live) setPeople(list); })
+      .catch(() => { /* "Someone" stands in */ });
+    return () => { live = false; };
+  }, [isActive, documentId]);
+
+  const peopleById = useMemo(() => new Map(people.map((p) => [String(p.id), p])), [people]);
+  const labelFor = useMemo(() => (id) => authorLabel(id, { viewerId, peopleById }), [viewerId, peopleById]);
+  // Only build while the panel is in view: a big set has thousands of marks.
+  const rows = useMemo(() => (isActive ? buildMarkupRows(annotationsByPage, { layerState }) : []), [isActive, annotationsByPage, layerState]);
+  const kindCounts = useMemo(() => groupMarkupRows(rows).map((g) => ({ kind: g.kind, label: g.label, count: g.rows.length })), [rows]);
+  const authors = useMemo(() => {
+    const ids = [...new Set(rows.map((r) => r.authorId || ''))];
+    return ids.map((id) => ({ id, label: labelFor(id || null) })).sort((a, b) => a.label.localeCompare(b.label));
+  }, [rows, labelFor]);
+  // Layers (Layers beta): only offered when the marks sit on more than one.
+  const layers = useMemo(() => {
+    const seen = new Map();
+    for (const row of rows) if (row.layerId && !seen.has(row.layerId)) seen.set(row.layerId, row.layerName || 'Layer');
+    return [...seen.entries()].map(([id, label]) => ({ id, label }));
+  }, [rows]);
+  const manyLayers = layers.length > 1;
+  const hasMeasures = useMemo(() => rows.some((r) => r.measure), [rows]);
+  const shown = useMemo(() => filterMarkupRows(rows, {
+    query,
+    kinds,
+    authors: author ? new Set([author]) : null,
+    layers: layer ? new Set([layer]) : null,
+    measuresOnly,
+    labelFor,
+  }), [rows, query, kinds, author, layer, measuresOnly, labelFor]);
+  const groups = useMemo(() => groupMarkupRows(shown), [shown]);
   const totals = useMemo(() => markupTotals(shown), [shown]);
-  const filterCount = ['types', 'authors', 'layers'].reduce((n, k) => n + (Array.isArray(filters[k]) ? 1 : 0), 0) + (filters.measuresOnly ? 1 : 0);
-  const hasMeasures = rows.some((r) => r.measure);
 
-  const groups = useMemo(() => {
-    const out = [];
-    for (const row of shown) {
-      const last = out[out.length - 1];
-      if (last && last.pageNumber === row.pageNumber) last.rows.push(row);
-      else out.push({ pageNumber: row.pageNumber, rows: [row] });
-    }
-    return out;
-  }, [shown]);
+  const toggleKind = (kind) => setKinds((prev) => {
+    const next = new Set(prev);
+    if (next.has(kind)) next.delete(kind); else next.add(kind);
+    return next;
+  });
+  const toggleGroup = (kind) => setClosed((prev) => {
+    const next = new Set(prev);
+    if (next.has(kind)) next.delete(kind); else next.add(kind);
+    return next;
+  });
 
-  const goTo = useCallback((row) => {
-    const located = row.id && typeof locateHistoryMark === 'function' ? locateHistoryMark(row.id) : null;
-    const page = located?.pageNumber || row.pageNumber;
-    const box = (typeof document !== 'undefined' ? measureMarkBox(document, row.id, page) : null)
-      || (located?.annotation ? historyAnnotationInkBox(located.annotation) : null);
-    const picked = located && typeof selectHistoryMark === 'function' ? selectHistoryMark(row.id) : false;
-    if (typeof onRequestSheetClose === 'function') onRequestSheetClose();
-    const focus = () => {
-      const focused = typeof focusHistoryMark === 'function' ? focusHistoryMark(page, box, { animate: true }) : false;
-      if (!focused) onNavigateToPage?.(page, { fallback: 'nearest', bypassActiveSpace: true });
-    };
-    if (picked && typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
-      const raf = window.requestAnimationFrame;
-      raf(() => raf(() => raf(focus)));
-    } else {
-      focus();
-    }
-  }, [focusHistoryMark, locateHistoryMark, onNavigateToPage, onRequestSheetClose, selectHistoryMark]);
-
-  const exportCsv = useCallback(async () => {
-    if (shown.length === 0) { showToast('No markups to save.', 'info'); return; }
+  const downloadCsv = () => {
+    if (!shown.length) return;
     try {
-      const name = snapshot.documentName || 'Document';
-      const csv = markupCsv(shown, { nameOf, documentName: String(name).replace(/\.pdf$/i, '') });
-      const { deliverCsv } = await import('../utils/exportPdfBytes.js');
-      const result = await deliverCsv(csv, markupCsvFileName(name), { title: 'Save markups' });
-      if (result !== 'canceled') showToast(`Saved ${shown.length} markup${shown.length === 1 ? '' : 's'} as CSV`, 'success');
-    } catch (err) {
-      console.warn('[markups] CSV not saved', err);
-      showToast('The CSV couldn’t be saved.');
+      const blob = new Blob([markupRowsToCsv(shown, { labelFor })], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${safeName(documentName)}_markups.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      showToast(`${shown.length} ${shown.length === 1 ? 'markup' : 'markups'} saved as CSV`, 'success');
+    } catch {
+      showToast('Could not save the list', 'error');
     }
-  }, [shown, nameOf, snapshot.documentName]);
+  };
 
-  const csvButton = headActionsHost
-    ? createPortal(<SectionIconButton icon="download" label="Save list as CSV" data-markups-csv="true" onClick={exportCsv} />, headActionsHost)
-    : null;
+  const filtered = query || kinds.size > 0 || author || layer || measuresOnly;
+  const csvTip = tip('Save this list as CSV', 'below');
 
   return (
-    <div className={`markups-panel${phone ? ' is-phone' : ''}`} data-testid="markups-panel">
-      {csvButton}
-      <div className="markups-search">
-        <Icon name="search" size={14} />
-        <input
-          type="search"
-          value={query}
-          placeholder="Search markups"
-          aria-label="Search markups"
-          data-markups-search="true"
-          onChange={(e) => setQuery(e.target.value)}
-        />
+    <div className="markups-panel" data-testid="markups-panel">
+      <div className="markups-panel__head">
+        <div className="markups-panel__search">
+          <Icon name="search" size={14} color="currentColor" />
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search markups"
+            aria-label="Search markups"
+          />
+        </div>
         <button
           type="button"
-          className={`markups-filter-btn${filtersOpen || filterCount ? ' is-on' : ''}`}
-          aria-expanded={filtersOpen}
-          aria-label={filterCount ? `Filters (${filterCount} on)` : 'Filters'}
-          data-markups-filter-toggle="true"
-          {...tip('Filters', 'below')}
-          onClick={() => setFiltersOpen((open) => !open)}
+          className="markups-panel__icon-btn"
+          aria-label="Save this list as CSV"
+          disabled={!shown.length}
+          onClick={downloadCsv}
+          {...csvTip}
         >
-          <Icon name="filter" size={14} />
-          {filterCount > 0 && <span className="markups-filter-btn__count nums">{filterCount}</span>}
+          <Icon name="download" size={16} color="currentColor" />
         </button>
       </div>
-      {filtersOpen && (
-        <div className="markups-filters" data-markups-filters="true">
-          <FilterGroup title="Type" testId="type" items={facets.types} chosen={filters.types} onToggle={(id) => setFilters((f) => ({ ...f, types: toggleIn(f.types, id) }))} />
-          <FilterGroup title="Who" testId="who" items={facets.authors} chosen={filters.authors} onToggle={(id) => setFilters((f) => ({ ...f, authors: toggleIn(f.authors, id) }))} />
-          <FilterGroup title="Layer" testId="layer" items={facets.layers} chosen={filters.layers} onToggle={(id) => setFilters((f) => ({ ...f, layers: toggleIn(f.layers, id) }))} />
-          <div className="markups-filter-foot">
-            {hasMeasures && (
-              <button
-                type="button"
-                className={`markups-chip${filters.measuresOnly ? ' is-on' : ''}`}
-                aria-pressed={filters.measuresOnly}
-                data-markups-measures-only="true"
-                onClick={() => setFilters((f) => ({ ...f, measuresOnly: !f.measuresOnly }))}
-              >
-                Measurements only
-              </button>
-            )}
-            {filterCount > 0 && (
-              <button type="button" className="markups-text-btn" onClick={() => setFilters({ types: null, authors: null, layers: null, measuresOnly: false })}>
-                Clear filters
-              </button>
-            )}
-          </div>
+
+      {kindCounts.length > 1 && (
+        <div className="markups-panel__chips" role="group" aria-label="Show kinds">
+          {kindCounts.map((k) => (
+            <button
+              key={k.kind}
+              type="button"
+              className={`markups-panel__chip${kinds.has(k.kind) ? ' is-on' : ''}`}
+              aria-pressed={kinds.has(k.kind) ? 'true' : 'false'}
+              data-markup-kind-chip={k.kind}
+              onClick={() => toggleKind(k.kind)}
+            >
+              {k.label} <span className="markups-panel__count">{k.count}</span>
+            </button>
+          ))}
         </div>
       )}
-      <div className="markups-count">
-        <span data-markups-count={shown.length}>
-          {shown.length === rows.length ? `${rows.length} markup${rows.length === 1 ? '' : 's'}` : `${shown.length} of ${rows.length} markups`}
-        </span>
-        {!headActionsHost && shown.length > 0 && (
-          <button type="button" className="markups-text-btn" data-markups-csv="true" onClick={exportCsv}>
-            <Icon name="download" size={14} /> CSV
+
+      {authors.length > 1 && (
+        <div className="markups-panel__author">
+          <span aria-hidden="true">By</span>
+          <ValueSelect
+            label="Made by"
+            size="sm"
+            value={author}
+            options={[{ value: '', label: 'Everyone' }, ...authors.map((a) => ({ value: a.id, label: a.label }))]}
+            onChange={setAuthor}
+          />
+        </div>
+      )}
+
+      {(manyLayers || hasMeasures) && (
+        <div className="markups-panel__author" data-markups-more-filters="true">
+          {manyLayers && (
+            <>
+              <span aria-hidden="true">Layer</span>
+              <ValueSelect
+                label="Layer"
+                size="sm"
+                value={layer}
+                options={[{ value: '', label: 'All layers' }, ...layers.map((l) => ({ value: l.id, label: l.label }))]}
+                onChange={setLayer}
+              />
+            </>
+          )}
+          {hasMeasures && (
+            <button
+              type="button"
+              className={`markups-panel__chip${measuresOnly ? ' is-on' : ''}`}
+              aria-pressed={measuresOnly ? 'true' : 'false'}
+              data-markups-measures-only="true"
+              onClick={() => setMeasuresOnly((on) => !on)}
+            >
+              Measurements only
+            </button>
+          )}
+        </div>
+      )}
+
+      <div className="markups-panel__summary" aria-live="polite">
+        {rows.length === 0
+          ? 'No markups yet. Marks you draw show up here.'
+          : filtered
+            ? `${shown.length} of ${rows.length} markups`
+            : `${rows.length} ${rows.length === 1 ? 'markup' : 'markups'}`}
+        {filtered && (
+          <button type="button" className="markups-panel__clear" onClick={() => { setQuery(''); setKinds(new Set()); setAuthor(''); setLayer(''); setMeasuresOnly(false); }}>
+            Clear
           </button>
         )}
       </div>
+
       {totals.length > 0 && (
-        <div className="markups-totals" data-markups-totals="true">
+        <div className="markups-panel__totals" data-markups-totals="true" aria-label="Measurement totals">
           {totals.map((t) => (
-            <span key={`${t.kind}|${t.unit}`} className="markups-total" data-markups-total={t.kind}>
-              <span className="markups-total__name">{t.name}</span>
-              <span className="nums">{t.quantity} {t.unit}</span>
+            <span key={`${t.kind}|${t.unit}`} className="markups-panel__total" data-markups-total={t.kind}>
+              <span className="markups-panel__total-name">{t.name}</span>
+              <span className="markups-panel__total-value">{t.quantity.toLocaleString()} {t.unit}</span>
             </span>
           ))}
         </div>
       )}
-      <div className="markups-list" role="list">
-        {rows.length === 0 && <div className="markups-empty">No markups yet.</div>}
-        {rows.length > 0 && shown.length === 0 && <div className="markups-empty">No markups match.</div>}
-        {groups.map((group) => (
-          <div key={group.pageNumber} className="markups-page" role="presentation">
-            <div className="markups-page__head">Page {group.pageNumber}</div>
-            {group.rows.map((row) => (
+
+      <div className="markups-panel__list" role="list">
+        {groups.map((group) => {
+          const open = !closed.has(group.kind);
+          return (
+            <div key={group.kind} className="markups-panel__group" role="listitem">
               <button
-                key={`${row.kind}:${row.id}`}
                 type="button"
-                role="listitem"
-                className="markups-row"
-                data-markup-id={row.id}
-                onClick={() => goTo(row)}
+                className="markups-panel__group-head"
+                aria-expanded={open ? 'true' : 'false'}
+                onClick={() => toggleGroup(group.kind)}
               >
-                <span className="markups-row__glyph" style={row.color ? { color: row.color } : undefined}>
-                  <Icon name={row.glyph} size={15} />
-                </span>
-                <span className="markups-row__main">
-                  <span className="markups-row__title">
-                    {row.measure ? <><strong className="nums">{row.measure.text}</strong> <span className="markups-row__type">{row.typeName}</span></> : (row.text || row.typeName)}
-                  </span>
-                  <span className="markups-row__meta">
-                    {[row.measure || !row.text ? null : row.typeName, row.authorId === 'pdf' ? 'No author' : nameOf(row.authorId), row.layerName && rows.some((r) => r.layerId !== row.layerId) ? row.layerName : null].filter(Boolean).join(' · ')}
-                  </span>
-                </span>
+                <Icon name={open ? 'chevronDown' : 'chevronRight'} size={14} color="currentColor" />
+                <span>{group.label}</span>
+                <span className="markups-panel__count">{group.rows.length}</span>
               </button>
-            ))}
-          </div>
-        ))}
+              {open && group.rows.map((row) => (
+                <button
+                  key={`${row.pageNumber}:${row.id}`}
+                  type="button"
+                  className="markups-panel__row"
+                  data-markup-row={row.id}
+                  onClick={() => { onRequestSheetClose?.(); onOpenMark?.(row); }}
+                >
+                  <span className="markups-panel__dot" style={{ background: row.color || 'var(--text-3)' }} aria-hidden="true" />
+                  <span className="markups-panel__main">
+                    <span className="markups-panel__title">
+                      {row.measure && row.text !== row.measure.text
+                        ? <><strong>{row.measure.text}</strong> {row.text}</>
+                        : (row.text || row.kindLabel)}
+                    </span>
+                    <span className="markups-panel__meta">
+                      {[row.measure ? row.measure.name : null, labelFor(row.authorId), manyLayers ? row.layerName : null].filter(Boolean).join(' · ')}
+                    </span>
+                  </span>
+                  <span className="markups-panel__page">p. {row.pageNumber}</span>
+                </button>
+              ))}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

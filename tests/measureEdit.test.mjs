@@ -12,7 +12,7 @@ import {
   scaleFromPreset,
   stampMeasure,
 } from '../src/utils/measure/measureScale.js';
-import { markupRows } from '../src/markupList/markupList.js';
+import { buildMarkupRows } from '../src/utils/markupList.js';
 import { menuIconFor } from '../src/utils/menuItems.js';
 import { FEATURE_FLAGS } from '../src/featureFlags.js';
 
@@ -51,9 +51,9 @@ test('measureCaption puts the name in front, and hides a turned-off caption', ()
 });
 
 test('the markup list shows a measurement by its name', () => {
-  const rows = markupRows({ annotationsByPage: { 1: { objects: [volume({ label: 'Room 101' })] } } });
+  const rows = buildMarkupRows({ 1: { objects: [volume({ label: 'Room 101' })] } });
   assert.equal(rows[0].text, 'Room 101');
-  assert.equal(rows[0].typeName, 'Volume');
+  assert.equal(rows[0].measure.name, 'Volume');
 });
 
 test('measure-edit is a beta flag with a migration row; the menu and the page layer use it', () => {

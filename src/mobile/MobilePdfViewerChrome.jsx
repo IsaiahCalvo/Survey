@@ -1,7 +1,10 @@
 import { CounterSeriesPicker } from '../components/CounterSeriesMenu.jsx';
+import { useBackLayer } from '../utils/backNavigation.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from '../Icons';
+import EyeGlyph from '../components/EyeGlyph.jsx';
+import { setMarksHidden, useMarksHidden } from '../utils/marksHidden.js';
 import { ANNOTATION_SIZE_PRESETS } from '../components/AnnotationSizeControl';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from '../utils/annotationSize';
 import CompactColorPicker, { PRESET_COLORS } from '../components/CompactColorPicker';
@@ -9,6 +12,7 @@ import PageGridToggle from '../components/PageGridToggle';
 import DarkPagesToggle from '../components/DarkPagesToggle';
 import { PageGridSettingsPanel } from '../components/PageGridSettings';
 import { isFeatureOn } from '../featureFlags.js';
+import { quickColoursForTool } from '../utils/quickStylePresets.js';
 import SnappingToggle from '../components/SnappingToggle.jsx';
 import { composeTextColor, splitTextColor } from '../utils/textColorOpacity';
 import { resolveFontSizeDraft } from '../utils/selectedTextFormatting.js';
@@ -45,6 +49,7 @@ import './mobilePdfViewer.css';
 import { useTooltip } from '../components/Tooltip';
 import { SECTION_DONE_ICON } from '../components/SectionIconButton.jsx';
 import { OPEN_EXPORT_PDF_EVENT } from '../utils/exportPdfModes.js';
+import { OPEN_VIEWER_SHARE_EVENT } from '../utils/viewerShare.js';
 import { RENAME_OPEN_DOCUMENT_EVENT } from '../tabs/tabStrip.js';
 import { usePolylineCurve } from '../hooks/usePolylineCurve.js';
 import { POLYLINE_CURVE_SET_EVENT } from '../utils/polySpline.js';
@@ -1094,6 +1099,22 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
               desktop top bar's Export (it was the share glyph here). */}
           <Icon name="download" size={HEADER_GLYPH} color="currentColor" />
         </button>
+        {/* Nightly (flag 'viewer-share'): share this document; AppShell owns
+            the dialog, as for Export's choices. */}
+        {isFeatureOn('viewer-share') && (
+          <button
+            type="button"
+            className="mobile-pdf-header__icon"
+            aria-label="Share"
+            data-viewer-share="true"
+            onClick={() => {
+              commitPanelTyping();
+              window.dispatchEvent(new CustomEvent(OPEN_VIEWER_SHARE_EVENT));
+            }}
+          >
+            <Icon name="share" size={HEADER_GLYPH} color="currentColor" />
+          </button>
+        )}
       </div>
 
       <div className="mobile-pdf-header__pages" ref={pagesRef}>
@@ -2173,6 +2194,7 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
       {!isEraser && showStroke && !isMultiColour && (
         <QuickColourDots
           platform="phone"
+          {...quickColoursForTool(api?.contextTool || api?.activeTool, isFeatureOn('tool-quick-colours'))}
           value={quickColourShown}
           customActive={api.selectionMixed?.strokeColor ? false : undefined}
           onPick={applyQuickColour}
@@ -2695,12 +2717,16 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
   const tip = useTooltip();
   const [openCategory, setOpenCategory] = useState(null);
   const [moreOpen, setMoreOpen] = useState(false);
+  const allMarksHidden = useMarksHidden();
   const [presenceOpen, setPresenceOpen] = useState(false);
   // Phone survey round (2026-10-13): the long-list sheet ('categories' |
   // 'entities' | 'templates') - MobileSurveyRail.jsx.
   const [surveyListKind, setSurveyListKind] = useState(null);
   const [syncDetailsOpen, setSyncDetailsOpen] = useState(false);
   const [syncDetailsPosition, setSyncDetailsPosition] = useState(null);
+  // Back (browser / Android) closes an open rail flyout first ('back-button').
+  useBackLayer(Boolean(openCategory), () => setOpenCategory(null));
+  useBackLayer(moreOpen, () => setMoreOpen(false));
   const [hasTouchPointer, setHasTouchPointer] = useState(false);
   // Phase F (motion & feel): the active-users sheet gets the shared bottom-sheet
   // motion — finger-follow drag off the handle + dy>82/vy>0.65 dismiss + spring-
@@ -3285,6 +3311,23 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                 <Icon name="document" size={16} color="currentColor" />
                 PDF tools…
               </button>
+              {/* Hide all marks (Nightly 'hide-marks'): the phone has no
+                  right rail, so its eye lives here. The chip over the page
+                  brings them back. */}
+              {isFeatureOn('hide-marks') && (
+                <button
+                  type="button"
+                  data-mobile-hide-marks=""
+                  aria-pressed={allMarksHidden}
+                  onClick={() => {
+                    setMoreOpen(false);
+                    setMarksHidden(!allMarksHidden);
+                  }}
+                >
+                  <EyeGlyph open={!allMarksHidden} size={16} />
+                  {allMarksHidden ? 'Show marks' : 'Hide marks'}
+                </button>
+              )}
               {/* The phone has no tab strip to right-click, so the open
                   document is renamed from here (owner 2026-10-29: everything
                   with a name can be renamed). AppShell opens the same dialog
@@ -3466,9 +3509,9 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
 }
 
 export function MobilePdfViewerDock({ onOpenPanel, onToggleHub, onOpenSurvey, hubMode = 'pages', hubOpen = false, spacesActive, surveyActive, covered = false, openPanel = null }) {
-  const hubLabels = { pages: 'Pages', search: 'Search', bookmarks: 'Bookmarks' };
+  const hubLabels = { pages: 'Pages', search: 'Search', bookmarks: 'Bookmarks', layers: 'Layers', library: 'Library', comments: 'Comments', markups: 'Markups' };
   // Pages draws the desktop rail's Pages glyph (PDFSidebar), not the document.
-  const hubIcons = { pages: 'pages', search: 'search', bookmarks: 'bookmark' };
+  const hubIcons = { pages: 'pages', search: 'search', bookmarks: 'bookmark', layers: 'shapes', library: 'library', comments: 'comment', markups: 'listChecks' };
   // `covered`: a phone panel is open over the dock. The dock stays mounted
   // under it (so it is already in place when the panel slides away - see
   // AppShell), but takes no focus, taps or screen-reader reads meanwhile.

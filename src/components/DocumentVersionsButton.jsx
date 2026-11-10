@@ -142,7 +142,7 @@ export function DocumentVersionsDialogs({ state }) {
           />
         )}
         {state.comparing && (
-          <VersionCompareDialog older={state.comparing.older} newer={state.comparing.newer} onClose={state.closeCompare} />
+          <VersionCompareDialog older={state.comparing.older} newer={state.comparing.newer} versions={state.versions} onClose={state.closeCompare} />
         )}
       </Suspense>
     </BodyPortal>

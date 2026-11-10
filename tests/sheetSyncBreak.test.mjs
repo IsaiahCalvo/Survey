@@ -519,6 +519,17 @@ test('a note longer than a cell holds is written cut to fit, keeps its full text
   assert.equal(ctx.markers.d1.note.text.length, 40001, 'the app keeps its full note');
 });
 
+test('a NUL in a note (pasted from a PDF) is left out of the cell, so Excel never sends back the note cut short', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'Door\u0000 A', { note: { text: 'first\u0000second' } }) } });
+  await ctx.round();
+  const row = (await ctx.sheet()).rows[1];
+  assert.equal(row[await ctx.col('Notes')], 'firstsecond');
+  assert.equal(row[await ctx.col('Item')], 'Door A');
+  const quiet = await ctx.round({ force: true });
+  assert.deepEqual(Object.values(quiet.summary).filter(Boolean), []);
+  assert.equal(ctx.markers.d1.note.text, 'first\u0000second', 'the app keeps its text');
+});
+
 test('a totals line typed under the items is not made an item, and new items go above it', async () => {
   const ctx = await setup({ markers: { d1: door('d1', 'D-101'), d2: door('d2', 'D-102') } });
   await ctx.round();

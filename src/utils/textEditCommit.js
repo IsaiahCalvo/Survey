@@ -213,6 +213,9 @@ export function buildNewTextCommitJSON({
   if (backgroundColor) json.backgroundColor = backgroundColor;
   if (Array.isArray(strokeDashArray) && strokeDashArray.length) json.strokeDashArray = [...strokeDashArray];
   applyTextStyle(json, style);
+  // Beta 'word-wrap': the box wraps at spaces, everywhere it is drawn
+  // (fabric's own switch; textWrapMode.js).
+  if (style?.wrapWords === true) json.splitByGrapheme = false;
   const cloud = Number(cloudIntensity);
   if (cloudIntensity != null && Number.isFinite(cloud)) {
     json.data = { ...(json.data || {}), pdfCloudIntensity: Math.max(1, cloud) };

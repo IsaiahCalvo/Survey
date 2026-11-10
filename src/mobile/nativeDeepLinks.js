@@ -11,6 +11,8 @@
 // A file:// or content:// url is a PDF opened from another app ("Open in
 // Survey"); src/mobile/nativeOpenFile.js reads it for the home screen.
 import { rememberClaim } from '../services/sheetSyncClaim.js';
+import { nativeBackAction } from '../utils/backNavigation.js';
+import { isFeatureOn } from '../featureFlags.js';
 
 // Kept here (tiny) so a plain link never loads the file reader.
 const isOpenedFileUrl = (url) => typeof url === 'string' && /^(file|content):\/\//i.test(url);
@@ -62,6 +64,15 @@ export function installNativeDeepLinks(win = typeof window !== 'undefined' ? win
       if (claim) { rememberClaim(claim.provider, claim.code); return; }
       const route = deepLinkRoute(url);
       if (route) win.location.assign(route);
+    });
+    // Android back button: back through the page history (which closes an
+    // open sheet, then the document: src/utils/backNavigation.js), and at
+    // the bottom minimise with the flag on, else quit as before.
+    App.addListener('backButton', ({ canGoBack }) => {
+      const action = nativeBackAction({ canGoBack, enabled: isFeatureOn('back-button') });
+      if (action === 'back') win.history.back();
+      else if (action === 'minimize') App.minimizeApp();
+      else App.exitApp();
     });
   }).catch((err) => console.warn('[nativeDeepLinks] not started', err));
   return true;
