@@ -197,7 +197,9 @@ function LibraryTile({
   );
 }
 
-export default function MarkLibraryPanel({ phone = false }) {
+// onPlaced: the phone slides its sheet down after a tap places an item, so
+// the item shows on the page instead of under the sheet.
+export default function MarkLibraryPanel({ phone = false, onPlaced }) {
   const state = useMarkLibrary();
   const tip = useTooltip();
   const armedId = useArmedId();
@@ -356,7 +358,10 @@ export default function MarkLibraryPanel({ phone = false }) {
 
   const activate = (item, event) => {
     if (event?.pointerType === 'touch' || phone) {
-      if (placeLibraryItem(item, { center: true })) showToast(`Placed “${item.name}”`, 'info');
+      if (placeLibraryItem(item, { center: true })) {
+        showToast(`Placed “${item.name}”`, 'info');
+        onPlaced?.(item);
+      }
       return;
     }
     if (armedId === item.id) { disarmLibraryItem(); return; }

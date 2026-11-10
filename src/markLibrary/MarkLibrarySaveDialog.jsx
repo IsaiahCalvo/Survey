@@ -11,6 +11,7 @@ import DialogCard, { DIALOG_FIELD_STYLE, DIALOG_LABEL_STYLE } from '../component
 import BodyPortal from '../components/BodyPortal.js';
 import ValueSelect from '../components/ValueSelect.jsx';
 import { showToast } from '../utils/toast.js';
+import { isPhoneLayout } from '../utils/layoutMode.js';
 import { Z_INDEX } from '../theme';
 import { libraryErrorMessage, markLibraryStore, useMarkLibrary } from './markLibraryStore.js';
 import {
@@ -26,7 +27,26 @@ import {
 
 const NEW_ITEM = '__new__';
 
+// Phones keep the browser's own list (its wheel), as ValueSelect asks of
+// its callers; the desktop layout (tablets too) keeps the app's drop-down.
+function Pick({ phone, label, value, options, onChange }) {
+  if (!phone) return <ValueSelect label={label} value={value} options={options} onChange={onChange} />;
+  return (
+    <select
+      className="dialog-prompt-input"
+      aria-label={label}
+      data-value={value ?? ''}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      style={{ ...DIALOG_FIELD_STYLE, width: '100%' }}
+    >
+      {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+    </select>
+  );
+}
+
 export default function MarkLibrarySaveDialog({ open, payload, onClose }) {
+  const [phone] = useState(() => isPhoneLayout());
   const state = useMarkLibrary();
   const libraries = markLibraryStore.addableLibraries();
   const [library, setLibrary] = useState('personal');
@@ -135,7 +155,8 @@ export default function MarkLibrarySaveDialog({ open, payload, onClose }) {
           {libraries.length > 1 && (
             <div>
               <span style={DIALOG_LABEL_STYLE}>Library</span>
-              <ValueSelect
+              <Pick
+                phone={phone}
                 label="Library"
                 value={library}
                 options={libraryOptions}
@@ -146,7 +167,7 @@ export default function MarkLibrarySaveDialog({ open, payload, onClose }) {
           {replaceable.length > 0 && (
             <div>
               <span style={DIALOG_LABEL_STYLE}>Save as</span>
-              <ValueSelect label="Save as" value={target} options={targetOptions} onChange={setTarget} />
+              <Pick phone={phone} label="Save as" value={target} options={targetOptions} onChange={setTarget} />
             </div>
           )}
           <label style={{ display: 'block' }}>
