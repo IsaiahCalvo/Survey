@@ -429,3 +429,12 @@ body:has([data-annotation-context-menu]) .selection-quick-bar {
   color: var(--text-3, var(--text-2));
   cursor: default;
 }
+
+/* A phone sheet (Pages, Search, Layers…) lives in the 5600 chrome host, under
+   this bar's 5700: the bar floated over the sheet and a tap meant for the
+   sheet hit Delete (deep test 2026-11-10). Hide it while a sheet is open; it
+   comes back when the sheet closes. */
+body:has(.mobile-pdf-sheet:not(.is-collapsed)) .selection-quick-bar[data-phone='true'] {
+  visibility: hidden;
+  pointer-events: none;
+}

@@ -509,7 +509,9 @@ test('rule 8: Shift-click adds under select-capable tools only', () => {
 test('rule 9: after a new shape, a click on empty page only drops it; with nothing picked a Line click is its own', () => {
   for (const tool of rules.SHAPE_DRAW_TOOLS) assert.equal(press(tool, 'empty', true).click, 'deselect', tool);
   assert.equal(press('line', 'empty', false).click, 'tool');
-  assert.equal(press('polygon', 'empty', true).click, 'deselect');
+  // Point tools drop the pick and place point 1 in the same click.
+  assert.equal(press('polygon', 'empty', true).click, 'tool');
+  assert.equal(press('polygon', 'empty', true).clearsSelection, true);
   assert.equal(press('polygon', 'empty', false).click, 'tool');
 });
 
