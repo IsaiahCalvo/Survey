@@ -2388,7 +2388,15 @@ export default function App({ devPreviewReturnTab = null }) {
     if (!documentId || !item?.id) return;
     requestMarkCommentsFocus({ documentId: String(documentId), markId: item.id, pageNumber: item.pageNumber });
   }, [activeTab?.file?.id]);
-  const documentVersions = useDocumentVersions(documentVersionsEnabled ? activeTab?.file?.id || null : null, handleDocumentSelect);
+  // Documents found superseded while open: they stay read-only after a
+  // document switch clears the versions list (a tab's file keeps the
+  // superseded_by it was opened with, which a later upload never updates).
+  const [supersededDocIds, setSupersededDocIds] = useState(() => new Set());
+  const markDocSuperseded = useCallback((id) => {
+    if (!id) return;
+    setSupersededDocIds((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+  }, []);
+  const documentVersions = useDocumentVersions(documentVersionsEnabled ? activeTab?.file?.id || null : null, handleDocumentSelect, markDocSuperseded);
   // An older version opens read-only, with a bar to the current one.
   const olderVersionOpen = documentVersions.open && !documentVersions.open.isCurrent ? documentVersions.open : null;
   const currentVersion = documentVersions.versions.find((v) => v.isCurrent) || null;
@@ -5080,7 +5088,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       documentId={tab.file?.id || null}
                       viewerUserId={user?.id || null}
                       isActive={isVisible}
-                      readOnlyWithoutLock={Boolean(tab.file?.superseded_by) || (tab.id === activeTabId && Boolean(olderVersionOpen))}
+                      readOnlyWithoutLock={Boolean(tab.file?.superseded_by) || supersededDocIds.has(tab.file?.id) || (tab.id === activeTabId && Boolean(olderVersionOpen))}
                       onLockStateChange={(isLocked) => {
                         setDocumentLockedByTab((current) => (
                           current[tab.id] === isLocked
@@ -5837,7 +5845,7 @@ export default function App({ devPreviewReturnTab = null }) {
         </div>
       )}
       <DocumentVersionsDialogs state={documentVersions} />
-      {isViewerVisible && (olderVersionOpen || activeTab?.file?.superseded_by) && (
+      {isViewerVisible && (olderVersionOpen || activeTab?.file?.superseded_by || supersededDocIds.has(activeTab?.file?.id)) && (
         <OlderVersionBar
           versionNumber={olderVersionOpen?.versionNumber || null}
           onOpenCurrent={currentVersion ? () => documentVersions.openVersion(currentVersion) : null}
