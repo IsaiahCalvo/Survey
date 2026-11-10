@@ -66,6 +66,8 @@ import { contextMenuInputOf, isTouchMenuInput } from '../utils/touchLongPress.js
 import { PageMenuList } from '../sidebar/PageActionsMenu.jsx';
 import { availableActions, buildCanvasPageItems, buildPageMenuItems, runPageMenuAction } from '../sidebar/pageMenuItems.js';
 import { keyboardControlProps } from '../utils/keyboardActivation.js';
+import { menuKeyHint } from '../utils/menuKeyHints.js';
+import { shortcutBinding } from '../utils/customKeyboardShortcuts.js';
 
 // w61: `getPageObjects(pageNumber)` (optional) returns the page's mark list,
 // so the menu can note which marks it was opened on (by id) and still act on
@@ -194,8 +196,19 @@ const MARK_ROW_ICONS = { arrange: 'layers', align: 'alignLeft', lock: 'lock', un
 const markRowIcon = (it) => MARK_ROW_ICONS[it.key] || menuIconFor(it.label);
 const MENU_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter'];
 
+const MENU_IS_MAC = typeof navigator !== 'undefined'
+  && /(Mac|iPhone|iPod|iPad)/i.test(`${navigator.platform || ''} ${navigator.userAgent || ''}`);
+
 function MarkMenuBody({ layout, touchRows }) {
   const tip = useTooltip();
+  // Nightly 'menu-keys': each item's key on its row and in its hint. Not on
+  // a finger- or pen-opened menu, which has no keyboard to hand.
+  const [keysOn] = useState(() => isFeatureOn('menu-keys'));
+  const keyOf = (key) => (keysOn && !touchRows ? menuKeyHint(key, { isMac: MENU_IS_MAC, binding: shortcutBinding }) : null);
+  const keyCap = (key) => {
+    const hint = keyOf(key);
+    return hint ? <span className="annotation-menu-key" aria-hidden="true">{hint}</span> : null;
+  };
   const rootRef = useRef(null);
   const arrangeRowRef = useRef(null);
   const submenuRef = useRef(null);
@@ -321,13 +334,17 @@ function MarkMenuBody({ layout, touchRows }) {
   }, [layout, arrange, openKey]);
 
   // The hint sits above the icon row, clear of the rows below it.
-  const tipFor = (label) => (touchRows ? {} : tip(label, 'above'));
+  const tipFor = (label, key) => {
+    if (touchRows) return {};
+    const hint = keyOf(key);
+    return tip(hint ? `${label} (${hint})` : label, 'above');
+  };
   return (
     <div ref={rootRef} className="annotation-menu-body">
       <MenuGlide />
       <div role="group" aria-label="Edit" className="annotation-menu-quick">
         {layout.quick.map((it) => {
-          const hint = tipFor(it.label);
+          const hint = tipFor(it.label, it.key);
           return (
           <button
             key={it.key}
@@ -382,6 +399,7 @@ function MarkMenuBody({ layout, touchRows }) {
                   onClick={sub.disabled ? undefined : sub.onClick}
                 >
                   {sub.label}
+                  {keyCap(sub.key)}
                 </div>
               ))}
             </div>
@@ -400,6 +418,7 @@ function MarkMenuBody({ layout, touchRows }) {
         >
           {markRowIcon(it) && <Icon name={markRowIcon(it)} size={14} color="currentColor" />}
           {it.label}
+          {keyCap(it.key)}
         </div>
       )))}
     </div>

@@ -197,6 +197,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Default units setting: imperial or metric for page scale and new documents',
     stage: 'beta',
   }),
+  'menu-keys': Object.freeze({
+    label: 'Keys shown on the mark right-click menu rows',
+    stage: 'beta',
+  }),
   'viewer-share': Object.freeze({
     label: 'Share from inside a document: a Share button in the viewer top bar',
     stage: 'beta',
