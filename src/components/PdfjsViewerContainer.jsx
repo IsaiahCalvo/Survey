@@ -73,7 +73,9 @@ import {
 } from '../utils/panAxisRules.js';
 import { trackSurveyAnalyticsEvent } from '../utils/surveyAnalytics';
 import PdfjsTextLayer from './PdfjsTextLayer';
-import { getPageViewBase, getPageViewSizes, pageViewKey, pageViewUprightKey } from '../utils/pageViewDocument.js';
+import { getPageViewBase, getPageViewSizes, pageViewEntry, pageViewKey, pageViewUprightKey } from '../utils/pageViewDocument.js';
+import { createPagePreviewSession, decodeKeptPreview } from '../utils/pagePreviewSession.js';
+import { pageThumbWorkerSupported } from '../utils/pageThumbRenderer.js';
 import { destroyPdfDocument } from '../utils/destroyPdfDocument.js';
 import {
   getWidthFitMinimumScale,
@@ -393,7 +395,20 @@ function pageThumbGet(pageId) {
 // Keep a thumbnail of `src` (drawn at `srcScale`) for this page, unless one
 // at least as sharp is already kept. A sharper source is shrunk to the
 // thumbnail scale with one image copy.
-function pageThumbOffer(pageId, src, srcScale, thumbScale, maxBytes) {
+// Pages waiting for a preview (nothing drawn yet), and listeners for every
+// new preview (the device store keeps them: utils/pagePreviewSession.js).
+const PAGE_THUMB_WAITERS = new Map(); // pageId -> Set<fn>
+const PAGE_THUMB_LISTENERS = new Set(); // fn(pageId, entry, meta)
+function waitForPageThumb(pageId, fn) {
+  let set = PAGE_THUMB_WAITERS.get(pageId);
+  if (!set) { set = new Set(); PAGE_THUMB_WAITERS.set(pageId, set); }
+  set.add(fn);
+  return () => {
+    set.delete(fn);
+    if (!set.size && PAGE_THUMB_WAITERS.get(pageId) === set) PAGE_THUMB_WAITERS.delete(pageId);
+  };
+}
+function pageThumbOffer(pageId, src, srcScale, thumbScale, maxBytes, meta = null) {
   if (!src?.width || !(srcScale > 0) || !(thumbScale > 0)) return;
   const existing = PAGE_THUMBS.get(pageId);
   const scale = Math.min(srcScale, thumbScale);
@@ -407,7 +422,8 @@ function pageThumbOffer(pageId, src, srcScale, thumbScale, maxBytes) {
     pageThumbBytesTotal -= existing.bytes;
     releaseRasterCanvas(existing.canvas);
   }
-  PAGE_THUMBS.set(pageId, { canvas, scale, bytes });
+  const entry = { canvas, scale, bytes };
+  PAGE_THUMBS.set(pageId, entry);
   pageThumbBytesTotal += bytes;
   while (pageThumbBytesTotal > maxBytes && PAGE_THUMBS.size > 1) {
     const oldestKey = PAGE_THUMBS.keys().next().value;
@@ -416,6 +432,10 @@ function pageThumbOffer(pageId, src, srcScale, thumbScale, maxBytes) {
     pageThumbBytesTotal -= oldest.bytes;
     releaseRasterCanvas(oldest.canvas);
   }
+  if (PAGE_THUMBS.get(pageId) !== entry) return;
+  for (const fn of PAGE_THUMB_LISTENERS) { try { fn(pageId, entry, meta); } catch { /* a listener never breaks a draw */ } }
+  const waiting = PAGE_THUMB_WAITERS.get(pageId);
+  if (waiting) for (const fn of [...waiting]) { try { fn(); } catch { /* noop */ } }
 }
 
 // Normalize the app's documentSource into pdf.js getDocument params. The app
@@ -577,6 +597,20 @@ const PdfPageCanvas = memo(function PdfPageCanvas({ pdf, pageIndex, pageW, pageH
       shownRef.current = { id: pageId, scale: pick.use.scale };
       markPageRasterShown(c);
     }
+    // Nothing to show yet: show the page's preview the moment one arrives
+    // (the device store or the preview worker), until the draw below lands.
+    let stopWaiting = null;
+    if (shownRef.current?.id !== pageId) {
+      stopWaiting = waitForPageThumb(pageId, () => {
+        if (cancelled || myGen !== genRef.current || shownRef.current?.id === pageId) return;
+        const preview = pageThumbGet(pageId);
+        const canvas = canvasRef.current;
+        if (!preview || !canvas) return;
+        blitRaster(canvas, preview.canvas);
+        shownRef.current = { id: pageId, scale: preview.scale };
+        markPageRasterShown(canvas);
+      });
+    }
     if (shownRef.current?.id !== pageId) {
       // A page the user just rotated: turn its upright bitmap now, so the page
       // shows rotated in the same frame; the sharp raster replaces it below.
@@ -716,6 +750,7 @@ const PdfPageCanvas = memo(function PdfPageCanvas({ pdf, pageIndex, pageW, pageH
     })();
     return () => {
       cancelled = true;
+      stopWaiting?.();
       if (taskRef.current) { try { taskRef.current.cancel(); } catch { /* noop */ } }
       turn?.release();
     };
@@ -5795,6 +5830,116 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     };
   }, [goToPage, focusPageRect, zoomToScale, glideZoomTo, applyAnchoredScale, getThumbnailDataUrl]);
 
+  // Page previews kept on the device and drawn on their own thread
+  // (utils/pagePreviewSession.js, 2026-11-09). A reopened file shows every
+  // page's preview at once; a new one gets them from the preview worker
+  // beside the page draws, instead of in line with them on this thread
+  // (heavy sheets: ~1-3 s each, so pages scrolled into view right after
+  // opening stayed white). Phones, small computers and files the worker
+  // cannot open keep the in-line prefetch below.
+  const [previewWorker, setPreviewWorker] = useState('off'); // 'pending' | 'on' | 'off'
+  const previewSessionRef = useRef(null);
+  useEffect(() => () => { previewSessionRef.current?.stop(); previewSessionRef.current = null; }, []);
+  useEffect(() => {
+    const pdf = pdfRef.current;
+    if (!pdf || pageSizes.length === 0) return undefined;
+    const base = getPageViewBase(pdf);
+    let session = previewSessionRef.current;
+    if (!session || session.base !== base) {
+      session?.stop();
+      const useWorker = !isMobileSurface && pageThumbWorkerSupported();
+      const source = latestActiveSourceRef.current;
+      session = createPagePreviewSession(base, {
+        source: source instanceof Uint8Array || source instanceof ArrayBuffer ? source : null,
+        useWorker,
+        workerSrc: new URL(pdfWorker, window.location.href).href,
+        assetOptions: pdfjsAssetOptions(pdfjsLib),
+      });
+      session.base = base;
+      previewSessionRef.current = session;
+      setPreviewWorker(useWorker ? 'pending' : 'off');
+    }
+    let cancelled = false;
+    const docKey = rasterDocKey(pdf);
+    const maxBytes = pageThumbsMaxBytes(isMobileSurface);
+    const pageKeyOf = (index) => `${pageViewKey(pdf, index)}:r${rotation}`;
+    const pageIdOf = (index) => `${docKey}:${pageKeyOf(index)}`;
+    const indexByKey = new Map();
+    for (let index = 0; index < pageSizes.length; index += 1) indexByKey.set(pageKeyOf(index), index);
+    // Every new preview of this file is kept for the next open.
+    const keepNew = (pageId, entry, meta) => {
+      if (meta?.fromDevice || !pageId.startsWith(`${docKey}:`)) return;
+      const pageKey = pageId.slice(docKey.length + 1);
+      if (!indexByKey.has(pageKey)) return;
+      session.keep(pageKey, { canvas: entry.canvas, blob: meta?.blob || null, scale: entry.scale });
+    };
+    PAGE_THUMB_LISTENERS.add(keepNew);
+    const plan = () => planThumbPrefetch(pageSizes, {
+      focus: Math.max(0, (currentPageRef.current || 1) - 1),
+      maxBytes: maxBytes * 0.8,
+      skip: (index) => Boolean(pageThumbGet(pageIdOf(index))),
+    });
+    (async () => {
+      // 1. Previews kept on the device, nearest the reader first.
+      const kept = await session.kept();
+      if (cancelled || session.stopped) return;
+      if (kept.length) {
+        const byKey = new Map(kept.map((row) => [row.pageKey, row]));
+        const order = plan().filter((index) => byKey.has(pageKeyOf(index)));
+        for (let at = 0; at < order.length && !cancelled; at += 8) {
+          const chunk = order.slice(at, at + 8);
+          const bitmaps = await Promise.all(chunk.map((index) => decodeKeptPreview(byKey.get(pageKeyOf(index)))));
+          bitmaps.forEach((bitmap, k) => {
+            if (!bitmap) return;
+            const { scale } = byKey.get(pageKeyOf(chunk[k]));
+            if (!cancelled && scale > 0) pageThumbOffer(pageIdOf(chunk[k]), bitmap, scale, scale, maxBytes, { fromDevice: true });
+            try { bitmap.close?.(); } catch { /* noop */ }
+          });
+        }
+      }
+      // 2. The rest from the preview worker, nearest the reader first.
+      const failed = new Set();
+      const done = () => {
+        // Every preview drawn (or the worker keeps failing): end the worker
+        // and let the in-line prefetch cover any page that still lacks one.
+        session.releaseRenderer();
+        if (previewSessionRef.current === session) setPreviewWorker('off');
+      };
+      const missing = () => plan().find((i) => !failed.has(i) && !pageViewEntry(pdf, i + 1)?.blank);
+      if (cancelled || session.stopped) return;
+      if (missing() == null) { done(); return; }
+      const renderer = await session.renderer();
+      if (cancelled || session.stopped) return;
+      if (!renderer) { done(); return; }
+      if (previewSessionRef.current === session) setPreviewWorker('on');
+      for (;;) {
+        if (cancelled || session.stopped) return;
+        const index = missing();
+        if (index == null) { done(); return; }
+        const entry = pageViewEntry(pdf, index + 1);
+        const size = pageSizes[index];
+        const thumbScale = thumbRasterScale(size?.w, size?.h);
+        const pageId = pageIdOf(index);
+        if (!entry || !(thumbScale > 0)) { failed.add(index); continue; }
+        const result = await renderer.render(entry.src, thumbScale, (entry.rot || 0) + rotation);
+        if (!result) {
+          // A page the worker cannot draw is left to the viewer's own draw.
+          failed.add(index);
+          if (failed.size >= 3) { done(); return; }
+          continue;
+        }
+        if (!cancelled && !pageThumbGet(pageId)) {
+          pageThumbOffer(pageId, result.bitmap, thumbScale, thumbScale, maxBytes, { blob: result.blob });
+        }
+        try { result.bitmap.close?.(); } catch { /* noop */ }
+      }
+    })().catch(() => { /* a closed document */ });
+    return () => {
+      cancelled = true;
+      PAGE_THUMB_LISTENERS.delete(keepNew);
+    };
+  }, [pageSizes, rotation, isMobileSurface]);
+
   // Owner 2026-10-07 (far zoom: "maybe a more blurry version"): draw every
   // page's small thumbnail ahead of need, nearest the reader first, at the
   // lowest priority of the shared drawing queue (kind 'prefetch': it waits
@@ -5807,6 +5952,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const pdf = pdfRef.current;
     const queue = rasterQueueRef.current;
     if (!pdf || !queue || pageSizes.length === 0) return undefined;
+    // The preview worker draws them (or is opening): not in line here.
+    if (previewWorker !== 'off') return undefined;
     let cancelled = false;
     let turn = null;
     let task = null;
@@ -5876,7 +6023,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       try { task?.cancel(); } catch { /* noop */ }
       turn?.release();
     };
-  }, [pageSizes, rotation, isMobileSurface]);
+  }, [pageSizes, rotation, isMobileSurface, previewWorker]);
 
   // WebMCP: let a browser AI agent read the page count and move pages.
   useEffect(() => registerAgentViewer({

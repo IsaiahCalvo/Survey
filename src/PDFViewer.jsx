@@ -529,6 +529,7 @@ import {
   markEditedImportedPdfAnnotationsOnPage,
   measurePdfjsPageHostScale,
   measurePdfjsPageScale,
+  measurePdfjsPageScaleCached,
   migrateLegacySurveyMarkers,
   normalizeBookmarkPageIds,
   normalizeInteractionMeasuredScale,
@@ -10130,6 +10131,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const getPdfjsPageScale = useCallback((pageNumber, fallbackScale = scale) => {
     return measurePdfjsPageScale(pageNumber, pageSizes, pdfjsPageContainers, fallbackScale);
   }, [pageSizes, scale, pdfjsPageContainers]);
+  // The overlay render loop's copy: same measurement, kept per page host until
+  // its box changes (viewerShared measurePdfjsPageScaleCached).
+  const pdfjsPageScaleCacheRef = useRef(new WeakMap());
+  const getPdfjsOverlayPageScale = useCallback((pageNumber, fallbackScale = scale) => (
+    measurePdfjsPageScaleCached(pageNumber, pageSizes, pdfjsPageContainers, fallbackScale, pdfjsPageScaleCacheRef.current)
+  ), [pageSizes, scale, pdfjsPageContainers]);
 
   const disconnectOverlayLagPerfObservers = useCallback(() => {
     const state = overlayLagPerfObserverRef.current;
@@ -38064,7 +38071,7 @@ ${pageBlocks}
 
                       const committedPageScale = Number(pdfjsCommittedPageScales[pageNumber]);
                       const hasCommittedPageScale = Number.isFinite(committedPageScale) && committedPageScale > 0;
-                      const measuredPageScale = getPdfjsPageScale(pageNumber, pdfjsViewerScale);
+                      const measuredPageScale = getPdfjsOverlayPageScale(pageNumber, pdfjsViewerScale);
                       const resolvedMeasuredPageScale = Number.isFinite(measuredPageScale) && measuredPageScale > 0
                         ? measuredPageScale
                         : (hasCommittedPageScale ? committedPageScale : (pdfjsViewerScale > 0 ? pdfjsViewerScale : 1));
@@ -38140,8 +38147,6 @@ ${pageBlocks}
                           (shouldRenderZoomPreview || proxyHasRenderablePayload) &&
                           (shouldRenderZoomPreview || isProxyReady)
                       );
-                      const regionSelectionDisplayWidth = overlayDiv?.offsetWidth || (resolvedPageSize.width * layerScale);
-                      const regionSelectionDisplayHeight = overlayDiv?.offsetHeight || (resolvedPageSize.height * layerScale);
                       const nativePdfAnnotationPolicy = pdfNativeAnnotationLayerPolicyByPage?.[pageNumber] ||
                         pdfNativeAnnotationLayerPolicyByPage?.[String(pageNumber)] ||
                         null;
@@ -38480,7 +38485,7 @@ ${pageBlocks}
 
                               if (validRegions.length === 0) return null;
 
-                              if (pageNumber === (Number(pageNumRef.current) || 1)) {
+                              if (window.__APP_DEBUG === true && pageNumber === (Number(pageNumRef.current) || 1)) {
                                 appDebug(
                                   `[App-RegionOverlay p${pageNumber}] render — ` +
                                   `regions=${pageRegions.length}, valid=${validRegions.length}, ` +
@@ -38505,12 +38510,15 @@ ${pageBlocks}
                               );
                             })()}
                             {requiresLegacyAnnotationLayer && showRegionSelection && regionSelectionPage === pageNumber && (
+                              // offsetWidth is read only here: read for every mounted page
+                              // on every render, it forced a layout per page (phone swipes,
+                              // 2026-11-09).
                               <div style={{
                                 position: 'absolute',
                                 top: 0,
                                 left: 0,
-                                width: `${regionSelectionDisplayWidth}px`,
-                                height: `${regionSelectionDisplayHeight}px`,
+                                width: `${overlayDiv?.offsetWidth || (resolvedPageSize.width * layerScale)}px`,
+                                height: `${overlayDiv?.offsetHeight || (resolvedPageSize.height * layerScale)}px`,
                                 pointerEvents: 'none',
                                 zIndex: requiresLegacyAnnotationLayer ? 105 : 95
                               }}>
@@ -38681,7 +38689,7 @@ ${pageBlocks}
 
                                 if (validRegions.length === 0) return null;
 
-                                if (pageNumber === (Number(pageNumRef.current) || 1)) {
+                                if (window.__APP_DEBUG === true && pageNumber === (Number(pageNumRef.current) || 1)) {
                                   appDebug(
                                     `[App-RegionOverlay p${pageNumber}] render-svg — ` +
                                     `regions=${pageRegions.length}, valid=${validRegions.length}, ` +
@@ -38695,8 +38703,9 @@ ${pageBlocks}
                                     regions={validRegions}
                                     width={resolvedPageSize.width}
                                     height={resolvedPageSize.height}
-                                    displayWidth={overlayDiv?.offsetWidth || (resolvedPageSize.width * layerScale)}
-                                    displayHeight={overlayDiv?.offsetHeight || (resolvedPageSize.height * layerScale)}
+                                    // It fills its container: no layout read per page per render.
+                                    displayWidth={resolvedPageSize.width * layerScale}
+                                    displayHeight={resolvedPageSize.height * layerScale}
                                     scale={layerScale}
                                     fillContainer={true}
                                   />

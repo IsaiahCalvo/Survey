@@ -297,7 +297,20 @@ export const toNumber = (value, fallback = 0) => {
 export const isErasedOutline = (obj) =>
   obj.strokeWidth === 0 && obj.fill && obj.fill !== 'transparent';
 
-const paperCutsToSvgD = (polygons) => (polygons || [])
+// A page's erased curves were rebuilt into path text every time its marks
+// layer mounted (each page scrolled into view, 2026-11-09 phone swipes). The
+// survivor polygons are replaced, never changed in place, when a mark is
+// erased again, so the text is kept per polygons array.
+const PAPER_CUTS_D_CACHE = new WeakMap();
+const paperCutsToSvgD = (polygons) => {
+  if (!Array.isArray(polygons)) return '';
+  const kept = PAPER_CUTS_D_CACHE.get(polygons);
+  if (kept !== undefined) return kept;
+  const d = buildPaperCutsSvgD(polygons);
+  PAPER_CUTS_D_CACHE.set(polygons, d);
+  return d;
+};
+const buildPaperCutsSvgD = (polygons) => (polygons || [])
   .flatMap((polygon) => polygon || [])
   .map((ring) => {
     if (!Array.isArray(ring) || ring.length < 3) return '';
