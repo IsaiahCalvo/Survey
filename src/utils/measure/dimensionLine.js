@@ -39,8 +39,10 @@ export function dimensionLeader(obj) {
 
 /** A typed leader (points) as stored: two decimals, clamped; null if not a number. */
 export function normalizeDimensionLeader(value) {
-  if (value == null || value === '') return null;
-  const n = Number(String(value).trim().replace(',', '.'));
+  const text = value == null ? '' : String(value).trim();
+  // Blank (or only spaces) is not a leader: Number('') would read as 0.
+  if (!text) return null;
+  const n = Number(text.replace(',', '.'));
   if (!Number.isFinite(n)) return null;
   const clamped = Math.max(-DIMENSION_LEADER_MAX_PT, Math.min(DIMENSION_LEADER_MAX_PT, n));
   return Math.round(clamped * 100) / 100 || 0;
@@ -61,6 +63,14 @@ export function dimensionCaptionPt(obj) {
   return Number.isFinite(px) && px > 0 ? (DIMENSION_CAPTION_PT * px) / CAPTION_SIZE_BASE_PX : DIMENSION_CAPTION_PT;
 }
 
+/** A moved caption's offset { x, y } (points, the line's own frame), or null. */
+export function dimensionCaptionOffset(obj) {
+  const o = obj?.data?.measure?.dim?.captionOffset;
+  const x = Number(o?.x);
+  const y = Number(o?.y);
+  return Number.isFinite(x) && Number.isFinite(y) && (x || y) ? { x, y } : null;
+}
+
 /** The width (points) a caption of `text` takes at `fontPt`. */
 export function dimensionCaptionWidth(text, fontPt = DIMENSION_CAPTION_PT) {
   return String(text ?? '').length * CHAR_EM * fontPt;
@@ -76,6 +86,8 @@ export function dimensionCaptionWidth(text, fontPt = DIMENSION_CAPTION_PT) {
  *   extensions two [from, to] lines, from each clicked point to just past
  *   chevrons  two open arrowheads as point lists [wing, tip, wing]
  * `place` 'above' keeps the line whole and sets the caption beside it.
+ * `captionOffset` { x, y } is a dragged caption: the line stays whole and
+ * `elbow` is its leader's point list (null when the caption sits on the line).
  *   caption   { x, y, angle } centre and reading angle (degrees, kept so the
  *             text never reads upside down once `turn` is added)
  */
@@ -84,6 +96,7 @@ export function dimensionLineGeometry({ x1, y1, x2, y2 }, {
   captionWidth = 0,
   captionHeight = DIMENSION_CAPTION_PT,
   place = 'inline',
+  captionOffset = null,
   turn = 0,
 } = {}) {
   const dx = x2 - x1;
@@ -116,7 +129,8 @@ export function dimensionLineGeometry({ x1, y1, x2, y2 }, {
   const gapHalf = captionWidth > 0 ? captionWidth / 2 + CAPTION_GAP_PAD_PT : 0;
   // Break the line only when the caption sits inline and leaves room for
   // the chevrons.
-  const segments = place !== 'above' && gapHalf > 0 && len / 2 - gapHalf > L
+  const moved = Boolean(captionOffset && (captionOffset.x || captionOffset.y));
+  const segments = !moved && place !== 'above' && gapHalf > 0 && len / 2 - gapHalf > L
     ? [
       [a, { x: mid.x - ux * gapHalf, y: mid.y - uy * gapHalf }],
       [{ x: mid.x + ux * gapHalf, y: mid.y + uy * gapHalf }, b],
@@ -127,14 +141,33 @@ export function dimensionLineGeometry({ x1, y1, x2, y2 }, {
   if (screen > 90 || screen <= -90) angle += 180;
   // An Above caption, or one that does not fit between the chevrons, sits
   // beside the line on the side away from the clicked points.
-  const outside = segments.length === 1 && gapHalf > 0;
+  const outside = !moved && segments.length === 1 && gapHalf > 0;
   const lift = outside ? (Math.max(0, captionHeight) / 2 + CAPTION_LIFT_PAD_PT) * side : 0;
+  let caption = { x: mid.x + nx * lift, y: mid.y + ny * lift, angle };
+  // A dragged caption sits where it was put (from the inline spot, in the
+  // line's own frame) with a thin elbow leader from the line's middle:
+  // vertical, then across to the caption's near side.
+  let elbow = null;
+  if (moved) {
+    caption = { x: mid.x + captionOffset.x, y: mid.y + captionOffset.y, angle };
+    const halfW = Math.max(0, captionWidth) / 2;
+    const halfH = Math.max(0, captionHeight) / 2;
+    const ddx = caption.x - mid.x;
+    const ddy = caption.y - mid.y;
+    if (Math.abs(ddx) > halfW) {
+      const endX = caption.x - Math.sign(ddx) * (halfW + CAPTION_LIFT_PAD_PT);
+      elbow = [{ x: mid.x, y: mid.y }, { x: mid.x, y: caption.y }, { x: endX, y: caption.y }];
+    } else if (Math.abs(ddy) > halfH) {
+      elbow = [{ x: mid.x, y: mid.y }, { x: mid.x, y: caption.y - Math.sign(ddy) * (halfH + CAPTION_LIFT_PAD_PT) }];
+    }
+  }
   return {
     a,
     b,
     segments,
     extensions,
     chevrons,
-    caption: { x: mid.x + nx * lift, y: mid.y + ny * lift, angle },
+    caption,
+    elbow,
   };
 }

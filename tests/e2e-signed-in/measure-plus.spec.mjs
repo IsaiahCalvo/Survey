@@ -171,6 +171,34 @@ test('custom scale reads feet-inches, Units restamp the line, Set as default car
     await expect(leader).toHaveValue('41');
     await page.keyboard.press('Escape');
     await expect(card).toBeHidden();
+    // Right-click: Reset leader line puts it back at the default offset.
+    const segNow = await dimLine.locator('line').nth(2).boundingBox();
+    await page.mouse.click(segNow.x + segNow.width / 2, segNow.y + segNow.height / 2, { button: 'right' });
+    const menu = page.locator('[data-annotation-context-menu]');
+    await expect(menu).toBeVisible();
+    await menu.getByText('Reset leader line', { exact: true }).click();
+    await expect(menu).toBeHidden();
+    await expect.poll(async () => Math.round(Math.abs((await lineY()) - yBefore) * 100) / 100).toBe(0);
+    // Drag the caption off the line: it keeps an elbow leader, the line goes
+    // whole; right-click Reset caption position puts it back.
+    const grab = surface.locator('[data-handle="dim-caption"]');
+    await expect(grab).toHaveCount(1);
+    const gb = await grab.boundingBox();
+    await page.mouse.move(gb.x + gb.width / 2, gb.y + gb.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(gb.x + gb.width / 2 + 40, gb.y + gb.height / 2 + 40, { steps: 4 });
+    await page.mouse.move(gb.x + gb.width / 2 + 90, gb.y + gb.height / 2 + 80, { steps: 4 });
+    await page.mouse.up();
+    await expect(dimLine.locator('[data-dimension-elbow]')).toHaveCount(1);
+    await expect(dimLine.locator('line')).toHaveCount(3);
+    await page.screenshot({ path: test.info().outputPath('measure-plus-caption-moved.png') });
+    const segMoved = await dimLine.locator('line').nth(2).boundingBox();
+    await page.mouse.click(segMoved.x + segMoved.width / 4, segMoved.y + segMoved.height / 2, { button: 'right' });
+    await expect(menu).toBeVisible();
+    await menu.getByText('Reset caption position', { exact: true }).click();
+    await expect(menu).toBeHidden();
+    await expect(dimLine.locator('[data-dimension-elbow]')).toHaveCount(0);
+    await expect(dimLine.locator('line')).toHaveCount(4);
     await page.keyboard.press('Escape');
     await expect(reading).toHaveText(/^(?:[\d,]+′(?:-\d+(?: \d+\/\d)?″)?|(?:\d+ )?\d+(?:\/\d)?″)$/);
     const ftin = feetInches((await reading.textContent()).trim());

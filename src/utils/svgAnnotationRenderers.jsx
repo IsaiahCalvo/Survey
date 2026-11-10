@@ -14,6 +14,7 @@ import {
   DIMENSION_EXTENSION_PT,
   dimensionCaptionPt,
   dimensionCaptionWidth,
+  dimensionCaptionOffset,
   dimensionCaptionPlace,
   dimensionLeader,
   dimensionLineGeometry,
@@ -948,20 +949,31 @@ export const renderArrowhead = (style, tipX, tipY, angleDeg, color, sw) => {
 // the stroke colour at 9 pt and never upside down. The layer's hit target
 // follows the offset line too (SVGAnnotationLayer, 'dimension-line').
 const pts = (list) => list.map((p) => `${p.x},${p.y}`).join(' ');
-function renderDimensionLine(obj, spec, key, opacity, rotateTransform, dashArray) {
-  const { x1, y1, x2, y2, stroke, strokeWidth } = spec.line;
+/**
+ * A dimension mark's caption lines, sizes and geometry, from its endpoints in
+ * its own frame. The layer uses the same layout for the caption's drag target.
+ */
+export function dimensionMarkLayout(obj, { x1, y1, x2, y2 }) {
   const label = buildMeasureLabel(obj, obj.data?.measure?.scale || null);
   const lines = label ? (Array.isArray(label.lines) ? label.lines : [String(label.text)]) : [];
   const fontPt = dimensionCaptionPt(obj);
   const captionWidth = Math.max(0, ...lines.map((line) => dimensionCaptionWidth(line, fontPt)));
   const lineHeight = fontPt * 1.2;
+  const captionHeight = lines.length * lineHeight;
   const geo = dimensionLineGeometry({ x1, y1, x2, y2 }, {
     leader: dimensionLeader(obj),
     captionWidth,
-    captionHeight: lines.length * lineHeight,
+    captionHeight,
     place: dimensionCaptionPlace(obj),
+    captionOffset: dimensionCaptionOffset(obj),
     turn: obj.angle ?? 0,
   });
+  return { label, lines, fontPt, lineHeight, captionWidth, captionHeight, geo };
+}
+
+function renderDimensionLine(obj, spec, key, opacity, rotateTransform, dashArray) {
+  const { stroke, strokeWidth } = spec.line;
+  const { label, lines, fontPt, lineHeight, geo } = dimensionMarkLayout(obj, spec.line);
   if (!geo) return <g key={key} />;
   const sw = strokeWidth || 1;
   return (
@@ -972,6 +984,9 @@ function renderDimensionLine(obj, spec, key, opacity, rotateTransform, dashArray
       {geo.segments.map(([p, q], i) => (
         <line key={`s${i}`} x1={p.x} y1={p.y} x2={q.x} y2={q.y} stroke={stroke} strokeWidth={sw} strokeDasharray={dashArray} strokeLinecap="butt" />
       ))}
+      {geo.elbow && (
+        <polyline data-dimension-elbow="true" points={pts(geo.elbow)} fill="none" stroke={stroke} strokeWidth={DIMENSION_EXTENSION_PT} />
+      )}
       {geo.chevrons.map((c, i) => (
         <polyline key={`c${i}`} points={pts(c)} fill="none" stroke={stroke} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" />
       ))}

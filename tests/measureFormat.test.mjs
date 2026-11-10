@@ -185,6 +185,7 @@ test('dimension line: Leader and Inline / Above are edited on dimension marks on
   assert.equal(dl.normalizeDimensionLeader('-0'), 0);
   assert.equal(dl.normalizeDimensionLeader('abc'), null);
   assert.equal(dl.normalizeDimensionLeader(''), null);
+  assert.equal(dl.normalizeDimensionLeader('   '), null, 'spaces are blank, not 0');
   const line = { type: 'Line', x1: -50, y1: 0, x2: 50, y2: 0, left: 0, top: 0, width: 100, height: 0 };
   const dim = stampMeasure(line, 'length', null, { dim: true });
   const longer = applyMeasureEdit(dim, { leader: '30' });
@@ -220,10 +221,45 @@ test('dimension line: a leader pill replaces the bend grabber and drags the lead
   const layer = read('src/components/SVGAnnotationLayer.jsx');
   assert.match(layer, /\{!dimGeo && renderLineHitPad\('midpoint'/);
   assert.match(layer, /data-handle="leader"[\s\S]{0,900}handleHandlePointerDown\(e, 'leader'\)/);
-  assert.match(layer, /if \(lineEdit\.dimLeader != null\) \{/);
+  assert.match(layer, /if \(lineEdit\.dimLeader != null \|\| lineEdit\.dimCaptionOffset\) \{/);
   const hook = read('src/hooks/useSVGInteraction.js');
   assert.match(hook, /if \(handleId === 'leader'\) \{\s*if \(!isDimensionMeasure\(obj\)\) return;/);
   assert.match(hook, /lineEdit: \{ dimLeader: leader \}/);
   assert.match(hook, /action: 'leader-move',/);
   assert.match(hook, /originalLeader: null, currentLeader: null,/);
+});
+
+test('dimension line: right-click Reset leader line', () => {
+  const menu = read('src/hooks/useAnnotationContextMenu.jsx');
+  assert.match(menu, /isDimensionMeasure\(menuObj\) \? \[item\('Reset leader line', 'resetLeaderLine'/);
+  assert.match(menu, /measure\.dim = \{ \.\.\.measure\.dim, leader: DIMENSION_LEADER_PT \};/);
+  assert.match(menu, /menuObjEditable && dimensionLeader\(menuObj\) !== DIMENSION_LEADER_PT\),/);
+});
+
+test('dimension line: a dragged caption keeps an elbow leader; Reset caption position', async () => {
+  const dl = await import('../src/utils/measure/dimensionLine.js');
+  const base = { x1: 0, y1: 100, x2: 200, y2: 100 };
+  // Moved right and down past its own width: vertical from the line's middle, then across.
+  const g = dl.dimensionLineGeometry(base, { captionWidth: 40, captionHeight: 10.8, captionOffset: { x: 60, y: 40 } });
+  assert.equal(g.segments.length, 1, 'a moved caption leaves the line whole');
+  assert.deepEqual([g.caption.x, +g.caption.y.toFixed(2)], [160, 124.69]);
+  assert.deepEqual(g.elbow.map((p) => [+p.x.toFixed(2), +p.y.toFixed(2)]), [[100, 84.69], [100, 124.69], [138, 124.69]]);
+  // Straight down within its width: one vertical piece to its top.
+  const down = dl.dimensionLineGeometry(base, { captionWidth: 40, captionHeight: 10.8, captionOffset: { x: 5, y: 40 } });
+  assert.deepEqual(down.elbow.map((p) => [+p.x.toFixed(2), +p.y.toFixed(2)]), [[100, 84.69], [100, 117.29]]);
+  // No offset: no elbow.
+  assert.equal(dl.dimensionLineGeometry(base, { captionWidth: 40 }).elbow, null);
+  assert.equal(dl.dimensionCaptionOffset({ data: { measure: { dim: { captionOffset: { x: 0, y: 0 } } } } }), null);
+  assert.deepEqual(dl.dimensionCaptionOffset({ data: { measure: { dim: { captionOffset: { x: 3, y: -2 } } } } }), { x: 3, y: -2 });
+  const hook = read('src/hooks/useSVGInteraction.js');
+  assert.match(hook, /if \(handleId === 'dim-caption'\) \{/);
+  assert.match(hook, /lineEdit: \{ dimCaptionOffset: offset \}/);
+  assert.match(hook, /action: 'caption-move',/);
+  assert.match(hook, /originalCaptionOffset: null, currentCaptionOffset: null,/);
+  const layer = read('src/components/SVGAnnotationLayer.jsx');
+  assert.match(layer, /data-handle="dim-caption"[\s\S]{0,700}handleHandlePointerDown\(e, 'dim-caption'\)/);
+  const menu = read('src/hooks/useAnnotationContextMenu.jsx');
+  assert.match(menu, /item\('Reset caption position', 'resetCaptionPosition'/);
+  assert.match(menu, /menuObjEditable && Boolean\(dimensionCaptionOffset\(menuObj\)\)\)\] : \[\]\),/);
+  assert.match(read('src/utils/svgAnnotationRenderers.jsx'), /\{geo\.elbow && \(\s*<polyline data-dimension-elbow="true"/);
 });
