@@ -57,6 +57,7 @@ import {
 // out and the menu offers Lock / Unlock (its author or the document owner).
 // Same single source of truth as click hit-test / marquee / planner.
 import { canModify, canToggleLock, isUserLocked } from '../lib/collab/permissionScope.js';
+import { resolveLayerId } from '../utils/layers.js';
 import { reorderSelectionInStack } from '../utils/annotationFamilyRules.js';
 import { resolveMenuTargets, sameMenuTargets, stampMenuTargetIds } from '../utils/selectionRemap.js';
 import { pageHasTransform } from '../utils/disabledActions.js';
@@ -196,7 +197,7 @@ export function useAnnotationContextMenu({ getPageObjects = null } = {}) {
 // targets (touchTargets.css + annotationContextMenu.css).
 // Design review 2026-10-27: the rows under the icon row carry an icon too,
 // like every other action menu (components/MenuRows.jsx picks by label).
-const MARK_ROW_ICONS = { arrange: 'layers', align: 'alignLeft', lock: 'lock', unlock: 'lock', saveToLibrary: 'library' };
+const MARK_ROW_ICONS = { arrange: 'layers', moveToLayer: 'layers', align: 'alignLeft', lock: 'lock', unlock: 'lock', saveToLibrary: 'library' };
 const markRowIcon = (it) => MARK_ROW_ICONS[it.key] || menuIconFor(it.label);
 const MENU_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter'];
 
@@ -214,12 +215,14 @@ function MarkMenuBody({ layout, touchRows }) {
     return hint ? <span className="annotation-menu-key" aria-hidden="true">{hint}</span> : null;
   };
   const rootRef = useRef(null);
-  const arrangeRowRef = useRef(null);
+  // The row whose submenu is open (Arrange, or Move to layer with the
+  // 'layers' beta), its element, and the open submenu's element.
+  const subRowRefs = useRef({});
   const submenuRef = useRef(null);
   const focusSubmenuOnOpenRef = useRef(false);
-  // The open submenu row's key ('arrange', 'align'), or null. One at a time.
+  // The open submenu row's key ('arrange', 'align', 'moveToLayer'), or null.
+  // One at a time.
   const [openKey, setOpenKey] = useState(null);
-  const arrangeOpen = openKey != null;
   const setArrangeOpen = (open, key = null) => setOpenKey(open ? key : null);
   // Hover opens / closes Arrange for a real mouse only. A finger's tap also
   // sends compatibility mouse events (and the browser re-sends them when the
@@ -237,9 +240,9 @@ function MarkMenuBody({ layout, touchRows }) {
   // left when the right side (less the desktop right rail) has no room; kept
   // above the bottom of the window.
   useLayoutEffect(() => {
-    if (!arrangeOpen) return;
+    if (!openKey) return;
     const sub = submenuRef.current;
-    const row = arrangeRowRef.current;
+    const row = subRowRefs.current[openKey];
     const panel = rootRef.current?.closest('[data-annotation-context-menu]');
     if (!sub || !row || !panel) return;
     const pr = panel.getBoundingClientRect();
@@ -293,8 +296,9 @@ function MarkMenuBody({ layout, touchRows }) {
         const subItems = [...(submenuRef.current?.querySelectorAll('[data-submenu-key]:not([aria-disabled="true"])') || [])];
         const at = subItems.indexOf(active);
         if (event.key === 'ArrowLeft') {
+          const back = subRowRefs.current[openKey];
           setArrangeOpen(false);
-          focusEl(arrangeRowRef.current);
+          focusEl(back);
         } else if (subItems.length > 0) {
           const n = subItems.length;
           const next = event.key === 'ArrowDown' ? (at + 1) % n
@@ -372,7 +376,7 @@ function MarkMenuBody({ layout, touchRows }) {
       {layout.rows.map((it) => (it.submenu ? (
         <div key={it.key} className="annotation-menu-subhost">
           <div
-            ref={openKey === it.key ? arrangeRowRef : undefined}
+            ref={(el) => { subRowRefs.current[it.key] = el; }}
             role="menuitem"
             tabIndex={-1}
             data-menu-key={it.key}
@@ -493,6 +497,13 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     // Mark library ('mark-library' beta): saveFamilyToLibrary(pageNumber,
     // selection) opens the Save to library card on those marks.
     saveFamilyToLibrary = null,
+    // Edit a measurement after drawing ('measure-edit' beta):
+    // editMeasure(pageNumber, annotationIndex) opens its card.
+    editMeasure = null,
+    // Layers ('layers' beta): moveSelectionToLayer(pageNumber, selection,
+    // layerId) and the document's layer list ({ layers, pdfOpacity }).
+    moveSelectionToLayer = null,
+    layerState = null,
     // Owner ruling 2026-09-28 — Lock / Unlock on every object menu:
     // toggleLockSelection(pageNumber, { indices, calloutIds, markerIds }, lock)
     // and a Survey Marker record lookup by id.
@@ -648,6 +659,32 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     const libraryItems = (selection) => (typeof saveFamilyToLibrary === 'function'
       ? [item('Save to library', 'saveToLibrary', () => saveFamilyToLibrary(ctx.pageNumber, selection))]
       : []);
+    // Layers beta: "Move to layer ▸" (Drawboard's Change layer), listing the
+    // document's layers. A layer every picked mark is already on is greyed
+    // out; a hidden one says so (the marks vanish with it, as in Drawboard).
+    const layerItems = (selection) => {
+      const layers = layerState?.layers || [];
+      if (typeof moveSelectionToLayer !== 'function' || layers.length < 2) return [];
+      const objects = annotationsByPageRef.current?.[ctx.pageNumber]?.objects || [];
+      const calloutIds = new Set((selection.calloutIds || []).map(String));
+      const picked = [
+        ...(selection.indices || []).map((i) => objects[i]).filter((o) => o && o?.data?.type !== 'callout'),
+        ...objects.filter((o) => o?.data?.type === 'callout' && calloutIds.has(String(o?.data?.id))),
+      ];
+      if (picked.length === 0) return [];
+      const onLayer = new Set(picked.map((o) => resolveLayerId(o, layerState)));
+      return [{
+        key: 'moveToLayer',
+        label: 'Move to layer',
+        disabled: ctx.targetsGone === true,
+        submenu: layers.map((layer) => item(
+          layer.visible ? layer.name : `${layer.name} (hidden)`,
+          `moveToLayer:${layer.id}`,
+          () => moveSelectionToLayer(ctx.pageNumber, selection, layer.id),
+          !(onLayer.size === 1 && onLayer.has(layer.id)),
+        )),
+      }];
+    };
     // Owner ruling 2026-09-28: Lock / Unlock, right under Delete.
     const lockMenuItems = (members, selection) => {
       const spec = lockItemFor(members, selection);
@@ -735,6 +772,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         item('Paste', 'paste', doPasteAny, hasAnyClipboard),
         duplicateItem({ calloutIds: [ctx.calloutId] }),
         ...libraryItems({ calloutIds: [ctx.calloutId] }),
+        ...layerItems({ calloutIds: [ctx.calloutId] }),
         // UX: right-click Delete = the SAME gated delete as pressing Delete/
         // Backspace with the callout selected — PDFViewer's
         // handleDeleteSelectedCallouts (canModify ownership check, undo
@@ -830,6 +868,10 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         item('Paste', 'paste', doPasteAny, hasAnyClipboard),
         duplicateItem({ indices: [ctx.annotationIndex] }),
         ...libraryItems({ indices: [ctx.annotationIndex] }),
+        ...layerItems({ indices: [ctx.annotationIndex] }),
+        ...(typeof editMeasure === 'function' && menuObj?.data?.measure?.kind
+          ? [item('Edit measurement…', 'editMeasure', () => editMeasure(ctx.pageNumber, ctx.annotationIndex), menuObjEditable)]
+          : []),
         // UX: right-click Delete mirrors the keyboard Delete/Backspace path.
         // RULED 2026-09-28 owner: open editing + lock: Delete takes anyone's mark with no confirmation
         // (via the planner when present, for the History row); a user-locked mark
@@ -1089,6 +1131,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         item('Paste', 'paste', doPasteAny, hasAnyClipboard),
         duplicateItem(familySelection),
         ...libraryItems(familySelection),
+        ...layerItems(familySelection),
         // RULED 2026-09-28 owner: open editing + lock: multi-select Delete removes every member
         // that is not user-locked, with no confirmation (via the planner for the
         // History row).
@@ -1412,7 +1455,10 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
             touchRows={touchRows}
           />
         )}
-        {!pageMenuItems && !markLayout && items.map((it) => (
+        {!pageMenuItems && !markLayout && items.flatMap((it) => (it.submenu
+          // The phone menu is one plain list: a submenu's items join it.
+          ? it.submenu.map((sub) => ({ ...sub, label: it.key === 'moveToLayer' ? `Move to ${sub.label}` : sub.label }))
+          : [it])).map((it) => (
           it.separator
             ? <div key={it.key} role="separator" style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
             : (

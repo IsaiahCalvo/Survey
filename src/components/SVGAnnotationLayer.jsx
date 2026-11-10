@@ -124,6 +124,7 @@ import {
   buildPolyShapeCommitJSON,
   composeAnnotationColor,
 } from '../utils/annotationCreationCommit.js';
+import { SMART_INK_HOLD_MS, SMART_INK_STILL_PX, fitStroke, fittedPreviewPoints } from '../utils/smartInk.js';
 import {
   POLY_DRAFT_TOOLS,
   POLY_FINISH_CONTROL_SCREEN_RADIUS,
@@ -519,6 +520,7 @@ const EMPTY_SURVEY_MARKER_IDS = new Set();
 import {
   buildMeasureLabel,
   layoutMeasureLabel,
+  measureCaption,
   measureLineEndpoints,
   measureScaleBar,
   pageScaleFromObjects,
@@ -911,7 +913,8 @@ const SVGAnnotationLayerBody = memo(({
     const labels = [];
     objects.forEach((obj, index) => {
       if (!obj?.data?.measure || obj.visible === false || isOnHiddenLayer(obj, hiddenLayerIds)) return;
-      const label = buildMeasureLabel(obj, effectiveMeasureScale);
+      // Its name in front, or nothing when its caption is off ('measure-edit').
+      const label = measureCaption(obj, buildMeasureLabel(obj, effectiveMeasureScale));
       if (label) labels.push({ key: obj.id || obj.data?.id || `m${index}`, index, label });
     });
     return labels;
@@ -1529,6 +1532,18 @@ const SVGAnnotationLayerBody = memo(({
     live?.end(committed, points);
   }, []);
   useEffect(() => () => endLiveStroke(false), [endLiveStroke]);
+  // Smart ink (Nightly, flag 'smart-ink'; src/utils/smartInk.js): a pen or
+  // highlighter stroke that rests for SMART_INK_HOLD_MS snaps to the shape it
+  // looks like. fit: the snapped shape (cleared when the pen moves on).
+  const smartInkOnRef = useRef(null);
+  if (smartInkOnRef.current === null) smartInkOnRef.current = isFeatureOn('smart-ink');
+  const smartInkRef = useRef({ fit: null, timer: 0, anchor: null });
+  const resetSmartInk = useCallback(() => {
+    const ink = smartInkRef.current;
+    if (ink.timer) clearTimeout(ink.timer);
+    smartInkRef.current = { fit: null, timer: 0, anchor: null };
+  }, []);
+  useEffect(() => resetSmartInk, [resetSmartInk]);
 
   // ---------------------------------------------------------------------------
   // Polygon / polyline click-to-place draft (page coords).
@@ -2746,6 +2761,30 @@ const SVGAnnotationLayerBody = memo(({
         }
         return;
       }
+      const snapped = smartInkRef.current.fit;
+      resetSmartInk();
+      if (snapped && (tool === 'pen' || tool === 'highlighter')) {
+        // One real Line / Rectangle / Ellipse in the pen's colour and width
+        // (the highlighter keeps its ink, drawn straight). One Undo step.
+        const width = Number(strokeWidth) || 3;
+        const common = {
+          id, start: snapped.start, end: snapped.end, strokeColor, strokeOpacity, strokeWidth: width,
+          lineBorderStyle: 'solid', cloudIntensity, selectedModuleId, stampRegionId, activeRegionId,
+        };
+        const shapeJson = tool === 'highlighter'
+          ? buildFreehandCommitJSON({
+            tool, id, authorId: viewerId, points: fittedPreviewPoints(snapped), strokeColor, highlightColor,
+            strokeWidth: width, selectedModuleId, stampRegionId, activeRegionId,
+          })
+          : snapped.kind === 'line'
+            ? buildLineCommitJSON({ ...common, tool: 'line', arrowheadStyle: 'none', arrowStartStyle: null })
+            : buildBoundaryShapeCommitJSON({ ...common, tool: snapped.kind, fillColor: 'transparent', fillOpacity: 0 });
+        if (shapeJson) {
+          endLiveStroke(true, points);
+          dispatchCommit(shapeJson);
+          return;
+        }
+      }
       const json = buildFreehandCommitJSON({
         tool,
         id,
@@ -3161,6 +3200,7 @@ const SVGAnnotationLayerBody = memo(({
     const cancelDraft = () => {
       shapeCreationRef.current = null;
       freehandPointsRef.current = [];
+      resetSmartInk();
       endLiveStroke(false);
       markAnnotationPointerRelease(shapeCreation.gestureId, { action });
       setShapeCreation(null);
@@ -3192,6 +3232,25 @@ const SVGAnnotationLayerBody = memo(({
         if (passedNow) shapeCreationRef.current = { ...draft, passed: true };
         appendCoalescedPagePoints(e);
         liveStrokeRef.current?.push(freehandPointsRef.current);
+        const inkTool = shapeCreationRef.current?.tool;
+        if (smartInkOnRef.current && (inkTool === 'pen' || inkTool === 'highlighter')) {
+          // Smart ink: each real move (past SMART_INK_STILL_PX) un-snaps and
+          // restarts the rest timer; a rest that lasts snaps the stroke.
+          const ink = smartInkRef.current;
+          if (!ink.anchor || Math.hypot(e.clientX - ink.anchor.x, e.clientY - ink.anchor.y) > SMART_INK_STILL_PX) {
+            if (ink.timer) clearTimeout(ink.timer);
+            ink.anchor = { x: e.clientX, y: e.clientY };
+            ink.fit = null;
+            ink.timer = setTimeout(() => {
+              ink.timer = 0;
+              if (!shapeCreationRef.current || shapeCreationRef.current.tool !== inkTool) return;
+              const fit = fitStroke(freehandPointsRef.current, { lineOnly: inkTool === 'highlighter' });
+              if (!fit) return;
+              ink.fit = fit;
+              setShapeCreation((prev) => (prev ? { ...prev, tick: (prev.tick || 0) + 1, smartInk: fit.kind } : prev));
+            }, SMART_INK_HOLD_MS);
+          }
+        }
         setShapeCreation((prev) => (prev ? { ...prev, tick: (prev.tick || 0) + 1, ...(passedNow ? { passed: true } : {}) } : prev));
       } else {
         let point = screenToSVG(svgRef.current, e.clientX, e.clientY);
@@ -6422,7 +6481,7 @@ const SVGAnnotationLayerBody = memo(({
       : null;
     if (obj?.data?.measure && (renderObj !== obj || computedTransform)) {
       liveMeasureLabels.set(i, {
-        label: buildMeasureLabel(renderObj, effectiveMeasureScale),
+        label: measureCaption(renderObj, buildMeasureLabel(renderObj, effectiveMeasureScale)),
         transform: computedTransform,
       });
     }
@@ -8401,7 +8460,8 @@ const SVGAnnotationLayerBody = memo(({
         <polyline
           className="freehand-creation-preview"
           data-preview-tick={shapeCreation.tick}
-          points={freehandPointsRef.current.map((point) => `${point.x},${point.y}`).join(' ')}
+          data-smart-ink={smartInkRef.current.fit ? smartInkRef.current.fit.kind : undefined}
+          points={(fittedPreviewPoints(smartInkRef.current.fit) || freehandPointsRef.current).map((point) => `${point.x},${point.y}`).join(' ')}
           fill="none"
           stroke={shapeCreation.tool === 'highlighter' ? highlightColor
             : shapeCreation.tool === 'survey-marker-freehand' ? (surveyMarkerDrawColor || MARKER_FREEHAND_PREVIEW_COLOR)

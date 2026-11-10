@@ -157,6 +157,59 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Measure: Polylength, Wall area and Volume (area or outline x a depth)',
     stage: 'beta',
   }),
+  // Drawboard Projects round 2 (2026-11-10): its twelve review stamps.
+  'review-stamps': Object.freeze({
+    label: 'Review stamps: Approved, Rejected, For construction and more, with your name and the date, in the Library panel',
+    stage: 'beta',
+  }),
+  // Drawboard Projects round 2 (2026-11-10): Export PDF keeps only chosen
+  // people's marks and layers, and can add the comments as a CSV.
+  'export-filters': Object.freeze({
+    label: 'Export filters: only some people\'s marks or some layers, plus comments as a CSV',
+    stage: 'beta',
+  }),
+  // Drawboard Projects round 2 (2026-11-10): its "Review & Publish" step.
+  'upload-check': Object.freeze({
+    label: 'Upload check: fix each file\'s name, sheet number and revision before it uploads',
+    stage: 'beta',
+  }),
+  // Drawboard Projects round 2 (2026-11-10): review status per drawing.
+  'document-review': Object.freeze({
+    label: 'Document review: status, owner and markup count on each document, with filter chips',
+    stage: 'beta',
+  }),
+  // Drawboard phone apps (2026-11-10): PDFs opened from Files, Mail or Teams.
+  'open-in-survey': Object.freeze({
+    label: 'Open in Survey: PDFs opened from Files, Mail, Outlook or Teams on a phone upload and open',
+    stage: 'beta',
+  }),
+  // Drawboard phone apps (2026-11-10): a photo or camera shot becomes a PDF.
+  'photo-upload': Object.freeze({
+    label: 'Photo or camera: Upload takes photos too and turns each into a one-page PDF',
+    stage: 'beta',
+  }),
+  // Drawboard phone apps (2026-11-10): night / glare reading.
+  'dark-pages': Object.freeze({
+    label: 'Dark pages: show PDF pages light-on-dark (marks keep their colours)',
+    stage: 'beta',
+  }),
+  // Drawboard (2026-11-10): rest the pen at the end of a stroke to straighten it.
+  'smart-ink': Object.freeze({
+    label: 'Smart ink: hold the pen still at the end of a stroke to snap it to a line, rectangle or ellipse',
+    stage: 'beta',
+  }),
+  // Drawboard (2026-11-10): every mark in one list, with search, filters,
+  // measurement totals and a CSV.
+  'markup-list': Object.freeze({
+    label: 'Markups panel: every mark in one list with search, filters, measurement totals and a CSV',
+    stage: 'beta',
+  }),
+  // Drawboard deep test MS-19/20/21 (2026-11-10): a drawn measurement's name,
+  // depth and caption change later, from its right-click menu.
+  'measure-edit': Object.freeze({
+    label: 'Edit measurement: change a drawn measurement’s name, depth and caption',
+    stage: 'beta',
+  }),
   'measure-scale-chip': Object.freeze({
     label: 'Measure: a "No scale on this page" chip with Set scale while a measure tool is armed',
     stage: 'beta',
@@ -175,10 +228,6 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'align-marks': Object.freeze({
     label: 'Align and space picked marks (mark menu)',
-    stage: 'beta',
-  }),
-  'markup-list': Object.freeze({
-    label: 'Markups list: every mark in one searchable list, by kind and person, with a CSV copy',
     stage: 'beta',
   }),
   'word-wrap': Object.freeze({

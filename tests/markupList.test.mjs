@@ -6,7 +6,11 @@ import {
   filterMarkupRows,
   groupMarkupRows,
   markupRowsToCsv,
+  markupTotals,
+  measureQuantity,
 } from '../src/utils/markupList.js';
+import { scaleFromPreset, stampMeasure } from '../src/utils/measure/measureScale.js';
+import { addLayer } from '../src/utils/layers.js';
 import { PANEL_IDS } from '../src/sidebar/panelLayoutStore.js';
 import { FEATURE_FLAGS } from '../src/featureFlags.js';
 
@@ -69,9 +73,9 @@ test('CSV quotes and blocks spreadsheet formulas', () => {
     { pageNumber: 2, kindLabel: 'Text box', text: 'a, "b"', color: '#f00', authorId: null, createdAt: '' },
   ], { labelFor: (id) => (id ? 'You' : 'Unknown') });
   const lines = csv.trim().split('\r\n');
-  assert.equal(lines[0], 'Page,Kind,Text,Colour,Author,Created');
-  assert.equal(lines[1], "1,Text box,'=SUM(A1),,You,");
-  assert.equal(lines[2], '2,Text box,"a, ""b""",#f00,Unknown,');
+  assert.equal(lines[0], 'Page,Kind,Text,Colour,Author,Created,Quantity,Unit,Layer');
+  assert.equal(lines[1], "1,Text box,'=SUM(A1),,You,,,,");
+  assert.equal(lines[2], '2,Text box,"a, ""b""",#f00,Unknown,,,,');
 });
 
 test('panel and flag are wired', () => {
@@ -120,4 +124,61 @@ test('rgb() colours are written as hex in the list and CSV', () => {
     { id: 'c', type: 'line', stroke: 'rgb(16,32,48)' },
   ] } });
   assert.deepEqual(rows.map((r) => r.color), ['#FF0000', '#0080FF80', '#102030']);
+});
+
+// Measurements, layers and totals (joined in from the second Markups panel
+// build, 2026-11-10).
+const QUARTER = scaleFromPreset('1/4'); // 18 pt per foot
+const ROOM = [{ x: 0, y: 0 }, { x: 180, y: 0 }, { x: 180, y: 90 }, { x: 0, y: 90 }]; // 10 ft x 5 ft
+// A 180 pt line = 10 ft.
+const lengthLine = (id, author) => stampMeasure({ type: 'line', left: 0, top: 0, width: 180, height: 0, x1: -90, y1: 0, x2: 90, y2: 0, stroke: '#ff0000', id, meta: { authorId: author } }, 'length', QUARTER);
+const area = (id, author) => stampMeasure({ type: 'polygon', points: ROOM, id, meta: { authorId: author } }, 'area', QUARTER);
+const { state: layerState } = addLayer(null, { name: 'Electrical', id: 'layer-e' });
+const MEASURED = {
+  1: { objects: [lengthLine('l1', 'u1'), lengthLine('l2', 'u2'), { id: 'r1', type: 'rect', stroke: '#00ff00' }] },
+  2: { objects: [area('a1', 'u1'), { id: 't1', type: 'textbox', text: 'Check valve', layerId: 'layer-e', meta: { authorId: 'u2' } }] },
+};
+
+test('measurements carry their real quantity and unit; no scale reads paper inches', () => {
+  const rows = buildMarkupRows(MEASURED);
+  assert.deepEqual(rows.find((r) => r.id === 'l1').measure, { kind: 'length', name: 'Length', text: '10\' 0"', quantity: 10, unit: 'ft', dimension: 'length', scaled: true });
+  assert.equal(rows.find((r) => r.id === 'a1').measure.quantity, 50);
+  assert.equal(rows.find((r) => r.id === 'a1').measure.unit, 'sq ft');
+  assert.equal(rows.find((r) => r.id === 'r1').measure, null);
+  const bare = { type: 'line', left: 0, top: 0, width: 144, height: 0, x1: -72, y1: 0, x2: 72, y2: 0, data: { measure: { kind: 'length' } } };
+  assert.deepEqual(measureQuantity(bare), { kind: 'length', name: 'Length', text: '2 in (no scale)', quantity: 2, unit: 'in', dimension: 'length', scaled: false });
+});
+
+test('totals add like with like', () => {
+  assert.deepEqual(markupTotals(buildMarkupRows(MEASURED)).map((t) => [t.name, t.quantity, t.unit, t.count]), [
+    ['Length', 20, 'ft', 2],
+    ['Area', 50, 'sq ft', 1],
+  ]);
+});
+
+test('layer and measurements-only filters; search finds units and layers', () => {
+  const rows = buildMarkupRows(MEASURED, { layerState });
+  const ids = (list) => list.map((r) => r.id);
+  assert.equal(rows.find((r) => r.id === 't1').layerName, 'Electrical');
+  assert.deepEqual(ids(filterMarkupRows(rows, { layers: new Set(['layer-e']) })), ['t1']);
+  assert.deepEqual(ids(filterMarkupRows(rows, { measuresOnly: true, authors: new Set(['u2']) })), ['l2']);
+  assert.deepEqual(ids(filterMarkupRows(rows, { query: 'sq ft' })), ['a1']);
+  assert.deepEqual(ids(filterMarkupRows(rows, { query: 'electrical' })), ['t1']);
+  // Without the Layers beta no row carries a layer.
+  assert.ok(buildMarkupRows(MEASURED).every((r) => r.layerId === null && r.layerName === ''));
+});
+
+test('CSV: a measurement\'s Quantity is a plain number in its Unit, beside its layer', () => {
+  const lines = markupRowsToCsv(buildMarkupRows(MEASURED, { layerState })).trim().split('\r\n');
+  assert.equal(lines[1], '1,Measurement,"10\' 0""",#ff0000,u1,,10,ft,Default layer');
+  assert.match(lines[4], /^2,Measurement,.*,50,sq ft,Default layer$/);
+  assert.match(lines[5], /^2,Text box,Check valve,.*,,,Electrical$/);
+});
+
+test('a named measurement lists by its name, its reading kept', () => {
+  const named = stampMeasure({ type: 'polygon', points: ROOM, id: 'v1' }, 'area', QUARTER);
+  named.data.measure.label = 'Room 101';
+  const [row] = buildMarkupRows({ 1: { objects: [named] } });
+  assert.equal(row.text, 'Room 101');
+  assert.equal(row.measure.text, '50.00 sq ft');
 });

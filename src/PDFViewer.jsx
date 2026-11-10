@@ -85,8 +85,10 @@ import SurveyTemplateMenu from './components/SurveyTemplateMenu';
 import Icon from './Icons';
 import MeasureScaleDialog from './components/MeasureScaleDialog';
 import MeasureDepthDialog from './components/MeasureDepthDialog';
+import MeasureEditDialog from './components/MeasureEditDialog.jsx';
 import {
   DEPTH_MEASURE_KINDS,
+  editMeasureData,
   MEASURE_SCALES_META_KEY,
   applyPageScale,
   loadMeasureDepth,
@@ -404,7 +406,7 @@ import { markLibraryStore } from './markLibrary/markLibraryStore.js';
 import { LIBRARY_PAYLOAD_MAX_BYTES, libraryPayloadBytes, libraryPayloadFromClipboard, planLibraryPlacement } from './markLibrary/markLibraryModel.js';
 import { fitPlacedTextBoxes, resolveLibraryDrop } from './markLibrary/markLibraryViewer.js';
 import { PAGE_GRID_SETTINGS_EVENT, applyPageGridPageSteps, applyPageGridSettings, loadPageGridSettings } from './utils/pageGrid';
-import { LAYERS_META_KEY, DEFAULT_LAYER_ID, DEFAULT_LAYER_STATE, normalizeLayerState, hiddenLayerIdSet, resolveActiveLayerId, withoutHiddenLayers, calloutsWithoutHiddenLayers, stampNewObjectsOnLayer, stampNewMarksByPage, selectableMarkIndices } from './utils/layers.js';
+import { LAYERS_META_KEY, DEFAULT_LAYER_ID, DEFAULT_LAYER_STATE, normalizeLayerState, hiddenLayerIdSet, resolveActiveLayerId, withoutHiddenLayers, calloutsWithoutHiddenLayers, stampNewObjectsOnLayer, stampNewMarksByPage, selectableMarkIndices, hiddenActiveLayer, setLayerVisible } from './utils/layers.js';
 import { PAGE_PRESENTATION_META_KEY, normalizePagePresentations, pagePresentationFrame, clientPointInPageFrame, clientPastePointInPageFrame } from './utils/pagePresentation.js';
 import { normalizePresentationPdf, pdfBytesHavePresentationTag } from './utils/pdfPagePresentation.js';
 import { chooseCloudPdfOpenPath, shouldRetryStreamedOpenWithDownload, tryOpenCloudPdfStream } from './services/cloudPdfStream.js';
@@ -3189,6 +3191,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const [measureKeysOn] = useState(() => isFeatureOn('measure-keys'));
   const [measureDepth, setMeasureDepth] = useState(() => loadMeasureDepth());
   const [measureDepthDialog, setMeasureDepthDialog] = useState(null);
+  // Nightly 'measure-edit': change a drawn measurement's name, depth and
+  // caption from its right-click menu. { pageNumber, id, index }.
+  const [measureEditEnabled] = useState(() => isFeatureOn('measure-edit'));
+  const [measureEdit, setMeasureEdit] = useState(null);
   const prevMeasureModeRef = useRef(null);
   useEffect(() => {
     const prev = prevMeasureModeRef.current;
@@ -3205,8 +3211,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const cycleLassoTouchMode = useCallback(() => {
     setLassoTouchMode((current) => cycleLassoMode(current));
   }, []);
+  // Counts every tool request, so a late Escape-to-Pan can tell that a tool
+  // was picked after the Escape and must not override it.
+  const toolRequestSeqRef = useRef(0);
   const activateSelectFamilyMode = useCallback((mode) => {
     const next = getSelectFamilyTransition(mode);
+    toolRequestSeqRef.current += 1;
     setSelectionMode(next.selectionMode);
     setActiveTool(next.activeTool);
   }, []);
@@ -3476,6 +3486,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // request; read once by the tool-switch effect below.
   const toolSwitchRequestRef = useRef(null);
   const setActiveToolLogged = useCallback((next, { source } = {}) => {
+    toolRequestSeqRef.current += 1;
     toolSwitchRequestRef.current = source && typeof next === 'string' ? { tool: next, source } : null;
     try {
       const requested = typeof next === 'function' ? '(updater-fn)' : String(next);
@@ -4064,6 +4075,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const handleSaveAnnotationsRef = useRef(null);
   const activeLayerIdRef = useRef(null);
   const hiddenLayerIdsRef = useRef(null);
+  const warnIfDrawnOnHiddenLayerRef = useRef(() => {});
 
   // R2.2 Slice 3 — the single commit gate for callout CREATE/EDIT/STYLE
   // mutations. Derives the target page's current callout list from
@@ -4511,8 +4523,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           tool: activeTool,
         });
         if (escapeAction === 'switch-to-pan') {
+          // Chrome runs input before timers, so a tool key pressed right
+          // after Escape (C, T...) can land before this timer on a busy
+          // machine. That newer pick wins; Pan must not undo it.
+          // Any other tool change since (a raw setActiveTool path) counts too.
+          const seqAtEscape = toolRequestSeqRef.current;
+          const toolAtEscape = activeTool;
           window.setTimeout(() => {
-            if (!event.defaultPrevented) setActiveToolLogged('pan', { source: 'escape' });
+            if (event.defaultPrevented || toolRequestSeqRef.current !== seqAtEscape || activeToolRef.current !== toolAtEscape) return;
+            setActiveToolLogged('pan', { source: 'escape' });
           }, 0);
           return;
         }
@@ -12091,6 +12110,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // per document open (see the fallback effect near the fix19 import harness).
   const embeddedImportFallbackDoneRef = useRef(null);
   const annotationsByPageRef = useRef(annotationsByPage);
+  // 'measure-edit': the right-click menu's Edit measurement… (state above).
+  const openMeasureEdit = useCallback((pageNumber, index) => {
+    const object = annotationsByPageRef.current?.[pageNumber]?.objects?.[index];
+    if (object?.data?.measure?.kind && object.id != null) setMeasureEdit({ pageNumber, index, id: object.id });
+  }, []);
   // Speed (2026-11-09): work out the marks' geometry for the pages just past
   // the mounted window while the browser is idle, so a page scrolling into
   // view only builds its elements (warmMarkGeometry; ~80 ms of a 150-mark
@@ -22099,6 +22123,31 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     const timer = setTimeout(() => setPageMarksHoldExpiredFor(holdDocumentId), PAGE_MARKS_HOLD_MAX_MS);
     return () => clearTimeout(timer);
   }, [holdPagesForMarksUnbounded, pdfFile?.id]);
+
+  // Document review (Nightly, flag 'document-review'; home/documentReview.js):
+  // the documents list shows each document's markup count. Sent a few
+  // seconds after the marks settle, only once the saved marks are loaded
+  // (never the empty start), only by someone who can edit, only on change.
+  const [documentReviewEnabled] = useState(() => isFeatureOn('document-review'));
+  const reportedMarkupCountRef = useRef(null);
+  const marksLoadedForCount = Boolean(
+    normalAnnotationHydration?.ready === true && normalAnnotationHydration?.documentId === pdfFile?.id,
+  );
+  useEffect(() => {
+    if (!documentReviewEnabled || !pdfFile?.id || !user?.id || !marksLoadedForCount) return undefined;
+    if (yjsDocRole === 'viewer' || yjsAccessRevoked || documentLocked) return undefined;
+    const documentId = pdfFile.id;
+    const timer = setTimeout(() => {
+      import('./home/documentReview.js').then(({ countMarkups, reportMarkupCount }) => {
+        const count = countMarkups(annotationsByPage, surveyMarkers);
+        const last = reportedMarkupCountRef.current;
+        if (last && last.documentId === documentId && last.count === count) return;
+        reportedMarkupCountRef.current = { documentId, count };
+        reportMarkupCount(supabase, documentId, count);
+      }).catch(() => {});
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [documentReviewEnabled, pdfFile?.id, user?.id, marksLoadedForCount, yjsDocRole, yjsAccessRevoked, documentLocked, annotationsByPage, surveyMarkers]);
   // Read by Save: whether the shared document already keeps this work safe
   // (its store on this device, or every change already in the cloud).
   const annotationDocHoldsWorkRef = useRef(() => false);
@@ -22233,6 +22282,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   activeLayerIdRef.current = effectiveActiveLayerId;
   const hiddenLayerIds = useMemo(() => (layersEnabled ? hiddenLayerIdSet(layerState) : null), [layersEnabled, layerState]);
   hiddenLayerIdsRef.current = hiddenLayerIds;
+  // A mark drawn on a hidden layer would vanish as it lands: say so, once a
+  // burst, with a way to show the layer (Drawboard deep test). Called from
+  // the two places that put new marks on the active layer.
+  const hiddenLayerWarnAtRef = useRef(0);
+  const layerStateNowRef = useRef(layerState);
+  layerStateNowRef.current = layerState;
+  // `isNew()` says whether the commit adds a mark (only asked when the layer
+  // is hidden, so an ordinary commit pays nothing).
+  warnIfDrawnOnHiddenLayerRef.current = (isNew) => {
+    const hidden = hiddenActiveLayer(layerState, activeLayerIdRef.current);
+    if (!hidden || !isNew()) return;
+    const now = Date.now();
+    if (now - hiddenLayerWarnAtRef.current < 4000) return;
+    hiddenLayerWarnAtRef.current = now;
+    showToast(`“${hidden.name}” is hidden, so the new mark can’t be seen.`, 'info', {
+      action: { label: 'Show layer', onClick: () => handleLayersChange(setLayerVisible(layerStateNowRef.current, hidden.id, true)) },
+    });
+  };
   // Any write to the root's style restyles the whole page (~0.1 s on a big
   // drawing set), so a tab switch leaves the value for the tab coming to the
   // front to overwrite, and only a changed value is written
@@ -24345,19 +24412,68 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // bytes as Export annotated PDF), flattened (the same bytes Print makes) or
   // plain (no marks), for every page, this page, pages with marks or a typed
   // list. Pure helpers live in utils/exportPdfModes.js.
+  // Export filters (Nightly, flag 'export-filters'; utils/exportFilters.js):
+  // who has marks here and which layers hold them, for the dialog's chips,
+  // and how many comments the document has, for "Comments (.csv)".
+  const [exportFiltersEnabled] = useState(() => isFeatureOn('export-filters'));
   const exportPageInfo = useCallback(async () => {
     const { pagesWithMarks } = await import('./utils/exportPdfModes.js');
-    return {
+    const shown = withoutHiddenLayers(annotationsByPage, hiddenLayerIds);
+    const info = {
       numPages: Number(numPages) || 0,
       currentPage: pageNum,
       marked: pagesWithMarks({
-        annotationsByPage: withoutHiddenLayers(annotationsByPage, hiddenLayerIds),
+        annotationsByPage: shown,
         surveyMarkers: printableSurveyMarkers,
       }),
     };
-  }, [numPages, pageNum, annotationsByPage, hiddenLayerIds, printableSurveyMarkers]);
+    if (!exportFiltersEnabled) return info;
+    const filters = await import('./utils/exportFilters.js');
+    let people = [];
+    let comments = [];
+    if (pdfFile?.id) {
+      const { listCommentPeople, listMarkComments } = await import('./services/markComments.js');
+      [people, comments] = await Promise.all([
+        listCommentPeople(supabase, pdfFile.id).catch(() => []),
+        listMarkComments(supabase, pdfFile.id).catch(() => []),
+      ]);
+    }
+    const nameOf = (id) => {
+      if (id === filters.NO_AUTHOR) return 'No author';
+      if (id && id === user?.id) return 'Me';
+      const person = people.find((p) => p.id === id);
+      return person?.name || (person?.email ? person.email.split('@')[0] : 'Former member');
+    };
+    return {
+      ...info,
+      authors: filters.exportAuthors({ annotationsByPage: shown, surveyMarkers: printableSurveyMarkers })
+        .map((a) => ({ ...a, name: nameOf(a.id) })),
+      layers: layersEnabled ? filters.exportLayers({ annotationsByPage: shown }, layerState) : [],
+      commentCount: comments.filter((c) => !c.deletedAt).length,
+    };
+  }, [numPages, pageNum, annotationsByPage, hiddenLayerIds, printableSurveyMarkers, exportFiltersEnabled, pdfFile?.id, user?.id, layersEnabled, layerState]);
 
-  const handleExportPdfWithOptions = useCallback(async ({ mode = 'annotated', pages = 'all', custom = '' } = {}) => {
+  // Comments (.csv) beside the exported PDF (export filters).
+  const exportCommentsCsv = useCallback(async () => {
+    if (!pdfFile?.id) return 'none';
+    const [{ listCommentPeople, listMarkComments, personLabel }, filters, bytesKit] = await Promise.all([
+      import('./services/markComments.js'),
+      import('./utils/exportFilters.js'),
+      import('./utils/exportPdfBytes.js'),
+    ]);
+    const [people, comments] = await Promise.all([
+      listCommentPeople(supabase, pdfFile.id).catch(() => []),
+      listMarkComments(supabase, pdfFile.id),
+    ]);
+    const name = pdfDisplayNameRef.current || pdfFile.name;
+    const csv = filters.commentsCsv(comments, {
+      documentName: String(name || '').replace(/\.pdf$/i, ''),
+      nameOf: (id) => personLabel(people.find((p) => p.id === id) || null),
+    });
+    return bytesKit.deliverCsv(csv, filters.commentsCsvFileName(name));
+  }, [pdfFile?.id, pdfFile?.name]);
+
+  const handleExportPdfWithOptions = useCallback(async ({ mode = 'annotated', pages = 'all', custom = '', filter = null, commentsCsv = false } = {}) => {
     if (!pdfFile) {
       showToast('Open a PDF first.', 'warn');
       return { ok: false, error: 'Open a PDF first.' };
@@ -24368,6 +24484,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     const picked = modes.pickExportPages({ choice: pages, custom, ...info });
     if (picked.error) return { ok: false, error: picked.error };
     let redactionsSanitized = 0;
+    // Export filters: keep only the chosen people's marks and layers.
+    let keep = (marks) => marks;
+    if (exportFiltersEnabled && filter && mode !== 'plain') {
+      const filters = await import('./utils/exportFilters.js');
+      if (!filters.exportFilterIsAll(filter)) keep = (marks) => filters.applyExportFilter(marks, filter, layerState);
+    }
     try {
       const source = await getExportSourcePdf();
       let bytes;
@@ -24377,14 +24499,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         const { buildPrintableRegularAnnotationPayload, savePDFWithFlattenedRegularAnnotationsForPrint } =
           await import('./utils/pdfAnnotationsPdfLib');
         const payload = buildPrintableRegularAnnotationPayload({
-          annotationsByPage: withoutHiddenLayers(printableAnnotationsByPageRef.current || {}, hiddenLayerIds),
-          callouts: calloutsWithoutHiddenLayers(callouts || [], hiddenLayerIds).filter((callout) => isAnnotationVisibleInSurveyMode({
-            moduleId: callout?.moduleId ?? null,
-            regionId: callout?.regionId ?? null,
-            showSurveyPanel,
-            selectedModuleId,
-          })),
-          surveyMarkers: printableSurveyMarkers,
+          ...keep({
+            annotationsByPage: withoutHiddenLayers(printableAnnotationsByPageRef.current || {}, hiddenLayerIds),
+            callouts: calloutsWithoutHiddenLayers(callouts || [], hiddenLayerIds).filter((callout) => isAnnotationVisibleInSurveyMode({
+              moduleId: callout?.moduleId ?? null,
+              regionId: callout?.regionId ?? null,
+              showSurveyPanel,
+              selectedModuleId,
+            })),
+            surveyMarkers: printableSurveyMarkers,
+          }),
           spaces,
         });
         bytes = await savePDFWithFlattenedRegularAnnotationsForPrint(source, payload.annotationsByPage, pageSizes, {
@@ -24401,9 +24525,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         });
       } else {
         const { savePDFWithAnnotationsPdfLib } = await import('./utils/pdfAnnotationsPdfLib');
+        const marks = keep({
+          annotationsByPage: withoutHiddenLayers(annotationsByPage, hiddenLayerIds),
+          callouts: calloutsWithoutHiddenLayers(callouts, hiddenLayerIds),
+          surveyMarkers: printableSurveyMarkers,
+        });
         bytes = await savePDFWithAnnotationsPdfLib(
           source,
-          withoutHiddenLayers(annotationsByPage, hiddenLayerIds),
+          marks.annotationsByPage,
           pageSizes,
           null,
           {
@@ -24411,8 +24540,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
             actionType: 'pdf-export',
             documentId: pdfFile?.id || null,
             pageTransformations,
-            callouts: calloutsWithoutHiddenLayers(callouts, hiddenLayerIds),
-            surveyMarkers: printableSurveyMarkers,
+            callouts: marks.callouts,
+            surveyMarkers: marks.surveyMarkers,
             activeModuleId: isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId }) ? selectedModuleId : null,
             spaces,
             deletedPdfAnnotations,
@@ -24425,6 +24554,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       const fileName = modes.exportFileName(pdfDisplayNameRef.current || pdfFile.name, mode, picked.pages);
       const outcome = await bytesKit.deliverPdf(bytes, fileName, { title: 'Export PDF' });
       if (outcome === 'canceled') return { ok: false, canceled: true };
+      if (exportFiltersEnabled && commentsCsv) {
+        try {
+          await exportCommentsCsv();
+        } catch (csvError) {
+          console.warn('[ExportPdfWithOptions] comments CSV failed:', csvError?.message || csvError);
+          showToast('The PDF is ready, but the comments could not be saved.', 'warn');
+        }
+      }
       if (redactionsSanitized > 0) {
         showToast(`${redactionsSanitized} redaction marks were exported as outlines without their replacement text`, 'info');
       } else if (outcome === 'downloaded') {
@@ -24439,9 +24576,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     annotationsByPage,
     callouts,
     deletedPdfAnnotations,
+    exportCommentsCsv,
+    exportFiltersEnabled,
     exportPageInfo,
     getExportSourcePdf,
     hiddenLayerIds,
+    layerState,
     pageSizes,
     pageTransformations,
     pdfFile,
@@ -28200,6 +28340,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     if (Array.isArray(json?.objects) && activeLayerIdRef.current && !isUndoingRef.current
       && saveContext?.action !== 'move-to-page') {
       const stamped = stampNewObjectsOnLayer(annotationsByPageRef.current?.[pageNumber]?.objects, json.objects, activeLayerIdRef.current);
+      // (The default layer stamps nothing, so "new" is asked with a stand-in id.)
+      const objectsBeforeStamp = json.objects;
+      warnIfDrawnOnHiddenLayerRef.current(() => stampNewObjectsOnLayer(annotationsByPageRef.current?.[pageNumber]?.objects, objectsBeforeStamp, 'probe') !== objectsBeforeStamp);
       if (stamped !== json.objects) json = { ...json, objects: stamped };
     }
     const source_ = saveContext?.source || 'unknown';
@@ -28859,6 +29002,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     if (activeLayerIdRef.current && !isUndoingRef.current
       && saveContext?.action !== 'move-to-page' && saveContext?.action !== 'move-region') {
       const stampedByPage = stampNewMarksByPage(annotationsByPageRef.current, transaction.nextByPage, activeLayerIdRef.current);
+      const nextBeforeStamp = transaction.nextByPage;
+      warnIfDrawnOnHiddenLayerRef.current(() => stampNewMarksByPage(annotationsByPageRef.current, nextBeforeStamp, 'probe') !== nextBeforeStamp);
       if (stampedByPage !== transaction.nextByPage) {
         transaction = { ...transaction, nextByPage: stampedByPage, action: buildTextMarkupDocumentAction(annotationsByPageRef.current || {}, stampedByPage) || transaction.action };
       }
@@ -29590,6 +29735,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     if (!hydration || hydration.ready !== true) return undefined;
     if (hydration.documentId && hydration.documentId !== documentId) return undefined;
     if (embeddedImportFallbackDoneRef.current === documentId) return undefined;
+    // A locked document or an older version takes no writes; the import
+    // waits until it can be stored (the effect re-runs on unlock).
+    if (documentLocked) return undefined;
     const decision = embeddedImportDecision({
       // The document's owner may import even before the role RPC resolves.
       role: yjsDocRole ?? (documentOwnerId && user?.id && documentOwnerId === user.id ? 'owner' : null),
@@ -29717,7 +29865,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     })();
 
     return () => { cancelled = true; };
-  }, [normalAnnotationHydration, pdfFile, pdfDoc, handleSaveAnnotations, yjsDocRole, documentOwnerId, user?.id, excelSyncMetaGet, excelSyncMetaSet, annotationDocHasStoredMarks, annotationDocBeginBulkImport, annotationDocWhenBulkImportSaved]);
+  }, [normalAnnotationHydration, pdfFile, pdfDoc, handleSaveAnnotations, yjsDocRole, documentOwnerId, user?.id, excelSyncMetaGet, excelSyncMetaSet, annotationDocHasStoredMarks, annotationDocBeginBulkImport, annotationDocWhenBulkImportSaved, documentLocked]);
 
   // Keep this document's list thumbnail current (page 1 with its markup),
   // debounced after edits settle and never while drawing — see the hook.
@@ -33179,6 +33327,57 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     }
     return changedCount > 0;
   }, [documentOwnerId, handleSaveAnnotations, showToast, user?.id]);
+
+  // Layers beta: "Move to layer" on the mark menu (Drawboard's Change layer).
+  // Writes the picked marks' (and callouts') layerId; Survey Markers have no
+  // layer. A user-locked mark stays where it is. One save per page = one
+  // Undo step.
+  const handleMoveMarksToLayer = useCallback((pageNumber, selection = {}, layerId) => {
+    if (!layersEnabled || pageNumber == null || familyEditsBlocked()) return false;
+    const target = normalizeLayerState(layerState).layers.find((l) => l.id === layerId);
+    if (!target) return false;
+    const byPage = annotationsByPageRef.current || {};
+    const indexSet = new Set((selection.indices || []).filter((i) => Number.isInteger(i)));
+    const calloutIdSet = new Set((selection.calloutIds || []).map(String));
+    const pages = new Set([String(pageNumber)]);
+    for (const callout of calloutsRef.current || []) {
+      if (callout && calloutIdSet.has(String(callout.id)) && callout.pageNumber != null) pages.add(String(callout.pageNumber));
+    }
+    let moved = 0;
+    let lockedCount = 0;
+    const saves = [];
+    for (const pageKey of pages) {
+      const page = byPage[pageKey] || byPage[Number(pageKey)];
+      if (!Array.isArray(page?.objects)) continue;
+      let touched = false;
+      const objects = page.objects.map((object, index) => {
+        const isPickedMark = String(pageKey) === String(pageNumber)
+          && indexSet.has(index) && object?.data?.type !== 'callout';
+        const isPickedCallout = object?.data?.type === 'callout' && calloutIdSet.has(String(object?.data?.id));
+        if (!isPickedMark && !isPickedCallout) return object;
+        if ((object?.layerId || DEFAULT_LAYER_ID) === layerId) return object;
+        if (isUserLocked(object)) { lockedCount += 1; return object; }
+        touched = true;
+        moved += 1;
+        return { ...object, layerId };
+      });
+      if (touched) saves.push([pageKey, { ...page, objects }]);
+    }
+    saves.forEach(([pageKey, json]) => {
+      const numericKey = Number(pageKey);
+      handleSaveAnnotations(Number.isFinite(numericKey) ? numericKey : pageKey, json, {
+        source: 'object:modified',
+        action: 'move-to-layer',
+        checkpointPolicy: 'normal',
+      });
+    });
+    if (moved > 0) {
+      showToast(`Moved ${moved === 1 ? '1 mark' : `${moved} marks`} to ${target.name}${target.visible ? '' : ' (hidden)'}`, 'info');
+    } else if (lockedCount > 0) {
+      showToast('Locked marks stay on their layer. Unlock them first.', 'info');
+    }
+    return moved > 0;
+  }, [handleSaveAnnotations, layerState, layersEnabled, showToast]);
 
   const pasteFamilyAt = useCallback((pageNumber, clientX, clientY) => {
     const clipboard = familyClipboardRef.current;
@@ -37662,6 +37861,28 @@ ${pageBlocks}
           note before Submit. Lives here so it renders above every floating
           UI including the context menu below. */}
       <SaveLogBanner />
+      {measureEdit && (() => {
+        const objects = annotationsByPageRef.current?.[measureEdit.pageNumber]?.objects || [];
+        const object = objects[measureEdit.index]?.id === measureEdit.id ? objects[measureEdit.index] : objects.find((o) => o?.id === measureEdit.id);
+        if (!object?.data?.measure) return null;
+        return (
+          <MeasureEditDialog
+            object={object}
+            scale={object.data.measure.scale || pageScaleFromObjects(objects) || metaScaleForPage(measureScaleMeta, measureEdit.pageNumber)}
+            onCancel={() => setMeasureEdit(null)}
+            onApply={(changes) => {
+              setMeasureEdit(null);
+              const page = annotationsByPageRef.current?.[measureEdit.pageNumber];
+              const at = (page?.objects || []).findIndex((o) => o?.id === measureEdit.id);
+              if (at < 0) return;
+              const next = deepClone(page);
+              const target = next.objects[at];
+              next.objects[at] = { ...target, data: { ...target.data, measure: editMeasureData(target.data.measure, changes) } };
+              handleSaveAnnotations(measureEdit.pageNumber, next, { source: 'object:modified', action: 'modify', checkpointPolicy: 'normal' });
+            }}
+          />
+        );
+      })()}
       {/* Nightly 'measure-scale-chip' (Drawboard PDF Pro trial audit
           2026-11-09): a measure tool armed on a page with no scale says so,
           with a way to set one, instead of quietly reading 1:1 inches. */}
@@ -37771,6 +37992,9 @@ ${pageBlocks}
         requestBulkDelete: (args) => requestBulkDeleteRef.current?.(args),
         // Owner ruling 2026-09-28: Lock / Unlock on every object menu.
         toggleLockSelection: handleToggleMarkLock,
+        // Layers beta: Move to layer ▸.
+        moveSelectionToLayer: layersEnabled ? handleMoveMarksToLayer : null,
+        layerState: layersEnabled ? layerState : null,
         // w56: group-menu Delete of a mixed marks+callouts selection.
         beginBatchDelete: handleBeginBatchDelete,
         resolveSurveyMarker: (id) => surveyMarkersRef.current?.[id] || null,
@@ -37782,6 +38006,7 @@ ${pageBlocks}
         familyClipboard,
         pasteFamilyAt,
         saveFamilyToLibrary: markLibraryEnabled ? saveFamilyToLibrary : null,
+        editMeasure: measureEditEnabled ? openMeasureEdit : null,
         viewerId: user?.id ?? null,
         documentOwnerId,
         selectedCalloutIds,

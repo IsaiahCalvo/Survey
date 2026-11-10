@@ -475,6 +475,46 @@ export function measureScaleBar(scale, unitsPerPx = 1, targetPx = 120) {
   return { real, lengthPt, text };
 }
 
+export const MEASURE_NAME_MAX = 60;
+
+/** A measurement's own name ("Room 101"), trimmed; '' when it has none. */
+export function measureName(obj) {
+  const name = obj?.data?.measure?.label;
+  return typeof name === 'string' ? name.replace(/\s+/g, ' ').trim().slice(0, MEASURE_NAME_MAX) : '';
+}
+
+/**
+ * The caption a measurement shows on the page (Nightly 'measure-edit'): its
+ * label pill, with its name in front when it has one, or null when its
+ * caption is turned off.
+ */
+export function measureCaption(obj, label) {
+  if (!label || obj?.data?.measure?.caption === false) return null;
+  const name = measureName(obj);
+  return name ? { ...label, text: `${name} · ${label.text}` } : label;
+}
+
+/**
+ * New measure data after an edit: name, depth (Wall area and Volume only) and
+ * whether the caption shows. Keeps the kind and scale.
+ */
+export function editMeasureData(measure, { name, depth, caption } = {}) {
+  if (!measure || !MEASURE_KINDS.includes(measure.kind)) return measure;
+  const next = { ...measure };
+  const cleanName = typeof name === 'string' ? name.replace(/\s+/g, ' ').trim().slice(0, MEASURE_NAME_MAX) : undefined;
+  if (cleanName !== undefined) {
+    if (cleanName) next.label = cleanName; else delete next.label;
+  }
+  if (depth !== undefined && DEPTH_MEASURE_KINDS.includes(measure.kind)) {
+    const d = normalizeMeasureDepth(depth);
+    if (d) next.depth = d;
+  }
+  if (caption !== undefined) {
+    if (caption === false) next.caption = false; else delete next.caption;
+  }
+  return next;
+}
+
 /** The page's scale as saved on its measurements (last one wins). */
 export function pageScaleFromObjects(objects) {
   if (!Array.isArray(objects)) return null;

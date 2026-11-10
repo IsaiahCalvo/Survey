@@ -10,6 +10,7 @@ const ICON_BY_LABEL = [
   [/^cut\b/i, 'scissors'],
   [/^paste\b/i, 'paste'],
   [/^rename\b/i, 'edit'],
+  [/^edit measurement\b/i, 'measureScale'],
   [/^pdf tools\b/i, 'document'],
   [/^merge\b/i, 'pages'],
   [/^(un)?lock\b/i, 'lock'],
