@@ -38,8 +38,12 @@ test('the tab unsaved dot clears when cloud sync is up to date', async ({ page }
 
     // Still gone after a reload (the tab reopens on desktop).
     await page.reload();
+    // isVisible() does not wait, so right after the reload it answered "no"
+    // before the tab came back, and the double-click then hit the reopened
+    // viewer for the rest of the test. Wait for the tab to come back first.
     const close = page.getByRole('button', { name: `Close ${E2E_DOCUMENT.name}` });
-    if (!(await close.isVisible({ timeout: 30_000 }).catch(() => false))) {
+    const reopened = await close.waitFor({ state: 'visible', timeout: 30_000 }).then(() => true, () => false);
+    if (!reopened) {
       await page.getByText(E2E_DOCUMENT.name, { exact: true }).first().dblclick();
     }
     await expect(page.getByText('Type your name in the box:')).toBeVisible({ timeout: 60_000 });
