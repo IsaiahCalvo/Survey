@@ -40,7 +40,12 @@ export const toolChord = (shortcut) => [
 export const SHORTCUT_SECTIONS = [
   {
     title: 'Tools',
-    items: TOOL_SHORTCUTS.map((shortcut) => ({ chords: [toolChord(shortcut)], label: shortcut.label })),
+    items: [
+      ...TOOL_SHORTCUTS.map((shortcut) => ({ chords: [toolChord(shortcut)], label: shortcut.label })),
+      // Nightly ('link-tool'): shown only while the flag is on (LinkToolHost).
+      { chords: ['shift+h'], label: 'Hyperlink', flag: 'link-tool' },
+      { chords: ['n'], label: 'Pin (M picks Comment, Issue or Task)', flag: 'comment-pins' },
+    ],
   },
   {
     title: 'View',

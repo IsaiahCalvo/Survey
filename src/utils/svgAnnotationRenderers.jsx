@@ -8,6 +8,17 @@
  * Each function takes a Fabric.js JSON object and returns a React SVG element.
  */
 import React from 'react';
+import { isLinkMark, linkMarkPaint } from './linkMarkPaint.js';
+import { buildMeasureLabel } from './measure/measureScale.js';
+import {
+  DIMENSION_EXTENSION_PT,
+  dimensionCaptionPt,
+  dimensionCaptionWidth,
+  dimensionCaptionPlace,
+  dimensionLeader,
+  dimensionLineGeometry,
+  isDimensionMeasure,
+} from './measure/dimensionLine.js';
 import { measureTextBounds, getLineEndpoints } from './svgBoundingBox';
 // Phase 14 CALL-10: renderCallout delegates to a pure data-spec builder in
 // calloutEditAdapter.js so the contract can be unit-tested without loading
@@ -599,6 +610,40 @@ export const renderRect = (obj, index) => {
     );
   }
 
+  // Nightly 'link-tool': a link box paints its see-through fill and the
+  // border its style asks for (box, dashed, underline, none). linkTool.js.
+  if (isLinkMark(obj)) {
+    const paint = linkMarkPaint(obj, effectiveWidth, effectiveHeight);
+    return (
+      <g
+        key={key}
+        transform={positionTransform}
+        opacity={obj.opacity ?? 1}
+        data-shape-id={shapeId}
+        data-shape-kind="link"
+        data-link-style={paint.style}
+        onClick={__shapeClick}
+      >
+        <rect x={0} y={0} width={effectiveWidth} height={effectiveHeight} fill={paint.fill} stroke="none" />
+        {paint.box && paint.strokeWidth > 0 && (
+          <rect
+            x={0}
+            y={0}
+            width={effectiveWidth}
+            height={effectiveHeight}
+            fill="none"
+            stroke={paint.stroke}
+            strokeWidth={paint.strokeWidth}
+            strokeDasharray={paint.dash ? paint.dash.join(' ') : undefined}
+          />
+        )}
+        {paint.underline && paint.strokeWidth > 0 && (
+          <line {...paint.underline} stroke={paint.stroke} strokeWidth={paint.strokeWidth} />
+        )}
+      </g>
+    );
+  }
+
   // UX 2026-04-21: Revision-cloud rectangles rebuild their scalloped path
   // from the current effective box size on every render. That way when the
   // user resizes the cloud, more humps appear as the box grows and fewer as
@@ -897,6 +942,63 @@ export const renderArrowhead = (style, tipX, tipY, angleDeg, color, sw) => {
  * @param {number} index - Array index for key fallback
  * @returns {React.ReactElement}
  */
+// Nightly 'measure-plus': a Length mark drawn as Drawboard's dimension line
+// (utils/measure/dimensionLine.js). Everything sits inside the line's own
+// rotation, so it turns, flips and moves with the mark; the caption reads in
+// the stroke colour at 9 pt and never upside down. The layer's hit target
+// follows the offset line too (SVGAnnotationLayer, 'dimension-line').
+const pts = (list) => list.map((p) => `${p.x},${p.y}`).join(' ');
+function renderDimensionLine(obj, spec, key, opacity, rotateTransform, dashArray) {
+  const { x1, y1, x2, y2, stroke, strokeWidth } = spec.line;
+  const label = buildMeasureLabel(obj, obj.data?.measure?.scale || null);
+  const lines = label ? (Array.isArray(label.lines) ? label.lines : [String(label.text)]) : [];
+  const fontPt = dimensionCaptionPt(obj);
+  const captionWidth = Math.max(0, ...lines.map((line) => dimensionCaptionWidth(line, fontPt)));
+  const lineHeight = fontPt * 1.2;
+  const geo = dimensionLineGeometry({ x1, y1, x2, y2 }, {
+    leader: dimensionLeader(obj),
+    captionWidth,
+    captionHeight: lines.length * lineHeight,
+    place: dimensionCaptionPlace(obj),
+    turn: obj.angle ?? 0,
+  });
+  if (!geo) return <g key={key} />;
+  const sw = strokeWidth || 1;
+  return (
+    <g key={key} opacity={opacity} transform={rotateTransform} data-dimension-line="true">
+      {geo.extensions.map(([p, q], i) => (
+        <line key={`e${i}`} x1={p.x} y1={p.y} x2={q.x} y2={q.y} stroke={stroke} strokeWidth={DIMENSION_EXTENSION_PT} />
+      ))}
+      {geo.segments.map(([p, q], i) => (
+        <line key={`s${i}`} x1={p.x} y1={p.y} x2={q.x} y2={q.y} stroke={stroke} strokeWidth={sw} strokeDasharray={dashArray} strokeLinecap="butt" />
+      ))}
+      {geo.chevrons.map((c, i) => (
+        <polyline key={`c${i}`} points={pts(c)} fill="none" stroke={stroke} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" />
+      ))}
+      {lines.length > 0 && (
+        <text
+          data-dimension-caption={label.text}
+          x={geo.caption.x}
+          y={geo.caption.y}
+          transform={`rotate(${geo.caption.angle} ${geo.caption.x} ${geo.caption.y})`}
+          textAnchor="middle"
+          dominantBaseline="central"
+          fontSize={fontPt}
+          fontFamily="Helvetica"
+          fill={stroke}
+          style={{ userSelect: 'none' }}
+        >
+          {lines.length > 1
+            ? lines.map((line, i) => (
+              <tspan key={i} x={geo.caption.x} y={geo.caption.y + (i - (lines.length - 1) / 2) * lineHeight}>{line}</tspan>
+            ))
+            : lines[0]}
+        </text>
+      )}
+    </g>
+  );
+}
+
 export const renderLine = (obj, index) => {
   const spec = buildLineRenderSpec(obj);
   const isArrow = obj.tool === 'arrow';
@@ -1002,6 +1104,10 @@ export const renderLine = (obj, index) => {
   const lineDashArrayAttr = Array.isArray(obj.strokeDashArray) && obj.strokeDashArray.length > 0
     ? obj.strokeDashArray.join(' ')
     : undefined;
+
+  if (spec.kind !== 'curved' && isDimensionMeasure(obj)) {
+    return renderDimensionLine(obj, spec, key, opacity, rotateTransform, lineDashArrayAttr);
+  }
 
   if (spec.kind === 'curved') {
     // UX: Curved line/arrow — <path> + optional arrowhead inside <g>.

@@ -33,11 +33,19 @@ import {
   normalizeMeasureDepth,
   normalizeMeasureLabelText,
 } from '../utils/measure/measureScale.js';
+import {
+  DIMENSION_CAPTION_PLACES,
+  dimensionCaptionPlace,
+  dimensionLeader,
+  isDimensionMeasure,
+  normalizeDimensionLeader,
+} from '../utils/measure/dimensionLine.js';
 
 // Space kept between the card and the window's edges.
 const EDGE = 8;
 
 const depthText = (depth) => (depth == null ? '' : String(depth));
+const CAPTION_PLACE_NAMES = Object.freeze({ inline: 'Inline', above: 'Above' });
 
 export default function MeasureEditPopover({ measure, onPatch, onClose, side = 'below', tip, tipSide = 'below' }) {
   const mark = measure?.mark || null;
@@ -48,11 +56,17 @@ export default function MeasureEditPopover({ measure, onPatch, onClose, side = '
   const savedDepth = normalizeMeasureDepth(saved.depth);
   const usesDepth = DEPTH_MEASURE_KINDS.includes(kind);
   const unit = isValidMeasureScale(scale) ? MEASURE_UNITS[scale.unit].label : 'in';
+  // A Length drawn as a dimension line (measure-plus) also has a leader and a
+  // caption place.
+  const isDim = isDimensionMeasure(mark);
+  const savedLeader = isDim ? dimensionLeader(mark) : null;
 
   const [labelDraft, setLabelDraft] = useState(savedLabel);
   const [depthDraft, setDepthDraft] = useState(depthText(savedDepth));
+  const [leaderDraft, setLeaderDraft] = useState(depthText(savedLeader));
   const labelRef = useRef(null);
   const depthRef = useRef(null);
+  const leaderRef = useRef(null);
   const cardRef = useRef(null);
 
   // An undo, redo or a collaborator's edit changes the mark under the card:
@@ -63,17 +77,21 @@ export default function MeasureEditPopover({ measure, onPatch, onClose, side = '
   useEffect(() => {
     if (document.activeElement !== depthRef.current) setDepthDraft(depthText(savedDepth));
   }, [savedDepth]);
+  useEffect(() => {
+    if (document.activeElement !== leaderRef.current) setLeaderDraft(depthText(savedLeader));
+  }, [savedLeader]);
 
-  const draftsRef = useRef({ labelDraft, depthDraft, savedLabel, savedDepth });
-  draftsRef.current = { labelDraft, depthDraft, savedLabel, savedDepth };
+  const draftsRef = useRef({ labelDraft, depthDraft, leaderDraft, savedLabel, savedDepth, savedLeader });
+  draftsRef.current = { labelDraft, depthDraft, leaderDraft, savedLabel, savedDepth, savedLeader };
   // Set once the card is closing with Escape: what was typed is dropped, even
   // when the field's blur arrives as the card goes away.
   const discardRef = useRef(false);
   // The value last written from a field, until the mark comes back with it:
   // a blur and a close right after one write must not write it again.
-  const writtenRef = useRef({ label: undefined, depth: undefined });
+  const writtenRef = useRef({ label: undefined, depth: undefined, leader: undefined });
   useEffect(() => { writtenRef.current.label = undefined; }, [savedLabel]);
   useEffect(() => { writtenRef.current.depth = undefined; }, [savedDepth]);
+  useEffect(() => { writtenRef.current.leader = undefined; }, [savedLeader]);
   const commitLabel = useCallback(() => {
     if (discardRef.current) return;
     const drafts = draftsRef.current;
@@ -99,10 +117,26 @@ export default function MeasureEditPopover({ measure, onPatch, onClose, side = '
     writtenRef.current.depth = next;
     onPatch?.({ depth: next });
   }, [onPatch]);
+  const commitLeader = useCallback((typed) => {
+    if (discardRef.current) return;
+    const drafts = draftsRef.current;
+    const next = normalizeDimensionLeader(typed ?? drafts.leaderDraft);
+    if (next == null) {
+      // Not a number: the field goes back to the mark's.
+      setLeaderDraft(depthText(drafts.savedLeader));
+      return;
+    }
+    setLeaderDraft(depthText(next));
+    const current = writtenRef.current.leader !== undefined ? writtenRef.current.leader : drafts.savedLeader;
+    if (next === current) return;
+    writtenRef.current.leader = next;
+    onPatch?.({ leader: next });
+  }, [onPatch]);
   const commitTyped = useCallback(() => {
     commitLabel();
     if (usesDepth) commitDepth();
-  }, [commitDepth, commitLabel, usesDepth]);
+    if (isDim) commitLeader();
+  }, [commitDepth, commitLabel, commitLeader, isDim, usesDepth]);
 
   // The app's dismiss rules: a press outside closes it (keeping what was
   // typed), Escape closes it (dropping what was typed).
@@ -136,6 +170,19 @@ export default function MeasureEditPopover({ measure, onPatch, onClose, side = '
     onPatch?.({ fields: next });
   };
   const size = normalizeMeasureCaptionSize(saved.captionSize) || MEASURE_LABEL_FONT_PX;
+  const captionPlace = isDim ? dimensionCaptionPlace(mark) : null;
+  // Up / Down step the leader by 1 pt (10 with Shift), like Drawboard's ▲▼.
+  const leaderKeyDown = (event) => {
+    if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+      event.preventDefault();
+      event.stopPropagation();
+      const base = normalizeDimensionLeader(leaderDraft) ?? savedLeader ?? 0;
+      const step = (event.shiftKey ? 10 : 1) * (event.key === 'ArrowUp' ? 1 : -1);
+      commitLeader(String(Math.round((base + step) * 100) / 100));
+      return;
+    }
+    fieldKeyDown(event, () => commitLeader(), () => setLeaderDraft(depthText(savedLeader)));
+  };
 
   // The caption as it will read with what is typed so far.
   const preview = useMemo(() => {
@@ -172,7 +219,7 @@ export default function MeasureEditPopover({ measure, onPatch, onClose, side = '
     setPlace((current) => (current.side === nextSide && current.dx === dx && current.maxHeight === maxHeight
       ? current
       : { side: nextSide, dx, maxHeight }));
-  }, [side, preview, usesDepth]);
+  }, [side, preview, usesDepth, isDim]);
 
   if (!mark || !kind) return null;
   return (
@@ -234,6 +281,28 @@ export default function MeasureEditPopover({ measure, onPatch, onClose, side = '
           </span>
         </label>
       )}
+      {isDim && (
+        <label className="measure-edit__field">
+          <span className="measure-edit__name">Leader</span>
+          <span className="measure-edit__with-unit">
+            <input
+              ref={leaderRef}
+              type="text"
+              inputMode="decimal"
+              className="measure-edit__input"
+              data-measure-edit-leader
+              value={leaderDraft}
+              autoComplete="off"
+              enterKeyHint="done"
+              aria-label="Leader (pt)"
+              onChange={(event) => setLeaderDraft(event.target.value)}
+              onBlur={() => commitLeader()}
+              onKeyDown={leaderKeyDown}
+            />
+            <span className="measure-edit__unit" aria-hidden="true">pt</span>
+          </span>
+        </label>
+      )}
       <fieldset className="measure-edit__lines">
         <legend className="measure-edit__name">Show in caption</legend>
         {fields.map((field) => (
@@ -249,6 +318,26 @@ export default function MeasureEditPopover({ measure, onPatch, onClose, side = '
           </label>
         ))}
       </fieldset>
+      {isDim && (
+        <div className="measure-edit__sizes" role="group" aria-label="Caption place">
+          <span className="measure-edit__name" aria-hidden="true">Caption</span>
+          <span className="measure-edit__size-buttons">
+            {DIMENSION_CAPTION_PLACES.map((place) => (
+              <button
+                key={place}
+                type="button"
+                className={`measure-edit__size measure-edit__place${captionPlace === place ? ' is-current' : ''}`}
+                data-measure-edit-place={place}
+                aria-pressed={captionPlace === place}
+                {...(tip ? tip(place === 'above' ? 'Caption beside the line' : 'Caption on the line', tipSide) : {})}
+                onClick={() => onPatch?.({ captionPlace: place })}
+              >
+                {CAPTION_PLACE_NAMES[place]}
+              </button>
+            ))}
+          </span>
+        </div>
+      )}
       <div className="measure-edit__sizes" role="group" aria-label="Caption size">
         <span className="measure-edit__name" aria-hidden="true">Caption size</span>
         <span className="measure-edit__size-buttons">
