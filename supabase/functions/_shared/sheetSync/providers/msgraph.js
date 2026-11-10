@@ -337,7 +337,8 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
   // sheets go fewer at a time so one answer stays a few megabytes.
   // `deadline`: stop between batches once past it (see WRITE_BUDGET_MS).
   // `allow`: statuses that answer null instead of failing the batch.
-  async function workbookBatch(fileId, ops, { parallel = false, size = BATCH_SIZE, deadline = null, allow = [] } = {}) {
+  // `refused`: what an allowed failure answers instead of null.
+  async function workbookBatch(fileId, ops, { parallel = false, size = BATCH_SIZE, deadline = null, allow = [], refused = null } = {}) {
     const bodies = [];
     for (let i = 0; i < ops.length; i += size) {
       if (deadline != null && i > 0 && now() > deadline) {
@@ -361,7 +362,7 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
         // The first real failure (later ones only say "424: an earlier one failed").
         const failed = answers.find((a) => Number(a.status) >= 300 && Number(a.status) !== 424 && !allow.includes(Number(a.status)))
           || (answers.length < chunk.length ? { status: 500, body: null } : null);
-        if (!failed) { sessions.set(fileId, { id, at: now() }); bodies.push(...answers.map((a) => (Number(a.status) < 300 ? a.body ?? null : null))); break; }
+        if (!failed) { sessions.set(fileId, { id, at: now() }); bodies.push(...answers.map((a) => (Number(a.status) < 300 ? a.body ?? null : refused))); break; }
         const headers = { get: (k) => failed.headers?.[k] ?? failed.headers?.[String(k).toLowerCase()] ?? failed.headers?.[String(k).replace(/^\w/, (c) => c.toUpperCase())] ?? null };
         const error = graphError(Number(failed.status), failed.body, headers, 'batch');
         if (attempt === 0 && isSessionGone(error)) { sessions.delete(fileId); continue; }
@@ -596,14 +597,23 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
         // instead of two calls a tab one after another.
         const widthOf = (batch) => Math.max(batch.width || 0, ...batch.rows.map((row) => row.length));
         const ends = await workbookBatch(fileId, todo.map((b) => ({ method: 'GET', path: endPath(b.sheetId, filledWidth(b.rows)) })), { parallel: true, size: GRID_BATCH, allow: [404] });
+        const starts = todo.map((batch, i) => endRow(ends[i]));
         const writes = todo.map((batch, i) => {
-          const start = endRow(ends[i]);
+          const start = starts[i];
           const width = writeWidth(batch, widthOf(batch));
           const values = batch.rows.map((row) => Array.from({ length: width }, (_, c) => cellValueForWrite(row[c])));
           const address = `${cellAddress(start, 0)}:${cellAddress(start + values.length - 1, width - 1)}`;
           return { method: 'PATCH', path: `${sheetPath(batch.sheetId)}/range(address='${address}')?$select=address`, body: { values } };
         });
-        await workbookBatch(fileId, writes, { parallel: true, size: GRID_BATCH });
+        // A tab whose write runs into a PivotTable (409) answers null here and
+        // gets Survey's own columns alone, at the same rows, as one tab does.
+        const REFUSED = Symbol('refused');
+        const answers = await workbookBatch(fileId, writes, { parallel: true, size: GRID_BATCH, allow: [409], refused: REFUSED });
+        for (const [i, batch] of todo.entries()) {
+          if (answers[i] !== REFUSED) continue;
+          if (!batch.ownCols?.length) throw Object.assign(new Error('The workbook refused new rows (409).'), { status: 409, code: 'PivotTableRangeConflict' });
+          await writeOwnCols(fileId, batch.sheetId, starts[i], batch.rows, batch.ownCols);
+        }
         return;
       }
       for (const batch of batches || []) {

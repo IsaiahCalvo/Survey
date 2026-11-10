@@ -614,3 +614,21 @@ test('a PivotTable beside the top of the list: rows deleted in one go below it, 
   assert.deepEqual(sheet.rows.filter((r) => /^D-/.test(r[3] ?? '')).map((r) => r[3]), ['D-101', 'D-103', 'D-104', 'D-106', 'D-108']);
   assert.ok(pivotIntact(sheet, at), 'the pivot is untouched');
 });
+
+test('a PivotTable right against one tab\'s list: new items on several tabs in one round still go in', async () => {
+  const cam = (id, name) => door(id, name, { categoryId: 'cams' });
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101'), c1: cam('c1', 'C-201') } });
+  await ctx.round(); await ctx.round();
+  const at = (await ctx.sheet()).rows[0].length;
+  await fakeApi(`/files/${ctx.fileId}/pivot`, { title: 'Doors - Level 1', at: { row: 0, col: at }, rows: pivotRows });
+  ctx.markers.d2 = door('d2', 'D-102', { note: { text: 'from the field' } });
+  ctx.markers.c2 = cam('c2', 'C-202');
+  const result = await ctx.round();
+  assert.equal(result.status, 'synced');
+  const doors = await ctx.sheet();
+  assert.equal(doors.rows.find((r) => r[3] === 'D-102')?.[doors.rows[0].indexOf('Notes')], 'from the field', 'the new door is in');
+  assert.ok((await ctx.sheet('Cameras - Level 1')).rows.some((r) => r[3] === 'C-202'), 'the new camera is in');
+  assert.ok(pivotIntact(doors, at), 'the pivot is untouched');
+  await ctx.round({ force: true });
+  assert.deepEqual(Object.keys(ctx.markers).sort(), ['c1', 'c2', 'd1', 'd2'], 'nothing doubled');
+});
