@@ -335,3 +335,21 @@ export function stepBackPolyDraftForUndo(owner = null) {
   const stepBack = draftUndos.get(owner);
   return stepBack ? stepBack() !== false : false;
 }
+
+// Drafts open per viewer, whatever the flags: another window's page change
+// waits for them before it reloads the PDF (utils/pageOpSync.js), so a
+// polygon being placed is not wiped.
+const openDrafts = new Map();
+export function markPolyDraftOpen(owner = null) {
+  openDrafts.set(owner, (openDrafts.get(owner) || 0) + 1);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    const left = (openDrafts.get(owner) || 1) - 1;
+    if (left > 0) openDrafts.set(owner, left); else openDrafts.delete(owner);
+  };
+}
+export function hasOpenPolyDraft(owner = null) {
+  return openDrafts.has(owner);
+}

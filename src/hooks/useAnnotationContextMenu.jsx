@@ -604,7 +604,11 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     // right-click point. Shapes center at the point via pasteAnnotationAt;
     // callouts center their text box there via handlePasteCallout's
     // cursor-anchored mode.
+    // While every mark is hidden, nothing pastes (as Ctrl+V): a pasted mark
+    // would be picked but unseen.
+    const pasteBlocked = marksHidden();
     const doPasteAny = () => {
+      if (pasteBlocked) return;
       if (familyClipboard && typeof pasteFamilyAt === 'function') {
         pasteFamilyAt(ctx.pageNumber, ctx.x, ctx.y);
       } else if (clipboardAnnotation) {
@@ -613,7 +617,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         handlePasteCallout(ctx.pageNumber, { clientX: ctx.x, clientY: ctx.y });
       }
     };
-    const hasAnyClipboard = Boolean(clipboardAnnotation || clipboardCallout || familyClipboard);
+    const hasAnyClipboard = !pasteBlocked && Boolean(clipboardAnnotation || clipboardCallout || familyClipboard);
     // Owner 2026-10-06: an item that would do nothing is disabled, not a
     // silent no-op - "Bring forward" on the top mark, "Send to back" on the
     // bottom one, and forward / backward with no overlapping mark that way
@@ -1234,7 +1238,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         ] : []),
         ...buildCanvasPageItems({
           available: availableActions(pageMenu.handlers),
-          canPasteInPlace: Boolean(familyClipboard),
+          canPasteInPlace: !pasteBlocked && Boolean(familyClipboard),
           readOnly: pageMenuReadOnly,
         }),
         // Read-only / viewer: no page operation (they all edit).

@@ -288,7 +288,7 @@ import { shouldAutoSelectAfterCommit } from './utils/autoSelectAfterCommit';
 import { isSurveyScopedHistoryEvent, resolveHistoryEntryContext } from './utils/historyContextRestore';
 import { projectAnnotationForHistoryPreview } from './utils/historyPreviewAnnotation';
 import { isUndoKeyEvent, isRedoKeyEvent, isUndoRedoBlocked } from './utils/undoRedoHotkeys';
-import { hasPolyDraftUndo, stepBackPolyDraftForUndo, subscribePolyDraftUndo } from './utils/polyDraft.js';
+import { hasOpenPolyDraft, hasPolyDraftUndo, stepBackPolyDraftForUndo, subscribePolyDraftUndo } from './utils/polyDraft.js';
 import { measureKeyBadge, measureKindForKey } from './utils/measure/measureKeys.js';
 import { getCalloutSyncFingerprint } from './utils/calloutSyncPayload';
 import { isPlacedSurveyMarker } from './services/surveyMarkerSyncDiff';
@@ -22145,14 +22145,40 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   useEffect(() => {
     const sync = pageOpSyncRef.current;
     if (!sync.on || !normalAnnotationHydration?.ready || normalAnnotationHydration.documentId !== pdfFile?.id) return undefined;
-    return subscribeDocumentMeta(PDF_FILE_VERSION_META_KEY, (value) => {
+    // The reload waits while a finger or button is down, or a polygon is
+    // being placed, so work in progress here is not wiped (up to 30 s).
+    let pointerDown = false;
+    const onDown = () => { pointerDown = true; };
+    const onUp = () => { pointerDown = false; };
+    window.addEventListener('pointerdown', onDown, true);
+    window.addEventListener('pointerup', onUp, true);
+    window.addEventListener('pointercancel', onUp, true);
+    let timer = null;
+    let latest = null;
+    const reload = (since) => {
+      timer = null;
+      if ((pointerDown || hasOpenPolyDraft(polyDraftOwner)) && Date.now() - since < 30000) {
+        timer = setTimeout(() => reload(since), 300);
+        return;
+      }
+      sync.docBeforeReload = sync.pdfDoc;
+      onRemotePdfVersion?.(tabId, latest);
+    };
+    const unsubscribe = subscribeDocumentMeta(PDF_FILE_VERSION_META_KEY, (value) => {
       const step = remotePdfVersionStep(sync.remote, value, { writer: sync.writer, currentSha: sync.pdfFile?.contentSha256 || null, now: Date.now() });
       sync.remote = step.state;
       if (step.action !== 'reload') return;
-      sync.docBeforeReload = sync.pdfDoc;
-      onRemotePdfVersion?.(tabId, { filePath: step.version.filePath, contentSha256: step.version.contentSha256 });
+      latest = { filePath: step.version.filePath, contentSha256: step.version.contentSha256 };
+      if (!timer) reload(Date.now());
     });
-  }, [normalAnnotationHydration, pdfFile?.id, subscribeDocumentMeta, onRemotePdfVersion, tabId]);
+    return () => {
+      unsubscribe?.();
+      if (timer) clearTimeout(timer);
+      window.removeEventListener('pointerdown', onDown, true);
+      window.removeEventListener('pointerup', onUp, true);
+      window.removeEventListener('pointercancel', onUp, true);
+    };
+  }, [normalAnnotationHydration, pdfFile?.id, subscribeDocumentMeta, onRemotePdfVersion, tabId, polyDraftOwner]);
   useEffect(() => {
     const sync = pageOpSyncRef.current;
     if (!sync.remote.awaitSha || !pdfDoc || pdfDoc === sync.docBeforeReload) return;
@@ -37838,6 +37864,7 @@ ${pageBlocks}
               setPendingSvgSelection({ pageNumber: page, annotationIndices, surveyMarkerIds: [], exclusive: true, tick: Date.now() });
             },
             pasteInPlace: (page) => {
+              if (marksHidden()) return; // a pasted mark would be picked unseen
               const clip = familyClipboardRef.current;
               if (clip && commitFamilyPaste(page, clip, 0, 0) && clip.mode === 'cut') setFamilyClipboard(null);
             },

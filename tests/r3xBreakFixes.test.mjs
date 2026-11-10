@@ -59,3 +59,14 @@ test('a draft in a tab behind ignores Enter, Escape and Backspace', () => {
   const src = read('components/SVGAnnotationLayer.jsx');
   assert.match(src, /if \(!draftTabActiveRef\.current \|\| !draftOwnsKeyboard\(e\.target\)\) return;/);
 });
+
+test('an open polygon draft is counted per viewer until released', async () => {
+  const { markPolyDraftOpen, hasOpenPolyDraft } = await import('../src/utils/polyDraft.js');
+  const viewer = {};
+  const release = markPolyDraftOpen(viewer);
+  assert.equal(hasOpenPolyDraft(viewer), true);
+  assert.equal(hasOpenPolyDraft({}), false);
+  release();
+  release();
+  assert.equal(hasOpenPolyDraft(viewer), false);
+});

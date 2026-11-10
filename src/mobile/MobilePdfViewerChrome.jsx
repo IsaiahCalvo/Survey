@@ -1322,6 +1322,9 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
           type="button"
           className="mobile-pdf-header__icon"
           aria-label="Undo"
+          // Keep focus where it was (a keyboard Enter then finishes a polygon,
+          // not presses Undo again), as the desktop buttons do.
+          onMouseDown={(event) => event.preventDefault()}
           disabled={!topToolbarApi?.canUndo}
           onClick={topToolbarApi?.onUndo || undefined}
         >
@@ -1332,6 +1335,9 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
           type="button"
           className="mobile-pdf-header__icon"
           aria-label="Redo"
+          // Keep focus where it was (a keyboard Enter then finishes a polygon,
+          // not presses Redo again), as the desktop buttons do.
+          onMouseDown={(event) => event.preventDefault()}
           disabled={!topToolbarApi?.canRedo}
           onClick={topToolbarApi?.onRedo || undefined}
         >

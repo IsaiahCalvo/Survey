@@ -482,14 +482,18 @@ export const MEASURE_LABEL_WRAP_CHARS = 32;
 export function wrapMeasureLabelLine(text, max = MEASURE_LABEL_WRAP_CHARS) {
   const out = [];
   let line = '';
+  // Lengths count characters, not UTF-16 units, so an emoji is never cut
+  // in half.
+  const len = (s) => Array.from(s).length;
   for (let word of String(text).split(' ')) {
-    while (word.length > max) {
+    while (len(word) > max) {
       if (line) { out.push(line); line = ''; }
-      out.push(word.slice(0, max));
-      word = word.slice(max);
+      const chars = Array.from(word);
+      out.push(chars.slice(0, max).join(''));
+      word = chars.slice(max).join('');
     }
     if (!word) continue;
-    if (line && line.length + 1 + word.length > max) { out.push(line); line = word; } else line = line ? `${line} ${word}` : word;
+    if (line && len(line) + 1 + len(word) > max) { out.push(line); line = word; } else line = line ? `${line} ${word}` : word;
   }
   if (line) out.push(line);
   return out.length ? out : [String(text)];
@@ -668,7 +672,7 @@ export const MEASURE_LABEL_GAP_PX = 8;
 const MEASURE_LABEL_CHAR_EM = 0.6;
 const MEASURE_LABEL_LINE_EM = 1.25;
 
-export function layoutMeasureLabel(label, unitsPerPx = 1) {
+export function layoutMeasureLabel(label, unitsPerPx = 1, page = null) {
   if (!label) return null;
   const u = Number.isFinite(unitsPerPx) && unitsPerPx > 0 ? unitsPerPx : 1;
   // A caption (buildMeasureLabel `lines` / `fontPx`) can be several lines
@@ -690,6 +694,15 @@ export function layoutMeasureLabel(label, unitsPerPx = 1) {
     const offset = height / 2 + MEASURE_LABEL_GAP_PX * u;
     cx += Math.sin(rad) * offset;
     cy -= Math.cos(rad) * offset;
+  }
+  // Kept inside the page (a long caption near an edge ran off it), when the
+  // page is big enough to hold it.
+  if (page && page.width > 0 && page.height > 0) {
+    const rad = ((label.angle || 0) * Math.PI) / 180;
+    const halfW = (Math.abs(width * Math.cos(rad)) + Math.abs(height * Math.sin(rad))) / 2;
+    const halfH = (Math.abs(width * Math.sin(rad)) + Math.abs(height * Math.cos(rad))) / 2;
+    if (page.width >= 2 * halfW) cx = Math.min(Math.max(cx, halfW), page.width - halfW);
+    if (page.height >= 2 * halfH) cy = Math.min(Math.max(cy, halfH), page.height - halfH);
   }
   // One line keeps the round pill; several get a card with the same corners.
   const radius = Math.min(height / 2, (fontPx / 2 + MEASURE_LABEL_PAD_Y_PX) * u);

@@ -143,6 +143,7 @@ import {
   removeLastPolyDraftPoint,
   resolvePolyDraftFinish,
   setPolyDraftUndo,
+  markPolyDraftOpen,
   updatePolyDraftPreview,
 } from '../utils/polyDraft.js';
 import { collectEndpointCandidates, resolveDrawSnap, drawSnapEventOptions } from '../utils/drawSnap.js';
@@ -537,8 +538,8 @@ import { useTooltip } from './Tooltip';
 // Measure label (Length / Area): a white pill at a fixed SCREEN size (12 px
 // text). Sizes are page units multiplied by inverseScale, so the viewBox still
 // owns zoom; the pill sits off the line's midpoint, never under its handles.
-function renderMeasureLabel(label, key, unitsPerPx) {
-  const box = layoutMeasureLabel(label, unitsPerPx);
+function renderMeasureLabel(label, key, unitsPerPx, page = null) {
+  const box = layoutMeasureLabel(label, unitsPerPx, page);
   if (!box) return null;
   return (
     <g
@@ -3185,9 +3186,11 @@ const SVGAnnotationLayerBody = memo(({
     };
     window.addEventListener('keydown', onKeyDown, true);
     const releaseUndo = polyBackStepOn() ? setPolyDraftUndo(stepBackPolyDraft, polyDraftOwner) : null;
+    const releaseOpen = markPolyDraftOpen(polyDraftOwner);
     return () => {
       window.removeEventListener('keydown', onKeyDown, true);
       releaseUndo?.();
+      releaseOpen();
     };
   }, [polyDraftActive, commitPolyDraft, cancelPolyDraft, stepBackPolyDraft]);
 
@@ -8376,8 +8379,8 @@ const SVGAnnotationLayerBody = memo(({
         <g className="measure-labels" data-measure-label-count={measureLabels.length} style={{ pointerEvents: 'none' }}>
           {measureLabels.map(({ key, index, label }) => {
             const live = liveMeasureLabels.get(index);
-            if (!live) return renderMeasureLabel(label, key, clampInverseScale(inverseScale));
-            const pill = renderMeasureLabel(live.label, key, clampInverseScale(inverseScale));
+            if (!live) return renderMeasureLabel(label, key, clampInverseScale(inverseScale), { width, height });
+            const pill = renderMeasureLabel(live.label, key, clampInverseScale(inverseScale), { width, height });
             return live.transform && pill ? <g key={key} transform={live.transform}>{pill}</g> : pill;
           })}
         </g>
