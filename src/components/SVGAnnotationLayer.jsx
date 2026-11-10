@@ -570,7 +570,7 @@ import {
   stampMeasure,
   isPolyMeasureFor,
 } from '../utils/measure/measureScale.js';
-import { dimensionLeader, dimensionLineGeometry, isDimensionMeasure } from '../utils/measure/dimensionLine.js';
+import { dimensionCaptionPlace, dimensionLeader, dimensionLineGeometry, isDimensionMeasure } from '../utils/measure/dimensionLine.js';
 import { useTooltip } from './Tooltip';
 
 // Measure label (Length / Area): a white pill at a fixed SCREEN size (12 px
@@ -6365,6 +6365,12 @@ const SVGAnnotationLayerBody = memo(({
 
   const applyLineEditPreview = useCallback((obj, lineEdit) => {
     if (!obj || !lineEdit) return obj;
+    // measure-plus leader drag: only the dimension line's offset changes.
+    if (lineEdit.dimLeader != null) {
+      if (!isDimensionMeasure(obj)) return obj;
+      const measure = obj.data.measure;
+      return { ...obj, data: { ...obj.data, measure: { ...measure, dim: { ...measure.dim, leader: lineEdit.dimLeader } } } };
+    }
     const nextData = { ...(obj.data || {}) };
     if (lineEdit.hasMidpoint && lineEdit.midpoint) {
       nextData.midpoint = lineEdit.midpoint;
@@ -9419,13 +9425,28 @@ const SVGAnnotationLayerBody = memo(({
           const lineSelRotate = lineSelAngle !== 0
             ? `rotate(${lineSelAngle}, ${lineSelCx}, ${lineSelCy})`
             : undefined;
+          // measure-plus: a dimension line has no bend grabber; a pill on the
+          // dimension line drags its leader instead (Drawboard's offset grabber).
+          const dimGeo = isDimensionMeasure(selectionObj)
+            ? dimensionLineGeometry(ep, { leader: dimensionLeader(selectionObj) })
+            : null;
+          // An inline caption sits mid-line, so the pill sits a quarter along.
+          const pillAt = dimensionCaptionPlace(selectionObj) === 'above' ? 0.5 : 0.25;
+          const leaderPill = dimGeo ? {
+            x: dimGeo.a.x + (dimGeo.b.x - dimGeo.a.x) * pillAt + dx,
+            y: dimGeo.a.y + (dimGeo.b.y - dimGeo.a.y) * pillAt + dy,
+            angle: (Math.atan2(ep.y2 - ep.y1, ep.x2 - ep.x1) * 180) / Math.PI,
+            w: 20 * handleIs,
+            h: 8 * handleIs,
+          } : null;
           return (
             <g key={`selection-wrapper-${selectedIndex}`} transform={lineSelRotate}>
               {/* Invisible hit pads, under the visible dots so a direct hit on
                   a dot still goes to that dot. */}
               {renderLineHitPad('p1', ep.x1 + dx, ep.y1 + dy)}
               {renderLineHitPad('p2', ep.x2 + dx, ep.y2 + dy)}
-              {renderLineHitPad('midpoint', midpointBase.x + dx, midpointBase.y + dy)}
+              {!dimGeo && renderLineHitPad('midpoint', midpointBase.x + dx, midpointBase.y + dy)}
+              {leaderPill && renderLineHitPad('leader', leaderPill.x, leaderPill.y)}
               {/* Start handle (line start / arrow tail) */}
               <circle
                 cx={ep.x1 + dx} cy={ep.y1 + dy}
@@ -9455,7 +9476,24 @@ const SVGAnnotationLayerBody = memo(({
                   curved, geometric midpoint when straight. onPointerDown
                   dispatches 'midpoint' handleId to the existing
                   handleHandlePointerDown hook (see useSVGInteraction.js). */}
-              <circle
+              {leaderPill && (
+                <rect
+                  data-handle="leader"
+                  x={leaderPill.x - leaderPill.w / 2}
+                  y={leaderPill.y - leaderPill.h / 2}
+                  width={leaderPill.w}
+                  height={leaderPill.h}
+                  rx={leaderPill.h / 2}
+                  transform={`rotate(${leaderPill.angle}, ${leaderPill.x}, ${leaderPill.y})`}
+                  fill={HANDLE_FILL}
+                  stroke={HANDLE_RING}
+                  strokeWidth={1.5}
+                  vectorEffect="non-scaling-stroke"
+                  style={handleStyle}
+                  onPointerDown={(e) => { e.stopPropagation(); handleHandlePointerDown(e, 'leader'); }}
+                />
+              )}
+              {!dimGeo && <circle
                 data-handle="midpoint"
                 cx={midpointBase.x + dx}
                 cy={midpointBase.y + dy}
@@ -9469,7 +9507,7 @@ const SVGAnnotationLayerBody = memo(({
               >
                 {/* Browser-native tooltip per 15-UI-SPEC §Copywriting. */}
                 <title>Drag to bend</title>
-              </circle>
+              </circle>}
             </g>
           );
         }

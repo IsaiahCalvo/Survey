@@ -150,6 +150,27 @@ test('custom scale reads feet-inches, Units restamp the line, Set as default car
     await expect(dimLine.locator('line')).toHaveCount(4);
     await page.keyboard.press('Escape');
     await expect(card).toBeHidden();
+    // The leader pill on the line: dragging it past the clicked points flips
+    // the line to the other side, in one undo step.
+    const pill = surface.locator('[data-handle="leader"]');
+    await expect(pill).toHaveCount(1);
+    await expect(surface.locator('[data-handle="midpoint"]')).toHaveCount(0);
+    const pb = await pill.boundingBox();
+    await page.screenshot({ path: test.info().outputPath('measure-plus-leader-pill.png') });
+    await page.mouse.move(pb.x + pb.width / 2, pb.y + pb.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(pb.x + pb.width / 2, pb.y + pb.height / 2 + 50, { steps: 5 });
+    await page.mouse.move(pb.x + pb.width / 2, pb.y + pb.height / 2 + 100, { steps: 5 });
+    await page.mouse.up();
+    await bar.getByRole('button', { name: 'Measurement' }).click();
+    await expect(leader).toHaveValue(/^-\d/);
+    await page.keyboard.press('Escape');
+    await expect(card).toBeHidden();
+    await page.keyboard.press('Control+z');
+    await bar.getByRole('button', { name: 'Measurement' }).click();
+    await expect(leader).toHaveValue('41');
+    await page.keyboard.press('Escape');
+    await expect(card).toBeHidden();
     await page.keyboard.press('Escape');
     await expect(reading).toHaveText(/^(?:[\d,]+′(?:-\d+(?: \d+\/\d)?″)?|(?:\d+ )?\d+(?:\/\d)?″)$/);
     const ftin = feetInches((await reading.textContent()).trim());

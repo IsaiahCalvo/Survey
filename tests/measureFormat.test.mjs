@@ -215,3 +215,15 @@ test('dimension line: Leader and Inline / Above are edited on dimension marks on
   assert.match(card, /onClick=\{\(\) => onPatch\?\.\(\{ captionPlace: place \}\)\}/);
   assert.match(read('src/utils/svgAnnotationRenderers.jsx'), /place: dimensionCaptionPlace\(obj\),/);
 });
+
+test('dimension line: a leader pill replaces the bend grabber and drags the leader', () => {
+  const layer = read('src/components/SVGAnnotationLayer.jsx');
+  assert.match(layer, /\{!dimGeo && renderLineHitPad\('midpoint'/);
+  assert.match(layer, /data-handle="leader"[\s\S]{0,900}handleHandlePointerDown\(e, 'leader'\)/);
+  assert.match(layer, /if \(lineEdit\.dimLeader != null\) \{/);
+  const hook = read('src/hooks/useSVGInteraction.js');
+  assert.match(hook, /if \(handleId === 'leader'\) \{\s*if \(!isDimensionMeasure\(obj\)\) return;/);
+  assert.match(hook, /lineEdit: \{ dimLeader: leader \}/);
+  assert.match(hook, /action: 'leader-move',/);
+  assert.match(hook, /originalLeader: null, currentLeader: null,/);
+});
