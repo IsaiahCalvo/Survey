@@ -535,6 +535,7 @@ import {
   markEditedImportedPdfAnnotationsOnPage,
   measurePdfjsPageHostScale,
   measurePdfjsPageScale,
+  measurePdfjsPageScaleCached,
   migrateLegacySurveyMarkers,
   normalizeBookmarkPageIds,
   normalizeInteractionMeasuredScale,
@@ -3404,6 +3405,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     // Settle any previous override FIRST so the prevCursor captured below is
     // the element's real inline cursor, not a leftover forced value.
     runPendingCursorRestore();
+    // No cursor to show when the main input cannot hover (phones, touch
+    // tablets): skip the hit test, a forced layout in the same frame as the
+    // tool switch (~45 ms on a marked sheet at phone size, 2026-11-09).
+    let cannotHover = false;
+    try { cannotHover = Boolean(window.matchMedia?.('(hover: none)')?.matches); } catch { cannotHover = false; }
+    if (cannotHover) return runPendingCursorRestore;
     const { x, y } = lastPointerPosRef.current;
     const el = document.elementFromPoint(x, y);
     if (el) {
@@ -10214,6 +10221,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const getPdfjsPageScale = useCallback((pageNumber, fallbackScale = scale) => {
     return measurePdfjsPageScale(pageNumber, pageSizes, pdfjsPageContainers, fallbackScale);
   }, [pageSizes, scale, pdfjsPageContainers]);
+  // The overlay render loop's copy: same measurement, kept per page host until
+  // its box changes (viewerShared measurePdfjsPageScaleCached).
+  const pdfjsPageScaleCacheRef = useRef(new WeakMap());
+  const getPdfjsOverlayPageScale = useCallback((pageNumber, fallbackScale = scale) => (
+    measurePdfjsPageScaleCached(pageNumber, pageSizes, pdfjsPageContainers, fallbackScale, pdfjsPageScaleCacheRef.current)
+  ), [pageSizes, scale, pdfjsPageContainers]);
 
   const disconnectOverlayLagPerfObservers = useCallback(() => {
     const state = overlayLagPerfObserverRef.current;
@@ -12081,14 +12094,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // Speed (2026-11-09): work out the marks' geometry for the pages just past
   // the mounted window while the browser is idle, so a page scrolling into
   // view only builds its elements (warmMarkGeometry; ~80 ms of a 150-mark
-  // page's ~100 ms on the 36-sheet set).
+  // page's ~100 ms on the 36-sheet set). Nearest pages first, out to 24
+  // either side: one fast fling on a phone jumps 10+ pages, and a page it
+  // lands on unwarmed froze the swipe 0.3-0.4 s (2026-11-10).
   useEffect(() => {
     if (typeof requestIdleCallback !== 'function' || !pdfjsMountedPages.size) return undefined;
     const mounted = [...pdfjsMountedPages];
     const lo = Math.min(...mounted);
     const hi = Math.max(...mounted);
     const pages = [];
-    for (let d = 1; d <= 4; d += 1) pages.push(hi + d, lo - d);
+    for (let d = 1; d <= 24; d += 1) pages.push(hi + d, lo - d);
     let idleId = null;
     let at = 0;
     let from = 0;
@@ -38285,7 +38300,7 @@ ${pageBlocks}
 
                       const committedPageScale = Number(pdfjsCommittedPageScales[pageNumber]);
                       const hasCommittedPageScale = Number.isFinite(committedPageScale) && committedPageScale > 0;
-                      const measuredPageScale = getPdfjsPageScale(pageNumber, pdfjsViewerScale);
+                      const measuredPageScale = getPdfjsOverlayPageScale(pageNumber, pdfjsViewerScale);
                       const resolvedMeasuredPageScale = Number.isFinite(measuredPageScale) && measuredPageScale > 0
                         ? measuredPageScale
                         : (hasCommittedPageScale ? committedPageScale : (pdfjsViewerScale > 0 ? pdfjsViewerScale : 1));
@@ -38361,8 +38376,6 @@ ${pageBlocks}
                           (shouldRenderZoomPreview || proxyHasRenderablePayload) &&
                           (shouldRenderZoomPreview || isProxyReady)
                       );
-                      const regionSelectionDisplayWidth = overlayDiv?.offsetWidth || (resolvedPageSize.width * layerScale);
-                      const regionSelectionDisplayHeight = overlayDiv?.offsetHeight || (resolvedPageSize.height * layerScale);
                       const nativePdfAnnotationPolicy = pdfNativeAnnotationLayerPolicyByPage?.[pageNumber] ||
                         pdfNativeAnnotationLayerPolicyByPage?.[String(pageNumber)] ||
                         null;
@@ -38701,7 +38714,7 @@ ${pageBlocks}
 
                               if (validRegions.length === 0) return null;
 
-                              if (pageNumber === (Number(pageNumRef.current) || 1)) {
+                              if (window.__APP_DEBUG === true && pageNumber === (Number(pageNumRef.current) || 1)) {
                                 appDebug(
                                   `[App-RegionOverlay p${pageNumber}] render — ` +
                                   `regions=${pageRegions.length}, valid=${validRegions.length}, ` +
@@ -38726,12 +38739,15 @@ ${pageBlocks}
                               );
                             })()}
                             {requiresLegacyAnnotationLayer && showRegionSelection && regionSelectionPage === pageNumber && (
+                              // offsetWidth is read only here: read for every mounted page
+                              // on every render, it forced a layout per page (phone swipes,
+                              // 2026-11-09).
                               <div style={{
                                 position: 'absolute',
                                 top: 0,
                                 left: 0,
-                                width: `${regionSelectionDisplayWidth}px`,
-                                height: `${regionSelectionDisplayHeight}px`,
+                                width: `${overlayDiv?.offsetWidth || (resolvedPageSize.width * layerScale)}px`,
+                                height: `${overlayDiv?.offsetHeight || (resolvedPageSize.height * layerScale)}px`,
                                 pointerEvents: 'none',
                                 zIndex: requiresLegacyAnnotationLayer ? 105 : 95
                               }}>
@@ -38902,7 +38918,7 @@ ${pageBlocks}
 
                                 if (validRegions.length === 0) return null;
 
-                                if (pageNumber === (Number(pageNumRef.current) || 1)) {
+                                if (window.__APP_DEBUG === true && pageNumber === (Number(pageNumRef.current) || 1)) {
                                   appDebug(
                                     `[App-RegionOverlay p${pageNumber}] render-svg — ` +
                                     `regions=${pageRegions.length}, valid=${validRegions.length}, ` +
@@ -38916,8 +38932,9 @@ ${pageBlocks}
                                     regions={validRegions}
                                     width={resolvedPageSize.width}
                                     height={resolvedPageSize.height}
-                                    displayWidth={overlayDiv?.offsetWidth || (resolvedPageSize.width * layerScale)}
-                                    displayHeight={overlayDiv?.offsetHeight || (resolvedPageSize.height * layerScale)}
+                                    // It fills its container: no layout read per page per render.
+                                    displayWidth={resolvedPageSize.width * layerScale}
+                                    displayHeight={resolvedPageSize.height * layerScale}
                                     scale={layerScale}
                                     fillContainer={true}
                                   />

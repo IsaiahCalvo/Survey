@@ -28,6 +28,7 @@ import { openSourceHeadStarts, openSourceCacheStamp } from '../services/openSour
 import { requestR2PdfLink, downloadPdfFromR2 } from '../services/pdfR2Source.js';
 import { retryStorageRead } from '../services/storageRetry.js';
 import { bindLibraryListCacheToAuth } from './libraryListCache.js';
+import { pageThumbStore } from '../services/pageThumbStore.js';
 import { useLibraryListCache } from './useLibraryListCache.js';
 import { readLibraryRows, readLibraryIdChunks, sortLibraryRows } from './libraryPagination.js';
 
@@ -35,6 +36,8 @@ import { readLibraryRows, readLibraryIdChunks, sortLibraryRows } from './library
 // other accounts' entries dropped on sign-in. Bound once at startup so a
 // signed-out start clears it even before anything is downloaded.
 if (supabase) bindPdfCacheToAuth(supabase, pdfByteCache());
+// Same rule for page previews kept on the device (pageThumbStore.js).
+if (supabase) bindPdfCacheToAuth(supabase, pageThumbStore());
 // Same rule for the home lists' device copy (libraryListCache.js).
 if (supabase) bindLibraryListCacheToAuth(supabase);
 

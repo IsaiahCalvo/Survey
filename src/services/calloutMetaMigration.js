@@ -68,7 +68,7 @@ import {
   setMetaValue,
   writeAnnotationMark,
 } from './annotationDocStore.js';
-import { decodeAnnotationEntry } from './annotationMarkStore.js';
+import { decodeAnnotationEntry, readAnnotationEntry } from './annotationMarkStore.js';
 import { calloutToAnnotationObject } from '../utils/calloutAnnotationBridge.js';
 
 export const CALLOUTS_META_KEY = 'calloutsList';
@@ -92,9 +92,18 @@ function isCalloutMapEntry(entry) {
   return !!(decoded?.o?.data && decoded.o.data.type === 'callout');
 }
 
-function countCalloutMapEntries(map) {
+// The same test for a mark the map holds under `key`, through the store's
+// per-doc read cache: every open ran this over every mark with a full decode
+// (polygons derived again) right before the viewer's own projection decoded
+// them all once more (~90 ms of a cold open on a marked set, 2026-11-09).
+function isCalloutMapKey(doc, key) {
+  const read = readAnnotationEntry(doc, key);
+  return !!(read?.o?.data && read.o.data.type === 'callout');
+}
+
+function countCalloutMapEntries(doc, map) {
   let n = 0;
-  map.forEach((entry) => { if (isCalloutMapEntry(entry)) n += 1; });
+  map.forEach((_entry, key) => { if (isCalloutMapKey(doc, key)) n += 1; });
   return n;
 }
 
@@ -115,7 +124,7 @@ export function getUnmigratedMetaCallouts(doc) {
   if (!Array.isArray(meta) || meta.length === 0) return { callouts: [], ids: [] };
   const map = getAnnotationsMap(doc);
   const mapCalloutIds = new Set();
-  map.forEach((entry, key) => { if (isCalloutMapEntry(entry)) mapCalloutIds.add(key); });
+  map.forEach((_entry, key) => { if (isCalloutMapKey(doc, key)) mapCalloutIds.add(key); });
 
   const callouts = [];
   const ids = [];
@@ -172,7 +181,7 @@ export function migrateCalloutsMetaToAnnotationsMap(doc, { pageSizes = {}, origi
   // Nothing real to migrate → ZERO ops (contract point 1). Includes null (the
   // tombstone itself), undefined (never written), [], and foreign non-arrays.
   if (!Array.isArray(meta) || meta.length === 0) {
-    const mapCallouts = countCalloutMapEntries(map);
+    const mapCallouts = countCalloutMapEntries(doc, map);
     return {
       migrated: false,
       tombstoned: false,
@@ -186,8 +195,8 @@ export function migrateCalloutsMetaToAnnotationsMap(doc, { pageSizes = {}, origi
   // --- Build the write plan (pure — the doc is untouched until the transact) ---
   const mapCalloutIds = new Set();
   const mapForeignIds = new Set();
-  map.forEach((entry, key) => {
-    if (isCalloutMapEntry(entry)) mapCalloutIds.add(key);
+  map.forEach((_entry, key) => {
+    if (isCalloutMapKey(doc, key)) mapCalloutIds.add(key);
     else mapForeignIds.add(key);
   });
 
