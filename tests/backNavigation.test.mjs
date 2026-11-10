@@ -35,6 +35,7 @@ function fakeWindow() {
     history: {
       get state() { return entries[index].state; },
       pushState(state) { entries.splice(index + 1); entries.push({ state }); index += 1; pending = index; },
+      replaceState(state) { entries[index] = { state }; },
       // Backs queue like a browser's: each one steps from where the last one
       // will land, so two quick backs from one entry deep leave the site.
       back() {
@@ -117,5 +118,57 @@ test('home: Back while a busy dialog ignores it puts the entry back (R3-Z B2)', 
   removeDialog();
   removeHome();
   await settle();
+  resetBackNavigationForTests();
+});
+
+test('home: Back right after Create stays in Survey (R4-B B2)', async () => {
+  resetBackNavigationForTests();
+  const { installHomeBack, installViewerBack } = await import('../src/utils/backNavigation.js');
+  const win = fakeWindow();
+  const removeHome = installHomeBack(win);
+  const removeDialog = pushBackLayer(() => {});
+  removeDialog(); // Create: the dialog closes...
+  removeHome(); // ...and the document opens in the same tick.
+  let left = 0;
+  const removeViewer = installViewerBack(win, () => { left += 1; });
+  win.history.back(); // the user presses Back at once
+  await new Promise((r) => setTimeout(r, 350));
+  assert.equal(win.left, false, 'still in Survey');
+  assert.equal(left, 1, 'Back closed the document');
+  removeViewer();
+  await settle();
+  resetBackNavigationForTests();
+});
+
+test('home: Back while the dialog closes and before the document shows stays in Survey', async () => {
+  resetBackNavigationForTests();
+  const { installHomeBack, installViewerBack } = await import('../src/utils/backNavigation.js');
+  const win = fakeWindow();
+  const removeHome = installHomeBack(win);
+  const removeDialog = pushBackLayer(() => {});
+  removeDialog(); // the dialog closes a render before the document shows
+  win.history.back(); // Back in between
+  await settle();
+  removeHome();
+  const removeViewer = installViewerBack(win, () => {});
+  await new Promise((r) => setTimeout(r, 350));
+  assert.equal(win.left, false, 'still in Survey');
+  assert.equal(win.depth, 1, 'the document owns its entry');
+  removeViewer();
+  await settle();
+  resetBackNavigationForTests();
+});
+
+test('home: a closed sheet with no document opening takes its entry off', async () => {
+  resetBackNavigationForTests();
+  const { installHomeBack } = await import('../src/utils/backNavigation.js');
+  const win = fakeWindow();
+  const removeHome = installHomeBack(win);
+  const removeSheet = pushBackLayer(() => {});
+  assert.equal(win.depth, 1);
+  removeSheet();
+  await new Promise((r) => setTimeout(r, 350));
+  assert.equal(win.depth, 0, 'back on the first entry');
+  removeHome();
   resetBackNavigationForTests();
 });
