@@ -204,6 +204,23 @@ test('a delete then its Undo leaves a mark drawn in the other window where it wa
   assert.deepEqual(shifted[3].map((o) => o.data.id), ['later', 'mine']);
 });
 
+test('two deletes of the same page number and their Undo put each mark back on its own page', async () => {
+  const { reframeMarks } = await import('../src/utils/pageOpSync.js');
+  const { transformPageState } = await import('../src/utils/pageAnnotationReindex.js');
+  const byPage = {
+    2: { objects: [{ type: 'rect', left: 20, top: 20, width: 5, height: 5, data: { id: 'a' } }] },
+    3: { objects: [{ type: 'rect', left: 30, top: 30, width: 5, height: 5, data: { id: 'b' } }] },
+  };
+  // Delete page 2, then the page that slid into 2; Undo puts the newer one back first.
+  const steps = [
+    { type: 'delete', page: 2 }, { type: 'delete', page: 2 },
+    { type: 'restore', afterPage: 1, fromPage: 2 }, { type: 'restore', afterPage: 1, fromPage: 2 },
+  ];
+  const kept = reframeMarks(byPage, new Set(['a', 'b']), steps, transformPageState);
+  assert.deepEqual(kept[2].map((o) => o.data.id), ['a']);
+  assert.deepEqual(kept[3].map((o) => o.data.id), ['b']);
+});
+
 test('stamps from an older client without a run name count once per run', async () => {
   const { framePageChanges, noteFramePageChanges, normalizePdfVersion, pendingPdfVersion, savedPdfVersion } = await import('../src/utils/pageOpSync.js');
   const turn = { type: 'rotate', page: 1, delta: 90 };

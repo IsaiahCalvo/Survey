@@ -103,15 +103,22 @@ export function reframeMarks(annotationsByPage, ids, operations, transform) {
     pageTransformations: {}, bookmarks: [], spaces: [], regionOverlayDisabled: new Map(),
   };
   // A delete then its Undo leaves this window's marks where they were: the
-  // restore puts back the page slice from just before that delete.
+  // restore puts back the page slice from just before that delete. Two
+  // deletes can share a page number (delete 2, then the page that slid into
+  // 2), so each number keeps a stack and a restore takes the newest delete,
+  // the order Undo puts pages back in.
   const beforeDelete = new Map();
   const steps = [];
   const flatten = (op) => { if (op?.type === 'batch') (op.operations || []).forEach(flatten); else steps.push(op); };
   operations.forEach(flatten);
   for (const step of steps) {
-    if (step?.type === 'delete') beforeDelete.set(Number(step.page), model);
+    if (step?.type === 'delete') {
+      const key = Number(step.page);
+      if (!beforeDelete.has(key)) beforeDelete.set(key, []);
+      beforeDelete.get(key).push(model);
+    }
     if (step?.type === 'restore') {
-      const from = beforeDelete.get(Number(step.fromPage));
+      const from = beforeDelete.get(Number(step.fromPage))?.pop();
       model = from
         ? transform(model, { ...step, from })
         : transform(model, { type: 'insert', afterPage: step.afterPage });
