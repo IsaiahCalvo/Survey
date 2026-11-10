@@ -331,3 +331,58 @@ export function applyPageViewOperation(doc, operation, options = {}) {
 
   return buildView(base, entries);
 }
+
+// The records a document shows (utils/pageRecords.js): `{ src, rot, blank }`
+// per page in view order. A base document shows its own pages, unturned.
+export function pageViewRecords(doc) {
+  const entries = doc?.[VIEW]?.entries;
+  if (!entries) {
+    const count = Number(doc?.numPages) || 0;
+    return Array.from({ length: count }, (_, index) => ({ src: index + 1, rot: 0, blank: null }));
+  }
+  return entries.map((entry) => ({
+    src: entry.blank ? null : entry.src,
+    rot: normRotation(entry.rot || 0),
+    blank: entry.blank ? { width: entry.blank.width, height: entry.blank.height } : null,
+  }));
+}
+
+// A NEW view over `doc`'s base document that shows `records` (another
+// window's page list, or the list saved with the document). What is known
+// about each source page (its unturned size, media box and own rotation) is
+// carried over from `doc`'s entries, or from `options` for a base document.
+export function pageViewFromRecords(doc, records, options = {}) {
+  const base = getPageViewBase(doc);
+  if (!base || !Array.isArray(records) || records.length === 0) throw new Error('No pages to show.');
+  const known = new Map();
+  const current = isPageViewDocument(doc) ? doc[VIEW].entries : createPageView(base, options)[VIEW].entries;
+  for (const entry of current) {
+    if (entry.blank || !Number.isInteger(entry.src) || known.has(entry.src)) continue;
+    const turned = normRotation(entry.rot || 0) % 180 !== 0;
+    known.set(entry.src, {
+      size: entry.size ? (turned ? swapSize(entry.size) : { ...entry.size }) : null,
+      media: entry.media ? { ...entry.media } : null,
+      baseRotate: entry.baseRotate ?? null,
+    });
+  }
+  const entries = records.map((record) => {
+    const rot = normRotation(record?.rot || 0);
+    if (record?.blank) {
+      const blank = { width: Number(record.blank.width), height: Number(record.blank.height) };
+      const size = rot % 180 !== 0 ? swapSize(blank) : { ...blank };
+      return { src: null, rot, blank, size, media: { ...blank }, baseRotate: 0 };
+    }
+    const src = Number(record?.src);
+    if (!Number.isInteger(src) || src < 1 || src > base.numPages) throw new RangeError(`Page ${record?.src} is not in this PDF.`);
+    const info = known.get(src) || { size: null, media: null, baseRotate: null };
+    return {
+      src,
+      rot,
+      blank: null,
+      size: info.size ? (rot % 180 !== 0 ? swapSize(info.size) : { ...info.size }) : null,
+      media: info.media ? { ...info.media } : null,
+      baseRotate: info.baseRotate,
+    };
+  });
+  return buildView(base, entries);
+}

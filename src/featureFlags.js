@@ -442,6 +442,12 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Measure formats: feet-inches readings, precision, custom scales and a default scale',
     stage: 'beta',
   }),
+  // Drawboard file model (2026-11-10, page-records-plan.md): page changes are
+  // saved as a page list with the marks; the PDF is built only on the way out.
+  'page-records': Object.freeze({
+    label: 'Page changes never rewrite the PDF: other windows follow at once and it works offline',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';
