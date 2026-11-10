@@ -2711,6 +2711,11 @@ function writeOpenReceipt(state) {
 }
 
 async function writeOpenReceiptNow(state) {
+  // 2026-11-10: encoded and saved in the checkpoint worker, from its mirror
+  // of acceptedDoc as it is in this tick (same rule as the periodic
+  // compaction). On this thread it was one ~0.3-0.5 s task right after a
+  // first open on a phone, when the user starts to scroll.
+  if (await writeOpenReceiptInWorker(state)) return;
   const acceptedUpdate = encodeSnapshot(state.acceptedDoc);
   // The checkpoint body was not downloaded (already held locally): estimate
   // its gzipped size for the checkpoint debounce (w30; ~4:1 on real marks).
@@ -2735,6 +2740,42 @@ async function writeOpenReceiptNow(state) {
     },
   );
   noteCleanCompaction(state, compacted, token, outcome);
+}
+
+// True when the worker saved it (or decided there was nothing to save).
+async function writeOpenReceiptInWorker(state) {
+  if (
+    state.outbox?.storage !== 'indexeddb'
+    || !state.checkpointMirror
+    || state.checkpointMirror.broken
+    // No size known yet (no snapshot downloaded or held): the encode here
+    // sizes the checkpoint debounce, and such a document is small anyway.
+    || !state.lastSnapshotBytes
+  ) return false;
+  const token = newCleanCheckpointToken();
+  try {
+    const inWorker = compactAcceptedInWorker(state.checkpointMirror, {
+      documentId: state.documentId,
+      actorUserId: state.actorUserId,
+      update: null,
+      force: true,
+      expectedIncarnation: state.documentIncarnation,
+      expectedVector: Y.encodeStateVector(state.acceptedDoc),
+      options: {
+        covered: cleanCoverage(state),
+        identity: currentSnapshotIdentity(state),
+        token,
+      },
+    });
+    const result = inWorker ? await inWorker : null;
+    if (!result) return false;
+    const outcome = result.merged != null ? { merged: result.merged } : {};
+    noteCleanCompaction(state, result.compacted, token, outcome);
+    return true;
+  } catch (error) {
+    console.warn('[annotationDocSync] saving the opened copy in the worker failed; saving here', error?.message);
+    return false;
+  }
 }
 
 async function writeOpenReceiptWhenIdle(state) {
