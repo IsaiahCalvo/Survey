@@ -193,6 +193,11 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Dark pages: show PDF pages light-on-dark (marks keep their colours)',
     stage: 'beta',
   }),
+  // Drawboard (2026-11-10): rest the pen at the end of a stroke to straighten it.
+  'smart-ink': Object.freeze({
+    label: 'Smart ink: hold the pen still at the end of a stroke to snap it to a line, rectangle or ellipse',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';
