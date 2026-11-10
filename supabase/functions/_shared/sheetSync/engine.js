@@ -21,21 +21,22 @@ import { canonicalizeCellValue, computeRowFingerprints } from '../matcher/rowFin
 import { detectFieldConflicts } from '../matcher/excelConflictDetect.js';
 import { generateRowIdToken, parseRowIdToken, verifyRowIdSignature } from '../matcher/rowIdToken.js';
 import { buildMarkerRowValues } from '../markerRowValues.js';
-import { checklistItemKind, itemAnswerFor } from '../kitShape.js';
+import { checklistItemKind, dateAnswerOf, itemAnswerFor } from '../kitShape.js';
 import { noteObjectOf } from '../surveyUndoApply.js';
-import { columnIsEditable } from './layout.js';
+import { TRACKING_STATUSES, columnIsEditable, personCellName } from './layout.js';
 import { isCellError } from './providers/contract.js';
 
-const SCALAR_KEYS = ['changedBy', 'changedDate', 'item', 'entity', 'notes'];
+const TRACKING_KEYS = ['status', 'assignee', 'due'];
+const SCALAR_KEYS = ['changedBy', 'changedDate', 'item', 'entity', 'notes', ...TRACKING_KEYS];
 // Changed By for a sheet edit when nobody can say who made it.
 export const SHEET_EDITOR_UNKNOWN = 'Sheet';
 const NUMBER_KINDS = new Set(['number', 'score', 'count']);
-const MAX_TEXT = 5000;
 // New items one round brings in from the sheet. A pasted block of thousands
 // of rows comes in over several rounds instead of one that runs out of time.
 export const MAX_NEW_ROWS_PER_ROUND = 300;
 // How far down a tab the header row is looked for (a title row typed above it).
 const HEADER_SEARCH_ROWS = 10;
+const TOTALS_LABEL = /^(grand\s+|sub-?\s*)?totals?\b|^(sum|count|average|avg)\s*:?$/i;
 
 // Row IDs already checked by this server instance: the same tokens come back
 // every round, and an HMAC per row was a fifth of a big sheet's round.
@@ -82,7 +83,11 @@ const printOf = (value) => `${FP_PREFIX}${cyrb53(canonicalizeCellValue(value))}`
 /** Per-field fingerprints of a record, in rowFingerprint's fieldFingerprints shape. */
 export function fieldPrintsOf(rec) {
   const out = {};
-  for (const k of SCALAR_KEYS) out[k] = printOf(rec?.[k]);
+  for (const k of SCALAR_KEYS) {
+    // Tracking cells only on a layout that has them, so other links' baselines stay as small as before.
+    if (rec?.[k] === undefined && TRACKING_KEYS.includes(k)) continue;
+    out[k] = printOf(rec?.[k]);
+  }
   out.answers = Object.fromEntries(Object.entries(rec?.answers || {}).map(([id, v]) => [String(id), printOf(v)]));
   return out;
 }
@@ -110,9 +115,47 @@ const fieldsOf = (fps) => [
 
 const checklistOfScope = (scope) => scope.columns.filter((c) => c.key.startsWith('answer:')).map((c) => c.item);
 
-/** The row values the app shows for a marker, in rowFingerprint's record shape. */
-export function appRecordOf(marker, scope) {
-  return buildMarkerRowValues({ marker, checklistItems: checklistOfScope(scope), moduleData: {} });
+// Excel keeps at most 32,767 characters in a cell and cuts the rest (Sheets
+// 50,000). The app's side is compared and written cut to one limit under
+// both, so a longer note matches what the sheet holds instead of reading as
+// a change every round; the app keeps its full text unless the cell is edited.
+export const MAX_CELL_CHARS = 32000;
+const fitCell = (v) => {
+  if (typeof v !== 'string' || v.length <= MAX_CELL_CHARS) return v;
+  const cut = v.slice(0, MAX_CELL_CHARS);
+  return /[\uD800-\uDBFF]$/.test(cut) ? cut.slice(0, -1) : cut;
+};
+
+// A marker's tracking ({ status, assigneeId, due }), always whole; the same
+// rules as the app's readTracking (src/utils/markerTracking.js).
+const STATUS_VALUES = new Set(TRACKING_STATUSES.map((s) => s.value));
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+function trackingOf(marker) {
+  const raw = marker?.tracking && typeof marker.tracking === 'object' ? marker.tracking : {};
+  return {
+    status: STATUS_VALUES.has(raw.status) ? raw.status : 'open',
+    assigneeId: typeof raw.assigneeId === 'string' && raw.assigneeId ? raw.assigneeId : null,
+    due: typeof raw.due === 'string' && DAY.test(raw.due) ? raw.due : null,
+  };
+}
+const FORMER_MEMBER = 'Former member';
+
+/**
+ * The row values the app shows for a marker, in rowFingerprint's record shape,
+ * plus its tracking cells (`layout.people` names who it is assigned to).
+ */
+export function appRecordOf(marker, scope, layout = null) {
+  const rec = buildMarkerRowValues({ marker, checklistItems: checklistOfScope(scope), moduleData: {} });
+  if (layout?.tracking) {
+    const t = trackingOf(marker);
+    rec.status = TRACKING_STATUSES.find((s) => s.value === t.status).label;
+    const person = t.assigneeId ? (layout.people || []).find((p) => p.id === t.assigneeId) : null;
+    rec.assignee = t.assigneeId ? (person ? personCellName(person) : FORMER_MEMBER) : '';
+    rec.due = t.due || '';
+  }
+  for (const k of Object.keys(rec)) rec[k] = fitCell(rec[k]);
+  if (rec.answers) rec.answers = Object.fromEntries(Object.entries(rec.answers).map(([id, v]) => [id, fitCell(v)]));
+  return rec;
 }
 
 /** The value written into a cell for a field of an app record. */
@@ -172,11 +215,60 @@ function findHeaderRow(scope, rows, remembered = {}) {
   return 0;
 }
 
+const isChoiceColumn = (column) => Boolean(column?.key?.startsWith('answer:')) && checklistItemKind(column.item) === 'choice';
+const TICKED = ['y', 'yes', 'pass', 'ok', 'done', 'true', 'complete', 'completed', 'checked'];
+const CLEARED = ['n', 'no', 'fail', 'false'];
+
+/**
+ * The pick-one answer a checkbox means (Excel's Insert > Checkbox, or a
+ * TRUE/FALSE a PM typed): ticked is the set's yes-like answer (Y, Yes, Pass,
+ * OK, Done...), cleared its no-like one. A one-answer set ("Done") clears to
+ * blank. null when the set has no such answer.
+ */
+export function checkboxAnswerOf(answerValues, on) {
+  const values = (answerValues || []).map(String);
+  for (const word of on ? TICKED : CLEARED) {
+    const hit = values.find((v) => v.trim().toLowerCase() === word);
+    if (hit) return hit;
+  }
+  if (values.length === 1) return on ? values[0] : '';
+  return null;
+}
+
+// A checkbox cell's answer text, or null when the cell is not a checkbox.
+function checkboxCellAnswer(layout, column, raw) {
+  if (!isChoiceColumn(column)) return null;
+  const on = raw === true || (typeof raw === 'string' && raw.trim().toLowerCase() === 'true') ? true
+    : raw === false || (typeof raw === 'string' && raw.trim().toLowerCase() === 'false') ? false : null;
+  if (on === null) return null;
+  // A set that really holds "TRUE" / "FALSE" answers takes them as typed.
+  if (typeof raw === 'string' && layout.answerValues.some((v) => v.trim().toLowerCase() === raw.trim().toLowerCase())) return null;
+  return checkboxAnswerOf(layout.answerValues, on);
+}
+
 // Turn one sheet cell into the app value for a field, or { error }.
 function sheetValueToApp(layout, column, raw) {
   const text = cellText(raw).replace(/\r\n?/g, '\n');
-  if (column.key === 'item' || column.key === 'notes') {
-    return { value: text.length > MAX_TEXT ? text.slice(0, MAX_TEXT) : text };
+  if (column.key === 'item' || column.key === 'notes') return { value: fitCell(text) };
+  if (column.key === 'status') {
+    const t = text.trim().toLowerCase().replace(/[\s_-]+/g, ' ');
+    if (!t) return { value: 'Open', status: 'open' };
+    const hit = TRACKING_STATUSES.find((s) => s.label.toLowerCase() === t || s.value.replace(/-/g, ' ') === t);
+    return hit ? { value: hit.label, status: hit.value } : { error: `"${text.trim()}" is not a status (use ${TRACKING_STATUSES.map((s) => s.label).join(', ')})` };
+  }
+  if (column.key === 'assignee') {
+    const t = text.trim().toLowerCase();
+    if (!t) return { value: '', assigneeId: null };
+    const people = layout.people || [];
+    const hit = people.find((p) => personCellName(p).toLowerCase() === t)
+      || people.find((p) => p.email && p.email.toLowerCase() === t);
+    if (hit) return { value: personCellName(hit), assigneeId: hit.id };
+    return { error: `"${text.trim()}" is not someone on this document, so "${column.header}" was not changed` };
+  }
+  if (column.key === 'due') {
+    if (!text.trim()) return { value: '', due: null };
+    const day = dateAnswerOf(text.trim());
+    return day ? { value: day, due: day } : { error: `"${text.trim()}" is not a date for "${column.header}"` };
   }
   if (column.key === 'entity') {
     const name = text.trim();
@@ -187,6 +279,8 @@ function sheetValueToApp(layout, column, raw) {
   if (column.key.startsWith('answer:')) {
     const kind = checklistItemKind(column.item);
     if (kind === 'choice') {
+      const box = checkboxCellAnswer(layout, column, raw);
+      if (box != null) return { value: box };
       const t = text.trim();
       if (!t) return { value: '' };
       const hit = layout.answerValues.find((v) => v.toLowerCase() === t.toLowerCase());
@@ -205,7 +299,17 @@ function sheetCellToApp(layout, column, raw) {
 }
 
 // Write one app-side field value onto a marker (a copy).
-function applyFieldToMarker(marker, key, conv) {
+function applyFieldToMarker(marker, key, conv, nowIso) {
+  if (key === 'status' || key === 'assignee' || key === 'due') {
+    const t = trackingOf(marker);
+    if (key === 'status') t.status = conv.status;
+    else if (key === 'assignee') t.assigneeId = conv.assigneeId;
+    else t.due = conv.due;
+    // Back to nothing set: no tracking at all, as the app keeps it.
+    if (t.status === 'open' && !t.assigneeId && !t.due) delete marker.tracking;
+    else marker.tracking = { ...t, updatedAt: nowIso, updatedBy: null };
+    return;
+  }
   if (key === 'item') marker.name = conv.value;
   else if (key === 'notes') marker.note = { ...noteObjectOf(marker.note ?? marker.notes), text: conv.value };
   else if (key === 'entity') {
@@ -266,8 +370,18 @@ export async function planSheetRound({
   newMarkerId = () => `surveyMarker-${crypto.randomUUID()}`,
   sheetEditor = SHEET_EDITOR_UNKNOWN,
   now = new Date(),
+  holdErase = false,
 }) {
   const nextBaseline = { ...baseline };
+  // Many filled answers blanked in the sheet at once (an older copy restored
+  // from version history, a column cleared by mistake): held until an editor
+  // says which side is right, so field work is never wiped in one round.
+  // 'allow' = clear them in the app too; 'restore' = write the app's back.
+  const eraseMode = state.eraseChoice === 'sheet' ? 'allow'
+    : state.eraseChoice === 'app' ? 'restore'
+      : (holdErase || state.heldErase) ? 'hold' : 'count';
+  let erasing = 0;
+  const erasingItems = new Set();
   const next = {
     sheetIds: { ...(state.sheetIds || {}) },
     conflicts: { ...(state.conflicts || {}) },
@@ -277,11 +391,18 @@ export async function planSheetRound({
     gone: { ...(state.gone || {}) },
     columnsSeen: { ...(state.columnsSeen || {}) },
     headers: { ...(state.headers || {}) },
+    // "markerId|key" of cells that would not keep what Survey wrote (the
+    // hidden part of merged cells): left alone until they hold a value.
+    stuck: { ...(state.stuck || {}) },
     problems: [],
     missingTabs: [],
+    // Tabs still there that lost their Row ID column or heading row (deleted,
+    // cleared, typed over): not synced until undone or rebuilt (putBackTab).
+    brokenTabs: [],
+    heldErase: null,
   };
   const plan = {
-    cellWrites: [], // { sheetId, title, row, col, value }   row/col are 0-based grid indexes
+    cellWrites: [], // { sheetId, title, row, col, value, markerId?, key? }   row/col are 0-based grid indexes
     // What must still be in the sheet when the writes go out: the Row ID next
     // to each write ({ token }) and the cell each write replaces ({ expect }).
     verify: [],     // { sheetId, title, row, col, token } | { sheetId, title, row, col, expect }
@@ -360,7 +481,12 @@ export async function planSheetRound({
     next.headers[scope.scopeId] = Object.fromEntries(scope.columns.filter((c) => colOfKey.has(c.key)).map((c) => [c.key, c.header]));
     const rowIdCol = colOfKey.get('rowId');
     if (rowIdCol == null) {
-      next.problems.push({ scopeId: scope.scopeId, message: `The Row ID column is missing from "${sheet.title}", so it was not synced.` });
+      // Nothing is written to it, and what it last looked like is kept, so
+      // an Undo in the sheet is picked up again as it was.
+      next.brokenTabs.push(scope.scopeId);
+      next.headers[scope.scopeId] = remembered;
+      if (state.columnsSeen?.[scope.scopeId]) next.columnsSeen[scope.scopeId] = state.columnsSeen[scope.scopeId];
+      plan.headerAdds = plan.headerAdds.filter((h) => !sameId(h.sheetId, sheet.sheetId));
       continue;
     }
     // Say so when a column stopped syncing because its header was renamed or
@@ -378,18 +504,29 @@ export async function planSheetRound({
         if (!columnIsEditable(column) || !colOfKey.has(column.key)) continue;
         const raw = row[colOfKey.get(column.key)];
         if (isCellError(raw)) continue; // a failed formula tells us nothing about the value
-        setField(rec, column.key, cellText(raw));
+        // A checkbox reads as the answer it means, so it never looks changed.
+        setField(rec, column.key, checkboxCellAnswer(layout, column, raw) ?? cellText(raw));
       }
       return rec;
     };
-    const writeCell = (rowIndex, key, value, was) => {
+    // What to put in a cell for `want`: a checkbox stays a checkbox (TRUE or
+    // FALSE) when the answer is one it can show, instead of turning into "Y".
+    const sheetWant = (key, want, was) => {
+      if (typeof was !== 'boolean') return want;
+      const column = scope.columns.find((c) => c.key === key);
+      if (!isChoiceColumn(column)) return want;
+      if (want === checkboxAnswerOf(layout.answerValues, true)) return true;
+      if (want === (checkboxAnswerOf(layout.answerValues, false) ?? '')) return false;
+      return want;
+    };
+    const writeCell = (rowIndex, key, value, was, markerId = null) => {
       const col = colOfKey.get(key);
       if (col == null) return;
-      plan.cellWrites.push({ sheetId: sheet.sheetId, title: sheet.title, row: rowIndex, col, value });
+      plan.cellWrites.push({ sheetId: sheet.sheetId, title: sheet.title, row: rowIndex, col, value, ...(markerId ? { markerId, key } : {}) });
       plan.verify.push({ sheetId: sheet.sheetId, title: sheet.title, row: rowIndex, col, expect: was ?? null });
     };
     const rowFor = async (markerId, marker) => {
-      const rec = appRecordOf(marker, scope);
+      const rec = appRecordOf(marker, scope, layout);
       const out = new Array(width).fill('');
       for (const column of scope.columns) {
         const col = colOfKey.get(column.key);
@@ -447,6 +584,9 @@ export async function planSheetRound({
     }
 
     const appendRows = [];
+    // Rows that are not items (a totals line, a heading): new items go above
+    // the ones after the last item, so a totals line stays last.
+    const summaryRows = [];
     for (let r = headerAt + 1; r < rows.length; r += 1) {
       const row = rows[r] || [];
       if (!ids.has(r)) continue; // blank
@@ -529,7 +669,14 @@ export async function planSheetRound({
       // is not an item.
       const itemCol = colOfKey.get('item');
       if (!recreate && itemCol != null && isBlankCell(row[itemCol])) {
+        summaryRows.push(r);
         next.problems.push({ scopeId: scope.scopeId, message: `${where(r)} has no "${scope.columns.find((c) => c.key === 'item')?.header || 'Item'}", so it was not brought in.` });
+        continue;
+      }
+      // "Total", "Grand total", "Subtotal", "Sum"... typed under the items,
+      // with no Row ID: the PM's own totals line, not an item.
+      if (!token && itemCol != null && TOTALS_LABEL.test(cellText(row[itemCol]).trim())) {
+        summaryRows.push(r);
         continue;
       }
       if (!recreate && newRowsLeft <= 0) { newRowsWaiting += 1; continue; }
@@ -557,12 +704,12 @@ export async function planSheetRound({
           continue;
         }
         conv[column.key] = c;
-        applyFieldToMarker(fresh, column.key, c);
+        applyFieldToMarker(fresh, column.key, c, nowIso);
       }
       if (!fresh.name) fresh.name = 'New item';
       plan.markerWrites[id] = fresh;
       plan.summary.created += 1;
-      const rec = appRecordOf(fresh, scope);
+      const rec = appRecordOf(fresh, scope, layout);
       nextBaseline[id] = { scopeId: scope.scopeId, fields: fieldPrintsOf(rec) };
       // The row gets its Row ID, and the app's own cells (dates, tidied values).
       plan.verify.push({ sheetId: sheet.sheetId, title: sheet.title, row: r, col: rowIdCol, token });
@@ -571,8 +718,8 @@ export async function planSheetRound({
       for (const column of scope.columns) {
         if (column.key === 'rowId' || !colOfKey.has(column.key)) continue;
         if (columnIsEditable(column) && conv[column.key] === undefined) continue; // a bad value stays for the person to fix
-        const want = cellValueFor(scope, column.key, rec);
         const was = row[colOfKey.get(column.key)];
+        const want = sheetWant(column.key, cellValueFor(scope, column.key, rec), was);
         if (!sameCell(was, want)) writeCell(r, column.key, want, was);
       }
     }
@@ -596,12 +743,21 @@ export async function planSheetRound({
       seenMarkers.add(markerId);
       plan.summary.appended += 1;
     }
-    if (appendRows.length) plan.appends.push({ sheetId: sheet.sheetId, title: sheet.title, rows: appendRows, width });
+    const notItems = new Set(summaryRows);
+    let lastItemRow = headerAt;
+    for (const r of ids.keys()) if (!notItems.has(r) && r > lastItemRow) lastItemRow = r;
+    const firstSummary = summaryRows.filter((r) => r > lastItemRow).sort((a, b) => a - b)[0];
+    if (appendRows.length) {
+      plan.appends.push({
+        sheetId: sheet.sheetId, title: sheet.title, rows: appendRows, width,
+        ...(firstSummary != null ? { before: firstSummary } : {}),
+      });
+    }
 
     // ---- one matched row -------------------------------------------------
     async function mergeRow({ markerId, marker, row, r }) {
       const base = nextBaseline[markerId]?.fields || null;
-      const appRec = appRecordOf(marker, scope);
+      const appRec = appRecordOf(marker, scope, layout);
       const appFps = fieldPrintsOf(appRec);
       const sheetRec = sheetRecordOf(row, appRec);
       const sheetFps = fieldPrintsOf(sheetRec);
@@ -618,13 +774,42 @@ export async function planSheetRound({
       // change to them is kept.
       const sheetSide = JSON.parse(JSON.stringify(sheetFps));
       const errorKeys = new Set();
+      // A cell that would not keep Survey's last write (merged cells) and is
+      // still blank: blank is not the PM clearing it, so it counts as
+      // unchanged and is not written again. Once it holds a value it syncs.
+      const stuckKeys = new Set();
+      for (const key of keys) {
+        const flag = `${markerId}|${key}`;
+        if (!next.stuck[flag]) continue;
+        if (colOfKey.has(key) && isBlankCell(row[colOfKey.get(key)])) stuckKeys.add(key);
+        else delete next.stuck[flag];
+      }
       for (const key of keys) {
         const column = scope.columns.find((c) => c.key === key);
         const errored = colOfKey.has(key) && isCellError(row[colOfKey.get(key)]);
         if (errored) errorKeys.add(key);
+        if (stuckKeys.has(key)) {
+          setFp(sheetSide, key, base ? getFp(base, key) : getFp(appFps, key));
+          continue;
+        }
         // A column added this round is blank in the sheet: nothing changed there yet.
         if (!columnIsEditable(column) || !colOfKey.has(key) || addedKeys.has(key) || errored) {
           setFp(sheetSide, key, base ? getFp(base, key) : getFp(appFps, key));
+        }
+      }
+      // The sheet blanked a filled answer the app has not changed since both
+      // last agreed: counted, and held or put back (see eraseMode).
+      const heldKeys = new Set();
+      if (base) {
+        for (const key of keys) {
+          const column = scope.columns.find((c) => c.key === key);
+          if (stuckKeys.has(key) || errorKeys.has(key) || addedKeys.has(key) || !columnIsEditable(column) || !colOfKey.has(key)) continue;
+          if (!isBlankCell(row[colOfKey.get(key)]) || isBlankCell(cellValueFor(scope, key, appRec))) continue;
+          if (getFp(appFps, key) !== getFp(base, key) || getFp(sheetSide, key) === getFp(base, key)) continue;
+          erasing += 1;
+          erasingItems.add(markerId);
+          if (eraseMode === 'hold' || eraseMode === 'restore') setFp(sheetSide, key, getFp(base, key));
+          if (eraseMode === 'hold') heldKeys.add(key);
         }
       }
       const { conflictFields, excelChangedFields, appChangedFields } = detectFieldConflicts({
@@ -632,6 +817,16 @@ export async function planSheetRound({
         appNow: appFps,
         excelIn: sheetSide,
       });
+      // The tracking cells, which the Excel import's field list (shared with
+      // the app, so left as it is) does not know: the same rule, here.
+      for (const k of TRACKING_KEYS) {
+        const was = base?.[k];
+        const appSide = appFps[k] !== was;
+        const sheetSideChanged = sheetSide[k] !== was;
+        if (appSide) appChangedFields.push(k);
+        if (sheetSideChanged) excelChangedFields.push(k);
+        if (appSide && sheetSideChanged && appFps[k] !== sheetSide[k]) conflictFields.push(k);
+      }
       const appChangedSet = new Set(appChangedFields);
       const choice = next.choices[markerId];
       const conflicts = new Set(conflictFields.filter((k) => keys.includes(k)));
@@ -652,7 +847,7 @@ export async function planSheetRound({
           continue;
         }
         if (canonicalizeCellValue(getField(appRec, key) ?? '') === canonicalizeCellValue(conv.value)) continue;
-        applyFieldToMarker(updated, key, conv);
+        applyFieldToMarker(updated, key, conv, nowIso);
         appChanged = true;
         plan.summary.toApp += 1;
       }
@@ -667,7 +862,7 @@ export async function planSheetRound({
         plan.markerWrites[markerId] = updated;
       }
 
-      const finalRec = appChanged ? appRecordOf(updated, scope) : appRec;
+      const finalRec = appChanged ? appRecordOf(updated, scope, layout) : appRec;
       const finalFps = fieldPrintsOf(finalRec);
       const nextFields = base ? JSON.parse(JSON.stringify(base)) : {};
       for (const key of keys) {
@@ -678,9 +873,16 @@ export async function planSheetRound({
         setFp(nextFields, key, getFp(finalFps, key));
         const col = colOfKey.get(key);
         if (col == null) continue;
-        const want = cellValueFor(scope, key, finalRec);
+        if (heldKeys.has(key)) continue; // left blank in the sheet until an editor chooses
+        if (stuckKeys.has(key)) {
+          if (!isBlankCell(cellValueFor(scope, key, finalRec))) {
+            next.problems.push({ markerId, scopeId: scope.scopeId, message: `${where(r)}: "${scope.columns.find((c) => c.key === key)?.header || key}" is inside merged cells, so Survey can't fill it in. Unmerge those cells to sync it.` });
+          }
+          continue;
+        }
+        const want = sheetWant(key, cellValueFor(scope, key, finalRec), row[col]);
         if (!sameCell(row[col], want)) {
-          writeCell(r, key, want, row[col]);
+          writeCell(r, key, want, row[col], markerId);
           if (!fromSheet.has(key)) plan.summary.toSheet += 1;
         }
       }
@@ -731,5 +933,13 @@ export async function planSheetRound({
     if (!markers[id] && !plan.markerWrites[id] && !next.tombstones[id]) delete nextBaseline[id];
   }
 
+  for (const flag of Object.keys(next.stuck)) if (!markers[flag.split('|')[0]]) delete next.stuck[flag];
+  delete next.eraseChoice; // used once
+  if (eraseMode === 'hold' && erasing) {
+    next.heldErase = { count: erasing, items: erasingItems.size, at: state.heldErase?.at || nowIso };
+  } else {
+    delete next.heldErase;
+  }
+  plan.erasing = erasing;
   return { ...plan, baseline: nextBaseline, state: next };
 }
