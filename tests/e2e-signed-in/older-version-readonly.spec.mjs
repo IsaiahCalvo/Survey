@@ -260,3 +260,52 @@ test('drawing on a hidden layer says so; Show layer brings the mark into view', 
     await admin.from('documents').delete().eq('id', id);
   }
 });
+
+test('a new version keeps its sharing; a person with the old copy open is told and it turns read-only', async ({ browser }) => {
+  test.setTimeout(180_000);
+  const admin = adminClient();
+  const ownerApi = await apiClientFor(E2E_ACCOUNTS.owner);
+  const editorApi = await apiClientFor(E2E_ACCOUNTS.editor);
+  const { data: { user: owner } } = await ownerApi.auth.getUser();
+  const { data: { user: editor } } = await editorApi.auth.getUser();
+  const name = `Shared versions ${RUN}.pdf`;
+  const v1 = await addDoc(admin, owner.id, name, await sheetPdf('Shared versions A'));
+  const v2 = await addDoc(admin, owner.id, name, await sheetPdf('Shared versions B'));
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  try {
+    await must('share', admin.from('document_collaborators').insert({ document_id: v1, user_id: editor.id, invited_by: owner.id, role: 'editor', status: 'active' }));
+    await page.addInitScript(() => localStorage.setItem('survey.flag.document-versions', '1'));
+    await signIn(page, E2E_ACCOUNTS.editor);
+    await page.getByText(name, { exact: true }).filter({ visible: true }).first().click();
+    await page.getByRole('button', { name: 'Open file' }).click();
+    await expect(page.getByText('Shared versions A page 1')).toBeVisible({ timeout: 60_000 });
+    await expect(page.locator('[data-older-version-bar]')).toHaveCount(0);
+
+    // The owner uploads a new version somewhere else.
+    await must('supersede', ownerApi.rpc('supersede_document', { p_old_document_id: v1, p_new_document_id: v2 }));
+    const { data: shared } = await admin.from('document_collaborators').select('user_id, role, status').eq('document_id', v2);
+    expect(shared).toEqual([{ user_id: editor.id, role: 'editor', status: 'active' }]);
+
+    // The editor's open copy says so, by itself, and stops taking marks.
+    await expect(page.getByText('A newer version was uploaded, so this copy is now read-only.')).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator('[data-older-version-bar]')).toContainText('You’re viewing v1.');
+    await expect(page.locator('body')).toHaveAttribute('data-readonly', 'true');
+    await page.screenshot({ path: test.info().outputPath('shared-version-told.png') });
+
+    // Open current version reaches v2, which the editor can mark up.
+    await page.locator('[data-older-version-bar] .older-version-bar__action').click();
+    await expect(page.getByText('Shared versions B page 1')).toBeVisible({ timeout: 60_000 });
+    await expect(page.locator('[data-older-version-bar]')).toHaveCount(0);
+    await expect(page.locator('[data-document-versions-button]').filter({ visible: true }).first()).toHaveText('v2', { timeout: 30_000 });
+    await drawRect(page);
+    await expect.poll(async () => (await markIds(page)).length, { timeout: 10_000 }).toBe(1);
+
+    // And it stays in the editor's own list (the RLS read the list makes).
+    const { data: listed } = await editorApi.from('documents').select('id').eq('id', v2);
+    expect(listed).toEqual([{ id: v2 }]);
+  } finally {
+    await context.close();
+    await cleanup(admin, [v1, v2]);
+  }
+});

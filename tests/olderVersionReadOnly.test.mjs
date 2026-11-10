@@ -60,3 +60,15 @@ test('comment copy: editors of both copies only, no repeat copies, no repeat men
   assert.match(sql, /COALESCE\(c\.mentions_notified_at, now\(\)\)/);
   assert.match(sql, /REVOKE ALL ON FUNCTION public\.carry_mark_comments\(uuid, uuid\) FROM PUBLIC, anon;/);
 });
+
+test('a new version keeps its sharing, and an open old copy looks again for a newer one', () => {
+  const sql = readFileSync(new URL('../supabase/migrations/20261110140000_supersede_carries_sharing.sql', import.meta.url), 'utf8');
+  assert.match(sql, /INSERT INTO public\.document_collaborators \(document_id, user_id, invited_by, role, email, status\)/);
+  assert.match(sql, /c\.status IN \('active', 'pending'\)/);
+  assert.match(sql, /UPDATE public\.document_invites/);
+  assert.match(sql, /UPDATE public\.document_guest_links/);
+  assert.match(sql, /NOT COALESCE\(public\.user_can_access_document\(v_old\.id, 'editor'\), false\)/);
+  const hook = readFileSync(new URL('../src/components/DocumentVersionsButton.jsx', import.meta.url), 'utf8');
+  assert.match(hook, /VERSION_RECHECK_MS = 20_000/);
+  assert.match(hook, /A newer version was uploaded, so this copy is now read-only\./);
+});
