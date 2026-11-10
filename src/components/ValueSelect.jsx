@@ -25,7 +25,11 @@ const MENU_CLASS = 'value-select__menu';
  * Phones keep the browser's own list (its wheel), so callers render a native
  * <select> there.
  *
- * options: [{ value, label }]; onChange(value) only when the value changes.
+ * options: [{ value, label, detail? }]; onChange(value) only when the value
+ * changes. An option's `detail` is one short line under its label in the
+ * list (never on the pill), for a choice whose name alone does not say what
+ * it does (owner 2026-11-09: "I don't know what Full report, Progress and
+ * Issue list are").
  */
 export default function ValueSelect({
   value,
@@ -44,6 +48,7 @@ export default function ValueSelect({
   const [open, setOpen] = useState(false);
   const triggerRef = useRef(null);
   const picked = options.some((option) => option.value === value);
+  const detailed = options.some((option) => option.detail);
 
   // A press anywhere else closes the list (even where a dialog stops the
   // press from bubbling), and it is the topmost popover for Escape.
@@ -81,7 +86,13 @@ export default function ValueSelect({
       width={width}
       contentWidth="var(--radix-popover-trigger-width)"
       className={classes}
-      contentClassName={`${MENU_CLASS} ${MENU_CLASS}--${look}`}
+      contentClassName={`${MENU_CLASS} ${MENU_CLASS}--${look}${detailed ? ` ${MENU_CLASS}--detailed` : ''}`}
+      renderOption={detailed ? (option) => (
+        <span className="value-select__option">
+          <span className="value-select__option-label">{option.label}</span>
+          {option.detail ? <span className="value-select__option-detail">{option.detail}</span> : null}
+        </span>
+      ) : undefined}
       disabled={disabled}
     />
   );
