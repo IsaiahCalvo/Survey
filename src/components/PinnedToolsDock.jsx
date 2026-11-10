@@ -122,12 +122,24 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
   const [editing, setEditing] = useState(false);
   const [pinDrag, setPinDrag] = useState(null); // { pinId, index, offset }
   // Escape ends "Edit pins" like every other mode (an open dock menu takes
-  // the Escape first and closes itself).
+  // the Escape first and closes itself). The viewer's capture-phase Escape
+  // asks "survey-cancel-selection-gesture" first; claiming it there keeps
+  // that same Escape from also dropping the pick or putting the tool down.
+  // The plain keydown listener covers a screen with no viewer listening.
   useEffect(() => {
     if (!editing) return undefined;
+    const onCancelAsk = (e) => {
+      if (menu) return;
+      setEditing(false);
+      if (e.detail) e.detail.cancelled = true;
+    };
     const onKey = (e) => { if (e.key === 'Escape' && !menu) setEditing(false); };
+    window.addEventListener('survey-cancel-selection-gesture', onCancelAsk);
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('survey-cancel-selection-gesture', onCancelAsk);
+      window.removeEventListener('keydown', onKey);
+    };
   }, [editing, menu]);
   const [, setSessionTick] = useState(0);
 
