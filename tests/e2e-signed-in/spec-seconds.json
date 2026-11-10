@@ -31,6 +31,7 @@
   "document-versions.spec.mjs": 26,
   "drag-auto-scroll.spec.mjs": 21.9,
   "drag-glide.spec.mjs": 26.1,
+  "drawboard-keys.spec.mjs": 45,
   "drawboard-t2-fixes.spec.mjs": 82.2,
   "eraser-keeps-shapes.spec.mjs": 33.3,
   "eraser-look.spec.mjs": 32.2,

@@ -162,6 +162,7 @@ import { formatPageTotal } from './utils/pageTotalLabel.js';
 import { requestTemplateEditor } from './home/templateEditorRequest';
 import SheetSetBar from './sheets/SheetSetBar.jsx';
 import { recordDocumentOpened } from './home/homeLibraryData.js';
+import { steppedVersion, versionStepForKey } from './utils/drawboardKeys.js';
 import SheetSetView from './sheets/SheetSetView.jsx';
 import SpotlightOverlay from './spotlight/SpotlightOverlay.jsx';
 import useSpotlight from './spotlight/useSpotlight.js';
@@ -2594,6 +2595,25 @@ export default function App({ devPreviewReturnTab = null }) {
   // An older version opens read-only, with a bar to the current one.
   const olderVersionOpen = documentVersions.open && !documentVersions.open.isCurrent ? documentVersions.open : null;
   const currentVersion = documentVersions.versions.find((v) => v.isCurrent) || null;
+  // Drawboard keys (Nightly 'drawboard-keys'): Alt+O / Alt+U open the next /
+  // previous version, the same way the Versions list opens one.
+  const [drawboardKeysEnabled] = useState(() => isFeatureOn('drawboard-keys'));
+  const documentVersionsRef = useRef(documentVersions);
+  documentVersionsRef.current = documentVersions;
+  useEffect(() => {
+    if (!drawboardKeysEnabled || !isViewerVisible) return undefined;
+    const onKey = (event) => {
+      const step = versionStepForKey(event);
+      if (!step || isTypingTarget(event.target) || event.target?.closest?.('[role="dialog"]')) return;
+      const state = documentVersionsRef.current;
+      const next = steppedVersion(state.versions, state.open?.id, step);
+      if (!next) return;
+      event.preventDefault();
+      state.openVersion(next);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [drawboardKeysEnabled, Boolean(isViewerVisible)]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Page grid spacing (Survey Nightly only, beta flag 'grid-settings').
   const [gridSettingsEnabled] = useState(() => isFeatureOn('grid-settings'));
