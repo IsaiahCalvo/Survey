@@ -413,7 +413,7 @@ import { chooseCloudPdfOpenPath, shouldRetryStreamedOpenWithDownload, tryOpenClo
 import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox } from './utils/svgBoundingBox.js';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
 import { usePageOperations } from './hooks/usePageOperations.js';
-import { IDLE_REMOTE_PDF_STATE, PAGE_OP_BLOCKED_MESSAGE, PAGE_OP_SYNC_FLAG, clearedPdfVersion, isPageOpBlocked, newPdfVersionToken, framePageChanges, noteFramePageChanges, operationRewritesPdf, pendingPdfVersion, reframeMarks, remotePdfLoaded, remotePdfVersionStep, savedPdfVersion, stampableOperation } from './utils/pageOpSync.js';
+import { IDLE_REMOTE_PDF_STATE, PAGE_OP_BLOCKED_MESSAGE, PAGE_OP_SYNC_FLAG, clearedPdfVersion, isPageOpBlocked, newPdfVersionToken, framePageChanges, noteFramePageChanges, operationRewritesPdf, pendingPdfVersion, reframeMarks, remotePdfLoaded, remotePdfVersionStep, savedPdfVersion, splitFramePageChanges, stampableOperation } from './utils/pageOpSync.js';
 import { usePageViewDocument } from './hooks/usePageViewDocument.js';
 import { getPageViewBase } from './utils/pageViewDocument.js';
 import { destroyPdfDocument, pdfOrDestroy } from './utils/destroyPdfDocument.js';
@@ -22279,6 +22279,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     window.addEventListener('pointercancel', onUp, true);
     let timer = null;
     let latest = null;
+    let latestKeys = [];
     const reload = (since) => {
       timer = null;
       const draftOpen = hasOpenPolyDraft(polyDraftOwner);
@@ -22290,9 +22291,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       // goes. Say so rather than wiping it silently (R4-C N6b).
       if (draftOpen) showToast('Pages changed in another window, so the shape you were placing was cleared.', 'info');
       // Marks drawn here on the old pages move with them once the new pages
-      // are loaded (the effect below).
-      sync.reframe = sync.frame;
-      sync.frame = null;
+      // are loaded (the effect below). The old pages stay up until then, so
+      // the frame keeps noting marks; a stamp seen meanwhile adds to it.
+      sync.reframe = { sha: latest.contentSha256, keys: latestKeys };
       sync.docBeforeReload = sync.pdfDoc;
       onRemotePdfVersion?.(tabId, latest);
     };
@@ -22308,10 +22309,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         if (!sync.frame) dropHistoryAfterPageChange();
         sync.frame = noteFramePageChanges(sync.frame, step.version);
       } else if (step.action === 'unblock') {
-        sync.frame = null;
+        // A reload still loading keeps the changes its bytes carry.
+        sync.frame = sync.reframe ? splitFramePageChanges(sync.frame, sync.reframe.keys).taken : null;
       }
       if (step.action !== 'reload') return;
       latest = { filePath: step.version.filePath, contentSha256: step.version.contentSha256 };
+      latestKeys = [...(sync.frame?.batches?.keys() || [])];
       if (!timer) reload(Date.now());
     });
     return () => {
@@ -22324,10 +22327,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   }, [normalAnnotationHydration, pdfFile?.id, subscribeDocumentMeta, onRemotePdfVersion, tabId, polyDraftOwner, dropHistoryAfterPageChange]);
   useEffect(() => {
     const sync = pageOpSyncRef.current;
-    if (!sync.remote.awaitSha || !pdfDoc || pdfDoc === sync.docBeforeReload) return;
+    if (!pdfDoc || pdfDoc === sync.docBeforeReload) return;
     sync.remote = remotePdfLoaded(sync.remote, pdfFile?.contentSha256);
-    const frame = sync.reframe;
+    // Older bytes than the newest reload asked for: wait for those.
+    const target = sync.reframe;
+    if (!target || pdfFile?.contentSha256 !== target.sha) return;
     sync.reframe = null;
+    // Runs stamped after this reload began stay in the frame for the next
+    // load, with the marks (now moved onto these pages) still noted.
+    const { taken: frame, rest } = splitFramePageChanges(sync.frame, target.keys);
+    sync.frame = rest;
     // Steps recorded while the old pages were up (the marks drawn on them)
     // would undo to the old frame.
     if (frame) dropHistoryAfterPageChange();

@@ -190,6 +190,24 @@ export function framePageChanges(frame) {
   return out;
 }
 
+/**
+ * Splits a frame at a reload: `taken` holds the runs `keys` (the page
+ * changes the loaded bytes carry), `rest` the runs that came after, still to
+ * load. Both keep the marks noted so far, which sit on the pages as they were
+ * before `taken`. Either is null when it has no runs.
+ */
+export function splitFramePageChanges(frame, keys) {
+  if (!frame?.batches?.size) return { taken: null, rest: null };
+  const want = new Set(keys || []);
+  const taken = new Map();
+  const rest = new Map();
+  for (const [key, ops] of frame.batches) (want.has(key) ? taken : rest).set(key, ops);
+  return {
+    taken: taken.size ? { ...frame, batches: taken } : null,
+    rest: rest.size ? { ...frame, batches: rest } : null,
+  };
+}
+
 export const IDLE_REMOTE_PDF_STATE = Object.freeze({ blockedUntil: 0, pendingToken: null, awaitSha: null });
 
 /**

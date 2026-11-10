@@ -221,6 +221,35 @@ test('two deletes of the same page number and their Undo put each mark back on i
   assert.deepEqual(kept[3].map((o) => o.data.id), ['b']);
 });
 
+test('a reload takes only the runs its bytes carry; later runs and the noted marks stay for the next load', async () => {
+  const { noteFramePageChanges, normalizePdfVersion, pendingPdfVersion, savedPdfVersion, splitFramePageChanges, framePageChanges } = await import('../src/utils/pageOpSync.js');
+  const turn = { type: 'rotate', page: 1, delta: 90 };
+  const blank = { type: 'insert', afterPage: 0 };
+  let frame = noteFramePageChanges(null, normalizePdfVersion(savedPdfVersion({ writer: 'A', filePath: 'p', contentSha256: 's1', operations: [turn], batch: 'run1' })));
+  const keys = [...frame.batches.keys()];
+  frame.made.add('mine');
+  // While run1's bytes load, the other window starts run2 and a mark is drawn here.
+  frame = noteFramePageChanges(frame, normalizePdfVersion(pendingPdfVersion({ writer: 'A', operations: [blank], batch: 'run2' })));
+  frame.made.add('mine2');
+  const { taken, rest } = splitFramePageChanges(frame, keys);
+  assert.deepEqual(framePageChanges(taken), [turn]);
+  assert.deepEqual(framePageChanges(rest), [blank]);
+  assert.deepEqual([...taken.made], ['mine', 'mine2']);
+  assert.deepEqual([...rest.made], ['mine', 'mine2']);
+  // Nothing after it: the frame ends with the load.
+  assert.equal(splitFramePageChanges(taken, keys).rest, null);
+  assert.deepEqual(splitFramePageChanges(null, keys), { taken: null, rest: null });
+});
+
+test('the viewer keeps noting marks until the new pages load, and a reload waits for the newest bytes', () => {
+  const src = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
+  const reload = src.slice(src.indexOf('const reload = (since) => {'), src.indexOf('const unsubscribe = subscribeDocumentMeta(PDF_FILE_VERSION_META_KEY'));
+  assert.ok(reload.includes('sync.reframe = { sha: latest.contentSha256, keys: latestKeys };'));
+  assert.ok(!reload.includes('sync.frame = null'), 'the frame keeps recording while the old pages are up');
+  assert.ok(src.includes('if (!target || pdfFile?.contentSha256 !== target.sha) return;'));
+  assert.ok(src.includes('const { taken: frame, rest } = splitFramePageChanges(sync.frame, target.keys);'));
+});
+
 test('stamps from an older client without a run name count once per run', async () => {
   const { framePageChanges, noteFramePageChanges, normalizePdfVersion, pendingPdfVersion, savedPdfVersion } = await import('../src/utils/pageOpSync.js');
   const turn = { type: 'rotate', page: 1, delta: 90 };
