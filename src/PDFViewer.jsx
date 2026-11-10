@@ -3110,6 +3110,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // each registers this window listener; the first one registered stops the
   // event for the rest. Without this check Cmd+Z in the second document you
   // opened undid (invisibly) in the FIRST one. Only the visible tab answers.
+  // This viewer's token for Undo while placing a polygon (utils/polyDraft.js).
+  const [polyDraftOwner] = useState(() => ({}));
   const undoRedoKeyActiveRef = useRef(isActive);
   undoRedoKeyActiveRef.current = isActive;
   useEffect(() => {
@@ -3129,7 +3131,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       }
       // A polygon / polyline being placed takes Undo as "last point off"
       // (Nightly 'poly-back-step', utils/polyDraft.js).
-      if (isUndoCombo && stepBackPolyDraftForUndo()) return;
+      if (isUndoCombo && stepBackPolyDraftForUndo(polyDraftOwner)) return;
       // w57: an arrow-key nudge still waiting to save lands first, so Undo
       // takes back the nudge (this handler runs before the page layers').
       flushPendingNudges();
@@ -14248,7 +14250,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const handleUndo = useCallback(() => {
     // The Undo buttons (phone header, toolbar) step back a polygon / polyline
     // point too, like Ctrl/Cmd+Z (Nightly 'poly-back-step', utils/polyDraft.js).
-    if (stepBackPolyDraftForUndo()) return;
+    if (stepBackPolyDraftForUndo(polyDraftOwner)) return;
     if (deferUntilEraseCommitsFinish(handleUndo)) return;
     recordAnnotationUndoRedo('undo', {
       localUndoDepth: localAnnotationUndoRef.current.length,
@@ -15076,7 +15078,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // Check if undo is possible
   // A polygon / polyline being placed can step back a point even on a page
   // with nothing else to undo (Nightly 'poly-back-step', utils/polyDraft.js).
-  const polyDraftUndoable = useSyncExternalStore(subscribePolyDraftUndo, hasPolyDraftUndo, () => false);
+  const polyDraftUndoable = useSyncExternalStore(subscribePolyDraftUndo, () => hasPolyDraftUndo(polyDraftOwner), () => false);
   const canUndo = polyDraftUndoable || (localAnnotationHistoryVersion >= 0
     && (localAnnotationUndoRef.current.length > 0 || undoHistory.length > 0 || (yjsUndoManager?.undoStack?.length || 0) > 0));
 
@@ -39046,6 +39048,7 @@ ${pageBlocks}
                                 <SVGAnnotationLayer
                                   key={`svg-layer-${pageNumber}-${annotationOverlayRecoveryTick}`}
                                   documentId={pdfFile?.id || null}
+                                  polyDraftOwner={polyDraftOwner}
                                   isTabActive={isActive !== false}
                                   pageNumber={pageNumber}
                                   // visiblePagesSet is never updated past page 1, so a pinch-out

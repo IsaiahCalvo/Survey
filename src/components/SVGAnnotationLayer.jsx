@@ -659,6 +659,8 @@ const SVGAnnotationLayerBody = memo(({
   // w32: the open document's id — live ink (in-progress strokes) is sent on,
   // and shown from, this document's channel only.
   documentId = null,
+  // The viewer's own token for Undo while placing (utils/polyDraft.js).
+  polyDraftOwner = null,
   // False while this document's tab is behind another one (a pending Smart
   // fill press is then dropped).
   isTabActive = true,
@@ -3148,9 +3150,6 @@ const SVGAnnotationLayerBody = memo(({
   const polyPointerTypeRef = useRef('mouse');
   const stepBackPolyDraft = useCallback(() => {
     if (!polyDraftRef.current) return false;
-    // A draft left open on a tab you are not looking at never takes the
-    // front document's Undo.
-    if (!svgRef.current?.isConnected || svgRef.current.getClientRects().length === 0) return false;
     const next = removeLastPolyDraftPoint(polyDraftRef.current, { keepPreview: polyPointerTypeRef.current === 'mouse' });
     if (!next) { cancelPolyDraft(); return true; }
     polyDraftRef.current = next;
@@ -3181,7 +3180,7 @@ const SVGAnnotationLayerBody = memo(({
       }
     };
     window.addEventListener('keydown', onKeyDown, true);
-    const releaseUndo = polyBackStepOn() ? setPolyDraftUndo(stepBackPolyDraft) : null;
+    const releaseUndo = polyBackStepOn() ? setPolyDraftUndo(stepBackPolyDraft, polyDraftOwner) : null;
     return () => {
       window.removeEventListener('keydown', onKeyDown, true);
       releaseUndo?.();

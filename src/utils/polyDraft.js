@@ -306,28 +306,32 @@ export function normalizePolyPointsToLocal(points) {
 // Undo while placing (Nightly, 'poly-back-step'). The viewer's Cmd/Ctrl+Z
 // listener runs before any page layer's, so the page layer with a draft open
 // registers its step-back here and the viewer asks it first.
-let draftUndo = null;
+// Each viewer passes its own owner token, so a draft left open in a tab
+// behind never takes (or lights) the front document's Undo.
+const draftUndos = new Map();
 const draftUndoListeners = new Set();
 const notifyDraftUndo = () => draftUndoListeners.forEach((listener) => listener());
-export function setPolyDraftUndo(stepBack) {
-  draftUndo = typeof stepBack === 'function' ? stepBack : null;
+export function setPolyDraftUndo(stepBack, owner = null) {
+  if (typeof stepBack !== 'function') return () => {};
+  draftUndos.set(owner, stepBack);
   notifyDraftUndo();
   return () => {
-    if (draftUndo === stepBack) {
-      draftUndo = null;
+    if (draftUndos.get(owner) === stepBack) {
+      draftUndos.delete(owner);
       notifyDraftUndo();
     }
   };
 }
-/** True while a draft is open that Undo would step back (the Undo buttons stay live). */
-export function hasPolyDraftUndo() {
-  return draftUndo != null;
+/** True while this viewer has a draft open that Undo would step back (its Undo buttons stay live). */
+export function hasPolyDraftUndo(owner = null) {
+  return draftUndos.has(owner);
 }
 export function subscribePolyDraftUndo(listener) {
   draftUndoListeners.add(listener);
   return () => draftUndoListeners.delete(listener);
 }
-/** True when a draft took the Undo (its last point came off). */
-export function stepBackPolyDraftForUndo() {
-  return draftUndo ? draftUndo() !== false : false;
+/** True when this viewer's draft took the Undo (its last point came off). */
+export function stepBackPolyDraftForUndo(owner = null) {
+  const stepBack = draftUndos.get(owner);
+  return stepBack ? stepBack() !== false : false;
 }

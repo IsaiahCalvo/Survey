@@ -32,9 +32,25 @@ test('hiding marks drops the pick and blocks mark-changing keys', () => {
 test('the Undo buttons step back a polygon point first', () => {
   const src = read('PDFViewer.jsx');
   const at = src.indexOf('const handleUndo = useCallback(() => {');
-  assert.match(src.slice(at, at + 400), /if \(stepBackPolyDraftForUndo\(\)\) return;/);
+  assert.match(src.slice(at, at + 400), /if \(stepBackPolyDraftForUndo\(polyDraftOwner\)\) return;/);
 });
 
 test('Back closes the mark menu before the document', () => {
   assert.match(read('hooks/useAnnotationContextMenu.jsx'), /useBackLayer\(Boolean\(annotationContextMenu\), closeAnnotationContextMenu\)/);
+});
+
+test('a polygon draft only takes and lights its own viewer\'s Undo', async () => {
+  const { setPolyDraftUndo, hasPolyDraftUndo, stepBackPolyDraftForUndo } = await import('../src/utils/polyDraft.js');
+  const front = {};
+  const behind = {};
+  let steps = 0;
+  const release = setPolyDraftUndo(() => { steps += 1; return true; }, behind);
+  assert.equal(hasPolyDraftUndo(front), false);
+  assert.equal(stepBackPolyDraftForUndo(front), false);
+  assert.equal(steps, 0);
+  assert.equal(hasPolyDraftUndo(behind), true);
+  assert.equal(stepBackPolyDraftForUndo(behind), true);
+  assert.equal(steps, 1);
+  release();
+  assert.equal(hasPolyDraftUndo(behind), false);
 });
