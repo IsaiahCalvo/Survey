@@ -65,8 +65,12 @@ export function stampableOperation(operation) {
     return { type: 'restore', afterPage: Number(operation.afterPage), fromPage: Number.isInteger(fromPage) ? fromPage : Number(operation.afterPage) + 1 };
   }
   if (operation?.type === 'batch' && (operation.operations || []).some((step) => step?.type === 'restore')) {
+    // Slim each step here and size the batch once (not through this branch
+    // again: its restore steps would match it forever).
     const steps = (operation.operations || []).map((step) => stampableOperation(step));
-    return steps.every(Boolean) ? stampableOperation({ type: 'batch', operations: steps }) : null;
+    if (!steps.every(Boolean)) return null;
+    const text = JSON.stringify({ type: 'batch', operations: steps });
+    return text.length <= STAMP_OPERATIONS_MAX_CHARS ? JSON.parse(text) : null;
   }
   if (!operation || typeof operation !== 'object' || !STAMP_OP_TYPES.has(operation.type)) return null;
   if (operation.type === 'batch' && !(operation.operations || []).every((step) => stampableOperation(step))) return null;

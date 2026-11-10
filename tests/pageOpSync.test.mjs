@@ -189,6 +189,16 @@ test('a delete then its Undo leaves a mark drawn in the other window where it wa
   // In one batch too.
   const batched = reframeMarks(byPage, new Set(['mine']), [stampableOperation({ type: 'batch', operations: [del] }), back], transformPageState);
   assert.deepEqual(batched[2].map((o) => o.data.id), ['mine']);
+  // The Undo of a several-page delete is a batch of restores: it travels
+  // slimmed, without its page state.
+  const many = { type: 'batch', operations: [
+    { type: 'restore', afterPage: 1, fromPage: 2, from: { annotationsByPage: {} } },
+    { type: 'restore', afterPage: 2, fromPage: 3, from: { annotationsByPage: {} } },
+  ] };
+  assert.deepEqual(stampableOperation(many), { type: 'batch', operations: [
+    { type: 'restore', afterPage: 1, fromPage: 2 }, { type: 'restore', afterPage: 2, fromPage: 3 },
+  ] });
+  assert.equal(stampableOperation({ type: 'batch', operations: [many.operations[0], { type: 'presentation', page: 1 }] }), null);
   // No delete seen here: the page comes back as a new page after afterPage.
   const shifted = reframeMarks(byPage, new Set(['mine']), [{ type: 'restore', afterPage: 1, fromPage: 2 }], transformPageState);
   assert.deepEqual(shifted[3].map((o) => o.data.id), ['later', 'mine']);
