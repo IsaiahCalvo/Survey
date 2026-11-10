@@ -215,6 +215,24 @@
   }
 }
 
+.comments-avatar {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--surface-3);
+  color: var(--text-2);
+  font: 600 9px/1 var(--font-ui);
+}
+
+/* The words sit under the name, past the face (20px disc + 6px gap). */
+.comments-item__body,
+.comments-item .comments-box--inline {
+  margin-left: 26px;
+}
+
 .comments-item__body {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -227,14 +245,28 @@
   font-weight: 600;
 }
 
+/* Replies stack under the first comment, each with its own face, like a
+   chat thread; the faces line the thread up, so no rule down the side. */
 .comments-reply {
-  padding-left: 12px;
-  border-left: 2px solid var(--border);
+  margin-top: 6px;
+}
+
+.comments-reply > .comments-box {
+  margin-left: 26px;
 }
 
 .comments-reply-btn {
   align-self: flex-start;
-  margin-left: -6px;
+  margin-left: 20px;
+}
+
+/* A hairline between threads, so a long list reads as separate
+   conversations; the selected or hovered thread's own fill hides it. */
+.comments-thread + .comments-thread {
+  box-shadow: 0 -1px 0 var(--border);
+}
+.comments-thread + .comments-thread.is-highlighted {
+  box-shadow: inset 0 0 0 2px var(--accent);
 }
 
 .comments-box {
@@ -297,10 +329,12 @@
   display: flex;
   flex-direction: column;
   padding: 4px;
-  border: 1px solid var(--border-strong);
+  /* The app's one pop-up card (design guide 1): --border, never
+     --border-strong, with the popover shadow. */
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: var(--surface-1);
-  box-shadow: var(--shadow-dialog);
+  background: var(--surface-2);
+  box-shadow: var(--shadow-popover);
 }
 
 .comments-mentions__item {
@@ -319,7 +353,7 @@
 }
 
 .comments-mentions__item.is-active {
-  background: var(--hover);
+  background: var(--surface-3);
 }
 
 .comments-mentions__email {
@@ -343,4 +377,9 @@
 .mobile-pdf-sheet .comments-item__time { font: var(--sheet-row-meta); }
 .mobile-pdf-sheet .comments-icon { width: 44px; height: 44px; }
 .mobile-pdf-sheet .comments-item__body { font: var(--sheet-row-text); }
+.mobile-pdf-sheet .comments-avatar { width: 24px; height: 24px; font-size: 10px; }
+.mobile-pdf-sheet .comments-item__body,
+.mobile-pdf-sheet .comments-item .comments-box--inline,
+.mobile-pdf-sheet .comments-reply > .comments-box { margin-left: 30px; }
+.mobile-pdf-sheet .comments-reply-btn { margin-left: 24px; }
 .mobile-pdf-sheet .comments-box textarea { font-size: 16px; }
