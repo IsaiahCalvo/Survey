@@ -114,3 +114,36 @@ test('the reloaded tab file is a cloud file for the saved bytes', () => {
   assert.equal(row.content_sha256, 'y');
   assert.equal('size' in row, false);
 });
+
+test('marks drawn on the old pages move the way the page change moved the rest (R4-C N6b)', async () => {
+  const { reframeMarks, stampableOperation } = await import('../src/utils/pageOpSync.js');
+  const { transformPageState } = await import('../src/utils/pageAnnotationReindex.js');
+  const rect = (id, left, top) => ({ type: 'rect', left, top, width: 50, height: 30, data: { id } });
+  const byPage = { 1: { objects: [rect('a-theirs', 10, 10), rect('b-mine', 100, 100)] }, 2: { objects: [rect('c', 5, 5)] } };
+  // A blank page above page 1: my rectangle goes to page 2 with its sheet.
+  const insert = reframeMarks(byPage, new Set(['b-mine']), [stampableOperation({ type: 'insert', afterPage: 0 })], transformPageState);
+  assert.deepEqual(insert[1].map((o) => o.data.id), ['a-theirs']);
+  assert.deepEqual(insert[2].map((o) => o.data.id), ['c', 'b-mine']);
+  // A turn of page 1: my rectangle turns with it, the others stay as they are.
+  const turned = reframeMarks(byPage, new Set(['b-mine']), [{ type: 'rotate', page: 1, delta: 90, pageSize: { width: 612, height: 792 } }], transformPageState);
+  assert.deepEqual(Object.keys(turned), ['1']);
+  const mine = turned[1].find((o) => o.data.id === 'b-mine');
+  assert.notDeepEqual([mine.left, mine.top], [100, 100]);
+  assert.equal(turned[1].find((o) => o.data.id === 'a-theirs').left, 10);
+  // Nothing to move, or no page changes known: nothing changes.
+  assert.equal(reframeMarks(byPage, new Set(), [{ type: 'insert', afterPage: 0 }], transformPageState), null);
+  assert.equal(reframeMarks(byPage, new Set(['b-mine']), null, transformPageState), null);
+  // Only small plain steps travel on the stamp.
+  assert.equal(stampableOperation({ type: 'restore', afterPage: 0, fromPage: 1, from: {} }), null);
+  assert.equal(stampableOperation({ type: 'batch', operations: [{ type: 'rotate', page: 1, delta: 90 }, { type: 'restore' }] }), null);
+  assert.deepEqual(stampableOperation({ type: 'move', from: 1, to: 3 }), { type: 'move', from: 1, to: 3 });
+});
+
+test('the viewer stamps its page changes and moves old-page marks after the reload', () => {
+  const src = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
+  assert.match(src, /pendingPdfVersion\(\{ writer: pageOpSync\.writer, operations: pageOpSync\.pendingOps \}\)/);
+  assert.match(src, /savedPdfVersion\(\{ writer: sync\.writer, filePath: [^)]*, operations \}\)/);
+  assert.match(src, /if \(oldPagesFrame && Array\.isArray\(json\?\.objects\)\)/);
+  assert.match(src, /reframeMarks\(byPage, frame\.made, frame\.ops, transformPageState\)/);
+  assert.match(src, /if \(draftOpen\) showToast\(/);
+});

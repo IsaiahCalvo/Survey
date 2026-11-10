@@ -413,7 +413,7 @@ import { chooseCloudPdfOpenPath, shouldRetryStreamedOpenWithDownload, tryOpenClo
 import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox } from './utils/svgBoundingBox.js';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
 import { usePageOperations } from './hooks/usePageOperations.js';
-import { IDLE_REMOTE_PDF_STATE, PAGE_OP_BLOCKED_MESSAGE, PAGE_OP_SYNC_FLAG, clearedPdfVersion, isPageOpBlocked, newPdfVersionToken, operationRewritesPdf, pendingPdfVersion, remotePdfLoaded, remotePdfVersionStep, savedPdfVersion } from './utils/pageOpSync.js';
+import { IDLE_REMOTE_PDF_STATE, PAGE_OP_BLOCKED_MESSAGE, PAGE_OP_SYNC_FLAG, clearedPdfVersion, isPageOpBlocked, newPdfVersionToken, operationRewritesPdf, pendingPdfVersion, reframeMarks, remotePdfLoaded, remotePdfVersionStep, savedPdfVersion, stampableOperation } from './utils/pageOpSync.js';
 import { usePageViewDocument } from './hooks/usePageViewDocument.js';
 import { getPageViewBase } from './utils/pageViewDocument.js';
 import { destroyPdfDocument, pdfOrDestroy } from './utils/destroyPdfDocument.js';
@@ -424,7 +424,7 @@ import { dropStashedSelection, hasAnyPageSelection, isItemSelected, pageHasSelec
 import { isSelectionGrabPress, noteOverlayTapPick } from './hooks/useSelectionGrabHandoff.js';
 import { resolveToolBarGroup, showsSurveyRow, TOOL_BAR_GROUPS } from './utils/toolbarRows.js';
 import { cycleLassoMode } from './utils/lassoSelection.js';
-import { pageCountChange, pageNumberAfterOperation } from './utils/pageAnnotationReindex.js';
+import { pageCountChange, pageNumberAfterOperation, transformPageState } from './utils/pageAnnotationReindex.js';
 import { usePdfjsFormFieldPersistence } from './hooks/usePdfjsFormFieldPersistence.js';
 import { useRegionOverlayVisibility } from './hooks/useRegionOverlayVisibility.js';
 import { userRedo, userUndo } from './lib/collab/crdtUndoManager.js';
@@ -15219,7 +15219,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // `writer` names this viewer (not getClientId(), which tabs share).
   const pageOpSyncRef = useRef(null);
   if (!pageOpSyncRef.current) {
-    pageOpSyncRef.current = { on: isFeatureOn(PAGE_OP_SYNC_FLAG), writer: newPdfVersionToken(), ownPending: false, remote: IDLE_REMOTE_PDF_STATE, docBeforeReload: null };
+    pageOpSyncRef.current = { on: isFeatureOn(PAGE_OP_SYNC_FLAG), writer: newPdfVersionToken(), ownPending: false, pendingOps: [], remote: IDLE_REMOTE_PDF_STATE, docBeforeReload: null, frame: null, reframe: null };
   }
   pageOpSyncRef.current.pdfFile = pdfFile;
   pageOpSyncRef.current.pdfDoc = pdfDoc;
@@ -15238,7 +15238,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       const result = saved || file;
       if (setMeta && sync.ownPending && !saveInfo?.hasMorePending?.()) {
         sync.ownPending = false;
-        setMeta(PDF_FILE_VERSION_META_KEY, savedPdfVersion({ writer: sync.writer, filePath: result?.supabaseFilePath || result?.filePath, contentSha256: result?.contentSha256 }), 'local');
+        const operations = sync.pendingOps;
+        sync.pendingOps = [];
+        setMeta(PDF_FILE_VERSION_META_KEY, savedPdfVersion({ writer: sync.writer, filePath: result?.supabaseFilePath || result?.filePath, contentSha256: result?.contentSha256, operations }), 'local');
       }
       return saved;
     });
@@ -15257,8 +15259,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     const pageOpSync = pageOpSyncRef.current;
     if (pageOpSync.on && pagePresentationMetaSetRef.current) {
       if (operationRewritesPdf(operation)) {
+        // Every page change since the last save rides the stamp, so another
+        // window can move marks it drew on the old pages the same way (null:
+        // one of them cannot travel, so none do).
+        const carried = stampableOperation(operation);
+        const before = pageOpSync.ownPending ? pageOpSync.pendingOps : [];
+        pageOpSync.pendingOps = before && carried ? [...before, carried] : null;
         pageOpSync.ownPending = true;
-        pagePresentationMetaSetRef.current(PDF_FILE_VERSION_META_KEY, pendingPdfVersion({ writer: pageOpSync.writer }), 'local');
+        pagePresentationMetaSetRef.current(PDF_FILE_VERSION_META_KEY, pendingPdfVersion({ writer: pageOpSync.writer, operations: pageOpSync.pendingOps }), 'local');
       } else if (operation?.type === 'rollback' && pageOpSync.ownPending) {
         pageOpSync.ownPending = false;
         pagePresentationMetaSetRef.current(PDF_FILE_VERSION_META_KEY, clearedPdfVersion({ writer: pageOpSync.writer }), 'local');
@@ -22254,16 +22262,32 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     let latest = null;
     const reload = (since) => {
       timer = null;
-      if ((pointersDown.size > 0 || hasOpenPolyDraft(polyDraftOwner)) && Date.now() - since < 30000) {
+      const draftOpen = hasOpenPolyDraft(polyDraftOwner);
+      if ((pointersDown.size > 0 || draftOpen) && Date.now() - since < 30000) {
         timer = setTimeout(() => reload(since), 300);
         return;
       }
+      // Waited 30 s: the new pages load now and a shape still being placed
+      // goes. Say so rather than wiping it silently (R4-C N6b).
+      if (draftOpen) showToast('Pages changed in another window, so the shape you were placing was cleared.', 'info');
+      // Marks drawn here on the old pages move with them once the new pages
+      // are loaded (the effect below).
+      sync.reframe = sync.frame;
+      sync.frame = null;
       sync.docBeforeReload = sync.pdfDoc;
       onRemotePdfVersion?.(tabId, latest);
     };
     const unsubscribe = subscribeDocumentMeta(PDF_FILE_VERSION_META_KEY, (value) => {
       const step = remotePdfVersionStep(sync.remote, value, { writer: sync.writer, currentSha: sync.pdfFile?.contentSha256 || null, now: Date.now() });
       sync.remote = step.state;
+      // From another window's page change until this one reloads, new marks
+      // drawn here are on the old pages (handleSaveAnnotations collects them).
+      if (step.action === 'block' || step.action === 'reload') {
+        if (!sync.frame) sync.frame = { made: new Set(), ops: null };
+        sync.frame.ops = step.version.operations;
+      } else if (step.action === 'unblock') {
+        sync.frame = null;
+      }
       if (step.action !== 'reload') return;
       latest = { filePath: step.version.filePath, contentSha256: step.version.contentSha256 };
       if (!timer) reload(Date.now());
@@ -22280,6 +22304,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     const sync = pageOpSyncRef.current;
     if (!sync.remote.awaitSha || !pdfDoc || pdfDoc === sync.docBeforeReload) return;
     sync.remote = remotePdfLoaded(sync.remote, pdfFile?.contentSha256);
+    const frame = sync.reframe;
+    sync.reframe = null;
+    if (!frame?.made?.size || !frame.ops?.length) return;
+    try {
+      const byPage = annotationsByPageRef.current || {};
+      const changed = reframeMarks(byPage, frame.made, frame.ops, transformPageState);
+      const save = handleSaveAnnotationsRef.current;
+      if (!changed || typeof save !== 'function') return;
+      for (const [page, objects] of Object.entries(changed)) {
+        save(Number(page), { ...(byPage[page] || {}), objects }, { source: 'page-op-sync:reframe', checkpointPolicy: 'skip' });
+      }
+    } catch (err) {
+      console.warn('[page-op-sync] could not move marks drawn on the old pages:', err?.message || err);
+    }
   }, [pdfDoc, pdfFile]);
   pagePresentationMetaSetRef.current = normalAnnotationHydration?.ready
     && normalAnnotationHydration.documentId === pdfFile?.id
@@ -28368,6 +28406,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   }, [clearLegacyRedoForNewStep, documentOwnerId, pushHistoryDebugEvent, user, pdfFile?.id, yjsUndoCtx?.userId, isBulkJournaledAnnotationId]);
 
   const handleSaveAnnotations = useCallback((pageNumber, json, saveContext = null) => {
+    // Another window changed the pages and this one has not reloaded yet: a
+    // mark new to this page was drawn on the old pages (page-op-sync).
+    const oldPagesFrame = pageOpSyncRef.current?.frame;
+    if (oldPagesFrame && Array.isArray(json?.objects)) {
+      const had = new Set((annotationsByPageRef.current?.[pageNumber]?.objects || []).map((obj) => obj?.data?.id));
+      for (const obj of json.objects) {
+        const id = obj?.data?.id;
+        if (id && !had.has(id)) oldPagesFrame.made.add(id);
+      }
+    }
     // w53: a family action that also moves / restacks / creates Survey
     // Markers (saveContext.surveyMarkerFamily). The markers are written to
     // their own store first; their undo half rides the page's step (or is the

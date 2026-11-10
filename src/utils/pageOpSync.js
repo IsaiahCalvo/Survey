@@ -35,15 +35,65 @@ export function operationRewritesPdf(operation) {
   return typeof operation.type === 'string' && !NO_BYTE_TYPES.has(operation.type);
 }
 
-export function pendingPdfVersion({ writer, token = newPdfVersionToken(), at = Date.now() }) {
-  return { writer: String(writer), token, pending: true, filePath: null, contentSha256: null, at };
+export function pendingPdfVersion({ writer, token = newPdfVersionToken(), at = Date.now(), operations = null }) {
+  return { writer: String(writer), token, pending: true, filePath: null, contentSha256: null, at, operations: operations || null };
 }
 
-export function savedPdfVersion({ writer, token = newPdfVersionToken(), filePath, contentSha256, at = Date.now() }) {
+export function savedPdfVersion({ writer, token = newPdfVersionToken(), filePath, contentSha256, at = Date.now(), operations = null }) {
   return {
     writer: String(writer), token, pending: false,
     filePath: filePath || null, contentSha256: contentSha256 || null, at,
+    operations: operations || null,
   };
+}
+
+// The page changes a stamp carries, so another window can move a mark it
+// drew on the old pages (before its reload) the same way: turned with its
+// page, or onto the page's new number (R4-C N6b). Only small, plain steps
+// travel; an Undo of a delete carries a whole page state and is left out.
+const STAMP_OP_TYPES = new Set(['rotate', 'insert', 'delete', 'move', 'reorder', 'duplicate', 'copy', 'batch']);
+export const STAMP_OPERATIONS_MAX_CHARS = 8_000;
+export function stampableOperation(operation) {
+  if (!operation || typeof operation !== 'object' || !STAMP_OP_TYPES.has(operation.type)) return null;
+  if (operation.type === 'batch' && !(operation.operations || []).every((step) => stampableOperation(step))) return null;
+  try {
+    const text = JSON.stringify(operation);
+    return text.length <= STAMP_OPERATIONS_MAX_CHARS ? JSON.parse(text) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Moves the marks `ids` (drawn here on the pages as they were before
+ * `operations`) the way those page changes moved every other mark.
+ * `transform` is transformPageState. Returns { [page]: objects } for each
+ * page whose list changes, or null when nothing moves.
+ */
+export function reframeMarks(annotationsByPage, ids, operations, transform) {
+  if (!ids || ids.size === 0 || !Array.isArray(operations) || operations.length === 0) return null;
+  const byPage = annotationsByPage || {};
+  const picked = {};
+  for (const [page, value] of Object.entries(byPage)) {
+    const objects = (Array.isArray(value?.objects) ? value.objects : []).filter((obj) => ids.has(obj?.data?.id));
+    if (objects.length) picked[page] = { objects };
+  }
+  if (Object.keys(picked).length === 0) return null;
+  let model = {
+    annotationsByPage: picked, surveyMarkers: {}, annotations: {}, pageNames: {},
+    pageTransformations: {}, bookmarks: [], spaces: [], regionOverlayDisabled: new Map(),
+  };
+  for (const operation of operations) model = transform(model, operation);
+  const changed = {};
+  const take = (page) => {
+    if (!changed[page]) changed[page] = (Array.isArray(byPage[page]?.objects) ? byPage[page].objects : []).filter((obj) => !ids.has(obj?.data?.id));
+    return changed[page];
+  };
+  for (const page of Object.keys(picked)) take(page);
+  for (const [page, value] of Object.entries(model.annotationsByPage || {})) {
+    take(page).push(...(Array.isArray(value?.objects) ? value.objects : []));
+  }
+  return changed;
 }
 
 /** The write failed and was rolled back: nothing changed, stop blocking. */
@@ -60,6 +110,7 @@ export function normalizePdfVersion(value) {
     filePath: typeof value.filePath === 'string' && value.filePath ? value.filePath : null,
     contentSha256: typeof value.contentSha256 === 'string' && value.contentSha256 ? value.contentSha256 : null,
     at: Number.isFinite(Number(value.at)) && value.at != null ? Number(value.at) : null,
+    operations: Array.isArray(value.operations) ? value.operations.filter((op) => op && typeof op === 'object') : null,
   };
 }
 
