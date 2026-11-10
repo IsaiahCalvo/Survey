@@ -22127,6 +22127,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // signed-in person and document project; libraryDraft is the marks the
   // Save to library card is open for.
   const [markLibraryEnabled] = useState(() => isFeatureOn('mark-library'));
+  // Markups panel (Nightly, 'markup-list'): reads the marks through refs, so
+  // the rail's API never changes with them (sidebar/MarkupsPanel.jsx).
+  const [markupListEnabled] = useState(() => isFeatureOn('markup-list'));
   const [libraryDraft, setLibraryDraft] = useState(null);
   useEffect(() => {
     if (!markLibraryEnabled || isActive === false) return;
@@ -22157,6 +22160,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const hiddenLayerWarnAtRef = useRef(0);
   const layerStateNowRef = useRef(layerState);
   layerStateNowRef.current = layerState;
+  const getMarkupSnapshot = useCallback(() => ({
+    annotationsByPage: annotationsByPageRef.current || {},
+    surveyMarkers: surveyMarkersRef.current || {},
+    layerState: layersEnabled ? layerStateNowRef.current : null,
+    documentName: pdfDisplayNameRef.current || pdfFile?.name || '',
+  }), [layersEnabled, pdfFile?.name]);
   // `isNew()` says whether the commit adds a mark (only asked when the layer
   // is hidden, so an ordinary commit pays nothing).
   warnIfDrawnOnHiddenLayerRef.current = (isNew) => {
@@ -37051,6 +37060,8 @@ ${pageBlocks}
       onActiveLayerChange: setActiveLayerId,
       canEditLayers: canRestoreFromHistory,
       markLibraryEnabled,
+      markupListEnabled,
+      getMarkupSnapshot,
     };
     onLeftRailApiChange((prev) => {
       if (prev) {

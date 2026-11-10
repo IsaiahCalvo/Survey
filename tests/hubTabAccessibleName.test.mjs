@@ -8,6 +8,6 @@ const src = readFileSync(new URL('../src/PDFSidebar.jsx', import.meta.url), 'utf
 const css = readFileSync(new URL('../src/mobile/mobilePdfViewer.css', import.meta.url), 'utf8');
 
 test('hub tab buttons are named even when the phone hides their word', () => {
-  assert.match(css, /\.mobile-pdf-hub-tab > span \{ display: none !important; \}/);
+  assert.match(css, /\.mobile-pdf-hub-tab > span:last-child:not\(:first-child\) \{ display: none !important; \}/);
   assert.match(src, /mobile-pdf-hub-tab\$\{isActive[\s\S]{0,400}?aria-label=\{tab\.label\}/);
 });

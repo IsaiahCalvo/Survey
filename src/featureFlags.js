@@ -198,6 +198,12 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Smart ink: hold the pen still at the end of a stroke to snap it to a line, rectangle or ellipse',
     stage: 'beta',
   }),
+  // Drawboard (2026-11-10): every mark in one list, with search, filters,
+  // measurement totals and a CSV.
+  'markup-list': Object.freeze({
+    label: 'Markups panel: every mark in one list with search, filters, measurement totals and a CSV',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

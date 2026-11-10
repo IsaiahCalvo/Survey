@@ -1,0 +1,206 @@
+/* Markups panel (Nightly, 'markup-list'): the left rail's own tokens, like
+   the Comments and Layers panels. */
+.markups-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  color: var(--text-2);
+  font-size: var(--font-size-base);
+}
+
+.markups-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 8px 4px;
+  padding: 0 4px 0 8px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-0);
+  color: var(--text-3);
+}
+.markups-search:focus-within { border-color: var(--focus); }
+.markups-search input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--text-1);
+  font: inherit;
+  outline: none;
+}
+
+.markups-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 24px;
+  min-width: 24px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.markups-filter-btn.is-on { color: var(--accent); }
+.markups-filter-btn__count { font-size: var(--font-size-xs); font-weight: 600; }
+.markups-filter-btn:focus-visible,
+.markups-chip:focus-visible,
+.markups-row:focus-visible,
+.markups-text-btn:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.markups-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 4px 8px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.markups-filter-group { display: flex; flex-direction: column; gap: 4px; }
+.markups-filter-group__title {
+  color: var(--text-3);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+}
+.markups-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.markups-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-2);
+  font: 500 var(--font-size-md)/1 var(--font-ui);
+  cursor: pointer;
+}
+.markups-chip.is-on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.markups-chip__count { color: var(--text-3); font-size: var(--font-size-xs); }
+.markups-filter-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+.markups-text-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-2);
+  font: 500 var(--font-size-md)/1 var(--font-ui);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .markups-filter-btn:not(.is-on):hover,
+  .markups-text-btn:hover,
+  .markups-row:hover { background: var(--hover); color: var(--text-1); }
+  .markups-chip:not(.is-on):hover { color: var(--text-1); }
+}
+
+.markups-count {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 24px;
+  margin: 2px 12px;
+  color: var(--text-3);
+  font-size: var(--font-size-md);
+}
+
+.markups-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 0 12px 4px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-1);
+  font-size: var(--font-size-md);
+}
+.markups-total { display: inline-flex; gap: 6px; }
+.markups-total__name { color: var(--text-3); }
+
+.markups-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 4px 8px;
+}
+.markups-empty {
+  /* An empty side panel says so like Search, Bookmarks and History. */
+  margin: 0;
+  padding: 32px 20px;
+  text-align: center;
+  color: var(--text-3);
+  font-size: var(--font-size-base);
+  line-height: 1.4;
+}
+.markups-page__head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 8px 8px 4px;
+  background: var(--panel-bg, var(--surface-1));
+  color: var(--text-3);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+}
+.markups-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.markups-row__glyph {
+  display: inline-flex;
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--text-2);
+}
+.markups-row__main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.markups-row__title {
+  color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.markups-row__title strong { font-weight: 600; }
+.markups-row__type { color: var(--text-3); }
+.markups-row__meta {
+  color: var(--text-3);
+  font-size: var(--font-size-md);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Phone: finger-sized rows and field. */
+.markups-panel.is-phone .markups-search { height: 40px; }
+.markups-panel.is-phone .markups-search input { font-size: 16px; }
+.markups-panel.is-phone .markups-row { min-height: 44px; padding: 8px; }
+.markups-panel.is-phone .markups-chip { height: 32px; }
