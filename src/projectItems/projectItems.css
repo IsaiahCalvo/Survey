@@ -73,6 +73,9 @@
 .item-status[data-item-status='closed'] i { background: #666666; }
 .item-status[data-item-status='approved'] i { background: #00ab65; }
 .item-status[data-item-status='rejected'] i { background: #e04758; }
+.item-status[data-item-status='on_hold'] i { background: #9458f6; }
+/* A Task's Closed is green, an Issue's grey. */
+.item-status[data-item-kind='task'][data-item-status='closed'] i { background: #00ab65; }
 
 .item-person { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
 .item-person__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
