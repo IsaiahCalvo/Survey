@@ -32984,6 +32984,57 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     return changedCount > 0;
   }, [documentOwnerId, handleSaveAnnotations, showToast, user?.id]);
 
+  // Layers beta: "Move to layer" on the mark menu (Drawboard's Change layer).
+  // Writes the picked marks' (and callouts') layerId; Survey Markers have no
+  // layer. A user-locked mark stays where it is. One save per page = one
+  // Undo step.
+  const handleMoveMarksToLayer = useCallback((pageNumber, selection = {}, layerId) => {
+    if (!layersEnabled || pageNumber == null || familyEditsBlocked()) return false;
+    const target = normalizeLayerState(layerState).layers.find((l) => l.id === layerId);
+    if (!target) return false;
+    const byPage = annotationsByPageRef.current || {};
+    const indexSet = new Set((selection.indices || []).filter((i) => Number.isInteger(i)));
+    const calloutIdSet = new Set((selection.calloutIds || []).map(String));
+    const pages = new Set([String(pageNumber)]);
+    for (const callout of calloutsRef.current || []) {
+      if (callout && calloutIdSet.has(String(callout.id)) && callout.pageNumber != null) pages.add(String(callout.pageNumber));
+    }
+    let moved = 0;
+    let lockedCount = 0;
+    const saves = [];
+    for (const pageKey of pages) {
+      const page = byPage[pageKey] || byPage[Number(pageKey)];
+      if (!Array.isArray(page?.objects)) continue;
+      let touched = false;
+      const objects = page.objects.map((object, index) => {
+        const isPickedMark = String(pageKey) === String(pageNumber)
+          && indexSet.has(index) && object?.data?.type !== 'callout';
+        const isPickedCallout = object?.data?.type === 'callout' && calloutIdSet.has(String(object?.data?.id));
+        if (!isPickedMark && !isPickedCallout) return object;
+        if ((object?.layerId || DEFAULT_LAYER_ID) === layerId) return object;
+        if (isUserLocked(object)) { lockedCount += 1; return object; }
+        touched = true;
+        moved += 1;
+        return { ...object, layerId };
+      });
+      if (touched) saves.push([pageKey, { ...page, objects }]);
+    }
+    saves.forEach(([pageKey, json]) => {
+      const numericKey = Number(pageKey);
+      handleSaveAnnotations(Number.isFinite(numericKey) ? numericKey : pageKey, json, {
+        source: 'object:modified',
+        action: 'move-to-layer',
+        checkpointPolicy: 'normal',
+      });
+    });
+    if (moved > 0) {
+      showToast(`Moved ${moved === 1 ? '1 mark' : `${moved} marks`} to ${target.name}${target.visible ? '' : ' (hidden)'}`, 'info');
+    } else if (lockedCount > 0) {
+      showToast('Locked marks stay on their layer. Unlock them first.', 'info');
+    }
+    return moved > 0;
+  }, [handleSaveAnnotations, layerState, layersEnabled, showToast]);
+
   const pasteFamilyAt = useCallback((pageNumber, clientX, clientY) => {
     const clipboard = familyClipboardRef.current;
     if (!clipboard || pageNumber == null) return false;
@@ -37535,6 +37586,9 @@ ${pageBlocks}
         requestBulkDelete: (args) => requestBulkDeleteRef.current?.(args),
         // Owner ruling 2026-09-28: Lock / Unlock on every object menu.
         toggleLockSelection: handleToggleMarkLock,
+        // Layers beta: Move to layer ▸.
+        moveSelectionToLayer: layersEnabled ? handleMoveMarksToLayer : null,
+        layerState: layersEnabled ? layerState : null,
         // w56: group-menu Delete of a mixed marks+callouts selection.
         beginBatchDelete: handleBeginBatchDelete,
         resolveSurveyMarker: (id) => surveyMarkersRef.current?.[id] || null,
