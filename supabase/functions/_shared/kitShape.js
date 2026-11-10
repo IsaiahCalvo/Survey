@@ -206,11 +206,18 @@ export function dateAnswerOf(raw) {
  * A typed answer as saved: '' for blank, the trimmed text, or a plain number
  * ("1,200" -> "1200"). null when a number item gets no number.
  */
+// Commas only as thousands separators ("1,200", "12,345.5"). "12,5" (a
+// decimal comma) or "1,2,3" is refused rather than read as 125 or 123.
+const THOUSANDS = /^[+-]?\d{1,3}(,\d{3})+(\.\d*)?$/;
+const withoutThousands = (s) => (s.includes(',') ? (THOUSANDS.test(s) ? s.replace(/,/g, '') : null) : s);
+
 export function typedAnswerFor(kind, raw) {
   const s = String(raw ?? '').trim();
   if (!s) return '';
   if (kind !== 'number') return s.slice(0, TYPED_ANSWER_MAX);
-  const n = Number(s.replace(/,/g, ''));
+  const bare = withoutThousands(s);
+  if (bare == null) return null;
+  const n = Number(bare);
   return Number.isFinite(n) && /\d/.test(s) ? String(n) : null;
 }
 
@@ -227,7 +234,8 @@ export function itemAnswerFor(item, raw) {
   if (kind === 'photo') return photoAnswerOf(raw);
   if (kind === 'signature') return signatureAnswerOf(raw);
   if (kind === 'score' || kind === 'count') {
-    const n = Number(String(raw).trim().replace(/,/g, ''));
+    const bare = withoutThousands(String(raw).trim());
+    const n = bare == null ? NaN : Number(bare);
     if (!Number.isInteger(n)) return null;
     if (kind === 'score') return n >= 1 && n <= scoreScaleOf(item) ? String(n) : null;
     return n >= 0 ? String(n) : null;
