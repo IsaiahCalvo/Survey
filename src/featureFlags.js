@@ -178,6 +178,11 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Document review: status, owner and markup count on each document, with filter chips',
     stage: 'beta',
   }),
+  // Drawboard phone apps (2026-11-10): PDFs opened from Files, Mail or Teams.
+  'open-in-survey': Object.freeze({
+    label: 'Open in Survey: PDFs opened from Files, Mail, Outlook or Teams on a phone upload and open',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

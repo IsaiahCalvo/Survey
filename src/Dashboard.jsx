@@ -28,6 +28,7 @@ import { retryCompensatingCleanup, runCompensatingBatch } from './home/compensat
 import { readPdfPageCount, mapUploadsBounded } from './home/pdfUploadWork.js';
 import { supersedeDocument } from './services/documentVersionService.js';
 import { isFeatureOn } from './featureFlags.js';
+import { OPEN_FILE_EVENT, takeOpenedFiles } from './mobile/nativeOpenFile.js';
 import { moveOrCopyDocumentsAtomically, parseDocumentBatchRecovery } from './home/documentBatchOperations.js';
 import { mapAuthoritativeTemplateRows, persistTemplateSnapshot } from './home/templatePersistence.js';
 import { ownerDisplayName, parkForeignLocalExcelPath, sameTemplateConfig, sharedFromRow, splitTemplatesForSave, stripSharedFields } from './services/sharedTemplates.js';
@@ -1196,6 +1197,33 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     if (targetProjectId && added > 0) showToast(addedToProjectMessage(added, projectName), 'success');
     return { added, skipped: rejected.length };
   };
+
+  // "Open in Survey" (flag 'open-in-survey'): a PDF opened from Files, Mail or
+  // Teams on a phone is parked by src/mobile/nativeOpenFile.js until someone
+  // is signed in here, then uploaded like a dropped PDF and opened.
+  const droppedFilesRef = useRef(handleDroppedFiles);
+  droppedFilesRef.current = handleDroppedFiles;
+  useEffect(() => {
+    // Only the phone apps fill the queue (src/mobile/nativeDeepLinks.js).
+    if (!user || typeof window === 'undefined') return undefined;
+    const drain = async () => {
+      const entries = takeOpenedFiles();
+      if (entries.length === 0) return;
+      if (!isFeatureOn('open-in-survey')) {
+        showToast('Survey cannot open files from other apps yet. Use Upload on Home.', 'info');
+        return;
+      }
+      for (const entry of entries) {
+        if (entry.error) showToast(entry.error, 'error');
+        else await droppedFilesRef.current([entry.file], { open: true });
+      }
+    };
+    const onOpened = () => { drain().catch((err) => console.warn('[Dashboard] open file failed', err)); };
+    onOpened();
+    window.addEventListener(OPEN_FILE_EVENT, onOpened);
+    return () => window.removeEventListener(OPEN_FILE_EVENT, onOpened);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   // Create Project flow
   const handleCreateProjectClick = () => {
