@@ -27,6 +27,7 @@ import { retryCompensatingCleanup, runCompensatingBatch } from './home/compensat
 import { readPdfPageCount, mapUploadsBounded } from './home/pdfUploadWork.js';
 import { supersedeDocument } from './services/documentVersionService.js';
 import { isFeatureOn } from './featureFlags.js';
+import { deviceFilesOn, keepFileOnDevice, openDeviceFile, saveDeviceFileToAccount } from './home/deviceFileActions.js';
 import { moveOrCopyDocumentsAtomically, parseDocumentBatchRecovery } from './home/documentBatchOperations.js';
 import { mapAuthoritativeTemplateRows, persistTemplateSnapshot } from './home/templatePersistence.js';
 import { ownerDisplayName, parkForeignLocalExcelPath, sameTemplateConfig, sharedFromRow, splitTemplatesForSave, stripSharedFields } from './services/sharedTemplates.js';
@@ -703,6 +704,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         }
 
         if (!user) {
+          if (deviceFilesOn() && await openOnDevice(new File([new Uint8Array(result.data)], result.fileName, { type: 'application/pdf' }))) return;
           setDashboardError('Please sign in to upload documents.');
           onShowAuthModal();
           return;
@@ -910,6 +912,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
   // 'skipped' (the user canceled the duplicate ask) | 'failed'.
   const uploadBrowserPdf = async (file, { projectId = null, openAfterUpload = true, waitForStorage = false, askDuplicates = true } = {}) => {
     if (!user) {
+      if (deviceFilesOn() && await openOnDevice(file, { open: openAfterUpload })) return 'added';
       setDashboardError('Please sign in to upload documents.');
       onShowAuthModal();
       return 'failed';
@@ -992,6 +995,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       if (askDuplicates) await maybeOfferAlias(resolvedDoc, file.name, contentSha);
       if (openAfterUpload) await handleDocumentClick(resolvedDoc);
       refetchAllDocuments();
+      file.id = resolvedDoc.id; // device-files: the caller carries marks into it
       return 'existing';
     }
 
@@ -1067,7 +1071,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     const file = event.target.files?.[0];
     if (file && file.type === 'application/pdf') {
 
-      if (!user) {
+      if (!user && !deviceFilesOn()) {
         setDashboardError('Please sign in to upload documents.');
         onShowAuthModal();
         event.target.value = '';
@@ -1101,6 +1105,13 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     const skipped = rejectedFilesMessage(rejected);
     if (skipped) showToast(skipped, 'info');
     if (pdfs.length === 0) return { added: 0, skipped: rejected.length };
+    if (!user && deviceFilesOn()) {
+      let kept = 0;
+      for (const pdf of pdfs) {
+        if (await openOnDevice(pdf, { open })) kept += 1;
+      }
+      if (kept > 0) return { added: kept, skipped: rejected.length };
+    }
     if (!user) {
       setDashboardError('Please sign in to upload documents.');
       onShowAuthModal();
@@ -1690,8 +1701,50 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       ? projects.length > 0
       : templates.length > 0;
 
+  // device-files (Nightly): with no account, a PDF opens and stays on this
+  // device (Drawboard's "Temporary" files; home/deviceFileActions.js).
+  const openOnDevice = async (file, { open = true } = {}) => {
+    const kept = await keepFileOnDevice(file);
+    if (!kept) return false;
+    if (open) onDocumentSelect(kept);
+    return true;
+  };
+
+  // "Save to my account" on a device file (signed out: sign in first).
+  const saveDeviceFile = async (row) => {
+    if (!user) { onShowAuthModal(); return; }
+    if (!row?.id) return;
+    showToast(`Saving ${row.name || 'document'} to your account…`, 'info');
+    try {
+      const result = await saveDeviceFileToAccount({
+        row,
+        user,
+        supabase,
+        upload: async (file) => {
+          const outcome = await uploadBrowserPdf(file, { openAfterUpload: false, waitForStorage: true, askDuplicates: false });
+          return outcome === 'added' || outcome === 'existing' ? file.id || null : null;
+        },
+      });
+      if (result.ok) {
+        showToast(`${row.name || 'Document'} is saved to your account`, 'success');
+        refetchAllDocuments();
+      } else {
+        showToast('Couldn’t save it to your account. It is still on this device.', 'warn');
+      }
+    } catch (error) {
+      console.error('[deviceFiles] save to account failed', error);
+      showToast('Couldn’t save it to your account. It is still on this device.', 'warn');
+    }
+  };
+
   const handleDocumentClick = async (doc) => {
     try {
+      if (doc?.device_file) {
+        const file = await openDeviceFile(doc);
+        if (!file) throw new Error('This file is no longer on this device.');
+        onDocumentSelect(file);
+        return;
+      }
       // [OpenTiming] BUG#2 — first open milestone: user clicked a document.
       try { console.log('[OpenTiming] doc-click @ ' + Math.round(performance.now()) + 'ms', doc?.name || doc?.file?.name || doc?.id || ''); } catch (_e) { /* swallow */ }
       // 1. Check if we have a local file object (e.g. from optimistic upload)
@@ -2753,6 +2806,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         onProjectPreferencesChange={hubProjectPreferencesChange}
         onLockDocument={hubToggleDocumentLock}
         onPdfTools={openPdfTools}
+        onSaveDeviceFile={saveDeviceFile}
         onSettings={() => setShowAccountSettings(true)}
         onSignOut={signOut}
         onSignIn={onShowAuthModal}

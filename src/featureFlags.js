@@ -163,6 +163,12 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Available offline: keep a document on this device so it opens with no signal',
     stage: 'beta',
   }),
+  // Open a PDF with no account; it stays on this device until saved to an
+  // account (Drawboard's "Temporary" files, without their two-tab data loss).
+  'device-files': Object.freeze({
+    label: 'Open a PDF with no account (kept on this device)',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

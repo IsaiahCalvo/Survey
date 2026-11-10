@@ -9,5 +9,8 @@ import { getSyncStatusViewModel } from './syncStatusViewModel.js';
 
 export function isCloudSaveConfirmed({ isCloudDocument, cloudSyncEnabled, status, queueSize = 0 } = {}) {
   if (!isCloudDocument || !cloudSyncEnabled || !status) return false;
+  // device-files: a file opened with no account is saved once its device copy
+  // has it; there is no cloud to wait for.
+  if (status.stage === 'device-only') return true;
   return getSyncStatusViewModel(status, queueSize).state === 'synced';
 }

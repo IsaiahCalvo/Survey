@@ -19,6 +19,16 @@ export function getSyncStatusViewModel(status, queueSize = 0, manualSyncing = fa
     };
   }
 
+  // device-files: a PDF opened with no account lives only on this device.
+  if (stage === 'device-only') {
+    return {
+      state: 'offline',
+      label: 'Only on this device',
+      detail: 'Your changes are saved on this device. Sign in and save it to your account to keep it safe and use it anywhere.',
+      retryLabel: '',
+    };
+  }
+
   // Available offline (offline-docs): opened from this device's kept copy.
   if (stage === 'offline-copy') {
     return {
@@ -106,6 +116,7 @@ export function getCompactSyncStatusMessage(status, queueSize = 0) {
   const pendingCount = Math.max(0, Number(queueSize) || Number(status?.queueSize) || 0);
   const errorText = String(status?.error?.message || status?.error || '').toLowerCase();
 
+  if (stage === 'device-only') return 'Only on this device: sign in and save it to your account to keep it safe.';
   if (stage === 'offline-copy') return 'Offline copy: changes are saved on this device and sync when you are back online.';
 
   if (stage === 'error') {

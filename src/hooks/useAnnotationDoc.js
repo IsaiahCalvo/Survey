@@ -65,6 +65,7 @@ import {
 } from '../services/annotationStoreCompaction.js';
 import { isFeatureOn } from '../featureFlags.js';
 import { offlineDocuments, isNetworkFailure } from '../services/offlineDocuments.js';
+import { isDeviceDocumentId } from '../services/deviceFiles.js';
 import { sealCutoverIfCovered } from '../services/legacyCutoverSeal.js';
 import { loadAllNonSurveyMarkerAnnotations } from '../services/annotationCloudSync.js';
 import { invalidateDocumentMetadata, resolveDocumentMetadata } from '../services/documentMetadataResolver.js';
@@ -482,8 +483,10 @@ export function useAnnotationDoc({
       let handle;
       // Only a kept document, with the flag on, and only once the server
       // could not be asked (device offline, or this open just failed that way).
-      let openLocal = false;
-      if (supabase && isFeatureOn('offline-docs')) {
+      // A device file (opened with no account) is only ever on this device.
+      const deviceOnly = isDeviceDocumentId(documentId);
+      let openLocal = deviceOnly;
+      if (!deviceOnly && supabase && isFeatureOn('offline-docs')) {
         try {
           await offlineDocuments().load(userId);
           openLocal = offlineDocuments().isPinned(userId, documentId)
@@ -645,8 +648,8 @@ export function useAnnotationDoc({
       openFailuresRef.current = { documentId, count: 0 };
       if (cancelled) { try { await handle.destroy(); } catch { /* */ } return; }
       handleRef.current = handle;
-      setOfflineCopy(openLocal);
-      if (openLocal && typeof globalThis.addEventListener === 'function') {
+      setOfflineCopy(openLocal && !deviceOnly);
+      if (openLocal && !deviceOnly && typeof globalThis.addEventListener === 'function') {
         // Back online: reopen with the server, which sends the device edits.
         onBackOnline = () => {
           if (cancelled) return;
@@ -659,8 +662,8 @@ export function useAnnotationDoc({
         if (cancelled || !next) return;
         if (openLocal) {
           // Opened from the device copy: never "Up to date" until the server
-          // has the edits (syncStatusViewModel 'offline-copy').
-          setSyncStatus({ stage: 'offline-copy', healthy: true, error: null });
+          // has the edits (syncStatusViewModel 'offline-copy' / 'device-only').
+          setSyncStatus({ stage: deviceOnly ? 'device-only' : 'offline-copy', healthy: true, error: null });
           setSyncQueueSize(0);
           return;
         }

@@ -20,7 +20,7 @@ async function warmMarksCopy(documentId, actorUserId) {
     actorUserId,
     enableRealtime: false,
   });
-  try { await handle.flush?.(); } catch { /* nothing pending */ }
+  try { await handle.drain?.(); } catch { /* nothing pending */ }
   await handle.destroy();
 }
 
