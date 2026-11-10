@@ -185,7 +185,7 @@ export function canToolPickAnyGroup(tool) {
 export const TOOL_CLASSES = Object.freeze({
   select: Object.freeze(['select', 'text-select', 'pan']),
   shape: Object.freeze(['rect', 'ellipse', 'line', 'arrow', 'callout']),
-  ink: Object.freeze(['pen', 'highlighter']),
+  ink: Object.freeze(['pen', 'highlighter', 'tape']),
   point: Object.freeze(['polygon', 'polyline']),
   eraser: Object.freeze(['eraser']),
   text: Object.freeze(['text']),
@@ -368,6 +368,15 @@ export const SURVEY_MARKER_DRAG_GESTURE = Object.freeze({ move: 'dragging', resi
 export function isSelectionGestureActive(interactionState, surveyMarkerDragMode = null) {
   return shouldHideSelectionChrome(interactionState)
     || shouldHideSelectionChrome(SURVEY_MARKER_DRAG_GESTURE[surveyMarkerDragMode]);
+}
+
+/**
+ * True while any page layer has a mark held mid-move / resize / rotate (the
+ * data-selection-gesture flag above). Undo, Delete and Duplicate wait for the
+ * release. Pass the viewer's own root: tabs kept open behind it stay mounted.
+ */
+export function selectionGestureRunning(doc = typeof document !== 'undefined' ? document : null) {
+  return !!doc?.querySelector?.('[data-selection-gesture="true"]');
 }
 
 /** Rule 12 — none of these ever drop the selection (none is a tool switch). */

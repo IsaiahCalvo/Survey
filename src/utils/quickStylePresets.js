@@ -178,8 +178,20 @@ export const HIGHLIGHTER_QUICK_COLOUR_NAMES = Object.freeze({
   '#F472B6': 'Pink',
 });
 
+/*
+ * Tape (its own beta 'tape-tool'): Drawboard's three tape discs, lilac (its
+ * default), mint and grey, measured live 2026-11-10.
+ */
+export const TAPE_QUICK_COLOURS = Object.freeze(['#DDC3FF', '#9FEEB8', '#878E97']);
+export const TAPE_QUICK_COLOUR_NAMES = Object.freeze({
+  '#DDC3FF': 'Lilac',
+  '#9FEEB8': 'Mint',
+  '#878E97': 'Grey',
+});
+
 /** The discs for `tool` ({ colours, names }); `enabled` is the flag. */
 export function quickColoursForTool(tool, enabled = false) {
+  if (tool === 'tape') return { colours: TAPE_QUICK_COLOURS, names: TAPE_QUICK_COLOUR_NAMES };
   if (enabled && tool === 'highlighter') {
     return { colours: HIGHLIGHTER_QUICK_COLOURS, names: HIGHLIGHTER_QUICK_COLOUR_NAMES };
   }

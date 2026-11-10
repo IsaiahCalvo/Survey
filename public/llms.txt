@@ -11,7 +11,7 @@ Every markup tool is free: pen with pressure, highlighter, partial eraser, recta
 - [Devices](https://surveytool.app/devices): desktop, tablet and phone
 - [Pricing](https://surveytool.app/pricing): Free, Pro and Enterprise plans
 - [FAQ](https://surveytool.app/faq): common questions
-- [Use Survey with your AI](https://surveytool.app/use-with-ai): connect Claude or ChatGPT to read your drawings as you, with your plan and role (read-only); what it can and cannot do, and how to turn it off. MCP server: https://cvamwtpsuvxvjdnotbeg.supabase.co/functions/v1/survey-mcp
+- [Use Survey with your AI](https://surveytool.app/use-with-ai): connect Claude or ChatGPT to read your drawings as you, with your plan and role (read-only); what it can and cannot do, and how to turn it off. MCP server: https://surveytool.app/mcp
 - [Field surveys](https://surveytool.app/use-cases/field-surveys): Walk a site with the plans on a tablet, count what is there, tag what needs work and export the totals as data.
 - [Punch lists](https://surveytool.app/use-cases/punch-lists): Mark punch items right on the floor plan with numbered markers and notes, then share the marked-up set with your team.
 - [As-builts](https://surveytool.app/use-cases/as-builts): Red-line the drawings with what was really built: moved walls, rerouted runs, added fixtures. Keep it with the project.

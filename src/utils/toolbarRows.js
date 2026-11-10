@@ -90,7 +90,7 @@ export function resolveToolBarGroup({ activeTool, activeCategoryDropdown, contex
 /** The tools whose settings fill the formatting row (the same list every
  * control in the row keys on — colours, width, line style, blend …). */
 export const FORMAT_ROW_TOOLS = Object.freeze([
-  'pen', 'highlighter', 'arrow', 'line', 'rect', 'ellipse', 'polygon', 'polyline',
+  'pen', 'highlighter', 'tape', 'arrow', 'line', 'rect', 'ellipse', 'polygon', 'polyline',
   'text', 'callout', 'counter', 'text-markup', 'text-select',
 ]);
 

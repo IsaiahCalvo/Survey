@@ -38,7 +38,7 @@
  */
 
 export const BRUSH_ADJUST_TOOLS = Object.freeze(new Set([
-  'pen', 'highlighter', 'line', 'arrow', 'rect', 'ellipse', 'polygon', 'polyline', 'eraser',
+  'pen', 'highlighter', 'tape', 'line', 'arrow', 'rect', 'ellipse', 'polygon', 'polyline', 'eraser',
 ]));
 
 /** Screen pixels of drag before the gesture picks which setting it changes. */
