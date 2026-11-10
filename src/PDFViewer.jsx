@@ -3486,6 +3486,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // decides whether the selection survives it. { tool, source } of the latest
   // request; read once by the tool-switch effect below.
   const toolSwitchRequestRef = useRef(null);
+  // Counts tool requests, so a deferred switch (Escape's put-the-tool-down)
+  // can tell that a newer pick came in before it ran.
+  const toolRequestSeqRef = useRef(0);
   const setActiveToolLogged = useCallback((next, { source } = {}) => {
     toolRequestSeqRef.current += 1;
     toolSwitchRequestRef.current = source && typeof next === 'string' ? { tool: next, source } : null;
@@ -22234,9 +22237,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     if (!sync.on || !normalAnnotationHydration?.ready || normalAnnotationHydration.documentId !== pdfFile?.id) return undefined;
     // The reload waits while a finger or button is down, or a polygon is
     // being placed, so work in progress here is not wiped (up to 30 s).
-    let pointerDown = false;
-    const onDown = () => { pointerDown = true; };
-    const onUp = () => { pointerDown = false; };
+    // Every pointer down counts (a pinch, a pen with a palm), so lifting one
+    // does not end another's gesture.
+    const pointersDown = new Set();
+    const onDown = (event) => { pointersDown.add(event.pointerId); };
+    const onUp = (event) => { pointersDown.delete(event.pointerId); };
     window.addEventListener('pointerdown', onDown, true);
     window.addEventListener('pointerup', onUp, true);
     window.addEventListener('pointercancel', onUp, true);
@@ -22244,7 +22249,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     let latest = null;
     const reload = (since) => {
       timer = null;
-      if ((pointerDown || hasOpenPolyDraft(polyDraftOwner)) && Date.now() - since < 30000) {
+      if ((pointersDown.size > 0 || hasOpenPolyDraft(polyDraftOwner)) && Date.now() - since < 30000) {
         timer = setTimeout(() => reload(since), 300);
         return;
       }
