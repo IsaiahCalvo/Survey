@@ -167,6 +167,10 @@ export function installHomeBack(win) {
     // open, the change it makes puts the entry back (sync).
     if (hasHome() || backLayerCount() === 0) return;
     closeTopBackLayer(win.document);
+    // A dialog that is busy (New document while it creates) ignores the
+    // Escape: it stays open with no entry under it, and a later back left
+    // Survey (R3-Z). Look again once it has had time to close.
+    win.setTimeout?.(sync, 250);
   };
   layerListeners.add(sync);
   win.addEventListener('popstate', onPop);

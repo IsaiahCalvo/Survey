@@ -144,11 +144,15 @@ export function addPolyDraftPoint(draft, point, { shiftKey = false } = {}) {
  * 2026-11-09, both apps got this wrong). Null when only the first point was
  * left, which ends the draft.
  */
-export function removeLastPolyDraftPoint(draft) {
+export function removeLastPolyDraftPoint(draft, { keepPreview = true } = {}) {
   if (!draft || !isPolyDraftTool(draft.tool)) return draft;
   if (draft.points.length <= 1) return null;
   const points = draft.points.slice(0, -1);
-  return { ...draft, points, preview: draft.preview ? { ...draft.preview } : { ...points[points.length - 1] }, snapToFirst: false };
+  // A mouse keeps its rubber band at the pointer. A finger or pen has no
+  // pointer left on the page, so the band would still run to the point just
+  // taken off (R3-Z): it collapses onto the new last point instead.
+  const preview = keepPreview && draft.preview ? { ...draft.preview } : { ...points[points.length - 1] };
+  return { ...draft, points, preview, snapToFirst: false };
 }
 
 /**

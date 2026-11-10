@@ -99,3 +99,23 @@ test('home: a sheet handing over to a dialog keeps a back entry (R3-X bug 5)', a
   await settle();
   resetBackNavigationForTests();
 });
+
+test('home: Back while a busy dialog ignores it puts the entry back (R3-Z B2)', async () => {
+  resetBackNavigationForTests();
+  const { installHomeBack } = await import('../src/utils/backNavigation.js');
+  const win = fakeWindow();
+  win.setTimeout = (fn, ms) => setTimeout(fn, ms);
+  const removeHome = installHomeBack(win);
+  const removeDialog = pushBackLayer(() => {}); // busy: Back does not close it
+  assert.equal(win.depth, 1);
+  win.history.back();
+  await new Promise((r) => setTimeout(r, 320));
+  assert.equal(win.depth, 1, 'the still-open dialog owns an entry again');
+  win.history.back(); // a second Back while still busy
+  await new Promise((r) => setTimeout(r, 320));
+  assert.equal(win.left, false, 'still in Survey');
+  removeDialog();
+  removeHome();
+  await settle();
+  resetBackNavigationForTests();
+});

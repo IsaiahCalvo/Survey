@@ -4088,7 +4088,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     neither. */}
                 {showsQuickColourDots(bottomToolbarApi) && annotationPaint && (
                   <QuickColourDots
-                    {...quickColoursForTool(bottomToolbarApi.contextTool || bottomToolbarApi.activeTool, toolQuickColoursOn)}
+                    {...quickColoursForTool(bottomToolbarApi.quickColourTool || bottomToolbarApi.contextTool || bottomToolbarApi.activeTool, toolQuickColoursOn)}
                     // w41: picked marks in different colours ring no dot.
                     value={bottomToolbarApi.selectionMixed?.strokeColor ? null : annotationPaint.quick.color}
                     customActive={bottomToolbarApi.selectionMixed?.strokeColor ? false : undefined}

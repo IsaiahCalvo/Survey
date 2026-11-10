@@ -834,7 +834,7 @@ const SVGAnnotationLayerBody = memo(({
   strokeOpacity = 100,
   fillColor = 'transparent',
   fillOpacity = 100,
-  highlightColor = 'rgba(255, 193, 7, 0.3)',
+  highlightColor: fixedHighlightColor = 'rgba(255, 193, 7, 0.3)',
   strokeWidth = 3,
   arrowheadStyle = null,
   // 'Both ends' toggle: the ending mirrored onto the start of a new arrow.
@@ -874,6 +874,12 @@ const SVGAnnotationLayerBody = memo(({
 }) => {
   // The app's one shared tooltip (components/Tooltip.jsx), never a native title=.
   const layerTip = useTooltip();
+  // Highlighter ink: one fixed amber, unless per-tool quick colours are on
+  // (Nightly 'tool-quick-colours'): then the highlighter draws its own picked
+  // colour, see-through (R3-Z: its Yellow / Green / Pink discs did nothing).
+  const highlightColor = (isFeatureOn('tool-quick-colours') && typeof strokeColor === 'string' && strokeColor)
+    ? composeAnnotationColor(strokeColor, Math.min(Number(strokeOpacity) || 50, 60))
+    : fixedHighlightColor;
 
   // Layers: a mark whose id was not on this page before a save is new, so it
   // goes on the active layer. One wrapper covers every save this layer makes.
@@ -3135,9 +3141,10 @@ const SVGAnnotationLayerBody = memo(({
   // the field's own Enter-to-blur never runs, so we blur it here: every one of
   // them commits its value on blur, which is what "Enter commits the field AND
   // finishes the draft" means. Escape blurs first as well, then cancels.
+  const polyPointerTypeRef = useRef('mouse');
   const stepBackPolyDraft = useCallback(() => {
     if (!polyDraftRef.current) return false;
-    const next = removeLastPolyDraftPoint(polyDraftRef.current);
+    const next = removeLastPolyDraftPoint(polyDraftRef.current, { keepPreview: polyPointerTypeRef.current === 'mouse' });
     if (!next) { cancelPolyDraft(); return true; }
     polyDraftRef.current = next;
     setPolyDraft(next);
@@ -7836,6 +7843,7 @@ const SVGAnnotationLayerBody = memo(({
           if (isPolyCreationTool && e.button === 0 && !grabbingSelection) {
             const point = screenToSVG(svgRef.current, e.clientX, e.clientY);
             if (point) {
+              polyPointerTypeRef.current = e.pointerType || 'mouse';
               const draft = polyDraftRef.current;
               // A click inside the first vertex's magnet closes the shape,
               // Drawboard-style — it wins over "place another point here".

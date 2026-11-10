@@ -26941,6 +26941,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     const contextTool = (pickBarTool === 'select' && selectionMappedTool)
       ? selectionMappedTool
       : activeTool;
+    // The quick colour discs of a picked highlighter stroke are the
+    // highlighter's own (R3-Z), though it groups with the pen everywhere else.
+    const quickColourTool = contextTool === 'pen' && pickBarTool === 'select'
+      && (selectedAnnot?.tool === 'highlighter' || selectedAnnot?.data?.tool === 'highlighter')
+      ? 'highlighter' : contextTool;
     // w44 (rows flipped): the tool bar shows the picked mark's group's tools.
     // Marks of more than one kind picked together borrow no group: the bar
     // shows Select's own modes and row 2 the settings they share.
@@ -27132,6 +27137,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       lassoTouchMode,
       cycleLassoTouchMode,
       contextTool,
+      quickColourTool,
       // w44: the tool whose group's tools the tool bar shows ('select' when
       // marks of several kinds are picked together) — utils/toolbarRows.js.
       toolBarContextTool: subToolTool,

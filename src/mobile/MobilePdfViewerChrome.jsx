@@ -2197,7 +2197,7 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
       {!isEraser && showStroke && !isMultiColour && (
         <QuickColourDots
           platform="phone"
-          {...quickColoursForTool(api?.contextTool || api?.activeTool, isFeatureOn('tool-quick-colours'))}
+          {...quickColoursForTool(api?.quickColourTool || api?.contextTool || api?.activeTool, isFeatureOn('tool-quick-colours'))}
           value={quickColourShown}
           customActive={api.selectionMixed?.strokeColor ? false : undefined}
           onPick={applyQuickColour}

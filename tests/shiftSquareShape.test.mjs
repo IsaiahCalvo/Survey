@@ -23,3 +23,12 @@ test('Backspace while placing takes the last vertex off, then ends the draft', (
   assert.equal(draft.points.length, 1);
   assert.equal(removeLastPolyDraftPoint(draft), null);
 });
+
+test('a finger or pen step-back collapses the rubber band onto the new last point', () => {
+  let draft = createPolyDraft('polyline', { x: 0, y: 0 });
+  draft = addPolyDraftPoint(draft, { x: 10, y: 0 });
+  draft = addPolyDraftPoint(draft, { x: 10, y: 10 });
+  draft = { ...draft, preview: { x: 10, y: 10 } };
+  assert.deepEqual(removeLastPolyDraftPoint(draft).preview, { x: 10, y: 10 });
+  assert.deepEqual(removeLastPolyDraftPoint(draft, { keepPreview: false }).preview, { x: 10, y: 0 });
+});
