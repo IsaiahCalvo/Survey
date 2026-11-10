@@ -157,6 +157,162 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Measure: Polylength, Wall area and Volume (area or outline x a depth)',
     stage: 'beta',
   }),
+  // Drawboard Projects round 2 (2026-11-10): its twelve review stamps.
+  'review-stamps': Object.freeze({
+    label: 'Review stamps: Approved, Rejected, For construction and more, with your name and the date, in the Library panel',
+    stage: 'beta',
+  }),
+  // Drawboard Projects round 2 (2026-11-10): Export PDF keeps only chosen
+  // people's marks and layers, and can add the comments as a CSV.
+  'export-filters': Object.freeze({
+    label: 'Export filters: only some people\'s marks or some layers, plus comments as a CSV',
+    stage: 'beta',
+  }),
+  // Drawboard Projects round 2 (2026-11-10): its "Review & Publish" step.
+  'upload-check': Object.freeze({
+    label: 'Upload check: fix each file\'s name, sheet number and revision before it uploads',
+    stage: 'beta',
+  }),
+  // Drawboard Projects round 2 (2026-11-10): review status per drawing.
+  'document-review': Object.freeze({
+    label: 'Document review: status, owner and markup count on each document, with filter chips',
+    stage: 'beta',
+  }),
+  // Drawboard phone apps (2026-11-10): PDFs opened from Files, Mail or Teams.
+  'open-in-survey': Object.freeze({
+    label: 'Open in Survey: PDFs opened from Files, Mail, Outlook or Teams on a phone upload and open',
+    stage: 'beta',
+  }),
+  // Drawboard phone apps (2026-11-10): a photo or camera shot becomes a PDF.
+  'photo-upload': Object.freeze({
+    label: 'Photo or camera: Upload takes photos too and turns each into a one-page PDF',
+    stage: 'beta',
+  }),
+  // Drawboard phone apps (2026-11-10): night / glare reading.
+  'dark-pages': Object.freeze({
+    label: 'Dark pages: show PDF pages light-on-dark (marks keep their colours)',
+    stage: 'beta',
+  }),
+  // Drawboard (2026-11-10): rest the pen at the end of a stroke to straighten it.
+  'smart-ink': Object.freeze({
+    label: 'Smart ink: hold the pen still at the end of a stroke to snap it to a line, rectangle or ellipse',
+    stage: 'beta',
+  }),
+  // Drawboard (2026-11-10): every mark in one list, with search, filters,
+  // measurement totals and a CSV.
+  'markup-list': Object.freeze({
+    label: 'Markups panel: every mark in one list with search, filters, measurement totals and a CSV',
+    stage: 'beta',
+  }),
+  'measure-scale-chip': Object.freeze({
+    label: 'Measure: a "No scale on this page" chip with Set scale while a measure tool is armed',
+    stage: 'beta',
+  }),
+  'eraser-keeps-shapes': Object.freeze({
+    label: 'Partial eraser only cuts ink and leaves shapes, text and callouts alone',
+    stage: 'beta',
+  }),
+  'tool-quick-colours': Object.freeze({
+    label: 'Highlighter quick colours are highlighter colours (yellow, green, pink)',
+    stage: 'beta',
+  }),
+  'measure-keys': Object.freeze({
+    label: 'Alt+Shift+L / P / A (and Q / V) pick a measure tool',
+    stage: 'beta',
+  }),
+  'calibrate-entry': Object.freeze({
+    label: "Calibrate takes feet-inches (20' 6\", 20-6) and shows the traced paper length",
+    stage: 'beta',
+  }),
+  'measure-edit': Object.freeze({
+    label: 'Measure: a Measurement button on a picked measurement sets its label, depth, caption lines and caption size',
+    stage: 'beta',
+  }),
+  'align-marks': Object.freeze({
+    label: 'Align and space picked marks (mark menu)',
+    stage: 'beta',
+  }),
+  'word-wrap': Object.freeze({
+    label: 'New text boxes and callouts wrap at spaces, not mid-word',
+    stage: 'beta',
+  }),
+  'paste-across-documents': Object.freeze({
+    label: 'Copy marks in one document and paste them in another',
+    stage: 'beta',
+  }),
+  'shift-square': Object.freeze({
+    label: 'Hold Shift while drawing a rectangle or ellipse for a square or circle',
+    stage: 'beta',
+  }),
+  'phone-mark-more': Object.freeze({
+    label: 'Phone: a More button on the picked-mark bar opens the full mark menu',
+    stage: 'beta',
+  }),
+  'poly-back-step': Object.freeze({
+    label: 'Backspace or Undo while placing a polygon or polyline takes the last point off',
+    stage: 'beta',
+  }),
+  'home-download': Object.freeze({
+    label: 'Download a document, with its marks, from the Home list',
+    stage: 'beta',
+  }),
+  'new-document': Object.freeze({
+    label: 'New blank document from Home (size, pages, lined, grid or dots)',
+    stage: 'beta',
+  }),
+  'default-units': Object.freeze({
+    label: 'Default units setting: imperial or metric for page scale and new documents',
+    stage: 'beta',
+  }),
+  'menu-keys': Object.freeze({
+    label: 'Keys shown on the mark right-click menu rows',
+    stage: 'beta',
+  }),
+  'zoom-to-area': Object.freeze({
+    label: 'Zoom to an area: Ctrl+Shift+drag draws a box and the view fills with it',
+    stage: 'beta',
+  }),
+  'guest-sample': Object.freeze({
+    label: 'Try the sample drawing signed out, as a try-out that is not saved',
+    stage: 'beta',
+  }),
+  'viewer-share': Object.freeze({
+    label: 'Share from inside a document: a Share button in the viewer top bar',
+    stage: 'beta',
+  }),
+  'focus-mode': Object.freeze({
+    label: 'Focus mode: hide the tab strip and side rails, full screen (Ctrl/Cmd+Shift+F)',
+    stage: 'beta',
+  }),
+  'search-options': Object.freeze({
+    label: 'Search: Match case and Whole word',
+    stage: 'beta',
+  }),
+  'hide-marks': Object.freeze({
+    label: 'Hide all marks from the right rail, with a chip to bring them back',
+    stage: 'beta',
+  }),
+  'tab-keys': Object.freeze({
+    label: 'Alt+Shift+] and Alt+Shift+[ step through the open documents',
+    stage: 'beta',
+  }),
+  'back-button': Object.freeze({
+    label: 'Back (browser or Android) closes the open sheet, then the document, instead of leaving Survey',
+    stage: 'beta',
+  }),
+  'page-op-sync': Object.freeze({
+    label: 'Page changes in one window reload the PDF in the other windows that have it open',
+    stage: 'beta',
+  }),
+  // Drawboard PDF Pro trial (2026-11-10): "Snap to content" beside "Snap to annotations".
+  'snap-content': Object.freeze({
+    label: "Snap to the PDF's own drawing: line ends, midpoints and along straight lines (Snapping menu: Marks / Drawing)",
+    stage: 'beta',
+  }),
+  'box-drag-move': Object.freeze({
+    label: 'Drag inside a picked mark to move it',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

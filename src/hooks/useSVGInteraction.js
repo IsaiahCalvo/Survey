@@ -8,10 +8,12 @@
  * Phase 9 Plan 02: Drag-to-move, resize-by-handle, rotation.
  * Phase 9 Plan 03: Multi-select group ops (group-move, group-delete), double-click edit trigger.
  */
+import { clearOtherPageSelections } from '../utils/pageSelectionPresence.js';
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, startTransition } from 'react';
 import { flushSync } from 'react-dom';
 import { screenToSVG, normalizeAngle, getInverseScale, inverseScaleFromWidth, clampInverseScale } from '../utils/svgTransformMath';
 
+import { ARRANGE_SELECTION_EVENT, isNoopPlan, planAlign, planDistribute } from '../utils/alignMarks.js';
 import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox, getLineEndpoints, computeLineBboxCenter, isImportedPath, isAbsoluteCoordPath } from '../utils/svgBoundingBox';
 import {
   applyPageAffineToInkObject,
@@ -151,6 +153,7 @@ import {
   getCalloutPageBox,
   nudgeCalloutPatch,
   buildNudgedPage,
+  buildMovedPage,
   getNudgeBoxes,
   nudgePreviewTransform,
   isArrowOwningPopoverOpen,
@@ -184,6 +187,10 @@ import { useCrossPageMove } from './useCrossPageMove.js';
 import { isCopyDragEvent, subscribeMoveModifier, getMoveModifierHeld } from '../utils/moveModifier.js';
 import { isTextLikeAnnotation } from '../utils/toolPressRouting.js';
 import { lockTextboxSizeAfterResize } from '../utils/annotationPreferences.js';
+import { readSnapContent } from '../utils/annotationPreferences.js';
+import { isFeatureOn } from '../featureFlags.js';
+import { getMarkerShapePdfDocument } from '../survey/markerShapeProviders.js';
+import { getPageSnapContentIndex } from '../survey/snapContentIndex.js';
 import {
   groupResizeMinimumScale,
   handleAffectsX,
@@ -456,11 +463,16 @@ export function useSVGInteraction({
   // Endpoint / corner drag snapping (drawSnap.js): Shift locks the segment
   // from `anchor` to the snap angle (Settings, 15° by default); the point locks onto another line end or
   // corner within 8 screen px unless Alt / the snapping preference is off.
+  // Nightly 'snap-content': then onto the PDF's own line ends, midpoints and lines.
   const snapDraggedPoint = (ds, anchor, point, e) => {
+    const contentIndex = isFeatureOn('snap-content') && !isSnapFreeModifier(e) && readSnapContent()
+      ? getPageSnapContentIndex(getMarkerShapePdfDocument(), pageNumber)
+      : null;
     const r = resolveDrawSnap(anchor, point, {
       ...drawSnapEventOptions(e, inverseScale),
       endpointSnap: !isAnnotationSnapFree(e),
       candidates: ds.snapEndpoints || [],
+      contentSnap: contentIndex ? (p, tol, opts) => contentIndex.query(p.x, p.y, tol, opts) : null,
     });
     applySnapGuides(r.endpoint ? { lines: [], points: [], endpoint: r.endpoint } : null);
     return r.point;
@@ -1489,6 +1501,107 @@ export function useSVGInteraction({
       commitNudgeBurst();
     };
   }, [keyboardNudgeEnabled, commitNudgeBurst]);
+
+  // Align / distribute the picked marks (Nightly flag 'align-marks'). The
+  // mark menu fires ARRANGE_SELECTION_EVENT with { pageNumber, op, mode };
+  // the layer of that page moves each picked shape, callout and Survey
+  // Marker by its own delta in one save (one Undo step), the same commit
+  // order as a keyboard nudge.
+  useEffect(() => {
+    const onArrange = (event) => {
+      const detail = event?.detail || {};
+      const latest = nudgeLatestRef.current;
+      if (latest.pageNumber == null || Number(detail.pageNumber) !== Number(latest.pageNumber)) return;
+      if (typeof document !== 'undefined' && document.body?.getAttribute('data-readonly') === 'true') return;
+      if (dragStateRef.current?.active) return;
+      // A running nudge lands first, so the plan reads the moved marks.
+      if (nudgeBurstRef.current) commitNudgeBurst({ sync: true });
+      const W = latest.pageWidth || 0;
+      const H = latest.pageHeight || 0;
+      const members = [];
+      const startObjects = {};
+      for (const index of latest.selectedIds || []) {
+        const object = latest.annotations?.objects?.[index];
+        if (!canMoveAnnotation(object)) continue;
+        startObjects[index] = deepClone(object);
+        members.push({ kind: 'shape', key: String(index), box: getAnnotationWorldAABB(object) });
+      }
+      const calloutOriginals = {};
+      const selectedCallouts = latest.selectedCalloutIds instanceof Set
+        ? Array.from(latest.selectedCalloutIds)
+        : (Array.isArray(latest.selectedCalloutIds) ? latest.selectedCalloutIds : []);
+      for (const calloutId of selectedCallouts) {
+        const callout = (latest.callouts || []).find((c) => c && String(c.id) === String(calloutId));
+        if (!callout) continue;
+        if (callout.pageNumber != null && Number(callout.pageNumber) !== Number(latest.pageNumber)) continue;
+        if (typeof latest.isCalloutSelectable === 'function' && !latest.isCalloutSelectable(callout.id)) continue;
+        if (!canMoveAnnotation(callout)) continue;
+        const original = {
+          arrowTip: { ...(callout.arrowTip || {}) },
+          knee: { ...(callout.knee || {}) },
+          textBoxPosition: { ...(callout.textBoxPosition || {}) },
+          textBoxWidth: callout.textBoxWidth,
+          textBoxHeight: callout.textBoxHeight,
+        };
+        calloutOriginals[callout.id] = original;
+        members.push({ kind: 'callout', key: String(callout.id), box: getCalloutPageBox(original, W, H) });
+      }
+      const selectedMarkers = latest.selectedSurveyMarkerIds instanceof Set ? latest.selectedSurveyMarkerIds : null;
+      if (selectedMarkers && selectedMarkers.size > 0) {
+        for (const member of latest.getSurveyMarkerMembers?.() || []) {
+          if (!member || member.locked || !selectedMarkers.has(String(member.id))) continue;
+          const world = boxWorldBounds(member.box);
+          if (!world) continue;
+          members.push({ kind: 'marker', key: String(member.id), box: world });
+        }
+      }
+      const boxes = members.map((m) => m.box);
+      const moves = detail.op === 'distribute' ? planDistribute(boxes, detail.mode) : planAlign(boxes, detail.mode);
+      if (isNoopPlan(moves)) return;
+      const shapeMoves = {};
+      const markerMoves = {};
+      const calloutPatches = [];
+      members.forEach((m, i) => {
+        const move = moves[i];
+        if (!move || (!move.dx && !move.dy)) return;
+        if (m.kind === 'shape') shapeMoves[m.key] = move;
+        else if (m.kind === 'callout') {
+          calloutPatches.push([m.key, nudgeCalloutPatch(calloutOriginals[m.key], move.dx, move.dy, W, H)]);
+        } else if (m.kind === 'marker') {
+          markerMoves[m.key] = move;
+        }
+      });
+      const markerPatch = Object.keys(markerMoves).length > 0
+        ? { surveyMarkerFamily: { moves: markerMoves } }
+        : null;
+      // Callouts first, rendered, so the shape save is built on a page that
+      // already holds them: shapes + callouts + markers are one Undo step.
+      if (calloutPatches.length > 0 && typeof latest.onUpdateCalloutLive === 'function') {
+        flushSync(() => {
+          for (const [calloutId, patch] of calloutPatches) latest.onUpdateCalloutLive(calloutId, patch);
+        });
+      }
+      flushSync(() => {
+        const now = nudgeLatestRef.current;
+        const merged = Object.keys(shapeMoves).length > 0
+          ? buildMovedPage(now.annotations, startObjects, shapeMoves)
+          : null;
+        if ((merged || markerPatch) && typeof now.onSaveAnnotations === 'function') {
+          now.onSaveAnnotations(merged ? merged.annotations : now.annotations, {
+            source: 'object:modified',
+            action: detail.op === 'distribute' ? 'distribute' : 'align',
+            checkpointPolicy: 'normal',
+            ...(markerPatch || {}),
+          });
+        }
+        if (typeof now.onUpdateCallout === 'function') {
+          for (const [calloutId] of calloutPatches) now.onUpdateCallout(calloutId, {});
+        }
+      });
+    };
+    window.addEventListener(ARRANGE_SELECTION_EVENT, onArrange);
+    return () => window.removeEventListener(ARRANGE_SELECTION_EVENT, onArrange);
+  }, [commitNudgeBurst]);
 
   // ---------------------------------------------------------------------------
   // Pointer event handlers
@@ -4557,6 +4670,7 @@ export function useSVGInteraction({
           deselectAll();
           onSelectedCalloutIdsChange?.(new Set());
           clearSelectedMarkers();
+          clearOtherPageSelections(pageNumber, documentId);
         }
         return;
       }
@@ -4631,6 +4745,7 @@ export function useSVGInteraction({
           deselectAll();
           if (onSelectedCalloutIdsChange) onSelectedCalloutIdsChange(new Set());
           clearSelectedMarkers();
+          clearOtherPageSelections(pageNumber, documentId);
         }
         return;
       }

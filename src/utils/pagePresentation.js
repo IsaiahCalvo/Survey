@@ -1,5 +1,9 @@
 // A page mirror keeps annotation geometry in its own page frame.
 export const PAGE_PRESENTATION_META_KEY = 'pagePresentation';
+// Page operations rewrite the PDF bytes in Storage. The writer stamps the
+// shared document with this key so other open viewers know their bytes are
+// behind (utils/pageOpSync.js; Nightly flag 'page-op-sync').
+export const PDF_FILE_VERSION_META_KEY = 'pdfFileVersion';
 export function normalizePagePresentations(value) {
   return Object.fromEntries(Object.entries(value || {}).filter(([page, state]) => Number.isInteger(Number(page)) && Number(page) > 0 && state && typeof state === 'object').map(([page, state]) => [page, { rotation: Number(state.rotation) || 0, mirrorH: state.mirrorH === true, mirrorV: state.mirrorV === true }]));
 }

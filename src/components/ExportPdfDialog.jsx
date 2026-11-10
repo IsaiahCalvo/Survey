@@ -7,7 +7,11 @@
    pages are a print-dialog style list with counts, and the foot says what
    will be made. The viewer does the work: api.exportPdfWithOptions(choice)
    resolves { ok, error?, canceled? }; api.exportPageInfo() gives the page
-   count, the page on screen and the pages that carry marks. */
+   count, the page on screen and the pages that carry marks.
+   Export filters (Nightly, flag 'export-filters', Drawboard Projects round 2):
+   when exportPageInfo() also lists `authors` / `layers` / `commentCount`, a
+   "Who" and a "Layers" checklist keep only some people's marks or some
+   layers, and "Comments (.csv)" saves the comment threads beside the PDF. */
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../home/HubShell';
 import { useFocusTrap } from '../hooks/useFocusTrap';
@@ -21,6 +25,46 @@ import './ExportPdfDialog.css';
 
 // A small page picture for each mark choice: editable marks carry handles,
 // flattened marks are part of the page, plain is the bare drawing.
+// A checklist of people or layers: every row on to start; the last one on
+// can't be turned off (an export of nothing is the Plain choice).
+function FilterList({ id, label, rows, off, onToggle }) {
+  const onCount = rows.filter((r) => !off.has(r.id)).length;
+  return (
+    <div className="xpdf-section" data-export-filter={id}>
+      <span className="xpdf-label" id={`export-pdf-${id}`}>{label}</span>
+      <div className="xpdf-pages" role="group" aria-labelledby={`export-pdf-${id}`}>
+        {rows.map((r) => {
+          const on = !off.has(r.id);
+          return (
+            <button
+              key={r.id}
+              type="button"
+              role="checkbox"
+              aria-checked={on}
+              aria-label={`${r.name} (${r.count})`}
+              // The last one on stays on. No aria-disabled: the house
+              // disabled look (states.css) would grey it as if it were off.
+              data-last-on={on && onCount === 1 ? 'true' : undefined}
+              className={`xpdf-page${on ? ' is-on' : ''}`}
+              onClick={() => { if (!(on && onCount === 1)) onToggle(r.id); }}
+            >
+              <span className="xpdf-check" aria-hidden="true">{on ? <Icon name="check" size={11} /> : null}</span>
+              <span className="xpdf-page__label">{r.name}</span>
+              <span className="xpdf-page__count">{r.count}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+const toggleIn = (set, id) => {
+  const next = new Set(set);
+  if (next.has(id)) next.delete(id); else next.add(id);
+  return next;
+};
+
 function MarkModePreview({ mode }) {
   const marks = mode !== 'plain';
   return (
@@ -49,6 +93,9 @@ export default function ExportPdfDialog({ open, api, fileName = '', onClose }) {
   const [info, setInfo] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [offAuthors, setOffAuthors] = useState(() => new Set());
+  const [offLayers, setOffLayers] = useState(() => new Set());
+  const [withComments, setWithComments] = useState(false);
   useFocusTrap(cardRef, open, { onEscape: busy ? undefined : onClose });
 
   useEffect(() => {
@@ -56,6 +103,9 @@ export default function ExportPdfDialog({ open, api, fileName = '', onClose }) {
     let live = true;
     setError('');
     setInfo(null);
+    setOffAuthors(new Set());
+    setOffLayers(new Set());
+    setWithComments(false);
     Promise.resolve(api?.exportPageInfo?.()).then((next) => { if (live) setInfo(next || null); }).catch(() => {});
     return () => { live = false; };
   }, [open, api]);
@@ -76,14 +126,35 @@ export default function ExportPdfDialog({ open, api, fileName = '', onClose }) {
       : pages === 'marked' ? marked.length
         : customCheck?.pages?.length || 0;
   const modeLabel = { annotated: 'editable marks', flattened: 'marks burned in', plain: 'no marks' }[mode] || '';
-  const summary = pageCount ? `${pageCount} page${pageCount === 1 ? '' : 's'} · ${modeLabel}` : modeLabel;
+  const authors = Array.isArray(info?.authors) ? info.authors : [];
+  const layers = Array.isArray(info?.layers) ? info.layers : [];
+  const showFilters = mode !== 'plain';
+  const showAuthors = showFilters && authors.length > 1;
+  const showLayers = showFilters && layers.length > 1;
+  const authorsOn = authors.filter((a) => !offAuthors.has(a.id));
+  const layersOn = layers.filter((l) => !offLayers.has(l.id));
+  const filter = {
+    authors: showAuthors && authorsOn.length < authors.length ? authorsOn.map((a) => a.id) : null,
+    layers: showLayers && layersOn.length < layers.length ? layersOn.map((l) => l.id) : null,
+  };
+  const filterBits = [
+    filter.authors && `${authorsOn.length} of ${authors.length} people`,
+    filter.layers && `${layersOn.length} of ${layers.length} layers`,
+    withComments && 'comments CSV',
+  ].filter(Boolean);
+  const summary = [pageCount ? `${pageCount} page${pageCount === 1 ? '' : 's'}` : '', modeLabel, ...filterBits].filter(Boolean).join(' · ');
 
   const run = async () => {
     if (!api?.exportPdfWithOptions) return;
     setBusy(true);
     setError('');
     try {
-      const result = await api.exportPdfWithOptions({ mode, pages, custom });
+      const result = await api.exportPdfWithOptions({
+        mode,
+        pages,
+        custom,
+        ...(info?.authors ? { filter, commentsCsv: withComments && info.commentCount > 0 } : {}),
+      });
       if (result?.ok || result?.canceled) {
         if (result?.ok) onClose();
         return;
@@ -161,6 +232,30 @@ export default function ExportPdfDialog({ open, api, fileName = '', onClose }) {
                 </div>
               )}
             </div>
+            {showAuthors && (
+              <FilterList id="authors" label="Who" rows={authors} off={offAuthors} onToggle={(id) => setOffAuthors((s) => toggleIn(s, id))} />
+            )}
+            {showLayers && (
+              <FilterList id="layers" label="Layers" rows={layers} off={offLayers} onToggle={(id) => setOffLayers((s) => toggleIn(s, id))} />
+            )}
+            {info?.commentCount > 0 && (
+              <div className="xpdf-section">
+                <div className="xpdf-pages">
+                  <button
+                    type="button"
+                    role="checkbox"
+                    aria-checked={withComments}
+                    className={`xpdf-page${withComments ? ' is-on' : ''}`}
+                    data-export-comments-csv=""
+                    onClick={() => setWithComments((on) => !on)}
+                  >
+                    <span className="xpdf-check" aria-hidden="true">{withComments ? <Icon name="check" size={11} /> : null}</span>
+                    <span className="xpdf-page__label">Also save the comments (.csv)</span>
+                    <span className="xpdf-page__count">{info.commentCount}</span>
+                  </button>
+                </div>
+              </div>
+            )}
             {error && <p className="pdft-error" role="alert">{error}</p>}
           </div>
           <div className="pdft-foot">

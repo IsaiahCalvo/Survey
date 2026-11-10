@@ -274,7 +274,11 @@ export function resolveToolPress({ tool, target = 'empty', markGroup = null, has
       // Callers ask only before the first point: once a shape is under way
       // every click is a point.
       if (onMark) return result('none', shiftKey ? 'add' : 'select');
-      if (hasSelection) return result('none', 'deselect', true);
+      // Every input here is a click, so a click that only dropped the pick
+      // lost the next shape's first point (the just-finished polyline stays
+      // picked). Drawboard drops the pick AND places point 1 (deep test
+      // 2026-11-10); so do the Area / Perimeter / Volume measures.
+      if (hasSelection) return result('none', 'tool', true);
       return result('none', 'tool');
     case 'eraser':
       // Rule 5: erases what it touches and drops the selection.

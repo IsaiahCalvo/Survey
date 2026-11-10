@@ -139,6 +139,23 @@ export function addPolyDraftPoint(draft, point, { shiftKey = false } = {}) {
 }
 
 /**
+ * Backspace (or Undo) while placing: take the last vertex off and pull the
+ * rubber band back to the one before (Drawboard PDF Pro trial audit
+ * 2026-11-09, both apps got this wrong). Null when only the first point was
+ * left, which ends the draft.
+ */
+export function removeLastPolyDraftPoint(draft, { keepPreview = true } = {}) {
+  if (!draft || !isPolyDraftTool(draft.tool)) return draft;
+  if (draft.points.length <= 1) return null;
+  const points = draft.points.slice(0, -1);
+  // A mouse keeps its rubber band at the pointer. A finger or pen has no
+  // pointer left on the page, so the band would still run to the point just
+  // taken off (R3-Z): it collapses onto the new last point instead.
+  const preview = keepPreview && draft.preview ? { ...draft.preview } : { ...points[points.length - 1] };
+  return { ...draft, points, preview, snapToFirst: false };
+}
+
+/**
  * Move the rubber-band end. When the cursor is inside the first vertex's
  * magnetic radius (and closing is legal) the preview snaps onto that vertex
  * so the user SEES the shape close before committing to the click.
@@ -284,4 +301,55 @@ export function normalizePolyPointsToLocal(points) {
     top: minY,
     points: list.map((p) => ({ x: p.x - minX, y: p.y - minY })),
   };
+}
+
+// Undo while placing (Nightly, 'poly-back-step'). The viewer's Cmd/Ctrl+Z
+// listener runs before any page layer's, so the page layer with a draft open
+// registers its step-back here and the viewer asks it first.
+// Each viewer passes its own owner token, so a draft left open in a tab
+// behind never takes (or lights) the front document's Undo.
+const draftUndos = new Map();
+const draftUndoListeners = new Set();
+const notifyDraftUndo = () => draftUndoListeners.forEach((listener) => listener());
+export function setPolyDraftUndo(stepBack, owner = null) {
+  if (typeof stepBack !== 'function') return () => {};
+  draftUndos.set(owner, stepBack);
+  notifyDraftUndo();
+  return () => {
+    if (draftUndos.get(owner) === stepBack) {
+      draftUndos.delete(owner);
+      notifyDraftUndo();
+    }
+  };
+}
+/** True while this viewer has a draft open that Undo would step back (its Undo buttons stay live). */
+export function hasPolyDraftUndo(owner = null) {
+  return draftUndos.has(owner);
+}
+export function subscribePolyDraftUndo(listener) {
+  draftUndoListeners.add(listener);
+  return () => draftUndoListeners.delete(listener);
+}
+/** True when this viewer's draft took the Undo (its last point came off). */
+export function stepBackPolyDraftForUndo(owner = null) {
+  const stepBack = draftUndos.get(owner);
+  return stepBack ? stepBack() !== false : false;
+}
+
+// Drafts open per viewer, whatever the flags: another window's page change
+// waits for them before it reloads the PDF (utils/pageOpSync.js), so a
+// polygon being placed is not wiped.
+const openDrafts = new Map();
+export function markPolyDraftOpen(owner = null) {
+  openDrafts.set(owner, (openDrafts.get(owner) || 0) + 1);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    const left = (openDrafts.get(owner) || 1) - 1;
+    if (left > 0) openDrafts.set(owner, left); else openDrafts.delete(owner);
+  };
+}
+export function hasOpenPolyDraft(owner = null) {
+  return openDrafts.has(owner);
 }

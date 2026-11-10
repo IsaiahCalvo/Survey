@@ -1,0 +1,108 @@
+/* RailFlyout (RailFlyout.jsx): the one card every right-rail pop-up uses.
+   The floating card of the design guide (--surface-2, --border, popover
+   shadow, --radius-md) with a section-head title, menu-sized rows, and a
+   grow-in from the corner nearest its button. */
+.rail-flyout {
+  position: absolute;
+  right: calc(100% + 14px);
+  bottom: 0;
+  z-index: 6000;
+  box-sizing: border-box;
+  min-width: 196px;
+  padding: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-popover);
+  color: var(--text-1);
+  font: var(--menu-font);
+  text-align: left;
+  cursor: default;
+  --menu-origin: bottom right;
+}
+
+.rail-flyout__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 28px;
+  padding: 0 6px 0 var(--menu-item-pad-x);
+}
+
+.rail-flyout__title {
+  font: 600 12px/16px var(--font-ui);
+  color: var(--text-3);
+}
+
+/* A list of choices under the title (Fit page / width / height). */
+.rail-flyout__rows {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.rail-flyout__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: var(--menu-item-h);
+  padding: 0 var(--menu-item-pad-x) 0 6px;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* The current choice: gold ink, and its tick (design guide 1: gold means
+   chosen, with no box behind it). */
+.rail-flyout__row[aria-checked='true'] {
+  color: var(--accent);
+}
+
+.rail-flyout__tick {
+  display: inline-flex;
+  flex: none;
+  width: 14px;
+  justify-content: center;
+}
+
+.rail-flyout__keys {
+  margin-left: auto;
+  padding-left: 16px;
+  color: var(--text-3);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (hover: hover) {
+  .rail-flyout__row:not([aria-checked='true']):hover {
+    color: var(--text-1);
+  }
+}
+
+.rail-flyout__row:focus-visible {
+  outline: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .rail-flyout {
+    animation: sv-menu-grow var(--motion-menu-open) var(--ease-glide);
+    transform-origin: var(--menu-origin);
+  }
+  .rail-flyout__rows > [role='menuitemradio'] {
+    animation: sv-menu-row-in var(--motion-menu-row) var(--ease-glide) backwards;
+    animation-delay: calc(var(--menu-row, 0) * var(--motion-menu-stagger));
+  }
+}
+
+/* The rows host is the menu; the card already grows in, so the shared
+   menu slide (motion.css, [role="menu"]) stays off it. */
+.rail-flyout__rows[role='menu'] {
+  animation: none;
+}

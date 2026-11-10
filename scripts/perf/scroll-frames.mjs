@@ -28,7 +28,7 @@
 // (name the components with an unminified build: --minify false).
 // CPU=<n> slows the page n times (a slower laptop or tablet).
 import fs from 'node:fs';
-import { chromium } from '@playwright/test';
+import { chromium, devices } from '@playwright/test';
 
 const BASE = process.env.BASE || 'http://127.0.0.1:5241';
 if (!/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(BASE)) throw new Error(`refusing non-local BASE ${BASE}`);
@@ -62,9 +62,43 @@ async function signInAndOpen(page) {
   await dialog.getByLabel('Password').fill('E2e-local-only-123!');
   await dialog.getByRole('button', { name: 'Sign in', exact: true }).click();
   await dialog.waitFor({ state: 'hidden', timeout: 60_000 });
-  await page.getByText(DOC_NAME, { exact: true }).filter({ visible: true }).first().click();
-  await page.getByRole('button', { name: 'Open file' }).first().click();
-  await page.waitForFunction(() => document.querySelectorAll('[data-overlay-page="1"] [data-annotation-index]').length > 0, null, { timeout: 120_000 });
+  await openDoc(page);
+  // REOPEN=<ms>: wait this long, reload the app and open the file again (what
+  // a later open of the same file finds kept on the device).
+  if (process.env.REOPEN) {
+    await sleep(Number(process.env.REOPEN));
+    await page.goto(`${BASE}/`);
+    // The app reopens the file's tab by itself after a reload.
+    await page.waitForFunction(() => document.querySelectorAll('[data-overlay-page="1"] [data-annotation-index]').length > 0, null, { timeout: 120_000 });
+    await waitQuiet(page);
+  }
+}
+
+async function openDoc(page) {
+  const name = page.getByText(DOC_NAME, { exact: true }).filter({ visible: true }).first();
+  await name.waitFor({ timeout: 60_000 });
+  // OPENTRACE=<file>: a Chrome trace of the open (network, script, paint).
+  const openTrace = process.env.OPENTRACE && !openDoc.traced ? process.env.OPENTRACE : null;
+  const openProf = process.env.OPENPROFILE && !openDoc.profiled ? process.env.OPENPROFILE : null;
+  let openCdp = null;
+  if (openProf) { openDoc.profiled = true; openCdp = await page.context().newCDPSession(page); await openCdp.send('Profiler.enable'); await openCdp.send('Profiler.setSamplingInterval', { interval: 200 }); await openCdp.send('Profiler.start'); }
+  if (openTrace) { openDoc.traced = true; await page.context().browser().startTracing(page, { path: openTrace, categories: ['devtools.timeline', 'disabled-by-default-devtools.timeline', 'blink.user_timing', 'netlog', 'loading'] }); }
+  await name.click();
+  const t0 = Date.now();
+  // Desktop asks "Open file"; on a phone a tap on the name opens it.
+  // Race the two: waiting out the button on a phone counted 4 s that the
+  // open did not take.
+  const openButton = page.getByRole('button', { name: 'Open file' }).filter({ visible: true }).first();
+  const marksShown = () => page.waitForFunction(() => document.querySelectorAll('[data-overlay-page="1"] [data-annotation-index]').length > 0, null, { timeout: 120_000, polling: 'raf' });
+  const first = await Promise.race([
+    openButton.waitFor({ timeout: 8000 }).then(() => 'button', () => 'none'),
+    marksShown().then(() => 'marks'),
+  ]);
+  if (first === 'button') await openButton.click();
+  if (first !== 'marks') await marksShown();
+  console.log(`open: first page with marks ${Date.now() - t0} ms`);
+  if (openTrace) await page.context().browser().stopTracing();
+  if (openCdp) { const { profile } = await openCdp.send('Profiler.stop'); fs.writeFileSync(openProf, JSON.stringify(profile)); }
   await waitQuiet(page);
 }
 
@@ -250,6 +284,18 @@ async function wheel(cdp, at, dy, { ctrl = false, steps, gapMs = 16 } = {}) {
   }
 }
 
+async function touchSwipe(cdp, at, dx, dy, moves) {
+  const point = (x, y) => [{ x, y, id: 1, radiusX: 4, radiusY: 4, force: 1 }];
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: point(at.x, at.y) });
+  for (let i = 1; i <= moves; i += 1) {
+    const t = Date.now();
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: point(at.x + (dx * i) / moves, at.y - (dy * i) / moves) });
+    const left = 16 - (Date.now() - t);
+    if (left > 0) await sleep(left);
+  }
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+}
+
 // A point on a page with no mark under it (the Hand tool pans from there).
 async function emptyPagePoint(page) {
   return page.evaluate(() => {
@@ -279,10 +325,29 @@ async function drag(cdp, from, dx, dy, moves = 60) {
 }
 
 async function gesture(page, cdp, name, profile) {
+  // spaces: make one space of pages 2-6 first (not measured), then the
+  // gesture turns it on and off.
+  // On a phone the spaces list is a sheet behind "Open spaces".
+  if (name === 'spaces' && !(await page.getByRole('switch', { name: 'Turn on space' }).filter({ visible: true }).count())) {
+    const openSpaces = page.getByRole('button', { name: 'Open spaces', exact: true }).filter({ visible: true }).first();
+    if (await openSpaces.count()) { await openSpaces.click(); await sleep(800); }
+  }
+  if (name === 'spaces' && !(await page.getByRole('switch', { name: 'Turn on space' }).filter({ visible: true }).count())) {
+    const btn = (label) => page.getByRole('button', { name: label, exact: true }).filter({ visible: true }).first();
+    await btn('Spaces').click();
+    await btn('Create space').click();
+    await page.keyboard.type('Wing', { delay: 20 });
+    await page.keyboard.press('Enter');
+    const addPages = page.getByRole('textbox', { name: 'Add pages (e.g. 3, 6-9, 12)' }).filter({ visible: true }).first();
+    await addPages.fill('2-6');
+    await addPages.press('Enter');
+    if (await btn('Done editing Spaces').count()) await btn('Done editing Spaces').click();
+    await waitQuiet(page, 1200);
+  }
   const at = await viewerCentre(page);
   // TRACE=1 with PROFILE= records a Chrome trace (script / style / layout / paint) instead.
   const trace = profile && process.env.TRACE ? `${profile}-${name}.trace.json` : null;
-  if (trace) await page.context().browser().startTracing(page, { path: trace, categories: process.env.SELECTORS ? ['devtools.timeline', 'disabled-by-default-devtools.timeline', 'disabled-by-default-blink.debug'] : ['devtools.timeline', 'disabled-by-default-devtools.timeline', 'blink', 'cc', 'gpu', 'viz'] });
+  if (trace) await page.context().browser().startTracing(page, { path: trace, categories: process.env.TRACE_CATS ? process.env.TRACE_CATS.split(',') : process.env.SELECTORS ? ['devtools.timeline', 'disabled-by-default-devtools.timeline', 'disabled-by-default-blink.debug'] : ['devtools.timeline', 'disabled-by-default-devtools.timeline', 'blink', 'cc', 'gpu', 'viz'] });
   else if (profile) { await cdp.send('Profiler.enable'); await cdp.send('Profiler.setSamplingInterval', { interval: 200 }); await cdp.send('Profiler.start'); }
   await startSampling(page);
   const t0 = Date.now();
@@ -292,16 +357,47 @@ async function gesture(page, cdp, name, profile) {
   else if (name === 'flingUp') await wheel(cdp, at, -FLING, { steps: FLING_STEPS });
   else if (name === 'zoomIn') await wheel(cdp, at, -100, { ctrl: true, steps: ZOOM_STEPS, gapMs: 60 });
   else if (name === 'zoomOut') await wheel(cdp, at, 100, { ctrl: true, steps: ZOOM_STEPS, gapMs: 60 });
-  else if (name === 'pan') {
+  else if (name === 'swipeUp' || name === 'swipeDown') {
+    // A quick finger flick (the page keeps gliding after the finger lifts).
+    const dir = name === 'swipeUp' ? -1 : 1;
+    for (let k = 0; k < 4; k += 1) {
+      await touchSwipe(cdp, at, 0, dir * 420, 8);
+      await sleep(350);
+    }
+  } else if (name === 'pinchIn' || name === 'pinchOut') {
+    for (let k = 0; k < 3; k += 1) {
+      await cdp.send('Input.synthesizePinchGesture', { x: at.x, y: at.y, scaleFactor: name === 'pinchIn' ? 1.6 : 0.62, relativeSpeed: 800, gestureSourceType: 'touch' });
+      await sleep(250);
+    }
+  } else if (name === 'touchPan') {
+    await touchSwipe(cdp, at, -160, -220, 24);
+    await touchSwipe(cdp, at, 160, 220, 24);
+  } else if (name === 'pan') {
     const from = await emptyPagePoint(page);
     await drag(cdp, from, -500, -300);
     await drag(cdp, await emptyPagePoint(page), 500, 300);
+  } else if (name === 'spaces') {
+    const toggle = page.getByRole('switch', { name: 'Turn on space' }).filter({ visible: true }).first();
+    await toggle.click();
+    await sleep(1200);
+    await toggle.click();
+    await sleep(1200);
   } else if (name === 'survey') {
-    const button = page.getByRole('button', { name: 'Survey', exact: true }).filter({ visible: true }).first();
-    if (await button.isEnabled().catch(() => false)) {
-      await button.click();
+    // Desktop: the Survey button, Escape leaves. Phone: "Open survey", tap again.
+    const phoneButton = page.getByRole('button', { name: 'Open survey', exact: true }).filter({ visible: true }).first();
+    if (await phoneButton.count()) {
+      await phoneButton.click();
       await sleep(1200);
-      await page.keyboard.press('Escape');
+      const close = page.getByRole('button', { name: /^(Close survey|Close|Done)$/ }).filter({ visible: true }).first();
+      if (await close.count()) await close.click(); else await page.keyboard.press('Escape');
+      await sleep(1200);
+    } else {
+      const button = page.getByRole('button', { name: 'Survey', exact: true }).filter({ visible: true }).first();
+      if (await button.isEnabled().catch(() => false)) {
+        await button.click();
+        await sleep(1200);
+        await page.keyboard.press('Escape');
+      }
     }
   }
   const inputMs = Date.now() - t0;
@@ -317,7 +413,22 @@ async function gesture(page, cdp, name, profile) {
 }
 
 async function oneRun(browser, run) {
-  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  // PHONE=iphone|pixel: a phone (size, touch, pixel ratio, user agent);
+  // APP=ios|android with it: the phone app layout (the Capacitor shell flag).
+  const phone = process.env.PHONE ? devices[{ iphone: 'iPhone 13', pixel: 'Pixel 7' }[process.env.PHONE] || process.env.PHONE] : null;
+  const context = await browser.newContext(phone ? { ...phone } : { viewport: { width: 1440, height: 900 } });
+  if (phone && process.env.APP) {
+    await context.addInitScript((platform) => {
+      const plugins = {};
+      window.Capacitor = {
+        isNativePlatform: () => true,
+        getPlatform: () => platform,
+        isPluginAvailable: () => false,
+        Plugins: plugins,
+        registerPlugin: () => new Proxy({}, { get: () => async () => ({}) }),
+      };
+    }, process.env.APP);
+  }
   // Never let the harness reach a real host.
   await context.route((u) => !['data:', 'blob:'].includes(u.protocol) && !['127.0.0.1', 'localhost'].includes(u.hostname), (r) => r.abort('blockedbyclient'));
   await context.addInitScript(installViewProbe);
@@ -341,6 +452,25 @@ async function oneRun(browser, run) {
         } catch { /* keep the post */ }
         return post.call(this, msg, ...rest);
       };
+    });
+  }
+  // THUMBLOG=1: when the page preview worker opens and each preview lands.
+  if (process.env.THUMBLOG) {
+    await context.addInitScript(() => {
+      window.__thumbLog = [];
+      const Native = window.Worker;
+      window.Worker = function PreviewProbeWorker(url, options) {
+        const worker = new Native(url, options);
+        if (String(url).includes('pageThumbWorker')) {
+          window.__thumbLog.push([Math.round(performance.now()), 'create']);
+          worker.addEventListener('message', ({ data }) => {
+            if (data?.type) window.__thumbLog.push([Math.round(performance.now()), data.type, data.message || '']);
+          });
+          worker.addEventListener('error', (e) => window.__thumbLog.push([Math.round(performance.now()), 'error', String(e.message || '')]));
+        }
+        return worker;
+      };
+      window.Worker.prototype = Native.prototype;
     });
   }
   if (process.env.QLOG) await context.addInitScript(() => { globalThis.__rasterQueueLog = []; });
@@ -376,6 +506,11 @@ async function oneRun(browser, run) {
     await waitQuiet(page, 1200);
   }
   if (process.env.VSLOG) console.log('vslog', JSON.stringify(await page.evaluate(() => window.__vsLog || [])));
+  if (process.env.THUMBLOG) {
+    const log = await page.evaluate(() => window.__thumbLog || []);
+    const thumbs = log.filter((e) => e[1] === 'thumb');
+    console.log('thumblog', JSON.stringify({ events: log.filter((e) => e[1] !== 'thumb').slice(0, 10), thumbs: thumbs.length, first: thumbs[0]?.[0], last: thumbs.at(-1)?.[0] }));
+  }
   out.heapMB = (await page.evaluate(() => performance.memory?.usedJSHeapSize || 0)) / 1e6;
   await context.close();
   return out;

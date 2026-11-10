@@ -6,6 +6,9 @@
  *  - The point is pulled onto an existing line end or polygon/polyline corner
  *    on the same page within DRAW_SNAP_SCREEN_PX screen pixels. Endpoint snap
  *    wins over the angle lock (a corner you aim at is the stronger intent).
+ *  - Nightly 'snap-content': then onto the PDF drawing's own line ends,
+ *    midpoints and straight lines (snapContent.js), behind the Snapping
+ *    menu's "Drawing" switch.
  * Alt (or the device "snap to marks" preference off) disables the endpoint
  * pull, and the preference off also drops the touch angle assist; Shift
  * still locks the angle. Pure page-unit math, no DOM.
@@ -170,14 +173,28 @@ export function drawSnapEventOptions(e, inverseScale) {
 /**
  * Resolve the final point. Returns { point, endpoint } where endpoint is the
  * snapped target (for the indicator) or null.
+ * `contentSnap(point, tolPage, { onSegment })` (Nightly 'snap-content') is the
+ * page drawing's lookup (snapContent.js query); mark ends win over it, and
+ * with Shift's angle lock only its ends and midpoints apply. Its target
+ * carries `content: true`, `kind` and the PDF `segment` for the indicator.
  */
 export function resolveDrawSnap(anchor, point, {
   shiftKey = false, endpointSnap = true, candidates = [], tolPage = 0, stepDeg = 45, assistStepDeg = stepDeg, angleAssistDeg = 0, coarse = false,
+  contentSnap = null,
 } = {}) {
   if (!point) return { point, endpoint: null };
   if (endpointSnap) {
     const hit = nearestEndpoint(point, candidates, tolPage);
     if (hit) return { point: { x: hit.x, y: hit.y }, endpoint: { x: hit.x, y: hit.y, ...(coarse ? { coarse: true } : {}) } };
+  }
+  if (typeof contentSnap === 'function' && tolPage > 0) {
+    const hit = contentSnap(point, tolPage, { onSegment: !(shiftKey && anchor) });
+    if (hit && Number.isFinite(hit.x) && Number.isFinite(hit.y)) {
+      return {
+        point: { x: hit.x, y: hit.y },
+        endpoint: { x: hit.x, y: hit.y, content: true, kind: hit.kind, segment: hit.segment, ...(coarse ? { coarse: true } : {}) },
+      };
+    }
   }
   if (shiftKey && anchor) return { point: snapAngle(anchor, point, stepDeg), endpoint: null };
   if (angleAssistDeg > 0 && anchor) {

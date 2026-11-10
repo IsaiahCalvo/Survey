@@ -188,3 +188,85 @@
   opacity: 0;
   pointer-events: none;
 }
+
+/* The item's Activity log: a quiet toggle under the line, newest first. */
+.survey-tracking__activity {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.survey-tracking__activity-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 4px;
+  margin-left: -4px;
+  font: inherit;
+  font-size: var(--font-size-sm);
+  color: var(--text-3);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.survey-tracking__activity-toggle:hover {
+  color: var(--text-2);
+}
+
+.survey-tracking__activity-toggle:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--accent));
+  outline-offset: 1px;
+}
+
+.survey-tracking__activity-count {
+  min-width: 16px;
+  padding: 0 4px;
+  font-size: var(--font-size-xs);
+  line-height: 16px;
+  text-align: center;
+  color: var(--text-2);
+  background: var(--panel-well);
+  border-radius: 8px;
+}
+
+.survey-tracking__activity-list {
+  display: grid;
+  gap: 4px;
+  max-height: 168px;
+  margin: 2px 0 4px;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.survey-tracking__activity-item {
+  display: grid;
+  gap: 1px;
+  font-size: var(--font-size-sm);
+  color: var(--text-2);
+}
+
+.survey-tracking__activity-text strong {
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.survey-tracking__activity-time {
+  font-size: var(--font-size-xs);
+  color: var(--text-3);
+}
+
+.survey-tracking--phone .survey-tracking__activity-toggle {
+  height: 44px;
+  font-size: var(--font-size-lg);
+}
+
+.survey-tracking--phone .survey-tracking__activity-item {
+  font-size: var(--font-size-md);
+}
+
+.survey-tracking--phone .survey-tracking__activity-list {
+  max-height: 220px;
+}

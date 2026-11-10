@@ -14,6 +14,12 @@ import BodyPortal from './BodyPortal';
 const DocumentVersionsDialog = lazy(() => import('./DocumentVersionsDialog.jsx'));
 const VersionCompareDialog = lazy(() => import('./VersionCompareDialog.jsx'));
 
+const VERSION_RECHECK_MS = 20_000;
+
+function sameVersions(a, b) {
+  return a.length === b.length && a.every((v, i) => v.id === b[i].id && v.isCurrent === b[i].isCurrent && v.versionNumber === b[i].versionNumber && v.name === b[i].name);
+}
+
 /** Versions of `documentId` (null = feature off or nothing open) and the dialogs' state. */
 export function useDocumentVersions(documentId, onOpenVersion) {
   const [versions, setVersions] = useState([]);
@@ -26,10 +32,27 @@ export function useDocumentVersions(documentId, onOpenVersion) {
     setComparing(null);
     if (!documentId) return undefined;
     let cancelled = false;
+    let wasCurrent = null;
     const load = () => listDocumentVersions(supabase, documentId)
-      .then((list) => { if (!cancelled) setVersions(list); })
+      .then((list) => {
+        if (cancelled) return;
+        // Someone else uploaded a new version while this copy was open: say
+        // so once; the older-version bar and read-only mode follow from it.
+        const isCurrent = list.find((v) => v.id === documentId)?.isCurrent ?? null;
+        if (wasCurrent === true && isCurrent === false) {
+          showToast('A newer version was uploaded, so this copy is now read-only.', 'info');
+        }
+        if (isCurrent != null) wasCurrent = isCurrent;
+        setVersions((prev) => (sameVersions(prev, list) ? prev : list));
+      })
       .catch((err) => console.warn('[versions] could not list versions', err));
     load();
+    // Nothing pushes a supersede to other people's open copies, so look again
+    // on return to the tab and every 20 s while it is in view.
+    const onVisible = () => { if (document.visibilityState === 'visible') load(); };
+    const timer = window.setInterval(onVisible, VERSION_RECHECK_MS);
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
     // The upload that made this copy a new version can finish after it opened.
     const onChanged = (e) => {
       const { oldDocumentId, newDocumentId } = e?.detail || {};
@@ -38,6 +61,9 @@ export function useDocumentVersions(documentId, onOpenVersion) {
     window.addEventListener(DOCUMENT_VERSIONS_CHANGED_EVENT, onChanged);
     return () => {
       cancelled = true;
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
       window.removeEventListener(DOCUMENT_VERSIONS_CHANGED_EVENT, onChanged);
     };
   }, [documentId]);
@@ -116,7 +142,7 @@ export function DocumentVersionsDialogs({ state }) {
           />
         )}
         {state.comparing && (
-          <VersionCompareDialog older={state.comparing.older} newer={state.comparing.newer} onClose={state.closeCompare} />
+          <VersionCompareDialog older={state.comparing.older} newer={state.comparing.newer} versions={state.versions} onClose={state.closeCompare} />
         )}
       </Suspense>
     </BodyPortal>
