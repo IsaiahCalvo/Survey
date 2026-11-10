@@ -232,6 +232,16 @@ export function itemAnswerFor(item, raw) {
     if (kind === 'score') return n >= 1 && n <= scoreScaleOf(item) ? String(n) : null;
     return n >= 0 ? String(n) : null;
   }
+  if (kind === 'number') {
+    // "84 in" typed into a number line whose unit is "in" means 84. Only the
+    // line's own unit: "7 ft" on an inches line stays refused, not misread.
+    const unit = typeof item?.unit === 'string' ? item.unit.trim().toLowerCase() : '';
+    const s = String(raw).trim();
+    if (unit && s.toLowerCase().endsWith(unit) && s.length > unit.length) {
+      const bare = s.slice(0, s.length - unit.length).trim();
+      if (/\d$/.test(bare)) return typedAnswerFor(kind, bare);
+    }
+  }
   return typedAnswerFor(kind, raw);
 }
 

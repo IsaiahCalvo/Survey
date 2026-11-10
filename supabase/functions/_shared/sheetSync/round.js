@@ -23,7 +23,7 @@ export async function appHashOf(layout, markers) {
   const rows = [];
   for (const [id, m] of Object.entries(markers || {})) {
     const scope = layout.scopes.find((s) => sameId(s.moduleId, m?.moduleId) && sameId(s.categoryId, m?.categoryId));
-    if (scope) rows.push([id, scope.scopeId, appRecordOf(m, scope)]);
+    if (scope) rows.push([id, scope.scopeId, appRecordOf(m, scope, layout)]);
   }
   rows.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
   return sha256Hex(stableStringify(rows));
@@ -102,6 +102,22 @@ const hasWork = (plan) => plan.cellWrites.length || plan.appends.length || plan.
  * @returns {Promise<{status:'idle'|'synced'|'retry', summary?:object, patch?:object}>}
  *   `patch` is what to store on the link (baseline, state, remote_version, app_hash).
  */
+const isBlankValue = (v) => v == null || (typeof v !== 'object' && String(v).trim() === '');
+
+/** Scopes whose tab titles clash with `taken` (any case) get " (2)", " (3)"... */
+export function namedApart(scopes, taken) {
+  const used = new Set((taken || []).map((t) => String(t).toLowerCase()));
+  return scopes.map((scope) => {
+    let title = scope.title;
+    for (let n = 2; used.has(title.toLowerCase()); n += 1) title = `${scope.title.slice(0, 95)} (${n})`;
+    used.add(title.toLowerCase());
+    return title === scope.title ? scope : { ...scope, title };
+  });
+}
+
+/** Blanked answers in one round from which they are held (see planSheetRound). */
+export const BIG_ERASE = 10;
+
 export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, signing, force = false, now = new Date(), newMarkerId, fillBy = '' }) {
   assertProvider(provider);
   const layout = link.layout;
@@ -117,20 +133,21 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
     return { status: 'idle' };
   }
 
+  // The grid reads fine, so a write refused after it is a protected tab,
+  // range or workbook (Excel: Review > Protect; Sheets: protected range), not
+  // a lost share. Nothing is saved, so every change waits for the next round.
+  const protectedOnRefusal = (err) => {
+    if (Number(err?.status) === 403) err.code = 'protected';
+    throw err;
+  };
   // Only the synced tabs, unless one has to be added (then every title counts).
   const grid = await provider.readGrid(link.file_id, newScopes.length ? {} : { sheetIds: Object.values(state.sheetIds || {}) });
   if (newScopes.length) {
     // Categories added to the template since the file was made (or a tab put
     // back) get a tab, named apart from the tabs already there: a clash makes
     // the provider refuse the whole call, round after round.
-    const used = new Set(grid.sheets.map((s) => String(s.title).toLowerCase()));
-    const named = newScopes.map((scope) => {
-      let title = scope.title;
-      for (let n = 2; used.has(title.toLowerCase()); n += 1) title = `${scope.title.slice(0, 95)} (${n})`;
-      used.add(title.toLowerCase());
-      return title === scope.title ? scope : { ...scope, title };
-    });
-    const added = await provider.addTabs(link.file_id, named, layout);
+    const named = namedApart(newScopes, grid.sheets.map((s) => s.title));
+    const added = await provider.addTabs(link.file_id, named, layout).catch(protectedOnRefusal);
     state.sheetIds = { ...(state.sheetIds || {}), ...added };
     for (const scope of named) {
       if (added[scope.scopeId] == null) continue;
@@ -141,13 +158,21 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
   const sheetEditor = sheetEditorLabel(provider.lastEditor?.(link.file_id) ?? null, {
     selfEmail: provider.accountEmail ?? null, lastWriteAt: state.lastWriteAt ?? null,
   });
-  const plan = await planSheetRound({
+  const planArgs = {
     layout, grid, markers, baseline: link.baseline || {}, state, signing, now, sheetEditor,
     ...(newMarkerId ? { newMarkerId } : {}),
-  });
+  };
+  let plan = await planSheetRound(planArgs);
+  // Many filled answers blanked in the sheet at once: planned again with them
+  // held, so an older copy restored from version history (or a column cleared
+  // by mistake) can't wipe field work before an editor has looked.
+  if (plan.erasing >= BIG_ERASE && !state.eraseChoice && !state.heldErase) {
+    plan = await planSheetRound({ ...planArgs, holdErase: true });
+  }
 
   let wroteAt = state.lastWriteAt ?? null;
-  if (hasWork(plan)) {
+  let retry = false;
+  async function writePlan() {
     // A sort or row insert in the sheet since the read would move rows under
     // us, and a person typing would have their cell overwritten: check every
     // Row ID we write next to is still where it was, and every cell we write
@@ -158,10 +183,20 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
       const moved = checks.some((c, i) => ('expect' in c
         ? !sameCell(now2[i], c.expect)
         : String(now2[i] ?? '').trim() !== String(c.token ?? '').trim()));
-      if (moved) return { status: 'retry' };
+      if (moved) { retry = true; return; }
     }
     const headerWrites = plan.headerAdds.map((h) => ({ sheetId: h.sheetId, title: h.title, row: h.row ?? 0, col: h.col, value: h.header, header: true }));
     if (headerWrites.length || plan.cellWrites.length) await provider.writeCells(link.file_id, [...headerWrites, ...plan.cellWrites]);
+    // A write Excel accepts but does not keep (the hidden part of merged
+    // cells reads blank after): remembered, or the next round reads the blank
+    // as the PM clearing the cell and wipes the app's value.
+    const filled = plan.cellWrites.filter((c) => c.markerId && !isBlankValue(c.value));
+    if (filled.length) {
+      const back = await provider.readCells(link.file_id, filled);
+      filled.forEach((c, i) => {
+        if (isBlankValue(back[i])) plan.state.stuck = { ...(plan.state.stuck || {}), [`${c.markerId}|${c.key}`]: true };
+      });
+    }
     if (plan.appends.length) await provider.appendRows(link.file_id, plan.appends);
     if (plan.deletes.length) {
       const sorted = [...plan.deletes].sort((a, b) => (sameId(a.sheetId, b.sheetId) ? b.row - a.row : String(a.sheetId).localeCompare(String(b.sheetId))));
@@ -169,6 +204,8 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
     }
     wroteAt = new Date().toISOString();
   }
+  if (hasWork(plan)) await writePlan().catch(protectedOnRefusal);
+  if (retry) return { status: 'retry' };
   const writes = { ...fills, ...plan.markerWrites };
   if (Object.keys(writes).length) await saveMarkers(writes);
 
@@ -182,6 +219,7 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
       // "Save in" folder) is the link's and rides along.
       state: {
         ...(typeof link.state?.folder === 'string' ? { folder: link.state.folder } : {}),
+        ...(typeof link.state?.folderLabel === 'string' ? { folderLabel: link.state.folderLabel } : {}),
         ...plan.state,
         ...(wroteAt ? { lastWriteAt: wroteAt } : {}),
       },
