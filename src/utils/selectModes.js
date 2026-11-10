@@ -370,6 +370,15 @@ export function isSelectionGestureActive(interactionState, surveyMarkerDragMode 
     || shouldHideSelectionChrome(SURVEY_MARKER_DRAG_GESTURE[surveyMarkerDragMode]);
 }
 
+/**
+ * True while any page layer has a mark held mid-move / resize / rotate (the
+ * data-selection-gesture flag above). Undo, Delete and Duplicate wait for the
+ * release.
+ */
+export function selectionGestureRunning(doc = typeof document !== 'undefined' ? document : null) {
+  return !!doc?.querySelector?.('[data-selection-gesture="true"]');
+}
+
 /** Rule 12 — none of these ever drop the selection (none is a tool switch). */
 export const SELECTION_SURVIVES = Object.freeze([
   'scroll', 'zoom', 'page-change', 'panel-open',

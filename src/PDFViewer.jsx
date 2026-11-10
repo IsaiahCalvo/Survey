@@ -417,7 +417,7 @@ import { IDLE_REMOTE_PDF_STATE, PAGE_OP_BLOCKED_MESSAGE, PAGE_OP_SYNC_FLAG, clea
 import { usePageViewDocument } from './hooks/usePageViewDocument.js';
 import { getPageViewBase } from './utils/pageViewDocument.js';
 import { destroyPdfDocument, pdfOrDestroy } from './utils/destroyPdfDocument.js';
-import { getSelectFamilyTransition, getToolSwitchSelectionClearReason, isSelectFamilyTool, loadSelectMode, resolveEscape, resolveTextDoubleClick, resolveToolPress, saveSelectMode, shouldBackdropPressDeselect, shouldEscapeDeselect, shouldShowHoverHalo } from './utils/selectModes.js';
+import { getSelectFamilyTransition, getToolSwitchSelectionClearReason, isSelectFamilyTool, loadSelectMode, resolveEscape, resolveTextDoubleClick, resolveToolPress, saveSelectMode, selectionGestureRunning, shouldBackdropPressDeselect, shouldEscapeDeselect, shouldShowHoverHalo } from './utils/selectModes.js';
 import { classifyPagePress, ownGroupMarkFilter } from './utils/toolPressRouting.js';
 import { CALLOUT_MARK_GROUP, getMarkGroup } from './utils/markToolGroup.js';
 import { dropStashedSelection, hasAnyPageSelection, isItemSelected, pageHasSelection } from './utils/pageSelectionPresence.js';
@@ -3128,6 +3128,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       if (isUndoRedoBlocked(document)) return;
 
       e.preventDefault();
+      // Undo / Redo wait while a mark is held mid-move: Undo took back a
+      // different mark, and the release then cleared Redo for good (R4-C K1).
+      if (selectionGestureRunning()) {
+        if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+        return;
+      }
       if (typeof e.stopImmediatePropagation === 'function') {
         e.stopImmediatePropagation();
       } else {
@@ -4309,7 +4315,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   useEffect(() => {
     const onKey = (event) => {
       // Only the front viewer: Home and other tabs keep their own keys.
-      if (!marksHidden() || undoRedoKeyActiveRef.current === false || isTypingTarget(event.target)) return;
+      if (undoRedoKeyActiveRef.current === false || isTypingTarget(event.target)) return;
+      // While a mark is held mid-move / resize / rotate, Delete, Duplicate,
+      // Cut, Paste and Group wait for the release (R4-C K1: Delete mid-resize
+      // threw, Ctrl+D copied the mark at its old place). Escape still cancels.
+      const gesture = selectionGestureRunning();
+      if (!marksHidden() && !gesture) return;
       const key = String(event.key || '');
       const mod = event.ctrlKey || event.metaKey;
       const blocked = key === 'Delete' || key === 'Backspace' || (mod && /^[axdvgl]$/i.test(key));
