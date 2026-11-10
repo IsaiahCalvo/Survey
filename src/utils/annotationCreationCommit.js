@@ -15,6 +15,7 @@ import {
   tagDrawnCenteredStrokeGeometry,
 } from './shapeCommitGeometry.js';
 import { createProductionPaperInk } from './productionPaperInk.js';
+import { dashForLineStyle } from './lineStyleOptions.js';
 import { toolSupportsCloudBorderStyle } from './pdfAnnotationAppearance.js';
 import { normalizePolyPointsToLocal } from './polyDraft.js';
 import { round2 } from './annotationCommitRounding.js';
@@ -105,12 +106,9 @@ const applyBorderStyle = (json, { tool, lineBorderStyle, cloudIntensity }) => {
       ...(json.data || {}),
       pdfCloudIntensity: Math.max(1, Number(cloudIntensity) || 2),
     };
-  } else if (lineBorderStyle === 'dashed') {
-    json.strokeDashArray = [6, 4];
-  } else if (lineBorderStyle === 'dotted') {
-    json.strokeDashArray = [2, 4];
   } else {
-    json.strokeDashArray = null;
+    // Dashed, Dotted, and (Nightly 'line-dashes') Long dash and Dash-dot.
+    json.strokeDashArray = dashForLineStyle(lineBorderStyle);
   }
   return json;
 };

@@ -685,6 +685,8 @@ const LINE_STYLE_SAMPLE_ICONS = {
   solid: 'lineSampleSolid',
   dashed: 'lineSampleDashed',
   dotted: 'lineSampleDotted',
+  longDash: 'lineSampleLongDash',
+  dashDot: 'lineSampleDashDot',
   cloud: 'lineSampleCloud',
 };
 // Owner 2026-10-02 (phone/desktop consistency): the samples are the desktop's
@@ -2016,6 +2018,10 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
     { value: 'solid', label: 'Solid' },
     { value: 'dashed', label: 'Dashed' },
     { value: 'dotted', label: 'Dotted' },
+    // Nightly 'line-dashes' (not on a callout).
+    ...(isFeatureOn('line-dashes') && tool !== 'callout'
+      ? [{ value: 'longDash', label: 'Long dash' }, { value: 'dashDot', label: 'Dash-dot' }]
+      : []),
     /* Cloud is offered on every shape a revision cloud can enclose or trace and
        never on an arrow, a counter or a single straight line. supportsCloudStyle
        mirrors the desktop gate exactly. */

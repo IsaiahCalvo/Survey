@@ -502,6 +502,18 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
+    lineSampleLongDash: (size, color, style, className) => (
+      <svg width={size} height={size / 2} viewBox="0 0 24 12" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M1 6H9.5M14.5 6H23" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+
+    lineSampleDashDot: (size, color, style, className) => (
+      <svg width={size} height={size / 2} viewBox="0 0 24 12" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M1 6H7.5M11 6H11.5M15 6H21.5" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+
     lineSampleDotted: (size, color, style, className) => (
       <svg width={size} height={size / 2} viewBox="0 0 24 12" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
         <path d="M1 6H23" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeDasharray="1 4" />

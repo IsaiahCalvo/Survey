@@ -11,6 +11,9 @@ const DASH = {
   solid: null,
   dashed: (s) => `${Math.max(3, s * 3)} ${Math.max(2.5, s * 2)}`,
   dotted: (s) => `0 ${Math.max(3, s * 2.2)}`,
+  // Nightly 'line-dashes': the mark's 13 : 6 and 11 : 4 : 2 : 4 runs, scaled.
+  longDash: (s) => `${Math.max(6, s * 6.5)} ${Math.max(3, s * 3)}`,
+  dashDot: (s) => `${Math.max(5, s * 5.5)} ${Math.max(2, s * 2)} ${Math.max(1, s)} ${Math.max(2, s * 2)}`,
 };
 
 /** One head, drawn pointing right with its tip at (x, y). */

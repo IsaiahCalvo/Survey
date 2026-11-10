@@ -43,7 +43,7 @@ import MeasureEditPopover from './MeasureEditPopover';
 import { watchLightPopover } from './dismissRules.js';
 import { useMenuFocus } from '../hooks/useMenuFocus.js';
 import { HISTORY_PAGE_SELECTION_EVENT } from '../utils/historyMarkFilter.js';
-import { LINE_STYLE_OPTIONS, LINE_STYLE_SAMPLE_ICONS } from '../utils/lineStyleOptions.js';
+import { LINE_STYLE_SAMPLE_ICONS, lineStyleOptionsWith } from '../utils/lineStyleOptions.js';
 import {
   QUICK_BAR_WIDTHS,
   computeSelectionQuickBarPosition,
@@ -670,7 +670,7 @@ export default function SelectionQuickBar({
       )}
       {plan?.style && (
         <div className="selection-quick-bar__styles" role="group" aria-label="Line style">
-          {LINE_STYLE_OPTIONS
+          {lineStyleOptionsWith(isFeatureOn('line-dashes') && api?.contextTool !== 'callout')
             .filter((option) => option.value !== 'cloud' || api?.supportsCloudStyle)
             .map((option) => {
               const current = !styleMixed && option.value === styleValue;

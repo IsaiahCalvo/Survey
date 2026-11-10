@@ -283,6 +283,7 @@ import { getActivePageRegionId, getPageAnnotationVisibilityState, isAnnotationVi
 // KAL-88 — shared creation scope stamp (Decision 11 companion); used by the
 // counter drop so counters scope exactly like pen/shape/text creations.
 import { applyScope as applyAnnotationCreationScope, applyPasteScope, buildBoundaryShapeCommitJSON, buildLineCommitJSON, buildPolyShapeCommitJSON, isTapeMark, toggleTapeRevealed } from './utils/annotationCreationCommit';
+import { dashForLineStyle, isDashLineStyle } from './utils/lineStyleOptions.js';
 import { createCallout as makeCalloutDraft, defaultCalloutStyle } from './components/Callout/types';
 import { shouldAutoSelectAfterCommit } from './utils/autoSelectAfterCommit';
 import { isSurveyScopedHistoryEvent, resolveHistoryEntryContext } from './utils/historyContextRestore';
@@ -9636,10 +9637,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         strokeDashArray: null,
         data: { pdfCloudIntensity: Math.max(1, Number(cloudIntensity) || 2) },
       });
-    } else if (next === 'dashed') {
-      handlePatchSelectedAnnotation({ strokeDashArray: [6, 4], data: { pdfCloudIntensity: null } });
-    } else if (next === 'dotted') {
-      handlePatchSelectedAnnotation({ strokeDashArray: [2, 4], data: { pdfCloudIntensity: null } });
+    } else if (isDashLineStyle(next)) {
+      handlePatchSelectedAnnotation({ strokeDashArray: dashForLineStyle(next), data: { pdfCloudIntensity: null } });
     } else {
       handlePatchSelectedAnnotation({ strokeDashArray: null, data: { pdfCloudIntensity: null } });
     }

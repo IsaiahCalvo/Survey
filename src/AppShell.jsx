@@ -141,7 +141,7 @@ import { POLYLINE_CURVE_SET_EVENT } from './utils/polySpline.js';
 import { sanitizeZoomInput } from './utils/pageNavigationMath.js';
 import { showsColourRule, showsPaintSwatch, showsQuickColourDots } from './utils/toolbarColourGroup.js';
 import { isAreaEditing, REGION_TOOLBAR_OPENING_STATE, resolveToolBarGroup, showsFormatRow, showsSurveyRow } from './utils/toolbarRows.js';
-import { LINE_STYLE_OPTIONS, LINE_STYLE_SAMPLE_ICONS } from './utils/lineStyleOptions.js';
+import { LINE_STYLE_SAMPLE_ICONS, lineStyleOptionsWith } from './utils/lineStyleOptions.js';
 import SelectionQuickBar from './components/SelectionQuickBar.jsx';
 import { isToolGroupPressed } from './utils/toolbarToolPressed.js';
 import { pendingInviteRedirect } from './utils/pendingInvite.js';
@@ -2251,6 +2251,7 @@ export default function App({ devPreviewReturnTab = null }) {
   // Hide all marks (Nightly, 'hide-marks'): an eye in the right rail and a
   // chip over the page while they are hidden (utils/marksHidden.js).
   const [hideMarksEnabled] = useState(() => isFeatureOn('hide-marks'));
+  const [lineDashesOn] = useState(() => isFeatureOn('line-dashes'));
   const allMarksHidden = useMarksHidden();
   // Focus mode (Nightly, 'focus-mode'; utils/focusMode.js): no tab strip or
   // side rails, browser full screen, an Exit chip that always shows.
@@ -4503,7 +4504,10 @@ export default function App({ devPreviewReturnTab = null }) {
                   // (no row ticked) until one is chosen for all of them.
                   const styleMixed = !!bottomToolbarApi.selectionMixed?.lineStyle;
                   if (bottomToolbarApi.selectionCapabilities?.lineStyle === false) return null;
-                  const styleOptions = LINE_STYLE_OPTIONS.filter((option) => option.value !== 'cloud' || bottomToolbarApi.supportsCloudStyle);
+                  // Nightly 'line-dashes': Long dash and Dash-dot too (not on a
+                  // callout, which keeps Solid / Dashed / Dotted / Cloud).
+                  const styleOptions = lineStyleOptionsWith(lineDashesOn && bottomToolbarApi.contextTool !== 'callout')
+                    .filter((option) => option.value !== 'cloud' || bottomToolbarApi.supportsCloudStyle);
                   return toolbarSlot('style', (compact) => (
                   <AnnotationDropdown
                     compact={compact}

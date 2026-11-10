@@ -313,6 +313,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Drag inside a picked mark to move it',
     stage: 'beta',
   }),
+  'line-dashes': Object.freeze({
+    label: 'Line styles: Long dash and Dash-dot as well as Solid, Dashed and Dotted',
+    stage: 'beta',
+  }),
   'tape-tool': Object.freeze({
     label: 'Tape: an opaque band that covers part of the page; tap it under Pan to see what is under it',
     stage: 'beta',

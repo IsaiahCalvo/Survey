@@ -22,6 +22,7 @@
  */
 
 import { composeColorForPatch } from './annotationData.js';
+import { dashForLineStyle, isDashLineStyle, lineStyleForDash } from './lineStyleOptions.js';
 import { renderPathToSvgAttrs } from './svgPathAttrs.js';
 import { createInkAnnotation, boundsOfCommands } from './paperAnnotationGeometry.js';
 import { isAbsoluteInkGeometry } from './inkGeometryTransform.js';
@@ -191,12 +192,7 @@ const lineStyleOf = (annotation) => {
     && (cloudEngineKindForShape(lower(annotation.type)) || lower(annotation.type) === 'textbox')) {
     return 'cloud';
   }
-  const dash = Array.isArray(annotation?.strokeDashArray) ? annotation.strokeDashArray : null;
-  if (dash && dash.length >= 2) {
-    if (Number(dash[0]) === 6) return 'dashed';
-    if (Number(dash[0]) === 2) return 'dotted';
-  }
-  return 'solid';
+  return lineStyleForDash(annotation?.strokeDashArray);
 };
 
 /**
@@ -310,10 +306,6 @@ export function rebuildInkAtWidth(annotation, width) {
   };
 }
 
-const DASH_FOR_STYLE = {
-  dashed: [6, 4],
-  dotted: [2, 4],
-};
 
 const mergeData = (annotation, dataPatch) => ({
   ...annotation,
@@ -388,10 +380,10 @@ export function applyRestyleChange(annotation, change) {
         if (current.lineStyle === 'cloud' && current.cloudIntensity === intensity) return null;
         return mergeData({ ...annotation, strokeDashArray: null }, { pdfCloudIntensity: intensity });
       }
-      if (style !== 'solid' && style !== 'dashed' && style !== 'dotted') return null;
+      if (style !== 'solid' && !isDashLineStyle(style)) return null;
       if (current.lineStyle === style) return null;
       return mergeData(
-        { ...annotation, strokeDashArray: DASH_FOR_STYLE[style] || null },
+        { ...annotation, strokeDashArray: dashForLineStyle(style) },
         { pdfCloudIntensity: null },
       );
     }
