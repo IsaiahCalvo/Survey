@@ -4373,7 +4373,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     ? 100
                     : bottomToolbarApi.contextTool === 'counter'
                       ? COUNTER_SIZE_MAX
-                      : 50}
+                      : bottomToolbarApi.contextTool === 'tape' ? 100 : 50}
                   // UX 2026-09-09: line widths keep one decimal (the Cloud
                   // style's 2.5 default); counter/eraser sizes stay whole.
                   decimals={bottomToolbarApi.activeTool === 'eraser' || bottomToolbarApi.contextTool === 'counter'
@@ -4383,7 +4383,9 @@ export default function App({ devPreviewReturnTab = null }) {
                     ? ANNOTATION_SIZE_PRESETS.eraser
                     : bottomToolbarApi.contextTool === 'counter'
                       ? ANNOTATION_SIZE_PRESETS.counter
-                      : ANNOTATION_SIZE_PRESETS.width}
+                      : bottomToolbarApi.contextTool === 'tape'
+                        ? ANNOTATION_SIZE_PRESETS.tape
+                        : ANNOTATION_SIZE_PRESETS.width}
                   onValueChange={(value) => {
                     const handler = bottomToolbarApi.activeTool === 'eraser'
                       ? bottomToolbarApi.handleEraserSizeInputChange

@@ -34,6 +34,7 @@ import {
 } from '../utils/selectionRemap.js';
 import { trackHandleZoom, untrackHandleZoom } from '../utils/liveHandleZoom.js';
 import { resizeCalloutBox } from '../utils/markBorderOutline.js';
+import { toggleTapeRevealed } from '../utils/annotationCreationCommit.js';
 // w59: one rule for where a moved mark lands (preview === save).
 import {
   markIdOf,
@@ -1673,6 +1674,24 @@ export function useSVGInteraction({
     // tightening happens in ONE place. Viewers never reach this handler
     // (ReadOnlyGate blocks pointer events at the SVG root).
     if (!canSelectAnnotationByIndex(index)) {
+      return;
+    }
+
+    // Tape (beta 'tape-tool', Drawboard PDF): a click under Select shows or
+    // covers what is under it, as under Pan. It never picks or moves the
+    // tape (a box drawn round it picks it). A drag that wanders does nothing.
+    if (annotations?.objects?.[index]?.data?.tape === true && !e.shiftKey && !selectedIds?.has?.(index)) {
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const page = annotations;
+      const onTapeUp = (up) => {
+        window.removeEventListener('pointerup', onTapeUp, true);
+        if (Math.hypot(up.clientX - startX, up.clientY - startY) > 4) return;
+        onSaveAnnotations?.(toggleTapeRevealed(page, index), {
+          source: 'tape:reveal', action: 'modify', checkpointPolicy: 'normal',
+        });
+      };
+      window.addEventListener('pointerup', onTapeUp, true);
       return;
     }
 

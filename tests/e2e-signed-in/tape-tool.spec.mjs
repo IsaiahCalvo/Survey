@@ -1,7 +1,8 @@
 // Tape (beta flag 'tape-tool', Drawboard PDF's Free-form > Tape): a freehand
-// opaque pastel band with a soft shadow that covers part of the page. A tap
-// under Pan shows it as an outline so what is under it shows; another tap
-// covers it again. The eraser takes it whole, never a bite. It saves.
+// opaque pastel band with a hard shadow that covers part of the page. A tap
+// under Pan or Select shows it as an outline so what is under it shows;
+// another tap covers it again. Each tap is an Undo step and is saved on the
+// mark. The eraser takes it whole, never a bite.
 import crypto from 'node:crypto';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { E2E_ACCOUNTS } from './accounts.mjs';
@@ -75,7 +76,7 @@ test('tape covers the page, a Pan tap reveals and covers again, the eraser takes
     await expect(tape).toHaveCount(1);
     await expect(tape).toHaveAttribute('data-tape', 'covered');
     // Opaque lilac with a shadow, at full strength.
-    await expect(tape).toHaveAttribute('fill', '#c9b6ec');
+    await expect(tape).toHaveAttribute('fill', '#ddc3ff');
     expect(await tape.evaluate((el) => getComputedStyle(el).filter)).toContain('drop-shadow');
     expect(await tape.evaluate((el) => Number(getComputedStyle(el).opacity))).toBe(1);
     // Its band is about 20 pt tall.
@@ -84,25 +85,44 @@ test('tape covers the page, a Pan tap reveals and covers again, the eraser takes
     expect(band).toBeLessThan(26);
     await page.screenshot({ path: test.info().outputPath('tape-covered.png') });
 
-    // Pan: a tap reveals (outline in its colour), another covers.
+    // Pan: a tap reveals (an outline in its colour at half strength),
+    // another covers.
     await page.keyboard.press('Escape');
     await page.keyboard.press('m');
     const tapAt = { x: box.x + box.width * 0.3, y: box.y + box.height * 0.35 };
     await page.mouse.click(tapAt.x, tapAt.y);
     await expect(tape).toHaveAttribute('data-tape', 'revealed');
     await expect(tape).toHaveAttribute('fill', 'none');
-    await expect(tape).toHaveAttribute('stroke', '#c9b6ec');
+    await expect(tape).toHaveAttribute('stroke', '#ddc3ff');
+    await expect(tape).toHaveAttribute('stroke-opacity', '0.5');
     await page.screenshot({ path: test.info().outputPath('tape-revealed.png') });
     await page.mouse.click(tapAt.x, tapAt.y);
     await expect(tape).toHaveAttribute('data-tape', 'covered');
     // The tap did not pick it.
     await expect(page.locator('[data-resize-handle]')).toHaveCount(0);
+    // Each tap is an Undo step: Undo takes the cover back (revealed), and
+    // Undo again the reveal (covered).
+    await page.keyboard.press('ControlOrMeta+z');
+    await expect(tape).toHaveAttribute('data-tape', 'revealed');
+    await page.keyboard.press('ControlOrMeta+z');
+    await expect(tape).toHaveAttribute('data-tape', 'covered');
 
-    // Saved: back after a reload, covered.
+    // Select: a click toggles too, and does not pick or move the tape.
+    await page.keyboard.press('v');
+    await page.mouse.click(tapAt.x, tapAt.y);
+    await expect(tape).toHaveAttribute('data-tape', 'revealed');
+    await expect(page.locator('[data-resize-handle]')).toHaveCount(0);
+
+    // Saved on the mark: still revealed after a reload.
     await page.waitForTimeout(2500);
     await page.reload();
     await expect(page.getByText(`${name} answer under the tape`)).toBeVisible({ timeout: 60_000 });
     await expect(page.locator(TAPE)).toHaveCount(1, { timeout: 30_000 });
+    await expect(page.locator(TAPE)).toHaveAttribute('data-tape', 'revealed');
+    await page.waitForTimeout(800);
+    await page.keyboard.press('m');
+    const box1 = await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').boundingBox();
+    await page.mouse.click(box1.x + box1.width * 0.3, box1.y + box1.height * 0.35);
     await expect(page.locator(TAPE)).toHaveAttribute('data-tape', 'covered');
 
     // The partial eraser takes the whole band (no bite); Undo brings it back.

@@ -1865,12 +1865,14 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
   const sizeLabel = isEraser || tool === 'counter' ? 'Size' : 'Width';
   const sizeValue = isEraser ? api.eraserSizeInputValue : api.strokeWidthInputValue;
   const sizeMin = tool === 'counter' ? COUNTER_SIZE_MIN : 1;
-  const sizeMax = isEraser ? 100 : tool === 'counter' ? COUNTER_SIZE_MAX : 50;
+  const sizeMax = isEraser || tool === 'tape' ? 100 : tool === 'counter' ? COUNTER_SIZE_MAX : 50;
   const sizePresets = isEraser
     ? ANNOTATION_SIZE_PRESETS.eraser
     : tool === 'counter'
       ? ANNOTATION_SIZE_PRESETS.counter
-      : ANNOTATION_SIZE_PRESETS.width;
+      : tool === 'tape'
+        ? ANNOTATION_SIZE_PRESETS.tape
+        : ANNOTATION_SIZE_PRESETS.width;
   const handleSizeDraft = (value) => {
     const handler = isEraser ? api.handleEraserSizeInputChange : api.handleStrokeWidthInputChange;
     handler?.({ target: { value } });
@@ -1984,7 +1986,7 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
     const list = presets.map((preset) => String(preset));
     return list.includes(value) && value ? list : [value, ...list].filter(Boolean);
   };
-  const widthOptions = withCurrentValue(ANNOTATION_SIZE_PRESETS.width, sizeValue).map((width) => ({
+  const widthOptions = withCurrentValue(tool === 'tape' ? ANNOTATION_SIZE_PRESETS.tape : ANNOTATION_SIZE_PRESETS.width, sizeValue).map((width) => ({
     value: width,
     label: `${width} pt`,
     // Owner 2026-10-26 (note item 33): the pill shows the number only; the

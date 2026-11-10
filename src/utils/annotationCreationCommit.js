@@ -423,3 +423,21 @@ export function buildFreehandCommitJSON({
 
 /** A Tape mark (beta 'tape-tool'). */
 export const isTapeMark = (obj) => obj?.data?.tape === true;
+
+/**
+ * The page with the tape at `index` revealed (or covered again). The state
+ * rides on the mark (data.tapeRevealed), so the toggle saves like any edit:
+ * one Undo step, kept after a reload, seen by others (Drawboard does the
+ * same). Anything that is not a tape leaves the page as it was.
+ */
+export function toggleTapeRevealed(page, index) {
+  const objects = Array.isArray(page?.objects) ? page.objects : null;
+  const tape = objects?.[index];
+  if (!isTapeMark(tape)) return page;
+  const data = { ...tape.data };
+  if (data.tapeRevealed === true) delete data.tapeRevealed;
+  else data.tapeRevealed = true;
+  const next = objects.slice();
+  next[index] = { ...tape, data };
+  return { ...page, objects: next };
+}

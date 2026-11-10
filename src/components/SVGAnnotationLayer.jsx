@@ -654,7 +654,6 @@ const SVGAnnotationLayerBody = memo(({
   activeLayerId = null,
   // Tape (beta 'tape-tool'): ids of tape marks this viewer has revealed with
   // a Pan tap (drawn as outlines; per viewer, never saved).
-  revealedTapeIds = null,
   // Selection / interaction props (Phase 9)
   onSaveAnnotations: onSaveAnnotationsProp,   // (updatedJSON, saveContext) => void
   // Owner after Test 46: a picked mark dragged onto another page moves there
@@ -4385,8 +4384,7 @@ const SVGAnnotationLayerBody = memo(({
         // there are no callout objects in annotationsByPage, so this never matches.
         element = null;
       } else if (objectType === 'path' && Array.isArray(obj.path) && obj.path.length > 0) {
-        element = renderPath(obj?.data?.tape === true && revealedTapeIds?.has(getAnnotationRenderIdentity(obj).annotationId)
-          ? { ...obj, __tapeRevealed: true } : obj, i);
+        element = renderPath(obj, i);
       } else if (isPdfStampProxy(obj)) {
         element = <image {...getPdfStampProxySvgProps(obj)} data-pdf-stamp-proxy="true" data-symbol-stamp={isSymbolStamp(obj) ? obj.data.symbolStamp.id : undefined} />;
       } else if (objectType === 'rect') {
@@ -4485,7 +4483,6 @@ const SVGAnnotationLayerBody = memo(({
     isPageInRenderWindow,
     width,
     height,
-    revealedTapeIds,
   ]);
 
   useLayoutEffect(() => {

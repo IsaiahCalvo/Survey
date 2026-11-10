@@ -343,8 +343,11 @@ const buildPaperCutsSvgD = (polygons) => (polygons || [])
  * @param {number} index - Array index for key fallback
  * @returns {React.ReactElement|null}
  */
-export const TAPE_SHADOW_FILTER = 'drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.28))';
-export const TAPE_REVEALED_OUTLINE_PX = 1.5;
+// Drawboard's, measured live (2026-11-10): 2 px left and 2 px down, no blur,
+// black at 10%; revealed, a 2 px outline in the tape's colour at 50%.
+export const TAPE_SHADOW_FILTER = 'drop-shadow(-2px 2px 0 rgba(0, 0, 0, 0.1))';
+export const TAPE_REVEALED_OUTLINE_PX = 2;
+export const TAPE_REVEALED_OUTLINE_OPACITY = 0.5;
 
 export const renderPath = (obj, index) => {
   if (!Array.isArray(obj.path) || obj.path.length === 0) return null;
@@ -446,12 +449,13 @@ export const renderPath = (obj, index) => {
     }
   }
 
-  // Tape (beta 'tape-tool', Drawboard PDF): an opaque band with a soft drop
-  // shadow. Revealed (a Pan tap, held per viewer by the page layer), it is an
-  // outline in its own colour so what is under it shows.
+  // Tape (beta 'tape-tool', Drawboard PDF): an opaque band with a hard drop
+  // shadow. Revealed (a tap under Pan or Select, saved on the mark as
+  // data.tapeRevealed), it is an outline in its own colour so what is under
+  // it shows.
   if (obj?.data?.tape === true) {
     const fill = obj.fill || attrs.fill;
-    const revealed = obj.__tapeRevealed === true;
+    const revealed = obj.data.tapeRevealed === true;
     return (
       <path
         key={key}
@@ -462,6 +466,7 @@ export const renderPath = (obj, index) => {
         fillRule={attrs.fillRule || 'evenodd'}
         stroke={revealed ? fill : 'none'}
         strokeWidth={revealed ? TAPE_REVEALED_OUTLINE_PX : 0}
+        strokeOpacity={revealed ? TAPE_REVEALED_OUTLINE_OPACITY : undefined}
         strokeLinejoin="round"
         vectorEffect={revealed ? 'non-scaling-stroke' : undefined}
         opacity={attrs.opacity}

@@ -1297,7 +1297,7 @@ const DEFAULT_TOOL_PREFERENCES = {
   highlighter: { strokeColor: '#ffff00', strokeWidth: 20, strokeOpacity: 50 },
   'text-highlight': { strokeColor: '#ffff00', strokeOpacity: 50 },
   // Tape (beta 'tape-tool'): Drawboard's lilac band, 20 pt, fully opaque.
-  tape: { strokeColor: '#c9b6ec', strokeWidth: 20, strokeOpacity: 100 },
+  tape: { strokeColor: '#ddc3ff', strokeWidth: 20, strokeOpacity: 100 },
   eraser: { strokeWidth: 10 },
   rect: { strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 0, strokeOpacity: 100 },
   ellipse: { strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 0, strokeOpacity: 100 },

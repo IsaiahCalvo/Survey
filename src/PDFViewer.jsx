@@ -282,7 +282,7 @@ import { fromFabricGroup, toFabricGroup } from './utils/calloutEditAdapter';
 import { getActivePageRegionId, getPageAnnotationVisibilityState, isAnnotationVisibleInSurveyMode, isSurveyVisibilityContext, normalizePageRegions, normalizeRegionVisibility, shouldStampActiveRegionId } from './utils/annotationVisibilityRules';
 // KAL-88 — shared creation scope stamp (Decision 11 companion); used by the
 // counter drop so counters scope exactly like pen/shape/text creations.
-import { applyScope as applyAnnotationCreationScope, applyPasteScope, buildBoundaryShapeCommitJSON, buildLineCommitJSON, buildPolyShapeCommitJSON, isTapeMark } from './utils/annotationCreationCommit';
+import { applyScope as applyAnnotationCreationScope, applyPasteScope, buildBoundaryShapeCommitJSON, buildLineCommitJSON, buildPolyShapeCommitJSON, isTapeMark, toggleTapeRevealed } from './utils/annotationCreationCommit';
 import { createCallout as makeCalloutDraft, defaultCalloutStyle } from './components/Callout/types';
 import { shouldAutoSelectAfterCommit } from './utils/autoSelectAfterCommit';
 import { isSurveyScopedHistoryEvent, resolveHistoryEntryContext } from './utils/historyContextRestore';
@@ -3199,7 +3199,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // Tape (beta 'tape-tool', Drawboard PDF): a band that covers part of the
   // page; a Pan tap reveals what is under it. Revealed tapes are per viewer.
   const [tapeToolEnabled] = useState(() => isFeatureOn('tape-tool'));
-  const [revealedTapeIds, setRevealedTapeIds] = useState(() => new Set());
   const prevMeasureModeRef = useRef(null);
   useEffect(() => {
     const prev = prevMeasureModeRef.current;
@@ -4450,18 +4449,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       if (hit.kind !== 'annotation') return;
       if (typeof hit.annotationIndex !== 'number' || hit.pageNumber == null) return;
       // Tape (Drawboard PDF): a Pan tap shows what is under it as an outline;
-      // another tap covers it again. Only this viewer's view changes.
-      const tapped = annotationsByPageRef.current?.[hit.pageNumber]?.objects?.[hit.annotationIndex];
-      if (isTapeMark(tapped)) {
-        const tapeId = getAnnotationRenderIdentity(tapped).annotationId;
-        if (tapeId) {
-          setRevealedTapeIds((previous) => {
-            const next = new Set(previous);
-            if (next.has(tapeId)) next.delete(tapeId); else next.add(tapeId);
-            return next;
-          });
-          return;
-        }
+      // another tap covers it again. The state is saved on the mark, so it
+      // is an Undo step, survives a reload and others see it, as in Drawboard.
+      const tapedPage = annotationsByPageRef.current?.[hit.pageNumber];
+      if (isTapeMark(tapedPage?.objects?.[hit.annotationIndex])) {
+        handleSaveAnnotations(hit.pageNumber, toggleTapeRevealed(tapedPage, hit.annotationIndex), {
+          source: 'tape:reveal', action: 'modify', checkpointPolicy: 'normal',
+        });
+        return;
       }
       panQuickClickAutoSelectAtRef.current = Date.now();
       if (!e.shiftKey) setSelectedCalloutIds((previous) => (previous instanceof Set && previous.size === 0 ? previous : new Set()));
@@ -9746,7 +9741,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     // blur-time DOM value so a fast edit cannot recommit a stale closure value.
     const isCounterSize = pickBarTool === 'counter' || getSelectedShapeMeta().isCounter;
     const minWidth = isCounterSize ? COUNTER_SIZE_MIN : 1;
-    const maxWidth = isCounterSize ? COUNTER_SIZE_MAX : 50;
+    const maxWidth = isCounterSize ? COUNTER_SIZE_MAX : (pickBarTool === 'tape' ? 100 : 50);
     const rawValue = String(event?.currentTarget?.value ?? strokeWidthInputValueRef.current ?? '').trim();
     // w41: an empty Width over picked marks of different widths means "leave
     // them" - never "set all of them to the minimum".
@@ -39380,7 +39375,6 @@ ${pageBlocks}
                                   layerVisibility={annotationLayerVisibility}
                                   hiddenLayerIds={hiddenLayerIds}
                                   activeLayerId={effectiveActiveLayerId}
-                                  revealedTapeIds={revealedTapeIds}
                                   onSaveAnnotations={getSvgLayerPageHandlers(pageNumber).onSaveAnnotations}
                                   onMoveMarksToPage={getSvgLayerPageHandlers(pageNumber).onMoveMarksToPage}
                                   onRequestEditMode={getSvgLayerPageHandlers(pageNumber).onRequestEditMode}
