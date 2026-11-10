@@ -12010,14 +12010,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // Speed (2026-11-09): work out the marks' geometry for the pages just past
   // the mounted window while the browser is idle, so a page scrolling into
   // view only builds its elements (warmMarkGeometry; ~80 ms of a 150-mark
-  // page's ~100 ms on the 36-sheet set).
+  // page's ~100 ms on the 36-sheet set). Nearest pages first, out to 24
+  // either side: one fast fling on a phone jumps 10+ pages, and a page it
+  // lands on unwarmed froze the swipe 0.3-0.4 s (2026-11-10).
   useEffect(() => {
     if (typeof requestIdleCallback !== 'function' || !pdfjsMountedPages.size) return undefined;
     const mounted = [...pdfjsMountedPages];
     const lo = Math.min(...mounted);
     const hi = Math.max(...mounted);
     const pages = [];
-    for (let d = 1; d <= 4; d += 1) pages.push(hi + d, lo - d);
+    for (let d = 1; d <= 24; d += 1) pages.push(hi + d, lo - d);
     let idleId = null;
     let at = 0;
     let from = 0;

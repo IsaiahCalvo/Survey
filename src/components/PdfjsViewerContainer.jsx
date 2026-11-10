@@ -186,6 +186,9 @@ const PAN_START_EVENT = 'survey-pdfjs-pan-start';
 const PAN_END_EVENT = 'survey-pdfjs-pan-end';
 // A finger glide slowed under GLIDE_SHARPEN_SPEED: the deep-zoom tile may draw.
 const GLIDE_SETTLING_EVENT = 'survey-pdfjs-glide-settling';
+// A zoom-limit ease or an edge spring finished: the view stands still at its
+// real scale, so the deep-zoom tile draws for what is on screen now.
+const ELASTIC_SETTLED_EVENT = 'survey-pdfjs-elastic-settled';
 const ZOOM_START_EVENT = 'survey-pdfjs-zoom-start';
 const ZOOM_END_EVENT = 'survey-pdfjs-zoom-end';
 const PINCH_START_EVENT = 'survey-pdfjs-pinch-start';
@@ -877,6 +880,13 @@ const DetailTile = memo(function DetailTile({ pdf, pageIndex, scale, rotation, l
     lastRenderStartedAtRef.current = performance.now();
 
     const hr = host.getBoundingClientRect();
+    // A zoom-limit ease (or an edge spring) draws the pages under a transform
+    // the box math below does not know about: the tile would be drawn for the
+    // wrong part of the page, and nothing redrew it once the ease ended, so a
+    // spring-back from past the maximum zoom left the view on the blurry base
+    // (owner 2026-11-10). Wait: ELASTIC_SETTLED_EVENT draws it when it ends.
+    const laidOutWidth = host.offsetWidth;
+    if (laidOutWidth > 0 && Math.abs(hr.width / (laidOutWidth * liveZoom) - 1) > 0.002) return;
     const sr = scroller.getBoundingClientRect();
     const vx = Math.max(0, sr.left - hr.left);
     const vy = Math.max(0, sr.top - hr.top);
@@ -1010,10 +1020,12 @@ const DetailTile = memo(function DetailTile({ pdf, pageIndex, scale, rotation, l
     window.addEventListener(PAN_START_EVENT, onPanStart);
     window.addEventListener(PAN_END_EVENT, onPanEnd);
     window.addEventListener(GLIDE_SETTLING_EVENT, onPanEnd);
+    window.addEventListener(ELASTIC_SETTLED_EVENT, onPanEnd);
     return () => {
       window.removeEventListener(PAN_START_EVENT, onPanStart);
       window.removeEventListener(PAN_END_EVENT, onPanEnd);
       window.removeEventListener(GLIDE_SETTLING_EVENT, onPanEnd);
+      window.removeEventListener(ELASTIC_SETTLED_EVENT, onPanEnd);
     };
   }, [render]);
 
@@ -3032,7 +3044,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const zoomed = had && Math.abs((elasticRef.current.z || 1) - 1) > 1e-4;
     elasticRef.current = null;
     if (zoomed) publishElasticZoom(1);
-    if (had && render) setLiveGestureFrame((frame) => frame + 1);
+    if (had && render) {
+      setLiveGestureFrame((frame) => frame + 1);
+      // Once that frame has dropped the leftover transform.
+      requestAnimationFrame(() => window.dispatchEvent(new Event(ELASTIC_SETTLED_EVENT)));
+    }
   }, [publishElasticZoom]);
 
   const stepElastic = useCallback((now) => {
@@ -3066,6 +3082,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     if (done) elasticRef.current = null;
     else elasticRafRef.current = requestAnimationFrame(stepElastic);
     paintLiveFrame();
+    if (done) window.dispatchEvent(new Event(ELASTIC_SETTLED_EVENT));
   }, [paintLiveFrame, publishElasticZoom]);
 
   // Start (or retarget) the return home from the CURRENT leftover.
