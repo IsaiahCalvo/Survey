@@ -89,6 +89,8 @@ export function restoreTextLayer(pdf, key, container) {
   return entry.textContent;
 }
 
+export { whenViewerStill, TEXT_LAYER_STILL_WAIT_MS, TEXT_LAYER_QUIET_MS } from './viewerMotion.js';
+
 const now = () => (typeof performance !== 'undefined' && typeof performance.now === 'function'
   ? performance.now()
   : Date.now());
@@ -112,7 +114,7 @@ function nextTask() {
  * lays out each slice as it arrives, so every slice after the first waits for
  * a task of its own. Slice size follows how long the last one took.
  */
-export function textContentInSlices(textContent) {
+export function textContentInSlices(textContent, { waitForStill = null } = {}) {
   const items = Array.isArray(textContent?.items) ? textContent.items : [];
   let index = 0;
   let size = SLICE_FIRST_ITEMS;
@@ -123,9 +125,16 @@ export function textContentInSlices(textContent) {
       // pdf.js asks for the next slice right after it laid out the last one.
       if (handedAt) {
         const spent = Math.max(0.5, now() - handedAt);
-        size = Math.max(SLICE_MIN_ITEMS, Math.min(SLICE_MAX_ITEMS, Math.round(size * (SLICE_TARGET_MS / spent))));
+        // At most double: a run of cheap items (empty runs, spaces) must not
+        // grow the next slice past what a run of real text can lay out in a
+        // frame (36-sheet set: 60-140 ms slices mid-scroll).
+        size = Math.max(SLICE_MIN_ITEMS, Math.min(SLICE_MAX_ITEMS, size * 2, Math.round(size * (SLICE_TARGET_MS / spent))));
         await nextTask();
       }
+      // While the page is scrolling, zooming or panning, wait: each slice is
+      // main-thread time taken from the motion, and a page scrolled past is
+      // dropped before it needs its text.
+      if (waitForStill) await waitForStill();
       if (stopped) return;
       const first = index === 0;
       const slice = items.slice(index, index + size);
