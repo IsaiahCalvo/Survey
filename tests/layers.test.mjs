@@ -212,3 +212,15 @@ test('selectableMarkIndices skips hidden marks and marks on hidden layers', asyn
   assert.deepEqual(selectableMarkIndices(objects, defaultHidden), [1]);
   assert.deepEqual(selectableMarkIndices(undefined, null), []);
 });
+
+test('a layer name already in use counts up instead of repeating', () => {
+  let { state } = addLayer(null, { id: 'l1', name: 'Electrical' });
+  ({ state } = addLayer(state, { id: 'l2', name: 'electrical' }));
+  assert.equal(state.layers.find((l) => l.id === 'l2').name, 'electrical 2');
+  ({ state } = addLayer(state, { id: 'l3' }));
+  state = renameLayer(state, 'l3', 'Electrical');
+  assert.equal(state.layers.find((l) => l.id === 'l3').name, 'Electrical 3');
+  // Renaming a layer to its own name keeps it.
+  state = renameLayer(state, 'l1', 'Electrical');
+  assert.equal(state.layers.find((l) => l.id === 'l1').name, 'Electrical');
+});

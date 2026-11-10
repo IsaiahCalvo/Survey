@@ -545,8 +545,9 @@ export default function MarkLibraryPanel({ phone = false, headActionsHost = null
           <button type="button" className="hub-btn" onClick={() => exportItems(selectedItems)}>Export</button>
         </div>
       )}
-      {/* How to place an item means nothing while there is nothing to place. */}
-      {(items.length > 0 || armedId) && (
+      {/* How to place an item means nothing while there is nothing to place,
+          or while a press picks items instead of placing them. */}
+      {((items.length > 0 && !selectMode) || armedId) && (
       <div className="mark-library__hint">
         {armedId
           ? 'Click the page to place it. Esc lets go.'
