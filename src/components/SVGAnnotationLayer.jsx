@@ -34,6 +34,7 @@ import { deepClone } from '../utils/deepClone.js';
 import { clampPointToPage, squareShapeEnd } from '../utils/pageEdgeRules.js';
 import { keepDrawnArrowOnPage } from '../utils/arrowheadEdge.js';
 import { isFeatureOn } from '../featureFlags.js';
+import { startMarkDragAutoScroll } from '../utils/markDragAutoScroll.js';
 
 // Shift draws a square or circle (Nightly, 'shift-square'); read only while
 // Shift is held.
@@ -449,6 +450,8 @@ const normalizeSurveyMarkerBoundsValue = (bounds) => {
 // on this layer (previews render through the SAME committed renderers below,
 // so what you see while dragging IS what commits — no cross-renderer seam).
 const SHAPE_CREATION_TOOLS = ['rect', 'ellipse', 'line', 'arrow', 'survey-marker'];
+// Nightly 'drag-auto-scroll': the tools whose drag scrolls the view at its edge.
+const AUTO_SCROLL_TOOLS = new Set([...SHAPE_CREATION_TOOLS, 'select', 'callout', 'cloud', 'tape']);
 // 'survey-marker-freehand' is the Survey Marker tool in its Freehand mode (owner
 // 2026-10-13): drawn with the same freehand gesture, committed as a marker.
 // 'tape' (beta 'tape-tool') is pen ink in an opaque pastel band.
@@ -925,6 +928,9 @@ const SVGAnnotationLayerBody = memo(({
   // Refs
   // ---------------------------------------------------------------------------
   const svgRef = useRef(null);
+  // Nightly 'drag-auto-scroll': stops the edge watcher of the current press.
+  const autoScrollStopRef = useRef(null);
+  useEffect(() => () => autoScrollStopRef.current?.(), []);
   // Page and marks in one frame (styles/pageReveal.css): the page's drawing
   // waits for this layer to be on the page.
   useLayoutEffect(() => {
@@ -7954,6 +7960,11 @@ const SVGAnnotationLayerBody = memo(({
         // side even when the browser hit-tests it onto the mark beneath the
         // side band (Android stylus): see claimPolyEdgePress.
         e.currentTarget.querySelector?.('[data-poly-edge-hit]')?.__claimPolyEdgePress?.(e);
+        // Nightly 'drag-auto-scroll': a drag held near the view's edge scrolls it.
+        if (isInteractive && e.button === 0 && AUTO_SCROLL_TOOLS.has(activeTool) && isFeatureOn('drag-auto-scroll')) {
+          autoScrollStopRef.current?.();
+          autoScrollStopRef.current = startMarkDragAutoScroll(svgRef.current, e);
+        }
       }}
       onPointerDown={(e) => {
         if (isInteractive) {

@@ -349,6 +349,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Undo while typing steps back one word at a time, not the whole typing session',
     stage: 'beta',
   }),
+  'drag-auto-scroll': Object.freeze({
+    label: 'Drawing a shape, moving a mark or box selecting near the edge of the view scrolls it',
+    stage: 'beta',
+  }),
   'tape-tool': Object.freeze({
     label: 'Tape: an opaque band that covers part of the page; tap it under Pan to see what is under it',
     stage: 'beta',
