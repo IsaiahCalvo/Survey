@@ -168,6 +168,11 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Export filters: only some people\'s marks or some layers, plus comments as a CSV',
     stage: 'beta',
   }),
+  // Drawboard Projects round 2 (2026-11-10): its "Review & Publish" step.
+  'upload-check': Object.freeze({
+    label: 'Upload check: fix each file\'s name, sheet number and revision before it uploads',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';
