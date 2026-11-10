@@ -111,13 +111,13 @@ test('mention email: only the author, once, soon after posting; never the author
   assert.equal(commentExcerpt('x'.repeat(300), 10), `${'x'.repeat(9)}…`);
   assert.equal(commentLink('https://surveytool-nightly.vercel.app', 'd1', 'c1'), 'https://surveytool-nightly.vercel.app/?docId=d1&comment=c1');
   assert.equal(commentLink('https://surveytool.app', 'd1', 'c1'), 'https://surveytool.app/?docId=d1&comment=c1');
-  // Comments are Nightly-only: an unknown origin (desktop, phone app) gets Nightly.
-  assert.equal(commentLink('https://evil.test', 'd1', 'c1'), 'https://surveytool-nightly.vercel.app/?docId=d1&comment=c1');
-  assert.equal(commentLink('capacitor://localhost', 'd1', 'c1'), 'https://surveytool-nightly.vercel.app/?docId=d1&comment=c1');
+  // Comments are on surveytool.app: an unknown origin (desktop, phone app) gets the stable link.
+  assert.equal(commentLink('https://evil.test', 'd1', 'c1'), 'https://surveytool.app/?docId=d1&comment=c1');
+  assert.equal(commentLink('capacitor://localhost', 'd1', 'c1'), 'https://surveytool.app/?docId=d1&comment=c1');
 });
 
-test('comments are a beta flag with a server row, a rail panel id, and a mention function', () => {
-  assert.equal(FEATURE_FLAGS['mark-comments']?.stage, 'beta');
+test('comments are a rollout flag with a server row, a rail panel id, and a mention function', () => {
+  assert.equal(FEATURE_FLAGS['mark-comments']?.stage, 'rollout');
   assert.ok(PANEL_IDS.includes('comments'));
   const sql = readFileSync(new URL('../supabase/migrations/20261028050000_mark_comments.sql', import.meta.url), 'utf8');
   assert.match(sql, /\('mark-comments', 'off'/);
