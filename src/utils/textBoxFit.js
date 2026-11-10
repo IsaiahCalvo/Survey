@@ -39,6 +39,31 @@ export function growTextBoxToFit(obj, naturalInnerHeight, padding = TEXT_PADDING
   };
 }
 
+/**
+ * Nightly 'text-fit-height' (Drawboard PDF Pro trial, t2-tools-deep.md): a
+ * side drag fits the box to its words both ways, so widening a box that grew
+ * tall when narrowed brings it back down (Drawboard: one line, 20 px). Same
+ * corner rule as growTextBoxToFit for a turned box.
+ */
+export function fitTextBoxToWords(obj, naturalInnerHeight, padding = TEXT_PADDING) {
+  const left = Number(obj?.left) || 0;
+  const top = Number(obj?.top) || 0;
+  const height = Number(obj?.height) || 0;
+  const natural = Number(naturalInnerHeight);
+  if (!Number.isFinite(natural) || natural <= 0) return { left, top, height };
+  const needed = Math.ceil(natural) + 2 * padding;
+  if (Math.abs(needed - height) <= 0.5) return { left, top, height };
+  const dh = needed - height;
+  const angle = Number(obj?.angle) || 0;
+  if (!angle) return { left, top, height: needed };
+  const rad = (angle * Math.PI) / 180;
+  return {
+    left: left - (dh / 2) * Math.sin(rad),
+    top: top - (dh / 2) * (1 - Math.cos(rad)),
+    height: needed,
+  };
+}
+
 // A React style value as a DOM style string: React writes these keys as bare
 // numbers (a bold 700 weight must not become "700px"); any other number is px.
 const UNITLESS_STYLE_KEYS = new Set(['lineHeight', 'fontWeight', 'opacity', 'zIndex', 'flex', 'flexGrow', 'flexShrink']);

@@ -1,0 +1,33 @@
+/* Nightly 'pen-types': three round pen tiles in a row. */
+.pen-types { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.pen-types__tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 4px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.pen-types__tile:hover { background: rgba(127, 127, 127, 0.12); }
+.pen-types__disc {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: #23272e;
+  color: #ff5a5f;
+  box-shadow: 0 0 0 2px transparent;
+}
+.pen-types__tile.is-current .pen-types__disc { box-shadow: 0 0 0 2px #ffffff, 0 0 0 3px rgba(0, 0, 0, 0.35); }
+.pen-types__name { font-weight: 600; }
+.pen-types__sub { opacity: 0.7; white-space: nowrap; font-size: 11px; }
+.annotation-dropdown__popover.pen-types-popover { padding: 10px; min-width: 300px; max-width: min(360px, calc(100vw - 24px)); }
+.pen-types__pill-sample { display: inline-flex; width: 22px; height: 16px; overflow: hidden; }
+.pen-types__pill-sample svg { width: 22px; height: 16px; }

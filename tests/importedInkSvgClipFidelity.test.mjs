@@ -64,7 +64,7 @@ test('real imported Ink 67R keeps its authored curve stored and is drawn as its 
   );
   assert.match(
     rendererSource,
-    /const paperSurvivorD = paperCutsToSvgD\(obj\?\.polygons\);/,
+    /const paperSurvivorD = Array\.isArray\(paperSource\?\.path\) && paperSource\.path\.length > 0\s*\?\s*paperCutsToSvgD\(obj\?\.polygons\)/,
     'SVG presentation must draw the survivor geometry',
   );
   assert.doesNotMatch(

@@ -566,7 +566,21 @@ test('a cold open fills the offline copy after the open; a local edit or a close
       Y.applyUpdate(first, provider.stored[0]);
       assert.deepEqual([...first.getMap('marks').keys()].sort(), ['k1', 'k2'], 'the snapshot is stored first, as one update');
       assert.deepEqual(replayed(provider), ['k1', 'k2', 'k3'], 'the copy holds the snapshot and the later edit');
-      assert.deepEqual([...provider.doc.getMap('marks').keys()].sort(), ['k1', 'k2', 'k3']);
+      // Stored as their own bytes (2026-11-10): the copy in memory is never
+      // filled, so the snapshot is not decoded on this thread again.
+      assert.equal(provider.doc.store.clients.size, 0, 'the copy in memory stays empty');
+
+      // y-indexeddb's compaction applies every stored update to its doc.
+      // From then on updates go into the (now filled) doc as before.
+      Y.transact(provider.doc, () => {
+        for (const update of provider.stored) Y.applyUpdate(provider.doc, update);
+      }, provider);
+      const storedBefore = provider.stored.length;
+      handle.applyByPage({ 1: { objects: [...handle.getByPage()[1].objects, rect('k4')] } });
+      await handle.drain();
+      assert.deepEqual([...provider.doc.getMap('marks').keys()].sort(), ['k1', 'k2', 'k3', 'k4'], 'the filled copy takes the edit');
+      assert.equal(provider.stored.length, storedBefore + 1, 'one update stored for it');
+      assert.deepEqual(replayed(provider), ['k1', 'k2', 'k3', 'k4']);
     } finally {
       await handle.destroy();
     }
@@ -576,7 +590,7 @@ test('a cold open fills the offline copy after the open; a local edit or a close
     const quickProvider = providers.at(-1);
     assert.equal(quickProvider.stored.length, 0);
     await quick.destroy();
-    assert.deepEqual(replayed(quickProvider), ['k1', 'k2', 'k3'], 'the close filled the copy');
+    assert.deepEqual(replayed(quickProvider), ['k1', 'k2', 'k3', 'k4'], 'the close filled the copy');
   } finally {
     globalThis.indexedDB = previousIndexedDb;
   }

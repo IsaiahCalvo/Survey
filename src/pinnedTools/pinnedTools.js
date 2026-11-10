@@ -67,7 +67,7 @@ export function matchPinKinds(query) {
 // and the size in its corner. Which of those a tool has:
 // Tools whose line style (solid / dashed / dotted / cloud) is part of the pin.
 const LINE_STYLE_TOOLS = new Set(['rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'callout', 'text']);
-const LINE_STYLES = new Set(['solid', 'dashed', 'dotted', 'cloud']);
+const LINE_STYLES = new Set(['solid', 'dashed', 'dotted', 'longDash', 'dashDot', 'cloud']);
 const CLOUD_LINE_TOOLS = new Set(['ellipse', 'polygon', 'callout', 'text']);
 // Tools with a fill as well as a line.
 const FILL_TOOLS = new Set(['rect', 'ellipse', 'polygon', 'callout', 'counter']);

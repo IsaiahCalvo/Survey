@@ -333,7 +333,13 @@ function getPathBBox(obj) {
   // Preserve the established bbox contract: return an unrotated box plus
   // `angle`, because selection handles and resize math apply that rotation
   // separately. Flip/skew/scale are included in this pre-rotation hull.
-  const affine = createInkPathAffine({ ...obj, angle: 0 }, obj.path);
+  // Not a spread copy: that read every field, rebuilding an imported mark's
+  // lazily derived polygons (annotationMarkCodec.js) just for a box.
+  const angle = Number(obj.angle);
+  const unrotated = Number.isFinite(angle) && angle !== 0
+    ? new Proxy(obj, { get: (target, name) => (name === 'angle' ? 0 : target[name]) })
+    : obj;
+  const affine = createInkPathAffine(unrotated, obj.path);
   const { minX, minY, maxX, maxY } = affine.bounds;
   const corners = [
     affine.point(minX, minY),

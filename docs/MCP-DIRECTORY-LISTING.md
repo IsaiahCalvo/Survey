@@ -16,7 +16,7 @@ drifts from those, those two win — fix this note.
 | Name | `survey` |
 | Title | Survey |
 | Version | 1.0.0 |
-| Server URL | `https://cvamwtpsuvxvjdnotbeg.supabase.co/functions/v1/survey-mcp` |
+| Server URL | `https://surveytool.app/mcp` (the older `https://cvamwtpsuvxvjdnotbeg.supabase.co/functions/v1/survey-mcp` still works) |
 | Transport | MCP over HTTP POST (JSON-RPC, no session) |
 | Homepage | https://surveytool.app/use-with-ai |
 | Docs | https://surveytool.app/auth.md |
@@ -82,7 +82,7 @@ The registry publishes a remote server by URL — no package to ship. Adjust the
   "remotes": [
     {
       "type": "streamable-http",
-      "url": "https://cvamwtpsuvxvjdnotbeg.supabase.co/functions/v1/survey-mcp"
+      "url": "https://surveytool.app/mcp"
     }
   ]
 }

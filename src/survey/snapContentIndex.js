@@ -84,6 +84,9 @@ export async function buildSnapContentIndex(operatorList, ops, viewportTransform
   return { index, count: index.size, read, truncated: read > maxSegments || reader.truncated, ms: nowMs() - started };
 }
 
+export const SNAP_INDEX_RETRY_MS = 5_000;
+export const SNAP_INDEX_MAX_TRIES = 3;
+
 /**
  * The page's index when it is ready, else null (and the build is started).
  * `onReady` is called once the build finishes.
@@ -93,8 +96,14 @@ export function getPageSnapContentIndex(pdfDocument, pageNumber, { onReady = nul
   let pages = byDocument.get(pdfDocument);
   if (!pages) { pages = new Map(); byDocument.set(pdfDocument, pages); }
   let entry = pages.get(pageNumber);
+  // A build that failed (a page read cut short) is tried again a little
+  // later, a few times, rather than leaving snapping dead on that page.
+  if (entry?.failed && entry.tries < SNAP_INDEX_MAX_TRIES && Date.now() - entry.failedAt >= SNAP_INDEX_RETRY_MS) {
+    entry = null;
+  }
   if (!entry) {
-    entry = { index: null, failed: false, waiting: new Set() };
+    const tries = (pages.get(pageNumber)?.tries || 0) + 1;
+    entry = { index: null, failed: false, failedAt: 0, tries, waiting: new Set() };
     pages.set(pageNumber, entry);
     (async () => {
       const pdfPage = await pdfDocument.getPage(pageNumber);
@@ -104,7 +113,7 @@ export function getPageSnapContentIndex(pdfDocument, pageNumber, { onReady = nul
     })().then((built) => {
       entry.index = built.index;
       entry.stats = { count: built.count, read: built.read, truncated: built.truncated, ms: built.ms };
-    }, () => { entry.failed = true; }).finally(() => {
+    }, () => { entry.failed = true; entry.failedAt = Date.now(); }).finally(() => {
       const waiting = [...entry.waiting];
       entry.waiting.clear();
       waiting.forEach((fn) => { try { fn(entry.index); } catch { /* listener */ } });

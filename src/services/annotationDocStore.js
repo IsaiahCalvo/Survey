@@ -1096,7 +1096,12 @@ export function createViewerCaptureState() {
 // Remember which copy of a mark each nested object (data, meta, points...)
 // belongs to, so an edit spread from that copy can be traced back to it.
 function registerViewerVersion(viewer, key, object) {
-  for (const value of Object.values(object)) {
+  for (const name of Object.keys(object)) {
+    // A lazily derived field (annotationMarkCodec.js polygons) is skipped
+    // rather than built here for every delivered mark: an edit spread from
+    // this copy still traces back through its other nested values.
+    if (name === 'polygons' && !('value' in Object.getOwnPropertyDescriptor(object, name))) continue;
+    const value = object[name];
     if (value && typeof value === 'object') viewer.nested.set(value, { key, object });
   }
 }

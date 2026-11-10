@@ -31,14 +31,48 @@ export const SEARCH_MIN_QUERY_LENGTH = 2;
 export const SEARCH_DEBOUNCE_MS = 120;
 
 // Hand the main thread back between pages so typing never stalls while a long
-// document is searched.
-const yieldToMain = () => new Promise((resolve) => {
-  if (typeof globalThis.scheduler?.yield === 'function') {
-    globalThis.scheduler.yield().then(resolve, resolve);
+// document is searched. A posted message, not scheduler.yield(): a yield
+// resumes ahead of every other task, React's render among them, so once every
+// page's text was here (kept on the device) the list did not draw the first
+// rows until the whole search was done (2026-11-10). Posted messages run in
+// turn with React's own (it schedules its work the same way). Only once a
+// slice of work has run (or `now`, after handing the list new rows), so a
+// search whose text is all here is not spread over hundreds of turns behind
+// page drawing.
+const SEARCH_WORK_SLICE_MS = 30;
+let yieldChannel = null;
+const yieldWaiters = [];
+let sliceStart = 0;
+const yieldToMain = (now = false) => {
+  const at = globalThis.performance?.now?.() ?? Date.now();
+  if (!now && at - sliceStart < SEARCH_WORK_SLICE_MS) return Promise.resolve();
+  return postedTurn().then(() => {
+    sliceStart = globalThis.performance?.now?.() ?? Date.now();
+  });
+};
+const postedTurn = () => new Promise((resolve) => {
+  if (typeof MessageChannel !== 'function') {
+    setTimeout(resolve, 0);
     return;
   }
-  setTimeout(resolve, 0);
+  if (!yieldChannel) {
+    yieldChannel = new MessageChannel();
+    yieldChannel.port1.onmessage = () => { yieldWaiters.shift()?.(); };
+  }
+  yieldWaiters.push(resolve);
+  yieldChannel.port2.postMessage(null);
 });
+
+// The first rows of a search: posted turns until a frame is drawn (React
+// renders them over several turns), at most ~100 ms.
+const untilDrawn = async () => {
+  if (typeof globalThis.requestAnimationFrame !== 'function') return yieldToMain(true);
+  let drawn = false;
+  globalThis.requestAnimationFrame(() => { drawn = true; });
+  const until = (globalThis.performance?.now?.() ?? Date.now()) + 100;
+  while (!drawn && (globalThis.performance?.now?.() ?? Date.now()) < until) await yieldToMain(true);
+  return yieldToMain(true);
+};
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
@@ -649,6 +683,11 @@ const ensureTextItemMeasurementsForPages = async (requests) => {
     const settled = done.then(() => undefined, () => undefined);
     missing.forEach((index) => measurement.pending.set(index, settled));
     rendering.push(done);
+    // One page's runs per task: laying out a match's runs is a font switch
+    // and a measureText each (~40 ms a sheet on a phone), so 16 sheets at
+    // once froze typing for ~0.6 s once the text was all here (2026-11-10).
+    await settled;
+    await yieldToMain();
   }
   if (!rendering.length) return;
   const outcomes = await Promise.allSettled(rendering);
@@ -1469,10 +1508,10 @@ const SearchTextPanel = ({
 
     // Lay out the text runs that matches touch for a group of pages at once
     // (one wait for fonts and layout per group, not per page). The first
-    // group is small so the first rows show at once.
+    // group is one page so the first rows show at once.
     let measuredThrough = 0;
     const measureAhead = async (fromPage) => {
-      const groupSize = fromPage === 1 ? 4 : 16;
+      const groupSize = fromPage === 1 ? 1 : 16;
       const lastPage = Math.min(numPages, fromPage + groupSize - 1);
       const requests = [];
       for (let page = fromPage; page <= lastPage; page += 1) {
@@ -1560,11 +1599,15 @@ const SearchTextPanel = ({
           if (publishedCount === 0 && currentMatchIndexRef.current >= 0) {
             setCurrentMatchIndex(-1, 'stale-pick');
           }
+          const firstRows = publishedCount === 0;
           publishedCount = results.length;
           lastPublishAt = now;
           setSearchResults([...results], 'progressive');
+          if (firstRows) await untilDrawn();
+          else await yieldToMain(true);
+        } else {
+          await yieldToMain();
         }
-        await yieldToMain();
       }
 
       if (searchIdRef.current === searchId) {

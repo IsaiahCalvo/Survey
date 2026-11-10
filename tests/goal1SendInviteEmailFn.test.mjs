@@ -269,3 +269,45 @@ test('send budget is charged to the invite row recipient before the auth mailer 
   deepStrictEqual(charged, [['invitee@example.com', 0]]);
   equal(calls.invite.length, 1);
 });
+
+// Share dialog extras (flag share-extras): the inviter's own words.
+test('share extras: an invite with a message skips the auth mailer and quotes it in the app email', async () => {
+  const { deps, calls } = makeDeps();
+  const out = await handleSendInviteEmail(post({ token: 'tok123', inviterName: 'Sam', message: ' See page 3\r\nthanks ' }), deps);
+  equal(out.status, 200);
+  equal(calls.invite.length, 0);
+  equal(calls.fallback.length, 1);
+  equal(calls.fallback[0].template, 'document-invite');
+  equal(calls.fallback[0].data.message, 'See page 3\nthanks');
+  equal(calls.fallback[0].data.inviteUrl, `${CANONICAL_ORIGIN}/invite/tok123`);
+});
+
+test('share extras: an existing member with a message gets the shared email with it', async () => {
+  const { deps, calls } = makeDeps({
+    selectInviteRow: async (table) => (table === 'document_invites' ? baseRow({ document_id: 'doc-1' }) : null),
+    selectActiveDocumentAccess: async () => ({ role: 'editor' }),
+  });
+  const out = await handleSendInviteEmail(post({ token: 'tok123', message: 'Hi' }), deps);
+  equal(out.status, 200);
+  equal(calls.invite.length, 0);
+  equal(calls.fallback[0].template, 'document-shared');
+  equal(calls.fallback[0].data.message, 'Hi');
+});
+
+test('share extras: no message, no change (auth mailer, no message field)', async () => {
+  const { deps, calls } = makeDeps();
+  await handleSendInviteEmail(post({ token: 'tok123', message: '   ' }), deps);
+  equal(calls.invite.length, 1);
+  equal(calls.fallback.length, 0);
+});
+
+test('share extras: a message invite is charged once, by send-email, not here too', async () => {
+  const charged = [];
+  const { deps, calls } = makeDeps({
+    claimSendBudget: async (recipient) => { charged.push(recipient); return 'allowed'; },
+  });
+  const out = await handleSendInviteEmail(post({ token: 'tok123', message: 'See page 3' }), deps);
+  equal(out.status, 200);
+  deepStrictEqual(charged, []);
+  equal(calls.fallback.length, 1);
+});

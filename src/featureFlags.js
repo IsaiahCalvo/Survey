@@ -305,6 +305,40 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Back (browser or Android) closes the open sheet, then the document, instead of leaving Survey',
     stage: 'beta',
   }),
+  // Drawboard Home parity (2026-11-10), one flag each so Isaiah can pick.
+  'home-tags': Object.freeze({
+    label: 'Home: your own tags on documents (row chips, Tags list, search by tag)',
+    stage: 'beta',
+  }),
+  'home-shared-views': Object.freeze({
+    label: 'Home: Shared by me and Shared with me filters',
+    stage: 'beta',
+  }),
+  'home-columns': Object.freeze({
+    label: 'Home: Last opened and Created columns, more sorts, list sizes',
+    stage: 'beta',
+  }),
+  // Drawboard Projects parity (2026-11-10).
+  'project-issues': Object.freeze({
+    label: 'Projects: Issues and Tasks lists with IDs, statuses, filters, archive, CSV and activity',
+    stage: 'beta',
+  }),
+  'share-extras': Object.freeze({
+    label: 'Share dialog: owner row with (you), sort by Role / Name / Activity, personal message on email invites',
+    stage: 'beta',
+  }),
+  'home-templates': Object.freeze({
+    label: 'Home New menu: Notebook paper in one tap and Other templates (ruled, Cornell, grids, graph, isometric, hex, music)',
+    stage: 'beta',
+  }),
+  'sheet-set-view': Object.freeze({
+    label: 'Project sheets as a set: previous / next sheet, sheet picker, Shift+Left / Right, List and Grid views, Open all',
+    stage: 'beta',
+  }),
+  spotlight: Object.freeze({
+    label: 'Spotlight: share your view from the people list; others follow your document, page and zoom (green frame, N following)',
+    stage: 'beta',
+  }),
   'page-op-sync': Object.freeze({
     label: 'Page changes in one window reload the PDF in the other windows that have it open',
     stage: 'beta',
@@ -316,6 +350,70 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'box-drag-move': Object.freeze({
     label: 'Drag inside a picked mark to move it',
+    stage: 'beta',
+  }),
+  // Drawboard file model (2026-11-10, drawboard-trial/file-model.md): keep a
+  // document on this device so it opens with no signal; marks sync later.
+  'offline-docs': Object.freeze({
+    label: 'Available offline: keep a document on this device so it opens with no signal',
+    stage: 'beta',
+  }),
+  // Open a PDF with no account; it stays on this device until saved to an
+  // account (Drawboard's "Temporary" files, without their two-tab data loss).
+  'device-files': Object.freeze({
+    label: 'Open a PDF with no account (kept on this device)',
+    stage: 'beta',
+  }),
+  'line-dashes': Object.freeze({
+    label: 'Line styles: Long dash and Dash-dot as well as Solid, Dashed and Dotted',
+    stage: 'beta',
+  }),
+  'eraser-look': Object.freeze({
+    label: "Eraser look: Drawboard's cross-and-eraser cursor, a trail where it moves, hit marks lit orange until release, and icon mode buttons",
+    stage: 'beta',
+  }),
+  'properties-panel': Object.freeze({
+    label: "Properties panel: Drawboard's Expand menu, a card with typed X Y W H R, stroke, border and fill for the picked marks",
+    stage: 'beta',
+  }),
+  'text-fit-height': Object.freeze({
+    label: 'Text box height fits its words both ways: widening a text box from its side brings its height back down',
+    stage: 'beta',
+  }),
+  'poly-click-starts': Object.freeze({
+    label: 'Polygon and Polyline: with a mark picked, the first click drops the pick and places the first point',
+    stage: 'beta',
+  }),
+  'stamp-tool': Object.freeze({
+    label: "Stamp tool: Drawboard's twelve preset stamps in a Stamp card; pick one, then click the page to drop it",
+    stage: 'beta',
+  }),
+  'line-endings': Object.freeze({
+    label: "Line endings: Drawboard's ten heads for the start and end of a Line or Arrow, at Drawboard's sizes",
+    stage: 'beta',
+  }),
+  'pen-types': Object.freeze({
+    label: "Pen types: Drawboard's Basic (fixed), Pro (pressure or speed) and Calligraphy (direction) pens",
+    stage: 'beta',
+  }),
+  'typing-undo': Object.freeze({
+    label: 'Undo while typing steps back one word at a time, not the whole typing session',
+    stage: 'beta',
+  }),
+  'drag-auto-scroll': Object.freeze({
+    label: 'Drawing a shape, moving a mark or box selecting near the edge of the view scrolls it',
+    stage: 'beta',
+  }),
+  'insert-image': Object.freeze({
+    label: 'Image: put a picture from a file or the clipboard on the page as a mark you can move, resize and rotate',
+    stage: 'beta',
+  }),
+  'tape-tool': Object.freeze({
+    label: 'Tape: an opaque band that covers part of the page; tap it under Pan to see what is under it',
+    stage: 'beta',
+  }),
+  'turn-scale-keys': Object.freeze({
+    label: 'Keys: Ctrl / Cmd + Left / Right turn the picked mark 1° (5° with Shift), Ctrl / Cmd + Up / Down scale it',
     stage: 'beta',
   }),
 });

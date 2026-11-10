@@ -18,7 +18,7 @@ test('catalog lists each tool once with id, label and group', () => {
 test('tool bar groups come from the catalog (unchanged table)', () => {
   assert.deepEqual(TOOL_GROUP_BY_TOOL, toolGroupByTool());
   assert.deepEqual({ ...TOOL_GROUP_BY_TOOL }, {
-    pen: 'draw', highlighter: 'draw', 'text-highlight': 'draw', eraser: 'draw',
+    pen: 'draw', highlighter: 'draw', 'text-highlight': 'draw', tape: 'draw', eraser: 'draw',
     rect: 'shape', ellipse: 'shape', polygon: 'shape', polyline: 'shape', line: 'shape', arrow: 'shape', counter: 'shape',
     text: 'review', callout: 'review', symbol: 'review',
   });

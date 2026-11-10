@@ -284,3 +284,43 @@ test('normal app-state Save invokes cloudSyncForceFlush', () => {
   assert.ok(flushIndex > saveIndex, 'expected normal Save to call cloudSyncForceFlush');
   assert.ok(completeIndex > flushIndex, 'expected save completion log after force flush');
 });
+
+test('losing the signal turns the sync light to Offline at once, not after a failed save', async () => {
+  const offline = getSyncStatusViewModel({ stage: 'idle' }, 0, false, { offline: true });
+  assert.equal(offline.state, 'offline');
+  assert.equal(offline.label, 'Offline');
+  assert.match(offline.detail, /saved on this device/);
+  assert.equal(getSyncStatusViewModel({ stage: 'idle' }, 0, false, { offline: false }).state, 'synced');
+  // A save error while offline says "Offline", not "Sync error".
+  assert.equal(getSyncStatusViewModel({ stage: 'error', error: 'Failed to fetch' }, 0, false, { offline: true }).label, 'Offline');
+  assert.equal(getSyncStatusViewModel({ stage: 'error', error: 'Failed to fetch' }, 0, false, { offline: false }).label, 'Sync error');
+  assert.equal(getSyncStatusViewModel({ stage: 'error' }, 2, false, { offline: true }).label, 'Offline · 2 saved locally');
+  assert.match(getCompactSyncStatusMessage({ stage: 'idle' }, 0, { offline: true }), /offline/i);
+  // The offline copy and device-file labels are unchanged.
+  assert.equal(getSyncStatusViewModel({ stage: 'offline-copy' }, 0, false, { offline: true }).label, 'Offline copy');
+  // The tab's unsaved dot does not light up just because the signal dropped.
+  const { isCloudSaveConfirmed } = await import('../src/utils/cloudSaveBaseline.js');
+  const saved = isCloudSaveConfirmed({ isCloudDocument: true, cloudSyncEnabled: true, status: { stage: 'idle' } });
+  assert.equal(saved, true);
+  // Both the desktop chip and the phone pill follow the browser's online events.
+  assert.match(syncChipSource(), /useBrowserOnline\(\)/);
+  assert.match(mobileChromeSource(), /useBrowserOnline\(\)/);
+});
+
+test('an edit the server turned down reads "Not saved" with the reason, never "safe on this device"', () => {
+  for (const reason of ['gone', 'locked', 'denied']) {
+    const view = getSyncStatusViewModel({ stage: 'blocked', reason }, 0);
+    assert.equal(view.state, 'offline');
+    assert.equal(view.label, 'Not saved');
+    assert.doesNotMatch(view.detail, /safe on this device/i);
+    assert.match(view.detail, /not saved/i);
+    assert.equal(getCompactSyncStatusMessage({ stage: 'blocked', reason }), view.detail);
+  }
+  assert.match(getSyncStatusViewModel({ stage: 'blocked', reason: 'gone' }).detail, /Archive/);
+  assert.match(getSyncStatusViewModel({ stage: 'blocked', reason: 'locked' }).detail, /locked/);
+  // A permission error no longer claims the change is safe.
+  const denied = getSyncStatusViewModel({ stage: 'error', error: 'new row violates row-level security policy' }, 0, false, { offline: false });
+  assert.doesNotMatch(denied.detail, /safe on this device/i);
+  // The shared-document status passes the blocked stage through.
+  assert.equal(combineCollaborationSyncStatus({ annotationStatus: { stage: 'blocked', reason: 'gone' }, transportState: 'connecting', isSharedDocument: true }).stage, 'blocked');
+});

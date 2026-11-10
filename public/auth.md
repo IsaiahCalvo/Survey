@@ -158,8 +158,10 @@ your AgentID and your owner next to your name on /agent-link.
 
 For agents that speak MCP (Claude and ChatGPT connectors, scripts):
 
-- Server URL: `https://cvamwtpsuvxvjdnotbeg.supabase.co/functions/v1/survey-mcp`
-  (MCP over HTTP POST, JSON-RPC, no session).
+- Server URL: `https://surveytool.app/mcp`
+  (MCP over HTTP POST, JSON-RPC, no session). The older address
+  `https://cvamwtpsuvxvjdnotbeg.supabase.co/functions/v1/survey-mcp` still works; each answers with its own address in the
+  sign-in metadata.
 - Sign-in: the OAuth 2.1 flow above. Without a token the server answers 401
   with `WWW-Authenticate: Bearer resource_metadata="<server URL>/.well-known/oauth-protected-resource"`,
   which points to Survey's authorization server, so MCP clients find the sign-in
