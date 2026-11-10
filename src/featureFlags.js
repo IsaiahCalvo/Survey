@@ -317,6 +317,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Line styles: Long dash and Dash-dot as well as Solid, Dashed and Dotted',
     stage: 'beta',
   }),
+  'eraser-look': Object.freeze({
+    label: "Eraser look: Drawboard's cross-and-eraser cursor, a trail where it moves, hit marks lit orange until release, and icon mode buttons",
+    stage: 'beta',
+  }),
   'tape-tool': Object.freeze({
     label: 'Tape: an opaque band that covers part of the page; tap it under Pan to see what is under it',
     stage: 'beta',

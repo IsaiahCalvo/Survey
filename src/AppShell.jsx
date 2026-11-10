@@ -2252,6 +2252,7 @@ export default function App({ devPreviewReturnTab = null }) {
   // chip over the page while they are hidden (utils/marksHidden.js).
   const [hideMarksEnabled] = useState(() => isFeatureOn('hide-marks'));
   const [lineDashesOn] = useState(() => isFeatureOn('line-dashes'));
+  const [eraserLookOn] = useState(() => isFeatureOn('eraser-look'));
   const allMarksHidden = useMarksHidden();
   // Focus mode (Nightly, 'focus-mode'; utils/focusMode.js): no tab strip or
   // side rails, browser full screen, an Exit chip that always shows.
@@ -4055,9 +4056,14 @@ export default function App({ devPreviewReturnTab = null }) {
                     data-eraser-mode-toggle="true"
                     role="group"
                     aria-label="Eraser type"
-                    style={{ width: '100px' }}
+                    style={{ width: eraserLookOn ? '72px' : '100px' }}
                   >
-                    {[['partial', 'Partial', 'Partial erase'], ['entire', 'Whole', 'Full stroke erase']].map(([mode, short, full]) => (
+                    {/* Nightly 'eraser-look': Drawboard's two icon buttons,
+                        Full Eraser then Partial Eraser. */}
+                    {(eraserLookOn
+                      ? [['entire', null, 'Full Eraser', 'eraserModeFull'], ['partial', null, 'Partial Eraser', 'eraserModePartial']]
+                      : [['partial', 'Partial', 'Partial erase'], ['entire', 'Whole', 'Full stroke erase']]
+                    ).map(([mode, short, full, icon]) => (
                       <button
                         key={mode}
                         type="button"
@@ -4066,8 +4072,9 @@ export default function App({ devPreviewReturnTab = null }) {
                         {...chromeTip(full, 'below')}
                         aria-label={full}
                         data-press-label=""
+                        data-eraser-mode={mode}
                       >
-                        <span>{short}</span>
+                        {icon ? <Icon name={icon} size={18} color="currentColor" /> : <span>{short}</span>}
                       </button>
                     ))}
                   </div>

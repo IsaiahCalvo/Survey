@@ -2014,6 +2014,17 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
     : api.lineBorderStyle === 'cloud' && !api.supportsCloudStyle
     ? 'solid'
     : (api.lineBorderStyle || 'solid');
+  // Nightly 'eraser-look': Drawboard's Full / Partial, Full first, each with
+  // its icon (a whole stroke, a broken one).
+  const eraserModeOptions = isFeatureOn('eraser-look')
+    ? [
+      { value: 'entire', label: 'Full', ariaLabel: 'Full Eraser', icon: 'eraserModeFull' },
+      { value: 'partial', label: 'Partial', ariaLabel: 'Partial Eraser', icon: 'eraserModePartial' },
+    ]
+    : [
+      { value: 'partial', label: 'Partial', ariaLabel: 'Partial erase' },
+      { value: 'entire', label: 'Whole', ariaLabel: 'Erase the whole mark' },
+    ];
   const lineStyleOptions = [
     { value: 'solid', label: 'Solid' },
     { value: 'dashed', label: 'Dashed' },
@@ -2214,10 +2225,7 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
           width={100}
           value={api.eraserMode === 'entire' ? 'entire' : 'partial'}
           onChange={(mode) => api.setEraserMode(mode)}
-          options={[
-            { value: 'partial', label: 'Partial', ariaLabel: 'Partial erase' },
-            { value: 'entire', label: 'Whole', ariaLabel: 'Erase the whole mark' },
-          ]}
+          options={eraserModeOptions}
         />
       )}
       {/* BOARDS 1 & 3 — single-colour tools get the three preset discs plus the
@@ -2427,10 +2435,9 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
                   <SheetSegmented
                     ariaLabel="Eraser mode"
                     value={api.eraserMode === 'entire' ? 'entire' : 'partial'}
-                    options={[
-                      { value: 'partial', label: 'Partial', ariaLabel: 'Partial erase' },
-                      { value: 'entire', label: 'Whole', ariaLabel: 'Erase the whole mark' },
-                    ]}
+                    options={eraserModeOptions.map(({ icon, ...option }) => (
+                      icon ? { ...option, preview: <Icon name={icon} size={16} color="currentColor" /> } : option
+                    ))}
                     onChange={(mode) => api.setEraserMode?.(mode)}
                   />
                 </SheetRow>
@@ -2593,7 +2600,7 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
                           mixed={widthMixed}
                           value={api.strokeWidthInputValue}
                           min={tool === 'counter' ? COUNTER_SIZE_MIN : 1}
-                          max={tool === 'counter' ? COUNTER_SIZE_MAX : 50}
+                          max={tool === 'counter' ? COUNTER_SIZE_MAX : tool === 'tape' ? 100 : 50}
                           decimals={tool === 'counter' ? 0 : ANNOTATION_WIDTH_DECIMALS}
                           unit={tool === 'counter' ? '' : 'pt'}
                           onDraft={(value) => api.handleStrokeWidthInputChange?.({ target: { value } })}
