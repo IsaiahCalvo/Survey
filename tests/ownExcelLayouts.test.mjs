@@ -84,8 +84,8 @@ test('saving registers the layout so pickers and the export see it', async () =>
   assert.equal(getExportKit('own-doors'), null);
 });
 
-test('flag is beta, and the table is the owner\'s alone', () => {
-  assert.equal(FEATURE_FLAGS['own-excel-layouts'].stage, 'beta');
+test('flag is rollout, and the table is the owner\'s alone', () => {
+  assert.equal(FEATURE_FLAGS['own-excel-layouts'].stage, 'rollout');
   const sql = readFileSync(new URL('../supabase/migrations/20261028021000_own_export_kits.sql', import.meta.url), 'utf8');
   assert.match(sql, /enable row level security/);
   assert.match(sql, /for select to authenticated\s+using \(user_id = \(select auth\.uid\(\)\)\)/);

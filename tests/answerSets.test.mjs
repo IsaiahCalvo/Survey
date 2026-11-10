@@ -121,9 +121,9 @@ test('a typed-in list is saved only when usable, with a plain reason when not', 
   assert.equal(sameAnswerSet([{ value: 'A', tone: 'good' }], [{ value: 'A', tone: 'bad' }]), false);
 });
 
-test("'custom-answers' is a beta flag (nightly only) with a migration row", async () => {
+test("'custom-answers' is a rollout flag (follows /flags) with a migration row", async () => {
   const { FEATURE_FLAGS } = await import('../src/featureFlags.js');
-  assert.equal(FEATURE_FLAGS['custom-answers']?.stage, 'beta');
+  assert.equal(FEATURE_FLAGS['custom-answers']?.stage, 'rollout');
   const { readFileSync, readdirSync } = await import('node:fs');
   const dir = new URL('../supabase/migrations/', import.meta.url);
   const sql = readdirSync(dir).filter((f) => f.endsWith('.sql')).map((f) => readFileSync(new URL(f, dir), 'utf8')).join('\n');
