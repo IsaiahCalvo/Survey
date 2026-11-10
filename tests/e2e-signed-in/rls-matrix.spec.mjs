@@ -72,6 +72,9 @@ async function seedOwnerRows(admin, ids) {
   await replace('account_kits', 'user_id', owner, { user_id: owner, kit_id: KIT, kit_version: '1.0.0' });
   await replace('survey_agent_memory', 'project_id', PROJECT, { project_id: PROJECT, kind: 'name', heard: 'rls', means: 'rls sweep', created_by: owner });
   await replace('own_export_kits', 'user_id', owner, { user_id: owner, id: 'own-rls-sweep', label: 'RLS sweep', definition: {} });
+  // Home tags and Last opened (Nightly): personal rows, nobody else's.
+  await replace('document_tags', 'user_id', owner, { user_id: owner, document_id: DOC, tag: 'rls sweep' });
+  await replace('document_opens', 'user_id', owner, { user_id: owner, document_id: DOC });
   await replace('mark_library_items', 'created_by', owner, {
     library: 'personal', created_by: owner, name: 'RLS sweep item', payload: { version: 1, items: [] },
   });
@@ -125,6 +128,8 @@ const ownerRows = (ids) => ({
   survey_agent_memory: ['project_id', PROJECT],
   own_export_kits: ['user_id', ids.owner],
   mark_library_items: ['created_by', ids.owner],
+  document_tags: ['user_id', ids.owner],
+  document_opens: ['user_id', ids.owner],
   organizations: ['id', ORG],
   organization_members: ['organization_id', ORG],
   organization_invites: ['organization_id', ORG],
