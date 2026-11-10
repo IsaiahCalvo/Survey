@@ -21,6 +21,11 @@
 export const QUICK_ACTION_KEYS = Object.freeze(['duplicate', 'cut', 'copy', 'paste', 'delete']);
 // The four stacking-order items, folded into "Arrange".
 export const ARRANGE_KEYS = Object.freeze(['bringToFront', 'bringForward', 'sendBackward', 'sendToBack']);
+// Align and distribute (Nightly flag 'align-marks'), folded into "Align".
+export const ALIGN_KEYS = Object.freeze([
+  'alignLeft', 'alignCenter', 'alignRight', 'alignTop', 'alignMiddle', 'alignBottom',
+  'distributeHorizontal', 'distributeVertical',
+]);
 // Glyph per icon-row action (src/Icons.jsx names).
 export const QUICK_ACTION_ICONS = Object.freeze({
   duplicate: 'duplicate',
@@ -48,10 +53,26 @@ export function layoutContextMenuItems(items) {
   const arrange = ARRANGE_KEYS
     .map((key) => list.find((it) => it.key === key))
     .filter(Boolean);
+  const align = ALIGN_KEYS
+    .map((key) => list.find((it) => it.key === key))
+    .filter(Boolean);
   const rows = [];
   let arrangePlaced = false;
+  let alignPlaced = false;
   list.forEach((it) => {
     if (QUICK_ACTION_KEYS.includes(it.key)) return;
+    if (ALIGN_KEYS.includes(it.key)) {
+      if (!alignPlaced) {
+        rows.push({
+          key: 'align',
+          label: 'Align',
+          submenu: align,
+          disabled: align.every((a) => a.disabled),
+        });
+        alignPlaced = true;
+      }
+      return;
+    }
     if (ARRANGE_KEYS.includes(it.key)) {
       if (!arrangePlaced && arrange.length > 0) {
         rows.push({

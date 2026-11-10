@@ -100,6 +100,9 @@ export function usePageOperations({
   setClipboardPage,
   clipboardType,
   setClipboardType,
+  // (pageNumber) => { width, height } of the page as shown — a turn takes the
+  // page's marks with it (utils/pageTurnMarks.js) and needs the frame.
+  getPageSize = null,
   flushDelayMs = FLUSH_DELAY_MS,
 }) {
   // Undo / Redo (utils/pageOperationHistory.js): every page change the user
@@ -310,11 +313,24 @@ export function usePageOperations({
 
   // `step` (Undo / Redo only): { id, phase, stateOperation, pdfOperation,
   // createdIds } - run that instead of `operation` and record nothing new.
-  const executeMutation = useCallback((operation, errorVerb, step = null) => {
+  const executeMutation = useCallback((requestedOperation, errorVerb, step = null) => {
     if (!pdfFileRef.current || !onUpdatePDFFile) {
       showToast('PDF file not available for manipulation', 'error');
       return false;
     }
+    // A turn records the page's frame before it, so the marks turn with the
+    // page now and back again on Undo (pageOperationHistory swaps it).
+    const sizeTurn = (single) => {
+      if (single?.type !== 'rotate' || single.pageSize || typeof getPageSize !== 'function') return single;
+      const size = getPageSize(Number(single.page));
+      return size?.width > 0 && size?.height > 0
+        ? { ...single, pageSize: { width: Number(size.width), height: Number(size.height) } }
+        : single;
+    };
+    const operation = step ? requestedOperation
+      : requestedOperation?.type === 'batch'
+        ? { ...requestedOperation, operations: (requestedOperation.operations || []).map(sizeTurn) }
+        : sizeTurn(requestedOperation);
     try {
       // The getter is normally current (PDFViewer's ref is written by the
       // commit itself and by every render). Only when it still returns the
@@ -409,7 +425,7 @@ export function usePageOperations({
       showToast(`Error ${errorVerb} page: ${error.message}`, 'error');
       return false;
     }
-  }, [applyPageView, commitPageState, getPageState, onUpdatePDFFile, publishStatus, scheduleFlush]);
+  }, [applyPageView, commitPageState, getPageSize, getPageState, onUpdatePDFFile, publishStatus, scheduleFlush]);
 
   // Undo / Redo one page step (the viewer's timeline calls these). Returns
   // false when the step is no longer known (another document version was

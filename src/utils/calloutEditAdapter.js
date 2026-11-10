@@ -56,6 +56,7 @@ import {
   buildArrowheadRenderSpec,
   calloutLineDashArray,
 } from './lineRenderHelpers.js';
+import { calloutWrapsWords } from './textWrapMode.js';
 
 export function sanitizeFontFamily(raw) {
   if (raw == null) return 'Arial';
@@ -195,7 +196,7 @@ export function toFabricGroup(reactCallout, pageSize) {
     // UX: splitByGrapheme matches regular text annotation behavior
     // (loadTextAnnotation:1360) — text wraps at the fixed width and the
     // Textbox grows vertically.
-    splitByGrapheme: true,
+    splitByGrapheme: !calloutWrapsWords(reactCallout),
     // UX: callout box styling — textbox owns its own border and corners.
     // strokeWidth matches the SVG rect's rendered border thickness
     // (renderCallout line 808: Math.max(1, lineThickness * 0.7)).
