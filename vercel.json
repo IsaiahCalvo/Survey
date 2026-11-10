@@ -4,6 +4,9 @@
     "deploymentEnabled": false
   },
   "rewrites": [
+    { "source": "/mcp", "destination": "https://cvamwtpsuvxvjdnotbeg.supabase.co/functions/v1/survey-mcp?via=site" },
+    { "source": "/mcp/.well-known/oauth-protected-resource", "destination": "https://cvamwtpsuvxvjdnotbeg.supabase.co/functions/v1/survey-mcp/.well-known/oauth-protected-resource?via=site" },
+    { "source": "/.well-known/oauth-protected-resource/mcp", "destination": "https://cvamwtpsuvxvjdnotbeg.supabase.co/functions/v1/survey-mcp/.well-known/oauth-protected-resource?via=site" },
     { "source": "/welcome", "destination": "/welcome/index.html" },
     { "source": "/features", "destination": "/features/index.html" },
     { "source": "/devices", "destination": "/devices/index.html" },
