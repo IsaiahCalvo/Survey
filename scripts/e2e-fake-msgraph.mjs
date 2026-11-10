@@ -319,14 +319,14 @@ export async function fakeMsgraphHandler(req) {
     return json(204);
   }
   if (method === 'GET' && tail.startsWith('/usedRange')) return json(200, usedRange(sheet));
-  if (method === 'POST' && tail === '/freezePanes/freezeRows') { sheet.frozen = Number(body?.count) || 0; return json(204); }
-  const range = /^\/range\(address='([^']+)'\)(\/delete|\/insert|\/dataValidation)?$/.exec(tail);
+  // Real Graph has no freeze-panes or data-validation API (v1.0 and beta
+  // answer this 400; checked in a real tenant 11-09 and 11-10).
+  if (/^\/freezePanes\b|\/dataValidation$|\/conditionalFormats\b/.test(tail)) {
+    return gErr(400, 'BadRequest', `Resource not found for the segment '${/freezePanes|dataValidation|conditionalFormats/.exec(tail)[0]}'.`);
+  }
+  const range = /^\/range\(address='([^']+)'\)(\/delete|\/insert)?$/.exec(tail);
   const a = range && parseAddress(range[1]);
   if (!a) return gErr(400, 'BadRequest', `fake msgraph: no route for ${method} ${path}`);
-  if (range[2] === '/dataValidation' && method === 'PATCH') {
-    for (const key of perColumn(a)) sheet.validations[key] = body?.rule?.list?.source || '';
-    return json(200, {});
-  }
   if (range[2] === '/insert' && method === 'POST') {
     if (!a.wholeRows) return gErr(400, 'BadRequest', 'fake msgraph: only whole-row inserts');
     sheet.cells.splice(a.r1, 0, ...Array.from({ length: a.r2 - a.r1 + 1 }, () => []));

@@ -478,6 +478,15 @@ export async function planSheetRound({
       seen.add(column.key);
     }
     next.columnsSeen[scope.scopeId] = [...seen];
+    // A column that had gone (deleted, or its header renamed) and is back
+    // this round. When a PM puts a deleted column back blank, its blank cells
+    // are not the PM clearing every value (real Excel, 11-10: all 8 notes of
+    // a sheet were wiped): they count as unchanged, so the app fills them.
+    const lastHeaders = state.headers?.[scope.scopeId];
+    const backKeys = new Set(lastHeaders && Object.keys(lastHeaders).length
+      ? scope.columns.filter((c) => colOfKey.has(c.key) && !addedKeys.has(c.key) && !(c.key in lastHeaders)
+        && (state.columnsSeen?.[scope.scopeId] || []).includes(c.key)).map((c) => c.key)
+      : []);
     next.headers[scope.scopeId] = Object.fromEntries(scope.columns.filter((c) => colOfKey.has(c.key)).map((c) => [c.key, c.header]));
     const rowIdCol = colOfKey.get('rowId');
     if (rowIdCol == null) {
@@ -792,8 +801,10 @@ export async function planSheetRound({
           setFp(sheetSide, key, base ? getFp(base, key) : getFp(appFps, key));
           continue;
         }
-        // A column added this round is blank in the sheet: nothing changed there yet.
-        if (!columnIsEditable(column) || !colOfKey.has(key) || addedKeys.has(key) || errored) {
+        // A column added this round is blank in the sheet: nothing changed
+        // there yet. Nor in a blank cell of a column that came back.
+        const backBlank = backKeys.has(key) && isBlankCell(row[colOfKey.get(key)]);
+        if (!columnIsEditable(column) || !colOfKey.has(key) || addedKeys.has(key) || errored || backBlank) {
           setFp(sheetSide, key, base ? getFp(base, key) : getFp(appFps, key));
         }
       }
