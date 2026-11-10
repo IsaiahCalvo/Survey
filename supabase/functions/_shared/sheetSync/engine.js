@@ -119,9 +119,13 @@ const checklistOfScope = (scope) => scope.columns.filter((c) => c.key.startsWith
 // 50,000). The app's side is compared and written cut to one limit under
 // both, so a longer note matches what the sheet holds instead of reading as
 // a change every round; the app keeps its full text unless the cell is edited.
+// Excel also ends a cell at a NUL character (text pasted from some PDFs), so
+// NULs are left out the same way, or the rest would come back cut off.
 export const MAX_CELL_CHARS = 32000;
 const fitCell = (v) => {
-  if (typeof v !== 'string' || v.length <= MAX_CELL_CHARS) return v;
+  if (typeof v !== 'string') return v;
+  if (v.includes('\u0000')) v = v.replace(/\u0000/g, '');
+  if (v.length <= MAX_CELL_CHARS) return v;
   const cut = v.slice(0, MAX_CELL_CHARS);
   return /[\uD800-\uDBFF]$/.test(cut) ? cut.slice(0, -1) : cut;
 };
