@@ -701,13 +701,17 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
           // was picked. (A OneDrive path that isn't there yet is fine: saving
           // makes it, as for the default "Survey" folder.)
           if (err?.status === 404 && target.driveId) return { folders: [], places: [], gone: true };
-          if (err?.status === 404 && target.sub) return { folders: [], places: [] };
           // An account with no OneDrive of its own (a guest, or no OneDrive
-          // licence: Graph answers 401 accessDenied / 403 notAllowed / 404 at
-          // the top of "my drive"). It can still save in SharePoint or Teams.
-          if (!target.driveId && !target.sub && [401, 403, 404].includes(Number(err?.status)) && !/token/i.test(String(err?.code || ''))) {
+          // licence: Graph answers 401 accessDenied / 403 notAllowed, or 404
+          // at the top of "my drive"). It can still save in SharePoint or
+          // Teams. Save in opens on the default "Survey" folder, so this is
+          // checked below the top too.
+          const status = Number(err?.status);
+          const tokenTrouble = /token/i.test(String(err?.code || ''));
+          if (!target.driveId && !tokenTrouble && ([401, 403].includes(status) || (status === 404 && !target.sub))) {
             return { folders: [], places: [], noDrive: true };
           }
+          if (status === 404 && target.sub) return { folders: [], places: [] };
           throw err;
         }
         for (const it of res?.value || []) {

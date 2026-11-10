@@ -59,12 +59,4 @@ export async function sheetSyncCall(action, body = {}, client = supabase) {
   }
 }
 
-/** "just now", "12 s ago", "3 min ago". */
-export function syncedAgo(iso, now = Date.now()) {
-  if (!iso) return '';
-  const s = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000));
-  if (s < 5) return 'just now';
-  if (s < 60) return `${s} s ago`;
-  if (s < 3600) return `${Math.round(s / 60)} min ago`;
-  return `${Math.round(s / 3600)} h ago`;
-}
+export { linkSyncedAgo, syncedAgo } from './sheetSyncTime.js';

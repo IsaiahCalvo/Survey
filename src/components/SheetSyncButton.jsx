@@ -10,7 +10,7 @@ import Icon from '../Icons';
 import Spinner from './Spinner';
 import { useTooltip } from './Tooltip';
 import AnchoredPopover from './AnchoredPopover';
-import { sheetLayoutInput, sheetSyncCall, sheetTemplateId, syncedAgo } from '../services/sheetSyncClient.js';
+import { linkSyncedAgo, sheetLayoutInput, sheetSyncCall, sheetTemplateId } from '../services/sheetSyncClient.js';
 import { CLAIM_KEY, forgetClaim, readClaim } from '../services/sheetSyncClaim.js';
 import { announceAccountSwitch, announceSignOut } from '../services/sheetSyncNotices.js';
 import { isNativeApp } from '../utils/proLock.js';
@@ -78,6 +78,7 @@ function useSheetSync({ documentId, template, markers, enabled }) {
       return res;
     }
     setError(null);
+    if (res?.link) res.link.receivedAt = Date.now();
     setStatus(res);
     if (res?.providers || res?.configured !== undefined) {
       writeJson(PROVIDERS_KEY, {
@@ -618,7 +619,7 @@ function FolderPicker({ start, startName, load, onPick, onCancel }) {
       {pasteError && <p className="sheet-sync-paste-error" role="alert">{pasteError}</p>}
       <div className="sheet-sync-row">
         <ActionButton label="Cancel" onClick={onCancel} />
-        <ActionButton primary label="Save here" disabled={note === 'gone' || (note === 'noDrive' && !at)} onClick={() => onPick(at, place ? placeName : '')} />
+        <ActionButton primary label="Save here" disabled={note === 'gone' || note === 'noDrive'} onClick={() => onPick(at, place ? placeName : '')} />
       </div>
     </div>
   );
@@ -838,7 +839,7 @@ export default function SheetSyncButton({ className, phone = false, documentId, 
       status: (
         <span className="sheet-sync-status">
           <span className={`sheet-sync-dot${state === 'paused' ? ' is-paused' : state === 'broken' ? ' is-broken' : ''}`} />
-          {busy === 'sync' ? 'Syncing…' : link.lastRoundAt ? `Synced ${syncedAgo(link.lastRoundAt)}` : state === 'live' ? 'Starting…' : state === 'paused' ? 'Paused' : 'Stopped'}
+          {busy === 'sync' ? 'Syncing…' : link.lastRoundAt ? `Synced ${linkSyncedAgo(link)}` : state === 'live' ? 'Starting…' : state === 'paused' ? 'Paused' : 'Stopped'}
         </span>
       ),
     };
