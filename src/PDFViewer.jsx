@@ -3472,7 +3472,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // decides whether the selection survives it. { tool, source } of the latest
   // request; read once by the tool-switch effect below.
   const toolSwitchRequestRef = useRef(null);
+  // Counts tool requests, so a deferred switch (Escape's put-the-tool-down)
+  // can tell that a newer pick came in before it ran.
+  const toolRequestSeqRef = useRef(0);
   const setActiveToolLogged = useCallback((next, { source } = {}) => {
+    toolRequestSeqRef.current += 1;
     toolSwitchRequestRef.current = source && typeof next === 'string' ? { tool: next, source } : null;
     try {
       const requested = typeof next === 'function' ? '(updater-fn)' : String(next);
@@ -4492,8 +4496,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           tool: activeTool,
         });
         if (escapeAction === 'switch-to-pan') {
+          // A busy page can run this timer after the next key: Escape then
+          // H must leave the Highlighter picked, not put it down (CI caught
+          // a highlighter drag drawing nothing because Pan won the race).
+          const seqAtEscape = toolRequestSeqRef.current;
+          const toolAtEscape = activeTool;
           window.setTimeout(() => {
-            if (!event.defaultPrevented) setActiveToolLogged('pan', { source: 'escape' });
+            if (event.defaultPrevented) return;
+            if (toolRequestSeqRef.current !== seqAtEscape || activeToolRef.current !== toolAtEscape) return;
+            setActiveToolLogged('pan', { source: 'escape' });
           }, 0);
           return;
         }
