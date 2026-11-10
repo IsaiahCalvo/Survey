@@ -541,6 +541,8 @@ function renderMeasureLabel(label, key, unitsPerPx) {
       key={key}
       className="measure-label"
       data-measure-kind={label.kind}
+      data-measure-caption={label.lines ? label.text : undefined}
+      data-measure-for={key}
       transform={box.angle ? `rotate(${box.angle} ${box.cx} ${box.cy})` : undefined}
       style={{ pointerEvents: 'none', userSelect: 'none' }}
     >
@@ -565,7 +567,12 @@ function renderMeasureLabel(label, key, unitsPerPx) {
         fontWeight="600"
         fill="#1f2937"
       >
-        {label.text}
+        {box.lines.length > 1
+          // A caption of several lines (Nightly 'measure-edit'): label first.
+          ? box.lines.map((line, i) => (
+            <tspan key={i} x={box.cx} y={box.cy + (i - (box.lines.length - 1) / 2) * box.lineHeight}>{line}</tspan>
+          ))
+          : box.lines[0]}
       </text>
     </g>
   );

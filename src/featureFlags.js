@@ -177,6 +177,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: "Calibrate takes feet-inches (20' 6\", 20-6) and shows the traced paper length",
     stage: 'beta',
   }),
+  'measure-edit': Object.freeze({
+    label: 'Measure: a Measurement button on a picked measurement sets its label, depth, caption lines and caption size',
+    stage: 'beta',
+  }),
   'align-marks': Object.freeze({
     label: 'Align and space picked marks (mark menu)',
     stage: 'beta',

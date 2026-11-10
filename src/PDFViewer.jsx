@@ -88,7 +88,9 @@ import MeasureDepthDialog from './components/MeasureDepthDialog';
 import {
   DEPTH_MEASURE_KINDS,
   MEASURE_SCALES_META_KEY,
+  applyMeasureEdit,
   applyPageScale,
+  getMeasureKind,
   loadMeasureDepth,
   rememberMeasureDepth,
   measureBaseTool,
@@ -3184,6 +3186,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const [measureDepthEnabled] = useState(() => isFeatureOn('measure-depth'));
   const [measureScaleChipOn] = useState(() => isFeatureOn('measure-scale-chip'));
   const [measureKeysOn] = useState(() => isFeatureOn('measure-keys'));
+  // Nightly 'measure-edit': the quick bar's Measurement popover on a picked measurement.
+  const [measureEditOn] = useState(() => isFeatureOn('measure-edit'));
   const [measureDepth, setMeasureDepth] = useState(() => loadMeasureDepth());
   const [measureDepthDialog, setMeasureDepthDialog] = useState(null);
   const prevMeasureModeRef = useRef(null);
@@ -3781,6 +3785,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       ? { ...prev, annotation: nextObj }
       : prev));
   }, []);
+  // Measurement popover (Nightly 'measure-edit'): label / depth / caption
+  // changes ride the same selected-edit write, so each is one save and one
+  // undo step. The change is applied to the mark as saved right now.
+  const handlePatchSelectedMeasure = useCallback((changes) => {
+    handlePatchSelectedAnnotation({}, (obj) => applyMeasureEdit(obj, changes));
+  }, [handlePatchSelectedAnnotation]);
   const [zoomGeneration, setZoomGeneration] = useState(0);
   // Edit mode state: tracks which annotation is being edited via double-click
   // { pageNumber, index, type, editType ('text'|'shape'|'callout'), data }
@@ -27172,6 +27182,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       selectionCapabilities,
       // One picked polyline: whether it is curved (the Curve switch, Nightly).
       selectedPolyline: !groupSummary && selectedType === 'polyline' ? { curved: polySplineStep(selectedAnnot) > 0 } : null,
+      // One picked measurement (Nightly 'measure-edit'): the mark, its id and
+      // the page's scale (what its label reads), for the Measurement popover.
+      selectedMeasure: measureEditOn && !groupSummary && !selectedToolbarCallout && getMeasureKind(selectedAnnot)
+        ? {
+          id: String(selectedAnnotationId || ''),
+          mark: selectedAnnot,
+          scale: pageScaleFromObjects(pageObjects) || metaScaleForPage(measureScaleMeta, selectedToolbarAnnotation?.pageNumber),
+        }
+        : null,
+      patchSelectedMeasure: measureEditOn ? handlePatchSelectedMeasure : null,
       selectionMixed: groupSummary ? groupSummary.mixed : null,
       selectionCount: groupSummary ? groupSummary.count : (selectedToolbarAnnotation || selectedToolbarCallout ? 1 : 0),
       strokeWidthInputValue: strokeWidthInputValueRef.current,
@@ -27326,6 +27346,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     activeTool,
     measureMode,
     measureScaleDialog,
+    measureScaleMeta,
+    measureEditOn,
+    handlePatchSelectedMeasure,
     pickBarTool,
     liveTextSelection,
     selectionMode,

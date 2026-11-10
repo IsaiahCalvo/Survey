@@ -951,7 +951,9 @@ function measureContentsOf(fabricObj) {
   try {
     if (!getMeasureKind(fabricObj)) return '';
     const label = buildMeasureLabel(fabricObj, fabricObj?.data?.measure?.scale || null);
-    return label?.text ? String(label.text) : '';
+    // The caption as the page shows it (label and picked readings, one per
+    // line); with every line switched off, the plain reading still exports.
+    return String(label?.text || label?.reading || '');
   } catch {
     return '';
   }
