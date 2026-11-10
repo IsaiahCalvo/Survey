@@ -206,7 +206,8 @@ export const LAYOUT_TESTS = [
       expect(await spills(page), 'panel, not connected').toEqual([]);
       await shot('1-connect');
 
-      // Connect Microsoft. The web opens the consent page in a tab that hands
+      // Sign in to Microsoft from "Save in" (it signs in first, then lists the
+      // folders). The web opens the consent page in a tab that hands
       // the code back on its own; the app opens the system browser, whose
       // last page offers "Open Survey" (a com.kalvoe.survey:// link), and the
       // panel also takes the code typed.
@@ -217,7 +218,7 @@ export const LAYOUT_TESTS = [
         let consentUrl = null;
         await context.route('**/oauth2/v2.0/authorize**', (route) => { consentUrl = route.request().url(); return route.abort(); });
         const consentTab = context.waitForEvent('page');
-        await press(layout, panel.getByRole('button', { name: 'Connect Microsoft' }));
+        await press(layout, panel.getByRole('button', { name: 'Change' }));
         const tab = await consentTab;
         await expect.poll(() => consentUrl, { timeout: 15_000 }).toBeTruthy();
         await tab.close();
@@ -242,23 +243,21 @@ export const LAYOUT_TESTS = [
       } else {
         // The web: the consent tab hands the code back through the site's storage.
         const consentTab = context.waitForEvent('page');
-        await press(layout, panel.getByRole('button', { name: 'Connect Microsoft' }));
+        await press(layout, panel.getByRole('button', { name: 'Change' }));
         const tab = await consentTab;
         await tab.waitForURL(/google-connected\.html\?/, { timeout: 30_000 });
         await tab.close();
       }
+      // "Save in" signed in first and then opened the folder list, which fits too.
       await expect(button).toHaveAttribute('data-sheet-sync-state', 'connected', { timeout: 40_000 });
-      await expect(panel.getByText('pm@contoso.example', { exact: true })).toBeVisible();
-      expect(await spills(page), 'panel, connected').toEqual([]);
-      await shot('3-connected');
-
-      // "Save in": the folder list fits too.
-      await press(layout, panel.getByRole('button', { name: 'Change' }));
       await press(layout, panel.getByRole('button', { name: 'OneDrive', exact: true }));
       await expect(panel.getByRole('listitem').filter({ hasText: 'Jobs' })).toBeVisible();
       expect(await spills(page), 'panel, folders').toEqual([]);
       await shot('4-folders');
       await press(layout, panel.getByRole('button', { name: 'Save here' }));
+      await expect(panel.getByText('pm@contoso.example', { exact: true })).toBeVisible();
+      expect(await spills(page), 'panel, connected').toEqual([]);
+      await shot('3-connected');
 
       await press(layout, panel.getByRole('button', { name: 'Make Excel workbook' }));
       await expect(panel.getByRole('link', { name: 'Open in Excel' })).toBeVisible({ timeout: 30_000 });

@@ -45,6 +45,8 @@ p{margin:0}
 .codebox{margin:12px 0 0;padding:12px;border-radius:8px;background:var(--surface-1)}
 .codebox p{font-size:12px;color:var(--text-3)}
 #code{margin:6px 0 0;font:600 22px/1.2 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.08em;color:var(--text-1);user-select:all}
+.link{margin:8px 0 0;font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--text-1);word-break:break-all;user-select:all}
+.codebox .btn{margin-top:12px}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -65,6 +67,12 @@ p{margin:0}
   <h1 id="title">Google is connected</h1>
   <p id="text">You can close this tab and go back to Survey.</p>
   <a id="openApp" class="btn" hidden>Open Survey</a>
+  <a id="retry" class="btn" hidden>Use another account</a>
+  <div id="adminBox" class="codebox" hidden>
+    <p>Microsoft said “Need admin approval”? Send this link to your IT admin. They approve Survey once for everyone at your company.</p>
+    <p id="adminLink" class="link"></p>
+    <button id="copyAdmin" class="btn" type="button">Copy link</button>
+  </div>
   <button id="showCode" class="more" type="button" hidden>Using Survey in another browser or on another device?</button>
   <div id="codeBox" class="codebox" hidden>
     <p>Type this code there to finish.</p>
@@ -117,12 +125,42 @@ p{margin:0}
       : 'Survey needs permission to make and edit its own sheets. Close this tab and try again, and tick the box Google shows.', 'failed'],
     expired: ['That link ran out', 'Close this tab and press Connect ' + who + ' in Survey again.', 'failed'],
     not_configured: ['Not set up yet', (ms ? 'Microsoft 365' : 'Google Sheets') + ' is not set up on this server yet.', 'failed'],
-    failed: ['Something went wrong', who + ' did not finish connecting. Close this tab and try again.', 'failed']
+    failed: ['Something went wrong', who + ' did not finish connecting. Close this tab and try again.', 'failed'],
+    personal: ['That’s a personal account', 'Live sync needs the work or school Microsoft account your company gives you. Personal accounts (like outlook.com or hotmail.com) can’t sync Excel.', 'failed'],
+    admin_approved: ['Survey is approved', 'Everyone at your company can now press Connect Microsoft in Survey. You can close this tab.', 'done'],
+    admin_declined: ['Survey was not approved', 'Nothing changed. You can approve it later from the same link.', 'failed']
   };
+
+  // Only Microsoft's own sign-in page, and only Survey's own admin link, may
+  // sit behind these buttons: this page is on Survey's site and must never
+  // send someone to an address a stranger put in the link.
+  function safeUrl(raw, test) {
+    try { var u = new URL(raw); return test(u) ? u.href : ''; } catch (e) { return ''; }
+  }
+  var local = function (u) { return u.protocol === 'http:' && (u.hostname === '127.0.0.1' || u.hostname === 'localhost'); };
+  var retry = safeUrl(params.get('retry'), function (u) {
+    return (u.protocol === 'https:' && u.hostname === 'login.microsoftonline.com') || local(u);
+  });
+  var admin = safeUrl(params.get('admin'), function (u) {
+    return (u.protocol === 'https:' || local(u)) && /\/functions\/v1\/sheet-sync\/oauth\/msgraph\/admin$/.test(u.pathname);
+  });
 
   if (result !== 'finish') {
     var c = copy[result] || ['Something went wrong', 'Close this tab and try again from Survey.', 'failed'];
     say(c[0], c[1], c[2]);
+    if (ms && result === 'personal' && retry) {
+      $('retry').href = retry;
+      $('retry').hidden = false;
+    }
+    if (ms && (result === 'cancelled' || result === 'no_access') && admin) {
+      $('adminLink').textContent = admin;
+      $('adminBox').hidden = false;
+      $('copyAdmin').addEventListener('click', function () {
+        var shown = function () { $('copyAdmin').textContent = 'Copied'; };
+        try { navigator.clipboard.writeText(admin).then(shown, function () { /* the link is selectable */ }); } catch (e) { /* the link is selectable */ }
+      });
+    }
+    if (result === 'admin_approved' || result === 'admin_declined') return;
     if (result === 'connected') {
       try { if (window.opener) window.opener.postMessage({ type: ms ? 'survey-microsoft-connected' : 'survey-google-connected' }, location.origin); } catch (e) { /* the app polls too */ }
       setTimeout(function () { try { window.close(); } catch (e) { /* stays open */ } }, 1500);

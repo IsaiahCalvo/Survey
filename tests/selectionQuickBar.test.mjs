@@ -251,3 +251,12 @@ test('with several document tabs open, the bar reads the tab on screen, not the 
   assert.match(bar, /const pageLayer = \(pageNumber\) => shownElement\(/);
   assert.doesNotMatch(bar, /document\.querySelector\(/, 'every lookup goes through shownElement');
 });
+
+test('phones: the bar steps aside while a bottom sheet is open', () => {
+  // The bar floated over the pages / comments / survey sheet and covered its
+  // rows (phone check 2026-11-09). It hides while a sheet is open, as the
+  // pinned tools dock does, and the mark stays picked.
+  const css = readFileSync(new URL('../src/components/SelectionQuickBar.css', import.meta.url), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.match(css, /html:has\(\.mobile-pdf-sheet:not\(\.is-collapsed\)\) \.selection-quick-bar \{\s*visibility: hidden;\s*pointer-events: none;\s*\}/);
+});

@@ -64,5 +64,5 @@ test('a picked folder is cleaned before it reaches OneDrive', () => {
   assert.equal(cleanFolder(''), '', 'the top of OneDrive');
   assert.equal(cleanFolder('Jobs/2026 Hospital'), 'Jobs/2026 Hospital');
   assert.equal(cleanFolder('/Jobs//../a:b*c/./'), 'Jobs/a-b-c');
-  assert.equal(cleanFolder(Array.from({ length: 20 }, (_, i) => `f${i}`).join('/')).split('/').length, 12);
+  assert.equal(cleanFolder(Array.from({ length: 60 }, (_, i) => `f${i}`).join('/')).split('/').length, 40, 'deep folders keep 40 levels (was 12)');
 });
