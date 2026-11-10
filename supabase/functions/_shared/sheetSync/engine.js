@@ -502,6 +502,15 @@ export async function planSheetRound({
       seen.add(column.key);
     }
     next.columnsSeen[scope.scopeId] = [...seen];
+    // A column that had gone (deleted, or its header renamed) and is back
+    // this round. When a PM puts a deleted column back blank, its blank cells
+    // are not the PM clearing every value (real Excel, 11-10: all 8 notes of
+    // a sheet were wiped): they count as unchanged, so the app fills them.
+    const lastHeaders = state.headers?.[scope.scopeId];
+    const backKeys = new Set(lastHeaders && Object.keys(lastHeaders).length
+      ? scope.columns.filter((c) => colOfKey.has(c.key) && !addedKeys.has(c.key) && !(c.key in lastHeaders)
+        && (state.columnsSeen?.[scope.scopeId] || []).includes(c.key)).map((c) => c.key)
+      : []);
     next.headers[scope.scopeId] = Object.fromEntries(scope.columns.filter((c) => colOfKey.has(c.key)).map((c) => [c.key, c.header]));
     const rowIdCol = colOfKey.get('rowId');
     if (rowIdCol == null) {
@@ -546,7 +555,10 @@ export async function planSheetRound({
     const writeCell = (rowIndex, key, value, was, markerId = null) => {
       const col = colOfKey.get(key);
       if (col == null) return;
-      plan.cellWrites.push({ sheetId: sheet.sheetId, title: sheet.title, row: rowIndex, col, value, ...(markerId ? { markerId, key } : {}) });
+      // Row ID writes carry the item's name, so a round whose rows moved
+      // under it can find which row the Row ID belongs on.
+      plan.cellWrites.push({ sheetId: sheet.sheetId, title: sheet.title, row: rowIndex, col, value, headerRow: headerAt, ...(markerId ? { markerId, key } : {}),
+        ...(key === 'rowId' ? { rowIdFor: String(sheet.rows?.[rowIndex]?.[colOfKey.get('item')] ?? '').trim(), itemCol: colOfKey.get('item') ?? -1 } : {}) });
       plan.verify.push({ sheetId: sheet.sheetId, title: sheet.title, row: rowIndex, col, expect: was ?? null });
     };
     const rowFor = async (markerId, marker) => {
@@ -605,6 +617,21 @@ export async function planSheetRound({
         }
       }
       ownRow.set(markerId, best);
+    }
+
+    // Items of this tab that were in the sheet and have no row now, by name.
+    // A row with a broken Row ID (typed over, cleared, pasted over) and one of
+    // these names is that item's row, not a second item (real Excel 11-10:
+    // a typo in the hidden Row ID made a duplicate of the item in Survey).
+    const lostByName = new Map();
+    for (const markerId of markersByScope.get(scope.scopeId) || []) {
+      // An item already gone from the sheet in an earlier round is not
+      // matched: a new row typed later with its name is a new item, not the
+      // old one with its old answers.
+      if (copies.has(markerId) || nextBaseline[markerId]?.scopeId !== scope.scopeId || next.tombstones[markerId] || state.removedInSheet?.[markerId]) continue;
+      const name = String(markers[markerId]?.name ?? '').trim().toLowerCase();
+      if (!name) continue;
+      lostByName.set(name, [...(lostByName.get(name) || []), markerId]);
     }
 
     const appendRows = [];
@@ -694,7 +721,23 @@ export async function planSheetRound({
       const itemCol = colOfKey.get('item');
       if (!recreate && itemCol != null && isBlankCell(row[itemCol])) {
         summaryRows.push(r);
-        next.problems.push({ scopeId: scope.scopeId, message: `${where(r)} has no "${scope.columns.find((c) => c.key === 'item')?.header || 'Item'}", so it was not brought in.` });
+        // An Excel table's Total Row says "Total" in its first column, which
+        // is Survey's hidden Row ID: a totals line, not a row to report.
+        const first = row.find((c) => !isBlankCell(c));
+        if (!TOTALS_LABEL.test(cellText(first).trim())) {
+          next.problems.push({ scopeId: scope.scopeId, message: `${where(r)} has no "${scope.columns.find((c) => c.key === 'item')?.header || 'Item'}", so it was not brought in.` });
+        }
+        continue;
+      }
+      const lost = !parsed && itemCol != null ? lostByName.get(cellText(row[itemCol]).trim().toLowerCase()) : null;
+      if (!recreate && lost?.length === 1 && markers[lost[0]] && !seenMarkers.has(lost[0])) {
+        const found = lost[0];
+        lostByName.delete(cellText(row[itemCol]).trim().toLowerCase());
+        seenMarkers.add(found);
+        delete next.removedInSheet[found];
+        await mergeRow({ markerId: found, marker: markers[found], row, r });
+        writeCell(r, 'rowId', await tokenFor(found, scope.scopeId), row[rowIdCol]);
+        next.problems.push({ markerId: found, scopeId: scope.scopeId, message: `${where(r)}: its Row ID was changed, so Survey matched it to "${markers[found].name}" by name and put the Row ID back.` });
         continue;
       }
       // "Total", "Grand total", "Subtotal", "Sum"... typed under the items,
@@ -770,7 +813,10 @@ export async function planSheetRound({
     const notItems = new Set(summaryRows);
     let lastItemRow = headerAt;
     for (const r of ids.keys()) if (!notItems.has(r) && r > lastItemRow) lastItemRow = r;
-    const firstSummary = summaryRows.filter((r) => r > lastItemRow).sort((a, b) => a - b)[0];
+    // Only a line just under the items (two blank rows at most) is their
+    // totals line. A note a PM typed far below (Z400) is not: new items
+    // inserted above it landed at row 400 (real Excel 11-10).
+    const firstSummary = summaryRows.filter((r) => r > lastItemRow && r <= lastItemRow + 3).sort((a, b) => a - b)[0];
     if (appendRows.length) {
       plan.appends.push({
         sheetId: sheet.sheetId, title: sheet.title, rows: appendRows, width,
@@ -816,8 +862,10 @@ export async function planSheetRound({
           setFp(sheetSide, key, base ? getFp(base, key) : getFp(appFps, key));
           continue;
         }
-        // A column added this round is blank in the sheet: nothing changed there yet.
-        if (!columnIsEditable(column) || !colOfKey.has(key) || addedKeys.has(key) || errored) {
+        // A column added this round is blank in the sheet: nothing changed
+        // there yet. Nor in a blank cell of a column that came back.
+        const backBlank = backKeys.has(key) && isBlankCell(row[colOfKey.get(key)]);
+        if (!columnIsEditable(column) || !colOfKey.has(key) || addedKeys.has(key) || errored || backBlank) {
           setFp(sheetSide, key, base ? getFp(base, key) : getFp(appFps, key));
         }
       }

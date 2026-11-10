@@ -40,6 +40,15 @@ test('answers are saved clean, or refused when they do not fit', () => {
   assert.equal(typedAnswer(date, 'soon'), null);
   assert.equal(typedAnswer(date, ''), '');
   assert.equal(dateAnswerOf(new Date('2026-10-22T00:00:00Z')), '2026-10-22');
+  // Excel shows dates in the column's format, and Graph hands back that text
+  // (real Excel, 2026-11-10): long and d-mmm-yy forms must read as dates.
+  for (const shown of ['Nov 10, 2026', 'November 10, 2026', 'Monday, November 10, 2026', 'Mon, Nov 10, 2026',
+    '10-Nov-2026', '10-Nov-26', '10 November 2026', '2026/11/10', '11/10/26', 'Nov. 10, 2026']) {
+    assert.equal(dateAnswerOf(shown), '2026-11-10', shown);
+  }
+  for (const notADate of ['Feb 30, 2026', 'Novem 10, 2026', 'Hello 10, 2026', '13/40/2026', 'Nov 2026']) {
+    assert.equal(dateAnswerOf(notADate), null, notADate);
+  }
 });
 
 test('done once answered; an issue past the line the item sets', () => {
