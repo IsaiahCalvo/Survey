@@ -123,13 +123,13 @@ const checklistOfScope = (scope) => scope.columns.filter((c) => c.key.startsWith
 // NULs are left out the same way, or the rest would come back cut off.
 export const MAX_CELL_CHARS = 32000;
 
-// Excel on the web saves a typed cell 4 to 90 s late. A PM's value typed just
-// before Survey wrote that cell can land over Survey's write a minute later
-// and read as a plain sheet edit, quietly replacing the field's newer value.
+// Excel on the web saves a typed cell seconds to over 2 minutes late. A PM's
+// value typed just before Survey wrote that cell can land over Survey's write
+// minutes later and read as a plain sheet edit, quietly replacing the field's newer value.
 // Survey's own cell writes are remembered this long; a different value
 // landing on one of them is held as a conflict instead. Excel only (the
 // provider's savesLate): Google saves as the person types.
-export const RECENT_WRITE_MS = 150_000;
+export const RECENT_WRITE_MS = 300_000;
 const RECENT_WRITE_MAX = 2000;
 function recentWritesOf(saved, nowMs) {
   const kept = Object.entries(saved || {})

@@ -549,12 +549,12 @@ test('a PM value saved late by Excel on the web over a cell Survey just wrote is
   assert.equal((await ctx.sheet()).rows[row][notes], 'PM web note', 'the PM cell is left alone');
   assert.deepEqual(ctx.link.state.conflicts.d1.fields.map((f) => [f.app, f.sheet]), [['App note', 'PM web note']]);
   // Still held a round later, after the window.
-  await ctx.round({ now: new Date(t0 + 400000), force: true });
+  await ctx.round({ now: new Date(t0 + 700000), force: true });
   assert.ok(ctx.link.state.conflicts.d1);
   assert.equal(ctx.markers.d1.note.text, 'App note');
   // Keep mine: the field note goes back to the sheet.
   ctx.link.state.choices = { d1: 'app' };
-  await ctx.round({ now: new Date(t0 + 401000), force: true });
+  await ctx.round({ now: new Date(t0 + 701000), force: true });
   assert.equal((await ctx.sheet()).rows[row][notes], 'App note');
   assert.equal(ctx.link.state.conflicts.d1, undefined);
 });
@@ -570,7 +570,7 @@ test('a sheet edit after the late-save window, or an Undo back to the old value,
   await ctx.round({ now: new Date(t0 + 5000) });
   await ctx.edit([{ row: await ctx.rowOf('d1'), col: notes, value: 'PM later' }, { row: await ctx.rowOf('d2'), col: notes, value: 'Old' }]);
   // d2 is an Undo inside the window; d1 lands after it.
-  const r = await ctx.round({ now: new Date(t0 + 5000 + 200000), force: true });
+  const r = await ctx.round({ now: new Date(t0 + 5000 + 310000), force: true });
   assert.equal(r.summary.conflicts, 0);
   assert.equal(ctx.markers.d1.note.text, 'PM later');
   assert.equal(ctx.markers.d2.note.text, 'Old');
