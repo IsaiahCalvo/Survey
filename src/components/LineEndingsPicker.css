@@ -1,0 +1,45 @@
+/* Nightly 'line-endings': Drawboard's Endings control. Colours follow the
+   surrounding chrome (it sits in the toolbar menu, the phone sheet and the
+   properties panel). */
+.line-endings { display: flex; flex-direction: column; gap: 8px; min-width: 228px; }
+.line-endings__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.line-endings__title { font-weight: 600; }
+.line-endings__switch {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 8px;
+  background: rgba(127, 127, 127, 0.16);
+}
+.line-endings__side {
+  min-width: 48px;
+  height: 24px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.line-endings__side.is-current { background: rgba(64, 100, 244, 0.28); box-shadow: inset 0 0 0 1px rgba(64, 100, 244, 0.75); }
+.line-endings__row, .line-endings__grid { display: grid; grid-template-columns: repeat(5, 40px) auto; gap: 4px; align-items: center; }
+.line-endings__grid { grid-template-columns: repeat(5, 40px); }
+.line-endings__tile, .line-endings__more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: rgba(127, 127, 127, 0.1);
+  color: inherit;
+  cursor: pointer;
+}
+.line-endings__more { width: 28px; background: transparent; }
+.line-endings__more.is-open svg { transform: rotate(180deg); }
+.line-endings__tile:hover, .line-endings__more:hover { background: rgba(127, 127, 127, 0.2); }
+.line-endings__tile.is-current { background: rgba(64, 100, 244, 0.22); border-color: rgba(64, 100, 244, 0.75); }
+.line-endings--compact { min-width: 0; }
+.line-endings-popover { padding: 10px; }

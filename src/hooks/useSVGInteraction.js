@@ -34,6 +34,7 @@ import {
 } from '../utils/selectionRemap.js';
 import { trackHandleZoom, untrackHandleZoom } from '../utils/liveHandleZoom.js';
 import { resizeCalloutBox } from '../utils/markBorderOutline.js';
+import { toggleTapeRevealed } from '../utils/annotationCreationCommit.js';
 // w59: one rule for where a moved mark lands (preview === save).
 import {
   markIdOf,
@@ -213,7 +214,7 @@ import {
   textScalesFontFor,
 } from '../utils/groupResize.js';
 import { TEXT_PADDING } from '../utils/textEditCommit.js';
-import { growTextBoxToFit, isTextSideHandle } from '../utils/textBoxFit.js';
+import { fitTextBoxToWords, growTextBoxToFit, isTextSideHandle } from '../utils/textBoxFit.js';
 import { measureTextContentHeight } from '../utils/textContentMeasure.js';
 
 // Last inverse scale measured per page width (page units), shared by every
@@ -221,6 +222,17 @@ import { measureTextContentHeight } from '../utils/textContentMeasure.js';
 const lastInverseScaleByPageWidth = new Map();
 
 const cloneAnnotations = (annotations) => deepClone(annotations);
+
+// Drawboard PDF Pro trial (t2-tools-deep.md bug 9): dragging a callout, or a
+// box select across one, must not leave its words highlighted. The press
+// starts the browser's text selection; it is dropped while the drag runs and
+// at its end. A selection inside an editor being typed in is left alone.
+const clearDragTextSelection = () => {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  if (document.activeElement?.isContentEditable) return;
+  const selection = window.getSelection?.();
+  if (selection && selection.rangeCount > 0 && !selection.isCollapsed) selection.removeAllRanges();
+};
 
 // Drawboard rule 7: a mark picked less than this long before a double-click
 // was picked BY that double-click's first click (it was not selected before).
@@ -1556,7 +1568,11 @@ export function useSVGInteraction({
         }
       }
       const boxes = members.map((m) => m.box);
-      const moves = detail.op === 'distribute' ? planDistribute(boxes, detail.mode) : planAlign(boxes, detail.mode);
+      // 'move': the properties panel's typed X / Y moves every picked mark
+      // by the same step (Nightly 'properties-panel').
+      const moves = detail.op === 'move'
+        ? boxes.map(() => ({ dx: Number(detail.dx) || 0, dy: Number(detail.dy) || 0 }))
+        : detail.op === 'distribute' ? planDistribute(boxes, detail.mode) : planAlign(boxes, detail.mode);
       if (isNoopPlan(moves)) return;
       const shapeMoves = {};
       const markerMoves = {};
@@ -1589,7 +1605,7 @@ export function useSVGInteraction({
         if ((merged || markerPatch) && typeof now.onSaveAnnotations === 'function') {
           now.onSaveAnnotations(merged ? merged.annotations : now.annotations, {
             source: 'object:modified',
-            action: detail.op === 'distribute' ? 'distribute' : 'align',
+            action: detail.op === 'distribute' ? 'distribute' : detail.op === 'move' ? 'move' : 'align',
             checkpointPolicy: 'normal',
             ...(markerPatch || {}),
           });
@@ -1673,6 +1689,24 @@ export function useSVGInteraction({
     // tightening happens in ONE place. Viewers never reach this handler
     // (ReadOnlyGate blocks pointer events at the SVG root).
     if (!canSelectAnnotationByIndex(index)) {
+      return;
+    }
+
+    // Tape (beta 'tape-tool', Drawboard PDF): a click under Select shows or
+    // covers what is under it, as under Pan. It never picks or moves the
+    // tape (a box drawn round it picks it). A drag that wanders does nothing.
+    if (annotations?.objects?.[index]?.data?.tape === true && !e.shiftKey && !selectedIds?.has?.(index)) {
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const page = annotations;
+      const onTapeUp = (up) => {
+        window.removeEventListener('pointerup', onTapeUp, true);
+        if (Math.hypot(up.clientX - startX, up.clientY - startY) > 4) return;
+        onSaveAnnotations?.(toggleTapeRevealed(page, index), {
+          source: 'tape:reveal', action: 'modify', checkpointPolicy: 'normal',
+        });
+      };
+      window.addEventListener('pointerup', onTapeUp, true);
       return;
     }
 
@@ -2606,6 +2640,7 @@ export function useSVGInteraction({
         endY: clampedY,
         active: mq.active || dx >= MARQUEE_MIN_DRAG_PX || dy >= MARQUEE_MIN_DRAG_PX,
       };
+      if (next.active) clearDragTextSelection();
       applyMarqueeState(next);
       return;
     }
@@ -3273,7 +3308,7 @@ export function useSVGInteraction({
             } else if (orig.height) {
               // Drawboard: words rewrapped by a side drag grow the box
               // downward so no line is cut off (textBoxFit.js).
-              Object.assign(target, growTextBoxToFit(target, measureTextContentHeight(target)));
+              Object.assign(target, (isFeatureOn('text-fit-height') ? fitTextBoxToWords : growTextBoxToFit)(target, measureTextContentHeight(target)));
             }
           } else {
             target.scaleX = (orig.scaleX || 1) * axis.x;
@@ -4297,6 +4332,7 @@ export function useSVGInteraction({
         } catch (err) { console.warn('[BboxScaleDiag] rotate-move log failed', err); }
       }
     } else if (ds.mode === 'callout-part') {
+      clearDragTextSelection();
       // UX: Phase 14 CALL-10 — per-drag update of one or more callout
       // positions. Uses cached ctmInverse for consistent screen→page
       // conversion. Delta math is integer-clean: capture the original
@@ -4736,6 +4772,7 @@ export function useSVGInteraction({
     const mq = marqueeStateRef.current;
     if (mq && (mq.pointerId == null || mq.pointerId === e.pointerId)) {
       const wasActive = mq.active;
+      if (wasActive) clearDragTextSelection();
       applyMarqueeState(null);
       try { svgRef.current?.releasePointerCapture?.(mq.pointerId ?? e.pointerId); } catch (_) { /* optional */ }
 
@@ -5566,7 +5603,8 @@ export function useSVGInteraction({
           // Drawboard: words rewrapped by a side drag grow the box downward
           // so no line is cut off (textBoxFit.js).
           if (obj.height && isTextSideHandle(ds.handleId)) {
-            Object.assign(obj, growTextBoxToFit(obj, measureTextContentHeight(obj)));
+            // Nightly 'text-fit-height': it shrinks back too, like Drawboard.
+            Object.assign(obj, (isFeatureOn('text-fit-height') ? fitTextBoxToWords : growTextBoxToFit)(obj, measureTextContentHeight(obj)));
           }
           lockTextboxSizeAfterResize(obj);
         } else if (ds.originalProps.isPointsShape) {
@@ -5710,6 +5748,7 @@ export function useSVGInteraction({
         diagLog('[BboxScaleDiag] commit rotate ' + JSON.stringify(rotCommitPayload));
       } catch (err) { console.warn('[BboxScaleDiag] rotate commit log failed', err); }
     } else if (ds.mode === 'callout-part' && ds.calloutId) {
+      clearDragTextSelection();
       // UX: Phase 14 CALL-10 — commit the callout drag. The live-paint
       // branch in handlePointerMove already wrote the final state to the
       // React store via onUpdateCalloutLive; pointerup just captures the

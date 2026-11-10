@@ -17,6 +17,7 @@ import {
   REVIEW_STATUSES,
   listDocumentReviews,
   markupCountLabel,
+  mergeFetchedReviews,
   reviewStatus,
   setDocumentReview,
 } from './documentReview.js';
@@ -25,12 +26,25 @@ import './documentReview.css';
 export function useDocumentReviews(enabled, ids) {
   const [reviews, setReviews] = useState(() => new Map());
   const key = enabled ? [...ids].sort().join(',') : '';
+  // Bumped on every local status / owner change, per document: a list read
+  // that started before a change must not put the old values back.
+  const writeTickRef = useRef(0);
+  const touchedRef = useRef(new Map()); // documentId -> writeTick of its last change
+  const pendingRef = useRef(new Map()); // documentId -> { wanted, seq, confirmed, chain }
   useEffect(() => {
     if (!key) return undefined;
     let live = true;
-    const load = () => listDocumentReviews(supabase, key.split(','))
-      .then((next) => { if (live) setReviews(next); })
-      .catch((err) => console.warn('[document-review]', err?.message || err));
+    const load = () => {
+      const startTick = writeTickRef.current;
+      return listDocumentReviews(supabase, key.split(','))
+        .then((next) => {
+          if (!live) return;
+          setReviews((current) => mergeFetchedReviews(next, current, {
+            changedSince: (id) => (touchedRef.current.get(id) || 0) > startTick || pendingRef.current.has(id),
+          }));
+        })
+        .catch((err) => console.warn('[document-review]', err?.message || err));
+    };
     load();
     // Counts change in the viewer: read again when the list comes back.
     const onFocus = () => { if (document.visibilityState === 'visible') load(); };
@@ -54,8 +68,14 @@ export function useDocumentReviews(enabled, ids) {
   // a stale render's value), and only the last answer lands.
   const reviewsRef = useRef(reviews);
   reviewsRef.current = reviews;
-  const pendingRef = useRef(new Map()); // documentId -> { wanted, seq, confirmed, chain }
   const save = useCallback((documentId, patch) => {
+    // Marked again when the save answers: a list read that started while it
+    // was in flight may hold the old row, and must not put it back.
+    const touch = () => {
+      writeTickRef.current += 1;
+      touchedRef.current.set(documentId, writeTickRef.current);
+    };
+    touch();
     const pending = pendingRef.current.get(documentId);
     const confirmed = pending ? pending.confirmed : (reviewsRef.current.get(documentId) || { status: null, ownerId: null, markupCount: null });
     const wanted = { ...(pending ? pending.wanted : confirmed), ...patch };
@@ -67,7 +87,12 @@ export function useDocumentReviews(enabled, ids) {
       const latest = () => pendingRef.current.get(documentId) === entry;
       if (!latest()) return; // a later change will send this one's fields too
       try {
-        const saved = await setDocumentReview(supabase, { documentId, status: wanted.status, ownerId: wanted.ownerId });
+        let saved;
+        try {
+          saved = await setDocumentReview(supabase, { documentId, status: wanted.status, ownerId: wanted.ownerId });
+        } finally {
+          touch();
+        }
         const done = { ...saved, ownerName: saved.ownerId ? wanted.ownerName : null, markupCount: saved.markupCount ?? entry.confirmed.markupCount };
         if (!latest()) { pendingRef.current.get(documentId).confirmed = done; return; }
         pendingRef.current.delete(documentId);

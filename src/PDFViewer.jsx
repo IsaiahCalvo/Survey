@@ -71,6 +71,7 @@ import ExcelSyncConfirmModal from './components/ExcelSyncConfirmModal';
 import SpaceSelectionDialog from './components/SpaceSelectionDialog';
 import TextEditOverlay from './components/TextEditOverlay';
 import { resolveNewMarkStyle, resolvePickBarTool, resolveToolbarCallout } from './utils/toolbarCalloutTarget.js';
+import { pickedLineEndsKey } from './utils/lineEndingDefaults.js';
 import { resolvePickBarValues } from './utils/pickBarValues.js';
 import FabricEraserCanvas from './components/FabricEraserCanvas';
 import FormFieldPropertiesPanel from './components/FormFieldPropertiesPanel';
@@ -256,7 +257,7 @@ import {
 } from './utils/surveyMarkerFamily.js';
 import { overlayLiveSurveyMarkers } from './services/annotationLiveMarkers.js';
 import {
-  DUPLICATE_OFFSET_PAGE_UNITS,
+  duplicateOffsetOnPage,
   buildFamilyClipboard,
   makePastedMarkOwn,
   orderPastedFamily,
@@ -283,7 +284,8 @@ import { fromFabricGroup, toFabricGroup } from './utils/calloutEditAdapter';
 import { getActivePageRegionId, getPageAnnotationVisibilityState, isAnnotationVisibleInSurveyMode, isSurveyVisibilityContext, normalizePageRegions, normalizeRegionVisibility, shouldStampActiveRegionId } from './utils/annotationVisibilityRules';
 // KAL-88 — shared creation scope stamp (Decision 11 companion); used by the
 // counter drop so counters scope exactly like pen/shape/text creations.
-import { applyScope as applyAnnotationCreationScope, applyPasteScope, buildBoundaryShapeCommitJSON, buildLineCommitJSON, buildPolyShapeCommitJSON } from './utils/annotationCreationCommit';
+import { applyScope as applyAnnotationCreationScope, applyPasteScope, buildBoundaryShapeCommitJSON, buildLineCommitJSON, buildPolyShapeCommitJSON, isTapeMark, toggleTapeRevealed } from './utils/annotationCreationCommit';
+import { dashForLineStyle, isDashLineStyle } from './utils/lineStyleOptions.js';
 import { createCallout as makeCalloutDraft, defaultCalloutStyle } from './components/Callout/types';
 import { shouldAutoSelectAfterCommit } from './utils/autoSelectAfterCommit';
 import { isSurveyScopedHistoryEvent, resolveHistoryEntryContext } from './utils/historyContextRestore';
@@ -397,6 +399,8 @@ import { bookmarkDeleteMessage, removeBookmarkWithDescendants, restoreRemovedBoo
 import { useYDoc } from './hooks/useYDoc.js';
 import { useZoomState } from './hooks/useZoomState';
 import { isFeatureOn } from './featureFlags.js';
+import { setStampPickerOpen, useStampPickerOpen } from './components/StampPickerCard.jsx';
+import { pickImageToInsert } from './components/InsertImage.jsx';
 import { marksHidden, setMarksHidden, subscribeMarksHidden } from './utils/marksHidden.js';
 import { isTypingTarget } from './utils/typingTarget.js';
 import { useMarkClipboard } from './utils/sharedMarkClipboard.js';
@@ -3178,6 +3182,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
 
   // Annotation tools state
   const [activeTool, setActiveTool] = useState('pan');
+  // Nightly 'stamp-tool': whether the Stamp card is open (its Text group button).
+  const stampPickerOpen = useStampPickerOpen();
   // Measure tools ride on the Line / Polygon tools: measureMode only says the
   // commit is a measurement ('length' | 'area' | 'perimeter') or a calibration
   // line. measureScaleMeta is the document's saved scales, one page or all
@@ -3203,6 +3209,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const [measureEditOn] = useState(() => isFeatureOn('measure-edit'));
   const [measureDepth, setMeasureDepth] = useState(() => loadMeasureDepth());
   const [measureDepthDialog, setMeasureDepthDialog] = useState(null);
+  // Tape (beta 'tape-tool', Drawboard PDF): a band that covers part of the
+  // page; a Pan tap reveals what is under it. Revealed tapes are per viewer.
+  const [tapeToolEnabled] = useState(() => isFeatureOn('tape-tool'));
   const prevMeasureModeRef = useRef(null);
   useEffect(() => {
     const prev = prevMeasureModeRef.current;
@@ -3433,7 +3442,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     const el = document.elementFromPoint(x, y);
     if (el) {
       let forcedCursor = 'default';
-      if (activeTool === 'pen' || activeTool === 'highlighter' || activeTool === REGION_EDIT_TOOL) forcedCursor = 'crosshair';
+      if (activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'tape' || activeTool === REGION_EDIT_TOOL) forcedCursor = 'crosshair';
       else if (activeTool === 'eraser') forcedCursor = 'none';
       else if (activeTool === 'pan') forcedCursor = 'grab';
       // 'text-select' (KAL-239) shows the I-beam too: the mode is only discoverable
@@ -3453,7 +3462,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
 
   // Clear edit state when switching to drawing/eraser tools
   useEffect(() => {
-    if (activeTool === 'pen' || activeTool === 'highlighter' || NATIVE_TEXT_MARKUP_TOOLS.has(activeTool) || activeTool === 'eraser') {
+    if (activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'tape' || NATIVE_TEXT_MARKUP_TOOLS.has(activeTool) || activeTool === 'eraser') {
       setEditingAnnotation(null);
     }
   }, [activeTool]);
@@ -4458,6 +4467,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       }
       if (hit.kind !== 'annotation') return;
       if (typeof hit.annotationIndex !== 'number' || hit.pageNumber == null) return;
+      // Tape (Drawboard PDF): a Pan tap shows what is under it as an outline;
+      // another tap covers it again. The state is saved on the mark, so it
+      // is an Undo step, survives a reload and others see it, as in Drawboard.
+      const tapedPage = annotationsByPageRef.current?.[hit.pageNumber];
+      if (isTapeMark(tapedPage?.objects?.[hit.annotationIndex])) {
+        handleSaveAnnotations(hit.pageNumber, toggleTapeRevealed(tapedPage, hit.annotationIndex), {
+          source: 'tape:reveal', action: 'modify', checkpointPolicy: 'normal',
+        });
+        return;
+      }
       panQuickClickAutoSelectAtRef.current = Date.now();
       if (!e.shiftKey) setSelectedCalloutIds((previous) => (previous instanceof Set && previous.size === 0 ? previous : new Set()));
       setPendingSvgSelection({
@@ -5720,7 +5739,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
 
   const [lastDrawTool, setLastDrawTool] = useState(() => {
     try {
-      return localStorage.getItem('lastDrawTool') || 'pen';
+      const saved = localStorage.getItem('lastDrawTool') || 'pen';
+      return saved === 'tape' && !isFeatureOn('tape-tool') ? 'pen' : saved;
     } catch (e) {
       return 'pen';
     }
@@ -5763,7 +5783,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     // indistinguishable from clicking the category button. The category
     // buttons' toggle-to-close still works: closing doesn't change the tool,
     // so this effect doesn't re-open.
-    if (['pen', 'highlighter', 'text-highlight', 'eraser'].includes(activeTool)) {
+    if (['pen', 'highlighter', 'text-highlight', 'tape', 'eraser'].includes(activeTool)) {
       setLastDrawTool(activeTool);
       setActiveCategoryDropdown((prev) => (prev === 'draw' ? prev : 'draw'));
       try {
@@ -6690,7 +6710,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     });
 
     const tool = activeToolRef.current;
-    if (tool === 'pen' || tool === 'highlighter' || tool === 'eraser') {
+    if (tool === 'pen' || tool === 'highlighter' || tool === 'tape' || tool === 'eraser') {
       setActiveTool('pan');
     }
     bumpOverlayLagEventTotal(reason === 'pdfjs-wheel-zoom' ? 'pdfjsWheelZoom' : 'overlayWheelZoom');
@@ -9638,10 +9658,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         strokeDashArray: null,
         data: { pdfCloudIntensity: Math.max(1, Number(cloudIntensity) || 2) },
       });
-    } else if (next === 'dashed') {
-      handlePatchSelectedAnnotation({ strokeDashArray: [6, 4], data: { pdfCloudIntensity: null } });
-    } else if (next === 'dotted') {
-      handlePatchSelectedAnnotation({ strokeDashArray: [2, 4], data: { pdfCloudIntensity: null } });
+    } else if (isDashLineStyle(next)) {
+      handlePatchSelectedAnnotation({ strokeDashArray: dashForLineStyle(next), data: { pdfCloudIntensity: null } });
     } else {
       handlePatchSelectedAnnotation({ strokeDashArray: null, data: { pdfCloudIntensity: null } });
     }
@@ -9729,7 +9747,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         // blurring this field. Keep the live tool width current while typing;
         // persistence and selected-annotation edits remain blur-only.
         const minWidth = isCounterSize ? COUNTER_SIZE_MIN : 1;
-        const maxWidth = isCounterSize ? COUNTER_SIZE_MAX : 50;
+        const maxWidth = isCounterSize ? COUNTER_SIZE_MAX : (pickBarTool === 'tape' ? 100 : 50);
         setStrokeWidth(normalizeAnnotationSize(value, minWidth, maxWidth, widthDecimals));
       }
       publishToolbarDraft('strokeWidthInputValue', value);
@@ -9743,7 +9761,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     // blur-time DOM value so a fast edit cannot recommit a stale closure value.
     const isCounterSize = pickBarTool === 'counter' || getSelectedShapeMeta().isCounter;
     const minWidth = isCounterSize ? COUNTER_SIZE_MIN : 1;
-    const maxWidth = isCounterSize ? COUNTER_SIZE_MAX : 50;
+    const maxWidth = isCounterSize ? COUNTER_SIZE_MAX : (pickBarTool === 'tape' ? 100 : 50);
     const rawValue = String(event?.currentTarget?.value ?? strokeWidthInputValueRef.current ?? '').trim();
     // w41: an empty Width over picked marks of different widths means "leave
     // them" - never "set all of them to the minimum".
@@ -22433,6 +22451,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // signed-in person and document project; libraryDraft is the marks the
   // Save to library card is open for.
   const [markLibraryEnabled] = useState(() => isFeatureOn('mark-library'));
+  const [stampToolEnabled] = useState(() => isFeatureOn('stamp-tool'));
+  const [insertImageEnabled] = useState(() => isFeatureOn('insert-image'));
   // Markups list (Nightly 'markup-list'): every mark in one rail panel.
   const [markupListEnabled] = useState(() => isFeatureOn('markup-list'));
   const [libraryDraft, setLibraryDraft] = useState(null);
@@ -27508,6 +27528,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       // w41: only while several marks are picked (the Arrow ends menu then
       // writes every picked arrow at once; see applyRestyleChange arrowEnds).
       setGroupArrowEnds: groupSummary ? handleGroupArrowEndsChange : null,
+      // Nightly 'line-endings': the one picked line's heads, as a string.
+      selectedLineEnds: groupSummary ? null : pickedLineEndsKey(selectedAnnot, selectedToolbarAnnotation?.pageNumber),
       onEnterTextEdit: handleEnterTextEditFromStrip,
       canEnterTextEdit: !groupSummary && !!(selectedToolbarCallout
         || (selectedToolbarAnnotation
@@ -33637,13 +33659,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       pageHeight: height,
     });
     if (!clipboard) return false;
-    let dx = Number.isFinite(offset?.dx) ? offset.dx : DUPLICATE_OFFSET_PAGE_UNITS;
-    let dy = Number.isFinite(offset?.dy) ? offset.dy : DUPLICATE_OFFSET_PAGE_UNITS;
-    // Cmd+D / menu Duplicate keeps the copy on the page, as paste does: a
-    // mark in the bottom-right corner gets its copy slid back inside.
-    if (!offset && clipboard.extent) {
-      ({ dx, dy } = clampNudgeDelta([clipboard.extent], dx, dy, width, height));
-    }
+    const onPage = duplicateOffsetOnPage(clipboard.extent, width, height);
+    const dx = Number.isFinite(offset?.dx) ? offset.dx : onPage.dx;
+    const dy = Number.isFinite(offset?.dy) ? offset.dy : onPage.dy;
     return commitFamilyPaste(offset?.toPage ?? pageNumber, clipboard, dx, dy);
   }, [collectFamilySelection, commitFamilyPaste]);
 
@@ -37455,7 +37473,8 @@ ${pageBlocks}
       canEditLayers: canRestoreFromHistory,
       markLibraryEnabled,
       markupListEnabled,
-      annotationsByPage: markupListEnabled ? annotationsByPage : null,
+      // The Markups list and the properties panel (Nightly) read the marks.
+      annotationsByPage: (markupListEnabled || isFeatureOn('properties-panel')) ? annotationsByPage : null,
       onOpenMarkup: openMarkupRow,
       pdfDisplayName,
     };
@@ -38228,7 +38247,8 @@ ${pageBlocks}
         },
       })}
 
-      {markLibraryEnabled && (
+      {/* Nightly 'stamp-tool' places its presets the same way. */}
+      {(markLibraryEnabled || stampToolEnabled || insertImageEnabled) && (
         <MarkLibraryPlacementLayer active={isActive !== false} rootRef={pdfjsWrapperRef} place={placeLibraryItemAt} />
       )}
       {markLibraryEnabled && (
@@ -40364,6 +40384,7 @@ ${pageBlocks}
                 {[
                   { id: 'pen', label: 'Pen', iconName: 'pen' },
                   { id: 'highlighter', label: 'Highlighter', iconName: 'highlighter' },
+                  ...(tapeToolEnabled ? [{ id: 'tape', label: 'Tape', iconName: 'tape' }] : []),
                   { id: 'eraser', label: 'Eraser', iconName: 'eraser' }
                 ].map(t => {
                   const isHighlighter = t.id === 'highlighter';
@@ -41107,7 +41128,11 @@ ${pageBlocks}
               <>
                 {[
                   { id: 'text', label: 'Text', iconName: 'textBox' },
-                  { id: 'callout', label: 'Callout', iconName: 'callout' }
+                  { id: 'callout', label: 'Callout', iconName: 'callout' },
+                  // Nightly 'stamp-tool': opens Drawboard's Stamp card.
+                  ...(isFeatureOn('stamp-tool') ? [{ id: 'stamp', label: 'Stamp', iconName: 'stamp', picker: true }] : []),
+                  // Nightly 'insert-image': picks a picture and drops it on the page.
+                  ...(isFeatureOn('insert-image') ? [{ id: 'image', label: 'Image', iconName: 'image', action: true }] : []),
                   // TODO: Revisit the user-created Note tool later. Imported
                   // PDF Text/sticky-note annotations still render through
                   // pdfAnnotationImporter + the normal PDF annotation layers.
@@ -41124,9 +41149,19 @@ ${pageBlocks}
                   const caretAttr = isUnderlineMenu ? 'data-underline-caret-button' : 'data-strike-caret-button';
                   const isActiveUnderline = isUnderlineMenu && (activeTool === 'underline' || activeTool === 'squiggly');
                   const isActiveStrike = isStrikeMenu && activeTool === 'strikeout';
-                  const isActive = isActiveUnderline || isActiveStrike || activeTool === t.id;
+                  const isActive = t.picker ? stampPickerOpen : (isActiveUnderline || isActiveStrike || activeTool === t.id);
 
                   const onMainClick = (e) => {
+                    if (t.picker) {
+                      setStampPickerOpen(!stampPickerOpen);
+                      return;
+                    }
+                    if (t.action) {
+                      if (stampPickerOpen) setStampPickerOpen(false);
+                      pickImageToInsert();
+                      return;
+                    }
+                    if (stampPickerOpen) setStampPickerOpen(false);
                     if (isUnderlineMenu) {
                       e.stopPropagation();
                       setActiveTool(activeTool === 'squiggly' ? 'squiggly' : 'underline');

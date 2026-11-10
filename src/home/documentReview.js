@@ -115,3 +115,18 @@ export async function reportMarkupCount(client, documentId, count) {
     console.warn('[document-review] markup count not saved', err?.message || err);
   }
 }
+
+/**
+ * A fresh list read merged over what is shown: a document whose status or
+ * owner changed here after the read began keeps its shown status and owner
+ * (the read may predate the save), taking only the fresh mark count.
+ */
+export function mergeFetchedReviews(fetched, current, { changedSince = () => false } = {}) {
+  const merged = new Map(fetched);
+  for (const [id, shown] of current || []) {
+    if (!changedSince(id) || !shown) continue;
+    const fresh = fetched.get(id);
+    merged.set(id, { ...shown, markupCount: fresh?.markupCount ?? shown.markupCount });
+  }
+  return merged;
+}

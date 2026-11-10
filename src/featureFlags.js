@@ -359,6 +359,54 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Open a PDF with no account (kept on this device)',
     stage: 'beta',
   }),
+  'line-dashes': Object.freeze({
+    label: 'Line styles: Long dash and Dash-dot as well as Solid, Dashed and Dotted',
+    stage: 'beta',
+  }),
+  'eraser-look': Object.freeze({
+    label: "Eraser look: Drawboard's cross-and-eraser cursor, a trail where it moves, hit marks lit orange until release, and icon mode buttons",
+    stage: 'beta',
+  }),
+  'properties-panel': Object.freeze({
+    label: "Properties panel: Drawboard's Expand menu, a card with typed X Y W H R, stroke, border and fill for the picked marks",
+    stage: 'beta',
+  }),
+  'text-fit-height': Object.freeze({
+    label: 'Text box height fits its words both ways: widening a text box from its side brings its height back down',
+    stage: 'beta',
+  }),
+  'poly-click-starts': Object.freeze({
+    label: 'Polygon and Polyline: with a mark picked, the first click drops the pick and places the first point',
+    stage: 'beta',
+  }),
+  'stamp-tool': Object.freeze({
+    label: "Stamp tool: Drawboard's twelve preset stamps in a Stamp card; pick one, then click the page to drop it",
+    stage: 'beta',
+  }),
+  'line-endings': Object.freeze({
+    label: "Line endings: Drawboard's ten heads for the start and end of a Line or Arrow, at Drawboard's sizes",
+    stage: 'beta',
+  }),
+  'pen-types': Object.freeze({
+    label: "Pen types: Drawboard's Basic (fixed), Pro (pressure or speed) and Calligraphy (direction) pens",
+    stage: 'beta',
+  }),
+  'typing-undo': Object.freeze({
+    label: 'Undo while typing steps back one word at a time, not the whole typing session',
+    stage: 'beta',
+  }),
+  'drag-auto-scroll': Object.freeze({
+    label: 'Drawing a shape, moving a mark or box selecting near the edge of the view scrolls it',
+    stage: 'beta',
+  }),
+  'insert-image': Object.freeze({
+    label: 'Image: put a picture from a file or the clipboard on the page as a mark you can move, resize and rotate',
+    stage: 'beta',
+  }),
+  'tape-tool': Object.freeze({
+    label: 'Tape: an opaque band that covers part of the page; tap it under Pan to see what is under it',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

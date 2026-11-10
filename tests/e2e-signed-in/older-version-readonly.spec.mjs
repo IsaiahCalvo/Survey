@@ -293,6 +293,20 @@ test('a new version keeps its sharing; a person with the old copy open is told a
     await expect(page.locator('body')).toHaveAttribute('data-readonly', 'true');
     await page.screenshot({ path: test.info().outputPath('shared-version-told.png') });
 
+    // Home and back: the switch empties the versions list until it reloads,
+    // and the copy must stay read-only all along (Bugbot on #1385). The
+    // list read is held back here, as on a slow connection.
+    await page.route('**/rest/v1/rpc/document_versions*', async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 8_000));
+      await route.continue().catch(() => {});
+    });
+    await page.locator('[data-app-tab]:not([data-pdf-tab-id])').first().click();
+    await page.locator('[data-pdf-tab-id]').first().click();
+    await expect(page.getByText('Shared versions A page 1')).toBeVisible({ timeout: 60_000 });
+    await expect(page.locator('body')).toHaveAttribute('data-readonly', 'true', { timeout: 1_000 });
+    await expect(page.locator('[data-older-version-bar]')).toBeVisible({ timeout: 1_000 });
+    await page.unroute('**/rest/v1/rpc/document_versions*');
+
     // Open current version reaches v2, which the editor can mark up.
     await page.locator('[data-older-version-bar] .older-version-bar__action').click();
     await expect(page.getByText('Shared versions B page 1')).toBeVisible({ timeout: 60_000 });

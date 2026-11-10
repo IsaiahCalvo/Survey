@@ -185,7 +185,7 @@ export function canToolPickAnyGroup(tool) {
 export const TOOL_CLASSES = Object.freeze({
   select: Object.freeze(['select', 'text-select', 'pan']),
   shape: Object.freeze(['rect', 'ellipse', 'line', 'arrow', 'callout']),
-  ink: Object.freeze(['pen', 'highlighter']),
+  ink: Object.freeze(['pen', 'highlighter', 'tape']),
   point: Object.freeze(['polygon', 'polyline']),
   eraser: Object.freeze(['eraser']),
   text: Object.freeze(['text']),

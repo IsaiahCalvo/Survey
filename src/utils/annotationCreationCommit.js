@@ -10,11 +10,13 @@
  *
  * Pure JS — Node test runner imports this directly.
  */
+import { penWidthFactors } from './penTypes.js';
 import {
   computeDrawnBoundaryShapePreviewGeometry,
   tagDrawnCenteredStrokeGeometry,
 } from './shapeCommitGeometry.js';
 import { createProductionPaperInk } from './productionPaperInk.js';
+import { dashForLineStyle } from './lineStyleOptions.js';
 import { toolSupportsCloudBorderStyle } from './pdfAnnotationAppearance.js';
 import { normalizePolyPointsToLocal } from './polyDraft.js';
 import { round2 } from './annotationCommitRounding.js';
@@ -105,12 +107,9 @@ const applyBorderStyle = (json, { tool, lineBorderStyle, cloudIntensity }) => {
       ...(json.data || {}),
       pdfCloudIntensity: Math.max(1, Number(cloudIntensity) || 2),
     };
-  } else if (lineBorderStyle === 'dashed') {
-    json.strokeDashArray = [6, 4];
-  } else if (lineBorderStyle === 'dotted') {
-    json.strokeDashArray = [2, 4];
   } else {
-    json.strokeDashArray = null;
+    // Dashed, Dotted, and (Nightly 'line-dashes') Long dash and Dash-dot.
+    json.strokeDashArray = dashForLineStyle(lineBorderStyle);
   }
   return json;
 };
@@ -321,6 +320,9 @@ export function buildLineCommitJSON({
   strokeWidth,
   arrowheadStyle,
   arrowStartStyle = null,
+  // Nightly 'line-endings': 'drawboard' stamps both ends (Line and Arrow
+  // alike) and the marker that gives them Drawboard's sizes.
+  endingSet = null,
   lineBorderStyle,
   cloudIntensity,
   selectedModuleId,
@@ -363,7 +365,9 @@ export function buildLineCommitJSON({
     // Line and Arrow are separate tools — line starts with plain ends, arrow
     // starts with the picked head; both stay editable via the ending picker,
     // which writes data.arrowheadStyle explicitly on the committed object.
-    data: (tool === 'arrow' && arrowheadStyle)
+    data: endingSet
+      ? { id, arrowheadStyle: arrowheadStyle || 'none', startArrowheadStyle: arrowStartStyle || 'none', lineEndingSet: endingSet }
+      : (tool === 'arrow' && arrowheadStyle)
       ? { id, arrowheadStyle, ...(arrowStartStyle && arrowStartStyle !== 'none' ? { startArrowheadStyle: arrowStartStyle } : {}) }
       : { id },
   };
@@ -379,7 +383,7 @@ export function buildLineCommitJSON({
  * Returns null when the sampled points compact to nothing (sub-0.01pt click).
  */
 export function buildFreehandCommitJSON({
-  tool, // 'pen' | 'highlighter'
+  tool, // 'pen' | 'highlighter' | 'tape'
   id,
   authorId,
   points,
@@ -390,11 +394,20 @@ export function buildFreehandCommitJSON({
   selectedModuleId,
   stampRegionId,
   activeRegionId,
+  // Nightly 'pen-types': 'pro' or 'calligraphy' varies the Pen's width.
+  penType = 'basic',
 }) {
+  const variablePen = tool === 'pen' && (penType === 'pro' || penType === 'calligraphy');
+  const factors = variablePen ? penWidthFactors(points, penType, strokeWidth) : null;
+  const inkPoints = factors ? points.map((p, i) => ({ x: p.x, y: p.y, f: factors[i] })) : points;
+  // Tape (beta 'tape-tool') is pen ink in an opaque pastel at its own width,
+  // marked data.tape so it draws with a shadow, a Pan tap reveals what is
+  // under it, and the partial eraser leaves it whole (Drawboard).
+  const tape = tool === 'tape';
   const json = createProductionPaperInk({
     ...PEN_FABRIC_RESIDUE,
     id,
-    tool,
+    tool: tape ? 'pen' : tool,
     // KAL-417: highlighters are permission-gated at partial-erase time.
     // Stamp their creator before the first collaborative publish so an editor
     // can modify their own stroke. Keep this narrow: KAL-435 owns the general
@@ -402,7 +415,7 @@ export function buildFreehandCommitJSON({
     ...(tool === 'highlighter' && typeof authorId === 'string' && authorId
       ? { meta: { authorId } }
       : {}),
-    points,
+    points: inkPoints,
     // The pen honours the picked opacity (Drawboard PDF Pro trial audit
     // 2026-11-09: Survey drew new ink at 100% whatever opacity was set). The
     // highlighter keeps its own fixed highlightColor.
@@ -410,9 +423,30 @@ export function buildFreehandCommitJSON({
     color: tool === 'highlighter' ? highlightColor
       : ((strokeOpacity ?? 100) >= 100 ? strokeColor : composeAnnotationColor(strokeColor, strokeOpacity)),
     width: tool === 'highlighter' ? Math.max(strokeWidth, 8) : strokeWidth,
-    data: { id },
+    data: tape ? { id, tape: true } : (factors ? { id, penType } : { id }),
   });
   if (!json) return null;
   applyScope(json, { selectedModuleId, stampRegionId, activeRegionId });
   return json;
+}
+
+/** A Tape mark (beta 'tape-tool'). */
+export const isTapeMark = (obj) => obj?.data?.tape === true;
+
+/**
+ * The page with the tape at `index` revealed (or covered again). The state
+ * rides on the mark (data.tapeRevealed), so the toggle saves like any edit:
+ * one Undo step, kept after a reload, seen by others (Drawboard does the
+ * same). Anything that is not a tape leaves the page as it was.
+ */
+export function toggleTapeRevealed(page, index) {
+  const objects = Array.isArray(page?.objects) ? page.objects : null;
+  const tape = objects?.[index];
+  if (!isTapeMark(tape)) return page;
+  const data = { ...tape.data };
+  if (data.tapeRevealed === true) delete data.tapeRevealed;
+  else data.tapeRevealed = true;
+  const next = objects.slice();
+  next[index] = { ...tape, data };
+  return { ...page, objects: next };
 }

@@ -148,8 +148,13 @@ import { POLYLINE_CURVE_SET_EVENT } from './utils/polySpline.js';
 import { sanitizeZoomInput } from './utils/pageNavigationMath.js';
 import { showsColourRule, showsPaintSwatch, showsQuickColourDots } from './utils/toolbarColourGroup.js';
 import { isAreaEditing, REGION_TOOLBAR_OPENING_STATE, resolveToolBarGroup, showsFormatRow, showsSurveyRow } from './utils/toolbarRows.js';
-import { LINE_STYLE_OPTIONS, LINE_STYLE_SAMPLE_ICONS } from './utils/lineStyleOptions.js';
+import { LINE_STYLE_SAMPLE_ICONS, lineStyleOptionsWith } from './utils/lineStyleOptions.js';
 import SelectionQuickBar from './components/SelectionQuickBar.jsx';
+import SelectionPropertiesPanel from './components/SelectionPropertiesPanel.jsx';
+import StampPickerCard from './components/StampPickerCard.jsx';
+import InsertImagePasteHost from './components/InsertImage.jsx';
+import { LineEndingsMenu } from './components/LineEndingsPicker.jsx';
+import { PenTypeMenu } from './components/PenTypePicker.jsx';
 import { isToolGroupPressed } from './utils/toolbarToolPressed.js';
 import { pendingInviteRedirect } from './utils/pendingInvite.js';
 import { useProLock } from './hooks/useProLock.js';
@@ -2294,6 +2299,8 @@ export default function App({ devPreviewReturnTab = null }) {
   // Hide all marks (Nightly, 'hide-marks'): an eye in the right rail and a
   // chip over the page while they are hidden (utils/marksHidden.js).
   const [hideMarksEnabled] = useState(() => isFeatureOn('hide-marks'));
+  const [lineDashesOn] = useState(() => isFeatureOn('line-dashes'));
+  const [eraserLookOn] = useState(() => isFeatureOn('eraser-look'));
   const allMarksHidden = useMarksHidden();
   // Focus mode (Nightly, 'focus-mode'; utils/focusMode.js): no tab strip or
   // side rails, browser full screen, an Exit chip that always shows.
@@ -2565,7 +2572,15 @@ export default function App({ devPreviewReturnTab = null }) {
     if (!documentId || !item?.id) return;
     requestMarkCommentsFocus({ documentId: String(documentId), markId: item.id, pageNumber: item.pageNumber });
   }, [activeTab?.file?.id]);
-  const documentVersions = useDocumentVersions(documentVersionsEnabled ? activeTab?.file?.id || null : null, handleDocumentSelect);
+  // Documents found superseded while open: they stay read-only after a
+  // document switch clears the versions list (a tab's file keeps the
+  // superseded_by it was opened with, which a later upload never updates).
+  const [supersededDocIds, setSupersededDocIds] = useState(() => new Set());
+  const markDocSuperseded = useCallback((id) => {
+    if (!id) return;
+    setSupersededDocIds((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+  }, []);
+  const documentVersions = useDocumentVersions(documentVersionsEnabled ? activeTab?.file?.id || null : null, handleDocumentSelect, markDocSuperseded);
   // An older version opens read-only, with a bar to the current one.
   const olderVersionOpen = documentVersions.open && !documentVersions.open.isCurrent ? documentVersions.open : null;
   const currentVersion = documentVersions.versions.find((v) => v.isCurrent) || null;
@@ -3135,6 +3150,11 @@ export default function App({ devPreviewReturnTab = null }) {
   // Owner 2026-10-26: with the text settings swapped in, row 2 holds them and
   // the Aa that swaps them back - none of the regular settings.
   const textSettingsSwapped = showTextFormatting && !surveyRowShown;
+  // Nightly 'line-endings': the Line / Arrow tool, or one picked line, gets
+  // Drawboard's Endings; several picked arrows keep the arrow ends pill.
+  const lineEndingsInBar = Boolean(bottomToolbarApi && isFeatureOn('line-endings')
+    && (bottomToolbarApi.contextTool === 'arrow' || bottomToolbarApi.contextTool === 'line')
+    && (bottomToolbarApi.selectionCount || 0) <= 1);
   const toolbarSlot = (id, render, { canCompact = true, label } = {}) => {
     if (textSettingsSwapped && id !== 'aa') return null;
     if (toolbarPlan.overflow.includes(id)) {
@@ -3614,13 +3634,13 @@ export default function App({ devPreviewReturnTab = null }) {
                   leaveAreasMode();
                   if (bottomToolbarApi.activeCategoryDropdown === 'draw') return;
                   bottomToolbarApi.setActiveCategoryDropdown('draw');
-                  if (!['pen', 'highlighter', 'text-highlight', 'eraser'].includes(bottomToolbarApi.activeTool)) {
+                  if (!['pen', 'highlighter', 'text-highlight', 'tape', 'eraser'].includes(bottomToolbarApi.activeTool)) {
                     bottomToolbarApi.setActiveTool(bottomToolbarApi.lastDrawTool, { source: 'category-tab' });
                   }
                 }}
                 {...chromeTip('Draw', 'below')}
-                className={`btn chrome-control ${isToolGroupPressed({ activeTool: bottomToolbarApi.activeTool, activeCategoryDropdown: bottomToolbarApi.activeCategoryDropdown, group: 'draw', toolIds: ['pen', 'highlighter', 'text-highlight', 'eraser'] }) ? 'btn-active' : 'btn-default'}`}
-                aria-pressed={isToolGroupPressed({ activeTool: bottomToolbarApi.activeTool, activeCategoryDropdown: bottomToolbarApi.activeCategoryDropdown, group: 'draw', toolIds: ['pen', 'highlighter', 'text-highlight', 'eraser'] })}
+                className={`btn chrome-control ${isToolGroupPressed({ activeTool: bottomToolbarApi.activeTool, activeCategoryDropdown: bottomToolbarApi.activeCategoryDropdown, group: 'draw', toolIds: ['pen', 'highlighter', 'text-highlight', 'tape', 'eraser'] }) ? 'btn-active' : 'btn-default'}`}
+                aria-pressed={isToolGroupPressed({ activeTool: bottomToolbarApi.activeTool, activeCategoryDropdown: bottomToolbarApi.activeCategoryDropdown, group: 'draw', toolIds: ['pen', 'highlighter', 'text-highlight', 'tape', 'eraser'] })}
                 data-tool-group="true"
                 data-tool-switch="true"
                 aria-label="Draw"
@@ -4238,9 +4258,14 @@ export default function App({ devPreviewReturnTab = null }) {
                     data-eraser-mode-toggle="true"
                     role="group"
                     aria-label="Eraser type"
-                    style={{ width: '100px' }}
+                    style={{ width: eraserLookOn ? '72px' : '100px' }}
                   >
-                    {[['partial', 'Partial', 'Partial erase'], ['entire', 'Whole', 'Full stroke erase']].map(([mode, short, full]) => (
+                    {/* Nightly 'eraser-look': Drawboard's two icon buttons,
+                        Full Eraser then Partial Eraser. */}
+                    {(eraserLookOn
+                      ? [['entire', null, 'Full Eraser', 'eraserModeFull'], ['partial', null, 'Partial Eraser', 'eraserModePartial']]
+                      : [['partial', 'Partial', 'Partial erase'], ['entire', 'Whole', 'Full stroke erase']]
+                    ).map(([mode, short, full, icon]) => (
                       <button
                         key={mode}
                         type="button"
@@ -4249,8 +4274,9 @@ export default function App({ devPreviewReturnTab = null }) {
                         {...chromeTip(full, 'below')}
                         aria-label={full}
                         data-press-label=""
+                        data-eraser-mode={mode}
                       >
-                        <span>{short}</span>
+                        {icon ? <Icon name={icon} size={18} color="currentColor" /> : <span>{short}</span>}
                       </button>
                     ))}
                   </div>
@@ -4527,8 +4553,14 @@ export default function App({ devPreviewReturnTab = null }) {
                     width is a pill showing the stroke it will draw, the value
                     with its unit, and a chevron onto the list. */}
 
+                {/* Nightly 'pen-types': Drawboard's three pens (a tool
+                    setting, so only while the Pen is armed). */}
+                {isFeatureOn('pen-types') && bottomToolbarApi.activeTool === 'pen' && toolbarSlot('pen', (compact) => (
+                  <PenTypeMenu tip={chromeTip} compact={compact} />
+                ))}
                 {(bottomToolbarApi.contextTool === 'pen'
                   || bottomToolbarApi.contextTool === 'highlighter'
+                  || bottomToolbarApi.contextTool === 'tape'
                   || bottomToolbarApi.contextTool === 'arrow'
                   || bottomToolbarApi.contextTool === 'line'
                   || bottomToolbarApi.contextTool === 'rect'
@@ -4556,7 +4588,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     ? 100
                     : bottomToolbarApi.contextTool === 'counter'
                       ? COUNTER_SIZE_MAX
-                      : 50}
+                      : bottomToolbarApi.contextTool === 'tape' ? 100 : 50}
                   // UX 2026-09-09: line widths keep one decimal (the Cloud
                   // style's 2.5 default); counter/eraser sizes stay whole.
                   decimals={bottomToolbarApi.activeTool === 'eraser' || bottomToolbarApi.contextTool === 'counter'
@@ -4566,7 +4598,9 @@ export default function App({ devPreviewReturnTab = null }) {
                     ? ANNOTATION_SIZE_PRESETS.eraser
                     : bottomToolbarApi.contextTool === 'counter'
                       ? ANNOTATION_SIZE_PRESETS.counter
-                      : ANNOTATION_SIZE_PRESETS.width}
+                      : bottomToolbarApi.contextTool === 'tape'
+                        ? ANNOTATION_SIZE_PRESETS.tape
+                        : ANNOTATION_SIZE_PRESETS.width}
                   onValueChange={(value) => {
                     const handler = bottomToolbarApi.activeTool === 'eraser'
                       ? bottomToolbarApi.handleEraserSizeInputChange
@@ -4684,7 +4718,10 @@ export default function App({ devPreviewReturnTab = null }) {
                   // (no row ticked) until one is chosen for all of them.
                   const styleMixed = !!bottomToolbarApi.selectionMixed?.lineStyle;
                   if (bottomToolbarApi.selectionCapabilities?.lineStyle === false) return null;
-                  const styleOptions = LINE_STYLE_OPTIONS.filter((option) => option.value !== 'cloud' || bottomToolbarApi.supportsCloudStyle);
+                  // Nightly 'line-dashes': Long dash and Dash-dot too (not on a
+                  // callout, which keeps Solid / Dashed / Dotted / Cloud).
+                  const styleOptions = lineStyleOptionsWith(lineDashesOn && bottomToolbarApi.contextTool !== 'callout')
+                    .filter((option) => option.value !== 'cloud' || bottomToolbarApi.supportsCloudStyle);
                   return toolbarSlot('style', (compact) => (
                   <AnnotationDropdown
                     compact={compact}
@@ -4795,7 +4832,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     callout has one end) and the head tiles, None among them.
                     It writes the same two pieces of state as before (head
                     style, both ends), so nothing new is stored. */}
-                {(bottomToolbarApi.contextTool === 'arrow' || bottomToolbarApi.contextTool === 'callout') && bottomToolbarApi.setArrowheadStyle && (() => {
+                {((bottomToolbarApi.contextTool === 'arrow' && !lineEndingsInBar) || bottomToolbarApi.contextTool === 'callout') && bottomToolbarApi.setArrowheadStyle && (() => {
                   const live = bottomToolbarApi.arrowheadStyle || 'none';
                   const options = ARROWHEAD_MENU_OPTIONS.some((option) => option.value === live)
                     ? ARROWHEAD_MENU_OPTIONS
@@ -4892,6 +4929,12 @@ export default function App({ devPreviewReturnTab = null }) {
                   />
                   ), { canCompact: !anyMixed });
                 })()}
+                {/* Nightly 'line-endings': Drawboard's Endings (Start | End,
+                    ten heads) for the Line and Arrow tools, in place of the
+                    arrow ends pill. Callouts keep the pill. */}
+                {lineEndingsInBar && toolbarSlot('arrowhead', (compact) => (
+                  <LineEndingsMenu api={bottomToolbarApi} tool={bottomToolbarApi.contextTool} tip={chromeTip} compact={compact} />
+                ), { canCompact: true })}
                 {/* PASS 7 (2026-09-22 review): the rule that closes the value
                     group before "Aa". Every other group in bars 1-3 is fenced
                     off by a hairline — colour | numbers | style — but the Aa sat
@@ -5229,7 +5272,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       documentId={tab.file?.id || null}
                       viewerUserId={user?.id || null}
                       isActive={isVisible}
-                      readOnlyWithoutLock={Boolean(tab.file?.superseded_by) || (tab.id === activeTabId && Boolean(olderVersionOpen))}
+                      readOnlyWithoutLock={Boolean(tab.file?.superseded_by) || supersededDocIds.has(tab.file?.id) || (tab.id === activeTabId && Boolean(olderVersionOpen))}
                       onLockStateChange={(isLocked) => {
                         setDocumentLockedByTab((current) => (
                           current[tab.id] === isLocked
@@ -5946,6 +5989,21 @@ export default function App({ devPreviewReturnTab = null }) {
         }}
         tip={chromeTip}
       />
+      {/* Nightly 'properties-panel': Drawboard's Expand menu card. */}
+      <SelectionPropertiesPanel
+        enabled={Boolean(isViewerVisible && bottomToolbarApi)}
+        phone={Boolean(isMobileViewer)}
+        api={bottomToolbarApi}
+        paint={annotationPaint}
+        onOpenColourPicker={toggleAnnotationColourPicker}
+        annotationsByPage={leftRailApi?.annotationsByPage || null}
+        viewerId={signedInUserId}
+        tip={chromeTip}
+      />
+      {/* Nightly 'stamp-tool': Drawboard's Stamp card (the Text group's Stamp button opens it). */}
+      <StampPickerCard enabled={Boolean(isViewerVisible && isFeatureOn('stamp-tool'))} phone={Boolean(isMobileViewer)} tip={chromeTip} />
+      {/* Nightly 'insert-image': a picture pasted from the clipboard becomes an image mark. */}
+      <InsertImagePasteHost enabled={Boolean(isViewerVisible && isFeatureOn('insert-image'))} />
 
       {/* KAL-444: one shortcuts sheet for Home AND the viewer — inside a
           document is where every one of those keys applies. (It was kept off
@@ -5995,7 +6053,7 @@ export default function App({ devPreviewReturnTab = null }) {
         </div>
       )}
       <DocumentVersionsDialogs state={documentVersions} />
-      {isViewerVisible && (olderVersionOpen || activeTab?.file?.superseded_by) && (
+      {isViewerVisible && (olderVersionOpen || activeTab?.file?.superseded_by || supersededDocIds.has(activeTab?.file?.id)) && (
         <OlderVersionBar
           versionNumber={olderVersionOpen?.versionNumber || null}
           onOpenCurrent={currentVersion ? () => documentVersions.openVersion(currentVersion) : null}

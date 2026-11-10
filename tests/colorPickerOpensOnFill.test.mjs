@@ -17,5 +17,7 @@ test('the shape colour picker opens on the Fill tab', () => {
   assert.match(shell, /const toggleAnnotationColourPicker = \(\) => \{\s*if \(!annotationPaint \|\| !bottomToolbarApi\) return;\s*setColorPickerTab\(annotationPaint\.isShape \? 'fill' : annotationPaint\.quick\.tab\);/);
   assert.equal((shell.match(/onOpenPicker=\{toggleAnnotationColourPicker\}/g) || []).length, 1);
   assert.equal((shell.match(/onOpen=\{toggleAnnotationColourPicker\}/g) || []).length, 1);
-  assert.equal((shell.match(/onOpenColourPicker=\{toggleAnnotationColourPicker\}/g) || []).length, 1);
+  // DELIBERATE CHANGE (2026-11-10, Nightly 'properties-panel'): the panel's
+  // Stroke colour opens the same shared toggle as the quick bar.
+  assert.equal((shell.match(/onOpenColourPicker=\{toggleAnnotationColourPicker\}/g) || []).length, 2);
 });
