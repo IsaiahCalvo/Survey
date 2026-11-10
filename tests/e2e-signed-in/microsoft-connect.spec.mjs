@@ -43,9 +43,14 @@ async function forgetMicrosoft() {
 }
 
 async function openPanel(page) {
-  await page.getByText(E2E_SURVEY.documentName, { exact: true }).first().click();
-  await page.getByRole('button', { name: 'Open file' }).click();
-  await expect(page.getByRole('button', { name: `Close ${E2E_SURVEY.documentName}` })).toBeVisible({ timeout: 60_000 });
+  // A second tab of Survey reopens the file the first tab has open: only go
+  // through Home when it didn't.
+  const close = page.getByRole('button', { name: `Close ${E2E_SURVEY.documentName}` });
+  if (!(await close.waitFor({ timeout: 8_000 }).then(() => true, () => false))) {
+    await page.getByText(E2E_SURVEY.documentName, { exact: true }).first().click();
+    await page.getByRole('button', { name: 'Open file' }).click();
+  }
+  await expect(close).toBeVisible({ timeout: 60_000 });
   const sync = page.locator('[data-sheet-sync-state]').filter({ visible: true }).first();
   const chooser = page.getByText('Choose a survey template', { exact: true });
   await expect(async () => {
@@ -146,7 +151,8 @@ test('a blocked sign-in window gets a tap-to-open link, and the sign-in still fi
   });
   await signIn(page, E2E_ACCOUNTS.owner);
   const { sync, panel } = await openPanel(page);
-  await panel.getByRole('button', { name: 'Connect Microsoft' }).click();
+  // "Save in" signs in first, then opens the folder list.
+  await panel.getByRole('button', { name: 'Change' }).click();
   const open = panel.getByRole('link', { name: 'Open Microsoft sign-in' });
   await expect(open).toBeVisible({ timeout: 15_000 });
   await expect(panel.getByText('Your browser stopped the sign-in window.')).toBeVisible();
@@ -155,7 +161,7 @@ test('a blocked sign-in window gets a tap-to-open link, and the sign-in still fi
   const consent = await tab;
   await expect(consent.getByRole('heading', { name: /Microsoft is connected/ })).toBeVisible({ timeout: 30_000 });
   await expect(sync).toHaveAttribute('data-sheet-sync-state', 'connected', { timeout: 30_000 });
-  await expect(panel.getByRole('button', { name: 'Make Excel workbook' })).toBeVisible();
+  await expect(panel.getByRole('button', { name: 'Save here' })).toBeVisible();
   await expect(panel.getByRole('alert')).toHaveCount(0);
 });
 
@@ -177,7 +183,7 @@ test('a flaky network at the last step keeps the code and finishes; a second tab
     return route.fallback(process.env.E2E_FUNCTIONS_URL ? { url: functionUrl('sheet-sync') } : undefined);
   });
   const tab = context.waitForEvent('page', (p) => p !== second);
-  await panel.getByRole('button', { name: 'Connect Microsoft' }).click();
+  await panel.getByRole('button', { name: 'Change' }).click();
   await tab;
   await expect(sync).toHaveAttribute('data-sheet-sync-state', 'connected', { timeout: 45_000 });
   await expect(panel.getByRole('alert')).toHaveCount(0);
@@ -187,4 +193,50 @@ test('a flaky network at the last step keeps the code and finishes; a second tab
   await expect(other.sync).toHaveAttribute('data-sheet-sync-state', 'connected', { timeout: 30_000 });
   await expect(other.panel.getByRole('alert')).toHaveCount(0);
   await expect(other.panel.getByText(/ran out/)).toHaveCount(0);
+});
+
+test('not connected: one press on "Make Excel workbook" signs in and makes the workbook', async ({ page, context }) => {
+  test.setTimeout(120_000);
+  await page.addInitScript(() => window.localStorage.setItem('survey.flag.sheet-team-sync', '1'));
+  await signIn(page, E2E_ACCOUNTS.owner);
+  const { sync, panel } = await openPanel(page);
+  await expect(sync).toHaveAttribute('data-sheet-sync-state', 'none');
+  await expect(panel.getByText('Save in OneDrive › Survey')).toBeVisible();
+  const tab = context.waitForEvent('page');
+  await panel.getByRole('button', { name: 'Make Excel workbook' }).click();
+  await (await tab).waitForURL(/google-connected\.html\?/, { timeout: 30_000 });
+  // No second press: the workbook is made as soon as the sign-in lands.
+  await expect(panel.getByRole('link', { name: 'Open in Excel' })).toBeVisible({ timeout: 45_000 });
+  await expect(sync).toHaveAttribute('data-sheet-sync-state', 'active');
+  await expect(panel.getByRole('alert')).toHaveCount(0);
+});
+
+test('Sign out acts at once; Undo brings the same sign-in back', async ({ page, context }) => {
+  test.setTimeout(150_000);
+  await page.addInitScript(() => window.localStorage.setItem('survey.flag.sheet-team-sync', '1'));
+  await signIn(page, E2E_ACCOUNTS.owner);
+  const { sync, panel } = await openPanel(page);
+  const tab = context.waitForEvent('page');
+  await panel.getByRole('button', { name: 'Change' }).click();
+  await (await tab).waitForURL(/google-connected\.html\?/, { timeout: 30_000 });
+  await expect(sync).toHaveAttribute('data-sheet-sync-state', 'connected', { timeout: 45_000 });
+  await panel.getByRole('button', { name: 'Save here' }).click();
+  const id = await userId(E2E_ACCOUNTS.owner);
+  const rows = async () => (await adminClient().from('sheet_sync_connections').select('account_email').eq('user_id', id)).data;
+  const email = (await rows())[0].account_email;
+  await expect(panel.getByText(email)).toBeVisible();
+
+  // No "are you sure": signed out straight away, with Undo on the toast.
+  await panel.getByRole('button', { name: 'Sign out' }).click();
+  await expect(page.getByText('Signed out of Microsoft. Live sync stopped.')).toBeVisible({ timeout: 15_000 });
+  await expect(sync).not.toHaveAttribute('data-sheet-sync-state', 'connected', { timeout: 15_000 });
+  expect(await rows()).toHaveLength(0);
+
+  await page.locator('.app-toast__action', { hasText: 'Undo' }).click();
+  await expect(sync).toHaveAttribute('data-sheet-sync-state', 'connected', { timeout: 30_000 });
+  // Pressing the toast closes the panel like any press outside it.
+  if (!(await panel.isVisible())) await sync.click();
+  await expect(panel.getByText(email)).toBeVisible();
+  expect(await rows()).toHaveLength(1);
+  await expect(panel.getByRole('alert')).toHaveCount(0);
 });

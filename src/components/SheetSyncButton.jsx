@@ -12,6 +12,7 @@ import { useTooltip } from './Tooltip';
 import AnchoredPopover from './AnchoredPopover';
 import { sheetLayoutInput, sheetSyncCall, sheetTemplateId, syncedAgo } from '../services/sheetSyncClient.js';
 import { CLAIM_KEY, forgetClaim, readClaim } from '../services/sheetSyncClaim.js';
+import { announceAccountSwitch, announceSignOut } from '../services/sheetSyncNotices.js';
 import { isNativeApp } from '../utils/proLock.js';
 import { isElectronApp } from '../utils/layoutMode.js';
 import './SheetSyncButton.css';
@@ -187,7 +188,11 @@ function useSheetSync({ documentId, template, markers, enabled }) {
     claiming.current.add(code);
     try {
       const res = await sheetSyncCall('claim', { provider, code });
-      if (!res?.error) { forgetClaim(); return { ok: true }; }
+      if (!res?.error) {
+        forgetClaim();
+        announceAccountSwitch(provider, res, { onDone: async () => apply(await sheetSyncCall('status', ids)) });
+        return { ok: true };
+      }
       // No code from the server: it was never reached (offline, a hiccup).
       // Keep the code and try again on the next look.
       if (!res.code) return { retry: true, error: res.error };
@@ -292,10 +297,10 @@ function useSheetSync({ documentId, template, markers, enabled }) {
         if (code) {
           const done = await claimNow(provider, code);
           if (done.error && !done.retry) { setError(done.error); return; }
-          if (done.ok) { await refresh(); return; }
+          if (done.ok) { await refresh(); return true; }
         }
         const s = await sheetSyncCall('status', ids);
-        if ((provider === 'msgraph' ? s?.microsoft : s?.google)?.connected) { apply(s); return; }
+        if ((provider === 'msgraph' ? s?.microsoft : s?.google)?.connected) { apply(s); return true; }
         if (Date.now() - started > ASK_CODE_AFTER_MS) setCodeAsk(provider);
       }
       setError(`${who} sign-in did not finish. Try again.`);
@@ -313,8 +318,9 @@ function useSheetSync({ documentId, template, markers, enabled }) {
     const res = await sheetSyncCall('claim', { provider, code });
     if (res?.error) { setError(res.error); return false; }
     setError(null);
+    announceAccountSwitch(provider, res, { onDone: async () => apply(await sheetSyncCall('status', ids)) });
     return true;
-  }, []);
+  }, [apply, ids]);
 
   // `fileLink`: a workbook the PM already has (Excel only); Survey adds its
   // sheets to it instead of making a new file.
@@ -346,7 +352,9 @@ function useSheetSync({ documentId, template, markers, enabled }) {
   const relink = useCallback((fileLink) => run('relink', async () => apply(await sheetSyncCall('relink', { ...ids, provider: 'msgraph', fileLink }))), [apply, ids, run]);
   const disconnect = useCallback((provider = 'google') => run('disconnect', async () => {
     const res = await sheetSyncCall('disconnect', { provider });
-    if (res?.error) setError(res.error); else await refresh();
+    if (res?.error) { setError(res.error); return; }
+    announceSignOut(provider, res, { onDone: refresh });
+    await refresh();
   }), [refresh, run]);
   // Sync now waits for its own full round: a round already running, or the
   // server's "too soon", only delays it (owner 2026-11-03: Sync now did
@@ -731,6 +739,32 @@ export default function SheetSyncButton({ className, phone = false, documentId, 
                 <button type="button" className="sheet-sync-link" disabled={Boolean(busy)} onClick={() => setView('existing')}>Use a workbook I already have</button>
               </p>
             )}
+          </>
+        ) : provider === 'msgraph' ? (
+          // Not connected yet: the same "Make" button signs in first and then
+          // makes the workbook, so it is one press instead of Connect, wait,
+          // then Make (owner 2026-11-10: connecting must be dead simple).
+          // "Save in" and "Use a workbook I already have" sign in first too.
+          <>
+            <p className="sheet-sync-place">
+              <span>Save in {folderPath(folder, folderName)}</span>
+              <button type="button" className="sheet-sync-link" disabled={Boolean(busy)} onClick={async () => { if (await sync.connect(provider)) setView('folders'); }}>Change</button>
+            </p>
+            <ActionButton
+              primary block
+              label={makeLabel} busyLabel={`Waiting for ${WHO[provider]}…`}
+              busy={connecting}
+              disabled={Boolean(busy)}
+              onClick={async () => {
+                if (!(await sync.connect(provider))) return;
+                const res = await sync.link(sheetTitle, provider, folder);
+                if (res?.code === 'folder_gone') { pickFolder('Survey'); setView('folders'); }
+                if (res?.code === 'no_onedrive') setView('folders');
+              }}
+            />
+            <p className="sheet-sync-place">
+              <button type="button" className="sheet-sync-link" disabled={Boolean(busy)} onClick={async () => { if (await sync.connect(provider)) setView('existing'); }}>Use a workbook I already have</button>
+            </p>
           </>
         ) : (
           <ActionButton

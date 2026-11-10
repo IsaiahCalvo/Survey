@@ -48,6 +48,7 @@ export async function finishSignInNow(claim, call = null) {
     const res = await sheetSyncCall('claim', claim);
     // Done, or refused for good (expired, wrong): either way nothing to keep.
     if (!res?.error || res.code) forgetClaim();
+    if (!res?.error && res?.replaced) (await import('../services/sheetSyncNotices.js')).announceAccountSwitch(claim.provider, res, { call: sheetSyncCall });
     return res;
   } catch {
     return null;

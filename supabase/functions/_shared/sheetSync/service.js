@@ -430,6 +430,11 @@ async function claimSignIn(ctx) {
     log('claim_wrong', { provider });
     throw new SyncError('That code does not match. Check the code the browser shows and try again.', 400, 'claim_wrong');
   }
+  // Signing in with a different account replaces the old one for every
+  // workbook this person linked. Say so, and keep the old sign-in parked so
+  // one press puts it back.
+  const { data: before } = await ctx.service.from('sheet_sync_connections')
+    .select('account_email, refresh_token_enc, scopes').eq('user_id', ctx.user.id).eq('provider', provider).maybeSingle();
   const { error } = await ctx.service.from('sheet_sync_connections').upsert({
     user_id: ctx.user.id,
     provider,
@@ -439,12 +444,30 @@ async function claimSignIn(ctx) {
     updated_at: new Date().toISOString(),
   });
   if (error) throw new SyncError(`Could not save the ${who} sign-in. Try again.`, 500, 'claim_store');
+  dropCachedTokens(provider, ctx.user.id);
   await pending();
   // A link that broke because this sign-in stopped working works again.
   await ctx.service.from('sheet_sync_links').update({ status: 'active', last_error: null })
     .eq('connection_user_id', ctx.user.id).eq('provider', provider).eq('status', 'broken');
   log('claimed', { provider });
-  return { ok: true, provider, email: row.account_email || null };
+  const replaced = await replacedAccount(ctx, provider, before, row.account_email);
+  return { ok: true, provider, email: row.account_email || null, ...(replaced ? { replaced } : {}) };
+}
+
+async function replacedAccount(ctx, provider, before, email) {
+  const was = String(before?.account_email || '').trim().toLowerCase();
+  if (!was || !before?.refresh_token_enc || was === String(email || '').trim().toLowerCase()) return null;
+  const { data: links } = await ctx.service.from('sheet_sync_links').select('id')
+    .eq('connection_user_id', ctx.user.id).eq('provider', provider);
+  let undoCode = null;
+  try {
+    undoCode = await parkSignIn(ctx.service, ctx.env, {
+      userId: ctx.user.id, provider, email: before.account_email,
+      refreshToken: await decryptToken(before.refresh_token_enc, tokenKey(ctx.env)), scopes: before.scopes,
+    });
+  } catch { undoCode = null; }
+  log('account_switched', { provider, workbooks: links?.length || 0 });
+  return { email: before.account_email, workbooks: links?.length || 0, ...(undoCode ? { undoCode } : {}) };
 }
 
 async function disconnectGoogle(ctx) {
@@ -553,11 +576,26 @@ async function msgraphCallback(url, deps) {
 async function disconnectMicrosoft(ctx) {
   // Microsoft has no call to revoke one refresh token; deleting ours ends
   // Survey's access (the person can also remove Survey under My Apps).
+  // Sign out acts at once and offers Undo (owner's rule: act first, then Undo,
+  // no "are you sure"): the sign-in waits 10 minutes as a parked sign-in that
+  // only this account can take back with the code returned here.
+  let undoCode = null;
+  const { data: row } = await ctx.service.from('sheet_sync_connections')
+    .select('refresh_token_enc, account_email, scopes').eq('user_id', ctx.user.id).eq('provider', 'msgraph').maybeSingle();
+  if (row?.refresh_token_enc) {
+    try {
+      undoCode = await parkSignIn(ctx.service, ctx.env, {
+        userId: ctx.user.id, provider: 'msgraph', email: row.account_email,
+        refreshToken: await decryptToken(row.refresh_token_enc, tokenKey(ctx.env)), scopes: row.scopes,
+      });
+    } catch { undoCode = null; /* signed out without an undo */ }
+  }
+  dropCachedTokens('msgraph', ctx.user.id);
   await ctx.service.from('sheet_sync_connections').delete().eq('user_id', ctx.user.id).eq('provider', 'msgraph');
   await ctx.service.from('sheet_sync_links')
     .update({ status: 'broken', last_error: 'The person who linked this workbook disconnected Microsoft.' })
     .eq('connection_user_id', ctx.user.id).eq('provider', 'msgraph');
-  return { ok: true };
+  return { ok: true, ...(undoCode ? { undoCode } : {}) };
 }
 
 // ---- gates ----------------------------------------------------------------------

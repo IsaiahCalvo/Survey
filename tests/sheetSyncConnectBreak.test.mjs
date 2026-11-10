@@ -382,3 +382,159 @@ test('rounds reuse the Microsoft token between requests (was ~0.4 s and a DB wri
   }
   assert.equal(tokenCalls, 1, 'five requests, one token call');
 });
+
+// ---- Sign out acts at once and can be undone (owner's rule: act, then Undo) ---
+
+// A small in-memory database: enough of the query builder for sign out + claim.
+function memoryDb(tables) {
+  const from = (name) => {
+    const rows = (tables[name] ||= []);
+    const filters = [];
+    let op = 'select';
+    let patch = null;
+    const match = (r) => filters.every(([k, v]) => (k === '$lt' ? true : r[k] === v));
+    const run = () => {
+      if (op === 'delete') { tables[name] = rows.filter((r) => !match(r)); return { data: null, error: null }; }
+      if (op === 'update') { rows.filter(match).forEach((r) => Object.assign(r, patch)); return { data: null, error: null }; }
+      return { data: rows.filter(match), error: null };
+    };
+    const b = {
+      select: () => b, order: () => b, limit: () => b, is: () => b,
+      eq: (k, v) => { filters.push([k, v]); return b; },
+      lt: () => { filters.push(['$lt']); return b; },
+      delete: () => { op = 'delete'; return b; },
+      update: (p) => { op = 'update'; patch = p; return b; },
+      upsert: async (row) => {
+        const key = name === 'sheet_sync_links' ? ['id'] : ['user_id', 'provider'];
+        const i = rows.findIndex((r) => key.every((k) => r[k] === row[k]));
+        if (i >= 0) rows[i] = { ...rows[i], ...row }; else rows.push({ ...row });
+        return { error: null };
+      },
+      maybeSingle: async () => ({ data: run().data?.[0] || null, error: null }),
+      then: (ok, bad) => Promise.resolve(run()).then(ok, bad),
+    };
+    return b;
+  };
+  return { from };
+}
+
+test('Sign out of Microsoft stops at once and gives an Undo that brings every workbook back', async () => {
+  const { encryptToken } = await import('../supabase/functions/_shared/sheetSync/tokenCrypto.js');
+  const tables = {
+    sheet_sync_connections: [{ user_id: 'u-out', provider: 'msgraph', account_email: 'pm@contoso.com', scopes: 'Files.ReadWrite.All', refresh_token_enc: await encryptToken('refresh-keep', ENV.SHEET_SYNC_TOKEN_KEY) }],
+    sheet_sync_links: [
+      { id: 'l1', connection_user_id: 'u-out', provider: 'msgraph', status: 'active' },
+      { id: 'l2', connection_user_id: 'u-out', provider: 'msgraph', status: 'active' },
+      { id: 'g1', connection_user_id: 'u-out', provider: 'google', status: 'active' },
+    ],
+  };
+  const db = memoryDb(tables);
+  const createClient = () => ({
+    ...db,
+    rpc: async (name) => ({ data: name === 'can_use_nightly' ? true : {} }),
+    auth: { getUser: async () => ({ data: { user: { id: 'u-out', email: 'pm@contoso.com', is_anonymous: false } } }) },
+  });
+  const deps = { env: { ...ENV, SUPABASE_ANON_KEY: 'anon' }, createClient, fetchImpl: async (u) => { throw new Error(`unexpected ${u}`); } };
+  const ask = async (body) => (await handleSheetSync(new Request('https://x.supabase.co/functions/v1/sheet-sync', {
+    method: 'POST', headers: { Authorization: 'Bearer user-jwt', 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  }), deps)).json();
+
+  const out = await ask({ action: 'disconnect', provider: 'msgraph' });
+  assert.equal(out.ok, true);
+  assert.match(out.undoCode, /^[A-Z0-9]{8}$/);
+  assert.equal(tables.sheet_sync_connections.length, 0, 'signed out at once');
+  assert.deepEqual(tables.sheet_sync_links.map((l) => l.status), ['broken', 'broken', 'active'], 'only the Microsoft workbooks stop');
+
+  const undo = await ask({ action: 'claim', provider: 'msgraph', code: out.undoCode });
+  assert.equal(undo.ok, true);
+  assert.equal(undo.email, 'pm@contoso.com');
+  assert.equal(tables.sheet_sync_connections.length, 1, 'the same sign-in is back');
+  const { decryptToken } = await import('../supabase/functions/_shared/sheetSync/tokenCrypto.js');
+  assert.equal(await decryptToken(tables.sheet_sync_connections[0].refresh_token_enc, ENV.SHEET_SYNC_TOKEN_KEY), 'refresh-keep');
+  assert.deepEqual(tables.sheet_sync_links.map((l) => l.status), ['active', 'active', 'active'], 'every workbook syncs again');
+  assert.equal(tables.sheet_sync_pending_connections.length, 0, 'the undo code is used up');
+});
+
+test('the panel shows Undo after Sign out, and says when another account takes over', async () => {
+  const src = readFileSync(new URL('../src/components/SheetSyncButton.jsx', import.meta.url), 'utf8');
+  const out = src.slice(src.indexOf('const disconnect = useCallback'), src.indexOf('// Sync now waits for its own full round'));
+  assert.match(out, /announceSignOut\(provider, res/);
+  const claim = src.slice(src.indexOf('const claimNow = useCallback'), src.indexOf('// A sign-in finished while this survey was closed'));
+  assert.match(claim, /announceAccountSwitch\(provider, res/);
+  assert.match(readFileSync(new URL('../src/mobile/nativeDeepLinks.js', import.meta.url), 'utf8'), /announceAccountSwitch\(/, 'the phone app finishes sign-in itself, so it says it too');
+
+  const shown = [];
+  globalThis.window = { dispatchEvent: (e) => { shown.push(e.detail); return true; } };
+  globalThis.CustomEvent ||= class { constructor(type, init) { this.type = type; this.detail = init?.detail; } };
+  try {
+    const { announceSignOut, announceAccountSwitch } = await import('../src/services/sheetSyncNotices.js');
+    const calls = [];
+    const call = async (action, body) => { calls.push([action, body]); return { ok: true }; };
+    let refreshed = 0;
+    assert.equal(announceSignOut('msgraph', { ok: true }), null, 'no code, no Undo to offer');
+    announceSignOut('msgraph', { ok: true, undoCode: 'ABCD2345' }, { call, onDone: () => { refreshed += 1; } });
+    assert.equal(shown[0].message, 'Signed out of Microsoft. Live sync stopped.');
+    assert.equal(shown[0].action.label, 'Undo');
+    await shown[0].action.onClick();
+    assert.deepEqual(calls[0], ['claim', { provider: 'msgraph', code: 'ABCD2345' }]);
+    assert.equal(refreshed, 1);
+
+    assert.equal(announceAccountSwitch('msgraph', { ok: true, email: 'pm@contoso.com' }), null, 'same account: nothing to say');
+    announceAccountSwitch('msgraph', { email: 'new@contoso.com', replaced: { email: 'old@contoso.com', workbooks: 3, undoCode: 'WXYZ6789' } }, { call });
+    assert.equal(shown[1].message, 'Now signed in as new@contoso.com; the 3 workbooks you linked with old@contoso.com sync with it now.');
+    await shown[1].action.onClick();
+    assert.deepEqual(calls[1], ['claim', { provider: 'msgraph', code: 'WXYZ6789' }]);
+    announceAccountSwitch('msgraph', { email: 'new@contoso.com', replaced: { email: 'old@contoso.com', workbooks: 0 } });
+    assert.equal(shown[2].message, 'Now signed in as new@contoso.com instead of old@contoso.com.');
+    assert.equal(shown[2].action, undefined);
+  } finally {
+    delete globalThis.window;
+  }
+});
+
+test('signing in with a different Microsoft account says how many workbooks move, and Undo puts the old one back', async () => {
+  const { encryptToken, decryptToken } = await import('../supabase/functions/_shared/sheetSync/tokenCrypto.js');
+  const tables = {
+    sheet_sync_connections: [{ user_id: 'user-1', provider: 'msgraph', account_email: 'Old@Contoso.com', scopes: 'Files.ReadWrite.All', refresh_token_enc: await encryptToken('refresh-old', ENV.SHEET_SYNC_TOKEN_KEY) }],
+    sheet_sync_links: [
+      { id: 'l1', connection_user_id: 'user-1', provider: 'msgraph', status: 'active' },
+      { id: 'l2', connection_user_id: 'user-1', provider: 'msgraph', status: 'active' },
+    ],
+  };
+  const db = memoryDb(tables);
+  const createClient = () => ({
+    ...db,
+    rpc: async (name) => ({ data: name === 'can_use_nightly' ? true : {} }),
+    auth: { getUser: async () => ({ data: { user: { id: 'user-1', email: 'pm@contoso.com', is_anonymous: false } } }) },
+  });
+  const fetchImpl = async (url) => {
+    const u = String(url);
+    if (u.includes('/oauth2/v2.0/token')) return { ok: true, status: 200, json: async () => ({ access_token: 'a', refresh_token: 'refresh-new', expires_in: 3600, scope: 'Files.ReadWrite.All' }) };
+    if (u.includes('/me/drive')) return { ok: true, status: 200, json: async () => ({ driveType: 'business' }) };
+    if (u.includes('/me?')) return { ok: true, status: 200, json: async () => ({ id: 'm2', mail: 'new@contoso.com' }) };
+    throw new Error(`unexpected ${u}`);
+  };
+  const deps = { env: { ...ENV, SUPABASE_ANON_KEY: 'anon' }, createClient, fetchImpl };
+  const to = await back(deps, `code=c1&state=${encodeURIComponent(await stateFor())}`);
+  const code = to.hash.replace('#code=', '').replace('-', '');
+  const ask = async (body) => (await handleSheetSync(new Request('https://x.supabase.co/functions/v1/sheet-sync', {
+    method: 'POST', headers: { Authorization: 'Bearer user-jwt', 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  }), deps)).json();
+
+  const switched = await ask({ action: 'claim', provider: 'msgraph', code });
+  assert.equal(switched.email, 'new@contoso.com');
+  assert.equal(switched.replaced.email, 'Old@Contoso.com');
+  assert.equal(switched.replaced.workbooks, 2);
+  assert.ok(switched.replaced.undoCode);
+
+  const undo = await ask({ action: 'claim', provider: 'msgraph', code: switched.replaced.undoCode });
+  assert.equal(undo.email, 'Old@Contoso.com');
+  assert.equal(await decryptToken(tables.sheet_sync_connections[0].refresh_token_enc, ENV.SHEET_SYNC_TOKEN_KEY), 'refresh-old');
+
+  // The same account again (a fresh sign-in, case aside): nothing to warn about.
+  const again = await back(deps, `code=c2&state=${encodeURIComponent(await stateFor())}`);
+  tables.sheet_sync_connections[0].account_email = 'NEW@contoso.com';
+  const same = await ask({ action: 'claim', provider: 'msgraph', code: again.hash.replace('#code=', '').replace('-', '') });
+  assert.equal(same.ok, true);
+  assert.equal(same.replaced, undefined);
+});
