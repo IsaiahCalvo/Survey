@@ -409,6 +409,7 @@ export default function ProjectItemsPanel({
   const [sel, setSel] = useState(() => new Set());
   const [menu, setMenu] = useState(null); // { rect, items }
   const [hiddenIds, setHiddenIds] = useState(() => new Set()); // deleted, Undo still open
+  const hideOwnerRef = useRef(new Map()); // id -> the delete that hid it
   const [width, setWidth] = useState(1000);
   const rootRef = useRef(null);
   const listRef = useRef(null);
@@ -480,13 +481,26 @@ export default function ProjectItemsPanel({
     if (ids.includes(openId)) setOpenId(null);
     setSel(new Set());
     let undone = false;
+    // Each row remembers the latest delete that hid it, so an older delete's
+    // timer never shows a row a newer delete is still holding back.
+    const token = {};
+    ids.forEach((id) => hideOwnerRef.current.set(id, token));
+    const unhide = () => setHiddenIds((cur) => {
+      const n = new Set(cur);
+      ids.forEach((id) => {
+        if (hideOwnerRef.current.get(id) !== token) return;
+        hideOwnerRef.current.delete(id);
+        n.delete(id);
+      });
+      return n;
+    });
     const toastId = showToast(ids.length === 1 ? `${k.one} deleted` : `${ids.length} ${k.many.toLowerCase()} deleted`, 'info', {
       action: {
         label: 'Undo',
         onClick: () => {
           undone = true;
           // The rows come back at once, not when the 5 s are up.
-          setHiddenIds((cur) => { const n = new Set(cur); ids.forEach((id) => n.delete(id)); return n; });
+          unhide();
         },
       },
       duration: 5000,
@@ -494,8 +508,8 @@ export default function ProjectItemsPanel({
     setHiddenIds((cur) => new Set([...cur, ...ids]));
     setTimeout(async () => {
       dismissToast(toastId);
-      setHiddenIds((cur) => { const n = new Set(cur); ids.forEach((id) => n.delete(id)); return n; });
       if (undone) return;
+      unhide();
       const res = await data.remove(ids);
       if (res.error) showToast(res.error, 'error');
     }, 5000);
