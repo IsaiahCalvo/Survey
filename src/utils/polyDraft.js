@@ -303,9 +303,25 @@ export function normalizePolyPointsToLocal(points) {
 // listener runs before any page layer's, so the page layer with a draft open
 // registers its step-back here and the viewer asks it first.
 let draftUndo = null;
+const draftUndoListeners = new Set();
+const notifyDraftUndo = () => draftUndoListeners.forEach((listener) => listener());
 export function setPolyDraftUndo(stepBack) {
   draftUndo = typeof stepBack === 'function' ? stepBack : null;
-  return () => { if (draftUndo === stepBack) draftUndo = null; };
+  notifyDraftUndo();
+  return () => {
+    if (draftUndo === stepBack) {
+      draftUndo = null;
+      notifyDraftUndo();
+    }
+  };
+}
+/** True while a draft is open that Undo would step back (the Undo buttons stay live). */
+export function hasPolyDraftUndo() {
+  return draftUndo != null;
+}
+export function subscribePolyDraftUndo(listener) {
+  draftUndoListeners.add(listener);
+  return () => draftUndoListeners.delete(listener);
 }
 /** True when a draft took the Undo (its last point came off). */
 export function stepBackPolyDraftForUndo() {

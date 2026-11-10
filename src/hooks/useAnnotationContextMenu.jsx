@@ -69,6 +69,7 @@ import { availableActions, buildCanvasPageItems, buildPageMenuItems, runPageMenu
 import { keyboardControlProps } from '../utils/keyboardActivation.js';
 import { menuKeyHint } from '../utils/menuKeyHints.js';
 import { shortcutBinding } from '../utils/customKeyboardShortcuts.js';
+import { marksHidden } from '../utils/marksHidden.js';
 
 // w61: `getPageObjects(pageNumber)` (optional) returns the page's mark list,
 // so the menu can note which marks it was opened on (by id) and still act on
@@ -85,6 +86,8 @@ export function useAnnotationContextMenu({ getPageObjects = null } = {}) {
     // Delete / z-order call the save path directly) — suppress it entirely on
     // locked/read-only documents. Keyboard Cmd+C still covers copy.
     if (document.body.getAttribute('data-readonly') === 'true') return;
+    // Hidden marks (Nightly 'hide-marks') get no mark menu: only the page's.
+    if (marksHidden() && descriptor?.kind && descriptor.kind !== 'page') return;
     setAnnotationContextMenu(descriptor);
   }, []);
 
@@ -99,7 +102,13 @@ export function useAnnotationContextMenu({ getPageObjects = null } = {}) {
   // resolves (pageNumber, annotationIndex) from the click target and invokes this
   // — one listener, always on, covers every page without needing PAL to be mounted.
   useEffect(() => {
-    window.__onAnnotationContextMenu = ({ pageNumber, annotationIndex, calloutId, kind, groupIndices, groupMarkerIds, surveyMarkerId, event }) => {
+    window.__onAnnotationContextMenu = (target) => {
+      // Hidden marks (Nightly 'hide-marks') are not there to right-click:
+      // the press opens the page's menu instead.
+      const hidden = marksHidden() && target?.kind && target.kind !== 'page';
+      const { pageNumber, annotationIndex, calloutId, kind, groupIndices, groupMarkerIds, surveyMarkerId, event } = hidden
+        ? { pageNumber: target.pageNumber, event: target.event, kind: 'page', annotationIndex: null, calloutId: null, groupIndices: null, groupMarkerIds: null, surveyMarkerId: null }
+        : target;
       // KAL-75 (G4): locked/read-only documents — this menu's items (Cut /
       // Paste / Delete / z-order) call the save path directly; suppress at
       // THIS entry too (the route from contextMenuDiagnostics lands here,

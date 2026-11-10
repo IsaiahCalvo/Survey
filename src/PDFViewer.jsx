@@ -286,7 +286,7 @@ import { shouldAutoSelectAfterCommit } from './utils/autoSelectAfterCommit';
 import { isSurveyScopedHistoryEvent, resolveHistoryEntryContext } from './utils/historyContextRestore';
 import { projectAnnotationForHistoryPreview } from './utils/historyPreviewAnnotation';
 import { isUndoKeyEvent, isRedoKeyEvent, isUndoRedoBlocked } from './utils/undoRedoHotkeys';
-import { stepBackPolyDraftForUndo } from './utils/polyDraft.js';
+import { hasPolyDraftUndo, stepBackPolyDraftForUndo, subscribePolyDraftUndo } from './utils/polyDraft.js';
 import { measureKeyBadge, measureKindForKey } from './utils/measure/measureKeys.js';
 import { getCalloutSyncFingerprint } from './utils/calloutSyncPayload';
 import { isPlacedSurveyMarker } from './services/surveyMarkerSyncDiff';
@@ -383,7 +383,7 @@ import { splitImportedCalloutsFromPage } from './utils/calloutImportAdapter';
 import { supabase } from './supabaseClient';
 import { useAnnotationDoc } from './hooks/useAnnotationDoc.js';
 import { useAuth } from './contexts/AuthContext';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useDocumentPresenceList } from './hooks/useDocumentPresenceList.js';
 import { useBrushAdjustGesture } from './hooks/useBrushAdjustGesture.js';
 import { useLiveCursorBroadcast } from './hooks/useLiveCursorBroadcast.js';
@@ -394,7 +394,7 @@ import { bookmarkDeleteMessage, removeBookmarkWithDescendants, restoreRemovedBoo
 import { useYDoc } from './hooks/useYDoc.js';
 import { useZoomState } from './hooks/useZoomState';
 import { isFeatureOn } from './featureFlags.js';
-import { marksHidden, subscribeMarksHidden } from './utils/marksHidden.js';
+import { marksHidden, setMarksHidden, subscribeMarksHidden } from './utils/marksHidden.js';
 import { isTypingTarget } from './utils/typingTarget.js';
 import { useMarkClipboard } from './utils/sharedMarkClipboard.js';
 // Beta 'mark-library' (Survey Nightly): save marks once, drop them on any page.
@@ -4351,6 +4351,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       // A press on the selection itself was handed to its move machinery
       // (hooks/useSelectionGrabHandoff.js) — it is not a pick.
       if (isSelectionGrabPress(e)) return;
+      if (marksHidden()) return; // hidden marks are not there to pick
       const hit = resolveAnnotationAt(e);
       if (!hit) return;
       // Owner 2026-10-22: a Survey Marker is picked by Pan like any mark - on
@@ -15059,8 +15060,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   }, [pushHistoryDebugEvent, yjsUndoManager]);
 
   // Check if undo is possible
-  const canUndo = localAnnotationHistoryVersion >= 0
-    && (localAnnotationUndoRef.current.length > 0 || undoHistory.length > 0 || (yjsUndoManager?.undoStack?.length || 0) > 0);
+  // A polygon / polyline being placed can step back a point even on a page
+  // with nothing else to undo (Nightly 'poly-back-step', utils/polyDraft.js).
+  const polyDraftUndoable = useSyncExternalStore(subscribePolyDraftUndo, hasPolyDraftUndo, () => false);
+  const canUndo = polyDraftUndoable || (localAnnotationHistoryVersion >= 0
+    && (localAnnotationUndoRef.current.length > 0 || undoHistory.length > 0 || (yjsUndoManager?.undoStack?.length || 0) > 0));
 
   // Check if redo is possible
   const canRedo = localAnnotationHistoryVersion >= 0
@@ -29515,6 +29519,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const openMarkupRow = useCallback((row) => {
     const page = Number(row?.pageNumber);
     if (!Number.isFinite(page) || page < 1) return;
+    // Asking for a mark while all marks are hidden shows them again, so the
+    // picked mark is never one you cannot see.
+    if (marksHidden()) setMarksHidden(false);
     const objects = (annotationsByPageRef.current || {})[page]?.objects
       || (annotationsByPageRef.current || {})[String(page)]?.objects || [];
     // The row's slot may have moved since the list was built: find it by id.
@@ -37791,6 +37798,7 @@ ${pageBlocks}
           readOnly: Boolean(documentLocked) || yjsDocRole === 'viewer',
           handlers: {
             selectAll: (page) => {
+              if (marksHidden()) return; // nothing you cannot see is picked
               const annotationIndices = selectableMarkIndices(annotationsByPageRef.current?.[page]?.objects, hiddenLayerIdsRef.current);
               setPendingSvgSelection({ pageNumber: page, annotationIndices, surveyMarkerIds: [], exclusive: true, tick: Date.now() });
             },

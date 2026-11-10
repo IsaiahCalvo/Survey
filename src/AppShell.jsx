@@ -115,7 +115,7 @@ import PencilModeControl, { usePencilMode } from './components/PencilModeControl
 import { PinIcon, getPinnedToolsStore, usePinnedTools } from './pinnedTools/pinnedToolsShared.jsx';
 import { isFeatureOn } from './featureFlags.js';
 import { quickColoursForTool } from './utils/quickStylePresets.js';
-import { installHomeBack, installViewerBack } from './utils/backNavigation.js';
+import { installHomeBack, installViewerBack, useBackLayer } from './utils/backNavigation.js';
 import { steppedTabId, tabStepForKey } from './utils/tabKeys.js';
 import { setMarksHidden, useMarksHidden } from './utils/marksHidden.js';
 import { enterBrowserFullscreen, isFocusModeKey, leaveBrowserFullscreen } from './utils/focusMode.js';
@@ -2575,6 +2575,12 @@ export default function App({ devPreviewReturnTab = null }) {
     setMobileAuxCloseRequestKey((key) => key + 1);
     leftRailApi.ref.current.togglePanel(panelId);
   }, [leftRailApi, rightRailApi, activeTabId, activeTab?.file]);
+
+  // Phone: back closes an open Pages / History / Spaces sheet before it
+  // leaves the document (R3-Y: History closed the whole document).
+  useBackLayer(Boolean(isMobileViewer && mobileDocumentPanelState.isOpen), () => {
+    leftRailApi?.ref?.current?.closePanel?.();
+  });
 
   const toggleMobileDocumentHub = useCallback(() => {
     const activePanel = MOBILE_HUB_PANELS.includes(mobileDocumentPanelState.activePanel)

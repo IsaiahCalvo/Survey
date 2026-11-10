@@ -1043,6 +1043,10 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
     setPageEditing(false);
     setZoomOpen((open) => !open);
   };
+  // Back closes the zoom menu or the page-jump field before it leaves the
+  // document (R3-Y).
+  useBackLayer(zoomOpen, () => setZoomOpen(false));
+  useBackLayer(pageEditing, () => setPageEditing(false));
 
   return (
     /* UX 2026-09-21 (pass 7, board 1): the header does NOT show the PDF name.
