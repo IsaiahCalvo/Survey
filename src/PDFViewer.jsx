@@ -24237,19 +24237,68 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // bytes as Export annotated PDF), flattened (the same bytes Print makes) or
   // plain (no marks), for every page, this page, pages with marks or a typed
   // list. Pure helpers live in utils/exportPdfModes.js.
+  // Export filters (Nightly, flag 'export-filters'; utils/exportFilters.js):
+  // who has marks here and which layers hold them, for the dialog's chips,
+  // and how many comments the document has, for "Comments (.csv)".
+  const [exportFiltersEnabled] = useState(() => isFeatureOn('export-filters'));
   const exportPageInfo = useCallback(async () => {
     const { pagesWithMarks } = await import('./utils/exportPdfModes.js');
-    return {
+    const shown = withoutHiddenLayers(annotationsByPage, hiddenLayerIds);
+    const info = {
       numPages: Number(numPages) || 0,
       currentPage: pageNum,
       marked: pagesWithMarks({
-        annotationsByPage: withoutHiddenLayers(annotationsByPage, hiddenLayerIds),
+        annotationsByPage: shown,
         surveyMarkers: printableSurveyMarkers,
       }),
     };
-  }, [numPages, pageNum, annotationsByPage, hiddenLayerIds, printableSurveyMarkers]);
+    if (!exportFiltersEnabled) return info;
+    const filters = await import('./utils/exportFilters.js');
+    let people = [];
+    let comments = [];
+    if (pdfFile?.id) {
+      const { listCommentPeople, listMarkComments } = await import('./services/markComments.js');
+      [people, comments] = await Promise.all([
+        listCommentPeople(supabase, pdfFile.id).catch(() => []),
+        listMarkComments(supabase, pdfFile.id).catch(() => []),
+      ]);
+    }
+    const nameOf = (id) => {
+      if (id === filters.NO_AUTHOR) return 'No author';
+      if (id && id === user?.id) return 'Me';
+      const person = people.find((p) => p.id === id);
+      return person?.name || (person?.email ? person.email.split('@')[0] : 'Former member');
+    };
+    return {
+      ...info,
+      authors: filters.exportAuthors({ annotationsByPage: shown, surveyMarkers: printableSurveyMarkers })
+        .map((a) => ({ ...a, name: nameOf(a.id) })),
+      layers: layersEnabled ? filters.exportLayers({ annotationsByPage: shown }, layerState) : [],
+      commentCount: comments.filter((c) => !c.deletedAt).length,
+    };
+  }, [numPages, pageNum, annotationsByPage, hiddenLayerIds, printableSurveyMarkers, exportFiltersEnabled, pdfFile?.id, user?.id, layersEnabled, layerState]);
 
-  const handleExportPdfWithOptions = useCallback(async ({ mode = 'annotated', pages = 'all', custom = '' } = {}) => {
+  // Comments (.csv) beside the exported PDF (export filters).
+  const exportCommentsCsv = useCallback(async () => {
+    if (!pdfFile?.id) return 'none';
+    const [{ listCommentPeople, listMarkComments, personLabel }, filters, bytesKit] = await Promise.all([
+      import('./services/markComments.js'),
+      import('./utils/exportFilters.js'),
+      import('./utils/exportPdfBytes.js'),
+    ]);
+    const [people, comments] = await Promise.all([
+      listCommentPeople(supabase, pdfFile.id).catch(() => []),
+      listMarkComments(supabase, pdfFile.id),
+    ]);
+    const name = pdfDisplayNameRef.current || pdfFile.name;
+    const csv = filters.commentsCsv(comments, {
+      documentName: String(name || '').replace(/\.pdf$/i, ''),
+      nameOf: (id) => personLabel(people.find((p) => p.id === id) || null),
+    });
+    return bytesKit.deliverCsv(csv, filters.commentsCsvFileName(name));
+  }, [pdfFile?.id, pdfFile?.name]);
+
+  const handleExportPdfWithOptions = useCallback(async ({ mode = 'annotated', pages = 'all', custom = '', filter = null, commentsCsv = false } = {}) => {
     if (!pdfFile) {
       showToast('Open a PDF first.', 'warn');
       return { ok: false, error: 'Open a PDF first.' };
@@ -24260,6 +24309,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     const picked = modes.pickExportPages({ choice: pages, custom, ...info });
     if (picked.error) return { ok: false, error: picked.error };
     let redactionsSanitized = 0;
+    // Export filters: keep only the chosen people's marks and layers.
+    let keep = (marks) => marks;
+    if (exportFiltersEnabled && filter && mode !== 'plain') {
+      const filters = await import('./utils/exportFilters.js');
+      if (!filters.exportFilterIsAll(filter)) keep = (marks) => filters.applyExportFilter(marks, filter, layerState);
+    }
     try {
       const source = await getExportSourcePdf();
       let bytes;
@@ -24269,14 +24324,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         const { buildPrintableRegularAnnotationPayload, savePDFWithFlattenedRegularAnnotationsForPrint } =
           await import('./utils/pdfAnnotationsPdfLib');
         const payload = buildPrintableRegularAnnotationPayload({
-          annotationsByPage: withoutHiddenLayers(printableAnnotationsByPageRef.current || {}, hiddenLayerIds),
-          callouts: calloutsWithoutHiddenLayers(callouts || [], hiddenLayerIds).filter((callout) => isAnnotationVisibleInSurveyMode({
-            moduleId: callout?.moduleId ?? null,
-            regionId: callout?.regionId ?? null,
-            showSurveyPanel,
-            selectedModuleId,
-          })),
-          surveyMarkers: printableSurveyMarkers,
+          ...keep({
+            annotationsByPage: withoutHiddenLayers(printableAnnotationsByPageRef.current || {}, hiddenLayerIds),
+            callouts: calloutsWithoutHiddenLayers(callouts || [], hiddenLayerIds).filter((callout) => isAnnotationVisibleInSurveyMode({
+              moduleId: callout?.moduleId ?? null,
+              regionId: callout?.regionId ?? null,
+              showSurveyPanel,
+              selectedModuleId,
+            })),
+            surveyMarkers: printableSurveyMarkers,
+          }),
           spaces,
         });
         bytes = await savePDFWithFlattenedRegularAnnotationsForPrint(source, payload.annotationsByPage, pageSizes, {
@@ -24293,9 +24350,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         });
       } else {
         const { savePDFWithAnnotationsPdfLib } = await import('./utils/pdfAnnotationsPdfLib');
+        const marks = keep({
+          annotationsByPage: withoutHiddenLayers(annotationsByPage, hiddenLayerIds),
+          callouts: calloutsWithoutHiddenLayers(callouts, hiddenLayerIds),
+          surveyMarkers: printableSurveyMarkers,
+        });
         bytes = await savePDFWithAnnotationsPdfLib(
           source,
-          withoutHiddenLayers(annotationsByPage, hiddenLayerIds),
+          marks.annotationsByPage,
           pageSizes,
           null,
           {
@@ -24303,8 +24365,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
             actionType: 'pdf-export',
             documentId: pdfFile?.id || null,
             pageTransformations,
-            callouts: calloutsWithoutHiddenLayers(callouts, hiddenLayerIds),
-            surveyMarkers: printableSurveyMarkers,
+            callouts: marks.callouts,
+            surveyMarkers: marks.surveyMarkers,
             activeModuleId: isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId }) ? selectedModuleId : null,
             spaces,
             deletedPdfAnnotations,
@@ -24317,6 +24379,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       const fileName = modes.exportFileName(pdfDisplayNameRef.current || pdfFile.name, mode, picked.pages);
       const outcome = await bytesKit.deliverPdf(bytes, fileName, { title: 'Export PDF' });
       if (outcome === 'canceled') return { ok: false, canceled: true };
+      if (exportFiltersEnabled && commentsCsv) {
+        try {
+          await exportCommentsCsv();
+        } catch (csvError) {
+          console.warn('[ExportPdfWithOptions] comments CSV failed:', csvError?.message || csvError);
+          showToast('The PDF is ready, but the comments could not be saved.', 'warn');
+        }
+      }
       if (redactionsSanitized > 0) {
         showToast(`${redactionsSanitized} redaction marks were exported as outlines without their replacement text`, 'info');
       } else if (outcome === 'downloaded') {
@@ -24331,9 +24401,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     annotationsByPage,
     callouts,
     deletedPdfAnnotations,
+    exportCommentsCsv,
+    exportFiltersEnabled,
     exportPageInfo,
     getExportSourcePdf,
     hiddenLayerIds,
+    layerState,
     pageSizes,
     pageTransformations,
     pdfFile,

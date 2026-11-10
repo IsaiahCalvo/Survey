@@ -162,6 +162,12 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Review stamps: Approved, Rejected, For construction and more, with your name and the date, in the Library panel',
     stage: 'beta',
   }),
+  // Drawboard Projects round 2 (2026-11-10): Export PDF keeps only chosen
+  // people's marks and layers, and can add the comments as a CSV.
+  'export-filters': Object.freeze({
+    label: 'Export filters: only some people\'s marks or some layers, plus comments as a CSV',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';
