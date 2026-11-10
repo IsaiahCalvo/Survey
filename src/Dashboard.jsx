@@ -1092,7 +1092,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     file.supabaseFilePath = resolvedDoc.file_path ?? null;
     file.contentSha256 = resolvedDoc.content_sha256 ?? null; // thumbnail cache key
     file.uploadStartTime = performance.now();
-    if (wantsOpen()) { recordDocumentOpened(resolvedDoc.id); onDocumentSelect(file); }
+    // Home's Last opened (#1380) notes the open; Back or Cancel during New stops both.
+    if (wantsOpen()) recordDocumentOpened(resolvedDoc.id);
+    if (wantsOpen()) onDocumentSelect(file);
 
     // OPTIMISTIC LIST UPDATE — carry both key spellings so the file shows
     // immediately in the project-grouped views (which read project_id).
