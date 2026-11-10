@@ -70,9 +70,12 @@ export function isPolyMeasureFor(tool, kind) {
 }
 
 /** A usable depth: a finite number above zero, else null. */
+export const MEASURE_DEPTH_MAX = 10000;
 export function normalizeMeasureDepth(value) {
   const n = Number(value);
-  return Number.isFinite(n) && n > 0 ? n : null;
+  // A depth past 10,000 drawing units is a typo (1e300 made the label
+  // unreadable), so it is refused like zero.
+  return Number.isFinite(n) && n > 0 && n <= MEASURE_DEPTH_MAX ? n : null;
 }
 
 export const MEASURE_DEPTH_STORAGE_KEY = 'survey:measure-depth';
@@ -350,8 +353,191 @@ export function quadraticArcLength(a, mid, b) {
   return length;
 }
 
-/** Label text + anchor for one measurement object, or null. */
+/**
+ * Caption (Nightly flag 'measure-edit', Drawboard PDF Pro's Measurement
+ * popover): a measurement can carry, in data.measure,
+ *   label        free text, shown as the caption's first line
+ *   fields       which lines show: 'label' and the readings that make sense
+ *                for its kind (MEASURE_CAPTION_FIELDS); unset = the label
+ *                when there is one, then the kind's own reading
+ *   captionSize  the caption's text size in screen px (8-24; unset = 12)
+ * A mark with none of these reads exactly as before.
+ */
+export const MEASURE_CAPTION_FIELDS = Object.freeze({
+  length: Object.freeze(['length']),
+  polylength: Object.freeze(['length']),
+  perimeter: Object.freeze(['perimeter', 'area']),
+  area: Object.freeze(['area', 'perimeter']),
+  wallArea: Object.freeze(['wallArea', 'perimeter', 'depth']),
+  volume: Object.freeze(['volume', 'area', 'perimeter', 'depth']),
+});
+
+export const MEASURE_FIELD_NAMES = Object.freeze({
+  label: 'Label',
+  length: 'Length',
+  perimeter: 'Perimeter',
+  area: 'Area',
+  depth: 'Depth',
+  wallArea: 'Wall area',
+  volume: 'Volume',
+});
+
+export const MEASURE_CAPTION_SIZE_MIN = 8;
+export const MEASURE_CAPTION_SIZE_MAX = 24;
+export const MEASURE_CAPTION_SIZES = Object.freeze([
+  Object.freeze({ id: 'small', label: 'S', name: 'Small', px: 10 }),
+  Object.freeze({ id: 'medium', label: 'M', name: 'Medium', px: 12 }),
+  Object.freeze({ id: 'large', label: 'L', name: 'Large', px: 16 }),
+]);
+export const MEASURE_LABEL_MAX_CHARS = 80;
+
+/** The caption lines a kind can show, label first. */
+export function measureCaptionFields(kind) {
+  return MEASURE_CAPTION_FIELDS[kind] ? ['label', ...MEASURE_CAPTION_FIELDS[kind]] : [];
+}
+
+/** A usable caption size (8-24 px), else null. */
+export function normalizeMeasureCaptionSize(value) {
+  if (value == null || value === '') return null;
+  const named = MEASURE_CAPTION_SIZES.find((size) => size.id === value);
+  if (named) return named.px;
+  const n = Math.round(Number(value));
+  if (!Number.isFinite(n)) return null;
+  return Math.min(MEASURE_CAPTION_SIZE_MAX, Math.max(MEASURE_CAPTION_SIZE_MIN, n));
+}
+
+/** A label as stored: one trimmed line, at most 80 characters ('' = none). */
+export function normalizeMeasureLabelText(value) {
+  if (typeof value !== 'string') return '';
+  return value.replace(/\s+/g, ' ').trim().slice(0, MEASURE_LABEL_MAX_CHARS);
+}
+
+/** The caption lines picked for a kind, in the kind's order; null = unset. */
+export function normalizeMeasureFields(kind, value) {
+  if (!Array.isArray(value)) return null;
+  return measureCaptionFields(kind).filter((field) => value.includes(field));
+}
+
+/** The lines that show for a mark (the unset default resolved). */
+export function measureShownFields(obj) {
+  const kind = getMeasureKind(obj);
+  if (!kind) return [];
+  const measure = obj.data.measure;
+  const picked = normalizeMeasureFields(kind, measure.fields);
+  if (picked) return picked;
+  const primary = MEASURE_CAPTION_FIELDS[kind][0];
+  return normalizeMeasureLabelText(measure.label) ? ['label', primary] : [primary];
+}
+
+function hasCaptionSettings(measure) {
+  return Boolean(measure && (
+    normalizeMeasureLabelText(measure.label)
+    || Array.isArray(measure.fields)
+    || normalizeMeasureCaptionSize(measure.captionSize) != null
+  ));
+}
+
+const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
+
+/**
+ * The mark after a Measurement popover change ({ label?, fields?, depth?,
+ * captionSize? }), or the very same object when nothing changes. Typing a
+ * label on a mark whose lines were picked by hand ticks Label too, so it shows.
+ */
+export function applyMeasureEdit(obj, changes = {}) {
+  const kind = getMeasureKind(obj);
+  if (!kind || !changes || typeof changes !== 'object') return obj;
+  const before = obj.data.measure;
+  const measure = { ...before };
+  if (hasOwn(changes, 'label')) {
+    const label = normalizeMeasureLabelText(changes.label);
+    if (label) measure.label = label; else delete measure.label;
+    const fields = normalizeMeasureFields(kind, measure.fields);
+    if (label && !normalizeMeasureLabelText(before.label) && fields && !fields.includes('label')) {
+      measure.fields = normalizeMeasureFields(kind, ['label', ...fields]);
+    }
+  }
+  if (hasOwn(changes, 'fields')) {
+    const fields = normalizeMeasureFields(kind, changes.fields);
+    if (fields) measure.fields = fields; else delete measure.fields;
+  }
+  if (hasOwn(changes, 'captionSize')) {
+    const size = normalizeMeasureCaptionSize(changes.captionSize);
+    if (size != null && size !== MEASURE_LABEL_FONT_PX) measure.captionSize = size; else delete measure.captionSize;
+  }
+  if (hasOwn(changes, 'depth') && DEPTH_MEASURE_KINDS.includes(kind)) {
+    const depth = normalizeMeasureDepth(changes.depth);
+    if (depth) measure.depth = depth;
+  }
+  const keys = new Set([...Object.keys(before), ...Object.keys(measure)]);
+  if ([...keys].every((key) => JSON.stringify(before[key]) === JSON.stringify(measure[key]))) return obj;
+  return { ...obj, data: { ...obj.data, measure } };
+}
+
+function formatMeasureDepth(depth, scale) {
+  const d = normalizeMeasureDepth(depth) || 0;
+  if (!isValidMeasureScale(scale)) return `${formatNumber(d)} in (no scale)`;
+  return formatMeasureLength(d * scale.ptPerUnit, scale);
+}
+
+/**
+ * Label text + anchor for one measurement object, or null. With a caption
+ * set (see above) it also carries `lines` (what the pill shows, `text` is
+ * them joined by newlines), `reading` (the plain reading, for lists and
+ * exports when every line is switched off) and `fontPx` when sized.
+ */
 export function buildMeasureLabel(obj, scale) {
+  const base = buildMeasureReading(obj, scale);
+  if (!base || !hasCaptionSettings(obj.data.measure)) return base;
+  const { kind } = base;
+  const measure = obj.data.measure;
+  const shown = measureShownFields(obj);
+  const label = normalizeMeasureLabelText(measure.label);
+  const readings = shown.filter((field) => field !== 'label');
+  const valueOf = (field) => {
+    if (field === 'depth') return formatMeasureDepth(measure.depth, scale);
+    if (field === MEASURE_CAPTION_FIELDS[kind][0]) return base.text;
+    const world = measurePolygonWorldPoints(obj);
+    if (field === 'perimeter') return formatMeasureLength(polygonPerimeterPt(world), scale);
+    if (field === 'area') return formatMeasureArea(polygonAreaPt(world), scale);
+    return base.text;
+  };
+  const lines = [];
+  if (label && shown.includes('label')) lines.push(...wrapMeasureLabelLine(label));
+  for (const field of readings) {
+    const value = valueOf(field);
+    // One reading reads bare, as today; several say which is which.
+    lines.push(readings.length > 1 ? `${MEASURE_FIELD_NAMES[field]}: ${value}` : value);
+  }
+  const out = { ...base, text: lines.join('\n'), lines, reading: base.text };
+  const size = normalizeMeasureCaptionSize(measure.captionSize);
+  if (size != null) out.fontPx = size;
+  return out;
+}
+
+export const MEASURE_LABEL_WRAP_CHARS = 32;
+/** A long label breaks at spaces (or mid-word when one word is too long). */
+export function wrapMeasureLabelLine(text, max = MEASURE_LABEL_WRAP_CHARS) {
+  const out = [];
+  let line = '';
+  // Lengths count characters, not UTF-16 units, so an emoji is never cut
+  // in half.
+  const len = (s) => Array.from(s).length;
+  for (let word of String(text).split(' ')) {
+    while (len(word) > max) {
+      if (line) { out.push(line); line = ''; }
+      const chars = Array.from(word);
+      out.push(chars.slice(0, max).join(''));
+      word = chars.slice(max).join('');
+    }
+    if (!word) continue;
+    if (line && len(line) + 1 + len(word) > max) { out.push(line); line = word; } else line = line ? `${line} ${word}` : word;
+  }
+  if (line) out.push(line);
+  return out.length ? out : [String(text)];
+}
+
+function buildMeasureReading(obj, scale) {
   const kind = getMeasureKind(obj);
   if (!kind) return null;
   if (kind === 'length') {
@@ -475,46 +661,6 @@ export function measureScaleBar(scale, unitsPerPx = 1, targetPx = 120) {
   return { real, lengthPt, text };
 }
 
-export const MEASURE_NAME_MAX = 60;
-
-/** A measurement's own name ("Room 101"), trimmed; '' when it has none. */
-export function measureName(obj) {
-  const name = obj?.data?.measure?.label;
-  return typeof name === 'string' ? name.replace(/\s+/g, ' ').trim().slice(0, MEASURE_NAME_MAX) : '';
-}
-
-/**
- * The caption a measurement shows on the page (Nightly 'measure-edit'): its
- * label pill, with its name in front when it has one, or null when its
- * caption is turned off.
- */
-export function measureCaption(obj, label) {
-  if (!label || obj?.data?.measure?.caption === false) return null;
-  const name = measureName(obj);
-  return name ? { ...label, text: `${name} · ${label.text}` } : label;
-}
-
-/**
- * New measure data after an edit: name, depth (Wall area and Volume only) and
- * whether the caption shows. Keeps the kind and scale.
- */
-export function editMeasureData(measure, { name, depth, caption } = {}) {
-  if (!measure || !MEASURE_KINDS.includes(measure.kind)) return measure;
-  const next = { ...measure };
-  const cleanName = typeof name === 'string' ? name.replace(/\s+/g, ' ').trim().slice(0, MEASURE_NAME_MAX) : undefined;
-  if (cleanName !== undefined) {
-    if (cleanName) next.label = cleanName; else delete next.label;
-  }
-  if (depth !== undefined && DEPTH_MEASURE_KINDS.includes(measure.kind)) {
-    const d = normalizeMeasureDepth(depth);
-    if (d) next.depth = d;
-  }
-  if (caption !== undefined) {
-    if (caption === false) next.caption = false; else delete next.caption;
-  }
-  return next;
-}
-
 /** The page's scale as saved on its measurements (last one wins). */
 export function pageScaleFromObjects(objects) {
   if (!Array.isArray(objects)) return null;
@@ -562,14 +708,21 @@ export const MEASURE_LABEL_PAD_X_PX = 6;
 export const MEASURE_LABEL_PAD_Y_PX = 3;
 export const MEASURE_LABEL_GAP_PX = 8;
 const MEASURE_LABEL_CHAR_EM = 0.6;
+const MEASURE_LABEL_LINE_EM = 1.25;
 
-export function layoutMeasureLabel(label, unitsPerPx = 1) {
+export function layoutMeasureLabel(label, unitsPerPx = 1, page = null) {
   if (!label) return null;
   const u = Number.isFinite(unitsPerPx) && unitsPerPx > 0 ? unitsPerPx : 1;
-  const fontSize = MEASURE_LABEL_FONT_PX * u;
-  const width = (String(label.text).length * MEASURE_LABEL_CHAR_EM * MEASURE_LABEL_FONT_PX
-    + 2 * MEASURE_LABEL_PAD_X_PX) * u;
-  const height = (MEASURE_LABEL_FONT_PX + 2 * MEASURE_LABEL_PAD_Y_PX) * u;
+  // A caption (buildMeasureLabel `lines` / `fontPx`) can be several lines
+  // at its own size; a plain reading is one line at 12 px, as always.
+  const lines = Array.isArray(label.lines) ? label.lines : [String(label.text)];
+  if (lines.length === 0) return null;
+  const fontPx = normalizeMeasureCaptionSize(label.fontPx) || MEASURE_LABEL_FONT_PX;
+  const lineHeightPx = fontPx * MEASURE_LABEL_LINE_EM;
+  const longest = Math.max(...lines.map((line) => String(line).length));
+  const fontSize = fontPx * u;
+  const width = (longest * MEASURE_LABEL_CHAR_EM * fontPx + 2 * MEASURE_LABEL_PAD_X_PX) * u;
+  const height = (fontPx + (lines.length - 1) * lineHeightPx + 2 * MEASURE_LABEL_PAD_Y_PX) * u;
   let cx = label.x;
   let cy = label.y;
   if (label.kind === 'length') {
@@ -580,5 +733,16 @@ export function layoutMeasureLabel(label, unitsPerPx = 1) {
     cx += Math.sin(rad) * offset;
     cy -= Math.cos(rad) * offset;
   }
-  return { cx, cy, fontSize, width, height, radius: height / 2, angle: label.angle || 0 };
+  // Kept inside the page (a long caption near an edge ran off it), when the
+  // page is big enough to hold it.
+  if (page && page.width > 0 && page.height > 0) {
+    const rad = ((label.angle || 0) * Math.PI) / 180;
+    const halfW = (Math.abs(width * Math.cos(rad)) + Math.abs(height * Math.sin(rad))) / 2;
+    const halfH = (Math.abs(width * Math.sin(rad)) + Math.abs(height * Math.cos(rad))) / 2;
+    if (page.width >= 2 * halfW) cx = Math.min(Math.max(cx, halfW), page.width - halfW);
+    if (page.height >= 2 * halfH) cy = Math.min(Math.max(cy, halfH), page.height - halfH);
+  }
+  // One line keeps the round pill; several get a card with the same corners.
+  const radius = Math.min(height / 2, (fontPx / 2 + MEASURE_LABEL_PAD_Y_PX) * u);
+  return { cx, cy, fontSize, width, height, radius, angle: label.angle || 0, lines, lineHeight: lineHeightPx * u };
 }

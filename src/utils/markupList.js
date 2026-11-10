@@ -60,7 +60,10 @@ function textOf(obj) {
   if (getMeasureKind(obj)) {
     try {
       const label = buildMeasureLabel(obj, data.measure?.scale || null);
-      if (label?.text) return String(label.text);
+      // A caption's lines read on one row; with every line switched off the
+      // row still shows the reading.
+      if (label?.text) return String(label.text).replace(/\s*\n\s*/g, ' · ');
+      if (label?.reading) return String(label.reading);
     } catch { /* a broken measure still lists, without its reading */ }
   }
   const raw = typeof obj?.text === 'string' ? obj.text

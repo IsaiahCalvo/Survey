@@ -70,6 +70,7 @@ import { availableActions, buildCanvasPageItems, buildPageMenuItems, runPageMenu
 import { keyboardControlProps } from '../utils/keyboardActivation.js';
 import { menuKeyHint } from '../utils/menuKeyHints.js';
 import { shortcutBinding } from '../utils/customKeyboardShortcuts.js';
+import { marksHidden } from '../utils/marksHidden.js';
 
 // w61: `getPageObjects(pageNumber)` (optional) returns the page's mark list,
 // so the menu can note which marks it was opened on (by id) and still act on
@@ -86,6 +87,8 @@ export function useAnnotationContextMenu({ getPageObjects = null } = {}) {
     // Delete / z-order call the save path directly) — suppress it entirely on
     // locked/read-only documents. Keyboard Cmd+C still covers copy.
     if (document.body.getAttribute('data-readonly') === 'true') return;
+    // Hidden marks (Nightly 'hide-marks') get no mark menu: only the page's.
+    if (marksHidden() && descriptor?.kind && descriptor.kind !== 'page') return;
     setAnnotationContextMenu(descriptor);
   }, []);
 
@@ -100,7 +103,13 @@ export function useAnnotationContextMenu({ getPageObjects = null } = {}) {
   // resolves (pageNumber, annotationIndex) from the click target and invokes this
   // — one listener, always on, covers every page without needing PAL to be mounted.
   useEffect(() => {
-    window.__onAnnotationContextMenu = ({ pageNumber, annotationIndex, calloutId, kind, groupIndices, groupMarkerIds, surveyMarkerId, event }) => {
+    window.__onAnnotationContextMenu = (target) => {
+      // Hidden marks (Nightly 'hide-marks') are not there to right-click:
+      // the press opens the page's menu instead.
+      const hidden = marksHidden() && target?.kind && target.kind !== 'page';
+      const { pageNumber, annotationIndex, calloutId, kind, groupIndices, groupMarkerIds, surveyMarkerId, event } = hidden
+        ? { pageNumber: target.pageNumber, event: target.event, kind: 'page', annotationIndex: null, calloutId: null, groupIndices: null, groupMarkerIds: null, surveyMarkerId: null }
+        : target;
       // KAL-75 (G4): locked/read-only documents — this menu's items (Cut /
       // Paste / Delete / z-order) call the save path directly; suppress at
       // THIS entry too (the route from contextMenuDiagnostics lands here,
@@ -497,9 +506,6 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     // Mark library ('mark-library' beta): saveFamilyToLibrary(pageNumber,
     // selection) opens the Save to library card on those marks.
     saveFamilyToLibrary = null,
-    // Edit a measurement after drawing ('measure-edit' beta):
-    // editMeasure(pageNumber, annotationIndex) opens its card.
-    editMeasure = null,
     // Layers ('layers' beta): moveSelectionToLayer(pageNumber, selection,
     // layerId) and the document's layer list ({ layers, pdfOpacity }).
     moveSelectionToLayer = null,
@@ -606,7 +612,11 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     // right-click point. Shapes center at the point via pasteAnnotationAt;
     // callouts center their text box there via handlePasteCallout's
     // cursor-anchored mode.
+    // While every mark is hidden, nothing pastes (as Ctrl+V): a pasted mark
+    // would be picked but unseen.
+    const pasteBlocked = marksHidden();
     const doPasteAny = () => {
+      if (pasteBlocked) return;
       if (familyClipboard && typeof pasteFamilyAt === 'function') {
         pasteFamilyAt(ctx.pageNumber, ctx.x, ctx.y);
       } else if (clipboardAnnotation) {
@@ -615,7 +625,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         handlePasteCallout(ctx.pageNumber, { clientX: ctx.x, clientY: ctx.y });
       }
     };
-    const hasAnyClipboard = Boolean(clipboardAnnotation || clipboardCallout || familyClipboard);
+    const hasAnyClipboard = !pasteBlocked && Boolean(clipboardAnnotation || clipboardCallout || familyClipboard);
     // Owner 2026-10-06: an item that would do nothing is disabled, not a
     // silent no-op - "Bring forward" on the top mark, "Send to back" on the
     // bottom one, and forward / backward with no overlapping mark that way
@@ -869,9 +879,6 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         duplicateItem({ indices: [ctx.annotationIndex] }),
         ...libraryItems({ indices: [ctx.annotationIndex] }),
         ...layerItems({ indices: [ctx.annotationIndex] }),
-        ...(typeof editMeasure === 'function' && menuObj?.data?.measure?.kind
-          ? [item('Edit measurement…', 'editMeasure', () => editMeasure(ctx.pageNumber, ctx.annotationIndex), menuObjEditable)]
-          : []),
         // UX: right-click Delete mirrors the keyboard Delete/Backspace path.
         // RULED 2026-09-28 owner: open editing + lock: Delete takes anyone's mark with no confirmation
         // (via the planner when present, for the History row); a user-locked mark
@@ -1268,7 +1275,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         ] : []),
         ...buildCanvasPageItems({
           available: availableActions(pageMenu.handlers),
-          canPasteInPlace: Boolean(familyClipboard),
+          canPasteInPlace: !pasteBlocked && Boolean(familyClipboard),
           readOnly: pageMenuReadOnly,
         }),
         // Read-only / viewer: no page operation (they all edit).

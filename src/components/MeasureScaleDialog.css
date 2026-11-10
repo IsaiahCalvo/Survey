@@ -198,21 +198,3 @@
   .measure-scale__chip,
   .measure-scale__calibrate { transition: none; }
 }
-
-/* Edit a measurement ('measure-edit'): Show caption on the page. */
-.measure-scale__check {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 32px;
-  margin-top: 12px;
-  color: var(--text-1);
-  font-size: var(--font-size-base);
-  cursor: pointer;
-}
-.measure-scale__check input {
-  width: 16px;
-  height: 16px;
-  margin: 0;
-  accent-color: var(--accent);
-}

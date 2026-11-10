@@ -84,6 +84,14 @@ html[data-marks-hidden] [data-lightweight-annotation-overlay] {
   font-size: var(--font-size-sm, 13px);
 }
 
+/* Phones: both chips sit above the bottom bar, so with marks hidden the
+   scale chip steps up over the Marks hidden chip instead of covering it. */
+@media screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
+  html[data-marks-hidden] .measure-no-scale-chip {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 128px);
+  }
+}
+
 .measure-no-scale-chip button {
   flex: none;
   font: inherit;

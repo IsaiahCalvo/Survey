@@ -204,12 +204,6 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Markups panel: every mark in one list with search, filters, measurement totals and a CSV',
     stage: 'beta',
   }),
-  // Drawboard deep test MS-19/20/21 (2026-11-10): a drawn measurement's name,
-  // depth and caption change later, from its right-click menu.
-  'measure-edit': Object.freeze({
-    label: 'Edit measurement: change a drawn measurement’s name, depth and caption',
-    stage: 'beta',
-  }),
   'measure-scale-chip': Object.freeze({
     label: 'Measure: a "No scale on this page" chip with Set scale while a measure tool is armed',
     stage: 'beta',
@@ -224,6 +218,14 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'measure-keys': Object.freeze({
     label: 'Alt+Shift+L / P / A (and Q / V) pick a measure tool',
+    stage: 'beta',
+  }),
+  'calibrate-entry': Object.freeze({
+    label: "Calibrate takes feet-inches (20' 6\", 20-6) and shows the traced paper length",
+    stage: 'beta',
+  }),
+  'measure-edit': Object.freeze({
+    label: 'Measure: a Measurement button on a picked measurement sets its label, depth, caption lines and caption size',
     stage: 'beta',
   }),
   'align-marks': Object.freeze({
@@ -296,6 +298,19 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'back-button': Object.freeze({
     label: 'Back (browser or Android) closes the open sheet, then the document, instead of leaving Survey',
+    stage: 'beta',
+  }),
+  'page-op-sync': Object.freeze({
+    label: 'Page changes in one window reload the PDF in the other windows that have it open',
+    stage: 'beta',
+  }),
+  // Drawboard PDF Pro trial (2026-11-10): "Snap to content" beside "Snap to annotations".
+  'snap-content': Object.freeze({
+    label: "Snap to the PDF's own drawing: line ends, midpoints and along straight lines (Snapping menu: Marks / Drawing)",
+    stage: 'beta',
+  }),
+  'box-drag-move': Object.freeze({
+    label: 'Drag inside a picked mark to move it',
     stage: 'beta',
   }),
 });

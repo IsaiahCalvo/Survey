@@ -31,6 +31,23 @@ for (const layout of ['desktop', 'phone']) {
         await expect(discs.getByRole('button', { name: /Yellow/ })).toBeVisible();
         await expect(discs.getByRole('button', { name: /Pink/ })).toBeVisible();
         if (layout === 'desktop') {
+          // Green draws green (R3-Z B1: every disc drew the one fixed amber).
+          await discs.getByRole('button', { name: /Green/ }).click();
+          const pageDiv = page.locator('.survey-pdfjs-page-div[data-page-number="1"]').filter({ visible: true }).first();
+          const box = await pageDiv.boundingBox();
+          await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.3);
+          await page.mouse.down();
+          for (let i = 1; i <= 8; i += 1) await page.mouse.move(box.x + box.width * (0.3 + i * 0.03), box.y + box.height * 0.3);
+          await page.mouse.up();
+          const inks = () => pageDiv.locator('[data-svg-annotation-layer="1"]').first().evaluate((layer) => [...layer.querySelectorAll('[data-annotation-index] *')]
+            .map((el) => `${getComputedStyle(el).stroke} ${getComputedStyle(el).fill}`).join(' | '));
+          await expect.poll(inks).toMatch(/34,\s*197,\s*94/);
+          await expect.poll(inks).not.toMatch(/255,\s*193,\s*7/);
+          // A picked highlight shows the highlighter's discs (B5).
+          await page.keyboard.press('v');
+          await page.mouse.click(box.x + box.width * 0.39, box.y + box.height * 0.3);
+          await expect(discs.getByRole('button', { name: /Pink/ })).toBeVisible();
+          await page.keyboard.press('Escape');
           await page.keyboard.press('p');
           await expect(discs.getByRole('button', { name: /Red/ })).toBeVisible();
         }

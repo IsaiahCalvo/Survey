@@ -1,186 +1,241 @@
-// Edit measurement (beta flag 'measure-edit'; Drawboard deep test MS-19/20/21):
-// a drawn measurement's name, depth and caption change later from its
-// right-click menu (phone: long-press), with one Undo step, and they save.
-import crypto from 'node:crypto';
-import { PDFDocument, StandardFonts } from 'pdf-lib';
+// The quick bar's Measurement popover (beta flag 'measure-edit', Drawboard
+// PDF Pro trial audit 2026-11-10): pick a drawn length, open Measurement, give
+// it a label and switch its reading off; the caption on the page follows,
+// Ctrl+Z puts the reading back in one step, and a reload keeps the label.
+// On a phone the popover fits on screen. Flag off: no Measurement button.
 import { E2E_ACCOUNTS } from './accounts.mjs';
-import { RUN, must } from './accountFixtures.mjs';
-import { adminClient, apiClientFor, expect, signIn, test } from './helpers.mjs';
+import { expect, signIn, test } from './helpers.mjs';
+import { seedSheet } from './seedSheet.mjs';
 
-const PTS = [[200, 200], [380, 200], [380, 290], [200, 290]];
+const SHOTS = process.env.MEASURE_EDIT_SHOTS || null;
 
-async function seed(admin, userId, name) {
-  const pdf = await PDFDocument.create();
-  const font = await pdf.embedFont(StandardFonts.Helvetica);
-  pdf.addPage([792, 612]).drawText(`${name} page one`, { x: 72, y: 540, size: 24, font });
-  const bytes = Buffer.from(await pdf.save());
-  const id = crypto.randomUUID();
-  await must('upload', admin.storage.from('documents').upload(`${userId}/${id}.pdf`, new Blob([bytes], { type: 'application/pdf' }), { contentType: 'application/pdf' }));
-  await must('row', admin.from('documents').insert({
-    id, user_id: userId, name: `${name}.pdf`, file_path: `${userId}/${id}.pdf`, file_size: bytes.length, page_count: 1,
-    content_sha256: crypto.createHash('sha256').update(bytes).digest('hex'),
-  }));
-  return id;
+async function openSheet(page, label, { flagOn = true, tap = false } = {}) {
+  await page.addInitScript((on) => {
+    if (on) {
+      localStorage.setItem('survey.flag.measure-edit', '1');
+      localStorage.setItem('survey.flag.measure-depth', '1');
+    }
+  }, flagOn);
+  const sheet = await seedSheet(label, { size: [792, 612], pages: 1 });
+  await signIn(page, E2E_ACCOUNTS.owner);
+  const row = page.getByText(sheet.name, { exact: true }).filter({ visible: true }).first();
+  if (tap) await row.tap(); else await row.click();
+  await page.waitForTimeout(1200);
+  const open = page.getByRole('button', { name: 'Open file' });
+  if (await open.isVisible().catch(() => false)) {
+    if (tap) await open.tap(); else await open.click();
+  }
+  const pageDiv = page.locator('.survey-pdfjs-page-div[data-page-number="1"]').filter({ visible: true }).first();
+  await expect(pageDiv.locator('canvas').first()).toBeVisible({ timeout: 60_000 });
+  return { sheet, pageDiv };
 }
 
-async function openDoc(page, name) {
-  await page.getByText(`${name}.pdf`, { exact: true }).filter({ visible: true }).first().click();
-  await page.getByRole('button', { name: 'Open file' }).click();
-  await expect(page.getByText(`${name} page one`)).toBeVisible({ timeout: 60_000 });
-  const surface = page.locator('.survey-pdfjs-page-div[data-page-number="1"]');
-  await expect(surface.locator('canvas').first()).toBeVisible({ timeout: 60_000 });
-  await page.waitForTimeout(800);
-  return surface;
-}
-
-async function drawVolume(page, surface, depth) {
+async function setQuarterScale(page) {
   await page.getByRole('button', { name: 'Shapes', exact: true }).click();
   await page.locator('[data-measure-tool="menu"]').click();
   await page.getByText('Page scale…').click();
-  const scaleDialog = page.getByRole('dialog', { name: 'Set page scale' });
-  await scaleDialog.locator('[data-measure-preset-option="1/4"]').click();
-  await scaleDialog.locator('[data-measure-apply]').click();
-  await expect(scaleDialog).toBeHidden();
-  await page.locator('[data-measure-tool="menu"]').click();
-  await page.locator('[data-measure-tool="volume"]').click();
-  const depthDialog = page.getByRole('dialog', { name: 'Volume depth' });
-  await depthDialog.locator('[data-measure-depth]').fill(String(depth));
-  await depthDialog.locator('[data-measure-depth-apply]').click();
-  await expect(depthDialog).toBeHidden();
-  const box = await surface.boundingBox();
-  for (const [x, y] of PTS) await page.mouse.click(box.x + x, box.y + y);
-  await page.mouse.click(box.x + PTS[0][0], box.y + PTS[0][1]);
-  await page.keyboard.press('Escape');
-  return box;
+  const dialog = page.getByRole('dialog', { name: 'Set page scale' });
+  await dialog.locator('[data-measure-preset-option="1/4"]').click();
+  await dialog.locator('[data-measure-apply]').click();
+  await expect(dialog).toBeHidden();
 }
 
-const label = (page) => page.locator('.measure-labels .measure-label[data-measure-kind="volume"] text');
-const cuFt = async (page) => Number((await label(page).textContent()).replace(/^.*·\s*/, '').replace(/[^\d.]/g, ''));
+/** Draw a length from (x1, y) to (x2, y2) on the page. */
+async function drawLength(page, pageDiv, x1, x2, y, y2 = y) {
+  await page.locator('[data-measure-tool="menu"]').filter({ visible: true }).first().click();
+  await page.locator('[data-measure-tool="length"]').click();
+  const box = await pageDiv.boundingBox();
+  await page.mouse.move(box.x + x1, box.y + y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + x2, box.y + y2, { steps: 8 });
+  await page.mouse.up();
+  const label = pageDiv.locator('.measure-labels .measure-label[data-measure-kind="length"]');
+  await expect(label).toHaveCount(1, { timeout: 15_000 });
+  return label;
+}
 
-test('edit a drawn measurement: name on its caption, a new depth, caption off, Undo, saved', async ({ page }) => {
+/** Pick the drawn line with the Select tool. */
+async function pickLine(page, pageDiv, x, y) {
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('v');
+  const box = await pageDiv.boundingBox();
+  await page.mouse.click(box.x + x, box.y + y);
+  const bar = page.locator('[data-selection-quick-bar][data-visible="true"]');
+  // A level line has no height; the bar still frames it (and its caption).
+  await expect(bar).toBeVisible({ timeout: 10_000 });
+  return bar;
+}
+
+test('Measurement: label, reading off, Ctrl+Z, reload keeps it', async ({ page }) => {
   test.setTimeout(180_000);
-  await page.addInitScript(() => {
-    localStorage.setItem('survey.flag.measure-depth', '1');
-    localStorage.setItem('survey.flag.measure-edit', '1');
-  });
-  const admin = adminClient();
-  const api = await apiClientFor(E2E_ACCOUNTS.owner);
-  const { data: { user } } = await api.auth.getUser();
-  const name = `Measure edit ${RUN}`;
-  const id = await seed(admin, user.id, name);
+  const { sheet, pageDiv } = await openSheet(page, 'Measure edit');
   try {
-    await signIn(page, E2E_ACCOUNTS.owner);
-    const surface = await openDoc(page, name);
-    const box = await drawVolume(page, surface, 8);
-    await expect(label(page)).toHaveText(/^[\d,]+\.\d\d cu ft$/, { timeout: 15_000 });
-    const before = await cuFt(page);
+    await setQuarterScale(page);
+    const label = await drawLength(page, pageDiv, 150, 450, 300);
+    const reading = (await label.locator('text').textContent()).trim();
+    expect(reading).toMatch(/^\d+' \d+"$/);
+    // Unset: the plain reading, exactly as before (no caption attribute).
+    await expect(label).not.toHaveAttribute('data-measure-caption', /.*/);
 
-    // Right-click the outline's top edge: Edit measurement…
-    await page.mouse.click(5, 450);
-    await page.mouse.click(box.x + 290, box.y + PTS[0][1], { button: 'right' });
-    await page.getByRole('menuitem', { name: 'Edit measurement…' }).click();
-    const dialog = page.getByRole('dialog', { name: 'Edit volume' });
-    await expect(dialog).toBeVisible();
-    await expect(dialog.locator('[data-measure-edit-depth]')).toHaveValue('8');
-    await dialog.locator('[data-measure-edit-name]').fill('Room 101');
-    await dialog.locator('[data-measure-edit-depth]').fill('10');
-    await page.screenshot({ path: test.info().outputPath('measure-edit-dialog.png') });
-    await dialog.locator('[data-measure-edit-apply]').click();
-    await expect(dialog).toBeHidden();
-    await expect(label(page)).toHaveText(/^Room 101 · [\d,]+\.\d\d cu ft$/);
-    expect(Math.abs((await cuFt(page)) - before * 10 / 8)).toBeLessThan(0.05);
-    await page.screenshot({ path: test.info().outputPath('measure-edit-named.png') });
+    const bar = await pickLine(page, pageDiv, 220, 300);
+    await bar.getByRole('button', { name: 'Measurement' }).click();
+    const card = page.getByRole('dialog', { name: 'Measurement' });
+    await expect(card).toBeVisible();
+    // A length offers Label and Length only, and no depth.
+    await expect(card.locator('[data-measure-edit-field]')).toHaveCount(2);
+    await expect(card.locator('[data-measure-edit-depth]')).toHaveCount(0);
 
-    // One Undo step puts the old name and depth back; Redo brings them again.
-    await page.mouse.click(5, 450);
-    await page.keyboard.press('ControlOrMeta+z');
-    await expect(label(page)).toHaveText(/^[\d,]+\.\d\d cu ft$/);
-    expect(Math.abs((await cuFt(page)) - before)).toBeLessThan(0.05);
-    await page.keyboard.press('ControlOrMeta+Shift+z');
-    await expect(label(page)).toHaveText(/^Room 101 · /);
+    // Typing previews in the card; Enter writes it to the mark.
+    const input = card.locator('[data-measure-edit-label]');
+    await input.fill('Wall A');
+    await expect(card.locator('[data-measure-edit-preview]')).toContainText('Wall A');
+    await expect(label).not.toHaveAttribute('data-measure-caption', /.*/);
+    await input.press('Enter');
+    await expect(label).toHaveAttribute('data-measure-caption', `Wall A\n${reading}`);
+    await expect(label.locator('tspan')).toHaveText(['Wall A', reading]);
+    // The line is still there (Delete / letters typed in the field never reach the page).
+    await expect(pageDiv.locator('[data-svg-annotation-layer="1"] [data-annotation-index]')).toHaveCount(1);
 
-    // Caption off: the pill goes, the measurement stays.
-    await page.mouse.click(box.x + 290, box.y + PTS[0][1], { button: 'right' });
-    await page.getByRole('menuitem', { name: 'Edit measurement…' }).click();
-    await dialog.locator('[data-measure-edit-caption]').uncheck();
-    await dialog.locator('[data-measure-edit-apply]').click();
-    await expect(page.locator('.measure-labels .measure-label')).toHaveCount(0);
+    // Untick the reading: the caption is the label alone.
+    await card.locator('[data-measure-edit-field="length"] input').uncheck();
+    await expect(label).toHaveAttribute('data-measure-caption', 'Wall A');
+    await expect(label.locator('text')).toHaveText('Wall A');
+    // Caption size: Large makes the pill bigger.
+    const before = await label.locator('rect').boundingBox();
+    await card.locator('[data-measure-edit-size="large"]').click();
+    await expect(card.locator('[data-measure-edit-size="large"]')).toHaveAttribute('aria-pressed', 'true');
+    await expect.poll(async () => (await label.locator('rect').boundingBox()).height).toBeGreaterThan(before.height + 2);
+    // The bar and its card never cover the caption being edited.
+    await page.waitForTimeout(300);
+    const pill = await label.locator('rect').boundingBox();
+    for (const box of [await page.locator('[data-selection-quick-bar]').boundingBox(), await card.boundingBox()]) {
+      const overlap = Math.max(0, Math.min(box.x + box.width, pill.x + pill.width) - Math.max(box.x, pill.x))
+        * Math.max(0, Math.min(box.y + box.height, pill.y + pill.height) - Math.max(box.y, pill.y));
+      expect(overlap, JSON.stringify({ box, pill })).toBe(0);
+    }
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/measure-edit-desktop.png` });
 
-    // Saved: after a reload the card shows the name, the new depth and caption off.
+    // Escape closes the card; Ctrl+Z undoes the size, then the untick.
+    await page.keyboard.press('Escape');
+    await expect(card).toBeHidden();
+    await page.keyboard.press('Control+z');
+    await expect.poll(async () => (await label.locator('rect').boundingBox()).height).toBeLessThan(before.height + 2);
+    await expect(label).toHaveAttribute('data-measure-caption', 'Wall A');
+    await page.keyboard.press('Control+z');
+    await expect(label).toHaveAttribute('data-measure-caption', `Wall A\n${reading}`);
+
+    // A reload keeps the label (and the reading put back by the undo).
     await page.waitForTimeout(2500);
     await page.reload();
-    // The open tab comes back by itself after a reload.
-    const again = page.locator('.survey-pdfjs-page-div[data-page-number="1"]');
-    await expect(page.getByText(`${name} page one`)).toBeVisible({ timeout: 60_000 });
-    await expect(again.locator('canvas').first()).toBeVisible({ timeout: 60_000 });
-    await page.waitForTimeout(1500);
-    const box2 = await again.boundingBox();
-    await expect(page.locator('.measure-labels .measure-label')).toHaveCount(0);
-    await page.mouse.click(5, 450);
-    await page.mouse.click(box2.x + 290, box2.y + PTS[0][1], { button: 'right' });
-    await page.getByRole('menuitem', { name: 'Edit measurement…' }).click();
-    await expect(dialog.locator('[data-measure-edit-name]')).toHaveValue('Room 101');
-    await expect(dialog.locator('[data-measure-edit-depth]')).toHaveValue('10');
-    await expect(dialog.locator('[data-measure-edit-caption]')).not.toBeChecked();
+    const after = page.locator('.survey-pdfjs-page-div[data-page-number="1"] .measure-labels .measure-label[data-measure-kind="length"]').filter({ visible: true }).first();
+    await expect(after).toHaveAttribute('data-measure-caption', `Wall A\n${reading}`, { timeout: 60_000 });
   } finally {
-    await admin.from('documents').delete().eq('id', id);
+    await sheet.remove();
   }
 });
 
-test('a measurement without the flag has no Edit measurement item', async ({ page }) => {
-  test.setTimeout(150_000);
-  await page.addInitScript(() => localStorage.setItem('survey.flag.measure-depth', '1'));
-  const admin = adminClient();
-  const api = await apiClientFor(E2E_ACCOUNTS.owner);
-  const { data: { user } } = await api.auth.getUser();
-  const name = `Measure edit off ${RUN}`;
-  const id = await seed(admin, user.id, name);
+test('Measurement on a volume: depth in the page unit changes the reading', async ({ page }) => {
+  test.setTimeout(180_000);
+  const { sheet, pageDiv } = await openSheet(page, 'Measure edit depth');
   try {
-    await signIn(page, E2E_ACCOUNTS.owner);
-    const surface = await openDoc(page, name);
-    const box = await drawVolume(page, surface, 8);
-    await expect(label(page)).toHaveCount(1, { timeout: 15_000 });
-    await page.mouse.click(5, 450);
-    await page.mouse.click(box.x + 290, box.y + PTS[0][1], { button: 'right' });
-    await expect(page.getByRole('menuitem', { name: 'Duplicate' })).toBeVisible();
-    await expect(page.getByRole('menuitem', { name: 'Edit measurement…' })).toHaveCount(0);
+    await setQuarterScale(page);
+    await page.locator('[data-measure-tool="menu"]').click();
+    await page.locator('[data-measure-tool="volume"]').click();
+    const depthDialog = page.getByRole('dialog', { name: 'Volume depth' });
+    await depthDialog.locator('[data-measure-depth]').fill('8');
+    await depthDialog.locator('[data-measure-depth-apply]').click();
+    const box = await pageDiv.boundingBox();
+    const pts = [[200, 200], [380, 200], [380, 290], [200, 290]];
+    for (const [x, y] of pts) await page.mouse.click(box.x + x, box.y + y);
+    await page.mouse.click(box.x + pts[0][0], box.y + pts[0][1]);
+    const vol = pageDiv.locator('.measure-labels .measure-label[data-measure-kind="volume"]');
+    await expect(vol).toHaveCount(1, { timeout: 15_000 });
+    const at8 = Number((await vol.locator('text').textContent()).replace(/[^\d.]/g, ''));
+
+    const bar = await pickLine(page, pageDiv, 380, 245);
+    await bar.getByRole('button', { name: 'Measurement' }).click();
+    const card = page.getByRole('dialog', { name: 'Measurement' });
+    const depth = card.locator('[data-measure-edit-depth]');
+    await expect(depth).toHaveValue('8');
+    await expect(card).toContainText('ft');
+    await expect(card.locator('[data-measure-edit-field]')).toHaveCount(5);
+    await depth.fill('4');
+    await depth.press('Enter');
+    await expect.poll(async () => Number((await vol.locator('text').textContent()).replace(/[^\d.]/g, ''))).toBeCloseTo(at8 / 2, 1);
+    // Show the depth too: two readings, each named.
+    await card.locator('[data-measure-edit-field="depth"] input').check();
+    await expect(vol).toHaveAttribute('data-measure-caption', /^Volume: [\d.]+ cu ft\nDepth: 4' 0"$/);
   } finally {
-    await admin.from('documents').delete().eq('id', id);
+    await sheet.remove();
   }
 });
 
-test('phone size: the mark menu has Edit measurement and the card fits the screen', async ({ page }) => {
+test('flag off: no Measurement button on a picked length', async ({ page }) => {
   test.setTimeout(150_000);
-  await page.addInitScript(() => {
-    localStorage.setItem('survey.flag.measure-depth', '1');
-    localStorage.setItem('survey.flag.measure-edit', '1');
+  const { sheet, pageDiv } = await openSheet(page, 'Measure edit off', { flagOn: false });
+  try {
+    await setQuarterScale(page);
+    // A sloped line: with the flag off a level one frames no bar (as today).
+    await drawLength(page, pageDiv, 150, 450, 300, 360);
+    const bar = await pickLine(page, pageDiv, 210, 312);
+    await expect(bar.getByRole('button', { name: 'Delete' })).toBeVisible();
+    await expect(bar.getByRole('button', { name: 'Measurement' })).toHaveCount(0);
+  } finally {
+    await sheet.remove();
+  }
+});
+
+test.describe('phone', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+  test('the Measurement popover fits on a phone screen', async ({ page, browser }) => {
+    test.setTimeout(240_000);
+    // Draw the length on a desktop screen, then open the sheet on the phone.
+    const desk = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+    const deskPage = await desk.newPage();
+    const { sheet, pageDiv } = await openSheet(deskPage, 'Measure edit phone');
+    try {
+      await setQuarterScale(deskPage);
+      await drawLength(deskPage, pageDiv, 150, 450, 300);
+      await deskPage.waitForTimeout(2500);
+      await desk.close();
+
+      await page.addInitScript(() => localStorage.setItem('survey.flag.measure-edit', '1'));
+      await signIn(page, E2E_ACCOUNTS.owner);
+      await page.getByText(sheet.name, { exact: true }).filter({ visible: true }).first().tap();
+      await page.waitForTimeout(1200);
+      const open = page.getByRole('button', { name: 'Open file' });
+      if (await open.isVisible().catch(() => false)) await open.tap();
+      // A level line has no height, so it is found by its caption.
+      await expect(page.locator('.measure-label[data-measure-kind="length"]').filter({ visible: true })).toHaveCount(1, { timeout: 60_000 });
+      const at = await page.evaluate(() => {
+        const marks = [...document.querySelectorAll('.survey-pdfjs-page-div[data-page-number="1"] [data-svg-annotation-layer="1"] [data-annotation-id]')];
+        const r = marks.map((m) => m.getBoundingClientRect()).find((b) => b.width > 0);
+        return { x: r.x + r.width * 0.3, y: r.y + r.height / 2 };
+      });
+      await page.touchscreen.tap(at.x, at.y);
+      const bar = page.locator('[data-selection-quick-bar][data-visible="true"]');
+      await expect(bar).toBeVisible({ timeout: 10_000 });
+      await bar.getByRole('button', { name: 'Measurement' }).tap();
+      const card = page.getByRole('dialog', { name: 'Measurement' });
+      await expect(card).toBeVisible();
+      await page.waitForTimeout(300);
+      const r = await card.boundingBox();
+      expect(r.x, JSON.stringify(r)).toBeGreaterThanOrEqual(0);
+      expect(r.y, JSON.stringify(r)).toBeGreaterThanOrEqual(0);
+      expect(r.x + r.width, JSON.stringify(r)).toBeLessThanOrEqual(390);
+      expect(r.y + r.height, JSON.stringify(r)).toBeLessThanOrEqual(844);
+      // Every control can be reached (the card scrolls if it must).
+      await card.locator('[data-measure-edit-size="large"]').scrollIntoViewIfNeeded();
+      await expect(card.locator('[data-measure-edit-size="large"]')).toBeInViewport();
+      if (SHOTS) await page.screenshot({ path: `${SHOTS}/measure-edit-phone.png` });
+      await card.locator('[data-measure-edit-label]').tap();
+      await card.locator('[data-measure-edit-label]').fill('Wall A');
+      await card.locator('[data-measure-edit-label]').press('Enter');
+      const caption = page.locator('.survey-pdfjs-page-div[data-page-number="1"] .measure-label[data-measure-kind="length"]').filter({ visible: true }).first();
+      await expect(caption).toHaveAttribute('data-measure-caption', /^Wall A\n/);
+    } finally {
+      await sheet.remove();
+    }
   });
-  const admin = adminClient();
-  const api = await apiClientFor(E2E_ACCOUNTS.owner);
-  const { data: { user } } = await api.auth.getUser();
-  const name = `Measure edit phone ${RUN}`;
-  const id = await seed(admin, user.id, name);
-  try {
-    await signIn(page, E2E_ACCOUNTS.owner);
-    const surface = await openDoc(page, name);
-    await drawVolume(page, surface, 8);
-    await expect(label(page)).toHaveCount(1, { timeout: 15_000 });
-
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.waitForTimeout(1200);
-    const edge = await page.locator('[data-overlay-page="1"] [data-annotation-id]').first().boundingBox();
-    await page.mouse.click(edge.x + edge.width / 2, edge.y + 1, { button: 'right' });
-    await page.getByRole('menuitem', { name: 'Edit measurement…' }).filter({ visible: true }).click();
-    const dialog = page.getByRole('dialog', { name: 'Edit volume' });
-    await expect(dialog).toBeVisible();
-    const card = await dialog.boundingBox();
-    expect(card.x).toBeGreaterThanOrEqual(0);
-    expect(card.x + card.width).toBeLessThanOrEqual(390);
-    await dialog.locator('[data-measure-edit-name]').fill('Hall');
-    await page.screenshot({ path: test.info().outputPath('measure-edit-phone.png') });
-    await dialog.locator('[data-measure-edit-apply]').click();
-    await expect(label(page)).toHaveText(/^Hall · /);
-  } finally {
-    await admin.from('documents').delete().eq('id', id);
-  }
 });

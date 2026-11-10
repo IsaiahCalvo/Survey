@@ -39,6 +39,12 @@ import { isFeatureOn } from '../featureFlags.js';
 const shiftSquareOn = () => isFeatureOn('shift-square');
 // Backspace / Undo steps back one vertex while placing (Nightly, 'poly-back-step').
 const polyBackStepOn = () => isFeatureOn('poly-back-step');
+// Snap to the PDF's own drawing (Nightly, 'snap-content'; snapContentIndex.js).
+import { getPageSnapContentIndex } from '../survey/snapContentIndex.js';
+import { readSnapContent } from '../utils/annotationPreferences.js';
+// Drag inside a picked mark to move it; a finger gets a move grip (Nightly,
+// 'box-drag-move', utils/boxDragMove.js).
+const boxDragMoveOn = () => isFeatureOn(BOX_DRAG_MOVE_FLAG);
 import { maxOf, minOf } from '../utils/arrayExtrema.js';
 import { resolveEditEntryKind } from '../utils/annotationEditRoute.js';
 import {
@@ -138,6 +144,7 @@ import {
   removeLastPolyDraftPoint,
   resolvePolyDraftFinish,
   setPolyDraftUndo,
+  markPolyDraftOpen,
   updatePolyDraftPreview,
 } from '../utils/polyDraft.js';
 import { collectEndpointCandidates, resolveDrawSnap, drawSnapEventOptions } from '../utils/drawSnap.js';
@@ -202,6 +209,7 @@ import {
 } from '../utils/annotationFamilyRules.js';
 // w58: hold Cmd (Mac) / Ctrl (Windows) to move the selection from anywhere in its box.
 import { useMoveModifierHeld, resolveModifierMoveZone, isPointInBoxes, isCopyDragEvent } from '../utils/moveModifier.js';
+import { BOX_DRAG_MOVE_FLAG, boxDragMoveKind, boxMoveGripGlyphPath, boxMoveGripPlacement } from '../utils/boxDragMove.js';
 import { getPdfStampProxySvgProps, isPdfStampProxy } from '../utils/pdfStampProxy.js';
 import { isSymbolStamp } from '../utils/symbolLibrary.js';
 import { canGroupResizeMember } from '../utils/groupResize.js';
@@ -520,7 +528,6 @@ const EMPTY_SURVEY_MARKER_IDS = new Set();
 import {
   buildMeasureLabel,
   layoutMeasureLabel,
-  measureCaption,
   measureLineEndpoints,
   measureScaleBar,
   pageScaleFromObjects,
@@ -532,14 +539,16 @@ import { useTooltip } from './Tooltip';
 // Measure label (Length / Area): a white pill at a fixed SCREEN size (12 px
 // text). Sizes are page units multiplied by inverseScale, so the viewBox still
 // owns zoom; the pill sits off the line's midpoint, never under its handles.
-function renderMeasureLabel(label, key, unitsPerPx) {
-  const box = layoutMeasureLabel(label, unitsPerPx);
+function renderMeasureLabel(label, key, unitsPerPx, page = null) {
+  const box = layoutMeasureLabel(label, unitsPerPx, page);
   if (!box) return null;
   return (
     <g
       key={key}
       className="measure-label"
       data-measure-kind={label.kind}
+      data-measure-caption={label.lines ? label.text : undefined}
+      data-measure-for={key}
       transform={box.angle ? `rotate(${box.angle} ${box.cx} ${box.cy})` : undefined}
       style={{ pointerEvents: 'none', userSelect: 'none' }}
     >
@@ -564,7 +573,12 @@ function renderMeasureLabel(label, key, unitsPerPx) {
         fontWeight="600"
         fill="#1f2937"
       >
-        {label.text}
+        {box.lines.length > 1
+          // A caption of several lines (Nightly 'measure-edit'): label first.
+          ? box.lines.map((line, i) => (
+            <tspan key={i} x={box.cx} y={box.cy + (i - (box.lines.length - 1) / 2) * box.lineHeight}>{line}</tspan>
+          ))
+          : box.lines[0]}
       </text>
     </g>
   );
@@ -647,6 +661,8 @@ const SVGAnnotationLayerBody = memo(({
   // w32: the open document's id — live ink (in-progress strokes) is sent on,
   // and shown from, this document's channel only.
   documentId = null,
+  // The viewer's own token for Undo while placing (utils/polyDraft.js).
+  polyDraftOwner = null,
   // False while this document's tab is behind another one (a pending Smart
   // fill press is then dropped).
   isTabActive = true,
@@ -826,7 +842,7 @@ const SVGAnnotationLayerBody = memo(({
   strokeOpacity = 100,
   fillColor = 'transparent',
   fillOpacity = 100,
-  highlightColor = 'rgba(255, 193, 7, 0.3)',
+  highlightColor: fixedHighlightColor = 'rgba(255, 193, 7, 0.3)',
   strokeWidth = 3,
   arrowheadStyle = null,
   // 'Both ends' toggle: the ending mirrored onto the start of a new arrow.
@@ -866,6 +882,12 @@ const SVGAnnotationLayerBody = memo(({
 }) => {
   // The app's one shared tooltip (components/Tooltip.jsx), never a native title=.
   const layerTip = useTooltip();
+  // Highlighter ink: one fixed amber, unless per-tool quick colours are on
+  // (Nightly 'tool-quick-colours'): then the highlighter draws its own picked
+  // colour, see-through (R3-Z: its Yellow / Green / Pink discs did nothing).
+  const highlightColor = (isFeatureOn('tool-quick-colours') && typeof strokeColor === 'string' && strokeColor)
+    ? composeAnnotationColor(strokeColor, Math.min(Number(strokeOpacity) || 50, 60))
+    : fixedHighlightColor;
 
   // Layers: a mark whose id was not on this page before a save is new, so it
   // goes on the active layer. One wrapper covers every save this layer makes.
@@ -913,8 +935,7 @@ const SVGAnnotationLayerBody = memo(({
     const labels = [];
     objects.forEach((obj, index) => {
       if (!obj?.data?.measure || obj.visible === false || isOnHiddenLayer(obj, hiddenLayerIds)) return;
-      // Its name in front, or nothing when its caption is off ('measure-edit').
-      const label = measureCaption(obj, buildMeasureLabel(obj, effectiveMeasureScale));
+      const label = buildMeasureLabel(obj, effectiveMeasureScale);
       if (label) labels.push({ key: obj.id || obj.data?.id || `m${index}`, index, label });
     });
     return labels;
@@ -1505,15 +1526,22 @@ const SVGAnnotationLayerBody = memo(({
   // preference off disables that pull). `drawSnapEndpoint` is the indicator.
   const [drawSnapEndpoint, setDrawSnapEndpoint] = useState(null);
   const drawSnapObjects = annotations?.objects;
+  // Nightly 'snap-content': then onto the PDF's own line ends, midpoints and
+  // lines (the Snapping menu's "Drawing" switch; Alt skips it too).
+  const [snapContentFlag] = useState(() => isFeatureOn('snap-content'));
   const resolveCreationSnap = useCallback((anchor, point, e) => {
     if (!point) return point;
     const endpointSnap = !isAnnotationSnapFree(e);
+    const contentIndex = snapContentFlag && !isSnapFreeModifier(e) && readSnapContent()
+      ? getPageSnapContentIndex(getMarkerShapePdfDocument(), pageNumber)
+      : null;
     const r = resolveDrawSnap(anchor, point, {
       ...drawSnapEventOptions(e, inverseScale),
       endpointSnap,
       candidates: endpointSnap
         ? collectEndpointCandidates(drawSnapObjects, { include: new Set(renderedAnnotationEntriesRef.current.map((entry) => entry.index)) })
         : [],
+      contentSnap: contentIndex ? (p, tol, opts) => contentIndex.query(p.x, p.y, tol, opts) : null,
     });
     setDrawSnapEndpoint((prev) => {
       const next = r.endpoint;
@@ -1521,7 +1549,7 @@ const SVGAnnotationLayerBody = memo(({
       return next;
     });
     return r.point;
-  }, [drawSnapObjects, inverseScale]);
+  }, [drawSnapObjects, inverseScale, snapContentFlag, pageNumber]);
   const freehandPointsRef = useRef([]);
   // w32: the in-progress stroke streamed to other screens (ghost ink there,
   // annotationLiveStrokes.js); ended on commit or cancel.
@@ -3096,6 +3124,45 @@ const SVGAnnotationLayerBody = memo(({
   useEffect(() => {
     if (!shapeCreation && !polyDraftActive) setDrawSnapEndpoint(null);
   }, [shapeCreation, polyDraftActive]);
+  // Nightly 'snap-content': with a line, arrow, polyline, polygon or measure
+  // tool armed, read this page's drawing into its snap index once the page is
+  // on screen (so the first point already snaps), and show where the first
+  // point would land while the pointer hovers (Drawboard's crosses).
+  const snapHoverTool = snapContentFlag && !shapeCreation && !polyDraftActive
+    && (((activeTool === 'line' || activeTool === 'arrow') && isShapeCreationTool) || isPolyCreationTool);
+  useEffect(() => {
+    if (!snapContentFlag) return undefined;
+    if (!snapHoverTool) {
+      if (!shapeCreationRef.current && !polyDraftRef.current) setDrawSnapEndpoint(null);
+      return undefined;
+    }
+    const el = svgRef.current;
+    if (!el) return undefined;
+    const warm = () => { getPageSnapContentIndex(getMarkerShapePdfDocument(), pageNumber); };
+    let observer = null;
+    if (typeof IntersectionObserver === 'undefined') warm();
+    else {
+      observer = new IntersectionObserver((entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        observer.disconnect();
+        warm();
+      });
+      observer.observe(el);
+    }
+    const onMove = (e) => {
+      if (e.buttons || e.pointerType === 'touch') return;
+      const point = screenToSVG(el, e.clientX, e.clientY);
+      if (point) resolveCreationSnap(null, point, e);
+    };
+    const onLeave = () => setDrawSnapEndpoint(null);
+    el.addEventListener('pointermove', onMove);
+    el.addEventListener('pointerleave', onLeave);
+    return () => {
+      observer?.disconnect();
+      el.removeEventListener('pointermove', onMove);
+      el.removeEventListener('pointerleave', onLeave);
+    };
+  }, [snapContentFlag, snapHoverTool, pageNumber, resolveCreationSnap]);
 
   // Enter finishes, Escape cancels. Capture phase + stopPropagation so an
   // in-progress draft consumes Escape before the viewer's "clear selection"
@@ -3120,18 +3187,23 @@ const SVGAnnotationLayerBody = memo(({
   // the field's own Enter-to-blur never runs, so we blur it here: every one of
   // them commits its value on blur, which is what "Enter commits the field AND
   // finishes the draft" means. Escape blurs first as well, then cancels.
+  const polyPointerTypeRef = useRef('mouse');
   const stepBackPolyDraft = useCallback(() => {
     if (!polyDraftRef.current) return false;
-    const next = removeLastPolyDraftPoint(polyDraftRef.current);
+    const next = removeLastPolyDraftPoint(polyDraftRef.current, { keepPreview: polyPointerTypeRef.current === 'mouse' });
     if (!next) { cancelPolyDraft(); return true; }
     polyDraftRef.current = next;
     setPolyDraft(next);
     return true;
   }, [cancelPolyDraft]);
+  const draftTabActiveRef = useRef(isTabActive);
+  draftTabActiveRef.current = isTabActive;
   useEffect(() => {
     if (!polyDraftActive) return undefined;
     const onKeyDown = (e) => {
-      if (!draftOwnsKeyboard(e.target)) return;
+      // A draft left open in a tab behind keeps its points: Enter, Escape and
+      // Backspace belong to the document in front.
+      if (!draftTabActiveRef.current || !draftOwnsKeyboard(e.target)) return;
       if (e.key === 'Enter') {
         e.preventDefault();
         e.stopPropagation();
@@ -3152,10 +3224,12 @@ const SVGAnnotationLayerBody = memo(({
       }
     };
     window.addEventListener('keydown', onKeyDown, true);
-    const releaseUndo = polyBackStepOn() ? setPolyDraftUndo(stepBackPolyDraft) : null;
+    const releaseUndo = polyBackStepOn() ? setPolyDraftUndo(stepBackPolyDraft, polyDraftOwner) : null;
+    const releaseOpen = markPolyDraftOpen(polyDraftOwner);
     return () => {
       window.removeEventListener('keydown', onKeyDown, true);
       releaseUndo?.();
+      releaseOpen();
     };
   }, [polyDraftActive, commitPolyDraft, cancelPolyDraft, stepBackPolyDraft]);
 
@@ -6481,7 +6555,7 @@ const SVGAnnotationLayerBody = memo(({
       : null;
     if (obj?.data?.measure && (renderObj !== obj || computedTransform)) {
       liveMeasureLabels.set(i, {
-        label: measureCaption(renderObj, buildMeasureLabel(renderObj, effectiveMeasureScale)),
+        label: buildMeasureLabel(renderObj, effectiveMeasureScale),
         transform: computedTransform,
       });
     }
@@ -7432,6 +7506,44 @@ const SVGAnnotationLayerBody = memo(({
     return out;
   })();
 
+  // Nightly 'box-drag-move' (utils/boxDragMove.js): with no key held, the
+  // same box is a move zone drawn UNDER the marks (a mouse or pen), or a
+  // finger gets a move grip under the box. The zone lives under Select, and
+  // under Pan while a press is handed to the pick (useSelectionGrabHandoff
+  // arms the layer). Under a drawing tool a drag inside the box still draws:
+  // a mark just drawn stays picked, and a shape drawn inside it must not move
+  // it instead (its outline and grabbers still grab it, as before). The grip
+  // shows under every tool that may grab the pick, so it is there to be
+  // pressed. Text Select keeps the page for text drags; a text box or
+  // callout being typed in keeps its text.
+  const boxDragKind = boxDragMoveKind(inputKind);
+  const boxDragMoveActive = (() => {
+    if (!boxDragMoveOn() || modifierMoveActive || familySelectionSize === 0 || interactionState !== 'idle') return false;
+    if (activeTool === 'text-select' || isCalloutTextEditMode || (editingAnnotationIndex != null && !isBboxEditMode)) return false;
+    if (boxDragKind === 'zone'
+      ? !(isSelectTool && (activeTool === 'select' || activeTool === 'pan'))
+      : !(isSelectTool || selectionGrabbableByTool)) return false;
+    if (typeof document !== 'undefined' && document.body?.getAttribute('data-readonly') === 'true') return false;
+    // Only when a picked member may move (locked marks and text markup stay put).
+    for (const idx of selectedIds || []) {
+      if (canMoveAnnotation(annotations?.objects?.[idx])) return true;
+    }
+    if (calloutSelectionSize > 0 && Array.isArray(callouts)) {
+      const selectable = selectableCalloutIdsRef.current;
+      for (const callout of callouts) {
+        if (!callout || callout.pageNumber !== pageNumber || !effectiveSelectedCalloutIds.has?.(callout.id)) continue;
+        if (selectable instanceof Set && !selectable.has(callout.id)) continue;
+        if (!isUserLocked(callout)) return true;
+      }
+    }
+    if (surveyMarkerSelectionSize > 0) {
+      for (const member of surveyMarkerMembersRef.current || []) {
+        if (member && !member.locked && selectedSurveyMarkerIds.has(String(member.id))) return true;
+      }
+    }
+    return false;
+  })();
+
   // UX w58 (owner 2026-09-28): the move zone — while Cmd (Mac) / Ctrl
   // (Windows) is held, the selection's whole box (grown to a comfortable
   // minimum on a tiny mark) is one transparent move handle with the move
@@ -7442,7 +7554,7 @@ const SVGAnnotationLayerBody = memo(({
   // 25 % zoom, which is why the mark itself wins). Hidden while a drag /
   // rotate / resize is running (the drag owns the pointer then).
   const modifierMoveZone = (() => {
-    if (!modifierMoveActive || interactionState !== 'idle') return null;
+    if (!(modifierMoveActive || boxDragMoveActive) || interactionState !== 'idle') return null;
     const boxes = [];
     for (const idx of selectedIds || []) {
       const obj = annotations?.objects?.[idx];
@@ -7543,7 +7655,9 @@ const SVGAnnotationLayerBody = memo(({
     e.stopPropagation();
     e.preventDefault();
     if (typeof document !== 'undefined' && document.body?.getAttribute('data-readonly') === 'true') return;
-    {
+    // The 'box-drag-move' grip is drawn on top of everything: a press on it
+    // always moves, even over a turned mark's rotate grabber.
+    if (!e.currentTarget?.hasAttribute?.('data-box-move-grip')) {
       const rotateEl = rotateGrabberUnderZonePoint(e.currentTarget, e.clientX, e.clientY);
       // The hand-off re-dispatches the press on the grabber. Window-level
       // pointerdown listeners therefore see this press twice; they only read
@@ -7580,6 +7694,28 @@ const SVGAnnotationLayerBody = memo(({
       dragMode: 'move',
     });
     try { svgRef.current?.setPointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
+  };
+
+  // 'box-drag-move' zone (under the marks): a mouse / pen press inside the
+  // pick moves it, the same move the Cmd / Ctrl zone starts. Under Select,
+  // Shift (add to the pick / box select) and a finger (pan) are no move: the
+  // press goes on, unchanged, to what lies under the zone. Under Pan the press
+  // was handed here as a press on the selection, so it moves, as a press on
+  // the picked mark itself does.
+  const handleBoxDragMoveZonePointerDown = (e) => {
+    if (activeTool === 'select' && (e.pointerType === 'touch' || e.shiftKey)) {
+      const zoneEl = e.currentTarget;
+      let below = null;
+      try {
+        below = document.elementsFromPoint(e.clientX, e.clientY).find((el) => el !== zoneEl) || null;
+      } catch (_) { below = null; }
+      if (below) {
+        e.stopPropagation();
+        redispatchPointerDown(below, e);
+      }
+      return;
+    }
+    handleModifierMoveZonePointerDown(e);
   };
 
   const stackedMarks = (() => {
@@ -7792,7 +7928,10 @@ const SVGAnnotationLayerBody = memo(({
               objects: annotations?.objects,
               hasSelection: pageHasSelection,
             });
-            if (press.click === 'add') {
+            // Shift-click adds the mark. With a tool whose drag draws (Shapes),
+            // wait for the release: a Shift-drag from a mark draws a square or
+            // circle (R3-F), a Shift-click still adds.
+            if (press.click === 'add' && press.drag === 'none') {
               applyPressFallback(press);
               e.preventDefault();
               return;
@@ -7809,7 +7948,7 @@ const SVGAnnotationLayerBody = memo(({
               e.preventDefault();
               return;
             }
-            if (press.click === 'select' || press.click === 'deselect') {
+            if (press.click === 'select' || press.click === 'deselect' || press.click === 'add') {
               pressFallback = { ...press, pointerType: e.pointerType, x: e.clientX, y: e.clientY };
             }
           }
@@ -7838,6 +7977,7 @@ const SVGAnnotationLayerBody = memo(({
           if (isPolyCreationTool && e.button === 0 && !grabbingSelection) {
             const point = screenToSVG(svgRef.current, e.clientX, e.clientY);
             if (point) {
+              polyPointerTypeRef.current = e.pointerType || 'mouse';
               const draft = polyDraftRef.current;
               // A click inside the first vertex's magnet closes the shape,
               // Drawboard-style — it wins over "place another point here".
@@ -8044,6 +8184,24 @@ const SVGAnnotationLayerBody = memo(({
           <rect x={0} y={0} width={width} height={height} />
         </clipPath>
       </defs>
+      {/* Nightly 'box-drag-move': the pick's move zone, under every mark (a
+          press on another mark inside the box still picks that mark). */}
+      {boxDragMoveActive && boxDragKind === 'zone' && modifierMoveZone && (
+        <rect
+          data-box-drag-move-zone="true"
+          x={modifierMoveZone.left}
+          y={modifierMoveZone.top}
+          width={modifierMoveZone.width}
+          height={modifierMoveZone.height}
+          transform={modifierMoveZone.angle
+            ? `rotate(${modifierMoveZone.angle}, ${modifierMoveZone.cx}, ${modifierMoveZone.cy})`
+            : undefined}
+          fill="transparent"
+          stroke="none"
+          style={{ cursor: 'move', pointerEvents: 'all' }}
+          onPointerDown={handleBoxDragMoveZonePointerDown}
+        />
+      )}
       <g data-page-clip="marks" clipPath={marksClipPath}>
       {uniformTextMarkupElements}
       {/* w53: Survey Markers draw inside stackedMarks, each in its place in
@@ -8280,8 +8438,8 @@ const SVGAnnotationLayerBody = memo(({
         <g className="measure-labels" data-measure-label-count={measureLabels.length} style={{ pointerEvents: 'none' }}>
           {measureLabels.map(({ key, index, label }) => {
             const live = liveMeasureLabels.get(index);
-            if (!live) return renderMeasureLabel(label, key, clampInverseScale(inverseScale));
-            const pill = renderMeasureLabel(live.label, key, clampInverseScale(inverseScale));
+            if (!live) return renderMeasureLabel(label, key, clampInverseScale(inverseScale), { width, height });
+            const pill = renderMeasureLabel(live.label, key, clampInverseScale(inverseScale), { width, height });
             return live.transform && pill ? <g key={key} transform={live.transform}>{pill}</g> : pill;
           })}
         </g>
@@ -9911,9 +10069,35 @@ const SVGAnnotationLayerBody = memo(({
           })()}
         </>
       )}
+      {/* Nightly 'box-drag-move': a finger's move grip, just under the pick. */}
+      {boxDragMoveActive && boxDragKind === 'grip' && modifierMoveZone && (() => {
+        const grip = boxMoveGripPlacement(modifierMoveZone, { inverseScale });
+        if (!grip) return null;
+        return (
+          <g
+            data-box-move-grip="true"
+            role="button"
+            aria-label="Move"
+            style={{ cursor: 'move', pointerEvents: 'all', touchAction: 'none', filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.2))' }}
+            onPointerDown={handleModifierMoveZonePointerDown}
+          >
+            <circle cx={grip.cx} cy={grip.cy} r={grip.r} fill={HANDLE_FILL} stroke={HANDLE_RING} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+            <path
+              d={boxMoveGripGlyphPath(grip.cx, grip.cy, grip.r)}
+              fill="none"
+              stroke={HANDLE_RING}
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              vectorEffect="non-scaling-stroke"
+              pointerEvents="none"
+            />
+          </g>
+        );
+      })()}
       {/* w58: Cmd / Ctrl move zone — on top of everything on the page; a
           press on a rotate grabber outside the marks is handed to it. */}
-      {modifierMoveZone && (
+      {modifierMoveZone && modifierMoveActive && (
         <rect
           data-modifier-move-zone="true"
           x={modifierMoveZone.left}

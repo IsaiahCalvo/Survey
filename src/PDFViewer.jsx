@@ -85,12 +85,12 @@ import SurveyTemplateMenu from './components/SurveyTemplateMenu';
 import Icon from './Icons';
 import MeasureScaleDialog from './components/MeasureScaleDialog';
 import MeasureDepthDialog from './components/MeasureDepthDialog';
-import MeasureEditDialog from './components/MeasureEditDialog.jsx';
 import {
   DEPTH_MEASURE_KINDS,
-  editMeasureData,
   MEASURE_SCALES_META_KEY,
+  applyMeasureEdit,
   applyPageScale,
+  getMeasureKind,
   loadMeasureDepth,
   rememberMeasureDepth,
   measureBaseTool,
@@ -288,7 +288,7 @@ import { shouldAutoSelectAfterCommit } from './utils/autoSelectAfterCommit';
 import { isSurveyScopedHistoryEvent, resolveHistoryEntryContext } from './utils/historyContextRestore';
 import { projectAnnotationForHistoryPreview } from './utils/historyPreviewAnnotation';
 import { isUndoKeyEvent, isRedoKeyEvent, isUndoRedoBlocked } from './utils/undoRedoHotkeys';
-import { stepBackPolyDraftForUndo } from './utils/polyDraft.js';
+import { hasOpenPolyDraft, hasPolyDraftUndo, stepBackPolyDraftForUndo, subscribePolyDraftUndo } from './utils/polyDraft.js';
 import { measureKeyBadge, measureKindForKey } from './utils/measure/measureKeys.js';
 import { getCalloutSyncFingerprint } from './utils/calloutSyncPayload';
 import { isPlacedSurveyMarker } from './services/surveyMarkerSyncDiff';
@@ -385,7 +385,7 @@ import { splitImportedCalloutsFromPage } from './utils/calloutImportAdapter';
 import { supabase } from './supabaseClient';
 import { useAnnotationDoc } from './hooks/useAnnotationDoc.js';
 import { useAuth } from './contexts/AuthContext';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useDocumentPresenceList } from './hooks/useDocumentPresenceList.js';
 import { useBrushAdjustGesture } from './hooks/useBrushAdjustGesture.js';
 import { useLiveCursorBroadcast } from './hooks/useLiveCursorBroadcast.js';
@@ -396,7 +396,7 @@ import { bookmarkDeleteMessage, removeBookmarkWithDescendants, restoreRemovedBoo
 import { useYDoc } from './hooks/useYDoc.js';
 import { useZoomState } from './hooks/useZoomState';
 import { isFeatureOn } from './featureFlags.js';
-import { marksHidden, subscribeMarksHidden } from './utils/marksHidden.js';
+import { marksHidden, setMarksHidden, subscribeMarksHidden } from './utils/marksHidden.js';
 import { isTypingTarget } from './utils/typingTarget.js';
 import { useMarkClipboard } from './utils/sharedMarkClipboard.js';
 // Beta 'mark-library' (Survey Nightly): save marks once, drop them on any page.
@@ -407,12 +407,13 @@ import { LIBRARY_PAYLOAD_MAX_BYTES, libraryPayloadBytes, libraryPayloadFromClipb
 import { fitPlacedTextBoxes, resolveLibraryDrop } from './markLibrary/markLibraryViewer.js';
 import { PAGE_GRID_SETTINGS_EVENT, applyPageGridPageSteps, applyPageGridSettings, loadPageGridSettings } from './utils/pageGrid';
 import { LAYERS_META_KEY, DEFAULT_LAYER_ID, DEFAULT_LAYER_STATE, normalizeLayerState, hiddenLayerIdSet, resolveActiveLayerId, withoutHiddenLayers, calloutsWithoutHiddenLayers, stampNewObjectsOnLayer, stampNewMarksByPage, selectableMarkIndices, hiddenActiveLayer, setLayerVisible } from './utils/layers.js';
-import { PAGE_PRESENTATION_META_KEY, normalizePagePresentations, pagePresentationFrame, clientPointInPageFrame, clientPastePointInPageFrame } from './utils/pagePresentation.js';
+import { PAGE_PRESENTATION_META_KEY, PDF_FILE_VERSION_META_KEY, normalizePagePresentations, pagePresentationFrame, clientPointInPageFrame, clientPastePointInPageFrame } from './utils/pagePresentation.js';
 import { normalizePresentationPdf, pdfBytesHavePresentationTag } from './utils/pdfPagePresentation.js';
 import { chooseCloudPdfOpenPath, shouldRetryStreamedOpenWithDownload, tryOpenCloudPdfStream } from './services/cloudPdfStream.js';
 import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox } from './utils/svgBoundingBox.js';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
 import { usePageOperations } from './hooks/usePageOperations.js';
+import { IDLE_REMOTE_PDF_STATE, PAGE_OP_BLOCKED_MESSAGE, PAGE_OP_SYNC_FLAG, clearedPdfVersion, isPageOpBlocked, newPdfVersionToken, operationRewritesPdf, pendingPdfVersion, remotePdfLoaded, remotePdfVersionStep, savedPdfVersion } from './utils/pageOpSync.js';
 import { usePageViewDocument } from './hooks/usePageViewDocument.js';
 import { getPageViewBase } from './utils/pageViewDocument.js';
 import { destroyPdfDocument, pdfOrDestroy } from './utils/destroyPdfDocument.js';
@@ -651,7 +652,7 @@ const eraseTransitionChangedScreen = (result, before, meta) => (
   eraseTransitionChangedScreenWith(result, before, meta, jsonEqual)
 );
 
-export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, onCloseAfterFailure, tabId, isActive, documentLocked = false, mobileMode = false, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, msGetAuthSignals, entities, setEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange }) {
+export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, onCloseAfterFailure, tabId, isActive, documentLocked = false, mobileMode = false, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, msGetAuthSignals, entities, setEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange, onRemotePdfVersion }) {
   // Phase 35 UAT diag — mirror current PDF filename to window so the dev-only
   // phase35Diag logger can prefix every gate decision with the file under test.
   // Production-stripped via import.meta.env.MODE check; tree-shakes from prod.
@@ -3113,6 +3114,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // each registers this window listener; the first one registered stops the
   // event for the rest. Without this check Cmd+Z in the second document you
   // opened undid (invisibly) in the FIRST one. Only the visible tab answers.
+  // This viewer's token for Undo while placing a polygon (utils/polyDraft.js).
+  const [polyDraftOwner] = useState(() => ({}));
   const undoRedoKeyActiveRef = useRef(isActive);
   undoRedoKeyActiveRef.current = isActive;
   useEffect(() => {
@@ -3132,7 +3135,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       }
       // A polygon / polyline being placed takes Undo as "last point off"
       // (Nightly 'poly-back-step', utils/polyDraft.js).
-      if (isUndoCombo && stepBackPolyDraftForUndo()) return;
+      if (isUndoCombo && stepBackPolyDraftForUndo(polyDraftOwner)) return;
       // w57: an arrow-key nudge still waiting to save lands first, so Undo
       // takes back the nudge (this handler runs before the page layers').
       flushPendingNudges();
@@ -3189,12 +3192,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const [measureDepthEnabled] = useState(() => isFeatureOn('measure-depth'));
   const [measureScaleChipOn] = useState(() => isFeatureOn('measure-scale-chip'));
   const [measureKeysOn] = useState(() => isFeatureOn('measure-keys'));
+  // Nightly 'measure-edit': the quick bar's Measurement popover on a picked measurement.
+  const [measureEditOn] = useState(() => isFeatureOn('measure-edit'));
   const [measureDepth, setMeasureDepth] = useState(() => loadMeasureDepth());
   const [measureDepthDialog, setMeasureDepthDialog] = useState(null);
-  // Nightly 'measure-edit': change a drawn measurement's name, depth and
-  // caption from its right-click menu. { pageNumber, id, index }.
-  const [measureEditEnabled] = useState(() => isFeatureOn('measure-edit'));
-  const [measureEdit, setMeasureEdit] = useState(null);
   const prevMeasureModeRef = useRef(null);
   useEffect(() => {
     const prev = prevMeasureModeRef.current;
@@ -3803,6 +3804,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       ? { ...prev, annotation: nextObj }
       : prev));
   }, []);
+  // Measurement popover (Nightly 'measure-edit'): label / depth / caption
+  // changes ride the same selected-edit write, so each is one save and one
+  // undo step. The change is applied to the mark as saved right now.
+  const handlePatchSelectedMeasure = useCallback((changes) => {
+    handlePatchSelectedAnnotation({}, (obj) => applyMeasureEdit(obj, changes));
+  }, [handlePatchSelectedAnnotation]);
   const [zoomGeneration, setZoomGeneration] = useState(0);
   // Edit mode state: tracks which annotation is being edited via double-click
   // { pageNumber, index, type, editType ('text'|'shape'|'callout'), data }
@@ -4296,9 +4303,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   useEffect(() => subscribeMarksHidden(() => {
     if (marksHidden()) clearAnnotationSelectionForContextChange('marks-hidden');
   }), [clearAnnotationSelectionForContextChange]);
+  // The eraser is not there while marks are hidden: it would rub out marks
+  // you cannot see (R4-A).
+  const allMarksHidden = useSyncExternalStore(subscribeMarksHidden, marksHidden, () => false);
   useEffect(() => {
     const onKey = (event) => {
-      if (!marksHidden() || isTypingTarget(event.target)) return;
+      // Only the front viewer: Home and other tabs keep their own keys.
+      if (!marksHidden() || undoRedoKeyActiveRef.current === false || isTypingTarget(event.target)) return;
       const key = String(event.key || '');
       const mod = event.ctrlKey || event.metaKey;
       const blocked = key === 'Delete' || key === 'Backspace' || (mod && /^[axdvgl]$/i.test(key));
@@ -4399,6 +4410,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       // A press on the selection itself was handed to its move machinery
       // (hooks/useSelectionGrabHandoff.js) — it is not a pick.
       if (isSelectionGrabPress(e)) return;
+      if (marksHidden()) return; // hidden marks are not there to pick
       const hit = resolveAnnotationAt(e);
       if (!hit) return;
       // Owner 2026-10-22: a Survey Marker is picked by Pan like any mark - on
@@ -12110,11 +12122,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // per document open (see the fallback effect near the fix19 import harness).
   const embeddedImportFallbackDoneRef = useRef(null);
   const annotationsByPageRef = useRef(annotationsByPage);
-  // 'measure-edit': the right-click menu's Edit measurement… (state above).
-  const openMeasureEdit = useCallback((pageNumber, index) => {
-    const object = annotationsByPageRef.current?.[pageNumber]?.objects?.[index];
-    if (object?.data?.measure?.kind && object.id != null) setMeasureEdit({ pageNumber, index, id: object.id });
-  }, []);
   // Speed (2026-11-09): work out the marks' geometry for the pages just past
   // the mounted window while the browser is idle, so a page scrolling into
   // view only builds its elements (warmMarkGeometry; ~80 ms of a 150-mark
@@ -14302,7 +14309,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const handleUndo = useCallback(() => {
     // The Undo buttons (phone header, toolbar) step back a polygon / polyline
     // point too, like Ctrl/Cmd+Z (Nightly 'poly-back-step', utils/polyDraft.js).
-    if (stepBackPolyDraftForUndo()) return;
+    if (stepBackPolyDraftForUndo(polyDraftOwner)) return;
     if (deferUntilEraseCommitsFinish(handleUndo)) return;
     recordAnnotationUndoRedo('undo', {
       localUndoDepth: localAnnotationUndoRef.current.length,
@@ -15128,8 +15135,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   }, [pushHistoryDebugEvent, yjsUndoManager]);
 
   // Check if undo is possible
-  const canUndo = localAnnotationHistoryVersion >= 0
-    && (localAnnotationUndoRef.current.length > 0 || undoHistory.length > 0 || (yjsUndoManager?.undoStack?.length || 0) > 0);
+  // A polygon / polyline being placed can step back a point even on a page
+  // with nothing else to undo (Nightly 'poly-back-step', utils/polyDraft.js).
+  const polyDraftUndoable = useSyncExternalStore(subscribePolyDraftUndo, () => hasPolyDraftUndo(polyDraftOwner), () => false);
+  const canUndo = polyDraftUndoable || (localAnnotationHistoryVersion >= 0
+    && (localAnnotationUndoRef.current.length > 0 || undoHistory.length > 0 || (yjsUndoManager?.undoStack?.length || 0) > 0));
 
   // Check if redo is possible
   const canRedo = localAnnotationHistoryVersion >= 0
@@ -15194,11 +15204,33 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     regionOverlayDisabled: regionOverlayDisabled || new Map(),
   };
   const getPageStructureState = useCallback(() => pageStructureStateRef.current, []);
-  const persistPageMutationFile = useCallback((file) => {
+  // Page changes in two windows (Nightly 'page-op-sync', utils/pageOpSync.js):
+  // `writer` names this viewer (not getClientId(), which tabs share).
+  const pageOpSyncRef = useRef(null);
+  if (!pageOpSyncRef.current) {
+    pageOpSyncRef.current = { on: isFeatureOn(PAGE_OP_SYNC_FLAG), writer: newPdfVersionToken(), ownPending: false, remote: IDLE_REMOTE_PDF_STATE, docBeforeReload: null };
+  }
+  pageOpSyncRef.current.pdfFile = pdfFile;
+  pageOpSyncRef.current.pdfDoc = pdfDoc;
+  const pageOpsBlocked = useCallback(() => (
+    isPageOpBlocked(pageOpSyncRef.current.remote, Date.now()) ? PAGE_OP_BLOCKED_MESSAGE : null
+  ), []);
+  const persistPageMutationFile = useCallback((file, saveInfo) => {
     // The background save of a page operation: these bytes are already on
     // screen as a page view, so the load effect must not re-open them.
     markPageViewFileCurrent(file);
-    return onUpdatePDFFile?.(file, tabId);
+    const saving = onUpdatePDFFile?.(file, tabId);
+    const sync = pageOpSyncRef.current;
+    if (!sync.on) return saving;
+    return Promise.resolve(saving).then((saved) => {
+      const setMeta = pagePresentationMetaSetRef.current;
+      const result = saved || file;
+      if (setMeta && sync.ownPending && !saveInfo?.hasMorePending?.()) {
+        sync.ownPending = false;
+        setMeta(PDF_FILE_VERSION_META_KEY, savedPdfVersion({ writer: sync.writer, filePath: result?.supabaseFilePath || result?.filePath, contentSha256: result?.contentSha256 }), 'local');
+      }
+      return saved;
+    });
   }, [markPageViewFileCurrent, onUpdatePDFFile, tabId]);
   const commitPageStructureState = useCallback((next, operation, step = null) => {
     pageStructureStateRef.current = next;
@@ -15211,6 +15243,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     setPageNames(next.pageNames);
     setPageTransformations(next.pageTransformations);
     pagePresentationMetaSetRef.current?.(PAGE_PRESENTATION_META_KEY, normalizePagePresentations(next.pageTransformations), 'local');
+    const pageOpSync = pageOpSyncRef.current;
+    if (pageOpSync.on && pagePresentationMetaSetRef.current) {
+      if (operationRewritesPdf(operation)) {
+        pageOpSync.ownPending = true;
+        pagePresentationMetaSetRef.current(PDF_FILE_VERSION_META_KEY, pendingPdfVersion({ writer: pageOpSync.writer }), 'local');
+      } else if (operation?.type === 'rollback' && pageOpSync.ownPending) {
+        pageOpSync.ownPending = false;
+        pagePresentationMetaSetRef.current(PDF_FILE_VERSION_META_KEY, clearedPdfVersion({ writer: pageOpSync.writer }), 'local');
+      }
+    }
     setBookmarks(next.bookmarks);
     setSpaces(next.spaces);
     setRegionOverlayDisabled(next.regionOverlayDisabled);
@@ -15308,6 +15350,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     clipboardType,
     setClipboardType,
     getPageSize: getPageSizeForTurn,
+    blocked: pageOpSyncRef.current.on ? pageOpsBlocked : null,
   });
   // Export, print and redaction writers read bytes with source.arrayBuffer().
   // A cloud document's pdfFile is only metadata (filePath, no bytes), so
@@ -22181,6 +22224,50 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       ? acceptTemplateVersion(binding, selectedTemplate, true)
       : bindUsedTemplate(selectedTemplate, binding));
   }, [selectedTemplate, currentSurveyTemplateHasMarks, appTemplates, surveyTemplateRestorationReady, storeSurveyTemplateBinding, readSurveyTemplateBinding]);
+  // Another window's page change (utils/pageOpSync.js): refuse page changes
+  // while its bytes upload, then reload the PDF it saved.
+  useEffect(() => {
+    const sync = pageOpSyncRef.current;
+    if (!sync.on || !normalAnnotationHydration?.ready || normalAnnotationHydration.documentId !== pdfFile?.id) return undefined;
+    // The reload waits while a finger or button is down, or a polygon is
+    // being placed, so work in progress here is not wiped (up to 30 s).
+    let pointerDown = false;
+    const onDown = () => { pointerDown = true; };
+    const onUp = () => { pointerDown = false; };
+    window.addEventListener('pointerdown', onDown, true);
+    window.addEventListener('pointerup', onUp, true);
+    window.addEventListener('pointercancel', onUp, true);
+    let timer = null;
+    let latest = null;
+    const reload = (since) => {
+      timer = null;
+      if ((pointerDown || hasOpenPolyDraft(polyDraftOwner)) && Date.now() - since < 30000) {
+        timer = setTimeout(() => reload(since), 300);
+        return;
+      }
+      sync.docBeforeReload = sync.pdfDoc;
+      onRemotePdfVersion?.(tabId, latest);
+    };
+    const unsubscribe = subscribeDocumentMeta(PDF_FILE_VERSION_META_KEY, (value) => {
+      const step = remotePdfVersionStep(sync.remote, value, { writer: sync.writer, currentSha: sync.pdfFile?.contentSha256 || null, now: Date.now() });
+      sync.remote = step.state;
+      if (step.action !== 'reload') return;
+      latest = { filePath: step.version.filePath, contentSha256: step.version.contentSha256 };
+      if (!timer) reload(Date.now());
+    });
+    return () => {
+      unsubscribe?.();
+      if (timer) clearTimeout(timer);
+      window.removeEventListener('pointerdown', onDown, true);
+      window.removeEventListener('pointerup', onUp, true);
+      window.removeEventListener('pointercancel', onUp, true);
+    };
+  }, [normalAnnotationHydration, pdfFile?.id, subscribeDocumentMeta, onRemotePdfVersion, tabId, polyDraftOwner]);
+  useEffect(() => {
+    const sync = pageOpSyncRef.current;
+    if (!sync.remote.awaitSha || !pdfDoc || pdfDoc === sync.docBeforeReload) return;
+    sync.remote = remotePdfLoaded(sync.remote, pdfFile?.contentSha256);
+  }, [pdfDoc, pdfFile]);
   pagePresentationMetaSetRef.current = normalAnnotationHydration?.ready
     && normalAnnotationHydration.documentId === pdfFile?.id
     && canRestoreFromHistory ? excelSyncMetaSet : null;
@@ -27061,6 +27148,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     const contextTool = (pickBarTool === 'select' && selectionMappedTool)
       ? selectionMappedTool
       : activeTool;
+    // The quick colour discs of a picked highlighter stroke are the
+    // highlighter's own (R3-Z), though it groups with the pen everywhere else.
+    const quickColourTool = contextTool === 'pen' && pickBarTool === 'select'
+      && (selectedAnnot?.tool === 'highlighter' || selectedAnnot?.data?.tool === 'highlighter')
+      ? 'highlighter' : contextTool;
     // w44 (rows flipped): the tool bar shows the picked mark's group's tools.
     // Marks of more than one kind picked together borrow no group: the bar
     // shows Select's own modes and row 2 the settings they share.
@@ -27252,6 +27344,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       lassoTouchMode,
       cycleLassoTouchMode,
       contextTool,
+      quickColourTool,
       // w44: the tool whose group's tools the tool bar shows ('select' when
       // marks of several kinds are picked together) — utils/toolbarRows.js.
       toolBarContextTool: subToolTool,
@@ -27302,6 +27395,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       selectionCapabilities,
       // One picked polyline: whether it is curved (the Curve switch, Nightly).
       selectedPolyline: !groupSummary && selectedType === 'polyline' ? { curved: polySplineStep(selectedAnnot) > 0 } : null,
+      // One picked measurement (Nightly 'measure-edit'): the mark, its id and
+      // the page's scale (what its label reads), for the Measurement popover.
+      selectedMeasure: measureEditOn && !groupSummary && !selectedToolbarCallout && getMeasureKind(selectedAnnot)
+        ? {
+          id: String(selectedAnnotationId || ''),
+          mark: selectedAnnot,
+          scale: pageScaleFromObjects(pageObjects) || metaScaleForPage(measureScaleMeta, selectedToolbarAnnotation?.pageNumber),
+        }
+        : null,
+      patchSelectedMeasure: measureEditOn ? handlePatchSelectedMeasure : null,
       selectionMixed: groupSummary ? groupSummary.mixed : null,
       selectionCount: groupSummary ? groupSummary.count : (selectedToolbarAnnotation || selectedToolbarCallout ? 1 : 0),
       strokeWidthInputValue: strokeWidthInputValueRef.current,
@@ -27456,6 +27559,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     activeTool,
     measureMode,
     measureScaleDialog,
+    measureScaleMeta,
+    measureEditOn,
+    handlePatchSelectedMeasure,
     pickBarTool,
     liveTextSelection,
     selectionMode,
@@ -29659,6 +29765,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const openMarkupRow = useCallback((row) => {
     const page = Number(row?.pageNumber);
     if (!Number.isFinite(page) || page < 1) return;
+    // Asking for a mark while all marks are hidden shows them again, so the
+    // picked mark is never one you cannot see.
+    if (marksHidden()) setMarksHidden(false);
     const objects = (annotationsByPageRef.current || {})[page]?.objects
       || (annotationsByPageRef.current || {})[String(page)]?.objects || [];
     // The row's slot may have moved since the list was built: find it by id.
@@ -37861,28 +37970,6 @@ ${pageBlocks}
           note before Submit. Lives here so it renders above every floating
           UI including the context menu below. */}
       <SaveLogBanner />
-      {measureEdit && (() => {
-        const objects = annotationsByPageRef.current?.[measureEdit.pageNumber]?.objects || [];
-        const object = objects[measureEdit.index]?.id === measureEdit.id ? objects[measureEdit.index] : objects.find((o) => o?.id === measureEdit.id);
-        if (!object?.data?.measure) return null;
-        return (
-          <MeasureEditDialog
-            object={object}
-            scale={object.data.measure.scale || pageScaleFromObjects(objects) || metaScaleForPage(measureScaleMeta, measureEdit.pageNumber)}
-            onCancel={() => setMeasureEdit(null)}
-            onApply={(changes) => {
-              setMeasureEdit(null);
-              const page = annotationsByPageRef.current?.[measureEdit.pageNumber];
-              const at = (page?.objects || []).findIndex((o) => o?.id === measureEdit.id);
-              if (at < 0) return;
-              const next = deepClone(page);
-              const target = next.objects[at];
-              next.objects[at] = { ...target, data: { ...target.data, measure: editMeasureData(target.data.measure, changes) } };
-              handleSaveAnnotations(measureEdit.pageNumber, next, { source: 'object:modified', action: 'modify', checkpointPolicy: 'normal' });
-            }}
-          />
-        );
-      })()}
       {/* Nightly 'measure-scale-chip' (Drawboard PDF Pro trial audit
           2026-11-09): a measure tool armed on a page with no scale says so,
           with a way to set one, instead of quietly reading 1:1 inches. */}
@@ -38006,7 +38093,6 @@ ${pageBlocks}
         familyClipboard,
         pasteFamilyAt,
         saveFamilyToLibrary: markLibraryEnabled ? saveFamilyToLibrary : null,
-        editMeasure: measureEditEnabled ? openMeasureEdit : null,
         viewerId: user?.id ?? null,
         documentOwnerId,
         selectedCalloutIds,
@@ -38022,10 +38108,12 @@ ${pageBlocks}
           readOnly: Boolean(documentLocked) || yjsDocRole === 'viewer',
           handlers: {
             selectAll: (page) => {
+              if (marksHidden()) return; // nothing you cannot see is picked
               const annotationIndices = selectableMarkIndices(annotationsByPageRef.current?.[page]?.objects, hiddenLayerIdsRef.current);
               setPendingSvgSelection({ pageNumber: page, annotationIndices, surveyMarkerIds: [], exclusive: true, tick: Date.now() });
             },
             pasteInPlace: (page) => {
+              if (marksHidden()) return; // a pasted mark would be picked unseen
               const clip = familyClipboardRef.current;
               if (clip && commitFamilyPaste(page, clip, 0, 0) && clip.mode === 'cut') setFamilyClipboard(null);
             },
@@ -38873,7 +38961,7 @@ ${pageBlocks}
                               />
                             </div>
                             )}
-                            {requiresLegacyAnnotationLayer && activeTool === 'eraser' && (
+                            {requiresLegacyAnnotationLayer && activeTool === 'eraser' && !allMarksHidden && (
                               <FabricEraserCanvas
                                 key={`erase-legacy-${pageNumber}`}
                                 pageNumber={pageNumber}
@@ -39238,6 +39326,7 @@ ${pageBlocks}
                                 <SVGAnnotationLayer
                                   key={`svg-layer-${pageNumber}-${annotationOverlayRecoveryTick}`}
                                   documentId={pdfFile?.id || null}
+                                  polyDraftOwner={polyDraftOwner}
                                   isTabActive={isActive !== false}
                                   pageNumber={pageNumber}
                                   // visiblePagesSet is never updated past page 1, so a pinch-out
@@ -39403,7 +39492,7 @@ ${pageBlocks}
                               {/* Eraser Canvas — pointer/hit surface for erasing. The SVG layer
                                   stays visible beneath it until a stroke's live preview carves
                                   (onErasePreviewPresentation drives the per-page swap). */}
-                              {isEraserTool && (
+                              {isEraserTool && !allMarksHidden && (
                                 <FabricEraserCanvas
                                   key={`erase-${pageNumber}`}
                                   pageNumber={pageNumber}
