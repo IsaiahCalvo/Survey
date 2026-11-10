@@ -138,3 +138,12 @@ test('a written-out "rev" wins over a bare R tag; same revisions keep the file b
   const dash = readFileSync(new URL('../src/Dashboard.jsx', import.meta.url), 'utf8');
   assert.match(dash, /askDuplicates: !newDocument,/);
 });
+
+test('"Review" and "RFI" in a name are not revisions (R5 S1b)', () => {
+  assert.equal(readSheetFromFileName('A-101 Review set.pdf').revision, null);
+  assert.equal(readSheetFromFileName('A-101 RFI 12.pdf').revision, null);
+  assert.equal(readSheetFromFileName('A-101 Rev B.pdf').revision, 'B');
+  assert.equal(readSheetFromFileName('A-101 Rev1.pdf').revision, '1');
+  assert.equal(readSheetFromFileName('A-101 rev-C.pdf').revision, 'C');
+  assert.equal(readSheetFromFileName('A-101 Revision 2.pdf').revision, '2');
+});

@@ -409,7 +409,8 @@ export function normalizeMeasureCaptionSize(value) {
 /** A label as stored: one trimmed line, at most 80 characters ('' = none). */
 export function normalizeMeasureLabelText(value) {
   if (typeof value !== 'string') return '';
-  return value.replace(/\s+/g, ' ').trim().slice(0, MEASURE_LABEL_MAX_CHARS);
+  // Cut on whole characters, so an emoji at the cap is never split (R5 N5c).
+  return splitGraphemes(value.replace(/\s+/g, ' ').trim()).slice(0, MEASURE_LABEL_MAX_CHARS).join('');
 }
 
 /** The caption lines picked for a kind, in the kind's order; null = unset. */

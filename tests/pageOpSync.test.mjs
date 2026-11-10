@@ -134,16 +134,42 @@ test('marks drawn on the old pages move the way the page change moved the rest (
   assert.equal(reframeMarks(byPage, new Set(), [{ type: 'insert', afterPage: 0 }], transformPageState), null);
   assert.equal(reframeMarks(byPage, new Set(['b-mine']), null, transformPageState), null);
   // Only small plain steps travel on the stamp.
-  assert.equal(stampableOperation({ type: 'restore', afterPage: 0, fromPage: 1, from: {} }), null);
+  assert.equal(stampableOperation({ type: 'presentation', page: 1 }), null);
   assert.equal(stampableOperation({ type: 'batch', operations: [{ type: 'rotate', page: 1, delta: 90 }, { type: 'restore' }] }), null);
   assert.deepEqual(stampableOperation({ type: 'move', from: 1, to: 3 }), { type: 'move', from: 1, to: 3 });
 });
 
 test('the viewer stamps its page changes and moves old-page marks after the reload', () => {
   const src = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
-  assert.match(src, /pendingPdfVersion\(\{ writer: pageOpSync\.writer, operations: pageOpSync\.pendingOps \}\)/);
-  assert.match(src, /savedPdfVersion\(\{ writer: sync\.writer, filePath: [^)]*, operations \}\)/);
+  assert.match(src, /pendingPdfVersion\(\{ writer: pageOpSync\.writer, operations: pageOpSync\.pendingOps, batch: pageOpSync\.pendingBatch \}\)/);
+  assert.match(src, /savedPdfVersion\(\{ writer: sync\.writer, filePath: [^)]*, operations, batch \}\)/);
+  // A remote page change starts this window's Undo over (R5 N6c).
+  assert.match(src, /if \(!sync\.frame\) dropHistoryAfterPageChange\(\);\n        sync\.frame = noteFramePageChanges\(sync\.frame, step\.version\);/);
+  assert.match(src, /if \(frame\) dropHistoryAfterPageChange\(\);\n    const ops = framePageChanges\(frame\);/);
   assert.match(src, /const handleSaveAnnotations = useCallback\(\(pageNumber, json, saveContext = null\) => \{\n    noteMarksOnOldPages\(pageNumber, json\);/);
-  assert.match(src, /reframeMarks\(byPage, frame\.made, frame\.ops, transformPageState\)/);
+  assert.match(src, /reframeMarks\(byPage, frame\.made, ops, transformPageState\)/);
   assert.match(src, /if \(draftOpen\) showToast\(/);
+});
+
+test('every run of page changes before the reload counts, in order; an Undo of a delete moves marks too (R5 N6d, N6e)', async () => {
+  const { framePageChanges, noteFramePageChanges, normalizePdfVersion, pendingPdfVersion, savedPdfVersion, stampableOperation, reframeMarks } = await import('../src/utils/pageOpSync.js');
+  const { transformPageState } = await import('../src/utils/pageAnnotationReindex.js');
+  const turn = { type: 'rotate', page: 1, delta: 90, pageSize: { width: 792, height: 612 } };
+  const blank = { type: 'insert', afterPage: 0 };
+  let frame = null;
+  frame = noteFramePageChanges(frame, normalizePdfVersion(pendingPdfVersion({ writer: 'A', operations: [turn], batch: 'run1' })));
+  frame = noteFramePageChanges(frame, normalizePdfVersion(savedPdfVersion({ writer: 'A', filePath: 'p', contentSha256: 's', operations: [turn], batch: 'run1' })));
+  frame = noteFramePageChanges(frame, normalizePdfVersion(pendingPdfVersion({ writer: 'A', operations: [blank], batch: 'run2' })));
+  assert.deepEqual(framePageChanges(frame), [turn, blank]);
+  // My box drawn on old page 1: turned, then onto page 2.
+  const byPage = { 1: { objects: [{ type: 'rect', left: 300, top: 200, width: 200, height: 200, data: { id: 'mine' } }] } };
+  const moved = reframeMarks(byPage, new Set(['mine']), framePageChanges(frame), transformPageState);
+  assert.deepEqual(moved[1], []);
+  assert.equal(moved[2].length, 1);
+  assert.notEqual(moved[2][0].left, 300);
+  // A run that cannot travel stops all moving.
+  frame = noteFramePageChanges(frame, normalizePdfVersion(pendingPdfVersion({ writer: 'A', operations: null, batch: 'run3' })));
+  assert.equal(framePageChanges(frame), null);
+  // Undo of a delete travels as a page put back after afterPage.
+  assert.deepEqual(stampableOperation({ type: 'restore', afterPage: 0, fromPage: 1, from: { annotationsByPage: {} } }), { type: 'insert', afterPage: 0 });
 });

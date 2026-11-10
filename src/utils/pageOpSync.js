@@ -35,15 +35,18 @@ export function operationRewritesPdf(operation) {
   return typeof operation.type === 'string' && !NO_BYTE_TYPES.has(operation.type);
 }
 
-export function pendingPdfVersion({ writer, token = newPdfVersionToken(), at = Date.now(), operations = null }) {
-  return { writer: String(writer), token, pending: true, filePath: null, contentSha256: null, at, operations: operations || null };
+// `batch` names one run of page changes between two saves; its stamps carry
+// every change of that run so far, so a later stamp of the same run replaces
+// an earlier one, and a new run adds to it.
+export function pendingPdfVersion({ writer, token = newPdfVersionToken(), at = Date.now(), operations = null, batch = null }) {
+  return { writer: String(writer), token, pending: true, filePath: null, contentSha256: null, at, operations: operations || null, batch: batch || null };
 }
 
-export function savedPdfVersion({ writer, token = newPdfVersionToken(), filePath, contentSha256, at = Date.now(), operations = null }) {
+export function savedPdfVersion({ writer, token = newPdfVersionToken(), filePath, contentSha256, at = Date.now(), operations = null, batch = null }) {
   return {
     writer: String(writer), token, pending: false,
     filePath: filePath || null, contentSha256: contentSha256 || null, at,
-    operations: operations || null,
+    operations: operations || null, batch: batch || null,
   };
 }
 
@@ -54,6 +57,15 @@ export function savedPdfVersion({ writer, token = newPdfVersionToken(), filePath
 const STAMP_OP_TYPES = new Set(['rotate', 'insert', 'delete', 'move', 'reorder', 'duplicate', 'copy', 'batch']);
 export const STAMP_OPERATIONS_MAX_CHARS = 8_000;
 export function stampableOperation(operation) {
+  // An Undo of a delete puts the page back with its old marks; for marks
+  // drawn elsewhere that is a page added after `afterPage` (R5 N6e).
+  if (operation?.type === 'restore' && Number.isInteger(Number(operation.afterPage))) {
+    return { type: 'insert', afterPage: Number(operation.afterPage) };
+  }
+  if (operation?.type === 'batch' && (operation.operations || []).some((step) => step?.type === 'restore')) {
+    const steps = (operation.operations || []).map((step) => stampableOperation(step));
+    return steps.every(Boolean) ? stampableOperation({ type: 'batch', operations: steps }) : null;
+  }
   if (!operation || typeof operation !== 'object' || !STAMP_OP_TYPES.has(operation.type)) return null;
   if (operation.type === 'batch' && !(operation.operations || []).every((step) => stampableOperation(step))) return null;
   try {
@@ -111,7 +123,30 @@ export function normalizePdfVersion(value) {
     contentSha256: typeof value.contentSha256 === 'string' && value.contentSha256 ? value.contentSha256 : null,
     at: Number.isFinite(Number(value.at)) && value.at != null ? Number(value.at) : null,
     operations: Array.isArray(value.operations) ? value.operations.filter((op) => op && typeof op === 'object') : null,
+    batch: typeof value.batch === 'string' && value.batch ? value.batch : null,
   };
+}
+
+/**
+ * The page changes another window made since this one last reloaded, in
+ * order (R5 N6d). `frame.batches` maps each run to its latest list; a stamp
+ * without a run name (an older client) stands alone. Null when one of them
+ * could not travel, so nothing is moved rather than moved wrong.
+ */
+export function noteFramePageChanges(frame, version) {
+  const next = frame || { made: new Set(), batches: new Map() };
+  if (!next.batches) next.batches = new Map();
+  next.batches.set(version?.batch || `token:${version?.token}`, Array.isArray(version?.operations) ? version.operations : null);
+  return next;
+}
+export function framePageChanges(frame) {
+  if (!frame?.batches?.size) return null;
+  const out = [];
+  for (const ops of frame.batches.values()) {
+    if (!Array.isArray(ops)) return null;
+    out.push(...ops);
+  }
+  return out;
 }
 
 export const IDLE_REMOTE_PDF_STATE = Object.freeze({ blockedUntil: 0, pendingToken: null, awaitSha: null });

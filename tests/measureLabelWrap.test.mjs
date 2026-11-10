@@ -52,3 +52,10 @@ test('a caption wider than the page sits in its middle, not off one edge', async
   assert.ok(box.width > 326 * 0.9);
   assert.equal(box.cx, 163);
 });
+
+test('the 80-character label cap never cuts an emoji in half (R5 N5c)', async () => {
+  const { normalizeMeasureLabelText, MEASURE_LABEL_MAX_CHARS } = await import('../src/utils/measure/measureScale.js');
+  const text = `${'a'.repeat(MEASURE_LABEL_MAX_CHARS - 1)}👨‍👩‍👧🇺🇸`;
+  const out = normalizeMeasureLabelText(text);
+  assert.equal(out, `${'a'.repeat(MEASURE_LABEL_MAX_CHARS - 1)}👨‍👩‍👧`);
+});
