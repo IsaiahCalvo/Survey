@@ -592,6 +592,18 @@ export async function planSheetRound({
       ownRow.set(markerId, best);
     }
 
+    // Items of this tab that were in the sheet and have no row now, by name.
+    // A row with a broken Row ID (typed over, cleared, pasted over) and one of
+    // these names is that item's row, not a second item (real Excel 11-10:
+    // a typo in the hidden Row ID made a duplicate of the item in Survey).
+    const lostByName = new Map();
+    for (const markerId of markersByScope.get(scope.scopeId) || []) {
+      if (copies.has(markerId) || nextBaseline[markerId]?.scopeId !== scope.scopeId || next.tombstones[markerId]) continue;
+      const name = String(markers[markerId]?.name ?? '').trim().toLowerCase();
+      if (!name) continue;
+      lostByName.set(name, [...(lostByName.get(name) || []), markerId]);
+    }
+
     const appendRows = [];
     // Rows that are not items (a totals line, a heading): new items go above
     // the ones after the last item, so a totals line stays last.
@@ -679,7 +691,23 @@ export async function planSheetRound({
       const itemCol = colOfKey.get('item');
       if (!recreate && itemCol != null && isBlankCell(row[itemCol])) {
         summaryRows.push(r);
-        next.problems.push({ scopeId: scope.scopeId, message: `${where(r)} has no "${scope.columns.find((c) => c.key === 'item')?.header || 'Item'}", so it was not brought in.` });
+        // An Excel table's Total Row says "Total" in its first column, which
+        // is Survey's hidden Row ID: a totals line, not a row to report.
+        const first = row.find((c) => !isBlankCell(c));
+        if (!TOTALS_LABEL.test(cellText(first).trim())) {
+          next.problems.push({ scopeId: scope.scopeId, message: `${where(r)} has no "${scope.columns.find((c) => c.key === 'item')?.header || 'Item'}", so it was not brought in.` });
+        }
+        continue;
+      }
+      const lost = !parsed && itemCol != null ? lostByName.get(cellText(row[itemCol]).trim().toLowerCase()) : null;
+      if (!recreate && lost?.length === 1 && markers[lost[0]] && !seenMarkers.has(lost[0])) {
+        const found = lost[0];
+        lostByName.delete(cellText(row[itemCol]).trim().toLowerCase());
+        seenMarkers.add(found);
+        delete next.removedInSheet[found];
+        await mergeRow({ markerId: found, marker: markers[found], row, r });
+        writeCell(r, 'rowId', await tokenFor(found, scope.scopeId), row[rowIdCol]);
+        next.problems.push({ markerId: found, scopeId: scope.scopeId, message: `${where(r)}: its Row ID was changed, so Survey matched it to "${markers[found].name}" by name and put the Row ID back.` });
         continue;
       }
       // "Total", "Grand total", "Subtotal", "Sum"... typed under the items,
@@ -755,7 +783,10 @@ export async function planSheetRound({
     const notItems = new Set(summaryRows);
     let lastItemRow = headerAt;
     for (const r of ids.keys()) if (!notItems.has(r) && r > lastItemRow) lastItemRow = r;
-    const firstSummary = summaryRows.filter((r) => r > lastItemRow).sort((a, b) => a - b)[0];
+    // Only a line just under the items (two blank rows at most) is their
+    // totals line. A note a PM typed far below (Z400) is not: new items
+    // inserted above it landed at row 400 (real Excel 11-10).
+    const firstSummary = summaryRows.filter((r) => r > lastItemRow && r <= lastItemRow + 3).sort((a, b) => a - b)[0];
     if (appendRows.length) {
       plan.appends.push({
         sheetId: sheet.sheetId, title: sheet.title, rows: appendRows, width,

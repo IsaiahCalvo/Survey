@@ -981,6 +981,7 @@ async function runRoundFor(ctx, link, { provider = null, signing = null, force =
       : status === 404 ? `The linked ${what} was deleted or is no longer shared with the person who linked it.`
       : status === 429 ? `${who} asked us to slow down. Syncing again in a minute.`
       : status === 423 ? `Someone has the ${what} open in an app that locks it (often an older Excel on a computer). Survey syncs again once they close it.`
+      : err?.code === 'partial' ? `Survey is saving a big batch of changes to the ${what}. The rest go in within a minute.`
       : err?.code === 'timeout' ? `${who} did not answer in time (a slow connection). Syncing again in a moment.`
       : isBusy(status, err) ? `${who} is busy right now. Syncing again in a moment.`
       : status === 413 ? `The linked ${what} is too big to sync (over 250,000 cells in its synced tabs). Delete rows or tabs you no longer need.`

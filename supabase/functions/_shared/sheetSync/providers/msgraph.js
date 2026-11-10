@@ -116,6 +116,12 @@ function plainCell(value, text, format, type) {
 const BATCH_SIZE = 20;
 // Whole-sheet reads in one $batch: big sheets answer megabytes each.
 const GRID_BATCH = 8;
+// Excel saves scattered cells at about 30 a second (2,500 single-cell edits
+// on a 5,000-row sheet took 83 s, real Excel 11-10), so a big offline
+// catch-up could outlast the edge function and every retry would start
+// over. Writes stop between batches after this long and the round ends as
+// "busy"; what landed matches the app, so the next round writes only the rest.
+const WRITE_BUDGET_MS = 60_000;
 
 // Drop-downs cover this many rows, like the desktop export.
 const DROP_DOWN_ROWS = 1000;
@@ -310,9 +316,16 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
   // 11-09). Otherwise each waits for the one before (row deletes, in order).
   // `size`: requests per $batch (Graph takes at most 20); reads of whole
   // sheets go fewer at a time so one answer stays a few megabytes.
-  async function workbookBatch(fileId, ops, { parallel = false, size = BATCH_SIZE } = {}) {
+  // `deadline`: stop between batches once past it (see WRITE_BUDGET_MS).
+  // `allow`: statuses that answer null instead of failing the batch.
+  async function workbookBatch(fileId, ops, { parallel = false, size = BATCH_SIZE, deadline = null, allow = [] } = {}) {
     const bodies = [];
     for (let i = 0; i < ops.length; i += size) {
+      if (deadline != null && i > 0 && now() > deadline) {
+        throw Object.assign(new Error(`Saved ${i} of ${ops.length} changes to the workbook; the rest go in the next round.`), {
+          status: 503, code: 'partial', retryAfterMs: 10_000,
+        });
+      }
       const chunk = ops.slice(i, i + size);
       for (let attempt = 0; ; attempt += 1) {
         const id = await sessionId(fileId);
@@ -327,9 +340,9 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
         const res = await call('POST', '$batch', { body: { requests }, where: 'batch' });
         const answers = [...(res?.responses || [])].sort((a, b) => Number(a.id) - Number(b.id));
         // The first real failure (later ones only say "424: an earlier one failed").
-        const failed = answers.find((a) => Number(a.status) >= 300 && Number(a.status) !== 424)
+        const failed = answers.find((a) => Number(a.status) >= 300 && Number(a.status) !== 424 && !allow.includes(Number(a.status)))
           || (answers.length < chunk.length ? { status: 500, body: null } : null);
-        if (!failed) { sessions.set(fileId, { id, at: now() }); bodies.push(...answers.map((a) => a.body ?? null)); break; }
+        if (!failed) { sessions.set(fileId, { id, at: now() }); bodies.push(...answers.map((a) => (Number(a.status) < 300 ? a.body ?? null : null))); break; }
         const headers = { get: (k) => failed.headers?.[k] ?? failed.headers?.[String(k).toLowerCase()] ?? failed.headers?.[String(k).replace(/^\w/, (c) => c.toUpperCase())] ?? null };
         const error = graphError(Number(failed.status), failed.body, headers, 'batch');
         if (attempt === 0 && isSessionGone(error)) { sessions.delete(fileId); continue; }
@@ -344,6 +357,20 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
   async function usedRange(fileId, sheetId, select) {
     return workbook(fileId, 'GET', `${sheetPath(sheetId)}/usedRange(valuesOnly=true)?$select=${select}`, { where: 'usedRange' });
   }
+
+  // Where new rows go: under the last row holding anything in the columns
+  // Survey writes (A to `width`), not under a PM's stray cell far off to the
+  // right (a note typed in Z400 put new items at row 400, real Excel 11-10).
+  // Graph answers 404 when those columns are empty. Only the address is
+  // asked for: the old read of every value was 2 MB on a 5,000-row sheet.
+  const endPath = (sheetId, width) => `${sheetPath(sheetId)}/range(address='A:${columnLetter(Math.max(0, width - 1))}')/usedRange(valuesOnly=true)?$select=rowIndex,rowCount`;
+  const endRow = (used) => (used ? (used.rowIndex || 0) + (used.rowCount || 0) : 0);
+  // The columns the new rows really fill (rows come padded to the sheet's width).
+  const filledWidth = (rows) => Math.max(1, ...rows.map((row) => {
+    let n = row.length;
+    while (n > 0 && (row[n - 1] === '' || row[n - 1] == null)) n -= 1;
+    return n;
+  }));
 
   async function writeBlock(fileId, sheetId, row, col, values) {
     const address = `${cellAddress(row, col)}:${cellAddress(row + values.length - 1, col + values[0].length - 1)}`;
@@ -495,7 +522,7 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
         for (const op of ops) await writeBlock(fileId, op.sheetId, op.block.row, op.block.col, op.block.values);
         return;
       }
-      await workbookBatch(fileId, ops, { parallel: true });
+      await workbookBatch(fileId, ops, { parallel: true, deadline: now() + WRITE_BUDGET_MS });
     },
 
     /** Adds rows under the last used row of each sheet. */
@@ -506,12 +533,11 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
         // New rows on several tabs (the first round, a tab put back): every
         // tab's end in one parallel $batch, then every tab's rows in another,
         // instead of two calls a tab one after another.
-        const ends = await workbookBatch(fileId, todo.map((b) => ({ method: 'GET', path: `${sheetPath(b.sheetId)}/usedRange(valuesOnly=true)?$select=rowIndex,rowCount,values` })), { parallel: true, size: GRID_BATCH });
+        const widthOf = (batch) => Math.max(batch.width || 0, ...batch.rows.map((row) => row.length));
+        const ends = await workbookBatch(fileId, todo.map((b) => ({ method: 'GET', path: endPath(b.sheetId, filledWidth(b.rows)) })), { parallel: true, size: GRID_BATCH, allow: [404] });
         const writes = todo.map((batch, i) => {
-          const used = ends[i];
-          const empty = !used?.values?.length || (used.values.length === 1 && used.values[0].every((v) => v === ''));
-          const start = empty ? 0 : (used.rowIndex || 0) + (used.rowCount || 0);
-          const width = Math.max(batch.width || 0, ...batch.rows.map((row) => row.length));
+          const start = endRow(ends[i]);
+          const width = widthOf(batch);
           const values = batch.rows.map((row) => Array.from({ length: width }, (_, c) => cellValueForWrite(row[c])));
           const address = `${cellAddress(start, 0)}:${cellAddress(start + values.length - 1, width - 1)}`;
           return { method: 'PATCH', path: `${sheetPath(batch.sheetId)}/range(address='${address}')?$select=address`, body: { values } };
@@ -529,9 +555,11 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
           start = batch.before;
           await workbook(fileId, 'POST', `${sheetPath(batch.sheetId)}/range(address='${start + 1}:${start + batch.rows.length}')/insert`, { body: { shift: 'Down' }, where: 'appendRows', discard: true });
         } else {
-          const used = await usedRange(fileId, batch.sheetId, 'rowIndex,rowCount,values');
-          const empty = !used?.values?.length || (used.values.length === 1 && used.values[0].every((v) => v === ''));
-          start = empty ? 0 : (used.rowIndex || 0) + (used.rowCount || 0);
+          const used = await workbook(fileId, 'GET', endPath(batch.sheetId, filledWidth(batch.rows)), { where: 'appendRows' }).catch((err) => {
+            if (Number(err?.status) === 404) return null;
+            throw err;
+          });
+          start = endRow(used);
         }
         const values = batch.rows.map((row) => Array.from({ length: width }, (_, c) => cellValueForWrite(row[c])));
         const address = `${cellAddress(start, 0)}:${cellAddress(start + values.length - 1, width - 1)}`;
@@ -541,9 +569,18 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
 
     /** Deletes whole rows, highest first so earlier row numbers stay right. */
     async deleteRows(fileId, rows) {
-      const sorted = [...(rows || [])].sort((a, b) => b.row - a.row);
-      const ops = sorted.map(({ sheetId, row }) => ({ method: 'POST', path: `${sheetPath(sheetId)}/range(address='${row + 1}:${row + 1}')/delete`, body: { shift: 'Up' } }));
-      if (ops.length > 2) { await workbookBatch(fileId, ops); return; }
+      // Rows next to each other on a tab go in one call ('7:9'), highest first.
+      const runs = [];
+      for (const [sheetId, group] of bySheet(rows)) {
+        const sorted = [...new Set(group.map((r) => r.row))].sort((a, b) => b - a);
+        for (const row of sorted) {
+          const last = runs[runs.length - 1];
+          if (last && last.sheetId === sheetId && last.from === row + 1) last.from = row;
+          else runs.push({ sheetId, from: row, to: row });
+        }
+      }
+      const ops = runs.map(({ sheetId, from, to }) => ({ method: 'POST', path: `${sheetPath(sheetId)}/range(address='${from + 1}:${to + 1}')/delete`, body: { shift: 'Up' } }));
+      if (ops.length > 2) { await workbookBatch(fileId, ops, { deadline: now() + WRITE_BUDGET_MS }); return; }
       for (const op of ops) await workbook(fileId, op.method, op.path, { body: op.body, where: 'deleteRows', discard: true });
     },
 

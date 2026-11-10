@@ -319,6 +319,17 @@ export async function fakeMsgraphHandler(req) {
     return json(204);
   }
   if (method === 'GET' && tail.startsWith('/usedRange')) return json(200, usedRange(sheet));
+  // The used rows of some columns only (where new rows go); 404 when blank, as in Excel.
+  const colsUsed = /^\/range\(address='([A-Z]+):([A-Z]+)'\)\/usedRange/.exec(tail);
+  if (method === 'GET' && colsUsed) {
+    const [c1, c2] = [colIndex(colsUsed[1]), colIndex(colsUsed[2])];
+    let r1 = -1; let r2 = -1;
+    sheet.cells.forEach((row, r) => {
+      if ((row || []).some((v, c) => c >= c1 && c <= c2 && v !== '' && v != null)) { if (r1 < 0) r1 = r; r2 = r; }
+    });
+    if (r2 < 0) return gErr(404, 'ItemNotFound', 'The requested resource doesn\'t exist.');
+    return json(200, { rowIndex: r1, rowCount: r2 - r1 + 1 });
+  }
   // Real Graph has no freeze-panes or data-validation API (v1.0 and beta
   // answer this 400; checked in a real tenant 11-09 and 11-10).
   if (/^\/freezePanes\b|\/dataValidation$|\/conditionalFormats\b/.test(tail)) {

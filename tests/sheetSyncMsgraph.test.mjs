@@ -151,6 +151,14 @@ function fakeGraph({ driveType = 'business' } = {}) {
         valueTypes: box((r, c) => (/^#(N\/A|REF!|VALUE!|DIV\/0!)$/.test(String(rows[r]?.[c] ?? '')) ? 'Error' : 'String')),
       });
     }
+    const colsUsed = /^\/range\(address='([A-Z]+):([A-Z]+)'\)\/usedRange/.exec(tail);
+    if (method === 'GET' && colsUsed) {
+      const letter = (l) => [...l].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1;
+      const [c1, c2] = [letter(colsUsed[1]), letter(colsUsed[2])];
+      const used = target.cells.map((row, r) => ((row || []).some((v, c) => c >= c1 && c <= c2 && v !== '' && v != null) ? r : -1)).filter((r) => r >= 0);
+      if (!used.length) return json(404, { error: { code: 'ItemNotFound' } });
+      return json(200, { rowIndex: used[0], rowCount: used[used.length - 1] - used[0] + 1 });
+    }
     const range = /^\/range\(address='([^']+)'\)(\/delete|\/dataValidation)?/.exec(tail);
     if (method === 'POST' && tail === '/freezePanes/freezeRows') { target.frozen = JSON.parse(init.body).count; return json(200, {}); }
     if (range && method === 'PATCH' && JSON.parse(init.body).columnHidden !== undefined) {
