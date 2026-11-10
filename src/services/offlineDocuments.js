@@ -419,18 +419,39 @@ export function createOfflineDocuments({
  * `onOfflineCopy` is told so (the viewer shows "Offline copy"). A refusal
  * drops the copy and rethrows, so a kept copy can never open a document the
  * server now refuses.
+ *
+ * The file read failed but the device has a network: the database may still
+ * answer while Storage does not, and the marks then load from the server.
+ * `currentSha(documentId)` asks the database which file the document has now
+ * (content_sha256, or null when it can't say); a kept copy of an older file is
+ * not opened, so new marks never land on an old PDF.
  */
+async function bytesSha256(bytes) {
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle) return null;
+  const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes instanceof ArrayBuffer ? bytes : await bytes.arrayBuffer());
+  const digest = await subtle.digest('SHA-256', data);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 export async function readPdfWithOfflineCopy({
   store, actorId, path, read, refusal, fetchStamp = null, onOfflineCopy = null,
-  navigatorRef = globalThis.navigator,
+  currentSha = null, navigatorRef = globalThis.navigator,
 }) {
   if (!store || store.isDisabled || !actorId || !path) return read();
   await store.load(actorId);
   const kept = store.pinnedPathEntry(actorId, path);
   if (!kept) return read();
-  const openCopy = async (fallbackError) => {
+  const openCopy = async (fallbackError, { checkCurrent = false } = {}) => {
     const copy = await store.readByPath(actorId, path);
     if (!copy) throw fallbackError;
+    if (checkCurrent && typeof currentSha === 'function') {
+      const now = await Promise.resolve().then(() => currentSha(copy.documentId ?? kept.documentId)).catch(() => null);
+      if (now) {
+        const mine = await bytesSha256(copy.bytes).catch(() => null);
+        if (mine && mine !== String(now).toLowerCase()) throw fallbackError;
+      }
+    }
     try { onOfflineCopy?.({ path, documentId: copy.documentId }); } catch { /* listener */ }
     return new Blob([copy.bytes], { type: 'application/pdf' });
   };
@@ -445,7 +466,7 @@ export async function readPdfWithOfflineCopy({
       throw error;
     }
     if (!isNetworkFailure(error, { navigatorRef })) throw error;
-    return openCopy(error);
+    return openCopy(error, { checkCurrent: true });
   }
   // Online and read: keep the copy current (a page edit or a new version
   // elsewhere replaced the file). In the background; the open never waits.

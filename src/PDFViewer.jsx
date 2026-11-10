@@ -22141,7 +22141,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // empty/partial overwrite, no documentId-timing gate.
   // device-files (Nightly): a PDF opened with no account keeps its marks in
   // the store's device copy under one device actor.
-  const annotationActorId = user?.id || (isDeviceDocumentId(pdfFile?.id) ? DEVICE_ACTOR_ID : null);
+  const annotationActorId = isDeviceDocumentId(pdfFile?.id) ? DEVICE_ACTOR_ID : (user?.id || null);
   const {
     initialHydration: normalAnnotationHydration,
     deletedPdfAnnotations: durableDeletedPdfAnnotations,
@@ -22166,6 +22166,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     // offline-docs: marks opened from this device's kept copy (no signal).
     offlineCopy: annotationOfflineCopy,
     editBlocked: annotationEditBlocked,
+    clearEditBlocked: clearAnnotationEditBlocked,
   } = useAnnotationDoc({
     documentId: pdfFile?.id || null,
     userId: annotationActorId,
@@ -22225,8 +22226,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     setArchivedLive(false);
     const documentId = pdfFile?.id;
     if (!documentId || !cloudSyncEnabled || isDeviceDocumentId(documentId)) return undefined;
-    return subscribeDocumentLockState(documentId, (state) => setArchivedLive(Boolean(state?.archivedAt)));
-  }, [pdfFile?.id, cloudSyncEnabled]);
+    // Unlocked or restored from Archive after a refused edit: the row reads
+    // free again, so the tools come back (a refusal that still stands blocks
+    // again on the next edit).
+    return subscribeDocumentLockState(documentId, (state) => {
+      setArchivedLive(Boolean(state?.archivedAt));
+      if (!state?.archivedAt && !state?.lockedAt) clearAnnotationEditBlocked?.();
+    });
+  }, [pdfFile?.id, cloudSyncEnabled, clearAnnotationEditBlocked]);
   const editBlockedReason = annotationEditBlocked || (archivedLive ? 'archived' : null);
   useEffect(() => {
     if (!editBlockedReason || !isActive) return undefined;
