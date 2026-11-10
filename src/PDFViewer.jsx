@@ -15112,6 +15112,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     return blob.arrayBuffer();
   }, [downloadFromStorage]);
 
+  // A page turn takes its marks along (utils/pageTurnMarks.js) in this frame.
+  const getPageSizeForTurn = useCallback((pageNumber) => pageSizesRef.current?.[pageNumber] || null, []);
+
   // Sidebar handlers — page add / delete / duplicate / physical reorder /
   // rotate / cut-copy-paste / insert-blank. Mirror remains a presentation-only
   // page transformation because PDF pages have no native mirror primitive.
@@ -15148,6 +15151,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     setClipboardPage,
     clipboardType,
     setClipboardType,
+    getPageSize: getPageSizeForTurn,
   });
   // Export, print and redaction writers read bytes with source.arrayBuffer().
   // A cloud document's pdfFile is only metadata (filePath, no bytes), so

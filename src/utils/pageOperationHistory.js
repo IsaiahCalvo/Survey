@@ -57,6 +57,10 @@ export function inversePageOperation(pdfOperation, { stateBefore = null, deleted
   }
   if (type === 'rotate') {
     const back = { type: 'rotate', page: page(pdfOperation.page), delta: -Number(pdfOperation.delta || 0) };
+    // Turning back starts from the turned page: its sides swap.
+    const size = pdfOperation.pageSize;
+    if (size && Math.abs(Number(pdfOperation.delta || 0)) % 180 === 90) back.pageSize = { width: size.height, height: size.width };
+    else if (size) back.pageSize = { ...size };
     return {
       pdfOperation: back,
       stateOperation: { ...back, pageTransformation: pageTransformBefore ?? null },

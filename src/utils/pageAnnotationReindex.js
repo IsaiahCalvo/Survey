@@ -1,4 +1,5 @@
 import { mintPastedCloneIdentity } from './pasteCloneIdentity.js';
+import { turnPageMarks } from './pageTurnMarks.js';
 
 const clone = (value) => {
   if (value == null) return value;
@@ -368,7 +369,9 @@ export function transformPageState(model = {}, op, { createId = fallbackId } = {
     return next;
   }
   if (type === 'rotate') {
-    const next = baseRemap(model, (page) => page);
+    // The marks turn with the page (utils/pageTurnMarks.js); `pageSize` is
+    // the page as shown before this turn (the caller adds it).
+    const next = turnPageMarks(baseRemap(model, (page) => page), op.page, op.delta, op.pageSize);
     const page = asPage(op.page);
     // Undo of a turn puts the page's presentation transform back as it was
     // (the turn folded any old presentation rotation into the PDF).
