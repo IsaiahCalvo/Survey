@@ -52,3 +52,36 @@ html[data-marks-hidden] [data-lightweight-annotation-overlay] {
 .focus-mode-exit:hover {
   background: var(--hover, #2a2e37);
 }
+
+/* Measuring on a page with no scale (PDFViewer, Nightly flag 'measure-scale-chip'). */
+.measure-no-scale-chip {
+  position: fixed;
+  left: 50%;
+  /* Above the bottom edge, clear of the tool bars and the hidden-marks chip. */
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 72px);
+  transform: translateX(-50%);
+  z-index: 5400;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100vw - 32px);
+  padding: 6px 6px 6px 12px;
+  border-radius: 999px;
+  background: var(--panel-bg, #1c1f26);
+  color: var(--text-1, #fff);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+  font-size: var(--font-size-sm, 13px);
+}
+
+.measure-no-scale-chip button {
+  flex: none;
+  font: inherit;
+  font-weight: 500;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
+  background: var(--accent, #2f7cf6);
+  color: var(--accent-ink, #fff);
+}

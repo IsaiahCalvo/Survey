@@ -157,6 +157,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Measure: Polylength, Wall area and Volume (area or outline x a depth)',
     stage: 'beta',
   }),
+  'measure-scale-chip': Object.freeze({
+    label: 'Measure: a "No scale on this page" chip with Set scale while a measure tool is armed',
+    stage: 'beta',
+  }),
   'align-marks': Object.freeze({
     label: 'Align and space picked marks (mark menu)',
     stage: 'beta',

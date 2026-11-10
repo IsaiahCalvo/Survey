@@ -97,6 +97,7 @@ import {
   normalizeMeasureScaleMeta,
   pageScaleFromObjects,
   rememberRecentMeasureScale,
+  isValidMeasureScale,
 } from './utils/measure/measureScale.js';
 import LightweightAnnotationOverlay from './components/LightweightAnnotationOverlay';
 import { useDocumentThumbnailCapture } from './hooks/useDocumentThumbnailCapture';
@@ -3177,6 +3178,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // menu or phone rail) asks for the depth first; it is remembered on this
   // screen and stamped on each new measurement.
   const [measureDepthEnabled] = useState(() => isFeatureOn('measure-depth'));
+  const [measureScaleChipOn] = useState(() => isFeatureOn('measure-scale-chip'));
   const [measureDepth, setMeasureDepth] = useState(() => loadMeasureDepth());
   const [measureDepthDialog, setMeasureDepthDialog] = useState(null);
   const prevMeasureModeRef = useRef(null);
@@ -37507,6 +37509,18 @@ ${pageBlocks}
           note before Submit. Lives here so it renders above every floating
           UI including the context menu below. */}
       <SaveLogBanner />
+      {/* Nightly 'measure-scale-chip' (Drawboard PDF Pro trial audit
+          2026-11-09): a measure tool armed on a page with no scale says so,
+          with a way to set one, instead of quietly reading 1:1 inches. */}
+      {measureScaleChipOn && isActive !== false && measureMode && !measureScaleDialog && !measureDepthDialog
+        && !isValidMeasureScale(pageScaleFromObjects(annotationsByPage?.[pageNum]?.objects) || metaScaleForPage(measureScaleMeta, pageNum))
+        && createPortal(
+          <div className="measure-no-scale-chip" role="status" data-measure-no-scale="">
+            <span>No scale set. Lengths read 1:1.</span>
+            <button type="button" onClick={() => setMeasureScaleDialog({ pageNumber: pageNum })}>Set scale</button>
+          </div>,
+          document.body,
+        )}
       {measureDepthDialog && (
         <MeasureDepthDialog
           kind={measureDepthDialog.kind}
