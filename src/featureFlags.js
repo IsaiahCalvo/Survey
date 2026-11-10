@@ -335,6 +335,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Project sheets as a set: previous / next sheet, sheet picker, Shift+Left / Right, List and Grid views, Open all',
     stage: 'beta',
   }),
+  'project-activity': Object.freeze({
+    label: 'Projects: an Activity tab with what happened to the project (files, revisions, issues, people) in 15-minute groups',
+    stage: 'beta',
+  }),
   spotlight: Object.freeze({
     label: 'Spotlight: share your view from the people list; others follow your document, page and zoom (green frame, N following)',
     stage: 'beta',

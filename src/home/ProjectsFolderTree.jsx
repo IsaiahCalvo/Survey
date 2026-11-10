@@ -52,6 +52,7 @@ import FileDropOverlay from '../components/FileDropOverlay';
 import { resolveProjectDropTarget } from '../utils/fileDrop.js';
 import { isFeatureOn } from '../featureFlags.js';
 import ProjectItemsPanel, { ProjectItemsTabs } from '../projectItems/ProjectItemsPanel.jsx';
+import ProjectActivityPanel from '../projectItems/ProjectActivityPanel.jsx';
 import { keyboardControlProps } from '../utils/keyboardActivation.js';
 import { SHEET_VIEW_EVENT, projectSheets, storedProjectOrder } from '../sheets/sheetSet.js';
 
@@ -483,6 +484,9 @@ export default function ProjectsFolderTree({
      tabs over the open project. Your role decides what you may change; the
      people you can assign are the owner and the active collaborators. */
   const [issuesOn] = useState(() => isFeatureOn('project-issues'));
+  // Drawboard's project Activity page (Nightly, 'project-activity').
+  const [activityOn] = useState(() => isFeatureOn('project-activity'));
+  const tabsOn = issuesOn || activityOn;
   // Drawboard's "Open all" (Nightly, 'sheet-set-view'): the project's first
   // sheet opens with every sheet beside it in the List view.
   const [sheetSetOn] = useState(() => isFeatureOn('sheet-set-view'));
@@ -1234,8 +1238,10 @@ export default function ProjectsFolderTree({
                 </div>
               </div>
 
-              {issuesOn && <ProjectItemsTabs value={listTab} onChange={setListTab} />}
-              {issuesOn && listTab !== 'files' ? (isPhoneLayout() ? <div style={{ flex: 1 }} /> : (
+              {tabsOn && <ProjectItemsTabs value={listTab} onChange={setListTab} issues={issuesOn} activity={activityOn} />}
+              {activityOn && listTab === 'activity' ? (isPhoneLayout() ? <div style={{ flex: 1 }} /> : (
+                <ProjectActivityPanel project={open} user={user} lookupMember={lookupMember} documents={openFiles} onOpenDocument={onOpenDocument} />
+              )) : issuesOn && listTab !== 'files' ? (isPhoneLayout() ? <div style={{ flex: 1 }} /> : (
                 <ProjectItemsPanel
                   project={open}
                   kind={listTab}
@@ -1483,8 +1489,10 @@ export default function ProjectsFolderTree({
                     </span>
                     <span>{mobileDrillAllFiles.length} {mobileDrillAllFiles.length === 1 ? 'file' : 'files'} · {projectLastEditedLabel(mobileDrillProject.id)}</span>
                   </div>
-                  {issuesOn && <ProjectItemsTabs value={listTab} onChange={setListTab} />}
-                  {issuesOn && listTab !== 'files' ? (
+                  {tabsOn && <ProjectItemsTabs value={listTab} onChange={setListTab} issues={issuesOn} activity={activityOn} />}
+                  {activityOn && listTab === 'activity' ? (
+                    <ProjectActivityPanel project={mobileDrillProject} user={user} lookupMember={lookupMember} documents={mobileDrillAllFiles} onOpenDocument={onOpenDocument} phone />
+                  ) : issuesOn && listTab !== 'files' ? (
                     <ProjectItemsPanel
                       project={mobileDrillProject}
                       kind={listTab}

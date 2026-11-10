@@ -764,11 +764,12 @@ export default function ProjectItemsPanel({
 }
 
 /* Files · Issues · Tasks, above the open project (one row of tabs). */
-export function ProjectItemsTabs({ value, onChange, counts = {} }) {
+export function ProjectItemsTabs({ value, onChange, counts = {}, issues = true, activity = false }) {
   const tabs = [
     { key: 'files', label: 'Files' },
-    { key: 'issue', label: 'Issues' },
-    { key: 'task', label: 'Tasks' },
+    ...(issues ? [{ key: 'issue', label: 'Issues' }, { key: 'task', label: 'Tasks' }] : []),
+    // Nightly 'project-activity': Drawboard's project Activity page.
+    ...(activity ? [{ key: 'activity', label: 'Activity' }] : []),
   ];
   return (
     <div className="project-items-tabs" role="tablist" aria-label="Project lists" data-project-items-tabs>

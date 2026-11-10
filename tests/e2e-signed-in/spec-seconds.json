@@ -106,6 +106,7 @@
   "plan-and-auth.spec.mjs": 6.7,
   "poly-back-step.spec.mjs": 47.9,
   "pro-lock.spec.mjs": 13.7,
+  "project-activity.spec.mjs": 42,
   "project-issues.spec.mjs": 85.7,
   "project-owner-actions.spec.mjs": 0.5,
   "properties-panel.spec.mjs": 25.3,

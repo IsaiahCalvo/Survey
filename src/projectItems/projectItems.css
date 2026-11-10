@@ -183,3 +183,26 @@
 .project-items.is-phone .project-items__rows { overflow: visible; padding-bottom: 4px; }
 .projects-mobile-project-card .project-items-tabs { padding: 4px 12px 0; }
 .projects-mobile-project-card .project-items-tabs button { height: 40px; font-size: 14px; }
+
+/* Project Activity (ProjectActivityPanel.jsx, flag project-activity). */
+.project-activity { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
+.project-activity__scroll { flex: 1; min-height: 0; overflow: auto; padding: 6px 8px 16px; }
+.project-activity__group { padding: 6px 0; }
+.project-activity__when { margin: 6px 8px 4px; font-size: 11px; font-weight: 600; color: var(--text-3); }
+.project-activity__row {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px;
+  width: 100%; min-height: 36px; padding: 4px 8px; box-sizing: border-box; border: 0; border-radius: 6px;
+  background: transparent; color: var(--text-2); font: inherit; font-size: 12px; text-align: left;
+}
+.project-activity__row.is-link { cursor: pointer; }
+@media (hover: hover) and (pointer: fine) {
+  .project-activity__row.is-link:hover { background: var(--hover); }
+}
+.project-activity__text { min-width: 0; overflow-wrap: anywhere; }
+.project-activity__text b { color: var(--text-1); font-weight: 600; }
+.project-activity__ago { color: var(--text-3); font-size: 11px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.project-activity__more { margin: 8px auto 0; display: flex; }
+.project-activity__note { padding: 12px 8px; color: var(--text-3); font-size: 12px; }
+.project-activity.is-phone .project-activity__row { min-height: 48px; font-size: 14px; }
+.project-activity.is-phone .project-activity__when { font-size: 12px; }
+.project-activity.is-phone .project-activity__ago { font-size: 12px; }
