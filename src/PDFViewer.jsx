@@ -27687,17 +27687,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           }
           if (key === '0') {
             e.preventDefault();
-            zoomControllerRef.current?.setMode(ZOOM_MODES.FIT_PAGE);
+            // The same fit as the Fit menu (pdf.js: the band you can see).
+            if (handleZoomModeSelectRef.current) handleZoomModeSelectRef.current(ZOOM_MODES.FIT_PAGE);
+            else zoomControllerRef.current?.setMode(ZOOM_MODES.FIT_PAGE);
             return;
           }
           if (key === '1') {
             e.preventDefault();
-            zoomControllerRef.current?.setMode(ZOOM_MODES.FIT_WIDTH);
+            // The same fit as the Fit menu (pdf.js: the band you can see).
+            if (handleZoomModeSelectRef.current) handleZoomModeSelectRef.current(ZOOM_MODES.FIT_WIDTH);
+            else zoomControllerRef.current?.setMode(ZOOM_MODES.FIT_WIDTH);
             return;
           }
           if (key === '2') {
             e.preventDefault();
-            zoomControllerRef.current?.setMode(ZOOM_MODES.FIT_HEIGHT);
+            // The same fit as the Fit menu (pdf.js: the band you can see).
+            if (handleZoomModeSelectRef.current) handleZoomModeSelectRef.current(ZOOM_MODES.FIT_HEIGHT);
+            else zoomControllerRef.current?.setMode(ZOOM_MODES.FIT_HEIGHT);
             return;
           }
           if (key === '=' || key === '+') {

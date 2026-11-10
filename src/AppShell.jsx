@@ -2244,6 +2244,14 @@ export default function App({ devPreviewReturnTab = null }) {
       document.removeEventListener('fullscreenchange', onFullscreen);
     };
   }, [focusModeEnabled, toggleFocusMode]);
+  // The rails and tab strip come and go without a window resize when the
+  // browser refuses full screen, so tell the viewer the space changed; a
+  // fit zoom re-fits to it, a picked zoom stays.
+  useEffect(() => {
+    if (!focusModeEnabled) return undefined;
+    const frame = requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
+    return () => cancelAnimationFrame(frame);
+  }, [focusModeEnabled, focusOn]);
   useEffect(() => {
     if (focusMode && !isViewerVisible) toggleFocusMode(false);
   }, [focusMode, Boolean(isViewerVisible)]); // eslint-disable-line react-hooks/exhaustive-deps
