@@ -1520,7 +1520,8 @@ html[data-native-shell="expo"] .mobile-pdf-header {
      body stack (Arial off Apple). */
   font-family: var(--font-ui);
   left: calc(var(--mobile-rail-w) + 3px);
-  width: min(245px, calc(100vw - var(--mobile-rail-w) - 14px));
+  /* 272: "Export review package (ZIP)" fits on one line at 15px. */
+  width: min(272px, calc(100vw - var(--mobile-rail-w) - 14px));
   padding: 6px;
   color: var(--text-2);
   background: var(--surface-2);
