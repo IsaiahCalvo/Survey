@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import {
   FALLBACK_NAME,
   OPEN_FILE_EVENT,
@@ -87,21 +87,47 @@ test('the deep link handler sends file urls to the reader before anything else',
 
 // Beta flags never turn on in the stable phone apps, so a PDF handler there
 // would list Survey under "Open with" only to refuse the file (Bugbot on
-// #1381, bundle 1 audit 2026-11-10). The apps register for PDFs exactly when
-// 'open-in-survey' has left beta.
-test('the phone apps register for PDFs only once open-in-survey leaves beta', () => {
+// #1381, bundle 1 audit 2026-11-10). The stable apps register for PDFs exactly
+// when 'open-in-survey' has left beta. Survey Nightly turns beta flags on, so
+// its Android app (-PsurveyNightly) gets the handler from a Nightly-only
+// manifest while the flag is beta (Bugbot on #1383). There is no Nightly
+// iPhone app yet.
+const PDF_FILTER = /<data android:scheme="content" \/>\s*<data android:scheme="file" \/>\s*<data android:mimeType="application\/pdf" \/>/;
+const stripXmlComments = (text) => text.replace(/<!--[\s\S]*?-->/g, '');
+
+function openInSurveyStage() {
   const flags = readFileSync(new URL('../src/featureFlags.js', import.meta.url), 'utf8');
   const block = flags.slice(flags.indexOf("'open-in-survey': Object.freeze({"));
-  const stage = /stage: '(\w+)'/.exec(block)?.[1];
+  return /stage: '(\w+)'/.exec(block)?.[1];
+}
+
+test('the stable phone apps register for PDFs only once open-in-survey leaves beta', () => {
+  const stage = openInSurveyStage();
   assert.ok(stage, 'open-in-survey has a stage');
-  const strip = (text) => text.replace(/<!--[\s\S]*?-->/g, '');
-  const manifest = strip(readFileSync(new URL('../android/app/src/main/AndroidManifest.xml', import.meta.url), 'utf8'));
-  const plist = strip(readFileSync(new URL('../ios/App/App/Info.plist', import.meta.url), 'utf8'));
-  const android = /<data android:scheme="content" \/>\s*<data android:scheme="file" \/>\s*<data android:mimeType="application\/pdf" \/>/.test(manifest);
+  const manifest = stripXmlComments(readFileSync(new URL('../android/app/src/main/AndroidManifest.xml', import.meta.url), 'utf8'));
+  const plist = stripXmlComments(readFileSync(new URL('../ios/App/App/Info.plist', import.meta.url), 'utf8'));
+  const android = PDF_FILTER.test(manifest);
   const ios = /<key>CFBundleDocumentTypes<\/key>[\s\S]*com\.adobe\.pdf/.test(plist);
   assert.equal(android, stage !== 'beta', `Android PDF handler while the flag is ${stage}`);
   assert.equal(ios, stage !== 'beta', `iOS PDF document type while the flag is ${stage}`);
   if (ios) assert.match(plist, /<key>LSSupportsOpeningDocumentsInPlace<\/key>\s*<false\/>/);
+});
+
+test('the Survey Nightly Android app registers for PDFs while open-in-survey is beta', () => {
+  const stage = openInSurveyStage();
+  const gradle = readFileSync(new URL('../android/app/build.gradle', import.meta.url), 'utf8');
+  const nightlyUrl = new URL('../android/app/src/nightly/AndroidManifest.xml', import.meta.url);
+  if (stage !== 'beta') {
+    assert.equal(existsSync(nightlyUrl), false, 'once the flag leaves beta the handler lives in the main manifest; delete the Nightly one');
+    return;
+  }
+  const nightly = stripXmlComments(readFileSync(nightlyUrl, 'utf8'));
+  assert.match(nightly, PDF_FILTER);
+  assert.match(nightly, /<activity android:name="\.MainActivity"/);
+  const wiring = /if \(project\.hasProperty\("surveyNightly"\)\) \{\s*sourceSets \{([\s\S]*?)\n    \}/.exec(gradle)?.[1] || '';
+  for (const type of ['debug', 'release']) {
+    assert.match(wiring, new RegExp(`${type} \\{ manifest\\.srcFile 'src/nightly/AndroidManifest\\.xml' \\}`), `Nightly ${type} builds take the Nightly manifest`);
+  }
 });
 
 test('with the flag off an opened file is neither read nor deleted', async () => {

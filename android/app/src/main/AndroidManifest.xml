@@ -41,8 +41,9 @@
             <!-- "Open in Survey" (beta flag 'open-in-survey') is NOT registered
                  here yet: the stable app never turns a beta flag on, so a PDF
                  handler would put Survey in every "Open with" list only to
-                 refuse the file. When the flag moves to 'rollout', add back
-                 inside this activity:
+                 refuse the file. Survey Nightly gets it from
+                 src/nightly/AndroidManifest.xml. When the flag moves to
+                 'rollout', delete that file and add back inside this activity:
                  <intent-filter>
                      <action android:name="android.intent.action.VIEW" />
                      <category android:name="android.intent.category.DEFAULT" />
