@@ -9,8 +9,16 @@
 //     shows up for the editor without a reload; the editor can't delete the
 //     owner's item, but can save and delete their own;
 //   - the viewer can read the project library but not add to it;
-//   - a personal item dragged onto the page lands where it is let go.
+//   - a personal item dragged onto the page lands where it is let go;
+//   - on a phone: long-press a mark, Save to library (the browser's own
+//     list for Library), then a tap on the item in the Library tab places
+//     it and slides the sheet down so the copy shows.
+import crypto from 'node:crypto';
+import { PDFDocument, StandardFonts } from 'pdf-lib';
+import * as Y from 'yjs';
+import { bytesToPgHex } from '../../supabase/functions/_shared/pgBytea.js';
 import { E2E_ACCOUNTS, E2E_PROJECT } from './accounts.mjs';
+import { RUN, must } from './accountFixtures.mjs';
 import { adminClient, apiClientFor, expect, openSampleDocument, signIn, test } from './helpers.mjs';
 
 const PAGE = '.survey-pdfjs-page-div[data-page-number="1"]';
@@ -238,4 +246,82 @@ test('personal library: drag an item onto the page and it lands where it is let 
   expect(data).toEqual([]);
   await page.keyboard.press('Control+z');
   await context.close();
+});
+
+test.describe('on a phone', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+  test('long-press saves a mark; a tap in the Library tab places it and lowers the sheet', async ({ page }) => {
+    test.setTimeout(180_000);
+    const admin = adminClient();
+    const owner = await apiClientFor(E2E_ACCOUNTS.owner);
+    const ownerId = (await owner.auth.getUser()).data.user.id;
+    const pdf = await PDFDocument.create();
+    const font = await pdf.embedFont(StandardFonts.Helvetica);
+    pdf.addPage([612, 792]).drawText('Library phone sheet', { x: 72, y: 700, size: 24, font });
+    const bytes = Buffer.from(await pdf.save());
+    const docId = crypto.randomUUID();
+    const name = `Library phone ${RUN}.pdf`;
+    const path = `${ownerId}/${docId}.pdf`;
+    await must('upload', admin.storage.from('documents').upload(path, new Blob([bytes], { type: 'application/pdf' }), { contentType: 'application/pdf' }));
+    await must('row', admin.from('documents').insert({
+      id: docId, user_id: ownerId, project_id: E2E_PROJECT.id, name, file_path: path, file_size: bytes.length, page_count: 1,
+      content_sha256: crypto.createHash('sha256').update(bytes).digest('hex'),
+    }));
+    const markId = `library-phone-${RUN}`;
+    const source = new Y.Doc();
+    source.transact(() => {
+      const entry = new Y.Map();
+      source.getMap('marks').set(markId, entry);
+      entry.set('p', 1);
+      const fields = new Y.Map();
+      entry.set('o', fields);
+      for (const [k, v] of Object.entries({ type: 'rect', id: markId, left: 150, top: 220, width: 300, height: 200, stroke: '#e53935', strokeWidth: 3, fill: '#ffe082' })) fields.set(k, v);
+    });
+    await must('seed mark', owner.rpc('append_annotation_update', {
+      p_document_id: docId, p_client_id: `seed-${RUN}`, p_client_seq: 1, p_data: bytesToPgHex(Y.encodeStateAsUpdate(source)),
+    }));
+    try {
+      await flagOn(page);
+      await signIn(page, E2E_ACCOUNTS.owner);
+      await page.getByText(name, { exact: true }).filter({ visible: true }).first().tap();
+      const openFile = page.getByRole('button', { name: 'Open file' }).filter({ visible: true });
+      if (await openFile.count()) await openFile.first().tap();
+      const mark = page.locator(`[data-overlay-page="1"] [data-annotation-id="${markId}"]`).first();
+      await expect(mark).toBeAttached({ timeout: 60_000 });
+      await page.waitForTimeout(1500);
+
+      // Pick it, then hold: the mark menu.
+      const box = await mark.boundingBox();
+      const x = box.x + box.width / 2;
+      const y = box.y + box.height / 2;
+      await page.touchscreen.tap(x, y);
+      const cdp = await page.context().newCDPSession(page);
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+      await page.waitForTimeout(900);
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await page.getByText('Save to library', { exact: true }).filter({ visible: true }).first().tap();
+
+      const card = page.locator('[data-mark-library-save]');
+      await expect(card).toBeVisible();
+      await card.getByLabel('Name').fill('Phone item');
+      // The browser's own list on a phone.
+      const library = card.locator('select[aria-label="Library"]');
+      await expect(library).toHaveValue('personal');
+      await card.getByRole('button', { name: 'Save', exact: true }).tap();
+      await expect(card).toHaveCount(0);
+
+      await page.getByRole('button', { name: /Open pages/ }).filter({ visible: true }).first().tap();
+      await page.getByRole('button', { name: 'Library', exact: true }).filter({ visible: true }).first().tap();
+      const panel = page.getByTestId('mark-library-panel');
+      await expect(panel).toBeVisible();
+      const before = (await markIds(page)).length;
+      await panel.locator('[data-mark-library-item]').filter({ hasText: 'Phone item' }).first().tap();
+      await expect.poll(async () => (await markIds(page)).length).toBe(before + 1);
+      await expect(panel).toBeHidden({ timeout: 5_000 });
+    } finally {
+      await admin.from('documents').delete().eq('id', docId);
+      await admin.storage.from('documents').remove([path]);
+    }
+  });
 });

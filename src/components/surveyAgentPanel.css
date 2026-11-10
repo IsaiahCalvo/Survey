@@ -42,6 +42,8 @@
   border-bottom: 1px solid var(--border);
 }
 .survey-agent__title { font-weight: 600; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.survey-agent__icon[data-log-state="sent"] { color: var(--success-text); }
+.survey-agent__icon[data-log-state="failed"] { color: var(--danger-text); }
 .survey-agent__beta {
   margin-left: 6px;
   padding: 1px 6px;
@@ -250,18 +252,6 @@
 .survey-agent__input::placeholder { color: var(--text-3); }
 .survey-agent__tools { display: flex; align-items: center; gap: 2px; padding: 4px 6px 6px; }
 .survey-agent__spacer { flex: 1; }
-.survey-agent__log {
-  margin-right: 2px;
-  padding: 2px 6px;
-  border: 0;
-  background: none;
-  color: var(--text-3);
-  font-size: 11px;
-  text-decoration: underline;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.survey-agent__log:disabled { opacity: 0.6; cursor: default; }
 .survey-agent__send {
   display: inline-flex;
   align-items: center;
