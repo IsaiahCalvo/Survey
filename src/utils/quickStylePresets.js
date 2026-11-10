@@ -154,16 +154,37 @@ export const needsSwatchHairline = (value) => {
 };
 
 /** The quick colour `value` is, or null when it is a colour the discs do not hold. */
-export const matchedQuickColour = (value) => {
+export const matchedQuickColour = (value, colours = QUICK_COLOURS) => {
   const wanted = normaliseQuickColour(value);
-  return QUICK_COLOURS.find((colour) => normaliseQuickColour(colour) === wanted) || null;
+  return colours.find((colour) => normaliseQuickColour(colour) === wanted) || null;
 };
 
 /**
  * True when the current colour is not one of the three presets — which is when
  * the custom disc, and only the custom disc, wears the chosen mark.
  */
-export const isCustomQuickColour = (value) => matchedQuickColour(value) === null;
+export const isCustomQuickColour = (value, colours = QUICK_COLOURS) => matchedQuickColour(value, colours) === null;
+
+/*
+ * Per-tool quick colours (Nightly 'tool-quick-colours', Drawboard PDF Pro trial
+ * audit 2026-11-10): the highlighter draws yellow, so its own discs are
+ * highlighter colours (yellow first, its default), not red / blue / black.
+ * Every other tool keeps the shared three.
+ */
+export const HIGHLIGHTER_QUICK_COLOURS = Object.freeze(['#FFFF00', '#22C55E', '#F472B6']);
+export const HIGHLIGHTER_QUICK_COLOUR_NAMES = Object.freeze({
+  '#FFFF00': 'Yellow',
+  '#22C55E': 'Green',
+  '#F472B6': 'Pink',
+});
+
+/** The discs for `tool` ({ colours, names }); `enabled` is the flag. */
+export function quickColoursForTool(tool, enabled = false) {
+  if (enabled && tool === 'highlighter') {
+    return { colours: HIGHLIGHTER_QUICK_COLOURS, names: HIGHLIGHTER_QUICK_COLOUR_NAMES };
+  }
+  return { colours: QUICK_COLOURS, names: QUICK_COLOUR_NAMES };
+}
 
 /**
  * Width comparison. Widths keep one decimal (the Cloud style's 2.5 default),

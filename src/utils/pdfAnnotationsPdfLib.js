@@ -56,6 +56,7 @@ import {
   widthOfTextRunsAtSize,
 } from './pdfUnicodeText.js';
 import { deepClone } from './deepClone.js';
+import { buildMeasureLabel, getMeasureKind } from './measure/measureScale.js';
 import { normalizePresentationPdf, reflectPdfPagePresentations } from './pdfPagePresentation.js';
 import {
   PDF_COUNTER_METADATA_KEY,
@@ -146,6 +147,7 @@ import { isPdfStampProxy, pngDataUrlToBytes } from './pdfStampProxy.js';
 import {
   getSymbol, isSymbolStamp, symbolStampBox, symbolStampStrokeWidth, transformSymbolPath,
 } from './symbolLibrary.js';
+import { isNoSpaceCluster } from './textWrapMode.js';
 
 // ---------------------------------------------------------------------------
 // Linear operator append (2026-09-10).
@@ -882,6 +884,19 @@ const paintAlpha = (paint, opacity = 1) => {
   return Math.max(0, Math.min(1, paintOpacity * objectOpacity));
 };
 
+// The /IC fill colour of a shape, or null for no fill. hexToRGB drops alpha,
+// so a see-through fill ('rgba(255,255,255,0)', 'none', fillOpacity 0) used to
+// export as /IC white, and Acrobat or Bluebeam drew white boxes over the
+// drawing (deep test 2026-11-10; the XFDF interior-color comes from /IC too).
+const visibleFillRGB = (fabricObj) => {
+  const fill = fabricObj?.fill;
+  if (!fill || typeof fill !== 'string') return null;
+  if (fill === 'transparent' || fill === 'none') return null;
+  if (paintAlpha(fill, 1) <= 0) return null;
+  if (fabricObj.fillOpacity != null && Number(fabricObj.fillOpacity) <= 0) return null;
+  return hexToRGB(fill);
+};
+
 const isFilledPaperInk = (fabricObj) => Boolean(
   fabricObj?.paperInkGeometry
   || fabricObj?.paperEraserGeometry
@@ -942,6 +957,21 @@ const pathCoordinateBounds = (path, polygons = [], centerline = []) => {
 // translate(left/top) → rotate around the scaled path-bounds center →
 // scale → translate(-pathOffset). PDF writers bake this transform once into
 // page-space coordinates because /InkList has no equivalent Fabric transform.
+// A measurement keeps its reading in the exported file: /Contents carries the
+// label the page shows ("20' 0\"", "12.5 ft²"), so other PDF apps list it
+// (R3-M B4: the values were lost on export).
+function measureContentsOf(fabricObj) {
+  try {
+    if (!getMeasureKind(fabricObj)) return '';
+    const label = buildMeasureLabel(fabricObj, fabricObj?.data?.measure?.scale || null);
+    // The caption as the page shows it (label and picked readings, one per
+    // line); with every line switched off, the plain reading still exports.
+    return String(label?.text || label?.reading || '');
+  } catch {
+    return '';
+  }
+}
+
 export const createInkPageTransform = (fabricObj, path, polygons = [], centerline = []) => {
   const affine = createInkPathAffine(fabricObj, path, { polygons, centerline });
   const point = (x, y) => {
@@ -2830,7 +2860,7 @@ const embedStampProxyImages = async (pdfDoc, objects, purpose) => {
 const createSquareAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {}) => {
   try {
     const color = hexToRGB(fabricObj.stroke || '#000000');
-    const fillColor = fabricObj.fill ? hexToRGB(fabricObj.fill) : null;
+    const fillColor = visibleFillRGB(fabricObj);
 
     const left = fabricObj.left || 0;
     const top = fabricObj.top || 0;
@@ -2889,7 +2919,7 @@ const createSquareAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
 const createCircleAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {}) => {
   try {
     const color = hexToRGB(fabricObj.stroke || '#000000');
-    const fillColor = fabricObj.fill ? hexToRGB(fabricObj.fill) : null;
+    const fillColor = visibleFillRGB(fabricObj);
     const counterMetadataJson = options.counterMetadataJson || null;
     const counterMetadata = options.counterMetadata || null;
 
@@ -3068,8 +3098,7 @@ const createEllipseAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = 
 
     const strokePaint = fabricObj.stroke || '#000000';
     const color = hexToRGB(strokePaint);
-    const hasFill = fabricObj.fill && fabricObj.fill !== 'transparent';
-    const fillColor = hasFill ? hexToRGB(fabricObj.fill) : null;
+    const fillColor = visibleFillRGB(fabricObj);
     const strokeWidth = Number(fabricObj.strokeWidth) || 1;
     const alpha = paintAlpha(strokePaint, fabricObj.opacity);
     // 2026-09-09: the /BBox used to be the EXACT ellipse box, so the outer half
@@ -3417,7 +3446,7 @@ const createHighlightAnnotation = (pdfDoc, page, fabricObj, pageHeight, options 
 const createPolygonAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {}) => {
   try {
     const color = hexToRGB(fabricObj.stroke || '#000000');
-    const fillColor = fabricObj.fill ? hexToRGB(fabricObj.fill) : null;
+    const fillColor = visibleFillRGB(fabricObj);
 
     // Extract points from Fabric.js polygon
     const points = fabricObj.points || [];
@@ -3449,7 +3478,7 @@ const createPolygonAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = 
       Vertices: vertices.map(n => PDFNumber.of(n)),
       C: [color.red, color.green, color.blue],
       Border: [0, 0, fabricObj.strokeWidth || 1],
-      Contents: pdfTextString(''),
+      Contents: pdfTextString(measureContentsOf(fabricObj)),
       P: page.ref,
     };
 
@@ -3518,7 +3547,7 @@ const createPolyLineAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
       Vertices: vertices.map(n => PDFNumber.of(n)),
       C: [color.red, color.green, color.blue],
       Border: [0, 0, fabricObj.strokeWidth || 1],
-      Contents: pdfTextString(''),
+      Contents: pdfTextString(measureContentsOf(fabricObj)),
       P: page.ref,
     };
     // A cloud polyline exports as /PolyLine + /BE cloudy; it draws rounded end
@@ -3593,7 +3622,7 @@ const createLineAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {})
       L: [x1, pageHeight - y1, x2, pageHeight - y2],
       C: [color.red, color.green, color.blue],
       Border: [0, 0, fabricObj.strokeWidth || 1],
-      Contents: pdfTextString(''),
+      Contents: pdfTextString(measureContentsOf(fabricObj)),
       P: page.ref,
     };
 
@@ -5603,9 +5632,12 @@ const layoutFlattenedText = (obj, fonts) => {
     const tokens = [];
     clusters.forEach((cluster) => {
       const space = cluster === ' ' || cluster === '\t';
+      // A CJK character is a word of its own, as in the screen's CSS wrap
+      // (textWrapMode.js), so a line fills up before it breaks.
+      const alone = !space && isNoSpaceCluster(cluster);
       const last = tokens[tokens.length - 1];
-      if (last && last.space === space) last.clusters.push(cluster);
-      else tokens.push({ space, clusters: [cluster] });
+      if (last && !alone && !last.alone && last.space === space) last.clusters.push(cluster);
+      else tokens.push({ space, alone, clusters: [cluster] });
     });
     let line = '';
     tokens.forEach((token) => {

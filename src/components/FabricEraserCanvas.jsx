@@ -38,6 +38,7 @@ import {
   segmentQueryBounds,
 } from '../utils/eraserBoundsPrefilter.js';
 import { getEraserOperation } from '../utils/eraserPolicy.js';
+import { isFeatureOn } from '../featureFlags.js';
 import { eraserDiameterToPageRadius } from '../utils/eraserSizing.js';
 import { nextEraserMutationId } from '../utils/eraserMutationId.js';
 import {
@@ -417,6 +418,13 @@ const FabricEraserCanvas = memo(({
   const canEraseSurveyMarkerRef = useRef(canEraseSurveyMarker);
   const onEraseTextMarkupRef = useRef(onEraseTextMarkup);
   const eraserModeRef = useRef(eraserMode);
+  // Nightly 'eraser-keeps-shapes' (Drawboard PDF Pro trial audit 2026-11-10):
+  // the Partial eraser only cuts ink and leaves every other mark alone (shapes,
+  // text, callouts, markers); Full still deletes whole marks.
+  const keepsShapesRef = useRef(null);
+  if (keepsShapesRef.current === null) keepsShapesRef.current = isFeatureOn('eraser-keeps-shapes');
+  // Reads refs only, so the memoised lanes below never see a stale value.
+  const partialKeepsShapes = useCallback(() => keepsShapesRef.current === true && eraserModeRef.current === 'partial', []);
   const eraserSizeRef = useRef(eraserSize);
   const viewerScaleRef = useRef(viewerScale);
   const nativeCursorRef = useRef(true);
@@ -1273,6 +1281,7 @@ const FabricEraserCanvas = memo(({
     excludeIds,
     gestureRadius = getPageRadius(),
   ) => {
+    if (partialKeepsShapes()) return [];
     const allCallouts = collectPageCallouts();
     if (!allCallouts.length) return [];
     const radius = gestureRadius;
@@ -1317,7 +1326,7 @@ const FabricEraserCanvas = memo(({
       if (callout?.locked === true) return false;
       return canModify({ annotation: callout, viewerId, documentOwnerId: ownerId });
     });
-  }, [calloutBoundsAllow, collectPageCallouts, getPageRadius, isOutsideEraseSpaceScope, pageHeight, pageNumber, pageWidth]);
+  }, [calloutBoundsAllow, collectPageCallouts, getPageRadius, isOutsideEraseSpaceScope, pageHeight, pageNumber, pageWidth, partialKeepsShapes]);
 
   // Survey markers live outside annotations.objects. Their live SVG DOM IDs are
   // the visibility authority for the gesture, while PDFViewer owns the source
@@ -1328,6 +1337,7 @@ const FabricEraserCanvas = memo(({
     gestureRadius = getPageRadius(),
   ) => {
     if (typeof onEraseSurveyMarkerRef.current !== 'function') return [];
+    if (partialKeepsShapes()) return [];
     const visibleBounds = gestureBoundsRef.current?.bySurveyMarker;
     if (!(visibleBounds instanceof Map) || visibleBounds.size === 0) return [];
     const radius = gestureRadius;
@@ -1358,7 +1368,7 @@ const FabricEraserCanvas = memo(({
       },
       boundsAllow: (annotationId) => surveyMarkerBoundsAllow(annotationId, queryBounds),
     });
-  }, [getPageRadius, isOutsideEraseSpaceScope, surveyMarkerBoundsAllow]);
+  }, [getPageRadius, isOutsideEraseSpaceScope, partialKeepsShapes, surveyMarkerBoundsAllow]);
 
   // Whole-delete pending-erase visual for callouts — the exact treatment
   // non-path shapes get in eraseAtomicObjectsFromPreview, ported to the
@@ -1845,8 +1855,9 @@ const FabricEraserCanvas = memo(({
     if (isOnHiddenLayer(object, hiddenLayerIdsRef.current)) return 'hidden-layer';
 
     if (isOutsideEraseSpaceScope(object)) return 'space-scope';
+    if (partialKeepsShapes() && getEraserOperation(object, 'partial') !== 'partial') return 'partial-keeps-shapes';
     return null;
-  }, [isOutsideEraseSpaceScope]);
+  }, [isOutsideEraseSpaceScope, partialKeepsShapes]);
 
   // Cheap per-segment ghost check for EVERY whole-delete object crossed by the
   // segment — shapes, text, stamps, AND atomic path-typed objects (clouds,

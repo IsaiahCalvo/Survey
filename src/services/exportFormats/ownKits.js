@@ -11,14 +11,63 @@ import { registerExportKit } from './registry.js';
 
 // What a column of their sheet can be filled with. The kit needs each once;
 // what they do not match is added after their columns with the usual header.
+// `detail` says in plain words what lands in the column (owner 2026-11-09:
+// "people may not know what these things are or what they mean").
 export const OWN_KIT_CHOICES = Object.freeze([
-  Object.freeze({ field: 'name', label: 'Item name', header: 'Item' }),
-  Object.freeze({ field: 'entity_name', label: 'Entity', header: 'Entity' }),
-  Object.freeze({ field: 'checklist', label: 'Checklist lines', header: '' }),
-  Object.freeze({ field: 'notes', label: 'Notes', header: 'Notes' }),
-  Object.freeze({ field: 'changed_by', label: 'Changed by', header: 'Changed By' }),
-  Object.freeze({ field: 'changed_date', label: 'Changed date', header: 'Changed Date' }),
+  Object.freeze({ field: 'name', label: 'Item name', header: 'Item', detail: 'The name on each mark, like D-1-17' }),
+  Object.freeze({ field: 'entity_name', label: 'Entity', header: 'Entity', detail: 'The entity the item is set to, like Complete' }),
+  Object.freeze({ field: 'checklist', label: 'Checklist answers', header: '', detail: 'One answer per column from here on, in checklist order' }),
+  Object.freeze({ field: 'notes', label: 'Notes', header: 'Notes', detail: 'The notes typed on the item' }),
+  Object.freeze({ field: 'changed_by', label: 'Who changed it', header: 'Changed By', detail: 'Initials of the last person to change the item' }),
+  Object.freeze({ field: 'changed_date', label: 'Date changed', header: 'Changed Date', detail: 'When the item last changed' }),
 ]);
+
+const squash = (text) => String(text || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+/**
+ * Whether a column after the Checklist answers one is just the next checklist
+ * line: named like a line of the template, or like the first one with
+ * another number ("Definition check 2" after "Definition check 1").
+ */
+export function followsChecklistColumn(header, checklistHeader, lineNames = []) {
+  const h = squash(header);
+  if (!h) return false;
+  if ((lineNames || []).some((line) => squash(line) === h)) return true;
+  const stem = squash(checklistHeader).replace(/\s*\d+$/, '');
+  return Boolean(stem) && stem !== squash(checklistHeader) && h !== squash(checklistHeader) && h.replace(/\s*\d+$/, '') === stem && /\d$/.test(h);
+}
+
+/** Survey's own hidden Row ID column, if their sheet already has one (an old export). */
+export const isRowIdHeader = (header) => squash(header) === 'row id';
+
+/**
+ * A first guess at what each of their columns holds, from its name, so the
+ * common ones are filled in already: Item / Name / Tag / Door No. -> item
+ * name, Status / Entity -> entity, Notes / Remarks / Comments -> notes,
+ * "... by" -> who changed it, Date / Modified -> date changed, and the first
+ * column named like one of the template's checklist lines -> checklist
+ * answers. Each field once; '' where there is no guess.
+ */
+export function guessOwnKitMatches(headers, lineNames = []) {
+  const lines = new Set((lineNames || []).map(squash).filter(Boolean));
+  const taken = new Set();
+  const rules = [
+    ['changed_by', (h) => /\b(changed|modified|updated|inspected|checked|surveyed|done) by\b|^by$/.test(h)],
+    ['changed_date', (h) => /\b(date|modified|updated|changed)\b/.test(h)],
+    ['entity_name', (h) => /^(entity|status|state)$/.test(h)],
+    ['notes', (h) => /^(notes?|remarks?|comments?)$/.test(h)],
+    ['name', (h) => /^(item|items|item name|name|tag|mark|device|item no|no|number|id)$/.test(h) || /\b(no|number|tag)$/.test(h)],
+    ['checklist', (h) => lines.has(h) || /\b(check|checks|line|question|test)\s*\d+$/.test(h)],
+  ];
+  return (headers || []).map((header) => {
+    const h = squash(header);
+    if (!h || isRowIdHeader(header)) return '';
+    const hit = rules.find(([field, test]) => !taken.has(field) && test(h));
+    if (!hit) return '';
+    taken.add(hit[0]);
+    return hit[0];
+  });
+}
 import { OWN_KIT_LIMITS, OWN_KIT_PREFIX, clean, templateOwnKitOf } from './ownKitCopy.js';
 
 export { OWN_KIT_LIMITS, OWN_KIT_PREFIX, ownKitCopyFor, templateOwnKitOf } from './ownKitCopy.js';

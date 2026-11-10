@@ -57,6 +57,11 @@ test('page scale is saved on measurements and re-stamped on change', () => {
   assert.equal(page.objects[1].data.measure.scale.ptPerUnit, 9, 'input not mutated');
   assert.equal(buildMeasureLabel(next.objects[1], pageScaleFromObjects(next.objects)).text, '5\' 0"');
   assert.equal(pageScaleFromObjects([plain]), null);
+  // The kept calibration line (stamped with no scale) takes the new scale too (R3-M B2).
+  const calib = stampMeasure(line({ x: 0, y: 0 }, { x: 90, y: 0 }), 'length', null);
+  const withLine = applyPageScale({ objects: [plain] }, scaleFromPreset('1/4'), [calib]);
+  assert.equal(withLine.objects[1].data.measure.scale.ptPerUnit, 18);
+  assert.equal(buildMeasureLabel(withLine.objects[1], withLine.objects[1].data.measure.scale).text, '5\' 0"');
 });
 
 test('length label pill: fixed screen size, above the midpoint, clear of handles', () => {
@@ -111,4 +116,13 @@ test('label follows a live endpoint edit of the same line', () => {
   const label = buildMeasureLabel(moved, scaleFromCalibration(100, 100, 'in'));
   assert.equal(label.text, '200.00 in');
   assert.equal(label.x, 100);
+});
+
+test('a shape whose outline crosses itself measures its loops, not 0', () => {
+  // Bow tie: two triangles of 25 each meeting at (5,5).
+  const bowTie = [{ x: 0, y: 0 }, { x: 10, y: 10 }, { x: 10, y: 0 }, { x: 0, y: 10 }];
+  assert.equal(polygonAreaPt(bowTie), 50);
+  // A plain concave shape is unchanged.
+  const ell = [{ x: 0, y: 0 }, { x: 2, y: 0 }, { x: 2, y: 1 }, { x: 1, y: 1 }, { x: 1, y: 2 }, { x: 0, y: 2 }];
+  assert.equal(polygonAreaPt(ell), 3);
 });

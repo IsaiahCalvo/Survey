@@ -10,6 +10,7 @@ import { runSheetRound } from '../supabase/functions/_shared/sheetSync/round.js'
 import { assertProvider } from '../supabase/functions/_shared/sheetSync/providers/contract.js';
 import { createMsGraphProvider, parseMsgraphFileId } from '../supabase/functions/_shared/sheetSync/providers/msgraph.js';
 import { mergeMarkerWrites } from '../supabase/functions/_shared/sheetSync/service.js';
+import { RECENT_WRITE_MS } from '../supabase/functions/_shared/sheetSync/engine.js';
 import defaultKit from '../src/services/exportFormats/kits/defaultSurvey.js';
 import { fakeMsgraphFetch, resetFakeMsgraph } from '../scripts/e2e-fake-msgraph.mjs';
 
@@ -59,6 +60,7 @@ async function setup({ markers = {}, layout = buildSyncLayout({ template: templa
       signing,
       newMarkerId: () => `new-${++n}`,
       force: opts.force,
+      ...(opts.now ? { now: opts.now } : {}),
     });
     if (result.patch) Object.assign(ctx.link, result.patch);
     return result;
@@ -115,13 +117,15 @@ test('a field tech answer reaches the sheet; a PM edit reaches the app; both lan
   assert.equal(sheet.rows[r][await ctx.col('Notes')], 'Hinge squeaks');
   assert.equal(ctx.markers.d1.note.text, 'Hinge squeaks');
   assert.equal(ctx.markers.d1.checklistResponses.c1.selection, 'N');
-  // The PM picks an entity and fixes the item name; "y" is tidied to "Y".
+  // Later, the PM picks an entity and fixes the item name; "y" is tidied to
+  // "Y". (Inside the late-save window, changing the "N" Survey just wrote
+  // would be asked about instead; see sheetSyncBreak.)
   await ctx.edit([
     { row: r, col: await ctx.col('Entity'), value: 'missing' },
     { row: r, col: await ctx.col('Item'), value: 'D-101A' },
     { row: r, col: await ctx.col('Locked?'), value: 'y' },
   ]);
-  await ctx.round({ force: true });
+  await ctx.round({ force: true, now: new Date(Date.now() + RECENT_WRITE_MS + 1000) });
   assert.equal(ctx.markers.d1.entityId, 'e2');
   assert.equal(ctx.markers.d1.entityName, 'Missing');
   assert.equal(ctx.markers.d1.name, 'D-101A');
@@ -338,6 +342,11 @@ test('rounds read only the synced sheets, not a big sheet the PM added', async (
   const counting = async (input, init) => {
     const req = input instanceof Request ? input : new Request(input, init);
     calls.push(`${req.method} ${new URL(req.url).pathname}`);
+    // Reads of several sheets go in one $batch: count the requests inside.
+    if (new URL(req.url).pathname.endsWith('/$batch')) {
+      const body = await req.clone().json();
+      for (const inner of body.requests || []) calls.push(`${inner.method} ${inner.url.split('?')[0]} (batched)`);
+    }
     return fakeMsgraphFetch(req);
   };
   // The PM adds a sheet of their own (the fake makes it like Excel would).
@@ -351,6 +360,8 @@ test('rounds read only the synced sheets, not a big sheet the PM added', async (
   const reads = calls.filter((c) => c.includes('/usedRange'));
   assert.equal(reads.length, Object.keys(ctx.link.state.sheetIds).length, 'one read per synced sheet');
   assert.ok(!reads.some((c) => c.includes('pm-notes')), 'the PM\'s own sheet is never read');
+  assert.ok(reads.every((c) => c.endsWith('(batched)')), 'both sheets read in one batch');
+  assert.equal(calls.filter((c) => c.endsWith('/$batch')).length >= 1, true);
 });
 
 test('where the workbook was saved survives every round, and blank stamps are filled once', async () => {
@@ -370,4 +381,159 @@ test('where the workbook was saved survives every round, and blank stamps are fi
   const sheet = await ctx.sheet();
   const r = await ctx.rowOf('d1');
   assert.equal(sheet.rows[r][sheet.rows[0].indexOf('Changed By')], 'IC', 'the sheet shows it');
+});
+
+// Real Excel, round 4: an older copy of the workbook restored from version
+// history (or a column cleared by mistake) blanked every field note at once,
+// and the round copied the blanks into the survey.
+const fifteen = () => Object.fromEntries(Array.from({ length: 15 }, (_, i) => [`d${i + 1}`, door(`d${i + 1}`, `D-${101 + i}`, { note: { text: `field note ${i + 1}` } })]));
+async function blankNotes(ctx, n) {
+  const col = await ctx.col('Notes');
+  const edits = [];
+  for (let i = 1; i <= n; i += 1) edits.push({ row: await ctx.rowOf(`d${i}`), col, value: '' });
+  await ctx.edit(edits);
+}
+
+test('many answers blanked in the sheet at once are held, not copied into the survey', async () => {
+  const ctx = await setup({ markers: fifteen() });
+  await ctx.round(); await ctx.round();
+  await blankNotes(ctx, 12);
+  const r = await ctx.round();
+  assert.equal(r.summary.toApp, 0, 'nothing cleared in the survey');
+  assert.equal(ctx.markers.d1.note.text, 'field note 1');
+  assert.deepEqual(ctx.link.state.heldErase && { count: ctx.link.state.heldErase.count, items: ctx.link.state.heldErase.items }, { count: 12, items: 12 });
+  const sheet = await ctx.sheet();
+  assert.equal(sheet.rows[await ctx.rowOf('d1')][await ctx.col('Notes')], '', 'the sheet is left as the PM left it until someone chooses');
+  // Another change from the sheet still comes in while the blanks wait.
+  await ctx.edit([{ row: await ctx.rowOf('d13'), col: await ctx.col('Notes'), value: 'PM typed this' }]);
+  await ctx.round();
+  assert.equal(ctx.markers.d13.note.text, 'PM typed this');
+  assert.equal(ctx.markers.d2.note.text, 'field note 2', 'still held');
+  assert.equal(ctx.link.state.heldErase.count, 12);
+});
+
+test('held blanks: "Put them back in the sheet" writes the survey\'s answers back', async () => {
+  const ctx = await setup({ markers: fifteen() });
+  await ctx.round(); await ctx.round();
+  await blankNotes(ctx, 12);
+  await ctx.round();
+  ctx.link.state = { ...ctx.link.state, eraseChoice: 'app' };
+  await ctx.round({ force: true });
+  const sheet = await ctx.sheet();
+  assert.equal(sheet.rows[await ctx.rowOf('d5')][await ctx.col('Notes')], 'field note 5');
+  assert.equal(ctx.markers.d5.note.text, 'field note 5');
+  assert.equal(ctx.link.state.heldErase, undefined);
+  assert.equal(ctx.link.state.eraseChoice, undefined, 'the choice is used once');
+  await ctx.round();
+  assert.equal((await ctx.round()).status, 'idle');
+});
+
+test('held blanks: "Clear them here too" clears them in the survey', async () => {
+  const ctx = await setup({ markers: fifteen() });
+  await ctx.round(); await ctx.round();
+  await blankNotes(ctx, 12);
+  await ctx.round();
+  ctx.link.state = { ...ctx.link.state, eraseChoice: 'sheet' };
+  const r = await ctx.round({ force: true });
+  assert.equal(r.summary.toApp, 12);
+  assert.equal(ctx.markers.d5.note.text || '', '');
+  assert.equal(ctx.markers.d14.note.text, 'field note 14', 'untouched rows keep theirs');
+  assert.equal(ctx.link.state.heldErase, undefined);
+});
+
+test('held blanks the PM fills in again (Undo in Excel) stop being held', async () => {
+  const ctx = await setup({ markers: fifteen() });
+  await ctx.round(); await ctx.round();
+  await blankNotes(ctx, 12);
+  await ctx.round();
+  const col = await ctx.col('Notes');
+  const edits = [];
+  for (let i = 1; i <= 12; i += 1) edits.push({ row: await ctx.rowOf(`d${i}`), col, value: `field note ${i}` });
+  await ctx.edit(edits);
+  const r = await ctx.round();
+  assert.equal(ctx.link.state.heldErase, undefined);
+  assert.equal(r.summary.toApp, 0);
+});
+
+test('a few answers cleared in the sheet still come in as a normal PM edit', async () => {
+  const ctx = await setup({ markers: fifteen() });
+  await ctx.round(); await ctx.round();
+  await blankNotes(ctx, 3);
+  const r = await ctx.round();
+  assert.equal(r.summary.toApp, 3);
+  assert.equal(ctx.markers.d1.note.text || '', '');
+  assert.equal(ctx.link.state.heldErase, undefined);
+});
+
+// Real Excel, round 4: the heading row deleted, or the whole tab cleared,
+// left only "The Row ID column is missing", with no way back but Undo.
+test('a tab that lost its heading row is left alone, listed, and picked up again after Undo', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101', { note: { text: 'a' } }), d2: door('d2', 'D-102') } });
+  await ctx.round(); await ctx.round();
+  const header = (await ctx.sheet()).rows[0];
+  await fakeApi(`/files/${ctx.fileId}/delete-row`, { title: 'Doors - Level 1', row: 0 });
+  const before = JSON.stringify((await ctx.sheet()).rows);
+  ctx.markers.d1.note = { text: 'changed in the app meanwhile' };
+  const r = await ctx.round();
+  assert.equal(r.status, 'synced');
+  assert.equal(ctx.link.state.brokenTabs.length, 1);
+  assert.equal(JSON.stringify((await ctx.sheet()).rows), before, 'nothing written to the broken tab');
+  assert.equal(ctx.markers.d1.note.text, 'changed in the app meanwhile', 'nothing lost in the app');
+  // Undo in Excel: the heading row comes back; the tab syncs again.
+  await fakeApi(`/files/${ctx.fileId}/insert-row`, { title: 'Doors - Level 1', row: 0, values: header });
+  await ctx.round();
+  assert.deepEqual(ctx.link.state.brokenTabs, []);
+  const sheet = await ctx.sheet();
+  assert.equal(sheet.rows[await ctx.rowOf('d1')][await ctx.col('Notes')], 'changed in the app meanwhile');
+});
+
+test('a broken tab can be made again from the survey; the old one is left as it is', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101', { note: { text: 'keep me' } }), d2: door('d2', 'D-102') } });
+  await ctx.round(); await ctx.round();
+  const sheet0 = await ctx.sheet();
+  const edits = [];
+  sheet0.rows.forEach((row, r) => row.forEach((_, c) => edits.push({ row: r, col: c, value: '' })));
+  await ctx.edit(edits); // select all, Delete
+  await ctx.round();
+  const scopeId = ctx.link.state.brokenTabs[0];
+  assert.ok(scopeId);
+  // What the panel's "Make a new sheet" does (service chooseConflict putBackTab).
+  const { [scopeId]: _old, ...sheetIds } = ctx.link.state.sheetIds;
+  const baseline = Object.fromEntries(Object.entries(ctx.link.baseline).filter(([, b]) => b.scopeId !== scopeId));
+  ctx.link.state = { ...ctx.link.state, sheetIds, brokenTabs: [] };
+  ctx.link.baseline = baseline;
+  await ctx.round({ force: true });
+  const f = await fakeApi(`/files/${ctx.fileId}`);
+  const made = f.sheets.find((s) => s.name !== 'Doors - Level 1' && s.name.startsWith('Doors'));
+  assert.ok(made, `a new tab named apart from the old one (${f.sheets.map((s) => s.name).join(', ')})`);
+  assert.ok(made.rows.some((row) => row.includes('D-101') && row.includes('keep me')));
+  assert.ok(f.sheets.some((s) => s.name === 'Doors - Level 1'), 'the old tab is still there');
+  assert.equal(Object.keys(ctx.markers).length, 2);
+  await ctx.round();
+  assert.deepEqual(ctx.link.state.brokenTabs, []);
+});
+
+test('tabs added but not set up are taken away, so the next round adds them once, not " (2)"', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
+  await ctx.round();
+  let failed = false;
+  const failingSetup = async (input, init) => {
+    const req = input instanceof Request ? input : new Request(input, init);
+    if (!failed && new URL(req.url).pathname.endsWith('/$batch')) {
+      const body = await req.clone().json();
+      if ((body.requests || []).length && !body.requests.some((r) => /worksheets\/add$/.test(r.url) || r.method === 'DELETE')) {
+        failed = true;
+        return new Response(JSON.stringify({ responses: [{ id: '1', status: 500, body: { error: { code: 'InternalServerError', message: 'boom' } } }] }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+    }
+    return fakeMsgraphFetch(req);
+  };
+  const p = createMsGraphProvider({ getAccessToken: async () => 'fake-ms-access-1', fetch: failingSetup, baseUrl: BASE });
+  const scope = { ...ctx.link.layout.scopes[0], scopeId: 'extra', title: 'Extra - Level 1' };
+  await assert.rejects(() => p.addTabs(ctx.link.file_id, [scope]));
+  assert.ok(failed, 'the set-up call was the one refused');
+  const names = () => globalThis.__fakeMsgraph.files.get(ctx.fileId).sheets.map((s) => s.name);
+  assert.ok(!names().includes('Extra - Level 1'), 'the blank tab is taken away');
+  await p.addTabs(ctx.link.file_id, [scope]);
+  assert.deepEqual(names().filter((n) => n.startsWith('Extra')), ['Extra - Level 1'], 'added once, under its own name');
 });

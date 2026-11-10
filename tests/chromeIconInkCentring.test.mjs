@@ -60,20 +60,22 @@ test('the Fit glyph cannot be squeezed by the label beside it', () => {
 });
 
 test('the Fit menu is the same kind of menu as its two siblings', () => {
-  const menu = /const fitMenu = \(anchorStyle\) => \([\s\S]*?\n              \);/.exec(appShell);
+  const menu = /const fitMenu = \(\) => \([\s\S]*?\n              \);/.exec(appShell);
   assert.notEqual(menu, null, 'fitMenu not found in AppShell.jsx');
   // CHANGED 2026-10-02 (owner, phone/desktop consistency): the Fit menu is the
   // phone's - a label and a check on the chosen row, 28px rows, no fit glyphs
   // on either platform. The check glyph still takes the token size.
-  assert.match(menu[0], /minHeight: '28px'/, 'its rows are 28px');
   assert.doesNotMatch(menu[0], /renderFitIcon/, 'no fit glyph in the menu rows (the phone has none)');
   assert.match(menu[0], /isActive && <Icon name="check" size=\{RAIL_CONTROL_GLYPH\}/, 'the chosen row carries the check, at the token size');
-  // CHANGED 2026-10-04 (polish 3): the shared POPUP corner is --radius-md, the
-  // one AnnotationDropdown's popover (its line-style sibling) already takes,
-  // with --shadow-popover; --chrome-radius (6) is the corner of a chrome button.
-  assert.match(menu[0], /borderRadius: 'var\(--radius-md\)'/, 'its container takes the shared popup radius');
-  assert.match(menu[0], /boxShadow: 'var\(--shadow-popover\)'/, 'and the shared popup shadow');
-  assert.doesNotMatch(menu[0], /padding: '6px 8px'/, 'its row inset matches the other menus (4px 9px)');
+  // CHANGED 2026-11-10 (owner: rail pop-ups "don't look integrated or
+  // professional"): the menu is a RailFlyout, the one rail card. Its corner,
+  // shadow and 28px menu rows come from RailFlyout.css and the menu tokens.
+  assert.match(menu[0], /<RailFlyout title="Page fit">/, 'the Fit menu is the titled rail card');
+  assert.match(menu[0], /className="rail-flyout__row"/, 'its rows are the rail card rows');
+  const css = readFileSync(new URL('../src/components/RailFlyout.css', import.meta.url), 'utf8');
+  assert.match(css, /\.rail-flyout \{[^}]*border-radius: var\(--radius-md\)/, 'the card takes the shared popup radius');
+  assert.match(css, /\.rail-flyout \{[^}]*box-shadow: var\(--shadow-popover\)/, 'and the shared popup shadow');
+  assert.match(css, /\.rail-flyout__row \{[^}]*min-height: var\(--menu-item-h\)/, 'rows are the 28px menu row');
 });
 
 // DELIBERATE ASSERTION CHANGE (owner 2026-10-07, Drawboard rail): the desktop

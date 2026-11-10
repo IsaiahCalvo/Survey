@@ -985,8 +985,9 @@ test('archived rows leave the Documents, Projects and Templates lists', () => {
   // `user_archived_at` (the 30-day Archive) are separate and both survive.
   const filters = DATABASE_HOOKS.match(/\.is\('user_archived_at', null\)/g) || [];
   // 6 since 2026-10-07: templates shared with me are read too (and an
-  // archived one stays out of that list as well).
-  assert.equal(filters.length, 6, 'owned documents, collaborator documents, owned projects, collaborator projects, owned templates, shared templates');
+  // archived one stays out of that list as well). 7 since 2026-11-10: the
+  // files of projects I belong to or own are read too.
+  assert.equal(filters.length, 7, 'owned documents, project documents, collaborator documents, owned projects, collaborator projects, owned templates, shared templates');
   assert.match(DATABASE_HOOKS, /\.eq\('archived', false\)\s*\n[\s\S]{0,400}?\.is\('user_archived_at', null\)/);
 });
 

@@ -2,6 +2,7 @@
  * Callout Types and Defaults
  * Ported from reference Callout app (TypeScript to JavaScript)
  */
+import { isFeatureOn } from '../../featureFlags.js';
 
 /**
  * Arrowhead style options
@@ -268,7 +269,8 @@ export const createCallout = (pageNumber, arrowTip, knee, textBoxPosition, textB
     textBoxWidth,
     textBoxHeight,
     text: '',
-    style: { ...defaultCalloutStyle },
+    // Beta 'word-wrap': a new callout wraps at spaces (utils/textWrapMode.js).
+    style: { ...defaultCalloutStyle, ...(isFeatureOn('word-wrap') ? { wrapWords: true } : {}) },
     isSelected: true,
   };
 };

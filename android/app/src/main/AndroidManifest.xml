@@ -38,6 +38,17 @@
                 <data android:scheme="com.kalvoe.survey" android:host="sheet-connected" />
             </intent-filter>
 
+            <!-- "Open in Survey": a PDF opened from Files, Gmail, Outlook or
+                 Teams arrives as a VIEW intent with a content:// (or file://)
+                 url; src/mobile/nativeOpenFile.js reads it and uploads it. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
+
         </activity>
 
         <provider

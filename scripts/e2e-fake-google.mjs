@@ -103,6 +103,10 @@ function batchUpdate(f, requests) {
         at += 1;
       }
       replies.push({});
+    } else if (kind === 'insertDimension') {
+      const sheet = sheetById(f, body.range.sheetId);
+      if (body.range.dimension === 'ROWS') sheet.rows.splice(body.range.startIndex, 0, ...Array.from({ length: body.range.endIndex - body.range.startIndex }, () => []));
+      replies.push({});
     } else if (kind === 'deleteDimension') {
       const sheet = sheetById(f, body.range.sheetId);
       if (body.range.dimension === 'ROWS') sheet.rows.splice(body.range.startIndex, body.range.endIndex - body.range.startIndex);

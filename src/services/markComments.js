@@ -92,6 +92,21 @@ export async function deleteMarkComment(client, commentId) {
   return rpcRow(await client.rpc('delete_mark_comment', { p_comment_id: commentId }), 'Could not delete the comment');
 }
 
+/**
+ * "Upload as new version": copy the old copy's comment threads onto the new
+ * one (carry_mark_comments). Resolves to how many comments came across; 0 on
+ * a server without the function. Throws on any other error.
+ */
+export async function carryMarkComments(client, fromDocumentId, toDocumentId) {
+  const { data, error } = await client.rpc('carry_mark_comments', { p_from_document_id: fromDocumentId, p_to_document_id: toDocumentId });
+  if (error) {
+    const code = String(error.code || '');
+    if (code === 'PGRST202' || code === '42883') return 0;
+    throw new Error(error.message || 'Could not bring the comments across');
+  }
+  return Number(data) || 0;
+}
+
 /** Ask the server to email the comment's @mentions. Never throws: a missed email must not lose the comment. */
 export async function notifyCommentMentions(client, commentId, origin) {
   try {

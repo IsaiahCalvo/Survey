@@ -108,6 +108,14 @@ export default function MarkLibrarySaveDialog({ open, payload, onClose }) {
     }
   };
 
+  // One mark is already named in the Name box; say only what that misses:
+  // how many marks and of what kinds, and whether {{tokens}} fill in.
+  const count = payload.items?.length || 0;
+  const saveMessage = [
+    count > 1 ? `${count} marks: ${kinds.map((k) => LIBRARY_KIND_LABELS[k].toLowerCase()).join(', ')}` : '',
+    payloadHasTokens(payload) ? 'Fills in {{tokens}} when placed' : '',
+  ].filter(Boolean).join(' · ');
+
   const libraryOptions = libraries.map((value) => ({
     value,
     label: value === 'project' ? `Project: ${state.access.projectName || 'this project'}` : 'Personal (only you)',
@@ -122,7 +130,7 @@ export default function MarkLibrarySaveDialog({ open, payload, onClose }) {
       <DialogCard
         open
         title="Save to library"
-        message={`${kinds.map((k) => LIBRARY_KIND_LABELS[k]).join(', ')}${payloadHasTokens(payload) ? ' · fills in {{tokens}} when placed' : ''}`}
+        message={saveMessage}
         onClose={() => onClose?.(false)}
         busy={busy}
         width={420}

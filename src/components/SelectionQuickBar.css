@@ -264,3 +264,186 @@ html:has(.mobile-pdf-sheet:not(.is-collapsed)) .selection-quick-bar {
   width: 40px;
   height: 40px;
 }
+
+/* A phone sheet (Pages, Search, Layers…) lives in the 5600 chrome host, under
+   this bar's 5700: the bar floated over the sheet and a tap meant for the
+   sheet hit Delete (deep test 2026-11-10). Hide it while a sheet is open; it
+   comes back when the sheet closes. */
+body:has(.mobile-pdf-sheet:not(.is-collapsed)) .selection-quick-bar[data-phone='true'] {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* ---------------------------------------------- Measurement popover (Nightly)
+   MeasureEditPopover: the caption preview on top, then Label, Depth, the
+   caption lines and the caption size. The same card as the Line popover;
+   fields use the app's input look. It scrolls when the window is too short. */
+.selection-quick-bar__popover.measure-edit {
+  width: 248px;
+  max-width: calc(100vw - 16px);
+  gap: 10px;
+  padding: 10px;
+  overflow-y: auto;
+  white-space: normal;
+  -webkit-user-select: text;
+  user-select: text;
+  color: var(--text-1);
+  font: 400 13px/1.3 var(--font-ui, -apple-system, system-ui, sans-serif);
+  text-align: left;
+}
+
+.measure-edit__preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-1, var(--surface-2));
+  color: var(--text-1);
+  font-weight: 600;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.measure-edit__preview .is-label {
+  font-weight: 700;
+}
+
+.measure-edit__empty {
+  color: var(--text-3, var(--text-2));
+  font-weight: 400;
+}
+
+.measure-edit__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.measure-edit__name {
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.measure-edit__with-unit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.measure-edit__input {
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-1, transparent);
+  color: var(--text-1);
+  font: inherit;
+}
+
+.measure-edit__input:focus-visible,
+.measure-edit__tick input:focus-visible,
+.measure-edit__size:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.measure-edit__unit {
+  flex: 0 0 auto;
+  color: var(--text-2);
+}
+
+.measure-edit__lines {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.measure-edit__lines legend {
+  grid-column: 1 / -1;
+  padding: 0 0 4px;
+}
+
+.measure-edit__tick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  cursor: pointer;
+}
+
+.measure-edit__tick input {
+  margin: 0;
+  accent-color: var(--text-1);
+}
+
+.measure-edit__sizes {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.measure-edit__size-buttons {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.measure-edit__size {
+  min-width: 32px;
+  height: 26px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-2);
+  font: 600 12px/1 var(--font-ui, -apple-system, system-ui, sans-serif);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .measure-edit__size:hover {
+    background: var(--hover);
+    color: var(--text-1);
+  }
+}
+
+.measure-edit__size.is-current {
+  background: var(--pressed);
+  color: var(--text-1);
+}
+
+/* Touch: finger-sized rows, and 16px fields so a phone does not zoom in. */
+@media (pointer: coarse) {
+  .measure-edit__input {
+    height: 40px;
+    font-size: 16px;
+  }
+
+  .measure-edit__tick {
+    min-height: 40px;
+  }
+
+  .measure-edit__size {
+    min-width: 44px;
+    height: 40px;
+  }
+}
+
+.measure-edit__tick:has(input:disabled) {
+  color: var(--text-3, var(--text-2));
+  cursor: default;
+}

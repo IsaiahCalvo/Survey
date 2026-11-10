@@ -6,7 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { buildSyncLayout } from '../supabase/functions/_shared/sheetSync/layout.js';
-import { MAX_NEW_ROWS_PER_ROUND, fieldPrintsOf } from '../supabase/functions/_shared/sheetSync/engine.js';
+import { MAX_CELL_CHARS, MAX_NEW_ROWS_PER_ROUND, fieldPrintsOf } from '../supabase/functions/_shared/sheetSync/engine.js';
 import { computeRowFingerprints } from '../supabase/functions/_shared/matcher/rowFingerprint.js';
 import { mergeMarkerWrites } from '../supabase/functions/_shared/sheetSync/service.js';
 import { googleSheetsProvider } from '../supabase/functions/_shared/sheetSync/providers/google.js';
@@ -337,4 +337,299 @@ test('the background sweep checks busy sheets every minute and quiet ones rarely
   // Excel (one cheap check): every minute for a day after a change.
   assert.equal(due({ provider: 'msgraph', last_change_at: at(180 * min), last_round_at: at(0.5 * min) }), 0.5);
   assert.equal(due({ provider: 'msgraph', last_change_at: at(3 * 1440 * min), last_round_at: at(min) }), 4);
+});
+
+// Real-Excel break test, 2026-11-09 (/mnt/project-files/excel-sync/break-test-2026-11-09.md).
+test('a checkbox (TRUE / FALSE) in a pick-one column means Y / N and stays a checkbox', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101', { checklistResponses: { c1: { selection: 'N' } } }) } });
+  await ctx.round();
+  const locked = await ctx.col('Locked?');
+  tab(ctx).rows[1][locked] = true; // ticked
+  await ctx.round();
+  assert.equal(ctx.markers.d1.checklistResponses.c1.selection, 'Y', 'ticked means the yes answer');
+  assert.equal(tab(ctx).rows[1][locked], true, 'the checkbox is not turned into "Y"');
+  assert.deepEqual(ctx.link.state.problems, []);
+  const quiet = await ctx.round({ force: true });
+  assert.deepEqual(quiet.summary, { toSheet: 0, toApp: 0, created: 0, appended: 0, deleted: 0, conflicts: 0 }, 'a checkbox never looks changed again');
+  ctx.markers.d1.checklistResponses.c1 = { selection: 'N' };
+  await ctx.round();
+  assert.equal(tab(ctx).rows[1][locked], false, 'the app clearing it clears the checkbox');
+  ctx.markers.d1.checklistResponses.c1 = { selection: 'N/A' };
+  await ctx.round();
+  assert.equal(tab(ctx).rows[1][locked], 'N/A', 'an answer a checkbox cannot show is written as text');
+});
+
+test('a number typed with its own unit ("84 in") is taken; another unit is refused', async () => {
+  const t = template();
+  t.modules[0].categories[0].checklist[1].unit = 'in';
+  const layout = buildSyncLayout({ template: t, kit: defaultKit });
+  const ctx = await setup({ layout, markers: { d1: door('d1', 'D-101'), d2: door('d2', 'D-102') } });
+  await ctx.round();
+  const height = await ctx.col('Height');
+  await ctx.edit([{ row: await ctx.rowOf('d1'), col: height, value: '84 in' }, { row: await ctx.rowOf('d2'), col: height, value: '7 ft' }]);
+  await ctx.round();
+  assert.equal(ctx.markers.d1.checklistResponses.c2.selection, '84');
+  assert.equal(ctx.markers.d2.checklistResponses.c2?.selection ?? '', '');
+  assert.ok(ctx.link.state.problems.some((p) => /"7 ft" does not fit "Height"/.test(p.message)));
+});
+
+test('a Microsoft sign-in with nothing syncing is used every two weeks so it never runs out; a dead one is forgotten', async () => {
+  const { keepSignInsAlive } = await import('../supabase/functions/_shared/sheetSync/service.js');
+  const { encryptToken, decryptToken } = await import('../supabase/functions/_shared/sheetSync/tokenCrypto.js');
+  const env = { SUPABASE_URL: 'https://x.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'k'.repeat(40), MS_GRAPH_CLIENT_SECRET: 's' };
+  const key = env.SUPABASE_SERVICE_ROLE_KEY;
+  const now = Date.parse('2026-11-09T12:00:00Z');
+  const rows = [
+    { user_id: 'alive', refresh_token_enc: await encryptToken('rt-alive', key) },
+    { user_id: 'dead', refresh_token_enc: await encryptToken('rt-dead', key) },
+  ];
+  const writes = [];
+  const chain = (record) => {
+    const c = { filters: [], eq: (k, v) => { c.filters.push([k, v]); return c; }, lt: (k, v) => { c.lt = [k, v]; return c; }, order: () => c, limit: () => c,
+      then: (ok) => ok(record(c)) };
+    return c;
+  };
+  const service = { from: (table) => ({
+    select: () => chain((c) => { assert.deepEqual(c.lt, ['updated_at', new Date(now - 14 * 86400000).toISOString()]); return { data: rows }; }),
+    update: (patch) => chain((c) => { writes.push({ table, op: 'update', patch, filters: c.filters }); return {}; }),
+    delete: () => chain((c) => { writes.push({ table, op: 'delete', filters: c.filters }); return {}; }),
+  }) };
+  const fetchImpl = async (url, init) => {
+    const rt = new URLSearchParams(init.body).get('refresh_token');
+    if (rt === 'rt-dead') return new Response(JSON.stringify({ error: 'invalid_grant' }), { status: 400 });
+    return new Response(JSON.stringify({ access_token: 'at', refresh_token: 'rt-new', expires_in: 3600 }), { status: 200 });
+  };
+  const kept = await keepSignInsAlive({ env, service, fetchImpl }, now);
+  assert.equal(kept, 1);
+  const saved = writes.find((w) => w.op === 'update' && w.filters[0][1] === 'alive');
+  assert.equal(saved.patch.updated_at, new Date(now).toISOString());
+  assert.equal(await decryptToken(saved.patch.refresh_token_enc, key), 'rt-new');
+  assert.ok(writes.some((w) => w.op === 'delete' && w.table === 'sheet_sync_connections' && w.filters[0][1] === 'dead'), 'dead sign-in forgotten');
+  assert.ok(writes.some((w) => w.table === 'sheet_sync_links' && w.patch.status === 'broken'), 'its sheets say why they stopped');
+});
+
+test('a cell that will not keep what Survey writes (merged cells) never wipes the app value and stops being rewritten', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101'), d2: door('d2', 'D-102') } });
+  await ctx.round();
+  const notes = await ctx.col('Notes');
+  const hiddenRow = await ctx.rowOf('d2');
+  // Excel takes a write to the hidden part of a merged area and drops it.
+  const real = ctx.provider;
+  let dropped = 0;
+  const merged = Object.assign(Object.create(null), real, {
+    writeCells: async (fileId, cells) => real.writeCells(fileId, cells.filter((c) => {
+      const hit = c.row === hiddenRow && c.col === notes;
+      if (hit) dropped += 1;
+      return !hit;
+    })),
+  });
+  ctx.provider = merged;
+  ctx.markers.d2.note = { text: 'app note for D-102' };
+  await ctx.round();
+  assert.equal(dropped, 1);
+  const again = await ctx.round({ force: true });
+  assert.equal(ctx.markers.d2.note.text, 'app note for D-102', 'the blank cell is not read as the PM clearing it');
+  assert.equal(dropped, 1, 'not written again every round');
+  assert.equal(again.summary.toApp, 0);
+  assert.ok(ctx.link.state.problems.some((p) => /merged cells/.test(p.message)), 'the PM is told why');
+  // Unmerged and typed into: it syncs again.
+  ctx.provider = real;
+  await ctx.edit([{ row: hiddenRow, col: notes, value: 'PM typed after unmerge' }]);
+  await ctx.round();
+  assert.equal(ctx.markers.d2.note.text, 'PM typed after unmerge');
+  assert.deepEqual(ctx.link.state.stuck, {});
+});
+
+test('an idle Google sign-in is kept alive too, and a dead one is forgotten', async () => {
+  const { keepSignInsAlive } = await import('../supabase/functions/_shared/sheetSync/service.js');
+  const { encryptToken } = await import('../supabase/functions/_shared/sheetSync/tokenCrypto.js');
+  const env = { SUPABASE_URL: 'https://x.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'k'.repeat(40), GOOGLE_SHEETS_CLIENT_ID: 'gid', GOOGLE_SHEETS_CLIENT_SECRET: 'gs', GOOGLE_OAUTH_TOKEN_URL: 'https://g.test/token' };
+  const key = env.SUPABASE_SERVICE_ROLE_KEY;
+  const now = Date.parse('2026-11-09T12:00:00Z');
+  const rows = { google: [
+    { user_id: 'g-alive', refresh_token_enc: await encryptToken('g-alive', key) },
+    { user_id: 'g-dead', refresh_token_enc: await encryptToken('g-dead', key) },
+  ] };
+  const writes = [];
+  const chain = (record) => {
+    const c = { filters: [], eq: (k, v) => { c.filters.push([k, v]); return c; }, lt: () => c, order: () => c, limit: () => c, then: (ok) => ok(record(c)) };
+    return c;
+  };
+  const service = { from: (table) => ({
+    select: () => chain((c) => ({ data: rows[c.filters.find(([k]) => k === 'provider')[1]] || [] })),
+    update: (patch) => chain((c) => { writes.push({ table, op: 'update', patch, filters: c.filters }); return {}; }),
+    delete: () => chain((c) => { writes.push({ table, op: 'delete', filters: c.filters }); return {}; }),
+  }) };
+  const asked = [];
+  const fetchImpl = async (url, init) => {
+    const rt = new URLSearchParams(init.body).get('refresh_token');
+    asked.push(`${url} ${rt}`);
+    if (rt === 'g-dead') return new Response(JSON.stringify({ error: 'invalid_grant' }), { status: 400 });
+    return new Response(JSON.stringify({ access_token: 'at', expires_in: 3600 }), { status: 200 });
+  };
+  assert.equal(await keepSignInsAlive({ env, service, fetchImpl }, now), 1);
+  assert.ok(asked.every((a) => a.startsWith('https://g.test/token')), 'Google sign-ins go to Google');
+  const saved = writes.find((w) => w.op === 'update' && w.filters[0][1] === 'g-alive');
+  assert.equal(saved.patch.updated_at, new Date(now).toISOString());
+  assert.equal(saved.patch.refresh_token_enc, undefined, 'Google keeps the same refresh token');
+  assert.ok(writes.some((w) => w.op === 'delete' && w.filters[0][1] === 'g-dead' && w.filters[1][1] === 'google'));
+  assert.ok(writes.some((w) => w.table === 'sheet_sync_links' && /Google sign-in/.test(w.patch.last_error || '')));
+});
+
+test('only the token endpoint ending a sign-in counts as signed out; Excel\'s own 401 does not', async () => {
+  const { signInEnded } = await import('../supabase/functions/_shared/sheetSync/service.js');
+  const { refreshGoogleToken, googleEndpoints } = await import('../supabase/functions/_shared/sheetSync/providers/google.js');
+  const { refreshMsgraphToken } = await import('../supabase/functions/_shared/sheetSync/msgraphAuth.js');
+  const deadToken = async () => new Response(JSON.stringify({ error: 'invalid_grant' }), { status: 400 });
+  const g = await refreshGoogleToken({ endpoints: googleEndpoints({ GOOGLE_OAUTH_TOKEN_URL: 'https://g.test/token' }), clientId: 'a', clientSecret: 'b', refreshToken: 'x', fetchImpl: deadToken }).catch((e) => e);
+  assert.equal(signInEnded(g), true, 'Google invalid_grant');
+  const m = await refreshMsgraphToken({ clientId: 'a', clientSecret: 'b', tokenUrl: 'https://m.test/token' }, 'x', { fetch: deadToken }).catch((e) => e);
+  assert.equal(signInEnded(m), true, 'Microsoft invalid_grant');
+  // Seen in a real 40-minute Excel run: createSession refused once, fine a minute later.
+  assert.equal(signInEnded(Object.assign(new Error('You do not have permissions to open this file in the browser.'), { status: 401, code: 'FileOpenUserUnauthorized' })), false);
+  assert.equal(signInEnded({ status: 403 }), false);
+});
+
+test('a protected tab refuses Survey\'s write: told apart from a lost share, and nothing is lost', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
+  await ctx.round();
+  const real = ctx.provider;
+  // Excel answers 403 AccessDenied to a write on a protected sheet (measured
+  // 11-09); Sheets answers 403 PERMISSION_DENIED for a protected range.
+  ctx.provider = Object.assign(Object.create(null), real, {
+    writeCells: async () => { throw Object.assign(new Error('You cannot perform the requested operation.'), { status: 403, code: 'AccessDenied' }); },
+  });
+  ctx.markers.d1.note = { text: 'app note while protected' };
+  const err = await ctx.round().then(() => null, (e) => e);
+  assert.equal(err?.status, 403);
+  assert.equal(err?.code, 'protected', 'a write refused after a good read is a protected tab');
+  assert.equal(ctx.markers.d1.note.text, 'app note while protected');
+  ctx.provider = real;
+  await ctx.round();
+  assert.equal((await ctx.sheet()).rows[await ctx.rowOf('d1')][await ctx.col('Notes')], 'app note while protected', 'it lands once unprotected');
+});
+
+test('a note longer than a cell holds is written cut to fit, keeps its full text in the app, and the next round is quiet', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101', { note: { text: `${'x'.repeat(39999)}🚪` } }) } });
+  await ctx.round();
+  const cell = (await ctx.sheet()).rows[await ctx.rowOf('d1')][await ctx.col('Notes')];
+  assert.equal(cell.length, MAX_CELL_CHARS, 'cut to fit an Excel cell (32,767)');
+  const quiet = await ctx.round({ force: true });
+  assert.deepEqual(Object.values(quiet.summary).filter(Boolean), []);
+  assert.equal(ctx.markers.d1.note.text.length, 40001, 'the app keeps its full note');
+});
+
+test('a NUL in a note (pasted from a PDF) is left out of the cell, so Excel never sends back the note cut short', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'Door\u0000 A', { note: { text: 'first\u0000second' } }) } });
+  await ctx.round();
+  const row = (await ctx.sheet()).rows[1];
+  assert.equal(row[await ctx.col('Notes')], 'firstsecond');
+  assert.equal(row[await ctx.col('Item')], 'Door A');
+  const quiet = await ctx.round({ force: true });
+  assert.deepEqual(Object.values(quiet.summary).filter(Boolean), []);
+  assert.equal(ctx.markers.d1.note.text, 'first\u0000second', 'the app keeps its text');
+});
+
+test('a PM value saved late by Excel on the web over a cell Survey just wrote is held as a conflict, not pulled in', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101', { note: { text: 'Start' } }) } });
+  ctx.provider = { ...ctx.provider, savesLate: true };
+  const t0 = Date.parse('2026-11-10T03:00:00Z');
+  await ctx.round({ now: new Date(t0) }); await ctx.round({ now: new Date(t0 + 1000), force: true });
+  const notes = await ctx.col('Notes');
+  const row = await ctx.rowOf('d1');
+  // The PM types in Excel on the web (not saved yet); a second later the field tech changes the note.
+  ctx.markers.d1.note = { text: 'App note' };
+  await ctx.round({ now: new Date(t0 + 5000) });
+  assert.equal((await ctx.sheet()).rows[row][notes], 'App note');
+  // A minute later Excel's save lands over Survey's write.
+  await ctx.edit([{ row, col: notes, value: 'PM web note' }]);
+  const held = await ctx.round({ now: new Date(t0 + 65000), force: true });
+  assert.equal(held.summary.conflicts, 1, 'asked, not pulled in');
+  assert.equal(ctx.markers.d1.note.text, 'App note', 'the field note is kept');
+  assert.equal((await ctx.sheet()).rows[row][notes], 'PM web note', 'the PM cell is left alone');
+  assert.deepEqual(ctx.link.state.conflicts.d1.fields.map((f) => [f.app, f.sheet]), [['App note', 'PM web note']]);
+  // Still held a round later, after the window.
+  await ctx.round({ now: new Date(t0 + 700000), force: true });
+  assert.ok(ctx.link.state.conflicts.d1);
+  assert.equal(ctx.markers.d1.note.text, 'App note');
+  // Keep mine: the field note goes back to the sheet.
+  ctx.link.state.choices = { d1: 'app' };
+  await ctx.round({ now: new Date(t0 + 701000), force: true });
+  assert.equal((await ctx.sheet()).rows[row][notes], 'App note');
+  assert.equal(ctx.link.state.conflicts.d1, undefined);
+});
+
+test('a sheet edit after the late-save window, or an Undo back to the old value, still comes in as a PM edit', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101', { note: { text: 'Start' } }), d2: door('d2', 'D-102', { note: { text: 'Old' } }) } });
+  ctx.provider = { ...ctx.provider, savesLate: true };
+  const t0 = Date.parse('2026-11-10T03:00:00Z');
+  await ctx.round({ now: new Date(t0) }); await ctx.round({ now: new Date(t0 + 1000), force: true });
+  const notes = await ctx.col('Notes');
+  ctx.markers.d1.note = { text: 'App note' };
+  ctx.markers.d2.note = { text: 'New' };
+  await ctx.round({ now: new Date(t0 + 5000) });
+  // d2: the PM undoes Survey's write inside the window.
+  await ctx.edit([{ row: await ctx.rowOf('d2'), col: notes, value: 'Old' }]);
+  const undo = await ctx.round({ now: new Date(t0 + 65000), force: true });
+  assert.equal(undo.summary.conflicts, 0, 'an Undo is not held');
+  assert.equal(ctx.markers.d2.note.text, 'Old');
+  // d1: the PM types after the window has passed.
+  await ctx.edit([{ row: await ctx.rowOf('d1'), col: notes, value: 'PM later' }]);
+  const r = await ctx.round({ now: new Date(t0 + 5000 + 310000), force: true });
+  assert.equal(r.summary.conflicts, 0);
+  assert.equal(ctx.markers.d1.note.text, 'PM later');
+  assert.equal(ctx.markers.d2.note.text, 'Old');
+});
+
+test('a first write over an old-format baseline is not watched, so an Undo comes straight in', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101', { note: { text: 'Old' } }) } });
+  ctx.provider = { ...ctx.provider, savesLate: true };
+  const t0 = Date.parse('2026-11-10T03:00:00Z');
+  await ctx.round({ now: new Date(t0) });
+  const scope = ctx.link.layout.scopes[0];
+  const { appRecordOf } = await import('../supabase/functions/_shared/sheetSync/engine.js');
+  ctx.link.baseline.d1.fields = (await computeRowFingerprints(appRecordOf(ctx.markers.d1, scope))).fieldFingerprints;
+  ctx.markers.d1.note = { text: 'New' };
+  await ctx.round({ now: new Date(t0 + 5000) });
+  assert.deepEqual(ctx.link.state.recentWrites, {}, 'an old-format "before" print could never match the sheet');
+  await ctx.edit([{ row: await ctx.rowOf('d1'), col: await ctx.col('Notes'), value: 'Old' }]);
+  const r = await ctx.round({ now: new Date(t0 + 65000), force: true });
+  assert.equal(r.summary.conflicts, 0);
+  assert.equal(ctx.markers.d1.note.text, 'Old');
+});
+
+test('a totals line typed under the items is not made an item, and new items go above it', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101'), d2: door('d2', 'D-102') } });
+  await ctx.round();
+  const item = await ctx.col('Item');
+  const totalAt = tab(ctx).rows.length;
+  await ctx.edit([{ row: totalAt, col: item, value: 'Grand total' }, { row: totalAt, col: await ctx.col('Notes'), value: '2 doors' }]);
+  const r = await ctx.round();
+  assert.equal(r.summary.created, 0);
+  assert.ok(!Object.values(ctx.markers).some((m) => m.name === 'Grand total'));
+  ctx.markers.d3 = door('d3', 'D-103');
+  await ctx.round();
+  const rows = tab(ctx).rows;
+  assert.equal(rows[totalAt][item], 'D-103', 'the new item takes the totals line\'s place');
+  assert.equal(rows[totalAt + 1][item], 'Grand total', 'the totals line stays last');
+  const quiet = await ctx.round({ force: true });
+  assert.deepEqual(Object.values(quiet.summary).filter(Boolean), []);
+});
+
+// Slow networks: a call that never answers used to hold the round (and its
+// lease, and the person's panel) until the platform killed the function.
+test('a Microsoft or Google call that hangs gives up and counts as busy', async () => {
+  const { createMsGraphProvider } = await import('../supabase/functions/_shared/sheetSync/providers/msgraph.js');
+  const { fetchWithTimeout } = await import('../supabase/functions/_shared/sheetSync/providers/contract.js');
+  const hang = (_url, init) => new Promise((_, reject) => {
+    init.signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })));
+  });
+  const ms = createMsGraphProvider({ getAccessToken: async () => 't', fetch: hang, baseUrl: 'http://x.test/v1.0', timeoutMs: 30 });
+  await assert.rejects(ms.getVersion('drives/d1/items/i1'), (err) => err.status === 504 && err.code === 'timeout');
+  const g = googleSheetsProvider({ endpoints: { sheets: 'http://g.test', drive: 'http://g.test' }, getAccessToken: async () => 't', fetchImpl: hang, timeoutMs: 30 });
+  await assert.rejects(g.getVersion('f1'), (err) => err.status === 504 && err.code === 'timeout');
+  // A fast answer is untouched, and a real network error is not a timeout.
+  const ok = await fetchWithTimeout(async () => ({ ok: true }), 'http://x.test', {}, 30);
+  assert.equal(ok.ok, true);
+  await assert.rejects(fetchWithTimeout(async () => { throw new TypeError('network down'); }, 'http://x.test', {}, 30), (err) => err instanceof TypeError);
 });

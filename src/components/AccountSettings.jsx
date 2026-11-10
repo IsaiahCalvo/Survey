@@ -38,6 +38,8 @@ import {
   readSnapAngle,
   writeSnapAngle,
   SNAP_ANGLE_CHOICES,
+  readUnits,
+  writeUnits,
   readTextboxAutoFit,
   writeTextboxAutoFit,
   subscribeAnnotationPreferences,
@@ -92,6 +94,8 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
   const [annotationSnapping, setAnnotationSnapping] = useState(() => readAnnotationSnapping());
   const [textboxAutoFit, setTextboxAutoFit] = useState(() => readTextboxAutoFit());
   const [snapAngle, setSnapAngle] = useState(() => readSnapAngle());
+  const [defaultUnitsOn] = useState(() => isFeatureOn('default-units'));
+  const [units, setUnits] = useState(() => readUnits());
   // Privacy tab. Usage statistics are per device; the learning opt-in lives on
   // the account so the server can check it before using anything.
   const [usageStatsOn, setUsageStatsOn] = useState(() => !readUsageStatsOff());
@@ -111,7 +115,7 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
   };
   useEffect(() => {
     if (!isOpen) return undefined;
-    const refresh = () => { setTextboxAutoFit(readTextboxAutoFit()); setAnnotationSnapping(readAnnotationSnapping()); setSnapAngle(readSnapAngle()); };
+    const refresh = () => { setTextboxAutoFit(readTextboxAutoFit()); setAnnotationSnapping(readAnnotationSnapping()); setSnapAngle(readSnapAngle()); setUnits(readUnits()); };
     refresh();
     return subscribeAnnotationPreferences(refresh);
   }, [isOpen]);
@@ -741,7 +745,6 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                             type="password"
                             value={newPassword}
                             onChange={(e) => setNewPassword(e.target.value)}
-                            placeholder="••••••••"
                             disabled={loading}
                             autoComplete="new-password"
                           />
@@ -757,7 +760,6 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                             type="password"
                             value={confirmPassword}
                             onChange={(e) => setConfirmPassword(e.target.value)}
-                            placeholder="••••••••"
                             disabled={loading}
                             autoComplete="new-password"
                           />
@@ -1193,7 +1195,8 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                             <li>Everything in Pro for every user</li>
                             <li>1 TB storage</li>
                             <li>Priority support</li>
-                            <li>Admin console and SSO: coming soon</li>
+                            <li>Company single sign-on (SSO)</li>
+                            <li>Admin console: coming soon</li>
                             <li>Custom integrations</li>
                           </ul>
                         </div>
@@ -1315,6 +1318,22 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                     onChange={(deg) => setSnapAngle(writeSnapAngle(deg))}
                   />
                 </div>
+                {defaultUnitsOn && (
+                  <div className="account-pref-row">
+                    <div className="account-pref-copy">
+                      <div className="account-pref-title" id="account-pref-units">Units</div>
+                      <p className="account-pref-description">Where Set page scale and new blank documents start: feet and Letter, or metres and A4. Scales you have set stay as they are.</p>
+                    </div>
+                    <ButtonGroup
+                      size="sm"
+                      labelledBy="account-pref-units"
+                      className="account-pref-units"
+                      value={units}
+                      options={[{ value: 'imperial', label: 'Imperial' }, { value: 'metric', label: 'Metric' }]}
+                      onChange={(next) => setUnits(writeUnits(next))}
+                    />
+                  </div>
+                )}
                 <h3 id="account-annotations-text-boxes">Text boxes</h3>
                 <div className="account-pref-row">
                   <div className="account-pref-copy">

@@ -175,11 +175,46 @@ export async function fakeMsgraphHandler(req) {
     });
   }
 
+  // --- Graph JSON batch: each request in order, through this same handler ---
+  if (method === 'POST' && /\/v1\.0\/\$batch$/.test(path)) {
+    const responses = [];
+    for (const r of body?.requests || []) {
+      const inner = new Request(`${url.origin}${url.pathname.replace(/\$batch$/, '').replace(/\/$/, '')}${r.url}`, {
+        method: r.method,
+        headers: { ...(r.headers || {}), authorization: req.headers.get('authorization') || '' },
+        body: r.body === undefined ? undefined : JSON.stringify(r.body),
+      });
+      const one = await fakeMsgraphHandler(inner);
+      const text = await one.text();
+      let parsed = null;
+      try { parsed = text ? JSON.parse(text) : null; } catch { parsed = text; }
+      responses.push({ id: r.id, status: one.status, headers: {}, body: parsed });
+    }
+    return json(200, { responses });
+  }
+
   // --- test hooks ----------------------------------------------------------
   if (path.startsWith('/__fake')) {
     if (path === '/__fake/reset') { resetFakeMsgraph(); return json(200, { ok: true }); }
     if (path === '/__fake/files') return json(200, { files: [...store.files.keys()] });
     if (path === '/__fake/drive-type') { store.driveType = body?.driveType || 'business'; return json(200, { ok: true }); }
+    // A workbook the PM already has (their own sheets), and the link they'd
+    // paste for it. readOnly: shared with them for viewing only.
+    // The workbook moved to another library: a new item id, the same sheets
+    // (sheet ids travel with the workbook); the old id answers 404.
+    const mv = /^\/__fake\/files\/([^/]+)\/move$/.exec(path);
+    if (mv && store.files.has(mv[1])) {
+      const id = `FAKEITEM${store.next++}`;
+      store.files.set(id, store.files.get(mv[1]));
+      store.files.delete(mv[1]);
+      return json(200, { id, link: `https://contoso.sharepoint.example/:x:/r/${id}` });
+    }
+    if (path === '/__fake/make-file') {
+      const id = `FAKEITEM${store.next++}`;
+      const sheets = (body?.sheets || [{ name: 'Sheet1', rows: [] }]).map((sh, i) => Object.assign(newSheet(sh.name, i), { cells: (sh.rows || []).map((r) => [...r]) }));
+      store.files.set(id, { name: body?.name || 'Tracker.xlsx', version: 1, sheets, readOnly: Boolean(body?.readOnly) });
+      return json(200, { id, link: `https://contoso.sharepoint.example/:x:/r/${id}` });
+    }
     const m = /^\/__fake\/files\/([^/]+)(\/edit|\/sort|\/insert-row|\/delete-row)?$/.exec(path);
     const f = m && store.files.get(m[1]);
     if (!f) return json(404, { error: 'no such file' });
@@ -232,6 +267,16 @@ export async function fakeMsgraphHandler(req) {
     return json(201, itemJson(id, f));
   }
 
+  // A pasted link (Graph /shares): a workbook made with /__fake/make-file.
+  const share = /^\/v1\.0\/shares\/u!([^/]+)\/driveItem$/.exec(path);
+  if (method === 'GET' && share) {
+    const b64 = share[1].replace(/_/g, '/').replace(/-/g, '+');
+    const url = new TextDecoder().decode(Uint8Array.from(atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4)), (ch) => ch.charCodeAt(0)));
+    const hit = /\/:x:\/r\/([A-Z0-9]+)$/.exec(url);
+    const sf = hit && store.files.get(hit[1]);
+    if (!sf) return gErr(404, 'itemNotFound', 'The sharing link no longer exists.');
+    return json(200, { ...itemJson(hit[1], sf), file: { mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }, parentReference: { driveId: DRIVE, driveType: store.driveType, name: 'Jobs' } });
+  }
   const m = /^\/v1\.0\/drives\/([^/]+)\/items\/([^/]+)(.*)$/.exec(path);
   if (!m || m[1] !== DRIVE) return gErr(404, 'itemNotFound', 'The resource could not be found.');
   const f = store.files.get(m[2]);
@@ -255,6 +300,7 @@ export async function fakeMsgraphHandler(req) {
     return json(200, { value: f.sheets.map(({ id, name, position, visibility }) => ({ id, name, position, visibility })) });
   }
   if (method === 'POST' && wb === 'worksheets/add') {
+    if (f.readOnly) return gErr(403, 'AccessDenied', 'You cannot perform the requested operation.');
     const name = String(body?.name || `Sheet${f.sheets.length + 1}`);
     if (f.sheets.some((s) => s.name.toLowerCase() === name.toLowerCase())) return gErr(400, 'ItemAlreadyExists', 'A resource with the same name or identifier already exists.');
     const sheet = newSheet(name, f.sheets.length);
@@ -273,13 +319,30 @@ export async function fakeMsgraphHandler(req) {
     return json(204);
   }
   if (method === 'GET' && tail.startsWith('/usedRange')) return json(200, usedRange(sheet));
-  if (method === 'POST' && tail === '/freezePanes/freezeRows') { sheet.frozen = Number(body?.count) || 0; return json(204); }
-  const range = /^\/range\(address='([^']+)'\)(\/delete|\/dataValidation)?$/.exec(tail);
+  // The used rows of some columns only (where new rows go); 404 when blank, as in Excel.
+  const colsUsed = /^\/range\(address='([A-Z]+):([A-Z]+)'\)\/usedRange/.exec(tail);
+  if (method === 'GET' && colsUsed) {
+    const [c1, c2] = [colIndex(colsUsed[1]), colIndex(colsUsed[2])];
+    let r1 = -1; let r2 = -1;
+    sheet.cells.forEach((row, r) => {
+      if ((row || []).some((v, c) => c >= c1 && c <= c2 && v !== '' && v != null)) { if (r1 < 0) r1 = r; r2 = r; }
+    });
+    if (r2 < 0) return gErr(404, 'ItemNotFound', 'The requested resource doesn\'t exist.');
+    return json(200, { rowIndex: r1, rowCount: r2 - r1 + 1 });
+  }
+  // Real Graph has no freeze-panes or data-validation API (v1.0 and beta
+  // answer this 400; checked in a real tenant 11-09 and 11-10).
+  if (/^\/freezePanes\b|\/dataValidation$|\/conditionalFormats\b/.test(tail)) {
+    return gErr(400, 'BadRequest', `Resource not found for the segment '${/freezePanes|dataValidation|conditionalFormats/.exec(tail)[0]}'.`);
+  }
+  const range = /^\/range\(address='([^']+)'\)(\/delete|\/insert)?$/.exec(tail);
   const a = range && parseAddress(range[1]);
   if (!a) return gErr(400, 'BadRequest', `fake msgraph: no route for ${method} ${path}`);
-  if (range[2] === '/dataValidation' && method === 'PATCH') {
-    for (const key of perColumn(a)) sheet.validations[key] = body?.rule?.list?.source || '';
-    return json(200, {});
+  if (range[2] === '/insert' && method === 'POST') {
+    if (!a.wholeRows) return gErr(400, 'BadRequest', 'fake msgraph: only whole-row inserts');
+    sheet.cells.splice(a.r1, 0, ...Array.from({ length: a.r2 - a.r1 + 1 }, () => []));
+    touch(f);
+    return json(204);
   }
   if (range[2] === '/delete' && method === 'POST') {
     if (!a.wholeRows) return gErr(400, 'BadRequest', 'fake msgraph: only whole-row deletes');

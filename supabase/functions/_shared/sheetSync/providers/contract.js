@@ -40,6 +40,10 @@
 //     call of its own). `me` is true when it was the signed-in account (the
 //     linker, which is also who Survey writes as). Sheet edits are credited to
 //     this person in Changed By (round.js sheetEditorLabel).
+// - savesLate: true   (optional)
+//     A person's typing can reach the file a minute or more after they typed
+//     it (Excel on the web). The engine then holds a different value landing
+//     on a cell it just wrote as a conflict (engine.js RECENT_WRITE_MS).
 
 export const PROVIDER_METHODS = Object.freeze([
   'getVersion', 'readGrid', 'readCells', 'writeCells', 'appendRows', 'deleteRows', 'createFile', 'addTabs',
@@ -59,6 +63,31 @@ export const cellError = (text) => ({ error: String(text || '#ERROR!') });
 export const isCellError = (value) => value != null && typeof value === 'object' && typeof value.error === 'string';
 
 /** An Error with an HTTP-like status, for providers to throw. */
+/**
+ * A Microsoft or Google call that hangs (a slow or dropped connection) would
+ * hold the round, its lease and the person's panel until the platform kills
+ * the function. Each call gets this long; then it fails as "busy" (504,
+ * code 'timeout') and the sheet waits and tries again. A write that timed out
+ * may still have landed: the next round reads the sheet and settles it.
+ */
+export const REQUEST_TIMEOUT_MS = 45_000;
+
+/** fetch with a time limit: a timeout becomes a 504 'timeout' error. */
+export async function fetchWithTimeout(fetchImpl, url, init = {}, timeoutMs = REQUEST_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetchImpl(url, { ...init, signal: controller.signal });
+  } catch (err) {
+    if (controller.signal.aborted) {
+      throw Object.assign(new Error(`no answer in ${Math.round(timeoutMs / 1000)} s`), { status: 504, code: 'timeout' });
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export function providerError(message, status) {
   const err = new Error(message);
   err.status = status;

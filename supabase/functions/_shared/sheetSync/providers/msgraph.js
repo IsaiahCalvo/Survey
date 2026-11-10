@@ -9,8 +9,9 @@
 //
 // fileId is `drives/<driveId>/items/<itemId>` (driveIds hold `!`, so no short form).
 // Rows and columns are 0-based from A1; row 0 is the header.
-import { cellError } from './contract.js';
-import { buildLiveWorkbook } from './liveWorkbook.js';
+import { cellError, fetchWithTimeout, REQUEST_TIMEOUT_MS } from './contract.js';
+import { buildLiveWorkbook, excelSheetNames } from './liveWorkbook.js';
+import { trackingChoices } from '../layout.js';
 
 const GRAPH = 'https://graph.microsoft.com/v1.0';
 // Graph closes a saving session after about 5 minutes idle; reopen a bit before.
@@ -21,6 +22,30 @@ const SESSION_TTL_MS = 4 * 60 * 1000;
 function folderPath(folder) {
   const parts = String(folder || '').split('/').filter(Boolean);
   return parts.length ? `${parts.map(encodeURIComponent).join('/')}/` : '';
+}
+
+// A folder outside the person's own OneDrive (a SharePoint or Teams library,
+// reached by a pasted link or a "shortcut to My files") starts with
+// "~<driveId>~<itemId>"; the rest is a path inside it, as for OneDrive.
+const PLACE = /^~([A-Za-z0-9!_-]{1,200})~([A-Za-z0-9!_-]{1,200})$/;
+export function placeToken(driveId, itemId) {
+  return `~${driveId}~${itemId}`;
+}
+/** Where a folder string points: the Graph item to address, and the path under it. */
+export function folderTarget(folder) {
+  const parts = String(folder || '').split('/').filter(Boolean);
+  const place = parts.length ? PLACE.exec(parts[0]) : null;
+  if (!place) return { base: 'me/drive/root', driveId: null, sub: parts.join('/') };
+  return { base: `drives/${place[1]}/items/${place[2]}`, driveId: place[1], sub: parts.slice(1).join('/') };
+}
+const under = (base, sub) => (sub ? `${base}:/${folderPath(sub).replace(/\/$/, '')}:` : base);
+
+/** The "u!…" id Graph's /shares takes for a sharing link. */
+export function shareIdOf(url) {
+  const b64 = typeof btoa === 'function'
+    ? btoa(String.fromCharCode(...new TextEncoder().encode(String(url))))
+    : Buffer.from(String(url)).toString('base64');
+  return `u!${b64.replace(/=+$/, '').replace(/\//g, '_').replace(/\+/g, '-')}`;
 }
 
 export function msgraphFileId(driveId, itemId) {
@@ -87,11 +112,22 @@ function plainCell(value, text, format, type) {
   return value;
 }
 
+// Graph's $batch takes at most 20 requests.
+const BATCH_SIZE = 20;
+// Whole-sheet reads in one $batch: big sheets answer megabytes each.
+const GRID_BATCH = 8;
+// Excel saves scattered cells at about 30 a second (2,500 single-cell edits
+// on a 5,000-row sheet took 83 s, real Excel 11-10), so a big offline
+// catch-up could outlast the edge function and every retry would start
+// over. Writes stop between batches after this long and the round ends as
+// "busy"; what landed matches the app, so the next round writes only the rest.
+const WRITE_BUDGET_MS = 60_000;
+
 // Drop-downs cover this many rows, like the desktop export.
 const DROP_DOWN_ROWS = 1000;
 const TEXT_KINDS = new Set(['choice', 'text', 'many']);
 // The same columns Google's provider formats as text (google.js textFormatRequests).
-const isTextColumn = (col) => ['rowId', 'changedBy', 'item', 'entity', 'notes'].includes(col?.key)
+const isTextColumn = (col) => ['rowId', 'changedBy', 'item', 'entity', 'notes', 'status', 'assignee'].includes(col?.key)
   || (String(col?.key || '').startsWith('answer:') && TEXT_KINDS.has(col.item?.kind || 'choice'));
 
 /**
@@ -104,6 +140,7 @@ export function dropDownChoices(column, layout) {
   let choices = null;
   if (key === 'entity') choices = (layout?.entities || []).map((e) => e?.name).filter(Boolean);
   else if (key.startsWith('answer:') && (!column.item?.kind || column.item.kind === 'choice')) choices = layout?.answerValues || null;
+  else choices = trackingChoices(column, layout);
   if (!choices?.length || choices.some((c) => String(c).includes(','))) return null;
   const source = choices.map(String).join(',');
   return source.length <= 255 ? source : null;
@@ -153,6 +190,25 @@ export function rowRuns(cells) {
 }
 
 /**
+ * Row runs stacked into blocks: runs in the same columns on rows one under
+ * another become one rectangle, so 300 notes down one column are one write
+ * (Graph took ~3.5 s per 20-write batch: 300 edits ran ~1 minute).
+ */
+export function cellBlocks(cells) {
+  const runs = rowRuns(cells).sort((a, b) => a.col - b.col || a.values.length - b.values.length || a.row - b.row);
+  const blocks = [];
+  for (const run of runs) {
+    const last = blocks[blocks.length - 1];
+    if (last && last.col === run.col && last.values[0].length === run.values.length && last.row + last.values.length === run.row) {
+      last.values.push(run.values);
+    } else {
+      blocks.push({ row: run.row, col: run.col, values: [run.values] });
+    }
+  }
+  return blocks;
+}
+
+/**
  * Side-by-side columns that get the same value from `valueOf` (null = none),
  * as { from, to, value } runs: one Graph call per run instead of per column.
  */
@@ -175,7 +231,7 @@ export function columnRuns(columns, valueOf) {
  * @param {string} [options.baseUrl]  for tests
  * @param {() => number} [options.now]
  */
-export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globalThis.fetch, baseUrl = GRAPH, now = Date.now } = {}) {
+export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globalThis.fetch, baseUrl = GRAPH, now = Date.now, timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
   if (typeof getAccessToken !== 'function') throw new Error('msgraph: getAccessToken is required');
   const sessions = new Map(); // fileId → { id, at }
   const checkedBusiness = new Set();
@@ -186,7 +242,7 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
   // tens of megabytes; on success the body is dropped unread.
   async function call(method, path, { body, headers = {}, where = path, raw = false, discard = false } = {}) {
     const token = await getAccessToken();
-    const response = await fetchImpl(`${baseUrl}/${path}`, {
+    const response = await fetchWithTimeout(fetchImpl, `${baseUrl}/${path}`, {
       method,
       headers: {
         Authorization: `Bearer ${token}`,
@@ -194,7 +250,7 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
         ...headers,
       },
       body: body === undefined ? undefined : raw ? body : JSON.stringify(body),
-    });
+    }, timeoutMs);
     if (discard && response.ok) {
       try { await response.body?.cancel?.(); } catch { /* already closed */ }
       return null;
@@ -252,54 +308,113 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
     }
   }
 
+  // Many workbook calls in Graph's $batch (20 per request, run in order), so
+  // a round writing 300 rows makes 15 requests, not 300: one at a time, a
+  // big round ran for minutes, near the edge function's time limit.
+  // `parallel`: the ops touch different cells, so Graph may run them at once
+  // (200 scattered single-cell writes: 21 s chained, 12 s parallel, measured
+  // 11-09). Otherwise each waits for the one before (row deletes, in order).
+  // `size`: requests per $batch (Graph takes at most 20); reads of whole
+  // sheets go fewer at a time so one answer stays a few megabytes.
+  // `deadline`: stop between batches once past it (see WRITE_BUDGET_MS).
+  // `allow`: statuses that answer null instead of failing the batch.
+  async function workbookBatch(fileId, ops, { parallel = false, size = BATCH_SIZE, deadline = null, allow = [] } = {}) {
+    const bodies = [];
+    for (let i = 0; i < ops.length; i += size) {
+      if (deadline != null && i > 0 && now() > deadline) {
+        throw Object.assign(new Error(`Saved ${i} of ${ops.length} changes to the workbook; the rest go in the next round.`), {
+          status: 503, code: 'partial', retryAfterMs: 10_000,
+        });
+      }
+      const chunk = ops.slice(i, i + size);
+      for (let attempt = 0; ; attempt += 1) {
+        const id = await sessionId(fileId);
+        const requests = chunk.map((op, j) => ({
+          id: String(j + 1),
+          method: op.method,
+          url: `/${fileId}/workbook/${op.path}`,
+          headers: { 'Content-Type': 'application/json', 'workbook-session-id': id },
+          ...(op.body !== undefined ? { body: op.body } : {}),
+          ...(j && !parallel ? { dependsOn: [String(j)] } : {}),
+        }));
+        const res = await call('POST', '$batch', { body: { requests }, where: 'batch' });
+        const answers = [...(res?.responses || [])].sort((a, b) => Number(a.id) - Number(b.id));
+        // The first real failure (later ones only say "424: an earlier one failed").
+        const failed = answers.find((a) => Number(a.status) >= 300 && Number(a.status) !== 424 && !allow.includes(Number(a.status)))
+          || (answers.length < chunk.length ? { status: 500, body: null } : null);
+        if (!failed) { sessions.set(fileId, { id, at: now() }); bodies.push(...answers.map((a) => (Number(a.status) < 300 ? a.body ?? null : null))); break; }
+        const headers = { get: (k) => failed.headers?.[k] ?? failed.headers?.[String(k).toLowerCase()] ?? failed.headers?.[String(k).replace(/^\w/, (c) => c.toUpperCase())] ?? null };
+        const error = graphError(Number(failed.status), failed.body, headers, 'batch');
+        if (attempt === 0 && isSessionGone(error)) { sessions.delete(fileId); continue; }
+        throw error;
+      }
+    }
+    return bodies;
+  }
+
   const sheetPath = (sheetId) => `worksheets/${encodeURIComponent(sheetId)}`;
 
   async function usedRange(fileId, sheetId, select) {
     return workbook(fileId, 'GET', `${sheetPath(sheetId)}/usedRange(valuesOnly=true)?$select=${select}`, { where: 'usedRange' });
   }
 
-  async function writeRow(fileId, sheetId, row, col, values) {
-    const address = `${cellAddress(row, col)}:${cellAddress(row, col + values.length - 1)}`;
+  // Where new rows go: under the last row holding anything in the columns
+  // Survey writes (A to `width`), not under a PM's stray cell far off to the
+  // right (a note typed in Z400 put new items at row 400, real Excel 11-10).
+  // Graph answers 404 when those columns are empty. Only the address is
+  // asked for: the old read of every value was 2 MB on a 5,000-row sheet.
+  const endPath = (sheetId, width) => `${sheetPath(sheetId)}/range(address='A:${columnLetter(Math.max(0, width - 1))}')/usedRange(valuesOnly=true)?$select=rowIndex,rowCount`;
+  const endRow = (used) => (used ? (used.rowIndex || 0) + (used.rowCount || 0) : 0);
+  // The columns the new rows really fill (rows come padded to the sheet's width).
+  const filledWidth = (rows) => Math.max(1, ...rows.map((row) => {
+    let n = row.length;
+    while (n > 0 && (row[n - 1] === '' || row[n - 1] == null)) n -= 1;
+    return n;
+  }));
+
+  async function writeBlock(fileId, sheetId, row, col, values) {
+    const address = `${cellAddress(row, col)}:${cellAddress(row + values.length - 1, col + values[0].length - 1)}`;
     await workbook(fileId, 'PATCH', `${sheetPath(sheetId)}/range(address='${address}')`, {
-      body: { values: [values] }, where: 'write', discard: true,
+      body: { values }, where: 'write', discard: true,
     });
   }
 
-  // One sheet per scope (layout.js shape): header row, hidden Row ID column, and a
-  // drop-down on pick-one answer columns and the entity column. Side-by-side
-  // columns that need the same thing share one call, so a sheet takes a handful
-  // of calls however many columns it has.
-  async function addSheet(fileId, scope, layout) {
-    const added = await workbook(fileId, 'POST', 'worksheets/add', { body: { name: scope.title }, where: 'addSheet' });
+  // What a tab added after linking needs once it exists: its header row, the
+  // Row ID column hidden, and text columns as text. All of it goes out in one
+  // parallel $batch with every other new tab's (40 tabs: 33 s one call at a
+  // time, real Excel 11-10). `?$select=address` keeps Graph from answering
+  // each range write with the whole range (40 KB for a 999-row column).
+  // Not here, because Graph has no API for them (v1.0 and beta answer 400
+  // "Resource not found for the segment", checked in a real tenant 11-09 and
+  // 11-10): drop-downs (dataValidation) and the frozen header (freezePanes).
+  // A new workbook gets both in its upload (liveWorkbook.js); typed values
+  // are still checked by the merge.
+  function sheetSetupOps(sheetId, scope) {
     const columns = scope.columns || (scope.header || []).map((h) => ({ header: typeof h === 'string' ? h : h?.title ?? '' }));
-    if (!columns.length) return added.id;
+    if (!columns.length) return [];
+    const path = sheetPath(sheetId);
+    const range = (address) => `${path}/range(address='${address}')?$select=address`;
     // As text: a header starting with "=" must never become a live formula.
-    await writeRow(fileId, added.id, 0, 0, columns.map((c) => cellValueForWrite(c.header ?? '')));
-    const path = sheetPath(added.id);
+    const ops = [{ method: 'PATCH', path: range(`A1:${columnLetter(columns.length - 1)}1`), body: { values: [columns.map((c) => cellValueForWrite(c.header ?? ''))] } }];
     if (columns[0]?.key === 'rowId') {
       // One cell hides its whole column. Never address the column itself
       // ('A:A'): Graph answers with all 1,048,576 rows of it, which ran the
       // edge function out of memory on the first real workbook (Nov 3).
-      await workbook(fileId, 'PATCH', `${path}/range(address='A1')`, { body: { columnHidden: true }, where: 'hideRowId', discard: true });
+      ops.push({ method: 'PATCH', path: range('A1'), body: { columnHidden: true } });
     }
     // Text columns as text ("@"), the way Google's are: a PM typing 00123
     // or 1/2 in a note keeps what they typed instead of a number or a date.
     for (const run of columnRuns(columns, (column) => (isTextColumn(column) ? '@' : null))) {
       const width = run.to - run.from + 1;
       const formats = Array.from({ length: DROP_DOWN_ROWS - 1 }, () => Array(width).fill('@'));
-      await workbook(fileId, 'PATCH', `${path}/range(address='${columnLetter(run.from)}2:${columnLetter(run.to)}${DROP_DOWN_ROWS}')`, {
-        body: { numberFormat: formats }, where: 'textFormat', discard: true,
-      }).catch(() => {});
+      ops.push({ method: 'PATCH', path: range(`${columnLetter(run.from)}2:${columnLetter(run.to)}${DROP_DOWN_ROWS}`), body: { numberFormat: formats }, optional: true });
     }
-    for (const run of columnRuns(columns, (column) => dropDownChoices(column, layout))) {
-      // A nicety: a workbook without drop-downs still syncs.
-      await workbook(fileId, 'PATCH', `${path}/range(address='${columnLetter(run.from)}2:${columnLetter(run.to)}${DROP_DOWN_ROWS}')/dataValidation`, {
-        body: { rule: { list: { inCellDropDown: true, source: run.value } }, errorAlert: { showAlert: false } },
-        where: 'dropDown', discard: true,
-      }).catch(() => {});
-    }
-    await workbook(fileId, 'POST', `${path}/freezePanes/freezeRows`, { body: { count: 1 }, where: 'freezeHeader', discard: true }).catch(() => {});
-    return added.id;
+    return ops;
+  }
+
+  async function listTabs(fileId) {
+    const list = await workbook(fileId, 'GET', 'worksheets?$select=id,name', { where: 'worksheets' });
+    return (list?.value || []).map((s) => ({ id: String(s.id), name: String(s.name) }));
   }
 
   return {
@@ -312,6 +427,9 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
       return meta?.cTag ?? null;
     },
 
+    // Excel on the web saves typed cells 4 to 90 s late (measured 11-10: 3 s to over 2 min).
+    savesLate: true,
+
     // Who last changed the workbook, as the last getVersion saw it.
     lastEditor(fileId) {
       return lastEditors.get(fileId) || null;
@@ -320,13 +438,28 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
     // `opts.sheetIds`: read only these sheets (the synced ones), so a big
     // sheet a PM added for their own notes costs no calls. A synced sheet
     // someone deleted is simply missing, which the round reports.
+    /** Every sheet in the workbook as { id, name } (no cells read). */
+    tabs: listTabs,
+
+    /** The names of every sheet in the workbook (no cells read). */
+    async tabTitles(fileId) {
+      return (await listTabs(fileId)).map((t) => t.name);
+    },
+
     async readGrid(fileId, { sheetIds = null } = {}) {
       const list = await workbook(fileId, 'GET', 'worksheets?$select=id,name,position,visibility', { where: 'worksheets' });
       const only = sheetIds?.length ? new Set(sheetIds.map(String)) : null;
       const sheets = [];
-      for (const sheet of [...(list?.value || [])].sort((a, b) => a.position - b.position)) {
-        if (only && !only.has(String(sheet.id))) continue;
-        const used = await usedRange(fileId, sheet.id, 'rowIndex,columnIndex,rowCount,columnCount,values,text,numberFormat,valueTypes');
+      const wanted = [...(list?.value || [])].sort((a, b) => a.position - b.position)
+        .filter((sheet) => !only || only.has(String(sheet.id)));
+      // Every sheet's cells in a few parallel $batch calls instead of one
+      // call a sheet (a quiet round on 40 tabs: 3 s one at a time, real Excel 11-10).
+      const select = 'rowIndex,columnIndex,rowCount,columnCount,values,text,numberFormat,valueTypes';
+      const useds = wanted.length > 1
+        ? await workbookBatch(fileId, wanted.map((sheet) => ({ method: 'GET', path: `${sheetPath(sheet.id)}/usedRange(valuesOnly=true)?$select=${select}` })), { parallel: true, size: GRID_BATCH })
+        : await Promise.all(wanted.map((sheet) => usedRange(fileId, sheet.id, select)));
+      for (const [index, sheet] of wanted.entries()) {
+        const used = useds[index];
         const rows = [];
         const rowOffset = used?.rowIndex || 0;
         const colOffset = used?.columnIndex || 0;
@@ -356,13 +489,20 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
     /** Reads just these cells (one box per sheet), e.g. to re-check Row IDs before a write. */
     async readCells(fileId, cells) {
       const out = new Map();
-      for (const [sheetId, group] of bySheet(cells)) {
+      const boxes = [...bySheet(cells)].map(([sheetId, group]) => {
         const minRow = Math.min(...group.map((c) => c.row));
         const maxRow = Math.max(...group.map((c) => c.row));
         const minCol = Math.min(...group.map((c) => c.col));
         const maxCol = Math.max(...group.map((c) => c.col));
         const address = `${cellAddress(minRow, minCol)}:${cellAddress(maxRow, maxCol)}`;
-        const box = await workbook(fileId, 'GET', `${sheetPath(sheetId)}/range(address='${address}')?$select=values,text,numberFormat,valueTypes`, { where: 'readCells' });
+        return { group, minRow, minCol, path: `${sheetPath(sheetId)}/range(address='${address}')?$select=values,text,numberFormat,valueTypes` };
+      });
+      // One sheet: one call. Several: one parallel $batch, not a call a sheet.
+      const answers = boxes.length > 1
+        ? await workbookBatch(fileId, boxes.map((b) => ({ method: 'GET', path: b.path })), { parallel: true, size: GRID_BATCH })
+        : await Promise.all(boxes.map((b) => workbook(fileId, 'GET', b.path, { where: 'readCells' })));
+      for (const [index, { group, minRow, minCol }] of boxes.entries()) {
+        const box = answers[index];
         for (const cell of group) {
           const r = cell.row - minRow;
           const c = cell.col - minCol;
@@ -373,20 +513,57 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
     },
 
     async writeCells(fileId, cells) {
+      const ops = [];
       for (const [sheetId, group] of bySheet(cells)) {
-        for (const run of rowRuns(group)) await writeRow(fileId, sheetId, run.row, run.col, run.values);
+        for (const block of cellBlocks(group)) {
+          const address = `${cellAddress(block.row, block.col)}:${cellAddress(block.row + block.values.length - 1, block.col + block.values[0].length - 1)}`;
+          // `$select`: Graph would answer each write with the whole range.
+          ops.push({ sheetId, block, method: 'PATCH', path: `${sheetPath(sheetId)}/range(address='${address}')?$select=address`, body: { values: block.values } });
+        }
       }
+      if (ops.length <= 2) {
+        for (const op of ops) await writeBlock(fileId, op.sheetId, op.block.row, op.block.col, op.block.values);
+        return;
+      }
+      await workbookBatch(fileId, ops, { parallel: true, deadline: now() + WRITE_BUDGET_MS });
     },
 
     /** Adds rows under the last used row of each sheet. */
     async appendRows(fileId, batches) {
+      const todo = (batches || []).filter((b) => b?.rows?.length && Math.max(b.width || 0, ...b.rows.map((row) => row.length)) > 0);
+      const oneEach = new Set(todo.map((b) => String(b.sheetId))).size === todo.length;
+      if (todo.length > 1 && oneEach && todo.every((b) => b.before == null)) {
+        // New rows on several tabs (the first round, a tab put back): every
+        // tab's end in one parallel $batch, then every tab's rows in another,
+        // instead of two calls a tab one after another.
+        const widthOf = (batch) => Math.max(batch.width || 0, ...batch.rows.map((row) => row.length));
+        const ends = await workbookBatch(fileId, todo.map((b) => ({ method: 'GET', path: endPath(b.sheetId, filledWidth(b.rows)) })), { parallel: true, size: GRID_BATCH, allow: [404] });
+        const writes = todo.map((batch, i) => {
+          const start = endRow(ends[i]);
+          const width = widthOf(batch);
+          const values = batch.rows.map((row) => Array.from({ length: width }, (_, c) => cellValueForWrite(row[c])));
+          const address = `${cellAddress(start, 0)}:${cellAddress(start + values.length - 1, width - 1)}`;
+          return { method: 'PATCH', path: `${sheetPath(batch.sheetId)}/range(address='${address}')?$select=address`, body: { values } };
+        });
+        await workbookBatch(fileId, writes, { parallel: true, size: GRID_BATCH });
+        return;
+      }
       for (const batch of batches || []) {
         if (!batch?.rows?.length) continue;
-        const used = await usedRange(fileId, batch.sheetId, 'rowIndex,rowCount,values');
-        const empty = !used?.values?.length || (used.values.length === 1 && used.values[0].every((v) => v === ''));
-        const start = empty ? 0 : (used.rowIndex || 0) + (used.rowCount || 0);
         const width = Math.max(batch.width || 0, ...batch.rows.map((row) => row.length));
         if (!width) continue;
+        let start;
+        if (batch.before != null) {
+          // Above the PM's totals line (`before`), so it stays last.
+          start = batch.before;
+          await workbook(fileId, 'POST', `${sheetPath(batch.sheetId)}/range(address='${start + 1}:${start + batch.rows.length}')/insert`, { body: { shift: 'Down' }, where: 'appendRows', discard: true });
+        } else {
+          const used = await workbook(fileId, 'GET', endPath(batch.sheetId, filledWidth(batch.rows)), { where: 'appendRows' }).catch((err) => {
+            if (Number(err?.status) === 404) return null;
+            throw err;
+          });
+          start = endRow(used);
+        }
         const values = batch.rows.map((row) => Array.from({ length: width }, (_, c) => cellValueForWrite(row[c])));
         const address = `${cellAddress(start, 0)}:${cellAddress(start + values.length - 1, width - 1)}`;
         await workbook(fileId, 'PATCH', `${sheetPath(batch.sheetId)}/range(address='${address}')`, { body: { values }, where: 'appendRows', discard: true });
@@ -395,29 +572,100 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
 
     /** Deletes whole rows, highest first so earlier row numbers stay right. */
     async deleteRows(fileId, rows) {
-      const sorted = [...(rows || [])].sort((a, b) => b.row - a.row);
-      for (const { sheetId, row } of sorted) {
-        const n = row + 1;
-        await workbook(fileId, 'POST', `${sheetPath(sheetId)}/range(address='${n}:${n}')/delete`, { body: { shift: 'Up' }, where: 'deleteRows', discard: true });
+      // Rows next to each other on a tab go in one call ('7:9'), highest first.
+      const runs = [];
+      for (const [sheetId, group] of bySheet(rows)) {
+        const sorted = [...new Set(group.map((r) => r.row))].sort((a, b) => b - a);
+        for (const row of sorted) {
+          const last = runs[runs.length - 1];
+          if (last && last.sheetId === sheetId && last.from === row + 1) last.from = row;
+          else runs.push({ sheetId, from: row, to: row });
+        }
       }
+      const ops = runs.map(({ sheetId, from, to }) => ({ method: 'POST', path: `${sheetPath(sheetId)}/range(address='${from + 1}:${to + 1}')/delete`, body: { shift: 'Up' } }));
+      if (ops.length > 2) { await workbookBatch(fileId, ops, { deadline: now() + WRITE_BUDGET_MS }); return; }
+      for (const op of ops) await workbook(fileId, op.method, op.path, { body: op.body, where: 'deleteRows', discard: true });
     },
 
-    // The folders inside one folder of the person's OneDrive, by name.
+    // The folders inside one folder, by name. At the top of the person's
+    // OneDrive, a SharePoint/Teams folder they added as a shortcut comes back
+    // in `places` with the folder string that opens it.
     async listFolders(folder = '') {
-      const path = folder ? `me/drive/root:/${folderPath(folder).replace(/\/$/, '')}:/children` : 'me/drive/root/children';
-      const out = [];
-      let next = `${path}?$select=name,folder&$top=200`;
+      const target = folderTarget(folder);
+      const path = `${under(target.base, target.sub)}/children`;
+      const folders = [];
+      const places = [];
+      let next = `${path}?$select=name,folder,remoteItem&$top=200`;
       for (let page = 0; next && page < 5; page += 1) {
         let res;
         try { res = await call('GET', next, { where: 'folders' }); } catch (err) {
-          if (err?.status === 404) return [];
+          if (err?.status === 404) return { folders: [], places: [] };
           throw err;
         }
-        for (const it of res?.value || []) if (it?.folder) out.push(String(it.name));
+        for (const it of res?.value || []) {
+          if (it?.folder) folders.push(String(it.name));
+          else if (it?.remoteItem?.folder && it.remoteItem.id && it.remoteItem.parentReference?.driveId) {
+            places.push({ name: String(it.name), folder: placeToken(it.remoteItem.parentReference.driveId, it.remoteItem.id) });
+          }
+        }
         const link = res?.['@odata.nextLink'];
         next = link ? link.replace(/^https:\/\/graph\.microsoft\.com\/v1\.0\//, '') : null;
       }
-      return out.sort((a, b) => a.localeCompare(b));
+      folders.sort((a, b) => a.localeCompare(b));
+      places.sort((a, b) => a.name.localeCompare(b.name));
+      return { folders, places };
+    },
+
+    /**
+     * A SharePoint, Teams or OneDrive folder link pasted by the person, as a
+     * folder string ("~drive~item") and its name. Graph's /shares opens any
+     * sharing link or plain address the person can reach.
+     */
+    async resolveFolderLink(url) {
+      let it;
+      try {
+        it = await call('GET', `shares/${shareIdOf(url)}/driveItem?$select=id,name,folder,file,parentReference`, { where: 'shares' });
+      } catch (err) {
+        if ([400, 403, 404].includes(Number(err?.status))) {
+          throw Object.assign(new Error('Survey could not open that link with your Microsoft sign-in. Copy the folder\'s link from SharePoint or Teams and try again.'), { status: 400, code: 'bad_folder_link' });
+        }
+        throw err;
+      }
+      if (!it?.folder) {
+        throw Object.assign(new Error('That link is to a file. Paste the link to the folder it should go in.'), { status: 400, code: 'not_a_folder' });
+      }
+      return { folder: placeToken(it.parentReference?.driveId, it.id), name: String(it.name || 'Folder') };
+    },
+
+    /**
+     * A workbook the PM already has, from a pasted OneDrive, SharePoint or
+     * Teams link: { fileId, url, title }. Survey adds its own sheets to it
+     * (the round's new-tab path, named apart from the sheets already there)
+     * and leaves the PM's sheets as they are. Only .xlsx opens cell by cell.
+     */
+    async openFile(url) {
+      let it;
+      try {
+        it = await call('GET', `shares/${shareIdOf(url)}/driveItem?$select=id,name,file,folder,webUrl,parentReference`, { where: 'shares' });
+      } catch (err) {
+        if ([400, 403, 404].includes(Number(err?.status))) {
+          throw Object.assign(new Error('Survey could not open that link with your Microsoft sign-in. Copy the workbook\'s link from Excel (Share > Copy link) and try again.'), { status: 400, code: 'bad_file_link' });
+        }
+        throw err;
+      }
+      if (it?.folder || !it?.file) {
+        throw Object.assign(new Error('That link is to a folder. Paste the link to the workbook itself.'), { status: 400, code: 'not_a_file' });
+      }
+      if (!/\.xlsx$/i.test(String(it.name || ''))) {
+        throw Object.assign(new Error('Survey can sync .xlsx workbooks. In Excel, save it as an Excel Workbook (.xlsx) and paste its link again.'), { status: 400, code: 'not_xlsx' });
+      }
+      const place = String(it.parentReference?.name || '').trim();
+      return {
+        fileId: msgraphFileId(it.parentReference?.driveId, it.id),
+        url: it.webUrl || null,
+        title: String(it.name).replace(/\.xlsx$/i, ''),
+        ...(place && place !== 'root' ? { folderLabel: place } : {}),
+      };
     },
 
     /**
@@ -427,7 +675,8 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
      * synced cell by cell, so it is refused before anything is made.
      */
     async createFile({ title, layout, answerFills, folder = 'Survey' }) {
-      const drive = await call('GET', 'me/drive?$select=id,driveType', { where: 'drive' });
+      const target = folderTarget(folder);
+      const drive = await call('GET', target.driveId ? `drives/${target.driveId}?$select=id,driveType` : 'me/drive?$select=id,driveType', { where: 'drive' });
       if (drive?.driveType === 'personal') {
         throw Object.assign(new Error('Microsoft only allows cell edits on work or school files.'), {
           status: 409, code: 'personal-onedrive',
@@ -440,7 +689,7 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
       const built = buildLiveWorkbook({ ...(layout || {}), scopes }, { answerFills });
       const created = await call(
         'PUT',
-        `me/drive/root:/${folderPath(folder)}${encodeURIComponent(safeTitle)}.xlsx:/content?@microsoft.graph.conflictBehavior=rename`,
+        `${target.base}:/${folderPath(target.sub)}${encodeURIComponent(safeTitle)}.xlsx:/content?@microsoft.graph.conflictBehavior=rename`,
         { body: built.bytes, raw: true, headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }, where: 'createFile' },
       );
       const fileId = msgraphFileId(created.parentReference.driveId, created.id);
@@ -454,13 +703,49 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
           if (sheet) sheetIds[scope.scopeId] = sheet.id;
         });
       }
-      return { fileId, url: created.webUrl, sheetIds, folder: String(folder || ''), title: String(created.name || '').replace(/\.xlsx$/i, '') || undefined };
+      // "Kal Voe Team › Jobs" for a SharePoint folder, shown as where the file lives.
+      let folderLabel;
+      if (target.driveId) {
+        const top = await call('GET', `${target.base}?$select=name`, { where: 'folder' }).catch(() => null);
+        folderLabel = [top?.name || 'SharePoint', ...target.sub.split('/').filter(Boolean)].join(' › ');
+      }
+      return { fileId, url: created.webUrl, sheetIds, folder: String(folder || ''), ...(folderLabel ? { folderLabel } : {}), title: String(created.name || '').replace(/\.xlsx$/i, '') || undefined };
     },
 
-    /** `scopes` from the layout; `layout` (optional) supplies the drop-down lists. */
-    async addTabs(fileId, scopes, layout = null) {
+    /** `scopes` from the layout (a third `layout` argument is no longer needed). */
+    // Excel refuses a sheet name over 31 characters or holding []:*?/\ (Google
+    // allows 100), and a refused add failed every round after a category with
+    // a long name was added to the template. Names are made Excel-safe and
+    // kept clear of the sheets already there.
+    async addTabs(fileId, scopes) {
+      if (!scopes?.length) return {};
+      const list = await workbook(fileId, 'GET', 'worksheets?$select=name', { where: 'worksheets' });
+      const had = new Set((list?.value || []).map((s) => s.name));
+      const names = excelSheetNames(scopes.map((s) => s.title), [...had]);
       const sheetIds = {};
-      for (const scope of scopes || []) sheetIds[scope.scopeId] = await addSheet(fileId, scope, layout);
+      const setup = [];
+      try {
+        // Every tab in one $batch, each after the one before (tab order kept).
+        const added = await workbookBatch(fileId, names.map((name) => ({ method: 'POST', path: 'worksheets/add', body: { name } })));
+        scopes.forEach((scope, i) => {
+          const id = added[i]?.id;
+          if (id == null) throw Object.assign(new Error('Microsoft did not say which sheet it added.'), { status: 502 });
+          sheetIds[scope.scopeId] = id;
+          setup.push(...sheetSetupOps(id, scope));
+        });
+        await workbookBatch(fileId, setup.filter((op) => !op.optional), { parallel: true });
+      } catch (err) {
+        // Tabs added but not set up are taken away again: left there, they
+        // hold their names and the next round adds " (2)" copies beside them.
+        try {
+          const now = await workbook(fileId, 'GET', 'worksheets?$select=id,name', { where: 'worksheets' });
+          const ours = (now?.value || []).filter((s) => names.includes(s.name) && !had.has(s.name));
+          if (ours.length) await workbookBatch(fileId, ours.map((s) => ({ method: 'DELETE', path: sheetPath(s.id) })), { parallel: true });
+        } catch { /* the next round's names step around them */ }
+        throw err;
+      }
+      // Text formats are a nicety: a refused one must not fail the tabs.
+      await workbookBatch(fileId, setup.filter((op) => op.optional), { parallel: true }).catch(() => {});
       return sheetIds;
     },
 

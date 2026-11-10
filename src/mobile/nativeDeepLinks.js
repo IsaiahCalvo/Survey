@@ -7,7 +7,15 @@
 // that finishes a live-sheet sign-in, from the "Open Survey" button on the
 // consent page's last screen (public/google-connected.html). It is saved where
 // the connect loop looks (src/services/sheetSyncClaim.js), so nobody types it.
+//
+// A file:// or content:// url is a PDF opened from another app ("Open in
+// Survey"); src/mobile/nativeOpenFile.js reads it for the home screen.
 import { rememberClaim } from '../services/sheetSyncClaim.js';
+import { nativeBackAction } from '../utils/backNavigation.js';
+import { isFeatureOn } from '../featureFlags.js';
+
+// Kept here (tiny) so a plain link never loads the file reader.
+const isOpenedFileUrl = (url) => typeof url === 'string' && /^(file|content):\/\//i.test(url);
 
 const APP_HOSTS = new Set(['surveytool.app', 'www.surveytool.app']);
 const APP_PATH = /^\/invite\/[^/?#]+/;
@@ -40,11 +48,31 @@ export function sheetSyncClaimFromUrl(url) {
 export function installNativeDeepLinks(win = typeof window !== 'undefined' ? window : null) {
   if (!win?.Capacitor?.isNativePlatform?.()) return false;
   import('@capacitor/app').then(({ App }) => {
+    // A PDF opened from Files, Mail or Teams (src/mobile/nativeOpenFile.js).
+    const openFile = (url) => {
+      if (!isOpenedFileUrl(url)) return false;
+      Promise.all([import('@capacitor/filesystem'), import('./nativeOpenFile.js')])
+        .then(([{ Filesystem }, { receiveOpenedFile }]) => receiveOpenedFile(url, { Filesystem, win }))
+        .catch((err) => console.warn('[nativeDeepLinks] could not open file', err));
+      return true;
+    };
+    // A cold start may carry the file as the launch url instead of an event.
+    App.getLaunchUrl?.().then((launch) => { if (launch?.url) openFile(launch.url); }).catch(() => {});
     App.addListener('appUrlOpen', ({ url }) => {
+      if (openFile(url)) return;
       const claim = sheetSyncClaimFromUrl(url);
       if (claim) { rememberClaim(claim.provider, claim.code); return; }
       const route = deepLinkRoute(url);
       if (route) win.location.assign(route);
+    });
+    // Android back button: back through the page history (which closes an
+    // open sheet, then the document: src/utils/backNavigation.js), and at
+    // the bottom minimise with the flag on, else quit as before.
+    App.addListener('backButton', ({ canGoBack }) => {
+      const action = nativeBackAction({ canGoBack, enabled: isFeatureOn('back-button') });
+      if (action === 'back') win.history.back();
+      else if (action === 'minimize') App.minimizeApp();
+      else App.exitApp();
     });
   }).catch((err) => console.warn('[nativeDeepLinks] not started', err));
   return true;
