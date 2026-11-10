@@ -373,7 +373,7 @@ export function isSelectionGestureActive(interactionState, surveyMarkerDragMode 
 /**
  * True while any page layer has a mark held mid-move / resize / rotate (the
  * data-selection-gesture flag above). Undo, Delete and Duplicate wait for the
- * release.
+ * release. Pass the viewer's own root: tabs kept open behind it stay mounted.
  */
 export function selectionGestureRunning(doc = typeof document !== 'undefined' ? document : null) {
   return !!doc?.querySelector?.('[data-selection-gesture="true"]');

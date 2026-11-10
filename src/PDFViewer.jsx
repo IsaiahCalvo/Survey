@@ -3130,7 +3130,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       e.preventDefault();
       // Undo / Redo wait while a mark is held mid-move: Undo took back a
       // different mark, and the release then cleared Redo for good (R4-C K1).
-      if (selectionGestureRunning()) {
+      if (selectionGestureRunning(pdfjsWrapperRef.current || document)) {
         if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
         return;
       }
@@ -4319,7 +4319,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       // While a mark is held mid-move / resize / rotate, Delete, Duplicate,
       // Cut, Paste and Group wait for the release (R4-C K1: Delete mid-resize
       // threw, Ctrl+D copied the mark at its old place). Escape still cancels.
-      const gesture = selectionGestureRunning();
+      // Only this viewer's pages: a tab kept open behind it has its own.
+      const gesture = selectionGestureRunning(pdfjsWrapperRef.current || document);
       if (!marksHidden() && !gesture) return;
       const key = String(event.key || '');
       const mod = event.ctrlKey || event.metaKey;
@@ -29233,6 +29234,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       const result = [...next.values()];
       return JSON.stringify(result) === JSON.stringify(previous) ? previous : result;
     });
+    // Highlights / underlines / strikeouts skip handleSaveAnnotations: note
+    // the new ones too, so they move with another window's page change.
+    for (const [pageKey, nextPage] of Object.entries(transaction.nextByPage)) {
+      noteMarksOnOldPages(Number(pageKey), nextPage);
+    }
     annotationsByPageRef.current = transaction.nextByPage;
     try {
       flushSync(() => setAnnotationsByPage(transaction.nextByPage));
@@ -29252,6 +29258,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     return true;
   }, [
     documentOwnerId,
+    noteMarksOnOldPages,
     notifyLockedMarkBlocked,
     pushHistoryDebugEvent,
     pushLocalAnnotationHistoryAction,

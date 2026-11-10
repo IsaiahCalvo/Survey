@@ -26,13 +26,13 @@ test('hiding marks drops the pick and blocks mark-changing keys', () => {
   const src = read('PDFViewer.jsx');
   assert.match(src, /if \(marksHidden\(\)\) clearAnnotationSelectionForContextChange\('marks-hidden'\)/);
   // Only the front viewer swallows the keys (Home and other tabs keep theirs).
-  assert.match(src, /if \(undoRedoKeyActiveRef\.current === false \|\| isTypingTarget\(event\.target\)\) return;[\s\S]{0,400}const gesture = selectionGestureRunning\(\);\n      if \(!marksHidden\(\) && !gesture\) return;/);
+  assert.match(src, /if \(undoRedoKeyActiveRef\.current === false \|\| isTypingTarget\(event\.target\)\) return;[\s\S]{0,400}const gesture = selectionGestureRunning\(pdfjsWrapperRef\.current \|\| document\);\n      if \(!marksHidden\(\) && !gesture\) return;/);
 });
 
 test('Undo, Delete and Duplicate wait while a mark is held mid-drag (R4-C K1)', async () => {
   const src = read('PDFViewer.jsx');
   const at = src.indexOf('const handleUndoRedoKey = (e) => {');
-  assert.match(src.slice(at, at + 1200), /e\.preventDefault\(\);[\s\S]{0,300}if \(selectionGestureRunning\(\)\) \{[\s\S]{0,120}return;/);
+  assert.match(src.slice(at, at + 1200), /e\.preventDefault\(\);[\s\S]{0,300}if \(selectionGestureRunning\(pdfjsWrapperRef\.current \|\| document\)\) \{[\s\S]{0,120}return;/);
   const { selectionGestureRunning } = await import('../src/utils/selectModes.js');
   assert.equal(selectionGestureRunning({ querySelector: () => null }), false);
   assert.equal(selectionGestureRunning({ querySelector: (sel) => (sel === '[data-selection-gesture="true"]' ? {} : null) }), true);
@@ -97,4 +97,10 @@ test('a drag left behind by a second finger is dropped, never committed onto a m
   const src = read('hooks/useSVGInteraction.js');
   assert.match(src, /if \(\(ds\.mode === 'resize' \|\| ds\.mode === 'rotate' \|\| ds\.mode === 'move'\)\n      && ds\.annotationIndex != null && !annotations\?\.objects\?\.\[ds\.annotationIndex\]\) \{/);
   assert.match(src, /if \(ds\.active && \(ds\.mode === 'resize' \|\| ds\.mode === 'rotate'\)\) \{[\s\S]{0,300}currentResize: null, currentAngle: undefined \};/);
+});
+
+test('page sync also notes new highlights made while another window changes pages', () => {
+  const src = read('PDFViewer.jsx');
+  const at = src.indexOf('const commitTextMarkupDocumentTransaction = useCallback(');
+  assert.match(src.slice(at, at + 5000), /for \(const \[pageKey, nextPage\] of Object\.entries\(transaction\.nextByPage\)\) \{\n\s+noteMarksOnOldPages\(Number\(pageKey\), nextPage\);\n\s+\}\n\s+annotationsByPageRef\.current = transaction\.nextByPage;/);
 });
