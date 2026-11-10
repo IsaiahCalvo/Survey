@@ -33,3 +33,22 @@ test('a caption near the page edge is kept on the page', async () => {
   const free = layoutMeasureLabel(label, 1);
   assert.equal(free.cx, 590);
 });
+
+test('emoji built from several code points stay whole in the wrap', () => {
+  for (const emoji of ['🇺🇸', '👍🏽', '👨‍👩‍👧', '1️⃣']) {
+    const text = `${'a'.repeat(31)}${emoji}${'b'.repeat(40)}`;
+    const lines = wrapMeasureLabelLine(text);
+    assert.ok(lines[0].endsWith(emoji), `${emoji} split: ${JSON.stringify(lines)}`);
+    assert.equal(lines.join(''), text);
+  }
+  const many = wrapMeasureLabelLine('👩‍💻'.repeat(40));
+  assert.ok(many.every((l) => l.startsWith('👩‍💻') && l.endsWith('👩‍💻')));
+});
+
+test('a caption wider than the page sits in its middle, not off one edge', async () => {
+  const { layoutMeasureLabel } = await import('../src/utils/measure/measureScale.js');
+  const label = { kind: 'length', lines: ['x'.repeat(32), 'y'.repeat(32), '3 ft'], fontPx: 18, x: 300, y: 200, angle: 8 };
+  const box = layoutMeasureLabel(label, 1, { width: 326, height: 420 });
+  assert.ok(box.width > 326 * 0.9);
+  assert.equal(box.cx, 163);
+});
