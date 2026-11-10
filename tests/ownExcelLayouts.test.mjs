@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ExcelJS from 'exceljs';
-import { buildOwnKit, createOwnKitStore, ownKitCopyFor, ownKitId, readSheetHeaders, registerTemplateKits, templateOwnKitOf } from '../src/services/exportFormats/ownKits.js';
+import { buildOwnKit, createOwnKitStore, followsChecklistColumn, guessOwnKitMatches, isRowIdHeader, ownKitCopyFor, ownKitId, readSheetHeaders, registerTemplateKits, templateOwnKitOf } from '../src/services/exportFormats/ownKits.js';
 import { getExportKit, validateExportKit } from '../src/services/exportFormats/registry.js';
 import { buildSheetLayout } from '../src/services/exportFormats/sheetLayout.js';
 import { FEATURE_FLAGS } from '../src/featureFlags.js';
@@ -91,4 +91,31 @@ test('flag is beta, and the table is the owner\'s alone', () => {
   assert.match(sql, /for select to authenticated\s+using \(user_id = \(select auth\.uid\(\)\)\)/);
   assert.match(sql, /for insert to authenticated\s+with check \(user_id = \(select auth\.uid\(\)\) and not public\.is_agent_session\(\)\)/);
   assert.match(sql, /'own-excel-layouts', 'off'/);
+});
+
+// Owner 2026-11-09: "Row ID, Item, Definition check 1 ... people may not know
+// what these mean". The common columns come filled in from their names.
+test('a first guess from the column names: item, checklist, notes, who and when', () => {
+  assert.deepEqual(
+    guessOwnKitMatches(['Row ID', 'Item', 'Definition check 1', 'Definition check 2', 'Notes']),
+    ['', 'name', 'checklist', '', 'notes'],
+  );
+  assert.deepEqual(
+    guessOwnKitMatches(['Door No.', 'Fire rating', 'Checks', 'Remarks', 'Inspected by']),
+    ['name', '', '', 'notes', 'changed_by'],
+  );
+  // A column named like a checklist line of the template starts the answers.
+  assert.deepEqual(guessOwnKitMatches(['Tag', 'Closer works', 'Status', 'Date'], ['Closer works']), ['name', 'checklist', 'entity_name', 'changed_date']);
+  // Each field once.
+  assert.deepEqual(guessOwnKitMatches(['Item', 'Name']), ['name', '']);
+  assert.equal(isRowIdHeader(' row-ID '), true);
+  assert.equal(isRowIdHeader('Row'), false);
+});
+
+test('the columns after the checklist one that are just its next lines', () => {
+  assert.equal(followsChecklistColumn('Definition check 2', 'Definition check 1'), true);
+  assert.equal(followsChecklistColumn('Definition check 1', 'Definition check 1'), false);
+  assert.equal(followsChecklistColumn('Notes', 'Definition check 1'), false);
+  assert.equal(followsChecklistColumn('Lock works', 'Checks', ['Closer works', 'Lock works']), true);
+  assert.equal(followsChecklistColumn('Remarks', 'Checks', ['Closer works']), false);
 });

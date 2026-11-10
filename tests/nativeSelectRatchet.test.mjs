@@ -29,6 +29,9 @@ const ALLOWED = {
   // Item status / assignee pickers (nightly 'marker-tracking'): the phone
   // branch keeps the wheel; desktop uses ValueSelect.
   'src/components/SurveyMarkerTracking.jsx': 1,
+  // Use your own spreadsheet (beta 'own-excel-layouts'): the phone branch
+  // keeps the browser's wheel for each column; desktop uses ValueSelect.
+  'src/home/OwnExcelLayoutDialog.jsx': 1,
   // Admin-only page.
   'src/home/KitsAdminPage.jsx': 1,
   // Company roles picker (beta 'company-admin'): the coarse-pointer branch
