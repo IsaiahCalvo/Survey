@@ -127,7 +127,7 @@ export const BIG_ERASE = 10;
 // row right after the write). Only those cells are touched, so a person's
 // edit on any other item is left as it is. A few tries, in case the rows
 // move again.
-export async function putMovedWritesRight({ provider, fileId, grid, writes, idChecks, landed = new Map(), tries = 3 }) {
+export async function putMovedWritesRight({ provider, fileId, grid, writes, idChecks, landed = new Map(), headers = [], tries = 3 }) {
   const byId = (rows, col) => {
     const m = new Map();
     rows.forEach((r, i) => { const t = String(r?.[col] ?? '').trim(); if (t && i > 0 && !m.has(t)) m.set(t, i); });
@@ -145,7 +145,12 @@ export async function putMovedWritesRight({ provider, fileId, grid, writes, idCh
       const after = now.sheets.find((s) => sameId(s.sheetId, sheetId))?.rows || [];
       // A moved or renamed column: the cells can't be matched up safely.
       const ours = writes.filter((w) => sameId(w.sheetId, sheetId) && !w.header && w.row > (w.headerRow ?? 0) && w.col !== idCol);
-      if (ours.some((w) => !sameCell(after[w.headerRow ?? 0]?.[w.col], before[w.headerRow ?? 0]?.[w.col]))) continue;
+      // (A heading this round wrote itself, a new or renamed column, is expected.)
+      const headAt = (w) => {
+        const own = headers.find((h) => sameId(h.sheetId, sheetId) && h.row === (w.headerRow ?? 0) && h.col === w.col);
+        return own ? own.value : before[w.headerRow ?? 0]?.[w.col];
+      };
+      if (ours.some((w) => !sameCell(after[w.headerRow ?? 0]?.[w.col], headAt(w)))) continue;
       const beforeRow = byId(before, idCol); const afterRow = byId(after, idCol);
       const want = new Map();
       const tokenAt = (rows, r) => String(rows[r]?.[idCol] ?? '').trim();
@@ -347,7 +352,7 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
       const at = filled.length + idChecks.length;
       if (offAt(back, filled.length) || landedCells.some((c, i) => String(back[at + i] ?? '').trim() !== tokenBefore(c))) {
         const landed = new Map(landedCells.map((c, i) => [`${c.sheetId}|${c.row}`, back[at + i]]));
-        await putMovedWritesRight({ provider, fileId: link.file_id, grid, writes: dataWrites, idChecks: landedCells, landed });
+        await putMovedWritesRight({ provider, fileId: link.file_id, grid, writes: dataWrites, idChecks: landedCells, landed, headers: headerWrites });
         retry = true; return;
       }
       filled.forEach((c, i) => {

@@ -347,6 +347,18 @@ test('value repair under a title row: a column moved meanwhile is left alone, no
   assert.equal(tab.rows[3][2], 'A', 'A\'s Item is never written over');
 });
 
+test('value repair after a sort in a round that also adds a column: the new heading is not taken as a moved column', async () => {
+  const before = [['Row ID', 'Item', 'Done'], ['t1', 'A', ''], ['t2', 'B', '']];
+  // The round added a "Signed off?" heading in D and wrote A's answer there,
+  // but a sort put B where A was.
+  const tab = oneTab([['Row ID', 'Item', 'Done', 'Signed off?'], ['t2', 'B', '', 'Y'], ['t1', 'A', '', '']]);
+  const headers = [{ sheetId: '1', title: 'T', row: 0, col: 3, value: 'Signed off?', header: true }];
+  const writes = [{ sheetId: '1', title: 'T', row: 1, col: 3, value: 'Y', headerRow: 0, markerId: 'a', key: 'answer:s' }];
+  const idChecks = [{ sheetId: '1', title: 'T', row: 1, col: 0 }];
+  await putMovedWritesRight({ provider: tab, fileId: 'f', grid: { sheets: [{ sheetId: '1', rows: before }] }, writes, idChecks, landed: new Map([['1|1', 't2']]), headers });
+  assert.deepEqual(tab.rows.slice(1).map((r) => [r[1], r[3]]), [['B', ''], ['A', 'Y']]);
+});
+
 test('Row ID repair finds the heading under a title row, renamed in case and moved', async () => {
   const before = [['Doors report'], ['Row ID', 'Item', 'Notes'], ['', 'A-copy', ''], ['tokA', 'D-101', '']];
   // Sorted Z-A, Item heading retyped as "item" and moved to the end, then our
