@@ -157,7 +157,7 @@ export function measureQuantity(object, pageScale = null) {
   else if (kind === 'volume' || kind === 'area') quantity = label.value / (per * per);
   else quantity = label.value / per;
   const unit = dimension === 'length' ? units.label : (dimension === 'area' ? units.area : units.volume);
-  return { kind, name: MEASURE_NAMES[kind], text: String(label.text || ''), quantity: Math.round(quantity * 1000) / 1000, unit, dimension, scaled: Boolean(scale) };
+  return { kind, name: MEASURE_NAMES[kind], text: String(label.reading || label.text || ''), quantity: Math.round(quantity * 1000) / 1000, unit, dimension, scaled: Boolean(scale) };
 }
 
 function idOf(obj, pageNumber, index) {
