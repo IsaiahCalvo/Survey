@@ -157,6 +157,11 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Measure: Polylength, Wall area and Volume (area or outline x a depth)',
     stage: 'beta',
   }),
+  // Drawboard Projects round 2 (2026-11-10): its twelve review stamps.
+  'review-stamps': Object.freeze({
+    label: 'Review stamps: Approved, Rejected, For construction and more, with your name and the date, in the Library panel',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';
