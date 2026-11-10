@@ -128,8 +128,9 @@ function ensureHistoryPanelStyle() {
     .dh-search::-webkit-search-cancel-button { display: none; }
     .dh-search:focus { border-bottom-color: var(--text-3); }
     /* 2026-11-10 polish: the app's one joined-choice look (ButtonGroup):
-       one outline, hairlines between, the chosen filter in gold ink with no
-       chip behind it (it was a dark well with a raised grey chip). */
+       one outline, hairlines between (it was a dark well with a raised grey
+       chip). History keeps its gold for the chosen row's glyph alone, so the
+       chosen filter is bright ink on the soft fill, like the legend beside it. */
     .dh-chips { display: flex; background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-sm); }
     .dh-chip { flex: 1 1 0; min-height: 26px; border: 0; border-radius: 0; background: none; color: var(--text-2); padding: 0 6px; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap;
       transition: color var(--motion-state) var(--ease-out), background-color var(--motion-state) var(--ease-out); }
@@ -138,7 +139,7 @@ function ensureHistoryPanelStyle() {
     .dh-chip:last-child { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
     @media (hover: hover) { .dh-chip:not(.on):hover { color: var(--text-1); background: var(--hover); } }
     .dh-chip:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
-    .dh-chip.on { color: var(--accent); }
+    .dh-chip.on { color: var(--text-1); background: var(--surface-3); }
     .dh-legend { display: flex; flex-wrap: nowrap; align-items: center; column-gap: 4px; row-gap: 2px; color: var(--text-3); font-size: 11px; line-height: 16px; }
     .dh-legend > button { border: 0; padding: 3px 2px; background: transparent; color: inherit; font: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
     .dh-legend > button[aria-pressed='true'] { color: var(--text-1); background: var(--surface-3); border-radius: 4px; }
