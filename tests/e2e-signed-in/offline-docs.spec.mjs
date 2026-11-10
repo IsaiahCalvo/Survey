@@ -6,7 +6,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { E2E_ACCOUNTS, E2E_PROJECT } from './accounts.mjs';
+import { E2E_ACCOUNTS, E2E_BASE_URL, E2E_PROJECT } from './accounts.mjs';
 import { adminClient, expect, signIn, test } from './helpers.mjs';
 
 const SERVER = new URL(process.env.E2E_SUPABASE_URL || 'http://127.0.0.1:54421');
@@ -121,7 +121,14 @@ test('a kept document opens with no server; marks drawn then sync when it is bac
     await page.waitForTimeout(1_000);
     await drawLine(page, 0);
     await expect.poll(() => savedRows(kept.id), { timeout: 30_000 }).toBeGreaterThan(0);
-    const rowsOnline = await savedRows(kept.id);
+    // The first open can write a little more after the mark (its checkpoint
+    // notice); wait until nothing new arrives for 3 s.
+    let rowsOnline = await savedRows(kept.id);
+    for (let quiet = 0; quiet < 3;) {
+      await page.waitForTimeout(1_000);
+      const now = await savedRows(kept.id);
+      if (now === rowsOnline) quiet += 1; else { rowsOnline = now; quiet = 0; }
+    }
 
     // The server goes away and the app restarts (the document reopens itself).
     const restore = await cutServer(context);
@@ -150,13 +157,20 @@ test('a kept document opens with no server; marks drawn then sync when it is bac
     // Server back (and the browser says so): the offline mark is sent.
     await restore();
     await page.evaluate(() => window.dispatchEvent(new Event('online')));
-    await expect.poll(() => savedRows(kept.id), { timeout: 60_000 }).toBeGreaterThan(rowsOnline);
     await expect(page.getByText('Offline copy').filter({ visible: true })).toHaveCount(0, { timeout: 30_000 });
 
-    // A fresh reload online shows both marks from the server.
-    await page.reload({ waitUntil: 'domcontentloaded' });
-    await expect(page.getByText(PAGE_TEXT).filter({ visible: true }).first()).toBeVisible({ timeout: 60_000 });
-    await expect.poll(() => pageLines(page), { timeout: 30_000 }).toHaveLength(2);
+    // Another device (a fresh browser with nothing kept) sees both marks, so
+    // the offline mark really reached the server.
+    const other = await page.context().browser().newContext({ baseURL: E2E_BASE_URL, viewport: { width: 1400, height: 900 } });
+    try {
+      await other.route((url) => !['data:', 'blob:'].includes(url.protocol) && !['127.0.0.1', 'localhost'].includes(url.hostname), (route) => route.abort('blockedbyclient'));
+      const second = await other.newPage();
+      await signIn(second, E2E_ACCOUNTS.owner);
+      await openDocument(second, kept.name);
+      await expect.poll(() => pageLines(second), { timeout: 60_000 }).toHaveLength(2);
+    } finally {
+      await other.close();
+    }
 
   } finally {
     await kept.remove();

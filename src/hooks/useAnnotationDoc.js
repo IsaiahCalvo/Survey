@@ -118,6 +118,10 @@ const STORE_COMPACTION_JITTER_MS = 3_000;
 const OPEN_RETRY_BASE_DELAY_MS = 2_000;
 const OPEN_RETRY_MAX_DELAY_MS = 60_000;
 const OPEN_RETRY_MAX_ATTEMPTS = 8;
+// Opened from the device copy while the device says it is online (the server
+// was unreachable): ask the server again after 30 s, 60 s, then every 2 min.
+const OFFLINE_RETRY_BASE_MS = 30_000;
+const OFFLINE_RETRY_MAX_MS = 120_000;
 // An erase made while the store opens waits at most this long for it.
 const OPEN_WAIT_MAX_MS = 20_000;
 
@@ -475,9 +479,29 @@ export function useAnnotationDoc({
     setSyncQueueSize(0);
 
     if (offlineOpenRef.current.documentId !== documentId) {
-      offlineOpenRef.current = { documentId, networkFailed: false };
+      offlineOpenRef.current = { documentId, networkFailed: false, retries: 0 };
     }
+    // Back online: reopen with the server, which sends the device edits. The
+    // listener goes on before the open starts, because the signal can come
+    // back while the device copy is still opening; it then reopens as soon as
+    // that open is done (the 'online' event fires only once).
+    let openedLocal = false;
+    let backOnline = false;
+    let offlineRetryTimer = null;
+    const reopenOnline = () => {
+      if (cancelled) return;
+      offlineOpenRef.current = { ...offlineOpenRef.current, documentId, networkFailed: false };
+      setOpenRetryTick((tick) => tick + 1);
+    };
     let onBackOnline = null;
+    if (!isDeviceDocumentId(documentId) && supabase && isFeatureOn('offline-docs')
+      && typeof globalThis.addEventListener === 'function') {
+      onBackOnline = () => {
+        backOnline = true;
+        if (openedLocal) reopenOnline();
+      };
+      globalThis.addEventListener('online', onBackOnline);
+    }
 
     (async () => {
       let handle;
@@ -604,7 +628,7 @@ export function useAnnotationDoc({
           && offlineDocuments().isPinned(userId, documentId)
         ) {
           // No signal and the document is kept: open the device copy now.
-          offlineOpenRef.current = { documentId, networkFailed: true };
+          offlineOpenRef.current = { ...offlineOpenRef.current, documentId, networkFailed: true };
           return void setOpenRetryTick((tick) => tick + 1);
         }
         if (!cancelled) {
@@ -649,14 +673,22 @@ export function useAnnotationDoc({
       if (cancelled) { try { await handle.destroy(); } catch { /* */ } return; }
       handleRef.current = handle;
       setOfflineCopy(openLocal && !deviceOnly);
-      if (openLocal && !deviceOnly && typeof globalThis.addEventListener === 'function') {
-        // Back online: reopen with the server, which sends the device edits.
-        onBackOnline = () => {
-          if (cancelled) return;
-          offlineOpenRef.current = { documentId, networkFailed: false };
-          setOpenRetryTick((tick) => tick + 1);
-        };
-        globalThis.addEventListener('online', onBackOnline);
+      if (openLocal && !deviceOnly) {
+        openedLocal = true;
+        if (backOnline) {
+          reopenOnline();
+        } else if (globalThis.navigator?.onLine !== false) {
+          // The device says it is online but the server could not be reached:
+          // no 'online' event will come, so try the server again with backoff.
+          const retries = offlineOpenRef.current.retries || 0;
+          offlineOpenRef.current = { ...offlineOpenRef.current, retries: retries + 1 };
+          offlineRetryTimer = setTimeout(() => {
+            offlineRetryTimer = null;
+            reopenOnline();
+          }, Math.min(OFFLINE_RETRY_MAX_MS, OFFLINE_RETRY_BASE_MS * (2 ** retries)));
+        }
+      } else if (!deviceOnly) {
+        offlineOpenRef.current = { ...offlineOpenRef.current, retries: 0 };
       }
       const updateSyncStatus = (next) => {
         if (cancelled || !next) return;
@@ -955,6 +987,7 @@ export function useAnnotationDoc({
     return () => {
       cancelled = true;
       if (retryTimer) clearTimeout(retryTimer);
+      if (offlineRetryTimer) clearTimeout(offlineRetryTimer);
       if (onBackOnline) globalThis.removeEventListener?.('online', onBackOnline);
       setOfflineCopy(false);
       openInProgressRef.current = false;
