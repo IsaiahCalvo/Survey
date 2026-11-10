@@ -215,7 +215,7 @@ export async function fakeMsgraphHandler(req) {
       store.files.set(id, { name: body?.name || 'Tracker.xlsx', version: 1, sheets, readOnly: Boolean(body?.readOnly) });
       return json(200, { id, link: `https://contoso.sharepoint.example/:x:/r/${id}` });
     }
-    const m = /^\/__fake\/files\/([^/]+)(\/edit|\/sort|\/insert-row|\/delete-row|\/pivot)?$/.exec(path);
+    const m = /^\/__fake\/files\/([^/]+)(\/edit|\/sort|\/insert-row|\/delete-row|\/pivot|\/protect)?$/.exec(path);
     const f = m && store.files.get(m[1]);
     if (!f) return json(404, { error: 'no such file' });
     if (!m[2]) {
@@ -231,6 +231,8 @@ export async function fakeMsgraphHandler(req) {
       sheet.cells.splice(body.row, 0, body.values || []);
     } else if (m[2] === '/delete-row') {
       sheet.cells.splice(body.row, 1);
+    } else if (m[2] === '/protect') {
+      sheet.protected = body.on !== false; // Review > Protect Sheet (or off)
     } else if (m[2] === '/pivot') {
       // A PivotTable the PM made at `at` (0-based row/col): its cells hold
       // its labels and counts, and Excel won't let anything move them.
@@ -324,6 +326,15 @@ export async function fakeMsgraphHandler(req) {
     touch(f);
     return json(204);
   }
+  // Review > Protect Sheet: read and set as in Graph; while on, every
+  // write to the sheet is refused 403 AccessDenied (real Graph 11-10).
+  if (method === 'GET' && /^\/protection(\?|$)/.test(tail)) return json(200, { protected: Boolean(sheet.protected) });
+  if (method === 'POST' && (tail === '/protection/protect' || tail === '/protection/unprotect')) {
+    sheet.protected = tail.endsWith('/protect');
+    touch(f);
+    return json(204);
+  }
+  if (method !== 'GET' && sheet.protected && tail.startsWith('/range(')) return gErr(403, 'AccessDenied', 'You cannot perform the requested operation.');
   if (method === 'GET' && tail.startsWith('/usedRange')) return json(200, usedRange(sheet));
   // The used rows of some columns only (where new rows go); 404 when blank, as in Excel.
   const colsUsed = /^\/range\(address='([A-Z]+):([A-Z]+)'\)\/usedRange/.exec(tail);

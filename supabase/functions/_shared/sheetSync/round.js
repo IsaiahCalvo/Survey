@@ -274,7 +274,7 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
     throw err;
   };
   // Only the synced tabs, unless one has to be added (then every title counts).
-  const grid = await provider.readGrid(link.file_id, newScopes.length ? {} : { sheetIds: Object.values(state.sheetIds || {}) });
+  let grid = await provider.readGrid(link.file_id, newScopes.length ? {} : { sheetIds: Object.values(state.sheetIds || {}) });
   if (newScopes.length) {
     // Categories added to the template since the file was made (or a tab put
     // back) get a tab, named apart from the tabs already there: a clash makes
@@ -291,18 +291,32 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
   const sheetEditor = sheetEditorLabel(provider.lastEditor?.(link.file_id) ?? null, {
     selfEmail: provider.accountEmail ?? null, lastWriteAt: state.lastWriteAt ?? null,
   });
-  const planArgs = {
-    layout, grid, markers, baseline: roundBaseline, state, signing, now, sheetEditor,
-    lateSaves: provider.savesLate === true,
-    ...(newMarkerId ? { newMarkerId } : {}),
-  };
-  let plan = await planSheetRound(planArgs);
-  // Many filled answers blanked in the sheet at once: planned again with them
-  // held, so an older copy restored from version history (or a column cleared
-  // by mistake) can't wipe field work before an editor has looked.
-  if (plan.erasing >= BIG_ERASE && !state.eraseChoice && !state.heldErase) {
-    plan = await planSheetRound({ ...planArgs, holdErase: true });
+  // Synced tabs the PM protected (Review > Protect Sheet) are left out of
+  // the round, so the other tabs keep syncing both ways (real Excel 11-10:
+  // one locked tab stopped the whole workbook). Tabs locked last round are
+  // asked about first, so a still-locked tab costs no refused write.
+  const sheetIdOf = (scopeId) => state.sheetIds?.[scopeId];
+  let locked = [];
+  if (state.lockedTabs?.length && provider.lockedTabs) {
+    locked = await provider.lockedTabs(link.file_id, state.lockedTabs.map(sheetIdOf).filter((id) => id != null));
   }
+  let plan;
+  const makePlan = async () => {
+    const planArgs = {
+      layout, grid, markers, baseline: roundBaseline, state, signing, now, sheetEditor,
+      lateSaves: provider.savesLate === true,
+      lockedTabs: locked,
+      ...(newMarkerId ? { newMarkerId } : {}),
+    };
+    plan = await planSheetRound(planArgs);
+    // Many filled answers blanked in the sheet at once: planned again with them
+    // held, so an older copy restored from version history (or a column cleared
+    // by mistake) can't wipe field work before an editor has looked.
+    if (plan.erasing >= BIG_ERASE && !state.eraseChoice && !state.heldErase) {
+      plan = await planSheetRound({ ...planArgs, holdErase: true });
+    }
+  };
+  await makePlan();
 
   let wroteAt = state.lastWriteAt ?? null;
   let retry = false;
@@ -380,7 +394,19 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
     }
     wroteAt = new Date().toISOString();
   }
-  if (hasWork(plan)) await writePlan().catch(protectedOnRefusal);
+  if (hasWork(plan)) {
+    await writePlan().catch(async (err) => {
+      // Refused: if a synced tab is newly protected, read again (some writes
+      // may have landed) and plan once more without it.
+      if (Number(err?.status) !== 403 || !provider.lockedTabs) return protectedOnRefusal(err);
+      const now5 = await provider.lockedTabs(link.file_id, Object.values(state.sheetIds || {})).catch(() => []);
+      if (!now5.some((id) => !locked.map(String).includes(String(id)))) return protectedOnRefusal(err);
+      locked = now5;
+      grid = await provider.readGrid(link.file_id, { sheetIds: Object.values(state.sheetIds || {}) });
+      await makePlan();
+      if (hasWork(plan)) await writePlan().catch(protectedOnRefusal);
+    });
+  }
   if (retry) return { status: 'retry' };
   const writes = { ...fills, ...plan.markerWrites };
   // A blind edit put back above and not otherwise written: written, so the
@@ -415,6 +441,8 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
       // The version read BEFORE the grid: if the sheet changed during the
       // round (including our own writes), the next round reads it again.
       remote_version: version,
+      // (Unprotecting a tab changes the file's content tag, real Graph
+      // 11-10, so a locked tab's waiting changes go in on the next round.)
       app_hash: await appHashOf(layout, after),
     },
   };
