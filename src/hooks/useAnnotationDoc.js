@@ -437,6 +437,7 @@ export function useAnnotationDoc({
   // access was lowered. The viewer then stops the tools and says why.
   const [editBlocked, setEditBlocked] = useState(null);
   const offlineOpenRef = useRef({ documentId: null, networkFailed: false });
+  const clearEditBlockedRef = useRef(null);
   const [deletedPdfAnnotations, setDeletedPdfAnnotations] = useState([]);
   const [syncStatus, setSyncStatus] = useState({ stage: 'idle', healthy: true, error: null });
   // The handle opened from the device copy (offline-docs / device-files), if any.
@@ -745,6 +746,15 @@ export function useAnnotationDoc({
       };
       updateSyncStatus(handle.getSyncStatus?.());
       unsubscribeSync = handle.onSyncStatus?.(updateSyncStatus) || null;
+      // Unlocked, or brought back from Archive (the viewer sees it live):
+      // the tools come back. A refusal that still stands blocks again on the
+      // next edit.
+      clearEditBlockedRef.current = () => {
+        if (cancelled || !blockedReason) return;
+        blockedReason = null;
+        setEditBlocked(null);
+        updateSyncStatus(handle.getSyncStatus?.());
+      };
       unsubscribeHistoryQuarantine = handle.onHistoryQuarantine?.((event) => {
         if (cancelled) return;
         onHistoryQuarantineRef.current?.(event);
@@ -752,14 +762,19 @@ export function useAnnotationDoc({
         // the document vanished with only "your changes are safe on this
         // device". Ask why the server said no, then say so.
         if (String(event?.code || '') === '42501' && supabase && !openLocal && !blockedReason) {
+          // The server refused: the tools stop either way. If the reason can't
+          // be read, the plain "can no longer edit" message is used.
+          const block = (reason) => {
+            if (cancelled || blockedReason) return;
+            blockedReason = reason;
+            setEditBlocked(blockedReason);
+            setSyncStatus({ stage: 'blocked', healthy: false, error: null, reason: blockedReason });
+            setSyncQueueSize(0);
+          };
           supabase.from('documents').select('id, locked_at').eq('id', documentId).maybeSingle()
             .then(({ data, error }) => {
-              if (cancelled || error) return;
-              blockedReason = !data ? 'gone' : (data.locked_at ? 'locked' : 'denied');
-              setEditBlocked(blockedReason);
-              setSyncStatus({ stage: 'blocked', healthy: false, error: null, reason: blockedReason });
-              setSyncQueueSize(0);
-            }, () => {});
+              block(error ? 'denied' : (!data ? 'gone' : (data.locked_at ? 'locked' : 'denied')));
+            }, () => block('denied'));
         }
       }) || null;
 
@@ -1041,6 +1056,7 @@ export function useAnnotationDoc({
       if (onBackOnline) globalThis.removeEventListener?.('online', onBackOnline);
       setOfflineCopy(false);
       setEditBlocked(null);
+      clearEditBlockedRef.current = null;
       openInProgressRef.current = false;
       hydratedRef.current = false;
       settleOpenWaiters(false);
@@ -1782,6 +1798,8 @@ export function useAnnotationDoc({
     handleRef.current?.getHistoryQuarantineGeneration?.() ?? null
   ), []);
 
+  const clearEditBlocked = useCallback(() => { clearEditBlockedRef.current?.(); }, []);
+
   return {
     initialHydration,
     deletedPdfAnnotations,
@@ -1803,5 +1821,6 @@ export function useAnnotationDoc({
     liveMarkerOverlay,
     offlineCopy,
     editBlocked,
+    clearEditBlocked,
   };
 }

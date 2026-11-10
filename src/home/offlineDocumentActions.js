@@ -52,6 +52,8 @@ export function useOfflineDocumentActions({ userId, downloadDocument, fileStamp 
   const [enabled, setEnabled] = useState(() => isFeatureOn('offline-docs'));
   const [, setVersion] = useState(0);
   const [busy, setBusy] = useState(() => new Set());
+  // The kept documents' rows, for a list that can't reach the server.
+  const [keptRows, setKeptRows] = useState([]);
 
   useEffect(() => {
     const onFlags = () => setEnabled(isFeatureOn('offline-docs'));
@@ -60,9 +62,13 @@ export function useOfflineDocumentActions({ userId, downloadDocument, fileStamp 
   }, []);
 
   useEffect(() => {
-    if (!enabled || !userId) return undefined;
+    if (!enabled || !userId) { setKeptRows([]); return undefined; }
     let live = true;
-    const bump = () => { if (live) setVersion((v) => v + 1); };
+    const bump = () => {
+      if (!live) return;
+      setVersion((v) => v + 1);
+      offlineDocuments().list(userId).then((rows) => { if (live) setKeptRows(rows); }).catch(() => {});
+    };
     offlineDocuments().load(userId).then(bump).catch(() => {});
     globalThis.addEventListener?.(OFFLINE_DOCS_CHANGED_EVENT, bump);
     return () => {
@@ -115,5 +121,5 @@ export function useOfflineDocumentActions({ userId, downloadDocument, fileStamp 
     };
   }, [enabled, userId, busy, toggle]);
 
-  return { enabled, isKept, menuItem, toggle, busy };
+  return { enabled, isKept, menuItem, toggle, busy, keptRows };
 }

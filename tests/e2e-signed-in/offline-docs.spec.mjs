@@ -135,7 +135,7 @@ test('a kept document opens with no server; marks drawn then sync when it is bac
     await page.reload({ waitUntil: 'domcontentloaded' });
     await expect(page.getByText(PAGE_TEXT).filter({ visible: true }).first()).toBeVisible({ timeout: 60_000 });
     await expect.poll(() => pageLines(page), { timeout: 30_000 }).toHaveLength(1);
-    await expect(page.getByText('Offline copy').filter({ visible: true }).first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('button', { name: /^Offline copy/ }).filter({ visible: true }).first()).toBeVisible({ timeout: 30_000 });
     expect(await page.evaluate(() => document.body.getAttribute('data-readonly'))).toBeNull();
 
     // Draw with no server: it shows and stays on the device.

@@ -24,6 +24,7 @@ import { useThumbnailBackfill } from '../hooks/useThumbnailBackfill';
 import { useStorage } from '../hooks/useDatabase';
 import { useOfflineDocumentActions } from './offlineDocumentActions.js';
 import { useDeviceFileRows, deleteDeviceFile, renameDeviceFile } from './deviceFileActions.js';
+import useBrowserOnline from '../hooks/useBrowserOnline.js';
 import { getDocumentCollaborators, getDocumentOwnerProfile } from '../services/documentAnnotationService';
 import { documentTeamRows } from './documentTeam.js';
 import Spinner from '../components/Spinner';
@@ -286,10 +287,20 @@ export default function DocumentsLedger({
 
   // Nightly device-files: PDFs opened with no account, kept on this device.
   const deviceFileRows = useDeviceFileRows();
-  const listDocuments = useMemo(
-    () => (deviceFileRows.enabled && deviceFileRows.rows.length > 0 ? [...deviceFileRows.rows, ...documents] : documents),
-    [deviceFileRows.enabled, deviceFileRows.rows, documents],
-  );
+  // offline-docs: with no signal, documents kept on this device are listed
+  // even when the saved list (library cache) missed them. Online, the server's
+  // list wins (a kept document it no longer lists is not shown).
+  const deviceOnline = useBrowserOnline();
+  const keptRows = offline.keptRows;
+  const listDocuments = useMemo(() => {
+    let list = documents;
+    if (!deviceOnline && keptRows.length > 0) {
+      const listed = new Set(documents.map((d) => d.id));
+      const missing = keptRows.filter((row) => row?.id && !listed.has(row.id));
+      if (missing.length) list = [...documents, ...missing];
+    }
+    return deviceFileRows.enabled && deviceFileRows.rows.length > 0 ? [...deviceFileRows.rows, ...list] : list;
+  }, [deviceFileRows.enabled, deviceFileRows.rows, documents, deviceOnline, keptRows]);
 
   const projectNameById = useMemo(() => {
     const m = new Map();
@@ -590,7 +601,10 @@ export default function DocumentsLedger({
     minWidth: 0,
   });
 
-  const selectedRaw = () => docs.filter((d) => selDocs.has(d.id)).map((d) => d.raw);
+  const selectedAllRaw = () => docs.filter((d) => selDocs.has(d.id)).map((d) => d.raw);
+  // device-files rows are not cloud documents: Move, Copy, Duplicate, Merge
+  // and Share skip them; Delete removes them from this device.
+  const selectedRaw = () => selectedAllRaw().filter((raw) => !raw?.device_file);
   const clearSel = () => setSelDocs(new Set());
   // Rename, delete and share are owner-only on the server (RLS); a shared
   // viewer/editor gets them greyed out instead of a raw error afterwards.
@@ -656,7 +670,15 @@ export default function DocumentsLedger({
                   onCopy={() => { setMoveMode('copy'); setMoveOpen(true); }}
                   can={{ share: selectionBlock('share'), delete: selectionBlock('delete') }}
                   onShare={() => onShare && onShare(selectedRaw())}
-                  onDelete={async () => { if (!onDelete) return; const ran = await onDelete(selectedRaw()); if (ran !== false) clearSel(); }}
+                  onDelete={async () => {
+                    const all = selectedAllRaw();
+                    all.filter((raw) => raw?.device_file).forEach(deleteDeviceFile);
+                    const raws = all.filter((raw) => !raw?.device_file);
+                    if (!raws.length) { clearSel(); return; }
+                    if (!onDelete) return;
+                    const ran = await onDelete(raws);
+                    if (ran !== false) clearSel();
+                  }}
                 />
               </span>
             );
@@ -1145,7 +1167,7 @@ export default function DocumentsLedger({
                 <button type="button" className="hub-menu__item" aria-disabled={selectionBlock('share') ? true : undefined} {...tip(selectionBlock('share') || '', 'above')} onClick={() => activateOrExplain(selectionBlock('share'), () => onShare && onShare(selectedRaw()))}>
                   <Icon name="share" size={15} color="var(--ink-200)" />Share
                 </button>
-                <button type="button" className="hub-menu__item is-danger" aria-disabled={selectionBlock('delete') ? true : undefined} {...tip(selectionBlock('delete') || '', 'above')} onClick={() => activateOrExplain(selectionBlock('delete'), () => archiveSelected(selectedRaw()))}>
+                <button type="button" className="hub-menu__item is-danger" aria-disabled={selectionBlock('delete') ? true : undefined} {...tip(selectionBlock('delete') || '', 'above')} onClick={() => activateOrExplain(selectionBlock('delete'), () => archiveSelected(selectedAllRaw()))}>
                   <Icon name="trash" size={15} color="currentColor" />Delete
                 </button>
               </div>
@@ -1362,7 +1384,7 @@ export default function DocumentsLedger({
             { label: 'Duplicate', onClick: () => { onDuplicate && onDuplicate(selectedRaw()); clearDesktopSelection(); } },
             ...(onPdfTools ? [{ label: 'Merge into one PDF', onClick: () => onPdfTools(selectedRaw(), 'merge') }] : []),
             { label: 'Share', reason: selectionBlock('share'), onClick: () => onShare && onShare(selectedRaw()) },
-            { label: `Delete ${docMenu.ids.length} documents`, danger: true, reason: selectionBlock('delete'), onClick: () => archiveSelected(selectedRaw()) },
+            { label: `Delete ${docMenu.ids.length} documents`, danger: true, reason: selectionBlock('delete'), onClick: () => archiveSelected(selectedAllRaw()) },
           ] : [
             { label: 'Rename', reason: manageSelectionBlock([doc.raw], user?.id, 'rename'), onClick: () => setRenameTarget(doc.raw) },
             { label: 'Copy', onClick: () => setClipboardDoc(doc.raw) },

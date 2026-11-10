@@ -1027,6 +1027,15 @@ export const useStorage = () => {
         const { data, error } = await fetchStoredPdfInfo(filePath);
         return error ? null : pdfCacheStamp(data);
       },
+      // The database may answer while Storage does not: never open a kept
+      // copy of a file the document has since replaced.
+      currentSha: async (documentId) => {
+        if (!documentId) return null;
+        const answer = supabase.from('documents').select('content_sha256').eq('id', documentId).maybeSingle();
+        const timeout = new Promise((resolve) => { setTimeout(() => resolve({ data: null, error: 'timeout' }), 5_000); });
+        const { data, error } = await Promise.race([answer, timeout]);
+        return error ? null : (data?.content_sha256 || null);
+      },
       onOfflineCopy: (detail) => {
         try { globalThis.dispatchEvent?.(new CustomEvent(OFFLINE_COPY_OPENED_EVENT, { detail })); } catch { /* no DOM */ }
       },
