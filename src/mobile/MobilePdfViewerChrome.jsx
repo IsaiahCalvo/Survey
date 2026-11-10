@@ -3071,7 +3071,12 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                       style={{
                         position: 'fixed',
                         left: Math.max(8, Math.min(measureMenuRect.left, window.innerWidth - 188)),
-                        top: Math.max(8, Math.min(measureMenuRect.top, window.innerHeight - 208)),
+                        // Clamp by the real menu height (7 rows with the
+                        // depth tools, not 4) plus the home-bar inset, so the
+                        // last row is never off the bottom of the screen.
+                        top: Math.max(8, Math.min(measureMenuRect.top, window.innerHeight - (mobileMeasureItems(isFeatureOn('measure-depth')).length * 44 + 10) - 42)),
+                        maxHeight: 'calc(100dvh - 16px)',
+                        overflowY: 'auto',
                         width: 180,
                         background: 'var(--surface-2)',
                         border: '1px solid var(--border)',

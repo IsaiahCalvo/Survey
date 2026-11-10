@@ -5586,8 +5586,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       const el = scrollerRef.current;
       if (!el || !el.isConnected || isInTabBehind(el) || el.clientHeight <= 0 || el.getClientRects().length === 0) return;
       const target = event.target instanceof Element ? event.target : null;
+      // A text mark's editor lives inside the scroller, so check typing first:
+      // Home / End / PgUp / PgDn move the caret there, never the page.
+      if (target && (isEditableTarget(target) || isEditableTarget(document.activeElement))) return;
       if (target && target !== document.body && target !== document.documentElement && !el.contains(target)) {
-        if (isEditableTarget(target)) return;
         if (target.closest('[role="menu"], [role="listbox"], [role="slider"], [role="dialog"], [role="tree"], [role="grid"]')) return;
         if (isEndKey && target.closest('[role="toolbar"], [role="tablist"], [role="radiogroup"], [role="menubar"], [role="spinbutton"]')) return;
         for (let node = target; node && node !== document.body; node = node.parentElement) {

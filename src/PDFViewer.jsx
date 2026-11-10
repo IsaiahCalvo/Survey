@@ -3069,8 +3069,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const rendererModeRef = useRef(rendererMode);
   rendererModeRef.current = rendererMode;
 
-  // Keyboard shortcut: Ctrl+Shift+V toggles renderer mode
+  // Dev-only key: Ctrl+Shift+V toggles renderer mode. Shipped builds keep only
+  // the ?renderer= URL switch, so the key never flips people into the debug
+  // canvas view (Drawboard and most PDF apps use it for paste in place).
   useEffect(() => {
+    if (!import.meta.env.DEV) return undefined;
     const handleRendererToggle = (e) => {
       if (e.ctrlKey && e.shiftKey && e.key === 'V') {
         e.preventDefault();
@@ -27346,7 +27349,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       // Rule 12 (utils/selectModes.js): every tool letter below switches
       // through this and says so (a switch other than Select <-> Pan drops
       // the selection, owner 2026-10-04).
+      // Keys belong to an open modal (shortcut sheet, any dialog card): no
+      // tool letters, zoom or Delete acting on the page behind it.
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
       const setActiveTool = (tool) => setActiveToolLogged(tool, { source: 'shortcut-key' });
+      // Ctrl+0/1/2 land exactly where the Fit menu does (same path, so the
+      // band between panels and the page-fit rules match).
+      const fitZoomFromKey = (mode) => {
+        if (handleZoomModeSelectRef.current) handleZoomModeSelectRef.current(mode);
+        else zoomControllerRef.current?.setMode(mode);
+      };
       const activeElement = document.activeElement;
       const isFormField =
         activeElement &&
@@ -27627,17 +27639,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           }
           if (key === '0') {
             e.preventDefault();
-            zoomControllerRef.current?.setMode(ZOOM_MODES.FIT_PAGE);
+            fitZoomFromKey(ZOOM_MODES.FIT_PAGE);
             return;
           }
           if (key === '1') {
             e.preventDefault();
-            zoomControllerRef.current?.setMode(ZOOM_MODES.FIT_WIDTH);
+            fitZoomFromKey(ZOOM_MODES.FIT_WIDTH);
             return;
           }
           if (key === '2') {
             e.preventDefault();
-            zoomControllerRef.current?.setMode(ZOOM_MODES.FIT_HEIGHT);
+            fitZoomFromKey(ZOOM_MODES.FIT_HEIGHT);
             return;
           }
           if (key === '=' || key === '+') {
@@ -33036,8 +33048,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       pageHeight: height,
     });
     if (!clipboard) return false;
-    const dx = Number.isFinite(offset?.dx) ? offset.dx : DUPLICATE_OFFSET_PAGE_UNITS;
-    const dy = Number.isFinite(offset?.dy) ? offset.dy : DUPLICATE_OFFSET_PAGE_UNITS;
+    let dx = Number.isFinite(offset?.dx) ? offset.dx : DUPLICATE_OFFSET_PAGE_UNITS;
+    let dy = Number.isFinite(offset?.dy) ? offset.dy : DUPLICATE_OFFSET_PAGE_UNITS;
+    // Cmd+D / menu Duplicate keeps the copy on the page, as paste does: a
+    // mark in the bottom-right corner gets its copy slid back inside.
+    if (!offset && clipboard.extent) {
+      ({ dx, dy } = clampNudgeDelta([clipboard.extent], dx, dy, width, height));
+    }
     return commitFamilyPaste(offset?.toPage ?? pageNumber, clipboard, dx, dy);
   }, [collectFamilySelection, commitFamilyPaste]);
 

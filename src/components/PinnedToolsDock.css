@@ -317,6 +317,14 @@
   bottom: calc(var(--mobile-dock-bar-height, 46px) + 8px);
   z-index: 5700;
 }
+/* The phone sheets render inside #chrome-left/right-host, each a 5600
+   stacking context, so the 5700 above still paints this dock over an open
+   sheet (it hid the Pages sheet's Paste/Select). Step aside while any phone
+   sheet is open; a closed Pages/Survey sheet stays mounted as .is-collapsed. */
+body:has(.mobile-pdf-sheet:not(.is-collapsed)) .pinned-dock-shell.is-phone {
+  visibility: hidden;
+  pointer-events: none;
+}
 .pinned-dock-shell.is-phone .pinned-dock__pin.chrome-subcontrol {
   width: 38px;
   min-width: 38px;
