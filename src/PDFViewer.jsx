@@ -15507,12 +15507,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // A cloud document's pdfFile is only metadata (filePath, no bytes), so
   // download it first; a local File or a page-edited file passes through.
   const getExportSourcePdf = useCallback(async () => {
-    const source = (await flushPageOperations()) || pdfFile;
-    let file = source;
-    if (typeof file?.arrayBuffer !== 'function') {
+    const file = await (async () => {
+      const source = (await flushPageOperations()) || pdfFile;
+      if (typeof source?.arrayBuffer === 'function') return source;
       const bytes = await readPageMutationPdfBytes(source);
-      file = new File([bytes], source?.name || 'document.pdf', { type: 'application/pdf' });
-    }
+      return new File([bytes], source?.name || 'document.pdf', { type: 'application/pdf' });
+    })();
     // Pages as records: the stored PDF is the base; the PDF that leaves the
     // app is built from it and the page list, off the main thread.
     const loaded = pageRecordsRef.current.inUse ? pageRecordsBase() : null;
@@ -15524,7 +15524,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       ? operations.map((step) => (step.type === 'restore' && !step.entry?.blank ? { ...step, baseBytes: baseBytes.slice(0) } : step))
       : operations;
     const built = await mutatePdfPagesOffThread(() => baseBytes.slice(0), steps);
-    return new File([built], source?.name || file?.name || 'document.pdf', { type: 'application/pdf' });
+    return new File([built], file?.name || 'document.pdf', { type: 'application/pdf' });
   }, [flushPageOperations, pageRecordsBase, pdfFile, readPageMutationPdfBytes]);
   const handleMirrorPage = useCallback((...args) => {
     if (!canRestoreFromHistoryRef.current) {
