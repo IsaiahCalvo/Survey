@@ -45,6 +45,8 @@ import {
   clampNewTextBoxToPage,
 } from '../utils/textEditCommit.js';
 import { readTextboxAutoFit } from '../utils/annotationPreferences.js';
+import { isFeatureOn } from '../featureFlags';
+import { textWrapsWords } from '../utils/textWrapMode.js';
 import { stampAnnotationCreationIdentity } from '../utils/annotationStorageIdentity.js';
 import { shouldStampActiveRegionId } from '../utils/annotationVisibilityRules.js';
 import { resolveCaretAnchorPoint } from '../utils/doubleTapEditEntry.js';
@@ -346,6 +348,8 @@ export default function TextEditOverlay({
         strokeWidth: newTextPaint?.strokeWidth ?? 1,
         backgroundColor: newTextPaint?.backgroundColor || null,
         strokeDashArray: newTextPaint?.strokeDashArray || null,
+        // Beta 'word-wrap': a new box wraps at spaces (textWrapMode.js).
+        wrapWords: isFeatureOn('word-wrap'),
       }
       : {
         fontSize: Number(src.fontSize) || 16,
@@ -360,6 +364,7 @@ export default function TextEditOverlay({
         fill: (typeof src.fill === 'string' && src.fill !== 'rgba(0,0,0,0)') ? src.fill : '#1e293b',
         stroke: src.stroke,
         strokeWidth: src.strokeWidth,
+        wrapWords: textWrapsWords(src),
       };
     const scaleX = Math.abs(Number(src.scaleX) || 1);
     const scaleY = Math.abs(Number(src.scaleY) || 1);
@@ -1120,6 +1125,7 @@ export default function TextEditOverlay({
       linethrough: s.linethrough,
       color: s.fill,
       lineHeight: s.lineHeight,
+      wrapWords: !!s.wrapWords,
     })
     : buildPlainTextContentStyle({
       innerWidth: innerW,
@@ -1134,6 +1140,7 @@ export default function TextEditOverlay({
       underline: s.underline,
       linethrough: s.linethrough,
       lineHeight: s.lineHeight,
+      wrapWords: !!s.wrapWords,
     });
 
   return (

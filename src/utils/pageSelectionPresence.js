@@ -55,6 +55,24 @@ export function dropStashedSelection() {
   stashedSelection = null;
 }
 
+// A plain click on empty space on one page drops a pick on any other page
+// too (Drawboard PDF Pro trial audit 2026-11-09: Survey kept a page-2 mark
+// picked after a click on empty page 1). Each page layer listens and clears
+// its own pick; the far page's kept pick goes too.
+const otherPageClearListeners = new Set();
+export function onOtherPageClear(listener) {
+  otherPageClearListeners.add(listener);
+  return () => otherPageClearListeners.delete(listener);
+}
+export function clearOtherPageSelections(pageNumber, documentId = null) {
+  const page = Number(pageNumber);
+  // Only this document's kept pick goes (two files with no id, local or
+  // unsaved, count as the same: the click is on the open one).
+  if (stashedSelection && stashedSelection.pageNumber !== page
+    && (stashedSelection.documentId || null) === (documentId || null)) stashedSelection = null;
+  otherPageClearListeners.forEach((listener) => listener(page, documentId || null));
+}
+
 export function hasAnyPageSelection() {
   for (const count of countsByPage.values()) if (count > 0) return true;
   return !!stashedSelection;

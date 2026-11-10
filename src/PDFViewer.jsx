@@ -97,6 +97,7 @@ import {
   normalizeMeasureScaleMeta,
   pageScaleFromObjects,
   rememberRecentMeasureScale,
+  isValidMeasureScale,
 } from './utils/measure/measureScale.js';
 import LightweightAnnotationOverlay from './components/LightweightAnnotationOverlay';
 import { useDocumentThumbnailCapture } from './hooks/useDocumentThumbnailCapture';
@@ -285,6 +286,8 @@ import { shouldAutoSelectAfterCommit } from './utils/autoSelectAfterCommit';
 import { isSurveyScopedHistoryEvent, resolveHistoryEntryContext } from './utils/historyContextRestore';
 import { projectAnnotationForHistoryPreview } from './utils/historyPreviewAnnotation';
 import { isUndoKeyEvent, isRedoKeyEvent, isUndoRedoBlocked } from './utils/undoRedoHotkeys';
+import { stepBackPolyDraftForUndo } from './utils/polyDraft.js';
+import { measureKeyBadge, measureKindForKey } from './utils/measure/measureKeys.js';
 import { getCalloutSyncFingerprint } from './utils/calloutSyncPayload';
 import { isPlacedSurveyMarker } from './services/surveyMarkerSyncDiff';
 import { forceUnplacedImportedMarker, freezeGeometryFromOriginal } from './services/importFieldWhitelist';
@@ -391,6 +394,9 @@ import { bookmarkDeleteMessage, removeBookmarkWithDescendants, restoreRemovedBoo
 import { useYDoc } from './hooks/useYDoc.js';
 import { useZoomState } from './hooks/useZoomState';
 import { isFeatureOn } from './featureFlags.js';
+import { marksHidden, subscribeMarksHidden } from './utils/marksHidden.js';
+import { isTypingTarget } from './utils/typingTarget.js';
+import { useMarkClipboard } from './utils/sharedMarkClipboard.js';
 // Beta 'mark-library' (Survey Nightly): save marks once, drop them on any page.
 import MarkLibraryPlacementLayer from './markLibrary/MarkLibraryPlacementLayer.jsx';
 import MarkLibrarySaveDialog from './markLibrary/MarkLibrarySaveDialog.jsx';
@@ -402,7 +408,7 @@ import { LAYERS_META_KEY, DEFAULT_LAYER_ID, DEFAULT_LAYER_STATE, normalizeLayerS
 import { PAGE_PRESENTATION_META_KEY, normalizePagePresentations, pagePresentationFrame, clientPointInPageFrame, clientPastePointInPageFrame } from './utils/pagePresentation.js';
 import { normalizePresentationPdf, pdfBytesHavePresentationTag } from './utils/pdfPagePresentation.js';
 import { chooseCloudPdfOpenPath, shouldRetryStreamedOpenWithDownload, tryOpenCloudPdfStream } from './services/cloudPdfStream.js';
-import { getAnnotationBBox, getGroupBBox } from './utils/svgBoundingBox.js';
+import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox } from './utils/svgBoundingBox.js';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
 import { usePageOperations } from './hooks/usePageOperations.js';
 import { usePageViewDocument } from './hooks/usePageViewDocument.js';
@@ -3118,6 +3124,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       } else {
         e.stopPropagation();
       }
+      // A polygon / polyline being placed takes Undo as "last point off"
+      // (Nightly 'poly-back-step', utils/polyDraft.js).
+      if (isUndoCombo && stepBackPolyDraftForUndo()) return;
       // w57: an arrow-key nudge still waiting to save lands first, so Undo
       // takes back the nudge (this handler runs before the page layers').
       flushPendingNudges();
@@ -3172,6 +3181,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // menu or phone rail) asks for the depth first; it is remembered on this
   // screen and stamped on each new measurement.
   const [measureDepthEnabled] = useState(() => isFeatureOn('measure-depth'));
+  const [measureScaleChipOn] = useState(() => isFeatureOn('measure-scale-chip'));
+  const [measureKeysOn] = useState(() => isFeatureOn('measure-keys'));
   const [measureDepth, setMeasureDepth] = useState(() => loadMeasureDepth());
   const [measureDepthDialog, setMeasureDepthDialog] = useState(null);
   const prevMeasureModeRef = useRef(null);
@@ -4142,18 +4153,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // Plan 14-03 through SVGAnnotationLayer's useSVGInteraction callout-part
   // drag mode + onSelectedCalloutIdsChange callback.
   const [selectedCalloutIds, setSelectedCalloutIds] = useState(() => new Set());
-  const [clipboardCallout, setClipboardCallout] = useState(null);
-  const [clipboardCalloutType, setClipboardCalloutType] = useState(null); // 'cut' | 'copy'
+  // Beta 'paste-across-documents': every open tab shares these clipboards
+  // (utils/sharedMarkClipboard.js); off, each viewer keeps its own.
+  const [pasteAcrossDocuments] = useState(() => isFeatureOn('paste-across-documents'));
+  const clipboardScope = { shared: pasteAcrossDocuments, documentId: pdfFile?.id || pdfFilePath || tabId || null };
+  const [clipboardCallout, setClipboardCallout] = useMarkClipboard('callout', clipboardScope);
+  const [clipboardCalloutType, setClipboardCalloutType] = useMarkClipboard('calloutType', clipboardScope); // 'cut' | 'copy'
   // UX: right-click Copy/Cut stashes a plain (non-callout) annotation here so
   // Paste can later drop a clone onto any page. Shape is { object, sourcePageNumber, mode }
   // where `object` is the Fabric JSON for that annotation and `mode` is 'copy' | 'cut'.
   // 'cut' differs from 'copy' only in that the original is removed at Copy time,
   // matching the callout clipboard contract at ~line 11085.
-  const [clipboardAnnotation, setClipboardAnnotation] = useState(null);
+  const [clipboardAnnotation, setClipboardAnnotation] = useMarkClipboard('annotation', clipboardScope);
   // w53: ONE clipboard for any family selection (marks + callouts + Survey
   // Markers, see utils/familyClipboard.js). Like the two above, only one of
   // the three is ever filled: the most recent Copy / Cut wins.
-  const [familyClipboard, setFamilyClipboard] = useState(null);
+  const [familyClipboard, setFamilyClipboard] = useMarkClipboard('family', clipboardScope);
   const familyClipboardRef = useRef(null);
   familyClipboardRef.current = familyClipboard;
   // Every annotation Copy writes the family clipboard (the one the page
@@ -4245,6 +4260,26 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       window.__phase29InteractionState.scalingId = null;
       window.__phase29InteractionState.editCanvasId = null;
     }
+  }, []);
+
+  // Hide all marks (Nightly 'hide-marks'): hiding drops the pick, and while
+  // the marks are hidden the keys that change marks do nothing, so nothing
+  // you cannot see is deleted, cut, pasted or picked by Ctrl+A.
+  useEffect(() => subscribeMarksHidden(() => {
+    if (marksHidden()) clearAnnotationSelectionForContextChange('marks-hidden');
+  }), [clearAnnotationSelectionForContextChange]);
+  useEffect(() => {
+    const onKey = (event) => {
+      if (!marksHidden() || isTypingTarget(event.target)) return;
+      const key = String(event.key || '');
+      const mod = event.ctrlKey || event.metaKey;
+      const blocked = key === 'Delete' || key === 'Backspace' || (mod && /^[axdvgl]$/i.test(key));
+      if (!blocked) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   }, []);
 
   // UX: pan-mode quick-click → select annotation; Pan stays armed (Drawboard rule 2, 2026-10-02).
@@ -9473,6 +9508,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     }
   }, [pickBarTool, pdfId, updateToolPreference, handlePatchSelectedAnnotation, handlePatchSelectedCallout]);
 
+  // The Cloud border belongs to the tool it was armed on (the Cloud tool arms
+  // Rectangle + Cloud; the Style menu clouds the current tool). Switching to
+  // another tool drops it back to a plain line, so Polygon, Text, Callout or an
+  // Area measure picked after Cloud no longer come out clouded (deep test
+  // 2026-11-10, R3-X).
+  const cloudOwnerToolRef = useRef(null);
+  useEffect(() => {
+    cloudOwnerToolRef.current = lineBorderStyle === 'cloud' ? activeTool : null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lineBorderStyle]);
+  useEffect(() => {
+    if (lineBorderStyle === 'cloud' && cloudOwnerToolRef.current !== null && cloudOwnerToolRef.current !== activeTool) {
+      cloudOwnerToolRef.current = null;
+      setLineBorderStyle('solid');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTool]);
+
   const handleLineBorderStyleChange = useCallback((next) => {
     setLineBorderStyle(next);
     // UX (2026-07-17, callout line style): a selected callout takes the Style
@@ -14177,6 +14230,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // session. During that brief window (and when CRDT is off) Cmd+Z is a no-op,
   // matching the empty-stack-silent contract.
   const handleUndo = useCallback(() => {
+    // The Undo buttons (phone header, toolbar) step back a polygon / polyline
+    // point too, like Ctrl/Cmd+Z (Nightly 'poly-back-step', utils/polyDraft.js).
+    if (stepBackPolyDraftForUndo()) return;
     if (deferUntilEraseCommitsFinish(handleUndo)) return;
     recordAnnotationUndoRedo('undo', {
       localUndoDepth: localAnnotationUndoRef.current.length,
@@ -15142,6 +15198,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     return blob.arrayBuffer();
   }, [downloadFromStorage]);
 
+  // A page turn takes its marks along (utils/pageTurnMarks.js) in this frame.
+  const getPageSizeForTurn = useCallback((pageNumber) => pageSizesRef.current?.[pageNumber] || null, []);
+
   // Sidebar handlers — page add / delete / duplicate / physical reorder /
   // rotate / cut-copy-paste / insert-blank. Mirror remains a presentation-only
   // page transformation because PDF pages have no native mirror primitive.
@@ -15178,6 +15237,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     setClipboardPage,
     clipboardType,
     setClipboardType,
+    getPageSize: getPageSizeForTurn,
   });
   // Export, print and redaction writers read bytes with source.arrayBuffer().
   // A cloud document's pdfFile is only metadata (filePath, no bytes), so
@@ -22101,6 +22161,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // signed-in person and document project; libraryDraft is the marks the
   // Save to library card is open for.
   const [markLibraryEnabled] = useState(() => isFeatureOn('mark-library'));
+  // Markups list (Nightly 'markup-list'): every mark in one rail panel.
+  const [markupListEnabled] = useState(() => isFeatureOn('markup-list'));
   const [libraryDraft, setLibraryDraft] = useState(null);
   useEffect(() => {
     if (!markLibraryEnabled || isActive === false) return;
@@ -27373,6 +27435,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         return;
       }
 
+      // Alt+Shift+L / P / A (and Q / V with measure depth) arm a measure tool,
+      // the same as its Measure menu row (Nightly 'measure-keys').
+      if (measureKeysOn && e.altKey && e.shiftKey && !isFormField) {
+        const measureKind = measureKindForKey(e, { depth: measureDepthEnabled });
+        if (measureKind) {
+          if (document.body.getAttribute('data-readonly') === 'true') return;
+          e.preventDefault();
+          setActiveTool(measureBaseTool(measureKind));
+          setMeasureMode(measureKind);
+          return;
+        }
+      }
+
       // 'V' key to switch to Selection Tool (only when no modifiers are pressed)
       if ((e.key === 'v' || e.key === 'V') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
         // Don't trigger if user is focused on an input field, textbox, or callout
@@ -27627,17 +27702,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           }
           if (key === '0') {
             e.preventDefault();
-            zoomControllerRef.current?.setMode(ZOOM_MODES.FIT_PAGE);
+            // The same fit as the Fit menu (pdf.js: the band you can see).
+            if (handleZoomModeSelectRef.current) handleZoomModeSelectRef.current(ZOOM_MODES.FIT_PAGE);
+            else zoomControllerRef.current?.setMode(ZOOM_MODES.FIT_PAGE);
             return;
           }
           if (key === '1') {
             e.preventDefault();
-            zoomControllerRef.current?.setMode(ZOOM_MODES.FIT_WIDTH);
+            // The same fit as the Fit menu (pdf.js: the band you can see).
+            if (handleZoomModeSelectRef.current) handleZoomModeSelectRef.current(ZOOM_MODES.FIT_WIDTH);
+            else zoomControllerRef.current?.setMode(ZOOM_MODES.FIT_WIDTH);
             return;
           }
           if (key === '2') {
             e.preventDefault();
-            zoomControllerRef.current?.setMode(ZOOM_MODES.FIT_HEIGHT);
+            // The same fit as the Fit menu (pdf.js: the band you can see).
+            if (handleZoomModeSelectRef.current) handleZoomModeSelectRef.current(ZOOM_MODES.FIT_HEIGHT);
+            else zoomControllerRef.current?.setMode(ZOOM_MODES.FIT_HEIGHT);
             return;
           }
           if (key === '=' || key === '+') {
@@ -29377,6 +29458,26 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     }
     return false;
   }, []);
+
+  // Markups list: go to a mark and pick it (a callout is shown, not picked).
+  const openMarkupRow = useCallback((row) => {
+    const page = Number(row?.pageNumber);
+    if (!Number.isFinite(page) || page < 1) return;
+    const objects = (annotationsByPageRef.current || {})[page]?.objects
+      || (annotationsByPageRef.current || {})[String(page)]?.objects || [];
+    // The row's slot may have moved since the list was built: find it by id.
+    let index = Number.isInteger(row.index) && objects[row.index] ? row.index : -1;
+    if (row.id && !String(row.id).startsWith('p')) {
+      const byId = objects.findIndex((o) => String(o?.id ?? o?.data?.id ?? o?.meta?.id) === String(row.id));
+      if (byId >= 0) index = byId;
+    }
+    const obj = index >= 0 ? objects[index] : null;
+    const box = obj ? getAnnotationWorldAABB(obj) : null;
+    focusHistoryMark(page, box && box.width >= 0 ? { left: box.left, top: box.top, width: Math.max(box.width, 1), height: Math.max(box.height, 1) } : null);
+    if (obj && obj?.data?.type !== 'callout') {
+      setPendingSvgSelection({ pageNumber: page, annotationIndices: [index], tick: Date.now() });
+    }
+  }, [focusHistoryMark]);
 
   //   selectHistoryMark(id)  picks one mark where it is now, so a Comments
   //                          row shows which mark it means (owner 2026-11-09:
@@ -31793,6 +31894,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         }
       }
     }
+    // Align / distribute: `moves` = { [id]: { dx, dy } }, each marker its own.
+    if (patch.moves && typeof patch.moves === 'object') {
+      for (const [rawId, delta] of Object.entries(patch.moves)) {
+        const id = String(rawId);
+        const record = next[id];
+        const dx = Number(delta?.dx) || 0;
+        const dy = Number(delta?.dy) || 0;
+        if ((dx === 0 && dy === 0) || !record?.bounds || !mayEdit(record)) continue;
+        const moved = translateSurveyMarkerRecord(record, dx, dy);
+        next[id] = moved;
+        const existing = changes.find((change) => change.id === id);
+        if (existing) existing.after = moved;
+        else changes.push({ id, before: current[id], after: moved });
+      }
+    }
     // A group resize: `bounds` = { [id]: new box }, merged onto each box.
     if (patch.bounds && typeof patch.bounds === 'object') {
       for (const [id, bounds] of Object.entries(patch.bounds)) {
@@ -33842,6 +33958,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         let obj = buildNewTextCommitJSON({
           text, left: x, top: y, innerWrapWidth: wrapWidth - 2 * TEXT_PADDING, autoFit: false,
           fill: color || '#111827', stroke: 'transparent', strokeWidth: 0,
+          style: { wrapWords: isFeatureOn('word-wrap') },
           ...annotationScope(page),
         });
         if (!obj) return { ok: false, reason: 'empty' };
@@ -33988,6 +34105,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         callout.isSelected = false;
         callout.style = {
           ...defaultCalloutStyle,
+          ...(isFeatureOn('word-wrap') ? { wrapWords: true } : {}),
           ...(strokeColor ? { borderColor: strokeColor } : {}),
           ...(fillColor ? { fillColor } : {}),
         };
@@ -36875,6 +36993,10 @@ ${pageBlocks}
       onActiveLayerChange: setActiveLayerId,
       canEditLayers: canRestoreFromHistory,
       markLibraryEnabled,
+      markupListEnabled,
+      annotationsByPage: markupListEnabled ? annotationsByPage : null,
+      onOpenMarkup: openMarkupRow,
+      pdfDisplayName,
     };
     onLeftRailApiChange((prev) => {
       if (prev) {
@@ -36897,6 +37019,10 @@ ${pageBlocks}
     onLeftRailApiChange,
     layersEnabled,
     markLibraryEnabled,
+    markupListEnabled,
+    annotationsByPage,
+    openMarkupRow,
+    pdfDisplayName,
     layerState,
     effectiveActiveLayerId,
     handleLayersChange,
@@ -37478,6 +37604,27 @@ ${pageBlocks}
           note before Submit. Lives here so it renders above every floating
           UI including the context menu below. */}
       <SaveLogBanner />
+      {/* Nightly 'measure-scale-chip' (Drawboard PDF Pro trial audit
+          2026-11-09): a measure tool armed on a page with no scale says so,
+          with a way to set one, instead of quietly reading 1:1 inches. */}
+      {measureScaleChipOn && isActive !== false && measureMode && !measureScaleDialog && !measureDepthDialog
+        && (measureMode === 'calibrate'
+          || !isValidMeasureScale(pageScaleFromObjects(annotationsByPage?.[pageNum]?.objects) || metaScaleForPage(measureScaleMeta, pageNum)))
+        && createPortal(
+          measureMode === 'calibrate' ? (
+            // Calibrating: say what to do, with a way out.
+            <div className="measure-no-scale-chip" role="status" data-measure-calibrating="">
+              <span>Draw along a length you know.</span>
+              <button type="button" onClick={() => { setMeasureMode(null); setActiveTool('pan'); }}>Cancel</button>
+            </div>
+          ) : (
+            <div className="measure-no-scale-chip" role="status" data-measure-no-scale="">
+              <span>No scale set. Lengths read 1:1.</span>
+              <button type="button" onClick={() => setMeasureScaleDialog({ pageNumber: pageNum })}>Set scale</button>
+            </div>
+          ),
+          document.body,
+        )}
       {measureDepthDialog && (
         <MeasureDepthDialog
           kind={measureDepthDialog.kind}
@@ -39983,8 +40130,8 @@ ${pageBlocks}
                       { key: 'area', label: 'Area', iconName: 'measureArea' },
                       { key: 'perimeter', label: 'Perimeter', iconName: 'measurePerimeter' },
                       ...(measureDepthEnabled ? [
-                        { key: 'wallArea', label: 'Wall area', iconName: 'measurePerimeter' },
-                        { key: 'volume', label: 'Volume', iconName: 'measureArea' },
+                        { key: 'wallArea', label: 'Wall area', iconName: 'measureWallArea' },
+                        { key: 'volume', label: 'Volume', iconName: 'measureVolume' },
                       ] : []),
                       { key: 'scale', label: 'Page scale…', iconName: 'measureScale' },
                     ];
@@ -40028,8 +40175,8 @@ ${pageBlocks}
                               style={{
                                 position: 'fixed',
                                 top: measureMenuRect.top,
-                                left: Math.max(8, Math.min(measureMenuRect.left, window.innerWidth - 188)),
-                                width: 180,
+                                left: Math.max(8, Math.min(measureMenuRect.left, window.innerWidth - (measureKeysOn ? 238 : 188))),
+                                width: measureKeysOn ? 230 : 180,
                                 background: 'var(--surface-2)',
                                 border: '1px solid var(--border)',
                                 borderRadius: '6px',
@@ -40054,6 +40201,11 @@ ${pageBlocks}
                                 >
                                   <Icon name={m.iconName} size={CHROME_GLYPH} />
                                   {m.label}
+                                  {measureKeysOn && measureKeyBadge(m.key, { depth: measureDepthEnabled }) && (
+                                    <span data-measure-key="" style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-3)' }}>
+                                      {measureKeyBadge(m.key, { depth: measureDepthEnabled })}
+                                    </span>
+                                  )}
                                 </button>
                               ))}
                             </div>

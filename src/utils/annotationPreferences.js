@@ -69,6 +69,32 @@ export function writeSnapAngle(value) {
   return step;
 }
 
+// Default units (Nightly flag 'default-units', Drawboard PDF Pro trial audit
+// 2026-11-09): imperial (default) or metric. It picks the first unit and
+// preset in Set page scale (ft and 1/4" = 1', or m and 1:100) and the first
+// page size of a new blank document (Letter or A4). Saved scales and marks
+// never change with it.
+export const UNITS_KEY = 'survey:units';
+export const UNITS_CHOICES = Object.freeze(['imperial', 'metric']);
+export const UNITS_DEFAULT = 'imperial';
+let unitsMemo = null;
+
+export function readUnits() {
+  try {
+    const stored = storage()?.getItem(UNITS_KEY);
+    if (UNITS_CHOICES.includes(stored)) return stored;
+  } catch { /* blocked storage */ }
+  return unitsMemo ?? UNITS_DEFAULT;
+}
+
+export function writeUnits(value) {
+  const units = UNITS_CHOICES.includes(value) ? value : UNITS_DEFAULT;
+  unitsMemo = units;
+  try { storage()?.setItem(UNITS_KEY, units); } catch { /* blocked storage */ }
+  try { window.dispatchEvent(new CustomEvent(ANNOTATION_PREFERENCES_EVENT, { detail: { key: UNITS_KEY, value: units } })); } catch { /* no window */ }
+  return units;
+}
+
 export const TEXTBOX_AUTO_FIT_KEY = 'survey:textbox-auto-fit';
 export const TEXTBOX_AUTO_FIT_DEFAULT = true;
 export const ANNOTATION_PREFERENCES_EVENT = 'survey:annotation-preferences-changed';
@@ -137,7 +163,7 @@ export function subscribeAnnotationPreferences(listener) {
   if (typeof window === 'undefined' || typeof listener !== 'function') return () => {};
   const onLocal = () => listener();
   const onStorage = (event) => {
-    if (!event || event.key == null || event.key === TEXTBOX_AUTO_FIT_KEY || event.key === ANNOTATION_SNAPPING_KEY || event.key === POLYLINE_CURVE_KEY || event.key === SNAP_ANGLE_KEY) listener();
+    if (!event || event.key == null || event.key === TEXTBOX_AUTO_FIT_KEY || event.key === ANNOTATION_SNAPPING_KEY || event.key === POLYLINE_CURVE_KEY || event.key === SNAP_ANGLE_KEY || event.key === UNITS_KEY) listener();
   };
   window.addEventListener(ANNOTATION_PREFERENCES_EVENT, onLocal);
   window.addEventListener('storage', onStorage);

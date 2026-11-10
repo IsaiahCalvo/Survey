@@ -22,6 +22,7 @@
  * 'delete', 'backspace', 'arrows', 'click', 'drag').
  */
 import { TOOL_SHORTCUTS } from './toolShortcuts.js';
+import { isFeatureOn } from '../featureFlags.js';
 
 /** A tool binding from toolShortcuts.js written as a chord. */
 export const toolChord = (shortcut) => [
@@ -48,10 +49,14 @@ export const SHORTCUT_SECTIONS = [
       { chords: ['mod+-'], label: 'Zoom out' },
       { chords: ['mod+0'], label: 'Fit page' },
       { chords: ['mod+1'], label: 'Fit width' },
+      // Nightly ('focus-mode'): shown only while the flag is on.
+      { chords: ['mod+shift+f'], label: 'Focus mode', flag: 'focus-mode' },
       { chords: ['mod+2'], label: 'Fit height' },
       // UX: a fit mode re-fits whenever the window changes size; this keeps
       // the zoom where it is instead.
       { chords: ['mod+m'], label: 'Keep this zoom (stop fitting)' },
+      // Nightly ('zoom-to-area'): shown only while the flag is on.
+      { chords: ['mod+shift+drag'], label: 'Zoom to an area', flag: 'zoom-to-area' },
       { chords: ['space'], label: 'Hold to pan' },
       // Drawboard canvas audit chunk 6: one view at a time, gliding.
       { chords: ['pageup'], label: 'Scroll up one screen' },
@@ -111,6 +116,15 @@ export const SHORTCUT_SECTIONS = [
     ],
   },
   {
+    // Nightly ('measure-keys'): shown only while the flag is on.
+    title: 'Measure',
+    items: [
+      { chords: ['alt+shift+l'], label: 'Length', flag: 'measure-keys' },
+      { chords: ['alt+shift+p'], label: 'Perimeter', flag: 'measure-keys' },
+      { chords: ['alt+shift+a'], label: 'Area', flag: 'measure-keys' },
+    ],
+  },
+  {
     // UX: these keys only act while a polygon or polyline is being placed —
     // listed separately so they read as part of that flow.
     title: 'Polygon & Polyline',
@@ -138,6 +152,9 @@ export const SHORTCUT_SECTIONS = [
       { chords: ['mod+shift+p'], label: 'Print a flattened copy' },
       { chords: ['mod+o'], label: 'Open a PDF', desktopAppOnly: true },
       { chords: ['mod+shift+e'], label: 'Export annotated PDF', desktopAppOnly: true },
+      // Nightly ('tab-keys'): shown only while the flag is on.
+      { chords: ['alt+shift+]'], label: 'Next open document', flag: 'tab-keys' },
+      { chords: ['alt+shift+['], label: 'Previous open document', flag: 'tab-keys' },
     ],
   },
   {
@@ -195,7 +212,8 @@ export function shortcutSectionsFor({ isDesktopApp = false } = {}) {
   return SHORTCUT_SECTIONS
     .map((section) => ({
       ...section,
-      items: section.items.filter((item) => isDesktopApp || !item.desktopAppOnly),
+      items: section.items.filter((item) => (isDesktopApp || !item.desktopAppOnly)
+        && (!item.flag || isFeatureOn(item.flag))),
     }))
     .filter((section) => section.items.length > 0);
 }

@@ -31,7 +31,14 @@ import { usePolylineCurve } from '../hooks/usePolylineCurve.js';
 import { canRemovePolyVertex, cloudPolyEdgeReach, insertPolyVertex, insertVertexOnNearestEdge, createPolyEdgePressGate, polyEdgeDebugEnabled, polyEdgeTouchStartMayArm, polyEdgeHitAtClient, polyVertexMenuLayout, removePolyVertex } from '../utils/polyVertices.js';
 import { contextMenuInputOf, isTouchMenuInput } from '../utils/touchLongPress.js';
 import { deepClone } from '../utils/deepClone.js';
-import { clampPointToPage } from '../utils/pageEdgeRules.js';
+import { clampPointToPage, squareShapeEnd } from '../utils/pageEdgeRules.js';
+import { isFeatureOn } from '../featureFlags.js';
+
+// Shift draws a square or circle (Nightly, 'shift-square'); read only while
+// Shift is held.
+const shiftSquareOn = () => isFeatureOn('shift-square');
+// Backspace / Undo steps back one vertex while placing (Nightly, 'poly-back-step').
+const polyBackStepOn = () => isFeatureOn('poly-back-step');
 import { maxOf, minOf } from '../utils/arrayExtrema.js';
 import { resolveEditEntryKind } from '../utils/annotationEditRoute.js';
 import {
@@ -92,7 +99,9 @@ import { canToolGrabSelection, isSelectFamilyTool, isSelectionGestureActive } fr
 import { liftedMoveIndices as liftedMoveIndicesFor, liftTranslate } from '../utils/dragLift.js';
 import { createMarkWrapperCache, mapMarkWrappers, markWrapperIsLive } from '../utils/markWrapperCache.js';
 import { classifySelectionGrabTarget, isPageCalloutSelected, pageSelectionMarkGroups, resolvePagePress } from '../utils/toolPressRouting.js';
-import { dropStashedSelection, peekStashedSelection, stashPageSelection } from '../utils/pageSelectionPresence.js';
+import {
+  clearOtherPageSelections, dropStashedSelection, onOtherPageClear, peekStashedSelection, stashPageSelection,
+} from '../utils/pageSelectionPresence.js';
 import { useSelectionGrabHandoff } from '../hooks/useSelectionGrabHandoff.js';
 import { useRotateHandleClick } from '../hooks/useRotateHandleClick.js';
 import { useSelectionMoveCursor } from '../hooks/useSelectionMoveCursor.js';
@@ -113,6 +122,7 @@ import {
   buildFreehandCommitJSON,
   buildLineCommitJSON,
   buildPolyShapeCommitJSON,
+  composeAnnotationColor,
 } from '../utils/annotationCreationCommit.js';
 import {
   POLY_DRAFT_TOOLS,
@@ -124,7 +134,9 @@ import {
   isPointNearPolyDraftFirstPoint,
   polyDraftFinishControlPoints,
   polyDraftHitRadii,
+  removeLastPolyDraftPoint,
   resolvePolyDraftFinish,
+  setPolyDraftUndo,
   updatePolyDraftPreview,
 } from '../utils/polyDraft.js';
 import { collectEndpointCandidates, resolveDrawSnap, drawSnapEventOptions } from '../utils/drawSnap.js';
@@ -1366,9 +1378,24 @@ const SVGAnnotationLayerBody = memo(({
     setSelectedSurveyMarkerId(null);
     if (isPageCalloutSelected(callouts, selectedCalloutIds, pageNumber)) onSelectedCalloutIdsChange?.(new Set());
   };
+  // A plain click on empty space on another page drops this page's pick
+  // (pageSelectionPresence.clearOtherPageSelections).
+  const clearForOtherPageRef = useRef(null);
+  clearForOtherPageRef.current = () => {
+    if (!pageHasSelection && !isPageCalloutSelected(callouts, selectedCalloutIds, pageNumber)) return;
+    clearPageSelection();
+  };
+  useEffect(() => onOtherPageClear((fromPage, fromDocument) => {
+    if (fromPage === pageNumber) return;
+    // Same document only: ids must match, and a layer in a hidden tab (no
+    // id to compare for a local file) is never another page of this one.
+    if ((fromDocument || null) !== (documentId || null)) return;
+    if (!svgRef.current?.isConnected || svgRef.current.getClientRects().length === 0) return;
+    clearForOtherPageRef.current?.();
+  }), [pageNumber, documentId]);
   const applyPressFallback = (press) => {
     if (!press) return;
-    if (press.click === 'deselect') { clearPageSelection(); return; }
+    if (press.click === 'deselect') { clearPageSelection(); clearOtherPageSelections(pageNumber, documentId); return; }
     if (press.click !== 'select' && press.click !== 'add') return;
     const add = press.click === 'add';
     noteSelectionPick(press.calloutId != null ? `c:${press.calloutId}` : `a:${press.index}`, press);
@@ -1521,13 +1548,17 @@ const SVGAnnotationLayerBody = memo(({
     const coalesced = nativeEvent.getCoalescedEvents?.() || [];
     const events = coalesced.length ? coalesced : [nativeEvent];
     for (const sample of events) {
-      const point = screenToSVG(svgRef.current, sample.clientX, sample.clientY);
+      // Ink stops at the page edge (docs/page-edge rules, as shapes do): a
+      // drag out past the edge runs along it instead of keeping points nobody
+      // can see that stretch the mark's box into the gutter.
+      const raw = screenToSVG(svgRef.current, sample.clientX, sample.clientY);
+      const point = raw && width > 0 && height > 0 ? clampPointToPage(raw, width, height) : raw;
       const previous = freehandPointsRef.current[freehandPointsRef.current.length - 1];
       if (point && (!previous || Math.hypot(point.x - previous.x, point.y - previous.y) >= 0.2)) {
         freehandPointsRef.current.push(point);
       }
     }
-  }, []);
+  }, [width, height]);
 
   const [rotInputVisible, setRotInputVisible] = useState(false);
   const rotInputHoverTimerRef = useRef(null);
@@ -2719,6 +2750,7 @@ const SVGAnnotationLayerBody = memo(({
         authorId: viewerId,
         points,
         strokeColor,
+        strokeOpacity,
         highlightColor,
         strokeWidth: Number(strokeWidth) || 3,
         selectedModuleId,
@@ -2739,6 +2771,9 @@ const SVGAnnotationLayerBody = memo(({
     }
     // Drawboard: the drag-out end stays on the page (pageEdgeRules.js).
     end = clampPointToPage(end, width, height);
+    if (finalClientPoint?.shiftKey && state.start && (tool === 'rect' || tool === 'ellipse') && shiftSquareOn()) {
+      end = squareShapeEnd(state.start, end, width, height);
+    }
 
     if (tool === 'survey-marker') {
       const left = Math.min(state.start.x, end.x);
@@ -3044,6 +3079,14 @@ const SVGAnnotationLayerBody = memo(({
   // the field's own Enter-to-blur never runs, so we blur it here: every one of
   // them commits its value on blur, which is what "Enter commits the field AND
   // finishes the draft" means. Escape blurs first as well, then cancels.
+  const stepBackPolyDraft = useCallback(() => {
+    if (!polyDraftRef.current) return false;
+    const next = removeLastPolyDraftPoint(polyDraftRef.current);
+    if (!next) { cancelPolyDraft(); return true; }
+    polyDraftRef.current = next;
+    setPolyDraft(next);
+    return true;
+  }, [cancelPolyDraft]);
   useEffect(() => {
     if (!polyDraftActive) return undefined;
     const onKeyDown = (e) => {
@@ -3058,11 +3101,22 @@ const SVGAnnotationLayerBody = memo(({
         e.stopPropagation();
         releaseFocusForDraftTool(e.target);
         cancelPolyDraft();
+      } else if (e.key === 'Backspace' && polyBackStepOn()) {
+        // Backspace takes the last vertex off, not a mark (Nightly,
+        // 'poly-back-step'); Undo does the same through the viewer.
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation?.();
+        stepBackPolyDraft();
       }
     };
     window.addEventListener('keydown', onKeyDown, true);
-    return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [polyDraftActive, commitPolyDraft, cancelPolyDraft]);
+    const releaseUndo = polyBackStepOn() ? setPolyDraftUndo(stepBackPolyDraft) : null;
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, true);
+      releaseUndo?.();
+    };
+  }, [polyDraftActive, commitPolyDraft, cancelPolyDraft, stepBackPolyDraft]);
 
   const commitShapeCreationRef = useRef(commitShapeCreation);
   useEffect(() => { commitShapeCreationRef.current = commitShapeCreation; }, [commitShapeCreation]);
@@ -3144,6 +3198,10 @@ const SVGAnnotationLayerBody = memo(({
         }
         // Owner 2026-11-02 (copy Drawboard): a drawn shape stops at the page edge.
         point = clampPointToPage(point, width, height);
+        // Shift: a square or circle (Drawboard PDF Pro trial audit 2026-11-09).
+        if (point && e.shiftKey && draft?.start && (draft.tool === 'rect' || draft.tool === 'ellipse') && shiftSquareOn()) {
+          point = squareShapeEnd(draft.start, point, width, height);
+        }
         setShapeCreation((prev) => (prev ? {
           ...prev,
           ...(point ? { current: point } : {}),
@@ -7817,7 +7875,7 @@ const SVGAnnotationLayerBody = memo(({
                   id: liveId,
                   page: pageNumber,
                   tool,
-                  color: tool === 'highlighter' ? highlightColor : strokeColor,
+                  color: tool === 'highlighter' ? highlightColor : composeAnnotationColor(strokeColor, strokeOpacity),
                   width: tool === 'highlighter'
                     ? Math.max(Number(strokeWidth) || 3, 8)
                     : (Number(strokeWidth) || 3),
@@ -8350,6 +8408,7 @@ const SVGAnnotationLayerBody = memo(({
             ? Math.max(Number(strokeWidth) || 3, 8)
             : shapeCreation.tool === 'survey-marker-freehand' ? markerStrokeWidth
               : (Number(strokeWidth) || 3)}
+          strokeOpacity={shapeCreation.tool === 'pen' ? Math.max(0, Math.min(1, (strokeOpacity ?? 100) / 100)) : undefined}
           strokeLinecap="round"
           strokeLinejoin="round"
           style={{
