@@ -246,6 +246,11 @@ const DESKTOP_MAX_OVERSCAN_PAGES = 3;
 // MOBILE_MAX_CANVAS_AREA-clamped raster (~12 MiB), and the deep-zoom window
 // still tops out at three pages.
 const MOBILE_MAX_OVERSCAN_PAGES = 2;
+// Open (flag 'open-visible-first'): longest wait for an idle moment before
+// the next page off screen mounts, and longest wait for the pages on screen
+// to show their drawing before any page off screen mounts.
+const OPEN_STEP_WAIT_MS = 600;
+const OPEN_DRAWN_WAIT_MS = 10_000;
 // A finger glide faster than this (px/ms; 40 px a frame at 60 Hz) keeps the
 // mounted pages as they are: a page it reaches stays a plain white sheet (no
 // drawing, no marks) until the glide slows under it. Mounting a page's
@@ -1786,6 +1791,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const mountCatchUpRef = useRef(null);
   // The range last asked for (ahead of the render that shows it).
   const rangeNowRef = useRef(range);
+  // Open (flag 'open-visible-first'): the first pages mounted are the ones on
+  // screen; the rest follow one per idle moment, so their marks are not
+  // built before the page you look at has drawn.
+  const [openVisibleFirst] = useState(() => isFeatureOn('open-visible-first'));
   // What may draw right now (pageRasterQueue kinds): during a pinch or a
   // ctrl+wheel zoom nothing does (pages a pinch reveals are not mounted until
   // it ends anyway, and a draw slice costs a whole frame); while a pan, a
@@ -2312,6 +2321,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         last = visibleLast;
       }
     }
+    if (openVisibleFirst && visibleFirst !== -1 && !mountCatchUpRef.current && rangeNowRef.current[1] < rangeNowRef.current[0]) {
+      mountCatchUpRef.current = { step: true, frame: 0, idle: true, since: performance.now() };
+    }
     const catchUp = mountCatchUpRef.current;
     if (catchUp && !fastGlideRef.current && visibleFirst !== -1) {
       // One step per frame; calls between frames (scroll events) wait.
@@ -2320,12 +2332,29 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       catchUp.step = false;
       if (next[0] === first && next[1] === last) mountCatchUpRef.current = null;
       else if (!catchUp.frame) {
-        catchUp.frame = requestAnimationFrame(() => {
+        const stepNext = () => {
           const live = mountCatchUpRef.current;
           if (!live) return;
+          // At open, no page off screen mounts before the pages on screen show
+          // (drawn, and no longer held as blank sheets waiting for marks).
+          if (live.idle && performance.now() - live.since < OPEN_DRAWN_WAIT_MS) {
+            const [vf, vl] = visiblePageRangeRef.current || [];
+            let waiting = scrollerRef.current?.getAttribute('data-hold-pages') === 'true';
+            for (let i = vf; i >= 0 && i <= vl && !waiting; i += 1) {
+              if (layout.dims[i]?.hidden) continue;
+              const pageDiv = scrollerRef.current?.querySelector(`.survey-pdfjs-page-div[data-page-number="${i + 1}"]`);
+              waiting = !!pageDiv && !pageDiv.hasAttribute('data-raster-shown');
+            }
+            if (waiting) { live.frame = requestAnimationFrame(stepNext); return; }
+          }
           live.frame = 0; live.step = true;
           recomputeWindowRef.current?.();
-        });
+        };
+        // At open, the next page waits until the main thread is free (the
+        // page on screen drawing, its marks showing), at most OPEN_STEP_WAIT_MS.
+        catchUp.frame = catchUp.idle && typeof requestIdleCallback === 'function'
+          ? requestIdleCallback(stepNext, { timeout: OPEN_STEP_WAIT_MS })
+          : requestAnimationFrame(stepNext);
       }
       first = next[0]; last = next[1];
     }
@@ -2339,7 +2368,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     detectCurrentPage();
     visiblePageRangeRef.current = [visibleFirst, visibleLast];
     rasterQueueRef.current?.pump();
-  }, [layout, scale, detectCurrentPage, isMobileSurface]);
+  }, [layout, scale, detectCurrentPage, isMobileSurface, openVisibleFirst]);
   recomputeWindowRef.current = recomputeWindow;
 
   useLayoutEffect(() => {

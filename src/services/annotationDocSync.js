@@ -464,6 +464,7 @@ export async function openAnnotationDoc({
   whenFirstPageDrawn = null,
   // Only a saved copy at least this big waits (tests lower it).
   firstPageWaitMinBytes = FIRST_PAGE_WAIT_MIN_BYTES,
+  coldOpenWaitsForFirstPage = false,
   // w33: routine checkpoint thresholds (see CHECKPOINT_EVERY_ROWS); tests
   // shrink them: { everyRows, ownBytes, minTailRows, idleMs, dueQuietMs }.
   checkpointPolicy = null,
@@ -667,6 +668,7 @@ export async function openAnnotationDoc({
     localSyncTimeoutMs,
     onPreview: typeof onPreview === 'function' ? onPreview : null,
     whenFirstPageDrawn: typeof whenFirstPageDrawn === 'function' ? whenFirstPageDrawn : null,
+    coldOpenWaitsForFirstPage: coldOpenWaitsForFirstPage === true,
     firstPageWaitMinBytes: Number.isFinite(firstPageWaitMinBytes)
       ? firstPageWaitMinBytes
       : FIRST_PAGE_WAIT_MIN_BYTES,
@@ -2666,13 +2668,22 @@ async function loadFromBackend(state) {
     if (bytes) {
       try {
         Y.applyUpdate(doc, bytes, HYDRATE_ORIGIN);
-        await emitOpenPreview(state, 'cloud-snapshot');
+        const previewed = await emitOpenPreview(state, 'cloud-snapshot');
         // The marks are on screen now. Each further full apply of a big
         // snapshot (the accepted shadow, the IndexedDB mirror) is a few
         // hundred ms of decode; run back to back they held up mounting and
         // drawing the first PDF page (it stays covered until then). Let the
         // page's own work go first. Yjs updates commute, so anything applied
         // to these docs in between changes no result.
+        // Flag 'open-visible-first' (2026-11-10): idle came while the PDF
+        // was still opening, so the shadow's decode (~0.34 s on a phone)
+        // landed right before the first page drew; wait for that page, as
+        // a reopen does (waitForFirstPageDrawn).
+        if (
+          previewed
+          && state.coldOpenWaitsForFirstPage
+          && bytes.byteLength >= state.firstPageWaitMinBytes
+        ) await waitForFirstPageDrawn(state);
         await waitForIdle();
         applyAcceptedUpdate(state, bytes);
         deferSnapshotToLocalPersistence(state, bytes);
