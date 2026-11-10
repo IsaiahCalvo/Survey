@@ -431,7 +431,7 @@ import { chooseCloudPdfOpenPath, shouldRetryStreamedOpenWithDownload, tryOpenClo
 import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox } from './utils/svgBoundingBox.js';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
 import { usePageOperations } from './hooks/usePageOperations.js';
-import { IDLE_REMOTE_PDF_STATE, PAGE_OP_BLOCKED_MESSAGE, PAGE_OP_SYNC_FLAG, clearedPdfVersion, isPageOpBlocked, newPdfVersionToken, framePageChanges, noteFramePageChanges, operationRewritesPdf, pendingPdfVersion, reframeMarks, remotePdfLoaded, remotePdfVersionStep, savedPdfVersion, splitFramePageChanges, notedMarksOnPages, marksInDeletedSlices, stampableOperation } from './utils/pageOpSync.js';
+import { IDLE_REMOTE_PDF_STATE, PAGE_OP_BLOCKED_MESSAGE, PAGE_OP_SYNC_FLAG, clearedPdfVersion, isPageOpBlocked, newPdfVersionToken, framePageChanges, noteFramePageChanges, operationRewritesPdf, pendingPdfVersion, reframeMarks, reframeSurveyMarkers, remotePdfLoaded, remotePdfVersionStep, savedPdfVersion, splitFramePageChanges, notedMarksOnPages, marksInDeletedSlices, stampableOperation } from './utils/pageOpSync.js';
 import { usePageViewDocument } from './hooks/usePageViewDocument.js';
 import { getPageViewBase } from './utils/pageViewDocument.js';
 import { destroyPdfDocument, pdfOrDestroy } from './utils/destroyPdfDocument.js';
@@ -22488,13 +22488,31 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     // A run that could not travel leaves the pages numbered unlike the
     // slices deletes took: a later restore must not put one back.
     if (frame && !ops) sync.deletedSlices = null;
+    if (!ops?.length) return;
     const deleted = sync.deletedSlices;
-    if ((!frame?.made?.size && !deleted?.size) || !ops?.length) return;
     // Marks these runs could not move must not be moved by later runs alone.
+    const forgetNoted = (key) => { if (sync.frame) sync.frame = { ...sync.frame, [key]: new Set() }; };
     const forgetNotedMarks = () => {
       sync.deletedSlices = null;
-      if (sync.frame) sync.frame = { ...sync.frame, made: new Set() };
+      forgetNoted('made');
     };
+    if (frame?.madeMarkers?.size) {
+      try {
+        const markers = reframeSurveyMarkers(surveyMarkersRef.current || {}, frame.madeMarkers, ops, transformPageState);
+        if (markers && (Object.keys(markers.moved).length || markers.gone.length)) {
+          setSurveyMarkers((prev) => {
+            const next = { ...prev };
+            for (const [id, marker] of Object.entries(markers.moved)) if (next[id]) next[id] = { ...next[id], ...marker };
+            for (const id of markers.gone) delete next[id];
+            return next;
+          });
+        }
+      } catch (err) {
+        forgetNoted('madeMarkers');
+        console.warn('[page-op-sync] could not move Survey Markers placed on the old pages:', err?.message || err);
+      }
+    }
+    if (!frame?.made?.size && !deleted?.size) return;
     try {
       const byPage = annotationsByPageRef.current || {};
       const made = frame.made || new Set();
@@ -22519,7 +22537,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       forgetNotedMarks();
       console.warn('[page-op-sync] could not move marks drawn on the old pages:', err?.message || err);
     }
-  }, [pdfDoc, pdfFile, dropHistoryAfterPageChange]);
+  }, [pdfDoc, pdfFile, dropHistoryAfterPageChange, setSurveyMarkers]);
   pagePresentationMetaSetRef.current = normalAnnotationHydration?.ready
     && normalAnnotationHydration.documentId === pdfFile?.id
     && canRestoreFromHistory ? excelSyncMetaSet : null;
@@ -34179,6 +34197,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       checklistResponses: {},
       color: highlightColor
     };
+    { const frame = pageOpSyncRef.current?.frame; if (frame) (frame.madeMarkers ||= new Set()).add(surveyMarker.id); }
     setSurveyMarkers(prev => ({
       ...prev,
       [surveyMarker.id]: surveyMarkerData
@@ -34269,6 +34288,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     // "created a survey marker" row to spotlight the mark on click. The locate
     // branch reuses the pending item's id; the standard branch uses this one.
     const newMarkerId = pendingLocationItem?.id || `surveyMarker-${crypto.randomUUID()}`;
+    // Placed while another window changes the pages: it moves with them after
+    // the reload, like a mark drawn then (page-op-sync).
+    { const frame = pageOpSyncRef.current?.frame; if (frame) (frame.madeMarkers ||= new Set()).add(newMarkerId); }
 
     // Only handle if survey mode is active
     if (!showSurveyPanel || !selectedTemplate) {

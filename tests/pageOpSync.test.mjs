@@ -330,3 +330,33 @@ test('a delete and its Undo in different loads still leave a mark drawn here whe
   reframeMarks({ 3: { objects: [later] } }, new Set(['later']), [del], transformPageState, empty);
   assert.equal(empty.size, 0);
 });
+
+test('a Survey Marker placed in the other window before its reload moves with the pages', async () => {
+  const { reframeSurveyMarkers } = await import('../src/utils/pageOpSync.js');
+  const { transformPageState } = await import('../src/utils/pageAnnotationReindex.js');
+  const markers = {
+    mine: { pageNumber: 1, bounds: { x: 10, y: 20, width: 30, height: 40 }, name: 'Door 1' },
+    doomed: { pageNumber: 2, bounds: { x: 1, y: 1, width: 5, height: 5 } },
+    theirs: { pageNumber: 1, bounds: { x: 50, y: 50, width: 5, height: 5 } },
+  };
+  const ops = [
+    { type: 'rotate', page: 1, delta: 90, pageSize: { width: 792, height: 612 } },
+    { type: 'insert', afterPage: 0 },
+    { type: 'delete', page: 3 },
+  ];
+  const out = reframeSurveyMarkers(markers, new Set(['mine', 'doomed']), ops, transformPageState);
+  assert.deepEqual(Object.keys(out.moved), ['mine']);
+  assert.equal(out.moved.mine.pageNumber, 2);
+  assert.equal(out.moved.mine.name, 'Door 1');
+  assert.notDeepEqual(out.moved.mine.bounds, markers.mine.bounds);
+  assert.deepEqual(out.gone, ['doomed']);
+  assert.equal(reframeSurveyMarkers(markers, new Set(['nope']), ops, transformPageState), null);
+  assert.equal(reframeSurveyMarkers(markers, new Set(['mine']), [], transformPageState), null);
+});
+
+test('the viewer notes Survey Markers placed during another window\'s page change and moves them after the reload', () => {
+  const src = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
+  assert.equal((src.match(/if \(frame\) \(frame\.madeMarkers \|\|= new Set\(\)\)\.add\(/g) || []).length, 2);
+  assert.match(src, /const markers = reframeSurveyMarkers\(surveyMarkersRef\.current \|\| \{\}, frame\.madeMarkers, ops, transformPageState\);/);
+  assert.match(src, /for \(const id of markers\.gone\) delete next\[id\];/);
+});

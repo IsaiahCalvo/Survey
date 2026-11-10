@@ -134,9 +134,51 @@ export function reframeMarks(annotationsByPage, ids, operations, transform, dele
   // With slices held, every run still has to pass through, so a later
   // restore takes the slice its own delete left.
   if (Object.keys(picked).length === 0 && !held) return null;
+  const beforeDelete = deleted instanceof Map ? deleted : new Map();
+  const model = applyPageChanges({ annotationsByPage: picked }, operations, transform, beforeDelete);
+  for (const [page, list] of beforeDelete) if (!list.length) beforeDelete.delete(page);
+  // Slices holding no marks put back nothing a fresh page would not, and a
+  // long run of deletes nobody undoes is not worth keeping.
+  const kept = [...beforeDelete.values()].reduce((sum, list) => sum + list.length, 0);
+  if (kept > DELETED_SLICES_MAX || marksInDeletedSlices(beforeDelete).size === 0) beforeDelete.clear();
+  if (Object.keys(picked).length === 0 && !Object.keys(model.annotationsByPage || {}).length) return null;
+  const changed = {};
+  const take = (page) => {
+    if (!changed[page]) changed[page] = (Array.isArray(byPage[page]?.objects) ? byPage[page].objects : []).filter((obj) => !ids?.has(obj?.data?.id));
+    return changed[page];
+  };
+  for (const page of Object.keys(picked)) take(page);
+  for (const [page, value] of Object.entries(model.annotationsByPage || {})) {
+    take(page).push(...(Array.isArray(value?.objects) ? value.objects : []));
+  }
+  return changed;
+}
+
+/**
+ * The same for Survey Markers (kept by id, each with its page): the markers
+ * `ids` drawn here on the old pages, moved the way the page changes moved
+ * every other marker. Returns { moved: { [id]: marker }, gone: [id] } (gone:
+ * on a page that was deleted), or null when nothing moves.
+ */
+export function reframeSurveyMarkers(surveyMarkers, ids, operations, transform) {
+  if (!ids || ids.size === 0 || !Array.isArray(operations) || operations.length === 0) return null;
+  const picked = {};
+  for (const id of ids) if (surveyMarkers?.[id]) picked[id] = surveyMarkers[id];
+  if (Object.keys(picked).length === 0) return null;
+  const model = applyPageChanges({ surveyMarkers: picked }, operations, transform);
+  const after = model.surveyMarkers || {};
+  return {
+    moved: Object.fromEntries(Object.keys(picked).filter((id) => after[id]).map((id) => [id, after[id]])),
+    gone: Object.keys(picked).filter((id) => !after[id]),
+  };
+}
+
+/** `operations` applied to `start`; `deleted` as in reframeMarks. */
+function applyPageChanges(start, operations, transform, deleted = null) {
   let model = {
-    annotationsByPage: picked, surveyMarkers: {}, annotations: {}, pageNames: {},
+    annotationsByPage: {}, surveyMarkers: {}, annotations: {}, pageNames: {},
     pageTransformations: {}, bookmarks: [], spaces: [], regionOverlayDisabled: new Map(),
+    ...start,
   };
   // A delete then its Undo leaves this window's marks where they were: the
   // restore puts back the page slice from just before that delete. Two
@@ -162,22 +204,7 @@ export function reframeMarks(annotationsByPage, ids, operations, transform, dele
     }
     model = transform(model, step);
   }
-  for (const [page, list] of beforeDelete) if (!list.length) beforeDelete.delete(page);
-  // Slices holding no marks put back nothing a fresh page would not, and a
-  // long run of deletes nobody undoes is not worth keeping.
-  const kept = [...beforeDelete.values()].reduce((sum, list) => sum + list.length, 0);
-  if (kept > DELETED_SLICES_MAX || marksInDeletedSlices(beforeDelete).size === 0) beforeDelete.clear();
-  if (Object.keys(picked).length === 0 && !Object.keys(model.annotationsByPage || {}).length) return null;
-  const changed = {};
-  const take = (page) => {
-    if (!changed[page]) changed[page] = (Array.isArray(byPage[page]?.objects) ? byPage[page].objects : []).filter((obj) => !ids.has(obj?.data?.id));
-    return changed[page];
-  };
-  for (const page of Object.keys(picked)) take(page);
-  for (const [page, value] of Object.entries(model.annotationsByPage || {})) {
-    take(page).push(...(Array.isArray(value?.objects) ? value.objects : []));
-  }
-  return changed;
+  return model;
 }
 
 /** The write failed and was rolled back: nothing changed, stop blocking. */
