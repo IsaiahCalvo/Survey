@@ -369,6 +369,16 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Hyperlink tool (Shift+H): drag a box and link it to a page, a website or an area; "Go to" on the picked bar follows it',
     stage: 'beta',
   }),
+  // Drawboard Projects' page pins: drop a Comment, Issue or Task pin on the
+  // page (N; M cycles the type), with the rail's "Show pins" filter.
+  'comment-pins': Object.freeze({
+    label: 'Page pins (N): drop a Comment, Issue or Task pin on the page, with a Show pins filter',
+    stage: 'beta',
+  }),
+  'measure-plus': Object.freeze({
+    label: 'Measure formats: feet-inches readings, precision, custom scales and a default scale',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

@@ -739,6 +739,17 @@ const ICON_RENDERERS = {
     ),
 
     // Nightly 'link-tool': the Hyperlink tool (two chain links).
+    // Nightly 'comment-pins': a page pin (square bottom-left corner).
+    pagePin: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <g stroke={color} strokeWidth={ICON_STROKE_WIDTH} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M4 20V11a7 7 0 1 1 7 7H6" />
+          <path d="M4 20l2-2" />
+          <path d="M8.5 9.5h5M8.5 13h3" />
+        </g>
+      </svg>
+    ),
+
     hyperlink: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
         <g stroke={color} strokeWidth={ICON_STROKE_WIDTH} strokeLinecap="round" strokeLinejoin="round">

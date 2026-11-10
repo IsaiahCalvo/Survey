@@ -44,6 +44,14 @@ export function mapCommentRow(row) {
     createdAt: row.created_at,
     editedAt: row.edited_at || null,
     deletedAt: row.deleted_at || null,
+    // Nightly 'comment-pins': a page thread with a spot on the page.
+    pin: row.pin_kind ? {
+      kind: row.pin_kind,
+      x: Number(row.pin_x) || 0,
+      y: Number(row.pin_y) || 0,
+      status: row.pin_status || null,
+      number: row.pin_number == null ? null : Number(row.pin_number),
+    } : null,
   };
 }
 
@@ -52,7 +60,7 @@ export async function listMarkComments(client, documentId) {
   // Page by id past PostgREST's row cap, then sort oldest first for display.
   const { data, error } = await readLibraryRows(() => client
     .from('mark_comments')
-    .select('id, document_id, thread_id, mark_id, page_number, author_id, body, mentions, created_at, edited_at, deleted_at')
+    .select('id, document_id, thread_id, mark_id, page_number, author_id, body, mentions, created_at, edited_at, deleted_at, pin_x, pin_y, pin_kind, pin_status, pin_number')
     .eq('document_id', documentId));
   if (error) throw new Error(error.message || 'Could not read the comments');
   return [...data]
@@ -82,6 +90,31 @@ export async function addMarkComment(client, { documentId, pageNumber, body, mar
     p_thread_id: threadId,
     p_mentions: mentions,
   }), 'Could not post the comment');
+}
+
+/** Nightly 'comment-pins': drop a Comment, Issue or Task pin on a page. */
+export async function addPagePin(client, { documentId, pageNumber, x, y, kind, body, status = null, mentions = [] }) {
+  return rpcRow(await client.rpc('add_page_pin', {
+    p_document_id: documentId,
+    p_page_number: pageNumber,
+    p_x: x,
+    p_y: y,
+    p_kind: kind,
+    p_body: body,
+    p_status: status,
+    p_mentions: mentions,
+  }), 'Could not save the pin');
+}
+
+/** Move a pin (page and spot) or set an issue / task status. */
+export async function updatePagePin(client, { commentId, pageNumber = null, x = null, y = null, status = null }) {
+  return rpcRow(await client.rpc('update_page_pin', {
+    p_comment_id: commentId,
+    p_page_number: pageNumber,
+    p_x: x,
+    p_y: y,
+    p_status: status,
+  }), 'Could not change the pin');
 }
 
 export async function editMarkComment(client, { commentId, body, mentions = [] }) {

@@ -103,9 +103,14 @@ export default function LinkToolHost({
     return () => window.removeEventListener(LINK_EDIT_EVENT, onEdit);
   }, [isActive, readOnly]);
 
+  // The open dialog, cleared at once on submit, so a second Enter before the
+  // re-render can't commit the same link twice.
+  const dialogRef = useRef(dialog);
+  dialogRef.current = dialog;
   const close = useCallback(() => setDialog(null), []);
   const submit = useCallback(({ link, pendingArea, style, color }) => {
-    const current = dialog;
+    const current = dialogRef.current;
+    dialogRef.current = null;
     setDialog(null);
     if (!current) return;
     if (current.mode === 'edit') {
@@ -125,7 +130,7 @@ export default function LinkToolHost({
     }
     const mark = buildLinkMark({ id: current.draft.id, box: current.draft.box, link, style, color });
     if (mark) current.draft.commit(mark);
-  }, [dialog, onPatchSelectedLink]);
+  }, [onPatchSelectedLink]);
 
   return (
     <HyperlinkDialog

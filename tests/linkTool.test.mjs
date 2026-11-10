@@ -225,3 +225,8 @@ test('wiring: tool, layer event, host, renderers, bar, phone strip, flag and mig
   // The painter runs in a worker: its link helper module imports nothing.
   assert.doesNotMatch(read('src/utils/linkMarkPaint.js'), /^import /m);
 });
+
+test('a quick second submit cannot commit the same link twice', () => {
+  const host = readFileSync(new URL('../src/components/LinkToolHost.jsx', import.meta.url), 'utf8');
+  assert.match(host, /const current = dialogRef\.current;\s*dialogRef\.current = null;/);
+});

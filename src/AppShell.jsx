@@ -24,6 +24,7 @@ import { HOME_DOWNLOAD_EVENT } from './utils/homeDownload.js';
 import { OPEN_EXPORT_PDF_EVENT } from './utils/exportPdfModes.js';
 import { PageGridMenu } from './components/PageGridSettings';
 import RailFlyout from './components/RailFlyout.jsx';
+import { PinFilterMenu } from './components/pins/PinControls.jsx';
 import MenuGlide from './components/MenuGlide.jsx';
 import { chordKeycaps } from './utils/keyboardShortcuts.js';
 import { shortcutBinding } from './utils/customKeyboardShortcuts.js';
@@ -2285,6 +2286,7 @@ export default function App({ devPreviewReturnTab = null }) {
   const [hideMarksEnabled] = useState(() => isFeatureOn('hide-marks'));
   const [lineDashesOn] = useState(() => isFeatureOn('line-dashes'));
   const [eraserLookOn] = useState(() => isFeatureOn('eraser-look'));
+  const [pinsOn] = useState(() => isFeatureOn('comment-pins'));
   const allMarksHidden = useMarksHidden();
   // Focus mode (Nightly, 'focus-mode'; utils/focusMode.js): no tab strip or
   // side rails, browser full screen, an Exit chip that always shows.
@@ -5695,6 +5697,24 @@ export default function App({ devPreviewReturnTab = null }) {
                       >
                         <EyeGlyph open={!allMarksHidden} size={RAIL_CONTROL_GLYPH} />
                       </button>
+                    )}
+                    {/* Nightly 'comment-pins': the "Show pins" card. */}
+                    {pinsOn && (
+                      <PinFilterMenu renderButton={({ open, ref, onClick, on }) => (
+                        <button
+                          ref={ref}
+                          type="button"
+                          onClick={onClick}
+                          aria-label="Show pins"
+                          aria-haspopup="dialog"
+                          aria-expanded={open}
+                          data-pin-filter-toggle="true"
+                          {...chromeTip(open ? undefined : 'Show pins', 'left')}
+                          style={{ ...footerBtn(), color: on || open ? 'var(--text-1)' : 'var(--text-3)' }}
+                        >
+                          <Icon name="pagePin" size={RAIL_CONTROL_GLYPH} color="currentColor" />
+                        </button>
+                      )} />
                     )}
                     {focusModeEnabled && (
                       <button

@@ -181,6 +181,7 @@ const TOOL_GROUPS = {
       { id: 'image', label: 'Image', icon: 'image', flag: 'insert-image', action: true },
       // Nightly 'link-tool': drag a box, then say where it links.
       { id: 'hyperlink', label: 'Hyperlink', icon: 'hyperlink', flag: 'link-tool' },
+      { id: 'pin', label: 'Pin', icon: 'pagePin', flag: 'comment-pins' },
     ],
   },
 };

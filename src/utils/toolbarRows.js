@@ -57,6 +57,10 @@ export function showsSurveyRow(api) {
     && !isAreaEditing(api));
 }
 
+// Nightly tools whose button sits in a group's row but which make no mark of
+// that group: the row still shows while they are armed (Shift+H, N).
+const BETA_TOOL_ROWS = Object.freeze({ hyperlink: 'review', pin: 'review' });
+
 /** The tool groups whose tools sit in the tool bar. */
 export const TOOL_BAR_GROUPS = Object.freeze(['draw', 'shape', 'review', 'forms']);
 
@@ -84,7 +88,7 @@ export function resolveToolBarGroup({ activeTool, activeCategoryDropdown, contex
   // Owner 2026-10-04: a Pan pick brings up the picked mark's group as a
   // Select pick does (contextTool is then the mark's tool); Pan alone has none.
   if (activeTool === 'pan') return TOOL_GROUP_BY_TOOL[contextTool] || null;
-  return TOOL_GROUP_BY_TOOL[activeTool] || null;
+  return TOOL_GROUP_BY_TOOL[activeTool] || BETA_TOOL_ROWS[activeTool] || null;
 }
 
 /** The tools whose settings fill the formatting row (the same list every
