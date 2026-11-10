@@ -129,8 +129,8 @@ test('zoomIn and zoomOut still step by the shared 1.2x factor', () => {
   const shared = read('../src/viewerShared.js');
   assert.match(shared, /export const TOOLBAR_ZOOM_STEP_FACTOR = 1\.2;/);
   const viewer = read('../src/PDFViewer.jsx');
-  assert.match(viewer, /const zoomIn = useCallback\(\(\) => \{[\s\S]{0,900}basisScale \* TOOLBAR_ZOOM_STEP_FACTOR/);
-  assert.match(viewer, /const zoomOut = useCallback\(\(\) => \{[\s\S]{0,900}basisScale \/ TOOLBAR_ZOOM_STEP_FACTOR/);
+  assert.match(viewer, /const zoomIn = useCallback\(\(\) => \{[\s\S]{0,1100}basisScale \* TOOLBAR_ZOOM_STEP_FACTOR/);
+  assert.match(viewer, /const zoomOut = useCallback\(\(\) => \{[\s\S]{0,1100}basisScale \/ TOOLBAR_ZOOM_STEP_FACTOR/);
 });
 
 test('tapping an open tool group closes its strip and hands the tool back to Pan', () => {

@@ -127,10 +127,19 @@ function ensureHistoryPanelStyle() {
       font: inherit; font-size: 13px; padding: 0 2px; outline: none; -webkit-appearance: none; appearance: none; }
     .dh-search::-webkit-search-cancel-button { display: none; }
     .dh-search:focus { border-bottom-color: var(--text-3); }
-    .dh-chips { display: flex; gap: 2px; background: var(--surface-0); padding: 2px; border-radius: 8px; }
-    .dh-chip { flex: 1; border: 0; background: none; color: var(--text-3); padding: 5px 6px; border-radius: 6px; font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap; }
-    .dh-chip:hover { color: var(--text-1); }
-    .dh-chip.on { background: var(--surface-3); color: var(--text-1); }
+    /* 2026-11-10 polish: the app's one joined-choice look (ButtonGroup):
+       one outline, hairlines between (it was a dark well with a raised grey
+       chip). History keeps its gold for the chosen row's glyph alone, so the
+       chosen filter is bright ink on the soft fill, like the legend beside it. */
+    .dh-chips { display: flex; background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+    .dh-chip { flex: 1 1 0; min-height: 26px; border: 0; border-radius: 0; background: none; color: var(--text-2); padding: 0 6px; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap;
+      transition: color var(--motion-state) var(--ease-out), background-color var(--motion-state) var(--ease-out); }
+    .dh-chip + .dh-chip { border-left: 1px solid var(--border); }
+    .dh-chip:first-child { border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
+    .dh-chip:last-child { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+    @media (hover: hover) { .dh-chip:not(.on):hover { color: var(--text-1); background: var(--hover); } }
+    .dh-chip:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+    .dh-chip.on { color: var(--text-1); background: var(--surface-3); }
     .dh-legend { display: flex; flex-wrap: nowrap; align-items: center; column-gap: 4px; row-gap: 2px; color: var(--text-3); font-size: 11px; line-height: 16px; }
     .dh-legend > button { border: 0; padding: 3px 2px; background: transparent; color: inherit; font: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
     .dh-legend > button[aria-pressed='true'] { color: var(--text-1); background: var(--surface-3); border-radius: 4px; }
@@ -205,7 +214,7 @@ function ensureHistoryPanelStyle() {
     .dh-panel--phone .dh-empty { font: var(--sheet-empty); }
     .dh-panel--phone .dh-row .dh-m { font: var(--sheet-row-meta); }
     .dh-panel--phone .dh-row { min-height: 44px; }
-    .dh-panel--phone .dh-chip { padding: 8px 6px; font-size: 13px; }
+    .dh-panel--phone .dh-chip { min-height: 44px; font-size: 13px; }
     .dh-panel--phone .dh-legend { font-size: 12px; }
     .dh-panel--phone .dh-markchip { font-size: 13px; line-height: 32px; }
     .dh-panel--phone .dh-markchip button { width: 32px; height: 32px; }
