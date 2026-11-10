@@ -24,6 +24,9 @@
  *     the item is placed: author, date, time, document, project, page.
  */
 
+import { historyTypeKey } from '../utils/historyFeed.js';
+import { historyMarkFilterNoun } from '../utils/historyMarkFilter.js';
+
 export const LIBRARY_PAYLOAD_VERSION = 1;
 export const LIBRARY_KINDS = Object.freeze(['personal', 'project']);
 export const LIBRARY_NAME_MAX = 120;
@@ -210,6 +213,13 @@ export function defaultLibraryItemName(payload) {
   }
   if (items.length === 1) {
     if (items[0].kind === 'marker' && items[0].categoryName) return cleanLibraryName(items[0].categoryName);
+    // The mark's own name ("Rectangle", "Cloud", "Arrow"), the word the
+    // Comments panel and history use, before the broad kind ("Shape").
+    if (items[0].kind === 'mark' && items[0].object) {
+      const typeKey = historyTypeKey(items[0].object.type, items[0].object);
+      const noun = historyMarkFilterNoun([{ id: 'mark', typeKey }]).replace(/^this /, '');
+      if (noun && noun !== 'mark') return noun.charAt(0).toUpperCase() + noun.slice(1);
+    }
     return LIBRARY_KIND_LABELS[libraryKindOf(items[0])] || 'Mark';
   }
   return `${items.length} marks`;

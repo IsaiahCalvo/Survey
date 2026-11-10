@@ -109,3 +109,10 @@
   --rule: var(--border);
   --rule-strong: var(--border-strong);
 }
+
+/* Phone: a finger needs 44px to hit Remove answer (touchTargets.css rule). */
+.hub-answer-set-editor .hub-icon-btn.hub-answer-set-editor__remove--phone {
+  width: 44px;
+  height: 44px;
+  flex: none;
+}

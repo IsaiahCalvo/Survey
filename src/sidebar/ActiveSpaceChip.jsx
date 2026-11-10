@@ -23,7 +23,7 @@ export default function ActiveSpaceChip({ name, pageCount = 0, onOpen = null, on
         aria-label={`${label} is on, ${pages}. Open Spaces`}
         onClick={onOpen || undefined}
       >
-        <Icon name="layers" size={12} color="currentColor" />
+        <Icon name="spaces" size={12} color="currentColor" />
         <span className="active-space-chip__name">{label}</span>
         <span className="active-space-chip__meta">· {pages}</span>
       </button>
