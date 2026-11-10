@@ -67,7 +67,7 @@ test('a polygon draft only takes and lights its own viewer\'s Undo', async () =>
 
 test('a draft in a tab behind ignores Enter, Escape and Backspace', () => {
   const src = read('components/SVGAnnotationLayer.jsx');
-  assert.match(src, /if \(!draftTabActiveRef\.current\) return;\n\s*if \(!draftOwnsKeyboard\(e\.target\)\) return;/);
+  assert.match(src, /if \(!draftTabActiveRef\.current \|\| !draftOwnsKeyboard\(e\.target\)\) return;/);
 });
 
 test('an open polygon draft is counted per viewer until released', async () => {
