@@ -91,6 +91,8 @@ export function createPagePreviewSession(base, {
       rendererPromise = useWorker
         ? bytesPromise.then((bytes) => {
           if (!bytes || stopped || rendererReleased || typeof bytes.slice !== 'function') return null;
+          // The worker's copy doubles the file in memory: big files stay in line.
+          if (bytes.byteLength > PAGE_THUMB_WORKER_MAX_BYTES) return null;
           // A copy: the worker takes ownership of what it is sent.
           return openRenderer(bytes.slice(0), { workerSrc, options: assetOptions });
         }).then((renderer) => {

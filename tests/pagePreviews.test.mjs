@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 
 import { createPageThumbStore, pageThumbStamp } from '../src/services/pageThumbStore.js';
 import { createPagePreviewSession } from '../src/utils/pagePreviewSession.js';
-import { pageThumbWorkerSupported } from '../src/utils/pageThumbRenderer.js';
+import { PAGE_THUMB_WORKER_MAX_BYTES, pageThumbWorkerSupported } from '../src/utils/pageThumbRenderer.js';
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 const buf = (n, fill = 1) => new Uint8Array(n).fill(fill).buffer;
@@ -80,6 +80,22 @@ test('a session loads kept previews and keeps new ones for the next open', async
   assert.deepEqual(rows.map((r) => r.pageKey).sort(), ['0:r0', '1:r0']);
 });
 
+test('the preview worker gets a copy of the file only up to the size cap', async () => {
+  const opened = [];
+  const openRenderer = async (bytes) => { opened.push(bytes.byteLength); return { destroy() {} }; };
+  const small = createPagePreviewSession(null, { source: new Uint8Array(16), useWorker: true, store: await freshStore(), openRenderer });
+  assert.ok(await small.renderer(), 'a small file opens the worker');
+  // A file over the cap, opened from bytes, stays in line: no second copy.
+  class HugeBytes extends Uint8Array {
+    get byteLength() { return PAGE_THUMB_WORKER_MAX_BYTES + 1; }
+    slice() { return { byteLength: PAGE_THUMB_WORKER_MAX_BYTES + 1 }; }
+  }
+  const big = createPagePreviewSession(null, { source: new HugeBytes(4), useWorker: true, store: await freshStore(), openRenderer });
+  assert.equal(await big.renderer(), null);
+  small.stop(); big.stop();
+  assert.deepEqual(opened, [16]);
+});
+
 test('the preview worker runs only on computers with cores to spare', () => {
   const env = (cores, coarse) => ({
     Worker: function Worker() {}, OffscreenCanvas: function OffscreenCanvas() {}, createImageBitmap() {},
@@ -96,6 +112,9 @@ test('viewer: pages show a preview the moment one arrives, and the in-line prefe
   assert.match(src, /stopWaiting = waitForPageThumb\(pageId,/);
   assert.match(src, /stopWaiting\?\.\(\);/);
   assert.match(src, /if \(previewWorker !== 'off'\) return undefined;/);
+  // A streamed file waits for its whole download before the worker opens:
+  // the in-line prefetch is held only when the bytes are already here.
+  assert.match(src, /setPreviewWorker\(useWorker && sourceBytes \? 'pending' : 'off'\);/);
   assert.match(src, /createPagePreviewSession\(base,/);
   assert.match(src, /\{ fromDevice: true \}/);
   const worker = read('../src/workers/pageThumbWorker.js');

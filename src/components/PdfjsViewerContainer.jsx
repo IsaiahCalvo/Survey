@@ -5957,15 +5957,19 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       session?.stop();
       const useWorker = !isMobileSurface && pageThumbWorkerSupported();
       const source = latestActiveSourceRef.current;
+      const sourceBytes = source instanceof Uint8Array || source instanceof ArrayBuffer ? source : null;
       session = createPagePreviewSession(base, {
-        source: source instanceof Uint8Array || source instanceof ArrayBuffer ? source : null,
+        source: sourceBytes,
         useWorker,
         workerSrc: new URL(pdfWorker, window.location.href).href,
         assetOptions: pdfjsAssetOptions(pdfjsLib),
       });
       session.base = base;
       previewSessionRef.current = session;
-      setPreviewWorker(useWorker ? 'pending' : 'off');
+      // 'pending' (in-line prefetch held) only when the bytes are here now: a
+      // streamed file's worker waits for the whole download (up to 30 s), and
+      // the in-line prefetch covers that wait until the worker says 'on'.
+      setPreviewWorker(useWorker && sourceBytes ? 'pending' : 'off');
     }
     let cancelled = false;
     const docKey = rasterDocKey(pdf);
