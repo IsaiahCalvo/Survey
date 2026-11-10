@@ -1096,7 +1096,9 @@ export async function planSheetRound({
   }
   // At most 200 problems, each short: they are saved with the link and sent
   // with every status, and a sheet can hold any amount of text.
-  const shown = next.notices.filter((n) => !n.markerId || markers[n.markerId] || plan.markerWrites[n.markerId]).map(({ t, ...p }) => p);
+  // Shown even when the item is gone: "deleted in Survey, so the row was
+  // kept" is about a deleted item. They expire on their own.
+  const shown = next.notices.map(({ t, ...p }) => p);
   next.problems = [...shown, ...next.problems].slice(0, 200).map((p) => ({ ...p, message: displayOf(p.message) }));
 
   // Conflicts and lists of markers that no longer exist go away.

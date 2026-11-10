@@ -776,3 +776,20 @@ test('a Microsoft or Google call that hangs gives up and counts as busy', async 
   assert.equal(ok.ok, true);
   await assert.rejects(fetchWithTimeout(async () => { throw new TypeError('network down'); }, 'http://x.test', {}, 30), (err) => err instanceof TypeError);
 });
+
+// Something that happened once stays on the panel a while, even when it is
+// about an item that is gone ("deleted in Survey, so the row was kept").
+test('the kept-row notice for an item deleted just after a sheet edit stays for half an hour', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101'), d2: door('d2', 'D-102') } });
+  const t0 = Date.parse('2026-11-10T13:00:00Z');
+  await ctx.round({ now: new Date(t0) });
+  await ctx.edit([{ row: await ctx.rowOf('d2'), col: await ctx.col('Notes'), value: 'PM note' }]);
+  delete ctx.markers.d2;
+  await ctx.round({ now: new Date(t0 + 5000), force: true, clashes: { d2: { deleted: true, scopeId: ctx.link.baseline.d2.scopeId, name: 'D-102' } } });
+  const said = () => ctx.link.state.problems.some((p) => /deleted in Survey just after its row was changed/.test(p.message));
+  assert.ok(said(), 'the panel says why the row is still there');
+  await ctx.round({ now: new Date(t0 + 20000), force: true });
+  assert.ok(said(), 'and still does a round later');
+  await ctx.round({ now: new Date(t0 + 5000 + 31 * 60_000), force: true });
+  assert.ok(!said(), 'until half an hour has passed');
+});
