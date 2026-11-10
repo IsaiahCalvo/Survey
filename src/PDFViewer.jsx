@@ -4148,6 +4148,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // drag mode + onSelectedCalloutIdsChange callback.
   const [selectedCalloutIds, setSelectedCalloutIds] = useState(() => new Set());
   const selectedCalloutPickRef = useRef(null);
+  // Survey markers keep their own pick (set lower down, read at click time).
+  const pickedSurveyMarkerPageRef = useRef(null);
   selectedCalloutPickRef.current = selectedCalloutId ?? (selectedCalloutIds.size ? selectedCalloutIds.values().next().value : null);
   const [clipboardCallout, setClipboardCallout] = useState(null);
   const [clipboardCalloutType, setClipboardCalloutType] = useState(null); // 'cut' | 'copy'
@@ -4301,10 +4303,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > QUICK_CLICK_PX) return;
         if (!e.target?.closest?.('[data-mobile-pdf-surface]')) return;
         if (isLiveFormWidgetTarget(e.target)) return;
-        // Callouts keep their pick apart from the toolbar's mark pick.
+        // Callouts and Survey markers keep their picks apart from the
+        // toolbar's mark pick.
         const ownerPage = selectedToolbarAnnotationRef.current?.pageNumber
           ?? selectedToolbarIndicesRef.current?.pageNumber
-          ?? resolveCalloutPageNumber(selectedCalloutPickRef.current);
+          ?? resolveCalloutPageNumber(selectedCalloutPickRef.current)
+          ?? pickedSurveyMarkerPageRef.current;
         if (ownerPage == null) return;
         const hit = resolveAnnotationAt(e);
         if (hit?.kind === 'page' && hit.pageNumber != null && hit.pageNumber !== ownerPage) {
@@ -8600,6 +8604,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // Owner 2026-10-22: a Survey Marker picked under Select or Pan brings up the
   // survey bar, as a picked counter brings up the counter's bar.
   const pickedSurveyMarker = usePickedSurveyMarker();
+  pickedSurveyMarkerPageRef.current = pickedSurveyMarker?.pageNumber ?? null;
   // Owner note 2026-10-26 (item 38, "everything gets pushed and comes back"):
   // Locate on page, or a click from one marker to the next, swaps the pick
   // through a render with nothing picked. The survey bar left for it and came
