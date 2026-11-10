@@ -482,6 +482,20 @@ export function isFeatureOn(key, { storage = safeStorage(), env = readEnv() } = 
   return cached?.[key] === true;
 }
 
+// Features read their flag once at load. A browser that has never been to
+// Survey has no saved answers, so without a wait a feature turned on for
+// everyone stayed hidden for a new person's whole first visit (audit
+// 2026-11-10). main.jsx holds the first render on this: at once when answers
+// are saved (or storage cannot be read), else until the server's first answer
+// or maxMs, whichever comes first.
+export function waitForFirstFlags(firstAnswer, { storage = safeStorage(), maxMs = 1500, setTimer = setTimeout } = {}) {
+  if (!storage || read(storage, FLAG_CACHE_KEY) !== null) return Promise.resolve();
+  return Promise.race([
+    Promise.resolve(firstAnswer).catch(() => {}),
+    new Promise((resolve) => setTimer(resolve, maxMs)),
+  ]).then(() => {});
+}
+
 // Ask the server which flags are on for whoever is signed in (or nobody) and
 // save the answer for the next load. Returns true when the answer changed.
 export async function refreshFeatureFlags(supabase, { storage = safeStorage() } = {}) {

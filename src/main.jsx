@@ -24,9 +24,12 @@ if (typeof document !== 'undefined' && document.modelContext) {
   }).catch((err) => console.warn('[webmcp] not started', err));
 }
 // Feature flags (src/featureFlags.js): save this person's server answers for
-// the next load, and again whenever they sign in or out.
+// the next load, and again whenever they sign in or out. Features read their
+// flag once at load, so the first answer is also what the very first load
+// waits for (see waitForFirstFlags).
+let firstFlagsAnswer = Promise.resolve();
 if (typeof window !== 'undefined') {
-  Promise.all([import('./featureFlags'), import('./supabaseClient')])
+  firstFlagsAnswer = Promise.all([import('./featureFlags'), import('./supabaseClient')])
     .then(([{ refreshFeatureFlags, releaseChannel }, { supabase }]) => {
       // So nobody mistakes Survey Nightly for the real app.
       if (releaseChannel() === 'nightly') {
@@ -35,10 +38,10 @@ if (typeof window !== 'undefined') {
       }
       if (!supabase) return;
       const refresh = () => refreshFeatureFlags(supabase).catch(() => {});
-      refresh();
       supabase.auth?.onAuthStateChange?.((event) => {
         if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'USER_UPDATED') refresh();
       });
+      return refresh();
     })
     .catch((err) => console.warn('[flags] not loaded', err));
 }
@@ -402,6 +405,7 @@ if (typeof window !== 'undefined') {
 })();
 
 import { createRoot } from 'react-dom/client';
+import { waitForFirstFlags } from './featureFlags';
 import App from './AppShell';
 import ErrorBoundary from './components/ErrorBoundary';
 // KeyboardShortcutsOverlay moved into App so it only renders on the home tab — UX 2026-05-13.
@@ -631,7 +635,9 @@ if (!devRouteActive && isKitsRoute) {
   });
 }
 
-if (!devRouteActive) {
+// Features read their flag once at load: a brand-new browser waits (briefly)
+// for the server's first flag answer before the first render.
+if (!devRouteActive) waitForFirstFlags(firstFlagsAnswer).then(() => {
   createRoot(document.getElementById('root')).render(
     <ErrorBoundary>
       <AuthProvider>
@@ -646,4 +652,4 @@ if (!devRouteActive) {
       </AuthProvider>
     </ErrorBoundary>
   );
-}
+});
