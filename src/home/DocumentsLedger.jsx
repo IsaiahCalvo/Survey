@@ -346,17 +346,21 @@ export default function DocumentsLedger({
     if (tagFilter && !tagRows.some((row) => row.tag.toLowerCase() === tagFilter.toLowerCase())) setTagFilter(null);
   }, [tagFilter, tagRows]);
   const docs = useMemo(() => {
+    let arr;
     if (extrasOn) {
       const tagKey = tagFilter ? tagFilter.toLowerCase() : null;
-      const rows = mapped.filter((d) => (
+      arr = mapped.filter((d) => (
         (!sharedViewsOn || inHomeView(d.raw, { view: homeView, ...viewScope }))
         && (!tagKey || d.tags.some((t) => t.toLowerCase() === tagKey))
         && matchesHomeSearch(d.name, tagsReady ? d.tags : null, search)
       ));
-      return sortHomeRows(rows, sortKey, sortDir);
+      // The extra sorts (Last opened, Created, Pages) come with home-columns;
+      // without it the list sorts exactly as before.
+      if (columnsOn) return sortHomeRows(arr, sortKey, sortDir);
+    } else {
+      const q = search.trim().toLowerCase();
+      arr = mapped.filter((d) => !q || (d.name || '').toLowerCase().includes(q));
     }
-    const q = search.trim().toLowerCase();
-    const arr = mapped.filter((d) => !q || (d.name || '').toLowerCase().includes(q));
     const sign = sortDir === 'asc' ? 1 : -1;
     if (sortKey === 'name') arr.sort((a, b) => sign * a.name.localeCompare(b.name));
     else if (sortKey === 'project') arr.sort((a, b) => sign * (a.project || '').localeCompare(b.project || ''));
@@ -364,7 +368,7 @@ export default function DocumentsLedger({
     else if (sortKey === 'size') arr.sort((a, b) => sign * (a.sizeBytes - b.sizeBytes));
     return arr;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapped, search, sortKey, sortDir, extrasOn, homeView, tagFilter, sharedViewsOn, tagsReady, homeExtras.sharedByMeIds]);
+  }, [mapped, search, sortKey, sortDir, extrasOn, columnsOn, homeView, tagFilter, sharedViewsOn, tagsReady, homeExtras.sharedByMeIds]);
   const mobileDetailDoc = docs.find((d) => d.id === mobileDetailId) || null;
 
   /* Idle thumbnail backfill (2026-09-23): fills missing thumbnails one at a
@@ -588,7 +592,9 @@ export default function DocumentsLedger({
   // With the Home extras on, the columns come from homeLedgerColumns (they
   // drop one at a time as the list narrows) instead of the class templates.
   const densityRow = DENSITY_ROW[density] || DENSITY_ROW.medium;
-  const homeCols = extrasOn
+  // Shared by me / with me adds no column, so on its own it keeps the
+  // original list layout.
+  const homeCols = (tagsReady || columnsOn)
     ? homeLedgerColumns({ width: listWidth, opened: columnsOn, created: columnsOn, tags: tagsReady, thumb: densityRow.thumb })
     : null;
   const showTiles = columnsOn && density === 'tiles';
@@ -981,9 +987,11 @@ export default function DocumentsLedger({
     }
     return null;
   };
-  const tileMeta = (d) => (sortKey === 'opened' && d.openedMs
-    ? `Opened ${relativeTime(d.openedMs).toLowerCase()}`
-    : [d.project === 'Sandbox' ? null : d.project, d.touchedAbs || d.lastEditedAbs].filter(Boolean).join(' · '));
+  const tileMeta = (d) => {
+    if (sortKey === 'opened' && d.openedMs) return `Opened ${relativeTime(d.openedMs).toLowerCase()}`;
+    if (sortKey === 'created' && d.createdMs) return `Created ${relativeTime(d.createdMs).toLowerCase()}`;
+    return [d.project === 'Sandbox' ? null : d.project, d.touchedAbs || d.lastEditedAbs].filter(Boolean).join(' · ');
+  };
   const homeViews = sharedViewsOn ? ['all', 'shared-by-me', 'shared-with-me'] : [];
   const pickHomeView = (next) => { setHomeView(next); setTagFilter(null); };
   const documentsNav = (sharedViewsOn || tagsReady) ? (

@@ -202,3 +202,18 @@ for (const layout of LAYOUTS) {
     });
   });
 }
+
+// Shared by me / with me alone adds no column: the list keeps its original
+// layout and sorts.
+test.describe('Home extras, shared views only', () => {
+  test.use({ viewport: { width: 1400, height: 900 } });
+  test('the list layout is the original one', async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.addInitScript(() => { localStorage.setItem('survey.flag.home-shared-views', '1'); });
+    await signInAt(page, E2E_ACCOUNTS.owner, '/');
+    await expect(visible(page.locator('[data-home-nav] button', { hasText: 'Shared by me' }))).toBeVisible({ timeout: 45_000 });
+    await expect(visible(page.locator('.documents-ledger-row'))).toBeVisible();
+    await expect(page.locator('.home-ledger-grid')).toHaveCount(0);
+    await expect(page.locator('[data-home-col]')).toHaveCount(0);
+  });
+});

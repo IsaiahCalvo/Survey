@@ -831,7 +831,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         // viewer refreshes the same cached thumbnail the list shows.
         file.contentSha256 = resolvedDoc.content_sha256 ?? null;
         file.uploadStartTime = performance.now();
-        if (openAfterUpload) onDocumentSelect(file, filePath);
+        if (openAfterUpload) { recordDocumentOpened(resolvedDoc.id); onDocumentSelect(file, filePath); }
 
         // OPTIMISTIC LIST UPDATE — carry both key spellings so the file shows
         // immediately in the project-grouped views (which read project_id).
@@ -1005,7 +1005,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     file.supabaseFilePath = resolvedDoc.file_path ?? null;
     file.contentSha256 = resolvedDoc.content_sha256 ?? null; // thumbnail cache key
     file.uploadStartTime = performance.now();
-    if (openAfterUpload) onDocumentSelect(file);
+    if (openAfterUpload) { recordDocumentOpened(resolvedDoc.id); onDocumentSelect(file); }
 
     // OPTIMISTIC LIST UPDATE — carry both key spellings so the file shows
     // immediately in the project-grouped views (which read project_id).
@@ -1703,6 +1703,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       : templates.length > 0;
 
   const handleDocumentClick = async (doc) => {
+    // Home's Last opened (flag home-columns): every open from Home, Projects,
+    // an upload or New lands here.
+    recordDocumentOpened(doc?.id);
     try {
       // [OpenTiming] BUG#2 — first open milestone: user clicked a document.
       try { console.log('[OpenTiming] doc-click @ ' + Math.round(performance.now()) + 'ms', doc?.name || doc?.file?.name || doc?.id || ''); } catch (_e) { /* swallow */ }
@@ -1929,7 +1932,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
   // Open a document in the PDF viewer — reuse the existing open path.
   // Home's Last opened (Nightly 'home-columns') is stamped here, the one
   // place Home and Projects open a document from.
-  const hubOpenDocument = (doc) => { if (doc) { dismissArchiveUndo(); recordDocumentOpened(doc.id); handleDocumentClick(doc); } };
+  const hubOpenDocument = (doc) => { if (doc) { dismissArchiveUndo(); handleDocumentClick(doc); } };
 
   /* KAL-44 — count survey markers that reference a checklist item id across
      every document, so the templates editor can decide to archive vs hard-

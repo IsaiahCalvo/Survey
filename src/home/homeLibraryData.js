@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase as defaultClient, isSupabaseAvailable } from '../supabaseClient';
 import { subscribeLibraryChange } from '../hooks/libraryChangeBus.js';
 import { hasTag } from './homeLibrary.js';
+import { isFeatureOn } from '../featureFlags.js';
 
 const OPENED_EVENT = 'survey:document-opened';
 const cacheKey = (userId) => `survey.home.extras.${userId}`;
@@ -41,20 +42,32 @@ function writeCache(userId, state) {
 
 const EMPTY = { tags: new Map(), opened: new Map(), sharedByMe: new Set() };
 
-/* Opening a document stamps its Last opened, on the server (its clock) and at
-   once on this device, so Home shows "Just now" when you come back. Safe to
-   call for any document: a guest, a signed-out session or an offline device
-   just skips the server part. */
-export function recordDocumentOpened(documentId, { client = defaultClient } = {}) {
+/* Opening a document stamps its Last opened on the server, by the server's
+   clock. The device shows its own time at once ("Just now") only until the
+   server answers; then the server's time replaces it, so a device clock set
+   ahead cannot pin a document to the top. Only while home-columns is on: with
+   it off nothing reads Last opened, so nothing is written. A guest, a
+   signed-out session or an offline device skips the server part. */
+const pendingOpens = new Map(); // documentId -> device time, until the server answers
+
+export function recordDocumentOpened(documentId, { client = defaultClient, enabled } = {}) {
   if (!documentId || String(documentId).startsWith('temp-')) return;
+  if (!(enabled ?? isFeatureOn('home-columns'))) return;
   const at = Date.now();
-  try {
-    globalThis.dispatchEvent?.(new CustomEvent(OPENED_EVENT, { detail: { documentId, at } }));
-  } catch { /* no window */ }
+  const emit = (detail) => {
+    try { globalThis.dispatchEvent?.(new CustomEvent(OPENED_EVENT, { detail })); } catch { /* no window */ }
+  };
   if (!client?.rpc || !isSupabaseAvailable()) return;
+  pendingOpens.set(documentId, at);
+  emit({ documentId, at });
   Promise.resolve(client.rpc('mark_document_opened', { p_document_id: documentId }))
-    .then((res) => { if (res?.error) console.warn('[home] mark opened failed:', res.error.message); })
-    .catch(() => {});
+    .then((res) => {
+      if (pendingOpens.get(documentId) === at) pendingOpens.delete(documentId);
+      if (res?.error) { console.warn('[home] mark opened failed:', res.error.message); return; }
+      const serverAt = Date.parse(res?.data || '');
+      if (serverAt) emit({ documentId, at: serverAt, server: true });
+    })
+    .catch(() => { if (pendingOpens.get(documentId) === at) pendingOpens.delete(documentId); });
 }
 
 export async function loadHomeExtras(client, { tags, opened, shared }) {
@@ -88,6 +101,8 @@ export function useHomeExtras({ userId, tags = false, opened = false, shared = f
   const [state, setState] = useState(() => (enabled ? readCache(userId) || EMPTY : EMPTY));
   const stateRef = useRef(state);
   stateRef.current = state;
+  const tagWrites = useRef(0);
+  const staleTags = useRef(false);
 
   const commit = useCallback((next) => {
     stateRef.current = next;
@@ -100,13 +115,18 @@ export function useHomeExtras({ userId, tags = false, opened = false, shared = f
     try {
       const fresh = await loadHomeExtras(client, { tags, opened, shared });
       const cur = stateRef.current;
-      // A document opened while the read was out keeps its newer time.
+      // A document opened while the read was out (the server has not answered
+      // yet) keeps its local time; every other time is the server's.
       let openedMap = fresh.opened || cur.opened;
       if (fresh.opened) {
         openedMap = new Map(fresh.opened);
-        for (const [id, ms] of cur.opened) if ((openedMap.get(id) || 0) < ms) openedMap.set(id, ms);
+        for (const [id, ms] of pendingOpens) if ((openedMap.get(id) || 0) < ms) openedMap.set(id, ms);
       }
-      commit({ tags: fresh.tags || cur.tags, opened: openedMap, sharedByMe: fresh.sharedByMe || cur.sharedByMe });
+      // While a tag write is out, the read may predate it: keep what is on
+      // screen and read again once the writes are done.
+      let nextTags = fresh.tags || cur.tags;
+      if (tagWrites.current > 0) { nextTags = cur.tags; staleTags.current = true; }
+      commit({ tags: nextTags, opened: openedMap, sharedByMe: fresh.sharedByMe || cur.sharedByMe });
     } catch (error) {
       console.warn('[home] extras load failed:', error?.message || error);
     }
@@ -136,6 +156,18 @@ export function useHomeExtras({ userId, tags = false, opened = false, shared = f
     return () => window.removeEventListener(OPENED_EVENT, onOpened);
   }, [commit, enabled, opened]);
 
+  /* Tag writes are counted so a reload that overlaps one cannot put back an
+     older list (the read then waits for the last write). */
+  const trackTagWrite = useCallback(async (write) => {
+    tagWrites.current += 1;
+    try {
+      return await write();
+    } finally {
+      tagWrites.current -= 1;
+      if (tagWrites.current === 0 && staleTags.current) { staleTags.current = false; reload(); }
+    }
+  }, [reload]);
+
   /* Add tags to one or many documents. Shown at once; a refused write (a
      document you lost access to) is taken back and reported. */
   const addTags = useCallback(async (docIds, newTags) => {
@@ -154,14 +186,14 @@ export function useHomeExtras({ userId, tags = false, opened = false, shared = f
     }
     if (!rows.length) return true;
     commit({ ...cur, tags: map });
-    const { error } = await client.from('document_tags').upsert(rows, { onConflict: 'user_id,document_id,tag', ignoreDuplicates: true });
+    const { error } = await trackTagWrite(() => client.from('document_tags').upsert(rows, { onConflict: 'user_id,document_id,tag', ignoreDuplicates: true }));
     if (error) {
       console.warn('[home] add tag failed:', error.message);
       await reload();
       return false;
     }
     return true;
-  }, [client, commit, enabled, reload, userId]);
+  }, [client, commit, enabled, reload, trackTagWrite, userId]);
 
   const removeTag = useCallback(async (docIds, tag) => {
     if (!enabled || !docIds?.length || !tag) return true;
@@ -176,14 +208,14 @@ export function useHomeExtras({ userId, tags = false, opened = false, shared = f
       if (left.length) map.set(id, left); else map.delete(id);
     }
     commit({ ...cur, tags: map });
-    const { error } = await client.from('document_tags').delete().eq('user_id', userId).in('document_id', docIds).in('tag', [...exact].length ? [...exact] : [tag]);
+    const { error } = await trackTagWrite(() => client.from('document_tags').delete().eq('user_id', userId).in('document_id', docIds).in('tag', [...exact].length ? [...exact] : [tag]));
     if (error) {
       console.warn('[home] remove tag failed:', error.message);
       await reload();
       return false;
     }
     return true;
-  }, [client, commit, enabled, reload, userId]);
+  }, [client, commit, enabled, reload, trackTagWrite, userId]);
 
   return { enabled, tagsByDoc: state.tags, openedByDoc: state.opened, sharedByMeIds: state.sharedByMe, addTags, removeTag, reload };
 }
