@@ -834,8 +834,13 @@ export async function planSheetRound({
     // inserted above it landed at row 400 (real Excel 11-10).
     const firstSummary = summaryRows.filter((r) => r > lastItemRow && r <= lastItemRow + 3).sort((a, b) => a - b)[0];
     if (appendRows.length) {
+      // The list's own columns (headed, the PM's too), for a provider that
+      // shifts cells down to make room; not a stray cell far to the right.
+      let headed = header.length;
+      while (headed > 0 && isBlankCell(header[headed - 1])) headed -= 1;
+      const listWidth = Math.max(headed, ...[...colOfKey.values()].map((c) => c + 1));
       plan.appends.push({
-        sheetId: sheet.sheetId, title: sheet.title, rows: appendRows, width,
+        sheetId: sheet.sheetId, title: sheet.title, rows: appendRows, width, listWidth,
         ...(firstSummary != null ? { before: firstSummary } : {}),
       });
     }

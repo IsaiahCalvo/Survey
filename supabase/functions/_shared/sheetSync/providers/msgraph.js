@@ -528,8 +528,17 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
       await workbookBatch(fileId, ops, { parallel: true, deadline: now() + WRITE_BUDGET_MS });
     },
 
-    /** Adds rows under the last used row of each sheet. */
+    /**
+     * Adds rows under the last used row of each sheet. The rows are inserted
+     * (shift Down) before they are written: a PM may be typing a new item
+     * into that first empty row, unsaved, and Excel on the web moves pending
+     * cells down with an insert, where a plain write onto them made it throw
+     * the PM's typing away (real Excel on the web, 11-10: 4 of 4 kept with
+     * an insert, lost with a write). Only the list's columns shift, so a
+     * PM's cells off to the right of the list stay where they are.
+     */
     async appendRows(fileId, batches) {
+      const insertPath = (sheetId, start, count, width) => `${sheetPath(sheetId)}/range(address='${cellAddress(start, 0)}:${cellAddress(start + count - 1, width - 1)}')/insert`;
       const todo = (batches || []).filter((b) => b?.rows?.length && Math.max(b.width || 0, ...b.rows.map((row) => row.length)) > 0);
       const oneEach = new Set(todo.map((b) => String(b.sheetId))).size === todo.length;
       if (todo.length > 1 && oneEach && todo.every((b) => b.before == null)) {
@@ -538,8 +547,10 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
         // instead of two calls a tab one after another.
         const widthOf = (batch) => Math.max(batch.width || 0, ...batch.rows.map((row) => row.length));
         const ends = await workbookBatch(fileId, todo.map((b) => ({ method: 'GET', path: endPath(b.sheetId, filledWidth(b.rows)) })), { parallel: true, size: GRID_BATCH, allow: [404] });
+        const starts = todo.map((_, i) => endRow(ends[i]));
+        await workbookBatch(fileId, todo.map((batch, i) => ({ method: 'POST', path: insertPath(batch.sheetId, starts[i], batch.rows.length, batch.listWidth || widthOf(batch)), body: { shift: 'Down' } })), { parallel: true, size: GRID_BATCH });
         const writes = todo.map((batch, i) => {
-          const start = endRow(ends[i]);
+          const start = starts[i];
           const width = widthOf(batch);
           const values = batch.rows.map((row) => Array.from({ length: width }, (_, c) => cellValueForWrite(row[c])));
           const address = `${cellAddress(start, 0)}:${cellAddress(start + values.length - 1, width - 1)}`;
@@ -556,7 +567,6 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
         if (batch.before != null) {
           // Above the PM's totals line (`before`), so it stays last.
           start = batch.before;
-          await workbook(fileId, 'POST', `${sheetPath(batch.sheetId)}/range(address='${start + 1}:${start + batch.rows.length}')/insert`, { body: { shift: 'Down' }, where: 'appendRows', discard: true });
         } else {
           const used = await workbook(fileId, 'GET', endPath(batch.sheetId, filledWidth(batch.rows)), { where: 'appendRows' }).catch((err) => {
             if (Number(err?.status) === 404) return null;
@@ -564,6 +574,7 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
           });
           start = endRow(used);
         }
+        await workbook(fileId, 'POST', insertPath(batch.sheetId, start, batch.rows.length, batch.listWidth || width), { body: { shift: 'Down' }, where: 'appendRows', discard: true });
         const values = batch.rows.map((row) => Array.from({ length: width }, (_, c) => cellValueForWrite(row[c])));
         const address = `${cellAddress(start, 0)}:${cellAddress(start + values.length - 1, width - 1)}`;
         await workbook(fileId, 'PATCH', `${sheetPath(batch.sheetId)}/range(address='${address}')`, { body: { values }, where: 'appendRows', discard: true });

@@ -339,8 +339,20 @@ export async function fakeMsgraphHandler(req) {
   const a = range && parseAddress(range[1]);
   if (!a) return gErr(400, 'BadRequest', `fake msgraph: no route for ${method} ${path}`);
   if (range[2] === '/insert' && method === 'POST') {
-    if (!a.wholeRows) return gErr(400, 'BadRequest', 'fake msgraph: only whole-row inserts');
-    sheet.cells.splice(a.r1, 0, ...Array.from({ length: a.r2 - a.r1 + 1 }, () => []));
+    const count = a.r2 - a.r1 + 1;
+    if (a.wholeRows) sheet.cells.splice(a.r1, 0, ...Array.from({ length: count }, () => []));
+    else {
+      // Insert cells, shift down: only columns c1..c2 move.
+      for (let r = sheet.cells.length - 1; r >= a.r1; r -= 1) {
+        for (let c = a.c1; c <= a.c2; c += 1) {
+          const v = sheet.cells[r]?.[c];
+          if (v == null || v === '') continue;
+          sheet.cells[r + count] = sheet.cells[r + count] || [];
+          sheet.cells[r + count][c] = v;
+          sheet.cells[r][c] = '';
+        }
+      }
+    }
     touch(f);
     return json(204);
   }
