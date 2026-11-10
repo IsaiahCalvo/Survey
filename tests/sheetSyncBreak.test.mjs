@@ -677,7 +677,7 @@ test('a PM note saved late into the row Survey just added is held over a tech\'s
   assert.equal(Object.keys(ctx.markers).length, 3, 'no new item without an Item');
 });
 
-test('a rename of a just-added item after that window, or on Google, is a rename', async () => {
+test('a rename of a just-added item after its window is a rename (3 min on Excel, 1 min on Google)', async () => {
   for (const late of [true, false]) {
     const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
     if (late) ctx.provider = { ...ctx.provider, savesLate: true };
@@ -686,11 +686,39 @@ test('a rename of a just-added item after that window, or on Google, is a rename
     ctx.markers.d2 = door('d2', 'D-102');
     await ctx.round({ now: new Date(t0 + 5000) });
     await ctx.edit([{ row: await ctx.rowOf('d2'), col: await ctx.col('Item'), value: 'D-102A' }]);
-    const r = await ctx.round({ now: new Date(t0 + (late ? 200000 : 50000)), force: true });
-    assert.equal(r.summary.created, 0, late ? 'after the window' : 'Google');
+    const r = await ctx.round({ now: new Date(t0 + (late ? 200000 : 70000)), force: true });
+    assert.equal(r.summary.created, 0, late ? 'Excel' : 'Google');
     assert.equal(ctx.markers.d2.name, 'D-102A');
     assert.equal(Object.keys(ctx.markers).length, 2);
   }
+});
+
+// Google: a PM's cell editor open on the first empty row commits over the row
+// Survey appended there in the meantime. Same split, shorter window.
+test('on Google, a PM\'s typing committed over the row Survey just added keeps both items', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
+  const t0 = Date.parse('2026-11-10T13:00:00Z');
+  await ctx.round({ now: new Date(t0) }); await ctx.round({ now: new Date(t0 + 1000), force: true });
+  ctx.markers.d2 = door('d2', 'D-102', { note: { text: 'tech note' } });
+  await ctx.round({ now: new Date(t0 + 5000) });
+  const row = await ctx.rowOf('d2');
+  const item = await ctx.col('Item'); const notes = await ctx.col('Notes');
+  await ctx.edit([{ row, col: item, value: 'D-120' }]);
+  const r = await ctx.round({ now: new Date(t0 + 20000), force: true });
+  assert.equal(r.summary.created, 1, 'the PM\'s row is a new item');
+  assert.equal(ctx.markers.d2.name, 'D-102');
+  assert.ok(Object.values(ctx.markers).some((m) => m.name === 'D-120'));
+  // The PM tabs on and types over the note Survey filled: held, not taken.
+  await ctx.edit([{ row, col: notes, value: 'PM typed' }]);
+  const later = await ctx.round({ now: new Date(t0 + 35000), force: true });
+  assert.equal(later.summary.created, 0);
+  assert.equal(ctx.markers.d2.note.text, 'tech note');
+  assert.ok(ctx.link.state.conflicts?.d2, 'the note is held');
+  // A note on an older row is an ordinary edit: nothing on Google is watched.
+  await ctx.edit([{ row: await ctx.rowOf('d1'), col: notes, value: 'PM on d1' }]);
+  await ctx.round({ now: new Date(t0 + 40000), force: true });
+  assert.equal(ctx.markers.d1.note.text, 'PM on d1');
+  assert.ok(Object.keys(ctx.link.state.recentWrites).every((k) => k.endsWith('|+row')), 'Google keeps only new-row watches');
 });
 
 test('a first write over an old-format baseline is not watched, so an Undo comes straight in', async () => {
