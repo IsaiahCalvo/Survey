@@ -46,6 +46,9 @@ const ALLOWED = {
   // Share dialog Sort by (beta 'share-extras'): the phone branch keeps the
   // browser's wheel; desktop uses ValueSelect.
   'src/home/AccessSortSelect.jsx': 1,
+  // Other templates page size (beta 'home-templates'): the phone branch
+  // keeps the browser's wheel; desktop uses ValueSelect.
+  'src/home/PaperTemplatesDialog.jsx': 1,
 };
 
 // A JSX <select> element at the start of a line (comments that mention

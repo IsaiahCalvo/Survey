@@ -34,6 +34,7 @@ import { activateOrExplain } from '../utils/disabledReasonToast.js';
 import MenuRows from '../components/MenuRows.jsx';
 import DialogCard from '../components/DialogCard.jsx';
 import NewDocumentDialog from './NewDocumentDialog.jsx';
+import PaperTemplatesDialog, { createNotebookPaperFile } from './PaperTemplatesDialog.jsx';
 import sampleFloorPlanUrl from '../assets/sample-floor-plan.pdf?url';
 import useFileDropZone from '../hooks/useFileDropZone';
 import FileDropOverlay from '../components/FileDropOverlay';
@@ -263,6 +264,27 @@ export default function DocumentsLedger({
   const [newSheetOpen, setNewSheetOpen] = useState(false);
   const [newDocOpen, setNewDocOpen] = useState(false);
   const canCreateBlank = newDocumentOn && Boolean(onDropFiles);
+  // Nightly 'home-templates' (Drawboard's + menu > Create): Notebook paper in
+  // one tap and Other templates. New then opens a menu on desktop.
+  const [templatesOn] = useState(() => isFeatureOn('home-templates'));
+  const canCreateTemplates = templatesOn && Boolean(onDropFiles);
+  const canCreate = canCreateBlank || canCreateTemplates;
+  const [newMenu, setNewMenu] = useState(null);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const makeNotebookPaper = async () => {
+    try {
+      const file = await createNotebookPaperFile(documents.map((d) => d?.name));
+      await onDropFiles([file], { projectId: null, open: true });
+    } catch (err) {
+      console.error('[DocumentsLedger] notebook paper failed', err);
+      showToast('Could not make the notebook paper. Try again.', 'error');
+    }
+  };
+  const createItems = [
+    canCreateBlank && { key: 'blank', icon: 'plus', label: 'Blank document', run: () => setNewDocOpen(true) },
+    canCreateTemplates && { key: 'notebook', icon: 'document', label: 'Notebook paper', run: makeNotebookPaper },
+    canCreateTemplates && { key: 'templates', icon: 'template', label: 'Other templates', run: () => setTemplatesOpen(true) },
+  ].filter(Boolean);
   // An upload still in flight (temp- id) has no saved row to open yet.
   const canDownloadDoc = (raw) => Boolean(raw?.id) && !String(raw.id).startsWith('temp-');
 
@@ -759,7 +781,7 @@ export default function DocumentsLedger({
       <div className="documents-mobile-search-actions hub-mobile-search-actions">
         <Search placeholder={tagsReady ? 'Search documents and tags...' : 'Search documents...'} value={search} onChange={setSearch} width="100%" />
         {mobileSortControl}
-        {canCreateBlank ? (
+        {canCreate ? (
           <button className="btn primary hub-mobile-primary-action" data-home-new="phone" disabled={uploadBusy} aria-haspopup="dialog" onClick={() => setNewSheetOpen(true)}>
             {uploadBusy ? uploadButtonBody : (<><Icon name="plus" size={12} />New</>)}
           </button>
@@ -770,10 +792,31 @@ export default function DocumentsLedger({
       <div className="documents-desktop-search">
         <Search placeholder={tagsReady ? 'Search documents and tags...' : 'Search documents...'} value={search} onChange={setSearch} />
       </div>
-      {canCreateBlank && (
+      {canCreateTemplates ? (
+        <button
+          className="btn documents-desktop-new"
+          data-home-new="desktop"
+          disabled={uploadBusy}
+          aria-haspopup="menu"
+          aria-expanded={Boolean(newMenu)}
+          onClick={(e) => { const trigger = e.currentTarget; setNewMenu(newMenu ? null : { rect: trigger.getBoundingClientRect(), trigger, fromKeyboard: e.detail === 0 }); }}
+        >
+          <Icon name="plus" size={12} />New
+        </button>
+      ) : canCreateBlank && (
         <button className="btn documents-desktop-new" data-home-new="desktop" disabled={uploadBusy} aria-haspopup="dialog" onClick={() => setNewDocOpen(true)}>
           <Icon name="plus" size={12} />New
         </button>
+      )}
+      {newMenu && (
+        <DocumentActionMenu
+          anchorRect={newMenu.rect}
+          returnFocusTo={newMenu.trigger}
+          focusFirst={newMenu.fromKeyboard}
+          minWidth={190}
+          items={createItems.map((it) => ({ label: it.label, icon: it.icon, onClick: () => { setNewMenu(null); it.run(); } }))}
+          onClose={() => setNewMenu(null)}
+        />
       )}
       <button className="btn primary documents-desktop-upload" disabled={uploadBusy} onClick={() => onUpload && onUpload()}>{uploadButtonBody}</button>
       {newSheetOpen && (
@@ -781,7 +824,7 @@ export default function DocumentsLedger({
           <div role="menu" aria-label="New" style={{ display: 'grid', gap: 4 }}>
             {[
               { key: 'upload', icon: 'upload', label: 'Upload PDF', run: () => onUpload && onUpload() },
-              { key: 'blank', icon: 'plus', label: 'Blank document', run: () => setNewDocOpen(true) },
+              ...(canCreateTemplates ? createItems : [{ key: 'blank', icon: 'plus', label: 'Blank document', run: () => setNewDocOpen(true) }]),
             ].map((row) => (
               <button
                 key={row.key}
@@ -802,6 +845,13 @@ export default function DocumentsLedger({
           existingNames={documents.map((d) => d?.name)}
           onCreate={(file) => onDropFiles([file], { projectId: null, open: true })}
           onClose={() => setNewDocOpen(false)}
+        />
+      )}
+      {templatesOpen && (
+        <PaperTemplatesDialog
+          existingNames={documents.map((d) => d?.name)}
+          onCreate={(file) => onDropFiles([file], { projectId: null, open: true })}
+          onClose={() => setTemplatesOpen(false)}
         />
       )}
     </>

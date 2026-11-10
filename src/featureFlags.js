@@ -271,6 +271,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Share dialog: owner row with (you), sort by Role / Name / Activity, personal message on email invites',
     stage: 'beta',
   }),
+  'home-templates': Object.freeze({
+    label: 'Home New menu: Notebook paper in one tap and Other templates (ruled, Cornell, grids, graph, isometric, hex, music)',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';
