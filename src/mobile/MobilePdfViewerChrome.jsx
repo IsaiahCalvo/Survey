@@ -2848,10 +2848,15 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
     const wrap = groupToolsEl;
     if (!railGroupKey || !main || !wrap) return undefined;
     const timer = setTimeout(() => {
-      const m = main.getBoundingClientRect();
+      // Sideways phones scroll the whole rail, not just its main part:
+      // move whichever box actually scrolls.
+      let box = main;
+      while (box && box !== document.body && box.scrollHeight <= box.clientHeight + 1) box = box.parentElement;
+      if (!box || box === document.body) return;
+      const m = box.getBoundingClientRect();
       const w = wrap.getBoundingClientRect();
       const delta = Math.min(w.bottom - m.bottom, w.top - 40 - m.top);
-      if (delta > 1) main.scrollTo({ top: main.scrollTop + delta, behavior: 'smooth' });
+      if (delta > 1) box.scrollTo({ top: box.scrollTop + delta, behavior: 'smooth' });
     }, 230);
     return () => clearTimeout(timer);
   }, [railGroupKey, railMainEl, groupToolsEl]);
