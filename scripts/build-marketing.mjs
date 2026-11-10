@@ -697,7 +697,7 @@ ${WHATS_NEW.length > 2 ? `<details class="older"><summary>Earlier changes</summa
 });
 
 // ---------- Use Survey with your AI ----------
-const MCP_URL = 'https://cvamwtpsuvxvjdnotbeg.supabase.co/functions/v1/survey-mcp';
+const MCP_URL = 'https://surveytool.app/mcp';
 const AI_FAQ = [
   ['Which AI tools can use Survey?',
     `Any that speak the open connector standard (MCP). Claude and ChatGPT both let you add a custom connector, which reads your drawings. It acts for you, with your plan and your role on each drawing.`],
