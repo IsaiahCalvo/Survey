@@ -1100,9 +1100,8 @@ function registerViewerVersion(viewer, key, object) {
     // A lazily derived field (annotationMarkCodec.js polygons) is skipped
     // rather than built here for every delivered mark: an edit spread from
     // this copy still traces back through its other nested values.
-    const field = Object.getOwnPropertyDescriptor(object, name);
-    if (!field || !('value' in field)) continue;
-    const { value } = field;
+    if (name === 'polygons' && !('value' in Object.getOwnPropertyDescriptor(object, name))) continue;
+    const value = object[name];
     if (value && typeof value === 'object') viewer.nested.set(value, { key, object });
   }
 }
