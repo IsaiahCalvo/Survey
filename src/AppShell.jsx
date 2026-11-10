@@ -122,6 +122,13 @@ const FIT_MODE_CHORDS = Object.freeze({
   [ZOOM_MODES.FIT_HEIGHT]: 'mod+2',
 });
 const IS_MAC_KEYS = typeof navigator !== 'undefined' && /(Mac|iPhone|iPod|iPad)/i.test(`${navigator.platform || ''} ${navigator.userAgent || ''}`);
+// Mac shows ⌘0 tight, but a remapped chord with a named key keeps its
+// pluses (⌘+Shift+F, Alt+1) so the words don't run together.
+const fitChordLabel = (chord) => {
+  const caps = chordKeycaps(shortcutBinding(chord), { isMac: IS_MAC_KEYS });
+  const tight = IS_MAC_KEYS && caps.slice(0, -1).every((cap) => cap.length === 1);
+  return caps.join(tight ? '' : '+');
+};
 import { TooltipChipHost, TooltipContext, TooltipProvider, makeTooltipBinding } from './components/Tooltip';
 import { useViewerTopOverlayRef, subscribeViewerTopOverlays } from './utils/viewerTopOverlay.js';
 import DismissBarrier from './components/DismissBarrier.jsx';
@@ -5418,7 +5425,7 @@ export default function App({ devPreviewReturnTab = null }) {
                           {isActive && <Icon name="check" size={RAIL_CONTROL_GLYPH} color="currentColor" />}
                         </span>
                         <span>{option.label}</span>
-                        {chord && <span className="rail-flyout__keys" aria-hidden="true">{chordKeycaps(shortcutBinding(chord), { isMac: IS_MAC_KEYS }).join(IS_MAC_KEYS ? '' : '+')}</span>}
+                        {chord && <span className="rail-flyout__keys" aria-hidden="true">{fitChordLabel(chord)}</span>}
                       </button>
                     );
                   })}

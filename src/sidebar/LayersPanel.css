@@ -1,54 +1,6 @@
-/* The PDF content strength (owner 2026-10-26, #18): five steps in a row, the
-   chrome's segmented look - gold word for the current one, nothing else. */
-.layers-opacity {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 2px;
-  padding: 2px;
-  background: var(--surface-3);
-  border-radius: 7px;
-}
-
-.layers-opacity__step {
-  height: 26px;
-  padding: 0;
-  color: var(--text-2);
-  background: transparent;
-  border: 0;
-  border-radius: 5px;
-  font: 600 11px/1 var(--font-ui);
-  font-variant-numeric: tabular-nums;
-  cursor: pointer;
-  transition: transform 90ms ease-out;
-}
-
-@media (hover: hover) {
-  .layers-opacity__step:hover {
-    color: var(--text-1);
-    background: var(--hover);
-  }
-}
-
-.layers-opacity__step:active {
-  transform: scale(0.94);
-}
-
-.layers-opacity__step:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: -2px;
-}
-
-.layers-opacity__step.is-active {
-  color: var(--accent);
-}
-
-@media (pointer: coarse) {
-  .layers-opacity__step { height: 40px; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .layers-opacity__step { transition: none; }
-}
+/* The PDF content strength (owner 2026-10-26, #18): five steps, the app's
+   one ButtonGroup (2026-11-10); numbers line up. */
+.layers-opacity > button { font-variant-numeric: tabular-nums; padding: 0 4px; }
 
 /* The panel (2026-11-09 polish): two sections with the rail's section heads,
    32px rows like every rail list, tools that show on hover (always on touch),
@@ -81,11 +33,6 @@
 
 .layers-panel__title {
   font: var(--sheet-section);
-  color: var(--text-3);
-}
-
-.layers-panel__meta {
-  font-size: 12px;
   color: var(--text-3);
 }
 
@@ -218,8 +165,8 @@
   font: var(--sheet-row-text);
 }
 .mobile-pdf-sheet .layers-panel__head { min-height: 32px; padding: 0; }
+.mobile-pdf-sheet .layers-opacity > button { min-height: 44px; font: var(--sheet-row-text); }
 .mobile-pdf-sheet .layers-panel__title { font: var(--sheet-section); }
-.mobile-pdf-sheet .layers-panel__meta { font: var(--sheet-row-meta); }
 .mobile-pdf-sheet .layers-panel__text-btn { height: 44px; margin-right: -6px; font: var(--sheet-row-title); }
 .mobile-pdf-sheet .layers-row { min-height: var(--sheet-row-h); padding: 0; }
 .mobile-pdf-sheet .layers-row__name { font: var(--sheet-row-title); }
