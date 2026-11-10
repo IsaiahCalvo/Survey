@@ -85,8 +85,10 @@ import SurveyTemplateMenu from './components/SurveyTemplateMenu';
 import Icon from './Icons';
 import MeasureScaleDialog from './components/MeasureScaleDialog';
 import MeasureDepthDialog from './components/MeasureDepthDialog';
+import MeasureEditDialog from './components/MeasureEditDialog.jsx';
 import {
   DEPTH_MEASURE_KINDS,
+  editMeasureData,
   MEASURE_SCALES_META_KEY,
   applyPageScale,
   loadMeasureDepth,
@@ -3174,6 +3176,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const [measureDepthEnabled] = useState(() => isFeatureOn('measure-depth'));
   const [measureDepth, setMeasureDepth] = useState(() => loadMeasureDepth());
   const [measureDepthDialog, setMeasureDepthDialog] = useState(null);
+  // Nightly 'measure-edit': change a drawn measurement's name, depth and
+  // caption from its right-click menu. { pageNumber, id, index }.
+  const [measureEditEnabled] = useState(() => isFeatureOn('measure-edit'));
+  const [measureEdit, setMeasureEdit] = useState(null);
   const prevMeasureModeRef = useRef(null);
   useEffect(() => {
     const prev = prevMeasureModeRef.current;
@@ -11995,6 +12001,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // per document open (see the fallback effect near the fix19 import harness).
   const embeddedImportFallbackDoneRef = useRef(null);
   const annotationsByPageRef = useRef(annotationsByPage);
+  // 'measure-edit': the right-click menu's Edit measurement… (state above).
+  const openMeasureEdit = useCallback((pageNumber, index) => {
+    const object = annotationsByPageRef.current?.[pageNumber]?.objects?.[index];
+    if (object?.data?.measure?.kind && object.id != null) setMeasureEdit({ pageNumber, index, id: object.id });
+  }, []);
   // Speed (2026-11-09): work out the marks' geometry for the pages just past
   // the mounted window while the browser is idle, so a page scrolling into
   // view only builds its elements (warmMarkGeometry; ~80 ms of a 150-mark
@@ -37665,6 +37676,28 @@ ${pageBlocks}
           note before Submit. Lives here so it renders above every floating
           UI including the context menu below. */}
       <SaveLogBanner />
+      {measureEdit && (() => {
+        const objects = annotationsByPageRef.current?.[measureEdit.pageNumber]?.objects || [];
+        const object = objects[measureEdit.index]?.id === measureEdit.id ? objects[measureEdit.index] : objects.find((o) => o?.id === measureEdit.id);
+        if (!object?.data?.measure) return null;
+        return (
+          <MeasureEditDialog
+            object={object}
+            scale={object.data.measure.scale || pageScaleFromObjects(objects) || metaScaleForPage(measureScaleMeta, measureEdit.pageNumber)}
+            onCancel={() => setMeasureEdit(null)}
+            onApply={(changes) => {
+              setMeasureEdit(null);
+              const page = annotationsByPageRef.current?.[measureEdit.pageNumber];
+              const at = (page?.objects || []).findIndex((o) => o?.id === measureEdit.id);
+              if (at < 0) return;
+              const next = deepClone(page);
+              const target = next.objects[at];
+              next.objects[at] = { ...target, data: { ...target.data, measure: editMeasureData(target.data.measure, changes) } };
+              handleSaveAnnotations(measureEdit.pageNumber, next, { source: 'object:modified', action: 'modify', checkpointPolicy: 'normal' });
+            }}
+          />
+        );
+      })()}
       {measureDepthDialog && (
         <MeasureDepthDialog
           kind={measureDepthDialog.kind}
@@ -37767,6 +37800,7 @@ ${pageBlocks}
         familyClipboard,
         pasteFamilyAt,
         saveFamilyToLibrary: markLibraryEnabled ? saveFamilyToLibrary : null,
+        editMeasure: measureEditEnabled ? openMeasureEdit : null,
         viewerId: user?.id ?? null,
         documentOwnerId,
         selectedCalloutIds,

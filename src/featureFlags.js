@@ -204,6 +204,12 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Markups panel: every mark in one list with search, filters, measurement totals and a CSV',
     stage: 'beta',
   }),
+  // Drawboard deep test MS-19/20/21 (2026-11-10): a drawn measurement's name,
+  // depth and caption change later, from its right-click menu.
+  'measure-edit': Object.freeze({
+    label: 'Edit measurement: change a drawn measurement’s name, depth and caption',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

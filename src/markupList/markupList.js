@@ -57,7 +57,7 @@ function cleanText(value) {
 
 function markText(object) {
   const data = object?.data || {};
-  return cleanText(object?.text) || cleanText(data.text) || cleanText(data.calloutText) || cleanText(data.label) || cleanText(data.contents);
+  return cleanText(data.measure?.label) || cleanText(object?.text) || cleanText(data.text) || cleanText(data.calloutText) || cleanText(data.label) || cleanText(data.contents);
 }
 
 function markColor(object) {

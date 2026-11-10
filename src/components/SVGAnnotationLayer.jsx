@@ -509,6 +509,7 @@ const EMPTY_SURVEY_MARKER_IDS = new Set();
 import {
   buildMeasureLabel,
   layoutMeasureLabel,
+  measureCaption,
   measureLineEndpoints,
   measureScaleBar,
   pageScaleFromObjects,
@@ -901,7 +902,8 @@ const SVGAnnotationLayerBody = memo(({
     const labels = [];
     objects.forEach((obj, index) => {
       if (!obj?.data?.measure || obj.visible === false || isOnHiddenLayer(obj, hiddenLayerIds)) return;
-      const label = buildMeasureLabel(obj, effectiveMeasureScale);
+      // Its name in front, or nothing when its caption is off ('measure-edit').
+      const label = measureCaption(obj, buildMeasureLabel(obj, effectiveMeasureScale));
       if (label) labels.push({ key: obj.id || obj.data?.id || `m${index}`, index, label });
     });
     return labels;
@@ -6420,7 +6422,7 @@ const SVGAnnotationLayerBody = memo(({
       : null;
     if (obj?.data?.measure && (renderObj !== obj || computedTransform)) {
       liveMeasureLabels.set(i, {
-        label: buildMeasureLabel(renderObj, effectiveMeasureScale),
+        label: measureCaption(renderObj, buildMeasureLabel(renderObj, effectiveMeasureScale)),
         transform: computedTransform,
       });
     }

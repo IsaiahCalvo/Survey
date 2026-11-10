@@ -468,6 +468,9 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     // Mark library ('mark-library' beta): saveFamilyToLibrary(pageNumber,
     // selection) opens the Save to library card on those marks.
     saveFamilyToLibrary = null,
+    // Edit a measurement after drawing ('measure-edit' beta):
+    // editMeasure(pageNumber, annotationIndex) opens its card.
+    editMeasure = null,
     // Layers ('layers' beta): moveSelectionToLayer(pageNumber, selection,
     // layerId) and the document's layer list ({ layers, pdfOpacity }).
     moveSelectionToLayer = null,
@@ -837,6 +840,9 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         duplicateItem({ indices: [ctx.annotationIndex] }),
         ...libraryItems({ indices: [ctx.annotationIndex] }),
         ...layerItems({ indices: [ctx.annotationIndex] }),
+        ...(typeof editMeasure === 'function' && menuObj?.data?.measure?.kind
+          ? [item('Edit measurement…', 'editMeasure', () => editMeasure(ctx.pageNumber, ctx.annotationIndex), menuObjEditable)]
+          : []),
         // UX: right-click Delete mirrors the keyboard Delete/Backspace path.
         // RULED 2026-09-28 owner: open editing + lock: Delete takes anyone's mark with no confirmation
         // (via the planner when present, for the History row); a user-locked mark
