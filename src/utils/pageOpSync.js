@@ -194,7 +194,8 @@ export function framePageChanges(frame) {
  * Splits a frame at a reload: `taken` holds the runs `keys` (the page
  * changes the loaded bytes carry), `rest` the runs that came after, still to
  * load. Both keep the marks noted so far, which sit on the pages as they were
- * before `taken`. Either is null when it has no runs.
+ * before `taken` (unless `taken` cannot travel). Either is null when it has
+ * no runs.
  */
 export function splitFramePageChanges(frame, keys) {
   if (!frame?.batches?.size) return { taken: null, rest: null };
@@ -202,9 +203,17 @@ export function splitFramePageChanges(frame, keys) {
   const taken = new Map();
   const rest = new Map();
   for (const [key, ops] of frame.batches) (want.has(key) ? taken : rest).set(key, ops);
+  // A run that could not travel moves none of the marks noted so far, so the
+  // later runs must not move them either: those start with no marks.
+  const stuck = [...taken.values()].some((ops) => !Array.isArray(ops));
+  const restFrame = rest.size ? { ...frame, batches: rest } : null;
+  if (restFrame && stuck) {
+    restFrame.made = new Set();
+    if (restFrame.madeMarkers) restFrame.madeMarkers = new Set();
+  }
   return {
     taken: taken.size ? { ...frame, batches: taken } : null,
-    rest: rest.size ? { ...frame, batches: rest } : null,
+    rest: restFrame,
   };
 }
 

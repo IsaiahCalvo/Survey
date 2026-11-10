@@ -22309,8 +22309,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         if (!sync.frame) dropHistoryAfterPageChange();
         sync.frame = noteFramePageChanges(sync.frame, step.version);
       } else if (step.action === 'unblock') {
-        // A reload still loading keeps the changes its bytes carry.
-        sync.frame = sync.reframe ? splitFramePageChanges(sync.frame, sync.reframe.keys).taken : null;
+        // A reload still waiting (a pointer is down) or loading keeps the
+        // changes its bytes carry, with the marks noted so far.
+        const loadingKeys = sync.reframe?.keys || (timer ? latestKeys : null);
+        sync.frame = loadingKeys ? splitFramePageChanges(sync.frame, loadingKeys).taken : null;
       }
       if (step.action !== 'reload') return;
       latest = { filePath: step.version.filePath, contentSha256: step.version.contentSha256 };

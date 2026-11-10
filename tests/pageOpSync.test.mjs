@@ -239,6 +239,15 @@ test('a reload takes only the runs its bytes carry; later runs and the noted mar
   // Nothing after it: the frame ends with the load.
   assert.equal(splitFramePageChanges(taken, keys).rest, null);
   assert.deepEqual(splitFramePageChanges(null, keys), { taken: null, rest: null });
+  // A loaded run that could not travel moved none of the marks, so the later
+  // runs start with none (marks drawn from now on sit on the loaded pages).
+  let stuck = noteFramePageChanges(null, normalizePdfVersion(savedPdfVersion({ writer: 'A', filePath: 'p', contentSha256: 's1', operations: null, batch: 'run1' })));
+  stuck.made.add('old');
+  stuck = noteFramePageChanges(stuck, normalizePdfVersion(pendingPdfVersion({ writer: 'A', operations: [blank], batch: 'run2' })));
+  const split = splitFramePageChanges(stuck, ['run1']);
+  assert.equal(framePageChanges(split.taken), null);
+  assert.deepEqual(framePageChanges(split.rest), [blank]);
+  assert.equal(split.rest.made.size, 0);
 });
 
 test('the viewer keeps noting marks until the new pages load, and a reload waits for the newest bytes', () => {
@@ -248,6 +257,8 @@ test('the viewer keeps noting marks until the new pages load, and a reload waits
   assert.ok(!reload.includes('sync.frame = null'), 'the frame keeps recording while the old pages are up');
   assert.ok(src.includes('if (!target || pdfFile?.contentSha256 !== target.sha) return;'));
   assert.ok(src.includes('const { taken: frame, rest } = splitFramePageChanges(sync.frame, target.keys);'));
+  // An unblock while the reload waits for a pointer keeps the frame too.
+  assert.ok(src.includes('const loadingKeys = sync.reframe?.keys || (timer ? latestKeys : null);'));
 });
 
 test('stamps from an older client without a run name count once per run', async () => {
