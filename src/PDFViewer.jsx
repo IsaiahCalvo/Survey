@@ -255,7 +255,7 @@ import {
 } from './utils/surveyMarkerFamily.js';
 import { overlayLiveSurveyMarkers } from './services/annotationLiveMarkers.js';
 import {
-  DUPLICATE_OFFSET_PAGE_UNITS,
+  duplicateOffsetOnPage,
   buildFamilyClipboard,
   makePastedMarkOwn,
   orderPastedFamily,
@@ -33553,13 +33553,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       pageHeight: height,
     });
     if (!clipboard) return false;
-    let dx = Number.isFinite(offset?.dx) ? offset.dx : DUPLICATE_OFFSET_PAGE_UNITS;
-    let dy = Number.isFinite(offset?.dy) ? offset.dy : DUPLICATE_OFFSET_PAGE_UNITS;
-    // Cmd+D / menu Duplicate keeps the copy on the page, as paste does: a
-    // mark in the bottom-right corner gets its copy slid back inside.
-    if (!offset && clipboard.extent) {
-      ({ dx, dy } = clampNudgeDelta([clipboard.extent], dx, dy, width, height));
-    }
+    const onPage = duplicateOffsetOnPage(clipboard.extent, width, height);
+    const dx = Number.isFinite(offset?.dx) ? offset.dx : onPage.dx;
+    const dy = Number.isFinite(offset?.dy) ? offset.dy : onPage.dy;
     return commitFamilyPaste(offset?.toPage ?? pageNumber, clipboard, dx, dy);
   }, [collectFamilySelection, commitFamilyPaste]);
 

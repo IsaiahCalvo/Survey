@@ -325,6 +325,14 @@ export const FEATURE_FLAGS = Object.freeze({
     label: "Properties panel: Drawboard's Expand menu, a card with typed X Y W H R, stroke, border and fill for the picked marks",
     stage: 'beta',
   }),
+  'text-fit-height': Object.freeze({
+    label: 'Text box height fits its words both ways: widening a text box from its side brings its height back down',
+    stage: 'beta',
+  }),
+  'poly-click-starts': Object.freeze({
+    label: 'Polygon and Polyline: with a mark picked, the first click drops the pick and places the first point',
+    stage: 'beta',
+  }),
   'tape-tool': Object.freeze({
     label: 'Tape: an opaque band that covers part of the page; tap it under Pan to see what is under it',
     stage: 'beta',

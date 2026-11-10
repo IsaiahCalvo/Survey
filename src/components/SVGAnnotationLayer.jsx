@@ -32,6 +32,7 @@ import { canRemovePolyVertex, cloudPolyEdgeReach, insertPolyVertex, insertVertex
 import { contextMenuInputOf, isTouchMenuInput } from '../utils/touchLongPress.js';
 import { deepClone } from '../utils/deepClone.js';
 import { clampPointToPage, squareShapeEnd } from '../utils/pageEdgeRules.js';
+import { keepDrawnArrowOnPage } from '../utils/arrowheadEdge.js';
 import { isFeatureOn } from '../featureFlags.js';
 
 // Shift draws a square or circle (Nightly, 'shift-square'); read only while
@@ -45,6 +46,10 @@ import { readSnapContent } from '../utils/annotationPreferences.js';
 // Drag inside a picked mark to move it; a finger gets a move grip (Nightly,
 // 'box-drag-move', utils/boxDragMove.js).
 const boxDragMoveOn = () => isFeatureOn(BOX_DRAG_MOVE_FLAG);
+// Nightly 'poly-click-starts' (Drawboard PDF Pro trial, t2-tools-deep.md):
+// with a mark picked, Polygon / Polyline's first click drops the pick AND
+// places the first point, so a second shape after Enter keeps every click.
+const polyClickStartsOn = () => isFeatureOn('poly-click-starts');
 import { maxOf, minOf } from '../utils/arrayExtrema.js';
 import { resolveEditEntryKind } from '../utils/annotationEditRoute.js';
 import {
@@ -1570,6 +1575,10 @@ const SVGAnnotationLayerBody = memo(({
   const smartInkOnRef = useRef(null);
   if (smartInkOnRef.current === null) smartInkOnRef.current = isFeatureOn('smart-ink');
   const smartInkRef = useRef({ fit: null, timer: 0, anchor: null });
+  // The Arrow tool's head and width, read by the drag preview (its effect does
+  // not re-run on a toolbar change) to keep the head on the page.
+  const arrowEndStyleRef = useRef(null);
+  arrowEndStyleRef.current = { arrowheadStyle, strokeWidth };
   const resetSmartInk = useCallback(() => {
     const ink = smartInkRef.current;
     if (ink.timer) clearTimeout(ink.timer);
@@ -2582,6 +2591,12 @@ const SVGAnnotationLayerBody = memo(({
           else if (least === dUp) y = fy0;
           else y = fy1;
         }
+        // Drawboard (PDF Pro trial, t2-tools-deep.md bug 8): the new box
+        // stays on the page; past the edge only a sliver of it showed.
+        if (width > tbW && height > tbH) {
+          x = Math.max(0, Math.min(width - tbW, x));
+          y = Math.max(0, Math.min(height - tbH, y));
+        }
         return { ...prev, dragging: true, currentPointer: { x, y } };
       });
     };
@@ -2842,8 +2857,10 @@ const SVGAnnotationLayerBody = memo(({
     if ((tool === 'line' || tool === 'arrow') && finalClientPoint && state.start) {
       end = resolveCreationSnap(state.start, end, finalClientPoint);
     }
-    // Drawboard: the drag-out end stays on the page (pageEdgeRules.js).
+    // Drawboard: the drag-out end stays on the page (pageEdgeRules.js), and
+    // an arrow's head too (arrowheadEdge.js).
     end = clampPointToPage(end, width, height);
+    end = keepDrawnArrowOnPage(tool, state.start, end, { arrowheadStyle, strokeWidth, pageWidth: width, pageHeight: height });
     if (finalClientPoint?.shiftKey && state.start && (tool === 'rect' || tool === 'ellipse') && shiftSquareOn()) {
       end = squareShapeEnd(state.start, end, width, height);
     }
@@ -3337,6 +3354,7 @@ const SVGAnnotationLayerBody = memo(({
         }
         // Owner 2026-11-02 (copy Drawboard): a drawn shape stops at the page edge.
         point = clampPointToPage(point, width, height);
+        point = keepDrawnArrowOnPage(draft?.tool, draft?.start, point, { ...arrowEndStyleRef.current, pageWidth: width, pageHeight: height });
         // Shift: a square or circle (Drawboard PDF Pro trial audit 2026-11-09).
         if (point && e.shiftKey && draft?.start && (draft.tool === 'rect' || draft.tool === 'ellipse') && shiftSquareOn()) {
           point = squareShapeEnd(draft.start, point, width, height);
@@ -3409,7 +3427,7 @@ const SVGAnnotationLayerBody = memo(({
       }
       e.preventDefault();
       e.stopPropagation();
-      const point = clampPointToPage(screenToSVG(svg, e.clientX, e.clientY), width, height);
+      const point = keepDrawnArrowOnPage(placing.tool, placing.start, clampPointToPage(screenToSVG(svg, e.clientX, e.clientY), width, height), { ...arrowEndStyleRef.current, pageWidth: width, pageHeight: height });
       replaceDraft({ ...placing, endPointerId: e.pointerId, ...(point ? { current: point } : {}) });
     };
     const onCancel = (e) => {
@@ -7968,7 +7986,7 @@ const SVGAnnotationLayerBody = memo(({
               return;
             }
             if (press.clearsSelection) clearPageSelection();
-            if (press.drag === 'none' && press.click === 'deselect') {
+            if (press.drag === 'none' && press.click === 'deselect' && !(isPolyCreationTool && polyClickStartsOn())) {
               e.preventDefault();
               return;
             }

@@ -214,14 +214,26 @@ import {
   textScalesFontFor,
 } from '../utils/groupResize.js';
 import { TEXT_PADDING } from '../utils/textEditCommit.js';
-import { growTextBoxToFit, isTextSideHandle } from '../utils/textBoxFit.js';
+import { fitTextBoxToWords, growTextBoxToFit, isTextSideHandle } from '../utils/textBoxFit.js';
 import { measureTextContentHeight } from '../utils/textContentMeasure.js';
+import { isFeatureOn } from '../featureFlags.js';
 
 // Last inverse scale measured per page width (page units), shared by every
 // page layer: pages of one set share a width and a zoom.
 const lastInverseScaleByPageWidth = new Map();
 
 const cloneAnnotations = (annotations) => deepClone(annotations);
+
+// Drawboard PDF Pro trial (t2-tools-deep.md bug 9): dragging a callout, or a
+// box select across one, must not leave its words highlighted. The press
+// starts the browser's text selection; it is dropped while the drag runs and
+// at its end. A selection inside an editor being typed in is left alone.
+const clearDragTextSelection = () => {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  if (document.activeElement?.isContentEditable) return;
+  const selection = window.getSelection?.();
+  if (selection && selection.rangeCount > 0 && !selection.isCollapsed) selection.removeAllRanges();
+};
 
 // Drawboard rule 7: a mark picked less than this long before a double-click
 // was picked BY that double-click's first click (it was not selected before).
@@ -2629,6 +2641,7 @@ export function useSVGInteraction({
         endY: clampedY,
         active: mq.active || dx >= MARQUEE_MIN_DRAG_PX || dy >= MARQUEE_MIN_DRAG_PX,
       };
+      if (next.active) clearDragTextSelection();
       applyMarqueeState(next);
       return;
     }
@@ -3296,7 +3309,7 @@ export function useSVGInteraction({
             } else if (orig.height) {
               // Drawboard: words rewrapped by a side drag grow the box
               // downward so no line is cut off (textBoxFit.js).
-              Object.assign(target, growTextBoxToFit(target, measureTextContentHeight(target)));
+              Object.assign(target, (isFeatureOn('text-fit-height') ? fitTextBoxToWords : growTextBoxToFit)(target, measureTextContentHeight(target)));
             }
           } else {
             target.scaleX = (orig.scaleX || 1) * axis.x;
@@ -4320,6 +4333,7 @@ export function useSVGInteraction({
         } catch (err) { console.warn('[BboxScaleDiag] rotate-move log failed', err); }
       }
     } else if (ds.mode === 'callout-part') {
+      clearDragTextSelection();
       // UX: Phase 14 CALL-10 — per-drag update of one or more callout
       // positions. Uses cached ctmInverse for consistent screen→page
       // conversion. Delta math is integer-clean: capture the original
@@ -4759,6 +4773,7 @@ export function useSVGInteraction({
     const mq = marqueeStateRef.current;
     if (mq && (mq.pointerId == null || mq.pointerId === e.pointerId)) {
       const wasActive = mq.active;
+      if (wasActive) clearDragTextSelection();
       applyMarqueeState(null);
       try { svgRef.current?.releasePointerCapture?.(mq.pointerId ?? e.pointerId); } catch (_) { /* optional */ }
 
@@ -5577,7 +5592,8 @@ export function useSVGInteraction({
           // Drawboard: words rewrapped by a side drag grow the box downward
           // so no line is cut off (textBoxFit.js).
           if (obj.height && isTextSideHandle(ds.handleId)) {
-            Object.assign(obj, growTextBoxToFit(obj, measureTextContentHeight(obj)));
+            // Nightly 'text-fit-height': it shrinks back too, like Drawboard.
+            Object.assign(obj, (isFeatureOn('text-fit-height') ? fitTextBoxToWords : growTextBoxToFit)(obj, measureTextContentHeight(obj)));
           }
           lockTextboxSizeAfterResize(obj);
         } else if (ds.originalProps.isPointsShape) {
@@ -5721,6 +5737,7 @@ export function useSVGInteraction({
         diagLog('[BboxScaleDiag] commit rotate ' + JSON.stringify(rotCommitPayload));
       } catch (err) { console.warn('[BboxScaleDiag] rotate commit log failed', err); }
     } else if (ds.mode === 'callout-part' && ds.calloutId) {
+      clearDragTextSelection();
       // UX: Phase 14 CALL-10 — commit the callout drag. The live-paint
       // branch in handlePointerMove already wrote the final state to the
       // React store via onUpdateCalloutLive; pointerup just captures the
