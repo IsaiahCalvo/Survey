@@ -36,7 +36,7 @@ export function isMobileShapeToolActive(id, { activeTool, lineBorderStyle, measu
 
 /** Apply a Shapes strip tap (not Measure) through the bottom-toolbar API. */
 export function applyMobileShapePick(id, api) {
-  const pick = resolveShapeToolPick(id, api?.lineBorderStyle);
+  const pick = resolveShapeToolPick(id, api?.lineBorderStyle, api?.activeTool);
   // The raw tool setter: setLineBorderStyle would also restyle a selected shape.
   if (pick.lineBorderStyle) api?.setToolLineBorderStyle?.(pick.lineBorderStyle);
   api?.setMeasureMode?.(null);

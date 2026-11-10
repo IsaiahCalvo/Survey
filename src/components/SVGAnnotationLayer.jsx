@@ -2001,7 +2001,7 @@ const SVGAnnotationLayerBody = memo(({
       // shortcuts (copy/paste/cmd+z) flow through normally.
       if (e.key !== 'Delete' && e.key !== 'Backspace') return;
       // An open modal (shortcut sheet, dialog card) owns the key.
-      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      if ([...document.querySelectorAll('[role="dialog"][aria-modal="true"]')].some((d) => d.contains(document.activeElement) || d.contains(e.target))) return;
 
       // UX: focus guard — if the user is typing in a text input, textarea,
       // contentEditable element, or a Fabric.js hidden textarea (edit

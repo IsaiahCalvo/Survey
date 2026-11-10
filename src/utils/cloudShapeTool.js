@@ -5,10 +5,12 @@
 export const CLOUD_SHAPE_TOOL_ID = 'cloud';
 
 /** What a Shape-row button arms: { tool, lineBorderStyle } (style null = leave it). */
-export function resolveShapeToolPick(id, currentLineBorderStyle) {
+export function resolveShapeToolPick(id, currentLineBorderStyle, activeTool = 'rect') {
   if (id === CLOUD_SHAPE_TOOL_ID) return { tool: 'rect', lineBorderStyle: 'cloud' };
-  // Rectangle after Cloud means a plain rectangle again.
-  if (id === 'rect' && currentLineBorderStyle === 'cloud') return { tool: 'rect', lineBorderStyle: 'solid' };
+  // Any other shape after the Cloud tool draws plain lines again (Polygon
+  // after Cloud used to draw a cloud). A cloud style picked from the Style
+  // menu on another tool (a polygon cloud) is left alone.
+  if (currentLineBorderStyle === 'cloud' && activeTool === 'rect') return { tool: id, lineBorderStyle: 'solid' };
   return { tool: id, lineBorderStyle: null };
 }
 

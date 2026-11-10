@@ -2839,6 +2839,22 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
       mutation?.disconnect();
     };
   }, [railMainEl]);
+  // A phone held sideways (Android, 360px tall) leaves the tool column about
+  // 100px: an opened group landed below it, hidden under the footer, so a tap
+  // where Measure was drawn opened History. Scroll the open group into view
+  // once it has glided open, keeping the chip above it in sight.
+  useEffect(() => {
+    const main = railMainEl;
+    const wrap = groupToolsEl;
+    if (!railGroupKey || !main || !wrap) return undefined;
+    const timer = setTimeout(() => {
+      const m = main.getBoundingClientRect();
+      const w = wrap.getBoundingClientRect();
+      const delta = Math.min(w.bottom - m.bottom, w.top - 40 - m.top);
+      if (delta > 1) main.scrollTo({ top: main.scrollTop + delta, behavior: 'smooth' });
+    }, 230);
+    return () => clearTimeout(timer);
+  }, [railGroupKey, railMainEl, groupToolsEl]);
   const surveySlots = useMobileSurveyRailSlots({
     mainEl: railMainEl,
     anchorEl: surveyAnchorEl,

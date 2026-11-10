@@ -109,19 +109,21 @@ test('mutation-only document hooks never read or subscribe, but updates still wo
 
 test('default callers keep library reads, refetches, and invalidation updates', async (t) => {
   const h = await mount(t);
-  assert.deepEqual(h.state.reads, ['documents', 'document_collaborators']);
+  // Owned documents, documents shared with me, and the projects I belong to
+  // or own (whose files are read only when there are some).
+  assert.deepEqual(h.state.reads, ['documents', 'document_collaborators', 'project_collaborators', 'projects']);
   assert.equal(h.state.listeners.size, 1);
   assert.deepEqual(h.latest().documents, h.state.rows);
   assert.equal(h.latest().initialLoading, false);
   await act(async () => { await h.latest().refetch(); });
-  assert.equal(h.state.reads.length, 4);
+  assert.equal(h.state.reads.length, 8);
   await act(async () => { for (const listener of h.state.listeners) listener(); });
-  assert.equal(h.state.reads.length, 6);
+  assert.equal(h.state.reads.length, 12);
 });
 
 test('disabling a query removes listeners and prevents a late response from filling state', async (t) => {
   const h = await mount(t, { enabled: true, deferredRead: true });
-  assert.equal(h.state.pendingReads.length, 2);
+  assert.equal(h.state.pendingReads.length, 4);
   await h.render(false);
   assert.equal(h.state.listeners.size, 0);
   await act(async () => { h.state.pendingReads.splice(0).forEach((finish) => finish()); });
@@ -129,10 +131,10 @@ test('disabling a query removes listeners and prevents a late response from fill
   assert.equal(h.latest().loading, false);
   assert.equal(h.latest().initialLoading, false);
   await act(async () => { await h.latest().refetch(); });
-  assert.equal(h.state.reads.length, 2);
+  assert.equal(h.state.reads.length, 4);
   await h.render(true);
   assert.equal(h.state.listeners.size, 1);
-  assert.equal(h.state.reads.length, 4);
+  assert.equal(h.state.reads.length, 8);
   await act(async () => { h.state.pendingReads.splice(0).forEach((finish) => finish()); });
   assert.deepEqual(h.latest().documents, h.state.rows);
 });

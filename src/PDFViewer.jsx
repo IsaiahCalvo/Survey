@@ -3580,6 +3580,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   }, []);
   const selectedToolbarAnnotationRef = useRef(selectedToolbarAnnotation);
   useEffect(() => { selectedToolbarAnnotationRef.current = selectedToolbarAnnotation; }, [selectedToolbarAnnotation]);
+  const selectedToolbarIndicesRef = useRef(selectedToolbarIndices);
+  selectedToolbarIndicesRef.current = selectedToolbarIndices;
   // The series-update callback is declared after handleSaveAnnotations. Early
   // toolbar handlers reach it through this ref so they can keep their current
   // declaration order without introducing a first-render TDZ crash.
@@ -4289,6 +4291,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       const start = downAt;
       downAt = null;
       if (!start) return;
+      if (activeTool === 'select') {
+        // A click on empty page under Select also drops a pick that lives on
+        // ANOTHER page: each page's layer only clears its own (Drawboard
+        // clears any pick; deep test 2026-11-10).
+        if (e.shiftKey || e.altKey) return;
+        if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > QUICK_CLICK_PX) return;
+        if (!e.target?.closest?.('[data-mobile-pdf-surface]')) return;
+        if (isLiveFormWidgetTarget(e.target)) return;
+        const ownerPage = selectedToolbarAnnotationRef.current?.pageNumber
+          ?? selectedToolbarIndicesRef.current?.pageNumber;
+        if (ownerPage == null) return;
+        const hit = resolveAnnotationAt(e);
+        if (hit?.kind === 'page' && hit.pageNumber != null && hit.pageNumber !== ownerPage) {
+          clearAnnotationSelectionForContextChange('select-other-page-empty-click');
+        }
+        return;
+      }
       if (activeTool !== 'pan') return;
       // The second click of a double-click must not re-arm Select behind the
       // editor that just opened. This handler re-subscribes on every tool
@@ -27351,7 +27370,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       // the selection, owner 2026-10-04).
       // Keys belong to an open modal (shortcut sheet, any dialog card): no
       // tool letters, zoom or Delete acting on the page behind it.
-      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      // Only a modal that holds focus counts: one still fading out (or
+      // mounted but idle) must not swallow the next tool key.
+      if ([...document.querySelectorAll('[role="dialog"][aria-modal="true"]')].some((d) => d.contains(document.activeElement) || d.contains(e.target))) return;
       const setActiveTool = (tool) => setActiveToolLogged(tool, { source: 'shortcut-key' });
       // Ctrl+0/1/2 land exactly where the Fit menu does (same path, so the
       // band between panels and the page-fit rules match).
@@ -37400,7 +37421,7 @@ ${pageBlocks}
                 ? 'The viewer couldn’t render this file. It may be corrupted or use an unsupported PDF feature.'
                 : 'The file couldn’t be parsed. It may be corrupted, encrypted, or not a valid PDF.'}
             </div>
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'center' }}>
               <button
                 type="button"
                 onClick={() => {
@@ -37419,6 +37440,7 @@ ${pageBlocks}
                   fontSize: '13px',
                   fontWeight: 600,
                   cursor: 'pointer',
+                  whiteSpace: 'nowrap',
                   fontFamily: FONT_FAMILY
                 }}
               >
@@ -37454,10 +37476,11 @@ ${pageBlocks}
                   fontSize: '13px',
                   fontWeight: 500,
                   cursor: 'pointer',
+                  whiteSpace: 'nowrap',
                   fontFamily: FONT_FAMILY
                 }}
               >
-                Back to dashboard
+                Back to documents
               </button>
             </div>
           </div>
@@ -40106,7 +40129,7 @@ ${pageBlocks}
                       data-morph-icon={t.iconName}
                       data-tool-switch="true"
                       onClick={(e) => {
-                        const pick = resolveShapeToolPick(t.id, lineBorderStyle);
+                        const pick = resolveShapeToolPick(t.id, lineBorderStyle, activeTool);
                         if (pick.lineBorderStyle) setLineBorderStyle(pick.lineBorderStyle);
                         setActiveTool(pick.tool);
                         setMeasureMode(null);

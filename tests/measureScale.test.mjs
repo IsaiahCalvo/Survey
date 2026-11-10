@@ -112,3 +112,12 @@ test('label follows a live endpoint edit of the same line', () => {
   assert.equal(label.text, '200.00 in');
   assert.equal(label.x, 100);
 });
+
+test('a shape whose outline crosses itself measures its loops, not 0', () => {
+  // Bow tie: two triangles of 25 each meeting at (5,5).
+  const bowTie = [{ x: 0, y: 0 }, { x: 10, y: 10 }, { x: 10, y: 0 }, { x: 0, y: 10 }];
+  assert.equal(polygonAreaPt(bowTie), 50);
+  // A plain concave shape is unchanged.
+  const ell = [{ x: 0, y: 0 }, { x: 2, y: 0 }, { x: 2, y: 1 }, { x: 1, y: 1 }, { x: 1, y: 2 }, { x: 0, y: 2 }];
+  assert.equal(polygonAreaPt(ell), 3);
+});

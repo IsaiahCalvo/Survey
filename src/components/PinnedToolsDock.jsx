@@ -115,6 +115,14 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
   const [menu, setMenu] = useState(null); // { kind: 'add' | 'settings' | 'pin', pinId?, rect }
   const [editing, setEditing] = useState(false);
   const [pinDrag, setPinDrag] = useState(null); // { pinId, index, offset }
+  // Escape ends "Edit pins" like every other mode (an open dock menu takes
+  // the Escape first and closes itself).
+  useEffect(() => {
+    if (!editing) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape' && !menu) setEditing(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [editing, menu]);
   const [, setSessionTick] = useState(0);
 
   const shellRef = useRef(null);

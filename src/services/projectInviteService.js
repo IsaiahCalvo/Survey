@@ -303,6 +303,8 @@ export async function listProjectCollaboratorsForProjects(projectIds) {
   return { data: data || [], error: null };
 }
 
+const NOT_ALLOWED_MESSAGE = 'Only a project owner can change or remove people.';
+
 /**
  * Update a project collaborator's role.
  * @param {string} projectId
@@ -310,16 +312,21 @@ export async function listProjectCollaboratorsForProjects(projectIds) {
  * @param {string} newRole - 'viewer' | 'editor' | 'owner'
  */
 export async function updateProjectCollaboratorRole(projectId, userId, newRole) {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('project_collaborators')
     .update({ role: normalizeRole(newRole) })
     .eq('project_id', projectId)
-    .eq('user_id', userId);
+    .eq('user_id', userId)
+    .select('user_id');
 
   if (error) {
     console.error('[KAL-31] Error updating project collaborator role:', error);
     return { success: false, error };
   }
+  // Row-level security turns a non-owner's change into a silent no-op (zero
+  // rows, no error): report it, or the screen says "Updated" and the
+  // role-change email still goes out (deep test 2026-11-10).
+  if (!data?.length) return { success: false, error: NOT_ALLOWED_MESSAGE };
 
   return { success: true };
 }
@@ -328,16 +335,18 @@ export async function updateProjectCollaboratorRole(projectId, userId, newRole) 
  * Remove a collaborator from a project.
  */
 export async function removeProjectCollaborator(projectId, userId) {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('project_collaborators')
     .delete()
     .eq('project_id', projectId)
-    .eq('user_id', userId);
+    .eq('user_id', userId)
+    .select('user_id');
 
   if (error) {
     console.error('[KAL-31] Error removing project collaborator:', error);
     return { success: false, error };
   }
+  if (!data?.length) return { success: false, error: NOT_ALLOWED_MESSAGE };
 
   return { success: true };
 }
