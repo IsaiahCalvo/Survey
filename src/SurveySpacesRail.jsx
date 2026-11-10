@@ -1957,7 +1957,7 @@ const SurveySpacesRail = ({
                       onCommit={(v) => applyChecklistResponseSelection(annotationId, markerModuleId, category, surveyMarker.name || '', item.id, v)}
                     />
                   ) : (
-                  <div className="mobile-survey-check-group">
+                  <div className="mobile-survey-check-group" role="group" aria-label={item.text || 'Checklist answer'}>
                     {answerSetFor(selectedTemplate).map(({ value: option, tone: answerToneName }) => (
                       <button
                         key={option}

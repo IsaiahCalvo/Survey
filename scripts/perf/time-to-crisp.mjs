@@ -19,7 +19,8 @@
 // count of marks on screen stops changing; "blank" = ms until no page on
 // screen is an empty sheet; "still" = ms until the view stops moving (a
 // finger swipe coasts on), "afterStill" = sharp minus still; "maxGap" = the
-// longest wait between two frames (a freeze).
+// longest wait between two frames (a freeze); "mounts" = pages that got
+// their drawing and marks mounted after the gesture ended.
 import fs from 'node:fs';
 import { chromium, devices } from '@playwright/test';
 
@@ -69,15 +70,20 @@ function installProbe() {
     running: false,
     start() {
       this.rows = []; this.running = true; const t0 = performance.now();
+      const mountedAtStart = new Set([...document.querySelectorAll('.survey-pdfjs-page-div[data-page-mounted="true"]')].map((el) => el.dataset.pageNumber));
+      this.mounts = new Set();
       const tick = () => {
         if (!this.running) return;
+        for (const el of document.querySelectorAll('.survey-pdfjs-page-div[data-page-mounted="true"]')) {
+          if (!mountedAtStart.has(el.dataset.pageNumber)) this.mounts.add(el.dataset.pageNumber);
+        }
         const s = sample();
         if (s) this.rows.push({ t: Math.round(performance.now() - t0), ...s });
         requestAnimationFrame(tick);
       };
       requestAnimationFrame(tick);
     },
-    stop() { this.running = false; return this.rows; },
+    stop() { this.running = false; return Object.assign(this.rows, { mounts: this.mounts?.size || 0 }); },
   };
 }
 
@@ -136,6 +142,7 @@ const DESKTOP = {
 const PHONE_GESTURES = {
   fling: { label: 'swipe fling, fit zoom', act: (c, at) => touchSwipe(c, at, 0, -500, 6) },
   flingBack: { label: 'swipe fling back', act: (c, at) => touchSwipe(c, at, 0, 500, 6) },
+  flingHard: { label: 'hard swipe fling, many sheets', act: (c, at) => touchSwipe(c, at, 0, -660, 6) },
   zoomIn: { label: 'pinch in to ~400%', act: async (c, at) => { await pinch(c, at, 2.2); await pinch(c, at, 2.0); } },
   panDeep: { label: 'swipe-pan at ~400%', act: (c, at) => touchSwipe(c, at, -250, -300, 8) },
   zoomMax: { label: 'pinch to max and past', act: async (c, at) => { for (let i = 0; i < 3; i += 1) await pinch(c, at, 2.2); await pinch(c, at, 1.8); } },
@@ -183,10 +190,10 @@ async function run(browser) {
     await g.act(cdp, at);
     await page.evaluate(() => window.__crisp.start());
     await sleep(WATCH_MS);
-    const rows = await page.evaluate(() => window.__crisp.stop());
+    const { rows, mounts } = await page.evaluate(() => { const r = window.__crisp.stop(); return { rows: [...r], mounts: r.mounts }; });
     if (trace) await browser.stopTracing();
     if (process.env.PROFILE) { const { profile } = await cdp.send('Profiler.stop'); fs.writeFileSync(`${process.env.PROFILE}-${key}.cpuprofile`, JSON.stringify(profile)); }
-    out[key] = { what: g.label, ...summarise(rows) };
+    out[key] = { what: g.label, ...summarise(rows), mounts };
     if (process.env.ROWS) out[key].rows = rows.filter((_, i) => i % 6 === 0).map((r) => `${r.t}:${Math.round(r.minRes * 100) / 100}/${r.marks}/${r.blank}`).join(' ');
     await sleep(800);
   }
@@ -194,7 +201,13 @@ async function run(browser) {
   return out;
 }
 
-const browser = await chromium.launch({ executablePath: exe });
+// GPU=1 draws canvases on an emulated GPU (SwiftShader) off the page's
+// thread, the way a real phone does; without it headless Chromium paints PDF
+// pages in software on the page's own thread (seconds a sheet at CPU=4).
+const browser = await chromium.launch({
+  executablePath: exe,
+  args: process.env.GPU ? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-gpu-rasterization', '--enable-accelerated-2d-canvas'] : [],
+});
 for (let i = 0; i < RUNS; i += 1) {
   const out = await run(browser);
   for (const [k, v] of Object.entries(out)) console.log(k.padEnd(10), JSON.stringify(v));

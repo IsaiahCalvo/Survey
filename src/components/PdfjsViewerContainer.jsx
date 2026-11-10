@@ -23,6 +23,7 @@
  * zoomGeneration signal (Stage 3 wires that); never throws out of a contract
  * method or callback (PDFViewer assumes the handle never throws).
  */
+import { stepMountWindow } from '../utils/mountWindowStep.js';
 import { registerAgentViewer } from '../agent/webmcp';
 import '../styles/pageReveal.css';
 import {
@@ -245,6 +246,16 @@ const DESKTOP_MAX_OVERSCAN_PAGES = 3;
 // MOBILE_MAX_CANVAS_AREA-clamped raster (~12 MiB), and the deep-zoom window
 // still tops out at three pages.
 const MOBILE_MAX_OVERSCAN_PAGES = 2;
+// A finger glide faster than this (px/ms; 40 px a frame at 60 Hz) keeps the
+// mounted pages as they are: a page it reaches stays a plain white sheet (no
+// drawing, no marks) until the glide slows under it. Mounting a page's
+// drawing and marks costs 100-400 ms on a phone CPU for a 150-1,000 mark
+// sheet, and the glide is moved by script, so every page that only flew
+// past stalled it (2026-11-10: 0.3-1.5 s stalls flinging a 36-sheet set).
+// At this speed a phone-width sheet crosses the screen in about 0.1 s, less
+// than its mount costs; slower glides mount pages ahead as before, so they are
+// ready (or nearly) when the glide stops on them.
+const GLIDE_MOUNT_HOLD_SPEED = 2.5;
 function resolveLayoutMetrics(isMobileSurface) {
   return isMobileSurface
     ? {
@@ -1769,6 +1780,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // edge bounce is easing): pages on screen may sharpen then.
   const glideSettlingRef = useRef(false);
   const glideTouchRef = useRef(false); // the running glide came from a finger
+  const fastGlideRef = useRef(false); // a finger glide over GLIDE_MOUNT_HOLD_SPEED: mounted pages held
+  const recomputeWindowRef = useRef(null);
+  // After a fast glide slows: { step, frame } while the overscan mounts a page a frame.
+  const mountCatchUpRef = useRef(null);
+  // The range last asked for (ahead of the render that shows it).
+  const rangeNowRef = useRef(range);
   // What may draw right now (pageRasterQueue kinds): during a pinch or a
   // ctrl+wheel zoom nothing does (pages a pinch reveals are not mounted until
   // it ends anyway, and a draw slice costs a whole frame); while a pan, a
@@ -1983,7 +2000,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     };
     if (externalPdf && pdfRef.current === externalPdf) return unload;
     pendingViewportFitRef.current = null;
-    setPageSizes([]); setNumPages(0); setRange([0, -1]);
+    setPageSizes([]); setNumPages(0); rangeNowRef.current = [0, -1]; setRange(rangeNowRef.current);
     pageContainerMapRef.current = {};
     if (!externalPdf && !params) return undefined;
 
@@ -2295,11 +2312,35 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         last = visibleLast;
       }
     }
-    setRange((prev) => (prev[0] === first && prev[1] === last ? prev : [first, last]));
+    const catchUp = mountCatchUpRef.current;
+    if (catchUp && !fastGlideRef.current && visibleFirst !== -1) {
+      // One step per frame; calls between frames (scroll events) wait.
+      const prev = rangeNowRef.current;
+      const next = catchUp.step ? stepMountWindow(prev, [first, last], [visibleFirst, visibleLast]) : prev;
+      catchUp.step = false;
+      if (next[0] === first && next[1] === last) mountCatchUpRef.current = null;
+      else if (!catchUp.frame) {
+        catchUp.frame = requestAnimationFrame(() => {
+          const live = mountCatchUpRef.current;
+          if (!live) return;
+          live.frame = 0; live.step = true;
+          recomputeWindowRef.current?.();
+        });
+      }
+      first = next[0]; last = next[1];
+    }
+    const asked = rangeNowRef.current;
+    // A fast finger glide keeps what is mounted (GLIDE_MOUNT_HOLD_SPEED).
+    const hold = fastGlideRef.current && asked[1] >= asked[0];
+    if (!hold && (asked[0] !== first || asked[1] !== last)) {
+      rangeNowRef.current = [first, last];
+      setRange(rangeNowRef.current);
+    }
     detectCurrentPage();
     visiblePageRangeRef.current = [visibleFirst, visibleLast];
     rasterQueueRef.current?.pump();
   }, [layout, scale, detectCurrentPage, isMobileSurface]);
+  recomputeWindowRef.current = recomputeWindow;
 
   useLayoutEffect(() => {
     const el = scrollerRef.current;
@@ -3990,6 +4031,14 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     });
   };
   panMomentumHooksRef.current.velocity = (vx, vy) => {
+    const fast = glideTouchRef.current && Math.hypot(vx || 0, vy || 0) >= GLIDE_MOUNT_HOLD_SPEED;
+    if (fast) fastGlideRef.current = true;
+    else if (fastGlideRef.current) {
+      // Slowed down: mount what is on screen now, the overscan a page a frame.
+      fastGlideRef.current = false;
+      mountCatchUpRef.current = { step: true, frame: 0 };
+      recomputeWindowRef.current?.();
+    }
     const settling = glideTouchRef.current && !elasticRef.current?.anim && isGlideSlowEnoughToSharpen(vx, vy);
     const startedSettling = settling && !glideSettlingRef.current;
     glideSettlingRef.current = settling;
@@ -4029,6 +4078,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       },
       onSettle: () => {
         glideSettlingRef.current = false;
+        if (fastGlideRef.current) {
+          fastGlideRef.current = false;
+          mountCatchUpRef.current = { step: true, frame: 0 };
+          recomputeWindowRef.current?.();
+        }
         panMomentumHooksRef.current.restore?.();
       },
     });
@@ -5495,12 +5549,16 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const bottomInset = Math.max(0, Math.min(el.clientHeight - inset - 80, Number(options.bottomInset) || 0));
     const bandH = Math.max(1, el.clientHeight - inset - bottomInset);
     const metrics = layoutMetricsRef.current;
+    // The page fit (the zoom floor and the base of the ceiling) is the view
+    // without the bottom sheet: fitted to the short strip above the phone
+    // Survey sheet the page shrank so far it could not scroll the mark up
+    // into that strip, and it stayed behind the sheet.
     const fitScale = computeFitScale({
       mode: 'fitPage',
       pageW: d.w,
       pageH: d.h,
       viewportW: bandW,
-      viewportH: bandH,
+      viewportH: bandH + bottomInset,
       padX: metrics.padX,
       gap: metrics.gap,
       padTop: metrics.padTop,
@@ -5527,6 +5585,20 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         target = Math.min(target, Math.max(scaleRef.current, fitScale * Number(options.maxFitMultiple)));
       }
     } else target = Math.max(fitScale, Math.min(wanted, ceiling));
+    // A bottom sheet over the last page: the viewer has no scroll room below
+    // it, so the page must be tall enough under the mark to fill the space
+    // from the strip's middle to the bottom, or the mark stops behind the
+    // sheet (phone "Locate on page" on a one-page sheet).
+    // (Pages hidden by an active Space add no height, so the last SHOWN page counts.)
+    // Only for a zoom this jump picks itself (not a search hit's set reading
+    // size), and never past this jump's own ceiling: a mark at the very foot
+    // of the page would otherwise send the view to the maximum zoom.
+    const lastShown = !dims.slice(i + 1).some((dim) => !dim.hidden);
+    if (bottomInset > 0 && !options.keepZoom && !(Number(options.scale) > 0) && lastShown) {
+      const below = d.h - (y + h / 2);
+      const room = el.clientHeight - (inset + bandH / 2) - (Number(metrics.padBottom) || 0);
+      if (below > 0 && room > 0) target = Math.max(target, Math.min(room / below, ceiling));
+    }
     const cx = x + w / 2;
     const cy = y + h / 2;
     const viewCx = side.left + bandW / 2;

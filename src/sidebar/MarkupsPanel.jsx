@@ -254,7 +254,9 @@ export default function MarkupsPanel({
                   <span className="markups-panel__dot" style={{ background: row.color || 'var(--text-3)' }} aria-hidden="true" />
                   <span className="markups-panel__main">
                     <span className="markups-panel__title">
-                      {row.measure && row.text !== row.measure.text
+                      {/* A caption that already holds the reading ("Room 101 · 17' 0\"")
+                          reads as it is, not with the reading a second time in front. */}
+                      {row.measure?.text && !String(row.text || '').includes(row.measure.text)
                         ? <><strong>{row.measure.text}</strong> {row.text}</>
                         : (row.text || row.kindLabel)}
                     </span>

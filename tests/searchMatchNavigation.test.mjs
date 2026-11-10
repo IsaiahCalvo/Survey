@@ -107,6 +107,24 @@ test('the phone search sheet covers the bottom of the viewer', () => {
   assert.deepEqual(insets, { left: 0, right: 0, top: 0, bottom: 412 });
 });
 
+test('the phone Survey sheet at its standard height still covers the bottom', () => {
+  // iPhone 14: the viewer runs 70-600 beside the 36px tool rail; the sheet
+  // rises to 170, more than 60% of the viewer's height.
+  const phone = { left: 36, top: 70, right: 390, bottom: 600 };
+  const insets = resolveViewerOcclusionInsets(phone, [
+    { left: 0, top: 170, right: 390, bottom: 600 },
+  ]);
+  assert.deepEqual(insets, { left: 0, right: 0, top: 0, bottom: 430 });
+});
+
+test('a sheet that would leave less than 80px is ignored', () => {
+  const phone = { left: 36, top: 70, right: 390, bottom: 600 };
+  const insets = resolveViewerOcclusionInsets(phone, [
+    { left: 0, top: 100, right: 390, bottom: 600 },
+  ]);
+  assert.equal(insets.bottom, 0);
+});
+
 test('a panel that would leave no room is ignored', () => {
   const insets = resolveViewerOcclusionInsets(container, [
     { left: 0, top: 69, right: 1220, bottom: 800 },

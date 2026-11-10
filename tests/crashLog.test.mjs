@@ -149,3 +149,43 @@ test('browser ResizeObserver notices are not recorded as crashes', async () => {
   const src = fs.readFileSync(new URL('../src/utils/crashLog.js', import.meta.url), 'utf8');
   assert.match(src, /if \(isBrowserNotice\(event\.message\)\) return;/);
 });
+
+test('freeze watch: a stuck page is a freeze, a page the device paused is not', async () => {
+  const { classifyPageGap, FREEZE_MS } = await import('../src/utils/crashLog.js');
+  const from = 100_000;
+  const to = from + 9_400;
+  const every = (start, end, step = 1000) => { const out = []; for (let t = start; t <= end; t += step) out.push(t); return out; };
+  // The background timer kept ticking the whole time: the page's thread was stuck.
+  assert.equal(classifyPageGap(every(from - 5000, to + 2000), from, to), 'frozen');
+  // It stopped too (laptop asleep, iPhone app behind a native sheet).
+  assert.equal(classifyPageGap([...every(from - 5000, from), ...every(to + 50, to + 2000)], from, to), 'paused');
+  // A short hiccup in the background timer is still a freeze.
+  const hiccup = every(from - 5000, to + 2000).filter((t) => t < from + 3500 || t > from + 4500);
+  assert.equal(classifyPageGap(hiccup, from, to), 'frozen');
+  // No background timer: counted as before.
+  assert.equal(classifyPageGap([], from, to), 'unknown');
+  assert.equal(FREEZE_MS, 8000);
+});
+
+test('freeze watch: a real freeze says which scripts ran long', async () => {
+  const { describeLongFrames } = await import('../src/utils/crashLog.js');
+  const origin = 1_000_000;
+  const entries = [
+    { startTime: 500, duration: 1200, scripts: [] },
+    {
+      startTime: 10_000,
+      duration: 9_300,
+      scripts: [
+        { duration: 6_000, sourceURL: 'https://surveytool.app/assets/PDFViewer-abc.js?v=1', sourceFunctionName: 'decodeSnapshot', sourceCharPosition: 1234 },
+        { duration: 2_500, sourceURL: 'https://surveytool.app/assets/vendor-pdfjs.js', sourceFunctionName: '', invoker: 'MessagePort.onmessage' },
+      ],
+    },
+  ];
+  const text = describeLongFrames(entries, origin + 10_000, origin + 19_300, origin);
+  assert.match(text, /^long frame 9300 ms/);
+  assert.match(text, /6000 ms decodeSnapshot \(PDFViewer-abc\.js@1234\)/);
+  assert.match(text, /2500 ms MessagePort\.onmessage \(vendor-pdfjs\.js\)/);
+  assert.match(text, /800 ms outside scripts/);
+  assert.doesNotMatch(text, /surveytool\.app|\?v=1/, 'no address or query');
+  assert.equal(describeLongFrames(entries, origin + 50_000, origin + 60_000, origin), '');
+});

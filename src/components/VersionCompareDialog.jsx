@@ -311,7 +311,9 @@ export default function VersionCompareDialog({ older, newer, versions = [], onCl
               <span style={{ ...swatch(inkRgb(l.ink)), marginLeft: 14 }} />Only in v{l.version.versionNumber}
             </span>
           ))}
-          <span style={{ ...swatch('rgb(0, 0, 0)'), marginLeft: 14 }} />In both.{finePointer ? ' Arrow keys move the chosen layer (Shift: 10 pt).' : ''}
+          <span style={{ ...swatch('rgb(0, 0, 0)'), marginLeft: 14 }} />In both.
+          {/* Only where there is a keyboard to nudge with: a phone has none. */}
+          {finePointer && ' Arrow keys move the chosen layer (Shift: 10 pt).'}
         </span>
       )}
       onClose={onClose}

@@ -15,8 +15,8 @@
  * row) through `render`, like PageGridToggle. `useSnappingShortcut` is the
  * Shift+S key, mounted once by AppShell.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
-import AnchoredPopover from './AnchoredPopover';
+import { useEffect, useRef, useState } from 'react';
+import RailFlyout from './RailFlyout.jsx';
 import {
   ANNOTATION_PREFERENCES_EVENT,
   ANNOTATION_SNAPPING_KEY,
@@ -108,7 +108,6 @@ export function SnappingMenu({ renderButton }) {
     const [open, setOpen] = useState(false);
     const buttonRef = useRef(null);
     const cardRef = useRef(null);
-    const getAnchor = useCallback(() => buttonRef.current, []);
     useEffect(() => {
         if (!open) return undefined;
         const onPointerDown = (event) => {
@@ -128,33 +127,33 @@ export function SnappingMenu({ renderButton }) {
             document.removeEventListener('keydown', onKeyDown, true);
         };
     }, [open]);
+    // The rail's one pop-up card (RailFlyout, like Page fit and Page grid):
+    // titled, beside the rail, bottom level with the magnet.
     return (
-        <>
+        <div className="page-grid-menu">
             {renderButton({ open, ref: buttonRef, onClick: () => setOpen((v) => !v), on: marks || drawing })}
             {open && (
-                <AnchoredPopover getAnchor={getAnchor} gap={6}>
-                    <div
-                        ref={cardRef}
-                        role="dialog"
-                        aria-label="Snapping"
-                        data-snapping-menu="true"
-                        className="page-grid-settings__card"
-                        style={{ position: 'absolute', top: '100%', left: '50%', marginTop: 6, transform: 'translate(-50%, 0)', width: 220 }}
-                    >
-                        <div className="page-grid-settings">
-                            <button type="button" role="switch" aria-checked={marks} data-snapping-marks="true" className="page-grid-settings__switch" onClick={toggleMarks}>
-                                <span>Marks</span>
-                                <span className="page-grid-settings__knob" aria-hidden="true" />
-                            </button>
-                            <button type="button" role="switch" aria-checked={drawing} data-snapping-drawing="true" className="page-grid-settings__switch" onClick={toggleDrawing}>
-                                <span>Drawing</span>
-                                <span className="page-grid-settings__knob" aria-hidden="true" />
-                            </button>
-                            <p className="page-grid-settings__hint">Drawing snaps to the PDF's own line ends, midpoints and lines. Hold Alt to skip snapping; Shift+S turns Marks on or off.</p>
-                        </div>
+                <RailFlyout
+                    cardRef={cardRef}
+                    role="dialog"
+                    aria-label="Snapping"
+                    title="Snapping"
+                    data-snapping-menu="true"
+                    className="page-grid-settings__card"
+                >
+                    <div className="page-grid-settings">
+                        <button type="button" role="switch" aria-checked={marks} data-snapping-marks="true" className="page-grid-settings__switch" onClick={toggleMarks}>
+                            <span>Marks</span>
+                            <span className="page-grid-settings__knob" aria-hidden="true" />
+                        </button>
+                        <button type="button" role="switch" aria-checked={drawing} data-snapping-drawing="true" className="page-grid-settings__switch" onClick={toggleDrawing}>
+                            <span>Drawing</span>
+                            <span className="page-grid-settings__knob" aria-hidden="true" />
+                        </button>
+                        <p className="page-grid-settings__hint">Drawing snaps to the PDF's own line ends, midpoints and lines. Hold Alt to skip snapping; Shift+S turns Marks on or off.</p>
                     </div>
-                </AnchoredPopover>
+                </RailFlyout>
             )}
-        </>
+        </div>
     );
 }

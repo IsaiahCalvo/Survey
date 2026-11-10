@@ -10,7 +10,7 @@
 //
 // A file:// or content:// url is a PDF opened from another app ("Open in
 // Survey"); src/mobile/nativeOpenFile.js reads it for the home screen.
-import { rememberClaim } from '../services/sheetSyncClaim.js';
+import { forgetClaim, rememberClaim } from '../services/sheetSyncClaim.js';
 import { nativeBackAction } from '../utils/backNavigation.js';
 import { isFeatureOn } from '../featureFlags.js';
 
@@ -45,6 +45,24 @@ export function sheetSyncClaimFromUrl(url) {
   return { provider, code };
 }
 
+// Phones often close the app while the person is in the browser saying yes
+// (Android frees memory; iOS after a while). The app then starts fresh on the
+// Documents list, and the code waited for a survey's sheet panel to open:
+// after 10 minutes the sign-in was lost. Finish it straight away instead; the
+// saved code stays for the panel if this try can't reach the server.
+export async function finishSignInNow(claim, call = null) {
+  try {
+    const sheetSyncCall = call || (await import('../services/sheetSyncClient.js')).sheetSyncCall;
+    const res = await sheetSyncCall('claim', claim);
+    // Done, or refused for good (expired, wrong): either way nothing to keep.
+    if (!res?.error || res.code) forgetClaim();
+    if (!res?.error && res?.replaced) (await import('../services/sheetSyncNotices.js')).announceAccountSwitch(claim.provider, res, { call: sheetSyncCall });
+    return res;
+  } catch {
+    return null;
+  }
+}
+
 export function installNativeDeepLinks(win = typeof window !== 'undefined' ? window : null) {
   if (!win?.Capacitor?.isNativePlatform?.()) return false;
   import('@capacitor/app').then(({ App }) => {
@@ -61,7 +79,11 @@ export function installNativeDeepLinks(win = typeof window !== 'undefined' ? win
     App.addListener('appUrlOpen', ({ url }) => {
       if (openFile(url)) return;
       const claim = sheetSyncClaimFromUrl(url);
-      if (claim) { rememberClaim(claim.provider, claim.code); return; }
+      if (claim) {
+        rememberClaim(claim.provider, claim.code);
+        finishSignInNow(claim);
+        return;
+      }
       const route = deepLinkRoute(url);
       if (route) win.location.assign(route);
     });
