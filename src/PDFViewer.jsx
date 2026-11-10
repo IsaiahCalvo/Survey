@@ -3460,7 +3460,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // decides whether the selection survives it. { tool, source } of the latest
   // request; read once by the tool-switch effect below.
   const toolSwitchRequestRef = useRef(null);
+  // Counts every tool request, so a late Escape-to-Pan can tell that a tool
+  // was picked after the Escape and must not override it.
+  const toolRequestSeqRef = useRef(0);
   const setActiveToolLogged = useCallback((next, { source } = {}) => {
+    toolRequestSeqRef.current += 1;
     toolSwitchRequestRef.current = source && typeof next === 'string' ? { tool: next, source } : null;
     try {
       const requested = typeof next === 'function' ? '(updater-fn)' : String(next);
@@ -4446,8 +4450,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           tool: activeTool,
         });
         if (escapeAction === 'switch-to-pan') {
+          // Chrome runs input before timers, so a tool key pressed right
+          // after Escape (C, T...) can land before this timer on a busy
+          // machine. That newer pick wins; Pan must not undo it.
+          const seqAtEscape = toolRequestSeqRef.current;
           window.setTimeout(() => {
-            if (!event.defaultPrevented) setActiveToolLogged('pan', { source: 'escape' });
+            if (event.defaultPrevented || toolRequestSeqRef.current !== seqAtEscape) return;
+            setActiveToolLogged('pan', { source: 'escape' });
           }, 0);
           return;
         }

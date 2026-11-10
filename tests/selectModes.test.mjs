@@ -523,7 +523,10 @@ test('rule 10: Escape closes, commits, cancels, deselects, then puts the tool do
   assert.equal(rules.shouldDeleteKeyRemoveSelection('pen', true), true);
   assert.equal(rules.shouldDeleteKeyRemoveSelection('pen', false), false);
   assert.deepEqual({ ...rules.UNDO_SELECTION_RULE }, { keepsSelection: true, addsSelection: false });
-  assert.match(PDF_VIEWER_SOURCE, /if \(escapeAction === 'switch-to-pan'\) \{[\s\S]{0,200}if \(!event\.defaultPrevented\) setActiveToolLogged\('pan'/);
+  assert.match(PDF_VIEWER_SOURCE, /if \(escapeAction === 'switch-to-pan'\) \{[\s\S]{0,500}if \(event\.defaultPrevented \|\| toolRequestSeqRef\.current !== seqAtEscape\) return;\s*setActiveToolLogged\('pan'/);
+  // A tool picked between Escape and its late Pan timer wins (CI 2026-11-10:
+  // C pressed right after Escape was undone by the timer on a busy runner).
+  assert.match(PDF_VIEWER_SOURCE, /const setActiveToolLogged = useCallback\(\(next, \{ source \} = \{\}\) => \{\s*toolRequestSeqRef\.current \+= 1;/);
   assert.match(TEXT_EDIT_SOURCE, /commitRef\.current\(\{ flush: true, via: 'escape' \}\)/);
   assert.match(PDF_VIEWER_SOURCE, /if \(commitMeta\?\.via === 'escape'\) \{[\s\S]{0,400}setPendingSvgSelection\(\{ pageNumber, annotationIndex: committedIndex/);
   // Survey Markers' Delete is live under every tool, not only Select
