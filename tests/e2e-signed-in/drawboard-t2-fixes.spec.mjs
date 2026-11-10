@@ -169,7 +169,7 @@ async function twoPolylines(page, box, marks) {
   return second.x - box.x;
 }
 
-test('poly-click-starts: the first click after a finished polyline is its first point; without the flag it only drops the pick', async ({ page }) => {
+test('poly-click-starts: the first click after a finished polyline is its first point', async ({ page }) => {
   test.setTimeout(180_000);
   const on = await open(page, 'T2 poly on', ['poly-click-starts']);
   try {
@@ -179,11 +179,13 @@ test('poly-click-starts: the first click after a finished polyline is its first 
   }
 });
 
-test('without poly-click-starts the second polyline starts at the second click', async ({ page }) => {
+// Main made this the default for every Polygon / Polyline (selectModes.js,
+// deep test 2026-11-10), so the flag no longer changes it.
+test('without poly-click-starts the second polyline also starts at the first click', async ({ page }) => {
   test.setTimeout(180_000);
   const off = await open(page, 'T2 poly off');
   try {
-    expect(Math.abs((await twoPolylines(page, off.box, off.marks)) - 150)).toBeLessThan(6);
+    expect(Math.abs((await twoPolylines(page, off.box, off.marks)) - 100)).toBeLessThan(6);
   } finally {
     await off.sheet.remove();
   }
