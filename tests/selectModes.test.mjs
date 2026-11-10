@@ -381,9 +381,11 @@ test('rule 1: every tool has one class', () => {
     select: 'select', 'text-select': 'select', pan: 'select', rect: 'shape', ellipse: 'shape', line: 'shape', arrow: 'shape', callout: 'shape',
     pen: 'ink', highlighter: 'ink', polygon: 'point', polyline: 'point', eraser: 'eraser', text: 'text',
     counter: 'place', 'survey-marker': 'place', 'region-edit': 'other',
+    // Nightly 'link-tool' (2026-11-10): the Hyperlink tool drags a box out like a shape.
+    hyperlink: 'shape',
   };
   for (const [tool, cls] of Object.entries(expected)) assert.equal(rules.getToolSelectionClass(tool), cls, tool);
-  assert.deepEqual([...rules.SHAPE_DRAW_TOOLS], ['rect', 'ellipse', 'line', 'arrow', 'callout']);
+  assert.deepEqual([...rules.SHAPE_DRAW_TOOLS], ['rect', 'ellipse', 'line', 'arrow', 'callout', 'hyperlink']);
 });
 
 test('rule 2: Select / Pan pick any mark; group tools pick their own group; the halo follows', () => {
@@ -395,7 +397,8 @@ test('rule 2: Select / Pan pick any mark; group tools pick their own group; the 
     assert.equal(rules.shouldShowHoverHalo(tool), true, tool);
   }
   for (const tool of rules.SHAPE_DRAW_TOOLS) {
-    const own = tool === 'callout' ? 'review' : 'shape';
+    // Link boxes are their own group, picked by the Hyperlink tool (Nightly 'link-tool').
+    const own = tool === 'callout' ? 'review' : tool === 'hyperlink' ? 'link' : 'shape';
     assert.equal(press(tool, 'mark', false, false, own).click, 'select', tool);
     assert.equal(press(tool, 'mark', false, false, 'draw').click, 'tool', tool);
     assert.equal(rules.shouldShowHoverHalo(tool, own), true, tool);

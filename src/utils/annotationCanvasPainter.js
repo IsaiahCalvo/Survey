@@ -21,6 +21,7 @@
  * free of React/fabric/DOM side effects.
  */
 import { calculateCalloutConnection } from './calloutGeometry.js';
+import { isLinkMark, linkMarkPaint } from './linkMarkPaint.js';
 import { calloutWrapsWords, textWrapsWords, wrapParagraph } from './textWrapMode.js';
 import { renderPathToSvgAttrs, renderPathToSvgD } from './svgPathAttrs.js';
 import {
@@ -1472,6 +1473,29 @@ export function drawAnnotationObject(context, object, displayScale = 1) {
   applyBlendAndOpacity(context, object);
   context.translate(toNumber(object.left), toNumber(object.top));
   applyRotation(context, toNumber(object.angle), effectiveWidth / 2, effectiveHeight / 2);
+
+  // Nightly 'link-tool', twin of renderRect's link branch: the see-through
+  // fill, then the border its style asks for (linkMarkPaint.js).
+  if (type === 'rect' && isLinkMark(object)) {
+    const paint = linkMarkPaint(object, effectiveWidth, effectiveHeight);
+    context.fillStyle = paint.fill;
+    context.fillRect(0, 0, effectiveWidth, effectiveHeight);
+    if (paint.strokeWidth > 0 && (paint.box || paint.underline)) {
+      context.beginPath();
+      if (paint.underline) {
+        context.moveTo(paint.underline.x1, paint.underline.y1);
+        context.lineTo(paint.underline.x2, paint.underline.y2);
+      } else {
+        context.rect(0, 0, effectiveWidth, effectiveHeight);
+      }
+      if (typeof context.setLineDash === 'function') context.setLineDash(paint.dash || []);
+      context.strokeStyle = paint.stroke;
+      context.lineWidth = paint.strokeWidth;
+      context.stroke();
+    }
+    context.restore();
+    return;
+  }
 
   const isEllipse = type === 'circle' || type === 'ellipse';
 

@@ -182,6 +182,7 @@ import { variableWidthPreviewD } from '../utils/penWidthInk.js';
 import { getCurvedPath, distanceToLineSegment, getCurveEndAngle } from '../utils/lineGeometry.js';
 import { ARROWHEAD_STYLES } from './Callout/types';
 import { renderPathToSvgAttrs, renderPathToSvgD, isFilledInkOutlineAttrs, getFilledInkHitTargetProps } from '../utils/svgPathAttrs.js';
+import { LINK_BOX_DRAWN_EVENT, LINK_DEFAULT_WIDTH, LINK_MIN_SIZE, linkMarkPaint, readLinkLastLook } from '../utils/linkTool.js';
 import {
   applyPageAffineToInkObject,
   createInkPathAffine,
@@ -450,7 +451,8 @@ const normalizeSurveyMarkerBoundsValue = (bounds) => {
 // Unified renderer phase 2 — the drawing tools whose creation gestures live
 // on this layer (previews render through the SAME committed renderers below,
 // so what you see while dragging IS what commits — no cross-renderer seam).
-const SHAPE_CREATION_TOOLS = ['rect', 'ellipse', 'line', 'arrow', 'survey-marker'];
+// 'hyperlink' (Nightly 'link-tool'): a dragged box that becomes a link.
+const SHAPE_CREATION_TOOLS = ['rect', 'ellipse', 'line', 'arrow', 'survey-marker', 'hyperlink'];
 // Nightly 'drag-auto-scroll': the tools whose drag scrolls the view at its edge.
 const AUTO_SCROLL_TOOLS = new Set([...SHAPE_CREATION_TOOLS, 'select', 'callout', 'cloud', 'tape']);
 // 'survey-marker-freehand' is the Survey Marker tool in its Freehand mode (owner
@@ -2907,6 +2909,31 @@ const SVGAnnotationLayerBody = memo(({
       return;
     }
 
+    if (tool === 'hyperlink') {
+      // Nightly 'link-tool': the box goes to the link host (LinkToolHost),
+      // which asks where it links to; commit() then saves the link mark on
+      // this page as one Undo step, picked, like any drawn shape.
+      const box = {
+        x: Math.min(state.start.x, end.x),
+        y: Math.min(state.start.y, end.y),
+        width: Math.abs(end.x - state.start.x),
+        height: Math.abs(end.y - state.start.y),
+      };
+      if (!(box.width >= LINK_MIN_SIZE && box.height >= LINK_MIN_SIZE)) return;
+      const commit = (mark) => {
+        const json = stampAnnotationCreationIdentity(mark, { authorId: viewerId });
+        const current = annotationsRef.current;
+        selectAnnotation(current?.objects?.length || 0);
+        onSaveAnnotations(
+          { ...(current || {}), objects: [...(current?.objects || []), json] },
+          { source: 'path:created', tool },
+        );
+        recordAnnotationCommit({ surface: 'SVGAnnotationLayer', source: 'path:created', action: 'link-create', pageNumber });
+      };
+      window.dispatchEvent(new CustomEvent(LINK_BOX_DRAWN_EVENT, { detail: { pageNumber, box, id, commit } }));
+      return;
+    }
+
     const shared = {
       id,
       start: state.start,
@@ -3939,7 +3966,14 @@ const SVGAnnotationLayerBody = memo(({
   // Nightly 'properties-panel': the panel's typed R turns the one picked mark
   // (the degree box's own commit) and its typed W / H resize a box mark.
   const transformTargetRef = useRef(null);
-  transformTargetRef.current = { selectedAnnotationIndex, annotations, onSaveAnnotations, handleRotationInputCommit, pageNumber, keysLive: isTabActive && editingAnnotationIndex == null && !editingCalloutId };
+  // keysLive: one page mark is the whole pick (a callout or Survey Marker
+  // with it makes a group, which the turn / scale keys leave alone).
+  const pickedCalloutCount = selectedCalloutIds ? (selectedCalloutIds.size ?? selectedCalloutIds.length ?? 0) : 0;
+  transformTargetRef.current = {
+    selectedAnnotationIndex, annotations, onSaveAnnotations, handleRotationInputCommit, pageNumber,
+    keysLive: isTabActive && editingAnnotationIndex == null && !editingCalloutId
+      && selectedIds.size === 1 && pickedCalloutCount === 0 && selectedSurveyMarkerIds.size === 0,
+  };
   useEffect(() => {
     const onTransform = (event) => {
       const detail = event?.detail || {};
@@ -3983,21 +4017,24 @@ const SVGAnnotationLayerBody = memo(({
         if (document.body?.getAttribute('data-readonly') === 'true') return;
       }
       const t = transformTargetRef.current;
-      if (!t?.keysLive) return; // a tab behind, or a mark being edited
+      if (!t?.keysLive) return; // a tab behind, a mark being edited, or a group
       const index = t.selectedAnnotationIndex;
       const object = Number.isInteger(index) ? t.annotations?.objects?.[index] : null;
-      if (!object || object.locked) return;
+      if (!object) return;
+      // The keys belong to the pick from here on, even when this mark cannot
+      // take them (a counter's body, a locked mark): Cmd + Left / Right would
+      // otherwise send the browser Back / Forward.
+      e.preventDefault();
+      if (object.locked || !canMoveAnnotation(object)) return;
       if (step.op === 'turn') {
         if (!canTypeTurn(object)) return;
         const pending = pendingOptimisticRotationRef.current;
         const base = pending?.annotationIndex === index ? Number(pending.angle) : Number(object.angle);
-        e.preventDefault();
         t.handleRotationInputCommit(index, wrapDegrees((Number.isFinite(base) ? base : 0) + step.by) ?? 0);
         return;
       }
       const next = scaleObjectBy(object, step.factor);
       if (!next) return;
-      e.preventDefault();
       const updated = deepClone(t.annotations);
       updated.objects[index] = next;
       t.onSaveAnnotations(updated, { source: 'turn-scale-keys', action: 'resize', checkpointPolicy: 'normal' });
@@ -8698,6 +8735,27 @@ const SVGAnnotationLayerBody = memo(({
           style={{ pointerEvents: 'none' }}
         />
       )}
+      {/* Hyperlink (Nightly 'link-tool'): the drag shows the link as it will
+          land, in the last style and colour used. */}
+      {shapeCreation && shapeCreation.tool === 'hyperlink' && (() => {
+        const x = Math.min(shapeCreation.start.x, shapeCreation.current.x);
+        const y = Math.min(shapeCreation.start.y, shapeCreation.current.y);
+        const w = Math.abs(shapeCreation.current.x - shapeCreation.start.x);
+        const h = Math.abs(shapeCreation.current.y - shapeCreation.start.y);
+        const look = readLinkLastLook();
+        const paint = linkMarkPaint({ stroke: look.color, strokeWidth: LINK_DEFAULT_WIDTH, data: { linkStyle: look.style } }, w, h);
+        return (
+          <g className="shape-creation-preview" data-link-preview="true" transform={`translate(${x}, ${y})`} style={{ pointerEvents: 'none' }}>
+            <rect x={0} y={0} width={w} height={h} fill={paint.fill} stroke="none" />
+            {paint.box && paint.strokeWidth > 0 && (
+              <rect x={0} y={0} width={w} height={h} fill="none" stroke={paint.stroke} strokeWidth={paint.strokeWidth} strokeDasharray={paint.dash ? paint.dash.join(',') : undefined} />
+            )}
+            {paint.underline && paint.strokeWidth > 0 && (
+              <line {...paint.underline} stroke={paint.stroke} strokeWidth={paint.strokeWidth} />
+            )}
+          </g>
+        );
+      })()}
       {/* Smart fill: where the press landed, while the provider works. */}
       {smartFillPending && (
         <circle

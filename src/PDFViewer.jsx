@@ -400,6 +400,8 @@ import { useZoomState } from './hooks/useZoomState';
 import { isFeatureOn } from './featureFlags.js';
 import { setStampPickerOpen, useStampPickerOpen } from './components/StampPickerCard.jsx';
 import { pickImageToInsert } from './components/InsertImage.jsx';
+import LinkToolHost from './components/LinkToolHost.jsx';
+import { LINK_EDIT_EVENT, applyLinkEdit, selectedLinkOf } from './utils/linkTool.js';
 import { marksHidden, setMarksHidden, subscribeMarksHidden } from './utils/marksHidden.js';
 import { isTypingTarget } from './utils/typingTarget.js';
 import { useMarkClipboard } from './utils/sharedMarkClipboard.js';
@@ -3200,6 +3202,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const [measureKeysOn] = useState(() => isFeatureOn('measure-keys'));
   // Nightly 'measure-edit': the quick bar's Measurement popover on a picked measurement.
   const [measureEditOn] = useState(() => isFeatureOn('measure-edit'));
+  // Nightly 'link-tool': Drawboard's Hyperlink tool (LinkToolHost, utils/linkTool.js).
+  const [linkToolOn] = useState(() => isFeatureOn('link-tool'));
   const [measureDepth, setMeasureDepth] = useState(() => loadMeasureDepth());
   const [measureDepthDialog, setMeasureDepthDialog] = useState(null);
   // Tape (beta 'tape-tool', Drawboard PDF): a band that covers part of the
@@ -3818,6 +3822,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // undo step. The change is applied to the mark as saved right now.
   const handlePatchSelectedMeasure = useCallback((changes) => {
     handlePatchSelectedAnnotation({}, (obj) => applyMeasureEdit(obj, changes));
+  }, [handlePatchSelectedAnnotation]);
+  // Nightly 'link-tool': Edit hyperlink's target / style / colour, one save
+  // and one Undo step like the Measurement popover.
+  const handlePatchSelectedLink = useCallback((changes) => {
+    handlePatchSelectedAnnotation({}, (obj) => applyLinkEdit(obj, changes));
   }, [handlePatchSelectedAnnotation]);
   const [zoomGeneration, setZoomGeneration] = useState(0);
   // Edit mode state: tracks which annotation is being edited via double-click
@@ -27114,6 +27123,33 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     });
   }, [activeTool, isActive, onBottomToolbarApiChange]);
 
+  // Nightly 'link-tool': the one picked link mark (its target, style and
+  // colour) for the picked bar's "Go to ..." / Link and the edit dialog.
+  const selectedLinkForHost = useMemo(() => {
+    if (!linkToolOn || !selectedToolbarAnnotation || selectedToolbarCallout) return null;
+    const pageObjects = annotationsByPage?.[selectedToolbarAnnotation.pageNumber]?.objects || [];
+    const index = findSelectedAnnotationIndex(pageObjects, selectedToolbarAnnotation);
+    const obj = (index >= 0 ? pageObjects[index] : null) || selectedToolbarAnnotation.annotation;
+    return selectedLinkOf(obj, getAnnotationRenderIdentity(obj).annotationId);
+  }, [linkToolOn, selectedToolbarAnnotation, selectedToolbarCallout, annotationsByPage]);
+  // "Go to ...": a website opens in a new tab (the desktop / phone apps hand
+  // it to the system browser), a page glides into view, an area zooms to fit.
+  const followLink = useCallback((link) => {
+    if (!link) return;
+    if (link.kind === 'url') {
+      void openExternalDestination(link.href).catch(() => {});
+    } else if (link.kind === 'page') {
+      goToPage(link.page, { smooth: true });
+    } else if (link.kind === 'area') {
+      const viewer = pdfjsViewerRef.current;
+      if (typeof viewer?.focusPageRect === 'function') viewer.focusPageRect(link.page, link.rect, { fill: 0.92, animate: true });
+      else goToPage(link.page, { smooth: true });
+    }
+  }, [goToPage]);
+  const editSelectedLink = useCallback(() => {
+    window.dispatchEvent(new CustomEvent(LINK_EDIT_EVENT));
+  }, []);
+
   // UX 2026-05-13: Publish bottom toolbar state to the App shell when this tab
   // is active. Keep this effect below every value in the API object to avoid
   // temporal-dead-zone crashes during PDFViewer's first render.
@@ -27425,6 +27461,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         }
         : null,
       patchSelectedMeasure: measureEditOn ? handlePatchSelectedMeasure : null,
+      // One picked link mark (Nightly 'link-tool'): "Go to ..." and Link.
+      selectedLink: linkToolOn && !groupSummary ? selectedLinkForHost : null,
+      followLink: linkToolOn ? followLink : null,
+      editSelectedLink: linkToolOn ? editSelectedLink : null,
       selectionMixed: groupSummary ? groupSummary.mixed : null,
       selectionCount: groupSummary ? groupSummary.count : (selectedToolbarAnnotation || selectedToolbarCallout ? 1 : 0),
       strokeWidthInputValue: strokeWidthInputValueRef.current,
@@ -27584,6 +27624,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     measureScaleMeta,
     measureEditOn,
     handlePatchSelectedMeasure,
+    linkToolOn,
+    selectedLinkForHost,
+    followLink,
+    editSelectedLink,
     pickBarTool,
     liveTextSelection,
     selectionMode,
@@ -38028,6 +38072,17 @@ ${pageBlocks}
           }}
         />
       )}
+      {linkToolOn && (
+        <LinkToolHost
+          isActive={isActive}
+          readOnly={Boolean(documentLocked) || yjsDocRole === 'viewer'}
+          numPages={numPages}
+          activeTool={activeTool}
+          setActiveTool={setActiveTool}
+          selectedLink={selectedLinkForHost}
+          onPatchSelectedLink={handlePatchSelectedLink}
+        />
+      )}
       {measureScaleDialog && (
         <MeasureScaleDialog
           pageNumber={measureScaleDialog.pageNumber}
@@ -41036,6 +41091,8 @@ ${pageBlocks}
                   ...(isFeatureOn('stamp-tool') ? [{ id: 'stamp', label: 'Stamp', iconName: 'stamp', picker: true }] : []),
                   // Nightly 'insert-image': picks a picture and drops it on the page.
                   ...(isFeatureOn('insert-image') ? [{ id: 'image', label: 'Image', iconName: 'image', action: true }] : []),
+                  // Nightly 'link-tool': drag a box, then say where it links (Shift+H).
+                  ...(linkToolOn ? [{ id: 'hyperlink', label: 'Hyperlink', iconName: 'hyperlink' }] : []),
                   // TODO: Revisit the user-created Note tool later. Imported
                   // PDF Text/sticky-note annotations still render through
                   // pdfAnnotationImporter + the normal PDF annotation layers.

@@ -17,6 +17,7 @@ import { TOOL_SHORTCUTS } from '../src/utils/toolShortcuts.js';
 import { isRedoKeyEvent, isUndoKeyEvent } from '../src/utils/undoRedoHotkeys.js';
 import { tabStepForKey } from '../src/utils/tabKeys.js';
 import { measureKindForKey } from '../src/utils/measure/measureKeys.js';
+import { isLinkToolKey } from '../src/utils/linkTool.js';
 import { isFocusModeKey } from '../src/utils/focusMode.js';
 import { isTypingTarget, nudgeDeltaForKey } from '../src/utils/annotationFamilyRules.js';
 import { isAnnotationSnapFree, isSnapFreeModifier } from '../src/utils/snapGuides.js';
@@ -234,6 +235,10 @@ const HANDLED = {
     && tabStepForKey(ev(']', { code: 'BracketRight' })) === 0 && /tabStepForKey\(event\)/.test(SRC.shell),
   'alt+shift+[': () => tabStepForKey(ev('{', { altKey: true, shiftKey: true, code: 'BracketLeft' })) === -1
     && /steppedTabId\(/.test(SRC.shell),
+  // Nightly 'link-tool': Shift+H by key code; LinkToolHost arms the Hyperlink tool.
+  'shift+h': () => isLinkToolKey(ev('H', { shiftKey: true })) && !isLinkToolKey(ev('h'))
+    && !isLinkToolKey(ev('H', { shiftKey: true, ctrlKey: true }))
+    && /isLinkToolKey\(event\)/.test(read('src/components/LinkToolHost.jsx')),
   // Nightly 'measure-keys': by key code; the viewer arms the measure kind.
   'alt+shift+l': () => measureKindForKey(ev('¬', { altKey: true, shiftKey: true, code: 'KeyL' })) === 'length'
     && /measureKindForKey\(e, \{ depth: measureDepthEnabled \}\)/.test(SRC.viewer),

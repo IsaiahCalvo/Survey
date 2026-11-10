@@ -365,6 +365,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Keys: Ctrl / Cmd + Left / Right turn the picked mark 1° (5° with Shift), Ctrl / Cmd + Up / Down scale it',
     stage: 'beta',
   }),
+  'link-tool': Object.freeze({
+    label: 'Hyperlink tool (Shift+H): drag a box and link it to a page, a website or an area; "Go to" on the picked bar follows it',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

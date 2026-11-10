@@ -32,6 +32,9 @@ export const AUTO_SELECT_AFTER_COMMIT_TOOLS = Object.freeze([
   'polygon',
   'polyline',
   'counter',
+  // Hyperlink (Nightly 'link-tool'): the new link comes up picked so "Go to"
+  // and Link are right there (LinkToolHost commits it; the layer picks it).
+  'hyperlink',
 ]);
 
 // Tools whose marks are deliberately left unselected after they commit.

@@ -8,6 +8,7 @@
  * Each function takes a Fabric.js JSON object and returns a React SVG element.
  */
 import React from 'react';
+import { isLinkMark, linkMarkPaint } from './linkMarkPaint.js';
 import { measureTextBounds, getLineEndpoints } from './svgBoundingBox';
 // Phase 14 CALL-10: renderCallout delegates to a pure data-spec builder in
 // calloutEditAdapter.js so the contract can be unit-tested without loading
@@ -595,6 +596,40 @@ export const renderRect = (obj, index) => {
           strokeWidth={glyphStrokeWidth}
           strokeLinecap="round"
         />
+      </g>
+    );
+  }
+
+  // Nightly 'link-tool': a link box paints its see-through fill and the
+  // border its style asks for (box, dashed, underline, none). linkTool.js.
+  if (isLinkMark(obj)) {
+    const paint = linkMarkPaint(obj, effectiveWidth, effectiveHeight);
+    return (
+      <g
+        key={key}
+        transform={positionTransform}
+        opacity={obj.opacity ?? 1}
+        data-shape-id={shapeId}
+        data-shape-kind="link"
+        data-link-style={paint.style}
+        onClick={__shapeClick}
+      >
+        <rect x={0} y={0} width={effectiveWidth} height={effectiveHeight} fill={paint.fill} stroke="none" />
+        {paint.box && paint.strokeWidth > 0 && (
+          <rect
+            x={0}
+            y={0}
+            width={effectiveWidth}
+            height={effectiveHeight}
+            fill="none"
+            stroke={paint.stroke}
+            strokeWidth={paint.strokeWidth}
+            strokeDasharray={paint.dash ? paint.dash.join(' ') : undefined}
+          />
+        )}
+        {paint.underline && paint.strokeWidth > 0 && (
+          <line {...paint.underline} stroke={paint.stroke} strokeWidth={paint.strokeWidth} />
+        )}
       </g>
     );
   }

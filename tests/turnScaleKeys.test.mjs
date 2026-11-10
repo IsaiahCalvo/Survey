@@ -44,4 +44,9 @@ test('wired: a beta flag, a migration, and a front-tab key listener on the page 
   assert.match(layer, /if \(e\.defaultPrevented \|\| !isFeatureOn\('turn-scale-keys'\)\) return;/);
   assert.match(layer, /if \(!t\?\.keysLive\) return;/);
   assert.match(layer, /keysLive: isTabActive && editingAnnotationIndex == null && !editingCalloutId/);
+  // Bugbot (2026-11-10): one page mark is the whole pick (no callout or
+  // Survey Marker with it); a user lock holds; the keys never reach the
+  // browser (Cmd + Left / Right is Back / Forward) once a mark is picked.
+  assert.match(layer, /&& selectedIds\.size === 1 && pickedCalloutCount === 0 && selectedSurveyMarkerIds\.size === 0/);
+  assert.match(layer, /e\.preventDefault\(\);\n\s*if \(object\.locked \|\| !canMoveAnnotation\(object\)\) return;/);
 });
