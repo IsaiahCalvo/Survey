@@ -131,6 +131,11 @@ export const MAX_CELL_CHARS = 32000;
 // provider's savesLate): Google saves as the person types.
 export const RECENT_WRITE_MS = 300_000;
 const RECENT_WRITE_MAX = 2000;
+// A PM typing a new item into the first empty row under the list, unsaved,
+// while Survey appends a field tech's new item there (Graph still sees the
+// row as empty): the PM's late save lands on the tech's row. A changed Item
+// on a row Survey appended this recently is taken as that, not a rename.
+export const NEW_ROW_TAKEOVER_MS = 180_000;
 function recentWritesOf(saved, nowMs) {
   const kept = Object.entries(saved || {})
     .filter(([, w]) => w && nowMs - Number(w.t) < RECENT_WRITE_MS)
@@ -394,6 +399,9 @@ export async function planSheetRound({
   lateSaves = false,
 }) {
   const nextBaseline = { ...baseline };
+  // Tabs that already had items before this round: the first fill of a new
+  // tab is all appends, and a PM renaming one of those is a rename.
+  const scopesWithItems = new Set(Object.values(baseline || {}).map((b) => b?.scopeId).filter(Boolean));
   // Many filled answers blanked in the sheet at once (an older copy restored
   // from version history, a column cleared by mistake): held until an editor
   // says which side is right, so field work is never wiped in one round.
@@ -818,6 +826,7 @@ export async function planSheetRound({
       nextBaseline[markerId] = { scopeId: scope.scopeId, fields: fieldPrintsOf(rec) };
       seenMarkers.add(markerId);
       plan.summary.appended += 1;
+      if (lateSaves && scopesWithItems.has(scope.scopeId)) next.recentWrites[`${markerId}|+row`] = { t: now.getTime() };
     }
     const notItems = new Set(summaryRows);
     let lastItemRow = headerAt;
@@ -893,14 +902,58 @@ export async function planSheetRound({
           if (eraseMode === 'hold') heldKeys.add(key);
         }
       }
+      // A PM's new row saved late over the row Survey had just appended for
+      // a field tech's item (NEW_ROW_TAKEOVER_MS): the cells the PM typed
+      // become a new item in the next row, and the tech's values go back.
+      if (base && lateSaves && colOfKey.has('item')) {
+        const fresh = next.recentWrites[`${markerId}|+row`];
+        const typedName = cellText(row[colOfKey.get('item')]).trim();
+        if (fresh && !fresh.took && now.getTime() - Number(fresh.t) <= NEW_ROW_TAKEOVER_MS && typedName
+          && getFp(sheetSide, 'item') !== getFp(base, 'item') && getFp(appFps, 'item') === getFp(base, 'item')) {
+          const typedKeys = keys.filter((k) => {
+            const column = scope.columns.find((c) => c.key === k);
+            return columnIsEditable(column) && colOfKey.has(k) && !errorKeys.has(k)
+              && getFp(sheetSide, k) !== getFp(base, k) && getFp(appFps, k) === getFp(base, k);
+          });
+          const id = newMarkerId();
+          const item = {
+            id, name: '', moduleId: scope.moduleId, categoryId: scope.categoryId, checklistResponses: {}, note: {},
+            changedBy: sheetEditor, changedDate: nowIso, pageNumber: null, bounds: null, source: 'sheet',
+          };
+          for (const k of typedKeys) {
+            const conv = sheetCellToApp(layout, scope.columns.find((c) => c.key === k), row[colOfKey.get(k)]);
+            if (conv.error) { next.problems.push({ markerId: id, scopeId: scope.scopeId, message: `${where(r)}: ${conv.error}` }); continue; }
+            applyFieldToMarker(item, k, conv, nowIso);
+          }
+          if (!item.name) item.name = typedName;
+          plan.markerWrites[id] = item;
+          plan.summary.created += 1;
+          const made = await rowFor(id, item);
+          appendRows.push(made.out);
+          plan.summary.appended += 1;
+          nextBaseline[id] = { scopeId: scope.scopeId, fields: fieldPrintsOf(made.rec) };
+          seenMarkers.add(id);
+          next.recentWrites[`${id}|+row`] = { t: now.getTime() };
+          for (const k of typedKeys) setFp(sheetSide, k, getFp(base, k));
+          // Still watched (the rest of that save may land later), but split once.
+          next.recentWrites[`${markerId}|+row`] = { ...fresh, took: true };
+          next.problems.push({ markerId: id, scopeId: scope.scopeId, message: `${where(r)}: "${typedName}" was typed into the row Survey had just filled with "${String(marker.name || '')}" for a field tech. Both are kept: "${typedName}" is a new item in the row below.` });
+        }
+      }
       // A late save landing on a cell Survey just wrote, while the app still
       // holds what Survey wrote: compared against the value from before
       // Survey's write, so it is held as a conflict (and stays held, since the
       // baseline keeps that value) instead of replacing the app's value.
       if (base && lateSaves) {
         let copied = false;
+        // Cells of a row Survey appended count as written over a blank cell,
+        // so a late PM value on a filled one (a note typed into that empty
+        // row) is held too; on a cell Survey left blank it just comes in.
+        const appended = next.recentWrites[`${markerId}|+row`];
+        const blankPrints = appended && now.getTime() - Number(appended.t) <= NEW_ROW_TAKEOVER_MS ? fieldPrintsOf({}) : null;
         for (const key of keys) {
-          const w = next.recentWrites[`${markerId}|${key}`];
+          let w = next.recentWrites[`${markerId}|${key}`];
+          if (!w && blankPrints && getFp(base, key) !== getFp(blankPrints, key)) w = { wrote: getFp(base, key), was: getFp(blankPrints, key) };
           if (!w) continue;
           const wrote = getFp(base, key);
           if (w.wrote !== wrote || getFp(appFps, key) !== wrote) continue;
