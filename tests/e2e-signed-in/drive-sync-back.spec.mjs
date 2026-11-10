@@ -193,6 +193,14 @@ test('open from OneDrive, draw, Sync now writes the marked-up PDF back; a OneDri
     const savedBytes = drive.items.get('PLAN1').bytes;
     expect(savedBytes.toString('latin1').startsWith('%PDF')).toBe(true);
     expect(await savedSubtypes(savedBytes)).toContain('Line');
+    // How often to save: the app's own drop-down (not a browser list) sets it.
+    await card.getByRole('button', { name: 'Save to OneDrive every' }).click();
+    await page.getByRole('listbox', { name: 'Save to OneDrive every' }).getByRole('option', { name: '15 min' }).click();
+    await expect.poll(async () => {
+      const { data } = await adminClient().from('document_drive_links').select('sync_minutes').eq('document_id', docs[0].id).maybeSingle();
+      return data?.sync_minutes;
+    }, { timeout: 20_000 }).toBe(15);
+    await expect(card).toBeVisible();
     await card.getByRole('button', { name: 'Close', exact: true }).last().click();
 
     // Someone edits the file in OneDrive; the next save asks first.

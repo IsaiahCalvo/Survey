@@ -4,6 +4,7 @@
 // and has "Sync to OneDrive now", how often to save, and turning it off;
 // Drawboard's three dialogs (conflict, file gone, read-only) open on their own.
 import { useEffect, useState } from 'react';
+import ValueSelect from './ValueSelect.jsx';
 import DialogCard from './DialogCard';
 import BodyPortal from './BodyPortal';
 import Icon from '../Icons';
@@ -87,17 +88,17 @@ export function DriveSyncDialogs({ state, cardOpen, onCloseCard }) {
           {state.canPush && (
             <div style={{ display: 'grid', gap: 10, fontSize: 13 }}>
               {!link.syncOff && (
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  Save every
-                  <select
-                    aria-label="Save to OneDrive every"
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span aria-hidden="true">Save every</span>
+                  <ValueSelect
+                    label="Save to OneDrive every"
+                    width={96}
                     value={MINUTE_CHOICES.includes(link.syncMinutes) ? link.syncMinutes : 5}
-                    onChange={(e) => state.setMinutes(Number(e.target.value))}
-                  >
-                    {MINUTE_CHOICES.map((m) => <option key={m} value={m}>{m === 60 ? '1 hour' : `${m} min`}</option>)}
-                  </select>
-                  after a change
-                </label>
+                    options={MINUTE_CHOICES.map((m) => ({ value: m, label: m === 60 ? '1 hour' : `${m} min` }))}
+                    onChange={(next) => state.setMinutes(Number(next))}
+                  />
+                  <span aria-hidden="true">after a change</span>
+                </div>
               )}
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                 {link.webUrl && (
