@@ -12,6 +12,7 @@ import {
   unpackSearchText,
 } from '../src/utils/searchTextKeep.js';
 import { pdfFileStamp, setPdfFileStamp } from '../src/utils/pdfFileStamp.js';
+import { applyPageViewOperation, createPageView } from '../src/utils/pageViewDocument.js';
 
 const settle = async (n = 30) => { for (let i = 0; i < n; i += 1) await new Promise((r) => setTimeout(r, 0)); };
 
@@ -135,4 +136,19 @@ test('the file stamp is shared from the preview session, and waits for it a whil
   assert.equal(await later, 'f00d');
   assert.equal(await pdfFileStamp(base), 'f00d');
   assert.equal(await pdfFileStamp({}, { waitMs: 10 }), null, 'none known in time');
+});
+
+test('nothing is kept while the Pages view shows a turned, moved or removed page', async () => {
+  const store = await memoryStore();
+  const stampOf = async () => 'view123';
+  const base = fakeDoc(3);
+  const done = new Map([1, 2, 3].map((n) => [n, { textContent: { items: runs(n), styles: {} }, viewport: new FakeViewport({ viewBox: [0, 0, 1224, 792], scale: 1, rotation: 0 }) }]));
+  const turned = applyPageViewOperation(createPageView(base), { type: 'rotate', page: 2, delta: 90 });
+  assert.equal(await keepSearchText(turned, done, { store, stampOf }), false, 'a turned page: not kept');
+  const removed = applyPageViewOperation(createPageView(base), { type: 'delete', page: 3 });
+  assert.equal(await keepSearchText(removed, new Map([...done].slice(0, 2)), { store, stampOf }), false, 'a removed page: not kept');
+  assert.deepEqual(await store.loadDoc(searchTextRowStamp('view123')), []);
+  // The view with no edit is the file itself: kept.
+  assert.equal(await keepSearchText(createPageView(base), done, { store, stampOf }), true);
+  await store.close();
 });
