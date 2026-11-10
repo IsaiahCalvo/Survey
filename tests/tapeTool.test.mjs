@@ -79,3 +79,9 @@ test('render, reveal and tool rows are wired', () => {
   assert.match(read('src/hooks/useSVGInteraction.js'), /onSaveAnnotations\?\.\(toggleTapeRevealed\(page, index\)/);
   assert.match(read('src/mobile/MobilePdfViewerChrome.jsx'), /\{ id: 'tape', label: 'Tape', icon: 'tape', flag: 'tape-tool' \}/);
 });
+
+test('a picked tape keeps the 100 pt width cap under Select or Pan', () => {
+  const viewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
+  const caps = viewer.match(/\(pickBarTool === 'tape' \|\| isTapeMark\(getSelectedShapeMeta\(\)\.annotation\)\) \? 100 : 50/g) || [];
+  assert.equal(caps.length, 2);
+});

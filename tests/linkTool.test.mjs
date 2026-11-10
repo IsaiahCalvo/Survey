@@ -230,3 +230,8 @@ test('a quick second submit cannot commit the same link twice', () => {
   const host = readFileSync(new URL('../src/components/LinkToolHost.jsx', import.meta.url), 'utf8');
   assert.match(host, /const current = dialogRef\.current;\s*dialogRef\.current = null;/);
 });
+
+test('leaving the tab closes an open link card', () => {
+  const host = readFileSync(new URL('../src/components/LinkToolHost.jsx', import.meta.url), 'utf8');
+  assert.match(host, /useEffect\(\(\) => \{\s*if \(!isActive\) setDialog\(null\);\s*\}, \[isActive\]\);/);
+});

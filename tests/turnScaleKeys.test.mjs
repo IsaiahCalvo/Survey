@@ -50,3 +50,8 @@ test('wired: a beta flag, a migration, and a front-tab key listener on the page 
   assert.match(layer, /&& selectedIds\.size === 1 && pickedCalloutCount === 0 && selectedSurveyMarkerIds\.size === 0/);
   assert.match(layer, /e\.preventDefault\(\);\n\s*if \(object\.locked \|\| !canMoveAnnotation\(object\)\) return;/);
 });
+
+test('the properties panel refuses a user-locked mark too', () => {
+  const layer = readFileSync(new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url), 'utf8');
+  assert.match(layer, /if \(!object \|\| object\.locked \|\| !canMoveAnnotation\(object\)\) return;\n\s*if \(detail\.op === 'turn'/);
+});

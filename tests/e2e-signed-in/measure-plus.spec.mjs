@@ -41,13 +41,18 @@ async function drawLength(page, surface, x1, x2, y) {
   await page.mouse.down();
   await page.mouse.move(box.x + x2, box.y + y, { steps: 8 });
   await page.mouse.up();
-  const label = surface.locator('.measure-labels .measure-label[data-measure-kind="length"]');
-  await expect(label).toHaveCount(1, { timeout: 15_000 });
-  return label.locator('text');
+  // With 'measure-plus' a new Length is a dimension line with its caption
+  // inline; without it, the old line and pill.
+  const dim = surface.locator('[data-dimension-line] text[data-dimension-caption]');
+  const pill = surface.locator('.measure-labels .measure-label[data-measure-kind="length"] text');
+  await expect(dim.or(pill)).toHaveCount(1, { timeout: 15_000 });
+  return (await dim.count()) ? dim : pill;
 }
 
 async function openScaleDialog(page) {
-  await page.locator('[data-measure-tool="menu"]').filter({ visible: true }).first().click();
+  const menu = page.locator('[data-measure-tool="menu"]').filter({ visible: true });
+  if (!(await menu.count())) await page.getByRole('button', { name: 'Shapes', exact: true }).click();
+  await menu.first().click();
   await page.getByText('Page scale…').click();
   return page.getByRole('dialog', { name: 'Set page scale' });
 }
@@ -104,6 +109,23 @@ test('custom scale reads feet-inches, Units restamp the line, Set as default car
     await expect(dialog).toBeHidden();
 
     const reading = await drawLength(page, surface, 150, 450, 300);
+    // Drawboard's dimension line: offset line in two pieces round the caption,
+    // two extension lines, two open chevrons, and no pill.
+    const dimLine = surface.locator('[data-dimension-line]');
+    await expect(dimLine).toHaveCount(1);
+    await expect(dimLine.locator('polyline')).toHaveCount(2);
+    expect(await dimLine.locator('line').count()).toBe(4);
+    await expect(surface.locator('.measure-labels .measure-label[data-measure-kind="length"]')).toHaveCount(0);
+    await page.screenshot({ path: test.info().outputPath('measure-plus-dimension.png') });
+    // A click on the offset line (what the user sees) picks the mark.
+    const bar = page.locator('[data-selection-quick-bar][data-visible="true"]');
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('v');
+    await expect(bar).toHaveCount(0);
+    const seg = await dimLine.locator('line').nth(2).boundingBox();
+    await page.mouse.click(seg.x + seg.width / 2, seg.y + seg.height / 2);
+    await expect(bar).toBeVisible();
+    await page.keyboard.press('Escape');
     await expect(reading).toHaveText(/^(?:[\d,]+′(?:-\d+(?: \d+\/\d)?″)?|(?:\d+ )?\d+(?:\/\d)?″)$/);
     const ftin = feetInches((await reading.textContent()).trim());
     expect(ftin).toBeGreaterThan(12);

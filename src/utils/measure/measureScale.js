@@ -18,6 +18,7 @@
  */
 
 import { computeLineBboxCenter } from '../svgBoundingBox.js';
+import { DIMENSION_LEADER_PT } from './dimensionLine.js';
 import {
   MEASURE_LINE_PREFIXES,
   formatDisplayArea,
@@ -692,9 +693,11 @@ export function pageScaleFromObjects(objects) {
  * Stamp measure metadata on a freshly built line / polygon / polyline commit
  * JSON. Wall area and Volume also keep their depth (page scale units).
  */
-export function stampMeasure(json, kind, scale, { depth = null } = {}) {
+export function stampMeasure(json, kind, scale, { depth = null, dim = false } = {}) {
   if (!json || !MEASURE_KINDS.includes(kind)) return json;
   const measure = { kind };
+  // Nightly 'measure-plus': a new Length draws as a dimension line.
+  if (dim && kind === 'length') measure.dim = { leader: DIMENSION_LEADER_PT };
   if (isValidMeasureScale(scale)) measure.scale = { ...scale };
   const d = normalizeMeasureDepth(depth);
   if (d && DEPTH_MEASURE_KINDS.includes(kind)) measure.depth = d;

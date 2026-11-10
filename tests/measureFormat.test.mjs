@@ -131,3 +131,41 @@ test('wiring: beta flag, migration, dialog fields, viewer default', () => {
   assert.match(viewer, /withDefaultMeasureScale\(savedMeasureScaleMeta, measureDefaultScale\)/);
   assert.match(viewer, /if \(setDefault && measurePlusOn\)/);
 });
+
+test('dimension line: offset, extensions past it, chevrons, line broken round the caption', async () => {
+  const dl = await import('../src/utils/measure/dimensionLine.js');
+  const g = dl.dimensionLineGeometry({ x1: 0, y1: 100, x2: 200, y2: 100 }, { leader: 15.31, captionWidth: 40 });
+  // Drawn left to right, the line sits 15.31 pt above (y-down page space).
+  assert.deepEqual([g.a.x, +g.a.y.toFixed(2), g.b.x, +g.b.y.toFixed(2)], [0, 84.69, 200, 84.69]);
+  assert.equal(+g.extensions[0][1].y.toFixed(2), 82.69, 'extension runs 2 pt past the line');
+  assert.equal(g.segments.length, 2);
+  assert.equal(+(g.segments[1][0].x - g.segments[0][1].x).toFixed(2), 46, 'gap = caption + 3 pt each side');
+  assert.deepEqual(g.chevrons[0].map((p) => [+p.x.toFixed(2), +p.y.toFixed(2)]), [[7, 80.69], [0, 84.69], [7, 88.69]]);
+  assert.equal(g.caption.angle, 0);
+  // Right to left: the text still reads upright.
+  const back = dl.dimensionLineGeometry({ x1: 200, y1: 100, x2: 0, y2: 100 }, { captionWidth: 40 });
+  assert.equal(((back.caption.angle % 360) + 360) % 360, 0);
+  // A turned mark counts its turn: 170° on the page flips the text.
+  const turned = dl.dimensionLineGeometry({ x1: 0, y1: 0, x2: 100, y2: 0 }, { turn: 170 });
+  assert.equal(turned.caption.angle, 180);
+  // Too short for the caption: one piece, the caption just off the line.
+  const short = dl.dimensionLineGeometry({ x1: 0, y1: 0, x2: 30, y2: 0 }, { captionWidth: 40 });
+  assert.equal(short.segments.length, 1);
+  assert.ok(short.caption.y < short.a.y);
+  assert.equal(dl.dimensionLineGeometry({ x1: 1, y1: 1, x2: 1, y2: 1 }), null);
+});
+
+test('dimension line: stamped only on a new Length with the flag; drawn by renderLine', async () => {
+  const { stampMeasure } = await import('../src/utils/measure/measureScale.js');
+  const dl = await import('../src/utils/measure/dimensionLine.js');
+  const line = { type: 'Line', x1: -50, y1: 0, x2: 50, y2: 0, left: 0, top: 0, width: 100, height: 0 };
+  assert.equal(dl.isDimensionMeasure(stampMeasure(line, 'length', null)), false);
+  const dim = stampMeasure(line, 'length', null, { dim: true });
+  assert.equal(dl.isDimensionMeasure(dim), true);
+  assert.equal(dl.dimensionLeader(dim), 15.31);
+  assert.equal(dl.isDimensionMeasure(stampMeasure({ type: 'polygon', points: [] }, 'area', null, { dim: true })), false);
+  const layer = read('src/components/SVGAnnotationLayer.jsx');
+  assert.match(layer, /stampMeasure\(json, 'length', effectiveMeasureScale, \{ dim: isFeatureOn\('measure-plus'\) \}\)/);
+  assert.match(layer, /if \(isDimensionMeasure\(obj\)\) return;/);
+  assert.match(read('src/utils/svgAnnotationRenderers.jsx'), /if \(spec\.kind !== 'curved' && isDimensionMeasure\(obj\)\) \{/);
+});

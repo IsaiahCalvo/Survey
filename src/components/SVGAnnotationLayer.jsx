@@ -570,6 +570,7 @@ import {
   stampMeasure,
   isPolyMeasureFor,
 } from '../utils/measure/measureScale.js';
+import { dimensionLeader, dimensionLineGeometry, isDimensionMeasure } from '../utils/measure/dimensionLine.js';
 import { useTooltip } from './Tooltip';
 
 // Measure label (Length / Area): a white pill at a fixed SCREEN size (12 px
@@ -976,6 +977,8 @@ const SVGAnnotationLayerBody = memo(({
     const labels = [];
     objects.forEach((obj, index) => {
       if (!obj?.data?.measure || obj.visible === false || isOnHiddenLayer(obj, hiddenLayerIds)) return;
+      // A dimension line ('measure-plus') draws its own inline caption.
+      if (isDimensionMeasure(obj)) return;
       const label = buildMeasureLabel(obj, effectiveMeasureScale);
       if (label) labels.push({ key: obj.id || obj.data?.id || `m${index}`, index, label });
     });
@@ -2967,7 +2970,7 @@ const SVGAnnotationLayerBody = memo(({
       return;
     }
     if (json && tool === 'line' && measureMode === 'length') {
-      json = stampMeasure(json, 'length', effectiveMeasureScale);
+      json = stampMeasure(json, 'length', effectiveMeasureScale, { dim: isFeatureOn('measure-plus') });
     }
     if (json) dispatchCommit(json);
   }, [
@@ -3994,7 +3997,9 @@ const SVGAnnotationLayerBody = memo(({
       if (typeof document !== 'undefined' && document.body?.getAttribute('data-readonly') === 'true') return;
       const index = t.selectedAnnotationIndex;
       const object = Number.isInteger(index) ? t.annotations?.objects?.[index] : null;
-      if (!object || object.locked) return;
+      // A user lock (data.lockedBy) holds here too, as it does for nudge and
+      // the turn / scale keys.
+      if (!object || object.locked || !canMoveAnnotation(object)) return;
       if (detail.op === 'turn' && canTypeTurn(object)) {
         t.handleRotationInputCommit(index, Number(detail.angle) || 0);
       } else if (detail.op === 'ending') {
@@ -7022,6 +7027,39 @@ const SVGAnnotationLayerBody = memo(({
                     onDoubleClick={(e) => handleAnnotationDoubleClick(e, i)}
                   />
                 )}
+                {/* 'measure-plus': a dimension line is drawn off its points,
+                    so the line the user sees takes the press and the halo too. */}
+                {!lineIsCurved && isDimensionMeasure(renderObj) && (() => {
+                  const geo = dimensionLineGeometry(ep, { leader: dimensionLeader(renderObj) });
+                  if (!geo) return null;
+                  return (
+                    <>
+                      {annotationIsHovered && (
+                        <line
+                          x1={geo.a.x} y1={geo.a.y} x2={geo.b.x} y2={geo.b.y}
+                          stroke="rgb(74, 144, 226)"
+                          opacity={HOVER_HALO_OPACITY}
+                          strokeWidth={Math.max(6, (renderObj.strokeWidth || 2) + 4)}
+                          strokeLinecap="round"
+                          style={{ pointerEvents: 'none' }}
+                        />
+                      )}
+                      <line
+                        x1={geo.a.x} y1={geo.a.y} x2={geo.b.x} y2={geo.b.y}
+                        stroke="transparent"
+                        strokeWidth={markHitBand((renderObj.strokeWidth || 2) / inverseScale, 1)}
+                        strokeLinecap="round"
+                        vectorEffect="non-scaling-stroke"
+                        pointerEvents={annotationHitTargetsInteractive && isObjectInteractive ? 'stroke' : 'none'}
+                        data-shape-hit-target="dimension-line"
+                        onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
+                        onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
+                        onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
+                        onDoubleClick={(e) => handleAnnotationDoubleClick(e, i)}
+                      />
+                    </>
+                  );
+                })()}
               </g>
             );
           }

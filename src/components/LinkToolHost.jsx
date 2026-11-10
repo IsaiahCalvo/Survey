@@ -73,6 +73,11 @@ export default function LinkToolHost({
   useEffect(() => {
     if (choosing && (activeTool !== LINK_TOOL_ID || !isActive)) stopChoosing();
   }, [activeTool, choosing, isActive, stopChoosing]);
+  // Leaving the tab closes an open New / Edit link card too: it is portalled
+  // to <body>, so it would stay on screen over the other file.
+  useEffect(() => {
+    if (!isActive) setDialog(null);
+  }, [isActive]);
 
   useEffect(() => {
     if (!isActive) return undefined;

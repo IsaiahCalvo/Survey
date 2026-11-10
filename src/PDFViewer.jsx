@@ -9757,7 +9757,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         // blurring this field. Keep the live tool width current while typing;
         // persistence and selected-annotation edits remain blur-only.
         const minWidth = isCounterSize ? COUNTER_SIZE_MIN : 1;
-        const maxWidth = isCounterSize ? COUNTER_SIZE_MAX : (pickBarTool === 'tape' ? 100 : 50);
+        const maxWidth = isCounterSize ? COUNTER_SIZE_MAX : ((pickBarTool === 'tape' || isTapeMark(getSelectedShapeMeta().annotation)) ? 100 : 50);
         setStrokeWidth(normalizeAnnotationSize(value, minWidth, maxWidth, widthDecimals));
       }
       publishToolbarDraft('strokeWidthInputValue', value);
@@ -9771,7 +9771,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     // blur-time DOM value so a fast edit cannot recommit a stale closure value.
     const isCounterSize = pickBarTool === 'counter' || getSelectedShapeMeta().isCounter;
     const minWidth = isCounterSize ? COUNTER_SIZE_MIN : 1;
-    const maxWidth = isCounterSize ? COUNTER_SIZE_MAX : (pickBarTool === 'tape' ? 100 : 50);
+    // A picked tape (under Select or Pan) keeps Drawboard's 10-100 pt list.
+    const maxWidth = isCounterSize ? COUNTER_SIZE_MAX : ((pickBarTool === 'tape' || isTapeMark(getSelectedShapeMeta().annotation)) ? 100 : 50);
     const rawValue = String(event?.currentTarget?.value ?? strokeWidthInputValueRef.current ?? '').trim();
     // w41: an empty Width over picked marks of different widths means "leave
     // them" - never "set all of them to the minimum".
