@@ -257,3 +257,64 @@ test('a mark drawn in the other window before its reload turns with the page', a
     await sheet.remove();
   }
 });
+
+test('two page turns saved apart while the other window holds a drag both apply to its mark', async ({ browser }) => {
+  test.setTimeout(300_000);
+  const sheet = await seedLandscapePdf('Page op two runs');
+  const ctxA = await newWindow(browser);
+  const ctxB = await newWindow(browser);
+  const a = await ctxA.newPage();
+  const b = await ctxB.newPage();
+  try {
+    await signIn(a, E2E_ACCOUNTS.owner);
+    await openDoc(a, sheet.name);
+    const boxA = await pageDivOf(a).boundingBox();
+    await a.keyboard.press('r');
+    await a.mouse.move(boxA.x + boxA.width * 0.05, boxA.y + boxA.height * 0.1);
+    await a.mouse.down();
+    await a.mouse.move(boxA.x + boxA.width * 0.25, boxA.y + boxA.height * 0.3, { steps: 8 });
+    await a.mouse.up();
+    await a.keyboard.press('Escape');
+    await expect.poll(async () => (await markIds(a)).length).toBe(1);
+    const twin = (await markIds(a))[0];
+    await a.waitForTimeout(3000);
+    await signIn(b, E2E_ACCOUNTS.owner);
+    await openDoc(b, sheet.name);
+    await expect.poll(() => markRel(b, twin), { timeout: 20_000 }).not.toBeNull();
+
+    // B starts a box and keeps the button down, so it cannot reload yet.
+    const boxB = await pageDivOf(b).boundingBox();
+    await b.mouse.click(5, 450);
+    await b.keyboard.press('r');
+    await b.mouse.move(boxB.x + boxB.width * 0.05, boxB.y + boxB.height * 0.1);
+    await b.mouse.down();
+    await b.mouse.move(boxB.x + boxB.width * 0.25, boxB.y + boxB.height * 0.3, { steps: 8 });
+
+    // A turns the page twice, each turn saved on its own.
+    await rotateRight(a);
+    await expect.poll(() => isPortrait(a)).toBe(true);
+    await a.waitForTimeout(4000);
+    await rotateRight(a);
+    await expect.poll(() => isPortrait(a)).toBe(false);
+    await a.waitForTimeout(4000);
+    expect(await isPortrait(b)).toBe(false);
+
+    await b.mouse.up();
+    await b.keyboard.press('Escape');
+    await expect.poll(async () => (await markIds(b)).length).toBe(2);
+    const mine = (await markIds(b)).find((x) => x !== twin);
+
+    // After B reloads, its box has turned twice (upside down) and sits on the twin.
+    for (const p of [b, a]) {
+      await expect.poll(async () => {
+        const t = await markRel(p, twin); const m = await markRel(p, mine);
+        return Boolean(t && m && t.cx > 0.6 && t.cy > 0.6 && Math.abs(t.cx - m.cx) < 0.03 && Math.abs(t.cy - m.cy) < 0.03);
+      }, { timeout: 45_000 }).toBe(true);
+    }
+    expectSameMark(await markRel(a, mine), await markRel(b, mine), 'A and B agree after two turns');
+  } finally {
+    await ctxA.close();
+    await ctxB.close();
+    await sheet.remove();
+  }
+});
