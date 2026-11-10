@@ -3212,7 +3212,7 @@ const SurveySpacesRail = ({
                               aria-label="Show items"
                               data-testid="survey-tracking-filters"
                             >
-                              {[['mine', 'Assigned to me'], ['overdue', 'Late'], ['hideDone', 'Hide done']].map(([key, label]) => (
+                              {[['mine', 'Assigned to me'], ['dueSoon', 'Due soon'], ['overdue', 'Late'], ['hideDone', 'Hide done']].map(([key, label]) => (
                                 <button
                                   key={key}
                                   type="button"
