@@ -42,6 +42,9 @@ const polyBackStepOn = () => isFeatureOn('poly-back-step');
 // Snap to the PDF's own drawing (Nightly, 'snap-content'; snapContentIndex.js).
 import { getPageSnapContentIndex } from '../survey/snapContentIndex.js';
 import { readSnapContent } from '../utils/annotationPreferences.js';
+// Drag inside a picked mark to move it; a finger gets a move grip (Nightly,
+// 'box-drag-move', utils/boxDragMove.js).
+const boxDragMoveOn = () => isFeatureOn(BOX_DRAG_MOVE_FLAG);
 import { maxOf, minOf } from '../utils/arrayExtrema.js';
 import { resolveEditEntryKind } from '../utils/annotationEditRoute.js';
 import {
@@ -204,6 +207,7 @@ import {
 } from '../utils/annotationFamilyRules.js';
 // w58: hold Cmd (Mac) / Ctrl (Windows) to move the selection from anywhere in its box.
 import { useMoveModifierHeld, resolveModifierMoveZone, isPointInBoxes, isCopyDragEvent } from '../utils/moveModifier.js';
+import { BOX_DRAG_MOVE_FLAG, boxDragMoveKind, boxMoveGripGlyphPath, boxMoveGripPlacement } from '../utils/boxDragMove.js';
 import { getPdfStampProxySvgProps, isPdfStampProxy } from '../utils/pdfStampProxy.js';
 import { isSymbolStamp } from '../utils/symbolLibrary.js';
 import { canGroupResizeMember } from '../utils/groupResize.js';
@@ -7434,6 +7438,44 @@ const SVGAnnotationLayerBody = memo(({
     return out;
   })();
 
+  // Nightly 'box-drag-move' (utils/boxDragMove.js): with no key held, the
+  // same box is a move zone drawn UNDER the marks (a mouse or pen), or a
+  // finger gets a move grip under the box. The zone lives under Select, and
+  // under Pan while a press is handed to the pick (useSelectionGrabHandoff
+  // arms the layer). Under a drawing tool a drag inside the box still draws:
+  // a mark just drawn stays picked, and a shape drawn inside it must not move
+  // it instead (its outline and grabbers still grab it, as before). The grip
+  // shows under every tool that may grab the pick, so it is there to be
+  // pressed. Text Select keeps the page for text drags; a text box or
+  // callout being typed in keeps its text.
+  const boxDragKind = boxDragMoveKind(inputKind);
+  const boxDragMoveActive = (() => {
+    if (!boxDragMoveOn() || modifierMoveActive || familySelectionSize === 0 || interactionState !== 'idle') return false;
+    if (activeTool === 'text-select' || isCalloutTextEditMode || (editingAnnotationIndex != null && !isBboxEditMode)) return false;
+    if (boxDragKind === 'zone'
+      ? !(isSelectTool && (activeTool === 'select' || activeTool === 'pan'))
+      : !(isSelectTool || selectionGrabbableByTool)) return false;
+    if (typeof document !== 'undefined' && document.body?.getAttribute('data-readonly') === 'true') return false;
+    // Only when a picked member may move (locked marks and text markup stay put).
+    for (const idx of selectedIds || []) {
+      if (canMoveAnnotation(annotations?.objects?.[idx])) return true;
+    }
+    if (calloutSelectionSize > 0 && Array.isArray(callouts)) {
+      const selectable = selectableCalloutIdsRef.current;
+      for (const callout of callouts) {
+        if (!callout || callout.pageNumber !== pageNumber || !effectiveSelectedCalloutIds.has?.(callout.id)) continue;
+        if (selectable instanceof Set && !selectable.has(callout.id)) continue;
+        if (!isUserLocked(callout)) return true;
+      }
+    }
+    if (surveyMarkerSelectionSize > 0) {
+      for (const member of surveyMarkerMembersRef.current || []) {
+        if (member && !member.locked && selectedSurveyMarkerIds.has(String(member.id))) return true;
+      }
+    }
+    return false;
+  })();
+
   // UX w58 (owner 2026-09-28): the move zone — while Cmd (Mac) / Ctrl
   // (Windows) is held, the selection's whole box (grown to a comfortable
   // minimum on a tiny mark) is one transparent move handle with the move
@@ -7444,7 +7486,7 @@ const SVGAnnotationLayerBody = memo(({
   // 25 % zoom, which is why the mark itself wins). Hidden while a drag /
   // rotate / resize is running (the drag owns the pointer then).
   const modifierMoveZone = (() => {
-    if (!modifierMoveActive || interactionState !== 'idle') return null;
+    if (!(modifierMoveActive || boxDragMoveActive) || interactionState !== 'idle') return null;
     const boxes = [];
     for (const idx of selectedIds || []) {
       const obj = annotations?.objects?.[idx];
@@ -7545,7 +7587,9 @@ const SVGAnnotationLayerBody = memo(({
     e.stopPropagation();
     e.preventDefault();
     if (typeof document !== 'undefined' && document.body?.getAttribute('data-readonly') === 'true') return;
-    {
+    // The 'box-drag-move' grip is drawn on top of everything: a press on it
+    // always moves, even over a turned mark's rotate grabber.
+    if (!e.currentTarget?.hasAttribute?.('data-box-move-grip')) {
       const rotateEl = rotateGrabberUnderZonePoint(e.currentTarget, e.clientX, e.clientY);
       // The hand-off re-dispatches the press on the grabber. Window-level
       // pointerdown listeners therefore see this press twice; they only read
@@ -7582,6 +7626,28 @@ const SVGAnnotationLayerBody = memo(({
       dragMode: 'move',
     });
     try { svgRef.current?.setPointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
+  };
+
+  // 'box-drag-move' zone (under the marks): a mouse / pen press inside the
+  // pick moves it, the same move the Cmd / Ctrl zone starts. Under Select,
+  // Shift (add to the pick / box select) and a finger (pan) are no move: the
+  // press goes on, unchanged, to what lies under the zone. Under Pan the press
+  // was handed here as a press on the selection, so it moves, as a press on
+  // the picked mark itself does.
+  const handleBoxDragMoveZonePointerDown = (e) => {
+    if (activeTool === 'select' && (e.pointerType === 'touch' || e.shiftKey)) {
+      const zoneEl = e.currentTarget;
+      let below = null;
+      try {
+        below = document.elementsFromPoint(e.clientX, e.clientY).find((el) => el !== zoneEl) || null;
+      } catch (_) { below = null; }
+      if (below) {
+        e.stopPropagation();
+        redispatchPointerDown(below, e);
+      }
+      return;
+    }
+    handleModifierMoveZonePointerDown(e);
   };
 
   const stackedMarks = (() => {
@@ -8050,6 +8116,24 @@ const SVGAnnotationLayerBody = memo(({
           <rect x={0} y={0} width={width} height={height} />
         </clipPath>
       </defs>
+      {/* Nightly 'box-drag-move': the pick's move zone, under every mark (a
+          press on another mark inside the box still picks that mark). */}
+      {boxDragMoveActive && boxDragKind === 'zone' && modifierMoveZone && (
+        <rect
+          data-box-drag-move-zone="true"
+          x={modifierMoveZone.left}
+          y={modifierMoveZone.top}
+          width={modifierMoveZone.width}
+          height={modifierMoveZone.height}
+          transform={modifierMoveZone.angle
+            ? `rotate(${modifierMoveZone.angle}, ${modifierMoveZone.cx}, ${modifierMoveZone.cy})`
+            : undefined}
+          fill="transparent"
+          stroke="none"
+          style={{ cursor: 'move', pointerEvents: 'all' }}
+          onPointerDown={handleBoxDragMoveZonePointerDown}
+        />
+      )}
       <g data-page-clip="marks" clipPath={marksClipPath}>
       {uniformTextMarkupElements}
       {/* w53: Survey Markers draw inside stackedMarks, each in its place in
@@ -9916,9 +10000,35 @@ const SVGAnnotationLayerBody = memo(({
           })()}
         </>
       )}
+      {/* Nightly 'box-drag-move': a finger's move grip, just under the pick. */}
+      {boxDragMoveActive && boxDragKind === 'grip' && modifierMoveZone && (() => {
+        const grip = boxMoveGripPlacement(modifierMoveZone, { inverseScale });
+        if (!grip) return null;
+        return (
+          <g
+            data-box-move-grip="true"
+            role="button"
+            aria-label="Move"
+            style={{ cursor: 'move', pointerEvents: 'all', touchAction: 'none', filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.2))' }}
+            onPointerDown={handleModifierMoveZonePointerDown}
+          >
+            <circle cx={grip.cx} cy={grip.cy} r={grip.r} fill={HANDLE_FILL} stroke={HANDLE_RING} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+            <path
+              d={boxMoveGripGlyphPath(grip.cx, grip.cy, grip.r)}
+              fill="none"
+              stroke={HANDLE_RING}
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              vectorEffect="non-scaling-stroke"
+              pointerEvents="none"
+            />
+          </g>
+        );
+      })()}
       {/* w58: Cmd / Ctrl move zone — on top of everything on the page; a
           press on a rotate grabber outside the marks is handed to it. */}
-      {modifierMoveZone && (
+      {modifierMoveZone && modifierMoveActive && (
         <rect
           data-modifier-move-zone="true"
           x={modifierMoveZone.left}

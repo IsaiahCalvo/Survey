@@ -266,6 +266,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: "Snap to the PDF's own drawing: line ends, midpoints and along straight lines (Snapping menu: Marks / Drawing)",
     stage: 'beta',
   }),
+  'box-drag-move': Object.freeze({
+    label: 'Drag inside a picked mark to move it',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

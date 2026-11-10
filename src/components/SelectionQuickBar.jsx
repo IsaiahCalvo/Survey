@@ -208,9 +208,10 @@ function readSelection(items, { measureEdit = false } = {}) {
     }
   }
   // A degree box already open (it can be held inside the page, away from
-  // the spot selectionKeepOut keeps for it).
+  // the spot selectionKeepOut keeps for it), and a finger's move grip under
+  // the pick (Nightly 'box-drag-move').
   const open = [];
-  document.querySelectorAll('[data-rotation-input-field]').forEach((field) => {
+  document.querySelectorAll('[data-rotation-input-field], [data-box-move-grip]').forEach((field) => {
     const rect = visibleRect(field);
     if (rect) open.push(rect);
   });
