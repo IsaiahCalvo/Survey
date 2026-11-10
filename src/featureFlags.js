@@ -183,6 +183,11 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Open in Survey: PDFs opened from Files, Mail, Outlook or Teams on a phone upload and open',
     stage: 'beta',
   }),
+  // Drawboard phone apps (2026-11-10): a photo or camera shot becomes a PDF.
+  'photo-upload': Object.freeze({
+    label: 'Photo or camera: Upload takes photos too and turns each into a one-page PDF',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

@@ -29,6 +29,7 @@ import { readPdfPageCount, mapUploadsBounded } from './home/pdfUploadWork.js';
 import { supersedeDocument } from './services/documentVersionService.js';
 import { isFeatureOn } from './featureFlags.js';
 import { OPEN_FILE_EVENT, takeOpenedFiles } from './mobile/nativeOpenFile.js';
+import { PHOTO_ACCEPT, isPhotoFile, photoToPdfFile, photosAsPdfs } from './home/photoToPdf.js';
 import { moveOrCopyDocumentsAtomically, parseDocumentBatchRecovery } from './home/documentBatchOperations.js';
 import { mapAuthoritativeTemplateRows, persistTemplateSnapshot } from './home/templatePersistence.js';
 import { ownerDisplayName, parkForeignLocalExcelPath, sameTemplateConfig, sharedFromRow, splitTemplatesForSave, stripSharedFields } from './services/sharedTemplates.js';
@@ -1123,8 +1124,20 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     return 'added';
   };
 
+  const [photoUploadOn] = useState(() => isFeatureOn('photo-upload'));
+
   const handleFileUpload = async (event) => {
-    const file = event.target.files?.[0];
+    let file = event.target.files?.[0];
+    // Photo or camera (flag 'photo-upload'): the photo becomes a one-page PDF.
+    if (file && photoUploadOn && isPhotoFile(file)) {
+      try {
+        file = await photoToPdfFile(file);
+      } catch (err) {
+        showToast(err?.message || 'Survey could not turn that photo into a PDF.', 'error');
+        event.target.value = '';
+        return;
+      }
+    }
     if (file && file.type === 'application/pdf') {
 
       if (!user) {
@@ -1163,7 +1176,13 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
   // document (open: true -> each opens in a new tab). Non-PDFs are skipped
   // with a short note; the PDFs go one at a time through the same path as
   // the Upload button, so a duplicate ask waits for its answer.
-  const handleDroppedFiles = async (files, { projectId = null, projectName = null, open = false } = {}) => {
+  const handleDroppedFiles = async (dropped, { projectId = null, projectName = null, open = false } = {}) => {
+    let files = dropped;
+    if (photoUploadOn) {
+      const turned = await photosAsPdfs(files);
+      files = turned.files;
+      for (const message of turned.failed) showToast(message, 'error');
+    }
     const { pdfs, rejected } = splitDroppedFiles(files);
     const skipped = rejectedFilesMessage(rejected);
     if (skipped) showToast(skipped, 'info');
@@ -2804,7 +2823,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       <input
         ref={fileInputRef}
         type="file"
-        accept="application/pdf"
+        accept={photoUploadOn ? PHOTO_ACCEPT : 'application/pdf'}
         onChange={handleFileUpload}
         style={{ display: 'none' }}
       />
