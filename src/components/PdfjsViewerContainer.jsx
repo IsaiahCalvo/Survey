@@ -126,6 +126,7 @@ import { notePageDrawn, pageMounted, pageUnmounted, PAGE_CACHE_KEEP_MOBILE, PAGE
 import { isInTabBehind } from '../utils/tabBehind.js';
 import { isFeatureOn } from '../featureFlags.js';
 import { ZOOM_AREA_MIN_PX, boxBetween, isZoomToAreaStart, zoomToAreaPlan } from '../utils/zoomToArea.js';
+import { registerSpotlightViewer, spotlightViewMovedByHand } from '../services/annotationSpotlight.js';
 import { pdfjsAssetOptions } from '../utils/pdfjsAssets.js';
 import {
   compensateScrollLeftForColumnWidth,
@@ -5693,6 +5694,77 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     }
     return true;
   }, [applyAnchoredScale, cancelFlight, cancelPanInertia, getPageLeftAtScale, getHorizontalScrollMax, glideFlight, isMobileSurface, scheduleZoomGlideFrame, setZoomInteraction]);
+
+  // Spotlight (Nightly flag 'spotlight', annotationSpotlight.js). While this
+  // tab is in front the viewer tells the spotlight what you see (the view box
+  // in page units, measured from the scroller, never zoom x page size) and
+  // shows a presenter's box by fitting it into your own view. A pan, wheel,
+  // pinch or zoom key of yours pauses following.
+  const [spotlightOn] = useState(() => isFeatureOn('spotlight'));
+  const spotlightViewRef = useRef(null);
+  spotlightViewRef.current = {
+    readView: () => {
+      const el = scrollerRef.current;
+      const dims = dimsPtRef.current;
+      if (!el || !dims.length) return null;
+      const s = scaleRef.current;
+      if (!(s > 0)) return null;
+      const side = sideInsetRef.current;
+      const inset = Math.min(topInsetRef.current, el.clientHeight);
+      const bandW = Math.max(1, el.clientWidth - side.left - side.right);
+      const bandH = Math.max(1, el.clientHeight - inset);
+      const i = pageUnderContentY(el.scrollTop + inset + bandH / 2, s);
+      if (!dims[i] || dims[i].hidden) return null;
+      return {
+        page: i + 1,
+        rect: {
+          x: (el.scrollLeft + side.left - getPageLeftAtScale(i, s)) / s,
+          y: (el.scrollTop + inset - topAt(i, s)) / s,
+          width: bandW / s,
+          height: bandH / s,
+        },
+      };
+    },
+    showView: (page, rect) => {
+      const dims = dimsPtRef.current;
+      if (!dims.length || !(Number(page) >= 1) || Number(page) > dims.length) return false;
+      return focusPageRect(page, rect, { fill: 1, maxScale: Number.MAX_SAFE_INTEGER });
+    },
+  };
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!spotlightOn || !tabActive || !el || typeof window === 'undefined') return undefined;
+    const off = registerSpotlightViewer({
+      readView: () => spotlightViewRef.current?.readView() ?? null,
+      showView: (page, rect) => spotlightViewRef.current?.showView(page, rect) === true,
+    });
+    // On window, first in the capture order: the viewer's own gesture code
+    // may stop a touch or wheel before it reaches the scroller.
+    const inViewer = (event) => event.target instanceof Node && el.contains(event.target);
+    const moved = (event) => { if (inViewer(event)) spotlightViewMovedByHand(); };
+    const onPointerDown = (event) => {
+      if (!inViewer(event)) return;
+      if (event.pointerType === 'touch' || event.button === 1 || interactionModeRef.current === 'Pan') spotlightViewMovedByHand();
+    };
+    const onKey = (event) => {
+      const t = event.target;
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName || ''))) return;
+      const zoomKey = (event.ctrlKey || event.metaKey) && ['+', '=', '-', '_', '0'].includes(event.key);
+      if (zoomKey || ['PageUp', 'PageDown', 'Home', 'End'].includes(event.key)) spotlightViewMovedByHand();
+    };
+    const passive = { passive: true, capture: true };
+    window.addEventListener('wheel', moved, passive);
+    window.addEventListener('touchstart', moved, passive);
+    window.addEventListener('pointerdown', onPointerDown, true);
+    window.addEventListener('keydown', onKey, true);
+    return () => {
+      off();
+      window.removeEventListener('wheel', moved, passive);
+      window.removeEventListener('touchstart', moved, passive);
+      window.removeEventListener('pointerdown', onPointerDown, true);
+      window.removeEventListener('keydown', onKey, true);
+    };
+  }, [spotlightOn, tabActive]);
 
   // Drawboard canvas audit chunk 6: glide scrollTop to `top` over 250 ms
   // (utils/pageScrollGlide.js has the rules), or point a glide already running

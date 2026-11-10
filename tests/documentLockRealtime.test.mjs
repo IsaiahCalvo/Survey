@@ -122,6 +122,7 @@ test('document lock Realtime subscription maps remote UPDATE and tears down', as
       locked_at: null,
       locked_by: null,
       locked_label: null,
+      user_archived_at: '2026-11-10T05:40:00.000Z',
     },
   });
 
@@ -130,8 +131,10 @@ test('document lock Realtime subscription maps remote UPDATE and tears down', as
       lockedAt: '2026-07-23T12:00:00.000Z',
       lockedBy: 'owner-1',
       lockedLabel: 'IFC',
+      archivedAt: null,
     },
-    { lockedAt: null, lockedBy: null, lockedLabel: null },
+    // The owner's row also carries Archive (the viewer's live Archive note).
+    { lockedAt: null, lockedBy: null, lockedLabel: null, archivedAt: '2026-11-10T05:40:00.000Z' },
   ]);
   unsubscribe();
   assert.equal(removed, channel);

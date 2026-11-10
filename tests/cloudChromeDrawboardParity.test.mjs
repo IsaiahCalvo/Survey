@@ -903,9 +903,7 @@ test('draft keys: the listener is window-capture, yields only to real typing, an
   assert.ok(start > 0, 'poly draft keydown effect found');
   const effect = layer.slice(start, start + 1200);
   // A draft left open in a tab behind also stands aside (draftTabActiveRef).
-  assert.match(effect, /if \(!draftTabActiveRef\.current\) return;/,
-    'a draft in a tab behind stands aside');
-  assert.match(effect, /if \(!draftOwnsKeyboard\(e\.target\)\) return;/,
+  assert.match(effect, /if \(!draftTabActiveRef\.current \|\| !draftOwnsKeyboard\(e\.target\)\) return;/,
     'the guard must be the shared ownership test, not a blanket tagName === INPUT bail');
   assert.match(effect, /e\.key === 'Enter'[\s\S]*releaseFocusForDraftTool\(e\.target\)[\s\S]*commitPolyDraft\('finish'\)/,
     'Enter blurs the numeric field (committing its value) before finishing the draft');

@@ -92,7 +92,7 @@ test('a tapped document answers at once: the viewer opens it (streaming) or the 
   assert.match(DASHBOARD, /onDocumentSelect\(\{\s*\.\.\.doc,\s*filePath,/);
   assert.doesNotMatch(DASHBOARD, /const blob = await downloadFromStorage\(filePath\);/);
   assert.match(DASHBOARD, /catch \(error\) \{\s*onDocumentOpenEnd\?\.\(\);/);
-  assert.match(APP_SHELL, /const handleDocumentSelect = \(file, filePath = null\) => \{\s*setPendingDocumentOpen\(null\);/);
+  assert.match(APP_SHELL, /const handleDocumentSelect = \(file, filePath = null(?:, options = undefined)?\) => \{\s*setPendingDocumentOpen\(null\);/);
   assert.match(APP_SHELL, /pendingDocumentOpen && currentView !== 'viewer' && \(/);
   assert.match(APP_SHELL, /<QuietLoading label=\{openingLabel\(pendingDocumentOpen\.name\)\} background="var\(--surface-0\)" \/>/);
 });

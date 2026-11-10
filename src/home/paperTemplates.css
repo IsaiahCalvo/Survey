@@ -1,0 +1,30 @@
+/* Home > New > Other templates (flag home-templates). */
+.paper-template-groups { display: grid; gap: 12px; }
+.paper-template-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; }
+.paper-template-tile {
+  display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 7px 4px;
+  border: 1px solid var(--border); border-radius: 8px; background: transparent; cursor: pointer;
+  color: var(--text-2); font: inherit; font-size: 12px; line-height: 1.25; text-align: center; min-height: 44px;
+}
+.paper-template-tile svg { box-shadow: 0 0 0 1px var(--border-strong); }
+.paper-template-tile:hover { background: var(--surface-2); color: var(--text-1); }
+/* Picked: a lifted surface and a strong border, never gold (gold is ink). */
+.paper-template-tile.is-picked { background: var(--surface-3); border-color: var(--border-strong); color: var(--text-1); font-weight: 600; }
+.paper-template-choice {
+  flex: 1; min-height: 32px; padding: 0 10px; border-radius: var(--radius-sm); cursor: pointer;
+  border: 1px solid var(--border-strong); background: transparent; color: var(--text-2);
+  font: inherit; font-size: 12px; font-weight: 500;
+}
+.paper-template-choice.is-picked { background: var(--surface-3); color: var(--text-1); font-weight: 600; }
+@media (max-width: 600px) {
+  .paper-template-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .paper-template-tile { font-size: 11px; }
+}
+
+/* The tile drawing shows the page in the colours the PDF prints (blankPdf.js):
+   always a white sheet, in light and dark mode alike. */
+.paper-template-preview { display: block; background: #fff; border-radius: 2px; }
+.paper-tone { stroke: #b8cce6; }
+.paper-tone--major { stroke: #7a9ecc; }
+.paper-tone--margin { stroke: #e07373; }
+.paper-tone--ink { stroke: #5a5a61; }

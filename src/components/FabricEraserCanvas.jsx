@@ -39,6 +39,15 @@ import {
 } from '../utils/eraserBoundsPrefilter.js';
 import { getEraserOperation } from '../utils/eraserPolicy.js';
 import { isFeatureOn } from '../featureFlags.js';
+import {
+  ERASER_LOOK_CURSOR,
+  ERASER_TRAIL_EDGE,
+  ERASER_TRAIL_OPACITY,
+  buildEraserHalo,
+  outermostElements,
+  smoothTrailPath,
+  trailWidths,
+} from '../utils/eraserLook.js';
 import { eraserDiameterToPageRadius } from '../utils/eraserSizing.js';
 import { nextEraserMutationId } from '../utils/eraserMutationId.js';
 import {
@@ -428,6 +437,15 @@ const FabricEraserCanvas = memo(({
   const eraserSizeRef = useRef(eraserSize);
   const viewerScaleRef = useRef(viewerScale);
   const nativeCursorRef = useRef(true);
+  // Nightly 'eraser-look' (Drawboard's eraser): cross-and-eraser cursor, a
+  // trail band, marks lit while hit and gone on release. Read once per mount.
+  const eraserLookRef = useRef(null);
+  if (eraserLookRef.current === null) eraserLookRef.current = isFeatureOn('eraser-look');
+  const lookSvgRef = useRef(null);
+  const lookTrailOuterRef = useRef(null);
+  const lookTrailInnerRef = useRef(null);
+  const lookHaloLayerRef = useRef(null);
+  const lookTrailRafRef = useRef(0);
   const selectedSpaceIdRef = useRef(selectedSpaceId);
   const activeSpaceIdRef = useRef(activeSpaceId);
   const spacesRef = useRef(spaces);
@@ -587,7 +605,7 @@ const FabricEraserCanvas = memo(({
   viewerScaleRef.current = viewerScale;
   const displayEraserDiameter = Math.max(1, Number(eraserSize) || 20)
     * Math.max(0.01, Number(viewerScale) || 1);
-  const eraserCursor = nativeEraserCursor(displayEraserDiameter);
+  const eraserCursor = eraserLookRef.current ? ERASER_LOOK_CURSOR : nativeEraserCursor(displayEraserDiameter);
   nativeCursorRef.current = Boolean(eraserCursor);
   selectedSpaceIdRef.current = selectedSpaceId;
   activeSpaceIdRef.current = activeSpaceId;
@@ -1962,8 +1980,88 @@ const FabricEraserCanvas = memo(({
     };
   }, [getEraseBlockReason, indexBoundsAllow]);
 
+  // ---- Nightly 'eraser-look' -------------------------------------------
+  const drawLookTrail = useCallback((points, radius) => {
+    const outer = lookTrailOuterRef.current;
+    const inner = lookTrailInnerRef.current;
+    if (!outer || !inner) return;
+    const d = smoothTrailPath(points);
+    const widths = trailWidths(radius, viewerScaleRef.current);
+    outer.setAttribute('d', d);
+    inner.setAttribute('d', d);
+    outer.setAttribute('stroke-width', String(widths.outer));
+    inner.setAttribute('stroke-width', String(widths.inner));
+    if (lookSvgRef.current) lookSvgRef.current.style.display = d ? 'block' : 'none';
+  }, []);
+
+  const clearLookTrail = useCallback(() => {
+    if (lookTrailRafRef.current) cancelAnimationFrame(lookTrailRafRef.current);
+    lookTrailRafRef.current = 0;
+    lookTrailOuterRef.current?.setAttribute('d', '');
+    lookTrailInnerRef.current?.setAttribute('d', '');
+  }, []);
+
+  const clearLookHalos = useCallback(() => {
+    const layer = lookHaloLayerRef.current;
+    if (layer) layer.replaceChildren();
+  }, []);
+
+  // Light one mark: find its element(s) in the real SVG layer and draw the
+  // orange-red outline over them in this surface's own SVG.
+  const addLookHalo = useCallback((selector) => {
+    const layer = lookHaloLayerRef.current;
+    const overlay = lookSvgRef.current;
+    if (!layer || !overlay || !selector) return;
+    const surface = containerRef.current?.closest('[data-annotation-real-surface]');
+    const svg = surface?.querySelector('svg[data-svg-annotation-layer]');
+    if (!svg) return;
+    overlay.style.display = 'block';
+    outermostElements(svg.querySelectorAll(selector)).forEach((element) => {
+      const halo = buildEraserHalo(element, overlay);
+      if (halo) layer.appendChild(halo);
+    });
+  }, []);
+
+  const lookEraserGesture = useCallback((pointer, segment) => {
+    const radius = pointer.gestureConfig.radius;
+    if (!lookTrailRafRef.current) {
+      lookTrailRafRef.current = requestAnimationFrame(() => {
+        lookTrailRafRef.current = 0;
+        if (pointerRef.current === pointer) drawLookTrail(pointer.points, radius);
+      });
+    }
+    const touched = segment?.length ? segment : pointer.points;
+    const esc = (value) => (typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(String(value)) : String(value).replace(/"/g, '\\"'));
+    const objects = annotationsRef.current?.objects || [];
+    const plan = classifyEraserSegment(pointer, touched);
+    plan.atomicIds.forEach((id) => {
+      if (pointer.previewAtomicIds.has(id)) return;
+      pointer.previewAtomicIds.add(id);
+      const index = objects.findIndex((object, i) => getEraserCandidateId(object, i) === id);
+      if (index < 0) return;
+      const stableId = String(objects[index]?.id || '');
+      addLookHalo(stableId ? `[data-annotation-id="${esc(stableId)}"]` : `[data-annotation-index="${index}"]`);
+    });
+    getPermittedCalloutHitIds(touched, pointer.previewCalloutIds, radius).forEach((id) => {
+      if (pointer.previewCalloutIds.has(id)) return;
+      pointer.previewCalloutIds.add(id);
+      addLookHalo(`[data-callout-id="${esc(id)}"]`);
+    });
+    getPermittedSurveyMarkerHitIds(touched, pointer.previewSurveyMarkerIds, radius).forEach((id) => {
+      if (pointer.previewSurveyMarkerIds.has(id)) return;
+      pointer.previewSurveyMarkerIds.add(id);
+      addLookHalo(`[data-survey-marker-id="${esc(id)}"]`);
+    });
+  }, [addLookHalo, classifyEraserSegment, drawLookTrail, getPermittedCalloutHitIds, getPermittedSurveyMarkerHitIds]);
+
   const previewEraserGesture = useCallback((pointer, segment) => {
     if (!pointer?.points?.length) return false;
+    // Drawboard's look: nothing leaves the page until release, so the live
+    // carve/ghost preview never starts; the commit below is unchanged.
+    if (eraserLookRef.current) {
+      lookEraserGesture(pointer, segment);
+      return false;
+    }
     if (pointer.previewActive && maskCloneRef.current?.root) {
       const testFlags = getEraserHandoffTestFlags();
       if (testFlags?.forceCloneDisconnectOnce === true) {
@@ -2088,6 +2186,7 @@ const FabricEraserCanvas = memo(({
     ghostAtomicHits,
     ghostCalloutsFromPreview,
     ghostSurveyMarkersFromPreview,
+    lookEraserGesture,
     maskCarvedPathHits,
     pageNumber,
   ]);
@@ -2400,6 +2499,7 @@ const FabricEraserCanvas = memo(({
 
   const queueEraserCommit = useCallback((pointer) => {
     const sessionId = pointer?.sessionId;
+    if (eraserLookRef.current) clearLookTrail();
     const run = () => applyEraserAndCommit(pointer?.points, pointer?.gestureConfig);
     const queued = eraseCommitTailRef.current.then(run, run);
     trackPendingEraseCommit(queued);
@@ -2411,6 +2511,12 @@ const FabricEraserCanvas = memo(({
       if (!mountedRef.current || latestEraseGestureRef.current !== sessionId) {
         return outcome;
       }
+      if (eraserLookRef.current) {
+        // The lit marks go with the commit's repaint, not a frame before it.
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          if (latestEraseGestureRef.current === sessionId && !pointerRef.current) clearLookHalos();
+        }));
+      }
       scheduleLiveErasePreviewFinish({
         expectedRevision: outcome.expectedRevision,
         waitForNextPaint: outcome.didPaint,
@@ -2420,11 +2526,12 @@ const FabricEraserCanvas = memo(({
     }).catch((error) => {
       console.error('Eraser commit failed:', error);
       if (mountedRef.current && latestEraseGestureRef.current === sessionId) {
+        if (eraserLookRef.current) clearLookHalos();
         finishLiveErasePreview();
       }
       return { didPaint: false, expectedRevision: null };
     });
-  }, [applyEraserAndCommit, finishLiveErasePreview, scheduleLiveErasePreviewFinish]);
+  }, [applyEraserAndCommit, clearLookHalos, clearLookTrail, finishLiveErasePreview, scheduleLiveErasePreviewFinish]);
 
   const cancelPointer = useCallback(() => {
     const pointer = pointerRef.current;
@@ -2467,8 +2574,10 @@ const FabricEraserCanvas = memo(({
     // Revocation means the preview must be restored, never handed off to a
     // commit repaint that is no longer authorized.
     restoreLiveErasePreviewImmediately();
+    clearLookTrail();
+    clearLookHalos();
     updateEraserCursor(null, false);
-  }, [restoreLiveErasePreviewImmediately, updateEraserCursor]);
+  }, [clearLookHalos, clearLookTrail, restoreLiveErasePreviewImmediately, updateEraserCursor]);
 
   useLayoutEffect(() => {
     if (getInterruptionPolicy() === 'cancel') cancelPointerNow();
@@ -2514,6 +2623,7 @@ const FabricEraserCanvas = memo(({
       pendingCalloutIds: new Set(),
       pendingSurveyMarkerIds: new Set(),
     };
+    if (eraserLookRef.current) clearLookHalos();
     eraserDiagGestureRef.current = beginAnnotationGesture({
       surface: 'FabricEraserCanvas',
       tool: 'eraser',
@@ -2728,6 +2838,7 @@ const FabricEraserCanvas = memo(({
     finishLiveErasePreview({ immediate: true });
     removeMaskCloneNow();
     hidePreviewCanvasNow();
+    clearLookTrail();
     updateEraserCursor(null, false);
   };
 
@@ -2786,6 +2897,31 @@ const FabricEraserCanvas = memo(({
           pointerEvents: 'none',
         }}
       />
+      {eraserLookRef.current && (
+        <svg
+          ref={lookSvgRef}
+          data-eraser-look={pageNumber}
+          aria-hidden="true"
+          viewBox={`0 0 ${pageWidth} ${pageHeight}`}
+          preserveAspectRatio="none"
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            width: '100%',
+            height: '100%',
+            overflow: 'visible',
+            pointerEvents: 'none',
+            display: 'none',
+          }}
+        >
+          <g ref={lookHaloLayerRef} data-eraser-look-halos="true" />
+          <g opacity={ERASER_TRAIL_OPACITY} data-eraser-look-trail="true" fill="none" strokeLinecap="round" strokeLinejoin="round">
+            <path ref={lookTrailOuterRef} stroke={ERASER_TRAIL_EDGE} />
+            <path ref={lookTrailInnerRef} stroke="white" />
+          </g>
+        </svg>
+      )}
       <div
         ref={cursorRef}
         data-eraser-cursor="true"

@@ -75,6 +75,8 @@ export default function MarkLibraryPlacementLayer({ active = false, rootRef = nu
     };
     let swallowUntil = 0;
     const swallow = (event) => {
+      // A pick in a panel right after a drop (another stamp) is not the drop's own click.
+      if (event.target?.closest?.('[data-mark-library-panel]')) return;
       if (Date.now() < swallowUntil) {
         event.preventDefault();
         event.stopPropagation();

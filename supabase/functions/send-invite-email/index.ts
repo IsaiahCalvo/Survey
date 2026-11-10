@@ -39,6 +39,7 @@ Deno.serve(async (req) => {
     token: s.string({ max: 512, optional: true }),
     displayName: s.string({ max: 2000, optional: true }),
     inviterName: s.string({ max: 2000, optional: true }),
+    message: s.string({ max: 4000, optional: true }),
     companyInviteId: s.string({ max: 64, optional: true }),
     appOrigin: s.string({ max: 200, optional: true }),
   }, raw ?? {});

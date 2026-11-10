@@ -26,7 +26,7 @@
 // - writeCells(fileId, [{ sheetId, title, row, col, value, header? }])
 //     Raw values: text is never turned into a formula, number or date.
 //     `header` marks a header cell (bold, like the ones createFile makes).
-// - appendRows(fileId, [{ sheetId, title, rows: any[][], width, listWidth?, before? }])
+// - appendRows(fileId, [{ sheetId, title, rows: any[][], width, listCols?, ownCols?, before? }])
 //     After the last used row of each tab.
 // - deleteRows(fileId, [{ sheetId, title, row }])
 //     The runner sends them highest row first, per tab.

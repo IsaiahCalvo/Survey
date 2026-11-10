@@ -24,6 +24,7 @@
  * PLAN-GOAL1-REVIEW-LOG.md (Codex APPROVED round 4).
  */
 
+import { inviteMessage } from '../_shared/inviteMessage.js';
 export const CANONICAL_ORIGIN = 'https://surveytool.app';
 
 // Lookup order mirrors InviteAcceptPage.acceptAnyInvite (document is the
@@ -101,6 +102,7 @@ export async function handleSendInviteEmail(input, deps) {
   // Cosmetic copy only — recipient/role/URLs come from the invite row.
   // (Escaped downstream by send-email's escapeHtml; length-capped here.)
   const inviterName = copyField(input.body?.inviterName, 'A Survey user');
+  const message = inviteMessage(input.body?.message);
 
   // Owner-scoped lookup: the row is only visible through the CALLER's RLS
   // authority (see index.ts), so "not found" uniformly covers unknown token
@@ -184,7 +186,10 @@ export async function handleSendInviteEmail(input, deps) {
   // plan gate and per-person hourly cap. Charge the same budget here, or a
   // free account could mint invite rows and mail any address without limit
   // (and spend the project-wide auth email quota everyone's sign-in links use).
-  if (typeof deps.claimSendBudget === 'function') {
+  // An invite with a personal message never uses the auth mailer: it goes
+  // straight to send-email with the caller's token, which charges the plan
+  // gate and the hourly cap itself, so charging here too would count it twice.
+  if (!message && typeof deps.claimSendBudget === 'function') {
     let budget = 'error';
     try {
       budget = await deps.claimSendBudget(row.target_email);
@@ -210,21 +215,28 @@ export async function handleSendInviteEmail(input, deps) {
   // Branch A — no existing account: GoTrue sends the installed Invite
   // template via the auth mailer. Admin calls RETURN {data,error}; they
   // don't throw.
-  const inviteResult = await deps.inviteUserByEmail(row.target_email, inviteUrl);
-  const { error } = inviteResult;
-  if (!error) return completeConfirmedDelivery();
-  if (inviteResult.outcome === 'uncertain') {
-    return retainUncertainClaim('auth mailer');
+  // The auth mailer's Invite template has no room for the inviter's own
+  // words, so an invite with a message goes through the app's own invite
+  // email (the same one used past the auth mailer's hourly cap); the person
+  // signs up from the accept page.
+  let error = null;
+  if (!message) {
+    const inviteResult = await deps.inviteUserByEmail(row.target_email, inviteUrl);
+    error = inviteResult.error;
+    if (!error) return completeConfirmedDelivery();
+    if (inviteResult.outcome === 'uncertain') {
+      return retainUncertainClaim('auth mailer');
+    }
   }
 
-  const isExisting = error.code === 'email_exists'
-    || (error.status === 422 && /already.*registered|email_exists/i.test(error.message || ''));
+  const isExisting = Boolean(error) && (error.code === 'email_exists'
+    || (error.status === 422 && /already.*registered|email_exists/i.test(error.message || '')));
   // Bulk-invite resilience: past the auth mailer's hourly cap GoTrue 429s.
   // Fall through to the Resend transport so the invitee still gets a real
   // email with the accept link (they sign up from the accept page — the
   // pre-GOAL-1 flow for every new user), instead of a silent drop.
-  const isRateLimited = error.code === 'over_email_send_rate_limit' || error.status === 429;
-  if (!isExisting && !isRateLimited) {
+  const isRateLimited = Boolean(error) && (error.code === 'over_email_send_rate_limit' || error.status === 429);
+  if (error && !isExisting && !isRateLimited) {
     console.error('[send-invite-email] inviteUserByEmail failed:', error.code || error.status || error.message);
     return releaseFailedClaim();
   }
@@ -235,7 +247,7 @@ export async function handleSendInviteEmail(input, deps) {
   // If lookup/grant failed, keep the still-valid acceptance link.
   let activeDocumentAccess = null;
   if (
-    isExisting
+    (isExisting || message)
     && kind === 'document'
     && row.document_id
     && typeof deps.selectActiveDocumentAccess === 'function'
@@ -266,6 +278,7 @@ export async function handleSendInviteEmail(input, deps) {
           role: directRoleLabel,
           documentUrl: directDocumentUrl,
           appUrl: CANONICAL_ORIGIN,
+          ...(message ? { message } : null),
         }
       : {
           documentName: displayName,
@@ -273,6 +286,7 @@ export async function handleSendInviteEmail(input, deps) {
           role: roleLabel,
           inviteUrl,
           expiresAt: row.expires_at || null,
+          ...(message ? { message } : null),
         },
   });
   const fallbackOutcome = typeof fallbackResult === 'object'

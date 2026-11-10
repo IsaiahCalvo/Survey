@@ -9,6 +9,7 @@
 // time a moment after the document opens, so a search finds it ready.
 import { needsTextItemSeparator } from './searchMatchNavigation.js';
 import { whenViewersStill } from './viewerMotion.js';
+import { keepSearchText, loadKeptSearchText } from './searchTextKeep.js';
 
 const pagesByDocument = new WeakMap();
 
@@ -124,10 +125,28 @@ export const SEARCH_TEXT_SIDE_READER_MAX_BYTES = 200 * 1024 * 1024;
 function entryFor(pdfDoc) {
   let entry = pagesByDocument.get(pdfDoc);
   if (!entry) {
-    entry = { pending: new Map(), done: new Map() };
+    entry = { pending: new Map(), done: new Map(), kept: null, keptPages: 0 };
     pagesByDocument.set(pdfDoc, entry);
   }
   return entry;
+}
+
+// Once per document: the text this device kept for the file
+// (utils/searchTextKeep.js) fills every page it has before any read.
+function loadKeptText(pdfDoc, numPages, entry, loadKept) {
+  if (!entry.kept) {
+    entry.kept = Promise.resolve()
+      .then(() => loadKept(pdfDoc, numPages))
+      .then((kept) => {
+        for (const [pageNumber, { textContent, viewport }] of kept || []) {
+          if (entry.done.has(pageNumber)) continue;
+          entry.done.set(pageNumber, buildSearchPageData(textContent, viewport));
+          entry.keptPages += 1;
+        }
+      })
+      .catch(() => {});
+  }
+  return entry.kept;
 }
 
 /**
@@ -191,6 +210,8 @@ export function readSearchTextAhead(pdfDoc, numPages, {
   // view, which stayed white for seconds in the first ~20 s after opening a
   // 99-sheet set (2026-11-09).
   waitForStill = whenViewersStill,
+  loadKept = loadKeptSearchText,
+  keep = keepSearchText,
 } = {}) {
   const entry = pdfDoc ? entryFor(pdfDoc) : null;
   // One read-ahead per document: a second caller (the Search panel opening
@@ -201,9 +222,16 @@ export function readSearchTextAhead(pdfDoc, numPages, {
   const isStopped = () => stopped;
   const total = Math.min(Number(numPages) || 0, maxPages);
   entry.readingAhead = true;
+  // At once, not after the delay: a search right after a reopen finds it.
+  if (total) void loadKeptText(pdfDoc, Number(numPages) || 0, entry, loadKept);
   const run = async () => {
     if (!entry || !total) return;
-    if (entry.done.size >= total) return;
+    await entry.kept;
+    if (stopped) return;
+    if (entry.done.size >= total) {
+      try { globalThis.performance?.mark?.('survey-search-text-read'); } catch { /* no marks */ }
+      return;
+    }
     const opened = await Promise.all(Array.from({ length: Math.max(1, sideReaders) }, () => (
       Promise.resolve().then(() => openReader(pdfDoc, { waitMs: sideReaderWaitMs, isStopped })).catch(() => null)
     )));
@@ -254,8 +282,15 @@ export function readSearchTextAhead(pdfDoc, numPages, {
     // For speed checks (scripts/perf/text-search-timing.mjs).
     try { globalThis.performance?.mark?.('survey-search-text-read'); } catch { /* no marks */ }
   };
+  // Every page read: keep the text for the next open, unless it all came
+  // from the device already.
+  const keepIfComplete = async () => {
+    if (stopped || !total || entry.keptPages >= total) return;
+    for (let pageNumber = 1; pageNumber <= total; pageNumber += 1) if (!entry.done.has(pageNumber)) return;
+    await keep(pdfDoc, entry.done);
+  };
   const timer = setTimeout(() => {
-    run().catch(() => {}).finally(() => {
+    run().then(keepIfComplete).catch(() => {}).finally(() => {
       for (const side of sides) void side?.task?.destroy?.()?.catch?.(() => {});
       sides = [];
       if (!stopped) entry.readingAhead = false;
