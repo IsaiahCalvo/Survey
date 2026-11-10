@@ -30,8 +30,10 @@ import { supersedeDocument } from './services/documentVersionService.js';
 import { isFeatureOn } from './featureFlags.js';
 import { OPEN_FILE_EVENT, takeOpenedFiles } from './mobile/nativeOpenFile.js';
 import { PHOTO_ACCEPT, isPhotoFile, photoToPdfFile, photosAsPdfs } from './home/photoToPdf.js';
+import { deviceFilesOn, keepFileOnDevice, openDeviceFile, saveDeviceFileToAccount } from './home/deviceFileActions.js';
 import { moveOrCopyDocumentsAtomically, parseDocumentBatchRecovery } from './home/documentBatchOperations.js';
 import { mapAuthoritativeTemplateRows, persistTemplateSnapshot } from './home/templatePersistence.js';
+import { recordDocumentOpened } from './home/homeLibraryData.js';
 import { ownerDisplayName, parkForeignLocalExcelPath, sameTemplateConfig, sharedFromRow, splitTemplatesForSave, stripSharedFields } from './services/sharedTemplates.js';
 import { useAuth } from './contexts/AuthContext';
 import { useMSGraph } from './contexts/MSGraphContext';
@@ -771,6 +773,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         }
 
         if (!user) {
+          if (deviceFilesOn() && await openOnDevice(new File([new Uint8Array(result.data)], result.fileName, { type: 'application/pdf' }))) return;
           setDashboardError('Please sign in to upload documents.');
           onShowAuthModal();
           return;
@@ -909,7 +912,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         // viewer refreshes the same cached thumbnail the list shows.
         file.contentSha256 = resolvedDoc.content_sha256 ?? null;
         file.uploadStartTime = performance.now();
-        if (openAfterUpload) onDocumentSelect(file, filePath);
+        if (openAfterUpload) { recordDocumentOpened(resolvedDoc.id); onDocumentSelect(file, filePath); }
 
         // OPTIMISTIC LIST UPDATE — carry both key spellings so the file shows
         // immediately in the project-grouped views (which read project_id).
@@ -989,6 +992,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
   // 'skipped' (the user canceled the duplicate ask) | 'failed'.
   const uploadBrowserPdf = async (file, { projectId = null, openAfterUpload = true, waitForStorage = false, askDuplicates = true, checkedSheet = null } = {}) => {
     if (!user) {
+      if (deviceFilesOn() && await openOnDevice(file, { open: openAfterUpload })) return 'added';
       setDashboardError('Please sign in to upload documents.');
       onShowAuthModal();
       return 'failed';
@@ -999,6 +1003,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     // before the Supabase row's id round-trips back. Without this, a quick
     // delete right after browser-input upload silently failed.
     file.user_id = user.id;
+    // `openAfterUpload` may be a question asked at the end: New's dialog
+    // closed with Back or Cancel while it was still making the file.
+    const wantsOpen = () => (typeof openAfterUpload === 'function' ? Boolean(openAfterUpload()) : Boolean(openAfterUpload));
 
     // Content fingerprint → resolve the document's identity BEFORE opening, so
     // the viewer opens with a real id (durable store + save shortcut work on a
@@ -1070,8 +1077,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         await archiveReplacedDocument(duplicateGate.archiveDocId, resolvedDoc.id);
       }
       if (askDuplicates) await maybeOfferAlias(resolvedDoc, file.name, contentSha);
-      if (openAfterUpload) await handleDocumentClick(resolvedDoc);
+      if (wantsOpen()) await handleDocumentClick(resolvedDoc);
       refetchAllDocuments();
+      file.id = resolvedDoc.id; // device-files: the caller carries marks into it
       return 'existing';
     }
 
@@ -1084,7 +1092,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     file.supabaseFilePath = resolvedDoc.file_path ?? null;
     file.contentSha256 = resolvedDoc.content_sha256 ?? null; // thumbnail cache key
     file.uploadStartTime = performance.now();
-    if (openAfterUpload) onDocumentSelect(file);
+    // Home's Last opened (#1380) notes the open; Back or Cancel during New stops both.
+    if (wantsOpen()) recordDocumentOpened(resolvedDoc.id);
+    if (wantsOpen()) onDocumentSelect(file);
 
     // OPTIMISTIC LIST UPDATE — carry both key spellings so the file shows
     // immediately in the project-grouped views (which read project_id).
@@ -1159,7 +1169,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     }
     if (file && file.type === 'application/pdf') {
 
-      if (!user) {
+      if (!user && !deviceFilesOn()) {
         setDashboardError('Please sign in to upload documents.');
         onShowAuthModal();
         event.target.value = '';
@@ -1195,7 +1205,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
   // document (open: true -> each opens in a new tab). Non-PDFs are skipped
   // with a short note; the PDFs go one at a time through the same path as
   // the Upload button, so a duplicate ask waits for its answer.
-  const handleDroppedFiles = async (dropped, { projectId = null, projectName = null, open = false, sample = false } = {}) => {
+  const handleDroppedFiles = async (dropped, { projectId = null, projectName = null, open = false, sample = false, newDocument = false } = {}) => {
     let files = dropped;
     if (photoUploadOn) {
       const turned = await photosAsPdfs(files);
@@ -1217,6 +1227,13 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       });
       return { added: 0, skipped: rejected.length };
     }
+    if (!user && deviceFilesOn()) {
+      let kept = 0;
+      for (const pdf of pdfs) {
+        if (await openOnDevice(pdf, { open })) kept += 1;
+      }
+      if (kept > 0) return { added: kept, skipped: rejected.length };
+    }
     if (!user) {
       setDashboardError('Please sign in to upload documents.');
       onShowAuthModal();
@@ -1224,7 +1241,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     }
     const targetProjectId = isUploadableProjectId(projectId) ? projectId : null;
     let checked = null;
-    if (isFeatureOn('upload-check')) {
+    // A blank document made with New skips the upload check and the sheet
+    // ask: it is never a new revision of a sheet (R4-C S1).
+    if (isFeatureOn('upload-check') && !newDocument) {
       checked = await askUploadCheck(pdfs.map(asPdfFile));
       if (!checked) return { added: 0, skipped: rejected.length + pdfs.length };
     }
@@ -1237,6 +1256,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
           projectId: targetProjectId,
           openAfterUpload: open,
           checkedSheet: checked ? checked[index].sheet : null,
+          // A blank document made with New is never a new revision of a
+          // sheet, and New already checked its name (R4-C S1).
+          askDuplicates: !newDocument,
         });
         if (status === 'added' || status === 'existing') added += 1;
       }
@@ -1263,6 +1285,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         return;
       }
       for (const entry of entries) {
+        if (entry.disabled) continue;
         if (entry.error) showToast(entry.error, 'error');
         else await droppedFilesRef.current([entry.file], { open: true });
       }
@@ -1839,8 +1862,55 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       ? projects.length > 0
       : templates.length > 0;
 
-  const handleDocumentClick = async (doc) => {
+  // device-files (Nightly): with no account, a PDF opens and stays on this
+  // device (Drawboard's "Temporary" files; home/deviceFileActions.js).
+  const openOnDevice = async (file, { open = true } = {}) => {
+    const kept = await keepFileOnDevice(file);
+    if (!kept) return false;
+    if (open) onDocumentSelect(kept);
+    return true;
+  };
+
+  // "Save to my account" on a device file (signed out: sign in first).
+  const saveDeviceFile = async (row) => {
+    if (!user) { onShowAuthModal(); return; }
+    if (!row?.id) return;
+    showToast(`Saving ${row.name || 'document'} to your account…`, 'info');
     try {
+      const result = await saveDeviceFileToAccount({
+        row,
+        user,
+        supabase,
+        upload: async (file) => {
+          const outcome = await uploadBrowserPdf(file, { openAfterUpload: false, waitForStorage: true, askDuplicates: false });
+          return outcome === 'added' || outcome === 'existing' ? file.id || null : null;
+        },
+      });
+      if (result.ok) {
+        showToast(`${row.name || 'Document'} is saved to your account`, 'success');
+        refetchAllDocuments();
+      } else {
+        showToast('Couldn’t save it to your account. It is still on this device.', 'warn');
+      }
+    } catch (error) {
+      console.error('[deviceFiles] save to account failed', error);
+      showToast('Couldn’t save it to your account. It is still on this device.', 'warn');
+    }
+  };
+
+  // `options.replaceTabId` (sheet set view): open in that tab's place, so
+  // stepping through a project's sheets does not pile up tabs.
+  const handleDocumentClick = async (doc, options = undefined) => {
+    // Home's Last opened (flag home-columns): every open from Home, Projects,
+    // an upload or New lands here.
+    recordDocumentOpened(doc?.id);
+    try {
+      if (doc?.device_file) {
+        const file = await openDeviceFile(doc);
+        if (!file) throw new Error('This file is no longer on this device.');
+        onDocumentSelect(file);
+        return;
+      }
       // [OpenTiming] BUG#2 — first open milestone: user clicked a document.
       try { console.log('[OpenTiming] doc-click @ ' + Math.round(performance.now()) + 'ms', doc?.name || doc?.file?.name || doc?.id || ''); } catch (_e) { /* swallow */ }
       // 1. Check if we have a local file object (e.g. from optimistic upload)
@@ -1854,7 +1924,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
           // documents-table lookup (the documents array is Dashboard-scoped).
           doc.file.user_id = doc.user_id || doc.userId || null;
         }
-        onDocumentSelect(doc.file);
+        onDocumentSelect(doc.file, null, options);
         return;
       }
 
@@ -1878,7 +1948,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
           // authority gate (resolved in PDFViewer's documentOwnerId useMemo).
           user_id: doc.user_id || doc.userId || null,
           contentSha256: doc.content_sha256 ?? doc.contentSha256 ?? null, // thumbnail cache key
-        }, filePath);
+        }, filePath, options);
       } else if (doc.dataUrl) {
         // Legacy: Convert dataUrl back to blob, then to File
         const response = await fetch(doc.dataUrl);
@@ -1891,7 +1961,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         // Phase 35 Plan 03 — owner identity for delete authority gate.
         file.user_id = doc.user_id || doc.userId || null;
 
-        onDocumentSelect(file);
+        onDocumentSelect(file, null, options);
       } else {
         console.error('Document structure:', doc);
         throw new Error('Document has no filePath, file_path, or dataUrl');
@@ -2054,6 +2124,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     renameDocument: hubRenameDocument,
     // The viewer's "PDF tools…" (AppShell) opens the same dialog.
     openPdfTools,
+    // The sheet set bar (AppShell, flag 'sheet-set-view') opens a sheet by
+    // the same path as Home, in the open sheet's tab.
+    openDocument: (doc, options) => handleDocumentClick(doc, options),
   }));
 
   /* --- Survey Hub (home redesign) wiring -------------------------------
@@ -2064,6 +2137,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
      use (no refactor). */
 
   // Open a document in the PDF viewer — reuse the existing open path.
+  // Home's Last opened (Nightly 'home-columns') is stamped here, the one
+  // place Home and Projects open a document from.
   const hubOpenDocument = (doc) => { if (doc) { dismissArchiveUndo(); handleDocumentClick(doc); } };
 
   /* KAL-44 — count survey markers that reference a checklist item id across
@@ -2902,6 +2977,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         onProjectPreferencesChange={hubProjectPreferencesChange}
         onLockDocument={hubToggleDocumentLock}
         onPdfTools={openPdfTools}
+        onSaveDeviceFile={saveDeviceFile}
         onSettings={() => setShowAccountSettings(true)}
         onSignOut={signOut}
         onSignIn={onShowAuthModal}

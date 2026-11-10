@@ -61,7 +61,8 @@ import {
   createProductionBenchmarkPage,
   parseProductionBenchmarkConfig,
 } from './utils/productionAnnotationBenchmark.js';
-import { showToast } from './utils/toast';
+import { showToast, dismissToast } from './utils/toast';
+import { isDeviceDocumentId, DEVICE_ACTOR_ID } from './services/deviceFiles.js';
 import { openExternalDestination, withUpgradeHint } from './utils/accountPlatform.js';
 // ExcelJS (~1MB) is loaded on demand inside the three async export/sync handlers
 // below — see `await import('exceljs')` — so it stays out of the main viewer chunk.
@@ -386,6 +387,9 @@ import { compareSurveyMarkersForOrder } from './utils/surveyMarkerOrdering';
 import { splitImportedCalloutsFromPage } from './utils/calloutImportAdapter';
 import { supabase } from './supabaseClient';
 import { useAnnotationDoc } from './hooks/useAnnotationDoc.js';
+import useBrowserOnline from './hooks/useBrowserOnline.js';
+import { claimBodyReadOnly } from './utils/readOnlyBodyReasons.js';
+import { subscribeDocumentLockState } from './services/documentLockService.js';
 import { useAuth } from './contexts/AuthContext';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useDocumentPresenceList } from './hooks/useDocumentPresenceList.js';
@@ -423,18 +427,18 @@ import { chooseCloudPdfOpenPath, shouldRetryStreamedOpenWithDownload, tryOpenClo
 import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox } from './utils/svgBoundingBox.js';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
 import { usePageOperations } from './hooks/usePageOperations.js';
-import { IDLE_REMOTE_PDF_STATE, PAGE_OP_BLOCKED_MESSAGE, PAGE_OP_SYNC_FLAG, clearedPdfVersion, isPageOpBlocked, newPdfVersionToken, operationRewritesPdf, pendingPdfVersion, remotePdfLoaded, remotePdfVersionStep, savedPdfVersion } from './utils/pageOpSync.js';
+import { IDLE_REMOTE_PDF_STATE, PAGE_OP_BLOCKED_MESSAGE, PAGE_OP_SYNC_FLAG, clearedPdfVersion, isPageOpBlocked, newPdfVersionToken, framePageChanges, noteFramePageChanges, operationRewritesPdf, pendingPdfVersion, reframeMarks, remotePdfLoaded, remotePdfVersionStep, savedPdfVersion, stampableOperation } from './utils/pageOpSync.js';
 import { usePageViewDocument } from './hooks/usePageViewDocument.js';
 import { getPageViewBase } from './utils/pageViewDocument.js';
 import { destroyPdfDocument, pdfOrDestroy } from './utils/destroyPdfDocument.js';
-import { getSelectFamilyTransition, getToolSwitchSelectionClearReason, isSelectFamilyTool, loadSelectMode, resolveEscape, resolveTextDoubleClick, resolveToolPress, saveSelectMode, shouldBackdropPressDeselect, shouldEscapeDeselect, shouldShowHoverHalo } from './utils/selectModes.js';
+import { getSelectFamilyTransition, getToolSwitchSelectionClearReason, isSelectFamilyTool, loadSelectMode, resolveEscape, resolveTextDoubleClick, resolveToolPress, saveSelectMode, selectionGestureRunning, shouldBackdropPressDeselect, shouldEscapeDeselect, shouldShowHoverHalo } from './utils/selectModes.js';
 import { classifyPagePress, ownGroupMarkFilter } from './utils/toolPressRouting.js';
 import { CALLOUT_MARK_GROUP, getMarkGroup } from './utils/markToolGroup.js';
 import { dropStashedSelection, hasAnyPageSelection, isItemSelected, pageHasSelection } from './utils/pageSelectionPresence.js';
 import { isSelectionGrabPress, noteOverlayTapPick } from './hooks/useSelectionGrabHandoff.js';
 import { resolveToolBarGroup, showsSurveyRow, TOOL_BAR_GROUPS } from './utils/toolbarRows.js';
 import { cycleLassoMode } from './utils/lassoSelection.js';
-import { pageCountChange, pageNumberAfterOperation } from './utils/pageAnnotationReindex.js';
+import { pageCountChange, pageNumberAfterOperation, transformPageState } from './utils/pageAnnotationReindex.js';
 import { usePdfjsFormFieldPersistence } from './hooks/usePdfjsFormFieldPersistence.js';
 import { useRegionOverlayVisibility } from './hooks/useRegionOverlayVisibility.js';
 import { userRedo, userUndo } from './lib/collab/crdtUndoManager.js';
@@ -3138,6 +3142,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       if (isUndoRedoBlocked(document)) return;
 
       e.preventDefault();
+      // Undo / Redo wait while a mark is held mid-move: Undo took back a
+      // different mark, and the release then cleared Redo for good (R4-C K1).
+      if (selectionGestureRunning(pdfjsWrapperRef.current || document)) {
+        if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+        return;
+      }
       if (typeof e.stopImmediatePropagation === 'function') {
         e.stopImmediatePropagation();
       } else {
@@ -4341,7 +4351,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   useEffect(() => {
     const onKey = (event) => {
       // Only the front viewer: Home and other tabs keep their own keys.
-      if (!marksHidden() || undoRedoKeyActiveRef.current === false || isTypingTarget(event.target)) return;
+      if (undoRedoKeyActiveRef.current === false || isTypingTarget(event.target)) return;
+      // While a mark is held mid-move / resize / rotate, Delete, Duplicate,
+      // Cut, Paste and Group wait for the release (R4-C K1: Delete mid-resize
+      // threw, Ctrl+D copied the mark at its old place). Escape still cancels.
+      // Only this viewer's pages: a tab kept open behind it has its own.
+      const gesture = selectionGestureRunning(pdfjsWrapperRef.current || document);
+      if (!marksHidden() && !gesture) return;
       const key = String(event.key || '');
       const mod = event.ctrlKey || event.metaKey;
       const blocked = key === 'Delete' || key === 'Backspace' || (mod && /^[axdvgl]$/i.test(key));
@@ -15253,10 +15269,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // `writer` names this viewer (not getClientId(), which tabs share).
   const pageOpSyncRef = useRef(null);
   if (!pageOpSyncRef.current) {
-    pageOpSyncRef.current = { on: isFeatureOn(PAGE_OP_SYNC_FLAG), writer: newPdfVersionToken(), ownPending: false, remote: IDLE_REMOTE_PDF_STATE, docBeforeReload: null };
+    pageOpSyncRef.current = { on: isFeatureOn(PAGE_OP_SYNC_FLAG), writer: newPdfVersionToken(), ownPending: false, pendingOps: [], pendingBatch: null, remote: IDLE_REMOTE_PDF_STATE, docBeforeReload: null, frame: null, reframe: null };
   }
   pageOpSyncRef.current.pdfFile = pdfFile;
   pageOpSyncRef.current.pdfDoc = pdfDoc;
+  // Another window changed the pages and this one has not reloaded yet: a
+  // mark new to a page was drawn on the old pages (handleSaveAnnotations
+  // calls this; the marks move with the pages after the reload).
+  const noteMarksOnOldPages = useCallback((pageNumber, json) => {
+    const frame = pageOpSyncRef.current?.frame;
+    if (!frame || !Array.isArray(json?.objects)) return;
+    const had = new Set((annotationsByPageRef.current?.[pageNumber]?.objects || []).map((obj) => obj?.data?.id));
+    for (const obj of json.objects) {
+      const id = obj?.data?.id;
+      if (id && !had.has(id)) frame.made.add(id);
+    }
+  }, []);
   const pageOpsBlocked = useCallback(() => (
     isPageOpBlocked(pageOpSyncRef.current.remote, Date.now()) ? PAGE_OP_BLOCKED_MESSAGE : null
   ), []);
@@ -15272,7 +15300,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       const result = saved || file;
       if (setMeta && sync.ownPending && !saveInfo?.hasMorePending?.()) {
         sync.ownPending = false;
-        setMeta(PDF_FILE_VERSION_META_KEY, savedPdfVersion({ writer: sync.writer, filePath: result?.supabaseFilePath || result?.filePath, contentSha256: result?.contentSha256 }), 'local');
+        const operations = sync.pendingOps;
+        const batch = sync.pendingBatch;
+        sync.pendingOps = [];
+        sync.pendingBatch = null;
+        setMeta(PDF_FILE_VERSION_META_KEY, savedPdfVersion({ writer: sync.writer, filePath: result?.supabaseFilePath || result?.filePath, contentSha256: result?.contentSha256, operations, batch }), 'local');
       }
       return saved;
     });
@@ -15291,8 +15323,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     const pageOpSync = pageOpSyncRef.current;
     if (pageOpSync.on && pagePresentationMetaSetRef.current) {
       if (operationRewritesPdf(operation)) {
+        // Every page change since the last save rides the stamp, so another
+        // window can move marks it drew on the old pages the same way (null:
+        // one of them cannot travel, so none do).
+        const carried = stampableOperation(operation);
+        const before = pageOpSync.ownPending ? pageOpSync.pendingOps : [];
+        if (!pageOpSync.ownPending || !pageOpSync.pendingBatch) pageOpSync.pendingBatch = newPdfVersionToken();
+        pageOpSync.pendingOps = before && carried ? [...before, carried] : null;
         pageOpSync.ownPending = true;
-        pagePresentationMetaSetRef.current(PDF_FILE_VERSION_META_KEY, pendingPdfVersion({ writer: pageOpSync.writer }), 'local');
+        pagePresentationMetaSetRef.current(PDF_FILE_VERSION_META_KEY, pendingPdfVersion({ writer: pageOpSync.writer, operations: pageOpSync.pendingOps, batch: pageOpSync.pendingBatch }), 'local');
       } else if (operation?.type === 'rollback' && pageOpSync.ownPending) {
         pageOpSync.ownPending = false;
         pagePresentationMetaSetRef.current(PDF_FILE_VERSION_META_KEY, clearedPdfVersion({ writer: pageOpSync.writer }), 'local');
@@ -22124,6 +22163,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // for annotations (and callouts). Captures every change durably the instant it
   // happens and hydrates from the durable store on open — no clear-and-refan, no
   // empty/partial overwrite, no documentId-timing gate.
+  // device-files (Nightly): a PDF opened with no account keeps its marks in
+  // the store's device copy under one device actor.
+  const annotationActorId = user?.id || (isDeviceDocumentId(pdfFile?.id) ? DEVICE_ACTOR_ID : null);
   const {
     initialHydration: normalAnnotationHydration,
     deletedPdfAnnotations: durableDeletedPdfAnnotations,
@@ -22145,12 +22187,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     whenBulkImportSaved: annotationDocWhenBulkImportSaved,
     // w53: other screens' in-flight Survey Marker / spaces changes (draw only).
     liveMarkerOverlay,
+    // offline-docs: marks opened from this device's kept copy (no signal).
+    offlineCopy: annotationOfflineCopy,
+    editBlocked: annotationEditBlocked,
   } = useAnnotationDoc({
     documentId: pdfFile?.id || null,
-    userId: user?.id || null,
+    userId: annotationActorId,
     // The viewer remains mounted on a warm switch; keep its durable store and
     // unsaved capture live until the tab actually closes.
-    enabled: cloudSyncEnabled && !!pdfFile?.id && !!user?.id,
+    enabled: cloudSyncEnabled && !!pdfFile?.id && !!annotationActorId,
     isActive,
     // Slice 6 (2026-07-17): annotationsByPage carries callouts as projected
     // data.type==='callout' groups (R2.2 flip), and the hook persists them
@@ -22186,11 +22231,69 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     documentLocked,
     whenFirstPageDrawn: pageDrawnSignal.whenDrawn,
   });
+  const offlineCopyToastRef = useRef(null);
+  useEffect(() => {
+    if (!annotationOfflineCopy) { offlineCopyToastRef.current = null; return; }
+    if (!isActive || offlineCopyToastRef.current === pdfFile?.id) return;
+    offlineCopyToastRef.current = pdfFile?.id;
+    showToast('No signal: opened your offline copy. Changes are saved on this device and sync when you are back online.', 'info');
+  }, [annotationOfflineCopy, isActive, pdfFile?.id]);
+  // Deep test 2026-11-10: the owner archived or locked the document while
+  // this person had it open; the server turned their next mark down. Stop the
+  // tools and say why, instead of letting marks vanish one by one.
+  // Drawboard tells another open window at once when a document is deleted
+  // (PDF Pro run 11-10). The owner's other windows still get the row live
+  // once it is archived, so they say so without waiting for an edit.
+  const [archivedLive, setArchivedLive] = useState(false);
+  useEffect(() => {
+    setArchivedLive(false);
+    const documentId = pdfFile?.id;
+    if (!documentId || !cloudSyncEnabled || isDeviceDocumentId(documentId)) return undefined;
+    return subscribeDocumentLockState(documentId, (state) => setArchivedLive(Boolean(state?.archivedAt)));
+  }, [pdfFile?.id, cloudSyncEnabled]);
+  const editBlockedReason = annotationEditBlocked || (archivedLive ? 'archived' : null);
+  useEffect(() => {
+    if (!editBlockedReason || !isActive) return undefined;
+    const release = claimBodyReadOnly('annotation-edit-blocked');
+    const text = {
+      archived: 'This document was moved to Archive. Restore it from Archive to keep working on it.',
+      gone: 'This document was moved to Archive or deleted, or your access was removed. Your last change was not saved.',
+      locked: 'This document was locked. Your last change was not saved.',
+    }[editBlockedReason] || 'You can no longer edit this document. Your last change was not saved.';
+    showToast(text, 'error', { id: 'annotation-edit-blocked', duration: Infinity });
+    return () => {
+      release();
+      dismissToast('annotation-edit-blocked');
+    };
+  }, [editBlockedReason, isActive]);
+  // Deep test 2026-11-10 (Drawboard shows a red "You are currently offline"
+  // banner): losing the signal with a cloud document open says so at once
+  // and stays up until the signal is back, then "You are back online".
+  const deviceOnline = useBrowserOnline();
+  const deviceOnlineRef = useRef(deviceOnline);
+  // An open that failed with no signal says so, instead of "may be corrupted"
+  // (file-model.md follow-up, 2026-11-10).
+  const pdfLoadFailedOffline = Boolean(pdfLoadError) && pdfLoadError.kind !== 'pdfjs'
+    && (!deviceOnline || /failed to fetch|network|offline|internet|connection may have dropped/i.test(String(pdfLoadError.message || '')));
+  const offlineNoticeShown = !deviceOnline && isActive && !!cloudSyncEnabled
+    && !!pdfFile?.id && !isDeviceDocumentId(pdfFile?.id) && !annotationOfflineCopy;
+  useEffect(() => {
+    const cameBack = !deviceOnlineRef.current && deviceOnline;
+    deviceOnlineRef.current = deviceOnline;
+    if (offlineNoticeShown) {
+      showToast('You are offline. Keep working: your changes are saved on this device and sync when you are back online.', 'info', { id: 'device-offline-notice', duration: Infinity });
+      return () => dismissToast('device-offline-notice');
+    }
+    if (cameBack && isActive && cloudSyncEnabled && pdfFile?.id && !isDeviceDocumentId(pdfFile?.id)) {
+      showToast('You are back online. Your changes are syncing.', 'success');
+    }
+    return undefined;
+  }, [offlineNoticeShown, deviceOnline, isActive, cloudSyncEnabled, pdfFile?.id]);
   // Owner 2026-11-03: a page and its saved marks show in the same frame. The
   // pages stay blank sheets until the store has painted (or loaded) the
   // document's marks; never longer than PAGE_MARKS_HOLD_MAX_MS
   // (utils/pageMarksHold.js, styles/pageReveal.css).
-  const pageMarksStoreEnabled = Boolean(cloudSyncEnabled && pdfFile?.id && user?.id);
+  const pageMarksStoreEnabled = Boolean(cloudSyncEnabled && pdfFile?.id && annotationActorId);
   const [pageMarksHoldExpiredFor, setPageMarksHoldExpiredFor] = useState(null);
   // Marks this device already shows for the document (its own saved copy,
   // loaded with the PDF) count as known: the page shows with them.
@@ -22240,7 +22343,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // (its store on this device, or every change already in the cloud).
   const annotationDocHoldsWorkRef = useRef(() => false);
   annotationDocHoldsWorkRef.current = () => Boolean(
-    cloudSyncEnabled && pdfFile?.id && user?.id
+    cloudSyncEnabled && pdfFile?.id && annotationActorId
     && cloudSyncStatus?.healthy
     && (annotationDocHasLocalStore() || cloudSyncQueueSize === 0)
   );
@@ -22288,16 +22391,35 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     let latest = null;
     const reload = (since) => {
       timer = null;
-      if ((pointersDown.size > 0 || hasOpenPolyDraft(polyDraftOwner)) && Date.now() - since < 30000) {
+      const draftOpen = hasOpenPolyDraft(polyDraftOwner);
+      if ((pointersDown.size > 0 || draftOpen) && Date.now() - since < 30000) {
         timer = setTimeout(() => reload(since), 300);
         return;
       }
+      // Waited 30 s: the new pages load now and a shape still being placed
+      // goes. Say so rather than wiping it silently (R4-C N6b).
+      if (draftOpen) showToast('Pages changed in another window, so the shape you were placing was cleared.', 'info');
+      // Marks drawn here on the old pages move with them once the new pages
+      // are loaded (the effect below).
+      sync.reframe = sync.frame;
+      sync.frame = null;
       sync.docBeforeReload = sync.pdfDoc;
       onRemotePdfVersion?.(tabId, latest);
     };
     const unsubscribe = subscribeDocumentMeta(PDF_FILE_VERSION_META_KEY, (value) => {
       const step = remotePdfVersionStep(sync.remote, value, { writer: sync.writer, currentSha: sync.pdfFile?.contentSha256 || null, now: Date.now() });
       sync.remote = step.state;
+      // From another window's page change until this one reloads, new marks
+      // drawn here are on the old pages (handleSaveAnnotations collects them).
+      if (step.action === 'block' || step.action === 'reload') {
+        // Undo here would put back marks as they were before the other
+        // window moved them (R5 N6c): history starts over, as it does after
+        // a page change made here.
+        if (!sync.frame) dropHistoryAfterPageChange();
+        sync.frame = noteFramePageChanges(sync.frame, step.version);
+      } else if (step.action === 'unblock') {
+        sync.frame = null;
+      }
       if (step.action !== 'reload') return;
       latest = { filePath: step.version.filePath, contentSha256: step.version.contentSha256 };
       if (!timer) reload(Date.now());
@@ -22309,12 +22431,30 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       window.removeEventListener('pointerup', onUp, true);
       window.removeEventListener('pointercancel', onUp, true);
     };
-  }, [normalAnnotationHydration, pdfFile?.id, subscribeDocumentMeta, onRemotePdfVersion, tabId, polyDraftOwner]);
+  }, [normalAnnotationHydration, pdfFile?.id, subscribeDocumentMeta, onRemotePdfVersion, tabId, polyDraftOwner, dropHistoryAfterPageChange]);
   useEffect(() => {
     const sync = pageOpSyncRef.current;
     if (!sync.remote.awaitSha || !pdfDoc || pdfDoc === sync.docBeforeReload) return;
     sync.remote = remotePdfLoaded(sync.remote, pdfFile?.contentSha256);
-  }, [pdfDoc, pdfFile]);
+    const frame = sync.reframe;
+    sync.reframe = null;
+    // Steps recorded while the old pages were up (the marks drawn on them)
+    // would undo to the old frame.
+    if (frame) dropHistoryAfterPageChange();
+    const ops = framePageChanges(frame);
+    if (!frame?.made?.size || !ops?.length) return;
+    try {
+      const byPage = annotationsByPageRef.current || {};
+      const changed = reframeMarks(byPage, frame.made, ops, transformPageState);
+      const save = handleSaveAnnotationsRef.current;
+      if (!changed || typeof save !== 'function') return;
+      for (const [page, objects] of Object.entries(changed)) {
+        save(Number(page), { ...(byPage[page] || {}), objects }, { source: 'page-op-sync:reframe', checkpointPolicy: 'skip' });
+      }
+    } catch (err) {
+      console.warn('[page-op-sync] could not move marks drawn on the old pages:', err?.message || err);
+    }
+  }, [pdfDoc, pdfFile, dropHistoryAfterPageChange]);
   pagePresentationMetaSetRef.current = normalAnnotationHydration?.ready
     && normalAnnotationHydration.documentId === pdfFile?.id
     && canRestoreFromHistory ? excelSyncMetaSet : null;
@@ -28441,6 +28581,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   }, [clearLegacyRedoForNewStep, documentOwnerId, pushHistoryDebugEvent, user, pdfFile?.id, yjsUndoCtx?.userId, isBulkJournaledAnnotationId]);
 
   const handleSaveAnnotations = useCallback((pageNumber, json, saveContext = null) => {
+    noteMarksOnOldPages(pageNumber, json);
     // w53: a family action that also moves / restacks / creates Survey
     // Markers (saveContext.surveyMarkerFamily). The markers are written to
     // their own store first; their undo half rides the page's step (or is the
@@ -29245,6 +29386,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       const result = [...next.values()];
       return JSON.stringify(result) === JSON.stringify(previous) ? previous : result;
     });
+    // Highlights / underlines / strikeouts skip handleSaveAnnotations: note
+    // the new ones too, so they move with another window's page change.
+    for (const [pageKey, nextPage] of Object.entries(transaction.nextByPage)) {
+      noteMarksOnOldPages(Number(pageKey), nextPage);
+    }
     annotationsByPageRef.current = transaction.nextByPage;
     try {
       flushSync(() => setAnnotationsByPage(transaction.nextByPage));
@@ -29264,6 +29410,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     return true;
   }, [
     documentOwnerId,
+    noteMarksOnOldPages,
     notifyLockedMarkBlocked,
     pushHistoryDebugEvent,
     pushLocalAnnotationHistoryAction,
@@ -37950,15 +38097,17 @@ ${pageBlocks}
               <Icon name="document" size={48} />
             </div>
             <div style={{ fontSize: '18px', color: 'var(--text-2)', marginBottom: '8px', fontWeight: 500 }}>
-              Couldn’t open this PDF
+              {pdfLoadFailedOffline ? 'You’re offline' : 'Couldn’t open this PDF'}
             </div>
             <div style={{ fontSize: '13px', color: 'var(--text-3)', marginBottom: '8px' }}>
               {docName}
             </div>
             <div style={{ fontSize: '13px', color: 'var(--text-3)', marginBottom: '24px', lineHeight: 1.5 }}>
-              {pdfLoadError.kind === 'pdfjs'
-                ? 'The viewer couldn’t render this file. It may be corrupted or use an unsupported PDF feature.'
-                : 'The file couldn’t be parsed. It may be corrupted, encrypted, or not a valid PDF.'}
+              {pdfLoadFailedOffline
+                ? `This document isn’t kept on this device, so it needs a connection to open. Try again when you’re back online.${isFeatureOn('offline-docs') ? ' Next time, use Make available offline to open it with no signal.' : ''}`
+                : pdfLoadError.kind === 'pdfjs'
+                  ? 'The viewer couldn’t render this file. It may be corrupted or use an unsupported PDF feature.'
+                  : 'The file couldn’t be parsed. It may be corrupted, encrypted, or not a valid PDF.'}
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'center' }}>
               <button

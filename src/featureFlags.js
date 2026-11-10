@@ -28,6 +28,11 @@
 // migration (see supabase/migrations/20261021030000_feature_flags.sql).
 
 export const FEATURE_FLAGS = Object.freeze({
+  // 2026-11-09 (owner: "get this onto production"): counter-list,
+  // grid-settings, spline-polyline, export-modes, pinned-tools, layers,
+  // marker-tracking, document-versions, survey-report, guest-links,
+  // microsoft-sign-in, custom-answers, own-excel-layouts and mark-comments moved from beta to rollout after their /flags rows were turned on, so
+  // surveytool.app follows /flags for them.
   // On surveytool.app since 2026-11-09 (owner: "let's deploy it", with a
   // "Beta" tag under its tool icon).
   'smart-fill': Object.freeze({
@@ -73,23 +78,23 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'custom-answers': Object.freeze({
     label: 'Make-your-own checklist answers in templates',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'survey-report': Object.freeze({
     label: 'Survey report as a PowerPoint deck (cover, progress chart, issues)',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   layers: Object.freeze({
     label: 'Layers panel (markup layers + PDF content opacity)',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'pinned-tools': Object.freeze({
     label: 'Pinned tools dock (favourite tools with their own colour and width)',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'counter-list': Object.freeze({
     label: 'Counts list: rename, recolour and reorder counts in one place',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'company-admin': Object.freeze({
     label: 'Company workspace: people, roles, seats, shared storage and activity log (Enterprise)',
@@ -97,23 +102,23 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'microsoft-sign-in': Object.freeze({
     label: 'Sign in with Microsoft (work, school or personal account)',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'export-modes': Object.freeze({
     label: 'Export PDF choices: annotated, flattened or plain, and which pages',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'grid-settings': Object.freeze({
     label: 'Page grid spacing: fine, normal, wide or custom (paper or drawing units)',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'spline-polyline': Object.freeze({
     label: 'Curved polyline: bend smoothly through the clicked corners',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'own-excel-layouts': Object.freeze({
     label: 'Your own Excel layout: upload your sheet and match its columns',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   // Owner 2026-10-27: wire it in but keep it hidden, so Nightly does not turn
   // it on by itself; /flags or 'survey.flag.conditional-lines' = '1' does.
@@ -124,7 +129,7 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'document-versions': Object.freeze({
     label: 'Version history: a new version keeps the old ones, with old-over-new compare',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'mark-library': Object.freeze({
     label: 'Mark library: save marks to a personal or project library and drop them on any page',
@@ -132,15 +137,15 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'mark-comments': Object.freeze({
     label: 'Comments on marks: threads, replies and @mentions with an email link',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'marker-tracking': Object.freeze({
     label: 'Survey items: status, assigned to and due date, with list filters',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'guest-links': Object.freeze({
     label: 'Guest links: open one document without an account, as viewer or editor, until a set time',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   // The app's Google Sheets (and later Microsoft 365) live sync panel; the
   // sheet-sync function also lets flag admins and Nightly testers link.
@@ -300,6 +305,40 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Back (browser or Android) closes the open sheet, then the document, instead of leaving Survey',
     stage: 'beta',
   }),
+  // Drawboard Home parity (2026-11-10), one flag each so Isaiah can pick.
+  'home-tags': Object.freeze({
+    label: 'Home: your own tags on documents (row chips, Tags list, search by tag)',
+    stage: 'beta',
+  }),
+  'home-shared-views': Object.freeze({
+    label: 'Home: Shared by me and Shared with me filters',
+    stage: 'beta',
+  }),
+  'home-columns': Object.freeze({
+    label: 'Home: Last opened and Created columns, more sorts, list sizes',
+    stage: 'beta',
+  }),
+  // Drawboard Projects parity (2026-11-10).
+  'project-issues': Object.freeze({
+    label: 'Projects: Issues and Tasks lists with IDs, statuses, filters, archive, CSV and activity',
+    stage: 'beta',
+  }),
+  'share-extras': Object.freeze({
+    label: 'Share dialog: owner row with (you), sort by Role / Name / Activity, personal message on email invites',
+    stage: 'beta',
+  }),
+  'home-templates': Object.freeze({
+    label: 'Home New menu: Notebook paper in one tap and Other templates (ruled, Cornell, grids, graph, isometric, hex, music)',
+    stage: 'beta',
+  }),
+  'sheet-set-view': Object.freeze({
+    label: 'Project sheets as a set: previous / next sheet, sheet picker, Shift+Left / Right, List and Grid views, Open all',
+    stage: 'beta',
+  }),
+  spotlight: Object.freeze({
+    label: 'Spotlight: share your view from the people list; others follow your document, page and zoom (green frame, N following)',
+    stage: 'beta',
+  }),
   'page-op-sync': Object.freeze({
     label: 'Page changes in one window reload the PDF in the other windows that have it open',
     stage: 'beta',
@@ -311,6 +350,18 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'box-drag-move': Object.freeze({
     label: 'Drag inside a picked mark to move it',
+    stage: 'beta',
+  }),
+  // Drawboard file model (2026-11-10, drawboard-trial/file-model.md): keep a
+  // document on this device so it opens with no signal; marks sync later.
+  'offline-docs': Object.freeze({
+    label: 'Available offline: keep a document on this device so it opens with no signal',
+    stage: 'beta',
+  }),
+  // Open a PDF with no account; it stays on this device until saved to an
+  // account (Drawboard's "Temporary" files, without their two-tab data loss).
+  'device-files': Object.freeze({
+    label: 'Open a PDF with no account (kept on this device)',
     stage: 'beta',
   }),
   'line-dashes': Object.freeze({

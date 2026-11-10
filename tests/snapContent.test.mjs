@@ -211,3 +211,29 @@ test('real PDF: a pdf-lib line reads back at its page-unit ends (y down)', async
   close(b.x, 400, 0.01); close(b.y, 100, 0.01);
   await task.destroy();
 });
+
+test('a snap index build that failed is tried again later, a few times (Bugbot on #1381)', async () => {
+  const { getPageSnapContentIndex, SNAP_INDEX_RETRY_MS, SNAP_INDEX_MAX_TRIES } = await import('../src/survey/snapContentIndex.js');
+  let calls = 0;
+  const doc = { getPage: async () => { calls += 1; throw new Error('read cut short'); } };
+  const realNow = Date.now;
+  let now = realNow();
+  Date.now = () => now;
+  try {
+    const settle = () => new Promise((r) => setTimeout(r, 0));
+    assert.equal(getPageSnapContentIndex(doc, 1), null);
+    await settle(); await settle();
+    assert.equal(calls, 1);
+    getPageSnapContentIndex(doc, 1);
+    await settle();
+    assert.equal(calls, 1, 'not again at once');
+    for (let i = 2; i <= SNAP_INDEX_MAX_TRIES + 1; i += 1) {
+      now += SNAP_INDEX_RETRY_MS;
+      getPageSnapContentIndex(doc, 1);
+      await settle(); await settle();
+    }
+    assert.equal(calls, SNAP_INDEX_MAX_TRIES, 'gives up after a few tries');
+  } finally {
+    Date.now = realNow;
+  }
+});

@@ -221,7 +221,7 @@ test('wiring: tool, layer event, host, renderers, bar, phone strip, flag and mig
   assert.match(read('src/components/SelectionQuickBar.jsx'), /api\.followLink\(api\.selectedLink\.link\)/);
   assert.match(read('src/mobile/MobilePdfViewerChrome.jsx'), /\{ id: 'hyperlink', label: 'Hyperlink', icon: 'hyperlink', flag: 'link-tool' \}/);
   assert.match(read('src/featureFlags.js'), /'link-tool': Object\.freeze\(\{[\s\S]{0,200}stage: 'beta'/);
-  assert.match(read('supabase/migrations/20261110155000_link_tool_flag.sql'), /'link-tool', 'off'/);
+  assert.match(read('supabase/migrations/20261110177000_link_tool_flag.sql'), /'link-tool', 'off'/);
   // The painter runs in a worker: its link helper module imports nothing.
   assert.doesNotMatch(read('src/utils/linkMarkPaint.js'), /^import /m);
 });

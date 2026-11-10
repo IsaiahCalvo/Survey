@@ -1,7 +1,7 @@
 /*
  * Nightly 'comment-pins': page pins (Drawboard Projects build item 6).
  * A pin is a page thread with a spot on the page (mark_comments root with
- * pin_x / pin_y, migration 20261110156000). It is a Comment, an Issue or a
+ * pin_x / pin_y, migration 20261110178000). It is a Comment, an Issue or a
  * Task; issues and tasks carry a status and a number (ISS-7, TSK-1).
  *   - N arms the Pin tool; while it is on, M cycles Comment, Issue, Task
  *     (plain M still puts the tools down everywhere else).
@@ -24,7 +24,7 @@ export const PIN_KINDS = Object.freeze(['comment', 'issue', 'task']);
 export const PIN_KIND_LABELS = Object.freeze({ comment: 'Comment', issue: 'Issue', task: 'Task' });
 export const PIN_CODES = Object.freeze({ issue: 'ISS', task: 'TSK' });
 
-// Status ids match the database check (20261110156000_comment_pins.sql).
+// Status ids match the database check (20261110178000_comment_pins.sql).
 export const PIN_STATUSES = Object.freeze({
   issue: Object.freeze(['draft', 'open', 'pending', 'in-review', 'closed', 'approved', 'rejected']),
   task: Object.freeze(['draft', 'open', 'pending', 'in-review', 'on-hold', 'closed']),

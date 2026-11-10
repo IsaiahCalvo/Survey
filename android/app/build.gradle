@@ -59,6 +59,15 @@ android {
             }
         }
     }
+    // Survey Nightly turns beta flags on, so it alone gets the manifest entries
+    // of beta native features (src/nightly/AndroidManifest.xml, merged over
+    // main for every build type). The stable app never sees them.
+    if (project.hasProperty("surveyNightly")) {
+        sourceSets {
+            debug { manifest.srcFile 'src/nightly/AndroidManifest.xml' }
+            release { manifest.srcFile 'src/nightly/AndroidManifest.xml' }
+        }
+    }
     buildTypes {
         release {
             if (hasReleaseSigning) {

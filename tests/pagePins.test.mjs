@@ -100,7 +100,7 @@ test('the Pin tool and the Hyperlink tool keep the Text row on screen', () => {
 
 test('wiring: flag, migration, viewer host and layer, tool button, rail card, phone strip, keys sheet', () => {
   assert.match(read('src/featureFlags.js'), /'comment-pins': Object\.freeze\(\{[\s\S]*?stage: 'beta'/);
-  const sql = read('supabase/migrations/20261110156000_comment_pins.sql');
+  const sql = read('supabase/migrations/20261110178000_comment_pins.sql');
   for (const bit of ['add_page_pin', 'update_page_pin', "('comment-pins', 'off'", 'pg_advisory_xact_lock', 'pin_kind, pin_status, pin_number']) {
     assert.ok(sql.includes(bit), bit);
   }

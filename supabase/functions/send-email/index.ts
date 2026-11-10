@@ -3,6 +3,7 @@ import {
     renderEmailLayout,
     emailButton,
     emailFileCard,
+    emailQuote,
     emailDetailRows,
     EMAIL_DANGER,
     EMAIL_P_STYLE as P,
@@ -12,6 +13,7 @@ import {
 } from '../_shared/emailLayout.ts';
 import { resolveBrevoApiKey } from './config.ts';
 import { parseBody, s } from '../_shared/inputSchema.js';
+import { inviteMessage } from '../_shared/inviteMessage.js';
 import { agentOverLimit, AGENT_RATE_LIMITED_MESSAGE } from '../_shared/agentSession.ts';
 import {
     authorizeUserSend,
@@ -374,12 +376,15 @@ Deno.serve(async (req) => {
             // KAL-31 sharing templates.
             // ==============================================================
 
+            // The inviter's own words (share dialog, Nightly flag share-extras),
+            // already HTML-escaped below, shown as a quote with their name.
             'document-invite': (data: any) => renderEmailLayout({
                 heading: `${data.inviterName || 'A Survey user'} invited you to Survey`,
                 preheader: 'Accept the invitation to see what has been shared with you.',
                 footerReason: `You're receiving this because ${data.inviterName || 'a Survey user'} invited you to Survey.`,
                 bodyHtml:
                     `<p style="${P}"><strong>${data.inviterName || 'A Survey user'}</strong> invited you to join <strong>${data.documentName || 'a document'}</strong> as <strong>${data.role || 'Viewer'}</strong> on Survey.</p>` +
+                    emailQuote(data.inviterName || 'A Survey user', data.message) +
                     emailFileCard(data.documentName || 'Shared document', `Invited by ${data.inviterName || 'a Survey user'}`) +
                     emailButton('Accept invitation', data.inviteUrl) +
                     `<p style="${MUTED}" class="em-mut">This invite expires on ${data.expiresAt || '7 days from now'}.</p>` +
@@ -392,6 +397,7 @@ Deno.serve(async (req) => {
                 footerReason: `You're receiving this because ${data.sharedByName || 'a Survey user'} shared a document with this address.`,
                 bodyHtml:
                     `<p style="${P}">You now have access to this document in Survey as <strong>${data.role || 'Viewer'}</strong>. Open it to view pages, markups, and the latest survey data.</p>` +
+                    emailQuote(data.sharedByName || 'A Survey user', data.message) +
                     emailFileCard(data.documentName || 'Shared document', `Shared by ${data.sharedByName || 'a Survey user'}`) +
                     emailButton('Open document', data.documentUrl || data.appUrl || '#') +
                     `<p style="${MUTED}" class="em-mut">Access is already active; no invitation acceptance is required.</p>`,
@@ -454,6 +460,7 @@ Deno.serve(async (req) => {
         const URL_FIELDS = new Set(['inviteUrl', 'documentUrl', 'portalUrl', 'appUrl']);
         const safeData: Record<string, unknown> = {};
         for (const [k, val] of Object.entries(data || {})) {
+            if (k === 'message') { safeData[k] = escapeHtml(inviteMessage(val)); continue; }
             if (typeof val !== 'string') { safeData[k] = val; continue; }
             if (!URL_FIELDS.has(k)) { safeData[k] = escapeHtml(val); continue; }
             if (caller.type === 'user') { safeData[k] = escapeHtml(pinLinkToApp(val)); continue; }

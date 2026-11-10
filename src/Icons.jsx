@@ -1319,6 +1319,13 @@ const ICON_RENDERERS = {
         <path d="M8.6 13.5L15.4 17.5M15.4 6.5L8.6 10.5" stroke={color} strokeWidth="1.5" />
       </svg>
     ),
+    // Tag — Lucide "tag" (ISC), house stroke 1.5. Home tags (Nightly).
+    tag: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
+        <path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx="7.5" cy="7.5" r="1" fill={color} />
+      </svg>
+    ),
     lock: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
         <rect x="4" y="11" width="16" height="10" rx="1.11" stroke={color} strokeWidth="1.5" /><path d="M8 11V7A4 4 0 0 1 16 7V11" stroke={color} strokeWidth="1.5" />

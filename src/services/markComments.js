@@ -14,9 +14,9 @@ export { OPEN_MARK_COMMENTS_EVENT, requestMarkCommentsFocus, takePendingMarkComm
 
 export const MARK_COMMENT_MAX_CHARS = 4000;
 export const MARK_COMMENT_MAX_MENTIONS = 20;
-// Comments are Nightly-only, so a copied link from a page with no web address
-// of its own (desktop file://, the phone app) opens on Nightly.
-export const COMMENT_LINK_FALLBACK_ORIGIN = 'https://surveytool-nightly.vercel.app';
+// A copied link from a page with no web address of its own (desktop file://,
+// the phone app) opens on surveytool.app: those apps run the stable build.
+export const COMMENT_LINK_FALLBACK_ORIGIN = 'https://surveytool.app';
 
 /** The link a person copies to open the document at this comment. */
 export function commentShareUrl(location, documentId, commentId) {

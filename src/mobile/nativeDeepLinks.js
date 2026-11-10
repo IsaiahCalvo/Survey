@@ -70,7 +70,7 @@ export function installNativeDeepLinks(win = typeof window !== 'undefined' ? win
     const openFile = (url) => {
       if (!isOpenedFileUrl(url)) return false;
       Promise.all([import('@capacitor/filesystem'), import('./nativeOpenFile.js')])
-        .then(([{ Filesystem }, { receiveOpenedFile }]) => receiveOpenedFile(url, { Filesystem, win }))
+        .then(([{ Filesystem }, { receiveOpenedFile }]) => receiveOpenedFile(url, { Filesystem, win, enabled: isFeatureOn('open-in-survey') }))
         .catch((err) => console.warn('[nativeDeepLinks] could not open file', err));
       return true;
     };
