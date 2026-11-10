@@ -11,6 +11,10 @@
  *    data-hold-pages: every page stays a blank sheet. The overlay stays shown,
  *    so a mark drawn meanwhile is visible.
  *
+ * 3. A page's drawing stays a blank sheet until its marks layer has mounted
+ *    (SVGAnnotationLayer sets data-marks-layer on the page div; PdfPageCanvas
+ *    sets it to "late" if no layer came within 0.5 s).
+ *
  * Opacity, not visibility: a descendant cannot override it.
  */
 .survey-pdfjs-page-div:not([data-raster-shown]) > [data-pdfjs-page-overlay-host] {
@@ -18,5 +22,9 @@
 }
 
 [data-hold-pages="true"] .survey-pdfjs-page-div > :not([data-pdfjs-page-overlay-host]) {
+  opacity: 0;
+}
+
+.survey-pdfjs-page-div:not([data-marks-layer]) > :not([data-pdfjs-page-overlay-host]) {
   opacity: 0;
 }

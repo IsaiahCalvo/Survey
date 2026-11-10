@@ -6,6 +6,9 @@ import { ICON_GRID, inkBox } from './helpers/iconInk.mjs';
 const chrome = readFileSync(new URL('../src/mobile/MobilePdfViewerChrome.jsx', import.meta.url), 'utf8');
 
 /*
+ * Owner 2026-11-09: Spaces' glyph is now `spaces` (the old region-edit
+ * glyph); the stacked-sheets `layers` went to the Layers tab.
+ *
  * UX contract (owner ruling 2026-09-17): "Survey vs Spaces - make their glyph
  * ink extents and optical weight match (same box, same ink extent within 1px,
  * house stroke), from the shared icon set."
@@ -33,7 +36,7 @@ test('the dock glyph size is the one this parity is measured at', () => {
 });
 
 test('Survey and Spaces have the same ink extent, within 1px at the dock size', () => {
-  const spaces = inkBox('layers');
+  const spaces = inkBox('spaces');
   const survey = inkBox('survey');
   const perUnit = DOCK_GLYPH / ICON_GRID;
 
@@ -50,7 +53,7 @@ test('Survey and Spaces have the same ink extent, within 1px at the dock size', 
 });
 
 test('both marks are centred on the grid and drawn at the house stroke', () => {
-  for (const name of ['layers', 'survey']) {
+  for (const name of ['spaces', 'survey']) {
     const box = inkBox(name);
     assert.equal(box.viewBox, `0 0 ${ICON_GRID} ${ICON_GRID}`, `${name} must be drawn on the house grid`);
     for (const value of box.strokes) {
@@ -68,7 +71,7 @@ test('both marks are centred on the grid and drawn at the house stroke', () => {
 
 test('neither mark drifts outside the set\'s own ink band', () => {
   const [low, high] = SET_INK_BAND;
-  for (const name of ['layers', 'survey']) {
+  for (const name of ['spaces', 'survey']) {
     const box = inkBox(name);
     for (const axis of ['width', 'height']) {
       assert.ok(

@@ -273,10 +273,14 @@
 .mark-library__tile--list .mark-library__check { position: static; }
 
 .mark-library__empty {
-  margin: 16px 4px;
+  /* An empty side panel says so like Search, Bookmarks and History: one
+     centred quiet line, 32px down (tests/sidePanelEmptyState.test.mjs). */
+  margin: 0;
+  padding: 32px 20px;
+  text-align: center;
   color: var(--text-3);
-  font-size: 12px;
-  line-height: 1.5;
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 .mark-library__footer {
@@ -321,3 +325,7 @@
   .mark-library-tag-chip { height: 32px; padding: 0 12px; }
   .mark-library__more { width: 36px; height: 36px; }
 }
+
+.mobile-pdf-sheet .mark-library__empty { font-size: 14px; }
+/* Same side gutter as Layers and Comments in the phone sheet. */
+.mobile-pdf-sheet .mark-library { padding: 8px 16px 16px; }

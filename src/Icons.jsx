@@ -289,18 +289,27 @@ const ICON_RENDERERS = {
     areaRect: (size, color, style, className) => renderAreaToolGlyph('areaRect', size, color, style, className),
     areaFreehand: (size, color, style, className) => renderAreaToolGlyph('areaFreehand', size, color, style, className),
     areaPolygon: (size, color, style, className) => renderAreaToolGlyph('areaPolygon', size, color, style, className),
-    // Owner 2026-10-02: a Spaces region card's "edit areas" button. Hugeicons
+    // Owner 2026-11-09: the Spaces tab, dock button and space chip. Hugeicons
     // Select 02 (MIT): a plus, a box drawn as edges, and three square corner
-    // handles. Replaces the Draw pencil on each region card. The handles keep
-    // Hugeicons' rx 1 (the owner asked for the exact glyph), so they carry
+    // handles (it was the region card's "edit areas" button from 2026-10-02;
+    // the old Spaces glyph, three stacked sheets, went to Layers). The handles
+    // keep Hugeicons' rx 1 (the owner asked for the exact glyph), so they carry
     // data-icon-source="hugeicons" and the house 1/9 corner ratio skips them.
-    regionEdit: (size, color, style, className) => (
+    spaces: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
         <path d="M5 2V8M2 5H8" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
         <path d="M20 18L20 7M7 20H18M18 5H12M5 12V18" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
         <rect x="18" y="3" width="4" height="4" rx="1" stroke={color} strokeWidth="1.5" data-icon-source="hugeicons" />
         <rect x="18" y="18" width="4" height="4" rx="1" stroke={color} strokeWidth="1.5" data-icon-source="hugeicons" />
         <rect x="3" y="18" width="4" height="4" rx="1" stroke={color} strokeWidth="1.5" data-icon-source="hugeicons" />
+      </svg>
+    ),
+    // Owner 2026-11-09: a Spaces region card's "edit areas" button is an
+    // "edit" glyph (a pen over an open box), at the house 1.5 stroke.
+    regionEdit: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M11 4H6.5C5.12 4 4 5.12 4 6.5V17.5C4 18.88 5.12 20 6.5 20H17.5C18.88 20 20 18.88 20 17.5V13" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M18.38 3.62C19.21 2.79 20.55 2.79 21.38 3.62C22.21 4.45 22.21 5.79 21.38 6.62L12.5 15.5L9 16.5L10 13L18.38 3.62Z" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     ),
     // Owner 2026-10-13: the Survey Marker group's Smart fill (shown only while

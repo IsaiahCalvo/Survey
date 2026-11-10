@@ -64,7 +64,12 @@ const press = (layout, locator) => (layout.use.hasTouch ? locator.tap() : locato
 async function openSurveyPanel(page, layout) {
   await press(layout, page.getByText(E2E_SURVEY.documentName, { exact: true }).filter({ visible: true }).first());
   const openFile = page.getByRole('button', { name: 'Open file' });
-  if (await openFile.waitFor({ timeout: 5_000 }).then(() => true, () => false)) await press(layout, openFile);
+  // On a tablet a tap now opens the file itself (main, 11-09); the "Open
+  // file" button may show for a moment and go, so a press that finds it
+  // gone is fine.
+  if (await openFile.waitFor({ timeout: 5_000 }).then(() => true, () => false)) {
+    await (layout.use.hasTouch ? openFile.tap({ timeout: 5_000 }) : openFile.click({ timeout: 5_000 })).catch(() => {});
+  }
   await expect(page.locator('[data-overlay-page="1"] [data-annotation-id]').first()).toBeAttached({ timeout: 60_000 });
   const sync = page.locator('[data-sheet-sync-state]').filter({ visible: true }).first();
   const pick = page.getByRole('button', { name: new RegExp(`^${E2E_SURVEY.templateName}`) }).filter({ visible: true }).first();
@@ -371,6 +376,13 @@ for (const layout of LAYOUTS) {
           await tap(panel.getByRole('button', { name: 'Sync now' }));
           await expect(panel.getByRole('button', { name: 'Sync now' })).not.toHaveAttribute('aria-busy', 'true', { timeout: 10_000 });
           expect(JSON.stringify(await markersOf(E2E_SURVEY.documentId))).toContain(note);
+        }).toPass({ timeout: 45_000 });
+        // Put the seeded item's note back: other specs expect it as seeded.
+        await fakeGoogle(`/files/${fileId}/edit`, { title, edits: [{ row: at, col: notesCol, value: tab.rows[at][notesCol] ?? '' }] });
+        await expect(async () => {
+          await tap(panel.getByRole('button', { name: 'Sync now' }));
+          await expect(panel.getByRole('button', { name: 'Sync now' })).not.toHaveAttribute('aria-busy', 'true', { timeout: 10_000 });
+          expect(JSON.stringify(await markersOf(E2E_SURVEY.documentId))).not.toContain(note);
         }).toPass({ timeout: 45_000 });
 
         // The PM trashes the sheet: the link stops and says why.

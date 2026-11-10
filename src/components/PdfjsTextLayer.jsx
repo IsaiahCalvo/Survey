@@ -21,7 +21,7 @@ import {
   repairCollapsedTextDragSelection,
 } from '../utils/nativeTextDragSelection';
 import { readPdfjsTextContent } from '../utils/pdfjsTextContent';
-import { keepTextLayer, restoreTextLayer, textContentInSlices, textLayerKey } from '../utils/pdfjsTextLayerCache';
+import { keepTextLayer, restoreTextLayer, textContentInSlices, textLayerKey, whenViewerStill } from '../utils/pdfjsTextLayerCache';
 
 // Inject the glyph-positioning + selection CSS once for the whole app.
 // Exported for the text-search measurement layer (sidebar/SearchTextPanel.jsx),
@@ -245,6 +245,12 @@ function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, interactive = fa
       buildNowRef.current = null;
       if (!el || !pdf) return;
       try {
+        // Reading the text runs on the pdf.js worker that also draws the
+        // pages: while the viewer moves, the pages scrolling into view go
+        // first (99-sheet set: they stayed white for seconds).
+        const scroller = el.closest?.('[data-touch-pdf-surface]') || null;
+        await whenViewerStill(scroller);
+        if (cancelled || !ref.current) return;
         const page = await pdf.getPage(pageNumber);
         if (cancelled || !ref.current) return;
         // WebKit's ReadableStream lacks async iteration on some supported iOS
@@ -261,7 +267,13 @@ function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, interactive = fa
         el.style.height = `${Math.floor(viewport.height)}px`;
         // Fed a slice per task: measuring every glyph run of a page in one
         // task held the page (~1 s a page on a slow PC).
-        task = new pdfjsLib.TextLayer({ textContentSource: textContentInSlices(textContent), container: el, viewport });
+        // Slices wait while the viewer moves too: laying out a page's text
+        // mid-scroll cost ~1 s of frames per 3 s of scrolling (36-sheet set).
+        task = new pdfjsLib.TextLayer({
+          textContentSource: textContentInSlices(textContent, { waitForStill: () => whenViewerStill(scroller) }),
+          container: el,
+          viewport,
+        });
         await task.render();
         if (!cancelled) built = textContent;
       } catch { /* cancelled or unsupported render — ignore */ }

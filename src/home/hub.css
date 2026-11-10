@@ -3193,6 +3193,18 @@
     font-size: 14px;
     color: var(--text-2);
   }
+  .survey-hub .templates-mobile-option--detailed {
+    flex-wrap: wrap;
+    row-gap: 0;
+    padding-top: 4px;
+    padding-bottom: 10px;
+  }
+  .survey-hub .templates-mobile-option__detail {
+    flex-basis: 100%;
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--text-3);
+  }
   .survey-hub .templates-mobile-option + .templates-mobile-option {
     border-top: 1px solid var(--rule);
   }
@@ -5662,8 +5674,17 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
 .hub-template-picker {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
   max-width: 100%;
   margin-top: 4px;
+}
+/* What the pill picks, in the quiet label ink, before it. */
+.hub-template-picker__label {
+  flex: none;
+  color: var(--text-3);
+  font: 500 var(--font-size-sm)/1 var(--font-ui);
+  white-space: nowrap;
 }
 .hub-template-picker .annotation-dropdown {
   flex: 0 1 auto;
@@ -5726,7 +5747,7 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
    printed one letter per line), so there the person takes the first line and
    role / status / More the second. Rows sit in a flex column that scrolls, so
    they must not shrink below their content. */
-.access-grid { grid-template-columns: 30px 1fr 1fr 1fr 24px; flex-shrink: 0; }
+.access-grid { grid-template-columns: 30px minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) 24px; flex-shrink: 0; }
 /* The list under them keeps room for three rows (50px + 2px gap each, plus
    its 18px padding), so the dialog opens at the size it keeps: it used to
    open short with "Loading…", then grow ~100px and jump up (it is centred)
@@ -5743,7 +5764,7 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
 }
 
 /* Preview pane: double-clicking a row opens the file. Mouse/trackpad only;
-   a touch screen opens on tap and has no double-click. */
+   on a touch screen a tap opens it (DocumentsLedger onDesktopRowClick). */
 .documents-preview-open-hint {
   flex: none;
   margin-top: 8px;

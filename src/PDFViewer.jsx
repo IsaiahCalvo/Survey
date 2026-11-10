@@ -109,7 +109,7 @@ import PrintPanel from './components/PrintPanel';
 import BrowserPrintDocument from './components/BrowserPrintDocument.jsx';
 import { createPrintPageError, waitForPrintImages } from './utils/printImageReadiness.js';
 import RegionSelectionTool from './RegionSelectionTool';
-import SVGAnnotationLayer from './components/SVGAnnotationLayer';
+import SVGAnnotationLayer, { warmMarkGeometry } from './components/SVGAnnotationLayer';
 import SaveLogBanner from './components/SaveLogBanner';
 import { useConfirmDialog } from './components/dialogPrompts.jsx';
 import Spinner from './components/Spinner';
@@ -676,6 +676,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const pdfjsWheelZoomAnchorRef = useRef(null);
   const pdfjsLastCursorPageRef = useRef(null);
   const skipNextViewStateEmitRef = useRef(true);
+  // When the page last scrolled: a page change mid-scroll waits for the
+  // scroll's own debounced emit (see the emit effect).
+  const viewStateScrolledAtRef = useRef(-Infinity);
   const presenceAutoDisabledRef = useRef(false);
   const presenceStructuralWarningShownRef = useRef(false);
   const lastPresenceErrorClassRef = useRef(null);
@@ -6429,16 +6432,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
 
     // Debounce scroll updates
     let timeoutId;
-    const debouncedHandleScroll = () => {
+    const debounceEmit = () => {
       clearTimeout(timeoutId);
       timeoutId = setTimeout(emitViewState, 300);
+    };
+    const debouncedHandleScroll = () => {
+      viewStateScrolledAtRef.current = performance.now();
+      debounceEmit();
     };
 
     const container = containerRef.current;
     container.addEventListener('scroll', debouncedHandleScroll);
 
-    // Also emit on page/zoom changes immediately
-    emitViewState();
+    // Also emit on page/zoom changes immediately, except a page change while
+    // scrolling: each emit re-renders the whole app shell and this viewer,
+    // once per page scrolled past (36-sheet set, 2026-11-09), so it rides the
+    // scroll's debounce instead.
+    if (performance.now() - viewStateScrolledAtRef.current < 300) debounceEmit();
+    else emitViewState();
 
     return () => {
       container.removeEventListener('scroll', debouncedHandleScroll);
@@ -11983,6 +11994,34 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // per document open (see the fallback effect near the fix19 import harness).
   const embeddedImportFallbackDoneRef = useRef(null);
   const annotationsByPageRef = useRef(annotationsByPage);
+  // Speed (2026-11-09): work out the marks' geometry for the pages just past
+  // the mounted window while the browser is idle, so a page scrolling into
+  // view only builds its elements (warmMarkGeometry; ~80 ms of a 150-mark
+  // page's ~100 ms on the 36-sheet set).
+  useEffect(() => {
+    if (typeof requestIdleCallback !== 'function' || !pdfjsMountedPages.size) return undefined;
+    const mounted = [...pdfjsMountedPages];
+    const lo = Math.min(...mounted);
+    const hi = Math.max(...mounted);
+    const pages = [];
+    for (let d = 1; d <= 4; d += 1) pages.push(hi + d, lo - d);
+    let idleId = null;
+    let at = 0;
+    let from = 0;
+    const step = (deadline) => {
+      idleId = null;
+      while (at < pages.length) {
+        const objects = annotationsByPage?.[pages[at]]?.objects;
+        from = warmMarkGeometry(objects, { from, timeRemaining: () => deadline.timeRemaining() });
+        if (Array.isArray(objects) && from < objects.length) break;
+        at += 1;
+        from = 0;
+      }
+      if (at < pages.length) idleId = requestIdleCallback(step);
+    };
+    idleId = requestIdleCallback(step);
+    return () => { if (idleId != null) cancelIdleCallback(idleId); };
+  }, [pdfjsMountedPages, annotationsByPage]);
   const surveyMarkersRef = useRef(surveyMarkers);
   // w53: the canvas lists of Survey Markers (with their stack) as last
   // rendered — the family restack reads the page's markers from here.
@@ -29339,6 +29378,35 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     return false;
   }, []);
 
+  //   selectHistoryMark(id)  picks one mark where it is now, so a Comments
+  //                          row shows which mark it means (owner 2026-11-09:
+  //                          "it should actually select the annotation").
+  //                          Same broadcast a paste uses; any tool keeps.
+  const selectHistoryMark = useCallback((markId) => {
+    if (markId == null) return false;
+    const id = String(markId);
+    const entry = getHistoryMarkIndex().get(id);
+    const pageNumber = Number(entry?.pageNumber);
+    if (!entry || !Number.isFinite(pageNumber) || pageNumber < 1) return false;
+    if (entry.kind === 'callout') {
+      setAnnotationSelectionClearToken((token) => token + 1);
+      setSelectedCalloutIds(new Set([id]));
+      return true;
+    }
+    if (entry.kind === 'surveyMarker') {
+      setSelectedCalloutIds(new Set());
+      setPendingSvgSelection({ pageNumber, annotationIndices: [], surveyMarkerIds: [id], exclusive: true, tick: Date.now() });
+      return true;
+    }
+    if (entry.kind !== 'mark') return false;
+    const page = (annotationsByPageRef.current || {})[pageNumber] || (annotationsByPageRef.current || {})[String(pageNumber)];
+    const index = (page?.objects || []).findIndex((candidate) => String(getHistoryAnnotationId(candidate)) === id);
+    if (index < 0) return false;
+    setSelectedCalloutIds(new Set());
+    setPendingSvgSelection({ pageNumber, annotationIndices: [index], surveyMarkerIds: [], exclusive: true, tick: Date.now() });
+    return true;
+  }, [getHistoryMarkIndex]);
+
   // Read through a ref: the tombstone list is a new array after every capture,
   // and the import effect must not be cancelled mid-import by that churn.
   const durableDeletedPdfAnnotationsRef = useRef(durableDeletedPdfAnnotations);
@@ -36799,6 +36867,7 @@ ${pageBlocks}
       getHistoryMarkIndex,
       locateHistoryMark,
       focusHistoryMark,
+      selectHistoryMark,
       layersEnabled,
       layerState,
       activeLayerId: effectiveActiveLayerId,
@@ -36913,6 +36982,7 @@ ${pageBlocks}
     getHistoryMarkIndex,
     locateHistoryMark,
     focusHistoryMark,
+    selectHistoryMark,
   ]);
 
   // UX 2026-05-29: Publish the active PDF viewer's right-rail data to the App
