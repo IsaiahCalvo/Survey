@@ -44,6 +44,8 @@ latest-attempt jobs of all non-skipped runs. It found 4,042 allocated jobs:
 next minute. At current standard private-runner rates, that is **$225.59 of
 compute for that busy day**, before storage. Public standard runners are free;
 this is a private-repo estimate, not a bill and not a monthly forecast.
+Private Linux runner capacity can differ too, so these public-run durations
+are a starting point rather than a promise of private-run times.
 
 | Workflow | Private compute equivalent that day |
 | --- | ---: |
@@ -56,8 +58,11 @@ this is a private-repo estimate, not a bill and not a monthly forecast.
 Of the native spend, the slow daily iOS walk alone used 641 Mac minutes over
 15 attempts: **$39.74**, with no passing attempt. Under the new automatic policy
 one attempt is bounded by its existing 200-minute timeout, or **$12.40** of Mac
-compute. This removes the automatic restart loop; it does not fix the walk's
-underlying failures or assert a passing iOS result.
+compute. This removes the automatic restart loop; a failed attempt still stays red.
+The full walk has since [passed on Nov 11](https://github.com/IsaiahCalvo/Survey/actions/runs/43074130902),
+before this policy change: 65 rounded Mac minutes, or about **$4.03 per run**
+at private rates. Keeping that daily frequency alone would exceed Free's
+monthly included compute; that is still a budget constraint.
 
 Separately, **$50.38** of PR native/E2E jobs were on revisions for which that
 day's core CI receipts had no successful run. Starting follow-ups after a

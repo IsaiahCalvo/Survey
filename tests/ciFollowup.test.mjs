@@ -130,6 +130,17 @@ test('daily history pages runs and jobs, including runs created before today', a
   assert.equal(runPages, 2);
   assert.equal(jobPages, 102);
 });
+test('migration counts a daily walk already started by the old main workflow', async () => {
+  const api = async path => {
+    if (path.includes('ios-signed-in.yml/runs')) return { workflow_runs: [] };
+    if (path.includes('ios-native.yml/runs')) {
+      assert.match(path, /branch=main/);
+      return { workflow_runs: [{ id: 10 }] };
+    }
+    return { jobs: [{ name: WALK_JOB, runner_name: 'x', started_at: now.toISOString(), conclusion: 'failure' }] };
+  };
+  assert.equal(await dailyAttemptDue({ api, now, runId: 4 }), false);
+});
 test('API errors cannot silently skip a due check', async () => {
   const api = actionsApi({ repo, token: 'test', fetcher: async () => ({ ok: false, status: 403 }) });
   await assert.rejects(dailyAttemptDue({ api, now, runId: 4 }), /403/);
