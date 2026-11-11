@@ -116,31 +116,38 @@ jobs:
 
   start-pr:
     needs: plan
+    outputs:
+      check_id: ${{ steps.start.outputs.check_id }}
     if: needs.plan.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 2
     permissions:
+      contents: read
       pull-requests: read
-      statuses: write
+      checks: write
     steps:
       - name: Use the normal check on direct PR and manual runs
         if: github.event_name != 'workflow_run'
         run: echo 'This run reports its normal Actions checks.'
+      - uses: actions/checkout@v7
+        if: github.event_name == 'workflow_run'
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
       - uses: actions/github-script@v9
+        id: start
         if: github.event_name == 'workflow_run'
         env:
           PR: ${{ needs.plan.outputs.pr }}
           HEAD: ${{ needs.plan.outputs.head }}
         with:
           script: |
-            const { data: pr } = await github.rest.pulls.get({ ...context.repo, pull_number: Number(process.env.PR) });
-            if (pr.state !== 'open' || pr.head.sha !== process.env.HEAD) {
-              core.setFailed('PR is closed or has a newer head.');
-              return;
-            }
-            await github.rest.repos.createCommitStatus({ ...context.repo, sha: process.env.HEAD, state: 'pending',
-              context: 'Signed-in E2E', description: 'Running checks after core CI',
-              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}` });
+            const { createFollowupCheck } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/ci-followup-plan.mjs`);
+            const checkId = await createFollowupCheck({ github, repo: context.repo,
+              prNumber: process.env.PR, head: process.env.HEAD, name: 'Signed-in E2E',
+              runId: context.runId, attempt: process.env.GITHUB_RUN_ATTEMPT,
+              url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}` });
+            core.setOutput('check_id', String(checkId));
 
   signed-in-e2e:
     name: Signed-in E2E (local Supabase) ${{ inputs.perf && 'perf' || format('{0}/{1}', matrix.shard, strategy.job-total) }}
@@ -307,14 +314,14 @@ jobs:
 
   report-pr:
     name: Report e2e result on PR
-    needs: [plan, signed-in-e2e]
+    needs: [plan, start-pr, signed-in-e2e]
     if: always() && github.event_name == 'workflow_run' && needs.plan.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 3
     permissions:
       contents: read
       pull-requests: read
-      statuses: write
+      checks: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -325,17 +332,10 @@ jobs:
           NEEDS: ${{ toJSON(needs) }}
         with:
           script: |
-            const { followupState } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/ci-followup-plan.mjs`);
+            const { completeFollowupCheck } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/ci-followup-plan.mjs`);
             const needs = JSON.parse(process.env.NEEDS);
             const plan = needs.plan.outputs;
-            const { data: pr } = await github.rest.pulls.get({ ...context.repo, pull_number: Number(plan.pr) });
-            if (pr.state !== 'open' || pr.head.sha !== plan.head) {
-              core.info('PR is closed or has a newer head; leave its status alone.');
-              return;
-            }
             const results = [needs['signed-in-e2e'].result];
-            const state = followupState(results);
-            await github.rest.repos.createCommitStatus({ ...context.repo, sha: plan.head, state,
-              context: 'Signed-in E2E', description: 'All signed-in shards after core CI',
-              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}` });
-            if (state !== 'success') core.setFailed(`Suite results: ${results.join(', ')}`);
+            const conclusion = await completeFollowupCheck({ github, repo: context.repo,
+              checkId: needs['start-pr'].outputs.check_id, results, name: 'Signed-in E2E' });
+            if (conclusion !== 'success') core.setFailed(`Suite results: ${results.join(', ')}`);

@@ -73,6 +73,29 @@ export function followupState(results) {
   return results.every(result => result === 'success') ? 'success' : 'failure';
 }
 
+// Each run owns a check ID. Updating a shared commit status by name lets an
+// old cancelled run overwrite a newer success on the same head SHA.
+export async function createFollowupCheck({ github, repo, prNumber, head, name, runId, attempt, url }) {
+  const { data: pr } = await github.rest.pulls.get({ ...repo, pull_number: Number(prNumber) });
+  if (pr.state !== 'open' || pr.head.sha !== head) throw new Error('PR closed or head changed');
+  const { data: check } = await github.rest.checks.create({ ...repo, head_sha: head, name,
+    status: 'in_progress', external_id: `${runId}:${attempt}`, details_url: url,
+    output: { title: name, summary: 'Running checks after core CI.' } });
+  if (!Number.isSafeInteger(check.id) || check.id < 1) throw new Error('Missing check ID');
+  return check.id;
+}
+
+export async function completeFollowupCheck({ github, repo, checkId, results, name }) {
+  const id = Number(checkId);
+  if (!Number.isSafeInteger(id) || id < 1) throw new Error('Missing check ID');
+  const state = followupState(results);
+  const conclusion = state === 'success' ? 'success'
+    : results.includes('cancelled') && !results.includes('failure') && state !== 'error' ? 'cancelled' : 'failure';
+  await github.rest.checks.update({ ...repo, check_run_id: id, status: 'completed', conclusion,
+    output: { title: name, summary: `Suite results: ${results.join(', ') || 'missing'}` } });
+  return conclusion;
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const plan = await followupPlan({ eventName: process.env.GITHUB_EVENT_NAME,
     event: JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8')),

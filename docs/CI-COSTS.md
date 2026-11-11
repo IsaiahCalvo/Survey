@@ -20,7 +20,9 @@ on GitHub, keep the test suites and release checks, and cut repeat work first.
 - Forks retain read-only `pull_request` runs. No fork code is run in the
   default-branch `workflow_run` context. Build jobs have read-only tokens and
   do not save checkout credentials. Separate trusted jobs post pending and
-  final results to the PR head. Signed-in E2E remains informational.
+  final results to the PR head. Each run owns its check record, so an old
+  cancelled run cannot overwrite a newer result on the same commit. Signed-in
+  E2E remains informational.
 - The long daily iOS walk has its own serialized workflow. New main CI runs
   cannot cancel it. Actions job history allows at most one automatic started
   attempt per UTC day, including a failed or cancelled attempt. A manual run

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { followupPlan, affectedSuites, followupState } from '../scripts/ci-followup-plan.mjs';
+import { followupPlan, affectedSuites, followupState, createFollowupCheck, completeFollowupCheck } from '../scripts/ci-followup-plan.mjs';
 import { dailyAttemptDue, WALK_JOB, actionsApi } from '../scripts/ci-daily-attempt.mjs';
 
 const repo = 'owner/repo', head = 'a'.repeat(40), merge = 'b'.repeat(40);
@@ -155,7 +155,10 @@ test('workflow wiring preserves the gate, all shards, checks on ready drafts, an
     const source = read(name);
     assert.match(source, /needs: \[plan, start-pr\]/);
     assert.match(source, /ref: \$\{\{ needs.plan.outputs.ref \}\}/);
-    assert.match(source, /statuses: write/);
+    assert.match(source, /checks: write/);
+    assert.match(source, /completeFollowupCheck/);
+    assert.match(source, /checkId: needs\['start-pr'\]\.outputs\.check_id/);
+    assert.doesNotMatch(source, /createCommitStatus/);
   }
   assert.match(read('ios-signed-in'), /group: daily-ios-signed-in\n  cancel-in-progress: false/);
   assert.match(read('ios-signed-in'), /ios-offline-relaunch.yaml/);
@@ -164,4 +167,42 @@ test('workflow wiring preserves the gate, all shards, checks on ready drafts, an
     assert.match(read(name), /types: \[completed\]\n    branches: \[main\]/);
     assert.match(read(name), /schedule:/);
   }
+});
+
+test('an old cancelled run cannot overwrite a newer successful check on the same commit', async () => {
+  const checks = new Map();
+  let nextId = 1;
+  const github = { rest: {
+    pulls: { get: async () => ({ data: pr }) },
+    checks: {
+      create: async request => {
+        const id = nextId++;
+        checks.set(id, { ...request, id });
+        return { data: { id } };
+      },
+      update: async ({ check_run_id: id, ...update }) => {
+        assert.ok(checks.has(id));
+        Object.assign(checks.get(id), update);
+      },
+    },
+  } };
+  const common = { github, repo: { owner: 'owner', repo: 'repo' }, prNumber: 12, head,
+    name: 'Signed-in E2E', attempt: 1, url: 'https://github.com/owner/repo/actions' };
+  const oldId = await createFollowupCheck({ ...common, runId: 100 });
+  const newId = await createFollowupCheck({ ...common, runId: 101 });
+  assert.notEqual(oldId, newId);
+  await completeFollowupCheck({ ...common, checkId: newId, results: ['success', 'success'] });
+  await completeFollowupCheck({ ...common, checkId: oldId, results: ['cancelled', 'success'] });
+  assert.equal(checks.get(newId).conclusion, 'success');
+  assert.equal(checks.get(oldId).conclusion, 'cancelled');
+  assert.equal(checks.get(newId).head_sha, checks.get(oldId).head_sha);
+  assert.notEqual(checks.get(newId).external_id, checks.get(oldId).external_id);
+  await assert.rejects(completeFollowupCheck({ ...common, checkId: '', results: ['success'] }), /Missing check ID/);
+  assert.equal(await completeFollowupCheck({ ...common, checkId: newId, results: ['skipped'] }), 'failure');
+});
+
+test('a stale PR cannot create a pending follow-up check', async () => {
+  const github = { rest: { pulls: { get: async () => ({ data: { ...pr, state: 'closed' } }) },
+    checks: { create: async () => { assert.fail('must not create a stale check'); } } } };
+  await assert.rejects(createFollowupCheck({ github, repo: {}, prNumber: 12, head }), /PR closed/);
 });
