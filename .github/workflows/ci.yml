@@ -168,6 +168,8 @@ on:
   # job below spots a docs-only one (scripts/ci-docs-only.mjs, same two places
   # as the list above) and the gate passes without building.
   pull_request:
+    # Ready drafts need a fresh CI completion to start the costly PR suites.
+    types: [opened, synchronize, reopened, ready_for_review]
   # 2026-09-15 — added so .github/workflows/dependabot-auto-merge.yml can
   # re-run this workflow on main after it squash-merges a bump. GitHub creates
   # NO workflow run for a push made with the repository's GITHUB_TOKEN, so the

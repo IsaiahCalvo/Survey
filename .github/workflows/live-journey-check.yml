@@ -14,7 +14,7 @@ name: Live journey check
 # owns before and after each run.
 
 # GitHub runs this repo's cron schedules only now and then (one scheduled run
-# of any workflow on 2026-10-21 while ~350 others ran), so every finished
+# of any workflow on 2026-10-21 while ~350 others ran), so every finished main-branch
 # "Build and tests" run also starts it. The first run in each UTC hour walks
 # the path; the rest of that hour skip (they look for an earlier run this hour
 # whose journey job ran). Not a cache mark: runs started by workflow_run can
@@ -25,6 +25,7 @@ on:
   workflow_run:
     workflows: ["Build and tests"]
     types: [completed]
+    branches: [main]
   workflow_dispatch:
 
 permissions:

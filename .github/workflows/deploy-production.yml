@@ -19,6 +19,7 @@ on:
     # asserts the two are still paired, and that check runs in CI.
     workflows: ["Build and tests"]
     types: [completed]
+    branches: [main]
   # So a window opens even when no tests run (quiet nights), `pick` is also
   # asked every 15 minutes. GitHub drops many of this repo's scheduled runs,
   # so one cron per window was not enough; `pick` skips in seconds unless the

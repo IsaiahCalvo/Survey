@@ -14,7 +14,7 @@ name: Backend alerts
 # Counts and function names only: the repo is public.
 
 # GitHub runs this repo's cron schedules only now and then (one scheduled run
-# of any workflow on 2026-10-21 while ~350 others ran), so every finished
+# of any workflow on 2026-10-21 while ~350 others ran), so every finished main-branch
 # "Build and tests" run also starts it. The first run in each UTC hour checks;
 # the rest of that hour skip (an hour-keyed cache entry marks it done).
 on:
@@ -23,6 +23,7 @@ on:
   workflow_run:
     workflows: ["Build and tests"]
     types: [completed]
+    branches: [main]
   workflow_dispatch:
 
 permissions:

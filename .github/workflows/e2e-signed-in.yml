@@ -12,12 +12,15 @@ name: Signed-in E2E
 # machine took ~31 minutes. They now run split across the shard machines at
 # once (scripts/e2e-signed-in-shard.mjs balances them by the measured seconds
 # in tests/e2e-signed-in/spec-seconds.json), each with its own throwaway
-# stack, so shards never share data. The repo is public, so these standard
-# runners cost nothing; each run holds one job slot per shard for ~8 minutes.
+# stack, so shards never share data. Each run holds one job slot per shard.
+# Same-repo PRs start only after core CI passed on their current head.
 # It still skips Dependabot and drafts, runs only when a pull request touches
 # something the suite exercises, and cancels superseded runs.
 
 on:
+  workflow_run:
+    workflows: ["Build and tests"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       perf:
@@ -64,24 +67,90 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/e2e-signed-in.yml'
+      - 'scripts/ci-followup-plan.mjs'
+      - 'scripts/ci-daily-attempt.mjs'
 
-concurrency:
-  group: e2e-signed-in-${{ github.ref }}
-  cancel-in-progress: true
 
 permissions:
   contents: read
+  actions: read
+  pull-requests: read
 
 env:
   NODE_VERSION: '24'
 
 jobs:
+  plan:
+    # Same-repo PR events wait for CI without allocating a runner. Forks must
+    # stay on pull_request: never execute their code in workflow_run.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && !github.event.pull_request.draft &&
+       github.event.pull_request.head.repo.full_name != github.repository) ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch != 'main' &&
+       (github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'workflow_dispatch'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      run: ${{ steps.plan.outputs.run }}
+      ios: ${{ steps.plan.outputs.ios }}
+      android: ${{ steps.plan.outputs.android }}
+      ref: ${{ steps.plan.outputs.ref }}
+      head: ${{ steps.plan.outputs.head }}
+      pr: ${{ steps.plan.outputs.pr }}
+    steps:
+      # workflow_run checks out trusted default-branch code, never PR code.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - id: plan
+        run: node scripts/ci-followup-plan.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FOLLOWUP_SUITE: e2e
+
+  start-pr:
+    needs: plan
+    if: needs.plan.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      pull-requests: read
+      statuses: write
+    steps:
+      - name: Use the normal check on direct PR and manual runs
+        if: github.event_name != 'workflow_run'
+        run: echo 'This run reports its normal Actions checks.'
+      - uses: actions/github-script@v9
+        if: github.event_name == 'workflow_run'
+        env:
+          PR: ${{ needs.plan.outputs.pr }}
+          HEAD: ${{ needs.plan.outputs.head }}
+        with:
+          script: |
+            const { data: pr } = await github.rest.pulls.get({ ...context.repo, pull_number: Number(process.env.PR) });
+            if (pr.state !== 'open' || pr.head.sha !== process.env.HEAD) {
+              core.setFailed('PR is closed or has a newer head.');
+              return;
+            }
+            await github.rest.repos.createCommitStatus({ ...context.repo, sha: process.env.HEAD, state: 'pending',
+              context: 'Signed-in E2E', description: 'Running checks after core CI',
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}` });
+
   signed-in-e2e:
     name: Signed-in E2E (local Supabase) ${{ inputs.perf && 'perf' || format('{0}/{1}', matrix.shard, strategy.job-total) }}
-    if: >-
-      github.event_name == 'workflow_dispatch'
-      || (github.event.pull_request.draft == false
-          && github.triggering_actor != 'dependabot[bot]')
+    needs: [plan, start-pr]
+    if: needs.plan.outputs.run == 'true'
+    permissions:
+      contents: read
+    concurrency:
+      group: signed-in-e2e-${{ needs.plan.outputs.pr || github.ref }}-${{ matrix.shard }}
+      cancel-in-progress: true
     # Playwright 1.59 has no browsers for ubuntu-26.04, which ubuntu-latest
     # became in October 2026.
     runs-on: ubuntu-24.04
@@ -93,6 +162,9 @@ jobs:
         shard: ${{ inputs.perf && fromJSON('[1]') || fromJSON('[1, 2, 3, 4, 5, 6]') }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.plan.outputs.ref }}
+          persist-credentials: false
 
       - uses: actions/setup-node@v7
         with:
@@ -232,3 +304,38 @@ jobs:
         run: |
           echo "Shards: ${{ needs.signed-in-e2e.result }}"
           test "${{ needs.signed-in-e2e.result }}" = success
+
+  report-pr:
+    name: Report e2e result on PR
+    needs: [plan, signed-in-e2e]
+    if: always() && github.event_name == 'workflow_run' && needs.plan.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/github-script@v9
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        with:
+          script: |
+            const { followupState } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/ci-followup-plan.mjs`);
+            const needs = JSON.parse(process.env.NEEDS);
+            const plan = needs.plan.outputs;
+            const { data: pr } = await github.rest.pulls.get({ ...context.repo, pull_number: Number(plan.pr) });
+            if (pr.state !== 'open' || pr.head.sha !== plan.head) {
+              core.info('PR is closed or has a newer head; leave its status alone.');
+              return;
+            }
+            const results = [needs['signed-in-e2e'].result];
+            const state = followupState(results);
+            await github.rest.repos.createCommitStatus({ ...context.repo, sha: plan.head, state,
+              context: 'Signed-in E2E', description: 'All signed-in shards after core CI',
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}` });
+            if (state !== 'success') core.setFailed(`Suite results: ${results.join(', ')}`);

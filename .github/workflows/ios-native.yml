@@ -6,11 +6,12 @@ name: Native app check (iOS + Android)
 # the owner's Mac. Screenshots and logs are uploaded as the run artifact.
 #
 # Runs on any PR that can change the native app (web UI included: the app
-# ships the same bundle), plus manual runs. The repo is public, so macOS
-# runner minutes are free.
+# ships the same bundle), once ready for review, plus manual runs.
+# The slow daily walk lives in ios-signed-in.yml.
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'ios/**'
       - 'android/**'
@@ -22,32 +23,99 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/ios-native.yml'
+      - 'scripts/ci-followup-plan.mjs'
+      - 'scripts/ci-daily-attempt.mjs'
       - '.github/native-flows/**'
-  workflow_dispatch:
-  # The iOS signed-in walk is too slow for every PR (see that job). It runs at
-  # most once a day after a green "Build and tests" on main (timed jobs are
-  # often skipped in this repo, so the cron is only a backup), or on demand.
   workflow_run:
     workflows: ["Build and tests"]
     types: [completed]
-    branches: [main]
-  schedule:
-    - cron: '30 5 * * *'
+  workflow_dispatch:
+    inputs:
+      full_walk:
+        description: Also run the slow daily iOS signed-in walk
+        type: boolean
+        default: true
 
 permissions:
   contents: read
-
-concurrency:
-  group: ios-native-${{ github.ref }}
-  cancel-in-progress: true
+  actions: read
+  pull-requests: read
 
 defaults:
   run:
     shell: bash
 
 jobs:
+  plan:
+    # Same-repo PR events wait for CI without allocating a runner. Forks must
+    # stay on pull_request: never execute their code in workflow_run.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && !github.event.pull_request.draft &&
+       github.event.pull_request.head.repo.full_name != github.repository) ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch != 'main' &&
+       (github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'workflow_dispatch'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      run: ${{ steps.plan.outputs.run }}
+      ios: ${{ steps.plan.outputs.ios }}
+      android: ${{ steps.plan.outputs.android }}
+      ref: ${{ steps.plan.outputs.ref }}
+      head: ${{ steps.plan.outputs.head }}
+      pr: ${{ steps.plan.outputs.pr }}
+    steps:
+      # workflow_run checks out trusted default-branch code, never PR code.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - id: plan
+        run: node scripts/ci-followup-plan.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FOLLOWUP_SUITE: native
+
+  start-pr:
+    needs: plan
+    if: needs.plan.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      pull-requests: read
+      statuses: write
+    steps:
+      - name: Use the normal check on direct PR and manual runs
+        if: github.event_name != 'workflow_run'
+        run: echo 'This run reports its normal Actions checks.'
+      - uses: actions/github-script@v9
+        if: github.event_name == 'workflow_run'
+        env:
+          PR: ${{ needs.plan.outputs.pr }}
+          HEAD: ${{ needs.plan.outputs.head }}
+        with:
+          script: |
+            const { data: pr } = await github.rest.pulls.get({ ...context.repo, pull_number: Number(process.env.PR) });
+            if (pr.state !== 'open' || pr.head.sha !== process.env.HEAD) {
+              core.setFailed('PR is closed or has a newer head.');
+              return;
+            }
+            await github.rest.repos.createCommitStatus({ ...context.repo, sha: process.env.HEAD, state: 'pending',
+              context: 'Native app check', description: 'Running checks after core CI',
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}` });
+
   native:
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    needs: [plan, start-pr]
+    if: needs.plan.outputs.ios == 'true'
+    permissions:
+      contents: read
+    concurrency:
+      group: native-native-${{ needs.plan.outputs.pr || github.ref }}
+      cancel-in-progress: true
     name: Build and launch iOS app
     runs-on: macos-26
     timeout-minutes: 45
@@ -57,6 +125,9 @@ jobs:
       BUNDLE_ID: com.kalvoe.survey
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.plan.outputs.ref }}
+          persist-credentials: false
       - uses: actions/setup-node@v7
         with:
           node-version: '24'
@@ -119,10 +190,17 @@ jobs:
         with:
           name: ios-native-results
           path: ios-native-out
-          retention-days: 7
+          # Keep passing screenshots briefly; retain failure evidence a week.
+          retention-days: ${{ job.status == 'success' && 1 || 7 }}
 
   android:
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    needs: [plan, start-pr]
+    if: needs.plan.outputs.android == 'true'
+    permissions:
+      contents: read
+    concurrency:
+      group: native-android-${{ needs.plan.outputs.pr || github.ref }}
+      cancel-in-progress: true
     name: Build and launch Android app (Pixel emulator)
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -131,6 +209,9 @@ jobs:
       APP_ID: com.kalvoe.survey
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.plan.outputs.ref }}
+          persist-credentials: false
       - uses: actions/setup-node@v7
         with:
           node-version: '24'
@@ -184,10 +265,17 @@ jobs:
         with:
           name: android-native-results
           path: android-native-out
-          retention-days: 7
+          # Keep passing screenshots briefly; retain failure evidence a week.
+          retention-days: ${{ job.status == 'success' && 1 || 7 }}
 
   android-signed-in:
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    needs: [plan, start-pr]
+    if: needs.plan.outputs.android == 'true'
+    permissions:
+      contents: read
+    concurrency:
+      group: native-android-signed-in-${{ needs.plan.outputs.pr || github.ref }}
+      cancel-in-progress: true
     name: Android signed-in walk (local Supabase, export to share sheet)
     runs-on: ubuntu-latest
     # ~20 min of setup, then up to two walks (the second only after an emulator crash).
@@ -196,6 +284,9 @@ jobs:
       OUT: ${{ github.workspace }}/android-flow-out
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.plan.outputs.ref }}
+          persist-credentials: false
       - uses: actions/setup-node@v7
         with:
           node-version: '24'
@@ -289,155 +380,46 @@ jobs:
         with:
           name: android-signed-in-results
           path: android-flow-out
-          retention-days: 7
+          # Keep passing screenshots briefly; retain failure evidence a week.
+          retention-days: ${{ job.status == 'success' && 1 || 7 }}
 
-  ios-walk-due:
-    if: github.event_name != 'pull_request'
+  daily-walk:
+    if: github.event_name == 'workflow_dispatch' && inputs.full_walk
+    uses: ./.github/workflows/ios-signed-in.yml
+
+  report-pr:
+    name: Report native result on PR
+    needs: [plan, native, android, android-signed-in]
+    if: always() && github.event_name == 'workflow_run' && needs.plan.outputs.run == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 2
-    outputs:
-      key: ${{ steps.when.outputs.key }}
-      done: ${{ steps.mark.outputs.cache-hit }}
-    steps:
-      - id: when
-        run: echo "key=ios-walk-$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
-      - name: Already walked today?
-        id: mark
-        uses: actions/cache/restore@v6
-        with:
-          path: .ios-walk-mark
-          key: ${{ steps.when.outputs.key }}
-          lookup-only: true
-
-  ios-signed-in:
-    name: iOS signed-in walk (local Supabase, export to share sheet)
-    # Needs Docker for the local Supabase, which GitHub's fast Apple-silicon
-    # runners cannot run (no nested VMs), so this uses an Intel runner with
-    # Colima and takes ~2h. Too slow to gate every PR: nightly + manual only.
-    needs: ios-walk-due
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (needs.ios-walk-due.outputs.done != 'true' &&
-       (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'))
-    # Intel runner: the local Supabase needs Docker, which runs here through
-    # Colima; Apple-silicon runners cannot nest a VM for it.
-    runs-on: macos-15-intel
-    timeout-minutes: 200
-    env:
-      OUT: ${{ github.workspace }}/ios-flow-out
-      DEVICE: iPhone 16
-      BUNDLE_ID: com.kalvoe.survey
-      # The Intel runner also hosts the Colima VM, so Maestro's iOS driver
-      # starts slowly; its default wait is too short there.
-      MAESTRO_DRIVER_STARTUP_TIMEOUT: '900000'
-      MAESTRO_CLI_NO_ANALYTICS: '1'
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: write
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
         with:
-          node-version: '24'
-          cache: npm
-      - uses: actions/setup-java@v6
-        with:
-          distribution: temurin
-          java-version: '21'
-      - run: npm ci
-      - name: Start Docker (Colima)
-        run: |
-          brew install colima docker
-          colima start --cpu 2 --memory 7 --disk 40
-          echo "DOCKER_HOST=unix://$HOME/.colima/default/docker.sock" >> "$GITHUB_ENV"
-      # The Colima VM is slow: realtime never passes its health check there
-      # (the walk does not need it), and storage can miss the first one.
-      - name: Start the local Supabase
-        run: npm run e2e:stack:up || { sleep 30; npm run e2e:stack:up; }
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/github-script@v9
         env:
-          E2E_REALTIME: 'off'
-          E2E_EDGE_RUNTIME: 'off'
-          E2E_IGNORE_HEALTH: '1'
-      - name: Build web bundle against the local stack
-        run: npx vite build --mode e2e
-        env:
-          NODE_OPTIONS: --max-old-space-size=8192
-      # WKWebView can't serve the app over http, and from capacitor:// the
-      # local Supabase's plain-http calls are blocked as mixed content (the
-      # sign-in error "{}"; native HTTP didn't cover auth). So load the app
-      # from a local http server instead, the same way dev live reload does.
-      - name: Serve the bundle over local http and point the app at it
-        run: |
-          nohup npx vite preview --mode e2e --host 127.0.0.1 --port 4173 --strictPort > "$RUNNER_TEMP/preview.log" 2>&1 &
-          for i in $(seq 1 60); do curl -sf http://127.0.0.1:4173/ >/dev/null && break; sleep 2; done
-          curl -sf http://127.0.0.1:4173/ >/dev/null
-          CAPACITOR_SERVER_URL=http://127.0.0.1:4173 npx cap sync ios
-      - name: Build app for the simulator
-        run: |
-          mkdir -p "$OUT"
-          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug \
-            -sdk iphonesimulator -destination "generic/platform=iOS Simulator" \
-            -derivedDataPath build/ios CODE_SIGNING_ALLOWED=NO build 2>&1 \
-            | tee "$OUT/xcodebuild.log" | grep -E "error:|BUILD (SUCCEEDED|FAILED)"
-          test "${PIPESTATUS[0]}" = 0
-      - name: Install Maestro
-        run: |
-          curl -fsSL https://get.maestro.mobile.dev | bash
-          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
-      # Boot only after the local stack is up: booting alongside Colima starved
-      # both on this 4-core runner (the stack missed its health checks).
-      - name: Boot the simulator and install the app
-        run: |
-          UDID=$(xcrun simctl list devices available -j | node -e '
-            const d=JSON.parse(require("fs").readFileSync(0)).devices;
-            const all=Object.entries(d).filter(([r])=>r.includes("iOS")).flatMap(([,l])=>l);
-            const m=all.reverse().find(x=>x.name===process.env.DEVICE)||all.find(x=>x.name.startsWith("iPhone"));
-            console.log(m.udid)')
-          echo "UDID=$UDID" >> "$GITHUB_ENV"
-          xcrun simctl boot "$UDID"
-          xcrun simctl bootstatus "$UDID" -b
-          xcrun simctl install "$UDID" "$(find build/ios/Build/Products -maxdepth 2 -name 'App.app' | head -1)"
-          # Warm the first launch here (it can take many minutes on this runner)
-          # so Maestro's launchApp doesn't hang on it.
-          xcrun simctl launch "$UDID" com.kalvoe.survey
-          sleep 90
-          xcrun simctl terminate "$UDID" com.kalvoe.survey || true
-      # Sign-in showed "{}" (auth-js's message for a 502/503 from the API
-      # gateway): the auth container can die on this slow VM after seeding.
-      # Prove a real password sign-in works first; restart auth if not.
-      - name: Check sign-in against the local stack
-        run: |
-          set -a; . ./.env.e2e; set +a
-          try() { curl -sf -m 30 -X POST "$VITE_SUPABASE_URL/auth/v1/token?grant_type=password" \
-            -H "apikey: $VITE_SUPABASE_ANON_KEY" -H 'Content-Type: application/json' \
-            -d '{"email":"e2e-owner@example.com","password":"E2e-local-only-123!"}' -o /dev/null; }
-          for i in 1 2 3 4 5 6; do try && { echo "sign-in OK"; exit 0; }
-            docker ps -a --format '{{.Names}} {{.Status}}' | tee -a "$OUT/docker-ps.txt"
-            docker ps -a --format '{{.Names}}' | grep -E 'auth|kong' | xargs -n1 docker restart; sleep 30; done
-          docker ps -a --format '{{.Names}}' | grep auth | xargs -n1 docker logs --tail 200 > "$OUT/auth.log" 2>&1
-          echo "::error::password sign-in against the local stack keeps failing"; exit 1
-      - name: Walk the app (signed in, Counter after Arrow, export)
-        # The XCTest driver sometimes misses its start window on this slow
-        # runner (twice on 2026-10-22, before any flow step); try once more.
-        run: |
-          set -o pipefail
-          m() { maestro --device "$UDID" test --format junit --output "$OUT/report.xml" --test-output-dir "$OUT" .github/native-flows/ios-signed-in.yaml 2>&1 | tee "$OUT/maestro-run.log"; }
-          m || { grep -q 'driver not ready in time' "$OUT/maestro-run.log" && m; }
-      - name: Relaunch with the API stopped (offline)
-        run: |
-          docker ps -q | xargs docker pause
-          maestro --device "$UDID" test --format junit --output "$OUT/report-offline.xml" --test-output-dir "$OUT" .github/native-flows/ios-offline-relaunch.yaml
-      - name: Save logs
-        if: always()
-        run: xcrun simctl spawn booted log show --last 10m --predicate 'process == "App"' > "$OUT/app.log" 2>/dev/null || true
-      - uses: actions/upload-artifact@v7
-        if: always()
+          NEEDS: ${{ toJSON(needs) }}
         with:
-          name: ios-signed-in-results
-          path: ios-flow-out
-          retention-days: 7
-      - name: Mark today's walk done
-        if: success() && github.event_name != 'workflow_dispatch'
-        run: mkdir -p .ios-walk-mark && date -u > .ios-walk-mark/at
-      - if: success() && github.event_name != 'workflow_dispatch'
-        uses: actions/cache/save@v6
-        with:
-          path: .ios-walk-mark
-          key: ${{ needs.ios-walk-due.outputs.key }}
+          script: |
+            const { followupState } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/ci-followup-plan.mjs`);
+            const needs = JSON.parse(process.env.NEEDS);
+            const plan = needs.plan.outputs;
+            const { data: pr } = await github.rest.pulls.get({ ...context.repo, pull_number: Number(plan.pr) });
+            if (pr.state !== 'open' || pr.head.sha !== plan.head) {
+              core.info('PR is closed or has a newer head; leave its status alone.');
+              return;
+            }
+            const results = [];
+            if (plan.ios === 'true') results.push(needs.native.result);
+            if (plan.android === 'true') results.push(needs.android.result, needs['android-signed-in'].result);
+            const state = followupState(results);
+            await github.rest.repos.createCommitStatus({ ...context.repo, sha: plan.head, state,
+              context: 'Native app check', description: 'Native checks after core CI',
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}` });
+            if (state !== 'success') core.setFailed(`Suite results: ${results.join(', ')}`);
