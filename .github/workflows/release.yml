@@ -68,6 +68,18 @@ jobs:
           # a baked client token. See audit/deep-dive-today/REPORT.md (risk #1).
         run: npm run build
 
+      # Create one release before electron-builder starts parallel uploads.
+      # Otherwise its per-artifact publishers can race and split assets across
+      # two release objects for the same tag.
+      - name: Prepare the GitHub release before uploading files
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="v$(node -p "require('./package.json').version")"
+          gh release view "$tag" >/dev/null 2>&1 || \
+            gh release create "$tag" --target "$GITHUB_SHA" --title "Survey $tag" --notes "Desktop app release."
+
       - name: Build & publish installer
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
