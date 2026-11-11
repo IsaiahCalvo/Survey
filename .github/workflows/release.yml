@@ -9,8 +9,13 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: desktop-release
+  cancel-in-progress: false
+
 jobs:
   build:
+    if: github.ref_type == 'tag' || github.ref == 'refs/heads/main'
     strategy:
       fail-fast: false
       # Both builders publish into one GitHub release. Serializing prevents
@@ -29,6 +34,11 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
+
+      - name: Verify the release tag matches the app
+        if: github.ref_type == 'tag'
+        shell: bash
+        run: test "$GITHUB_REF_NAME" = "v$(node -p "require('./package.json').version")"
 
       - name: Install dependencies
         # Use `npm install` rather than `npm ci` so each platform picks up its
@@ -62,3 +72,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx electron-builder --publish always
+
+      # Generic is the installed app's feed; GitHub remains the build archive.
+      # Public files go to a new bucket, never a customer-data bucket.
+      - name: Publish public downloads and update feed
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: node scripts/publish-app-downloads.mjs dist v$(node -p "require('./package.json').version")

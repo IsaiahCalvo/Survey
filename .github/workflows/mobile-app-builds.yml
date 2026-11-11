@@ -99,6 +99,7 @@ jobs:
         if: steps.live.outputs.build == 'true' && github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
           tag="app-$CHANNEL"
           notes="Latest $CHANNEL Android app, built from ${{ steps.live.outputs.sha }} on $(date -u +%FT%TZ)."
@@ -106,4 +107,6 @@ jobs:
           # only after the APK upload succeeds.
           gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --prerelease --target "${{ steps.live.outputs.sha }}" --title "Survey app ($CHANNEL)" --notes "First build in progress."
           gh release upload "$tag" "survey-$CHANNEL.apk" --clobber
+          # Upload before changing the notes that gate future build skips.
+          node scripts/publish-app-downloads.mjs . "$tag"
           gh release edit "$tag" --notes "$notes"
