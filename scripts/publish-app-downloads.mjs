@@ -14,11 +14,17 @@ export function publicUpdateManifest(text, version, assets) {
   if (info.version !== version) throw new Error('Update version differs from release version');
   if (!Array.isArray(info.files) || !info.files.length) throw new Error('Update has no files');
   for (const file of info.files) {
-    const data = assets.get(file.url);
-    if (!data || basename(file.url) !== file.url) throw new Error('Update file is missing or has an unsafe path');
+    if (typeof file.url !== 'string' || basename(file.url) !== file.url) throw new Error('Update file has an unsafe path');
+    // electron-builder's GitHub provider changes the shared files[0].url to
+    // its safe upload name, while the generic provider keeps the local path.
+    // Recover that primary file only when both metadata checksums agree.
+    const name = assets.has(file.url) ? file.url
+      : file.sha512 === info.sha512 && assets.has(info.path) && basename(info.path) === info.path ? info.path : null;
+    const data = assets.get(name);
+    if (!data) throw new Error('Update file is missing');
     if (createHash('sha512').update(data).digest('base64') !== file.sha512) throw new Error('Update checksum differs from file');
     if (file.size !== undefined && file.size !== data.length) throw new Error('Update size differs from file');
-    file.url = `v${version}/${file.url}`;
+    file.url = `v${version}/${name}`;
   }
   if (!assets.has(info.path)) throw new Error('Update path is missing');
   if (createHash('sha512').update(assets.get(info.path)).digest('base64') !== info.sha512) throw new Error('Update path checksum differs from file');
@@ -33,8 +39,8 @@ export function assertFeedVersion(current, next) {
   if (first >= 0 && a[first] > b[first]) throw new Error('Refusing to replace a newer public update feed');
 }
 
-export async function publishDownloads(directory, tag) {
-  const store = await distributionStore();
+export async function publishDownloads(directory, tag, { storeFactory = distributionStore, fetcher = fetch } = {}) {
+  const store = await storeFactory();
   await store.ensureBucket();
   if (/^app-(stable|nightly)$/.test(tag)) {
     const name = `survey-${tag.slice(4)}.apk`;
@@ -53,7 +59,7 @@ export async function publishDownloads(directory, tag) {
   }
   if (!manifests.length) throw new Error('Missing update manifest');
   for (const [name] of manifests) {
-    const response = await fetch(`${PUBLIC_BASE}/desktop/${name}?check=${Date.now()}`, { signal: AbortSignal.timeout(30_000) });
+    const response = await fetcher(`${PUBLIC_BASE}/desktop/${name}?check=${Date.now()}`, { signal: AbortSignal.timeout(30_000) });
     if (response.ok) assertFeedVersion(String(yaml.load(await response.text()).version), version);
     else if (response.status !== 404 && response.status !== 400) throw new Error(`Could not check current update feed (${response.status})`);
   }

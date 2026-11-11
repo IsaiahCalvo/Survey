@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
-import { publicUpdateManifest, assertFeedVersion } from '../scripts/publish-app-downloads.mjs';
+import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { publicUpdateManifest, assertFeedVersion, publishDownloads } from '../scripts/publish-app-downloads.mjs';
 import { publicIncident } from '../scripts/publish-public-status.mjs';
 import { distributionStore } from '../scripts/lib/public-distribution.mjs';
 
@@ -67,4 +70,24 @@ test('default NSIS installer names with spaces publish and resolve as update URL
   await store.put(`desktop/v0.1.48/${windowsName}.blockmap`, bytes);
   assert.ok(urls[0].endsWith('/desktop/v0.1.48/survey%20Setup%200.1.48.exe'));
   assert.ok(urls[1].endsWith('/desktop/v0.1.48/survey%20Setup%200.1.48.exe.blockmap'));
+});
+
+test('NSIS directory publishing handles GitHub rewriting the shared file URL', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'survey-public-downloads-'));
+  try {
+    const localName = 'survey Setup 0.1.48.exe';
+    const info = { version: '0.1.48', files: [{ url: 'survey-setup-0.1.48.exe', sha512: hash, size: bytes.length }], path: localName, sha512: hash };
+    await writeFile(join(dir, localName), bytes);
+    await writeFile(join(dir, `${localName}.blockmap`), 'blockmap');
+    await writeFile(join(dir, 'latest.yml'), yaml.dump(info));
+    await writeFile(join(dir, 'private.log'), 'never publish this');
+    const writes = [];
+    await publishDownloads(dir, 'v0.1.48', {
+      storeFactory: async () => ({ ensureBucket: async () => {}, put: async (path, body) => writes.push({ path, body }) }),
+      fetcher: async () => new Response('{}', { status: 404 }),
+    });
+    assert.deepEqual(writes.map((w) => w.path), [`desktop/v0.1.48/${localName}`, `desktop/v0.1.48/${localName}.blockmap`, 'desktop/latest.yml']);
+    assert.equal(yaml.load(writes[2].body).files[0].url, `v0.1.48/${localName}`);
+    assert.throws(() => publicUpdateManifest(yaml.dump({ ...info, files: [{ ...info.files[0], sha512: 'different' }] }), '0.1.48', new Map([[localName, bytes]])), /missing/);
+  } finally { await rm(dir, { recursive: true, force: true }); }
 });
