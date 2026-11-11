@@ -419,6 +419,10 @@ jobs:
             if (plan.ios === 'true') results.push(needs.native.result);
             if (plan.android === 'true') results.push(needs.android.result, needs['android-signed-in'].result);
             const state = followupState(results);
+            if (!state) {
+              core.info('Suite was cancelled; leave its status alone.');
+              return;
+            }
             await github.rest.repos.createCommitStatus({ ...context.repo, sha: plan.head, state,
               context: 'Native app check', description: 'Native checks after core CI',
               target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}` });

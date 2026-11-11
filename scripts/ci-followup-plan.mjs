@@ -70,6 +70,10 @@ export async function followupPlan({ eventName, event, repo, sha, suite, api, ac
 
 export function followupState(results) {
   if (!results.length || results.some(result => !['success', 'failure', 'cancelled', 'skipped'].includes(result))) return 'error';
+  // A cancelled job is a superseded run. GitHub statuses are last-write-wins with
+  // no run id, so posting failure here can paint the same head red after a newer
+  // follow-up has already posted pending or success.
+  if (results.some(result => result === 'cancelled')) return null;
   return results.every(result => result === 'success') ? 'success' : 'failure';
 }
 

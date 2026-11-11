@@ -335,6 +335,10 @@ jobs:
             }
             const results = [needs['signed-in-e2e'].result];
             const state = followupState(results);
+            if (!state) {
+              core.info('Suite was cancelled; leave its status alone.');
+              return;
+            }
             await github.rest.repos.createCommitStatus({ ...context.repo, sha: plan.head, state,
               context: 'Signed-in E2E', description: 'All signed-in shards after core CI',
               target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}` });

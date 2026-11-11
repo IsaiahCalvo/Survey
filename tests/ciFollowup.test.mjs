@@ -83,7 +83,9 @@ test('files are paged before deciding a suite is unaffected', async () => {
 });
 test('expected skipped, failed, cancelled or missing jobs cannot report green', () => {
   assert.equal(followupState(['success', 'success']), 'success');
-  for (const result of ['skipped', 'failure', 'cancelled']) assert.equal(followupState(['success', result]), 'failure');
+  for (const result of ['skipped', 'failure']) assert.equal(followupState(['success', result]), 'failure');
+  assert.equal(followupState(['cancelled']), null);
+  assert.equal(followupState(['success', 'cancelled']), null);
   assert.equal(followupState([]), 'error');
   assert.equal(followupState([undefined]), 'error');
 });
@@ -156,6 +158,7 @@ test('workflow wiring preserves the gate, all shards, checks on ready drafts, an
     assert.match(source, /needs: \[plan, start-pr\]/);
     assert.match(source, /ref: \$\{\{ needs.plan.outputs.ref \}\}/);
     assert.match(source, /statuses: write/);
+    assert.match(source, /Suite was cancelled; leave its status alone\./);
   }
   assert.match(read('ios-signed-in'), /group: daily-ios-signed-in\n  cancel-in-progress: false/);
   assert.match(read('ios-signed-in'), /ios-offline-relaunch.yaml/);
