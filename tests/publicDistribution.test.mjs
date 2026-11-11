@@ -55,3 +55,16 @@ test('a late release job cannot replace a newer public update feed', () => {
   assert.throws(() => assertFeedVersion('0.2.0', '0.1.48'), /newer/);
   assert.throws(() => assertFeedVersion('bad', '0.1.48'), /invalid/);
 });
+
+test('default NSIS installer names with spaces publish and resolve as update URLs', async () => {
+  const windowsName = 'survey Setup 0.1.48.exe';
+  const info = { version: '0.1.48', files: [{ url: windowsName, sha512: hash, size: bytes.length }], path: windowsName, sha512: hash };
+  const result = yaml.load(publicUpdateManifest(yaml.dump(info), '0.1.48', new Map([[windowsName, bytes]])));
+  assert.equal(result.files[0].url, `v0.1.48/${windowsName}`);
+  const urls = [];
+  const store = await distributionStore({ SUPABASE_SERVICE_ROLE_KEY: 'test' }, async (url) => { urls.push(url); return new Response('{}'); });
+  await store.put(`desktop/v0.1.48/${windowsName}`, bytes);
+  await store.put(`desktop/v0.1.48/${windowsName}.blockmap`, bytes);
+  assert.ok(urls[0].endsWith('/desktop/v0.1.48/survey%20Setup%200.1.48.exe'));
+  assert.ok(urls[1].endsWith('/desktop/v0.1.48/survey%20Setup%200.1.48.exe.blockmap'));
+});

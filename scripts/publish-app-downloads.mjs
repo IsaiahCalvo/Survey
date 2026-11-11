@@ -43,7 +43,7 @@ export async function publishDownloads(directory, tag) {
   }
   if (!/^v\d+\.\d+\.\d+$/.test(tag)) throw new Error('Use a stable vX.Y.Z release tag');
   const version = tag.slice(1);
-  const names = (await readdir(directory)).filter((name) => /^survey-[\w. -]+\.(?:exe|dmg|zip|blockmap)$/.test(name));
+  const names = (await readdir(directory)).filter((name) => /^survey[ -][\w. -]+\.(?:exe|dmg|zip|blockmap)$/.test(name));
   if (!names.length || names.some((name) => !name.includes(version))) throw new Error('Missing or mismatched installer version');
   const assets = new Map(await Promise.all(names.map(async (name) => [name, await readFile(join(directory, name))])));
   const manifests = [];
