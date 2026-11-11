@@ -37,7 +37,7 @@ export async function distributionStore(env = process.env, fetcher = fetch) {
       if (!created.ok) throw new Error(`Could not create public app bucket (${created.status})`);
     },
     async put(path, body, type = 'application/octet-stream', mutable = false) {
-      if (!/^(?:desktop\/(?:v[\d.]+\/survey-[\w. -]+\.(?:exe|dmg|zip|blockmap)|latest(?:-mac)?\.yml)|android\/survey-(?:stable|nightly)\.apk|status\.json)$/.test(path)) {
+      if (!/^(?:desktop\/(?:v[\d.]+\/survey[- ][\w. -]+\.(?:exe|dmg|zip|blockmap)|latest(?:-mac)?\.yml)|android\/survey-(?:stable|nightly)\.apk|status\.json)$/.test(path)) {
         throw new Error('File is outside the public app allowlist');
       }
       const response = await fetcher(`${base}/storage/v1/object/${BUCKET}/${path.split('/').map(encodeURIComponent).join('/')}`, {

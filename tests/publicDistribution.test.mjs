@@ -9,7 +9,7 @@ import { distributionStore } from '../scripts/lib/public-distribution.mjs';
 const require = createRequire(import.meta.url);
 const yaml = createRequire(require.resolve('electron-updater'))('js-yaml');
 const bytes = Buffer.from('installer bytes');
-const name = 'survey-Setup-0.1.48.exe';
+const name = 'survey Setup 0.1.48.exe';
 const hash = createHash('sha512').update(bytes).digest('base64');
 const manifest = (extra = {}) => yaml.dump({ version: '0.1.48', files: [{ url: name, sha512: hash, size: bytes.length }], path: name, sha512: hash, ...extra });
 
@@ -31,6 +31,12 @@ test('public incidents contain only a fixed kind, state and dates', () => {
   const result = publicIncident({ title: 'Alert: deploy failed: secret customer name', body: 'private log', user: { email: 'private@example.test' }, html_url: 'private url', state: 'open', created_at: '2026-11-11T12:00:00Z' });
   assert.deepEqual(result, { kind: 'update', state: 'open', created_at: '2026-11-11T12:00:00Z', closed_at: null });
   assert.equal(publicIncident({ title: 'surveytool.app is down' }).kind, 'outage');
+});
+
+test('publisher allows default NSIS installer and blockmap names', async () => {
+  const store = await distributionStore({ SUPABASE_SERVICE_ROLE_KEY: 'test' }, async () => new Response('{}'));
+  await store.put('desktop/v0.1.48/survey Setup 0.1.48.exe', bytes);
+  await store.put('desktop/v0.1.48/survey Setup 0.1.48.exe.blockmap', bytes);
 });
 
 test('publisher rejects paths outside the separate public app bucket', async () => {
