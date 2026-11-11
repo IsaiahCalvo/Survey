@@ -63,6 +63,12 @@ jobs:
         if: steps.live.outputs.build == 'true'
         with:
           ref: ${{ steps.live.outputs.sha }}
+          fetch-depth: 0
+      - name: Verify the public build came from main
+        if: steps.live.outputs.build == 'true' && github.event_name != 'pull_request'
+        env:
+          LIVE_SHA: ${{ steps.live.outputs.sha }}
+        run: git merge-base --is-ancestor "$LIVE_SHA" origin/main
       - uses: actions/setup-node@v7
         if: steps.live.outputs.build == 'true'
         with:
