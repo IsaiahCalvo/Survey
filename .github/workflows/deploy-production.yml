@@ -281,6 +281,11 @@ jobs:
           ref: main
           fetch-depth: 300
 
+      - name: Use the same Node runtime as the build gate
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
       - name: When did Vercel's daily cap last refuse a deploy?
         id: cap
         uses: actions/cache/restore@v6
