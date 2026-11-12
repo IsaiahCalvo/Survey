@@ -604,7 +604,7 @@ function renderMeasureLabel(label, key, unitsPerPx, page = null, { halo = false 
           height={box.height}
           rx={box.radius}
           fill="none"
-          stroke="#4a90e2"
+          stroke={HANDLE_RING}
           strokeOpacity={HOVER_HALO_OPACITY}
           strokeWidth={box.fontSize / 12 + 4 * unitsPerPx}
         />
@@ -5785,7 +5785,7 @@ const SVGAnnotationLayerBody = memo(({
       : buildArrowheadRenderSpec(
         headStyle, atX, atY,
         Math.atan2(atY - conn.line2Start.y, atX - conn.line2Start.x) * 180 / Math.PI,
-        '#4a90e2', lineThickness,
+        HANDLE_RING, lineThickness,
       );
     return (
       <g
