@@ -22,13 +22,13 @@ export const HISTORY_PAGE_SELECTION_EVENT = 'annotations:page-selection';
  * window's own event class (a test DOM has its own), and never throws: a
  * failed broadcast must never break the page.
  */
-export function broadcastPageSelection(win, pageNumber, items) {
+export function broadcastPageSelection(win, pageNumber, items, documentId = null) {
   if (!win || typeof win.dispatchEvent !== 'function') return false;
   try {
     const EventClass = win.CustomEvent || (typeof CustomEvent !== 'undefined' ? CustomEvent : null);
     if (!EventClass) return false;
     win.dispatchEvent(new EventClass(HISTORY_PAGE_SELECTION_EVENT, {
-      detail: { pageNumber, items: Array.isArray(items) ? items : [] },
+      detail: { pageNumber, items: Array.isArray(items) ? items : [], documentId: documentId || null },
     }));
     return true;
   } catch (_err) {

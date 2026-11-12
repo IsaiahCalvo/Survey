@@ -113,7 +113,8 @@ import { liftedMoveIndices as liftedMoveIndicesFor, liftTranslate } from '../uti
 import { createMarkWrapperCache, mapMarkWrappers, markWrapperIsLive } from '../utils/markWrapperCache.js';
 import { classifySelectionGrabTarget, isPageCalloutSelected, pageSelectionMarkGroups, resolvePagePress } from '../utils/toolPressRouting.js';
 import {
-  clearOtherPageSelections, dropStashedSelection, onOtherPageClear, peekStashedSelection, stashPageSelection,
+  clearOtherPageSelections, dropStashedSelection, hasOtherPageSelection, onOtherPageClear, peekStashedSelection,
+  stashPageSelection,
 } from '../utils/pageSelectionPresence.js';
 import { useSelectionGrabHandoff } from '../hooks/useSelectionGrabHandoff.js';
 import { useRotateHandleClick } from '../hooks/useRotateHandleClick.js';
@@ -3874,11 +3875,11 @@ const SVGAnnotationLayerBody = memo(({
   const historyPickItemsRef = useRef(historyPickItems);
   historyPickItemsRef.current = historyPickItems;
   useEffect(() => {
-    broadcastPageSelection(typeof window === 'undefined' ? null : window, pageNumber, historyPickItemsRef.current);
-  }, [historyPickKey, pageNumber]);
+    broadcastPageSelection(typeof window === 'undefined' ? null : window, pageNumber, historyPickItemsRef.current, documentId);
+  }, [historyPickKey, pageNumber, documentId]);
   useEffect(() => () => {
-    broadcastPageSelection(typeof window === 'undefined' ? null : window, pageNumber, []);
-  }, [pageNumber]);
+    broadcastPageSelection(typeof window === 'undefined' ? null : window, pageNumber, [], documentId);
+  }, [pageNumber, documentId]);
   // UX 2026-04-20: counter pill reads data.pointerAngle + 90 so 0°
   // corresponds to "nub pointing straight up" (matches the mental model
   // the user described). Non-counter shapes read obj.angle as before.
@@ -8209,11 +8210,14 @@ const SVGAnnotationLayerBody = memo(({
           const grabbingSelection = selectionGrabArmedRef.current;
           let pressFallback = null;
           if (isCreationTool && !grabbingSelection && e.button === 0 && !polyDraftRef.current) {
+            // A pick on another page of this file counts too: a click off the
+            // picked mark onto the next page drops it, as it does on its own
+            // page (the mark stayed picked, owner 2026-11-12).
             const press = resolvePagePress(e.nativeEvent, {
               tool: activeTool,
               pageNumber,
               objects: annotations?.objects,
-              hasSelection: pageHasSelection,
+              hasSelection: pageHasSelection || hasOtherPageSelection(pageNumber, documentId),
             });
             // Shift-click adds the mark. With a tool whose drag draws (Shapes),
             // wait for the release: a Shift-drag from a mark draws a square or
@@ -8223,7 +8227,10 @@ const SVGAnnotationLayerBody = memo(({
               e.preventDefault();
               return;
             }
-            if (press.clearsSelection) clearPageSelection();
+            if (press.clearsSelection) {
+              clearPageSelection();
+              clearOtherPageSelections(pageNumber, documentId);
+            }
             if (press.drag === 'none' && press.click === 'deselect' && !(isPolyCreationTool && polyClickStartsOn())) {
               e.preventDefault();
               return;

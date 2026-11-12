@@ -604,6 +604,23 @@ test('rule 12: view changes keep the selection; every tool switch but Select <->
   assert.match(PDF_VIEWER_SOURCE, /keepSelectionAcrossRemount\n/);
 });
 
+test('a drawing tool\'s click on one page drops a pick on another page of the same file', () => {
+  // Owner 2026-11-12: a mark stayed picked after a click off it onto the next
+  // page with the Rectangle tool still on (the press asked only its own page).
+  presence.recordPageSelection(2, [{ id: 'a', typeKey: 'rect' }], 'doc');
+  assert.equal(presence.hasOtherPageSelection(1, 'doc'), true);
+  assert.equal(presence.hasOtherPageSelection(2, 'doc'), false, 'its own page answers from its own pick');
+  assert.equal(presence.hasOtherPageSelection(1, 'other-doc'), false, 'a pick in another tab\'s file does not count');
+  presence.recordPageSelection(2, [], 'doc');
+  assert.equal(presence.hasOtherPageSelection(1, 'doc'), false);
+  presence.stashPageSelection(7, { documentId: 'doc', markIds: ['m1'] });
+  assert.equal(presence.hasOtherPageSelection(1, 'doc'), true, 'a far page\'s kept pick counts');
+  presence.clearOtherPageSelections(1, 'doc');
+  assert.equal(presence.hasOtherPageSelection(1, 'doc'), false);
+  assert.match(SVG_LAYER_SOURCE, /hasSelection: pageHasSelection \|\| hasOtherPageSelection\(pageNumber, documentId\)/);
+  assert.match(SVG_LAYER_SOURCE, /if \(press\.clearsSelection\) \{\s*clearPageSelection\(\);\s*clearOtherPageSelections\(pageNumber, documentId\);/);
+});
+
 test('rule 13: touch taps follow the same table; a tap that picks text arms a double-tap edit', () => {
   assert.equal(rules.TOUCH_RULES.tapIsClick, true);
   assert.equal(rules.TOUCH_RULES.holdIsTap, true);
