@@ -129,6 +129,9 @@ export function versionDeletedText(versions, receipt) {
   return back ? `${head} v${back} is current again.` : head;
 }
 
+/** Stands for "deleted" where a chain link would name the newer copy. */
+export const DELETED_VERSION = 'deleted';
+
 /**
  * Where each copy points after a version change, from the changed-event
  * detail: { [documentId]: supersededBy | null }. A delete, its Undo and an
@@ -141,7 +144,8 @@ export function chainLinksAfter(detail) {
   const restored = detail?.restored;
   if (removed?.documentId) {
     for (const id of removed.previous || []) links[id] = removed.next || null;
-    links[removed.documentId] = null;
+    // The deleted copy is in the Archive: a tab still showing it stays read-only.
+    links[removed.documentId] = DELETED_VERSION;
   } else if (restored?.documentId) {
     for (const id of restored.previous || []) links[id] = restored.documentId;
     links[restored.documentId] = restored.next || null;
@@ -153,14 +157,18 @@ export function chainLinksAfter(detail) {
 }
 
 /**
- * The shell's record of which open copies a newer one replaced: the latest
- * word wins, whether it came from a version change or a fresh versions list.
+ * The shell's record of which open copies a newer one replaced (or that were
+ * deleted): the latest word wins, whether it came from a version change or a
+ * fresh versions list (`fromList`), except that a list never makes a deleted
+ * copy writable again.
  * Returns `chain` unchanged when nothing differs.
  */
-export function withChainLinks(chain, links) {
+export function withChainLinks(chain, links, { fromList = false } = {}) {
   let next = chain;
   for (const [id, supersededBy] of Object.entries(links || {})) {
-    const value = Boolean(supersededBy);
+    const value = supersededBy === DELETED_VERSION ? DELETED_VERSION : Boolean(supersededBy);
+    // A versions list can't bring a deleted copy back; only its Undo can.
+    if (fromList && next[id] === DELETED_VERSION && value === false) continue;
     if (next[id] === value) continue;
     if (next === chain) next = { ...chain };
     next[id] = value;
@@ -172,6 +180,6 @@ export function withChainLinks(chain, links) {
 export function isFileSuperseded(file, chain) {
   const id = file?.id;
   if (!id) return false;
-  if (chain && Object.prototype.hasOwnProperty.call(chain, id)) return chain[id] === true;
+  if (chain && Object.prototype.hasOwnProperty.call(chain, id)) return chain[id] === true || chain[id] === DELETED_VERSION;
   return Boolean(file.superseded_by);
 }

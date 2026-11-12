@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  DOCUMENT_VERSIONS_CHANGED_EVENT, chainLinksAfter, isFileSuperseded, removeDocumentVersion, withChainLinks, restoreDocumentVersion, versionDeleteErrorText, versionDeletedText,
+  DOCUMENT_VERSIONS_CHANGED_EVENT, chainLinksAfter, DELETED_VERSION, isFileSuperseded, removeDocumentVersion, withChainLinks, restoreDocumentVersion, versionDeleteErrorText, versionDeletedText,
 } from '../src/services/documentVersionService.js';
 import { FEATURE_FLAGS } from '../src/featureFlags.js';
 
@@ -99,9 +99,9 @@ test('safe to call directly: Undo uses what the delete recorded, no new version 
 
 test('an open tab follows the chain: the latest word wins', () => {
   const receipt = { documentId: 'v3', previous: ['v2'], next: null, current: 'v2' };
-  assert.deepEqual(chainLinksAfter({ oldDocumentId: 'v3', newDocumentId: 'v2', removed: receipt }), { v2: null, v3: null });
+  assert.deepEqual(chainLinksAfter({ oldDocumentId: 'v3', newDocumentId: 'v2', removed: receipt }), { v2: null, v3: DELETED_VERSION });
   assert.deepEqual(chainLinksAfter({ oldDocumentId: 'v2', newDocumentId: 'v3', restored: receipt }), { v2: 'v3', v3: null });
-  assert.deepEqual(chainLinksAfter({ removed: { documentId: 'v2', previous: ['v1'], next: 'v3', current: null } }), { v1: 'v3', v2: null });
+  assert.deepEqual(chainLinksAfter({ removed: { documentId: 'v2', previous: ['v1'], next: 'v3', current: null } }), { v1: 'v3', v2: DELETED_VERSION });
   // An upload as a new version says so too.
   assert.deepEqual(chainLinksAfter({ oldDocumentId: 'v2', newDocumentId: 'v4' }), { v2: 'v4', v4: null });
   assert.deepEqual(chainLinksAfter({}), {});
@@ -121,5 +121,26 @@ test('an open tab follows the chain: the latest word wins', () => {
   // Nothing new: the same object back, so React skips the render.
   assert.equal(withChainLinks(chain, { v2: null }), chain);
   assert.equal(isFileSuperseded(null, chain), false);
+
+  // A tab still showing the deleted copy stays read-only (Bugbot on #1422),
+  // and a versions list of that archived copy can't make it writable again.
+  const v3 = { id: 'v3', superseded_by: null };
+  let after = withChainLinks({}, chainLinksAfter({ removed: receipt }));
+  assert.equal(isFileSuperseded(v3, after), true);
+  assert.equal(withChainLinks(after, { v3: false }, { fromList: true }), after);
+  // A middle copy that was read-only stays read-only once deleted.
+  after = withChainLinks({ v2: true }, chainLinksAfter({ removed: { documentId: 'v2', previous: ['v1'], next: 'v3', current: null } }));
+  assert.equal(isFileSuperseded({ id: 'v2', superseded_by: 'v3' }, after), true);
+  // Undo: back in the chain, current again when it was the latest.
+  after = withChainLinks(after, chainLinksAfter({ restored: receipt }));
+  assert.equal(isFileSuperseded(v3, after), false);
   assert.equal(isFileSuperseded({ id: 'x', superseded_by: null }, {}), false);
+});
+
+test('refreshes after a delete and its Undo go through the guarded look (Bugbot on #1422)', () => {
+  const hook = readFileSync(new URL('../src/components/DocumentVersionsButton.jsx', import.meta.url), 'utf8');
+  // Only the effect's load() lists versions, so a slower earlier list can't bring a deleted row back.
+  assert.equal((hook.match(/listDocumentVersions\(supabase/g) || []).length, 1);
+  assert.match(hook, /loadRef\.current = load;/);
+  assert.equal((hook.match(/loadRef\.current\?\.\(\);/g) || []).length, 2);
 });
