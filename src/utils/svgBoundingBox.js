@@ -8,6 +8,7 @@
  * Phase 9 Plan 01: Selection foundation utilities.
  */
 import { createInkPathAffine } from './inkGeometryTransform.js';
+import { smoothPolylinePoints } from './polySpline.js';
 
 const stableSum = (...values) => {
   if (values.some((value) => Number.isNaN(value))) return NaN;
@@ -660,14 +661,19 @@ function getGroupArrowBBox(obj) {
 // Polygon + polyline share the same SVG transform chain as renderPolygon /
 // renderPolyline in svgAnnotationRenderers.jsx: for each stored point (p.x, p.y),
 // world position = (left + scaleX*(p.x - pathOffsetX), top + scaleY*(p.y - pathOffsetY)).
-// We scan obj.points[] for local-space min/max, then apply left/top as translation
+// We scan the drawn points for local-space min/max, then apply left/top as translation
 // + scaleX/scaleY as magnification. Without this, polygons/polylines fell through to
 // getRectBBox which uses {obj.left, obj.top, obj.width, obj.height} — that rect
 // can sit far from where SVG actually draws the shape (left/top are a translation
 // offset, not the drawn bbox corner), producing hit-test zones that don't match
 // the visible shape and missed clicks entirely.
+//
+// A curved polyline's ink is the true cubics (the stored 12 samples can sit
+// more than 1 pt inside a hard bend). Use the same fine cut print already
+// takes (smoothPolylinePoints) so the dashed frame encloses the stroke.
 function getPointsBBox(obj) {
-  if (!Array.isArray(obj.points) || obj.points.length === 0) {
+  const points = smoothPolylinePoints(obj);
+  if (!Array.isArray(points) || points.length === 0) {
     return { left: 0, top: 0, width: 0, height: 0, angle: 0 };
   }
 
@@ -679,7 +685,7 @@ function getPointsBBox(obj) {
   const top = obj.top ?? 0;
 
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const p of obj.points) {
+  for (const p of points) {
     const px = typeof p?.x === 'number' ? p.x : 0;
     const py = typeof p?.y === 'number' ? p.y : 0;
     if (px < minX) minX = px;

@@ -11,9 +11,10 @@ import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 import {
   SPLINE_FLAT_TOLERANCE, SPLINE_STEP, moveSplineHandle, polySplineSpans, sampleSpline,
-  smoothPolylinePoints, splinePathD, splineSpans, trimPointsByLength,
+  sampleSplineSpans, smoothPolylinePoints, splinePathD, splineSpans, trimPointsByLength,
   fineHitToStored, fineSplinePoints, splinePointAt, splineCorners,
 } from '../src/utils/polySpline.js';
+import { getAnnotationBBox } from '../src/utils/svgBoundingBox.js';
 import { insertPolyVertex, insertVertexOnNearestEdge } from '../src/utils/polyVertices.js';
 import { createServer } from 'vite';
 import { drawAnnotationObject } from '../src/utils/annotationCanvasPainter.js';
@@ -250,4 +251,39 @@ test('the add-point side band follows the drawn curve and inserts on it', () => 
   const next = insertPolyVertex(mark, hit.segmentIndex, hit.t);
   const added = splineCorners(next.points, SPLINE_STEP)[1];
   assert.ok(Math.hypot(added.x - onCurve.x, added.y - onCurve.y) < 0.05, `corner ${added.x},${added.y} vs ${onCurve.x},${onCurve.y}`);
+});
+
+test('flattening keeps an along-chord hook the cubics draw', () => {
+  const hook = [{
+    from: { x: 0, y: 0 },
+    c1: { x: -80, y: 0 },
+    c2: { x: 140, y: 0 },
+    to: { x: 200, y: 0 },
+  }];
+  const points = sampleSplineSpans(hook, SPLINE_STEP);
+  const mark = curvedMark(points);
+  const smooth = smoothPolylinePoints(mark);
+  let minX = Infinity;
+  for (const p of smooth) if (p.x < minX) minX = p.x;
+  assert.ok(minX < -1, `hook min x ${minX} should go past the start`);
+  const gap = worstGap(polySplineSpans(mark), smooth);
+  assert.ok(gap <= SPLINE_FLAT_TOLERANCE + 1e-6, `smooth cut misses the hook by ${gap}`);
+});
+
+test('the selection box follows the true cubic, not the stored samples', () => {
+  const mark = curvedMark();
+  const spans = polySplineSpans(mark);
+  let far = null; let farGap = 0;
+  for (let i = 0; i <= 400; i += 1) {
+    const p = cubicAt(spans[0], i / 400);
+    let best = Infinity;
+    for (let j = 1; j < mark.points.length; j += 1) best = Math.min(best, segDist(p, mark.points[j - 1], mark.points[j]));
+    if (best > farGap) { farGap = best; far = p; }
+  }
+  assert.ok(farGap > 1, `stored samples miss the curve by ${farGap.toFixed(2)} pt`);
+  const bbox = getAnnotationBBox(mark);
+  assert.ok(far.x >= bbox.left - SPLINE_FLAT_TOLERANCE);
+  assert.ok(far.x <= bbox.left + bbox.width + SPLINE_FLAT_TOLERANCE);
+  assert.ok(far.y >= bbox.top - SPLINE_FLAT_TOLERANCE);
+  assert.ok(far.y <= bbox.top + bbox.height + SPLINE_FLAT_TOLERANCE);
 });

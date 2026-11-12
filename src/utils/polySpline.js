@@ -470,13 +470,19 @@ export function polySplineSpans(obj) {
   return step ? cachedSpans(obj.points, step).spans : [];
 }
 
+// Distance of c1/c2 from the chord SEGMENT, not the infinite line. A handle
+// dragged past an endpoint along the span still looks "flat" by perpendicular
+// offset, but B(t) walks toward the handle (a pen-tool hook the cubics draw).
 const flatness = (s) => {
   const dx = s.to.x - s.from.x;
   const dy = s.to.y - s.from.y;
-  const len = Math.hypot(dx, dy);
-  const off = (p) => (len > 0
-    ? Math.abs(dx * (p.y - s.from.y) - dy * (p.x - s.from.x)) / len
-    : Math.hypot(p.x - s.from.x, p.y - s.from.y));
+  const len2 = dx * dx + dy * dy;
+  const off = (p) => {
+    if (len2 <= 0) return Math.hypot(p.x - s.from.x, p.y - s.from.y);
+    let t = ((p.x - s.from.x) * dx + (p.y - s.from.y) * dy) / len2;
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    return Math.hypot(p.x - (s.from.x + t * dx), p.y - (s.from.y + t * dy));
+  };
   return Math.max(off(s.c1), off(s.c2));
 };
 
