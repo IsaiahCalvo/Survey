@@ -813,6 +813,15 @@ export function layoutMeasureLabel(label, unitsPerPx = 1, page = null) {
     const offset = height / 2 + MEASURE_LABEL_GAP_PX * u;
     cx += Math.sin(rad) * offset;
     cy -= Math.cos(rad) * offset;
+  } else if (Number.isFinite(label.above?.angle)) {
+    // A level pill lifted off a turned segment (a Polylength's total sits
+    // above its last segment, 'measure-plus'): clear of the segment and of
+    // `extra` page units more (that segment's own caption).
+    const rad = (label.above.angle * Math.PI) / 180;
+    const halfAcross = (Math.abs(height * Math.cos(rad)) + Math.abs(width * Math.sin(rad))) / 2;
+    const offset = halfAcross + MEASURE_LABEL_GAP_PX * u + (Number(label.above.extra) || 0);
+    cx += Math.sin(rad) * offset;
+    cy -= Math.cos(rad) * offset;
   }
   // Kept inside the page (a long caption near an edge ran off it). A caption
   // wider (or taller) than the page sits in its middle, so it overhangs both

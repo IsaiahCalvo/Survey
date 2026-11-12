@@ -426,3 +426,42 @@ test('measure-plus: a Perimeter finished at its last point stays open (a polylen
   assert.match(layer, /const tool = openPerimeter \? 'polyline' : resolved\.finalType;/);
   assert.match(layer, /if \(openPerimeter\) rawJson = stampMeasure\(builtJson, 'polylength', effectiveMeasureScale\);/);
 });
+
+test('segment captions: one per Polylength segment, upright, on the line; the total moves above the last', async () => {
+  const { polylengthSegmentCaptions, polylengthTotalPlace } = await import('../src/utils/measure/segmentCaptions.js');
+  const { layoutMeasureLabel, buildMeasureLabel } = await import('../src/utils/measure/measureScale.js');
+  const scale = { ratio: 1, unit: 'pt' };
+  const obj = {
+    type: 'polyline',
+    left: 0,
+    top: 0,
+    points: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 50 }, { x: 40, y: 50 }],
+    data: { measure: { kind: 'polylength' } },
+  };
+  const caps = polylengthSegmentCaptions(obj, scale);
+  assert.equal(caps.length, 3);
+  assert.deepEqual(caps.map((c) => c.text), [formatMeasureLength(100, scale), formatMeasureLength(50, scale), formatMeasureLength(60, scale)]);
+  for (const c of caps) assert.ok(c.angle >= -90 && c.angle < 90, `angle ${c.angle} reads upright`);
+  assert.equal(caps[0].angle, 0);
+  assert.equal(caps[1].angle, -90, 'a downward segment reads bottom to top');
+  assert.ok(Math.abs(caps[2].angle) < 1e-9, 'a right-to-left segment is turned the right way up');
+  assert.deepEqual([caps[0].x, caps[0].y], [50, 0], 'Inline: on the segment middle');
+  assert.deepEqual(polylengthSegmentCaptions({ ...obj, data: { measure: { kind: 'perimeter' } } }, scale), []);
+  assert.deepEqual(polylengthSegmentCaptions({ ...obj, data: {} }, scale), []);
+
+  const place = polylengthTotalPlace(obj, scale);
+  assert.deepEqual([place.x, place.y], [70, 50], 'the last segment middle');
+  const box = layoutMeasureLabel({ ...buildMeasureLabel(obj, scale), ...place }, 1);
+  assert.equal(box.cx, 70);
+  assert.ok(box.cy < 50 - box.height / 2 - 4.5, 'level pill sits above the last segment and its caption');
+  assert.equal(box.angle, 0);
+  assert.equal(polylengthTotalPlace({ ...obj, data: {} }, scale), null);
+});
+
+test('segment captions are drawn by the SVG layer only under measure-plus', () => {
+  const src = read('src/components/SVGAnnotationLayer.jsx');
+  assert.match(src, /import \{ polylengthSegmentCaptions, polylengthTotalPlace \} from '\.\.\/utils\/measure\/segmentCaptions\.js'/);
+  assert.match(src, /label && plusOn \? polylengthTotalPlace\(obj, effectiveMeasureScale\) : null/);
+  assert.match(src, /segmentCaptionMarks = useMemo\(\(\) => \{\s*if \(!isFeatureOn\('measure-plus'\)\) return \[\];/);
+  assert.match(src, /data-segment-caption=\{c\.index\}/);
+});

@@ -289,6 +289,13 @@ test('custom scale reads feet-inches, Units restamp the line, Set as default car
     const closed = await ftOf(closedLabel);
     // Three sides (120 + 60 + 120) against four (+ 60): a ratio of 300 : 360.
     expect(Math.abs(open / closed - 300 / 360)).toBeLessThan(0.02);
+    // The open run shows each side's own length on the side (Drawboard's
+    // segment captions); they add up to its total. A closed Perimeter has none.
+    const segCaps = surfaceB.locator('.measure-segment-captions [data-segment-caption]');
+    await expect(segCaps).toHaveCount(3);
+    const segFt = await segCaps.evaluateAll((els) => els.map((el) => Number(el.textContent.replace(/[^\d.]/g, ''))));
+    expect(Math.abs(segFt[0] / segFt[1] - 2)).toBeLessThan(0.05);
+    expect(Math.abs(segFt.reduce((a, b) => a + b, 0) - open) / open).toBeLessThan(0.01);
     await page.screenshot({ path: test.info().outputPath('measure-plus-perimeter.png') });
   } finally {
     if (!process.env.KEEP) await admin.from('documents').delete().in('id', ids);
