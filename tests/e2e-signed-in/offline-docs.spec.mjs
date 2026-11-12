@@ -131,7 +131,7 @@ test('a kept document opens with no server; marks drawn then sync when it is bac
     }
 
     // The server goes away and the app restarts (the document reopens itself).
-    const restore = await cutServer(context);
+    let restore = await cutServer(context);
     await page.reload({ waitUntil: 'domcontentloaded' });
     await expect(page.getByText(PAGE_TEXT).filter({ visible: true }).first()).toBeVisible({ timeout: 60_000 });
     await expect.poll(() => pageLines(page), { timeout: 30_000 }).toHaveLength(1);
@@ -163,6 +163,22 @@ test('a kept document opens with no server; marks drawn then sync when it is bac
     // reads Offline copy: the 30 s autosave's flush must not turn it to an error.
     await expect(page.getByRole('button', { name: /^Offline copy/ }).filter({ visible: true }).first()).toBeVisible();
     expect(await pageLines(page)).toHaveLength(2);
+
+    // The browser says it is back online but the server is sick (every call a
+    // 503): the reopen fails, so the device copy comes straight back instead
+    // of a locked page, and no mark is lost.
+    await restore();
+    const sick = (route) => route.fulfill({ status: 503, contentType: 'application/json', body: '{"message":"Service Unavailable"}' });
+    const sickMatch = (url) => url.host === SERVER.host;
+    await context.route(sickMatch, sick);
+    await page.evaluate(() => window.dispatchEvent(new Event('online')));
+    await page.waitForTimeout(10_000);
+    await expect(page.getByRole('button', { name: /^Offline copy/ }).filter({ visible: true }).first()).toBeVisible({ timeout: 30_000 });
+    await expect.poll(() => page.evaluate(() => document.body.getAttribute('data-readonly')), { timeout: 10_000 }).toBeNull();
+    expect(await pageLines(page)).toHaveLength(2);
+    expect(await savedRows(kept.id)).toBe(rowsOnline);
+    await context.unroute(sickMatch, sick);
+    restore = await cutServer(context);
 
     // Restart again, still offline: both marks come back from the device copy.
     await page.reload({ waitUntil: 'domcontentloaded' });

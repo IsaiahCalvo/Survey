@@ -21,7 +21,7 @@ import { mergeOwnAndSharedTemplateRows, isSharedTemplateRow } from '../services/
 import { storageDownloads } from '../services/storageDownloads.js';
 import { replaceDocumentFile } from '../services/documentFileReplace.js';
 import { pdfByteCache, readPdfThroughCache, bindPdfCacheToAuth, seedPdfCacheFromUpload, pdfCacheStamp, pdfCacheKey, pdfCacheInfoSize, isStorageRefusal } from '../services/pdfByteCache.js';
-import { offlineDocuments, readPdfWithOfflineCopy, bindOfflineDocumentsToAuth, OFFLINE_COPY_OPENED_EVENT } from '../services/offlineDocuments.js';
+import { offlineDocuments, readPdfWithOfflineCopy, bindOfflineDocumentsToAuth, OFFLINE_COPY_OPENED_EVENT, CURRENT_SHA_TIMEOUT } from '../services/offlineDocuments.js';
 import { isFeatureOn } from '../featureFlags.js';
 import { STREAM_SIGNED_URL_SECONDS, chooseCloudPdfOpenPath } from '../services/cloudPdfStream.js';
 import { resolveOpenDocumentSource } from '../services/openDocumentStreamSource.js';
@@ -1032,9 +1032,10 @@ export const useStorage = () => {
       currentSha: async (documentId) => {
         if (!documentId) return null;
         const answer = supabase.from('documents').select('content_sha256').eq('id', documentId).maybeSingle();
-        const timeout = new Promise((resolve) => { setTimeout(() => resolve({ data: null, error: 'timeout' }), 5_000); });
-        const { data, error } = await Promise.race([answer, timeout]);
-        return error ? null : (data?.content_sha256 || null);
+        const timeout = new Promise((resolve) => { setTimeout(() => resolve({ timedOut: true }), 5_000); });
+        const reply = await Promise.race([answer, timeout]);
+        if (reply?.timedOut) throw Object.assign(new Error('document version check timed out'), { code: CURRENT_SHA_TIMEOUT });
+        return reply?.error ? null : (reply?.data?.content_sha256 || null);
       },
       onOfflineCopy: (detail) => {
         try { globalThis.dispatchEvent?.(new CustomEvent(OFFLINE_COPY_OPENED_EVENT, { detail })); } catch { /* no DOM */ }

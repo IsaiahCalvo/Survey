@@ -426,6 +426,17 @@ export function createOfflineDocuments({
  * (content_sha256, or null when it can't say); a kept copy of an older file is
  * not opened, so new marks never land on an old PDF.
  */
+export const CURRENT_SHA_TIMEOUT = 'CURRENT_SHA_TIMEOUT';
+// Documents whose PDF opened from a kept copy the database could not vouch
+// for in time (CURRENT_SHA_TIMEOUT). Their marks stay on the device copy
+// until the server answers again.
+const unverifiedCopies = new Set();
+export function openedFromUnverifiedCopy(documentId) {
+  return Boolean(documentId) && unverifiedCopies.has(documentId);
+}
+export function forgetUnverifiedCopy(documentId) {
+  unverifiedCopies.delete(documentId);
+}
 async function bytesSha256(bytes) {
   const subtle = globalThis.crypto?.subtle;
   if (!subtle) return null;
@@ -445,14 +456,24 @@ export async function readPdfWithOfflineCopy({
   const openCopy = async (fallbackError, { checkCurrent = false } = {}) => {
     const copy = await store.readByPath(actorId, path);
     if (!copy) throw fallbackError;
+    let unverified = false;
     if (checkCurrent && typeof currentSha === 'function') {
-      const now = await Promise.resolve().then(() => currentSha(copy.documentId ?? kept.documentId)).catch(() => null);
+      // No answer in time: the copy opens (a server out of reach often hangs
+      // rather than fails), but it is marked unverified so the marks open
+      // from the device copy too and never load from the database onto what
+      // may be an old PDF (useAnnotationDoc reads openedFromUnverifiedCopy).
+      const now = await Promise.resolve().then(() => currentSha(copy.documentId ?? kept.documentId)).catch((err) => {
+        if (err?.code === CURRENT_SHA_TIMEOUT) unverified = true;
+        return null;
+      });
       if (now) {
         const mine = await bytesSha256(copy.bytes).catch(() => null);
         if (mine && mine !== String(now).toLowerCase()) throw fallbackError;
       }
     }
-    try { onOfflineCopy?.({ path, documentId: copy.documentId }); } catch { /* listener */ }
+    const docId = copy.documentId ?? kept.documentId;
+    if (unverified) unverifiedCopies.add(docId); else unverifiedCopies.delete(docId);
+    try { onOfflineCopy?.({ path, documentId: copy.documentId, ...(unverified ? { unverified: true } : {}) }); } catch { /* listener */ }
     return new Blob([copy.bytes], { type: 'application/pdf' });
   };
   // The device says it has no network: don't wait out request timeouts.
@@ -470,6 +491,7 @@ export async function readPdfWithOfflineCopy({
   }
   // Online and read: keep the copy current (a page edit or a new version
   // elsewhere replaced the file). In the background; the open never waits.
+  unverifiedCopies.delete(kept.documentId);
   if (blob && typeof blob.arrayBuffer === 'function') {
     Promise.resolve()
       .then(async () => {
