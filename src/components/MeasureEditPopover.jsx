@@ -14,7 +14,7 @@
 //     saves, syncs and undoes like any other style change.
 //   - It opens away from the selection like the Line popover, and moves or
 //     flips so the whole card stays on screen (the phone too).
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { watchLightPopover } from './dismissRules.js';
 import {
   DEPTH_MEASURE_KINDS,
@@ -43,7 +43,6 @@ import {
 } from '../utils/measure/measureScale.js';
 import { defaultMeasurePrecision, displayForScaleUnit } from '../utils/measure/measureFormat.js';
 import ValueSelect from './ValueSelect.jsx';
-import MeasureScaleDialog from './MeasureScaleDialog.jsx';
 import Icon from '../Icons';
 import { isFeatureOn } from '../featureFlags.js';
 import {
@@ -72,6 +71,10 @@ const SEGMENT_PLACE_TIPS = Object.freeze({
   upright: 'Each side\u2019s length on the side, level',
   above: 'Each side\u2019s length beside the side',
 });
+
+// Add / Edit scale opens Set page scale in a short form. Loaded on first use,
+// so the card (and the selection bar that holds it) stays light.
+const MeasureScaleDialog = lazy(() => import('./MeasureScaleDialog.jsx'));
 
 export default function MeasureEditPopover({ measure, onPatch, onClose, side = 'below', tip, tipSide = 'below' }) {
   const mark = measure?.mark || null;
@@ -442,6 +445,7 @@ export default function MeasureEditPopover({ measure, onPatch, onClose, side = '
         </div>
       )}
       {scaleEditor && (
+        <Suspense fallback={null}>
         <MeasureScaleDialog
           pageNumber={1}
           markMode={scaleEditor.index >= 0 ? 'edit' : 'add'}
@@ -455,6 +459,7 @@ export default function MeasureEditPopover({ measure, onPatch, onClose, side = '
           onCalibrate={() => {}}
           onCancel={() => setScaleEditor(null)}
         />
+        </Suspense>
       )}
       {segmentPlace && (
         <div className="measure-edit__sizes measure-edit__sizes--stack" role="group" aria-label="Segment captions">
