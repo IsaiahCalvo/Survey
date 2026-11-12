@@ -182,7 +182,7 @@ export function AppSignIn({ authorizationId, app, email }) {
   return (
     <div style={card}>
       <h2 style={{ marginTop: 0 }}>Sign in to {app.name}</h2>
-      <p style={{ fontSize: 15, margin: '8px 0' }}>
+      <p style={{ fontSize: 16, margin: '8px 0' }}>
         Continue to <strong>{app.name}</strong> as <strong>{email || 'you'}</strong>?
       </p>
       <p style={{ fontSize: 13, color: C.inkSoft, margin: '8px 0 16px' }}>
