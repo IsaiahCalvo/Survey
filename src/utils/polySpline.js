@@ -241,14 +241,41 @@ export function sampleSplineSpans(spans, step = SPLINE_STEP) {
   return out;
 }
 
+// Handles at a corner count as "in line" (a smooth corner) within ~5 degrees.
+const SMOOTH_CORNER_COS = Math.cos((5 * Math.PI) / 180);
+
 /**
  * Dense points after dragging handle `which` ('c1' leaves corner `span`,
  * 'c2' arrives at corner `span + 1`) to `target`.
+ *
+ * A smooth corner stays smooth (owner 2026-11-12, "truly smooth"): the
+ * corner's other handle turns to stay in line, keeping its own length, the
+ * way a pen tool's smooth point works. `breakCorner` (Alt held) moves this
+ * handle alone and leaves a sharp corner; a corner already sharp stays so.
  */
-export function moveSplineHandle(points, step, span, which, target) {
+export function moveSplineHandle(points, step, span, which, target, breakCorner = false) {
   const spans = splineSpans(points, step);
   if (!spans[span] || (which !== 'c1' && which !== 'c2')) return points;
+  const before = spans[span][which];
   spans[span] = { ...spans[span], [which]: copy(target) };
+  const otherSpan = which === 'c1' ? span - 1 : span + 1;
+  const otherKey = which === 'c1' ? 'c2' : 'c1';
+  if (!breakCorner && spans[otherSpan]) {
+    const corner = which === 'c1' ? spans[span].from : spans[span].to;
+    const other = spans[otherSpan][otherKey];
+    const ax = before.x - corner.x; const ay = before.y - corner.y;
+    const bx = other.x - corner.x; const by = other.y - corner.y;
+    const al = Math.hypot(ax, ay); const bl = Math.hypot(bx, by);
+    const tx = corner.x - num(target.x); const ty = corner.y - num(target.y);
+    const tl = Math.hypot(tx, ty);
+    // In line = pointing opposite ways from the corner.
+    if (al > 1e-6 && bl > 1e-6 && tl > 1e-6 && -(ax * bx + ay * by) / (al * bl) >= SMOOTH_CORNER_COS) {
+      spans[otherSpan] = {
+        ...spans[otherSpan],
+        [otherKey]: { x: corner.x + (tx / tl) * bl, y: corner.y + (ty / tl) * bl },
+      };
+    }
+  }
   return sampleSplineSpans(spans, step);
 }
 
@@ -322,3 +349,220 @@ export function keepPivot(obj, oldPoints, points) {
     top: (Number(obj.top) || 0) + (dx * sin + dy * cos) - dy,
   };
 }
+
+// ---- Drawing the curve smooth (owner 2026-11-12: "as I curve it, it
+// becomes angular ... not using the correct curve, beziers, or whatever
+// Takeoff uses") ----
+//
+// The stored points hold only `step` samples per span, so drawing them as
+// straight pieces shows corners on a long or tightly bent span, worse when
+// zoomed in. Takeoff draws each span as the cubic itself (SVG `C`), which is
+// smooth at every zoom; the screen does the same here from splineSpans. What
+// can only hold straight pieces (PDF /Vertices and its appearance, XFDF)
+// gets the same cubics cut finely enough that no corner shows.
+
+/** Largest gap, in page points, between the cubic and its straight pieces. */
+export const SPLINE_FLAT_TOLERANCE = 0.01;
+/** Coarser cut for hit tests and pick bands: still well inside any hit band. */
+export const SPLINE_HIT_TOLERANCE = 0.05;
+
+const spanCache = new WeakMap();
+// splineSpans of a points array, kept while the array lives (marks swap in a
+// new array on every edit, so a cached entry never goes stale).
+function cachedSpans(points, step) {
+  let entry = spanCache.get(points);
+  if (!entry || entry.step !== step) {
+    entry = { step, spans: splineSpans(points, step), smooth: new Map() };
+    spanCache.set(points, entry);
+  }
+  return entry;
+}
+
+const spanLength = (s) => {
+  let run = 0;
+  let prev = s.from;
+  for (let k = 1; k <= 64; k += 1) {
+    const p = cubicAt(s, k / 64);
+    run += Math.hypot(p.x - prev.x, p.y - prev.y);
+    prev = p;
+  }
+  return run;
+};
+
+// Parameter t at which the span has run `distance` along itself (from its
+// start). Sampled about every half point so the cut lands where the fine cut
+// of the export puts it.
+function tAtLength(s, distance) {
+  if (!(distance > 0)) return 0;
+  const net = Math.hypot(s.c1.x - s.from.x, s.c1.y - s.from.y)
+    + Math.hypot(s.c2.x - s.c1.x, s.c2.y - s.c1.y)
+    + Math.hypot(s.to.x - s.c2.x, s.to.y - s.c2.y);
+  const samples = Math.min(4096, Math.max(64, Math.ceil(net * 2)));
+  let run = 0;
+  let prev = s.from;
+  for (let k = 1; k <= samples; k += 1) {
+    const t = k / samples;
+    const p = cubicAt(s, t);
+    const piece = Math.hypot(p.x - prev.x, p.y - prev.y);
+    if (run + piece >= distance) {
+      const back = piece > 0 ? (run + piece - distance) / piece : 0;
+      return t - back / samples;
+    }
+    run += piece;
+    prev = p;
+  }
+  return 1;
+}
+
+const reverseSpan = (s) => ({ from: s.to, c1: s.c2, c2: s.c1, to: s.from });
+
+// Cut `inset` of length off the front of `spans`, walking past whole spans
+// shorter than what is left to cut, as trimPointsByLength does for the fine
+// cut. A line shorter than the inset keeps a stub at its far end.
+function trimFront(spans, inset) {
+  if (!(inset > 0) || !spans.length) return spans;
+  let left = inset;
+  let i = 0;
+  while (i < spans.length - 1) {
+    const len = spanLength(spans[i]);
+    if (len > left) break;
+    left -= len;
+    i += 1;
+  }
+  const rest = spans.slice(i);
+  const t = tAtLength(rest[0], left);
+  // Past the end of the whole line: keep only a stub at the far end (as
+  // trimPointsByLength keeps a sliver of its last piece), never cut it all away.
+  rest[0] = splitCubic(rest[0], t >= 1 ? 0.99 : Math.max(0, t))[1];
+  return rest;
+}
+
+// Spans with the first `startInset` and last `endInset` of length cut off
+// (the body stops short of a hollow line ending, as insetOpenPolylinePoints
+// does for straight sides).
+function trimSpans(spans, startInset, endInset) {
+  if (!spans.length) return spans;
+  const front = trimFront(spans.slice(), startInset);
+  return trimFront(front.map(reverseSpan).reverse(), endInset).map(reverseSpan).reverse();
+}
+
+const fmt = (v) => Math.round(v * 1000) / 1000;
+
+/**
+ * SVG path data drawing a curved polyline's spans as true cubics, or null
+ * when `points` / `step` do not make a curve. Optional insets trim the ends.
+ */
+export function splinePathD(points, step, startInset = 0, endInset = 0) {
+  if (!Array.isArray(points) || !(step >= 2)) return null;
+  const { spans: all } = cachedSpans(points, step);
+  if (!all.length) return null;
+  const spans = (startInset > 0 || endInset > 0) ? trimSpans(all, startInset, endInset) : all;
+  let d = `M ${fmt(spans[0].from.x)} ${fmt(spans[0].from.y)}`;
+  for (const s of spans) {
+    d += ` C ${fmt(s.c1.x)} ${fmt(s.c1.y)} ${fmt(s.c2.x)} ${fmt(s.c2.y)} ${fmt(s.to.x)} ${fmt(s.to.y)}`;
+  }
+  return d;
+}
+
+/** The cubic spans of a curved polyline (cached), or [] for any other mark. */
+export function polySplineSpans(obj) {
+  const step = polySplineStep(obj);
+  return step ? cachedSpans(obj.points, step).spans : [];
+}
+
+const flatness = (s) => {
+  const dx = s.to.x - s.from.x;
+  const dy = s.to.y - s.from.y;
+  const len = Math.hypot(dx, dy);
+  const off = (p) => (len > 0
+    ? Math.abs(dx * (p.y - s.from.y) - dy * (p.x - s.from.x)) / len
+    : Math.hypot(p.x - s.from.x, p.y - s.from.y));
+  return Math.max(off(s.c1), off(s.c2));
+};
+
+function flattenSpan(out, s, tolerance, depth) {
+  if (depth <= 0 || flatness(s) <= tolerance) {
+    out.push({ x: s.to.x, y: s.to.y });
+    return;
+  }
+  const [left, right] = splitCubic(s, 0.5);
+  flattenSpan(out, left, tolerance, depth - 1);
+  flattenSpan(out, right, tolerance, depth - 1);
+}
+
+/**
+ * A curved polyline's spans cut into straight pieces no further than
+ * `tolerance` from the true curve, every clicked corner kept. Plain
+ * polylines (and anything else) get their own points back.
+ */
+export function smoothPolylinePoints(obj, tolerance = SPLINE_FLAT_TOLERANCE) {
+  const step = polySplineStep(obj);
+  if (!step) return Array.isArray(obj?.points) ? obj.points : [];
+  const entry = cachedSpans(obj.points, step);
+  if (!entry.spans.length) return obj.points;
+  const hit = entry.smooth.get(tolerance);
+  if (hit) return hit;
+  const out = [{ x: entry.spans[0].from.x, y: entry.spans[0].from.y }];
+  for (const s of entry.spans) flattenSpan(out, s, Math.max(1e-4, tolerance), 12);
+  entry.smooth.set(tolerance, out);
+  return out;
+}
+
+/**
+ * `points` with the first `startInset` and last `endInset` of their length
+ * cut off. Unlike insetOpenPolylinePoints this walks past short pieces, which
+ * a finely cut curve is made of.
+ */
+export function trimPointsByLength(points, startInset = 0, endInset = 0) {
+  if (!Array.isArray(points) || points.length < 2) return Array.isArray(points) ? points.slice() : [];
+  const cut = (list, inset) => {
+    if (!(inset > 0)) return list;
+    let run = 0;
+    for (let i = 1; i < list.length; i += 1) {
+      const a = list[i - 1];
+      const b = list[i];
+      const piece = Math.hypot(b.x - a.x, b.y - a.y);
+      if (run + piece > inset) {
+        const k = (inset - run) / piece;
+        return [{ x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k }, ...list.slice(i)];
+      }
+      run += piece;
+    }
+    // Shorter than the inset: never cut the whole line away.
+    const a = list[list.length - 2];
+    const b = list[list.length - 1];
+    return [{ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, b];
+  };
+  const pts = points.map(copy);
+  return cut(cut(pts, startInset).reverse(), endInset).reverse();
+}
+
+/**
+ * A curved polyline's spans sampled `fine` times finer than its stored points,
+ * at the same parameter spacing, so fine piece k lies inside stored piece
+ * floor(k / fine). Pick bands use it to follow the drawn curve and map a hit
+ * back to the stored piece with fineHitToStored.
+ */
+export function fineSplinePoints(points, step, fine) {
+  if (!Array.isArray(points) || !(step >= 2) || !(fine >= 1)) return Array.isArray(points) ? points : [];
+  const { spans } = cachedSpans(points, step);
+  return spans.length ? sampleSplineSpans(spans, step * fine) : points;
+}
+
+/** A side hit { segmentIndex, t } on fineSplinePoints, back on the stored points. */
+export function fineHitToStored(hit, fine, storedCount) {
+  if (!hit || !(fine > 1)) return hit;
+  const at = (hit.segmentIndex + hit.t) / fine;
+  const segmentIndex = Math.max(0, Math.min(Math.floor(at), storedCount - 2));
+  const t = Math.min(1 - 1e-6, Math.max(1e-6, at - segmentIndex));
+  return { ...hit, segmentIndex, t };
+}
+
+/** The point on a curved polyline's drawn curve at stored piece `segmentIndex`, fraction `t`. */
+export function splinePointAt(points, step, segmentIndex, t) {
+  const { spans } = cachedSpans(points, step);
+  const span = spans[Math.floor(segmentIndex / step)];
+  if (!span) return null;
+  return cubicAt(span, ((segmentIndex % step) + t) / step);
+}
+

@@ -15,11 +15,27 @@ test.beforeEach(async ({ page }) => {
 });
 
 const vertexHandles = '[data-svg-annotation-layer="1"] circle[data-poly-vertex-index][stroke="#4a90e2"]';
-const shapePointCount = (page) => page.locator('[data-svg-annotation-layer="1"] [data-shape-kind="polyline"]').first().evaluate((node) => {
+// A curved polyline draws as true cubics (`M x y C ...`, owner 2026-11-12:
+// no corners when bent). Its stored points are the cubics at t = k / 12, so
+// both helpers read the path back into those samples.
+const readShapePoints = (page) => page.locator('[data-svg-annotation-layer="1"] [data-shape-kind="polyline"]').first().evaluate((node) => {
   const geo = node.matches('polyline,path') ? node : node.querySelector('polyline,path');
-  if (geo.tagName === 'polyline') return geo.points.numberOfItems;
-  return (geo.getAttribute('d').match(/[ML]/g) || []).length;
+  if (geo.tagName === 'polyline') return Array.from({ length: geo.points.numberOfItems }, (_, i) => { const p = geo.points.getItem(i); return [p.x, p.y]; });
+  const nums = (geo.getAttribute('d').match(/-?\d+(\.\d+)?(e-?\d+)?/g) || []).map(Number);
+  let from = [nums[0], nums[1]];
+  const out = [from];
+  for (let i = 2; i + 5 < nums.length; i += 6) {
+    const c1 = [nums[i], nums[i + 1]]; const c2 = [nums[i + 2], nums[i + 3]]; const to = [nums[i + 4], nums[i + 5]];
+    for (let k = 1; k <= 12; k += 1) {
+      const t = k / 12; const mt = 1 - t;
+      const at = (j) => mt ** 3 * from[j] + 3 * mt * mt * t * c1[j] + 3 * mt * t * t * c2[j] + t ** 3 * to[j];
+      out.push([at(0), at(1)]);
+    }
+    from = to;
+  }
+  return out;
 });
+const shapePointCount = async (page) => (await readShapePoints(page)).length;
 
 test('Curve bends a new polyline through its corners and can be turned off', async ({ page }) => {
   await page.keyboard.press('k');
@@ -72,11 +88,7 @@ test('Curve bends a new polyline through its corners and can be turned off', asy
   await expect(page.locator(vertexHandles)).toHaveCount(4);
 });
 
-const pathPoints = (page) => page.locator('[data-svg-annotation-layer="1"] [data-shape-kind="polyline"]').first().evaluate((node) => {
-  const geo = node.matches('polyline,path') ? node : node.querySelector('polyline,path');
-  if (geo.tagName === 'polyline') return Array.from({ length: geo.points.numberOfItems }, (_, i) => { const p = geo.points.getItem(i); return [p.x, p.y]; });
-  return (geo.getAttribute('d').match(/-?\d+(\.\d+)?/g) || []).map(Number).reduce((acc, v, i, all) => (i % 2 ? acc : [...acc, [v, all[i + 1]]]), []);
-});
+const pathPoints = readShapePoints;
 
 test('Shift on a picked curve shows its handles; dragging one bends that span (Takeoff)', async ({ page }) => {
   const errors = [];
@@ -110,10 +122,13 @@ test('Shift on a picked curve shows its handles; dragging one bends that span (T
 
   const after = await pathPoints(page);
   expect(after.length).toBe(before.length);
-  // Span 0 and span 2 keep their shape; span 1 dips toward the drag.
+  // Span 2 keeps its shape; span 1 dips toward the drag.
   const moved = (i) => Math.hypot(after[i][0] - before[i][0], after[i][1] - before[i][1]);
-  for (let i = 0; i <= 12; i += 1) expect(moved(i)).toBeLessThan(0.6);
   for (let i = 24; i < after.length; i += 1) expect(moved(i)).toBeLessThan(0.6);
+  // Corner 1 stays smooth (owner 2026-11-12): span 0 turns with it, no kink.
+  const heading = (a, b) => Math.atan2(b[1] - a[1], b[0] - a[0]);
+  const turn = Math.abs(heading(after[11], after[12]) - heading(after[12], after[13]));
+  expect(Math.min(turn, 2 * Math.PI - turn)).toBeLessThan(0.35);
   expect(Math.max(...after.slice(13, 24).map((_, k) => moved(13 + k)))).toBeGreaterThan(8);
   expect(after[15][1]).toBeGreaterThan(before[15][1]);
 

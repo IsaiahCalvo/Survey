@@ -22,6 +22,14 @@ const idsByPage = (typeof window !== 'undefined')
   ? (window.__surveyPageSelectionIds || (window.__surveyPageSelectionIds = new Map()))
   : new Map();
 
+// Picks per document and page ("<document id>|<page>" -> count). Every open
+// tab's layers announce here and a tab behind keeps its pick, so the counts
+// above (by page only) can be another file's; this one never is.
+const countsByDocumentPage = (typeof window !== 'undefined')
+  ? (window.__surveyPageSelectionByDocument || (window.__surveyPageSelectionByDocument = new Map()))
+  : new Map();
+const documentPageKey = (documentId, page) => `${documentId || ''}|${page}`;
+
 /** Is this mark / callout / marker id part of the page's current pick? */
 export function isItemSelected(pageNumber, id) {
   if (id == null) return false;
@@ -78,7 +86,23 @@ export function hasAnyPageSelection() {
   return !!stashedSelection;
 }
 
-export function recordPageSelection(pageNumber, items) {
+// Something is picked on a page of this document other than `pageNumber`
+// (a far page's kept pick counts). A drawing tool's click on this page then
+// drops it, as on the picked page itself (Drawboard: one pick per file; the
+// mark stayed picked after a click off it on the next page, owner 2026-11-12).
+// A pick in another tab's file does not count.
+export function hasOtherPageSelection(pageNumber, documentId = null) {
+  const page = Number(pageNumber);
+  const doc = documentId || null;
+  const prefix = `${doc || ''}|`;
+  for (const [key, count] of countsByDocumentPage) {
+    if (count > 0 && key.startsWith(prefix) && key !== documentPageKey(doc, page)) return true;
+  }
+  return !!stashedSelection && stashedSelection.pageNumber !== page
+    && (stashedSelection.documentId || null) === doc;
+}
+
+export function recordPageSelection(pageNumber, items, documentId = null) {
   const page = Number(pageNumber);
   if (!Number.isFinite(page)) return;
   const count = Array.isArray(items) ? items.length : 0;
@@ -87,9 +111,11 @@ export function recordPageSelection(pageNumber, items) {
     if (stashedSelection && stashedSelection.pageNumber !== page) stashedSelection = null;
     countsByPage.set(page, count);
     idsByPage.set(page, new Set(items.map((item) => String(item?.id))));
+    countsByDocumentPage.set(documentPageKey(documentId, page), count);
   } else {
     countsByPage.delete(page);
     idsByPage.delete(page);
+    countsByDocumentPage.delete(documentPageKey(documentId, page));
   }
 }
 
@@ -97,7 +123,7 @@ export function installPageSelectionPresence(win) {
   if (!win || typeof win.addEventListener !== 'function' || win.__surveyPageSelectionPresence) return;
   win.__surveyPageSelectionPresence = true;
   win.addEventListener(HISTORY_PAGE_SELECTION_EVENT, (event) => {
-    recordPageSelection(event?.detail?.pageNumber, event?.detail?.items);
+    recordPageSelection(event?.detail?.pageNumber, event?.detail?.items, event?.detail?.documentId);
   });
 }
 
