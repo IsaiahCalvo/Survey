@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import SignaturePad from '../signature/SignaturePad.jsx';
 import { phoneSignTokenFromPath, submitPhoneSignature } from '../signature/phoneSign.js';
+import { SIGNATURE_INKS, SIGNATURE_WIDTHS } from '../signature/signaturePicture.js';
 import '../components/SignatureCard.css';
 
 export default function PhoneSignPage() {
@@ -37,7 +38,7 @@ export default function PhoneSignPage() {
         <>
           <h1>Sign here</h1>
           <p>Draw your signature with your finger, then tap Send.</p>
-          <SignaturePad strokes={strokes} setStrokes={setStrokes} ink="#111111" lineWidth={2.5} />
+          <SignaturePad strokes={strokes} setStrokes={setStrokes} ink={SIGNATURE_INKS[0].hex} lineWidth={SIGNATURE_WIDTHS[1].px} />
           {status === 'failed' && (
             <p role="alert">Couldn&apos;t send. The code may have run out: make a new one on your computer.</p>
           )}

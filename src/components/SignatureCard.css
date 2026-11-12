@@ -109,6 +109,8 @@
    (PhoneSignPage.jsx). */
 .phone-sign { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
 .phone-sign__qr { width: 184px; height: 184px; border-radius: 6px; background: #fff; }
+.phone-sign__qr-paper { fill: #fff; }
+.phone-sign__qr-ink { fill: #000; }
 .phone-sign__qr--empty { border: 1px solid var(--border); }
 .phone-sign__hint { margin: 0; color: var(--text-2); font-size: 13px; max-width: 360px; }
 .phone-sign__wait { margin: 0; color: var(--text-3); font-size: 12px; }

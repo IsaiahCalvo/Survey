@@ -47,8 +47,8 @@ function QrCode({ text }) {
       aria-label="QR code: scan it with your phone's camera"
       shapeRendering="crispEdges"
     >
-      <rect width={size} height={size} fill="#fff" />
-      <path d={path} fill="#000" />
+      <rect className="phone-sign__qr-paper" width={size} height={size} />
+      <path className="phone-sign__qr-ink" d={path} />
     </svg>
   );
 }
