@@ -52,6 +52,7 @@ import FileDropOverlay from '../components/FileDropOverlay';
 import { resolveProjectDropTarget } from '../utils/fileDrop.js';
 import { isFeatureOn } from '../featureFlags.js';
 import ProjectItemsPanel, { ProjectItemsTabs } from '../projectItems/ProjectItemsPanel.jsx';
+import ProjectExportDialog from './ProjectExportDialog.jsx';
 import ProjectActivityPanel from '../projectItems/ProjectActivityPanel.jsx';
 import { keyboardControlProps } from '../utils/keyboardActivation.js';
 import { SHEET_VIEW_EVENT, openAllChoice, projectSheets, storedProjectOrder } from '../sheets/sheetSet.js';
@@ -492,6 +493,9 @@ export default function ProjectsFolderTree({
   // stands (or, with two or more rows ticked, "Open N selected") opens as one
   // set, in the List or Grid view picked beside the button.
   const [sheetSetOn] = useState(() => isFeatureOn('sheet-set-view'));
+  // Drawboard's "Export Project" (Nightly, 'project-export'): one zip of the project.
+  const [exportOn] = useState(() => isFeatureOn('project-export'));
+  const [exportProject, setExportProject] = useState(null);
   const [openAllView, setOpenAllView] = useState(() => {
     try { return window.localStorage.getItem('survey.openAllView') === 'grid' ? 'grid' : 'list'; } catch (_e) { return 'list'; }
   });
@@ -2203,6 +2207,7 @@ export default function ProjectsFolderTree({
                 label: projPinned ? 'Unpin project' : 'Pin project',
                 onClick: () => togglePin(proj.id),
               },
+              ...(exportOn ? [{ icon: 'download', label: 'Export project…', onClick: () => setExportProject(proj) }] : []),
               { label: 'Manage project', onClick: () => setTeamModalProject(proj) },
             ]}
           />
@@ -2245,6 +2250,15 @@ export default function ProjectsFolderTree({
           />
         );
       })()}
+
+      {exportProject && (
+        <ProjectExportDialog
+          project={exportProject}
+          documents={localDocs.filter((d) => d.project_id === exportProject.id)}
+          lookupMember={lookupMember}
+          onClose={() => setExportProject(null)}
+        />
+      )}
 
       {/* Manage Team modal — open state driven entirely by local React state.
           This is the team-management surface, distinct from the share modal. */}
