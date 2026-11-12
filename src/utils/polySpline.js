@@ -363,6 +363,8 @@ export function keepPivot(obj, oldPoints, points) {
 
 /** Largest gap, in page points, between the cubic and its straight pieces. */
 export const SPLINE_FLAT_TOLERANCE = 0.01;
+/** Coarser cut for hit tests and pick bands: still well inside any hit band. */
+export const SPLINE_HIT_TOLERANCE = 0.05;
 
 const spanCache = new WeakMap();
 // splineSpans of a points array, kept while the array lives (marks swap in a
@@ -376,9 +378,20 @@ function cachedSpans(points, step) {
   return entry;
 }
 
+const spanLength = (s) => {
+  let run = 0;
+  let prev = s.from;
+  for (let k = 1; k <= 64; k += 1) {
+    const p = cubicAt(s, k / 64);
+    run += Math.hypot(p.x - prev.x, p.y - prev.y);
+    prev = p;
+  }
+  return run;
+};
+
 // Parameter t at which the span has run `distance` along itself (from its
-// start), clamped inside the span. Sampled about every half point so the cut
-// lands where the fine cut of the export puts it.
+// start). Sampled about every half point so the cut lands where the fine cut
+// of the export puts it.
 function tAtLength(s, distance) {
   if (!(distance > 0)) return 0;
   const net = Math.hypot(s.c1.x - s.from.x, s.c1.y - s.from.y)
@@ -393,29 +406,43 @@ function tAtLength(s, distance) {
     const piece = Math.hypot(p.x - prev.x, p.y - prev.y);
     if (run + piece >= distance) {
       const back = piece > 0 ? (run + piece - distance) / piece : 0;
-      return Math.min(0.95, t - back / samples);
+      return t - back / samples;
     }
     run += piece;
     prev = p;
   }
-  return 0.95;
+  return 1;
 }
 
 const reverseSpan = (s) => ({ from: s.to, c1: s.c2, c2: s.c1, to: s.from });
+
+// Cut `inset` of length off the front of `spans`, walking past whole spans
+// shorter than what is left to cut, as trimPointsByLength does for the fine
+// cut. A line shorter than the inset keeps its last span's far half.
+function trimFront(spans, inset) {
+  if (!(inset > 0) || !spans.length) return spans;
+  let left = inset;
+  let i = 0;
+  while (i < spans.length - 1) {
+    const len = spanLength(spans[i]);
+    if (len > left) break;
+    left -= len;
+    i += 1;
+  }
+  const rest = spans.slice(i);
+  const t = tAtLength(rest[0], left);
+  // Past the end of the whole line: keep the far half, never cut it all away.
+  rest[0] = splitCubic(rest[0], t >= 1 ? 0.5 : Math.max(0, t))[1];
+  return rest;
+}
 
 // Spans with the first `startInset` and last `endInset` of length cut off
 // (the body stops short of a hollow line ending, as insetOpenPolylinePoints
 // does for straight sides).
 function trimSpans(spans, startInset, endInset) {
   if (!spans.length) return spans;
-  const out = spans.slice();
-  if (startInset > 0) out[0] = splitCubic(out[0], tAtLength(out[0], startInset))[1];
-  if (endInset > 0) {
-    const last = out.length - 1;
-    const back = reverseSpan(out[last]);
-    out[last] = reverseSpan(splitCubic(back, tAtLength(back, endInset))[1]);
-  }
-  return out;
+  const front = trimFront(spans.slice(), startInset);
+  return trimFront(front.map(reverseSpan).reverse(), endInset).map(reverseSpan).reverse();
 }
 
 const fmt = (v) => Math.round(v * 1000) / 1000;

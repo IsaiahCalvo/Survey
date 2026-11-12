@@ -183,3 +183,30 @@ test('PDF export and XFDF carry the smooth curve, not the 12 straight pieces', a
   const xv = /<vertices>([^<]+)<\/vertices>/.exec(xfdf)?.[1].split(/[,;\s]+/).filter(Boolean).map(Number);
   assert.ok(xv && xv.length === vertices.length * 2, 'XFDF has the same fine vertices');
 });
+
+test('an inset longer than the end span walks into the next span, as the print cut does', () => {
+  const short = sampleSpline([{ x: 0, y: 0 }, { x: 4, y: 3 }, { x: 200, y: 100 }, { x: 400, y: 0 }], SPLINE_STEP);
+  const mark = curvedMark(short, { data: { id: 'c', spline: { step: SPLINE_STEP } } });
+  const d = splinePathD(short, SPLINE_STEP, 12, 0);
+  const [mx, my] = d.slice(2).split(' ').map(Number);
+  const trimmed = trimPointsByLength(smoothPolylinePoints(mark), 12, 0);
+  assert.ok(Math.hypot(mx - trimmed[0].x, my - trimmed[0].y) < 0.05, `${mx},${my} vs ${trimmed[0].x},${trimmed[0].y}`);
+  // The first (5 pt) span is gone: one cubic fewer.
+  assert.equal((d.match(/C/g) || []).length, 2);
+});
+
+test('hit tests follow the drawn curve, not the stored samples', async () => {
+  const { isPointOnPolyline } = await import('../src/utils/geometryHitTest.js');
+  const mark = curvedMark(undefined, { strokeWidth: 1 });
+  const spans = polySplineSpans(mark);
+  // The point on the true curve farthest from the old 12 straight pieces.
+  let far = null; let farGap = 0;
+  for (let i = 0; i <= 400; i += 1) {
+    const p = cubicAt(spans[0], i / 400);
+    let best = Infinity;
+    for (let j = 1; j < mark.points.length; j += 1) best = Math.min(best, segDist(p, mark.points[j - 1], mark.points[j]));
+    if (best > farGap) { farGap = best; far = p; }
+  }
+  assert.ok(farGap > 1);
+  assert.equal(isPointOnPolyline(far, mark, 0.5), true);
+});

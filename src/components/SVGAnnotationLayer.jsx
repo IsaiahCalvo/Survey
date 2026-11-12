@@ -25,7 +25,7 @@ import { boxWorldBounds, markerIdsByGap } from '../utils/surveyMarkerFamily.js';
 import { isOnHiddenLayer, stampNewObjectsOnLayer } from '../utils/layers.js';
 import { cloneElement, memo, useId, useMemo, useEffect, useLayoutEffect, useRef, useState, useCallback, useSyncExternalStore } from 'react';
 import { createPortal, flushSync } from 'react-dom';
-import { POLYLINE_CURVE_SET_EVENT, polySplineStep, setPolylineCurve, splineSpanMidpoint, splineSpans, splinePathD } from '../utils/polySpline.js';
+import { POLYLINE_CURVE_SET_EVENT, polySplineStep, setPolylineCurve, SPLINE_HIT_TOLERANCE, smoothPolylinePoints, splineSpanMidpoint, splineSpans, splinePathD } from '../utils/polySpline.js';
 import useShiftHeld from '../hooks/useShiftHeld.js';
 import { usePolylineCurve } from '../hooks/usePolylineCurve.js';
 import { canRemovePolyVertex, cloudPolyEdgeReach, insertPolyVertex, insertVertexOnNearestEdge, createPolyEdgePressGate, polyEdgeDebugEnabled, polyEdgeTouchStartMayArm, polyEdgeHitAtClient, polyVertexMenuLayout, removePolyVertex } from '../utils/polyVertices.js';
@@ -7090,6 +7090,10 @@ const SVGAnnotationLayerBody = memo(({
             const glowSplineStep = isPolygonShape ? 0 : polySplineStep(renderObj);
             const glowCurveD = glowSplineStep ? splinePathD(renderObj.points, glowSplineStep) : null;
             const GlowTag = glowCurveD ? 'path' : 'polyline';
+            // ...and its hit band follows that curve too, not the stored samples.
+            const hitPointsStr = glowSplineStep
+              ? smoothPolylinePoints(renderObj, SPLINE_HIT_TOLERANCE).map((p) => `${p.x},${p.y}`).join(' ')
+              : pointsStr;
             const shapeLeft = renderObj.left ?? 0;
             const shapeTop = renderObj.top ?? 0;
             const shapeAngle = renderObj.angle ?? 0;
@@ -7181,7 +7185,7 @@ const SVGAnnotationLayerBody = memo(({
                   />
                 ) : (
                   <polyline
-                    points={pointsStr}
+                    points={hitPointsStr}
                     transform={shapeTransform}
                     fill="none"
                     stroke={polyHitProps.stroke}
