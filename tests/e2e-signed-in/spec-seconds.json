@@ -11,6 +11,8 @@
   "bookmarks-add-menu.spec.mjs": 8,
   "box-drag-move.spec.mjs": 39.1,
   "calibrate-entry.spec.mjs": 9.8,
+  "click-only-picks-layouts.spec.mjs": 430,
+  "click-only-picks.spec.mjs": 290,
   "cloud-style-resets.spec.mjs": 8.9,
   "collab-legacy-era-doc.spec.mjs": 71.4,
   "collab-undo-coedit.spec.mjs": 101.4,
