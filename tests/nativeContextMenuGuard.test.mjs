@@ -19,8 +19,8 @@ import {
   linkOf,
   nativeMenuPlan,
 } from '../src/utils/nativeContextMenuGuard.js';
-import { isTextEntryField, pointInsideSelection, listMenuPointFrom } from '../src/utils/listContextMenu.js';
-import { textFieldMenuItems, selectionMenuItems, linkMenuItems } from '../src/utils/appContextMenuItems.js';
+import { forgetContextMenuPress, isTextEntryField, isTypingTarget, noteContextMenuPress, pointInsideSelection, listMenuPointFrom } from '../src/utils/listContextMenu.js';
+import { textFieldMenuItems, selectionMenuItems, linkMenuItems, spellingMenuItems } from '../src/utils/appContextMenuItems.js';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
@@ -59,12 +59,17 @@ test('a surface that answered already (row, mark, tab menus) is left alone', () 
   assert.deepEqual(nativeMenuPlan(ctx(el(), { defaultPrevented: true }), { touch: false, selection: noSelection }), { block: false, menu: null });
 });
 
-test('a text field gets the app Cut / Copy / Paste / Select all menu', () => {
+test('a text field keeps its spelling fixes: the browser menu on the web, Survey menu with fixes in the desktop app', () => {
   const input = el({ tagName: 'INPUT', type: 'text' });
-  const plan = nativeMenuPlan(ctx(input), { touch: false, selection: noSelection });
-  assert.equal(plan.block, true);
-  assert.equal(plan.menu.kind, 'field');
-  assert.equal(plan.menu.field, input);
+  // Web: only the browser knows the misspelled word, so its menu shows here.
+  const web = nativeMenuPlan(ctx(input), { touch: false, selection: noSelection, desktopSpelling: false });
+  assert.equal(web.block, false);
+  assert.equal(web.menu, null);
+  assert.equal(web.nativeField, input);
+  // Desktop app: left alone so Chromium looks the word up, then Survey's menu opens.
+  const desktop = nativeMenuPlan(ctx(input), { touch: false, selection: noSelection, desktopSpelling: true });
+  assert.equal(desktop.block, false);
+  assert.deepEqual(desktop.awaitSpelling, { kind: 'field', field: input });
   for (const tagName of ['TEXTAREA']) assert.equal(isTextEntryField(el({ tagName })), true);
   assert.equal(isTextEntryField(el({ contentEditable: true })), true);
   // Not text fields: a checkbox, a slider, a read-only or disabled field.
@@ -111,12 +116,10 @@ test('a list row does not take a right-click on text the person selected (the Co
   }
 });
 
-test('installed guard: blocks, focuses an unfocused field, asks the host for the field menu', () => {
+function fakeWindow({ electronAPI } = {}) {
   const listeners = {};
   const events = [];
-  const input = el({ tagName: 'INPUT', type: 'text' });
-  let focused = null;
-  input.focus = () => { focused = input; win.document.activeElement = input; };
+  const timers = [];
   const win = {
     document: { activeElement: null },
     addEventListener: (type, fn) => { listeners[type] = fn; },
@@ -124,32 +127,113 @@ test('installed guard: blocks, focuses an unfocused field, asks the host for the
     dispatchEvent: (event) => events.push(event),
     CustomEvent: class { constructor(type, init) { this.type = type; this.detail = init?.detail; } },
     getSelection: () => noSelection,
+    setTimeout: (fn) => { timers.push(fn); return timers.length; },
+    clearTimeout: () => {},
+    electronAPI,
   };
+  return { win, listeners, events, timers };
+}
+
+test('installed guard (web): empty space blocked, a text field gets focus and the browser menu', () => {
+  const { win, listeners, events } = fakeWindow();
+  const input = el({ tagName: 'INPUT', type: 'text' });
+  input.focus = () => { win.document.activeElement = input; };
   const savedWindow = globalThis.window;
   globalThis.window = win;
   try {
     const teardown = installNativeContextMenuGuard(win);
-    // The right-press on the unfocused field does not focus it.
+    let prevented = false;
+    listeners.contextmenu({ ...ctx(el()), preventDefault: () => { prevented = true; } });
+    assert.equal(prevented, true);
+    assert.equal(events.length, 0);
+    // The right-press is left alone (it picks the word the fixes are for).
     let pressPrevented = false;
     listeners.mousedown({ button: 2, target: input, preventDefault: () => { pressPrevented = true; } });
-    assert.equal(pressPrevented, true);
-    let menuPrevented = false;
-    listeners.contextmenu({ ...ctx(input, { x: 70, y: 80 }), preventDefault: () => { menuPrevented = true; } });
-    assert.equal(menuPrevented, true);
-    assert.equal(focused, input);
-    assert.equal(events.length, 1);
-    assert.equal(events[0].type, APP_CONTEXT_MENU_EVENT);
-    assert.equal(events[0].detail.kind, 'field');
-    assert.equal(events[0].detail.x, 70);
-    // A right-press on the field being typed in keeps its caret.
-    pressPrevented = false;
-    listeners.mousedown({ button: 2, target: input, preventDefault: () => { pressPrevented = true; } });
     assert.equal(pressPrevented, false);
+    prevented = false;
+    listeners.contextmenu({ ...ctx(input), preventDefault: () => { prevented = true; } });
+    assert.equal(prevented, false);
+    assert.equal(win.document.activeElement, input);
+    assert.equal(events.length, 0);
     teardown();
     assert.equal(listeners.contextmenu, undefined);
   } finally {
     globalThis.window = savedWindow;
+    forgetContextMenuPress();
   }
+});
+
+test('installed guard (desktop app): the text menu opens with Chromium\'s spelling fixes, or without after a wait', () => {
+  let spellingListener = null;
+  let unsubscribed = false;
+  const electronAPI = { onEditableContextMenu: (fn) => { spellingListener = fn; return () => { unsubscribed = true; }; } };
+  const { win, listeners, events, timers } = fakeWindow({ electronAPI });
+  const input = el({ tagName: 'INPUT', type: 'text' });
+  input.focus = () => { win.document.activeElement = input; };
+  const savedWindow = globalThis.window;
+  globalThis.window = win;
+  try {
+    const teardown = installNativeContextMenuGuard(win);
+    let prevented = false;
+    listeners.contextmenu({ ...ctx(input, { x: 70, y: 80 }), preventDefault: () => { prevented = true; } });
+    assert.equal(prevented, false); // Chromium must see it to look the word up.
+    assert.equal(events.length, 0);
+    spellingListener({ misspelledWord: 'recieve', suggestions: ['receive'] });
+    assert.equal(events.length, 1);
+    assert.equal(events[0].type, APP_CONTEXT_MENU_EVENT);
+    assert.equal(events[0].detail.kind, 'field');
+    assert.equal(events[0].detail.x, 70);
+    assert.deepEqual(events[0].detail.spelling, { misspelledWord: 'recieve', suggestions: ['receive'] });
+    // No answer: it opens anyway once the wait runs out.
+    listeners.contextmenu({ ...ctx(input), preventDefault() {} });
+    timers.at(-1)();
+    assert.equal(events.length, 2);
+    assert.equal(events[1].detail.spelling, undefined);
+    teardown();
+    assert.equal(unsubscribed, true);
+  } finally {
+    globalThis.window = savedWindow;
+  }
+});
+
+test('a name field focused only by the right-press is not "being typed in" (Spaces title opens the row menu)', () => {
+  const input = el({ tagName: 'INPUT', type: 'text' });
+  const event = ctx(input);
+  noteContextMenuPress(null, 1000);
+  assert.equal(isTypingTarget(event, input, 1100), false);
+  noteContextMenuPress(input, 2000);
+  assert.equal(isTypingTarget(event, input, 2100), true);
+  // An old press is forgotten: then focus now decides (the keyboard's menu key).
+  assert.equal(isTypingTarget(event, input, 9000), true);
+  forgetContextMenuPress();
+});
+
+test('spelling rows: fixes first, then Add to dictionary; nothing without a misspelled word', () => {
+  const calls = [];
+  const api = { replaceMisspelling: (w) => calls.push(['replace', w]), addWordToDictionary: (w) => calls.push(['add', w]) };
+  const rows = spellingMenuItems(null, { misspelledWord: 'recieve', suggestions: ['receive', 'relieve'] }, api);
+  assert.deepEqual(rows.filter((r) => !r.separator).map((r) => r.label), ['receive', 'relieve', 'Add to dictionary']);
+  rows[0].onClick();
+  rows[2].onClick();
+  assert.deepEqual(calls, [['replace', 'receive'], ['add', 'recieve']]);
+  const none = spellingMenuItems(null, { misspelledWord: 'zzqx', suggestions: [] }, api);
+  assert.equal(none[0].label, 'No spelling suggestions');
+  assert.equal(none[0].disabled, true);
+  assert.deepEqual(spellingMenuItems(null, { misspelledWord: '' }, api), []);
+  assert.deepEqual(spellingMenuItems(null, null, api), []);
+});
+
+test('spelling is on in the desktop app, in text marks and Survey Marker names; the page menu leaves a typed-in box alone', () => {
+  const main = read('src/electron-main.js');
+  assert.match(main, /spellcheck: true/);
+  assert.match(main, /webContents\.on\('context-menu'/);
+  assert.match(main, /replaceMisspelling\(word\)/);
+  assert.match(main, /addWordToSpellCheckerDictionary/);
+  const preload = read('src/preload.js');
+  assert.match(preload, /onEditableContextMenu/);
+  assert.doesNotMatch(read('src/components/TextEditOverlay.jsx'), /spellCheck=\{false\}/);
+  assert.doesNotMatch(read('src/components/SurveyMarkerPlacementDialog.jsx'), /spellCheck=\{false\}/);
+  assert.match(read('src/utils/contextMenuDiagnostics.js'), /if \(isTypingTarget\(e\)\)/);
 });
 
 test('menu rows: Cut and Copy need a selection, password never copies, links open and copy', () => {

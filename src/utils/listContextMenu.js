@@ -11,9 +11,9 @@
 //     turns a held finger into a right-click in Drawboard. In the phone layout
 //     a held finger is a drag (rearrange) and a slide shows the row actions,
 //     so there it opens nothing.
-//   - A text field that is being typed in, or text the person has selected,
-//     gets the app's own Cut / Copy / Paste menu instead (nativeContextMenuGuard.js
-//     and components/AppContextMenuHost.jsx). The browser's menu never shows.
+//   - A text field that is being typed in keeps its text menu with spelling
+//     fixes, and text the person has selected gets Copy, instead of the row
+//     menu (nativeContextMenuGuard.js decides which menu that is).
 
 // Inputs a person types text into (not a checkbox, a slider or a button).
 const TEXT_INPUT_TYPES = new Set(['', 'text', 'search', 'email', 'url', 'tel', 'password', 'number']);
@@ -39,17 +39,35 @@ export function textEntryFieldOf(target) {
   return null;
 }
 
+// What had focus just before the last right-press. The press itself focuses
+// a text field (and selects the word under it, which the browser's spelling
+// fixes need), so "focused now" cannot tell a field being typed in from a
+// click-to-rename name that was only right-clicked. nativeContextMenuGuard.js
+// notes each right-press here, before the browser moves focus.
+let lastPress = null;
+const PRESS_MEMORY_MS = 1500;
+
+/** Note what had focus as a context-menu press began (window capture mousedown). */
+export function noteContextMenuPress(activeElement, now = Date.now()) {
+  lastPress = { focused: activeElement || null, at: now };
+}
+
+/** Forget the noted press (tests). */
+export function forgetContextMenuPress() { lastPress = null; }
+
 /**
  * Is this contextmenu event on a text field the person is typing in? A
- * right-press on a field that was NOT focused does not focus it
- * (nativeContextMenuGuard.js), so a click-to-rename name in a list row (the
- * Spaces name, owner 2026-11-12) opens the row's menu, while a field the
- * person is already typing in gets the in-app Cut / Copy / Paste menu.
+ * field that only got focus from this right-press is not: a right-click on a
+ * click-to-rename name in a list row (the Spaces title, owner 2026-11-12)
+ * opens the row's menu. A field the person was already typing in keeps the
+ * text menu with its spelling fixes.
  */
-export function isTypingTarget(event, activeElement = typeof document !== 'undefined' ? document.activeElement : null) {
+export function isTypingTarget(event, activeElement = typeof document !== 'undefined' ? document.activeElement : null, now = Date.now()) {
   const field = textEntryFieldOf(event?.target);
   if (!field) return false;
-  return field === activeElement || (typeof field.contains === 'function' && activeElement != null && field.contains(activeElement));
+  const within = (node) => node != null && (node === field || (typeof field.contains === 'function' && field.contains(node)));
+  if (lastPress && now - lastPress.at <= PRESS_MEMORY_MS) return within(lastPress.focused);
+  return within(activeElement);
 }
 
 /**
@@ -98,6 +116,11 @@ export function listMenuPointFrom(event, options = {}) {
   }
   event.preventDefault?.();
   event.stopPropagation?.();
+  // The right-press focused a name field it landed on; that was not the
+  // start of typing, so let it go (the menu would hand focus back to it).
+  const field = textEntryFieldOf(event.target);
+  const active = options.activeElement !== undefined ? options.activeElement : (typeof document !== 'undefined' ? document.activeElement : null);
+  if (field && active && (active === field || field.contains?.(active))) active.blur?.();
   return { x: event.clientX, y: event.clientY };
 }
 

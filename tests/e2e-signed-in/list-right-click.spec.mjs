@@ -144,22 +144,18 @@ for (const [layout, use] of Object.entries(LAYOUTS)) {
         }
         await expect(menu(page)).toHaveCount(0);
 
-        // A right-click inside a name being typed opens the app's own
-        // Cut / Copy / Paste menu (no row menu, no browser menu), and the
-        // field keeps its focus.
-        const textMenu = page.getByRole('menu', { name: 'Text actions' });
+        // A right-click inside a name being typed is for its spelling fixes
+        // (owner 2026-11-12: spelling correction everywhere). On the web only
+        // the browser knows them, so its own menu is left to show there (the
+        // desktop app shows them in Survey's menu instead): no row menu, the
+        // event is not blocked, and the field keeps its focus.
         await name.click();
-        await page.keyboard.press('ControlOrMeta+a');
         await name.click({ button: 'right' });
+        await expect.poll(() => page.evaluate(() => window.__lastContextMenu)).toEqual({ prevented: false });
         await expect(menu(page)).toHaveCount(0);
-        await expect(textMenu).toBeVisible();
-        expect(await textMenu.getByRole('menuitem').allTextContents()).toEqual(['Cut', 'Copy', 'Paste', 'Select all']);
-        await page.screenshot({ path: test.info().outputPath(`${layout}-text-menu.png`) });
+        await expect(page.getByRole('menu', { name: 'Text actions' })).toHaveCount(0);
         await expect(name).toBeFocused();
-        expect(await page.evaluate(() => window.__lastContextMenu)).toEqual({ prevented: true });
-        await textMenu.getByRole('menuitem', { name: 'Select all' }).click();
-        await expect(textMenu).toHaveCount(0);
-        await expect(name).toBeFocused();
+        expect(await name.getAttribute('spellcheck')).not.toBe('false');
         await page.keyboard.press('Enter');
 
         // 5. Delete the space from its menu.

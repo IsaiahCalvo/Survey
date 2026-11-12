@@ -51,7 +51,7 @@ export default function AppContextMenuHost() {
   }, [menu]);
 
   if (!menu || typeof document === 'undefined') return null;
-  const items = (menu.kind === 'field' ? textFieldMenuItems(menu.field)
+  const items = (menu.kind === 'field' ? textFieldMenuItems(menu.field, menu.spelling)
     : menu.kind === 'selection' ? selectionMenuItems(menu.text)
       : menu.kind === 'link' ? linkMenuItems(menu.href)
         : []).filter(Boolean);

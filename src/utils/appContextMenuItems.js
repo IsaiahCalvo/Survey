@@ -69,13 +69,32 @@ async function pasteInto(field) {
   }
 }
 
-/** Cut / Copy / Paste / Select all for a text field. */
-export function textFieldMenuItems(field) {
+/**
+ * Spelling fixes (desktop app: Chromium's own, see electron-main.js
+ * 'editable-context-menu'), then Cut / Copy / Paste / Select all.
+ * `spelling`: { misspelledWord, suggestions } or null.
+ */
+export function spellingMenuItems(field, spelling, api = typeof window !== 'undefined' ? window.electronAPI : null) {
+  const word = String(spelling?.misspelledWord || '');
+  if (!word || !api) return [];
+  const suggestions = (Array.isArray(spelling.suggestions) ? spelling.suggestions : []).filter(Boolean).slice(0, 5);
+  return [
+    ...(suggestions.length
+      ? suggestions.map((fix) => ({ label: fix, icon: false, onClick: () => { keepFocus(field); api.replaceMisspelling?.(fix); } }))
+      : [{ label: 'No spelling suggestions', icon: false, disabled: true }]),
+    { label: 'Add to dictionary', icon: 'bookmark', onClick: () => { keepFocus(field); api.addWordToDictionary?.(word); } },
+    { separator: true, key: 'spelling-separator' },
+  ];
+}
+
+/** Cut / Copy / Paste / Select all for a text field (spelling fixes first when known). */
+export function textFieldMenuItems(field, spelling = null) {
   if (!field) return [];
   const selected = fieldSelectionText(field);
   const secret = String(field.type || '').toLowerCase() === 'password';
   const value = typeof field.value === 'string' ? field.value : String(field.textContent || '');
   return [
+    ...spellingMenuItems(field, spelling),
     { label: 'Cut', icon: 'scissors', disabled: !selected || secret, onClick: () => { keepFocus(field); run('cut'); } },
     { label: 'Copy', icon: 'copy', disabled: !selected || secret, onClick: () => { keepFocus(field); if (!run('copy')) copyText(selected); } },
     { label: 'Paste', icon: 'paste', onClick: () => { pasteInto(field); } },
