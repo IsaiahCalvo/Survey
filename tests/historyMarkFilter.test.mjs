@@ -63,7 +63,10 @@ test('the page layer broadcasts its pick with the window\'s own event class and 
   class FakeEvent { constructor(type, init) { this.type = type; this.detail = init.detail; } }
   const win = { CustomEvent: FakeEvent, dispatchEvent: (e) => { if (!(e instanceof FakeEvent)) throw new TypeError('not an Event'); seen.push(e); } };
   assert.equal(broadcastPageSelection(win, 2, [{ id: 'a', typeKey: 'rect' }]), true);
-  assert.deepEqual(seen[0].detail, { pageNumber: 2, items: [{ id: 'a', typeKey: 'rect' }] });
+  assert.deepEqual(seen[0].detail, { pageNumber: 2, items: [{ id: 'a', typeKey: 'rect' }], documentId: null });
+  // the document id rides along (a drawing tool's click asks about other pages of this file)
+  assert.equal(broadcastPageSelection(win, 3, [], 'doc-1'), true);
+  assert.deepEqual(seen[1].detail, { pageNumber: 3, items: [], documentId: 'doc-1' });
   assert.equal(seen[0].type, HISTORY_PAGE_SELECTION_EVENT);
   assert.equal(broadcastPageSelection({ dispatchEvent: () => { throw new Error('boom'); }, CustomEvent: FakeEvent }, 1, []), false);
   assert.equal(broadcastPageSelection(null, 1, []), false);
