@@ -129,3 +129,30 @@ $$;
 
 REVOKE ALL ON FUNCTION public.carry_mark_comments(uuid, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.carry_mark_comments(uuid, uuid) TO authenticated, service_role;
+
+-- A reply to a resolved thread reopens it, as in Google Docs: the
+-- conversation is live again, from the Comments list, a pin card or the
+-- API alike. Copies made by carry_mark_comments (carried_from set) keep the
+-- thread as it was.
+CREATE OR REPLACE FUNCTION public.mark_comment_reply_reopens()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  UPDATE public.mark_comments
+     SET resolved_at = NULL, resolved_by = NULL
+   WHERE id = NEW.thread_id AND resolved_at IS NOT NULL;
+  RETURN NULL;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.mark_comment_reply_reopens() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS mark_comment_reply_reopens ON public.mark_comments;
+CREATE TRIGGER mark_comment_reply_reopens
+  AFTER INSERT ON public.mark_comments
+  FOR EACH ROW
+  WHEN (NEW.thread_id IS NOT NULL AND NEW.carried_from IS NULL)
+  EXECUTE FUNCTION public.mark_comment_reply_reopens();

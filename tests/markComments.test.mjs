@@ -208,6 +208,8 @@ test('resolve (KAL-415): migration, list read and panel wiring', () => {
   assert.match(sql, /GRANT EXECUTE ON FUNCTION public\.set_mark_comment_resolved\(uuid, boolean\) TO authenticated;/);
   // A new version keeps the resolved mark with the thread.
   assert.match(sql, /c\.pin_number, c\.resolved_at, c\.resolved_by/);
+  // A reply reopens a resolved thread, but a copy onto a new version does not.
+  assert.match(sql, /CREATE TRIGGER mark_comment_reply_reopens[\s\S]*WHEN \(NEW\.thread_id IS NOT NULL AND NEW\.carried_from IS NULL\)/);
 
   const service = readFileSync(new URL('../src/services/markComments.js', import.meta.url), 'utf8');
   assert.match(service, /pin_number, resolved_at, resolved_by'\)/);

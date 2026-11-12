@@ -310,6 +310,8 @@ export default function CommentsPanel({
   useEffect(() => { setView('open'); }, [documentId]);
   const shown = view === 'resolved' ? lists.resolved : lists.open;
   const [draft, setDraft] = useState(null); // { markId, pageNumber }
+  // A new thread is open, so starting one shows the Open list, where it lands.
+  useEffect(() => { if (draft) setView('open'); }, [draft]);
   const [replyingTo, setReplyingTo] = useState(null);
   const [editing, setEditing] = useState(null);
   const [busy, setBusy] = useState(false);

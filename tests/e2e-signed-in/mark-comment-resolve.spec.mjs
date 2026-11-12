@@ -107,6 +107,28 @@ test('comments: resolve a thread, find it under Resolved, reopen it, and Undo', 
     // It is marked for a moment, then the mark clears (the list flip must not
     // leave it marked for good).
     await expect(linked).not.toHaveClass(/is-highlighted/, { timeout: 8_000 });
+
+    // A reply to a resolved thread reopens it (from anywhere, here the API).
+    const panelNow = page.getByTestId('comments-panel');
+    await must('reply to resolved', owner.rpc('add_mark_comment', { p_document_id: docId, p_page_number: 1, p_body: 'Not fixed after all', p_thread_id: second.id }));
+    row = await must('reopened by reply', admin.from('mark_comments').select('resolved_at, resolved_by').eq('id', second.id).single());
+    expect(row).toEqual({ resolved_at: null, resolved_by: null });
+    await expect(panelNow.locator('[data-comment-filter="resolved"]')).toContainText('0', { timeout: 20_000 });
+
+    // Right-click on a thread's first comment offers Resolve too.
+    await panelNow.locator('[data-comment-filter="open"]').click();
+    await panelNow.locator(`[data-comment-id="${first.id}"] [data-comment-body]`).click({ button: 'right' });
+    await page.getByRole('menu', { name: 'List item actions' }).getByRole('menuitem', { name: 'Resolve' }).click();
+    await expect(panelNow.locator(`[data-comment-thread="${first.id}"]`)).toHaveCount(0);
+
+    // Starting a new thread from the Resolved list lands it in Open, in view.
+    await panelNow.locator('[data-comment-filter="resolved"]').click();
+    await page.locator('[data-comment-new]').filter({ visible: true }).first().click();
+    const box = panelNow.locator('[data-comment-draft] [data-comment-input]');
+    await box.fill('Fresh page note');
+    await page.keyboard.press('Enter');
+    await expect(panelNow.locator('[data-comment-filter="open"]')).toHaveAttribute('aria-pressed', 'true');
+    await expect(panelNow.locator('[data-comment-thread]').filter({ hasText: 'Fresh page note' })).toBeVisible();
   } finally {
     await admin.from('documents').delete().eq('id', docId);
   }
