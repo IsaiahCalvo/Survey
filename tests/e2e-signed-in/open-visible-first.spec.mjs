@@ -224,3 +224,53 @@ test('a phone opening a set cold builds the page on screen first, then the pages
     await seeded.remove();
   }
 });
+
+// Bugbot, 2026-11-12: while the open waits for the first pages to show (up to
+// 10 s), a scroll must still mount the pages it brings on screen at once; only
+// the pages around them wait.
+test('scrolling while the open still waits mounts the pages brought on screen at once', async ({ page, context, browser, baseURL }) => {
+  test.setTimeout(240_000);
+  const seeded = await seedDocument();
+  try {
+    await seedMarks(seeded.id);
+    await signIn(page, E2E_ACCOUNTS.owner);
+    const storageState = await context.storageState();
+    const phone = await browser.newContext({ baseURL, storageState, viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+    try {
+      await phone.route((url) => !['data:', 'blob:'].includes(url.protocol) && !['127.0.0.1', 'localhost'].includes(url.hostname), (route) => route.abort('blockedbyclient'));
+      await phone.addInitScript(() => { localStorage.setItem('survey.flag.open-visible-first', '1'); });
+      const p = await phone.newPage();
+      const cdp = await phone.newCDPSession(p);
+      await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+      await p.goto('/', { waitUntil: 'domcontentloaded' });
+      const row = p.getByText(seeded.name, { exact: true }).filter({ visible: true }).first();
+      await expect(row).toBeVisible({ timeout: 60_000 });
+      await row.tap();
+      const open = p.getByRole('button', { name: 'Open file' });
+      if (await open.isVisible().catch(() => false)) await open.tap();
+
+      // The moment page 1 mounts (well before it shows), jump to sheet 7.
+      await p.waitForFunction(() => document.querySelector('.survey-pdfjs-page-div[data-page-number="1"][data-page-mounted="true"]'), null, { timeout: 90_000, polling: 'raf' });
+      const target = 7;
+      const shownAtJump = await p.evaluate((n) => {
+        const pageDiv = document.querySelector(`.survey-pdfjs-page-div[data-page-number="${n}"]`);
+        const scroller = pageDiv.closest('[data-pdfjs-scroller], .survey-pdfjs-scroller') || pageDiv.parentElement.parentElement;
+        scroller.scrollTop += pageDiv.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+        window.__jumpAt = performance.now();
+        return !!document.querySelector('.survey-pdfjs-page-div[data-page-number="1"][data-raster-shown]');
+      }, target);
+      const waited = await p.evaluate((n) => new Promise((resolve) => {
+        const tick = () => {
+          if (document.querySelector(`.survey-pdfjs-page-div[data-page-number="${n}"][data-page-mounted="true"]`)) resolve(performance.now() - window.__jumpAt);
+          else requestAnimationFrame(tick);
+        };
+        tick();
+      }), target);
+      expect(waited, `sheet ${target} mounted ${Math.round(waited)} ms after the jump (page 1 shown at the jump: ${shownAtJump})`).toBeLessThan(2500);
+    } finally {
+      await phone.close();
+    }
+  } finally {
+    await seeded.remove();
+  }
+});
