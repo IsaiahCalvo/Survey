@@ -113,9 +113,26 @@ async function openFirstSheet(page, layout, seed) {
   await press(layout, visible(page.locator('[data-open-all-sheets]')));
   const bar = visible(page.locator('[data-sheet-set-bar]'));
   await expect(bar.locator('[data-sheet-count]')).toHaveText('1 / 2', { timeout: 60_000 });
-  await press(layout, bar.locator('[data-sheet-view="single"]'));
+  // A phone folds the views into one View mode menu, as Drawboard's.
+  if (layout.phone) {
+    await press(layout, bar.locator('[data-sheet-view-menu]'));
+    await press(layout, bar.locator('[data-sheet-view-menu-list] [data-sheet-view="single"]'));
+  } else {
+    await press(layout, bar.locator('[data-sheet-view="single"]'));
+  }
   await expect(visible(page.locator('.survey-pdfjs-page-div[data-page-number="1"]'))).toBeVisible({ timeout: 60_000 });
   return bar;
+}
+
+// Next sheet: the bar's arrow, or on a phone (no arrows there, as
+// Drawboard's) the second row of the sheet picker.
+async function nextSheet(layout, bar) {
+  if (!layout.phone) {
+    await press(layout, bar.locator('[data-sheet-step="next"]'));
+    return;
+  }
+  await press(layout, bar.locator('[data-sheet-picker-button]'));
+  await press(layout, bar.locator('[data-sheet-picker]').getByRole('option').nth(1));
 }
 
 // The people list: the desktop footer's faces, or the phone's Active users.
@@ -195,7 +212,7 @@ for (const layout of LAYOUTS) {
         await expect(frameA.locator('[data-spotlight-count]')).toHaveText('1 following', { timeout: 20_000 });
 
         // 5. The owner opens the next sheet; the editor goes with them.
-        await press(layout, barA.locator('[data-sheet-step="next"]'));
+        await nextSheet(layout, barA);
         await expect(barA.locator('[data-sheet-count]')).toHaveText('2 / 2');
         await expect(barB.locator('[data-sheet-count]')).toHaveText('2 / 2', { timeout: 30_000 });
         await expect(b.page.locator('[data-spotlight-frame="following"]')).toBeVisible({ timeout: 30_000 });
