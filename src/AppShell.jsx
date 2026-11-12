@@ -17,6 +17,7 @@ import CounterSeriesMenu, { counterSeriesMenuWidth } from './components/CounterS
 import PageGridToggle, { PageGridGlyph } from './components/PageGridToggle';
 import DarkPagesToggle, { DarkPagesGlyph } from './components/DarkPagesToggle';
 import DocumentVersionsButton, { DocumentVersionsDialogs, useDocumentVersions } from './components/DocumentVersionsButton.jsx';
+import { DOCUMENT_VERSIONS_CHANGED_EVENT } from './services/documentVersionService.js';
 import DriveSyncButton, { DriveSyncDialogs } from './components/DriveSyncButton.jsx';
 import { useDriveSyncBack } from './hooks/useDriveSyncBack.js';
 import OlderVersionBar from './components/OlderVersionBar.jsx';
@@ -2594,6 +2595,22 @@ export default function App({ devPreviewReturnTab = null }) {
     setSupersededDocIds((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
   }, []);
   const documentVersions = useDocumentVersions(documentVersionsEnabled ? activeTab?.file?.id || null : null, handleDocumentSelect, markDocSuperseded);
+  // Delete one version (Nightly 'version-delete'): the copy that is current
+  // again after the latest is deleted is no longer read-only.
+  useEffect(() => {
+    const onChanged = (e) => {
+      const id = e?.detail?.removed?.current;
+      if (!id) return;
+      setSupersededDocIds((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    };
+    window.addEventListener(DOCUMENT_VERSIONS_CHANGED_EVENT, onChanged);
+    return () => window.removeEventListener(DOCUMENT_VERSIONS_CHANGED_EVENT, onChanged);
+  }, []);
   // An older version opens read-only, with a bar to the current one.
   const olderVersionOpen = documentVersions.open && !documentVersions.open.isCurrent ? documentVersions.open : null;
   const currentVersion = documentVersions.versions.find((v) => v.isCurrent) || null;

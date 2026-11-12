@@ -27,7 +27,7 @@ const PdfToolsDialog = preloadedComponent(() => import('./components/PdfToolsDia
 import { resolveHubInitialLoading } from './home/hubInitialLoadingState.js';
 import { retryCompensatingCleanup, runCompensatingBatch } from './home/compensatingBatch.js';
 import { readPdfPageCount, mapUploadsBounded } from './home/pdfUploadWork.js';
-import { supersedeDocument } from './services/documentVersionService.js';
+import { DOCUMENT_VERSIONS_CHANGED_EVENT, supersedeDocument } from './services/documentVersionService.js';
 import { isFeatureOn } from './featureFlags.js';
 import { OPEN_FILE_EVENT, takeOpenedFiles } from './mobile/nativeOpenFile.js';
 import { PHOTO_ACCEPT, isPhotoFile, photoToPdfFile, photosAsPdfs } from './home/photoToPdf.js';
@@ -340,6 +340,13 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     deleteDocument: deleteSupabaseDocument,
     refetch: refetchDocuments
   } = useDocuments(selectedProjectId, { listCache: true });
+  // Delete one version (Nightly 'version-delete') changes which copy is
+  // current: the lists show the new current copy at once.
+  useEffect(() => {
+    const onChanged = (e) => { if (e?.detail?.removed || e?.detail?.restored) refetchDocuments(); };
+    window.addEventListener(DOCUMENT_VERSIONS_CHANGED_EVENT, onChanged);
+    return () => window.removeEventListener(DOCUMENT_VERSIONS_CHANGED_EVENT, onChanged);
+  }, [refetchDocuments]);
 
   // Fetch all documents for file count display in project list
   const {

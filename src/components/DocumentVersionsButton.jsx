@@ -7,7 +7,10 @@
 // modal layer, like the viewer's other dialogs.
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../supabaseClient';
-import { DOCUMENT_VERSIONS_CHANGED_EVENT, listDocumentVersions } from '../services/documentVersionService.js';
+import {
+  DOCUMENT_VERSIONS_CHANGED_EVENT, listDocumentVersions, removeDocumentVersion, restoreDocumentVersion, versionDeletedText,
+} from '../services/documentVersionService.js';
+import { isFeatureOn } from '../featureFlags.js';
 import { showToast } from '../utils/toast';
 import BodyPortal from './BodyPortal';
 
@@ -32,6 +35,10 @@ export function useDocumentVersions(documentId, onOpenVersion, onSuperseded = nu
   const [versions, setVersions] = useState([]);
   const [listOpen, setListOpen] = useState(false);
   const [comparing, setComparing] = useState(null); // { older, newer }
+  // Delete one version (Nightly, 'version-delete'; Drawboard DL-28).
+  const [deleteOn] = useState(() => isFeatureOn('version-delete'));
+  const openIdRef = useRef(documentId);
+  openIdRef.current = documentId;
 
   useEffect(() => {
     setVersions([]);
@@ -95,6 +102,40 @@ export function useDocumentVersions(documentId, onOpenVersion, onSuperseded = nu
     }, row.file_path);
   }, [onOpenVersion]);
 
+  // The version goes to the Archive and the chain closes over the gap. When
+  // it was the open copy, the copy that takes its place opens. Undo puts it
+  // back (and reopens it if its stand-in is still the open copy).
+  const deleteVersion = useCallback(async (version) => {
+    const wasOpen = version.id === openIdRef.current;
+    let receipt;
+    try {
+      receipt = await removeDocumentVersion(supabase, version.id);
+    } catch (err) {
+      showToast(err?.message || 'That version couldn’t be deleted.');
+      return;
+    }
+    const before = versions;
+    const standIn = receipt.current || receipt.next || receipt.previous[receipt.previous.length - 1] || null;
+    if (wasOpen && standIn) await openVersion({ id: standIn });
+    else listDocumentVersions(supabase, openIdRef.current).then(setVersions).catch(() => {});
+    showToast(versionDeletedText(before, receipt), 'success', {
+      duration: 8000,
+      action: {
+        label: 'Undo',
+        onClick: async () => {
+          try {
+            await restoreDocumentVersion(supabase, receipt);
+          } catch (err) {
+            showToast(err?.message || 'That version couldn’t be put back.');
+            return;
+          }
+          if (wasOpen && openIdRef.current === standIn) await openVersion({ id: receipt.documentId });
+          else if (openIdRef.current) listDocumentVersions(supabase, openIdRef.current).then(setVersions).catch(() => {});
+        },
+      },
+    });
+  }, [openVersion, versions]);
+
   const compareWith = useCallback((version) => {
     if (!open) return;
     const [older, newer] = version.versionNumber < open.versionNumber ? [version, open] : [open, version];
@@ -114,6 +155,7 @@ export function useDocumentVersions(documentId, onOpenVersion, onSuperseded = nu
     closeCompare: () => setComparing(null),
     openVersion,
     compareWith,
+    deleteVersion: deleteOn ? deleteVersion : null,
   };
 }
 
@@ -146,6 +188,7 @@ export function DocumentVersionsDialogs({ state }) {
             openId={state.documentId}
             onOpen={state.openVersion}
             onCompare={state.compareWith}
+            onDelete={state.deleteVersion}
             onClose={state.closeList}
           />
         )}

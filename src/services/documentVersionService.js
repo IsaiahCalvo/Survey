@@ -62,3 +62,71 @@ export function previousVersion(versions, documentId) {
   const index = (versions || []).findIndex((v) => v.id === documentId);
   return index > 0 ? versions[index - 1] : null;
 }
+
+// Delete one version (Nightly, flag 'version-delete'; migration
+// 20261112140000_version_delete.sql). The version goes to the Archive and
+// the chain closes over the gap; the receipt lets Undo put it back.
+export const REMOVE_DOCUMENT_VERSION_RPC = 'remove_document_version';
+export const RESTORE_DOCUMENT_VERSION_RPC = 'restore_document_version';
+
+function versionsChanged(detail) {
+  try {
+    globalThis.dispatchEvent?.(new CustomEvent(DOCUMENT_VERSIONS_CHANGED_EVENT, { detail }));
+  } catch {
+    // No DOM events here (tests).
+  }
+}
+
+/** The server's words for the person, else a plain fallback. */
+export function versionDeleteErrorText(error) {
+  if (String(error?.code || '') === '42501') return 'Only the uploader or the project owner can delete this version.';
+  const text = String(error?.message || '');
+  if (/only version|already deleted|changed since/i.test(text)) return text;
+  return 'That version couldn’t be deleted. Check your connection and try again.';
+}
+
+/**
+ * Take one version out of its chain. Resolves to the receipt
+ * { documentId, previous: [ids], next: id | null, current: id | null }:
+ * `current` is the copy that is current again when the latest was removed.
+ */
+export async function removeDocumentVersion(client, documentId) {
+  const { data, error } = await client.rpc(REMOVE_DOCUMENT_VERSION_RPC, { p_document_id: documentId });
+  if (error) {
+    const err = new Error(versionDeleteErrorText(error));
+    err.code = error.code;
+    throw err;
+  }
+  const receipt = {
+    documentId,
+    previous: Array.isArray(data?.previous) ? data.previous : [],
+    next: data?.next || null,
+    current: data?.current || null,
+  };
+  versionsChanged({ oldDocumentId: documentId, newDocumentId: receipt.current || receipt.next || receipt.previous[0] || null, removed: receipt });
+  return receipt;
+}
+
+/** Undo: put the version back where the receipt says it was. */
+export async function restoreDocumentVersion(client, receipt) {
+  const { error } = await client.rpc(RESTORE_DOCUMENT_VERSION_RPC, {
+    p_document_id: receipt.documentId,
+    p_previous: receipt.previous,
+    p_next: receipt.next,
+  });
+  if (error) {
+    const err = new Error(versionDeleteErrorText(error));
+    err.code = error.code;
+    throw err;
+  }
+  versionsChanged({ oldDocumentId: receipt.current || receipt.previous[0] || null, newDocumentId: receipt.documentId, restored: receipt });
+}
+
+/** The toast after a delete: "Deleted v3. v2 is current again." */
+export function versionDeletedText(versions, receipt) {
+  const number = (id) => (versions || []).find((v) => v.id === id)?.versionNumber;
+  const gone = number(receipt?.documentId);
+  const back = receipt?.current ? number(receipt.current) : null;
+  const head = gone ? `Deleted v${gone}.` : 'Deleted that version.';
+  return back ? `${head} v${back} is current again.` : head;
+}
