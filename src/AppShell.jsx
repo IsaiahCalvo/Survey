@@ -17,7 +17,7 @@ import CounterSeriesMenu, { counterSeriesMenuWidth } from './components/CounterS
 import PageGridToggle, { PageGridGlyph } from './components/PageGridToggle';
 import DarkPagesToggle, { DarkPagesGlyph } from './components/DarkPagesToggle';
 import DocumentVersionsButton, { DocumentVersionsDialogs, useDocumentVersions } from './components/DocumentVersionsButton.jsx';
-import { DOCUMENT_VERSIONS_CHANGED_EVENT } from './services/documentVersionService.js';
+import { DOCUMENT_VERSIONS_CHANGED_EVENT, chainLinksAfter, isFileSuperseded } from './services/documentVersionService.js';
 import DriveSyncButton, { DriveSyncDialogs } from './components/DriveSyncButton.jsx';
 import { useDriveSyncBack } from './hooks/useDriveSyncBack.js';
 import OlderVersionBar from './components/OlderVersionBar.jsx';
@@ -2596,9 +2596,15 @@ export default function App({ devPreviewReturnTab = null }) {
   }, []);
   const documentVersions = useDocumentVersions(documentVersionsEnabled ? activeTab?.file?.id || null : null, handleDocumentSelect, markDocSuperseded);
   // Delete one version (Nightly 'version-delete'): the copy that is current
-  // again after the latest is deleted is no longer read-only.
+  // again after the latest is deleted is no longer read-only, and Undo makes
+  // it read-only again. Open tabs keep the superseded_by they were opened
+  // with, so the new links override it.
+  const [versionChainLinks, setVersionChainLinks] = useState(() => ({}));
+  const fileSuperseded = (file) => isFileSuperseded(file, supersededDocIds, versionChainLinks);
   useEffect(() => {
     const onChanged = (e) => {
+      const links = chainLinksAfter(e?.detail);
+      if (Object.keys(links).length) setVersionChainLinks((prev) => ({ ...prev, ...links }));
       const id = e?.detail?.removed?.current;
       if (!id) return;
       setSupersededDocIds((prev) => {
@@ -5349,7 +5355,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       documentId={tab.file?.id || null}
                       viewerUserId={user?.id || null}
                       isActive={isVisible}
-                      readOnlyWithoutLock={Boolean(tab.file?.superseded_by) || supersededDocIds.has(tab.file?.id) || (tab.id === activeTabId && Boolean(olderVersionOpen))}
+                      readOnlyWithoutLock={fileSuperseded(tab.file) || (tab.id === activeTabId && Boolean(olderVersionOpen))}
                       onLockStateChange={(isLocked) => {
                         setDocumentLockedByTab((current) => (
                           current[tab.id] === isLocked
@@ -6150,7 +6156,7 @@ export default function App({ devPreviewReturnTab = null }) {
       )}
       <DocumentVersionsDialogs state={documentVersions} />
       <DriveSyncDialogs state={driveSync} cardOpen={driveSyncCardOpen} onCloseCard={() => setDriveSyncCardOpen(false)} />
-      {isViewerVisible && (olderVersionOpen || activeTab?.file?.superseded_by || supersededDocIds.has(activeTab?.file?.id)) && (
+      {isViewerVisible && (olderVersionOpen || fileSuperseded(activeTab?.file)) && (
         <OlderVersionBar
           versionNumber={olderVersionOpen?.versionNumber || null}
           onOpenCurrent={currentVersion ? () => documentVersions.openVersion(currentVersion) : null}

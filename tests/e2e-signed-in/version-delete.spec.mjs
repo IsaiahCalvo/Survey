@@ -95,6 +95,7 @@ for (const [i, layout] of LAYOUTS.entries()) {
       await must('v1 -> v2', api.rpc('supersede_document', { p_old_document_id: v1, p_new_document_id: v2 }));
       await must('v2 -> v3', api.rpc('supersede_document', { p_old_document_id: v2, p_new_document_id: v3 }));
       const chain = async () => (await must('versions', api.rpc('document_versions', { p_document_id: v2 }))).map((v) => [v.id, v.version_number, v.is_current]);
+      const extra = [];
       const row = async (id) => must('row', admin.from('documents').select('superseded_by, user_archived_at').eq('id', id).single());
 
       try {
@@ -130,6 +131,20 @@ for (const [i, layout] of LAYOUTS.entries()) {
         // v2 takes marks again: no older-version bar.
         await expect(page.locator('[data-older-version-bar]').filter({ visible: true })).toHaveCount(0, { timeout: 20_000 });
         await shot(page, layout, '2-deleted');
+        if (i === 0) {
+          // Straight calls, as the functions ship with the flag off: an
+          // upload in flight can't make the deleted copy a version again, and
+          // Undo can't reach a file the caller can't edit.
+          const late = await addCopy(admin, user.id, name, `VD late ${i}`);
+          extra.push(late);
+          expect((await api.rpc('supersede_document', { p_old_document_id: v3, p_new_document_id: late })).error?.message).toContain('Only current documents');
+          const { data: { user: other } } = await stranger.auth.getUser();
+          const foreign = await addCopy(admin, other.id, `VD foreign ${RUN}.pdf`, `VD foreign ${i}`);
+          extra.push(foreign);
+          expect((await api.rpc('restore_document_version', { p_document_id: v3, p_previous: [foreign], p_next: null })).error?.message).toContain('The versions changed since');
+          expect((await row(foreign)).superseded_by).toBeNull();
+          expect((await row(v3)).user_archived_at).not.toBeNull();
+        }
 
         // 2. Undo: v3 is back as the latest.
         // The toast's Undo (the viewer's own Undo button is another one).
@@ -149,8 +164,8 @@ for (const [i, layout] of LAYOUTS.entries()) {
         expect(gone.user_archived_at).not.toBeNull();
       } finally {
         if (!process.env.KEEP) {
-          const unlink = await admin.from('documents').update({ superseded_by: null }).in('id', [v1, v2, v3]);
-          const del = await admin.from('documents').delete().in('id', [v1, v2, v3]);
+          const unlink = await admin.from('documents').update({ superseded_by: null }).in('id', [v1, v2, v3, ...extra]);
+          const del = await admin.from('documents').delete().in('id', [v1, v2, v3, ...extra]);
           if (unlink.error || del.error) console.warn('[version-delete] cleanup', unlink.error?.message, del.error?.message);
         }
       }

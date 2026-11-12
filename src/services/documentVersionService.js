@@ -130,3 +130,32 @@ export function versionDeletedText(versions, receipt) {
   const head = gone ? `Deleted v${gone}.` : 'Deleted that version.';
   return back ? `${head} v${back} is current again.` : head;
 }
+
+/**
+ * Where each copy points after a delete or its Undo, from the changed-event
+ * detail: { [documentId]: supersededBy | null }. An open tab keeps the
+ * superseded_by its file was opened with, so the shell reads these first.
+ */
+export function chainLinksAfter(detail) {
+  const links = {};
+  const removed = detail?.removed;
+  const restored = detail?.restored;
+  if (removed?.documentId) {
+    for (const id of removed.previous || []) links[id] = removed.next || null;
+    links[removed.documentId] = null;
+  }
+  if (restored?.documentId) {
+    for (const id of restored.previous || []) links[id] = restored.documentId;
+    links[restored.documentId] = restored.next || null;
+  }
+  return links;
+}
+
+/** A newer copy replaced this file: read-only with the older-version bar. */
+export function isFileSuperseded(file, supersededIds, links) {
+  const id = file?.id;
+  if (!id) return false;
+  if (supersededIds?.has?.(id)) return true;
+  if (links && Object.prototype.hasOwnProperty.call(links, id)) return Boolean(links[id]);
+  return Boolean(file.superseded_by);
+}
