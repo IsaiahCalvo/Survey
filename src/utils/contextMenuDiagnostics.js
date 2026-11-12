@@ -15,6 +15,7 @@
 import { lookup as lookupPalHandler, listRegistered } from './contextMenuBridge.js';
 import { resolveAnnotationAt } from './annotationHitTest.js';
 import { selectionUsesPdfTextLayer } from './pdfNativeTextInteraction.js';
+import { isTypingTarget } from './listContextMenu.js';
 
 /**
  * w56 (live two-user test 2026-09-28): right-clicking a mark that is PART of
@@ -176,6 +177,14 @@ function diag(line) {
         e.preventDefault();
         e.stopPropagation();
       }
+      return;
+    }
+
+    // Typing in a text box (a text mark or callout being edited, a field in
+    // a panel over the page): the right-click is for its text menu and its
+    // spelling fixes (owner 2026-11-12), not the mark's or the page's menu.
+    if (isTypingTarget(e)) {
+      diag('[CTXDIAG] skipped — typing in a text box');
       return;
     }
 

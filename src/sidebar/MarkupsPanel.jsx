@@ -17,6 +17,9 @@ import './MarkupsPanel.css';
 import { supabase } from '../supabaseClient';
 import { useTooltip } from '../components/Tooltip';
 import { showToast } from '../utils/toast';
+import ListItemContextMenu from '../components/ListItemContextMenu.jsx';
+import { listMenuPointFrom } from '../utils/listContextMenu.js';
+import { copyText } from '../utils/appContextMenuItems.js';
 import { listCommentPeople } from '../services/markComments.js';
 import {
   authorLabel,
@@ -50,6 +53,8 @@ export default function MarkupsPanel({
   const [measuresOnly, setMeasuresOnly] = useState(false);
   const [closed, setClosed] = useState(() => new Set());
   const [people, setPeople] = useState([]);
+  // Right-click on a row: its own actions, never the browser's menu.
+  const [rowMenu, setRowMenu] = useState(null);
 
   // Names for the people on the document (best effort; ids still group).
   useEffect(() => {
@@ -250,6 +255,10 @@ export default function MarkupsPanel({
                   className="markups-panel__row"
                   data-markup-row={row.id}
                   onClick={() => { onRequestSheetClose?.(); onOpenMark?.(row); }}
+                  onContextMenu={(event) => {
+                    const point = listMenuPointFrom(event);
+                    if (point) setRowMenu({ row, ...point });
+                  }}
                 >
                   <span className="markups-panel__dot" style={{ background: row.color || 'var(--text-3)' }} aria-hidden="true" />
                   <span className="markups-panel__main">
@@ -271,6 +280,24 @@ export default function MarkupsPanel({
           );
         })}
       </div>
+      {rowMenu && (
+        <ListItemContextMenu
+          point={rowMenu}
+          onClose={() => setRowMenu(null)}
+          items={[
+            { label: 'Go to mark', icon: 'arrowRight', onClick: () => { onRequestSheetClose?.(); onOpenMark?.(rowMenu.row); } },
+            (rowMenu.row.text || rowMenu.row.measure?.text) && {
+              label: 'Copy text',
+              icon: 'copy',
+              onClick: () => {
+                const { text, measure } = rowMenu.row;
+                const value = measure?.text && !String(text || '').includes(measure.text) ? [measure.text, text].filter(Boolean).join(' ') : (text || measure?.text);
+                copyText(value).then((ok) => { if (ok) showToast('Copied', 'success'); });
+              },
+            },
+          ]}
+        />
+      )}
     </div>
   );
 }
