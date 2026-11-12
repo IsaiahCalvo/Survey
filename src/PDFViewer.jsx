@@ -3275,6 +3275,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     toolRequestSeqRef.current += 1;
     setSelectionMode(next.selectionMode);
     setActiveTool(next.activeTool);
+    setTextHighlightMode(false);
   }, []);
   const activeToolRef = useRef('pan');
   // [InteractionDiag] last observed active tool, used to log real transitions.
@@ -3541,8 +3542,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // decides whether the selection survives it. { tool, source } of the latest
   // request; read once by the tool-switch effect below.
   const toolSwitchRequestRef = useRef(null);
-  const setActiveToolLogged = useCallback((next, { source } = {}) => {
+  const setActiveToolLogged = useCallback((next, { source, keepTextHighlight } = {}) => {
     toolRequestSeqRef.current += 1;
+    // Any other tool press (the Select button, the phone's Text segment, the
+    // page menu) ends Highlight text, even when it lands on 'text-select'.
+    if (!keepTextHighlight) setTextHighlightMode(false);
     toolSwitchRequestRef.current = source && typeof next === 'string' ? { tool: next, source } : null;
     try {
       const requested = typeof next === 'function' ? '(updater-fn)' : String(next);
@@ -27659,6 +27663,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       zoomMenuRef,
       pageInputRef,
       activeTool,
+      // Highlight text rides 'text-select'; the Select button stays unpressed.
+      textHighlightMode: textHighlightToolEnabled && textHighlightMode,
       selectionMode,
       setSelectionMode,
       lassoTouchOperation,
@@ -27887,6 +27893,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     zoomMenuRef,
     pageInputRef,
     activeTool,
+    textHighlightMode,
+    textHighlightToolEnabled,
     measureMode,
     measureScaleDialog,
     measureScaleMeta,
@@ -41521,7 +41529,7 @@ ${pageBlocks}
                       if (stampPickerOpen) setStampPickerOpen(false);
                       if (signatureCardOpen) setSignatureCardOpen(false);
                       const next = !(textHighlightMode && activeTool === 'text-select');
-                      if (next) setActiveToolLogged('text-select', { source: 'toolbar' });
+                      if (next) setActiveToolLogged('text-select', { source: 'toolbar', keepTextHighlight: true });
                       setTextHighlightMode(next);
                       return;
                     }

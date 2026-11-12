@@ -31,3 +31,13 @@ test('a release on the selection bar or other chrome is not the end of a drag', 
   assert.equal(releasedOnChrome({ target: { nodeType: 3, parentElement: { closest: () => ({}) } } }), true);
   assert.equal(releasedOnChrome(null), false);
 });
+
+test('any other tool press, Select text included, ends Highlight text', () => {
+  const viewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
+  const shell = readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
+  assert.match(viewer, /setActiveToolLogged = useCallback\(\(next, \{ source, keepTextHighlight \} = \{\}\) => \{[\s\S]{0,300}if \(!keepTextHighlight\) setTextHighlightMode\(false\);/);
+  assert.match(viewer, /setActiveToolLogged\('text-select', \{ source: 'toolbar', keepTextHighlight: true \}\)/);
+  assert.match(viewer, /setActiveTool\(next\.activeTool\);\n    setTextHighlightMode\(false\);/);
+  assert.match(viewer, /textHighlightMode: textHighlightToolEnabled && textHighlightMode,/);
+  assert.match(shell, /const isTextSelect = bottomToolbarApi\.activeTool === 'text-select' && !bottomToolbarApi\.textHighlightMode;/);
+});

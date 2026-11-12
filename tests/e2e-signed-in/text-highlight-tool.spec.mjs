@@ -71,6 +71,26 @@ test.describe('desktop', () => {
     }
   });
 
+  test('Select text (Shift+V) ends Highlight text', async ({ page }) => {
+    test.setTimeout(150_000);
+    await page.addInitScript(() => localStorage.setItem('survey.flag.text-highlight-tool', '1'));
+    const sheet = await seedSheet('Highlight text off by Select', { pages: 1 });
+    try {
+      await openSheet(page, sheet);
+      await page.keyboard.press('t');
+      const button = page.getByRole('button', { name: 'Highlight text', exact: true }).filter({ visible: true }).first();
+      await button.click();
+      await expect(page.locator('[data-text-highlight-mode="true"]')).toHaveCount(1);
+      await expect(page.locator('[data-select-tool="true"][aria-pressed="true"]')).toHaveCount(0);
+      await page.mouse.move(5, 450);
+      await page.keyboard.press('Shift+V');
+      await expect(page.locator('[data-text-highlight-mode="true"]')).toHaveCount(0);
+      await expect(page.locator('[data-select-tool="true"][aria-pressed="true"]').filter({ visible: true })).toHaveCount(1);
+    } finally {
+      await sheet.remove();
+    }
+  });
+
   test('flag off: no Highlight text button', async ({ page }) => {
     test.setTimeout(120_000);
     await page.addInitScript(() => localStorage.setItem('survey.flag.text-highlight-tool', '0'));
