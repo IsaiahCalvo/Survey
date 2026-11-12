@@ -691,6 +691,32 @@ test('a PM\'s new row typed over a just-added item that the tech then moved to a
   assert.deepEqual(Object.values(quiet.summary).filter(Boolean), []);
 });
 
+test('a PM\'s new row typed over a just-added item that the tech then renamed keeps both, with no choice to make', async () => {
+  for (const savesLate of [true, false]) {
+    const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
+    if (savesLate) ctx.provider = { ...ctx.provider, savesLate: true };
+    const t0 = Date.parse('2026-11-10T13:00:00Z');
+    await ctx.round({ now: new Date(t0) }); await ctx.round({ now: new Date(t0 + 1000), force: true });
+    ctx.markers.d2 = door('d2', 'D-102', { note: { text: 'tech note' } });
+    await ctx.round({ now: new Date(t0 + 5000) });
+    const row = await ctx.rowOf('d2');
+    const item = await ctx.col('Item'); const notes = await ctx.col('Notes');
+    await ctx.edit([{ row, col: item, value: 'D-120' }, { row, col: notes, value: 'PM typed' }]);
+    ctx.markers.d2 = { ...ctx.markers.d2, name: 'D-103', note: { text: 'tech note 2' } };
+    const r = await ctx.round({ now: new Date(t0 + 30000), force: true });
+    assert.equal(r.summary.conflicts, 0, `no choice (savesLate ${savesLate})`);
+    assert.equal(r.summary.created, 1);
+    assert.deepEqual([ctx.markers.d2.name, ctx.markers.d2.note.text], ['D-103', 'tech note 2'], 'the tech\'s rename and note stand');
+    const pm = Object.values(ctx.markers).find((m) => m.name === 'D-120');
+    assert.equal(pm.note.text, 'PM typed');
+    const rows = (await ctx.sheet()).rows;
+    assert.deepEqual([rows[row][item], rows[row][notes]], ['D-103', 'tech note 2']);
+    assert.deepEqual([rows[row + 1][item], rows[row + 1][notes]], ['D-120', 'PM typed']);
+    const quiet = await ctx.round({ now: new Date(t0 + 40000), force: true });
+    assert.deepEqual(Object.values(quiet.summary).filter(Boolean), []);
+  }
+});
+
 test('a note typed into a just-added item\'s row that the tech then deleted keeps the row, as before', async () => {
   const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
   const t0 = Date.parse('2026-11-10T13:00:00Z');

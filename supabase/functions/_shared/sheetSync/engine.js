@@ -978,11 +978,13 @@ export async function planSheetRound({
         const fresh = rowWatch;
         const typedName = cellText(row[colOfKey.get('item')]).trim();
         if (fresh && !fresh.took && typedName
-          && getFp(sheetSide, 'item') !== getFp(base, 'item') && getFp(appFps, 'item') === getFp(base, 'item')) {
+          && getFp(sheetSide, 'item') !== getFp(base, 'item') && getFp(sheetSide, 'item') !== getFp(appFps, 'item')) {
+          // Every cell the PM typed, even one the tech changed in the app
+          // meanwhile (say a rename): the tech's item keeps the app's values.
           const typedKeys = keys.filter((k) => {
             const column = scope.columns.find((c) => c.key === k);
             return columnIsEditable(column) && colOfKey.has(k) && !errorKeys.has(k)
-              && getFp(sheetSide, k) !== getFp(base, k) && getFp(appFps, k) === getFp(base, k);
+              && getFp(sheetSide, k) !== getFp(base, k);
           });
           const id = newMarkerId();
           const item = {
