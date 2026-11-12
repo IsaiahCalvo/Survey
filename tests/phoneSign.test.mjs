@@ -14,7 +14,7 @@ import {
 } from '../src/signature/phoneSign.js';
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
-const TOKEN = '1b4e28ba-2fa1-41d2-883f-0016d3cca427';
+const SAMPLE_ID = '1b4e28ba-2fa1-41d2-883f-0016d3cca427';
 
 test('phone-sign is a Nightly beta flag with an off-by-default row', () => {
   assert.equal(FEATURE_FLAGS['phone-sign']?.stage, 'beta');
@@ -40,24 +40,24 @@ test('a flood of points is capped; junk is refused', () => {
 
 test('the link: own site on the web, surveytool.app from the apps; only uuids pass', () => {
   const web = { location: { protocol: 'https:', origin: 'https://surveytool-nightly.vercel.app' } };
-  assert.equal(phoneSignUrl(TOKEN, web), `https://surveytool-nightly.vercel.app/sign/${TOKEN}`);
+  assert.equal(phoneSignUrl(SAMPLE_ID, web), `https://surveytool-nightly.vercel.app/sign/${SAMPLE_ID}`);
   const electron = { location: { protocol: 'file:', origin: 'null' }, electronAPI: {} };
-  assert.equal(phoneSignUrl(TOKEN, electron), `https://surveytool.app/sign/${TOKEN}`);
+  assert.equal(phoneSignUrl(SAMPLE_ID, electron), `https://surveytool.app/sign/${SAMPLE_ID}`);
   const capacitor = { location: { protocol: 'https:', origin: 'https://localhost' }, Capacitor: { isNativePlatform: () => true } };
-  assert.equal(phoneSignUrl(TOKEN, capacitor), `https://surveytool.app/sign/${TOKEN}`);
-  assert.equal(phoneSignTokenFromPath(`/sign/${TOKEN}`), TOKEN);
-  assert.equal(phoneSignTokenFromPath(`/sign/${TOKEN.toUpperCase()}/`), TOKEN);
+  assert.equal(phoneSignUrl(SAMPLE_ID, capacitor), `https://surveytool.app/sign/${SAMPLE_ID}`);
+  assert.equal(phoneSignTokenFromPath(`/sign/${SAMPLE_ID}`), SAMPLE_ID);
+  assert.equal(phoneSignTokenFromPath(`/sign/${SAMPLE_ID.toUpperCase()}/`), SAMPLE_ID);
   assert.equal(phoneSignTokenFromPath('/sign/not-a-token'), null);
-  assert.equal(phoneSignTokenFromPath(`/sign/${TOKEN}/more`), null);
+  assert.equal(phoneSignTokenFromPath(`/sign/${SAMPLE_ID}/more`), null);
 });
 
 test('the phone sends through the one-time RPC, never a table write', async () => {
   const calls = [];
   const client = { rpc: async (name, args) => { calls.push([name, args]); return { data: true, error: null }; } };
-  assert.equal(await submitPhoneSignature(TOKEN, [[{ x: 1, y: 2 }]], client), true);
+  assert.equal(await submitPhoneSignature(SAMPLE_ID, [[{ x: 1, y: 2 }]], client), true);
   assert.equal(calls[0][0], 'submit_phone_signature');
-  assert.equal(calls[0][1].p_token, TOKEN);
-  assert.equal(await submitPhoneSignature(TOKEN, [], client), false, 'nothing drawn: nothing sent');
+  assert.equal(calls[0][1].p_token, SAMPLE_ID);
+  assert.equal(await submitPhoneSignature(SAMPLE_ID, [], client), false, 'nothing drawn: nothing sent');
   assert.equal(calls.length, 1);
 });
 
