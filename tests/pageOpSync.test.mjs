@@ -150,7 +150,7 @@ test('the viewer stamps its page changes and moves old-page marks after the relo
   assert.match(src, /reframeMarks\(byPage, made, ops, transformPageState, slices\);\n      sync\.deletedSlices = slices\.size \? slices : null;/);
   // Its own page change, or a run that cannot travel, drops the held slices.
   assert.match(src, /pageOpSync\.deletedSlices = null;/);
-  assert.match(src, /if \(frame && !ops\) sync\.deletedSlices = null;/);
+  assert.match(src, /if \(frame && !ops\) \{ sync\.deletedSlices = null; sync\.deletedMarkerSlices = null; \}/);
   assert.match(src, /if \(draftOpen\) showToast\(/);
 });
 
@@ -357,6 +357,37 @@ test('a Survey Marker placed in the other window before its reload moves with th
 test('the viewer notes Survey Markers placed during another window\'s page change and moves them after the reload', () => {
   const src = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
   assert.equal((src.match(/if \(frame\) \(frame\.madeMarkers \|\|= new Set\(\)\)\.add\(/g) || []).length, 2);
-  assert.match(src, /const markers = reframeSurveyMarkers\(surveyMarkersRef\.current \|\| \{\}, frame\.madeMarkers, ops, transformPageState\);/);
+  assert.match(src, /const markers = reframeSurveyMarkers\(surveyMarkersRef\.current \|\| \{\}, frame\?\.madeMarkers \|\| new Set\(\), ops, transformPageState, markerSlices\);/);
   assert.match(src, /for \(const id of markers\.gone\) delete next\[id\];/);
+  assert.match(src, /for \(const \[id, marker\] of Object\.entries\(markers\.restored\)\) if \(!next\[id\]\) next\[id\] = marker;/);
+  // The markers' slices reset wherever the marks' slices do.
+  assert.equal((src.match(/deletedMarkerSlices = null/g) || []).length, 4);
+});
+
+test('a Survey Marker on a page deleted in one load comes back with that delete\'s Undo in a later load', async () => {
+  const { reframeSurveyMarkers, markersInDeletedSlices, stampableOperation } = await import('../src/utils/pageOpSync.js');
+  const { transformPageState } = await import('../src/utils/pageAnnotationReindex.js');
+  const markers = {
+    mine: { pageNumber: 2, bounds: { x: 10, y: 20, width: 30, height: 40 }, name: 'Door 1' },
+    later: { pageNumber: 3, bounds: { x: 1, y: 1, width: 5, height: 5 } },
+  };
+  const del = stampableOperation({ type: 'delete', page: 2 });
+  const back = stampableOperation({ type: 'restore', afterPage: 1, fromPage: 2, from: { annotationsByPage: {} } });
+  const deleted = new Map();
+  const first = reframeSurveyMarkers(markers, new Set(['mine', 'later']), [del], transformPageState, deleted);
+  assert.deepEqual(first.gone, ['mine']);
+  assert.equal(first.moved.later.pageNumber, 2);
+  assert.deepEqual([...markersInDeletedSlices(deleted)], ['mine']);
+  // The next load carries only the Undo; nothing noted is left on the pages.
+  const now = { later: first.moved.later };
+  const second = reframeSurveyMarkers(now, new Set(), [back], transformPageState, deleted);
+  assert.equal(second.restored.mine.pageNumber, 2);
+  assert.equal(second.restored.mine.name, 'Door 1');
+  assert.deepEqual(second.gone, []);
+  assert.equal(deleted.size, 0);
+  // Slices holding no marker are not kept.
+  const empty = new Map();
+  reframeSurveyMarkers({ later: markers.later }, new Set(['later']), [del], transformPageState, empty);
+  assert.equal(empty.size, 0);
+  assert.equal(reframeSurveyMarkers({}, new Set(), [back], transformPageState, empty), null);
 });

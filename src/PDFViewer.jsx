@@ -15294,7 +15294,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // `writer` names this viewer (not getClientId(), which tabs share).
   const pageOpSyncRef = useRef(null);
   if (!pageOpSyncRef.current) {
-    pageOpSyncRef.current = { on: isFeatureOn(PAGE_OP_SYNC_FLAG), writer: newPdfVersionToken(), ownPending: false, pendingOps: [], pendingBatch: null, remote: IDLE_REMOTE_PDF_STATE, docBeforeReload: null, frame: null, reframe: null, deletedSlices: null };
+    pageOpSyncRef.current = { on: isFeatureOn(PAGE_OP_SYNC_FLAG), writer: newPdfVersionToken(), ownPending: false, pendingOps: [], pendingBatch: null, remote: IDLE_REMOTE_PDF_STATE, docBeforeReload: null, frame: null, reframe: null, deletedSlices: null, deletedMarkerSlices: null };
   }
   pageOpSyncRef.current.pdfFile = pdfFile;
   pageOpSyncRef.current.pdfDoc = pdfDoc;
@@ -15354,6 +15354,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         const carried = stampableOperation(operation);
         // Slices other windows' deletes took are numbered for the old pages.
         pageOpSync.deletedSlices = null;
+        pageOpSync.deletedMarkerSlices = null;
         const before = pageOpSync.ownPending ? pageOpSync.pendingOps : [];
         if (!pageOpSync.ownPending || !pageOpSync.pendingBatch) pageOpSync.pendingBatch = newPdfVersionToken();
         pageOpSync.pendingOps = before && carried ? [...before, carried] : null;
@@ -22412,7 +22413,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     const sync = pageOpSyncRef.current;
     if (!sync.on || !normalAnnotationHydration?.ready || normalAnnotationHydration.documentId !== pdfFile?.id) return undefined;
     // Slices deletes took belong to one file.
-    if (sync.deletedSlicesFor !== pdfFile?.id) { sync.deletedSlices = null; sync.deletedSlicesFor = pdfFile?.id; }
+    if (sync.deletedSlicesFor !== pdfFile?.id) { sync.deletedSlices = null; sync.deletedMarkerSlices = null; sync.deletedSlicesFor = pdfFile?.id; }
     // The reload waits while a finger or button is down, or a polygon is
     // being placed, so work in progress here is not wiped (up to 30 s).
     // Every pointer down counts (a pinch, a pen with a palm), so lifting one
@@ -22494,7 +22495,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     const ops = framePageChanges(frame);
     // A run that could not travel leaves the pages numbered unlike the
     // slices deletes took: a later restore must not put one back.
-    if (frame && !ops) sync.deletedSlices = null;
+    if (frame && !ops) { sync.deletedSlices = null; sync.deletedMarkerSlices = null; }
     if (!ops?.length) return;
     const deleted = sync.deletedSlices;
     // Marks these runs could not move must not be moved by later runs alone.
@@ -22503,18 +22504,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       sync.deletedSlices = null;
       forgetNoted('made');
     };
-    if (frame?.madeMarkers?.size) {
+    if (frame?.madeMarkers?.size || sync.deletedMarkerSlices?.size) {
       try {
-        const markers = reframeSurveyMarkers(surveyMarkersRef.current || {}, frame.madeMarkers, ops, transformPageState);
-        if (markers && (Object.keys(markers.moved).length || markers.gone.length)) {
+        const markerSlices = sync.deletedMarkerSlices || new Map();
+        const markers = reframeSurveyMarkers(surveyMarkersRef.current || {}, frame?.madeMarkers || new Set(), ops, transformPageState, markerSlices);
+        sync.deletedMarkerSlices = markerSlices.size ? markerSlices : null;
+        if (markers) {
           setSurveyMarkers((prev) => {
             const next = { ...prev };
             for (const [id, marker] of Object.entries(markers.moved)) if (next[id]) next[id] = { ...next[id], ...marker };
             for (const id of markers.gone) delete next[id];
+            // Back with the Undo of a delete an earlier load took it with.
+            for (const [id, marker] of Object.entries(markers.restored)) if (!next[id]) next[id] = marker;
             return next;
           });
         }
       } catch (err) {
+        sync.deletedMarkerSlices = null;
         forgetNoted('madeMarkers');
         console.warn('[page-op-sync] could not move Survey Markers placed on the old pages:', err?.message || err);
       }
