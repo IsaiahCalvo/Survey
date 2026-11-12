@@ -34,6 +34,15 @@ export function liveHighlightPaint(color, opacity) {
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
 }
 
+const CHROME = 'button, a, input, textarea, select, [role="toolbar"], [role="menu"], [role="menuitem"], [role="dialog"]';
+
+/** True when a release lands on a control (the selection bar, a menu, a dialog). */
+export function releasedOnChrome(event) {
+  const target = event?.target;
+  const el = target?.nodeType === 1 ? target : target?.parentElement;
+  return Boolean(el?.closest?.(CHROME));
+}
+
 export function useTextHighlightMode({ on, wrapperRef, paint, getSelection, apply }) {
   const latest = useRef({ getSelection, apply });
   latest.current = { getSelection, apply };
@@ -48,6 +57,8 @@ export function useTextHighlightMode({ on, wrapperRef, paint, getSelection, appl
     let frame = 0;
     const onUp = (event) => {
       if (event.button !== 0) return;
+      // A click on the selection bar or other chrome is not the end of a drag.
+      if (releasedOnChrome(event)) return;
       cancelAnimationFrame(frame);
       // Two frames: the viewer reads the finished selection first.
       frame = requestAnimationFrame(() => {

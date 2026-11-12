@@ -418,6 +418,7 @@ import { selectPageMarkup } from './services/thumbnailRender.js';
 import { announceLocalMarkEdit } from './utils/localMarkEdit.js';
 import { marksHidden, setMarksHidden, subscribeMarksHidden } from './utils/marksHidden.js';
 import { isTypingTarget } from './utils/typingTarget.js';
+import { isPasteInPlaceKey, pageNumberAtPoint } from './utils/pasteInPlaceKey.js';
 import { useMarkClipboard } from './utils/sharedMarkClipboard.js';
 // Beta 'mark-library' (Survey Nightly): save marks once, drop them on any page.
 import MarkLibraryPlacementLayer from './markLibrary/MarkLibraryPlacementLayer.jsx';
@@ -3106,7 +3107,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // the ?renderer= URL switch, so the key never flips people into the debug
   // canvas view (Drawboard and most PDF apps use it for paste in place).
   useEffect(() => {
-    if (!import.meta.env.DEV) return undefined;
+    // With Nightly 'paste-in-place-key' on, the key is paste in place, even in dev.
+    if (!import.meta.env.DEV || isFeatureOn('paste-in-place-key')) return undefined;
     const handleRendererToggle = (e) => {
       if (e.ctrlKey && e.shiftKey && e.key === 'V') {
         e.preventDefault();
@@ -4272,6 +4274,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // further down, so the early Copy handlers reach it through this ref.
   const copyFamilySelectionRef = useRef(null);
   const pasteFamilyAtRef = useRef(null);
+  // Nightly 'paste-in-place-key' (Drawboard PDF Pro push 2026-11-12): Ctrl+Shift+V
+  // pastes the marks clipboard at its original spot, like the page menu row.
+  const [pasteInPlaceKeyOn] = useState(() => isFeatureOn('paste-in-place-key'));
+  const pasteFamilyInPlaceRef = useRef(null);
   // UX: shared paste-anchor memory for the "repeat paste at the same spot"
   // rule (Bluebeam/tldraw convention): the FIRST paste lands exactly at the
   // cursor / right-click point; pasting again WITHOUT moving the cursor
@@ -15293,7 +15299,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // `writer` names this viewer (not getClientId(), which tabs share).
   const pageOpSyncRef = useRef(null);
   if (!pageOpSyncRef.current) {
-    pageOpSyncRef.current = { on: isFeatureOn(PAGE_OP_SYNC_FLAG), writer: newPdfVersionToken(), ownPending: false, pendingOps: [], pendingBatch: null, remote: IDLE_REMOTE_PDF_STATE, docBeforeReload: null, frame: null, reframe: null, deletedSlices: null };
+    pageOpSyncRef.current = { on: isFeatureOn(PAGE_OP_SYNC_FLAG), writer: newPdfVersionToken(), ownPending: false, pendingOps: [], pendingBatch: null, remote: IDLE_REMOTE_PDF_STATE, docBeforeReload: null, frame: null, reframe: null, deletedSlices: null, deletedMarkerSlices: null };
   }
   pageOpSyncRef.current.pdfFile = pdfFile;
   pageOpSyncRef.current.pdfDoc = pdfDoc;
@@ -15404,6 +15410,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         const carried = stampableOperation(operation);
         // Slices other windows' deletes took are numbered for the old pages.
         pageOpSync.deletedSlices = null;
+        pageOpSync.deletedMarkerSlices = null;
         const before = pageOpSync.ownPending ? pageOpSync.pendingOps : [];
         if (!pageOpSync.ownPending || !pageOpSync.pendingBatch) pageOpSync.pendingBatch = newPdfVersionToken();
         pageOpSync.pendingOps = before && carried ? [...before, carried] : null;
@@ -22479,7 +22486,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     const sync = pageOpSyncRef.current;
     if (!sync.on || !normalAnnotationHydration?.ready || normalAnnotationHydration.documentId !== pdfFile?.id) return undefined;
     // Slices deletes took belong to one file.
-    if (sync.deletedSlicesFor !== pdfFile?.id) { sync.deletedSlices = null; sync.deletedSlicesFor = pdfFile?.id; }
+    if (sync.deletedSlicesFor !== pdfFile?.id) { sync.deletedSlices = null; sync.deletedMarkerSlices = null; sync.deletedSlicesFor = pdfFile?.id; }
     // The reload waits while a finger or button is down, or a polygon is
     // being placed, so work in progress here is not wiped (up to 30 s).
     // Every pointer down counts (a pinch, a pen with a palm), so lifting one
@@ -22561,7 +22568,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     const ops = framePageChanges(frame);
     // A run that could not travel leaves the pages numbered unlike the
     // slices deletes took: a later restore must not put one back.
-    if (frame && !ops) sync.deletedSlices = null;
+    if (frame && !ops) { sync.deletedSlices = null; sync.deletedMarkerSlices = null; }
     if (!ops?.length) return;
     const deleted = sync.deletedSlices;
     // Marks these runs could not move must not be moved by later runs alone.
@@ -22570,18 +22577,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       sync.deletedSlices = null;
       forgetNoted('made');
     };
-    if (frame?.madeMarkers?.size) {
+    if (frame?.madeMarkers?.size || sync.deletedMarkerSlices?.size) {
       try {
-        const markers = reframeSurveyMarkers(surveyMarkersRef.current || {}, frame.madeMarkers, ops, transformPageState);
-        if (markers && (Object.keys(markers.moved).length || markers.gone.length)) {
+        const markerSlices = sync.deletedMarkerSlices || new Map();
+        const markers = reframeSurveyMarkers(surveyMarkersRef.current || {}, frame?.madeMarkers || new Set(), ops, transformPageState, markerSlices);
+        sync.deletedMarkerSlices = markerSlices.size ? markerSlices : null;
+        if (markers) {
           setSurveyMarkers((prev) => {
             const next = { ...prev };
             for (const [id, marker] of Object.entries(markers.moved)) if (next[id]) next[id] = { ...next[id], ...marker };
             for (const id of markers.gone) delete next[id];
+            // Back with the Undo of a delete an earlier load took it with.
+            for (const [id, marker] of Object.entries(markers.restored)) if (!next[id]) next[id] = marker;
             return next;
           });
         }
       } catch (err) {
+        sync.deletedMarkerSlices = null;
         forgetNoted('madeMarkers');
         console.warn('[page-op-sync] could not move Survey Markers placed on the old pages:', err?.message || err);
       }
@@ -33957,6 +33969,33 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     return done;
   }, [commitFamilyPaste, resolvePasteRepeatCount]);
   pasteFamilyAtRef.current = pasteFamilyAt;
+  pasteFamilyInPlaceRef.current = (pageNumber) => {
+    if (marksHidden()) return false; // a pasted mark would be picked unseen
+    const clip = familyClipboardRef.current;
+    const done = Boolean(clip && commitFamilyPaste(pageNumber, clip, 0, 0));
+    if (done && clip.mode === 'cut') setFamilyClipboard(null);
+    return done;
+  };
+  // Its own listener, armed once: the shared key handler above re-arms when
+  // its inputs change, and a listener re-armed while a key is being handled
+  // never hears that key (a copy or a held Shift re-renders mid-press).
+  useEffect(() => {
+    if (!pasteInPlaceKeyOn) return undefined;
+    const onKey = (e) => {
+      if (!isPasteInPlaceKey(e) || e.defaultPrevented) return;
+      if (isInTabBehind(pdfjsWrapperRef.current)) return;
+      if (isTypingTarget(document.activeElement)) return;
+      if ([...document.querySelectorAll('[role="dialog"][aria-modal="true"]')].some((d) => d.contains(document.activeElement))) return;
+      if (!familyClipboardRef.current || document.body.getAttribute('data-readonly') === 'true') return;
+      const { x, y } = lastPointerPosRef.current;
+      const pageNumber = pageNumberAtPoint(x, y);
+      if (pageNumber == null) return;
+      e.preventDefault();
+      pasteFamilyInPlaceRef.current?.(pageNumber);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [pasteInPlaceKeyOn]);
   copyFamilySelectionRef.current = copyFamilySelection;
 
   // Duplicate (Cmd+D, right-click Duplicate): a copy of the selection 16

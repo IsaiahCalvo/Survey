@@ -21,3 +21,13 @@ test('flag, button and wiring', () => {
   const migration = readFileSync(new URL('../supabase/migrations/20261112093000_text_highlight_tool_flag.sql', import.meta.url), 'utf8');
   assert.match(migration, /'text-highlight-tool', 'off'/);
 });
+
+test('a release on the selection bar or other chrome is not the end of a drag', async () => {
+  const { releasedOnChrome } = await import('../src/hooks/useTextHighlightMode.js');
+  const on = (hit) => ({ target: { nodeType: 1, closest: (sel) => (hit && sel.includes('[role="toolbar"]') ? {} : null) } });
+  assert.equal(releasedOnChrome(on(true)), true);
+  assert.equal(releasedOnChrome(on(false)), false);
+  // A text node inside a button counts through its parent.
+  assert.equal(releasedOnChrome({ target: { nodeType: 3, parentElement: { closest: () => ({}) } } }), true);
+  assert.equal(releasedOnChrome(null), false);
+});

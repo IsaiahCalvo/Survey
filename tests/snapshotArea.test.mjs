@@ -6,6 +6,7 @@ import {
   SNAPSHOT_HANDLES,
   boxFromCorners,
   boxToPixels,
+  dragBox,
   isBigEnough,
   moveBoxEdge,
   renderTargetPx,
@@ -53,4 +54,18 @@ test('flag and wiring', () => {
   assert.match(viewer, /<SnapshotTool[\s\S]{0,80}active=\{activeTool === 'snapshot'\}/);
   const migration = readFileSync(new URL('../supabase/migrations/20261112091000_snapshot_tool_flag.sql', import.meta.url), 'utf8');
   assert.match(migration, /'snapshot-tool', 'off'/);
+});
+
+test('the release point makes the box, not the last rendered move', () => {
+  const start = { x: 0.1, y: 0.1 };
+  assert.deepEqual(dragBox({ mode: 'new', start }, { x: 0.4, y: 0.3 }), boxFromCorners(start, { x: 0.4, y: 0.3 }));
+  const from = { x: 0.2, y: 0.2, w: 0.2, h: 0.2 };
+  assert.deepEqual(dragBox({ mode: 'move', start, from }, { x: 0.15, y: 0.1 }), moveBoxEdge(from, 'move', 0.05, 0));
+  assert.equal(dragBox({ mode: 'se', start, from: null }, { x: 0.5, y: 0.5 }), null);
+  assert.equal(dragBox(null, start), null);
+  // The tool reads the box from the release, never from the snap state.
+  const src = readFileSync(new URL('../src/components/SnapshotTool.jsx', import.meta.url), 'utf8');
+  const onUp = src.slice(src.indexOf('const onUp = '), src.indexOf('const onCancel = '));
+  assert.match(onUp, /const box = dragBox\(drag, at\);/);
+  assert.doesNotMatch(onUp, /snapRef\.current/);
 });

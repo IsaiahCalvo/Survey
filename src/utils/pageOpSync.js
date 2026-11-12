@@ -154,23 +154,47 @@ export function reframeMarks(annotationsByPage, ids, operations, transform, dele
   return changed;
 }
 
+/** The Survey Marker ids that only a later restore in `deleted` can put back. */
+export function markersInDeletedSlices(deleted) {
+  const found = new Set();
+  if (!(deleted instanceof Map)) return found;
+  for (const [page, list] of deleted) {
+    for (const model of list || []) {
+      for (const [id, marker] of Object.entries(model?.surveyMarkers || {})) {
+        if (Number(marker?.pageNumber ?? marker?.pageId ?? marker?.page) === Number(page)) found.add(id);
+      }
+    }
+  }
+  return found;
+}
+
 /**
  * The same for Survey Markers (kept by id, each with its page): the markers
  * `ids` drawn here on the old pages, moved the way the page changes moved
- * every other marker. Returns { moved: { [id]: marker }, gone: [id] } (gone:
- * on a page that was deleted), or null when nothing moves.
+ * every other marker. Returns { moved: { [id]: marker }, gone: [id],
+ * restored: { [id]: marker } } (gone: on a page that was deleted; restored:
+ * back with that delete's Undo), or null when nothing moves. `deleted` is a
+ * Map of its own, kept like reframeMarks' (a delete and its Undo can land in
+ * different loads).
  */
-export function reframeSurveyMarkers(surveyMarkers, ids, operations, transform) {
-  if (!ids || ids.size === 0 || !Array.isArray(operations) || operations.length === 0) return null;
+export function reframeSurveyMarkers(surveyMarkers, ids, operations, transform, deleted = null) {
+  if (!Array.isArray(operations) || operations.length === 0) return null;
+  const held = deleted instanceof Map && deleted.size > 0;
+  if ((!ids || ids.size === 0) && !held) return null;
   const picked = {};
-  for (const id of ids) if (surveyMarkers?.[id]) picked[id] = surveyMarkers[id];
-  if (Object.keys(picked).length === 0) return null;
-  const model = applyPageChanges({ surveyMarkers: picked }, operations, transform);
+  for (const id of ids || []) if (surveyMarkers?.[id]) picked[id] = surveyMarkers[id];
+  if (Object.keys(picked).length === 0 && !held) return null;
+  const beforeDelete = deleted instanceof Map ? deleted : new Map();
+  const model = applyPageChanges({ surveyMarkers: picked }, operations, transform, beforeDelete);
+  for (const [page, list] of beforeDelete) if (!list.length) beforeDelete.delete(page);
+  const kept = [...beforeDelete.values()].reduce((sum, list) => sum + list.length, 0);
+  if (kept > DELETED_SLICES_MAX || markersInDeletedSlices(beforeDelete).size === 0) beforeDelete.clear();
   const after = model.surveyMarkers || {};
-  return {
-    moved: Object.fromEntries(Object.keys(picked).filter((id) => after[id]).map((id) => [id, after[id]])),
-    gone: Object.keys(picked).filter((id) => !after[id]),
-  };
+  const moved = Object.fromEntries(Object.keys(picked).filter((id) => after[id]).map((id) => [id, after[id]]));
+  const gone = Object.keys(picked).filter((id) => !after[id]);
+  const restored = Object.fromEntries(Object.keys(after).filter((id) => !picked[id]).map((id) => [id, after[id]]));
+  if (!Object.keys(moved).length && !gone.length && !Object.keys(restored).length) return null;
+  return { moved, gone, restored };
 }
 
 /** `operations` applied to `start`; `deleted` as in reframeMarks. */
