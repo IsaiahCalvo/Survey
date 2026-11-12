@@ -203,6 +203,16 @@ function diag(line) {
       return;
     }
 
+    // The pinned tools dock floats over the page and owns its right-click (a
+    // pin's Duplicate / Move to start / Unpin menu). Without this the
+    // hit-test below found the page behind it, and a right-click on a pin
+    // opened the page's menu instead (seen 2026-11-12).
+    if (e.target && typeof e.target.closest === 'function'
+        && e.target.closest('[data-pinned-dock-shell], [data-pinned-tools-dock]')) {
+      diag('[CTXDIAG] skipped — inside the pinned tools dock');
+      return;
+    }
+
     // A selected polygon / polyline corner grabber owns its own "Delete
     // point" menu (SVGAnnotationLayer onContextMenu): let the event reach it.
     if (e.target && typeof e.target.closest === 'function'
