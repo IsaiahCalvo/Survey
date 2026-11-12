@@ -352,7 +352,7 @@ test('mobile PDF pinch previews translation, progressively sharpens, and commits
 test('mobile pinch and pan rubber-band past edges and zoom limits, then ease home', () => {
   // The bottom-edge snap: the predicted scroll range must count a gap above
   // every visible page and one below the last, exactly like the layout memo.
-  assert.match(PDFJS_VIEWER_SOURCE, /let height = metrics\.padTop \+ gapPx \+ metrics\.padBottom;\s*dims\.forEach\(\(dim\) => \{\s*if \(dim\.hidden\) return;\s*height \+= dim\.h \* sc \+ gapPx;/);
+  assert.match(PDFJS_VIEWER_SOURCE, /let height = metrics\.padTop \+ gapPx \+ metrics\.padBottom;\s*stackPtRef\.current\.forEach\(\(dim\) => \{\s*if \(dim\.hidden\) return;\s*height \+= dim\.h \* sc \+ gapPx;/);
   // Zoom past the limits shows with resistance; reduced motion clamps hard.
   assert.match(PDFJS_VIEWER_SOURCE, /\? rubberScale\(rawScale, minimumScale, maxScale\)\s*: Math\.max\(minimumScale, Math\.min\(maxScale, rawScale\)\)/);
   assert.match(PDFJS_VIEWER_SOURCE, /const elastic = !prefersReducedMotion\(\);/);

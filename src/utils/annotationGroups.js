@@ -9,8 +9,10 @@
  * Empty / null / undefined / '' all mean "ungrouped".
  *
  * Used by the Group / Ungroup feature wired through:
- *   - Right-click menu items in App.jsx (Group / Ungroup).
- *   - Cmd+G / Cmd+Shift+G keyboard shortcuts in SVGAnnotationLayer.jsx.
+ *   - Right-click menu items in hooks/useAnnotationContextMenu.jsx (Group /
+ *     Ungroup), shown only with the Nightly 'group-marks' flag.
+ *   - Cmd+G / Cmd+Shift+G in SVGAnnotationLayer.jsx: still short-circuited
+ *     (Drawboard has no group key; Ctrl+G is Survey's Next match).
  *   - Auto-expand-on-click in useSVGInteraction.js (clicking any member of
  *     a group selects every member of that group).
  *
@@ -96,4 +98,55 @@ export function applyAnnotationGroupId(pageAnnotations, indices, groupId) {
     }
   }
   return next;
+}
+
+/**
+ * A paste / duplicate / library placement of grouped marks (Nightly
+ * 'group-marks'): the copies form their OWN group, never join the source's
+ * (a click on an original would otherwise pick the copies too). Members
+ * copied together keep one fresh group id between them; a group that comes
+ * across with a single member is no group at all, so that member's id is
+ * dropped. Mutates the given clones (callers pass fresh clones).
+ *
+ * @param {Array} marks     pasted mark objects (group id at data.groupId)
+ * @param {Array} callouts  pasted callout records (group id at groupId)
+ * @param {() => string} [mint]
+ */
+export function remapPastedGroupIds(marks, callouts, mint = generateGroupId) {
+  const markList = Array.isArray(marks) ? marks : [];
+  const calloutList = Array.isArray(callouts) ? callouts : [];
+  const counts = new Map();
+  const count = (gid) => { if (gid) counts.set(gid, (counts.get(gid) || 0) + 1); };
+  markList.forEach((m) => count(getAnnotationGroupId(m)));
+  calloutList.forEach((c) => count(getCalloutGroupId(c)));
+  const fresh = new Map();
+  const next = (gid) => {
+    if (!gid || (counts.get(gid) || 0) < 2) return null;
+    if (!fresh.has(gid)) fresh.set(gid, mint());
+    return fresh.get(gid);
+  };
+  for (const m of markList) {
+    const gid = getAnnotationGroupId(m);
+    if (!gid) continue;
+    const id = next(gid);
+    m.data = { ...m.data };
+    if (id) m.data.groupId = id; else delete m.data.groupId;
+  }
+  for (const c of calloutList) {
+    const gid = getCalloutGroupId(c);
+    if (!gid) continue;
+    const id = next(gid);
+    if (id) c.groupId = id; else delete c.groupId;
+  }
+}
+
+/** Drop a lone pasted mark's group id (it was copied without its group). */
+export function stripGroupId(object) {
+  if (!object || typeof object !== 'object') return object;
+  if (object.data && typeof object.data === 'object' && 'groupId' in object.data) {
+    object.data = { ...object.data };
+    delete object.data.groupId;
+  }
+  if ('groupId' in object) delete object.groupId;
+  return object;
 }

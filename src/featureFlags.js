@@ -500,6 +500,15 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Keys: with nothing picked, Left / Right and Shift + Up / Down turn the page',
     stage: 'beta',
   }),
+  'page-spreads': Object.freeze({
+    label: 'Page fit card: Single / Double / Cover page views (pages side by side, like an open book)',
+    stage: 'beta',
+  }),
+  'phone-sign': Object.freeze({ label: 'Add signature: Phone tab (scan a QR code, sign on the phone, it lands on the Draw pad)', stage: 'beta' }),
+  'group-marks': Object.freeze({
+    label: 'Group / Ungroup in the mark menu: a click on any member picks the whole group',
+    stage: 'beta',
+  }),
   // Drawboard file model (2026-11-10, page-records-plan.md): page changes are
   // saved as a page list with the marks; the PDF is built only on the way out.
   'page-records': Object.freeze({

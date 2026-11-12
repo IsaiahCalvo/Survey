@@ -122,3 +122,11 @@
 .rail-flyout__rows[role='menu'] {
   animation: none;
 }
+
+/* A hairline between two lists in one card (Page fit: the fits, then the
+   page views of the Nightly 'page-spreads' flag). */
+.rail-flyout__divider {
+  height: 1px;
+  margin: 4px 10px;
+  background: var(--border);
+}
