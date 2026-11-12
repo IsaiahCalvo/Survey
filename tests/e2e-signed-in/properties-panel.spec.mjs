@@ -326,3 +326,35 @@ test('Pin to side panel docks the panel beside the page, keeps it with nothing p
     await sheet.remove();
   }
 });
+
+test('Fill: "none", white and the presets set the picked shape\'s fill; a colour on no fill comes in at full strength', async ({ page }) => {
+  test.setTimeout(180_000);
+  const { sheet, pageDiv, marks } = await open(page, 'Props panel fill', true);
+  try {
+    const box = await pageDiv.boundingBox();
+    await page.getByRole('button', { name: 'Shapes', exact: true }).click();
+    await page.getByRole('button', { name: 'Rectangle', exact: true }).filter({ visible: true }).first().click();
+    await drawRect(page, box, 150, 200, 80, 40);
+    await expect(marks).toHaveCount(1);
+    await page.locator('[data-selection-quick-expand]').click();
+    const fill = panel(page).locator('[data-props-section="fill"]');
+    const row = fill.locator('[data-props-fill-colour]');
+    await expect(row).toBeVisible();
+    const paintOf = () => marks.first().evaluate((g) => {
+      const shape = g.querySelector('rect, path, polygon');
+      return { fill: (shape?.getAttribute('fill') || '').toLowerCase(), opacity: Number(shape?.getAttribute('fill-opacity') ?? 1) };
+    });
+    await expect(fill.locator('[data-props-value="Fill opacity"]')).toHaveText('0%');
+    await expect(row.locator('[data-props-fill-none]')).toHaveAttribute('aria-pressed', 'true');
+    await row.locator('[data-quick-colour-preset="#0000FF"]').click();
+    await expect(fill.locator('[data-props-value="Fill opacity"]')).toHaveText('100%');
+    await expect.poll(async () => (await paintOf()).fill).toMatch(/#0000ff|rgba?\(0, 0, 255(, 1)?\)/);
+    await row.locator('[data-quick-colour-preset="#FFFFFF"]').click();
+    await expect.poll(async () => (await paintOf()).fill).toMatch(/#ffffff|white|rgba?\(255, 255, 255(, 1)?\)/);
+    await row.locator('[data-props-fill-none]').click();
+    await expect(fill.locator('[data-props-value="Fill opacity"]')).toHaveText('0%');
+    await expect(row.locator('[data-props-fill-none]')).toHaveAttribute('aria-pressed', 'true');
+  } finally {
+    await sheet.remove();
+  }
+});

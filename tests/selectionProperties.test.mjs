@@ -193,3 +193,13 @@ test('Pin to side panel: pinned implies open, is remembered, and docks into AppS
   assert.match(panel, /'Select'/);
   assert.match(read('src/AppShell.jsx'), /<PropertiesPanelDockHost enabled=\{Boolean\(isViewerVisible && !isMobileViewer\)\} \/>/);
 });
+
+test('Fill colour row: none, then white and the presets, on the fill side of the paint', async () => {
+  const { FILL_QUICK_COLOURS, QUICK_COLOURS } = await import('../src/utils/quickStylePresets.js');
+  assert.deepEqual(FILL_QUICK_COLOURS, ['#FFFFFF', ...QUICK_COLOURS]);
+  const panel = read('src/components/SelectionPropertiesPanel.jsx');
+  assert.match(panel, /data-props-fill-none/);
+  assert.match(panel, /paint\.fill\.apply\(paint\.fill\.color, 0\)/);
+  assert.match(panel, /paint\.fill\.apply\(hex, paint\.fill\.opacity > 0 \? paint\.fill\.opacity : 1\)/);
+  assert.match(read('src/AppShell.jsx'), /fill: isShape \? channel\(true\) : null,/);
+});

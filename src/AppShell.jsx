@@ -431,6 +431,8 @@ const resolveAnnotationPaint = (bottomToolbarApi, colorPickerTab) => {
     opacity: picker.opacity,
     apply: picker.apply,
     quick,
+    // The fill side on its own (the properties panel's Fill colour row).
+    fill: isShape ? channel(true) : null,
   };
 };
 

@@ -38,6 +38,7 @@ import {
   usePropertiesPanelPinned,
 } from '../utils/propertiesPanelStore.js';
 import { composeTextColor, splitTextColor } from '../utils/textColorOpacity.js';
+import { FILL_QUICK_COLOURS, FILL_QUICK_COLOUR_NAMES } from '../utils/quickStylePresets.js';
 import {
   TRANSFORM_SELECTION_EVENT,
   formatPt,
@@ -293,6 +294,7 @@ export default function SelectionPropertiesPanel({
     .filter((c) => typeof c === 'string' && c && c !== 'transparent' && !/rgba\([^)]*,\s*0\)$/.test(c)))].slice(0, 12);
   const styleValue = (api?.lineBorderStyle === 'cloud' && !api?.supportsCloudStyle) ? 'solid' : (api?.lineBorderStyle || 'solid');
   const textParts = splitTextColor(textFormat?.state?.fontColor);
+  const fillNone = Boolean(paint?.fill) && !mixed.fillOpacity && paint.fill.opacity <= 0;
   const textSize = Number(textFormat?.state?.fontSize) || 16;
   const setWidth = (width) => {
     api?.handleStrokeWidthInputChange?.({ target: { value: String(width) } });
@@ -471,6 +473,27 @@ export default function SelectionPropertiesPanel({
         )}
         {caps.fill && (
           <Section title="Fill" id="fill">
+            {paint?.fill && (
+              // Drawboard: a "none" swatch, then white and the presets.
+              <div className="props-panel__row" data-props-fill-colour>
+                <span className="props-panel__row-label">Color</span>
+                <button
+                  type="button"
+                  className={`props-panel__none${fillNone ? ' is-current' : ''}`}
+                  data-props-fill-none
+                  aria-label="No fill"
+                  aria-pressed={fillNone}
+                  {...chromeTip('No fill', 'below')}
+                  onClick={() => paint.fill.apply(paint.fill.color, 0)}
+                />
+                <QuickColourDots
+                  value={fillNone || mixed.fillColor ? null : paint.fill.color}
+                  colours={FILL_QUICK_COLOURS}
+                  names={FILL_QUICK_COLOUR_NAMES}
+                  onPick={(hex) => paint.fill.apply(hex, paint.fill.opacity > 0 ? paint.fill.opacity : 1)}
+                />
+              </div>
+            )}
             <SliderRow
               label="Fill opacity"
               value={api?.fillOpacity}
