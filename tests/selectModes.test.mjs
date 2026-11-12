@@ -531,7 +531,7 @@ test('rule 10: Escape closes, commits, cancels, deselects, then puts the tool do
   assert.match(PDF_VIEWER_SOURCE, /if \(escapeAction === 'switch-to-pan'\) \{[\s\S]{0,500}if \(event\.defaultPrevented \|\| toolRequestSeqRef\.current !== seqAtEscape \|\| activeToolRef\.current !== toolAtEscape\) return;\s*setActiveToolLogged\('pan'/);
   // A tool picked between Escape and its late Pan timer wins (CI 2026-11-10:
   // C pressed right after Escape was undone by the timer on a busy runner).
-  assert.match(PDF_VIEWER_SOURCE, /const setActiveToolLogged = useCallback\(\(next, \{ source \} = \{\}\) => \{\s*toolRequestSeqRef\.current \+= 1;/);
+  assert.match(PDF_VIEWER_SOURCE, /const setActiveToolLogged = useCallback\(\(next, \{ source(?:, keepTextHighlight)? \} = \{\}\) => \{\s*toolRequestSeqRef\.current \+= 1;/);
   // The Select keys (V, Alt+V, Shift+V) switch through their own setter.
   assert.match(PDF_VIEWER_SOURCE, /const activateSelectFamilyMode = useCallback\(\(mode\) => \{\s*const next = getSelectFamilyTransition\(mode\);\s*toolRequestSeqRef\.current \+= 1;/);
   assert.match(TEXT_EDIT_SOURCE, /commitRef\.current\(\{ flush: true, via: 'escape' \}\)/);

@@ -23,7 +23,8 @@ test('flag and wiring: a picked mark or a text selection keeps the arrows', () =
   assert.equal(FEATURE_FLAGS['page-turn-keys'].stage, 'beta');
   const src = readFileSync(new URL('../src/components/PdfjsViewerContainer.jsx', import.meta.url), 'utf8');
   assert.match(src, /isFeatureOn\('page-turn-keys'\)/);
-  assert.match(src, /if \(turn && \(hasAnyPageSelection\(\) \|\| \(window\.getSelection\?\.\(\)\?\.isCollapsed === false\)\)\) return;/);
+  // Only Shift + arrows grow a text selection, so only they yield to one.
+  assert.match(src, /if \(turn && \(hasAnyPageSelection\(\) \|\| \(event\.shiftKey && window\.getSelection\?\.\(\)\?\.isCollapsed === false\)\)\) return;/);
   const migration = readFileSync(new URL('../supabase/migrations/20261112094000_page_turn_keys_flag.sql', import.meta.url), 'utf8');
   assert.match(migration, /'page-turn-keys', 'off'/);
 });
