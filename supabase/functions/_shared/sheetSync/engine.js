@@ -737,7 +737,12 @@ export async function planSheetRound({
     const blocks = lateSaves ? next.recentAppends.filter((b) => b.scopeId === scope.scopeId && now.getTime() - Number(b.t) <= rowWindowMs) : [];
     if (blocks.length && colOfKey.has('item')) {
       const lastOf = new Map(blocks.map((b) => [String(b.last), b]));
-      const offsets = [...new Set([...blocks.map((b) => Number(b.n)), blocks.reduce((sum, b) => sum + Number(b.n), 0)])].filter((n) => n > 0);
+      // Each block's own size, and the sum of the latest blocks back from the
+      // newest (real Excel 11-12: inserts of 2 then 1 saved the row 3 low,
+      // while the first fill of 6, also in the window, was not counted).
+      const sizes = blocks.map((b) => Number(b.n));
+      const tails = sizes.map((_, i) => sizes.slice(i).reduce((a, b) => a + b, 0));
+      const offsets = [...new Set([...sizes, ...tails])].filter((n) => n > 0);
       const itemCol = colOfKey.get('item');
       const filledKeys = (row) => scope.columns.filter((c) => c.key !== 'rowId' && colOfKey.has(c.key) && !isBlankCell(row[colOfKey.get(c.key)])).map((c) => c.key);
       for (let o = headerAt + 2; o < rows.length; o += 1) {

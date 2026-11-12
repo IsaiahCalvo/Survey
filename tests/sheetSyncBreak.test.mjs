@@ -1063,3 +1063,24 @@ test('the offset can be an earlier insert\'s size when a second insert followed 
   assert.deepEqual(pmItems(ctx).map((m) => [m.name, m.note.text]), [['D-120', 'PM note']]);
   assert.equal(await ctx.rowOf(pmItems(ctx)[0].id), typed);
 });
+
+// Real Excel on the web (11-12): inserts of 2 then 1 saved the PM's row 3 low
+// (the two latest added up), while the tab's first fill, also in the window,
+// was not counted.
+test('a PM row saved low by the sum of the latest two inserts goes back up', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
+  ctx.provider = { ...ctx.provider, savesLate: true };
+  const t0 = Date.parse('2026-11-12T17:00:00Z');
+  await ctx.round({ now: new Date(t0) }); await ctx.round({ now: new Date(t0 + 1000), force: true });
+  ctx.markers.d2 = door('d2', 'D-102'); ctx.markers.d3 = door('d3', 'D-103');
+  await ctx.round({ now: new Date(t0 + 5000) });
+  ctx.markers.d4 = door('d4', 'D-104');
+  await ctx.round({ now: new Date(t0 + 12000) });
+  const typed = (await ctx.rowOf('d4')) + 1;
+  const item = await ctx.col('Item'); const notes = await ctx.col('Notes');
+  await ctx.edit([{ row: typed + 3, col: item, value: 'PM-1' }, { row: typed + 3, col: notes, value: 'pm note 1' }]);
+  await ctx.round({ now: new Date(t0 + 66000), force: true });
+  await ctx.round({ now: new Date(t0 + 76000), force: true });
+  assert.deepEqual(pmItems(ctx).map((m) => [m.name, m.note.text]), [['PM-1', 'pm note 1']]);
+  assert.equal(await ctx.rowOf(pmItems(ctx)[0].id), typed);
+});
