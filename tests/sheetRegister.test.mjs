@@ -11,7 +11,7 @@ import {
 } from '../src/sheets/sheetRegister.js';
 import { FEATURE_FLAGS } from '../src/featureFlags.js';
 
-const sql = readFileSync(new URL('../supabase/migrations/20261110184000_sheet_register.sql', import.meta.url), 'utf8');
+const sql = readFileSync(new URL('../supabase/migrations/20261110185000_sheet_register.sql', import.meta.url), 'utf8');
 
 test('the flag is a Nightly beta flag with its row', () => {
   assert.equal(FEATURE_FLAGS['sheet-register']?.stage, 'beta');
