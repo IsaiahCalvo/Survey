@@ -471,6 +471,18 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Keys: with nothing picked, Left / Right and Shift + Up / Down turn the page',
     stage: 'beta',
   }),
+  // Drawboard file model (2026-11-10, page-records-plan.md): page changes are
+  // saved as a page list with the marks; the PDF is built only on the way out.
+  'page-records': Object.freeze({
+    label: 'Page changes never rewrite the PDF: other windows follow at once and it works offline',
+    stage: 'beta',
+  }),
+  // Drawboard file model (2026-11-10, drive-sync-back-plan.md): open a PDF
+  // from OneDrive or SharePoint and save the marked-up PDF back to it.
+  'drive-sync-back': Object.freeze({
+    label: 'Open PDFs from OneDrive and save the marked-up PDF back to OneDrive',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

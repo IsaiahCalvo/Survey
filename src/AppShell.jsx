@@ -17,6 +17,8 @@ import CounterSeriesMenu, { counterSeriesMenuWidth } from './components/CounterS
 import PageGridToggle, { PageGridGlyph } from './components/PageGridToggle';
 import DarkPagesToggle, { DarkPagesGlyph } from './components/DarkPagesToggle';
 import DocumentVersionsButton, { DocumentVersionsDialogs, useDocumentVersions } from './components/DocumentVersionsButton.jsx';
+import DriveSyncButton, { DriveSyncDialogs } from './components/DriveSyncButton.jsx';
+import { useDriveSyncBack } from './hooks/useDriveSyncBack.js';
 import OlderVersionBar from './components/OlderVersionBar.jsx';
 import { requestMarkCommentsFocus } from './services/markCommentsFocus.js';
 import { OPEN_VIEWER_SHARE_EVENT } from './utils/viewerShare.js';
@@ -2613,6 +2615,20 @@ export default function App({ devPreviewReturnTab = null }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [drawboardKeysEnabled, Boolean(isViewerVisible)]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // OneDrive save-back (Survey Nightly only, beta flag 'drive-sync-back'):
+  // a document opened from OneDrive writes its marked-up PDF back there.
+  const [driveSyncEnabled] = useState(() => isFeatureOn('drive-sync-back'));
+  const [driveSyncCardOpen, setDriveSyncCardOpen] = useState(false);
+  const exportDriveBytes = useCallback(async () => {
+    const result = await bottomToolbarApiRef.current?.exportPdfWithOptions?.({ mode: 'annotated', deliver: false });
+    return result?.ok && result.bytes ? result.bytes : null;
+  }, []);
+  const driveSync = useDriveSyncBack({
+    documentId: driveSyncEnabled && user?.id ? activeTab?.file?.id || null : null,
+    enabled: driveSyncEnabled && Boolean(user?.id),
+    exportBytes: exportDriveBytes,
+  });
+
   // Page grid spacing (Survey Nightly only, beta flag 'grid-settings').
   const [gridSettingsEnabled] = useState(() => isFeatureOn('grid-settings'));
   const [snapContentEnabled] = useState(() => isFeatureOn('snap-content'));
@@ -3269,6 +3285,8 @@ export default function App({ devPreviewReturnTab = null }) {
             id="chrome-top-host"
             documentName={activeTab?.name || selectedPDF?.name || 'Document'}
             onBack={handleBack}
+            driveSync={driveSync.enabled && driveSync.link ? driveSync : null}
+            onOpenDriveSync={() => setDriveSyncCardOpen(true)}
             topToolbarApi={topToolbarApi}
             bottomToolbarApi={bottomToolbarApi}
             // The header layer sits above the sheets' layer, so the chip
@@ -3380,6 +3398,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 </button>
               )}
               <DocumentVersionsButton state={documentVersions} tip={chromeTip} />
+              <DriveSyncButton state={driveSync} tip={chromeTip} onOpen={() => setDriveSyncCardOpen(true)} />
               {/* Export annotated PDF — browser-visible entry point for the
                   same handler the desktop File menu drives. */}
               <button
@@ -6108,6 +6127,7 @@ export default function App({ devPreviewReturnTab = null }) {
         </div>
       )}
       <DocumentVersionsDialogs state={documentVersions} />
+      <DriveSyncDialogs state={driveSync} cardOpen={driveSyncCardOpen} onCloseCard={() => setDriveSyncCardOpen(false)} />
       {isViewerVisible && (olderVersionOpen || activeTab?.file?.superseded_by || supersededDocIds.has(activeTab?.file?.id)) && (
         <OlderVersionBar
           versionNumber={olderVersionOpen?.versionNumber || null}

@@ -239,6 +239,8 @@ export default function DocumentsLedger({
   onNav,
   onOpenDocument,
   onUpload,
+  // drive-sync-back (Nightly): opens the OneDrive picker; null hides it.
+  onOpenFromDrive = null,
   onDropFiles,
   uploadBusy = false,
   onShare,
@@ -865,7 +867,7 @@ export default function DocumentsLedger({
       <div className="documents-mobile-search-actions hub-mobile-search-actions">
         <Search placeholder={tagsReady ? 'Search documents and tags...' : 'Search documents...'} value={search} onChange={setSearch} width="100%" />
         {mobileSortControl}
-        {canCreate ? (
+        {canCreate || onOpenFromDrive ? (
           <button className="btn primary hub-mobile-primary-action" data-home-new="phone" disabled={uploadBusy} aria-haspopup="dialog" onClick={() => setNewSheetOpen(true)}>
             {uploadBusy ? uploadButtonBody : (<><Icon name="plus" size={12} />New</>)}
           </button>
@@ -902,13 +904,19 @@ export default function DocumentsLedger({
           onClose={() => setNewMenu(null)}
         />
       )}
+      {onOpenFromDrive && (
+        <button className="btn documents-desktop-new" data-home-onedrive="desktop" aria-label="Open from OneDrive" {...tip('Open a PDF from OneDrive', 'below')} onClick={() => onOpenFromDrive()}>
+          <Icon name="oneDrive" size={12} />OneDrive
+        </button>
+      )}
       <button className="btn primary documents-desktop-upload" disabled={uploadBusy} onClick={() => onUpload && onUpload()}>{uploadButtonBody}</button>
       {newSheetOpen && (
         <DialogCard title="New" onClose={() => setNewSheetOpen(false)} width={320} atRoot cardProps={{ 'data-home-new-sheet': 'true' }}>
           <div role="menu" aria-label="New" style={{ display: 'grid', gap: 4 }}>
             {[
               { key: 'upload', icon: 'upload', label: 'Upload PDF', run: () => onUpload && onUpload() },
-              ...(canCreateTemplates ? createItems : [{ key: 'blank', icon: 'plus', label: 'Blank document', run: () => setNewDocOpen(true) }]),
+              ...(onOpenFromDrive ? [{ key: 'onedrive', icon: 'oneDrive', label: 'Open from OneDrive', run: () => onOpenFromDrive() }] : []),
+              ...createItems,
             ].map((row) => (
               <button
                 key={row.key}
