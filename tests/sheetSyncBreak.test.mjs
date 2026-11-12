@@ -1064,6 +1064,17 @@ test('the offset can be an earlier insert\'s size when a second insert followed 
   assert.equal(await ctx.rowOf(pmItems(ctx)[0].id), typed);
 });
 
+// Review (Bugbot): a note that starts with "Total" is the PM's typing, not a
+// totals line; its name saved low still joins it.
+test('a PM note that starts with "Total" still joins its name Excel saved low', async () => {
+  const { ctx, t0, typed, item, notes } = await shiftSetup();
+  await ctx.edit([{ row: typed, col: notes, value: 'Total rework, frame bent' }, { row: typed + 3, col: item, value: 'D-120' }]);
+  await ctx.round({ now: new Date(t0 + 30000), force: true });
+  await ctx.round({ now: new Date(t0 + 35000), force: true });
+  assert.deepEqual(pmItems(ctx).map((m) => [m.name, m.note.text]), [['D-120', 'Total rework, frame bent']]);
+  assert.equal(await ctx.rowOf(pmItems(ctx)[0].id), typed);
+});
+
 // Real Excel on the web (11-12): inserts of 2 then 1 saved the PM's row 3 low
 // (the two latest added up), while the tab's first fill, also in the window,
 // was not counted.

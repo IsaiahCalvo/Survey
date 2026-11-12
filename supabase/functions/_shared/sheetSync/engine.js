@@ -37,6 +37,7 @@ export const MAX_NEW_ROWS_PER_ROUND = 300;
 // How far down a tab the header row is looked for (a title row typed above it).
 const HEADER_SEARCH_ROWS = 10;
 const TOTALS_LABEL = /^(grand\s+|sub-?\s*)?totals?\b|^(sum|count|average|avg)\s*:?$/i;
+const TOTALS_ONLY = /^((grand\s+|sub-?\s*)?totals?|sum|count|average|avg)\s*:?$/i; // the whole cell is the label
 
 // Row IDs already checked by this server instance: the same tokens come back
 // every round, and an HMAC per row was a fifth of a big sheet's round.
@@ -751,8 +752,10 @@ export async function planSheetRound({
         const typed = rows[o] || [];
         if (ids.get(o) || !isBlankCell(typed[itemCol]) || hasOwnData(typed)) continue; // a Row ID, a name or the PM's own columns: not this
         // Anything in the Row ID column ("Total" on an Excel table's Total
-        // Row) or a totals label: the PM's totals line, not a typed row.
-        if (cellText(typed[rowIdCol]).trim() || TOTALS_LABEL.test(cellText(typed.find((c) => !isBlankCell(c))).trim())) continue;
+        // Row) or a cell that is only a totals label: the PM's totals line,
+        // not a typed row. A note that merely starts with "Total ..." is the
+        // PM's typing and still joins.
+        if (cellText(typed[rowIdCol]).trim() || TOTALS_ONLY.test(cellText(typed.find((c) => !isBlankCell(c))).trim())) continue;
         for (const n of offsets) {
           const x = o + n;
           const low = rows[x] || [];
