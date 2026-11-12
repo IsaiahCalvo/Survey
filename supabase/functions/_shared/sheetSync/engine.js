@@ -647,6 +647,15 @@ export async function planSheetRound({
       return n;
     };
     const hasOwnData = (row) => row.some((c, i) => !mappedCols.has(i) && !isBlankCell(c));
+    // A new name in the Item cell of the row Survey appended for markerId,
+    // within the new-row window (NEW_ROW_TAKEOVER_MS) and not split yet.
+    const typedOverNewRow = (markerId, row) => {
+      const watch = next.recentWrites[`${markerId}|+row`];
+      const base = nextBaseline[markerId];
+      if (!watch || watch.took || !base || base.scopeId !== scope.scopeId || !colOfKey.has('item')) return false;
+      if (now.getTime() - Number(watch.t) > rowWindowMs || !cellText(row[colOfKey.get('item')]).trim()) return false;
+      return getFp(fieldPrintsOf(sheetRecordOf(row, {})), 'item') !== getFp(base.fields, 'item');
+    };
 
     // Read every Row ID once. When a row was copied (Row ID and all), the copy
     // closest to what both sides last agreed on is the item's own row and the
@@ -730,6 +739,19 @@ export async function planSheetRound({
       // A valid Row ID with no marker and no baseline: the round that wrote it
       // stopped before the new marker was saved. Make the marker under that id.
       const recreate = markerId && !marker && !nextBaseline[markerId] && !plan.markerWrites[markerId];
+      // The row Survey just added for a tech's item, the item deleted (or
+      // moved to another category) in the app since, and a new name typed or
+      // saved late over it: the PM's own new row (as the takeover below), not
+      // a kept row of the item that never reaches the app.
+      if (markerId && (marker ? !inThisScope(marker) : !recreate) && typedOverNewRow(markerId, row)) {
+        delete next.tombstones[markerId];
+        delete next.recentWrites[`${markerId}|+row`];
+        if (!marker) {
+          delete nextBaseline[markerId];
+          next.gone[markerId] = nowIso;
+        }
+        markerId = null;
+      }
       if (markerId && !marker && !recreate) {
         // Deleted in the app. Remove the row only if nobody changed it in the
         // sheet and it holds nothing of the sheet's own (a column the PM added).
@@ -748,7 +770,7 @@ export async function planSheetRound({
         continue;
       }
 
-      if (marker && !inThisScope(marker)) {
+      if (markerId && marker && !inThisScope(marker)) {
         // Moved to another category in the app: its new tab gets a row (it
         // has none there), and this one goes, unless the sheet changed it or
         // it holds the PM's own columns; then it stays and says so.
@@ -764,7 +786,7 @@ export async function planSheetRound({
         plan.summary.deleted += 1;
         continue;
       }
-      if (marker && !seenMarkers.has(markerId)) {
+      if (markerId && marker && !seenMarkers.has(markerId)) {
         seenMarkers.add(markerId);
         delete next.removedInSheet[markerId];
         plan.verify.push({ sheetId: sheet.sheetId, title: sheet.title, row: r, col: rowIdCol, token });
