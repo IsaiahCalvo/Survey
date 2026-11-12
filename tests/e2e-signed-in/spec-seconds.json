@@ -126,6 +126,7 @@
   "project-owner-actions.spec.mjs": 0.5,
   "properties-panel.spec.mjs": 25.3,
   "rename-everywhere.spec.mjs": 29.9,
+  "restrict-editing.spec.mjs": 75,
   "review-stamps.spec.mjs": 11.9,
   "revision-access.spec.mjs": 0.8,
   "rls-matrix.spec.mjs": 7.2,
