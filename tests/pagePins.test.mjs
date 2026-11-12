@@ -111,7 +111,15 @@ test('wiring: flag, migration, viewer host and layer, tool button, rail card, ph
   assert.match(viewer, /<PagePinsLayer[\s\S]*?pageNumber=\{pageNumber\}/);
   assert.match(viewer, /<PinToolButton/);
   assert.match(read('src/AppShell.jsx'), /<PinFilterMenu/);
-  assert.match(read('src/mobile/MobilePdfViewerChrome.jsx'), /\{ id: 'pin', label: 'Pin', icon: 'pagePin', flag: 'comment-pins' \}/);
+  const phone = read('src/mobile/MobilePdfViewerChrome.jsx');
+  assert.match(phone, /\{ id: 'pin', label: 'Pin', icon: 'pagePin', flag: 'comment-pins', cloudOnly: true \}/);
+  assert.match(phone, /\(!tool\.cloudOnly \|\| bottomToolbarApi\?\.pinsAvailable\)/);
+  // Pins save on a cloud document: no Pin tool on a device file or signed out.
+  assert.match(viewer, /const pinsDocOn = pinsOn && Boolean\(pdfFile\?\.id\) && !isDeviceDocumentId\(pdfFile\?\.id\) && Boolean\(user\?\.id\);/);
+  assert.match(viewer, /<PagePinsHost\s+enabled=\{pinsDocOn\}/);
+  assert.match(viewer, /\{pinsDocOn && \(\s*<PagePinsLayer/);
+  assert.match(viewer, /\.\.\.\(pinsDocOn \? \[\{ id: 'pin', label: 'Pin', pin: true \}\] : \[\]\)/);
+  assert.match(viewer, /pinsAvailable: pinsDocOn,/);
   assert.match(read('src/utils/keyboardShortcuts.js'), /chords: \['n'\][^\n]*flag: 'comment-pins'/);
   const service = read('src/services/markComments.js');
   assert.match(service, /pin_x, pin_y, pin_kind, pin_status, pin_number'\)/);
