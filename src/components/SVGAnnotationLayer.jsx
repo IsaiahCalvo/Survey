@@ -25,7 +25,7 @@ import { boxWorldBounds, markerIdsByGap } from '../utils/surveyMarkerFamily.js';
 import { isOnHiddenLayer, stampNewObjectsOnLayer } from '../utils/layers.js';
 import { cloneElement, memo, useId, useMemo, useEffect, useLayoutEffect, useRef, useState, useCallback, useSyncExternalStore } from 'react';
 import { createPortal, flushSync } from 'react-dom';
-import { POLYLINE_CURVE_SET_EVENT, polySplineStep, setPolylineCurve, splineSpanMidpoint, splineSpans } from '../utils/polySpline.js';
+import { POLYLINE_CURVE_SET_EVENT, polySplineStep, setPolylineCurve, SPLINE_HIT_TOLERANCE, fineHitToStored, fineSplinePoints, smoothPolylinePoints, splineSpanMidpoint, splineSpans, splinePathD } from '../utils/polySpline.js';
 import useShiftHeld from '../hooks/useShiftHeld.js';
 import { usePolylineCurve } from '../hooks/usePolylineCurve.js';
 import { canRemovePolyVertex, cloudPolyEdgeReach, insertPolyVertex, insertVertexOnNearestEdge, createPolyEdgePressGate, polyEdgeDebugEnabled, polyEdgeTouchStartMayArm, polyEdgeHitAtClient, polyVertexMenuLayout, removePolyVertex } from '../utils/polyVertices.js';
@@ -113,7 +113,8 @@ import { liftedMoveIndices as liftedMoveIndicesFor, liftTranslate } from '../uti
 import { createMarkWrapperCache, mapMarkWrappers, markWrapperIsLive } from '../utils/markWrapperCache.js';
 import { classifySelectionGrabTarget, isPageCalloutSelected, pageSelectionMarkGroups, resolvePagePress } from '../utils/toolPressRouting.js';
 import {
-  clearOtherPageSelections, dropStashedSelection, onOtherPageClear, peekStashedSelection, stashPageSelection,
+  clearOtherPageSelections, dropStashedSelection, hasOtherPageSelection, onOtherPageClear, peekStashedSelection,
+  stashPageSelection,
 } from '../utils/pageSelectionPresence.js';
 import { useSelectionGrabHandoff } from '../hooks/useSelectionGrabHandoff.js';
 import { useRotateHandleClick } from '../hooks/useRotateHandleClick.js';
@@ -3874,11 +3875,11 @@ const SVGAnnotationLayerBody = memo(({
   const historyPickItemsRef = useRef(historyPickItems);
   historyPickItemsRef.current = historyPickItems;
   useEffect(() => {
-    broadcastPageSelection(typeof window === 'undefined' ? null : window, pageNumber, historyPickItemsRef.current);
-  }, [historyPickKey, pageNumber]);
+    broadcastPageSelection(typeof window === 'undefined' ? null : window, pageNumber, historyPickItemsRef.current, documentId);
+  }, [historyPickKey, pageNumber, documentId]);
   useEffect(() => () => {
-    broadcastPageSelection(typeof window === 'undefined' ? null : window, pageNumber, []);
-  }, [pageNumber]);
+    broadcastPageSelection(typeof window === 'undefined' ? null : window, pageNumber, [], documentId);
+  }, [pageNumber, documentId]);
   // UX 2026-04-20: counter pill reads data.pointerAngle + 90 so 0°
   // corresponds to "nub pointing straight up" (matches the mental model
   // the user described). Non-counter shapes read obj.angle as before.
@@ -7355,6 +7356,14 @@ const SVGAnnotationLayerBody = memo(({
             const pointsStr = renderObj.points
               .map((p) => `${p?.x ?? 0},${p?.y ?? 0}`)
               .join(' ');
+            // A curve's glow follows the smooth curve it draws (polySpline.js).
+            const glowSplineStep = isPolygonShape ? 0 : polySplineStep(renderObj);
+            const glowCurveD = glowSplineStep ? splinePathD(renderObj.points, glowSplineStep) : null;
+            const GlowTag = glowCurveD ? 'path' : 'polyline';
+            // ...and its hit band follows that curve too, not the stored samples.
+            const hitPointsStr = glowSplineStep
+              ? smoothPolylinePoints(renderObj, SPLINE_HIT_TOLERANCE).map((p) => `${p.x},${p.y}`).join(' ')
+              : pointsStr;
             const shapeLeft = renderObj.left ?? 0;
             const shapeTop = renderObj.top ?? 0;
             const shapeAngle = renderObj.angle ?? 0;
@@ -7414,8 +7423,8 @@ const SVGAnnotationLayerBody = memo(({
                       style={{ pointerEvents: 'none' }}
                     />
                   ) : (
-                    <polyline
-                      points={pointsStr}
+                    <GlowTag
+                      {...(glowCurveD ? { d: glowCurveD } : { points: pointsStr })}
                       transform={shapeTransform}
                       data-hover-glow="polyline"
                       fill="none"
@@ -7446,7 +7455,7 @@ const SVGAnnotationLayerBody = memo(({
                   />
                 ) : (
                   <polyline
-                    points={pointsStr}
+                    points={hitPointsStr}
                     transform={shapeTransform}
                     fill="none"
                     stroke={polyHitProps.stroke}
@@ -8209,11 +8218,14 @@ const SVGAnnotationLayerBody = memo(({
           const grabbingSelection = selectionGrabArmedRef.current;
           let pressFallback = null;
           if (isCreationTool && !grabbingSelection && e.button === 0 && !polyDraftRef.current) {
+            // A pick on another page of this file counts too: a click off the
+            // picked mark onto the next page drops it, as it does on its own
+            // page (the mark stayed picked, owner 2026-11-12).
             const press = resolvePagePress(e.nativeEvent, {
               tool: activeTool,
               pageNumber,
               objects: annotations?.objects,
-              hasSelection: pageHasSelection,
+              hasSelection: pageHasSelection || hasOtherPageSelection(pageNumber, documentId),
             });
             // Shift-click adds the mark. With a tool whose drag draws (Shapes),
             // wait for the release: a Shift-drag from a mark draws a square or
@@ -8223,7 +8235,10 @@ const SVGAnnotationLayerBody = memo(({
               e.preventDefault();
               return;
             }
-            if (press.clearsSelection) clearPageSelection();
+            if (press.clearsSelection) {
+              clearPageSelection();
+              clearOtherPageSelections(pageNumber, documentId);
+            }
             if (press.drag === 'none' && press.click === 'deselect' && !(isPolyCreationTool && polyClickStartsOn())) {
               e.preventDefault();
               return;
@@ -9705,7 +9720,7 @@ const SVGAnnotationLayerBody = memo(({
           const sinP = Math.sin(radP);
           // Replicate renderPolygon transform chain per-point to get each
           // vertex's world position: translate → rotate → scale → pathOffset.
-          const worldPoints = obj.points.map((p) => {
+          const polyToWorld = (p) => {
             const lx = (Number(p?.x) || 0) - pPathOffsetX;
             const ly = (Number(p?.y) || 0) - pPathOffsetY;
             const sx = lx * pScaleX;
@@ -9715,7 +9730,8 @@ const SVGAnnotationLayerBody = memo(({
             const rx = pRotCenterX + dx * cosP - dy * sinP;
             const ry = pRotCenterY + dx * sinP + dy * cosP;
             return { x: pLeft + rx, y: pTop + ry };
-          });
+          };
+          const worldPoints = obj.points.map(polyToWorld);
           // Screen-constant scale mirrors SVGSelectionOverlay + endpoint
           // handles so vertex dots are one size at every zoom.
           // Zoom-out balloon fix: clamp inverseScale first so these visible
@@ -9727,6 +9743,12 @@ const SVGAnnotationLayerBody = memo(({
           const splineStep = polySplineStep(obj);
           const isCorner = (i) => !splineStep || i % splineStep === 0;
           const cornerWorldPoints = splineStep ? worldPoints.filter((_, i) => isCorner(i)) : worldPoints;
+          // The side band follows the drawn curve, not the stored samples:
+          // 8x finer along the same parameter, hits mapped back (polySpline.js).
+          const edgeFine = splineStep ? 8 : 1;
+          const edgeWorldPoints = splineStep
+            ? fineSplinePoints(obj.points, splineStep, edgeFine).map(polyToWorld)
+            : worldPoints;
           // UX 2026-09-16: an invisible hit disc sits behind each vertex dot so
           // the corner can be grabbed without landing on the 11 px dot — 32 px
           // wide on a mouse (Drawboard PDF measures 34 x 34 on its handles),
@@ -9854,7 +9876,7 @@ const SVGAnnotationLayerBody = memo(({
             const ctm = band?.getScreenCTM?.();
             if (!ctm) return null;
             const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(ctm.inverse());
-            return insertVertexOnNearestEdge(worldPoints, pt, polyEdgeTolerance, { closed: String(obj.type).toLowerCase() === 'polygon' });
+            return fineHitToStored(insertVertexOnNearestEdge(edgeWorldPoints, pt, polyEdgeTolerance, { closed: String(obj.type).toLowerCase() === 'polygon' }), edgeFine, obj.points.length);
           };
           const onEdgeDoubleClick = (e) => {
             e.stopPropagation();
@@ -9888,7 +9910,7 @@ const SVGAnnotationLayerBody = memo(({
               const band = polyEdgeBandElRef.current;
               if (!band) return false;
               if (target?.closest?.(POLY_EDGE_CLAIM_SKIP)) return false;
-              const hit = polyEdgeHitAtClient(x, y, band.getScreenCTM?.(), worldPoints, polyEdgeTolerance, { closed: String(obj.type).toLowerCase() === 'polygon' });
+              const hit = fineHitToStored(polyEdgeHitAtClient(x, y, band.getScreenCTM?.(), edgeWorldPoints, polyEdgeTolerance, { closed: String(obj.type).toLowerCase() === 'polygon' }), edgeFine, obj.points.length);
               if (!hit) return false;
               polyEdgePointerTypeRef.current = pointerType;
               startPolyLongPress({ clientX: x, clientY: y, pointerId, fromTouchStream: pointerId == null }, { edge: { segmentIndex: hit.segmentIndex, t: hit.t } });
@@ -9948,7 +9970,7 @@ const SVGAnnotationLayerBody = memo(({
                 <polyline
                   data-poly-edge-hit="true"
                   ref={(el) => { if (el) { el.__claimPolyEdgePress = claimPolyEdgePress(el); el.__polyEdgeCtx = polyEdgeCtx; polyEdgeBandElRef.current = el; } else if (polyEdgeBandElRef.current && !polyEdgeBandElRef.current.isConnected) polyEdgeBandElRef.current = null; }}
-                  points={[...worldPoints, ...(String(obj.type).toLowerCase() === 'polygon' ? [worldPoints[0]] : [])].map((p) => `${p.x},${p.y}`).join(' ')}
+                  points={[...edgeWorldPoints, ...(String(obj.type).toLowerCase() === 'polygon' ? [edgeWorldPoints[0]] : [])].map((p) => `${p.x},${p.y}`).join(' ')}
                   fill="none"
                   stroke="transparent"
                   strokeWidth={polyEdgeTolerance * 2}
