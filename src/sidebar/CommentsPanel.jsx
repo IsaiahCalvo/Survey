@@ -311,7 +311,12 @@ export default function CommentsPanel({
   const shown = view === 'resolved' ? lists.resolved : lists.open;
   const [draft, setDraft] = useState(null); // { markId, pageNumber }
   // A new thread is open, so starting one shows the Open list, where it lands.
-  useEffect(() => { if (draft) setView('open'); }, [draft]);
+  // It also drops a link's mark, so the link can't pull the list away.
+  useEffect(() => {
+    if (!draft) return;
+    setView('open');
+    setHighlightId(null);
+  }, [draft]);
   const [replyingTo, setReplyingTo] = useState(null);
   const [editing, setEditing] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -351,11 +356,16 @@ export default function CommentsPanel({
     }
   }, [pendingMarkRequest, status, threads, canWrite, pageNum]);
 
-  // A linked comment in a resolved thread opens the Resolved list (and back).
+  // A linked comment in a resolved thread opens the Resolved list (and back),
+  // once per link: later list changes never pull the list back to it.
+  const viewSetForRef = useRef(null);
   useEffect(() => {
-    if (!highlightId) return;
+    if (!highlightId) { viewSetForRef.current = null; return; }
+    if (viewSetForRef.current === highlightId) return;
     const thread = threads.find((t) => t.root.id === highlightId || t.replies.some((r) => r.id === highlightId));
-    if (thread) setView(thread.root.resolvedAt ? 'resolved' : 'open');
+    if (!thread) return;
+    viewSetForRef.current = highlightId;
+    setView(thread.root.resolvedAt ? 'resolved' : 'open');
   }, [highlightId, threads]);
 
   // Bring a linked comment into view once it has loaded (view: a link into a
