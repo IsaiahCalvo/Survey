@@ -473,7 +473,9 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
 
   async function writeBlock(fileId, sheetId, row, col, values) {
     const address = `${cellAddress(row, col)}:${cellAddress(row + values.length - 1, col + values[0].length - 1)}`;
-    await workbook(fileId, 'PATCH', `${sheetPath(sheetId)}/range(address='${address}')`, {
+    // `$select`: Graph would answer with the whole range (252 KB for a sparse
+    // write down a 5,000-row column), and the answer is thrown away anyway.
+    await workbook(fileId, 'PATCH', `${sheetPath(sheetId)}/range(address='${address}')?$select=address`, {
       body: { values }, where: 'write', discard: true,
     });
   }

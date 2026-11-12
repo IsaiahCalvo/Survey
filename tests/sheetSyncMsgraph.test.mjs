@@ -299,6 +299,9 @@ test('writes single cells and a formula-looking note stays text', async () => {
   ]);
   assert.deepEqual(s.cells[1], ['rid-1', 'D-1', '=not a formula', 'Pass']);
   assert.equal(graph.calls.filter((c) => c.startsWith('PATCH')).length, 1, 'neighbouring cells in one request');
+  // Asks for the address only: a sparse write can span 10,000 cells, and the
+  // whole range came back (252 KB for a 5,000-row column, real Graph 11-12).
+  assert.ok(graph.calls.filter((c) => c.startsWith('PATCH')).every((c) => c.includes('$select=address')), graph.calls.join(' | '));
   assert.notEqual(await p.getVersion(FILE), before, 'cTag moves after a write');
   const [rid, note] = await p.readCells(FILE, [
     { sheetId: s.id, row: 1, col: 0 }, { sheetId: s.id, row: 1, col: 2 },
