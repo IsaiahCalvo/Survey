@@ -347,6 +347,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Drawboard keys: Shift+Up / Down previous / next page; Alt+O / Alt+U next / previous version (with Versions on)',
     stage: 'beta',
   }),
+  'sheet-register': Object.freeze({
+    label: 'Sheet register: sheet number, revision and discipline on Home, discipline and open-items filters, sheet number sort, bulk status and discipline, Edit details, list CSV',
+    stage: 'beta',
+  }),
   'project-activity': Object.freeze({
     label: 'Projects: an Activity tab with what happened to the project (files, revisions, issues, people) in 15-minute groups',
     stage: 'beta',
