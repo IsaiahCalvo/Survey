@@ -190,7 +190,8 @@ function readSelection(items, { measureEdit = false } = {}) {
     });
     // Rotate grabbers: a shape's (where its degree box opens too) and a
     // counter pin's, which floats out past the tail and outside the frame.
-    svg.querySelectorAll('[data-rotation-handle="mtr"], [data-counter-rotate-grabber]').forEach((grabber) => {
+    // A dimension caption's turn circle (measure-plus) too.
+    svg.querySelectorAll('[data-rotation-handle="mtr"], [data-counter-rotate-grabber], [data-caption-turn-grabber]').forEach((grabber) => {
       const rect = visibleRect(grabber);
       if (!rect) return;
       handles.push({
@@ -344,7 +345,7 @@ export default function SelectionQuickBar({
     // A counter pin's turn grabber is no selection gesture of the page layer
     // (data-selection-gesture), so the bar hides itself while one is held.
     const onPress = (event) => {
-      if (!event.target?.closest?.('[data-counter-rotate-grabber]')) return;
+      if (!event.target?.closest?.('[data-counter-rotate-grabber], [data-caption-turn-grabber]')) return;
       turningRef.current = true;
       place();
     };

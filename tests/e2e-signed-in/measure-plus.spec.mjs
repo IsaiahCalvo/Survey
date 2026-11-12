@@ -227,6 +227,33 @@ test('custom scale reads feet-inches, Units restamp the line, Set as default car
     await expect(menu).toBeHidden();
     await expect(dimLine.locator('[data-dimension-elbow]')).toHaveCount(0);
     await expect(dimLine.locator('line')).toHaveCount(4);
+    // The small circle above the caption turns it (Shift: 15° steps), one
+    // Undo step; Reset caption position puts it level again.
+    const turnGrab = surface.locator('[data-handle="dim-caption-turn"]');
+    await expect(turnGrab).toHaveCount(1);
+    const tb = await turnGrab.boundingBox();
+    const cb = await surface.locator('[data-handle="dim-caption"]').boundingBox();
+    const cx = cb.x + cb.width / 2;
+    const cy = cb.y + cb.height / 2;
+    const reach = cy - (tb.y + tb.height / 2);
+    await page.mouse.move(tb.x + tb.width / 2, tb.y + tb.height / 2);
+    await page.mouse.down();
+    await page.keyboard.down('Shift');
+    await page.mouse.move(cx + reach * 0.7, cy - reach * 0.7, { steps: 4 });
+    await page.mouse.move(cx + reach, cy + 2, { steps: 4 });
+    await page.mouse.up();
+    await page.keyboard.up('Shift');
+    await expect(caption).toHaveAttribute('transform', /^rotate\(90 /);
+    await page.screenshot({ path: test.info().outputPath('measure-plus-caption-turned.png') });
+    await page.keyboard.press('Control+z');
+    await expect(caption).toHaveAttribute('transform', /^rotate\(0 /);
+    await page.keyboard.press('Control+Shift+z');
+    await expect(caption).toHaveAttribute('transform', /^rotate\(90 /);
+    const segTurned = await dimLine.locator('line').nth(2).boundingBox();
+    await page.mouse.click(segTurned.x + segTurned.width / 8, segTurned.y + segTurned.height / 2, { button: 'right' });
+    await expect(menu).toBeVisible();
+    await menu.getByText('Reset caption position', { exact: true }).click();
+    await expect(caption).toHaveAttribute('transform', /^rotate\(0 /);
     await page.keyboard.press('Escape');
     await expect(reading).toHaveText(/^(?:[\d,]+′(?:-\d+(?: \d+\/\d)?″)?|(?:\d+ )?\d+(?:\/\d)?″)$/);
     const ftin = feetInches((await reading.textContent()).trim());

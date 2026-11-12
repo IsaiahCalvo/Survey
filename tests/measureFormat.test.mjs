@@ -221,7 +221,7 @@ test('dimension line: a leader pill replaces the bend grabber and drags the lead
   const layer = read('src/components/SVGAnnotationLayer.jsx');
   assert.match(layer, /\{!dimGeo && renderLineHitPad\('midpoint'/);
   assert.match(layer, /data-handle="leader"[\s\S]{0,900}handleHandlePointerDown\(e, 'leader'\)/);
-  assert.match(layer, /if \(lineEdit\.dimLeader != null \|\| lineEdit\.dimCaptionOffset\) \{/);
+  assert.match(layer, /if \(lineEdit\.dimLeader != null \|\| lineEdit\.dimCaptionOffset \|\| lineEdit\.dimCaptionTurn != null\) \{/);
   const hook = read('src/hooks/useSVGInteraction.js');
   assert.match(hook, /if \(handleId === 'leader'\) \{\s*if \(!isDimensionMeasure\(obj\)\) return;/);
   assert.match(hook, /lineEdit: \{ dimLeader: leader \}/);
@@ -260,7 +260,7 @@ test('dimension line: a dragged caption keeps an elbow leader; Reset caption pos
   assert.match(layer, /data-handle="dim-caption"[\s\S]{0,700}handleHandlePointerDown\(e, 'dim-caption'\)/);
   const menu = read('src/hooks/useAnnotationContextMenu.jsx');
   assert.match(menu, /item\('Reset caption position', 'resetCaptionPosition'/);
-  assert.match(menu, /menuObjEditable && Boolean\(dimensionCaptionOffset\(menuObj\)\)\)\] : \[\]\),/);
+  assert.match(menu, /menuObjEditable && Boolean\(dimensionCaptionOffset\(menuObj\) \|\| dimensionCaptionTurn\(menuObj\)\)\)\] : \[\]\),/);
   assert.match(read('src/utils/svgAnnotationRenderers.jsx'), /\{geo\.elbow && \(\s*<polyline data-dimension-elbow="true"/);
 });
 
@@ -597,4 +597,38 @@ test('Set page scale lists custom scales with a remove x, and the Measurement ca
   const card = read('src/components/MeasureEditPopover.jsx');
   assert.match(card, /customScales\.map\(\(s, i\) => \(\{ value: `custom:\$\{i\}`, label: s\.label \}\)\)/);
   assert.match(card, /if \(saved\) onPatch\?\.\(\{ ownScale: \{ \.\.\.saved \} \}\);/);
+});
+
+test('dimension caption turn: the circle above the caption turns it; the gap and lift follow its box', async () => {
+  const dl = await import('../src/utils/measure/dimensionLine.js');
+  const { dimensionMarkLayout } = await import('../src/utils/measure/dimensionLayout.js');
+  assert.equal(dl.normalizeDimensionCaptionTurn(370), 10);
+  assert.equal(dl.normalizeDimensionCaptionTurn(-180), 180);
+  assert.equal(dl.normalizeDimensionCaptionTurn('x'), 0);
+  assert.equal(dl.dimensionCaptionTurn({ data: { measure: { dim: { captionTurn: -45.04 } } } }), -45);
+  const flat = dl.dimensionLineGeometry({ x1: 0, y1: 100, x2: 200, y2: 100 }, { captionWidth: 40, captionHeight: 9 });
+  const up = dl.dimensionLineGeometry({ x1: 0, y1: 100, x2: 200, y2: 100 }, { captionWidth: 40, captionHeight: 9, captionTurn: 90 });
+  assert.equal(up.caption.angle, flat.caption.angle + 90);
+  const gap = (g) => g.segments[1][0].x - g.segments[0][1].x;
+  assert.ok(gap(up) < gap(flat), 'a caption turned upright needs a narrower break in the line');
+  assert.ok(Math.abs(gap(up) - (9 + 2 * (gap(flat) - 40) / 2)) < 1e-6);
+  // Above: lifted by the turned box's height across the line.
+  const aboveFlat = dl.dimensionLineGeometry({ x1: 0, y1: 100, x2: 200, y2: 100 }, { captionWidth: 40, captionHeight: 9, place: 'above' });
+  const aboveUp = dl.dimensionLineGeometry({ x1: 0, y1: 100, x2: 200, y2: 100 }, { captionWidth: 40, captionHeight: 9, place: 'above', captionTurn: 90 });
+  assert.ok(Math.abs(aboveUp.caption.y - aboveUp.a.y) > Math.abs(aboveFlat.caption.y - aboveFlat.a.y));
+  // The layout every surface draws from reads the saved turn.
+  const obj = { type: 'line', x1: 0, y1: 0, x2: 200, y2: 0, data: { measure: { kind: 'length', scale: { ptPerUnit: 18, unit: 'ft', label: 'q' }, dim: { leader: 15.31, captionTurn: 30 } } } };
+  const lay = dimensionMarkLayout(obj, { x1: 0, y1: 0, x2: 200, y2: 0 });
+  assert.equal(Math.round(lay.geo.caption.angle), 30);
+});
+
+test('dimension caption turn: grabber, one-step drag and Reset caption position are wired', () => {
+  const layer = read('src/components/SVGAnnotationLayer.jsx');
+  assert.match(layer, /data-handle="dim-caption-turn"/);
+  assert.match(layer, /handleHandlePointerDown\(e, 'dim-caption-turn'\)/);
+  const hook = read('src/hooks/useSVGInteraction.js');
+  assert.match(hook, /action: 'caption-rotate'/);
+  assert.match(hook, /if \(e\.shiftKey\) turn = normalizeDimensionCaptionTurn\(Math\.round\(turn \/ 15\) \* 15\);/);
+  const menu = read('src/hooks/useAnnotationContextMenu.jsx');
+  assert.match(menu, /delete dim\.captionTurn;/);
 });

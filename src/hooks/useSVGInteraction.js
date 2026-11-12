@@ -48,7 +48,7 @@ import { clampResizeEdge } from '../utils/pageEdgeRules.js';
 // auto-revert on collinear geometry. Pure-math from lineGeometry, drag
 // helpers from lineDragMath (unit-tested in tests/lineDragMath.test.mjs).
 import { shouldSnapToLinear, getMidpoint } from '../utils/lineGeometry.js';
-import { dimensionCaptionOffset, dimensionLeader, isDimensionMeasure, normalizeDimensionLeader } from '../utils/measure/dimensionLine.js';
+import { dimensionCaptionOffset, dimensionCaptionTurn, dimensionLeader, isDimensionMeasure, normalizeDimensionCaptionTurn, normalizeDimensionLeader } from '../utils/measure/dimensionLine.js';
 import { movePolyVertexPoints } from '../utils/polyDraft.js';
 import { insertSplineCorner, isBezierSpline, keepPivot, markBezierSpline, moveSplineCorner, moveSplineHandle, polySplineStep, splineSpanMidpoint, splineSpans } from '../utils/polySpline.js';
 import { collectEndpointCandidates, resolveDrawSnap, drawSnapEventOptions } from '../utils/drawSnap.js';
@@ -3758,6 +3758,16 @@ export function useSVGInteraction({
       ds.currentCaptionOffset = offset;
       setVisualTransform({ id: ds.annotationIndex, dx: 0, dy: 0, lineEdit: { dimCaptionOffset: offset } });
       setInteractionState('dragging');
+    } else if (ds.mode === 'dim-caption-turn') {
+      // The pointer's angle round the caption's centre, from where the drag
+      // began. Shift steps 15°; near level it rests at the line's own angle.
+      const now = (Math.atan2(svgPoint.y - ds.centre.y, svgPoint.x - ds.centre.x) * 180) / Math.PI;
+      let turn = normalizeDimensionCaptionTurn(ds.originalCaptionTurn + now - ds.startAngle);
+      if (e.shiftKey) turn = normalizeDimensionCaptionTurn(Math.round(turn / 15) * 15);
+      else if (Math.abs(turn) < 3) turn = 0;
+      ds.currentCaptionTurn = turn;
+      setVisualTransform({ id: ds.annotationIndex, dx: 0, dy: 0, lineEdit: { dimCaptionTurn: turn } });
+      setInteractionState('dragging');
     } else if (ds.mode === 'leader') {
       // The world drag turned into the line's own frame (the mark may be
       // turned), then its part along the line's left normal.
@@ -5200,6 +5210,20 @@ export function useSVGInteraction({
           checkpointPolicy: 'normal',
         });
       }
+    } else if (ds.mode === 'dim-caption-turn' && ds.currentCaptionTurn != null && ds.currentCaptionTurn !== ds.originalCaptionTurn) {
+      const updatedAnnotations = deepClone(annotations);
+      const targetObj = updatedAnnotations.objects[ds.annotationIndex];
+      if (isDimensionMeasure(targetObj)) {
+        const dim = { ...targetObj.data.measure.dim };
+        if (ds.currentCaptionTurn) dim.captionTurn = ds.currentCaptionTurn;
+        else delete dim.captionTurn;
+        targetObj.data.measure.dim = dim;
+        onSaveAnnotations(updatedAnnotations, {
+          source: 'object:modified',
+          action: 'caption-rotate',
+          checkpointPolicy: 'normal',
+        });
+      }
     } else if (ds.mode === 'leader' && ds.currentLeader != null && ds.currentLeader !== ds.originalLeader) {
       // One undo step; the mark keeps everything else as it is now.
       const updatedAnnotations = deepClone(annotations);
@@ -6633,6 +6657,29 @@ export function useSVGInteraction({
         currentCaptionOffset: null,
         annotationIndex: selectedIndex,
         ctmInverse,
+        originalProps: { angle: obj.angle || 0 },
+      };
+      return;
+    }
+    // measure-plus: the circle above a dimension caption turns the caption.
+    if (handleId === 'dim-caption-turn') {
+      if (!isDimensionMeasure(obj)) return;
+      const cx = Number(e.currentTarget?.dataset?.centreX);
+      const cy = Number(e.currentTarget?.dataset?.centreY);
+      if (!Number.isFinite(cx) || !Number.isFinite(cy)) return;
+      try { svgRef.current?.setPointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
+      dragStateRef.current = {
+        active: true,
+        mode: 'dim-caption-turn',
+        handleId: 'dim-caption-turn',
+        startSVGPoint: svgPoint,
+        centre: { x: cx, y: cy },
+        startAngle: (Math.atan2(svgPoint.y - cy, svgPoint.x - cx) * 180) / Math.PI,
+        originalCaptionTurn: dimensionCaptionTurn(obj),
+        currentCaptionTurn: null,
+        annotationIndex: selectedIndex,
+        ctmInverse,
+        pointerId: e.pointerId,
         originalProps: { angle: obj.angle || 0 },
       };
       return;
