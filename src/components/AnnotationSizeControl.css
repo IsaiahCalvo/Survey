@@ -155,7 +155,8 @@
 }
 
 @media (hover: hover) {
-  .annotation-size-control__presets button:hover {
+  /* The current row keeps its raised surface under the pointer. */
+  .annotation-size-control__presets button:not(.is-active):hover {
     color: var(--text-1);
     background: var(--hover);
     outline: 0;
@@ -169,13 +170,6 @@
   font-weight: 600;
   background: var(--surface-3);
   box-shadow: none;
-}
-
-@media (hover: hover) {
-  .annotation-size-control__presets button.is-active:hover {
-    /* The current row keeps its raised surface under the pointer. */
-    background: var(--surface-3);
-  }
 }
 
 .annotation-size-control__preset-preview {

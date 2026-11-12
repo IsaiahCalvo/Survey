@@ -120,8 +120,10 @@
 }
 
 @media (hover: hover) {
-  .annotation-dropdown__options > button:hover,
-  .annotation-dropdown__option:hover {
+  /* The current row keeps its raised surface under the pointer, so it never
+     looks like any other hovered row. */
+  .annotation-dropdown__options > button:not(.is-active):hover,
+  .annotation-dropdown__option:not(.is-active):hover {
     color: var(--text-1);
     background: var(--hover);
     outline: 0;
@@ -137,15 +139,6 @@
   font-weight: 600;
   background: var(--surface-3);
   box-shadow: none;
-}
-
-@media (hover: hover) {
-  .annotation-dropdown__options > button.is-active:hover,
-  .annotation-dropdown__option.is-active:hover {
-    /* The current row keeps its raised surface under the pointer, so it
-       never looks like any other hovered row. */
-    background: var(--surface-3);
-  }
 }
 
 /* A line between a menu's rows and an action under them. */
