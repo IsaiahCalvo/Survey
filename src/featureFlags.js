@@ -447,6 +447,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Page right-click: Move page up / down, Unlock all, Select all text',
     stage: 'beta',
   }),
+  'selection-count': Object.freeze({
+    label: 'Selection bar shows how many marks a multi-pick holds',
+    stage: 'beta',
+  }),
   'tool-style-preview': Object.freeze({
     label: 'Desktop colour popover: a live preview of what the tool will draw (colour, width, line style)',
     stage: 'beta',
