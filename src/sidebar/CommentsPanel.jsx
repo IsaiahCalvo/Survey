@@ -478,7 +478,7 @@ export default function CommentsPanel({
           data-comment-filter={key}
           // Picking a list yourself drops a link's mark, so it can't pull
           // the list back to its thread.
-          onClick={() => { setView(key); setHighlightId(null); }}
+          onClick={() => { setView(key); setHighlightId(null); setHighlightShown(null); }}
         >
           {label} <span className="comments-filter__count">{count}</span>
         </button>
