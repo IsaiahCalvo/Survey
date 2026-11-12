@@ -59,8 +59,10 @@ test.describe('desktop', () => {
       await page2.scrollIntoViewIfNeeded();
       await expect(page2.locator('canvas').first()).toBeVisible({ timeout: 30_000 });
       await expect.poll(() => bluePixels(page, 2), { timeout: 20_000 }).toBeGreaterThan(200);
-      // Page 1 stays plain.
-      expect(await bluePixels(page, 1)).toBeLessThan(50);
+      // Page 1 stays plain: a few bluish pixels at most (anti-aliased title
+      // text varies by machine), far fewer than the ruled page.
+      const ruled = await bluePixels(page, 2);
+      expect(await bluePixels(page, 1)).toBeLessThan(ruled / 5);
       await page.screenshot({ path: process.env.TEMPLATE_SHOT || test.info().outputPath('template-page.png') });
 
       // Wait for the rewrite to save, then reload: the lines come from the PDF.
