@@ -12,6 +12,10 @@
 //   - plan quotas at 80%: database size, stored files, storage egress
 //     (estimated), monthly active users, edge function calls, and Groq's
 //     free daily caps per voice-agent model (QUOTAS below)
+//   - billing (KAL-447): any stripe-webhook server error in the last hour, a
+//     run of refused webhooks (signing secret or endpoint drift), and paid
+//     plans the database thinks are live although Stripe should have renewed
+//     or ended them days ago (a missed webhook strands a payer or gives away Pro)
 //   - Cloudflare R2 bytes and operations (public.r2_usage_daily /
 //     pdf_r2_copies) at 80% of pdf-file-url's own cap, which is itself 80% of
 //     R2's free tier: a warning well before the app falls back to Supabase
@@ -27,6 +31,11 @@ export const THRESHOLDS = Object.freeze({
   failedSignInsPerHour: 30,
   edge5xxPerHour: 5,
   groqRequestsPerDay: 800, // 80% of Groq's free 1,000 a day
+  // Any 5xx is our own write or Stripe read failing on a real event. 4xx can
+  // be bots poking the public endpoint, so only a run of them counts: a wrong
+  // signing secret fails every event, and Stripe keeps resending.
+  stripeWebhook5xxPerHour: 1,
+  stripeWebhook4xxPerHour: 3,
   newCrashPerHour: 10,
   anyCrashPerHour: 100,
 });
@@ -53,6 +62,10 @@ export const QUERIES = Object.freeze({
       from logs where source = 'edge_logs' and log_attributes['request.method'] = 'GET'
         and log_attributes['request.path'] like '/storage/v1/object/%')
     where obj != '' group by obj`,
+  stripeWebhookErrors: `select countIf(toInt32OrZero(log_attributes['response.status_code']) >= 500) as server,
+      countIf(toInt32OrZero(log_attributes['response.status_code']) between 400 and 499) as refused
+    from logs where source = 'function_edge_logs'
+    and log_attributes['request.pathname'] like '/functions/v1/stripe-webhook%'`,
   agentCalls: `select count() as n from logs where source = 'function_edge_logs'
     and log_attributes['request.pathname'] like '/functions/v1/survey-agent%'
     and log_attributes['request.method'] = 'POST'
@@ -80,6 +93,18 @@ export const CRASH_SPIKE_SQL = `with recent as (
   select * from marked
   where not seen_before or times >= ${THRESHOLDS.anyCrashPerHour}
   order by times desc limit 20`;
+
+// Paid plans out of step with Stripe, counted (never listed: CI logs are
+// public). A live paid plan gets a new period from Stripe at every renewal
+// (customer.subscription.updated), so one still "active" two days past its
+// period end means that event never landed. A paid tier with status
+// canceled means the deletion was only half written.
+export const BILLING_DRIFT_SQL = `select
+  count(*) filter (where stripe_subscription_id is not null
+    and status in ('active', 'trialing')
+    and current_period_end < now() - interval '2 days') as stale_paid,
+  count(*) filter (where status = 'canceled') as canceled_paid
+  from public.user_subscriptions where tier <> 'free'`;
 
 // What the plan includes, and what going past it costs. Supabase: Pro plan
 // (supabase.com/pricing, 2026-10-21). Groq: free tier per model per day
@@ -178,7 +203,7 @@ export function quotaUsageFrom({ database, storageReads = [], sizes = [], functi
 }
 
 /** Problems as Markdown bullet lines, given the counts the queries returned. */
-export function problemsFrom({ failedSignIns, edge5xx, agentCalls, crashGroups = [] }, limits = THRESHOLDS) {
+export function problemsFrom({ failedSignIns, edge5xx, agentCalls, crashGroups = [], stripeWebhook = null, billingDrift = null }, limits = THRESHOLDS) {
   const problems = [];
   if (failedSignIns >= limits.failedSignInsPerHour) {
     problems.push(`- ${failedSignIns} failed sign-ins in the last hour (alert at ${limits.failedSignInsPerHour}). Someone may be guessing passwords.`);
@@ -190,6 +215,22 @@ export function problemsFrom({ failedSignIns, edge5xx, agentCalls, crashGroups =
   }
   if (agentCalls >= limits.groqRequestsPerDay) {
     problems.push(`- ${agentCalls} voice agent calls in the last 24 hours; Groq's free tier stops at 1,000 a day.`);
+  }
+  const server = Number(stripeWebhook?.server || 0);
+  const refused = Number(stripeWebhook?.refused || 0);
+  if (server >= limits.stripeWebhook5xxPerHour) {
+    problems.push(`- Billing: the Stripe webhook failed ${server} time(s) in the last hour. Stripe will resend, but check the stripe-webhook function logs before a payment is lost.`);
+  }
+  if (refused >= limits.stripeWebhook4xxPerHour) {
+    problems.push(`- Billing: the Stripe webhook refused ${refused} requests in the last hour. If these are Stripe's, the signing secret (STRIPE_WEBHOOK_SECRET) or endpoint no longer matches.`);
+  }
+  const stale = Number(billingDrift?.stale_paid || 0);
+  const halfCanceled = Number(billingDrift?.canceled_paid || 0);
+  if (stale > 0) {
+    problems.push(`- Billing: ${stale} paid plan(s) still active more than 2 days after their billing period ended. Stripe's renewal or cancellation never reached the database; compare them with Stripe.`);
+  }
+  if (halfCanceled > 0) {
+    problems.push(`- Billing: ${halfCanceled} account(s) are canceled but still on a paid tier.`);
   }
   for (const group of crashGroups) {
     const isNew = !group.seen_before && group.times >= limits.newCrashPerHour;
@@ -244,20 +285,24 @@ async function readQuotaUsage() {
 
 async function main() {
   const out = process.argv.includes('--out') ? process.argv[process.argv.indexOf('--out') + 1] : null;
-  const [signIns, edge5xx, agent, crashes, quotas] = await Promise.all([
+  const [signIns, edge5xx, agent, crashes, quotas, stripeWebhook, billingDrift] = await Promise.all([
     queryLogs(QUERIES.failedSignIns, 1),
     queryLogs(QUERIES.edge5xx, 1),
     queryLogs(QUERIES.agentCalls, 24),
     queryDatabase(CRASH_SPIKE_SQL),
     readQuotaUsage(),
+    queryLogs(QUERIES.stripeWebhookErrors, 1),
+    queryDatabase(BILLING_DRIFT_SQL),
   ]);
   const counts = {
     failedSignIns: Number(signIns[0]?.n || 0),
     edge5xx: edge5xx.map((row) => ({ fn: String(row.fn), n: Number(row.n) })),
     agentCalls: Number(agent[0]?.n || 0),
     crashGroups: (Array.isArray(crashes) ? crashes : []).map((row) => ({ ...row, times: Number(row.times) })),
+    stripeWebhook: stripeWebhook[0] || null,
+    billingDrift: Array.isArray(billingDrift) ? billingDrift[0] || null : null,
   };
-  console.log(`failed sign-ins/hour ${counts.failedSignIns}, edge 5xx/hour ${counts.edge5xx.reduce((s, r) => s + r.n, 0)}, voice agent calls/24h ${counts.agentCalls}, crash groups over threshold ${counts.crashGroups.length}`);
+  console.log(`failed sign-ins/hour ${counts.failedSignIns}, edge 5xx/hour ${counts.edge5xx.reduce((s, r) => s + r.n, 0)}, voice agent calls/24h ${counts.agentCalls}, crash groups over threshold ${counts.crashGroups.length}, stripe webhook 5xx/4xx ${Number(counts.stripeWebhook?.server || 0)}/${Number(counts.stripeWebhook?.refused || 0)}, paid plans out of step ${Number(counts.billingDrift?.stale_paid || 0) + Number(counts.billingDrift?.canceled_paid || 0)}`);
   console.log(`quotas: ${Object.entries(quotas).map(([key, value]) => `${key} ${Math.round((value / QUOTAS[key].limit) * 100)}%`).join(', ')}`);
   const problems = [...problemsFrom(counts), ...quotaProblemsFrom(quotas)];
   if (out) fs.writeFileSync(out, problems.length ? `${problems.join('\n')}\n` : '');

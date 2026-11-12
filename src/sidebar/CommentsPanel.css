@@ -263,6 +263,67 @@
   margin-left: 20px;
 }
 
+/* Reply and Resolve (or Reopen) share one quiet row under the thread. */
+.comments-thread__actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  align-self: flex-start;
+  margin-left: 20px;
+}
+.comments-thread__actions .comments-reply-btn {
+  margin-left: 0;
+}
+
+/* KAL-415: Open / Resolved, the two lists a thread can sit in. */
+.comments-filter {
+  display: flex;
+  gap: 4px;
+  padding: 2px 0 4px;
+}
+.comments-filter__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.comments-filter__btn.is-on {
+  background: var(--surface-3);
+  color: var(--text-1);
+  font-weight: 600;
+}
+.comments-filter__count {
+  color: var(--text-3);
+  font-weight: 400;
+}
+.comments-filter__btn:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+@media (hover: hover) {
+  .comments-filter__btn:not(.is-on):hover {
+    background: var(--hover);
+    color: var(--text-1);
+  }
+}
+
+/* "Resolved by Ana · 2 h ago" under a resolved thread's label. */
+.comments-resolved-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-3);
+  font-size: 11px;
+}
+
 /* A hairline between threads, so a long list reads as separate
    conversations; the selected or hovered thread's own fill hides it. */
 .comments-thread + .comments-thread {
@@ -385,4 +446,6 @@
 .mobile-pdf-sheet .comments-item .comments-box--inline,
 .mobile-pdf-sheet .comments-reply > .comments-box { margin-left: 30px; }
 .mobile-pdf-sheet .comments-reply-btn { margin-left: 24px; }
+.mobile-pdf-sheet .comments-thread__actions { margin-left: 24px; }
+.mobile-pdf-sheet .comments-thread__actions .comments-reply-btn { margin-left: 0; }
 .mobile-pdf-sheet .comments-box textarea { font-size: 16px; }

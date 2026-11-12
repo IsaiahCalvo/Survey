@@ -73,3 +73,20 @@ test('object sizes query quotes names it got from the logs', () => {
   const sql = objectSizesSql(["documents/u/it's.pdf", 'survey-media/d/m/x.jpg']);
   assert.match(sql, /\('documents', 'u\/it''s\.pdf'\), \('survey-media', 'd\/m\/x\.jpg'\)/);
 });
+
+test('billing (KAL-447): any webhook 5xx, a run of refusals, and paid plans out of step with Stripe', async () => {
+  const { BILLING_DRIFT_SQL } = await import('../scripts/backend-alerts.mjs');
+  assert.deepEqual(problemsFrom({ ...quiet, stripeWebhook: { server: 0, refused: 2 }, billingDrift: { stale_paid: 0, canceled_paid: 0 } }), []);
+  const failed = problemsFrom({ ...quiet, stripeWebhook: { server: 1, refused: 0 } });
+  assert.equal(failed.length, 1);
+  assert.match(failed[0], /^- Billing: the Stripe webhook failed 1 time/);
+  assert.match(problemsFrom({ ...quiet, stripeWebhook: { server: 0, refused: 3 } })[0], /STRIPE_WEBHOOK_SECRET/);
+  const drift = problemsFrom({ ...quiet, billingDrift: { stale_paid: '2', canceled_paid: '1' } });
+  assert.equal(drift.length, 2);
+  assert.match(drift[0], /2 paid plan\(s\) still active more than 2 days after/);
+  assert.match(drift[1], /1 account\(s\) are canceled but still on a paid tier/);
+  // Counts only: the repo and its CI logs are public.
+  assert.doesNotMatch(BILLING_DRIFT_SQL, /email|user_id|stripe_customer_id\b/);
+  assert.match(BILLING_DRIFT_SQL, /from public\.user_subscriptions where tier <> 'free'/);
+  assert.match(QUERIES.stripeWebhookErrors, /\/functions\/v1\/stripe-webhook%/);
+});

@@ -44,6 +44,9 @@ export function mapCommentRow(row) {
     createdAt: row.created_at,
     editedAt: row.edited_at || null,
     deletedAt: row.deleted_at || null,
+    // KAL-415: a thread start can be resolved (set_mark_comment_resolved).
+    resolvedAt: row.resolved_at || null,
+    resolvedBy: row.resolved_by || null,
     // Nightly 'comment-pins': a page thread with a spot on the page.
     pin: row.pin_kind ? {
       kind: row.pin_kind,
@@ -60,7 +63,7 @@ export async function listMarkComments(client, documentId) {
   // Page by id past PostgREST's row cap, then sort oldest first for display.
   const { data, error } = await readLibraryRows(() => client
     .from('mark_comments')
-    .select('id, document_id, thread_id, mark_id, page_number, author_id, body, mentions, created_at, edited_at, deleted_at, pin_x, pin_y, pin_kind, pin_status, pin_number')
+    .select('id, document_id, thread_id, mark_id, page_number, author_id, body, mentions, created_at, edited_at, deleted_at, pin_x, pin_y, pin_kind, pin_status, pin_number, resolved_at, resolved_by')
     .eq('document_id', documentId));
   if (error) throw new Error(error.message || 'Could not read the comments');
   return [...data]
@@ -115,6 +118,19 @@ export async function updatePagePin(client, { commentId, pageNumber = null, x = 
     p_y: y,
     p_status: status,
   }), 'Could not change the pin');
+}
+
+/** Resolve a thread (its first comment) or reopen it. */
+export async function setMarkCommentResolved(client, { commentId, resolved }) {
+  return rpcRow(await client.rpc('set_mark_comment_resolved', { p_comment_id: commentId, p_resolved: Boolean(resolved) }), resolved ? 'Could not resolve the thread' : 'Could not reopen the thread');
+}
+
+/** Split threads into the Open and Resolved lists (a thread is resolved when its first comment is). */
+export function splitResolvedThreads(threads) {
+  const open = [];
+  const resolved = [];
+  for (const t of threads || []) (t.root?.resolvedAt ? resolved : open).push(t);
+  return { open, resolved };
 }
 
 export async function editMarkComment(client, { commentId, body, mentions = [] }) {

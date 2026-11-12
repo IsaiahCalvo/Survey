@@ -174,3 +174,51 @@ test('a comment whose author account is gone fails closed: only the owner can de
   assert.match(del, /v_row\.author_id IS NOT DISTINCT FROM v_uid/);
   assert.doesNotMatch(del.slice(0, del.indexOf('END;')), /v_row\.author_id = v_uid/);
 });
+
+test('resolve (KAL-415): rows carry the resolved mark and threads split into Open and Resolved', async () => {
+  const { splitResolvedThreads, setMarkCommentResolved } = await import('../src/services/markComments.js');
+  const done = c('a', '2026-11-12T10:00:00Z', { resolved_at: '2026-11-12T11:00:00Z', resolved_by: ANA.id });
+  assert.equal(done.resolvedAt, '2026-11-12T11:00:00Z');
+  assert.equal(done.resolvedBy, ANA.id);
+  assert.equal(c('b', '2026-11-12T10:00:00Z').resolvedAt, null);
+  const threads = groupThreads([done, c('b', '2026-11-12T10:30:00Z'), c('a1', '2026-11-12T12:00:00Z', { thread_id: 'a' })]);
+  const { open, resolved } = splitResolvedThreads(threads);
+  assert.deepEqual(open.map((t) => t.id), ['b']);
+  assert.deepEqual(resolved.map((t) => t.id), ['a']);
+  assert.equal(resolved[0].replies.length, 1, 'replies stay with a resolved thread');
+
+  const calls = [];
+  const client = { rpc: async (name, args) => { calls.push([name, args]); return { data: [{ id: 'a', document_id: 'd', page_number: 1, created_at: 'x', resolved_at: 'y' }], error: null }; } };
+  const row = await setMarkCommentResolved(client, { commentId: 'a', resolved: true });
+  assert.deepEqual(calls[0], ['set_mark_comment_resolved', { p_comment_id: 'a', p_resolved: true }]);
+  assert.equal(row.resolvedAt, 'y');
+  await assert.rejects(
+    setMarkCommentResolved({ rpc: async () => ({ data: null, error: { message: '' } }) }, { commentId: 'a', resolved: false }),
+    /Could not reopen the thread/,
+  );
+});
+
+test('resolve (KAL-415): migration, list read and panel wiring', () => {
+  const sql = readFileSync(new URL('../supabase/migrations/20261112150000_mark_comment_resolve.sql', import.meta.url), 'utf8');
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS resolved_at timestamptz/);
+  assert.match(sql, /CHECK \(resolved_at IS NULL OR thread_id IS NULL\)/);
+  assert.match(sql, /FUNCTION public\.set_mark_comment_resolved\(p_comment_id uuid, p_resolved boolean\)[\s\S]*SECURITY DEFINER[\s\S]*SET search_path = ''/);
+  assert.match(sql, /user_can_access_document\(v_row\.document_id, 'editor'\)/);
+  assert.match(sql, /REVOKE ALL ON FUNCTION public\.set_mark_comment_resolved\(uuid, boolean\) FROM PUBLIC, anon/);
+  assert.match(sql, /GRANT EXECUTE ON FUNCTION public\.set_mark_comment_resolved\(uuid, boolean\) TO authenticated;/);
+  // A new version keeps the resolved mark with the thread.
+  assert.match(sql, /c\.pin_number, c\.resolved_at, c\.resolved_by/);
+  // A reply reopens a resolved thread, but a copy onto a new version does not.
+  assert.match(sql, /CREATE TRIGGER mark_comment_reply_reopens[\s\S]*WHEN \(NEW\.thread_id IS NOT NULL AND NEW\.carried_from IS NULL\)/);
+
+  const service = readFileSync(new URL('../src/services/markComments.js', import.meta.url), 'utf8');
+  assert.match(service, /pin_number, resolved_at, resolved_by'\)/);
+
+  const panel = readFileSync(new URL('../src/sidebar/CommentsPanel.jsx', import.meta.url), 'utf8');
+  assert.match(panel, /data-comment-filter=\{key\}/);
+  assert.match(panel, /data-comment-resolve=\{thread\.id\}/);
+  assert.match(panel, /data-comment-reopen=\{thread\.id\}/);
+  assert.match(panel, /label: 'Undo'/, 'resolve acts at once with an Undo, no confirm');
+  // The right-click menu on a thread's first comment offers the same action.
+  assert.match(panel, /canWrite && onResolve && \{ label: comment\.resolvedAt \? 'Reopen' : 'Resolve'/);
+});
