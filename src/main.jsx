@@ -601,6 +601,22 @@ if (!devRouteActive && isAgentLinkRoute) {
   });
 }
 
+// `/sign/<token>`: a phone signs for the Add signature dialog on a computer
+// (Nightly 'phone-sign'). No sign-in: the token is the key.
+const isPhoneSignRoute = typeof window !== 'undefined'
+  && /^\/sign\/[^/?#]+\/?$/.test(window.location.pathname || '');
+
+if (!devRouteActive && isPhoneSignRoute) {
+  devRouteActive = true;
+  import('./home/PhoneSignPage').then(({ default: PhoneSignPage }) => {
+    createRoot(document.getElementById('root')).render(
+      <ErrorBoundary>
+        <PhoneSignPage />
+      </ErrorBoundary>
+    );
+  });
+}
+
 // `/flags`: flag admins turn unfinished features on for testers or everyone.
 const isFlagsRoute = typeof window !== 'undefined'
   && /^\/flags(?:\/|$)/.test(window.location.pathname || '');

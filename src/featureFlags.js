@@ -501,6 +501,7 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Page fit card: Single / Double / Cover page views (pages side by side, like an open book)',
     stage: 'beta',
   }),
+  'phone-sign': Object.freeze({ label: 'Add signature: Phone tab (scan a QR code, sign on the phone, it lands on the Draw pad)', stage: 'beta' }),
   'group-marks': Object.freeze({
     label: 'Group / Ungroup in the mark menu: a click on any member picks the whole group',
     stage: 'beta',

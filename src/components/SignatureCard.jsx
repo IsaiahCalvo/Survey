@@ -4,14 +4,16 @@
 //   - The Text group's Signature button opens a card with the saved
 //     signatures and an Add tile.
 //   - Add opens a dialog: Draw (a pad, three inks, three widths, Clear) or
-//     Type (a name in one of three styles), a title, then Save.
+//     Type (a name in one of three styles), a title, then Save. With
+//     'phone-sign' a Phone tab shows a QR code; what the phone draws lands
+//     on the Draw pad.
 //   - Pick a signature (blue ring), then click the page: it lands centred on
 //     the click and stays picked, so each further click signs again. Esc or
 //     another tool lets go. A finger only pans (house rule), so a tap on a
 //     tile drops it in the middle of the page in view.
 // Placement is the mark library's (markLibraryPlacement.js): a picture mark,
 // one save, one Undo step, and the new signature becomes the selection.
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from '../Icons';
 import DialogCard, { DIALOG_FIELD_STYLE, DIALOG_LABEL_STYLE } from './DialogCard.jsx';
@@ -25,13 +27,15 @@ import {
 } from '../markLibrary/markLibraryPlacement.js';
 import { insertedImageItem } from '../utils/insertedImage.js';
 import { getSignatureStore } from '../signature/signatureStore.js';
+import { isFeatureOn } from '../featureFlags';
+import PhoneSignPanel from './PhoneSignPanel.jsx';
+import SignaturePad, { SIGNATURE_PAD_H, SIGNATURE_PAD_W } from '../signature/SignaturePad.jsx';
 import {
   SIGNATURE_FONTS,
   SIGNATURE_INKS,
   SIGNATURE_WIDTHS,
   drawnSignature,
   fontCss,
-  paintStrokes,
   typedSignature,
 } from '../signature/signaturePicture.js';
 import './SelectionPropertiesPanel.css';
@@ -65,57 +69,8 @@ export function signatureItem(row) {
   return item ? { ...item, id: `${SIGNATURE_ITEM_PREFIX}${row.id}` } : null;
 }
 
-const PAD_W = 440;
-const PAD_H = 160;
-
-function SignaturePad({ strokes, setStrokes, ink, lineWidth }) {
-  const canvasRef = useRef(null);
-  const drawingRef = useRef(null);
-  useLayoutEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ratio = window.devicePixelRatio || 1;
-    canvas.width = PAD_W * ratio;
-    canvas.height = PAD_H * ratio;
-    const ctx = canvas.getContext('2d');
-    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-    ctx.clearRect(0, 0, PAD_W, PAD_H);
-    paintStrokes(ctx, strokes, { ink, lineWidth });
-  }, [strokes, ink, lineWidth]);
-  const at = (event) => {
-    const r = canvasRef.current.getBoundingClientRect();
-    return { x: ((event.clientX - r.left) / r.width) * PAD_W, y: ((event.clientY - r.top) / r.height) * PAD_H };
-  };
-  return (
-    <canvas
-      ref={canvasRef}
-      className="signature-pad"
-      data-signature-pad="true"
-      aria-label="Signature pad: draw your signature here"
-      style={{ width: '100%', aspectRatio: `${PAD_W} / ${PAD_H}` }}
-      onPointerDown={(event) => {
-        if (event.button !== 0) return;
-        event.preventDefault();
-        event.currentTarget.setPointerCapture?.(event.pointerId);
-        drawingRef.current = event.pointerId;
-        setStrokes((list) => [...list, [at(event)]]);
-      }}
-      onPointerMove={(event) => {
-        if (drawingRef.current !== event.pointerId) return;
-        const samples = event.nativeEvent.getCoalescedEvents?.() || [event];
-        const points = samples.map((sample) => at(sample));
-        setStrokes((list) => {
-          if (!list.length) return list;
-          const next = list.slice();
-          next[next.length - 1] = [...next[next.length - 1], ...points];
-          return next;
-        });
-      }}
-      onPointerUp={() => { drawingRef.current = null; }}
-      onPointerCancel={() => { drawingRef.current = null; }}
-    />
-  );
-}
+const PAD_W = SIGNATURE_PAD_W;
+const PAD_H = SIGNATURE_PAD_H;
 
 function ChoiceRow({ label, options, value, onChange, render }) {
   return (
@@ -140,6 +95,9 @@ function ChoiceRow({ label, options, value, onChange, render }) {
 
 export function AddSignatureDialog({ onClose, onSaved }) {
   const [tab, setTab] = useState('draw');
+  // Nightly 'phone-sign': a Phone tab with a QR code (signature/phoneSign.js).
+  const [phoneSignOn] = useState(() => isFeatureOn('phone-sign'));
+  const tabs = phoneSignOn ? [['draw', 'Draw'], ['type', 'Type'], ['phone', 'Phone']] : [['draw', 'Draw'], ['type', 'Type']];
   const [title, setTitle] = useState('Signature');
   const [inkId, setInkId] = useState('black');
   const [widthId, setWidthId] = useState('medium');
@@ -148,7 +106,7 @@ export function AddSignatureDialog({ onClose, onSaved }) {
   const [fontId, setFontId] = useState('script');
   const ink = (SIGNATURE_INKS.find((i) => i.id === inkId) || SIGNATURE_INKS[0]).hex;
   const lineWidth = (SIGNATURE_WIDTHS.find((w) => w.id === widthId) || SIGNATURE_WIDTHS[1]).px;
-  const ready = tab === 'draw' ? strokes.some((s) => s.length) : Boolean(text.trim());
+  const ready = tab === 'draw' ? strokes.some((s) => s.length) : tab === 'type' && Boolean(text.trim());
   const save = () => {
     if (!ready) return;
     const picture = tab === 'draw'
@@ -177,12 +135,13 @@ export function AddSignatureDialog({ onClose, onSaved }) {
     >
       <div className="signature-dialog">
         <div className="signature-tabs" role="tablist" aria-label="How to sign">
-          {[['draw', 'Draw'], ['type', 'Type']].map(([id, label]) => (
+          {tabs.map(([id, label]) => (
             <button
               key={id}
               type="button"
               role="tab"
               aria-selected={tab === id}
+              data-signature-tab={id}
               className={`signature-tabs__tab${tab === id ? ' is-active' : ''}`}
               onClick={() => setTab(id)}
             >
@@ -190,7 +149,7 @@ export function AddSignatureDialog({ onClose, onSaved }) {
             </button>
           ))}
         </div>
-        <div className="signature-dialog__row">
+        {tab !== 'phone' && <div className="signature-dialog__row">
           <ChoiceRow
             label="Ink"
             options={SIGNATURE_INKS}
@@ -210,8 +169,11 @@ export function AddSignatureDialog({ onClose, onSaved }) {
           {tab === 'draw' && (
             <button type="button" className="hub-btn signature-clear" onClick={() => setStrokes([])} disabled={!strokes.length}>Clear</button>
           )}
-        </div>
-        {tab === 'draw' ? (
+        </div>}
+        {tab === 'phone' && (
+          <PhoneSignPanel onStrokes={(next) => { setStrokes(next); setTab('draw'); }} />
+        )}
+        {tab === 'phone' ? null : tab === 'draw' ? (
           <SignaturePad strokes={strokes} setStrokes={setStrokes} ink={ink} lineWidth={lineWidth} />
         ) : (
           <>
