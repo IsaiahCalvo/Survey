@@ -16,6 +16,7 @@ import {
   historyRowMarkIds,
   latestDeleteRowByMark,
   latestUndoRowByMark,
+  historyUndoRemovesMark,
 } from '../src/utils/historyFeed.js';
 import { historyAnnotationBox, historyRowGhostAnnotation } from '../src/utils/historyGeometry.js';
 import { TRASH_HISTORY_EVENT_TYPES, buildPartialEraseHistoryRow, buildHistoryEventRowFromDebugEvent } from '../src/services/documentHistoryService.js';
@@ -257,4 +258,14 @@ test('latestUndoRowByMark keeps the newest undo for each mark', () => {
   const map = latestUndoRowByMark(rows.map((r) => ({ ...r, annotation_id: r.payload.annotationId })));
   assert.equal(map.size, 1);
   assert.equal(map.get('m1').id, 'b');
+});
+
+test('only an undo of an add takes a mark off the page', () => {
+  const undo = (actionType) => row('u', { event_type: 'local_annotation_undo_applied', payload: { actionType, annotationType: 'rect', annotationId: 'r1' } });
+  assert.equal(historyUndoRemovesMark(undo('create')), true);
+  // Undoing a delete brings the mark back; undoing a move leaves it on the page.
+  assert.equal(historyUndoRemovesMark(undo('delete')), false);
+  assert.equal(historyUndoRemovesMark(undo('move')), false);
+  assert.equal(historyUndoRemovesMark(row('x', { payload: { actionType: 'create', annotationType: 'rect' } })), false);
+  assert.equal(historyUndoRemovesMark(row('b', { event_type: 'local_annotation_undo_applied', payload: {} })), false);
 });

@@ -67,6 +67,7 @@ import {
   historyShortVerb,
   latestDeleteRowByMark,
   latestUndoRowByMark,
+  historyUndoRemovesMark,
 } from '../../utils/historyFeed.js';
 import {
   HISTORY_MARK_LOOKUP_MAX_PAGES,
@@ -1444,8 +1445,11 @@ export default function RevisionsPanel({
     } else if (selected && present === false && markId) {
       const trash = restoreRowForMark(markId);
       // An undo that took the mark off says so (its own line, or a newer one).
+      // Only an undo of an add takes a mark off; undoing a delete brings it
+      // back, so a later redo of that delete reads as "deleted later".
       const undo = latestUndoByMark.get(String(markId));
-      const undone = undo && (!trash || historyRowTimeMs(undo) > historyRowTimeMs(trash));
+      const undone = undo && historyUndoRemovesMark(undo)
+        && (!trash || historyRowTimeMs(undo) > historyRowTimeMs(trash));
       const note = undone
         ? (historyRowKey(undo) === e.key
           ? 'This undo took the mark off the page. Redo brings it back.'

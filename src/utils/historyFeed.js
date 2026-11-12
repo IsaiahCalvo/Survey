@@ -620,6 +620,15 @@ export function latestDeleteRowByMark(rows) {
   return out;
 }
 
+// Undoing one of these steps takes the mark off the page.
+const UNDO_REMOVES_STEPS = new Set(['created', 'placed', 'restored']);
+
+/** Whether this undo row took its mark off the page (it undid an add). */
+export function historyUndoRemovesMark(row) {
+  if (!String(row?.event_type || '').endsWith('_undo_applied')) return false;
+  return UNDO_REMOVES_STEPS.has(classifyHistoryRow(row).stepKind);
+}
+
 /** The newest undo row for each mark id (Map id -> row). */
 export function latestUndoRowByMark(rows) {
   const out = new Map();
