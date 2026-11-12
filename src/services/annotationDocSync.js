@@ -2741,10 +2741,14 @@ async function loadFromBackend(state) {
       fillLocalPersistence(state);
       // The local mirror normally receives the row too; give it whatever of
       // the accepted state it lacks (usually nothing).
-      applyToLocalPersistence(
-        state,
-        Y.encodeStateAsUpdate(state.acceptedDoc, Y.encodeStateVector(state.localPersistenceDoc)),
-      );
+      // Flag 'lazy-accepted-shadow': the worker's mirror tells whether there
+      // is anything to give without building acceptedDoc here.
+      if (!state.acceptedUnbuilt || !(await localPersistenceHoldsAccepted(state))) {
+        applyToLocalPersistence(
+          state,
+          Y.encodeStateAsUpdate(state.acceptedDoc, Y.encodeStateVector(state.localPersistenceDoc)),
+        );
+      }
     }
     state.lastSeq = Number(snapRow.at_seq) || 0;
     state.replayFromSeq = state.lastSeq;
@@ -2768,7 +2772,7 @@ async function loadFromBackend(state) {
     snapRow?.alreadyHeld
     && state.cleanCheckpointToken != null
     && state.cleanCopyRecordCount === 0
-  ) ? Y.snapshot(state.acceptedDoc) : null;
+  ) ? await acceptedSnapshotNow(state) : null;
   try {
     cursor = await readWalRowsAfter(state, cursor, 'annotation tail read', async (row) => {
       tailRows += 1;
@@ -2786,10 +2790,12 @@ async function loadFromBackend(state) {
   // stored checkpoint, and the receipt below would encode every mark (~210 ms
   // on a 240-sheet set), read the stored multi-MB copy back and write the
   // same bytes under a new token (~300 ms of IndexedDB work on the main thread).
-  if (
-    cleanBeforeTail
-    && (tailRows === 0 || Y.equalSnapshots(cleanBeforeTail, Y.snapshot(state.acceptedDoc)))
-  ) {
+  let unchangedSinceSavedCopy = Boolean(cleanBeforeTail) && tailRows === 0;
+  if (cleanBeforeTail && tailRows > 0) {
+    const after = await acceptedSnapshotNow(state);
+    unchangedSinceSavedCopy = Boolean(after) && Y.equalSnapshots(cleanBeforeTail, after);
+  }
+  if (unchangedSinceSavedCopy) {
     if (!state.lastSnapshotBytes) state.lastSnapshotBytes = Math.round(state.cleanCheckpointByteLength / 4);
     return;
   }
@@ -3399,6 +3405,51 @@ function knownAcceptedMirrorState(state) {
 function currentAcceptedMirrorState(state) {
   const known = knownAcceptedMirrorState(state);
   return known && known.snapshot && known.applied === state.checkpointMirror.applied ? known : null;
+}
+
+// Asks the worker for its mirror's state now. Usable (and kept as the known
+// answer) only when it covers every kept update; else null.
+async function askAcceptedMirrorState(state) {
+  const asked = state.acceptedUnbuilt && !state.destroyed ? requestMirrorState(state.checkpointMirror) : null;
+  if (!asked) return null;
+  let reply;
+  try {
+    reply = await asked;
+  } catch {
+    return null;
+  }
+  const mirror = state.checkpointMirror;
+  const kept = state.acceptedUnbuilt;
+  if (!kept || !mirror || mirror.broken || reply.pending) return null;
+  if (reply.applied !== mirror.applied || kept.length !== mirror.applied) return null;
+  const known = {
+    applied: reply.applied,
+    stateVector: Y.decodeStateVector(reply.stateVector),
+    snapshot: Y.decodeSnapshot(reply.snapshot),
+    pending: false,
+  };
+  state.acceptedMirrorState = known;
+  return known;
+}
+
+// acceptedDoc's Y.snapshot: from the worker while it is unbuilt (null when
+// the worker cannot say), else from the document.
+async function acceptedSnapshotNow(state) {
+  if (!state.acceptedUnbuilt) return Y.snapshot(state.acceptedDoc);
+  return (await askAcceptedMirrorState(state))?.snapshot || null;
+}
+
+// The device's IndexedDB copy already holds every struct and deletion of
+// acceptedDoc (the worker's mirror says so). False means "not known".
+async function localPersistenceHoldsAccepted(state) {
+  const known = await askAcceptedMirrorState(state);
+  const local = state.localPersistenceDoc;
+  if (!known || !local) return false;
+  const held = Y.snapshot(local);
+  for (const [client, clock] of known.stateVector) {
+    if ((held.sv.get(client) || 0) < clock) return false;
+  }
+  return deleteSetCoveredBy(known.snapshot.ds, held.ds);
 }
 
 // acceptedDoc's state vector (a Map) without building it, or null.

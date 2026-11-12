@@ -821,3 +821,32 @@ test('lazy accepted shadow: a failing worker builds acceptedDoc from the kept up
   assert.deepEqual(markIds(reopened.getByPage()), expected);
   await reopened.destroy();
 });
+
+test('lazy accepted shadow: a reopen on the same device keeps acceptedDoc unbuilt too', async () => {
+  const documentId = 'checkpoint-worker-lazy-reopen';
+  const cloud = await seededCloud(documentId);
+  // One device: closing a handle closes its outbox, so each open gets its own
+  // connection to the same database.
+  const { IDBFactory } = await import('fake-indexeddb');
+  const indexedDb = new IDBFactory();
+  const outbox = () => createAnnotationOutbox({ indexedDb, timeoutMs: 5000 });
+  __setCheckpointWorkerFactoryForTests(() => new InProcessCheckpointWorker({ getOutbox: outbox }));
+  const firstOutbox = await outbox();
+  const first = await open(cloud, documentId, 'b', { outboxStore: firstOutbox, lazyAcceptedShadow: true });
+  const expected = markIds(first.getByPage());
+  let clean = null;
+  for (let i = 0; i < 100 && !clean?.checkpointUpdate; i += 1) {
+    await wait(50);
+    clean = await firstOutbox.loadCleanState(documentId, 'user-a');
+  }
+  assert.ok(clean?.checkpointUpdate, 'the first open saved its copy on this device');
+  await first.destroy();
+
+  const builds = syncTest.acceptedBuildCount();
+  const again = await open(cloud, documentId, 'b', { outboxStore: await outbox(), lazyAcceptedShadow: true });
+  assert.deepEqual(markIds(again.getByPage()), expected, 'the reopen shows every mark');
+  await wait(50);
+  assert.equal(syncTest.acceptedBuildCount(), builds, 'the reopen did not build acceptedDoc here');
+  assert.ok(Array.isArray(activeState(documentId).acceptedUnbuilt));
+  await again.destroy();
+});
