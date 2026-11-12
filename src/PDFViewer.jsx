@@ -430,7 +430,8 @@ import { classifyPagePress, ownGroupMarkFilter } from './utils/toolPressRouting.
 import { CALLOUT_MARK_GROUP, getMarkGroup } from './utils/markToolGroup.js';
 import { dropStashedSelection, hasAnyPageSelection, isItemSelected, pageHasSelection } from './utils/pageSelectionPresence.js';
 import { isSelectionGrabPress, noteOverlayTapPick } from './hooks/useSelectionGrabHandoff.js';
-import { resolveToolBarGroup, showsSurveyRow, TOOL_BAR_GROUPS } from './utils/toolbarRows.js';
+import { revealInOwnScroller } from './utils/revealInOwnScroller.js';
+import { resolveSurveyBarPush, resolveToolBarGroup, showsSurveyRow, TOOL_BAR_GROUPS } from './utils/toolbarRows.js';
 import { cycleLassoMode } from './utils/lassoSelection.js';
 import { pageCountChange, pageNumberAfterOperation, transformPageState } from './utils/pageAnnotationReindex.js';
 import { usePdfjsFormFieldPersistence } from './hooks/usePdfjsFormFieldPersistence.js';
@@ -8757,6 +8758,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // space above the page (data-viewer-top-push, PdfjsViewerContainer) instead
   // of covering the page's top.
   const surveyBarTopOverlayRef = useViewerTopOverlayRef();
+  // Owner 2026-11-10: whether the bar pushes the page (toolbarRows.js
+  // resolveSurveyBarPush), decided when it comes in.
+  const surveyBarPushRef = useRef(null);
   const surveyBarFitRef = surveyBarFit.ref;
   const surveyBarRef = useCallback((node) => {
     surveyBarFitRef(node);
@@ -32021,7 +32025,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     setTimeout(() => {
       const element = document.getElementById(`highlight-item-${annotationId}`);
       if (element) {
-        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Only the panel's own list scrolls (owner 2026-11-10): scrollIntoView
+        // also scrolled the overflow-hidden frames around it, page included.
+        revealInOwnScroller(element, { margin: 24 });
         // Flash effect
         element.style.transition = 'box-shadow 0.5s';
         element.style.boxShadow = '0 0 0 2px var(--accent)';
@@ -32045,7 +32051,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     setExpandedCategories((prev) => (prev[marker.categoryId] && Object.keys(prev).length === 1 ? prev : { [marker.categoryId]: true }));
     setExpandedSurveyMarkers((prev) => (prev[pickedSurveyMarkerId] && Object.keys(prev).length === 1 ? prev : { [pickedSurveyMarkerId]: true }));
     const frame = requestAnimationFrame(() => {
-      document.getElementById(`highlight-item-${pickedSurveyMarkerId}`)?.scrollIntoView({ block: 'nearest' });
+      // The panel's own list only, never the frames around it (owner
+      // 2026-11-10: a click on a marker must not move the page).
+      revealInOwnScroller(document.getElementById(`highlight-item-${pickedSurveyMarkerId}`));
     });
     return () => cancelAnimationFrame(frame);
     // Only a new pick moves the panel; edits to the marker do not.
@@ -41521,7 +41529,7 @@ ${pageBlocks}
               return (
                 <div
                   ref={surveyBarRef}
-                  data-viewer-top-push="true"
+                  data-viewer-top-push={surveyBarPushRef.current === false ? undefined : 'true'}
                   className="survey-subrow"
                   data-survey-bar-step={look.step}
                   data-survey-template={surveyBarFit.plan.template}
@@ -41661,6 +41669,11 @@ ${pageBlocks}
           const subRowGroup = (showSurveyPanel && selectedTemplate && (mobileMode || showsSurveyRow({ activeTool, showSurveyPanel, regionEditing: showRegionSelection, surveyMarkerPicked })))
             ? 'survey'
             : (activeCategoryDropdown && activeCategoryDropdown !== 'survey' && !TOOL_BAR_GROUPS.includes(activeCategoryDropdown) ? activeCategoryDropdown : null);
+          surveyBarPushRef.current = resolveSurveyBarPush({
+            shown: subRowGroup === 'survey' && Boolean(subRowHost),
+            wasPushing: surveyBarPushRef.current,
+            pickedOnly: !mobileMode && activeTool !== 'survey-marker' && surveyMarkerPicked,
+          });
           if (subRowGroup && subRowHost) {
             rows.push(renderSubRow(subRowGroup, subRowHost, false));
           }

@@ -245,6 +245,7 @@ import {
 } from '../survey/markerShapeSvg.jsx';
 import { isPalmContact } from '../utils/touchContact.js';
 import { hasPassedShapeDragThreshold } from '../utils/dragThreshold.js';
+import { hasPressTravelled, pressStartFacts } from '../utils/moveCommit.js';
 import SnapGuidesLayer from './SnapGuidesLayer.jsx';
 import {
   isSnapFreeModifier, isAnnotationSnapFree, snapThreshold, snapMoveFrame, snapResizePoint, buildSnapGuides, snapRotationDegrees,
@@ -5113,6 +5114,7 @@ const SVGAnnotationLayerBody = memo(({
       annotationId,
       startPoint,
       originalBounds,
+      ...pressStartFacts(e),
     };
     // dragMode: the marker's own drag is a selection gesture (rule 11).
     setSurveyMarkerPreviewBounds({ annotationId, bounds: originalBounds, dragMode: 'move' });
@@ -5154,6 +5156,7 @@ const SVGAnnotationLayerBody = memo(({
       startPointerAngle: handleId === 'mtr'
         ? normalizeAngle(Math.atan2(startPoint.y - centerY, startPoint.x - centerX))
         : 0,
+      ...pressStartFacts(e),
     };
     setSurveyMarkerPreviewBounds({ annotationId: entry.surveyMarker.annotationId, bounds: originalBounds, dragMode: surveyMarkerDragRef.current.mode });
     try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch (_) {}
@@ -5165,6 +5168,22 @@ const SVGAnnotationLayerBody = memo(({
 
     e.stopPropagation();
     e.preventDefault();
+    // Owner 2026-11-10: a click only picks. Until the POINTER itself has
+    // travelled past the click slop on screen, nothing moves, resizes, turns
+    // or snaps: a release there is a click, even if the page moved under a
+    // still pointer (a bar coming in) or a neighbour sits within snapping
+    // reach (the old release snapped the marker to it with no drag at all).
+    if (!drag.travelled) {
+      if (!hasPressTravelled(drag, e)) {
+        if (commit) {
+          surveyMarkerDragRef.current = null;
+          setSurveyMarkerPreviewBounds(null);
+          setSnapGuides(null);
+        }
+        return true;
+      }
+      drag.travelled = true;
+    }
     const point = screenToSVG(svgRef.current, e.clientX, e.clientY);
     const dx = point.x - drag.startPoint.x;
     const dy = point.y - drag.startPoint.y;
@@ -7815,6 +7834,7 @@ const SVGAnnotationLayerBody = memo(({
         height: entry.bbox.height,
         angle: entry.bbox.angle,
       }),
+      ...pressStartFacts(e),
     };
     setSurveyMarkerPreviewBounds({
       annotationId: entry.surveyMarker.annotationId,
