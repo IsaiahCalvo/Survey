@@ -22,6 +22,7 @@ import { union } from '../vendor/martinezPolygonClipping.js';
 // geometry so no hit path can disagree with the ink.
 import { resolveAnnotationCloudSpec } from './pdfAnnotationAppearance.js';
 import { maxOf, minOf } from './arrayExtrema.js';
+import { SPLINE_HIT_TOLERANCE, polySplineStep, smoothPolylinePoints } from './polySpline.js';
 import {
   resolveCloudAnnotationGeometry,
   sampleCloudCommands,
@@ -70,7 +71,11 @@ const transformPointWithMatrix = (matrix, point) => {
 };
 
 const getTransformedPoints = (obj) => {
-  const points = Array.isArray(obj?.points) ? obj.points : [];
+  // A curved polyline is hit where it is drawn: its smooth curve, not the
+  // stored samples (polySpline.js). The matrix still comes from `obj`.
+  const points = polySplineStep(obj)
+    ? smoothPolylinePoints(obj, SPLINE_HIT_TOLERANCE)
+    : (Array.isArray(obj?.points) ? obj.points : []);
   if (points.length === 0) return [];
   const matrix = getObjectTransformMatrix(obj);
   const pathOffsetX = obj.pathOffset?.x || 0;

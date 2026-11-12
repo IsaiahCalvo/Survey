@@ -3514,7 +3514,7 @@ export function useSVGInteraction({
       // point is copied through byte-for-byte so no neighbour drifts.
       // A curved polyline moves the clicked corner and draws its curve again.
       const newPoints = ds.curveHandle
-        ? moveSplineHandle(ds.originalPoints, ds.splineStep, ds.curveHandle.span, ds.curveHandle.which, { x: localX, y: localY })
+        ? moveSplineHandle(ds.originalPoints, ds.splineStep, ds.curveHandle.span, ds.curveHandle.which, { x: localX, y: localY }, !!e.altKey)
         : ds.splineStep
           ? moveSplineCorner(ds.originalPoints, ds.splineStep, ds.vertexIndex, { x: localX, y: localY }, ds.splineBezier)
           : movePolyVertexPoints(ds.originalPoints, ds.vertexIndex, { x: localX, y: localY });

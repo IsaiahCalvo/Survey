@@ -124,7 +124,8 @@ export const Search = ({ placeholder = 'Search…', width = 240, value, onChange
       if (event.key?.toLowerCase() !== 'k' || event.altKey || event.shiftKey) return;
       if (!(IS_MAC ? event.metaKey : event.ctrlKey)) return;
       const input = inputRef.current;
-      if (!input || !input.offsetParent) return;
+      // inert: the home under an open document (it keeps its layout).
+      if (!input || !input.offsetParent || input.closest('[inert]')) return;
       event.preventDefault();
       input.focus();
       input.select();

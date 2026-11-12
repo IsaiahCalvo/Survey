@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   SPLINE_STEP, insertSplineCorner, keepPivot, moveSplineCorner, polySplineStep, removeSplineCorner,
-  sampleSpline, setPolylineCurve, splineCorners, splineSpanMidpoint,
+  sampleSpline, setPolylineCurve, splineCorners, splineSpanMidpoint, splinePointAt,
 } from '../src/utils/polySpline.js';
 import { canRemovePolyVertex, insertPolyVertex, removePolyVertex } from '../src/utils/polyVertices.js';
 import { buildPolyShapeCommitJSON } from '../src/utils/annotationCreationCommit.js';
@@ -83,9 +83,9 @@ test('polyVertices helpers count and edit corners on a curve', () => {
   assert.equal(polySplineStep(inserted), 12);
   const c = splineCorners(inserted.points, 12);
   assert.equal(c.length, 5);
-  const a = obj.points[15];
-  const b = obj.points[16];
-  assert.deepEqual(c[2], { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+  // It sits on the drawn curve itself (not on the stored chord 15 -> 16).
+  const on = splinePointAt(obj.points, 12, 15, 0.5);
+  assert.ok(Math.hypot(c[2].x - on.x, c[2].y - on.y) < 1e-9, `${c[2].x},${c[2].y} vs ${on.x},${on.y}`);
 });
 
 test('the "+" handle sits on the curve halfway between corners', () => {
@@ -167,9 +167,9 @@ test('handles survive the 0.01 save rounding within a hair', () => {
   });
 });
 
-test('dragging one handle bends only its own span; corners stay put', () => {
+test('Alt-dragging one handle bends only its own span; corners stay put', () => {
   const pts = sampleSpline(corners, SPLINE_STEP);
-  const bent = moveSplineHandle(pts, SPLINE_STEP, 1, 'c1', { x: 70, y: 120 });
+  const bent = moveSplineHandle(pts, SPLINE_STEP, 1, 'c1', { x: 70, y: 120 }, true);
   assert.equal(bent.length, pts.length);
   assert.deepEqual(splineCorners(bent, SPLINE_STEP), corners);
   // Spans 0 and 2 are untouched; span 1 moved toward the handle.
@@ -177,6 +177,29 @@ test('dragging one handle bends only its own span; corners stay put', () => {
   for (let i = 24; i < pts.length; i += 1) assert.ok(near(bent[i], pts[i], 1e-6));
   assert.ok(Math.max(...bent.slice(13, 24).map((p) => p.y)) > Math.max(...pts.slice(13, 24).map((p) => p.y)) + 10);
   assert.ok(near(splineSpans(bent, SPLINE_STEP)[1].c1, { x: 70, y: 120 }, 1e-6));
+});
+
+test('dragging a handle keeps its corner smooth: the other handle turns in line, same length', () => {
+  const pts = sampleSpline(corners, SPLINE_STEP);
+  const before = splineSpans(pts, SPLINE_STEP);
+  const bent = moveSplineHandle(pts, SPLINE_STEP, 1, 'c1', { x: 70, y: 120 });
+  const after = splineSpans(bent, SPLINE_STEP);
+  assert.deepEqual(splineCorners(bent, SPLINE_STEP), corners);
+  assert.ok(near(after[1].c1, { x: 70, y: 120 }, 1e-6));
+  const corner = corners[1];
+  const a = { x: after[1].c1.x - corner.x, y: after[1].c1.y - corner.y };
+  const b = { x: after[0].c2.x - corner.x, y: after[0].c2.y - corner.y };
+  const cos = (a.x * b.x + a.y * b.y) / (Math.hypot(a.x, a.y) * Math.hypot(b.x, b.y));
+  assert.ok(cos < -0.9999, `handles in line through the corner (cos ${cos})`);
+  const oldLen = Math.hypot(before[0].c2.x - corner.x, before[0].c2.y - corner.y);
+  assert.ok(Math.abs(Math.hypot(b.x, b.y) - oldLen) < 1e-6, 'the other handle keeps its length');
+  // Span 2 is untouched.
+  for (let i = 24; i < pts.length; i += 1) assert.ok(near(bent[i], pts[i], 1e-6));
+  // A corner made sharp with Alt stays sharp on the next plain drag.
+  const sharp = moveSplineHandle(pts, SPLINE_STEP, 1, 'c1', { x: 70, y: 120 }, true);
+  const again = moveSplineHandle(sharp, SPLINE_STEP, 1, 'c1', { x: 75, y: 100 });
+  const s0 = splineSpans(sharp, SPLINE_STEP)[0].c2;
+  assert.ok(near(splineSpans(again, SPLINE_STEP)[0].c2, s0, 0.05), 'sharp corner left alone');
 });
 
 test('a hand-bent curve: moving a corner carries its handles and keeps far spans', () => {

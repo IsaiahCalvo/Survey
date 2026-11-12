@@ -646,7 +646,8 @@ export default function DocumentsLedger({
   };
 
   /* Esc clears the selection and Ctrl/Cmd+A selects every row, while the
-     Documents list is on screen and you are not typing (desktop only). */
+     Documents list is on screen (not under an open document) and you are not
+     typing (desktop only). */
   useEffect(() => {
     const onKey = (event) => {
       if (isPhoneLayout() || event.defaultPrevented) return;
@@ -654,6 +655,10 @@ export default function DocumentsLedger({
       if (target?.closest?.('input, textarea, select, [contenteditable="true"], [role="dialog"], [role="menu"]')) return;
       if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
       if (!dropCardRef.current || dropCardRef.current.getClientRects().length === 0) return;
+      // The home stays mounted (inert) under an open document and keeps its
+      // size, so without this its Ctrl+A ran first now and then and the
+      // drawing's "select all marks" never happened.
+      if (dropCardRef.current.closest('[inert]')) return;
       if (event.key === 'Escape' && selDocs.size) {
         clearDesktopSelection();
       } else if ((event.key === 'a' || event.key === 'A') && (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey && docOrder.length) {
