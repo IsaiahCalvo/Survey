@@ -45,13 +45,17 @@ async function openTemplate(page) {
   return layout;
 }
 
-test('flag off: no "Use your own spreadsheet" choice', async ({ page }) => {
+// Owner 2026-11-12: the live app offers Standard plus a custom layout built
+// by our team; the trade layouts left the menu.
+test('flag off: Standard and "Want your own layout?", no trade layouts, no "Use your own spreadsheet"', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('survey.flag.own-excel-layouts', '0'));
   await signIn(page, E2E_ACCOUNTS.owner);
   const layout = await openTemplate(page);
   await layout.click();
   const list = page.getByRole('listbox', { name: 'Excel layout' });
-  await expect(list.getByRole('option', { name: /Wireless lock schedule/ })).toHaveCount(1);
+  await expect(list.getByRole('option', { name: /^Survey \(standard\)/ })).toHaveCount(1);
+  await expect(list.getByRole('option', { name: /^Want your own layout\?/ })).toHaveCount(1);
+  await expect(list.getByRole('option', { name: /Wireless lock schedule|Fire alarm device test/ })).toHaveCount(0);
   await expect(list.getByRole('option', { name: /Use your own spreadsheet/ })).toHaveCount(0);
 });
 

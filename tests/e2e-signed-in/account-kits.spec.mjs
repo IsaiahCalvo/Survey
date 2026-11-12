@@ -96,6 +96,6 @@ test('an account without the kit does not get it', async ({ page }) => {
   const layout = await openTemplateEditor(page);
   await layout.click();
   const list = page.getByRole('listbox', { name: 'Excel layout' });
-  await expect(list.getByRole('option', { name: /Wireless lock schedule/ })).toHaveCount(1);
+  await expect(list.getByRole('option', { name: /^Survey \(standard\)/ })).toHaveCount(1);
   await expect(list.getByRole('option', { name: /Acme doors/ })).toHaveCount(0);
 });

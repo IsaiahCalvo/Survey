@@ -1,8 +1,9 @@
 /**
- * AnswerSetEditor — type a template's own checklist answers (nightly flag
- * 'custom-answers'): 1 to MAX_ANSWERS answers, each marked Good, Problem or
- * Neutral, with an optional "means" line.
- * Good and Neutral answers count as done; Problem answers show as issues.
+ * AnswerSetEditor — type a template's own checklist answers (flag
+ * 'custom-answers'): one or more answers, no upper limit, each with a colour:
+ * green (fine), red (an issue) or grey (doesn't count), and an optional
+ * "means" line kept behind "More" (owner 2026-11-12).
+ * Green and grey answers count as done; red answers show as issues.
  *
  * The typed list is a local draft. Only a usable list
  * (answerSets.cleanAnswerSet) ever reaches the template, so nothing
@@ -17,17 +18,26 @@ import DialogCard from '../components/DialogCard.jsx';
 import ValueSelect from '../components/ValueSelect.jsx';
 import { hoverOnly, useTooltip } from '../components/Tooltip';
 import {
-  ANSWER_MEANS_MAX, ITEM_UNIT_MAX, MAX_ANSWERS, SCORE_SCALES, itemAnswerFields, MIN_ANSWERS, answerSetProblem, cleanAnswerSet, sameAnswerSet,
+  ANSWER_MEANS_MAX, EXCEL_LIST_MAX, ITEM_UNIT_MAX, SCORE_SCALES, excelAnswerListFormula, itemAnswerFields, MIN_ANSWERS, answerSetProblem, cleanAnswerSet,
+  sameAnswerSet,
 } from '../services/answerSets.js';
-import { ITEM_TYPE_LIBRARY, itemTypeById } from '../services/itemTypeLibrary.js';
 import { showIfChoices, showIfOf } from '../services/conditionalLines.js';
 import './AnswerSetPicker.css';
 
+// Named by colour and what it does (owner 2026-11-12: Good / Problem /
+// Neutral said nothing). The saved tones stay good / bad / neutral.
 const TONE_OPTIONS = [
-  { value: 'good', label: 'Good' },
-  { value: 'bad', label: 'Problem' },
-  { value: 'neutral', label: 'Neutral' },
+  { value: 'good', label: 'Green: fine' },
+  { value: 'bad', label: 'Red: issue' },
+  { value: 'neutral', label: 'Grey: doesn\'t count' },
 ];
+const TONE_DOT = { good: 'var(--success-plate)', bad: 'var(--danger-plate)', neutral: 'var(--border-strong, var(--border))' };
+const toneDot = (tone) => (
+  <span
+    aria-hidden="true"
+    style={{ flex: 'none', width: 10, height: 10, borderRadius: '50%', background: TONE_DOT[tone] || TONE_DOT.neutral }}
+  />
+);
 
 const fieldStyle = {
   font: 'inherit', fontSize: 12, color: 'var(--ink)', background: 'transparent',
@@ -43,6 +53,8 @@ const toDraft = (a) => ({ value: a.value, tone: a.tone, means: a.means || '' });
  */
 export default function AnswerSetEditor({ set, onCommit, onClose, phone = false, intro = null, modal = null }) {
   const [draft, setDraft] = useState(() => set.map(toDraft));
+  // The "means" lines sit behind "More"; open already when any is filled.
+  const [showMeans, setShowMeans] = useState(() => set.some((a) => a.means));
   // The set this editor last wrote. Any other change from outside (Cancel,
   // a reload, picking a preset) replaces the draft.
   const lastWritten = useRef(set);
@@ -79,13 +91,13 @@ export default function AnswerSetEditor({ set, onCommit, onClose, phone = false,
       }}
     >
       <p className="micro" style={{ margin: 0 }}>
-        {intro || (
-          <>
-            Your answers. Good and Neutral count as done; Problem shows as an issue.
-            A "means" line shows as a hint on the answer and helps the voice agent pick it.
-          </>
-        )}
+        {intro || 'Name each answer and pick its colour.'}
       </p>
+      {showMeans && (
+        <p className="micro" style={{ margin: 0 }}>
+          What each answer means (optional), for example N/A: &ldquo;not in our scope of work&rdquo;.
+        </p>
+      )}
       {draft.map((a, i) => (
         <div key={i} style={{ display: 'flex', flexWrap: phone ? 'wrap' : 'nowrap', gap: 6, alignItems: 'center' }}>
           <input
@@ -96,17 +108,20 @@ export default function AnswerSetEditor({ set, onCommit, onClose, phone = false,
             onChange={(e) => update(draft.map((d, j) => (j === i ? { ...d, value: e.target.value } : d)))}
             style={{ ...fieldStyle, flex: 1, fontSize: phone ? 14 : 12, height: phone ? 36 : undefined }}
           />
-          <input
-            aria-label={`What answer ${i + 1} means`}
-            value={a.means}
-            maxLength={ANSWER_MEANS_MAX}
-            placeholder="Means… (optional)"
-            onChange={(e) => update(draft.map((d, j) => (j === i ? { ...d, means: e.target.value } : d)))}
-            style={{
-              ...fieldStyle, flex: phone ? '1 1 100%' : 2, order: phone ? 1 : 0,
-              fontSize: phone ? 14 : 12, height: phone ? 36 : undefined, color: 'var(--text-2, var(--ink))',
-            }}
-          />
+          {showMeans && (
+            <input
+              aria-label={`What answer ${i + 1} means`}
+              value={a.means}
+              maxLength={ANSWER_MEANS_MAX}
+              placeholder="What it means (optional)"
+              onChange={(e) => update(draft.map((d, j) => (j === i ? { ...d, means: e.target.value } : d)))}
+              style={{
+                ...fieldStyle, flex: phone ? '1 1 100%' : 2, order: phone ? 1 : 0,
+                fontSize: phone ? 14 : 12, height: phone ? 36 : undefined, color: 'var(--text-2, var(--ink))',
+              }}
+            />
+          )}
+          {toneDot(a.tone)}
           {phone ? (
             <select
               aria-label={`Answer ${i + 1} counts as`}
@@ -119,7 +134,7 @@ export default function AnswerSetEditor({ set, onCommit, onClose, phone = false,
           ) : (
             <ValueSelect
               size="sm"
-              width="96px"
+              width="150px"
               label={`Answer ${i + 1} counts as`}
               value={a.tone}
               options={TONE_OPTIONS}
@@ -138,7 +153,6 @@ export default function AnswerSetEditor({ set, onCommit, onClose, phone = false,
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <button
           type="button"
-          disabled={draft.length >= MAX_ANSWERS}
           onClick={() => update([...draft, { value: '', tone: 'neutral', means: '' }])}
           style={{
             padding: '4px 10px', border: '1px dashed var(--rule-strong)', background: 'transparent',
@@ -148,7 +162,20 @@ export default function AnswerSetEditor({ set, onCommit, onClose, phone = false,
         >
           <Icon name="plus" size={12} /> Add answer
         </button>
-        <span className="micro" style={{ flex: 1 }}>{draft.length} of {MAX_ANSWERS}</span>
+        {!showMeans && (
+          <button
+            type="button"
+            aria-label="More: what each answer means"
+            onClick={() => setShowMeans(true)}
+            style={{
+              padding: '4px 10px', border: 0, background: 'transparent', color: 'var(--ink-muted)',
+              fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
+            }}
+          >
+            More
+          </button>
+        )}
+        <span style={{ flex: 1 }} />
         {!modal && (
           <button
             type="button"
@@ -164,6 +191,11 @@ export default function AnswerSetEditor({ set, onCommit, onClose, phone = false,
         )}
       </div>
       {problem && <p role="alert" className="micro" style={{ margin: 0, color: 'var(--danger, #c0392b)' }}>{problem}</p>}
+      {!problem && !intro && excelAnswerListFormula(draft.map((d) => ({ value: String(d.value).trim() }))).length > EXCEL_LIST_MAX && (
+        <p className="micro" style={{ margin: 0 }}>
+          This list is too long for an Excel drop-down, so the Excel sheet will take typed answers instead.
+        </p>
+      )}
     </div>
   );
   if (!modal) return body;
@@ -193,20 +225,17 @@ export default function AnswerSetEditor({ set, onCommit, onClose, phone = false,
   );
 }
 
-// Ready types share the kind list; their values carry this prefix.
-const TYPE_PREFIX = 'type:';
-
+// The kinds a new line can take (owner 2026-11-12: five; Score and Count are
+// a Number with a fine range, Photo and Signature and the ready line types
+// went). A line already saved as an older kind keeps it and shows it here.
 const KIND_OPTIONS = [
   { value: 'choice', label: 'Pick one' },
   { value: 'text', label: 'Text' },
   { value: 'number', label: 'Number' },
-  { value: 'score', label: 'Score' },
-  { value: 'count', label: 'Count' },
   { value: 'date', label: 'Date' },
   { value: 'many', label: 'Pick many' },
-  { value: 'photo', label: 'Photo' },
-  { value: 'signature', label: 'Signature' },
 ];
+const OLD_KIND_LABELS = { score: 'Score', count: 'Count', photo: 'Photo', signature: 'Signature' };
 
 // A small box that commits on blur / Enter: a number (blank = not set) or text.
 function SettingBox({ label, value, onCommit, width, size, placeholder, text = false, maxLength }) {
@@ -263,18 +292,12 @@ export function ItemKindPicker({ item, onChange, phone = false, children = null 
         value={kind}
         onChange={(e) => {
           const v = e.target.value;
-          const ready = v.startsWith(TYPE_PREFIX) ? itemTypeById(v.slice(TYPE_PREFIX.length)) : null;
-          if (ready) onChange(itemAnswerFields(ready.fields));
-          else onChange(v === 'choice' ? {} : itemAnswerFields({ ...fields, kind: v }));
+          onChange(v === 'choice' ? {} : itemAnswerFields({ ...fields, kind: v }));
         }}
         style={selectStyle}
       >
-        <optgroup label="Answered as">
-          {KIND_OPTIONS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
-        </optgroup>
-        <optgroup label="Ready types">
-          {ITEM_TYPE_LIBRARY.map((t) => <option key={t.id} value={`${TYPE_PREFIX}${t.id}`}>{t.label}</option>)}
-        </optgroup>
+        {KIND_OPTIONS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
+        {OLD_KIND_LABELS[kind] && <option value={kind}>{OLD_KIND_LABELS[kind]}</option>}
       </select>
       {kind === 'number' && (
         <SettingBox text label={`Unit for "${name}"`} placeholder="unit" value={fields.unit} maxLength={ITEM_UNIT_MAX} width={phone ? 56 : 44} size={size} onCommit={(unit) => set({ unit })} />
@@ -342,7 +365,7 @@ export function ItemKindPicker({ item, onChange, phone = false, children = null 
               set={fields.options}
               onCommit={(options) => set({ options })}
               onClose={() => setOptionsOpen(false)}
-              intro="The options people can pick, any number of them. Any pick counts as done; a Problem option shows as an issue."
+              intro="The options people can pick, any number of them. Any pick counts as done; a red option shows as an issue."
             />
           )}
         </span>

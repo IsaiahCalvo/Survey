@@ -57,8 +57,8 @@ import { readUsageStatsOff, writeUsageStatsOff } from '../utils/surveyAnalytics'
 import { IMPROVE_SURVEY_POLICY_VERSION } from '../legal/legalVersions';
 import { useTooltip } from './Tooltip';
 import ButtonGroup from './ButtonGroup.jsx';
+import { SURVEY_SUPPORT_EMAIL } from '../services/supportContact.js';
 
-const SURVEY_SUPPORT_EMAIL = 'isaiahcalvo123@gmail.com';
 const SUBSCRIPTION_TIMEOUT_MS = 10_000;
 
 export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {

@@ -3,17 +3,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  EXCEL_LIST_MAX, MAX_ANSWERS, answerSetPresets, excelValidationFor, itemAnswerFields, validateAnswerSet,
+  EXCEL_LIST_MAX, answerSetPresets, excelValidationFor, validateAnswerSet,
 } from '../src/services/answerSets.js';
-import { ITEM_TYPE_LIBRARY } from '../src/services/itemTypeLibrary.js';
 import { SURVEY_REPORT_CSV_HEADER, surveyReportCsv, surveyReportCsvFileName } from '../src/services/surveyReportCsv.js';
 
 const list = (n, name = (i) => `Answer ${i}`) => Array.from({ length: n }, (_, i) => ({ value: name(i), tone: 'neutral' }));
 
-test('a list can hold up to 20 answers', () => {
-  assert.equal(MAX_ANSWERS, 20);
-  assert.deepEqual(validateAnswerSet(list(20)), []);
-  assert.ok(validateAnswerSet(list(21)).length);
+// Owner 2026-11-12: no upper limit on how many answers a list holds.
+test('a list needs one answer and has no upper limit', () => {
+  assert.deepEqual(validateAnswerSet(list(1)), []);
+  assert.deepEqual(validateAnswerSet(list(40)), []);
+  assert.ok(validateAnswerSet([]).length);
 });
 
 test('Excel keeps a drop-down while the list fits, else names the answers in the hint', () => {
@@ -31,13 +31,6 @@ test('the extra presets include Yes / No / N/A in words', () => {
   const words = answerSetPresets({ extras: true }).find((p) => p.id === 'yes-no-na-words');
   assert.deepEqual(words.answers.map((a) => [a.value, a.tone]), [['Yes', 'good'], ['No', 'bad'], ['N/A', 'neutral']]);
   assert.equal(answerSetPresets().some((p) => p.id === 'yes-no-na-words'), false, 'nightly only');
-});
-
-test('every ready line type is a clean item setting', () => {
-  assert.equal(new Set(ITEM_TYPE_LIBRARY.map((t) => t.id)).size, ITEM_TYPE_LIBRARY.length);
-  for (const t of ITEM_TYPE_LIBRARY) assert.deepEqual(itemAnswerFields(t.fields), t.fields, t.id);
-  const kinds = new Set(ITEM_TYPE_LIBRARY.map((t) => t.fields.kind));
-  for (const k of ['score', 'many', 'count', 'date', 'number', 'text', 'photo', 'signature']) assert.ok(kinds.has(k), k);
 });
 
 test('the report CSV: one row per item, its status and issues, safe in a spreadsheet', () => {

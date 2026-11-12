@@ -31,7 +31,7 @@ export const FEATURE_FLAGS = Object.freeze({
   // 2026-11-09 (owner: "get this onto production"): counter-list,
   // grid-settings, spline-polyline, export-modes, pinned-tools, layers,
   // marker-tracking, document-versions, survey-report, guest-links,
-  // microsoft-sign-in, custom-answers, own-excel-layouts and mark-comments moved from beta to rollout after their /flags rows were turned on, so
+  // microsoft-sign-in, custom-answers, own-excel-layouts (back to beta 2026-11-12) and mark-comments moved from beta to rollout after their /flags rows were turned on, so
   // surveytool.app follows /flags for them.
   // On surveytool.app since 2026-11-09 (owner: "let's deploy it", with a
   // "Beta" tag under its tool icon).
@@ -116,9 +116,12 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Curved polyline: bend smoothly through the clicked corners',
     stage: 'rollout',
   }),
+  // Back to Nightly only (owner 2026-11-12): it copies one row of column
+  // names from the first sheet, not the customer's real workbook, so the live
+  // app offers a custom layout built by our team instead.
   'own-excel-layouts': Object.freeze({
     label: 'Your own Excel layout: upload your sheet and match its columns',
-    stage: 'rollout',
+    stage: 'beta',
   }),
   // Owner 2026-10-27: wire it in but keep it hidden, so Nightly does not turn
   // it on by itself; /flags or 'survey.flag.conditional-lines' = '1' does.
