@@ -428,7 +428,7 @@ test('measure-plus: a Perimeter finished at its last point stays open (a polylen
 });
 
 test('segment captions: one per Polylength segment, upright, on the line; the total moves above the last', async () => {
-  const { polylengthSegmentCaptions, polylengthTotalPlace } = await import('../src/utils/measure/segmentCaptions.js');
+  const { measureSegmentCaptions: polylengthSegmentCaptions, polylengthTotalPlace } = await import('../src/utils/measure/segmentCaptions.js');
   const { layoutMeasureLabel, buildMeasureLabel } = await import('../src/utils/measure/measureScale.js');
   const scale = { ratio: 1, unit: 'pt' };
   const obj = {
@@ -446,7 +446,7 @@ test('segment captions: one per Polylength segment, upright, on the line; the to
   assert.equal(caps[1].angle, -90, 'a downward segment reads bottom to top');
   assert.ok(Math.abs(caps[2].angle) < 1e-9, 'a right-to-left segment is turned the right way up');
   assert.deepEqual([caps[0].x, caps[0].y], [50, 0], 'Inline: on the segment middle');
-  assert.deepEqual(polylengthSegmentCaptions({ ...obj, data: { measure: { kind: 'perimeter' } } }, scale), []);
+  assert.deepEqual(polylengthSegmentCaptions({ ...obj, data: { measure: { kind: 'perimeter' } } }, scale), [], 'a Perimeter has none by default');
   assert.deepEqual(polylengthSegmentCaptions({ ...obj, data: {} }, scale), []);
 
   const place = polylengthTotalPlace(obj, scale);
@@ -460,8 +460,54 @@ test('segment captions: one per Polylength segment, upright, on the line; the to
 
 test('segment captions are drawn by the SVG layer only under measure-plus', () => {
   const src = read('src/components/SVGAnnotationLayer.jsx');
-  assert.match(src, /import \{ polylengthSegmentCaptions, polylengthTotalPlace \} from '\.\.\/utils\/measure\/segmentCaptions\.js'/);
+  assert.match(src, /import \{ measureSegmentCaptions, polylengthTotalPlace \} from '\.\.\/utils\/measure\/segmentCaptions\.js'/);
   assert.match(src, /label && plusOn \? polylengthTotalPlace\(obj, effectiveMeasureScale\) : null/);
   assert.match(src, /segmentCaptionMarks = useMemo\(\(\) => \{\s*if \(!isFeatureOn\('measure-plus'\)\) return \[\];/);
   assert.match(src, /data-segment-caption=\{c\.index\}/);
+});
+
+test('segment caption places: Off / Inline / Upright / Above, per mark, Perimeter sides close', async () => {
+  const { measureSegmentCaptions, polylengthTotalPlace, SEGMENT_CAPTION_ABOVE_LIFT } = await import('../src/utils/measure/segmentCaptions.js');
+  const { applyMeasureEdit, segmentCaptionPlace } = await import('../src/utils/measure/measureScale.js');
+  const scale = { ratio: 1, unit: 'pt' };
+  const poly = {
+    type: 'polyline', left: 0, top: 0,
+    points: [{ x: 0, y: 0 }, { x: 0, y: 80 }],
+    data: { measure: { kind: 'polylength' } },
+  };
+  assert.equal(segmentCaptionPlace(poly), 'inline');
+  const upright = applyMeasureEdit(poly, { segmentCaptions: 'upright' });
+  assert.equal(upright.data.measure.segments, 'upright');
+  assert.equal(measureSegmentCaptions(upright, scale)[0].angle, 0, 'Upright reads level on a vertical side');
+  assert.equal(measureSegmentCaptions(poly, scale)[0].angle, -90);
+  const above = measureSegmentCaptions(applyMeasureEdit(poly, { segmentCaptions: 'above' }), scale)[0];
+  assert.ok(Math.abs(above.x - -9 * SEGMENT_CAPTION_ABOVE_LIFT) < 1e-9 && Math.abs(above.y - 40) < 1e-9, 'Above sits beside the side, on the text\'s up side');
+  const totalAbove = polylengthTotalPlace(applyMeasureEdit(poly, { segmentCaptions: 'above' }), scale);
+  assert.ok(Math.abs(totalAbove.x) < 1e-9 && Math.abs(totalAbove.y - 40) < 1e-9, 'the total measures from the side itself');
+  const off = applyMeasureEdit(poly, { segmentCaptions: 'off' });
+  assert.deepEqual(measureSegmentCaptions(off, scale), []);
+  assert.equal(polylengthTotalPlace(off, scale), null, 'with no segment captions the total stays put');
+  assert.equal(applyMeasureEdit(upright, { segmentCaptions: 'inline' }).data.measure.segments, undefined, 'the default is not stored');
+  assert.equal(applyMeasureEdit(poly, { segmentCaptions: 'sideways' }), poly);
+
+  const perim = {
+    type: 'polygon', left: 0, top: 0,
+    points: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 50 }, { x: 0, y: 50 }],
+    data: { measure: { kind: 'perimeter' } },
+  };
+  assert.equal(segmentCaptionPlace(perim), 'off');
+  const shown = applyMeasureEdit(perim, { segmentCaptions: 'inline' });
+  assert.equal(shown.data.measure.segments, 'inline');
+  assert.deepEqual(measureSegmentCaptions(shown, scale).map((c) => c.text),
+    [100, 50, 100, 50].map((v) => formatMeasureLength(v, scale)), 'four sides, the closing one too');
+  assert.equal(polylengthTotalPlace(shown, scale), null, 'a Perimeter keeps its total in the middle');
+  const area = { ...perim, data: { measure: { kind: 'area' } } };
+  assert.equal(applyMeasureEdit(area, { segmentCaptions: 'inline' }), area);
+});
+
+test('the Measurement card offers Segment captions only for Polylength / Perimeter under measure-plus', () => {
+  const src = read('src/components/MeasureEditPopover.jsx');
+  assert.match(src, /SEGMENT_CAPTION_KINDS\.includes\(kind\) && isFeatureOn\('measure-plus'\) \? segmentCaptionPlace\(mark\) : null/);
+  assert.match(src, /data-measure-edit-segments=\{place\}/);
+  assert.match(src, /onPatch\?\.\(\{ segmentCaptions: place \}\)/);
 });

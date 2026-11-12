@@ -296,6 +296,32 @@ test('custom scale reads feet-inches, Units restamp the line, Set as default car
     const segFt = await segCaps.evaluateAll((els) => els.map((el) => Number(el.textContent.replace(/[^\d.]/g, ''))));
     expect(Math.abs(segFt[0] / segFt[1] - 2)).toBeLessThan(0.05);
     expect(Math.abs(segFt.reduce((a, b) => a + b, 0) - open) / open).toBeLessThan(0.01);
+    // The Measurement card's Segment captions: Upright sets them level, Off
+    // hides them; a Perimeter (off by default) shows its four sides on Inline.
+    const barB = page.locator('[data-selection-quick-bar][data-visible="true"]');
+    await page.keyboard.press('v');
+    await page.mouse.click(sb.x + 180, sb.y + 120);
+    await expect(barB).toBeVisible();
+    await barB.getByRole('button', { name: 'Measurement' }).click();
+    const cardB = page.getByRole('dialog', { name: 'Measurement' });
+    await expect(cardB.locator('[data-measure-edit-segments="inline"]')).toHaveAttribute('aria-pressed', 'true');
+    await cardB.locator('[data-measure-edit-segments="upright"]').click();
+    await expect(cardB.locator('[data-measure-edit-segments="upright"]')).toHaveAttribute('aria-pressed', 'true');
+    await expect(segCaps).toHaveCount(3);
+    const turns = await segCaps.evaluateAll((els) => els.map((el) => el.getAttribute('transform')));
+    expect(turns.every((t) => /^rotate\(0 /.test(t))).toBe(true);
+    await cardB.locator('[data-measure-edit-segments="off"]').click();
+    await expect(segCaps).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+    await page.mouse.click(sb.x + 180, sb.y + 480);
+    await expect(barB).toBeVisible();
+    await barB.getByRole('button', { name: 'Measurement' }).click();
+    await expect(cardB.locator('[data-measure-edit-segments="off"]')).toHaveAttribute('aria-pressed', 'true');
+    await cardB.locator('[data-measure-edit-segments="inline"]').click();
+    await expect(segCaps).toHaveCount(4);
+    await page.screenshot({ path: test.info().outputPath('measure-plus-segments.png') });
+    await page.keyboard.press('Escape');
     await page.screenshot({ path: test.info().outputPath('measure-plus-perimeter.png') });
   } finally {
     if (!process.env.KEEP) await admin.from('documents').delete().in('id', ids);

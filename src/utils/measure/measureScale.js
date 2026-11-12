@@ -462,6 +462,28 @@ function hasCaptionSettings(measure) {
 const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
 
 /**
+ * Segment captions (Nightly 'measure-plus', Drawboard's "Show segment
+ * captions"): each side of a Polylength or Perimeter shows its own length.
+ * Off, Inline (along the side, on it), Upright (level, on it) or Above
+ * (along the side, beside it). On (Inline) by default for a Polylength, off
+ * for a Perimeter. Stored as data.measure.segments only when not the default.
+ */
+export const SEGMENT_CAPTION_PLACES = Object.freeze(['off', 'inline', 'upright', 'above']);
+export const SEGMENT_CAPTION_KINDS = Object.freeze(['polylength', 'perimeter']);
+
+export function defaultSegmentCaptionPlace(kind) {
+  return kind === 'polylength' ? 'inline' : 'off';
+}
+
+/** How a mark's segment captions show ('off' for kinds that have none). */
+export function segmentCaptionPlace(obj) {
+  const kind = getMeasureKind(obj);
+  if (!SEGMENT_CAPTION_KINDS.includes(kind)) return 'off';
+  const saved = obj?.data?.measure?.segments;
+  return SEGMENT_CAPTION_PLACES.includes(saved) ? saved : defaultSegmentCaptionPlace(kind);
+}
+
+/**
  * The mark after a Measurement popover change ({ label?, fields?, depth?,
  * captionSize? }), or the very same object when nothing changes. Typing a
  * label on a mark whose lines were picked by hand ticks Label too, so it shows.
@@ -490,6 +512,11 @@ export function applyMeasureEdit(obj, changes = {}) {
   if (hasOwn(changes, 'depth') && DEPTH_MEASURE_KINDS.includes(kind)) {
     const depth = normalizeMeasureDepth(changes.depth);
     if (depth) measure.depth = depth;
+  }
+  if (hasOwn(changes, 'segmentCaptions') && SEGMENT_CAPTION_KINDS.includes(kind)
+    && SEGMENT_CAPTION_PLACES.includes(changes.segmentCaptions)) {
+    if (changes.segmentCaptions === defaultSegmentCaptionPlace(kind)) delete measure.segments;
+    else measure.segments = changes.segmentCaptions;
   }
   if (kind === 'length' && measure.dim && typeof measure.dim === 'object') {
     // Dimension-line marks only (measure-plus): the leader and caption place.

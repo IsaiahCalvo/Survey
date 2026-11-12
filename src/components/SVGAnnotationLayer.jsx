@@ -573,7 +573,7 @@ import {
   isPolyMeasureFor,
 } from '../utils/measure/measureScale.js';
 import { dimensionCaptionPlace, dimensionLeader, dimensionLineGeometry, isDimensionMeasure } from '../utils/measure/dimensionLine.js';
-import { polylengthSegmentCaptions, polylengthTotalPlace } from '../utils/measure/segmentCaptions.js';
+import { measureSegmentCaptions, polylengthTotalPlace } from '../utils/measure/segmentCaptions.js';
 import { useTooltip } from './Tooltip';
 
 // Measure label (Length / Area): a white pill at a fixed SCREEN size (12 px
@@ -999,7 +999,7 @@ const SVGAnnotationLayerBody = memo(({
     const out = [];
     objects.forEach((obj, index) => {
       if (!obj?.data?.measure || obj.visible === false || isOnHiddenLayer(obj, hiddenLayerIds)) return;
-      const captions = polylengthSegmentCaptions(obj, effectiveMeasureScale);
+      const captions = measureSegmentCaptions(obj, effectiveMeasureScale);
       if (captions.length) out.push({ key: obj.id || obj.data?.id || `m${index}`, color: obj.stroke || 'black', captions });
     });
     return out;
