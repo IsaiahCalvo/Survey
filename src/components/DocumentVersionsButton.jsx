@@ -5,7 +5,7 @@
 // from there an older version or the overlay compare. The dialogs render at
 // the app shell's root (DocumentVersionsDialogs) through BodyPortal on the
 // modal layer, like the viewer's other dialogs.
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { DOCUMENT_VERSIONS_CHANGED_EVENT, listDocumentVersions } from '../services/documentVersionService.js';
 import { showToast } from '../utils/toast';
@@ -20,8 +20,15 @@ function sameVersions(a, b) {
   return a.length === b.length && a.every((v, i) => v.id === b[i].id && v.isCurrent === b[i].isCurrent && v.versionNumber === b[i].versionNumber && v.name === b[i].name);
 }
 
-/** Versions of `documentId` (null = feature off or nothing open) and the dialogs' state. */
-export function useDocumentVersions(documentId, onOpenVersion) {
+/**
+ * Versions of `documentId` (null = feature off or nothing open) and the
+ * dialogs' state. `onSuperseded(documentId)` is told whenever a look finds the
+ * open copy is no longer the current version, so its read-only mode can
+ * outlive this hook's list (it is cleared on every document switch).
+ */
+export function useDocumentVersions(documentId, onOpenVersion, onSuperseded = null) {
+  const onSupersededRef = useRef(onSuperseded);
+  onSupersededRef.current = onSuperseded;
   const [versions, setVersions] = useState([]);
   const [listOpen, setListOpen] = useState(false);
   const [comparing, setComparing] = useState(null); // { older, newer }
@@ -43,6 +50,7 @@ export function useDocumentVersions(documentId, onOpenVersion) {
           showToast('A newer version was uploaded, so this copy is now read-only.', 'info');
         }
         if (isCurrent != null) wasCurrent = isCurrent;
+        if (isCurrent === false) onSupersededRef.current?.(documentId);
         setVersions((prev) => (sameVersions(prev, list) ? prev : list));
       })
       .catch((err) => console.warn('[versions] could not list versions', err));

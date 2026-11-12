@@ -162,7 +162,7 @@ function toolPage(t) {
     schema: [app, howTo, faqSchema(faq)],
     scripts: SCRIPT,
     body: `<section class="page-head tool-head"><div class="wrap">
-  <p class="kicker"><a href="/tools">Free PDF tools</a></p>
+  <p class="back"><a href="/tools">All free PDF tools</a></p>
   <h1>${t.h1}</h1>
   <p class="lede">${t.lede}</p>
 </div></section>
@@ -181,13 +181,13 @@ function toolPage(t) {
   <h2>How to ${t.h1.charAt(0).toLowerCase()}${t.h1.slice(1)}</h2>
   <ol class="steps">${t.steps.map((s) => `<li>${s}</li>`).join('')}</ol>
 </div></section>
-${t.trade ? `<section class="sec"><div class="wrap narrow">
+${t.trade ? `<section class="sec"><div class="wrap measure">
   <h2>${t.trade.h2}</h2>
   <p>${t.trade.text}</p>
 </div></section>
 ` : ''}<section class="sec tight"><div class="wrap">${why()}</div></section>
-<section class="sec"><div class="wrap narrow"><h2>Questions</h2>${faqList(faq)}</div></section>
-<section class="sec tight"><div class="wrap">
+<section class="sec"><div class="wrap measure"><h2>Questions</h2>${faqList(faq)}</div></section>
+<section class="sec tight tool-more"><div class="wrap">
   <h2>More free PDF tools</h2>
   <div class="tgrid">${related.map(card).join('')}</div>
   <p class="more-link"><a href="/tools">All free PDF tools</a></p>
@@ -209,7 +209,6 @@ const hub = page({
   desc: `${TOOLS.length} free PDF tools that run in your browser: merge, split, compress, OCR, compare, sign, lock and convert Word or images to PDF. No sign-up, no upload.`,
   schema: [{ '@type': 'ItemList', name: 'Free PDF tools', itemListElement: TOOLS.map((t, i) => ({ '@type': 'ListItem', position: i + 1, name: t.name, url: `${ORIGIN}/tools/${t.id}` })) }, faqSchema(HUB_FAQ)],
   body: `<section class="page-head hub-head"><div class="wrap">
-  <p class="kicker">Free PDF tools</p>
   <h1>Every PDF tool you need, free</h1>
   <p class="lede">${TOOLS.length} tools that run in your browser. No sign-up, and your files never leave your device.</p>
 </div></section>

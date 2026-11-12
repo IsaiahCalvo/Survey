@@ -30,6 +30,7 @@ import { parseBody, s } from '../_shared/inputSchema.js';
 import { APP_ONLY_KINDS, itemAnswerFor, itemAnswerHint, itemAnswerSpec } from '../_shared/kitShape.js';
 import { agentClientId } from '../_shared/agentSession.ts';
 import { GUEST_REFUSED_MESSAGE, isGuestUser } from '../_shared/guestSession.js';
+import { mcpMetadataUrl, mcpPublicUrl } from '../_shared/mcpPublicUrl.js';
 
 const CONNECTOR_WRITES_FLAG = 'survey-connector-writes';
 // When the person has this on, the app stores each marker as one Y.Map entry
@@ -54,15 +55,15 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const supabaseUrl = () => (Deno.env.get('SUPABASE_URL') || '').replace(/\/$/, '');
 const functionUrl = () => `${(Deno.env.get('SURVEY_MCP_PUBLIC_URL') || `${supabaseUrl()}/functions/v1/survey-mcp`).replace(/\/$/, '')}`;
-const metadataUrl = () => `${functionUrl()}/.well-known/oauth-protected-resource`;
 
 const jsonResponse = (status: number, body: unknown, extra: Record<string, string> = {}) => new Response(
   body === null ? null : JSON.stringify(body),
   { status, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...extra } },
 );
 
-const unauthorized = () => jsonResponse(401, { error: 'sign_in_required' }, {
-  'WWW-Authenticate': `Bearer resource_metadata="${metadataUrl()}"`,
+// publicUrl: the address this request came through (mcpPublicUrl.js).
+const unauthorized = (publicUrl: string) => jsonResponse(401, { error: 'sign_in_required' }, {
+  'WWW-Authenticate': `Bearer resource_metadata="${mcpMetadataUrl(publicUrl)}"`,
 });
 
 class ToolError extends Error {}
@@ -964,9 +965,10 @@ async function handle(db: SupabaseClient, raw: Record<string, unknown>, actor?: 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
   const url = new URL(req.url);
+  const publicUrl = mcpPublicUrl(req.url, functionUrl());
   if (req.method === 'GET' && url.pathname.endsWith('/.well-known/oauth-protected-resource')) {
     return jsonResponse(200, {
-      resource: functionUrl(),
+      resource: publicUrl,
       authorization_servers: [`${supabaseUrl()}/auth/v1`],
       bearer_methods_supported: ['header'],
       scopes_supported: ['email'],
@@ -978,13 +980,13 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return jsonResponse(405, { error: 'method_not_allowed' });
 
   const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
-  if (!token) return unauthorized();
+  if (!token) return unauthorized(publicUrl);
   const db = createClient(supabaseUrl(), Deno.env.get('SUPABASE_ANON_KEY')!, {
     auth: { persistSession: false, autoRefreshToken: false },
     global: { headers: { Authorization: `Bearer ${token}` } },
   });
   const { data: userData, error: userError } = await db.auth.getUser(token);
-  if (userError || !userData?.user || isGuestUser(userData.user)) return unauthorized();
+  if (userError || !userData?.user || isGuestUser(userData.user)) return unauthorized(publicUrl);
   const actor: Actor = { userId: userData.user.id, clientId: agentClientId(`Bearer ${token}`) || '' };
 
   let body: unknown;

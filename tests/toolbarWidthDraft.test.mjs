@@ -27,7 +27,7 @@ test('toolbar publishes synchronous pen and eraser width drafts instead of stale
   // counter sizes) instead of parseInt, so "2.5" no longer truncates to 2.
   assert.match(
     viewerSource,
-    /const isCounterSize = pickBarTool === 'counter' \|\| getSelectedShapeMeta\(\)\.isCounter;[\s\S]*?strokeWidthInputValueRef\.current = value;\s*setStrokeWidthInputValue\(value\);[\s\S]*?const maxWidth = isCounterSize \? COUNTER_SIZE_MAX : 50;[\s\S]*?setStrokeWidth\(normalizeAnnotationSize\(value, minWidth, maxWidth, widthDecimals\)\);[\s\S]*?publishToolbarDraft\('strokeWidthInputValue', value\)/,
+    /const isCounterSize = pickBarTool === 'counter' \|\| getSelectedShapeMeta\(\)\.isCounter;[\s\S]*?strokeWidthInputValueRef\.current = value;\s*setStrokeWidthInputValue\(value\);[\s\S]*?const maxWidth = isCounterSize \? COUNTER_SIZE_MAX : \(pickBarTool === 'tape' \? 100 : 50\);[\s\S]*?setStrokeWidth\(normalizeAnnotationSize\(value, minWidth, maxWidth, widthDecimals\)\);[\s\S]*?publishToolbarDraft\('strokeWidthInputValue', value\)/,
   );
   assert.match(
     viewerSource,

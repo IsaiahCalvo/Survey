@@ -396,6 +396,9 @@ const previewWidth = (width, max = PREVIEW_PAPER_STROKE_MAX) => clamp(Number(wid
 const dashFor = (style, width) => {
   if (style === 'dashed') return `${width * 3} ${width * 2}`;
   if (style === 'dotted') return `0.01 ${width * 2}`;
+  // Nightly 'line-dashes': the same 13 : 6 and 11 : 4 : 2 : 4 runs as the mark.
+  if (style === 'longDash') return `${width * 6.5} ${width * 3}`;
+  if (style === 'dashDot') return `${width * 5.5} ${width * 2} ${width} ${width * 2}`;
   return undefined;
 };
 

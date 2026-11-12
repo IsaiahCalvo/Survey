@@ -28,6 +28,11 @@
 // migration (see supabase/migrations/20261021030000_feature_flags.sql).
 
 export const FEATURE_FLAGS = Object.freeze({
+  // 2026-11-09 (owner: "get this onto production"): counter-list,
+  // grid-settings, spline-polyline, export-modes, pinned-tools, layers,
+  // marker-tracking, document-versions, survey-report, guest-links,
+  // microsoft-sign-in, custom-answers, own-excel-layouts and mark-comments moved from beta to rollout after their /flags rows were turned on, so
+  // surveytool.app follows /flags for them.
   // On surveytool.app since 2026-11-09 (owner: "let's deploy it", with a
   // "Beta" tag under its tool icon).
   'smart-fill': Object.freeze({
@@ -73,23 +78,23 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'custom-answers': Object.freeze({
     label: 'Make-your-own checklist answers in templates',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'survey-report': Object.freeze({
     label: 'Survey report as a PowerPoint deck (cover, progress chart, issues)',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   layers: Object.freeze({
     label: 'Layers panel (markup layers + PDF content opacity)',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'pinned-tools': Object.freeze({
     label: 'Pinned tools dock (favourite tools with their own colour and width)',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'counter-list': Object.freeze({
     label: 'Counts list: rename, recolour and reorder counts in one place',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'company-admin': Object.freeze({
     label: 'Company workspace: people, roles, seats, shared storage and activity log (Enterprise)',
@@ -97,23 +102,23 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'microsoft-sign-in': Object.freeze({
     label: 'Sign in with Microsoft (work, school or personal account)',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'export-modes': Object.freeze({
     label: 'Export PDF choices: annotated, flattened or plain, and which pages',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'grid-settings': Object.freeze({
     label: 'Page grid spacing: fine, normal, wide or custom (paper or drawing units)',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'spline-polyline': Object.freeze({
     label: 'Curved polyline: bend smoothly through the clicked corners',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'own-excel-layouts': Object.freeze({
     label: 'Your own Excel layout: upload your sheet and match its columns',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   // Owner 2026-10-27: wire it in but keep it hidden, so Nightly does not turn
   // it on by itself; /flags or 'survey.flag.conditional-lines' = '1' does.
@@ -124,7 +129,7 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'document-versions': Object.freeze({
     label: 'Version history: a new version keeps the old ones, with old-over-new compare',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'mark-library': Object.freeze({
     label: 'Mark library: save marks to a personal or project library and drop them on any page',
@@ -132,15 +137,15 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'mark-comments': Object.freeze({
     label: 'Comments on marks: threads, replies and @mentions with an email link',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'marker-tracking': Object.freeze({
     label: 'Survey items: status, assigned to and due date, with list filters',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'guest-links': Object.freeze({
     label: 'Guest links: open one document without an account, as viewer or editor, until a set time',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   // The app's Google Sheets (and later Microsoft 365) live sync panel; the
   // sheet-sync function also lets flag admins and Nightly testers link.
@@ -308,6 +313,40 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Back (browser or Android) closes the open sheet, then the document, instead of leaving Survey',
     stage: 'beta',
   }),
+  // Drawboard Home parity (2026-11-10), one flag each so Isaiah can pick.
+  'home-tags': Object.freeze({
+    label: 'Home: your own tags on documents (row chips, Tags list, search by tag)',
+    stage: 'beta',
+  }),
+  'home-shared-views': Object.freeze({
+    label: 'Home: Shared by me and Shared with me filters',
+    stage: 'beta',
+  }),
+  'home-columns': Object.freeze({
+    label: 'Home: Last opened and Created columns, more sorts, list sizes',
+    stage: 'beta',
+  }),
+  // Drawboard Projects parity (2026-11-10).
+  'project-issues': Object.freeze({
+    label: 'Projects: Issues and Tasks lists with IDs, statuses, filters, archive, CSV and activity',
+    stage: 'beta',
+  }),
+  'share-extras': Object.freeze({
+    label: 'Share dialog: owner row with (you), sort by Role / Name / Activity, personal message on email invites',
+    stage: 'beta',
+  }),
+  'home-templates': Object.freeze({
+    label: 'Home New menu: Notebook paper in one tap and Other templates (ruled, Cornell, grids, graph, isometric, hex, music)',
+    stage: 'beta',
+  }),
+  'sheet-set-view': Object.freeze({
+    label: 'Project sheets as a set: previous / next sheet, sheet picker, Shift+Left / Right, List and Grid views, Open all',
+    stage: 'beta',
+  }),
+  spotlight: Object.freeze({
+    label: 'Spotlight: share your view from the people list; others follow your document, page and zoom (green frame, N following)',
+    stage: 'beta',
+  }),
   'page-op-sync': Object.freeze({
     label: 'Page changes in one window reload the PDF in the other windows that have it open',
     stage: 'beta',
@@ -319,6 +358,70 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'box-drag-move': Object.freeze({
     label: 'Drag inside a picked mark to move it',
+    stage: 'beta',
+  }),
+  // Drawboard file model (2026-11-10, drawboard-trial/file-model.md): keep a
+  // document on this device so it opens with no signal; marks sync later.
+  'offline-docs': Object.freeze({
+    label: 'Available offline: keep a document on this device so it opens with no signal',
+    stage: 'beta',
+  }),
+  // Open a PDF with no account; it stays on this device until saved to an
+  // account (Drawboard's "Temporary" files, without their two-tab data loss).
+  'device-files': Object.freeze({
+    label: 'Open a PDF with no account (kept on this device)',
+    stage: 'beta',
+  }),
+  'line-dashes': Object.freeze({
+    label: 'Line styles: Long dash and Dash-dot as well as Solid, Dashed and Dotted',
+    stage: 'beta',
+  }),
+  'eraser-look': Object.freeze({
+    label: "Eraser look: Drawboard's cross-and-eraser cursor, a trail where it moves, hit marks lit orange until release, and icon mode buttons",
+    stage: 'beta',
+  }),
+  'properties-panel': Object.freeze({
+    label: "Properties panel: Drawboard's Expand menu, a card with typed X Y W H R, stroke, border and fill for the picked marks",
+    stage: 'beta',
+  }),
+  'text-fit-height': Object.freeze({
+    label: 'Text box height fits its words both ways: widening a text box from its side brings its height back down',
+    stage: 'beta',
+  }),
+  'poly-click-starts': Object.freeze({
+    label: 'Polygon and Polyline: with a mark picked, the first click drops the pick and places the first point',
+    stage: 'beta',
+  }),
+  'stamp-tool': Object.freeze({
+    label: "Stamp tool: Drawboard's twelve preset stamps in a Stamp card; pick one, then click the page to drop it",
+    stage: 'beta',
+  }),
+  'line-endings': Object.freeze({
+    label: "Line endings: Drawboard's ten heads for the start and end of a Line or Arrow, at Drawboard's sizes",
+    stage: 'beta',
+  }),
+  'pen-types': Object.freeze({
+    label: "Pen types: Drawboard's Basic (fixed), Pro (pressure or speed) and Calligraphy (direction) pens",
+    stage: 'beta',
+  }),
+  'typing-undo': Object.freeze({
+    label: 'Undo while typing steps back one word at a time, not the whole typing session',
+    stage: 'beta',
+  }),
+  'drag-auto-scroll': Object.freeze({
+    label: 'Drawing a shape, moving a mark or box selecting near the edge of the view scrolls it',
+    stage: 'beta',
+  }),
+  'insert-image': Object.freeze({
+    label: 'Image: put a picture from a file or the clipboard on the page as a mark you can move, resize and rotate',
+    stage: 'beta',
+  }),
+  'tape-tool': Object.freeze({
+    label: 'Tape: an opaque band that covers part of the page; tap it under Pan to see what is under it',
+    stage: 'beta',
+  }),
+  'turn-scale-keys': Object.freeze({
+    label: 'Keys: Ctrl / Cmd + Left / Right turn the picked mark 1° (5° with Shift), Ctrl / Cmd + Up / Down scale it',
     stage: 'beta',
   }),
 });

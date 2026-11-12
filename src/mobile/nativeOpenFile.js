@@ -65,11 +65,17 @@ export function takeOpenedFiles() {
  * Reads the url and parks the result: { file } for a PDF, { error } otherwise.
  * The same url is read once even when both the launch url and the event carry it.
  */
-export async function receiveOpenedFile(url, { Filesystem, win = typeof window !== 'undefined' ? window : null } = {}) {
+export async function receiveOpenedFile(url, { Filesystem, win = typeof window !== 'undefined' ? window : null, enabled = true } = {}) {
   if (!isOpenedFileUrl(url)) return false;
   const now = Date.now();
   if (now - (seen.get(url) ?? -Infinity) < SAME_OPEN_MS) return false;
   seen.set(url, now);
+  // Flag off: leave the sender's file alone (no read, no Inbox delete). The
+  // home screen still hears of it and says where Upload is.
+  if (!enabled) {
+    queueOpenedFile({ disabled: true }, win);
+    return true;
+  }
   const name = openedFileName(url);
   try {
     const { data } = await Filesystem.readFile({ path: url });

@@ -77,27 +77,14 @@
 			</array>
 		</dict>
 	</array>
-	<!-- "Open in Survey": Survey shows up for PDFs in Files, Mail, Outlook and
-	     Teams. iOS copies the PDF into Documents/Inbox and opens the app with
-	     its file:// url; src/mobile/nativeOpenFile.js reads it, uploads it and
-	     deletes the copy. Opening in place is off, so Survey never edits the
-	     sender's file. -->
-	<key>CFBundleDocumentTypes</key>
-	<array>
-		<dict>
-			<key>CFBundleTypeName</key>
-			<string>PDF document</string>
-			<key>CFBundleTypeRole</key>
-			<string>Viewer</string>
-			<key>LSHandlerRank</key>
-			<string>Alternate</string>
-			<key>LSItemContentTypes</key>
-			<array>
-				<string>com.adobe.pdf</string>
-			</array>
-		</dict>
-	</array>
-	<key>LSSupportsOpeningDocumentsInPlace</key>
-	<false/>
+	<!-- "Open in Survey" (beta flag 'open-in-survey') is NOT registered here
+	     yet: the stable app never turns a beta flag on, so a PDF document type
+	     would put Survey in every Open in list only to refuse the file (and
+	     iOS would leave a copy in Documents/Inbox). When the flag moves to
+	     'rollout', add back: CFBundleDocumentTypes with one dict
+	     (CFBundleTypeName "PDF document", CFBundleTypeRole Viewer,
+	     LSHandlerRank Alternate, LSItemContentTypes [com.adobe.pdf]) and
+	     LSSupportsOpeningDocumentsInPlace false, so Survey never edits the
+	     sender's file. (tests/nativeOpenFile.test.mjs checks this follows the flag.) -->
 </dict>
 </plist>

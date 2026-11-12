@@ -85,12 +85,12 @@ jobs:
     # Playwright 1.59 has no browsers for ubuntu-26.04, which ubuntu-latest
     # became in October 2026.
     runs-on: ubuntu-24.04
-    timeout-minutes: ${{ inputs.perf && 55 || 20 }}
+    timeout-minutes: ${{ inputs.perf && 55 || 30 }}
     strategy:
       # Let every shard finish so one run shows all failures, not just the first.
       fail-fast: false
       matrix:
-        shard: ${{ inputs.perf && fromJSON('[1]') || fromJSON('[1, 2, 3, 4, 5]') }}
+        shard: ${{ inputs.perf && fromJSON('[1]') || fromJSON('[1, 2, 3, 4, 5, 6]') }}
     steps:
       - uses: actions/checkout@v7
 

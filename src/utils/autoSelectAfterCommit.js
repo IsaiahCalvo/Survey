@@ -38,6 +38,9 @@ export const AUTO_SELECT_AFTER_COMMIT_TOOLS = Object.freeze([
 export const NO_AUTO_SELECT_TOOLS = Object.freeze([
   'pen',
   'highlighter',
+  // Tape (beta 'tape-tool') is free-form ink too: the next band is not
+  // fighting a set of handles.
+  'tape',
   'survey-marker',
   // The Survey Marker tool in its Freehand mode (owner 2026-10-13): like the
   // box, the new marker opens in the Survey panel instead.

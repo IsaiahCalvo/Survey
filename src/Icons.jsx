@@ -502,6 +502,58 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
+    lineSampleLongDash: (size, color, style, className) => (
+      <svg width={size} height={size / 2} viewBox="0 0 24 12" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M1 6H9.5M14.5 6H23" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+
+    // Nightly 'properties-panel': Expand menu (a card with a panel at its
+    // right) and Collapse menu (the same card, panel shut).
+    expandMenu: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <rect x="3.5" y="4.5" width="17" height="15" rx="1.67" stroke={color} strokeWidth="1.5" />
+        <path d="M14 4.5V19.5" stroke={color} strokeWidth="1.5" />
+        <path d="M16.5 9H18M16.5 12H18M16.5 15H18" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+
+    // Nightly 'stamp-tool': a rubber stamp (handle, base, the mark under it).
+    stamp: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M10 11V8.5a2 2 0 1 1 4 0V11" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+        <rect x="4.75" y="11" width="14.5" height="4.5" rx="0.5" stroke={color} strokeWidth="1.5" />
+        <path d="M5.5 19H18.5" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+
+    panelRight: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <rect x="3.5" y="4.5" width="17" height="15" rx="1.67" stroke={color} strokeWidth="1.5" />
+        <path d="M14 4.5V19.5" stroke={color} strokeWidth="1.5" />
+      </svg>
+    ),
+
+    // Nightly 'eraser-look': Drawboard's two eraser mode buttons, a whole
+    // stroke (Full) and the same stroke broken up (Partial).
+    eraserModeFull: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M3 15C6 8 9 7 12 12C15 17 18 16 21 9" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+
+    eraserModePartial: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M3 15C6 8 9 7 12 12C15 17 18 16 21 9" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeDasharray="2 3" />
+      </svg>
+    ),
+
+    lineSampleDashDot: (size, color, style, className) => (
+      <svg width={size} height={size / 2} viewBox="0 0 24 12" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M1 6H7.5M11 6H11.5M15 6H21.5" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+
     lineSampleDotted: (size, color, style, className) => (
       <svg width={size} height={size / 2} viewBox="0 0 24 12" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
         <path d="M1 6H23" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeDasharray="1 4" />
@@ -628,6 +680,13 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
+    // Tape (beta 'tape-tool'): a strip of tape with torn ends.
+    tape: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M4.5 15.5 15.5 4.5l1.2 1.6 1.8-.2-.2 1.8 1.6 1.2L8.9 19.9l-1.2-1.6-1.8.2.2-1.8z" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
+        <path d="M9 13.5l4.5-4.5" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
     eraser: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ ...style, transform: 'rotate(270deg)' }} className={className}>
         <g transform="rotate(-45 12 12)">
@@ -1237,6 +1296,13 @@ const ICON_RENDERERS = {
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
         <circle cx="18" cy="5" r="3" stroke={color} strokeWidth="1.5" /><circle cx="6" cy="12" r="3" stroke={color} strokeWidth="1.5" /><circle cx="18" cy="19" r="3" stroke={color} strokeWidth="1.5" />
         <path d="M8.6 13.5L15.4 17.5M15.4 6.5L8.6 10.5" stroke={color} strokeWidth="1.5" />
+      </svg>
+    ),
+    // Tag — Lucide "tag" (ISC), house stroke 1.5. Home tags (Nightly).
+    tag: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
+        <path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx="7.5" cy="7.5" r="1" fill={color} />
       </svg>
     ),
     lock: (size, color, style, className) => (
