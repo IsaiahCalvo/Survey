@@ -143,11 +143,8 @@ if (process.env.NODE_ENV === 'development') {
 // development still has full tooling.
 let developerMode = process.env.NODE_ENV === 'development';
 
-// UX 2026-04-22: Auto-updater. Checks the Survey repo's GitHub Releases on
-// startup; if a newer version is published the user sees an "Update available"
-// prompt. Only runs in packaged builds — dev mode skips silently because
-// electron-updater can't patch an unbuilt source tree. Uses the publish
-// config in package.json, which points at this repo.
+// Auto-updater reads the public app feed in package.json. GitHub keeps the
+// build archive and may be private. Only packaged builds check for updates.
 let autoUpdater = null;
 let updaterManualCheckWindow = null; // tracks window that requested a manual check
 try {
@@ -766,9 +763,9 @@ function createAppMenu() {
         },
         { type: 'separator' },
         {
-          label: 'View on GitHub',
+          label: 'Survey website',
           click: () => {
-            shell.openExternal('https://github.com/IsaiahCalvo/Survey');
+            shell.openExternal('https://surveytool.app');
           }
         }
       ]

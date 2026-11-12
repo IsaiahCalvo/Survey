@@ -1,6 +1,6 @@
 {
   "name": "survey",
-  "version": "0.1.47",
+  "version": "0.1.48",
   "private": true,
   "main": "src/electron-main.js",
   "scripts": {
@@ -142,7 +142,7 @@
     "asar": true,
     "npmRebuild": false,
     "mac": {
-      "target": "dmg",
+      "target": ["dmg", "zip"],
       "icon": "build/icon.icns",
       "extendInfo": {
         "NSCameraUsageDescription": "Survey uses the camera to take photos and videos for your Survey Markers.",
@@ -157,6 +157,11 @@
       "icon": "build/icon.png"
     },
     "publish": [
+      {
+        "provider": "generic",
+        "url": "https://cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/public/app-public/desktop",
+        "useMultipleRangeRequest": false
+      },
       {
         "provider": "github",
         "owner": "IsaiahCalvo",
