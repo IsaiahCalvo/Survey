@@ -37,6 +37,7 @@ import {
   segmentCaptionPlace,
   MEASURE_PRESETS,
   isOwnScaleMeasure,
+  markMeasureScale,
   scaleFromPreset,
   customMeasureScaleIndex,
   loadCustomMeasureScales,
@@ -84,7 +85,10 @@ export default function MeasureEditPopover({ measure, onPatch, onClose, side = '
   const savedLabel = normalizeMeasureLabelText(saved.label);
   const savedDepth = normalizeMeasureDepth(saved.depth);
   const usesDepth = DEPTH_MEASURE_KINDS.includes(kind);
-  const unit = isValidMeasureScale(scale) ? MEASURE_UNITS[scale.unit].label : 'in';
+  // Depth is read in the scale the mark reads in (its own, else the page's),
+  // so the field names that unit.
+  const readScale = markMeasureScale(mark, scale);
+  const unit = isValidMeasureScale(readScale) ? MEASURE_UNITS[readScale.unit].label : 'in';
   // A Length drawn as a dimension line (measure-plus) also has a leader and a
   // caption place.
   const isDim = isDimensionMeasure(mark);

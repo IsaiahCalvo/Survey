@@ -657,3 +657,16 @@ test('the Measurement card adds and edits custom scales through the dialog in ma
   assert.match(dialog, /if \(markMode === 'edit' && editIndex >= 0\) forgetCustomMeasureScale\(editIndex\);/);
   assert.match(dialog, /\{pageCount > 1 && !markMode && \(/);
 });
+
+test('the Measurement card names Depth in the unit the mark reads in (its own scale, else the page\'s)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const card = readFileSync(new URL('../src/components/MeasureEditPopover.jsx', import.meta.url), 'utf8');
+  assert.match(card, /const readScale = markMeasureScale\(mark, scale\);/);
+  assert.match(card, /MEASURE_UNITS\[readScale\.unit\]\.label/);
+  const { markMeasureScale } = await import('../src/utils/measure/measureScale.js');
+  const page = { unit: 'ft', ptPerUnit: 9, label: '1/8″ = 1′-0″' };
+  const own = { unit: 'm', ptPerUnit: 28.35, label: '1:100' };
+  const mark = { type: 'line', data: { measure: { kind: 'wallArea', ownScale: true, scale: own } } };
+  assert.equal(markMeasureScale(mark, page), mark.data.measure.scale);
+  assert.equal(markMeasureScale({ type: 'line', data: { measure: { kind: 'wallArea' } } }, page), page);
+});
