@@ -281,3 +281,12 @@ test('a batch that only adds marks reads as an add, and undoing it takes them of
   assert.equal(historyUndoRemovesMark(undo), true);
   assert.deepEqual(historyRowMarkIds(undo), ['a', 'b']);
 });
+
+test('a batch that only deletes marks reads as a delete, and its undo does not take them off', () => {
+  const rect = (id) => ({ id, annotation: { type: 'rect', data: { id, type: 'rect' } } });
+  const summary = summarizeHistoryActionForLog({ type: 'fabric:batch', pageNumber: 1, deleted: [rect('a'), rect('b')] });
+  assert.equal(summary.actionType, 'delete');
+  const undo = row('u', { event_type: 'local_annotation_undo_applied', annotation_id: null, payload: summary });
+  assert.equal(`${classifyHistoryRow(undo).verb} ${classifyHistoryRow(undo).noun}`, 'undid deleting 2 marks');
+  assert.equal(historyUndoRemovesMark(undo), false);
+});
