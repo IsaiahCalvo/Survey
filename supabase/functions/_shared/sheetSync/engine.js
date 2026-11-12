@@ -1129,9 +1129,18 @@ export async function planSheetRound({
   }
 
   for (const flag of Object.keys(next.stuck)) if (!markers[flag.split('|')[0]]) delete next.stuck[flag];
-  delete next.eraseChoice; // used once
+  // A locked tab's rows weren't looked at: a held erase, and an editor's
+  // choice about it, wait for the tab instead of being used up or dropped.
+  // Dropped, its blanks would come in as plain edits once it's unlocked if
+  // fewer than BIG_ERASE were left.
+  const waitsOnLocked = next.lockedTabs.length > 0;
+  if (waitsOnLocked && state.eraseChoice) next.eraseChoice = state.eraseChoice;
+  else delete next.eraseChoice; // used once
   if (eraseMode === 'hold' && erasing) {
-    next.heldErase = { count: erasing, items: erasingItems.size, at: state.heldErase?.at || nowIso };
+    const was = waitsOnLocked ? state.heldErase || {} : {};
+    next.heldErase = { count: Math.max(erasing, was.count || 0), items: Math.max(erasingItems.size, was.items || 0), at: state.heldErase?.at || nowIso };
+  } else if (waitsOnLocked && state.heldErase) {
+    next.heldErase = state.heldErase;
   } else {
     delete next.heldErase;
   }

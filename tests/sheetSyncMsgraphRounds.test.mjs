@@ -696,3 +696,34 @@ test('one protected tab: the other tabs keep syncing both ways, the locked one w
   assert.ok(!ctx.link.state.problems.some((p) => /is protected/.test(p.message)), 'and the line goes away');
   assert.deepEqual(ctx.link.state.lockedTabs, []);
 });
+
+test('a held erase on a tab that gets protected waits for it, and so does the choice made about it', async () => {
+  const ctx = await setup({ markers: { ...fifteen(), c1: door('c1', 'C-201', { categoryId: 'cams' }) } });
+  await ctx.round(); await ctx.round();
+  await blankNotes(ctx, 12);
+  await ctx.round();
+  assert.equal(ctx.link.state.heldErase.count, 12);
+  // The PM fills five back: seven blanks still held, under the hold's size.
+  const col = await ctx.col('Notes');
+  await ctx.edit(await Promise.all([1, 2, 3, 4, 5].map(async (i) => ({ row: await ctx.rowOf(`d${i}`), col, value: `field note ${i}` }))));
+  await ctx.round();
+  assert.equal(ctx.link.state.heldErase.count, 7);
+  // Then protects the tab; a tech's note there is refused and the tab skipped.
+  await fakeApi(`/files/${ctx.fileId}/protect`, { title: 'Doors - Level 1' });
+  ctx.markers.d14.note = { text: 'tech on the locked tab' };
+  assert.equal((await ctx.round()).status, 'synced');
+  assert.deepEqual(ctx.link.state.lockedTabs.length, 1);
+  assert.equal(ctx.link.state.heldErase?.count, 7, 'the hold is kept while its tab is locked');
+  // An editor picks "put them back" while it is still locked.
+  ctx.link.state.eraseChoice = 'app';
+  await ctx.round();
+  assert.equal(ctx.link.state.eraseChoice, 'app', 'the choice waits for the tab');
+  await fakeApi(`/files/${ctx.fileId}/protect`, { title: 'Doors - Level 1', on: false });
+  assert.equal((await ctx.round()).status, 'synced');
+  for (let i = 6; i <= 12; i += 1) assert.equal(ctx.markers[`d${i}`].note.text, `field note ${i}`, `d${i} is not wiped in the app`);
+  const sheet = await ctx.sheet();
+  for (let i = 6; i <= 12; i += 1) assert.equal(sheet.rows[await ctx.rowOf(`d${i}`)][col], `field note ${i}`, `d${i} is put back in the sheet`);
+  assert.equal(sheet.rows[await ctx.rowOf('d14')][col], 'tech on the locked tab');
+  assert.equal(ctx.link.state.eraseChoice, undefined, 'used once the tab was looked at');
+  assert.equal(ctx.link.state.heldErase, undefined);
+});
