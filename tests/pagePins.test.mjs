@@ -126,3 +126,13 @@ test('wiring: flag, migration, viewer host and layer, tool button, rail card, ph
   // Pan leaves pins to their own press.
   assert.match(read('src/components/pins/PagePinsLayer.jsx'), /data-pan-interactive="true"/);
 });
+
+test('the composer saves once and only with a status the pin kind takes (Bugbot on #1387)', () => {
+  const src = readFileSync(new URL('../src/components/pins/PagePinsHost.jsx', import.meta.url), 'utf8');
+  // A ref, not state, blocks the second submit before the next render.
+  assert.match(src, /if \(busyRef\.current\) return false;\s*busyRef\.current = true;/);
+  // A status from the previous kind falls back to the new kind's first one.
+  assert.match(src, /const shownStatus = kindStatuses\.includes\(status\) \? status : \(kindStatuses\[0\] \|\| 'draft'\);/);
+  assert.match(src, /status: kind === 'comment' \? null : shownStatus/);
+  assert.match(src, /<StatusPill kind=\{kind\} status=\{shownStatus\}/);
+});
