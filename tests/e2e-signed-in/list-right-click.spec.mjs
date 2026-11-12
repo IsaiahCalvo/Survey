@@ -118,10 +118,44 @@ for (const [layout, use] of Object.entries(LAYOUTS)) {
         await menu(page).getByRole('menuitem', { name: 'Remove' }).click();
         await expect(button(page, 'Rename Region 3')).toHaveCount(0);
 
-        // A right-click inside a name being typed keeps the browser's menu.
+        // Owner 2026-11-12: a right-click on the space's title (not being
+        // typed in) is a right-click on the space - never the browser's menu,
+        // and the name is not focused by it.
+        await page.evaluate(() => {
+          window.__lastContextMenu = null;
+          window.addEventListener('contextmenu', (event) => { window.__lastContextMenu = { prevented: event.defaultPrevented }; });
+        });
+        await name.click({ button: 'right' });
+        await expect(menu(page)).toBeVisible();
+        expect(await menu(page).getByRole('menuitem').allTextContents()).toEqual(['Rename', 'Add pages', 'Turn on space', 'Delete']);
+        await expect(name).not.toBeFocused();
+        expect(await page.evaluate(() => window.__lastContextMenu)).toEqual({ prevented: true });
+        // (On the phone Escape would also close the Spaces sheet.)
+        if (phone) {
+          await menu(page).getByRole('menuitem', { name: 'Rename' }).click();
+          await expect(name).toBeFocused();
+          await name.press('Escape');
+        } else {
+          await page.keyboard.press('Escape');
+        }
+        await expect(menu(page)).toHaveCount(0);
+
+        // A right-click inside a name being typed opens the app's own
+        // Cut / Copy / Paste menu (no row menu, no browser menu), and the
+        // field keeps its focus.
+        const textMenu = page.getByRole('menu', { name: 'Text actions' });
         await name.click();
+        await page.keyboard.press('ControlOrMeta+a');
         await name.click({ button: 'right' });
         await expect(menu(page)).toHaveCount(0);
+        await expect(textMenu).toBeVisible();
+        expect(await textMenu.getByRole('menuitem').allTextContents()).toEqual(['Cut', 'Copy', 'Paste', 'Select all']);
+        await page.screenshot({ path: test.info().outputPath(`${layout}-text-menu.png`) });
+        await expect(name).toBeFocused();
+        expect(await page.evaluate(() => window.__lastContextMenu)).toEqual({ prevented: true });
+        await textMenu.getByRole('menuitem', { name: 'Select all' }).click();
+        await expect(textMenu).toHaveCount(0);
+        await expect(name).toBeFocused();
         await page.keyboard.press('Enter');
 
         // 5. Delete the space from its menu.
@@ -131,6 +165,13 @@ for (const [layout, use] of Object.entries(LAYOUTS)) {
         // A space with regions may ask what to do with its marks first.
         if (await confirm.count()) await confirm.last().click().catch(() => {});
         await expect(page.locator('.space-card__name').filter({ visible: true })).toHaveCount(0, { timeout: 10_000 });
+
+        // Empty space: no menu at all, and not the browser's either.
+        await page.evaluate(() => { window.__lastContextMenu = null; });
+        const panelBox = await visible(page.locator('.spaces-panel')).boundingBox();
+        await page.mouse.click(panelBox.x + panelBox.width / 2, panelBox.y + panelBox.height - 12, { button: 'right' });
+        expect(await page.evaluate(() => window.__lastContextMenu)).toEqual({ prevented: true });
+        await expect(page.getByRole('menu').filter({ visible: true })).toHaveCount(0);
 
         if (phone) return; // Phone bookmark rows: slide and the row's own controls.
 
