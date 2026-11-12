@@ -140,7 +140,7 @@ export function createDriveClient({ getAccessToken, fetch: fetchImpl = globalThi
 /** A Drive v3 client. Items come back in the Graph shape the actions use. */
 export function createGoogleDriveClient({ getAccessToken, fetch: fetchImpl = globalThis.fetch, baseUrl = 'https://www.googleapis.com' }) {
   const base = String(baseUrl).replace(/\/$/, '');
-  const FIELDS = 'id,name,mimeType,size,headRevisionId,modifiedTime,webViewLink,trashed,capabilities(canEdit),lastModifyingUser(displayName)';
+  const FIELDS = 'id,name,mimeType,size,headRevisionId,sha256Checksum,modifiedTime,webViewLink,trashed,capabilities(canEdit),lastModifyingUser(displayName)';
   async function call(method, url, { headers = {}, body } = {}) {
     const token = await getAccessToken();
     const response = await fetchWithTimeout(fetchImpl, url, {
@@ -171,6 +171,9 @@ export function createGoogleDriveClient({ getAccessToken, fetch: fetchImpl = glo
       id: String(f.id),
       name: String(f.name || ''),
       eTag: f.headRevisionId || null,
+      // The content's SHA-256: lets a late confirm tell Survey's own upload
+      // (the app sends the same hash) from a later change in Drive.
+      sha256: typeof f.sha256Checksum === 'string' ? f.sha256Checksum.toLowerCase() : null,
       size: Number(f.size) || 0,
       webUrl: f.webViewLink || null,
       file: { mimeType: f.mimeType || '' },
@@ -472,12 +475,21 @@ async function pushed(ctx) {
   try { it = await client.item(row.drive_id, row.item_id); } catch (err) { throw graphProblem(err, { where: 'status', provider: row.provider }); }
   const nowMs = Date.now();
   const now = new Date(nowMs).toISOString();
-  // A late confirm (the app could not reach us right after its upload) names
-  // the eTag its upload produced. If the drive has moved on since, someone
-  // changed the file after Survey's write: keep the old eTag so the next push
-  // raises the conflict dialog instead of overwriting their change.
-  const uploadedEtag = ctx.body.late && typeof ctx.body.eTag === 'string' ? ctx.body.eTag : null;
-  const changedSince = Boolean(uploadedEtag && it?.eTag && it.eTag !== uploadedEtag);
+  // A late confirm (the app could not reach us right after its upload): if
+  // the drive no longer holds Survey's write, someone changed the file since.
+  // Keep the old eTag so the next push raises the conflict dialog instead of
+  // overwriting their change. Google Drive: compare the content's SHA-256
+  // with the hash of the bytes Survey sent (Drive's upload answer carries no
+  // revision id). OneDrive: compare the eTag the upload answered with. With
+  // neither to go on, assume a change: a needless question beats a lost edit.
+  let changedSince = false;
+  if (ctx.body.late) {
+    const sentSha = typeof ctx.body.sha === 'string' ? ctx.body.sha.toLowerCase() : null;
+    const uploadedEtag = typeof ctx.body.eTag === 'string' ? ctx.body.eTag : null;
+    if (it?.sha256 && sentSha) changedSince = it.sha256 !== sentSha;
+    else if (uploadedEtag && it?.eTag) changedSince = it.eTag !== uploadedEtag;
+    else changedSince = true;
+  }
   // When the push started, not when we heard: other screens compare this with
   // their own unsaved change, and a late confirm must not cover later edits.
   const startedMs = Date.parse(String(ctx.body.pushedAt || ''));
