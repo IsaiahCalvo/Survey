@@ -41,7 +41,7 @@ test('an older version opens in the zero-writes lock mode with its own bar', () 
   // The lock banner itself only shows for a real lock.
   assert.match(banner, /if \(lockedAt == null\) return null;/);
   const shell = read('src/AppShell.jsx');
-  assert.match(shell, /readOnlyWithoutLock=\{Boolean\(tab\.file\?\.superseded_by\) \|\| supersededDocIds\.has\(tab\.file\?\.id\) \|\| \(tab\.id === activeTabId && Boolean\(olderVersionOpen\)\)\}/);
+  assert.match(shell, /readOnlyWithoutLock=\{fileSuperseded\(tab\.file\) \|\| \(tab\.id === activeTabId && Boolean\(olderVersionOpen\)\)\}/);
   assert.match(shell, /<OlderVersionBar/);
   // The phone's More menu lists Versions.
   assert.match(shell, /versions=\{documentVersions\.shown/);
@@ -81,6 +81,9 @@ test('a copy found superseded stays read-only after switching documents (Bugbot 
   assert.match(shell, /useDocumentVersions\([^\n]*handleDocumentSelect, markDocSuperseded\)/);
   // The lock banner and the older-version bar read the set, not only the
   // versions list that a document switch empties.
-  assert.match(shell, /readOnlyWithoutLock=\{Boolean\(tab\.file\?\.superseded_by\) \|\| supersededDocIds\.has\(tab\.file\?\.id\) \|\|/);
-  assert.match(shell, /olderVersionOpen \|\| activeTab\?\.file\?\.superseded_by \|\| supersededDocIds\.has\(activeTab\?\.file\?\.id\)/);
+  // fileSuperseded reads the set, then the delete/Undo chain links, then the
+  // tab's own superseded_by (isFileSuperseded, tested in versionDelete.test.mjs).
+  assert.match(shell, /const fileSuperseded = \(file\) => isFileSuperseded\(file, supersededDocIds, versionChainLinks\);/);
+  assert.match(shell, /readOnlyWithoutLock=\{fileSuperseded\(tab\.file\) \|\|/);
+  assert.match(shell, /olderVersionOpen \|\| fileSuperseded\(activeTab\?\.file\)/);
 });
