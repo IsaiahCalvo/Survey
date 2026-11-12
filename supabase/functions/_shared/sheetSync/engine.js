@@ -728,6 +728,7 @@ export async function planSheetRound({
           continue;
         }
         delete next.tombstones[markerId]; // the delete was undone: the row is its own again
+        next.notices = next.notices.filter((n) => n.markerId !== markerId);
       }
 
       // A valid Row ID of an item deleted in the app whose row we removed: a
@@ -760,6 +761,8 @@ export async function planSheetRound({
           if ((await sheetChanges(row, base.fields)) > 0 || hasOwnData(row)) {
             // Baseline kept, so an undo of the delete picks the row up again.
             next.tombstones[markerId] = { at: nowIso, scopeId: scope.scopeId };
+            const name = colOfKey.has('item') ? cellText(row[colOfKey.get('item')]).trim() : '';
+            notice({ markerId, scopeId: scope.scopeId, message: `${where(r)}: "${name || 'An item'}" was deleted in Survey, but its row was kept because it has changes made in the sheet. Delete the row if it should go.` });
           } else {
             plan.deletes.push({ sheetId: sheet.sheetId, title: sheet.title, row: r, token, rowIdCol, listCols, ownCols });
             plan.summary.deleted += 1;

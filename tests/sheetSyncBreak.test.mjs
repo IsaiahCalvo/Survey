@@ -730,6 +730,13 @@ test('a note typed into a just-added item\'s row that the tech then deleted keep
   assert.equal(r.summary.created, 0, 'no new item from a note alone');
   assert.equal(r.summary.deleted, 0, 'and the PM\'s note is not removed with the row');
   assert.equal((await ctx.sheet()).rows[row][await ctx.col('Item')], 'D-102');
+  const kept = /"D-102" was deleted in Survey, but its row was kept/;
+  assert.ok(ctx.link.state.problems.some((p) => kept.test(p.message)), 'and the panel says why the row is still there');
+  await ctx.round({ now: new Date(t0 + 60000), force: true });
+  assert.ok(ctx.link.state.problems.some((p) => kept.test(p.message)), 'for a while');
+  ctx.markers.d2 = door('d2', 'D-102');
+  await ctx.round({ now: new Date(t0 + 70000), force: true });
+  assert.ok(!ctx.link.state.problems.some((p) => kept.test(p.message)), 'gone once the delete is undone');
 });
 
 // Excel can land one save cell by cell: the Item first (split off as the PM's
@@ -882,6 +889,7 @@ test('the kept-row notice for an item deleted just after a sheet edit stays for 
   assert.ok(said(), 'the panel says why the row is still there');
   await ctx.round({ now: new Date(t0 + 20000), force: true });
   assert.ok(said(), 'and still does a round later');
+  assert.equal(ctx.link.state.problems.filter((p) => p.markerId === 'd2').length, 1, 'once, not also the plainer kept-row note');
   await ctx.round({ now: new Date(t0 + 5000 + 31 * 60_000), force: true });
   assert.ok(!said(), 'until half an hour has passed');
 });
