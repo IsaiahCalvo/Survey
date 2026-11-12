@@ -227,6 +227,33 @@ test('custom scale reads feet-inches, Units restamp the line, Set as default car
     await expect(menu).toBeHidden();
     await expect(dimLine.locator('[data-dimension-elbow]')).toHaveCount(0);
     await expect(dimLine.locator('line')).toHaveCount(4);
+    // The small circle above the caption turns it (Shift: 15° steps), one
+    // Undo step; Reset caption position puts it level again.
+    const turnGrab = surface.locator('[data-handle="dim-caption-turn"]');
+    await expect(turnGrab).toHaveCount(1);
+    const tb = await turnGrab.boundingBox();
+    const cb = await surface.locator('[data-handle="dim-caption"]').boundingBox();
+    const cx = cb.x + cb.width / 2;
+    const cy = cb.y + cb.height / 2;
+    const reach = cy - (tb.y + tb.height / 2);
+    await page.mouse.move(tb.x + tb.width / 2, tb.y + tb.height / 2);
+    await page.mouse.down();
+    await page.keyboard.down('Shift');
+    await page.mouse.move(cx + reach * 0.7, cy - reach * 0.7, { steps: 4 });
+    await page.mouse.move(cx + reach, cy + 2, { steps: 4 });
+    await page.mouse.up();
+    await page.keyboard.up('Shift');
+    await expect(caption).toHaveAttribute('transform', /^rotate\(90 /);
+    await page.screenshot({ path: test.info().outputPath('measure-plus-caption-turned.png') });
+    await page.keyboard.press('Control+z');
+    await expect(caption).toHaveAttribute('transform', /^rotate\(0 /);
+    await page.keyboard.press('Control+Shift+z');
+    await expect(caption).toHaveAttribute('transform', /^rotate\(90 /);
+    const segTurned = await dimLine.locator('line').nth(2).boundingBox();
+    await page.mouse.click(segTurned.x + segTurned.width / 8, segTurned.y + segTurned.height / 2, { button: 'right' });
+    await expect(menu).toBeVisible();
+    await menu.getByText('Reset caption position', { exact: true }).click();
+    await expect(caption).toHaveAttribute('transform', /^rotate\(0 /);
     await page.keyboard.press('Escape');
     await expect(reading).toHaveText(/^(?:[\d,]+′(?:-\d+(?: \d+\/\d)?″)?|(?:\d+ )?\d+(?:\/\d)?″)$/);
     const ftin = feetInches((await reading.textContent()).trim());
@@ -334,6 +361,7 @@ test('calibrate: Drawboard\'s note with a close x; a traced span typed as 40\' r
     localStorage.setItem('survey.flag.measure-plus', '1');
     // The plain chip flag stays off: the calibrating note shows anyway.
     localStorage.setItem('survey.flag.measure-scale-chip', '0');
+    localStorage.setItem('survey.flag.measure-edit', '1');
     localStorage.removeItem('survey.measure.defaultScale');
   });
   const owner = E2E_ACCOUNTS.owner;
@@ -383,6 +411,223 @@ test('calibrate: Drawboard\'s note with a close x; a traced span typed as 40\' r
     await page.mouse.up();
     await expect(kept).toHaveCount(2, { timeout: 15_000 });
     await expect(kept.nth(1)).toHaveText('40′');
+
+    // Per-mark scale: the second Length picks 1/4" = 1' in the Measurement
+    // card and reads on it; the first stays on the page's 40′.
+    const bar = page.locator('[data-selection-quick-bar][data-visible="true"]');
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('v');
+    const second = surface.locator('[data-dimension-line]').nth(1);
+    const seg = await second.locator('line').nth(2).boundingBox();
+    await page.mouse.click(seg.x + seg.width / 2, seg.y + seg.height / 2);
+    await expect(bar).toBeVisible();
+    await bar.getByRole('button', { name: 'Measurement' }).click();
+    const card = page.getByRole('dialog', { name: 'Measurement' });
+    await expect(card.locator('[data-measure-edit-scale]')).toHaveAttribute('data-measure-edit-scale', 'page');
+    await card.locator('[data-measure-edit-scale] button').first().click();
+    await page.getByRole('listbox', { name: 'Scale' }).getByRole('option', { name: `1/4" = 1'`, exact: true }).click();
+    await expect(card.locator('[data-measure-edit-scale]')).toHaveAttribute('data-measure-edit-scale', '1/4');
+    await expect(kept.nth(1)).not.toHaveText('40′');
+    await expect(kept.nth(0)).toHaveText('40′');
+    const inchesOf = async (loc) => feetInches(await loc.textContent());
+    const quarter = await inchesOf(kept.nth(1));
+    expect(quarter).toBeGreaterThan(0);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+    await expect(card).toHaveCount(0);
+    await expect(bar).toHaveCount(0);
+
+    // A new page scale (1/8" = 1') moves the first, to twice the 1/4" one,
+    // but not the one on its own scale; "Apply to existing measurements"
+    // brings that one along too.
+    dialog = await openScaleDialog(page);
+    // A calibrated scale reopens on Custom; presets are one tap away.
+    await dialog.locator('[data-measure-scale-kind-option="preset"]').click();
+    await dialog.locator('[data-measure-preset-option="1/8"]').click();
+    await expect(dialog.locator('[data-measure-apply-existing]')).not.toBeChecked();
+    await dialog.locator('[data-measure-apply]').click();
+    await expect(kept.nth(0)).not.toHaveText('40′');
+    expect(Math.abs((await inchesOf(kept.nth(0))) - 2 * quarter)).toBeLessThanOrEqual(0.5);
+    expect(await inchesOf(kept.nth(1))).toBe(quarter);
+    dialog = await openScaleDialog(page);
+    await dialog.locator('[data-measure-scale-kind-option="preset"]').click();
+    await dialog.locator('[data-measure-preset-option="1/8"]').click();
+    await dialog.locator('[data-measure-apply-existing]').check();
+    await dialog.locator('[data-measure-apply]').click();
+    await expect.poll(() => inchesOf(kept.nth(1))).not.toBe(quarter);
+    expect(await kept.nth(1).textContent()).toBe(await kept.nth(0).textContent());
+  } finally {
+    if (!process.env.KEEP) await admin.from('documents').delete().eq('id', id);
+  }
+});
+
+test('custom scales: an applied one is listed in Set page scale and the Measurement card, and its x removes it', async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.addInitScript(() => {
+    localStorage.setItem('survey.flag.measure-plus', '1');
+    localStorage.setItem('survey.flag.measure-edit', '1');
+    if (!sessionStorage.getItem('custom-scales-reset')) {
+      localStorage.removeItem('survey.measure.defaultScale');
+      localStorage.removeItem('survey:measure-custom-scales');
+      sessionStorage.setItem('custom-scales-reset', '1');
+    }
+  });
+  const owner = E2E_ACCOUNTS.owner;
+  const admin = adminClient();
+  const api = await apiClientFor(owner);
+  const { data: { user } } = await api.auth.getUser();
+  const name = `Custom scales ${RUN}.pdf`;
+  const id = await seedDocument(admin, user.id, name, 'Custom scales page');
+  try {
+    await signIn(page, owner);
+    const surface = await openDocument(page, name, 'Custom scales page');
+    await page.getByRole('button', { name: 'Shapes', exact: true }).click();
+    let dialog = await openScaleDialog(page);
+    await expect(dialog.locator('[data-measure-custom-scales]')).toHaveCount(0);
+    await dialog.locator('[data-measure-scale-kind-option="custom"]').click();
+    await dialog.locator('[data-measure-custom-paper]').fill('1');
+    await dialog.locator('[data-measure-custom-real]').fill("8'");
+    // The Title starts empty and shows what the numbers read.
+    await expect(dialog.locator('[data-measure-custom-title]')).toHaveAttribute('placeholder', '1″ = 8′');
+    await dialog.locator('[data-measure-apply]').click();
+    await expect(dialog).toBeHidden();
+    // A second custom scale, in metres.
+    dialog = await openScaleDialog(page);
+    await dialog.locator('[data-measure-scale-kind-option="custom"]').click();
+    await pick(page, dialog, 'data-measure-display', 'Units', 'm');
+    await dialog.locator('[data-measure-custom-paper]').fill('2');
+    await dialog.locator('[data-measure-custom-real]').fill('10');
+    await dialog.locator('[data-measure-apply]').click();
+    await expect(dialog).toBeHidden();
+
+    dialog = await openScaleDialog(page);
+    const chips = dialog.locator('[data-measure-custom-scale]');
+    await expect(chips).toHaveCount(2);
+    await expect(chips.nth(0)).toHaveText('2″ = 10 m');
+    await expect(chips.nth(0)).toHaveAttribute('aria-checked', 'true');
+    await expect(chips.nth(1)).toHaveText('1″ = 8′');
+    await page.screenshot({ path: test.info().outputPath('measure-plus-custom-scales.png') });
+    // A chip fills the custom row with what was typed.
+    await chips.nth(1).click();
+    await expect(dialog.locator('[data-measure-custom-real]')).toHaveValue("8'");
+    await expect(valueOf(dialog, 'data-measure-display')).toHaveAttribute('data-value', 'ftin');
+    await expect(chips.nth(1)).toHaveAttribute('aria-checked', 'true');
+    await dialog.locator('[data-measure-apply]').click();
+    await expect(dialog).toBeHidden();
+
+    // The Measurement card's Scale list ends with them; picking one puts the
+    // mark on it.
+    const reading = await drawLength(page, surface, 150, 450, 300);
+    const pageText = await reading.textContent();
+    const bar = page.locator('[data-selection-quick-bar][data-visible="true"]');
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('v');
+    const seg = await surface.locator('[data-dimension-line] line').nth(2).boundingBox();
+    await page.mouse.click(seg.x + seg.width / 2, seg.y + seg.height / 2);
+    await expect(bar).toBeVisible();
+    await bar.getByRole('button', { name: 'Measurement' }).click();
+    const card = page.getByRole('dialog', { name: 'Measurement' });
+    await card.locator('[data-measure-edit-scale] button').first().click();
+    const list = page.getByRole('listbox', { name: 'Scale' });
+    await expect(list.getByRole('option', { name: '1″ = 8′', exact: true })).toBeVisible();
+    await list.getByRole('option', { name: '2″ = 10 m', exact: true }).click();
+    await expect(card.locator('[data-measure-edit-scale]')).toHaveAttribute('data-measure-edit-scale', /^custom:\d$/);
+    await expect(reading).toHaveText(/ m$/);
+    expect(await reading.textContent()).not.toBe(pageText);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+    await expect(card).toHaveCount(0);
+
+    // The x takes a scale off the list, and it stays off after a reload.
+    // Applied again, 1″ = 8′ is the newest.
+    dialog = await openScaleDialog(page);
+    await expect(chips.nth(0)).toHaveText('1″ = 8′');
+    await dialog.locator('[data-measure-custom-scale-remove="1"]').click();
+    await expect(chips).toHaveCount(1);
+    await expect(chips.nth(0)).toHaveText('1″ = 8′');
+    // A typed Title names a new custom scale.
+    await chips.nth(0).click();
+    await dialog.locator('[data-measure-custom-title]').fill('Site plan');
+    await dialog.locator('[data-measure-apply]').click();
+    await expect(dialog).toBeHidden();
+    await page.reload();
+    await expect(page.getByText('Custom scales page')).toBeVisible({ timeout: 60_000 });
+    dialog = await openScaleDialog(page);
+    await expect(dialog).toContainText('now Site plan');
+    await expect(dialog.locator('[data-measure-custom-title]')).toHaveValue('Site plan');
+    await expect(dialog.locator('[data-measure-custom-scale]')).toHaveText(['Site plan', '1″ = 8′']);
+  } finally {
+    if (!process.env.KEEP) await admin.from('documents').delete().eq('id', id);
+  }
+});
+
+test('Measurement card: Add scale gives the mark a new custom scale; Edit scale renames it', async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.addInitScript(() => {
+    localStorage.setItem('survey.flag.measure-plus', '1');
+    localStorage.setItem('survey.flag.measure-edit', '1');
+    if (!sessionStorage.getItem('add-scale-reset')) {
+      localStorage.removeItem('survey.measure.defaultScale');
+      localStorage.removeItem('survey:measure-custom-scales');
+      sessionStorage.setItem('add-scale-reset', '1');
+    }
+  });
+  const owner = E2E_ACCOUNTS.owner;
+  const admin = adminClient();
+  const api = await apiClientFor(owner);
+  const { data: { user } } = await api.auth.getUser();
+  const name = `Add scale ${RUN}.pdf`;
+  const id = await seedDocument(admin, user.id, name, 'Add scale page');
+  try {
+    await signIn(page, owner);
+    const surface = await openDocument(page, name, 'Add scale page');
+    await page.getByRole('button', { name: 'Shapes', exact: true }).click();
+    let dialog = await openScaleDialog(page);
+    await dialog.locator('[data-measure-preset-option="1/4"]').click();
+    await dialog.locator('[data-measure-apply]').click();
+    await expect(dialog).toBeHidden();
+    const reading = await drawLength(page, surface, 150, 450, 300);
+    const before = await reading.textContent();
+    const bar = page.locator('[data-selection-quick-bar][data-visible="true"]');
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('v');
+    const seg = await surface.locator('[data-dimension-line] line').nth(2).boundingBox();
+    await page.mouse.click(seg.x + seg.width / 2, seg.y + seg.height / 2);
+    await expect(bar).toBeVisible();
+    await bar.getByRole('button', { name: 'Measurement' }).click();
+    const card = page.getByRole('dialog', { name: 'Measurement' });
+    await expect(card.locator('[data-measure-edit-scale-edit]')).toHaveCount(0);
+    await card.locator('[data-measure-edit-scale-add]').click();
+    dialog = page.getByRole('dialog', { name: 'Add scale' });
+    await expect(dialog).toBeVisible();
+    for (const sel of ['[data-measure-scale-kind]', '[data-measure-start-calibrate]', '[data-measure-apply-existing]', '[data-measure-set-default]']) {
+      await expect(dialog.locator(sel)).toHaveCount(0);
+    }
+    await dialog.locator('[data-measure-custom-paper]').fill('1');
+    await dialog.locator('[data-measure-custom-real]').fill("16'");
+    await page.screenshot({ path: test.info().outputPath('measure-plus-add-scale.png') });
+    await dialog.locator('[data-measure-apply]').click();
+    await expect(dialog).toBeHidden();
+    // The card stays open on the mark, now on the new scale.
+    await expect(card).toBeVisible();
+    await expect(card.locator('[data-measure-edit-scale]')).toHaveAttribute('data-measure-edit-scale', 'custom:0');
+    await expect(reading).not.toHaveText(before);
+    const added = await reading.textContent();
+    // Edit scale renames it; the reading stays.
+    await card.locator('[data-measure-edit-scale-edit]').click();
+    dialog = page.getByRole('dialog', { name: 'Edit scale' });
+    await expect(dialog.locator('[data-measure-custom-real]')).toHaveValue("16'");
+    await dialog.locator('[data-measure-custom-title]').fill('Grid');
+    await dialog.locator('[data-measure-apply]').click();
+    await expect(dialog).toBeHidden();
+    await expect(card.locator('[data-measure-edit-scale]')).toHaveAttribute('data-measure-edit-scale', 'custom:0');
+    await expect(card.locator('[data-measure-edit-scale] button').first()).toContainText('Grid');
+    await expect(reading).toHaveText(added);
+    await card.locator('[data-measure-edit-scale] button').first().click();
+    const list = page.getByRole('listbox', { name: 'Scale' });
+    await expect(list.getByRole('option', { name: 'Grid', exact: true })).toHaveCount(1);
+    await expect(list.getByRole('option', { name: '1″ = 16′', exact: true })).toHaveCount(0);
+    await page.keyboard.press('Escape');
   } finally {
     if (!process.env.KEEP) await admin.from('documents').delete().eq('id', id);
   }
@@ -403,7 +648,7 @@ test('without the flag the dialog has no custom scale, units or default', async 
     await page.getByRole('button', { name: 'Shapes', exact: true }).click();
     const dialog = await openScaleDialog(page);
     await expect(dialog.locator('[data-measure-preset-option="1/4"]')).toBeVisible();
-    for (const sel of ['[data-measure-scale-kind]', '[data-measure-display]', '[data-measure-precision]', '[data-measure-set-default]']) {
+    for (const sel of ['[data-measure-custom-scales]', '[data-measure-scale-kind]', '[data-measure-display]', '[data-measure-precision]', '[data-measure-set-default]', '[data-measure-apply-existing]']) {
       await expect(dialog.locator(sel)).toHaveCount(0);
     }
     await dialog.locator('[data-measure-preset-option="1/4"]').click();

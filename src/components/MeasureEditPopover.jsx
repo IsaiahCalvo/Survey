@@ -14,7 +14,7 @@
 //     saves, syncs and undoes like any other style change.
 //   - It opens away from the selection like the Line popover, and moves or
 //     flips so the whole card stays on screen (the phone too).
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { watchLightPopover } from './dismissRules.js';
 import {
   DEPTH_MEASURE_KINDS,
@@ -35,7 +35,15 @@ import {
   SEGMENT_CAPTION_KINDS,
   SEGMENT_CAPTION_PLACES,
   segmentCaptionPlace,
+  MEASURE_PRESETS,
+  isOwnScaleMeasure,
+  scaleFromPreset,
+  customMeasureScaleIndex,
+  loadCustomMeasureScales,
 } from '../utils/measure/measureScale.js';
+import { defaultMeasurePrecision, displayForScaleUnit } from '../utils/measure/measureFormat.js';
+import ValueSelect from './ValueSelect.jsx';
+import Icon from '../Icons';
 import { isFeatureOn } from '../featureFlags.js';
 import {
   DIMENSION_CAPTION_PLACES,
@@ -64,6 +72,10 @@ const SEGMENT_PLACE_TIPS = Object.freeze({
   above: 'Each side\u2019s length beside the side',
 });
 
+// Add / Edit scale opens Set page scale in a short form. Loaded on first use,
+// so the card (and the selection bar that holds it) stays light.
+const MeasureScaleDialog = lazy(() => import('./MeasureScaleDialog.jsx'));
+
 export default function MeasureEditPopover({ measure, onPatch, onClose, side = 'below', tip, tipSide = 'below' }) {
   const mark = measure?.mark || null;
   const scale = measure?.scale || null;
@@ -81,7 +93,35 @@ export default function MeasureEditPopover({ measure, onPatch, onClose, side = '
   const savedPt = isDim ? dimensionCaptionPt(mark) : null;
   const captionStyle = isDim ? dimensionCaptionStyle(mark) : null;
   // A Polylength or Perimeter's segment captions (measure-plus).
-  const segmentPlace = SEGMENT_CAPTION_KINDS.includes(kind) && isFeatureOn('measure-plus') ? segmentCaptionPlace(mark) : null;
+  const plusOn = isFeatureOn('measure-plus');
+  const segmentPlace = SEGMENT_CAPTION_KINDS.includes(kind) && plusOn ? segmentCaptionPlace(mark) : null;
+  // Its own scale or the page's (measure-plus, Drawboard's per-measure scale).
+  const ownScale = plusOn && isOwnScaleMeasure(mark) ? saved.scale : null;
+  const ownPreset = ownScale ? MEASURE_PRESETS.find((p) => p.label === ownScale.label) : null;
+  // The custom scales applied on this screen (Set page scale) come after the presets.
+  const [customScales, setCustomScales] = useState(() => (plusOn ? loadCustomMeasureScales() : []));
+  // Drawboard's Add Scale (+) and Edit Scale (pencil, on a custom scale).
+  const [scaleEditor, setScaleEditor] = useState(null);
+  const ownCustom = ownScale && !ownPreset ? customMeasureScaleIndex(customScales, ownScale) : -1;
+  const scaleValue = !ownScale ? 'page' : (ownPreset ? ownPreset.id : (ownCustom >= 0 ? `custom:${ownCustom}` : 'own'));
+  const scaleOptions = plusOn ? [
+    { value: 'page', label: scale?.label ? `Page scale (${scale.label})` : 'Page scale' },
+    ...(ownScale && !ownPreset && ownCustom < 0 ? [{ value: 'own', label: ownScale.label || 'Own scale' }] : []),
+    ...MEASURE_PRESETS.map((p) => ({ value: p.id, label: p.label })),
+    ...customScales.map((s, i) => ({ value: `custom:${i}`, label: s.label })),
+  ] : null;
+  const pickScale = (value) => {
+    if (value === 'page') { onPatch?.({ ownScale: null, pageScale: scale }); return; }
+    if (value.startsWith('custom:')) {
+      const saved = customScales[Number(value.slice(7))];
+      if (saved) onPatch?.({ ownScale: { ...saved } });
+      return;
+    }
+    const base = scaleFromPreset(value);
+    if (!base) return;
+    const display = displayForScaleUnit(base.unit);
+    onPatch?.({ ownScale: { ...base, display, precision: defaultMeasurePrecision(display) } });
+  };
 
   const [labelDraft, setLabelDraft] = useState(savedLabel);
   const [depthDraft, setDepthDraft] = useState(depthText(savedDepth));
@@ -183,13 +223,16 @@ export default function MeasureEditPopover({ measure, onPatch, onClose, side = '
   // The app's dismiss rules: a press outside closes it (keeping what was
   // typed), Escape closes it (dropping what was typed).
   useEffect(() => watchLightPopover({
-    contains: (target) => Boolean(target?.closest?.('[data-measure-edit-popover], [data-selection-quick-measure]')),
+    // The Scale drop-down's list is portalled to <body>: a pick there is inside,
+    // and so is the Add / Edit scale dialog (and its drop-downs).
+    contains: (target) => Boolean(target?.closest?.('[data-measure-edit-popover], [data-selection-quick-measure], .measure-edit__scale-menu, [data-measure-scale-dialog], .measure-scale__menu')),
+    escape: !scaleEditor,
     close: (_event, reason) => {
       if (reason === 'escape') discardRef.current = true;
       else commitTyped();
       onClose?.();
     },
-  }), [commitTyped, onClose]);
+  }), [commitTyped, onClose, scaleEditor]);
 
   const fieldKeyDown = (event, commit, reset) => {
     if (event.key === 'Enter') {
@@ -371,6 +414,53 @@ export default function MeasureEditPopover({ measure, onPatch, onClose, side = '
           </label>
         ))}
       </fieldset>
+      {scaleOptions && (
+        <div className="measure-edit__sizes measure-edit__sizes--stack" data-measure-edit-scale={scaleValue}>
+          <span className="measure-edit__name" aria-hidden="true">Scale</span>
+          <div className="measure-edit__scale-row">
+            <ValueSelect look="field" size="sm" label="Scale" value={scaleValue} onChange={pickScale} options={scaleOptions} menuClassName="measure-edit__scale-menu" />
+            {ownCustom >= 0 && (
+              <button
+                type="button"
+                className="measure-edit__icon-btn"
+                aria-label="Edit scale"
+                data-measure-edit-scale-edit="true"
+                {...(tip ? tip('Edit scale', tipSide) : {})}
+                onClick={() => setScaleEditor({ scale: customScales[ownCustom], index: ownCustom })}
+              >
+                <Icon name="edit" size={13} color="currentColor" />
+              </button>
+            )}
+            <button
+              type="button"
+              className="measure-edit__icon-btn"
+              aria-label="Add scale"
+              data-measure-edit-scale-add="true"
+              {...(tip ? tip('Add scale', tipSide) : {})}
+              onClick={() => setScaleEditor({ scale: ownScale || scale || null, index: -1 })}
+            >
+              <Icon name="plus" size={14} color="currentColor" />
+            </button>
+          </div>
+        </div>
+      )}
+      {scaleEditor && (
+        <Suspense fallback={null}>
+        <MeasureScaleDialog
+          pageNumber={1}
+          markMode={scaleEditor.index >= 0 ? 'edit' : 'add'}
+          editIndex={scaleEditor.index}
+          currentScale={scaleEditor.scale}
+          onApply={(next) => {
+            setScaleEditor(null);
+            setCustomScales(loadCustomMeasureScales());
+            if (next) onPatch?.({ ownScale: { ...next } });
+          }}
+          onCalibrate={() => {}}
+          onCancel={() => setScaleEditor(null)}
+        />
+        </Suspense>
+      )}
       {segmentPlace && (
         <div className="measure-edit__sizes measure-edit__sizes--stack" role="group" aria-label="Segment captions">
           <span className="measure-edit__name" aria-hidden="true">Segment captions</span>

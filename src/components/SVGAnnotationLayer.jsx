@@ -174,7 +174,7 @@ import SVGSelectionOverlay, { SelectionLockBadge } from './SVGSelectionOverlay';
 import { isUserLocked } from '../lib/collab/permissionScope.js';
 import { getTextMarkupRangeHandlePositions, getTextMarkupSelectionChrome } from '../utils/pdfTextMarkup.js';
 import RotationInputField from './RotationInputField';
-import { TRANSFORM_SELECTION_EVENT, canTypeTurn, resizeObjectTo, scaleObjectBy, setLineEndingOn, turnScaleKeyStep, wrapDegrees } from '../utils/selectionProperties.js';
+import { TRANSFORM_SELECTION_EVENT, canTypeTurn, recolourObject, resizeObjectTo, scaleObjectBy, setLineEndingOn, turnScaleKeyStep, wrapDegrees } from '../utils/selectionProperties.js';
 import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox, isImportedPath, isAbsoluteCoordPath, getLineEndpoints, computeLineBboxCenter } from '../utils/svgBoundingBox';
 import { resolveMidpointHandlePosition } from '../utils/lineDragMath.js';
 import { buildArrowheadRenderSpec, resolveLineEndingStyles, arrowheadShapePathD } from '../utils/lineRenderHelpers.js';
@@ -572,6 +572,7 @@ import {
   pageScaleFromObjects,
   stampMeasure,
   isPolyMeasureFor,
+  markMeasureScale,
 } from '../utils/measure/measureScale.js';
 import { dimensionCaptionPlace, dimensionLeader, dimensionLineGeometry, isDimensionMeasure } from '../utils/measure/dimensionLine.js';
 import { measureSegmentCaptions, polylengthTotalPlace } from '../utils/measure/segmentCaptions.js';
@@ -1000,7 +1001,7 @@ const SVGAnnotationLayerBody = memo(({
     const out = [];
     objects.forEach((obj, index) => {
       if (!obj?.data?.measure || obj.visible === false || isOnHiddenLayer(obj, hiddenLayerIds)) return;
-      const captions = measureSegmentCaptions(obj, effectiveMeasureScale);
+      const captions = measureSegmentCaptions(obj, markMeasureScale(obj, effectiveMeasureScale));
       if (captions.length) out.push({ key: obj.id || obj.data?.id || `m${index}`, color: obj.stroke || 'black', captions });
     });
     return out;
@@ -4014,7 +4015,7 @@ const SVGAnnotationLayerBody = memo(({
   // with it makes a group, which the turn / scale keys leave alone).
   const pickedCalloutCount = selectedCalloutIds ? (selectedCalloutIds.size ?? selectedCalloutIds.length ?? 0) : 0;
   transformTargetRef.current = {
-    selectedAnnotationIndex, annotations, onSaveAnnotations, handleRotationInputCommit, pageNumber,
+    selectedAnnotationIndex, selectedIds, annotations, onSaveAnnotations, handleRotationInputCommit, pageNumber,
     keysLive: isTabActive && editingAnnotationIndex == null && !editingCalloutId
       && selectedIds.size === 1 && pickedCalloutCount === 0 && selectedSurveyMarkerIds.size === 0,
   };
@@ -4024,6 +4025,23 @@ const SVGAnnotationLayerBody = memo(({
       const t = transformTargetRef.current;
       if (!t || Number(detail.pageNumber) !== Number(t.pageNumber)) return;
       if (typeof document !== 'undefined' && document.body?.getAttribute('data-readonly') === 'true') return;
+      if (detail.op === 'recolour') {
+        // "Selected colors": every picked mark on this page that uses the
+        // colour takes the new one, in one save (one Undo step). Locked
+        // marks keep theirs.
+        const objects = t.annotations?.objects || [];
+        let updated = null;
+        for (const i of t.selectedIds || []) {
+          const object = objects[i];
+          if (!object || object.locked || !canMoveAnnotation(object)) continue;
+          const next = recolourObject(object, detail.from, detail.to);
+          if (!next) continue;
+          updated = updated || deepClone(t.annotations);
+          updated.objects[i] = next;
+        }
+        if (updated) t.onSaveAnnotations(updated, { source: 'properties-panel', action: 'recolour', checkpointPolicy: 'normal' });
+        return;
+      }
       const index = t.selectedAnnotationIndex;
       const object = Number.isInteger(index) ? t.annotations?.objects?.[index] : null;
       // A user lock (data.lockedBy) holds here too, as it does for nudge and
@@ -6414,12 +6432,14 @@ const SVGAnnotationLayerBody = memo(({
     if (!obj || !lineEdit) return obj;
     // measure-plus leader drag: only the dimension line's offset changes.
     // A caption drag: only where the caption sits.
-    if (lineEdit.dimLeader != null || lineEdit.dimCaptionOffset) {
+    if (lineEdit.dimLeader != null || lineEdit.dimCaptionOffset || lineEdit.dimCaptionTurn != null) {
       if (!isDimensionMeasure(obj)) return obj;
       const measure = obj.data.measure;
       const dim = lineEdit.dimLeader != null
         ? { ...measure.dim, leader: lineEdit.dimLeader }
-        : { ...measure.dim, captionOffset: lineEdit.dimCaptionOffset };
+        : lineEdit.dimCaptionTurn != null
+          ? { ...measure.dim, captionTurn: lineEdit.dimCaptionTurn }
+          : { ...measure.dim, captionOffset: lineEdit.dimCaptionOffset };
       return { ...obj, data: { ...obj.data, measure: { ...measure, dim } } };
     }
     const nextData = { ...(obj.data || {}) };
@@ -9518,6 +9538,21 @@ const SVGAnnotationLayerBody = memo(({
             w: dimLayout.captionWidth + 4,
             h: dimLayout.captionHeight + 2,
           } : null;
+          // Drawboard's small circle above the caption turns it. Its centre
+          // in page space (the mark may be turned) goes on the grabber, so
+          // the drag measures its angle round the caption.
+          const captionTurnGrab = captionGrab ? (() => {
+            const r = (captionGrab.angle * Math.PI) / 180;
+            const up = captionGrab.h / 2 + 14 * handleIs;
+            const hx = captionGrab.x + Math.sin(r) * up;
+            const hy = captionGrab.y - Math.cos(r) * up;
+            const lr = (lineSelAngle * Math.PI) / 180;
+            const turnPt = (px, py) => ({
+              x: lineSelCx + (px - lineSelCx) * Math.cos(lr) - (py - lineSelCy) * Math.sin(lr),
+              y: lineSelCy + (px - lineSelCx) * Math.sin(lr) + (py - lineSelCy) * Math.cos(lr),
+            });
+            return { x: hx, y: hy, stemX: captionGrab.x + Math.sin(r) * (captionGrab.h / 2), stemY: captionGrab.y - Math.cos(r) * (captionGrab.h / 2), centre: turnPt(captionGrab.x, captionGrab.y) };
+          })() : null;
           // An inline caption sits mid-line, so the pill sits a quarter along.
           const pillAt = dimensionCaptionPlace(selectionObj) === 'above' ? 0.5 : 0.25;
           const leaderPill = dimGeo ? {
@@ -9546,6 +9581,31 @@ const SVGAnnotationLayerBody = memo(({
                   style={{ cursor: 'grab', pointerEvents: 'auto', touchAction: 'none' }}
                   onPointerDown={(e) => { e.stopPropagation(); handleHandlePointerDown(e, 'dim-caption'); }}
                 />
+              )}
+              {captionTurnGrab && (
+                <g data-caption-turn-grabber="true" data-turn-cx={captionGrab.x} data-turn-cy={captionGrab.y}>
+                  <line
+                    x1={captionTurnGrab.stemX} y1={captionTurnGrab.stemY}
+                    x2={captionTurnGrab.x} y2={captionTurnGrab.y}
+                    stroke={HANDLE_RING}
+                    strokeWidth={1}
+                    vectorEffect="non-scaling-stroke"
+                    style={{ pointerEvents: 'none' }}
+                  />
+                  <circle
+                    data-handle="dim-caption-turn"
+                    data-centre-x={captionTurnGrab.centre.x}
+                    data-centre-y={captionTurnGrab.centre.y}
+                    cx={captionTurnGrab.x} cy={captionTurnGrab.y}
+                    r={HANDLE_RADIUS_SECONDARY * handleIs}
+                    fill={HANDLE_FILL}
+                    stroke={HANDLE_RING}
+                    strokeWidth={1.5}
+                    vectorEffect="non-scaling-stroke"
+                    style={{ cursor: 'grab', pointerEvents: 'auto', touchAction: 'none' }}
+                    onPointerDown={(e) => { e.stopPropagation(); handleHandlePointerDown(e, 'dim-caption-turn'); }}
+                  />
+                </g>
               )}
               {!dimGeo && renderLineHitPad('midpoint', midpointBase.x + dx, midpointBase.y + dy)}
               {leaderPill && renderLineHitPad('leader', leaderPill.x, leaderPill.y)}

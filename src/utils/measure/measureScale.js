@@ -513,6 +513,18 @@ export function applyMeasureEdit(obj, changes = {}) {
     const depth = normalizeMeasureDepth(changes.depth);
     if (depth) measure.depth = depth;
   }
+  if (hasOwn(changes, 'ownScale')) {
+    // Per-mark scale (measure-plus): a valid scale is the mark's own; null
+    // puts it back on the page scale (changes.pageScale, when there is one).
+    if (isValidMeasureScale(changes.ownScale)) {
+      measure.scale = { ...changes.ownScale };
+      measure.ownScale = true;
+    } else if (changes.ownScale == null && measure.ownScale) {
+      delete measure.ownScale;
+      if (isValidMeasureScale(changes.pageScale)) measure.scale = { ...changes.pageScale };
+      else delete measure.scale;
+    }
+  }
   if (hasOwn(changes, 'segmentCaptions') && SEGMENT_CAPTION_KINDS.includes(kind)
     && SEGMENT_CAPTION_PLACES.includes(changes.segmentCaptions)) {
     if (changes.segmentCaptions === defaultSegmentCaptionPlace(kind)) delete measure.segments;
@@ -580,7 +592,8 @@ function formatMeasureDepth(depth, scale) {
  * them joined by newlines), `reading` (the plain reading, for lists and
  * exports when every line is switched off) and `fontPx` when sized.
  */
-export function buildMeasureLabel(obj, scale) {
+export function buildMeasureLabel(obj, pageScale) {
+  const scale = markMeasureScale(obj, pageScale);
   const base = buildMeasureReading(obj, scale);
   if (!base || !hasCaptionSettings(obj.data.measure)) return base;
   const { kind } = base;
@@ -643,7 +656,8 @@ export function wrapMeasureLabelLine(text, max = MEASURE_LABEL_WRAP_CHARS) {
   return out.length ? out : [String(text)];
 }
 
-function buildMeasureReading(obj, scale) {
+function buildMeasureReading(obj, pageScale) {
+  const scale = markMeasureScale(obj, pageScale);
   const kind = getMeasureKind(obj);
   if (!kind) return null;
   if (kind === 'length') {
@@ -772,9 +786,26 @@ export function pageScaleFromObjects(objects) {
   if (!Array.isArray(objects)) return null;
   for (let i = objects.length - 1; i >= 0; i -= 1) {
     const scale = objects[i]?.data?.measure?.scale;
-    if (getMeasureKind(objects[i]) && isValidMeasureScale(scale)) return scale;
+    // A mark on its own scale (measure-plus) says nothing about the page's.
+    if (getMeasureKind(objects[i]) && isValidMeasureScale(scale) && !isOwnScaleMeasure(objects[i])) return scale;
   }
   return null;
+}
+
+/**
+ * Per-mark scale (Nightly 'measure-plus', Drawboard's per-measure scale): a
+ * measure with data.measure.ownScale reads in its own data.measure.scale and
+ * keeps it when the page scale changes, until "Apply to existing
+ * measurements" puts it back on the page scale.
+ */
+export function isOwnScaleMeasure(obj) {
+  const measure = obj?.data?.measure;
+  return Boolean(measure?.ownScale && isValidMeasureScale(measure.scale) && getMeasureKind(obj));
+}
+
+/** The scale a measure reads in: its own, else the page's. */
+export function markMeasureScale(obj, pageScale) {
+  return isOwnScaleMeasure(obj) ? obj.data.measure.scale : pageScale;
 }
 
 /**
@@ -793,11 +824,17 @@ export function stampMeasure(json, kind, scale, { depth = null, dim = false } = 
 }
 
 /** New page JSON with every measurement re-stamped to `scale` (+ extra objects appended). */
-export function applyPageScale(pageJson, scale, extraObjects = []) {
+export function applyPageScale(pageJson, scale, extraObjects = [], { resetOwn = false } = {}) {
   const objects = Array.isArray(pageJson?.objects) ? pageJson.objects : [];
-  const restamp = (obj) => (getMeasureKind(obj)
-    ? { ...obj, data: { ...obj.data, measure: { ...obj.data.measure, scale: { ...scale } } } }
-    : obj);
+  const restamp = (obj) => {
+    if (!getMeasureKind(obj)) return obj;
+    // A mark on its own scale keeps it unless the page scale is applied to
+    // existing measurements too (measure-plus).
+    if (isOwnScaleMeasure(obj) && !resetOwn) return obj;
+    const measure = { ...obj.data.measure, scale: { ...scale } };
+    delete measure.ownScale;
+    return { ...obj, data: { ...obj.data, measure } };
+  };
   // The kept calibration line is stamped too, or lists and exports that read
   // the mark's own scale would show it unscaled (R3-M B2).
   return { ...(pageJson || {}), objects: [...objects.map(restamp), ...(extraObjects || []).map(restamp)] };
@@ -863,4 +900,51 @@ export function layoutMeasureLabel(label, unitsPerPx = 1, page = null) {
   // One line keeps the round pill; several get a card with the same corners.
   const radius = Math.min(height / 2, (fontPx / 2 + MEASURE_LABEL_PAD_Y_PX) * u);
   return { cx, cy, fontSize, width, height, radius, angle: label.angle || 0, lines, lineHeight: lineHeightPx * u };
+}
+
+// Custom scales (measure-plus): Drawboard puts each custom scale you apply
+// under CUSTOM SCALES in every scale list. Kept on this screen like recent
+// scales, newest first, with the typed inputs so the dialog refills them.
+const CUSTOM_SCALES_KEY = 'survey:measure-custom-scales';
+export const CUSTOM_SCALES_MAX = 12;
+
+function cleanCustomScale(scale) {
+  if (!isValidMeasureScale(scale) || !scale.custom) return null;
+  const { ptPerUnit, unit, label, display, precision, custom } = scale;
+  return { ptPerUnit: Number(ptPerUnit), unit, label, display, precision, custom: { ...custom } };
+}
+
+export function addCustomMeasureScale(list, scale) {
+  const clean = cleanCustomScale(scale);
+  const rest = (Array.isArray(list) ? list : []).map(cleanCustomScale).filter(Boolean);
+  if (!clean) return rest;
+  return [clean, ...rest.filter((s) => !(sameScale(s, clean) && s.label === clean.label))].slice(0, CUSTOM_SCALES_MAX);
+}
+
+export function loadCustomMeasureScales(storage = globalThis.localStorage) {
+  try {
+    const list = JSON.parse(storage?.getItem(CUSTOM_SCALES_KEY) || '[]');
+    return Array.isArray(list) ? list.map(cleanCustomScale).filter(Boolean).slice(0, CUSTOM_SCALES_MAX) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCustomMeasureScales(list, storage) {
+  try { storage?.setItem(CUSTOM_SCALES_KEY, JSON.stringify(list)); } catch { /* storage blocked */ }
+  return list;
+}
+
+export function rememberCustomMeasureScale(scale, storage = globalThis.localStorage) {
+  return saveCustomMeasureScales(addCustomMeasureScale(loadCustomMeasureScales(storage), scale), storage);
+}
+
+export function forgetCustomMeasureScale(index, storage = globalThis.localStorage) {
+  return saveCustomMeasureScales(loadCustomMeasureScales(storage).filter((_, i) => i !== index), storage);
+}
+
+/** The index of a custom scale in the list, or -1. */
+export function customMeasureScaleIndex(list, scale) {
+  if (!isValidMeasureScale(scale)) return -1;
+  return (Array.isArray(list) ? list : []).findIndex((s) => sameScale(s, scale) && s.label === scale.label);
 }

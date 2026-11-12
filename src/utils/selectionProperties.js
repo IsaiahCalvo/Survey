@@ -271,3 +271,21 @@ export function scaleObjectBy(object, factor) {
   next.top = (Number(object.top) || 0) + (before.top + before.height / 2) - (after.top + after.height / 2);
   return next;
 }
+
+// Drawboard's "Selected colors" (Expand menu): a swatch per colour used in
+// the pick; picking a new colour for one swatch recolours every use of it.
+const colourKey = (c) => (typeof c === 'string' ? c.trim().toLowerCase() : '');
+
+/** The mark with every stroke / fill equal to `from` set to `to`, or null when none is. */
+export function recolourObject(obj, from, to) {
+  const key = colourKey(from);
+  if (!obj || !key || typeof to !== 'string' || !to || colourKey(to) === key) return null;
+  let next = null;
+  for (const field of ['stroke', 'fill']) {
+    if (colourKey(obj[field]) === key) {
+      next = next || { ...obj };
+      next[field] = to;
+    }
+  }
+  return next;
+}

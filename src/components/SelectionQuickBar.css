@@ -530,3 +530,49 @@ body:has(.mobile-pdf-sheet:not(.is-collapsed)) .selection-quick-bar[data-phone='
   color: var(--text-3, var(--text-2));
   cursor: default;
 }
+
+/* The Scale row (measure-plus): the drop-down, then Edit scale and Add scale. */
+.measure-edit__scale-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+}
+
+.measure-edit__scale-row > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.measure-edit__icon-btn {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: var(--text-2);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .measure-edit__icon-btn:hover {
+    color: var(--text-1);
+    background: var(--hover);
+  }
+}
+
+.measure-edit__icon-btn:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+@media (pointer: coarse) {
+  .measure-edit__icon-btn {
+    width: 40px;
+    height: 40px;
+  }
+}

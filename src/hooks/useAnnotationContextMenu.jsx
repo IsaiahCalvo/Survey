@@ -71,7 +71,7 @@ import { keyboardControlProps } from '../utils/keyboardActivation.js';
 import { menuKeyHint } from '../utils/menuKeyHints.js';
 import { shortcutBinding } from '../utils/customKeyboardShortcuts.js';
 import { marksHidden } from '../utils/marksHidden.js';
-import { DIMENSION_LEADER_PT, dimensionCaptionOffset, dimensionLeader, isDimensionMeasure } from '../utils/measure/dimensionLine.js';
+import { DIMENSION_LEADER_PT, dimensionCaptionOffset, dimensionCaptionTurn, dimensionLeader, isDimensionMeasure } from '../utils/measure/dimensionLine.js';
 
 // w61: `getPageObjects(pageNumber)` (optional) returns the page's mark list,
 // so the menu can note which marks it was opened on (by id) and still act on
@@ -946,13 +946,14 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           const measure = next.objects[ctx.annotationIndex].data.measure;
           const dim = { ...measure.dim };
           delete dim.captionOffset;
+          delete dim.captionTurn;
           measure.dim = dim;
           handleSaveAnnotations(ctx.pageNumber, next, {
             source: 'object:modified',
             action: 'caption-reset',
             checkpointPolicy: 'normal',
           });
-        }, menuObjEditable && Boolean(dimensionCaptionOffset(menuObj)))] : []),
+        }, menuObjEditable && Boolean(dimensionCaptionOffset(menuObj) || dimensionCaptionTurn(menuObj)))] : []),
         sep(),
         // UX: z-order — mirrors Illustrator/Figma/Photoshop placement
         // (flat block after Delete, above Group). Handler resolves each

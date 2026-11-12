@@ -426,7 +426,7 @@ import { markLibraryStore } from './markLibrary/markLibraryStore.js';
 import { LIBRARY_PAYLOAD_MAX_BYTES, libraryPayloadBytes, libraryPayloadFromClipboard, planLibraryPlacement } from './markLibrary/markLibraryModel.js';
 import { fitPlacedTextBoxes, resolveLibraryDrop } from './markLibrary/markLibraryViewer.js';
 import { PAGE_GRID_SETTINGS_EVENT, applyPageGridPageSteps, applyPageGridSettings, loadPageGridSettings } from './utils/pageGrid';
-import { LAYERS_META_KEY, DEFAULT_LAYER_ID, DEFAULT_LAYER_STATE, normalizeLayerState, hiddenLayerIdSet, resolveActiveLayerId, withoutHiddenLayers, calloutsWithoutHiddenLayers, stampNewObjectsOnLayer, stampNewMarksByPage, selectableMarkIndices, hiddenActiveLayer, setLayerVisible } from './utils/layers.js';
+import { LAYERS_META_KEY, DEFAULT_LAYER_ID, DEFAULT_LAYER_STATE, normalizeLayerState, hiddenLayerIdSet, resolveActiveLayerId, withoutHiddenLayers, calloutsWithoutHiddenLayers, stampNewObjectsOnLayer, stampNewMarksByPage, hasNewObjects, hasNewMarksByPage, selectableMarkIndices, hiddenActiveLayer, setLayerVisible } from './utils/layers.js';
 import { PAGE_PRESENTATION_META_KEY, PDF_FILE_VERSION_META_KEY, normalizePagePresentations, pagePresentationFrame, clientPointInPageFrame, clientPastePointInPageFrame } from './utils/pagePresentation.js';
 import { normalizePresentationPdf, pdfBytesHavePresentationTag } from './utils/pdfPagePresentation.js';
 import { chooseCloudPdfOpenPath, shouldRetryStreamedOpenWithDownload, tryOpenCloudPdfStream } from './services/cloudPdfStream.js';
@@ -22667,11 +22667,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const hiddenLayerWarnAtRef = useRef(0);
   const layerStateNowRef = useRef(layerState);
   layerStateNowRef.current = layerState;
-  // `isNew()` says whether the commit adds a mark (only asked when the layer
-  // is hidden, so an ordinary commit pays nothing).
+  // `isNew(layerId)` says whether the commit adds a mark on that layer (only
+  // asked when the layer is hidden, so an ordinary commit pays nothing).
   warnIfDrawnOnHiddenLayerRef.current = (isNew) => {
     const hidden = hiddenActiveLayer(layerState, activeLayerIdRef.current);
-    if (!hidden || !isNew()) return;
+    if (!hidden || !isNew(hidden.id)) return;
     const now = Date.now();
     if (now - hiddenLayerWarnAtRef.current < 4000) return;
     hiddenLayerWarnAtRef.current = now;
@@ -28782,9 +28782,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     if (Array.isArray(json?.objects) && activeLayerIdRef.current && !isUndoingRef.current
       && saveContext?.action !== 'move-to-page') {
       const stamped = stampNewObjectsOnLayer(annotationsByPageRef.current?.[pageNumber]?.objects, json.objects, activeLayerIdRef.current);
-      // (The default layer stamps nothing, so "new" is asked with a stand-in id.)
       const objectsBeforeStamp = json.objects;
-      warnIfDrawnOnHiddenLayerRef.current(() => stampNewObjectsOnLayer(annotationsByPageRef.current?.[pageNumber]?.objects, objectsBeforeStamp, 'probe') !== objectsBeforeStamp);
+      warnIfDrawnOnHiddenLayerRef.current((layerId) => hasNewObjects(annotationsByPageRef.current?.[pageNumber]?.objects, objectsBeforeStamp, layerId));
       if (stamped !== json.objects) json = { ...json, objects: stamped };
     }
     const source_ = saveContext?.source || 'unknown';
@@ -29445,7 +29444,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       && saveContext?.action !== 'move-to-page' && saveContext?.action !== 'move-region') {
       const stampedByPage = stampNewMarksByPage(annotationsByPageRef.current, transaction.nextByPage, activeLayerIdRef.current);
       const nextBeforeStamp = transaction.nextByPage;
-      warnIfDrawnOnHiddenLayerRef.current(() => stampNewMarksByPage(annotationsByPageRef.current, nextBeforeStamp, 'probe') !== nextBeforeStamp);
+      warnIfDrawnOnHiddenLayerRef.current((layerId) => hasNewMarksByPage(annotationsByPageRef.current, nextBeforeStamp, layerId));
       if (stampedByPage !== transaction.nextByPage) {
         transaction = { ...transaction, nextByPage: stampedByPage, action: buildTextMarkupDocumentAction(annotationsByPageRef.current || {}, stampedByPage) || transaction.action };
       }
@@ -38185,7 +38184,7 @@ ${pageBlocks}
   // a page with no measurements keeps it), re-stamp every measurement on the
   // pages it covers (labels follow, one undo step per page) and keep a
   // calibration line as a Length measurement.
-  const applyMeasureScale = useCallback((scale, { allPages = false, setDefault = false } = {}) => {
+  const applyMeasureScale = useCallback((scale, { allPages = false, setDefault = false, resetOwn = false } = {}) => {
     const dialog = measureScaleDialog;
     setMeasureScaleDialog(null);
     if (!dialog || !scale) return;
@@ -38209,7 +38208,7 @@ ${pageBlocks}
       if (!hasMeasures && !extra.length) continue;
       handleSaveAnnotationsWithTextMarkupAtomicity(
         page,
-        applyPageScale(pageJson, scale, extra),
+        applyPageScale(pageJson, scale, extra, { resetOwn: measurePlusOn && resetOwn }),
         { source: 'measure:set-scale', tool: 'line' },
       );
     }

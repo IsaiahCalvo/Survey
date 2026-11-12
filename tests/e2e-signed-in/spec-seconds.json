@@ -108,6 +108,7 @@
   "photo-upload.spec.mjs": 18,
   "pick-many.spec.mjs": 30.3,
   "pickers-and-subtoolbars.spec.mjs": 15.7,
+  "pinned-dock-motion.spec.mjs": 20,
   "pinned-number-keys.spec.mjs": 11.6,
   "pinned-tools-badges.spec.mjs": 24.3,
   "pinned-tools-search.spec.mjs": 13.6,
