@@ -122,8 +122,8 @@ function fakeWindow({ electronAPI } = {}) {
   const timers = [];
   const win = {
     document: { activeElement: null },
-    addEventListener: (type, fn) => { listeners[type] = fn; },
-    removeEventListener: (type) => { delete listeners[type]; },
+    addEventListener: (type, fn, capture) => { listeners[capture === true && type === 'contextmenu' ? 'contextmenu:capture' : type] = fn; },
+    removeEventListener: (type, _fn, capture) => { delete listeners[capture === true && type === 'contextmenu' ? 'contextmenu:capture' : type]; },
     dispatchEvent: (event) => events.push(event),
     CustomEvent: class { constructor(type, init) { this.type = type; this.detail = init?.detail; } },
     getSelection: () => noSelection,
@@ -185,12 +185,26 @@ test('installed guard (desktop app): the text menu opens with Chromium\'s spelli
     assert.equal(events[0].detail.x, 70);
     assert.deepEqual(events[0].detail.spelling, { misspelledWord: 'recieve', suggestions: ['receive'] });
     // No answer: it opens anyway once the wait runs out.
+    listeners['contextmenu:capture']({});
     listeners.contextmenu({ ...ctx(input), preventDefault() {} });
     timers.at(-1)();
     assert.equal(events.length, 2);
     assert.equal(events[1].detail.spelling, undefined);
+    // A newer right-click (empty space, a row) drops the waiting text menu:
+    // neither a late answer nor the wait running out opens it.
+    const right = (target) => {
+      const event = { ...ctx(target), preventDefault() {} };
+      listeners['contextmenu:capture'](event);
+      listeners.contextmenu(event);
+    };
+    right(input);
+    right(el());
+    spellingListener({ misspelledWord: 'teh', suggestions: ['the'] });
+    timers.at(-1)();
+    assert.equal(events.length, 2);
     teardown();
     assert.equal(unsubscribed, true);
+    assert.equal(listeners['contextmenu:capture'], undefined);
   } finally {
     globalThis.window = savedWindow;
   }

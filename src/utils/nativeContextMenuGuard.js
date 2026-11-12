@@ -151,13 +151,23 @@ export function installNativeContextMenuGuard(win = typeof window !== 'undefined
     ? win.electronAPI.onEditableContextMenu((info) => finishAwaiting(info || null))
     : null;
 
+  const cancelAwaiting = () => {
+    if (!awaiting) return;
+    win.clearTimeout?.(awaiting.timer);
+    awaiting = null;
+  };
+
+  // Capture phase, before any surface answers: every new right-click drops
+  // a text-box menu still waiting for its spelling answer, so a late answer
+  // or the wait running out never opens it over a newer click's menu.
+  const onContextMenuStart = () => cancelAwaiting();
+
   const onContextMenu = (event) => {
     if (win.__nativeContextMenu === true) return;
     const plan = nativeMenuPlan(event, { desktopSpelling: hasDesktopSpelling(win) });
     if (plan.nativeField) { focusField(plan.nativeField); return; }
     if (plan.awaitSpelling) {
       focusField(plan.awaitSpelling.field);
-      if (awaiting) win.clearTimeout?.(awaiting.timer);
       const detail = { ...plan.awaitSpelling, x: event.clientX, y: event.clientY };
       awaiting = { detail, timer: win.setTimeout(() => finishAwaiting(null), SPELLING_WAIT_MS) };
       return;
@@ -169,12 +179,14 @@ export function installNativeContextMenuGuard(win = typeof window !== 'undefined
   };
 
   win.addEventListener('mousedown', onMouseDown, true);
+  win.addEventListener('contextmenu', onContextMenuStart, true);
   win.addEventListener('contextmenu', onContextMenu, false);
   const teardown = () => {
     win.removeEventListener('mousedown', onMouseDown, true);
+    win.removeEventListener('contextmenu', onContextMenuStart, true);
     win.removeEventListener('contextmenu', onContextMenu, false);
     if (typeof stopSpelling === 'function') stopSpelling();
-    if (awaiting) { win.clearTimeout?.(awaiting.timer); awaiting = null; }
+    cancelAwaiting();
     if (win.__nativeContextMenuGuardTeardown === teardown) win.__nativeContextMenuGuardTeardown = null;
   };
   win.__nativeContextMenuGuardTeardown = teardown;
