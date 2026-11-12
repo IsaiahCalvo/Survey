@@ -34,6 +34,7 @@ import {
 } from '../utils/selectionRemap.js';
 import { trackHandleZoom, untrackHandleZoom } from '../utils/liveHandleZoom.js';
 import { resizeCalloutBox } from '../utils/markBorderOutline.js';
+import { toggleTapeRevealed } from '../utils/annotationCreationCommit.js';
 // w59: one rule for where a moved mark lands (preview === save).
 import {
   markIdOf,
@@ -47,6 +48,7 @@ import { clampResizeEdge } from '../utils/pageEdgeRules.js';
 // auto-revert on collinear geometry. Pure-math from lineGeometry, drag
 // helpers from lineDragMath (unit-tested in tests/lineDragMath.test.mjs).
 import { shouldSnapToLinear, getMidpoint } from '../utils/lineGeometry.js';
+import { dimensionCaptionOffset, dimensionCaptionTurn, dimensionLeader, isDimensionMeasure, normalizeDimensionCaptionTurn, normalizeDimensionLeader } from '../utils/measure/dimensionLine.js';
 import { movePolyVertexPoints } from '../utils/polyDraft.js';
 import { insertSplineCorner, isBezierSpline, keepPivot, markBezierSpline, moveSplineCorner, moveSplineHandle, polySplineStep, splineSpanMidpoint, splineSpans } from '../utils/polySpline.js';
 import { collectEndpointCandidates, resolveDrawSnap, drawSnapEventOptions } from '../utils/drawSnap.js';
@@ -213,7 +215,7 @@ import {
   textScalesFontFor,
 } from '../utils/groupResize.js';
 import { TEXT_PADDING } from '../utils/textEditCommit.js';
-import { growTextBoxToFit, isTextSideHandle } from '../utils/textBoxFit.js';
+import { fitTextBoxToWords, growTextBoxToFit, isTextSideHandle } from '../utils/textBoxFit.js';
 import { measureTextContentHeight } from '../utils/textContentMeasure.js';
 
 // Last inverse scale measured per page width (page units), shared by every
@@ -221,6 +223,17 @@ import { measureTextContentHeight } from '../utils/textContentMeasure.js';
 const lastInverseScaleByPageWidth = new Map();
 
 const cloneAnnotations = (annotations) => deepClone(annotations);
+
+// Drawboard PDF Pro trial (t2-tools-deep.md bug 9): dragging a callout, or a
+// box select across one, must not leave its words highlighted. The press
+// starts the browser's text selection; it is dropped while the drag runs and
+// at its end. A selection inside an editor being typed in is left alone.
+const clearDragTextSelection = () => {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  if (document.activeElement?.isContentEditable) return;
+  const selection = window.getSelection?.();
+  if (selection && selection.rangeCount > 0 && !selection.isCollapsed) selection.removeAllRanges();
+};
 
 // Drawboard rule 7: a mark picked less than this long before a double-click
 // was picked BY that double-click's first click (it was not selected before).
@@ -1556,7 +1569,11 @@ export function useSVGInteraction({
         }
       }
       const boxes = members.map((m) => m.box);
-      const moves = detail.op === 'distribute' ? planDistribute(boxes, detail.mode) : planAlign(boxes, detail.mode);
+      // 'move': the properties panel's typed X / Y moves every picked mark
+      // by the same step (Nightly 'properties-panel').
+      const moves = detail.op === 'move'
+        ? boxes.map(() => ({ dx: Number(detail.dx) || 0, dy: Number(detail.dy) || 0 }))
+        : detail.op === 'distribute' ? planDistribute(boxes, detail.mode) : planAlign(boxes, detail.mode);
       if (isNoopPlan(moves)) return;
       const shapeMoves = {};
       const markerMoves = {};
@@ -1589,7 +1606,7 @@ export function useSVGInteraction({
         if ((merged || markerPatch) && typeof now.onSaveAnnotations === 'function') {
           now.onSaveAnnotations(merged ? merged.annotations : now.annotations, {
             source: 'object:modified',
-            action: detail.op === 'distribute' ? 'distribute' : 'align',
+            action: detail.op === 'distribute' ? 'distribute' : detail.op === 'move' ? 'move' : 'align',
             checkpointPolicy: 'normal',
             ...(markerPatch || {}),
           });
@@ -1673,6 +1690,24 @@ export function useSVGInteraction({
     // tightening happens in ONE place. Viewers never reach this handler
     // (ReadOnlyGate blocks pointer events at the SVG root).
     if (!canSelectAnnotationByIndex(index)) {
+      return;
+    }
+
+    // Tape (beta 'tape-tool', Drawboard PDF): a click under Select shows or
+    // covers what is under it, as under Pan. It never picks or moves the
+    // tape (a box drawn round it picks it). A drag that wanders does nothing.
+    if (annotations?.objects?.[index]?.data?.tape === true && !e.shiftKey && !selectedIds?.has?.(index)) {
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const page = annotations;
+      const onTapeUp = (up) => {
+        window.removeEventListener('pointerup', onTapeUp, true);
+        if (Math.hypot(up.clientX - startX, up.clientY - startY) > 4) return;
+        onSaveAnnotations?.(toggleTapeRevealed(page, index), {
+          source: 'tape:reveal', action: 'modify', checkpointPolicy: 'normal',
+        });
+      };
+      window.addEventListener('pointerup', onTapeUp, true);
       return;
     }
 
@@ -2606,6 +2641,7 @@ export function useSVGInteraction({
         endY: clampedY,
         active: mq.active || dx >= MARQUEE_MIN_DRAG_PX || dy >= MARQUEE_MIN_DRAG_PX,
       };
+      if (next.active) clearDragTextSelection();
       applyMarqueeState(next);
       return;
     }
@@ -3273,7 +3309,7 @@ export function useSVGInteraction({
             } else if (orig.height) {
               // Drawboard: words rewrapped by a side drag grow the box
               // downward so no line is cut off (textBoxFit.js).
-              Object.assign(target, growTextBoxToFit(target, measureTextContentHeight(target)));
+              Object.assign(target, (isFeatureOn('text-fit-height') ? fitTextBoxToWords : growTextBoxToFit)(target, measureTextContentHeight(target)));
             }
           } else {
             target.scaleX = (orig.scaleX || 1) * axis.x;
@@ -3710,6 +3746,48 @@ export function useSVGInteraction({
         lineEdit: { ...endpointData, midpoint: finalMid, hasMidpoint: !!finalMid },
       });
       setInteractionState('dragging');
+    } else if (ds.mode === 'dim-caption') {
+      const rad = ((ds.originalProps?.angle || 0) * Math.PI) / 180;
+      const wdx = svgPoint.x - ds.startSVGPoint.x;
+      const wdy = svgPoint.y - ds.startSVGPoint.y;
+      const round2 = (n) => Math.round(n * 100) / 100;
+      const offset = {
+        x: round2(ds.originalCaptionOffset.x + wdx * Math.cos(rad) + wdy * Math.sin(rad)),
+        y: round2(ds.originalCaptionOffset.y - wdx * Math.sin(rad) + wdy * Math.cos(rad)),
+      };
+      ds.currentCaptionOffset = offset;
+      setVisualTransform({ id: ds.annotationIndex, dx: 0, dy: 0, lineEdit: { dimCaptionOffset: offset } });
+      setInteractionState('dragging');
+    } else if (ds.mode === 'dim-caption-turn') {
+      // The pointer's angle round the caption's centre, from where the drag
+      // began. Shift steps 15°; near level it rests at the line's own angle.
+      const now = (Math.atan2(svgPoint.y - ds.centre.y, svgPoint.x - ds.centre.x) * 180) / Math.PI;
+      let turn = normalizeDimensionCaptionTurn(ds.originalCaptionTurn + now - ds.startAngle);
+      if (e.shiftKey) turn = normalizeDimensionCaptionTurn(Math.round(turn / 15) * 15);
+      else if (Math.abs(turn) < 3) turn = 0;
+      ds.currentCaptionTurn = turn;
+      setVisualTransform({ id: ds.annotationIndex, dx: 0, dy: 0, lineEdit: { dimCaptionTurn: turn } });
+      setInteractionState('dragging');
+    } else if (ds.mode === 'leader') {
+      // The world drag turned into the line's own frame (the mark may be
+      // turned), then its part along the line's left normal.
+      const rad = ((ds.originalProps?.angle || 0) * Math.PI) / 180;
+      const wdx = svgPoint.x - ds.startSVGPoint.x;
+      const wdy = svgPoint.y - ds.startSVGPoint.y;
+      const ldx = wdx * Math.cos(rad) + wdy * Math.sin(rad);
+      const ldy = -wdx * Math.sin(rad) + wdy * Math.cos(rad);
+      const ep = ds.originalEndpoints;
+      const len = Math.hypot(ep.x2 - ep.x1, ep.y2 - ep.y1);
+      if (len > 1e-6) {
+        const nx = (ep.y2 - ep.y1) / len;
+        const ny = -(ep.x2 - ep.x1) / len;
+        const leader = normalizeDimensionLeader(ds.originalLeader + ldx * nx + ldy * ny);
+        if (leader != null) {
+          ds.currentLeader = leader;
+          setVisualTransform({ id: ds.annotationIndex, dx: 0, dy: 0, lineEdit: { dimLeader: leader } });
+          setInteractionState('dragging');
+        }
+      }
     } else if (ds.mode === 'midpoint') {
       // Phase 15 LINE-01 / ARROW-01 — live-paint curve peak drag.
       // Snap-to-straight happens LIVE during drag (not on pointerup) so the
@@ -4297,6 +4375,7 @@ export function useSVGInteraction({
         } catch (err) { console.warn('[BboxScaleDiag] rotate-move log failed', err); }
       }
     } else if (ds.mode === 'callout-part') {
+      clearDragTextSelection();
       // UX: Phase 14 CALL-10 — per-drag update of one or more callout
       // positions. Uses cached ctmInverse for consistent screen→page
       // conversion. Delta math is integer-clean: capture the original
@@ -4736,6 +4815,7 @@ export function useSVGInteraction({
     const mq = marqueeStateRef.current;
     if (mq && (mq.pointerId == null || mq.pointerId === e.pointerId)) {
       const wasActive = mq.active;
+      if (wasActive) clearDragTextSelection();
       applyMarqueeState(null);
       try { svgRef.current?.releasePointerCapture?.(mq.pointerId ?? e.pointerId); } catch (_) { /* optional */ }
 
@@ -4866,6 +4946,18 @@ export function useSVGInteraction({
     const ds = dragStateRef.current;
     if (!ds.active) return;
     if (ds.mode === 'text-markup-horizontal' && e.pointerId !== ds.pointerId) return;
+    // A resize or turn left behind (a second finger turned the gesture into a
+    // pinch and its release never came here) whose mark is gone: drop it
+    // rather than commit onto nothing (R5 K1c: a later draw threw on
+    // obj.type). A move finds its mark by id below, so it is not dropped here.
+    if ((ds.mode === 'resize' || ds.mode === 'rotate')
+      && ds.annotationIndex != null && !annotations?.objects?.[ds.annotationIndex]) {
+      try { e.target?.releasePointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
+      dragStateRef.current = { ...ds, active: false, mode: null, currentResize: null, currentAngle: undefined };
+      setVisualTransform(null);
+      setInteractionState('idle');
+      return;
+    }
     markAnnotationPointerRelease(ds.diagGestureId, {
       action: ds.mode,
       handleId: ds.handleId || null,
@@ -5102,6 +5194,48 @@ export function useSVGInteraction({
         action: 'endpoint-move',
         checkpointPolicy: 'normal',
       });
+    } else if (ds.mode === 'dim-caption' && ds.currentCaptionOffset
+      && (ds.currentCaptionOffset.x !== ds.originalCaptionOffset.x || ds.currentCaptionOffset.y !== ds.originalCaptionOffset.y)) {
+      const updatedAnnotations = deepClone(annotations);
+      const targetObj = updatedAnnotations.objects[ds.annotationIndex];
+      if (isDimensionMeasure(targetObj)) {
+        const dim = { ...targetObj.data.measure.dim };
+        // Dropped back within 1 pt of the line's own spot: back on the line.
+        if (Math.hypot(ds.currentCaptionOffset.x, ds.currentCaptionOffset.y) < 1) delete dim.captionOffset;
+        else dim.captionOffset = ds.currentCaptionOffset;
+        targetObj.data.measure.dim = dim;
+        onSaveAnnotations(updatedAnnotations, {
+          source: 'object:modified',
+          action: 'caption-move',
+          checkpointPolicy: 'normal',
+        });
+      }
+    } else if (ds.mode === 'dim-caption-turn' && ds.currentCaptionTurn != null && ds.currentCaptionTurn !== ds.originalCaptionTurn) {
+      const updatedAnnotations = deepClone(annotations);
+      const targetObj = updatedAnnotations.objects[ds.annotationIndex];
+      if (isDimensionMeasure(targetObj)) {
+        const dim = { ...targetObj.data.measure.dim };
+        if (ds.currentCaptionTurn) dim.captionTurn = ds.currentCaptionTurn;
+        else delete dim.captionTurn;
+        targetObj.data.measure.dim = dim;
+        onSaveAnnotations(updatedAnnotations, {
+          source: 'object:modified',
+          action: 'caption-rotate',
+          checkpointPolicy: 'normal',
+        });
+      }
+    } else if (ds.mode === 'leader' && ds.currentLeader != null && ds.currentLeader !== ds.originalLeader) {
+      // One undo step; the mark keeps everything else as it is now.
+      const updatedAnnotations = deepClone(annotations);
+      const targetObj = updatedAnnotations.objects[ds.annotationIndex];
+      if (isDimensionMeasure(targetObj)) {
+        targetObj.data.measure.dim = { ...targetObj.data.measure.dim, leader: ds.currentLeader };
+        onSaveAnnotations(updatedAnnotations, {
+          source: 'object:modified',
+          action: 'leader-move',
+          checkpointPolicy: 'normal',
+        });
+      }
     } else if (ds.mode === 'midpoint' && ds.currentMidpoint) {
       // Phase 15 LINE-02 / ARROW-02 — silent snap-to-straight at pointerup.
       // If the user released the midpoint within 10px of the baseline, clear
@@ -5554,7 +5688,8 @@ export function useSVGInteraction({
           // Drawboard: words rewrapped by a side drag grow the box downward
           // so no line is cut off (textBoxFit.js).
           if (obj.height && isTextSideHandle(ds.handleId)) {
-            Object.assign(obj, growTextBoxToFit(obj, measureTextContentHeight(obj)));
+            // Nightly 'text-fit-height': it shrinks back too, like Drawboard.
+            Object.assign(obj, (isFeatureOn('text-fit-height') ? fitTextBoxToWords : growTextBoxToFit)(obj, measureTextContentHeight(obj)));
           }
           lockTextboxSizeAfterResize(obj);
         } else if (ds.originalProps.isPointsShape) {
@@ -5698,6 +5833,7 @@ export function useSVGInteraction({
         diagLog('[BboxScaleDiag] commit rotate ' + JSON.stringify(rotCommitPayload));
       } catch (err) { console.warn('[BboxScaleDiag] rotate commit log failed', err); }
     } else if (ds.mode === 'callout-part' && ds.calloutId) {
+      clearDragTextSelection();
       // UX: Phase 14 CALL-10 — commit the callout drag. The live-paint
       // branch in handlePointerMove already wrote the final state to the
       // React store via onUpdateCalloutLive; pointerup just captures the
@@ -5924,6 +6060,9 @@ export function useSVGInteraction({
       // pointerup (both modes), and RESET here. Miss this reset and a
       // subsequent straight-line drag would re-apply a stale midpoint.
       originalMidpoint: null, currentMidpoint: null,
+      // measure-plus leader drag: set at pointerdown, read at move and up.
+      originalLeader: null, currentLeader: null,
+      originalCaptionOffset: null, currentCaptionOffset: null,
       // UX 2026-04-20: vertex-drag fields (polygon/polyline per-point drag).
       // Reset alongside the rest so the next drag starts clean.
       originalPoints: null, vertexIndex: null, insertedVertex: false,
@@ -5959,6 +6098,15 @@ export function useSVGInteraction({
     // The browser took the pointer (a system gesture, a touch it turned into
     // a scroll): the move is not saved, so its preview must not stay behind.
     if (dropActiveMoveDrag()) return;
+    // A resize or turn the browser took (a second finger became a pinch) is
+    // not saved either; nothing of it may linger for a later release (R5 K1c).
+    if (ds.active && (ds.mode === 'resize' || ds.mode === 'rotate')) {
+      if (ds.pointerId != null && e.pointerId != null && ds.pointerId !== e.pointerId) return;
+      dragStateRef.current = { ...ds, active: false, mode: null, currentResize: null, currentAngle: undefined };
+      setVisualTransform(null);
+      setInteractionState('idle');
+      return;
+    }
     if (!ds.active || ds.mode !== 'text-markup-horizontal') return;
     if (ds.pointerId != null && e.pointerId != null && ds.pointerId !== e.pointerId) return;
     try { e.target?.releasePointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
@@ -6490,6 +6638,66 @@ export function useSVGInteraction({
         fixedTextOffset: getTextMarkupRangeFixedOffset(obj, handleId),
       };
       setInteractionState('resizing');
+      return;
+    }
+
+    // measure-plus: the leader grabber on a dimension line. The drag moves the
+    // line off its two points along their normal; past the points it flips
+    // to the other side (a negative leader).
+    // measure-plus: a dimension line's caption, dragged anywhere (it keeps an
+    // elbow leader back to the line). The offset is kept in the line's frame.
+    if (handleId === 'dim-caption') {
+      if (!isDimensionMeasure(obj)) return;
+      dragStateRef.current = {
+        active: true,
+        mode: 'dim-caption',
+        handleId: 'dim-caption',
+        startSVGPoint: svgPoint,
+        originalCaptionOffset: dimensionCaptionOffset(obj) || { x: 0, y: 0 },
+        currentCaptionOffset: null,
+        annotationIndex: selectedIndex,
+        ctmInverse,
+        originalProps: { angle: obj.angle || 0 },
+      };
+      return;
+    }
+    // measure-plus: the circle above a dimension caption turns the caption.
+    if (handleId === 'dim-caption-turn') {
+      if (!isDimensionMeasure(obj)) return;
+      const cx = Number(e.currentTarget?.dataset?.centreX);
+      const cy = Number(e.currentTarget?.dataset?.centreY);
+      if (!Number.isFinite(cx) || !Number.isFinite(cy)) return;
+      try { svgRef.current?.setPointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
+      dragStateRef.current = {
+        active: true,
+        mode: 'dim-caption-turn',
+        handleId: 'dim-caption-turn',
+        startSVGPoint: svgPoint,
+        centre: { x: cx, y: cy },
+        startAngle: (Math.atan2(svgPoint.y - cy, svgPoint.x - cx) * 180) / Math.PI,
+        originalCaptionTurn: dimensionCaptionTurn(obj),
+        currentCaptionTurn: null,
+        annotationIndex: selectedIndex,
+        ctmInverse,
+        pointerId: e.pointerId,
+        originalProps: { angle: obj.angle || 0 },
+      };
+      return;
+    }
+    if (handleId === 'leader') {
+      if (!isDimensionMeasure(obj)) return;
+      dragStateRef.current = {
+        active: true,
+        mode: 'leader',
+        handleId: 'leader',
+        startSVGPoint: svgPoint,
+        originalEndpoints: getLineEndpoints(obj),
+        originalLeader: dimensionLeader(obj),
+        currentLeader: null,
+        annotationIndex: selectedIndex,
+        ctmInverse,
+        originalProps: { angle: obj.angle || 0 },
+      };
       return;
     }
 

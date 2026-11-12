@@ -9,7 +9,7 @@
 // already match the screen so the load effect does not re-open them.
 
 import { useCallback, useRef } from 'react';
-import { applyPageViewOperation, getPageViewBase, getPageViewSizes } from '../utils/pageViewDocument.js';
+import { applyPageViewOperation, getPageViewBase, getPageViewSizes, pageViewFromRecords } from '../utils/pageViewDocument.js';
 
 export function usePageViewDocument({
   pdfDoc,
@@ -75,6 +75,26 @@ export function usePageViewDocument({
     show(previous);
   }, [show]);
 
+  // Pages as records (utils/pageRecords.js): show a page list (saved with
+  // the document, or another window's) over the loaded document. Returns
+  // false when there is no document yet or the list does not fit it.
+  const showRecords = useCallback((records) => {
+    const current = docRef.current;
+    if (!current) return false;
+    let next;
+    try {
+      next = pageViewFromRecords(current, records, {
+        sizesByPage: pageSizesRef.current,
+        pagesByNumber: pageObjectsRef.current,
+      });
+    } catch {
+      return false;
+    }
+    show(next);
+    return true;
+  }, [pageSizesRef, show]);
+  const currentDoc = useCallback(() => docRef.current, []);
+
   const markFileCurrent = useCallback((file) => {
     if (file) currentFilesRef.current.add(file);
   }, []);
@@ -85,5 +105,5 @@ export function usePageViewDocument({
     docRef.current !== pdf && getPageViewBase(docRef.current) === pdf
   ), []);
 
-  return { applyPageView, restorePageView, markFileCurrent, isFileCurrent, isViewOver };
+  return { applyPageView, restorePageView, showRecords, currentDoc, markFileCurrent, isFileCurrent, isViewOver };
 }

@@ -163,10 +163,13 @@ test('phone layout (the shared screen rule) takes no drops; desktop does', () =>
 
 test('wiring: drops reuse the Upload button path, never a second one', () => {
   const dashboard = read('src/Dashboard.jsx');
-  assert.match(dashboard, /const uploadBrowserPdf = async \(file, \{ projectId = null, openAfterUpload = true, waitForStorage = false, askDuplicates = true, checkedSheet = null \} = \{\}\) =>/);
+  assert.match(dashboard, /const uploadBrowserPdf = async \(file, \{ projectId = null, openAfterUpload = true, waitForStorage = false, askDuplicates = true, checkedSheet = null, onDocument = null \} = \{\}\) =>/);
   assert.match(dashboard, /await uploadBrowserPdf\(file, \{ projectId, openAfterUpload \}\);/, 'the file picker goes through the shared path');
-  assert.match(dashboard, /await uploadBrowserPdf\(checked\[0\]\.file, \{ projectId, openAfterUpload, checkedSheet: checked\[0\]\.sheet \}\);/, 'the upload check (Nightly) goes through it too');
-  assert.match(dashboard, /await uploadBrowserPdf\(checked \? checked\[index\]\.file : asPdfFile\(pdf\), \{/, 'drops go through the same path');
+  // The upload check / review (Nightly) may hand back several files (one
+  // document per page) or fewer (a row removed): each goes through it too.
+  assert.match(dashboard, /await uploadBrowserPdf\(entry\.file, \{ projectId, openAfterUpload: openAfterUpload && index === 0, checkedSheet: entry\.sheet \}\);/, 'the upload check (Nightly) goes through it too');
+  assert.match(dashboard, /const queue = checked \|\| pdfs\.map\(\(pdf\) => \(\{ file: asPdfFile\(pdf\), sheet: null \}\)\);/, 'drops go through the same path');
+  assert.match(dashboard, /for \(const entry of queue\) \{\n\s+const status = await uploadBrowserPdf\(entry\.file, \{/, 'drops go through the same path');
   assert.match(dashboard, /uploadDroppedFiles: handleDroppedFiles/);
   assert.match(dashboard, /onDropFiles=\{handleDroppedFiles\}/);
   // The shared path still asks about duplicates and creates the row before opening.

@@ -14,7 +14,7 @@
 //     saves, syncs and undoes like any other style change.
 //   - It opens away from the selection like the Line popover, and moves or
 //     flips so the whole card stays on screen (the phone too).
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { watchLightPopover } from './dismissRules.js';
 import {
   DEPTH_MEASURE_KINDS,
@@ -32,12 +32,50 @@ import {
   normalizeMeasureCaptionSize,
   normalizeMeasureDepth,
   normalizeMeasureLabelText,
+  SEGMENT_CAPTION_KINDS,
+  SEGMENT_CAPTION_PLACES,
+  segmentCaptionPlace,
+  MEASURE_PRESETS,
+  isOwnScaleMeasure,
+  markMeasureScale,
+  scaleFromPreset,
+  customMeasureScaleIndex,
+  loadCustomMeasureScales,
 } from '../utils/measure/measureScale.js';
+import { defaultMeasurePrecision, displayForScaleUnit } from '../utils/measure/measureFormat.js';
+import ValueSelect from './ValueSelect.jsx';
+import Icon from '../Icons';
+import { isFeatureOn } from '../featureFlags.js';
+import {
+  DIMENSION_CAPTION_PLACES,
+  dimensionCaptionPlace,
+  dimensionLeader,
+  DIMENSION_CAPTION_BG_COLORS,
+  DIMENSION_CAPTION_BG_OPACITIES,
+  DIMENSION_CAPTION_TEXT_COLORS,
+  dimensionCaptionPt,
+  dimensionCaptionStyle,
+  isDimensionMeasure,
+  normalizeDimensionCaptionPt,
+  normalizeDimensionLeader,
+} from '../utils/measure/dimensionLine.js';
 
 // Space kept between the card and the window's edges.
 const EDGE = 8;
 
 const depthText = (depth) => (depth == null ? '' : String(depth));
+const CAPTION_PLACE_NAMES = Object.freeze({ inline: 'Inline', above: 'Above' });
+const SEGMENT_PLACE_NAMES = Object.freeze({ off: 'Off', inline: 'Inline', upright: 'Upright', above: 'Above' });
+const SEGMENT_PLACE_TIPS = Object.freeze({
+  off: 'No length on each side',
+  inline: 'Each side\u2019s length on the side, along it',
+  upright: 'Each side\u2019s length on the side, level',
+  above: 'Each side\u2019s length beside the side',
+});
+
+// Add / Edit scale opens Set page scale in a short form. Loaded on first use,
+// so the card (and the selection bar that holds it) stays light.
+const MeasureScaleDialog = lazy(() => import('./MeasureScaleDialog.jsx'));
 
 export default function MeasureEditPopover({ measure, onPatch, onClose, side = 'below', tip, tipSide = 'below' }) {
   const mark = measure?.mark || null;
@@ -47,12 +85,56 @@ export default function MeasureEditPopover({ measure, onPatch, onClose, side = '
   const savedLabel = normalizeMeasureLabelText(saved.label);
   const savedDepth = normalizeMeasureDepth(saved.depth);
   const usesDepth = DEPTH_MEASURE_KINDS.includes(kind);
-  const unit = isValidMeasureScale(scale) ? MEASURE_UNITS[scale.unit].label : 'in';
+  // Depth is read in the scale the mark reads in (its own, else the page's),
+  // so the field names that unit.
+  const readScale = markMeasureScale(mark, scale);
+  const unit = isValidMeasureScale(readScale) ? MEASURE_UNITS[readScale.unit].label : 'in';
+  // A Length drawn as a dimension line (measure-plus) also has a leader and a
+  // caption place.
+  const isDim = isDimensionMeasure(mark);
+  const savedLeader = isDim ? dimensionLeader(mark) : null;
+  // Its caption style (Drawboard's Caption pop-over): size in pt, colours.
+  const savedPt = isDim ? dimensionCaptionPt(mark) : null;
+  const captionStyle = isDim ? dimensionCaptionStyle(mark) : null;
+  // A Polylength or Perimeter's segment captions (measure-plus).
+  const plusOn = isFeatureOn('measure-plus');
+  const segmentPlace = SEGMENT_CAPTION_KINDS.includes(kind) && plusOn ? segmentCaptionPlace(mark) : null;
+  // Its own scale or the page's (measure-plus, Drawboard's per-measure scale).
+  const ownScale = plusOn && isOwnScaleMeasure(mark) ? saved.scale : null;
+  const ownPreset = ownScale ? MEASURE_PRESETS.find((p) => p.label === ownScale.label) : null;
+  // The custom scales applied on this screen (Set page scale) come after the presets.
+  const [customScales, setCustomScales] = useState(() => (plusOn ? loadCustomMeasureScales() : []));
+  // Drawboard's Add Scale (+) and Edit Scale (pencil, on a custom scale).
+  const [scaleEditor, setScaleEditor] = useState(null);
+  const ownCustom = ownScale && !ownPreset ? customMeasureScaleIndex(customScales, ownScale) : -1;
+  const scaleValue = !ownScale ? 'page' : (ownPreset ? ownPreset.id : (ownCustom >= 0 ? `custom:${ownCustom}` : 'own'));
+  const scaleOptions = plusOn ? [
+    { value: 'page', label: scale?.label ? `Page scale (${scale.label})` : 'Page scale' },
+    ...(ownScale && !ownPreset && ownCustom < 0 ? [{ value: 'own', label: ownScale.label || 'Own scale' }] : []),
+    ...MEASURE_PRESETS.map((p) => ({ value: p.id, label: p.label })),
+    ...customScales.map((s, i) => ({ value: `custom:${i}`, label: s.label })),
+  ] : null;
+  const pickScale = (value) => {
+    if (value === 'page') { onPatch?.({ ownScale: null, pageScale: scale }); return; }
+    if (value.startsWith('custom:')) {
+      const saved = customScales[Number(value.slice(7))];
+      if (saved) onPatch?.({ ownScale: { ...saved } });
+      return;
+    }
+    const base = scaleFromPreset(value);
+    if (!base) return;
+    const display = displayForScaleUnit(base.unit);
+    onPatch?.({ ownScale: { ...base, display, precision: defaultMeasurePrecision(display) } });
+  };
 
   const [labelDraft, setLabelDraft] = useState(savedLabel);
   const [depthDraft, setDepthDraft] = useState(depthText(savedDepth));
+  const [leaderDraft, setLeaderDraft] = useState(depthText(savedLeader));
+  const [ptDraft, setPtDraft] = useState(depthText(savedPt));
   const labelRef = useRef(null);
   const depthRef = useRef(null);
+  const leaderRef = useRef(null);
+  const ptRef = useRef(null);
   const cardRef = useRef(null);
 
   // An undo, redo or a collaborator's edit changes the mark under the card:
@@ -63,17 +145,25 @@ export default function MeasureEditPopover({ measure, onPatch, onClose, side = '
   useEffect(() => {
     if (document.activeElement !== depthRef.current) setDepthDraft(depthText(savedDepth));
   }, [savedDepth]);
+  useEffect(() => {
+    if (document.activeElement !== leaderRef.current) setLeaderDraft(depthText(savedLeader));
+  }, [savedLeader]);
+  useEffect(() => {
+    if (document.activeElement !== ptRef.current) setPtDraft(depthText(savedPt));
+  }, [savedPt]);
 
-  const draftsRef = useRef({ labelDraft, depthDraft, savedLabel, savedDepth });
-  draftsRef.current = { labelDraft, depthDraft, savedLabel, savedDepth };
+  const draftsRef = useRef({ labelDraft, depthDraft, leaderDraft, ptDraft, savedLabel, savedDepth, savedLeader, savedPt });
+  draftsRef.current = { labelDraft, depthDraft, leaderDraft, ptDraft, savedLabel, savedDepth, savedLeader, savedPt };
   // Set once the card is closing with Escape: what was typed is dropped, even
   // when the field's blur arrives as the card goes away.
   const discardRef = useRef(false);
   // The value last written from a field, until the mark comes back with it:
   // a blur and a close right after one write must not write it again.
-  const writtenRef = useRef({ label: undefined, depth: undefined });
+  const writtenRef = useRef({ label: undefined, depth: undefined, leader: undefined, pt: undefined });
   useEffect(() => { writtenRef.current.label = undefined; }, [savedLabel]);
   useEffect(() => { writtenRef.current.depth = undefined; }, [savedDepth]);
+  useEffect(() => { writtenRef.current.leader = undefined; }, [savedLeader]);
+  useEffect(() => { writtenRef.current.pt = undefined; }, [savedPt]);
   const commitLabel = useCallback(() => {
     if (discardRef.current) return;
     const drafts = draftsRef.current;
@@ -99,21 +189,54 @@ export default function MeasureEditPopover({ measure, onPatch, onClose, side = '
     writtenRef.current.depth = next;
     onPatch?.({ depth: next });
   }, [onPatch]);
+  const commitLeader = useCallback((typed) => {
+    if (discardRef.current) return;
+    const drafts = draftsRef.current;
+    const next = normalizeDimensionLeader(typed ?? drafts.leaderDraft);
+    if (next == null) {
+      // Not a number: the field goes back to the mark's.
+      setLeaderDraft(depthText(drafts.savedLeader));
+      return;
+    }
+    setLeaderDraft(depthText(next));
+    const current = writtenRef.current.leader !== undefined ? writtenRef.current.leader : drafts.savedLeader;
+    if (next === current) return;
+    writtenRef.current.leader = next;
+    onPatch?.({ leader: next });
+  }, [onPatch]);
+  const commitPt = useCallback((typed) => {
+    if (discardRef.current) return;
+    const drafts = draftsRef.current;
+    const next = normalizeDimensionCaptionPt(typed ?? drafts.ptDraft);
+    if (next == null) {
+      setPtDraft(depthText(drafts.savedPt));
+      return;
+    }
+    setPtDraft(depthText(next));
+    const current = writtenRef.current.pt !== undefined ? writtenRef.current.pt : drafts.savedPt;
+    if (next === current) return;
+    writtenRef.current.pt = next;
+    onPatch?.({ captionPt: next });
+  }, [onPatch]);
   const commitTyped = useCallback(() => {
     commitLabel();
     if (usesDepth) commitDepth();
-  }, [commitDepth, commitLabel, usesDepth]);
+    if (isDim) { commitLeader(); commitPt(); }
+  }, [commitDepth, commitLabel, commitLeader, commitPt, isDim, usesDepth]);
 
   // The app's dismiss rules: a press outside closes it (keeping what was
   // typed), Escape closes it (dropping what was typed).
   useEffect(() => watchLightPopover({
-    contains: (target) => Boolean(target?.closest?.('[data-measure-edit-popover], [data-selection-quick-measure]')),
+    // The Scale drop-down's list is portalled to <body>: a pick there is inside,
+    // and so is the Add / Edit scale dialog (and its drop-downs).
+    contains: (target) => Boolean(target?.closest?.('[data-measure-edit-popover], [data-selection-quick-measure], .measure-edit__scale-menu, [data-measure-scale-dialog], .measure-scale__menu')),
+    escape: !scaleEditor,
     close: (_event, reason) => {
       if (reason === 'escape') discardRef.current = true;
       else commitTyped();
       onClose?.();
     },
-  }), [commitTyped, onClose]);
+  }), [commitTyped, onClose, scaleEditor]);
 
   const fieldKeyDown = (event, commit, reset) => {
     if (event.key === 'Enter') {
@@ -136,6 +259,30 @@ export default function MeasureEditPopover({ measure, onPatch, onClose, side = '
     onPatch?.({ fields: next });
   };
   const size = normalizeMeasureCaptionSize(saved.captionSize) || MEASURE_LABEL_FONT_PX;
+  const captionPlace = isDim ? dimensionCaptionPlace(mark) : null;
+  // Up / Down step the leader by 1 pt (10 with Shift), like Drawboard's ▲▼.
+  const leaderKeyDown = (event) => {
+    if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+      event.preventDefault();
+      event.stopPropagation();
+      const base = normalizeDimensionLeader(leaderDraft) ?? savedLeader ?? 0;
+      const step = (event.shiftKey ? 10 : 1) * (event.key === 'ArrowUp' ? 1 : -1);
+      commitLeader(String(Math.round((base + step) * 100) / 100));
+      return;
+    }
+    fieldKeyDown(event, () => commitLeader(), () => setLeaderDraft(depthText(savedLeader)));
+  };
+  // Up / Down step the caption size by 1 pt.
+  const ptKeyDown = (event) => {
+    if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+      event.preventDefault();
+      event.stopPropagation();
+      const base = normalizeDimensionCaptionPt(ptDraft) ?? savedPt ?? 9;
+      commitPt(String(base + (event.key === 'ArrowUp' ? 1 : -1)));
+      return;
+    }
+    fieldKeyDown(event, () => commitPt(), () => setPtDraft(depthText(savedPt)));
+  };
 
   // The caption as it will read with what is typed so far.
   const preview = useMemo(() => {
@@ -172,7 +319,7 @@ export default function MeasureEditPopover({ measure, onPatch, onClose, side = '
     setPlace((current) => (current.side === nextSide && current.dx === dx && current.maxHeight === maxHeight
       ? current
       : { side: nextSide, dx, maxHeight }));
-  }, [side, preview, usesDepth]);
+  }, [side, preview, usesDepth, isDim]);
 
   if (!mark || !kind) return null;
   return (
@@ -234,6 +381,28 @@ export default function MeasureEditPopover({ measure, onPatch, onClose, side = '
           </span>
         </label>
       )}
+      {isDim && (
+        <label className="measure-edit__field">
+          <span className="measure-edit__name">Leader</span>
+          <span className="measure-edit__with-unit">
+            <input
+              ref={leaderRef}
+              type="text"
+              inputMode="decimal"
+              className="measure-edit__input"
+              data-measure-edit-leader
+              value={leaderDraft}
+              autoComplete="off"
+              enterKeyHint="done"
+              aria-label="Leader (pt)"
+              onChange={(event) => setLeaderDraft(event.target.value)}
+              onBlur={() => commitLeader()}
+              onKeyDown={leaderKeyDown}
+            />
+            <span className="measure-edit__unit" aria-hidden="true">pt</span>
+          </span>
+        </label>
+      )}
       <fieldset className="measure-edit__lines">
         <legend className="measure-edit__name">Show in caption</legend>
         {fields.map((field) => (
@@ -249,25 +418,211 @@ export default function MeasureEditPopover({ measure, onPatch, onClose, side = '
           </label>
         ))}
       </fieldset>
-      <div className="measure-edit__sizes" role="group" aria-label="Caption size">
-        <span className="measure-edit__name" aria-hidden="true">Caption size</span>
-        <span className="measure-edit__size-buttons">
-          {MEASURE_CAPTION_SIZES.map((option) => (
+      {scaleOptions && (
+        <div className="measure-edit__sizes measure-edit__sizes--stack" data-measure-edit-scale={scaleValue}>
+          <span className="measure-edit__name" aria-hidden="true">Scale</span>
+          <div className="measure-edit__scale-row">
+            <ValueSelect look="field" size="sm" label="Scale" value={scaleValue} onChange={pickScale} options={scaleOptions} menuClassName="measure-edit__scale-menu" />
+            {ownCustom >= 0 && (
+              <button
+                type="button"
+                className="measure-edit__icon-btn"
+                aria-label="Edit scale"
+                data-measure-edit-scale-edit="true"
+                {...(tip ? tip('Edit scale', tipSide) : {})}
+                onClick={() => setScaleEditor({ scale: customScales[ownCustom], index: ownCustom })}
+              >
+                <Icon name="edit" size={13} color="currentColor" />
+              </button>
+            )}
             <button
-              key={option.id}
               type="button"
-              className={`measure-edit__size${size === option.px ? ' is-current' : ''}`}
-              data-measure-edit-size={option.id}
-              aria-label={`${option.name} caption`}
-              aria-pressed={size === option.px}
-              {...(tip ? tip(`${option.name} caption (${option.px} px)`, tipSide) : {})}
-              onClick={() => onPatch?.({ captionSize: option.px })}
+              className="measure-edit__icon-btn"
+              aria-label="Add scale"
+              data-measure-edit-scale-add="true"
+              {...(tip ? tip('Add scale', tipSide) : {})}
+              onClick={() => setScaleEditor({ scale: ownScale || scale || null, index: -1 })}
             >
-              {option.label}
+              <Icon name="plus" size={14} color="currentColor" />
             </button>
-          ))}
-        </span>
-      </div>
+          </div>
+        </div>
+      )}
+      {scaleEditor && (
+        <Suspense fallback={null}>
+        <MeasureScaleDialog
+          pageNumber={1}
+          markMode={scaleEditor.index >= 0 ? 'edit' : 'add'}
+          editIndex={scaleEditor.index}
+          currentScale={scaleEditor.scale}
+          onApply={(next) => {
+            setScaleEditor(null);
+            setCustomScales(loadCustomMeasureScales());
+            if (next) onPatch?.({ ownScale: { ...next } });
+          }}
+          onCalibrate={() => {}}
+          onCancel={() => setScaleEditor(null)}
+        />
+        </Suspense>
+      )}
+      {segmentPlace && (
+        <div className="measure-edit__sizes measure-edit__sizes--stack" role="group" aria-label="Segment captions">
+          <span className="measure-edit__name" aria-hidden="true">Segment captions</span>
+          <span className="measure-edit__size-buttons">
+            {SEGMENT_CAPTION_PLACES.map((place) => (
+              <button
+                key={place}
+                type="button"
+                className={`measure-edit__size measure-edit__place${segmentPlace === place ? ' is-current' : ''}`}
+                data-measure-edit-segments={place}
+                aria-pressed={segmentPlace === place}
+                {...(tip ? tip(SEGMENT_PLACE_TIPS[place], tipSide) : {})}
+                onClick={() => onPatch?.({ segmentCaptions: place })}
+              >
+                {SEGMENT_PLACE_NAMES[place]}
+              </button>
+            ))}
+          </span>
+        </div>
+      )}
+      {isDim && (
+        <div className="measure-edit__sizes" role="group" aria-label="Caption place">
+          <span className="measure-edit__name" aria-hidden="true">Caption</span>
+          <span className="measure-edit__size-buttons">
+            {DIMENSION_CAPTION_PLACES.map((place) => (
+              <button
+                key={place}
+                type="button"
+                className={`measure-edit__size measure-edit__place${captionPlace === place ? ' is-current' : ''}`}
+                data-measure-edit-place={place}
+                aria-pressed={captionPlace === place}
+                {...(tip ? tip(place === 'above' ? 'Caption beside the line' : 'Caption on the line', tipSide) : {})}
+                onClick={() => onPatch?.({ captionPlace: place })}
+              >
+                {CAPTION_PLACE_NAMES[place]}
+              </button>
+            ))}
+          </span>
+        </div>
+      )}
+      {isDim ? (
+        <>
+          <label className="measure-edit__field">
+            <span className="measure-edit__name">Caption size</span>
+            <span className="measure-edit__with-unit">
+              <input
+                ref={ptRef}
+                type="text"
+                inputMode="decimal"
+                className="measure-edit__input"
+                data-measure-edit-caption-pt
+                value={ptDraft}
+                autoComplete="off"
+                enterKeyHint="done"
+                aria-label="Caption size (pt)"
+                onChange={(event) => setPtDraft(event.target.value)}
+                onBlur={() => commitPt()}
+                onKeyDown={ptKeyDown}
+              />
+              <span className="measure-edit__unit" aria-hidden="true">pt</span>
+            </span>
+          </label>
+          <div className="measure-edit__sizes measure-edit__sizes--stack" role="group" aria-label="Caption colour">
+            <span className="measure-edit__name" aria-hidden="true">Text</span>
+            <span className="measure-edit__swatches">
+              <button
+                type="button"
+                className={`measure-edit__swatch measure-edit__swatch--auto${!captionStyle.color ? ' is-current' : ''}`}
+                style={{ background: mark?.stroke || 'currentColor' }}
+                data-measure-edit-caption-color="auto"
+                aria-label="Same as the line"
+                aria-pressed={!captionStyle.color}
+                {...(tip ? tip('Same as the line', tipSide) : {})}
+                onClick={() => onPatch?.({ captionColor: null })}
+              />
+              {DIMENSION_CAPTION_TEXT_COLORS.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  className={`measure-edit__swatch${captionStyle.color === option.color ? ' is-current' : ''}`}
+                  style={{ background: option.color }}
+                  data-measure-edit-caption-color={option.id}
+                  aria-label={`${option.label} text`}
+                  aria-pressed={captionStyle.color === option.color}
+                  {...(tip ? tip(option.label, tipSide) : {})}
+                  onClick={() => onPatch?.({ captionColor: option.color })}
+                />
+              ))}
+            </span>
+          </div>
+          <div className="measure-edit__sizes measure-edit__sizes--stack" role="group" aria-label="Caption background">
+            <span className="measure-edit__name" aria-hidden="true">Background</span>
+            <span className="measure-edit__swatches">
+              <button
+                type="button"
+                className={`measure-edit__swatch measure-edit__swatch--none${!captionStyle.bg ? ' is-current' : ''}`}
+                data-measure-edit-caption-bg="none"
+                aria-label="No background"
+                aria-pressed={!captionStyle.bg}
+                {...(tip ? tip('No background', tipSide) : {})}
+                onClick={() => onPatch?.({ captionBg: null })}
+              />
+              {DIMENSION_CAPTION_BG_COLORS.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  className={`measure-edit__swatch${captionStyle.bg === option.color ? ' is-current' : ''}`}
+                  style={{ background: option.color }}
+                  data-measure-edit-caption-bg={option.id}
+                  aria-label={`${option.label} background`}
+                  aria-pressed={captionStyle.bg === option.color}
+                  {...(tip ? tip(option.label, tipSide) : {})}
+                  onClick={() => onPatch?.({ captionBg: option.color })}
+                />
+              ))}
+            </span>
+          </div>
+          {captionStyle.bg && (
+            <div className="measure-edit__sizes measure-edit__sizes--stack" role="group" aria-label="Background opacity">
+              <span className="measure-edit__name" aria-hidden="true">Opacity</span>
+              <span className="measure-edit__size-buttons">
+                {DIMENSION_CAPTION_BG_OPACITIES.map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={`measure-edit__size measure-edit__place${captionStyle.bgOpacity === value ? ' is-current' : ''}`}
+                    data-measure-edit-caption-bg-opacity={value}
+                    aria-pressed={captionStyle.bgOpacity === value}
+                    onClick={() => onPatch?.({ captionBgOpacity: value })}
+                  >
+                    {`${Math.round(value * 100)}%`}
+                  </button>
+                ))}
+              </span>
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="measure-edit__sizes" role="group" aria-label="Caption size">
+          <span className="measure-edit__name" aria-hidden="true">Caption size</span>
+          <span className="measure-edit__size-buttons">
+            {MEASURE_CAPTION_SIZES.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                className={`measure-edit__size${size === option.px ? ' is-current' : ''}`}
+                data-measure-edit-size={option.id}
+                aria-label={`${option.name} caption`}
+                aria-pressed={size === option.px}
+                {...(tip ? tip(`${option.name} caption (${option.px} px)`, tipSide) : {})}
+                onClick={() => onPatch?.({ captionSize: option.px })}
+              >
+                {option.label}
+              </button>
+            ))}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

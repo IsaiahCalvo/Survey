@@ -125,7 +125,11 @@ import { hasTouchInput } from '../utils/layoutMode.js';
 import { notePageDrawn, pageMounted, pageUnmounted, PAGE_CACHE_KEEP_MOBILE, PAGE_CACHE_KEEP_DESKTOP } from '../utils/pdfPageCacheTrim';
 import { isInTabBehind } from '../utils/tabBehind.js';
 import { isFeatureOn } from '../featureFlags.js';
+import { pageStepForKey, steppedPage } from '../utils/drawboardKeys.js';
+import { hasAnyPageSelection } from '../utils/pageSelectionPresence.js';
+import { pageTurnStep } from '../utils/pageTurnKeys.js';
 import { ZOOM_AREA_MIN_PX, boxBetween, isZoomToAreaStart, zoomToAreaPlan } from '../utils/zoomToArea.js';
+import { registerSpotlightViewer, spotlightViewMovedByHand } from '../services/annotationSpotlight.js';
 import { pdfjsAssetOptions } from '../utils/pdfjsAssets.js';
 import {
   compensateScrollLeftForColumnWidth,
@@ -246,6 +250,11 @@ const DESKTOP_MAX_OVERSCAN_PAGES = 3;
 // MOBILE_MAX_CANVAS_AREA-clamped raster (~12 MiB), and the deep-zoom window
 // still tops out at three pages.
 const MOBILE_MAX_OVERSCAN_PAGES = 2;
+// Open (flag 'open-visible-first'): longest wait for an idle moment before
+// the next page off screen mounts, and longest wait for the pages on screen
+// to show their drawing before any page off screen mounts.
+const OPEN_STEP_WAIT_MS = 600;
+const OPEN_DRAWN_WAIT_MS = 10_000;
 // A finger glide faster than this (px/ms; 40 px a frame at 60 Hz) keeps the
 // mounted pages as they are: a page it reaches stays a plain white sheet (no
 // drawing, no marks) until the glide slows under it. Mounting a page's
@@ -1786,6 +1795,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const mountCatchUpRef = useRef(null);
   // The range last asked for (ahead of the render that shows it).
   const rangeNowRef = useRef(range);
+  // Open (flag 'open-visible-first'): the first pages mounted are the ones on
+  // screen; the rest follow one per idle moment, so their marks are not
+  // built before the page you look at has drawn.
+  const [openVisibleFirst] = useState(() => isFeatureOn('open-visible-first'));
   // What may draw right now (pageRasterQueue kinds): during a pinch or a
   // ctrl+wheel zoom nothing does (pages a pinch reveals are not mounted until
   // it ends anyway, and a draw slice costs a whole frame); while a pan, a
@@ -2312,20 +2325,46 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         last = visibleLast;
       }
     }
+    if (openVisibleFirst && visibleFirst !== -1 && !mountCatchUpRef.current && rangeNowRef.current[1] < rangeNowRef.current[0]) {
+      mountCatchUpRef.current = { step: true, frame: 0, idle: true, since: performance.now() };
+    }
     const catchUp = mountCatchUpRef.current;
     if (catchUp && !fastGlideRef.current && visibleFirst !== -1) {
       // One step per frame; calls between frames (scroll events) wait.
       const prev = rangeNowRef.current;
-      const next = catchUp.step ? stepMountWindow(prev, [first, last], [visibleFirst, visibleLast]) : prev;
+      // Pages scrolled on screen mount at once, even between steps (the open
+      // wait can hold the next step for seconds); only the overscan waits.
+      const coversVisible = prev[1] >= prev[0] && prev[0] <= visibleFirst && prev[1] >= visibleLast;
+      const next = catchUp.step || !coversVisible
+        ? stepMountWindow(prev, [first, last], [visibleFirst, visibleLast])
+        : prev;
       catchUp.step = false;
       if (next[0] === first && next[1] === last) mountCatchUpRef.current = null;
       else if (!catchUp.frame) {
-        catchUp.frame = requestAnimationFrame(() => {
+        const stepNext = () => {
           const live = mountCatchUpRef.current;
-          if (!live) return;
+          // A newer catch-up (a glide slowing down) replaced this one.
+          if (live !== catchUp) return;
+          // At open, no page off screen mounts before the pages on screen show
+          // (drawn, and no longer held as blank sheets waiting for marks).
+          if (live.idle && performance.now() - live.since < OPEN_DRAWN_WAIT_MS) {
+            const [vf, vl] = visiblePageRangeRef.current || [];
+            let waiting = scrollerRef.current?.getAttribute('data-hold-pages') === 'true';
+            for (let i = vf; i >= 0 && i <= vl && !waiting; i += 1) {
+              if (layout.dims[i]?.hidden) continue;
+              const pageDiv = scrollerRef.current?.querySelector(`.survey-pdfjs-page-div[data-page-number="${i + 1}"]`);
+              waiting = !!pageDiv && !pageDiv.hasAttribute('data-raster-shown');
+            }
+            if (waiting) { live.frame = requestAnimationFrame(stepNext); return; }
+          }
           live.frame = 0; live.step = true;
           recomputeWindowRef.current?.();
-        });
+        };
+        // At open, the next page waits until the main thread is free (the
+        // page on screen drawing, its marks showing), at most OPEN_STEP_WAIT_MS.
+        catchUp.frame = catchUp.idle && typeof requestIdleCallback === 'function'
+          ? requestIdleCallback(stepNext, { timeout: OPEN_STEP_WAIT_MS })
+          : requestAnimationFrame(stepNext);
       }
       first = next[0]; last = next[1];
     }
@@ -2339,7 +2378,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     detectCurrentPage();
     visiblePageRangeRef.current = [visibleFirst, visibleLast];
     rasterQueueRef.current?.pump();
-  }, [layout, scale, detectCurrentPage, isMobileSurface]);
+  }, [layout, scale, detectCurrentPage, isMobileSurface, openVisibleFirst]);
   recomputeWindowRef.current = recomputeWindow;
 
   useLayoutEffect(() => {
@@ -5694,6 +5733,77 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     return true;
   }, [applyAnchoredScale, cancelFlight, cancelPanInertia, getPageLeftAtScale, getHorizontalScrollMax, glideFlight, isMobileSurface, scheduleZoomGlideFrame, setZoomInteraction]);
 
+  // Spotlight (Nightly flag 'spotlight', annotationSpotlight.js). While this
+  // tab is in front the viewer tells the spotlight what you see (the view box
+  // in page units, measured from the scroller, never zoom x page size) and
+  // shows a presenter's box by fitting it into your own view. A pan, wheel,
+  // pinch or zoom key of yours pauses following.
+  const [spotlightOn] = useState(() => isFeatureOn('spotlight'));
+  const spotlightViewRef = useRef(null);
+  spotlightViewRef.current = {
+    readView: () => {
+      const el = scrollerRef.current;
+      const dims = dimsPtRef.current;
+      if (!el || !dims.length) return null;
+      const s = scaleRef.current;
+      if (!(s > 0)) return null;
+      const side = sideInsetRef.current;
+      const inset = Math.min(topInsetRef.current, el.clientHeight);
+      const bandW = Math.max(1, el.clientWidth - side.left - side.right);
+      const bandH = Math.max(1, el.clientHeight - inset);
+      const i = pageUnderContentY(el.scrollTop + inset + bandH / 2, s);
+      if (!dims[i] || dims[i].hidden) return null;
+      return {
+        page: i + 1,
+        rect: {
+          x: (el.scrollLeft + side.left - getPageLeftAtScale(i, s)) / s,
+          y: (el.scrollTop + inset - topAt(i, s)) / s,
+          width: bandW / s,
+          height: bandH / s,
+        },
+      };
+    },
+    showView: (page, rect) => {
+      const dims = dimsPtRef.current;
+      if (!dims.length || !(Number(page) >= 1) || Number(page) > dims.length) return false;
+      return focusPageRect(page, rect, { fill: 1, maxScale: Number.MAX_SAFE_INTEGER });
+    },
+  };
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!spotlightOn || !tabActive || !el || typeof window === 'undefined') return undefined;
+    const off = registerSpotlightViewer({
+      readView: () => spotlightViewRef.current?.readView() ?? null,
+      showView: (page, rect) => spotlightViewRef.current?.showView(page, rect) === true,
+    });
+    // On window, first in the capture order: the viewer's own gesture code
+    // may stop a touch or wheel before it reaches the scroller.
+    const inViewer = (event) => event.target instanceof Node && el.contains(event.target);
+    const moved = (event) => { if (inViewer(event)) spotlightViewMovedByHand(); };
+    const onPointerDown = (event) => {
+      if (!inViewer(event)) return;
+      if (event.pointerType === 'touch' || event.button === 1 || interactionModeRef.current === 'Pan') spotlightViewMovedByHand();
+    };
+    const onKey = (event) => {
+      const t = event.target;
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName || ''))) return;
+      const zoomKey = (event.ctrlKey || event.metaKey) && ['+', '=', '-', '_', '0'].includes(event.key);
+      if (zoomKey || ['PageUp', 'PageDown', 'Home', 'End'].includes(event.key)) spotlightViewMovedByHand();
+    };
+    const passive = { passive: true, capture: true };
+    window.addEventListener('wheel', moved, passive);
+    window.addEventListener('touchstart', moved, passive);
+    window.addEventListener('pointerdown', onPointerDown, true);
+    window.addEventListener('keydown', onKey, true);
+    return () => {
+      off();
+      window.removeEventListener('wheel', moved, passive);
+      window.removeEventListener('touchstart', moved, passive);
+      window.removeEventListener('pointerdown', onPointerDown, true);
+      window.removeEventListener('keydown', onKey, true);
+    };
+  }, [spotlightOn, tabActive]);
+
   // Drawboard canvas audit chunk 6: glide scrollTop to `top` over 250 ms
   // (utils/pageScrollGlide.js has the rules), or point a glide already running
   // at it. `holdsPage`: a page jump, whose target page stays the current page
@@ -5792,11 +5902,20 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // Launch polish 2026-11-02 (old idea #816): Home / End glide to the first /
   // last page the same way, as in Acrobat and Drawboard. A toolbar, tab strip
   // or radio group that moves focus with Home / End keeps the key.
+  // Nightly 'page-turn-keys' (Drawboard PDF Pro push 2026-11-12): with no mark
+  // picked, Left / Right and Shift+Up / Down turn to the previous / next page
+  // (a picked mark keeps the arrows for nudging).
+  const [pageTurnKeysOn] = useState(() => isFeatureOn('page-turn-keys'));
+  const [drawboardShiftArrowsOn] = useState(() => isFeatureOn('drawboard-keys'));
   useEffect(() => {
     const onKeyDown = (event) => {
       const isPageKey = event.key === 'PageDown' || event.key === 'PageUp';
       const isEndKey = event.key === 'Home' || event.key === 'End';
-      if (!isPageKey && !isEndKey) return;
+      const turn = pageTurnKeysOn ? pageTurnStep(event, { shiftArrows: !drawboardShiftArrowsOn }) : 0;
+      if (!isPageKey && !isEndKey && !turn) return;
+      // A picked mark nudges; a text selection grows with Shift + arrows.
+      // (A plain Left / Right still turns the page over a leftover selection.)
+      if (turn && (hasAnyPageSelection() || (event.shiftKey && window.getSelection?.()?.isCollapsed === false))) return;
       if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
       const el = scrollerRef.current;
       if (!el || !el.isConnected || isInTabBehind(el) || el.clientHeight <= 0 || el.getClientRects().length === 0) return;
@@ -5819,6 +5938,14 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         goToPage(event.key === 'Home' ? 1 : last, { smooth: true });
         return;
       }
+      if (turn) {
+        if (target && target.closest('[role="toolbar"], [role="tablist"], [role="radiogroup"], [role="menubar"], [role="spinbutton"], [role="slider"]')) return;
+        const last = numPagesRef.current || topsRef.current.length;
+        const next = Math.min(last, Math.max(1, (currentPageRef.current || 1) + turn));
+        event.preventDefault();
+        if (next !== currentPageRef.current) goToPage(next, { smooth: true });
+        return;
+      }
       event.preventDefault();
       zoomGlideFinishRef.current?.();
       cancelPanInertia(false);
@@ -5831,7 +5958,32 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [cancelPanInertia, glideScrollTopTo, goToPage]);
+  }, [cancelPanInertia, glideScrollTopTo, goToPage, pageTurnKeysOn, drawboardShiftArrowsOn]);
+
+  // Drawboard keys (Nightly 'drawboard-keys'): Shift+Up / Down go to the
+  // previous / next page on the same glide. Shift+arrows also nudge a picked
+  // mark by 10 (that handler claims the key), so the page only turns when
+  // nothing else took the press; fields and menus keep it.
+  const [drawboardKeysOn] = useState(() => isFeatureOn('drawboard-keys'));
+  useEffect(() => {
+    if (!drawboardKeysOn) return undefined;
+    const onKeyDown = (event) => {
+      const step = pageStepForKey(event);
+      if (!step || event.defaultPrevented) return;
+      const el = scrollerRef.current;
+      if (!el || !el.isConnected || isInTabBehind(el) || el.clientHeight <= 0 || el.getClientRects().length === 0) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target && (isEditableTarget(target) || isEditableTarget(document.activeElement))) return;
+      if (target?.closest?.('[role="menu"], [role="listbox"], [role="slider"], [role="dialog"], [role="tree"], [role="grid"], [role="radiogroup"], [role="tablist"]')) return;
+      setTimeout(() => {
+        if (event.defaultPrevented) return;
+        const next = steppedPage(currentPageRef.current, step, numPagesRef.current || topsRef.current.length);
+        if (next) goToPage(next, { smooth: true });
+      }, 0);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [drawboardKeysOn, goToPage]);
 
   // A glide never outlives the viewer.
   useEffect(() => () => { pageGlideRef.current?.cancel('cancel'); }, []);

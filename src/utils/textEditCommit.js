@@ -13,6 +13,7 @@
  */
 import { applyScope } from './annotationCreationCommit.js';
 import { composeColorForPatch } from './annotationData.js';
+import { dashForLineStyle } from './lineStyleOptions.js';
 
 // TEXT_PADDING lives in svgAnnotationRenderers.jsx (a .jsx module the Node
 // test runner can't import); the value is the annotation text-gutter contract
@@ -152,7 +153,7 @@ export function newTextBoxPaint({
     backgroundColor: fillColor && Number.isFinite(fillAlpha) && fillAlpha > 0
       ? composeColorForPatch(fillColor, fillAlpha)
       : null,
-    strokeDashArray: lineBorderStyle === 'dashed' ? [6, 4] : lineBorderStyle === 'dotted' ? [2, 4] : null,
+    strokeDashArray: dashForLineStyle(lineBorderStyle),
   };
 }
 

@@ -143,11 +143,8 @@ if (process.env.NODE_ENV === 'development') {
 // development still has full tooling.
 let developerMode = process.env.NODE_ENV === 'development';
 
-// UX 2026-04-22: Auto-updater. Checks the Survey repo's GitHub Releases on
-// startup; if a newer version is published the user sees an "Update available"
-// prompt. Only runs in packaged builds — dev mode skips silently because
-// electron-updater can't patch an unbuilt source tree. Uses the publish
-// config in package.json, which points at this repo.
+// Auto-updater reads the public app feed in package.json. GitHub keeps the
+// build archive and may be private. Only packaged builds check for updates.
 let autoUpdater = null;
 let updaterManualCheckWindow = null; // tracks window that requested a manual check
 try {
@@ -343,9 +340,29 @@ function createWindow() {
       preload: preloadPath,
       webSecurity: true, // Keep web security enabled for OAuth
       zoomFactor: 1.0,
+      // Red underlines on misspelled words in every text box (owner
+      // 2026-11-12: spelling correction everywhere). On by default; said
+      // out loud so nobody turns it off by accident.
+      spellcheck: true,
     },
   });
   surveyMainWindow = win;
+
+  // Spelling fixes on right-click in a text box. Survey draws its own menu
+  // (the browser's never shows, owner 2026-11-12), but only Chromium knows
+  // the misspelled word and its suggestions: hand them to the page, which
+  // puts them at the top of Survey's Cut / Copy / Paste menu
+  // (components/AppContextMenuHost.jsx). This fires only when the page left
+  // the right-click alone, which it does just for text boxes.
+  win.webContents.on('context-menu', (_event, params) => {
+    if (!params || !params.isEditable) return;
+    try {
+      win.webContents.send('editable-context-menu', {
+        misspelledWord: String(params.misspelledWord || ''),
+        suggestions: Array.isArray(params.dictionarySuggestions) ? params.dictionarySuggestions.slice(0, 5).map(String) : [],
+      });
+    } catch (_e) { /* window closing */ }
+  });
   win.once('closed', () => {
     if (surveyMainWindow === win) surveyMainWindow = null;
   });
@@ -766,9 +783,9 @@ function createAppMenu() {
         },
         { type: 'separator' },
         {
-          label: 'View on GitHub',
+          label: 'Survey website',
           click: () => {
-            shell.openExternal('https://github.com/IsaiahCalvo/Survey');
+            shell.openExternal('https://surveytool.app');
           }
         }
       ]
@@ -1048,6 +1065,17 @@ ipcMain.handle('shell:openPath', async (event, filePath) => {
 
   // On other platforms, use the standard shell.openPath
   return await shell.openPath(filePath);
+});
+
+// The spelling rows of Survey's text-box menu (see 'editable-context-menu').
+ipcMain.handle('spelling:replace', async (event, word) => {
+  if (typeof word !== 'string' || !word) return false;
+  event.sender.replaceMisspelling(word);
+  return true;
+});
+ipcMain.handle('spelling:addWord', async (event, word) => {
+  if (typeof word !== 'string' || !word.trim()) return false;
+  return event.sender.session.addWordToSpellCheckerDictionary(word.trim());
 });
 
 ipcMain.handle('shell:openExternal', async (event, url) => {

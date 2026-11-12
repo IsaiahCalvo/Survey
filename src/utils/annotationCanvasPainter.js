@@ -21,6 +21,7 @@
  * free of React/fabric/DOM side effects.
  */
 import { calculateCalloutConnection } from './calloutGeometry.js';
+import { isLinkMark, linkMarkPaint } from './linkMarkPaint.js';
 import { calloutWrapsWords, textWrapsWords, wrapParagraph } from './textWrapMode.js';
 import { renderPathToSvgAttrs, renderPathToSvgD } from './svgPathAttrs.js';
 import {
@@ -30,6 +31,8 @@ import {
   calloutLineDashArray,
 } from './lineRenderHelpers.js';
 import { countWrappedLines, getLineEndpoints } from './svgBoundingBox.js';
+import { DIMENSION_CAPTION_BG_PAD_PT, DIMENSION_EXTENSION_PT, isDimensionMeasure } from './measure/dimensionLine.js';
+import { dimensionMarkLayout } from './measure/dimensionLayout.js';
 import { resolveAnnotationCloudSpec } from './pdfAnnotationAppearance.js';
 // UX 2026-09-09: clouds paint from the shared resolver (engine vertices with
 // scale baked in, translate + rotate frame, crown outline, scalloped fill) so
@@ -309,7 +312,30 @@ function paintArrowheadSpec(context, spec) {
   if (!spec || spec.kind === 'none') return;
   context.save();
   if (typeof context.setLineDash === 'function') context.setLineDash([]);
-  if (spec.kind === 'solidTriangle' || spec.kind === 'openTriangle') {
+  if (spec.kind === 'shapes') {
+    // Drawboard's heads (Nightly 'line-endings'): page-space paths and circles.
+    for (const shape of spec.shapes || []) {
+      context.beginPath();
+      if (shape.type === 'circle') {
+        context.arc(shape.cx, shape.cy, shape.r, 0, Math.PI * 2);
+      } else {
+        shape.points.forEach((p, i) => (i === 0 ? context.moveTo(p.x, p.y) : context.lineTo(p.x, p.y)));
+        if (shape.closed) context.closePath();
+      }
+      if (shape.fill && shape.fill !== 'none') {
+        context.fillStyle = shape.fill;
+        context.fill();
+      }
+      if (shape.stroke && shape.stroke !== 'none' && shape.strokeWidth > 0) {
+        context.strokeStyle = shape.stroke;
+        context.lineWidth = shape.strokeWidth;
+        context.lineJoin = 'miter';
+        context.miterLimit = 4;
+        context.lineCap = 'butt';
+        context.stroke();
+      }
+    }
+  } else if (spec.kind === 'solidTriangle' || spec.kind === 'openTriangle') {
     const headSize = Math.max(8, (spec.sw || 0) * 3);
     context.translate(spec.tipX, spec.tipY);
     context.rotate(((spec.angleDeg || 0) * Math.PI) / 180);
@@ -456,7 +482,7 @@ function drawPath(context, object, displayScale) {
   // was anti-aliased twice and thin lines drew 10-30% lighter than the
   // untouched original; a filled outline has one anti-aliased edge.
   const paperSource = object?.paperSourceStroke;
-  const paperSurvivors = object?.polygons;
+  const paperSurvivors = paperSource ? object?.polygons : null;
   if (
     Array.isArray(paperSource?.path)
     && paperSource.path.length > 0
@@ -501,6 +527,55 @@ function drawPath(context, object, displayScale) {
 // buildLineRenderSpec geometry (center-relative endpoints, curved branch,
 // triangle shaft shortening), dash on the shaft only, rotation about the
 // curve-inclusive bbox center.
+// Nightly 'measure-plus': the canvas twin of svgAnnotationRenderers'
+// renderDimensionLine (thumbnails, zoom proxy, eraser and the flattened
+// print draw the same offset line, chevrons, extension lines and caption).
+function paintDimensionLine(context, object, line, dash) {
+  const { lines, fontPt, lineHeight, captionWidth, captionHeight, geo, style } = dimensionMarkLayout(object, line);
+  if (!geo) return;
+  const stroke = line.stroke;
+  const sw = line.strokeWidth || 1;
+  const strokePoints = (points, width, cap = 'round') => {
+    context.beginPath();
+    points.forEach((p, i) => (i === 0 ? context.moveTo(p.x, p.y) : context.lineTo(p.x, p.y)));
+    context.strokeStyle = stroke;
+    context.lineWidth = width;
+    context.lineCap = cap;
+    context.lineJoin = 'round';
+    context.stroke();
+  };
+  const setDash = (d) => { if (typeof context.setLineDash === 'function') context.setLineDash(d); };
+  setDash([]);
+  geo.extensions.forEach((pair) => strokePoints(pair, DIMENSION_EXTENSION_PT, 'butt'));
+  if (geo.elbow) strokePoints(geo.elbow, DIMENSION_EXTENSION_PT, 'butt');
+  setDash(dash);
+  geo.segments.forEach((pair) => strokePoints(pair, sw, 'butt'));
+  setDash([]);
+  geo.chevrons.forEach((points) => strokePoints(points, sw));
+  if (!lines.length) return;
+  context.save();
+  context.translate(geo.caption.x, geo.caption.y);
+  context.rotate((geo.caption.angle * Math.PI) / 180);
+  if (style.bg) {
+    const prevAlpha = context.globalAlpha;
+    context.globalAlpha = (prevAlpha ?? 1) * style.bgOpacity;
+    context.fillStyle = style.bg;
+    context.fillRect(
+      -captionWidth / 2 - DIMENSION_CAPTION_BG_PAD_PT,
+      -captionHeight / 2 - DIMENSION_CAPTION_BG_PAD_PT / 2,
+      captionWidth + DIMENSION_CAPTION_BG_PAD_PT * 2,
+      captionHeight + DIMENSION_CAPTION_BG_PAD_PT,
+    );
+    context.globalAlpha = prevAlpha;
+  }
+  context.font = `${fontPt}px Helvetica`;
+  context.fillStyle = style.color || stroke;
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  lines.forEach((text, i) => context.fillText(text, 0, (i - (lines.length - 1) / 2) * lineHeight));
+  context.restore();
+}
+
 function drawLine(context, object) {
   const spec = buildLineRenderSpec(object);
   context.save();
@@ -542,6 +617,11 @@ function drawLine(context, object) {
     : [];
   if (typeof context.setLineDash === 'function') context.setLineDash(dash);
 
+  if (spec.kind !== 'curved' && isDimensionMeasure(object)) {
+    paintDimensionLine(context, object, spec.line, dash);
+    context.restore();
+    return;
+  }
   if (spec.kind === 'curved') {
     context.beginPath();
     traceCommandsInto(context, parseSvgPathD(spec.path.d));
@@ -1457,6 +1537,29 @@ export function drawAnnotationObject(context, object, displayScale = 1) {
   applyBlendAndOpacity(context, object);
   context.translate(toNumber(object.left), toNumber(object.top));
   applyRotation(context, toNumber(object.angle), effectiveWidth / 2, effectiveHeight / 2);
+
+  // Nightly 'link-tool', twin of renderRect's link branch: the see-through
+  // fill, then the border its style asks for (linkMarkPaint.js).
+  if (type === 'rect' && isLinkMark(object)) {
+    const paint = linkMarkPaint(object, effectiveWidth, effectiveHeight);
+    context.fillStyle = paint.fill;
+    context.fillRect(0, 0, effectiveWidth, effectiveHeight);
+    if (paint.strokeWidth > 0 && (paint.box || paint.underline)) {
+      context.beginPath();
+      if (paint.underline) {
+        context.moveTo(paint.underline.x1, paint.underline.y1);
+        context.lineTo(paint.underline.x2, paint.underline.y2);
+      } else {
+        context.rect(0, 0, effectiveWidth, effectiveHeight);
+      }
+      if (typeof context.setLineDash === 'function') context.setLineDash(paint.dash || []);
+      context.strokeStyle = paint.stroke;
+      context.lineWidth = paint.strokeWidth;
+      context.stroke();
+    }
+    context.restore();
+    return;
+  }
 
   const isEllipse = type === 'circle' || type === 'ellipse';
 

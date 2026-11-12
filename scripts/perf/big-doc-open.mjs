@@ -55,7 +55,7 @@ const DEVICES = {
 };
 
 // Injected before any app code: long-task log + a rAF probe for the milestones.
-const PROBE = () => {
+const PROBE = (pagesEv = false) => {
   const w = window;
   w.__bigOpen = { ev: [], t0: null, firstPage: null, marks: null, editable: null, longTasks: [], frames: [] };
   // A share-link open (?docId=) is timed from navigation start.
@@ -63,7 +63,7 @@ const PROBE = () => {
   const origLog = console.log;
   console.log = (...args) => {
     const text = String(args[0] ?? '');
-    if (w.__bigOpen.t0 != null && /LOAD-TRACE|OpenTiming|InteractionDiag/.test(text)) w.__bigOpen.ev.push(`${Math.round(performance.now() - w.__bigOpen.t0)} LOG ${text.replace(/%c|color:.*$/g, '').slice(0, 90)}`);
+    if (w.__bigOpen.t0 != null && /LOAD-TRACE|OpenTiming|InteractionDiag/.test(text)) w.__bigOpen.ev.push(`${Math.round(performance.now() - w.__bigOpen.t0)} LOG ${text.replace(/%c|color:.*$/g, '').slice(0, text.includes('accepted-build') ? 2000 : 90)}`);
     return origLog.apply(console, args);
   };
   try {
@@ -103,8 +103,23 @@ const PROBE = () => {
         const ready = el?.getAttribute('data-pdf-ready');
         const key = `cnt>0=${cnt > 0} gated=${gate} cover=${cov} pdfReady=${ready} canvas=${canvas?.width || 0}x${canvas?.height || 0}`;
         if (key !== s.lastKey) { s.lastKey = key; s.ev.push(`${Math.round(performance.now() - s.t0)} ${key}`); }
+        if (pagesEv) {
+          const pages = [...document.querySelectorAll('[data-overlay-page]')]
+            .map((o) => [o.getAttribute('data-overlay-page'), o.querySelectorAll('svg path, svg rect, svg ellipse, svg text').length])
+            .filter(([, n]) => n > 0).map(([p, n]) => `${p}:${n}`).join(',');
+          const drawnPages = [...document.querySelectorAll('.survey-pdfjs-page-div canvas.survey-pdfjs-page-canvas')]
+            .filter((c) => c.width > 0 && !(c.width === 300 && c.height === 150)).length;
+          const pk = `marks[${pages}] drawn=${drawnPages}`;
+          if (pk !== s.lastPagesKey) { s.lastPagesKey = pk; s.ev.push(`${Math.round(performance.now() - s.t0)} ${pk}`); }
+        }
       }
-      if (s.marks == null && host && host.querySelector('svg path, svg rect, svg ellipse, svg text, svg foreignObject')) s.marks = performance.now();
+      if (s.marks == null && host && host.querySelector('svg path, svg rect, svg ellipse, svg text, svg foreignObject')) {
+        s.marks = performance.now();
+        // Which pages had their marks built by then (page:shapes).
+        s.marksPages = [...document.querySelectorAll('[data-overlay-page]')]
+          .map((el) => [el.getAttribute('data-overlay-page'), el.querySelectorAll('svg path, svg rect, svg ellipse, svg text, svg foreignObject').length])
+          .filter(([, n]) => n > 0).map(([p, n]) => `${p}:${n}`).join(' ');
+      }
       // While the saved copy is only previewed, a blocker covers the page.
       if (s.marks != null && s.editable == null && overlay
         && overlay.getAttribute('data-annotation-hydration-gated') !== 'true'
@@ -246,7 +261,7 @@ async function openAndSettle(page, context, size, { profile = null } = {}) {
     const frames = s.frames.filter(([st]) => st >= s.t0 && st < interactive);
     const loafBlocking = frames.reduce((sum, [, , b]) => sum + b, 0);
     const loafLongest = frames.reduce((m, [, d]) => Math.max(m, d), 0);
-    return { ev: s.ev.join(' | '), loafBlocking, loafLongest, tasks: s.longTasks.filter(([st]) => st >= s.t0).map(([st, d]) => `${Math.round(st - s.t0)}+${Math.round(d)}`).join(' '), firstPage: s.firstPage - s.t0, marks: s.marks - s.t0, editable: s.editable - s.t0, interactive: interactive - s.t0, blocking, longest };
+    return { ev: s.ev.join(' | '), marksPages: s.marksPages, loafBlocking, loafLongest, tasks: s.longTasks.filter(([st]) => st >= s.t0).map(([st, d]) => `${Math.round(st - s.t0)}+${Math.round(d)}`).join(' '), firstPage: s.firstPage - s.t0, marks: s.marks - s.t0, editable: s.editable - s.t0, interactive: interactive - s.t0, blocking, longest };
   }, QUIET_MS, { timeout: 180_000, polling: 250 }).then((h) => h.jsonValue());
   if (process.env.TIMERS) {
     const frames = await page.evaluate(() => window.__slowFrames || []);
@@ -267,7 +282,7 @@ async function openAndSettle(page, context, size, { profile = null } = {}) {
 async function oneRun(browser, size, { profile = null } = {}) {
   const context = await browser.newContext(DEVICES[size]);
   await context.route((u) => !['data:', 'blob:'].includes(u.protocol) && !['127.0.0.1', 'localhost'].includes(u.hostname), (r) => r.abort('blockedbyclient'));
-  await context.addInitScript(PROBE);
+  await context.addInitScript(PROBE, Boolean(process.env.PAGES_EV));
   if (process.env.TIMERS) await context.addInitScript(TIMER_PROBE, Number(process.env.TIMERS) || 80);
   // FLAGS=a,b turns those feature flags on for the run (src/featureFlags.js).
   if (process.env.FLAGS) await context.addInitScript((keys) => { for (const k of keys) localStorage.setItem(`survey.flag.${k}`, '1'); }, process.env.FLAGS.split(','));
@@ -288,6 +303,24 @@ async function oneRun(browser, size, { profile = null } = {}) {
   await signIn(page);
   // With REOPEN=1, PROFILE records the reopen instead of the first open.
   let result = await openAndSettle(page, context, size, { profile: process.env.REOPEN ? null : profile });
+  if (process.env.EDIT) {
+    // EDIT=1: once open, draw one rectangle on page 1 (Rectangle tool, R)
+    // and report the long tasks and trace lines of the next 5 s.
+    await page.evaluate(() => {
+      const s = window.__bigOpen;
+      s.ev = []; s.t0 = performance.now(); window.__editTasks = [];
+      new PerformanceObserver((l) => { for (const e of l.getEntries()) window.__editTasks.push(Math.round(e.duration)); }).observe({ type: 'longtask' });
+    });
+    const box = await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').boundingBox();
+    await page.keyboard.press('r');
+    const from = { x: box.x + box.width * 0.3, y: box.y + box.height * 0.3 };
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    for (let i = 1; i <= 8; i += 1) await page.mouse.move(from.x + i * 12, from.y + i * 8);
+    await page.mouse.up();
+    await page.waitForTimeout(5000);
+    console.log(size, 'edit', JSON.stringify(await page.evaluate(() => ({ tasks: window.__editTasks, ev: window.__bigOpen.ev }))));
+  }
   if (process.env.REOPEN) {
     // REOPEN_WAIT_MS: stay on the document that long first (lets a streamed
     // open finish downloading, so the reopen reads this device's copy).

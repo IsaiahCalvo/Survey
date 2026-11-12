@@ -56,7 +56,12 @@ import {
   widthOfTextRunsAtSize,
 } from './pdfUnicodeText.js';
 import { deepClone } from './deepClone.js';
-import { buildMeasureLabel, getMeasureKind } from './measure/measureScale.js';
+import { buildMeasureLabel, getMeasureKind, layoutMeasureLabel } from './measure/measureScale.js';
+import { measureSegmentCaptions, polylengthTotalPlace } from './measure/segmentCaptions.js';
+import { isFeatureOn } from '../featureFlags.js';
+import { DIMENSION_CAPTION_BG_PAD_PT, DIMENSION_EXTENSION_PT, isDimensionMeasure } from './measure/dimensionLine.js';
+import { dimensionMarkLayout } from './measure/dimensionLayout.js';
+import { PDF_MEASURE_INTENT_BY_SUBTYPE, SURVEY_KIND_BY_PDF_SUBTYPE, pdfMeasureEntriesForScale } from './measure/pdfMeasureDict.js';
 import { normalizePresentationPdf, reflectPdfPagePresentations } from './pdfPagePresentation.js';
 import {
   PDF_COUNTER_METADATA_KEY,
@@ -103,7 +108,7 @@ import { createInkPathAffine } from './inkGeometryTransform.js';
 // Callout leader arrowheads export via the SAME shared spec the arrow tool,
 // SVG renderer, and canvas painter consume — one home for the head math
 // (buildArrowheadRenderSpec in lineRenderHelpers.js). Pure JS, Node-safe.
-import { ARROWHEAD_STYLES, buildArrowheadRenderSpec, buildCurvedLineBody, calloutLineDashArray, insetOpenPolylinePoints, lineEndingBodyInset, resolveLineEndingStyles } from './lineRenderHelpers.js';
+import { ARROWHEAD_STYLES, DRAWBOARD_HEAD_REACH, LINE_ENDING_SET_DRAWBOARD, arrowheadShapePathD, buildArrowheadRenderSpec, buildCurvedLineBody, calloutLineDashArray, insetOpenPolylinePoints, lineEndingBodyInset, resolveLineEndingStyles } from './lineRenderHelpers.js';
 import { polySplineStep, smoothPolylinePoints, trimPointsByLength } from './polySpline.js';
 import { getCounterLabelLayout } from './counterGeometry.js';
 import {
@@ -145,6 +150,9 @@ import {
 import { calculateCalloutConnection } from './calloutGeometry.js';
 import { computeLineBboxCenter, getLineEndpoints } from './svgBoundingBox.js';
 import { isPdfStampProxy, pngDataUrlToBytes } from './pdfStampProxy.js';
+import { jpegDataUrlToBytes } from './insertedImage.js';
+import { isLinkMark, linkMarkForPrint } from './linkMarkPaint.js';
+import { adaptLinkBox } from './pdfNativeExport/adapters/linkBox.js';
 import {
   getSymbol, isSymbolStamp, symbolStampBox, symbolStampStrokeWidth, transformSymbolPath,
 } from './symbolLibrary.js';
@@ -970,6 +978,22 @@ function measureContentsOf(fabricObj) {
     return String(label?.text || label?.reading || '');
   } catch {
     return '';
+  }
+}
+
+// A length / polylength / area measurement also writes the native PDF
+// measurement entries (/IT ...Dimension + /Measure with the sheet scale), so
+// Drawboard, Bluebeam and Acrobat read it as a measurement rather than a plain
+// line (KAL-539). Kinds with no native match (perimeter, wall area, volume)
+// keep only their /Contents reading.
+function nativeMeasureEntriesOf(fabricObj, subtype) {
+  try {
+    const kind = getMeasureKind(fabricObj);
+    if (!kind || SURVEY_KIND_BY_PDF_SUBTYPE[subtype] !== kind) return {};
+    const measure = pdfMeasureEntriesForScale(fabricObj?.data?.measure?.scale, pdfTextString);
+    return measure ? { IT: PDF_MEASURE_INTENT_BY_SUBTYPE[subtype], Measure: measure } : {};
+  } catch {
+    return {};
   }
 }
 
@@ -2441,8 +2465,10 @@ const polyJoinPad = (points, strokeWidth, closed) => {
 // sizes every style off max(8, strokeWidth * 3); the solid/open triangle is the
 // longest (2/3 of that beyond the tip). One generous number covers all nine.
 const lineEndingPad = (obj, strokeWidth) => {
-  const { startStyle, endStyle } = resolveLineEndingStyles(obj);
+  const { startStyle, endStyle, geometry } = resolveLineEndingStyles(obj);
   if (startStyle === ARROWHEAD_STYLES.NONE && endStyle === ARROWHEAD_STYLES.NONE) return 0;
+  // Drawboard's heads (Nightly 'line-endings') scale with the width alone.
+  if (geometry === LINE_ENDING_SET_DRAWBOARD) return DRAWBOARD_HEAD_REACH * strokeWidth + strokeWidth;
   return Math.max(8, strokeWidth * 3) + strokeWidth;
 };
 
@@ -2501,7 +2527,18 @@ const boundsOfPoints = (points, pad) => {
  * the box of the shape's BASE geometry (what /RD must point back to).
  * Returns null for a shape this appearance path does not handle.
  */
+// Nightly 'measure-plus': a measurement's reading pill and side captions are
+// part of its appearance box too.
 const plainAppearanceGeometry = (obj, fonts = null) => {
+  const geometry = plainAppearanceInkGeometry(obj, fonts);
+  if (!geometry?.bounds) return geometry;
+  const readings = measureReadingCorners(obj);
+  return readings.length
+    ? { ...geometry, bounds: unionAppBounds(geometry.bounds, boundsOfPoints(readings, 1)) }
+    : geometry;
+};
+
+const plainAppearanceInkGeometry = (obj, fonts = null) => {
   const type = String(obj?.type || '').toLowerCase();
   const strokeWidth = plainAppearanceStrokeWidth(obj);
   const halfStroke = strokeWidth / 2 + PLAIN_APPEARANCE_EXTRA_PAD;
@@ -2539,6 +2576,16 @@ const plainAppearanceGeometry = (obj, fonts = null) => {
     return { base, bounds: boundsOfPoints(points, pad) };
   }
   if (type === 'line') {
+    const dim = dimensionWorldLayout(obj);
+    if (dim) {
+      const line = resolveLineWorldGeometry(obj);
+      const inked = [
+        ...dim.extensions.flat(), ...dim.segments.flat(), ...dim.chevrons.flat(), ...(dim.elbow || []),
+      ];
+      const base = boundsOfPoints([{ x: line.x1, y: line.y1 }, { x: line.x2, y: line.y2 }, ...inked], 0);
+      const bounds = boundsOfPoints([...inked, ...dimensionCaptionCorners(dim)], strokeWidth / 2 + PLAIN_APPEARANCE_EXTRA_PAD);
+      return { base, bounds };
+    }
     const line = resolveLineWorldGeometry(obj);
     const points = [
       { x: line.x1, y: line.y1 },
@@ -2845,9 +2892,11 @@ const embedStampProxyImages = async (pdfDoc, objects, purpose) => {
     const source = obj.src || obj.dataUrl;
     if (stampImages.has(source)) continue;
     const pngBytes = pngDataUrlToBytes(source);
-    if (!pngBytes) continue;
+    // Nightly 'insert-image': a placed photo is kept as a JPEG.
+    const jpegBytes = pngBytes ? null : jpegDataUrlToBytes(source);
+    if (!pngBytes && !jpegBytes) continue;
     try {
-      stampImages.set(source, await pdfDoc.embedPng(pngBytes));
+      stampImages.set(source, pngBytes ? await pdfDoc.embedPng(pngBytes) : await pdfDoc.embedJpg(jpegBytes));
     } catch (error) {
       console.warn(`Failed to embed imported stamp PNG for ${purpose}:`, error);
     }
@@ -3480,6 +3529,7 @@ const createPolygonAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = 
       C: [color.red, color.green, color.blue],
       Border: [0, 0, fabricObj.strokeWidth || 1],
       Contents: pdfTextString(measureContentsOf(fabricObj)),
+      ...nativeMeasureEntriesOf(fabricObj, 'Polygon'),
       P: page.ref,
     };
 
@@ -3551,6 +3601,7 @@ const createPolyLineAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
       C: [color.red, color.green, color.blue],
       Border: [0, 0, fabricObj.strokeWidth || 1],
       Contents: pdfTextString(measureContentsOf(fabricObj)),
+      ...nativeMeasureEntriesOf(fabricObj, 'PolyLine'),
       P: page.ref,
     };
     // A cloud polyline exports as /PolyLine + /BE cloudy; it draws rounded end
@@ -3584,7 +3635,8 @@ const createPolyLineAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
 // write no /IC (ruled 2026-09-04: never swing the defect the other way).
 const applyLineEndingInteriorColor = (annotationDict, fabricObj, strokeColor) => {
   const { startStyle, endStyle, interiorColor } = resolveLineEndingStyles(fabricObj);
-  if (startStyle === ARROWHEAD_STYLES.SOLID_TRIANGLE || endStyle === ARROWHEAD_STYLES.SOLID_TRIANGLE) {
+  const filledHead = (style) => style === ARROWHEAD_STYLES.SOLID_TRIANGLE || style === ARROWHEAD_STYLES.R_CLOSED_ARROW;
+  if (filledHead(startStyle) || filledHead(endStyle)) {
     annotationDict.IC = [strokeColor.red, strokeColor.green, strokeColor.blue];
     return;
   }
@@ -3626,6 +3678,7 @@ const createLineAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {})
       C: [color.red, color.green, color.blue],
       Border: [0, 0, fabricObj.strokeWidth || 1],
       Contents: pdfTextString(measureContentsOf(fabricObj)),
+      ...nativeMeasureEntriesOf(fabricObj, 'Line'),
       P: page.ref,
     };
 
@@ -3992,6 +4045,9 @@ const ARROWHEAD_STYLE_TO_PDF_LINE_ENDING = {
   [ARROWHEAD_STYLES.DIAMOND]: 'Diamond',
   [ARROWHEAD_STYLES.SLASH]: 'Slash',
   [ARROWHEAD_STYLES.SQUARE]: 'Square',
+  // Nightly 'line-endings' (Drawboard's grid): the two reverse heads.
+  [ARROWHEAD_STYLES.R_OPEN_ARROW]: 'ROpenArrow',
+  [ARROWHEAD_STYLES.R_CLOSED_ARROW]: 'RClosedArrow',
 };
 
 // Default matches defaultCalloutStyle (Callout/types.js) and the SVG/canvas
@@ -5138,6 +5194,23 @@ const remapAnnotationRefToPageFrame = (pdfDoc, ref, matrix, remappedStreams = ne
 };
 
 /**
+ * Nightly 'link-tool': the /D array for a link to a page (/Fit) or to a box
+ * on it (/FitR, the box in that page's real user space). Null when the page
+ * is not in the file.
+ */
+const linkDestinationFor = (pdfDoc, pageSizes, pageNumber, box) => {
+  const target = pdfDoc.getPages()[Number(pageNumber) - 1];
+  if (!target) return null;
+  if (!box) return [target.ref, PDFName.of('Fit')];
+  const size = pageSizes?.[String(pageNumber)] || pageSizes?.[pageNumber];
+  const viewportHeight = Number(size?.height) || target.getHeight();
+  const virtualRect = [box.x, viewportHeight - (box.y + box.height), box.x + box.width, viewportHeight - box.y];
+  const matrix = getAnnotationPageFrameMatrix(target, viewportHeight);
+  const [l, b, r, t] = matrix ? mapPdfRectThroughMatrix(virtualRect, matrix) : virtualRect;
+  return [target.ref, PDFName.of('FitR'), ...[l, b, r, t].map((n) => PDFNumber.of(Math.round(n * 100) / 100))];
+};
+
+/**
  * Give one ALREADY-REGISTERED annotation dict the /AP /N form that `draw`
  * paints, plus the /Rect that form's box maps to.
  *
@@ -5333,6 +5406,24 @@ const drawArrowHead = (page, { x1, y1, x2, y2, pageHeight, color, width }) => {
 function drawFlattenedArrowheadSpec(page, spec, pageHeight) {
   if (!spec || spec.kind === 'none') return;
   const stroke = parsePdfDrawColor(spec.color || '#000000', '#000000');
+  if (spec.kind === 'shapes') {
+    // Drawboard's heads (Nightly 'line-endings'): one path per shape, mitre
+    // joins (the PDF default) and butt caps, filled heads painted only.
+    for (const shape of spec.shapes || []) {
+      const fill = shape.fill && shape.fill !== 'none' ? parsePdfDrawColor(shape.fill, null) : null;
+      const outlined = shape.stroke && shape.stroke !== 'none' && shape.strokeWidth > 0;
+      const paint = {
+        ...(fill ? { color: fill.color, opacity: fill.opacity } : {}),
+        ...(outlined ? { borderColor: stroke.color, borderOpacity: stroke.opacity, borderWidth: shape.strokeWidth, borderLineCap: LineCapStyle.Butt } : { borderWidth: 0 }),
+      };
+      if (shape.type === 'circle') {
+        page.drawCircle({ x: shape.cx, y: getPdfY(pageHeight, shape.cy), size: shape.r, ...paint });
+      } else {
+        drawSvgPathLinear(page, arrowheadShapePathD(shape), { x: 0, y: pageHeight, ...paint });
+      }
+    }
+    return;
+  }
   if (spec.kind === 'solidTriangle' || spec.kind === 'openTriangle') {
     // Same local triangle + rotation the shared spec's SVG transform encodes.
     const headSize = Math.max(8, (spec.sw || 0) * 3);
@@ -5415,7 +5506,266 @@ function drawFlattenedArrowheadSpec(page, spec, pageHeight) {
   }
 }
 
-const drawFlattenedLine = (page, obj, pageHeight) => {
+// Nightly 'measure-plus': a dimension line (a Length with data.measure.dim)
+// in WORLD space. The layout is worked out in the mark's own unturned frame,
+// exactly as the screen does it (dimensionMarkLayout: a dragged caption's
+// offset and its elbow live in that frame), then every point is turned by the
+// mark's angle about the clicked points' middle. Shared by the flattened
+// print, the /AP writer and the /AP box (plainAppearanceGeometry).
+const rotateAbout = (p, c, rad) => {
+  const cos = Math.cos(rad); const sin = Math.sin(rad);
+  const dx = p.x - c.x; const dy = p.y - c.y;
+  return { x: c.x + dx * cos - dy * sin, y: c.y + dx * sin + dy * cos };
+};
+const dimensionWorldLayout = (obj) => {
+  if (!isDimensionMeasure(obj)) return null;
+  const world = resolveLineWorldGeometry(obj);
+  if (world.midpoint) return null; // a bent line keeps its plain look
+  const angleDeg = Number(obj?.angle) || 0;
+  const rad = (angleDeg * Math.PI) / 180;
+  const c = { x: (world.x1 + world.x2) / 2, y: (world.y1 + world.y2) / 2 };
+  const a = rotateAbout({ x: world.x1, y: world.y1 }, c, -rad);
+  const b = rotateAbout({ x: world.x2, y: world.y2 }, c, -rad);
+  const layout = dimensionMarkLayout(obj, { x1: a.x, y1: a.y, x2: b.x, y2: b.y });
+  if (!layout?.geo) return null;
+  const turn = (p) => rotateAbout(p, c, rad);
+  const { geo } = layout;
+  return {
+    ...layout,
+    extensions: geo.extensions.map((pair) => pair.map(turn)),
+    segments: geo.segments.map((pair) => pair.map(turn)),
+    chevrons: geo.chevrons.map((points) => points.map(turn)),
+    elbow: geo.elbow ? geo.elbow.map(turn) : null,
+    caption: { ...turn(geo.caption), angle: geo.caption.angle + angleDeg },
+  };
+};
+
+// The caption box's four corners in world space (for the /AP box).
+const dimensionCaptionCorners = (dim) => {
+  if (!dim?.lines?.length) return [];
+  const hw = dim.captionWidth / 2 + DIMENSION_CAPTION_BG_PAD_PT; const hh = dim.captionHeight / 2 + DIMENSION_CAPTION_BG_PAD_PT;
+  const rad = (dim.caption.angle * Math.PI) / 180;
+  return [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]].map(([x, y]) => rotateAbout(
+    { x: dim.caption.x + x, y: dim.caption.y + y }, dim.caption, rad,
+  ));
+};
+
+// Helvetica (WinAnsi) has no prime marks; the plain ' and " read the same.
+const dimensionCaptionPrintText = (text) => String(text ?? '').replace(/′/g, "'").replace(/″/g, '"');
+
+// Nightly 'measure-plus': a measurement prints its reading as the screen
+// shows it - the pill (at its 100% zoom size, 12 pt) and, on a Polylength or
+// Perimeter, each side's caption. A dimension line draws its own caption.
+// Pill colours are the screen's (svgAnnotationLayer renderMeasureLabel).
+const MEASURE_PILL_FILL = '#ffffff';
+const MEASURE_PILL_EDGE = '#d1d5db';
+const MEASURE_PILL_TEXT = '#1f2937';
+// The flag check, as an object so a Node test (no Nightly build there) can
+// turn it on.
+export const measureReadingsPrintGate = { on: () => isFeatureOn('measure-plus') };
+const measurePrintReadings = (obj) => {
+  if (!obj?.data?.measure || obj.visible === false || isDimensionMeasure(obj)) return null;
+  if (!getMeasureKind(obj) || !measureReadingsPrintGate.on()) return null;
+  const pageScale = obj.data.measure.scale || null;
+  let label = null;
+  try { label = buildMeasureLabel(obj, pageScale); } catch { label = null; }
+  const totalAt = label ? polylengthTotalPlace(obj, pageScale) : null;
+  if (totalAt) label = { ...label, ...totalAt };
+  const pill = label ? layoutMeasureLabel(label, 1) : null;
+  let captions = [];
+  try { captions = measureSegmentCaptions(obj, obj.data.measure.ownScale ? obj.data.measure.scale : pageScale); } catch { captions = []; }
+  if (!pill && !captions.length) return null;
+  return { pill, captions };
+};
+
+// A turned box's corners (centre cx, cy; size w x h; angle in degrees).
+const turnedBoxCorners = (cx, cy, w, h, angle) => {
+  const rad = ((Number(angle) || 0) * Math.PI) / 180;
+  const c = { x: cx, y: cy };
+  return [[-w / 2, -h / 2], [w / 2, -h / 2], [w / 2, h / 2], [-w / 2, h / 2]]
+    .map(([x, y]) => rotateAbout({ x: cx + x, y: cy + y }, c, rad));
+};
+
+const measureCaptionHalo = (c) => c.fontPt * 0.2;
+const measureCaptionBox = (c) => ({
+  w: String(c.text).length * c.fontPt * 0.6 + 2 * measureCaptionHalo(c),
+  h: c.fontPt * 1.2 + 2 * measureCaptionHalo(c),
+});
+
+function measureReadingCorners(obj) {
+  const readings = measurePrintReadings(obj);
+  if (!readings) return [];
+  const out = [];
+  if (readings.pill) {
+    const { cx, cy, width, height, angle } = readings.pill;
+    out.push(...turnedBoxCorners(cx, cy, width, height, angle));
+  }
+  readings.captions.forEach((c) => {
+    const box = measureCaptionBox(c);
+    out.push(...turnedBoxCorners(c.x, c.y, box.w, box.h, c.angle));
+  });
+  return out;
+}
+
+// One run of text centred on (cx, cy), turned by `angle`.
+const drawCentredMeasureText = (page, pageHeight, text, { cx, cy, angle, size, font, color, opacity = 1, dx = 0, dy = 0 }) => {
+  const shown = dimensionCaptionPrintText(text);
+  let textWidth;
+  try { textWidth = font.widthOfTextAtSize(shown, size); } catch { return false; }
+  const centre = { x: cx, y: cy };
+  const origin = rotateAbout({ x: cx - textWidth / 2 + dx, y: cy + size * 0.35 + dy }, centre, ((Number(angle) || 0) * Math.PI) / 180);
+  try {
+    page.drawText(shown, {
+      x: origin.x,
+      y: getPdfY(pageHeight, origin.y),
+      size,
+      font,
+      color,
+      opacity,
+      rotate: degrees(-(Number(angle) || 0)),
+    });
+    return true;
+  } catch {
+    return false; // a character Helvetica can't draw: the reading stays in /Contents
+  }
+};
+
+function drawFlattenedMeasureReadings(page, obj, pageHeight, fonts, offset = { x: 0, y: 0 }) {
+  const readings = measurePrintReadings(obj);
+  if (!readings) return 0;
+  const ox = Number(offset?.x) || 0;
+  const oy = Number(offset?.y) || 0;
+  let drawn = 0;
+  const font = fonts?.bold || fonts?.regular || null;
+  const pill = readings.pill;
+  if (pill) {
+    // The pill: a rounded box (corners sampled) under the reading.
+    const r = Math.max(0, Math.min(pill.radius, pill.width / 2, pill.height / 2));
+    const hw = pill.width / 2; const hh = pill.height / 2;
+    const pts = [];
+    const arc = (cx, cy, from) => {
+      for (let i = 0; i <= 6; i += 1) {
+        const a = ((from + (90 * i) / 6) * Math.PI) / 180;
+        pts.push({ x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) });
+      }
+    };
+    arc(hw - r, hh - r, 0);
+    arc(-hw + r, hh - r, 90);
+    arc(-hw + r, -hh + r, 180);
+    arc(hw - r, -hh + r, 270);
+    const centre = { x: pill.cx + ox, y: pill.cy + oy };
+    const rad = (pill.angle * Math.PI) / 180;
+    const d = `${pts.map((p, i) => {
+      const q = rotateAbout({ x: centre.x + p.x, y: centre.y + p.y }, centre, rad);
+      return `${i ? 'L' : 'M'} ${q.x} ${q.y}`;
+    }).join(' ')} Z`;
+    const fill = parsePdfDrawColor(MEASURE_PILL_FILL, MEASURE_PILL_FILL);
+    const edge = parsePdfDrawColor(MEASURE_PILL_EDGE, MEASURE_PILL_EDGE);
+    drawSvgPathLinear(page, d, {
+      x: 0,
+      y: pageHeight,
+      color: fill.color,
+      opacity: 0.95,
+      borderColor: edge.color,
+      borderWidth: pill.fontSize / 12,
+    });
+    drawn += 1;
+    if (font) {
+      const ink = parsePdfDrawColor(MEASURE_PILL_TEXT, MEASURE_PILL_TEXT);
+      pill.lines.forEach((line, i) => {
+        const lineMid = (i - (pill.lines.length - 1) / 2) * pill.lineHeight;
+        const along = rotateAbout({ x: centre.x, y: centre.y + lineMid }, centre, rad);
+        if (drawCentredMeasureText(page, pageHeight, line, {
+          cx: along.x, cy: along.y, angle: pill.angle, size: pill.fontSize, font, color: ink.color,
+        })) drawn += 1;
+      });
+    }
+  }
+  const regular = fonts?.regular || null;
+  if (regular && readings.captions.length) {
+    // Side captions: the mark's colour on a white halo, as on screen.
+    const ink = parsePdfDrawColor(obj?.stroke || '#000000', '#000000') || parsePdfDrawColor('#000000');
+    const white = parsePdfDrawColor('#ffffff', '#ffffff');
+    readings.captions.forEach((c) => {
+      const base = { cx: c.x + ox, cy: c.y + oy, angle: c.angle, size: c.fontPt, font: regular };
+      const h = measureCaptionHalo(c);
+      [[-h, 0], [h, 0], [0, -h], [0, h], [-h * 0.7, -h * 0.7], [h * 0.7, -h * 0.7], [-h * 0.7, h * 0.7], [h * 0.7, h * 0.7]]
+        .forEach(([dx, dy]) => drawCentredMeasureText(page, pageHeight, c.text, { ...base, color: white.color, dx, dy }));
+      if (drawCentredMeasureText(page, pageHeight, c.text, { ...base, color: ink.color, opacity: ink.opacity ?? 1 })) drawn += 1;
+    });
+  }
+  return drawn;
+}
+
+const drawFlattenedDimensionLine = (page, obj, pageHeight, dim, fonts) => {
+  const stroke = parsePdfDrawColor(obj?.stroke || '#000000', '#000000') || parsePdfDrawColor('#000000');
+  const width = Math.max(0.5, Number(obj?.strokeWidth) || 1);
+  const dash = Array.isArray(obj?.strokeDashArray) && obj.strokeDashArray.length > 0
+    ? obj.strokeDashArray.map((v) => Number(v) || 0)
+    : null;
+  const stroke2 = (from, to, thickness, lineCap, dashed) => page.drawLine({
+    start: { x: from.x, y: getPdfY(pageHeight, from.y) },
+    end: { x: to.x, y: getPdfY(pageHeight, to.y) },
+    color: stroke.color,
+    thickness,
+    opacity: stroke.opacity,
+    lineCap,
+    ...(dashed ? { dashArray: dash, dashPhase: 0 } : {}),
+  });
+  const polyline = (points, thickness, lineCap, dashed = false) => {
+    for (let i = 1; i < points.length; i += 1) stroke2(points[i - 1], points[i], thickness, lineCap, dashed);
+  };
+  dim.extensions.forEach((pair) => polyline(pair, DIMENSION_EXTENSION_PT, LineCapStyle.Butt));
+  if (dim.elbow) polyline(dim.elbow, DIMENSION_EXTENSION_PT, LineCapStyle.Butt);
+  dim.segments.forEach((pair) => polyline(pair, width, LineCapStyle.Butt, Boolean(dash)));
+  dim.chevrons.forEach((points) => polyline(points, width, LineCapStyle.Round));
+  if (!dim.lines.length) return;
+  const rad = (dim.caption.angle * Math.PI) / 180;
+  if (dim.style.bg) {
+    const bg = parsePdfDrawColor(dim.style.bg, '#FFFFFF');
+    const hw = dim.captionWidth / 2 + DIMENSION_CAPTION_BG_PAD_PT;
+    const hh = dim.captionHeight / 2 + DIMENSION_CAPTION_BG_PAD_PT / 2;
+    const corners = [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]]
+      .map(([x, y]) => rotateAbout({ x: dim.caption.x + x, y: dim.caption.y + y }, dim.caption, rad));
+    const d = `${corners.map((p, i) => `${i ? 'L' : 'M'} ${p.x} ${p.y}`).join(' ')} Z`;
+    drawSvgPathLinear(page, d, { x: 0, y: pageHeight, color: bg.color, opacity: (bg.opacity ?? 1) * dim.style.bgOpacity, borderWidth: 0 });
+  }
+  const font = fonts?.regular;
+  if (!font) return;
+  const textColor = dim.style.color ? (parsePdfDrawColor(dim.style.color, '#000000') || stroke) : stroke;
+  const size = dim.fontPt;
+  dim.lines.forEach((raw, i) => {
+    const text = dimensionCaptionPrintText(raw);
+    let textWidth;
+    try { textWidth = font.widthOfTextAtSize(text, size); } catch { return; }
+    // Centred on the caption point like the screen's middle baseline: the
+    // glyphs' baseline sits about a third of an em below each line's middle.
+    const lineMid = (i - (dim.lines.length - 1) / 2) * dim.lineHeight;
+    const origin = rotateAbout(
+      { x: dim.caption.x - textWidth / 2, y: dim.caption.y + lineMid + size * 0.35 },
+      dim.caption,
+      rad,
+    );
+    try {
+      page.drawText(text, {
+        x: origin.x,
+        y: getPdfY(pageHeight, origin.y),
+        size,
+        font,
+        color: textColor.color,
+        opacity: textColor.opacity,
+        rotate: degrees(-dim.caption.angle),
+      });
+    } catch { /* a character Helvetica can't draw: the reading stays in /Contents */ }
+  });
+};
+
+const drawFlattenedLine = (page, obj, pageHeight, fonts = null) => {
+  const dim = dimensionWorldLayout(obj);
+  if (dim) {
+    drawFlattenedDimensionLine(page, obj, pageHeight, dim, fonts);
+    return;
+  }
   const stroke = parsePdfDrawColor(obj?.stroke || '#000000', '#000000') || parsePdfDrawColor('#000000');
   const width = Math.max(0.5, Number(obj?.strokeWidth) || 1);
   // Same resolution as the screen and the /AP writer (see
@@ -5432,8 +5782,8 @@ const drawFlattenedLine = (page, obj, pageHeight) => {
   // Shaft insets, round caps and bent bodies follow the screen exactly
   // (buildLineRenderSpec → lineEndingBodyInset / buildCurvedLineBody).
   const endingStyles = resolveLineEndingStyles(obj);
-  const startInset = lineEndingBodyInset(endingStyles.startStyle, width);
-  const endInset = lineEndingBodyInset(endingStyles.endStyle, width);
+  const startInset = lineEndingBodyInset(endingStyles.startStyle, width, endingStyles.geometry);
+  const endInset = lineEndingBodyInset(endingStyles.endStyle, width, endingStyles.geometry);
   const midpoint = resolvedMidpoint;
   const midpointOffset = midpoint
     ? (() => {
@@ -5483,7 +5833,7 @@ const drawFlattenedLine = (page, obj, pageHeight) => {
   // shared resolver as the screen, so print matches the screen).
   // Each head sits on the tangent at its own end (bent lines differ per end).
   const strokeHex = typeof obj?.stroke === 'string' ? obj.stroke : '#000000';
-  const headOptions = { fill: endingStyles.interiorColor };
+  const headOptions = { fill: endingStyles.interiorColor, geometry: endingStyles.geometry };
   drawFlattenedArrowheadSpec(page, buildArrowheadRenderSpec(endingStyles.endStyle, x2, y2, endAngleDeg, strokeHex, width, headOptions), pageHeight);
   drawFlattenedArrowheadSpec(page, buildArrowheadRenderSpec(endingStyles.startStyle, x1, y1, startAngleDeg, strokeHex, width, headOptions), pageHeight);
 };
@@ -6404,7 +6754,18 @@ const drawFlattenedSymbolStamp = (page, obj, pageHeight) => {
 };
 
 const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0 }, stampImages = new Map()) => {
+  const drawn = drawFlattenedObjectInk(page, obj, pageHeight, fonts, offset, stampImages);
+  return drawn ? drawn + drawFlattenedMeasureReadings(page, obj, pageHeight, fonts, offset) : drawn;
+};
+
+const drawFlattenedObjectInk = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0 }, stampImages = new Map()) => {
   if (!obj || typeof obj !== 'object') return 0;
+  // Nightly 'link-tool': a link prints its border only (no fill).
+  if (isLinkMark(obj)) {
+    const printed = linkMarkForPrint(obj);
+    if (!printed) return 1;
+    obj = printed;
+  }
   if (obj?.data?.type === 'text-markup' && Array.isArray(obj?.data?.quads)) {
     const color = parsePdfDrawColor(obj.fill, '#f4d35e')
       || parsePdfDrawColor(obj.stroke, '#f4d35e')
@@ -6777,7 +7138,7 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
     return 1;
   }
   if (type === 'line') {
-    drawFlattenedLine(page, shifted, pageHeight);
+    drawFlattenedLine(page, shifted, pageHeight, fonts);
     return 1;
   }
   if (type === 'polygon') return drawFlattenedPolygon(page, shifted, pageHeight, true) ? 1 : 0;
@@ -7793,6 +8154,10 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
     const exportHasTextAnnotation = (exportPlan.items || []).some((item) => (
       item?.type === 'callout'
       || ['textbox', 'text', 'i-text'].includes(String(item?.object?.type || '').toLowerCase())
+      // A dimension line's /AP draws its reading inline (Nightly 'measure-plus').
+      || isDimensionMeasure(item?.object)
+      // So does any measurement's reading pill (Nightly 'measure-plus').
+      || Boolean(measurePrintReadings(item?.object))
     ));
     const flattenFonts = exportHasTextAnnotation
       ? await embedFlattenFonts(pdfDoc, collectDrawnTextSamples(exportPlan.items || []))
@@ -7964,7 +8329,16 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
           break;
         case 'rect':
           // isSurveyMarkerType accepts both 'survey-marker' (new) and 'highlight' (legacy)
-          if (isSurveyMarkerType(item.type)) {
+          if (isLinkMark(obj)) {
+            // Nightly 'link-tool': a real /Link (URI, or GoTo a page / area).
+            annotRef = adaptLinkBox(obj, {
+              pdfDoc,
+              page,
+              pageHeight,
+              author: obj?.data?.authorName || null,
+              destinationFor: (targetPageNumber, box) => linkDestinationFor(pdfDoc, pageSizes, targetPageNumber, box),
+            });
+          } else if (isSurveyMarkerType(item.type)) {
             annotRef = createHighlightAnnotation(pdfDoc, page, obj, pageHeight, appAnnotationOptions);
           } else {
             annotRef = createSquareAnnotation(pdfDoc, page, obj, pageHeight, appAnnotationOptions);

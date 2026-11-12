@@ -116,6 +116,126 @@ test('new files work without a prior target', async (t) => {
   assert.equal(await fs.readFile(target, 'utf8'), 'new');
 });
 
+// Linear KAL-537 study ("Survey writer" probes, 11-11): the temporary name
+// used to be `<whole name>.survey-<uuid>.tmp`, so a valid 208-character name
+// failed with ENAMETOOLONG before anything was written.
+test('a valid long file name saves, because the temporary name does not grow with it', async (t) => {
+  const { directory } = await fixture(t);
+  const target = path.join(directory, `${'a'.repeat(240)}.pdf`);
+  await fs.writeFile(target, 'original', { mode: 0o640 });
+  assert.deepEqual(await createAtomicFileWriter()(target, 'next'), { success: true });
+  assert.equal(await fs.readFile(target, 'utf8'), 'next');
+  assert.deepEqual((await fs.readdir(directory)).sort(), [path.basename(target), 'plan.pdf'].sort());
+});
+
+test('a failed cleanup never hides the real error, and the leftover is named', async (t) => {
+  const { target } = await fixture(t);
+  let leftover = null;
+  const writer = createAtomicFileWriter({ filesystem: {
+    ...fs,
+    async rename(temporary) { leftover = temporary; throw Object.assign(new Error('disk said EIO'), { code: 'EIO' }); },
+    async unlink() { throw Object.assign(new Error('cleanup denied'), { code: 'EACCES' }); },
+  } });
+  const error = await writer(target, 'next').then(() => null, (e) => e);
+  assert.equal(error.code, 'EIO');
+  assert.equal(error.replaced, false);
+  assert.equal(error.cleanupError.code, 'EACCES');
+  assert.equal(error.leftoverTemporary, leftover);
+  assert.equal(await fs.readFile(target, 'utf8'), 'original');
+  await fs.rm(leftover, { force: true });
+});
+
+test('a failure after the new bytes are in place says so', async (t) => {
+  const { target } = await fixture(t);
+  const writer = createAtomicFileWriter({ platform: 'linux', filesystem: {
+    ...fs,
+    async open(file, flags, ...rest) {
+      if (flags === 'r') return { sync: async () => { throw Object.assign(new Error('folder flush failed'), { code: 'EIO' }); }, close: async () => {} };
+      return fs.open(file, flags, ...rest);
+    },
+  } });
+  const error = await writer(target, 'next').then(() => null, (e) => e);
+  assert.equal(error.code, 'EIO');
+  assert.equal(error.replaced, true);
+  assert.equal(await fs.readFile(target, 'utf8'), 'next');
+});
+
+test('a read-only file is not replaced behind its back', { skip: process.platform === 'win32' || process.getuid?.() === 0 ? 'root and Windows ignore the mode bits differently' : false }, async (t) => {
+  const { directory, target } = await fixture(t);
+  await fs.chmod(target, 0o444);
+  t.after(() => fs.chmod(target, 0o644).catch(() => {}));
+  await assert.rejects(createAtomicFileWriter()(target, 'next'), (error) => error.code === 'EACCES' && error.replaced === false);
+  assert.equal(await fs.readFile(target, 'utf8'), 'original');
+  assert.deepEqual(await fs.readdir(directory), ['plan.pdf']);
+});
+
+test('a read-only file is refused even when the folder is writable (mode check, any user)', async (t) => {
+  const { target } = await fixture(t);
+  let opened = false;
+  const writer = createAtomicFileWriter({ filesystem: {
+    ...fs,
+    async stat(file) { const real = await fs.stat(file); return { ...real, mode: (real.mode & ~0o777) | 0o444 }; },
+    async open(...args) { opened = true; return fs.open(...args); },
+  } });
+  await assert.rejects(writer(target, 'next'), (error) => error.code === 'EACCES');
+  assert.equal(opened, false);
+  assert.equal(await fs.readFile(target, 'utf8'), 'original');
+});
+
+// Two spellings of one file must not race: an older write finishing last
+// used to overwrite a newer one when the two spellings queued separately
+// (Target.pdf / target.pdf, composed / decomposed é, a symlinked folder).
+test('writes through a symlinked folder queue behind writes to the real folder', { skip: process.platform === 'win32' ? 'symlinks need admin on Windows' : false }, async (t) => {
+  const { directory, target } = await fixture(t);
+  const alias = `${directory}-alias`;
+  await fs.symlink(directory, alias, 'dir');
+  t.after(() => fs.rm(alias, { force: true }));
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  const order = [];
+  const writer = createAtomicFileWriter({ filesystem: {
+    ...fs,
+    async rename(from, to) {
+      const contents = await fs.readFile(from, 'utf8');
+      order.push(contents);
+      if (contents === 'older') await held;
+      return fs.rename(from, to);
+    },
+  } });
+  const older = writer(target, 'older');
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  const newer = writer(path.join(alias, 'plan.pdf'), 'newer');
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.deepEqual(order, ['older'], 'the newer write waits for the older one');
+  release();
+  await Promise.all([older, newer]);
+  assert.deepEqual(order, ['older', 'newer']);
+  assert.equal(await fs.readFile(target, 'utf8'), 'newer');
+});
+
+test('two spellings in one folder queue in call order', async (t) => {
+  const { directory } = await fixture(t);
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  const order = [];
+  const writer = createAtomicFileWriter({ filesystem: {
+    ...fs,
+    async rename(from, to) {
+      order.push(path.basename(to));
+      if (path.basename(to) === 'Target.pdf') await held;
+      return fs.rename(from, to);
+    },
+  } });
+  const first = writer(path.join(directory, 'Target.pdf'), 'older');
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  const second = writer(path.join(directory, 'target.pdf'), 'newer');
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.deepEqual(order, ['Target.pdf']);
+  release();
+  await Promise.all([first, second]);
+  assert.deepEqual(order, ['Target.pdf', 'target.pdf']);
+});
+
 test('both Electron save entry points use the packaged writer and preserve the path guard', async () => {
   const source = await fs.readFile(new URL('../src/electron-main.js', import.meta.url), 'utf8');
   const packageJson = JSON.parse(await fs.readFile(new URL('../package.json', import.meta.url), 'utf8'));

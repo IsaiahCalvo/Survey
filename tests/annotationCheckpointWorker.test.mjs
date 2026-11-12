@@ -15,7 +15,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import * as Y from 'yjs';
 
-import { openAnnotationDoc } from '../src/services/annotationDocSync.js';
+import { openAnnotationDoc, __test as syncTest } from '../src/services/annotationDocSync.js';
 import { createAnnotationOutbox, createMemoryAnnotationOutbox } from '../src/services/annotationDocOutbox.js';
 import { ANNOTATIONS_MAP, syncByPageToDoc } from '../src/services/annotationDocStore.js';
 import {
@@ -706,4 +706,147 @@ test('every 40 accepted rows the local compaction runs in the worker from the mi
   assert.equal(cloud.rows.length, 45);
   await handle.destroy();
   await idb.close();
+});
+
+test('a first open on this device saves its copy from the worker, not this thread', async () => {
+  // Another device wrote the marks and a checkpoint row.
+  const documentId = 'checkpoint-worker-open-receipt';
+  const cloud = createCloud(documentId);
+  const writer = await open(cloud, documentId, 'a');
+  await drawSome(writer, 2);
+  assert.equal(await writer.flushSnapshot(), true);
+  const written = writer.getByPage();
+  await writer.destroy();
+  __setCheckpointWorkerFactoryForTests(null);
+
+  // This device: empty IndexedDB, a checkpoint worker on the same database.
+  const idb = await idbPair();
+  const workers = [];
+  __setCheckpointWorkerFactoryForTests(() => {
+    const worker = new InProcessCheckpointWorker({ getOutbox: idb.getOutbox });
+    workers.push(worker);
+    return worker;
+  });
+  const handle = await open(cloud, documentId, 'b', { outboxStore: idb.page });
+  assert.deepEqual(markIds(handle.getByPage()), markIds(written), 'the open shows the marks');
+  let clean = null;
+  for (let i = 0; i < 100 && !clean?.checkpointUpdate; i += 1) {
+    await wait(50);
+    clean = await idb.page.loadCleanState(documentId, 'user-a');
+  }
+  assert.ok(workers[0].ops.includes('outbox-compact'), 'the receipt was written by the worker');
+  const rebuilt = createDetachedYDoc('rebuilt-open-receipt');
+  Y.applyUpdate(rebuilt, clean.checkpointUpdate);
+  const state = activeState(documentId);
+  assert.deepEqual(rebuilt.getMap(ANNOTATIONS_MAP).toJSON(), state.acceptedDoc.getMap(ANNOTATIONS_MAP).toJSON(), 'the saved copy is what the open accepted');
+  assert.equal(clean.snapshotIdentity?.atSeq, cloud.snapshot.at_seq, 'and it records the checkpoint row it holds');
+  assert.equal(clean.checkpointToken, state.cleanCheckpointToken, 'and this screen knows it is clean');
+  await handle.destroy();
+  await idb.close();
+});
+
+// Flag 'lazy-accepted-shadow' (2026-11-10): acceptedDoc stays unbuilt on the
+// main thread; the worker's mirror holds the same updates and answers for it.
+async function seededCloud(documentId) {
+  const cloud = createCloud(documentId);
+  __setCheckpointWorkerFactoryForTests(() => new InProcessCheckpointWorker());
+  const writer = await open(cloud, documentId, 'w');
+  await drawSome(writer, 2);
+  assert.equal(await writer.flushSnapshot(), true);
+  // A few rows after the checkpoint: the open applies a tail too.
+  const pages = writer.getByPage();
+  pages[1] = { objects: [...(pages[1]?.objects || []), rect('tail-1', 40)] };
+  writer.applyByPage(pages);
+  await writer.drain();
+  await writer.destroy();
+  return cloud;
+}
+
+test('lazy accepted shadow: open, edits and checkpoints never build acceptedDoc here, and store the same marks', async () => {
+  const documentId = 'checkpoint-worker-lazy-shadow';
+  const cloud = await seededCloud(documentId);
+  const workers = [];
+  __setCheckpointWorkerFactoryForTests(() => {
+    const worker = new InProcessCheckpointWorker();
+    workers.push(worker);
+    return worker;
+  });
+  const builds = syncTest.acceptedBuildCount();
+  const handle = await open(cloud, documentId, 'b', { lazyAcceptedShadow: true });
+  const state = activeState(documentId);
+  assert.ok(Array.isArray(state.acceptedUnbuilt), 'acceptedDoc is unbuilt after the open');
+  assert.ok(markIds(handle.getByPage()).includes('tail-1'), 'the open shows the snapshot and the tail');
+  await wait(20); // the worker's answer about the mirror
+  assert.ok(workers[0].ops.includes('mirror-state'), 'the worker answered for acceptedDoc');
+
+  await drawSome(handle, 2);
+  assert.equal(await handle.flushSnapshot(), true, 'checkpoint stored from the mirror');
+  assert.equal(syncTest.acceptedBuildCount(), builds, 'no build of acceptedDoc on this thread');
+  assert.ok(Array.isArray(state.acceptedUnbuilt), 'still unbuilt');
+  const expected = markIds(handle.getByPage());
+  const stored = createDetachedYDoc('lazy-shadow-stored');
+  Y.applyUpdate(stored, await storedUpdate(cloud));
+  await handle.destroy();
+  assert.equal(syncTest.acceptedBuildCount(), builds, 'closing does not build it either');
+
+  // Built now (outside the handle), the kept updates give what the cloud has.
+  __setCheckpointWorkerFactoryForTests(null);
+  const reopened = await open(cloud, documentId, 'c');
+  assert.deepEqual(markIds(reopened.getByPage()), expected, 'a reopen shows every mark');
+  assert.deepEqual(
+    stored.getMap(ANNOTATIONS_MAP).toJSON(),
+    activeState(documentId).acceptedDoc.getMap(ANNOTATIONS_MAP).toJSON(),
+    'the stored checkpoint is the accepted state',
+  );
+  await reopened.destroy();
+});
+
+test('lazy accepted shadow: a failing worker builds acceptedDoc from the kept updates, same bytes as before', async () => {
+  const documentId = 'checkpoint-worker-lazy-shadow-fails';
+  const cloud = await seededCloud(documentId);
+  __setCheckpointWorkerFactoryForTests(() => new InProcessCheckpointWorker({ failOps: new Set(['mirror-checkpoint']) }));
+  const builds = syncTest.acceptedBuildCount();
+  const handle = await open(cloud, documentId, 'b', { lazyAcceptedShadow: true });
+  const state = activeState(documentId);
+  await wait(20);
+  await drawSome(handle, 1);
+  assert.equal(await handle.flushSnapshot(), true, 'checkpoint stored from the main thread');
+  assert.equal(syncTest.acceptedBuildCount(), builds + 1, 'acceptedDoc was built once');
+  assert.equal(state.acceptedUnbuilt, null);
+  assert.equal(cloud.snapshot.snapshot, await legacyCheckpointHex(state.acceptedDoc), 'same bytes as the old path');
+  const expected = markIds(handle.getByPage());
+  await handle.destroy();
+  __setCheckpointWorkerFactoryForTests(null);
+  const reopened = await open(cloud, documentId, 'c');
+  assert.deepEqual(markIds(reopened.getByPage()), expected);
+  await reopened.destroy();
+});
+
+test('lazy accepted shadow: a reopen on the same device keeps acceptedDoc unbuilt too', async () => {
+  const documentId = 'checkpoint-worker-lazy-reopen';
+  const cloud = await seededCloud(documentId);
+  // One device: closing a handle closes its outbox, so each open gets its own
+  // connection to the same database.
+  const { IDBFactory } = await import('fake-indexeddb');
+  const indexedDb = new IDBFactory();
+  const outbox = () => createAnnotationOutbox({ indexedDb, timeoutMs: 5000 });
+  __setCheckpointWorkerFactoryForTests(() => new InProcessCheckpointWorker({ getOutbox: outbox }));
+  const firstOutbox = await outbox();
+  const first = await open(cloud, documentId, 'b', { outboxStore: firstOutbox, lazyAcceptedShadow: true });
+  const expected = markIds(first.getByPage());
+  let clean = null;
+  for (let i = 0; i < 100 && !clean?.checkpointUpdate; i += 1) {
+    await wait(50);
+    clean = await firstOutbox.loadCleanState(documentId, 'user-a');
+  }
+  assert.ok(clean?.checkpointUpdate, 'the first open saved its copy on this device');
+  await first.destroy();
+
+  const builds = syncTest.acceptedBuildCount();
+  const again = await open(cloud, documentId, 'b', { outboxStore: await outbox(), lazyAcceptedShadow: true });
+  assert.deepEqual(markIds(again.getByPage()), expected, 'the reopen shows every mark');
+  await wait(50);
+  assert.equal(syncTest.acceptedBuildCount(), builds, 'the reopen did not build acceptedDoc here');
+  assert.ok(Array.isArray(activeState(documentId).acceptedUnbuilt));
+  await again.destroy();
 });

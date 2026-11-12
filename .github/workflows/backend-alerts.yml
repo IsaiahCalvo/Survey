@@ -96,3 +96,7 @@ jobs:
         with:
           path: .backend-alerts-hour
           key: ${{ needs.due.outputs.key }}
+
+      - name: Publish public incident snapshot
+        if: always()
+        run: node scripts/publish-public-status.mjs

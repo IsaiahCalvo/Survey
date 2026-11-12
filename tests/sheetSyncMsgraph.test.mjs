@@ -6,7 +6,7 @@ import ExcelJS from 'exceljs';
 
 import {
   blankWorkbookBytes, cellValueForWrite, columnLetter, createMsGraphProvider, dropDownChoices, msgraphFileId,
-  columnRuns, parseMsgraphFileId, rowRuns, cellBlocks,
+  columnRuns, parseMsgraphFileId, rowRuns, cellBlocks, sparseBlocks,
 } from '../supabase/functions/_shared/sheetSync/providers/msgraph.js';
 
 const BASE = 'https://graph.test/v1.0';
@@ -159,7 +159,7 @@ function fakeGraph({ driveType = 'business' } = {}) {
       if (!used.length) return json(404, { error: { code: 'ItemNotFound' } });
       return json(200, { rowIndex: used[0], rowCount: used[used.length - 1] - used[0] + 1 });
     }
-    const range = /^\/range\(address='([^']+)'\)(\/delete|\/dataValidation)?/.exec(tail);
+    const range = /^\/range\(address='([^']+)'\)(\/delete|\/insert|\/dataValidation)?/.exec(tail);
     if (method === 'POST' && tail === '/freezePanes/freezeRows') { target.frozen = JSON.parse(init.body).count; return json(200, {}); }
     if (range && method === 'PATCH' && JSON.parse(init.body).columnHidden !== undefined) {
       // Graph answers a whole-column address with all 1,048,576 rows; the
@@ -177,6 +177,25 @@ function fakeGraph({ driveType = 'business' } = {}) {
     }
     if (range) {
       const a = parseAddress(range[1]);
+      if (method === 'POST' && range[2] === '/insert' && state.refuseInsert) {
+        return json(400, { error: { code: 'InvalidArgument', message: 'The argument is invalid or missing or has an incorrect format.' } });
+      }
+      if (method === 'POST' && range[2] === '/insert') {
+        // Insert cells, shift down: only the address's columns move.
+        assert.equal(JSON.parse(init.body).shift, 'Down');
+        const count = a.r2 - a.r1 + 1;
+        for (let r = target.cells.length - 1; r >= a.r1; r -= 1) {
+          for (let c = a.c1; c <= a.c2; c += 1) {
+            const v = target.cells[r]?.[c];
+            if (v == null || v === '') continue;
+            target.cells[r + count] = target.cells[r + count] || [];
+            target.cells[r + count][c] = v;
+            target.cells[r][c] = '';
+          }
+        }
+        state.cTag += 1;
+        return json(204);
+      }
       if (method === 'POST' && range[2]) {
         target.cells.splice(a.r1, a.r2 - a.r1 + 1);
         state.cTag += 1;
@@ -280,6 +299,9 @@ test('writes single cells and a formula-looking note stays text', async () => {
   ]);
   assert.deepEqual(s.cells[1], ['rid-1', 'D-1', '=not a formula', 'Pass']);
   assert.equal(graph.calls.filter((c) => c.startsWith('PATCH')).length, 1, 'neighbouring cells in one request');
+  // Asks for the address only: a sparse write can span 10,000 cells, and the
+  // whole range came back (252 KB for a 5,000-row column, real Graph 11-12).
+  assert.ok(graph.calls.filter((c) => c.startsWith('PATCH')).every((c) => c.includes('$select=address')), graph.calls.join(' | '));
   assert.notEqual(await p.getVersion(FILE), before, 'cTag moves after a write');
   const [rid, note] = await p.readCells(FILE, [
     { sheetId: s.id, row: 1, col: 0 }, { sheetId: s.id, row: 1, col: 2 },
@@ -299,8 +321,21 @@ test('appends under the last used row and deletes rows highest first', async () 
   ]);
   assert.deepEqual(s.cells.slice(5), [['rid-5', 'E'], ['rid-6', '']]);
   assert.deepEqual(blank.cells, [['h1', 'h2']]);
+  // Rows are inserted (shift Down) before they are written, so a PM's unsaved
+  // typing in that first empty row moves down instead of being lost.
+  const inserts = graph.calls.filter((c) => c.endsWith('/insert'));
+  assert.ok(inserts.some((c) => c.includes("range(address='A6:B7')")), inserts.join(' | '));
   await p.deleteRows(FILE, [{ sheetId: s.id, row: 1 }, { sheetId: s.id, row: 3 }]);
   assert.deepEqual(s.cells.map((r) => r[0]), ['Row ID', 'rid-2', 'rid-4', 'rid-5', 'rid-6']);
+});
+
+test('an append whose insert is refused still writes the rows under the list', async () => {
+  const graph = fakeGraph();
+  const s = graph.sheet('S', 0, [['Row ID', 'Item'], ['rid-1', 'A']]);
+  graph.addFile('ITEM1', [s]);
+  graph.refuseInsert = true;
+  await provider(graph).appendRows(FILE, [{ sheetId: s.id, title: 'S', rows: [['rid-2', 'B']], width: 2, listCols: 2 }]);
+  assert.deepEqual(s.cells.slice(2), [['rid-2', 'B']]);
 });
 
 test('reopens an expired session once and carries on', async () => {
@@ -524,6 +559,24 @@ test('cells one under another in the same columns go out as one block (300 notes
     { row: 5, col: 2, value: 'f' }, { row: 5, col: 3, value: 'g' },
   ]);
   assert.deepEqual(mixed.map((b) => [b.row, b.col, b.values.length, b.values[0].length]), [[4, 2, 1, 1], [1, 2, 2, 2], [5, 2, 1, 2]]);
+});
+
+test('scattered cells go out as one sparse write, null for every cell left alone', () => {
+  // 20 notes spread down 300 rows, plus a stamp beside one: one rectangle.
+  const cells = Array.from({ length: 20 }, (_, i) => ({ sheetId: 's', row: 5 + i * 13, col: 7, value: `n${i}` }));
+  cells.push({ sheetId: 's', row: 18, col: 5, value: 'IC' }, { sheetId: 's', row: 5, col: 7, value: 'last wins' });
+  const [one, ...rest] = sparseBlocks(cells);
+  assert.equal(rest.length, 0);
+  assert.deepEqual([one.row, one.col, one.values.length, one.values[0].length], [5, 5, 248, 3]);
+  assert.deepEqual(one.values[0], [null, null, "'last wins"]);
+  assert.deepEqual(one.values[1], [null, null, null]);
+  assert.deepEqual(one.values[13], ["'IC", null, "'n1"]);
+  assert.equal(one.values.flat().filter((v) => v !== null).length, 21);
+  // Blank stays a real write (it clears the cell); only cells not asked for are null.
+  assert.deepEqual(sparseBlocks([{ row: 1, col: 1, value: '' }])[0].values, [['']]);
+  // Over the size cap a new band starts, each spanning only its own columns.
+  const bands = sparseBlocks([{ row: 0, col: 0, value: 'a' }, { row: 3, col: 0, value: 'b' }, { row: 4, col: 9, value: 'c' }, { row: 9, col: 9, value: 'd' }], 8);
+  assert.deepEqual(bands.map((b) => [b.row, b.col, b.values.length, b.values[0].length]), [[0, 0, 4, 1], [4, 9, 6, 1]]);
 });
 
 test('a workbook the PM already has opens from its pasted link; folders, other files and bad links are told apart', async () => {

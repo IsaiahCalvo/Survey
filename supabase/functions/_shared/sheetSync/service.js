@@ -40,6 +40,8 @@ import { checkWatched, keepWatched, watchWrites } from './concurrent.js';
 import { bytesToPgHex, pgHexToBytes } from '../pgBytea.js';
 import { parseBody, s } from '../inputSchema.js';
 import { GUEST_REFUSED_MESSAGE, isGuestUser } from '../guestSession.js';
+// OneDrive files that save back ride this function's Microsoft sign-in.
+import { DRIVE_ACTIONS, DriveError, driveAction } from '../driveFiles/service.js';
 
 export const SHEET_SYNC_FLAG = 'sheet-team-sync';
 const MARKER_FIELDS_FLAG = 'survey-marker-fields';
@@ -253,7 +255,7 @@ export async function handleSheetSync(req, deps) {
     let raw;
     try { raw = await req.json(); } catch { return json({ error: 'invalid_json' }, 400); }
     const parsed = parseBody({
-      action: s.enum(['status', 'connect', 'claim', 'disconnect', 'link', 'sync', 'choose', 'unlink', 'folders', 'takeover', 'relink']),
+      action: s.enum(['status', 'connect', 'claim', 'disconnect', 'link', 'sync', 'choose', 'unlink', 'folders', 'takeover', 'relink', ...DRIVE_ACTIONS]),
       documentId: s.string({ max: 64, pattern: UUID, optional: true }),
       templateId: s.string({ max: 128, optional: true }),
       template: s.record({ maxBytes: 1024 * 1024, optional: true }),
@@ -277,6 +279,17 @@ export async function handleSheetSync(req, deps) {
       provider: s.enum(['google', 'msgraph'], { optional: true }),
       code: s.string({ max: 32, optional: true }),
       client: s.enum(['web', 'desktop', 'phone'], { optional: true }),
+      // OneDrive files that save back (driveFiles/service.js).
+      driveId: s.string({ max: 200, optional: true }),
+      itemId: s.string({ max: 200, optional: true }),
+      eTag: s.string({ max: 300, optional: true }),
+      sha: s.string({ max: 128, optional: true }),
+      // A late drivePushed confirm: when its push started (ISO time).
+      late: s.boolean({ optional: true }),
+      pushedAt: s.string({ max: 40, optional: true }),
+      check: s.boolean({ optional: true }),
+      syncMinutes: s.integer({ min: 1, max: 1440, optional: true }),
+      syncOff: s.boolean({ optional: true }),
     }, raw);
     if (!parsed.ok) return json({ error: 'invalid_request', detail: parsed.error }, 400);
 
@@ -294,6 +307,7 @@ export async function handleSheetSync(req, deps) {
       userDb: deps.createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: authHeader } }, auth: { persistSession: false } }),
       service,
     };
+    if (DRIVE_ACTIONS.includes(parsed.value.action)) return json(await driveAction(ctx));
     switch (parsed.value.action) {
       case 'status': return json(await statusFor(ctx));
       case 'connect': return json(ctx.provider === 'msgraph' ? await connectMicrosoft(ctx) : await connectGoogle(ctx));
@@ -309,7 +323,7 @@ export async function handleSheetSync(req, deps) {
       default: return json({ error: 'unknown_action' }, 400);
     }
   } catch (err) {
-    if (err instanceof SyncError) return json({ error: err.message, code: err.code }, err.status);
+    if (err instanceof SyncError || err instanceof DriveError) return json({ error: err.message, code: err.code }, err.status);
     log('unhandled', { name: err?.name, status: err?.status });
     return json({ error: 'Something went wrong syncing the sheet. Try again.' }, 500);
   }
@@ -838,6 +852,9 @@ const publicLink = (link, userId, role = null) => {
     ...(typeof link.state?.folderLabel === 'string' ? { folderLabel: link.state.folderLabel } : {}),
     status: link.status,
     lastRoundAt: link.last_round_at,
+    // How long ago by the server's clock: a phone or laptop with a wrong clock
+    // showed "Synced 3 h ago" (or "just now" forever) right after a round.
+    lastRoundAgoMs: link.last_round_at ? Math.max(0, Date.now() - Date.parse(link.last_round_at)) : null,
     lastError: link.last_error,
     isConnectionOwner: link.connection_user_id === userId,
     conflicts: editor ? Object.entries(link.state?.conflicts || {}).map(([markerId, c]) => ({ markerId, ...c })) : [],

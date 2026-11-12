@@ -396,7 +396,44 @@ const previewWidth = (width, max = PREVIEW_PAPER_STROKE_MAX) => clamp(Number(wid
 const dashFor = (style, width) => {
   if (style === 'dashed') return `${width * 3} ${width * 2}`;
   if (style === 'dotted') return `0.01 ${width * 2}`;
+  // Nightly 'line-dashes': the same 13 : 6 and 11 : 4 : 2 : 4 runs as the mark.
+  if (style === 'longDash') return `${width * 6.5} ${width * 3}`;
+  if (style === 'dashDot') return `${width * 5.5} ${width * 2} ${width} ${width * 2}`;
   return undefined;
+};
+
+/**
+ * A cloud (scalloped) outline through a closed ring of points, for the
+ * preview: each side is cut into bumps about `bump` long, each bump an arc
+ * bowing out of the shape. Points go clockwise on screen.
+ */
+export function cloudPreviewPath(points, bump = 10) {
+  if (!Array.isArray(points) || points.length < 3) return '';
+  const ring = [...points, points[0]];
+  let d = `M${ring[0][0].toFixed(2)} ${ring[0][1].toFixed(2)}`;
+  for (let i = 0; i < ring.length - 1; i += 1) {
+    const [x1, y1] = ring[i];
+    const [x2, y2] = ring[i + 1];
+    const len = Math.hypot(x2 - x1, y2 - y1);
+    if (len < 0.01) continue;
+    const n = Math.max(1, Math.round(len / bump));
+    const r = (len / n) / 2 * 1.08;
+    for (let k = 1; k <= n; k += 1) {
+      const x = x1 + ((x2 - x1) * k) / n;
+      const y = y1 + ((y2 - y1) * k) / n;
+      d += ` A${r.toFixed(2)} ${r.toFixed(2)} 0 0 1 ${x.toFixed(2)} ${y.toFixed(2)}`;
+    }
+  }
+  return `${d} Z`;
+}
+
+const PREVIEW_RINGS = {
+  rect: [[98, 9], [222, 9], [222, 39], [98, 39]],
+  polygon: [[118, 38], [106, 18], [150, 8], [210, 14], [206, 38]],
+  ellipse: Array.from({ length: 16 }, (_, i) => {
+    const a = (i / 16) * Math.PI * 2;
+    return [160 + 62 * Math.cos(a), 24 + 15 * Math.sin(a)];
+  }),
 };
 
 /**
@@ -426,7 +463,9 @@ export function SheetPreview({ kind, stroke, fill, width, lineStyle, arrowhead =
   } else if (kind === 'shape') {
     const sw = Math.min(w, 8);
     const common = { fill, stroke, strokeWidth: sw, strokeDasharray: dashFor(lineStyle, sw), strokeLinejoin: 'round', strokeLinecap: lineStyle === 'dotted' ? 'round' : 'butt' };
-    body = shape === 'ellipse'
+    body = lineStyle === 'cloud'
+      ? <path d={cloudPreviewPath(PREVIEW_RINGS[shape] || PREVIEW_RINGS.rect)} data-preview-cloud="true" {...common} strokeDasharray={undefined} strokeLinecap="round" />
+      : shape === 'ellipse'
       ? <ellipse cx="160" cy="24" rx="62" ry="15" {...common} />
       : shape === 'polygon'
         ? <path d="M118 38 L106 18 L150 8 L210 14 L206 38 Z" {...common} />

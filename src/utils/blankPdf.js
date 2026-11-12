@@ -8,6 +8,9 @@
  * 100-page ARCH D grid stays small.
  */
 
+import { templateMarks } from '../home/paperTemplates.js';
+import { drawPaperOnPdfPage } from './blankPagePaper.js';
+
 const MM = 72 / 25.4;
 
 export const BLANK_PAGE_SIZES = Object.freeze([
@@ -103,19 +106,15 @@ export async function buildBlankPdf({ title = 'Blank document', sizeId = 'letter
   doc.setCreationDate(now);
   doc.setModificationDate(now);
 
-  const marks = paperMarks(paper, box, metric);
+  // A paper template from Home > New (flag 'home-templates') has its own
+  // marks (home/paperTemplates.js); the four basic papers keep theirs.
+  const basic = BLANK_PAPERS.some((p) => p.id === paper);
+  const marks = basic ? paperMarks(paper, box, metric) : templateMarks(paper, box, metric);
   let pattern = null;
   if (marks.length) {
     const scratch = await PDFDocument.create();
     const sheet = scratch.addPage([box.width, box.height]);
-    const color = rgb(0.72, 0.8, 0.9);
-    for (const m of marks) {
-      if (m.kind === 'line') {
-        sheet.drawLine({ start: { x: m.x1, y: m.y1 }, end: { x: m.x2, y: m.y2 }, thickness: 0.5, color });
-      } else {
-        sheet.drawLine({ start: { x: m.x, y: m.y }, end: { x: m.x, y: m.y }, thickness: 1.6, color, lineCap: LineCapStyle.Round });
-      }
-    }
+    drawPaperOnPdfPage(sheet, marks, { rgb, LineCapStyle });
     pattern = await doc.embedPage(sheet);
   }
   for (let i = 0; i < count; i += 1) {

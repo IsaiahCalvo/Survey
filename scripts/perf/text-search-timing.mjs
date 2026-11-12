@@ -17,6 +17,7 @@
 // PROFILE=<file.cpuprofile> saves a CPU profile of the last query.
 // PHONE=iphone|pixel runs it at phone size with touch (mobile web layout);
 // APP=ios|android adds the phone-app shell's marker (mobile app layout).
+// REOPEN=1 times a second open of the file (its text kept on the device).
 import fs from 'node:fs';
 import { chromium, devices } from '@playwright/test';
 
@@ -42,6 +43,7 @@ async function run(browser) {
   // Local e2e stack accounts only; every non-local request is aborted.
   await context.route((u) => !['data:', 'blob:'].includes(u.protocol) && !['127.0.0.1', 'localhost'].includes(u.hostname), (r) => r.abort('blockedbyclient'));
   const page = await context.newPage();
+  if (process.env.LOG) page.on('console', (m) => { if (m.text().includes(process.env.LOG)) console.log(m.text()); });
   if (NET) {
     const [latency, mbps] = NET.split('/').map(Number);
     const cdp = await context.newCDPSession(page);
@@ -55,12 +57,26 @@ async function run(browser) {
   await dialog.getByLabel('Password').fill('E2e-local-only-123!');
   await dialog.getByRole('button', { name: 'Sign in', exact: true }).click();
   await dialog.waitFor({ state: 'hidden', timeout: 60_000 });
-  await page.getByText(DOC_NAME, { exact: true }).filter({ visible: true }).first().click();
-  const t0 = Date.now();
-  // A phone opens the file on the tap; desktop asks "Open file".
-  if (!PHONE) await page.getByRole('button', { name: 'Open file' }).first().click();
+  const pageDrawn = () => page.waitForFunction(() => [...document.querySelectorAll('.survey-pdfjs-page-div canvas')].some((c) => c.width > 300), null, { timeout: 120_000, polling: 50 });
+  let t0;
+  if (process.env.REOPEN) {
+    // REOPEN=1: open once (by link) and let the text read-ahead finish (and
+    // be kept on the device), then load the link again and time that open.
+    const link = `${BASE}/?docId=${process.env.BIG_DOC_ID || 'e2eb1600-0000-4000-8000-000000000201'}`;
+    await page.goto(link);
+    await pageDrawn();
+    await page.waitForFunction(() => performance.getEntriesByName('survey-search-text-read').length > 0, null, { timeout: 180_000, polling: 250 });
+    await page.waitForTimeout(4000);
+    t0 = Date.now();
+    await page.goto(link);
+  } else {
+    await page.getByText(DOC_NAME, { exact: true }).filter({ visible: true }).first().click();
+    t0 = Date.now();
+    // A phone opens the file on the tap; desktop asks "Open file".
+    if (!PHONE) await page.getByRole('button', { name: 'Open file' }).first().click();
+  }
   // Page 1 drawn: its canvas grew past the default size.
-  await page.waitForFunction(() => [...document.querySelectorAll('.survey-pdfjs-page-div canvas')].some((c) => c.width > 300), null, { timeout: 120_000, polling: 50 });
+  await pageDrawn();
   const firstPage = Date.now() - t0;
   const pageAt = await page.evaluate(() => performance.now());
   await page.waitForTimeout(WAIT_MS);
@@ -88,6 +104,7 @@ async function run(browser) {
     const t = await page.evaluate(() => performance.now());
     await page.keyboard.type(query, { delay: 0 });
     const typedAt = await page.evaluate(() => performance.now());
+    if (process.env.LOG) console.log("[typed]", Math.round(typedAt));
     const r = await page.evaluate(({ typedAt, query }) => new Promise((resolve) => {
       const res = { typingMs: Math.round(typedAt - 0) };
       const tick = () => {

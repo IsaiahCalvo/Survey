@@ -12,6 +12,7 @@
 // rolled back (state and view) and the user is told.
 
 import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { pagePaper } from '../utils/blankPagePaper.js';
 import { showToast } from '../utils/toast';
 import { createPageMutationFile } from '../utils/pageMutationFile.js';
 import { readPageMutationBytes, isSamePageMutationVersion } from '../utils/pageMutationSource.js';
@@ -106,6 +107,10 @@ export function usePageOperations({
   // () => message | null — a reason page changes are refused right now
   // (another window is changing this document's pages; utils/pageOpSync.js).
   blocked = null,
+  // () => boolean — pages as records (Nightly 'page-records',
+  // utils/pageRecords.js): the page list is saved with the marks by the
+  // viewer's applyPageView, so there is no PDF rewrite and no upload.
+  recordsMode = null,
   flushDelayMs = FLUSH_DELAY_MS,
 }) {
   // Undo / Redo (utils/pageOperationHistory.js): every page change the user
@@ -430,6 +435,7 @@ export function usePageOperations({
       }
       if (nextState) commitPageState(nextState, step?.commitOperation || operation, historyStep);
       pageStateRef.current = { base: fromGetter, next: nextState };
+      if (typeof recordsMode === 'function' && recordsMode()) return true;
       pendingRef.current.push({ operation: step?.commitOperation || operation, pdfOperation, stateBefore: sourceState, viewBefore });
       publishStatus();
       scheduleFlush();
@@ -439,7 +445,14 @@ export function usePageOperations({
       showToast(`Error ${errorVerb} page: ${error.message}`, 'error');
       return false;
     }
-  }, [applyPageView, blocked, commitPageState, getPageSize, getPageState, onUpdatePDFFile, publishStatus, scheduleFlush]);
+  }, [applyPageView, blocked, commitPageState, getPageSize, getPageState, onUpdatePDFFile, publishStatus, recordsMode, scheduleFlush]);
+
+  // Another window changed this document's pages (pages as records): the
+  // steps kept here name the old page numbers, so they can't be taken back.
+  const resetPageSteps = useCallback(() => {
+    historyRef.current = new Map();
+    pageStateRef.current = null;
+  }, []);
 
   // Undo / Redo one page step (the viewer's timeline calls these). Returns
   // false when the step is no longer known (another document version was
@@ -599,10 +612,13 @@ export function usePageOperations({
   ), [runMutation]);
 
   // afterPageNumber 0 adds the blank above page 1. Its size is the page
-  // above it (or page 1 at the top): utils/blankPageSize.js.
-  const handleInsertBlankPage = useCallback((afterPageNumber) => (
-    runMutation({ type: 'insert', afterPage: Math.max(0, Number(afterPageNumber) || 0) }, 'inserting')
-  ), [runMutation]);
+  // above it (or page 1 at the top): utils/blankPageSize.js. `paper` (Nightly
+  // 'page-templates') is a paper template id the new page is drawn with.
+  const handleInsertBlankPage = useCallback((afterPageNumber, paper = null) => {
+    const operation = { type: 'insert', afterPage: Math.max(0, Number(afterPageNumber) || 0) };
+    if (pagePaper(paper)) operation.paper = paper;
+    return runMutation(operation, 'inserting');
+  }, [runMutation]);
 
   return {
     handleDuplicatePage,
@@ -625,5 +641,6 @@ export function usePageOperations({
     // Resolves (with the newest File) once every page change on screen is in
     // the PDF bytes — export/print read the bytes, so they wait for it.
     flushPageOperations: flush,
+    resetPageSteps,
   };
 }

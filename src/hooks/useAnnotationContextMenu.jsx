@@ -71,6 +71,7 @@ import { keyboardControlProps } from '../utils/keyboardActivation.js';
 import { menuKeyHint } from '../utils/menuKeyHints.js';
 import { shortcutBinding } from '../utils/customKeyboardShortcuts.js';
 import { marksHidden } from '../utils/marksHidden.js';
+import { DIMENSION_LEADER_PT, dimensionCaptionOffset, dimensionCaptionTurn, dimensionLeader, isDimensionMeasure } from '../utils/measure/dimensionLine.js';
 
 // w61: `getPageObjects(pageNumber)` (optional) returns the page's mark list,
 // so the menu can note which marks it was opened on (by id) and still act on
@@ -922,6 +923,37 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           runDelete();
         }, menuObjEditable),
         ...lockMenuItems(menuObj ? [{ obj: menuObj }] : [], { indices: [ctx.annotationIndex] }),
+        // measure-plus (Drawboard's right-click): a dimension line's leader
+        // goes back to the default offset, in one undo step.
+        ...(isDimensionMeasure(menuObj) ? [item('Reset leader line', 'resetLeaderLine', () => {
+          const page = annotationsByPageRef.current?.[ctx.pageNumber];
+          const target = page?.objects?.[ctx.annotationIndex];
+          if (!isDimensionMeasure(target) || !canModifyObj(target)) return;
+          const next = deepClone(page);
+          const measure = next.objects[ctx.annotationIndex].data.measure;
+          measure.dim = { ...measure.dim, leader: DIMENSION_LEADER_PT };
+          handleSaveAnnotations(ctx.pageNumber, next, {
+            source: 'object:modified',
+            action: 'leader-reset',
+            checkpointPolicy: 'normal',
+          });
+        }, menuObjEditable && dimensionLeader(menuObj) !== DIMENSION_LEADER_PT),
+        item('Reset caption position', 'resetCaptionPosition', () => {
+          const page = annotationsByPageRef.current?.[ctx.pageNumber];
+          const target = page?.objects?.[ctx.annotationIndex];
+          if (!isDimensionMeasure(target) || !canModifyObj(target)) return;
+          const next = deepClone(page);
+          const measure = next.objects[ctx.annotationIndex].data.measure;
+          const dim = { ...measure.dim };
+          delete dim.captionOffset;
+          delete dim.captionTurn;
+          measure.dim = dim;
+          handleSaveAnnotations(ctx.pageNumber, next, {
+            source: 'object:modified',
+            action: 'caption-reset',
+            checkpointPolicy: 'normal',
+          });
+        }, menuObjEditable && Boolean(dimensionCaptionOffset(menuObj) || dimensionCaptionTurn(menuObj)))] : []),
         sep(),
         // UX: z-order — mirrors Illustrator/Figma/Photoshop placement
         // (flat block after Delete, above Group). Handler resolves each
@@ -1276,6 +1308,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         ...buildCanvasPageItems({
           available: availableActions(pageMenu.handlers),
           canPasteInPlace: !pasteBlocked && Boolean(familyClipboard),
+          canUnlockAll: Boolean(pageMenu.canUnlockAll?.(ctx.pageNumber)),
           readOnly: pageMenuReadOnly,
         }),
         // Read-only / viewer: no page operation (they all edit).
@@ -1287,6 +1320,10 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           clipboardPage: pageMenu.clipboardPage,
           clipboardType: pageMenu.clipboardType,
           hasTransform: pageHasTransform(pageMenu.pageTransformations?.[ctx.pageNumber]),
+          // Nightly 'page-menu-extras': Move page up / down here too.
+          move: typeof pageMenu.handlers?.move === 'function'
+            ? { canUp: ctx.pageNumber > 1, canDown: ctx.pageNumber < (pageMenu.pageCount || 0) }
+            : null,
           available: availableActions(pageMenu.handlers),
           // Phone: the same compact rows as the Pages tab's menu.
           compact: Boolean(mobileMode),

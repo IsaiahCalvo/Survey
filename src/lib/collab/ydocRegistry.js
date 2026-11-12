@@ -100,6 +100,11 @@ export function purgeYDoc(key) {
   return true;
 }
 
+/** How many open handles hold this key now (0 when none). */
+export function ydocRefCount(key) {
+  return REGISTRY.get(key)?.refCount ?? 0;
+}
+
 /**
  * TEST-ONLY: remove an entry from the registry without destroying the doc.
  * Used by tests/phase27/ydocRegistry.test.mjs to isolate test state.

@@ -16,6 +16,7 @@
 // shows what the rewritten bytes will contain.
 
 import { blankPageReferencePage, blankPageSize } from './blankPageSize.js';
+import { composeTransforms, drawPaperOnCanvas, pagePaper, pagePaperMarks } from './blankPagePaper.js';
 
 const VIEW = Symbol('surveyPageView');
 let viewSeq = 0;
@@ -36,7 +37,7 @@ export function getPageViewBase(doc) {
 export function pageViewKey(doc, pageIndex) {
   const entry = doc?.[VIEW]?.entries?.[pageIndex];
   if (!entry) return String(pageIndex);
-  if (entry.blank) return `blank:${Math.round(entry.blank.width)}x${Math.round(entry.blank.height)}`;
+  if (entry.blank) return `blank:${Math.round(entry.blank.width)}x${Math.round(entry.blank.height)}${entry.blank.paper ? `:${entry.blank.paper}` : ''}`;
   return entry.rot ? `${entry.src - 1}r${entry.rot}` : String(entry.src - 1);
 }
 
@@ -112,7 +113,7 @@ function makeBlankPage(entry, pageNumber, getViewportImpl) {
         convertToPdfPoint: (x, y) => [x / scale, height - y / scale],
       };
     },
-    render({ canvasContext, viewport } = {}) {
+    render({ canvasContext, viewport, transform } = {}) {
       try {
         if (canvasContext && viewport) {
           canvasContext.save();
@@ -120,6 +121,12 @@ function makeBlankPage(entry, pageNumber, getViewportImpl) {
           canvasContext.fillStyle = '#ffffff';
           canvasContext.fillRect(0, 0, canvasContext.canvas.width, canvasContext.canvas.height);
           canvasContext.restore();
+          // A template page (Nightly 'page-templates') draws its paper too.
+          const marks = pagePaperMarks(entry.blank.paper, entry.blank);
+          if (marks.length && Array.isArray(viewport.transform)) {
+            const outer = Array.isArray(transform) && transform.length === 6 ? transform : [1, 0, 0, 1, 0, 0];
+            drawPaperOnCanvas(canvasContext, marks, composeTransforms(outer, viewport.transform));
+          }
         }
       } catch { /* a blank page never fails to render */ }
       return { promise: Promise.resolve(), cancel() {}, onContinue: null };
@@ -289,7 +296,9 @@ export function applyPageViewOperation(doc, operation, options = {}) {
     if (media && turn != null) blank = blankPageSize({ ...media, rotation: turn });
     else if (reference.size) blank = { width: reference.size.width, height: reference.size.height };
     else blank = blankPageSize({ ...(media || {}), rotation: reference.rot || 0 });
-    entries.splice(after + 1, 0, { src: null, rot: 0, blank, size: { ...blank }, media: { ...blank }, baseRotate: 0 });
+    const paper = pagePaper(operation.paper);
+    if (paper) blank = { ...blank, paper };
+    entries.splice(after + 1, 0, { src: null, rot: 0, blank, size: { width: blank.width, height: blank.height }, media: { width: blank.width, height: blank.height }, baseRotate: 0 });
   } else if (type === 'restore') {
     // Undo of a delete: the removed page goes back as it was (pageViewEntry).
     const after = slotIndexOf(operation.afterPage, count, 'afterPage');
@@ -329,5 +338,64 @@ export function applyPageViewOperation(doc, operation, options = {}) {
     throw new Error(`Unsupported PDF page mutation: ${type}`);
   }
 
+  return buildView(base, entries);
+}
+
+// The records a document shows (utils/pageRecords.js): `{ src, rot, blank }`
+// per page in view order. A base document shows its own pages, unturned.
+export function pageViewRecords(doc) {
+  const entries = doc?.[VIEW]?.entries;
+  if (!entries) {
+    const count = Number(doc?.numPages) || 0;
+    return Array.from({ length: count }, (_, index) => ({ src: index + 1, rot: 0, blank: null }));
+  }
+  return entries.map((entry) => ({
+    src: entry.blank ? null : entry.src,
+    rot: normRotation(entry.rot || 0),
+    // A template page keeps its paper (Nightly 'page-templates').
+    blank: entry.blank
+      ? { width: entry.blank.width, height: entry.blank.height, ...(entry.blank.paper ? { paper: entry.blank.paper } : {}) }
+      : null,
+  }));
+}
+
+// A NEW view over `doc`'s base document that shows `records` (another
+// window's page list, or the list saved with the document). What is known
+// about each source page (its unturned size, media box and own rotation) is
+// carried over from `doc`'s entries, or from `options` for a base document.
+export function pageViewFromRecords(doc, records, options = {}) {
+  const base = getPageViewBase(doc);
+  if (!base || !Array.isArray(records) || records.length === 0) throw new Error('No pages to show.');
+  const known = new Map();
+  const current = isPageViewDocument(doc) ? doc[VIEW].entries : createPageView(base, options)[VIEW].entries;
+  for (const entry of current) {
+    if (entry.blank || !Number.isInteger(entry.src) || known.has(entry.src)) continue;
+    const turned = normRotation(entry.rot || 0) % 180 !== 0;
+    known.set(entry.src, {
+      size: entry.size ? (turned ? swapSize(entry.size) : { ...entry.size }) : null,
+      media: entry.media ? { ...entry.media } : null,
+      baseRotate: entry.baseRotate ?? null,
+    });
+  }
+  const entries = records.map((record) => {
+    const rot = normRotation(record?.rot || 0);
+    if (record?.blank) {
+      const box = { width: Number(record.blank.width), height: Number(record.blank.height) };
+      const blank = record.blank.paper ? { ...box, paper: String(record.blank.paper) } : box;
+      const size = rot % 180 !== 0 ? swapSize(box) : { ...box };
+      return { src: null, rot, blank, size, media: { ...box }, baseRotate: 0 };
+    }
+    const src = Number(record?.src);
+    if (!Number.isInteger(src) || src < 1 || src > base.numPages) throw new RangeError(`Page ${record?.src} is not in this PDF.`);
+    const info = known.get(src) || { size: null, media: null, baseRotate: null };
+    return {
+      src,
+      rot,
+      blank: null,
+      size: info.size ? (rot % 180 !== 0 ? swapSize(info.size) : { ...info.size }) : null,
+      media: info.media ? { ...info.media } : null,
+      baseRotate: info.baseRotate,
+    };
+  });
   return buildView(base, entries);
 }

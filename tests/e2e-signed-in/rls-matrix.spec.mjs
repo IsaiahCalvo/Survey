@@ -73,6 +73,16 @@ async function seedOwnerRows(admin, ids) {
   await replace('account_kits', 'user_id', owner, { user_id: owner, kit_id: KIT, kit_version: '1.0.0' });
   await replace('survey_agent_memory', 'project_id', PROJECT, { project_id: PROJECT, kind: 'name', heard: 'rls', means: 'rls sweep', created_by: owner });
   await replace('own_export_kits', 'user_id', owner, { user_id: owner, id: 'own-rls-sweep', label: 'RLS sweep', definition: {} });
+  // Home tags and Last opened (Nightly): personal rows, nobody else's.
+  await replace('document_tags', 'user_id', owner, { user_id: owner, document_id: DOC, tag: 'rls sweep' });
+  await replace('document_opens', 'user_id', owner, { user_id: owner, document_id: DOC });
+  // Project issues (Nightly): the project's members read them, the log comes
+  // from a trigger, and comments belong to an item.
+  await must('clear project_items', admin.from('project_items').delete().eq('project_id', PROJECT));
+  const { data: rlsItem, error: rlsItemError } = await admin.from('project_items')
+    .insert({ project_id: PROJECT, kind: 'issue', title: 'RLS sweep issue', created_by: owner }).select('id').single();
+  if (rlsItemError) throw new Error(`project_items: ${rlsItemError.message}`);
+  await must('project_item_comments', admin.from('project_item_comments').insert({ item_id: rlsItem.id, author_id: owner, body: 'rls sweep' }));
   await replace('mark_library_items', 'created_by', owner, {
     library: 'personal', created_by: owner, name: 'RLS sweep item', payload: { version: 1, items: [] },
   });
@@ -127,6 +137,12 @@ const ownerRows = (ids) => ({
   survey_agent_memory: ['project_id', PROJECT],
   own_export_kits: ['user_id', ids.owner],
   mark_library_items: ['created_by', ids.owner],
+  document_tags: ['user_id', ids.owner],
+  document_opens: ['user_id', ids.owner],
+  project_items: ['project_id', PROJECT],
+  project_item_events: ['project_id', PROJECT],
+  project_item_comments: ['project_id', PROJECT],
+  project_events: ['project_id', PROJECT],
   organizations: ['id', ORG],
   organization_members: ['organization_id', ORG],
   organization_invites: ['organization_id', ORG],
@@ -148,6 +164,7 @@ const NOT_SWEPT = {
   rowid_signing_secrets: 'service only', survey_agent_daily_usage: 'service only',
   sheet_sync_connections: 'service only', sheet_sync_pending_connections: 'service only',
   sheet_sync_settings: 'service only',
+  project_item_counters: 'service only',
   // Their write triggers need a signed-in editor, so the service role cannot
   // seed a row. Reads need viewer access to the document.
   annotation_snapshots: 'editor writes only', annotation_updates: 'editor writes only',
@@ -167,6 +184,9 @@ const NOT_SWEPT = {
   // Live sheet links (Nightly): document members read a few columns, never the
   // sync state; probed in sheet-sync.spec.mjs.
   sheet_sync_links: 'own spec',
+  // Drive files that save back (Nightly): document readers read a few columns,
+  // never the drive ids; only the function writes. Probed below.
+  document_drive_links: 'column grants',
 };
 
 // What a collaborator on the shared document may read; the rest stays the owner's.
@@ -176,6 +196,10 @@ const SHARED_WITH_COLLABORATORS = new Set([
   'document_presence', 'excel_workbook_registrations',
   // The agent's notes belong to the project, so its members read them.
   'survey_agent_memory',
+  // So do the project's issues, their log and their discussion.
+  'project_items', 'project_item_events', 'project_item_comments',
+  // And the project's Activity feed.
+  'project_events',
 ]);
 
 let admin;
@@ -217,6 +241,35 @@ test('collaborators see the shared document\'s rows and nothing else of the owne
       if (SHARED_WITH_COLLABORATORS.has(table)) expect(seen, `${account.email} ${table}`).toBeGreaterThan(0);
       else expect(seen, `${account.email} ${table}`).toBe(0);
     }
+  }
+});
+
+test('a drive link: document members read its few columns, never the drive ids; strangers see nothing; nobody writes it', async () => {
+  const row = { document_id: DOC, provider: 'google', drive_id: 'google', item_id: 'rls-secret-file', name: 'RLS plan.pdf', linked_by: ids.owner };
+  await must('drive link', admin.from('document_drive_links').upsert(row, { onConflict: 'document_id' }));
+  try {
+    const PUBLIC = 'document_id,provider,name,sync_minutes,sync_off,last_pushed_at';
+    for (const account of [E2E_ACCOUNTS.owner, E2E_ACCOUNTS.editor, E2E_ACCOUNTS.viewer]) {
+      const client = await clientFor(account);
+      const { data, error } = await client.from('document_drive_links').select(PUBLIC).eq('document_id', DOC);
+      expect(error, `${account.email} read`).toBeNull();
+      expect(data, `${account.email} read`).toHaveLength(1);
+      const ids = await client.from('document_drive_links').select('drive_id,item_id').eq('document_id', DOC);
+      expect(ids.error, `${account.email} drive ids`).toBeTruthy();
+      await client.from('document_drive_links').update({ name: 'rls-was-here', item_id: 'evil' }).eq('document_id', DOC);
+      await client.from('document_drive_links').delete().eq('document_id', DOC);
+      const { error: insertError } = await client.from('document_drive_links').insert({ ...row, document_id: DOC });
+      expect(insertError, `${account.email} add`).toBeTruthy();
+    }
+    for (const account of [null, E2E_ACCOUNTS.free, E2E_ACCOUNTS.pro]) {
+      const client = await clientFor(account);
+      const { data, error } = await client.from('document_drive_links').select('document_id').eq('document_id', DOC);
+      expect(error || data.length === 0, `${account?.email || 'anon'} read`).toBeTruthy();
+    }
+    const { data: after } = await admin.from('document_drive_links').select('item_id,name').eq('document_id', DOC).maybeSingle();
+    expect(after).toEqual({ item_id: 'rls-secret-file', name: 'RLS plan.pdf' });
+  } finally {
+    await admin.from('document_drive_links').delete().eq('document_id', DOC);
   }
 });
 

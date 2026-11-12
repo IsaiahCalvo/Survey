@@ -15,6 +15,7 @@
 import { lookup as lookupPalHandler, listRegistered } from './contextMenuBridge.js';
 import { resolveAnnotationAt } from './annotationHitTest.js';
 import { selectionUsesPdfTextLayer } from './pdfNativeTextInteraction.js';
+import { isTypingTarget } from './listContextMenu.js';
 
 /**
  * w56 (live two-user test 2026-09-28): right-clicking a mark that is PART of
@@ -179,6 +180,14 @@ function diag(line) {
       return;
     }
 
+    // Typing in a text box (a text mark or callout being edited, a field in
+    // a panel over the page): the right-click is for its text menu and its
+    // spelling fixes (owner 2026-11-12), not the mark's or the page's menu.
+    if (isTypingTarget(e)) {
+      diag('[CTXDIAG] skipped — typing in a text box');
+      return;
+    }
+
     // The counter-series toolbar owns its own compact action menu. Because
     // this dispatcher resolves annotations beneath floating UI, a right-click
     // on a series row can otherwise also open the underlying pin menu.
@@ -200,6 +209,16 @@ function diag(line) {
     if (e.target && typeof e.target.closest === 'function'
         && e.target.closest('[data-viewer-occluder]')) {
       diag('[CTXDIAG] skipped — inside a panel over the viewer');
+      return;
+    }
+
+    // The pinned tools dock floats over the page and owns its right-click (a
+    // pin's Duplicate / Move to start / Unpin menu). Without this the
+    // hit-test below found the page behind it, and a right-click on a pin
+    // opened the page's menu instead (seen 2026-11-12).
+    if (e.target && typeof e.target.closest === 'function'
+        && e.target.closest('[data-pinned-dock-shell], [data-pinned-tools-dock]')) {
+      diag('[CTXDIAG] skipped — inside the pinned tools dock');
       return;
     }
 

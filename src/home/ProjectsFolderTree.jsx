@@ -22,6 +22,8 @@
    `.survey-hub` root, those popups use literal hex colors, not CSS vars.
 */
 import { canManageProject, canManageProjectFile, projectSelectionCan } from './projectFilePermissions.js';
+import { useStorage } from '../hooks/useDatabase';
+import { useOfflineDocumentActions } from './offlineDocumentActions.js';
 import { activateOrExplain } from '../utils/disabledReasonToast.js';
 import MenuRows from '../components/MenuRows.jsx';
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
@@ -48,7 +50,13 @@ import { isPhoneLayout } from '../utils/layoutMode.js';
 import useFileDropZone from '../hooks/useFileDropZone';
 import FileDropOverlay from '../components/FileDropOverlay';
 import { resolveProjectDropTarget } from '../utils/fileDrop.js';
+import { isFeatureOn } from '../featureFlags.js';
+import ProjectItemsPanel, { ProjectItemsTabs } from '../projectItems/ProjectItemsPanel.jsx';
+import ProjectExportDialog from './ProjectExportDialog.jsx';
+import ProjectActivityPanel from '../projectItems/ProjectActivityPanel.jsx';
 import { keyboardControlProps } from '../utils/keyboardActivation.js';
+import { SHEET_VIEW_EVENT, openAllChoice, projectSheets, storedProjectOrder } from '../sheets/sheetSet.js';
+import { SheetViewGlyph } from '../sheets/SheetSetBar.jsx';
 
 // Renders closed until someone picks Manage team, so it stays off the first
 // load; the chunk is fetched when the projects tree mounts.
@@ -203,6 +211,9 @@ export default function ProjectsFolderTree({
   onShare,
   onShareDocument,
 }) {
+  // Nightly offline-docs: "Make available offline" in the file menu.
+  const { downloadDocument: downloadForOffline, fileStamp } = useStorage();
+  const offline = useOfflineDocumentActions({ userId: user?.id, downloadDocument: downloadForOffline, fileStamp });
   const tip = useTooltip();
   const [search, setSearch] = useState('');
   const [fileSearch, setFileSearch] = useState('');
@@ -470,6 +481,55 @@ export default function ProjectsFolderTree({
     return map;
   }, [members, ownerMember, collabByProject]);
   const lookupMember = (id) => memberById.get(id) || null;
+
+  /* Issues and Tasks (flag project-issues): a Files · Issues · Tasks row of
+     tabs over the open project. Your role decides what you may change; the
+     people you can assign are the owner and the active collaborators. */
+  const [issuesOn] = useState(() => isFeatureOn('project-issues'));
+  // Drawboard's project Activity page (Nightly, 'project-activity').
+  const [activityOn] = useState(() => isFeatureOn('project-activity'));
+  const tabsOn = issuesOn || activityOn;
+  // Drawboard's "Open all" (Nightly, 'sheet-set-view'): the list as it
+  // stands (or, with two or more rows ticked, "Open N selected") opens as one
+  // set, in the List or Grid view picked beside the button.
+  const [sheetSetOn] = useState(() => isFeatureOn('sheet-set-view'));
+  // Drawboard's "Export Project" (Nightly, 'project-export'): one zip of the project.
+  const [exportOn] = useState(() => isFeatureOn('project-export'));
+  const [exportProject, setExportProject] = useState(null);
+  const [openAllView, setOpenAllView] = useState(() => {
+    try { return window.localStorage.getItem('survey.openAllView') === 'grid' ? 'grid' : 'list'; } catch (_e) { return 'list'; }
+  });
+  const pickOpenAllView = (view) => {
+    setOpenAllView(view);
+    try { window.localStorage.setItem('survey.openAllView', view); } catch (_e) { /* private mode */ }
+  };
+  const openAllSheets = (project, files) => {
+    // The same set and order the viewer's sheet bar uses (sheetSet.js).
+    const sheets = projectSheets(files, project?.id, storedProjectOrder(projectPreferences, project?.id));
+    if (!sheets.length || !onOpenDocument) return;
+    // For that sheet only: if it never opens, no later sheet opens in List.
+    window.dispatchEvent(new CustomEvent(SHEET_VIEW_EVENT, {
+      detail: { view: sheets.length > 1 ? openAllView : 'single', forDocId: sheets[0].id, ids: sheets.map((d) => d.id) },
+    }));
+    onOpenDocument(sheets[0]);
+  };
+  const [listTab, setListTab] = useState('files');
+  const projectRoleFor = (proj) => {
+    if (!proj || !user?.id) return 'viewer';
+    if (proj.user_id == null || proj.user_id === user.id) return 'owner';
+    const row = (collabByProject.get(proj.id) || []).find((r) => r?.user_id === user.id && (r.status == null || r.status === 'active'));
+    return row?.role === 'owner' || row?.role === 'editor' ? row.role : 'viewer';
+  };
+  const itemMembers = (proj) => {
+    if (!proj) return [];
+    const activeIds = new Set((collabByProject.get(proj.id) || [])
+      .filter((r) => r?.user_id != null && (r.status == null || r.status === 'active'))
+      .map((r) => r.user_id));
+    const ownerId = proj.user_id ?? user?.id ?? null;
+    return projectTeam(proj)
+      .filter((id) => id === ownerId || activeIds.has(id))
+      .map((id) => ({ id, name: lookupMember(id)?.name || 'Teammate' }));
+  };
 
   // Team member-ids for a project — owner first, then real collaborator rows
   // from `project_collaborators`, then any ids carried on the project row,
@@ -1187,9 +1247,50 @@ export default function ProjectsFolderTree({
                   {/* Manage Team — opens the Manage Team modal (NOT the share
                       link modal) for the currently open project. */}
                   <button className="btn" onClick={() => setTeamModalProject(open)}><Icon name="users" size={12} />Manage team</button>
+                  {sheetSetOn && openFiles.length > 1 ? (() => {
+                    const choice = openAllChoice(openFiles, fileSelect ? selFiles : null);
+                    return (
+                      <>
+                        <span role="radiogroup" aria-label="Open all as" className="projects-open-all-views">
+                          {[['list', 'Open as a list'], ['grid', 'Open as a grid']].map(([view, label]) => (
+                            <button
+                              key={view}
+                              type="button"
+                              role="radio"
+                              aria-checked={openAllView === view}
+                              aria-label={label}
+                              data-open-all-view={view}
+                              className={`projects-open-all-view${openAllView === view ? ' is-picked' : ''}`}
+                              onClick={() => pickOpenAllView(view)}
+                              {...tip(label, 'below')}
+                            >
+                              <SheetViewGlyph view={view} />
+                            </button>
+                          ))}
+                        </span>
+                        <button className="btn" data-open-all-sheets onClick={() => openAllSheets(open, choice.files)}><Icon name="pages" size={12} />{choice.label}</button>
+                      </>
+                    );
+                  })() : null}
                 </div>
               </div>
 
+              {tabsOn && <ProjectItemsTabs value={listTab} onChange={setListTab} issues={issuesOn} activity={activityOn} />}
+              {activityOn && listTab === 'activity' ? (isPhoneLayout() ? <div style={{ flex: 1 }} /> : (
+                <ProjectActivityPanel project={open} user={user} lookupMember={lookupMember} documents={openFiles} onOpenDocument={onOpenDocument} />
+              )) : issuesOn && listTab !== 'files' ? (isPhoneLayout() ? <div style={{ flex: 1 }} /> : (
+                <ProjectItemsPanel
+                  project={open}
+                  kind={listTab}
+                  user={user}
+                  role={projectRoleFor(open)}
+                  members={itemMembers(open)}
+                  lookupMember={lookupMember}
+                  documents={openFiles}
+                  onOpenDocument={onOpenDocument}
+                  phone={false}
+                />
+              )) : (
               <div className="projects-open-body" style={{ display: 'grid', gap: 0, flex: 1, overflow: 'hidden' }}>
                 {/* Files */}
                 <div className="slim-scroll" style={{ padding: '10px 14px', overflow: 'auto', position: 'relative' }}>
@@ -1371,6 +1472,7 @@ export default function ProjectsFolderTree({
                   })()}
                 </div>
               </div>
+              )}
             </>
           )}
           {!open && (
@@ -1424,12 +1526,31 @@ export default function ProjectsFolderTree({
                     </span>
                     <span>{mobileDrillAllFiles.length} {mobileDrillAllFiles.length === 1 ? 'file' : 'files'} · {projectLastEditedLabel(mobileDrillProject.id)}</span>
                   </div>
+                  {tabsOn && <ProjectItemsTabs value={listTab} onChange={setListTab} issues={issuesOn} activity={activityOn} />}
+                  {activityOn && listTab === 'activity' ? (
+                    <ProjectActivityPanel project={mobileDrillProject} user={user} lookupMember={lookupMember} documents={mobileDrillAllFiles} onOpenDocument={onOpenDocument} phone />
+                  ) : issuesOn && listTab !== 'files' ? (
+                    <ProjectItemsPanel
+                      project={mobileDrillProject}
+                      kind={listTab}
+                      user={user}
+                      role={projectRoleFor(mobileDrillProject)}
+                      members={itemMembers(mobileDrillProject)}
+                      lookupMember={lookupMember}
+                      documents={mobileDrillAllFiles}
+                      onOpenDocument={onOpenDocument}
+                      phone
+                    />
+                  ) : (<>
                   <div className="projects-mobile-project-files-head">
                     <span>Files<b className="hub-section-count">{mobileDrillFiles.length}</b></span>
                     {/* Icons (owner 2026-10-02), Add last like every header:
                         [Team] [Add files]. */}
                     <SectionIconActions phone className="projects-mobile-project-files-actions">
                       <SectionIconButton phone action="team" icon="users" label="Manage team" onClick={() => setTeamModalProject(mobileDrillProject)} />
+                      {sheetSetOn && mobileDrillFiles.length > 1 ? (
+                        <SectionIconButton phone action="open-all" icon="pages" label={openAllChoice(mobileDrillFiles, fileSelect ? selFiles : null).label} data-open-all-sheets onClick={() => openAllSheets(mobileDrillProject, openAllChoice(mobileDrillFiles, fileSelect ? selFiles : null).files)} />
+                      ) : null}
                       <SectionIconButton phone action="add" label="Add files" onClick={() => addFiles(mobileDrillProject)} />
                     </SectionIconActions>
                   </div>
@@ -1461,6 +1582,7 @@ export default function ProjectsFolderTree({
                       </SortableRearrangeList>
                     )}
                   </div>
+                  </>)}
                 </div>
               </>
             ) : (
@@ -2085,6 +2207,7 @@ export default function ProjectsFolderTree({
                 label: projPinned ? 'Unpin project' : 'Pin project',
                 onClick: () => togglePin(proj.id),
               },
+              ...(exportOn ? [{ icon: 'download', label: 'Export project…', onClick: () => setExportProject(proj) }] : []),
               { label: 'Manage project', onClick: () => setTeamModalProject(proj) },
             ]}
           />
@@ -2122,10 +2245,20 @@ export default function ProjectsFolderTree({
                 disabled: !canLock,
                 onClick: () => onLockDocument && onLockDocument(f),
               },
+              ...(offline.menuItem(f) ? [offline.menuItem(f)] : []),
             ]}
           />
         );
       })()}
+
+      {exportProject && (
+        <ProjectExportDialog
+          project={exportProject}
+          documents={localDocs.filter((d) => d.project_id === exportProject.id)}
+          lookupMember={lookupMember}
+          onClose={() => setExportProject(null)}
+        />
+      )}
 
       {/* Manage Team modal — open state driven entirely by local React state.
           This is the team-management surface, distinct from the share modal. */}

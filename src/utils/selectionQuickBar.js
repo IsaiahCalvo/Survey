@@ -199,7 +199,13 @@ export function planSelectionQuickBar({ items, api, entityCount = 0, locked = fa
   const width = !locked && !anyNoPaint && every(WIDTH_KINDS)
     && typeof api?.handleStrokeWidthInputChange === 'function'
     && caps?.width !== false;
-  const style = !locked && !anyNoPaint && every(STYLE_KINDS)
+  // One link mark (Nightly 'link-tool'): "Go to ..." follows it; Link edits
+  // its target, style and colour (its own style tiles stand in for Line).
+  const link = list.length === 1
+    && typeof api?.followLink === 'function'
+    && api?.selectedLink?.link != null
+    && String(api.selectedLink.id) === String(list[0].id);
+  const style = !link && !locked && !anyNoPaint && every(STYLE_KINDS)
     && typeof api?.setLineBorderStyle === 'function'
     && caps?.lineStyle !== false;
   // Measurement (Nightly 'measure-edit'): exactly one measurement picked, and
@@ -214,6 +220,7 @@ export function planSelectionQuickBar({ items, api, entityCount = 0, locked = fa
     style: Boolean(style),
     // Only present when shown, so every other pick plans exactly as before.
     ...(measure ? { measure: true } : {}),
+    ...(link ? { link: true, linkEdit: !locked && typeof api?.editSelectedLink === 'function' } : {}),
     duplicate: true,
     remove: !locked,
     more: true,

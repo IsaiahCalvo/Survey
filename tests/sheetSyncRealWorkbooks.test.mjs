@@ -152,8 +152,9 @@ test('a big catch-up of scattered edits stops after its time and the next round 
   // An offline phone comes back with a note on every other item: 100 scattered cells.
   for (let i = 0; i < 200; i += 2) ctx.markers[`d${i}`].note = { text: `caught up ${i}` };
   // A clock that jumps a minute a call: writes stop after the first batch of 20.
+  // Small sparse writes (one row each), or all 100 cells would go in one write.
   let t = Date.now();
-  const slow = msProvider({ now: () => (t += 61_000) });
+  const slow = msProvider({ now: () => (t += 61_000), sparseMaxCells: 4 });
   await assert.rejects(ctx.round(slow), (e) => e.status === 503 && e.code === 'partial' && /next round/.test(e.message));
   const notes = () => { const s = ctx.sheet(); const col = s.cells[0].indexOf('Notes'); return s.cells.slice(1).filter((r) => String(r?.[col] ?? '').startsWith('caught up')).length; };
   const landed = notes();
@@ -163,6 +164,42 @@ test('a big catch-up of scattered edits stops after its time and the next round 
   assert.equal(next.summary.toApp, 0, 'nothing bounces back to the app');
   assert.equal(notes(), 100, 'the rest is written');
   for (let i = 0; i < 200; i += 2) assert.equal(ctx.markers[`d${i}`].note.text, `caught up ${i}`);
+});
+
+test('scattered app edits go out in one sparse write that leaves every other cell alone', async () => {
+  // A PM's formula-heavy tab makes Excel work everything out again after each
+  // write (~1.3 s each, real Excel 11-12), so 20 scattered notes are one write.
+  const many = Object.fromEntries(Array.from({ length: 300 }, (_, i) => [`d${i}`, door(`d${i}`, `D-${1000 + i}`)]));
+  const ctx = await msSetup(many);
+  await ctx.round();
+  const picked = Array.from({ length: 20 }, (_, i) => 3 + i * 14);
+  for (const i of picked) ctx.markers[`d${i}`].note = { text: `tech ${i}` };
+  // A PM's note on an item in between lands after the round read the sheet
+  // and before it writes: the write must not blank it.
+  const writes = [];
+  let pmTyped = false;
+  const watching = async (input, init) => {
+    const req = input instanceof Request ? input : new Request(input, init);
+    const parts = new URL(req.url).pathname.endsWith('/$batch') ? (await req.clone().json()).requests : [{ method: req.method, url: req.url }];
+    const rangeWrites = parts.filter((r) => r.method === 'PATCH' && /range\(address=/.test(r.url));
+    if (rangeWrites.length && !pmTyped) {
+      pmTyped = true;
+      const s = ctx.sheet(); const item = s.cells[0].indexOf('Item'); const col = s.cells[0].indexOf('Notes');
+      s.cells.find((row) => row[item] === 'D-1010')[col] = 'pm typed meanwhile';
+    }
+    writes.push(...rangeWrites.map((r) => r.url));
+    return fakeMsgraphFetch(req);
+  };
+  const r = await ctx.round(msProvider({ fetch: watching }));
+  assert.equal(r.summary.toSheet, 20);
+  assert.equal(writes.length, 1, writes.join(' | '));
+  const s = ctx.sheet(); const item = s.cells[0].indexOf('Item'); const col = s.cells[0].indexOf('Notes');
+  const noteOf = (name) => s.cells.find((row) => row[item] === name)[col];
+  for (const i of picked) assert.equal(noteOf(`D-${1000 + i}`), `tech ${i}`);
+  assert.equal(noteOf('D-1010'), 'pm typed meanwhile', 'a cell the write left alone keeps what the PM typed');
+  assert.equal(noteOf('D-1004'), '', 'cells in between are not written');
+  await ctx.round();
+  assert.equal(ctx.markers.d10.note.text, 'pm typed meanwhile');
 });
 
 test('rows deleted next to each other go out in one call per run', async () => {

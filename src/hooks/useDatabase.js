@@ -20,7 +20,9 @@ import { documentNameSequence, renameRows, subscribeDocumentNames, withRenamesSi
 import { mergeOwnAndSharedTemplateRows, isSharedTemplateRow } from '../services/sharedTemplates.js';
 import { storageDownloads } from '../services/storageDownloads.js';
 import { replaceDocumentFile } from '../services/documentFileReplace.js';
-import { pdfByteCache, readPdfThroughCache, bindPdfCacheToAuth, seedPdfCacheFromUpload, pdfCacheStamp, pdfCacheKey, pdfCacheInfoSize } from '../services/pdfByteCache.js';
+import { pdfByteCache, readPdfThroughCache, bindPdfCacheToAuth, seedPdfCacheFromUpload, pdfCacheStamp, pdfCacheKey, pdfCacheInfoSize, isStorageRefusal } from '../services/pdfByteCache.js';
+import { offlineDocuments, readPdfWithOfflineCopy, bindOfflineDocumentsToAuth, OFFLINE_COPY_OPENED_EVENT, CURRENT_SHA_TIMEOUT } from '../services/offlineDocuments.js';
+import { isFeatureOn } from '../featureFlags.js';
 import { STREAM_SIGNED_URL_SECONDS, chooseCloudPdfOpenPath } from '../services/cloudPdfStream.js';
 import { resolveOpenDocumentSource } from '../services/openDocumentStreamSource.js';
 import { isPdfUploadPending, trackPdfUpload, waitForPdfUpload } from '../services/pendingPdfUploads.js';
@@ -38,6 +40,8 @@ import { readLibraryRows, readLibraryIdChunks, sortLibraryRows } from './library
 if (supabase) bindPdfCacheToAuth(supabase, pdfByteCache());
 // Same rule for page previews kept on the device (pageThumbStore.js).
 if (supabase) bindPdfCacheToAuth(supabase, pageThumbStore());
+// Nightly offline-docs: kept documents follow the same sign-out rule.
+if (supabase) bindOfflineDocumentsToAuth(supabase, offlineDocuments());
 // Same rule for the home lists' device copy (libraryListCache.js).
 if (supabase) bindLibraryListCacheToAuth(supabase);
 
@@ -993,7 +997,7 @@ export const useStorage = () => {
     // the server's access check" rule.
     await waitForPdfUpload(filePath);
     const actorId = user?.id ?? null;
-    return storageDownloads(supabase).read(actorId, filePath, () => readPdfThroughCache({
+    const readOnline = () => storageDownloads(supabase).read(actorId, filePath, () => readPdfThroughCache({
       cache: pdfByteCache(),
       actorId,
       path: filePath,
@@ -1010,6 +1014,33 @@ export const useStorage = () => {
         return data;
       },
     }));
+    // Nightly offline-docs: a document the user made available offline opens
+    // from its kept copy when there is no network (offlineDocuments.js).
+    if (!isFeatureOn('offline-docs')) return readOnline();
+    return readPdfWithOfflineCopy({
+      store: offlineDocuments(),
+      actorId,
+      path: filePath,
+      read: readOnline,
+      refusal: isStorageRefusal,
+      fetchStamp: async () => {
+        const { data, error } = await fetchStoredPdfInfo(filePath);
+        return error ? null : pdfCacheStamp(data);
+      },
+      // The database may answer while Storage does not: never open a kept
+      // copy of a file the document has since replaced.
+      currentSha: async (documentId) => {
+        if (!documentId) return null;
+        const answer = supabase.from('documents').select('content_sha256').eq('id', documentId).maybeSingle();
+        const timeout = new Promise((resolve) => { setTimeout(() => resolve({ timedOut: true }), 5_000); });
+        const reply = await Promise.race([answer, timeout]);
+        if (reply?.timedOut) throw Object.assign(new Error('document version check timed out'), { code: CURRENT_SHA_TIMEOUT });
+        return reply?.error ? null : (reply?.data?.content_sha256 || null);
+      },
+      onOfflineCopy: (detail) => {
+        try { globalThis.dispatchEvent?.(new CustomEvent(OFFLINE_COPY_OPENED_EVENT, { detail })); } catch { /* no DOM */ }
+      },
+    });
   }, [user?.id]);
 
   // Open speed: a source pdf.js can stream with range requests
@@ -1019,6 +1050,8 @@ export const useStorage = () => {
   // the device cache exactly as a download would. null = use downloadDocument.
   const openDocumentStream = useCallback(async (filePath) => {
     if (!isSupabaseAvailable()) return null;
+    // No network: nothing can stream; the download path opens a kept copy.
+    if (globalThis.navigator?.onLine === false) return null;
     await waitForPdfUpload(filePath);
     const actorId = user?.id ?? null;
     const cache = pdfByteCache();
@@ -1093,6 +1126,14 @@ export const useStorage = () => {
     void pdfByteCache().removePath(filePath);
   }, []);
 
+  // The stored file's version stamp (pdfCacheStamp), or null: what a kept
+  // offline copy is compared with (offlineDocuments.js).
+  const fileStamp = useCallback(async (filePath) => {
+    if (!filePath || !isSupabaseAvailable()) return null;
+    const { data, error } = await fetchStoredPdfInfo(filePath);
+    return error ? null : pdfCacheStamp(data);
+  }, []);
+
   return {
     uploadDocument,
     replaceDocument,
@@ -1100,6 +1141,7 @@ export const useStorage = () => {
     openDocumentStream,
     startOpenSource,
     deleteDocumentFile,
+    fileStamp,
   };
 };
 
@@ -1296,6 +1338,8 @@ const DEFAULT_TOOL_PREFERENCES = {
   pen: { strokeColor: '#ff0000', strokeWidth: 3, strokeOpacity: 100 },
   highlighter: { strokeColor: '#ffff00', strokeWidth: 20, strokeOpacity: 50 },
   'text-highlight': { strokeColor: '#ffff00', strokeOpacity: 50 },
+  // Tape (beta 'tape-tool'): Drawboard's lilac band, 20 pt, fully opaque.
+  tape: { strokeColor: '#ddc3ff', strokeWidth: 20, strokeOpacity: 100 },
   eraser: { strokeWidth: 10 },
   rect: { strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 0, strokeOpacity: 100 },
   ellipse: { strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 0, strokeOpacity: 100 },

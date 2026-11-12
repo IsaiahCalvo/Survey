@@ -533,6 +533,20 @@ export function buildCalloutRenderSpec(callout, index, pageSize, calculateConnec
   // adopted the arrow tool's shared arrowhead machinery.
   const arrowheadNode = (() => {
     switch (arrowheadSpec.kind) {
+      case 'shapes': {
+        // A reverse head (Nightly 'line-endings') is one page-space shape.
+        const shape = arrowheadSpec.shapes?.[0];
+        if (!shape || shape.type !== 'path') return null;
+        return {
+          type: shape.closed ? 'polygon' : 'polyline',
+          key: 'arrowhead',
+          attrs: {
+            points: shape.points.map((p) => `${p.x},${p.y}`).join(' '),
+            fill: shape.fill, stroke: shape.stroke, strokeWidth: shape.strokeWidth,
+            strokeLinejoin: shape.strokeLinejoin, strokeLinecap: shape.strokeLinecap,
+          },
+        };
+      }
       case 'solidTriangle':
       case 'openTriangle':
       case 'diamond':

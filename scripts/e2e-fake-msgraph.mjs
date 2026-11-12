@@ -215,7 +215,7 @@ export async function fakeMsgraphHandler(req) {
       store.files.set(id, { name: body?.name || 'Tracker.xlsx', version: 1, sheets, readOnly: Boolean(body?.readOnly) });
       return json(200, { id, link: `https://contoso.sharepoint.example/:x:/r/${id}` });
     }
-    const m = /^\/__fake\/files\/([^/]+)(\/edit|\/sort|\/insert-row|\/delete-row)?$/.exec(path);
+    const m = /^\/__fake\/files\/([^/]+)(\/edit|\/sort|\/insert-row|\/delete-row|\/pivot|\/protect)?$/.exec(path);
     const f = m && store.files.get(m[1]);
     if (!f) return json(404, { error: 'no such file' });
     if (!m[2]) {
@@ -231,6 +231,14 @@ export async function fakeMsgraphHandler(req) {
       sheet.cells.splice(body.row, 0, body.values || []);
     } else if (m[2] === '/delete-row') {
       sheet.cells.splice(body.row, 1);
+    } else if (m[2] === '/protect') {
+      sheet.protected = body.on !== false; // Review > Protect Sheet (or off)
+    } else if (m[2] === '/pivot') {
+      // A PivotTable the PM made at `at` (0-based row/col): its cells hold
+      // its labels and counts, and Excel won't let anything move them.
+      const rows = body.rows || [['Row Labels', 'Count']];
+      rows.forEach((line, r) => line.forEach((v, c) => setCell(sheet, body.at.row + r, body.at.col + c, v)));
+      sheet.pivots = [...(sheet.pivots || []), { r1: body.at.row, c1: body.at.col, r2: body.at.row + rows.length - 1, c2: body.at.col + Math.max(...rows.map((l) => l.length)) - 1 }];
     }
     touch(f, body?.by || FAKE_WORKBOOK_EDITOR, body?.at || null);
     return json(200, { ok: true });
@@ -318,6 +326,15 @@ export async function fakeMsgraphHandler(req) {
     touch(f);
     return json(204);
   }
+  // Review > Protect Sheet: read and set as in Graph; while on, every
+  // write to the sheet is refused 403 AccessDenied (real Graph 11-10).
+  if (method === 'GET' && /^\/protection(\?|$)/.test(tail)) return json(200, { protected: Boolean(sheet.protected) });
+  if (method === 'POST' && (tail === '/protection/protect' || tail === '/protection/unprotect')) {
+    sheet.protected = tail.endsWith('/protect');
+    touch(f);
+    return json(204);
+  }
+  if (method !== 'GET' && sheet.protected && tail.startsWith('/range(')) return gErr(403, 'AccessDenied', 'You cannot perform the requested operation.');
   if (method === 'GET' && tail.startsWith('/usedRange')) return json(200, usedRange(sheet));
   // The used rows of some columns only (where new rows go); 404 when blank, as in Excel.
   const colsUsed = /^\/range\(address='([A-Z]+):([A-Z]+)'\)\/usedRange/.exec(tail);
@@ -335,21 +352,43 @@ export async function fakeMsgraphHandler(req) {
   if (/^\/freezePanes\b|\/dataValidation$|\/conditionalFormats\b/.test(tail)) {
     return gErr(400, 'BadRequest', `Resource not found for the segment '${/freezePanes|dataValidation|conditionalFormats/.exec(tail)[0]}'.`);
   }
-  const range = /^\/range\(address='([^']+)'\)(\/delete|\/insert)?$/.exec(tail);
+  const range = /^\/range\(address='([^']+)'\)(\/delete|\/insert|\/clear)?$/.exec(tail);
   const a = range && parseAddress(range[1]);
   if (!a) return gErr(400, 'BadRequest', `fake msgraph: no route for ${method} ${path}`);
-  if (range[2] === '/insert' && method === 'POST') {
-    if (!a.wholeRows) return gErr(400, 'BadRequest', 'fake msgraph: only whole-row inserts');
-    sheet.cells.splice(a.r1, 0, ...Array.from({ length: a.r2 - a.r1 + 1 }, () => []));
+  // A PivotTable a test put on the sheet (`sheet.pivots`, 0-based boxes):
+  // Excel refuses to move part of one or write into it (real Excel 11-10).
+  const pivots = sheet.pivots || [];
+  const pivotRefusal = () => gErr(409, 'PivotTableRangeConflict', 'The operation failed because it conflicts with a pivot table range.');
+  const colsOf = (q) => (q.wholeRows ? [0, Infinity] : [q.c1, q.c2]);
+  const meets = (p, q) => { const [c1, c2] = colsOf(q); return p.c1 <= c2 && p.c2 >= c1; };
+  if ((range[2] === '/insert' || range[2] === '/delete') && method === 'POST') {
+    if (a.wholeCols) return gErr(400, 'BadRequest', 'fake msgraph: no column inserts or deletes');
+    const n = a.r2 - a.r1 + 1;
+    const ins = range[2] === '/insert';
+    // Rows shifting through a pivot's columns at or above its bottom move part of it.
+    if (pivots.some((p) => meets(p, a) && (a.wholeRows ? (ins ? a.r1 > p.r1 && a.r1 <= p.r2 : a.r1 <= p.r2 && a.r2 >= p.r1) : a.r1 <= p.r2))) return pivotRefusal();
+    if (a.wholeRows) {
+      if (ins) sheet.cells.splice(a.r1, 0, ...Array.from({ length: n }, () => []));
+      else sheet.cells.splice(a.r1, n);
+      for (const p of pivots) if (p.r1 >= a.r1) { p.r1 += ins ? n : -n; p.r2 += ins ? n : -n; }
+    } else {
+      const last = Math.max(sheet.cells.length, a.r2 + 1) + n;
+      for (let c = a.c1; c <= a.c2; c += 1) {
+        const column = Array.from({ length: last }, (_, r) => cellAt(sheet, r, c));
+        if (ins) column.splice(a.r1, 0, ...Array(n).fill('')); else column.splice(a.r1, n);
+        column.forEach((v, r) => { if (v !== '' || sheet.cells[r]?.[c] !== undefined) setCell(sheet, r, c, v); });
+      }
+    }
     touch(f);
     return json(204);
   }
-  if (range[2] === '/delete' && method === 'POST') {
-    if (!a.wholeRows) return gErr(400, 'BadRequest', 'fake msgraph: only whole-row deletes');
-    sheet.cells.splice(a.r1, a.r2 - a.r1 + 1);
+  if (range[2] === '/clear' && method === 'POST') {
+    if (pivots.some((p) => meets(p, a) && p.r1 <= a.r2 && p.r2 >= a.r1)) return pivotRefusal();
+    for (let r = a.r1; r <= a.r2; r += 1) for (let c = a.c1; c <= a.c2; c += 1) if (sheet.cells[r]?.[c] !== undefined) sheet.cells[r][c] = '';
     touch(f);
     return json(204);
   }
+  if (method === 'PATCH' && body?.values && pivots.some((p) => meets(p, a) && p.r1 <= a.r2 && p.r2 >= a.r1)) return pivotRefusal();
   // Hiding works on any range and hides its whole columns, as in Excel.
   if (method === 'PATCH' && body?.columnHidden !== undefined) {
     if (body.columnHidden) for (let c = a.c1; c <= a.c2; c += 1) sheet.hidden.push(`${colName(c)}:${colName(c)}`);
@@ -368,7 +407,8 @@ export async function fakeMsgraphHandler(req) {
     if (values.length !== a.r2 - a.r1 + 1 || values.some((line) => line.length !== a.c2 - a.c1 + 1)) {
       return gErr(400, 'InvalidArgument', 'The number of rows or columns in the input array doesn\'t match the size or dimensions of the range.');
     }
-    values.forEach((line, r) => line.forEach((v, c) => setCell(sheet, a.r1 + r, a.c1 + c, typed(v))));
+    // A null leaves its cell as it is, as in real Graph.
+    values.forEach((line, r) => line.forEach((v, c) => { if (v !== null) setCell(sheet, a.r1 + r, a.c1 + c, typed(v)); }));
     touch(f);
     return json(200, {});
   }

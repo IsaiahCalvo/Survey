@@ -59,6 +59,7 @@ export async function setup({ markers = {}, layout = buildSyncLayout({ template:
       newMarkerId: () => `new-${++n}`,
       force: opts.force,
       ...(opts.now ? { now: opts.now } : {}),
+      ...(opts.clashes ? { clashes: () => opts.clashes } : {}),
     });
     if (result.patch) Object.assign(ctx.link, result.patch);
     return result;

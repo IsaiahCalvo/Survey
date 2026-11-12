@@ -80,6 +80,25 @@ html:has(.mobile-pdf-sheet:not(.is-collapsed)) .selection-quick-bar {
   flex: 0 0 auto;
 }
 
+/* Nightly 'selection-count': how many marks a multi-pick holds. */
+.selection-quick-bar__count {
+  min-width: 22px;
+  height: 22px;
+  margin: 0 5px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 11px;
+  background: var(--surface-3, rgba(255, 255, 255, 0.12));
+  color: var(--text-1);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+
 .selection-quick-bar__button {
   position: relative;
   width: 32px;
@@ -426,8 +445,72 @@ body:has(.mobile-pdf-sheet:not(.is-collapsed)) .selection-quick-bar[data-phone='
   color: var(--text-1);
 }
 
+/* Caption style rows (measure-plus): the name above, the picks below. */
+.measure-edit__sizes--stack {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+/* Caption colours (measure-plus): small round swatches, the picked one ringed. */
+.measure-edit__swatches {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 3px;
+}
+
+.measure-edit__swatch {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.measure-edit__swatch.is-current {
+  box-shadow: 0 0 0 2px var(--surface-1, transparent), 0 0 0 4px var(--text-1);
+}
+
+.measure-edit__swatch:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+}
+
+/* "Same as the line": the line's colour with a hole in the middle. */
+.measure-edit__swatch--auto::after {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  border-radius: 999px;
+  background: var(--surface-1, transparent);
+}
+
+/* "No background": an empty swatch crossed out. */
+.measure-edit__swatch--none {
+  background: transparent;
+}
+
+.measure-edit__swatch--none::after {
+  content: '';
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  top: 50%;
+  height: 1px;
+  background: var(--text-2);
+  transform: rotate(-45deg);
+}
+
 /* Touch: finger-sized rows, and 16px fields so a phone does not zoom in. */
 @media (pointer: coarse) {
+  .measure-edit__swatch {
+    width: 32px;
+    height: 32px;
+  }
+
   .measure-edit__input {
     height: 40px;
     font-size: 16px;
@@ -446,4 +529,50 @@ body:has(.mobile-pdf-sheet:not(.is-collapsed)) .selection-quick-bar[data-phone='
 .measure-edit__tick:has(input:disabled) {
   color: var(--text-3, var(--text-2));
   cursor: default;
+}
+
+/* The Scale row (measure-plus): the drop-down, then Edit scale and Add scale. */
+.measure-edit__scale-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+}
+
+.measure-edit__scale-row > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.measure-edit__icon-btn {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: var(--text-2);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .measure-edit__icon-btn:hover {
+    color: var(--text-1);
+    background: var(--hover);
+  }
+}
+
+.measure-edit__icon-btn:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+@media (pointer: coarse) {
+  .measure-edit__icon-btn {
+    width: 40px;
+    height: 40px;
+  }
 }

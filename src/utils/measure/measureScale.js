@@ -18,6 +18,22 @@
  */
 
 import { computeLineBboxCenter } from '../svgBoundingBox.js';
+import {
+  DIMENSION_CAPTION_BG_OPACITIES,
+  DIMENSION_CAPTION_PT,
+  DIMENSION_LEADER_PT,
+  normalizeDimensionCaptionColor,
+  normalizeDimensionCaptionPt,
+  normalizeDimensionLeader,
+} from './dimensionLine.js';
+import {
+  MEASURE_LINE_PREFIXES,
+  formatDisplayArea,
+  formatDisplayDepth,
+  formatDisplayLength,
+  formatDisplayVolume,
+  scaleUsesDisplay,
+} from './measureFormat.js';
 
 export const MEASURE_UNITS = Object.freeze({
   in: { inches: 1, label: 'in', area: 'sq in', volume: 'cu in' },
@@ -129,6 +145,8 @@ function formatNumber(n) {
 export function formatMeasureLength(lengthPt, scale) {
   if (!isValidMeasureScale(scale)) return `${formatNumber(lengthPt / PT_PER_INCH)} in (no scale)`;
   const real = lengthPt / scale.ptPerUnit;
+  // Nightly 'measure-plus': the scale names its own format (measureFormat.js).
+  if (scaleUsesDisplay(scale)) return formatDisplayLength(real * MEASURE_UNITS[scale.unit].inches, scale.display, scale.precision);
   if (scale.unit === 'ft') {
     // Surveyors read feet-inches: 12' 6".
     let feet = Math.floor(real);
@@ -142,6 +160,7 @@ export function formatMeasureLength(lengthPt, scale) {
 export function formatMeasureArea(areaPt2, scale) {
   if (!isValidMeasureScale(scale)) return `${formatNumber(areaPt2 / (PT_PER_INCH * PT_PER_INCH))} sq in (no scale)`;
   const real = areaPt2 / (scale.ptPerUnit * scale.ptPerUnit);
+  if (scaleUsesDisplay(scale)) return formatDisplayArea(real * MEASURE_UNITS[scale.unit].inches ** 2, scale.display, scale.precision);
   return `${real.toFixed(2)} ${MEASURE_UNITS[scale.unit].area}`;
 }
 
@@ -154,6 +173,7 @@ export function formatMeasureWallArea(perimeterPt, depth, scale) {
   const d = normalizeMeasureDepth(depth) || 0;
   if (!isValidMeasureScale(scale)) return `${formatNumber((perimeterPt / PT_PER_INCH) * d)} sq in (no scale)`;
   const real = (perimeterPt / scale.ptPerUnit) * d;
+  if (scaleUsesDisplay(scale)) return formatDisplayArea(real * MEASURE_UNITS[scale.unit].inches ** 2, scale.display, scale.precision);
   return `${real.toFixed(2)} ${MEASURE_UNITS[scale.unit].area}`;
 }
 
@@ -162,6 +182,7 @@ export function formatMeasureVolume(areaPt2, depth, scale) {
   const d = normalizeMeasureDepth(depth) || 0;
   if (!isValidMeasureScale(scale)) return `${formatNumber((areaPt2 / (PT_PER_INCH * PT_PER_INCH)) * d)} cu in (no scale)`;
   const real = (areaPt2 / (scale.ptPerUnit * scale.ptPerUnit)) * d;
+  if (scaleUsesDisplay(scale)) return formatDisplayVolume(real * MEASURE_UNITS[scale.unit].inches ** 3, scale.display, scale.precision);
   return `${real.toFixed(2)} ${MEASURE_UNITS[scale.unit].volume}`;
 }
 
@@ -409,7 +430,8 @@ export function normalizeMeasureCaptionSize(value) {
 /** A label as stored: one trimmed line, at most 80 characters ('' = none). */
 export function normalizeMeasureLabelText(value) {
   if (typeof value !== 'string') return '';
-  return value.replace(/\s+/g, ' ').trim().slice(0, MEASURE_LABEL_MAX_CHARS);
+  // Cut on whole characters, so an emoji at the cap is never split (R5 N5c).
+  return splitGraphemes(value.replace(/\s+/g, ' ').trim()).slice(0, MEASURE_LABEL_MAX_CHARS).join('');
 }
 
 /** The caption lines picked for a kind, in the kind's order; null = unset. */
@@ -438,6 +460,28 @@ function hasCaptionSettings(measure) {
 }
 
 const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
+
+/**
+ * Segment captions (Nightly 'measure-plus', Drawboard's "Show segment
+ * captions"): each side of a Polylength or Perimeter shows its own length.
+ * Off, Inline (along the side, on it), Upright (level, on it) or Above
+ * (along the side, beside it). On (Inline) by default for a Polylength, off
+ * for a Perimeter. Stored as data.measure.segments only when not the default.
+ */
+export const SEGMENT_CAPTION_PLACES = Object.freeze(['off', 'inline', 'upright', 'above']);
+export const SEGMENT_CAPTION_KINDS = Object.freeze(['polylength', 'perimeter']);
+
+export function defaultSegmentCaptionPlace(kind) {
+  return kind === 'polylength' ? 'inline' : 'off';
+}
+
+/** How a mark's segment captions show ('off' for kinds that have none). */
+export function segmentCaptionPlace(obj) {
+  const kind = getMeasureKind(obj);
+  if (!SEGMENT_CAPTION_KINDS.includes(kind)) return 'off';
+  const saved = obj?.data?.measure?.segments;
+  return SEGMENT_CAPTION_PLACES.includes(saved) ? saved : defaultSegmentCaptionPlace(kind);
+}
 
 /**
  * The mark after a Measurement popover change ({ label?, fields?, depth?,
@@ -469,6 +513,67 @@ export function applyMeasureEdit(obj, changes = {}) {
     const depth = normalizeMeasureDepth(changes.depth);
     if (depth) measure.depth = depth;
   }
+  if (hasOwn(changes, 'ownScale')) {
+    // Per-mark scale (measure-plus): a valid scale is the mark's own; null
+    // puts it back on the page scale (changes.pageScale, when there is one).
+    if (isValidMeasureScale(changes.ownScale)) {
+      measure.scale = { ...changes.ownScale };
+      measure.ownScale = true;
+    } else if (changes.ownScale == null && measure.ownScale) {
+      delete measure.ownScale;
+      if (isValidMeasureScale(changes.pageScale)) measure.scale = { ...changes.pageScale };
+      else delete measure.scale;
+    }
+  }
+  if (hasOwn(changes, 'segmentCaptions') && SEGMENT_CAPTION_KINDS.includes(kind)
+    && SEGMENT_CAPTION_PLACES.includes(changes.segmentCaptions)) {
+    if (changes.segmentCaptions === defaultSegmentCaptionPlace(kind)) delete measure.segments;
+    else measure.segments = changes.segmentCaptions;
+  }
+  if (kind === 'length' && measure.dim && typeof measure.dim === 'object') {
+    // Dimension-line marks only (measure-plus): the leader and caption place.
+    if (hasOwn(changes, 'leader')) {
+      const leader = normalizeDimensionLeader(changes.leader);
+      if (leader != null) measure.dim = { ...measure.dim, leader };
+    }
+    if (hasOwn(changes, 'captionPlace')) {
+      const dim = { ...measure.dim };
+      if (changes.captionPlace === 'above') dim.caption = 'above'; else delete dim.caption;
+      measure.dim = dim;
+    }
+    // Caption style (Drawboard's Caption pop-over).
+    if (hasOwn(changes, 'captionPt')) {
+      const size = normalizeDimensionCaptionPt(changes.captionPt);
+      if (size != null) {
+        const dim = { ...measure.dim };
+        if (size === DIMENSION_CAPTION_PT) delete dim.size; else dim.size = size;
+        measure.dim = dim;
+        delete measure.captionSize;
+      }
+    }
+    if (hasOwn(changes, 'captionColor')) {
+      const dim = { ...measure.dim };
+      const color = normalizeDimensionCaptionColor(changes.captionColor);
+      if (color) dim.color = color; else delete dim.color;
+      measure.dim = dim;
+    }
+    if (hasOwn(changes, 'captionBg')) {
+      const dim = { ...measure.dim };
+      const bg = normalizeDimensionCaptionColor(changes.captionBg);
+      if (bg) {
+        dim.bg = bg;
+        // A background picked while none showed comes in at full strength.
+        if (!DIMENSION_CAPTION_BG_OPACITIES.includes(Number(dim.bgOpacity))) dim.bgOpacity = 1;
+      } else {
+        delete dim.bg;
+        delete dim.bgOpacity;
+      }
+      measure.dim = dim;
+    }
+    if (hasOwn(changes, 'captionBgOpacity') && DIMENSION_CAPTION_BG_OPACITIES.includes(Number(changes.captionBgOpacity))) {
+      measure.dim = { ...measure.dim, bgOpacity: Number(changes.captionBgOpacity) };
+    }
+  }
   const keys = new Set([...Object.keys(before), ...Object.keys(measure)]);
   if ([...keys].every((key) => JSON.stringify(before[key]) === JSON.stringify(measure[key]))) return obj;
   return { ...obj, data: { ...obj.data, measure } };
@@ -477,6 +582,7 @@ export function applyMeasureEdit(obj, changes = {}) {
 function formatMeasureDepth(depth, scale) {
   const d = normalizeMeasureDepth(depth) || 0;
   if (!isValidMeasureScale(scale)) return `${formatNumber(d)} in (no scale)`;
+  if (scaleUsesDisplay(scale)) return formatDisplayDepth(d * MEASURE_UNITS[scale.unit].inches, scale.display, scale.precision);
   return formatMeasureLength(d * scale.ptPerUnit, scale);
 }
 
@@ -486,7 +592,8 @@ function formatMeasureDepth(depth, scale) {
  * them joined by newlines), `reading` (the plain reading, for lists and
  * exports when every line is switched off) and `fontPx` when sized.
  */
-export function buildMeasureLabel(obj, scale) {
+export function buildMeasureLabel(obj, pageScale) {
+  const scale = markMeasureScale(obj, pageScale);
   const base = buildMeasureReading(obj, scale);
   if (!base || !hasCaptionSettings(obj.data.measure)) return base;
   const { kind } = base;
@@ -507,7 +614,10 @@ export function buildMeasureLabel(obj, scale) {
   for (const field of readings) {
     const value = valueOf(field);
     // One reading reads bare, as today; several say which is which.
-    lines.push(readings.length > 1 ? `${MEASURE_FIELD_NAMES[field]}: ${value}` : value);
+    if (readings.length < 2) lines.push(value);
+    // Nightly 'measure-plus': Drawboard's short prefixes (L = , A = ...).
+    else if (scaleUsesDisplay(scale)) lines.push(`${MEASURE_LINE_PREFIXES[field]} = ${value}`);
+    else lines.push(`${MEASURE_FIELD_NAMES[field]}: ${value}`);
   }
   const out = { ...base, text: lines.join('\n'), lines, reading: base.text };
   const size = normalizeMeasureCaptionSize(measure.captionSize);
@@ -516,17 +626,26 @@ export function buildMeasureLabel(obj, scale) {
 }
 
 export const MEASURE_LABEL_WRAP_CHARS = 32;
+const graphemeSegmenter = typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function'
+  ? new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+  : null;
+/** Splits text into what a reader sees as single characters. */
+export function splitGraphemes(text) {
+  const str = String(text);
+  if (graphemeSegmenter) return Array.from(graphemeSegmenter.segment(str), (part) => part.segment);
+  return Array.from(str);
+}
 /** A long label breaks at spaces (or mid-word when one word is too long). */
 export function wrapMeasureLabelLine(text, max = MEASURE_LABEL_WRAP_CHARS) {
   const out = [];
   let line = '';
-  // Lengths count characters, not UTF-16 units, so an emoji is never cut
-  // in half.
-  const len = (s) => Array.from(s).length;
+  // Lengths count what a reader sees as one character (a grapheme), so an
+  // emoji is never cut in half: not a flag, a skin tone, a family or a keycap.
+  const len = (s) => splitGraphemes(s).length;
   for (let word of String(text).split(' ')) {
     while (len(word) > max) {
       if (line) { out.push(line); line = ''; }
-      const chars = Array.from(word);
+      const chars = splitGraphemes(word);
       out.push(chars.slice(0, max).join(''));
       word = chars.slice(max).join('');
     }
@@ -537,7 +656,8 @@ export function wrapMeasureLabelLine(text, max = MEASURE_LABEL_WRAP_CHARS) {
   return out.length ? out : [String(text)];
 }
 
-function buildMeasureReading(obj, scale) {
+function buildMeasureReading(obj, pageScale) {
+  const scale = markMeasureScale(obj, pageScale);
   const kind = getMeasureKind(obj);
   if (!kind) return null;
   if (kind === 'length') {
@@ -666,18 +786,37 @@ export function pageScaleFromObjects(objects) {
   if (!Array.isArray(objects)) return null;
   for (let i = objects.length - 1; i >= 0; i -= 1) {
     const scale = objects[i]?.data?.measure?.scale;
-    if (getMeasureKind(objects[i]) && isValidMeasureScale(scale)) return scale;
+    // A mark on its own scale (measure-plus) says nothing about the page's.
+    if (getMeasureKind(objects[i]) && isValidMeasureScale(scale) && !isOwnScaleMeasure(objects[i])) return scale;
   }
   return null;
+}
+
+/**
+ * Per-mark scale (Nightly 'measure-plus', Drawboard's per-measure scale): a
+ * measure with data.measure.ownScale reads in its own data.measure.scale and
+ * keeps it when the page scale changes, until "Apply to existing
+ * measurements" puts it back on the page scale.
+ */
+export function isOwnScaleMeasure(obj) {
+  const measure = obj?.data?.measure;
+  return Boolean(measure?.ownScale && isValidMeasureScale(measure.scale) && getMeasureKind(obj));
+}
+
+/** The scale a measure reads in: its own, else the page's. */
+export function markMeasureScale(obj, pageScale) {
+  return isOwnScaleMeasure(obj) ? obj.data.measure.scale : pageScale;
 }
 
 /**
  * Stamp measure metadata on a freshly built line / polygon / polyline commit
  * JSON. Wall area and Volume also keep their depth (page scale units).
  */
-export function stampMeasure(json, kind, scale, { depth = null } = {}) {
+export function stampMeasure(json, kind, scale, { depth = null, dim = false } = {}) {
   if (!json || !MEASURE_KINDS.includes(kind)) return json;
   const measure = { kind };
+  // Nightly 'measure-plus': a new Length draws as a dimension line.
+  if (dim && kind === 'length') measure.dim = { leader: DIMENSION_LEADER_PT };
   if (isValidMeasureScale(scale)) measure.scale = { ...scale };
   const d = normalizeMeasureDepth(depth);
   if (d && DEPTH_MEASURE_KINDS.includes(kind)) measure.depth = d;
@@ -685,11 +824,17 @@ export function stampMeasure(json, kind, scale, { depth = null } = {}) {
 }
 
 /** New page JSON with every measurement re-stamped to `scale` (+ extra objects appended). */
-export function applyPageScale(pageJson, scale, extraObjects = []) {
+export function applyPageScale(pageJson, scale, extraObjects = [], { resetOwn = false } = {}) {
   const objects = Array.isArray(pageJson?.objects) ? pageJson.objects : [];
-  const restamp = (obj) => (getMeasureKind(obj)
-    ? { ...obj, data: { ...obj.data, measure: { ...obj.data.measure, scale: { ...scale } } } }
-    : obj);
+  const restamp = (obj) => {
+    if (!getMeasureKind(obj)) return obj;
+    // A mark on its own scale keeps it unless the page scale is applied to
+    // existing measurements too (measure-plus).
+    if (isOwnScaleMeasure(obj) && !resetOwn) return obj;
+    const measure = { ...obj.data.measure, scale: { ...scale } };
+    delete measure.ownScale;
+    return { ...obj, data: { ...obj.data, measure } };
+  };
   // The kept calibration line is stamped too, or lists and exports that read
   // the mark's own scale would show it unscaled (R3-M B2).
   return { ...(pageJson || {}), objects: [...objects.map(restamp), ...(extraObjects || []).map(restamp)] };
@@ -732,17 +877,74 @@ export function layoutMeasureLabel(label, unitsPerPx = 1, page = null) {
     const offset = height / 2 + MEASURE_LABEL_GAP_PX * u;
     cx += Math.sin(rad) * offset;
     cy -= Math.cos(rad) * offset;
+  } else if (Number.isFinite(label.above?.angle)) {
+    // A level pill lifted off a turned segment (a Polylength's total sits
+    // above its last segment, 'measure-plus'): clear of the segment and of
+    // `extra` page units more (that segment's own caption).
+    const rad = (label.above.angle * Math.PI) / 180;
+    const halfAcross = (Math.abs(height * Math.cos(rad)) + Math.abs(width * Math.sin(rad))) / 2;
+    const offset = halfAcross + MEASURE_LABEL_GAP_PX * u + (Number(label.above.extra) || 0);
+    cx += Math.sin(rad) * offset;
+    cy -= Math.cos(rad) * offset;
   }
-  // Kept inside the page (a long caption near an edge ran off it), when the
-  // page is big enough to hold it.
+  // Kept inside the page (a long caption near an edge ran off it). A caption
+  // wider (or taller) than the page sits in its middle, so it overhangs both
+  // edges by the least it can instead of running off one side.
   if (page && page.width > 0 && page.height > 0) {
     const rad = ((label.angle || 0) * Math.PI) / 180;
     const halfW = (Math.abs(width * Math.cos(rad)) + Math.abs(height * Math.sin(rad))) / 2;
     const halfH = (Math.abs(width * Math.sin(rad)) + Math.abs(height * Math.cos(rad))) / 2;
-    if (page.width >= 2 * halfW) cx = Math.min(Math.max(cx, halfW), page.width - halfW);
-    if (page.height >= 2 * halfH) cy = Math.min(Math.max(cy, halfH), page.height - halfH);
+    cx = page.width >= 2 * halfW ? Math.min(Math.max(cx, halfW), page.width - halfW) : page.width / 2;
+    cy = page.height >= 2 * halfH ? Math.min(Math.max(cy, halfH), page.height - halfH) : page.height / 2;
   }
   // One line keeps the round pill; several get a card with the same corners.
   const radius = Math.min(height / 2, (fontPx / 2 + MEASURE_LABEL_PAD_Y_PX) * u);
   return { cx, cy, fontSize, width, height, radius, angle: label.angle || 0, lines, lineHeight: lineHeightPx * u };
+}
+
+// Custom scales (measure-plus): Drawboard puts each custom scale you apply
+// under CUSTOM SCALES in every scale list. Kept on this screen like recent
+// scales, newest first, with the typed inputs so the dialog refills them.
+const CUSTOM_SCALES_KEY = 'survey:measure-custom-scales';
+export const CUSTOM_SCALES_MAX = 12;
+
+function cleanCustomScale(scale) {
+  if (!isValidMeasureScale(scale) || !scale.custom) return null;
+  const { ptPerUnit, unit, label, display, precision, custom } = scale;
+  return { ptPerUnit: Number(ptPerUnit), unit, label, display, precision, custom: { ...custom } };
+}
+
+export function addCustomMeasureScale(list, scale) {
+  const clean = cleanCustomScale(scale);
+  const rest = (Array.isArray(list) ? list : []).map(cleanCustomScale).filter(Boolean);
+  if (!clean) return rest;
+  return [clean, ...rest.filter((s) => !(sameScale(s, clean) && s.label === clean.label))].slice(0, CUSTOM_SCALES_MAX);
+}
+
+export function loadCustomMeasureScales(storage = globalThis.localStorage) {
+  try {
+    const list = JSON.parse(storage?.getItem(CUSTOM_SCALES_KEY) || '[]');
+    return Array.isArray(list) ? list.map(cleanCustomScale).filter(Boolean).slice(0, CUSTOM_SCALES_MAX) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCustomMeasureScales(list, storage) {
+  try { storage?.setItem(CUSTOM_SCALES_KEY, JSON.stringify(list)); } catch { /* storage blocked */ }
+  return list;
+}
+
+export function rememberCustomMeasureScale(scale, storage = globalThis.localStorage) {
+  return saveCustomMeasureScales(addCustomMeasureScale(loadCustomMeasureScales(storage), scale), storage);
+}
+
+export function forgetCustomMeasureScale(index, storage = globalThis.localStorage) {
+  return saveCustomMeasureScales(loadCustomMeasureScales(storage).filter((_, i) => i !== index), storage);
+}
+
+/** The index of a custom scale in the list, or -1. */
+export function customMeasureScaleIndex(list, scale) {
+  if (!isValidMeasureScale(scale)) return -1;
+  return (Array.isArray(list) ? list : []).findIndex((s) => sameScale(s, scale) && s.label === scale.label);
 }

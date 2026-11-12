@@ -42,8 +42,12 @@ const DuplicateUploadModal = ({
   const isSheet = mode === 'sheet';
   const sheetLabel = sheet?.label || '';
   const revText = (rev) => (rev ? `, revision ${rev}` : '');
+  // Both read the same revision: this is not a newer issue of the sheet, so
+  // keeping it as its own file is the safe default.
+  const sameRevision = isSheet && !!sheet?.revision && !!sheet?.existingRevision
+    && String(sheet.revision).toUpperCase() === String(sheet.existingRevision).toUpperCase();
   const title = isSheet
-    ? `New revision of sheet ${sheetLabel}?`
+    ? (sameRevision ? `You already have sheet ${sheetLabel}` : `New revision of sheet ${sheetLabel}?`)
     : (isVersion ? 'You already have this file name' : 'You already have this file');
   const body = isSheet
     ? `“${incomingName}” reads as sheet ${sheetLabel}${revText(sheet?.revision)}. “${existingName}” is the same sheet${revText(sheet?.existingRevision)}.`
@@ -54,8 +58,8 @@ const DuplicateUploadModal = ({
     : `The file you picked is identical to “${existingName}”, so that document will be opened. Keep “${incomingName}” as an extra name for it?`;
   const actions = isSheet
     ? [
-        { id: 'keep-both', label: 'Keep as its own file', primary: false },
-        { id: 'new-version', label: 'Upload as new version', primary: true },
+        { id: 'keep-both', label: 'Keep as its own file', primary: sameRevision },
+        { id: 'new-version', label: 'Upload as new version', primary: !sameRevision },
       ]
     : isVersion
     ? [

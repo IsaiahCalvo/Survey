@@ -12,6 +12,7 @@ import {
   FORMAT_ROW_TOOLS,
   TOOL_BAR_GROUPS,
   isAreaEditing,
+  resolveSurveyBarPush,
   resolveToolBarGroup,
   showsFormatRow,
   showsSurveyRow,
@@ -367,4 +368,20 @@ test('owner 2026-10-01: the desktop survey module pill centres its label like th
   assert.match(pill.slice(0, pill.indexOf('}')), /padding-left: calc\(var\(--chrome-field-pad-x\) \+ 9px \+ var\(--chrome-gap\)\);/);
   const fit = css.slice(css.indexOf('.survey-subrow__fit {'));
   assert.match(fit.slice(0, fit.indexOf('}')), /text-align: center;/);
+});
+
+// Owner 2026-11-10: a click on a Survey Marker only picks it. The survey bar
+// that comes in for a pick lies over the page; it pushes only when it comes in
+// for the armed Survey Marker tool (or on the phone), and the choice holds
+// while the bar stays.
+test('the survey bar pushes the page only when it comes in for the armed tool, and keeps that choice', () => {
+  assert.equal(resolveSurveyBarPush({ shown: false, wasPushing: true }), null);
+  assert.equal(resolveSurveyBarPush({ shown: true, pickedOnly: true }), false);
+  assert.equal(resolveSurveyBarPush({ shown: true, pickedOnly: false }), true);
+  // Arming the tool under a bar that came in for a pick does not start a push,
+  // and dropping the tool under a pushing bar does not take it back.
+  assert.equal(resolveSurveyBarPush({ shown: true, wasPushing: false, pickedOnly: false }), false);
+  assert.equal(resolveSurveyBarPush({ shown: true, wasPushing: true, pickedOnly: true }), true);
+  assert.match(pdfViewer, /data-viewer-top-push=\{surveyBarPushRef\.current === false \? undefined : 'true'\}/);
+  assert.match(pdfViewer, /pickedOnly: !mobileMode && activeTool !== 'survey-marker' && surveyMarkerPicked/);
 });

@@ -38,16 +38,20 @@
                 <data android:scheme="com.kalvoe.survey" android:host="sheet-connected" />
             </intent-filter>
 
-            <!-- "Open in Survey": a PDF opened from Files, Gmail, Outlook or
-                 Teams arrives as a VIEW intent with a content:// (or file://)
-                 url; src/mobile/nativeOpenFile.js reads it and uploads it. -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:scheme="content" />
-                <data android:scheme="file" />
-                <data android:mimeType="application/pdf" />
-            </intent-filter>
+            <!-- "Open in Survey" (beta flag 'open-in-survey') is NOT registered
+                 here yet: the stable app never turns a beta flag on, so a PDF
+                 handler would put Survey in every "Open with" list only to
+                 refuse the file. Survey Nightly gets it from
+                 src/nightly/AndroidManifest.xml. When the flag moves to
+                 'rollout', delete that file and add back inside this activity:
+                 <intent-filter>
+                     <action android:name="android.intent.action.VIEW" />
+                     <category android:name="android.intent.category.DEFAULT" />
+                     <data android:scheme="content" />
+                     <data android:scheme="file" />
+                     <data android:mimeType="application/pdf" />
+                 </intent-filter>
+                 (tests/nativeOpenFile.test.mjs checks this follows the flag.) -->
 
         </activity>
 

@@ -169,10 +169,11 @@ test('no tool-badge cursor: the page shows plain system cursors only', () => {
     );
   }
   // What the tools show instead, exactly as they did before 2026-09-16:
-  // a plain crosshair while drawing, the open hand for Pan, the I-beam in text.
+  // a plain crosshair while drawing (Tape too, Nightly 'tape-tool'), the open
+  // hand for Pan, the I-beam in text.
   assert.match(
     pdfViewerSource,
-    /if \(activeTool === 'pen' \|\| activeTool === 'highlighter' \|\| activeTool === REGION_EDIT_TOOL\) forcedCursor = 'crosshair';/,
+    /if \(activeTool === 'pen' \|\| activeTool === 'highlighter' \|\| activeTool === 'tape' \|\| activeTool === REGION_EDIT_TOOL\) forcedCursor = 'crosshair';/,
   );
   assert.match(pdfViewerSource, /else if \(activeTool === 'pan'\) forcedCursor = 'grab';/);
   assert.match(svgLayerSource, /\? 'tool-crosshair' : undefined/);

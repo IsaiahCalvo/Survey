@@ -198,3 +198,57 @@
   .measure-scale__chip,
   .measure-scale__calibrate { transition: none; }
 }
+
+/* The dialog's drop-down lists (portalled to <body>) open over its scrim. */
+.annotation-dropdown__popover.value-select__menu.measure-scale__menu {
+  z-index: 1000001;
+}
+
+/* Custom scales (measure-plus): two chips a row, each with a remove x. */
+.measure-scale__chips--custom {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.measure-scale__custom-chip {
+  position: relative;
+  display: flex;
+  min-width: 0;
+}
+
+.measure-scale__custom-chip .measure-scale__chip {
+  flex: 1;
+  min-width: 0;
+  padding-right: 34px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.measure-scale__custom-remove {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  width: 32px;
+  height: 32px;
+  margin-top: -16px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: var(--text-3);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .measure-scale__custom-remove:hover {
+    color: var(--text-1);
+    background: var(--hover);
+  }
+}
+
+.measure-scale__custom-remove:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}

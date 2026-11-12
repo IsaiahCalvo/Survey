@@ -19,7 +19,11 @@ export const ARROWHEAD_STYLES = {
   DIAMOND: 'diamond',
   SLASH: 'slash',
   // PDF /LE Square: a square centred on the endpoint (was drawn as a bar).
-  SQUARE: 'square'
+  SQUARE: 'square',
+  // PDF /LE ROpenArrow / RClosedArrow: heads that point back into the line
+  // (Nightly 'line-endings', Drawboard's grid offers both).
+  R_OPEN_ARROW: 'rOpenArrow',
+  R_CLOSED_ARROW: 'rClosedArrow'
 };
 
 export const ARROWHEAD_STYLE_LABELS = {
@@ -31,7 +35,9 @@ export const ARROWHEAD_STYLE_LABELS = {
   [ARROWHEAD_STYLES.HORIZONTAL_LINE]: 'Horizontal line',
   [ARROWHEAD_STYLES.DIAMOND]: 'Diamond',
   [ARROWHEAD_STYLES.SLASH]: 'Slash',
-  [ARROWHEAD_STYLES.SQUARE]: 'Square'
+  [ARROWHEAD_STYLES.SQUARE]: 'Square',
+  [ARROWHEAD_STYLES.R_OPEN_ARROW]: 'Reverse open arrow',
+  [ARROWHEAD_STYLES.R_CLOSED_ARROW]: 'Reverse closed arrow'
 };
 
 /**
@@ -64,7 +70,9 @@ export const ARROWHEAD_SHORT_LABELS = {
   // Imported-only heads, one word each so a prepended row fits the pill too.
   [ARROWHEAD_STYLES.OPEN_TRIANGLE]: 'Triangle',
   [ARROWHEAD_STYLES.DIAMOND]: 'Diamond',
-  [ARROWHEAD_STYLES.SLASH]: 'Slash'
+  [ARROWHEAD_STYLES.SLASH]: 'Slash',
+  [ARROWHEAD_STYLES.R_OPEN_ARROW]: 'Reverse',
+  [ARROWHEAD_STYLES.R_CLOSED_ARROW]: 'Reverse fill'
 };
 
 export const ARROWHEAD_MENU_ORDER = Object.freeze([
@@ -75,6 +83,39 @@ export const ARROWHEAD_MENU_ORDER = Object.freeze([
   ARROWHEAD_STYLES.SQUARE,
   ARROWHEAD_STYLES.HORIZONTAL_LINE
 ]);
+
+/**
+ * Nightly 'line-endings': Drawboard's Endings grid, all ten PDF line endings
+ * in its order (two rows of five), for both ends of a Line or an Arrow. The
+ * names are the tooltips (Drawboard's tiles have none; ours do).
+ */
+export const LINE_ENDING_GRID_ORDER = Object.freeze([
+  ARROWHEAD_STYLES.NONE,
+  ARROWHEAD_STYLES.SLASH,
+  ARROWHEAD_STYLES.SQUARE,
+  ARROWHEAD_STYLES.V_SHAPE,
+  ARROWHEAD_STYLES.R_OPEN_ARROW,
+  ARROWHEAD_STYLES.OPEN_CIRCLE,
+  ARROWHEAD_STYLES.SOLID_TRIANGLE,
+  ARROWHEAD_STYLES.R_CLOSED_ARROW,
+  ARROWHEAD_STYLES.DIAMOND,
+  ARROWHEAD_STYLES.HORIZONTAL_LINE
+]);
+
+export const LINE_ENDING_NAMES = Object.freeze({
+  [ARROWHEAD_STYLES.NONE]: 'None',
+  [ARROWHEAD_STYLES.SLASH]: 'Slash',
+  [ARROWHEAD_STYLES.SQUARE]: 'Square',
+  [ARROWHEAD_STYLES.V_SHAPE]: 'Open arrow',
+  [ARROWHEAD_STYLES.R_OPEN_ARROW]: 'Reverse open arrow',
+  [ARROWHEAD_STYLES.OPEN_CIRCLE]: 'Circle',
+  [ARROWHEAD_STYLES.SOLID_TRIANGLE]: 'Closed arrow',
+  [ARROWHEAD_STYLES.R_CLOSED_ARROW]: 'Reverse closed arrow',
+  [ARROWHEAD_STYLES.DIAMOND]: 'Diamond',
+  [ARROWHEAD_STYLES.HORIZONTAL_LINE]: 'Butt',
+  // An imported hollow triangle is not in the grid; it keeps its name.
+  [ARROWHEAD_STYLES.OPEN_TRIANGLE]: 'Open triangle'
+});
 
 /**
  * Leader line-style options (the toolbar's Style picker for callouts).

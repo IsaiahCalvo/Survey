@@ -8,6 +8,9 @@
  * Each function takes a Fabric.js JSON object and returns a React SVG element.
  */
 import React from 'react';
+import { isLinkMark, linkMarkPaint } from './linkMarkPaint.js';
+import { dimensionMarkLayout } from './measure/dimensionLayout.js';
+import { DIMENSION_CAPTION_BG_PAD_PT, DIMENSION_EXTENSION_PT, isDimensionMeasure } from './measure/dimensionLine.js';
 import { measureTextBounds, getLineEndpoints } from './svgBoundingBox';
 // Phase 14 CALL-10: renderCallout delegates to a pure data-spec builder in
 // calloutEditAdapter.js so the contract can be unit-tested without loading
@@ -28,6 +31,7 @@ import {
   resolveLineEndingStyles,
   insetOpenPolylinePoints,
   lineEndingBodyInset,
+  arrowheadShapePathD,
 } from './lineRenderHelpers.js';
 // UX 2026-04-21: Imported revision-clouds rebuild their scalloped geometry
 // from the live effective box/points on every render so the number of humps
@@ -344,6 +348,12 @@ const buildPaperCutsSvgD = (polygons) => (polygons || [])
  * @param {number} index - Array index for key fallback
  * @returns {React.ReactElement|null}
  */
+// Drawboard's, measured live (2026-11-10): 2 px left and 2 px down, no blur,
+// black at 10%; revealed, a 2 px outline in the tape's colour at 50%.
+export const TAPE_SHADOW_FILTER = 'drop-shadow(-2px 2px 0 rgba(0, 0, 0, 0.1))';
+export const TAPE_REVEALED_OUTLINE_PX = 2;
+export const TAPE_REVEALED_OUTLINE_OPACITY = 0.5;
+
 export const renderPath = (obj, index) => {
   if (!Array.isArray(obj.path) || obj.path.length === 0) return null;
 
@@ -444,13 +454,40 @@ export const renderPath = (obj, index) => {
     }
   }
 
+  // Tape (beta 'tape-tool', Drawboard PDF): an opaque band with a hard drop
+  // shadow. Revealed (a tap under Pan or Select, saved on the mark as
+  // data.tapeRevealed), it is an outline in its own colour so what is under
+  // it shows.
+  if (obj?.data?.tape === true) {
+    const fill = obj.fill || attrs.fill;
+    const revealed = obj.data.tapeRevealed === true;
+    return (
+      <path
+        key={key}
+        d={d}
+        transform={transform}
+        data-tape={revealed ? 'revealed' : 'covered'}
+        fill={revealed ? 'none' : fill}
+        fillRule={attrs.fillRule || 'evenodd'}
+        stroke={revealed ? fill : 'none'}
+        strokeWidth={revealed ? TAPE_REVEALED_OUTLINE_PX : 0}
+        strokeOpacity={revealed ? TAPE_REVEALED_OUTLINE_OPACITY : undefined}
+        strokeLinejoin="round"
+        vectorEffect={revealed ? 'non-scaling-stroke' : undefined}
+        opacity={attrs.opacity}
+        shapeRendering="geometricPrecision"
+        style={revealed ? undefined : { filter: TAPE_SHADOW_FILTER }}
+      />
+    );
+  }
+
   const paperSource = obj?.paperSourceStroke;
-  const paperSurvivorD = paperCutsToSvgD(obj?.polygons);
-  if (
-    paperSurvivorD
-    && Array.isArray(paperSource?.path)
-    && paperSource.path.length > 0
-  ) {
+  // Survivor polygons only matter for an erased authored curve; reading them
+  // otherwise would rebuild an imported mark's outline (annotationMarkCodec).
+  const paperSurvivorD = Array.isArray(paperSource?.path) && paperSource.path.length > 0
+    ? paperCutsToSvgD(obj?.polygons)
+    : null;
+  if (paperSurvivorD) {
     // Partially erased authored curve (imported PDF ink, legacy curves): fill
     // the SURVIVOR polygons, the eraser's own verified output (even-odd).
     // 2026-10-06 (test plan 68): this used to paint the authored source curve
@@ -562,6 +599,40 @@ export const renderRect = (obj, index) => {
           strokeWidth={glyphStrokeWidth}
           strokeLinecap="round"
         />
+      </g>
+    );
+  }
+
+  // Nightly 'link-tool': a link box paints its see-through fill and the
+  // border its style asks for (box, dashed, underline, none). linkTool.js.
+  if (isLinkMark(obj)) {
+    const paint = linkMarkPaint(obj, effectiveWidth, effectiveHeight);
+    return (
+      <g
+        key={key}
+        transform={positionTransform}
+        opacity={obj.opacity ?? 1}
+        data-shape-id={shapeId}
+        data-shape-kind="link"
+        data-link-style={paint.style}
+        onClick={__shapeClick}
+      >
+        <rect x={0} y={0} width={effectiveWidth} height={effectiveHeight} fill={paint.fill} stroke="none" />
+        {paint.box && paint.strokeWidth > 0 && (
+          <rect
+            x={0}
+            y={0}
+            width={effectiveWidth}
+            height={effectiveHeight}
+            fill="none"
+            stroke={paint.stroke}
+            strokeWidth={paint.strokeWidth}
+            strokeDasharray={paint.dash ? paint.dash.join(' ') : undefined}
+          />
+        )}
+        {paint.underline && paint.strokeWidth > 0 && (
+          <line {...paint.underline} stroke={paint.stroke} strokeWidth={paint.strokeWidth} />
+        )}
       </g>
     );
   }
@@ -788,9 +859,20 @@ export const renderTextMarkup = (obj, index) => {
  *   of `.polygon`/`.polyline`/`.circle`/`.line`)
  * @returns {React.ReactElement|null}
  */
+// Drawboard's heads (Nightly 'line-endings') arrive as a list of shapes in
+// page units: paths and circles, each with its own paint.
+const renderArrowheadShapes = (spec) => (
+  <g>
+    {(spec.shapes || []).map((shape, i) => (shape.type === 'circle'
+      ? <circle key={i} cx={shape.cx} cy={shape.cy} r={shape.r} fill={shape.fill} stroke={shape.stroke} strokeWidth={shape.strokeWidth} />
+      : <path key={i} d={arrowheadShapePathD(shape)} fill={shape.fill} stroke={shape.stroke} strokeWidth={shape.strokeWidth} strokeLinejoin={shape.strokeLinejoin} strokeLinecap={shape.strokeLinecap} strokeMiterlimit={4} />))}
+  </g>
+);
+
 const renderArrowheadFromSpec = (spec) => {
   switch (spec.kind) {
     case 'none': return null;
+    case 'shapes': return renderArrowheadShapes(spec);
     case 'solidTriangle': return <polygon {...spec.polygon} />;
     case 'openTriangle': return <polygon {...spec.polygon} />;
     case 'openCircle': return <circle {...spec.circle} />;
@@ -853,6 +935,69 @@ export const renderArrowhead = (style, tipX, tipY, angleDeg, color, sw) => {
  * @param {number} index - Array index for key fallback
  * @returns {React.ReactElement}
  */
+// Nightly 'measure-plus': a Length mark drawn as Drawboard's dimension line
+// (utils/measure/dimensionLine.js). Everything sits inside the line's own
+// rotation, so it turns, flips and moves with the mark; the caption reads in
+// the stroke colour at 9 pt and never upside down. The layer's hit target
+// follows the offset line too (SVGAnnotationLayer, 'dimension-line').
+const pts = (list) => list.map((p) => `${p.x},${p.y}`).join(' ');
+export { dimensionMarkLayout };
+
+function renderDimensionLine(obj, spec, key, opacity, rotateTransform, dashArray) {
+  const { stroke, strokeWidth } = spec.line;
+  const { label, lines, fontPt, lineHeight, captionWidth, captionHeight, geo, style } = dimensionMarkLayout(obj, spec.line);
+  if (!geo) return <g key={key} />;
+  const sw = strokeWidth || 1;
+  return (
+    <g key={key} opacity={opacity} transform={rotateTransform} data-dimension-line="true">
+      {geo.extensions.map(([p, q], i) => (
+        <line key={`e${i}`} x1={p.x} y1={p.y} x2={q.x} y2={q.y} stroke={stroke} strokeWidth={DIMENSION_EXTENSION_PT} />
+      ))}
+      {geo.segments.map(([p, q], i) => (
+        <line key={`s${i}`} x1={p.x} y1={p.y} x2={q.x} y2={q.y} stroke={stroke} strokeWidth={sw} strokeDasharray={dashArray} strokeLinecap="butt" />
+      ))}
+      {geo.elbow && (
+        <polyline data-dimension-elbow="true" points={pts(geo.elbow)} fill="none" stroke={stroke} strokeWidth={DIMENSION_EXTENSION_PT} />
+      )}
+      {geo.chevrons.map((c, i) => (
+        <polyline key={`c${i}`} points={pts(c)} fill="none" stroke={stroke} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" />
+      ))}
+      {lines.length > 0 && style.bg && (
+        <rect
+          data-dimension-caption-bg={style.bg}
+          x={geo.caption.x - captionWidth / 2 - DIMENSION_CAPTION_BG_PAD_PT}
+          y={geo.caption.y - captionHeight / 2 - DIMENSION_CAPTION_BG_PAD_PT / 2}
+          width={captionWidth + DIMENSION_CAPTION_BG_PAD_PT * 2}
+          height={captionHeight + DIMENSION_CAPTION_BG_PAD_PT}
+          transform={`rotate(${geo.caption.angle} ${geo.caption.x} ${geo.caption.y})`}
+          fill={style.bg}
+          fillOpacity={style.bgOpacity}
+        />
+      )}
+      {lines.length > 0 && (
+        <text
+          data-dimension-caption={label.text}
+          x={geo.caption.x}
+          y={geo.caption.y}
+          transform={`rotate(${geo.caption.angle} ${geo.caption.x} ${geo.caption.y})`}
+          textAnchor="middle"
+          dominantBaseline="central"
+          fontSize={fontPt}
+          fontFamily="Helvetica"
+          fill={style.color || stroke}
+          style={{ userSelect: 'none' }}
+        >
+          {lines.length > 1
+            ? lines.map((line, i) => (
+              <tspan key={i} x={geo.caption.x} y={geo.caption.y + (i - (lines.length - 1) / 2) * lineHeight}>{line}</tspan>
+            ))
+            : lines[0]}
+        </text>
+      )}
+    </g>
+  );
+}
+
 export const renderLine = (obj, index) => {
   const spec = buildLineRenderSpec(obj);
   const isArrow = obj.tool === 'arrow';
@@ -958,6 +1103,10 @@ export const renderLine = (obj, index) => {
   const lineDashArrayAttr = Array.isArray(obj.strokeDashArray) && obj.strokeDashArray.length > 0
     ? obj.strokeDashArray.join(' ')
     : undefined;
+
+  if (spec.kind !== 'curved' && isDimensionMeasure(obj)) {
+    return renderDimensionLine(obj, spec, key, opacity, rotateTransform, lineDashArrayAttr);
+  }
 
   if (spec.kind === 'curved') {
     // UX: Curved line/arrow — <path> + optional arrowhead inside <g>.
@@ -1947,6 +2096,7 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
   const renderArrowheadEl = () => {
     switch (arrowheadSpec.kind) {
       case 'none': return null;
+      case 'shapes': return renderArrowheadShapes(arrowheadSpec);
       case 'solidTriangle': return <polygon {...arrowheadSpec.polygon} />;
       case 'openTriangle': return <polygon {...arrowheadSpec.polygon} />;
       case 'openCircle': return <circle {...arrowheadSpec.circle} />;

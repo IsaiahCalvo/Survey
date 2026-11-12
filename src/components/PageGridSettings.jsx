@@ -167,8 +167,56 @@ export function PageGridSettingsPanel({ on, toggle, phone = false, showSwitch = 
         }
         update({ customUnit, density: 'custom' });
     };
+    const slider = (
+        <input
+            type="range"
+            className="page-grid-settings__slider"
+            min="0"
+            max="1000"
+            step="1"
+            aria-label="Grid spacing"
+            aria-valuetext={`${sliderValue} ${unit}`}
+            value={pageGridSliderPosition(sliderValue, unit)}
+            onChange={onSlide}
+            onPointerUp={endSlide}
+            onKeyUp={endSlide}
+            onBlur={endSlide}
+            style={{ '--fill': `${pageGridSliderPosition(sliderValue, unit) / 10}%` }}
+        />
+    );
+    const customRow = (
+        <div className="page-grid-settings__custom">
+            {!phone && <span className="page-grid-settings__label">Spacing</span>}
+            <input
+                type="text"
+                inputMode="decimal"
+                aria-label="Grid spacing value"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value.replace(/[^0-9.]/g, ''))}
+                onBlur={commitDraft}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitDraft(); } }}
+            />
+            {phone ? (
+                <select aria-label="Grid unit" value={unit} onChange={(e) => pickUnit(e.target.value)}>
+                    {/* The phone box is 52px wide: the short word only ("ft", not
+                        "ft (drawing)"); the hint below says drawing units follow
+                        each page's scale. */}
+                    {unitOptions.map((u) => <option key={u.value} value={u.value}>{u.value}</option>)}
+                </select>
+            ) : (
+                <ValueSelect
+                    label="Grid unit"
+                    size="sm"
+                    className="page-grid-settings__unit"
+                    value={unit}
+                    options={unitOptions}
+                    onChange={pickUnit}
+                />
+            )}
+        </div>
+    );
     return (
-        <div className={`page-grid-settings${phone ? ' is-phone' : ''}`} data-page-grid-settings="true">
+        <div className={`page-grid-settings${phone ? ' is-phone' : ''}${on ? '' : ' is-off'}`} data-page-grid-settings="true">
             {showSwitch && (
                 <button type="button" role="switch" aria-checked={on} className="page-grid-settings__switch" onClick={toggle}>
                     <span>Show grid</span>
@@ -210,49 +258,10 @@ export function PageGridSettingsPanel({ on, toggle, phone = false, showSwitch = 
                     onChange={pickPreset}
                 />
             )}
-            <input
-                type="range"
-                className="page-grid-settings__slider"
-                min="0"
-                max="1000"
-                step="1"
-                aria-label="Grid spacing"
-                aria-valuetext={`${sliderValue} ${unit}`}
-                value={pageGridSliderPosition(sliderValue, unit)}
-                onChange={onSlide}
-                onPointerUp={endSlide}
-                onKeyUp={endSlide}
-                onBlur={endSlide}
-                style={{ '--fill': `${pageGridSliderPosition(sliderValue, unit) / 10}%` }}
-            />
-            <div className="page-grid-settings__custom">
-                <input
-                    type="text"
-                    inputMode="decimal"
-                    aria-label="Grid spacing value"
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value.replace(/[^0-9.]/g, ''))}
-                    onBlur={commitDraft}
-                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitDraft(); } }}
-                />
-                {phone ? (
-                    <select aria-label="Grid unit" value={unit} onChange={(e) => pickUnit(e.target.value)}>
-                        {/* The phone box is 52px wide: the short word only ("ft", not
-                            "ft (drawing)"); the hint below says drawing units follow
-                            each page's scale. */}
-                        {unitOptions.map((u) => <option key={u.value} value={u.value}>{u.value}</option>)}
-                    </select>
-                ) : (
-                    <ValueSelect
-                        label="Grid unit"
-                        size="sm"
-                        className="page-grid-settings__unit"
-                        value={unit}
-                        options={unitOptions}
-                        onChange={pickUnit}
-                    />
-                )}
-            </div>
+            {/* Owner 2026-11-10 second pass: the desktop card reads presets,
+                then a labelled Spacing line, then the slider; the phone keeps
+                the slider over its value box. */}
+            {phone ? <>{slider}{customRow}</> : <>{customRow}{slider}</>}
             {pageGridUsesDrawingScale(settings) && (
                 <p className="page-grid-settings__hint">Follows each page's scale. Pages with no scale keep a 1/2 in grid.</p>
             )}

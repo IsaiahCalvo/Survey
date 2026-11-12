@@ -1,0 +1,144 @@
+/* Nightly 'properties-panel': Drawboard's Expand menu card, 260 px on the
+   right of the viewer. Colours come from the chrome tokens. */
+.props-panel {
+  position: fixed;
+  width: 260px;
+  z-index: 5700; /* level with the selection quick bar, above the page */
+  display: flex;
+  flex-direction: column;
+  background: var(--chrome-surface, #1f2328);
+  color: var(--chrome-text, #e8eaed);
+  border: 1px solid var(--chrome-border, rgba(255, 255, 255, 0.08));
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+  overflow: hidden;
+  font-size: 13px;
+}
+.props-panel__header {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px 12px 10px;
+  border-bottom: 1px solid var(--chrome-border, rgba(255, 255, 255, 0.08));
+}
+.props-panel__heading { flex: 1; min-width: 0; }
+.props-panel__count { font-weight: 600; }
+.props-panel__kind { margin-top: 2px; opacity: 0.85; }
+.props-panel__meta { margin-top: 2px; opacity: 0.65; font-size: 12px; }
+.props-panel__icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.props-panel__icon-button:hover { background: rgba(255, 255, 255, 0.08); }
+.props-panel__body { flex: 1; overflow-y: auto; padding: 4px 0 12px; }
+.props-panel__section + .props-panel__section { border-top: 1px solid var(--chrome-border, rgba(255, 255, 255, 0.08)); }
+.props-panel__section-head {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.props-panel__section-body { padding: 0 12px 10px; display: flex; flex-direction: column; gap: 8px; }
+.props-panel__grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.props-panel__field { display: flex; align-items: center; gap: 6px; }
+.props-panel__field-label { width: 12px; opacity: 0.7; }
+.props-panel__number {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--chrome-border, rgba(255, 255, 255, 0.12));
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  font: inherit;
+}
+.props-panel__number:disabled { opacity: 0.5; }
+.props-panel__number:focus-visible { outline: 2px solid var(--chrome-focus, #4064f4); outline-offset: 0; }
+.props-panel__row, .props-panel__slider-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.props-panel__row-label { opacity: 0.75; min-width: 64px; }
+.props-panel__sub { margin-top: 4px; }
+.props-panel__slider-row input[type='range'] { flex: 1; min-width: 80px; }
+.props-panel__value { min-width: 44px; text-align: right; font-variant-numeric: tabular-nums; opacity: 0.85; }
+.props-panel__colours { display: flex; flex-wrap: wrap; gap: 6px; }
+.props-panel__colour { width: 18px; height: 18px; padding: 0; border: none; border-radius: 4px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25); cursor: pointer; }
+.props-panel__colour:disabled { cursor: default; }
+.props-panel__colour.is-current { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25), 0 0 0 2px var(--chrome-bg, #1c1f26), 0 0 0 3.5px var(--accent, #2f7cf6); }
+.props-panel__colour:focus-visible { outline: 2px solid var(--accent, #2f7cf6); outline-offset: 2px; }
+.props-panel__recolour { margin-top: 8px; }
+.props-panel__chips, .props-panel__tiles { display: flex; flex-wrap: wrap; gap: 4px; }
+.props-panel__chip, .props-panel__tile {
+  min-width: 30px;
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid var(--chrome-border, rgba(255, 255, 255, 0.12));
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.props-panel__tile { display: inline-flex; align-items: center; justify-content: center; min-width: 40px; }
+.props-panel__chip.is-current, .props-panel__tile.is-current { background: rgba(64, 100, 244, 0.25); border-color: rgba(64, 100, 244, 0.7); }
+.props-panel__check { display: flex; align-items: center; gap: 6px; }
+
+/* Pin to side panel: a full-height column beside the viewer (Drawboard's
+   docked panel, about 260 px wide). */
+.props-panel-dock {
+  flex: 0 0 260px;
+  width: 260px;
+  min-width: 260px;
+  align-self: stretch;
+  display: flex;
+  position: relative;
+  overflow: hidden;
+  z-index: 5550;
+}
+.props-panel.props-panel--docked {
+  position: relative;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  border-radius: 0;
+  border-width: 0 0 0 1px;
+  box-shadow: none;
+}
+.props-panel__icon-button.is-pinned { color: var(--success); }
+.props-panel__empty { padding: 16px 12px; opacity: 0.7; }
+/* Fill's "none" swatch: a ringed disc with a red slash. */
+.props-panel__none {
+  position: relative;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--chrome-border, rgba(255, 255, 255, 0.35));
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+.props-panel__none::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 1px;
+  bottom: 1px;
+  width: 1.5px;
+  background: var(--danger, #e5484d);
+  transform: translateX(-50%) rotate(45deg);
+}
+.props-panel__none.is-current { box-shadow: 0 0 0 2px var(--chrome-focus, #4064f4); }

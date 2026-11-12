@@ -20,6 +20,7 @@ import calloutIconUrl from './assets/icons/callout-arrow-outline.svg';
 import textBoxIconUrl from './assets/icons/text-box-selection.svg';
 import shapesIconUrl from './assets/icons/shapes.svg';
 import oneDriveLogoUrl from './assets/brand/onedrive-logo.svg';
+import googleDriveLogoUrl from './assets/brand/googledrive-logo.svg';
 
 /*
  * HOUSE ICON GEOMETRY — owner ruling 2026-09-16.
@@ -140,6 +141,15 @@ const ICON_RENDERERS = {
         aria-hidden="true"
         className={className}
         style={{ ...style, width: size * 1.45, height: size, objectFit: 'contain' }}
+      />
+    ),
+    googleDrive: (size, _color, style, className) => (
+      <img
+        src={googleDriveLogoUrl}
+        alt=""
+        aria-hidden="true"
+        className={className}
+        style={{ ...style, width: size * 1.12, height: size, objectFit: 'contain' }}
       />
     ),
     google: (size, _color, style, className) => (
@@ -502,6 +512,58 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
+    lineSampleLongDash: (size, color, style, className) => (
+      <svg width={size} height={size / 2} viewBox="0 0 24 12" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M1 6H9.5M14.5 6H23" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+
+    // Nightly 'properties-panel': Expand menu (a card with a panel at its
+    // right) and Collapse menu (the same card, panel shut).
+    expandMenu: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <rect x="3.5" y="4.5" width="17" height="15" rx="1.67" stroke={color} strokeWidth="1.5" />
+        <path d="M14 4.5V19.5" stroke={color} strokeWidth="1.5" />
+        <path d="M16.5 9H18M16.5 12H18M16.5 15H18" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+
+    // Nightly 'stamp-tool': a rubber stamp (handle, base, the mark under it).
+    stamp: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M10 11V8.5a2 2 0 1 1 4 0V11" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+        <rect x="4.75" y="11" width="14.5" height="4.5" rx="0.5" stroke={color} strokeWidth="1.5" />
+        <path d="M5.5 19H18.5" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+
+    panelRight: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <rect x="3.5" y="4.5" width="17" height="15" rx="1.67" stroke={color} strokeWidth="1.5" />
+        <path d="M14 4.5V19.5" stroke={color} strokeWidth="1.5" />
+      </svg>
+    ),
+
+    // Nightly 'eraser-look': Drawboard's two eraser mode buttons, a whole
+    // stroke (Full) and the same stroke broken up (Partial).
+    eraserModeFull: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M3 15C6 8 9 7 12 12C15 17 18 16 21 9" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+
+    eraserModePartial: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M3 15C6 8 9 7 12 12C15 17 18 16 21 9" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeDasharray="2 3" />
+      </svg>
+    ),
+
+    lineSampleDashDot: (size, color, style, className) => (
+      <svg width={size} height={size / 2} viewBox="0 0 24 12" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M1 6H7.5M11 6H11.5M15 6H21.5" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+
     lineSampleDotted: (size, color, style, className) => (
       <svg width={size} height={size / 2} viewBox="0 0 24 12" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
         <path d="M1 6H23" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeDasharray="1 4" />
@@ -628,6 +690,13 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
+    // Tape (beta 'tape-tool'): a strip of tape with torn ends.
+    tape: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M4.5 15.5 15.5 4.5l1.2 1.6 1.8-.2-.2 1.8 1.6 1.2L8.9 19.9l-1.2-1.6-1.8.2.2-1.8z" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
+        <path d="M9 13.5l4.5-4.5" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
     eraser: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ ...style, transform: 'rotate(270deg)' }} className={className}>
         <g transform="rotate(-45 12 12)">
@@ -675,6 +744,37 @@ const ICON_RENDERERS = {
           <rect x="3" y="3" width="18" height="18" rx={iconCornerRadius(18)} />
           <circle cx="9" cy="9" r="2" />
           <path d="M21 15 17.5 11.5 6 21" />
+        </g>
+      </svg>
+    ),
+
+    // Nightly 'link-tool': the Hyperlink tool (two chain links).
+    // Nightly 'comment-pins': a page pin (square bottom-left corner).
+    pagePin: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <g stroke={color} strokeWidth={ICON_STROKE_WIDTH} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M4 20V11a7 7 0 1 1 7 7H6" />
+          <path d="M4 20l2-2" />
+          <path d="M8.5 9.5h5M8.5 13h3" />
+        </g>
+      </svg>
+    ),
+
+    // Nightly 'properties-panel': Pin to side panel (a push pin).
+    pushPin: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <g stroke={color} strokeWidth={ICON_STROKE_WIDTH} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9 4h6l-1 6 3 3H7l3-3-1-6Z" />
+          <path d="M12 13v7" />
+        </g>
+      </svg>
+    ),
+
+    hyperlink: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <g stroke={color} strokeWidth={ICON_STROKE_WIDTH} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7" />
+          <path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" />
         </g>
       </svg>
     ),
@@ -1239,6 +1339,13 @@ const ICON_RENDERERS = {
         <path d="M8.6 13.5L15.4 17.5M15.4 6.5L8.6 10.5" stroke={color} strokeWidth="1.5" />
       </svg>
     ),
+    // Tag — Lucide "tag" (ISC), house stroke 1.5. Home tags (Nightly).
+    tag: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
+        <path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx="7.5" cy="7.5" r="1" fill={color} />
+      </svg>
+    ),
     lock: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
         <rect x="4" y="11" width="16" height="10" rx="1.11" stroke={color} strokeWidth="1.5" /><path d="M8 11V7A4 4 0 0 1 16 7V11" stroke={color} strokeWidth="1.5" />
@@ -1330,10 +1437,16 @@ const ICON_RENDERERS = {
         <rect x="6" y="3" width="12" height="18" rx="1.33" stroke={color} strokeWidth="1.5" /><path d="M9 7H15M9 11H15M9 15H13" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
       </svg>
     ),
-    // Focus mode (Nightly): four corners pulled out to the screen's edges.
+    // Full screen: four corners pulled out to the screen's edges.
     focusMode: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
         <path d="M4 9V4H9M15 4H20V9M20 15V20H15M9 20H4V15" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+    // Leave full screen: the same four corners turned inward.
+    focusModeExit: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
+        <path d="M9 4V9H4M20 9H15V4M15 20V15H20M4 15H9V20" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     ),
     mail: (size, color, style, className) => (

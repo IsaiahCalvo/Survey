@@ -92,6 +92,6 @@ test('viewer and dialog wire the new pieces', () => {
   assert.match(viewer, /subscribeDocumentMeta\(MEASURE_SCALES_META_KEY, apply\)/);
   assert.match(viewer, /\{ key: 'perimeter', label: 'Perimeter', iconName: 'measurePerimeter' \}/);
   const dialog = readFileSync(new URL('../src/components/MeasureScaleDialog.jsx', import.meta.url), 'utf8');
-  assert.match(dialog, /onApply\(scale, \{ allPages: allPages && pageCount > 1 \}\)/);
+  assert.match(dialog, /onApply\(scale, \{ allPages: allPages && pageCount > 1, setDefault: plusOn && setDefault, resetOwn: plusOn && resetOwn \}\)/);
   assert.match(dialog, /aria-label="Recent scale"/);
 });

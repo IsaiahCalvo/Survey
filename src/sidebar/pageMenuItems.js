@@ -82,6 +82,8 @@ export function buildPageMenuItems({
       [
         has('insertBlank') && { key: 'insertAbove', label: 'Blank page above', icon: 'plus' },
         has('insertBlank') && { key: 'insertBelow', label: 'Blank page below', icon: 'plus' },
+        // Nightly 'page-templates': only when the host passes its handler.
+        !readOnly && available.insertTemplate === true && { key: 'insertTemplate', label: 'Template page below', icon: 'plus' },
       ],
       [
         has('mirror') && { key: 'mirrorH', label: 'Mirror horizontally', icon: 'flipHorizontal' },
@@ -134,6 +136,7 @@ export function buildPageMenuItems({
     [
       has('insertBlank') && { key: 'insertAbove', label: 'Blank page above', icon: 'plus' },
       has('insertBlank') && { key: 'insertBelow', label: 'Blank page below', icon: 'plus' },
+      !readOnly && available.insertTemplate === true && { key: 'insertTemplate', label: 'Template page below', icon: 'plus' },
     ],
     [
       has('rotate') && { key: 'rotateLeft', label: 'Rotate left', icon: 'rotateCcw' },
@@ -160,10 +163,13 @@ export function buildPageMenuItems({
  * @param {boolean} [o.canPasteInPlace] something is on the marks clipboard
  * @param {boolean} [o.readOnly]
  */
-export function buildCanvasPageItems({ available = {}, canPasteInPlace = false, readOnly = false } = {}) {
+export function buildCanvasPageItems({ available = {}, canPasteInPlace = false, canUnlockAll = false, readOnly = false } = {}) {
   const has = (key) => available[key] !== false;
   return joinGroups([[
     has('selectAll') && { key: 'selectAllMarks', label: 'Select all on page', icon: 'selectGroup' },
+    // Nightly 'page-menu-extras' (the host passes these handlers only then).
+    has('selectText') && { key: 'selectAllText', label: 'Select all text', icon: 'textSelect' },
+    !readOnly && has('unlockAll') && { key: 'unlockAll', label: 'Unlock all', icon: 'lock', disabled: !canUnlockAll },
     !readOnly && has('pasteInPlace') && { key: 'pasteInPlace', label: 'Paste in place', icon: 'paste', disabled: !canPasteInPlace },
     !readOnly && has('setScale') && { key: 'setScale', label: 'Set page scale', icon: 'measureScale' },
   ]]);
@@ -187,6 +193,8 @@ function joinGroups(rawGroups) {
  *   insertBlank(afterPage) rotate(page, delta) mirror(page, direction)
  *   reset(page) delete(page) move(page, offset)
  *   selectAll(page) pasteInPlace(page) setScale(page)  (viewer page menu)
+ *   selectText(page) unlockAll(page)                    (Nightly page-menu-extras)
+ *   insertTemplate(afterPage)                           (Nightly page-templates)
  * Returns true when it ran something.
  */
 export function runPageMenuAction(key, pageNumber, handlers = {}) {
@@ -209,6 +217,7 @@ export function runPageMenuAction(key, pageNumber, handlers = {}) {
     // (0 = the very top).
     case 'insertAbove': return call('insertBlank', pageNumber - 1);
     case 'insertBelow': return call('insertBlank', pageNumber);
+    case 'insertTemplate': return call('insertTemplate', pageNumber);
     case 'rotateLeft': return call('rotate', pageNumber, -90);
     case 'rotateRight': return call('rotate', pageNumber, 90);
     case 'mirrorH': return call('mirror', pageNumber, 'horizontal');
@@ -218,6 +227,8 @@ export function runPageMenuAction(key, pageNumber, handlers = {}) {
     case 'selectAllMarks': return call('selectAll', pageNumber);
     case 'pasteInPlace': return call('pasteInPlace', pageNumber);
     case 'setScale': return call('setScale', pageNumber);
+    case 'selectAllText': return call('selectText', pageNumber);
+    case 'unlockAll': return call('unlockAll', pageNumber);
     default: return false;
   }
 }
@@ -225,7 +236,7 @@ export function runPageMenuAction(key, pageNumber, handlers = {}) {
 /** { [handler name]: boolean } for buildPageMenuItems' `available`. */
 export function availableActions(handlers = {}) {
   return Object.fromEntries(
-    ['cut', 'copy', 'paste', 'duplicate', 'insertBlank', 'rotate', 'mirror', 'reset', 'delete', 'selectAll', 'pasteInPlace', 'setScale']
+    ['cut', 'copy', 'paste', 'duplicate', 'insertBlank', 'rotate', 'mirror', 'reset', 'delete', 'selectAll', 'pasteInPlace', 'setScale', 'selectText', 'unlockAll', 'move', 'insertTemplate']
       .map((name) => [name, typeof handlers[name] === 'function']),
   );
 }

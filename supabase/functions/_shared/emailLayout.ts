@@ -138,6 +138,20 @@ export function emailFileCard(name: string, meta: string, ext: string = 'PDF'): 
   );
 }
 
+/** The inviter's own words, as a quote under their name. Both values must
+ *  already be HTML-escaped; line breaks in the message become <br>. Empty
+ *  message, nothing drawn. */
+export function emailQuote(escapedName: string, escapedMessage: string): string {
+  const text = String(escapedMessage || '').trim();
+  if (!text) return '';
+  return (
+    `<div style="margin:20px 0 0;padding:12px 14px;border-left:3px solid ${BORDER};background-color:${TILE};border-radius:4px;">` +
+    `<div class="em-mut" style="font-family:${EMAIL_FONT};font-size:12px;color:${EMAIL_MUTED};padding-bottom:6px;">Message from ${escapedName}</div>` +
+    `<div class="em-ink" style="font-family:${EMAIL_FONT};font-size:14px;line-height:1.5;color:${EMAIL_INK};">${text.replace(/\n/g, '<br>')}</div>` +
+    `</div>`
+  );
+}
+
 /** Style-F detail rows (receipts etc.): label left, bold value right. */
 export function emailDetailRows(rows: Array<[string, string]>): string {
   const trs = rows.map(([k, v]) =>
