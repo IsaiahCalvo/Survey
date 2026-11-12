@@ -178,6 +178,12 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Upload check: fix each file\'s name, sheet number and revision before it uploads',
     stage: 'beta',
   }),
+  // Drawboard Projects parity UP-10..23 (2026-11-12): the upload check as a
+  // review grid. On its own or with 'upload-check' (it replaces that step).
+  'upload-review': Object.freeze({
+    label: 'Upload review: title-block pictures, discipline, bulk revision and discipline, Remove, Show problems, one document per page',
+    stage: 'beta',
+  }),
   // Drawboard Projects round 2 (2026-11-10): review status per drawing.
   'document-review': Object.freeze({
     label: 'Document review: status, owner and markup count on each document, with filter chips',

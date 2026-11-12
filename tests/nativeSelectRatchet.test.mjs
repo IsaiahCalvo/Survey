@@ -38,6 +38,9 @@ const ALLOWED = {
   // Sheet register Edit details (beta 'sheet-register'): the phone branch
   // keeps the browser's wheel for Discipline.
   'src/home/SheetRegisterBits.jsx': 1,
+  // Upload review discipline pickers (beta 'upload-review'): the phone
+  // branch keeps the browser's wheel.
+  'src/components/UploadReviewModal.jsx': 1,
   // Admin-only page.
   'src/home/KitsAdminPage.jsx': 1,
   // Company roles picker (beta 'company-admin'): the coarse-pointer branch
