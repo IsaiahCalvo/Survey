@@ -69,6 +69,7 @@ import { insetRectForFill, shouldKnockOutShapeFill } from './shapeFillKnockout.j
 import { renderPathToSvgAttrs, renderPathToSvgD } from './svgPathAttrs.js';
 import { calloutBoxCloudStandIn, colorWithAlpha, textboxCloudStandIn } from './textCloudBorder.js';
 import { getCounterLabelLayout } from './counterGeometry.js';
+import { polySplineStep, smoothPolylinePoints, splinePathD } from './polySpline.js';
 import { getTextMarkupUnderlineInset } from './pdfTextMarkup.js';
 import { calloutAnchorSidesForKnee, calloutBoxAnchorPoint } from './calloutGeometry.js';
 import { calloutWrapsWords, textWrapsWords, wrapTextCss } from './textWrapMode.js';
@@ -1444,16 +1445,23 @@ export const renderPolyline = (obj, index) => {
   // print flattener uses the same helpers.
   const { startStyle: plStartStyle, endStyle: plEndStyle, interiorColor: plInterior } = resolveLineEndingStyles(obj);
   const plHeadOptions = { fill: plInterior };
-  const first = obj.points[0];
-  const second = obj.points[1];
-  const beforeLast = obj.points[obj.points.length - 2];
-  const last = obj.points[obj.points.length - 1];
+  // A curved polyline draws its spans as true cubics (polySpline.js), so it
+  // stays smooth at any zoom; its endings sit on the curve's own tangent.
+  const splineStep = polySplineStep(obj);
+  const drawnPoints = splineStep ? smoothPolylinePoints(obj) : obj.points;
+  const first = drawnPoints[0];
+  const second = drawnPoints[1];
+  const beforeLast = drawnPoints[drawnPoints.length - 2];
+  const last = drawnPoints[drawnPoints.length - 1];
   const stroke = obj.stroke || '#000';
   const strokeWidth = obj.strokeWidth || 1;
-  const bodyPointsStr = insetOpenPolylinePoints(
+  const startInset = lineEndingBodyInset(plStartStyle, strokeWidth);
+  const endInset = lineEndingBodyInset(plEndStyle, strokeWidth);
+  const curveD = splineStep ? splinePathD(obj.points, splineStep, startInset, endInset) : null;
+  const bodyPointsStr = curveD ? null : insetOpenPolylinePoints(
     obj.points,
-    lineEndingBodyInset(plStartStyle, strokeWidth),
-    lineEndingBodyInset(plEndStyle, strokeWidth),
+    startInset,
+    endInset,
   ).map((p) => `${p.x},${p.y}`).join(' ');
   const startSpec = buildArrowheadRenderSpec(
     plStartStyle,
@@ -1473,9 +1481,10 @@ export const renderPolyline = (obj, index) => {
     strokeWidth,
     plHeadOptions,
   );
+  const BodyTag = curveD ? 'path' : 'polyline';
   const body = (
-    <polyline
-      points={bodyPointsStr}
+    <BodyTag
+      {...(curveD ? { d: curveD } : { points: bodyPointsStr })}
       fill={fill}
       stroke={stroke}
       strokeWidth={strokeWidth}

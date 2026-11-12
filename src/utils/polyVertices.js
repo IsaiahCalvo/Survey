@@ -2,7 +2,7 @@
 // right-click a corner > Delete point, Alt/Option-click, Delete/Backspace on a
 // focused corner, long-press on touch). Pure so it can be tested in node.
 import { POLY_MIN_POINTS } from './polyDraft.js';
-import { insertSplineCorner, isBezierSpline, keepPivot, polySplineStep, removeSplineCorner } from './polySpline.js';
+import { insertSplineCorner, isBezierSpline, keepPivot, polySplineStep, removeSplineCorner, splinePointAt } from './polySpline.js';
 
 const polyKind = (obj) => {
   const type = String(obj?.type || '').toLowerCase();
@@ -141,8 +141,8 @@ export function insertPolyVertex(obj, segmentIndex, t) {
   const step = polySplineStep(obj);
   if (step) {
     // The side is one short piece of the drawn curve: the new corner goes on
-    // the curve there, between the clicked corners either side of it.
-    const at = { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) };
+    // the curve itself there, between the clicked corners either side of it.
+    const at = splinePointAt(points, step, segmentIndex, t) || { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) };
     const curve = insertSplineCorner(points, step, Math.floor(segmentIndex / step), at, isBezierSpline(obj), ((segmentIndex % step) + t) / step);
     return curve ? keepPivot(obj, points, curve) : null;
   }
