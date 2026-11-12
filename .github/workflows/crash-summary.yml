@@ -9,7 +9,7 @@ name: Daily crash summary
 # the table itself is closed to browsers.
 
 # GitHub runs this repo's cron schedules only now and then (one scheduled run
-# of any workflow on 2026-10-21 while ~350 others ran), so every finished
+# of any workflow on 2026-10-21 while ~350 others ran), so every finished main-branch
 # "Build and tests" run also starts it. The first such run after 07:00 UTC
 # each day posts; the rest of that day skip, because the posted comment
 # carries the day (crash-summary-day: YYYYMMDD). Not a cache mark: runs
@@ -21,6 +21,7 @@ on:
   workflow_run:
     workflows: ["Build and tests"]
     types: [completed]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
