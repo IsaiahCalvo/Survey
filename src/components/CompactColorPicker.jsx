@@ -1025,7 +1025,7 @@ const CompactColorPicker = ({
     );
 
     const gridView = (
-        <div data-picker-area="grid" style={{
+        <div style={{
             display: 'grid',
             gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
             gap: '4px',
@@ -1422,6 +1422,10 @@ const CompactColorPicker = ({
                 </div>
             )}
 
+            {/* Hidden by default; a host (the counts list) can show it as a
+                line between the disc rows and the colour area. Its own
+                element, so it holds for the grid and the spectrum alike. */}
+            <div data-picker-area-divider="true" aria-hidden="true" style={{ display: 'none' }} />
             {(mode === 'grid' || locked) ? gridView : gradientView}
 
             {/* The labelled opacity row sits in the same place in both views

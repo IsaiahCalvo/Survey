@@ -131,10 +131,10 @@
   background: var(--border);
   pointer-events: none;
 }
-/* Quick colours (and Recent), then a line, then the grid. The line sits on
-   top of the grid so it stays under the last disc row whether or not a
-   Recent row shows. */
-.counter-list__colors [data-picker-area='grid'] { padding-top: 8px; border-top: 1px solid var(--border); }
+/* Quick colours (and Recent), then a line, then the grid or spectrum. The
+   picker's own divider element sits just before the colour area, so the line
+   stays under the last disc row in both views, with or without Recent. */
+.counter-list__colors [data-picker-area-divider] { display: block !important; height: 1px; background: var(--border); }
 .counter-list__colors-loading { height: 200px; }
 .counter-list__start { display: flex; align-items: center; gap: 6px; margin: 0 0 8px; color: var(--text-3); font-size: 11px; }
 .counter-list__start input {
