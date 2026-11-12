@@ -427,7 +427,7 @@ import { chooseCloudPdfOpenPath, shouldRetryStreamedOpenWithDownload, tryOpenClo
 import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox } from './utils/svgBoundingBox.js';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
 import { usePageOperations } from './hooks/usePageOperations.js';
-import { IDLE_REMOTE_PDF_STATE, PAGE_OP_BLOCKED_MESSAGE, PAGE_OP_SYNC_FLAG, clearedPdfVersion, isPageOpBlocked, newPdfVersionToken, framePageChanges, noteFramePageChanges, operationRewritesPdf, pendingPdfVersion, reframeMarks, remotePdfLoaded, remotePdfVersionStep, savedPdfVersion, splitFramePageChanges, notedMarksOnPages, stampableOperation } from './utils/pageOpSync.js';
+import { IDLE_REMOTE_PDF_STATE, PAGE_OP_BLOCKED_MESSAGE, PAGE_OP_SYNC_FLAG, clearedPdfVersion, isPageOpBlocked, newPdfVersionToken, framePageChanges, noteFramePageChanges, operationRewritesPdf, pendingPdfVersion, reframeMarks, remotePdfLoaded, remotePdfVersionStep, savedPdfVersion, splitFramePageChanges, notedMarksOnPages, marksInDeletedSlices, stampableOperation } from './utils/pageOpSync.js';
 import { usePageViewDocument } from './hooks/usePageViewDocument.js';
 import { getPageViewBase } from './utils/pageViewDocument.js';
 import { destroyPdfDocument, pdfOrDestroy } from './utils/destroyPdfDocument.js';
@@ -15279,7 +15279,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // `writer` names this viewer (not getClientId(), which tabs share).
   const pageOpSyncRef = useRef(null);
   if (!pageOpSyncRef.current) {
-    pageOpSyncRef.current = { on: isFeatureOn(PAGE_OP_SYNC_FLAG), writer: newPdfVersionToken(), ownPending: false, pendingOps: [], pendingBatch: null, remote: IDLE_REMOTE_PDF_STATE, docBeforeReload: null, frame: null, reframe: null };
+    pageOpSyncRef.current = { on: isFeatureOn(PAGE_OP_SYNC_FLAG), writer: newPdfVersionToken(), ownPending: false, pendingOps: [], pendingBatch: null, remote: IDLE_REMOTE_PDF_STATE, docBeforeReload: null, frame: null, reframe: null, deletedSlices: null };
   }
   pageOpSyncRef.current.pdfFile = pdfFile;
   pageOpSyncRef.current.pdfDoc = pdfDoc;
@@ -15337,6 +15337,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         // window can move marks it drew on the old pages the same way (null:
         // one of them cannot travel, so none do).
         const carried = stampableOperation(operation);
+        // Slices other windows' deletes took are numbered for the old pages.
+        pageOpSync.deletedSlices = null;
         const before = pageOpSync.ownPending ? pageOpSync.pendingOps : [];
         if (!pageOpSync.ownPending || !pageOpSync.pendingBatch) pageOpSync.pendingBatch = newPdfVersionToken();
         pageOpSync.pendingOps = before && carried ? [...before, carried] : null;
@@ -22394,6 +22396,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   useEffect(() => {
     const sync = pageOpSyncRef.current;
     if (!sync.on || !normalAnnotationHydration?.ready || normalAnnotationHydration.documentId !== pdfFile?.id) return undefined;
+    // Slices deletes took belong to one file.
+    if (sync.deletedSlicesFor !== pdfFile?.id) { sync.deletedSlices = null; sync.deletedSlicesFor = pdfFile?.id; }
     // The reload waits while a finger or button is down, or a polygon is
     // being placed, so work in progress here is not wiped (up to 30 s).
     // Every pointer down counts (a pinch, a pen with a palm), so lifting one
@@ -22473,18 +22477,30 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     // would undo to the old frame.
     if (frame) dropHistoryAfterPageChange();
     const ops = framePageChanges(frame);
-    if (!frame?.made?.size || !ops?.length) return;
+    // A run that could not travel leaves the pages numbered unlike the
+    // slices deletes took: a later restore must not put one back.
+    if (frame && !ops) sync.deletedSlices = null;
+    const deleted = sync.deletedSlices;
+    if ((!frame?.made?.size && !deleted?.size) || !ops?.length) return;
     // Marks these runs could not move must not be moved by later runs alone.
-    const forgetNotedMarks = () => { if (sync.frame) sync.frame = { ...sync.frame, made: new Set() }; };
+    const forgetNotedMarks = () => {
+      sync.deletedSlices = null;
+      if (sync.frame) sync.frame = { ...sync.frame, made: new Set() };
+    };
     try {
       const byPage = annotationsByPageRef.current || {};
+      const made = frame.made || new Set();
       // A noted mark not on these pages missed these runs (no-op included):
-      // later runs alone must not move it if it turns up.
-      const found = notedMarksOnPages(byPage, frame.made);
-      if (sync.frame && found.size < frame.made.size) {
-        sync.frame = { ...sync.frame, made: new Set([...(sync.frame.made || [])].filter((id) => found.has(id) || !frame.made.has(id))) };
+      // later runs alone must not move it if it turns up. One an earlier
+      // load's delete took still waits for that delete's Undo.
+      const found = notedMarksOnPages(byPage, made);
+      const held = marksInDeletedSlices(deleted);
+      if (sync.frame && found.size < made.size) {
+        sync.frame = { ...sync.frame, made: new Set([...(sync.frame.made || [])].filter((id) => found.has(id) || held.has(id) || !made.has(id))) };
       }
-      const changed = reframeMarks(byPage, frame.made, ops, transformPageState);
+      const slices = deleted || new Map();
+      const changed = reframeMarks(byPage, made, ops, transformPageState, slices);
+      sync.deletedSlices = slices.size ? slices : null;
       const save = handleSaveAnnotationsRef.current;
       if (!changed) return;
       if (typeof save !== 'function') { forgetNotedMarks(); return; }

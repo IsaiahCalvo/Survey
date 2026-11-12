@@ -147,7 +147,10 @@ test('the viewer stamps its page changes and moves old-page marks after the relo
   assert.match(src, /if \(!sync\.frame\) dropHistoryAfterPageChange\(\);\n        sync\.frame = noteFramePageChanges\(sync\.frame, step\.version\);/);
   assert.match(src, /if \(frame\) dropHistoryAfterPageChange\(\);\n    const ops = framePageChanges\(frame\);/);
   assert.match(src, /const handleSaveAnnotations = useCallback\(\(pageNumber, json, saveContext = null\) => \{\n    noteMarksOnOldPages\(pageNumber, json\);/);
-  assert.match(src, /reframeMarks\(byPage, frame\.made, ops, transformPageState\)/);
+  assert.match(src, /reframeMarks\(byPage, made, ops, transformPageState, slices\);\n      sync\.deletedSlices = slices\.size \? slices : null;/);
+  // Its own page change, or a run that cannot travel, drops the held slices.
+  assert.match(src, /pageOpSync\.deletedSlices = null;/);
+  assert.match(src, /if \(frame && !ops\) sync\.deletedSlices = null;/);
   assert.match(src, /if \(draftOpen\) showToast\(/);
 });
 
@@ -287,6 +290,43 @@ test('noted marks missing from the pages are dropped before later runs', async (
   assert.equal(notedMarksOnPages(null, new Set(['here'])).size, 0);
   // The viewer trims the leftover frame before the no-op return.
   const src = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
-  assert.match(src, /const found = notedMarksOnPages\(byPage, frame\.made\);\n\s+if \(sync\.frame && found\.size < frame\.made\.size\)/);
-  assert.ok(src.indexOf('notedMarksOnPages(byPage, frame.made)') < src.indexOf('if (!changed) return;'));
+  // A mark an earlier load's delete took stays noted for that delete's Undo.
+  assert.match(src, /const found = notedMarksOnPages\(byPage, made\);\n\s+const held = marksInDeletedSlices\(deleted\);\n\s+if \(sync\.frame && found\.size < made\.size\)/);
+  assert.match(src, /found\.has\(id\) \|\| held\.has\(id\) \|\| !made\.has\(id\)/);
+  assert.ok(src.indexOf('notedMarksOnPages(byPage, made)') < src.indexOf('if (!changed) return;'));
+});
+
+test('a delete and its Undo in different loads still leave a mark drawn here where it was', async () => {
+  const { reframeMarks, marksInDeletedSlices, stampableOperation } = await import('../src/utils/pageOpSync.js');
+  const { transformPageState } = await import('../src/utils/pageAnnotationReindex.js');
+  const mine = { type: 'rect', left: 20, top: 20, width: 5, height: 5, data: { id: 'mine' } };
+  const later = { type: 'rect', left: 30, top: 30, width: 5, height: 5, data: { id: 'later' } };
+  const del = stampableOperation({ type: 'delete', page: 2 });
+  const back = stampableOperation({ type: 'restore', afterPage: 1, fromPage: 2, from: { annotationsByPage: {} } });
+  const deleted = new Map();
+  // First load: page 2 goes, and the mark with it.
+  const first = reframeMarks({ 2: { objects: [mine] }, 3: { objects: [later] } }, new Set(['mine', 'later']), [del], transformPageState, deleted);
+  assert.deepEqual(first[2].map((o) => o.data.id), ['later']);
+  assert.ok(!first[3]?.length);
+  assert.deepEqual([...marksInDeletedSlices(deleted)], ['mine']);
+  // Second load: the Undo puts page 2 back, the mark with it, even with no
+  // noted mark left on the pages.
+  const second = reframeMarks({ 2: { objects: [later] } }, new Set(['later']), [back], transformPageState, deleted);
+  assert.deepEqual(second[2].map((o) => o.data.id), ['mine']);
+  assert.deepEqual(second[3].map((o) => o.data.id), ['later']);
+  assert.equal(deleted.size, 0);
+  const alone = new Map();
+  reframeMarks({ 2: { objects: [mine] } }, new Set(['mine']), [del], transformPageState, alone);
+  const none = reframeMarks({}, new Set(), [back], transformPageState, alone);
+  assert.deepEqual(none[2].map((o) => o.data.id), ['mine']);
+  // A second delete of page 2 and its Undo in between take their own slice.
+  const stacked = new Map();
+  reframeMarks({ 2: { objects: [mine] }, 3: { objects: [later] } }, new Set(['mine', 'later']), [del], transformPageState, stacked);
+  const again = reframeMarks({ 2: { objects: [later] } }, new Set(['later']), [del, back], transformPageState, stacked);
+  assert.deepEqual(again[2].map((o) => o.data.id), ['later']);
+  assert.deepEqual([...marksInDeletedSlices(stacked)], ['mine']);
+  // Slices holding no mark are not kept.
+  const empty = new Map();
+  reframeMarks({ 3: { objects: [later] } }, new Set(['later']), [del], transformPageState, empty);
+  assert.equal(empty.size, 0);
 });
