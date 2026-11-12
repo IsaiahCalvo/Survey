@@ -22,11 +22,13 @@ const idsByPage = (typeof window !== 'undefined')
   ? (window.__surveyPageSelectionIds || (window.__surveyPageSelectionIds = new Map()))
   : new Map();
 
-// The document each page's pick belongs to (every open tab's layers announce
-// here, and a tab behind keeps its pick).
-const documentByPage = (typeof window !== 'undefined')
-  ? (window.__surveyPageSelectionDocuments || (window.__surveyPageSelectionDocuments = new Map()))
+// Picks per document and page ("<document id>|<page>" -> count). Every open
+// tab's layers announce here and a tab behind keeps its pick, so the counts
+// above (by page only) can be another file's; this one never is.
+const countsByDocumentPage = (typeof window !== 'undefined')
+  ? (window.__surveyPageSelectionByDocument || (window.__surveyPageSelectionByDocument = new Map()))
   : new Map();
+const documentPageKey = (documentId, page) => `${documentId || ''}|${page}`;
 
 /** Is this mark / callout / marker id part of the page's current pick? */
 export function isItemSelected(pageNumber, id) {
@@ -92,8 +94,9 @@ export function hasAnyPageSelection() {
 export function hasOtherPageSelection(pageNumber, documentId = null) {
   const page = Number(pageNumber);
   const doc = documentId || null;
-  for (const [other, count] of countsByPage) {
-    if (other !== page && count > 0 && (documentByPage.get(other) ?? null) === doc) return true;
+  const prefix = `${doc || ''}|`;
+  for (const [key, count] of countsByDocumentPage) {
+    if (count > 0 && key.startsWith(prefix) && key !== documentPageKey(doc, page)) return true;
   }
   return !!stashedSelection && stashedSelection.pageNumber !== page
     && (stashedSelection.documentId || null) === doc;
@@ -108,11 +111,11 @@ export function recordPageSelection(pageNumber, items, documentId = null) {
     if (stashedSelection && stashedSelection.pageNumber !== page) stashedSelection = null;
     countsByPage.set(page, count);
     idsByPage.set(page, new Set(items.map((item) => String(item?.id))));
-    documentByPage.set(page, documentId || null);
+    countsByDocumentPage.set(documentPageKey(documentId, page), count);
   } else {
     countsByPage.delete(page);
     idsByPage.delete(page);
-    documentByPage.delete(page);
+    countsByDocumentPage.delete(documentPageKey(documentId, page));
   }
 }
 

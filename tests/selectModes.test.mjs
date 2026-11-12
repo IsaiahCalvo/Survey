@@ -611,6 +611,9 @@ test('a drawing tool\'s click on one page drops a pick on another page of the sa
   assert.equal(presence.hasOtherPageSelection(1, 'doc'), true);
   assert.equal(presence.hasOtherPageSelection(2, 'doc'), false, 'its own page answers from its own pick');
   assert.equal(presence.hasOtherPageSelection(1, 'other-doc'), false, 'a pick in another tab\'s file does not count');
+  // another open file's page 2 (a tab behind) never overwrites this file's pick
+  presence.recordPageSelection(2, [], 'other-doc');
+  assert.equal(presence.hasOtherPageSelection(1, 'doc'), true);
   presence.recordPageSelection(2, [], 'doc');
   assert.equal(presence.hasOtherPageSelection(1, 'doc'), false);
   presence.stashPageSelection(7, { documentId: 'doc', markIds: ['m1'] });
