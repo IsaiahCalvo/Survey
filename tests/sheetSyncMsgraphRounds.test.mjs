@@ -10,7 +10,7 @@ import { runSheetRound } from '../supabase/functions/_shared/sheetSync/round.js'
 import { assertProvider } from '../supabase/functions/_shared/sheetSync/providers/contract.js';
 import { createMsGraphProvider, parseMsgraphFileId } from '../supabase/functions/_shared/sheetSync/providers/msgraph.js';
 import { mergeMarkerWrites } from '../supabase/functions/_shared/sheetSync/service.js';
-import { RECENT_WRITE_MS } from '../supabase/functions/_shared/sheetSync/engine.js';
+import { RECENT_WRITE_MS, NOTICE_MS } from '../supabase/functions/_shared/sheetSync/engine.js';
 import defaultKit from '../src/services/exportFormats/kits/defaultSurvey.js';
 import { fakeMsgraphFetch, resetFakeMsgraph } from '../scripts/e2e-fake-msgraph.mjs';
 
@@ -101,6 +101,21 @@ test('first round fills the sheet with signed rows; an idle round reads nothing'
   // Our own writes changed the version, so one more read settles it; then idle.
   assert.equal((await ctx.round()).status, 'synced');
   assert.equal((await ctx.round()).status, 'idle');
+});
+
+// A notice past its half hour is only dropped by a planned round: a quiet
+// link (no change on either side) runs one, then goes idle again.
+test('a quiet link still clears a notice past its time from the panel', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
+  await ctx.round(); await ctx.round();
+  assert.equal((await ctx.round()).status, 'idle');
+  const old = { t: Date.now() - NOTICE_MS - 1000, message: 'Row 9: something that happened once.' };
+  ctx.link.state = { ...ctx.link.state, notices: [old], problems: [{ message: old.message }] };
+  const clearing = await ctx.round();
+  assert.equal(clearing.status, 'synced', 'not idle while a notice is past its time');
+  assert.deepEqual(ctx.link.state.notices, []);
+  assert.ok(!ctx.link.state.problems.some((p) => p.message === old.message), 'gone from the panel');
+  assert.equal((await ctx.round()).status, 'idle', 'then quiet again');
 });
 
 test('a field tech answer reaches the sheet; a PM edit reaches the app; both land on one row', async () => {
