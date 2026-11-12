@@ -134,8 +134,9 @@ test('(2) the hover glow traces the outline: square corners on a rect, centred o
   }
   assert.match(layerSource, /data-hover-halo=\{isArrow \? 'arrow' : 'line'\}\s*opacity=\{HOVER_HALO_OPACITY\}/, 'line / arrow halo is one translucent group');
   const callout = layerSource.slice(layerSource.indexOf('data-hover-halo="callout"') - 2400, layerSource.indexOf('data-hover-halo="callout"') + 1200);
-  assert.match(callout, /const glowBoxH = tbH \+ calloutFs \* 0\.35;/, 'the callout halo uses the box renderCallout draws');
-  assert.match(callout, /calculateCalloutConnection\(\s*tbX, tbY, tbW, glowBoxH,/, 'and the leader renderCallout draws');
+  assert.match(callout, /const glowBoxH = visBox\.height;/, 'the callout halo uses the box renderCallout draws');
+  assert.match(callout, /const glowConn = conn;/, 'and the leader renderCallout draws (the one connection the hit lines use)');
+  assert.match(layerSource, /const visBox = calloutVisibleBox\(callout, W, H\);\s*const \{ x: tbX, y: tbY, width: tbW \} = visBox;\s*const conn = calculateCalloutConnection\(\s*visBox\.x, visBox\.y, visBox\.width, visBox\.height,/);
   assert.doesNotMatch(callout, /strokeOpacity=/, 'no part carries its own translucency');
 });
 

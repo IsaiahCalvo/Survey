@@ -92,8 +92,7 @@ import {
 // focus sits; only a real typing surface keeps those keys for itself — and
 // (2026-09-10) not even that when it is a numeric chrome field that opted out.
 import { draftOwnsKeyboard, releaseFocusForDraftTool } from '../utils/draftKeyboardTarget.js';
-import { calculateCalloutConnection, calloutAnchorSidesForKnee } from '../utils/calloutGeometry';
-import { layoutCalloutLeaderGrabbers, leaderGrabberHitRadius } from '../utils/calloutLeaderGrabbers.js';
+import { calculateCalloutConnection } from '../utils/calloutGeometry';
 import { historyTypeKey } from '../utils/historyFeed.js';
 import { broadcastPageSelection } from '../utils/historyMarkFilter.js';
 // Callout rendering is owned entirely by the dedicated `filteredCallouts` loop
@@ -581,7 +580,9 @@ import { useTooltip } from './Tooltip';
 // Measure label (Length / Area): a white pill at a fixed SCREEN size (12 px
 // text). Sizes are page units multiplied by inverseScale, so the viewBox still
 // owns zoom; the pill sits off the line's midpoint, never under its handles.
-function renderMeasureLabel(label, key, unitsPerPx, page = null) {
+// `halo`: the measurement is hovered (or a member of a multi-selection), so its
+// label is outlined with the line - the outline traces the whole mark.
+function renderMeasureLabel(label, key, unitsPerPx, page = null, { halo = false } = {}) {
   const box = layoutMeasureLabel(label, unitsPerPx, page);
   if (!box) return null;
   return (
@@ -594,6 +595,20 @@ function renderMeasureLabel(label, key, unitsPerPx, page = null) {
       transform={box.angle ? `rotate(${box.angle} ${box.cx} ${box.cy})` : undefined}
       style={{ pointerEvents: 'none', userSelect: 'none' }}
     >
+      {halo && (
+        <rect
+          data-hover-halo="measure-label"
+          x={box.cx - box.width / 2}
+          y={box.cy - box.height / 2}
+          width={box.width}
+          height={box.height}
+          rx={box.radius}
+          fill="none"
+          stroke={HANDLE_RING}
+          strokeOpacity={HOVER_HALO_OPACITY}
+          strokeWidth={box.fontSize / 12 + 4 * unitsPerPx}
+        />
+      )}
       <rect
         x={box.cx - box.width / 2}
         y={box.cy - box.height / 2}
@@ -5741,51 +5756,44 @@ const SVGAnnotationLayerBody = memo(({
     const atY = callout.arrowTip.y * H;
     const kX = callout.knee.x * W;
     const kY = callout.knee.y * H;
-    const tbX = (callout.textBoxPosition?.x ?? 0) * W;
-    const tbY = (callout.textBoxPosition?.y ?? 0) * H;
-    const tbW = Math.max(18, (callout.textBoxWidth ?? 0.1) * W);
-    const tbH = Math.max(18, (callout.textBoxHeight ?? 0.05) * H);
-    // UX: reuse the same connection calculation renderCallout uses so
-    // line1/line2 hit overlays line up with the visible segments. Phase 15
-    // UAT-3 (2026-04-17): borderWidth must be 0 here to match the renderer —
-    // stored textbox dims already = outer visible rect. If we passed
-    // lineThickness the hit lines would drift inward from the visible line
-    // endpoints.
+    // The box exactly as renderCallout draws it: taller than the stored box
+    // by the descender strip. The leader's box end and auto-routed knee come
+    // from THAT box, so the hit lines, the hover halo and the grabbers all
+    // use this one connection and sit on the drawn ink (owner 2026-11-12:
+    // the halo traced a different leader than the one drawn). borderWidth 0
+    // as in the renderer: the stored dims already are the outer border.
+    const visBox = calloutVisibleBox(callout, W, H);
+    const { x: tbX, y: tbY, width: tbW } = visBox;
     const conn = calculateCalloutConnection(
-      tbX, tbY, tbW, tbH,
+      visBox.x, visBox.y, visBox.width, visBox.height,
       { x: kX, y: kY },
       { x: atX, y: atY },
       0,
-      callout.textBoxAnchor || null,
     );
-    // The selected callout's text-box grabbers and leader grabbers, placed
-    // on the box and leader exactly as renderCallout draws them (its box is
-    // taller by the descender strip).
+    // The selected callout's grabbers are Drawboard's set: the arrow tip,
+    // the knee and the text box's resize grabbers (owner 2026-11-12 took
+    // back the attach and mid-segment grabbers added 2026-10-26).
     const showChrome = isSelected && showHandles;
-    const visBox = showChrome ? calloutVisibleBox(callout, W, H) : null;
-    const boxLayout = visBox ? calloutBoxHandleLayout(callout, visBox) : null;
-    const calloutSegmentR = HANDLE_RADIUS_SECONDARY * clampInverseScale(inverseScale);
-    const leaderGrabbers = visBox ? layoutCalloutLeaderGrabbers({
-      conn: calculateCalloutConnection(
-        visBox.x, visBox.y, visBox.width, visBox.height,
-        { x: kX, y: kY },
-        { x: atX, y: atY },
-        0,
-        callout.textBoxAnchor || null,
-      ),
-      knee: { x: kX, y: kY },
-      arrowTip: { x: atX, y: atY },
-      boxGrabbers: Object.values(boxLayout?.anchors || {}),
-      radius: calloutHandleR,
-      secondaryRadius: calloutSegmentR,
-      attachMovable: calloutAnchorSidesForKnee(
-        { x: kX, y: kY }, visBox.x, visBox.y, visBox.x + visBox.width, visBox.y + visBox.height,
-      ).length > 0,
-    }) : null;
+    const boxLayout = showChrome ? calloutBoxHandleLayout(callout, visBox) : null;
+    // The arrowhead as renderCallout draws it: part of the callout's press
+    // and hover target (a pointer on the head alone showed no outline) and
+    // traced by the halo.
+    const lineThickness = Math.max(1, callout.style?.lineThickness || 2);
+    const headStyle = callout.style?.arrowheadStyle ?? ARROWHEAD_STYLES.SOLID_TRIANGLE;
+    const headSpec = headStyle === ARROWHEAD_STYLES.NONE
+      ? null
+      : buildArrowheadRenderSpec(
+        headStyle, atX, atY,
+        Math.atan2(atY - conn.line2Start.y, atX - conn.line2Start.x) * 180 / Math.PI,
+        HANDLE_RING, lineThickness,
+      );
     return (
       <g
         key={`callout-hit-${callout.id}`}
         data-callout-id={callout.id}
+        // Press / hover surfaces and grabbers, not the drawn callout: their
+        // size follows the input in use (mouse, pen, finger).
+        data-callout-hit-targets="true"
       >
         {/* UX: widened line1 hit target (textbox→knee). pointerEvents: stroke
             so transparent fill doesn't catch events away from the visible
@@ -5815,6 +5823,34 @@ const SVGAnnotationLayerBody = memo(({
           strokeLinecap="round"
           style={{ cursor: 'move', pointerEvents: 'stroke' }}
         />
+        {/* The box border takes the same forgiving band as the leaders, but
+            only outward (a ring from the border's middle out), so a pointer
+            on the border's outer edge still finds the callout and the words
+            inside keep their own double-click target. */}
+        {(() => {
+          const out = markHitBand(visBox.borderWidth, inverseScale) / 2;
+          const inset = visBox.borderWidth / 2;
+          const ring = (x, y, w, h) => `M${x},${y}h${w}v${h}h${-w}Z`;
+          return (
+            <path
+              data-callout-part="textBox"
+              d={ring(visBox.x - out, visBox.y - out, visBox.width + 2 * out, visBox.height + 2 * out)
+                + ring(visBox.x + inset, visBox.y + inset, Math.max(0, visBox.width - 2 * inset), Math.max(0, visBox.height - 2 * inset))}
+              fillRule="evenodd"
+              fill="transparent"
+              style={{ cursor: 'move', pointerEvents: 'fill' }}
+            />
+          );
+        })()}
+        {headSpec && (
+          <g
+            data-callout-part="line2"
+            stroke="transparent"
+            style={{ cursor: 'move', pointerEvents: 'all' }}
+          >
+            {renderArrowheadHalo(headSpec, markHitBand(lineThickness, inverseScale) / 2)}
+          </g>
+        )}
         {/* UX: 2026-05-18 — arrowTip hit target sized to the visible handle
             (calloutHandleR). The old fixed 12px disc was far larger than the
             handle, so the user could grab the arrow just by getting near it;
@@ -5866,25 +5902,11 @@ const SVGAnnotationLayerBody = memo(({
           // that taller box - the halo used the shorter one, so the leader's
           // halo sat off the real line), the same line / head thickness, the
           // box glow centred on the box's own border line.
-          const calloutFs = Number(callout?.style?.fontSize || 12);
-          const glowBoxH = tbH + calloutFs * 0.35;
-          const glowConn = calculateCalloutConnection(
-            tbX, tbY, tbW, glowBoxH,
-            { x: kX, y: kY },
-            { x: atX, y: atY },
-            0
-          );
-          const lineThickness = Math.max(1, callout.style?.lineThickness || 2);
+          const glowBoxH = visBox.height;
+          const glowConn = conn;
           const boxStroke = Math.max(1, lineThickness * 0.7);
           const lineGlowSw = Math.max(5, lineThickness + 4);
-          const headStyle = callout.style?.arrowheadStyle ?? ARROWHEAD_STYLES.SOLID_TRIANGLE;
-          const angleDeg = (
-            Math.atan2(atY - glowConn.line2Start.y, atX - glowConn.line2Start.x)
-            * 180 / Math.PI
-          );
-          const spec = headStyle === ARROWHEAD_STYLES.NONE
-            ? null
-            : buildArrowheadRenderSpec(headStyle, atX, atY, angleDeg, '#4a90e2', lineThickness);
+          const spec = headSpec;
           // Owner Test 45 (2026-10-06): a clouded box's halo follows its humps
           // - the cloud renderCallout paints (utils/markBorderOutline.js).
           const glowBoxCloud = calloutBoxCloudGeometry(callout, {
@@ -5998,49 +6020,6 @@ const SVGAnnotationLayerBody = memo(({
                 handlePartAttributes={(id) => ({ 'data-callout-part': `textBox-${id}` })}
               />
             )}
-            {/* Owner 2026-10-26: the leader's attach point on the box (slides
-                along the border) and a grabber halfway along each leader
-                line (moves that line as one piece) - utils/calloutLeaderGrabbers.js.
-                Drawn last so a grabber stepped clear of a box corner is never
-                under that corner's press pad. */}
-            {leaderGrabbers && ['attach', 'segBox', 'segTip'].map((part) => {
-              const at = leaderGrabbers[part];
-              if (!at) return null;
-              const dotR = part === 'attach' ? calloutHandleR : calloutSegmentR;
-              const others = [
-                { x: atX, y: atY }, { x: kX, y: kY },
-                ...Object.values(boxLayout?.anchors || {}),
-                leaderGrabbers.attach, leaderGrabbers.segBox, leaderGrabbers.segTip,
-              ].filter((p) => p && p !== at);
-              const hitR = leaderGrabberHitRadius(at, calloutHitR, dotR, others);
-              return (
-                <g key={`callout-leader-${part}`} data-callout-part={part}>
-                  <circle
-                    data-handle-hit-pad={`callout-${part}`}
-                    cx={at.x}
-                    cy={at.y}
-                    r={hitR}
-                    fill="transparent"
-                    style={{ cursor: GRAB_HANDLE_CURSOR, pointerEvents: 'all', touchAction: 'none' }}
-                  />
-                  <circle
-                    data-callout-leader-grabber={part}
-                    cx={at.x}
-                    cy={at.y}
-                    r={dotR}
-                    fill={HANDLE_FILL}
-                    stroke={ringColor}
-                    strokeWidth={1.5}
-                    vectorEffect="non-scaling-stroke"
-                    style={{
-                      filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.15))',
-                      cursor: GRAB_HANDLE_CURSOR,
-                      pointerEvents: 'all',
-                    }}
-                  />
-                </g>
-              );
-            })}
           </>
         )}
       </g>
@@ -8762,8 +8741,11 @@ const SVGAnnotationLayerBody = memo(({
         <g className="measure-labels" data-measure-label-count={measureLabels.length} style={{ pointerEvents: 'none' }}>
           {measureLabels.map(({ key, index, label }) => {
             const live = liveMeasureLabels.get(index);
-            if (!live) return renderMeasureLabel(label, key, clampInverseScale(inverseScale), { width, height });
-            const pill = renderMeasureLabel(live.label, key, clampInverseScale(inverseScale), { width, height });
+            // The same rule as the line's own halo (annotationIsHovered).
+            const halo = (hoveredId === index && !selectedIds.has(index))
+              || (selectedIds.has(index) && ((selectedIds?.size || 0) + (effectiveSelectedCalloutIds?.size || 0)) > 1);
+            if (!live) return renderMeasureLabel(label, key, clampInverseScale(inverseScale), { width, height }, { halo });
+            const pill = renderMeasureLabel(live.label, key, clampInverseScale(inverseScale), { width, height }, { halo });
             return live.transform && pill ? <g key={key} transform={live.transform}>{pill}</g> : pill;
           })}
         </g>
