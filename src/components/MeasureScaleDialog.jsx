@@ -23,6 +23,7 @@ import {
   MEASURE_DISPLAYS,
   PAPER_UNITS,
   customMeasureScale,
+  customScaleInputs,
   displayForScaleUnit,
   isFractionalDisplay,
   isMeasureDisplay,
@@ -70,9 +71,11 @@ export default function MeasureScaleDialog({ pageNumber, pageCount = 1, lengthPt
   const [custom, setCustom] = useState(() => Boolean(plusOn && currentScale?.display && !MEASURE_PRESETS.some((p) => p.label === currentScale?.label) && !calibrating));
   const [display, setDisplay] = useState(() => (isMeasureDisplay(currentScale?.display) ? currentScale.display : displayForScaleUnit(currentScale?.unit || (metric ? 'm' : 'ft'))));
   const [precision, setPrecision] = useState(() => normalizeMeasurePrecision(display, currentScale?.precision));
-  const [paper, setPaper] = useState('1');
-  const [paperUnit, setPaperUnit] = useState('in');
-  const [customReal, setCustomReal] = useState('');
+  // Reopened on a custom scale, the row starts filled so Apply keeps it.
+  const [customStart] = useState(() => (custom ? customScaleInputs(currentScale) : null));
+  const [paper, setPaper] = useState(customStart?.paper || '1');
+  const [paperUnit, setPaperUnit] = useState(customStart?.paperUnit || 'in');
+  const [customReal, setCustomReal] = useState(customStart?.real || '');
   const [setDefault, setSetDefault] = useState(false);
   const pickDisplay = (next) => {
     setDisplay(next);

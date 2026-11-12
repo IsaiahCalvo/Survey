@@ -37,7 +37,13 @@ import {
   DIMENSION_CAPTION_PLACES,
   dimensionCaptionPlace,
   dimensionLeader,
+  DIMENSION_CAPTION_BG_COLORS,
+  DIMENSION_CAPTION_BG_OPACITIES,
+  DIMENSION_CAPTION_TEXT_COLORS,
+  dimensionCaptionPt,
+  dimensionCaptionStyle,
   isDimensionMeasure,
+  normalizeDimensionCaptionPt,
   normalizeDimensionLeader,
 } from '../utils/measure/dimensionLine.js';
 
@@ -60,13 +66,18 @@ export default function MeasureEditPopover({ measure, onPatch, onClose, side = '
   // caption place.
   const isDim = isDimensionMeasure(mark);
   const savedLeader = isDim ? dimensionLeader(mark) : null;
+  // Its caption style (Drawboard's Caption pop-over): size in pt, colours.
+  const savedPt = isDim ? dimensionCaptionPt(mark) : null;
+  const captionStyle = isDim ? dimensionCaptionStyle(mark) : null;
 
   const [labelDraft, setLabelDraft] = useState(savedLabel);
   const [depthDraft, setDepthDraft] = useState(depthText(savedDepth));
   const [leaderDraft, setLeaderDraft] = useState(depthText(savedLeader));
+  const [ptDraft, setPtDraft] = useState(depthText(savedPt));
   const labelRef = useRef(null);
   const depthRef = useRef(null);
   const leaderRef = useRef(null);
+  const ptRef = useRef(null);
   const cardRef = useRef(null);
 
   // An undo, redo or a collaborator's edit changes the mark under the card:
@@ -80,18 +91,22 @@ export default function MeasureEditPopover({ measure, onPatch, onClose, side = '
   useEffect(() => {
     if (document.activeElement !== leaderRef.current) setLeaderDraft(depthText(savedLeader));
   }, [savedLeader]);
+  useEffect(() => {
+    if (document.activeElement !== ptRef.current) setPtDraft(depthText(savedPt));
+  }, [savedPt]);
 
-  const draftsRef = useRef({ labelDraft, depthDraft, leaderDraft, savedLabel, savedDepth, savedLeader });
-  draftsRef.current = { labelDraft, depthDraft, leaderDraft, savedLabel, savedDepth, savedLeader };
+  const draftsRef = useRef({ labelDraft, depthDraft, leaderDraft, ptDraft, savedLabel, savedDepth, savedLeader, savedPt });
+  draftsRef.current = { labelDraft, depthDraft, leaderDraft, ptDraft, savedLabel, savedDepth, savedLeader, savedPt };
   // Set once the card is closing with Escape: what was typed is dropped, even
   // when the field's blur arrives as the card goes away.
   const discardRef = useRef(false);
   // The value last written from a field, until the mark comes back with it:
   // a blur and a close right after one write must not write it again.
-  const writtenRef = useRef({ label: undefined, depth: undefined, leader: undefined });
+  const writtenRef = useRef({ label: undefined, depth: undefined, leader: undefined, pt: undefined });
   useEffect(() => { writtenRef.current.label = undefined; }, [savedLabel]);
   useEffect(() => { writtenRef.current.depth = undefined; }, [savedDepth]);
   useEffect(() => { writtenRef.current.leader = undefined; }, [savedLeader]);
+  useEffect(() => { writtenRef.current.pt = undefined; }, [savedPt]);
   const commitLabel = useCallback(() => {
     if (discardRef.current) return;
     const drafts = draftsRef.current;
@@ -132,11 +147,25 @@ export default function MeasureEditPopover({ measure, onPatch, onClose, side = '
     writtenRef.current.leader = next;
     onPatch?.({ leader: next });
   }, [onPatch]);
+  const commitPt = useCallback((typed) => {
+    if (discardRef.current) return;
+    const drafts = draftsRef.current;
+    const next = normalizeDimensionCaptionPt(typed ?? drafts.ptDraft);
+    if (next == null) {
+      setPtDraft(depthText(drafts.savedPt));
+      return;
+    }
+    setPtDraft(depthText(next));
+    const current = writtenRef.current.pt !== undefined ? writtenRef.current.pt : drafts.savedPt;
+    if (next === current) return;
+    writtenRef.current.pt = next;
+    onPatch?.({ captionPt: next });
+  }, [onPatch]);
   const commitTyped = useCallback(() => {
     commitLabel();
     if (usesDepth) commitDepth();
-    if (isDim) commitLeader();
-  }, [commitDepth, commitLabel, commitLeader, isDim, usesDepth]);
+    if (isDim) { commitLeader(); commitPt(); }
+  }, [commitDepth, commitLabel, commitLeader, commitPt, isDim, usesDepth]);
 
   // The app's dismiss rules: a press outside closes it (keeping what was
   // typed), Escape closes it (dropping what was typed).
@@ -182,6 +211,17 @@ export default function MeasureEditPopover({ measure, onPatch, onClose, side = '
       return;
     }
     fieldKeyDown(event, () => commitLeader(), () => setLeaderDraft(depthText(savedLeader)));
+  };
+  // Up / Down step the caption size by 1 pt.
+  const ptKeyDown = (event) => {
+    if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+      event.preventDefault();
+      event.stopPropagation();
+      const base = normalizeDimensionCaptionPt(ptDraft) ?? savedPt ?? 9;
+      commitPt(String(base + (event.key === 'ArrowUp' ? 1 : -1)));
+      return;
+    }
+    fieldKeyDown(event, () => commitPt(), () => setPtDraft(depthText(savedPt)));
   };
 
   // The caption as it will read with what is typed so far.
@@ -338,25 +378,124 @@ export default function MeasureEditPopover({ measure, onPatch, onClose, side = '
           </span>
         </div>
       )}
-      <div className="measure-edit__sizes" role="group" aria-label="Caption size">
-        <span className="measure-edit__name" aria-hidden="true">Caption size</span>
-        <span className="measure-edit__size-buttons">
-          {MEASURE_CAPTION_SIZES.map((option) => (
-            <button
-              key={option.id}
-              type="button"
-              className={`measure-edit__size${size === option.px ? ' is-current' : ''}`}
-              data-measure-edit-size={option.id}
-              aria-label={`${option.name} caption`}
-              aria-pressed={size === option.px}
-              {...(tip ? tip(`${option.name} caption (${option.px} px)`, tipSide) : {})}
-              onClick={() => onPatch?.({ captionSize: option.px })}
-            >
-              {option.label}
-            </button>
-          ))}
-        </span>
-      </div>
+      {isDim ? (
+        <>
+          <label className="measure-edit__field">
+            <span className="measure-edit__name">Caption size</span>
+            <span className="measure-edit__with-unit">
+              <input
+                ref={ptRef}
+                type="text"
+                inputMode="decimal"
+                className="measure-edit__input"
+                data-measure-edit-caption-pt
+                value={ptDraft}
+                autoComplete="off"
+                enterKeyHint="done"
+                aria-label="Caption size (pt)"
+                onChange={(event) => setPtDraft(event.target.value)}
+                onBlur={() => commitPt()}
+                onKeyDown={ptKeyDown}
+              />
+              <span className="measure-edit__unit" aria-hidden="true">pt</span>
+            </span>
+          </label>
+          <div className="measure-edit__sizes measure-edit__sizes--stack" role="group" aria-label="Caption colour">
+            <span className="measure-edit__name" aria-hidden="true">Text</span>
+            <span className="measure-edit__swatches">
+              <button
+                type="button"
+                className={`measure-edit__swatch measure-edit__swatch--auto${!captionStyle.color ? ' is-current' : ''}`}
+                style={{ background: mark?.stroke || 'currentColor' }}
+                data-measure-edit-caption-color="auto"
+                aria-label="Same as the line"
+                aria-pressed={!captionStyle.color}
+                {...(tip ? tip('Same as the line', tipSide) : {})}
+                onClick={() => onPatch?.({ captionColor: null })}
+              />
+              {DIMENSION_CAPTION_TEXT_COLORS.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  className={`measure-edit__swatch${captionStyle.color === option.color ? ' is-current' : ''}`}
+                  style={{ background: option.color }}
+                  data-measure-edit-caption-color={option.id}
+                  aria-label={`${option.label} text`}
+                  aria-pressed={captionStyle.color === option.color}
+                  {...(tip ? tip(option.label, tipSide) : {})}
+                  onClick={() => onPatch?.({ captionColor: option.color })}
+                />
+              ))}
+            </span>
+          </div>
+          <div className="measure-edit__sizes measure-edit__sizes--stack" role="group" aria-label="Caption background">
+            <span className="measure-edit__name" aria-hidden="true">Background</span>
+            <span className="measure-edit__swatches">
+              <button
+                type="button"
+                className={`measure-edit__swatch measure-edit__swatch--none${!captionStyle.bg ? ' is-current' : ''}`}
+                data-measure-edit-caption-bg="none"
+                aria-label="No background"
+                aria-pressed={!captionStyle.bg}
+                {...(tip ? tip('No background', tipSide) : {})}
+                onClick={() => onPatch?.({ captionBg: null })}
+              />
+              {DIMENSION_CAPTION_BG_COLORS.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  className={`measure-edit__swatch${captionStyle.bg === option.color ? ' is-current' : ''}`}
+                  style={{ background: option.color }}
+                  data-measure-edit-caption-bg={option.id}
+                  aria-label={`${option.label} background`}
+                  aria-pressed={captionStyle.bg === option.color}
+                  {...(tip ? tip(option.label, tipSide) : {})}
+                  onClick={() => onPatch?.({ captionBg: option.color })}
+                />
+              ))}
+            </span>
+          </div>
+          {captionStyle.bg && (
+            <div className="measure-edit__sizes measure-edit__sizes--stack" role="group" aria-label="Background opacity">
+              <span className="measure-edit__name" aria-hidden="true">Opacity</span>
+              <span className="measure-edit__size-buttons">
+                {DIMENSION_CAPTION_BG_OPACITIES.map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={`measure-edit__size measure-edit__place${captionStyle.bgOpacity === value ? ' is-current' : ''}`}
+                    data-measure-edit-caption-bg-opacity={value}
+                    aria-pressed={captionStyle.bgOpacity === value}
+                    onClick={() => onPatch?.({ captionBgOpacity: value })}
+                  >
+                    {`${Math.round(value * 100)}%`}
+                  </button>
+                ))}
+              </span>
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="measure-edit__sizes" role="group" aria-label="Caption size">
+          <span className="measure-edit__name" aria-hidden="true">Caption size</span>
+          <span className="measure-edit__size-buttons">
+            {MEASURE_CAPTION_SIZES.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                className={`measure-edit__size${size === option.px ? ' is-current' : ''}`}
+                data-measure-edit-size={option.id}
+                aria-label={`${option.name} caption`}
+                aria-pressed={size === option.px}
+                {...(tip ? tip(`${option.name} caption (${option.px} px)`, tipSide) : {})}
+                onClick={() => onPatch?.({ captionSize: option.px })}
+              >
+                {option.label}
+              </button>
+            ))}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

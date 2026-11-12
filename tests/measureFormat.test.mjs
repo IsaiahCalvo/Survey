@@ -73,7 +73,7 @@ test('typed feet-inches follow Drawboard: marks required, no zero or negatives',
 
 test('a custom scale: paper to real, kept in a sensible scale unit', () => {
   const s = customMeasureScale({ paper: 1, paperUnit: 'in', realText: "8'", display: 'ftin', precision: 8 });
-  assert.deepEqual(s, { ptPerUnit: 9, unit: 'ft', label: '1″ = 8′', display: 'ftin', precision: 8 });
+  assert.deepEqual(s, { ptPerUnit: 9, unit: 'ft', label: '1″ = 8′', display: 'ftin', precision: 8, custom: { paper: '1', paperUnit: 'in', real: "8'" } });
   const m = customMeasureScale({ paper: 10, paperUnit: 'mm', realText: '1', display: 'm', precision: 2 });
   assert.equal(m.unit, 'm');
   assert.ok(Math.abs(m.ptPerUnit - (10 / 25.4) * 72) < 1e-9);
@@ -214,7 +214,7 @@ test('dimension line: Leader and Inline / Above are edited on dimension marks on
   const card = read('src/components/MeasureEditPopover.jsx');
   assert.match(card, /\{isDim && \(\s*<label className="measure-edit__field">\s*<span className="measure-edit__name">Leader<\/span>/);
   assert.match(card, /onClick=\{\(\) => onPatch\?\.\(\{ captionPlace: place \}\)\}/);
-  assert.match(read('src/utils/svgAnnotationRenderers.jsx'), /place: dimensionCaptionPlace\(obj\),/);
+  assert.match(read('src/utils/measure/dimensionLayout.js'), /place: dimensionCaptionPlace\(obj\),/);
 });
 
 test('dimension line: a leader pill replaces the bend grabber and drags the leader', () => {
@@ -262,4 +262,167 @@ test('dimension line: a dragged caption keeps an elbow leader; Reset caption pos
   assert.match(menu, /item\('Reset caption position', 'resetCaptionPosition'/);
   assert.match(menu, /menuObjEditable && Boolean\(dimensionCaptionOffset\(menuObj\)\)\)\] : \[\]\),/);
   assert.match(read('src/utils/svgAnnotationRenderers.jsx'), /\{geo\.elbow && \(\s*<polyline data-dimension-elbow="true"/);
+});
+
+test('dimension line: the canvas twin paints the same line, chevrons and caption', async () => {
+  const { drawAnnotationObject } = await import('../src/utils/annotationCanvasPainter.js');
+  const { stampMeasure } = await import('../src/utils/measure/measureScale.js');
+  const line = {
+    type: 'line', tool: 'line', x1: -100, y1: 0, x2: 100, y2: 0, left: 100, top: 100, width: 200, height: 0,
+    stroke: '#e11d2e', strokeWidth: 1, opacity: 1,
+  };
+  const dim = stampMeasure(line, 'length', null, { dim: true });
+  const calls = [];
+  const context = {
+    save: () => {}, restore: () => {}, translate: (...a) => calls.push(['translate', ...a]), rotate: () => {},
+    beginPath: () => calls.push(['beginPath']),
+    moveTo: (...a) => calls.push(['moveTo', ...a]),
+    lineTo: (...a) => calls.push(['lineTo', ...a]),
+    setLineDash: () => {},
+    stroke: () => calls.push(['stroke', context.lineWidth]),
+    fillText: (...a) => calls.push(['fillText', ...a]),
+  };
+  drawAnnotationObject(context, dim);
+  const strokes = calls.filter((c) => c[0] === 'stroke').map((c) => c[1]);
+  // 2 extension lines at 0.5 pt, the line (in two pieces round the caption), 2 chevrons.
+  assert.equal(strokes.filter((w) => w === 0.5).length, 2);
+  assert.ok(strokes.filter((w) => w === 1).length >= 3);
+  const text = calls.find((c) => c[0] === 'fillText');
+  assert.ok(text && /no scale|in|pt/.test(String(text[1])), 'the reading is painted');
+  // Nothing at the clicked points' own line: every stroke at y = 100 is an extension start.
+  const moves = calls.filter((c) => c[0] === 'moveTo');
+  assert.ok(moves.some((m) => Math.abs(m[2] - (100 - 15.31)) < 0.01), 'the line sits a leader off the points');
+});
+
+test('a custom scale reopens with its typed row filled, so Apply keeps it', async () => {
+  const m = await import('../src/utils/measure/measureFormat.js');
+  const s = m.customMeasureScale({ paper: '2', paperUnit: 'cm', realText: '2.5', display: 'm', precision: 0.01 });
+  assert.deepEqual(m.customScaleInputs(s), { paper: '2', paperUnit: 'cm', real: '2.5' });
+  // A custom scale saved before the typed row was kept still reopens to an
+  // equal scale.
+  for (const [display, realText] of [['ftin', "8'"], ['ft', '12.5'], ['m', '2.5']]) {
+    const { custom, ...older } = m.customMeasureScale({ paper: '1', paperUnit: 'in', realText, display, precision: display === 'ftin' ? 16 : 0.01 });
+    assert.ok(custom);
+    const row = m.customScaleInputs(older);
+    const again = m.customMeasureScale({ paper: row.paper, paperUnit: row.paperUnit, realText: row.real, display, precision: older.precision });
+    assert.ok(Math.abs(again.ptPerUnit - older.ptPerUnit) < 1e-9, display);
+  }
+  const dialog = readFileSync(new URL('../src/components/MeasureScaleDialog.jsx', import.meta.url), 'utf8');
+  assert.match(dialog, /customScaleInputs\(currentScale\)/);
+});
+
+test('a library drop lands in the scale on screen, default included', () => {
+  const viewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
+  assert.match(viewer, /measureScaleMetaWithDefaultRef\.current = measureScaleMeta;/);
+  assert.match(viewer, /metaScaleForPage\(measureScaleMetaWithDefaultRef\.current, drop\.pageNumber\)/);
+});
+
+test('dimension line: the PDF export draws it (/AP and print), reading included', async () => {
+  const { PDFDocument, PDFName, PDFArray, PDFDict, decodePDFRawStream } = await import('pdf-lib');
+  const { savePDFWithAnnotationsPdfLib } = await import('../src/utils/pdfAnnotationsPdfLib.js');
+  const { stampMeasure } = await import('../src/utils/measure/measureScale.js');
+  const m = await import('../src/utils/measure/measureFormat.js');
+  const scale = m.customMeasureScale({ paper: '1', paperUnit: 'in', realText: "8'", display: 'ftin', precision: 16 });
+  const line = {
+    type: 'line', tool: 'line', x1: -100, y1: 0, x2: 100, y2: 0, left: 210, top: 200, width: 200, height: 0,
+    originX: 'center', originY: 'center', stroke: '#e11d2e', strokeWidth: 1, opacity: 1,
+  };
+  const dim = stampMeasure(line, 'length', scale, { dim: true });
+  const source = await PDFDocument.create();
+  source.addPage([420, 320]);
+  const bytes = await source.save();
+  const file = { name: 'dim.pdf', async arrayBuffer() { return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength); } };
+  const { log, warn, error } = console;
+  const original = globalThis.window;
+  console.log = () => {}; console.warn = () => {}; console.error = () => {};
+  globalThis.window = {};
+  let out;
+  try {
+    out = await savePDFWithAnnotationsPdfLib(file, { 1: { objects: [dim] } }, { 1: { width: 420, height: 320 } }, null,
+      { returnBytes: true, actionType: 'pdf-export', documentId: 'dim' });
+  } finally {
+    console.log = log; console.warn = warn; console.error = error; globalThis.window = original;
+  }
+  const doc = await PDFDocument.load(out);
+  const annots = doc.getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).asArray().map((r) => doc.context.lookup(r));
+  const lineAnnot = annots.find((d) => d instanceof PDFDict && d.get(PDFName.of('Subtype'))?.toString() === '/Line');
+  assert.ok(lineAnnot, 'a /Line annotation');
+  const rect = lineAnnot.lookup(PDFName.of('Rect'), PDFArray).asArray().map((n) => n.asNumber());
+  // The clicked points sit at PDF y = 120; the dimension line is a leader off them.
+  const lineY = 320 - (200 - 15.31);
+  assert.ok(rect[3] >= lineY, `the /Rect reaches the offset line (${rect[3]} >= ${lineY})`);
+  const ap = lineAnnot.lookup(PDFName.of('AP'), PDFDict).lookup(PDFName.of('N'));
+  const content = Buffer.from(decodePDFRawStream(ap).decode()).toString('latin1');
+  assert.match(content, /Tj/, 'the reading is drawn');
+  const hexes = [...content.matchAll(/<([0-9A-Fa-f]+)> Tj/g)].map((x) => Buffer.from(x[1], 'hex').toString('latin1'));
+  assert.ok(hexes.some((t) => /^\d+'-\d/.test(t)), `feet-inches with plain marks: ${hexes.join(' | ')}`);
+});
+
+test('dimension caption style: pt size, text colour, background and opacity', async () => {
+  const dl = await import('../src/utils/measure/dimensionLine.js');
+  const { stampMeasure, applyMeasureEdit } = await import('../src/utils/measure/measureScale.js');
+  const line = { type: 'line', tool: 'line', x1: -100, y1: 0, x2: 100, y2: 0, left: 100, top: 100, width: 200, height: 0, stroke: '#e11d2e', strokeWidth: 1 };
+  let mark = stampMeasure(line, 'length', null, { dim: true });
+  assert.equal(dl.dimensionCaptionPt(mark), 9);
+  assert.deepEqual(dl.dimensionCaptionStyle(mark), { color: null, bg: null, bgOpacity: 0 });
+  // Size: 2 to 24 pt; 9 is the default and is not stored; a typed blank reverts.
+  mark = applyMeasureEdit(mark, { captionPt: '14 pt' });
+  assert.equal(mark.data.measure.dim.size, 14);
+  assert.equal(dl.dimensionCaptionPt(mark), 14);
+  assert.equal(applyMeasureEdit(mark, { captionPt: '   ' }), mark);
+  assert.equal(dl.dimensionCaptionPt(applyMeasureEdit(mark, { captionPt: 99 })), 24);
+  assert.equal(applyMeasureEdit(mark, { captionPt: 9 }).data.measure.dim.size, undefined);
+  // A pt size wins over the older S / M / L size, and replaces it.
+  const sized = applyMeasureEdit({ ...mark, data: { ...mark.data, measure: { ...mark.data.measure, captionSize: 16 } } }, { captionPt: 10 });
+  assert.equal(sized.data.measure.captionSize, undefined);
+  assert.equal(dl.dimensionCaptionPt(sized), 10);
+  // Colours: a #RRGGBB or back to the line's own.
+  mark = applyMeasureEdit(mark, { captionColor: '#0066d4' });
+  assert.equal(dl.dimensionCaptionStyle(mark).color, '#0066D4');
+  assert.equal(dl.dimensionCaptionStyle(applyMeasureEdit(mark, { captionColor: null })).color, null);
+  assert.equal(dl.dimensionCaptionStyle(applyMeasureEdit(mark, { captionColor: 'red' })).color, null);
+  // A background comes in at full strength; opacity steps 25 / 50 / 75 / 100.
+  mark = applyMeasureEdit(mark, { captionBg: '#FFF9C4' });
+  assert.deepEqual(dl.dimensionCaptionStyle(mark), { color: '#0066D4', bg: '#FFF9C4', bgOpacity: 1 });
+  mark = applyMeasureEdit(mark, { captionBgOpacity: 0.5 });
+  assert.equal(dl.dimensionCaptionStyle(mark).bgOpacity, 0.5);
+  assert.equal(applyMeasureEdit(mark, { captionBgOpacity: 0.3 }), mark);
+  const cleared = applyMeasureEdit(mark, { captionBg: null });
+  assert.equal(cleared.data.measure.dim.bg, undefined);
+  assert.equal(cleared.data.measure.dim.bgOpacity, undefined);
+  // A plain Length has no caption style to change.
+  const plain = stampMeasure(line, 'length', null);
+  assert.equal(applyMeasureEdit(plain, { captionColor: '#0066D4' }), plain);
+
+  // Every surface draws it: SVG, the canvas twin and the PDF writer.
+  const svg = readFileSync(new URL('../src/utils/svgAnnotationRenderers.jsx', import.meta.url), 'utf8');
+  assert.match(svg, /data-dimension-caption-bg=\{style\.bg\}/);
+  assert.match(svg, /fill=\{style\.color \|\| stroke\}/);
+  const { drawAnnotationObject } = await import('../src/utils/annotationCanvasPainter.js');
+  const calls = [];
+  const context = {
+    globalAlpha: 1,
+    save: () => {}, restore: () => {}, translate: () => {}, rotate: () => {}, beginPath: () => {},
+    moveTo: () => {}, lineTo: () => {}, setLineDash: () => {}, stroke: () => {},
+    fillRect: (...a) => calls.push(['fillRect', context.fillStyle, context.globalAlpha, ...a]),
+    fillText: (...a) => calls.push(['fillText', context.fillStyle, ...a]),
+  };
+  drawAnnotationObject(context, { ...mark, opacity: 1 });
+  const rect = calls.find((c) => c[0] === 'fillRect');
+  assert.ok(rect && rect[1] === '#FFF9C4' && rect[2] === 0.5, 'the background is painted at its opacity');
+  assert.equal(calls.find((c) => c[0] === 'fillText')[1], '#0066D4');
+  const pdf = readFileSync(new URL('../src/utils/pdfAnnotationsPdfLib.js', import.meta.url), 'utf8');
+  assert.match(pdf, /if \(dim\.style\.bg\) \{/);
+  assert.match(pdf, /color: textColor\.color,/);
+  const card = readFileSync(new URL('../src/components/MeasureEditPopover.jsx', import.meta.url), 'utf8');
+  for (const bit of ['data-measure-edit-caption-pt', 'data-measure-edit-caption-color', 'data-measure-edit-caption-bg', 'data-measure-edit-caption-bg-opacity']) {
+    assert.ok(card.includes(bit), bit);
+  }
+});
+
+test('measure-plus: a Perimeter finished at its last point stays open (a polylength)', () => {
+  const layer = readFileSync(new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url), 'utf8');
+  assert.match(layer, /const openPerimeter = action === 'finish' && resolved\.finalType === 'polygon'\s*&& measureMode === 'perimeter' && isFeatureOn\('measure-plus'\);/);
+  assert.match(layer, /const tool = openPerimeter \? 'polyline' : resolved\.finalType;/);
+  assert.match(layer, /if \(openPerimeter\) rawJson = stampMeasure\(builtJson, 'polylength', effectiveMeasureScale\);/);
 });

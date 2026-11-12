@@ -3210,6 +3210,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     () => withDefaultMeasureScale(savedMeasureScaleMeta, measureDefaultScale),
     [savedMeasureScaleMeta, measureDefaultScale],
   );
+  // The scales a new mark lands in, default included (a library drop).
+  const measureScaleMetaWithDefaultRef = useRef(measureScaleMeta);
+  measureScaleMetaWithDefaultRef.current = measureScaleMeta;
   const [measureScaleDialog, setMeasureScaleDialog] = useState(null);
   const [measureMenuRect, setMeasureMenuRect] = useState(null);
   useEffect(() => {
@@ -3228,6 +3231,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const [linkToolOn] = useState(() => isFeatureOn('link-tool'));
   // Nightly 'comment-pins': page pins (components/pins/).
   const [pinsOn] = useState(() => isFeatureOn('comment-pins'));
+  // Pins are mark_comments rows on a cloud document, so they need one and a
+  // signed-in user: a device file or a signed-out visit shows no Pin tool.
+  const pinsDocOn = pinsOn && Boolean(pdfFile?.id) && !isDeviceDocumentId(pdfFile?.id) && Boolean(user?.id);
   const [measureDepth, setMeasureDepth] = useState(() => loadMeasureDepth());
   const [measureDepthDialog, setMeasureDepthDialog] = useState(null);
   // Tape (beta 'tape-tool', Drawboard PDF): a band that covers part of the
@@ -27659,6 +27665,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       selectedLink: linkToolOn && !groupSummary ? selectedLinkForHost : null,
       followLink: linkToolOn ? followLink : null,
       editSelectedLink: linkToolOn ? editSelectedLink : null,
+      // Nightly 'comment-pins': only a cloud document with a signed-in user.
+      pinsAvailable: pinsDocOn,
       selectionMixed: groupSummary ? groupSummary.mixed : null,
       selectionCount: groupSummary ? groupSummary.count : (selectedToolbarAnnotation || selectedToolbarCallout ? 1 : 0),
       strokeWidthInputValue: strokeWidthInputValueRef.current,
@@ -27819,6 +27827,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     measureEditOn,
     handlePatchSelectedMeasure,
     linkToolOn,
+    pinsDocOn,
     selectedLinkForHost,
     followLink,
     editSelectedLink,
@@ -33852,7 +33861,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       pageHeight: height,
       pageNumber: drop.pageNumber,
       landingScale: pageScaleFromObjects(annotationsByPageRef.current?.[drop.pageNumber]?.objects)
-        || metaScaleForPage(measureScaleMetaRef.current, drop.pageNumber) || null,
+        || metaScaleForPage(measureScaleMetaWithDefaultRef.current, drop.pageNumber) || null,
       tokens: {
         authorName: user?.user_metadata?.full_name || '',
         authorEmail: user?.email || '',
@@ -38281,7 +38290,7 @@ ${pageBlocks}
       )}
       {pinsOn && (
         <PagePinsHost
-          enabled={Boolean(pdfFile?.id)}
+          enabled={pinsDocOn}
           isActive={isActive !== false}
           documentId={pdfFile?.id || null}
           userId={user?.id || null}
@@ -39776,7 +39785,7 @@ ${pageBlocks}
                                 />
                               </div>
                               )}
-                              {pinsOn && (
+                              {pinsDocOn && (
                                 <PagePinsLayer
                                   documentId={pdfFile?.id || null}
                                   pageNumber={pageNumber}
@@ -41323,7 +41332,7 @@ ${pageBlocks}
                   // Nightly 'link-tool': drag a box, then say where it links (Shift+H).
                   ...(linkToolOn ? [{ id: 'hyperlink', label: 'Hyperlink', iconName: 'hyperlink' }] : []),
                   // Nightly 'comment-pins': the pin split button (N; M cycles the type).
-                  ...(pinsOn && pdfFile?.id ? [{ id: 'pin', label: 'Pin', pin: true }] : []),
+                  ...(pinsDocOn ? [{ id: 'pin', label: 'Pin', pin: true }] : []),
                   // TODO: Revisit the user-created Note tool later. Imported
                   // PDF Text/sticky-note annotations still render through
                   // pdfAnnotationImporter + the normal PDF annotation layers.

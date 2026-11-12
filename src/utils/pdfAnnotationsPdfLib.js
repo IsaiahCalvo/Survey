@@ -57,6 +57,8 @@ import {
 } from './pdfUnicodeText.js';
 import { deepClone } from './deepClone.js';
 import { buildMeasureLabel, getMeasureKind } from './measure/measureScale.js';
+import { DIMENSION_CAPTION_BG_PAD_PT, DIMENSION_EXTENSION_PT, isDimensionMeasure } from './measure/dimensionLine.js';
+import { dimensionMarkLayout } from './measure/dimensionLayout.js';
 import { normalizePresentationPdf, reflectPdfPagePresentations } from './pdfPagePresentation.js';
 import {
   PDF_COUNTER_METADATA_KEY,
@@ -2543,6 +2545,16 @@ const plainAppearanceGeometry = (obj, fonts = null) => {
     return { base, bounds: boundsOfPoints(points, pad) };
   }
   if (type === 'line') {
+    const dim = dimensionWorldLayout(obj);
+    if (dim) {
+      const line = resolveLineWorldGeometry(obj);
+      const inked = [
+        ...dim.extensions.flat(), ...dim.segments.flat(), ...dim.chevrons.flat(), ...(dim.elbow || []),
+      ];
+      const base = boundsOfPoints([{ x: line.x1, y: line.y1 }, { x: line.x2, y: line.y2 }, ...inked], 0);
+      const bounds = boundsOfPoints([...inked, ...dimensionCaptionCorners(dim)], strokeWidth / 2 + PLAIN_APPEARANCE_EXTRA_PAD);
+      return { base, bounds };
+    }
     const line = resolveLineWorldGeometry(obj);
     const points = [
       { x: line.x1, y: line.y1 },
@@ -5455,7 +5467,122 @@ function drawFlattenedArrowheadSpec(page, spec, pageHeight) {
   }
 }
 
-const drawFlattenedLine = (page, obj, pageHeight) => {
+// Nightly 'measure-plus': a dimension line (a Length with data.measure.dim)
+// in WORLD space. The layout is worked out in the mark's own unturned frame,
+// exactly as the screen does it (dimensionMarkLayout: a dragged caption's
+// offset and its elbow live in that frame), then every point is turned by the
+// mark's angle about the clicked points' middle. Shared by the flattened
+// print, the /AP writer and the /AP box (plainAppearanceGeometry).
+const rotateAbout = (p, c, rad) => {
+  const cos = Math.cos(rad); const sin = Math.sin(rad);
+  const dx = p.x - c.x; const dy = p.y - c.y;
+  return { x: c.x + dx * cos - dy * sin, y: c.y + dx * sin + dy * cos };
+};
+const dimensionWorldLayout = (obj) => {
+  if (!isDimensionMeasure(obj)) return null;
+  const world = resolveLineWorldGeometry(obj);
+  if (world.midpoint) return null; // a bent line keeps its plain look
+  const angleDeg = Number(obj?.angle) || 0;
+  const rad = (angleDeg * Math.PI) / 180;
+  const c = { x: (world.x1 + world.x2) / 2, y: (world.y1 + world.y2) / 2 };
+  const a = rotateAbout({ x: world.x1, y: world.y1 }, c, -rad);
+  const b = rotateAbout({ x: world.x2, y: world.y2 }, c, -rad);
+  const layout = dimensionMarkLayout(obj, { x1: a.x, y1: a.y, x2: b.x, y2: b.y });
+  if (!layout?.geo) return null;
+  const turn = (p) => rotateAbout(p, c, rad);
+  const { geo } = layout;
+  return {
+    ...layout,
+    extensions: geo.extensions.map((pair) => pair.map(turn)),
+    segments: geo.segments.map((pair) => pair.map(turn)),
+    chevrons: geo.chevrons.map((points) => points.map(turn)),
+    elbow: geo.elbow ? geo.elbow.map(turn) : null,
+    caption: { ...turn(geo.caption), angle: geo.caption.angle + angleDeg },
+  };
+};
+
+// The caption box's four corners in world space (for the /AP box).
+const dimensionCaptionCorners = (dim) => {
+  if (!dim?.lines?.length) return [];
+  const hw = dim.captionWidth / 2 + DIMENSION_CAPTION_BG_PAD_PT; const hh = dim.captionHeight / 2 + DIMENSION_CAPTION_BG_PAD_PT;
+  const rad = (dim.caption.angle * Math.PI) / 180;
+  return [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]].map(([x, y]) => rotateAbout(
+    { x: dim.caption.x + x, y: dim.caption.y + y }, dim.caption, rad,
+  ));
+};
+
+// Helvetica (WinAnsi) has no prime marks; the plain ' and " read the same.
+const dimensionCaptionPrintText = (text) => String(text ?? '').replace(/′/g, "'").replace(/″/g, '"');
+
+const drawFlattenedDimensionLine = (page, obj, pageHeight, dim, fonts) => {
+  const stroke = parsePdfDrawColor(obj?.stroke || '#000000', '#000000') || parsePdfDrawColor('#000000');
+  const width = Math.max(0.5, Number(obj?.strokeWidth) || 1);
+  const dash = Array.isArray(obj?.strokeDashArray) && obj.strokeDashArray.length > 0
+    ? obj.strokeDashArray.map((v) => Number(v) || 0)
+    : null;
+  const stroke2 = (from, to, thickness, lineCap, dashed) => page.drawLine({
+    start: { x: from.x, y: getPdfY(pageHeight, from.y) },
+    end: { x: to.x, y: getPdfY(pageHeight, to.y) },
+    color: stroke.color,
+    thickness,
+    opacity: stroke.opacity,
+    lineCap,
+    ...(dashed ? { dashArray: dash, dashPhase: 0 } : {}),
+  });
+  const polyline = (points, thickness, lineCap, dashed = false) => {
+    for (let i = 1; i < points.length; i += 1) stroke2(points[i - 1], points[i], thickness, lineCap, dashed);
+  };
+  dim.extensions.forEach((pair) => polyline(pair, DIMENSION_EXTENSION_PT, LineCapStyle.Butt));
+  if (dim.elbow) polyline(dim.elbow, DIMENSION_EXTENSION_PT, LineCapStyle.Butt);
+  dim.segments.forEach((pair) => polyline(pair, width, LineCapStyle.Butt, Boolean(dash)));
+  dim.chevrons.forEach((points) => polyline(points, width, LineCapStyle.Round));
+  if (!dim.lines.length) return;
+  const rad = (dim.caption.angle * Math.PI) / 180;
+  if (dim.style.bg) {
+    const bg = parsePdfDrawColor(dim.style.bg, '#FFFFFF');
+    const hw = dim.captionWidth / 2 + DIMENSION_CAPTION_BG_PAD_PT;
+    const hh = dim.captionHeight / 2 + DIMENSION_CAPTION_BG_PAD_PT / 2;
+    const corners = [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]]
+      .map(([x, y]) => rotateAbout({ x: dim.caption.x + x, y: dim.caption.y + y }, dim.caption, rad));
+    const d = `${corners.map((p, i) => `${i ? 'L' : 'M'} ${p.x} ${p.y}`).join(' ')} Z`;
+    drawSvgPathLinear(page, d, { x: 0, y: pageHeight, color: bg.color, opacity: (bg.opacity ?? 1) * dim.style.bgOpacity, borderWidth: 0 });
+  }
+  const font = fonts?.regular;
+  if (!font) return;
+  const textColor = dim.style.color ? (parsePdfDrawColor(dim.style.color, '#000000') || stroke) : stroke;
+  const size = dim.fontPt;
+  dim.lines.forEach((raw, i) => {
+    const text = dimensionCaptionPrintText(raw);
+    let textWidth;
+    try { textWidth = font.widthOfTextAtSize(text, size); } catch { return; }
+    // Centred on the caption point like the screen's middle baseline: the
+    // glyphs' baseline sits about a third of an em below each line's middle.
+    const lineMid = (i - (dim.lines.length - 1) / 2) * dim.lineHeight;
+    const origin = rotateAbout(
+      { x: dim.caption.x - textWidth / 2, y: dim.caption.y + lineMid + size * 0.35 },
+      dim.caption,
+      rad,
+    );
+    try {
+      page.drawText(text, {
+        x: origin.x,
+        y: getPdfY(pageHeight, origin.y),
+        size,
+        font,
+        color: textColor.color,
+        opacity: textColor.opacity,
+        rotate: degrees(-dim.caption.angle),
+      });
+    } catch { /* a character Helvetica can't draw: the reading stays in /Contents */ }
+  });
+};
+
+const drawFlattenedLine = (page, obj, pageHeight, fonts = null) => {
+  const dim = dimensionWorldLayout(obj);
+  if (dim) {
+    drawFlattenedDimensionLine(page, obj, pageHeight, dim, fonts);
+    return;
+  }
   const stroke = parsePdfDrawColor(obj?.stroke || '#000000', '#000000') || parsePdfDrawColor('#000000');
   const width = Math.max(0.5, Number(obj?.strokeWidth) || 1);
   // Same resolution as the screen and the /AP writer (see
@@ -6821,7 +6948,7 @@ const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0
     return 1;
   }
   if (type === 'line') {
-    drawFlattenedLine(page, shifted, pageHeight);
+    drawFlattenedLine(page, shifted, pageHeight, fonts);
     return 1;
   }
   if (type === 'polygon') return drawFlattenedPolygon(page, shifted, pageHeight, true) ? 1 : 0;
@@ -7837,6 +7964,8 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
     const exportHasTextAnnotation = (exportPlan.items || []).some((item) => (
       item?.type === 'callout'
       || ['textbox', 'text', 'i-text'].includes(String(item?.object?.type || '').toLowerCase())
+      // A dimension line's /AP draws its reading inline (Nightly 'measure-plus').
+      || isDimensionMeasure(item?.object)
     ));
     const flattenFonts = exportHasTextAnnotation
       ? await embedFlattenFonts(pdfDoc, collectDrawnTextSamples(exportPlan.items || []))

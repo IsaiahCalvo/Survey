@@ -57,8 +57,67 @@ export function dimensionCaptionPlace(obj) {
 // 9 pt caption from Medium (measureScale.js MEASURE_LABEL_FONT_PX).
 const CAPTION_SIZE_BASE_PX = 12;
 
-/** A mark's caption size (points): 9 pt at Medium, scaled by S / L. */
+// Drawboard's Caption pop-over (measure-extras.md §4): text 2 to 24 pt
+// (default 9), seven text colours, six backgrounds (none by default) and a
+// background opacity of 25 / 50 / 75 / 100 %.
+export const DIMENSION_CAPTION_PT_MIN = 2;
+export const DIMENSION_CAPTION_PT_MAX = 24;
+export const DIMENSION_CAPTION_TEXT_COLORS = Object.freeze([
+  Object.freeze({ id: 'red', label: 'Red', color: '#E11D2E' }),
+  Object.freeze({ id: 'blue', label: 'Blue', color: '#0066D4' }),
+  Object.freeze({ id: 'navy', label: 'Navy', color: '#0A2C7A' }),
+  Object.freeze({ id: 'black', label: 'Black', color: '#1A1A1A' }),
+  Object.freeze({ id: 'purple', label: 'Purple', color: '#7C3AED' }),
+  Object.freeze({ id: 'sky', label: 'Sky blue', color: '#06AEED' }),
+  Object.freeze({ id: 'green', label: 'Green', color: '#118A4E' }),
+]);
+export const DIMENSION_CAPTION_BG_COLORS = Object.freeze([
+  Object.freeze({ id: 'white', label: 'White', color: '#FFFFFF' }),
+  Object.freeze({ id: 'yellow', label: 'Pale yellow', color: '#FFF9C4' }),
+  Object.freeze({ id: 'gold', label: 'Gold', color: '#FCD980' }),
+  Object.freeze({ id: 'blue', label: 'Pale blue', color: '#BFE3ED' }),
+  Object.freeze({ id: 'green', label: 'Pale green', color: '#C7E8C7' }),
+  Object.freeze({ id: 'peach', label: 'Peach', color: '#F5C9A6' }),
+]);
+export const DIMENSION_CAPTION_BG_OPACITIES = Object.freeze([0.25, 0.5, 0.75, 1]);
+// Room round the caption's words inside its background (each side; half above and below).
+export const DIMENSION_CAPTION_BG_PAD_PT = 2;
+const HEX6 = /^#[0-9a-f]{6}$/i;
+
+/** A typed caption size in points (2-24, 2 places), or null to revert. */
+export function normalizeDimensionCaptionPt(value) {
+  const text = String(value ?? '').trim().replace(/\s*pt$/i, '');
+  if (!text) return null;
+  const n = Number(text.replace(',', '.'));
+  if (!Number.isFinite(n)) return null;
+  const clamped = Math.min(DIMENSION_CAPTION_PT_MAX, Math.max(DIMENSION_CAPTION_PT_MIN, n));
+  return Math.round(clamped * 100) / 100;
+}
+
+/** A caption colour: a #RRGGBB, or null (the stroke colour / no background). */
+export function normalizeDimensionCaptionColor(value) {
+  return typeof value === 'string' && HEX6.test(value.trim()) ? value.trim().toUpperCase() : null;
+}
+
+/**
+ * The caption's look: text colour (null = the stroke colour), background
+ * (null = none) and that background's opacity.
+ */
+export function dimensionCaptionStyle(obj) {
+  const dim = obj?.data?.measure?.dim;
+  const bg = normalizeDimensionCaptionColor(dim?.bg);
+  const op = Number(dim?.bgOpacity);
+  return {
+    color: normalizeDimensionCaptionColor(dim?.color),
+    bg,
+    bgOpacity: bg ? (DIMENSION_CAPTION_BG_OPACITIES.includes(op) ? op : 1) : 0,
+  };
+}
+
+/** A mark's caption size (points): its own pt size, else 9 pt at Medium, scaled by S / L. */
 export function dimensionCaptionPt(obj) {
+  const own = normalizeDimensionCaptionPt(obj?.data?.measure?.dim?.size);
+  if (own != null) return own;
   const px = Number(obj?.data?.measure?.captionSize);
   return Number.isFinite(px) && px > 0 ? (DIMENSION_CAPTION_PT * px) / CAPTION_SIZE_BASE_PX : DIMENSION_CAPTION_PT;
 }

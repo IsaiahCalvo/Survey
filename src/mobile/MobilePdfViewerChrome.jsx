@@ -183,7 +183,8 @@ const TOOL_GROUPS = {
       { id: 'image', label: 'Image', icon: 'image', flag: 'insert-image', action: true },
       // Nightly 'link-tool': drag a box, then say where it links.
       { id: 'hyperlink', label: 'Hyperlink', icon: 'hyperlink', flag: 'link-tool' },
-      { id: 'pin', label: 'Pin', icon: 'pagePin', flag: 'comment-pins' },
+      // Pins save on a cloud document: hidden on a device file or signed out.
+      { id: 'pin', label: 'Pin', icon: 'pagePin', flag: 'comment-pins', cloudOnly: true },
     ],
   },
 };
@@ -3166,7 +3167,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                     />
                   </>
                 )}
-                {!regionApi && (TOOL_GROUPS[openCategory]?.tools || []).filter((tool) => !tool.flag || isFeatureOn(tool.flag)).map((tool) => (openCategory === 'shape' ? (
+                {!regionApi && (TOOL_GROUPS[openCategory]?.tools || []).filter((tool) => (!tool.flag || isFeatureOn(tool.flag)) && (!tool.cloudOnly || bottomToolbarApi?.pinsAvailable)).map((tool) => (openCategory === 'shape' ? (
                   <RailButton
                     key={tool.id}
                     active={isMobileShapeToolActive(tool.id, { activeTool, lineBorderStyle: bottomToolbarApi?.lineBorderStyle, measureMode: bottomToolbarApi?.measureMode, measureScaleDialogOpen: bottomToolbarApi?.measureScaleDialogOpen })}

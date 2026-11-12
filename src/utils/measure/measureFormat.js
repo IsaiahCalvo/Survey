@@ -200,7 +200,30 @@ export function customMeasureScale({ paper, paperUnit = 'in', realText, display,
     label: `${paperLabel} = ${formatDisplayLength(realInches, display, isFractionalDisplay(display) ? 16 : 4)}`,
     display,
     precision: p,
+    // What was typed, so the dialog reopens on it and Apply works again.
+    custom: { paper: String(paper), paperUnit, real: String(realText).trim() },
   };
+}
+
+/**
+ * The dialog's custom row for a saved custom scale: what was typed, or (for
+ * one saved before that was kept) 1 inch of paper and the real length it
+ * stands for, in the scale's own display.
+ */
+export function customScaleInputs(scale) {
+  if (!scale || !isMeasureDisplay(scale.display)) return null;
+  const c = scale.custom;
+  if (c && Number(c.paper) > 0 && PAPER_INCHES[c.paperUnit] && String(c.real || '').trim()) {
+    return { paper: String(c.paper), paperUnit: c.paperUnit, real: String(c.real) };
+  }
+  const unitInches = { ft: 12, in: 1, yd: 36, mm: 1 / 25.4, cm: 1 / 2.54, m: 1 / 0.0254 }[scale.unit];
+  const ptPerUnit = Number(scale.ptPerUnit);
+  if (!unitInches || !(ptPerUnit > 0)) return null;
+  const realInches = (72 / ptPerUnit) * unitInches;
+  const real = isFractionalDisplay(scale.display)
+    ? formatDisplayLength(realInches, scale.display, 16)
+    : String(Number((realInches / INCHES[scale.display]).toFixed(4)));
+  return { paper: '1', paperUnit: 'in', real };
 }
 
 /** The display a preset (or older scale) starts in under 'measure-plus'. */

@@ -148,6 +148,34 @@ test('custom scale reads feet-inches, Units restamp the line, Set as default car
     await page.screenshot({ path: test.info().outputPath('measure-plus-above.png') });
     await card.locator('[data-measure-edit-place="inline"]').click();
     await expect(dimLine.locator('line')).toHaveCount(4);
+    // Caption style (Drawboard's Caption pop-over): size in pt, text colour,
+    // background and its opacity, each one undo step.
+    const caption = dimLine.locator('text[data-dimension-caption]');
+    const ptField = card.locator('[data-measure-edit-caption-pt]');
+    await expect(ptField).toHaveValue('9');
+    await ptField.fill('14');
+    await ptField.press('Enter');
+    await expect(caption).toHaveAttribute('font-size', '14');
+    await ptField.press('ArrowDown');
+    await expect(caption).toHaveAttribute('font-size', '13');
+    await card.locator('[data-measure-edit-caption-color="blue"]').click();
+    await expect(caption).toHaveAttribute('fill', '#0066D4');
+    await expect(card.locator('[data-measure-edit-caption-bg-opacity]')).toHaveCount(0);
+    await card.locator('[data-measure-edit-caption-bg="yellow"]').click();
+    const bgRect = dimLine.locator('rect[data-dimension-caption-bg]');
+    await expect(bgRect).toHaveAttribute('fill', '#FFF9C4');
+    await expect(bgRect).toHaveAttribute('fill-opacity', '1');
+    await card.locator('[data-measure-edit-caption-bg-opacity="0.5"]').click();
+    await expect(bgRect).toHaveAttribute('fill-opacity', '0.5');
+    await page.screenshot({ path: test.info().outputPath('measure-plus-caption-style.png') });
+    await page.keyboard.press('Control+z');
+    await expect(bgRect).toHaveAttribute('fill-opacity', '1');
+    await card.locator('[data-measure-edit-caption-bg="none"]').click();
+    await expect(bgRect).toHaveCount(0);
+    await card.locator('[data-measure-edit-caption-color="auto"]').click();
+    await ptField.fill('9');
+    await ptField.press('Enter');
+    await expect(caption).toHaveAttribute('font-size', '9');
     await page.keyboard.press('Escape');
     await expect(card).toBeHidden();
     // The leader pill on the line: dragging it past the clicked points flips
@@ -230,6 +258,38 @@ test('custom scale reads feet-inches, Units restamp the line, Set as default car
     const readingB = await drawLength(page, surfaceB, 150, 450, 300);
     await expect(readingB).toHaveText(/^[\d,]+\.\d{3} ft$/);
     await expect(readingB).not.toContainText('no scale');
+
+    // Perimeter, Drawboard's way: finished at its last point (a double-click)
+    // it stays open, a polylength of three sides; a click back on the first
+    // point closes it and counts the fourth side.
+    await page.keyboard.press('Escape');
+    const sb = await surfaceB.boundingBox();
+    const perimeterAt = async (x0, y0, close) => {
+      await page.locator('[data-measure-tool="menu"]').click();
+      await page.locator('[data-measure-tool="perimeter"]').click();
+      const pts = [[x0, y0], [x0 + 120, y0], [x0 + 120, y0 + 60], [x0, y0 + 60]];
+      for (const [x, y] of pts.slice(0, 3)) await page.mouse.click(sb.x + x, sb.y + y);
+      if (close) {
+        await page.mouse.click(sb.x + pts[3][0], sb.y + pts[3][1]);
+        await page.mouse.click(sb.x + x0, sb.y + y0);
+      } else {
+        await page.mouse.dblclick(sb.x + pts[3][0], sb.y + pts[3][1]);
+      }
+      await page.keyboard.press('Escape');
+    };
+    await perimeterAt(150, 120, false);
+    const openLabel = surfaceB.locator('.measure-labels .measure-label[data-measure-kind="polylength"]');
+    await expect(openLabel).toHaveCount(1, { timeout: 15_000 });
+    await expect(surfaceB.locator('.measure-labels .measure-label[data-measure-kind="perimeter"]')).toHaveCount(0);
+    await perimeterAt(150, 480, true);
+    const closedLabel = surfaceB.locator('.measure-labels .measure-label[data-measure-kind="perimeter"]');
+    await expect(closedLabel).toHaveCount(1, { timeout: 15_000 });
+    const ftOf = async (loc) => Number((await loc.locator('text').first().textContent()).replace(/[^\d.]/g, ''));
+    const open = await ftOf(openLabel);
+    const closed = await ftOf(closedLabel);
+    // Three sides (120 + 60 + 120) against four (+ 60): a ratio of 300 : 360.
+    expect(Math.abs(open / closed - 300 / 360)).toBeLessThan(0.02);
+    await page.screenshot({ path: test.info().outputPath('measure-plus-perimeter.png') });
   } finally {
     if (!process.env.KEEP) await admin.from('documents').delete().in('id', ids);
   }
