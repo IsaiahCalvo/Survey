@@ -651,13 +651,18 @@ export async function planSheetRound({
     };
     const hasOwnData = (row) => row.some((c, i) => !mappedCols.has(i) && !isBlankCell(c));
     // A new name in the Item cell of the row Survey appended for markerId,
-    // within the new-row window (NEW_ROW_TAKEOVER_MS) and not split yet.
+    // within the new-row window (NEW_ROW_TAKEOVER_MS) and not split yet: the
+    // keys the PM typed there (cells unlike what Survey wrote), else null.
+    // Against the round's starting baseline, as a tab done earlier this round
+    // may already have moved the item's baseline to its new category.
     const typedOverNewRow = (markerId, row) => {
       const watch = next.recentWrites[`${markerId}|+row`];
-      const base = nextBaseline[markerId];
-      if (!watch || watch.took || !base || base.scopeId !== scope.scopeId || !colOfKey.has('item')) return false;
-      if (now.getTime() - Number(watch.t) > rowWindowMs || !cellText(row[colOfKey.get('item')]).trim()) return false;
-      return getFp(fieldPrintsOf(sheetRecordOf(row, {})), 'item') !== getFp(base.fields, 'item');
+      const base = baseline[markerId];
+      if (!watch || watch.took || !base || !nextBaseline[markerId] || base.scopeId !== scope.scopeId || !colOfKey.has('item')) return null;
+      if (now.getTime() - Number(watch.t) > rowWindowMs || !cellText(row[colOfKey.get('item')]).trim()) return null;
+      const fps = fieldPrintsOf(sheetRecordOf(row, {}));
+      if (getFp(fps, 'item') === getFp(base.fields, 'item')) return null;
+      return new Set(scope.columns.filter((c) => columnIsEditable(c) && colOfKey.has(c.key) && getFp(fps, c.key) !== getFp(base.fields, c.key)).map((c) => c.key));
     };
 
     // Read every Row ID once. When a row was copied (Row ID and all), the copy
@@ -723,6 +728,24 @@ export async function planSheetRound({
       if (markerId && ownRow.get(markerId) !== r) markerId = null;
 
       const marker = markerId ? markers[markerId] : null;
+      // The row Survey just added for a tech's item, the item deleted (or
+      // moved to another category) in the app since, and a new name typed or
+      // saved late over it: the PM's own new row, holding only what the PM
+      // typed (as the takeover split below), not a kept row of the item that
+      // never reaches the app. Also when an earlier round kept the row for a
+      // part of that save that landed first.
+      let pmKeys = null;
+      if (markerId && (!marker || !inThisScope(marker))) pmKeys = typedOverNewRow(markerId, row);
+      if (pmKeys) {
+        delete next.tombstones[markerId];
+        next.notices = next.notices.filter((n) => n.markerId !== markerId);
+        if (!marker) {
+          delete next.recentWrites[`${markerId}|+row`];
+          delete nextBaseline[markerId];
+          next.gone[markerId] = nowIso;
+        }
+        markerId = null;
+      }
       const tomb = markerId ? next.tombstones[markerId] : null;
       if (tomb && (typeof tomb !== 'object' || tomb.scopeId === scope.scopeId)) {
         if (!marker) continue; // deleted in the app, row kept on purpose
@@ -743,19 +766,6 @@ export async function planSheetRound({
       // A valid Row ID with no marker and no baseline: the round that wrote it
       // stopped before the new marker was saved. Make the marker under that id.
       const recreate = markerId && !marker && !nextBaseline[markerId] && !plan.markerWrites[markerId];
-      // The row Survey just added for a tech's item, the item deleted (or
-      // moved to another category) in the app since, and a new name typed or
-      // saved late over it: the PM's own new row (as the takeover below), not
-      // a kept row of the item that never reaches the app.
-      if (markerId && (marker ? !inThisScope(marker) : !recreate) && typedOverNewRow(markerId, row)) {
-        delete next.tombstones[markerId];
-        delete next.recentWrites[`${markerId}|+row`];
-        if (!marker) {
-          delete nextBaseline[markerId];
-          next.gone[markerId] = nowIso;
-        }
-        markerId = null;
-      }
       if (markerId && !marker && !recreate) {
         // Deleted in the app. Remove the row only if nobody changed it in the
         // sheet and it holds nothing of the sheet's own (a column the PM added).
@@ -850,6 +860,9 @@ export async function planSheetRound({
       };
       for (const column of scope.columns) {
         if (!columnIsEditable(column) || !colOfKey.has(column.key)) continue;
+        // The tech's own cells left in a row the PM took over: not the PM's,
+        // so cleared below rather than copied.
+        if (pmKeys && !pmKeys.has(column.key)) { conv[column.key] = null; continue; }
         const c = sheetCellToApp(layout, column, row[colOfKey.get(column.key)]);
         if (c.error) {
           next.problems.push({ markerId: id, scopeId: scope.scopeId, message: `${where(r)}: ${c.error}` });
