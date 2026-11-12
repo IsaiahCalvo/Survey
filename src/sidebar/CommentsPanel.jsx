@@ -323,16 +323,25 @@ export default function CommentsPanel({
     if (thread) setView(thread.root.resolvedAt ? 'resolved' : 'open');
   }, [highlightId, threads]);
 
-  // Bring a linked comment into view once it has loaded.
+  // Bring a linked comment into view once it has loaded (view: a link into a
+  // resolved thread flips the list first, then scrolls). The mark then
+  // clears on its own timer, which a later list change must not cancel.
+  const [highlightShown, setHighlightShown] = useState(null);
   useEffect(() => {
-    if (!highlightId || !isActive) return undefined;
+    if (!highlightId || !isActive) return;
     const el = listRef.current?.querySelector?.(`[data-comment-id="${highlightId}"]`);
-    if (!el) return undefined;
+    if (!el) return;
     el.scrollIntoView?.({ block: 'center' });
-    const timer = window.setTimeout(() => setHighlightId(null), 2400);
-    return () => window.clearTimeout(timer);
-    // view: a link into a resolved thread flips the list first, then scrolls.
+    setHighlightShown(highlightId);
   }, [highlightId, isActive, comments, view]);
+  useEffect(() => {
+    if (!highlightShown) return undefined;
+    const timer = window.setTimeout(() => {
+      setHighlightId((current) => (current === highlightShown ? null : current));
+      setHighlightShown(null);
+    }, 2400);
+    return () => window.clearTimeout(timer);
+  }, [highlightShown]);
 
   // What a thread hangs off: its words and the mark kind's own glyph.
   const markTarget = useCallback((markId, pageNumber) => {
@@ -467,7 +476,9 @@ export default function CommentsPanel({
           className={`comments-filter__btn${view === key ? ' is-on' : ''}`}
           aria-pressed={view === key}
           data-comment-filter={key}
-          onClick={() => setView(key)}
+          // Picking a list yourself drops a link's mark, so it can't pull
+          // the list back to its thread.
+          onClick={() => { setView(key); setHighlightId(null); }}
         >
           {label} <span className="comments-filter__count">{count}</span>
         </button>
