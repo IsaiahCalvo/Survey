@@ -67,5 +67,5 @@ test('the viewer and the Page fit card use the setting; the phone keeps one colu
   assert.match(viewer, /padTop: metrics\.padTop, gap: metrics\.gap, spread: spreadMode,/);
   const shell = readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
   assert.match(shell, /const \[pageSpreadsOn\] = useState\(\(\) => isFeatureOn\('page-spreads'\)\);/);
-  assert.match(shell, /\{pageSpreadsOn && \(/);
+  assert.match(shell, /\{pageSpreadsOn && !isNarrowShell && \(/);
 });

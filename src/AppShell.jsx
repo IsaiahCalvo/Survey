@@ -5742,8 +5742,9 @@ export default function App({ devPreviewReturnTab = null }) {
                   {/* Nightly 'page-spreads' (Drawboard View settings, row
                       C17): pages one per row, two side by side, or page 1
                       alone on the right then pairs. A fit mode re-fits the
-                      new row width, as Drawboard does. */}
-                  {pageSpreadsOn && (
+                      new row width, as Drawboard does. The phone keeps one
+                      column (the viewer forces Single), so it shows none. */}
+                  {pageSpreadsOn && !isNarrowShell && (
                     <>
                       <div role="separator" className="rail-flyout__divider" />
                       {PAGE_SPREAD_OPTIONS.map((option, index) => {
