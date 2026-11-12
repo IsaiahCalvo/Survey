@@ -7,6 +7,7 @@ import { SortableRearrangeList, SortableRearrangeRow } from '../reorder/Sortable
 import DragRearrangeHandle from '../reorder/DragRearrangeHandle.jsx';
 import { moveItem } from '../reorder/flatReorderUtils.js';
 import { getCounterRenderGeometry } from '../utils/counterGeometry.js';
+import { revealInOwnScroller } from '../utils/revealInOwnScroller.js';
 import './CounterSeriesMenu.css';
 
 const CompactColorPicker = lazy(() => import('./CompactColorPicker.jsx'));
@@ -82,16 +83,21 @@ function CounterSeriesList({ api, onClose }) {
     setOptimisticIds(null);
   }, [api.__ownerToken]);
 
-  // An opened palette scrolls fully into view, so the rows under it never
-  // hide behind the list's edge.
+  // An opened palette scrolls fully into view inside the list's own scroller
+  // only (never the viewer around it), and again as the lazy picker swaps its
+  // placeholder for the real palette.
   const openSeriesId = colorRow?.seriesId || null;
   useEffect(() => {
     if (!openSeriesId || typeof document === 'undefined') return undefined;
-    const frame = requestAnimationFrame(() => {
-      const row = document.querySelector(`[data-counter-series-row="${CSS.escape(openSeriesId)}"]`);
-      row?.scrollIntoView?.({ block: 'nearest' });
-    });
-    return () => cancelAnimationFrame(frame);
+    const row = document.querySelector(`[data-counter-series-row="${CSS.escape(openSeriesId)}"]`);
+    if (!row) return undefined;
+    const stopAt = row.closest('[data-counter-list]');
+    const reveal = () => revealInOwnScroller(row, { margin: 4, stopAt });
+    const frame = requestAnimationFrame(reveal);
+    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(reveal) : null;
+    observer?.observe(row);
+    const stop = setTimeout(() => observer?.disconnect(), 800);
+    return () => { cancelAnimationFrame(frame); clearTimeout(stop); observer?.disconnect(); };
   }, [openSeriesId]);
 
   const liveKey = liveRows.map((row) => row.seriesId).join('\n');

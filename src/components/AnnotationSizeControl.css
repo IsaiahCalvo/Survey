@@ -173,7 +173,8 @@
 
 @media (hover: hover) {
   .annotation-size-control__presets button.is-active:hover {
-    background: var(--hover);
+    /* The current row keeps its raised surface under the pointer. */
+    background: var(--surface-3);
   }
 }
 

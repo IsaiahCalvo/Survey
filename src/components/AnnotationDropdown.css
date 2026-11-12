@@ -142,7 +142,9 @@
 @media (hover: hover) {
   .annotation-dropdown__options > button.is-active:hover,
   .annotation-dropdown__option.is-active:hover {
-    background: var(--hover);
+    /* The current row keeps its raised surface under the pointer, so it
+       never looks like any other hovered row. */
+    background: var(--surface-3);
   }
 }
 
