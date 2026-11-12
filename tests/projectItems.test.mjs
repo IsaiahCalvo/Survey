@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  ITEM_STATUSES, STATUS_GROUPS, REGISTER_COLUMNS, itemCode, filterItems, sortItems, isOverdue, isDueSoon,
+  ITEM_STATUSES, STATUS_GROUPS, statusesFor, isDone, REGISTER_COLUMNS, itemCode, filterItems, sortItems, isOverdue, isDueSoon,
   itemsCsv, registerFileName, describeEvent, duplicateFields, groupCounts, parseItemTags, allItemTags,
   formatDue, timeAgo, localDay,
 } from '../src/projectItems/projectItems.js';
@@ -24,10 +24,14 @@ test('IDs read ISS-n and TSK-n', () => {
   assert.equal(itemCode('task', 3), 'TSK-3');
 });
 
-test('seven statuses in three groups, Draft first, as in Drawboard', () => {
-  assert.deepEqual(ITEM_STATUSES.map((s) => s.label), ['Draft', 'Open', 'Pending', 'In Review', 'Closed', 'Approved', 'Rejected']);
+test('statuses in three groups, Draft first, each kind with its own list, as in Drawboard', () => {
+  assert.deepEqual(statusesFor('issue').map((s) => s.label), ['Draft', 'Open', 'Pending', 'In Review', 'Closed', 'Approved', 'Rejected']);
+  assert.deepEqual(statusesFor('task').map((s) => s.label), ['Draft', 'Open', 'Pending', 'In Review', 'On Hold', 'Closed']);
   assert.deepEqual(STATUS_GROUPS.map((g) => g.label), ['Unstarted', 'Started', 'Done']);
   assert.deepEqual(ITEM_STATUSES.filter((s) => s.group === 'done').map((s) => s.key), ['closed', 'approved', 'rejected']);
+  // On Hold is a started status, so a held task is not done.
+  assert.equal(isDone({ kind: 'task', status: 'on_hold' }), false);
+  assert.equal(isDone({ kind: 'task', status: 'closed' }), true);
 });
 
 test('due soon is the next 7 days; overdue is past; done items are neither', () => {

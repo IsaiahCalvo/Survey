@@ -60,6 +60,23 @@ export function showsSurveyRow(api) {
 // Nightly tools whose button sits in a group's row but which make no mark of
 // that group: the row still shows while they are armed (Shift+H, N).
 const BETA_TOOL_ROWS = Object.freeze({ hyperlink: 'review', pin: 'review' });
+/**
+ * Does the survey bar push the page down (data-viewer-top-push) or lie over
+ * it? Owner 2026-11-10: a click on a Survey Marker must only pick it. The bar
+ * that comes in for a pick under Select or Pan used to push, so every click
+ * on a marker scrolled the page down a bar's height, and a press still held
+ * on the marker turned that glide into a move. A bar that comes in for a pick
+ * lies over the page (the room above page 1 still lets you scroll the top out
+ * from under it); a bar that comes in for the armed Survey Marker tool, or on
+ * the phone, pushes as before. Decided once, when the bar comes in, and kept
+ * while it stays, so arming or dropping a tool under it never moves the page.
+ * `wasPushing` = the decision so far (null = the bar was not shown).
+ */
+export function resolveSurveyBarPush({ shown = false, wasPushing = null, pickedOnly = false } = {}) {
+  if (!shown) return null;
+  if (wasPushing === true || wasPushing === false) return wasPushing;
+  return !pickedOnly;
+}
 
 /** The tool groups whose tools sit in the tool bar. */
 export const TOOL_BAR_GROUPS = Object.freeze(['draw', 'shape', 'review', 'forms']);

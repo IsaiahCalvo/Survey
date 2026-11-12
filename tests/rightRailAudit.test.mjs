@@ -144,7 +144,10 @@ test('viewer: fits measure the current page, Fit height is the viewer\'s own, an
 
 test('rail glyph buttons: no hover plate, the glyph grows and brightens instead', () => {
   // The two number fields keep their hover plate (they are fields).
-  assert.match(states, /#chrome-right-host button:not\(:disabled\):not\(\[aria-disabled='true'\]\):not\(\[data-glyph-only\]\):not\(\.chrome-icon-btn\):hover:not\(:active\) \{\n\s*background-color: var\(--hover\) !important;/);
+  // CHANGED 2026-11-10 (owner: the pop-up hover "is not working at all"):
+  // rows inside a rail card are skipped too, because this opaque plate hid
+  // the card's gliding hover strip (MenuGlide) under it.
+  assert.match(states, /#chrome-right-host button:not\(:disabled\):not\(\[aria-disabled='true'\]\):not\(\[data-glyph-only\]\):not\(\.chrome-icon-btn\):not\(\.rail-flyout \*\):hover:not\(:active\) \{\n\s*background-color: var\(--hover\) !important;/);
   // DELIBERATE ASSERTION CHANGE (owner 2026-10-02, test plan U2: "the left
   // rail and right rail: those are different. There's no consistency"): the
   // rail's glyphs grew to 112% by a rule of their own, the tool bar not at

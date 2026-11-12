@@ -286,7 +286,7 @@ export const FEATURE_FLAGS = Object.freeze({
     stage: 'beta',
   }),
   'focus-mode': Object.freeze({
-    label: 'Focus mode: hide the tab strip and side rails, full screen (Ctrl/Cmd+Shift+F)',
+    label: 'Full screen: hide the browser and system bars, keep tabs and rails (Ctrl/Cmd+Shift+F)',
     stage: 'beta',
   }),
   'search-options': Object.freeze({
@@ -299,6 +299,10 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'tab-keys': Object.freeze({
     label: 'Alt+Shift+] and Alt+Shift+[ step through the open documents',
+    stage: 'beta',
+  }),
+  'open-visible-first': Object.freeze({
+    label: 'Open: build the marks of the page on screen first, the pages around it after it has drawn',
     stage: 'beta',
   }),
   'back-button': Object.freeze({
@@ -333,6 +337,14 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'sheet-set-view': Object.freeze({
     label: 'Project sheets as a set: previous / next sheet, sheet picker, Shift+Left / Right, List and Grid views, Open all',
+    stage: 'beta',
+  }),
+  'drawboard-keys': Object.freeze({
+    label: 'Drawboard keys: Shift+Up / Down previous / next page; Alt+O / Alt+U next / previous version (with Versions on)',
+    stage: 'beta',
+  }),
+  'project-activity': Object.freeze({
+    label: 'Projects: an Activity tab with what happened to the project (files, revisions, issues, people) in 15-minute groups',
     stage: 'beta',
   }),
   spotlight: Object.freeze({
@@ -494,6 +506,20 @@ export function isFeatureOn(key, { storage = safeStorage(), env = readEnv() } = 
   if (def.env && env?.[def.env] === '1') return true;
   const cached = readCache(storage);
   return cached?.[key] === true;
+}
+
+// Features read their flag once at load. A browser that has never been to
+// Survey has no saved answers, so without a wait a feature turned on for
+// everyone stayed hidden for a new person's whole first visit (audit
+// 2026-11-10). main.jsx holds the first render on this: at once when answers
+// are saved (or storage cannot be read), else until the server's first answer
+// or maxMs, whichever comes first.
+export function waitForFirstFlags(firstAnswer, { storage = safeStorage(), maxMs = 1500, setTimer = setTimeout } = {}) {
+  if (!storage || read(storage, FLAG_CACHE_KEY) !== null) return Promise.resolve();
+  return Promise.race([
+    Promise.resolve(firstAnswer).catch(() => {}),
+    new Promise((resolve) => setTimer(resolve, maxMs)),
+  ]).then(() => {});
 }
 
 // Ask the server which flags are on for whoever is signed in (or nobody) and

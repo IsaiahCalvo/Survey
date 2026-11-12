@@ -142,6 +142,7 @@ const ownerRows = (ids) => ({
   project_items: ['project_id', PROJECT],
   project_item_events: ['project_id', PROJECT],
   project_item_comments: ['project_id', PROJECT],
+  project_events: ['project_id', PROJECT],
   organizations: ['id', ORG],
   organization_members: ['organization_id', ORG],
   organization_invites: ['organization_id', ORG],
@@ -194,6 +195,8 @@ const SHARED_WITH_COLLABORATORS = new Set([
   'survey_agent_memory',
   // So do the project's issues, their log and their discussion.
   'project_items', 'project_item_events', 'project_item_comments',
+  // And the project's Activity feed.
+  'project_events',
 ]);
 
 let admin;

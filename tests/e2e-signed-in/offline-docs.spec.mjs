@@ -131,7 +131,7 @@ test('a kept document opens with no server; marks drawn then sync when it is bac
     }
 
     // The server goes away and the app restarts (the document reopens itself).
-    const restore = await cutServer(context);
+    let restore = await cutServer(context);
     await page.reload({ waitUntil: 'domcontentloaded' });
     await expect(page.getByText(PAGE_TEXT).filter({ visible: true }).first()).toBeVisible({ timeout: 60_000 });
     await expect.poll(() => pageLines(page), { timeout: 30_000 }).toHaveLength(1);
@@ -163,6 +163,22 @@ test('a kept document opens with no server; marks drawn then sync when it is bac
     // reads Offline copy: the 30 s autosave's flush must not turn it to an error.
     await expect(page.getByRole('button', { name: /^Offline copy/ }).filter({ visible: true }).first()).toBeVisible();
     expect(await pageLines(page)).toHaveLength(2);
+
+    // The browser says it is back online but the server is sick (every call a
+    // 503): the reopen fails, so the device copy comes straight back instead
+    // of a locked page, and no mark is lost.
+    await restore();
+    const sick = (route) => route.fulfill({ status: 503, contentType: 'application/json', body: '{"message":"Service Unavailable"}' });
+    const sickMatch = (url) => url.host === SERVER.host;
+    await context.route(sickMatch, sick);
+    await page.evaluate(() => window.dispatchEvent(new Event('online')));
+    await page.waitForTimeout(10_000);
+    await expect(page.getByRole('button', { name: /^Offline copy/ }).filter({ visible: true }).first()).toBeVisible({ timeout: 30_000 });
+    await expect.poll(() => page.evaluate(() => document.body.getAttribute('data-readonly')), { timeout: 10_000 }).toBeNull();
+    expect(await pageLines(page)).toHaveLength(2);
+    expect(await savedRows(kept.id)).toBe(rowsOnline);
+    await context.unroute(sickMatch, sick);
+    restore = await cutServer(context);
 
     // Restart again, still offline: both marks come back from the device copy.
     await page.reload({ waitUntil: 'domcontentloaded' });
@@ -196,6 +212,46 @@ test('a kept document opens with no server; marks drawn then sync when it is bac
   } finally {
     await kept.remove();
     await notKept.remove();
+  }
+});
+
+test('a kept copy the server is too slow to vouch for keeps its marks on the device, and never takes server marks once the file changed', async ({ page, context }) => {
+  test.setTimeout(240_000);
+  const kept = await seedDocument('offline unverified');
+  try {
+    await signIn(page, E2E_ACCOUNTS.owner);
+    await keepOffline(page, kept.name);
+
+    // Storage can't be reached and the database is too slow to say which
+    // file the document has now (the version check waits 5 s).
+    const storage = (url) => url.host === SERVER.host && url.pathname.startsWith('/storage/v1/object');
+    const block = (route) => route.abort('internetdisconnected');
+    const slowCheck = /select=content_sha256(&|$)/;
+    const slow = async (route) => { await new Promise((r) => setTimeout(r, 7_000)); await route.continue().catch(() => {}); };
+    await context.route(storage, block);
+    await context.route(slowCheck, slow);
+    await openDocument(page, kept.name);
+    // The PDF opened from the kept copy, and so did the marks: the light
+    // reads Offline copy and a mark drawn now stays on the device.
+    await expect(page.getByRole('button', { name: /^Offline copy/ }).filter({ visible: true }).first()).toBeVisible({ timeout: 30_000 });
+    await page.waitForTimeout(1_000);
+    await drawLine(page, 0);
+    await expect.poll(() => pageLines(page)).toHaveLength(1);
+    await page.waitForTimeout(2_000);
+    expect(await savedRows(kept.id)).toBe(0);
+
+    // The document gets another file on the server. When the server answers
+    // again, the app sees the file changed: it says so and stays on the copy.
+    const { error } = await adminClient().from('documents').update({ content_sha256: 'f'.repeat(64) }).eq('id', kept.id);
+    if (error) throw error;
+    await context.unroute(slowCheck, slow);
+    await expect(page.getByText('A newer version of this document is on the server', { exact: false }).first()).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByRole('button', { name: /^Offline copy/ }).filter({ visible: true }).first()).toBeVisible();
+    expect(await pageLines(page)).toHaveLength(1);
+    expect(await savedRows(kept.id)).toBe(0);
+    await context.unroute(storage, block);
+  } finally {
+    await kept.remove();
   }
 });
 

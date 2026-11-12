@@ -502,6 +502,14 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
     /** Every sheet in the workbook as { id, name } (no cells read). */
     tabs: listTabs,
 
+    /** Which of these sheets are protected (Review > Protect Sheet), in one $batch. */
+    async lockedTabs(fileId, sheetIds) {
+      const ids = [...new Set((sheetIds || []).map(String))];
+      if (!ids.length) return [];
+      const answers = await workbookBatch(fileId, ids.map((id) => ({ method: 'GET', path: `${sheetPath(id)}/protection?$select=protected` })), { parallel: true, allow: [404] });
+      return ids.filter((id, i) => answers[i]?.protected === true);
+    },
+
     /** The names of every sheet in the workbook (no cells read). */
     async tabTitles(fileId) {
       return (await listTabs(fileId)).map((t) => t.name);
@@ -663,10 +671,13 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
           // Under the list: open the list's columns first, so a PM's unsaved
           // typing in that first empty row moves down (see above). A
           // PivotTable that won't shift just means a plain write.
+          // Any refusal (400/409: a PivotTable, merged cells, a table below)
+          // just means a plain write, as on several tabs; a dropped
+          // connection or sign-in still fails the round.
           try {
             await workbook(fileId, 'POST', insertPath(batch.sheetId, start, batch.rows.length, cols), { body: { shift: 'Down' }, where: 'appendRows', discard: true });
           } catch (err) {
-            if (!isShiftBlocked(err)) throw err;
+            if (!isShiftBlocked(err) && ![400, 409].includes(Number(err?.status))) throw err;
           }
         }
         const values = batch.rows.map((row) => Array.from({ length: cols }, (_, c) => cellValueForWrite(row[c])));

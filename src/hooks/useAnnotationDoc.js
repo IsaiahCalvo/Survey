@@ -64,7 +64,8 @@ import {
   annotationStoreCompactionReady,
 } from '../services/annotationStoreCompaction.js';
 import { isFeatureOn } from '../featureFlags.js';
-import { offlineDocuments, isNetworkFailure } from '../services/offlineDocuments.js';
+import { showToast } from '../utils/toast';
+import { offlineDocuments, isNetworkFailure, openedFromUnverifiedCopy, unverifiedCopySha, forgetUnverifiedCopy, OFFLINE_COPY_OPENED_EVENT } from '../services/offlineDocuments.js';
 import { isDeviceDocumentId } from '../services/deviceFiles.js';
 import { sealCutoverIfCovered } from '../services/legacyCutoverSeal.js';
 import { loadAllNonSurveyMarkerAnnotations } from '../services/annotationCloudSync.js';
@@ -124,21 +125,38 @@ const OFFLINE_RETRY_BASE_MS = 30_000;
 const OFFLINE_RETRY_MAX_MS = 120_000;
 const SERVER_ANSWER_TIMEOUT_MS = 8_000;
 
-/* Does the server answer at all? A tiny read of the document row: any reply
-   with a status (even a refusal) means it can be reached; a failed fetch or
-   no reply in time means it still cannot. */
+/* Is the server back? A tiny read of the document row must come back clean.
+   A failed fetch, no reply in time, a 5xx or an auth error all mean "not
+   yet": the device copy stays open, because reopening on a sick server would
+   tear down a working copy for an open that fails. */
 async function serverAnswers(supabase, documentId) {
-  if (!supabase?.from) return false;
+  if (!supabase?.from) return null;
   try {
-    const ask = supabase.from('documents').select('id').eq('id', documentId).limit(1);
+    const ask = supabase.from('documents').select('id, content_sha256').eq('id', documentId).limit(1);
     const timeout = new Promise((resolve) => setTimeout(() => resolve({ timedOut: true }), SERVER_ANSWER_TIMEOUT_MS));
     const reply = await Promise.race([ask, timeout]);
-    if (!reply || reply.timedOut) return false;
-    if (!reply.error) return true;
-    return Boolean(reply.error.code) || Number(reply.status) > 0;
+    if (!reply || reply.timedOut || reply.error) return null;
+    const row = Array.isArray(reply.data) ? reply.data[0] : reply.data;
+    return { sha: row?.content_sha256 ? String(row.content_sha256).toLowerCase() : null };
   } catch {
-    return false;
+    return null;
   }
+}
+/* The PDF on screen came from a kept copy nobody vouched for: server marks
+   may join it only if the server still has that same file. 'stale' when it
+   has another one. */
+function unverifiedCopyVerdict(documentId, answer) {
+  if (!openedFromUnverifiedCopy(documentId)) return 'ok';
+  const mine = unverifiedCopySha(documentId);
+  if (!answer?.sha || !mine) return 'ok';
+  return answer.sha === String(mine).toLowerCase() ? 'ok' : 'stale';
+}
+// A deleted document or a permission denial: no retry and no device copy.
+function isPermanentOpenFailure(err) {
+  const code = String(err?.code || '');
+  return code === 'ANNOTATION_DOCUMENT_DELETED'
+    || code === '42501'
+    || /permission denied|row.level security/i.test(err?.message || '');
 }
 // An erase made while the store opens waits at most this long for it.
 const OPEN_WAIT_MAX_MS = 20_000;
@@ -515,7 +533,8 @@ export function useAnnotationDoc({
     let offlineRetryTimer = null;
     const reopenOnline = () => {
       if (cancelled) return;
-      offlineOpenRef.current = { ...offlineOpenRef.current, documentId, networkFailed: false };
+      offlineOpenRef.current = { ...offlineOpenRef.current, documentId, networkFailed: false, reopening: true };
+      forgetUnverifiedCopy(documentId);
       setOpenRetryTick((tick) => tick + 1);
     };
     let blockedReason = null;
@@ -524,9 +543,22 @@ export function useAnnotationDoc({
       && typeof globalThis.addEventListener === 'function') {
       onBackOnline = () => {
         backOnline = true;
-        if (openedLocal) reopenOnline();
+        // An unverified copy waits for the retry below, which checks the file.
+        if (openedLocal && !openedFromUnverifiedCopy(documentId)) reopenOnline();
       };
       globalThis.addEventListener('online', onBackOnline);
+    }
+    // The PDF opened from a kept copy the database could not vouch for: if
+    // these marks opened from the server meanwhile, reopen them on the device
+    // copy so nothing new lands on what may be an old PDF.
+    let onUnverifiedCopy = null;
+    if (onBackOnline) {
+      onUnverifiedCopy = (event) => {
+        const detail = event?.detail;
+        if (cancelled || !detail?.unverified || detail.documentId !== documentId) return;
+        if (handleRef.current && !localOpenRef.current) setOpenRetryTick((tick) => tick + 1);
+      };
+      globalThis.addEventListener(OFFLINE_COPY_OPENED_EVENT, onUnverifiedCopy);
     }
 
     (async () => {
@@ -540,7 +572,8 @@ export function useAnnotationDoc({
         try {
           await offlineDocuments().load(userId);
           openLocal = offlineDocuments().isPinned(userId, documentId)
-            && (globalThis.navigator?.onLine === false || offlineOpenRef.current.networkFailed);
+            && (globalThis.navigator?.onLine === false || offlineOpenRef.current.networkFailed
+              || openedFromUnverifiedCopy(documentId));
         } catch { openLocal = false; }
         if (cancelled) return;
       }
@@ -575,6 +608,9 @@ export function useAnnotationDoc({
           whenFirstPageDrawn: () => (
             cancelled ? null : whenFirstPageDrawnRef.current?.()
           ),
+          // Flag 'open-visible-first': a first open on this device also lets
+          // the PDF draw its first page before the accepted shadow's decode.
+          coldOpenWaitsForFirstPage: isFeatureOn('open-visible-first'),
           onPreview: (previewByPage, { surveyMarkers: previewSurvey = null, spaces: previewSpaces = null } = {}) => {
             if (cancelled) return;
             if (prePreviewRef.current.byPage === null) {
@@ -650,7 +686,10 @@ export function useAnnotationDoc({
           && !openLocal
           && supabase
           && isFeatureOn('offline-docs')
-          && isNetworkFailure(err)
+          // Leaving the device copy for the server and that open fails for
+          // any passing reason (a 5xx, a timeout): go back to the copy
+          // instead of a read-only page.
+          && (isNetworkFailure(err) || (offlineOpenRef.current.reopening && !isPermanentOpenFailure(err)))
           && offlineDocuments().isPinned(userId, documentId)
         ) {
           // No signal and the document is kept: open the device copy now.
@@ -678,10 +717,7 @@ export function useAnnotationDoc({
             documentId,
             error: err?.message || 'annotation store unavailable',
           });
-          const code = String(err?.code || '');
-          const permanent = code === 'ANNOTATION_DOCUMENT_DELETED'
-            || code === '42501'
-            || /permission denied|row.level security/i.test(err?.message || '');
+          const permanent = isPermanentOpenFailure(err);
           if (!permanent && failures.count <= OPEN_RETRY_MAX_ATTEMPTS) {
             const delayMs = Math.min(
               OPEN_RETRY_MAX_DELAY_MS,
@@ -696,13 +732,20 @@ export function useAnnotationDoc({
         return;
       }
       openFailuresRef.current = { documentId, count: 0 };
+      if (!openLocal && offlineOpenRef.current.reopening) {
+        offlineOpenRef.current = { ...offlineOpenRef.current, reopening: false };
+      }
+      if (!openLocal && !cancelled && openedFromUnverifiedCopy(documentId)) {
+        try { await handle.destroy(); } catch { /* */ }
+        return void setOpenRetryTick((tick) => tick + 1);
+      }
       if (cancelled) { try { await handle.destroy(); } catch { /* */ } return; }
       handleRef.current = handle;
       localOpenRef.current = openLocal ? handle : null;
       setOfflineCopy(openLocal && !deviceOnly);
       if (openLocal && !deviceOnly) {
         openedLocal = true;
-        if (backOnline) {
+        if (backOnline && !openedFromUnverifiedCopy(documentId)) {
           reopenOnline();
         } else if (globalThis.navigator?.onLine !== false) {
           // The device says it is online but the server could not be reached:
@@ -715,10 +758,16 @@ export function useAnnotationDoc({
             offlineOpenRef.current = { ...offlineOpenRef.current, retries: retries + 1 };
             offlineRetryTimer = setTimeout(() => {
               offlineRetryTimer = null;
-              serverAnswers(supabase, documentId).then((answers) => {
+              serverAnswers(supabase, documentId).then((answer) => {
                 if (cancelled) return;
-                if (answers) reopenOnline();
-                else scheduleOfflineRetry();
+                if (!answer) return scheduleOfflineRetry();
+                if (unverifiedCopyVerdict(documentId, answer) === 'stale') {
+                  // The server has another file now: its marks must not land
+                  // on this old one. Stay on the device copy and say so.
+                  showToast('A newer version of this document is on the server. Close and reopen it to get it; your marks stay on this device until then.', 'warn', { duration: 12_000 });
+                  return undefined;
+                }
+                return reopenOnline();
               });
             }, Math.min(OFFLINE_RETRY_MAX_MS, OFFLINE_RETRY_BASE_MS * (2 ** retries)));
           };
@@ -1054,6 +1103,7 @@ export function useAnnotationDoc({
       if (retryTimer) clearTimeout(retryTimer);
       if (offlineRetryTimer) clearTimeout(offlineRetryTimer);
       if (onBackOnline) globalThis.removeEventListener?.('online', onBackOnline);
+      if (onUnverifiedCopy) globalThis.removeEventListener?.(OFFLINE_COPY_OPENED_EVENT, onUnverifiedCopy);
       setOfflineCopy(false);
       setEditBlocked(null);
       clearEditBlockedRef.current = null;

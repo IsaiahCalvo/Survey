@@ -412,6 +412,7 @@ export async function planSheetRound({
   now = new Date(),
   holdErase = false,
   lateSaves = false,
+  lockedTabs = [],
 }) {
   const nextBaseline = { ...baseline };
   // Tabs that already had items before this round: the first fill of a new
@@ -422,11 +423,17 @@ export async function planSheetRound({
   // from version history, a column cleared by mistake): held until an editor
   // says which side is right, so field work is never wiped in one round.
   // 'allow' = clear them in the app too; 'restore' = write the app's back.
-  const eraseMode = state.eraseChoice === 'sheet' ? 'allow'
-    : state.eraseChoice === 'app' ? 'restore'
-      : (holdErase || state.heldErase) ? 'hold' : 'count';
+  // An editor's choice answers the held erase on the tabs it was counted on
+  // (all of them, for a hold saved before holds named their tabs); blanks on
+  // any other tab are held as usual, never answered by it.
+  const choiceMode = state.eraseChoice === 'sheet' ? 'allow' : state.eraseChoice === 'app' ? 'restore' : null;
+  const heldOn = Array.isArray(state.heldErase?.scopes) ? state.heldErase.scopes : null;
+  const otherMode = (holdErase || state.heldErase) ? 'hold' : 'count';
+  const eraseModeOf = (scopeId) => (choiceMode && (heldOn === null || heldOn.includes(scopeId)) ? choiceMode : otherMode);
   let erasing = 0;
-  const erasingItems = new Set();
+  let held = 0;
+  const heldItems = new Set();
+  const heldScopes = new Set();
   const next = {
     sheetIds: { ...(state.sheetIds || {}) },
     conflicts: { ...(state.conflicts || {}) },
@@ -450,6 +457,9 @@ export async function planSheetRound({
     // Tabs still there that lost their Row ID column or heading row (deleted,
     // cleared, typed over): not synced until undone or rebuilt (putBackTab).
     brokenTabs: [],
+    // Synced tabs the PM protected (Review > Protect Sheet): left alone, so
+    // one locked tab doesn't stop every other tab (real Excel 11-10).
+    lockedTabs: [],
     heldErase: null,
   };
   const notice = (p) => {
@@ -484,6 +494,7 @@ export async function planSheetRound({
   let newRowsWaiting = 0;
 
   const sheetsById = new Map((grid?.sheets || []).map((s) => [String(s.sheetId), s]));
+  const locked = new Set((lockedTabs || []).map(String));
   const seenMarkers = new Set();
   const markersByScope = new Map();
   for (const [id, m] of Object.entries(markers || {})) {
@@ -499,6 +510,13 @@ export async function planSheetRound({
     const sheet = sheetId != null ? sheetsById.get(String(sheetId)) : null;
     if (!sheet) {
       next.missingTabs.push(scope.scopeId);
+      continue;
+    }
+    // Nothing read or written: its items, baseline and remembered headers
+    // stay as they were, and every change waits until it's unprotected.
+    if (locked.has(String(sheet.sheetId))) {
+      next.lockedTabs.push(scope.scopeId);
+      next.problems.push({ scopeId: scope.scopeId, message: `"${sheet.title}" is protected in the sheet, so Survey can't write to it and isn't syncing it. Nothing is lost: its changes go in once it's unprotected.` });
       continue;
     }
     const rows = Array.isArray(sheet.rows) ? sheet.rows : [];
@@ -910,7 +928,7 @@ export async function planSheetRound({
         }
       }
       // The sheet blanked a filled answer the app has not changed since both
-      // last agreed: counted, and held or put back (see eraseMode).
+      // last agreed: counted, and held or put back (see eraseModeOf).
       const heldKeys = new Set();
       if (base) {
         for (const key of keys) {
@@ -919,9 +937,14 @@ export async function planSheetRound({
           if (!isBlankCell(row[colOfKey.get(key)]) || isBlankCell(cellValueFor(scope, key, appRec))) continue;
           if (getFp(appFps, key) !== getFp(base, key) || getFp(sheetSide, key) === getFp(base, key)) continue;
           erasing += 1;
-          erasingItems.add(markerId);
+          const eraseMode = eraseModeOf(scope.scopeId);
           if (eraseMode === 'hold' || eraseMode === 'restore') setFp(sheetSide, key, getFp(base, key));
-          if (eraseMode === 'hold') heldKeys.add(key);
+          if (eraseMode === 'hold') {
+            heldKeys.add(key);
+            held += 1;
+            heldItems.add(markerId);
+            heldScopes.add(scope.scopeId);
+          }
         }
       }
       // A PM's new row saved late over the row Survey had just appended for
@@ -1109,14 +1132,37 @@ export async function planSheetRound({
   for (const id of Object.keys(next.conflicts)) if (!markers[id]) delete next.conflicts[id];
   for (const id of Object.keys(next.removedInSheet)) if (!markers[id]) delete next.removedInSheet[id];
   for (const id of Object.keys(next.choices)) if (!markers[id]) delete next.choices[id];
+  // An item deleted in the app while its tab is locked keeps its baseline,
+  // so its row is taken out once unlocked instead of coming back as new.
+  const lockedScopes = new Set(next.lockedTabs);
   for (const id of Object.keys(nextBaseline)) {
-    if (!markers[id] && !plan.markerWrites[id] && !next.tombstones[id]) delete nextBaseline[id];
+    if (!markers[id] && !plan.markerWrites[id] && !next.tombstones[id] && !lockedScopes.has(nextBaseline[id]?.scopeId)) delete nextBaseline[id];
   }
 
   for (const flag of Object.keys(next.stuck)) if (!markers[flag.split('|')[0]]) delete next.stuck[flag];
-  delete next.eraseChoice; // used once
-  if (eraseMode === 'hold' && erasing) {
-    next.heldErase = { count: erasing, items: erasingItems.size, at: state.heldErase?.at || nowIso };
+  // A locked tab's rows weren't looked at: a held erase with blanks on it,
+  // and an editor's choice about that erase, wait for the tab instead of
+  // being used up or dropped. Dropped, its blanks would come in as plain
+  // edits once it's unlocked if fewer than BIG_ERASE were left. A hold saved
+  // before it named its tabs counts as on every tab.
+  const lockedNow = new Set(next.lockedTabs);
+  const waitsOnLocked = Boolean(state.heldErase) && lockedNow.size > 0
+    && (heldOn === null || heldOn.some((id) => lockedNow.has(id)));
+  if (waitsOnLocked && state.eraseChoice) next.eraseChoice = state.eraseChoice;
+  else delete next.eraseChoice; // used once
+  // Only the locked tabs of the hold keep waiting; its open tabs were done.
+  const lockedPart = waitsOnLocked ? (heldOn === null ? [...lockedNow] : heldOn.filter((id) => lockedNow.has(id))) : [];
+  const was = waitsOnLocked ? state.heldErase : {};
+  if (held || waitsOnLocked) {
+    next.heldErase = {
+      count: Math.max(held, was.count || 0),
+      items: Math.max(heldItems.size, was.items || 0),
+      // While a choice waits, the hold it answers is only its locked part: a
+      // blank held meanwhile on another tab is not answered by that choice
+      // (it is held again each round, and asked about once the choice is used).
+      scopes: waitsOnLocked && state.eraseChoice ? lockedPart : [...new Set([...heldScopes, ...lockedPart])],
+      at: state.heldErase?.at || nowIso,
+    };
   } else {
     delete next.heldErase;
   }

@@ -14,6 +14,7 @@ import { revealInOwnScroller } from './utils/revealInOwnScroller.js';
 import { createPortal, flushSync } from 'react-dom';
 import Icon from './Icons';
 import ListItemContextMenu from './components/ListItemContextMenu';
+import { afterMenuCloses, listMenuPointFrom } from './utils/listContextMenu.js';
 import SwipeActionsRow, { buildSwipeActions } from './components/SwipeActionsRow.jsx';
 import SurveyCategoryMoveDialog from './components/SurveyCategoryMoveDialog';
 import SurveyMarkerTransferDialog from './components/SurveyMarkerTransferDialog';
@@ -3347,7 +3348,7 @@ const SurveySpacesRail = ({
                                       <div
                                         data-drag-rearrange-row
                                         className="survey-marker-category-row"
-                                        onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setListContextMenu({ type: 'category', id: category.id, name: category.name, x: event.clientX, y: event.clientY }); }}
+                                        onContextMenu={(event) => { const point = listMenuPointFrom(event, { mobileMode }); if (point) setListContextMenu({ type: 'category', id: category.id, name: category.name, ...point }); }}
                                       >
                                         {/* Owner 2026-10-02 (phone = desktop): the grip shows on
                                             both platforms wherever a row can be reordered. The
@@ -3696,7 +3697,7 @@ const SurveySpacesRail = ({
                                               >
                                               <div
                                                 id={`highlight-item-${surveyMarker.id}`}
-                                                onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setListContextMenu({ type: 'marker', id: surveyMarker.id, name: surveyMarker.name, x: event.clientX, y: event.clientY }); }}
+                                                onContextMenu={(event) => { const point = listMenuPointFrom(event, { mobileMode }); if (point) setListContextMenu({ type: 'marker', id: surveyMarker.id, fieldId: annotationId, name: surveyMarker.name, ...point }); }}
                                                 data-drag-rearrange-row
                                                 style={{
                                                 // Phone (2026-09-23, layout B): a Survey Marker is a
@@ -4860,6 +4861,9 @@ const SurveySpacesRail = ({
                 { label: 'Copy Survey Markers', disabled: !Object.values(surveyMarkers || {}).some((marker) => marker.moduleId === selectedModuleId && marker.categoryId === listContextMenu.id), onClick: () => { setSelectedCategories({ [listContextMenu.id]: true }); setShowSpaceSelection(true); } },
                 { label: 'Delete', danger: true, disabled: !canEditSurveyCategories || Object.entries(surveyMarkers || {}).some(([id, marker]) => marker.moduleId === selectedModuleId && marker.categoryId === listContextMenu.id && !canModifySurveyMarkerItem?.(id)), onClick: () => deleteCategory(selectedModuleId, listContextMenu.id) },
               ] : [
+                // Owner 2026-11-12: the menu offers Rename too (the name
+                // field on the row is the same one a click types in).
+                canModifySurveyMarkerItem?.(listContextMenu.id) && { label: 'Rename', onClick: () => { const id = String(listContextMenu.fieldId ?? listContextMenu.id); afterMenuCloses(() => { const field = document.querySelector(`[data-survey-marker-name-input="${CSS.escape(id)}"]`); field?.focus({ preventScroll: true }); field?.select(); }); } },
                 { label: 'Duplicate', disabled: !surveyMarkers[listContextMenu.id]?.pageNumber, onClick: () => duplicateSurveyMarker?.(listContextMenu.id) },
                 { label: 'Move to…', disabled: !canModifySurveyMarkerItem?.(listContextMenu.id), onClick: () => setMarkerTransfer({ mode: 'move', ids: [listContextMenu.id], categoryId: surveyMarkers[listContextMenu.id]?.categoryId ?? null }) },
                 { label: 'Copy to…', onClick: () => setMarkerTransfer({ mode: 'copy', ids: [listContextMenu.id], categoryId: surveyMarkers[listContextMenu.id]?.categoryId ?? null }) },

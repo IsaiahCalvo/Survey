@@ -59,6 +59,7 @@ import { deepClone } from './deepClone.js';
 import { buildMeasureLabel, getMeasureKind } from './measure/measureScale.js';
 import { DIMENSION_CAPTION_BG_PAD_PT, DIMENSION_EXTENSION_PT, isDimensionMeasure } from './measure/dimensionLine.js';
 import { dimensionMarkLayout } from './measure/dimensionLayout.js';
+import { PDF_MEASURE_INTENT_BY_SUBTYPE, SURVEY_KIND_BY_PDF_SUBTYPE, pdfMeasureEntriesForScale } from './measure/pdfMeasureDict.js';
 import { normalizePresentationPdf, reflectPdfPagePresentations } from './pdfPagePresentation.js';
 import {
   PDF_COUNTER_METADATA_KEY,
@@ -974,6 +975,22 @@ function measureContentsOf(fabricObj) {
     return String(label?.text || label?.reading || '');
   } catch {
     return '';
+  }
+}
+
+// A length / polylength / area measurement also writes the native PDF
+// measurement entries (/IT ...Dimension + /Measure with the sheet scale), so
+// Drawboard, Bluebeam and Acrobat read it as a measurement rather than a plain
+// line (KAL-539). Kinds with no native match (perimeter, wall area, volume)
+// keep only their /Contents reading.
+function nativeMeasureEntriesOf(fabricObj, subtype) {
+  try {
+    const kind = getMeasureKind(fabricObj);
+    if (!kind || SURVEY_KIND_BY_PDF_SUBTYPE[subtype] !== kind) return {};
+    const measure = pdfMeasureEntriesForScale(fabricObj?.data?.measure?.scale, pdfTextString);
+    return measure ? { IT: PDF_MEASURE_INTENT_BY_SUBTYPE[subtype], Measure: measure } : {};
+  } catch {
+    return {};
   }
 }
 
@@ -3498,6 +3515,7 @@ const createPolygonAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = 
       C: [color.red, color.green, color.blue],
       Border: [0, 0, fabricObj.strokeWidth || 1],
       Contents: pdfTextString(measureContentsOf(fabricObj)),
+      ...nativeMeasureEntriesOf(fabricObj, 'Polygon'),
       P: page.ref,
     };
 
@@ -3567,6 +3585,7 @@ const createPolyLineAnnotation = (pdfDoc, page, fabricObj, pageHeight, options =
       C: [color.red, color.green, color.blue],
       Border: [0, 0, fabricObj.strokeWidth || 1],
       Contents: pdfTextString(measureContentsOf(fabricObj)),
+      ...nativeMeasureEntriesOf(fabricObj, 'PolyLine'),
       P: page.ref,
     };
     // A cloud polyline exports as /PolyLine + /BE cloudy; it draws rounded end
@@ -3643,6 +3662,7 @@ const createLineAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {})
       C: [color.red, color.green, color.blue],
       Border: [0, 0, fabricObj.strokeWidth || 1],
       Contents: pdfTextString(measureContentsOf(fabricObj)),
+      ...nativeMeasureEntriesOf(fabricObj, 'Line'),
       P: page.ref,
     };
 

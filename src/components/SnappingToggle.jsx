@@ -31,6 +31,10 @@ import './PageGridSettings.css';
 import { isSnappingToggleKey } from '../utils/keyboardShortcuts.js';
 import { isTypingTarget } from '../utils/typingTarget.js';
 import { showToast } from '../utils/toast.js';
+import { isMacLikePlatform } from '../utils/moveModifier.js';
+
+// The skip key in the user's own words: Option on a Mac, Alt elsewhere.
+const SKIP_KEY = isMacLikePlatform() ? 'Option' : 'Alt';
 
 const useSnapPreference = (key, read, write) => {
     const [on, setOn] = useState(() => read());
@@ -56,7 +60,7 @@ export const useSnapContent = () => useSnapPreference(SNAP_CONTENT_KEY, readSnap
 
 /** The tooltip / label for the switch in its current state. */
 export const snappingLabel = (on) => (on
-    ? 'Snapping on (Shift+S). Hold Alt while dragging to skip it'
+    ? `Snapping on (Shift+S). Hold ${SKIP_KEY} while dragging to skip it`
     : 'Snapping off (Shift+S)');
 
 /** Shift+S anywhere in the viewer flips snapping, with a short note. */
@@ -141,16 +145,25 @@ export function SnappingMenu({ renderButton }) {
                     data-snapping-menu="true"
                     className="page-grid-settings__card"
                 >
-                    <div className="page-grid-settings">
-                        <button type="button" role="switch" aria-checked={marks} data-snapping-marks="true" className="page-grid-settings__switch" onClick={toggleMarks}>
-                            <span>Marks</span>
+                    {/* Owner 2026-11-10 second pass: after Drawboard's
+                        Annotation Snapping card - each switch says in a short
+                        line what it snaps to; one short hint, no key list. */}
+                    <div className="page-grid-settings snapping-card">
+                        <button type="button" role="switch" aria-checked={marks} data-snapping-marks="true" className="page-grid-settings__switch snapping-card__row" onClick={toggleMarks}>
+                            <span className="snapping-card__text">
+                                <span>Marks</span>
+                                <span className="snapping-card__sub">Ends and edges of other marks</span>
+                            </span>
                             <span className="page-grid-settings__knob" aria-hidden="true" />
                         </button>
-                        <button type="button" role="switch" aria-checked={drawing} data-snapping-drawing="true" className="page-grid-settings__switch" onClick={toggleDrawing}>
-                            <span>Drawing</span>
+                        <button type="button" role="switch" aria-checked={drawing} data-snapping-drawing="true" className="page-grid-settings__switch snapping-card__row" onClick={toggleDrawing}>
+                            <span className="snapping-card__text">
+                                <span>Drawing</span>
+                                <span className="snapping-card__sub">Lines and corners in the PDF</span>
+                            </span>
                             <span className="page-grid-settings__knob" aria-hidden="true" />
                         </button>
-                        <p className="page-grid-settings__hint">Drawing snaps to the PDF's own line ends, midpoints and lines. Hold Alt to skip snapping; Shift+S turns Marks on or off.</p>
+                        <p className="page-grid-settings__hint">Hold {SKIP_KEY} to draw without snapping.</p>
                     </div>
                 </RailFlyout>
             )}
