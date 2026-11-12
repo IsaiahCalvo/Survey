@@ -25,18 +25,14 @@
 .answer-set-groups {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 6px;
 }
-.answer-set-group {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.answer-set-group__label {
-  margin: 0 0 2px;
-  font-size: 11px;
+.answer-set-option__group {
+  flex: none;
+  width: 92px;
+  font-size: 12px;
   font-weight: 600;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 .answer-set-option {
   display: flex;
@@ -54,13 +50,13 @@
   cursor: pointer;
 }
 .answer-set-option:hover { background: var(--surface-3); }
-.answer-set-option.is-current { border-color: var(--border-strong); background: var(--surface-3); }
+.answer-set-option.is-current { background: var(--surface-3); }
 .answer-set-option .answer-chips { flex: 1; }
 .answer-set-option__check {
   flex: none;
   width: 14px;
   display: inline-flex;
-  color: var(--accent, var(--text-1));
+  color: var(--text-1);
 }
 @media (pointer: coarse) {
   .answer-set-option { min-height: 44px; }

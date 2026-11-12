@@ -13,7 +13,7 @@ import {
 } from '../../supabase/functions/_shared/kitShape.js';
 import { categoriesOf, checklistOf, modulesOf } from './templateConfigShape.js';
 
-export { ANSWER_MEANS_MAX, ANSWER_TONES, MIN_ANSWERS, MAX_ANSWERS, validateAnswerSet } from '../../supabase/functions/_shared/kitShape.js';
+export { ANSWER_MEANS_MAX, ANSWER_TONES, MIN_ANSWERS, validateAnswerSet } from '../../supabase/functions/_shared/kitShape.js';
 
 export const DEFAULT_ANSWER_SET = Object.freeze([
   Object.freeze({ value: 'Y', tone: 'good' }),
@@ -124,18 +124,24 @@ export const EXTRA_ANSWER_SET_PRESETS = Object.freeze([
   Object.freeze({ id: 'low-medium-high', label: 'Low / Medium / High', answers: freezeSet([['Low', 'neutral'], ['Medium', 'neutral'], ['High', 'neutral']]) }),
 ]);
 
-// How the answer picker groups the ready-made sets (nightly). Every preset
-// is in exactly one group.
-export const ANSWER_SET_GROUPS = Object.freeze([
-  Object.freeze({ label: 'Yes or no', ids: Object.freeze(['yes-no-na', 'yes-no-na-words', 'yes-no', 'yes-no-words', 'ok-not-ok-na', 'done']) }),
-  Object.freeze({ label: 'Pass or fail', ids: Object.freeze(['pass-fail-na', 'pass-fail', 'pass-fail-not-tested-na', 'compliant-na', 'safe-unsafe-na']) }),
-  Object.freeze({ label: 'Condition', ids: Object.freeze(['good-fair-poor-na', 'excellent-good-fair-poor-na']) }),
-  Object.freeze({
-    label: 'Status',
-    ids: Object.freeze(['installed-missing-damaged-na', 'works-not-working-na', 'present-missing-na', 'complete-incomplete-na', 'open-closed']),
-  }),
-  Object.freeze({ label: 'Ratings and sizes', ids: Object.freeze(['score-1-5', 'score-1-5-na', 'score-1-10', 'low-medium-high', 'small-medium-large']) }),
+// The starter lists the answer picker offers, one per kind of question
+// (owner 2026-11-12: six starters, then people make their own). The other
+// presets stay defined so a template already using one still matches it by
+// name elsewhere; the picker shows such a list as the template's own.
+export const STARTER_ANSWER_SETS = Object.freeze([
+  Object.freeze({ label: 'Yes or no', id: 'yes-no-na' }),
+  Object.freeze({ label: 'Pass or fail', id: 'pass-fail-na' }),
+  Object.freeze({ label: 'Condition', id: 'good-fair-poor-na' }),
+  Object.freeze({ label: 'Status', id: 'installed-missing-damaged-na' }),
+  Object.freeze({ label: 'Rating', id: 'score-1-5-na' }),
+  Object.freeze({ label: 'Size', id: 'small-medium-large' }),
 ]);
+
+/** The starter presets, in picker order, each with its `group` label. */
+export function starterAnswerSets() {
+  const all = [...ANSWER_SET_PRESETS, ...EXTRA_ANSWER_SET_PRESETS];
+  return STARTER_ANSWER_SETS.map((s) => ({ ...all.find((p) => p.id === s.id), group: s.label }));
+}
 
 /** The presets the template editor offers. */
 export function answerSetPresets({ extras = false } = {}) {

@@ -126,9 +126,11 @@ test('the template editor edits a Pick many line\'s options', async ({ page }) =
   await editor.getByRole('button', { name: 'Cancel' }).click();
   await expect(editor).toHaveCount(0);
 
-  // A ready type fills in the line's settings in one pick.
+  // Five kinds only (owner 2026-11-12): no ready line types, Score, Count,
+  // Photo or Signature for a new line.
   const how = visible(page.getByRole('combobox', { name: `How "${cable}" is answered` }));
-  await how.selectOption({ label: 'Expiry date' });
+  await expect(how.locator('option')).toHaveText(['Pick one', 'Text', 'Number', 'Date', 'Pick many']);
+  await how.selectOption({ label: 'Date' });
   await expect(how).toHaveValue('date');
-  await expect(visible(page.getByRole('checkbox', { name: 'Issue once past' }))).toBeChecked();
+  await expect(visible(page.getByRole('checkbox', { name: 'Issue once past' }))).not.toBeChecked();
 });
