@@ -326,3 +326,17 @@
   outline: 2px solid var(--focus, var(--border-strong));
   outline-offset: 2px;
 }
+
+/* Nightly 'tool-style-preview' (AppShell's colour popover): the phone sheet's
+   live preview strip, as wide as the picker panel, just above it. */
+.tool-style-preview {
+  width: 276px;
+  margin-bottom: 6px;
+  padding: 6px;
+  box-sizing: border-box;
+  background: var(--surface-1, #1f2024);
+  border: 1px solid var(--chrome-border, rgba(255, 255, 255, 0.12));
+  border-radius: var(--radius-lg, 10px);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.28);
+}
+.tool-style-preview .mobile-tool-sheet__preview { margin-bottom: 0; }

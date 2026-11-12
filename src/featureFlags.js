@@ -447,6 +447,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Page right-click: Move page up / down, Unlock all, Select all text',
     stage: 'beta',
   }),
+  'tool-style-preview': Object.freeze({
+    label: 'Desktop colour popover: a live preview of what the tool will draw (colour, width, line style)',
+    stage: 'beta',
+  }),
   'page-templates': Object.freeze({
     label: 'Page right-click: Template page below (notebook, Cornell, grids, isometric, music papers)',
     stage: 'beta',
