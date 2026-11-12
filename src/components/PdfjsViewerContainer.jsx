@@ -6686,7 +6686,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
            rule as weak as a plain "armed *" so the I-beam and link rules
            still win over it. */
         [data-space-pan='armed'],
-        [data-space-pan='armed'] *:where(:not([data-pan-source='tool'] svg[data-svg-annotation-layer] :is([data-resize-handle], [data-handle-hit-pad], [data-rotation-handle], [data-rotation-handle] *, [data-callout-leader-grabber], [data-callout-handle-overlay] :is([data-callout-part='knee'], [data-callout-part='arrowTip'])))) { cursor: grab !important; }
+        [data-space-pan='armed'] *:where(:not([data-pan-source='tool'] svg[data-svg-annotation-layer] :is([data-resize-handle], [data-handle-hit-pad], [data-rotation-handle], [data-rotation-handle] *, [data-callout-handle-overlay] :is([data-callout-part='knee'], [data-callout-part='arrowTip'])))) { cursor: grab !important; }
         /* Pan opens links on a click, so a link shows the hand (utils/linkClickPolicy.js). */
         [data-space-pan='armed'] :is([data-text-markup-link], [data-pdfjs-link-layer] a) { cursor: pointer !important; }
         [data-space-pan='dragging'], [data-space-pan='dragging'] * { cursor: grabbing !important; }
