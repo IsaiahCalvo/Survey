@@ -66,6 +66,7 @@ import {
   historyRowTimeMs,
   historyShortVerb,
   latestDeleteRowByMark,
+  latestUndoRowByMark,
 } from '../../utils/historyFeed.js';
 import {
   HISTORY_MARK_LOOKUP_MAX_PAGES,
@@ -726,6 +727,7 @@ export default function RevisionsPanel({
     [historyEvents, currentUserId, filter, statuses, query, nowMs, markFilter],
   );
   const latestDeleteByMark = useMemo(() => latestDeleteRowByMark(historyEvents), [historyEvents]);
+  const latestUndoByMark = useMemo(() => latestUndoRowByMark(historyEvents), [historyEvents]);
   const groupsByKey = useMemo(() => {
     const map = new Map();
     for (const item of feed.items) {
@@ -1441,8 +1443,16 @@ export default function RevisionsPanel({
       else if (state === 'restore' && canRestoreDeleted) actions.push(<span key="restore">{restoreButton(e.row)}</span>);
     } else if (selected && present === false && markId) {
       const trash = restoreRowForMark(markId);
-      actions.push(<span key="later" className="dh-note">{trash ? 'This mark was deleted later.' : 'This mark is no longer on the page. Its deletion is not in the loaded history.'}</span>);
-      if (trash && canRestore && Boolean(onRestoreHistoryActivity) && hasRestoreData(trash)) {
+      // An undo that took the mark off says so (its own line, or a newer one).
+      const undo = latestUndoByMark.get(String(markId));
+      const undone = undo && (!trash || historyRowTimeMs(undo) > historyRowTimeMs(trash));
+      const note = undone
+        ? (historyRowKey(undo) === e.key
+          ? 'This undo took the mark off the page. Redo brings it back.'
+          : 'This mark was undone later, so it is no longer on the page.')
+        : (trash ? 'This mark was deleted later.' : 'This mark is no longer on the page.');
+      actions.push(<span key="later" className="dh-note">{note}</span>);
+      if (!undone && trash && canRestore && Boolean(onRestoreHistoryActivity) && hasRestoreData(trash)) {
         actions.push(<span key="restore">{restoreButton(trash)}</span>);
       }
     }

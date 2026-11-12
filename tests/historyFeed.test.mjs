@@ -15,6 +15,7 @@ import {
   historyRangeLabel,
   historyRowMarkIds,
   latestDeleteRowByMark,
+  latestUndoRowByMark,
 } from '../src/utils/historyFeed.js';
 import { historyAnnotationBox, historyRowGhostAnnotation } from '../src/utils/historyGeometry.js';
 import { TRASH_HISTORY_EVENT_TYPES, buildPartialEraseHistoryRow, buildHistoryEventRowFromDebugEvent } from '../src/services/documentHistoryService.js';
@@ -221,4 +222,39 @@ test('status picks combine without hiding another selected kind and clear to sho
   assert.deepEqual(feed.items.filter((item) => item.type === 'group').map((item) => item.group.last.status).sort(), ['created', 'deleted']);
   assert.equal(buildHistoryFeed(rows, { statuses: ['restored'] }).groupCount, 1);
   assert.equal(buildHistoryFeed(rows, { statuses: [] }).groupCount, 4);
+});
+
+// Owner 2026-11-12: "it says you undid a change ... I'm not seeing those changes".
+test('an undo / redo line names the step it took back', () => {
+  const ellipse = { type: 'ellipse', data: { id: 'e1', type: 'ellipse' } };
+  const undoAdd = classifyHistoryRow(row('u1', {
+    event_type: 'local_annotation_undo_applied',
+    payload: { actionType: 'create', annotationType: 'ellipse', annotationId: 'e1', previewAnnotation: ellipse },
+  }));
+  assert.equal(undoAdd.kind, 'undo');
+  assert.equal(undoAdd.glyph, 'undo');
+  assert.equal(`${undoAdd.verb} ${undoAdd.noun}`, 'undid adding an ellipse');
+  const redoMove = classifyHistoryRow(row('r1', {
+    event_type: 'local_annotation_redo_applied',
+    payload: { actionType: 'move', annotationType: 'rect', annotationId: 'r1' },
+  }));
+  assert.equal(`${redoMove.verb} ${redoMove.noun}`, 'redid moving a rectangle');
+  // Nothing to name: the old words.
+  const bare = classifyHistoryRow(row('u2', { event_type: 'legacy_annotation_undo_applied', payload: {} }));
+  assert.equal(bare.verb, 'undid a change');
+  assert.equal(bare.noun, '');
+  // An unnamed edit of an unknown mark is no clearer than "a change".
+  const vague = classifyHistoryRow(row('u3', { event_type: 'local_annotation_undo_applied', payload: { actionType: 'something' } }));
+  assert.equal(vague.verb, 'undid a change');
+});
+
+test('latestUndoRowByMark keeps the newest undo for each mark', () => {
+  const rows = [
+    row('a', { event_type: 'local_annotation_undo_applied', occurred_at: at(10), payload: { annotationId: 'm1' } }),
+    row('b', { event_type: 'local_annotation_undo_applied', occurred_at: at(5), payload: { annotationId: 'm1' } }),
+    row('c', { occurred_at: at(1), payload: { annotationId: 'm1', actionType: 'move' } }),
+  ];
+  const map = latestUndoRowByMark(rows.map((r) => ({ ...r, annotation_id: r.payload.annotationId })));
+  assert.equal(map.size, 1);
+  assert.equal(map.get('m1').id, 'b');
 });
