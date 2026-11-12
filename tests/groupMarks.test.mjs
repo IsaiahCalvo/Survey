@@ -68,4 +68,6 @@ test('the mark menu offers Group / Ungroup only with the flag and the viewer han
   // A picked group counts as one mark, so Align greys out (Drawboard).
   assert.match(MENU, /const movable = groupMarksOn && pickedGroupState\.oneGroup\s*\? 1/);
   assert.match(VIEWER, /groupSelection: handleGroupSelected,\s*ungroupSelection: handleUngroupSelected,/);
+  // A group of only callouts ungroups even when the page has no marks JSON.
+  assert.match(VIEWER, /const page = annotationsByPageRef\.current\?\.\[pageNumber\] \|\| \{ objects: \[\] \};/);
 });

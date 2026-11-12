@@ -2067,6 +2067,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         const firstViewport = firstPage.getViewport({ scale: 1 });
         const firstSize = { w: firstViewport.width, h: firstViewport.height };
         const sizes = Array.from({ length: pdf.numPages }, () => ({ ...firstSize }));
+        // A kept Double view opens fitted to its first pair, so page 2's own
+        // size is read before the first layout (one extra page, Double only).
+        if (spreadModeRef.current === 'double' && pdf.numPages >= 2) {
+          const secondViewport = (await pdf.getPage(2)).getViewport({ scale: 1 });
+          if (cancelled) return;
+          sizes[1] = { w: secondViewport.width, h: secondViewport.height };
+        }
         setPageSizes(sizes.slice());
 
         const el = scrollerRef.current;
@@ -2082,13 +2089,15 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         // 2026-10-04: one draw, nothing jumps).
         const metrics = layoutMetricsRef.current;
         const side = sideInsetRef.current;
-        // A kept Double / Cover view fits the first row: two page widths and
-        // the gap (Cover's lone page 1 holds a pair's slot too).
-        const firstRowW = spreadModeRef.current === 'single' ? firstSize.w : firstSize.w * 2 + metrics.gap;
+        // A kept Double / Cover view fits the first row: the pair's two widths
+        // and the gap (Cover's lone page 1 holds a pair's slot: twice its own).
+        const firstPair = spreadModeRef.current === 'double' ? sizes[1] || firstSize : firstSize;
+        const firstRowW = spreadModeRef.current === 'single' ? firstSize.w : firstSize.w + metrics.gap + firstPair.w;
+        const firstRowH = spreadModeRef.current === 'double' ? Math.max(firstSize.h, firstPair.h) : firstSize.h;
         const fitPageScale = hasViewport ? computeFitScale({
           mode: 'fitPage',
           pageW: firstRowW,
-          pageH: firstSize.h,
+          pageH: firstRowH,
           viewportW: Math.max(1, cw - side.left - side.right),
           viewportH: Math.max(1, el.clientHeight - topInsetRef.current),
           padX: metrics.padX,

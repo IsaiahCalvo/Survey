@@ -31976,8 +31976,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     const annotIdx = Array.isArray(annotationIndices) ? annotationIndices.filter((n) => typeof n === 'number') : [];
     const calIds = Array.isArray(calloutIds) ? calloutIds.filter((s) => typeof s === 'string') : [];
 
-    const page = annotationsByPageRef.current?.[pageNumber];
-    if (!page) return;
+    // A page whose group is only callouts may have no marks JSON yet: the
+    // callouts still ungroup.
+    const page = annotationsByPageRef.current?.[pageNumber] || { objects: [] };
 
     // Step 1: collect every distinct groupId touched by the supplied members.
     const groupIds = new Set();
