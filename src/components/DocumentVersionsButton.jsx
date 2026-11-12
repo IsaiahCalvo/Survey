@@ -53,16 +53,20 @@ export function useDocumentVersions(documentId, onOpenVersion, onSuperseded = nu
     // Only the newest look counts: a list asked for before a version change
     // that answers after it would undo what the change just said.
     let ask = 0;
+    // A delete or Undo made on this device needs no "newer version" notice.
+    let quietNext = false;
     const load = () => {
       ask += 1;
       const mine = ask;
+      const quiet = quietNext;
+      quietNext = false;
       return listDocumentVersions(supabase, documentId)
         .then((list) => {
           if (cancelled || mine !== ask) return;
           // Someone else uploaded a new version while this copy was open: say
           // so once; the older-version bar and read-only mode follow from it.
           const isCurrent = list.find((v) => v.id === documentId)?.isCurrent ?? null;
-          if (wasCurrent === true && isCurrent === false) {
+          if (wasCurrent === true && isCurrent === false && !quiet) {
             showToast('A newer version was uploaded, so this copy is now read-only.', 'info');
           }
           if (isCurrent != null) {
@@ -71,7 +75,14 @@ export function useDocumentVersions(documentId, onOpenVersion, onSuperseded = nu
           }
           setVersions((prev) => (sameVersions(prev, list) ? prev : list));
         })
-        .catch((err) => console.warn('[versions] could not list versions', err));
+        .catch((err) => {
+          // A copy this hook saw in its chain is gone for this person now
+          // (deleted to the Archive, or no longer shared): it stays open
+          // read-only. A copy never seen (on this device only, still
+          // uploading) is left alone.
+          if (!cancelled && mine === ask && wasCurrent != null && err?.code === '42501') onSupersededRef.current?.(documentId, true);
+          else console.warn('[versions] could not list versions', err);
+        });
     };
     loadRef.current = load;
     load();
@@ -83,8 +94,11 @@ export function useDocumentVersions(documentId, onOpenVersion, onSuperseded = nu
     window.addEventListener('focus', onVisible);
     // The upload that made this copy a new version can finish after it opened.
     const onChanged = (e) => {
-      const { oldDocumentId, newDocumentId } = e?.detail || {};
-      if (documentId === oldDocumentId || documentId === newDocumentId) load();
+      const { oldDocumentId, newDocumentId, removed, restored } = e?.detail || {};
+      if (documentId === oldDocumentId || documentId === newDocumentId) {
+        quietNext = Boolean(removed || restored);
+        load();
+      }
     };
     window.addEventListener(DOCUMENT_VERSIONS_CHANGED_EVENT, onChanged);
     return () => {

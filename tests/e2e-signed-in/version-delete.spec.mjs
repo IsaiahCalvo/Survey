@@ -98,6 +98,16 @@ for (const [i, layout] of LAYOUTS.entries()) {
       const extra = [];
       const row = async (id) => must('row', admin.from('documents').select('superseded_by, user_archived_at').eq('id', id).single());
 
+      // Shared with the editor after the last upload: the share sits on v3 only.
+      const editorApi = i === 0 ? await apiClientFor(E2E_ACCOUNTS.editor) : null;
+      const editorId = editorApi ? (await editorApi.auth.getUser()).data.user.id : null;
+      if (editorId) {
+        await must('share v3', admin.from('document_collaborators').insert({
+          document_id: v3, user_id: editorId, invited_by: user.id, role: 'editor', email: E2E_ACCOUNTS.editor.email, status: 'active',
+        }));
+      }
+      const sharedWith = async (id) => (await must('shares', admin.from('document_collaborators').select('user_id').eq('document_id', id))).map((r) => r.user_id);
+
       try {
         // Someone with no access gets the same answer as for no such copy.
         expect((await stranger.rpc('remove_document_version', { p_document_id: v3 })).error?.message).toContain('Document not found');
@@ -141,6 +151,10 @@ for (const [i, layout] of LAYOUTS.entries()) {
           // Undo takes no chain ids, and only the person who deleted it (or its uploader) may.
           expect((await stranger.rpc('restore_document_version', { p_document_id: v3 })).error?.message).toContain('Document not found');
           expect((await row(v3)).user_archived_at).not.toBeNull();
+          // The share moved to v2, the copy that is current again.
+          expect(await sharedWith(v2)).toContain(editorId);
+          // The deleted copy is never "current", even to its uploader.
+          expect((await must('deleted copy', api.rpc('document_versions', { p_document_id: v3 }))).map((v) => v.is_current)).toEqual([false]);
         }
 
         // 2. Undo: v3 is back as the latest.
@@ -148,6 +162,7 @@ for (const [i, layout] of LAYOUTS.entries()) {
         await press(layout, visible(page.locator('.app-toast-host').getByRole('button', { name: 'Undo' })));
         await expect.poll(chain, { timeout: 20_000 }).toEqual([[v1, 1, false], [v2, 2, false], [v3, 3, true]]);
         expect((await row(v3)).user_archived_at).toBeNull();
+        if (editorId) expect(await sharedWith(v3)).toContain(editorId);
         await expect(page.locator('.app-toast-host [data-toast-id]')).toHaveCount(0, { timeout: 20_000 });
 
         // 3. Delete v1, an older copy: the chain closes over the gap.

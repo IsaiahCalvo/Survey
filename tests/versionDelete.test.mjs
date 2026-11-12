@@ -144,3 +144,29 @@ test('refreshes after a delete and its Undo go through the guarded look (Bugbot 
   assert.match(hook, /loadRef\.current = load;/);
   assert.equal((hook.match(/loadRef\.current\?\.\(\);/g) || []).length, 2);
 });
+
+test('sharing follows the latest copy, and a deleted copy is never current (Bugbot on #1422)', () => {
+  const follow = readFileSync(new URL('../supabase/migrations/20261112171500_version_delete_sharing.sql', import.meta.url), 'utf8');
+  // The same things supersede_document carries: people, the owner, open invites, live guest links and their guests.
+  assert.match(follow, /FUNCTION public\.move_document_sharing\(p_from uuid, p_to uuid, p_by uuid\)/);
+  assert.match(follow, /INSERT INTO public\.document_collaborators[\s\S]*c\.status IN \('active', 'pending'\)/);
+  assert.match(follow, /UPDATE public\.document_invites\s+SET document_id = v_to\.id\s+WHERE document_id = v_from\.id AND accepted_at IS NULL AND revoked_at IS NULL;/);
+  assert.match(follow, /UPDATE public\.document_guests g/);
+  assert.match(follow, /UPDATE public\.document_guest_links\s+SET document_id = v_to\.id/);
+  assert.match(follow, /REVOKE ALL ON FUNCTION public\.move_document_sharing\(uuid, uuid, uuid\) FROM PUBLIC, anon, authenticated;/);
+  // Delete the latest: its sharing goes to the copy that is current again. Undo brings it back.
+  assert.match(follow, /IF v_doc\.superseded_by IS NULL AND v_prev IS NOT NULL THEN\s+PERFORM public\.move_document_sharing\(p_document_id, v_prev\[array_length\(v_prev, 1\)\], v_uid\);/);
+  assert.match(follow, /IF v_rec\.next IS NULL AND cardinality\(v_rec\.previous\) > 0 THEN\s+PERFORM public\.move_document_sharing\(v_rec\.previous\[cardinality\(v_rec\.previous\)\], p_document_id, v_uid\);/);
+  // The guards of the first migration are all still there.
+  assert.match(follow, /user_can_access_document\(v_doc\.id, 'editor'\)/);
+  assert.match(follow, /v_doc\.user_archived_at IS DISTINCT FROM v_rec\.removed_at/);
+  // document_versions: the head counts as current only when it is not deleted.
+  assert.match(follow, /\(d\.user_archived_at IS NULL AND NOT COALESCE\(d\.archived, false\)\) AS live/);
+  assert.match(follow, /n\.depth = 0 AND n\.live/);
+  // Another viewer whose open copy is gone (no access any more) keeps it read-only, once it was seen in a chain.
+  const hook = readFileSync(new URL('../src/components/DocumentVersionsButton.jsx', import.meta.url), 'utf8');
+  assert.match(hook, /mine === ask && wasCurrent != null && err\?\.code === '42501'\) onSupersededRef\.current\?\.\(documentId, true\);/);
+  // A delete or Undo made here shows no "newer version was uploaded" notice.
+  assert.match(hook, /quietNext = Boolean\(removed \|\| restored\);/);
+  assert.match(hook, /wasCurrent === true && isCurrent === false && !quiet/);
+});
