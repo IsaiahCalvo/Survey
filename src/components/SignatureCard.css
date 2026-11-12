@@ -1,0 +1,106 @@
+/* Nightly 'signature-tool': components/SignatureCard.jsx. The card shell is
+   the properties panel's (.props-panel), like the Stamp card. */
+.signature-card { max-height: calc(100vh - 140px); width: 260px; }
+.signature-card__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+}
+.signature-card__slot { position: relative; }
+.signature-card__tile {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  width: 100%;
+  padding: 6px;
+  border: 1px solid var(--chrome-border, rgba(255, 255, 255, 0.12));
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  cursor: pointer;
+  text-align: left;
+}
+.signature-card__tile img {
+  display: block;
+  height: 48px;
+  width: 100%;
+  object-fit: contain;
+  background: #fff;
+  border-radius: 4px;
+}
+.signature-card__title { font-size: 12px; padding-right: 24px; }
+.signature-card__tile[aria-selected='true'] {
+  border-color: #2f80ed;
+  box-shadow: 0 0 0 1px #2f80ed;
+}
+.signature-card__remove {
+  position: absolute;
+  right: 4px;
+  bottom: 2px;
+}
+.signature-card__add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  border: 1px dashed var(--chrome-border, rgba(255, 255, 255, 0.2));
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.signature-dialog { display: flex; flex-direction: column; gap: 12px; }
+.signature-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); }
+.signature-tabs__tab {
+  padding: 6px 12px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  font: inherit;
+}
+.signature-tabs__tab.is-active { color: var(--text-1); border-bottom-color: var(--accent, #2f7cf6); }
+.signature-dialog__row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.signature-choice { display: flex; gap: 4px; }
+.signature-choice__option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-1);
+  cursor: pointer;
+}
+.signature-choice__option[aria-checked='true'] { border-color: #2f80ed; box-shadow: 0 0 0 1px #2f80ed; }
+.signature-ink { width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--ink-ring, rgba(255, 255, 255, 0.3)); }
+.signature-width { width: 16px; border-radius: 2px; background: var(--text-2); }
+.signature-clear { margin-left: auto; }
+.signature-pad {
+  display: block;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: crosshair;
+  touch-action: none;
+}
+.signature-fonts { display: flex; flex-direction: column; gap: 6px; }
+.signature-fonts__option {
+  min-height: 52px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.signature-fonts__option[aria-checked='true'] { border-color: #2f80ed; box-shadow: 0 0 0 1px #2f80ed; }

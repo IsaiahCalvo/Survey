@@ -136,6 +136,7 @@ import { LINE_STYLE_SAMPLE_ICONS, lineStyleOptionsWith } from './utils/lineStyle
 import SelectionQuickBar from './components/SelectionQuickBar.jsx';
 import SelectionPropertiesPanel from './components/SelectionPropertiesPanel.jsx';
 import StampPickerCard from './components/StampPickerCard.jsx';
+import SignatureCard from './components/SignatureCard.jsx';
 import InsertImagePasteHost from './components/InsertImage.jsx';
 import { LineEndingsMenu } from './components/LineEndingsPicker.jsx';
 import { PenTypeMenu } from './components/PenTypePicker.jsx';
@@ -6046,6 +6047,7 @@ export default function App({ devPreviewReturnTab = null }) {
       />
       {/* Nightly 'stamp-tool': Drawboard's Stamp card (the Text group's Stamp button opens it). */}
       <StampPickerCard enabled={Boolean(isViewerVisible && isFeatureOn('stamp-tool'))} phone={Boolean(isMobileViewer)} tip={chromeTip} />
+      <SignatureCard enabled={Boolean(isViewerVisible && isFeatureOn('signature-tool'))} phone={Boolean(isMobileViewer)} tip={chromeTip} />
       {/* Nightly 'insert-image': a picture pasted from the clipboard becomes an image mark. */}
       <InsertImagePasteHost enabled={Boolean(isViewerVisible && isFeatureOn('insert-image'))} />
 

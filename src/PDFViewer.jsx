@@ -403,6 +403,7 @@ import { useYDoc } from './hooks/useYDoc.js';
 import { useZoomState } from './hooks/useZoomState';
 import { isFeatureOn } from './featureFlags.js';
 import { setStampPickerOpen, useStampPickerOpen } from './components/StampPickerCard.jsx';
+import { setSignatureCardOpen, useSignatureCardOpen } from './components/SignatureCard.jsx';
 import { pickImageToInsert } from './components/InsertImage.jsx';
 import LinkToolHost from './components/LinkToolHost.jsx';
 import PagePinsHost from './components/pins/PagePinsHost.jsx';
@@ -3196,6 +3197,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const [activeTool, setActiveTool] = useState('pan');
   // Nightly 'stamp-tool': whether the Stamp card is open (its Text group button).
   const stampPickerOpen = useStampPickerOpen();
+  const signatureCardOpen = useSignatureCardOpen();
   // Measure tools ride on the Line / Polygon tools: measureMode only says the
   // commit is a measurement ('length' | 'area' | 'perimeter') or a calibration
   // line. measureScaleMeta is the document's saved scales, one page or all
@@ -22592,6 +22594,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const [stampToolEnabled] = useState(() => isFeatureOn('stamp-tool'));
   const [pageMenuExtrasEnabled] = useState(() => isFeatureOn('page-menu-extras'));
   const [snapshotToolEnabled] = useState(() => isFeatureOn('snapshot-tool'));
+  const [signatureToolEnabled] = useState(() => isFeatureOn('signature-tool'));
   const [insertImageEnabled] = useState(() => isFeatureOn('insert-image'));
   // Markups list (Nightly 'markup-list'): every mark in one rail panel.
   const [markupListEnabled] = useState(() => isFeatureOn('markup-list'));
@@ -38497,8 +38500,8 @@ ${pageBlocks}
         },
       })}
 
-      {/* Nightly 'stamp-tool' places its presets the same way. */}
-      {(markLibraryEnabled || stampToolEnabled || insertImageEnabled) && (
+      {/* Nightly 'stamp-tool' and 'signature-tool' place their items the same way. */}
+      {(markLibraryEnabled || stampToolEnabled || insertImageEnabled || signatureToolEnabled) && (
         <MarkLibraryPlacementLayer active={isActive !== false} rootRef={pdfjsWrapperRef} place={placeLibraryItemAt} />
       )}
       {markLibraryEnabled && (
@@ -41407,6 +41410,8 @@ ${pageBlocks}
                   ...(pinsDocOn ? [{ id: 'pin', label: 'Pin', pin: true }] : []),
                   // Nightly 'snapshot-tool': drag an area, it is copied as a picture.
                   ...(snapshotToolEnabled ? [{ id: 'snapshot', label: 'Snapshot', iconName: 'camera' }] : []),
+                  // Nightly 'signature-tool': saved signatures, click the page to sign.
+                  ...(signatureToolEnabled ? [{ id: 'signature', label: 'Signature', iconName: 'pen', picker: 'signature' }] : []),
                   // TODO: Revisit the user-created Note tool later. Imported
                   // PDF Text/sticky-note annotations still render through
                   // pdfAnnotationImporter + the normal PDF annotation layers.
@@ -41423,9 +41428,15 @@ ${pageBlocks}
                   const caretAttr = isUnderlineMenu ? 'data-underline-caret-button' : 'data-strike-caret-button';
                   const isActiveUnderline = isUnderlineMenu && (activeTool === 'underline' || activeTool === 'squiggly');
                   const isActiveStrike = isStrikeMenu && activeTool === 'strikeout';
-                  const isActive = t.picker ? stampPickerOpen : (isActiveUnderline || isActiveStrike || activeTool === t.id);
+                  const isActive = t.picker === 'signature' ? signatureCardOpen : t.picker ? stampPickerOpen : (isActiveUnderline || isActiveStrike || activeTool === t.id);
 
                   const onMainClick = (e) => {
+                    if (t.picker === 'signature') {
+                      if (stampPickerOpen) setStampPickerOpen(false);
+                      setSignatureCardOpen(!signatureCardOpen);
+                      return;
+                    }
+                    if (signatureCardOpen) setSignatureCardOpen(false);
                     if (t.picker) {
                       setStampPickerOpen(!stampPickerOpen);
                       return;

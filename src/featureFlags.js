@@ -451,6 +451,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Snapshot tool: drag an area of a page, it is copied as a picture',
     stage: 'beta',
   }),
+  'signature-tool': Object.freeze({
+    label: 'Signature tool: draw or type a signature, save it, click the page to sign',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

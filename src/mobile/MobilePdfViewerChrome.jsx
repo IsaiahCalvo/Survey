@@ -16,6 +16,7 @@ import { isFeatureOn } from '../featureFlags.js';
 import { LineEndingsPanel } from '../components/LineEndingsPicker.jsx';
 import PenTypeTiles from '../components/PenTypePicker.jsx';
 import { setStampPickerOpen, useStampPickerOpen } from '../components/StampPickerCard.jsx';
+import { setSignatureCardOpen, useSignatureCardOpen } from '../components/SignatureCard.jsx';
 import { pickImageToInsert } from '../components/InsertImage.jsx';
 import { quickColoursForTool } from '../utils/quickStylePresets.js';
 import SnappingToggle, { SnapContentToggle } from '../components/SnappingToggle.jsx';
@@ -185,6 +186,8 @@ const TOOL_GROUPS = {
       { id: 'hyperlink', label: 'Hyperlink', icon: 'hyperlink', flag: 'link-tool' },
       // Pins save on a cloud document: hidden on a device file or signed out.
       { id: 'pin', label: 'Pin', icon: 'pagePin', flag: 'comment-pins', cloudOnly: true },
+      // Nightly 'signature-tool': the saved signatures; a tap drops one mid-page.
+      { id: 'signature', label: 'Signature', icon: 'pen', flag: 'signature-tool', picker: 'signature' },
     ],
   },
 };
@@ -2994,6 +2997,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
 
   const [measureMenuRect, setMeasureMenuRect] = useState(null);
   const stampPickerOpen = useStampPickerOpen();
+  const signatureCardOpen = useSignatureCardOpen();
   const selectTool = (toolId) => {
     bottomToolbarApi?.setActiveTool?.(toolId);
     bottomToolbarApi?.setActiveCategoryDropdown?.(null);
@@ -3191,7 +3195,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                 ) : (
                   <RailButton
                     key={tool.id}
-                    active={tool.picker ? stampPickerOpen : activeTool === tool.id}
+                    active={tool.picker === 'signature' ? signatureCardOpen : tool.picker ? stampPickerOpen : activeTool === tool.id}
                     icon={tool.icon}
                     glyph={SUBTOOL_GLYPH}
                     label={tool.label}
@@ -3200,6 +3204,8 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                     data-tool-switch="true"
                     onClick={() => {
                       if (tool.disabled) return;
+                      if (tool.picker === 'signature') { if (stampPickerOpen) setStampPickerOpen(false); setSignatureCardOpen(!signatureCardOpen); return; }
+                      if (signatureCardOpen) setSignatureCardOpen(false);
                       if (tool.picker) { setStampPickerOpen(!stampPickerOpen); return; }
                       if (tool.action) { if (stampPickerOpen) setStampPickerOpen(false); pickImageToInsert(); return; }
                       if (stampPickerOpen) setStampPickerOpen(false);
