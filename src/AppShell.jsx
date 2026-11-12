@@ -2594,7 +2594,7 @@ export default function App({ devPreviewReturnTab = null }) {
   const [versionChain, setVersionChain] = useState(() => ({}));
   const markDocSuperseded = useCallback((id, superseded = true) => {
     if (!id) return;
-    setVersionChain((prev) => withChainLinks(prev, { [id]: superseded }));
+    setVersionChain((prev) => withChainLinks(prev, { [id]: superseded }, { fromList: true }));
   }, []);
   const documentVersions = useDocumentVersions(documentVersionsEnabled ? activeTab?.file?.id || null : null, handleDocumentSelect, markDocSuperseded);
   const fileSuperseded = (file) => isFileSuperseded(file, versionChain);

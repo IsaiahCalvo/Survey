@@ -86,7 +86,7 @@ test('a copy found superseded stays read-only after switching documents (Bugbot 
   // fileSuperseded reads the shell's record first (a copy found superseded,
   // or a version change), then the tab's own superseded_by
   // (isFileSuperseded / withChainLinks, tested in versionDelete.test.mjs).
-  assert.match(shell, /const markDocSuperseded = useCallback\(\(id, superseded = true\) => \{\s+if \(!id\) return;\s+setVersionChain\(\(prev\) => withChainLinks\(prev, \{ \[id\]: superseded \}\)\);/);
+  assert.match(shell, /const markDocSuperseded = useCallback\(\(id, superseded = true\) => \{\s+if \(!id\) return;\s+setVersionChain\(\(prev\) => withChainLinks\(prev, \{ \[id\]: superseded \}, \{ fromList: true \}\)\);/);
   assert.match(shell, /const fileSuperseded = \(file\) => isFileSuperseded\(file, versionChain\);/);
   assert.match(shell, /readOnlyWithoutLock=\{fileSuperseded\(tab\.file\) \|\|/);
   assert.match(shell, /olderVersionOpen \|\| fileSuperseded\(activeTab\?\.file\)/);

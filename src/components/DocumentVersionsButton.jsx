@@ -39,6 +39,9 @@ export function useDocumentVersions(documentId, onOpenVersion, onSuperseded = nu
   const [deleteOn] = useState(() => isFeatureOn('version-delete'));
   const openIdRef = useRef(documentId);
   openIdRef.current = documentId;
+  // The open copy's guarded look (the effect below), for refreshes after a
+  // delete or its Undo.
+  const loadRef = useRef(null);
 
   useEffect(() => {
     setVersions([]);
@@ -70,6 +73,7 @@ export function useDocumentVersions(documentId, onOpenVersion, onSuperseded = nu
         })
         .catch((err) => console.warn('[versions] could not list versions', err));
     };
+    loadRef.current = load;
     load();
     // Nothing pushes a supersede to other people's open copies, so look again
     // on return to the tab and every 20 s while it is in view.
@@ -85,6 +89,7 @@ export function useDocumentVersions(documentId, onOpenVersion, onSuperseded = nu
     window.addEventListener(DOCUMENT_VERSIONS_CHANGED_EVENT, onChanged);
     return () => {
       cancelled = true;
+      if (loadRef.current === load) loadRef.current = null;
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('focus', onVisible);
@@ -126,7 +131,7 @@ export function useDocumentVersions(documentId, onOpenVersion, onSuperseded = nu
     const before = versions;
     const standIn = receipt.current || receipt.next || receipt.previous[receipt.previous.length - 1] || null;
     if (wasOpen && standIn) await openVersion({ id: standIn });
-    else listDocumentVersions(supabase, openIdRef.current).then(setVersions).catch(() => {});
+    else loadRef.current?.();
     showToast(versionDeletedText(before, receipt), 'success', {
       duration: 8000,
       action: {
@@ -139,7 +144,7 @@ export function useDocumentVersions(documentId, onOpenVersion, onSuperseded = nu
             return;
           }
           if (wasOpen && openIdRef.current === standIn) await openVersion({ id: receipt.documentId });
-          else if (openIdRef.current) listDocumentVersions(supabase, openIdRef.current).then(setVersions).catch(() => {});
+          else loadRef.current?.();
         },
       },
     });
