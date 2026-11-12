@@ -109,3 +109,27 @@ html[data-marks-hidden] [data-lightweight-annotation-overlay] {
   background: var(--accent, #2f7cf6);
   color: var(--accent-ink, #fff);
 }
+
+/* Nightly 'measure-plus': the calibrating note closes with a round x. */
+.measure-no-scale-chip button.measure-no-scale-chip__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  color: var(--text-2, rgba(255, 255, 255, 0.72));
+}
+
+.measure-no-scale-chip button.measure-no-scale-chip__close:hover {
+  background: var(--hover, rgba(255, 255, 255, 0.08));
+  color: var(--text-1, #fff);
+}
+
+@media (pointer: coarse) {
+  .measure-no-scale-chip button.measure-no-scale-chip__close {
+    width: 36px;
+    height: 36px;
+  }
+}

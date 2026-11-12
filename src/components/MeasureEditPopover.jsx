@@ -32,7 +32,11 @@ import {
   normalizeMeasureCaptionSize,
   normalizeMeasureDepth,
   normalizeMeasureLabelText,
+  SEGMENT_CAPTION_KINDS,
+  SEGMENT_CAPTION_PLACES,
+  segmentCaptionPlace,
 } from '../utils/measure/measureScale.js';
+import { isFeatureOn } from '../featureFlags.js';
 import {
   DIMENSION_CAPTION_PLACES,
   dimensionCaptionPlace,
@@ -52,6 +56,13 @@ const EDGE = 8;
 
 const depthText = (depth) => (depth == null ? '' : String(depth));
 const CAPTION_PLACE_NAMES = Object.freeze({ inline: 'Inline', above: 'Above' });
+const SEGMENT_PLACE_NAMES = Object.freeze({ off: 'Off', inline: 'Inline', upright: 'Upright', above: 'Above' });
+const SEGMENT_PLACE_TIPS = Object.freeze({
+  off: 'No length on each side',
+  inline: 'Each side\u2019s length on the side, along it',
+  upright: 'Each side\u2019s length on the side, level',
+  above: 'Each side\u2019s length beside the side',
+});
 
 export default function MeasureEditPopover({ measure, onPatch, onClose, side = 'below', tip, tipSide = 'below' }) {
   const mark = measure?.mark || null;
@@ -69,6 +80,8 @@ export default function MeasureEditPopover({ measure, onPatch, onClose, side = '
   // Its caption style (Drawboard's Caption pop-over): size in pt, colours.
   const savedPt = isDim ? dimensionCaptionPt(mark) : null;
   const captionStyle = isDim ? dimensionCaptionStyle(mark) : null;
+  // A Polylength or Perimeter's segment captions (measure-plus).
+  const segmentPlace = SEGMENT_CAPTION_KINDS.includes(kind) && isFeatureOn('measure-plus') ? segmentCaptionPlace(mark) : null;
 
   const [labelDraft, setLabelDraft] = useState(savedLabel);
   const [depthDraft, setDepthDraft] = useState(depthText(savedDepth));
@@ -358,6 +371,26 @@ export default function MeasureEditPopover({ measure, onPatch, onClose, side = '
           </label>
         ))}
       </fieldset>
+      {segmentPlace && (
+        <div className="measure-edit__sizes measure-edit__sizes--stack" role="group" aria-label="Segment captions">
+          <span className="measure-edit__name" aria-hidden="true">Segment captions</span>
+          <span className="measure-edit__size-buttons">
+            {SEGMENT_CAPTION_PLACES.map((place) => (
+              <button
+                key={place}
+                type="button"
+                className={`measure-edit__size measure-edit__place${segmentPlace === place ? ' is-current' : ''}`}
+                data-measure-edit-segments={place}
+                aria-pressed={segmentPlace === place}
+                {...(tip ? tip(SEGMENT_PLACE_TIPS[place], tipSide) : {})}
+                onClick={() => onPatch?.({ segmentCaptions: place })}
+              >
+                {SEGMENT_PLACE_NAMES[place]}
+              </button>
+            ))}
+          </span>
+        </div>
+      )}
       {isDim && (
         <div className="measure-edit__sizes" role="group" aria-label="Caption place">
           <span className="measure-edit__name" aria-hidden="true">Caption</span>

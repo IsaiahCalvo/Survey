@@ -237,3 +237,8 @@ test('leaving the tab closes an open link card', () => {
   const host = readFileSync(new URL('../src/components/LinkToolHost.jsx', import.meta.url), 'utf8');
   assert.match(host, /useEffect\(\(\) => \{\s*if \(!isActive\) setDialog\(null\);\s*\}, \[isActive\]\);/);
 });
+
+test('closing the file mid area pick takes the Choose Area toast down (Bugbot on #1387)', () => {
+  const src = readFileSync(new URL('../src/components/LinkToolHost.jsx', import.meta.url), 'utf8');
+  assert.match(src, /useEffect\(\(\) => \(\) => \{\s*if \(choosingRef\.current\) dismissToast\(AREA_TOAST_ID\);/);
+});

@@ -73,6 +73,12 @@ export default function LinkToolHost({
   useEffect(() => {
     if (choosing && (activeTool !== LINK_TOOL_ID || !isActive)) stopChoosing();
   }, [activeTool, choosing, isActive, stopChoosing]);
+  // Closing the file (or the viewer) mid-pick must not leave the area toast
+  // on screen with nothing listening for the box.
+  useEffect(() => () => {
+    if (choosingRef.current) dismissToast(AREA_TOAST_ID);
+    choosingRef.current = null;
+  }, []);
   // Leaving the tab closes an open New / Edit link card too: it is portalled
   // to <body>, so it would stay on screen over the other file.
   useEffect(() => {

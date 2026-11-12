@@ -332,16 +332,27 @@ function PinComposer({ draft, people, coarse, onSave, onDiscard }) {
   const [status, setStatus] = useState('draft');
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
+  // State lags a render, so a double click (or Save plus Ctrl+Enter) could
+  // send two pins: the ref blocks the second at once.
+  const busyRef = useRef(false);
   const boxRef = useRef(null);
   const [pos, cardRef] = useBesideAnchor('draft', 320, true);
   const kind = draft.kind;
   const noun = PIN_KIND_LABELS[kind];
+  // A status picked for one kind may not exist for the next (M cycles kinds):
+  // fall back to that kind's first status rather than save one it refuses.
+  const kindStatuses = PIN_STATUSES[kind] || [];
+  const shownStatus = kindStatuses.includes(status) ? status : (kindStatuses[0] || 'draft');
   const save = async (body, mentions) => {
-    if (busy) return false;
+    if (busyRef.current) return false;
+    busyRef.current = true;
     setBusy(true);
-    const ok = await onSave({ body, mentions, status: kind === 'comment' ? null : status });
-    setBusy(false);
-    return ok;
+    try {
+      return await onSave({ body, mentions, status: kind === 'comment' ? null : shownStatus });
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
   };
   return createPortal(
     <div
@@ -357,7 +368,7 @@ function PinComposer({ draft, people, coarse, onSave, onDiscard }) {
       {kind !== 'comment' && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
           <strong style={{ fontSize: 13 }}>{noun}</strong>
-          <StatusPill kind={kind} status={status} onChange={setStatus} />
+          <StatusPill kind={kind} status={shownStatus} onChange={setStatus} />
         </div>
       )}
       <PinTextBox

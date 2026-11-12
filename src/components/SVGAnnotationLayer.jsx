@@ -574,6 +574,7 @@ import {
   isPolyMeasureFor,
 } from '../utils/measure/measureScale.js';
 import { dimensionCaptionPlace, dimensionLeader, dimensionLineGeometry, isDimensionMeasure } from '../utils/measure/dimensionLine.js';
+import { measureSegmentCaptions, polylengthTotalPlace } from '../utils/measure/segmentCaptions.js';
 import { useTooltip } from './Tooltip';
 
 // Measure label (Length / Area): a white pill at a fixed SCREEN size (12 px
@@ -978,14 +979,31 @@ const SVGAnnotationLayerBody = memo(({
   const measureLabels = useMemo(() => {
     const objects = Array.isArray(annotations?.objects) ? annotations.objects : [];
     const labels = [];
+    const plusOn = isFeatureOn('measure-plus');
     objects.forEach((obj, index) => {
       if (!obj?.data?.measure || obj.visible === false || isOnHiddenLayer(obj, hiddenLayerIds)) return;
       // A dimension line ('measure-plus') draws its own inline caption.
       if (isDimensionMeasure(obj)) return;
-      const label = buildMeasureLabel(obj, effectiveMeasureScale);
+      let label = buildMeasureLabel(obj, effectiveMeasureScale);
+      // With segment captions ('measure-plus') the total moves above the last segment.
+      const totalAt = label && plusOn ? polylengthTotalPlace(obj, effectiveMeasureScale) : null;
+      if (totalAt) label = { ...label, ...totalAt };
       if (label) labels.push({ key: obj.id || obj.data?.id || `m${index}`, index, label });
     });
     return labels;
+  }, [annotations, effectiveMeasureScale, hiddenLayerIds]);
+  // Nightly 'measure-plus': a Polylength also shows each segment's length on
+  // the segment, turned along it (Drawboard's segment captions).
+  const segmentCaptionMarks = useMemo(() => {
+    if (!isFeatureOn('measure-plus')) return [];
+    const objects = Array.isArray(annotations?.objects) ? annotations.objects : [];
+    const out = [];
+    objects.forEach((obj, index) => {
+      if (!obj?.data?.measure || obj.visible === false || isOnHiddenLayer(obj, hiddenLayerIds)) return;
+      const captions = measureSegmentCaptions(obj, effectiveMeasureScale);
+      if (captions.length) out.push({ key: obj.id || obj.data?.id || `m${index}`, color: obj.stroke || 'black', captions });
+    });
+    return out;
   }, [annotations, effectiveMeasureScale, hiddenLayerIds]);
   const renderedAnnotationEntriesRef = useRef([]);
   // Every mark this page draws (hidden layers and scopes left out), for Smart
@@ -2972,7 +2990,8 @@ const SVGAnnotationLayerBody = memo(({
       : buildBoundaryShapeCommitJSON({ ...shared, tool, fillColor, fillOpacity });
     if (json && tool === 'line' && measureMode === 'calibrate') {
       const [a, b] = measureLineEndpoints(json);
-      onMeasureCalibrate?.(pageNumber, Math.hypot(b.x - a.x, b.y - a.y), stampAnnotationCreationIdentity(stampMeasure(json, 'length', null), { authorId: viewerId }));
+      // Kept as a Length once the scale applies: a dimension line under measure-plus, like any new Length.
+      onMeasureCalibrate?.(pageNumber, Math.hypot(b.x - a.x, b.y - a.y), stampAnnotationCreationIdentity(stampMeasure(json, 'length', null, { dim: isFeatureOn('measure-plus') }), { authorId: viewerId }));
       return;
     }
     if (json && tool === 'line' && measureMode === 'length') {
@@ -8690,6 +8709,35 @@ const SVGAnnotationLayerBody = memo(({
           draft only — are the only interactive parts; everything else is
           pointer-transparent so a click in the middle of the run still drops a
           vertex. */}
+      {segmentCaptionMarks.length > 0 && (
+        <g className="measure-segment-captions" style={{ pointerEvents: 'none' }}>
+          {segmentCaptionMarks.map(({ key, color, captions }) => (
+            <g key={key} data-segment-captions-for={key}>
+              {captions.map((c) => (
+                <text
+                  key={c.index}
+                  data-segment-caption={c.index}
+                  x={c.x}
+                  y={c.y}
+                  transform={`rotate(${c.angle} ${c.x} ${c.y})`}
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  fontSize={c.fontPt}
+                  fontFamily="Helvetica"
+                  fill={color}
+                  stroke="white"
+                  strokeWidth={c.fontPt * 0.4}
+                  strokeLinejoin="round"
+                  paintOrder="stroke"
+                  style={{ userSelect: 'none' }}
+                >
+                  {c.text}
+                </text>
+              ))}
+            </g>
+          ))}
+        </g>
+      )}
       {measureLabels.length > 0 && (
         <g className="measure-labels" data-measure-label-count={measureLabels.length} style={{ pointerEvents: 'none' }}>
           {measureLabels.map(({ key, index, label }) => {
