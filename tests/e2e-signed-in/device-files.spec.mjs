@@ -162,6 +162,67 @@ test('Save to my account keeps the device copy when the marks don\'t reach the s
   }
 });
 
+test('a failed Save never deletes a document the account already had with the same bytes', async ({ page, context }) => {
+  test.setTimeout(240_000);
+  const fs = await import('node:fs');
+  const { createHash, randomUUID } = await import('node:crypto');
+  const bytes = fs.readFileSync(FIXTURE);
+  const name = `E2E device reuse ${Date.now()}.pdf`;
+  const admin = adminClient();
+  const { data: users } = await admin.auth.admin.listUsers({ perPage: 200 });
+  const ownerId = users.users.find((u) => u.email === E2E_ACCOUNTS.owner.email).id;
+  const existingId = randomUUID();
+  const filePath = `${ownerId}/${existingId}.pdf`;
+  try {
+    // The account already has this very file (same name, same bytes).
+    const up = await admin.storage.from('documents').upload(filePath, new Blob([bytes], { type: 'application/pdf' }), { contentType: 'application/pdf', upsert: true });
+    if (up.error) throw up.error;
+    const ins = await admin.from('documents').insert({
+      id: existingId, user_id: ownerId, project_id: null, name, file_path: filePath, file_size: bytes.length, page_count: 1,
+      content_sha256: createHash('sha256').update(bytes).digest('hex'),
+    });
+    if (ins.error) throw ins.error;
+
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.getByText('Continue without an account').click({ timeout: 60_000 });
+    const chooser = page.waitForEvent('filechooser');
+    await page.getByRole('button', { name: 'Upload PDF' }).click();
+    await (await chooser).setFiles({ name, mimeType: 'application/pdf', buffer: bytes });
+    await expect(page.getByText(PAGE_TEXT).filter({ visible: true }).first()).toBeVisible({ timeout: 60_000 });
+    await page.waitForTimeout(1_000);
+    await drawLine(page, 0);
+    await expect.poll(() => pageLines(page)).toHaveLength(1);
+    await page.waitForTimeout(1_000);
+    await page.getByRole('button', { name: `Close ${name}` }).click();
+    await page.getByRole('button', { name: 'Sign in', exact: true }).filter({ visible: true }).first().click();
+    const dialog = page.getByRole('dialog').filter({ hasText: 'Welcome back' });
+    await dialog.getByLabel('Email').fill(E2E_ACCOUNTS.owner.email);
+    await dialog.getByLabel('Password').fill(E2E_ACCOUNTS.owner.password);
+    await dialog.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await expect(dialog).toBeHidden({ timeout: 30_000 });
+
+    const failWrite = (route) => route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ code: 'XX000', message: 'internal error' }) });
+    const writes = /\/rest\/v1\/rpc\/(append_annotation_update|store_annotation_snapshot)/;
+    await context.route(writes, failWrite);
+    const deviceRow = page.getByRole('button', { name: /On this device/ }).filter({ hasText: name }).filter({ visible: true }).first();
+    await deviceRow.click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Save to my account' }).click();
+    await expect(page.getByText('Its marks didn’t reach your account', { exact: false })).toBeVisible({ timeout: 90_000 });
+    await context.unroute(writes, failWrite);
+    // The account's own document is still there, and so is the device copy.
+    await page.waitForTimeout(3_000);
+    const { data: still } = await admin.from('documents').select('id').eq('id', existingId).maybeSingle();
+    expect(still?.id).toBe(existingId);
+    await expect(page.getByText('On this device', { exact: true }).filter({ visible: true }).first()).toBeVisible();
+  } finally {
+    const { data } = await admin.from('documents').select('id,file_path').eq('name', name);
+    for (const row of data || []) {
+      await admin.from('documents').delete().eq('id', row.id);
+      if (row.file_path) await admin.storage.from('documents').remove([row.file_path]);
+    }
+  }
+});
+
 test('a device file left open across sign-in keeps its marks, and Save to my account moves the open tab to the cloud copy', async ({ page }) => {
   test.setTimeout(240_000);
   const name = `E2E device open ${Date.now()}.pdf`;

@@ -1047,6 +1047,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       return 'failed';
     }
     if (resolvedDoc?.id === newDocId) saveSheetReading(newDocId, duplicateGate.sheet);
+    // Whether this upload made the row (false when same bytes came back as an
+    // existing document), so a caller's rollback never deletes someone's file.
+    file.createdNew = resolvedDoc?.id === newDocId;
 
     // Decision 6: identical bytes deduped to a doc with a different name ->
     // offer to keep the new name as an alias, then open the EXISTING document
@@ -1866,6 +1869,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     showToast(`Saving ${row.name || 'document'} to your account…`, 'info');
     let uploaded = null;
     let addedNew = false;
+    // An upload of bytes already in the account can come back 'added' with
+    // that existing document: the rollback below must never delete it.
+    const knownIds = new Set([...(allDocuments || []), ...(documents || [])].map((d) => d?.id).filter(Boolean));
     try {
       const result = await saveDeviceFileToAccount({
         row,
@@ -1875,7 +1881,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
           const outcome = await uploadBrowserPdf(file, { openAfterUpload: false, waitForStorage: true, askDuplicates: false });
           if (outcome !== 'added' && outcome !== 'existing') return null;
           uploaded = file;
-          addedNew = outcome === 'added';
+          addedNew = outcome === 'added' && file.createdNew === true;
           return file.id || null;
         },
       });
@@ -1900,7 +1906,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         // The PDF went up but its marks did not: take that half copy back
         // out (only one this save made), so the list doesn't show the file
         // twice and the next try doesn't add a second one.
-        if (result.reason === 'marks' && addedNew && result.documentId) {
+        if (result.reason === 'marks' && addedNew && result.documentId && !knownIds.has(result.documentId)) {
           await deleteDocumentEverywhere({ docId: result.documentId, source: 'device-save-rollback' })
             .catch((err) => console.warn('[deviceFiles] could not take back the half-saved copy', err?.message || err));
           // The upload's placeholder row (temp-…) goes too: it only leaves

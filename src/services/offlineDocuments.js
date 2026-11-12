@@ -430,9 +430,14 @@ export const CURRENT_SHA_TIMEOUT = 'CURRENT_SHA_TIMEOUT';
 // Documents whose PDF opened from a kept copy the database could not vouch
 // for in time (CURRENT_SHA_TIMEOUT). Their marks stay on the device copy
 // until the server answers again.
-const unverifiedCopies = new Set();
+// Each keeps the copy's own SHA-256, so the reconnect can tell whether the
+// server still has that file before any server mark is loaded onto it.
+const unverifiedCopies = new Map();
 export function openedFromUnverifiedCopy(documentId) {
   return Boolean(documentId) && unverifiedCopies.has(documentId);
+}
+export function unverifiedCopySha(documentId) {
+  return unverifiedCopies.get(documentId) || null;
 }
 export function forgetUnverifiedCopy(documentId) {
   unverifiedCopies.delete(documentId);
@@ -472,7 +477,8 @@ export async function readPdfWithOfflineCopy({
       }
     }
     const docId = copy.documentId ?? kept.documentId;
-    if (unverified) unverifiedCopies.add(docId); else unverifiedCopies.delete(docId);
+    if (unverified) unverifiedCopies.set(docId, await bytesSha256(copy.bytes).catch(() => null));
+    else unverifiedCopies.delete(docId);
     try { onOfflineCopy?.({ path, documentId: copy.documentId, ...(unverified ? { unverified: true } : {}) }); } catch { /* listener */ }
     return new Blob([copy.bytes], { type: 'application/pdf' });
   };

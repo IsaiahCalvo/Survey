@@ -64,7 +64,8 @@ import {
   annotationStoreCompactionReady,
 } from '../services/annotationStoreCompaction.js';
 import { isFeatureOn } from '../featureFlags.js';
-import { offlineDocuments, isNetworkFailure, openedFromUnverifiedCopy, forgetUnverifiedCopy, OFFLINE_COPY_OPENED_EVENT } from '../services/offlineDocuments.js';
+import { showToast } from '../utils/toast';
+import { offlineDocuments, isNetworkFailure, openedFromUnverifiedCopy, unverifiedCopySha, forgetUnverifiedCopy, OFFLINE_COPY_OPENED_EVENT } from '../services/offlineDocuments.js';
 import { isDeviceDocumentId } from '../services/deviceFiles.js';
 import { sealCutoverIfCovered } from '../services/legacyCutoverSeal.js';
 import { loadAllNonSurveyMarkerAnnotations } from '../services/annotationCloudSync.js';
@@ -129,16 +130,26 @@ const SERVER_ANSWER_TIMEOUT_MS = 8_000;
    yet": the device copy stays open, because reopening on a sick server would
    tear down a working copy for an open that fails. */
 async function serverAnswers(supabase, documentId) {
-  if (!supabase?.from) return false;
+  if (!supabase?.from) return null;
   try {
-    const ask = supabase.from('documents').select('id').eq('id', documentId).limit(1);
+    const ask = supabase.from('documents').select('id, content_sha256').eq('id', documentId).limit(1);
     const timeout = new Promise((resolve) => setTimeout(() => resolve({ timedOut: true }), SERVER_ANSWER_TIMEOUT_MS));
     const reply = await Promise.race([ask, timeout]);
-    if (!reply || reply.timedOut) return false;
-    return !reply.error;
+    if (!reply || reply.timedOut || reply.error) return null;
+    const row = Array.isArray(reply.data) ? reply.data[0] : reply.data;
+    return { sha: row?.content_sha256 ? String(row.content_sha256).toLowerCase() : null };
   } catch {
-    return false;
+    return null;
   }
+}
+/* The PDF on screen came from a kept copy nobody vouched for: server marks
+   may join it only if the server still has that same file. 'stale' when it
+   has another one. */
+function unverifiedCopyVerdict(documentId, answer) {
+  if (!openedFromUnverifiedCopy(documentId)) return 'ok';
+  const mine = unverifiedCopySha(documentId);
+  if (!answer?.sha || !mine) return 'ok';
+  return answer.sha === String(mine).toLowerCase() ? 'ok' : 'stale';
 }
 // A deleted document or a permission denial: no retry and no device copy.
 function isPermanentOpenFailure(err) {
@@ -532,7 +543,8 @@ export function useAnnotationDoc({
       && typeof globalThis.addEventListener === 'function') {
       onBackOnline = () => {
         backOnline = true;
-        if (openedLocal) reopenOnline();
+        // An unverified copy waits for the retry below, which checks the file.
+        if (openedLocal && !openedFromUnverifiedCopy(documentId)) reopenOnline();
       };
       globalThis.addEventListener('online', onBackOnline);
     }
@@ -730,7 +742,7 @@ export function useAnnotationDoc({
       setOfflineCopy(openLocal && !deviceOnly);
       if (openLocal && !deviceOnly) {
         openedLocal = true;
-        if (backOnline) {
+        if (backOnline && !openedFromUnverifiedCopy(documentId)) {
           reopenOnline();
         } else if (globalThis.navigator?.onLine !== false) {
           // The device says it is online but the server could not be reached:
@@ -743,10 +755,16 @@ export function useAnnotationDoc({
             offlineOpenRef.current = { ...offlineOpenRef.current, retries: retries + 1 };
             offlineRetryTimer = setTimeout(() => {
               offlineRetryTimer = null;
-              serverAnswers(supabase, documentId).then((answers) => {
+              serverAnswers(supabase, documentId).then((answer) => {
                 if (cancelled) return;
-                if (answers) reopenOnline();
-                else scheduleOfflineRetry();
+                if (!answer) return scheduleOfflineRetry();
+                if (unverifiedCopyVerdict(documentId, answer) === 'stale') {
+                  // The server has another file now: its marks must not land
+                  // on this old one. Stay on the device copy and say so.
+                  showToast('A newer version of this document is on the server. Close and reopen it to get it; your marks stay on this device until then.', 'warn', { duration: 12_000 });
+                  return undefined;
+                }
+                return reopenOnline();
               });
             }, Math.min(OFFLINE_RETRY_MAX_MS, OFFLINE_RETRY_BASE_MS * (2 ** retries)));
           };
