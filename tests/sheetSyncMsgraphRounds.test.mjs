@@ -649,6 +649,25 @@ test('a PivotTable right against one tab\'s list: new items on several tabs in o
   assert.deepEqual(Object.keys(ctx.markers).sort(), ['c1', 'c2', 'd1', 'd2'], 'nothing doubled');
 });
 
+// Scattered cells go out as one rectangle with nulls between them. One that
+// would cross a PivotTable is refused (409) even though none of the cells
+// written are in it: just those cells go out instead, the pivot untouched.
+test('a sparse write that would cross a PivotTable writes just its own cells', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
+  await ctx.round(); await ctx.round();
+  const sheet = await ctx.sheet();
+  const notes = sheet.rows[0].indexOf('Notes');
+  await fakeApi(`/files/${ctx.fileId}/pivot`, { title: 'Doors - Level 1', at: { row: 4, col: notes }, rows: pivotRows });
+  await ctx.provider.writeCells(ctx.link.file_id, [
+    { sheetId: sheet.id, title: sheet.name, row: 1, col: notes, value: 'above' },
+    { sheetId: sheet.id, title: sheet.name, row: 14, col: notes, value: 'below' },
+  ]);
+  const after = await ctx.sheet();
+  assert.equal(after.rows[1][notes], 'above');
+  assert.equal(after.rows[14][notes], 'below');
+  assert.equal(after.rows[4][notes], 'Row Labels', 'the pivot is untouched');
+});
+
 // Real Excel 11-10: a PM protected one synced tab (Review > Protect Sheet).
 // Every round then failed 403 for the whole workbook, so the other tabs
 // stopped syncing both ways until it was unprotected.
