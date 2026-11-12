@@ -5375,11 +5375,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     // The typed page jump uses this same landing (Drawboard parity,
     // pageNavigationMath.resolveFitPageLanding).
     const s = scaleRef.current;
-    const d = dimsPtRef.current[pageIndex];
+    // In a spread view the fit lands the whole row, centred in the band.
+    const box = rowBoxAtScaleRef.current(pageIndex, s);
+    if (!box) return;
     const landing = resolveFitPageLanding({
       pageTop: topAt(pageIndex, s),
-      pageLeft: getPageLeftAtScale(pageIndex, s),
-      pageWidth: d.w * s,
+      pageLeft: box.left,
+      pageWidth: box.width,
       gap: layoutMetricsRef.current.gap * s,
       topInset: inset,
       viewportWidth: el.clientWidth,

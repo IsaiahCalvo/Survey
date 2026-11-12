@@ -64,6 +64,11 @@ test.describe('desktop', () => {
       await page.getByRole('button', { name: 'Fit options' }).click();
       await page.getByRole('menuitemradio', { name: 'Fit page' }).click();
       await page.waitForTimeout(700);
+      // Fit page lands the whole row, not just its first page.
+      await expect.poll(async () => {
+        const [a, b] = [await pageBox(page, 1), await pageBox(page, 2)];
+        return a.x >= 0 && b.x + b.width <= 1400;
+      }).toBe(true);
 
       await pickView(page, 'cover');
       await expect.poll(async () => Math.round((await pageBox(page, 3)).y - (await pageBox(page, 2)).y)).toBe(0);
