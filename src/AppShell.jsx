@@ -3595,7 +3595,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 // hang off this button are gone. The cluster must never change
                 // width when the armed tool changes.
                 const isSelect = t.id === 'select';
-                const isTextSelect = bottomToolbarApi.activeTool === 'text-select';
+                const isTextSelect = bottomToolbarApi.activeTool === 'text-select' && !bottomToolbarApi.textHighlightMode;
                 const isActive = isSelect
                   ? (areasMode
                     ? (regionApi.toolType === 'move' && !areasPanArmed)

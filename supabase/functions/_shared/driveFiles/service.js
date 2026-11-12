@@ -190,7 +190,7 @@ export function createGoogleDriveClient({ getAccessToken, fetch: fetchImpl = glo
       const it = await file(itemId);
       if (ifMatch && it.eTag && it.eTag !== ifMatch) throw Object.assign(new Error('changed in Google Drive'), { status: 412 });
       if (!it.canEdit) throw Object.assign(new Error('read only'), { status: 403 });
-      const { response } = await call('PATCH', `${base}/upload/drive/v3/files/${encodeURIComponent(itemId)}?uploadType=resumable&supportsAllDrives=true`, {
+      const { response } = await call('PATCH', `${base}/upload/drive/v3/files/${encodeURIComponent(itemId)}?uploadType=resumable&supportsAllDrives=true&fields=id,headRevisionId`, {
         headers: { 'X-Upload-Content-Type': 'application/pdf', ...(origin ? { Origin: origin } : {}) },
         body: {},
       });
@@ -470,12 +470,25 @@ async function pushed(ctx) {
   const client = await driveClientFor(ctx, row.linked_by, row.provider);
   let it;
   try { it = await client.item(row.drive_id, row.item_id); } catch (err) { throw graphProblem(err, { where: 'status', provider: row.provider }); }
-  const now = new Date().toISOString();
+  const nowMs = Date.now();
+  const now = new Date(nowMs).toISOString();
+  // A late confirm (the app could not reach us right after its upload) names
+  // the eTag its upload produced. If the drive has moved on since, someone
+  // changed the file after Survey's write: keep the old eTag so the next push
+  // raises the conflict dialog instead of overwriting their change.
+  const uploadedEtag = ctx.body.late && typeof ctx.body.eTag === 'string' ? ctx.body.eTag : null;
+  const changedSince = Boolean(uploadedEtag && it?.eTag && it.eTag !== uploadedEtag);
+  // When the push started, not when we heard: other screens compare this with
+  // their own unsaved change, and a late confirm must not cover later edits.
+  const startedMs = Date.parse(String(ctx.body.pushedAt || ''));
+  const pushedAt = Number.isFinite(startedMs) && startedMs <= nowMs + 60_000 && startedMs >= nowMs - 7 * 86_400_000
+    ? new Date(Math.min(startedMs, nowMs)).toISOString()
+    : now;
   const patch = {
-    etag: it?.eTag || row.etag,
+    etag: changedSince ? row.etag : (it?.eTag || row.etag),
     name: String(it?.name || row.name).slice(0, 300),
     web_url: it?.webUrl || row.web_url,
-    last_pushed_at: now,
+    last_pushed_at: pushedAt,
     last_pushed_sha: typeof ctx.body.sha === 'string' ? ctx.body.sha.slice(0, 128) : null,
     last_error: null,
     // A forced push ("Keep Survey's version") turns syncing back on.

@@ -284,6 +284,9 @@ export async function handleSheetSync(req, deps) {
       itemId: s.string({ max: 200, optional: true }),
       eTag: s.string({ max: 300, optional: true }),
       sha: s.string({ max: 128, optional: true }),
+      // A late drivePushed confirm: when its push started (ISO time).
+      late: s.boolean({ optional: true }),
+      pushedAt: s.string({ max: 40, optional: true }),
       check: s.boolean({ optional: true }),
       syncMinutes: s.integer({ min: 1, max: 1440, optional: true }),
       syncOff: s.boolean({ optional: true }),

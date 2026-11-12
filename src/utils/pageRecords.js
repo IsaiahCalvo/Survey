@@ -12,7 +12,10 @@
 // A record is the page view entry of utils/pageViewDocument.js:
 //   { src, rot, blank }  src: page number in the base PDF (null for a blank),
 //                        rot: extra turn on top of that page's own rotation,
-//                        blank: { width, height } for an added blank page.
+//                        blank: { width, height, paper? } for an added
+//                        blank page; `paper` is its paper template id
+//                        (Nightly 'page-templates'), drawn on screen and in
+//                        the built PDF by utils/blankPagePaper.js.
 // The list is only used over the bytes it was made for: `base.sha` must be
 // the loaded file's content hash.
 
@@ -20,6 +23,8 @@ export const PAGE_RECORDS_FLAG = 'page-records';
 export const PAGE_RECORDS_META_KEY = 'pageRecords';
 
 const normRotation = (value) => ((Number(value) % 360) + 360) % 360;
+// A paper template id; an unknown one is kept and simply draws no lines.
+const paperId = (value) => (typeof value === 'string' && /^[a-z0-9][a-z0-9-]{0,39}$/.test(value) ? value : null);
 
 function normalizeRecord(record) {
   if (!record || typeof record !== 'object') return null;
@@ -29,7 +34,8 @@ function normalizeRecord(record) {
     const width = Number(record.blank.width);
     const height = Number(record.blank.height);
     if (!(width > 0) || !(height > 0)) return null;
-    return { src: null, rot, blank: { width, height } };
+    const paper = paperId(record.blank.paper);
+    return { src: null, rot, blank: paper ? { width, height, paper } : { width, height } };
   }
   const src = Number(record.src);
   if (!Number.isInteger(src) || src < 1) return null;
