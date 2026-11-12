@@ -198,3 +198,8 @@
   .measure-scale__chip,
   .measure-scale__calibrate { transition: none; }
 }
+
+/* The dialog's drop-down lists (portalled to <body>) open over its scrim. */
+.annotation-dropdown__popover.value-select__menu.measure-scale__menu {
+  z-index: 1000001;
+}

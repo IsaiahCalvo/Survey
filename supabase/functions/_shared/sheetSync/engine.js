@@ -136,6 +136,21 @@ const RECENT_WRITE_MAX = 2000;
 // row as empty): the PM's late save lands on the tech's row. A changed Item
 // on a row Survey appended this recently is taken as that, not a rename.
 export const NEW_ROW_TAKEOVER_MS = 180_000;
+// Google saves on Enter, but a PM's cell editor open on that empty row when
+// Survey appends there still commits over Survey's value. Only the editor's
+// open time plus a round (15 to 30 s) apart, so a shorter window.
+export const NEW_ROW_TAKEOVER_LIVE_MS = 60_000;
+const isRowWatch = (key) => key.endsWith('|+row');
+// Problems are rebuilt every round (a missing column says so again each
+// time). Something that happened once (a row split, a Row ID put back)
+// would show for one round, a few seconds, so it stays this long instead.
+export const NOTICE_MS = 30 * 60_000;
+const NOTICE_MAX = 20;
+function noticesOf(saved, nowMs) {
+  return (Array.isArray(saved) ? saved : [])
+    .filter((n) => n && typeof n.message === 'string' && nowMs - Number(n.t) < NOTICE_MS)
+    .slice(0, NOTICE_MAX);
+}
 function recentWritesOf(saved, nowMs) {
   const kept = Object.entries(saved || {})
     .filter(([, w]) => w && nowMs - Number(w.t) < RECENT_WRITE_MS)
@@ -402,6 +417,7 @@ export async function planSheetRound({
   // Tabs that already had items before this round: the first fill of a new
   // tab is all appends, and a PM renaming one of those is a rename.
   const scopesWithItems = new Set(Object.values(baseline || {}).map((b) => b?.scopeId).filter(Boolean));
+  const rowWindowMs = lateSaves ? NEW_ROW_TAKEOVER_MS : NEW_ROW_TAKEOVER_LIVE_MS;
   // Many filled answers blanked in the sheet at once (an older copy restored
   // from version history, a column cleared by mistake): held until an editor
   // says which side is right, so field work is never wiped in one round.
@@ -425,13 +441,19 @@ export async function planSheetRound({
     stuck: { ...(state.stuck || {}) },
     // "markerId|key" -> { t, was, wrote }: cells Survey wrote lately (see
     // RECENT_WRITE_MS), as fingerprints.
-    recentWrites: lateSaves ? recentWritesOf(state.recentWrites, now.getTime()) : {},
+    recentWrites: Object.fromEntries(Object.entries(recentWritesOf(state.recentWrites, now.getTime()))
+      .filter(([k]) => lateSaves || isRowWatch(k))),
     problems: [],
+    // Things that happened once, shown for NOTICE_MS: { t, message, markerId?, scopeId? }.
+    notices: noticesOf(state.notices, now.getTime()),
     missingTabs: [],
     // Tabs still there that lost their Row ID column or heading row (deleted,
     // cleared, typed over): not synced until undone or rebuilt (putBackTab).
     brokenTabs: [],
     heldErase: null,
+  };
+  const notice = (p) => {
+    next.notices = [{ ...p, t: now.getTime() }, ...next.notices.filter((n) => n.message !== p.message)].slice(0, NOTICE_MAX);
   };
   const plan = {
     cellWrites: [], // { sheetId, title, row, col, value, markerId?, key? }   row/col are 0-based grid indexes
@@ -754,7 +776,7 @@ export async function planSheetRound({
         delete next.removedInSheet[found];
         await mergeRow({ markerId: found, marker: markers[found], row, r });
         writeCell(r, 'rowId', await tokenFor(found, scope.scopeId), row[rowIdCol]);
-        next.problems.push({ markerId: found, scopeId: scope.scopeId, message: `${where(r)}: its Row ID was changed, so Survey matched it to "${markers[found].name}" by name and put the Row ID back.` });
+        notice({ markerId: found, scopeId: scope.scopeId, message: `${where(r)}: its Row ID was changed, so Survey matched it to "${markers[found].name}" by name and put the Row ID back.` });
         continue;
       }
       // "Total", "Grand total", "Subtotal", "Sum"... typed under the items,
@@ -826,7 +848,7 @@ export async function planSheetRound({
       nextBaseline[markerId] = { scopeId: scope.scopeId, fields: fieldPrintsOf(rec) };
       seenMarkers.add(markerId);
       plan.summary.appended += 1;
-      if (lateSaves && scopesWithItems.has(scope.scopeId)) next.recentWrites[`${markerId}|+row`] = { t: now.getTime() };
+      if (scopesWithItems.has(scope.scopeId)) next.recentWrites[`${markerId}|+row`] = { t: now.getTime() };
     }
     const notItems = new Set(summaryRows);
     let lastItemRow = headerAt;
@@ -905,10 +927,12 @@ export async function planSheetRound({
       // A PM's new row saved late over the row Survey had just appended for
       // a field tech's item (NEW_ROW_TAKEOVER_MS): the cells the PM typed
       // become a new item in the next row, and the tech's values go back.
-      if (base && lateSaves && colOfKey.has('item')) {
-        const fresh = next.recentWrites[`${markerId}|+row`];
+      const rowWatch = next.recentWrites[`${markerId}|+row`];
+      const rowFresh = !!rowWatch && now.getTime() - Number(rowWatch.t) <= rowWindowMs;
+      if (base && rowFresh && colOfKey.has('item')) {
+        const fresh = rowWatch;
         const typedName = cellText(row[colOfKey.get('item')]).trim();
-        if (fresh && !fresh.took && now.getTime() - Number(fresh.t) <= NEW_ROW_TAKEOVER_MS && typedName
+        if (fresh && !fresh.took && typedName
           && getFp(sheetSide, 'item') !== getFp(base, 'item') && getFp(appFps, 'item') === getFp(base, 'item')) {
           const typedKeys = keys.filter((k) => {
             const column = scope.columns.find((c) => c.key === k);
@@ -937,20 +961,19 @@ export async function planSheetRound({
           for (const k of typedKeys) setFp(sheetSide, k, getFp(base, k));
           // Still watched (the rest of that save may land later), but split once.
           next.recentWrites[`${markerId}|+row`] = { ...fresh, took: true };
-          next.problems.push({ markerId: id, scopeId: scope.scopeId, message: `${where(r)}: "${typedName}" was typed into the row Survey had just filled with "${String(marker.name || '')}" for a field tech. Both are kept: "${typedName}" is a new item in the row below.` });
+          notice({ markerId: id, scopeId: scope.scopeId, message: `${where(r)}: "${typedName}" was typed into the row Survey had just filled with "${String(marker.name || '')}" for a field tech. Both are kept: "${typedName}" is a new item in the row below.` });
         }
       }
       // A late save landing on a cell Survey just wrote, while the app still
       // holds what Survey wrote: compared against the value from before
       // Survey's write, so it is held as a conflict (and stays held, since the
       // baseline keeps that value) instead of replacing the app's value.
-      if (base && lateSaves) {
+      if (base && (lateSaves || rowFresh)) {
         let copied = false;
         // Cells of a row Survey appended count as written over a blank cell,
         // so a late PM value on a filled one (a note typed into that empty
         // row) is held too; on a cell Survey left blank it just comes in.
-        const appended = next.recentWrites[`${markerId}|+row`];
-        const blankPrints = appended && now.getTime() - Number(appended.t) <= NEW_ROW_TAKEOVER_MS ? fieldPrintsOf({}) : null;
+        const blankPrints = rowFresh ? fieldPrintsOf({}) : null;
         for (const key of keys) {
           let w = next.recentWrites[`${markerId}|${key}`];
           if (!w && blankPrints && getFp(base, key) !== getFp(blankPrints, key)) w = { wrote: getFp(base, key), was: getFp(blankPrints, key) };
@@ -1077,7 +1100,10 @@ export async function planSheetRound({
   }
   // At most 200 problems, each short: they are saved with the link and sent
   // with every status, and a sheet can hold any amount of text.
-  next.problems = next.problems.slice(0, 200).map((p) => ({ ...p, message: displayOf(p.message) }));
+  // Shown even when the item is gone: "deleted in Survey, so the row was
+  // kept" is about a deleted item. They expire on their own.
+  const shown = next.notices.map(({ t, ...p }) => p);
+  next.problems = [...shown, ...next.problems].slice(0, 200).map((p) => ({ ...p, message: displayOf(p.message) }));
 
   // Conflicts and lists of markers that no longer exist go away.
   for (const id of Object.keys(next.conflicts)) if (!markers[id]) delete next.conflicts[id];

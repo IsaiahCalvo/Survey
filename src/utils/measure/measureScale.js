@@ -18,6 +18,15 @@
  */
 
 import { computeLineBboxCenter } from '../svgBoundingBox.js';
+import { DIMENSION_LEADER_PT, normalizeDimensionLeader } from './dimensionLine.js';
+import {
+  MEASURE_LINE_PREFIXES,
+  formatDisplayArea,
+  formatDisplayDepth,
+  formatDisplayLength,
+  formatDisplayVolume,
+  scaleUsesDisplay,
+} from './measureFormat.js';
 
 export const MEASURE_UNITS = Object.freeze({
   in: { inches: 1, label: 'in', area: 'sq in', volume: 'cu in' },
@@ -129,6 +138,8 @@ function formatNumber(n) {
 export function formatMeasureLength(lengthPt, scale) {
   if (!isValidMeasureScale(scale)) return `${formatNumber(lengthPt / PT_PER_INCH)} in (no scale)`;
   const real = lengthPt / scale.ptPerUnit;
+  // Nightly 'measure-plus': the scale names its own format (measureFormat.js).
+  if (scaleUsesDisplay(scale)) return formatDisplayLength(real * MEASURE_UNITS[scale.unit].inches, scale.display, scale.precision);
   if (scale.unit === 'ft') {
     // Surveyors read feet-inches: 12' 6".
     let feet = Math.floor(real);
@@ -142,6 +153,7 @@ export function formatMeasureLength(lengthPt, scale) {
 export function formatMeasureArea(areaPt2, scale) {
   if (!isValidMeasureScale(scale)) return `${formatNumber(areaPt2 / (PT_PER_INCH * PT_PER_INCH))} sq in (no scale)`;
   const real = areaPt2 / (scale.ptPerUnit * scale.ptPerUnit);
+  if (scaleUsesDisplay(scale)) return formatDisplayArea(real * MEASURE_UNITS[scale.unit].inches ** 2, scale.display, scale.precision);
   return `${real.toFixed(2)} ${MEASURE_UNITS[scale.unit].area}`;
 }
 
@@ -154,6 +166,7 @@ export function formatMeasureWallArea(perimeterPt, depth, scale) {
   const d = normalizeMeasureDepth(depth) || 0;
   if (!isValidMeasureScale(scale)) return `${formatNumber((perimeterPt / PT_PER_INCH) * d)} sq in (no scale)`;
   const real = (perimeterPt / scale.ptPerUnit) * d;
+  if (scaleUsesDisplay(scale)) return formatDisplayArea(real * MEASURE_UNITS[scale.unit].inches ** 2, scale.display, scale.precision);
   return `${real.toFixed(2)} ${MEASURE_UNITS[scale.unit].area}`;
 }
 
@@ -162,6 +175,7 @@ export function formatMeasureVolume(areaPt2, depth, scale) {
   const d = normalizeMeasureDepth(depth) || 0;
   if (!isValidMeasureScale(scale)) return `${formatNumber((areaPt2 / (PT_PER_INCH * PT_PER_INCH)) * d)} cu in (no scale)`;
   const real = (areaPt2 / (scale.ptPerUnit * scale.ptPerUnit)) * d;
+  if (scaleUsesDisplay(scale)) return formatDisplayVolume(real * MEASURE_UNITS[scale.unit].inches ** 3, scale.display, scale.precision);
   return `${real.toFixed(2)} ${MEASURE_UNITS[scale.unit].volume}`;
 }
 
@@ -470,6 +484,18 @@ export function applyMeasureEdit(obj, changes = {}) {
     const depth = normalizeMeasureDepth(changes.depth);
     if (depth) measure.depth = depth;
   }
+  if (kind === 'length' && measure.dim && typeof measure.dim === 'object') {
+    // Dimension-line marks only (measure-plus): the leader and caption place.
+    if (hasOwn(changes, 'leader')) {
+      const leader = normalizeDimensionLeader(changes.leader);
+      if (leader != null) measure.dim = { ...measure.dim, leader };
+    }
+    if (hasOwn(changes, 'captionPlace')) {
+      const dim = { ...measure.dim };
+      if (changes.captionPlace === 'above') dim.caption = 'above'; else delete dim.caption;
+      measure.dim = dim;
+    }
+  }
   const keys = new Set([...Object.keys(before), ...Object.keys(measure)]);
   if ([...keys].every((key) => JSON.stringify(before[key]) === JSON.stringify(measure[key]))) return obj;
   return { ...obj, data: { ...obj.data, measure } };
@@ -478,6 +504,7 @@ export function applyMeasureEdit(obj, changes = {}) {
 function formatMeasureDepth(depth, scale) {
   const d = normalizeMeasureDepth(depth) || 0;
   if (!isValidMeasureScale(scale)) return `${formatNumber(d)} in (no scale)`;
+  if (scaleUsesDisplay(scale)) return formatDisplayDepth(d * MEASURE_UNITS[scale.unit].inches, scale.display, scale.precision);
   return formatMeasureLength(d * scale.ptPerUnit, scale);
 }
 
@@ -508,7 +535,10 @@ export function buildMeasureLabel(obj, scale) {
   for (const field of readings) {
     const value = valueOf(field);
     // One reading reads bare, as today; several say which is which.
-    lines.push(readings.length > 1 ? `${MEASURE_FIELD_NAMES[field]}: ${value}` : value);
+    if (readings.length < 2) lines.push(value);
+    // Nightly 'measure-plus': Drawboard's short prefixes (L = , A = ...).
+    else if (scaleUsesDisplay(scale)) lines.push(`${MEASURE_LINE_PREFIXES[field]} = ${value}`);
+    else lines.push(`${MEASURE_FIELD_NAMES[field]}: ${value}`);
   }
   const out = { ...base, text: lines.join('\n'), lines, reading: base.text };
   const size = normalizeMeasureCaptionSize(measure.captionSize);
@@ -685,9 +715,11 @@ export function pageScaleFromObjects(objects) {
  * Stamp measure metadata on a freshly built line / polygon / polyline commit
  * JSON. Wall area and Volume also keep their depth (page scale units).
  */
-export function stampMeasure(json, kind, scale, { depth = null } = {}) {
+export function stampMeasure(json, kind, scale, { depth = null, dim = false } = {}) {
   if (!json || !MEASURE_KINDS.includes(kind)) return json;
   const measure = { kind };
+  // Nightly 'measure-plus': a new Length draws as a dimension line.
+  if (dim && kind === 'length') measure.dim = { leader: DIMENSION_LEADER_PT };
   if (isValidMeasureScale(scale)) measure.scale = { ...scale };
   const d = normalizeMeasureDepth(depth);
   if (d && DEPTH_MEASURE_KINDS.includes(kind)) measure.depth = d;

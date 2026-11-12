@@ -181,6 +181,9 @@ const TOOL_GROUPS = {
       { id: 'stamp', label: 'Stamp', icon: 'stamp', flag: 'stamp-tool', picker: true },
       // Nightly 'insert-image': picks a photo or picture and drops it mid-page.
       { id: 'image', label: 'Image', icon: 'image', flag: 'insert-image', action: true },
+      // Nightly 'link-tool': drag a box, then say where it links.
+      { id: 'hyperlink', label: 'Hyperlink', icon: 'hyperlink', flag: 'link-tool' },
+      { id: 'pin', label: 'Pin', icon: 'pagePin', flag: 'comment-pins' },
     ],
   },
 };

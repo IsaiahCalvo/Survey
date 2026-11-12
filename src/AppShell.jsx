@@ -24,6 +24,7 @@ import { HOME_DOWNLOAD_EVENT } from './utils/homeDownload.js';
 import { OPEN_EXPORT_PDF_EVENT } from './utils/exportPdfModes.js';
 import { PageGridMenu } from './components/PageGridSettings';
 import RailFlyout from './components/RailFlyout.jsx';
+import { PinFilterMenu } from './components/pins/PinControls.jsx';
 import MenuGlide from './components/MenuGlide.jsx';
 import { chordKeycaps } from './utils/keyboardShortcuts.js';
 import { shortcutBinding } from './utils/customKeyboardShortcuts.js';
@@ -167,6 +168,7 @@ import SpotlightOverlay from './spotlight/SpotlightOverlay.jsx';
 import useSpotlight from './spotlight/useSpotlight.js';
 import { clearSpotlightGo, setSpotlightDocument, setSpotlightIdentity } from './services/annotationSpotlight.js';
 import { SHEET_VIEW_EVENT, clampGridColumns, projectSheets, sheetStepForKey, steppedSheet, storedProjectOrder, DEFAULT_GRID_COLUMNS } from './sheets/sheetSet.js';
+import { DEVICE_FILE_LEAVE_EVENT } from './services/deviceFiles.js';
 
 // The dot between the current page and the page total in the right-rail
 // footer: a drawn 2px circle in the total's grey (see the rail audit note at
@@ -1969,6 +1971,25 @@ export default function App({ devPreviewReturnTab = null }) {
 
   const handleTabClose = (tabId) => closeTabsNow([tabId]);
 
+  // device-files (Nightly): "Save to my account" moves a device file into the
+  // cloud. Its open tabs close first, so no mark lands on the device copy
+  // after its marks are carried over (home/deviceFileActions.js reopens the
+  // cloud copy when a tab was open).
+  const closeTabsNowRef = useRef(closeTabsNow);
+  closeTabsNowRef.current = closeTabsNow;
+  useEffect(() => {
+    const onLeave = (event) => {
+      const deviceId = event?.detail?.deviceId;
+      if (!deviceId) return;
+      const ids = tabsRef.current.filter((t) => t.file?.id === deviceId).map((t) => t.id);
+      if (!ids.length) return;
+      event.detail.closed = true;
+      closeTabsNowRef.current(ids);
+    };
+    window.addEventListener(DEVICE_FILE_LEAVE_EVENT, onLeave);
+    return () => window.removeEventListener(DEVICE_FILE_LEAVE_EVENT, onLeave);
+  }, []);
+
   const requestCloseTabs = async (tabIds, action = 'close') => {
     const ids = (tabIds || []).filter((id) => id !== HOME_TAB_ID);
     if (!ids.length) return;
@@ -2301,6 +2322,7 @@ export default function App({ devPreviewReturnTab = null }) {
   const [hideMarksEnabled] = useState(() => isFeatureOn('hide-marks'));
   const [lineDashesOn] = useState(() => isFeatureOn('line-dashes'));
   const [eraserLookOn] = useState(() => isFeatureOn('eraser-look'));
+  const [pinsOn] = useState(() => isFeatureOn('comment-pins'));
   const allMarksHidden = useMarksHidden();
   // Focus mode (Nightly, 'focus-mode'; utils/focusMode.js): no tab strip or
   // side rails, browser full screen, an Exit chip that always shows.
@@ -5876,6 +5898,24 @@ export default function App({ devPreviewReturnTab = null }) {
                       >
                         <EyeGlyph open={!allMarksHidden} size={RAIL_CONTROL_GLYPH} />
                       </button>
+                    )}
+                    {/* Nightly 'comment-pins': the "Show pins" card. */}
+                    {pinsOn && (
+                      <PinFilterMenu renderButton={({ open, ref, onClick, on }) => (
+                        <button
+                          ref={ref}
+                          type="button"
+                          onClick={onClick}
+                          aria-label="Show pins"
+                          aria-haspopup="dialog"
+                          aria-expanded={open}
+                          data-pin-filter-toggle="true"
+                          {...chromeTip(open ? undefined : 'Show pins', 'left')}
+                          style={{ ...footerBtn(), color: on || open ? 'var(--text-1)' : 'var(--text-3)' }}
+                        >
+                          <Icon name="pagePin" size={RAIL_CONTROL_GLYPH} color="currentColor" />
+                        </button>
+                      )} />
                     )}
                     {focusModeEnabled && (
                       <button

@@ -122,6 +122,24 @@ const OPEN_RETRY_MAX_ATTEMPTS = 8;
 // was unreachable): ask the server again after 30 s, 60 s, then every 2 min.
 const OFFLINE_RETRY_BASE_MS = 30_000;
 const OFFLINE_RETRY_MAX_MS = 120_000;
+const SERVER_ANSWER_TIMEOUT_MS = 8_000;
+
+/* Does the server answer at all? A tiny read of the document row: any reply
+   with a status (even a refusal) means it can be reached; a failed fetch or
+   no reply in time means it still cannot. */
+async function serverAnswers(supabase, documentId) {
+  if (!supabase?.from) return false;
+  try {
+    const ask = supabase.from('documents').select('id').eq('id', documentId).limit(1);
+    const timeout = new Promise((resolve) => setTimeout(() => resolve({ timedOut: true }), SERVER_ANSWER_TIMEOUT_MS));
+    const reply = await Promise.race([ask, timeout]);
+    if (!reply || reply.timedOut) return false;
+    if (!reply.error) return true;
+    return Boolean(reply.error.code) || Number(reply.status) > 0;
+  } catch {
+    return false;
+  }
+}
 // An erase made while the store opens waits at most this long for it.
 const OPEN_WAIT_MAX_MS = 20_000;
 
@@ -419,8 +437,11 @@ export function useAnnotationDoc({
   // access was lowered. The viewer then stops the tools and says why.
   const [editBlocked, setEditBlocked] = useState(null);
   const offlineOpenRef = useRef({ documentId: null, networkFailed: false });
+  const clearEditBlockedRef = useRef(null);
   const [deletedPdfAnnotations, setDeletedPdfAnnotations] = useState([]);
   const [syncStatus, setSyncStatus] = useState({ stage: 'idle', healthy: true, error: null });
+  // The handle opened from the device copy (offline-docs / device-files), if any.
+  const localOpenRef = useRef(null);
   // w53: other screens' in-flight Survey Marker / spaces changes, DRAWN only
   // (never written to surveyMarkers / spaces, so the capture never saves
   // them): { markers: Map<id, record|null>, spaces: Array|null }.
@@ -677,6 +698,7 @@ export function useAnnotationDoc({
       openFailuresRef.current = { documentId, count: 0 };
       if (cancelled) { try { await handle.destroy(); } catch { /* */ } return; }
       handleRef.current = handle;
+      localOpenRef.current = openLocal ? handle : null;
       setOfflineCopy(openLocal && !deviceOnly);
       if (openLocal && !deviceOnly) {
         openedLocal = true;
@@ -685,12 +707,22 @@ export function useAnnotationDoc({
         } else if (globalThis.navigator?.onLine !== false) {
           // The device says it is online but the server could not be reached:
           // no 'online' event will come, so try the server again with backoff.
-          const retries = offlineOpenRef.current.retries || 0;
-          offlineOpenRef.current = { ...offlineOpenRef.current, retries: retries + 1 };
-          offlineRetryTimer = setTimeout(() => {
-            offlineRetryTimer = null;
-            reopenOnline();
-          }, Math.min(OFFLINE_RETRY_MAX_MS, OFFLINE_RETRY_BASE_MS * (2 ** retries)));
+          // Each try first asks the server a tiny question; the open copy is
+          // only torn down and reopened once the server answers, so marks
+          // being drawn are not interrupted while it stays out of reach.
+          const scheduleOfflineRetry = () => {
+            const retries = offlineOpenRef.current.retries || 0;
+            offlineOpenRef.current = { ...offlineOpenRef.current, retries: retries + 1 };
+            offlineRetryTimer = setTimeout(() => {
+              offlineRetryTimer = null;
+              serverAnswers(supabase, documentId).then((answers) => {
+                if (cancelled) return;
+                if (answers) reopenOnline();
+                else scheduleOfflineRetry();
+              });
+            }, Math.min(OFFLINE_RETRY_MAX_MS, OFFLINE_RETRY_BASE_MS * (2 ** retries)));
+          };
+          scheduleOfflineRetry();
         }
       } else if (!deviceOnly) {
         offlineOpenRef.current = { ...offlineOpenRef.current, retries: 0 };
@@ -714,6 +746,15 @@ export function useAnnotationDoc({
       };
       updateSyncStatus(handle.getSyncStatus?.());
       unsubscribeSync = handle.onSyncStatus?.(updateSyncStatus) || null;
+      // Unlocked, or brought back from Archive (the viewer sees it live):
+      // the tools come back. A refusal that still stands blocks again on the
+      // next edit.
+      clearEditBlockedRef.current = () => {
+        if (cancelled || !blockedReason) return;
+        blockedReason = null;
+        setEditBlocked(null);
+        updateSyncStatus(handle.getSyncStatus?.());
+      };
       unsubscribeHistoryQuarantine = handle.onHistoryQuarantine?.((event) => {
         if (cancelled) return;
         onHistoryQuarantineRef.current?.(event);
@@ -721,14 +762,19 @@ export function useAnnotationDoc({
         // the document vanished with only "your changes are safe on this
         // device". Ask why the server said no, then say so.
         if (String(event?.code || '') === '42501' && supabase && !openLocal && !blockedReason) {
+          // The server refused: the tools stop either way. If the reason can't
+          // be read, the plain "can no longer edit" message is used.
+          const block = (reason) => {
+            if (cancelled || blockedReason) return;
+            blockedReason = reason;
+            setEditBlocked(blockedReason);
+            setSyncStatus({ stage: 'blocked', healthy: false, error: null, reason: blockedReason });
+            setSyncQueueSize(0);
+          };
           supabase.from('documents').select('id, locked_at').eq('id', documentId).maybeSingle()
             .then(({ data, error }) => {
-              if (cancelled || error) return;
-              blockedReason = !data ? 'gone' : (data.locked_at ? 'locked' : 'denied');
-              setEditBlocked(blockedReason);
-              setSyncStatus({ stage: 'blocked', healthy: false, error: null, reason: blockedReason });
-              setSyncQueueSize(0);
-            }, () => {});
+              block(error ? 'denied' : (!data ? 'gone' : (data.locked_at ? 'locked' : 'denied')));
+            }, () => block('denied'));
         }
       }) || null;
 
@@ -1010,6 +1056,7 @@ export function useAnnotationDoc({
       if (onBackOnline) globalThis.removeEventListener?.('online', onBackOnline);
       setOfflineCopy(false);
       setEditBlocked(null);
+      clearEditBlockedRef.current = null;
       openInProgressRef.current = false;
       hydratedRef.current = false;
       settleOpenWaiters(false);
@@ -1538,7 +1585,10 @@ export function useAnnotationDoc({
     const h = handleRef.current;
     if (!h) return;
     await flushAnnotationDoc(h, {
-      onStatus: setSyncStatus,
+      // A store opened from the device copy has no server to flush to; its
+      // status stays "Offline copy" / "Only on this device", never an error
+      // (the 30 s autosave flushes too).
+      onStatus: (next) => { if (localOpenRef.current !== h) setSyncStatus(next); },
       onQueueSize: setSyncQueueSize,
       isCurrent: () => handleRef.current === h,
     });
@@ -1748,6 +1798,8 @@ export function useAnnotationDoc({
     handleRef.current?.getHistoryQuarantineGeneration?.() ?? null
   ), []);
 
+  const clearEditBlocked = useCallback(() => { clearEditBlockedRef.current?.(); }, []);
+
   return {
     initialHydration,
     deletedPdfAnnotations,
@@ -1769,5 +1821,6 @@ export function useAnnotationDoc({
     liveMarkerOverlay,
     offlineCopy,
     editBlocked,
+    clearEditBlocked,
   };
 }

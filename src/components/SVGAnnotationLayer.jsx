@@ -65,6 +65,7 @@ import {
   renderPolygon,
   renderPolyline,
   renderTextMarkup,
+  dimensionMarkLayout,
 } from '../utils/svgAnnotationRenderers';
 // UX 2026-09-09: cloud hover/hit geometry comes from the same resolver that
 // paints the cloud, so the grab surface is the scalloped outline itself.
@@ -182,6 +183,7 @@ import { variableWidthPreviewD } from '../utils/penWidthInk.js';
 import { getCurvedPath, distanceToLineSegment, getCurveEndAngle } from '../utils/lineGeometry.js';
 import { ARROWHEAD_STYLES } from './Callout/types';
 import { renderPathToSvgAttrs, renderPathToSvgD, isFilledInkOutlineAttrs, getFilledInkHitTargetProps } from '../utils/svgPathAttrs.js';
+import { LINK_BOX_DRAWN_EVENT, LINK_DEFAULT_WIDTH, LINK_MIN_SIZE, linkMarkPaint, readLinkLastLook } from '../utils/linkTool.js';
 import {
   applyPageAffineToInkObject,
   createInkPathAffine,
@@ -461,7 +463,8 @@ const normalizeSurveyMarkerBoundsValue = (bounds) => {
 // Unified renderer phase 2 — the drawing tools whose creation gestures live
 // on this layer (previews render through the SAME committed renderers below,
 // so what you see while dragging IS what commits — no cross-renderer seam).
-const SHAPE_CREATION_TOOLS = ['rect', 'ellipse', 'line', 'arrow', 'survey-marker'];
+// 'hyperlink' (Nightly 'link-tool'): a dragged box that becomes a link.
+const SHAPE_CREATION_TOOLS = ['rect', 'ellipse', 'line', 'arrow', 'survey-marker', 'hyperlink'];
 // Nightly 'drag-auto-scroll': the tools whose drag scrolls the view at its edge.
 const AUTO_SCROLL_TOOLS = new Set([...SHAPE_CREATION_TOOLS, 'select', 'callout', 'cloud', 'tape']);
 // 'survey-marker-freehand' is the Survey Marker tool in its Freehand mode (owner
@@ -568,6 +571,7 @@ import {
   stampMeasure,
   isPolyMeasureFor,
 } from '../utils/measure/measureScale.js';
+import { dimensionCaptionPlace, dimensionLeader, dimensionLineGeometry, isDimensionMeasure } from '../utils/measure/dimensionLine.js';
 import { useTooltip } from './Tooltip';
 
 // Measure label (Length / Area): a white pill at a fixed SCREEN size (12 px
@@ -974,6 +978,8 @@ const SVGAnnotationLayerBody = memo(({
     const labels = [];
     objects.forEach((obj, index) => {
       if (!obj?.data?.measure || obj.visible === false || isOnHiddenLayer(obj, hiddenLayerIds)) return;
+      // A dimension line ('measure-plus') draws its own inline caption.
+      if (isDimensionMeasure(obj)) return;
       const label = buildMeasureLabel(obj, effectiveMeasureScale);
       if (label) labels.push({ key: obj.id || obj.data?.id || `m${index}`, index, label });
     });
@@ -2918,6 +2924,31 @@ const SVGAnnotationLayerBody = memo(({
       return;
     }
 
+    if (tool === 'hyperlink') {
+      // Nightly 'link-tool': the box goes to the link host (LinkToolHost),
+      // which asks where it links to; commit() then saves the link mark on
+      // this page as one Undo step, picked, like any drawn shape.
+      const box = {
+        x: Math.min(state.start.x, end.x),
+        y: Math.min(state.start.y, end.y),
+        width: Math.abs(end.x - state.start.x),
+        height: Math.abs(end.y - state.start.y),
+      };
+      if (!(box.width >= LINK_MIN_SIZE && box.height >= LINK_MIN_SIZE)) return;
+      const commit = (mark) => {
+        const json = stampAnnotationCreationIdentity(mark, { authorId: viewerId });
+        const current = annotationsRef.current;
+        selectAnnotation(current?.objects?.length || 0);
+        onSaveAnnotations(
+          { ...(current || {}), objects: [...(current?.objects || []), json] },
+          { source: 'path:created', tool },
+        );
+        recordAnnotationCommit({ surface: 'SVGAnnotationLayer', source: 'path:created', action: 'link-create', pageNumber });
+      };
+      window.dispatchEvent(new CustomEvent(LINK_BOX_DRAWN_EVENT, { detail: { pageNumber, box, id, commit } }));
+      return;
+    }
+
     const shared = {
       id,
       start: state.start,
@@ -2940,7 +2971,7 @@ const SVGAnnotationLayerBody = memo(({
       return;
     }
     if (json && tool === 'line' && measureMode === 'length') {
-      json = stampMeasure(json, 'length', effectiveMeasureScale);
+      json = stampMeasure(json, 'length', effectiveMeasureScale, { dim: isFeatureOn('measure-plus') });
     }
     if (json) dispatchCommit(json);
   }, [
@@ -3950,7 +3981,14 @@ const SVGAnnotationLayerBody = memo(({
   // Nightly 'properties-panel': the panel's typed R turns the one picked mark
   // (the degree box's own commit) and its typed W / H resize a box mark.
   const transformTargetRef = useRef(null);
-  transformTargetRef.current = { selectedAnnotationIndex, annotations, onSaveAnnotations, handleRotationInputCommit, pageNumber, keysLive: isTabActive && editingAnnotationIndex == null && !editingCalloutId };
+  // keysLive: one page mark is the whole pick (a callout or Survey Marker
+  // with it makes a group, which the turn / scale keys leave alone).
+  const pickedCalloutCount = selectedCalloutIds ? (selectedCalloutIds.size ?? selectedCalloutIds.length ?? 0) : 0;
+  transformTargetRef.current = {
+    selectedAnnotationIndex, annotations, onSaveAnnotations, handleRotationInputCommit, pageNumber,
+    keysLive: isTabActive && editingAnnotationIndex == null && !editingCalloutId
+      && selectedIds.size === 1 && pickedCalloutCount === 0 && selectedSurveyMarkerIds.size === 0,
+  };
   useEffect(() => {
     const onTransform = (event) => {
       const detail = event?.detail || {};
@@ -3959,7 +3997,9 @@ const SVGAnnotationLayerBody = memo(({
       if (typeof document !== 'undefined' && document.body?.getAttribute('data-readonly') === 'true') return;
       const index = t.selectedAnnotationIndex;
       const object = Number.isInteger(index) ? t.annotations?.objects?.[index] : null;
-      if (!object || object.locked) return;
+      // A user lock (data.lockedBy) holds here too, as it does for nudge and
+      // the turn / scale keys.
+      if (!object || object.locked || !canMoveAnnotation(object)) return;
       if (detail.op === 'turn' && canTypeTurn(object)) {
         t.handleRotationInputCommit(index, Number(detail.angle) || 0);
       } else if (detail.op === 'ending') {
@@ -3994,21 +4034,24 @@ const SVGAnnotationLayerBody = memo(({
         if (document.body?.getAttribute('data-readonly') === 'true') return;
       }
       const t = transformTargetRef.current;
-      if (!t?.keysLive) return; // a tab behind, or a mark being edited
+      if (!t?.keysLive) return; // a tab behind, a mark being edited, or a group
       const index = t.selectedAnnotationIndex;
       const object = Number.isInteger(index) ? t.annotations?.objects?.[index] : null;
-      if (!object || object.locked) return;
+      if (!object) return;
+      // The keys belong to the pick from here on, even when this mark cannot
+      // take them (a counter's body, a locked mark): Cmd + Left / Right would
+      // otherwise send the browser Back / Forward.
+      e.preventDefault();
+      if (object.locked || !canMoveAnnotation(object)) return;
       if (step.op === 'turn') {
         if (!canTypeTurn(object)) return;
         const pending = pendingOptimisticRotationRef.current;
         const base = pending?.annotationIndex === index ? Number(pending.angle) : Number(object.angle);
-        e.preventDefault();
         t.handleRotationInputCommit(index, wrapDegrees((Number.isFinite(base) ? base : 0) + step.by) ?? 0);
         return;
       }
       const next = scaleObjectBy(object, step.factor);
       if (!next) return;
-      e.preventDefault();
       const updated = deepClone(t.annotations);
       updated.objects[index] = next;
       t.onSaveAnnotations(updated, { source: 'turn-scale-keys', action: 'resize', checkpointPolicy: 'normal' });
@@ -6322,6 +6365,16 @@ const SVGAnnotationLayerBody = memo(({
 
   const applyLineEditPreview = useCallback((obj, lineEdit) => {
     if (!obj || !lineEdit) return obj;
+    // measure-plus leader drag: only the dimension line's offset changes.
+    // A caption drag: only where the caption sits.
+    if (lineEdit.dimLeader != null || lineEdit.dimCaptionOffset) {
+      if (!isDimensionMeasure(obj)) return obj;
+      const measure = obj.data.measure;
+      const dim = lineEdit.dimLeader != null
+        ? { ...measure.dim, leader: lineEdit.dimLeader }
+        : { ...measure.dim, captionOffset: lineEdit.dimCaptionOffset };
+      return { ...obj, data: { ...obj.data, measure: { ...measure, dim } } };
+    }
     const nextData = { ...(obj.data || {}) };
     if (lineEdit.hasMidpoint && lineEdit.midpoint) {
       nextData.midpoint = lineEdit.midpoint;
@@ -6984,6 +7037,39 @@ const SVGAnnotationLayerBody = memo(({
                     onDoubleClick={(e) => handleAnnotationDoubleClick(e, i)}
                   />
                 )}
+                {/* 'measure-plus': a dimension line is drawn off its points,
+                    so the line the user sees takes the press and the halo too. */}
+                {!lineIsCurved && isDimensionMeasure(renderObj) && (() => {
+                  const geo = dimensionLineGeometry(ep, { leader: dimensionLeader(renderObj) });
+                  if (!geo) return null;
+                  return (
+                    <>
+                      {annotationIsHovered && (
+                        <line
+                          x1={geo.a.x} y1={geo.a.y} x2={geo.b.x} y2={geo.b.y}
+                          stroke="rgb(74, 144, 226)"
+                          opacity={HOVER_HALO_OPACITY}
+                          strokeWidth={Math.max(6, (renderObj.strokeWidth || 2) + 4)}
+                          strokeLinecap="round"
+                          style={{ pointerEvents: 'none' }}
+                        />
+                      )}
+                      <line
+                        x1={geo.a.x} y1={geo.a.y} x2={geo.b.x} y2={geo.b.y}
+                        stroke="transparent"
+                        strokeWidth={markHitBand((renderObj.strokeWidth || 2) / inverseScale, 1)}
+                        strokeLinecap="round"
+                        vectorEffect="non-scaling-stroke"
+                        pointerEvents={annotationHitTargetsInteractive && isObjectInteractive ? 'stroke' : 'none'}
+                        data-shape-hit-target="dimension-line"
+                        onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
+                        onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
+                        onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
+                        onDoubleClick={(e) => handleAnnotationDoubleClick(e, i)}
+                      />
+                    </>
+                  );
+                })()}
               </g>
             );
           }
@@ -8536,7 +8622,7 @@ const SVGAnnotationLayerBody = memo(({
         // width, dash style and arrowheads are what lands on release. The
         // group is always mounted (even before the line has length) so the
         // draft is visible to the overlay watchdog in PDFViewer.
-        const previewJson = buildLineCommitJSON({
+        const draftJson = buildLineCommitJSON({
           tool: shapeCreation.tool,
           id: `creation-preview-p${pageNumber}`,
           start: shapeCreation.start,
@@ -8550,6 +8636,10 @@ const SVGAnnotationLayerBody = memo(({
           lineBorderStyle,
           cloudIntensity,
         });
+        // 'measure-plus': a Length draws as its dimension line while dragged.
+        const previewJson = draftJson && measureMode === 'length' && shapeCreation.tool === 'line' && isFeatureOn('measure-plus')
+          ? stampMeasure(draftJson, 'length', effectiveMeasureScale, { dim: true })
+          : draftJson;
         return (
           <g
             className="shape-creation-preview"
@@ -8582,6 +8672,7 @@ const SVGAnnotationLayerBody = memo(({
         </g>
       )}
       {measureMode && shapeCreation && shapeCreation.tool === 'line' && shapeCreation.start && shapeCreation.current
+        && !(measureMode === 'length' && isFeatureOn('measure-plus'))
         && renderMeasureLabel(buildMeasureLabel(stampMeasure({
           type: 'Line', left: Math.min(shapeCreation.start.x, shapeCreation.current.x), top: Math.min(shapeCreation.start.y, shapeCreation.current.y),
           width: Math.abs(shapeCreation.current.x - shapeCreation.start.x), height: Math.abs(shapeCreation.current.y - shapeCreation.start.y),
@@ -8709,6 +8800,27 @@ const SVGAnnotationLayerBody = memo(({
           style={{ pointerEvents: 'none' }}
         />
       )}
+      {/* Hyperlink (Nightly 'link-tool'): the drag shows the link as it will
+          land, in the last style and colour used. */}
+      {shapeCreation && shapeCreation.tool === 'hyperlink' && (() => {
+        const x = Math.min(shapeCreation.start.x, shapeCreation.current.x);
+        const y = Math.min(shapeCreation.start.y, shapeCreation.current.y);
+        const w = Math.abs(shapeCreation.current.x - shapeCreation.start.x);
+        const h = Math.abs(shapeCreation.current.y - shapeCreation.start.y);
+        const look = readLinkLastLook();
+        const paint = linkMarkPaint({ stroke: look.color, strokeWidth: LINK_DEFAULT_WIDTH, data: { linkStyle: look.style } }, w, h);
+        return (
+          <g className="shape-creation-preview" data-link-preview="true" transform={`translate(${x}, ${y})`} style={{ pointerEvents: 'none' }}>
+            <rect x={0} y={0} width={w} height={h} fill={paint.fill} stroke="none" />
+            {paint.box && paint.strokeWidth > 0 && (
+              <rect x={0} y={0} width={w} height={h} fill="none" stroke={paint.stroke} strokeWidth={paint.strokeWidth} strokeDasharray={paint.dash ? paint.dash.join(',') : undefined} />
+            )}
+            {paint.underline && paint.strokeWidth > 0 && (
+              <line {...paint.underline} stroke={paint.stroke} strokeWidth={paint.strokeWidth} />
+            )}
+          </g>
+        );
+      })()}
       {/* Smart fill: where the press landed, while the provider works. */}
       {smartFillPending && (
         <circle
@@ -9317,13 +9429,49 @@ const SVGAnnotationLayerBody = memo(({
           const lineSelRotate = lineSelAngle !== 0
             ? `rotate(${lineSelAngle}, ${lineSelCx}, ${lineSelCy})`
             : undefined;
+          // measure-plus: a dimension line has no bend grabber; a pill on the
+          // dimension line drags its leader instead (Drawboard's offset grabber).
+          const dimLayout = isDimensionMeasure(selectionObj) ? dimensionMarkLayout(selectionObj, ep) : null;
+          const dimGeo = dimLayout?.geo || null;
+          // The caption takes a plain drag (grab cursor) to move it anywhere.
+          const captionGrab = dimGeo && dimLayout.lines.length > 0 ? {
+            x: dimGeo.caption.x + dx,
+            y: dimGeo.caption.y + dy,
+            angle: dimGeo.caption.angle,
+            w: dimLayout.captionWidth + 4,
+            h: dimLayout.captionHeight + 2,
+          } : null;
+          // An inline caption sits mid-line, so the pill sits a quarter along.
+          const pillAt = dimensionCaptionPlace(selectionObj) === 'above' ? 0.5 : 0.25;
+          const leaderPill = dimGeo ? {
+            x: dimGeo.a.x + (dimGeo.b.x - dimGeo.a.x) * pillAt + dx,
+            y: dimGeo.a.y + (dimGeo.b.y - dimGeo.a.y) * pillAt + dy,
+            angle: (Math.atan2(ep.y2 - ep.y1, ep.x2 - ep.x1) * 180) / Math.PI,
+            w: 20 * handleIs,
+            h: 8 * handleIs,
+          } : null;
           return (
             <g key={`selection-wrapper-${selectedIndex}`} transform={lineSelRotate}>
               {/* Invisible hit pads, under the visible dots so a direct hit on
                   a dot still goes to that dot. */}
               {renderLineHitPad('p1', ep.x1 + dx, ep.y1 + dy)}
               {renderLineHitPad('p2', ep.x2 + dx, ep.y2 + dy)}
-              {renderLineHitPad('midpoint', midpointBase.x + dx, midpointBase.y + dy)}
+              {captionGrab && (
+                <rect
+                  data-handle="dim-caption"
+                  x={captionGrab.x - captionGrab.w / 2}
+                  y={captionGrab.y - captionGrab.h / 2}
+                  width={captionGrab.w}
+                  height={captionGrab.h}
+                  transform={`rotate(${captionGrab.angle}, ${captionGrab.x}, ${captionGrab.y})`}
+                  fill="transparent"
+                  stroke="none"
+                  style={{ cursor: 'grab', pointerEvents: 'auto', touchAction: 'none' }}
+                  onPointerDown={(e) => { e.stopPropagation(); handleHandlePointerDown(e, 'dim-caption'); }}
+                />
+              )}
+              {!dimGeo && renderLineHitPad('midpoint', midpointBase.x + dx, midpointBase.y + dy)}
+              {leaderPill && renderLineHitPad('leader', leaderPill.x, leaderPill.y)}
               {/* Start handle (line start / arrow tail) */}
               <circle
                 cx={ep.x1 + dx} cy={ep.y1 + dy}
@@ -9353,7 +9501,24 @@ const SVGAnnotationLayerBody = memo(({
                   curved, geometric midpoint when straight. onPointerDown
                   dispatches 'midpoint' handleId to the existing
                   handleHandlePointerDown hook (see useSVGInteraction.js). */}
-              <circle
+              {leaderPill && (
+                <rect
+                  data-handle="leader"
+                  x={leaderPill.x - leaderPill.w / 2}
+                  y={leaderPill.y - leaderPill.h / 2}
+                  width={leaderPill.w}
+                  height={leaderPill.h}
+                  rx={leaderPill.h / 2}
+                  transform={`rotate(${leaderPill.angle}, ${leaderPill.x}, ${leaderPill.y})`}
+                  fill={HANDLE_FILL}
+                  stroke={HANDLE_RING}
+                  strokeWidth={1.5}
+                  vectorEffect="non-scaling-stroke"
+                  style={handleStyle}
+                  onPointerDown={(e) => { e.stopPropagation(); handleHandlePointerDown(e, 'leader'); }}
+                />
+              )}
+              {!dimGeo && <circle
                 data-handle="midpoint"
                 cx={midpointBase.x + dx}
                 cy={midpointBase.y + dy}
@@ -9367,7 +9532,7 @@ const SVGAnnotationLayerBody = memo(({
               >
                 {/* Browser-native tooltip per 15-UI-SPEC §Copywriting. */}
                 <title>Drag to bend</title>
-              </circle>
+              </circle>}
             </g>
           );
         }

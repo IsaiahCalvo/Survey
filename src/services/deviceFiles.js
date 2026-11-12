@@ -26,6 +26,9 @@ const META_STORE = 'meta';
 const BYTES_STORE = 'bytes';
 const REQUEST_TIMEOUT_MS = 8_000;
 
+// Fired (sync) before a device file moves to the cloud: open tabs close and
+// set detail.closed = true (AppShell).
+export const DEVICE_FILE_LEAVE_EVENT = 'survey:device-file-leave';
 export const DEVICE_FILES_CHANGED_EVENT = 'survey:device-files-changed';
 /** The annotation store's actor for marks made on device files. */
 export const DEVICE_ACTOR_ID = 'device-local';

@@ -145,6 +145,8 @@ import { calculateCalloutConnection } from './calloutGeometry.js';
 import { computeLineBboxCenter, getLineEndpoints } from './svgBoundingBox.js';
 import { isPdfStampProxy, pngDataUrlToBytes } from './pdfStampProxy.js';
 import { jpegDataUrlToBytes } from './insertedImage.js';
+import { isLinkMark, linkMarkForPrint } from './linkMarkPaint.js';
+import { adaptLinkBox } from './pdfNativeExport/adapters/linkBox.js';
 import {
   getSymbol, isSymbolStamp, symbolStampBox, symbolStampStrokeWidth, transformSymbolPath,
 } from './symbolLibrary.js';
@@ -5144,6 +5146,23 @@ const remapAnnotationRefToPageFrame = (pdfDoc, ref, matrix, remappedStreams = ne
 };
 
 /**
+ * Nightly 'link-tool': the /D array for a link to a page (/Fit) or to a box
+ * on it (/FitR, the box in that page's real user space). Null when the page
+ * is not in the file.
+ */
+const linkDestinationFor = (pdfDoc, pageSizes, pageNumber, box) => {
+  const target = pdfDoc.getPages()[Number(pageNumber) - 1];
+  if (!target) return null;
+  if (!box) return [target.ref, PDFName.of('Fit')];
+  const size = pageSizes?.[String(pageNumber)] || pageSizes?.[pageNumber];
+  const viewportHeight = Number(size?.height) || target.getHeight();
+  const virtualRect = [box.x, viewportHeight - (box.y + box.height), box.x + box.width, viewportHeight - box.y];
+  const matrix = getAnnotationPageFrameMatrix(target, viewportHeight);
+  const [l, b, r, t] = matrix ? mapPdfRectThroughMatrix(virtualRect, matrix) : virtualRect;
+  return [target.ref, PDFName.of('FitR'), ...[l, b, r, t].map((n) => PDFNumber.of(Math.round(n * 100) / 100))];
+};
+
+/**
  * Give one ALREADY-REGISTERED annotation dict the /AP /N form that `draw`
  * paints, plus the /Rect that form's box maps to.
  *
@@ -6424,6 +6443,12 @@ const drawFlattenedSymbolStamp = (page, obj, pageHeight) => {
 
 const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0 }, stampImages = new Map()) => {
   if (!obj || typeof obj !== 'object') return 0;
+  // Nightly 'link-tool': a link prints its border only (no fill).
+  if (isLinkMark(obj)) {
+    const printed = linkMarkForPrint(obj);
+    if (!printed) return 1;
+    obj = printed;
+  }
   if (obj?.data?.type === 'text-markup' && Array.isArray(obj?.data?.quads)) {
     const color = parsePdfDrawColor(obj.fill, '#f4d35e')
       || parsePdfDrawColor(obj.stroke, '#f4d35e')
@@ -7983,7 +8008,16 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
           break;
         case 'rect':
           // isSurveyMarkerType accepts both 'survey-marker' (new) and 'highlight' (legacy)
-          if (isSurveyMarkerType(item.type)) {
+          if (isLinkMark(obj)) {
+            // Nightly 'link-tool': a real /Link (URI, or GoTo a page / area).
+            annotRef = adaptLinkBox(obj, {
+              pdfDoc,
+              page,
+              pageHeight,
+              author: obj?.data?.authorName || null,
+              destinationFor: (targetPageNumber, box) => linkDestinationFor(pdfDoc, pageSizes, targetPageNumber, box),
+            });
+          } else if (isSurveyMarkerType(item.type)) {
             annotRef = createHighlightAnnotation(pdfDoc, page, obj, pageHeight, appAnnotationOptions);
           } else {
             annotRef = createSquareAnnotation(pdfDoc, page, obj, pageHeight, appAnnotationOptions);

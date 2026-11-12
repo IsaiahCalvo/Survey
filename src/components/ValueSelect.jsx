@@ -16,7 +16,8 @@ const MENU_CLASS = 'value-select__menu';
  * `look="field"` sizes the pill like the dialog field beside it (32px, 13px;
  * `size="sm"` 30px, 12px); `look="pill"` keeps the toolbar's 20px pill.
  * `placeholder` shows, quieter, while the value is not one of the options.
- * `hint` is a longer tooltip than the label.
+ * `hint` is a longer tooltip than the label. `menuClassName` goes on the
+ * list, for a window that sits above the usual dialog layer.
  *
  * While open, the list is the topmost light popover (dismissRules R1/R5): a
  * press outside closes it, and Escape closes only the list, never the dialog
@@ -43,6 +44,7 @@ export default function ValueSelect({
   size = 'md',
   width = '100%',
   className = '',
+  menuClassName = '',
 }) {
   const tip = useTooltip();
   const [open, setOpen] = useState(false);
@@ -86,7 +88,7 @@ export default function ValueSelect({
       width={width}
       contentWidth="var(--radix-popover-trigger-width)"
       className={classes}
-      contentClassName={`${MENU_CLASS} ${MENU_CLASS}--${look}${detailed ? ` ${MENU_CLASS}--detailed` : ''}`}
+      contentClassName={`${MENU_CLASS} ${MENU_CLASS}--${look}${detailed ? ` ${MENU_CLASS}--detailed` : ''}${menuClassName ? ` ${menuClassName}` : ''}`}
       renderOption={detailed ? (option) => (
         <span className="value-select__option">
           <span className="value-select__option-label">{option.label}</span>

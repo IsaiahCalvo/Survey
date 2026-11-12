@@ -738,6 +738,27 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
+    // Nightly 'link-tool': the Hyperlink tool (two chain links).
+    // Nightly 'comment-pins': a page pin (square bottom-left corner).
+    pagePin: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <g stroke={color} strokeWidth={ICON_STROKE_WIDTH} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M4 20V11a7 7 0 1 1 7 7H6" />
+          <path d="M4 20l2-2" />
+          <path d="M8.5 9.5h5M8.5 13h3" />
+        </g>
+      </svg>
+    ),
+
+    hyperlink: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <g stroke={color} strokeWidth={ICON_STROKE_WIDTH} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7" />
+          <path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" />
+        </g>
+      </svg>
+    ),
+
     video: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
         <g stroke={color} strokeWidth={ICON_STROKE_WIDTH} strokeLinecap="round" strokeLinejoin="round">

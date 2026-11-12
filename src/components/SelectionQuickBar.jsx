@@ -55,6 +55,7 @@ import {
   selectionItemSelector,
   selectionKeepOut,
 } from '../utils/selectionQuickBar.js';
+import { linkGoToLabel } from '../utils/linkTool.js';
 import './SelectionQuickBar.css';
 
 // How many entity swatches the bar draws before "All N" (SurveyOverflowRow).
@@ -442,7 +443,7 @@ export default function SelectionQuickBar({
   // The bar's size changes with what it holds; place it again for that size.
   useLayoutEffect(() => {
     if (active) place();
-  }, [active, place, plan?.colour, plan?.width, plan?.style, plan?.remove, plan?.measure, propertiesPanelOpen]);
+  }, [active, place, plan?.colour, plan?.width, plan?.style, plan?.remove, plan?.measure, plan?.link, propertiesPanelOpen]);
 
   // The Line popover's dismiss rules (outside press, Escape) are the app's.
   // KAL-66: opened from a keyboard, focus goes into it and Up / Down move
@@ -625,6 +626,28 @@ export default function SelectionQuickBar({
         >
           <Icon name="measureScale" size={20} color="currentColor" />
         </button>
+      </span>,
+    );
+  }
+  // Hyperlink (Nightly 'link-tool'): "Go to ..." follows the picked link
+  // (a click on it only picks it, as in Drawboard); Link edits it.
+  if (plan?.link && api?.selectedLink) {
+    const goTo = linkGoToLabel(api.selectedLink.link);
+    groups.push(
+      <span key="link" className="selection-quick-bar__group" data-selection-quick-link>
+        <button
+          type="button"
+          className="selection-quick-bar__button selection-quick-bar__button--text"
+          aria-label={goTo}
+          {...chromeTip(goTo, tipSide)}
+          data-selection-quick-goto=""
+          onMouseDown={(event) => event.stopPropagation()}
+          onClick={() => api.followLink(api.selectedLink.link)}
+          style={{ width: 'auto', padding: '0 8px', fontSize: 12, whiteSpace: 'nowrap', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}
+        >
+          {goTo}
+        </button>
+        {plan.linkEdit && button('Link', 'hyperlink', () => api.editSelectedLink(), { 'data-selection-quick-link-edit': '' })}
       </span>,
     );
   }

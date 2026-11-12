@@ -29,7 +29,7 @@ test('every counter size control accepts presets through 76 without widening oth
     /max=\{tool === 'counter' \? COUNTER_SIZE_MAX : tool === 'tape' \? 100 : 50\}/,
   );
   const counterAwareMaxes = viewerSource.match(
-    /const maxWidth = isCounterSize \? COUNTER_SIZE_MAX : \(pickBarTool === 'tape' \? 100 : 50\);/g,
+    /const maxWidth = isCounterSize \? COUNTER_SIZE_MAX : \(\(pickBarTool === 'tape' \|\| isTapeMark\(getSelectedShapeMeta\(\)\.annotation\)\) \? 100 : 50\);/g,
   ) || [];
   assert.equal(counterAwareMaxes.length, 2);
   assert.match(
