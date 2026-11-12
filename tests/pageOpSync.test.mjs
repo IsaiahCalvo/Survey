@@ -255,10 +255,14 @@ test('the viewer keeps noting marks until the new pages load, and a reload waits
   const reload = src.slice(src.indexOf('const reload = (since) => {'), src.indexOf('const unsubscribe = subscribeDocumentMeta(PDF_FILE_VERSION_META_KEY'));
   assert.ok(reload.includes('sync.reframe = { sha: latest.contentSha256, keys: latestKeys };'));
   assert.ok(!reload.includes('sync.frame = null'), 'the frame keeps recording while the old pages are up');
-  assert.ok(src.includes('if (!target || pdfFile?.contentSha256 !== target.sha) return;'));
-  assert.ok(src.includes('const { taken: frame, rest } = splitFramePageChanges(sync.frame, target.keys);'));
+    assert.ok(src.includes('const { taken: frame, rest } = splitFramePageChanges(sync.frame, target.keys);'));
   // An unblock while the reload waits for a pointer keeps the frame too.
   assert.ok(src.includes('const loadingKeys = sync.reframe?.keys || (timer ? latestKeys : null);'));
+  // The marks move only once the document opened from the newest bytes is on
+  // screen, and a move that fails leaves later runs no marks to move.
+  assert.ok(src.includes("pageOpSyncRef.current.docSha = { doc: pdf, sha: pdfFile?.contentSha256 || null };"));
+  assert.ok(src.includes('if (!target || shown?.doc !== pdfDoc || shown.sha !== target.sha) return;'));
+  assert.ok(/catch \(err\) \{\s*forgetNotedMarks\(\);/.test(src));
 });
 
 test('stamps from an older client without a run name count once per run', async () => {

@@ -22417,9 +22417,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     const sync = pageOpSyncRef.current;
     if (!pdfDoc || pdfDoc === sync.docBeforeReload) return;
     sync.remote = remotePdfLoaded(sync.remote, pdfFile?.contentSha256);
-    // Older bytes than the newest reload asked for: wait for those.
+    // Older bytes than the newest reload asked for: wait for those. The
+    // document on screen must be the one opened from them, not an earlier
+    // one still up while they load.
     const target = sync.reframe;
-    if (!target || pdfFile?.contentSha256 !== target.sha) return;
+    const shown = sync.docSha;
+    if (!target || shown?.doc !== pdfDoc || shown.sha !== target.sha) return;
     sync.reframe = null;
     // Runs stamped after this reload began stay in the frame for the next
     // load, with the marks (now moved onto these pages) still noted.
@@ -22430,15 +22433,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     if (frame) dropHistoryAfterPageChange();
     const ops = framePageChanges(frame);
     if (!frame?.made?.size || !ops?.length) return;
+    // Marks these runs could not move must not be moved by later runs alone.
+    const forgetNotedMarks = () => { if (sync.frame) sync.frame = { ...sync.frame, made: new Set() }; };
     try {
       const byPage = annotationsByPageRef.current || {};
       const changed = reframeMarks(byPage, frame.made, ops, transformPageState);
       const save = handleSaveAnnotationsRef.current;
-      if (!changed || typeof save !== 'function') return;
+      if (!changed) return;
+      if (typeof save !== 'function') { forgetNotedMarks(); return; }
       for (const [page, objects] of Object.entries(changed)) {
         save(Number(page), { ...(byPage[page] || {}), objects }, { source: 'page-op-sync:reframe', checkpointPolicy: 'skip' });
       }
     } catch (err) {
+      forgetNotedMarks();
       console.warn('[page-op-sync] could not move marks drawn on the old pages:', err?.message || err);
     }
   }, [pdfDoc, pdfFile, dropHistoryAfterPageChange]);
@@ -25590,6 +25597,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           await destroyPdfDocument(pdf);
           return;
         }
+        // Page sync (pageOpSync.js) moves marks only once the document from
+        // the newest bytes is the one on screen.
+        if (pageOpSyncRef.current) pageOpSyncRef.current.docSha = { doc: pdf, sha: pdfFile?.contentSha256 || null };
         setPdfDoc(pdf);
         setNumPages(pdf.numPages);
         setPageNum(1);
