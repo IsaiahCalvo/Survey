@@ -35,6 +35,9 @@ const ALLOWED = {
   // Review status / owner (beta 'document-review'): the phone branch keeps
   // the browser's wheel; desktop uses ValueSelect.
   'src/home/DocumentReviewBits.jsx': 1,
+  // Sheet register Edit details (beta 'sheet-register'): the phone branch
+  // keeps the browser's wheel for Discipline.
+  'src/home/SheetRegisterBits.jsx': 1,
   // Admin-only page.
   'src/home/KitsAdminPage.jsx': 1,
   // Company roles picker (beta 'company-admin'): the coarse-pointer branch
