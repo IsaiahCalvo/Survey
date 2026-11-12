@@ -2,6 +2,8 @@
 .counter-series-menu__row { padding: 5px 8px 8px; border-bottom: 1px solid var(--border); }
 .counter-series-menu button { border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; border-radius: 5px; min-height: 36px; }
 .counter-series-menu button:hover { background: var(--hover); }
+/* The current count keeps its raised surface under the pointer. */
+.counter-series-menu button.counter-series-menu__continue.is-active:hover { background: var(--surface-3); }
 .counter-series-menu button:focus-visible, .counter-series-menu input:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .counter-series-menu__continue { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 12px; padding: 5px 8px; text-align: left; }
 .counter-series-menu__continue > span { overflow-wrap: anywhere; min-width: 0; }
@@ -129,8 +131,10 @@
   background: var(--border);
   pointer-events: none;
 }
-/* Quick colours, then a line, then the grid. */
-.counter-list__colors [data-picker-presets] { padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+/* Quick colours (and Recent), then a line, then the grid. The line sits on
+   top of the grid so it stays under the last disc row whether or not a
+   Recent row shows. */
+.counter-list__colors [data-picker-area='grid'] { padding-top: 8px; border-top: 1px solid var(--border); }
 .counter-list__colors-loading { height: 200px; }
 .counter-list__start { display: flex; align-items: center; gap: 6px; margin: 0 0 8px; color: var(--text-3); font-size: 11px; }
 .counter-list__start input {

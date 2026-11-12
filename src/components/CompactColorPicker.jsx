@@ -1025,7 +1025,7 @@ const CompactColorPicker = ({
     );
 
     const gridView = (
-        <div style={{
+        <div data-picker-area="grid" style={{
             display: 'grid',
             gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
             gap: '4px',
