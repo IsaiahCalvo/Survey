@@ -103,6 +103,22 @@ test('first round fills the sheet with signed rows; an idle round reads nothing'
   assert.equal((await ctx.round()).status, 'idle');
 });
 
+// A notice past its half hour is only dropped by a planned round: a quiet
+// link (no change on either side) runs one, then goes idle again.
+test('a quiet link still clears a notice past its time from the panel', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
+  await ctx.round(); await ctx.round();
+  assert.equal((await ctx.round()).status, 'idle');
+  // Stamped at the start of 1970: long past its half hour (engine NOTICE_MS).
+  const old = { t: 1, message: 'Row 9: something that happened once.' };
+  ctx.link.state = { ...ctx.link.state, notices: [old], problems: [{ message: old.message }] };
+  const clearing = await ctx.round();
+  assert.equal(clearing.status, 'synced', 'not idle while a notice is past its time');
+  assert.deepEqual(ctx.link.state.notices, []);
+  assert.ok(!ctx.link.state.problems.some((p) => p.message === old.message), 'gone from the panel');
+  assert.equal((await ctx.round()).status, 'idle', 'then quiet again');
+});
+
 test('a field tech answer reaches the sheet; a PM edit reaches the app; both land on one row', async () => {
   const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
   await ctx.round(); await ctx.round();

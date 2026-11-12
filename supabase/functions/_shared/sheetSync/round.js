@@ -2,7 +2,7 @@
 // the markers (engine.js), write both sides, return what to save on the link.
 // Everything outside is passed in (provider, marker store), so the edge
 // function, node tests and a future scheduled job run the same code.
-import { planSheetRound, appRecordOf, sameCell, SHEET_EDITOR_UNKNOWN } from './engine.js';
+import { planSheetRound, appRecordOf, sameCell, SHEET_EDITOR_UNKNOWN, NOTICE_MS } from './engine.js';
 import { assertProvider } from './providers/contract.js';
 import { applyClashes } from './concurrent.js';
 
@@ -262,7 +262,10 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
   const state = { ...(link.state || {}) };
   const pendingChoices = Object.keys(state.choices || {}).length > 0;
   const newScopes = layout.scopes.filter((s) => state.sheetIds?.[s.scopeId] == null);
-  if (!force && !Object.keys(clashes).length && !pendingChoices && !newScopes.length && version && version === link.remote_version && appHash === link.app_hash) {
+  // A notice past its time (engine NOTICE_MS) is only dropped by a planned
+  // round, so a quiet link runs one to clear it from the panel.
+  const noticeDue = (Array.isArray(state.notices) ? state.notices : []).some((n) => now.getTime() - Number(n?.t) >= NOTICE_MS);
+  if (!force && !noticeDue && !Object.keys(clashes).length && !pendingChoices && !newScopes.length && version && version === link.remote_version && appHash === link.app_hash) {
     return { status: 'idle' };
   }
 
