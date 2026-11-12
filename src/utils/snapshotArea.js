@@ -70,3 +70,10 @@ export function boxToPixels(box, width, height) {
   const bottom = Math.max(top + 1, Math.min(height, Math.ceil((box.y + box.h) * height)));
   return { sx: left, sy: top, sw: right - left, sh: bottom - top };
 }
+
+/** The box a drag makes at point `at` (page fractions): a new box, or the old one moved / resized. */
+export function dragBox(drag, at) {
+  if (!drag || !at) return null;
+  if (drag.mode === 'new') return boxFromCorners(drag.start, at);
+  return drag.from ? moveBoxEdge(drag.from, drag.mode, at.x - drag.start.x, at.y - drag.start.y) : null;
+}

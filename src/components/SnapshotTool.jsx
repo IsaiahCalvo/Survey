@@ -9,10 +9,9 @@ import { createPortal } from 'react-dom';
 import { composeThumbnail, releaseCanvas, renderPageToCanvas } from '../services/thumbnailRender.js';
 import {
   SNAPSHOT_HANDLES,
-  boxFromCorners,
   boxToPixels,
+  dragBox,
   isBigEnough,
-  moveBoxEdge,
   renderTargetPx,
 } from '../utils/snapshotArea.js';
 import { showToast } from '../utils/toast.js';
@@ -125,11 +124,7 @@ export default function SnapshotTool({ active, wrapperRef, pdfDoc, getMarkup }) 
       if (!drag || event.pointerId !== drag.id) return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      const at = pointIn(drag.pageDiv, event);
-      const box = drag.mode === 'new'
-        ? boxFromCorners(drag.start, at)
-        : moveBoxEdge(drag.from, drag.mode, at.x - drag.start.x, at.y - drag.start.y);
-      setSnap({ page: drag.page, box, live: true });
+      setSnap({ page: drag.page, box: dragBox(drag, pointIn(drag.pageDiv, event)), live: true });
     };
     const onUp = (event) => {
       const drag = dragRef.current;
@@ -137,15 +132,17 @@ export default function SnapshotTool({ active, wrapperRef, pdfDoc, getMarkup }) 
       dragRef.current = null;
       event.preventDefault();
       event.stopImmediatePropagation();
-      const current = snapRef.current;
-      const { r } = pointIn(drag.pageDiv, event);
-      if (!current || current.page !== drag.page || !isBigEnough(current.box, r.width, r.height)) {
+      // The box from this release itself: the state the last move set may
+      // not have rendered yet (a fast drag, or a click), so it is not read.
+      const at = pointIn(drag.pageDiv, event);
+      const box = dragBox(drag, at);
+      if (!box || !isBigEnough(box, at.r.width, at.r.height)) {
         // A click: no box (a click on the box itself keeps it).
         setSnap(drag.mode === 'new' ? null : (drag.from ? { page: drag.page, box: drag.from } : null));
         return;
       }
-      setSnap({ page: drag.page, box: current.box });
-      copy(drag.page, current.box);
+      setSnap({ page: drag.page, box });
+      copy(drag.page, box);
     };
     const onCancel = (event) => {
       const drag = dragRef.current;
