@@ -131,6 +131,9 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Version history: a new version keeps the old ones, with old-over-new compare',
     stage: 'rollout',
   }),
+  // Drawboard Projects parity DL-28 / RV-22 (2026-11-12): delete one version
+  // from the Versions list (Undo toast); the one before becomes current.
+  'version-delete': Object.freeze({ label: 'Delete one version: take a single version out of the Versions list, with Undo', stage: 'beta' }),
   'mark-library': Object.freeze({
     label: 'Mark library: save marks to a personal or project library and drop them on any page',
     stage: 'beta',
