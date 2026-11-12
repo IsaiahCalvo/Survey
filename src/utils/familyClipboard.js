@@ -23,6 +23,7 @@ import { getAnnotationBBox } from './svgBoundingBox.js';
 import { translateAnnotationForMove } from './annotationFamilyRules.js';
 import { mintPastedCloneIdentity } from './pasteCloneIdentity.js';
 import { applyPasteScope } from './annotationCreationCommit.js';
+import { remapPastedGroupIds, stripGroupId } from './annotationGroups.js';
 import {
   buildFamilyStack,
   buildPastedSurveyMarker,
@@ -83,6 +84,9 @@ const isCalloutObject = (object) => object?.data?.type === 'callout';
 export function makePastedMarkOwn(object, authorId) {
   if (!object || typeof object !== 'object') return object;
   stripUserLock(object);
+  // A mark pasted on its own (or by the plain multi-mark paste) is not in
+  // its source's group: a click on the original must not pick the copy.
+  stripGroupId(object);
   if (authorId) stampAuthor(object, authorId);
   return object;
 }
@@ -332,6 +336,9 @@ export function planFamilyPaste(clipboard, {
       pasted.push({ kind: 'marker', id });
     }
   }
+  // Grouped marks copied together stay grouped with each other, in a group
+  // of their own (Nightly 'group-marks'; annotationGroups.js).
+  remapPastedGroupIds(newMarks, newCallouts);
   return {
     objects: [...(Array.isArray(objects) ? objects : []), ...newMarks],
     newMarkIds: newMarks.map((object) => markIdOf(object)),

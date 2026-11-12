@@ -63,6 +63,7 @@ import { resolveMenuTargets, sameMenuTargets, stampMenuTargetIds } from '../util
 import { pageHasTransform } from '../utils/disabledActions.js';
 import { PICK_ANY_TOOLS } from '../utils/selectModes.js';
 import { isFeatureOn } from '../featureFlags.js';
+import { getAnnotationGroupId, getCalloutGroupId } from '../utils/annotationGroups.js';
 import { requestArrangeSelection } from '../utils/alignMarks.js';
 import { contextMenuInputOf, isTouchMenuInput } from '../utils/touchLongPress.js';
 import { PageMenuList } from '../sidebar/PageActionsMenu.jsx';
@@ -207,7 +208,7 @@ export function useAnnotationContextMenu({ getPageObjects = null } = {}) {
 // targets (touchTargets.css + annotationContextMenu.css).
 // Design review 2026-10-27: the rows under the icon row carry an icon too,
 // like every other action menu (components/MenuRows.jsx picks by label).
-const MARK_ROW_ICONS = { arrange: 'layers', moveToLayer: 'layers', align: 'alignLeft', lock: 'lock', unlock: 'lock', saveToLibrary: 'library' };
+const MARK_ROW_ICONS = { group: 'selectGroup', ungroup: 'selectGroup', arrange: 'layers', moveToLayer: 'layers', align: 'alignLeft', lock: 'lock', unlock: 'lock', saveToLibrary: 'library' };
 const markRowIcon = (it) => MARK_ROW_ICONS[it.key] || menuIconFor(it.label);
 const MENU_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter'];
 
@@ -511,6 +512,11 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     // layerId) and the document's layer list ({ layers, pdfOpacity }).
     moveSelectionToLayer = null,
     layerState = null,
+    // Nightly 'group-marks' (Drawboard PDF Pro, row B13): PDFViewer's
+    // handleGroupSelected(pageNumber, indices, calloutIds) and
+    // handleUngroupSelected(...). Optional: without them no Group rows.
+    groupSelection = null,
+    ungroupSelection = null,
     // Owner ruling 2026-09-28 — Lock / Unlock on every object menu:
     // toggleLockSelection(pageNumber, { indices, calloutIds, markerIds }, lock)
     // and a Survey Marker record lookup by id.
@@ -552,6 +558,26 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     return allLocked
       ? { label: 'Unlock', key: 'unlock', lock: false, enabled, selection }
       : { label: 'Lock', key: 'lock', lock: true, enabled, selection };
+  };
+
+  // Nightly 'group-marks' (Drawboard PDF Pro push 2026-11-12, row B13). A
+  // group is a set of marks / callouts on one page sharing a group id
+  // (utils/annotationGroups.js); a click on any member picks them all
+  // (useSVGInteraction). Drawboard: Group is greyed for one mark, a pick of
+  // two or more offers Group, and a picked group offers Ungroup instead.
+  // Survey Markers are survey rows, not drawing, so a pick holding one is
+  // not grouped. `objs` are the members' page objects (callouts as their
+  // projected objects); `indices` the ordinary marks' page indexes.
+  const groupMarksOn = isFeatureOn('group-marks')
+    && typeof groupSelection === 'function' && typeof ungroupSelection === 'function';
+  const groupIdOfObject = (obj) => (obj?.data?.type === 'callout'
+    ? getCalloutGroupId(obj?.data?.legacyCallout)
+    : getAnnotationGroupId(obj));
+  const groupState = (objs, hasMarkers = false) => {
+    const list = (objs || []).filter(Boolean);
+    const ids = list.map(groupIdOfObject);
+    const oneGroup = !hasMarkers && list.length >= 2 && ids.every((id) => id && id === ids[0]);
+    return { oneGroup, anyGrouped: ids.some(Boolean), canGroup: !hasMarkers && list.length >= 2 };
   };
 
   return createPortal((() => {
@@ -705,6 +731,18 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
       }, spec.enabled)];
     };
 
+    // Group / Ungroup rows (Nightly 'group-marks'); see groupState above.
+    const groupMenuItems = (objs, { indices = [], calloutIds = [], hasMarkers = false } = {}) => {
+      if (!groupMarksOn) return [];
+      const state = groupState(objs, hasMarkers);
+      const run = (fn) => () => fn(ctx.pageNumber, indices, calloutIds);
+      if (state.oneGroup) return [item('Ungroup', 'ungroup', run(ungroupSelection))];
+      return [
+        item('Group', 'group', run(groupSelection), state.canGroup),
+        ...(state.anyGrouped ? [item('Ungroup', 'ungroup', run(ungroupSelection))] : []),
+      ];
+    };
+
     let items;
     if (ctx.kind === 'textMarkup') {
       items = [
@@ -719,10 +757,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         }),
       ];
     } else if (ctx.kind === 'callout') {
-      // UX: 2026-04-21 — Group / Ungroup items intentionally omitted
-      // from the right-click menu. The feature is hidden app-wide until
-      // the matrix-per-shape rewrite ships. Handlers above
-      // (handleGroupSelected / handleUngroupSelected) stay intact.
+      // Group / Ungroup rows come from groupMenuItems (Nightly 'group-marks').
       //
       // UX: 2026-07-17 — callout menu parity with the shape menu, audited
       // item by item. Cut / Copy / Paste / Delete are 1:1 with the shape
@@ -796,6 +831,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
             window.__onDeleteSelectedCallouts([ctx.calloutId]);
           }
         }, calloutEditable),
+        ...groupMenuItems([calloutObj], { calloutIds: [ctx.calloutId] }),
         ...lockMenuItems(calloutObj ? [{ obj: calloutObj }] : [], { calloutIds: [ctx.calloutId] }),
         sep(),
         // w52: same z-order block as the shape menu, same handler.
@@ -922,6 +958,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           // Direct fallback (planner absent or id-less mark).
           runDelete();
         }, menuObjEditable),
+        ...groupMenuItems([menuObj], { indices: [ctx.annotationIndex] }),
         ...lockMenuItems(menuObj ? [{ obj: menuObj }] : [], { indices: [ctx.annotationIndex] }),
         // measure-plus (Drawboard's right-click): a dimension line's leader
         // goes back to the default offset, in one undo step.
@@ -981,9 +1018,6 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         item('Send to back', 'sendToBack', () => {
           handleReorderAnnotation(ctx.pageNumber, ctx.annotationIndex, 'back');
         }, menuZ.back),
-        // UX: 2026-04-21 — Group / Ungroup items intentionally omitted
-        // from the right-click menu. The feature is hidden app-wide
-        // until the matrix-per-shape rewrite ships.
       ];
     } else if (ctx.kind === 'surveyMarker' && ctx.surveyMarkerId) {
       // UX: w53 (2026-09-28, owner: "annotations are annotations") — the
@@ -1125,6 +1159,16 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         })),
       ].filter((m) => m.obj);
       const groupHasEditable = groupMembers.length === 0 || groupMembers.some((m) => !isUserLocked(m.obj));
+      // Nightly 'group-marks': the drawing members (ordinary marks by page
+      // index, callouts by id) and whether the pick is exactly one group.
+      const groupDrawn = groupMembers.filter((m) => !m.marker).map((m) => m.obj);
+      const groupHasMarkers = familySelection.markerIds.length > 0;
+      const pickedGroupState = groupState(groupDrawn, groupHasMarkers);
+      const groupRows = groupMenuItems(groupDrawn, {
+        indices: sortedAsc.filter((idx) => groupPage?.objects?.[idx]?.data?.type !== 'callout'),
+        calloutIds: familySelection.calloutIds,
+        hasMarkers: groupHasMarkers,
+      });
       items = [
         item('Cut', 'cut', () => {
           if (typeof copyFamilySelection === 'function') {
@@ -1247,12 +1291,16 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           runDelete();
           deleteSelectedCallouts();
         }, groupHasEditable),
+        ...groupRows,
         ...lockMenuItems(groupMembers, familySelection),
         // Nightly 'align-marks' (Drawboard PDF Pro audit 2026-11-09): line the
         // picked marks up, or space them evenly. The page's layer moves them
         // (one Undo step); spacing needs three or more.
         ...(isFeatureOn('align-marks') ? (() => {
-          const movable = groupMembers.filter((m) => !isUserLocked(m.obj)).length;
+          // A picked group counts as one mark (Drawboard greys Align for it).
+          const movable = groupMarksOn && pickedGroupState.oneGroup
+            ? 1
+            : groupMembers.filter((m) => !isUserLocked(m.obj)).length;
           const align = (mode, label) => item(label, `align${mode[0].toUpperCase()}${mode.slice(1)}`,
             () => requestArrangeSelection(ctx.pageNumber, 'align', mode), movable >= 2);
           const spread = (mode, label) => item(label, `distribute${mode[0].toUpperCase()}${mode.slice(1)}`,
@@ -1281,9 +1329,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         item('Send to back', 'sendToBack', () => {
           reorderAll('back');
         }),
-        // UX: 2026-04-21 — Group / Ungroup items intentionally omitted
-        // from the multi-selection right-click menu. The feature is
-        // hidden app-wide until the matrix-per-shape rewrite ships.
+        // Group / Ungroup: see groupRows above (Nightly 'group-marks').
       ];
     } else {
       // Empty canvas / page. Paste (marks) at the press point lives here,

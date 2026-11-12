@@ -38614,6 +38614,9 @@ ${pageBlocks}
         requestBulkDelete: (args) => requestBulkDeleteRef.current?.(args),
         // Owner ruling 2026-09-28: Lock / Unlock on every object menu.
         toggleLockSelection: handleToggleMarkLock,
+        // Nightly 'group-marks': Group / Ungroup (the menu checks the flag).
+        groupSelection: handleGroupSelected,
+        ungroupSelection: handleUngroupSelected,
         // Layers beta: Move to layer ▸.
         moveSelectionToLayer: layersEnabled ? handleMoveMarksToLayer : null,
         layerState: layersEnabled ? layerState : null,
