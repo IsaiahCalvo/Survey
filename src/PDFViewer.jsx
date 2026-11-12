@@ -421,7 +421,7 @@ import { chooseCloudPdfOpenPath, shouldRetryStreamedOpenWithDownload, tryOpenClo
 import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox } from './utils/svgBoundingBox.js';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
 import { usePageOperations } from './hooks/usePageOperations.js';
-import { IDLE_REMOTE_PDF_STATE, PAGE_OP_BLOCKED_MESSAGE, PAGE_OP_SYNC_FLAG, clearedPdfVersion, isPageOpBlocked, newPdfVersionToken, framePageChanges, noteFramePageChanges, operationRewritesPdf, pendingPdfVersion, reframeMarks, remotePdfLoaded, remotePdfVersionStep, savedPdfVersion, splitFramePageChanges, stampableOperation } from './utils/pageOpSync.js';
+import { IDLE_REMOTE_PDF_STATE, PAGE_OP_BLOCKED_MESSAGE, PAGE_OP_SYNC_FLAG, clearedPdfVersion, isPageOpBlocked, newPdfVersionToken, framePageChanges, noteFramePageChanges, operationRewritesPdf, pendingPdfVersion, reframeMarks, remotePdfLoaded, remotePdfVersionStep, savedPdfVersion, splitFramePageChanges, notedMarksOnPages, stampableOperation } from './utils/pageOpSync.js';
 import { usePageViewDocument } from './hooks/usePageViewDocument.js';
 import { getPageViewBase } from './utils/pageViewDocument.js';
 import { destroyPdfDocument, pdfOrDestroy } from './utils/destroyPdfDocument.js';
@@ -22437,6 +22437,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     const forgetNotedMarks = () => { if (sync.frame) sync.frame = { ...sync.frame, made: new Set() }; };
     try {
       const byPage = annotationsByPageRef.current || {};
+      // A noted mark not on these pages missed these runs (no-op included):
+      // later runs alone must not move it if it turns up.
+      const found = notedMarksOnPages(byPage, frame.made);
+      if (sync.frame && found.size < frame.made.size) {
+        sync.frame = { ...sync.frame, made: new Set([...(sync.frame.made || [])].filter((id) => found.has(id) || !frame.made.has(id))) };
+      }
       const changed = reframeMarks(byPage, frame.made, ops, transformPageState);
       const save = handleSaveAnnotationsRef.current;
       if (!changed) return;
