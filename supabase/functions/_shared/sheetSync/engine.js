@@ -650,6 +650,15 @@ export async function planSheetRound({
       return n;
     };
     const hasOwnData = (row) => row.some((c, i) => !mappedCols.has(i) && !isBlankCell(c));
+    // A deleted item's kept row: what it holds (Row ID aside), to notice the
+    // PM still changing it, and the panel's note saying why it stays.
+    const keptRowPrint = (row) => cyrb53(row.map((c, i) => (i === rowIdCol ? '' : cellText(c))).join('\u0001').replace(/\u0001+$/, ''));
+    const keptRowNotice = (markerId, row, r) => {
+      const name = colOfKey.has('item') ? cellText(row[colOfKey.get('item')]).trim() : '';
+      // One note a row, however its number or name has changed since.
+      next.notices = next.notices.filter((n) => !(n.markerId === markerId && /its row was kept because/.test(n.message)));
+      notice({ markerId, scopeId: scope.scopeId, message: `${where(r)}: "${name || 'An item'}" was deleted in Survey, but its row was kept because it has changes made in the sheet. Delete the row if it should go.` });
+    };
     // A new name in the Item cell of the row Survey appended for markerId,
     // within the new-row window (NEW_ROW_TAKEOVER_MS) and not split yet: the
     // keys the PM typed there (cells unlike what Survey wrote), else null.
@@ -748,7 +757,17 @@ export async function planSheetRound({
       }
       const tomb = markerId ? next.tombstones[markerId] : null;
       if (tomb && (typeof tomb !== 'object' || tomb.scopeId === scope.scopeId)) {
-        if (!marker) continue; // deleted in the app, row kept on purpose
+        if (!marker) {
+          // Deleted in the app, row kept on purpose. The PM still typing in
+          // it starts the kept-row note's half hour again (nothing of it
+          // reaches Survey, and the panel says why).
+          const print = keptRowPrint(row);
+          if (typeof tomb === 'object' && tomb.print !== print) {
+            next.tombstones[markerId] = { ...tomb, print };
+            if (tomb.print) keptRowNotice(markerId, row, r);
+          }
+          continue;
+        }
         if (!inThisScope(marker)) {
           next.problems.push({ markerId, scopeId: scope.scopeId, message: `${where(r)}: "${marker.name || 'An item'}" moved to another category in Survey. This row was kept because it had changes made in the sheet; copy them across and delete the row.` });
           continue;
@@ -773,9 +792,8 @@ export async function planSheetRound({
         if (base) {
           if ((await sheetChanges(row, base.fields)) > 0 || hasOwnData(row)) {
             // Baseline kept, so an undo of the delete picks the row up again.
-            next.tombstones[markerId] = { at: nowIso, scopeId: scope.scopeId };
-            const name = colOfKey.has('item') ? cellText(row[colOfKey.get('item')]).trim() : '';
-            notice({ markerId, scopeId: scope.scopeId, message: `${where(r)}: "${name || 'An item'}" was deleted in Survey, but its row was kept because it has changes made in the sheet. Delete the row if it should go.` });
+            next.tombstones[markerId] = { at: nowIso, scopeId: scope.scopeId, print: keptRowPrint(row) };
+            keptRowNotice(markerId, row, r);
           } else {
             plan.deletes.push({ sheetId: sheet.sheetId, title: sheet.title, row: r, token, rowIdCol, listCols, ownCols });
             plan.summary.deleted += 1;
