@@ -109,11 +109,9 @@ export async function removeDocumentVersion(client, documentId) {
 
 /** Undo: put the version back where the receipt says it was. */
 export async function restoreDocumentVersion(client, receipt) {
-  const { error } = await client.rpc(RESTORE_DOCUMENT_VERSION_RPC, {
-    p_document_id: receipt.documentId,
-    p_previous: receipt.previous,
-    p_next: receipt.next,
-  });
+  // The server puts back what it recorded at the delete; the receipt's chain
+  // ids are only for this screen.
+  const { error } = await client.rpc(RESTORE_DOCUMENT_VERSION_RPC, { p_document_id: receipt.documentId });
   if (error) {
     const err = new Error(versionDeleteErrorText(error));
     err.code = error.code;
@@ -132,9 +130,10 @@ export function versionDeletedText(versions, receipt) {
 }
 
 /**
- * Where each copy points after a delete or its Undo, from the changed-event
- * detail: { [documentId]: supersededBy | null }. An open tab keeps the
- * superseded_by its file was opened with, so the shell reads these first.
+ * Where each copy points after a version change, from the changed-event
+ * detail: { [documentId]: supersededBy | null }. A delete, its Undo and an
+ * upload as a new version all say. An open tab keeps the superseded_by its
+ * file was opened with, so the shell reads these first.
  */
 export function chainLinksAfter(detail) {
   const links = {};
@@ -143,19 +142,36 @@ export function chainLinksAfter(detail) {
   if (removed?.documentId) {
     for (const id of removed.previous || []) links[id] = removed.next || null;
     links[removed.documentId] = null;
-  }
-  if (restored?.documentId) {
+  } else if (restored?.documentId) {
     for (const id of restored.previous || []) links[id] = restored.documentId;
     links[restored.documentId] = restored.next || null;
+  } else if (detail?.oldDocumentId && detail?.newDocumentId && detail.oldDocumentId !== detail.newDocumentId) {
+    links[detail.oldDocumentId] = detail.newDocumentId;
+    links[detail.newDocumentId] = null;
   }
   return links;
 }
 
+/**
+ * The shell's record of which open copies a newer one replaced: the latest
+ * word wins, whether it came from a version change or a fresh versions list.
+ * Returns `chain` unchanged when nothing differs.
+ */
+export function withChainLinks(chain, links) {
+  let next = chain;
+  for (const [id, supersededBy] of Object.entries(links || {})) {
+    const value = Boolean(supersededBy);
+    if (next[id] === value) continue;
+    if (next === chain) next = { ...chain };
+    next[id] = value;
+  }
+  return next;
+}
+
 /** A newer copy replaced this file: read-only with the older-version bar. */
-export function isFileSuperseded(file, supersededIds, links) {
+export function isFileSuperseded(file, chain) {
   const id = file?.id;
   if (!id) return false;
-  if (supersededIds?.has?.(id)) return true;
-  if (links && Object.prototype.hasOwnProperty.call(links, id)) return Boolean(links[id]);
+  if (chain && Object.prototype.hasOwnProperty.call(chain, id)) return chain[id] === true;
   return Boolean(file.superseded_by);
 }

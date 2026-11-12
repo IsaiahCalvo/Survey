@@ -134,15 +134,12 @@ for (const [i, layout] of LAYOUTS.entries()) {
         if (i === 0) {
           // Straight calls, as the functions ship with the flag off: an
           // upload in flight can't make the deleted copy a version again, and
-          // Undo can't reach a file the caller can't edit.
+          // nobody else can Undo the delete.
           const late = await addCopy(admin, user.id, name, `VD late ${i}`);
           extra.push(late);
           expect((await api.rpc('supersede_document', { p_old_document_id: v3, p_new_document_id: late })).error?.message).toContain('Only current documents');
-          const { data: { user: other } } = await stranger.auth.getUser();
-          const foreign = await addCopy(admin, other.id, `VD foreign ${RUN}.pdf`, `VD foreign ${i}`);
-          extra.push(foreign);
-          expect((await api.rpc('restore_document_version', { p_document_id: v3, p_previous: [foreign], p_next: null })).error?.message).toContain('The versions changed since');
-          expect((await row(foreign)).superseded_by).toBeNull();
+          // Undo takes no chain ids, and only the person who deleted it (or its uploader) may.
+          expect((await stranger.rpc('restore_document_version', { p_document_id: v3 })).error?.message).toContain('Document not found');
           expect((await row(v3)).user_archived_at).not.toBeNull();
         }
 

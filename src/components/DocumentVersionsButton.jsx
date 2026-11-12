@@ -25,9 +25,9 @@ function sameVersions(a, b) {
 
 /**
  * Versions of `documentId` (null = feature off or nothing open) and the
- * dialogs' state. `onSuperseded(documentId)` is told whenever a look finds the
- * open copy is no longer the current version, so its read-only mode can
- * outlive this hook's list (it is cleared on every document switch).
+ * dialogs' state. `onSuperseded(documentId, superseded)` is told after every
+ * look whether a newer version replaced the open copy, so its read-only mode
+ * can outlive this hook's list (it is cleared on every document switch).
  */
 export function useDocumentVersions(documentId, onOpenVersion, onSuperseded = null) {
   const onSupersededRef = useRef(onSuperseded);
@@ -47,20 +47,29 @@ export function useDocumentVersions(documentId, onOpenVersion, onSuperseded = nu
     if (!documentId) return undefined;
     let cancelled = false;
     let wasCurrent = null;
-    const load = () => listDocumentVersions(supabase, documentId)
-      .then((list) => {
-        if (cancelled) return;
-        // Someone else uploaded a new version while this copy was open: say
-        // so once; the older-version bar and read-only mode follow from it.
-        const isCurrent = list.find((v) => v.id === documentId)?.isCurrent ?? null;
-        if (wasCurrent === true && isCurrent === false) {
-          showToast('A newer version was uploaded, so this copy is now read-only.', 'info');
-        }
-        if (isCurrent != null) wasCurrent = isCurrent;
-        if (isCurrent === false) onSupersededRef.current?.(documentId);
-        setVersions((prev) => (sameVersions(prev, list) ? prev : list));
-      })
-      .catch((err) => console.warn('[versions] could not list versions', err));
+    // Only the newest look counts: a list asked for before a version change
+    // that answers after it would undo what the change just said.
+    let ask = 0;
+    const load = () => {
+      ask += 1;
+      const mine = ask;
+      return listDocumentVersions(supabase, documentId)
+        .then((list) => {
+          if (cancelled || mine !== ask) return;
+          // Someone else uploaded a new version while this copy was open: say
+          // so once; the older-version bar and read-only mode follow from it.
+          const isCurrent = list.find((v) => v.id === documentId)?.isCurrent ?? null;
+          if (wasCurrent === true && isCurrent === false) {
+            showToast('A newer version was uploaded, so this copy is now read-only.', 'info');
+          }
+          if (isCurrent != null) {
+            wasCurrent = isCurrent;
+            onSupersededRef.current?.(documentId, isCurrent === false);
+          }
+          setVersions((prev) => (sameVersions(prev, list) ? prev : list));
+        })
+        .catch((err) => console.warn('[versions] could not list versions', err));
+    };
     load();
     // Nothing pushes a supersede to other people's open copies, so look again
     // on return to the tab and every 20 s while it is in view.

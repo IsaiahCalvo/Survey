@@ -17,7 +17,7 @@ import CounterSeriesMenu, { counterSeriesMenuWidth } from './components/CounterS
 import PageGridToggle, { PageGridGlyph } from './components/PageGridToggle';
 import DarkPagesToggle, { DarkPagesGlyph } from './components/DarkPagesToggle';
 import DocumentVersionsButton, { DocumentVersionsDialogs, useDocumentVersions } from './components/DocumentVersionsButton.jsx';
-import { DOCUMENT_VERSIONS_CHANGED_EVENT, chainLinksAfter, isFileSuperseded } from './services/documentVersionService.js';
+import { DOCUMENT_VERSIONS_CHANGED_EVENT, chainLinksAfter, isFileSuperseded, withChainLinks } from './services/documentVersionService.js';
 import DriveSyncButton, { DriveSyncDialogs } from './components/DriveSyncButton.jsx';
 import { useDriveSyncBack } from './hooks/useDriveSyncBack.js';
 import OlderVersionBar from './components/OlderVersionBar.jsx';
@@ -2586,33 +2586,22 @@ export default function App({ devPreviewReturnTab = null }) {
     if (!documentId || !item?.id) return;
     requestMarkCommentsFocus({ documentId: String(documentId), markId: item.id, pageNumber: item.pageNumber });
   }, [activeTab?.file?.id]);
-  // Documents found superseded while open: they stay read-only after a
-  // document switch clears the versions list (a tab's file keeps the
-  // superseded_by it was opened with, which a later upload never updates).
-  const [supersededDocIds, setSupersededDocIds] = useState(() => new Set());
-  const markDocSuperseded = useCallback((id) => {
+  // Which open copies a newer one replaced, by document id. A tab's file
+  // keeps the superseded_by it was opened with, which a later upload, a
+  // deleted version or its Undo never update, so this record wins over it and
+  // outlives the versions list (a document switch clears that list). The
+  // latest word wins: a version change or the open copy's fresh list.
+  const [versionChain, setVersionChain] = useState(() => ({}));
+  const markDocSuperseded = useCallback((id, superseded = true) => {
     if (!id) return;
-    setSupersededDocIds((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+    setVersionChain((prev) => withChainLinks(prev, { [id]: superseded }));
   }, []);
   const documentVersions = useDocumentVersions(documentVersionsEnabled ? activeTab?.file?.id || null : null, handleDocumentSelect, markDocSuperseded);
-  // Delete one version (Nightly 'version-delete'): the copy that is current
-  // again after the latest is deleted is no longer read-only, and Undo makes
-  // it read-only again. Open tabs keep the superseded_by they were opened
-  // with, so the new links override it.
-  const [versionChainLinks, setVersionChainLinks] = useState(() => ({}));
-  const fileSuperseded = (file) => isFileSuperseded(file, supersededDocIds, versionChainLinks);
+  const fileSuperseded = (file) => isFileSuperseded(file, versionChain);
   useEffect(() => {
     const onChanged = (e) => {
       const links = chainLinksAfter(e?.detail);
-      if (Object.keys(links).length) setVersionChainLinks((prev) => ({ ...prev, ...links }));
-      const id = e?.detail?.removed?.current;
-      if (!id) return;
-      setSupersededDocIds((prev) => {
-        if (!prev.has(id)) return prev;
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
+      setVersionChain((prev) => withChainLinks(prev, links));
     };
     window.addEventListener(DOCUMENT_VERSIONS_CHANGED_EVENT, onChanged);
     return () => window.removeEventListener(DOCUMENT_VERSIONS_CHANGED_EVENT, onChanged);
