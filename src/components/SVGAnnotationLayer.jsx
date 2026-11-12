@@ -131,6 +131,7 @@ import { GRAB_HANDLE_CURSOR, ROTATE_HANDLE_CURSOR } from '../utils/handleCursors
 // Unified renderer phase 2 — SVG-native creation commit builders (byte-stable
 // twins of the retired FabricDrawingCanvas serialization) + gesture diag.
 import {
+  applyScope,
   buildBoundaryShapeCommitJSON,
   buildFreehandCommitJSON,
   buildLineCommitJSON,
@@ -2935,8 +2936,11 @@ const SVGAnnotationLayerBody = memo(({
         height: Math.abs(end.y - state.start.y),
       };
       if (!(box.width >= LINK_MIN_SIZE && box.height >= LINK_MIN_SIZE)) return;
+      // The Survey module / region scope is read now, at the drag, like
+      // every drawn shape (applyScope); the layer is stamped on save.
+      const scope = { selectedModuleId, stampRegionId, activeRegionId };
       const commit = (mark) => {
-        const json = stampAnnotationCreationIdentity(mark, { authorId: viewerId });
+        const json = stampAnnotationCreationIdentity(applyScope({ ...mark }, scope), { authorId: viewerId });
         const current = annotationsRef.current;
         selectAnnotation(current?.objects?.length || 0);
         onSaveAnnotations(

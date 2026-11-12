@@ -73,7 +73,7 @@ test('typed feet-inches follow Drawboard: marks required, no zero or negatives',
 
 test('a custom scale: paper to real, kept in a sensible scale unit', () => {
   const s = customMeasureScale({ paper: 1, paperUnit: 'in', realText: "8'", display: 'ftin', precision: 8 });
-  assert.deepEqual(s, { ptPerUnit: 9, unit: 'ft', label: '1″ = 8′', display: 'ftin', precision: 8 });
+  assert.deepEqual(s, { ptPerUnit: 9, unit: 'ft', label: '1″ = 8′', display: 'ftin', precision: 8, custom: { paper: '1', paperUnit: 'in', real: "8'" } });
   const m = customMeasureScale({ paper: 10, paperUnit: 'mm', realText: '1', display: 'm', precision: 2 });
   assert.equal(m.unit, 'm');
   assert.ok(Math.abs(m.ptPerUnit - (10 / 25.4) * 72) < 1e-9);
@@ -292,4 +292,27 @@ test('dimension line: the canvas twin paints the same line, chevrons and caption
   // Nothing at the clicked points' own line: every stroke at y = 100 is an extension start.
   const moves = calls.filter((c) => c[0] === 'moveTo');
   assert.ok(moves.some((m) => Math.abs(m[2] - (100 - 15.31)) < 0.01), 'the line sits a leader off the points');
+});
+
+test('a custom scale reopens with its typed row filled, so Apply keeps it', async () => {
+  const m = await import('../src/utils/measure/measureFormat.js');
+  const s = m.customMeasureScale({ paper: '2', paperUnit: 'cm', realText: '2.5', display: 'm', precision: 0.01 });
+  assert.deepEqual(m.customScaleInputs(s), { paper: '2', paperUnit: 'cm', real: '2.5' });
+  // A custom scale saved before the typed row was kept still reopens to an
+  // equal scale.
+  for (const [display, realText] of [['ftin', "8'"], ['ft', '12.5'], ['m', '2.5']]) {
+    const { custom, ...older } = m.customMeasureScale({ paper: '1', paperUnit: 'in', realText, display, precision: display === 'ftin' ? 16 : 0.01 });
+    assert.ok(custom);
+    const row = m.customScaleInputs(older);
+    const again = m.customMeasureScale({ paper: row.paper, paperUnit: row.paperUnit, realText: row.real, display, precision: older.precision });
+    assert.ok(Math.abs(again.ptPerUnit - older.ptPerUnit) < 1e-9, display);
+  }
+  const dialog = readFileSync(new URL('../src/components/MeasureScaleDialog.jsx', import.meta.url), 'utf8');
+  assert.match(dialog, /customScaleInputs\(currentScale\)/);
+});
+
+test('a library drop lands in the scale on screen, default included', () => {
+  const viewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
+  assert.match(viewer, /measureScaleMetaWithDefaultRef\.current = measureScaleMeta;/);
+  assert.match(viewer, /metaScaleForPage\(measureScaleMetaWithDefaultRef\.current, drop\.pageNumber\)/);
 });

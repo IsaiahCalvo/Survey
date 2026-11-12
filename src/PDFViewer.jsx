@@ -3210,6 +3210,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     () => withDefaultMeasureScale(savedMeasureScaleMeta, measureDefaultScale),
     [savedMeasureScaleMeta, measureDefaultScale],
   );
+  // The scales a new mark lands in, default included (a library drop).
+  const measureScaleMetaWithDefaultRef = useRef(measureScaleMeta);
+  measureScaleMetaWithDefaultRef.current = measureScaleMeta;
   const [measureScaleDialog, setMeasureScaleDialog] = useState(null);
   const [measureMenuRect, setMeasureMenuRect] = useState(null);
   useEffect(() => {
@@ -33818,7 +33821,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       pageHeight: height,
       pageNumber: drop.pageNumber,
       landingScale: pageScaleFromObjects(annotationsByPageRef.current?.[drop.pageNumber]?.objects)
-        || metaScaleForPage(measureScaleMetaRef.current, drop.pageNumber) || null,
+        || metaScaleForPage(measureScaleMetaWithDefaultRef.current, drop.pageNumber) || null,
       tokens: {
         authorName: user?.user_metadata?.full_name || '',
         authorEmail: user?.email || '',
