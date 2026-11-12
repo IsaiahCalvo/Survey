@@ -1044,6 +1044,45 @@ test('a whole PM row Excel saved N rows low after Survey\'s insert goes back up 
   assert.equal(await ctx.rowOf(pmItems(ctx)[0].id), typed, 'right under the tech\'s new rows, no gap');
 });
 
+test('a block of rows a PM pasted, saved N rows low after Survey\'s insert, goes back up whole and in order', async () => {
+  const { ctx, t0, typed, item, notes } = await shiftSetup();
+  await ctx.edit([0, 1, 2].flatMap((k) => [{ row: typed + 3 + k, col: item, value: `P-${k}` }, { row: typed + 3 + k, col: notes, value: `paste ${k}` }]));
+  const fix = await ctx.round({ now: new Date(t0 + 30000), force: true });
+  assert.equal(fix.summary.created, 0, 'nothing made while the block moves');
+  const rows = (await ctx.sheet()).rows;
+  assert.deepEqual([0, 1, 2].map((k) => [rows[typed + k][item], rows[typed + k][notes]]), [['P-0', 'paste 0'], ['P-1', 'paste 1'], ['P-2', 'paste 2']]);
+  assert.ok([3, 4, 5].every((k) => !(rows[typed + k] || []).some((c) => String(c ?? '').trim())), 'the rows it left are empty');
+  await ctx.round({ now: new Date(t0 + 35000), force: true });
+  assert.deepEqual(pmItems(ctx).map((m) => [m.name, m.note.text]).sort(), [['P-0', 'paste 0'], ['P-1', 'paste 1'], ['P-2', 'paste 2']]);
+  for (const k of [0, 1, 2]) assert.equal(await ctx.rowOf(pmItems(ctx).find((m) => m.name === `P-${k}`).id), typed + k);
+});
+
+test('a totals line right under a pasted block saved low stays where it is', async () => {
+  const { ctx, t0, typed, item, notes } = await shiftSetup();
+  await ctx.edit([
+    ...[0, 1].flatMap((k) => [{ row: typed + 3 + k, col: item, value: `P-${k}` }, { row: typed + 3 + k, col: notes, value: `paste ${k}` }]),
+    { row: typed + 5, col: item, value: 'Total' }, { row: typed + 5, col: notes, value: '2' },
+  ]);
+  await ctx.round({ now: new Date(t0 + 30000), force: true });
+  const rows = (await ctx.sheet()).rows;
+  assert.deepEqual([0, 1].map((k) => rows[typed + k][item]), ['P-0', 'P-1'], 'the pasted rows went back up');
+  assert.deepEqual([rows[typed + 5][item], rows[typed + 5][notes]], ['Total', '2'], 'the totals line did not move');
+  assert.ok(![2, 3, 4].some((k) => (rows[typed + k] || []).some((c) => String(c ?? '').trim())), 'nothing else written');
+});
+
+test('a pasted block longer than the gap lands on the rows it leaves', async () => {
+  const { ctx, t0, typed, item, notes } = await shiftSetup();
+  await ctx.edit([0, 1, 2, 3, 4].flatMap((k) => [{ row: typed + 3 + k, col: item, value: `P-${k}` }, { row: typed + 3 + k, col: notes, value: `paste ${k}` }]));
+  await ctx.round({ now: new Date(t0 + 30000), force: true });
+  const rows = (await ctx.sheet()).rows;
+  assert.deepEqual([0, 1, 2, 3, 4].map((k) => rows[typed + k][item]), ['P-0', 'P-1', 'P-2', 'P-3', 'P-4']);
+  assert.deepEqual([0, 1, 2, 3, 4].map((k) => rows[typed + k][notes]), ['paste 0', 'paste 1', 'paste 2', 'paste 3', 'paste 4']);
+  assert.ok([5, 6, 7].every((k) => !(rows[typed + k] || []).some((c) => String(c ?? '').trim())));
+  await ctx.round({ now: new Date(t0 + 35000), force: true });
+  assert.equal(pmItems(ctx).length, 5);
+  assert.ok(pmItems(ctx).every((m) => m.note.text === `paste ${m.name.slice(2)}`), 'every name with its own note');
+});
+
 test('a row typed a few rows below the list long after Survey\'s insert is left where it is', async () => {
   const { ctx, t0, typed, item, notes } = await shiftSetup();
   await ctx.edit([{ row: typed, col: notes, value: 'PM note' }, { row: typed + 3, col: item, value: 'D-120' }]);

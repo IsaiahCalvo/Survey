@@ -745,6 +745,9 @@ export async function planSheetRound({
       const tails = sizes.map((_, i) => sizes.slice(i).reduce((a, b) => a + b, 0));
       const offsets = [...new Set([...sizes, ...tails])].filter((n) => n > 0);
       const itemCol = colOfKey.get('item');
+      // A totals line: text in the Row ID column, or an Item that is only a
+      // totals label. Never moved as a PM's new row.
+      const notNewRow = (row) => !!cellText(row[rowIdCol]).trim() || TOTALS_ONLY.test(cellText(row[itemCol]).trim());
       const filledKeys = (row) => scope.columns.filter((c) => c.key !== 'rowId' && colOfKey.has(c.key) && !isBlankCell(row[colOfKey.get(c.key)])).map((c) => c.key);
       for (let o = headerAt + 2; o < rows.length; o += 1) {
         const above = ids.get(o - 1);
@@ -759,18 +762,45 @@ export async function planSheetRound({
         for (const n of offsets) {
           const x = o + n;
           const low = rows[x] || [];
-          if (!ids.has(x) || ids.get(x) || isBlankCell(low[itemCol]) || hasOwnData(low)) continue;
+          if (!ids.has(x) || ids.get(x) || isBlankCell(low[itemCol]) || hasOwnData(low) || notNewRow(low)) continue;
           let between = true;
           for (let k = o + 1; k < x; k += 1) if (ids.has(k)) { between = false; break; }
           if (!between) continue;
           const typedKeys = new Set(filledKeys(typed));
           const lowKeys = filledKeys(low);
           if (lowKeys.some((k) => typedKeys.has(k))) continue;
-          for (const k of lowKeys) {
-            writeCell(o, k, low[colOfKey.get(k)], typed[colOfKey.get(k)] ?? null);
-            writeCell(x, k, '', low[colOfKey.get(k)]);
+          if (typedKeys.size) {
+            for (const k of lowKeys) {
+              writeCell(o, k, low[colOfKey.get(k)], typed[colOfKey.get(k)] ?? null);
+              writeCell(x, k, '', low[colOfKey.get(k)]);
+            }
+            shiftedRows.add(o); shiftedRows.add(x);
+            break;
           }
-          shiftedRows.add(o); shiftedRows.add(x);
+          // A whole row, or a block of new rows right under it (a PM's paste:
+          // real Excel 11-12, 3 rows pasted 10 s after Survey's 3-row insert
+          // all saved 3 low), goes back up as one block, in order. Where the
+          // block is longer than the gap, its lower rows land on rows the
+          // block itself leaves.
+          let len = 1;
+          for (let s2 = x + 1; s2 < rows.length; s2 += 1) {
+            const r2 = rows[s2] || [];
+            if (!ids.has(s2) || ids.get(s2) || isBlankCell(r2[itemCol]) || hasOwnData(r2) || notNewRow(r2)) break;
+            len += 1;
+          }
+          const finalAt = new Map();
+          for (let k = 0; k < len; k += 1) finalAt.set(x + k, null);
+          for (let k = 0; k < len; k += 1) finalAt.set(o + k, rows[x + k] || []);
+          for (const [r2, src] of finalAt) {
+            const cur = rows[r2] || [];
+            for (const k of new Set([...filledKeys(cur), ...(src ? filledKeys(src) : [])])) {
+              const want = src && !isBlankCell(src[colOfKey.get(k)]) ? src[colOfKey.get(k)] : '';
+              const was = cur[colOfKey.get(k)] ?? null;
+              if (cellText(want) === cellText(was ?? '')) continue;
+              writeCell(r2, k, want, was);
+            }
+            shiftedRows.add(r2);
+          }
           break;
         }
       }
