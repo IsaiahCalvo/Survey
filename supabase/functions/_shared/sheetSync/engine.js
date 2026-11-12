@@ -736,7 +736,7 @@ export async function planSheetRound({
     const shiftedRows = new Set();
     const blocks = lateSaves ? next.recentAppends.filter((b) => b.scopeId === scope.scopeId && now.getTime() - Number(b.t) <= rowWindowMs) : [];
     if (blocks.length && colOfKey.has('item')) {
-      const lastOf = new Map(blocks.map((b) => [String(b.last), b]));
+      const lastOf = new Map(blocks.filter((b) => !b.above).map((b) => [String(b.last), b]));
       // Each block's own size, and the sum of the latest blocks back from the
       // newest (real Excel 11-12: inserts of 2 then 1 saved the row 3 low,
       // while the first fill of 6, also in the window, was not counted).
@@ -750,6 +750,9 @@ export async function planSheetRound({
         if (!above || !lastOf.has(String(above.markerId)) || ownRow.get(above.markerId) !== o - 1) continue;
         const typed = rows[o] || [];
         if (ids.get(o) || !isBlankCell(typed[itemCol]) || hasOwnData(typed)) continue; // a Row ID, a name or the PM's own columns: not this
+        // Anything in the Row ID column ("Total" on an Excel table's Total
+        // Row) or a totals label: the PM's totals line, not a typed row.
+        if (cellText(typed[rowIdCol]).trim() || TOTALS_LABEL.test(cellText(typed.find((c) => !isBlankCell(c))).trim())) continue;
         for (const n of offsets) {
           const x = o + n;
           const low = rows[x] || [];
@@ -991,7 +994,12 @@ export async function planSheetRound({
     // inserted above it landed at row 400 (real Excel 11-10).
     const firstSummary = summaryRows.filter((r) => r > lastItemRow && r <= lastItemRow + 3).sort((a, b) => a - b)[0];
     if (appendRows.length && lateSaves) {
-      next.recentAppends = [...next.recentAppends, { scopeId: scope.scopeId, t: now.getTime(), n: appendRows.length, last: appendedIds[appendedIds.length - 1] }].slice(-RECENT_APPENDS_MAX);
+      next.recentAppends = [...next.recentAppends, {
+        scopeId: scope.scopeId, t: now.getTime(), n: appendRows.length, last: appendedIds[appendedIds.length - 1],
+        // Put above the PM's totals line: the row under it is that line,
+        // never a PM's typed row (see shiftedRows).
+        ...(firstSummary != null ? { above: true } : {}),
+      }].slice(-RECENT_APPENDS_MAX);
     }
     if (appendRows.length) {
       plan.appends.push({

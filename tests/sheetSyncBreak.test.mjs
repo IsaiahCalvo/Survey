@@ -1084,3 +1084,29 @@ test('a PM row saved low by the sum of the latest two inserts goes back up', asy
   assert.deepEqual(pmItems(ctx).map((m) => [m.name, m.note.text]), [['PM-1', 'pm note 1']]);
   assert.equal(await ctx.rowOf(pmItems(ctx)[0].id), typed);
 });
+
+// Review (Bugbot): new rows put above an Excel table's Total Row ("Total" in
+// the hidden Row ID column, Item blank) have that line under them. It is
+// never taken for the PM's typed row.
+test('a totals line under rows Survey put above it is never taken for a PM row Excel saved low', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
+  ctx.provider = { ...ctx.provider, savesLate: true };
+  const t0 = Date.parse('2026-11-12T17:00:00Z');
+  await ctx.round({ now: new Date(t0) }); await ctx.round({ now: new Date(t0 + 1000), force: true });
+  const item = await ctx.col('Item'); const notes = await ctx.col('Notes'); const rowId = await ctx.col('Row ID');
+  const totalAt = (await ctx.sheet()).rows.length;
+  await ctx.edit([{ row: totalAt, col: rowId, value: 'Total' }, { row: totalAt, col: notes, value: '1' }]);
+  await ctx.round({ now: new Date(t0 + 2000), force: true });
+  ctx.markers.d2 = door('d2', 'D-102');
+  await ctx.round({ now: new Date(t0 + 5000), force: true });
+  let rows = (await ctx.sheet()).rows;
+  const total = rows.findIndex((r) => r[rowId] === 'Total');
+  assert.equal(rows[total - 1][item], 'D-102', 'the new item went above the totals line');
+  await ctx.edit([{ row: total + 1, col: item, value: 'D-120' }]);
+  await ctx.round({ now: new Date(t0 + 30000), force: true });
+  rows = (await ctx.sheet()).rows;
+  assert.equal(rows[total][rowId], 'Total');
+  assert.ok(!rows[total][item], 'nothing copied onto the totals line');
+  assert.equal(rows[total + 1][item], 'D-120', 'the PM\'s row stays where it is');
+  assert.ok(Object.values(ctx.markers).some((m) => m.name === 'D-120'), 'and comes in');
+});
