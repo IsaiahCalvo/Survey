@@ -779,4 +779,7 @@ test('a choice about a held erase answers only its own blanks, not later ones on
   for (let i = 2; i <= 6; i += 1) assert.equal(camSheet.rows[await ctx.rowOf(`c${i}`, CAMS)][camCol], `cam note ${i}`, `c${i} put back`);
   assert.equal(ctx.link.state.eraseChoice, undefined, 'used once its tabs were looked at');
   assert.equal(ctx.markers.d13.note.text, 'field note 13', 'the PM\'s later blank is still only held');
+  assert.equal((await ctx.sheet()).rows[await ctx.rowOf('d13')][col], '', 'and not written back by the old choice');
+  assert.equal(ctx.link.state.heldErase?.count, 1, 'it is now its own hold, to be asked about');
+  assert.equal(ctx.link.state.heldErase.scopes.length, 1);
 });
