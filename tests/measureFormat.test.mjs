@@ -77,7 +77,7 @@ test('a custom scale: paper to real, kept in a sensible scale unit', () => {
   const m = customMeasureScale({ paper: 10, paperUnit: 'mm', realText: '1', display: 'm', precision: 2 });
   assert.equal(m.unit, 'm');
   assert.ok(Math.abs(m.ptPerUnit - (10 / 25.4) * 72) < 1e-9);
-  assert.equal(m.label, '10 mm = 1.0000 m');
+  assert.equal(m.label, '10 mm = 1 m');
   assert.equal(customMeasureScale({ paper: 1, realText: '8', display: 'ftin' }), null, 'feet-inches needs marks');
   assert.equal(customMeasureScale({ paper: 0, realText: "8'", display: 'ftin' }), null);
   assert.equal(customMeasureScale({ paper: 1, realText: '1e3', display: 'm' }), null);
@@ -550,4 +550,51 @@ test('the Measurement card offers a Scale drop-down and the dialog Apply to exis
   assert.match(dialog, /resetOwn: plusOn && resetOwn/);
   const viewer = read('src/PDFViewer.jsx');
   assert.match(viewer, /applyPageScale\(pageJson, scale, extra, \{ resetOwn: measurePlusOn && resetOwn \}\)/);
+});
+
+test('custom scales are kept on this screen, newest first, no repeats, and can be removed', async () => {
+  const {
+    CUSTOM_SCALES_MAX,
+    addCustomMeasureScale,
+    customMeasureScaleIndex,
+    forgetCustomMeasureScale,
+    loadCustomMeasureScales,
+    rememberCustomMeasureScale,
+    scaleFromPreset: preset,
+  } = await import('../src/utils/measure/measureScale.js');
+  const store = new Map();
+  const storage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)) };
+  const eight = customMeasureScale({ paper: '1', paperUnit: 'in', realText: `8'`, display: 'ftin', precision: 4 });
+  const ten = customMeasureScale({ paper: '2', paperUnit: 'cm', realText: '10', display: 'm', precision: 2 });
+  assert.deepEqual(loadCustomMeasureScales(storage), []);
+  rememberCustomMeasureScale(eight, storage);
+  rememberCustomMeasureScale(ten, storage);
+  rememberCustomMeasureScale(eight, storage);
+  const list = loadCustomMeasureScales(storage);
+  assert.deepEqual(list.map((s) => s.label), [eight.label, ten.label], 'newest first, no repeat');
+  assert.deepEqual(list[0].custom, eight.custom, 'what was typed is kept');
+  assert.equal(customMeasureScaleIndex(list, ten), 1);
+  assert.equal(customMeasureScaleIndex(list, preset('1/4')), -1);
+  assert.deepEqual(addCustomMeasureScale(list, preset('1/4')), list, 'a preset is not a custom scale');
+  forgetCustomMeasureScale(0, storage);
+  assert.deepEqual(loadCustomMeasureScales(storage).map((s) => s.label), [ten.label]);
+  let many = [];
+  for (let i = 1; i <= CUSTOM_SCALES_MAX + 3; i += 1) {
+    many = addCustomMeasureScale(many, customMeasureScale({ paper: '1', paperUnit: 'in', realText: `${i}'`, display: 'ftin', precision: 4 }));
+  }
+  assert.equal(many.length, CUSTOM_SCALES_MAX);
+  const blocked = { getItem: () => { throw new Error('blocked'); }, setItem: () => { throw new Error('blocked'); } };
+  assert.deepEqual(loadCustomMeasureScales(blocked), []);
+  assert.doesNotThrow(() => rememberCustomMeasureScale(eight, blocked));
+});
+
+test('Set page scale lists custom scales with a remove x, and the Measurement card offers them', () => {
+  const dialog = read('src/components/MeasureScaleDialog.jsx');
+  assert.match(dialog, /if \(plusOn && scale\.custom\) rememberCustomMeasureScale\(scale\);/);
+  assert.match(dialog, /data-measure-custom-scale-remove=\{i\}/);
+  assert.match(dialog, /setCustoms\(forgetCustomMeasureScale\(i\)\)/);
+  assert.doesNotMatch(dialog, /\stitle=/, 'tooltips only through useTooltip');
+  const card = read('src/components/MeasureEditPopover.jsx');
+  assert.match(card, /customScales\.map\(\(s, i\) => \(\{ value: `custom:\$\{i\}`, label: s\.label \}\)\)/);
+  assert.match(card, /if \(saved\) onPatch\?\.\(\{ ownScale: \{ \.\.\.saved \} \}\);/);
 });

@@ -901,3 +901,50 @@ export function layoutMeasureLabel(label, unitsPerPx = 1, page = null) {
   const radius = Math.min(height / 2, (fontPx / 2 + MEASURE_LABEL_PAD_Y_PX) * u);
   return { cx, cy, fontSize, width, height, radius, angle: label.angle || 0, lines, lineHeight: lineHeightPx * u };
 }
+
+// Custom scales (measure-plus): Drawboard puts each custom scale you apply
+// under CUSTOM SCALES in every scale list. Kept on this screen like recent
+// scales, newest first, with the typed inputs so the dialog refills them.
+const CUSTOM_SCALES_KEY = 'survey:measure-custom-scales';
+export const CUSTOM_SCALES_MAX = 12;
+
+function cleanCustomScale(scale) {
+  if (!isValidMeasureScale(scale) || !scale.custom) return null;
+  const { ptPerUnit, unit, label, display, precision, custom } = scale;
+  return { ptPerUnit: Number(ptPerUnit), unit, label, display, precision, custom: { ...custom } };
+}
+
+export function addCustomMeasureScale(list, scale) {
+  const clean = cleanCustomScale(scale);
+  const rest = (Array.isArray(list) ? list : []).map(cleanCustomScale).filter(Boolean);
+  if (!clean) return rest;
+  return [clean, ...rest.filter((s) => !(sameScale(s, clean) && s.label === clean.label))].slice(0, CUSTOM_SCALES_MAX);
+}
+
+export function loadCustomMeasureScales(storage = globalThis.localStorage) {
+  try {
+    const list = JSON.parse(storage?.getItem(CUSTOM_SCALES_KEY) || '[]');
+    return Array.isArray(list) ? list.map(cleanCustomScale).filter(Boolean).slice(0, CUSTOM_SCALES_MAX) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCustomMeasureScales(list, storage) {
+  try { storage?.setItem(CUSTOM_SCALES_KEY, JSON.stringify(list)); } catch { /* storage blocked */ }
+  return list;
+}
+
+export function rememberCustomMeasureScale(scale, storage = globalThis.localStorage) {
+  return saveCustomMeasureScales(addCustomMeasureScale(loadCustomMeasureScales(storage), scale), storage);
+}
+
+export function forgetCustomMeasureScale(index, storage = globalThis.localStorage) {
+  return saveCustomMeasureScales(loadCustomMeasureScales(storage).filter((_, i) => i !== index), storage);
+}
+
+/** The index of a custom scale in the list, or -1. */
+export function customMeasureScaleIndex(list, scale) {
+  if (!isValidMeasureScale(scale)) return -1;
+  return (Array.isArray(list) ? list : []).findIndex((s) => sameScale(s, scale) && s.label === scale.label);
+}

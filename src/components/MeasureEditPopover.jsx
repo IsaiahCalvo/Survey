@@ -38,6 +38,8 @@ import {
   MEASURE_PRESETS,
   isOwnScaleMeasure,
   scaleFromPreset,
+  customMeasureScaleIndex,
+  loadCustomMeasureScales,
 } from '../utils/measure/measureScale.js';
 import { defaultMeasurePrecision, displayForScaleUnit } from '../utils/measure/measureFormat.js';
 import ValueSelect from './ValueSelect.jsx';
@@ -91,14 +93,23 @@ export default function MeasureEditPopover({ measure, onPatch, onClose, side = '
   // Its own scale or the page's (measure-plus, Drawboard's per-measure scale).
   const ownScale = plusOn && isOwnScaleMeasure(mark) ? saved.scale : null;
   const ownPreset = ownScale ? MEASURE_PRESETS.find((p) => p.label === ownScale.label) : null;
-  const scaleValue = !ownScale ? 'page' : (ownPreset ? ownPreset.id : 'own');
+  // The custom scales applied on this screen (Set page scale) come after the presets.
+  const [customScales] = useState(() => (plusOn ? loadCustomMeasureScales() : []));
+  const ownCustom = ownScale && !ownPreset ? customMeasureScaleIndex(customScales, ownScale) : -1;
+  const scaleValue = !ownScale ? 'page' : (ownPreset ? ownPreset.id : (ownCustom >= 0 ? `custom:${ownCustom}` : 'own'));
   const scaleOptions = plusOn ? [
     { value: 'page', label: scale?.label ? `Page scale (${scale.label})` : 'Page scale' },
-    ...(ownScale && !ownPreset ? [{ value: 'own', label: ownScale.label || 'Own scale' }] : []),
+    ...(ownScale && !ownPreset && ownCustom < 0 ? [{ value: 'own', label: ownScale.label || 'Own scale' }] : []),
     ...MEASURE_PRESETS.map((p) => ({ value: p.id, label: p.label })),
+    ...customScales.map((s, i) => ({ value: `custom:${i}`, label: s.label })),
   ] : null;
   const pickScale = (value) => {
     if (value === 'page') { onPatch?.({ ownScale: null, pageScale: scale }); return; }
+    if (value.startsWith('custom:')) {
+      const saved = customScales[Number(value.slice(7))];
+      if (saved) onPatch?.({ ownScale: { ...saved } });
+      return;
+    }
     const base = scaleFromPreset(value);
     if (!base) return;
     const display = displayForScaleUnit(base.unit);

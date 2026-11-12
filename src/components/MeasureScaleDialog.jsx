@@ -4,7 +4,11 @@ import { createPortal } from 'react-dom';
 import {
   MEASURE_PRESETS,
   MEASURE_UNITS,
+  customMeasureScaleIndex,
+  forgetCustomMeasureScale,
+  loadCustomMeasureScales,
   loadRecentMeasureScales,
+  rememberCustomMeasureScale,
   scaleFromCalibration,
   scaleFromPreset,
 } from '../utils/measure/measureScale.js';
@@ -81,6 +85,19 @@ export default function MeasureScaleDialog({ pageNumber, pageCount = 1, lengthPt
   // Drawboard's "Apply to existing measurements": also puts measures on
   // their own scale back on this one. Off each time the dialog opens.
   const [resetOwn, setResetOwn] = useState(false);
+  // Drawboard's CUSTOM SCALES: every custom scale applied on this screen.
+  // A chip fills the custom row; its x takes it off the list.
+  const [customs, setCustoms] = useState(() => (plusOn ? loadCustomMeasureScales() : []));
+  const pickCustomScale = (saved) => {
+    const inputs = customScaleInputs(saved);
+    if (!inputs) return;
+    setCustom(true);
+    setPaper(inputs.paper);
+    setPaperUnit(inputs.paperUnit);
+    setCustomReal(inputs.real);
+    setDisplay(saved.display);
+    setPrecision(normalizeMeasurePrecision(saved.display, saved.precision));
+  };
   const pickDisplay = (next) => {
     setDisplay(next);
     if (isFractionalDisplay(next) !== isFractionalDisplay(display)) setPrecision(normalizeMeasurePrecision(next, null));
@@ -96,7 +113,9 @@ export default function MeasureScaleDialog({ pageNumber, pageCount = 1, lengthPt
   useFocusTrap(cardRef, true, { onEscape: onCancel });
   const submit = (e) => {
     e.preventDefault();
-    if (scale) onApply(scale, { allPages: allPages && pageCount > 1, setDefault: plusOn && setDefault, resetOwn: plusOn && resetOwn });
+    if (!scale) return;
+    if (plusOn && scale.custom) rememberCustomMeasureScale(scale);
+    onApply(scale, { allPages: allPages && pageCount > 1, setDefault: plusOn && setDefault, resetOwn: plusOn && resetOwn });
   };
   const chip = (id, label, active, onPick, marker) => (
     <button
@@ -175,6 +194,28 @@ export default function MeasureScaleDialog({ pageNumber, pageCount = 1, lengthPt
                     <div className="measure-scale__chips measure-scale__chips--units" role="radiogroup" onKeyDown={moveGroupFocus} aria-label="Scale kind" data-measure-scale-kind="true" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
                       {chip('preset', 'Preset', !custom, () => setCustom(false), { 'data-measure-scale-kind-option': 'preset' })}
                       {chip('custom', 'Custom', custom, () => setCustom(true), { 'data-measure-scale-kind-option': 'custom' })}
+                    </div>
+                  </>
+                )}
+                {plusOn && customs.length > 0 && (
+                  <>
+                    <div className="measure-scale__label">Custom scales</div>
+                    <div className="measure-scale__chips measure-scale__chips--custom" role="radiogroup" onKeyDown={moveGroupFocus} aria-label="Custom scale" data-measure-custom-scales="true">
+                      {customs.map((saved, i) => (
+                        <span key={`${saved.label}-${i}`} className="measure-scale__custom-chip">
+                          {chip(`custom-${i}`, saved.label, custom && customMeasureScaleIndex(customs, scale) === i, () => pickCustomScale(saved), { 'data-measure-custom-scale': i })}
+                          <button
+                            type="button"
+                            className="measure-scale__custom-remove"
+                            aria-label={`Remove ${saved.label}`}
+                            data-measure-custom-scale-remove={i}
+                            {...tip('Remove')}
+                            onClick={() => setCustoms(forgetCustomMeasureScale(i))}
+                          >
+                            <Icon name="close" size={10} />
+                          </button>
+                        </span>
+                      ))}
                     </div>
                   </>
                 )}
