@@ -33,17 +33,10 @@ test.describe('desktop', () => {
       await expect(shape).toHaveCount(1);
       const before = await shape.evaluate((el) => `${el.getAttribute('stroke')}|${el.getAttribute('fill')}`);
       // Pick another colour in the open picker: the preview follows.
-      const swatches = page.locator('[data-annotation-color-picker] button[aria-label]').filter({ visible: true });
-      const count = await swatches.count();
-      let changed = false;
-      for (let i = 0; i < count && !changed; i += 1) {
-        const label = (await swatches.nth(i).getAttribute('aria-label')) || '';
-        if (!/^#|^(Red|Blue|Green|Yellow|Orange|Purple|Black|White|Pink)/i.test(label)) continue;
-        await swatches.nth(i).click();
-        changed = await expect.poll(() => shape.evaluate((el) => `${el.getAttribute('stroke')}|${el.getAttribute('fill')}`), { timeout: 3000 })
-          .not.toBe(before).then(() => true, () => false);
-      }
-      expect(changed).toBe(true);
+      const swatch = page.locator('[data-annotation-color-picker] button[data-ink-swatch][aria-pressed="false"][aria-label^="#"]').filter({ visible: true });
+      await expect(swatch.first()).toBeVisible({ timeout: 15_000 });
+      await swatch.nth(2).click();
+      await expect.poll(() => shape.evaluate((el) => `${el.getAttribute('stroke')}|${el.getAttribute('fill')}`)).not.toBe(before);
       await page.screenshot({ path: process.env.PREVIEW_SHOT || test.info().outputPath('tool-style-preview.png') });
     } finally {
       await sheet.remove();
