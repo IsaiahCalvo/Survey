@@ -19,7 +19,7 @@ test('the chip only shows while measuring on a page with no valid scale', () => 
   assert.match(viewer, /const \[measureScaleChipOn\] = useState\(\(\) => isFeatureOn\('measure-scale-chip'\)\)/);
   const at = viewer.indexOf('data-measure-no-scale=""');
   assert.ok(at > 0);
-  const gate = viewer.slice(viewer.lastIndexOf('{measureScaleChipOn', at), at);
+  const gate = viewer.slice(viewer.lastIndexOf('(measureScaleChipOn', at), at);
   assert.match(gate, /measureMode/);
   assert.match(gate, /!measureScaleDialog/);
   assert.match(gate, /!isValidMeasureScale\(/);
@@ -29,8 +29,14 @@ test('the chip only shows while measuring on a page with no valid scale', () => 
 test('while calibrating the chip says what to do, with Cancel', () => {
   const at = viewer.indexOf('data-measure-calibrating=""');
   assert.ok(at > 0);
-  assert.match(viewer.slice(at, at + 300), /Draw along a length you know\./);
-  assert.match(viewer.slice(at, at + 300), /setMeasureMode\(null\); setActiveTool\('pan'\)/);
+  const body = viewer.slice(at, at + 900);
+  assert.match(body, /Draw along a length you know\./);
+  assert.match(body, /setMeasureMode\(null\); setActiveTool\('pan'\)/);
+  // Nightly 'measure-plus': Drawboard's wording and a close x, shown even
+  // with the chip flag off.
+  assert.match(body, /measurePlusOn \? 'Trace a known distance to set the scale\.'/);
+  assert.match(body, /aria-label="Stop calibrating"/);
+  assert.match(viewer, /\{\(measureScaleChipOn \|\| \(measurePlusOn && measureMode === 'calibrate'\)\) && isActive !== false/);
 });
 
 test('the chip uses theme tokens and the small type size', () => {

@@ -63,7 +63,8 @@ export default function MeasureScaleDialog({ pageNumber, pageCount = 1, lengthPt
   const calibrating = Number.isFinite(lengthPt) && lengthPt > 0;
   // Nightly 'calibrate-entry': the box takes feet-inches as plans write them
   // (20' 6", 20-6, 6") and says what the traced line is on paper.
-  const [entryOn] = useState(() => isFeatureOn('calibrate-entry'));
+  // 'measure-plus' takes it too: Drawboard's calibrate reads `40'` as typed.
+  const [entryOn] = useState(() => isFeatureOn('calibrate-entry') || isFeatureOn('measure-plus'));
   const realValue = entryOn ? parseRealLength(real, unit) : real;
   // Nightly 'measure-plus': a custom scale row, Drawboard's number formats
   // (units + precision) and "Set as default". Reopens on the live scale.

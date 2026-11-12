@@ -328,6 +328,66 @@ test('custom scale reads feet-inches, Units restamp the line, Set as default car
   }
 });
 
+test('calibrate: Drawboard\'s note with a close x; a traced span typed as 40\' reads back exactly 40′', async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.addInitScript(() => {
+    localStorage.setItem('survey.flag.measure-plus', '1');
+    // The plain chip flag stays off: the calibrating note shows anyway.
+    localStorage.setItem('survey.flag.measure-scale-chip', '0');
+    localStorage.removeItem('survey.measure.defaultScale');
+  });
+  const owner = E2E_ACCOUNTS.owner;
+  const admin = adminClient();
+  const api = await apiClientFor(owner);
+  const { data: { user } } = await api.auth.getUser();
+  const name = `Calibrate ${RUN}.pdf`;
+  const id = await seedDocument(admin, user.id, name, 'Calibrate page');
+  try {
+    await signIn(page, owner);
+    const surface = await openDocument(page, name, 'Calibrate page');
+    await page.getByRole('button', { name: 'Shapes', exact: true }).click();
+    let dialog = await openScaleDialog(page);
+    await dialog.getByText('Calibrate instead').click();
+    await expect(dialog).toBeHidden();
+    const note = page.locator('[data-measure-calibrating]');
+    await expect(note).toContainText('Trace a known distance to set the scale');
+    // The x puts the tool down.
+    await note.getByRole('button', { name: 'Stop calibrating' }).click();
+    await expect(note).toHaveCount(0);
+
+    dialog = await openScaleDialog(page);
+    await dialog.getByText('Calibrate instead').click();
+    await expect(note).toBeVisible();
+    const box = await surface.boundingBox();
+    await page.mouse.move(box.x + 150, box.y + 300);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 450, box.y + 300, { steps: 8 });
+    await page.mouse.up();
+    await expect(dialog).toBeVisible();
+    await dialog.locator('[data-measure-real-length]').fill("40'");
+    await dialog.locator('[data-measure-apply]').click();
+    await expect(dialog).toBeHidden();
+    await expect(note).toHaveCount(0);
+    // The traced line stays as a Length (a dimension line) reading exactly
+    // 40′: the full traced length is kept, not rounded.
+    const kept = surface.locator('[data-dimension-line] text[data-dimension-caption]');
+    await expect(kept).toHaveCount(1, { timeout: 15_000 });
+    await expect(kept).toHaveText('40′');
+    await expect(surface.locator('.measure-labels .measure-label[data-measure-kind="length"]')).toHaveCount(0);
+    // Length stays armed after calibrating: a new one over the same span
+    // elsewhere reads the same.
+    await expect(page.locator('[data-measure-tool="length"][aria-pressed="true"], [data-measure-tool="menu"][aria-pressed="true"]').first()).toBeVisible();
+    await page.mouse.move(box.x + 150, box.y + 480);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 450, box.y + 480, { steps: 8 });
+    await page.mouse.up();
+    await expect(kept).toHaveCount(2, { timeout: 15_000 });
+    await expect(kept.nth(1)).toHaveText('40′');
+  } finally {
+    if (!process.env.KEEP) await admin.from('documents').delete().eq('id', id);
+  }
+});
+
 test('without the flag the dialog has no custom scale, units or default', async ({ page }) => {
   test.setTimeout(180_000);
   await page.addInitScript(() => localStorage.setItem('survey.flag.measure-plus', '0'));

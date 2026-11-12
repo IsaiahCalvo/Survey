@@ -2989,7 +2989,8 @@ const SVGAnnotationLayerBody = memo(({
       : buildBoundaryShapeCommitJSON({ ...shared, tool, fillColor, fillOpacity });
     if (json && tool === 'line' && measureMode === 'calibrate') {
       const [a, b] = measureLineEndpoints(json);
-      onMeasureCalibrate?.(pageNumber, Math.hypot(b.x - a.x, b.y - a.y), stampAnnotationCreationIdentity(stampMeasure(json, 'length', null), { authorId: viewerId }));
+      // Kept as a Length once the scale applies: a dimension line under measure-plus, like any new Length.
+      onMeasureCalibrate?.(pageNumber, Math.hypot(b.x - a.x, b.y - a.y), stampAnnotationCreationIdentity(stampMeasure(json, 'length', null, { dim: isFeatureOn('measure-plus') }), { authorId: viewerId }));
       return;
     }
     if (json && tool === 'line' && measureMode === 'length') {

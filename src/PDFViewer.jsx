@@ -38218,15 +38218,29 @@ ${pageBlocks}
       {/* Nightly 'measure-scale-chip' (Drawboard PDF Pro trial audit
           2026-11-09): a measure tool armed on a page with no scale says so,
           with a way to set one, instead of quietly reading 1:1 inches. */}
-      {measureScaleChipOn && isActive !== false && measureMode && !measureScaleDialog && !measureDepthDialog
+      {/* Nightly 'measure-plus': the calibrating note shows without the chip
+          flag too, in Drawboard's terms, with a close x. */}
+      {(measureScaleChipOn || (measurePlusOn && measureMode === 'calibrate')) && isActive !== false && measureMode && !measureScaleDialog && !measureDepthDialog
         && (measureMode === 'calibrate'
           || !isValidMeasureScale(pageScaleFromObjects(annotationsByPage?.[pageNum]?.objects) || metaScaleForPage(measureScaleMeta, pageNum)))
         && createPortal(
           measureMode === 'calibrate' ? (
             // Calibrating: say what to do, with a way out.
             <div className="measure-no-scale-chip" role="status" data-measure-calibrating="">
-              <span>Draw along a length you know.</span>
-              <button type="button" onClick={() => { setMeasureMode(null); setActiveTool('pan'); }}>Cancel</button>
+              <span>{measurePlusOn ? 'Trace a known distance to set the scale.' : 'Draw along a length you know.'}</span>
+              {measurePlusOn ? (
+                <button
+                  type="button"
+                  className="measure-no-scale-chip__close"
+                  aria-label="Stop calibrating"
+                  data-measure-calibrate-close=""
+                  onClick={() => { setMeasureMode(null); setActiveTool('pan'); }}
+                >
+                  <Icon name="close" size={12} />
+                </button>
+              ) : (
+                <button type="button" onClick={() => { setMeasureMode(null); setActiveTool('pan'); }}>Cancel</button>
+              )}
             </div>
           ) : (
             <div className="measure-no-scale-chip" role="status" data-measure-no-scale="">
