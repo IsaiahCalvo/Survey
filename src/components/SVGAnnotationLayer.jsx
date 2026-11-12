@@ -8745,7 +8745,7 @@ const SVGAnnotationLayerBody = memo(({
             const halo = (hoveredId === index && !selectedIds.has(index))
               || (selectedIds.has(index) && ((selectedIds?.size || 0) + (effectiveSelectedCalloutIds?.size || 0)) > 1);
             if (!live) return renderMeasureLabel(label, key, clampInverseScale(inverseScale), { width, height }, { halo });
-            const pill = renderMeasureLabel(live.label, key, clampInverseScale(inverseScale), { width, height });
+            const pill = renderMeasureLabel(live.label, key, clampInverseScale(inverseScale), { width, height }, { halo });
             return live.transform && pill ? <g key={key} transform={live.transform}>{pill}</g> : pill;
           })}
         </g>
