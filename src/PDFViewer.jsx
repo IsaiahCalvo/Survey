@@ -412,6 +412,7 @@ import PagePinsLayer from './components/pins/PagePinsLayer.jsx';
 import { PinToolButton } from './components/pins/PinControls.jsx';
 import { LINK_EDIT_EVENT, applyLinkEdit, selectedLinkOf } from './utils/linkTool.js';
 import SnapshotTool from './components/SnapshotTool.jsx';
+import { useTextHighlightMode } from './hooks/useTextHighlightMode.js';
 import { selectPageMarkup } from './services/thumbnailRender.js';
 import { marksHidden, setMarksHidden, subscribeMarksHidden } from './utils/marksHidden.js';
 import { isTypingTarget } from './utils/typingTarget.js';
@@ -3195,6 +3196,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
 
   // Annotation tools state
   const [activeTool, setActiveTool] = useState('pan');
+  // Nightly 'text-highlight-tool': Select text that highlights as you drag.
+  const [textHighlightMode, setTextHighlightMode] = useState(false);
+  useEffect(() => { if (activeTool !== 'text-select') setTextHighlightMode(false); }, [activeTool]);
   // Nightly 'stamp-tool': whether the Stamp card is open (its Text group button).
   const stampPickerOpen = useStampPickerOpen();
   const signatureCardOpen = useSignatureCardOpen();
@@ -22595,6 +22599,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const [pageMenuExtrasEnabled] = useState(() => isFeatureOn('page-menu-extras'));
   const [snapshotToolEnabled] = useState(() => isFeatureOn('snapshot-tool'));
   const [signatureToolEnabled] = useState(() => isFeatureOn('signature-tool'));
+  const [textHighlightToolEnabled] = useState(() => isFeatureOn('text-highlight-tool'));
   const [insertImageEnabled] = useState(() => isFeatureOn('insert-image'));
   // Markups list (Nightly 'markup-list'): every mark in one rail panel.
   const [markupListEnabled] = useState(() => isFeatureOn('markup-list'));
@@ -35716,6 +35721,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const handleTextSelectionQuickAction = useCallback((action) => (
     handleTextSelectionAction(action, { keepSelection: false })
   ), [handleTextSelectionAction]);
+  useTextHighlightMode({
+    on: textHighlightToolEnabled && textHighlightMode && activeTool === 'text-select',
+    wrapperRef: pdfjsWrapperRef,
+    paint: textMarkupPaintByType.highlight,
+    getSelection: () => liveTextSelectionActionSelection,
+    apply: () => handleTextSelectionAction('highlight', { keepSelection: false }),
+  });
   const handleTextSelectionCopy = useCallback(async (selection) => {
     const copied = await copyTextSelection(selection?.text);
     showToast(copied ? 'Copied' : 'Could not copy the text.', copied ? 'success' : 'error');
@@ -41412,6 +41424,8 @@ ${pageBlocks}
                   ...(snapshotToolEnabled ? [{ id: 'snapshot', label: 'Snapshot', iconName: 'camera' }] : []),
                   // Nightly 'signature-tool': saved signatures, click the page to sign.
                   ...(signatureToolEnabled ? [{ id: 'signature', label: 'Signature', iconName: 'pen', picker: 'signature' }] : []),
+                  // Nightly 'text-highlight-tool': Select text that highlights as you drag.
+                  ...(textHighlightToolEnabled ? [{ id: 'text-highlight', label: 'Highlight text', iconName: 'formatHighlight', highlightMode: true }] : []),
                   // TODO: Revisit the user-created Note tool later. Imported
                   // PDF Text/sticky-note annotations still render through
                   // pdfAnnotationImporter + the normal PDF annotation layers.
@@ -41428,9 +41442,17 @@ ${pageBlocks}
                   const caretAttr = isUnderlineMenu ? 'data-underline-caret-button' : 'data-strike-caret-button';
                   const isActiveUnderline = isUnderlineMenu && (activeTool === 'underline' || activeTool === 'squiggly');
                   const isActiveStrike = isStrikeMenu && activeTool === 'strikeout';
-                  const isActive = t.picker === 'signature' ? signatureCardOpen : t.picker ? stampPickerOpen : (isActiveUnderline || isActiveStrike || activeTool === t.id);
+                  const isActive = t.highlightMode ? (textHighlightMode && activeTool === 'text-select') : t.picker === 'signature' ? signatureCardOpen : t.picker ? stampPickerOpen : (isActiveUnderline || isActiveStrike || activeTool === t.id);
 
                   const onMainClick = (e) => {
+                    if (t.highlightMode) {
+                      if (stampPickerOpen) setStampPickerOpen(false);
+                      if (signatureCardOpen) setSignatureCardOpen(false);
+                      const next = !(textHighlightMode && activeTool === 'text-select');
+                      if (next) setActiveToolLogged('text-select', { source: 'toolbar' });
+                      setTextHighlightMode(next);
+                      return;
+                    }
                     if (t.picker === 'signature') {
                       if (stampPickerOpen) setStampPickerOpen(false);
                       setSignatureCardOpen(!signatureCardOpen);

@@ -455,6 +455,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Signature tool: draw or type a signature, save it, click the page to sign',
     stage: 'beta',
   }),
+  'text-highlight-tool': Object.freeze({
+    label: 'Highlight text: the band follows the pointer as you drag over words, and letting go highlights them',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';
