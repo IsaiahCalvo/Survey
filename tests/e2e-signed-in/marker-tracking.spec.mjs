@@ -97,7 +97,7 @@ test('tracking: status, assigned to and due date on a survey item, with list chi
   const admin = adminClient();
   const seeded = await seed(admin);
   try {
-    await page.addInitScript(() => localStorage.setItem('survey.flag.marker-tracking', '1'));
+    await page.addInitScript(() => { localStorage.setItem('survey.flag.marker-tracking', '1'); localStorage.setItem('survey.flag.tracking-filters', '1'); });
     await signIn(page, E2E_ACCOUNTS.owner);
     await addMarkers(page, seeded.docId);
     await openSurvey(page, seeded);

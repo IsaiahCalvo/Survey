@@ -140,8 +140,14 @@ export const FEATURE_FLAGS = Object.freeze({
     stage: 'rollout',
   }),
   'marker-tracking': Object.freeze({
-    label: 'Survey items: status, assigned to and due date, with list filters',
+    label: 'Survey items: status, assigned to and due date',
     stage: 'rollout',
+  }),
+  // Owner 2026-11-12: the Assigned to me / Due soon / Late / Hide done chips
+  // over the Survey list stay on Nightly until they look right.
+  'tracking-filters': Object.freeze({
+    label: 'Survey list chips: Assigned to me, Due soon, Late, Hide done',
+    stage: 'beta',
   }),
   'guest-links': Object.freeze({
     label: 'Guest links: open one document without an account, as viewer or editor, until a set time',
