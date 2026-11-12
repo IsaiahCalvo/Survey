@@ -9,17 +9,8 @@
  */
 import React from 'react';
 import { isLinkMark, linkMarkPaint } from './linkMarkPaint.js';
-import { buildMeasureLabel } from './measure/measureScale.js';
-import {
-  DIMENSION_EXTENSION_PT,
-  dimensionCaptionPt,
-  dimensionCaptionWidth,
-  dimensionCaptionOffset,
-  dimensionCaptionPlace,
-  dimensionLeader,
-  dimensionLineGeometry,
-  isDimensionMeasure,
-} from './measure/dimensionLine.js';
+import { dimensionMarkLayout } from './measure/dimensionLayout.js';
+import { DIMENSION_EXTENSION_PT, isDimensionMeasure } from './measure/dimensionLine.js';
 import { measureTextBounds, getLineEndpoints } from './svgBoundingBox';
 // Phase 14 CALL-10: renderCallout delegates to a pure data-spec builder in
 // calloutEditAdapter.js so the contract can be unit-tested without loading
@@ -949,27 +940,7 @@ export const renderArrowhead = (style, tipX, tipY, angleDeg, color, sw) => {
 // the stroke colour at 9 pt and never upside down. The layer's hit target
 // follows the offset line too (SVGAnnotationLayer, 'dimension-line').
 const pts = (list) => list.map((p) => `${p.x},${p.y}`).join(' ');
-/**
- * A dimension mark's caption lines, sizes and geometry, from its endpoints in
- * its own frame. The layer uses the same layout for the caption's drag target.
- */
-export function dimensionMarkLayout(obj, { x1, y1, x2, y2 }) {
-  const label = buildMeasureLabel(obj, obj.data?.measure?.scale || null);
-  const lines = label ? (Array.isArray(label.lines) ? label.lines : [String(label.text)]) : [];
-  const fontPt = dimensionCaptionPt(obj);
-  const captionWidth = Math.max(0, ...lines.map((line) => dimensionCaptionWidth(line, fontPt)));
-  const lineHeight = fontPt * 1.2;
-  const captionHeight = lines.length * lineHeight;
-  const geo = dimensionLineGeometry({ x1, y1, x2, y2 }, {
-    leader: dimensionLeader(obj),
-    captionWidth,
-    captionHeight,
-    place: dimensionCaptionPlace(obj),
-    captionOffset: dimensionCaptionOffset(obj),
-    turn: obj.angle ?? 0,
-  });
-  return { label, lines, fontPt, lineHeight, captionWidth, captionHeight, geo };
-}
+export { dimensionMarkLayout };
 
 function renderDimensionLine(obj, spec, key, opacity, rotateTransform, dashArray) {
   const { stroke, strokeWidth } = spec.line;

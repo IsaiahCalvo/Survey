@@ -31,6 +31,8 @@ import {
   calloutLineDashArray,
 } from './lineRenderHelpers.js';
 import { countWrappedLines, getLineEndpoints } from './svgBoundingBox.js';
+import { DIMENSION_EXTENSION_PT, isDimensionMeasure } from './measure/dimensionLine.js';
+import { dimensionMarkLayout } from './measure/dimensionLayout.js';
 import { resolveAnnotationCloudSpec } from './pdfAnnotationAppearance.js';
 // UX 2026-09-09: clouds paint from the shared resolver (engine vertices with
 // scale baked in, translate + rotate frame, crown outline, scalloped fill) so
@@ -524,6 +526,43 @@ function drawPath(context, object, displayScale) {
 // buildLineRenderSpec geometry (center-relative endpoints, curved branch,
 // triangle shaft shortening), dash on the shaft only, rotation about the
 // curve-inclusive bbox center.
+// Nightly 'measure-plus': the canvas twin of svgAnnotationRenderers'
+// renderDimensionLine (thumbnails, zoom proxy, eraser and the flattened
+// print draw the same offset line, chevrons, extension lines and caption).
+function paintDimensionLine(context, object, line, dash) {
+  const { lines, fontPt, lineHeight, geo } = dimensionMarkLayout(object, line);
+  if (!geo) return;
+  const stroke = line.stroke;
+  const sw = line.strokeWidth || 1;
+  const strokePoints = (points, width, cap = 'round') => {
+    context.beginPath();
+    points.forEach((p, i) => (i === 0 ? context.moveTo(p.x, p.y) : context.lineTo(p.x, p.y)));
+    context.strokeStyle = stroke;
+    context.lineWidth = width;
+    context.lineCap = cap;
+    context.lineJoin = 'round';
+    context.stroke();
+  };
+  const setDash = (d) => { if (typeof context.setLineDash === 'function') context.setLineDash(d); };
+  setDash([]);
+  geo.extensions.forEach((pair) => strokePoints(pair, DIMENSION_EXTENSION_PT, 'butt'));
+  if (geo.elbow) strokePoints(geo.elbow, DIMENSION_EXTENSION_PT, 'butt');
+  setDash(dash);
+  geo.segments.forEach((pair) => strokePoints(pair, sw, 'butt'));
+  setDash([]);
+  geo.chevrons.forEach((points) => strokePoints(points, sw));
+  if (!lines.length) return;
+  context.save();
+  context.translate(geo.caption.x, geo.caption.y);
+  context.rotate((geo.caption.angle * Math.PI) / 180);
+  context.font = `${fontPt}px Helvetica`;
+  context.fillStyle = stroke;
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  lines.forEach((text, i) => context.fillText(text, 0, (i - (lines.length - 1) / 2) * lineHeight));
+  context.restore();
+}
+
 function drawLine(context, object) {
   const spec = buildLineRenderSpec(object);
   context.save();
@@ -565,6 +604,11 @@ function drawLine(context, object) {
     : [];
   if (typeof context.setLineDash === 'function') context.setLineDash(dash);
 
+  if (spec.kind !== 'curved' && isDimensionMeasure(object)) {
+    paintDimensionLine(context, object, spec.line, dash);
+    context.restore();
+    return;
+  }
   if (spec.kind === 'curved') {
     context.beginPath();
     traceCommandsInto(context, parseSvgPathD(spec.path.d));

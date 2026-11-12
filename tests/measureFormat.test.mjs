@@ -214,7 +214,7 @@ test('dimension line: Leader and Inline / Above are edited on dimension marks on
   const card = read('src/components/MeasureEditPopover.jsx');
   assert.match(card, /\{isDim && \(\s*<label className="measure-edit__field">\s*<span className="measure-edit__name">Leader<\/span>/);
   assert.match(card, /onClick=\{\(\) => onPatch\?\.\(\{ captionPlace: place \}\)\}/);
-  assert.match(read('src/utils/svgAnnotationRenderers.jsx'), /place: dimensionCaptionPlace\(obj\),/);
+  assert.match(read('src/utils/measure/dimensionLayout.js'), /place: dimensionCaptionPlace\(obj\),/);
 });
 
 test('dimension line: a leader pill replaces the bend grabber and drags the leader', () => {
@@ -262,4 +262,34 @@ test('dimension line: a dragged caption keeps an elbow leader; Reset caption pos
   assert.match(menu, /item\('Reset caption position', 'resetCaptionPosition'/);
   assert.match(menu, /menuObjEditable && Boolean\(dimensionCaptionOffset\(menuObj\)\)\)\] : \[\]\),/);
   assert.match(read('src/utils/svgAnnotationRenderers.jsx'), /\{geo\.elbow && \(\s*<polyline data-dimension-elbow="true"/);
+});
+
+test('dimension line: the canvas twin paints the same line, chevrons and caption', async () => {
+  const { drawAnnotationObject } = await import('../src/utils/annotationCanvasPainter.js');
+  const { stampMeasure } = await import('../src/utils/measure/measureScale.js');
+  const line = {
+    type: 'line', tool: 'line', x1: -100, y1: 0, x2: 100, y2: 0, left: 100, top: 100, width: 200, height: 0,
+    stroke: '#e11d2e', strokeWidth: 1, opacity: 1,
+  };
+  const dim = stampMeasure(line, 'length', null, { dim: true });
+  const calls = [];
+  const context = {
+    save: () => {}, restore: () => {}, translate: (...a) => calls.push(['translate', ...a]), rotate: () => {},
+    beginPath: () => calls.push(['beginPath']),
+    moveTo: (...a) => calls.push(['moveTo', ...a]),
+    lineTo: (...a) => calls.push(['lineTo', ...a]),
+    setLineDash: () => {},
+    stroke: () => calls.push(['stroke', context.lineWidth]),
+    fillText: (...a) => calls.push(['fillText', ...a]),
+  };
+  drawAnnotationObject(context, dim);
+  const strokes = calls.filter((c) => c[0] === 'stroke').map((c) => c[1]);
+  // 2 extension lines at 0.5 pt, the line (in two pieces round the caption), 2 chevrons.
+  assert.equal(strokes.filter((w) => w === 0.5).length, 2);
+  assert.ok(strokes.filter((w) => w === 1).length >= 3);
+  const text = calls.find((c) => c[0] === 'fillText');
+  assert.ok(text && /no scale|in|pt/.test(String(text[1])), 'the reading is painted');
+  // Nothing at the clicked points' own line: every stroke at y = 100 is an extension start.
+  const moves = calls.filter((c) => c[0] === 'moveTo');
+  assert.ok(moves.some((m) => Math.abs(m[2] - (100 - 15.31)) < 0.01), 'the line sits a leader off the points');
 });
