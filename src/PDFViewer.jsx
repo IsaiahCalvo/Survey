@@ -223,7 +223,7 @@ import { areViewStatesEqual, normalizeViewState } from './utils/viewState';
 import { arrayMove } from '@dnd-kit/sortable';
 import { buildAnnotationSelectionContextKey, didAnnotationSelectionContextChange } from './utils/annotationSelectionContext';
 import { buildBulkDeletePlan } from './lib/collab/bulkDeletePlan.js';
-import { guardLockedMarksOnSave, withCalloutLock, withMarkLock, withSurveyMarkerLock } from './utils/markLock.js';
+import { guardLockedMarksOnSave, lockedMarksOnPage, withCalloutLock, withMarkLock, withSurveyMarkerLock } from './utils/markLock.js';
 import { calloutToAnnotationObject, projectCalloutsIntoByPage, deriveCalloutsFromByPage, applyCalloutListToByPage } from './utils/calloutAnnotationBridge';
 import { DISCARD_LOCAL_DRAFT_EVENT } from './tabs/tabStrip.js';
 import { buildHistoryEventRowFromDebugEvent, recordDocumentHistoryEvent, recordAndNotifyDocumentHistoryEvent, buildPartialEraseHistoryRow } from './services/documentHistoryService.js';
@@ -403,6 +403,7 @@ import { useYDoc } from './hooks/useYDoc.js';
 import { useZoomState } from './hooks/useZoomState';
 import { isFeatureOn } from './featureFlags.js';
 import { setStampPickerOpen, useStampPickerOpen } from './components/StampPickerCard.jsx';
+import { setSignatureCardOpen, useSignatureCardOpen } from './components/SignatureCard.jsx';
 import { pickImageToInsert } from './components/InsertImage.jsx';
 import LinkToolHost from './components/LinkToolHost.jsx';
 import PagePinsHost from './components/pins/PagePinsHost.jsx';
@@ -410,6 +411,10 @@ import { readDefaultMeasureScale, saveDefaultMeasureScale, withDefaultMeasureSca
 import PagePinsLayer from './components/pins/PagePinsLayer.jsx';
 import { PinToolButton } from './components/pins/PinControls.jsx';
 import { LINK_EDIT_EVENT, applyLinkEdit, selectedLinkOf } from './utils/linkTool.js';
+import SnapshotTool from './components/SnapshotTool.jsx';
+import PageTemplatePicker from './components/PageTemplatePicker.jsx';
+import { useTextHighlightMode } from './hooks/useTextHighlightMode.js';
+import { selectPageMarkup } from './services/thumbnailRender.js';
 import { marksHidden, setMarksHidden, subscribeMarksHidden } from './utils/marksHidden.js';
 import { isTypingTarget } from './utils/typingTarget.js';
 import { useMarkClipboard } from './utils/sharedMarkClipboard.js';
@@ -427,7 +432,7 @@ import { chooseCloudPdfOpenPath, shouldRetryStreamedOpenWithDownload, tryOpenClo
 import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox } from './utils/svgBoundingBox.js';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
 import { usePageOperations } from './hooks/usePageOperations.js';
-import { IDLE_REMOTE_PDF_STATE, PAGE_OP_BLOCKED_MESSAGE, PAGE_OP_SYNC_FLAG, clearedPdfVersion, isPageOpBlocked, newPdfVersionToken, framePageChanges, noteFramePageChanges, operationRewritesPdf, pendingPdfVersion, reframeMarks, remotePdfLoaded, remotePdfVersionStep, savedPdfVersion, splitFramePageChanges, notedMarksOnPages, stampableOperation } from './utils/pageOpSync.js';
+import { IDLE_REMOTE_PDF_STATE, PAGE_OP_BLOCKED_MESSAGE, PAGE_OP_SYNC_FLAG, clearedPdfVersion, isPageOpBlocked, newPdfVersionToken, framePageChanges, noteFramePageChanges, operationRewritesPdf, pendingPdfVersion, reframeMarks, reframeSurveyMarkers, remotePdfLoaded, remotePdfVersionStep, savedPdfVersion, splitFramePageChanges, notedMarksOnPages, marksInDeletedSlices, stampableOperation } from './utils/pageOpSync.js';
 import { usePageViewDocument } from './hooks/usePageViewDocument.js';
 import { getPageViewBase } from './utils/pageViewDocument.js';
 import { destroyPdfDocument, pdfOrDestroy } from './utils/destroyPdfDocument.js';
@@ -3192,8 +3197,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
 
   // Annotation tools state
   const [activeTool, setActiveTool] = useState('pan');
+  // Nightly 'text-highlight-tool': Select text that highlights as you drag.
+  const [textHighlightMode, setTextHighlightMode] = useState(false);
+  useEffect(() => { if (activeTool !== 'text-select') setTextHighlightMode(false); }, [activeTool]);
   // Nightly 'stamp-tool': whether the Stamp card is open (its Text group button).
   const stampPickerOpen = useStampPickerOpen();
+  const signatureCardOpen = useSignatureCardOpen();
   // Measure tools ride on the Line / Polygon tools: measureMode only says the
   // commit is a measurement ('length' | 'area' | 'perimeter') or a calibration
   // line. measureScaleMeta is the document's saved scales, one page or all
@@ -15279,7 +15288,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // `writer` names this viewer (not getClientId(), which tabs share).
   const pageOpSyncRef = useRef(null);
   if (!pageOpSyncRef.current) {
-    pageOpSyncRef.current = { on: isFeatureOn(PAGE_OP_SYNC_FLAG), writer: newPdfVersionToken(), ownPending: false, pendingOps: [], pendingBatch: null, remote: IDLE_REMOTE_PDF_STATE, docBeforeReload: null, frame: null, reframe: null };
+    pageOpSyncRef.current = { on: isFeatureOn(PAGE_OP_SYNC_FLAG), writer: newPdfVersionToken(), ownPending: false, pendingOps: [], pendingBatch: null, remote: IDLE_REMOTE_PDF_STATE, docBeforeReload: null, frame: null, reframe: null, deletedSlices: null };
   }
   pageOpSyncRef.current.pdfFile = pdfFile;
   pageOpSyncRef.current.pdfDoc = pdfDoc;
@@ -15337,6 +15346,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         // window can move marks it drew on the old pages the same way (null:
         // one of them cannot travel, so none do).
         const carried = stampableOperation(operation);
+        // Slices other windows' deletes took are numbered for the old pages.
+        pageOpSync.deletedSlices = null;
         const before = pageOpSync.ownPending ? pageOpSync.pendingOps : [];
         if (!pageOpSync.ownPending || !pageOpSync.pendingBatch) pageOpSync.pendingBatch = newPdfVersionToken();
         pageOpSync.pendingOps = before && carried ? [...before, carried] : null;
@@ -22394,6 +22405,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   useEffect(() => {
     const sync = pageOpSyncRef.current;
     if (!sync.on || !normalAnnotationHydration?.ready || normalAnnotationHydration.documentId !== pdfFile?.id) return undefined;
+    // Slices deletes took belong to one file.
+    if (sync.deletedSlicesFor !== pdfFile?.id) { sync.deletedSlices = null; sync.deletedSlicesFor = pdfFile?.id; }
     // The reload waits while a finger or button is down, or a polygon is
     // being placed, so work in progress here is not wiped (up to 30 s).
     // Every pointer down counts (a pinch, a pen with a palm), so lifting one
@@ -22473,18 +22486,48 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     // would undo to the old frame.
     if (frame) dropHistoryAfterPageChange();
     const ops = framePageChanges(frame);
-    if (!frame?.made?.size || !ops?.length) return;
+    // A run that could not travel leaves the pages numbered unlike the
+    // slices deletes took: a later restore must not put one back.
+    if (frame && !ops) sync.deletedSlices = null;
+    if (!ops?.length) return;
+    const deleted = sync.deletedSlices;
     // Marks these runs could not move must not be moved by later runs alone.
-    const forgetNotedMarks = () => { if (sync.frame) sync.frame = { ...sync.frame, made: new Set() }; };
+    const forgetNoted = (key) => { if (sync.frame) sync.frame = { ...sync.frame, [key]: new Set() }; };
+    const forgetNotedMarks = () => {
+      sync.deletedSlices = null;
+      forgetNoted('made');
+    };
+    if (frame?.madeMarkers?.size) {
+      try {
+        const markers = reframeSurveyMarkers(surveyMarkersRef.current || {}, frame.madeMarkers, ops, transformPageState);
+        if (markers && (Object.keys(markers.moved).length || markers.gone.length)) {
+          setSurveyMarkers((prev) => {
+            const next = { ...prev };
+            for (const [id, marker] of Object.entries(markers.moved)) if (next[id]) next[id] = { ...next[id], ...marker };
+            for (const id of markers.gone) delete next[id];
+            return next;
+          });
+        }
+      } catch (err) {
+        forgetNoted('madeMarkers');
+        console.warn('[page-op-sync] could not move Survey Markers placed on the old pages:', err?.message || err);
+      }
+    }
+    if (!frame?.made?.size && !deleted?.size) return;
     try {
       const byPage = annotationsByPageRef.current || {};
+      const made = frame.made || new Set();
       // A noted mark not on these pages missed these runs (no-op included):
-      // later runs alone must not move it if it turns up.
-      const found = notedMarksOnPages(byPage, frame.made);
-      if (sync.frame && found.size < frame.made.size) {
-        sync.frame = { ...sync.frame, made: new Set([...(sync.frame.made || [])].filter((id) => found.has(id) || !frame.made.has(id))) };
+      // later runs alone must not move it if it turns up. One an earlier
+      // load's delete took still waits for that delete's Undo.
+      const found = notedMarksOnPages(byPage, made);
+      const held = marksInDeletedSlices(deleted);
+      if (sync.frame && found.size < made.size) {
+        sync.frame = { ...sync.frame, made: new Set([...(sync.frame.made || [])].filter((id) => found.has(id) || held.has(id) || !made.has(id))) };
       }
-      const changed = reframeMarks(byPage, frame.made, ops, transformPageState);
+      const slices = deleted || new Map();
+      const changed = reframeMarks(byPage, made, ops, transformPageState, slices);
+      sync.deletedSlices = slices.size ? slices : null;
       const save = handleSaveAnnotationsRef.current;
       if (!changed) return;
       if (typeof save !== 'function') { forgetNotedMarks(); return; }
@@ -22495,7 +22538,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       forgetNotedMarks();
       console.warn('[page-op-sync] could not move marks drawn on the old pages:', err?.message || err);
     }
-  }, [pdfDoc, pdfFile, dropHistoryAfterPageChange]);
+  }, [pdfDoc, pdfFile, dropHistoryAfterPageChange, setSurveyMarkers]);
   pagePresentationMetaSetRef.current = normalAnnotationHydration?.ready
     && normalAnnotationHydration.documentId === pdfFile?.id
     && canRestoreFromHistory ? excelSyncMetaSet : null;
@@ -22572,6 +22615,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // Save to library card is open for.
   const [markLibraryEnabled] = useState(() => isFeatureOn('mark-library'));
   const [stampToolEnabled] = useState(() => isFeatureOn('stamp-tool'));
+  const [pageMenuExtrasEnabled] = useState(() => isFeatureOn('page-menu-extras'));
+  // Nightly 'page-templates': the page menu's "Template page below" picker.
+  const [pageTemplatesEnabled] = useState(() => isFeatureOn('page-templates'));
+  const [pageTemplatePicker, setPageTemplatePicker] = useState(null);
+  const [snapshotToolEnabled] = useState(() => isFeatureOn('snapshot-tool'));
+  const [signatureToolEnabled] = useState(() => isFeatureOn('signature-tool'));
+  const [textHighlightToolEnabled] = useState(() => isFeatureOn('text-highlight-tool'));
   const [insertImageEnabled] = useState(() => isFeatureOn('insert-image'));
   // Markups list (Nightly 'markup-list'): every mark in one rail panel.
   const [markupListEnabled] = useState(() => isFeatureOn('markup-list'));
@@ -34150,6 +34200,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       checklistResponses: {},
       color: highlightColor
     };
+    { const frame = pageOpSyncRef.current?.frame; if (frame) (frame.madeMarkers ||= new Set()).add(surveyMarker.id); }
     setSurveyMarkers(prev => ({
       ...prev,
       [surveyMarker.id]: surveyMarkerData
@@ -34240,6 +34291,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     // "created a survey marker" row to spotlight the mark on click. The locate
     // branch reuses the pending item's id; the standard branch uses this one.
     const newMarkerId = pendingLocationItem?.id || `surveyMarker-${crypto.randomUUID()}`;
+    // Placed while another window changes the pages: it moves with them after
+    // the reload, like a mark drawn then (page-op-sync).
+    { const frame = pageOpSyncRef.current?.frame; if (frame) (frame.madeMarkers ||= new Set()).add(newMarkerId); }
 
     // Only handle if survey mode is active
     if (!showSurveyPanel || !selectedTemplate) {
@@ -35692,6 +35746,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const handleTextSelectionQuickAction = useCallback((action) => (
     handleTextSelectionAction(action, { keepSelection: false })
   ), [handleTextSelectionAction]);
+  useTextHighlightMode({
+    on: textHighlightToolEnabled && textHighlightMode && activeTool === 'text-select',
+    wrapperRef: pdfjsWrapperRef,
+    paint: textMarkupPaintByType.highlight,
+    getSelection: () => liveTextSelectionActionSelection,
+    apply: () => handleTextSelectionAction('highlight', { keepSelection: false }),
+  });
   const handleTextSelectionCopy = useCallback(async (selection) => {
     const copied = await copyTextSelection(selection?.text);
     showToast(copied ? 'Copied' : 'Could not copy the text.', copied ? 'success' : 'error');
@@ -38429,7 +38490,29 @@ ${pageBlocks}
           pageTransformations,
           // Drawboard gap #16: viewer role / locked doc hides editing rows.
           readOnly: Boolean(documentLocked) || yjsDocRole === 'viewer',
+          canUnlockAll: pageMenuExtrasEnabled
+            ? (page) => lockedMarksOnPage(annotationsByPageRef.current?.[page]?.objects).any
+            : null,
           handlers: {
+            ...(pageMenuExtrasEnabled ? {
+              move: (page, offset) => {
+                const target = page + offset;
+                if (target >= 1 && target <= numPages) handleReorderPages(page, target);
+              },
+              unlockAll: (page) => {
+                const { indices, calloutIds } = lockedMarksOnPage(annotationsByPageRef.current?.[page]?.objects);
+                if (indices.length || calloutIds.length) handleToggleMarkLock(page, { indices, calloutIds }, false);
+              },
+              selectText: (page) => {
+                // The text layer takes a selection only under Text Select.
+                setActiveToolLogged('text-select', { source: 'page-menu' });
+                requestAnimationFrame(() => requestAnimationFrame(() => {
+                  const layer = pdfjsWrapperRef.current?.querySelector(`.survey-pdfjs-page-div[data-page-number="${page}"] .pdfjsTextLayer`);
+                  if (layer?.textContent?.trim()) window.getSelection()?.selectAllChildren(layer);
+                  else showToast('This page has no text to select.', 'info');
+                }));
+              },
+            } : {}),
             selectAll: (page) => {
               if (marksHidden()) return; // nothing you cannot see is picked
               const annotationIndices = selectableMarkIndices(annotationsByPageRef.current?.[page]?.objects, hiddenLayerIdsRef.current);
@@ -38446,6 +38529,7 @@ ${pageBlocks}
             paste: (page, position) => { if (clipboardPage) handlePastePage(page, clipboardPage, clipboardType, position); },
             duplicate: handleDuplicatePage,
             insertBlank: handleInsertBlankPage,
+            ...(pageTemplatesEnabled ? { insertTemplate: (page) => setPageTemplatePicker({ afterPage: page }) } : {}),
             rotate: handleRotatePage,
             mirror: handleMirrorPage,
             reset: handleResetPage,
@@ -38454,8 +38538,15 @@ ${pageBlocks}
         },
       })}
 
-      {/* Nightly 'stamp-tool' places its presets the same way. */}
-      {(markLibraryEnabled || stampToolEnabled || insertImageEnabled) && (
+      {pageTemplatePicker && (
+        <PageTemplatePicker
+          afterPage={pageTemplatePicker.afterPage}
+          onPick={(afterPage, paper) => handleInsertBlankPage(afterPage, paper)}
+          onClose={() => setPageTemplatePicker(null)}
+        />
+      )}
+      {/* Nightly 'stamp-tool' and 'signature-tool' place their items the same way. */}
+      {(markLibraryEnabled || stampToolEnabled || insertImageEnabled || signatureToolEnabled) && (
         <MarkLibraryPlacementLayer active={isActive !== false} rootRef={pdfjsWrapperRef} place={placeLibraryItemAt} />
       )}
       {markLibraryEnabled && (
@@ -38630,6 +38721,14 @@ ${pageBlocks}
             style={containerStyle}
             data-testid="pdf-container"
           >
+            {snapshotToolEnabled && (
+              <SnapshotTool
+                active={activeTool === 'snapshot'}
+                wrapperRef={pdfjsWrapperRef}
+                pdfDoc={pdfDoc}
+                getMarkup={(page) => selectPageMarkup(annotationsByPageRef.current?.[page], deriveCalloutsFromByPage(annotationsByPageRef.current || {}), page)}
+              />
+            )}
             {debugLogging && (() => {
               // Touch tick state so the HUD refreshes even without other renders.
               const tick = debugHudTick;
@@ -41354,6 +41453,12 @@ ${pageBlocks}
                   ...(linkToolOn ? [{ id: 'hyperlink', label: 'Hyperlink', iconName: 'hyperlink' }] : []),
                   // Nightly 'comment-pins': the pin split button (N; M cycles the type).
                   ...(pinsDocOn ? [{ id: 'pin', label: 'Pin', pin: true }] : []),
+                  // Nightly 'snapshot-tool': drag an area, it is copied as a picture.
+                  ...(snapshotToolEnabled ? [{ id: 'snapshot', label: 'Snapshot', iconName: 'camera' }] : []),
+                  // Nightly 'signature-tool': saved signatures, click the page to sign.
+                  ...(signatureToolEnabled ? [{ id: 'signature', label: 'Signature', iconName: 'pen', picker: 'signature' }] : []),
+                  // Nightly 'text-highlight-tool': Select text that highlights as you drag.
+                  ...(textHighlightToolEnabled ? [{ id: 'text-highlight', label: 'Highlight text', iconName: 'formatHighlight', highlightMode: true }] : []),
                   // TODO: Revisit the user-created Note tool later. Imported
                   // PDF Text/sticky-note annotations still render through
                   // pdfAnnotationImporter + the normal PDF annotation layers.
@@ -41370,9 +41475,23 @@ ${pageBlocks}
                   const caretAttr = isUnderlineMenu ? 'data-underline-caret-button' : 'data-strike-caret-button';
                   const isActiveUnderline = isUnderlineMenu && (activeTool === 'underline' || activeTool === 'squiggly');
                   const isActiveStrike = isStrikeMenu && activeTool === 'strikeout';
-                  const isActive = t.picker ? stampPickerOpen : (isActiveUnderline || isActiveStrike || activeTool === t.id);
+                  const isActive = t.highlightMode ? (textHighlightMode && activeTool === 'text-select') : t.picker === 'signature' ? signatureCardOpen : t.picker ? stampPickerOpen : (isActiveUnderline || isActiveStrike || activeTool === t.id);
 
                   const onMainClick = (e) => {
+                    if (t.highlightMode) {
+                      if (stampPickerOpen) setStampPickerOpen(false);
+                      if (signatureCardOpen) setSignatureCardOpen(false);
+                      const next = !(textHighlightMode && activeTool === 'text-select');
+                      if (next) setActiveToolLogged('text-select', { source: 'toolbar' });
+                      setTextHighlightMode(next);
+                      return;
+                    }
+                    if (t.picker === 'signature') {
+                      if (stampPickerOpen) setStampPickerOpen(false);
+                      setSignatureCardOpen(!signatureCardOpen);
+                      return;
+                    }
+                    if (signatureCardOpen) setSignatureCardOpen(false);
                     if (t.picker) {
                       setStampPickerOpen(!stampPickerOpen);
                       return;

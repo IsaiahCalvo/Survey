@@ -12,6 +12,7 @@
 // rolled back (state and view) and the user is told.
 
 import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { pagePaper } from '../utils/blankPagePaper.js';
 import { showToast } from '../utils/toast';
 import { createPageMutationFile } from '../utils/pageMutationFile.js';
 import { readPageMutationBytes, isSamePageMutationVersion } from '../utils/pageMutationSource.js';
@@ -599,10 +600,13 @@ export function usePageOperations({
   ), [runMutation]);
 
   // afterPageNumber 0 adds the blank above page 1. Its size is the page
-  // above it (or page 1 at the top): utils/blankPageSize.js.
-  const handleInsertBlankPage = useCallback((afterPageNumber) => (
-    runMutation({ type: 'insert', afterPage: Math.max(0, Number(afterPageNumber) || 0) }, 'inserting')
-  ), [runMutation]);
+  // above it (or page 1 at the top): utils/blankPageSize.js. `paper` (Nightly
+  // 'page-templates') is a paper template id the new page is drawn with.
+  const handleInsertBlankPage = useCallback((afterPageNumber, paper = null) => {
+    const operation = { type: 'insert', afterPage: Math.max(0, Number(afterPageNumber) || 0) };
+    if (pagePaper(paper)) operation.paper = paper;
+    return runMutation(operation, 'inserting');
+  }, [runMutation]);
 
   return {
     handleDuplicatePage,

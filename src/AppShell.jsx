@@ -70,6 +70,8 @@ import {
   MobilePdfViewerToolRail,
 } from './mobile/MobilePdfViewerChrome';
 import { createKeyboardViewportController } from './mobile/keyboardViewport';
+import { SheetPreview } from './mobile/MobileToolSheetControls';
+import { toolStylePreview } from './utils/toolStylePreview.js';
 import YDocProvider from './components/collab/YDocProvider.jsx';
 import { ARROWHEAD_MENU_ORDER, ARROWHEAD_SHORT_LABELS } from './components/Callout/types';
 import { AuthModal } from './components/AuthModal';
@@ -136,6 +138,7 @@ import { LINE_STYLE_SAMPLE_ICONS, lineStyleOptionsWith } from './utils/lineStyle
 import SelectionQuickBar from './components/SelectionQuickBar.jsx';
 import SelectionPropertiesPanel from './components/SelectionPropertiesPanel.jsx';
 import StampPickerCard from './components/StampPickerCard.jsx';
+import SignatureCard from './components/SignatureCard.jsx';
 import InsertImagePasteHost from './components/InsertImage.jsx';
 import { LineEndingsMenu } from './components/LineEndingsPicker.jsx';
 import { PenTypeMenu } from './components/PenTypePicker.jsx';
@@ -2483,6 +2486,7 @@ export default function App({ devPreviewReturnTab = null }) {
   // document, instead of leaving Survey (Nightly, 'back-button').
   const [backButtonEnabled] = useState(() => isFeatureOn('back-button'));
   const [toolQuickColoursOn] = useState(() => isFeatureOn('tool-quick-colours'));
+  const [toolStylePreviewOn] = useState(() => isFeatureOn('tool-style-preview'));
   useEffect(() => {
     if (!backButtonEnabled || !isViewerVisible) return undefined;
     return installViewerBack(window, () => stableBack());
@@ -4492,6 +4496,17 @@ export default function App({ devPreviewReturnTab = null }) {
                           gold underline under the chosen word: two tab designs
                           for one control, on two screens, and the only one the
                           boards draw is the picker's. */}
+                      {/* Nightly 'tool-style-preview': what the tool will draw
+                          (colour, width and line style together), redrawn as
+                          the colour changes. */}
+                      {toolStylePreviewOn && !isTextMarkupPalette && (() => {
+                        const preview = toolStylePreview(bottomToolbarApi);
+                        return preview ? (
+                          <div className="tool-style-preview" data-tool-style-preview={preview.kind}>
+                            <SheetPreview {...preview} />
+                          </div>
+                        ) : null;
+                      })()}
                       <Suspense fallback={null}>
                         <CompactColorPicker
                           color={currentColor}
@@ -6046,6 +6061,7 @@ export default function App({ devPreviewReturnTab = null }) {
       />
       {/* Nightly 'stamp-tool': Drawboard's Stamp card (the Text group's Stamp button opens it). */}
       <StampPickerCard enabled={Boolean(isViewerVisible && isFeatureOn('stamp-tool'))} phone={Boolean(isMobileViewer)} tip={chromeTip} />
+      <SignatureCard enabled={Boolean(isViewerVisible && isFeatureOn('signature-tool'))} phone={Boolean(isMobileViewer)} tip={chromeTip} />
       {/* Nightly 'insert-image': a picture pasted from the clipboard becomes an image mark. */}
       <InsertImagePasteHost enabled={Boolean(isViewerVisible && isFeatureOn('insert-image'))} />
 

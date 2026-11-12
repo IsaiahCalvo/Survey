@@ -442,6 +442,35 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Measure formats: feet-inches readings, precision, custom scales and a default scale',
     stage: 'beta',
   }),
+  // Drawboard PDF Pro push (2026-11-12, drawboard-trial/pdf-pro/apps-side-by-side.md).
+  'page-menu-extras': Object.freeze({
+    label: 'Page right-click: Move page up / down, Unlock all, Select all text',
+    stage: 'beta',
+  }),
+  'tool-style-preview': Object.freeze({
+    label: 'Desktop colour popover: a live preview of what the tool will draw (colour, width, line style)',
+    stage: 'beta',
+  }),
+  'page-templates': Object.freeze({
+    label: 'Page right-click: Template page below (notebook, Cornell, grids, isometric, music papers)',
+    stage: 'beta',
+  }),
+  'snapshot-tool': Object.freeze({
+    label: 'Snapshot tool: drag an area of a page, it is copied as a picture',
+    stage: 'beta',
+  }),
+  'signature-tool': Object.freeze({
+    label: 'Signature tool: draw or type a signature, save it, click the page to sign',
+    stage: 'beta',
+  }),
+  'text-highlight-tool': Object.freeze({
+    label: 'Highlight text: the band follows the pointer as you drag over words, and letting go highlights them',
+    stage: 'beta',
+  }),
+  'page-turn-keys': Object.freeze({
+    label: 'Keys: with nothing picked, Left / Right and Shift + Up / Down turn the page',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

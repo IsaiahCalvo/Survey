@@ -79,14 +79,19 @@ export async function renderPageToCanvas(page, { target = THUMB_TARGET_PX, timeo
  * projection).
  */
 export function selectPageOneMarkup(pageAnnotations, callouts = []) {
-  const context = { pageNumber: 1 };
+  return selectPageMarkup(pageAnnotations, callouts, 1);
+}
+
+/** The same markup for any page (the Snapshot tool copies the page it is on). */
+export function selectPageMarkup(pageAnnotations, callouts = [], pageNumber = 1) {
+  const context = { pageNumber };
   const objects = (Array.isArray(pageAnnotations?.objects) ? pageAnnotations.objects : [])
     .filter((object) => object && !object.annotationId
       && isAnnotationVisibleInContext({ annotation: object, ...context }))
     .map(projectPaperInkForPresentation);
   const pageCallouts = (Array.isArray(callouts) ? callouts : [])
     .filter((callout) => callout
-      && (callout.pageNumber == null || Number(callout.pageNumber) === 1)
+      && (callout.pageNumber == null ? pageNumber === 1 : Number(callout.pageNumber) === pageNumber)
       && isAnnotationVisibleInContext({ annotation: callout, ...context }));
   return { objects, callouts: pageCallouts };
 }
