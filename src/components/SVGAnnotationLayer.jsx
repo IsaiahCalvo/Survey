@@ -6432,12 +6432,14 @@ const SVGAnnotationLayerBody = memo(({
     if (!obj || !lineEdit) return obj;
     // measure-plus leader drag: only the dimension line's offset changes.
     // A caption drag: only where the caption sits.
-    if (lineEdit.dimLeader != null || lineEdit.dimCaptionOffset) {
+    if (lineEdit.dimLeader != null || lineEdit.dimCaptionOffset || lineEdit.dimCaptionTurn != null) {
       if (!isDimensionMeasure(obj)) return obj;
       const measure = obj.data.measure;
       const dim = lineEdit.dimLeader != null
         ? { ...measure.dim, leader: lineEdit.dimLeader }
-        : { ...measure.dim, captionOffset: lineEdit.dimCaptionOffset };
+        : lineEdit.dimCaptionTurn != null
+          ? { ...measure.dim, captionTurn: lineEdit.dimCaptionTurn }
+          : { ...measure.dim, captionOffset: lineEdit.dimCaptionOffset };
       return { ...obj, data: { ...obj.data, measure: { ...measure, dim } } };
     }
     const nextData = { ...(obj.data || {}) };
@@ -9536,6 +9538,21 @@ const SVGAnnotationLayerBody = memo(({
             w: dimLayout.captionWidth + 4,
             h: dimLayout.captionHeight + 2,
           } : null;
+          // Drawboard's small circle above the caption turns it. Its centre
+          // in page space (the mark may be turned) goes on the grabber, so
+          // the drag measures its angle round the caption.
+          const captionTurnGrab = captionGrab ? (() => {
+            const r = (captionGrab.angle * Math.PI) / 180;
+            const up = captionGrab.h / 2 + 14 * handleIs;
+            const hx = captionGrab.x + Math.sin(r) * up;
+            const hy = captionGrab.y - Math.cos(r) * up;
+            const lr = (lineSelAngle * Math.PI) / 180;
+            const turnPt = (px, py) => ({
+              x: lineSelCx + (px - lineSelCx) * Math.cos(lr) - (py - lineSelCy) * Math.sin(lr),
+              y: lineSelCy + (px - lineSelCx) * Math.sin(lr) + (py - lineSelCy) * Math.cos(lr),
+            });
+            return { x: hx, y: hy, stemX: captionGrab.x + Math.sin(r) * (captionGrab.h / 2), stemY: captionGrab.y - Math.cos(r) * (captionGrab.h / 2), centre: turnPt(captionGrab.x, captionGrab.y) };
+          })() : null;
           // An inline caption sits mid-line, so the pill sits a quarter along.
           const pillAt = dimensionCaptionPlace(selectionObj) === 'above' ? 0.5 : 0.25;
           const leaderPill = dimGeo ? {
@@ -9564,6 +9581,31 @@ const SVGAnnotationLayerBody = memo(({
                   style={{ cursor: 'grab', pointerEvents: 'auto', touchAction: 'none' }}
                   onPointerDown={(e) => { e.stopPropagation(); handleHandlePointerDown(e, 'dim-caption'); }}
                 />
+              )}
+              {captionTurnGrab && (
+                <g data-caption-turn-grabber="true" data-turn-cx={captionGrab.x} data-turn-cy={captionGrab.y}>
+                  <line
+                    x1={captionTurnGrab.stemX} y1={captionTurnGrab.stemY}
+                    x2={captionTurnGrab.x} y2={captionTurnGrab.y}
+                    stroke={HANDLE_RING}
+                    strokeWidth={1}
+                    vectorEffect="non-scaling-stroke"
+                    style={{ pointerEvents: 'none' }}
+                  />
+                  <circle
+                    data-handle="dim-caption-turn"
+                    data-centre-x={captionTurnGrab.centre.x}
+                    data-centre-y={captionTurnGrab.centre.y}
+                    cx={captionTurnGrab.x} cy={captionTurnGrab.y}
+                    r={HANDLE_RADIUS_SECONDARY * handleIs}
+                    fill={HANDLE_FILL}
+                    stroke={HANDLE_RING}
+                    strokeWidth={1.5}
+                    vectorEffect="non-scaling-stroke"
+                    style={{ cursor: 'grab', pointerEvents: 'auto', touchAction: 'none' }}
+                    onPointerDown={(e) => { e.stopPropagation(); handleHandlePointerDown(e, 'dim-caption-turn'); }}
+                  />
+                </g>
               )}
               {!dimGeo && renderLineHitPad('midpoint', midpointBase.x + dx, midpointBase.y + dy)}
               {leaderPill && renderLineHitPad('leader', leaderPill.x, leaderPill.y)}

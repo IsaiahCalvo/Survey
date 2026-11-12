@@ -173,12 +173,14 @@ export const scaleUnitForDisplay = (display) => SCALE_UNIT[display] || 'in';
 const PAPER_INCHES = Object.freeze({ in: 1, mm: 1 / 25.4, cm: 1 / 2.54 });
 export const PAPER_UNITS = Object.freeze(['in', 'mm', 'cm']);
 
+export const CUSTOM_SCALE_TITLE_MAX = 40;
+
 /**
  * A custom scale: `paper` (in / mm / cm) on the sheet is `realText` in the
  * display. Fractional displays read feet-inches marks; decimals read a plain
  * number. Returns { ptPerUnit, unit, label, display, precision } or null.
  */
-export function customMeasureScale({ paper, paperUnit = 'in', realText, display, precision }) {
+export function customMeasureScale({ paper, paperUnit = 'in', realText, display, precision, title = '' }) {
   const paperValue = Number(paper);
   if (!(paperValue > 0) || !Number.isFinite(paperValue) || !PAPER_INCHES[paperUnit] || !isMeasureDisplay(display)) return null;
   let realInches;
@@ -194,17 +196,20 @@ export function customMeasureScale({ paper, paperUnit = 'in', realText, display,
   const paperPt = paperValue * PAPER_INCHES[paperUnit] * 72;
   const p = normalizeMeasurePrecision(display, precision);
   const paperLabel = paperUnit === 'in' ? `${paperValue}″` : `${paperValue} ${paperUnit}`;
+  // A typed title names the scale (Drawboard's Title); without one the
+  // label follows the numbers.
+  const named = String(title ?? '').trim().slice(0, CUSTOM_SCALE_TITLE_MAX);
   return {
     ptPerUnit: paperPt / (realInches / unitInches),
     unit,
     // A decimal label drops trailing zeros: `1 cm = 2.5 m`, not `2.5000 m`.
-    label: `${paperLabel} = ${isFractionalDisplay(display)
+    label: named || `${paperLabel} = ${isFractionalDisplay(display)
       ? formatDisplayLength(realInches, display, 16)
       : formatDisplayLength(realInches, display, 4).replace(/(\.\d*?)0+(?=\D*$)/, '$1').replace(/\.(?=\D*$)/, '')}`,
     display,
     precision: p,
     // What was typed, so the dialog reopens on it and Apply works again.
-    custom: { paper: String(paper), paperUnit, real: String(realText).trim() },
+    custom: { paper: String(paper), paperUnit, real: String(realText).trim(), ...(named ? { title: named } : {}) },
   };
 }
 
@@ -217,7 +222,7 @@ export function customScaleInputs(scale) {
   if (!scale || !isMeasureDisplay(scale.display)) return null;
   const c = scale.custom;
   if (c && Number(c.paper) > 0 && PAPER_INCHES[c.paperUnit] && String(c.real || '').trim()) {
-    return { paper: String(c.paper), paperUnit: c.paperUnit, real: String(c.real) };
+    return { paper: String(c.paper), paperUnit: c.paperUnit, real: String(c.real), title: String(c.title || '') };
   }
   const unitInches = { ft: 12, in: 1, yd: 36, mm: 1 / 25.4, cm: 1 / 2.54, m: 1 / 0.0254 }[scale.unit];
   const ptPerUnit = Number(scale.ptPerUnit);
@@ -226,7 +231,7 @@ export function customScaleInputs(scale) {
   const real = isFractionalDisplay(scale.display)
     ? formatDisplayLength(realInches, scale.display, 16)
     : String(Number((realInches / INCHES[scale.display]).toFixed(4)));
-  return { paper: '1', paperUnit: 'in', real };
+  return { paper: '1', paperUnit: 'in', real, title: '' };
 }
 
 /** The display a preset (or older scale) starts in under 'measure-plus'. */
