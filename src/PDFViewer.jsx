@@ -417,6 +417,7 @@ import { useTextHighlightMode } from './hooks/useTextHighlightMode.js';
 import { selectPageMarkup } from './services/thumbnailRender.js';
 import { marksHidden, setMarksHidden, subscribeMarksHidden } from './utils/marksHidden.js';
 import { isTypingTarget } from './utils/typingTarget.js';
+import { isPasteInPlaceKey, pageNumberAtPoint } from './utils/pasteInPlaceKey.js';
 import { useMarkClipboard } from './utils/sharedMarkClipboard.js';
 // Beta 'mark-library' (Survey Nightly): save marks once, drop them on any page.
 import MarkLibraryPlacementLayer from './markLibrary/MarkLibraryPlacementLayer.jsx';
@@ -3103,7 +3104,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // the ?renderer= URL switch, so the key never flips people into the debug
   // canvas view (Drawboard and most PDF apps use it for paste in place).
   useEffect(() => {
-    if (!import.meta.env.DEV) return undefined;
+    // With Nightly 'paste-in-place-key' on, the key is paste in place, even in dev.
+    if (!import.meta.env.DEV || isFeatureOn('paste-in-place-key')) return undefined;
     const handleRendererToggle = (e) => {
       if (e.ctrlKey && e.shiftKey && e.key === 'V') {
         e.preventDefault();
@@ -4269,6 +4271,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // further down, so the early Copy handlers reach it through this ref.
   const copyFamilySelectionRef = useRef(null);
   const pasteFamilyAtRef = useRef(null);
+  // Nightly 'paste-in-place-key' (Drawboard PDF Pro push 2026-11-12): Ctrl+Shift+V
+  // pastes the marks clipboard at its original spot, like the page menu row.
+  const [pasteInPlaceKeyOn] = useState(() => isFeatureOn('paste-in-place-key'));
+  const pasteFamilyInPlaceRef = useRef(null);
   // UX: shared paste-anchor memory for the "repeat paste at the same spot"
   // rule (Bluebeam/tldraw convention): the FIRST paste lands exactly at the
   // cursor / right-click point; pasting again WITHOUT moving the cursor
@@ -33854,6 +33860,33 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     return done;
   }, [commitFamilyPaste, resolvePasteRepeatCount]);
   pasteFamilyAtRef.current = pasteFamilyAt;
+  pasteFamilyInPlaceRef.current = (pageNumber) => {
+    if (marksHidden()) return false; // a pasted mark would be picked unseen
+    const clip = familyClipboardRef.current;
+    const done = Boolean(clip && commitFamilyPaste(pageNumber, clip, 0, 0));
+    if (done && clip.mode === 'cut') setFamilyClipboard(null);
+    return done;
+  };
+  // Its own listener, armed once: the shared key handler above re-arms when
+  // its inputs change, and a listener re-armed while a key is being handled
+  // never hears that key (a copy or a held Shift re-renders mid-press).
+  useEffect(() => {
+    if (!pasteInPlaceKeyOn) return undefined;
+    const onKey = (e) => {
+      if (!isPasteInPlaceKey(e) || e.defaultPrevented) return;
+      if (isInTabBehind(pdfjsWrapperRef.current)) return;
+      if (isTypingTarget(document.activeElement)) return;
+      if ([...document.querySelectorAll('[role="dialog"][aria-modal="true"]')].some((d) => d.contains(document.activeElement))) return;
+      if (!familyClipboardRef.current || document.body.getAttribute('data-readonly') === 'true') return;
+      const { x, y } = lastPointerPosRef.current;
+      const pageNumber = pageNumberAtPoint(x, y);
+      if (pageNumber == null) return;
+      e.preventDefault();
+      pasteFamilyInPlaceRef.current?.(pageNumber);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [pasteInPlaceKeyOn]);
   copyFamilySelectionRef.current = copyFamilySelection;
 
   // Duplicate (Cmd+D, right-click Duplicate): a copy of the selection 16

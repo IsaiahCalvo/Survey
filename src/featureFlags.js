@@ -447,6 +447,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Page right-click: Move page up / down, Unlock all, Select all text',
     stage: 'beta',
   }),
+  'paste-in-place-key': Object.freeze({
+    label: 'Ctrl+Shift+V pastes the copied marks at their original spot',
+    stage: 'beta',
+  }),
   'selection-count': Object.freeze({
     label: 'Selection bar shows how many marks a multi-pick holds',
     stage: 'beta',
