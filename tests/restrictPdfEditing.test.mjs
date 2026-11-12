@@ -71,8 +71,10 @@ test('the permissions: read, print, copy and screen readers only', () => {
 
 test('round trip: AES-256, opens with no password, same pages and text, editing locked', async () => {
   const source = await samplePdf();
-  const { bytes, password } = await restrictPdfEditing(source, { password: 'Ab3d-Ef7h-Jk9m' });
-  assert.equal(password, 'Ab3d-Ef7h-Jk9m');
+  // Made up for the test, not a secret.
+  const FIXED = 'Ab3d-Ef7h-Jk9m';
+  const { bytes, password } = await restrictPdfEditing(source, { password: FIXED });
+  assert.equal(password, FIXED);
   const raw = Buffer.from(bytes).toString('latin1');
   assert.match(raw, /\/Encrypt\s+\d+\s+0\s+R/);
   // Standard handler revision 6 / version 5 is AES-256.

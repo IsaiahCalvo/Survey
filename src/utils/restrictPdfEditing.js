@@ -11,16 +11,16 @@
 import { showToast } from './toast.js';
 
 // No 0/O, 1/l/I: the password is read off a toast and typed by hand.
-const PASSWORD_LETTERS = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const READABLE_LETTERS = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 /** "Ab3d-Ef7h-Jk9m": 12 random letters in groups of four (about 70 bits). */
 export function makeEditPassword(random = (n) => globalThis.crypto.getRandomValues(new Uint8Array(n))) {
   const letters = [];
   // Rejection sampling keeps every letter equally likely.
-  const limit = 256 - (256 % PASSWORD_LETTERS.length);
+  const limit = 256 - (256 % READABLE_LETTERS.length);
   while (letters.length < 12) {
     for (const byte of random(16)) {
-      if (byte < limit && letters.length < 12) letters.push(PASSWORD_LETTERS[byte % PASSWORD_LETTERS.length]);
+      if (byte < limit && letters.length < 12) letters.push(READABLE_LETTERS[byte % READABLE_LETTERS.length]);
     }
   }
   return [letters.slice(0, 4), letters.slice(4, 8), letters.slice(8)].map((g) => g.join('')).join('-');
