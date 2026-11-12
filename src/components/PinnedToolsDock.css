@@ -48,9 +48,19 @@
 .pinned-dock.is-vertical { flex-direction: column; }
 .pinned-dock.is-horizontal { flex-direction: row; }
 .pinned-dock.is-dragging { pointer-events: none; overflow: hidden; }
+/* Carried over the bottom zone, the row it turns into sits at the foot of
+   the box (walkthu: items-end), so the box closes down onto it. */
+.pinned-dock.is-dragging.is-horizontal { align-items: flex-end; }
+/* Hiding: it shrinks away (PinnedToolsDock `leaving`) and takes no clicks. */
+.pinned-dock.is-leaving { pointer-events: none; }
 
 .pinned-dock__pins {
   display: flex;
+  /* Grows into any room the dock's box has beyond its pins (a box easing to
+     a new length, a carried box): the room opens after the last pin and the
+     dock's own buttons stay at its far end. Docked at rest the box is its
+     content, so there is no room and nothing changes. */
+  flex: 1 1 auto;
   align-items: center;
   gap: 2px;
   min-width: 0;

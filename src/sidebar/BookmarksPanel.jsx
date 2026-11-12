@@ -214,6 +214,9 @@ const BookmarkTreeRow = ({
   const [rowMenu, setRowMenu] = React.useState(null);
   const [renamingHere, setRenamingHere] = React.useState(false);
   const nameInputRef = React.useRef(null);
+  // Escape blurs the field, and the blur's save would read the typed text
+  // before the reset reaches state: this tells that blur not to save.
+  const nameCancelRef = React.useRef(false);
   const showNameField = (isEditMode || renamingHere) && !isClone;
 
   React.useEffect(() => {
@@ -242,6 +245,11 @@ const BookmarkTreeRow = ({
 
   const commitName = () => {
     setRenamingHere(false);
+    if (nameCancelRef.current) {
+      nameCancelRef.current = false;
+      setEditName(item.name || '');
+      return;
+    }
     const nextName = editName.trim();
     if (nextName && nextName !== item.name) {
       onRename?.(item.id, nextName);
@@ -470,6 +478,7 @@ const BookmarkTreeRow = ({
                 event.currentTarget.blur();
               } else if (event.key === 'Escape') {
                 event.stopPropagation();
+                nameCancelRef.current = true;
                 setRenamingHere(false);
                 setEditName(item.name || '');
                 event.currentTarget.blur();

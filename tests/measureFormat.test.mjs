@@ -77,7 +77,7 @@ test('a custom scale: paper to real, kept in a sensible scale unit', () => {
   const m = customMeasureScale({ paper: 10, paperUnit: 'mm', realText: '1', display: 'm', precision: 2 });
   assert.equal(m.unit, 'm');
   assert.ok(Math.abs(m.ptPerUnit - (10 / 25.4) * 72) < 1e-9);
-  assert.equal(m.label, '10 mm = 1.0000 m');
+  assert.equal(m.label, '10 mm = 1 m');
   assert.equal(customMeasureScale({ paper: 1, realText: '8', display: 'ftin' }), null, 'feet-inches needs marks');
   assert.equal(customMeasureScale({ paper: 0, realText: "8'", display: 'ftin' }), null);
   assert.equal(customMeasureScale({ paper: 1, realText: '1e3', display: 'm' }), null);
@@ -221,7 +221,7 @@ test('dimension line: a leader pill replaces the bend grabber and drags the lead
   const layer = read('src/components/SVGAnnotationLayer.jsx');
   assert.match(layer, /\{!dimGeo && renderLineHitPad\('midpoint'/);
   assert.match(layer, /data-handle="leader"[\s\S]{0,900}handleHandlePointerDown\(e, 'leader'\)/);
-  assert.match(layer, /if \(lineEdit\.dimLeader != null \|\| lineEdit\.dimCaptionOffset\) \{/);
+  assert.match(layer, /if \(lineEdit\.dimLeader != null \|\| lineEdit\.dimCaptionOffset \|\| lineEdit\.dimCaptionTurn != null\) \{/);
   const hook = read('src/hooks/useSVGInteraction.js');
   assert.match(hook, /if \(handleId === 'leader'\) \{\s*if \(!isDimensionMeasure\(obj\)\) return;/);
   assert.match(hook, /lineEdit: \{ dimLeader: leader \}/);
@@ -260,7 +260,7 @@ test('dimension line: a dragged caption keeps an elbow leader; Reset caption pos
   assert.match(layer, /data-handle="dim-caption"[\s\S]{0,700}handleHandlePointerDown\(e, 'dim-caption'\)/);
   const menu = read('src/hooks/useAnnotationContextMenu.jsx');
   assert.match(menu, /item\('Reset caption position', 'resetCaptionPosition'/);
-  assert.match(menu, /menuObjEditable && Boolean\(dimensionCaptionOffset\(menuObj\)\)\)\] : \[\]\),/);
+  assert.match(menu, /menuObjEditable && Boolean\(dimensionCaptionOffset\(menuObj\) \|\| dimensionCaptionTurn\(menuObj\)\)\)\] : \[\]\),/);
   assert.match(read('src/utils/svgAnnotationRenderers.jsx'), /\{geo\.elbow && \(\s*<polyline data-dimension-elbow="true"/);
 });
 
@@ -297,7 +297,7 @@ test('dimension line: the canvas twin paints the same line, chevrons and caption
 test('a custom scale reopens with its typed row filled, so Apply keeps it', async () => {
   const m = await import('../src/utils/measure/measureFormat.js');
   const s = m.customMeasureScale({ paper: '2', paperUnit: 'cm', realText: '2.5', display: 'm', precision: 0.01 });
-  assert.deepEqual(m.customScaleInputs(s), { paper: '2', paperUnit: 'cm', real: '2.5' });
+  assert.deepEqual(m.customScaleInputs(s), { paper: '2', paperUnit: 'cm', real: '2.5', title: '' });
   // A custom scale saved before the typed row was kept still reopens to an
   // equal scale.
   for (const [display, realText] of [['ftin', "8'"], ['ft', '12.5'], ['m', '2.5']]) {
@@ -507,7 +507,153 @@ test('segment caption places: Off / Inline / Upright / Above, per mark, Perimete
 
 test('the Measurement card offers Segment captions only for Polylength / Perimeter under measure-plus', () => {
   const src = read('src/components/MeasureEditPopover.jsx');
-  assert.match(src, /SEGMENT_CAPTION_KINDS\.includes\(kind\) && isFeatureOn\('measure-plus'\) \? segmentCaptionPlace\(mark\) : null/);
+  assert.match(src, /const plusOn = isFeatureOn\('measure-plus'\);\s*const segmentPlace = SEGMENT_CAPTION_KINDS\.includes\(kind\) && plusOn \? segmentCaptionPlace\(mark\) : null;/);
   assert.match(src, /data-measure-edit-segments=\{place\}/);
   assert.match(src, /onPatch\?\.\(\{ segmentCaptions: place \}\)/);
+});
+
+test('per-mark scale: a measure on its own scale reads in it, keeps it on a page re-scale, and Apply to existing resets it', async () => {
+  const { applyMeasureEdit, applyPageScale, buildMeasureLabel, isOwnScaleMeasure, markMeasureScale, pageScaleFromObjects, scaleFromPreset } = await import('../src/utils/measure/measureScale.js');
+  const page = scaleFromPreset('1/8');
+  const own = scaleFromPreset('1/4');
+  const line = { type: 'line', left: 0, top: 0, width: 72, height: 0, x1: -36, y1: 0, x2: 36, y2: 0, data: { measure: { kind: 'length', scale: page } } };
+  const mine = applyMeasureEdit(line, { ownScale: own });
+  assert.equal(isOwnScaleMeasure(mine), true);
+  assert.equal(markMeasureScale(mine, page), mine.data.measure.scale);
+  // 72 pt = 1 in: 8 ft on the page scale, 4 ft on its own.
+  assert.equal(buildMeasureLabel(line, page).text, formatMeasureLength(72, page));
+  assert.equal(buildMeasureLabel(mine, page).text, formatMeasureLength(72, own));
+  assert.notEqual(buildMeasureLabel(mine, page).text, buildMeasureLabel(line, page).text);
+  // The page's scale comes from marks on the page scale only.
+  assert.equal(pageScaleFromObjects([line, mine]).label, page.label);
+  assert.equal(pageScaleFromObjects([mine]), null);
+  const next = scaleFromPreset('1/16');
+  const kept = applyPageScale({ objects: [line, mine] }, next);
+  assert.equal(kept.objects[0].data.measure.scale.label, next.label);
+  assert.equal(kept.objects[1].data.measure.scale.label, own.label, 'its own scale stays');
+  const reset = applyPageScale({ objects: [line, mine] }, next, [], { resetOwn: true });
+  assert.equal(reset.objects[1].data.measure.scale.label, next.label);
+  assert.equal(reset.objects[1].data.measure.ownScale, undefined);
+  // Back to the page scale from the card.
+  const back = applyMeasureEdit(mine, { ownScale: null, pageScale: page });
+  assert.equal(back.data.measure.ownScale, undefined);
+  assert.equal(back.data.measure.scale.label, page.label);
+  assert.equal(applyMeasureEdit(line, { ownScale: null, pageScale: page }), line, 'already on the page scale: no change');
+});
+
+test('the Measurement card offers a Scale drop-down and the dialog Apply to existing measurements, under measure-plus', () => {
+  const card = read('src/components/MeasureEditPopover.jsx');
+  assert.match(card, /const ownScale = plusOn && isOwnScaleMeasure\(mark\) \? saved\.scale : null;/);
+  assert.match(card, /onPatch\?\.\(\{ ownScale: null, pageScale: scale \}\)/);
+  assert.match(card, /\.measure-edit__scale-menu, \[data-measure-scale-dialog\]/, 'a pick in the portalled list does not close the card');
+  const dialog = read('src/components/MeasureScaleDialog.jsx');
+  assert.match(dialog, /resetOwn: plusOn && resetOwn/);
+  const viewer = read('src/PDFViewer.jsx');
+  assert.match(viewer, /applyPageScale\(pageJson, scale, extra, \{ resetOwn: measurePlusOn && resetOwn \}\)/);
+});
+
+test('custom scales are kept on this screen, newest first, no repeats, and can be removed', async () => {
+  const {
+    CUSTOM_SCALES_MAX,
+    addCustomMeasureScale,
+    customMeasureScaleIndex,
+    forgetCustomMeasureScale,
+    loadCustomMeasureScales,
+    rememberCustomMeasureScale,
+    scaleFromPreset: preset,
+  } = await import('../src/utils/measure/measureScale.js');
+  const store = new Map();
+  const storage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)) };
+  const eight = customMeasureScale({ paper: '1', paperUnit: 'in', realText: `8'`, display: 'ftin', precision: 4 });
+  const ten = customMeasureScale({ paper: '2', paperUnit: 'cm', realText: '10', display: 'm', precision: 2 });
+  assert.deepEqual(loadCustomMeasureScales(storage), []);
+  rememberCustomMeasureScale(eight, storage);
+  rememberCustomMeasureScale(ten, storage);
+  rememberCustomMeasureScale(eight, storage);
+  const list = loadCustomMeasureScales(storage);
+  assert.deepEqual(list.map((s) => s.label), [eight.label, ten.label], 'newest first, no repeat');
+  assert.deepEqual(list[0].custom, eight.custom, 'what was typed is kept');
+  assert.equal(customMeasureScaleIndex(list, ten), 1);
+  assert.equal(customMeasureScaleIndex(list, preset('1/4')), -1);
+  assert.deepEqual(addCustomMeasureScale(list, preset('1/4')), list, 'a preset is not a custom scale');
+  forgetCustomMeasureScale(0, storage);
+  assert.deepEqual(loadCustomMeasureScales(storage).map((s) => s.label), [ten.label]);
+  let many = [];
+  for (let i = 1; i <= CUSTOM_SCALES_MAX + 3; i += 1) {
+    many = addCustomMeasureScale(many, customMeasureScale({ paper: '1', paperUnit: 'in', realText: `${i}'`, display: 'ftin', precision: 4 }));
+  }
+  assert.equal(many.length, CUSTOM_SCALES_MAX);
+  const blocked = { getItem: () => { throw new Error('blocked'); }, setItem: () => { throw new Error('blocked'); } };
+  assert.deepEqual(loadCustomMeasureScales(blocked), []);
+  assert.doesNotThrow(() => rememberCustomMeasureScale(eight, blocked));
+});
+
+test('Set page scale lists custom scales with a remove x, and the Measurement card offers them', () => {
+  const dialog = read('src/components/MeasureScaleDialog.jsx');
+  assert.match(dialog, /if \(plusOn && scale\.custom\) rememberCustomMeasureScale\(scale\);/);
+  assert.match(dialog, /data-measure-custom-scale-remove=\{i\}/);
+  assert.match(dialog, /setCustoms\(forgetCustomMeasureScale\(i\)\)/);
+  assert.doesNotMatch(dialog, /\stitle=/, 'tooltips only through useTooltip');
+  const card = read('src/components/MeasureEditPopover.jsx');
+  assert.match(card, /customScales\.map\(\(s, i\) => \(\{ value: `custom:\$\{i\}`, label: s\.label \}\)\)/);
+  assert.match(card, /if \(saved\) onPatch\?\.\(\{ ownScale: \{ \.\.\.saved \} \}\);/);
+});
+
+test('dimension caption turn: the circle above the caption turns it; the gap and lift follow its box', async () => {
+  const dl = await import('../src/utils/measure/dimensionLine.js');
+  const { dimensionMarkLayout } = await import('../src/utils/measure/dimensionLayout.js');
+  assert.equal(dl.normalizeDimensionCaptionTurn(370), 10);
+  assert.equal(dl.normalizeDimensionCaptionTurn(-180), 180);
+  assert.equal(dl.normalizeDimensionCaptionTurn('x'), 0);
+  assert.equal(dl.dimensionCaptionTurn({ data: { measure: { dim: { captionTurn: -45.04 } } } }), -45);
+  const flat = dl.dimensionLineGeometry({ x1: 0, y1: 100, x2: 200, y2: 100 }, { captionWidth: 40, captionHeight: 9 });
+  const up = dl.dimensionLineGeometry({ x1: 0, y1: 100, x2: 200, y2: 100 }, { captionWidth: 40, captionHeight: 9, captionTurn: 90 });
+  assert.equal(up.caption.angle, flat.caption.angle + 90);
+  const gap = (g) => g.segments[1][0].x - g.segments[0][1].x;
+  assert.ok(gap(up) < gap(flat), 'a caption turned upright needs a narrower break in the line');
+  assert.ok(Math.abs(gap(up) - (9 + 2 * (gap(flat) - 40) / 2)) < 1e-6);
+  // Above: lifted by the turned box's height across the line.
+  const aboveFlat = dl.dimensionLineGeometry({ x1: 0, y1: 100, x2: 200, y2: 100 }, { captionWidth: 40, captionHeight: 9, place: 'above' });
+  const aboveUp = dl.dimensionLineGeometry({ x1: 0, y1: 100, x2: 200, y2: 100 }, { captionWidth: 40, captionHeight: 9, place: 'above', captionTurn: 90 });
+  assert.ok(Math.abs(aboveUp.caption.y - aboveUp.a.y) > Math.abs(aboveFlat.caption.y - aboveFlat.a.y));
+  // The layout every surface draws from reads the saved turn.
+  const obj = { type: 'line', x1: 0, y1: 0, x2: 200, y2: 0, data: { measure: { kind: 'length', scale: { ptPerUnit: 18, unit: 'ft', label: 'q' }, dim: { leader: 15.31, captionTurn: 30 } } } };
+  const lay = dimensionMarkLayout(obj, { x1: 0, y1: 0, x2: 200, y2: 0 });
+  assert.equal(Math.round(lay.geo.caption.angle), 30);
+});
+
+test('dimension caption turn: grabber, one-step drag and Reset caption position are wired', () => {
+  const layer = read('src/components/SVGAnnotationLayer.jsx');
+  assert.match(layer, /data-handle="dim-caption-turn"/);
+  assert.match(layer, /handleHandlePointerDown\(e, 'dim-caption-turn'\)/);
+  const hook = read('src/hooks/useSVGInteraction.js');
+  assert.match(hook, /action: 'caption-rotate'/);
+  assert.match(hook, /if \(e\.shiftKey\) turn = normalizeDimensionCaptionTurn\(Math\.round\(turn \/ 15\) \* 15\);/);
+  const menu = read('src/hooks/useAnnotationContextMenu.jsx');
+  assert.match(menu, /delete dim\.captionTurn;/);
+});
+
+test('a custom scale takes a typed Title; empty, the label follows the numbers', async () => {
+  const m = await import('../src/utils/measure/measureFormat.js');
+  const plain = m.customMeasureScale({ paper: '1', paperUnit: 'in', realText: `8'`, display: 'ftin', precision: 4 });
+  assert.equal(plain.label, '1″ = 8′');
+  assert.equal(plain.custom.title, undefined);
+  const named = m.customMeasureScale({ paper: '1', paperUnit: 'in', realText: `8'`, display: 'ftin', precision: 4, title: '  Site plan  ' });
+  assert.equal(named.label, 'Site plan');
+  assert.equal(named.ptPerUnit, plain.ptPerUnit, 'a title does not change the scale');
+  assert.equal(m.customScaleInputs(named).title, 'Site plan');
+  assert.equal(m.customMeasureScale({ paper: '1', paperUnit: 'in', realText: `8'`, display: 'ftin', precision: 4, title: 'x'.repeat(60) }).label.length, m.CUSTOM_SCALE_TITLE_MAX);
+  const dialog = read('src/components/MeasureScaleDialog.jsx');
+  assert.match(dialog, /data-measure-custom-title="true"/);
+  assert.match(dialog, /precision, title: customTitle \}\)/);
+});
+
+test('the Measurement card adds and edits custom scales through the dialog in mark mode', () => {
+  const card = read('src/components/MeasureEditPopover.jsx');
+  assert.match(card, /data-measure-edit-scale-add="true"/);
+  assert.match(card, /markMode=\{scaleEditor\.index >= 0 \? 'edit' : 'add'\}/);
+  assert.match(card, /\[data-measure-scale-dialog\], \.measure-scale__menu'\)\)/, 'a press in the dialog keeps the card open');
+  const dialog = read('src/components/MeasureScaleDialog.jsx');
+  assert.match(dialog, /if \(markMode === 'edit' && editIndex >= 0\) forgetCustomMeasureScale\(editIndex\);/);
+  assert.match(dialog, /\{pageCount > 1 && !markMode && \(/);
 });

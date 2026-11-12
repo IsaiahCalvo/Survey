@@ -147,6 +147,14 @@ for (const [layout, use] of Object.entries(LAYOUTS)) {
         expect(bookmarkRows[0]).toBe('Rename');
         expect(bookmarkRows.at(-1)).toBe('Delete');
         await page.screenshot({ path: test.info().outputPath(`${layout}-bookmark-menu.png`) });
+        // Escape drops a typed name (it used to save it on the blur).
+        await menu(page).getByRole('menuitem', { name: 'Rename' }).click();
+        await expect(page.locator('[data-bookmark-drag-row] input').first()).toBeFocused();
+        await page.keyboard.type('Not this');
+        await page.keyboard.press('Escape');
+        await expect(visible(page.locator('[data-bookmark-drag-row]').filter({ hasText: 'Door schedule' }))).toBeVisible();
+        await expect(page.locator('[data-bookmark-drag-row]').filter({ hasText: 'Not this' })).toHaveCount(0);
+        await bookmark.click({ button: 'right' });
         await menu(page).getByRole('menuitem', { name: 'Rename' }).click();
         // The name is in the field now (the row's text no longer matches).
         const bookmarkField = page.locator('[data-bookmark-drag-row] input').first();

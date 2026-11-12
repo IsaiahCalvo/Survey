@@ -130,6 +130,21 @@ export function dimensionCaptionOffset(obj) {
   return Number.isFinite(x) && Number.isFinite(y) && (x || y) ? { x, y } : null;
 }
 
+/**
+ * A caption turned with its rotate grabber: degrees added to its reading
+ * angle, in (-180, 180]. 0 (or nothing saved) is the line's own angle.
+ */
+export function normalizeDimensionCaptionTurn(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  const t = Math.round((((n % 360) + 540) % 360 - 180) * 10) / 10;
+  return t === -180 ? 180 : t;
+}
+
+export function dimensionCaptionTurn(obj) {
+  return normalizeDimensionCaptionTurn(obj?.data?.measure?.dim?.captionTurn);
+}
+
 /** The width (points) a caption of `text` takes at `fontPt`. */
 export function dimensionCaptionWidth(text, fontPt = DIMENSION_CAPTION_PT) {
   return String(text ?? '').length * CHAR_EM * fontPt;
@@ -157,6 +172,7 @@ export function dimensionLineGeometry({ x1, y1, x2, y2 }, {
   place = 'inline',
   captionOffset = null,
   turn = 0,
+  captionTurn = 0,
 } = {}) {
   const dx = x2 - x1;
   const dy = y2 - y1;
@@ -185,7 +201,14 @@ export function dimensionLineGeometry({ x1, y1, x2, y2 }, {
   ];
   const chevrons = [chevron(a, ux, uy), chevron(b, -ux, -uy)];
   const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-  const gapHalf = captionWidth > 0 ? captionWidth / 2 + CAPTION_GAP_PAD_PT : 0;
+  // A turned caption takes the room its turned box covers along the line
+  // (the gap) and across it (the lift).
+  const ct = (normalizeDimensionCaptionTurn(captionTurn) * Math.PI) / 180;
+  const cw = Math.max(0, captionWidth);
+  const ch = Math.max(0, captionHeight);
+  const alongW = ct ? Math.abs(cw * Math.cos(ct)) + Math.abs(ch * Math.sin(ct)) : cw;
+  const acrossH = ct ? Math.abs(cw * Math.sin(ct)) + Math.abs(ch * Math.cos(ct)) : ch;
+  const gapHalf = captionWidth > 0 ? alongW / 2 + CAPTION_GAP_PAD_PT : 0;
   // Break the line only when the caption sits inline and leaves room for
   // the chevrons.
   const moved = Boolean(captionOffset && (captionOffset.x || captionOffset.y));
@@ -198,10 +221,11 @@ export function dimensionLineGeometry({ x1, y1, x2, y2 }, {
   let angle = (Math.atan2(dy, dx) * 180) / Math.PI;
   const screen = ((((angle + (Number(turn) || 0)) % 360) + 540) % 360) - 180;
   if (screen > 90 || screen <= -90) angle += 180;
+  angle += normalizeDimensionCaptionTurn(captionTurn);
   // An Above caption, or one that does not fit between the chevrons, sits
   // beside the line on the side away from the clicked points.
   const outside = !moved && segments.length === 1 && gapHalf > 0;
-  const lift = outside ? (Math.max(0, captionHeight) / 2 + CAPTION_LIFT_PAD_PT) * side : 0;
+  const lift = outside ? (acrossH / 2 + CAPTION_LIFT_PAD_PT) * side : 0;
   let caption = { x: mid.x + nx * lift, y: mid.y + ny * lift, angle };
   // A dragged caption sits where it was put (from the inline spot, in the
   // line's own frame) with a thin elbow leader from the line's middle:
@@ -209,8 +233,10 @@ export function dimensionLineGeometry({ x1, y1, x2, y2 }, {
   let elbow = null;
   if (moved) {
     caption = { x: mid.x + captionOffset.x, y: mid.y + captionOffset.y, angle };
-    const halfW = Math.max(0, captionWidth) / 2;
-    const halfH = Math.max(0, captionHeight) / 2;
+    // A turned caption's box, as the page sees it.
+    const A = (caption.angle * Math.PI) / 180;
+    const halfW = (ct ? Math.abs(cw * Math.cos(A)) + Math.abs(ch * Math.sin(A)) : cw) / 2;
+    const halfH = (ct ? Math.abs(cw * Math.sin(A)) + Math.abs(ch * Math.cos(A)) : ch) / 2;
     const ddx = caption.x - mid.x;
     const ddy = caption.y - mid.y;
     if (Math.abs(ddx) > halfW) {

@@ -143,12 +143,14 @@ async function serverAnswers(supabase, documentId) {
   }
 }
 /* The PDF on screen came from a kept copy nobody vouched for: server marks
-   may join it only if the server still has that same file. 'stale' when it
-   has another one. */
+   may join it only once the server shows it still has that very file (both
+   hashes known and equal). 'stale' when it has another file; 'unknown' when
+   either hash is missing (a page save can clear the server's), which is
+   treated like 'stale': stay on the device copy until the tab reopens. */
 function unverifiedCopyVerdict(documentId, answer) {
   if (!openedFromUnverifiedCopy(documentId)) return 'ok';
   const mine = unverifiedCopySha(documentId);
-  if (!answer?.sha || !mine) return 'ok';
+  if (!answer?.sha || !mine) return 'unknown';
   return answer.sha === String(mine).toLowerCase() ? 'ok' : 'stale';
 }
 // A deleted document or a permission denial: no retry and no device copy.
@@ -537,14 +539,51 @@ export function useAnnotationDoc({
       forgetUnverifiedCopy(documentId);
       setOpenRetryTick((tick) => tick + 1);
     };
+    // Ask the server; reconnect only once it answers (and, for an unverified
+    // copy, once it shows the same file). Out of reach: try again with
+    // backoff. Each try is a tiny question, so the open copy is only torn
+    // down once the server answers and marks being drawn are not interrupted.
+    let copyNoticeShown = false;
+    let scheduleOfflineRetry = null;
+    const tryServerAgain = () => {
+      serverAnswers(supabase, documentId).then((answer) => {
+        if (cancelled) return undefined;
+        if (!answer) return scheduleOfflineRetry();
+        const verdict = unverifiedCopyVerdict(documentId, answer);
+        if (verdict !== 'ok') {
+          // Server marks must not land on a PDF that may be old. Stay on
+          // the device copy and say how to get the latest.
+          if (!copyNoticeShown) {
+            copyNoticeShown = true;
+            showToast(verdict === 'stale'
+              ? 'A newer version of this document is on the server. Close and reopen it to get it; your marks stay on this device until then.'
+              : 'This offline copy couldn’t be checked against the server. Close and reopen the document to sync; your marks stay on this device until then.', 'warn', { duration: 12_000 });
+          }
+          return undefined;
+        }
+        return reopenOnline();
+      });
+    };
+    scheduleOfflineRetry = () => {
+      if (cancelled || offlineRetryTimer) return;
+      const retries = offlineOpenRef.current.retries || 0;
+      offlineOpenRef.current = { ...offlineOpenRef.current, retries: retries + 1 };
+      offlineRetryTimer = setTimeout(() => {
+        offlineRetryTimer = null;
+        tryServerAgain();
+      }, Math.min(OFFLINE_RETRY_MAX_MS, OFFLINE_RETRY_BASE_MS * (2 ** retries)));
+    };
+    const reconnectNow = () => {
+      if (openedFromUnverifiedCopy(documentId)) tryServerAgain();
+      else reopenOnline();
+    };
     let blockedReason = null;
     let onBackOnline = null;
     if (!isDeviceDocumentId(documentId) && supabase && isFeatureOn('offline-docs')
       && typeof globalThis.addEventListener === 'function') {
       onBackOnline = () => {
         backOnline = true;
-        // An unverified copy waits for the retry below, which checks the file.
-        if (openedLocal && !openedFromUnverifiedCopy(documentId)) reopenOnline();
+        if (openedLocal) reconnectNow();
       };
       globalThis.addEventListener('online', onBackOnline);
     }
@@ -745,32 +784,12 @@ export function useAnnotationDoc({
       setOfflineCopy(openLocal && !deviceOnly);
       if (openLocal && !deviceOnly) {
         openedLocal = true;
-        if (backOnline && !openedFromUnverifiedCopy(documentId)) {
-          reopenOnline();
+        if (backOnline) {
+          reconnectNow();
         } else if (globalThis.navigator?.onLine !== false) {
           // The device says it is online but the server could not be reached:
           // no 'online' event will come, so try the server again with backoff.
-          // Each try first asks the server a tiny question; the open copy is
-          // only torn down and reopened once the server answers, so marks
-          // being drawn are not interrupted while it stays out of reach.
-          const scheduleOfflineRetry = () => {
-            const retries = offlineOpenRef.current.retries || 0;
-            offlineOpenRef.current = { ...offlineOpenRef.current, retries: retries + 1 };
-            offlineRetryTimer = setTimeout(() => {
-              offlineRetryTimer = null;
-              serverAnswers(supabase, documentId).then((answer) => {
-                if (cancelled) return;
-                if (!answer) return scheduleOfflineRetry();
-                if (unverifiedCopyVerdict(documentId, answer) === 'stale') {
-                  // The server has another file now: its marks must not land
-                  // on this old one. Stay on the device copy and say so.
-                  showToast('A newer version of this document is on the server. Close and reopen it to get it; your marks stay on this device until then.', 'warn', { duration: 12_000 });
-                  return undefined;
-                }
-                return reopenOnline();
-              });
-            }, Math.min(OFFLINE_RETRY_MAX_MS, OFFLINE_RETRY_BASE_MS * (2 ** retries)));
-          };
+          // (Device offline: the 'online' listener above starts the tries.)
           scheduleOfflineRetry();
         }
       } else if (!deviceOnly) {
