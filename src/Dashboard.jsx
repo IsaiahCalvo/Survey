@@ -52,7 +52,8 @@ import { resolveDocumentMetadata } from './services/documentMetadataResolver.js'
 import { perfUpload } from './utils/performanceLogger';
 import { showToast } from './utils/toast';
 import DriveFilePicker from './components/DriveFilePicker.jsx';
-import { announceDriveLinkChanged, driveCall, fetchDrivePdf } from './services/driveFilesClient.js';
+import { announceDriveLinkChanged, chooseGoogleDrivePdf, driveCall, fetchDrivePdf, googlePickerApiKey } from './services/driveFilesClient.js';
+import { drivePlace } from './utils/driveLinks.js';
 import { archiveItems, restoreArchiveItems } from './services/archiveService';
 import { useUndoToast } from './hooks/useUndoToast.js';
 import { UndoToast } from './components/collab/UndoToast.jsx';
@@ -1869,14 +1870,17 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       ? projects.length > 0
       : templates.length > 0;
 
-  // drive-sync-back (Nightly): open a PDF from OneDrive. It becomes a normal
-  // Survey document (marks live in Survey, like Drawboard), linked to the
-  // OneDrive file so the viewer saves the marked-up PDF back to it.
+  // drive-sync-back (Nightly): open a PDF from OneDrive or Google Drive. It
+  // becomes a normal Survey document (marks live in Survey, like Drawboard),
+  // linked to the drive file so the viewer saves the marked-up PDF back to it.
   const [drivePickerOpen, setDrivePickerOpen] = useState(false);
   const canOpenFromDrive = Boolean(user) && isFeatureOn('drive-sync-back');
+  // Google's Picker needs a browser key; without one the entry stays hidden.
+  const canOpenFromGoogleDrive = canOpenFromDrive && Boolean(googlePickerApiKey());
   const openFromDrive = async (picked) => {
     const got = await fetchDrivePdf(picked);
     if (got.error) { showToast(got.error, 'warn'); return false; }
+    const place = drivePlace(got);
     let documentId = null;
     const outcome = await uploadBrowserPdf(got.file, {
       openAfterUpload: true,
@@ -1884,14 +1888,23 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       onDocument: (doc) => { documentId = doc?.id || null; },
     });
     if (!documentId || outcome === 'failed' || outcome === 'skipped') return false;
-    const linked = await driveCall('driveLink', { documentId, driveId: got.driveId, itemId: got.itemId, eTag: got.eTag });
+    const linked = await driveCall('driveLink', {
+      documentId, driveId: got.driveId, itemId: got.itemId, eTag: got.eTag,
+      ...(got.provider === 'google' ? { provider: 'google' } : {}),
+    });
     if (linked?.error) {
-      showToast(`It opened, but won’t save back to OneDrive: ${linked.error}`, 'warn');
+      showToast(`It opened, but won’t save back to ${place}: ${linked.error}`, 'warn');
     } else {
       announceDriveLinkChanged(documentId);
-      showToast(`${got.file.name} opened from OneDrive. Your marks save back to it.`, 'success');
+      showToast(`${got.file.name} opened from ${place}. Your marks save back to it.`, 'success');
     }
     return true;
+  };
+  const openFromGoogleDrive = async () => {
+    const picked = await chooseGoogleDrivePdf();
+    if (!picked) return;
+    if (picked.error) { showToast(picked.error, 'warn'); return; }
+    await openFromDrive(picked);
   };
 
   // device-files (Nightly): with no account, a PDF opens and stays on this
@@ -3033,6 +3046,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         onOpenDocument={hubOpenDocument}
         onUpload={handleUploadClick}
         onOpenFromDrive={canOpenFromDrive ? () => setDrivePickerOpen(true) : null}
+        onOpenFromGoogleDrive={canOpenFromGoogleDrive ? openFromGoogleDrive : null}
         onDropFiles={handleDroppedFiles}
         uploadBusy={activeUploads > 0 || uploadInFlight}
         onCreateProject={handleCreateProjectClick}

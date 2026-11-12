@@ -12,6 +12,7 @@
      onOpenDocument(doc)   — open a document in the PDF viewer
      onUpload()            — start the upload flow
      onOpenFromDrive()     — open a PDF from OneDrive (null hides it)
+     onOpenFromGoogleDrive() — open a PDF from Google Drive (null hides it)
      onCreateProject()     — start the new-project flow
      onCreateTemplate()    — start the new-template flow
 */
@@ -61,6 +62,7 @@ export default function SurveyHub({
   onOpenDocument,
   onUpload,
   onOpenFromDrive = null,
+  onOpenFromGoogleDrive = null,
   /* PDFs dragged in from the computer: (files, { projectId, projectName }).
      Without it the home screen takes no drops (the dev preview). */
   onDropFiles,
@@ -224,6 +226,7 @@ export default function SurveyHub({
           onOpenDocument={(document) => onOpenDocument?.(document, 'documents')}
           onUpload={onUpload}
           onOpenFromDrive={onOpenFromDrive}
+          onOpenFromGoogleDrive={onOpenFromGoogleDrive}
           onDropFiles={onDropFiles}
           uploadBusy={uploadBusy}
           onShare={shareDocuments}

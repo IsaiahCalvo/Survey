@@ -59,6 +59,7 @@ import { OPEN_VIEWER_SHARE_EVENT } from '../utils/viewerShare.js';
 import { RENAME_OPEN_DOCUMENT_EVENT } from '../tabs/tabStrip.js';
 import { usePolylineCurve } from '../hooks/usePolylineCurve.js';
 import { POLYLINE_CURVE_SET_EVENT } from '../utils/polySpline.js';
+import { driveIcon, drivePlace } from '../utils/driveLinks.js';
 
 // UX 2026-09-16 (phone sweep, owner ruling "everything reads a little big").
 // ONE glyph:control ratio for every phone tier, and it is Drawboard's: its
@@ -1122,16 +1123,16 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
           <Icon name="download" size={HEADER_GLYPH} color="currentColor" />
         </button>
         {/* Nightly (flag 'drive-sync-back'): a document linked to a OneDrive
-            file; AppShell owns the card (components/DriveSyncButton.jsx). */}
+            or Google Drive file; AppShell owns the card (DriveSyncButton.jsx). */}
         {driveSync && (
           <button
             type="button"
             className="mobile-pdf-header__icon"
-            aria-label="OneDrive"
+            aria-label={drivePlace(driveSync.link)}
             data-drive-sync-button="phone"
             onClick={() => { commitPanelTyping(); onOpenDriveSync?.(); }}
           >
-            <Icon name="oneDrive" size={HEADER_GLYPH} color="currentColor" />
+            <Icon name={driveIcon(driveSync.link)} size={HEADER_GLYPH} color="currentColor" />
           </button>
         )}
         {/* Nightly (flag 'viewer-share'): share this document; AppShell owns
