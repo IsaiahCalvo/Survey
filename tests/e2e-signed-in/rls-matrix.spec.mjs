@@ -76,6 +76,9 @@ async function seedOwnerRows(admin, ids) {
   // Home tags and Last opened (Nightly): personal rows, nobody else's.
   await replace('document_tags', 'user_id', owner, { user_id: owner, document_id: DOC, tag: 'rls sweep' });
   await replace('document_opens', 'user_id', owner, { user_id: owner, document_id: DOC });
+  // Sign from phone (Nightly): a request is the owner's alone; the phone
+  // fills it only through submit_phone_signature (phone-sign.spec.mjs).
+  await replace('phone_signatures', 'user_id', owner, { token: 'e2e00000-0000-4000-8000-0000000005a1', user_id: owner });
   // Project issues (Nightly): the project's members read them, the log comes
   // from a trigger, and comments belong to an item.
   await must('clear project_items', admin.from('project_items').delete().eq('project_id', PROJECT));
@@ -139,6 +142,7 @@ const ownerRows = (ids) => ({
   mark_library_items: ['created_by', ids.owner],
   document_tags: ['user_id', ids.owner],
   document_opens: ['user_id', ids.owner],
+  phone_signatures: ['user_id', ids.owner],
   project_items: ['project_id', PROJECT],
   project_item_events: ['project_id', PROJECT],
   project_item_comments: ['project_id', PROJECT],
