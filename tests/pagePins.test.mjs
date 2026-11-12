@@ -122,7 +122,7 @@ test('wiring: flag, migration, viewer host and layer, tool button, rail card, ph
   assert.match(viewer, /pinsAvailable: pinsDocOn,/);
   assert.match(read('src/utils/keyboardShortcuts.js'), /chords: \['n'\][^\n]*flag: 'comment-pins'/);
   const service = read('src/services/markComments.js');
-  assert.match(service, /pin_x, pin_y, pin_kind, pin_status, pin_number'\)/);
+  assert.match(service, /pin_x, pin_y, pin_kind, pin_status, pin_number[,']/);
   // Pan leaves pins to their own press.
   assert.match(read('src/components/pins/PagePinsLayer.jsx'), /data-pan-interactive="true"/);
 });

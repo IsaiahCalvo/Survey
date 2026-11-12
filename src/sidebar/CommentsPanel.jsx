@@ -7,6 +7,8 @@
  * comment), edit or delete your own. A deleted comment leaves a stub so the
  * replies keep their place. Clicking a thread's label zooms to its mark the
  * way History does. Viewers read; editors post (the server checks both).
+ * Editors resolve a thread when it is dealt with (KAL-415, as Drawboard
+ * does): it leaves the Open list for Resolved, where Reopen brings it back.
  */
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -32,6 +34,8 @@ import {
   mentionsInText,
   notifyCommentMentions,
   personLabel,
+  setMarkCommentResolved,
+  splitResolvedThreads,
 } from '../services/markComments.js';
 import { historyGlyphFor, historyTypeKey } from '../utils/historyFeed.js';
 import { presenceInitials } from '../components/presenceIdentity.js';
@@ -267,6 +271,9 @@ export default function CommentsPanel({
   const { comments, people, status, applyLocal } = useMarkComments(documentId);
   const peopleById = useMemo(() => new Map(people.map((p) => [p.id, p])), [people]);
   const threads = useMemo(() => groupThreads(comments), [comments]);
+  const lists = useMemo(() => splitResolvedThreads(threads), [threads]);
+  const [view, setView] = useState('open'); // 'open' | 'resolved'
+  const shown = view === 'resolved' ? lists.resolved : lists.open;
   const [draft, setDraft] = useState(null); // { markId, pageNumber }
   const [replyingTo, setReplyingTo] = useState(null);
   const [editing, setEditing] = useState(null);
@@ -299,12 +306,20 @@ export default function CommentsPanel({
     if (existing) {
       setDraft(null);
       setActiveThreadId(existing.id);
-      if (canWrite) setReplyingTo(existing.id);
+      setView(existing.root.resolvedAt ? 'resolved' : 'open');
+      if (canWrite && !existing.root.resolvedAt) setReplyingTo(existing.id);
       setHighlightId(existing.root.id);
     } else if (canWrite) {
       setDraft({ markId, pageNumber: Number(pendingMarkRequest.pageNumber) || pageNum || 1 });
     }
   }, [pendingMarkRequest, status, threads, canWrite, pageNum]);
+
+  // A linked comment in a resolved thread opens the Resolved list (and back).
+  useEffect(() => {
+    if (!highlightId) return;
+    const thread = threads.find((t) => t.root.id === highlightId || t.replies.some((r) => r.id === highlightId));
+    if (thread) setView(thread.root.resolvedAt ? 'resolved' : 'open');
+  }, [highlightId, threads]);
 
   // Bring a linked comment into view once it has loaded.
   useEffect(() => {
@@ -394,6 +409,20 @@ export default function CommentsPanel({
       }
     });
   };
+  // Act first with an Undo on the toast, no confirm (owner rule).
+  const setResolved = async (thread, resolved, { quiet = false } = {}) => {
+    try {
+      applyLocal(await setMarkCommentResolved(supabase, { commentId: thread.root.id, resolved }));
+      if (replyingTo === thread.id) setReplyingTo(null);
+      if (!quiet) {
+        showToast(resolved ? 'Thread resolved' : 'Thread reopened', 'success', {
+          action: { label: 'Undo', onClick: () => { setResolved(thread, !resolved, { quiet: true }); } },
+        });
+      }
+    } catch (err) {
+      showToast(err?.message || (resolved ? 'Could not resolve the thread' : 'Could not reopen the thread'));
+    }
+  };
   const copyLink = async (comment) => {
     try {
       await navigator.clipboard.writeText(commentShareUrl(window.location, documentId, comment.id));
@@ -426,9 +455,27 @@ export default function CommentsPanel({
     goTo(thread.markId, thread.pageNumber);
   };
 
+  const filter = threads.length > 0 ? (
+    <div className="comments-filter" role="group" aria-label="Show threads">
+      {[['open', 'Open', lists.open.length], ['resolved', 'Resolved', lists.resolved.length]].map(([key, label, count]) => (
+        <button
+          key={key}
+          type="button"
+          className={`comments-filter__btn${view === key ? ' is-on' : ''}`}
+          aria-pressed={view === key}
+          data-comment-filter={key}
+          onClick={() => setView(key)}
+        >
+          {label} <span className="comments-filter__count">{count}</span>
+        </button>
+      ))}
+    </div>
+  ) : null;
+
   return (
     <div className="comments-panel" data-testid="comments-panel" ref={listRef}>
       {newButton}
+      {filter}
       {draft && (
         <div className="comments-thread comments-thread--draft" data-comment-draft={draft.markId || `page-${draft.pageNumber}`}>
           <div className="comments-thread__target">
@@ -457,12 +504,18 @@ export default function CommentsPanel({
           No comments yet. {canWrite ? 'Pick a mark and press Comment, or comment on this page.' : ''}
         </div>
       )}
-      {threads.map((thread) => (
+      {threads.length > 0 && shown.length === 0 && !draft && (
+        <div className="comments-empty">
+          {view === 'resolved' ? 'No resolved threads.' : 'No open threads. Resolved ones are under Resolved.'}
+        </div>
+      )}
+      {shown.map((thread) => (
         // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- the label button is the keyboard way in
         <div
           key={thread.id}
-          className={`comments-thread${[thread.root, ...thread.replies].some((c) => c.id === highlightId) ? ' is-highlighted' : ''}${activeThreadId === thread.id ? ' is-active' : ''}`}
+          className={`comments-thread${[thread.root, ...thread.replies].some((c) => c.id === highlightId) ? ' is-highlighted' : ''}${activeThreadId === thread.id ? ' is-active' : ''}${thread.root.resolvedAt ? ' is-resolved' : ''}`}
           data-comment-thread={thread.id}
+          data-comment-resolved={thread.root.resolvedAt ? 'true' : undefined}
           onClick={(event) => openThread(event, thread)}
         >
           <button
@@ -474,13 +527,28 @@ export default function CommentsPanel({
             <Icon name={markTarget(thread.markId, thread.pageNumber).icon} size={13} />
             <span>{markLabel(thread.markId, thread.pageNumber)}</span>
           </button>
+          {thread.root.resolvedAt && (
+            <div className="comments-resolved-note" data-comment-resolved-note="true">
+              <Icon name="check" size={12} />
+              <span>
+                Resolved{thread.root.resolvedBy ? ` by ${thread.root.resolvedBy === userId ? 'you' : personLabel(peopleById.get(thread.root.resolvedBy))}` : ''} · {timeLabel(thread.root.resolvedAt)}
+              </span>
+            </div>
+          )}
           <CommentItem comment={thread.root} mine={thread.root.authorId === userId} editing={editing === thread.root.id} {...itemProps} />
           {thread.replies.map((reply) => (
             <div key={reply.id} className="comments-reply">
               <CommentItem comment={reply} mine={reply.authorId === userId} editing={editing === reply.id} {...itemProps} />
             </div>
           ))}
-          {canWrite && (replyingTo === thread.id ? (
+          {canWrite && thread.root.resolvedAt && (
+            <div className="comments-thread__actions">
+              <button type="button" className="comments-text-btn comments-reply-btn" data-comment-reopen={thread.id} onClick={() => setResolved(thread, false)}>
+                Reopen
+              </button>
+            </div>
+          )}
+          {canWrite && !thread.root.resolvedAt && (replyingTo === thread.id ? (
             <div className="comments-reply">
               <CommentBox
                 people={people}
@@ -497,9 +565,14 @@ export default function CommentsPanel({
               />
             </div>
           ) : (
-            <button type="button" className="comments-text-btn comments-reply-btn" data-comment-reply={thread.id} onClick={() => setReplyingTo(thread.id)}>
-              Reply
-            </button>
+            <div className="comments-thread__actions">
+              <button type="button" className="comments-text-btn comments-reply-btn" data-comment-reply={thread.id} onClick={() => setReplyingTo(thread.id)}>
+                Reply
+              </button>
+              <button type="button" className="comments-text-btn" data-comment-resolve={thread.id} onClick={() => setResolved(thread, true)}>
+                Resolve
+              </button>
+            </div>
           ))}
         </div>
       ))}
