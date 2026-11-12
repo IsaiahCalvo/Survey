@@ -561,6 +561,78 @@ test('custom scales: an applied one is listed in Set page scale and the Measurem
   }
 });
 
+test('Measurement card: Add scale gives the mark a new custom scale; Edit scale renames it', async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.addInitScript(() => {
+    localStorage.setItem('survey.flag.measure-plus', '1');
+    localStorage.setItem('survey.flag.measure-edit', '1');
+    if (!sessionStorage.getItem('add-scale-reset')) {
+      localStorage.removeItem('survey.measure.defaultScale');
+      localStorage.removeItem('survey:measure-custom-scales');
+      sessionStorage.setItem('add-scale-reset', '1');
+    }
+  });
+  const owner = E2E_ACCOUNTS.owner;
+  const admin = adminClient();
+  const api = await apiClientFor(owner);
+  const { data: { user } } = await api.auth.getUser();
+  const name = `Add scale ${RUN}.pdf`;
+  const id = await seedDocument(admin, user.id, name, 'Add scale page');
+  try {
+    await signIn(page, owner);
+    const surface = await openDocument(page, name, 'Add scale page');
+    await page.getByRole('button', { name: 'Shapes', exact: true }).click();
+    let dialog = await openScaleDialog(page);
+    await dialog.locator('[data-measure-preset-option="1/4"]').click();
+    await dialog.locator('[data-measure-apply]').click();
+    await expect(dialog).toBeHidden();
+    const reading = await drawLength(page, surface, 150, 450, 300);
+    const before = await reading.textContent();
+    const bar = page.locator('[data-selection-quick-bar][data-visible="true"]');
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('v');
+    const seg = await surface.locator('[data-dimension-line] line').nth(2).boundingBox();
+    await page.mouse.click(seg.x + seg.width / 2, seg.y + seg.height / 2);
+    await expect(bar).toBeVisible();
+    await bar.getByRole('button', { name: 'Measurement' }).click();
+    const card = page.getByRole('dialog', { name: 'Measurement' });
+    await expect(card.locator('[data-measure-edit-scale-edit]')).toHaveCount(0);
+    await card.locator('[data-measure-edit-scale-add]').click();
+    dialog = page.getByRole('dialog', { name: 'Add scale' });
+    await expect(dialog).toBeVisible();
+    for (const sel of ['[data-measure-scale-kind]', '[data-measure-start-calibrate]', '[data-measure-apply-existing]', '[data-measure-set-default]']) {
+      await expect(dialog.locator(sel)).toHaveCount(0);
+    }
+    await dialog.locator('[data-measure-custom-paper]').fill('1');
+    await dialog.locator('[data-measure-custom-real]').fill("16'");
+    await page.screenshot({ path: test.info().outputPath('measure-plus-add-scale.png') });
+    await dialog.locator('[data-measure-apply]').click();
+    await expect(dialog).toBeHidden();
+    // The card stays open on the mark, now on the new scale.
+    await expect(card).toBeVisible();
+    await expect(card.locator('[data-measure-edit-scale]')).toHaveAttribute('data-measure-edit-scale', 'custom:0');
+    await expect(reading).not.toHaveText(before);
+    const added = await reading.textContent();
+    // Edit scale renames it; the reading stays.
+    await card.locator('[data-measure-edit-scale-edit]').click();
+    dialog = page.getByRole('dialog', { name: 'Edit scale' });
+    await expect(dialog.locator('[data-measure-custom-real]')).toHaveValue("16'");
+    await dialog.locator('[data-measure-custom-title]').fill('Grid');
+    await dialog.locator('[data-measure-apply]').click();
+    await expect(dialog).toBeHidden();
+    await expect(card.locator('[data-measure-edit-scale]')).toHaveAttribute('data-measure-edit-scale', 'custom:0');
+    await expect(card.locator('[data-measure-edit-scale] button').first()).toContainText('Grid');
+    await expect(reading).toHaveText(added);
+    await card.locator('[data-measure-edit-scale] button').first().click();
+    const list = page.getByRole('listbox', { name: 'Scale' });
+    await expect(list.getByRole('option', { name: 'Grid', exact: true })).toHaveCount(1);
+    await expect(list.getByRole('option', { name: '1″ = 16′', exact: true })).toHaveCount(0);
+    await page.keyboard.press('Escape');
+  } finally {
+    if (!process.env.KEEP) await admin.from('documents').delete().eq('id', id);
+  }
+});
+
 test('without the flag the dialog has no custom scale, units or default', async ({ page }) => {
   test.setTimeout(180_000);
   await page.addInitScript(() => localStorage.setItem('survey.flag.measure-plus', '0'));

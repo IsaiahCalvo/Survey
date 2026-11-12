@@ -51,7 +51,11 @@ import {
 const IMPERIAL = MEASURE_PRESETS.filter((p) => p.unit === 'ft');
 const OTHER = MEASURE_PRESETS.filter((p) => p.unit !== 'ft');
 
-export default function MeasureScaleDialog({ pageNumber, pageCount = 1, lengthPt = null, currentScale = null, onApply, onCalibrate, onCancel }) {
+// `markMode` 'add' / 'edit' (measure-plus): Drawboard's Add Scale / Edit
+// Scale from the Measurement card. Only the custom row, Title, Units and
+// Precision show; Apply gives the scale to the picked measurement, and an
+// edit replaces custom scale `editIndex` in the list.
+export default function MeasureScaleDialog({ pageNumber, pageCount = 1, lengthPt = null, currentScale = null, onApply, onCalibrate, onCancel, markMode = null, editIndex = -1 }) {
   const tip = useTooltip();
   const cardRef = useRef(null);
   const [real, setReal] = useState('');
@@ -74,7 +78,7 @@ export default function MeasureScaleDialog({ pageNumber, pageCount = 1, lengthPt
   // Nightly 'measure-plus': a custom scale row, Drawboard's number formats
   // (units + precision) and "Set as default". Reopens on the live scale.
   const [plusOn] = useState(() => isFeatureOn('measure-plus'));
-  const [custom, setCustom] = useState(() => Boolean(plusOn && currentScale?.display && !MEASURE_PRESETS.some((p) => p.label === currentScale?.label) && !calibrating));
+  const [custom, setCustom] = useState(() => Boolean(markMode) || Boolean(plusOn && currentScale?.display && !MEASURE_PRESETS.some((p) => p.label === currentScale?.label) && !calibrating));
   const [display, setDisplay] = useState(() => (isMeasureDisplay(currentScale?.display) ? currentScale.display : displayForScaleUnit(currentScale?.unit || (metric ? 'm' : 'ft'))));
   const [precision, setPrecision] = useState(() => normalizeMeasurePrecision(display, currentScale?.precision));
   // Reopened on a custom scale, the row starts filled so Apply keeps it.
@@ -118,6 +122,7 @@ export default function MeasureScaleDialog({ pageNumber, pageCount = 1, lengthPt
   const submit = (e) => {
     e.preventDefault();
     if (!scale) return;
+    if (markMode === 'edit' && editIndex >= 0) forgetCustomMeasureScale(editIndex);
     if (plusOn && scale.custom) rememberCustomMeasureScale(scale);
     onApply(scale, { allPages: allPages && pageCount > 1, setDefault: plusOn && setDefault, resetOwn: plusOn && resetOwn });
   };
@@ -145,17 +150,21 @@ export default function MeasureScaleDialog({ pageNumber, pageCount = 1, lengthPt
           ref={cardRef}
           role="dialog"
           aria-modal="true"
-          aria-label="Set page scale"
+          aria-label={markMode === 'edit' ? 'Edit scale' : markMode ? 'Add scale' : 'Set page scale'}
           className="measure-scale__card"
           onSubmit={submit}
           onKeyDown={(e) => e.stopPropagation()}
         >
           <div className="measure-scale__head">
             <div style={{ minWidth: 0 }}>
-              <div className="measure-scale__title">Set page scale</div>
+              <div className="measure-scale__title">{markMode === 'edit' ? 'Edit scale' : markMode ? 'Add scale' : 'Set page scale'}</div>
               <div className="measure-scale__sub">
-                Page {pageNumber}
-                {currentScale ? ` · now ${currentScale.label}` : ' · no scale yet'}
+                {markMode ? 'For this measurement; kept under Custom scales' : (
+                  <>
+                    Page {pageNumber}
+                    {currentScale ? ` · now ${currentScale.label}` : ' · no scale yet'}
+                  </>
+                )}
               </div>
             </div>
             <button type="button" onClick={onCancel} aria-label="Close" {...tip('Close')} className="hub-icon-btn dialog-close-touch-pad">
@@ -192,7 +201,7 @@ export default function MeasureScaleDialog({ pageNumber, pageCount = 1, lengthPt
               </>
             ) : (
               <>
-                {plusOn && (
+                {plusOn && !markMode && (
                   <>
                     <div className="measure-scale__label">Scale</div>
                     <div className="measure-scale__chips measure-scale__chips--units" role="radiogroup" onKeyDown={moveGroupFocus} aria-label="Scale kind" data-measure-scale-kind="true" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
@@ -201,7 +210,7 @@ export default function MeasureScaleDialog({ pageNumber, pageCount = 1, lengthPt
                     </div>
                   </>
                 )}
-                {plusOn && customs.length > 0 && (
+                {plusOn && !markMode && customs.length > 0 && (
                   <>
                     <div className="measure-scale__label">Custom scales</div>
                     <div className="measure-scale__chips measure-scale__chips--custom" role="radiogroup" onKeyDown={moveGroupFocus} aria-label="Custom scale" data-measure-custom-scales="true">
@@ -285,7 +294,7 @@ export default function MeasureScaleDialog({ pageNumber, pageCount = 1, lengthPt
                   {OTHER.map((p) => chip(p.id, p.label, recentPick == null && preset === p.id, () => { setPreset(p.id); setRecentPick(null); }, { 'data-measure-preset-option': p.id }))}
                 </div>
                 </>)}
-                <button type="button" className="measure-scale__calibrate" data-measure-start-calibrate="true" onClick={onCalibrate}>
+                {!markMode && <button type="button" className="measure-scale__calibrate" data-measure-start-calibrate="true" onClick={onCalibrate}>
                   <span className="measure-scale__calibrate-glyph" aria-hidden="true">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M4 20 20 4" />
@@ -296,7 +305,7 @@ export default function MeasureScaleDialog({ pageNumber, pageCount = 1, lengthPt
                     <span className="measure-scale__calibrate-title">Calibrate instead</span>
                     <span className="measure-scale__calibrate-sub">Draw a line over a known distance</span>
                   </span>
-                </button>
+                </button>}
               </>
             )}
             {plusOn && (
@@ -311,19 +320,19 @@ export default function MeasureScaleDialog({ pageNumber, pageCount = 1, lengthPt
                 </div>
               </div>
             )}
-            {plusOn && (
+            {plusOn && !markMode && (
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, fontSize: 13, color: 'var(--text-2)' }}>
                 <input type="checkbox" data-measure-apply-existing="true" checked={resetOwn} onChange={(e) => setResetOwn(e.target.checked)} />
                 Apply to existing measurements (ones on their own scale too)
               </label>
             )}
-            {plusOn && (
+            {plusOn && !markMode && (
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, fontSize: 13, color: 'var(--text-2)' }}>
                 <input type="checkbox" data-measure-set-default="true" checked={setDefault} onChange={(e) => setSetDefault(e.target.checked)} />
                 Set as default (new drawings start at this scale)
               </label>
             )}
-            {pageCount > 1 && (
+            {pageCount > 1 && !markMode && (
               <>
                 <div className="measure-scale__label">Apply to</div>
                 <div className="measure-scale__chips measure-scale__chips--units" role="radiogroup" onKeyDown={moveGroupFocus} aria-label="Apply to" data-measure-apply-to="true">
@@ -335,7 +344,7 @@ export default function MeasureScaleDialog({ pageNumber, pageCount = 1, lengthPt
           </div>
           <div className="measure-scale__foot">
             <button type="button" className="hub-btn measure-scale__btn" onClick={onCancel}>Cancel</button>
-            <button type="submit" className="hub-btn hub-btn--primary measure-scale__btn" data-measure-apply="true" disabled={!scale}>Apply</button>
+            <button type="submit" className="hub-btn hub-btn--primary measure-scale__btn" data-measure-apply="true" disabled={!scale}>{markMode === 'edit' ? 'Save' : markMode ? 'Add' : 'Apply'}</button>
           </div>
         </form>
       </div>

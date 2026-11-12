@@ -545,7 +545,7 @@ test('the Measurement card offers a Scale drop-down and the dialog Apply to exis
   const card = read('src/components/MeasureEditPopover.jsx');
   assert.match(card, /const ownScale = plusOn && isOwnScaleMeasure\(mark\) \? saved\.scale : null;/);
   assert.match(card, /onPatch\?\.\(\{ ownScale: null, pageScale: scale \}\)/);
-  assert.match(card, /\.measure-edit__scale-menu'\)\)/, 'a pick in the portalled list does not close the card');
+  assert.match(card, /\.measure-edit__scale-menu, \[data-measure-scale-dialog\]/, 'a pick in the portalled list does not close the card');
   const dialog = read('src/components/MeasureScaleDialog.jsx');
   assert.match(dialog, /resetOwn: plusOn && resetOwn/);
   const viewer = read('src/PDFViewer.jsx');
@@ -646,4 +646,14 @@ test('a custom scale takes a typed Title; empty, the label follows the numbers',
   const dialog = read('src/components/MeasureScaleDialog.jsx');
   assert.match(dialog, /data-measure-custom-title="true"/);
   assert.match(dialog, /precision, title: customTitle \}\)/);
+});
+
+test('the Measurement card adds and edits custom scales through the dialog in mark mode', () => {
+  const card = read('src/components/MeasureEditPopover.jsx');
+  assert.match(card, /data-measure-edit-scale-add="true"/);
+  assert.match(card, /markMode=\{scaleEditor\.index >= 0 \? 'edit' : 'add'\}/);
+  assert.match(card, /\[data-measure-scale-dialog\], \.measure-scale__menu'\)\)/, 'a press in the dialog keeps the card open');
+  const dialog = read('src/components/MeasureScaleDialog.jsx');
+  assert.match(dialog, /if \(markMode === 'edit' && editIndex >= 0\) forgetCustomMeasureScale\(editIndex\);/);
+  assert.match(dialog, /\{pageCount > 1 && !markMode && \(/);
 });
