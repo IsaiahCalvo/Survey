@@ -301,6 +301,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Alt+Shift+] and Alt+Shift+[ step through the open documents',
     stage: 'beta',
   }),
+  'open-visible-first': Object.freeze({
+    label: 'Open: build the marks of the page on screen first, the pages around it after it has drawn',
+    stage: 'beta',
+  }),
   'back-button': Object.freeze({
     label: 'Back (browser or Android) closes the open sheet, then the document, instead of leaving Survey',
     stage: 'beta',
