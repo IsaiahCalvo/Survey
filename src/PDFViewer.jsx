@@ -410,6 +410,8 @@ import { readDefaultMeasureScale, saveDefaultMeasureScale, withDefaultMeasureSca
 import PagePinsLayer from './components/pins/PagePinsLayer.jsx';
 import { PinToolButton } from './components/pins/PinControls.jsx';
 import { LINK_EDIT_EVENT, applyLinkEdit, selectedLinkOf } from './utils/linkTool.js';
+import SnapshotTool from './components/SnapshotTool.jsx';
+import { selectPageMarkup } from './services/thumbnailRender.js';
 import { marksHidden, setMarksHidden, subscribeMarksHidden } from './utils/marksHidden.js';
 import { isTypingTarget } from './utils/typingTarget.js';
 import { useMarkClipboard } from './utils/sharedMarkClipboard.js';
@@ -22589,6 +22591,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const [markLibraryEnabled] = useState(() => isFeatureOn('mark-library'));
   const [stampToolEnabled] = useState(() => isFeatureOn('stamp-tool'));
   const [pageMenuExtrasEnabled] = useState(() => isFeatureOn('page-menu-extras'));
+  const [snapshotToolEnabled] = useState(() => isFeatureOn('snapshot-tool'));
   const [insertImageEnabled] = useState(() => isFeatureOn('insert-image'));
   // Markups list (Nightly 'markup-list'): every mark in one rail panel.
   const [markupListEnabled] = useState(() => isFeatureOn('markup-list'));
@@ -38670,6 +38673,14 @@ ${pageBlocks}
             style={containerStyle}
             data-testid="pdf-container"
           >
+            {snapshotToolEnabled && (
+              <SnapshotTool
+                active={activeTool === 'snapshot'}
+                wrapperRef={pdfjsWrapperRef}
+                pdfDoc={pdfDoc}
+                getMarkup={(page) => selectPageMarkup(annotationsByPageRef.current?.[page], deriveCalloutsFromByPage(annotationsByPageRef.current || {}), page)}
+              />
+            )}
             {debugLogging && (() => {
               // Touch tick state so the HUD refreshes even without other renders.
               const tick = debugHudTick;
@@ -41394,6 +41405,8 @@ ${pageBlocks}
                   ...(linkToolOn ? [{ id: 'hyperlink', label: 'Hyperlink', iconName: 'hyperlink' }] : []),
                   // Nightly 'comment-pins': the pin split button (N; M cycles the type).
                   ...(pinsDocOn ? [{ id: 'pin', label: 'Pin', pin: true }] : []),
+                  // Nightly 'snapshot-tool': drag an area, it is copied as a picture.
+                  ...(snapshotToolEnabled ? [{ id: 'snapshot', label: 'Snapshot', iconName: 'camera' }] : []),
                   // TODO: Revisit the user-created Note tool later. Imported
                   // PDF Text/sticky-note annotations still render through
                   // pdfAnnotationImporter + the normal PDF annotation layers.
