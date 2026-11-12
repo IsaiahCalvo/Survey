@@ -128,8 +128,11 @@ export const MAX_CELL_CHARS = 32000;
 // minutes later and read as a plain sheet edit, quietly replacing the field's newer value.
 // Survey's own cell writes are remembered this long; a different value
 // landing on one of them is held as a conflict instead. Excel only (the
-// provider's savesLate): Google saves as the person types.
-export const RECENT_WRITE_MS = 300_000;
+// provider's savesLate): Google saves as the person types. 3 minutes, as the
+// new-row window: real-Excel soaks (11-12) showed genuine later PM edits
+// spread evenly over the window, so each minute cut is fewer needless holds,
+// and the longest late save seen was a little over 2 minutes.
+export const RECENT_WRITE_MS = 180_000;
 const RECENT_WRITE_MAX = 2000;
 // A PM typing a new item into the first empty row under the list, unsaved,
 // while Survey appends a field tech's new item there (Graph still sees the
