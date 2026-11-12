@@ -1,7 +1,7 @@
 /* Project Activity rules (Nightly flag project-activity), copied from
    Drawboard Projects' Activity page: the project's events newest first, in
    15-minute groups, each line "Name did this". The rows come from
-   public.project_events (migration 20261110177000_project_activity.sql),
+   public.project_events (migration 20261110180000_project_activity.sql),
    written by the server only. Pure: no React, no network. */
 import { formatDue, localDay, statusLabel } from './projectItems.js';
 

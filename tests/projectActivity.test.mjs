@@ -9,7 +9,7 @@ import {
 } from '../src/projectItems/projectActivity.js';
 import { FEATURE_FLAGS } from '../src/featureFlags.js';
 
-const sql = readFileSync(new URL('../supabase/migrations/20261110177000_project_activity.sql', import.meta.url), 'utf8');
+const sql = readFileSync(new URL('../supabase/migrations/20261110180000_project_activity.sql', import.meta.url), 'utf8');
 
 test('the flag is a Nightly beta flag with its row', () => {
   assert.equal(FEATURE_FLAGS['project-activity']?.stage, 'beta');

@@ -37,6 +37,6 @@ test('versions step by number and stop at the ends', () => {
 
 test('a Nightly beta flag with its row', () => {
   assert.equal(FEATURE_FLAGS['drawboard-keys']?.stage, 'beta');
-  const sql = readFileSync(new URL('../supabase/migrations/20261110178000_drawboard_keys.sql', import.meta.url), 'utf8');
+  const sql = readFileSync(new URL('../supabase/migrations/20261110181000_drawboard_keys.sql', import.meta.url), 'utf8');
   assert.match(sql, /'drawboard-keys', 'off'/);
 });
