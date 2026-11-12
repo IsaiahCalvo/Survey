@@ -6043,6 +6043,7 @@ export default function App({ devPreviewReturnTab = null }) {
         annotationsByPage={leftRailApi?.annotationsByPage || null}
         viewerId={signedInUserId}
         tip={chromeTip}
+        textFormat={textFormatSource}
       />
       {/* Nightly 'stamp-tool': Drawboard's Stamp card (the Text group's Stamp button opens it). */}
       <StampPickerCard enabled={Boolean(isViewerVisible && isFeatureOn('stamp-tool'))} phone={Boolean(isMobileViewer)} tip={chromeTip} />

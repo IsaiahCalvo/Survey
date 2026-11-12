@@ -167,3 +167,13 @@ test('Selected colors: a swatch recolours every use of that colour in the pick, 
   assert.match(panel, /op: 'recolour', from, to/);
   assert.match(panel, /data-props-recolour=\{recolourFrom\}/);
 });
+
+test('Text section: Color, Opacity and Size go through the text bar\'s own setters', () => {
+  const panel = read('src/components/SelectionPropertiesPanel.jsx');
+  assert.match(panel, /TEXT_SIZE_TICKS = \[10, 12, 16, 20, 42, 64\]/);
+  assert.match(panel, /<Section title="Text" id="text">/);
+  assert.match(panel, /textFormat\.api\.setFontColor\?\.\(composeTextColor\(hex, textParts\.opacity\)\)/);
+  assert.match(panel, /phase: 'preview'[\s\S]*phase: 'commit'/);
+  assert.match(panel, /textFormat\.api\.setFontSize\?\.\(v\)/);
+  assert.match(read('src/AppShell.jsx'), /textFormat=\{textFormatSource\}/);
+});

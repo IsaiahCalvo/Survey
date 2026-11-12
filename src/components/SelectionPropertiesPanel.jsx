@@ -30,6 +30,7 @@ import { getAnnotationAuthorId } from '../lib/collab/permissionScope.js';
 import { getAnnotationRenderIdentity } from '../utils/annotationStorageIdentity.js';
 import { authorLabel, markCreatedAt } from '../utils/markupList.js';
 import { setPropertiesPanelOpen, usePropertiesPanelOpen } from '../utils/propertiesPanelStore.js';
+import { composeTextColor, splitTextColor } from '../utils/textColorOpacity.js';
 import {
   TRANSFORM_SELECTION_EVENT,
   formatPt,
@@ -46,6 +47,8 @@ import './SelectionPropertiesPanel.css';
 
 const THICKNESS_TICKS = [1, 2, 3, 6, 10, 50];
 const OPACITY_TICKS = [25, 50, 75, 100];
+// Drawboard's Text section: Size slider ticks, as measured 2026-11-10.
+const TEXT_SIZE_TICKS = [10, 12, 16, 20, 42, 64];
 
 // The id the page layer broadcasts for a picked mark (data-annotation-id).
 const objectId = (object) => String(getAnnotationRenderIdentity(object).annotationId ?? '');
@@ -130,6 +133,7 @@ function Section({ title, children, id }) {
 function SliderRow({ label, value, ticks, min, max, unit, onPreview, onCommit, mixed }) {
   const [draft, setDraft] = useState(null);
   const shown = draft ?? (Number.isFinite(Number(value)) ? Number(value) : min);
+  const ticksId = `props-ticks-${label.replace(/\s+/g, '-')}`;
   return (
     <div className="props-panel__slider-row">
       <span className="props-panel__row-label">{label}</span>
@@ -140,12 +144,12 @@ function SliderRow({ label, value, ticks, min, max, unit, onPreview, onCommit, m
         step={1}
         value={shown}
         aria-label={label}
-        list={`props-ticks-${label}`}
+        list={ticksId}
         onChange={(event) => { const v = Number(event.target.value); setDraft(v); onPreview(v); }}
         onPointerUp={() => { if (draft != null) { onCommit(draft); setDraft(null); } }}
         onKeyUp={() => { if (draft != null) { onCommit(draft); setDraft(null); } }}
       />
-      <datalist id={`props-ticks-${label}`}>{ticks.map((t) => <option key={t} value={t} />)}</datalist>
+      <datalist id={ticksId}>{ticks.map((t) => <option key={t} value={t} />)}</datalist>
       <span className="props-panel__value" data-props-value={label}>{mixed && draft == null ? 'Mixed' : `${Math.round(shown)}${unit}`}</span>
     </div>
   );
@@ -160,6 +164,7 @@ export default function SelectionPropertiesPanel({
   annotationsByPage,
   viewerId,
   tip,
+  textFormat,
 }) {
   const flagOn = useMemo(() => isFeatureOn('properties-panel'), []);
   const items = useSelectedItems();
@@ -276,6 +281,8 @@ export default function SelectionPropertiesPanel({
   const colours = [...new Set(picked.objects.flatMap((o) => [o.stroke, o.fill])
     .filter((c) => typeof c === 'string' && c && c !== 'transparent' && !/rgba\([^)]*,\s*0\)$/.test(c)))].slice(0, 12);
   const styleValue = (api?.lineBorderStyle === 'cloud' && !api?.supportsCloudStyle) ? 'solid' : (api?.lineBorderStyle || 'solid');
+  const textParts = splitTextColor(textFormat?.state?.fontColor);
+  const textSize = Number(textFormat?.state?.fontSize) || 16;
   const setWidth = (width) => {
     api?.handleStrokeWidthInputChange?.({ target: { value: String(width) } });
     api?.handleStrokeWidthInputBlur?.({ currentTarget: { value: String(width) } });
@@ -445,6 +452,39 @@ export default function SelectionPropertiesPanel({
               unit="%"
               onPreview={(v) => api?.handleFillOpacityChange?.(v, { phase: 'preview' })}
               onCommit={(v) => api?.handleFillOpacityChange?.(v, { phase: 'commit' })}
+            />
+          </Section>
+        )}
+        {textFormat?.api && (
+          // Drawboard's Text section (text box and callout): Color, Opacity
+          // and Size. Font, bold and align stay on the text bar, as there.
+          <Section title="Text" id="text">
+            <div className="props-panel__row" data-props-text-colour>
+              <span className="props-panel__row-label">Color</span>
+              <QuickColourDots
+                value={textParts.hex}
+                onPick={(hex) => textFormat.api.setFontColor?.(composeTextColor(hex, textParts.opacity))}
+              />
+            </div>
+            <SliderRow
+              label="Text opacity"
+              value={Math.round(textParts.opacity * 100)}
+              ticks={OPACITY_TICKS}
+              min={5}
+              max={100}
+              unit="%"
+              onPreview={(v) => textFormat.api.setFontColor?.(composeTextColor(textParts.hex, v / 100), { phase: 'preview' })}
+              onCommit={(v) => textFormat.api.setFontColor?.(composeTextColor(textParts.hex, v / 100), { phase: 'commit' })}
+            />
+            <SliderRow
+              label="Size"
+              value={textSize}
+              ticks={TEXT_SIZE_TICKS}
+              min={6}
+              max={72}
+              unit=" pt"
+              onPreview={() => {}}
+              onCommit={(v) => textFormat.api.setFontSize?.(v)}
             />
           </Section>
         )}
