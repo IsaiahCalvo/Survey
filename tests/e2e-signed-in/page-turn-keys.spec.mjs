@@ -63,6 +63,18 @@ test.describe('desktop', () => {
       await expect.poll(() => pageInView(page)).toBe(2);
       await page.keyboard.press('ArrowLeft');
       await expect.poll(() => pageInView(page)).toBe(1);
+
+      // A leftover text selection does not hold a plain Right (only Shift +
+      // arrows grow a selection).
+      const selected = await page.evaluate(() => {
+        const layer = document.querySelector('.survey-pdfjs-page-div[data-page-number="1"] .pdfjsTextLayer');
+        if (!layer?.textContent?.trim()) return false;
+        window.getSelection().selectAllChildren(layer);
+        return window.getSelection().isCollapsed === false;
+      });
+      expect(selected).toBe(true);
+      await page.keyboard.press('ArrowRight');
+      await expect.poll(() => pageInView(page)).toBe(2);
     } finally {
       await sheet.remove();
     }

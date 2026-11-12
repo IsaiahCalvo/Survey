@@ -1,0 +1,13 @@
+/* Export project (Nightly flag 'project-export'). */
+.project-export__bar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.project-export__bar > span {
+  display: block;
+  height: 100%;
+  background: var(--accent, var(--gold));
+  transition: width 200ms ease;
+}

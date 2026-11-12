@@ -1,0 +1,40 @@
+/* Upload review (UploadReviewModal.jsx): the upload check as a grid. Each row:
+   pick box, title-block picture, name, sheet number, revision, discipline,
+   remove; a note and the page switch under them. Phones stack the fields. */
+.upload-review__bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.upload-review__all, .upload-review__split, .upload-review__pick { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); cursor: pointer; }
+.upload-review__shows { padding: 0; }
+.upload-review__bulk {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; padding: 8px;
+  border-radius: var(--radius-md, 8px); background: var(--surface-3);
+}
+.upload-review__bulk-rev { width: 110px !important; }
+.upload-review__bulk-discipline { width: 190px; }
+.upload-review__bulk .is-danger { color: var(--danger, #e0726c); }
+.upload-review__row {
+  grid-template-columns: 22px 180px minmax(0, 1fr) 110px 76px 170px 28px;
+  align-items: end;
+}
+.upload-review__row.is-picked { border-color: var(--accent); }
+.upload-review__pick { align-self: center; }
+.upload-review__crop {
+  width: 180px; height: 72px; border-radius: 4px; overflow: hidden; background: #fff; border: 1px solid var(--border);
+  display: grid; place-items: center; color: #6b7280; font-size: 11px; align-self: center;
+}
+.upload-review__crop img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.upload-review__field--discipline { min-width: 0; }
+.upload-review__native { width: 100%; height: 32px; font-size: 13px; }
+.upload-review__remove { align-self: center; }
+.upload-review__note { white-space: normal; }
+.upload-review__note.is-warning { color: #d9a03f; }
+.upload-review__split { grid-column: 3 / -1; }
+.upload-review__empty { margin: 16px 0; font-size: 12px; color: var(--text-3); }
+@media (max-width: 760px) {
+  .upload-review__row { grid-template-columns: 22px minmax(0, 1fr) 28px; align-items: center; }
+  .upload-review__crop { grid-column: 2 / 3; width: 100%; max-width: 240px; height: 80px; }
+  .upload-review__row > .upload-check__field { grid-column: 1 / -1; }
+  .upload-review__row > .upload-review__remove { grid-column: 3; grid-row: 1; }
+  .upload-review__split { grid-column: 1 / -1; }
+  .upload-review__native { height: 44px; font-size: 16px; }
+  .upload-review__bulk-discipline { width: 100%; }
+}

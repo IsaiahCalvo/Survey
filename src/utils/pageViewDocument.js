@@ -352,7 +352,10 @@ export function pageViewRecords(doc) {
   return entries.map((entry) => ({
     src: entry.blank ? null : entry.src,
     rot: normRotation(entry.rot || 0),
-    blank: entry.blank ? { width: entry.blank.width, height: entry.blank.height } : null,
+    // A template page keeps its paper (Nightly 'page-templates').
+    blank: entry.blank
+      ? { width: entry.blank.width, height: entry.blank.height, ...(entry.blank.paper ? { paper: entry.blank.paper } : {}) }
+      : null,
   }));
 }
 
@@ -377,9 +380,10 @@ export function pageViewFromRecords(doc, records, options = {}) {
   const entries = records.map((record) => {
     const rot = normRotation(record?.rot || 0);
     if (record?.blank) {
-      const blank = { width: Number(record.blank.width), height: Number(record.blank.height) };
-      const size = rot % 180 !== 0 ? swapSize(blank) : { ...blank };
-      return { src: null, rot, blank, size, media: { ...blank }, baseRotate: 0 };
+      const box = { width: Number(record.blank.width), height: Number(record.blank.height) };
+      const blank = record.blank.paper ? { ...box, paper: String(record.blank.paper) } : box;
+      const size = rot % 180 !== 0 ? swapSize(box) : { ...box };
+      return { src: null, rot, blank, size, media: { ...box }, baseRotate: 0 };
     }
     const src = Number(record?.src);
     if (!Number.isInteger(src) || src < 1 || src > base.numPages) throw new RangeError(`Page ${record?.src} is not in this PDF.`);

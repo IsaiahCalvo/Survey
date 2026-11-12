@@ -133,3 +133,26 @@ test('another window\'s list shows over this window\'s base, with sizes carried 
   ]);
   assert.throws(() => pageViewFromRecords(doc, [{ src: 4, rot: 0 }]), /not in this PDF/);
 });
+
+test('a template page keeps its paper through the record, the view rebuilt from it, and the export steps', () => {
+  const doc = { numPages: 2, getPage: async () => ({}) };
+  const records = [
+    { src: 1, rot: 0 },
+    { src: null, rot: 90, blank: { width: 612, height: 792, paper: 'engineering' } },
+    { src: null, rot: 0, blank: { width: 612, height: 792 } },
+  ];
+  const view = pageViewFromRecords(doc, records);
+  const back = pageViewRecords(view);
+  assert.equal(back[1].blank.paper, 'engineering');
+  assert.equal('paper' in back[2].blank, false, 'a plain blank has no paper');
+  const saved = normalizePageRecords(pageRecordsValue({ writer: 'w', sha: 'abc', pages: back }));
+  assert.equal(saved.pages[1].blank.paper, 'engineering');
+  assert.equal('paper' in saved.pages[2].blank, false);
+  // A bad value is dropped, the page stays.
+  const odd = normalizePageRecords({ base: { sha: 'abc' }, pages: [{ src: null, rot: 0, blank: { width: 10, height: 10, paper: '<svg>' } }] });
+  assert.deepEqual(odd.pages[0].blank, { width: 10, height: 10 });
+  // The export's restore step carries the paper, so the built PDF draws it.
+  const { operations } = pageRecordsToOperations(saved.pages, 2);
+  const restore = operations.find((op) => op.type === 'restore' && op.entry.blank?.paper);
+  assert.equal(restore.entry.blank.paper, 'engineering');
+});

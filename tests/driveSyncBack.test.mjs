@@ -263,8 +263,9 @@ test('a late confirm goes out on its own a minute later, and survives a reload',
     const props = {
       documentId: 'doc-late', enabled: true, call, now: () => clock,
       exportBytes: async () => new TextEncoder().encode('%PDF-1.7 late'),
-      upload: async () => ({ id: 'item' }),
+      upload: async () => ({ id: 'item', eTag: '"{item},2"' }),
     };
+    const uploadStartedAt = clock;
     const first = await mount(useDriveSyncBack, props);
     await act(async () => { edit('doc-late'); });
     await act(async () => { await first.box.state.syncNow(); });
@@ -279,12 +280,45 @@ test('a late confirm goes out on its own a minute later, and survives a reload',
     clock += 61_000;
     await act(async () => { mock.timers.tick(15_000); for (let i = 0; i < 10; i += 1) await new Promise((r) => setImmediate(r)); });
     assert.equal(confirms(), 1, 'the confirm went out with no new edit');
+    const sent = server.calls.find((c) => c.action === 'drivePushed').body;
+    assert.equal(sent.late, true);
+    assert.equal(sent.eTag, '"{item},2"', 'names the version Survey wrote');
+    assert.equal(sent.pushedAt, new Date(uploadStartedAt).toISOString(), 'stamped with when the push started');
     assert.equal(pushes(), 1, 'no second upload');
     assert.equal(window.localStorage.getItem('survey:drive-unconfirmed:doc-late'), null);
     // Nothing more is owed: the timer stays quiet.
     clock += 10 * 60_000;
     await act(async () => { mock.timers.tick(15_000); for (let i = 0; i < 10; i += 1) await new Promise((r) => setImmediate(r)); });
     assert.equal(confirms(), 1);
+    await act(async () => second.root.unmount());
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test('a change not yet saved back survives a reload and still goes out on the timer', async () => {
+  setupDom();
+  mock.timers.enable({ apis: ['setInterval'] });
+  try {
+    const { useDriveSyncBack } = await loadHook();
+    const server = fakeServer();
+    let clock = 9_000_000;
+    const uploads = [];
+    const props = {
+      documentId: 'doc-reload', enabled: true, call: server.call, now: () => clock,
+      exportBytes: async () => new TextEncoder().encode(`%PDF-1.7 ${clock}`),
+      upload: async () => { uploads.push(clock); return { id: 'item' }; },
+    };
+    const first = await mount(useDriveSyncBack, props);
+    await act(async () => { edit('doc-reload'); });
+    await act(async () => first.root.unmount());
+    const second = await mount(useDriveSyncBack, props);
+    assert.equal(second.box.state.dirty, true, 'still owed after the reload');
+    clock += 5 * 60_000 + 1_000;
+    await act(async () => { mock.timers.tick(15_000); for (let i = 0; i < 10; i += 1) await new Promise((r) => setImmediate(r)); });
+    assert.equal(uploads.length, 1);
+    assert.equal(second.box.state.dirty, false);
+    assert.equal(window.localStorage.getItem('survey:drive-dirty:doc-reload'), null);
     await act(async () => second.root.unmount());
   } finally {
     mock.timers.reset();

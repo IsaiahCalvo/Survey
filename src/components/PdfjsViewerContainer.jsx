@@ -5914,7 +5914,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       const turn = pageTurnKeysOn ? pageTurnStep(event, { shiftArrows: !drawboardShiftArrowsOn }) : 0;
       if (!isPageKey && !isEndKey && !turn) return;
       // A picked mark nudges; a text selection grows with Shift + arrows.
-      if (turn && (hasAnyPageSelection() || (window.getSelection?.()?.isCollapsed === false))) return;
+      // (A plain Left / Right still turns the page over a leftover selection.)
+      if (turn && (hasAnyPageSelection() || (event.shiftKey && window.getSelection?.()?.isCollapsed === false))) return;
       if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
       const el = scrollerRef.current;
       if (!el || !el.isConnected || isInTabBehind(el) || el.clientHeight <= 0 || el.getClientRects().length === 0) return;
