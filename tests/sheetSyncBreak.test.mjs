@@ -629,9 +629,12 @@ test('a PM\'s new row saved late over the row Survey just added keeps both items
   const pm = Object.values(ctx.markers).find((m) => m.name === 'D-120');
   assert.ok(pm, 'the PM\'s item is made');
   assert.equal(pm.note.text, 'PM typed');
+  assert.equal(pm.changedBy, 'JF (sheet)', 'credited to the PM who typed it');
+  assert.notEqual(ctx.markers.d2.changedBy, 'JF (sheet)', 'not the tech\'s item');
   const rows = (await ctx.sheet()).rows;
   assert.deepEqual([rows[row][item], rows[row][notes]], ['D-102', 'tech note'], 'the tech\'s row is put back');
   assert.deepEqual([rows[row + 1][item], rows[row + 1][notes]], ['D-120', 'PM typed'], 'the PM\'s item goes in the row below');
+  assert.equal(rows[row + 1][await ctx.col('Changed By')], 'JF (sheet)', 'and the sheet says who');
   assert.ok(ctx.link.state.problems.some((p) => /typed into the row Survey had just filled/.test(p.message)), 'the panel says what happened');
   const quiet = await ctx.round({ now: new Date(t0 + 56000), force: true });
   assert.deepEqual(Object.values(quiet.summary).filter(Boolean), []);
