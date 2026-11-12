@@ -41,7 +41,7 @@ test('an older version opens in the zero-writes lock mode with its own bar', () 
   // The lock banner itself only shows for a real lock.
   assert.match(banner, /if \(lockedAt == null\) return null;/);
   const shell = read('src/AppShell.jsx');
-  assert.match(shell, /readOnlyWithoutLock=\{Boolean\(tab\.file\?\.superseded_by\) \|\| supersededDocIds\.has\(tab\.file\?\.id\) \|\| \(tab\.id === activeTabId && Boolean\(olderVersionOpen\)\)\}/);
+  assert.match(shell, /readOnlyWithoutLock=\{fileSuperseded\(tab\.file\) \|\| \(tab\.id === activeTabId && Boolean\(olderVersionOpen\)\)\}/);
   assert.match(shell, /<OlderVersionBar/);
   // The phone's More menu lists Versions.
   assert.match(shell, /versions=\{documentVersions\.shown/);
@@ -76,11 +76,18 @@ test('a new version keeps its sharing, and an open old copy looks again for a ne
 test('a copy found superseded stays read-only after switching documents (Bugbot on #1385)', () => {
   const hook = read('src/components/DocumentVersionsButton.jsx');
   assert.match(hook, /export function useDocumentVersions\(documentId, onOpenVersion, onSuperseded = null\)/);
-  assert.match(hook, /if \(isCurrent === false\) onSupersededRef\.current\?\.\(documentId\);/);
+  assert.match(hook, /onSupersededRef\.current\?\.\(documentId, isCurrent === false\);/);
+  // Only the newest look counts, so a list asked for before a version change can't undo it.
+  assert.match(hook, /if \(cancelled \|\| mine !== ask\) return;/);
   const shell = read('src/AppShell.jsx');
   assert.match(shell, /useDocumentVersions\([^\n]*handleDocumentSelect, markDocSuperseded\)/);
   // The lock banner and the older-version bar read the set, not only the
   // versions list that a document switch empties.
-  assert.match(shell, /readOnlyWithoutLock=\{Boolean\(tab\.file\?\.superseded_by\) \|\| supersededDocIds\.has\(tab\.file\?\.id\) \|\|/);
-  assert.match(shell, /olderVersionOpen \|\| activeTab\?\.file\?\.superseded_by \|\| supersededDocIds\.has\(activeTab\?\.file\?\.id\)/);
+  // fileSuperseded reads the shell's record first (a copy found superseded,
+  // or a version change), then the tab's own superseded_by
+  // (isFileSuperseded / withChainLinks, tested in versionDelete.test.mjs).
+  assert.match(shell, /const markDocSuperseded = useCallback\(\(id, superseded = true\) => \{\s+if \(!id\) return;\s+setVersionChain\(\(prev\) => withChainLinks\(prev, \{ \[id\]: superseded \}, \{ fromList: true \}\)\);/);
+  assert.match(shell, /const fileSuperseded = \(file\) => isFileSuperseded\(file, versionChain\);/);
+  assert.match(shell, /readOnlyWithoutLock=\{fileSuperseded\(tab\.file\) \|\|/);
+  assert.match(shell, /olderVersionOpen \|\| fileSuperseded\(activeTab\?\.file\)/);
 });

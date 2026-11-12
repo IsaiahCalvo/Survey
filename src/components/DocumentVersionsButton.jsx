@@ -7,7 +7,10 @@
 // modal layer, like the viewer's other dialogs.
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../supabaseClient';
-import { DOCUMENT_VERSIONS_CHANGED_EVENT, listDocumentVersions } from '../services/documentVersionService.js';
+import {
+  DOCUMENT_VERSIONS_CHANGED_EVENT, listDocumentVersions, removeDocumentVersion, restoreDocumentVersion, versionDeletedText,
+} from '../services/documentVersionService.js';
+import { isFeatureOn } from '../featureFlags.js';
 import { showToast } from '../utils/toast';
 import BodyPortal from './BodyPortal';
 
@@ -22,9 +25,9 @@ function sameVersions(a, b) {
 
 /**
  * Versions of `documentId` (null = feature off or nothing open) and the
- * dialogs' state. `onSuperseded(documentId)` is told whenever a look finds the
- * open copy is no longer the current version, so its read-only mode can
- * outlive this hook's list (it is cleared on every document switch).
+ * dialogs' state. `onSuperseded(documentId, superseded)` is told after every
+ * look whether a newer version replaced the open copy, so its read-only mode
+ * can outlive this hook's list (it is cleared on every document switch).
  */
 export function useDocumentVersions(documentId, onOpenVersion, onSuperseded = null) {
   const onSupersededRef = useRef(onSuperseded);
@@ -32,6 +35,13 @@ export function useDocumentVersions(documentId, onOpenVersion, onSuperseded = nu
   const [versions, setVersions] = useState([]);
   const [listOpen, setListOpen] = useState(false);
   const [comparing, setComparing] = useState(null); // { older, newer }
+  // Delete one version (Nightly, 'version-delete'; Drawboard DL-28).
+  const [deleteOn] = useState(() => isFeatureOn('version-delete'));
+  const openIdRef = useRef(documentId);
+  openIdRef.current = documentId;
+  // The open copy's guarded look (the effect below), for refreshes after a
+  // delete or its Undo.
+  const loadRef = useRef(null);
 
   useEffect(() => {
     setVersions([]);
@@ -40,20 +50,30 @@ export function useDocumentVersions(documentId, onOpenVersion, onSuperseded = nu
     if (!documentId) return undefined;
     let cancelled = false;
     let wasCurrent = null;
-    const load = () => listDocumentVersions(supabase, documentId)
-      .then((list) => {
-        if (cancelled) return;
-        // Someone else uploaded a new version while this copy was open: say
-        // so once; the older-version bar and read-only mode follow from it.
-        const isCurrent = list.find((v) => v.id === documentId)?.isCurrent ?? null;
-        if (wasCurrent === true && isCurrent === false) {
-          showToast('A newer version was uploaded, so this copy is now read-only.', 'info');
-        }
-        if (isCurrent != null) wasCurrent = isCurrent;
-        if (isCurrent === false) onSupersededRef.current?.(documentId);
-        setVersions((prev) => (sameVersions(prev, list) ? prev : list));
-      })
-      .catch((err) => console.warn('[versions] could not list versions', err));
+    // Only the newest look counts: a list asked for before a version change
+    // that answers after it would undo what the change just said.
+    let ask = 0;
+    const load = () => {
+      ask += 1;
+      const mine = ask;
+      return listDocumentVersions(supabase, documentId)
+        .then((list) => {
+          if (cancelled || mine !== ask) return;
+          // Someone else uploaded a new version while this copy was open: say
+          // so once; the older-version bar and read-only mode follow from it.
+          const isCurrent = list.find((v) => v.id === documentId)?.isCurrent ?? null;
+          if (wasCurrent === true && isCurrent === false) {
+            showToast('A newer version was uploaded, so this copy is now read-only.', 'info');
+          }
+          if (isCurrent != null) {
+            wasCurrent = isCurrent;
+            onSupersededRef.current?.(documentId, isCurrent === false);
+          }
+          setVersions((prev) => (sameVersions(prev, list) ? prev : list));
+        })
+        .catch((err) => console.warn('[versions] could not list versions', err));
+    };
+    loadRef.current = load;
     load();
     // Nothing pushes a supersede to other people's open copies, so look again
     // on return to the tab and every 20 s while it is in view.
@@ -69,6 +89,7 @@ export function useDocumentVersions(documentId, onOpenVersion, onSuperseded = nu
     window.addEventListener(DOCUMENT_VERSIONS_CHANGED_EVENT, onChanged);
     return () => {
       cancelled = true;
+      if (loadRef.current === load) loadRef.current = null;
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('focus', onVisible);
@@ -95,6 +116,40 @@ export function useDocumentVersions(documentId, onOpenVersion, onSuperseded = nu
     }, row.file_path);
   }, [onOpenVersion]);
 
+  // The version goes to the Archive and the chain closes over the gap. When
+  // it was the open copy, the copy that takes its place opens. Undo puts it
+  // back (and reopens it if its stand-in is still the open copy).
+  const deleteVersion = useCallback(async (version) => {
+    const wasOpen = version.id === openIdRef.current;
+    let receipt;
+    try {
+      receipt = await removeDocumentVersion(supabase, version.id);
+    } catch (err) {
+      showToast(err?.message || 'That version couldn’t be deleted.');
+      return;
+    }
+    const before = versions;
+    const standIn = receipt.current || receipt.next || receipt.previous[receipt.previous.length - 1] || null;
+    if (wasOpen && standIn) await openVersion({ id: standIn });
+    else loadRef.current?.();
+    showToast(versionDeletedText(before, receipt), 'success', {
+      duration: 8000,
+      action: {
+        label: 'Undo',
+        onClick: async () => {
+          try {
+            await restoreDocumentVersion(supabase, receipt);
+          } catch (err) {
+            showToast(err?.message || 'That version couldn’t be put back.');
+            return;
+          }
+          if (wasOpen && openIdRef.current === standIn) await openVersion({ id: receipt.documentId });
+          else loadRef.current?.();
+        },
+      },
+    });
+  }, [openVersion, versions]);
+
   const compareWith = useCallback((version) => {
     if (!open) return;
     const [older, newer] = version.versionNumber < open.versionNumber ? [version, open] : [open, version];
@@ -114,6 +169,7 @@ export function useDocumentVersions(documentId, onOpenVersion, onSuperseded = nu
     closeCompare: () => setComparing(null),
     openVersion,
     compareWith,
+    deleteVersion: deleteOn ? deleteVersion : null,
   };
 }
 
@@ -146,6 +202,7 @@ export function DocumentVersionsDialogs({ state }) {
             openId={state.documentId}
             onOpen={state.openVersion}
             onCompare={state.compareWith}
+            onDelete={state.deleteVersion}
             onClose={state.closeList}
           />
         )}
