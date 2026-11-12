@@ -632,3 +632,51 @@ test('a PivotTable right against one tab\'s list: new items on several tabs in o
   await ctx.round({ force: true });
   assert.deepEqual(Object.keys(ctx.markers).sort(), ['c1', 'c2', 'd1', 'd2'], 'nothing doubled');
 });
+
+// Real Excel 11-10: a PM protected one synced tab (Review > Protect Sheet).
+// Every round then failed 403 for the whole workbook, so the other tabs
+// stopped syncing both ways until it was unprotected.
+test('one protected tab: the other tabs keep syncing both ways, the locked one waits and loses nothing', async () => {
+  const cam = (id, name, extra = {}) => door(id, name, { categoryId: 'cams', ...extra });
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101'), d2: door('d2', 'D-102'), c1: cam('c1', 'C-201'), c2: cam('c2', 'C-202') } });
+  await ctx.round(); await ctx.round();
+  const CAMS = 'Cameras - Level 1';
+  await fakeApi(`/files/${ctx.fileId}/protect`, { title: 'Doors - Level 1' });
+  const doorsBefore = JSON.stringify((await ctx.sheet()).rows);
+
+  ctx.markers.d1.note = { text: 'tech on the locked tab' };
+  ctx.markers.d3 = door('d3', 'D-103');
+  delete ctx.markers.d2;
+  ctx.markers.c1.note = { text: 'tech on the open tab' };
+  await ctx.edit([{ row: await ctx.rowOf('c2', CAMS), col: await ctx.col('Notes', CAMS), value: 'PM on the open tab' }], CAMS);
+  const locked = await ctx.round();
+  assert.equal(locked.status, 'synced');
+  const cams = await ctx.sheet(CAMS);
+  assert.equal(cams.rows[await ctx.rowOf('c1', CAMS)][await ctx.col('Notes', CAMS)], 'tech on the open tab', 'the open tab gets the app\'s change');
+  assert.equal(ctx.markers.c2.note.text, 'PM on the open tab', 'and its PM edit reaches the app');
+  assert.equal(JSON.stringify((await ctx.sheet()).rows), doorsBefore, 'the locked tab is not touched');
+  assert.equal(ctx.markers.d1.note.text, 'tech on the locked tab', 'the tech\'s note is kept in the app');
+  assert.ok(ctx.link.state.problems.some((p) => /"Doors - Level 1" is protected/.test(p.message)), 'the panel says which tab is locked');
+
+  // Still locked: the next round asks first instead of being refused again.
+  let refused = 0;
+  const counting = createMsGraphProvider({ getAccessToken: async () => 'fake-ms-access-1', baseUrl: BASE, fetch: async (...a) => {
+    const res = await fakeMsgraphFetch(...a);
+    const text = await res.clone().text();
+    if (res.status === 403 || /"status":403/.test(text)) refused += 1;
+    return res;
+  } });
+  ctx.markers.c2.note = { text: 'tech again' };
+  assert.equal((await ctx.round({ provider: counting })).status, 'synced');
+  assert.equal(refused, 0, 'no refused write while it stays locked');
+
+  await fakeApi(`/files/${ctx.fileId}/protect`, { title: 'Doors - Level 1', on: false });
+  assert.equal((await ctx.round()).status, 'synced');
+  const doors = await ctx.sheet();
+  assert.equal(doors.rows[await ctx.rowOf('d1')][await ctx.col('Notes')], 'tech on the locked tab', 'the waiting note goes in once unprotected');
+  assert.equal(doors.rows.filter((r) => r[3] === 'D-103').length, 1, 'the waiting new item goes in once');
+  assert.equal(doors.rows.filter((r) => r[3] === 'D-102').length, 0, 'the item deleted while locked is taken out');
+  assert.equal(ctx.markers.d2, undefined, 'and doesn\'t come back as a new item');
+  assert.ok(!ctx.link.state.problems.some((p) => /is protected/.test(p.message)), 'and the line goes away');
+  assert.deepEqual(ctx.link.state.lockedTabs, []);
+});

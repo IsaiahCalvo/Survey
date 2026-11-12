@@ -502,6 +502,14 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
     /** Every sheet in the workbook as { id, name } (no cells read). */
     tabs: listTabs,
 
+    /** Which of these sheets are protected (Review > Protect Sheet), in one $batch. */
+    async lockedTabs(fileId, sheetIds) {
+      const ids = [...new Set((sheetIds || []).map(String))];
+      if (!ids.length) return [];
+      const answers = await workbookBatch(fileId, ids.map((id) => ({ method: 'GET', path: `${sheetPath(id)}/protection?$select=protected` })), { parallel: true, allow: [404] });
+      return ids.filter((id, i) => answers[i]?.protected === true);
+    },
+
     /** The names of every sheet in the workbook (no cells read). */
     async tabTitles(fileId) {
       return (await listTabs(fileId)).map((t) => t.name);

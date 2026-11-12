@@ -412,6 +412,7 @@ export async function planSheetRound({
   now = new Date(),
   holdErase = false,
   lateSaves = false,
+  lockedTabs = [],
 }) {
   const nextBaseline = { ...baseline };
   // Tabs that already had items before this round: the first fill of a new
@@ -450,6 +451,9 @@ export async function planSheetRound({
     // Tabs still there that lost their Row ID column or heading row (deleted,
     // cleared, typed over): not synced until undone or rebuilt (putBackTab).
     brokenTabs: [],
+    // Synced tabs the PM protected (Review > Protect Sheet): left alone, so
+    // one locked tab doesn't stop every other tab (real Excel 11-10).
+    lockedTabs: [],
     heldErase: null,
   };
   const notice = (p) => {
@@ -484,6 +488,7 @@ export async function planSheetRound({
   let newRowsWaiting = 0;
 
   const sheetsById = new Map((grid?.sheets || []).map((s) => [String(s.sheetId), s]));
+  const locked = new Set((lockedTabs || []).map(String));
   const seenMarkers = new Set();
   const markersByScope = new Map();
   for (const [id, m] of Object.entries(markers || {})) {
@@ -499,6 +504,13 @@ export async function planSheetRound({
     const sheet = sheetId != null ? sheetsById.get(String(sheetId)) : null;
     if (!sheet) {
       next.missingTabs.push(scope.scopeId);
+      continue;
+    }
+    // Nothing read or written: its items, baseline and remembered headers
+    // stay as they were, and every change waits until it's unprotected.
+    if (locked.has(String(sheet.sheetId))) {
+      next.lockedTabs.push(scope.scopeId);
+      next.problems.push({ scopeId: scope.scopeId, message: `"${sheet.title}" is protected in the sheet, so Survey can't write to it and isn't syncing it. Nothing is lost: its changes go in once it's unprotected.` });
       continue;
     }
     const rows = Array.isArray(sheet.rows) ? sheet.rows : [];
@@ -1109,8 +1121,11 @@ export async function planSheetRound({
   for (const id of Object.keys(next.conflicts)) if (!markers[id]) delete next.conflicts[id];
   for (const id of Object.keys(next.removedInSheet)) if (!markers[id]) delete next.removedInSheet[id];
   for (const id of Object.keys(next.choices)) if (!markers[id]) delete next.choices[id];
+  // An item deleted in the app while its tab is locked keeps its baseline,
+  // so its row is taken out once unlocked instead of coming back as new.
+  const lockedScopes = new Set(next.lockedTabs);
   for (const id of Object.keys(nextBaseline)) {
-    if (!markers[id] && !plan.markerWrites[id] && !next.tombstones[id]) delete nextBaseline[id];
+    if (!markers[id] && !plan.markerWrites[id] && !next.tombstones[id] && !lockedScopes.has(nextBaseline[id]?.scopeId)) delete nextBaseline[id];
   }
 
   for (const flag of Object.keys(next.stuck)) if (!markers[flag.split('|')[0]]) delete next.stuck[flag];
