@@ -149,3 +149,21 @@ test('arrow steps and the blur after them measure from moves already sent', () =
   assert.match(panel, /planTypedMove\(shiftRead\(transform, sent\), field, value\)/);
   assert.match(panel, /if \(sentMoveRef\.current\.read !== transform\) sentMoveRef\.current = \{ read: transform, dx: 0, dy: 0 \};/);
 });
+
+test('Selected colors: a swatch recolours every use of that colour in the pick, locked marks kept', async () => {
+  const { recolourObject } = await import('../src/utils/selectionProperties.js');
+  const red = { type: 'rect', stroke: '#E11D2E', fill: '#e11d2e' };
+  assert.deepEqual(recolourObject(red, '#e11d2e', '#0066D4'), { type: 'rect', stroke: '#0066D4', fill: '#0066D4' }, 'stroke and fill alike, any case');
+  assert.deepEqual(recolourObject({ stroke: '#E11D2E', fill: '#FFF9C4' }, '#E11D2E', '#000000'), { stroke: '#000000', fill: '#FFF9C4' });
+  assert.equal(recolourObject({ stroke: '#0066D4' }, '#E11D2E', '#000000'), null, 'a mark without the colour is left alone');
+  assert.equal(recolourObject(red, '#E11D2E', '#e11d2e'), null, 'the same colour is no change');
+  assert.equal(recolourObject(red, '', '#000000'), null);
+
+  const layer = read('src/components/SVGAnnotationLayer.jsx');
+  assert.match(layer, /if \(detail\.op === 'recolour'\) \{/);
+  assert.match(layer, /if \(!object \|\| object\.locked \|\| !canMoveAnnotation\(object\)\) continue;\s*const next = recolourObject\(object, detail\.from, detail\.to\);/);
+  assert.match(layer, /action: 'recolour'/);
+  const panel = read('src/components/SelectionPropertiesPanel.jsx');
+  assert.match(panel, /op: 'recolour', from, to/);
+  assert.match(panel, /data-props-recolour=\{recolourFrom\}/);
+});

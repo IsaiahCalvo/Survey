@@ -174,7 +174,7 @@ import SVGSelectionOverlay, { SelectionLockBadge } from './SVGSelectionOverlay';
 import { isUserLocked } from '../lib/collab/permissionScope.js';
 import { getTextMarkupRangeHandlePositions, getTextMarkupSelectionChrome } from '../utils/pdfTextMarkup.js';
 import RotationInputField from './RotationInputField';
-import { TRANSFORM_SELECTION_EVENT, canTypeTurn, resizeObjectTo, scaleObjectBy, setLineEndingOn, turnScaleKeyStep, wrapDegrees } from '../utils/selectionProperties.js';
+import { TRANSFORM_SELECTION_EVENT, canTypeTurn, recolourObject, resizeObjectTo, scaleObjectBy, setLineEndingOn, turnScaleKeyStep, wrapDegrees } from '../utils/selectionProperties.js';
 import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox, isImportedPath, isAbsoluteCoordPath, getLineEndpoints, computeLineBboxCenter } from '../utils/svgBoundingBox';
 import { resolveMidpointHandlePosition } from '../utils/lineDragMath.js';
 import { buildArrowheadRenderSpec, resolveLineEndingStyles, arrowheadShapePathD } from '../utils/lineRenderHelpers.js';
@@ -4013,7 +4013,7 @@ const SVGAnnotationLayerBody = memo(({
   // with it makes a group, which the turn / scale keys leave alone).
   const pickedCalloutCount = selectedCalloutIds ? (selectedCalloutIds.size ?? selectedCalloutIds.length ?? 0) : 0;
   transformTargetRef.current = {
-    selectedAnnotationIndex, annotations, onSaveAnnotations, handleRotationInputCommit, pageNumber,
+    selectedAnnotationIndex, selectedIds, annotations, onSaveAnnotations, handleRotationInputCommit, pageNumber,
     keysLive: isTabActive && editingAnnotationIndex == null && !editingCalloutId
       && selectedIds.size === 1 && pickedCalloutCount === 0 && selectedSurveyMarkerIds.size === 0,
   };
@@ -4023,6 +4023,23 @@ const SVGAnnotationLayerBody = memo(({
       const t = transformTargetRef.current;
       if (!t || Number(detail.pageNumber) !== Number(t.pageNumber)) return;
       if (typeof document !== 'undefined' && document.body?.getAttribute('data-readonly') === 'true') return;
+      if (detail.op === 'recolour') {
+        // "Selected colors": every picked mark on this page that uses the
+        // colour takes the new one, in one save (one Undo step). Locked
+        // marks keep theirs.
+        const objects = t.annotations?.objects || [];
+        let updated = null;
+        for (const i of t.selectedIds || []) {
+          const object = objects[i];
+          if (!object || object.locked || !canMoveAnnotation(object)) continue;
+          const next = recolourObject(object, detail.from, detail.to);
+          if (!next) continue;
+          updated = updated || deepClone(t.annotations);
+          updated.objects[i] = next;
+        }
+        if (updated) t.onSaveAnnotations(updated, { source: 'properties-panel', action: 'recolour', checkpointPolicy: 'normal' });
+        return;
+      }
       const index = t.selectedAnnotationIndex;
       const object = Number.isInteger(index) ? t.annotations?.objects?.[index] : null;
       // A user lock (data.lockedBy) holds here too, as it does for nudge and

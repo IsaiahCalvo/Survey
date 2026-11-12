@@ -165,6 +165,8 @@ export default function SelectionPropertiesPanel({
   const items = useSelectedItems();
   const open = usePropertiesPanelOpen();
   const [frame, setFrame] = useState(null);
+  // The "Selected colors" swatch whose colour row is open.
+  const [recolourFrom, setRecolourFrom] = useState(null);
   const chromeTip = tip || (() => ({}));
 
   const picked = useMemo(() => {
@@ -248,6 +250,14 @@ export default function SelectionPropertiesPanel({
 
   if (!active || !frame || typeof document === 'undefined') return null;
 
+  // "Selected colors": a swatch opens a row of colours; a pick recolours
+  // every use of that colour in the pick.
+  const recolour = (from, to) => {
+    setRecolourFrom(null);
+    if (picked.pageNumber == null) return;
+    window.dispatchEvent(new CustomEvent(TRANSFORM_SELECTION_EVENT, { detail: { pageNumber: picked.pageNumber, op: 'recolour', from, to } }));
+  };
+
   // A group pick publishes what every member can take; one mark goes by its
   // kind, as the tool bar's own pills do.
   const tool = api?.contextTool;
@@ -317,8 +327,27 @@ export default function SelectionPropertiesPanel({
         {colours.length > 0 && (
           <Section title="Selected colors" id="colours">
             <div className="props-panel__colours">
-              {colours.map((c) => <span key={c} className="props-panel__colour" style={{ background: c }} data-props-colour={c} />)}
+              {colours.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  className={`props-panel__colour${recolourFrom === c ? ' is-current' : ''}`}
+                  style={{ background: c }}
+                  data-props-colour={c}
+                  aria-label={`Recolour ${c}`}
+                  aria-expanded={recolourFrom === c}
+                  disabled={picked.pageNumber == null}
+                  {...chromeTip('Change this colour everywhere in the selection', 'below')}
+                  onClick={() => setRecolourFrom((cur) => (cur === c ? null : c))}
+                />
+              ))}
             </div>
+            {recolourFrom && colours.includes(recolourFrom) && (
+              <div className="props-panel__row props-panel__recolour" data-props-recolour={recolourFrom}>
+                <span className="props-panel__row-label">To</span>
+                <QuickColourDots value={recolourFrom} onPick={(hex) => recolour(recolourFrom, hex)} />
+              </div>
+            )}
           </Section>
         )}
         {caps.stroke !== false && paint && (
