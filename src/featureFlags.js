@@ -185,6 +185,10 @@ export const FEATURE_FLAGS = Object.freeze({
   // zip of every file (with marks, every revision if asked), comments and
   // the Issues and Tasks registers, built on the device.
   'project-export': Object.freeze({ label: 'Export project: one zip of every file with marks or originals, all revisions, comments and issues CSVs', stage: 'beta' }),
+  // Drawboard Projects parity EX-09 (2026-11-12): "Restrict editing" on
+  // export. The PDF opens without a password, but changes and new marks need
+  // the password shown after the export (AES-256).
+  'restrict-editing': Object.freeze({ label: 'Restrict editing: export a PDF that opens freely but needs a password to change or mark up', stage: 'beta' }),
   // Drawboard Projects parity UP-10..23 (2026-11-12): the upload check as a
   // review grid. On its own or with 'upload-check' (it replaces that step).
   'upload-review': Object.freeze({

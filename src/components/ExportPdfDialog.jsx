@@ -11,7 +11,10 @@
    Export filters (Nightly, flag 'export-filters', Drawboard Projects round 2):
    when exportPageInfo() also lists `authors` / `layers` / `commentCount`, a
    "Who" and a "Layers" checklist keep only some people's marks or some
-   layers, and "Comments (.csv)" saves the comment threads beside the PDF. */
+   layers, and "Comments (.csv)" saves the comment threads beside the PDF.
+   Restrict editing (Nightly, flag 'restrict-editing', Drawboard Projects
+   EX-09): the PDF opens freely, but changes need the password the viewer
+   shows after the export. */
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../home/HubShell';
 import { useFocusTrap } from '../hooks/useFocusTrap';
@@ -21,6 +24,7 @@ import { C } from '../uiPalette';
 import { EXPORT_MARK_MODES, parsePageList } from '../utils/exportPdfModes.js';
 import './PdfToolsDialog.css';
 import ButtonGroup from './ButtonGroup.jsx';
+import { isFeatureOn } from '../featureFlags.js';
 import './ExportPdfDialog.css';
 
 // A small page picture for each mark choice: editable marks carry handles,
@@ -96,6 +100,8 @@ export default function ExportPdfDialog({ open, api, fileName = '', onClose }) {
   const [offAuthors, setOffAuthors] = useState(() => new Set());
   const [offLayers, setOffLayers] = useState(() => new Set());
   const [withComments, setWithComments] = useState(false);
+  const [restrictOn] = useState(() => isFeatureOn('restrict-editing'));
+  const [restrict, setRestrict] = useState(false);
   useFocusTrap(cardRef, open, { onEscape: busy ? undefined : onClose });
 
   useEffect(() => {
@@ -106,6 +112,7 @@ export default function ExportPdfDialog({ open, api, fileName = '', onClose }) {
     setOffAuthors(new Set());
     setOffLayers(new Set());
     setWithComments(false);
+    setRestrict(false);
     Promise.resolve(api?.exportPageInfo?.()).then((next) => { if (live) setInfo(next || null); }).catch(() => {});
     return () => { live = false; };
   }, [open, api]);
@@ -141,6 +148,7 @@ export default function ExportPdfDialog({ open, api, fileName = '', onClose }) {
     filter.authors && `${authorsOn.length} of ${authors.length} people`,
     filter.layers && `${layersOn.length} of ${layers.length} layers`,
     withComments && 'comments CSV',
+    restrict && 'editing locked',
   ].filter(Boolean);
   const summary = [pageCount ? `${pageCount} page${pageCount === 1 ? '' : 's'}` : '', modeLabel, ...filterBits].filter(Boolean).join(' · ');
 
@@ -154,6 +162,7 @@ export default function ExportPdfDialog({ open, api, fileName = '', onClose }) {
         pages,
         custom,
         ...(info?.authors ? { filter, commentsCsv: withComments && info.commentCount > 0 } : {}),
+        ...(restrictOn && restrict ? { restrict: true } : {}),
       });
       if (result?.ok || result?.canceled) {
         if (result?.ok) onClose();
@@ -254,6 +263,24 @@ export default function ExportPdfDialog({ open, api, fileName = '', onClose }) {
                     <span className="xpdf-page__count">{info.commentCount}</span>
                   </button>
                 </div>
+              </div>
+            )}
+            {restrictOn && (
+              <div className="xpdf-section">
+                <div className="xpdf-pages">
+                  <button
+                    type="button"
+                    role="checkbox"
+                    aria-checked={restrict}
+                    className={`xpdf-page${restrict ? ' is-on' : ''}`}
+                    data-export-restrict=""
+                    onClick={() => setRestrict((on) => !on)}
+                  >
+                    <span className="xpdf-check" aria-hidden="true">{restrict ? <Icon name="check" size={11} /> : null}</span>
+                    <span className="xpdf-page__label">Restrict editing</span>
+                  </button>
+                </div>
+                {restrict && <p className="pdft-help" data-export-restrict-help="">Opens without a password. Changes and new marks need the password shown after export.</p>}
               </div>
             )}
             {error && <p className="pdft-error" role="alert">{error}</p>}

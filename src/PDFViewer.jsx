@@ -24958,7 +24958,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     return bytesKit.deliverCsv(csv, filters.commentsCsvFileName(name));
   }, [pdfFile?.id, pdfFile?.name]);
 
-  const handleExportPdfWithOptions = useCallback(async ({ mode = 'annotated', pages = 'all', custom = '', filter = null, commentsCsv = false, deliver = true } = {}) => {
+  const handleExportPdfWithOptions = useCallback(async ({ mode = 'annotated', pages = 'all', custom = '', filter = null, commentsCsv = false, deliver = true, restrict = false } = {}) => {
     if (!pdfFile) {
       showToast('Open a PDF first.', 'warn');
       return { ok: false, error: 'Open a PDF first.' };
@@ -25036,6 +25036,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       }
       if (!bytes) return { ok: false, error: 'Nothing to export.' };
       if (picked.pages) bytes = await bytesKit.keepOnlyPages(bytes, picked.pages);
+      // Restrict editing (Nightly 'restrict-editing'): opens freely, changes need the password.
+      let editPassword = null;
+      if (restrict) ({ bytes, password: editPassword } = await (await import('./utils/restrictPdfEditing.js')).restrictPdfEditing(bytes));
       const fileName = modes.exportFileName(pdfDisplayNameRef.current || pdfFile.name, mode, picked.pages);
       // deliver:false hands the bytes back (OneDrive save-back) instead of saving them.
       if (!deliver) return { ok: true, bytes, fileName };
@@ -25049,12 +25052,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           showToast('The PDF is ready, but the comments could not be saved.', 'warn');
         }
       }
-      if (redactionsSanitized > 0) {
+      if (editPassword) {
+        (await import('./utils/restrictPdfEditing.js')).showRestrictedExportToast(fileName, editPassword);
+      } else if (redactionsSanitized > 0) {
         showToast(`${redactionsSanitized} redaction marks were exported as outlines without their replacement text`, 'info');
       } else if (outcome === 'downloaded') {
         showToast(`Downloaded ${fileName}`, 'success');
       }
-      return { ok: true, fileName };
+      return { ok: true, fileName, ...(editPassword ? { editPassword } : {}) };
     } catch (err) {
       console.error('[ExportPdfWithOptions] failed:', err);
       return { ok: false, error: `Export failed: ${err?.message || err}` };
