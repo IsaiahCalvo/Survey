@@ -650,6 +650,7 @@ export function useAnnotationDoc({
           // Flag 'open-visible-first': a first open on this device also lets
           // the PDF draw its first page before the accepted shadow's decode.
           coldOpenWaitsForFirstPage: isFeatureOn('open-visible-first'),
+          lazyAcceptedShadow: isFeatureOn('lazy-accepted-shadow'),
           onPreview: (previewByPage, { surveyMarkers: previewSurvey = null, spaces: previewSpaces = null } = {}) => {
             if (cancelled) return;
             if (prePreviewRef.current.byPage === null) {

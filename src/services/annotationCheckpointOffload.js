@@ -162,6 +162,22 @@ export function requestMirrorCheckpoint(mirror, expectedVector, { asJsonBody = f
 }
 
 /**
+ * The mirror's state NOW (after every update posted so far): the accepted
+ * document's state vector and snapshot (Y.encodeSnapshot), without building
+ * it on this thread. Resolves to { stateVector, snapshot }; null when there
+ * is no usable mirror. Rejects when the worker fails or the mirror is out of
+ * step.
+ */
+export function requestMirrorState(mirror) {
+  if (!mirrorUsable(mirror)) return null;
+  return request(mirror.worker, {
+    op: 'mirror-state',
+    mirrorId: mirror.id,
+    expectedApplied: mirror.applied,
+  });
+}
+
+/**
  * Save into the device's annotation outbox (annotationDocOutbox
  * compactAccepted) from the worker, which opens the same IndexedDB database:
  * the multi-MB read of the stored copy and write of the new one then happen

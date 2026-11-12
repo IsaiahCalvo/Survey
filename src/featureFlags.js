@@ -301,6 +301,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Alt+Shift+] and Alt+Shift+[ step through the open documents',
     stage: 'beta',
   }),
+  'lazy-accepted-shadow': Object.freeze({
+    label: 'Open: keep the second copy of the marks only in the background worker until something needs it here',
+    stage: 'beta',
+  }),
   'open-visible-first': Object.freeze({
     label: 'Open: build the marks of the page on screen first, the pages around it after it has drawn',
     stage: 'beta',
