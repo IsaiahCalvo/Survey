@@ -2329,13 +2329,19 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     if (catchUp && !fastGlideRef.current && visibleFirst !== -1) {
       // One step per frame; calls between frames (scroll events) wait.
       const prev = rangeNowRef.current;
-      const next = catchUp.step ? stepMountWindow(prev, [first, last], [visibleFirst, visibleLast]) : prev;
+      // Pages scrolled on screen mount at once, even between steps (the open
+      // wait can hold the next step for seconds); only the overscan waits.
+      const coversVisible = prev[1] >= prev[0] && prev[0] <= visibleFirst && prev[1] >= visibleLast;
+      const next = catchUp.step || !coversVisible
+        ? stepMountWindow(prev, [first, last], [visibleFirst, visibleLast])
+        : prev;
       catchUp.step = false;
       if (next[0] === first && next[1] === last) mountCatchUpRef.current = null;
       else if (!catchUp.frame) {
         const stepNext = () => {
           const live = mountCatchUpRef.current;
-          if (!live) return;
+          // A newer catch-up (a glide slowing down) replaced this one.
+          if (live !== catchUp) return;
           // At open, no page off screen mounts before the pages on screen show
           // (drawn, and no longer held as blank sheets waiting for marks).
           if (live.idle && performance.now() - live.since < OPEN_DRAWN_WAIT_MS) {
