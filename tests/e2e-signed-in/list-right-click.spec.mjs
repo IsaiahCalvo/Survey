@@ -123,7 +123,11 @@ for (const [layout, use] of Object.entries(LAYOUTS)) {
         // and the name is not focused by it.
         await page.evaluate(() => {
           window.__lastContextMenu = null;
-          window.addEventListener('contextmenu', (event) => { window.__lastContextMenu = { prevented: event.defaultPrevented }; });
+          // Captured first, read once the event is done (row menus stop it
+          // from bubbling, so a late listener would never see it).
+          window.addEventListener('contextmenu', (event) => {
+            setTimeout(() => { window.__lastContextMenu = { prevented: event.defaultPrevented }; }, 0);
+          }, true);
         });
         await name.click({ button: 'right' });
         await expect(menu(page)).toBeVisible();
@@ -134,7 +138,7 @@ for (const [layout, use] of Object.entries(LAYOUTS)) {
         if (phone) {
           await menu(page).getByRole('menuitem', { name: 'Rename' }).click();
           await expect(name).toBeFocused();
-          await name.press('Escape');
+          await name.press('Enter');
         } else {
           await page.keyboard.press('Escape');
         }
@@ -169,8 +173,12 @@ for (const [layout, use] of Object.entries(LAYOUTS)) {
         // Empty space: no menu at all, and not the browser's either.
         await page.evaluate(() => { window.__lastContextMenu = null; });
         const panelBox = await visible(page.locator('.spaces-panel')).boundingBox();
-        await page.mouse.click(panelBox.x + panelBox.width / 2, panelBox.y + panelBox.height - 12, { button: 'right' });
-        expect(await page.evaluate(() => window.__lastContextMenu)).toEqual({ prevented: true });
+        const viewportHeight = page.viewportSize().height;
+        const emptyX = panelBox.x + panelBox.width / 2;
+        const emptyY = Math.min(panelBox.y + panelBox.height, viewportHeight) - 40;
+        expect(await page.evaluate(([x, y]) => Boolean(document.elementFromPoint(x, y)?.closest('.spaces-panel')), [emptyX, emptyY])).toBe(true);
+        await page.mouse.click(emptyX, emptyY, { button: 'right' });
+        await expect.poll(() => page.evaluate(() => window.__lastContextMenu)).toEqual({ prevented: true });
         await expect(page.getByRole('menu').filter({ visible: true })).toHaveCount(0);
 
         if (phone) return; // Phone bookmark rows: slide and the row's own controls.
