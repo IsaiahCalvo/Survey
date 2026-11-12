@@ -15,6 +15,8 @@ import SectionIconButton from '../components/SectionIconButton.jsx';
 import ButtonGroup from '../components/ButtonGroup.jsx';
 import { useTooltip } from '../components/Tooltip.jsx';
 import { showToast } from '../utils/toast';
+import ListItemContextMenu from '../components/ListItemContextMenu.jsx';
+import { afterMenuCloses, listMenuPointFrom } from '../utils/listContextMenu.js';
 import {
   DEFAULT_LAYER_ID,
   addLayer,
@@ -40,6 +42,8 @@ export default function LayersPanel({ layerState, activeLayerId, onLayersChange,
   const state = normalizeLayerState(layerState);
   const [editingId, setEditingId] = useState(null);
   const [draftName, setDraftName] = useState('');
+  // Owner 2026-11-12: right-click a layer for its row actions.
+  const [rowMenu, setRowMenu] = useState(null);
   const tip = useTooltip();
 
   const commit = useCallback((next) => { onLayersChange?.(next); }, [onLayersChange]);
@@ -144,6 +148,10 @@ export default function LayersPanel({ layerState, activeLayerId, onLayersChange,
                 onClick={() => onActiveLayerChange?.(layer.id)}
                 onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !editing) { e.preventDefault(); onActiveLayerChange?.(layer.id); } }}
                 onDoubleClick={() => startRename(layer)}
+                onContextMenu={(e) => {
+                  const point = listMenuPointFrom(e);
+                  if (point) setRowMenu({ ...point, layerId: layer.id });
+                }}
               >
                 <button
                   type="button"
@@ -198,6 +206,21 @@ export default function LayersPanel({ layerState, activeLayerId, onLayersChange,
             );
           })}
         </div>
+        {rowMenu && (() => {
+          const layer = state.layers.find((entry) => entry.id === rowMenu.layerId);
+          if (!layer) return null;
+          return (
+            <ListItemContextMenu
+              point={rowMenu}
+              onClose={() => setRowMenu(null)}
+              items={[
+                !readOnly && { label: 'Rename', onClick: () => afterMenuCloses(() => startRename(layer)) },
+                { label: layer.visible ? 'Hide' : 'Show', iconNode: <EyeIcon open={!layer.visible} />, onClick: () => commit(setLayerVisible(state, layer.id, !layer.visible)) },
+                !readOnly && layer.id !== DEFAULT_LAYER_ID && { label: 'Delete', danger: true, onClick: () => handleDelete(layer) },
+              ]}
+            />
+          );
+        })()}
         <p className="layers-panel__note">New markups go on the selected layer. Hidden layers are left out of exports.</p>
       </section>
     </div>

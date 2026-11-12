@@ -10,6 +10,7 @@ import {
   deviceFiles,
   DEVICE_FILES_CHANGED_EVENT,
   DEVICE_ACTOR_ID,
+  DEVICE_FILE_LEAVE_EVENT,
   isDeviceDocumentId,
 } from '../services/deviceFiles.js';
 
@@ -61,7 +62,10 @@ async function readDeviceMarks(documentId) {
 }
 
 /* Lay a device file's marks into a fresh cloud document as this user's own
-   edits: the store's update observer appends them to the cloud log. */
+   edits: the store's update observer appends them to the cloud log. True
+   only once the server took every one: the writes drained with nothing left
+   queued, the store stayed healthy, and nothing was refused (quarantined).
+   Anything less keeps the device copy, so no mark depends on a retry. */
 async function carryMarksToCloud({ update, documentId, actorUserId, supabase }) {
   if (!update || update.byteLength <= 2) return true; // nothing drawn
   const [{ openAnnotationDoc }, Y] = await Promise.all([
@@ -70,32 +74,60 @@ async function carryMarksToCloud({ update, documentId, actorUserId, supabase }) 
   ]);
   const handle = await openAnnotationDoc({ documentId, supabase, actorUserId, enableRealtime: false });
   try {
+    const refusals = handle.getHistoryQuarantineGeneration?.() ?? 0;
     Y.applyUpdate(handle.doc, update);
     await handle.drain();
     // One checkpoint holding everything, so the next open reads it at once.
+    // The log above is what keeps the marks; a failed checkpoint alone only
+    // makes the next open slower.
     await handle.flushSnapshot().catch(() => false);
+    const status = handle.getSyncStatus?.() || {};
+    if (status.healthy === false || Number(status.queueSize) > 0) return false;
+    if ((handle.getHistoryQuarantineGeneration?.() ?? 0) !== refusals) return false;
     return true;
   } finally {
     await handle.destroy();
   }
 }
 
+/* Close this device file's open tabs before its marks are read, so nothing
+   drawn afterwards lands on a copy that is about to go. True if any closed. */
+function leaveOpenTabs(deviceId) {
+  const detail = { deviceId, closed: false };
+  try { globalThis.dispatchEvent?.(new CustomEvent(DEVICE_FILE_LEAVE_EVENT, { detail })); } catch { /* no DOM */ }
+  return detail.closed;
+}
+const settle = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 /**
  * Save a device file to the signed-in account: upload it the normal way
- * (`upload(file)` resolves to the new document id), carry its marks across,
- * then remove the device copy. The device copy is kept if anything fails.
+ * (`upload(file)` resolves to the new document id), close its open tabs,
+ * carry its marks across, then remove the device copy. The device copy is
+ * kept if anything fails. `closedTabs` says a tab was open, so the caller can
+ * open the cloud copy in its place (or the device copy again on a failure).
  */
 export async function saveDeviceFileToAccount({ row, user, supabase, upload }) {
   if (!row?.id || !user?.id || typeof upload !== 'function') return { ok: false };
   const kept = await deviceFiles().read(row.id);
   if (!kept) return { ok: false, reason: 'gone' };
-  const update = await readDeviceMarks(row.id);
   const file = new File([kept.bytes], kept.row.name, { type: 'application/pdf' });
   const documentId = await upload(file);
   if (!documentId) return { ok: false, reason: 'upload' };
-  await carryMarksToCloud({ update, documentId, actorUserId: user.id, supabase });
-  await deviceFiles().remove(row.id);
-  return { ok: true, documentId };
+  const closedTabs = leaveOpenTabs(row.id);
+  // The viewer lets go of its store as it unmounts; the marks stay in the
+  // shared in-memory document, so this read still sees the last stroke.
+  if (closedTabs) await settle(250);
+  try {
+    const update = await readDeviceMarks(row.id);
+    const accepted = await carryMarksToCloud({ update, documentId, actorUserId: user.id, supabase });
+    if (!accepted) return { ok: false, reason: 'marks', documentId, closedTabs };
+  } catch (error) {
+    console.error('[deviceFiles] carrying marks failed', error);
+    return { ok: false, reason: 'marks', documentId, closedTabs };
+  }
+  // Saved either way; say so if the device copy could not be cleared.
+  const removed = await deviceFiles().remove(row.id).catch(() => false);
+  return { ok: true, documentId, closedTabs, deviceCopyLeft: removed === false };
 }
 
 /* Delete acts at once with an Undo (the app's rule): the row hides now and

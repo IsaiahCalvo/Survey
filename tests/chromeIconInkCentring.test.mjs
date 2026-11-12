@@ -75,7 +75,11 @@ test('the Fit menu is the same kind of menu as its two siblings', () => {
   const css = readFileSync(new URL('../src/components/RailFlyout.css', import.meta.url), 'utf8');
   assert.match(css, /\.rail-flyout \{[^}]*border-radius: var\(--radius-md\)/, 'the card takes the shared popup radius');
   assert.match(css, /\.rail-flyout \{[^}]*box-shadow: var\(--shadow-popover\)/, 'and the shared popup shadow');
-  assert.match(css, /\.rail-flyout__row \{[^}]*min-height: var\(--menu-item-h\)/, 'rows are the 28px menu row');
+  // CHANGED 2026-11-10, second pass (owner: the card looked "mid"): the
+  // card rows are 32px like Drawboard's own cards (Annotation Snapping, View
+  // settings), and no key hints sit on the right.
+  assert.match(css, /\.rail-flyout__row \{[^}]*min-height: 32px/, 'rows are the 32px card row');
+  assert.doesNotMatch(menu[0], /rail-flyout__keys|chordKeycaps/, 'no key hints in the card');
 });
 
 // DELIBERATE ASSERTION CHANGE (owner 2026-10-07, Drawboard rail): the desktop

@@ -404,6 +404,12 @@ import { useZoomState } from './hooks/useZoomState';
 import { isFeatureOn } from './featureFlags.js';
 import { setStampPickerOpen, useStampPickerOpen } from './components/StampPickerCard.jsx';
 import { pickImageToInsert } from './components/InsertImage.jsx';
+import LinkToolHost from './components/LinkToolHost.jsx';
+import PagePinsHost from './components/pins/PagePinsHost.jsx';
+import { readDefaultMeasureScale, saveDefaultMeasureScale, withDefaultMeasureScale } from './utils/measure/measureFormat.js';
+import PagePinsLayer from './components/pins/PagePinsLayer.jsx';
+import { PinToolButton } from './components/pins/PinControls.jsx';
+import { LINK_EDIT_EVENT, applyLinkEdit, selectedLinkOf } from './utils/linkTool.js';
 import { marksHidden, setMarksHidden, subscribeMarksHidden } from './utils/marksHidden.js';
 import { isTypingTarget } from './utils/typingTarget.js';
 import { useMarkClipboard } from './utils/sharedMarkClipboard.js';
@@ -421,7 +427,7 @@ import { chooseCloudPdfOpenPath, shouldRetryStreamedOpenWithDownload, tryOpenClo
 import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox } from './utils/svgBoundingBox.js';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
 import { usePageOperations } from './hooks/usePageOperations.js';
-import { IDLE_REMOTE_PDF_STATE, PAGE_OP_BLOCKED_MESSAGE, PAGE_OP_SYNC_FLAG, clearedPdfVersion, isPageOpBlocked, newPdfVersionToken, framePageChanges, noteFramePageChanges, operationRewritesPdf, pendingPdfVersion, reframeMarks, remotePdfLoaded, remotePdfVersionStep, savedPdfVersion, stampableOperation } from './utils/pageOpSync.js';
+import { IDLE_REMOTE_PDF_STATE, PAGE_OP_BLOCKED_MESSAGE, PAGE_OP_SYNC_FLAG, clearedPdfVersion, isPageOpBlocked, newPdfVersionToken, framePageChanges, noteFramePageChanges, operationRewritesPdf, pendingPdfVersion, reframeMarks, remotePdfLoaded, remotePdfVersionStep, savedPdfVersion, splitFramePageChanges, notedMarksOnPages, stampableOperation } from './utils/pageOpSync.js';
 import { usePageViewDocument } from './hooks/usePageViewDocument.js';
 import { getPageViewBase } from './utils/pageViewDocument.js';
 import { destroyPdfDocument, pdfOrDestroy } from './utils/destroyPdfDocument.js';
@@ -430,7 +436,8 @@ import { classifyPagePress, ownGroupMarkFilter } from './utils/toolPressRouting.
 import { CALLOUT_MARK_GROUP, getMarkGroup } from './utils/markToolGroup.js';
 import { dropStashedSelection, hasAnyPageSelection, isItemSelected, pageHasSelection } from './utils/pageSelectionPresence.js';
 import { isSelectionGrabPress, noteOverlayTapPick } from './hooks/useSelectionGrabHandoff.js';
-import { resolveToolBarGroup, showsSurveyRow, TOOL_BAR_GROUPS } from './utils/toolbarRows.js';
+import { revealInOwnScroller } from './utils/revealInOwnScroller.js';
+import { resolveSurveyBarPush, resolveToolBarGroup, showsSurveyRow, TOOL_BAR_GROUPS } from './utils/toolbarRows.js';
 import { cycleLassoMode } from './utils/lassoSelection.js';
 import { pageCountChange, pageNumberAfterOperation, transformPageState } from './utils/pageAnnotationReindex.js';
 import { usePdfjsFormFieldPersistence } from './hooks/usePdfjsFormFieldPersistence.js';
@@ -3193,9 +3200,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // pages (synced doc meta; a page's measurements also carry its scale);
   // measureScaleDialog is { pageNumber, lengthPt?, line? }.
   const [measureMode, setMeasureMode] = useState(null);
-  const [measureScaleMeta, setMeasureScaleMeta] = useState(() => normalizeMeasureScaleMeta(null));
-  const measureScaleMetaRef = useRef(measureScaleMeta);
-  measureScaleMetaRef.current = measureScaleMeta;
+  const [savedMeasureScaleMeta, setMeasureScaleMeta] = useState(() => normalizeMeasureScaleMeta(null));
+  const measureScaleMetaRef = useRef(savedMeasureScaleMeta);
+  measureScaleMetaRef.current = savedMeasureScaleMeta;
+  // Nightly 'measure-plus': Drawboard's number formats, custom scale row and
+  // "Set as default" (a document with no scale of its own starts there).
+  const [measurePlusOn] = useState(() => isFeatureOn('measure-plus'));
+  const [measureDefaultScale, setMeasureDefaultScale] = useState(() => (measurePlusOn ? readDefaultMeasureScale() : null));
+  const measureScaleMeta = useMemo(
+    () => withDefaultMeasureScale(savedMeasureScaleMeta, measureDefaultScale),
+    [savedMeasureScaleMeta, measureDefaultScale],
+  );
+  // The scales a new mark lands in, default included (a library drop).
+  const measureScaleMetaWithDefaultRef = useRef(measureScaleMeta);
+  measureScaleMetaWithDefaultRef.current = measureScaleMeta;
   const [measureScaleDialog, setMeasureScaleDialog] = useState(null);
   const [measureMenuRect, setMeasureMenuRect] = useState(null);
   useEffect(() => {
@@ -3210,6 +3228,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const [measureKeysOn] = useState(() => isFeatureOn('measure-keys'));
   // Nightly 'measure-edit': the quick bar's Measurement popover on a picked measurement.
   const [measureEditOn] = useState(() => isFeatureOn('measure-edit'));
+  // Nightly 'link-tool': Drawboard's Hyperlink tool (LinkToolHost, utils/linkTool.js).
+  const [linkToolOn] = useState(() => isFeatureOn('link-tool'));
+  // Nightly 'comment-pins': page pins (components/pins/).
+  const [pinsOn] = useState(() => isFeatureOn('comment-pins'));
+  // Pins are mark_comments rows on a cloud document, so they need one and a
+  // signed-in user: a device file or a signed-out visit shows no Pin tool.
+  const pinsDocOn = pinsOn && Boolean(pdfFile?.id) && !isDeviceDocumentId(pdfFile?.id) && Boolean(user?.id);
   const [measureDepth, setMeasureDepth] = useState(() => loadMeasureDepth());
   const [measureDepthDialog, setMeasureDepthDialog] = useState(null);
   // Tape (beta 'tape-tool', Drawboard PDF): a band that covers part of the
@@ -3828,6 +3853,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // undo step. The change is applied to the mark as saved right now.
   const handlePatchSelectedMeasure = useCallback((changes) => {
     handlePatchSelectedAnnotation({}, (obj) => applyMeasureEdit(obj, changes));
+  }, [handlePatchSelectedAnnotation]);
+  // Nightly 'link-tool': Edit hyperlink's target / style / colour, one save
+  // and one Undo step like the Measurement popover.
+  const handlePatchSelectedLink = useCallback((changes) => {
+    handlePatchSelectedAnnotation({}, (obj) => applyLinkEdit(obj, changes));
   }, [handlePatchSelectedAnnotation]);
   const [zoomGeneration, setZoomGeneration] = useState(0);
   // Edit mode state: tracks which annotation is being edited via double-click
@@ -8757,6 +8787,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // space above the page (data-viewer-top-push, PdfjsViewerContainer) instead
   // of covering the page's top.
   const surveyBarTopOverlayRef = useViewerTopOverlayRef();
+  // Owner 2026-11-10: whether the bar pushes the page (toolbarRows.js
+  // resolveSurveyBarPush), decided when it comes in.
+  const surveyBarPushRef = useRef(null);
   const surveyBarFitRef = surveyBarFit.ref;
   const surveyBarRef = useCallback((node) => {
     surveyBarFitRef(node);
@@ -9750,7 +9783,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         // blurring this field. Keep the live tool width current while typing;
         // persistence and selected-annotation edits remain blur-only.
         const minWidth = isCounterSize ? COUNTER_SIZE_MIN : 1;
-        const maxWidth = isCounterSize ? COUNTER_SIZE_MAX : (pickBarTool === 'tape' ? 100 : 50);
+        const maxWidth = isCounterSize ? COUNTER_SIZE_MAX : ((pickBarTool === 'tape' || isTapeMark(getSelectedShapeMeta().annotation)) ? 100 : 50);
         setStrokeWidth(normalizeAnnotationSize(value, minWidth, maxWidth, widthDecimals));
       }
       publishToolbarDraft('strokeWidthInputValue', value);
@@ -9764,7 +9797,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     // blur-time DOM value so a fast edit cannot recommit a stale closure value.
     const isCounterSize = pickBarTool === 'counter' || getSelectedShapeMeta().isCounter;
     const minWidth = isCounterSize ? COUNTER_SIZE_MIN : 1;
-    const maxWidth = isCounterSize ? COUNTER_SIZE_MAX : (pickBarTool === 'tape' ? 100 : 50);
+    // A picked tape (under Select or Pan) keeps Drawboard's 10-100 pt list.
+    const maxWidth = isCounterSize ? COUNTER_SIZE_MAX : ((pickBarTool === 'tape' || isTapeMark(getSelectedShapeMeta().annotation)) ? 100 : 50);
     const rawValue = String(event?.currentTarget?.value ?? strokeWidthInputValueRef.current ?? '').trim();
     // w41: an empty Width over picked marks of different widths means "leave
     // them" - never "set all of them to the minimum".
@@ -22141,7 +22175,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // empty/partial overwrite, no documentId-timing gate.
   // device-files (Nightly): a PDF opened with no account keeps its marks in
   // the store's device copy under one device actor.
-  const annotationActorId = user?.id || (isDeviceDocumentId(pdfFile?.id) ? DEVICE_ACTOR_ID : null);
+  const annotationActorId = isDeviceDocumentId(pdfFile?.id) ? DEVICE_ACTOR_ID : (user?.id || null);
   const {
     initialHydration: normalAnnotationHydration,
     deletedPdfAnnotations: durableDeletedPdfAnnotations,
@@ -22166,6 +22200,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     // offline-docs: marks opened from this device's kept copy (no signal).
     offlineCopy: annotationOfflineCopy,
     editBlocked: annotationEditBlocked,
+    clearEditBlocked: clearAnnotationEditBlocked,
   } = useAnnotationDoc({
     documentId: pdfFile?.id || null,
     userId: annotationActorId,
@@ -22225,8 +22260,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     setArchivedLive(false);
     const documentId = pdfFile?.id;
     if (!documentId || !cloudSyncEnabled || isDeviceDocumentId(documentId)) return undefined;
-    return subscribeDocumentLockState(documentId, (state) => setArchivedLive(Boolean(state?.archivedAt)));
-  }, [pdfFile?.id, cloudSyncEnabled]);
+    // Unlocked or restored from Archive after a refused edit: the row reads
+    // free again, so the tools come back (a refusal that still stands blocks
+    // again on the next edit).
+    return subscribeDocumentLockState(documentId, (state) => {
+      setArchivedLive(Boolean(state?.archivedAt));
+      if (!state?.archivedAt && !state?.lockedAt) clearAnnotationEditBlocked?.();
+    });
+  }, [pdfFile?.id, cloudSyncEnabled, clearAnnotationEditBlocked]);
   const editBlockedReason = annotationEditBlocked || (archivedLive ? 'archived' : null);
   useEffect(() => {
     if (!editBlockedReason || !isActive) return undefined;
@@ -22365,6 +22406,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     window.addEventListener('pointercancel', onUp, true);
     let timer = null;
     let latest = null;
+    let latestKeys = [];
     const reload = (since) => {
       timer = null;
       const draftOpen = hasOpenPolyDraft(polyDraftOwner);
@@ -22376,9 +22418,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       // goes. Say so rather than wiping it silently (R4-C N6b).
       if (draftOpen) showToast('Pages changed in another window, so the shape you were placing was cleared.', 'info');
       // Marks drawn here on the old pages move with them once the new pages
-      // are loaded (the effect below).
-      sync.reframe = sync.frame;
-      sync.frame = null;
+      // are loaded (the effect below). The old pages stay up until then, so
+      // the frame keeps noting marks; a stamp seen meanwhile adds to it.
+      sync.reframe = { sha: latest.contentSha256, keys: latestKeys };
       sync.docBeforeReload = sync.pdfDoc;
       onRemotePdfVersion?.(tabId, latest);
     };
@@ -22394,10 +22436,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         if (!sync.frame) dropHistoryAfterPageChange();
         sync.frame = noteFramePageChanges(sync.frame, step.version);
       } else if (step.action === 'unblock') {
-        sync.frame = null;
+        // A reload still waiting (a pointer is down) or loading keeps the
+        // changes its bytes carry, with the marks noted so far.
+        const loadingKeys = sync.reframe?.keys || (timer ? latestKeys : null);
+        sync.frame = loadingKeys ? splitFramePageChanges(sync.frame, loadingKeys).taken : null;
       }
       if (step.action !== 'reload') return;
       latest = { filePath: step.version.filePath, contentSha256: step.version.contentSha256 };
+      latestKeys = [...(sync.frame?.batches?.keys() || [])];
       if (!timer) reload(Date.now());
     });
     return () => {
@@ -22410,24 +22456,43 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   }, [normalAnnotationHydration, pdfFile?.id, subscribeDocumentMeta, onRemotePdfVersion, tabId, polyDraftOwner, dropHistoryAfterPageChange]);
   useEffect(() => {
     const sync = pageOpSyncRef.current;
-    if (!sync.remote.awaitSha || !pdfDoc || pdfDoc === sync.docBeforeReload) return;
+    if (!pdfDoc || pdfDoc === sync.docBeforeReload) return;
     sync.remote = remotePdfLoaded(sync.remote, pdfFile?.contentSha256);
-    const frame = sync.reframe;
+    // Older bytes than the newest reload asked for: wait for those. The
+    // document on screen must be the one opened from them, not an earlier
+    // one still up while they load.
+    const target = sync.reframe;
+    const shown = sync.docSha;
+    if (!target || shown?.doc !== pdfDoc || shown.sha !== target.sha) return;
     sync.reframe = null;
+    // Runs stamped after this reload began stay in the frame for the next
+    // load, with the marks (now moved onto these pages) still noted.
+    const { taken: frame, rest } = splitFramePageChanges(sync.frame, target.keys);
+    sync.frame = rest;
     // Steps recorded while the old pages were up (the marks drawn on them)
     // would undo to the old frame.
     if (frame) dropHistoryAfterPageChange();
     const ops = framePageChanges(frame);
     if (!frame?.made?.size || !ops?.length) return;
+    // Marks these runs could not move must not be moved by later runs alone.
+    const forgetNotedMarks = () => { if (sync.frame) sync.frame = { ...sync.frame, made: new Set() }; };
     try {
       const byPage = annotationsByPageRef.current || {};
+      // A noted mark not on these pages missed these runs (no-op included):
+      // later runs alone must not move it if it turns up.
+      const found = notedMarksOnPages(byPage, frame.made);
+      if (sync.frame && found.size < frame.made.size) {
+        sync.frame = { ...sync.frame, made: new Set([...(sync.frame.made || [])].filter((id) => found.has(id) || !frame.made.has(id))) };
+      }
       const changed = reframeMarks(byPage, frame.made, ops, transformPageState);
       const save = handleSaveAnnotationsRef.current;
-      if (!changed || typeof save !== 'function') return;
+      if (!changed) return;
+      if (typeof save !== 'function') { forgetNotedMarks(); return; }
       for (const [page, objects] of Object.entries(changed)) {
         save(Number(page), { ...(byPage[page] || {}), objects }, { source: 'page-op-sync:reframe', checkpointPolicy: 'skip' });
       }
     } catch (err) {
+      forgetNotedMarks();
       console.warn('[page-op-sync] could not move marks drawn on the old pages:', err?.message || err);
     }
   }, [pdfDoc, pdfFile, dropHistoryAfterPageChange]);
@@ -25579,6 +25644,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           await destroyPdfDocument(pdf);
           return;
         }
+        // Page sync (pageOpSync.js) moves marks only once the document from
+        // the newest bytes is the one on screen.
+        if (pageOpSyncRef.current) pageOpSyncRef.current.docSha = { doc: pdf, sha: pdfFile?.contentSha256 || null };
         setPdfDoc(pdf);
         setNumPages(pdf.numPages);
         setPageNum(1);
@@ -27259,6 +27327,33 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     });
   }, [activeTool, isActive, onBottomToolbarApiChange]);
 
+  // Nightly 'link-tool': the one picked link mark (its target, style and
+  // colour) for the picked bar's "Go to ..." / Link and the edit dialog.
+  const selectedLinkForHost = useMemo(() => {
+    if (!linkToolOn || !selectedToolbarAnnotation || selectedToolbarCallout) return null;
+    const pageObjects = annotationsByPage?.[selectedToolbarAnnotation.pageNumber]?.objects || [];
+    const index = findSelectedAnnotationIndex(pageObjects, selectedToolbarAnnotation);
+    const obj = (index >= 0 ? pageObjects[index] : null) || selectedToolbarAnnotation.annotation;
+    return selectedLinkOf(obj, getAnnotationRenderIdentity(obj).annotationId);
+  }, [linkToolOn, selectedToolbarAnnotation, selectedToolbarCallout, annotationsByPage]);
+  // "Go to ...": a website opens in a new tab (the desktop / phone apps hand
+  // it to the system browser), a page glides into view, an area zooms to fit.
+  const followLink = useCallback((link) => {
+    if (!link) return;
+    if (link.kind === 'url') {
+      void openExternalDestination(link.href).catch(() => {});
+    } else if (link.kind === 'page') {
+      goToPage(link.page, { smooth: true });
+    } else if (link.kind === 'area') {
+      const viewer = pdfjsViewerRef.current;
+      if (typeof viewer?.focusPageRect === 'function') viewer.focusPageRect(link.page, link.rect, { fill: 0.92, animate: true });
+      else goToPage(link.page, { smooth: true });
+    }
+  }, [goToPage]);
+  const editSelectedLink = useCallback(() => {
+    window.dispatchEvent(new CustomEvent(LINK_EDIT_EVENT));
+  }, []);
+
   // UX 2026-05-13: Publish bottom toolbar state to the App shell when this tab
   // is active. Keep this effect below every value in the API object to avoid
   // temporal-dead-zone crashes during PDFViewer's first render.
@@ -27570,6 +27665,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         }
         : null,
       patchSelectedMeasure: measureEditOn ? handlePatchSelectedMeasure : null,
+      // One picked link mark (Nightly 'link-tool'): "Go to ..." and Link.
+      selectedLink: linkToolOn && !groupSummary ? selectedLinkForHost : null,
+      followLink: linkToolOn ? followLink : null,
+      editSelectedLink: linkToolOn ? editSelectedLink : null,
+      // Nightly 'comment-pins': only a cloud document with a signed-in user.
+      pinsAvailable: pinsDocOn,
       selectionMixed: groupSummary ? groupSummary.mixed : null,
       selectionCount: groupSummary ? groupSummary.count : (selectedToolbarAnnotation || selectedToolbarCallout ? 1 : 0),
       strokeWidthInputValue: strokeWidthInputValueRef.current,
@@ -27729,6 +27830,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     measureScaleMeta,
     measureEditOn,
     handlePatchSelectedMeasure,
+    linkToolOn,
+    pinsDocOn,
+    selectedLinkForHost,
+    followLink,
+    editSelectedLink,
     pickBarTool,
     liveTextSelection,
     selectionMode,
@@ -32021,7 +32127,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     setTimeout(() => {
       const element = document.getElementById(`highlight-item-${annotationId}`);
       if (element) {
-        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Only the panel's own list scrolls (owner 2026-11-10): scrollIntoView
+        // also scrolled the overflow-hidden frames around it, page included.
+        revealInOwnScroller(element, { margin: 24 });
         // Flash effect
         element.style.transition = 'box-shadow 0.5s';
         element.style.boxShadow = '0 0 0 2px var(--accent)';
@@ -32045,7 +32153,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     setExpandedCategories((prev) => (prev[marker.categoryId] && Object.keys(prev).length === 1 ? prev : { [marker.categoryId]: true }));
     setExpandedSurveyMarkers((prev) => (prev[pickedSurveyMarkerId] && Object.keys(prev).length === 1 ? prev : { [pickedSurveyMarkerId]: true }));
     const frame = requestAnimationFrame(() => {
-      document.getElementById(`highlight-item-${pickedSurveyMarkerId}`)?.scrollIntoView({ block: 'nearest' });
+      // The panel's own list only, never the frames around it (owner
+      // 2026-11-10: a click on a marker must not move the page).
+      revealInOwnScroller(document.getElementById(`highlight-item-${pickedSurveyMarkerId}`));
     });
     return () => cancelAnimationFrame(frame);
     // Only a new pick moves the panel; edits to the marker do not.
@@ -33759,7 +33869,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       pageHeight: height,
       pageNumber: drop.pageNumber,
       landingScale: pageScaleFromObjects(annotationsByPageRef.current?.[drop.pageNumber]?.objects)
-        || metaScaleForPage(measureScaleMetaRef.current, drop.pageNumber) || null,
+        || metaScaleForPage(measureScaleMetaWithDefaultRef.current, drop.pageNumber) || null,
       tokens: {
         authorName: user?.user_metadata?.full_name || '',
         authorEmail: user?.email || '',
@@ -37975,10 +38085,14 @@ ${pageBlocks}
   // a page with no measurements keeps it), re-stamp every measurement on the
   // pages it covers (labels follow, one undo step per page) and keep a
   // calibration line as a Length measurement.
-  const applyMeasureScale = useCallback((scale, { allPages = false } = {}) => {
+  const applyMeasureScale = useCallback((scale, { allPages = false, setDefault = false } = {}) => {
     const dialog = measureScaleDialog;
     setMeasureScaleDialog(null);
     if (!dialog || !scale) return;
+    if (setDefault && measurePlusOn) {
+      saveDefaultMeasureScale(scale);
+      setMeasureDefaultScale(scale);
+    }
     const { pageNumber, line } = dialog;
     rememberRecentMeasureScale(scale);
     const nextMeta = nextMeasureScaleMeta(measureScaleMetaRef.current, pageNumber, scale, { allPages });
@@ -38000,7 +38114,7 @@ ${pageBlocks}
       );
     }
     if (measureMode === 'calibrate') setMeasureMode('length');
-  }, [handleSaveAnnotationsWithTextMarkupAtomicity, measureMode, measureScaleDialog]);
+  }, [handleSaveAnnotationsWithTextMarkupAtomicity, measureMode, measureScaleDialog, measurePlusOn]);
 
   if (pdfLoadError) {
     const docName = pdfDisplayName || 'this document';
@@ -38146,15 +38260,29 @@ ${pageBlocks}
       {/* Nightly 'measure-scale-chip' (Drawboard PDF Pro trial audit
           2026-11-09): a measure tool armed on a page with no scale says so,
           with a way to set one, instead of quietly reading 1:1 inches. */}
-      {measureScaleChipOn && isActive !== false && measureMode && !measureScaleDialog && !measureDepthDialog
+      {/* Nightly 'measure-plus': the calibrating note shows without the chip
+          flag too, in Drawboard's terms, with a close x. */}
+      {(measureScaleChipOn || (measurePlusOn && measureMode === 'calibrate')) && isActive !== false && measureMode && !measureScaleDialog && !measureDepthDialog
         && (measureMode === 'calibrate'
           || !isValidMeasureScale(pageScaleFromObjects(annotationsByPage?.[pageNum]?.objects) || metaScaleForPage(measureScaleMeta, pageNum)))
         && createPortal(
           measureMode === 'calibrate' ? (
             // Calibrating: say what to do, with a way out.
             <div className="measure-no-scale-chip" role="status" data-measure-calibrating="">
-              <span>Draw along a length you know.</span>
-              <button type="button" onClick={() => { setMeasureMode(null); setActiveTool('pan'); }}>Cancel</button>
+              <span>{measurePlusOn ? 'Trace a known distance to set the scale.' : 'Draw along a length you know.'}</span>
+              {measurePlusOn ? (
+                <button
+                  type="button"
+                  className="measure-no-scale-chip__close"
+                  aria-label="Stop calibrating"
+                  data-measure-calibrate-close=""
+                  onClick={() => { setMeasureMode(null); setActiveTool('pan'); }}
+                >
+                  <Icon name="close" size={12} />
+                </button>
+              ) : (
+                <button type="button" onClick={() => { setMeasureMode(null); setActiveTool('pan'); }}>Cancel</button>
+              )}
             </div>
           ) : (
             <div className="measure-no-scale-chip" role="status" data-measure-no-scale="">
@@ -38180,6 +38308,29 @@ ${pageBlocks}
             setMeasureMode(null);
             setActiveTool('pan');
           }}
+        />
+      )}
+      {pinsOn && (
+        <PagePinsHost
+          enabled={pinsDocOn}
+          isActive={isActive !== false}
+          documentId={pdfFile?.id || null}
+          userId={user?.id || null}
+          readOnly={Boolean(documentLocked) || yjsDocRole === 'viewer'}
+          activeTool={activeTool}
+          setActiveTool={setActiveTool}
+          panelOn={isFeatureOn('mark-comments')}
+        />
+      )}
+      {linkToolOn && (
+        <LinkToolHost
+          isActive={isActive}
+          readOnly={Boolean(documentLocked) || yjsDocRole === 'viewer'}
+          numPages={numPages}
+          activeTool={activeTool}
+          setActiveTool={setActiveTool}
+          selectedLink={selectedLinkForHost}
+          onPatchSelectedLink={handlePatchSelectedLink}
         />
       )}
       {measureScaleDialog && (
@@ -39655,6 +39806,16 @@ ${pageBlocks}
                                   surveyMarkerDrawColor={nextSurveyEntityColor}
                                 />
                               </div>
+                              )}
+                              {pinsDocOn && (
+                                <PagePinsLayer
+                                  documentId={pdfFile?.id || null}
+                                  pageNumber={pageNumber}
+                                  pageWidth={resolvedPageSize.width}
+                                  pageHeight={resolvedPageSize.height}
+                                  activeTool={activeTool}
+                                  readOnly={Boolean(documentLocked) || yjsDocRole === 'viewer'}
+                                />
                               )}
 
                               {/* Unified renderer phase 2 (2026-07-14): the FabricDrawingCanvas
@@ -41190,6 +41351,10 @@ ${pageBlocks}
                   ...(isFeatureOn('stamp-tool') ? [{ id: 'stamp', label: 'Stamp', iconName: 'stamp', picker: true }] : []),
                   // Nightly 'insert-image': picks a picture and drops it on the page.
                   ...(isFeatureOn('insert-image') ? [{ id: 'image', label: 'Image', iconName: 'image', action: true }] : []),
+                  // Nightly 'link-tool': drag a box, then say where it links (Shift+H).
+                  ...(linkToolOn ? [{ id: 'hyperlink', label: 'Hyperlink', iconName: 'hyperlink' }] : []),
+                  // Nightly 'comment-pins': the pin split button (N; M cycles the type).
+                  ...(pinsDocOn ? [{ id: 'pin', label: 'Pin', pin: true }] : []),
                   // TODO: Revisit the user-created Note tool later. Imported
                   // PDF Text/sticky-note annotations still render through
                   // pdfAnnotationImporter + the normal PDF annotation layers.
@@ -41237,6 +41402,17 @@ ${pageBlocks}
                     setUnderlineCaretPopupOpen(false);
                     setStrikeCaretPopupOpen(false);
                   };
+
+                  if (t.pin) {
+                    return (
+                      <PinToolButton
+                        key="pin"
+                        active={activeTool === 'pin'}
+                        glyphSize={CHROME_GLYPH}
+                        onArm={() => { if (stampPickerOpen) setStampPickerOpen(false); setActiveTool('pin'); }}
+                      />
+                    );
+                  }
 
                   const button = (
                     <button
@@ -41521,7 +41697,7 @@ ${pageBlocks}
               return (
                 <div
                   ref={surveyBarRef}
-                  data-viewer-top-push="true"
+                  data-viewer-top-push={surveyBarPushRef.current === false ? undefined : 'true'}
                   className="survey-subrow"
                   data-survey-bar-step={look.step}
                   data-survey-template={surveyBarFit.plan.template}
@@ -41661,6 +41837,11 @@ ${pageBlocks}
           const subRowGroup = (showSurveyPanel && selectedTemplate && (mobileMode || showsSurveyRow({ activeTool, showSurveyPanel, regionEditing: showRegionSelection, surveyMarkerPicked })))
             ? 'survey'
             : (activeCategoryDropdown && activeCategoryDropdown !== 'survey' && !TOOL_BAR_GROUPS.includes(activeCategoryDropdown) ? activeCategoryDropdown : null);
+          surveyBarPushRef.current = resolveSurveyBarPush({
+            shown: subRowGroup === 'survey' && Boolean(subRowHost),
+            wasPushing: surveyBarPushRef.current,
+            pickedOnly: !mobileMode && activeTool !== 'survey-marker' && surveyMarkerPicked,
+          });
           if (subRowGroup && subRowHost) {
             rows.push(renderSubRow(subRowGroup, subRowHost, false));
           }

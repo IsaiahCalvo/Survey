@@ -1,11 +1,10 @@
 /**
- * focusMode.js — the keys and the browser full screen for focus mode
- * (Nightly, flag 'focus-mode'; Drawboard PDF Pro trial audit 2026-11-09).
+ * focusMode.js — the keys and the browser full screen behind the rail's
+ * Full screen button (flag 'focus-mode').
  *
- * Focus mode hides the tab strip and both side rails so the drawing gets the
- * screen, and asks the browser for full screen. Ctrl/Cmd+Shift+F, the rail
- * button, or the Exit chip that always shows turn it off again; leaving the
- * browser's full screen (Esc) does too.
+ * Owner 2026-11-10: full screen keeps the tabs, both rails and the tool bar
+ * (Survey mode must still work); it only hides the browser and system bars.
+ * Ctrl/Cmd+Shift+F or the rail button toggle it; Esc leaves it too.
  */
 
 /** Ctrl/Cmd+Shift+F, by key code so every layout has it. */

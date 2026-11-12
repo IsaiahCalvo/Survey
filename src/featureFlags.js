@@ -286,7 +286,7 @@ export const FEATURE_FLAGS = Object.freeze({
     stage: 'beta',
   }),
   'focus-mode': Object.freeze({
-    label: 'Focus mode: hide the tab strip and side rails, full screen (Ctrl/Cmd+Shift+F)',
+    label: 'Full screen: hide the browser and system bars, keep tabs and rails (Ctrl/Cmd+Shift+F)',
     stage: 'beta',
   }),
   'search-options': Object.freeze({
@@ -341,6 +341,14 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'sheet-set-view': Object.freeze({
     label: 'Project sheets as a set: previous / next sheet, sheet picker, Shift+Left / Right, List and Grid views, Open all',
+    stage: 'beta',
+  }),
+  'drawboard-keys': Object.freeze({
+    label: 'Drawboard keys: Shift+Up / Down previous / next page; Alt+O / Alt+U next / previous version (with Versions on)',
+    stage: 'beta',
+  }),
+  'project-activity': Object.freeze({
+    label: 'Projects: an Activity tab with what happened to the project (files, revisions, issues, people) in 15-minute groups',
     stage: 'beta',
   }),
   spotlight: Object.freeze({
@@ -424,6 +432,20 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Keys: Ctrl / Cmd + Left / Right turn the picked mark 1° (5° with Shift), Ctrl / Cmd + Up / Down scale it',
     stage: 'beta',
   }),
+  'link-tool': Object.freeze({
+    label: 'Hyperlink tool (Shift+H): drag a box and link it to a page, a website or an area; "Go to" on the picked bar follows it',
+    stage: 'beta',
+  }),
+  // Drawboard Projects' page pins: drop a Comment, Issue or Task pin on the
+  // page (N; M cycles the type), with the rail's "Show pins" filter.
+  'comment-pins': Object.freeze({
+    label: 'Page pins (N): drop a Comment, Issue or Task pin on the page, with a Show pins filter',
+    stage: 'beta',
+  }),
+  'measure-plus': Object.freeze({
+    label: 'Measure formats: feet-inches readings, precision, custom scales and a default scale',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';
@@ -488,6 +510,20 @@ export function isFeatureOn(key, { storage = safeStorage(), env = readEnv() } = 
   if (def.env && env?.[def.env] === '1') return true;
   const cached = readCache(storage);
   return cached?.[key] === true;
+}
+
+// Features read their flag once at load. A browser that has never been to
+// Survey has no saved answers, so without a wait a feature turned on for
+// everyone stayed hidden for a new person's whole first visit (audit
+// 2026-11-10). main.jsx holds the first render on this: at once when answers
+// are saved (or storage cannot be read), else until the server's first answer
+// or maxMs, whichever comes first.
+export function waitForFirstFlags(firstAnswer, { storage = safeStorage(), maxMs = 1500, setTimer = setTimeout } = {}) {
+  if (!storage || read(storage, FLAG_CACHE_KEY) !== null) return Promise.resolve();
+  return Promise.race([
+    Promise.resolve(firstAnswer).catch(() => {}),
+    new Promise((resolve) => setTimer(resolve, maxMs)),
+  ]).then(() => {});
 }
 
 // Ask the server which flags are on for whoever is signed in (or nobody) and

@@ -1051,6 +1051,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       return 'failed';
     }
     if (resolvedDoc?.id === newDocId) saveSheetReading(newDocId, duplicateGate.sheet);
+    // Whether this upload made the row (false when same bytes came back as an
+    // existing document), so a caller's rollback never deletes someone's file.
+    file.createdNew = resolvedDoc?.id === newDocId;
 
     // Decision 6: identical bytes deduped to a doc with a different name ->
     // offer to keep the new name as an alias, then open the EXISTING document
@@ -1876,6 +1879,11 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     if (!user) { onShowAuthModal(); return; }
     if (!row?.id) return;
     showToast(`Saving ${row.name || 'document'} to your account…`, 'info');
+    let uploaded = null;
+    let addedNew = false;
+    // An upload of bytes already in the account can come back 'added' with
+    // that existing document: the rollback below must never delete it.
+    const knownIds = new Set([...(allDocuments || []), ...(documents || [])].map((d) => d?.id).filter(Boolean));
     try {
       const result = await saveDeviceFileToAccount({
         row,
@@ -1883,14 +1891,47 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         supabase,
         upload: async (file) => {
           const outcome = await uploadBrowserPdf(file, { openAfterUpload: false, waitForStorage: true, askDuplicates: false });
-          return outcome === 'added' || outcome === 'existing' ? file.id || null : null;
+          if (outcome !== 'added' && outcome !== 'existing') return null;
+          uploaded = file;
+          addedNew = outcome === 'added' && file.createdNew === true;
+          return file.id || null;
         },
       });
       if (result.ok) {
-        showToast(`${row.name || 'Document'} is saved to your account`, 'success');
+        showToast(result.deviceCopyLeft
+          ? `${row.name || 'Document'} is saved to your account. Its copy on this device couldn’t be removed; you can delete it.`
+          : `${row.name || 'Document'} is saved to your account`, result.deviceCopyLeft ? 'info' : 'success');
         refetchAllDocuments();
+        // Its tab closed for the move: the cloud copy opens in its place.
+        if (result.closedTabs && uploaded) {
+          // The upload already gave this File its id, so the open below would
+          // skip attaching the owner: set it here, or the owner's own copy
+          // opens with collaborator rules.
+          uploaded.id = result.documentId;
+          uploaded.user_id = user.id;
+          void handleDocumentClick({ id: result.documentId, file: uploaded, user_id: user.id });
+        }
       } else {
-        showToast('Couldn’t save it to your account. It is still on this device.', 'warn');
+        showToast(result.reason === 'marks'
+          ? 'Its marks didn’t reach your account, so it is still on this device with them. Try Save to my account again.'
+          : 'Couldn’t save it to your account. It is still on this device.', 'warn');
+        // The PDF went up but its marks did not: take that half copy back
+        // out (only one this save made), so the list doesn't show the file
+        // twice and the next try doesn't add a second one.
+        if (result.reason === 'marks' && addedNew && result.documentId && !knownIds.has(result.documentId)) {
+          await deleteDocumentEverywhere({ docId: result.documentId, source: 'device-save-rollback' })
+            .catch((err) => console.warn('[deviceFiles] could not take back the half-saved copy', err?.message || err));
+          // The upload's placeholder row (temp-…) goes too: it only leaves
+          // once a real row of the same name lands, and none will.
+          setDocuments((prev) => prev.filter((d) => d.id !== result.documentId
+            && !(String(d.id).startsWith('temp-') && d.name === (uploaded?.name || row.name))));
+          refetchDocuments();
+          refetchAllDocuments();
+        }
+        if (result.closedTabs) {
+          const again = await openDeviceFile(row).catch(() => null);
+          if (again) onDocumentSelect(again);
+        }
       }
     } catch (error) {
       console.error('[deviceFiles] save to account failed', error);

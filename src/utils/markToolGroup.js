@@ -24,10 +24,14 @@ export const TOOL_GROUP_BY_TOOL = Object.freeze(toolGroupByTool(ANNOTATION_TOOL_
 export const SURVEY_MARKER_GROUP = 'survey-marker';
 /** Callouts live outside the page's objects; they are Text-group marks. */
 export const CALLOUT_MARK_GROUP = 'review';
+/** Nightly 'link-tool': link boxes are their own group, so the Hyperlink tool
+ * picks a link on a click (and only links), and a shape tool leaves them be. */
+export const LINK_MARK_GROUP = 'link';
 
 /** The tool group of an armed tool, or null (Select, Pan, Text Select, …). */
 export function getToolGroup(tool) {
   if (tool === 'survey-marker') return SURVEY_MARKER_GROUP;
+  if (tool === 'hyperlink') return LINK_MARK_GROUP;
   return TOOL_GROUP_BY_TOOL[tool] || null;
 }
 
@@ -77,5 +81,6 @@ export function getMarkGroup(mark) {
   if (!mark) return null;
   if (mark.kind === 'callout') return CALLOUT_MARK_GROUP;
   if (mark.kind === 'survey-marker') return SURVEY_MARKER_GROUP;
+  if (mark.data?.link && typeof mark.data.link === 'object' && lower(mark.type) === 'rect') return LINK_MARK_GROUP;
   return getToolGroup(markToolForAnnotation(mark));
 }

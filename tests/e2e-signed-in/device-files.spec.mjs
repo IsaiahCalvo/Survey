@@ -2,7 +2,7 @@
 // Drawboard's "Temporary" files, /mnt/project-files/drawboard-trial/file-model.md).
 // Signed out, a PDF opens, marks drawn on it stay on this device across
 // reloads, and "Save to my account" after signing in uploads it with its marks.
-import { E2E_ACCOUNTS } from './accounts.mjs';
+import { E2E_ACCOUNTS, E2E_DOCUMENT } from './accounts.mjs';
 import { adminClient, expect, test } from './helpers.mjs';
 
 const PAGE = '.survey-pdfjs-page-div[data-page-number="1"]';
@@ -96,6 +96,239 @@ test('signed out: a PDF opens, keeps its marks on this device, and saves to an a
   } finally {
     const { data } = await admin.from('documents').select('id,file_path').eq('name', name);
     for (const row of data || []) {
+      await admin.from('documents').delete().eq('id', row.id);
+      if (row.file_path) await admin.storage.from('documents').remove([row.file_path]);
+    }
+  }
+});
+
+test('Save to my account keeps the device copy when the marks don\'t reach the server, and a second try moves it', async ({ page, context }) => {
+  test.setTimeout(240_000);
+  const name = `E2E device marks refused ${Date.now()}.pdf`;
+  const admin = adminClient();
+  try {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.getByText('Continue without an account').click({ timeout: 60_000 });
+    const chooser = page.waitForEvent('filechooser');
+    await page.getByRole('button', { name: 'Upload PDF' }).click();
+    await (await chooser).setFiles({ name, mimeType: 'application/pdf', buffer: (await import('node:fs')).readFileSync(FIXTURE) });
+    await expect(page.getByText(PAGE_TEXT).filter({ visible: true }).first()).toBeVisible({ timeout: 60_000 });
+    await page.waitForTimeout(1_000);
+    await drawLine(page, 0);
+    await expect.poll(() => pageLines(page)).toHaveLength(1);
+    await page.waitForTimeout(1_000);
+    await page.getByRole('button', { name: `Close ${name}` }).click();
+
+    await page.getByRole('button', { name: 'Sign in', exact: true }).filter({ visible: true }).first().click();
+    const dialog = page.getByRole('dialog').filter({ hasText: 'Welcome back' });
+    await dialog.getByLabel('Email').fill(E2E_ACCOUNTS.owner.email);
+    await dialog.getByLabel('Password').fill(E2E_ACCOUNTS.owner.password);
+    await dialog.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await expect(dialog).toBeHidden({ timeout: 30_000 });
+
+    // Every mark write fails on the server (an internal error, not a refusal).
+    const failWrite = (route) => route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ code: 'XX000', message: 'internal error' }) });
+    const writes = /\/rest\/v1\/rpc\/(append_annotation_update|store_annotation_snapshot)/;
+    await context.route(writes, failWrite);
+    await page.getByText(name, { exact: true }).filter({ visible: true }).first().click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Save to my account' }).click();
+    await expect(page.getByText('Its marks didn’t reach your account', { exact: false })).toBeVisible({ timeout: 90_000 });
+    await expect(page.getByText(`${name} is saved to your account`)).toHaveCount(0);
+    // The device copy (with its mark) is still here, and the PDF that went up
+    // without its marks was taken back out: the file is listed once.
+    await expect(page.getByText('On this device', { exact: true }).filter({ visible: true }).first()).toBeVisible();
+    await expect.poll(async () => (await admin.from('documents').select('id').eq('name', name)).data?.length, { timeout: 20_000 }).toBe(0);
+    await expect(page.getByRole('button', { name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`) }).filter({ visible: true })).toHaveCount(1, { timeout: 20_000 });
+
+    // The server is fine again: Save once more moves it, marks and all.
+    await context.unroute(writes, failWrite);
+    await page.getByText(name, { exact: true }).filter({ visible: true }).first().click({ button: 'right' });
+    await expect(page.getByRole('menuitem', { name: 'Save to my account' })).toBeVisible();
+    await page.getByRole('menuitem', { name: 'Save to my account' }).click();
+    await expect(page.getByText(`${name} is saved to your account`, { exact: false })).toBeVisible({ timeout: 90_000 });
+    await expect(page.getByText('On this device', { exact: true })).toHaveCount(0, { timeout: 20_000 });
+    const { data: rows } = await admin.from('documents').select('id').eq('name', name);
+    expect(rows?.length).toBeGreaterThan(0);
+    await page.getByText(name, { exact: true }).filter({ visible: true }).first().click();
+    await page.getByRole('button', { name: 'Open file' }).click();
+    await expect(page.getByText(PAGE_TEXT).filter({ visible: true }).first()).toBeVisible({ timeout: 60_000 });
+    await expect.poll(() => pageLines(page), { timeout: 30_000 }).toHaveLength(1);
+  } finally {
+    const { data } = await admin.from('documents').select('id,file_path').eq('name', name);
+    for (const row of data || []) {
+      await admin.from('documents').delete().eq('id', row.id);
+      if (row.file_path) await admin.storage.from('documents').remove([row.file_path]);
+    }
+  }
+});
+
+test('a failed Save never deletes a document the account already had with the same bytes', async ({ page, context }) => {
+  test.setTimeout(240_000);
+  const fs = await import('node:fs');
+  const { createHash, randomUUID } = await import('node:crypto');
+  const bytes = fs.readFileSync(FIXTURE);
+  const name = `E2E device reuse ${Date.now()}.pdf`;
+  const admin = adminClient();
+  const { data: users } = await admin.auth.admin.listUsers({ perPage: 200 });
+  const ownerId = users.users.find((u) => u.email === E2E_ACCOUNTS.owner.email).id;
+  const existingId = randomUUID();
+  const filePath = `${ownerId}/${existingId}.pdf`;
+  try {
+    // The account already has this very file (same name, same bytes).
+    const up = await admin.storage.from('documents').upload(filePath, new Blob([bytes], { type: 'application/pdf' }), { contentType: 'application/pdf', upsert: true });
+    if (up.error) throw up.error;
+    const ins = await admin.from('documents').insert({
+      id: existingId, user_id: ownerId, project_id: null, name, file_path: filePath, file_size: bytes.length, page_count: 1,
+      content_sha256: createHash('sha256').update(bytes).digest('hex'),
+    });
+    if (ins.error) throw ins.error;
+
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.getByText('Continue without an account').click({ timeout: 60_000 });
+    const chooser = page.waitForEvent('filechooser');
+    await page.getByRole('button', { name: 'Upload PDF' }).click();
+    await (await chooser).setFiles({ name, mimeType: 'application/pdf', buffer: bytes });
+    await expect(page.getByText(PAGE_TEXT).filter({ visible: true }).first()).toBeVisible({ timeout: 60_000 });
+    await page.waitForTimeout(1_000);
+    await drawLine(page, 0);
+    await expect.poll(() => pageLines(page)).toHaveLength(1);
+    await page.waitForTimeout(1_000);
+    await page.getByRole('button', { name: `Close ${name}` }).click();
+    await page.getByRole('button', { name: 'Sign in', exact: true }).filter({ visible: true }).first().click();
+    const dialog = page.getByRole('dialog').filter({ hasText: 'Welcome back' });
+    await dialog.getByLabel('Email').fill(E2E_ACCOUNTS.owner.email);
+    await dialog.getByLabel('Password').fill(E2E_ACCOUNTS.owner.password);
+    await dialog.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await expect(dialog).toBeHidden({ timeout: 30_000 });
+
+    const failWrite = (route) => route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ code: 'XX000', message: 'internal error' }) });
+    const writes = /\/rest\/v1\/rpc\/(append_annotation_update|store_annotation_snapshot)/;
+    await context.route(writes, failWrite);
+    const deviceRow = page.getByRole('button', { name: /On this device/ }).filter({ hasText: name }).filter({ visible: true }).first();
+    await deviceRow.click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Save to my account' }).click();
+    await expect(page.getByText('Its marks didn’t reach your account', { exact: false })).toBeVisible({ timeout: 90_000 });
+    await context.unroute(writes, failWrite);
+    // The account's own document is still there, and so is the device copy.
+    await page.waitForTimeout(3_000);
+    const { data: still } = await admin.from('documents').select('id').eq('id', existingId).maybeSingle();
+    expect(still?.id).toBe(existingId);
+    await expect(page.getByText('On this device', { exact: true }).filter({ visible: true }).first()).toBeVisible();
+  } finally {
+    const { data } = await admin.from('documents').select('id,file_path').eq('name', name);
+    for (const row of data || []) {
+      await admin.from('documents').delete().eq('id', row.id);
+      if (row.file_path) await admin.storage.from('documents').remove([row.file_path]);
+    }
+  }
+});
+
+test('a device file left open across sign-in keeps its marks, and Save to my account moves the open tab to the cloud copy', async ({ page }) => {
+  test.setTimeout(240_000);
+  const name = `E2E device open ${Date.now()}.pdf`;
+  const admin = adminClient();
+  const home = () => page.getByRole('button', { name: 'Home', exact: true }).filter({ visible: true }).first().click();
+  try {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.getByText('Continue without an account').click({ timeout: 60_000 });
+    const chooser = page.waitForEvent('filechooser');
+    await page.getByRole('button', { name: 'Upload PDF' }).click();
+    await (await chooser).setFiles({ name, mimeType: 'application/pdf', buffer: (await import('node:fs')).readFileSync(FIXTURE) });
+    await expect(page.getByText(PAGE_TEXT).filter({ visible: true }).first()).toBeVisible({ timeout: 60_000 });
+    await page.waitForTimeout(1_000);
+    await drawLine(page, 0);
+    await expect.poll(() => pageLines(page)).toHaveLength(1);
+    await page.waitForTimeout(1_000);
+
+    // Home with the tab still open, then sign in.
+    await home();
+    await page.getByRole('button', { name: 'Sign in', exact: true }).filter({ visible: true }).first().click();
+    const dialog = page.getByRole('dialog').filter({ hasText: 'Welcome back' });
+    await dialog.getByLabel('Email').fill(E2E_ACCOUNTS.owner.email);
+    await dialog.getByLabel('Password').fill(E2E_ACCOUNTS.owner.password);
+    await dialog.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await expect(dialog).toBeHidden({ timeout: 30_000 });
+
+    // Back to the open tab: the mark drawn signed out is still there, and a
+    // second one drawn signed in stays on the same device copy.
+    await page.getByRole('tab', { name }).or(page.getByText(name, { exact: true })).filter({ visible: true }).first().click();
+    await expect(page.locator(PAGE).filter({ visible: true }).first()).toBeVisible({ timeout: 60_000 });
+    await expect.poll(() => pageLines(page), { timeout: 20_000 }).toHaveLength(1);
+    await drawLine(page, 1);
+    await expect.poll(() => pageLines(page)).toHaveLength(2);
+    await page.waitForTimeout(1_000);
+
+    // Save to my account with the tab open: the tab closes for the move and
+    // the cloud copy opens in its place with both marks.
+    await home();
+    // The list row, not the tab of the same name above it.
+    await page.getByText(name, { exact: true }).filter({ visible: true }).last().click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Save to my account' }).click();
+    await expect(page.getByText(`${name} is saved to your account`)).toBeVisible({ timeout: 60_000 });
+    const { data: rows } = await admin.from('documents').select('id').eq('name', name);
+    expect(rows?.length).toBe(1);
+    await expect(page.getByText(PAGE_TEXT).filter({ visible: true }).first()).toBeVisible({ timeout: 60_000 });
+    await expect.poll(() => pageLines(page), { timeout: 30_000 }).toHaveLength(2);
+    // The open viewer is now the cloud document: a third mark reaches it.
+    const before = async () => {
+      const { count } = await admin.from('annotation_updates').select('*', { count: 'exact', head: true }).eq('document_id', rows[0].id);
+      return count || 0;
+    };
+    const was = await before();
+    await drawLine(page, 2);
+    await expect.poll(before, { timeout: 30_000 }).toBeGreaterThan(was);
+  } finally {
+    const { data } = await admin.from('documents').select('id,file_path').eq('name', name);
+    for (const row of data || []) {
+      await admin.from('documents').delete().eq('id', row.id);
+      if (row.file_path) await admin.storage.from('documents').remove([row.file_path]);
+    }
+  }
+});
+
+test('a selection with a device file and a cloud document: Duplicate leaves the device file out', async ({ page }) => {
+  test.setTimeout(180_000);
+  const name = `E2E device mixed ${Date.now()}.pdf`;
+  const errors = [];
+  page.on('console', (msg) => { if (msg.type() === 'error' && /DocumentDuplicate/.test(msg.text())) errors.push(msg.text()); });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.getByText('Continue without an account').click({ timeout: 60_000 });
+  const chooser = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: 'Upload PDF' }).click();
+  await (await chooser).setFiles({ name, mimeType: 'application/pdf', buffer: (await import('node:fs')).readFileSync(FIXTURE) });
+  await expect(page.getByText(PAGE_TEXT).filter({ visible: true }).first()).toBeVisible({ timeout: 60_000 });
+  await page.getByRole('button', { name: `Close ${name}` }).click();
+  await page.getByRole('button', { name: 'Sign in', exact: true }).filter({ visible: true }).first().click();
+  const dialog = page.getByRole('dialog').filter({ hasText: 'Welcome back' });
+  await dialog.getByLabel('Email').fill(E2E_ACCOUNTS.owner.email);
+  await dialog.getByLabel('Password').fill(E2E_ACCOUNTS.owner.password);
+  await dialog.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(dialog).toBeHidden({ timeout: 30_000 });
+
+  // Pick both rows, then Duplicate.
+  const rowNamed = (fileName) => page.getByRole('button', { name: new RegExp(`^${fileName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} `) }).filter({ visible: true }).first();
+  const deviceRow = rowNamed(name);
+  const cloudRow = rowNamed(E2E_DOCUMENT.name);
+  await expect(cloudRow).toBeVisible({ timeout: 30_000 });
+  await page.waitForTimeout(1_500);
+  await deviceRow.click({ modifiers: ['ControlOrMeta'] });
+  await cloudRow.click({ modifiers: ['ControlOrMeta'] });
+  // The selection panel's Duplicate (the same action as the right-click menu).
+  await expect(page.getByText('2 documents selected')).toBeVisible();
+  await page.getByRole('button', { name: 'Duplicate', exact: true }).filter({ visible: true }).first().click();
+  // The cloud document is copied; the device file never reaches the server,
+  // so nothing fails and nothing is rolled back.
+  const copyName = E2E_DOCUMENT.name.replace(/\.pdf$/, ' (Copy).pdf');
+  const admin = adminClient();
+  try {
+    await expect(page.getByText(copyName, { exact: true }).filter({ visible: true }).first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText(/Failed to duplicate/)).toHaveCount(0);
+    expect(errors).toEqual([]);
+    const { data } = await admin.from('documents').select('id').eq('name', name);
+    expect(data).toEqual([]);
+  } finally {
+    const { data: copies } = await admin.from('documents').select('id,file_path').eq('name', copyName);
+    for (const row of copies || []) {
       await admin.from('documents').delete().eq('id', row.id);
       if (row.file_path) await admin.storage.from('documents').remove([row.file_path]);
     }

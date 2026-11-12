@@ -24,6 +24,7 @@ import {
   purgeYDoc,
   purgeYDocsByPrefix,
   releaseYDoc,
+  ydocRefCount,
 } from '../lib/collab/ydocRegistry.js';
 import {
   createAnnotationOutbox,
@@ -152,6 +153,12 @@ import {
 // from the legacy CRDT doc so the two never share a map. (The applyUpdate-only
 // invariant requires all Y.Doc construction to live in the registry module.)
 const REGISTRY_PREFIX = 'annoflat:';
+
+/** True while a handle for this document and actor is open (a viewer). */
+export function isAnnotationDocLive(documentId, actorUserId) {
+  if (!documentId || !actorUserId) return false;
+  return ydocRefCount(`${REGISTRY_PREFIX}${documentId}:${actorUserId}`) > 0;
+}
 
 // w33 (2026-09-25): routine checkpoints are rare and written by ONE screen.
 // A checkpoint only shortens reopen (and records what a device's saved copy

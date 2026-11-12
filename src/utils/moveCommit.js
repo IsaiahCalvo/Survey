@@ -82,6 +82,31 @@ export function isBeyondMoveThreshold(dx, dy, inverseScale, pointerType = 'mouse
 }
 
 /**
+ * Where a press began on SCREEN, for hasPressTravelled. Kept apart from the
+ * page-unit start point: the page can move under a pointer that has not moved
+ * (a bar comes in above the page, the view glides), and that is no drag.
+ */
+export function pressStartFacts(event) {
+  return {
+    startClient: { x: Number(event?.clientX) || 0, y: Number(event?.clientY) || 0 },
+    pointerType: event?.pointerType || 'mouse',
+  };
+}
+
+/**
+ * Has the pointer itself travelled past the click slop (screen px, larger of
+ * |dx| and |dy|) since the press in `press` (pressStartFacts)? A press with no
+ * start known counts as travelled, so nothing that never recorded one changes.
+ */
+export function hasPressTravelled(press, event) {
+  if (!press?.startClient || !event) return true;
+  const slop = (press.pointerType === 'touch' || event.pointerType === 'touch') ? MOVE_SLOP_TOUCH_PX : MOVE_SLOP_PX;
+  const dx = Math.abs((Number(event.clientX) || 0) - press.startClient.x);
+  const dy = Math.abs((Number(event.clientY) || 0) - press.startClient.y);
+  return Math.max(dx, dy) > slop;
+}
+
+/**
  * One diagnostic line when a real drag (past the click threshold) ends
  * without saving. Cheap, permanent, names the PDF (diagnostic-log rule).
  */

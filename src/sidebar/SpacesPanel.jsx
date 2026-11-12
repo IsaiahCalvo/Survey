@@ -28,6 +28,8 @@ import { showToast } from '../utils/toast';
 import { useTooltip } from '../components/Tooltip';
 import SectionIconButton from '../components/SectionIconButton.jsx';
 import SwipeActionsRow, { buildSwipeActions } from '../components/SwipeActionsRow.jsx';
+import ListItemContextMenu from '../components/ListItemContextMenu.jsx';
+import { afterMenuCloses, listMenuPointFrom } from '../utils/listContextMenu.js';
 import Expander from '../components/Expander.jsx';
 import { registerLightPopover, watchLightPopover } from '../components/dismissRules.js';
 import AnnotationDropdown from '../components/AnnotationDropdown.jsx';
@@ -96,14 +98,20 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   const editingRegionInputRef = useRef(null);
   const spaceNameInputRef = useRef(null);
   React.useEffect(() => {
-    if (!focusNameNow || !editMode) return;
+    if (!focusNameNow || !canManageSpaces) return;
     const input = spaceNameInputRef.current;
     if (input) {
       input.focus({ preventScroll: false });
       input.select();
     }
     onNameFocused?.();
-  }, [focusNameNow, editMode, onNameFocused]);
+  }, [focusNameNow, canManageSpaces, onNameFocused]);
+  // Owner 2026-11-12: right-click a space or a region for its actions (the
+  // ones Edit mode shows), no Edit mode needed. { kind, x, y, pageId?, row? }
+  const [rowMenu, setRowMenu] = useState(null);
+  // "Add pages" from the menu shows the Add pages line on a space that
+  // already has pages (it is otherwise an Edit-mode line).
+  const [addLineOpen, setAddLineOpen] = useState(false);
   React.useEffect(() => {
     if (!isExpanded) {
       setEditingRegionId(null);
@@ -231,6 +239,70 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   };
   const spaceName = space.name || 'Space';
 
+  // The right-click menus: the same actions as Edit mode and the line's own
+  // buttons, in the app's order (Rename, then the everyday actions, Move or
+  // copy in Move's place, Delete / Remove last).
+  const focusSpaceName = () => afterMenuCloses(() => {
+    const input = spaceNameInputRef.current;
+    if (!input) return;
+    input.focus({ preventScroll: true });
+    input.select();
+  });
+  const openAddPages = () => {
+    if (!isExpanded) onToggleExpand(space.id);
+    setAddLineOpen(true);
+    // The space folds open first (its body is inert until then).
+    const focusAdd = (tries) => {
+      const field = spaceNameInputRef.current?.closest('.space-card')?.querySelector('.space-card__add-input');
+      field?.focus({ preventScroll: true });
+      if (document.activeElement !== field && tries > 0) setTimeout(() => focusAdd(tries - 1), 60);
+    };
+    afterMenuCloses(() => focusAdd(8));
+  };
+  const spaceMenuItems = () => [
+    canManageSpaces && { label: 'Rename', onClick: focusSpaceName },
+    canManageSpaces && { label: 'Add pages', icon: 'plus', onClick: openAddPages },
+    {
+      label: isActive ? 'Turn off space' : 'Turn on space',
+      icon: 'lightbulbOn',
+      disabled: isSwitchBlocked,
+      reason: isSwitchBlocked ? 'Add pages first' : undefined,
+      onClick: toggleThisSpace,
+    },
+    canManageSpaces && { label: 'Delete', danger: true, onClick: () => onDelete(space.id) },
+  ];
+  const regionMenuItems = ({ pageId, row }) => {
+    const page = (space.assignedPages || []).find((entry) => entry.pageId === pageId);
+    if (!page) return [];
+    const label = typeof page.label === 'string' && page.label.trim().length > 0 ? page.label.trim() : `Region ${pageId}`;
+    const editingAreas = isRegionSelectionActive && regionSelectionPage === pageId && activeSpaceId === space.id;
+    const areaCount = Array.isArray(page.regions) ? page.regions.length : 0;
+    return [
+      canManageSpaces && {
+        label: 'Rename',
+        onClick: () => afterMenuCloses(() => handleRegionEditClick(pageId, label)),
+      },
+      { label: `Go to page ${pageId}`, icon: 'pages', onClick: () => onNavigateToPage?.(pageId) },
+      canManageSpaces && {
+        label: editingAreas ? 'Stop editing areas' : (areaCount > 0 ? 'Edit areas' : 'Draw areas'),
+        icon: 'regionEdit',
+        onClick: () => (editingAreas ? onCancelRegionEdit?.(space.id, pageId) : onRequestRegionEdit?.(space.id, pageId)),
+      },
+      canManageSpaces && onTransferRegion && {
+        label: 'Move or copy',
+        onClick: () => {
+          // Drops down from the line's own Move or copy button, as a press
+          // on it does.
+          const anchor = row?.isConnected
+            ? row.querySelector('[aria-haspopup="dialog"]') || row
+            : null;
+          if (anchor) onTransferRegion(space.id, pageId, label, anchor);
+        },
+      },
+      canManageSpaces && { label: 'Remove', danger: true, onClick: () => onRemovePage(space.id, pageId) },
+    ];
+  };
+
   return (
     <div
       data-space-sortable-row-id={space.id}
@@ -248,6 +320,10 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
           className="space-card__head"
           aria-expanded={isExpanded}
           onClick={() => onToggleExpand(space.id)}
+          onContextMenu={(e) => {
+            const point = listMenuPointFrom(e, { mobileMode });
+            if (point) setRowMenu({ kind: 'space', ...point });
+          }}
         >
           {/* Owner 2026-10-26: the grip is always there to rearrange (not
               only in edit mode), so nothing moves when edit mode starts. */}
@@ -284,11 +360,14 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
               type="text"
               size={1}
               className="space-card__name"
-              readOnly={!editMode}
+              // Owner 2026-11-12: a click on the name types in it at once -
+              // no Edit mode first (the caret showed, but the field was
+              // read-only outside Edit mode).
+              readOnly={!canManageSpaces}
               defaultValue={space.name}
               key={`${space.id}:${space.name}`}
-              aria-label={editMode ? `Rename ${spaceName}` : spaceName}
-              {...tip(editMode ? 'Click to rename' : spaceName, 'below')}
+              aria-label={canManageSpaces ? `Rename ${spaceName}` : spaceName}
+              {...tip(canManageSpaces ? 'Click to rename' : spaceName, 'below')}
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
               onInput={(e) => {
@@ -365,7 +444,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
             {/* A space with no pages shows the field at once (there is
                 nothing else to do with it); with pages it is an edit-mode
                 line. */}
-            {(editMode || (pageCount === 0 && canManageSpaces)) && <div className="space-card__add-line">
+            {canManageSpaces && (editMode || pageCount === 0 || addLineOpen) && <div className="space-card__add-line">
               <div className="space-card__add">
                 <input
                   type="text"
@@ -380,8 +459,13 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                     if (e.key === 'Enter') {
                       e.preventDefault();
                       onAssignPages(space.id);
+                    } else if (e.key === 'Escape' && addLineOpen && !pageInputValue) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setAddLineOpen(false);
                     }
                   }}
+                  onBlur={() => { if (addLineOpen && !pageInputValue) setAddLineOpen(false); }}
                 />
                 {/* Quiet grey, joined to the field - never a gold square. */}
                 <button
@@ -473,7 +557,13 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                           labels: { delete: 'Remove' },
                         }) : null}
                       >
-                      <div className={`space-region-card${isActiveRegionEdit ? ' is-editing' : ''}`}>
+                      <div
+                        className={`space-region-card${isActiveRegionEdit ? ' is-editing' : ''}`}
+                        onContextMenu={(e) => {
+                          const point = listMenuPointFrom(e, { mobileMode });
+                          if (point) setRowMenu({ kind: 'region', pageId: page.pageId, row: e.currentTarget, ...point });
+                        }}
+                      >
                         <button
                           type="button"
                           className="spaces-region__page"
@@ -521,13 +611,22 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                             <button
                               type="button"
                               className="spaces-region__label"
-                              {...tip(editMode ? 'Click to rename' : `Go to page ${page.pageId}`, 'below')}
-                              aria-label={editMode ? `Rename ${regionLabel}` : regionLabel}
+                              {...tip(canManageSpaces ? 'Click to rename' : `Go to page ${page.pageId}`, 'below')}
+                              aria-label={canManageSpaces ? `Rename ${regionLabel}` : regionLabel}
                               onClick={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
-                                if (editMode) handleRegionEditClick(page.pageId, regionLabel);
-                                else onNavigateToPage?.(page.pageId);
+                                // Owner 2026-11-12: a click on the name types
+                                // in it at once, no Edit mode first. The page
+                                // number beside it still goes to the page; on
+                                // a wide screen the click goes there too
+                                // (the phone keeps the sheet up to type).
+                                if (!canManageSpaces) {
+                                  onNavigateToPage?.(page.pageId);
+                                  return;
+                                }
+                                if (!mobileMode) onNavigateToPage?.(page.pageId);
+                                handleRegionEditClick(page.pageId, regionLabel);
                               }}
                             >
                               {regionLabel}
@@ -645,6 +744,11 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
           </div>
         </Expander>
       </div>
+      {rowMenu && <ListItemContextMenu
+        point={rowMenu}
+        onClose={() => setRowMenu(null)}
+        items={rowMenu.kind === 'space' ? spaceMenuItems() : regionMenuItems(rowMenu)}
+      />}
     </div>
   );
 });
@@ -1049,7 +1153,8 @@ const SpacesPanel = ({
     while (takenNames.has(`space ${counter}`)) counter += 1;
     const name = `Space ${counter}`;
     if (onSpaceCreate) {
-      setEditMode(true);
+      // Owner 2026-11-12: names are typed in place, so a new space no longer
+      // switches Edit mode on just to pick its name.
       setNameToFocus(name);
       onSpaceCreate({
         name,

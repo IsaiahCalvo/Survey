@@ -26,9 +26,9 @@ import { isPhoneLayout } from '../utils/layoutMode.js';
 import { dismissToast, showToast } from '../utils/toast';
 import { saveFile } from '../tools/browser.js';
 import {
-  ITEM_KINDS, ITEM_STATUSES, ITEM_SORTS, QUICK_FILTERS, STATUS_GROUPS,
+  ITEM_KINDS, ITEM_SORTS, QUICK_FILTERS, STATUS_GROUPS,
   allItemTags, describeEvent, filterItems, formatDue, groupCounts, isDueSoon, isOverdue,
-  itemCode, itemsCsv, localDay, parseItemTags, registerFileName, sortItems, statusInfo, timeAgo,
+  itemCode, itemsCsv, localDay, parseItemTags, registerFileName, sortItems, statusInfo, statusesFor, timeAgo,
 } from './projectItems.js';
 import {
   useProjectItems, loadItemEvents, loadItemComments, addItemComment, deleteItemComment, loadLatestComments,
@@ -80,9 +80,9 @@ function FieldSelect({ label, value, options, onChange, disabled, testId }) {
   );
 }
 
-function StatusChip({ status }) {
+function StatusChip({ status, kind }) {
   const info = statusInfo(status);
-  return <span className={`item-status is-${info.tone}`} data-item-status={info.key}><i aria-hidden="true" />{info.label}</span>;
+  return <span className={`item-status is-${info.tone}`} data-item-status={info.key} data-item-kind={kind}><i aria-hidden="true" />{info.label}</span>;
 }
 
 function Person({ id, lookup, size = 18, empty = 'Unassigned' }) {
@@ -239,7 +239,7 @@ function ItemDetail({
             testId="item-status-select"
             value={item.status}
             disabled={!canEdit}
-            options={ITEM_STATUSES.map((s) => ({ value: s.key, label: s.label }))}
+            options={statusesFor(item.kind).map((s) => ({ value: s.key, label: s.label }))}
             onChange={(status) => save({ status })}
           />
           <span className="item-field-label">Assignee</span>
@@ -687,7 +687,7 @@ export default function ProjectItemsPanel({
                 >
                   <div className="item-card__top">
                     <span className="item-code">{itemCode(item.kind, item.number)}</span>
-                    <StatusChip status={item.status} />
+                    <StatusChip status={item.status} kind={item.kind} />
                     <span style={{ flex: 1 }} />
                     {selecting && <span className={`item-check${isSel ? ' is-on' : ''}`}>{isSel && <Icon name="check" size={10} color="var(--accent-text)" />}</span>}
                   </div>
@@ -720,7 +720,7 @@ export default function ProjectItemsPanel({
                   <span className="item-title__text">{item.title || <span className="meta">No summary</span>}</span>
                   {!compact && (item.tags || []).slice(0, 2).map((t) => <span key={t} className="item-tag is-small">{t}</span>)}
                 </span>
-                <StatusChip status={item.status} />
+                <StatusChip status={item.status} kind={item.kind} />
                 {!compact && <Person id={item.assignee_id} lookup={lookup} />}
                 {!compact && <span className="item-links-count">{(item.links || []).length ? <><Icon name="formatHyperlink" size={11} />{item.links.length}</> : <span className="meta">—</span>}</span>}
                 <span className={`item-due${overdue ? ' is-overdue' : ''}${soon ? ' is-soon' : ''}`}>{item.due_date ? formatDue(item.due_date, today) : <span className="meta">—</span>}</span>
@@ -764,11 +764,12 @@ export default function ProjectItemsPanel({
 }
 
 /* Files · Issues · Tasks, above the open project (one row of tabs). */
-export function ProjectItemsTabs({ value, onChange, counts = {} }) {
+export function ProjectItemsTabs({ value, onChange, counts = {}, issues = true, activity = false }) {
   const tabs = [
     { key: 'files', label: 'Files' },
-    { key: 'issue', label: 'Issues' },
-    { key: 'task', label: 'Tasks' },
+    ...(issues ? [{ key: 'issue', label: 'Issues' }, { key: 'task', label: 'Tasks' }] : []),
+    // Nightly 'project-activity': Drawboard's project Activity page.
+    ...(activity ? [{ key: 'activity', label: 'Activity' }] : []),
   ];
   return (
     <div className="project-items-tabs" role="tablist" aria-label="Project lists" data-project-items-tabs>

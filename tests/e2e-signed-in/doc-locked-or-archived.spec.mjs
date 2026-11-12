@@ -100,6 +100,16 @@ test('moved to Archive: the other person is told why, and the tools stop', async
     await expect(page.getByRole('button', { name: /^Not saved\./ }).filter({ visible: true }).first()).toBeVisible();
     const body = await page.evaluate(() => document.body.innerText);
     expect(body).not.toMatch(/safe on this device/i);
+
+    // The owner restores it: the tools come back without closing the tab,
+    // and the next mark saves.
+    await doc.update({ user_archived_at: null });
+    await expect.poll(() => page.evaluate(() => document.body.getAttribute('data-readonly')), { timeout: 10_000 }).toBeNull();
+    await expect(page.getByText(/^This document was moved to Archive or deleted/).filter({ visible: true })).toHaveCount(0, { timeout: 5_000 });
+    await drawRect(page, 0.3, 0.75);
+    await expect(page.getByRole('button', { name: /^Up to date/ }).filter({ visible: true }).first()).toBeVisible({ timeout: 30_000 });
+    const { count } = await adminClient().from('annotation_updates').select('*', { count: 'exact', head: true }).eq('document_id', doc.id);
+    expect(count).toBeGreaterThan(0);
   } finally {
     await doc.remove();
   }

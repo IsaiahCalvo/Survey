@@ -1,15 +1,22 @@
-/* RailFlyout (RailFlyout.jsx): the one card every right-rail pop-up uses.
-   The floating card of the design guide (--surface-2, --border, popover
-   shadow, --radius-md) with a section-head title, menu-sized rows, and a
-   grow-in from the corner nearest its button. */
+/* RailFlyout (RailFlyout.jsx): the one card every right-rail pop-up uses
+   (Page fit, Page grid, Snapping).
+
+   Owner 2026-11-10, second pass ("mid", "no taste"): the first card read as a
+   small grey label over cramped 28px rows with key hints on the right. Now,
+   after Drawboard's own cards (Annotation Snapping, View settings): the title
+   is a real heading in full-strength ink, rows are 32px with room on both
+   sides, the chosen row's tick sits at the end of the row so every label
+   lines up under the title, and nothing else competes. The floating card of
+   the design guide (--surface-2, hairline --border, popover shadow,
+   --radius-md); grows in from the corner nearest its button. */
 .rail-flyout {
   position: absolute;
   right: calc(100% + 14px);
   bottom: 0;
   z-index: 6000;
   box-sizing: border-box;
-  min-width: 196px;
-  padding: 4px;
+  min-width: 200px;
+  padding: 6px;
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -25,14 +32,15 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  min-height: 28px;
-  padding: 0 6px 0 var(--menu-item-pad-x);
+  gap: 12px;
+  min-height: 32px;
+  padding: 0 4px 0 10px;
+  margin-bottom: 2px;
 }
 
 .rail-flyout__title {
-  font: 600 12px/16px var(--font-ui);
-  color: var(--text-3);
+  font: 600 13px/18px var(--font-ui);
+  color: var(--text-1);
 }
 
 /* A list of choices under the title (Fit page / width / height). */
@@ -45,21 +53,28 @@
 .rail-flyout__row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   width: 100%;
-  min-height: var(--menu-item-h);
-  padding: 0 var(--menu-item-pad-x) 0 6px;
+  min-height: 32px;
+  padding: 0 10px;
   box-sizing: border-box;
   border: 0;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-2);
   font: inherit;
   text-align: left;
   cursor: pointer;
+  transition: color var(--motion-state) var(--ease-out);
 }
 
-/* The current choice: gold ink, and its tick (design guide 1: gold means
+.rail-flyout__label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+/* The current choice: gold ink and its tick (design guide 1: gold means
    chosen, with no box behind it). */
 .rail-flyout__row[aria-checked='true'] {
   color: var(--accent);
@@ -72,14 +87,6 @@
   justify-content: center;
 }
 
-.rail-flyout__keys {
-  margin-left: auto;
-  padding-left: 16px;
-  color: var(--text-3);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
 @media (hover: hover) {
   .rail-flyout__row:not([aria-checked='true']):hover {
     color: var(--text-1);
@@ -88,6 +95,10 @@
 
 .rail-flyout__row:focus-visible {
   outline: none;
+}
+
+@media (pointer: coarse) {
+  .rail-flyout__row { min-height: 44px; }
 }
 
 @media (prefers-reduced-motion: no-preference) {
