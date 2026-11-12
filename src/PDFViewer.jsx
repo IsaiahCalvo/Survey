@@ -415,6 +415,7 @@ import SnapshotTool from './components/SnapshotTool.jsx';
 import PageTemplatePicker from './components/PageTemplatePicker.jsx';
 import { useTextHighlightMode } from './hooks/useTextHighlightMode.js';
 import { selectPageMarkup } from './services/thumbnailRender.js';
+import { announceLocalMarkEdit } from './utils/localMarkEdit.js';
 import { marksHidden, setMarksHidden, subscribeMarksHidden } from './utils/marksHidden.js';
 import { isTypingTarget } from './utils/typingTarget.js';
 import { isPasteInPlaceKey, pageNumberAtPoint } from './utils/pasteInPlaceKey.js';
@@ -435,7 +436,9 @@ import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/u
 import { usePageOperations } from './hooks/usePageOperations.js';
 import { IDLE_REMOTE_PDF_STATE, PAGE_OP_BLOCKED_MESSAGE, PAGE_OP_SYNC_FLAG, clearedPdfVersion, isPageOpBlocked, newPdfVersionToken, framePageChanges, noteFramePageChanges, operationRewritesPdf, pendingPdfVersion, reframeMarks, reframeSurveyMarkers, remotePdfLoaded, remotePdfVersionStep, savedPdfVersion, splitFramePageChanges, notedMarksOnPages, marksInDeletedSlices, stampableOperation } from './utils/pageOpSync.js';
 import { usePageViewDocument } from './hooks/usePageViewDocument.js';
-import { getPageViewBase } from './utils/pageViewDocument.js';
+import { getPageViewBase, pageViewRecords } from './utils/pageViewDocument.js';
+import { PAGE_RECORDS_FLAG, PAGE_RECORDS_META_KEY, isIdentityPageRecords, normalizePageRecords, pageRecordsBaseSha, pageRecordsFitBase, pageRecordsToOperations, pageRecordsValue } from './utils/pageRecords.js';
+import { mutatePdfPagesOffThread } from './utils/pdfPageMutationOffThread.js';
 import { destroyPdfDocument, pdfOrDestroy } from './utils/destroyPdfDocument.js';
 import { getSelectFamilyTransition, getToolSwitchSelectionClearReason, isSelectFamilyTool, loadSelectMode, resolveEscape, resolveTextDoubleClick, resolveToolPress, saveSelectMode, selectionGestureRunning, shouldBackdropPressDeselect, shouldEscapeDeselect, shouldShowHoverHalo } from './utils/selectModes.js';
 import { classifyPagePress, ownGroupMarkFilter } from './utils/toolPressRouting.js';
@@ -10000,6 +10003,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const {
     applyPageView: applyPageViewOperationToViewer,
     restorePageView: restorePageViewDocument,
+    showRecords: showPageRecords,
+    currentDoc: currentPageViewDoc,
     markFileCurrent: markPageViewFileCurrent,
     isFileCurrent: isPageViewFileCurrent,
     isViewOver: isPageViewOver,
@@ -15314,6 +15319,57 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       if (id && !had.has(id)) frame.made.add(id);
     }
   }, []);
+  // Pages as records (Nightly 'page-records', utils/pageRecords.js): page
+  // changes save a page list with the marks and never rewrite the PDF. A
+  // document that already has a list stays on it in every window, flag or
+  // not, so no window rewrites bytes the list was made over. The list is
+  // kept against the bytes the viewer's document was loaded from.
+  const pageRecordsRef = useRef(null);
+  if (!pageRecordsRef.current) {
+    pageRecordsRef.current = { on: isFeatureOn(PAGE_RECORDS_FLAG), inUse: false, loadedSha: new WeakMap() };
+  }
+  const pageViewBaseDoc = pdfDoc ? getPageViewBase(pdfDoc) : null;
+  if (pageViewBaseDoc && !pageRecordsRef.current.loadedSha.has(pageViewBaseDoc)) {
+    pageRecordsRef.current.loadedSha.set(pageViewBaseDoc, pageRecordsBaseSha(pdfFile));
+  }
+  const pageRecordsBase = useCallback(() => {
+    const doc = currentPageViewDoc();
+    const base = doc ? getPageViewBase(doc) : null;
+    const sha = base ? pageRecordsRef.current.loadedSha.get(base) : null;
+    // Bytes saved since the load (a page rewrite with the flag off) are not
+    // what the shown pages index.
+    if (!sha || sha !== pageRecordsBaseSha(pageOpSyncRef.current.pdfFile)) return null;
+    return { doc, base, sha };
+  }, [currentPageViewDoc]);
+  const pageRecordsMode = useCallback(() => {
+    const rec = pageRecordsRef.current;
+    return Boolean((rec.on || rec.inUse) && pagePresentationMetaSetRef.current && pageRecordsBase());
+  }, [pageRecordsBase]);
+  const writePageRecords = useCallback(() => {
+    const setMeta = pagePresentationMetaSetRef.current;
+    const loaded = pageRecordsBase();
+    if (!setMeta || !loaded) return;
+    const file = pageOpSyncRef.current.pdfFile;
+    pageRecordsRef.current.inUse = true;
+    setMeta(PAGE_RECORDS_META_KEY, pageRecordsValue({
+      writer: pageOpSyncRef.current.writer,
+      sha: loaded.sha,
+      path: file?.supabaseFilePath || file?.filePath || null,
+      pages: pageViewRecords(loaded.doc),
+    }), 'local');
+    // A page change is a change for drive save-back too, though no mark moved.
+    if (file?.id) announceLocalMarkEdit(file.id);
+  }, [pageRecordsBase]);
+  const applyPageViewForPageOps = useCallback((operation) => {
+    const records = operation?.type !== 'presentation' && pageRecordsMode();
+    const previous = applyPageViewOperationToViewer(operation);
+    if (records) writePageRecords();
+    return previous;
+  }, [applyPageViewOperationToViewer, pageRecordsMode, writePageRecords]);
+  const restorePageViewForPageOps = useCallback((previous) => {
+    restorePageViewDocument(previous);
+    if (pageRecordsMode()) writePageRecords();
+  }, [pageRecordsMode, restorePageViewDocument, writePageRecords]);
   const pageOpsBlocked = useCallback(() => (
     isPageOpBlocked(pageOpSyncRef.current.remote, Date.now()) ? PAGE_OP_BLOCKED_MESSAGE : null
   ), []);
@@ -15350,7 +15406,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     setPageTransformations(next.pageTransformations);
     pagePresentationMetaSetRef.current?.(PAGE_PRESENTATION_META_KEY, normalizePagePresentations(next.pageTransformations), 'local');
     const pageOpSync = pageOpSyncRef.current;
-    if (pageOpSync.on && pagePresentationMetaSetRef.current) {
+    if (pageOpSync.on && pagePresentationMetaSetRef.current && !pageRecordsMode()) {
       if (operationRewritesPdf(operation)) {
         // Every page change since the last save rides the stamp, so another
         // window can move marks it drew on the old pages the same way (null:
@@ -15413,6 +15469,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     clearAnnotationSelectionForContextChange,
     dropHistoryAfterPageChange,
     numPages,
+    pageRecordsMode,
     pdfId,
     recordPageOperationStep,
     setRegionOverlayDisabled,
@@ -15451,14 +15508,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     undoPageOperation,
     redoPageOperation,
     flushPageOperations,
+    resetPageSteps,
   } = usePageOperations({
     pdfFile,
     readPdfBytes: readPageMutationPdfBytes,
     onUpdatePDFFile: persistPageMutationFile,
     getPageState: getPageStructureState,
     commitPageState: commitPageStructureState,
-    applyPageView: applyPageViewOperationToViewer,
-    restorePageView: restorePageViewDocument,
+    applyPageView: applyPageViewForPageOps,
+    restorePageView: restorePageViewForPageOps,
     setPageNames,
     setPageTransformations,
     clipboardPage,
@@ -15467,16 +15525,31 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     setClipboardType,
     getPageSize: getPageSizeForTurn,
     blocked: pageOpSyncRef.current.on ? pageOpsBlocked : null,
+    recordsMode: pageRecordsMode,
   });
   // Export, print and redaction writers read bytes with source.arrayBuffer().
   // A cloud document's pdfFile is only metadata (filePath, no bytes), so
   // download it first; a local File or a page-edited file passes through.
   const getExportSourcePdf = useCallback(async () => {
-    const source = (await flushPageOperations()) || pdfFile;
-    if (typeof source?.arrayBuffer === 'function') return source;
-    const bytes = await readPageMutationPdfBytes(source);
-    return new File([bytes], source?.name || 'document.pdf', { type: 'application/pdf' });
-  }, [flushPageOperations, pdfFile, readPageMutationPdfBytes]);
+    const file = await (async () => {
+      const source = (await flushPageOperations()) || pdfFile;
+      if (typeof source?.arrayBuffer === 'function') return source;
+      const bytes = await readPageMutationPdfBytes(source);
+      return new File([bytes], source?.name || 'document.pdf', { type: 'application/pdf' });
+    })();
+    // Pages as records: the stored PDF is the base; the PDF that leaves the
+    // app is built from it and the page list, off the main thread.
+    const loaded = pageRecordsRef.current.inUse ? pageRecordsBase() : null;
+    const records = loaded ? pageViewRecords(loaded.doc) : null;
+    if (!records || isIdentityPageRecords(records, loaded.base.numPages)) return file;
+    const baseBytes = await file.arrayBuffer();
+    const { operations, needsBaseBytes } = pageRecordsToOperations(records, loaded.base.numPages);
+    const steps = needsBaseBytes
+      ? operations.map((step) => (step.type === 'restore' && !step.entry?.blank ? { ...step, baseBytes: baseBytes.slice(0) } : step))
+      : operations;
+    const built = await mutatePdfPagesOffThread(() => baseBytes.slice(0), steps);
+    return new File([built], file?.name || 'document.pdf', { type: 'application/pdf' });
+  }, [flushPageOperations, pageRecordsBase, pdfFile, readPageMutationPdfBytes]);
   const handleMirrorPage = useCallback((...args) => {
     if (!canRestoreFromHistoryRef.current) {
       showToast('This document is read-only.', 'info');
@@ -22555,6 +22628,29 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       console.warn('[page-op-sync] could not move marks drawn on the old pages:', err?.message || err);
     }
   }, [pdfDoc, pdfFile, dropHistoryAfterPageChange, setSurveyMarkers]);
+  // Pages as records: show the page list saved with the document on open,
+  // and another window's page changes live (no reload, nothing to wait for).
+  useEffect(() => {
+    if (!pageViewBaseDoc || !normalAnnotationHydration?.ready || normalAnnotationHydration.documentId !== pdfFile?.id) return undefined;
+    const apply = (value, initial) => {
+      const loaded = pageRecordsBase();
+      if (!loaded || loaded.base !== pageViewBaseDoc) return;
+      if (!pageRecordsFitBase(value, loaded.sha, loaded.base.numPages)) return;
+      const { pages } = normalizePageRecords(value);
+      pageRecordsRef.current.inUse = true;
+      const shown = pageViewRecords(loaded.doc);
+      if (JSON.stringify(shown) === JSON.stringify(pages.map((p) => ({ src: p.src, rot: p.rot, blank: p.blank })))) return;
+      if (!showPageRecords(pages)) return;
+      setPageNum((current) => Math.min(Math.max(1, current), pages.length));
+      if (!initial) {
+        // The page steps on this window's Undo name the old page numbers.
+        resetPageSteps();
+        dropHistoryAfterPageChange();
+      }
+    };
+    apply(excelSyncMetaGet(PAGE_RECORDS_META_KEY), true);
+    return subscribeDocumentMeta(PAGE_RECORDS_META_KEY, (value) => apply(value, false));
+  }, [pageViewBaseDoc, normalAnnotationHydration, pdfFile?.id, pageRecordsBase, showPageRecords, resetPageSteps, dropHistoryAfterPageChange, excelSyncMetaGet, subscribeDocumentMeta]);
   pagePresentationMetaSetRef.current = normalAnnotationHydration?.ready
     && normalAnnotationHydration.documentId === pdfFile?.id
     && canRestoreFromHistory ? excelSyncMetaSet : null;
@@ -22710,6 +22806,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         ]),
     ).values(),
   ], annotationsByPage), [durableDeletedPdfAnnotations, locallyDeletedPdfAnnotations, annotationsByPage]);
+
+  // drive-sync-back (Nightly): a queued local edit tells the OneDrive
+  // save-back that this screen changed the marks (utils/localMarkEdit.js).
+  useEffect(() => {
+    if (cloudSyncStatus?.stage === 'pending' && pdfFile?.id) announceLocalMarkEdit(pdfFile.id);
+  }, [cloudSyncStatus, pdfFile?.id]);
 
   const displayedCloudSyncStatus = useMemo(() => combineCollaborationSyncStatus({
     annotationStatus: cloudSyncStatus,
@@ -24856,7 +24958,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     return bytesKit.deliverCsv(csv, filters.commentsCsvFileName(name));
   }, [pdfFile?.id, pdfFile?.name]);
 
-  const handleExportPdfWithOptions = useCallback(async ({ mode = 'annotated', pages = 'all', custom = '', filter = null, commentsCsv = false } = {}) => {
+  const handleExportPdfWithOptions = useCallback(async ({ mode = 'annotated', pages = 'all', custom = '', filter = null, commentsCsv = false, deliver = true } = {}) => {
     if (!pdfFile) {
       showToast('Open a PDF first.', 'warn');
       return { ok: false, error: 'Open a PDF first.' };
@@ -24935,6 +25037,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       if (!bytes) return { ok: false, error: 'Nothing to export.' };
       if (picked.pages) bytes = await bytesKit.keepOnlyPages(bytes, picked.pages);
       const fileName = modes.exportFileName(pdfDisplayNameRef.current || pdfFile.name, mode, picked.pages);
+      // deliver:false hands the bytes back (OneDrive save-back) instead of saving them.
+      if (!deliver) return { ok: true, bytes, fileName };
       const outcome = await bytesKit.deliverPdf(bytes, fileName, { title: 'Export PDF' });
       if (outcome === 'canceled') return { ok: false, canceled: true };
       if (exportFiltersEnabled && commentsCsv) {

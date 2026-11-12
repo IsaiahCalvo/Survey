@@ -407,7 +407,8 @@ export async function fakeMsgraphHandler(req) {
     if (values.length !== a.r2 - a.r1 + 1 || values.some((line) => line.length !== a.c2 - a.c1 + 1)) {
       return gErr(400, 'InvalidArgument', 'The number of rows or columns in the input array doesn\'t match the size or dimensions of the range.');
     }
-    values.forEach((line, r) => line.forEach((v, c) => setCell(sheet, a.r1 + r, a.c1 + c, typed(v))));
+    // A null leaves its cell as it is, as in real Graph.
+    values.forEach((line, r) => line.forEach((v, c) => { if (v !== null) setCell(sheet, a.r1 + r, a.c1 + c, typed(v)); }));
     touch(f);
     return json(200, {});
   }

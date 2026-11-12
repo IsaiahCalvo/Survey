@@ -60,7 +60,13 @@ import {
 import { useHomeExtras } from './homeLibraryData.js';
 import { HomeFilterChips, HomeNavSection, HomeTiles, ListViewButton, TagCell, TagPopover } from './HomeLibraryBits.jsx';
 import { ReviewChips, ReviewFields, ReviewLine, useDocumentReviews, useReviewPeople } from './DocumentReviewBits.jsx';
-import { EMPTY_REVIEW_FILTER, passesReviewFilter, reviewFilterIsEmpty, reviewStatusCounts } from './documentReview.js';
+import { EMPTY_REVIEW_FILTER, REVIEW_STATUSES, passesReviewFilter, reviewFilterIsEmpty, reviewStatusCounts, reviewStatus } from './documentReview.js';
+import { BulkChoiceDialog, RegisterChips, SheetDetailsDialog, SheetLine, disciplineChoices } from './SheetRegisterBits.jsx';
+import { downloadCsv, useSheetRegister } from './sheetRegisterData.js';
+import {
+  EMPTY_REGISTER_FILTER, REGISTER_SORTS, disciplineCounts, matchesRegisterSearch, passesRegisterFilter,
+  registerCsv, registerCsvName, registerFilterIsEmpty, sheetInfo, sortRegisterRows,
+} from '../sheets/sheetRegister.js';
 
 const ledgerHeader = {
   background: 'var(--ink-700)',
@@ -239,6 +245,10 @@ export default function DocumentsLedger({
   onNav,
   onOpenDocument,
   onUpload,
+  // drive-sync-back (Nightly): opens the OneDrive picker; null hides it.
+  onOpenFromDrive = null,
+  // drive-sync-back (Nightly): opens Google's Drive picker; null hides it.
+  onOpenFromGoogleDrive = null,
   onDropFiles,
   uploadBusy = false,
   onShare,
@@ -398,6 +408,35 @@ export default function DocumentsLedger({
   const [reviewFilter, setReviewFilter] = useState(EMPTY_REVIEW_FILTER);
   const reviewCounts = useMemo(() => (reviewOn ? reviewStatusCounts(documentIds, reviews) : null), [reviewOn, documentIds, reviews]);
 
+  // Sheet register (Nightly, flag 'sheet-register'; SheetRegisterBits.jsx):
+  // sheet number, revision and discipline under each name, discipline and
+  // open-items chips, sheet number and status sorts, bulk status / assign /
+  // discipline, Edit details and the drawing list CSV.
+  const [registerOn] = useState(() => isFeatureOn('sheet-register'));
+  const register = useSheetRegister(registerOn, documentIds);
+  const [registerFilter, setRegisterFilter] = useState(EMPTY_REGISTER_FILTER);
+  const [detailsTarget, setDetailsTarget] = useState(null);
+  const [bulkChoice, setBulkChoice] = useState(null); // { kind, ids }
+  const [bulkMenu, setBulkMenu] = useState(null);
+  const infoById = useMemo(() => {
+    const m = new Map();
+    if (!registerOn) return m;
+    for (const d of mapped) m.set(d.id, sheetInfo(d.raw, register.extras.get(d.id), register.edits.get(d.id)));
+    return m;
+  }, [registerOn, mapped, register.extras, register.edits]);
+  const openItemsOf = (id) => register.extras.get(id)?.openItems || 0;
+  const disciplineRows = useMemo(() => (registerOn ? disciplineCounts([...infoById.values()]) : []), [registerOn, infoById]);
+  const openWithCount = useMemo(
+    () => (registerOn ? mapped.filter((d) => (register.extras.get(d.id)?.openItems || 0) > 0).length : 0),
+    [registerOn, mapped, register.extras],
+  );
+  // A discipline no listed document has any more stops filtering.
+  useEffect(() => {
+    if (registerFilter.discipline != null && !disciplineRows.some((row) => row.discipline === registerFilter.discipline)) {
+      setRegisterFilter((f) => ({ ...f, discipline: null }));
+    }
+  }, [registerFilter.discipline, disciplineRows]);
+
   const onHeaderClick = (key) => {
     if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     else { setSortKey(key); setSortDir(columnsOn ? firstSortDir(key) : (key === 'edited' || key === 'size' ? 'desc' : 'asc')); }
@@ -418,23 +457,32 @@ export default function DocumentsLedger({
   useEffect(() => {
     if (tagFilter && !tagRows.some((row) => row.tag.toLowerCase() === tagFilter.toLowerCase())) setTagFilter(null);
   }, [tagFilter, tagRows]);
+  const statusOrder = useMemo(() => new Map(REVIEW_STATUSES.map((st, i) => [st.id, i])), []);
+  const registerSortHelpers = {
+    infoOf: (d) => infoById.get(d.id) || { number: '' },
+    statusRank: (d) => (statusOrder.has(reviews.get(d.id)?.status) ? statusOrder.get(reviews.get(d.id).status) : Infinity),
+  };
   const docs = useMemo(() => {
     let arr;
-    const reviewOk = (d) => !reviewOn || passesReviewFilter(reviews.get(d.id), reviewFilter, user?.id);
+    const reviewOk = (d) => (!reviewOn || passesReviewFilter(reviews.get(d.id), reviewFilter, user?.id))
+      && (!registerOn || passesRegisterFilter(infoById.get(d.id), openItemsOf(d.id), registerFilter));
+    const registerHit = (d) => registerOn && matchesRegisterSearch(infoById.get(d.id), search);
     if (extrasOn) {
       const tagKey = tagFilter ? tagFilter.toLowerCase() : null;
       arr = mapped.filter((d) => (
         (!sharedViewsOn || inHomeView(d.raw, { view: homeView, ...viewScope }))
         && (!tagKey || d.tags.some((t) => t.toLowerCase() === tagKey))
-        && matchesHomeSearch(d.name, tagsReady ? d.tags : null, search)
+        && (matchesHomeSearch(d.name, tagsReady ? d.tags : null, search) || registerHit(d))
         && reviewOk(d)
       ));
+      if (registerOn && (sortKey === 'sheet' || sortKey === 'status')) return sortRegisterRows(arr, sortKey, sortDir, registerSortHelpers);
       // The extra sorts (Last opened, Created, Pages) come with home-columns;
       // without it the list sorts exactly as before.
       if (columnsOn) return sortHomeRows(arr, sortKey, sortDir);
     } else {
       const q = search.trim().toLowerCase();
-      arr = mapped.filter((d) => (!q || (d.name || '').toLowerCase().includes(q)) && reviewOk(d));
+      arr = mapped.filter((d) => (!q || (d.name || '').toLowerCase().includes(q) || registerHit(d)) && reviewOk(d));
+      if (registerOn && (sortKey === 'sheet' || sortKey === 'status')) return sortRegisterRows(arr, sortKey, sortDir, registerSortHelpers);
     }
     const sign = sortDir === 'asc' ? 1 : -1;
     if (sortKey === 'name') arr.sort((a, b) => sign * a.name.localeCompare(b.name));
@@ -443,7 +491,7 @@ export default function DocumentsLedger({
     else if (sortKey === 'size') arr.sort((a, b) => sign * (a.sizeBytes - b.sizeBytes));
     return arr;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapped, search, sortKey, sortDir, extrasOn, columnsOn, homeView, tagFilter, sharedViewsOn, tagsReady, homeExtras.sharedByMeIds, reviewOn, reviews, reviewFilter, user?.id]);
+  }, [mapped, search, sortKey, sortDir, extrasOn, columnsOn, homeView, tagFilter, sharedViewsOn, tagsReady, homeExtras.sharedByMeIds, reviewOn, reviews, reviewFilter, user?.id, registerOn, infoById, register.extras, registerFilter]);
   const mobileDetailDoc = docs.find((d) => d.id === mobileDetailId) || null;
 
   /* Idle thumbnail backfill (2026-09-23): fills missing thumbnails one at a
@@ -718,6 +766,75 @@ export default function DocumentsLedger({
   const canManageDoc = (raw) => canManageDocument(raw, user?.id);
   // Multi-select: Share / Delete are off when any selected doc is not ours.
   const selectionBlock = (verb) => manageSelectionBlock(selectedRaw(), user?.id, verb);
+  /* Sheet register actions: Edit details, the bulk picks and the list CSV. */
+  const friendlyRegisterError = (err, fallback) => (
+    /Document not found/i.test(err?.message || '') ? 'You need edit access to change these details.' : (err?.message || fallback)
+  );
+  const saveSheetDetails = async (d, value) => {
+    const info = infoById.get(d.id) || {};
+    try {
+      if (value.number !== (info.number || '') || value.revision !== (info.revision || '')) {
+        await register.saveDetails(d.id, { number: value.number, revision: value.revision });
+      }
+    } catch (err) {
+      throw new Error(friendlyRegisterError(err, 'Survey could not save the sheet number. Try again.'));
+    }
+    if (value.discipline !== (info.disciplinePicked ? info.discipline : '')) {
+      const ok = await register.setDiscipline([d.id], value.discipline);
+      if (!ok) throw new Error('Survey could not save the discipline. Check you can edit this drawing.');
+    }
+    if (value.name !== d.name && canManageDoc(d.raw) && onRename) await onRename(d.raw, value.name);
+  };
+  const cloudIds = (list) => list.filter((d) => !d.raw?.device_file).map((d) => d.id);
+  const myName = user?.name || user?.email?.split('@')[0] || 'You';
+  const bulkChoices = (kind) => {
+    if (kind === 'status') return [{ value: '', label: 'No status' }, ...REVIEW_STATUSES.map((st) => ({ value: st.id, label: st.label }))];
+    if (kind === 'assign') return [{ value: 'me', label: 'Assign to me' }, { value: '', label: 'Unassigned' }];
+    return disciplineChoices();
+  };
+  const BULK_TITLES = { status: 'Set status', assign: 'Assign', discipline: 'Set discipline' };
+  const applyBulkChoice = async (kind, ids, value) => {
+    if (kind === 'discipline') {
+      const ok = await register.setDiscipline(ids, value);
+      if (!ok) showToast('Some drawings kept their discipline: you need edit access to change them.', 'warn');
+      return;
+    }
+    const patch = kind === 'status'
+      ? { status: value || null }
+      : { ownerId: value === 'me' ? user?.id || null : null, ownerName: value === 'me' ? myName : null };
+    await Promise.all(ids.map((id) => saveReview(id, patch)));
+  };
+  const exportRegisterCsv = (list) => {
+    const rows = list.filter((d) => !d.raw?.device_file).map((d) => {
+      const info = infoById.get(d.id) || {};
+      const review = reviews.get(d.id);
+      const extra = register.extras.get(d.id);
+      return {
+        number: info.number, name: d.name, revision: info.revision, discipline: info.discipline,
+        status: reviewStatus(review?.status)?.label || '', assignee: review?.ownerName || '',
+        markups: review?.markupCount ?? '', openItems: extra?.openItems || 0, tags: d.tags,
+        project: d.project === 'Sandbox' ? '' : d.project, uploadedMs: d.createdMs,
+        uploadedBy: extra?.uploaderName || '', editedMs: d.editedMs, version: extra?.version ?? '',
+      };
+    });
+    downloadCsv(registerCsv(rows), registerCsvName());
+    showToast(`Exported ${countLabel(rows.length, 'drawing')}`, 'success');
+  };
+  // The register's bulk picks for a list of documents (bulk pane, right-click
+  // menu, phone Select mode).
+  const registerBulkItems = (list) => {
+    if (!registerOn || !list.length) return [];
+    const ids = cloudIds(list);
+    const open = (kind) => () => { setBulkMenu(null); setDocMenu(null); setBulkChoice({ kind, ids }); };
+    return [
+      ...(reviewOn ? [
+        { key: 'status', icon: 'check', label: 'Set status…', onClick: open('status') },
+        { key: 'assign', icon: 'users', label: 'Assign…', onClick: open('assign') },
+      ] : []),
+      { key: 'discipline', icon: 'layers', label: 'Set discipline…', onClick: open('discipline') },
+      { key: 'csv', icon: 'download', label: 'Export list (CSV)', onClick: () => { setBulkMenu(null); setDocMenu(null); exportRegisterCsv(list); } },
+    ];
+  };
   const showDocumentDetails = (doc) => {
     if (isPhoneLayout()) {
       mobileDetailOpenerRef.current = docMenu?.trigger || document.activeElement;
@@ -730,12 +847,12 @@ export default function DocumentsLedger({
     setPreviewOpen(true);
   };
 
-  const sortOptions = columnsOn ? HOME_SORTS : [
+  const sortOptions = [...(columnsOn ? HOME_SORTS : [
     ['name', 'File'],
     ['project', 'Project'],
     ['edited', 'Last edited'],
     ['size', 'Size'],
-  ];
+  ]), ...(registerOn ? REGISTER_SORTS.filter(([key]) => key !== 'status' || reviewOn) : [])];
   const activeSortLabel = sortOptions.find(([key]) => key === sortKey)?.[1] || 'Sort';
 
   const subtitle = (
@@ -787,6 +904,18 @@ export default function DocumentsLedger({
                     if (ran !== false) clearSel();
                   }}
                 />
+                {registerOn && (
+                  <button
+                    type="button"
+                    className="hub-icon-btn"
+                    aria-haspopup="menu"
+                    aria-label="More actions"
+                    data-sheet-bulk-more=""
+                    disabled={docSelCount === 0}
+                    {...tip('More actions')}
+                    onClick={(e) => { const trigger = e.currentTarget; setBulkMenu(bulkMenu ? null : { rect: trigger.getBoundingClientRect(), trigger, fromKeyboard: e.detail === 0 }); }}
+                  ><Icon name="more" size={14} /></button>
+                )}
               </span>
             );
           })()}
@@ -849,6 +978,15 @@ export default function DocumentsLedger({
               ))}
             </>
           ) : null}
+          {registerOn ? (
+            <>
+              <div className="home-sort-menu-separator" role="separator" />
+              <button type="button" role="menuitem" data-sheet-register-export="phone" onClick={() => { setMobileSortOpen(false); exportRegisterCsv(docs); }}>
+                <span>Export list (CSV)</span>
+                <span />
+              </button>
+            </>
+          ) : null}
         </div>
       )}
     </span>
@@ -865,7 +1003,7 @@ export default function DocumentsLedger({
       <div className="documents-mobile-search-actions hub-mobile-search-actions">
         <Search placeholder={tagsReady ? 'Search documents and tags...' : 'Search documents...'} value={search} onChange={setSearch} width="100%" />
         {mobileSortControl}
-        {canCreate ? (
+        {canCreate || onOpenFromDrive || onOpenFromGoogleDrive ? (
           <button className="btn primary hub-mobile-primary-action" data-home-new="phone" disabled={uploadBusy} aria-haspopup="dialog" onClick={() => setNewSheetOpen(true)}>
             {uploadBusy ? uploadButtonBody : (<><Icon name="plus" size={12} />New</>)}
           </button>
@@ -902,13 +1040,30 @@ export default function DocumentsLedger({
           onClose={() => setNewMenu(null)}
         />
       )}
+      {onOpenFromDrive && (
+        <button className="btn documents-desktop-new" data-home-onedrive="desktop" aria-label="Open from OneDrive" {...tip('Open a PDF from OneDrive', 'below')} onClick={() => onOpenFromDrive()}>
+          <Icon name="oneDrive" size={12} />OneDrive
+        </button>
+      )}
+      {onOpenFromGoogleDrive && (
+        <button className="btn documents-desktop-new" data-home-googledrive="desktop" aria-label="Open from Google Drive" {...tip('Open a PDF from Google Drive', 'below')} onClick={() => onOpenFromGoogleDrive()}>
+          <Icon name="googleDrive" size={12} />Google Drive
+        </button>
+      )}
+      {registerOn && (
+        <button className="btn documents-desktop-new" data-sheet-register-export="desktop" disabled={docs.length === 0} onClick={() => exportRegisterCsv(docs)} {...tip('Export the drawing list as a CSV')}>
+          <Icon name="download" size={12} />Export list
+        </button>
+      )}
       <button className="btn primary documents-desktop-upload" disabled={uploadBusy} onClick={() => onUpload && onUpload()}>{uploadButtonBody}</button>
       {newSheetOpen && (
         <DialogCard title="New" onClose={() => setNewSheetOpen(false)} width={320} atRoot cardProps={{ 'data-home-new-sheet': 'true' }}>
           <div role="menu" aria-label="New" style={{ display: 'grid', gap: 4 }}>
             {[
               { key: 'upload', icon: 'upload', label: 'Upload PDF', run: () => onUpload && onUpload() },
-              ...(canCreateTemplates ? createItems : [{ key: 'blank', icon: 'plus', label: 'Blank document', run: () => setNewDocOpen(true) }]),
+              ...(onOpenFromDrive ? [{ key: 'onedrive', icon: 'oneDrive', label: 'Open from OneDrive', run: () => onOpenFromDrive() }] : []),
+              ...(onOpenFromGoogleDrive ? [{ key: 'googledrive', icon: 'googleDrive', label: 'Open from Google Drive', run: () => onOpenFromGoogleDrive() }] : []),
+              ...createItems,
             ].map((row) => (
               <button
                 key={row.key}
@@ -1069,6 +1224,7 @@ export default function DocumentsLedger({
           {tagsReady && d.tags.length ? (
             <div className="mobile-card-tags">{d.tags.slice(0, 3).map((tag) => <span key={tag} className="home-tag-chip">{tag}</span>)}</div>
           ) : null}
+          {registerOn && <SheetLine info={infoById.get(d.id)} openItems={openItemsOf(d.id)} />}
           {reviewOn && <ReviewLine review={reviews.get(d.id)} />}
         </div>
         <div style={{ display: 'grid', placeItems: 'center', minWidth: 0 }}>
@@ -1190,6 +1346,9 @@ export default function DocumentsLedger({
               {reviewOn && mapped.length > 0 && (
                 <ReviewChips filter={reviewFilter} onChange={setReviewFilter} counts={reviewCounts} />
               )}
+              {registerOn && mapped.length > 0 && (
+                <RegisterChips filter={registerFilter} onChange={setRegisterFilter} disciplines={disciplineRows} openCounts={{ with: openWithCount }} />
+              )}
               <div className={gridClass} style={{ ...ledgerHeader, display: 'grid', gridTemplateColumns: grid, position: 'sticky', top: 0, zIndex: 3 }}>
                 {!showTiles && <span className="documents-ledger-head-check" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   {docSelectMode && docs.length > 0 && (
@@ -1210,7 +1369,20 @@ export default function DocumentsLedger({
                   )}
                 </span>}
                 {!showTiles && <span></span>}
-                {!showTiles && <span {...clickableProps(() => onHeaderClick('name'))} style={{ padding: '0 14px', display: 'flex', alignItems: 'center', cursor: 'pointer', userSelect: 'none', color: sortKey === 'name' ? 'var(--bone-100)' : 'inherit' }}>File{arrow('name')}</span>}
+                {!showTiles && (() => {
+                  const fileSort = clickableProps(() => onHeaderClick('name'));
+                  const fileLook = { cursor: 'pointer', userSelect: 'none', color: sortKey === 'name' ? 'var(--bone-100)' : 'inherit' };
+                  if (!registerOn) return <span {...fileSort} style={{ padding: '0 14px', display: 'flex', alignItems: 'center', ...fileLook }}>File{arrow('name')}</span>;
+                  // Sheet register: Sheet number and Status sorts beside File.
+                  return (
+                    <span style={{ padding: '0 14px', display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, whiteSpace: 'nowrap' }}>
+                      <span {...fileSort} style={fileLook}>File{arrow('name')}</span>
+                      {sortOptions.filter(([key]) => key === 'sheet' || key === 'status').map(([key, label]) => (
+                        <span key={key} data-register-sort={key} {...clickableProps(() => onHeaderClick(key))} style={{ cursor: 'pointer', userSelect: 'none', color: sortKey === key ? 'var(--bone-100)' : 'inherit' }}>{label}{arrow(key)}</span>
+                      ))}
+                    </span>
+                  );
+                })()}
                 {showTiles ? (
                   /* Tiles: no columns to head, so the header is a row of
                      sorts (the same keys the list's headers sort by). */
@@ -1255,7 +1427,7 @@ export default function DocumentsLedger({
                     />
                   </div>
                 ) : (
-                  <div className="meta" style={{ padding: '24px 16px', fontSize: 12 }}>{reviewOn && !reviewFilterIsEmpty(reviewFilter) ? 'No documents match these filters.' : (extrasOn ? filteredEmpty : 'No documents match your search.')}</div>
+                  <div className="meta" style={{ padding: '24px 16px', fontSize: 12 }}>{(reviewOn && !reviewFilterIsEmpty(reviewFilter)) || (registerOn && !registerFilterIsEmpty(registerFilter)) ? 'No documents match these filters.' : (extrasOn ? filteredEmpty : 'No documents match your search.')}</div>
                 )
               )}
               {showTiles && docs.length > 0 ? (
@@ -1365,10 +1537,11 @@ export default function DocumentsLedger({
                       )}
                     </div>
                     <div style={stickyCell(isFilled)}>
-                      {reviewOn ? (
+                      {reviewOn || registerOn ? (
                         <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column' }}>
                           <span style={{ fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{d.name}</span>
-                          <ReviewLine review={reviews.get(d.id)} />
+                          {registerOn && <SheetLine info={infoById.get(d.id)} openItems={openItemsOf(d.id)} />}
+                          {reviewOn && <ReviewLine review={reviews.get(d.id)} />}
                         </div>
                       ) : (
                         <span style={{ fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{d.name}</span>
@@ -1450,6 +1623,11 @@ export default function DocumentsLedger({
                     <Icon name="tag" size={15} color="var(--ink-200)" />Add tags…
                   </button>
                 )}
+                {registerBulkItems(selectedDocs).map((it) => (
+                  <button key={it.key} type="button" className="hub-menu__item" data-sheet-bulk={it.key} onClick={it.onClick}>
+                    <Icon name={it.icon} size={15} color="var(--ink-200)" />{it.label}
+                  </button>
+                ))}
                 {onPdfTools && (
                   <button type="button" className="hub-menu__item" onClick={() => onPdfTools(selectedRaw(), 'merge')}>
                     <Icon name="copy" size={15} color="var(--ink-200)" />Merge into one PDF
@@ -1571,6 +1749,9 @@ export default function DocumentsLedger({
           {reviewOn && mapped.length > 0 && (
             <ReviewChips filter={reviewFilter} onChange={setReviewFilter} counts={reviewCounts} phone />
           )}
+          {registerOn && mapped.length > 0 && (
+            <RegisterChips filter={registerFilter} onChange={setRegisterFilter} disciplines={disciplineRows} openCounts={{ with: openWithCount }} phone />
+          )}
           {docs.length === 0 && (
             mapped.length === 0 ? (
               <EmptyState
@@ -1583,7 +1764,7 @@ export default function DocumentsLedger({
                 {...sampleAction}
               />
             ) : (
-              <div className="meta" style={{ padding: '18px 4px', fontSize: 12 }}>{reviewOn && !reviewFilterIsEmpty(reviewFilter) ? 'No documents match these filters.' : (extrasOn ? filteredEmpty : 'No documents match your search.')}</div>
+              <div className="meta" style={{ padding: '18px 4px', fontSize: 12 }}>{(reviewOn && !reviewFilterIsEmpty(reviewFilter)) || (registerOn && !registerFilterIsEmpty(registerFilter)) ? 'No documents match these filters.' : (extrasOn ? filteredEmpty : 'No documents match your search.')}</div>
             )
           )}
           {docs.length > 0 && (showTiles ? (
@@ -1715,10 +1896,12 @@ export default function DocumentsLedger({
             { label: 'Copy to project…', onClick: () => { setMoveMode('copy'); setMoveOpen(true); } },
             { label: 'Duplicate', onClick: () => { onDuplicate && onDuplicate(selectedRaw()); clearDesktopSelection(); } },
             ...(tagsReady ? [{ label: 'Add tags…', onClick: () => openTags(docs.filter((x) => docMenu.ids.includes(x.id)), docMenu.rect || (docMenu.point ? { left: docMenu.point.x, right: docMenu.point.x, top: docMenu.point.y, bottom: docMenu.point.y } : null)) }] : []),
+            ...registerBulkItems(docs.filter((x) => docMenu.ids.includes(x.id))).map(({ label, onClick }) => ({ label, onClick })),
             ...(onPdfTools ? [{ label: 'Merge into one PDF', onClick: () => onPdfTools(selectedRaw(), 'merge') }] : []),
             { label: 'Share', reason: selectionBlock('share'), onClick: () => onShare && onShare(selectedRaw()) },
             { label: `Delete ${docMenu.ids.length} documents`, danger: true, reason: selectionBlock('delete'), onClick: () => archiveSelected(selectedAllRaw()) },
           ] : [
+            ...(registerOn ? [{ label: 'Edit details…', onClick: () => { setDocMenu(null); setDetailsTarget(doc.id); } }] : []),
             { label: 'Rename', reason: manageSelectionBlock([doc.raw], user?.id, 'rename'), onClick: () => setRenameTarget(doc.raw) },
             { label: 'Copy', onClick: () => setClipboardDoc(doc.raw) },
             { label: 'Paste', disabled: !clipboardDoc, onClick: () => clipboardDoc && onDuplicate && onDuplicate([clipboardDoc]) },
@@ -1737,6 +1920,39 @@ export default function DocumentsLedger({
             },
             ...(offline.menuItem(doc.raw) ? [offline.menuItem(doc.raw)] : []),
           ]}
+        />
+      );
+    })()}
+    {bulkMenu && (
+      <DocumentActionMenu
+        anchorRect={bulkMenu.rect}
+        returnFocusTo={bulkMenu.trigger}
+        focusFirst={bulkMenu.fromKeyboard}
+        minWidth={200}
+        items={registerBulkItems(selectedDocs).map(({ label, onClick }) => ({ label, onClick }))}
+        onClose={() => setBulkMenu(null)}
+      />
+    )}
+    {bulkChoice && (
+      <BulkChoiceDialog
+        kind={bulkChoice.kind}
+        title={BULK_TITLES[bulkChoice.kind]}
+        count={bulkChoice.ids.length}
+        choices={bulkChoices(bulkChoice.kind)}
+        onPick={(value) => applyBulkChoice(bulkChoice.kind, bulkChoice.ids, value)}
+        onClose={() => setBulkChoice(null)}
+      />
+    )}
+    {detailsTarget && (() => {
+      const d = mapped.find((x) => x.id === detailsTarget);
+      if (!d) return null;
+      return (
+        <SheetDetailsDialog
+          name={d.name}
+          info={infoById.get(d.id)}
+          canRename={canManageDoc(d.raw)}
+          onSave={(value) => saveSheetDetails(d, value)}
+          onClose={() => setDetailsTarget(null)}
         />
       );
     })()}

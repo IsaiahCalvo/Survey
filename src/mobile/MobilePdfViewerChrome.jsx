@@ -60,6 +60,7 @@ import { OPEN_VIEWER_SHARE_EVENT } from '../utils/viewerShare.js';
 import { RENAME_OPEN_DOCUMENT_EVENT } from '../tabs/tabStrip.js';
 import { usePolylineCurve } from '../hooks/usePolylineCurve.js';
 import { POLYLINE_CURVE_SET_EVENT } from '../utils/polySpline.js';
+import { driveIcon, drivePlace } from '../utils/driveLinks.js';
 
 // UX 2026-09-16 (phone sweep, owner ruling "everything reads a little big").
 // ONE glyph:control ratio for every phone tier, and it is Drawboard's: its
@@ -1041,7 +1042,7 @@ function MobileTextSizeRow({ value, onCommit }) {
 // the pdf.js viewer: zoomController FIT_HEIGHT + PDFViewer handleZoomModeSelect).
 const ZOOM_FIT_OPTIONS = ZOOM_MODE_OPTIONS.filter((option) => option.id !== 'manual');
 
-export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi, bottomToolbarApi, activeSpace = null, onOpenSpaces = null, onTurnOffSpace = null }) {
+export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi, bottomToolbarApi, activeSpace = null, onOpenSpaces = null, onTurnOffSpace = null, driveSync = null, onOpenDriveSync = null }) {
   const tip = useTooltip();
   // OWNER DECISION 2 (2026-07-12): the page pill has two tap zones — the
   // fraction opens an inline page-jump input (type-to-jump), the chevron opens
@@ -1124,6 +1125,19 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
               desktop top bar's Export (it was the share glyph here). */}
           <Icon name="download" size={HEADER_GLYPH} color="currentColor" />
         </button>
+        {/* Nightly (flag 'drive-sync-back'): a document linked to a OneDrive
+            or Google Drive file; AppShell owns the card (DriveSyncButton.jsx). */}
+        {driveSync && (
+          <button
+            type="button"
+            className="mobile-pdf-header__icon"
+            aria-label={drivePlace(driveSync.link)}
+            data-drive-sync-button="phone"
+            onClick={() => { commitPanelTyping(); onOpenDriveSync?.(); }}
+          >
+            <Icon name={driveIcon(driveSync.link)} size={HEADER_GLYPH} color="currentColor" />
+          </button>
+        )}
         {/* Nightly (flag 'viewer-share'): share this document; AppShell owns
             the dialog, as for Export's choices. */}
         {isFeatureOn('viewer-share') && (

@@ -20,6 +20,7 @@ import calloutIconUrl from './assets/icons/callout-arrow-outline.svg';
 import textBoxIconUrl from './assets/icons/text-box-selection.svg';
 import shapesIconUrl from './assets/icons/shapes.svg';
 import oneDriveLogoUrl from './assets/brand/onedrive-logo.svg';
+import googleDriveLogoUrl from './assets/brand/googledrive-logo.svg';
 
 /*
  * HOUSE ICON GEOMETRY — owner ruling 2026-09-16.
@@ -140,6 +141,15 @@ const ICON_RENDERERS = {
         aria-hidden="true"
         className={className}
         style={{ ...style, width: size * 1.45, height: size, objectFit: 'contain' }}
+      />
+    ),
+    googleDrive: (size, _color, style, className) => (
+      <img
+        src={googleDriveLogoUrl}
+        alt=""
+        aria-hidden="true"
+        className={className}
+        style={{ ...style, width: size * 1.12, height: size, objectFit: 'contain' }}
       />
     ),
     google: (size, _color, style, className) => (
@@ -746,6 +756,16 @@ const ICON_RENDERERS = {
           <path d="M4 20V11a7 7 0 1 1 7 7H6" />
           <path d="M4 20l2-2" />
           <path d="M8.5 9.5h5M8.5 13h3" />
+        </g>
+      </svg>
+    ),
+
+    // Nightly 'properties-panel': Pin to side panel (a push pin).
+    pushPin: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <g stroke={color} strokeWidth={ICON_STROKE_WIDTH} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9 4h6l-1 6 3 3H7l3-3-1-6Z" />
+          <path d="M12 13v7" />
         </g>
       </svg>
     ),

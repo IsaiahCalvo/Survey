@@ -259,6 +259,26 @@ export async function runCheckpointRequest(mirrors, request, { getOutbox = null 
       transfer: [update.buffer, ...preparedTransfer(prepared)],
     };
   }
+  if (op === 'mirror-state') {
+    // The mirror's state vector and snapshot (Y.encodeSnapshot) after every
+    // update posted before this request (flag 'lazy-accepted-shadow': the
+    // accepted document on the main thread may not be built).
+    const mirror = mirrors.get(request.mirrorId);
+    if (!mirror && request.expectedApplied !== 0) throw new Error('checkpoint mirror missing');
+    if (mirror?.failed) throw new Error(`checkpoint mirror failed: ${mirror.failed}`);
+    if (mirror && mirror.applied !== request.expectedApplied) {
+      throw new Error(`checkpoint mirror out of step (${mirror.applied} of ${request.expectedApplied} updates)`);
+    }
+    const doc = mirror?.doc || createDetachedYDoc('checkpoint-mirror-empty');
+    const stateVector = Y.encodeStateVector(doc);
+    const snapshot = Y.encodeSnapshot(Y.snapshot(doc));
+    return {
+      // pending: structs waiting for others (a gap); the main thread then
+      // cannot work the vector forward from later updates by itself.
+      reply: { applied: request.expectedApplied, stateVector, snapshot, pending: Boolean(doc.store.pendingStructs) },
+      transfer: [stateVector.buffer, snapshot.buffer],
+    };
+  }
   if (op === 'prepare') {
     const prepared = await prepareCheckpointUpload(request.update, { asJsonBody: Boolean(request.asJsonBody) });
     return { reply: prepared, transfer: preparedTransfer(prepared) };

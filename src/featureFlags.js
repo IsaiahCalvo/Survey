@@ -301,6 +301,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Alt+Shift+] and Alt+Shift+[ step through the open documents',
     stage: 'beta',
   }),
+  'lazy-accepted-shadow': Object.freeze({
+    label: 'Open: keep the second copy of the marks only in the background worker until something needs it here',
+    stage: 'beta',
+  }),
   'open-visible-first': Object.freeze({
     label: 'Open: build the marks of the page on screen first, the pages around it after it has drawn',
     stage: 'beta',
@@ -341,6 +345,10 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'drawboard-keys': Object.freeze({
     label: 'Drawboard keys: Shift+Up / Down previous / next page; Alt+O / Alt+U next / previous version (with Versions on)',
+    stage: 'beta',
+  }),
+  'sheet-register': Object.freeze({
+    label: 'Sheet register: sheet number, revision and discipline on Home, discipline and open-items filters, sheet number sort, bulk status and discipline, Edit details, list CSV',
     stage: 'beta',
   }),
   'project-activity': Object.freeze({
@@ -477,6 +485,18 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'page-turn-keys': Object.freeze({
     label: 'Keys: with nothing picked, Left / Right and Shift + Up / Down turn the page',
+    stage: 'beta',
+  }),
+  // Drawboard file model (2026-11-10, page-records-plan.md): page changes are
+  // saved as a page list with the marks; the PDF is built only on the way out.
+  'page-records': Object.freeze({
+    label: 'Page changes never rewrite the PDF: other windows follow at once and it works offline',
+    stage: 'beta',
+  }),
+  // Drawboard file model (2026-11-10, drive-sync-back-plan.md): open a PDF
+  // from OneDrive or SharePoint and save the marked-up PDF back to it.
+  'drive-sync-back': Object.freeze({
+    label: 'Open PDFs from OneDrive and save the marked-up PDF back to OneDrive',
     stage: 'beta',
   }),
 });
