@@ -1008,7 +1008,7 @@ export async function planSheetRound({
           for (const k of typedKeys) setFp(sheetSide, k, getFp(base, k));
           // Still watched (the rest of that save may land later), but split once.
           next.recentWrites[`${markerId}|+row`] = { ...fresh, took: true };
-          notice({ markerId: id, scopeId: scope.scopeId, message: `${where(r)}: "${typedName}" was typed into the row Survey had just filled with "${String(marker.name || '')}" for a field tech. Both are kept: "${typedName}" is a new item in the row below.` });
+          notice({ markerId: id, scopeId: scope.scopeId, message: `${where(r)}: "${typedName}" was typed into the row Survey had just filled with "${String(marker.name || '')}" for a field tech. Both are kept: "${typedName}" is now its own item, in a new row lower down.` });
         }
       }
       // A late save landing on a cell Survey just wrote, while the app still
