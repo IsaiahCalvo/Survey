@@ -1,0 +1,31 @@
+name: Publish public status
+
+on:
+  issues:
+    types: [opened, closed, reopened, edited, labeled, unlabeled, deleted]
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+
+concurrency:
+  group: public-status
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    # Titles and issue bodies never run as commands or become public data.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - run: node scripts/publish-public-status.mjs
