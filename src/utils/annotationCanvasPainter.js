@@ -31,7 +31,7 @@ import {
   calloutLineDashArray,
 } from './lineRenderHelpers.js';
 import { countWrappedLines, getLineEndpoints } from './svgBoundingBox.js';
-import { DIMENSION_EXTENSION_PT, isDimensionMeasure } from './measure/dimensionLine.js';
+import { DIMENSION_CAPTION_BG_PAD_PT, DIMENSION_EXTENSION_PT, isDimensionMeasure } from './measure/dimensionLine.js';
 import { dimensionMarkLayout } from './measure/dimensionLayout.js';
 import { resolveAnnotationCloudSpec } from './pdfAnnotationAppearance.js';
 // UX 2026-09-09: clouds paint from the shared resolver (engine vertices with
@@ -530,7 +530,7 @@ function drawPath(context, object, displayScale) {
 // renderDimensionLine (thumbnails, zoom proxy, eraser and the flattened
 // print draw the same offset line, chevrons, extension lines and caption).
 function paintDimensionLine(context, object, line, dash) {
-  const { lines, fontPt, lineHeight, geo } = dimensionMarkLayout(object, line);
+  const { lines, fontPt, lineHeight, captionWidth, captionHeight, geo, style } = dimensionMarkLayout(object, line);
   if (!geo) return;
   const stroke = line.stroke;
   const sw = line.strokeWidth || 1;
@@ -555,8 +555,20 @@ function paintDimensionLine(context, object, line, dash) {
   context.save();
   context.translate(geo.caption.x, geo.caption.y);
   context.rotate((geo.caption.angle * Math.PI) / 180);
+  if (style.bg) {
+    const prevAlpha = context.globalAlpha;
+    context.globalAlpha = (prevAlpha ?? 1) * style.bgOpacity;
+    context.fillStyle = style.bg;
+    context.fillRect(
+      -captionWidth / 2 - DIMENSION_CAPTION_BG_PAD_PT,
+      -captionHeight / 2 - DIMENSION_CAPTION_BG_PAD_PT / 2,
+      captionWidth + DIMENSION_CAPTION_BG_PAD_PT * 2,
+      captionHeight + DIMENSION_CAPTION_BG_PAD_PT,
+    );
+    context.globalAlpha = prevAlpha;
+  }
   context.font = `${fontPt}px Helvetica`;
-  context.fillStyle = stroke;
+  context.fillStyle = style.color || stroke;
   context.textAlign = 'center';
   context.textBaseline = 'middle';
   lines.forEach((text, i) => context.fillText(text, 0, (i - (lines.length - 1) / 2) * lineHeight));

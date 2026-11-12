@@ -57,7 +57,7 @@ import {
 } from './pdfUnicodeText.js';
 import { deepClone } from './deepClone.js';
 import { buildMeasureLabel, getMeasureKind } from './measure/measureScale.js';
-import { DIMENSION_EXTENSION_PT, isDimensionMeasure } from './measure/dimensionLine.js';
+import { DIMENSION_CAPTION_BG_PAD_PT, DIMENSION_EXTENSION_PT, isDimensionMeasure } from './measure/dimensionLine.js';
 import { dimensionMarkLayout } from './measure/dimensionLayout.js';
 import { normalizePresentationPdf, reflectPdfPagePresentations } from './pdfPagePresentation.js';
 import {
@@ -5504,7 +5504,7 @@ const dimensionWorldLayout = (obj) => {
 // The caption box's four corners in world space (for the /AP box).
 const dimensionCaptionCorners = (dim) => {
   if (!dim?.lines?.length) return [];
-  const hw = dim.captionWidth / 2 + 1; const hh = dim.captionHeight / 2 + 1;
+  const hw = dim.captionWidth / 2 + DIMENSION_CAPTION_BG_PAD_PT; const hh = dim.captionHeight / 2 + DIMENSION_CAPTION_BG_PAD_PT;
   const rad = (dim.caption.angle * Math.PI) / 180;
   return [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]].map(([x, y]) => rotateAbout(
     { x: dim.caption.x + x, y: dim.caption.y + y }, dim.caption, rad,
@@ -5536,9 +5536,20 @@ const drawFlattenedDimensionLine = (page, obj, pageHeight, dim, fonts) => {
   if (dim.elbow) polyline(dim.elbow, DIMENSION_EXTENSION_PT, LineCapStyle.Butt);
   dim.segments.forEach((pair) => polyline(pair, width, LineCapStyle.Butt, Boolean(dash)));
   dim.chevrons.forEach((points) => polyline(points, width, LineCapStyle.Round));
-  const font = fonts?.regular;
-  if (!font || !dim.lines.length) return;
+  if (!dim.lines.length) return;
   const rad = (dim.caption.angle * Math.PI) / 180;
+  if (dim.style.bg) {
+    const bg = parsePdfDrawColor(dim.style.bg, '#FFFFFF');
+    const hw = dim.captionWidth / 2 + DIMENSION_CAPTION_BG_PAD_PT;
+    const hh = dim.captionHeight / 2 + DIMENSION_CAPTION_BG_PAD_PT / 2;
+    const corners = [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]]
+      .map(([x, y]) => rotateAbout({ x: dim.caption.x + x, y: dim.caption.y + y }, dim.caption, rad));
+    const d = `${corners.map((p, i) => `${i ? 'L' : 'M'} ${p.x} ${p.y}`).join(' ')} Z`;
+    drawSvgPathLinear(page, d, { x: 0, y: pageHeight, color: bg.color, opacity: (bg.opacity ?? 1) * dim.style.bgOpacity, borderWidth: 0 });
+  }
+  const font = fonts?.regular;
+  if (!font) return;
+  const textColor = dim.style.color ? (parsePdfDrawColor(dim.style.color, '#000000') || stroke) : stroke;
   const size = dim.fontPt;
   dim.lines.forEach((raw, i) => {
     const text = dimensionCaptionPrintText(raw);
@@ -5558,8 +5569,8 @@ const drawFlattenedDimensionLine = (page, obj, pageHeight, dim, fonts) => {
         y: getPdfY(pageHeight, origin.y),
         size,
         font,
-        color: stroke.color,
-        opacity: stroke.opacity,
+        color: textColor.color,
+        opacity: textColor.opacity,
         rotate: degrees(-dim.caption.angle),
       });
     } catch { /* a character Helvetica can't draw: the reading stays in /Contents */ }

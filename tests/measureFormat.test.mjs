@@ -357,3 +357,65 @@ test('dimension line: the PDF export draws it (/AP and print), reading included'
   const hexes = [...content.matchAll(/<([0-9A-Fa-f]+)> Tj/g)].map((x) => Buffer.from(x[1], 'hex').toString('latin1'));
   assert.ok(hexes.some((t) => /^\d+'-\d/.test(t)), `feet-inches with plain marks: ${hexes.join(' | ')}`);
 });
+
+test('dimension caption style: pt size, text colour, background and opacity', async () => {
+  const dl = await import('../src/utils/measure/dimensionLine.js');
+  const { stampMeasure, applyMeasureEdit } = await import('../src/utils/measure/measureScale.js');
+  const line = { type: 'line', tool: 'line', x1: -100, y1: 0, x2: 100, y2: 0, left: 100, top: 100, width: 200, height: 0, stroke: '#e11d2e', strokeWidth: 1 };
+  let mark = stampMeasure(line, 'length', null, { dim: true });
+  assert.equal(dl.dimensionCaptionPt(mark), 9);
+  assert.deepEqual(dl.dimensionCaptionStyle(mark), { color: null, bg: null, bgOpacity: 0 });
+  // Size: 2 to 24 pt; 9 is the default and is not stored; a typed blank reverts.
+  mark = applyMeasureEdit(mark, { captionPt: '14 pt' });
+  assert.equal(mark.data.measure.dim.size, 14);
+  assert.equal(dl.dimensionCaptionPt(mark), 14);
+  assert.equal(applyMeasureEdit(mark, { captionPt: '   ' }), mark);
+  assert.equal(dl.dimensionCaptionPt(applyMeasureEdit(mark, { captionPt: 99 })), 24);
+  assert.equal(applyMeasureEdit(mark, { captionPt: 9 }).data.measure.dim.size, undefined);
+  // A pt size wins over the older S / M / L size, and replaces it.
+  const sized = applyMeasureEdit({ ...mark, data: { ...mark.data, measure: { ...mark.data.measure, captionSize: 16 } } }, { captionPt: 10 });
+  assert.equal(sized.data.measure.captionSize, undefined);
+  assert.equal(dl.dimensionCaptionPt(sized), 10);
+  // Colours: a #RRGGBB or back to the line's own.
+  mark = applyMeasureEdit(mark, { captionColor: '#0066d4' });
+  assert.equal(dl.dimensionCaptionStyle(mark).color, '#0066D4');
+  assert.equal(dl.dimensionCaptionStyle(applyMeasureEdit(mark, { captionColor: null })).color, null);
+  assert.equal(dl.dimensionCaptionStyle(applyMeasureEdit(mark, { captionColor: 'red' })).color, null);
+  // A background comes in at full strength; opacity steps 25 / 50 / 75 / 100.
+  mark = applyMeasureEdit(mark, { captionBg: '#FFF9C4' });
+  assert.deepEqual(dl.dimensionCaptionStyle(mark), { color: '#0066D4', bg: '#FFF9C4', bgOpacity: 1 });
+  mark = applyMeasureEdit(mark, { captionBgOpacity: 0.5 });
+  assert.equal(dl.dimensionCaptionStyle(mark).bgOpacity, 0.5);
+  assert.equal(applyMeasureEdit(mark, { captionBgOpacity: 0.3 }), mark);
+  const cleared = applyMeasureEdit(mark, { captionBg: null });
+  assert.equal(cleared.data.measure.dim.bg, undefined);
+  assert.equal(cleared.data.measure.dim.bgOpacity, undefined);
+  // A plain Length has no caption style to change.
+  const plain = stampMeasure(line, 'length', null);
+  assert.equal(applyMeasureEdit(plain, { captionColor: '#0066D4' }), plain);
+
+  // Every surface draws it: SVG, the canvas twin and the PDF writer.
+  const svg = readFileSync(new URL('../src/utils/svgAnnotationRenderers.jsx', import.meta.url), 'utf8');
+  assert.match(svg, /data-dimension-caption-bg=\{style\.bg\}/);
+  assert.match(svg, /fill=\{style\.color \|\| stroke\}/);
+  const { drawAnnotationObject } = await import('../src/utils/annotationCanvasPainter.js');
+  const calls = [];
+  const context = {
+    globalAlpha: 1,
+    save: () => {}, restore: () => {}, translate: () => {}, rotate: () => {}, beginPath: () => {},
+    moveTo: () => {}, lineTo: () => {}, setLineDash: () => {}, stroke: () => {},
+    fillRect: (...a) => calls.push(['fillRect', context.fillStyle, context.globalAlpha, ...a]),
+    fillText: (...a) => calls.push(['fillText', context.fillStyle, ...a]),
+  };
+  drawAnnotationObject(context, { ...mark, opacity: 1 });
+  const rect = calls.find((c) => c[0] === 'fillRect');
+  assert.ok(rect && rect[1] === '#FFF9C4' && rect[2] === 0.5, 'the background is painted at its opacity');
+  assert.equal(calls.find((c) => c[0] === 'fillText')[1], '#0066D4');
+  const pdf = readFileSync(new URL('../src/utils/pdfAnnotationsPdfLib.js', import.meta.url), 'utf8');
+  assert.match(pdf, /if \(dim\.style\.bg\) \{/);
+  assert.match(pdf, /color: textColor\.color,/);
+  const card = readFileSync(new URL('../src/components/MeasureEditPopover.jsx', import.meta.url), 'utf8');
+  for (const bit of ['data-measure-edit-caption-pt', 'data-measure-edit-caption-color', 'data-measure-edit-caption-bg', 'data-measure-edit-caption-bg-opacity']) {
+    assert.ok(card.includes(bit), bit);
+  }
+});

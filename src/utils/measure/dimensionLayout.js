@@ -9,6 +9,7 @@ import {
   dimensionCaptionOffset,
   dimensionCaptionPlace,
   dimensionCaptionPt,
+  dimensionCaptionStyle,
   dimensionCaptionWidth,
   dimensionLeader,
   dimensionLineGeometry,
@@ -30,5 +31,6 @@ export function dimensionMarkLayout(obj, { x1, y1, x2, y2 }) {
     captionOffset: dimensionCaptionOffset(obj),
     turn: obj.angle ?? 0,
   });
-  return { label, lines, fontPt, lineHeight, captionWidth, captionHeight, geo };
+  // style: { color (null = the stroke), bg (null = none), bgOpacity }.
+  return { label, lines, fontPt, lineHeight, captionWidth, captionHeight, geo, style: dimensionCaptionStyle(obj) };
 }

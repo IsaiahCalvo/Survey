@@ -18,7 +18,14 @@
  */
 
 import { computeLineBboxCenter } from '../svgBoundingBox.js';
-import { DIMENSION_LEADER_PT, normalizeDimensionLeader } from './dimensionLine.js';
+import {
+  DIMENSION_CAPTION_BG_OPACITIES,
+  DIMENSION_CAPTION_PT,
+  DIMENSION_LEADER_PT,
+  normalizeDimensionCaptionColor,
+  normalizeDimensionCaptionPt,
+  normalizeDimensionLeader,
+} from './dimensionLine.js';
 import {
   MEASURE_LINE_PREFIXES,
   formatDisplayArea,
@@ -494,6 +501,38 @@ export function applyMeasureEdit(obj, changes = {}) {
       const dim = { ...measure.dim };
       if (changes.captionPlace === 'above') dim.caption = 'above'; else delete dim.caption;
       measure.dim = dim;
+    }
+    // Caption style (Drawboard's Caption pop-over).
+    if (hasOwn(changes, 'captionPt')) {
+      const size = normalizeDimensionCaptionPt(changes.captionPt);
+      if (size != null) {
+        const dim = { ...measure.dim };
+        if (size === DIMENSION_CAPTION_PT) delete dim.size; else dim.size = size;
+        measure.dim = dim;
+        delete measure.captionSize;
+      }
+    }
+    if (hasOwn(changes, 'captionColor')) {
+      const dim = { ...measure.dim };
+      const color = normalizeDimensionCaptionColor(changes.captionColor);
+      if (color) dim.color = color; else delete dim.color;
+      measure.dim = dim;
+    }
+    if (hasOwn(changes, 'captionBg')) {
+      const dim = { ...measure.dim };
+      const bg = normalizeDimensionCaptionColor(changes.captionBg);
+      if (bg) {
+        dim.bg = bg;
+        // A background picked while none showed comes in at full strength.
+        if (!DIMENSION_CAPTION_BG_OPACITIES.includes(Number(dim.bgOpacity))) dim.bgOpacity = 1;
+      } else {
+        delete dim.bg;
+        delete dim.bgOpacity;
+      }
+      measure.dim = dim;
+    }
+    if (hasOwn(changes, 'captionBgOpacity') && DIMENSION_CAPTION_BG_OPACITIES.includes(Number(changes.captionBgOpacity))) {
+      measure.dim = { ...measure.dim, bgOpacity: Number(changes.captionBgOpacity) };
     }
   }
   const keys = new Set([...Object.keys(before), ...Object.keys(measure)]);

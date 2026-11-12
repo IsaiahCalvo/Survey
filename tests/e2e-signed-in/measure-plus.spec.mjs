@@ -148,6 +148,34 @@ test('custom scale reads feet-inches, Units restamp the line, Set as default car
     await page.screenshot({ path: test.info().outputPath('measure-plus-above.png') });
     await card.locator('[data-measure-edit-place="inline"]').click();
     await expect(dimLine.locator('line')).toHaveCount(4);
+    // Caption style (Drawboard's Caption pop-over): size in pt, text colour,
+    // background and its opacity, each one undo step.
+    const caption = dimLine.locator('text[data-dimension-caption]');
+    const ptField = card.locator('[data-measure-edit-caption-pt]');
+    await expect(ptField).toHaveValue('9');
+    await ptField.fill('14');
+    await ptField.press('Enter');
+    await expect(caption).toHaveAttribute('font-size', '14');
+    await ptField.press('ArrowDown');
+    await expect(caption).toHaveAttribute('font-size', '13');
+    await card.locator('[data-measure-edit-caption-color="blue"]').click();
+    await expect(caption).toHaveAttribute('fill', '#0066D4');
+    await expect(card.locator('[data-measure-edit-caption-bg-opacity]')).toHaveCount(0);
+    await card.locator('[data-measure-edit-caption-bg="yellow"]').click();
+    const bgRect = dimLine.locator('rect[data-dimension-caption-bg]');
+    await expect(bgRect).toHaveAttribute('fill', '#FFF9C4');
+    await expect(bgRect).toHaveAttribute('fill-opacity', '1');
+    await card.locator('[data-measure-edit-caption-bg-opacity="0.5"]').click();
+    await expect(bgRect).toHaveAttribute('fill-opacity', '0.5');
+    await page.screenshot({ path: test.info().outputPath('measure-plus-caption-style.png') });
+    await page.keyboard.press('Control+z');
+    await expect(bgRect).toHaveAttribute('fill-opacity', '1');
+    await card.locator('[data-measure-edit-caption-bg="none"]').click();
+    await expect(bgRect).toHaveCount(0);
+    await card.locator('[data-measure-edit-caption-color="auto"]').click();
+    await ptField.fill('9');
+    await ptField.press('Enter');
+    await expect(caption).toHaveAttribute('font-size', '9');
     await page.keyboard.press('Escape');
     await expect(card).toBeHidden();
     // The leader pill on the line: dragging it past the clicked points flips

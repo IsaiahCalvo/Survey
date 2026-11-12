@@ -10,7 +10,7 @@
 import React from 'react';
 import { isLinkMark, linkMarkPaint } from './linkMarkPaint.js';
 import { dimensionMarkLayout } from './measure/dimensionLayout.js';
-import { DIMENSION_EXTENSION_PT, isDimensionMeasure } from './measure/dimensionLine.js';
+import { DIMENSION_CAPTION_BG_PAD_PT, DIMENSION_EXTENSION_PT, isDimensionMeasure } from './measure/dimensionLine.js';
 import { measureTextBounds, getLineEndpoints } from './svgBoundingBox';
 // Phase 14 CALL-10: renderCallout delegates to a pure data-spec builder in
 // calloutEditAdapter.js so the contract can be unit-tested without loading
@@ -944,7 +944,7 @@ export { dimensionMarkLayout };
 
 function renderDimensionLine(obj, spec, key, opacity, rotateTransform, dashArray) {
   const { stroke, strokeWidth } = spec.line;
-  const { label, lines, fontPt, lineHeight, geo } = dimensionMarkLayout(obj, spec.line);
+  const { label, lines, fontPt, lineHeight, captionWidth, captionHeight, geo, style } = dimensionMarkLayout(obj, spec.line);
   if (!geo) return <g key={key} />;
   const sw = strokeWidth || 1;
   return (
@@ -961,6 +961,18 @@ function renderDimensionLine(obj, spec, key, opacity, rotateTransform, dashArray
       {geo.chevrons.map((c, i) => (
         <polyline key={`c${i}`} points={pts(c)} fill="none" stroke={stroke} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" />
       ))}
+      {lines.length > 0 && style.bg && (
+        <rect
+          data-dimension-caption-bg={style.bg}
+          x={geo.caption.x - captionWidth / 2 - DIMENSION_CAPTION_BG_PAD_PT}
+          y={geo.caption.y - captionHeight / 2 - DIMENSION_CAPTION_BG_PAD_PT / 2}
+          width={captionWidth + DIMENSION_CAPTION_BG_PAD_PT * 2}
+          height={captionHeight + DIMENSION_CAPTION_BG_PAD_PT}
+          transform={`rotate(${geo.caption.angle} ${geo.caption.x} ${geo.caption.y})`}
+          fill={style.bg}
+          fillOpacity={style.bgOpacity}
+        />
+      )}
       {lines.length > 0 && (
         <text
           data-dimension-caption={label.text}
@@ -971,7 +983,7 @@ function renderDimensionLine(obj, spec, key, opacity, rotateTransform, dashArray
           dominantBaseline="central"
           fontSize={fontPt}
           fontFamily="Helvetica"
-          fill={stroke}
+          fill={style.color || stroke}
           style={{ userSelect: 'none' }}
         >
           {lines.length > 1
