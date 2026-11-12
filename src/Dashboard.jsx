@@ -12,6 +12,7 @@ import { loadPdfjs } from './utils/pdfWorkerConfig';
 import { resolveIncomingUpload, shouldOfferAlias, nextAvailableName } from './utils/incomingFileResolver';
 import DuplicateUploadModal from './components/DuplicateUploadModal';
 import UploadCheckModal from './components/UploadCheckModal.jsx';
+import UploadReviewModal from './components/UploadReviewModal.jsx';
 import Icon from './Icons';
 import DismissBarrier from './components/DismissBarrier';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -371,9 +372,57 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
   // [{ file, sheet }] (file renamed when the name changed), or null on Cancel.
   const [uploadCheck, setUploadCheck] = useState(null);
   const uploadCheckRef = useRef(null);
-  const askUploadCheck = async (files) => {
+  // Upload review (Nightly, flag 'upload-review'; UploadReviewModal.jsx): the
+  // same step as Drawboard's "Review & Publish" grid, with a title-block
+  // picture per sheet, discipline, bulk edits, Remove and "One document per
+  // page". It may hand back more entries than files (a split) or fewer (a
+  // removed row). `projectId` (null = no project) turns on the "already
+  // uploaded" revision warning; undefined skips it.
+  const uploadCheckOn = () => isFeatureOn('upload-check') || isFeatureOn('upload-review');
+  const readReviewRows = (session, targets) => import('./home/readUploadTitleBlock.js')
+    .then(({ readUploadPage }) => mapUploadsBounded(targets, async ({ key, fileIndex, page }) => {
+      let reading = null;
+      try {
+        const file = session.files[fileIndex];
+        if (!session.bytes.has(fileIndex)) session.bytes.set(fileIndex, readBlobAsArrayBuffer(file).then((buf) => new Uint8Array(buf)));
+        const bytes = await session.bytes.get(fileIndex);
+        reading = await readUploadPage({ bytes, fileName: file.name, loadPdfjs, page: page || 1 });
+      } catch (err) {
+        console.warn('[upload-review] could not read the title block:', err?.message || err);
+      }
+      if (uploadCheckRef.current !== session) return;
+      setUploadCheck((current) => (current ? {
+        ...current,
+        rows: current.rows.map((row) => (row.key === key ? session.review.withReviewReading(row, reading) : row)),
+      } : current));
+    }))
+    .catch(() => {
+      if (uploadCheckRef.current !== session) return;
+      const keys = new Set(targets.map((t) => t.key));
+      setUploadCheck((current) => (current ? { ...current, rows: current.rows.map((row) => (keys.has(row.key) && row.reading ? session.review.withReviewReading(row, null) : row)) } : current));
+    });
+  const askUploadCheck = async (files, { projectId, allowSplit = true, allowRemove = true } = {}) => {
     const kit = await import('./home/uploadCheck.js');
     uploadCheckRef.current?.resolve?.(null);
+    if (isFeatureOn('upload-review')) {
+      const review = await import('./home/uploadReview.js');
+      return new Promise((resolve) => {
+        const session = { files, resolve, kit, review, bytes: new Map() };
+        uploadCheckRef.current = session;
+        const rows = review.reviewRows(files);
+        setUploadCheck({ rows, review: true, existing: [], allowSplit, allowRemove });
+        readReviewRows(session, rows);
+        if (projectId !== undefined && user?.id) {
+          let q = supabase.from('documents').select('id, name, sheet_number, sheet_revision')
+            .eq('archived', false).is('superseded_by', null).not('sheet_number', 'is', null).limit(2000);
+          q = projectId ? q.eq('project_id', projectId) : q.is('project_id', null).eq('user_id', user.id);
+          q.then(({ data, error }) => {
+            if (error || uploadCheckRef.current !== session) return;
+            setUploadCheck((current) => (current ? { ...current, existing: data || [] } : current));
+          }, () => {});
+        }
+      });
+    }
     return new Promise((resolve) => {
       const session = { files, resolve, kit };
       uploadCheckRef.current = session;
@@ -396,12 +445,37 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       });
     });
   };
+  // "One document per page" on, or off again: new rows, each read anew.
+  const splitUploadFile = (fileIndex, join = false) => {
+    const session = uploadCheckRef.current;
+    if (!session?.review || !uploadCheck) return;
+    const rows = join ? session.review.joinRows(uploadCheck.rows, fileIndex) : session.review.splitRows(uploadCheck.rows, fileIndex);
+    setUploadCheck((current) => (current ? { ...current, rows } : current));
+    readReviewRows(session, rows.filter((row) => row.fileIndex === fileIndex && row.reading));
+  };
   const settleUploadCheck = (rows) => {
     const session = uploadCheckRef.current;
     uploadCheckRef.current = null;
     setUploadCheck(null);
     if (!session) return;
     if (!rows) { session.resolve(null); return; }
+    if (session.review) {
+      // A split page becomes its own PDF; a removed row uploads nothing.
+      const picked = session.review.reviewResult(rows);
+      session.resolve(Promise.all(picked.map(async (entry, index) => {
+        const file = session.files[entry.fileIndex];
+        if (entry.page) {
+          const { pdfPageFile } = await import('./home/splitPdfPages.js');
+          return { file: await pdfPageFile(file, entry.page, entry.fileName || file.name), sheet: entry.sheet };
+        }
+        return { file: session.kit.renamedFile(file, rows[index]), sheet: entry.sheet };
+      })).catch((err) => {
+        console.error('[upload-review] could not split the PDF:', err);
+        showToast('Survey could not split that PDF into pages. Nothing was uploaded.', 'error');
+        return null;
+      }));
+      return;
+    }
     session.resolve(session.files.map((file, index) => ({
       file: session.kit.renamedFile(file, rows[index]),
       sheet: session.kit.uploadSheet(rows[index]),
@@ -431,7 +505,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         const { readUploadSheet } = await import('./home/readUploadTitleBlock.js');
         sheet = await readUploadSheet({ bytes, fileName, loadPdfjs });
       }
-      if (!sheet?.sheetNumber) return { proceed: true, sheet: sheet?.revision ? sheet : null };
+      if (!sheet?.sheetNumber) return { proceed: true, sheet: sheet?.revision || sheet?.discipline ? sheet : null };
       const query = (columns, sheetNumber = null) => {
         let q = supabase
           .from('documents')
@@ -476,6 +550,11 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
   // Save the sheet reading on the new row (Nightly). Best effort: an older
   // server without the columns just answers an error.
   const saveSheetReading = (documentId, sheet) => {
+    // Upload review: a discipline picked there (sheet register's column).
+    if (documentId && sheet?.discipline) {
+      supabase.rpc('set_document_discipline', { p_document_id: documentId, p_discipline: sheet.discipline })
+        .then(({ error }) => { if (error) console.warn('[upload-review] could not save the discipline:', error.message); }, () => {});
+    }
     // A revision typed without a sheet number is saved too (upload check).
     if (!documentId || !(sheet?.sheetNumber || sheet?.revision)) return;
     supabase
@@ -798,9 +877,10 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
 
         // Upload check (Nightly): fix the name, sheet number and revision first.
         let checkedSheet = null;
-        if (isFeatureOn('upload-check')) {
-          const checked = await askUploadCheck([file]);
-          if (!checked) return;
+        if (uploadCheckOn()) {
+          // One picked file here (its path is kept): no split, no remove.
+          const checked = await askUploadCheck([file], { allowSplit: false, allowRemove: false });
+          if (!checked?.length) return;
           file = checked[0].file;
           checkedSheet = checked[0].sheet;
           if (user?.id) file.user_id = user.id;
@@ -1195,11 +1275,15 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         projectId = selectedProjectId;
       }
 
-      if (isFeatureOn('upload-check')) {
+      if (uploadCheckOn()) {
         event.target.value = '';
-        const checked = await askUploadCheck([file]);
-        if (!checked) return;
-        await uploadBrowserPdf(checked[0].file, { projectId, openAfterUpload, checkedSheet: checked[0].sheet });
+        const checked = await askUploadCheck([file], { projectId });
+        if (!checked?.length) return;
+        // Upload review's "One document per page" can turn one file into many;
+        // only the first opens.
+        for (const [index, entry] of checked.entries()) {
+          await uploadBrowserPdf(entry.file, { projectId, openAfterUpload: openAfterUpload && index === 0, checkedSheet: entry.sheet });
+        }
         return;
       }
       await uploadBrowserPdf(file, { projectId, openAfterUpload });
@@ -1251,19 +1335,22 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     let checked = null;
     // A blank document made with New skips the upload check and the sheet
     // ask: it is never a new revision of a sheet (R4-C S1).
-    if (isFeatureOn('upload-check') && !newDocument) {
-      checked = await askUploadCheck(pdfs.map(asPdfFile));
+    if (uploadCheckOn() && !newDocument) {
+      checked = await askUploadCheck(pdfs.map(asPdfFile), { projectId: targetProjectId });
       if (!checked) return { added: 0, skipped: rejected.length + pdfs.length };
     }
+    // Upload review may split a file into pages or drop rows: upload what it
+    // handed back, in its order.
+    const queue = checked || pdfs.map((pdf) => ({ file: asPdfFile(pdf), sheet: null }));
     let added = 0;
     // Shows 'Uploading…' on the Upload button for the whole batch.
     setActiveUploads((count) => count + 1);
     try {
-      for (const [index, pdf] of pdfs.entries()) {
-        const status = await uploadBrowserPdf(checked ? checked[index].file : asPdfFile(pdf), {
+      for (const entry of queue) {
+        const status = await uploadBrowserPdf(entry.file, {
           projectId: targetProjectId,
           openAfterUpload: open,
-          checkedSheet: checked ? checked[index].sheet : null,
+          checkedSheet: entry.sheet,
           // A blank document made with New is never a new revision of a
           // sheet, and New already checked its name (R4-C S1).
           askDuplicates: !newDocument,
@@ -3093,8 +3180,21 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         onCancel={handleCancelCreateProject}
         onConfirm={handleConfirmCreateProject}
       />
+      {uploadCheck?.review ? (
+        <UploadReviewModal
+          rows={uploadCheck.rows}
+          existing={uploadCheck.existing}
+          allowSplit={uploadCheck.allowSplit}
+          allowRemove={uploadCheck.allowRemove}
+          onChange={(rows) => setUploadCheck((current) => (current ? { ...current, rows } : current))}
+          onSplit={(fileIndex) => splitUploadFile(fileIndex)}
+          onJoin={(fileIndex) => splitUploadFile(fileIndex, true)}
+          onUpload={() => settleUploadCheck(uploadCheck.rows)}
+          onCancel={() => settleUploadCheck(null)}
+        />
+      ) : null}
       <UploadCheckModal
-        rows={uploadCheck?.rows || null}
+        rows={uploadCheck && !uploadCheck.review ? uploadCheck.rows : null}
         onChange={(rows) => setUploadCheck((current) => (current ? { rows } : current))}
         onUpload={() => settleUploadCheck(uploadCheck?.rows || null)}
         onCancel={() => settleUploadCheck(null)}
