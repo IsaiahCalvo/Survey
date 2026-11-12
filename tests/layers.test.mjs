@@ -224,3 +224,28 @@ test('a layer name already in use counts up instead of repeating', () => {
   state = renameLayer(state, 'l1', 'Electrical');
   assert.equal(state.layers.find((l) => l.id === 'l1').name, 'Electrical');
 });
+
+// The page layer stamps a fresh shape with the active layer before the viewer
+// sees it, so the hidden-layer warning must ask "is any mark new", not "did
+// the stamp change anything" (bundle 2 break test, 2026-11-12: a rectangle
+// drawn on a hidden layer vanished with no warning).
+test('hasNewObjects counts a new mark that already names a layer', async () => {
+  const { hasNewObjects, hasNewMarksByPage } = await import('../src/utils/layers.js');
+  const before = [{ id: 'a' }, { data: { id: 'b' } }];
+  assert.equal(hasNewObjects(before, [...before, { id: 'c', layerId: 'layer-e' }]), true);
+  assert.equal(hasNewObjects(before, [...before, { id: 'c' }]), true);
+  assert.equal(hasNewObjects(before, [{ id: 'a', left: 9 }, { data: { id: 'b' } }]), false, 'an edit is not new');
+  assert.equal(hasNewObjects(before, [{ id: 'a' }]), false, 'a delete is not new');
+  assert.equal(hasNewObjects(null, []), false);
+  const byPage = { 1: { objects: [{ id: 'a' }] }, 2: { objects: [] } };
+  assert.equal(hasNewMarksByPage(byPage, { 2: { objects: [{ id: 'a' }] } }), false, 'a mark moved between pages is not new');
+  assert.equal(hasNewMarksByPage(byPage, { 2: { objects: [{ id: 'h', layerId: 'layer-e' }] } }), true);
+});
+
+test('the viewer asks hasNewObjects, not the stamp, whether to warn about a hidden layer', async () => {
+  const { readFileSync } = await import('node:fs');
+  const viewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
+  assert.match(viewer, /warnIfDrawnOnHiddenLayerRef\.current\(\(\) => hasNewObjects\(/);
+  assert.match(viewer, /warnIfDrawnOnHiddenLayerRef\.current\(\(\) => hasNewMarksByPage\(/);
+  assert.doesNotMatch(viewer, /'probe'\)/);
+});

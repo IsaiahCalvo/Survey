@@ -165,6 +165,34 @@ export function stampNewObjectsOnLayer(previousObjects, nextObjects, activeLayer
   return changed ? out : nextObjects;
 }
 
+// True when `nextObjects` holds a mark whose id was not in `previousObjects`,
+// whether or not it already names a layer: the page layer stamps a fresh
+// shape with the active layer before the viewer sees it, so "did the stamp
+// change anything" missed it and the hidden-layer warning never showed
+// (bundle 2 break test, 2026-11-12).
+export function hasNewObjects(previousObjects, nextObjects) {
+  if (!Array.isArray(nextObjects) || nextObjects.length === 0) return false;
+  const before = new Set();
+  for (const obj of Array.isArray(previousObjects) ? previousObjects : []) {
+    const key = objectKey(obj);
+    if (key != null) before.add(String(key));
+  }
+  return nextObjects.some((obj) => {
+    const key = obj && typeof obj === 'object' ? objectKey(obj) : null;
+    return key != null && !before.has(String(key));
+  });
+}
+
+// Page-map form of hasNewObjects. A mark moved from another page is not new.
+export function hasNewMarksByPage(previousByPage, nextByPage) {
+  if (!nextByPage || typeof nextByPage !== 'object') return false;
+  const before = [];
+  for (const data of Object.values(previousByPage || {})) {
+    if (Array.isArray(data?.objects)) before.push(...data.objects);
+  }
+  return Object.values(nextByPage).some((page) => hasNewObjects(before, page?.objects));
+}
+
 // Page-map form of stampNewObjectsOnLayer, for multi-page commits (text
 // highlight/underline/strikeout transactions). Returns nextByPage unchanged
 // when nothing new needed a layer.
