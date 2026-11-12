@@ -407,12 +407,17 @@ export async function planSheetRound({
   // from version history, a column cleared by mistake): held until an editor
   // says which side is right, so field work is never wiped in one round.
   // 'allow' = clear them in the app too; 'restore' = write the app's back.
-  const eraseMode = state.eraseChoice === 'sheet' ? 'allow'
-    : state.eraseChoice === 'app' ? 'restore'
-      : (holdErase || state.heldErase) ? 'hold' : 'count';
+  // An editor's choice answers the held erase on the tabs it was counted on
+  // (all of them, for a hold saved before holds named their tabs); blanks on
+  // any other tab are held as usual, never answered by it.
+  const choiceMode = state.eraseChoice === 'sheet' ? 'allow' : state.eraseChoice === 'app' ? 'restore' : null;
+  const heldOn = Array.isArray(state.heldErase?.scopes) ? state.heldErase.scopes : null;
+  const otherMode = (holdErase || state.heldErase) ? 'hold' : 'count';
+  const eraseModeOf = (scopeId) => (choiceMode && (heldOn === null || heldOn.includes(scopeId)) ? choiceMode : otherMode);
   let erasing = 0;
-  const erasingItems = new Set();
-  const erasingScopes = new Set();
+  let held = 0;
+  const heldItems = new Set();
+  const heldScopes = new Set();
   const next = {
     sheetIds: { ...(state.sheetIds || {}) },
     conflicts: { ...(state.conflicts || {}) },
@@ -901,7 +906,7 @@ export async function planSheetRound({
         }
       }
       // The sheet blanked a filled answer the app has not changed since both
-      // last agreed: counted, and held or put back (see eraseMode).
+      // last agreed: counted, and held or put back (see eraseModeOf).
       const heldKeys = new Set();
       if (base) {
         for (const key of keys) {
@@ -910,10 +915,14 @@ export async function planSheetRound({
           if (!isBlankCell(row[colOfKey.get(key)]) || isBlankCell(cellValueFor(scope, key, appRec))) continue;
           if (getFp(appFps, key) !== getFp(base, key) || getFp(sheetSide, key) === getFp(base, key)) continue;
           erasing += 1;
-          erasingItems.add(markerId);
-          erasingScopes.add(scope.scopeId);
+          const eraseMode = eraseModeOf(scope.scopeId);
           if (eraseMode === 'hold' || eraseMode === 'restore') setFp(sheetSide, key, getFp(base, key));
-          if (eraseMode === 'hold') heldKeys.add(key);
+          if (eraseMode === 'hold') {
+            heldKeys.add(key);
+            held += 1;
+            heldItems.add(markerId);
+            heldScopes.add(scope.scopeId);
+          }
         }
       }
       // A PM's new row saved late over the row Survey had just appended for
@@ -1111,18 +1120,18 @@ export async function planSheetRound({
   // edits once it's unlocked if fewer than BIG_ERASE were left. A hold saved
   // before it named its tabs counts as on every tab.
   const lockedNow = new Set(next.lockedTabs);
-  const heldOn = Array.isArray(state.heldErase?.scopes) ? state.heldErase.scopes : null;
   const waitsOnLocked = Boolean(state.heldErase) && lockedNow.size > 0
     && (heldOn === null || heldOn.some((id) => lockedNow.has(id)));
   if (waitsOnLocked && state.eraseChoice) next.eraseChoice = state.eraseChoice;
   else delete next.eraseChoice; // used once
+  // Only the locked tabs of the hold keep waiting; its open tabs were done.
   const lockedPart = waitsOnLocked ? (heldOn === null ? [...lockedNow] : heldOn.filter((id) => lockedNow.has(id))) : [];
   const was = waitsOnLocked ? state.heldErase : {};
-  if ((eraseMode === 'hold' && erasing) || waitsOnLocked) {
+  if (held || waitsOnLocked) {
     next.heldErase = {
-      count: Math.max(eraseMode === 'hold' ? erasing : 0, waitsOnLocked ? was.count || 0 : 0),
-      items: Math.max(eraseMode === 'hold' ? erasingItems.size : 0, waitsOnLocked ? was.items || 0 : 0),
-      scopes: [...new Set([...(eraseMode === 'hold' ? erasingScopes : []), ...lockedPart])],
+      count: Math.max(held, was.count || 0),
+      items: Math.max(heldItems.size, was.items || 0),
+      scopes: [...new Set([...heldScopes, ...lockedPart])],
       at: state.heldErase?.at || nowIso,
     };
   } else {
