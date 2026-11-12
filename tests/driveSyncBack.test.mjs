@@ -282,7 +282,7 @@ test('a late confirm goes out on its own a minute later, and survives a reload',
     assert.equal(confirms(), 1, 'the confirm went out with no new edit');
     const sent = server.calls.find((c) => c.action === 'drivePushed').body;
     assert.equal(sent.late, true);
-    assert.equal(sent.etag, '"{item},2"', 'names the version Survey wrote');
+    assert.equal(sent.eTag, '"{item},2"', 'names the version Survey wrote');
     assert.equal(sent.pushedAt, new Date(uploadStartedAt).toISOString(), 'stamped with when the push started');
     assert.equal(pushes(), 1, 'no second upload');
     assert.equal(window.localStorage.getItem('survey:drive-unconfirmed:doc-late'), null);

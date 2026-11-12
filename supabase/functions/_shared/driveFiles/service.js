@@ -476,7 +476,7 @@ async function pushed(ctx) {
   // the eTag its upload produced. If the drive has moved on since, someone
   // changed the file after Survey's write: keep the old eTag so the next push
   // raises the conflict dialog instead of overwriting their change.
-  const uploadedEtag = ctx.body.late && typeof ctx.body.etag === 'string' ? ctx.body.etag : null;
+  const uploadedEtag = ctx.body.late && typeof ctx.body.eTag === 'string' ? ctx.body.eTag : null;
   const changedSince = Boolean(uploadedEtag && it?.eTag && it.eTag !== uploadedEtag);
   // When the push started, not when we heard: other screens compare this with
   // their own unsaved change, and a late confirm must not cover later edits.

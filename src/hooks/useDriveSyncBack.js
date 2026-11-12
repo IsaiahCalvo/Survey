@@ -208,7 +208,7 @@ export function useDriveSyncBack({
         documentId,
         sha,
         pushedAt: new Date(startedAt).toISOString(),
-        ...(uploadedEtag ? { etag: uploadedEtag } : {}),
+        ...(uploadedEtag ? { eTag: uploadedEtag } : {}),
         ...(force ? { force: true } : {}),
       };
       let done = await call('drivePushed', pushedBody);
