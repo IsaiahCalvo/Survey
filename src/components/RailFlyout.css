@@ -74,9 +74,14 @@
   white-space: nowrap;
 }
 
-/* The current choice: gold ink and its tick (design guide 1: gold means
-   chosen, with no box behind it). */
+/* The current choice: white 600 words, and its tick in the accent (design
+   guide 1, revision 5: colour the glyph, never the words). */
 .rail-flyout__row[aria-checked='true'] {
+  color: var(--text-1);
+  font-weight: 600;
+}
+
+.rail-flyout__row[aria-checked='true'] .rail-flyout__tick {
   color: var(--accent);
 }
 

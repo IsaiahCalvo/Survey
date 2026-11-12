@@ -8,7 +8,7 @@ import { test, expect } from '@playwright/test';
 // - with a shape tool armed a click picks an area and the tool stays armed.
 test.use({ video: 'off' });
 
-const GOLD = 'rgb(216, 168, 78)';
+const GOLD = 'rgb(106, 166, 246)';
 const button = (page, name) => page.getByRole('button', { name, exact: true }).filter({ visible: true }).first();
 const storedPage = (page) => page.evaluate(() => {
   const key = Object.keys(localStorage).find((value) => value.startsWith('pdfSidebar_order-pages.pdf'));

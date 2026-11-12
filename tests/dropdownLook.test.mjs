@@ -59,7 +59,7 @@ test('a value list unrolls under its field and its chevron turns over', () => {
   assert.match(css, /\.annotation-dropdown__trigger\[data-state='open'\] \.annotation-dropdown__chevron \{\s*rotate: 180deg;/);
 });
 
-test('dialog choice rows are the one ButtonGroup, chosen = gold ink only', () => {
+test('dialog choice rows are the one ButtonGroup, chosen = white words on the raised surface', () => {
   for (const path of ['src/components/PdfToolsDialog.jsx', 'src/components/ExportPdfDialog.jsx',
     'src/components/PageGridSettings.jsx', 'src/components/PrintPanel.jsx']) {
     assert.match(read(path), /<ButtonGroup\b/, `${path} should use ButtonGroup`);
@@ -69,8 +69,11 @@ test('dialog choice rows are the one ButtonGroup, chosen = gold ink only', () =>
   }
   const css = read('src/components/ButtonGroup.css');
   const chosen = css.match(/\[aria-checked='true'\] \{[^}]*\}/)[0];
-  assert.match(chosen, /color: var\(--accent\);/);
-  assert.doesNotMatch(chosen, /background|border|box-shadow/);
+  // Owner 2026-11-12 (revision 5): chosen words stay white on --surface-3;
+  // never accent words, never an accent border or ring.
+  assert.match(chosen, /color: var\(--text-1\);/);
+  assert.match(chosen, /background: var\(--surface-3\);/);
+  assert.doesNotMatch(chosen, /--accent|border|box-shadow/);
   assert.match(read('src/components/ButtonGroup.jsx'), /onKeyDown=\{moveGroupFocus\}/);
 });
 

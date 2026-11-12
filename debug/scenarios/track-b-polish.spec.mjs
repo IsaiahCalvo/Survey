@@ -176,7 +176,7 @@ for (const density of [1,2]) {
   const selected=page.getByRole('menuitemradio',{name:/Rectangle Select/});
   const other=page.getByRole('menuitemradio',{name:/Lasso Select/}); await other.hover();
   await expect(selected).toHaveCSS('background-color','rgb(42, 34, 24)');
-  await expect(selected).toHaveCSS('color','rgb(216, 168, 78)');
+  await expect(selected).toHaveCSS('color','rgb(106, 166, 246)');
   await expect(selected).toHaveCSS('font-weight','600');
   await expect(other).toHaveCSS('background-color','rgb(31, 36, 48)');
   await expect(selected.locator('[data-select-mode-check] svg')).toHaveCount(1); // r2: stroked check icon, same as the phone sheet

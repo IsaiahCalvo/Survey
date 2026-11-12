@@ -243,12 +243,40 @@ export function resolveCounterSeriesPaint(
 }
 
 /**
- * Picks the next series color by finding the largest hue gap on the
- * 0-360 ring between existing series hues, then returning the midpoint.
- * Saturation/lightness are fixed at S=70%, L=50% per design.
+ * The colours a new count may take: the shared colour picker's own cells
+ * (CompactColorPicker PRESET_COLORS without black and white, then the grid's
+ * 56% lightness row), so a new count's colour always shows CHECKED in its
+ * picker (owner 2026-11-12: "the pin doesn't have the selected color actually
+ * shown with the checkboxes"). tests/counterNumbering.test.mjs pins them to
+ * the picker's cells.
+ */
+export const COUNTER_SERIES_PALETTE = Object.freeze([
+  '#ff0000', '#0000ff', '#f97316', '#22c55e', '#0ea5e9', '#a855f7',
+  '#ee2f2f', '#eed22f', '#65ee2f', '#2fee9c', '#2f9cee', '#652fee', '#ee2fd2',
+]);
+
+const normaliseHex = (color) => {
+  if (typeof color !== 'string') return null;
+  const value = color.trim().toLowerCase();
+  if (/^#[0-9a-f]{6}$/.test(value)) return value;
+  if (/^#[0-9a-f]{3}$/.test(value)) return `#${value.slice(1).split('').map((c) => c + c).join('')}`;
+  const rgb = value.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+  if (!rgb) return null;
+  return `#${rgb.slice(1, 4).map((n) => Math.max(0, Math.min(255, Number(n))).toString(16).padStart(2, '0')).join('')}`;
+};
+
+const hueDistance = (a, b) => {
+  const d = Math.abs(a - b) % 360;
+  return d > 180 ? 360 - d : d;
+};
+
+/**
+ * Picks the next series color: the hue in the middle of the largest gap on
+ * the 0-360 ring between existing series hues, snapped to the nearest palette
+ * colour no count uses yet (any palette colour once all are used).
  *
  * existingColors: array of CSS hex/rgb(a) strings.
- * Returns: a hex string for the next color.
+ * Returns: a lowercase #rrggbb from COUNTER_SERIES_PALETTE.
  */
 export function pickNextSeriesColor(existingColors) {
   const hues = (existingColors || [])
@@ -256,25 +284,35 @@ export function pickNextSeriesColor(existingColors) {
     .filter((h) => h !== null)
     .sort((a, b) => a - b);
 
-  if (hues.length === 0) {
-    // First series — start at red (matches the previous default fill).
-    return hslToHex(0, 70, 50);
-  }
-
-  // Find the largest gap between consecutive hues on the ring.
-  let bestGap = -1;
-  let bestMid = 0;
-  for (let i = 0; i < hues.length; i += 1) {
-    const a = hues[i];
-    const b = i === hues.length - 1 ? hues[0] + 360 : hues[i + 1];
-    const gap = b - a;
-    if (gap > bestGap) {
-      bestGap = gap;
-      bestMid = (a + gap / 2) % 360;
+  // First series starts at red (matches the previous default fill).
+  let target = 0;
+  if (hues.length > 0) {
+    // Find the largest gap between consecutive hues on the ring.
+    let bestGap = -1;
+    for (let i = 0; i < hues.length; i += 1) {
+      const a = hues[i];
+      const b = i === hues.length - 1 ? hues[0] + 360 : hues[i + 1];
+      const gap = b - a;
+      if (gap > bestGap) {
+        bestGap = gap;
+        target = (a + gap / 2) % 360;
+      }
     }
   }
 
-  return hslToHex(bestMid, 70, 50);
+  const used = new Set((existingColors || []).map(normaliseHex).filter(Boolean));
+  const free = COUNTER_SERIES_PALETTE.filter((hex) => !used.has(hex));
+  const pool = free.length ? free : COUNTER_SERIES_PALETTE;
+  let best = pool[0];
+  let bestDistance = Infinity;
+  for (const hex of pool) {
+    const distance = hueDistance(colorToHue(hex), target);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = hex;
+    }
+  }
+  return best;
 }
 
 // ---------- color helpers ----------
@@ -320,24 +358,3 @@ function colorToHue(color) {
   return h;
 }
 
-function hslToHex(h, s, l) {
-  const sN = s / 100;
-  const lN = l / 100;
-  const c = (1 - Math.abs(2 * lN - 1)) * sN;
-  const hh = ((h % 360) + 360) % 360;
-  const x = c * (1 - Math.abs(((hh / 60) % 2) - 1));
-  const m = lN - c / 2;
-  let rp;
-  let gp;
-  let bp;
-  if (hh < 60) [rp, gp, bp] = [c, x, 0];
-  else if (hh < 120) [rp, gp, bp] = [x, c, 0];
-  else if (hh < 180) [rp, gp, bp] = [0, c, x];
-  else if (hh < 240) [rp, gp, bp] = [0, x, c];
-  else if (hh < 300) [rp, gp, bp] = [x, 0, c];
-  else [rp, gp, bp] = [c, 0, x];
-  const r = Math.round((rp + m) * 255);
-  const g = Math.round((gp + m) * 255);
-  const b = Math.round((bp + m) * 255);
-  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
-}

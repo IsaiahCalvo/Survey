@@ -30,7 +30,7 @@
  */
 import { useState, useEffect, useMemo, useRef } from 'react';
 import DismissBarrier from './DismissBarrier';
-import { loadRecentColors, rememberRecentColor } from '../utils/recentColors';
+import { loadRecentColors, rememberRecentColor, normaliseRecentColor, RECENT_COLORS_MAX } from '../utils/recentColors';
 import { swatchCheckInk, swatchRingColour, needsSwatchHairline, normaliseQuickColour } from '../utils/quickStylePresets';
 import { useTooltip } from './Tooltip';
 
@@ -324,6 +324,23 @@ const CompactColorPicker = ({
         setRecentColors(rememberRecentColor(hex));
     };
     const grid = useMemo(() => buildGrid(columns), [columns]);
+    // The colour the picker opened on, when no cell shows it (a count's own
+    // red, an imported mark's colour): it leads the Recent row, so the chosen
+    // colour always has a checked swatch (owner 2026-11-12: "the pin doesn't
+    // have the selected colour actually shown with the checkboxes, but the
+    // number does"). Frozen at open, so a slider drag never makes the row
+    // appear or jump.
+    const [openingCustom] = useState(() => {
+        const hex = normaliseRecentColor(color);
+        if (!hex || !(opacity > 0)) return null;
+        if (presets.some((p) => sameColour(p, hex))) return null;
+        if (buildGrid(columns).some((row) => row.some((cell) => sameColour(cell, hex)))) return null;
+        return hex;
+    });
+    const shownRecents = useMemo(() => {
+        if (!openingCustom || recentColors.some((c) => sameColour(c, openingCustom))) return recentColors;
+        return [openingCustom, ...recentColors].slice(0, RECENT_COLORS_MAX);
+    }, [openingCustom, recentColors]);
     // RULED 2026-09-22 (owner): switching grid <-> spectrum must not change the
     // sheet's height or move the Opacity row and the bottom row. The spectrum
     // therefore takes EXACTLY the grid's box: its area is the grid's height
@@ -996,7 +1013,7 @@ const CompactColorPicker = ({
     };
 
     const presetsRow = (
-        <div style={isDesktop
+        <div data-picker-presets="true" style={isDesktop
             /* Desktop: the presets sit on the grid's own eight columns, one
                disc centred over each column, so the two blocks line up. The
                phone (dense or not) spreads the same eight edge to edge - its
@@ -1390,7 +1407,7 @@ const CompactColorPicker = ({
 
             {presetsRow}
 
-            {recentColors.length > 0 && (
+            {shownRecents.length > 0 && (
                 <div data-recent-colors="true" style={{ display: 'grid', gap: isDesktop ? '3px' : '6px', ...lockedStyle }}>
                     <div style={{ color: 'var(--text-3)', font: `${isDesktop ? 400 : 600} ${(dense || isDesktop) ? '10.5px' : '11px'}/1 ${FONT}` }}>Recent</div>
                     <div style={isDesktop
@@ -1400,11 +1417,15 @@ const CompactColorPicker = ({
                            a preset disc (a packed 8px-gap row drifted left of
                            them, by ~70px at 390 wide). */
                         : { display: 'grid', gridTemplateColumns: `repeat(${presets.length}, max-content)`, justifyContent: 'space-between', alignItems: 'center' }}>
-                        {recentColors.map((c) => renderSwatch(c))}
+                        {shownRecents.map((c) => renderSwatch(c))}
                     </div>
                 </div>
             )}
 
+            {/* Hidden by default; a host (the counts list) can show it as a
+                line between the disc rows and the colour area. Its own
+                element, so it holds for the grid and the spectrum alike. */}
+            <div data-picker-area-divider="true" aria-hidden="true" style={{ display: 'none' }} />
             {(mode === 'grid' || locked) ? gridView : gradientView}
 
             {/* The labelled opacity row sits in the same place in both views

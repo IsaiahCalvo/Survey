@@ -54,7 +54,7 @@
   cursor: pointer;
 }
 .answer-set-option:hover { background: var(--surface-3); }
-.answer-set-option.is-current { border-color: var(--accent, var(--text-2)); background: var(--surface-3); }
+.answer-set-option.is-current { border-color: var(--border-strong); background: var(--surface-3); }
 .answer-set-option .answer-chips { flex: 1; }
 .answer-set-option__check {
   flex: none;

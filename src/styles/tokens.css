@@ -85,7 +85,8 @@
      rest      the control's own surface
      hover     --hover          (desktop pointer only)
      pressed   --pressed        (desktop :active AND phone touch feedback)
-     selected  --surface-3 plus a --accent edge, or a gold GLYPH with no fill
+     selected  --surface-3 with --text-1 words, or an accent GLYPH with no fill
+               (revision 5: never accent words, never an accent edge)
      disabled  --disabled-ink on icon and word (states.css section 6), plus
                --disabled-fill only on a variant that HAS a fill; never an
                element opacity, no hover, no press, cursor not-allowed
@@ -121,6 +122,22 @@
    warning 5.96. --text-disabled is 2.88 on purpose. Borders: --border 1.86
    (decorative, under 3:1 on purpose) and --border-strong 3.44 (identifying;
    3.03 on a surface-2 card, which is the tightest surface it has to clear).
+
+   REVISION 5 (2026-11-12) - the accent is BLUE, and a chosen thing never
+   gets coloured words or a coloured frame. The owner: "throughout the app, I
+   kind of hate when things get that gold bar or border around them ... the
+   text turns gold. I just hate that." The rule is now:
+     - A chosen ICON (tool, toggle, icon button) takes --accent ink. Unchanged
+       except the hue.
+     - Chosen WORDS (a list row, a menu value, a tab, a chip, a segment) stay
+       --text-1; the item steps up to --surface-3 and the words go 600. Words
+       never turn the accent colour to say "chosen".
+     - No accent FRAME round a chosen thing: no accent border, ring or
+       left-edge bar. A colour swatch rings in its own colour (unchanged). A
+       tab may keep its one-sided underline.
+     - Accent FILLS stay where a fill is the control: primary buttons, an ON
+       switch, a ticked checkbox, a radio dot, a slider's filled part.
+   Guard: tests/selectedStateGoldInkOnly.test.mjs.
    ========================================================================== */
 
 :root {
@@ -206,17 +223,25 @@
   --link: var(--text-2);
   --link-hover: var(--text-1);
 
-  /* --- Gold: the one accent -------------------------------------------- */
-  --accent-light: #edc26d;    /* hover on a gold control */
-  --accent: #d8a84e;          /* base */
-  --accent-press: #b6904a;    /* pressed, and a disabled gold control.
-                                 NEVER a text colour: 4.45 on surface-3. */
-  --accent-text: #15110a;     /* the label ON a gold fill · 8.63 */
-  /* The two alpha golds. Small gold controls only — see the comment above.
+  /* --- Blue: the one accent (revision 5, owner 2026-11-12) ------------- */
+  /* Was gold (#d8a84e / #edc26d / #b6904a). The owner: "I hate when things
+     get that gold bar or border around them ... the text turns gold ... I
+     know gold is our accent, but I like something else." Blue matches the
+     selection handles (#4a90e2) and the Drawboard look the app follows, so
+     the one accent and the one selection colour are now the same family.
+     Gold stays the BRAND (logo, favicon, website); it is not app chrome. */
+  --accent-light: #8dbcf9;    /* hover on an accent control · 7.81 on surface-2 */
+  --accent: #6aa6f6;          /* base · 6.96 surface-1, 6.14 surface-2, 5.29 surface-3 */
+  --accent-press: #4b8ae8;    /* pressed, and a disabled accent control.
+                                 NEVER a text colour: 3.84 on surface-3. */
+  --accent-text: #0a1424;     /* the label ON an accent fill · 7.38 */
+  /* The two alpha blues. Small accent controls only - see the comment above.
      -soft is the resting tint, -soft-strong its hover/pressed step. Nothing
-     else may hand-type an rgba of the gold; ten rules used to. */
-  --accent-soft: rgba(216, 168, 78, 0.14);
-  --accent-soft-strong: rgba(216, 168, 78, 0.20);
+     else may hand-type an rgba of the accent. */
+  --accent-soft: rgba(106, 166, 246, 0.14);
+  --accent-soft-strong: rgba(106, 166, 246, 0.20);
+  /* A spinner's faint track ON an accent fill (the label colour at 20%). */
+  --accent-text-track: rgba(10, 20, 36, 0.22);
 
   /* --- Feedback -------------------------------------------------------- */
   /* Three reds, one job each, so no component picks its own:

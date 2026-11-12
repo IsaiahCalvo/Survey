@@ -61,10 +61,14 @@ test('annotation size presets render as an accessible vertical list with row pre
   // so the row only has to agree with it, and a filled row plus a gold edge made
   // the menu louder than the 36px bar it hangs off. Hover remains a surface step,
   // so the current row still reads differently from the row under the pointer.
+  // DELIBERATE ASSERTION CHANGE (2026-11-12, owner: "the text turns gold. I
+  // just hate that"): the current row's words stay white (600) on the raised
+  // surface; still no tick and no accent edge, and never accent words.
   assert.match(
     styleSource,
-    /button\.is-active\s*\{[^}]*color:\s*var\(--accent\)[^}]*background:\s*transparent[^}]*box-shadow:\s*none/s,
+    /button\.is-active\s*\{[^}]*color:\s*var\(--text-1\)[^}]*background:\s*var\(--surface-3\)[^}]*box-shadow:\s*none/s,
   );
+  assert.doesNotMatch(styleSource, /button\.is-active\s*\{[^}]*color:\s*var\(--accent\)/s);
 });
 
 test('every counter preset through 64 receives a distinct preview thickness', () => {

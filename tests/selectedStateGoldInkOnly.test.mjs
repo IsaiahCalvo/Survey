@@ -120,12 +120,11 @@ const EXCEPTIONS = [
   },
   {
     match: /\.survey-marker-category-card\.is-active|\.templates-mobile-module-group\.active|\.templates-mobile-(module-strip|color-tabs|match)|\.projects-mobile-(folder-row|folder-section|folder-grid|tile-grid|project-strip|team-board|rail-list|compact-list)|\.mobile-page-card\.(is-active|is-selected)|\.pp-thumb-cell\.is-current/,
-    why: 'ROWS, CARDS and THUMBNAILS, not buttons. The approved revision-2 '
-      + 'palette (src/styles/tokens.css, owner approved the same day) builds a '
-      + 'selected row as a surface step PLUS a gold edge, and the desktop rail '
-      + 'and the home sidebar already do exactly that. Matching them is the '
-      + 'point of the ruling, not a departure from it. Each of these paints the '
-      + 'edge on a border the element already carries at rest, so nothing moves.',
+    why: 'ROWS, CARDS and THUMBNAILS, not buttons. Revision 2 built a '
+      + 'selected row as a surface step plus an accent edge. Revision 5 (owner '
+      + '2026-11-12) dropped the edge: these rows are a surface step with a '
+      + 'neutral --border-strong frame now, and test 4 below bans the side '
+      + 'edges outright. Kept so a checkbox fill inside them is not flagged.',
   },
 ];
 
@@ -368,4 +367,90 @@ test('a chosen state that is gold stays gold under the pointer', () => {
     }
   }
   assert.deepEqual(offenders, [], `a gold chosen state must stay gold on hover:\n  ${offenders.join('\n  ')}`);
+});
+
+/* ---------- 4. revision 5: never accent words, never an accent side bar --- */
+/*
+ * OWNER 2026-11-12, verbatim: "throughout the app, I kind of hate when things
+ * get that gold bar or border around them. When I select an account to
+ * change its color, the icon gets this gold border. I hate that ... there's
+ * gold text around count 2, like the text turns gold. I just hate that."
+ *
+ * The accent became blue (src/styles/tokens.css revision 5) and the rule
+ * became: colour the ICON, never the WORDS or the FRAME. Chosen words stay
+ * --text-1 on --surface-3. A tab may keep its one-sided underline; a side bar
+ * on a chosen row is gone.
+ */
+const ACCENT = /var\(--accent(-light|-press|-soft|-soft-strong)?\b[^)]*\)|var\(--gold\b[^)]*\)/;
+
+test('the accent is no longer gold', () => {
+  const tokens = readFileSync(path.join(repoRoot, 'src/styles/tokens.css'), 'utf8');
+  const accent = /^\s*--accent:\s*(#[0-9a-fA-F]{6})/m.exec(tokens)?.[1]?.toLowerCase();
+  assert.ok(accent, '--accent not found');
+  assert.notEqual(accent, '#d8a84e');
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(accent.slice(i, i + 2), 16));
+  assert.ok(b > r && b > g, `--accent ${accent} should be the blue family`);
+});
+
+test('no chosen row carries an accent side bar', () => {
+  const offenders = [];
+  for (const file of walkCss(path.join(repoRoot, 'src'))) {
+    const clean = readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '));
+    for (const m of clean.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      const selector = m[1].trim();
+      if (!CHOSEN.test(selector) || INTERACTION.test(selector)) continue;
+      for (const d of m[2].split(';')) {
+        const [rawProp, ...rest] = d.split(':');
+        if (!rest.length) continue;
+        const prop = rawProp.trim().toLowerCase();
+        const value = rest.join(':').trim();
+        if (!ACCENT.test(value)) continue;
+        const sideShadow = prop === 'box-shadow' && /inset\s+-?[1-9][\d.]*px\s+0(px)?\s/.test(value);
+        const sideBorder = /^border-(left|right)(-color)?$/.test(prop);
+        if (sideShadow || sideBorder) {
+          const line = clean.slice(0, m.index).split('\n').length;
+          offenders.push(`${path.relative(repoRoot, file)}:${line}  ${selector.replace(/\s+/g, ' ').slice(0, 90)}  ${prop}: ${value}`);
+        }
+      }
+    }
+  }
+  for (const file of walkJs(path.join(repoRoot, 'src'))) {
+    readFileSync(file, 'utf8').split('\n').forEach((raw, i) => {
+      if (/borderLeft\s*:[^,]*\?[^,]*var\(--(accent|gold)/.test(raw)) offenders.push(`${path.relative(repoRoot, file)}:${i + 1}  ${raw.trim().slice(0, 120)}`);
+    });
+  }
+  assert.deepEqual(offenders, [], `a chosen row is a surface step, never an accent side bar:\n  ${offenders.join('\n  ')}`);
+});
+
+test('chosen WORDS stay white: the list rows, menu values, segments and chips the owner named', () => {
+  const WORDS = [
+    ['src/components/AnnotationDropdown.css', '.annotation-dropdown__option.is-active'],
+    ['src/components/CounterSeriesMenu.css', '.counter-list__item.is-active .counter-list__label'],
+    ['src/components/CounterSeriesMenu.css', '.counter-series-menu__continue.is-active'],
+    ['src/components/ButtonGroup.css', ".button-group > button[aria-checked='true']"],
+    ['src/styles.css', ".chrome-segmented > button[aria-pressed='true']"],
+    ['src/components/RailFlyout.css', ".rail-flyout__row[aria-checked='true']"],
+    ['src/components/AnnotationSizeControl.css', '.annotation-size-control__presets button.is-active'],
+    ['src/components/AnnotationSizeControl.css', '.annotation-size-card__chip.is-active'],
+    ['src/components/MeasureScaleDialog.css', '.measure-scale__chip.is-active'],
+    ['src/mobile/mobilePdfViewer.css', '.mobile-styled-select__menu > button.is-active'],
+    ['src/mobile/mobilePdfViewer.css', '.mobile-pdf-properties__segmented > button.is-active'],
+    ['src/mobile/mobilePdfViewer.css', '.mobile-pdf-properties__menu > button.is-active'],
+    ['src/home/documentReview.css', '.doc-review-chip[aria-pressed="true"]'],
+    ['src/components/surveyMarkerTracking.css', '.survey-tracking-chip[aria-pressed="true"]'],
+    ['src/markLibrary/MarkLibraryPanel.css', '.mark-library__tab.is-active'],
+  ];
+  const offenders = [];
+  for (const [rel, selector] of WORDS) {
+    const clean = readFileSync(path.join(repoRoot, rel), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    const blocks = [...clean.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m) => splitTop(m[1].trim()).includes(selector));
+    if (!blocks.length) { offenders.push(`${rel}  ${selector}  (rule not found - update this test)`); continue; }
+    for (const m of blocks) {
+      const color = m[2].split(';').map((d) => d.split(':')).find(([p]) => p && p.trim() === 'color');
+      if (!color || ACCENT.test(color.slice(1).join(':')) || !/--text-1/.test(color.slice(1).join(':'))) {
+        offenders.push(`${rel}  ${selector}  { color: ${color ? color.slice(1).join(':').trim() : '(none)'} }`);
+      }
+    }
+  }
+  assert.deepEqual(offenders, [], `chosen words must be --text-1, never the accent:\n  ${offenders.join('\n  ')}`);
 });

@@ -2660,7 +2660,7 @@ export default function TemplatesEditor({
                         height: 50, boxSizing: 'border-box',
                         background: tplEdit ? (isSel ? 'var(--ink-600)' : 'transparent') : (active ? 'var(--ink-600)' : 'transparent'),
                         cursor: 'pointer',
-                        borderLeft: !tplEdit && active ? '2px solid var(--accent)' : '2px solid transparent',
+                        borderLeft: '2px solid transparent',
                         transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                       }}
                     >

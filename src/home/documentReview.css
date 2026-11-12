@@ -9,8 +9,8 @@
   background: var(--panel-well, var(--surface-3)); border: 0; border-radius: var(--radius-pill, 999px); cursor: pointer;
 }
 .doc-review-chips--phone .doc-review-chip { height: 36px; font-size: 14px; }
-/* Selected = gold ink on a neutral raised fill, like the item chips. */
-.doc-review-chip[aria-pressed="true"] { color: var(--accent); background: var(--surface-3); font-weight: 600; }
+/* Selected = white words on a neutral raised fill, like the item chips. */
+.doc-review-chip[aria-pressed="true"] { color: var(--text-1); background: var(--surface-3); font-weight: 600; }
 .doc-review-chip__count { color: var(--text-3); font-weight: 400; }
 .doc-review-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
 

@@ -890,10 +890,11 @@ button,
   }
 }
 
-/* Gold word and gold glyph, and nothing else. */
+/* The chosen segment steps up a surface; its words stay white (owner
+   2026-11-12: never accent words). */
 .chrome-segmented > button[aria-pressed='true'] {
-  color: var(--accent);
-  background: transparent;
+  color: var(--text-1);
+  background: var(--surface-3);
 }
 
 /* ==========================================================================

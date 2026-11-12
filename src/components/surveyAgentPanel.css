@@ -50,8 +50,8 @@
   border-radius: var(--radius-pill, 999px);
   font-size: 11px;
   font-weight: 500;
-  color: var(--accent, #d8a84e);
-  background: var(--accent-soft, rgba(216, 168, 78, 0.14));
+  color: var(--accent);
+  background: var(--accent-soft);
 }
 .survey-agent__badge {
   display: inline-flex;
@@ -61,8 +61,8 @@
   height: 24px;
   flex: none;
   border-radius: 50%;
-  color: var(--accent, #d8a84e);
-  background: var(--accent-soft, rgba(216, 168, 78, 0.14));
+  color: var(--accent);
+  background: var(--accent-soft);
 }
 .survey-agent__badge.is-big { width: 40px; height: 40px; }
 .survey-agent__badge.is-big svg { width: 20px; height: 20px; }
@@ -232,7 +232,7 @@
   background: var(--panel-well, var(--surface-0, rgba(0, 0, 0, 0.15)));
   transition: border-color 0.15s, box-shadow 0.15s;
 }
-.survey-agent__box:focus-within { border-color: var(--accent, #d8a84e); box-shadow: 0 0 0 3px var(--accent-soft, rgba(216, 168, 78, 0.14)); }
+.survey-agent__box:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .survey-agent__box.is-recording { border-color: var(--danger, #d95a56); box-shadow: 0 0 0 3px var(--danger-soft, rgba(217, 90, 86, 0.16)); }
 .survey-agent__input {
   min-width: 0;
@@ -262,11 +262,11 @@
   margin-left: 2px;
   border: 0;
   border-radius: 50%;
-  background: var(--accent, #d8a84e);
+  background: var(--accent);
   color: var(--accent-text, #15110a);
   cursor: pointer;
 }
-.survey-agent__send:hover:not(:disabled) { background: var(--accent-light, #edc26d); }
+.survey-agent__send:hover:not(:disabled) { background: var(--accent-light); }
 .survey-agent.is-phone .survey-agent__send { width: 44px; height: 44px; }
 .survey-agent__send:disabled { background: var(--surface-3, rgba(255, 255, 255, 0.08)); color: var(--text-3); cursor: default; }
 
@@ -380,8 +380,8 @@
   transition: transform 80ms linear, box-shadow 80ms linear;
 }
 .survey-agent__live.is-listening .survey-agent__dot { transform: scale(calc(1 + var(--survey-mic-level, 0) * 0.5)); transition: transform 80ms linear; }
-.survey-agent__live.is-working .survey-agent__dot { background: var(--accent, #d8a84e); animation: survey-agent-pulse 1.4s ease-in-out infinite; }
-.survey-agent__live.is-speaking .survey-agent__dot { background: var(--accent, #d8a84e); }
+.survey-agent__live.is-working .survey-agent__dot { background: var(--accent); animation: survey-agent-pulse 1.4s ease-in-out infinite; }
+.survey-agent__live.is-speaking .survey-agent__dot { background: var(--accent); }
 @keyframes survey-agent-pulse { 50% { opacity: 0.35; } }
 @media (prefers-reduced-motion: reduce) {
   .survey-agent__dot { animation: none !important; }
@@ -430,13 +430,13 @@
 .survey-agent-mic.is-recording,
 #chrome-right-host .survey-agent-mic.is-recording.is-recording.is-recording.is-recording.is-recording.is-recording.is-recording {
   color: var(--accent-text, #fff) !important;
-  background-color: var(--accent, #d8a84e) !important;
+  background-color: var(--accent) !important;
 }
 /* ...and a ring that grows with the voice it hears (owner 2026-10-22: "it
    should pulse when it hears sound"). */
 .survey-agent-mic.is-recording,
 #chrome-right-host .survey-agent-mic.is-recording.is-recording.is-recording.is-recording.is-recording.is-recording.is-recording {
-  box-shadow: 0 0 0 calc(2px + var(--survey-mic-level, 0) * 9px) var(--accent-soft-strong, rgba(216, 168, 78, 0.2)) !important;
+  box-shadow: 0 0 0 calc(2px + var(--survey-mic-level, 0) * 9px) var(--accent-soft-strong) !important;
   transition: box-shadow 80ms linear;
 }
 @media (prefers-reduced-motion: reduce) {

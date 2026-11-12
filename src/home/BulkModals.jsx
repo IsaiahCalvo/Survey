@@ -69,9 +69,9 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
       style={{
         flex: 1, height: 28, borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit',
         fontSize: 12, fontWeight: 600,
-        background: mode === val ? C.gold : 'transparent',
-        color: mode === val ? 'var(--accent-text)' : C.inkSoft,
-        border: `1px solid ${mode === val ? C.gold : C.ruleStrong}`,
+        background: mode === val ? 'var(--surface-3)' : 'transparent',
+        color: mode === val ? 'var(--text-1)' : C.inkSoft,
+        border: `1px solid ${mode === val ? 'var(--border-strong)' : C.ruleStrong}`,
       }}
     >
       {label}

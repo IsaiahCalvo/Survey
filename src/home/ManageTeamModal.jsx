@@ -370,7 +370,7 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
           {/* UX (KAL-73): invite sends are a network round-trip over 500ms, so the
               button takes the shared loading treatment — 14px ring on the left,
               present-participle label, disabled until the request resolves. */}
-          <button disabled={busy || !emails.trim() || !!blockedReason} onClick={sendInvites} className="hub-btn hub-btn--primary">{busy && <Spinner size={14} color="var(--accent-text)" trackColor="rgba(21,17,10,0.25)" />}{busy ? "Sending invite…" : `Send ${emailRole} invite`}</button>
+          <button disabled={busy || !emails.trim() || !!blockedReason} onClick={sendInvites} className="hub-btn hub-btn--primary">{busy && <Spinner size={14} color="var(--accent-text)" trackColor="var(--accent-text-track)" />}{busy ? "Sending invite…" : `Send ${emailRole} invite`}</button>
         </div>
       </div>
     </div>

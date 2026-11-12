@@ -1732,7 +1732,7 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
 }
 
 .mobile-pdf-properties__segmented > button.is-active {
-  color: var(--accent);
+  color: var(--text-1);
   background: var(--surface-3);
 }
 
@@ -2272,8 +2272,8 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
 
 .mobile-styled-select__trigger > svg { flex: 0 0 auto; color: var(--text-3); }
 
-.mobile-styled-select__trigger.is-open { color: var(--accent); }
-.mobile-styled-select__trigger.is-open > svg { color: var(--accent); }
+.mobile-styled-select__trigger.is-open { color: var(--text-1); }
+.mobile-styled-select__trigger.is-open > svg { color: var(--text-1); }
 .mobile-styled-select__trigger:disabled { color: var(--text-3);
   cursor: not-allowed;
 }
@@ -2339,7 +2339,7 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   line-height: 0;
 }
 
-.mobile-styled-select__menu > button.is-active { color: var(--accent); }
+.mobile-styled-select__menu > button.is-active { color: var(--text-1); font-weight: 600; background: var(--surface-3); }
 
 /* RULED CHANGE 2026-09-22: the bare 44px numeric font-size <input> is GONE. It
    could not carry its unit (the boards: "every numeric field carries its unit"),
@@ -2501,7 +2501,7 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
 }
 
 .mobile-pdf-properties__menu > button:first-of-type { grid-template-columns: 1fr; }
-.mobile-pdf-properties__menu > button.is-active { color: var(--accent); background: var(--surface-3); box-shadow: inset 2px 0 var(--accent); }
+.mobile-pdf-properties__menu > button.is-active { color: var(--text-1); background: var(--surface-3); }
 .mobile-pdf-properties__menu i { width: 9px; height: 9px; border-radius: 50%; }
 .mobile-pdf-properties__menu b { overflow: hidden; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .mobile-pdf-properties__menu em { color: var(--text-3); font-style: normal; }
@@ -4022,6 +4022,11 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
 }
 
 .mobile-pages-actions > button[aria-pressed="true"] {
+  color: var(--text-1);
+  font-weight: 600;
+}
+
+.mobile-pages-actions > button[aria-pressed="true"] > svg {
   color: var(--accent);
 }
 
