@@ -301,6 +301,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Alt+Shift+] and Alt+Shift+[ step through the open documents',
     stage: 'beta',
   }),
+  'lazy-accepted-shadow': Object.freeze({
+    label: 'Open: keep the second copy of the marks only in the background worker until something needs it here',
+    stage: 'beta',
+  }),
   'open-visible-first': Object.freeze({
     label: 'Open: build the marks of the page on screen first, the pages around it after it has drawn',
     stage: 'beta',
@@ -341,6 +345,10 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'drawboard-keys': Object.freeze({
     label: 'Drawboard keys: Shift+Up / Down previous / next page; Alt+O / Alt+U next / previous version (with Versions on)',
+    stage: 'beta',
+  }),
+  'sheet-register': Object.freeze({
+    label: 'Sheet register: sheet number, revision and discipline on Home, discipline and open-items filters, sheet number sort, bulk status and discipline, Edit details, list CSV',
     stage: 'beta',
   }),
   'project-activity': Object.freeze({
@@ -440,6 +448,55 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'measure-plus': Object.freeze({
     label: 'Measure formats: feet-inches readings, precision, custom scales and a default scale',
+    stage: 'beta',
+  }),
+  // Drawboard PDF Pro push (2026-11-12, drawboard-trial/pdf-pro/apps-side-by-side.md).
+  'page-menu-extras': Object.freeze({
+    label: 'Page right-click: Move page up / down, Unlock all, Select all text',
+    stage: 'beta',
+  }),
+  'paste-in-place-key': Object.freeze({
+    label: 'Ctrl+Shift+V pastes the copied marks at their original spot',
+    stage: 'beta',
+  }),
+  'selection-count': Object.freeze({
+    label: 'Selection bar shows how many marks a multi-pick holds',
+    stage: 'beta',
+  }),
+  'tool-style-preview': Object.freeze({
+    label: 'Desktop colour popover: a live preview of what the tool will draw (colour, width, line style)',
+    stage: 'beta',
+  }),
+  'page-templates': Object.freeze({
+    label: 'Page right-click: Template page below (notebook, Cornell, grids, isometric, music papers)',
+    stage: 'beta',
+  }),
+  'snapshot-tool': Object.freeze({
+    label: 'Snapshot tool: drag an area of a page, it is copied as a picture',
+    stage: 'beta',
+  }),
+  'signature-tool': Object.freeze({
+    label: 'Signature tool: draw or type a signature, save it, click the page to sign',
+    stage: 'beta',
+  }),
+  'text-highlight-tool': Object.freeze({
+    label: 'Highlight text: the band follows the pointer as you drag over words, and letting go highlights them',
+    stage: 'beta',
+  }),
+  'page-turn-keys': Object.freeze({
+    label: 'Keys: with nothing picked, Left / Right and Shift + Up / Down turn the page',
+    stage: 'beta',
+  }),
+  // Drawboard file model (2026-11-10, page-records-plan.md): page changes are
+  // saved as a page list with the marks; the PDF is built only on the way out.
+  'page-records': Object.freeze({
+    label: 'Page changes never rewrite the PDF: other windows follow at once and it works offline',
+    stage: 'beta',
+  }),
+  // Drawboard file model (2026-11-10, drive-sync-back-plan.md): open a PDF
+  // from OneDrive or SharePoint and save the marked-up PDF back to it.
+  'drive-sync-back': Object.freeze({
+    label: 'Open PDFs from OneDrive and save the marked-up PDF back to OneDrive',
     stage: 'beta',
   }),
 });

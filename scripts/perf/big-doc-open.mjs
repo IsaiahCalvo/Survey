@@ -63,7 +63,7 @@ const PROBE = (pagesEv = false) => {
   const origLog = console.log;
   console.log = (...args) => {
     const text = String(args[0] ?? '');
-    if (w.__bigOpen.t0 != null && /LOAD-TRACE|OpenTiming|InteractionDiag/.test(text)) w.__bigOpen.ev.push(`${Math.round(performance.now() - w.__bigOpen.t0)} LOG ${text.replace(/%c|color:.*$/g, '').slice(0, 90)}`);
+    if (w.__bigOpen.t0 != null && /LOAD-TRACE|OpenTiming|InteractionDiag/.test(text)) w.__bigOpen.ev.push(`${Math.round(performance.now() - w.__bigOpen.t0)} LOG ${text.replace(/%c|color:.*$/g, '').slice(0, text.includes('accepted-build') ? 2000 : 90)}`);
     return origLog.apply(console, args);
   };
   try {
@@ -303,6 +303,24 @@ async function oneRun(browser, size, { profile = null } = {}) {
   await signIn(page);
   // With REOPEN=1, PROFILE records the reopen instead of the first open.
   let result = await openAndSettle(page, context, size, { profile: process.env.REOPEN ? null : profile });
+  if (process.env.EDIT) {
+    // EDIT=1: once open, draw one rectangle on page 1 (Rectangle tool, R)
+    // and report the long tasks and trace lines of the next 5 s.
+    await page.evaluate(() => {
+      const s = window.__bigOpen;
+      s.ev = []; s.t0 = performance.now(); window.__editTasks = [];
+      new PerformanceObserver((l) => { for (const e of l.getEntries()) window.__editTasks.push(Math.round(e.duration)); }).observe({ type: 'longtask' });
+    });
+    const box = await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').boundingBox();
+    await page.keyboard.press('r');
+    const from = { x: box.x + box.width * 0.3, y: box.y + box.height * 0.3 };
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    for (let i = 1; i <= 8; i += 1) await page.mouse.move(from.x + i * 12, from.y + i * 8);
+    await page.mouse.up();
+    await page.waitForTimeout(5000);
+    console.log(size, 'edit', JSON.stringify(await page.evaluate(() => ({ tasks: window.__editTasks, ev: window.__bigOpen.ev }))));
+  }
   if (process.env.REOPEN) {
     // REOPEN_WAIT_MS: stay on the document that long first (lets a streamed
     // open finish downloading, so the reopen reads this device's copy).

@@ -1,0 +1,9 @@
+/* Sheet register (SheetRegisterBits.jsx): the line under a document's name
+   with its sheet number, revision, discipline and open items. */
+.sheet-register-line { display: flex; align-items: center; gap: 6px; min-width: 0; margin-top: 3px; font-size: 11px; color: var(--text-3); font-weight: 400; overflow: hidden; white-space: nowrap; }
+.sheet-register-number { flex: none; font-family: var(--font-mono, ui-monospace, monospace); font-weight: 600; color: var(--text-1); }
+.sheet-register-rev { flex: none; padding: 0 5px; line-height: 16px; border-radius: 4px; background: var(--surface-3); color: var(--text-2); }
+.sheet-register-discipline { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.sheet-register-open { flex: none; color: #d9a03f; font-weight: 600; }
+.sheet-register-note { margin: -6px 0 12px; font-size: 11px; color: var(--text-3); }
+.sheet-register-error { margin-top: 10px; font-size: 12px; color: #e0726c; }

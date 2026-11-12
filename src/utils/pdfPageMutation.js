@@ -1,6 +1,10 @@
-import { PDFDocument, degrees } from 'pdf-lib';
+import { LineCapStyle, PDFDocument, degrees, rgb } from 'pdf-lib';
 import { normalizePresentationPdf } from './pdfPagePresentation.js';
 import { blankPageReferencePage, blankPageSize } from './blankPageSize.js';
+import { drawPaperOnPdfPage, pagePaperMarks } from './blankPagePaper.js';
+
+// A new blank page's paper template (Nightly 'page-templates').
+const drawPaper = (page, paper, box) => drawPaperOnPdfPage(page, pagePaperMarks(paper, box), { rgb, LineCapStyle });
 
 const pageNumber = (value, count, label) => {
   const page = Number(value);
@@ -42,7 +46,8 @@ async function applyOperation(pdf, operation) {
     const afterPage = slotNumber(operation.afterPage, count, 'afterPage');
     const reference = pdf.getPage(blankPageReferencePage(afterPage, count) - 1);
     const { width, height } = blankPageSize({ ...reference.getSize(), rotation: reference.getRotation().angle });
-    pdf.insertPage(afterPage, [width, height]);
+    const page = pdf.insertPage(afterPage, [width, height]);
+    drawPaper(page, operation.paper, { width, height });
   } else if (type === 'restore') {
     // Undo of a delete (utils/pageOperationHistory.js): the removed page goes
     // back as it was shown. `entry` is its page-view entry
@@ -53,6 +58,7 @@ async function applyOperation(pdf, operation) {
     const extra = Number(entry.rot || 0);
     if (entry.blank) {
       const page = pdf.insertPage(afterPage, [entry.blank.width, entry.blank.height]);
+      drawPaper(page, entry.blank.paper, entry.blank);
       page.setRotation(degrees(((extra % 360) + 360) % 360));
     } else {
       if (!operation.baseBytes) throw new Error('restore needs the document as first opened');

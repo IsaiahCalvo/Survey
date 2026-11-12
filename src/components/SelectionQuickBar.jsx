@@ -276,6 +276,9 @@ export default function SelectionQuickBar({
   const activeRef = useRef(active);
   activeRef.current = active;
   const [phoneMoreOn] = useState(() => isFeatureOn('phone-mark-more'));
+  // Nightly 'selection-count' (Drawboard PDF Pro push 2026-11-12, row B15): a
+  // pick of two or more marks shows how many sit in it.
+  const [selectionCountOn] = useState(() => isFeatureOn('selection-count'));
   // Nightly 'measure-edit': the bar also frames a level line and keeps clear of a
   // picked measurement's caption (readSelection).
   const [measureEditOn] = useState(() => isFeatureOn('measure-edit'));
@@ -529,6 +532,15 @@ export default function SelectionQuickBar({
   const panelAllowed = !phone && propertiesPanelOn;
   const panelHoldsStyles = panelAllowed && propertiesPanelOpen;
   const groups = [];
+  if (selectionCountOn && items.length > 1) {
+    groups.push(
+      <span key="count" className="selection-quick-bar__group">
+        <span className="selection-quick-bar__count" data-selection-count={items.length} role="status" aria-label={`${items.length} marks picked`}>
+          {items.length}
+        </span>
+      </span>,
+    );
+  }
   if (phone || panelHoldsStyles) {
     // Colour and line live on the phone's own strip.
   } else if (plan?.colour === 'dots' && paint) {

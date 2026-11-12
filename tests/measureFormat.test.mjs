@@ -657,3 +657,65 @@ test('the Measurement card adds and edits custom scales through the dialog in ma
   assert.match(dialog, /if \(markMode === 'edit' && editIndex >= 0\) forgetCustomMeasureScale\(editIndex\);/);
   assert.match(dialog, /\{pageCount > 1 && !markMode && \(/);
 });
+
+test('the Measurement card names Depth in the unit the mark reads in (its own scale, else the page\'s)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const card = readFileSync(new URL('../src/components/MeasureEditPopover.jsx', import.meta.url), 'utf8');
+  assert.match(card, /const readScale = markMeasureScale\(mark, scale\);/);
+  assert.match(card, /MEASURE_UNITS\[readScale\.unit\]\.label/);
+  const { markMeasureScale } = await import('../src/utils/measure/measureScale.js');
+  const page = { unit: 'ft', ptPerUnit: 9, label: '1/8″ = 1′-0″' };
+  const own = { unit: 'm', ptPerUnit: 28.35, label: '1:100' };
+  const mark = { type: 'line', data: { measure: { kind: 'wallArea', ownScale: true, scale: own } } };
+  assert.equal(markMeasureScale(mark, page), mark.data.measure.scale);
+  assert.equal(markMeasureScale({ type: 'line', data: { measure: { kind: 'wallArea' } } }, page), page);
+});
+
+test('measure-plus: a Polylength prints its total pill and each side\'s caption (/AP and print); off, it prints none', async () => {
+  const { PDFDocument, PDFName, PDFArray, PDFDict, decodePDFRawStream } = await import('pdf-lib');
+  const lib = await import('../src/utils/pdfAnnotationsPdfLib.js');
+  const { stampMeasure } = await import('../src/utils/measure/measureScale.js');
+  const m = await import('../src/utils/measure/measureFormat.js');
+  const scale = m.customMeasureScale({ paper: '1', paperUnit: 'in', realText: "8'", display: 'ftin', precision: 16 });
+  const poly = stampMeasure({
+    type: 'polyline', points: [{ x: 60, y: 200 }, { x: 204, y: 200 }, { x: 204, y: 92 }],
+    left: 60, top: 92, width: 144, height: 108, stroke: '#e11d2e', strokeWidth: 1, fill: '', opacity: 1,
+  }, 'polylength', scale);
+  const source = await PDFDocument.create();
+  source.addPage([420, 320]);
+  const bytes = await source.save();
+  const file = { name: 'poly.pdf', async arrayBuffer() { return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength); } };
+  const run = async (on) => {
+    const { log, warn, error } = console;
+    const original = globalThis.window;
+    const gate = lib.measureReadingsPrintGate.on;
+    console.log = () => {}; console.warn = () => {}; console.error = () => {};
+    globalThis.window = {};
+    lib.measureReadingsPrintGate.on = () => on;
+    try {
+      const out = await lib.savePDFWithAnnotationsPdfLib(file, { 1: { objects: [poly] } }, { 1: { width: 420, height: 320 } }, null,
+        { returnBytes: true, actionType: 'pdf-export', documentId: 'poly' });
+      const doc = await PDFDocument.load(out);
+      const annots = doc.getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).asArray().map((r) => doc.context.lookup(r));
+      const annot = annots.find((d) => d instanceof PDFDict && d.get(PDFName.of('Subtype'))?.toString() === '/PolyLine');
+      assert.ok(annot, 'a /PolyLine annotation');
+      const ap = annot.lookup(PDFName.of('AP'), PDFDict).lookup(PDFName.of('N'));
+      const content = Buffer.from(decodePDFRawStream(ap).decode()).toString('latin1');
+      const texts = [...content.matchAll(/<([0-9A-Fa-f]+)> Tj/g)].map((x) => Buffer.from(x[1], 'hex').toString('latin1'));
+      const rect = annot.lookup(PDFName.of('Rect'), PDFArray).asArray().map((n) => n.asNumber());
+      return { texts, rect };
+    } finally {
+      lib.measureReadingsPrintGate.on = gate;
+      console.log = log; console.warn = warn; console.error = error; globalThis.window = original;
+    }
+  };
+  const off = await run(false);
+  assert.equal(off.texts.length, 0, 'flag off: the print is unchanged');
+  const on = await run(true);
+  // 144 pt and 108 pt at 1″ = 8′ are 16′ and 12′; the total is 28′.
+  assert.ok(on.texts.includes("16'"), `side 1: ${on.texts.join(' | ')}`);
+  assert.ok(on.texts.includes("12'"), `side 2: ${on.texts.join(' | ')}`);
+  assert.ok(on.texts.some((t) => /28'/.test(t)), `the total pill: ${on.texts.join(' | ')}`);
+  // The appearance box grows to hold the readings.
+  assert.ok(on.rect[2] - on.rect[0] >= off.rect[2] - off.rect[0], 'the /Rect holds the captions');
+});

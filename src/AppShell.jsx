@@ -17,6 +17,8 @@ import CounterSeriesMenu, { counterSeriesMenuWidth } from './components/CounterS
 import PageGridToggle, { PageGridGlyph } from './components/PageGridToggle';
 import DarkPagesToggle, { DarkPagesGlyph } from './components/DarkPagesToggle';
 import DocumentVersionsButton, { DocumentVersionsDialogs, useDocumentVersions } from './components/DocumentVersionsButton.jsx';
+import DriveSyncButton, { DriveSyncDialogs } from './components/DriveSyncButton.jsx';
+import { useDriveSyncBack } from './hooks/useDriveSyncBack.js';
 import OlderVersionBar from './components/OlderVersionBar.jsx';
 import { requestMarkCommentsFocus } from './services/markCommentsFocus.js';
 import { OPEN_VIEWER_SHARE_EVENT } from './utils/viewerShare.js';
@@ -70,6 +72,8 @@ import {
   MobilePdfViewerToolRail,
 } from './mobile/MobilePdfViewerChrome';
 import { createKeyboardViewportController } from './mobile/keyboardViewport';
+import { SheetPreview } from './mobile/MobileToolSheetControls';
+import { toolStylePreview } from './utils/toolStylePreview.js';
 import YDocProvider from './components/collab/YDocProvider.jsx';
 import { ARROWHEAD_MENU_ORDER, ARROWHEAD_SHORT_LABELS } from './components/Callout/types';
 import { AuthModal } from './components/AuthModal';
@@ -134,8 +138,9 @@ import { showsColourRule, showsPaintSwatch, showsQuickColourDots } from './utils
 import { isAreaEditing, REGION_TOOLBAR_OPENING_STATE, resolveToolBarGroup, showsFormatRow, showsSurveyRow } from './utils/toolbarRows.js';
 import { LINE_STYLE_SAMPLE_ICONS, lineStyleOptionsWith } from './utils/lineStyleOptions.js';
 import SelectionQuickBar from './components/SelectionQuickBar.jsx';
-import SelectionPropertiesPanel from './components/SelectionPropertiesPanel.jsx';
+import SelectionPropertiesPanel, { PropertiesPanelDockHost } from './components/SelectionPropertiesPanel.jsx';
 import StampPickerCard from './components/StampPickerCard.jsx';
+import SignatureCard from './components/SignatureCard.jsx';
 import InsertImagePasteHost from './components/InsertImage.jsx';
 import { LineEndingsMenu } from './components/LineEndingsPicker.jsx';
 import { PenTypeMenu } from './components/PenTypePicker.jsx';
@@ -431,6 +436,8 @@ const resolveAnnotationPaint = (bottomToolbarApi, colorPickerTab) => {
     opacity: picker.opacity,
     apply: picker.apply,
     quick,
+    // The fill side on its own (the properties panel's Fill colour row).
+    fill: isShape ? channel(true) : null,
   };
 };
 
@@ -2483,6 +2490,7 @@ export default function App({ devPreviewReturnTab = null }) {
   // document, instead of leaving Survey (Nightly, 'back-button').
   const [backButtonEnabled] = useState(() => isFeatureOn('back-button'));
   const [toolQuickColoursOn] = useState(() => isFeatureOn('tool-quick-colours'));
+  const [toolStylePreviewOn] = useState(() => isFeatureOn('tool-style-preview'));
   useEffect(() => {
     if (!backButtonEnabled || !isViewerVisible) return undefined;
     return installViewerBack(window, () => stableBack());
@@ -2608,6 +2616,20 @@ export default function App({ devPreviewReturnTab = null }) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [drawboardKeysEnabled, Boolean(isViewerVisible)]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // OneDrive save-back (Survey Nightly only, beta flag 'drive-sync-back'):
+  // a document opened from OneDrive writes its marked-up PDF back there.
+  const [driveSyncEnabled] = useState(() => isFeatureOn('drive-sync-back'));
+  const [driveSyncCardOpen, setDriveSyncCardOpen] = useState(false);
+  const exportDriveBytes = useCallback(async () => {
+    const result = await bottomToolbarApiRef.current?.exportPdfWithOptions?.({ mode: 'annotated', deliver: false });
+    return result?.ok && result.bytes ? result.bytes : null;
+  }, []);
+  const driveSync = useDriveSyncBack({
+    documentId: driveSyncEnabled && user?.id ? activeTab?.file?.id || null : null,
+    enabled: driveSyncEnabled && Boolean(user?.id),
+    exportBytes: exportDriveBytes,
+  });
 
   // Page grid spacing (Survey Nightly only, beta flag 'grid-settings').
   const [gridSettingsEnabled] = useState(() => isFeatureOn('grid-settings'));
@@ -3265,6 +3287,8 @@ export default function App({ devPreviewReturnTab = null }) {
             id="chrome-top-host"
             documentName={activeTab?.name || selectedPDF?.name || 'Document'}
             onBack={handleBack}
+            driveSync={driveSync.enabled && driveSync.link ? driveSync : null}
+            onOpenDriveSync={() => setDriveSyncCardOpen(true)}
             topToolbarApi={topToolbarApi}
             bottomToolbarApi={bottomToolbarApi}
             // The header layer sits above the sheets' layer, so the chip
@@ -3376,6 +3400,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 </button>
               )}
               <DocumentVersionsButton state={documentVersions} tip={chromeTip} />
+              <DriveSyncButton state={driveSync} tip={chromeTip} onOpen={() => setDriveSyncCardOpen(true)} />
               {/* Export annotated PDF — browser-visible entry point for the
                   same handler the desktop File menu drives. */}
               <button
@@ -4492,6 +4517,17 @@ export default function App({ devPreviewReturnTab = null }) {
                           gold underline under the chosen word: two tab designs
                           for one control, on two screens, and the only one the
                           boards draw is the picker's. */}
+                      {/* Nightly 'tool-style-preview': what the tool will draw
+                          (colour, width and line style together), redrawn as
+                          the colour changes. */}
+                      {toolStylePreviewOn && !isTextMarkupPalette && (() => {
+                        const preview = toolStylePreview(bottomToolbarApi);
+                        return preview ? (
+                          <div className="tool-style-preview" data-tool-style-preview={preview.kind}>
+                            <SheetPreview {...preview} />
+                          </div>
+                        ) : null;
+                      })()}
                       <Suspense fallback={null}>
                         <CompactColorPicker
                           color={currentColor}
@@ -5384,6 +5420,8 @@ export default function App({ devPreviewReturnTab = null }) {
             )}
           </div>
           </div>
+          {/* Nightly 'properties-panel': the pinned panel docks here, beside the viewer. */}
+          <PropertiesPanelDockHost enabled={Boolean(isViewerVisible && !isMobileViewer)} />
           {/* UX 2026-05-14/29: chrome-right-host — slim always-visible right rail.
               Pinned to the viewport's right edge. Survey owns this rail; page
               and zoom controls now live in the top-right toolbar pill.
@@ -6043,9 +6081,11 @@ export default function App({ devPreviewReturnTab = null }) {
         annotationsByPage={leftRailApi?.annotationsByPage || null}
         viewerId={signedInUserId}
         tip={chromeTip}
+        textFormat={textFormatSource}
       />
       {/* Nightly 'stamp-tool': Drawboard's Stamp card (the Text group's Stamp button opens it). */}
       <StampPickerCard enabled={Boolean(isViewerVisible && isFeatureOn('stamp-tool'))} phone={Boolean(isMobileViewer)} tip={chromeTip} />
+      <SignatureCard enabled={Boolean(isViewerVisible && isFeatureOn('signature-tool'))} phone={Boolean(isMobileViewer)} tip={chromeTip} />
       {/* Nightly 'insert-image': a picture pasted from the clipboard becomes an image mark. */}
       <InsertImagePasteHost enabled={Boolean(isViewerVisible && isFeatureOn('insert-image'))} />
 
@@ -6092,6 +6132,7 @@ export default function App({ devPreviewReturnTab = null }) {
         </div>
       )}
       <DocumentVersionsDialogs state={documentVersions} />
+      <DriveSyncDialogs state={driveSync} cardOpen={driveSyncCardOpen} onCloseCard={() => setDriveSyncCardOpen(false)} />
       {isViewerVisible && (olderVersionOpen || activeTab?.file?.superseded_by || supersededDocIds.has(activeTab?.file?.id)) && (
         <OlderVersionBar
           versionNumber={olderVersionOpen?.versionNumber || null}

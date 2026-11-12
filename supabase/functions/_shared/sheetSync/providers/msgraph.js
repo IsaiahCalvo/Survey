@@ -229,6 +229,44 @@ export function cellBlocks(cells) {
   return blocks;
 }
 
+// Cells in one sparse write at most (nulls included): about 50 KB of JSON,
+// and a 5,000 x 2 one took Excel under a second (real Graph, 11-12).
+export const SPARSE_MAX_CELLS = 10_000;
+
+/**
+ * Scattered cells as few rectangles as it takes, with null for every cell
+ * in between: Graph leaves a null cell exactly as it is (its value, formula
+ * and format; real Graph 11-12). Excel works out a workbook's formulas again
+ * after every request, so a PM's formula-heavy tab made each of 20 single
+ * writes cost ~1.3 s (a round went from 1.6 s to 31 s); one sparse write of
+ * the same cells took 0.8 s. Cells are banded top to bottom, each band
+ * spanning only the columns its own cells use, up to `maxCells` a band.
+ */
+export function sparseBlocks(cells, maxCells = SPARSE_MAX_CELLS) {
+  const byCell = new Map();
+  for (const cell of cells || []) byCell.set(`${cell.row},${cell.col}`, cell); // same cell twice: last wins
+  const sorted = [...byCell.values()].sort((a, b) => a.row - b.row || a.col - b.col);
+  const bands = [];
+  let band = null;
+  for (const cell of sorted) {
+    if (band) {
+      const c1 = Math.min(band.c1, cell.col), c2 = Math.max(band.c2, cell.col);
+      if ((cell.row - band.r1 + 1) * (c2 - c1 + 1) <= maxCells) {
+        Object.assign(band, { c1, c2, r2: cell.row });
+        band.cells.push(cell);
+        continue;
+      }
+    }
+    band = { r1: cell.row, r2: cell.row, c1: cell.col, c2: cell.col, cells: [cell] };
+    bands.push(band);
+  }
+  return bands.map(({ r1, r2, c1, c2, cells: inBand }) => {
+    const values = Array.from({ length: r2 - r1 + 1 }, () => Array(c2 - c1 + 1).fill(null));
+    for (const cell of inBand) values[cell.row - r1][cell.col - c1] = cellValueForWrite(cell.value);
+    return { row: r1, col: c1, values, cells: inBand };
+  });
+}
+
 /**
  * Side-by-side columns that get the same value from `valueOf` (null = none),
  * as { from, to, value } runs: one Graph call per run instead of per column.
@@ -252,7 +290,7 @@ export function columnRuns(columns, valueOf) {
  * @param {string} [options.baseUrl]  for tests
  * @param {() => number} [options.now]
  */
-export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globalThis.fetch, baseUrl = GRAPH, now = Date.now, timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
+export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globalThis.fetch, baseUrl = GRAPH, now = Date.now, timeoutMs = REQUEST_TIMEOUT_MS, sparseMaxCells = SPARSE_MAX_CELLS } = {}) {
   if (typeof getAccessToken !== 'function') throw new Error('msgraph: getAccessToken is required');
   const sessions = new Map(); // fileId → { id, at }
   const checkedBusiness = new Set();
@@ -435,7 +473,9 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
 
   async function writeBlock(fileId, sheetId, row, col, values) {
     const address = `${cellAddress(row, col)}:${cellAddress(row + values.length - 1, col + values[0].length - 1)}`;
-    await workbook(fileId, 'PATCH', `${sheetPath(sheetId)}/range(address='${address}')`, {
+    // `$select`: Graph would answer with the whole range (252 KB for a sparse
+    // write down a 5,000-row column), and the answer is thrown away anyway.
+    await workbook(fileId, 'PATCH', `${sheetPath(sheetId)}/range(address='${address}')?$select=address`, {
       body: { values }, where: 'write', discard: true,
     });
   }
@@ -582,19 +622,36 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
     },
 
     async writeCells(fileId, cells) {
-      const ops = [];
-      for (const [sheetId, group] of bySheet(cells)) {
-        for (const block of cellBlocks(group)) {
-          const address = `${cellAddress(block.row, block.col)}:${cellAddress(block.row + block.values.length - 1, block.col + block.values[0].length - 1)}`;
-          // `$select`: Graph would answer each write with the whole range.
-          ops.push({ sheetId, block, method: 'PATCH', path: `${sheetPath(sheetId)}/range(address='${address}')?$select=address`, body: { values: block.values } });
+      const deadline = now() + WRITE_BUDGET_MS;
+      const REFUSED = Symbol('refused');
+      const opsOf = (blocks) => blocks.map(({ sheetId, block }) => {
+        const address = `${cellAddress(block.row, block.col)}:${cellAddress(block.row + block.values.length - 1, block.col + block.values[0].length - 1)}`;
+        // `$select`: Graph would answer each write with the whole range.
+        return { sheetId, block, method: 'PATCH', path: `${sheetPath(sheetId)}/range(address='${address}')?$select=address`, body: { values: block.values } };
+      });
+      const send = async (ops, allow) => {
+        if (ops.length <= 2) {
+          const out = [];
+          for (const op of ops) {
+            try { await writeBlock(fileId, op.sheetId, op.block.row, op.block.col, op.block.values); out.push(null); } catch (err) {
+              if (!allow.includes(Number(err?.status))) throw err;
+              out.push(REFUSED);
+            }
+          }
+          return out;
         }
-      }
-      if (ops.length <= 2) {
-        for (const op of ops) await writeBlock(fileId, op.sheetId, op.block.row, op.block.col, op.block.values);
-        return;
-      }
-      await workbookBatch(fileId, ops, { parallel: true, deadline: now() + WRITE_BUDGET_MS });
+        return workbookBatch(fileId, ops, { parallel: true, deadline, allow, refused: REFUSED });
+      };
+      const sparse = [];
+      for (const [sheetId, group] of bySheet(cells)) for (const block of sparseBlocks(group, sparseMaxCells)) sparse.push({ sheetId, block });
+      const ops = opsOf(sparse);
+      const answers = await send(ops, [400, 409]);
+      // A sparse rectangle Excel won't take (one crossing part of a merged
+      // area, 400, or a PivotTable a PM put between the cells, 409): its own
+      // cells go the old way, in solid blocks only.
+      const again = ops.filter((op, i) => answers[i] === REFUSED)
+        .flatMap((op) => cellBlocks(op.block.cells).map((block) => ({ sheetId: op.sheetId, block })));
+      if (again.length) await send(opsOf(again), []);
     },
 
     /**

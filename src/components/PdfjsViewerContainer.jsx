@@ -126,6 +126,8 @@ import { notePageDrawn, pageMounted, pageUnmounted, PAGE_CACHE_KEEP_MOBILE, PAGE
 import { isInTabBehind } from '../utils/tabBehind.js';
 import { isFeatureOn } from '../featureFlags.js';
 import { pageStepForKey, steppedPage } from '../utils/drawboardKeys.js';
+import { hasAnyPageSelection } from '../utils/pageSelectionPresence.js';
+import { pageTurnStep } from '../utils/pageTurnKeys.js';
 import { ZOOM_AREA_MIN_PX, boxBetween, isZoomToAreaStart, zoomToAreaPlan } from '../utils/zoomToArea.js';
 import { registerSpotlightViewer, spotlightViewMovedByHand } from '../services/annotationSpotlight.js';
 import { pdfjsAssetOptions } from '../utils/pdfjsAssets.js';
@@ -5900,11 +5902,19 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // Launch polish 2026-11-02 (old idea #816): Home / End glide to the first /
   // last page the same way, as in Acrobat and Drawboard. A toolbar, tab strip
   // or radio group that moves focus with Home / End keeps the key.
+  // Nightly 'page-turn-keys' (Drawboard PDF Pro push 2026-11-12): with no mark
+  // picked, Left / Right and Shift+Up / Down turn to the previous / next page
+  // (a picked mark keeps the arrows for nudging).
+  const [pageTurnKeysOn] = useState(() => isFeatureOn('page-turn-keys'));
+  const [drawboardShiftArrowsOn] = useState(() => isFeatureOn('drawboard-keys'));
   useEffect(() => {
     const onKeyDown = (event) => {
       const isPageKey = event.key === 'PageDown' || event.key === 'PageUp';
       const isEndKey = event.key === 'Home' || event.key === 'End';
-      if (!isPageKey && !isEndKey) return;
+      const turn = pageTurnKeysOn ? pageTurnStep(event, { shiftArrows: !drawboardShiftArrowsOn }) : 0;
+      if (!isPageKey && !isEndKey && !turn) return;
+      // A picked mark nudges; a text selection grows with Shift + arrows.
+      if (turn && (hasAnyPageSelection() || (window.getSelection?.()?.isCollapsed === false))) return;
       if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
       const el = scrollerRef.current;
       if (!el || !el.isConnected || isInTabBehind(el) || el.clientHeight <= 0 || el.getClientRects().length === 0) return;
@@ -5927,6 +5937,14 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         goToPage(event.key === 'Home' ? 1 : last, { smooth: true });
         return;
       }
+      if (turn) {
+        if (target && target.closest('[role="toolbar"], [role="tablist"], [role="radiogroup"], [role="menubar"], [role="spinbutton"], [role="slider"]')) return;
+        const last = numPagesRef.current || topsRef.current.length;
+        const next = Math.min(last, Math.max(1, (currentPageRef.current || 1) + turn));
+        event.preventDefault();
+        if (next !== currentPageRef.current) goToPage(next, { smooth: true });
+        return;
+      }
       event.preventDefault();
       zoomGlideFinishRef.current?.();
       cancelPanInertia(false);
@@ -5939,7 +5957,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [cancelPanInertia, glideScrollTopTo, goToPage]);
+  }, [cancelPanInertia, glideScrollTopTo, goToPage, pageTurnKeysOn, drawboardShiftArrowsOn]);
 
   // Drawboard keys (Nightly 'drawboard-keys'): Shift+Up / Down go to the
   // previous / next page on the same glide. Shift+arrows also nudge a picked

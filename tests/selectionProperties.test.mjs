@@ -167,3 +167,42 @@ test('Selected colors: a swatch recolours every use of that colour in the pick, 
   assert.match(panel, /op: 'recolour', from, to/);
   assert.match(panel, /data-props-recolour=\{recolourFrom\}/);
 });
+
+test('Text section: Color, Opacity and Size go through the text bar\'s own setters', () => {
+  const panel = read('src/components/SelectionPropertiesPanel.jsx');
+  assert.match(panel, /TEXT_SIZE_TICKS = \[10, 12, 16, 20, 42, 64\]/);
+  assert.match(panel, /<Section title="Text" id="text">/);
+  assert.match(panel, /textFormat\.api\.setFontColor\?\.\(composeTextColor\(hex, textParts\.opacity\)\)/);
+  assert.match(panel, /phase: 'preview'[\s\S]*phase: 'commit'/);
+  assert.match(panel, /textFormat\.api\.setFontSize\?\.\(v\)/);
+  assert.match(read('src/AppShell.jsx'), /textFormat=\{textFormatSource\}/);
+});
+
+test('Pin to side panel: pinned implies open, is remembered, and docks into AppShell\'s host', async () => {
+  const store = await import('../src/utils/propertiesPanelStore.js');
+  store.setPropertiesPanelOpen(false);
+  store.setPropertiesPanelPinned(true);
+  assert.equal(store.isPropertiesPanelPinned(), true);
+  assert.equal(store.isPropertiesPanelOpen(), true);
+  store.setPropertiesPanelPinned(false);
+  assert.equal(store.isPropertiesPanelPinned(), false);
+  assert.equal(store.isPropertiesPanelOpen(), true);
+  const panel = read('src/components/SelectionPropertiesPanel.jsx');
+  assert.match(panel, /docked \? dockEl : document\.body/);
+  assert.match(panel, /export function PropertiesPanelDockHost/);
+  assert.match(panel, /'Select'/);
+  assert.match(read('src/AppShell.jsx'), /<PropertiesPanelDockHost enabled=\{Boolean\(isViewerVisible && !isMobileViewer\)\} \/>/);
+});
+
+test('Fill colour row: none, then white and the presets, on the fill side of the paint', async () => {
+  const { FILL_QUICK_COLOURS, QUICK_COLOURS } = await import('../src/utils/quickStylePresets.js');
+  assert.deepEqual(FILL_QUICK_COLOURS, ['#FFFFFF', ...QUICK_COLOURS]);
+  const panel = read('src/components/SelectionPropertiesPanel.jsx');
+  assert.match(panel, /data-props-fill-none/);
+  assert.match(panel, /onClick=\{clearFill\}/);
+  assert.doesNotMatch(panel, /paint\.fill\.apply\(paint\.fill\.color, 0\)/, 'No fill must not rewrite the colour');
+  assert.match(panel, /api\?\.handleFillOpacityChange\?\.\(0\)/);
+  assert.match(panel, /useLayoutEffect\(\(\) => \{\n    if \(!active \|\| docked\)/);
+  assert.match(panel, /paint\.fill\.apply\(hex, paint\.fill\.opacity > 0 \? paint\.fill\.opacity : 1\)/);
+  assert.match(read('src/AppShell.jsx'), /fill: isShape \? channel\(true\) : null,/);
+});

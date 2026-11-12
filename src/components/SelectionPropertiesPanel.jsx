@@ -16,7 +16,7 @@
 //   - Every change is the same write the tool bar makes (the published tool
 //     bar API) or the page layer's own move / turn / resize, so it saves,
 //     syncs and undoes like any other edit.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from '../Icons';
 import { QuickColourDots } from './QuickStyleControls';
@@ -29,7 +29,16 @@ import { ARRANGE_SELECTION_EVENT } from '../utils/alignMarks.js';
 import { getAnnotationAuthorId } from '../lib/collab/permissionScope.js';
 import { getAnnotationRenderIdentity } from '../utils/annotationStorageIdentity.js';
 import { authorLabel, markCreatedAt } from '../utils/markupList.js';
-import { setPropertiesPanelOpen, usePropertiesPanelOpen } from '../utils/propertiesPanelStore.js';
+import {
+  setPropertiesDockElement,
+  setPropertiesPanelOpen,
+  setPropertiesPanelPinned,
+  usePropertiesDockElement,
+  usePropertiesPanelOpen,
+  usePropertiesPanelPinned,
+} from '../utils/propertiesPanelStore.js';
+import { composeTextColor, splitTextColor } from '../utils/textColorOpacity.js';
+import { FILL_QUICK_COLOURS, FILL_QUICK_COLOUR_NAMES } from '../utils/quickStylePresets.js';
 import {
   TRANSFORM_SELECTION_EVENT,
   formatPt,
@@ -46,6 +55,8 @@ import './SelectionPropertiesPanel.css';
 
 const THICKNESS_TICKS = [1, 2, 3, 6, 10, 50];
 const OPACITY_TICKS = [25, 50, 75, 100];
+// Drawboard's Text section: Size slider ticks, as measured 2026-11-10.
+const TEXT_SIZE_TICKS = [10, 12, 16, 20, 42, 64];
 
 // The id the page layer broadcasts for a picked mark (data-annotation-id).
 const objectId = (object) => String(getAnnotationRenderIdentity(object).annotationId ?? '');
@@ -130,6 +141,7 @@ function Section({ title, children, id }) {
 function SliderRow({ label, value, ticks, min, max, unit, onPreview, onCommit, mixed }) {
   const [draft, setDraft] = useState(null);
   const shown = draft ?? (Number.isFinite(Number(value)) ? Number(value) : min);
+  const ticksId = `props-ticks-${label.replace(/\s+/g, '-')}`;
   return (
     <div className="props-panel__slider-row">
       <span className="props-panel__row-label">{label}</span>
@@ -140,12 +152,12 @@ function SliderRow({ label, value, ticks, min, max, unit, onPreview, onCommit, m
         step={1}
         value={shown}
         aria-label={label}
-        list={`props-ticks-${label}`}
+        list={ticksId}
         onChange={(event) => { const v = Number(event.target.value); setDraft(v); onPreview(v); }}
         onPointerUp={() => { if (draft != null) { onCommit(draft); setDraft(null); } }}
         onKeyUp={() => { if (draft != null) { onCommit(draft); setDraft(null); } }}
       />
-      <datalist id={`props-ticks-${label}`}>{ticks.map((t) => <option key={t} value={t} />)}</datalist>
+      <datalist id={ticksId}>{ticks.map((t) => <option key={t} value={t} />)}</datalist>
       <span className="props-panel__value" data-props-value={label}>{mixed && draft == null ? 'Mixed' : `${Math.round(shown)}${unit}`}</span>
     </div>
   );
@@ -160,10 +172,13 @@ export default function SelectionPropertiesPanel({
   annotationsByPage,
   viewerId,
   tip,
+  textFormat,
 }) {
   const flagOn = useMemo(() => isFeatureOn('properties-panel'), []);
   const items = useSelectedItems();
   const open = usePropertiesPanelOpen();
+  const pinned = usePropertiesPanelPinned();
+  const dockEl = usePropertiesDockElement();
   const [frame, setFrame] = useState(null);
   // The "Selected colors" swatch whose colour row is open.
   const [recolourFrom, setRecolourFrom] = useState(null);
@@ -185,11 +200,14 @@ export default function SelectionPropertiesPanel({
     return { list, objects, kinds, pageNumber: pages.size === 1 ? [...pages][0] : null };
   }, [annotationsByPage, items]);
 
-  const active = flagOn && enabled && !phone && open && picked.list.length > 0;
+  // Pinned, it docks beside the viewer and stays up with nothing picked.
+  const docked = Boolean(flagOn && enabled && !phone && pinned && dockEl);
+  const active = docked || (flagOn && enabled && !phone && open && picked.list.length > 0);
 
-  // Sit on the right of the viewer, under the tool bar.
-  useEffect(() => {
-    if (!active) return undefined;
+  // Sit on the right of the viewer, under the tool bar. Measured before paint,
+  // so a panel just unpinned (no frame yet this session) never blinks out.
+  useLayoutEffect(() => {
+    if (!active || docked) return undefined;
     const place = () => {
       // The on-screen viewer (a tab behind keeps its own), under the tool bars.
       const b = viewerBounds(false);
@@ -198,7 +216,7 @@ export default function SelectionPropertiesPanel({
     place();
     window.addEventListener('resize', place);
     return () => window.removeEventListener('resize', place);
-  }, [active]);
+  }, [active, docked]);
 
   // Callouts and Survey Markers are boxes in the page layer, not page objects.
   const extraBoxes = useMemo(() => {
@@ -248,7 +266,7 @@ export default function SelectionPropertiesPanel({
     window.dispatchEvent(new CustomEvent(TRANSFORM_SELECTION_EVENT, { detail: { pageNumber: picked.pageNumber, op: 'turn', angle } }));
   }, [picked.pageNumber, transform]);
 
-  if (!active || !frame || typeof document === 'undefined') return null;
+  if (!active || (!docked && !frame) || typeof document === 'undefined') return null;
 
   // "Selected colors": a swatch opens a row of colours; a pick recolours
   // every use of that colour in the pick.
@@ -276,6 +294,15 @@ export default function SelectionPropertiesPanel({
   const colours = [...new Set(picked.objects.flatMap((o) => [o.stroke, o.fill])
     .filter((c) => typeof c === 'string' && c && c !== 'transparent' && !/rgba\([^)]*,\s*0\)$/.test(c)))].slice(0, 12);
   const styleValue = (api?.lineBorderStyle === 'cloud' && !api?.supportsCloudStyle) ? 'solid' : (api?.lineBorderStyle || 'solid');
+  const textParts = splitTextColor(textFormat?.state?.fontColor);
+  const fillNone = Boolean(paint?.fill) && !mixed.fillOpacity && paint.fill.opacity <= 0;
+  // "No fill" changes only the opacity, so a pick of mixed fill colours keeps
+  // them (Bugbot on #1387). A shape keeps one side visible, as the dots do.
+  const clearFill = () => {
+    if (paint?.shapeOneVisibleRule && (api?.strokeOpacity ?? 100) <= 0) api?.handleStrokeOpacityChange?.(100);
+    api?.handleFillOpacityChange?.(0);
+  };
+  const textSize = Number(textFormat?.state?.fontSize) || 16;
   const setWidth = (width) => {
     api?.handleStrokeWidthInputChange?.({ target: { value: String(width) } });
     api?.handleStrokeWidthInputBlur?.({ currentTarget: { value: String(width) } });
@@ -283,29 +310,47 @@ export default function SelectionPropertiesPanel({
 
   return createPortal(
     <aside
-      className="props-panel"
+      className={`props-panel${docked ? ' props-panel--docked' : ''}`}
       data-properties-panel="true"
+      data-properties-panel-docked={docked ? 'true' : undefined}
       aria-label="Properties"
-      style={{ top: frame.top, right: frame.right, bottom: frame.bottom }}
+      style={docked ? undefined : { top: frame.top, right: frame.right, bottom: frame.bottom }}
       onMouseDown={(event) => event.stopPropagation()}
       onPointerDown={(event) => event.stopPropagation()}
     >
       <header className="props-panel__header">
         <div className="props-panel__heading">
-          <div className="props-panel__count" data-props-count>{headerCountText(picked.list.length)}</div>
-          <div className="props-panel__kind" data-props-kind>{kindLabel(picked.kinds)}</div>
+          {/* Drawboard: a pinned panel with nothing picked is titled "Select". */}
+          <div className="props-panel__count" data-props-count>{picked.list.length ? headerCountText(picked.list.length) : 'Select'}</div>
+          {picked.list.length > 0 && <div className="props-panel__kind" data-props-kind>{kindLabel(picked.kinds)}</div>}
           {single && <div className="props-panel__meta">{[author, created].filter(Boolean).join(' · ')}</div>}
         </div>
+        {!pinned && (
+          <button
+            type="button"
+            className="props-panel__icon-button"
+            aria-label="Collapse menu"
+            {...chromeTip('Collapse menu', 'below')}
+            onClick={() => setPropertiesPanelOpen(false)}
+          >
+            <Icon name="panelRight" size={16} color="currentColor" />
+          </button>
+        )}
         <button
           type="button"
-          className="props-panel__icon-button"
-          aria-label="Collapse menu"
-          {...chromeTip('Collapse menu', 'below')}
-          onClick={() => setPropertiesPanelOpen(false)}
+          className={`props-panel__icon-button${pinned ? ' is-pinned' : ''}`}
+          aria-label={pinned ? 'Unpin side panel' : 'Pin to side panel'}
+          aria-pressed={pinned}
+          data-props-pin
+          {...chromeTip(pinned ? 'Unpin side panel' : 'Pin to side panel', 'below')}
+          onClick={() => setPropertiesPanelPinned(!pinned)}
         >
-          <Icon name="panelRight" size={16} color="currentColor" />
+          <Icon name="pushPin" size={16} color="currentColor" />
         </button>
       </header>
+      {picked.list.length === 0 ? (
+        <div className="props-panel__body props-panel__empty" data-props-empty>Pick a mark to see its settings here.</div>
+      ) : (
       <div className="props-panel__body">
         {transform && (
           <Section title="Transform" id="transform">
@@ -435,6 +480,27 @@ export default function SelectionPropertiesPanel({
         )}
         {caps.fill && (
           <Section title="Fill" id="fill">
+            {paint?.fill && (
+              // Drawboard: a "none" swatch, then white and the presets.
+              <div className="props-panel__row" data-props-fill-colour>
+                <span className="props-panel__row-label">Color</span>
+                <button
+                  type="button"
+                  className={`props-panel__none${fillNone ? ' is-current' : ''}`}
+                  data-props-fill-none
+                  aria-label="No fill"
+                  aria-pressed={fillNone}
+                  {...chromeTip('No fill', 'below')}
+                  onClick={clearFill}
+                />
+                <QuickColourDots
+                  value={fillNone || mixed.fillColor ? null : paint.fill.color}
+                  colours={FILL_QUICK_COLOURS}
+                  names={FILL_QUICK_COLOUR_NAMES}
+                  onPick={(hex) => paint.fill.apply(hex, paint.fill.opacity > 0 ? paint.fill.opacity : 1)}
+                />
+              </div>
+            )}
             <SliderRow
               label="Fill opacity"
               value={api?.fillOpacity}
@@ -448,8 +514,52 @@ export default function SelectionPropertiesPanel({
             />
           </Section>
         )}
+        {textFormat?.api && (
+          // Drawboard's Text section (text box and callout): Color, Opacity
+          // and Size. Font, bold and align stay on the text bar, as there.
+          <Section title="Text" id="text">
+            <div className="props-panel__row" data-props-text-colour>
+              <span className="props-panel__row-label">Color</span>
+              <QuickColourDots
+                value={textParts.hex}
+                onPick={(hex) => textFormat.api.setFontColor?.(composeTextColor(hex, textParts.opacity))}
+              />
+            </div>
+            <SliderRow
+              label="Text opacity"
+              value={Math.round(textParts.opacity * 100)}
+              ticks={OPACITY_TICKS}
+              min={5}
+              max={100}
+              unit="%"
+              onPreview={(v) => textFormat.api.setFontColor?.(composeTextColor(textParts.hex, v / 100), { phase: 'preview' })}
+              onCommit={(v) => textFormat.api.setFontColor?.(composeTextColor(textParts.hex, v / 100), { phase: 'commit' })}
+            />
+            <SliderRow
+              label="Size"
+              value={textSize}
+              ticks={TEXT_SIZE_TICKS}
+              min={6}
+              max={72}
+              unit=" pt"
+              onPreview={() => {}}
+              onCommit={(v) => textFormat.api.setFontSize?.(v)}
+            />
+          </Section>
+        )}
       </div>
+      )}
     </aside>,
-    document.body,
+    docked ? dockEl : document.body,
   );
+}
+
+// AppShell's dock: a column beside the viewer, there only while the panel is
+// pinned, so the viewer narrows and the page stays centred in what is left.
+export function PropertiesPanelDockHost({ enabled }) {
+  const flagOn = useMemo(() => isFeatureOn('properties-panel'), []);
+  const pinned = usePropertiesPanelPinned();
+  const ref = useCallback((el) => setPropertiesDockElement(el), []);
+  if (!flagOn || !enabled || !pinned) return null;
+  return <div ref={ref} className="props-panel-dock" data-properties-dock="true" />;
 }

@@ -9,6 +9,7 @@
  */
 
 import { templateMarks } from '../home/paperTemplates.js';
+import { drawPaperOnPdfPage } from './blankPagePaper.js';
 
 const MM = 72 / 25.4;
 
@@ -113,21 +114,7 @@ export async function buildBlankPdf({ title = 'Blank document', sizeId = 'letter
   if (marks.length) {
     const scratch = await PDFDocument.create();
     const sheet = scratch.addPage([box.width, box.height]);
-    const color = rgb(0.72, 0.8, 0.9);
-    const tones = {
-      rule: { color, thickness: 0.5 },
-      major: { color: rgb(0.48, 0.62, 0.8), thickness: 0.75 },
-      margin: { color: rgb(0.88, 0.45, 0.45), thickness: 0.75 },
-      ink: { color: rgb(0.35, 0.35, 0.38), thickness: 0.6 },
-    };
-    for (const m of marks) {
-      if (m.kind === 'line') {
-        const tone = tones[m.tone] || tones.rule;
-        sheet.drawLine({ start: { x: m.x1, y: m.y1 }, end: { x: m.x2, y: m.y2 }, thickness: tone.thickness, color: tone.color });
-      } else {
-        sheet.drawLine({ start: { x: m.x, y: m.y }, end: { x: m.x, y: m.y }, thickness: 1.6, color, lineCap: LineCapStyle.Round });
-      }
-    }
+    drawPaperOnPdfPage(sheet, marks, { rgb, LineCapStyle });
     pattern = await doc.embedPage(sheet);
   }
   for (let i = 0; i < count; i += 1) {

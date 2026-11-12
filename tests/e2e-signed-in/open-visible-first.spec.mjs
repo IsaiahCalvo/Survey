@@ -252,21 +252,33 @@ test('scrolling while the open still waits mounts the pages brought on screen at
       // The moment page 1 mounts (well before it shows), jump to sheet 7.
       await p.waitForFunction(() => document.querySelector('.survey-pdfjs-page-div[data-page-number="1"][data-page-mounted="true"]'), null, { timeout: 90_000, polling: 'raf' });
       const target = 7;
-      const shownAtJump = await p.evaluate((n) => {
-        const pageDiv = document.querySelector(`.survey-pdfjs-page-div[data-page-number="${n}"]`);
-        const scroller = pageDiv.closest('[data-pdfjs-scroller], .survey-pdfjs-scroller') || pageDiv.parentElement.parentElement;
-        scroller.scrollTop += pageDiv.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
-        window.__jumpAt = performance.now();
-        return !!document.querySelector('.survey-pdfjs-page-div[data-page-number="1"][data-raster-shown]');
-      }, target);
-      const waited = await p.evaluate((n) => new Promise((resolve) => {
+      // The open can still reset the scroll (fit, layout) right after page 1
+      // mounts: jump again until sheet 7 is on screen, and time from then.
+      const { waited, shownAtJump, jumps } = await p.evaluate((n) => new Promise((resolve) => {
+        const pageDiv = () => document.querySelector(`.survey-pdfjs-page-div[data-page-number="${n}"]`);
+        const scroller = pageDiv().closest('[data-pdfjs-scroller], .survey-pdfjs-scroller') || pageDiv().parentElement.parentElement;
+        const onScreen = () => {
+          const r = pageDiv().getBoundingClientRect(); const sr = scroller.getBoundingClientRect();
+          return r.bottom > sr.top + 4 && r.top < sr.bottom - 4;
+        };
+        const page1Shown = () => !!document.querySelector('.survey-pdfjs-page-div[data-page-number="1"][data-raster-shown]');
+        let jumps = 0; let since = 0; let shown = null;
         const tick = () => {
-          if (document.querySelector(`.survey-pdfjs-page-div[data-page-number="${n}"][data-page-mounted="true"]`)) resolve(performance.now() - window.__jumpAt);
-          else requestAnimationFrame(tick);
+          if (!onScreen()) {
+            since = 0;
+            if (jumps < 60) { jumps += 1; scroller.scrollTop += pageDiv().getBoundingClientRect().top - scroller.getBoundingClientRect().top; }
+          } else if (!since) {
+            since = performance.now(); shown = page1Shown();
+          }
+          if (since && pageDiv().getAttribute('data-page-mounted') === 'true') {
+            resolve({ waited: performance.now() - since, shownAtJump: shown, jumps });
+            return;
+          }
+          requestAnimationFrame(tick);
         };
         tick();
       }), target);
-      expect(waited, `sheet ${target} mounted ${Math.round(waited)} ms after the jump (page 1 shown at the jump: ${shownAtJump})`).toBeLessThan(2500);
+      expect(waited, `sheet ${target} mounted ${Math.round(waited)} ms after it came on screen (jumps: ${jumps}, page 1 shown then: ${shownAtJump})`).toBeLessThan(2500);
     } finally {
       await phone.close();
     }
