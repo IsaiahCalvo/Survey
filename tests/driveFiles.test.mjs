@@ -202,6 +202,28 @@ test('a change made in OneDrive since the last save is a conflict; "keep Survey\
   assert.equal(db.tables.document_drive_links.get(DOC).last_error, null);
 });
 
+test('a late confirm keeps the old eTag when the drive changed after Survey\'s upload, and stamps the push start time', async () => {
+  const { graph, db, call } = setup({ roles: ROLES, flags: BETA });
+  graph.add('PDF1', { name: 'A.pdf' });
+  await call('owner-1', { action: 'driveLink', documentId: DOC, driveId: DRIVE, itemId: 'PDF1', eTag: '"{PDF1},1"' });
+  const { uploadUrl } = await call('owner-1', { action: 'drivePush', documentId: DOC });
+  await graph.fetch(uploadUrl, { method: 'PUT', body: 'survey-v2' });
+  // Survey's write made version 2; then someone edits in OneDrive before the confirm lands.
+  graph.editAtSource('PDF1', 'someone-else');
+  const startedAt = new Date(Date.now() - 10 * 60_000).toISOString();
+  const late = await call('owner-1', { action: 'drivePushed', documentId: DOC, sha: 'v2', late: true, etag: '"{PDF1},2"', pushedAt: startedAt });
+  assert.equal(db.tables.document_drive_links.get(DOC).etag, '"{PDF1},1"', 'not stamped with their version');
+  assert.equal(late.link.lastPushedAt, startedAt, 'the time the push started, not now');
+  await rejects(call('owner-1', { action: 'drivePush', documentId: DOC }), 'conflict');
+  assert.equal(graph.items.get('PDF1').bytes, 'someone-else', 'their change is not overwritten');
+
+  // "Keep Survey's version", then a late confirm with no change since: the drive's version is taken.
+  const forced = await call('owner-1', { action: 'drivePush', documentId: DOC, force: true });
+  await graph.fetch(forced.uploadUrl, { method: 'PUT', body: 'survey-v4' });
+  await call('owner-1', { action: 'drivePushed', documentId: DOC, sha: 'v4', force: true, late: true, etag: '"{PDF1},4"' });
+  assert.equal(db.tables.document_drive_links.get(DOC).etag, '"{PDF1},4"');
+});
+
 test('a moved or deleted file, a read-only file and "syncing off" each say so', async () => {
   const { graph, call } = setup({ roles: ROLES, flags: BETA });
   graph.add('PDF1', { name: 'A.pdf' });

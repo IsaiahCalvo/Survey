@@ -38,6 +38,21 @@ function readUnconfirmed(documentId) {
     return body && String(body.documentId) === String(documentId) ? body : null;
   } catch { return null; }
 }
+// A change made on this screen that has not reached the drive yet survives a
+// reload the same way, so it still saves back on the timer.
+const dirtyKey = (documentId) => `survey:drive-dirty:${documentId}`;
+function readDirtySince(documentId) {
+  try {
+    const at = Number(deviceStore()?.getItem(dirtyKey(documentId)));
+    return Number.isFinite(at) && at > 0 ? at : 0;
+  } catch { return 0; }
+}
+function keepDirtySince(documentId, at) {
+  try {
+    if (at) deviceStore()?.setItem(dirtyKey(documentId), String(at));
+    else deviceStore()?.removeItem(dirtyKey(documentId));
+  } catch { /* private window: this session still knows */ }
+}
 function keepUnconfirmed(documentId, body) {
   try {
     if (body) deviceStore()?.setItem(unconfirmedKey(documentId), JSON.stringify(body));
@@ -107,15 +122,23 @@ export function useDriveSyncBack({
     setProblem(null);
     setDialog(null);
     setDirty(false);
-    stateRef.current = { dirtySince: 0, editsSeen: 0, lastAttemptAt: 0, retryAt: 0, pushing: false, unconfirmed: active ? readUnconfirmed(documentId) : null };
+    stateRef.current = {
+      dirtySince: active ? readDirtySince(documentId) : 0,
+      editsSeen: 0,
+      lastAttemptAt: 0,
+      retryAt: 0,
+      pushing: false,
+      unconfirmed: active ? readUnconfirmed(documentId) : null,
+    };
     if (!active) return undefined;
+    if (stateRef.current.dirtySince) setDirty(true);
     refresh();
     const onLink = (event) => { if (String(event?.detail?.documentId) === String(documentId)) refresh(); };
     const onEdit = (event) => {
       if (String(event?.detail?.documentId) !== String(documentId)) return;
       const s = stateRef.current;
       s.editsSeen += 1;
-      if (!s.dirtySince) s.dirtySince = now();
+      if (!s.dirtySince) { s.dirtySince = now(); keepDirtySince(documentId, s.dirtySince); }
       setDirty(true);
     };
     window.addEventListener(DRIVE_LINK_CHANGED_EVENT, onLink);
@@ -132,7 +155,8 @@ export function useDriveSyncBack({
     let current = linkRef.current;
     if (!current) return false;
     s.pushing = true;
-    s.lastAttemptAt = now();
+    const startedAt = now();
+    s.lastAttemptAt = startedAt;
     setPhase('saving');
     setProblem(null);
     const editsAtStart = s.editsSeen;
@@ -144,12 +168,13 @@ export function useDriveSyncBack({
       } else {
         stateRef.current.dirtySince = now();
       }
+      keepDirtySince(documentId, stateRef.current.dirtySince);
     };
     try {
       // The last upload reached the drive but the server never heard: tell it
       // first, or this push would meet Survey's own write as a conflict.
       if (s.unconfirmed) {
-        const confirmed = await call('drivePushed', s.unconfirmed);
+        const confirmed = await call('drivePushed', { ...s.unconfirmed, late: true });
         if (!confirmed || confirmed.error) throw Object.assign(new Error(confirmed?.error || 'Survey could not reach the server.'), { code: confirmed?.code || 'graph' });
         s.unconfirmed = null;
         keepUnconfirmed(documentId, null);
@@ -175,8 +200,17 @@ export function useDriveSyncBack({
       if (!session || session.error) throw Object.assign(new Error(session?.error || 'The drive did not take the file.'), { code: session?.code || 'graph' });
       // Google takes the whole file in one request (no 308 rounds); Graph
       // caps one request at 60 MiB, so bigger files go in pieces.
-      await upload(session.uploadUrl, bytes, undefined, { wholeFile: session.provider === 'google' });
-      const pushedBody = { documentId, sha, ...(force ? { force: true } : {}) };
+      const uploaded = await upload(session.uploadUrl, bytes, undefined, { wholeFile: session.provider === 'google' });
+      // The eTag this upload made (Graph's item, Google's head revision), so a
+      // late confirm can tell Survey's write from a later change in the drive.
+      const uploadedEtag = uploaded?.eTag || uploaded?.headRevisionId || null;
+      const pushedBody = {
+        documentId,
+        sha,
+        pushedAt: new Date(startedAt).toISOString(),
+        ...(uploadedEtag ? { etag: uploadedEtag } : {}),
+        ...(force ? { force: true } : {}),
+      };
       let done = await call('drivePushed', pushedBody);
       if (!done || done.error) done = await call('drivePushed', pushedBody);
       // The drive has the file either way; the timer confirms it in a minute
@@ -246,8 +280,10 @@ export function useDriveSyncBack({
       const res = await call('driveUnlink', { documentId });
       if (!res?.error) {
         stateRef.current.unconfirmed = null;
+        stateRef.current.dirtySince = 0;
         keepUnconfirmed(documentId, null);
-        setLink(null); setPhase('idle'); setProblem(null);
+        keepDirtySince(documentId, 0);
+        setLink(null); setDirty(false); setPhase('idle'); setProblem(null);
       }
       return res;
     },
