@@ -1,7 +1,7 @@
 import Stripe from 'npm:stripe@20.4.1';
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
 import { companyBillingStatus, companyIdOf } from '../_shared/companyBilling.js';
-import { subscriptionDbStatus } from '../_shared/stripeSubscriptionState.js';
+import { paymentStillOwed, subscriptionDbStatus } from '../_shared/stripeSubscriptionState.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') as string, {
     apiVersion: '2026-02-25.clover',
@@ -702,8 +702,9 @@ async function handlePaymentFailed(supabase: any, invoice: Stripe.Invoice) {
     if (!error) {
         console.log(`Payment failed for subscription ${subscriptionId}`);
 
-        // Send email notification
-        if (invoice.customer_email && invoice.customer) {
+        // Email only while the plan really is unpaid: a retry that already
+        // paid (or a canceled plan) must not ask the customer to fix a card.
+        if (paymentStillOwed(status) && invoice.customer_email && invoice.customer) {
             // EMAIL LINK RULE (owner-reported 2026-08-20): never put a billing-portal
         // session URL in an email. Portal sessions are single-use and expire within
         // minutes, so every emailed link died before it was clicked ('For security

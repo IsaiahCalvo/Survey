@@ -273,6 +273,8 @@ export default function CommentsPanel({
   const threads = useMemo(() => groupThreads(comments), [comments]);
   const lists = useMemo(() => splitResolvedThreads(threads), [threads]);
   const [view, setView] = useState('open'); // 'open' | 'resolved'
+  // The panel stays mounted across documents: each one opens on Open.
+  useEffect(() => { setView('open'); }, [documentId]);
   const shown = view === 'resolved' ? lists.resolved : lists.open;
   const [draft, setDraft] = useState(null); // { markId, pageNumber }
   const [replyingTo, setReplyingTo] = useState(null);
@@ -329,7 +331,8 @@ export default function CommentsPanel({
     el.scrollIntoView?.({ block: 'center' });
     const timer = window.setTimeout(() => setHighlightId(null), 2400);
     return () => window.clearTimeout(timer);
-  }, [highlightId, isActive, comments]);
+    // view: a link into a resolved thread flips the list first, then scrolls.
+  }, [highlightId, isActive, comments, view]);
 
   // What a thread hangs off: its words and the mark kind's own glyph.
   const markTarget = useCallback((markId, pageNumber) => {

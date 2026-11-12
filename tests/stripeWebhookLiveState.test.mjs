@@ -8,7 +8,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { subscriptionDbStatus } from '../supabase/functions/_shared/stripeSubscriptionState.js';
+import { paymentStillOwed, subscriptionDbStatus } from '../supabase/functions/_shared/stripeSubscriptionState.js';
 
 const src = readFileSync(new URL('../supabase/functions/stripe-webhook/index.ts', import.meta.url), 'utf8');
 const ENUM = ['active', 'trialing', 'past_due', 'canceled', 'incomplete'];
@@ -40,6 +40,14 @@ describe('subscriptionDbStatus', () => {
   });
 });
 
+describe('paymentStillOwed', () => {
+  it('only an unpaid plan gets the payment-failed email', () => {
+    assert.equal(paymentStillOwed('past_due'), true);
+    assert.equal(paymentStillOwed('incomplete'), true);
+    for (const status of ['active', 'trialing', 'canceled', null]) assert.equal(paymentStillOwed(status), false, String(status));
+  });
+});
+
 describe('stripe-webhook reads plan state from Stripe, not the event', () => {
   it('liveSubscription retrieves by id and a failed read answers 500', () => {
     const fn = body('liveSubscription');
@@ -63,6 +71,10 @@ describe('stripe-webhook reads plan state from Stripe, not the event', () => {
       assert.match(fn, /subscriptionDbStatus\(\(await liveSubscription\(subscriptionId\)\)\.status\)/, name);
       assert.doesNotMatch(fn, /status: 'active'|status: 'past_due'/, name);
     }
+  });
+
+  it('a late payment_failed after a paid retry sends no email', () => {
+    assert.match(body('handlePaymentFailed'), /if \(paymentStillOwed\(status\) && invoice\.customer_email/);
   });
 
   it('company seats come from the live subscription unless it was deleted', () => {

@@ -22,3 +22,9 @@ export function subscriptionDbStatus(stripeStatus) {
       return null;
   }
 }
+
+// A payment-failed email only makes sense while the plan still owes money:
+// a late or replayed invoice.payment_failed after a retry paid must stay quiet.
+export function paymentStillOwed(dbStatus) {
+  return dbStatus === 'past_due' || dbStatus === 'incomplete';
+}

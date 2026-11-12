@@ -104,6 +104,9 @@ test('comments: resolve a thread, find it under Resolved, reopen it, and Undo', 
     const linked = page.getByTestId('comments-panel').locator(`[data-comment-thread="${second.id}"]`);
     await expect(linked).toBeVisible({ timeout: 60_000 });
     await expect(page.getByTestId('comments-panel').locator('[data-comment-filter="resolved"]')).toHaveAttribute('aria-pressed', 'true');
+    // It is marked for a moment, then the mark clears (the list flip must not
+    // leave it marked for good).
+    await expect(linked).not.toHaveClass(/is-highlighted/, { timeout: 8_000 });
   } finally {
     await admin.from('documents').delete().eq('id', docId);
   }
