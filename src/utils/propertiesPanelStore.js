@@ -30,3 +30,39 @@ const subscribe = (listener) => {
 export function usePropertiesPanelOpen() {
   return useSyncExternalStore(subscribe, isPropertiesPanelOpen, () => false);
 }
+
+// Drawboard's "Pin to side panel": the card docks as a full-height side panel
+// on the right of the viewer, stays up with nothing picked, and the page
+// narrows to make room. Pinned implies open; remembered per browser.
+const PIN_KEY = 'survey.propertiesPanel.pinned';
+let pinned = (() => {
+  try { return typeof localStorage !== 'undefined' && localStorage.getItem(PIN_KEY) === '1'; } catch { return false; }
+})();
+
+export function isPropertiesPanelPinned() {
+  return pinned;
+}
+
+export function setPropertiesPanelPinned(next) {
+  const value = Boolean(next);
+  if (value === pinned) return;
+  pinned = value;
+  try { localStorage.setItem(PIN_KEY, value ? '1' : '0'); } catch { /* storage off */ }
+  if (value) setPropertiesPanelOpen(true);
+  listeners.forEach((listener) => listener());
+}
+
+export function usePropertiesPanelPinned() {
+  return useSyncExternalStore(subscribe, isPropertiesPanelPinned, () => false);
+}
+
+// The element the docked panel sits in (AppShell's dock host).
+let dockElement = null;
+export function setPropertiesDockElement(el) {
+  if (el === dockElement) return;
+  dockElement = el;
+  listeners.forEach((listener) => listener());
+}
+export function usePropertiesDockElement() {
+  return useSyncExternalStore(subscribe, () => dockElement, () => null);
+}

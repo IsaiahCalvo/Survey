@@ -177,3 +177,19 @@ test('Text section: Color, Opacity and Size go through the text bar\'s own sette
   assert.match(panel, /textFormat\.api\.setFontSize\?\.\(v\)/);
   assert.match(read('src/AppShell.jsx'), /textFormat=\{textFormatSource\}/);
 });
+
+test('Pin to side panel: pinned implies open, is remembered, and docks into AppShell\'s host', async () => {
+  const store = await import('../src/utils/propertiesPanelStore.js');
+  store.setPropertiesPanelOpen(false);
+  store.setPropertiesPanelPinned(true);
+  assert.equal(store.isPropertiesPanelPinned(), true);
+  assert.equal(store.isPropertiesPanelOpen(), true);
+  store.setPropertiesPanelPinned(false);
+  assert.equal(store.isPropertiesPanelPinned(), false);
+  assert.equal(store.isPropertiesPanelOpen(), true);
+  const panel = read('src/components/SelectionPropertiesPanel.jsx');
+  assert.match(panel, /docked \? dockEl : document\.body/);
+  assert.match(panel, /export function PropertiesPanelDockHost/);
+  assert.match(panel, /'Select'/);
+  assert.match(read('src/AppShell.jsx'), /<PropertiesPanelDockHost enabled=\{Boolean\(isViewerVisible && !isMobileViewer\)\} \/>/);
+});

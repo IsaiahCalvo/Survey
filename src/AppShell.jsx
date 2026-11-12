@@ -134,7 +134,7 @@ import { showsColourRule, showsPaintSwatch, showsQuickColourDots } from './utils
 import { isAreaEditing, REGION_TOOLBAR_OPENING_STATE, resolveToolBarGroup, showsFormatRow, showsSurveyRow } from './utils/toolbarRows.js';
 import { LINE_STYLE_SAMPLE_ICONS, lineStyleOptionsWith } from './utils/lineStyleOptions.js';
 import SelectionQuickBar from './components/SelectionQuickBar.jsx';
-import SelectionPropertiesPanel from './components/SelectionPropertiesPanel.jsx';
+import SelectionPropertiesPanel, { PropertiesPanelDockHost } from './components/SelectionPropertiesPanel.jsx';
 import StampPickerCard from './components/StampPickerCard.jsx';
 import InsertImagePasteHost from './components/InsertImage.jsx';
 import { LineEndingsMenu } from './components/LineEndingsPicker.jsx';
@@ -5384,6 +5384,8 @@ export default function App({ devPreviewReturnTab = null }) {
             )}
           </div>
           </div>
+          {/* Nightly 'properties-panel': the pinned panel docks here, beside the viewer. */}
+          <PropertiesPanelDockHost enabled={Boolean(isViewerVisible && !isMobileViewer)} />
           {/* UX 2026-05-14/29: chrome-right-host — slim always-visible right rail.
               Pinned to the viewport's right edge. Survey owns this rail; page
               and zoom controls now live in the top-right toolbar pill.

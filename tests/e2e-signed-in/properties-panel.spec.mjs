@@ -281,3 +281,48 @@ test('Text: a picked text box shows Color, Opacity and Size, and each one change
     await sheet.remove();
   }
 });
+
+test('Pin to side panel docks the panel beside the page, keeps it with nothing picked and across a reload; unpin floats it again', async ({ page }) => {
+  test.setTimeout(180_000);
+  const { sheet, pageDiv, marks } = await open(page, 'Props panel pin', true);
+  try {
+    const box = await pageDiv.boundingBox();
+    await page.getByRole('button', { name: 'Shapes', exact: true }).click();
+    await page.getByRole('button', { name: 'Rectangle', exact: true }).filter({ visible: true }).first().click();
+    await drawRect(page, box, 150, 200, 80, 40);
+    await expect(marks).toHaveCount(1);
+    await page.locator('[data-selection-quick-expand]').click();
+    await expect(panel(page)).toBeVisible();
+    await expect(panel(page).getByRole('button', { name: 'Collapse menu' })).toBeVisible();
+    const viewer = page.locator('#chrome-right-host');
+    const railBefore = await viewer.boundingBox();
+    const before = await pageDiv.boundingBox();
+    await panel(page).locator('[data-props-pin]').click();
+    const dock = page.locator('[data-properties-dock]');
+    await expect(dock.locator('[data-properties-panel]')).toBeVisible();
+    await expect(panel(page).locator('[data-props-pin]')).toHaveAttribute('aria-pressed', 'true');
+    await expect(panel(page).getByRole('button', { name: 'Collapse menu' })).toHaveCount(0);
+    const dockBox = await dock.boundingBox();
+    expect(Math.round(dockBox.width)).toBe(260);
+    // The dock sits left of the right rail, full height, and the page moves left.
+    expect(Math.round(dockBox.x + dockBox.width)).toBe(Math.round(railBefore.x));
+    await expect.poll(async () => (await pageDiv.boundingBox()).x).toBeLessThan(before.x - 60);
+    await expect(panel(page).locator('[data-props-section="transform"]')).toBeVisible();
+    // Nothing picked: it stays, titled "Select".
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+    await expect(panel(page).locator('[data-props-count]')).toHaveText('Select');
+    await expect(panel(page).locator('[data-props-empty]')).toBeVisible();
+    // A reload keeps it pinned.
+    await page.reload();
+    await expect(pageDiv.locator('canvas').first()).toBeVisible({ timeout: 60_000 });
+    await expect(dock.locator('[data-properties-panel]')).toBeVisible();
+    // Unpin: the dock goes and the page comes back.
+    await panel(page).locator('[data-props-pin]').click();
+    await expect(dock).toHaveCount(0);
+    await expect(panel(page)).toHaveCount(0);
+    await expect.poll(async () => Math.abs((await pageDiv.boundingBox()).x - before.x)).toBeLessThan(4);
+  } finally {
+    await sheet.remove();
+  }
+});

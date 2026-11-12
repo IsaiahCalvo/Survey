@@ -29,7 +29,14 @@ import { ARRANGE_SELECTION_EVENT } from '../utils/alignMarks.js';
 import { getAnnotationAuthorId } from '../lib/collab/permissionScope.js';
 import { getAnnotationRenderIdentity } from '../utils/annotationStorageIdentity.js';
 import { authorLabel, markCreatedAt } from '../utils/markupList.js';
-import { setPropertiesPanelOpen, usePropertiesPanelOpen } from '../utils/propertiesPanelStore.js';
+import {
+  setPropertiesDockElement,
+  setPropertiesPanelOpen,
+  setPropertiesPanelPinned,
+  usePropertiesDockElement,
+  usePropertiesPanelOpen,
+  usePropertiesPanelPinned,
+} from '../utils/propertiesPanelStore.js';
 import { composeTextColor, splitTextColor } from '../utils/textColorOpacity.js';
 import {
   TRANSFORM_SELECTION_EVENT,
@@ -169,6 +176,8 @@ export default function SelectionPropertiesPanel({
   const flagOn = useMemo(() => isFeatureOn('properties-panel'), []);
   const items = useSelectedItems();
   const open = usePropertiesPanelOpen();
+  const pinned = usePropertiesPanelPinned();
+  const dockEl = usePropertiesDockElement();
   const [frame, setFrame] = useState(null);
   // The "Selected colors" swatch whose colour row is open.
   const [recolourFrom, setRecolourFrom] = useState(null);
@@ -190,11 +199,13 @@ export default function SelectionPropertiesPanel({
     return { list, objects, kinds, pageNumber: pages.size === 1 ? [...pages][0] : null };
   }, [annotationsByPage, items]);
 
-  const active = flagOn && enabled && !phone && open && picked.list.length > 0;
+  // Pinned, it docks beside the viewer and stays up with nothing picked.
+  const docked = Boolean(flagOn && enabled && !phone && pinned && dockEl);
+  const active = docked || (flagOn && enabled && !phone && open && picked.list.length > 0);
 
   // Sit on the right of the viewer, under the tool bar.
   useEffect(() => {
-    if (!active) return undefined;
+    if (!active || docked) return undefined;
     const place = () => {
       // The on-screen viewer (a tab behind keeps its own), under the tool bars.
       const b = viewerBounds(false);
@@ -203,7 +214,7 @@ export default function SelectionPropertiesPanel({
     place();
     window.addEventListener('resize', place);
     return () => window.removeEventListener('resize', place);
-  }, [active]);
+  }, [active, docked]);
 
   // Callouts and Survey Markers are boxes in the page layer, not page objects.
   const extraBoxes = useMemo(() => {
@@ -253,7 +264,7 @@ export default function SelectionPropertiesPanel({
     window.dispatchEvent(new CustomEvent(TRANSFORM_SELECTION_EVENT, { detail: { pageNumber: picked.pageNumber, op: 'turn', angle } }));
   }, [picked.pageNumber, transform]);
 
-  if (!active || !frame || typeof document === 'undefined') return null;
+  if (!active || (!docked && !frame) || typeof document === 'undefined') return null;
 
   // "Selected colors": a swatch opens a row of colours; a pick recolours
   // every use of that colour in the pick.
@@ -290,29 +301,47 @@ export default function SelectionPropertiesPanel({
 
   return createPortal(
     <aside
-      className="props-panel"
+      className={`props-panel${docked ? ' props-panel--docked' : ''}`}
       data-properties-panel="true"
+      data-properties-panel-docked={docked ? 'true' : undefined}
       aria-label="Properties"
-      style={{ top: frame.top, right: frame.right, bottom: frame.bottom }}
+      style={docked ? undefined : { top: frame.top, right: frame.right, bottom: frame.bottom }}
       onMouseDown={(event) => event.stopPropagation()}
       onPointerDown={(event) => event.stopPropagation()}
     >
       <header className="props-panel__header">
         <div className="props-panel__heading">
-          <div className="props-panel__count" data-props-count>{headerCountText(picked.list.length)}</div>
-          <div className="props-panel__kind" data-props-kind>{kindLabel(picked.kinds)}</div>
+          {/* Drawboard: a pinned panel with nothing picked is titled "Select". */}
+          <div className="props-panel__count" data-props-count>{picked.list.length ? headerCountText(picked.list.length) : 'Select'}</div>
+          {picked.list.length > 0 && <div className="props-panel__kind" data-props-kind>{kindLabel(picked.kinds)}</div>}
           {single && <div className="props-panel__meta">{[author, created].filter(Boolean).join(' · ')}</div>}
         </div>
+        {!pinned && (
+          <button
+            type="button"
+            className="props-panel__icon-button"
+            aria-label="Collapse menu"
+            {...chromeTip('Collapse menu', 'below')}
+            onClick={() => setPropertiesPanelOpen(false)}
+          >
+            <Icon name="panelRight" size={16} color="currentColor" />
+          </button>
+        )}
         <button
           type="button"
-          className="props-panel__icon-button"
-          aria-label="Collapse menu"
-          {...chromeTip('Collapse menu', 'below')}
-          onClick={() => setPropertiesPanelOpen(false)}
+          className={`props-panel__icon-button${pinned ? ' is-pinned' : ''}`}
+          aria-label={pinned ? 'Unpin side panel' : 'Pin to side panel'}
+          aria-pressed={pinned}
+          data-props-pin
+          {...chromeTip(pinned ? 'Unpin side panel' : 'Pin to side panel', 'below')}
+          onClick={() => setPropertiesPanelPinned(!pinned)}
         >
-          <Icon name="panelRight" size={16} color="currentColor" />
+          <Icon name="pushPin" size={16} color="currentColor" />
         </button>
       </header>
+      {picked.list.length === 0 ? (
+        <div className="props-panel__body props-panel__empty" data-props-empty>Pick a mark to see its settings here.</div>
+      ) : (
       <div className="props-panel__body">
         {transform && (
           <Section title="Transform" id="transform">
@@ -489,7 +518,18 @@ export default function SelectionPropertiesPanel({
           </Section>
         )}
       </div>
+      )}
     </aside>,
-    document.body,
+    docked ? dockEl : document.body,
   );
+}
+
+// AppShell's dock: a column beside the viewer, there only while the panel is
+// pinned, so the viewer narrows and the page stays centred in what is left.
+export function PropertiesPanelDockHost({ enabled }) {
+  const flagOn = useMemo(() => isFeatureOn('properties-panel'), []);
+  const pinned = usePropertiesPanelPinned();
+  const ref = useCallback((el) => setPropertiesDockElement(el), []);
+  if (!flagOn || !enabled || !pinned) return null;
+  return <div ref={ref} className="props-panel-dock" data-properties-dock="true" />;
 }
