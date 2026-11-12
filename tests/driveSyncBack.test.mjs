@@ -214,3 +214,43 @@ test('a push that fails for a passing reason waits a minute before the timer tri
   assert.equal(nextPushAt({ link: LINK, canPush: true, dirtySince: 1, retryAt: 5 }) >= 5, true);
   await act(async () => root.unmount());
 });
+
+test('an upload the server never heard about is confirmed before the next push, so Survey’s own write is no conflict', async () => {
+  setupDom();
+  const { useDriveSyncBack } = await loadHook();
+  const server = fakeServer();
+  let pushedAnswers = 0;
+  let serverDown = true;
+  const call = async (action, body) => {
+    if (action === 'drivePushed') {
+      pushedAnswers += 1;
+      if (serverDown) return { error: 'Survey could not reach the server.' };
+    }
+    return server.call(action, body);
+  };
+  let n = 0;
+  const { box, root } = await mount(useDriveSyncBack, {
+    documentId: 'doc-1', enabled: true, call,
+    exportBytes: async () => new TextEncoder().encode(`%PDF-1.7 v${++n}`),
+    upload: async () => ({ id: 'item' }),
+  });
+  await act(async () => { edit('doc-1'); });
+  await act(async () => { await box.state.syncNow(); });
+  assert.equal(pushedAnswers, 2, 'one retry right away');
+  assert.equal(box.state.phase, 'saved', 'the drive has the file');
+  serverDown = false;
+  await act(async () => { edit('doc-1'); });
+  await act(async () => { await box.state.syncNow(); });
+  const order = server.calls.map((c) => c.action).filter((a) => a === 'drivePush' || a === 'drivePushed');
+  // First push, then the late confirm, then the second push and its confirm.
+  assert.deepEqual(order, ['drivePush', 'drivePushed', 'drivePush', 'drivePushed']);
+  assert.equal(box.state.phase, 'saved');
+  await act(async () => { root.unmount(); });
+});
+
+test('nextPushAt after a failed try: the 60 s retry wins, not a whole save interval', async () => {
+  const { nextPushAt } = await loadHook();
+  const t = 10 * 60_000;
+  // A failed try clears lastAttemptAt and sets retryAt.
+  assert.equal(nextPushAt({ link: LINK, canPush: true, dirtySince: 1000, lastAttemptAt: 0, retryAt: t + 60_000 }), t + 60_000);
+});
