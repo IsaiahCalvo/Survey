@@ -125,11 +125,7 @@ import { canModify, canSelect, isUserLocked } from '../lib/collab/permissionScop
 // Values match combined-tools FabricPDFCanvas collision logic (reference at
 // ~/Desktop/combined-tools/src/lib/calloutGeometry.ts). See isCalloutDragSafe
 // helper below for rule set + rationale.
-import {
-  calculateCalloutConnection,
-  calloutDrawnBoxHeight,
-  projectPointToCalloutBoxAnchor,
-} from '../utils/calloutGeometry.js';
+import { calculateCalloutConnection } from '../utils/calloutGeometry.js';
 import { HANDLE_RADIUS } from '../utils/handleStyle.js';
 import {
   beginAnnotationGesture,
@@ -527,7 +523,7 @@ export function useSVGInteraction({
     // mode === 'callout-part'. See 14-CONTEXT.md Area 3 (Phase 14 drag MVP).
     // Four-place invariant: these fields are initialized here, SET at
     // pointerdown, READ at pointermove, and RESET at pointerup.
-    partType: null,                 // 'arrowTip' | 'knee' | 'textBox' | 'whole' | 'attach' | 'segTip' | 'segBox'
+    partType: null,                 // 'arrowTip' | 'knee' | 'textBox' | 'whole'
     calloutId: null,
     originalCalloutPositions: null, // snapshot of arrowTip/knee/textBoxPosition at drag-start
     // UX: Phase 15 UAT-3 Issue 3 — tracks the most recent callout state that
@@ -4436,53 +4432,6 @@ export function useSVGInteraction({
             y: original.textBoxPosition.y + dyNorm,
           };
           break;
-        // Owner 2026-10-26: the grabber halfway along a leader segment moves
-        // that segment as one piece. Arrow-to-knee carries the tip and the
-        // knee (the box stays); knee-to-box carries the knee and the box (the
-        // tip stays on what it points at). The other segment stretches.
-        case 'segTip':
-          proposed.arrowTip = {
-            x: original.arrowTip.x + dxNorm,
-            y: original.arrowTip.y + dyNorm,
-          };
-          proposed.knee = {
-            x: original.knee.x + dxNorm,
-            y: original.knee.y + dyNorm,
-          };
-          break;
-        case 'segBox':
-          proposed.knee = {
-            x: original.knee.x + dxNorm,
-            y: original.knee.y + dyNorm,
-          };
-          proposed.textBoxPosition = {
-            x: original.textBoxPosition.x + dxNorm,
-            y: original.textBoxPosition.y + dyNorm,
-          };
-          break;
-        case 'attach': {
-          // The leader's attach grabber slides along the box border, on the
-          // sides the knee lies outside of (calloutGeometry textBoxAnchor).
-          // Nothing else moves, so there is no rule to break.
-          const boxLeft = original.textBoxPosition.x * W;
-          const boxTop = original.textBoxPosition.y * H;
-          const boxW = Math.max(18, (original.textBoxWidth || 0) * W);
-          const boxH = calloutDrawnBoxHeight((original.textBoxHeight || 0) * H, original.fontSize);
-          const anchor = projectPointToCalloutBoxAnchor(
-            svgPoint,
-            { x: original.knee.x * W, y: original.knee.y * H },
-            boxLeft, boxTop, boxLeft + boxW, boxTop + boxH,
-          );
-          if (!anchor) return;
-          const anchorPatch = { textBoxAnchor: anchor };
-          ds.currentCalloutPatch = anchorPatch;
-          setVisualTransform({
-            id: 'callout',
-            calloutPreviews: { [ds.calloutId]: anchorPatch },
-          });
-          setInteractionState('dragging');
-          return;
-        }
         case 'whole': {
           // w59: a whole-callout move keeps the callout on the page with the
           // same rigid rule as marks, the arrow-key nudge and group moves
@@ -4634,7 +4583,6 @@ export function useSVGInteraction({
         ds.partType === 'knee'
         || ds.partType === 'textBox'
         || ds.partType === 'textBoxResize'
-        || ds.partType === 'segBox'
       ) {
         // UX: 2026-05-18 — knee / textbox / resize drags count as "safe" only
         // when nothing overlaps: knee and arrow stay outside the box, each
@@ -4682,12 +4630,6 @@ export function useSVGInteraction({
           break;
         case 'textBox':
           patch = { textBoxPosition: proposed.textBoxPosition };
-          break;
-        case 'segTip':
-          patch = { arrowTip: proposed.arrowTip, knee: proposed.knee };
-          break;
-        case 'segBox':
-          patch = { knee: proposed.knee, textBoxPosition: proposed.textBoxPosition };
           break;
         case 'whole':
           patch = {
@@ -5857,8 +5799,7 @@ export function useSVGInteraction({
         return base && commitCalloutPatch ? { ...base, ...commitCalloutPatch } : base;
       })();
 
-      // An attach drag only slides the leader's end along the box: nothing to check.
-      if (ds.lastSafeCalloutPositions && ds.partType !== 'whole' && ds.partType !== 'attach') {
+      if (ds.lastSafeCalloutPositions && ds.partType !== 'whole') {
         const W = pageWidth || 1;
         const H = pageHeight || 1;
         const last = ds.lastSafeCalloutPositions;
@@ -5924,10 +5865,7 @@ export function useSVGInteraction({
           const dropClearsCorners = (p) =>
             dropBoxCorners.every((c) => Math.hypot(p.x - c.x, p.y - c.y) >= minHandleToHandle);
           let dropSafe = true;
-          if (
-            ds.partType === 'knee' || ds.partType === 'textBox' || ds.partType === 'textBoxResize'
-            || ds.partType === 'segBox'
-          ) {
+          if (ds.partType === 'knee' || ds.partType === 'textBox' || ds.partType === 'textBoxResize') {
             // UX: free drag during mouse-down, release checks the final spot.
             // Invalid if the knee or arrow lands inside the textbox, OR the
             // knee→arrow line cuts through the textbox, OR any handle touches
@@ -5999,8 +5937,6 @@ export function useSVGInteraction({
               ds.partType === 'arrowTip'
               || ds.partType === 'textBox'
               || ds.partType === 'textBoxResize'
-              || ds.partType === 'segTip'
-              || ds.partType === 'segBox'
             ) {
               // UX: Phase 15 UAT-3 (2026-04-18) — when the final state is
               // valid but required auto-routing (stored knee sits inside

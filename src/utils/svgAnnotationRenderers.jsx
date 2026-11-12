@@ -71,7 +71,6 @@ import { calloutBoxCloudStandIn, colorWithAlpha, textboxCloudStandIn } from './t
 import { getCounterLabelLayout } from './counterGeometry.js';
 import { polySplineStep, smoothPolylinePoints, splinePathD } from './polySpline.js';
 import { getTextMarkupUnderlineInset } from './pdfTextMarkup.js';
-import { calloutAnchorSidesForKnee, calloutBoxAnchorPoint } from './calloutGeometry.js';
 import { calloutWrapsWords, textWrapsWords, wrapTextCss } from './textWrapMode.js';
 
 const __shapeClick = (e) => __captureShape(e.currentTarget, e);
@@ -2045,13 +2044,8 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
     const boxBottom = textBox.y + boxHeightWithDescenders;
     const clampedX = Math.max(textBox.x, Math.min(knee.x, boxRight));
     const clampedY = Math.max(textBox.y, Math.min(knee.y, boxBottom));
-    // A pinned attach point holds while the knee is outside its side.
-    const pinned = calloutAnchorSidesForKnee(knee, textBox.x, textBox.y, boxRight, boxBottom)
-      .includes(callout.textBoxAnchor?.side)
-      ? calloutBoxAnchorPoint(callout.textBoxAnchor, textBox.x, textBox.y, boxRight, boxBottom)
-      : null;
     connection = {
-      line1Start: pinned || { x: clampedX, y: clampedY },
+      line1Start: { x: clampedX, y: clampedY },
       line2Start: { x: knee.x, y: knee.y },
       effectiveKnee: { x: knee.x, y: knee.y },
       shouldHideLine1: false,
@@ -2059,7 +2053,7 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
   } else {
     connection = calculateConnection(
       textBox.x, textBox.y, textBox.width, boxHeightWithDescenders,
-      knee, arrowTip, 0, callout.textBoxAnchor || null
+      knee, arrowTip, 0
     );
   }
 

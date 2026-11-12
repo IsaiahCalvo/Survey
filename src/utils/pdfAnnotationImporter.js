@@ -71,7 +71,6 @@ import {
 } from './pdfStampProxy.js';
 import { buildCloudPathCommands } from './pdfAnnotationAppearance.js';
 import { maxOf, minOf } from './arrayExtrema.js';
-import { normalizeCalloutBoxAnchor } from './calloutGeometry.js';
 import { PDF_MEASURE_INTENT_BY_SUBTYPE, SURVEY_KIND_BY_PDF_SUBTYPE, readPdfMeasureDict, surveyScaleFromPdfMeasure } from './measure/pdfMeasureDict.js';
 export { buildCloudPathCommands } from './pdfAnnotationAppearance.js';
 
@@ -5886,9 +5885,6 @@ function normalizeImportedAppCallout(metadata) {
     textBoxHeight,
     text: metadata.text || '',
     style: metadata.style && typeof metadata.style === 'object' ? metadata.style : {},
-    ...(normalizeCalloutBoxAnchor(metadata.textBoxAnchor)
-      ? { textBoxAnchor: normalizeCalloutBoxAnchor(metadata.textBoxAnchor) }
-      : {}),
     ...(metadata.moduleId ? { moduleId: metadata.moduleId } : {}),
     ...(metadata.regionId ? { regionId: metadata.regionId } : {}),
     ...(metadata.spaceId ? { spaceId: metadata.spaceId } : {}),
