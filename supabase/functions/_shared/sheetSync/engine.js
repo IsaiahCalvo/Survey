@@ -412,6 +412,7 @@ export async function planSheetRound({
       : (holdErase || state.heldErase) ? 'hold' : 'count';
   let erasing = 0;
   const erasingItems = new Set();
+  const erasingScopes = new Set();
   const next = {
     sheetIds: { ...(state.sheetIds || {}) },
     conflicts: { ...(state.conflicts || {}) },
@@ -910,6 +911,7 @@ export async function planSheetRound({
           if (getFp(appFps, key) !== getFp(base, key) || getFp(sheetSide, key) === getFp(base, key)) continue;
           erasing += 1;
           erasingItems.add(markerId);
+          erasingScopes.add(scope.scopeId);
           if (eraseMode === 'hold' || eraseMode === 'restore') setFp(sheetSide, key, getFp(base, key));
           if (eraseMode === 'hold') heldKeys.add(key);
         }
@@ -1103,18 +1105,26 @@ export async function planSheetRound({
   }
 
   for (const flag of Object.keys(next.stuck)) if (!markers[flag.split('|')[0]]) delete next.stuck[flag];
-  // A locked tab's rows weren't looked at: a held erase, and an editor's
-  // choice about it, wait for the tab instead of being used up or dropped.
-  // Dropped, its blanks would come in as plain edits once it's unlocked if
-  // fewer than BIG_ERASE were left.
-  const waitsOnLocked = next.lockedTabs.length > 0;
+  // A locked tab's rows weren't looked at: a held erase with blanks on it,
+  // and an editor's choice about that erase, wait for the tab instead of
+  // being used up or dropped. Dropped, its blanks would come in as plain
+  // edits once it's unlocked if fewer than BIG_ERASE were left. A hold saved
+  // before it named its tabs counts as on every tab.
+  const lockedNow = new Set(next.lockedTabs);
+  const heldOn = Array.isArray(state.heldErase?.scopes) ? state.heldErase.scopes : null;
+  const waitsOnLocked = Boolean(state.heldErase) && lockedNow.size > 0
+    && (heldOn === null || heldOn.some((id) => lockedNow.has(id)));
   if (waitsOnLocked && state.eraseChoice) next.eraseChoice = state.eraseChoice;
   else delete next.eraseChoice; // used once
-  if (eraseMode === 'hold' && erasing) {
-    const was = waitsOnLocked ? state.heldErase || {} : {};
-    next.heldErase = { count: Math.max(erasing, was.count || 0), items: Math.max(erasingItems.size, was.items || 0), at: state.heldErase?.at || nowIso };
-  } else if (waitsOnLocked && state.heldErase) {
-    next.heldErase = state.heldErase;
+  const lockedPart = waitsOnLocked ? (heldOn === null ? [...lockedNow] : heldOn.filter((id) => lockedNow.has(id))) : [];
+  const was = waitsOnLocked ? state.heldErase : {};
+  if ((eraseMode === 'hold' && erasing) || waitsOnLocked) {
+    next.heldErase = {
+      count: Math.max(eraseMode === 'hold' ? erasing : 0, waitsOnLocked ? was.count || 0 : 0),
+      items: Math.max(eraseMode === 'hold' ? erasingItems.size : 0, waitsOnLocked ? was.items || 0 : 0),
+      scopes: [...new Set([...(eraseMode === 'hold' ? erasingScopes : []), ...lockedPart])],
+      at: state.heldErase?.at || nowIso,
+    };
   } else {
     delete next.heldErase;
   }

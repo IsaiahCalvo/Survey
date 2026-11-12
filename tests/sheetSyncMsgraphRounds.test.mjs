@@ -700,7 +700,7 @@ test('a held erase on a tab that gets protected waits for it, and so does the ch
   assert.equal(ctx.link.state.heldErase?.count, 7, 'the hold is kept while its tab is locked');
   // An editor picks "put them back" while it is still locked.
   ctx.link.state.eraseChoice = 'app';
-  await ctx.round();
+  assert.equal((await ctx.round({ force: true })).status, 'synced');
   assert.equal(ctx.link.state.eraseChoice, 'app', 'the choice waits for the tab');
   await fakeApi(`/files/${ctx.fileId}/protect`, { title: 'Doors - Level 1', on: false });
   assert.equal((await ctx.round()).status, 'synced');
@@ -710,4 +710,30 @@ test('a held erase on a tab that gets protected waits for it, and so does the ch
   assert.equal(sheet.rows[await ctx.rowOf('d14')][col], 'tech on the locked tab');
   assert.equal(ctx.link.state.eraseChoice, undefined, 'used once the tab was looked at');
   assert.equal(ctx.link.state.heldErase, undefined);
+});
+
+test('a held erase is not kept waiting by a protected tab it has no blanks on', async () => {
+  const cam = (id, name, extra = {}) => door(id, name, { categoryId: 'cams', ...extra });
+  const ctx = await setup({ markers: { ...fifteen(), c1: cam('c1', 'C-201'), c2: cam('c2', 'C-202') } });
+  await ctx.round(); await ctx.round();
+  await blankNotes(ctx, 12);
+  await ctx.round();
+  assert.deepEqual(ctx.link.state.heldErase.scopes?.length, 1, 'the hold names the tab its blanks are on');
+  // The cameras tab gets protected; a tech's note there finds out.
+  await fakeApi(`/files/${ctx.fileId}/protect`, { title: 'Cameras - Level 1' });
+  ctx.markers.c1.note = { text: 'tech on the locked tab' };
+  await ctx.round();
+  assert.equal(ctx.link.state.lockedTabs.length, 1);
+  assert.equal(ctx.link.state.heldErase.count, 12, 'still held: nobody chose yet');
+  ctx.link.state.eraseChoice = 'app';
+  await ctx.round({ force: true });
+  const sheet = await ctx.sheet();
+  const col = await ctx.col('Notes');
+  for (let i = 1; i <= 12; i += 1) assert.equal(sheet.rows[await ctx.rowOf(`d${i}`)][col], `field note ${i}`, `d${i} put back`);
+  assert.equal(ctx.link.state.eraseChoice, undefined, 'the choice is used: its blanks were all on an open tab');
+  assert.equal(ctx.link.state.heldErase, undefined, 'and the hold is gone');
+  // A later blank on the open tab is a plain edit, not answered by the old choice.
+  await ctx.edit([{ row: await ctx.rowOf('d13'), col, value: '' }]);
+  await ctx.round();
+  assert.equal(ctx.markers.d13.note.text, '', 'the PM cleared one note; it clears in the app');
 });
