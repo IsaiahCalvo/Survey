@@ -412,6 +412,7 @@ import PagePinsLayer from './components/pins/PagePinsLayer.jsx';
 import { PinToolButton } from './components/pins/PinControls.jsx';
 import { LINK_EDIT_EVENT, applyLinkEdit, selectedLinkOf } from './utils/linkTool.js';
 import SnapshotTool from './components/SnapshotTool.jsx';
+import PageTemplatePicker from './components/PageTemplatePicker.jsx';
 import { useTextHighlightMode } from './hooks/useTextHighlightMode.js';
 import { selectPageMarkup } from './services/thumbnailRender.js';
 import { marksHidden, setMarksHidden, subscribeMarksHidden } from './utils/marksHidden.js';
@@ -22615,6 +22616,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const [markLibraryEnabled] = useState(() => isFeatureOn('mark-library'));
   const [stampToolEnabled] = useState(() => isFeatureOn('stamp-tool'));
   const [pageMenuExtrasEnabled] = useState(() => isFeatureOn('page-menu-extras'));
+  // Nightly 'page-templates': the page menu's "Template page below" picker.
+  const [pageTemplatesEnabled] = useState(() => isFeatureOn('page-templates'));
+  const [pageTemplatePicker, setPageTemplatePicker] = useState(null);
   const [snapshotToolEnabled] = useState(() => isFeatureOn('snapshot-tool'));
   const [signatureToolEnabled] = useState(() => isFeatureOn('signature-tool'));
   const [textHighlightToolEnabled] = useState(() => isFeatureOn('text-highlight-tool'));
@@ -38526,6 +38530,7 @@ ${pageBlocks}
             paste: (page, position) => { if (clipboardPage) handlePastePage(page, clipboardPage, clipboardType, position); },
             duplicate: handleDuplicatePage,
             insertBlank: handleInsertBlankPage,
+            ...(pageTemplatesEnabled ? { insertTemplate: (page) => setPageTemplatePicker({ afterPage: page }) } : {}),
             rotate: handleRotatePage,
             mirror: handleMirrorPage,
             reset: handleResetPage,
@@ -38534,6 +38539,13 @@ ${pageBlocks}
         },
       })}
 
+      {pageTemplatePicker && (
+        <PageTemplatePicker
+          afterPage={pageTemplatePicker.afterPage}
+          onPick={(afterPage, paper) => handleInsertBlankPage(afterPage, paper)}
+          onClose={() => setPageTemplatePicker(null)}
+        />
+      )}
       {/* Nightly 'stamp-tool' and 'signature-tool' place their items the same way. */}
       {(markLibraryEnabled || stampToolEnabled || insertImageEnabled || signatureToolEnabled) && (
         <MarkLibraryPlacementLayer active={isActive !== false} rootRef={pdfjsWrapperRef} place={placeLibraryItemAt} />

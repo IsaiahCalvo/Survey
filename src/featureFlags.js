@@ -447,6 +447,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Page right-click: Move page up / down, Unlock all, Select all text',
     stage: 'beta',
   }),
+  'page-templates': Object.freeze({
+    label: 'Page right-click: Template page below (notebook, Cornell, grids, isometric, music papers)',
+    stage: 'beta',
+  }),
   'snapshot-tool': Object.freeze({
     label: 'Snapshot tool: drag an area of a page, it is copied as a picture',
     stage: 'beta',

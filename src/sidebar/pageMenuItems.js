@@ -82,6 +82,8 @@ export function buildPageMenuItems({
       [
         has('insertBlank') && { key: 'insertAbove', label: 'Blank page above', icon: 'plus' },
         has('insertBlank') && { key: 'insertBelow', label: 'Blank page below', icon: 'plus' },
+        // Nightly 'page-templates': only when the host passes its handler.
+        !readOnly && available.insertTemplate === true && { key: 'insertTemplate', label: 'Template page below', icon: 'plus' },
       ],
       [
         has('mirror') && { key: 'mirrorH', label: 'Mirror horizontally', icon: 'flipHorizontal' },
@@ -134,6 +136,7 @@ export function buildPageMenuItems({
     [
       has('insertBlank') && { key: 'insertAbove', label: 'Blank page above', icon: 'plus' },
       has('insertBlank') && { key: 'insertBelow', label: 'Blank page below', icon: 'plus' },
+      !readOnly && available.insertTemplate === true && { key: 'insertTemplate', label: 'Template page below', icon: 'plus' },
     ],
     [
       has('rotate') && { key: 'rotateLeft', label: 'Rotate left', icon: 'rotateCcw' },
@@ -191,6 +194,7 @@ function joinGroups(rawGroups) {
  *   reset(page) delete(page) move(page, offset)
  *   selectAll(page) pasteInPlace(page) setScale(page)  (viewer page menu)
  *   selectText(page) unlockAll(page)                    (Nightly page-menu-extras)
+ *   insertTemplate(afterPage)                           (Nightly page-templates)
  * Returns true when it ran something.
  */
 export function runPageMenuAction(key, pageNumber, handlers = {}) {
@@ -213,6 +217,7 @@ export function runPageMenuAction(key, pageNumber, handlers = {}) {
     // (0 = the very top).
     case 'insertAbove': return call('insertBlank', pageNumber - 1);
     case 'insertBelow': return call('insertBlank', pageNumber);
+    case 'insertTemplate': return call('insertTemplate', pageNumber);
     case 'rotateLeft': return call('rotate', pageNumber, -90);
     case 'rotateRight': return call('rotate', pageNumber, 90);
     case 'mirrorH': return call('mirror', pageNumber, 'horizontal');
@@ -231,7 +236,7 @@ export function runPageMenuAction(key, pageNumber, handlers = {}) {
 /** { [handler name]: boolean } for buildPageMenuItems' `available`. */
 export function availableActions(handlers = {}) {
   return Object.fromEntries(
-    ['cut', 'copy', 'paste', 'duplicate', 'insertBlank', 'rotate', 'mirror', 'reset', 'delete', 'selectAll', 'pasteInPlace', 'setScale', 'selectText', 'unlockAll', 'move']
+    ['cut', 'copy', 'paste', 'duplicate', 'insertBlank', 'rotate', 'mirror', 'reset', 'delete', 'selectAll', 'pasteInPlace', 'setScale', 'selectText', 'unlockAll', 'move', 'insertTemplate']
       .map((name) => [name, typeof handlers[name] === 'function']),
   );
 }

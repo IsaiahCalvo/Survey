@@ -30,7 +30,7 @@ export async function createNotebookPaperFile(existingNames = []) {
   return new File([bytes], `${title}.pdf`, { type: 'application/pdf' });
 }
 
-function TemplatePreview({ id }) {
+export function TemplatePreview({ id }) {
   const box = blankPageBox('letter');
   const paths = useMemo(() => templatePreviewPaths(id, box), [id, box]);
   return (

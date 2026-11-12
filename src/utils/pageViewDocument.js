@@ -16,6 +16,7 @@
 // shows what the rewritten bytes will contain.
 
 import { blankPageReferencePage, blankPageSize } from './blankPageSize.js';
+import { composeTransforms, drawPaperOnCanvas, pagePaper, pagePaperMarks } from './blankPagePaper.js';
 
 const VIEW = Symbol('surveyPageView');
 let viewSeq = 0;
@@ -36,7 +37,7 @@ export function getPageViewBase(doc) {
 export function pageViewKey(doc, pageIndex) {
   const entry = doc?.[VIEW]?.entries?.[pageIndex];
   if (!entry) return String(pageIndex);
-  if (entry.blank) return `blank:${Math.round(entry.blank.width)}x${Math.round(entry.blank.height)}`;
+  if (entry.blank) return `blank:${Math.round(entry.blank.width)}x${Math.round(entry.blank.height)}${entry.blank.paper ? `:${entry.blank.paper}` : ''}`;
   return entry.rot ? `${entry.src - 1}r${entry.rot}` : String(entry.src - 1);
 }
 
@@ -112,7 +113,7 @@ function makeBlankPage(entry, pageNumber, getViewportImpl) {
         convertToPdfPoint: (x, y) => [x / scale, height - y / scale],
       };
     },
-    render({ canvasContext, viewport } = {}) {
+    render({ canvasContext, viewport, transform } = {}) {
       try {
         if (canvasContext && viewport) {
           canvasContext.save();
@@ -120,6 +121,12 @@ function makeBlankPage(entry, pageNumber, getViewportImpl) {
           canvasContext.fillStyle = '#ffffff';
           canvasContext.fillRect(0, 0, canvasContext.canvas.width, canvasContext.canvas.height);
           canvasContext.restore();
+          // A template page (Nightly 'page-templates') draws its paper too.
+          const marks = pagePaperMarks(entry.blank.paper, entry.blank);
+          if (marks.length && Array.isArray(viewport.transform)) {
+            const outer = Array.isArray(transform) && transform.length === 6 ? transform : [1, 0, 0, 1, 0, 0];
+            drawPaperOnCanvas(canvasContext, marks, composeTransforms(outer, viewport.transform));
+          }
         }
       } catch { /* a blank page never fails to render */ }
       return { promise: Promise.resolve(), cancel() {}, onContinue: null };
@@ -289,7 +296,9 @@ export function applyPageViewOperation(doc, operation, options = {}) {
     if (media && turn != null) blank = blankPageSize({ ...media, rotation: turn });
     else if (reference.size) blank = { width: reference.size.width, height: reference.size.height };
     else blank = blankPageSize({ ...(media || {}), rotation: reference.rot || 0 });
-    entries.splice(after + 1, 0, { src: null, rot: 0, blank, size: { ...blank }, media: { ...blank }, baseRotate: 0 });
+    const paper = pagePaper(operation.paper);
+    if (paper) blank = { ...blank, paper };
+    entries.splice(after + 1, 0, { src: null, rot: 0, blank, size: { width: blank.width, height: blank.height }, media: { width: blank.width, height: blank.height }, baseRotate: 0 });
   } else if (type === 'restore') {
     // Undo of a delete: the removed page goes back as it was (pageViewEntry).
     const after = slotIndexOf(operation.afterPage, count, 'afterPage');
