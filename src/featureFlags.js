@@ -459,6 +459,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Highlight text: the band follows the pointer as you drag over words, and letting go highlights them',
     stage: 'beta',
   }),
+  'page-turn-keys': Object.freeze({
+    label: 'Keys: with nothing picked, Left / Right and Shift + Up / Down turn the page',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

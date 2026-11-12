@@ -55,6 +55,6 @@ test('flag, button, placement and migration', () => {
   assert.match(phone, /flag: 'signature-tool', picker: 'signature'/);
   const shell = readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
   assert.match(shell, /<SignatureCard enabled=\{Boolean\(isViewerVisible && isFeatureOn\('signature-tool'\)\)\}/);
-  const migration = readFileSync(new URL('../supabase/migrations/20261110182000_signature_tool_flag.sql', import.meta.url), 'utf8');
+  const migration = readFileSync(new URL('../supabase/migrations/20261112092000_signature_tool_flag.sql', import.meta.url), 'utf8');
   assert.match(migration, /'signature-tool', 'off'/);
 });

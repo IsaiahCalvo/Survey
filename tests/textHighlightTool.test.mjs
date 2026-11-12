@@ -18,6 +18,6 @@ test('flag, button and wiring', () => {
   assert.match(viewer, /textHighlightToolEnabled \? \[\{ id: 'text-highlight', label: 'Highlight text'/);
   assert.match(viewer, /useTextHighlightMode\(\{\s*on: textHighlightToolEnabled && textHighlightMode && activeTool === 'text-select'/);
   assert.match(viewer, /apply: \(\) => handleTextSelectionAction\('highlight', \{ keepSelection: false \}\)/);
-  const migration = readFileSync(new URL('../supabase/migrations/20261110183000_text_highlight_tool_flag.sql', import.meta.url), 'utf8');
+  const migration = readFileSync(new URL('../supabase/migrations/20261112093000_text_highlight_tool_flag.sql', import.meta.url), 'utf8');
   assert.match(migration, /'text-highlight-tool', 'off'/);
 });

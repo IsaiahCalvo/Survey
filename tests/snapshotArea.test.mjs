@@ -51,6 +51,6 @@ test('flag and wiring', () => {
   assert.match(viewer, /isFeatureOn\('snapshot-tool'\)/);
   assert.match(viewer, /snapshotToolEnabled \? \[\{ id: 'snapshot'/);
   assert.match(viewer, /<SnapshotTool[\s\S]{0,80}active=\{activeTool === 'snapshot'\}/);
-  const migration = readFileSync(new URL('../supabase/migrations/20261110181000_snapshot_tool_flag.sql', import.meta.url), 'utf8');
+  const migration = readFileSync(new URL('../supabase/migrations/20261112091000_snapshot_tool_flag.sql', import.meta.url), 'utf8');
   assert.match(migration, /'snapshot-tool', 'off'/);
 });
