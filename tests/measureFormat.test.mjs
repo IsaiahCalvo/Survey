@@ -316,3 +316,44 @@ test('a library drop lands in the scale on screen, default included', () => {
   assert.match(viewer, /measureScaleMetaWithDefaultRef\.current = measureScaleMeta;/);
   assert.match(viewer, /metaScaleForPage\(measureScaleMetaWithDefaultRef\.current, drop\.pageNumber\)/);
 });
+
+test('dimension line: the PDF export draws it (/AP and print), reading included', async () => {
+  const { PDFDocument, PDFName, PDFArray, PDFDict, decodePDFRawStream } = await import('pdf-lib');
+  const { savePDFWithAnnotationsPdfLib } = await import('../src/utils/pdfAnnotationsPdfLib.js');
+  const { stampMeasure } = await import('../src/utils/measure/measureScale.js');
+  const m = await import('../src/utils/measure/measureFormat.js');
+  const scale = m.customMeasureScale({ paper: '1', paperUnit: 'in', realText: "8'", display: 'ftin', precision: 16 });
+  const line = {
+    type: 'line', tool: 'line', x1: -100, y1: 0, x2: 100, y2: 0, left: 210, top: 200, width: 200, height: 0,
+    originX: 'center', originY: 'center', stroke: '#e11d2e', strokeWidth: 1, opacity: 1,
+  };
+  const dim = stampMeasure(line, 'length', scale, { dim: true });
+  const source = await PDFDocument.create();
+  source.addPage([420, 320]);
+  const bytes = await source.save();
+  const file = { name: 'dim.pdf', async arrayBuffer() { return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength); } };
+  const { log, warn, error } = console;
+  const original = globalThis.window;
+  console.log = () => {}; console.warn = () => {}; console.error = () => {};
+  globalThis.window = {};
+  let out;
+  try {
+    out = await savePDFWithAnnotationsPdfLib(file, { 1: { objects: [dim] } }, { 1: { width: 420, height: 320 } }, null,
+      { returnBytes: true, actionType: 'pdf-export', documentId: 'dim' });
+  } finally {
+    console.log = log; console.warn = warn; console.error = error; globalThis.window = original;
+  }
+  const doc = await PDFDocument.load(out);
+  const annots = doc.getPage(0).node.lookup(PDFName.of('Annots'), PDFArray).asArray().map((r) => doc.context.lookup(r));
+  const lineAnnot = annots.find((d) => d instanceof PDFDict && d.get(PDFName.of('Subtype'))?.toString() === '/Line');
+  assert.ok(lineAnnot, 'a /Line annotation');
+  const rect = lineAnnot.lookup(PDFName.of('Rect'), PDFArray).asArray().map((n) => n.asNumber());
+  // The clicked points sit at PDF y = 120; the dimension line is a leader off them.
+  const lineY = 320 - (200 - 15.31);
+  assert.ok(rect[3] >= lineY, `the /Rect reaches the offset line (${rect[3]} >= ${lineY})`);
+  const ap = lineAnnot.lookup(PDFName.of('AP'), PDFDict).lookup(PDFName.of('N'));
+  const content = Buffer.from(decodePDFRawStream(ap).decode()).toString('latin1');
+  assert.match(content, /Tj/, 'the reading is drawn');
+  const hexes = [...content.matchAll(/<([0-9A-Fa-f]+)> Tj/g)].map((x) => Buffer.from(x[1], 'hex').toString('latin1'));
+  assert.ok(hexes.some((t) => /^\d+'-\d/.test(t)), `feet-inches with plain marks: ${hexes.join(' | ')}`);
+});
