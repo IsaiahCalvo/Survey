@@ -1261,7 +1261,10 @@ export default function TextEditOverlay({
               ref={editableRef}
               contentEditable="plaintext-only"
               suppressContentEditableWarning
-              spellCheck={false}
+              // Owner 2026-11-12: spelling correction everywhere, text marks
+              // included (red underlines while typing; fixes on right-click
+              // and from the phone keyboard).
+              spellCheck
               onInput={(e) => {
                 const history = typingHistoryRef.current;
                 if (history) history.record(readText() ?? '', caretOffsetIn(editableRef.current), e.nativeEvent?.inputType);

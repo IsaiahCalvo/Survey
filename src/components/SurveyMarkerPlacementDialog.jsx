@@ -165,7 +165,7 @@ export default function SurveyMarkerPlacementDialog({ marker, template, category
             value={name ?? defaultName}
             maxLength={120}
             autoComplete="off"
-            spellCheck={false}
+            spellCheck
             enterKeyHint="done"
             onChange={(event) => setName(event.target.value)}
             onKeyDown={(event) => {
