@@ -655,9 +655,13 @@ export async function planSheetRound({
     const keptRowPrint = (row) => cyrb53(row.map((c, i) => (i === rowIdCol ? '' : cellText(c))).join('\u0001').replace(/\u0001+$/, ''));
     const keptRowNotice = (markerId, row, r) => {
       const name = colOfKey.has('item') ? cellText(row[colOfKey.get('item')]).trim() : '';
-      // One note a row, however its number or name has changed since.
-      next.notices = next.notices.filter((n) => !(n.markerId === markerId && /its row was kept because/.test(n.message)));
-      notice({ markerId, scopeId: scope.scopeId, message: `${where(r)}: "${name || 'An item'}" was deleted in Survey, but its row was kept because it has changes made in the sheet. Delete the row if it should go.` });
+      // One note a row, however its number or name has changed since. The
+      // round's own note for a delete that clashed with a sheet edit ("just
+      // after its row was changed") keeps its wording and starts again.
+      const mine = (n) => n.markerId === markerId && /row was kept/.test(n.message);
+      const clash = next.notices.find((n) => mine(n) && /just after its row was changed/.test(n.message));
+      next.notices = next.notices.filter((n) => !mine(n));
+      notice({ markerId, scopeId: scope.scopeId, message: clash ? clash.message : `${where(r)}: "${name || 'An item'}" was deleted in Survey, but its row was kept because it has changes made in the sheet. Delete the row if it should go.` });
     };
     // A new name in the Item cell of the row Survey appended for markerId,
     // within the new-row window (NEW_ROW_TAKEOVER_MS) and not split yet: the
