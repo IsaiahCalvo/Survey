@@ -1628,6 +1628,11 @@ input[type="text"].space-card__name {
   text-overflow: ellipsis;
 }
 
+/* Someone who cannot edit Spaces sees the name, not a text caret. */
+input[type="text"].space-card__name[readonly] {
+  cursor: default;
+}
+
 input[type="text"].space-card__name:focus,
 input[type="text"].space-card__name:focus-visible {
   background: transparent;

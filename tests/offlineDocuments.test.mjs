@@ -10,6 +10,8 @@ import {
   readPdfWithOfflineCopy,
   isNetworkFailure,
   offlineRowSnapshot,
+  CURRENT_SHA_TIMEOUT,
+  openedFromUnverifiedCopy,
 } from '../src/services/offlineDocuments.js';
 
 const ROW = { id: 'doc-1', name: 'A-101.pdf', file_path: 'user-a/doc-1.pdf', page_count: 3, project_id: null, share_token: 'secret' };
@@ -98,6 +100,21 @@ test('Storage out but the database answers: a kept copy of a replaced file is no
   assert.equal((await open(async () => keptSha.toUpperCase())).size, 300);
   assert.equal((await open(async () => null)).size, 300);
   assert.equal((await open(async () => { throw offlineError(); })).size, 300);
+  assert.equal(openedFromUnverifiedCopy('doc-1'), false);
+  // No answer in time: the copy opens, but marked unverified so the marks
+  // open from the device copy as well; the next online read clears it.
+  let told = null;
+  const slow = await readPdfWithOfflineCopy({
+    store: s, actorId: 'a', path: ROW.file_path, refusal,
+    currentSha: async () => { throw Object.assign(new Error('slow'), { code: CURRENT_SHA_TIMEOUT }); },
+    read: async () => { throw offlineError(); },
+    onOfflineCopy: (info) => { told = info; },
+  });
+  assert.equal(slow.size, 300);
+  assert.deepEqual(told, { path: ROW.file_path, documentId: 'doc-1', unverified: true });
+  assert.equal(openedFromUnverifiedCopy('doc-1'), true);
+  await readPdfWithOfflineCopy({ store: s, actorId: 'a', path: ROW.file_path, refusal, read: async () => new Blob([kept]) });
+  assert.equal(openedFromUnverifiedCopy('doc-1'), false);
   // The device says it is offline: nothing is asked.
   const blob = await readPdfWithOfflineCopy({
     store: s, actorId: 'a', path: ROW.file_path, refusal,

@@ -212,6 +212,8 @@ test('wiring: tool, layer event, host, renderers, bar, phone strip, flag and mig
   assert.match(svg, /const SHAPE_CREATION_TOOLS = \[[^\]]*'hyperlink'\]/);
   assert.match(svg, /new CustomEvent\(LINK_BOX_DRAWN_EVENT, \{ detail: \{ pageNumber, box, id, commit \} \}\)/);
   assert.match(svg, /data-link-preview="true"/, 'the drag shows the link as it will land');
+  // A new link takes the Survey module / region scope like any drawn shape.
+  assert.match(svg, /const scope = \{ selectedModuleId, stampRegionId, activeRegionId \};\s*const commit = \(mark\) => \{\s*const json = stampAnnotationCreationIdentity\(applyScope\(\{ \.\.\.mark \}, scope\)/);
   const viewer = read('src/PDFViewer.jsx');
   assert.match(viewer, /linkToolOn \? \[\{ id: 'hyperlink', label: 'Hyperlink', iconName: 'hyperlink' \}\]/);
   assert.match(viewer, /<LinkToolHost/);
@@ -234,4 +236,9 @@ test('a quick second submit cannot commit the same link twice', () => {
 test('leaving the tab closes an open link card', () => {
   const host = readFileSync(new URL('../src/components/LinkToolHost.jsx', import.meta.url), 'utf8');
   assert.match(host, /useEffect\(\(\) => \{\s*if \(!isActive\) setDialog\(null\);\s*\}, \[isActive\]\);/);
+});
+
+test('closing the file mid area pick takes the Choose Area toast down (Bugbot on #1387)', () => {
+  const src = readFileSync(new URL('../src/components/LinkToolHost.jsx', import.meta.url), 'utf8');
+  assert.match(src, /useEffect\(\(\) => \(\) => \{\s*if \(choosingRef\.current\) dismissToast\(AREA_TOAST_ID\);/);
 });

@@ -148,6 +148,34 @@ test('custom scale reads feet-inches, Units restamp the line, Set as default car
     await page.screenshot({ path: test.info().outputPath('measure-plus-above.png') });
     await card.locator('[data-measure-edit-place="inline"]').click();
     await expect(dimLine.locator('line')).toHaveCount(4);
+    // Caption style (Drawboard's Caption pop-over): size in pt, text colour,
+    // background and its opacity, each one undo step.
+    const caption = dimLine.locator('text[data-dimension-caption]');
+    const ptField = card.locator('[data-measure-edit-caption-pt]');
+    await expect(ptField).toHaveValue('9');
+    await ptField.fill('14');
+    await ptField.press('Enter');
+    await expect(caption).toHaveAttribute('font-size', '14');
+    await ptField.press('ArrowDown');
+    await expect(caption).toHaveAttribute('font-size', '13');
+    await card.locator('[data-measure-edit-caption-color="blue"]').click();
+    await expect(caption).toHaveAttribute('fill', '#0066D4');
+    await expect(card.locator('[data-measure-edit-caption-bg-opacity]')).toHaveCount(0);
+    await card.locator('[data-measure-edit-caption-bg="yellow"]').click();
+    const bgRect = dimLine.locator('rect[data-dimension-caption-bg]');
+    await expect(bgRect).toHaveAttribute('fill', '#FFF9C4');
+    await expect(bgRect).toHaveAttribute('fill-opacity', '1');
+    await card.locator('[data-measure-edit-caption-bg-opacity="0.5"]').click();
+    await expect(bgRect).toHaveAttribute('fill-opacity', '0.5');
+    await page.screenshot({ path: test.info().outputPath('measure-plus-caption-style.png') });
+    await page.keyboard.press('Control+z');
+    await expect(bgRect).toHaveAttribute('fill-opacity', '1');
+    await card.locator('[data-measure-edit-caption-bg="none"]').click();
+    await expect(bgRect).toHaveCount(0);
+    await card.locator('[data-measure-edit-caption-color="auto"]').click();
+    await ptField.fill('9');
+    await ptField.press('Enter');
+    await expect(caption).toHaveAttribute('font-size', '9');
     await page.keyboard.press('Escape');
     await expect(card).toBeHidden();
     // The leader pill on the line: dragging it past the clicked points flips
@@ -230,8 +258,133 @@ test('custom scale reads feet-inches, Units restamp the line, Set as default car
     const readingB = await drawLength(page, surfaceB, 150, 450, 300);
     await expect(readingB).toHaveText(/^[\d,]+\.\d{3} ft$/);
     await expect(readingB).not.toContainText('no scale');
+
+    // Perimeter, Drawboard's way: finished at its last point (a double-click)
+    // it stays open, a polylength of three sides; a click back on the first
+    // point closes it and counts the fourth side.
+    await page.keyboard.press('Escape');
+    const sb = await surfaceB.boundingBox();
+    const perimeterAt = async (x0, y0, close) => {
+      await page.locator('[data-measure-tool="menu"]').click();
+      await page.locator('[data-measure-tool="perimeter"]').click();
+      const pts = [[x0, y0], [x0 + 120, y0], [x0 + 120, y0 + 60], [x0, y0 + 60]];
+      for (const [x, y] of pts.slice(0, 3)) await page.mouse.click(sb.x + x, sb.y + y);
+      if (close) {
+        await page.mouse.click(sb.x + pts[3][0], sb.y + pts[3][1]);
+        await page.mouse.click(sb.x + x0, sb.y + y0);
+      } else {
+        await page.mouse.dblclick(sb.x + pts[3][0], sb.y + pts[3][1]);
+      }
+      await page.keyboard.press('Escape');
+    };
+    await perimeterAt(150, 120, false);
+    const openLabel = surfaceB.locator('.measure-labels .measure-label[data-measure-kind="polylength"]');
+    await expect(openLabel).toHaveCount(1, { timeout: 15_000 });
+    await expect(surfaceB.locator('.measure-labels .measure-label[data-measure-kind="perimeter"]')).toHaveCount(0);
+    await perimeterAt(150, 480, true);
+    const closedLabel = surfaceB.locator('.measure-labels .measure-label[data-measure-kind="perimeter"]');
+    await expect(closedLabel).toHaveCount(1, { timeout: 15_000 });
+    const ftOf = async (loc) => Number((await loc.locator('text').first().textContent()).replace(/[^\d.]/g, ''));
+    const open = await ftOf(openLabel);
+    const closed = await ftOf(closedLabel);
+    // Three sides (120 + 60 + 120) against four (+ 60): a ratio of 300 : 360.
+    expect(Math.abs(open / closed - 300 / 360)).toBeLessThan(0.02);
+    // The open run shows each side's own length on the side (Drawboard's
+    // segment captions); they add up to its total. A closed Perimeter has none.
+    const segCaps = surfaceB.locator('.measure-segment-captions [data-segment-caption]');
+    await expect(segCaps).toHaveCount(3);
+    const segFt = await segCaps.evaluateAll((els) => els.map((el) => Number(el.textContent.replace(/[^\d.]/g, ''))));
+    expect(Math.abs(segFt[0] / segFt[1] - 2)).toBeLessThan(0.05);
+    expect(Math.abs(segFt.reduce((a, b) => a + b, 0) - open) / open).toBeLessThan(0.01);
+    // The Measurement card's Segment captions: Upright sets them level, Off
+    // hides them; a Perimeter (off by default) shows its four sides on Inline.
+    const barB = page.locator('[data-selection-quick-bar][data-visible="true"]');
+    await page.keyboard.press('v');
+    await page.mouse.click(sb.x + 180, sb.y + 120);
+    await expect(barB).toBeVisible();
+    await barB.getByRole('button', { name: 'Measurement' }).click();
+    const cardB = page.getByRole('dialog', { name: 'Measurement' });
+    await expect(cardB.locator('[data-measure-edit-segments="inline"]')).toHaveAttribute('aria-pressed', 'true');
+    await cardB.locator('[data-measure-edit-segments="upright"]').click();
+    await expect(cardB.locator('[data-measure-edit-segments="upright"]')).toHaveAttribute('aria-pressed', 'true');
+    await expect(segCaps).toHaveCount(3);
+    const turns = await segCaps.evaluateAll((els) => els.map((el) => el.getAttribute('transform')));
+    expect(turns.every((t) => /^rotate\(0 /.test(t))).toBe(true);
+    await cardB.locator('[data-measure-edit-segments="off"]').click();
+    await expect(segCaps).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+    await page.mouse.click(sb.x + 180, sb.y + 480);
+    await expect(barB).toBeVisible();
+    await barB.getByRole('button', { name: 'Measurement' }).click();
+    await expect(cardB.locator('[data-measure-edit-segments="off"]')).toHaveAttribute('aria-pressed', 'true');
+    await cardB.locator('[data-measure-edit-segments="inline"]').click();
+    await expect(segCaps).toHaveCount(4);
+    await page.screenshot({ path: test.info().outputPath('measure-plus-segments.png') });
+    await page.keyboard.press('Escape');
+    await page.screenshot({ path: test.info().outputPath('measure-plus-perimeter.png') });
   } finally {
     if (!process.env.KEEP) await admin.from('documents').delete().in('id', ids);
+  }
+});
+
+test('calibrate: Drawboard\'s note with a close x; a traced span typed as 40\' reads back exactly 40′', async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.addInitScript(() => {
+    localStorage.setItem('survey.flag.measure-plus', '1');
+    // The plain chip flag stays off: the calibrating note shows anyway.
+    localStorage.setItem('survey.flag.measure-scale-chip', '0');
+    localStorage.removeItem('survey.measure.defaultScale');
+  });
+  const owner = E2E_ACCOUNTS.owner;
+  const admin = adminClient();
+  const api = await apiClientFor(owner);
+  const { data: { user } } = await api.auth.getUser();
+  const name = `Calibrate ${RUN}.pdf`;
+  const id = await seedDocument(admin, user.id, name, 'Calibrate page');
+  try {
+    await signIn(page, owner);
+    const surface = await openDocument(page, name, 'Calibrate page');
+    await page.getByRole('button', { name: 'Shapes', exact: true }).click();
+    let dialog = await openScaleDialog(page);
+    await dialog.getByText('Calibrate instead').click();
+    await expect(dialog).toBeHidden();
+    const note = page.locator('[data-measure-calibrating]');
+    await expect(note).toContainText('Trace a known distance to set the scale');
+    // The x puts the tool down.
+    await note.getByRole('button', { name: 'Stop calibrating' }).click();
+    await expect(note).toHaveCount(0);
+
+    dialog = await openScaleDialog(page);
+    await dialog.getByText('Calibrate instead').click();
+    await expect(note).toBeVisible();
+    const box = await surface.boundingBox();
+    await page.mouse.move(box.x + 150, box.y + 300);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 450, box.y + 300, { steps: 8 });
+    await page.mouse.up();
+    await expect(dialog).toBeVisible();
+    await dialog.locator('[data-measure-real-length]').fill("40'");
+    await dialog.locator('[data-measure-apply]').click();
+    await expect(dialog).toBeHidden();
+    await expect(note).toHaveCount(0);
+    // The traced line stays as a Length (a dimension line) reading exactly
+    // 40′: the full traced length is kept, not rounded.
+    const kept = surface.locator('[data-dimension-line] text[data-dimension-caption]');
+    await expect(kept).toHaveCount(1, { timeout: 15_000 });
+    await expect(kept).toHaveText('40′');
+    await expect(surface.locator('.measure-labels .measure-label[data-measure-kind="length"]')).toHaveCount(0);
+    // Length stays armed after calibrating: a new one over the same span
+    // elsewhere reads the same.
+    await expect(page.locator('[data-measure-tool="length"][aria-pressed="true"], [data-measure-tool="menu"][aria-pressed="true"]').first()).toBeVisible();
+    await page.mouse.move(box.x + 150, box.y + 480);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 450, box.y + 480, { steps: 8 });
+    await page.mouse.up();
+    await expect(kept).toHaveCount(2, { timeout: 15_000 });
+    await expect(kept.nth(1)).toHaveText('40′');
+  } finally {
+    if (!process.env.KEEP) await admin.from('documents').delete().eq('id', id);
   }
 });
 

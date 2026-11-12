@@ -131,6 +131,7 @@ import { GRAB_HANDLE_CURSOR, ROTATE_HANDLE_CURSOR } from '../utils/handleCursors
 // Unified renderer phase 2 — SVG-native creation commit builders (byte-stable
 // twins of the retired FabricDrawingCanvas serialization) + gesture diag.
 import {
+  applyScope,
   buildBoundaryShapeCommitJSON,
   buildFreehandCommitJSON,
   buildLineCommitJSON,
@@ -247,6 +248,7 @@ import {
 } from '../survey/markerShapeSvg.jsx';
 import { isPalmContact } from '../utils/touchContact.js';
 import { hasPassedShapeDragThreshold } from '../utils/dragThreshold.js';
+import { hasPressTravelled, pressStartFacts } from '../utils/moveCommit.js';
 import SnapGuidesLayer from './SnapGuidesLayer.jsx';
 import {
   isSnapFreeModifier, isAnnotationSnapFree, snapThreshold, snapMoveFrame, snapResizePoint, buildSnapGuides, snapRotationDegrees,
@@ -572,6 +574,7 @@ import {
   isPolyMeasureFor,
 } from '../utils/measure/measureScale.js';
 import { dimensionCaptionPlace, dimensionLeader, dimensionLineGeometry, isDimensionMeasure } from '../utils/measure/dimensionLine.js';
+import { measureSegmentCaptions, polylengthTotalPlace } from '../utils/measure/segmentCaptions.js';
 import { useTooltip } from './Tooltip';
 
 // Measure label (Length / Area): a white pill at a fixed SCREEN size (12 px
@@ -976,14 +979,31 @@ const SVGAnnotationLayerBody = memo(({
   const measureLabels = useMemo(() => {
     const objects = Array.isArray(annotations?.objects) ? annotations.objects : [];
     const labels = [];
+    const plusOn = isFeatureOn('measure-plus');
     objects.forEach((obj, index) => {
       if (!obj?.data?.measure || obj.visible === false || isOnHiddenLayer(obj, hiddenLayerIds)) return;
       // A dimension line ('measure-plus') draws its own inline caption.
       if (isDimensionMeasure(obj)) return;
-      const label = buildMeasureLabel(obj, effectiveMeasureScale);
+      let label = buildMeasureLabel(obj, effectiveMeasureScale);
+      // With segment captions ('measure-plus') the total moves above the last segment.
+      const totalAt = label && plusOn ? polylengthTotalPlace(obj, effectiveMeasureScale) : null;
+      if (totalAt) label = { ...label, ...totalAt };
       if (label) labels.push({ key: obj.id || obj.data?.id || `m${index}`, index, label });
     });
     return labels;
+  }, [annotations, effectiveMeasureScale, hiddenLayerIds]);
+  // Nightly 'measure-plus': a Polylength also shows each segment's length on
+  // the segment, turned along it (Drawboard's segment captions).
+  const segmentCaptionMarks = useMemo(() => {
+    if (!isFeatureOn('measure-plus')) return [];
+    const objects = Array.isArray(annotations?.objects) ? annotations.objects : [];
+    const out = [];
+    objects.forEach((obj, index) => {
+      if (!obj?.data?.measure || obj.visible === false || isOnHiddenLayer(obj, hiddenLayerIds)) return;
+      const captions = measureSegmentCaptions(obj, effectiveMeasureScale);
+      if (captions.length) out.push({ key: obj.id || obj.data?.id || `m${index}`, color: obj.stroke || 'black', captions });
+    });
+    return out;
   }, [annotations, effectiveMeasureScale, hiddenLayerIds]);
   const renderedAnnotationEntriesRef = useRef([]);
   // Every mark this page draws (hidden layers and scopes left out), for Smart
@@ -2935,8 +2955,11 @@ const SVGAnnotationLayerBody = memo(({
         height: Math.abs(end.y - state.start.y),
       };
       if (!(box.width >= LINK_MIN_SIZE && box.height >= LINK_MIN_SIZE)) return;
+      // The Survey module / region scope is read now, at the drag, like
+      // every drawn shape (applyScope); the layer is stamped on save.
+      const scope = { selectedModuleId, stampRegionId, activeRegionId };
       const commit = (mark) => {
-        const json = stampAnnotationCreationIdentity(mark, { authorId: viewerId });
+        const json = stampAnnotationCreationIdentity(applyScope({ ...mark }, scope), { authorId: viewerId });
         const current = annotationsRef.current;
         selectAnnotation(current?.objects?.length || 0);
         onSaveAnnotations(
@@ -2967,7 +2990,8 @@ const SVGAnnotationLayerBody = memo(({
       : buildBoundaryShapeCommitJSON({ ...shared, tool, fillColor, fillOpacity });
     if (json && tool === 'line' && measureMode === 'calibrate') {
       const [a, b] = measureLineEndpoints(json);
-      onMeasureCalibrate?.(pageNumber, Math.hypot(b.x - a.x, b.y - a.y), stampAnnotationCreationIdentity(stampMeasure(json, 'length', null), { authorId: viewerId }));
+      // Kept as a Length once the scale applies: a dimension line under measure-plus, like any new Length.
+      onMeasureCalibrate?.(pageNumber, Math.hypot(b.x - a.x, b.y - a.y), stampAnnotationCreationIdentity(stampMeasure(json, 'length', null, { dim: isFeatureOn('measure-plus') }), { authorId: viewerId }));
       return;
     }
     if (json && tool === 'line' && measureMode === 'length') {
@@ -3075,7 +3099,12 @@ const SVGAnnotationLayerBody = memo(({
     polyDraftRef.current = null;
     setPolyDraft(null);
 
-    const tool = resolved.finalType;
+    // Nightly 'measure-plus' (Drawboard, measure-extras.md §6): a Perimeter
+    // closes only on a click back on its first point; finished at its last
+    // point (double-click, the tick or Enter) it stays OPEN, a polylength.
+    const openPerimeter = action === 'finish' && resolved.finalType === 'polygon'
+      && measureMode === 'perimeter' && isFeatureOn('measure-plus');
+    const tool = openPerimeter ? 'polyline' : resolved.finalType;
     const gestureAction = `${tool}-draw`;
     markAnnotationPointerRelease(draft.gestureId, { action: gestureAction });
 
@@ -3104,12 +3133,12 @@ const SVGAnnotationLayerBody = memo(({
       selectedModuleId,
       stampRegionId,
       activeRegionId,
-      curve: polylineCurve,
+      curve: openPerimeter ? false : polylineCurve,
     });
     if (!builtJson) return false;
-    const rawJson = isPolyMeasureFor(tool, measureMode)
-      ? stampMeasure(builtJson, measureMode, effectiveMeasureScale, { depth: measureDepth })
-      : builtJson;
+    let rawJson = builtJson;
+    if (openPerimeter) rawJson = stampMeasure(builtJson, 'polylength', effectiveMeasureScale);
+    else if (isPolyMeasureFor(tool, measureMode)) rawJson = stampMeasure(builtJson, measureMode, effectiveMeasureScale, { depth: measureDepth });
 
     const json = stampAnnotationCreationIdentity(rawJson, { authorId: viewerId });
     updateAnnotationGesture(draft.gestureId, { annotationId: id });
@@ -5156,6 +5185,7 @@ const SVGAnnotationLayerBody = memo(({
       annotationId,
       startPoint,
       originalBounds,
+      ...pressStartFacts(e),
     };
     // dragMode: the marker's own drag is a selection gesture (rule 11).
     setSurveyMarkerPreviewBounds({ annotationId, bounds: originalBounds, dragMode: 'move' });
@@ -5197,6 +5227,7 @@ const SVGAnnotationLayerBody = memo(({
       startPointerAngle: handleId === 'mtr'
         ? normalizeAngle(Math.atan2(startPoint.y - centerY, startPoint.x - centerX))
         : 0,
+      ...pressStartFacts(e),
     };
     setSurveyMarkerPreviewBounds({ annotationId: entry.surveyMarker.annotationId, bounds: originalBounds, dragMode: surveyMarkerDragRef.current.mode });
     try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch (_) {}
@@ -5208,6 +5239,22 @@ const SVGAnnotationLayerBody = memo(({
 
     e.stopPropagation();
     e.preventDefault();
+    // Owner 2026-11-10: a click only picks. Until the POINTER itself has
+    // travelled past the click slop on screen, nothing moves, resizes, turns
+    // or snaps: a release there is a click, even if the page moved under a
+    // still pointer (a bar coming in) or a neighbour sits within snapping
+    // reach (the old release snapped the marker to it with no drag at all).
+    if (!drag.travelled) {
+      if (!hasPressTravelled(drag, e)) {
+        if (commit) {
+          surveyMarkerDragRef.current = null;
+          setSurveyMarkerPreviewBounds(null);
+          setSnapGuides(null);
+        }
+        return true;
+      }
+      drag.travelled = true;
+    }
     const point = screenToSVG(svgRef.current, e.clientX, e.clientY);
     const dx = point.x - drag.startPoint.x;
     const dy = point.y - drag.startPoint.y;
@@ -7901,6 +7948,7 @@ const SVGAnnotationLayerBody = memo(({
         height: entry.bbox.height,
         angle: entry.bbox.angle,
       }),
+      ...pressStartFacts(e),
     };
     setSurveyMarkerPreviewBounds({
       annotationId: entry.surveyMarker.annotationId,
@@ -8661,6 +8709,35 @@ const SVGAnnotationLayerBody = memo(({
           draft only — are the only interactive parts; everything else is
           pointer-transparent so a click in the middle of the run still drops a
           vertex. */}
+      {segmentCaptionMarks.length > 0 && (
+        <g className="measure-segment-captions" style={{ pointerEvents: 'none' }}>
+          {segmentCaptionMarks.map(({ key, color, captions }) => (
+            <g key={key} data-segment-captions-for={key}>
+              {captions.map((c) => (
+                <text
+                  key={c.index}
+                  data-segment-caption={c.index}
+                  x={c.x}
+                  y={c.y}
+                  transform={`rotate(${c.angle} ${c.x} ${c.y})`}
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  fontSize={c.fontPt}
+                  fontFamily="Helvetica"
+                  fill={color}
+                  stroke="white"
+                  strokeWidth={c.fontPt * 0.4}
+                  strokeLinejoin="round"
+                  paintOrder="stroke"
+                  style={{ userSelect: 'none' }}
+                >
+                  {c.text}
+                </text>
+              ))}
+            </g>
+          ))}
+        </g>
+      )}
       {measureLabels.length > 0 && (
         <g className="measure-labels" data-measure-label-count={measureLabels.length} style={{ pointerEvents: 'none' }}>
           {measureLabels.map(({ key, index, label }) => {

@@ -278,3 +278,15 @@ test('stamps from an older client without a run name count once per run', async 
   frame = noteFramePageChanges(frame, normalizePdfVersion(savedPdfVersion({ writer: 'A', filePath: 'q', contentSha256: 't', operations: [turn] })));
   assert.equal(framePageChanges(frame).length, 3);
 });
+
+test('noted marks missing from the pages are dropped before later runs', async () => {
+  const { notedMarksOnPages } = await import('../src/utils/pageOpSync.js');
+  const byPage = { 1: { objects: [{ data: { id: 'here' } }, { data: { id: 'other' } }] }, 2: { objects: [] } };
+  assert.deepEqual([...notedMarksOnPages(byPage, new Set(['here', 'gone']))], ['here']);
+  assert.equal(notedMarksOnPages(byPage, new Set()).size, 0);
+  assert.equal(notedMarksOnPages(null, new Set(['here'])).size, 0);
+  // The viewer trims the leftover frame before the no-op return.
+  const src = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
+  assert.match(src, /const found = notedMarksOnPages\(byPage, frame\.made\);\n\s+if \(sync\.frame && found\.size < frame\.made\.size\)/);
+  assert.ok(src.indexOf('notedMarksOnPages(byPage, frame.made)') < src.indexOf('if (!changed) return;'));
+});

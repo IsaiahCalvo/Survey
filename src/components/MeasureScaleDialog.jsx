@@ -23,6 +23,7 @@ import {
   MEASURE_DISPLAYS,
   PAPER_UNITS,
   customMeasureScale,
+  customScaleInputs,
   displayForScaleUnit,
   isFractionalDisplay,
   isMeasureDisplay,
@@ -62,7 +63,8 @@ export default function MeasureScaleDialog({ pageNumber, pageCount = 1, lengthPt
   const calibrating = Number.isFinite(lengthPt) && lengthPt > 0;
   // Nightly 'calibrate-entry': the box takes feet-inches as plans write them
   // (20' 6", 20-6, 6") and says what the traced line is on paper.
-  const [entryOn] = useState(() => isFeatureOn('calibrate-entry'));
+  // 'measure-plus' takes it too: Drawboard's calibrate reads `40'` as typed.
+  const [entryOn] = useState(() => isFeatureOn('calibrate-entry') || isFeatureOn('measure-plus'));
   const realValue = entryOn ? parseRealLength(real, unit) : real;
   // Nightly 'measure-plus': a custom scale row, Drawboard's number formats
   // (units + precision) and "Set as default". Reopens on the live scale.
@@ -70,9 +72,11 @@ export default function MeasureScaleDialog({ pageNumber, pageCount = 1, lengthPt
   const [custom, setCustom] = useState(() => Boolean(plusOn && currentScale?.display && !MEASURE_PRESETS.some((p) => p.label === currentScale?.label) && !calibrating));
   const [display, setDisplay] = useState(() => (isMeasureDisplay(currentScale?.display) ? currentScale.display : displayForScaleUnit(currentScale?.unit || (metric ? 'm' : 'ft'))));
   const [precision, setPrecision] = useState(() => normalizeMeasurePrecision(display, currentScale?.precision));
-  const [paper, setPaper] = useState('1');
-  const [paperUnit, setPaperUnit] = useState('in');
-  const [customReal, setCustomReal] = useState('');
+  // Reopened on a custom scale, the row starts filled so Apply keeps it.
+  const [customStart] = useState(() => (custom ? customScaleInputs(currentScale) : null));
+  const [paper, setPaper] = useState(customStart?.paper || '1');
+  const [paperUnit, setPaperUnit] = useState(customStart?.paperUnit || 'in');
+  const [customReal, setCustomReal] = useState(customStart?.real || '');
   const [setDefault, setSetDefault] = useState(false);
   const pickDisplay = (next) => {
     setDisplay(next);

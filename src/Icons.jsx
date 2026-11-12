@@ -1417,10 +1417,16 @@ const ICON_RENDERERS = {
         <rect x="6" y="3" width="12" height="18" rx="1.33" stroke={color} strokeWidth="1.5" /><path d="M9 7H15M9 11H15M9 15H13" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
       </svg>
     ),
-    // Focus mode (Nightly): four corners pulled out to the screen's edges.
+    // Full screen: four corners pulled out to the screen's edges.
     focusMode: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
         <path d="M4 9V4H9M15 4H20V9M20 15V20H15M9 20H4V15" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+    // Leave full screen: the same four corners turned inward.
+    focusModeExit: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
+        <path d="M9 4V9H4M20 9H15V4M15 20V15H20M4 15H9V20" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     ),
     mail: (size, color, style, className) => (

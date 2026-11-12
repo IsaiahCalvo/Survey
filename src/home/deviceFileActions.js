@@ -62,7 +62,10 @@ async function readDeviceMarks(documentId) {
 }
 
 /* Lay a device file's marks into a fresh cloud document as this user's own
-   edits: the store's update observer appends them to the cloud log. */
+   edits: the store's update observer appends them to the cloud log. True
+   only once the server took every one: the writes drained with nothing left
+   queued, the store stayed healthy, and nothing was refused (quarantined).
+   Anything less keeps the device copy, so no mark depends on a retry. */
 async function carryMarksToCloud({ update, documentId, actorUserId, supabase }) {
   if (!update || update.byteLength <= 2) return true; // nothing drawn
   const [{ openAnnotationDoc }, Y] = await Promise.all([
@@ -71,10 +74,16 @@ async function carryMarksToCloud({ update, documentId, actorUserId, supabase }) 
   ]);
   const handle = await openAnnotationDoc({ documentId, supabase, actorUserId, enableRealtime: false });
   try {
+    const refusals = handle.getHistoryQuarantineGeneration?.() ?? 0;
     Y.applyUpdate(handle.doc, update);
     await handle.drain();
     // One checkpoint holding everything, so the next open reads it at once.
+    // The log above is what keeps the marks; a failed checkpoint alone only
+    // makes the next open slower.
     await handle.flushSnapshot().catch(() => false);
+    const status = handle.getSyncStatus?.() || {};
+    if (status.healthy === false || Number(status.queueSize) > 0) return false;
+    if ((handle.getHistoryQuarantineGeneration?.() ?? 0) !== refusals) return false;
     return true;
   } finally {
     await handle.destroy();
@@ -110,13 +119,15 @@ export async function saveDeviceFileToAccount({ row, user, supabase, upload }) {
   if (closedTabs) await settle(250);
   try {
     const update = await readDeviceMarks(row.id);
-    await carryMarksToCloud({ update, documentId, actorUserId: user.id, supabase });
+    const accepted = await carryMarksToCloud({ update, documentId, actorUserId: user.id, supabase });
+    if (!accepted) return { ok: false, reason: 'marks', documentId, closedTabs };
   } catch (error) {
     console.error('[deviceFiles] carrying marks failed', error);
-    return { ok: false, reason: 'marks', closedTabs };
+    return { ok: false, reason: 'marks', documentId, closedTabs };
   }
-  await deviceFiles().remove(row.id);
-  return { ok: true, documentId, closedTabs };
+  // Saved either way; say so if the device copy could not be cleared.
+  const removed = await deviceFiles().remove(row.id).catch(() => false);
+  return { ok: true, documentId, closedTabs, deviceCopyLeft: removed === false };
 }
 
 /* Delete acts at once with an Undo (the app's rule): the row hides now and

@@ -427,7 +427,7 @@ import { chooseCloudPdfOpenPath, shouldRetryStreamedOpenWithDownload, tryOpenClo
 import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox } from './utils/svgBoundingBox.js';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
 import { usePageOperations } from './hooks/usePageOperations.js';
-import { IDLE_REMOTE_PDF_STATE, PAGE_OP_BLOCKED_MESSAGE, PAGE_OP_SYNC_FLAG, clearedPdfVersion, isPageOpBlocked, newPdfVersionToken, framePageChanges, noteFramePageChanges, operationRewritesPdf, pendingPdfVersion, reframeMarks, remotePdfLoaded, remotePdfVersionStep, savedPdfVersion, splitFramePageChanges, stampableOperation } from './utils/pageOpSync.js';
+import { IDLE_REMOTE_PDF_STATE, PAGE_OP_BLOCKED_MESSAGE, PAGE_OP_SYNC_FLAG, clearedPdfVersion, isPageOpBlocked, newPdfVersionToken, framePageChanges, noteFramePageChanges, operationRewritesPdf, pendingPdfVersion, reframeMarks, remotePdfLoaded, remotePdfVersionStep, savedPdfVersion, splitFramePageChanges, notedMarksOnPages, stampableOperation } from './utils/pageOpSync.js';
 import { usePageViewDocument } from './hooks/usePageViewDocument.js';
 import { getPageViewBase } from './utils/pageViewDocument.js';
 import { destroyPdfDocument, pdfOrDestroy } from './utils/destroyPdfDocument.js';
@@ -436,7 +436,8 @@ import { classifyPagePress, ownGroupMarkFilter } from './utils/toolPressRouting.
 import { CALLOUT_MARK_GROUP, getMarkGroup } from './utils/markToolGroup.js';
 import { dropStashedSelection, hasAnyPageSelection, isItemSelected, pageHasSelection } from './utils/pageSelectionPresence.js';
 import { isSelectionGrabPress, noteOverlayTapPick } from './hooks/useSelectionGrabHandoff.js';
-import { resolveToolBarGroup, showsSurveyRow, TOOL_BAR_GROUPS } from './utils/toolbarRows.js';
+import { revealInOwnScroller } from './utils/revealInOwnScroller.js';
+import { resolveSurveyBarPush, resolveToolBarGroup, showsSurveyRow, TOOL_BAR_GROUPS } from './utils/toolbarRows.js';
 import { cycleLassoMode } from './utils/lassoSelection.js';
 import { pageCountChange, pageNumberAfterOperation, transformPageState } from './utils/pageAnnotationReindex.js';
 import { usePdfjsFormFieldPersistence } from './hooks/usePdfjsFormFieldPersistence.js';
@@ -3210,6 +3211,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     () => withDefaultMeasureScale(savedMeasureScaleMeta, measureDefaultScale),
     [savedMeasureScaleMeta, measureDefaultScale],
   );
+  // The scales a new mark lands in, default included (a library drop).
+  const measureScaleMetaWithDefaultRef = useRef(measureScaleMeta);
+  measureScaleMetaWithDefaultRef.current = measureScaleMeta;
   const [measureScaleDialog, setMeasureScaleDialog] = useState(null);
   const [measureMenuRect, setMeasureMenuRect] = useState(null);
   useEffect(() => {
@@ -3228,6 +3232,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const [linkToolOn] = useState(() => isFeatureOn('link-tool'));
   // Nightly 'comment-pins': page pins (components/pins/).
   const [pinsOn] = useState(() => isFeatureOn('comment-pins'));
+  // Pins are mark_comments rows on a cloud document, so they need one and a
+  // signed-in user: a device file or a signed-out visit shows no Pin tool.
+  const pinsDocOn = pinsOn && Boolean(pdfFile?.id) && !isDeviceDocumentId(pdfFile?.id) && Boolean(user?.id);
   const [measureDepth, setMeasureDepth] = useState(() => loadMeasureDepth());
   const [measureDepthDialog, setMeasureDepthDialog] = useState(null);
   // Tape (beta 'tape-tool', Drawboard PDF): a band that covers part of the
@@ -8780,6 +8787,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // space above the page (data-viewer-top-push, PdfjsViewerContainer) instead
   // of covering the page's top.
   const surveyBarTopOverlayRef = useViewerTopOverlayRef();
+  // Owner 2026-11-10: whether the bar pushes the page (toolbarRows.js
+  // resolveSurveyBarPush), decided when it comes in.
+  const surveyBarPushRef = useRef(null);
   const surveyBarFitRef = surveyBarFit.ref;
   const surveyBarRef = useCallback((node) => {
     surveyBarFitRef(node);
@@ -22468,6 +22478,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     const forgetNotedMarks = () => { if (sync.frame) sync.frame = { ...sync.frame, made: new Set() }; };
     try {
       const byPage = annotationsByPageRef.current || {};
+      // A noted mark not on these pages missed these runs (no-op included):
+      // later runs alone must not move it if it turns up.
+      const found = notedMarksOnPages(byPage, frame.made);
+      if (sync.frame && found.size < frame.made.size) {
+        sync.frame = { ...sync.frame, made: new Set([...(sync.frame.made || [])].filter((id) => found.has(id) || !frame.made.has(id))) };
+      }
       const changed = reframeMarks(byPage, frame.made, ops, transformPageState);
       const save = handleSaveAnnotationsRef.current;
       if (!changed) return;
@@ -27653,6 +27669,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       selectedLink: linkToolOn && !groupSummary ? selectedLinkForHost : null,
       followLink: linkToolOn ? followLink : null,
       editSelectedLink: linkToolOn ? editSelectedLink : null,
+      // Nightly 'comment-pins': only a cloud document with a signed-in user.
+      pinsAvailable: pinsDocOn,
       selectionMixed: groupSummary ? groupSummary.mixed : null,
       selectionCount: groupSummary ? groupSummary.count : (selectedToolbarAnnotation || selectedToolbarCallout ? 1 : 0),
       strokeWidthInputValue: strokeWidthInputValueRef.current,
@@ -27813,6 +27831,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     measureEditOn,
     handlePatchSelectedMeasure,
     linkToolOn,
+    pinsDocOn,
     selectedLinkForHost,
     followLink,
     editSelectedLink,
@@ -32108,7 +32127,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     setTimeout(() => {
       const element = document.getElementById(`highlight-item-${annotationId}`);
       if (element) {
-        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Only the panel's own list scrolls (owner 2026-11-10): scrollIntoView
+        // also scrolled the overflow-hidden frames around it, page included.
+        revealInOwnScroller(element, { margin: 24 });
         // Flash effect
         element.style.transition = 'box-shadow 0.5s';
         element.style.boxShadow = '0 0 0 2px var(--accent)';
@@ -32132,7 +32153,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     setExpandedCategories((prev) => (prev[marker.categoryId] && Object.keys(prev).length === 1 ? prev : { [marker.categoryId]: true }));
     setExpandedSurveyMarkers((prev) => (prev[pickedSurveyMarkerId] && Object.keys(prev).length === 1 ? prev : { [pickedSurveyMarkerId]: true }));
     const frame = requestAnimationFrame(() => {
-      document.getElementById(`highlight-item-${pickedSurveyMarkerId}`)?.scrollIntoView({ block: 'nearest' });
+      // The panel's own list only, never the frames around it (owner
+      // 2026-11-10: a click on a marker must not move the page).
+      revealInOwnScroller(document.getElementById(`highlight-item-${pickedSurveyMarkerId}`));
     });
     return () => cancelAnimationFrame(frame);
     // Only a new pick moves the panel; edits to the marker do not.
@@ -33846,7 +33869,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       pageHeight: height,
       pageNumber: drop.pageNumber,
       landingScale: pageScaleFromObjects(annotationsByPageRef.current?.[drop.pageNumber]?.objects)
-        || metaScaleForPage(measureScaleMetaRef.current, drop.pageNumber) || null,
+        || metaScaleForPage(measureScaleMetaWithDefaultRef.current, drop.pageNumber) || null,
       tokens: {
         authorName: user?.user_metadata?.full_name || '',
         authorEmail: user?.email || '',
@@ -38237,15 +38260,29 @@ ${pageBlocks}
       {/* Nightly 'measure-scale-chip' (Drawboard PDF Pro trial audit
           2026-11-09): a measure tool armed on a page with no scale says so,
           with a way to set one, instead of quietly reading 1:1 inches. */}
-      {measureScaleChipOn && isActive !== false && measureMode && !measureScaleDialog && !measureDepthDialog
+      {/* Nightly 'measure-plus': the calibrating note shows without the chip
+          flag too, in Drawboard's terms, with a close x. */}
+      {(measureScaleChipOn || (measurePlusOn && measureMode === 'calibrate')) && isActive !== false && measureMode && !measureScaleDialog && !measureDepthDialog
         && (measureMode === 'calibrate'
           || !isValidMeasureScale(pageScaleFromObjects(annotationsByPage?.[pageNum]?.objects) || metaScaleForPage(measureScaleMeta, pageNum)))
         && createPortal(
           measureMode === 'calibrate' ? (
             // Calibrating: say what to do, with a way out.
             <div className="measure-no-scale-chip" role="status" data-measure-calibrating="">
-              <span>Draw along a length you know.</span>
-              <button type="button" onClick={() => { setMeasureMode(null); setActiveTool('pan'); }}>Cancel</button>
+              <span>{measurePlusOn ? 'Trace a known distance to set the scale.' : 'Draw along a length you know.'}</span>
+              {measurePlusOn ? (
+                <button
+                  type="button"
+                  className="measure-no-scale-chip__close"
+                  aria-label="Stop calibrating"
+                  data-measure-calibrate-close=""
+                  onClick={() => { setMeasureMode(null); setActiveTool('pan'); }}
+                >
+                  <Icon name="close" size={12} />
+                </button>
+              ) : (
+                <button type="button" onClick={() => { setMeasureMode(null); setActiveTool('pan'); }}>Cancel</button>
+              )}
             </div>
           ) : (
             <div className="measure-no-scale-chip" role="status" data-measure-no-scale="">
@@ -38275,7 +38312,7 @@ ${pageBlocks}
       )}
       {pinsOn && (
         <PagePinsHost
-          enabled={Boolean(pdfFile?.id)}
+          enabled={pinsDocOn}
           isActive={isActive !== false}
           documentId={pdfFile?.id || null}
           userId={user?.id || null}
@@ -39770,7 +39807,7 @@ ${pageBlocks}
                                 />
                               </div>
                               )}
-                              {pinsOn && (
+                              {pinsDocOn && (
                                 <PagePinsLayer
                                   documentId={pdfFile?.id || null}
                                   pageNumber={pageNumber}
@@ -41317,7 +41354,7 @@ ${pageBlocks}
                   // Nightly 'link-tool': drag a box, then say where it links (Shift+H).
                   ...(linkToolOn ? [{ id: 'hyperlink', label: 'Hyperlink', iconName: 'hyperlink' }] : []),
                   // Nightly 'comment-pins': the pin split button (N; M cycles the type).
-                  ...(pinsOn && pdfFile?.id ? [{ id: 'pin', label: 'Pin', pin: true }] : []),
+                  ...(pinsDocOn ? [{ id: 'pin', label: 'Pin', pin: true }] : []),
                   // TODO: Revisit the user-created Note tool later. Imported
                   // PDF Text/sticky-note annotations still render through
                   // pdfAnnotationImporter + the normal PDF annotation layers.
@@ -41660,7 +41697,7 @@ ${pageBlocks}
               return (
                 <div
                   ref={surveyBarRef}
-                  data-viewer-top-push="true"
+                  data-viewer-top-push={surveyBarPushRef.current === false ? undefined : 'true'}
                   className="survey-subrow"
                   data-survey-bar-step={look.step}
                   data-survey-template={surveyBarFit.plan.template}
@@ -41800,6 +41837,11 @@ ${pageBlocks}
           const subRowGroup = (showSurveyPanel && selectedTemplate && (mobileMode || showsSurveyRow({ activeTool, showSurveyPanel, regionEditing: showRegionSelection, surveyMarkerPicked })))
             ? 'survey'
             : (activeCategoryDropdown && activeCategoryDropdown !== 'survey' && !TOOL_BAR_GROUPS.includes(activeCategoryDropdown) ? activeCategoryDropdown : null);
+          surveyBarPushRef.current = resolveSurveyBarPush({
+            shown: subRowGroup === 'survey' && Boolean(subRowHost),
+            wasPushing: surveyBarPushRef.current,
+            pickedOnly: !mobileMode && activeTool !== 'survey-marker' && surveyMarkerPicked,
+          });
           if (subRowGroup && subRowHost) {
             rows.push(renderSubRow(subRowGroup, subRowHost, false));
           }

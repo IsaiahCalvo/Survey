@@ -9,13 +9,16 @@ export const ITEM_KINDS = Object.freeze({
   task: Object.freeze({ key: 'task', one: 'Task', many: 'Tasks', prefix: 'TSK' }),
 });
 
-/* Drawboard's seven statuses and its three groups. Draft is where a new item
-   starts. `tone` picks the dot colour (projectItems.css). */
+/* Drawboard's statuses and its three groups. Draft is where a new item
+   starts. Issues and Tasks each have their own list (statusesFor): only a
+   Task can be On Hold, only an Issue Approved or Rejected. `tone` picks the
+   dot colour (projectItems.css). */
 export const ITEM_STATUSES = Object.freeze([
   { key: 'draft', label: 'Draft', group: 'unstarted', tone: 'muted' },
   { key: 'open', label: 'Open', group: 'started', tone: 'info' },
   { key: 'pending', label: 'Pending', group: 'started', tone: 'warning' },
   { key: 'in_review', label: 'In Review', group: 'started', tone: 'review' },
+  { key: 'on_hold', label: 'On Hold', group: 'started', tone: 'hold' },
   { key: 'closed', label: 'Closed', group: 'done', tone: 'done' },
   { key: 'approved', label: 'Approved', group: 'done', tone: 'success' },
   { key: 'rejected', label: 'Rejected', group: 'done', tone: 'danger' },
@@ -26,6 +29,16 @@ export const STATUS_GROUPS = Object.freeze([
   { key: 'started', label: 'Started' },
   { key: 'done', label: 'Done' },
 ]);
+
+const KIND_STATUS_KEYS = Object.freeze({
+  issue: ['draft', 'open', 'pending', 'in_review', 'closed', 'approved', 'rejected'],
+  task: ['draft', 'open', 'pending', 'in_review', 'on_hold', 'closed'],
+});
+/** The statuses one kind of item can take, in Drawboard's order. */
+export const statusesFor = (kind) => {
+  const keys = KIND_STATUS_KEYS[kind] || KIND_STATUS_KEYS.issue;
+  return ITEM_STATUSES.filter((s) => keys.includes(s.key));
+};
 
 const STATUS_BY_KEY = new Map(ITEM_STATUSES.map((s) => [s.key, s]));
 export const statusInfo = (key) => STATUS_BY_KEY.get(key) || ITEM_STATUSES[0];

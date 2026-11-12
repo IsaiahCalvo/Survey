@@ -89,6 +89,18 @@ export function stampableOperation(operation) {
  * `transform` is transformPageState. Returns { [page]: objects } for each
  * page whose list changes, or null when nothing moves.
  */
+/** The noted ids that are still on these pages. */
+export function notedMarksOnPages(annotationsByPage, ids) {
+  const found = new Set();
+  if (!ids?.size) return found;
+  for (const value of Object.values(annotationsByPage || {})) {
+    for (const obj of Array.isArray(value?.objects) ? value.objects : []) {
+      if (ids.has(obj?.data?.id)) found.add(obj.data.id);
+    }
+  }
+  return found;
+}
+
 export function reframeMarks(annotationsByPage, ids, operations, transform) {
   if (!ids || ids.size === 0 || !Array.isArray(operations) || operations.length === 0) return null;
   const byPage = annotationsByPage || {};

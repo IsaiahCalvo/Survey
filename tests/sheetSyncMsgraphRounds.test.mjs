@@ -103,6 +103,22 @@ test('first round fills the sheet with signed rows; an idle round reads nothing'
   assert.equal((await ctx.round()).status, 'idle');
 });
 
+// A notice past its half hour is only dropped by a planned round: a quiet
+// link (no change on either side) runs one, then goes idle again.
+test('a quiet link still clears a notice past its time from the panel', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
+  await ctx.round(); await ctx.round();
+  assert.equal((await ctx.round()).status, 'idle');
+  // Stamped at the start of 1970: long past its half hour (engine NOTICE_MS).
+  const old = { t: 1, message: 'Row 9: something that happened once.' };
+  ctx.link.state = { ...ctx.link.state, notices: [old], problems: [{ message: old.message }] };
+  const clearing = await ctx.round();
+  assert.equal(clearing.status, 'synced', 'not idle while a notice is past its time');
+  assert.deepEqual(ctx.link.state.notices, []);
+  assert.ok(!ctx.link.state.problems.some((p) => p.message === old.message), 'gone from the panel');
+  assert.equal((await ctx.round()).status, 'idle', 'then quiet again');
+});
+
 test('a field tech answer reaches the sheet; a PM edit reaches the app; both land on one row', async () => {
   const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
   await ctx.round(); await ctx.round();
@@ -631,4 +647,155 @@ test('a PivotTable right against one tab\'s list: new items on several tabs in o
   assert.ok(pivotIntact(doors, at), 'the pivot is untouched');
   await ctx.round({ force: true });
   assert.deepEqual(Object.keys(ctx.markers).sort(), ['c1', 'c2', 'd1', 'd2'], 'nothing doubled');
+});
+
+// Real Excel 11-10: a PM protected one synced tab (Review > Protect Sheet).
+// Every round then failed 403 for the whole workbook, so the other tabs
+// stopped syncing both ways until it was unprotected.
+test('one protected tab: the other tabs keep syncing both ways, the locked one waits and loses nothing', async () => {
+  const cam = (id, name, extra = {}) => door(id, name, { categoryId: 'cams', ...extra });
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101'), d2: door('d2', 'D-102'), c1: cam('c1', 'C-201'), c2: cam('c2', 'C-202') } });
+  await ctx.round(); await ctx.round();
+  const CAMS = 'Cameras - Level 1';
+  await fakeApi(`/files/${ctx.fileId}/protect`, { title: 'Doors - Level 1' });
+  const doorsBefore = JSON.stringify((await ctx.sheet()).rows);
+
+  ctx.markers.d1.note = { text: 'tech on the locked tab' };
+  ctx.markers.d3 = door('d3', 'D-103');
+  delete ctx.markers.d2;
+  ctx.markers.c1.note = { text: 'tech on the open tab' };
+  await ctx.edit([{ row: await ctx.rowOf('c2', CAMS), col: await ctx.col('Notes', CAMS), value: 'PM on the open tab' }], CAMS);
+  const locked = await ctx.round();
+  assert.equal(locked.status, 'synced');
+  const cams = await ctx.sheet(CAMS);
+  assert.equal(cams.rows[await ctx.rowOf('c1', CAMS)][await ctx.col('Notes', CAMS)], 'tech on the open tab', 'the open tab gets the app\'s change');
+  assert.equal(ctx.markers.c2.note.text, 'PM on the open tab', 'and its PM edit reaches the app');
+  assert.equal(JSON.stringify((await ctx.sheet()).rows), doorsBefore, 'the locked tab is not touched');
+  assert.equal(ctx.markers.d1.note.text, 'tech on the locked tab', 'the tech\'s note is kept in the app');
+  assert.ok(ctx.link.state.problems.some((p) => /"Doors - Level 1" is protected/.test(p.message)), 'the panel says which tab is locked');
+
+  // Still locked: the next round asks first instead of being refused again.
+  let refused = 0;
+  const counting = createMsGraphProvider({ getAccessToken: async () => 'fake-ms-access-1', baseUrl: BASE, fetch: async (...a) => {
+    const res = await fakeMsgraphFetch(...a);
+    const text = await res.clone().text();
+    if (res.status === 403 || /"status":403/.test(text)) refused += 1;
+    return res;
+  } });
+  ctx.markers.c2.note = { text: 'tech again' };
+  assert.equal((await ctx.round({ provider: counting })).status, 'synced');
+  assert.equal(refused, 0, 'no refused write while it stays locked');
+
+  await fakeApi(`/files/${ctx.fileId}/protect`, { title: 'Doors - Level 1', on: false });
+  assert.equal((await ctx.round()).status, 'synced');
+  const doors = await ctx.sheet();
+  assert.equal(doors.rows[await ctx.rowOf('d1')][await ctx.col('Notes')], 'tech on the locked tab', 'the waiting note goes in once unprotected');
+  assert.equal(doors.rows.filter((r) => r[3] === 'D-103').length, 1, 'the waiting new item goes in once');
+  assert.equal(doors.rows.filter((r) => r[3] === 'D-102').length, 0, 'the item deleted while locked is taken out');
+  assert.equal(ctx.markers.d2, undefined, 'and doesn\'t come back as a new item');
+  assert.ok(!ctx.link.state.problems.some((p) => /is protected/.test(p.message)), 'and the line goes away');
+  assert.deepEqual(ctx.link.state.lockedTabs, []);
+});
+
+test('a held erase on a tab that gets protected waits for it, and so does the choice made about it', async () => {
+  const ctx = await setup({ markers: { ...fifteen(), c1: door('c1', 'C-201', { categoryId: 'cams' }) } });
+  await ctx.round(); await ctx.round();
+  await blankNotes(ctx, 12);
+  await ctx.round();
+  assert.equal(ctx.link.state.heldErase.count, 12);
+  // The PM fills five back: seven blanks still held, under the hold's size.
+  const col = await ctx.col('Notes');
+  await ctx.edit(await Promise.all([1, 2, 3, 4, 5].map(async (i) => ({ row: await ctx.rowOf(`d${i}`), col, value: `field note ${i}` }))));
+  await ctx.round();
+  assert.equal(ctx.link.state.heldErase.count, 7);
+  // Then protects the tab; a tech's note there is refused and the tab skipped.
+  await fakeApi(`/files/${ctx.fileId}/protect`, { title: 'Doors - Level 1' });
+  ctx.markers.d14.note = { text: 'tech on the locked tab' };
+  assert.equal((await ctx.round()).status, 'synced');
+  assert.deepEqual(ctx.link.state.lockedTabs.length, 1);
+  assert.equal(ctx.link.state.heldErase?.count, 7, 'the hold is kept while its tab is locked');
+  // An editor picks "put them back" while it is still locked.
+  ctx.link.state.eraseChoice = 'app';
+  assert.equal((await ctx.round({ force: true })).status, 'synced');
+  assert.equal(ctx.link.state.eraseChoice, 'app', 'the choice waits for the tab');
+  await fakeApi(`/files/${ctx.fileId}/protect`, { title: 'Doors - Level 1', on: false });
+  assert.equal((await ctx.round()).status, 'synced');
+  for (let i = 6; i <= 12; i += 1) assert.equal(ctx.markers[`d${i}`].note.text, `field note ${i}`, `d${i} is not wiped in the app`);
+  const sheet = await ctx.sheet();
+  for (let i = 6; i <= 12; i += 1) assert.equal(sheet.rows[await ctx.rowOf(`d${i}`)][col], `field note ${i}`, `d${i} is put back in the sheet`);
+  assert.equal(sheet.rows[await ctx.rowOf('d14')][col], 'tech on the locked tab');
+  assert.equal(ctx.link.state.eraseChoice, undefined, 'used once the tab was looked at');
+  assert.equal(ctx.link.state.heldErase, undefined);
+});
+
+test('a held erase is not kept waiting by a protected tab it has no blanks on', async () => {
+  const cam = (id, name, extra = {}) => door(id, name, { categoryId: 'cams', ...extra });
+  const ctx = await setup({ markers: { ...fifteen(), c1: cam('c1', 'C-201'), c2: cam('c2', 'C-202') } });
+  await ctx.round(); await ctx.round();
+  await blankNotes(ctx, 12);
+  await ctx.round();
+  assert.deepEqual(ctx.link.state.heldErase.scopes?.length, 1, 'the hold names the tab its blanks are on');
+  // The cameras tab gets protected; a tech's note there finds out.
+  await fakeApi(`/files/${ctx.fileId}/protect`, { title: 'Cameras - Level 1' });
+  ctx.markers.c1.note = { text: 'tech on the locked tab' };
+  await ctx.round();
+  assert.equal(ctx.link.state.lockedTabs.length, 1);
+  assert.equal(ctx.link.state.heldErase.count, 12, 'still held: nobody chose yet');
+  ctx.link.state.eraseChoice = 'app';
+  await ctx.round({ force: true });
+  const sheet = await ctx.sheet();
+  const col = await ctx.col('Notes');
+  for (let i = 1; i <= 12; i += 1) assert.equal(sheet.rows[await ctx.rowOf(`d${i}`)][col], `field note ${i}`, `d${i} put back`);
+  assert.equal(ctx.link.state.eraseChoice, undefined, 'the choice is used: its blanks were all on an open tab');
+  assert.equal(ctx.link.state.heldErase, undefined, 'and the hold is gone');
+  // A later blank on the open tab is a plain edit, not answered by the old choice.
+  await ctx.edit([{ row: await ctx.rowOf('d13'), col, value: '' }]);
+  await ctx.round();
+  assert.equal(ctx.markers.d13.note.text, '', 'the PM cleared one note; it clears in the app');
+});
+
+test('a choice about a held erase answers only its own blanks, not later ones on a tab it finished', async () => {
+  const cam = (id, name, extra = {}) => door(id, name, { categoryId: 'cams', ...extra });
+  const CAMS = 'Cameras - Level 1';
+  const cams = Object.fromEntries(Array.from({ length: 6 }, (_, i) => [`c${i + 1}`, cam(`c${i + 1}`, `C-${201 + i}`, { note: { text: `cam note ${i + 1}` } })]));
+  const ctx = await setup({ markers: { ...fifteen(), ...cams } });
+  await ctx.round(); await ctx.round();
+  // An older copy restored: six notes blanked on each tab, held together.
+  await blankNotes(ctx, 6);
+  const camCol = await ctx.col('Notes', CAMS);
+  await ctx.edit(await Promise.all([1, 2, 3, 4, 5, 6].map(async (i) => ({ row: await ctx.rowOf(`c${i}`, CAMS), col: camCol, value: '' }))), CAMS);
+  await ctx.round();
+  assert.equal(ctx.link.state.heldErase.count, 12);
+  assert.equal(ctx.link.state.heldErase.scopes.length, 2);
+  // The cameras tab gets protected (a tech's note on the doors tab is fine;
+  // one on the cameras tab finds the lock).
+  await fakeApi(`/files/${ctx.fileId}/protect`, { title: CAMS });
+  ctx.markers.c1.note = { text: 'cam note 1' };
+  ctx.markers.c1.changedDate = '2026-11-12T08:00:00.000Z';
+  await ctx.round({ force: true });
+  assert.equal(ctx.link.state.lockedTabs.length, 1);
+  // "Put them back": the doors notes go back now; the cameras part waits.
+  ctx.link.state.eraseChoice = 'app';
+  await ctx.round({ force: true });
+  const col = await ctx.col('Notes');
+  let doors = await ctx.sheet();
+  for (let i = 1; i <= 6; i += 1) assert.equal(doors.rows[await ctx.rowOf(`d${i}`)][col], `field note ${i}`, `d${i} put back`);
+  assert.equal(ctx.link.state.eraseChoice, 'app', 'still waiting for the cameras tab');
+  assert.equal(ctx.link.state.heldErase.scopes.length, 1, 'only the locked tab is still waiting');
+  // The PM then clears one doors note on purpose: not answered by the old choice.
+  await ctx.edit([{ row: await ctx.rowOf('d13'), col, value: '' }]);
+  await ctx.round({ force: true });
+  doors = await ctx.sheet();
+  assert.equal(doors.rows[await ctx.rowOf('d13')][col], '', 'the PM\'s new blank is not written over by the old choice');
+  assert.equal(ctx.markers.d13.note.text, 'field note 13', 'and it is held, not wiped in the app');
+  // Unprotected: the cameras part of the erase is put back, the choice used.
+  await fakeApi(`/files/${ctx.fileId}/protect`, { title: CAMS, on: false });
+  await ctx.round({ force: true });
+  const camSheet = await ctx.sheet(CAMS);
+  for (let i = 2; i <= 6; i += 1) assert.equal(camSheet.rows[await ctx.rowOf(`c${i}`, CAMS)][camCol], `cam note ${i}`, `c${i} put back`);
+  assert.equal(ctx.link.state.eraseChoice, undefined, 'used once its tabs were looked at');
+  assert.equal(ctx.markers.d13.note.text, 'field note 13', 'the PM\'s later blank is still only held');
+  assert.equal((await ctx.sheet()).rows[await ctx.rowOf('d13')][col], '', 'and not written back by the old choice');
+  assert.equal(ctx.link.state.heldErase?.count, 1, 'it is now its own hold, to be asked about');
+  assert.equal(ctx.link.state.heldErase.scopes.length, 1);
 });

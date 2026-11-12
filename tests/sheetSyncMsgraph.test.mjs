@@ -177,6 +177,9 @@ function fakeGraph({ driveType = 'business' } = {}) {
     }
     if (range) {
       const a = parseAddress(range[1]);
+      if (method === 'POST' && range[2] === '/insert' && state.refuseInsert) {
+        return json(400, { error: { code: 'InvalidArgument', message: 'The argument is invalid or missing or has an incorrect format.' } });
+      }
       if (method === 'POST' && range[2] === '/insert') {
         // Insert cells, shift down: only the address's columns move.
         assert.equal(JSON.parse(init.body).shift, 'Down');
@@ -321,6 +324,15 @@ test('appends under the last used row and deletes rows highest first', async () 
   assert.ok(inserts.some((c) => c.includes("range(address='A6:B7')")), inserts.join(' | '));
   await p.deleteRows(FILE, [{ sheetId: s.id, row: 1 }, { sheetId: s.id, row: 3 }]);
   assert.deepEqual(s.cells.map((r) => r[0]), ['Row ID', 'rid-2', 'rid-4', 'rid-5', 'rid-6']);
+});
+
+test('an append whose insert is refused still writes the rows under the list', async () => {
+  const graph = fakeGraph();
+  const s = graph.sheet('S', 0, [['Row ID', 'Item'], ['rid-1', 'A']]);
+  graph.addFile('ITEM1', [s]);
+  graph.refuseInsert = true;
+  await provider(graph).appendRows(FILE, [{ sheetId: s.id, title: 'S', rows: [['rid-2', 'B']], width: 2, listCols: 2 }]);
+  assert.deepEqual(s.cells.slice(2), [['rid-2', 'B']]);
 });
 
 test('reopens an expired session once and carries on', async () => {

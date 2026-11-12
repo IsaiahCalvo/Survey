@@ -18,7 +18,14 @@
  */
 
 import { computeLineBboxCenter } from '../svgBoundingBox.js';
-import { DIMENSION_LEADER_PT, normalizeDimensionLeader } from './dimensionLine.js';
+import {
+  DIMENSION_CAPTION_BG_OPACITIES,
+  DIMENSION_CAPTION_PT,
+  DIMENSION_LEADER_PT,
+  normalizeDimensionCaptionColor,
+  normalizeDimensionCaptionPt,
+  normalizeDimensionLeader,
+} from './dimensionLine.js';
 import {
   MEASURE_LINE_PREFIXES,
   formatDisplayArea,
@@ -455,6 +462,28 @@ function hasCaptionSettings(measure) {
 const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
 
 /**
+ * Segment captions (Nightly 'measure-plus', Drawboard's "Show segment
+ * captions"): each side of a Polylength or Perimeter shows its own length.
+ * Off, Inline (along the side, on it), Upright (level, on it) or Above
+ * (along the side, beside it). On (Inline) by default for a Polylength, off
+ * for a Perimeter. Stored as data.measure.segments only when not the default.
+ */
+export const SEGMENT_CAPTION_PLACES = Object.freeze(['off', 'inline', 'upright', 'above']);
+export const SEGMENT_CAPTION_KINDS = Object.freeze(['polylength', 'perimeter']);
+
+export function defaultSegmentCaptionPlace(kind) {
+  return kind === 'polylength' ? 'inline' : 'off';
+}
+
+/** How a mark's segment captions show ('off' for kinds that have none). */
+export function segmentCaptionPlace(obj) {
+  const kind = getMeasureKind(obj);
+  if (!SEGMENT_CAPTION_KINDS.includes(kind)) return 'off';
+  const saved = obj?.data?.measure?.segments;
+  return SEGMENT_CAPTION_PLACES.includes(saved) ? saved : defaultSegmentCaptionPlace(kind);
+}
+
+/**
  * The mark after a Measurement popover change ({ label?, fields?, depth?,
  * captionSize? }), or the very same object when nothing changes. Typing a
  * label on a mark whose lines were picked by hand ticks Label too, so it shows.
@@ -484,6 +513,11 @@ export function applyMeasureEdit(obj, changes = {}) {
     const depth = normalizeMeasureDepth(changes.depth);
     if (depth) measure.depth = depth;
   }
+  if (hasOwn(changes, 'segmentCaptions') && SEGMENT_CAPTION_KINDS.includes(kind)
+    && SEGMENT_CAPTION_PLACES.includes(changes.segmentCaptions)) {
+    if (changes.segmentCaptions === defaultSegmentCaptionPlace(kind)) delete measure.segments;
+    else measure.segments = changes.segmentCaptions;
+  }
   if (kind === 'length' && measure.dim && typeof measure.dim === 'object') {
     // Dimension-line marks only (measure-plus): the leader and caption place.
     if (hasOwn(changes, 'leader')) {
@@ -494,6 +528,38 @@ export function applyMeasureEdit(obj, changes = {}) {
       const dim = { ...measure.dim };
       if (changes.captionPlace === 'above') dim.caption = 'above'; else delete dim.caption;
       measure.dim = dim;
+    }
+    // Caption style (Drawboard's Caption pop-over).
+    if (hasOwn(changes, 'captionPt')) {
+      const size = normalizeDimensionCaptionPt(changes.captionPt);
+      if (size != null) {
+        const dim = { ...measure.dim };
+        if (size === DIMENSION_CAPTION_PT) delete dim.size; else dim.size = size;
+        measure.dim = dim;
+        delete measure.captionSize;
+      }
+    }
+    if (hasOwn(changes, 'captionColor')) {
+      const dim = { ...measure.dim };
+      const color = normalizeDimensionCaptionColor(changes.captionColor);
+      if (color) dim.color = color; else delete dim.color;
+      measure.dim = dim;
+    }
+    if (hasOwn(changes, 'captionBg')) {
+      const dim = { ...measure.dim };
+      const bg = normalizeDimensionCaptionColor(changes.captionBg);
+      if (bg) {
+        dim.bg = bg;
+        // A background picked while none showed comes in at full strength.
+        if (!DIMENSION_CAPTION_BG_OPACITIES.includes(Number(dim.bgOpacity))) dim.bgOpacity = 1;
+      } else {
+        delete dim.bg;
+        delete dim.bgOpacity;
+      }
+      measure.dim = dim;
+    }
+    if (hasOwn(changes, 'captionBgOpacity') && DIMENSION_CAPTION_BG_OPACITIES.includes(Number(changes.captionBgOpacity))) {
+      measure.dim = { ...measure.dim, bgOpacity: Number(changes.captionBgOpacity) };
     }
   }
   const keys = new Set([...Object.keys(before), ...Object.keys(measure)]);
@@ -772,6 +838,15 @@ export function layoutMeasureLabel(label, unitsPerPx = 1, page = null) {
     // (or left for a vertical line, matching the rotated text's "up").
     const rad = ((label.angle || 0) * Math.PI) / 180;
     const offset = height / 2 + MEASURE_LABEL_GAP_PX * u;
+    cx += Math.sin(rad) * offset;
+    cy -= Math.cos(rad) * offset;
+  } else if (Number.isFinite(label.above?.angle)) {
+    // A level pill lifted off a turned segment (a Polylength's total sits
+    // above its last segment, 'measure-plus'): clear of the segment and of
+    // `extra` page units more (that segment's own caption).
+    const rad = (label.above.angle * Math.PI) / 180;
+    const halfAcross = (Math.abs(height * Math.cos(rad)) + Math.abs(width * Math.sin(rad))) / 2;
+    const offset = halfAcross + MEASURE_LABEL_GAP_PX * u + (Number(label.above.extra) || 0);
     cx += Math.sin(rad) * offset;
     cy -= Math.cos(rad) * offset;
   }

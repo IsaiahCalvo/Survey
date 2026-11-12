@@ -26,8 +26,6 @@ import { PageGridMenu } from './components/PageGridSettings';
 import RailFlyout from './components/RailFlyout.jsx';
 import { PinFilterMenu } from './components/pins/PinControls.jsx';
 import MenuGlide from './components/MenuGlide.jsx';
-import { chordKeycaps } from './utils/keyboardShortcuts.js';
-import { shortcutBinding } from './utils/customKeyboardShortcuts.js';
 import SnappingToggle, { SnappingGlyph, SnappingMenu, snappingLabel, useSnappingShortcut } from './components/SnappingToggle.jsx';
 import Dashboard from './Dashboard';
 import { createTabChromeCache } from './utils/tabChromeCache.js';
@@ -115,21 +113,6 @@ import { composeTextColor, splitTextColor } from './utils/textColorOpacity';
 import { CHROME_GLYPH, FONT_FAMILY, RAIL_CARET, RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_SPLIT_CONTROL_W, REVIEW_TOOL_IDS, ZOOM_MODE_OPTIONS, appDebug, coerceScrollMode, ensureRgbaOpacity, getWindowTrackpadInteractionDebugSavePayload, hexToRgba, writeSaveLogExtraFiles } from './viewerShared';
 // Owner 2026-09-22: undo/redo draw at 14 (the phone's HISTORY_GLYPH) - see MobilePdfViewerChrome.
 const HISTORY_GLYPH = 14;
-// The Page fit card shows each fit's shortcut (the keys PDFViewer's keydown
-// handler and the shortcuts sheet use; a remapped key shows its new keys).
-const FIT_MODE_CHORDS = Object.freeze({
-  [ZOOM_MODES.FIT_PAGE]: 'mod+0',
-  [ZOOM_MODES.FIT_WIDTH]: 'mod+1',
-  [ZOOM_MODES.FIT_HEIGHT]: 'mod+2',
-});
-const IS_MAC_KEYS = typeof navigator !== 'undefined' && /(Mac|iPhone|iPod|iPad)/i.test(`${navigator.platform || ''} ${navigator.userAgent || ''}`);
-// Mac shows ⌘0 tight, but a remapped chord with a named key keeps its
-// pluses (⌘+Shift+F, Alt+1) so the words don't run together.
-const fitChordLabel = (chord) => {
-  const caps = chordKeycaps(shortcutBinding(chord), { isMac: IS_MAC_KEYS });
-  const tight = IS_MAC_KEYS && caps.slice(0, -1).every((cap) => cap.length === 1);
-  return caps.join(tight ? '' : '+');
-};
 import { TooltipChipHost, TooltipContext, TooltipProvider, makeTooltipBinding } from './components/Tooltip';
 import { useViewerTopOverlayRef, subscribeViewerTopOverlays } from './utils/viewerTopOverlay.js';
 import DismissBarrier from './components/DismissBarrier.jsx';
@@ -163,11 +146,12 @@ import { formatPageTotal } from './utils/pageTotalLabel.js';
 import { requestTemplateEditor } from './home/templateEditorRequest';
 import SheetSetBar from './sheets/SheetSetBar.jsx';
 import { recordDocumentOpened } from './home/homeLibraryData.js';
+import { steppedVersion, versionStepForKey } from './utils/drawboardKeys.js';
 import SheetSetView from './sheets/SheetSetView.jsx';
 import SpotlightOverlay from './spotlight/SpotlightOverlay.jsx';
 import useSpotlight from './spotlight/useSpotlight.js';
 import { clearSpotlightGo, setSpotlightDocument, setSpotlightIdentity } from './services/annotationSpotlight.js';
-import { SHEET_VIEW_EVENT, clampGridColumns, projectSheets, sheetStepForKey, steppedSheet, storedProjectOrder, DEFAULT_GRID_COLUMNS } from './sheets/sheetSet.js';
+import { SHEET_VIEW_EVENT, narrowSheets, parseGridColumns, projectSheets, sheetStepForKey, steppedSheet, storedProjectOrder } from './sheets/sheetSet.js';
 import { DEVICE_FILE_LEAVE_EVENT } from './services/deviceFiles.js';
 
 // The dot between the current page and the page total in the right-rail
@@ -2324,19 +2308,24 @@ export default function App({ devPreviewReturnTab = null }) {
   const [eraserLookOn] = useState(() => isFeatureOn('eraser-look'));
   const [pinsOn] = useState(() => isFeatureOn('comment-pins'));
   const allMarksHidden = useMarksHidden();
-  // Focus mode (Nightly, 'focus-mode'; utils/focusMode.js): no tab strip or
-  // side rails, browser full screen, an Exit chip that always shows.
+  // Full screen (flag 'focus-mode'; utils/focusMode.js). Owner 2026-11-10:
+  // "What is the point of full screen" when it took away the tabs, both rails
+  // and with them Survey mode. It is now just the browser's full screen: the
+  // tabs, both rails and the tool bar all stay; only the browser and OS
+  // chrome go. The rail button, Ctrl/Cmd+Shift+F or Esc leave it.
   const [focusModeEnabled] = useState(() => isFeatureOn('focus-mode'));
-  const [focusMode, setFocusMode] = useState(false);
-  const focusOn = focusModeEnabled && focusMode && Boolean(isViewerVisible) && !isNarrowShell;
+  const [isFullscreen, setIsFullscreen] = useState(() => typeof document !== 'undefined' && Boolean(document.fullscreenElement));
   const toggleFocusMode = useCallback((next) => {
-    setFocusMode((current) => {
-      const value = typeof next === 'boolean' ? next : !current;
-      if (value) enterBrowserFullscreen();
-      else leaveBrowserFullscreen();
-      return value;
-    });
+    const want = typeof next === 'boolean' ? next : !document.fullscreenElement;
+    if (want) enterBrowserFullscreen();
+    else leaveBrowserFullscreen();
   }, []);
+  useEffect(() => {
+    if (!focusModeEnabled) return undefined;
+    const onFullscreen = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', onFullscreen);
+    return () => document.removeEventListener('fullscreenchange', onFullscreen);
+  }, [focusModeEnabled]);
   useEffect(() => {
     // Only while a document is open: on Home the chord is the browser's own.
     if (!focusModeEnabled || !isViewerVisible) return undefined;
@@ -2347,25 +2336,9 @@ export default function App({ devPreviewReturnTab = null }) {
       event.stopImmediatePropagation();
       toggleFocusMode();
     };
-    const onFullscreen = () => { if (!document.fullscreenElement) setFocusMode(false); };
     window.addEventListener('keydown', onKey, true);
-    document.addEventListener('fullscreenchange', onFullscreen);
-    return () => {
-      window.removeEventListener('keydown', onKey, true);
-      document.removeEventListener('fullscreenchange', onFullscreen);
-    };
+    return () => window.removeEventListener('keydown', onKey, true);
   }, [focusModeEnabled, toggleFocusMode, Boolean(isViewerVisible)]); // eslint-disable-line react-hooks/exhaustive-deps
-  // The rails and tab strip come and go without a window resize when the
-  // browser refuses full screen, so tell the viewer the space changed; a
-  // fit zoom re-fits to it, a picked zoom stays.
-  useEffect(() => {
-    if (!focusModeEnabled) return undefined;
-    const frame = requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
-    return () => cancelAnimationFrame(frame);
-  }, [focusModeEnabled, focusOn]);
-  useEffect(() => {
-    if (focusMode && !isViewerVisible) toggleFocusMode(false);
-  }, [focusMode, Boolean(isViewerVisible)]); // eslint-disable-line react-hooks/exhaustive-deps
   // Alt+Shift+] / [ steps through the open documents (Nightly, 'tab-keys').
   const [tabKeysEnabled] = useState(() => isFeatureOn('tab-keys'));
   useEffect(() => {
@@ -2389,8 +2362,11 @@ export default function App({ devPreviewReturnTab = null }) {
   const [spotlightEnabled] = useState(() => isFeatureOn('spotlight'));
   const [sheetView, setSheetView] = useState('single');
   const [sheetGridColumns, setSheetGridColumns] = useState(() => {
-    try { return clampGridColumns(window.localStorage.getItem('survey.sheetGridColumns') || DEFAULT_GRID_COLUMNS); } catch (_e) { return DEFAULT_GRID_COLUMNS; }
+    try { return parseGridColumns(window.localStorage.getItem('survey.sheetGridColumns')); } catch (_e) { return parseGridColumns(null); }
   });
+  // The sheets Open all chose (the list as it stood, or the ticked rows);
+  // the set stays narrowed to them while one of them is open.
+  const [sheetSetIds, setSheetSetIds] = useState(null);
   const sheetActiveTab = sheetSetEnabled ? tabs.find((tab) => tab.id === activeTabId && !tab.isHome) : null;
   const sheetActiveDocId = sheetActiveTab?.file?.id ?? null;
   const sheetSet = useMemo(() => {
@@ -2401,9 +2377,9 @@ export default function App({ devPreviewReturnTab = null }) {
     // preferences); stepping follows it, as Drawboard follows its list.
     let preferences = null;
     try { preferences = JSON.parse(window.localStorage.getItem(`survey-project-preferences:${user?.id || 'guest'}`) || 'null'); } catch (_e) { preferences = null; }
-    const set = projectSheets(documents, projectId, storedProjectOrder(preferences, projectId));
+    const set = narrowSheets(projectSheets(documents, projectId, storedProjectOrder(preferences, projectId)), sheetSetIds, sheetActiveDocId);
     return set.length > 1 && set.some((d) => String(d.id) === String(sheetActiveDocId)) ? set : [];
-  }, [sheetSetEnabled, sheetActiveDocId, documents, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sheetSetEnabled, sheetActiveDocId, documents, user?.id, sheetSetIds]); // eslint-disable-line react-hooks/exhaustive-deps
   const sheetSetRef = useRef(sheetSet);
   sheetSetRef.current = sheetSet;
   // One sheet opens at a time. A step, pick or Spotlight "go" that comes
@@ -2447,8 +2423,11 @@ export default function App({ devPreviewReturnTab = null }) {
   };
   const stableStepSheet = useStableHandler(stepSheet);
   const openSheetSingle = useStableHandler((doc) => { setSheetView('single'); openSheet(doc); });
+  // A press in List / Grid makes that sheet the current one and stays there,
+  // as Drawboard; a double press (or View single) shows it alone.
+  const makeSheetCurrent = useStableHandler((doc) => { openSheet(doc); });
   const chooseSheetGridColumns = useStableHandler((n) => {
-    const next = clampGridColumns(n);
+    const next = parseGridColumns(n);
     setSheetGridColumns(next);
     try { window.localStorage.setItem('survey.sheetGridColumns', String(next)); } catch (_e) { /* private mode */ }
   });
@@ -2457,7 +2436,7 @@ export default function App({ devPreviewReturnTab = null }) {
   // view, so the next sheet opened is not hidden behind an old List.
   const sheetSetWasShownRef = useRef(false);
   useEffect(() => {
-    if (sheetSetWasShownRef.current && !sheetSetShown) setSheetView('single');
+    if (sheetSetWasShownRef.current && !sheetSetShown) { setSheetView('single'); setSheetSetIds(null); }
     sheetSetWasShownRef.current = sheetSetShown;
   }, [sheetSetShown]);
   // Open all asks for the List view for the sheet it opens. The view waits
@@ -2471,7 +2450,8 @@ export default function App({ devPreviewReturnTab = null }) {
       if (view !== 'single' && view !== 'list' && view !== 'grid') return;
       const forDocId = event?.detail?.forDocId;
       if (forDocId == null) { setSheetView(view); return; }
-      pendingSheetViewRef.current = { view, docId: String(forDocId), at: Date.now() };
+      const ids = Array.isArray(event?.detail?.ids) ? event.detail.ids.map(String) : null;
+      pendingSheetViewRef.current = { view, docId: String(forDocId), ids, at: Date.now() };
     };
     window.addEventListener(SHEET_VIEW_EVENT, onView);
     return () => window.removeEventListener(SHEET_VIEW_EVENT, onView);
@@ -2482,7 +2462,10 @@ export default function App({ devPreviewReturnTab = null }) {
     pendingSheetViewRef.current = null;
     // Only the sheet it was asked for, and only soon after (a slow open is
     // fine; a sheet opened much later is not the one Open all meant).
-    if (sheetSetShown && String(sheetActiveDocId) === pending.docId && Date.now() - pending.at < 120_000) setSheetView(pending.view);
+    if (String(sheetActiveDocId) === pending.docId && Date.now() - pending.at < 120_000) {
+      setSheetSetIds(pending.ids);
+      if (sheetSetShown) setSheetView(pending.view);
+    }
   }, [sheetSetShown, sheetActiveDocId, Boolean(isViewerVisible)]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!sheetSetShown) return undefined;
@@ -2606,6 +2589,25 @@ export default function App({ devPreviewReturnTab = null }) {
   // An older version opens read-only, with a bar to the current one.
   const olderVersionOpen = documentVersions.open && !documentVersions.open.isCurrent ? documentVersions.open : null;
   const currentVersion = documentVersions.versions.find((v) => v.isCurrent) || null;
+  // Drawboard keys (Nightly 'drawboard-keys'): Alt+O / Alt+U open the next /
+  // previous version, the same way the Versions list opens one.
+  const [drawboardKeysEnabled] = useState(() => isFeatureOn('drawboard-keys'));
+  const documentVersionsRef = useRef(documentVersions);
+  documentVersionsRef.current = documentVersions;
+  useEffect(() => {
+    if (!drawboardKeysEnabled || !isViewerVisible) return undefined;
+    const onKey = (event) => {
+      const step = versionStepForKey(event);
+      if (!step || isTypingTarget(event.target) || event.target?.closest?.('[role="dialog"]')) return;
+      const state = documentVersionsRef.current;
+      const next = steppedVersion(state.versions, state.open?.id, step);
+      if (!next) return;
+      event.preventDefault();
+      state.openVersion(next);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [drawboardKeysEnabled, Boolean(isViewerVisible)]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Page grid spacing (Survey Nightly only, beta flag 'grid-settings').
   const [gridSettingsEnabled] = useState(() => isFeatureOn('grid-settings'));
@@ -3234,7 +3236,7 @@ export default function App({ devPreviewReturnTab = null }) {
         />
       </div>
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }} {...viewerDropProps}>
-        {tabs.length > 0 && !isNarrowShell && !focusOn && ( // Desktop-only: mobile navigation lives inside the home/viewer chrome.
+        {tabs.length > 0 && !isNarrowShell && ( // Desktop-only: mobile navigation lives inside the home/viewer chrome.
           // KAL-65: the tab strip shows over the hub too, where the viewer's
           // chip host is not mounted, so it brings its own shared host.
           <TooltipProvider>
@@ -5077,7 +5079,7 @@ export default function App({ devPreviewReturnTab = null }) {
           <div
             id="chrome-left-host"
             style={{
-              display: isViewerVisible && !focusOn ? 'flex' : 'none',
+              display: isViewerVisible ? 'flex' : 'none',
               flexGrow: 0,
               flexBasis: isMobileViewer ? 'var(--mobile-rail-w)' : '48px',
               width: isMobileViewer ? 'var(--mobile-rail-w)' : '48px',
@@ -5355,6 +5357,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 view={sheetView}
                 columns={sheetGridColumns}
                 onColumns={chooseSheetGridColumns}
+                onPick={makeSheetCurrent}
                 onOpen={openSheetSingle}
                 phone={isMobileViewer}
               />
@@ -5391,7 +5394,7 @@ export default function App({ devPreviewReturnTab = null }) {
           <div
             id="chrome-right-host"
             style={{
-              display: isViewerVisible && !focusOn ? 'flex' : 'none',
+              display: isViewerVisible ? 'flex' : 'none',
               flexGrow: 0,
               flexBasis: isMobileViewer ? '0px' : '48px',
               flexShrink: 0,
@@ -5634,9 +5637,11 @@ export default function App({ devPreviewReturnTab = null }) {
               // Owner 2026-11-10 ("these pop-ups don't look integrated or
               // professional"): the fit list is a RailFlyout now - the one
               // rail card with a title, standing off the rail's edge like the
-              // grid card beside it - with the shared menu rows (13px, the
-              // MenuGlide hover strip), the current fit in gold ink with its
-              // tick, and each fit's shortcut on the right.
+              // grid card beside it - with the shared menu rows (the MenuGlide
+              // hover strip) and the current fit in gold ink with its tick at
+              // the row's end. Owner 2026-11-10: no key hints here (they read
+              // as Mac-only, and he never asked for them); the keys stay in
+              // the shortcuts sheet.
               const fitMenu = () => (
                 <RailFlyout title="Page fit">
                   <div role="menu" aria-label="Fit modes" className="rail-flyout__rows">
@@ -5650,7 +5655,6 @@ export default function App({ devPreviewReturnTab = null }) {
                   <MenuGlide />
                   {ZOOM_MODE_OPTIONS.filter((option) => option.id !== ZOOM_MODES.MANUAL).map((option, index) => {
                     const isActive = option.id === api.zoomMode;
-                    const chord = FIT_MODE_CHORDS[option.id];
                     return (
                       <button
                         key={option.id}
@@ -5667,11 +5671,10 @@ export default function App({ devPreviewReturnTab = null }) {
                         className="rail-flyout__row"
                         style={{ '--menu-row': index }}
                       >
+                        <span className="rail-flyout__label">{option.label}</span>
                         <span className="rail-flyout__tick" aria-hidden="true">
                           {isActive && <Icon name="check" size={RAIL_CONTROL_GLYPH} color="currentColor" />}
                         </span>
-                        <span>{option.label}</span>
-                        {chord && <span className="rail-flyout__keys" aria-hidden="true">{fitChordLabel(chord)}</span>}
                       </button>
                     );
                   })}
@@ -5920,13 +5923,14 @@ export default function App({ devPreviewReturnTab = null }) {
                     {focusModeEnabled && (
                       <button
                         type="button"
-                        onClick={() => toggleFocusMode(true)}
-                        aria-label="Focus mode"
+                        onClick={() => toggleFocusMode(!isFullscreen)}
+                        aria-label={isFullscreen ? 'Exit full screen' : 'Full screen'}
+                        aria-pressed={isFullscreen}
                         data-focus-mode-toggle="true"
-                        {...chromeTip('Focus mode', 'left')}
-                        style={footerBtn()}
+                        {...chromeTip(isFullscreen ? 'Exit full screen' : 'Full screen', 'left')}
+                        style={{ ...footerBtn(), color: isFullscreen ? 'var(--text-1)' : undefined }}
                       >
-                        <Icon name="focusMode" size={RAIL_CONTROL_GLYPH} color="currentColor" />
+                        <Icon name={isFullscreen ? 'focusModeExit' : 'focusMode'} size={RAIL_CONTROL_GLYPH} color="currentColor" />
                       </button>
                     )}
                     {/* drawboardAudit C2: the Pencil-only switch sits where
@@ -6051,11 +6055,6 @@ export default function App({ devPreviewReturnTab = null }) {
           covered the zoom controls; that pill is gone, and the sheet itself
           renders nothing until it is opened.) */}
       <KeyboardShortcutsOverlay />
-      {focusOn && (
-        <button type="button" className="focus-mode-exit" data-focus-mode-exit="" onClick={() => toggleFocusMode(false)}>
-          Exit focus
-        </button>
-      )}
       {hideMarksEnabled && allMarksHidden && Boolean(isViewerVisible) && (
         <div className="marks-hidden-chip" role="status" data-marks-hidden-chip="">
           <span>Marks hidden</span>
