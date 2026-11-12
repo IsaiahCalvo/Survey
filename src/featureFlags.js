@@ -33,6 +33,8 @@ export const FEATURE_FLAGS = Object.freeze({
   // marker-tracking, document-versions, survey-report, guest-links,
   // microsoft-sign-in, custom-answers, own-excel-layouts and mark-comments moved from beta to rollout after their /flags rows were turned on, so
   // surveytool.app follows /flags for them.
+  // 2026-11-12 (owner): grid-settings and survey-report went back to beta
+  // (Nightly only); the marker-tracking list chips got their own beta flag.
   // On surveytool.app since 2026-11-09 (owner: "let's deploy it", with a
   // "Beta" tag under its tool icon).
   'smart-fill': Object.freeze({
@@ -80,9 +82,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Make-your-own checklist answers in templates',
     stage: 'rollout',
   }),
+  // Owner 2026-11-12: back to Nightly only.
   'survey-report': Object.freeze({
     label: 'Survey report as a PowerPoint deck (cover, progress chart, issues)',
-    stage: 'rollout',
+    stage: 'beta',
   }),
   layers: Object.freeze({
     label: 'Layers panel (markup layers + PDF content opacity)',
@@ -108,9 +111,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Export PDF choices: annotated, flattened or plain, and which pages',
     stage: 'rollout',
   }),
+  // Owner 2026-11-12: back to Nightly only.
   'grid-settings': Object.freeze({
     label: 'Page grid spacing: fine, normal, wide or custom (paper or drawing units)',
-    stage: 'rollout',
+    stage: 'beta',
   }),
   'spline-polyline': Object.freeze({
     label: 'Curved polyline: bend smoothly through the clicked corners',
