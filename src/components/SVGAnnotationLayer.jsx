@@ -32,7 +32,9 @@ import { canRemovePolyVertex, cloudPolyEdgeReach, insertPolyVertex, insertVertex
 import { contextMenuInputOf, isTouchMenuInput } from '../utils/touchLongPress.js';
 import { deepClone } from '../utils/deepClone.js';
 import { clampPointToPage, squareShapeEnd } from '../utils/pageEdgeRules.js';
+import { keepDrawnArrowOnPage } from '../utils/arrowheadEdge.js';
 import { isFeatureOn } from '../featureFlags.js';
+import { startMarkDragAutoScroll } from '../utils/markDragAutoScroll.js';
 
 // Shift draws a square or circle (Nightly, 'shift-square'); read only while
 // Shift is held.
@@ -45,6 +47,10 @@ import { readSnapContent } from '../utils/annotationPreferences.js';
 // Drag inside a picked mark to move it; a finger gets a move grip (Nightly,
 // 'box-drag-move', utils/boxDragMove.js).
 const boxDragMoveOn = () => isFeatureOn(BOX_DRAG_MOVE_FLAG);
+// Nightly 'poly-click-starts' (Drawboard PDF Pro trial, t2-tools-deep.md):
+// with a mark picked, Polygon / Polyline's first click drops the pick AND
+// places the first point, so a second shape after Enter keeps every click.
+const polyClickStartsOn = () => isFeatureOn('poly-click-starts');
 import { maxOf, minOf } from '../utils/arrayExtrema.js';
 import { resolveEditEntryKind } from '../utils/annotationEditRoute.js';
 import {
@@ -59,6 +65,7 @@ import {
   renderPolygon,
   renderPolyline,
   renderTextMarkup,
+  dimensionMarkLayout,
 } from '../utils/svgAnnotationRenderers';
 // UX 2026-09-09: cloud hover/hit geometry comes from the same resolver that
 // paints the cloud, so the grab surface is the scalloped outline itself.
@@ -124,6 +131,7 @@ import { GRAB_HANDLE_CURSOR, ROTATE_HANDLE_CURSOR } from '../utils/handleCursors
 // Unified renderer phase 2 — SVG-native creation commit builders (byte-stable
 // twins of the retired FabricDrawingCanvas serialization) + gesture diag.
 import {
+  applyScope,
   buildBoundaryShapeCommitJSON,
   buildFreehandCommitJSON,
   buildLineCommitJSON,
@@ -166,12 +174,17 @@ import SVGSelectionOverlay, { SelectionLockBadge } from './SVGSelectionOverlay';
 import { isUserLocked } from '../lib/collab/permissionScope.js';
 import { getTextMarkupRangeHandlePositions, getTextMarkupSelectionChrome } from '../utils/pdfTextMarkup.js';
 import RotationInputField from './RotationInputField';
+import { TRANSFORM_SELECTION_EVENT, canTypeTurn, resizeObjectTo, scaleObjectBy, setLineEndingOn, turnScaleKeyStep, wrapDegrees } from '../utils/selectionProperties.js';
 import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox, isImportedPath, isAbsoluteCoordPath, getLineEndpoints, computeLineBboxCenter } from '../utils/svgBoundingBox';
 import { resolveMidpointHandlePosition } from '../utils/lineDragMath.js';
-import { buildArrowheadRenderSpec, resolveLineEndingStyles } from '../utils/lineRenderHelpers.js';
+import { buildArrowheadRenderSpec, resolveLineEndingStyles, arrowheadShapePathD } from '../utils/lineRenderHelpers.js';
+import { lineEndingCreateOptions } from '../utils/lineEndingDefaults.js';
+import { activePenType, penWidthFactors } from '../utils/penTypes.js';
+import { variableWidthPreviewD } from '../utils/penWidthInk.js';
 import { getCurvedPath, distanceToLineSegment, getCurveEndAngle } from '../utils/lineGeometry.js';
 import { ARROWHEAD_STYLES } from './Callout/types';
 import { renderPathToSvgAttrs, renderPathToSvgD, isFilledInkOutlineAttrs, getFilledInkHitTargetProps } from '../utils/svgPathAttrs.js';
+import { LINK_BOX_DRAWN_EVENT, LINK_DEFAULT_WIDTH, LINK_MIN_SIZE, linkMarkPaint, readLinkLastLook } from '../utils/linkTool.js';
 import {
   applyPageAffineToInkObject,
   createInkPathAffine,
@@ -212,6 +225,7 @@ import { useMoveModifierHeld, resolveModifierMoveZone, isPointInBoxes, isCopyDra
 import { BOX_DRAG_MOVE_FLAG, boxDragMoveKind, boxMoveGripGlyphPath, boxMoveGripPlacement } from '../utils/boxDragMove.js';
 import { getPdfStampProxySvgProps, isPdfStampProxy } from '../utils/pdfStampProxy.js';
 import { isSymbolStamp } from '../utils/symbolLibrary.js';
+import { isInsertedImage } from '../utils/insertedImage.js';
 import { canGroupResizeMember } from '../utils/groupResize.js';
 import { isClientPointNearRect } from '../utils/selectionPointerOwnership.js';
 import { forwardClickToFormWidget, liveFormWidgetAtPoint } from '../utils/formWidgetPointerTargets.js';
@@ -234,6 +248,7 @@ import {
 } from '../survey/markerShapeSvg.jsx';
 import { isPalmContact } from '../utils/touchContact.js';
 import { hasPassedShapeDragThreshold } from '../utils/dragThreshold.js';
+import { hasPressTravelled, pressStartFacts } from '../utils/moveCommit.js';
 import SnapGuidesLayer from './SnapGuidesLayer.jsx';
 import {
   isSnapFreeModifier, isAnnotationSnapFree, snapThreshold, snapMoveFrame, snapResizePoint, buildSnapGuides, snapRotationDegrees,
@@ -450,10 +465,14 @@ const normalizeSurveyMarkerBoundsValue = (bounds) => {
 // Unified renderer phase 2 — the drawing tools whose creation gestures live
 // on this layer (previews render through the SAME committed renderers below,
 // so what you see while dragging IS what commits — no cross-renderer seam).
-const SHAPE_CREATION_TOOLS = ['rect', 'ellipse', 'line', 'arrow', 'survey-marker'];
+// 'hyperlink' (Nightly 'link-tool'): a dragged box that becomes a link.
+const SHAPE_CREATION_TOOLS = ['rect', 'ellipse', 'line', 'arrow', 'survey-marker', 'hyperlink'];
+// Nightly 'drag-auto-scroll': the tools whose drag scrolls the view at its edge.
+const AUTO_SCROLL_TOOLS = new Set([...SHAPE_CREATION_TOOLS, 'select', 'callout', 'cloud', 'tape']);
 // 'survey-marker-freehand' is the Survey Marker tool in its Freehand mode (owner
 // 2026-10-13): drawn with the same freehand gesture, committed as a marker.
-const FREEHAND_CREATION_TOOLS = ['pen', 'highlighter', 'survey-marker-freehand'];
+// 'tape' (beta 'tape-tool') is pen ink in an opaque pastel band.
+const FREEHAND_CREATION_TOOLS = ['pen', 'highlighter', 'tape', 'survey-marker-freehand'];
 // Click-to-place tools: each click drops a vertex instead of dragging out a
 // box, so they get their own draft state and their own finish rules
 // (src/utils/polyDraft.js) rather than riding the drag-out gesture above.
@@ -478,6 +497,15 @@ const HOVER_HALO_OPACITY = 0.4;
 const renderArrowheadHalo = (spec, strokeWidth) => {
   if (!spec) return null;
   switch (spec.kind) {
+    case 'shapes':
+      // Drawboard's heads (Nightly 'line-endings'): each shape's outline.
+      return (
+        <g>
+          {(spec.shapes || []).map((shape, i) => (shape.type === 'circle'
+            ? <circle key={i} cx={shape.cx} cy={shape.cy} r={shape.r} fill="none" strokeWidth={strokeWidth} />
+            : <path key={i} d={arrowheadShapePathD(shape)} fill="none" strokeWidth={strokeWidth} strokeLinejoin="round" strokeLinecap="round" />))}
+        </g>
+      );
     case 'solidTriangle':
     case 'openTriangle':
     case 'diamond':
@@ -545,6 +573,8 @@ import {
   stampMeasure,
   isPolyMeasureFor,
 } from '../utils/measure/measureScale.js';
+import { dimensionCaptionPlace, dimensionLeader, dimensionLineGeometry, isDimensionMeasure } from '../utils/measure/dimensionLine.js';
+import { measureSegmentCaptions, polylengthTotalPlace } from '../utils/measure/segmentCaptions.js';
 import { useTooltip } from './Tooltip';
 
 // Measure label (Length / Area): a white pill at a fixed SCREEN size (12 px
@@ -662,6 +692,8 @@ const SVGAnnotationLayerBody = memo(({
   // and the layer new marks go on (null / default = leave marks untagged).
   hiddenLayerIds = null,
   activeLayerId = null,
+  // Tape (beta 'tape-tool'): ids of tape marks this viewer has revealed with
+  // a Pan tap (drawn as outlines; per viewer, never saved).
   // Selection / interaction props (Phase 9)
   onSaveAnnotations: onSaveAnnotationsProp,   // (updatedJSON, saveContext) => void
   // Owner after Test 46: a picked mark dragged onto another page moves there
@@ -915,6 +947,9 @@ const SVGAnnotationLayerBody = memo(({
   // Refs
   // ---------------------------------------------------------------------------
   const svgRef = useRef(null);
+  // Nightly 'drag-auto-scroll': stops the edge watcher of the current press.
+  const autoScrollStopRef = useRef(null);
+  useEffect(() => () => autoScrollStopRef.current?.(), []);
   // Page and marks in one frame (styles/pageReveal.css): the page's drawing
   // waits for this layer to be on the page.
   useLayoutEffect(() => {
@@ -944,12 +979,31 @@ const SVGAnnotationLayerBody = memo(({
   const measureLabels = useMemo(() => {
     const objects = Array.isArray(annotations?.objects) ? annotations.objects : [];
     const labels = [];
+    const plusOn = isFeatureOn('measure-plus');
     objects.forEach((obj, index) => {
       if (!obj?.data?.measure || obj.visible === false || isOnHiddenLayer(obj, hiddenLayerIds)) return;
-      const label = buildMeasureLabel(obj, effectiveMeasureScale);
+      // A dimension line ('measure-plus') draws its own inline caption.
+      if (isDimensionMeasure(obj)) return;
+      let label = buildMeasureLabel(obj, effectiveMeasureScale);
+      // With segment captions ('measure-plus') the total moves above the last segment.
+      const totalAt = label && plusOn ? polylengthTotalPlace(obj, effectiveMeasureScale) : null;
+      if (totalAt) label = { ...label, ...totalAt };
       if (label) labels.push({ key: obj.id || obj.data?.id || `m${index}`, index, label });
     });
     return labels;
+  }, [annotations, effectiveMeasureScale, hiddenLayerIds]);
+  // Nightly 'measure-plus': a Polylength also shows each segment's length on
+  // the segment, turned along it (Drawboard's segment captions).
+  const segmentCaptionMarks = useMemo(() => {
+    if (!isFeatureOn('measure-plus')) return [];
+    const objects = Array.isArray(annotations?.objects) ? annotations.objects : [];
+    const out = [];
+    objects.forEach((obj, index) => {
+      if (!obj?.data?.measure || obj.visible === false || isOnHiddenLayer(obj, hiddenLayerIds)) return;
+      const captions = measureSegmentCaptions(obj, effectiveMeasureScale);
+      if (captions.length) out.push({ key: obj.id || obj.data?.id || `m${index}`, color: obj.stroke || 'black', captions });
+    });
+    return out;
   }, [annotations, effectiveMeasureScale, hiddenLayerIds]);
   const renderedAnnotationEntriesRef = useRef([]);
   // Every mark this page draws (hidden layers and scopes left out), for Smart
@@ -1577,6 +1631,10 @@ const SVGAnnotationLayerBody = memo(({
   const smartInkOnRef = useRef(null);
   if (smartInkOnRef.current === null) smartInkOnRef.current = isFeatureOn('smart-ink');
   const smartInkRef = useRef({ fit: null, timer: 0, anchor: null });
+  // The Arrow tool's head and width, read by the drag preview (its effect does
+  // not re-run on a toolbar change) to keep the head on the page.
+  const arrowEndStyleRef = useRef(null);
+  arrowEndStyleRef.current = { arrowheadStyle, strokeWidth };
   const resetSmartInk = useCallback(() => {
     const ink = smartInkRef.current;
     if (ink.timer) clearTimeout(ink.timer);
@@ -1597,6 +1655,7 @@ const SVGAnnotationLayerBody = memo(({
 
   // Coalesced page-space sampling with the fabric canvas's exact 0.2-page-px
   // dedupe (FabricDrawingCanvas.appendPointerSamples parity).
+  const variablePenRef = useRef(false);
   const appendCoalescedPagePoints = useCallback((nativeEvent) => {
     if (!svgRef.current) return;
     const coalesced = nativeEvent.getCoalescedEvents?.() || [];
@@ -1609,7 +1668,11 @@ const SVGAnnotationLayerBody = memo(({
       const point = raw && width > 0 && height > 0 ? clampPointToPage(raw, width, height) : raw;
       const previous = freehandPointsRef.current[freehandPointsRef.current.length - 1];
       if (point && (!previous || Math.hypot(point.x - previous.x, point.y - previous.y) >= 0.2)) {
-        freehandPointsRef.current.push(point);
+        // Pen types (Nightly): Pro reads speed or pressure, so keep the time,
+        // pressure and pointer kind with each point (never saved).
+        freehandPointsRef.current.push(variablePenRef.current
+          ? { ...point, t: sample.timeStamp, p: sample.pressure, k: sample.pointerType }
+          : point);
       }
     }
   }, [width, height]);
@@ -2589,6 +2652,12 @@ const SVGAnnotationLayerBody = memo(({
           else if (least === dUp) y = fy0;
           else y = fy1;
         }
+        // Drawboard (PDF Pro trial, t2-tools-deep.md bug 8): the new box
+        // stays on the page; past the edge only a sliver of it showed.
+        if (width > tbW && height > tbH) {
+          x = Math.max(0, Math.min(width - tbW, x));
+          y = Math.max(0, Math.min(height - tbH, y));
+        }
         return { ...prev, dragging: true, currentPointer: { x, y } };
       });
     };
@@ -2836,6 +2905,7 @@ const SVGAnnotationLayerBody = memo(({
         selectedModuleId,
         stampRegionId,
         activeRegionId,
+        penType: activePenType(),
       });
       endLiveStroke(Boolean(json), points);
       if (json) dispatchCommit(json);
@@ -2849,8 +2919,10 @@ const SVGAnnotationLayerBody = memo(({
     if ((tool === 'line' || tool === 'arrow') && finalClientPoint && state.start) {
       end = resolveCreationSnap(state.start, end, finalClientPoint);
     }
-    // Drawboard: the drag-out end stays on the page (pageEdgeRules.js).
+    // Drawboard: the drag-out end stays on the page (pageEdgeRules.js), and
+    // an arrow's head too (arrowheadEdge.js).
     end = clampPointToPage(end, width, height);
+    end = keepDrawnArrowOnPage(tool, state.start, end, { arrowheadStyle, strokeWidth, pageWidth: width, pageHeight: height });
     if (finalClientPoint?.shiftKey && state.start && (tool === 'rect' || tool === 'ellipse') && shiftSquareOn()) {
       end = squareShapeEnd(state.start, end, width, height);
     }
@@ -2872,6 +2944,34 @@ const SVGAnnotationLayerBody = memo(({
       return;
     }
 
+    if (tool === 'hyperlink') {
+      // Nightly 'link-tool': the box goes to the link host (LinkToolHost),
+      // which asks where it links to; commit() then saves the link mark on
+      // this page as one Undo step, picked, like any drawn shape.
+      const box = {
+        x: Math.min(state.start.x, end.x),
+        y: Math.min(state.start.y, end.y),
+        width: Math.abs(end.x - state.start.x),
+        height: Math.abs(end.y - state.start.y),
+      };
+      if (!(box.width >= LINK_MIN_SIZE && box.height >= LINK_MIN_SIZE)) return;
+      // The Survey module / region scope is read now, at the drag, like
+      // every drawn shape (applyScope); the layer is stamped on save.
+      const scope = { selectedModuleId, stampRegionId, activeRegionId };
+      const commit = (mark) => {
+        const json = stampAnnotationCreationIdentity(applyScope({ ...mark }, scope), { authorId: viewerId });
+        const current = annotationsRef.current;
+        selectAnnotation(current?.objects?.length || 0);
+        onSaveAnnotations(
+          { ...(current || {}), objects: [...(current?.objects || []), json] },
+          { source: 'path:created', tool },
+        );
+        recordAnnotationCommit({ surface: 'SVGAnnotationLayer', source: 'path:created', action: 'link-create', pageNumber });
+      };
+      window.dispatchEvent(new CustomEvent(LINK_BOX_DRAWN_EVENT, { detail: { pageNumber, box, id, commit } }));
+      return;
+    }
+
     const shared = {
       id,
       start: state.start,
@@ -2886,15 +2986,16 @@ const SVGAnnotationLayerBody = memo(({
       activeRegionId,
     };
     let json = (tool === 'line' || tool === 'arrow')
-      ? buildLineCommitJSON({ ...shared, tool, arrowheadStyle, arrowStartStyle })
+      ? buildLineCommitJSON({ ...shared, tool, arrowheadStyle, arrowStartStyle, ...(measureMode ? {} : lineEndingCreateOptions(tool)) })
       : buildBoundaryShapeCommitJSON({ ...shared, tool, fillColor, fillOpacity });
     if (json && tool === 'line' && measureMode === 'calibrate') {
       const [a, b] = measureLineEndpoints(json);
-      onMeasureCalibrate?.(pageNumber, Math.hypot(b.x - a.x, b.y - a.y), stampAnnotationCreationIdentity(stampMeasure(json, 'length', null), { authorId: viewerId }));
+      // Kept as a Length once the scale applies: a dimension line under measure-plus, like any new Length.
+      onMeasureCalibrate?.(pageNumber, Math.hypot(b.x - a.x, b.y - a.y), stampAnnotationCreationIdentity(stampMeasure(json, 'length', null, { dim: isFeatureOn('measure-plus') }), { authorId: viewerId }));
       return;
     }
     if (json && tool === 'line' && measureMode === 'length') {
-      json = stampMeasure(json, 'length', effectiveMeasureScale);
+      json = stampMeasure(json, 'length', effectiveMeasureScale, { dim: isFeatureOn('measure-plus') });
     }
     if (json) dispatchCommit(json);
   }, [
@@ -2998,7 +3099,12 @@ const SVGAnnotationLayerBody = memo(({
     polyDraftRef.current = null;
     setPolyDraft(null);
 
-    const tool = resolved.finalType;
+    // Nightly 'measure-plus' (Drawboard, measure-extras.md §6): a Perimeter
+    // closes only on a click back on its first point; finished at its last
+    // point (double-click, the tick or Enter) it stays OPEN, a polylength.
+    const openPerimeter = action === 'finish' && resolved.finalType === 'polygon'
+      && measureMode === 'perimeter' && isFeatureOn('measure-plus');
+    const tool = openPerimeter ? 'polyline' : resolved.finalType;
     const gestureAction = `${tool}-draw`;
     markAnnotationPointerRelease(draft.gestureId, { action: gestureAction });
 
@@ -3027,12 +3133,12 @@ const SVGAnnotationLayerBody = memo(({
       selectedModuleId,
       stampRegionId,
       activeRegionId,
-      curve: polylineCurve,
+      curve: openPerimeter ? false : polylineCurve,
     });
     if (!builtJson) return false;
-    const rawJson = isPolyMeasureFor(tool, measureMode)
-      ? stampMeasure(builtJson, measureMode, effectiveMeasureScale, { depth: measureDepth })
-      : builtJson;
+    let rawJson = builtJson;
+    if (openPerimeter) rawJson = stampMeasure(builtJson, 'polylength', effectiveMeasureScale);
+    else if (isPolyMeasureFor(tool, measureMode)) rawJson = stampMeasure(builtJson, measureMode, effectiveMeasureScale, { depth: measureDepth });
 
     const json = stampAnnotationCreationIdentity(rawJson, { authorId: viewerId });
     updateAnnotationGesture(draft.gestureId, { annotationId: id });
@@ -3214,8 +3320,7 @@ const SVGAnnotationLayerBody = memo(({
     const onKeyDown = (e) => {
       // A draft left open in a tab behind keeps its points: Enter, Escape and
       // Backspace belong to the document in front.
-      if (!draftTabActiveRef.current) return;
-      if (!draftOwnsKeyboard(e.target)) return;
+      if (!draftTabActiveRef.current || !draftOwnsKeyboard(e.target)) return;
       if (e.key === 'Enter') {
         e.preventDefault();
         e.stopPropagation();
@@ -3345,6 +3450,7 @@ const SVGAnnotationLayerBody = memo(({
         }
         // Owner 2026-11-02 (copy Drawboard): a drawn shape stops at the page edge.
         point = clampPointToPage(point, width, height);
+        point = keepDrawnArrowOnPage(draft?.tool, draft?.start, point, { ...arrowEndStyleRef.current, pageWidth: width, pageHeight: height });
         // Shift: a square or circle (Drawboard PDF Pro trial audit 2026-11-09).
         if (point && e.shiftKey && draft?.start && (draft.tool === 'rect' || draft.tool === 'ellipse') && shiftSquareOn()) {
           point = squareShapeEnd(draft.start, point, width, height);
@@ -3417,7 +3523,7 @@ const SVGAnnotationLayerBody = memo(({
       }
       e.preventDefault();
       e.stopPropagation();
-      const point = clampPointToPage(screenToSVG(svg, e.clientX, e.clientY), width, height);
+      const point = keepDrawnArrowOnPage(placing.tool, placing.start, clampPointToPage(screenToSVG(svg, e.clientX, e.clientY), width, height), { ...arrowEndStyleRef.current, pageWidth: width, pageHeight: height });
       replaceDraft({ ...placing, endPointerId: e.pointerId, ...(point ? { current: point } : {}) });
     };
     const onCancel = (e) => {
@@ -3900,6 +4006,88 @@ const SVGAnnotationLayerBody = memo(({
     pageNumber,
     surveyMarkers,
   ]);
+
+  // Nightly 'properties-panel': the panel's typed R turns the one picked mark
+  // (the degree box's own commit) and its typed W / H resize a box mark.
+  const transformTargetRef = useRef(null);
+  // keysLive: one page mark is the whole pick (a callout or Survey Marker
+  // with it makes a group, which the turn / scale keys leave alone).
+  const pickedCalloutCount = selectedCalloutIds ? (selectedCalloutIds.size ?? selectedCalloutIds.length ?? 0) : 0;
+  transformTargetRef.current = {
+    selectedAnnotationIndex, annotations, onSaveAnnotations, handleRotationInputCommit, pageNumber,
+    keysLive: isTabActive && editingAnnotationIndex == null && !editingCalloutId
+      && selectedIds.size === 1 && pickedCalloutCount === 0 && selectedSurveyMarkerIds.size === 0,
+  };
+  useEffect(() => {
+    const onTransform = (event) => {
+      const detail = event?.detail || {};
+      const t = transformTargetRef.current;
+      if (!t || Number(detail.pageNumber) !== Number(t.pageNumber)) return;
+      if (typeof document !== 'undefined' && document.body?.getAttribute('data-readonly') === 'true') return;
+      const index = t.selectedAnnotationIndex;
+      const object = Number.isInteger(index) ? t.annotations?.objects?.[index] : null;
+      // A user lock (data.lockedBy) holds here too, as it does for nudge and
+      // the turn / scale keys.
+      if (!object || object.locked || !canMoveAnnotation(object)) return;
+      if (detail.op === 'turn' && canTypeTurn(object)) {
+        t.handleRotationInputCommit(index, Number(detail.angle) || 0);
+      } else if (detail.op === 'ending') {
+        // Nightly 'line-endings': one end's head from Drawboard's grid.
+        const next = setLineEndingOn(object, detail.side, detail.style);
+        if (!next) return;
+        const updated = deepClone(t.annotations);
+        updated.objects[index] = next;
+        t.onSaveAnnotations(updated, { source: 'properties-panel', action: 'line-ending', checkpointPolicy: 'normal' });
+      } else if (detail.op === 'size') {
+        const next = resizeObjectTo(object, detail.field, detail.value);
+        if (!next) return;
+        const updated = deepClone(t.annotations);
+        updated.objects[index] = next;
+        t.onSaveAnnotations(updated, { source: 'properties-panel', action: 'resize', checkpointPolicy: 'normal' });
+      }
+    };
+    window.addEventListener(TRANSFORM_SELECTION_EVENT, onTransform);
+    return () => window.removeEventListener(TRANSFORM_SELECTION_EVENT, onTransform);
+  }, []);
+
+  // Nightly 'turn-scale-keys' (Drawboard KS-01 / 02): Ctrl / Cmd + Left /
+  // Right turn the one picked mark, Ctrl / Cmd + Up / Down scale a box mark.
+  // Each press is one save and one Undo step.
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if (e.defaultPrevented || !isFeatureOn('turn-scale-keys')) return;
+      const step = turnScaleKeyStep(e);
+      if (!step) return;
+      if (typeof document !== 'undefined') {
+        if (isTypingTarget(document.activeElement)) return;
+        if (document.body?.getAttribute('data-readonly') === 'true') return;
+      }
+      const t = transformTargetRef.current;
+      if (!t?.keysLive) return; // a tab behind, a mark being edited, or a group
+      const index = t.selectedAnnotationIndex;
+      const object = Number.isInteger(index) ? t.annotations?.objects?.[index] : null;
+      if (!object) return;
+      // The keys belong to the pick from here on, even when this mark cannot
+      // take them (a counter's body, a locked mark): Cmd + Left / Right would
+      // otherwise send the browser Back / Forward.
+      e.preventDefault();
+      if (object.locked || !canMoveAnnotation(object)) return;
+      if (step.op === 'turn') {
+        if (!canTypeTurn(object)) return;
+        const pending = pendingOptimisticRotationRef.current;
+        const base = pending?.annotationIndex === index ? Number(pending.angle) : Number(object.angle);
+        t.handleRotationInputCommit(index, wrapDegrees((Number.isFinite(base) ? base : 0) + step.by) ?? 0);
+        return;
+      }
+      const next = scaleObjectBy(object, step.factor);
+      if (!next) return;
+      const updated = deepClone(t.annotations);
+      updated.objects[index] = next;
+      t.onSaveAnnotations(updated, { source: 'turn-scale-keys', action: 'resize', checkpointPolicy: 'normal' });
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   // EDIT-12 Gap 1 fix (Plan 12-03): clear the optimistic visualTransform
   // once the persisted annotation angle catches up to the pending commit.
@@ -4997,6 +5185,7 @@ const SVGAnnotationLayerBody = memo(({
       annotationId,
       startPoint,
       originalBounds,
+      ...pressStartFacts(e),
     };
     // dragMode: the marker's own drag is a selection gesture (rule 11).
     setSurveyMarkerPreviewBounds({ annotationId, bounds: originalBounds, dragMode: 'move' });
@@ -5038,6 +5227,7 @@ const SVGAnnotationLayerBody = memo(({
       startPointerAngle: handleId === 'mtr'
         ? normalizeAngle(Math.atan2(startPoint.y - centerY, startPoint.x - centerX))
         : 0,
+      ...pressStartFacts(e),
     };
     setSurveyMarkerPreviewBounds({ annotationId: entry.surveyMarker.annotationId, bounds: originalBounds, dragMode: surveyMarkerDragRef.current.mode });
     try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch (_) {}
@@ -5049,6 +5239,22 @@ const SVGAnnotationLayerBody = memo(({
 
     e.stopPropagation();
     e.preventDefault();
+    // Owner 2026-11-10: a click only picks. Until the POINTER itself has
+    // travelled past the click slop on screen, nothing moves, resizes, turns
+    // or snaps: a release there is a click, even if the page moved under a
+    // still pointer (a bar coming in) or a neighbour sits within snapping
+    // reach (the old release snapped the marker to it with no drag at all).
+    if (!drag.travelled) {
+      if (!hasPressTravelled(drag, e)) {
+        if (commit) {
+          surveyMarkerDragRef.current = null;
+          setSurveyMarkerPreviewBounds(null);
+          setSnapGuides(null);
+        }
+        return true;
+      }
+      drag.travelled = true;
+    }
     const point = screenToSVG(svgRef.current, e.clientX, e.clientY);
     const dx = point.x - drag.startPoint.x;
     const dy = point.y - drag.startPoint.y;
@@ -6206,6 +6412,16 @@ const SVGAnnotationLayerBody = memo(({
 
   const applyLineEditPreview = useCallback((obj, lineEdit) => {
     if (!obj || !lineEdit) return obj;
+    // measure-plus leader drag: only the dimension line's offset changes.
+    // A caption drag: only where the caption sits.
+    if (lineEdit.dimLeader != null || lineEdit.dimCaptionOffset) {
+      if (!isDimensionMeasure(obj)) return obj;
+      const measure = obj.data.measure;
+      const dim = lineEdit.dimLeader != null
+        ? { ...measure.dim, leader: lineEdit.dimLeader }
+        : { ...measure.dim, captionOffset: lineEdit.dimCaptionOffset };
+      return { ...obj, data: { ...obj.data, measure: { ...measure, dim } } };
+    }
     const nextData = { ...(obj.data || {}) };
     if (lineEdit.hasMidpoint && lineEdit.midpoint) {
       nextData.midpoint = lineEdit.midpoint;
@@ -6803,10 +7019,10 @@ const SVGAnnotationLayerBody = memo(({
                     ? getCurveEndAngle({ x: ep.x2, y: ep.y2 }, { x: ep.x1, y: ep.y1 }, __mp)
                     : (Math.atan2(ep.y1 - ep.y2, ep.x1 - ep.x2) * 180 / Math.PI);
                   const endSpec = endings.endStyle && endings.endStyle !== ARROWHEAD_STYLES.NONE
-                    ? buildArrowheadRenderSpec(endings.endStyle, ep.x2, ep.y2, arrowAngleDeg, '#4a90e2', lineSw)
+                    ? buildArrowheadRenderSpec(endings.endStyle, ep.x2, ep.y2, arrowAngleDeg, '#4a90e2', lineSw, { geometry: endings.geometry })
                     : null;
                   const startSpec = endings.startStyle && endings.startStyle !== ARROWHEAD_STYLES.NONE
-                    ? buildArrowheadRenderSpec(endings.startStyle, ep.x1, ep.y1, startAngleDeg, '#4a90e2', lineSw)
+                    ? buildArrowheadRenderSpec(endings.startStyle, ep.x1, ep.y1, startAngleDeg, '#4a90e2', lineSw, { geometry: endings.geometry })
                     : null;
                   return (
                     <g
@@ -6868,6 +7084,39 @@ const SVGAnnotationLayerBody = memo(({
                     onDoubleClick={(e) => handleAnnotationDoubleClick(e, i)}
                   />
                 )}
+                {/* 'measure-plus': a dimension line is drawn off its points,
+                    so the line the user sees takes the press and the halo too. */}
+                {!lineIsCurved && isDimensionMeasure(renderObj) && (() => {
+                  const geo = dimensionLineGeometry(ep, { leader: dimensionLeader(renderObj) });
+                  if (!geo) return null;
+                  return (
+                    <>
+                      {annotationIsHovered && (
+                        <line
+                          x1={geo.a.x} y1={geo.a.y} x2={geo.b.x} y2={geo.b.y}
+                          stroke="rgb(74, 144, 226)"
+                          opacity={HOVER_HALO_OPACITY}
+                          strokeWidth={Math.max(6, (renderObj.strokeWidth || 2) + 4)}
+                          strokeLinecap="round"
+                          style={{ pointerEvents: 'none' }}
+                        />
+                      )}
+                      <line
+                        x1={geo.a.x} y1={geo.a.y} x2={geo.b.x} y2={geo.b.y}
+                        stroke="transparent"
+                        strokeWidth={markHitBand((renderObj.strokeWidth || 2) / inverseScale, 1)}
+                        strokeLinecap="round"
+                        vectorEffect="non-scaling-stroke"
+                        pointerEvents={annotationHitTargetsInteractive && isObjectInteractive ? 'stroke' : 'none'}
+                        data-shape-hit-target="dimension-line"
+                        onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
+                        onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
+                        onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
+                        onDoubleClick={(e) => handleAnnotationDoubleClick(e, i)}
+                      />
+                    </>
+                  );
+                })()}
               </g>
             );
           }
@@ -7699,6 +7948,7 @@ const SVGAnnotationLayerBody = memo(({
         height: entry.bbox.height,
         angle: entry.bbox.angle,
       }),
+      ...pressStartFacts(e),
     };
     setSurveyMarkerPreviewBounds({
       annotationId: entry.surveyMarker.annotationId,
@@ -7892,6 +8142,11 @@ const SVGAnnotationLayerBody = memo(({
         // side even when the browser hit-tests it onto the mark beneath the
         // side band (Android stylus): see claimPolyEdgePress.
         e.currentTarget.querySelector?.('[data-poly-edge-hit]')?.__claimPolyEdgePress?.(e);
+        // Nightly 'drag-auto-scroll': a drag held near the view's edge scrolls it.
+        if (isInteractive && e.button === 0 && AUTO_SCROLL_TOOLS.has(activeTool) && isFeatureOn('drag-auto-scroll')) {
+          autoScrollStopRef.current?.();
+          autoScrollStopRef.current = startMarkDragAutoScroll(svgRef.current, e);
+        }
       }}
       onPointerDown={(e) => {
         if (isInteractive) {
@@ -7949,7 +8204,7 @@ const SVGAnnotationLayerBody = memo(({
               return;
             }
             if (press.clearsSelection) clearPageSelection();
-            if (press.drag === 'none' && press.click === 'deselect') {
+            if (press.drag === 'none' && press.click === 'deselect' && !(isPolyCreationTool && polyClickStartsOn())) {
               e.preventDefault();
               return;
             }
@@ -8040,6 +8295,7 @@ const SVGAnnotationLayerBody = memo(({
                 pageNumber,
               });
               freehandPointsRef.current = [];
+              variablePenRef.current = false;
               appendCoalescedPagePoints(e.nativeEvent);
               // docs/GESTURE-CONTRACT.md D2: a press that travels past the
               // shape drag threshold (10 px finger, 6 px mouse / pen) draws
@@ -8077,6 +8333,7 @@ const SVGAnnotationLayerBody = memo(({
               });
               if (isFreehandCreationTool) {
                 freehandPointsRef.current = [];
+                variablePenRef.current = tool === 'pen' && activePenType() !== 'basic';
                 appendCoalescedPagePoints(e.nativeEvent);
                 // w32: other screens see this stroke grow while it is drawn.
                 const liveId = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
@@ -8087,7 +8344,8 @@ const SVGAnnotationLayerBody = memo(({
                   documentId,
                   id: liveId,
                   page: pageNumber,
-                  tool,
+                  // Tape shows to others as plain ink in its colour while drawn.
+                  tool: tool === 'tape' ? 'pen' : tool,
                   color: tool === 'highlighter' ? highlightColor : composeAnnotationColor(strokeColor, strokeOpacity),
                   width: tool === 'highlighter'
                     ? Math.max(Number(strokeWidth) || 3, 8)
@@ -8412,7 +8670,7 @@ const SVGAnnotationLayerBody = memo(({
         // width, dash style and arrowheads are what lands on release. The
         // group is always mounted (even before the line has length) so the
         // draft is visible to the overlay watchdog in PDFViewer.
-        const previewJson = buildLineCommitJSON({
+        const draftJson = buildLineCommitJSON({
           tool: shapeCreation.tool,
           id: `creation-preview-p${pageNumber}`,
           start: shapeCreation.start,
@@ -8422,9 +8680,14 @@ const SVGAnnotationLayerBody = memo(({
           strokeWidth: Number(strokeWidth) || 3,
           arrowheadStyle,
           arrowStartStyle,
+          ...(measureMode ? {} : lineEndingCreateOptions(shapeCreation.tool)),
           lineBorderStyle,
           cloudIntensity,
         });
+        // 'measure-plus': a Length draws as its dimension line while dragged.
+        const previewJson = draftJson && measureMode === 'length' && shapeCreation.tool === 'line' && isFeatureOn('measure-plus')
+          ? stampMeasure(draftJson, 'length', effectiveMeasureScale, { dim: true })
+          : draftJson;
         return (
           <g
             className="shape-creation-preview"
@@ -8446,6 +8709,35 @@ const SVGAnnotationLayerBody = memo(({
           draft only — are the only interactive parts; everything else is
           pointer-transparent so a click in the middle of the run still drops a
           vertex. */}
+      {segmentCaptionMarks.length > 0 && (
+        <g className="measure-segment-captions" style={{ pointerEvents: 'none' }}>
+          {segmentCaptionMarks.map(({ key, color, captions }) => (
+            <g key={key} data-segment-captions-for={key}>
+              {captions.map((c) => (
+                <text
+                  key={c.index}
+                  data-segment-caption={c.index}
+                  x={c.x}
+                  y={c.y}
+                  transform={`rotate(${c.angle} ${c.x} ${c.y})`}
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  fontSize={c.fontPt}
+                  fontFamily="Helvetica"
+                  fill={color}
+                  stroke="white"
+                  strokeWidth={c.fontPt * 0.4}
+                  strokeLinejoin="round"
+                  paintOrder="stroke"
+                  style={{ userSelect: 'none' }}
+                >
+                  {c.text}
+                </text>
+              ))}
+            </g>
+          ))}
+        </g>
+      )}
       {measureLabels.length > 0 && (
         <g className="measure-labels" data-measure-label-count={measureLabels.length} style={{ pointerEvents: 'none' }}>
           {measureLabels.map(({ key, index, label }) => {
@@ -8457,6 +8749,7 @@ const SVGAnnotationLayerBody = memo(({
         </g>
       )}
       {measureMode && shapeCreation && shapeCreation.tool === 'line' && shapeCreation.start && shapeCreation.current
+        && !(measureMode === 'length' && isFeatureOn('measure-plus'))
         && renderMeasureLabel(buildMeasureLabel(stampMeasure({
           type: 'Line', left: Math.min(shapeCreation.start.x, shapeCreation.current.x), top: Math.min(shapeCreation.start.y, shapeCreation.current.y),
           width: Math.abs(shapeCreation.current.x - shapeCreation.start.x), height: Math.abs(shapeCreation.current.y - shapeCreation.start.y),
@@ -8584,6 +8877,27 @@ const SVGAnnotationLayerBody = memo(({
           style={{ pointerEvents: 'none' }}
         />
       )}
+      {/* Hyperlink (Nightly 'link-tool'): the drag shows the link as it will
+          land, in the last style and colour used. */}
+      {shapeCreation && shapeCreation.tool === 'hyperlink' && (() => {
+        const x = Math.min(shapeCreation.start.x, shapeCreation.current.x);
+        const y = Math.min(shapeCreation.start.y, shapeCreation.current.y);
+        const w = Math.abs(shapeCreation.current.x - shapeCreation.start.x);
+        const h = Math.abs(shapeCreation.current.y - shapeCreation.start.y);
+        const look = readLinkLastLook();
+        const paint = linkMarkPaint({ stroke: look.color, strokeWidth: LINK_DEFAULT_WIDTH, data: { linkStyle: look.style } }, w, h);
+        return (
+          <g className="shape-creation-preview" data-link-preview="true" transform={`translate(${x}, ${y})`} style={{ pointerEvents: 'none' }}>
+            <rect x={0} y={0} width={w} height={h} fill={paint.fill} stroke="none" />
+            {paint.box && paint.strokeWidth > 0 && (
+              <rect x={0} y={0} width={w} height={h} fill="none" stroke={paint.stroke} strokeWidth={paint.strokeWidth} strokeDasharray={paint.dash ? paint.dash.join(',') : undefined} />
+            )}
+            {paint.underline && paint.strokeWidth > 0 && (
+              <line {...paint.underline} stroke={paint.stroke} strokeWidth={paint.strokeWidth} />
+            )}
+          </g>
+        );
+      })()}
       {/* Smart fill: where the press landed, while the provider works. */}
       {smartFillPending && (
         <circle
@@ -8625,7 +8939,28 @@ const SVGAnnotationLayerBody = memo(({
           })}
         </g>
       )}
+      {/* Pen types (Nightly): a Pro or Calligraphy stroke draws its varying
+          width as it goes, from the same factors the saved ink uses. */}
+      {shapeCreation && shapeCreation.tool === 'pen' && variablePenRef.current && !smartInkRef.current.fit
+        && freehandPointsRef.current.length > 0 && (() => {
+        const w = Number(strokeWidth) || 3;
+        const pts = freehandPointsRef.current;
+        const factors = penWidthFactors(pts, activePenType(), w) || pts.map(() => 1);
+        return (
+          <path
+            className="freehand-creation-preview"
+            data-preview-tick={shapeCreation.tick}
+            data-pen-type={activePenType()}
+            d={variableWidthPreviewD(pts, factors.map((f) => Math.max(0.25, (w * f) / 2)))}
+            fill={strokeColor}
+            fillOpacity={Math.max(0, Math.min(1, (strokeOpacity ?? 100) / 100))}
+            fillRule="nonzero"
+            style={{ pointerEvents: 'none' }}
+          />
+        );
+      })()}
       {shapeCreation && FREEHAND_CREATION_TOOLS.includes(shapeCreation.tool)
+        && !(shapeCreation.tool === 'pen' && variablePenRef.current && !smartInkRef.current.fit)
         && freehandPointsRef.current.length > 0 && (
         <polyline
           className="freehand-creation-preview"
@@ -8909,7 +9244,8 @@ const SVGAnnotationLayerBody = memo(({
         const textMarkupSelectionChrome = getTextMarkupSelectionChrome(selectionObj);
         // KAL-407: a library symbol is a stamp you placed, so it resizes and
         // rotates like a shape; only stamps imported from the PDF stay locked.
-        const isLockedStampProxy = isPdfStampProxy(selectionObj) && !isSymbolStamp(selectionObj);
+        // Nightly 'insert-image': a placed picture is yours too, so it moves like a shape.
+        const isLockedStampProxy = isPdfStampProxy(selectionObj) && !isSymbolStamp(selectionObj) && !isInsertedImage(selectionObj);
 
         // Apply visualTransform to bbox so overlay follows annotation live during drag/resize/rotate
         // UX 2026-09-09: the object the selection chrome (cloud cusps / hull)
@@ -9170,13 +9506,49 @@ const SVGAnnotationLayerBody = memo(({
           const lineSelRotate = lineSelAngle !== 0
             ? `rotate(${lineSelAngle}, ${lineSelCx}, ${lineSelCy})`
             : undefined;
+          // measure-plus: a dimension line has no bend grabber; a pill on the
+          // dimension line drags its leader instead (Drawboard's offset grabber).
+          const dimLayout = isDimensionMeasure(selectionObj) ? dimensionMarkLayout(selectionObj, ep) : null;
+          const dimGeo = dimLayout?.geo || null;
+          // The caption takes a plain drag (grab cursor) to move it anywhere.
+          const captionGrab = dimGeo && dimLayout.lines.length > 0 ? {
+            x: dimGeo.caption.x + dx,
+            y: dimGeo.caption.y + dy,
+            angle: dimGeo.caption.angle,
+            w: dimLayout.captionWidth + 4,
+            h: dimLayout.captionHeight + 2,
+          } : null;
+          // An inline caption sits mid-line, so the pill sits a quarter along.
+          const pillAt = dimensionCaptionPlace(selectionObj) === 'above' ? 0.5 : 0.25;
+          const leaderPill = dimGeo ? {
+            x: dimGeo.a.x + (dimGeo.b.x - dimGeo.a.x) * pillAt + dx,
+            y: dimGeo.a.y + (dimGeo.b.y - dimGeo.a.y) * pillAt + dy,
+            angle: (Math.atan2(ep.y2 - ep.y1, ep.x2 - ep.x1) * 180) / Math.PI,
+            w: 20 * handleIs,
+            h: 8 * handleIs,
+          } : null;
           return (
             <g key={`selection-wrapper-${selectedIndex}`} transform={lineSelRotate}>
               {/* Invisible hit pads, under the visible dots so a direct hit on
                   a dot still goes to that dot. */}
               {renderLineHitPad('p1', ep.x1 + dx, ep.y1 + dy)}
               {renderLineHitPad('p2', ep.x2 + dx, ep.y2 + dy)}
-              {renderLineHitPad('midpoint', midpointBase.x + dx, midpointBase.y + dy)}
+              {captionGrab && (
+                <rect
+                  data-handle="dim-caption"
+                  x={captionGrab.x - captionGrab.w / 2}
+                  y={captionGrab.y - captionGrab.h / 2}
+                  width={captionGrab.w}
+                  height={captionGrab.h}
+                  transform={`rotate(${captionGrab.angle}, ${captionGrab.x}, ${captionGrab.y})`}
+                  fill="transparent"
+                  stroke="none"
+                  style={{ cursor: 'grab', pointerEvents: 'auto', touchAction: 'none' }}
+                  onPointerDown={(e) => { e.stopPropagation(); handleHandlePointerDown(e, 'dim-caption'); }}
+                />
+              )}
+              {!dimGeo && renderLineHitPad('midpoint', midpointBase.x + dx, midpointBase.y + dy)}
+              {leaderPill && renderLineHitPad('leader', leaderPill.x, leaderPill.y)}
               {/* Start handle (line start / arrow tail) */}
               <circle
                 cx={ep.x1 + dx} cy={ep.y1 + dy}
@@ -9206,7 +9578,24 @@ const SVGAnnotationLayerBody = memo(({
                   curved, geometric midpoint when straight. onPointerDown
                   dispatches 'midpoint' handleId to the existing
                   handleHandlePointerDown hook (see useSVGInteraction.js). */}
-              <circle
+              {leaderPill && (
+                <rect
+                  data-handle="leader"
+                  x={leaderPill.x - leaderPill.w / 2}
+                  y={leaderPill.y - leaderPill.h / 2}
+                  width={leaderPill.w}
+                  height={leaderPill.h}
+                  rx={leaderPill.h / 2}
+                  transform={`rotate(${leaderPill.angle}, ${leaderPill.x}, ${leaderPill.y})`}
+                  fill={HANDLE_FILL}
+                  stroke={HANDLE_RING}
+                  strokeWidth={1.5}
+                  vectorEffect="non-scaling-stroke"
+                  style={handleStyle}
+                  onPointerDown={(e) => { e.stopPropagation(); handleHandlePointerDown(e, 'leader'); }}
+                />
+              )}
+              {!dimGeo && <circle
                 data-handle="midpoint"
                 cx={midpointBase.x + dx}
                 cy={midpointBase.y + dy}
@@ -9220,7 +9609,7 @@ const SVGAnnotationLayerBody = memo(({
               >
                 {/* Browser-native tooltip per 15-UI-SPEC §Copywriting. */}
                 <title>Drag to bend</title>
-              </circle>
+              </circle>}
             </g>
           );
         }

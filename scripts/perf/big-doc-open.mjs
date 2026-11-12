@@ -55,7 +55,7 @@ const DEVICES = {
 };
 
 // Injected before any app code: long-task log + a rAF probe for the milestones.
-const PROBE = () => {
+const PROBE = (pagesEv = false) => {
   const w = window;
   w.__bigOpen = { ev: [], t0: null, firstPage: null, marks: null, editable: null, longTasks: [], frames: [] };
   // A share-link open (?docId=) is timed from navigation start.
@@ -103,8 +103,23 @@ const PROBE = () => {
         const ready = el?.getAttribute('data-pdf-ready');
         const key = `cnt>0=${cnt > 0} gated=${gate} cover=${cov} pdfReady=${ready} canvas=${canvas?.width || 0}x${canvas?.height || 0}`;
         if (key !== s.lastKey) { s.lastKey = key; s.ev.push(`${Math.round(performance.now() - s.t0)} ${key}`); }
+        if (pagesEv) {
+          const pages = [...document.querySelectorAll('[data-overlay-page]')]
+            .map((o) => [o.getAttribute('data-overlay-page'), o.querySelectorAll('svg path, svg rect, svg ellipse, svg text').length])
+            .filter(([, n]) => n > 0).map(([p, n]) => `${p}:${n}`).join(',');
+          const drawnPages = [...document.querySelectorAll('.survey-pdfjs-page-div canvas.survey-pdfjs-page-canvas')]
+            .filter((c) => c.width > 0 && !(c.width === 300 && c.height === 150)).length;
+          const pk = `marks[${pages}] drawn=${drawnPages}`;
+          if (pk !== s.lastPagesKey) { s.lastPagesKey = pk; s.ev.push(`${Math.round(performance.now() - s.t0)} ${pk}`); }
+        }
       }
-      if (s.marks == null && host && host.querySelector('svg path, svg rect, svg ellipse, svg text, svg foreignObject')) s.marks = performance.now();
+      if (s.marks == null && host && host.querySelector('svg path, svg rect, svg ellipse, svg text, svg foreignObject')) {
+        s.marks = performance.now();
+        // Which pages had their marks built by then (page:shapes).
+        s.marksPages = [...document.querySelectorAll('[data-overlay-page]')]
+          .map((el) => [el.getAttribute('data-overlay-page'), el.querySelectorAll('svg path, svg rect, svg ellipse, svg text, svg foreignObject').length])
+          .filter(([, n]) => n > 0).map(([p, n]) => `${p}:${n}`).join(' ');
+      }
       // While the saved copy is only previewed, a blocker covers the page.
       if (s.marks != null && s.editable == null && overlay
         && overlay.getAttribute('data-annotation-hydration-gated') !== 'true'
@@ -246,7 +261,7 @@ async function openAndSettle(page, context, size, { profile = null } = {}) {
     const frames = s.frames.filter(([st]) => st >= s.t0 && st < interactive);
     const loafBlocking = frames.reduce((sum, [, , b]) => sum + b, 0);
     const loafLongest = frames.reduce((m, [, d]) => Math.max(m, d), 0);
-    return { ev: s.ev.join(' | '), loafBlocking, loafLongest, tasks: s.longTasks.filter(([st]) => st >= s.t0).map(([st, d]) => `${Math.round(st - s.t0)}+${Math.round(d)}`).join(' '), firstPage: s.firstPage - s.t0, marks: s.marks - s.t0, editable: s.editable - s.t0, interactive: interactive - s.t0, blocking, longest };
+    return { ev: s.ev.join(' | '), marksPages: s.marksPages, loafBlocking, loafLongest, tasks: s.longTasks.filter(([st]) => st >= s.t0).map(([st, d]) => `${Math.round(st - s.t0)}+${Math.round(d)}`).join(' '), firstPage: s.firstPage - s.t0, marks: s.marks - s.t0, editable: s.editable - s.t0, interactive: interactive - s.t0, blocking, longest };
   }, QUIET_MS, { timeout: 180_000, polling: 250 }).then((h) => h.jsonValue());
   if (process.env.TIMERS) {
     const frames = await page.evaluate(() => window.__slowFrames || []);
@@ -267,7 +282,7 @@ async function openAndSettle(page, context, size, { profile = null } = {}) {
 async function oneRun(browser, size, { profile = null } = {}) {
   const context = await browser.newContext(DEVICES[size]);
   await context.route((u) => !['data:', 'blob:'].includes(u.protocol) && !['127.0.0.1', 'localhost'].includes(u.hostname), (r) => r.abort('blockedbyclient'));
-  await context.addInitScript(PROBE);
+  await context.addInitScript(PROBE, Boolean(process.env.PAGES_EV));
   if (process.env.TIMERS) await context.addInitScript(TIMER_PROBE, Number(process.env.TIMERS) || 80);
   // FLAGS=a,b turns those feature flags on for the run (src/featureFlags.js).
   if (process.env.FLAGS) await context.addInitScript((keys) => { for (const k of keys) localStorage.setItem(`survey.flag.${k}`, '1'); }, process.env.FLAGS.split(','));

@@ -171,8 +171,11 @@
   /* The two number FIELDS (zoom percentage, page number) keep a plate: they
      are fields, like the phone's page fraction. The rail's GLYPH buttons —
      Zoom in/out, page up/down, Fit — take section 5's icon hover instead
-     (owner 2026-10-02: one model for every icon in the chrome). */
-  #chrome-right-host button:not(:disabled):not([aria-disabled='true']):not([data-glyph-only]):not(.chrome-icon-btn):hover:not(:active) {
+     (owner 2026-10-02: one model for every icon in the chrome).
+     Not inside a rail pop-up (RailFlyout): its rows light with the menu's
+     gliding strip, and this opaque plate painted over the strip, so hovering
+     a row looked like nothing happened (owner 2026-11-10). */
+  #chrome-right-host button:not(:disabled):not([aria-disabled='true']):not([data-glyph-only]):not(.chrome-icon-btn):not(.rail-flyout *):hover:not(:active) {
     background-color: var(--hover) !important;
   }
   /* A text .chrome-control (none today) would still show it is clickable.

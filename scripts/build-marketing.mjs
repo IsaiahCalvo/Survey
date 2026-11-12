@@ -277,7 +277,7 @@ ${body}
 const shot = (t, cls = '') => `<figure class="shot ${cls}"><img src="/welcome/${t.img}"${t.srcset ? ` srcset="${t.srcset}" sizes="(max-width: 900px) 92vw, 640px"` : ''} width="${t.w}" height="${t.h}" loading="lazy" decoding="async" alt="${esc(t.alt)}" /></figure>`;
 
 const only = (f, i) => `<section class="sec feat${i % 2 ? ' flip' : ''}" id="${f.id}"><div class="wrap feat-grid">
-  <div class="feat-copy"><p class="kicker">${f.kicker}</p><h2>${f.name}</h2><p class="lead">${f.lead}</p><p>${f.body}</p>${f.ticks ? `<ul class="ticks">${f.ticks.map((t) => `<li>${t}</li>`).join('')}</ul>` : ''}</div>
+  <div class="feat-copy"><h2>${f.name}</h2><p class="lead">${f.lead}</p><p>${f.body}</p>${f.ticks ? `<ul class="ticks">${f.ticks.map((t) => `<li>${t}</li>`).join('')}</ul>` : ''}</div>
   ${f.chip ? `<div class="shot-wrap">${shot(f)}<div class="float chip-float chip-sm" aria-hidden="true"><span class="chip-dot"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><span>${f.chip[0]}<small>${f.chip[1]}</small></span></div></div>` : f.img2 ? `<div class="duo">${shot(f)}${shot({ img: f.img2, w: f.w2, h: f.h2, alt: f.alt2, srcset: '/welcome/' + f.img2.replace('.webp', '-800.webp') + ' 800w, /welcome/' + f.img2 + ' 1600w' })}</div>` : shot(f)}
 </div></section>`;
 
@@ -481,7 +481,7 @@ const features = page({
   body: `<section class="page-head"><div class="wrap">
   <h1>Everything you do on a drawing set, in one app</h1>
   <p class="lede">Three things no other PDF app does, then every markup tool you would expect, free.</p>
-  <nav class="jump" aria-label="On this page">${[...ONLY.map((f) => [f.id, f.name]), ['tools', 'Every markup tool'], ['count', 'Count markers'], ['compare', 'Survey vs Drawboard PDF'], ['free-pdf-tools', 'Free PDF tools']].map(([id, n]) => `<a href="#${id}">${n}</a>`).join('')}</nav>
+  <nav class="jump" aria-label="On this page">${[...ONLY.map((f) => [f.id, f.kicker || f.name]), ['tools', 'Markup tools'], ['count', 'Count markers'], ['compare', 'Survey vs Drawboard'], ['free-pdf-tools', 'Free PDF tools']].map(([id, n]) => `<a href="#${id}">${n}</a>`).join('')}</nav>
 </div></section>
 ${ONLY.map(only).join('\n')}
 <section class="sec" id="tools"><div class="wrap">
@@ -584,15 +584,12 @@ const faq = page({
 ${cta()}`,
 });
 
-// Status: read in the visitor's browser from the live release marker and the
-// production monitor's GitHub issues (.github/workflows/monitor.yml opens an
-// `alert` issue when the site is down or a deploy fails, and closes it when
-// fixed), so it needs no status service account.
+// Public, allowlisted incident snapshot. GitHub stays private; visitors receive
+// no issue text or credentials. A stale snapshot must never claim all is well.
 const STATUS_SCRIPT = `<script>
 (function(){
-  var REPO='IsaiahCalvo/Survey';
-  var KINDS=[[/is down/i,'Outage','Survey could not be reached.'],[/deploy|smoke/i,'Update problem','An update or a live check failed.']];
-  function kind(t){for(var i=0;i<KINDS.length;i++)if(KINDS[i][0].test(t))return KINDS[i];return [null,'Problem',''];}
+  var KINDS={outage:['Outage','Survey could not be reached.'],update:['Update problem','An update or a live check failed.'],problem:['Problem','A service check needs attention.']};
+  function kind(k){return KINDS[k]||KINDS.problem;}
   function when(s){var d=new Date(s);return d.toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'});}
   function el(tag,cls,text){var e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e;}
   var now=document.getElementById('st-now'),ver=document.getElementById('st-ver'),list=document.getElementById('st-list');
@@ -601,34 +598,23 @@ const STATUS_SCRIPT = `<script>
     ver.textContent='Live version '+String(j.commit).slice(0,7)+(j.builtAt?', built '+when(j.builtAt):'')+'.';
     return true;
   }).catch(function(){return false});
-  // GitHub allows 60 unsigned requests an hour per visitor, so keep the last
-  // answer for a few minutes and fall back to it when GitHub says no.
-  var KEY='survey-status-v1',cached=null;
-  try{cached=JSON.parse(localStorage.getItem(KEY)||'null')}catch(e){}
-  var fresh=cached&&Date.now()-cached.t<180000,stale=false;
-  (fresh?Promise.resolve(cached.items):fetch('https://api.github.com/repos/'+REPO+'/issues?labels=alert&state=all&per_page=15',{headers:{Accept:'application/vnd.github+json'}})
-    .then(function(r){if(!r.ok)throw new Error(r.status);return r.json()}).then(function(items){
-      items=items.filter(function(i){return !i.pull_request}).map(function(i){return {title:i.title,state:i.state,created_at:i.created_at,closed_at:i.closed_at}});
-      try{localStorage.setItem(KEY,JSON.stringify({t:Date.now(),items:items}))}catch(e){}
-      return items;
-    },function(err){if(!cached)throw err;stale=true;return cached.items;}))
-    .then(function(items){
+  fetch('/api/public-status.json',{cache:'no-store'})
+    .then(function(r){if(!r.ok)throw new Error(r.status);return r.json()})
+    .then(function(snapshot){
+      if(!Array.isArray(snapshot.items))throw new Error('Bad status data');
+      var checked=Date.parse(snapshot.checkedAt),age=Date.now()-checked;
+      if(!Number.isFinite(checked)||age< -60000||age>7200000)throw new Error('Old status data');
+      var items=snapshot.items;
       var open=items.filter(function(i){return i.state==='open'});
-      var down=open.some(function(i){return kind(i.title)[1]==='Outage'});
-      if(stale){
-        // An old answer must not pass for the current state.
-        now.className='st-now';
-        now.textContent='Could not check status right now. Below is what we saw at '+when(cached.t)+'.';
-      }else{
-        now.className='st-now '+(down?'bad':open.length?'warn':'ok');
-        now.textContent=down?'Survey is having problems. We are on it.':open.length?'Some parts of Survey may not be working. We are looking into it.':'All systems working.';
-      }
+      var down=open.some(function(i){return i.kind==='outage'});
+      now.className='st-now '+(down?'bad':open.length?'warn':'ok');
+      now.textContent=down?'Survey is having problems. We are on it.':open.length?'Some parts of Survey may not be working. We are looking into it.':'All systems working.';
       list.textContent='';
       if(!items.length){list.appendChild(el('li','fine','No problems recorded.'));return;}
       items.forEach(function(i){
-        var k=kind(i.title),li=el('li');
-        li.appendChild(el('strong',null,k[1]));
-        li.appendChild(el('span',null,' '+(k[2]||i.title)));
+        var k=kind(i.kind),li=el('li');
+        li.appendChild(el('strong',null,k[0]));
+        li.appendChild(el('span',null,' '+k[1]));
         li.appendChild(el('span','fine',' Started '+when(i.created_at)+(i.closed_at?'. Fixed '+when(i.closed_at)+'.':'. Still open.')));
         list.appendChild(li);
       });
@@ -684,17 +670,20 @@ const deleteAccount = page({
 });
 
 const longDate = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+// The newest two days stay open; older ones fold away so the page stays short.
+const newsDay = (day) => `<h2><time datetime="${day.date}">${longDate(day.date)}</time></h2><ul class="ticks">${day.items.map((item) => `<li>${esc(item)}</li>`).join('')}</ul>`;
 const whatsNew = page({
   path: '/whats-new', crumb: "What's new",
   title: "What's new | Survey",
   desc: 'Recent changes to Survey, newest first.',
   body: `<section class="page-head"><div class="wrap narrow"><h1>What's new</h1><p class="lede">Changes to Survey, newest first. Reload the app to get the latest.</p></div></section>
-<section class="sec tight"><div class="wrap narrow">${WHATS_NEW.map((day) => `<h2><time datetime="${day.date}">${longDate(day.date)}</time></h2><ul class="ticks">${day.items.map((item) => `<li>${esc(item)}</li>`).join('')}</ul>`).join('\n')}
+<section class="sec tight"><div class="wrap narrow">${WHATS_NEW.slice(0, 2).map(newsDay).join('\n')}
+${WHATS_NEW.length > 2 ? `<details class="older"><summary>Earlier changes</summary>${WHATS_NEW.slice(2).map(newsDay).join('\n')}</details>` : ''}
 <p class="fine">Something not working? <a href="/status">Check the status page</a> or <a href="${MAIL}">tell us</a>.</p></div></section>`,
 });
 
 // ---------- Use Survey with your AI ----------
-const MCP_URL = 'https://cvamwtpsuvxvjdnotbeg.supabase.co/functions/v1/survey-mcp';
+const MCP_URL = 'https://surveytool.app/mcp';
 const AI_FAQ = [
   ['Which AI tools can use Survey?',
     `Any that speak the open connector standard (MCP). Claude and ChatGPT both let you add a custom connector, which reads your drawings. It acts for you, with your plan and your role on each drawing.`],
@@ -756,7 +745,7 @@ const useWithAi = page({
 <section class="sec tight"><div class="wrap narrow">
   <h2>You are always in charge</h2>
   <p>An agent only ever has your rights. If you can only view a drawing, so can its agent.</p>
-  <p>To stop an agent: remove a Claude or ChatGPT connector, or any agent you let in with a sign-in, at <a href="${ORIGIN}/agent-link">surveytool.app/agent-link</a> — removal takes effect at once.</p>
+  <p>To stop an agent: remove a Claude or ChatGPT connector, or any agent you let in with a sign-in, at <a href="${ORIGIN}/agent-link">surveytool.app/agent-link</a>. Removal takes effect at once.</p>
 </div></section>
 
 <section class="sec tight"><div class="wrap narrow"><h2>Questions</h2>${faqList(AI_FAQ)}</div></section>
@@ -773,14 +762,14 @@ const useIndex = page({
   title: 'Use cases: field surveys, punch lists and as-builts | Survey',
   desc: 'How teams use Survey on construction drawings: field surveys, punch lists and as-built markups.',
   body: `<section class="page-head"><div class="wrap"><h1>What do people use Survey for?</h1><p class="lede">Most teams use Survey for one of three jobs on the drawing set.</p></div></section>
-<section class="sec tight"><div class="wrap dev-rows">${USES.map((u) => `<article><h2><a href="/use-cases/${u.slug}">${u.name}</a></h2><p>${u.desc}</p></article>`).join('')}</div></section>
+<section class="sec tight"><div class="wrap dev-rows">${USES.map((u) => `<a class="use-card" href="/use-cases/${u.slug}"><h2>${u.name}</h2><p>${u.desc}</p><span class="use-go">Read more</span></a>`).join('')}</div></section>
 ${cta()}`,
 });
 const usePages = Object.fromEntries(USES.map((u) => [`use-cases/${u.slug}/index.html`, page({
   path: `/use-cases/${u.slug}`, crumb: u.name,
   title: `${u.title} | Survey`, desc: u.desc,
   schema: [{ '@type': 'HowTo', name: `How to do ${u.name.toLowerCase()} with Survey`, step: u.steps.map(([n, t], i) => ({ '@type': 'HowToStep', position: i + 1, name: n, text: t })) }],
-  body: `<section class="page-head"><div class="wrap"><p class="kicker"><a href="/use-cases">Use cases</a></p><h1>${u.title}</h1><p class="lede">${u.lead}</p></div></section>
+  body: `<section class="page-head"><div class="wrap"><p class="back"><a href="/use-cases">All use cases</a></p><h1>${u.title}</h1><p class="lede">${u.lead}</p></div></section>
 <section class="sec tight"><div class="wrap"><h2>How does it work?</h2><ol class="steps">${u.steps.map(([n, t]) => `<li><h3>${n}</h3><p>${t}</p></li>`).join('')}</ol></div></section>
 <section class="sec tight"><div class="wrap feat-grid"><div><h2>The tools you'll use</h2><p>Count markers, the pen and highlighter, clouds and arrows, and text callouts. Every markup tool is free. Site surveys with data export are on Pro.</p><a class="btn ghost" href="/features">See every tool</a></div>${shot(TOOLS[0])}</div></section>
 ${cta()}`,

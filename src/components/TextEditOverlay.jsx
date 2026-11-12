@@ -47,6 +47,7 @@ import {
 import { readTextboxAutoFit } from '../utils/annotationPreferences.js';
 import { isFeatureOn } from '../featureFlags';
 import { textWrapsWords } from '../utils/textWrapMode.js';
+import { caretOffsetIn, createTypingHistory, placeCaretIn, typingUndoKey } from '../utils/typingUndo.js';
 import { stampAnnotationCreationIdentity } from '../utils/annotationStorageIdentity.js';
 import { shouldStampActiveRegionId } from '../utils/annotationVisibilityRules.js';
 import { resolveCaretAnchorPoint } from '../utils/doubleTapEditEntry.js';
@@ -457,6 +458,8 @@ export default function TextEditOverlay({
   // a value we never observed.
   const lastTextRef = useRef(null);
   const lastInnerHeightRef = useRef(0);
+  // Nightly 'typing-undo': this editor's own word-by-word undo steps.
+  const typingHistoryRef = useRef(null);
 
   const readText = () => {
     const el = editableRef.current;
@@ -612,6 +615,22 @@ export default function TextEditOverlay({
       },
     });
   }, [onRichTextEditorChange, onCalloutTextStyleChange, isCallout, reactCalloutId, broadcastLiveBounds]);
+
+  // Nightly 'typing-undo': show the previous (or next) word step in place.
+  const applyTypingStep = (which) => {
+    const history = typingHistoryRef.current;
+    const el = editableRef.current;
+    if (!history || !el || committedRef.current) return;
+    const step = which === 'redo' ? history.redo() : history.undo();
+    if (!step) return;
+    el.textContent = step.text;
+    lastTextRef.current = step.text;
+    placeCaretIn(el, step.caret);
+    broadcastLiveBounds();
+    publishBridge();
+  };
+  const applyTypingStepRef = useRef(applyTypingStep);
+  applyTypingStepRef.current = applyTypingStep;
 
   // ---------------------------------------------------------------------
   // Commit / cancel
@@ -943,8 +962,21 @@ export default function TextEditOverlay({
   useEffect(() => {
     const el = editableRef.current;
     let caretFrame = 0;
+    let onHistoryInput = null;
     if (el) {
       el.textContent = isNewText ? '' : String(annotationData?.text ?? '');
+      typingHistoryRef.current = isFeatureOn('typing-undo') ? createTypingHistory(el.textContent) : null;
+      // The Edit menu's Undo / Redo (and a phone's shake or three-finger swipe)
+      // arrive as a native beforeinput, which React's onBeforeInput never sees.
+      if (typingHistoryRef.current) {
+        onHistoryInput = (e) => {
+          const t = e.inputType;
+          if (t !== 'historyUndo' && t !== 'historyRedo') return;
+          e.preventDefault();
+          applyTypingStepRef.current(t === 'historyUndo' ? 'undo' : 'redo');
+        };
+        el.addEventListener('beforeinput', onHistoryInput);
+      }
       // preventScroll — 2026-09-15. Focusing a contentEditable makes the browser
       // reveal it, and the editor mounts before its final on-page box is
       // applied, so the reveal was computed against the wrong rectangle: a
@@ -984,6 +1016,7 @@ export default function TextEditOverlay({
     publishBridge();
     return () => {
       if (caretFrame) cancelAnimationFrame(caretFrame);
+      if (onHistoryInput) el?.removeEventListener('beforeinput', onHistoryInput);
       // Unmount = commit, not cancel (tool switch, page virtualization,
       // zoom-driven remount) — mirror of the fabric onBeforeDispose flush.
       commitRef.current({ flush: true });
@@ -1229,10 +1262,17 @@ export default function TextEditOverlay({
               contentEditable="plaintext-only"
               suppressContentEditableWarning
               spellCheck={false}
-              onInput={() => {
+              onInput={(e) => {
+                const history = typingHistoryRef.current;
+                if (history) history.record(readText() ?? '', caretOffsetIn(editableRef.current), e.nativeEvent?.inputType);
                 broadcastLiveBounds();
                 publishBridge();
               }}
+              onKeyDown={(e) => {
+                const which = typingHistoryRef.current ? typingUndoKey(e) : null;
+                if (which) { e.preventDefault(); e.stopPropagation(); applyTypingStep(which); }
+              }}
+
               style={{
                 width: '100%',
                 outline: 'none',

@@ -24,9 +24,8 @@ import { HOME_DOWNLOAD_EVENT } from './utils/homeDownload.js';
 import { OPEN_EXPORT_PDF_EVENT } from './utils/exportPdfModes.js';
 import { PageGridMenu } from './components/PageGridSettings';
 import RailFlyout from './components/RailFlyout.jsx';
+import { PinFilterMenu } from './components/pins/PinControls.jsx';
 import MenuGlide from './components/MenuGlide.jsx';
-import { chordKeycaps } from './utils/keyboardShortcuts.js';
-import { shortcutBinding } from './utils/customKeyboardShortcuts.js';
 import SnappingToggle, { SnappingGlyph, SnappingMenu, snappingLabel, useSnappingShortcut } from './components/SnappingToggle.jsx';
 import Dashboard from './Dashboard';
 import { createTabChromeCache } from './utils/tabChromeCache.js';
@@ -114,21 +113,6 @@ import { composeTextColor, splitTextColor } from './utils/textColorOpacity';
 import { CHROME_GLYPH, FONT_FAMILY, RAIL_CARET, RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_SPLIT_CONTROL_W, REVIEW_TOOL_IDS, ZOOM_MODE_OPTIONS, appDebug, coerceScrollMode, ensureRgbaOpacity, getWindowTrackpadInteractionDebugSavePayload, hexToRgba, writeSaveLogExtraFiles } from './viewerShared';
 // Owner 2026-09-22: undo/redo draw at 14 (the phone's HISTORY_GLYPH) - see MobilePdfViewerChrome.
 const HISTORY_GLYPH = 14;
-// The Page fit card shows each fit's shortcut (the keys PDFViewer's keydown
-// handler and the shortcuts sheet use; a remapped key shows its new keys).
-const FIT_MODE_CHORDS = Object.freeze({
-  [ZOOM_MODES.FIT_PAGE]: 'mod+0',
-  [ZOOM_MODES.FIT_WIDTH]: 'mod+1',
-  [ZOOM_MODES.FIT_HEIGHT]: 'mod+2',
-});
-const IS_MAC_KEYS = typeof navigator !== 'undefined' && /(Mac|iPhone|iPod|iPad)/i.test(`${navigator.platform || ''} ${navigator.userAgent || ''}`);
-// Mac shows ⌘0 tight, but a remapped chord with a named key keeps its
-// pluses (⌘+Shift+F, Alt+1) so the words don't run together.
-const fitChordLabel = (chord) => {
-  const caps = chordKeycaps(shortcutBinding(chord), { isMac: IS_MAC_KEYS });
-  const tight = IS_MAC_KEYS && caps.slice(0, -1).every((cap) => cap.length === 1);
-  return caps.join(tight ? '' : '+');
-};
 import { TooltipChipHost, TooltipContext, TooltipProvider, makeTooltipBinding } from './components/Tooltip';
 import { useViewerTopOverlayRef, subscribeViewerTopOverlays } from './utils/viewerTopOverlay.js';
 import DismissBarrier from './components/DismissBarrier.jsx';
@@ -148,13 +132,26 @@ import { POLYLINE_CURVE_SET_EVENT } from './utils/polySpline.js';
 import { sanitizeZoomInput } from './utils/pageNavigationMath.js';
 import { showsColourRule, showsPaintSwatch, showsQuickColourDots } from './utils/toolbarColourGroup.js';
 import { isAreaEditing, REGION_TOOLBAR_OPENING_STATE, resolveToolBarGroup, showsFormatRow, showsSurveyRow } from './utils/toolbarRows.js';
-import { LINE_STYLE_OPTIONS, LINE_STYLE_SAMPLE_ICONS } from './utils/lineStyleOptions.js';
+import { LINE_STYLE_SAMPLE_ICONS, lineStyleOptionsWith } from './utils/lineStyleOptions.js';
 import SelectionQuickBar from './components/SelectionQuickBar.jsx';
+import SelectionPropertiesPanel from './components/SelectionPropertiesPanel.jsx';
+import StampPickerCard from './components/StampPickerCard.jsx';
+import InsertImagePasteHost from './components/InsertImage.jsx';
+import { LineEndingsMenu } from './components/LineEndingsPicker.jsx';
+import { PenTypeMenu } from './components/PenTypePicker.jsx';
 import { isToolGroupPressed } from './utils/toolbarToolPressed.js';
 import { pendingInviteRedirect } from './utils/pendingInvite.js';
 import { useProLock } from './hooks/useProLock.js';
 import { formatPageTotal } from './utils/pageTotalLabel.js';
 import { requestTemplateEditor } from './home/templateEditorRequest';
+import SheetSetBar from './sheets/SheetSetBar.jsx';
+import { recordDocumentOpened } from './home/homeLibraryData.js';
+import { steppedVersion, versionStepForKey } from './utils/drawboardKeys.js';
+import SheetSetView from './sheets/SheetSetView.jsx';
+import SpotlightOverlay from './spotlight/SpotlightOverlay.jsx';
+import useSpotlight from './spotlight/useSpotlight.js';
+import { clearSpotlightGo, setSpotlightDocument, setSpotlightIdentity } from './services/annotationSpotlight.js';
+import { SHEET_VIEW_EVENT, narrowSheets, parseGridColumns, projectSheets, sheetStepForKey, steppedSheet, storedProjectOrder } from './sheets/sheetSet.js';
 import { DEVICE_FILE_LEAVE_EVENT } from './services/deviceFiles.js';
 
 // The dot between the current page and the page total in the right-rail
@@ -1553,7 +1550,7 @@ export default function App({ devPreviewReturnTab = null }) {
   // Generate unique tab ID
   const generateTabId = () => `tab-${randomUUID()}`;
 
-  const handleDocumentSelect = (file, filePath = null) => {
+  const handleDocumentSelect = (file, filePath = null, options = undefined) => {
     setPendingDocumentOpen(null);
     if (!file) {
       console.error('No file provided to handleDocumentSelect');
@@ -1614,7 +1611,14 @@ export default function App({ devPreviewReturnTab = null }) {
       viewState: null // Initialize view state
     };
 
-    setTabs(prev => [...prev, newTab]);
+    // Sheet set view: a step to the next sheet takes the open sheet's place
+    // in the strip instead of adding a tab.
+    // Decided on the newest strip (not this render's), so overlapping opens
+    // never replace a tab that is already gone.
+    const replaceTabId = options?.replaceTabId;
+    setTabs(prev => (replaceTabId && replaceTabId !== HOME_TAB_ID && prev.some((tab) => tab.id === replaceTabId)
+      ? prev.map((tab) => (tab.id === replaceTabId ? newTab : tab))
+      : [...prev, newTab]));
     setActiveTabId(newTab.id);
     setSelectedPDF(file);
     setCurrentView('viewer');
@@ -1694,6 +1698,8 @@ export default function App({ devPreviewReturnTab = null }) {
       fileToOpen,
       documentToOpen.filePath || documentToOpen.file_path || null,
     );
+    // Last opened (Nightly 'home-columns') counts a share link's open too.
+    recordDocumentOpened(documentToOpen.id);
 
     const url = new URL(window.location.href);
     // A mention email links to one comment (Nightly, 'mark-comments').
@@ -2298,20 +2304,28 @@ export default function App({ devPreviewReturnTab = null }) {
   // Hide all marks (Nightly, 'hide-marks'): an eye in the right rail and a
   // chip over the page while they are hidden (utils/marksHidden.js).
   const [hideMarksEnabled] = useState(() => isFeatureOn('hide-marks'));
+  const [lineDashesOn] = useState(() => isFeatureOn('line-dashes'));
+  const [eraserLookOn] = useState(() => isFeatureOn('eraser-look'));
+  const [pinsOn] = useState(() => isFeatureOn('comment-pins'));
   const allMarksHidden = useMarksHidden();
-  // Focus mode (Nightly, 'focus-mode'; utils/focusMode.js): no tab strip or
-  // side rails, browser full screen, an Exit chip that always shows.
+  // Full screen (flag 'focus-mode'; utils/focusMode.js). Owner 2026-11-10:
+  // "What is the point of full screen" when it took away the tabs, both rails
+  // and with them Survey mode. It is now just the browser's full screen: the
+  // tabs, both rails and the tool bar all stay; only the browser and OS
+  // chrome go. The rail button, Ctrl/Cmd+Shift+F or Esc leave it.
   const [focusModeEnabled] = useState(() => isFeatureOn('focus-mode'));
-  const [focusMode, setFocusMode] = useState(false);
-  const focusOn = focusModeEnabled && focusMode && Boolean(isViewerVisible) && !isNarrowShell;
+  const [isFullscreen, setIsFullscreen] = useState(() => typeof document !== 'undefined' && Boolean(document.fullscreenElement));
   const toggleFocusMode = useCallback((next) => {
-    setFocusMode((current) => {
-      const value = typeof next === 'boolean' ? next : !current;
-      if (value) enterBrowserFullscreen();
-      else leaveBrowserFullscreen();
-      return value;
-    });
+    const want = typeof next === 'boolean' ? next : !document.fullscreenElement;
+    if (want) enterBrowserFullscreen();
+    else leaveBrowserFullscreen();
   }, []);
+  useEffect(() => {
+    if (!focusModeEnabled) return undefined;
+    const onFullscreen = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', onFullscreen);
+    return () => document.removeEventListener('fullscreenchange', onFullscreen);
+  }, [focusModeEnabled]);
   useEffect(() => {
     // Only while a document is open: on Home the chord is the browser's own.
     if (!focusModeEnabled || !isViewerVisible) return undefined;
@@ -2322,25 +2336,9 @@ export default function App({ devPreviewReturnTab = null }) {
       event.stopImmediatePropagation();
       toggleFocusMode();
     };
-    const onFullscreen = () => { if (!document.fullscreenElement) setFocusMode(false); };
     window.addEventListener('keydown', onKey, true);
-    document.addEventListener('fullscreenchange', onFullscreen);
-    return () => {
-      window.removeEventListener('keydown', onKey, true);
-      document.removeEventListener('fullscreenchange', onFullscreen);
-    };
+    return () => window.removeEventListener('keydown', onKey, true);
   }, [focusModeEnabled, toggleFocusMode, Boolean(isViewerVisible)]); // eslint-disable-line react-hooks/exhaustive-deps
-  // The rails and tab strip come and go without a window resize when the
-  // browser refuses full screen, so tell the viewer the space changed; a
-  // fit zoom re-fits to it, a picked zoom stays.
-  useEffect(() => {
-    if (!focusModeEnabled) return undefined;
-    const frame = requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
-    return () => cancelAnimationFrame(frame);
-  }, [focusModeEnabled, focusOn]);
-  useEffect(() => {
-    if (focusMode && !isViewerVisible) toggleFocusMode(false);
-  }, [focusMode, Boolean(isViewerVisible)]); // eslint-disable-line react-hooks/exhaustive-deps
   // Alt+Shift+] / [ steps through the open documents (Nightly, 'tab-keys').
   const [tabKeysEnabled] = useState(() => isFeatureOn('tab-keys'));
   useEffect(() => {
@@ -2357,6 +2355,130 @@ export default function App({ devPreviewReturnTab = null }) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [tabKeysEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A project's sheets as one set (Nightly, 'sheet-set-view'): Drawboard
+  // Projects' previous / next sheet, sheet picker, Shift+Left / Right, List
+  // and Grid views. Stepping opens the sheet in the open sheet's tab.
+  const [sheetSetEnabled] = useState(() => isFeatureOn('sheet-set-view'));
+  const [spotlightEnabled] = useState(() => isFeatureOn('spotlight'));
+  const [sheetView, setSheetView] = useState('single');
+  const [sheetGridColumns, setSheetGridColumns] = useState(() => {
+    try { return parseGridColumns(window.localStorage.getItem('survey.sheetGridColumns')); } catch (_e) { return parseGridColumns(null); }
+  });
+  // The sheets Open all chose (the list as it stood, or the ticked rows);
+  // the set stays narrowed to them while one of them is open.
+  const [sheetSetIds, setSheetSetIds] = useState(null);
+  const sheetActiveTab = sheetSetEnabled ? tabs.find((tab) => tab.id === activeTabId && !tab.isHome) : null;
+  const sheetActiveDocId = sheetActiveTab?.file?.id ?? null;
+  const sheetSet = useMemo(() => {
+    if (!sheetSetEnabled || sheetActiveDocId == null) return [];
+    const row = documents.find((d) => String(d?.id) === String(sheetActiveDocId));
+    const projectId = row?.project_id ?? sheetActiveTab?.file?.projectId ?? sheetActiveTab?.file?.project_id ?? null;
+    // Home keeps each person's own Files order (Dashboard's project
+    // preferences); stepping follows it, as Drawboard follows its list.
+    let preferences = null;
+    try { preferences = JSON.parse(window.localStorage.getItem(`survey-project-preferences:${user?.id || 'guest'}`) || 'null'); } catch (_e) { preferences = null; }
+    const set = narrowSheets(projectSheets(documents, projectId, storedProjectOrder(preferences, projectId)), sheetSetIds, sheetActiveDocId);
+    return set.length > 1 && set.some((d) => String(d.id) === String(sheetActiveDocId)) ? set : [];
+  }, [sheetSetEnabled, sheetActiveDocId, documents, user?.id, sheetSetIds]); // eslint-disable-line react-hooks/exhaustive-deps
+  const sheetSetRef = useRef(sheetSet);
+  sheetSetRef.current = sheetSet;
+  // One sheet opens at a time. A step, pick or Spotlight "go" that comes
+  // while another is still asking to close or loading waits, and only the
+  // latest one waiting opens next (a presenter's last sheet always arrives).
+  const sheetOpeningRef = useRef(false);
+  const sheetWaitingRef = useRef(null);
+  const openSheet = async (doc) => {
+    if (!doc) return;
+    if (sheetOpeningRef.current) { sheetWaitingRef.current = doc; return; }
+    sheetOpeningRef.current = true;
+    try {
+      let next = doc;
+      while (next) {
+        sheetWaitingRef.current = null;
+        const open = tabsRef.current.find((tab) => !tab.isHome && String(tab.file?.id) === String(next.id));
+        if (open) stableTabClick(open.id);
+        else await openSheetNow(next);
+        next = sheetWaitingRef.current;
+      }
+    } finally {
+      sheetOpeningRef.current = false;
+    }
+  };
+  const openSheetNow = async (doc) => {
+    const fromTabId = activeTabIdRef.current;
+    const confirm = closeConfirmFor({ tabs: tabsRef.current, closingIds: [fromTabId], action: 'close' });
+    if (confirm && !(await askTabConfirm(confirm))) return;
+    for (const tabId of tabIdsToDiscardOnClose(tabsRef.current, [fromTabId])) {
+      window.dispatchEvent(new CustomEvent(DISCARD_LOCAL_DRAFT_EVENT, { detail: { tabId } }));
+    }
+    // A presenter's followers hear "go" on this sheet's channel before the
+    // tab is replaced and the channel closes (Nightly 'spotlight').
+    if (spotlightEnabled) setSpotlightDocument(doc.id);
+    await dashboardRef.current?.openDocument?.(doc, { replaceTabId: fromTabId });
+  };
+  const stepSheet = (step) => {
+    const currentId = tabsRef.current.find((tab) => tab.id === activeTabIdRef.current)?.file?.id;
+    const next = steppedSheet(sheetSetRef.current, currentId, step);
+    if (next) openSheet(next);
+  };
+  const stableStepSheet = useStableHandler(stepSheet);
+  const openSheetSingle = useStableHandler((doc) => { setSheetView('single'); openSheet(doc); });
+  // A press in List / Grid makes that sheet the current one and stays there,
+  // as Drawboard; a double press (or View single) shows it alone.
+  const makeSheetCurrent = useStableHandler((doc) => { openSheet(doc); });
+  const chooseSheetGridColumns = useStableHandler((n) => {
+    const next = parseGridColumns(n);
+    setSheetGridColumns(next);
+    try { window.localStorage.setItem('survey.sheetGridColumns', String(next)); } catch (_e) { /* private mode */ }
+  });
+  const sheetSetShown = sheetSet.length > 1 && Boolean(isViewerVisible);
+  // Leaving the set (Home, another tab, a loose file) goes back to the single
+  // view, so the next sheet opened is not hidden behind an old List.
+  const sheetSetWasShownRef = useRef(false);
+  useEffect(() => {
+    if (sheetSetWasShownRef.current && !sheetSetShown) { setSheetView('single'); setSheetSetIds(null); }
+    sheetSetWasShownRef.current = sheetSetShown;
+  }, [sheetSetShown]);
+  // Open all asks for the List view for the sheet it opens. The view waits
+  // until that sheet is in front with its set; an open that fails (or never
+  // shows a set) leaves nothing behind for the next document.
+  const pendingSheetViewRef = useRef(null);
+  useEffect(() => {
+    if (!sheetSetEnabled) return undefined;
+    const onView = (event) => {
+      const view = event?.detail?.view;
+      if (view !== 'single' && view !== 'list' && view !== 'grid') return;
+      const forDocId = event?.detail?.forDocId;
+      if (forDocId == null) { setSheetView(view); return; }
+      const ids = Array.isArray(event?.detail?.ids) ? event.detail.ids.map(String) : null;
+      pendingSheetViewRef.current = { view, docId: String(forDocId), ids, at: Date.now() };
+    };
+    window.addEventListener(SHEET_VIEW_EVENT, onView);
+    return () => window.removeEventListener(SHEET_VIEW_EVENT, onView);
+  }, [sheetSetEnabled]);
+  useEffect(() => {
+    const pending = pendingSheetViewRef.current;
+    if (!pending || !isViewerVisible || sheetActiveDocId == null) return;
+    pendingSheetViewRef.current = null;
+    // Only the sheet it was asked for, and only soon after (a slow open is
+    // fine; a sheet opened much later is not the one Open all meant).
+    if (String(sheetActiveDocId) === pending.docId && Date.now() - pending.at < 120_000) {
+      setSheetSetIds(pending.ids);
+      if (sheetSetShown) setSheetView(pending.view);
+    }
+  }, [sheetSetShown, sheetActiveDocId, Boolean(isViewerVisible)]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!sheetSetShown) return undefined;
+    const onKey = (event) => {
+      const step = sheetStepForKey(event);
+      if (!step || isTypingTarget(event.target) || event.target?.closest?.('[role="dialog"]')) return;
+      // Shift+arrows also nudge a picked mark by 10; that handler claims the
+      // key (preventDefault), so the sheet only changes when nothing else did.
+      setTimeout(() => { if (!event.defaultPrevented) stableStepSheet(step); }, 0);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [sheetSetShown, stableStepSheet]);
   // Back (browser gesture, Android button) closes the open sheet, then the
   // document, instead of leaving Survey (Nightly, 'back-button').
   const [backButtonEnabled] = useState(() => isFeatureOn('back-button'));
@@ -2371,6 +2493,33 @@ export default function App({ devPreviewReturnTab = null }) {
     return installHomeBack(window);
   }, [backButtonEnabled, Boolean(isViewerVisible)]); // eslint-disable-line react-hooks/exhaustive-deps
   const isMobileViewer = Boolean(isNarrowShell && isViewerVisible);
+  // Spotlight (Nightly 'spotlight', annotationSpotlight.js): present your
+  // view, or follow someone else's, on the document in front.
+  const spotlight = useSpotlight();
+  const spotlightDocId = spotlightEnabled && isViewerVisible ? (activeTab?.file?.id ?? null) : null;
+  useEffect(() => {
+    if (!spotlightEnabled) return;
+    setSpotlightIdentity({ userId: user?.id || null, name: user?.user_metadata?.full_name || user?.email || '' });
+  }, [spotlightEnabled, user?.id, user?.user_metadata?.full_name, user?.email]);
+  useEffect(() => {
+    if (!spotlightEnabled) return undefined;
+    if (spotlightDocId != null) { setSpotlightDocument(spotlightDocId); return undefined; }
+    // Home (or no tab): presenting and following end at once, so nothing
+    // opened from Home is sent to followers on the old sheet's channel.
+    if (!activeTab || activeTab.isHome || currentView !== 'viewer') { setSpotlightDocument(null); return undefined; }
+    // Otherwise a document is still loading in its tab: wait out the blink of
+    // one sheet replacing another.
+    const timer = setTimeout(() => setSpotlightDocument(null), 1500);
+    return () => clearTimeout(timer);
+  }, [spotlightEnabled, spotlightDocId, Boolean(activeTab?.isHome), Boolean(activeTab), currentView]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The presenter opened another document: a follower opens it too.
+  useEffect(() => {
+    const go = spotlight.go;
+    if (!spotlightEnabled || !go) return;
+    clearSpotlightGo(go.seq);
+    const doc = documents.find((d) => String(d?.id) === String(go.documentId));
+    if (doc) openSheet(doc);
+  }, [spotlightEnabled, spotlight.go]); // eslint-disable-line react-hooks/exhaustive-deps
   // Shift+S flips snapping (the rail's magnet button says the same).
   useSnappingShortcut(Boolean(isViewerVisible));
   useViewerReturnQuiet(Boolean(isViewerVisible), activeTabId);
@@ -2428,10 +2577,37 @@ export default function App({ devPreviewReturnTab = null }) {
     if (!documentId || !item?.id) return;
     requestMarkCommentsFocus({ documentId: String(documentId), markId: item.id, pageNumber: item.pageNumber });
   }, [activeTab?.file?.id]);
-  const documentVersions = useDocumentVersions(documentVersionsEnabled ? activeTab?.file?.id || null : null, handleDocumentSelect);
+  // Documents found superseded while open: they stay read-only after a
+  // document switch clears the versions list (a tab's file keeps the
+  // superseded_by it was opened with, which a later upload never updates).
+  const [supersededDocIds, setSupersededDocIds] = useState(() => new Set());
+  const markDocSuperseded = useCallback((id) => {
+    if (!id) return;
+    setSupersededDocIds((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+  }, []);
+  const documentVersions = useDocumentVersions(documentVersionsEnabled ? activeTab?.file?.id || null : null, handleDocumentSelect, markDocSuperseded);
   // An older version opens read-only, with a bar to the current one.
   const olderVersionOpen = documentVersions.open && !documentVersions.open.isCurrent ? documentVersions.open : null;
   const currentVersion = documentVersions.versions.find((v) => v.isCurrent) || null;
+  // Drawboard keys (Nightly 'drawboard-keys'): Alt+O / Alt+U open the next /
+  // previous version, the same way the Versions list opens one.
+  const [drawboardKeysEnabled] = useState(() => isFeatureOn('drawboard-keys'));
+  const documentVersionsRef = useRef(documentVersions);
+  documentVersionsRef.current = documentVersions;
+  useEffect(() => {
+    if (!drawboardKeysEnabled || !isViewerVisible) return undefined;
+    const onKey = (event) => {
+      const step = versionStepForKey(event);
+      if (!step || isTypingTarget(event.target) || event.target?.closest?.('[role="dialog"]')) return;
+      const state = documentVersionsRef.current;
+      const next = steppedVersion(state.versions, state.open?.id, step);
+      if (!next) return;
+      event.preventDefault();
+      state.openVersion(next);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [drawboardKeysEnabled, Boolean(isViewerVisible)]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Page grid spacing (Survey Nightly only, beta flag 'grid-settings').
   const [gridSettingsEnabled] = useState(() => isFeatureOn('grid-settings'));
@@ -2998,6 +3174,11 @@ export default function App({ devPreviewReturnTab = null }) {
   // Owner 2026-10-26: with the text settings swapped in, row 2 holds them and
   // the Aa that swaps them back - none of the regular settings.
   const textSettingsSwapped = showTextFormatting && !surveyRowShown;
+  // Nightly 'line-endings': the Line / Arrow tool, or one picked line, gets
+  // Drawboard's Endings; several picked arrows keep the arrow ends pill.
+  const lineEndingsInBar = Boolean(bottomToolbarApi && isFeatureOn('line-endings')
+    && (bottomToolbarApi.contextTool === 'arrow' || bottomToolbarApi.contextTool === 'line')
+    && (bottomToolbarApi.selectionCount || 0) <= 1);
   const toolbarSlot = (id, render, { canCompact = true, label } = {}) => {
     if (textSettingsSwapped && id !== 'aa') return null;
     if (toolbarPlan.overflow.includes(id)) {
@@ -3055,7 +3236,7 @@ export default function App({ devPreviewReturnTab = null }) {
         />
       </div>
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }} {...viewerDropProps}>
-        {tabs.length > 0 && !isNarrowShell && !focusOn && ( // Desktop-only: mobile navigation lives inside the home/viewer chrome.
+        {tabs.length > 0 && !isNarrowShell && ( // Desktop-only: mobile navigation lives inside the home/viewer chrome.
           // KAL-65: the tab strip shows over the hub too, where the viewer's
           // chip host is not mounted, so it brings its own shared host.
           <TooltipProvider>
@@ -3477,13 +3658,13 @@ export default function App({ devPreviewReturnTab = null }) {
                   leaveAreasMode();
                   if (bottomToolbarApi.activeCategoryDropdown === 'draw') return;
                   bottomToolbarApi.setActiveCategoryDropdown('draw');
-                  if (!['pen', 'highlighter', 'text-highlight', 'eraser'].includes(bottomToolbarApi.activeTool)) {
+                  if (!['pen', 'highlighter', 'text-highlight', 'tape', 'eraser'].includes(bottomToolbarApi.activeTool)) {
                     bottomToolbarApi.setActiveTool(bottomToolbarApi.lastDrawTool, { source: 'category-tab' });
                   }
                 }}
                 {...chromeTip('Draw', 'below')}
-                className={`btn chrome-control ${isToolGroupPressed({ activeTool: bottomToolbarApi.activeTool, activeCategoryDropdown: bottomToolbarApi.activeCategoryDropdown, group: 'draw', toolIds: ['pen', 'highlighter', 'text-highlight', 'eraser'] }) ? 'btn-active' : 'btn-default'}`}
-                aria-pressed={isToolGroupPressed({ activeTool: bottomToolbarApi.activeTool, activeCategoryDropdown: bottomToolbarApi.activeCategoryDropdown, group: 'draw', toolIds: ['pen', 'highlighter', 'text-highlight', 'eraser'] })}
+                className={`btn chrome-control ${isToolGroupPressed({ activeTool: bottomToolbarApi.activeTool, activeCategoryDropdown: bottomToolbarApi.activeCategoryDropdown, group: 'draw', toolIds: ['pen', 'highlighter', 'text-highlight', 'tape', 'eraser'] }) ? 'btn-active' : 'btn-default'}`}
+                aria-pressed={isToolGroupPressed({ activeTool: bottomToolbarApi.activeTool, activeCategoryDropdown: bottomToolbarApi.activeCategoryDropdown, group: 'draw', toolIds: ['pen', 'highlighter', 'text-highlight', 'tape', 'eraser'] })}
                 data-tool-group="true"
                 data-tool-switch="true"
                 aria-label="Draw"
@@ -4101,9 +4282,14 @@ export default function App({ devPreviewReturnTab = null }) {
                     data-eraser-mode-toggle="true"
                     role="group"
                     aria-label="Eraser type"
-                    style={{ width: '100px' }}
+                    style={{ width: eraserLookOn ? '72px' : '100px' }}
                   >
-                    {[['partial', 'Partial', 'Partial erase'], ['entire', 'Whole', 'Full stroke erase']].map(([mode, short, full]) => (
+                    {/* Nightly 'eraser-look': Drawboard's two icon buttons,
+                        Full Eraser then Partial Eraser. */}
+                    {(eraserLookOn
+                      ? [['entire', null, 'Full Eraser', 'eraserModeFull'], ['partial', null, 'Partial Eraser', 'eraserModePartial']]
+                      : [['partial', 'Partial', 'Partial erase'], ['entire', 'Whole', 'Full stroke erase']]
+                    ).map(([mode, short, full, icon]) => (
                       <button
                         key={mode}
                         type="button"
@@ -4112,8 +4298,9 @@ export default function App({ devPreviewReturnTab = null }) {
                         {...chromeTip(full, 'below')}
                         aria-label={full}
                         data-press-label=""
+                        data-eraser-mode={mode}
                       >
-                        <span>{short}</span>
+                        {icon ? <Icon name={icon} size={18} color="currentColor" /> : <span>{short}</span>}
                       </button>
                     ))}
                   </div>
@@ -4390,8 +4577,14 @@ export default function App({ devPreviewReturnTab = null }) {
                     width is a pill showing the stroke it will draw, the value
                     with its unit, and a chevron onto the list. */}
 
+                {/* Nightly 'pen-types': Drawboard's three pens (a tool
+                    setting, so only while the Pen is armed). */}
+                {isFeatureOn('pen-types') && bottomToolbarApi.activeTool === 'pen' && toolbarSlot('pen', (compact) => (
+                  <PenTypeMenu tip={chromeTip} compact={compact} />
+                ))}
                 {(bottomToolbarApi.contextTool === 'pen'
                   || bottomToolbarApi.contextTool === 'highlighter'
+                  || bottomToolbarApi.contextTool === 'tape'
                   || bottomToolbarApi.contextTool === 'arrow'
                   || bottomToolbarApi.contextTool === 'line'
                   || bottomToolbarApi.contextTool === 'rect'
@@ -4419,7 +4612,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     ? 100
                     : bottomToolbarApi.contextTool === 'counter'
                       ? COUNTER_SIZE_MAX
-                      : 50}
+                      : bottomToolbarApi.contextTool === 'tape' ? 100 : 50}
                   // UX 2026-09-09: line widths keep one decimal (the Cloud
                   // style's 2.5 default); counter/eraser sizes stay whole.
                   decimals={bottomToolbarApi.activeTool === 'eraser' || bottomToolbarApi.contextTool === 'counter'
@@ -4429,7 +4622,9 @@ export default function App({ devPreviewReturnTab = null }) {
                     ? ANNOTATION_SIZE_PRESETS.eraser
                     : bottomToolbarApi.contextTool === 'counter'
                       ? ANNOTATION_SIZE_PRESETS.counter
-                      : ANNOTATION_SIZE_PRESETS.width}
+                      : bottomToolbarApi.contextTool === 'tape'
+                        ? ANNOTATION_SIZE_PRESETS.tape
+                        : ANNOTATION_SIZE_PRESETS.width}
                   onValueChange={(value) => {
                     const handler = bottomToolbarApi.activeTool === 'eraser'
                       ? bottomToolbarApi.handleEraserSizeInputChange
@@ -4547,7 +4742,10 @@ export default function App({ devPreviewReturnTab = null }) {
                   // (no row ticked) until one is chosen for all of them.
                   const styleMixed = !!bottomToolbarApi.selectionMixed?.lineStyle;
                   if (bottomToolbarApi.selectionCapabilities?.lineStyle === false) return null;
-                  const styleOptions = LINE_STYLE_OPTIONS.filter((option) => option.value !== 'cloud' || bottomToolbarApi.supportsCloudStyle);
+                  // Nightly 'line-dashes': Long dash and Dash-dot too (not on a
+                  // callout, which keeps Solid / Dashed / Dotted / Cloud).
+                  const styleOptions = lineStyleOptionsWith(lineDashesOn && bottomToolbarApi.contextTool !== 'callout')
+                    .filter((option) => option.value !== 'cloud' || bottomToolbarApi.supportsCloudStyle);
                   return toolbarSlot('style', (compact) => (
                   <AnnotationDropdown
                     compact={compact}
@@ -4658,7 +4856,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     callout has one end) and the head tiles, None among them.
                     It writes the same two pieces of state as before (head
                     style, both ends), so nothing new is stored. */}
-                {(bottomToolbarApi.contextTool === 'arrow' || bottomToolbarApi.contextTool === 'callout') && bottomToolbarApi.setArrowheadStyle && (() => {
+                {((bottomToolbarApi.contextTool === 'arrow' && !lineEndingsInBar) || bottomToolbarApi.contextTool === 'callout') && bottomToolbarApi.setArrowheadStyle && (() => {
                   const live = bottomToolbarApi.arrowheadStyle || 'none';
                   const options = ARROWHEAD_MENU_OPTIONS.some((option) => option.value === live)
                     ? ARROWHEAD_MENU_OPTIONS
@@ -4755,6 +4953,12 @@ export default function App({ devPreviewReturnTab = null }) {
                   />
                   ), { canCompact: !anyMixed });
                 })()}
+                {/* Nightly 'line-endings': Drawboard's Endings (Start | End,
+                    ten heads) for the Line and Arrow tools, in place of the
+                    arrow ends pill. Callouts keep the pill. */}
+                {lineEndingsInBar && toolbarSlot('arrowhead', (compact) => (
+                  <LineEndingsMenu api={bottomToolbarApi} tool={bottomToolbarApi.contextTool} tip={chromeTip} compact={compact} />
+                ), { canCompact: true })}
                 {/* PASS 7 (2026-09-22 review): the rule that closes the value
                     group before "Aa". Every other group in bars 1-3 is fenced
                     off by a hairline — colour | numbers | style — but the Aa sat
@@ -4875,7 +5079,7 @@ export default function App({ devPreviewReturnTab = null }) {
           <div
             id="chrome-left-host"
             style={{
-              display: isViewerVisible && !focusOn ? 'flex' : 'none',
+              display: isViewerVisible ? 'flex' : 'none',
               flexGrow: 0,
               flexBasis: isMobileViewer ? 'var(--mobile-rail-w)' : '48px',
               width: isMobileViewer ? 'var(--mobile-rail-w)' : '48px',
@@ -5028,7 +5232,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 />
               <div ref={setTextFormatRowEl} data-chrome-text-format-row="true" />
             </div>
-            <div ref={viewerDropAreaRef} style={{ flex: 1, minWidth: 0, overflow: 'hidden', position: 'relative' }}>
+            <div ref={viewerDropAreaRef} data-sheet-set-host style={{ flex: 1, minWidth: 0, overflow: 'hidden', position: 'relative' }}>
             {/* Polish 3 (2026-10-04): the home screen stays mounted under an
                 open document (the viewer layer covers it), but it was still in
                 the Tab order - a keyboard user tabbed from the tool bar into
@@ -5092,7 +5296,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       documentId={tab.file?.id || null}
                       viewerUserId={user?.id || null}
                       isActive={isVisible}
-                      readOnlyWithoutLock={Boolean(tab.file?.superseded_by) || (tab.id === activeTabId && Boolean(olderVersionOpen))}
+                      readOnlyWithoutLock={Boolean(tab.file?.superseded_by) || supersededDocIds.has(tab.file?.id) || (tab.id === activeTabId && Boolean(olderVersionOpen))}
                       onLockStateChange={(isLocked) => {
                         setDocumentLockedByTab((current) => (
                           current[tab.id] === isLocked
@@ -5145,6 +5349,31 @@ export default function App({ devPreviewReturnTab = null }) {
             {pinnedToolsEnabled && isViewerVisible && (
               <PinnedToolsDock api={bottomToolbarApi} tip={chromeTip} phone={isMobileViewer} />
             )}
+            {spotlightEnabled && isViewerVisible && <SpotlightOverlay phone={isMobileViewer} />}
+            {sheetSetShown && sheetView !== 'single' && (
+              <SheetSetView
+                sheets={sheetSet}
+                currentId={sheetActiveDocId}
+                view={sheetView}
+                columns={sheetGridColumns}
+                onColumns={chooseSheetGridColumns}
+                onPick={makeSheetCurrent}
+                onOpen={openSheetSingle}
+                phone={isMobileViewer}
+              />
+            )}
+            {sheetSetShown && (
+              <SheetSetBar
+                sheets={sheetSet}
+                currentId={sheetActiveDocId}
+                view={sheetView}
+                onView={setSheetView}
+                onStep={stableStepSheet}
+                onPick={openSheetSingle}
+                phone={isMobileViewer}
+                tip={chromeTip}
+              />
+            )}
             {pendingDocumentOpen && currentView !== 'viewer' && (
               // Covers the home (and takes its taps) while the PDF downloads;
               // the same quiet line, place and background as the viewer's own
@@ -5165,7 +5394,7 @@ export default function App({ devPreviewReturnTab = null }) {
           <div
             id="chrome-right-host"
             style={{
-              display: isViewerVisible && !focusOn ? 'flex' : 'none',
+              display: isViewerVisible ? 'flex' : 'none',
               flexGrow: 0,
               flexBasis: isMobileViewer ? '0px' : '48px',
               flexShrink: 0,
@@ -5408,9 +5637,11 @@ export default function App({ devPreviewReturnTab = null }) {
               // Owner 2026-11-10 ("these pop-ups don't look integrated or
               // professional"): the fit list is a RailFlyout now - the one
               // rail card with a title, standing off the rail's edge like the
-              // grid card beside it - with the shared menu rows (13px, the
-              // MenuGlide hover strip), the current fit in gold ink with its
-              // tick, and each fit's shortcut on the right.
+              // grid card beside it - with the shared menu rows (the MenuGlide
+              // hover strip) and the current fit in gold ink with its tick at
+              // the row's end. Owner 2026-11-10: no key hints here (they read
+              // as Mac-only, and he never asked for them); the keys stay in
+              // the shortcuts sheet.
               const fitMenu = () => (
                 <RailFlyout title="Page fit">
                   <div role="menu" aria-label="Fit modes" className="rail-flyout__rows">
@@ -5424,7 +5655,6 @@ export default function App({ devPreviewReturnTab = null }) {
                   <MenuGlide />
                   {ZOOM_MODE_OPTIONS.filter((option) => option.id !== ZOOM_MODES.MANUAL).map((option, index) => {
                     const isActive = option.id === api.zoomMode;
-                    const chord = FIT_MODE_CHORDS[option.id];
                     return (
                       <button
                         key={option.id}
@@ -5441,11 +5671,10 @@ export default function App({ devPreviewReturnTab = null }) {
                         className="rail-flyout__row"
                         style={{ '--menu-row': index }}
                       >
+                        <span className="rail-flyout__label">{option.label}</span>
                         <span className="rail-flyout__tick" aria-hidden="true">
                           {isActive && <Icon name="check" size={RAIL_CONTROL_GLYPH} color="currentColor" />}
                         </span>
-                        <span>{option.label}</span>
-                        {chord && <span className="rail-flyout__keys" aria-hidden="true">{fitChordLabel(chord)}</span>}
                       </button>
                     );
                   })}
@@ -5673,16 +5902,35 @@ export default function App({ devPreviewReturnTab = null }) {
                         <EyeGlyph open={!allMarksHidden} size={RAIL_CONTROL_GLYPH} />
                       </button>
                     )}
+                    {/* Nightly 'comment-pins': the "Show pins" card. */}
+                    {pinsOn && (
+                      <PinFilterMenu renderButton={({ open, ref, onClick, on }) => (
+                        <button
+                          ref={ref}
+                          type="button"
+                          onClick={onClick}
+                          aria-label="Show pins"
+                          aria-haspopup="dialog"
+                          aria-expanded={open}
+                          data-pin-filter-toggle="true"
+                          {...chromeTip(open ? undefined : 'Show pins', 'left')}
+                          style={{ ...footerBtn(), color: on || open ? 'var(--text-1)' : 'var(--text-3)' }}
+                        >
+                          <Icon name="pagePin" size={RAIL_CONTROL_GLYPH} color="currentColor" />
+                        </button>
+                      )} />
+                    )}
                     {focusModeEnabled && (
                       <button
                         type="button"
-                        onClick={() => toggleFocusMode(true)}
-                        aria-label="Focus mode"
+                        onClick={() => toggleFocusMode(!isFullscreen)}
+                        aria-label={isFullscreen ? 'Exit full screen' : 'Full screen'}
+                        aria-pressed={isFullscreen}
                         data-focus-mode-toggle="true"
-                        {...chromeTip('Focus mode', 'left')}
-                        style={footerBtn()}
+                        {...chromeTip(isFullscreen ? 'Exit full screen' : 'Full screen', 'left')}
+                        style={{ ...footerBtn(), color: isFullscreen ? 'var(--text-1)' : undefined }}
                       >
-                        <Icon name="focusMode" size={RAIL_CONTROL_GLYPH} color="currentColor" />
+                        <Icon name={isFullscreen ? 'focusModeExit' : 'focusMode'} size={RAIL_CONTROL_GLYPH} color="currentColor" />
                       </button>
                     )}
                     {/* drawboardAudit C2: the Pencil-only switch sits where
@@ -5785,6 +6033,21 @@ export default function App({ devPreviewReturnTab = null }) {
         }}
         tip={chromeTip}
       />
+      {/* Nightly 'properties-panel': Drawboard's Expand menu card. */}
+      <SelectionPropertiesPanel
+        enabled={Boolean(isViewerVisible && bottomToolbarApi)}
+        phone={Boolean(isMobileViewer)}
+        api={bottomToolbarApi}
+        paint={annotationPaint}
+        onOpenColourPicker={toggleAnnotationColourPicker}
+        annotationsByPage={leftRailApi?.annotationsByPage || null}
+        viewerId={signedInUserId}
+        tip={chromeTip}
+      />
+      {/* Nightly 'stamp-tool': Drawboard's Stamp card (the Text group's Stamp button opens it). */}
+      <StampPickerCard enabled={Boolean(isViewerVisible && isFeatureOn('stamp-tool'))} phone={Boolean(isMobileViewer)} tip={chromeTip} />
+      {/* Nightly 'insert-image': a picture pasted from the clipboard becomes an image mark. */}
+      <InsertImagePasteHost enabled={Boolean(isViewerVisible && isFeatureOn('insert-image'))} />
 
       {/* KAL-444: one shortcuts sheet for Home AND the viewer — inside a
           document is where every one of those keys applies. (It was kept off
@@ -5792,11 +6055,6 @@ export default function App({ devPreviewReturnTab = null }) {
           covered the zoom controls; that pill is gone, and the sheet itself
           renders nothing until it is opened.) */}
       <KeyboardShortcutsOverlay />
-      {focusOn && (
-        <button type="button" className="focus-mode-exit" data-focus-mode-exit="" onClick={() => toggleFocusMode(false)}>
-          Exit focus
-        </button>
-      )}
       {hideMarksEnabled && allMarksHidden && Boolean(isViewerVisible) && (
         <div className="marks-hidden-chip" role="status" data-marks-hidden-chip="">
           <span>Marks hidden</span>
@@ -5834,7 +6092,7 @@ export default function App({ devPreviewReturnTab = null }) {
         </div>
       )}
       <DocumentVersionsDialogs state={documentVersions} />
-      {isViewerVisible && (olderVersionOpen || activeTab?.file?.superseded_by) && (
+      {isViewerVisible && (olderVersionOpen || activeTab?.file?.superseded_by || supersededDocIds.has(activeTab?.file?.id)) && (
         <OlderVersionBar
           versionNumber={olderVersionOpen?.versionNumber || null}
           onOpenCurrent={currentVersion ? () => documentVersions.openVersion(currentVersion) : null}

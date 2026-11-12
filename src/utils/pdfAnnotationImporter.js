@@ -72,6 +72,7 @@ import {
 import { buildCloudPathCommands } from './pdfAnnotationAppearance.js';
 import { maxOf, minOf } from './arrayExtrema.js';
 import { normalizeCalloutBoxAnchor } from './calloutGeometry.js';
+import { PDF_MEASURE_INTENT_BY_SUBTYPE, SURVEY_KIND_BY_PDF_SUBTYPE, readPdfMeasureDict, surveyScaleFromPdfMeasure } from './measure/pdfMeasureDict.js';
 export { buildCloudPathCommands } from './pdfAnnotationAppearance.js';
 
 const pdfImportDebug = (...args) => {
@@ -2471,6 +2472,34 @@ async function buildRawAnnotationMetadataById(rawPdfBytes) {
           }
         }
 
+        // Native measurement (Drawboard / Bluebeam / Acrobat): the scale sits
+        // in the annotation's /Measure, or in the page viewport (/VP) whose
+        // box holds a dimension-intent mark (KAL-539).
+        let pdfMeasure = null;
+        if (PDF_MEASURE_INTENT_BY_SUBTYPE[subtype]) {
+          try {
+            const measureLib = { context: rawPdfDoc.context, PDFName, readText: readPdfLibText, readNumber: readPdfLibNumber };
+            const ownMeasure = rawPdfDoc.context.lookup(dict.get(PDFName.of('Measure')));
+            pdfMeasure = readPdfMeasureDict(ownMeasure, measureLib);
+            if (!pdfMeasure && intent === PDF_MEASURE_INTENT_BY_SUBTYPE[subtype] && Array.isArray(rect)) {
+              const viewports = page.node.lookup(PDFName.of('VP'));
+              for (const entry of (viewports && typeof viewports.asArray === 'function' ? viewports.asArray() : [])) {
+                const viewportDict = rawPdfDoc.context.lookup(entry) || entry;
+                const box = readPdfLibNumberArray(viewportDict?.get?.(PDFName.of('BBox')));
+                if (!box || box.length < 4) continue;
+                const [bx1, by1, bx2, by2] = [Math.min(box[0], box[2]), Math.min(box[1], box[3]), Math.max(box[0], box[2]), Math.max(box[1], box[3])];
+                const inside = Math.min(rect[0], rect[2]) >= bx1 && Math.max(rect[0], rect[2]) <= bx2
+                  && Math.min(rect[1], rect[3]) >= by1 && Math.max(rect[1], rect[3]) <= by2;
+                if (!inside) continue;
+                pdfMeasure = readPdfMeasureDict(rawPdfDoc.context.lookup(viewportDict.get(PDFName.of('Measure'))), measureLib);
+                if (pdfMeasure) break;
+              }
+            }
+          } catch {
+            pdfMeasure = null;
+          }
+        }
+
         const appearance = extractAppearanceMetadataForAnnotation(dict, rawPdfDoc.context, pdfLib);
 
         const metadata = {
@@ -2491,6 +2520,7 @@ async function buildRawAnnotationMetadataById(rawPdfBytes) {
           ...(borderDashArray ? { borderDashArray } : {}),
           ...(borderEffect ? { borderEffect } : {}),
           ...(intent ? { intent } : {}),
+          ...(pdfMeasure ? { pdfMeasure } : {}),
           ...(lineEndings ? { lineEndings } : {}),
           ...(lineCoordinates ? { lineCoordinates } : {}),
           ...(vertices ? { vertices } : {}),
@@ -2660,6 +2690,7 @@ function applyRawMetadataToAnnotation(annotation, rawMetadata) {
     rectangleDifferences:
       annotation.rectangleDifferences || rawMetadata.rectangleDifferences || null,
     intent: annotation.intent || rawMetadata.intent || annotation.intent,
+    pdfMeasure: rawMetadata.pdfMeasure || annotation.pdfMeasure || null,
     name: annotation.name || rawMetadata.iconName || annotation.name,
     state: annotation.state || rawMetadata.state || annotation.state,
     stateModel: annotation.stateModel || rawMetadata.stateModel || annotation.stateModel,
@@ -5553,6 +5584,29 @@ function convertCaretToFabricPolyline(annotation, viewport, scale = 1) {
  * @param {number} scale - Scale factor (default 1)
  * @returns {Object|null} Fabric.js object data or null if unsupported
  */
+/**
+ * A native PDF measurement (dimension intent and/or /Measure scale) becomes
+ * a Survey measurement: data.measure { kind, scale }, so it shows its reading,
+ * lists in Markups and re-scales with the page (KAL-539). Revision clouds and
+ * marks with no scale Survey can read stay plain shapes. A dimension line's
+ * arrow ends stay as drawn ends; it is not turned into the Arrow tool.
+ */
+export function withNativePdfMeasure(fabricObj, annotation) {
+  if (!fabricObj || !annotation) return fabricObj;
+  const subtype = annotation.subtype;
+  const kind = SURVEY_KIND_BY_PDF_SUBTYPE[subtype];
+  if (!kind || fabricObj.data?.measure || fabricObj.data?.pdfCloudPathD) return fabricObj;
+  const intent = normalizePdfNameToken(annotation.intent || '');
+  const scale = surveyScaleFromPdfMeasure(annotation.pdfMeasure);
+  if (!scale) return fabricObj;
+  if (intent && intent !== PDF_MEASURE_INTENT_BY_SUBTYPE[subtype]) return fabricObj;
+  const { tool: _tool, ...rest } = fabricObj;
+  return {
+    ...(fabricObj.tool === 'arrow' ? rest : fabricObj),
+    data: { ...(fabricObj.data || {}), measure: { kind, scale } },
+  };
+}
+
 export function convertPdfAnnotationToFabric(annotation, viewport, scale = 1, rawMetadata = null, context = {}) {
   const normalizedAnnotation = applyRawMetadataToAnnotation(annotation, rawMetadata);
   const subtype = normalizedAnnotation.subtype;
@@ -5660,11 +5714,11 @@ export function convertPdfAnnotationToFabric(annotation, viewport, scale = 1, ra
     case 'Circle':
       return finish(convertCircleToFabricCircle(normalizedAnnotation, viewport, scale));
     case 'Line':
-      return finish(convertLineToFabricLine(normalizedAnnotation, viewport, scale));
+      return finish(withNativePdfMeasure(convertLineToFabricLine(normalizedAnnotation, viewport, scale), normalizedAnnotation));
     case 'PolyLine':
-      return finish(convertPolyLineToFabricPolyline(normalizedAnnotation, viewport, scale));
+      return finish(withNativePdfMeasure(convertPolyLineToFabricPolyline(normalizedAnnotation, viewport, scale), normalizedAnnotation));
     case 'Polygon':
-      return finish(convertPolygonToFabricPolygon(normalizedAnnotation, viewport, scale));
+      return finish(withNativePdfMeasure(convertPolygonToFabricPolygon(normalizedAnnotation, viewport, scale), normalizedAnnotation));
     case 'Text':
       return convertTextToFabricNote(normalizedAnnotation, viewport, scale);
     case 'Caret':

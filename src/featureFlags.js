@@ -286,7 +286,7 @@ export const FEATURE_FLAGS = Object.freeze({
     stage: 'beta',
   }),
   'focus-mode': Object.freeze({
-    label: 'Focus mode: hide the tab strip and side rails, full screen (Ctrl/Cmd+Shift+F)',
+    label: 'Full screen: hide the browser and system bars, keep tabs and rails (Ctrl/Cmd+Shift+F)',
     stage: 'beta',
   }),
   'search-options': Object.freeze({
@@ -301,8 +301,54 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Alt+Shift+] and Alt+Shift+[ step through the open documents',
     stage: 'beta',
   }),
+  'open-visible-first': Object.freeze({
+    label: 'Open: build the marks of the page on screen first, the pages around it after it has drawn',
+    stage: 'beta',
+  }),
   'back-button': Object.freeze({
     label: 'Back (browser or Android) closes the open sheet, then the document, instead of leaving Survey',
+    stage: 'beta',
+  }),
+  // Drawboard Home parity (2026-11-10), one flag each so Isaiah can pick.
+  'home-tags': Object.freeze({
+    label: 'Home: your own tags on documents (row chips, Tags list, search by tag)',
+    stage: 'beta',
+  }),
+  'home-shared-views': Object.freeze({
+    label: 'Home: Shared by me and Shared with me filters',
+    stage: 'beta',
+  }),
+  'home-columns': Object.freeze({
+    label: 'Home: Last opened and Created columns, more sorts, list sizes',
+    stage: 'beta',
+  }),
+  // Drawboard Projects parity (2026-11-10).
+  'project-issues': Object.freeze({
+    label: 'Projects: Issues and Tasks lists with IDs, statuses, filters, archive, CSV and activity',
+    stage: 'beta',
+  }),
+  'share-extras': Object.freeze({
+    label: 'Share dialog: owner row with (you), sort by Role / Name / Activity, personal message on email invites',
+    stage: 'beta',
+  }),
+  'home-templates': Object.freeze({
+    label: 'Home New menu: Notebook paper in one tap and Other templates (ruled, Cornell, grids, graph, isometric, hex, music)',
+    stage: 'beta',
+  }),
+  'sheet-set-view': Object.freeze({
+    label: 'Project sheets as a set: previous / next sheet, sheet picker, Shift+Left / Right, List and Grid views, Open all',
+    stage: 'beta',
+  }),
+  'drawboard-keys': Object.freeze({
+    label: 'Drawboard keys: Shift+Up / Down previous / next page; Alt+O / Alt+U next / previous version (with Versions on)',
+    stage: 'beta',
+  }),
+  'project-activity': Object.freeze({
+    label: 'Projects: an Activity tab with what happened to the project (files, revisions, issues, people) in 15-minute groups',
+    stage: 'beta',
+  }),
+  spotlight: Object.freeze({
+    label: 'Spotlight: share your view from the people list; others follow your document, page and zoom (green frame, N following)',
     stage: 'beta',
   }),
   'page-op-sync': Object.freeze({
@@ -328,6 +374,72 @@ export const FEATURE_FLAGS = Object.freeze({
   // account (Drawboard's "Temporary" files, without their two-tab data loss).
   'device-files': Object.freeze({
     label: 'Open a PDF with no account (kept on this device)',
+    stage: 'beta',
+  }),
+  'line-dashes': Object.freeze({
+    label: 'Line styles: Long dash and Dash-dot as well as Solid, Dashed and Dotted',
+    stage: 'beta',
+  }),
+  'eraser-look': Object.freeze({
+    label: "Eraser look: Drawboard's cross-and-eraser cursor, a trail where it moves, hit marks lit orange until release, and icon mode buttons",
+    stage: 'beta',
+  }),
+  'properties-panel': Object.freeze({
+    label: "Properties panel: Drawboard's Expand menu, a card with typed X Y W H R, stroke, border and fill for the picked marks",
+    stage: 'beta',
+  }),
+  'text-fit-height': Object.freeze({
+    label: 'Text box height fits its words both ways: widening a text box from its side brings its height back down',
+    stage: 'beta',
+  }),
+  'poly-click-starts': Object.freeze({
+    label: 'Polygon and Polyline: with a mark picked, the first click drops the pick and places the first point',
+    stage: 'beta',
+  }),
+  'stamp-tool': Object.freeze({
+    label: "Stamp tool: Drawboard's twelve preset stamps in a Stamp card; pick one, then click the page to drop it",
+    stage: 'beta',
+  }),
+  'line-endings': Object.freeze({
+    label: "Line endings: Drawboard's ten heads for the start and end of a Line or Arrow, at Drawboard's sizes",
+    stage: 'beta',
+  }),
+  'pen-types': Object.freeze({
+    label: "Pen types: Drawboard's Basic (fixed), Pro (pressure or speed) and Calligraphy (direction) pens",
+    stage: 'beta',
+  }),
+  'typing-undo': Object.freeze({
+    label: 'Undo while typing steps back one word at a time, not the whole typing session',
+    stage: 'beta',
+  }),
+  'drag-auto-scroll': Object.freeze({
+    label: 'Drawing a shape, moving a mark or box selecting near the edge of the view scrolls it',
+    stage: 'beta',
+  }),
+  'insert-image': Object.freeze({
+    label: 'Image: put a picture from a file or the clipboard on the page as a mark you can move, resize and rotate',
+    stage: 'beta',
+  }),
+  'tape-tool': Object.freeze({
+    label: 'Tape: an opaque band that covers part of the page; tap it under Pan to see what is under it',
+    stage: 'beta',
+  }),
+  'turn-scale-keys': Object.freeze({
+    label: 'Keys: Ctrl / Cmd + Left / Right turn the picked mark 1° (5° with Shift), Ctrl / Cmd + Up / Down scale it',
+    stage: 'beta',
+  }),
+  'link-tool': Object.freeze({
+    label: 'Hyperlink tool (Shift+H): drag a box and link it to a page, a website or an area; "Go to" on the picked bar follows it',
+    stage: 'beta',
+  }),
+  // Drawboard Projects' page pins: drop a Comment, Issue or Task pin on the
+  // page (N; M cycles the type), with the rail's "Show pins" filter.
+  'comment-pins': Object.freeze({
+    label: 'Page pins (N): drop a Comment, Issue or Task pin on the page, with a Show pins filter',
+    stage: 'beta',
+  }),
+  'measure-plus': Object.freeze({
+    label: 'Measure formats: feet-inches readings, precision, custom scales and a default scale',
     stage: 'beta',
   }),
 });
@@ -394,6 +506,20 @@ export function isFeatureOn(key, { storage = safeStorage(), env = readEnv() } = 
   if (def.env && env?.[def.env] === '1') return true;
   const cached = readCache(storage);
   return cached?.[key] === true;
+}
+
+// Features read their flag once at load. A browser that has never been to
+// Survey has no saved answers, so without a wait a feature turned on for
+// everyone stayed hidden for a new person's whole first visit (audit
+// 2026-11-10). main.jsx holds the first render on this: at once when answers
+// are saved (or storage cannot be read), else until the server's first answer
+// or maxMs, whichever comes first.
+export function waitForFirstFlags(firstAnswer, { storage = safeStorage(), maxMs = 1500, setTimer = setTimeout } = {}) {
+  if (!storage || read(storage, FLAG_CACHE_KEY) !== null) return Promise.resolve();
+  return Promise.race([
+    Promise.resolve(firstAnswer).catch(() => {}),
+    new Promise((resolve) => setTimer(resolve, maxMs)),
+  ]).then(() => {});
 }
 
 // Ask the server which flags are on for whoever is signed in (or nobody) and

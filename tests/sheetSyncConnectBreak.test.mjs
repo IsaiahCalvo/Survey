@@ -194,11 +194,18 @@ test('the finish page only links to Microsoft\'s sign-in and Survey\'s own admin
   const good = run('?provider=msgraph&result=personal&retry=' + encodeURIComponent('https://login.microsoftonline.com/common/oauth2/v2.0/authorize?prompt=select_account'));
   assert.equal(good.retry.hidden, false);
   assert.match(good.retry.href, /^https:\/\/login\.microsoftonline\.com\//);
-  const admin = run('?provider=msgraph&result=cancelled&admin=' + encodeURIComponent('https://x.supabase.co/functions/v1/sheet-sync/oauth/msgraph/admin'));
+  const ours = 'https://cvamwtpsuvxvjdnotbeg.supabase.co/functions/v1/sheet-sync/oauth/msgraph/admin';
+  const admin = run('?provider=msgraph&result=cancelled&admin=' + encodeURIComponent(ours));
   assert.equal(admin.adminBox.hidden, false);
-  assert.equal(admin.adminLink.textContent, 'https://x.supabase.co/functions/v1/sheet-sync/oauth/msgraph/admin');
-  const fake = run('?provider=msgraph&result=cancelled&admin=' + encodeURIComponent('https://evil.example/phish'));
-  assert.equal(fake.adminBox.hidden, true);
+  assert.equal(admin.adminLink.textContent, ours);
+  assert.equal(run('?provider=msgraph&result=cancelled&admin=' + encodeURIComponent('http://127.0.0.1:8000/functions/v1/sheet-sync/oauth/msgraph/admin')).adminBox.hidden, false, 'local test stack');
+  for (const bad of [
+    'https://evil.example/phish',
+    // Same path on a look-alike host: shown to an IT admin as "the approval link".
+    'https://evil.example/functions/v1/sheet-sync/oauth/msgraph/admin',
+    'https://attacker.supabase.co/functions/v1/sheet-sync/oauth/msgraph/admin',
+    `${ours}?next=https://evil.example`,
+  ]) assert.equal(run('?provider=msgraph&result=cancelled&admin=' + encodeURIComponent(bad)).adminBox.hidden, true, bad);
   assert.equal(run('?provider=msgraph&result=admin_approved').title.textContent, 'Survey is approved');
 });
 
@@ -233,6 +240,11 @@ test('Save in: an account with no OneDrive is told to paste a SharePoint link', 
   assert.deepEqual(await provider.listFolders(''), { folders: [], places: [], noDrive: true });
   const unlicensed = graphFake([[/me\/drive\/root\/children/, [403, { error: { code: 'notAllowed' } }]]]);
   assert.equal((await unlicensed.provider.listFolders('')).noDrive, true);
+  // Save in opens on the default "Survey" folder, below the top.
+  const guestSurvey = graphFake([[/me\/drive\/root:\/Survey:\/children/, [401, { error: { code: 'accessDenied' } }]]]);
+  assert.equal((await guestSurvey.provider.listFolders('Survey')).noDrive, true);
+  const notYet = graphFake([[/me\/drive\/root:\/Survey:\/children/, [404, { error: { code: 'itemNotFound' } }]]]);
+  assert.deepEqual(await notYet.provider.listFolders('Survey'), { folders: [], places: [] }, 'a folder not made yet is fine');
   const badToken = graphFake([[/me\/drive\/root\/children/, [401, { error: { code: 'InvalidAuthenticationToken' } }]]]);
   await assert.rejects(badToken.provider.listFolders(''), (e) => e.status === 401, 'a token problem is not "no OneDrive"');
 });
@@ -537,4 +549,25 @@ test('signing in with a different Microsoft account says how many workbooks move
   const same = await ask({ action: 'claim', provider: 'msgraph', code: again.hash.replace('#code=', '').replace('-', '') });
   assert.equal(same.ok, true);
   assert.equal(same.replaced, undefined);
+});
+
+// ---- a device clock that is hours off --------------------------------------
+
+test('"Synced … ago" uses the server\'s clock: a phone 3 h slow or fast still reads "just now"', async () => {
+  const { linkSyncedAgo, syncedAgo } = await import('../src/services/sheetSyncTime.js');
+  const serverNow = Date.parse('2026-11-10T15:00:00Z');
+  const link = { lastRoundAt: new Date(serverNow - 2000).toISOString(), lastRoundAgoMs: 2000 };
+  for (const skew of [-3 * 3600_000, 0, 3 * 3600_000]) {
+    const deviceNow = serverNow + skew;
+    const got = { ...link, receivedAt: deviceNow };
+    assert.equal(linkSyncedAgo(got, deviceNow), 'just now', `skew ${skew}`);
+    assert.equal(linkSyncedAgo(got, deviceNow + 120_000), '2 min ago', `skew ${skew}, two minutes on`);
+  }
+  // Before: the device clock alone was used.
+  assert.equal(syncedAgo(link.lastRoundAt, serverNow + 3 * 3600_000), '3 h ago');
+  // An old server answer without the age falls back to the device clock.
+  assert.equal(linkSyncedAgo({ lastRoundAt: link.lastRoundAt }, serverNow + 10_000), '12 s ago');
+  assert.equal(linkSyncedAgo({}), '');
+  const src = readFileSync(new URL('../supabase/functions/_shared/sheetSync/service.js', import.meta.url), 'utf8');
+  assert.match(src, /lastRoundAgoMs: link\.last_round_at \?/);
 });

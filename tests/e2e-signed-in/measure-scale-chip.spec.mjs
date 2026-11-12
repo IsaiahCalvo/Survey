@@ -9,6 +9,8 @@ import { seedSheet } from './seedSheet.mjs';
 async function openSheet(page, flagOn) {
   await page.addInitScript((on) => {
     if (on) localStorage.setItem('survey.flag.measure-scale-chip', '1');
+    // The plain chip; 'measure-plus' words it Drawboard's way (measure-plus.spec).
+    localStorage.setItem('survey.flag.measure-plus', '0');
   }, flagOn);
   const sheet = await seedSheet(`Scale chip ${flagOn ? 'on' : 'off'}`, { size: [792, 612], pages: 1 });
   await signIn(page, E2E_ACCOUNTS.owner);

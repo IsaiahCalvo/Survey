@@ -81,7 +81,7 @@ test('every inline script on a site page is allowed by hash; no inline handlers'
 });
 
 test('the site policy only reaches what the pages use', () => {
-  assert.match(directive(siteRule, 'connect-src'), /https:\/\/api\.github\.com/, '/status reads alert issues from GitHub');
+  assert.doesNotMatch(directive(siteRule, 'connect-src'), /github/, '/status reads its same-origin public snapshot');
   assert.ok(!/supabase|r2\.cloudflarestorage|microsoft/.test(policy(siteRule)), 'the site pages never call the backend');
   for (const d of ["object-src 'none'", "base-uri 'self'", "form-action 'self'", "frame-ancestors 'none'"]) {
     assert.ok(policy(siteRule).includes(d), d);

@@ -17,6 +17,8 @@ import {
   moveCommitThreshold,
   isBeyondMoveThreshold,
   describeDroppedMove,
+  hasPressTravelled,
+  pressStartFacts,
 } from '../src/utils/moveCommit.js';
 import { attachMoveModifierListeners, getMoveModifierHeld } from '../src/utils/moveModifier.js';
 
@@ -227,4 +229,30 @@ test('a drag that saves nothing says why (one [MoveDiag] line)', () => {
   // a mark the lock guard puts back logs the reason too
   const viewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
   assert.match(viewer, /\[MoveDiag\] save put locked marks back reason=locked pdf=/);
+});
+
+// Owner 2026-11-10: a click on a Survey Marker moved it (the release snapped it
+// to a neighbour with no drag, and a page that glided under a still pointer
+// counted as a drag). Only the pointer's own travel on screen makes a drag.
+test('a press is a drag only once the pointer itself has travelled past the click slop on screen', () => {
+  const press = pressStartFacts({ clientX: 100, clientY: 200, pointerType: 'pen' });
+  assert.deepEqual(press, { startClient: { x: 100, y: 200 }, pointerType: 'pen' });
+  assert.equal(hasPressTravelled(press, { clientX: 100, clientY: 200 }), false);
+  assert.equal(hasPressTravelled(press, { clientX: 104, clientY: 197 }), false);
+  assert.equal(hasPressTravelled(press, { clientX: 105, clientY: 200 }), true);
+  assert.equal(hasPressTravelled(press, { clientX: 100, clientY: 195 }), true);
+  const finger = pressStartFacts({ clientX: 0, clientY: 0, pointerType: 'touch' });
+  assert.equal(hasPressTravelled(finger, { clientX: 8, clientY: 0, pointerType: 'touch' }), false);
+  assert.equal(hasPressTravelled(finger, { clientX: 9, clientY: 0, pointerType: 'touch' }), true);
+  // Nothing recorded: as before (counts as travelled).
+  assert.equal(hasPressTravelled({}, { clientX: 0, clientY: 0 }), true);
+});
+
+test('the Survey Marker drag waits for real pointer travel before it moves, resizes, turns or snaps', () => {
+  const layer = readFileSync(new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url), 'utf8');
+  const update = layer.slice(layer.indexOf('const updateSurveyMarkerDrag = useCallback'));
+  const gate = update.indexOf('if (!hasPressTravelled(drag, e))');
+  assert.ok(gate > 0, 'the drag update checks the pointer travel');
+  assert.ok(gate < update.indexOf('snapMoveFrame('), 'before any snapping');
+  assert.equal((layer.match(/\.\.\.pressStartFacts\(e\)/g) || []).length, 3, 'every way a marker drag starts records the press');
 });

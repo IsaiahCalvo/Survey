@@ -13,6 +13,10 @@ import PageGridToggle from '../components/PageGridToggle';
 import DarkPagesToggle from '../components/DarkPagesToggle';
 import { PageGridSettingsPanel } from '../components/PageGridSettings';
 import { isFeatureOn } from '../featureFlags.js';
+import { LineEndingsPanel } from '../components/LineEndingsPicker.jsx';
+import PenTypeTiles from '../components/PenTypePicker.jsx';
+import { setStampPickerOpen, useStampPickerOpen } from '../components/StampPickerCard.jsx';
+import { pickImageToInsert } from '../components/InsertImage.jsx';
 import { quickColoursForTool } from '../utils/quickStylePresets.js';
 import SnappingToggle, { SnapContentToggle } from '../components/SnappingToggle.jsx';
 import { composeTextColor, splitTextColor } from '../utils/textColorOpacity';
@@ -27,6 +31,7 @@ import ActiveSpaceChip from '../sidebar/ActiveSpaceChip';
 import { ARROWHEAD_MENU_ORDER, ARROWHEAD_SHORT_LABELS } from '../components/Callout/types';
 import { ZOOM_MODE_OPTIONS, ensureRgbaOpacity, getCategoryGlyphLabel } from '../viewerShared';
 import { getMobileSyncPresentation, getMobileTextMarkupPresentation, normalizeMobilePresence } from './mobilePdfViewerModel.js';
+import SpotlightMeButton from '../spotlight/SpotlightMeButton.jsx';
 import { withDevFakePresence } from '../components/presenceIdentity.js';
 import { getSelectFamilyLabel, getSelectFamilyTransition, getSelectModeIconName, SELECT_MODE_OPTIONS } from '../utils/selectModes.js';
 import { useMobileSheetMotion } from './useMobileSheetMotion';
@@ -135,6 +140,7 @@ const TOOL_GROUPS = {
     tools: [
       { id: 'pen', label: 'Pen', icon: 'pen' },
       { id: 'highlighter', label: 'Highlighter', icon: 'highlighter' },
+      { id: 'tape', label: 'Tape', icon: 'tape', flag: 'tape-tool' },
       /* UX 2026-09-22 (owner, with the desktop rail): the tool is "Eraser". It
          was "Partial erase", which collided with the Partial half of the
          Partial / Whole toggle its own strip carries — two different things
@@ -170,6 +176,15 @@ const TOOL_GROUPS = {
     tools: [
       { id: 'text', label: 'Text', icon: 'textBox' },
       { id: 'callout', label: 'Callout', icon: 'callout' },
+      // Nightly 'stamp-tool': opens Drawboard's Stamp card; a tap on a stamp
+      // drops it in the middle of the page in view (a finger only pans).
+      { id: 'stamp', label: 'Stamp', icon: 'stamp', flag: 'stamp-tool', picker: true },
+      // Nightly 'insert-image': picks a photo or picture and drops it mid-page.
+      { id: 'image', label: 'Image', icon: 'image', flag: 'insert-image', action: true },
+      // Nightly 'link-tool': drag a box, then say where it links.
+      { id: 'hyperlink', label: 'Hyperlink', icon: 'hyperlink', flag: 'link-tool' },
+      // Pins save on a cloud document: hidden on a device file or signed out.
+      { id: 'pin', label: 'Pin', icon: 'pagePin', flag: 'comment-pins', cloudOnly: true },
     ],
   },
 };
@@ -181,7 +196,7 @@ const TOOL_TO_GROUP = Object.entries(TOOL_GROUPS).reduce((result, [groupId, grou
   return result;
 }, {});
 
-const WIDTH_TOOLS = new Set(['pen', 'highlighter', 'rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'text', 'callout', 'counter']);
+const WIDTH_TOOLS = new Set(['pen', 'highlighter', 'tape', 'rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'text', 'callout', 'counter']);
 const FILL_TOOLS = new Set(['rect', 'ellipse', 'polygon', 'text', 'callout', 'counter']);
 // UX 2026-09-09: polygon and polyline join the shape tools that get a border
 // style picker on mobile, so their Cloud option has somewhere to live.
@@ -685,6 +700,8 @@ const LINE_STYLE_SAMPLE_ICONS = {
   solid: 'lineSampleSolid',
   dashed: 'lineSampleDashed',
   dotted: 'lineSampleDotted',
+  longDash: 'lineSampleLongDash',
+  dashDot: 'lineSampleDashDot',
   cloud: 'lineSampleCloud',
 };
 // Owner 2026-10-02 (phone/desktop consistency): the samples are the desktop's
@@ -1861,16 +1878,19 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
   const showBorderStyle = BORDER_STYLE_TOOLS.has(tool) && typeof api.setLineBorderStyle === 'function'
     && selectionCaps?.lineStyle !== false;
   const showArrowhead = (tool === 'arrow' || tool === 'callout') && typeof api.setArrowheadStyle === 'function';
+  const lineEndingsOn = (tool === 'arrow' || tool === 'line') && isFeatureOn('line-endings') && (api.selectionCount || 0) <= 1;
   const showStroke = !isEraser && (WIDTH_TOOLS.has(tool) || FILL_TOOLS.has(tool));
   const sizeLabel = isEraser || tool === 'counter' ? 'Size' : 'Width';
   const sizeValue = isEraser ? api.eraserSizeInputValue : api.strokeWidthInputValue;
   const sizeMin = tool === 'counter' ? COUNTER_SIZE_MIN : 1;
-  const sizeMax = isEraser ? 100 : tool === 'counter' ? COUNTER_SIZE_MAX : 50;
+  const sizeMax = isEraser || tool === 'tape' ? 100 : tool === 'counter' ? COUNTER_SIZE_MAX : 50;
   const sizePresets = isEraser
     ? ANNOTATION_SIZE_PRESETS.eraser
     : tool === 'counter'
       ? ANNOTATION_SIZE_PRESETS.counter
-      : ANNOTATION_SIZE_PRESETS.width;
+      : tool === 'tape'
+        ? ANNOTATION_SIZE_PRESETS.tape
+        : ANNOTATION_SIZE_PRESETS.width;
   const handleSizeDraft = (value) => {
     const handler = isEraser ? api.handleEraserSizeInputChange : api.handleStrokeWidthInputChange;
     handler?.({ target: { value } });
@@ -1984,7 +2004,7 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
     const list = presets.map((preset) => String(preset));
     return list.includes(value) && value ? list : [value, ...list].filter(Boolean);
   };
-  const widthOptions = withCurrentValue(ANNOTATION_SIZE_PRESETS.width, sizeValue).map((width) => ({
+  const widthOptions = withCurrentValue(tool === 'tape' ? ANNOTATION_SIZE_PRESETS.tape : ANNOTATION_SIZE_PRESETS.width, sizeValue).map((width) => ({
     value: width,
     label: `${width} pt`,
     // Owner 2026-10-26 (note item 33): the pill shows the number only; the
@@ -2010,10 +2030,25 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
     : api.lineBorderStyle === 'cloud' && !api.supportsCloudStyle
     ? 'solid'
     : (api.lineBorderStyle || 'solid');
+  // Nightly 'eraser-look': Drawboard's Full / Partial, Full first, each with
+  // its icon (a whole stroke, a broken one).
+  const eraserModeOptions = isFeatureOn('eraser-look')
+    ? [
+      { value: 'entire', label: 'Full', ariaLabel: 'Full Eraser', icon: 'eraserModeFull' },
+      { value: 'partial', label: 'Partial', ariaLabel: 'Partial Eraser', icon: 'eraserModePartial' },
+    ]
+    : [
+      { value: 'partial', label: 'Partial', ariaLabel: 'Partial erase' },
+      { value: 'entire', label: 'Whole', ariaLabel: 'Erase the whole mark' },
+    ];
   const lineStyleOptions = [
     { value: 'solid', label: 'Solid' },
     { value: 'dashed', label: 'Dashed' },
     { value: 'dotted', label: 'Dotted' },
+    // Nightly 'line-dashes' (not on a callout).
+    ...(isFeatureOn('line-dashes') && tool !== 'callout'
+      ? [{ value: 'longDash', label: 'Long dash' }, { value: 'dashDot', label: 'Dash-dot' }]
+      : []),
     /* Cloud is offered on every shape a revision cloud can enclose or trace and
        never on an arrow, a counter or a single straight line. supportsCloudStyle
        mirrors the desktop gate exactly. */
@@ -2206,10 +2241,7 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
           width={100}
           value={api.eraserMode === 'entire' ? 'entire' : 'partial'}
           onChange={(mode) => api.setEraserMode(mode)}
-          options={[
-            { value: 'partial', label: 'Partial', ariaLabel: 'Partial erase' },
-            { value: 'entire', label: 'Whole', ariaLabel: 'Erase the whole mark' },
-          ]}
+          options={eraserModeOptions}
         />
       )}
       {/* BOARDS 1 & 3 — single-colour tools get the three preset discs plus the
@@ -2419,10 +2451,9 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
                   <SheetSegmented
                     ariaLabel="Eraser mode"
                     value={api.eraserMode === 'entire' ? 'entire' : 'partial'}
-                    options={[
-                      { value: 'partial', label: 'Partial', ariaLabel: 'Partial erase' },
-                      { value: 'entire', label: 'Whole', ariaLabel: 'Erase the whole mark' },
-                    ]}
+                    options={eraserModeOptions.map(({ icon, ...option }) => (
+                      icon ? { ...option, preview: <Icon name={icon} size={16} color="currentColor" /> } : option
+                    ))}
                     onChange={(mode) => api.setEraserMode?.(mode)}
                   />
                 </SheetRow>
@@ -2585,7 +2616,7 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
                           mixed={widthMixed}
                           value={api.strokeWidthInputValue}
                           min={tool === 'counter' ? COUNTER_SIZE_MIN : 1}
-                          max={tool === 'counter' ? COUNTER_SIZE_MAX : 50}
+                          max={tool === 'counter' ? COUNTER_SIZE_MAX : tool === 'tape' ? 100 : 50}
                           decimals={tool === 'counter' ? 0 : ANNOTATION_WIDTH_DECIMALS}
                           unit={tool === 'counter' ? '' : 'pt'}
                           onDraft={(value) => api.handleStrokeWidthInputChange?.({ target: { value } })}
@@ -2661,7 +2692,21 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
                 {/* Arrowhead (arrow, callout) and, for the arrow, its ends -
                     End / Both / None, the IDENTICAL control the desktop bar
                     carries. Every head is on show, drawn, not listed. */}
-                {showArrowhead && (
+                {/* Nightly 'pen-types': Drawboard's Basic / Pro /
+                    Calligraphy pens, a setting of the armed Pen. */}
+                {tool === 'pen' && api.activeTool === 'pen' && isFeatureOn('pen-types') && (
+                  <SheetSection>
+                    <PenTypeTiles tip={tip} />
+                  </SheetSection>
+                )}
+                {/* Nightly 'line-endings': Drawboard's Endings (Start | End,
+                    ten heads) for the Line and Arrow, as on the desktop. */}
+                {lineEndingsOn && (
+                  <SheetSection>
+                    <LineEndingsPanel api={api} tool={tool} tip={tip} compact />
+                  </SheetSection>
+                )}
+                {showArrowhead && !lineEndingsOn && (
                   <SheetSection>
                     <SheetRow label="Head">
                       <SheetSegmented
@@ -2948,6 +2993,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
   const markerArmed = activeTool === 'survey-marker';
 
   const [measureMenuRect, setMeasureMenuRect] = useState(null);
+  const stampPickerOpen = useStampPickerOpen();
   const selectTool = (toolId) => {
     bottomToolbarApi?.setActiveTool?.(toolId);
     bottomToolbarApi?.setActiveCategoryDropdown?.(null);
@@ -3121,7 +3167,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                     />
                   </>
                 )}
-                {!regionApi && (TOOL_GROUPS[openCategory]?.tools || []).map((tool) => (openCategory === 'shape' ? (
+                {!regionApi && (TOOL_GROUPS[openCategory]?.tools || []).filter((tool) => (!tool.flag || isFeatureOn(tool.flag)) && (!tool.cloudOnly || bottomToolbarApi?.pinsAvailable)).map((tool) => (openCategory === 'shape' ? (
                   <RailButton
                     key={tool.id}
                     active={isMobileShapeToolActive(tool.id, { activeTool, lineBorderStyle: bottomToolbarApi?.lineBorderStyle, measureMode: bottomToolbarApi?.measureMode, measureScaleDialogOpen: bottomToolbarApi?.measureScaleDialogOpen })}
@@ -3145,14 +3191,20 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                 ) : (
                   <RailButton
                     key={tool.id}
-                    active={activeTool === tool.id}
+                    active={tool.picker ? stampPickerOpen : activeTool === tool.id}
                     icon={tool.icon}
                     glyph={SUBTOOL_GLYPH}
                     label={tool.label}
                     disabled={tool.disabled}
                     data-morph-icon={tool.icon}
                     data-tool-switch="true"
-                    onClick={() => { if (!tool.disabled) selectTool(tool.id); }}
+                    onClick={() => {
+                      if (tool.disabled) return;
+                      if (tool.picker) { setStampPickerOpen(!stampPickerOpen); return; }
+                      if (tool.action) { if (stampPickerOpen) setStampPickerOpen(false); pickImageToInsert(); return; }
+                      if (stampPickerOpen) setStampPickerOpen(false);
+                      selectTool(tool.id);
+                    }}
                   />
                 )))}
                 {measureMenuRect && createPortal(
@@ -3546,6 +3598,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                 </div>
               ))}
             </div>
+            <SpotlightMeButton phone onDone={requestUsersSheetClose} />
           </section>
         </>
       )}

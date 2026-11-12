@@ -131,6 +131,26 @@ export const MAX_CELL_CHARS = 32000;
 // provider's savesLate): Google saves as the person types.
 export const RECENT_WRITE_MS = 300_000;
 const RECENT_WRITE_MAX = 2000;
+// A PM typing a new item into the first empty row under the list, unsaved,
+// while Survey appends a field tech's new item there (Graph still sees the
+// row as empty): the PM's late save lands on the tech's row. A changed Item
+// on a row Survey appended this recently is taken as that, not a rename.
+export const NEW_ROW_TAKEOVER_MS = 180_000;
+// Google saves on Enter, but a PM's cell editor open on that empty row when
+// Survey appends there still commits over Survey's value. Only the editor's
+// open time plus a round (15 to 30 s) apart, so a shorter window.
+export const NEW_ROW_TAKEOVER_LIVE_MS = 60_000;
+const isRowWatch = (key) => key.endsWith('|+row');
+// Problems are rebuilt every round (a missing column says so again each
+// time). Something that happened once (a row split, a Row ID put back)
+// would show for one round, a few seconds, so it stays this long instead.
+export const NOTICE_MS = 30 * 60_000;
+const NOTICE_MAX = 20;
+function noticesOf(saved, nowMs) {
+  return (Array.isArray(saved) ? saved : [])
+    .filter((n) => n && typeof n.message === 'string' && nowMs - Number(n.t) < NOTICE_MS)
+    .slice(0, NOTICE_MAX);
+}
 function recentWritesOf(saved, nowMs) {
   const kept = Object.entries(saved || {})
     .filter(([, w]) => w && nowMs - Number(w.t) < RECENT_WRITE_MS)
@@ -392,17 +412,28 @@ export async function planSheetRound({
   now = new Date(),
   holdErase = false,
   lateSaves = false,
+  lockedTabs = [],
 }) {
   const nextBaseline = { ...baseline };
+  // Tabs that already had items before this round: the first fill of a new
+  // tab is all appends, and a PM renaming one of those is a rename.
+  const scopesWithItems = new Set(Object.values(baseline || {}).map((b) => b?.scopeId).filter(Boolean));
+  const rowWindowMs = lateSaves ? NEW_ROW_TAKEOVER_MS : NEW_ROW_TAKEOVER_LIVE_MS;
   // Many filled answers blanked in the sheet at once (an older copy restored
   // from version history, a column cleared by mistake): held until an editor
   // says which side is right, so field work is never wiped in one round.
   // 'allow' = clear them in the app too; 'restore' = write the app's back.
-  const eraseMode = state.eraseChoice === 'sheet' ? 'allow'
-    : state.eraseChoice === 'app' ? 'restore'
-      : (holdErase || state.heldErase) ? 'hold' : 'count';
+  // An editor's choice answers the held erase on the tabs it was counted on
+  // (all of them, for a hold saved before holds named their tabs); blanks on
+  // any other tab are held as usual, never answered by it.
+  const choiceMode = state.eraseChoice === 'sheet' ? 'allow' : state.eraseChoice === 'app' ? 'restore' : null;
+  const heldOn = Array.isArray(state.heldErase?.scopes) ? state.heldErase.scopes : null;
+  const otherMode = (holdErase || state.heldErase) ? 'hold' : 'count';
+  const eraseModeOf = (scopeId) => (choiceMode && (heldOn === null || heldOn.includes(scopeId)) ? choiceMode : otherMode);
   let erasing = 0;
-  const erasingItems = new Set();
+  let held = 0;
+  const heldItems = new Set();
+  const heldScopes = new Set();
   const next = {
     sheetIds: { ...(state.sheetIds || {}) },
     conflicts: { ...(state.conflicts || {}) },
@@ -417,13 +448,22 @@ export async function planSheetRound({
     stuck: { ...(state.stuck || {}) },
     // "markerId|key" -> { t, was, wrote }: cells Survey wrote lately (see
     // RECENT_WRITE_MS), as fingerprints.
-    recentWrites: lateSaves ? recentWritesOf(state.recentWrites, now.getTime()) : {},
+    recentWrites: Object.fromEntries(Object.entries(recentWritesOf(state.recentWrites, now.getTime()))
+      .filter(([k]) => lateSaves || isRowWatch(k))),
     problems: [],
+    // Things that happened once, shown for NOTICE_MS: { t, message, markerId?, scopeId? }.
+    notices: noticesOf(state.notices, now.getTime()),
     missingTabs: [],
     // Tabs still there that lost their Row ID column or heading row (deleted,
     // cleared, typed over): not synced until undone or rebuilt (putBackTab).
     brokenTabs: [],
+    // Synced tabs the PM protected (Review > Protect Sheet): left alone, so
+    // one locked tab doesn't stop every other tab (real Excel 11-10).
+    lockedTabs: [],
     heldErase: null,
+  };
+  const notice = (p) => {
+    next.notices = [{ ...p, t: now.getTime() }, ...next.notices.filter((n) => n.message !== p.message)].slice(0, NOTICE_MAX);
   };
   const plan = {
     cellWrites: [], // { sheetId, title, row, col, value, markerId?, key? }   row/col are 0-based grid indexes
@@ -454,6 +494,7 @@ export async function planSheetRound({
   let newRowsWaiting = 0;
 
   const sheetsById = new Map((grid?.sheets || []).map((s) => [String(s.sheetId), s]));
+  const locked = new Set((lockedTabs || []).map(String));
   const seenMarkers = new Set();
   const markersByScope = new Map();
   for (const [id, m] of Object.entries(markers || {})) {
@@ -469,6 +510,13 @@ export async function planSheetRound({
     const sheet = sheetId != null ? sheetsById.get(String(sheetId)) : null;
     if (!sheet) {
       next.missingTabs.push(scope.scopeId);
+      continue;
+    }
+    // Nothing read or written: its items, baseline and remembered headers
+    // stay as they were, and every change waits until it's unprotected.
+    if (locked.has(String(sheet.sheetId))) {
+      next.lockedTabs.push(scope.scopeId);
+      next.problems.push({ scopeId: scope.scopeId, message: `"${sheet.title}" is protected in the sheet, so Survey can't write to it and isn't syncing it. Nothing is lost: its changes go in once it's unprotected.` });
       continue;
     }
     const rows = Array.isArray(sheet.rows) ? sheet.rows : [];
@@ -530,6 +578,15 @@ export async function planSheetRound({
       }
     }
     const mappedCols = new Set(colOfKey.values());
+    // The list's own columns: Survey's, plus any headed column of the PM's
+    // right next to them. When a PivotTable beside the list stops a
+    // whole-row delete or insert (real Excel 11-10: every round failed),
+    // rows are cut or opened across just these.
+    let listCols = Math.max(...mappedCols) + 1;
+    while (listCols < header.length && !isBlankCell(header[listCols])) listCols += 1;
+    // Survey's own columns alone: the last resort when even those rows won't
+    // move (a column added past the PivotTable).
+    const ownCols = [...mappedCols].sort((a, b) => a - b);
 
     const sheetRecordOf = (row, base) => {
       const rec = { ...base, answers: { ...(base.answers || {}) } };
@@ -682,7 +739,7 @@ export async function planSheetRound({
             // Baseline kept, so an undo of the delete picks the row up again.
             next.tombstones[markerId] = { at: nowIso, scopeId: scope.scopeId };
           } else {
-            plan.deletes.push({ sheetId: sheet.sheetId, title: sheet.title, row: r, token, rowIdCol });
+            plan.deletes.push({ sheetId: sheet.sheetId, title: sheet.title, row: r, token, rowIdCol, listCols, ownCols });
             plan.summary.deleted += 1;
             delete nextBaseline[markerId];
             next.gone[markerId] = nowIso;
@@ -703,7 +760,7 @@ export async function planSheetRound({
           continue;
         }
         plan.verify.push({ sheetId: sheet.sheetId, title: sheet.title, row: r, col: rowIdCol, token });
-        plan.deletes.push({ sheetId: sheet.sheetId, title: sheet.title, row: r, token, rowIdCol });
+        plan.deletes.push({ sheetId: sheet.sheetId, title: sheet.title, row: r, token, rowIdCol, listCols, ownCols });
         plan.summary.deleted += 1;
         continue;
       }
@@ -737,7 +794,7 @@ export async function planSheetRound({
         delete next.removedInSheet[found];
         await mergeRow({ markerId: found, marker: markers[found], row, r });
         writeCell(r, 'rowId', await tokenFor(found, scope.scopeId), row[rowIdCol]);
-        next.problems.push({ markerId: found, scopeId: scope.scopeId, message: `${where(r)}: its Row ID was changed, so Survey matched it to "${markers[found].name}" by name and put the Row ID back.` });
+        notice({ markerId: found, scopeId: scope.scopeId, message: `${where(r)}: its Row ID was changed, so Survey matched it to "${markers[found].name}" by name and put the Row ID back.` });
         continue;
       }
       // "Total", "Grand total", "Subtotal", "Sum"... typed under the items,
@@ -809,6 +866,7 @@ export async function planSheetRound({
       nextBaseline[markerId] = { scopeId: scope.scopeId, fields: fieldPrintsOf(rec) };
       seenMarkers.add(markerId);
       plan.summary.appended += 1;
+      if (scopesWithItems.has(scope.scopeId)) next.recentWrites[`${markerId}|+row`] = { t: now.getTime() };
     }
     const notItems = new Set(summaryRows);
     let lastItemRow = headerAt;
@@ -819,7 +877,7 @@ export async function planSheetRound({
     const firstSummary = summaryRows.filter((r) => r > lastItemRow && r <= lastItemRow + 3).sort((a, b) => a - b)[0];
     if (appendRows.length) {
       plan.appends.push({
-        sheetId: sheet.sheetId, title: sheet.title, rows: appendRows, width,
+        sheetId: sheet.sheetId, title: sheet.title, rows: appendRows, width, listCols, ownCols,
         ...(firstSummary != null ? { before: firstSummary } : {}),
       });
     }
@@ -870,7 +928,7 @@ export async function planSheetRound({
         }
       }
       // The sheet blanked a filled answer the app has not changed since both
-      // last agreed: counted, and held or put back (see eraseMode).
+      // last agreed: counted, and held or put back (see eraseModeOf).
       const heldKeys = new Set();
       if (base) {
         for (const key of keys) {
@@ -879,19 +937,69 @@ export async function planSheetRound({
           if (!isBlankCell(row[colOfKey.get(key)]) || isBlankCell(cellValueFor(scope, key, appRec))) continue;
           if (getFp(appFps, key) !== getFp(base, key) || getFp(sheetSide, key) === getFp(base, key)) continue;
           erasing += 1;
-          erasingItems.add(markerId);
+          const eraseMode = eraseModeOf(scope.scopeId);
           if (eraseMode === 'hold' || eraseMode === 'restore') setFp(sheetSide, key, getFp(base, key));
-          if (eraseMode === 'hold') heldKeys.add(key);
+          if (eraseMode === 'hold') {
+            heldKeys.add(key);
+            held += 1;
+            heldItems.add(markerId);
+            heldScopes.add(scope.scopeId);
+          }
+        }
+      }
+      // A PM's new row saved late over the row Survey had just appended for
+      // a field tech's item (NEW_ROW_TAKEOVER_MS): the cells the PM typed
+      // become a new item in the next row, and the tech's values go back.
+      const rowWatch = next.recentWrites[`${markerId}|+row`];
+      const rowFresh = !!rowWatch && now.getTime() - Number(rowWatch.t) <= rowWindowMs;
+      if (base && rowFresh && colOfKey.has('item')) {
+        const fresh = rowWatch;
+        const typedName = cellText(row[colOfKey.get('item')]).trim();
+        if (fresh && !fresh.took && typedName
+          && getFp(sheetSide, 'item') !== getFp(base, 'item') && getFp(appFps, 'item') === getFp(base, 'item')) {
+          const typedKeys = keys.filter((k) => {
+            const column = scope.columns.find((c) => c.key === k);
+            return columnIsEditable(column) && colOfKey.has(k) && !errorKeys.has(k)
+              && getFp(sheetSide, k) !== getFp(base, k) && getFp(appFps, k) === getFp(base, k);
+          });
+          const id = newMarkerId();
+          const item = {
+            id, name: '', moduleId: scope.moduleId, categoryId: scope.categoryId, checklistResponses: {}, note: {},
+            changedBy: sheetEditor, changedDate: nowIso, pageNumber: null, bounds: null, source: 'sheet',
+          };
+          for (const k of typedKeys) {
+            const conv = sheetCellToApp(layout, scope.columns.find((c) => c.key === k), row[colOfKey.get(k)]);
+            if (conv.error) { next.problems.push({ markerId: id, scopeId: scope.scopeId, message: `${where(r)}: ${conv.error}` }); continue; }
+            applyFieldToMarker(item, k, conv, nowIso);
+          }
+          if (!item.name) item.name = typedName;
+          plan.markerWrites[id] = item;
+          plan.summary.created += 1;
+          const made = await rowFor(id, item);
+          appendRows.push(made.out);
+          plan.summary.appended += 1;
+          nextBaseline[id] = { scopeId: scope.scopeId, fields: fieldPrintsOf(made.rec) };
+          seenMarkers.add(id);
+          next.recentWrites[`${id}|+row`] = { t: now.getTime() };
+          for (const k of typedKeys) setFp(sheetSide, k, getFp(base, k));
+          // Still watched (the rest of that save may land later), but split once.
+          next.recentWrites[`${markerId}|+row`] = { ...fresh, took: true };
+          notice({ markerId: id, scopeId: scope.scopeId, message: `${where(r)}: "${typedName}" was typed into the row Survey had just filled with "${String(marker.name || '')}" for a field tech. Both are kept: "${typedName}" is a new item in the row below.` });
         }
       }
       // A late save landing on a cell Survey just wrote, while the app still
       // holds what Survey wrote: compared against the value from before
       // Survey's write, so it is held as a conflict (and stays held, since the
       // baseline keeps that value) instead of replacing the app's value.
-      if (base && lateSaves) {
+      if (base && (lateSaves || rowFresh)) {
         let copied = false;
+        // Cells of a row Survey appended count as written over a blank cell,
+        // so a late PM value on a filled one (a note typed into that empty
+        // row) is held too; on a cell Survey left blank it just comes in.
+        const blankPrints = rowFresh ? fieldPrintsOf({}) : null;
         for (const key of keys) {
-          const w = next.recentWrites[`${markerId}|${key}`];
+          let w = next.recentWrites[`${markerId}|${key}`];
+          if (!w && blankPrints && getFp(base, key) !== getFp(blankPrints, key)) w = { wrote: getFp(base, key), was: getFp(blankPrints, key) };
           if (!w) continue;
           const wrote = getFp(base, key);
           if (w.wrote !== wrote || getFp(appFps, key) !== wrote) continue;
@@ -1015,20 +1123,46 @@ export async function planSheetRound({
   }
   // At most 200 problems, each short: they are saved with the link and sent
   // with every status, and a sheet can hold any amount of text.
-  next.problems = next.problems.slice(0, 200).map((p) => ({ ...p, message: displayOf(p.message) }));
+  // Shown even when the item is gone: "deleted in Survey, so the row was
+  // kept" is about a deleted item. They expire on their own.
+  const shown = next.notices.map(({ t, ...p }) => p);
+  next.problems = [...shown, ...next.problems].slice(0, 200).map((p) => ({ ...p, message: displayOf(p.message) }));
 
   // Conflicts and lists of markers that no longer exist go away.
   for (const id of Object.keys(next.conflicts)) if (!markers[id]) delete next.conflicts[id];
   for (const id of Object.keys(next.removedInSheet)) if (!markers[id]) delete next.removedInSheet[id];
   for (const id of Object.keys(next.choices)) if (!markers[id]) delete next.choices[id];
+  // An item deleted in the app while its tab is locked keeps its baseline,
+  // so its row is taken out once unlocked instead of coming back as new.
+  const lockedScopes = new Set(next.lockedTabs);
   for (const id of Object.keys(nextBaseline)) {
-    if (!markers[id] && !plan.markerWrites[id] && !next.tombstones[id]) delete nextBaseline[id];
+    if (!markers[id] && !plan.markerWrites[id] && !next.tombstones[id] && !lockedScopes.has(nextBaseline[id]?.scopeId)) delete nextBaseline[id];
   }
 
   for (const flag of Object.keys(next.stuck)) if (!markers[flag.split('|')[0]]) delete next.stuck[flag];
-  delete next.eraseChoice; // used once
-  if (eraseMode === 'hold' && erasing) {
-    next.heldErase = { count: erasing, items: erasingItems.size, at: state.heldErase?.at || nowIso };
+  // A locked tab's rows weren't looked at: a held erase with blanks on it,
+  // and an editor's choice about that erase, wait for the tab instead of
+  // being used up or dropped. Dropped, its blanks would come in as plain
+  // edits once it's unlocked if fewer than BIG_ERASE were left. A hold saved
+  // before it named its tabs counts as on every tab.
+  const lockedNow = new Set(next.lockedTabs);
+  const waitsOnLocked = Boolean(state.heldErase) && lockedNow.size > 0
+    && (heldOn === null || heldOn.some((id) => lockedNow.has(id)));
+  if (waitsOnLocked && state.eraseChoice) next.eraseChoice = state.eraseChoice;
+  else delete next.eraseChoice; // used once
+  // Only the locked tabs of the hold keep waiting; its open tabs were done.
+  const lockedPart = waitsOnLocked ? (heldOn === null ? [...lockedNow] : heldOn.filter((id) => lockedNow.has(id))) : [];
+  const was = waitsOnLocked ? state.heldErase : {};
+  if (held || waitsOnLocked) {
+    next.heldErase = {
+      count: Math.max(held, was.count || 0),
+      items: Math.max(heldItems.size, was.items || 0),
+      // While a choice waits, the hold it answers is only its locked part: a
+      // blank held meanwhile on another tab is not answered by that choice
+      // (it is held again each round, and asked about once the choice is used).
+      scopes: waitsOnLocked && state.eraseChoice ? lockedPart : [...new Set([...heldScopes, ...lockedPart])],
+      at: state.heldErase?.at || nowIso,
+    };
   } else {
     delete next.heldErase;
   }

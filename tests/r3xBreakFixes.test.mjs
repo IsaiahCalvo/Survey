@@ -26,7 +26,17 @@ test('hiding marks drops the pick and blocks mark-changing keys', () => {
   const src = read('PDFViewer.jsx');
   assert.match(src, /if \(marksHidden\(\)\) clearAnnotationSelectionForContextChange\('marks-hidden'\)/);
   // Only the front viewer swallows the keys (Home and other tabs keep theirs).
-  assert.match(src, /if \(!marksHidden\(\) \|\| undoRedoKeyActiveRef\.current === false \|\| isTypingTarget\(event\.target\)\) return;/);
+  assert.match(src, /if \(undoRedoKeyActiveRef\.current === false \|\| isTypingTarget\(event\.target\)\) return;[\s\S]{0,400}const gesture = selectionGestureRunning\(pdfjsWrapperRef\.current \|\| document\);\n      if \(!marksHidden\(\) && !gesture\) return;/);
+});
+
+test('Undo, Delete and Duplicate wait while a mark is held mid-drag (R4-C K1)', async () => {
+  const src = read('PDFViewer.jsx');
+  const at = src.indexOf('const handleUndoRedoKey = (e) => {');
+  assert.match(src.slice(at, at + 1200), /e\.preventDefault\(\);[\s\S]{0,300}if \(selectionGestureRunning\(pdfjsWrapperRef\.current \|\| document\)\) \{[\s\S]{0,120}return;/);
+  const { selectionGestureRunning } = await import('../src/utils/selectModes.js');
+  assert.equal(selectionGestureRunning({ querySelector: () => null }), false);
+  assert.equal(selectionGestureRunning({ querySelector: (sel) => (sel === '[data-selection-gesture="true"]' ? {} : null) }), true);
+  assert.equal(selectionGestureRunning(null), false);
 });
 
 test('the Undo buttons step back a polygon point first', () => {
@@ -57,7 +67,7 @@ test('a polygon draft only takes and lights its own viewer\'s Undo', async () =>
 
 test('a draft in a tab behind ignores Enter, Escape and Backspace', () => {
   const src = read('components/SVGAnnotationLayer.jsx');
-  assert.match(src, /if \(!draftTabActiveRef\.current\) return;\n\s*if \(!draftOwnsKeyboard\(e\.target\)\) return;/);
+  assert.match(src, /if \(!draftTabActiveRef\.current \|\| !draftOwnsKeyboard\(e\.target\)\) return;/);
 });
 
 test('an open polygon draft is counted per viewer until released', async () => {
@@ -69,4 +79,31 @@ test('an open polygon draft is counted per viewer until released', async () => {
   release();
   release();
   assert.equal(hasOpenPolyDraft(viewer), false);
+});
+
+test('Back or Cancel while New is making the file closes it, and the file does not open later', () => {
+  const dialog = read('home/NewDocumentDialog.jsx');
+  assert.match(dialog, /await onCreate\(file, \{ open: \(\) => !dismissedRef\.current \}\);/);
+  assert.match(dialog, /onClose=\{dismiss\}/);
+  assert.doesNotMatch(dialog, /busy=\{busy\}/);
+  assert.match(dialog, /<button type="button" className="hub-btn dialog-touch-pad" onClick=\{dismiss\}>Cancel<\/button>/);
+  assert.match(read('home/DocumentsLedger.jsx'), /onCreate=\{\(file, \{ open = true \} = \{\}\) => onDropFiles\(\[file\], \{ projectId: null, open, newDocument: true \}\)\}/);
+  const dash = read('Dashboard.jsx');
+  assert.match(dash, /const wantsOpen = \(\) => \(typeof openAfterUpload === 'function' \? Boolean\(openAfterUpload\(\)\) : Boolean\(openAfterUpload\)\);/);
+  assert.match(dash, /if \(wantsOpen\(\)\) onDocumentSelect\(file\);/);
+});
+
+test('a drag left behind by a second finger is dropped, never committed onto a missing mark (R5 K1c)', () => {
+  const src = read('hooks/useSVGInteraction.js');
+  assert.match(src, /if \(\(ds\.mode === 'resize' \|\| ds\.mode === 'rotate'\)\n      && ds\.annotationIndex != null && !annotations\?\.objects\?\.\[ds\.annotationIndex\]\) \{\n\s+try \{ e\.target\?\.releasePointerCapture/);
+  // A move finds its mark by id at release, so a colleague deleting an
+  // earlier mark mid-drag never drops it.
+  assert.match(src, /const moveIndex = resolveMarkIndex\(annotations\?\.objects, ds\.annotationIndex, ds\.markId\);/);
+  assert.match(src, /if \(ds\.active && \(ds\.mode === 'resize' \|\| ds\.mode === 'rotate'\)\) \{[\s\S]{0,300}currentResize: null, currentAngle: undefined \};/);
+});
+
+test('page sync also notes new highlights made while another window changes pages', () => {
+  const src = read('PDFViewer.jsx');
+  const at = src.indexOf('const commitTextMarkupDocumentTransaction = useCallback(');
+  assert.match(src.slice(at, at + 5000), /for \(const \[pageKey, nextPage\] of Object\.entries\(transaction\.nextByPage\)\) \{\n\s+noteMarksOnOldPages\(Number\(pageKey\), nextPage\);\n\s+\}\n\s+annotationsByPageRef\.current = transaction\.nextByPage;/);
 });

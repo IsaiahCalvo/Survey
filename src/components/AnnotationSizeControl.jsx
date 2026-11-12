@@ -14,6 +14,8 @@ export const ANNOTATION_SIZE_PRESETS = Object.freeze({
   width: [1, 2, 3, 4, 6, 8, 10, 12, 16, 20, 32, 50],
   counter: [5, 8, 12, 16, 24, 32, 48, 64],
   eraser: [1, 4, 8, 12, 16, 24, 32, 48, 64, 80, 100],
+  // Tape (beta 'tape-tool'): Drawboard's list, 10 to 100 pt.
+  tape: [10, 20, 30, 40, 50, 80, 90, 100],
 });
 
 /**

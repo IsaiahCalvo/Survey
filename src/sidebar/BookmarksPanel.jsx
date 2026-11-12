@@ -37,6 +37,8 @@ import {
 import { CALM_LIST_AUTO_SCROLL } from '../reorder/dragAutoScroll.js';
 import { useTooltip } from '../components/Tooltip';
 import SwipeActionsRow, { buildSwipeActions } from '../components/SwipeActionsRow.jsx';
+import ListItemContextMenu from '../components/ListItemContextMenu.jsx';
+import { afterMenuCloses, listMenuPointFrom } from '../utils/listContextMenu.js';
 import SectionIconButton, { SectionIconActions } from '../components/SectionIconButton.jsx';
 import { keyboardControlProps } from '../utils/keyboardActivation.js';
 import { DRAG_GLIDE, DRAG_GLIDE_CSS, DRAG_GLIDE_EASING, DRAG_GLIDE_MS } from '../reorder/dragMotion.js';
@@ -207,6 +209,12 @@ const BookmarkTreeRow = ({
   const tip = useTooltip();
   const [editName, setEditName] = React.useState(item.name || '');
   const [editPage, setEditPage] = React.useState(item.pageIds?.[0]?.toString() ?? '');
+  // Owner 2026-11-12: right-click a row for the actions Edit mode shows
+  // (Rename, Delete), no Edit mode needed. Rename opens this one row's field.
+  const [rowMenu, setRowMenu] = React.useState(null);
+  const [renamingHere, setRenamingHere] = React.useState(false);
+  const nameInputRef = React.useRef(null);
+  const showNameField = (isEditMode || renamingHere) && !isClone;
 
   React.useEffect(() => {
     setEditName(item.name || '');
@@ -233,6 +241,7 @@ const BookmarkTreeRow = ({
       : CSS.Translate.toString(transform);
 
   const commitName = () => {
+    setRenamingHere(false);
     const nextName = editName.trim();
     if (nextName && nextName !== item.name) {
       onRename?.(item.id, nextName);
@@ -240,6 +249,21 @@ const BookmarkTreeRow = ({
       setEditName(item.name || '');
     }
   };
+  const startRenameHere = () => {
+    setEditName(item.name || '');
+    setRenamingHere(true);
+    afterMenuCloses(() => {
+      nameInputRef.current?.focus({ preventScroll: true });
+      nameInputRef.current?.select();
+    });
+  };
+  const rowMenuItems = () => [
+    onRename && { label: 'Rename', onClick: startRenameHere },
+    isFolder
+      ? (onAddChild && { label: 'Add bookmark to group', icon: 'plus', onClick: () => onAddChild(item.id) })
+      : (item.pageIds?.[0] ? { label: `Go to page ${item.pageIds[0]}`, icon: 'pages', onClick: () => { onSelect?.(item.id); onNavigate?.(item); } } : null),
+    onDelete && { label: 'Delete', danger: true, onClick: () => onDelete(item.id) },
+  ];
 
   const handlePageInputChange = (value) => {
     const sanitized = value.replace(/[^\d]/g, '');
@@ -307,7 +331,7 @@ const BookmarkTreeRow = ({
           Edit-mode trash), no Edit mode needed. */}
       <SwipeActionsRow
         label={item.name}
-        disabled={isClone || isEditMode || isDraggingAny || isActiveRow}
+        disabled={isClone || isEditMode || renamingHere || isDraggingAny || isActiveRow}
         actions={isClone ? null : buildSwipeActions({ onDelete: onDelete ? () => onDelete(item.id) : undefined })}
       >
       <div
@@ -317,8 +341,12 @@ const BookmarkTreeRow = ({
         // 2026-10-01): solid raised surface, soft shadow, no inner block.
         data-drag-lifted={isClone || isActiveRow ? '' : undefined}
         {...(isClone ? {} : keyboardControlProps(null, { enterOnly: true }))}
+        onContextMenu={isClone ? undefined : (event) => {
+          const point = listMenuPointFrom(event);
+          if (point) setRowMenu(point);
+        }}
         onClick={() => {
-          if (isClone || isEditMode) return;
+          if (isClone || isEditMode || renamingHere) return;
           onSelect?.(item.id);
           // UX 2026-10-01 (owner: tapping a folder opens / closes it at once):
           // a click anywhere on a folder row folds it, like the phone row; a
@@ -430,8 +458,9 @@ const BookmarkTreeRow = ({
           </button>
         ) : null}
         <Icon name={isFolder ? 'folder' : 'bookmark'} size={13} color="var(--text-3)" />
-        {isEditMode && !isClone ? (
+        {showNameField ? (
           <input
+            ref={nameInputRef}
             value={editName}
             onChange={(event) => setEditName(event.target.value)}
             onBlur={commitName}
@@ -440,11 +469,14 @@ const BookmarkTreeRow = ({
                 commitName();
                 event.currentTarget.blur();
               } else if (event.key === 'Escape') {
+                event.stopPropagation();
+                setRenamingHere(false);
                 setEditName(item.name || '');
                 event.currentTarget.blur();
               }
             }}
             onClick={(event) => event.stopPropagation()}
+            onPointerDown={(event) => event.stopPropagation()}
             style={{
               flex: 1,
               minWidth: 0,
@@ -590,6 +622,7 @@ const BookmarkTreeRow = ({
         )}
       </div>
       </SwipeActionsRow>
+      {rowMenu && <ListItemContextMenu point={rowMenu} items={rowMenuItems()} onClose={() => setRowMenu(null)} />}
     </div>
   );
 };

@@ -104,6 +104,10 @@ function colorOf(obj) {
 
 // One shape for Created: an ISO time, whether the mark kept a time string or
 // a raw epoch number (counters stamp Date.now()).
+export function markCreatedAt(obj) {
+  return createdAtOf(obj);
+}
+
 function createdAtOf(obj) {
   const legacy = obj?.data?.legacyCallout;
   const raw = obj?.meta?.createdAt || obj?.data?.createdAt || legacy?.meta?.createdAt || legacy?.createdAt

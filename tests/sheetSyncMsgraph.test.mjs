@@ -159,7 +159,7 @@ function fakeGraph({ driveType = 'business' } = {}) {
       if (!used.length) return json(404, { error: { code: 'ItemNotFound' } });
       return json(200, { rowIndex: used[0], rowCount: used[used.length - 1] - used[0] + 1 });
     }
-    const range = /^\/range\(address='([^']+)'\)(\/delete|\/dataValidation)?/.exec(tail);
+    const range = /^\/range\(address='([^']+)'\)(\/delete|\/insert|\/dataValidation)?/.exec(tail);
     if (method === 'POST' && tail === '/freezePanes/freezeRows') { target.frozen = JSON.parse(init.body).count; return json(200, {}); }
     if (range && method === 'PATCH' && JSON.parse(init.body).columnHidden !== undefined) {
       // Graph answers a whole-column address with all 1,048,576 rows; the
@@ -177,6 +177,25 @@ function fakeGraph({ driveType = 'business' } = {}) {
     }
     if (range) {
       const a = parseAddress(range[1]);
+      if (method === 'POST' && range[2] === '/insert' && state.refuseInsert) {
+        return json(400, { error: { code: 'InvalidArgument', message: 'The argument is invalid or missing or has an incorrect format.' } });
+      }
+      if (method === 'POST' && range[2] === '/insert') {
+        // Insert cells, shift down: only the address's columns move.
+        assert.equal(JSON.parse(init.body).shift, 'Down');
+        const count = a.r2 - a.r1 + 1;
+        for (let r = target.cells.length - 1; r >= a.r1; r -= 1) {
+          for (let c = a.c1; c <= a.c2; c += 1) {
+            const v = target.cells[r]?.[c];
+            if (v == null || v === '') continue;
+            target.cells[r + count] = target.cells[r + count] || [];
+            target.cells[r + count][c] = v;
+            target.cells[r][c] = '';
+          }
+        }
+        state.cTag += 1;
+        return json(204);
+      }
       if (method === 'POST' && range[2]) {
         target.cells.splice(a.r1, a.r2 - a.r1 + 1);
         state.cTag += 1;
@@ -299,8 +318,21 @@ test('appends under the last used row and deletes rows highest first', async () 
   ]);
   assert.deepEqual(s.cells.slice(5), [['rid-5', 'E'], ['rid-6', '']]);
   assert.deepEqual(blank.cells, [['h1', 'h2']]);
+  // Rows are inserted (shift Down) before they are written, so a PM's unsaved
+  // typing in that first empty row moves down instead of being lost.
+  const inserts = graph.calls.filter((c) => c.endsWith('/insert'));
+  assert.ok(inserts.some((c) => c.includes("range(address='A6:B7')")), inserts.join(' | '));
   await p.deleteRows(FILE, [{ sheetId: s.id, row: 1 }, { sheetId: s.id, row: 3 }]);
   assert.deepEqual(s.cells.map((r) => r[0]), ['Row ID', 'rid-2', 'rid-4', 'rid-5', 'rid-6']);
+});
+
+test('an append whose insert is refused still writes the rows under the list', async () => {
+  const graph = fakeGraph();
+  const s = graph.sheet('S', 0, [['Row ID', 'Item'], ['rid-1', 'A']]);
+  graph.addFile('ITEM1', [s]);
+  graph.refuseInsert = true;
+  await provider(graph).appendRows(FILE, [{ sheetId: s.id, title: 'S', rows: [['rid-2', 'B']], width: 2, listCols: 2 }]);
+  assert.deepEqual(s.cells.slice(2), [['rid-2', 'B']]);
 });
 
 test('reopens an expired session once and carries on', async () => {

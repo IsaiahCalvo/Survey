@@ -43,7 +43,8 @@ import MeasureEditPopover from './MeasureEditPopover';
 import { watchLightPopover } from './dismissRules.js';
 import { useMenuFocus } from '../hooks/useMenuFocus.js';
 import { HISTORY_PAGE_SELECTION_EVENT } from '../utils/historyMarkFilter.js';
-import { LINE_STYLE_OPTIONS, LINE_STYLE_SAMPLE_ICONS } from '../utils/lineStyleOptions.js';
+import { LINE_STYLE_SAMPLE_ICONS, lineStyleOptionsWith } from '../utils/lineStyleOptions.js';
+import { setPropertiesPanelOpen, usePropertiesPanelOpen } from '../utils/propertiesPanelStore.js';
 import {
   QUICK_BAR_WIDTHS,
   computeSelectionQuickBarPosition,
@@ -54,6 +55,7 @@ import {
   selectionItemSelector,
   selectionKeepOut,
 } from '../utils/selectionQuickBar.js';
+import { linkGoToLabel } from '../utils/linkTool.js';
 import './SelectionQuickBar.css';
 
 // How many entity swatches the bar draws before "All N" (SurveyOverflowRow).
@@ -70,7 +72,7 @@ const isMac = () => {
 };
 
 /** What is picked on every page, from the page layers' own broadcast. */
-function useSelectedItems() {
+export function useSelectedItems() {
   const [byPage, setByPage] = useState(() => new Map());
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -126,7 +128,7 @@ const hairlineRect = (element) => {
 };
 
 /** The viewer area the bar must stay inside: under the tool bars. */
-function viewerBounds(phone = false) {
+export function viewerBounds(phone = false) {
   const container = shownElement('[data-testid="pdf-container"]')
     || shownElement('[data-mobile-pdf-surface="false"]');
   const rect = container?.getBoundingClientRect?.();
@@ -421,6 +423,8 @@ export default function SelectionQuickBar({
     return () => bar.removeEventListener('wheel', onWheel);
   }, [enabled]);
 
+  const propertiesPanelOn = useMemo(() => isFeatureOn('properties-panel'), []);
+  const propertiesPanelOpen = usePropertiesPanelOpen();
   const plan = useMemo(() => planSelectionQuickBar({
     items,
     api,
@@ -439,7 +443,7 @@ export default function SelectionQuickBar({
   // The bar's size changes with what it holds; place it again for that size.
   useLayoutEffect(() => {
     if (active) place();
-  }, [active, place, plan?.colour, plan?.width, plan?.style, plan?.remove, plan?.measure]);
+  }, [active, place, plan?.colour, plan?.width, plan?.style, plan?.remove, plan?.measure, plan?.link, propertiesPanelOpen]);
 
   // The Line popover's dismiss rules (outside press, Escape) are the app's.
   // KAL-66: opened from a keyboard, focus goes into it and Up / Down move
@@ -519,8 +523,12 @@ export default function SelectionQuickBar({
     api?.handleStrokeWidthInputBlur?.({ currentTarget: { value: String(width) } });
   };
 
+  // Nightly 'properties-panel': "Expand menu" opens Drawboard's panel; while
+  // it is open the style buttons live there and the bar keeps its actions.
+  const panelAllowed = !phone && propertiesPanelOn;
+  const panelHoldsStyles = panelAllowed && propertiesPanelOpen;
   const groups = [];
-  if (phone) {
+  if (phone || panelHoldsStyles) {
     // Colour and line live on the phone's own strip.
   } else if (plan?.colour === 'dots' && paint) {
     groups.push(
@@ -579,7 +587,7 @@ export default function SelectionQuickBar({
       />,
     );
   }
-  if (!phone && (plan?.width || plan?.style)) {
+  if (!phone && !panelHoldsStyles && (plan?.width || plan?.style)) {
     groups.push(
       <span key="line" className="selection-quick-bar__group" data-selection-quick-line>
         <button
@@ -621,6 +629,28 @@ export default function SelectionQuickBar({
       </span>,
     );
   }
+  // Hyperlink (Nightly 'link-tool'): "Go to ..." follows the picked link
+  // (a click on it only picks it, as in Drawboard); Link edits it.
+  if (plan?.link && api?.selectedLink) {
+    const goTo = linkGoToLabel(api.selectedLink.link);
+    groups.push(
+      <span key="link" className="selection-quick-bar__group" data-selection-quick-link>
+        <button
+          type="button"
+          className="selection-quick-bar__button selection-quick-bar__button--text"
+          aria-label={goTo}
+          {...chromeTip(goTo, tipSide)}
+          data-selection-quick-goto=""
+          onMouseDown={(event) => event.stopPropagation()}
+          onClick={() => api.followLink(api.selectedLink.link)}
+          style={{ width: 'auto', padding: '0 8px', fontSize: 12, whiteSpace: 'nowrap', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}
+        >
+          {goTo}
+        </button>
+        {plan.linkEdit && button('Link', 'hyperlink', () => api.editSelectedLink(), { 'data-selection-quick-link-edit': '' })}
+      </span>,
+    );
+  }
   groups.push(
     <span key="actions" className="selection-quick-bar__group">
       {onComment && items.length === 1 && button('Comment', 'comment', () => onComment(items[0]), { 'data-selection-quick-comment': 'true' })}
@@ -628,6 +658,13 @@ export default function SelectionQuickBar({
       {plan?.remove && button('Delete', 'trash', () => runKey('delete'))}
     </span>,
   );
+  if (panelAllowed && !propertiesPanelOpen) {
+    groups.push(
+      <span key="expand" className="selection-quick-bar__group">
+        {button('Expand menu', 'expandMenu', () => setPropertiesPanelOpen(true), { 'data-selection-quick-expand': 'true' })}
+      </span>,
+    );
+  }
   // The phone gets More too (Nightly, 'phone-mark-more'): the same mark menu a
   // long press opens, one tap away.
   if (plan?.more && (!phone || phoneMoreOn)) {
@@ -670,7 +707,7 @@ export default function SelectionQuickBar({
       )}
       {plan?.style && (
         <div className="selection-quick-bar__styles" role="group" aria-label="Line style">
-          {LINE_STYLE_OPTIONS
+          {lineStyleOptionsWith(isFeatureOn('line-dashes') && api?.contextTool !== 'callout')
             .filter((option) => option.value !== 'cloud' || api?.supportsCloudStyle)
             .map((option) => {
               const current = !styleMixed && option.value === styleValue;
