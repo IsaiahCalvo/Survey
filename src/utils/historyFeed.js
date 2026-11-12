@@ -344,8 +344,8 @@ export function classifyHistoryRow(row) {
     };
   }
   if (eventType === 'annotation_deleted') return finish('deleted', baseType, row);
-  if (eventType.endsWith('_undo_applied')) return { kind: 'undo', verb: 'undid a change', noun: '', typeKey: 'undo', glyph: 'undo', count: 0, suffix: '' };
-  if (eventType.endsWith('_redo_applied')) return { kind: 'redo', verb: 'redid a change', noun: '', typeKey: 'redo', glyph: 'redo', count: 0, suffix: '' };
+  if (eventType.endsWith('_undo_applied')) return undoRedoLine('undo', row);
+  if (eventType.endsWith('_redo_applied')) return undoRedoLine('redo', row);
 
   if (eventType === 'checkpoint_added' || eventType === 'checkpoint_added_annotation_fast') {
     const reason = String(payload.reason || payload.rawActionType || '').toLowerCase();
@@ -382,6 +382,37 @@ export function classifyHistoryRow(row) {
   if (action === 'place') return finish('placed', baseType, row, multi);
   if (action === 'callout edit') return finish('edited', 'callout', row, multi);
   return finish('edited', baseType, row, multi);
+}
+
+// Owner 2026-11-12: "it says you undid a change ... I'm not seeing those
+// changes". An undo / redo row carries the step it took back, so the line
+// names it ("undid adding an ellipse"), the same words as the step's own line.
+const UNDO_GERUNDS = {
+  created: 'adding',
+  placed: 'placing',
+  deleted: 'deleting',
+  restored: 'restoring',
+  moved: 'moving',
+  resized: 'resizing',
+  rotated: 'rotating',
+  recolored: 'changing the color of',
+  erased: 'erasing part of',
+  textEdited: 'editing the text of',
+  locked: 'locking',
+  unlocked: 'unlocking',
+  tookOff: 'cutting',
+  edited: 'editing',
+};
+
+function undoRedoLine(kind, row) {
+  const verb = kind === 'undo' ? 'undid' : 'redid';
+  const payload = row?.payload || {};
+  const knowsStep = Boolean(payload.actionType || payload.previewAnnotation || payload.annotationType);
+  const step = knowsStep ? classifyHistoryRow({ ...row, event_type: 'local_annotation_history_added' }) : null;
+  const gerund = step && UNDO_GERUNDS[step.kind];
+  // A step the row can't name ("edited a mark") stays "undid a change".
+  if (!gerund || !step.noun || (step.kind === 'edited' && step.noun === 'a mark')) return { kind, verb: `${verb} a change`, noun: '', typeKey: kind, glyph: kind, count: 0, suffix: '', stepKind: null };
+  return { kind, verb: `${verb} ${gerund}`, noun: step.noun, typeKey: kind, glyph: kind, count: step.count, suffix: '', stepKind: step.kind };
 }
 
 function bulkSingleType(payload) {
@@ -581,6 +612,28 @@ export function latestDeleteRowByMark(rows) {
   const out = new Map();
   for (const row of Array.isArray(rows) ? rows : []) {
     if (!isTrashHistoryEvent(row)) continue;
+    for (const id of historyRowMarkIds(row)) {
+      const prev = out.get(id);
+      if (!prev || historyRowTimeMs(row) > historyRowTimeMs(prev)) out.set(id, row);
+    }
+  }
+  return out;
+}
+
+// Undoing one of these steps takes the mark off the page.
+const UNDO_REMOVES_STEPS = new Set(['created', 'placed', 'restored']);
+
+/** Whether this undo row took its mark off the page (it undid an add). */
+export function historyUndoRemovesMark(row) {
+  if (!String(row?.event_type || '').endsWith('_undo_applied')) return false;
+  return UNDO_REMOVES_STEPS.has(classifyHistoryRow(row).stepKind);
+}
+
+/** The newest undo row for each mark id (Map id -> row). */
+export function latestUndoRowByMark(rows) {
+  const out = new Map();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    if (!String(row?.event_type || '').endsWith('_undo_applied')) continue;
     for (const id of historyRowMarkIds(row)) {
       const prev = out.get(id);
       if (!prev || historyRowTimeMs(row) > historyRowTimeMs(prev)) out.set(id, row);
