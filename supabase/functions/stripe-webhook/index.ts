@@ -1,6 +1,7 @@
 import Stripe from 'npm:stripe@20.4.1';
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
 import { companyBillingStatus, companyIdOf } from '../_shared/companyBilling.js';
+import { subscriptionDbStatus } from '../_shared/stripeSubscriptionState.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') as string, {
     apiVersion: '2026-02-25.clover',
@@ -85,6 +86,20 @@ function failWrite(what: string, error: unknown): never {
     throw new WebhookWriteError(what);
 }
 
+// Stripe sends events late, twice, or out of order (it retries for days and
+// never promises order), so the subscription inside an event can be older
+// than what an earlier event already wrote. Plan state is read from Stripe at
+// handling time instead; the event only says which subscription changed.
+// A failed read answers 500 so Stripe sends the event again.
+async function liveSubscription(subscription: Stripe.Subscription | string): Promise<Stripe.Subscription> {
+    const id = typeof subscription === 'string' ? subscription : subscription.id;
+    try {
+        return await stripe.subscriptions.retrieve(id);
+    } catch (error) {
+        failWrite('reading subscription from Stripe', error);
+    }
+}
+
 Deno.serve(async (req) => {
     console.log('=== WEBHOOK REQUEST RECEIVED ===');
     const signature = req.headers.get('Stripe-Signature');
@@ -149,7 +164,7 @@ Deno.serve(async (req) => {
 
             case 'customer.subscription.created':
             case 'customer.subscription.updated': {
-                const subscription = event.data.object as Stripe.Subscription;
+                const subscription = await liveSubscription(event.data.object as Stripe.Subscription);
                 await handleSubscriptionUpdate(supabase, subscription, event.data.previous_attributes);
                 break;
             }
@@ -386,11 +401,16 @@ async function handleSubscriptionUpdate(supabase: any, subscription: Stripe.Subs
         const mergedMetadata = { ...(currentSubscription.metadata || {}) } as Record<string, unknown>;
         if (cancelAtTs) mergedMetadata.cancel_at = new Date(cancelAtTs * 1000).toISOString();
         else delete mergedMetadata.cancel_at;
+        const status = subscriptionDbStatus(subscription.status);
+        if (!status) {
+            console.error(`Subscription ${subscription.id} has unknown Stripe status ${subscription.status}; left as is`);
+            return;
+        }
         const { error } = await supabase
             .from('user_subscriptions')
             .update({
                 tier: tier,
-                status: subscription.status,
+                status,
                 stripe_price_id: priceId,
                 trial_ends_at: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null,
                 current_period_start: period.start ? new Date(period.start * 1000).toISOString() : null,
@@ -622,12 +642,14 @@ async function handlePaymentSucceeded(supabase: any, invoice: Stripe.Invoice) {
     const subscriptionId = invoiceSubscriptionId(invoice);
     if (!subscriptionId) return;
 
-    const { error } = await supabase
+    // The plan's status now, not 'active' by assumption: a trial's $0 first
+    // invoice must leave it trialing, and a payment from an earlier period
+    // arriving late must not undo a failure or cancellation since.
+    const status = subscriptionDbStatus((await liveSubscription(subscriptionId)).status);
+    const { error } = status ? await supabase
         .from('user_subscriptions')
-        .update({
-            status: 'active',
-        })
-        .eq('stripe_subscription_id', subscriptionId);
+        .update({ status })
+        .eq('stripe_subscription_id', subscriptionId) : { error: null };
     if (error) failWrite('marking subscription active', error);
 
     if (!error) {
@@ -668,12 +690,13 @@ async function handlePaymentFailed(supabase: any, invoice: Stripe.Invoice) {
     const subscriptionId = invoiceSubscriptionId(invoice);
     if (!subscriptionId) return;
 
-    const { error } = await supabase
+    // The plan's status now: a failed attempt that a retry already paid, seen
+    // late or twice, must not mark a paid plan past due.
+    const status = subscriptionDbStatus((await liveSubscription(subscriptionId)).status);
+    const { error } = status ? await supabase
         .from('user_subscriptions')
-        .update({
-            status: 'past_due',
-        })
-        .eq('stripe_subscription_id', subscriptionId);
+        .update({ status })
+        .eq('stripe_subscription_id', subscriptionId) : { error: null };
     if (error) failWrite('marking subscription past due', error);
 
     if (!error) {
@@ -708,14 +731,18 @@ async function handleCompanyEvent(supabase: any, orgId: string, event: Stripe.Ev
         console.log(`Company ${orgId}: ${event.type} (state comes with the subscription events)`);
         return;
     }
-    const subscription = event.data.object as Stripe.Subscription;
+    const deleted = event.type === 'customer.subscription.deleted';
+    // Seats and status as Stripe has them now (see liveSubscription): a late
+    // update must not put back an old seat count.
+    const subscription = deleted
+        ? event.data.object as Stripe.Subscription
+        : await liveSubscription(event.data.object as Stripe.Subscription);
     const item = subscription.items?.data?.[0];
     // Only the Enterprise price buys seats; anything else grants nothing.
     if (!item || getTierFromPriceId(item.price?.id || '') !== 'enterprise') {
         console.error(`Company ${orgId}: subscription ${subscription.id} is not on the Enterprise price; ignored`);
         return;
     }
-    const deleted = event.type === 'customer.subscription.deleted';
     const billingStatus = deleted ? 'canceled' : companyBillingStatus(subscription.status);
     // A late event from an earlier plan must not end the plan bought since.
     const { data: current, error: readError } = await supabase.from('organizations')
