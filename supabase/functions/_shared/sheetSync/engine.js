@@ -128,8 +128,11 @@ export const MAX_CELL_CHARS = 32000;
 // minutes later and read as a plain sheet edit, quietly replacing the field's newer value.
 // Survey's own cell writes are remembered this long; a different value
 // landing on one of them is held as a conflict instead. Excel only (the
-// provider's savesLate): Google saves as the person types.
-export const RECENT_WRITE_MS = 300_000;
+// provider's savesLate): Google saves as the person types. 3 minutes, as the
+// new-row window: real-Excel soaks (11-12) showed genuine later PM edits
+// spread evenly over the window, so each minute cut is fewer needless holds,
+// and the longest late save seen was a little over 2 minutes.
+export const RECENT_WRITE_MS = 180_000;
 const RECENT_WRITE_MAX = 2000;
 // A PM typing a new item into the first empty row under the list, unsaved,
 // while Survey appends a field tech's new item there (Graph still sees the
@@ -647,6 +650,20 @@ export async function planSheetRound({
       return n;
     };
     const hasOwnData = (row) => row.some((c, i) => !mappedCols.has(i) && !isBlankCell(c));
+    // A new name in the Item cell of the row Survey appended for markerId,
+    // within the new-row window (NEW_ROW_TAKEOVER_MS) and not split yet: the
+    // keys the PM typed there (cells unlike what Survey wrote), else null.
+    // Against the round's starting baseline, as a tab done earlier this round
+    // may already have moved the item's baseline to its new category.
+    const typedOverNewRow = (markerId, row) => {
+      const watch = next.recentWrites[`${markerId}|+row`];
+      const base = baseline[markerId];
+      if (!watch || watch.took || !base || !nextBaseline[markerId] || base.scopeId !== scope.scopeId || !colOfKey.has('item')) return null;
+      if (now.getTime() - Number(watch.t) > rowWindowMs || !cellText(row[colOfKey.get('item')]).trim()) return null;
+      const fps = fieldPrintsOf(sheetRecordOf(row, {}));
+      if (getFp(fps, 'item') === getFp(base.fields, 'item')) return null;
+      return new Set(scope.columns.filter((c) => columnIsEditable(c) && colOfKey.has(c.key) && getFp(fps, c.key) !== getFp(base.fields, c.key)).map((c) => c.key));
+    };
 
     // Read every Row ID once. When a row was copied (Row ID and all), the copy
     // closest to what both sides last agreed on is the item's own row and the
@@ -711,6 +728,24 @@ export async function planSheetRound({
       if (markerId && ownRow.get(markerId) !== r) markerId = null;
 
       const marker = markerId ? markers[markerId] : null;
+      // The row Survey just added for a tech's item, the item deleted (or
+      // moved to another category) in the app since, and a new name typed or
+      // saved late over it: the PM's own new row, holding only what the PM
+      // typed (as the takeover split below), not a kept row of the item that
+      // never reaches the app. Also when an earlier round kept the row for a
+      // part of that save that landed first.
+      let pmKeys = null;
+      if (markerId && (!marker || !inThisScope(marker))) pmKeys = typedOverNewRow(markerId, row);
+      if (pmKeys) {
+        delete next.tombstones[markerId];
+        next.notices = next.notices.filter((n) => n.markerId !== markerId);
+        if (!marker) {
+          delete next.recentWrites[`${markerId}|+row`];
+          delete nextBaseline[markerId];
+          next.gone[markerId] = nowIso;
+        }
+        markerId = null;
+      }
       const tomb = markerId ? next.tombstones[markerId] : null;
       if (tomb && (typeof tomb !== 'object' || tomb.scopeId === scope.scopeId)) {
         if (!marker) continue; // deleted in the app, row kept on purpose
@@ -719,6 +754,7 @@ export async function planSheetRound({
           continue;
         }
         delete next.tombstones[markerId]; // the delete was undone: the row is its own again
+        next.notices = next.notices.filter((n) => n.markerId !== markerId);
       }
 
       // A valid Row ID of an item deleted in the app whose row we removed: a
@@ -738,6 +774,8 @@ export async function planSheetRound({
           if ((await sheetChanges(row, base.fields)) > 0 || hasOwnData(row)) {
             // Baseline kept, so an undo of the delete picks the row up again.
             next.tombstones[markerId] = { at: nowIso, scopeId: scope.scopeId };
+            const name = colOfKey.has('item') ? cellText(row[colOfKey.get('item')]).trim() : '';
+            notice({ markerId, scopeId: scope.scopeId, message: `${where(r)}: "${name || 'An item'}" was deleted in Survey, but its row was kept because it has changes made in the sheet. Delete the row if it should go.` });
           } else {
             plan.deletes.push({ sheetId: sheet.sheetId, title: sheet.title, row: r, token, rowIdCol, listCols, ownCols });
             plan.summary.deleted += 1;
@@ -748,7 +786,7 @@ export async function planSheetRound({
         continue;
       }
 
-      if (marker && !inThisScope(marker)) {
+      if (markerId && marker && !inThisScope(marker)) {
         // Moved to another category in the app: its new tab gets a row (it
         // has none there), and this one goes, unless the sheet changed it or
         // it holds the PM's own columns; then it stays and says so.
@@ -764,7 +802,7 @@ export async function planSheetRound({
         plan.summary.deleted += 1;
         continue;
       }
-      if (marker && !seenMarkers.has(markerId)) {
+      if (markerId && marker && !seenMarkers.has(markerId)) {
         seenMarkers.add(markerId);
         delete next.removedInSheet[markerId];
         plan.verify.push({ sheetId: sheet.sheetId, title: sheet.title, row: r, col: rowIdCol, token });
@@ -822,6 +860,9 @@ export async function planSheetRound({
       };
       for (const column of scope.columns) {
         if (!columnIsEditable(column) || !colOfKey.has(column.key)) continue;
+        // The tech's own cells left in a row the PM took over: not the PM's,
+        // so cleared below rather than copied.
+        if (pmKeys && !pmKeys.has(column.key)) { conv[column.key] = null; continue; }
         const c = sheetCellToApp(layout, column, row[colOfKey.get(column.key)]);
         if (c.error) {
           next.problems.push({ markerId: id, scopeId: scope.scopeId, message: `${where(r)}: ${c.error}` });
@@ -956,11 +997,13 @@ export async function planSheetRound({
         const fresh = rowWatch;
         const typedName = cellText(row[colOfKey.get('item')]).trim();
         if (fresh && !fresh.took && typedName
-          && getFp(sheetSide, 'item') !== getFp(base, 'item') && getFp(appFps, 'item') === getFp(base, 'item')) {
+          && getFp(sheetSide, 'item') !== getFp(base, 'item') && getFp(sheetSide, 'item') !== getFp(appFps, 'item')) {
+          // Every cell the PM typed, even one the tech changed in the app
+          // meanwhile (say a rename): the tech's item keeps the app's values.
           const typedKeys = keys.filter((k) => {
             const column = scope.columns.find((c) => c.key === k);
             return columnIsEditable(column) && colOfKey.has(k) && !errorKeys.has(k)
-              && getFp(sheetSide, k) !== getFp(base, k) && getFp(appFps, k) === getFp(base, k);
+              && getFp(sheetSide, k) !== getFp(base, k);
           });
           const id = newMarkerId();
           const item = {
@@ -984,7 +1027,7 @@ export async function planSheetRound({
           for (const k of typedKeys) setFp(sheetSide, k, getFp(base, k));
           // Still watched (the rest of that save may land later), but split once.
           next.recentWrites[`${markerId}|+row`] = { ...fresh, took: true };
-          notice({ markerId: id, scopeId: scope.scopeId, message: `${where(r)}: "${typedName}" was typed into the row Survey had just filled with "${String(marker.name || '')}" for a field tech. Both are kept: "${typedName}" is a new item in the row below.` });
+          notice({ markerId: id, scopeId: scope.scopeId, message: `${where(r)}: "${typedName}" was typed into the row Survey had just filled with "${String(marker.name || '')}" for a field tech. Both are kept: "${typedName}" is now its own item, in a new row lower down.` });
         }
       }
       // A late save landing on a cell Survey just wrote, while the app still

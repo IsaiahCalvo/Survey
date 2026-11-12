@@ -424,7 +424,10 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
     const p = { markerId: id, scopeId: c.scopeId, message: `"${c.name || 'An item'}" was deleted in Survey just after its row was changed in the sheet, so the row was kept. Delete the row if it should go.` };
     plan.state.problems = [p, ...(plan.state.problems || [])].slice(0, 200);
     // Once only, so it stays a while (engine NOTICE_MS) instead of one round.
-    plan.state.notices = [{ ...p, t: now.getTime() }, ...(plan.state.notices || []).filter((n) => n.message !== p.message)].slice(0, 20);
+    // In place of the engine's plainer note for the same kept row.
+    const plainer = (n) => n.markerId === id && /was deleted in Survey, but its row was kept/.test(n.message);
+    plan.state.problems = plan.state.problems.filter((n) => !plainer(n));
+    plan.state.notices = [{ ...p, t: now.getTime() }, ...(plan.state.notices || []).filter((n) => n.message !== p.message && !plainer(n))].slice(0, 20);
   }
   if (Object.keys(writes).length) await saveMarkers(writes);
   const pulls = pullsOf?.();

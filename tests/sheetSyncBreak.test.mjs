@@ -629,15 +629,181 @@ test('a PM\'s new row saved late over the row Survey just added keeps both items
   const pm = Object.values(ctx.markers).find((m) => m.name === 'D-120');
   assert.ok(pm, 'the PM\'s item is made');
   assert.equal(pm.note.text, 'PM typed');
+  assert.equal(pm.changedBy, 'JF (sheet)', 'credited to the PM who typed it');
+  assert.notEqual(ctx.markers.d2.changedBy, 'JF (sheet)', 'not the tech\'s item');
   const rows = (await ctx.sheet()).rows;
   assert.deepEqual([rows[row][item], rows[row][notes]], ['D-102', 'tech note'], 'the tech\'s row is put back');
   assert.deepEqual([rows[row + 1][item], rows[row + 1][notes]], ['D-120', 'PM typed'], 'the PM\'s item goes in the row below');
+  assert.equal(rows[row + 1][await ctx.col('Changed By')], 'JF (sheet)', 'and the sheet says who');
   assert.ok(ctx.link.state.problems.some((p) => /typed into the row Survey had just filled/.test(p.message)), 'the panel says what happened');
   const quiet = await ctx.round({ now: new Date(t0 + 56000), force: true });
   assert.deepEqual(Object.values(quiet.summary).filter(Boolean), []);
   assert.ok(ctx.link.state.problems.some((p) => /typed into the row Survey had just filled/.test(p.message)), 'and still says so a round later');
   await ctx.round({ now: new Date(t0 + 50000 + 31 * 60_000), force: true });
   assert.ok(!ctx.link.state.problems.some((p) => /typed into the row Survey had just filled/.test(p.message)), 'for half an hour');
+});
+
+// The tech deletes the item they just added while the PM types a new item
+// into its row: the PM's row becomes their own item, not a kept row of the
+// deleted one that never reaches the app.
+test('a PM\'s new row typed over a just-added item that the tech then deleted comes in as the PM\'s item', async () => {
+  for (const savesLate of [true, false]) {
+    const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
+    if (savesLate) ctx.provider = { ...ctx.provider, savesLate: true };
+    const t0 = Date.parse('2026-11-10T13:00:00Z');
+    await ctx.round({ now: new Date(t0) }); await ctx.round({ now: new Date(t0 + 1000), force: true });
+    ctx.markers.d2 = door('d2', 'D-102', { note: { text: 'tech note' } });
+    await ctx.round({ now: new Date(t0 + 5000) });
+    const row = await ctx.rowOf('d2');
+    const item = await ctx.col('Item'); const notes = await ctx.col('Notes');
+    await ctx.edit([{ row, col: item, value: 'D-120' }, { row, col: notes, value: 'PM typed' }]);
+    delete ctx.markers.d2;
+    const r = await ctx.round({ now: new Date(t0 + 30000), force: true });
+    assert.equal(r.summary.created, 1, `the PM's row is a new item (savesLate ${savesLate})`);
+    const pm = Object.values(ctx.markers).find((m) => m.name === 'D-120');
+    assert.ok(pm && pm.id !== 'd2', 'made under a new id');
+    assert.equal(pm.note.text, 'PM typed');
+    assert.equal(ctx.markers.d2, undefined, 'the tech\'s delete stands');
+    const quiet = await ctx.round({ now: new Date(t0 + 40000), force: true });
+    assert.deepEqual(Object.values(quiet.summary).filter(Boolean), [], 'the row now carries the new item\'s Row ID');
+    assert.equal(await ctx.rowOf(pm.id), row);
+  }
+});
+
+test('a PM\'s new row typed over a just-added item that the tech then moved to another category comes in as the PM\'s item', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
+  const t0 = Date.parse('2026-11-10T13:00:00Z');
+  await ctx.round({ now: new Date(t0) }); await ctx.round({ now: new Date(t0 + 1000), force: true });
+  ctx.markers.d2 = door('d2', 'D-102', { note: { text: 'tech note' } });
+  await ctx.round({ now: new Date(t0 + 5000) });
+  const row = await ctx.rowOf('d2');
+  await ctx.edit([{ row, col: await ctx.col('Item'), value: 'D-120' }, { row, col: await ctx.col('Notes'), value: 'PM typed' }]);
+  ctx.markers.d2 = { ...ctx.markers.d2, categoryId: 'cams' };
+  const r = await ctx.round({ now: new Date(t0 + 30000), force: true });
+  assert.equal(r.summary.created, 1, 'the PM\'s row is a new item');
+  const pm = Object.values(ctx.markers).find((m) => m.name === 'D-120');
+  assert.equal(pm.categoryId, 'doors');
+  assert.equal(pm.note.text, 'PM typed');
+  assert.equal(ctx.markers.d2.note.text, 'tech note', 'the moved item keeps its own values');
+  assert.ok(tab(ctx, 'Cameras - Level 1').rows.some((x) => x.includes('D-102')), 'and goes to its new tab');
+  assert.ok(!ctx.link.state.problems.some((p) => /moved to another category/.test(p.message)), 'no copy-it-across note');
+  const quiet = await ctx.round({ now: new Date(t0 + 40000), force: true });
+  assert.deepEqual(Object.values(quiet.summary).filter(Boolean), []);
+});
+
+// Review fixes: the PM's item holds only what the PM typed, the move works
+// whichever tab the round reads first, and a part of the save that landed a
+// round earlier (the row kept for the deleted item) doesn't stop it.
+test('the PM\'s item from a deleted item\'s row holds only what the PM typed; the tech\'s answers are cleared from the row', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
+  const t0 = Date.parse('2026-11-10T13:00:00Z');
+  await ctx.round({ now: new Date(t0) }); await ctx.round({ now: new Date(t0 + 1000), force: true });
+  ctx.markers.d2 = door('d2', 'D-102', { note: { text: 'tech note' }, checklistResponses: { c1: { selection: 'Y' } } });
+  await ctx.round({ now: new Date(t0 + 5000) });
+  const row = await ctx.rowOf('d2');
+  const locked = await ctx.col('Locked?');
+  assert.equal((await ctx.sheet()).rows[row][locked], 'Y');
+  await ctx.edit([{ row, col: await ctx.col('Item'), value: 'D-120' }, { row, col: await ctx.col('Notes'), value: 'PM typed' }]);
+  delete ctx.markers.d2;
+  await ctx.round({ now: new Date(t0 + 30000), force: true });
+  const pm = Object.values(ctx.markers).find((m) => m.name === 'D-120');
+  assert.equal(pm.note.text, 'PM typed');
+  assert.ok(!pm.checklistResponses?.c1?.selection, 'not the tech\'s answer');
+  assert.equal((await ctx.sheet()).rows[row][locked] || '', '', 'cleared from the PM\'s row');
+  const quiet = await ctx.round({ now: new Date(t0 + 40000), force: true });
+  assert.deepEqual(Object.values(quiet.summary).filter(Boolean), []);
+});
+
+test('the move case works when the item\'s new tab is read first', async () => {
+  const CAMS = 'Cameras - Level 1';
+  const cam = (id, name, extra) => door(id, name, { categoryId: 'cams', ...extra });
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101'), k1: cam('k1', 'C-1') } });
+  const t0 = Date.parse('2026-11-10T13:00:00Z');
+  await ctx.round({ now: new Date(t0) }); await ctx.round({ now: new Date(t0 + 1000), force: true });
+  ctx.markers.k2 = cam('k2', 'C-2', { note: { text: 'tech note' } });
+  await ctx.round({ now: new Date(t0 + 5000) });
+  const row = await ctx.rowOf('k2', CAMS);
+  await ctx.edit([{ row, col: await ctx.col('Item', CAMS), value: 'C-20' }, { row, col: await ctx.col('Notes', CAMS), value: 'PM typed' }], CAMS);
+  ctx.markers.k2 = { ...ctx.markers.k2, categoryId: 'doors' };
+  const r = await ctx.round({ now: new Date(t0 + 30000), force: true });
+  assert.equal(r.summary.created, 1);
+  const pm = Object.values(ctx.markers).find((m) => m.name === 'C-20');
+  assert.equal(pm.categoryId, 'cams');
+  assert.equal(pm.note.text, 'PM typed');
+  assert.ok((await ctx.sheet()).rows.some((x) => x.includes('C-2')), 'the moved item is on the doors tab');
+  assert.ok(!ctx.link.state.problems.some((p) => /moved to another category/.test(p.message)));
+  const quiet = await ctx.round({ now: new Date(t0 + 40000), force: true });
+  assert.deepEqual(Object.values(quiet.summary).filter(Boolean), []);
+});
+
+test('a PM\'s late save over a deleted item\'s row still makes the PM\'s item when the note landed a round before the name', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
+  ctx.provider = { ...ctx.provider, savesLate: true };
+  const t0 = Date.parse('2026-11-10T13:00:00Z');
+  await ctx.round({ now: new Date(t0) }); await ctx.round({ now: new Date(t0 + 1000), force: true });
+  ctx.markers.d2 = door('d2', 'D-102');
+  await ctx.round({ now: new Date(t0 + 5000) });
+  const row = await ctx.rowOf('d2');
+  delete ctx.markers.d2;
+  await ctx.edit([{ row, col: await ctx.col('Notes'), value: 'PM typed' }]);
+  await ctx.round({ now: new Date(t0 + 30000), force: true });
+  assert.ok(ctx.link.state.problems.some((p) => /was deleted in Survey, but its row was kept/.test(p.message)), 'kept for now');
+  await ctx.edit([{ row, col: await ctx.col('Item'), value: 'D-120' }]);
+  const r = await ctx.round({ now: new Date(t0 + 60000), force: true });
+  assert.equal(r.summary.created, 1);
+  const pm = Object.values(ctx.markers).find((m) => m.name === 'D-120');
+  assert.equal(pm.note.text, 'PM typed');
+  assert.ok(!ctx.link.state.problems.some((p) => /was deleted in Survey, but its row was kept/.test(p.message)), 'the kept-row note goes');
+  const quiet = await ctx.round({ now: new Date(t0 + 70000), force: true });
+  assert.deepEqual(Object.values(quiet.summary).filter(Boolean), []);
+});
+
+test('a PM\'s new row typed over a just-added item that the tech then renamed keeps both, with no choice to make', async () => {
+  for (const savesLate of [true, false]) {
+    const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
+    if (savesLate) ctx.provider = { ...ctx.provider, savesLate: true };
+    const t0 = Date.parse('2026-11-10T13:00:00Z');
+    await ctx.round({ now: new Date(t0) }); await ctx.round({ now: new Date(t0 + 1000), force: true });
+    ctx.markers.d2 = door('d2', 'D-102', { note: { text: 'tech note' } });
+    await ctx.round({ now: new Date(t0 + 5000) });
+    const row = await ctx.rowOf('d2');
+    const item = await ctx.col('Item'); const notes = await ctx.col('Notes');
+    await ctx.edit([{ row, col: item, value: 'D-120' }, { row, col: notes, value: 'PM typed' }]);
+    ctx.markers.d2 = { ...ctx.markers.d2, name: 'D-103', note: { text: 'tech note 2' } };
+    const r = await ctx.round({ now: new Date(t0 + 30000), force: true });
+    assert.equal(r.summary.conflicts, 0, `no choice (savesLate ${savesLate})`);
+    assert.equal(r.summary.created, 1);
+    assert.deepEqual([ctx.markers.d2.name, ctx.markers.d2.note.text], ['D-103', 'tech note 2'], 'the tech\'s rename and note stand');
+    const pm = Object.values(ctx.markers).find((m) => m.name === 'D-120');
+    assert.equal(pm.note.text, 'PM typed');
+    const rows = (await ctx.sheet()).rows;
+    assert.deepEqual([rows[row][item], rows[row][notes]], ['D-103', 'tech note 2']);
+    assert.deepEqual([rows[row + 1][item], rows[row + 1][notes]], ['D-120', 'PM typed']);
+    const quiet = await ctx.round({ now: new Date(t0 + 40000), force: true });
+    assert.deepEqual(Object.values(quiet.summary).filter(Boolean), []);
+  }
+});
+
+test('a note typed into a just-added item\'s row that the tech then deleted keeps the row, as before', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
+  const t0 = Date.parse('2026-11-10T13:00:00Z');
+  await ctx.round({ now: new Date(t0) }); await ctx.round({ now: new Date(t0 + 1000), force: true });
+  ctx.markers.d2 = door('d2', 'D-102');
+  await ctx.round({ now: new Date(t0 + 5000) });
+  const row = await ctx.rowOf('d2');
+  await ctx.edit([{ row, col: await ctx.col('Notes'), value: 'PM note' }]);
+  delete ctx.markers.d2;
+  const r = await ctx.round({ now: new Date(t0 + 30000), force: true });
+  assert.equal(r.summary.created, 0, 'no new item from a note alone');
+  assert.equal(r.summary.deleted, 0, 'and the PM\'s note is not removed with the row');
+  assert.equal((await ctx.sheet()).rows[row][await ctx.col('Item')], 'D-102');
+  const kept = /"D-102" was deleted in Survey, but its row was kept/;
+  assert.ok(ctx.link.state.problems.some((p) => kept.test(p.message)), 'and the panel says why the row is still there');
+  await ctx.round({ now: new Date(t0 + 60000), force: true });
+  assert.ok(ctx.link.state.problems.some((p) => kept.test(p.message)), 'for a while');
+  ctx.markers.d2 = door('d2', 'D-102');
+  await ctx.round({ now: new Date(t0 + 70000), force: true });
+  assert.ok(!ctx.link.state.problems.some((p) => kept.test(p.message)), 'gone once the delete is undone');
 });
 
 // Excel can land one save cell by cell: the Item first (split off as the PM's
@@ -790,6 +956,7 @@ test('the kept-row notice for an item deleted just after a sheet edit stays for 
   assert.ok(said(), 'the panel says why the row is still there');
   await ctx.round({ now: new Date(t0 + 20000), force: true });
   assert.ok(said(), 'and still does a round later');
+  assert.equal(ctx.link.state.problems.filter((p) => p.markerId === 'd2').length, 1, 'once, not also the plainer kept-row note');
   await ctx.round({ now: new Date(t0 + 5000 + 31 * 60_000), force: true });
   assert.ok(!said(), 'until half an hour has passed');
 });
