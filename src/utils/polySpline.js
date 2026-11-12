@@ -470,14 +470,16 @@ export function polySplineSpans(obj) {
   return step ? cachedSpans(obj.points, step).spans : [];
 }
 
+// How far the cubic can stray from its chord walked at an even pace (an upper
+// bound). Measuring the handles' distance from the chord's line alone would
+// miss a handle pulled out past an end along that line: the curve hooks back
+// over itself there while staying on the line.
 const flatness = (s) => {
-  const dx = s.to.x - s.from.x;
-  const dy = s.to.y - s.from.y;
-  const len = Math.hypot(dx, dy);
-  const off = (p) => (len > 0
-    ? Math.abs(dx * (p.y - s.from.y) - dy * (p.x - s.from.x)) / len
-    : Math.hypot(p.x - s.from.x, p.y - s.from.y));
-  return Math.max(off(s.c1), off(s.c2));
+  const ux = 3 * s.c1.x - 2 * s.from.x - s.to.x;
+  const uy = 3 * s.c1.y - 2 * s.from.y - s.to.y;
+  const vx = 3 * s.c2.x - s.from.x - 2 * s.to.x;
+  const vy = 3 * s.c2.y - s.from.y - 2 * s.to.y;
+  return Math.sqrt(Math.max(ux * ux, vx * vx) + Math.max(uy * uy, vy * vy)) / 4;
 };
 
 function flattenSpan(out, s, tolerance, depth) {
