@@ -96,16 +96,19 @@
   height: 32px;
   min-height: 32px;
 }
-/* The armed pin: the app's "chosen" gold, as a ring, since the glyph keeps
-   the pin's own colour. A pseudo-element, so no button plate rule hides it. */
+/* The armed pin: a short gold line under it (owner 2026-11-12: no gold fill
+   or ring), since the glyph keeps the pin's own colour. A pseudo-element, so
+   no button plate rule hides it. */
 .pinned-dock__pin[aria-pressed='true']::after,
 .pinned-dock__pin[aria-current='true']::after {
   content: '';
   position: absolute;
-  inset: 1px;
-  border: 0;
-  border-radius: var(--chrome-radius, 6px);
-  background: var(--surface-3);
+  left: 7px;
+  right: 7px;
+  bottom: 1px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
   pointer-events: none;
 }
 .pinned-dock__glyph {
