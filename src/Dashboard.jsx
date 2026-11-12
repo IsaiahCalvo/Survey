@@ -1877,6 +1877,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     if (!row?.id) return;
     showToast(`Saving ${row.name || 'document'} to your account…`, 'info');
     let uploaded = null;
+    let addedNew = false;
     try {
       const result = await saveDeviceFileToAccount({
         row,
@@ -1886,18 +1887,41 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
           const outcome = await uploadBrowserPdf(file, { openAfterUpload: false, waitForStorage: true, askDuplicates: false });
           if (outcome !== 'added' && outcome !== 'existing') return null;
           uploaded = file;
+          addedNew = outcome === 'added';
           return file.id || null;
         },
       });
       if (result.ok) {
-        showToast(`${row.name || 'Document'} is saved to your account`, 'success');
+        showToast(result.deviceCopyLeft
+          ? `${row.name || 'Document'} is saved to your account. Its copy on this device couldn’t be removed; you can delete it.`
+          : `${row.name || 'Document'} is saved to your account`, result.deviceCopyLeft ? 'info' : 'success');
         refetchAllDocuments();
         // Its tab closed for the move: the cloud copy opens in its place.
         if (result.closedTabs && uploaded) {
+          // The upload already gave this File its id, so the open below would
+          // skip attaching the owner: set it here, or the owner's own copy
+          // opens with collaborator rules.
+          uploaded.id = result.documentId;
+          uploaded.user_id = user.id;
           void handleDocumentClick({ id: result.documentId, file: uploaded, user_id: user.id });
         }
       } else {
-        showToast('Couldn’t save it to your account. It is still on this device.', 'warn');
+        showToast(result.reason === 'marks'
+          ? 'Its marks didn’t reach your account, so it is still on this device with them. Try Save to my account again.'
+          : 'Couldn’t save it to your account. It is still on this device.', 'warn');
+        // The PDF went up but its marks did not: take that half copy back
+        // out (only one this save made), so the list doesn't show the file
+        // twice and the next try doesn't add a second one.
+        if (result.reason === 'marks' && addedNew && result.documentId) {
+          await deleteDocumentEverywhere({ docId: result.documentId, source: 'device-save-rollback' })
+            .catch((err) => console.warn('[deviceFiles] could not take back the half-saved copy', err?.message || err));
+          // The upload's placeholder row (temp-…) goes too: it only leaves
+          // once a real row of the same name lands, and none will.
+          setDocuments((prev) => prev.filter((d) => d.id !== result.documentId
+            && !(String(d.id).startsWith('temp-') && d.name === (uploaded?.name || row.name))));
+          refetchDocuments();
+          refetchAllDocuments();
+        }
         if (result.closedTabs) {
           const again = await openDeviceFile(row).catch(() => null);
           if (again) onDocumentSelect(again);
