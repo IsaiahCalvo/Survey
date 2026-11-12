@@ -27,7 +27,7 @@ const PdfToolsDialog = preloadedComponent(() => import('./components/PdfToolsDia
 import { resolveHubInitialLoading } from './home/hubInitialLoadingState.js';
 import { retryCompensatingCleanup, runCompensatingBatch } from './home/compensatingBatch.js';
 import { readPdfPageCount, mapUploadsBounded } from './home/pdfUploadWork.js';
-import { supersedeDocument } from './services/documentVersionService.js';
+import { DOCUMENT_VERSIONS_CHANGED_EVENT, supersedeDocument } from './services/documentVersionService.js';
 import { isFeatureOn } from './featureFlags.js';
 import { OPEN_FILE_EVENT, takeOpenedFiles } from './mobile/nativeOpenFile.js';
 import { PHOTO_ACCEPT, isPhotoFile, photoToPdfFile, photosAsPdfs } from './home/photoToPdf.js';
@@ -340,6 +340,13 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     deleteDocument: deleteSupabaseDocument,
     refetch: refetchDocuments
   } = useDocuments(selectedProjectId, { listCache: true });
+  // Delete one version (Nightly 'version-delete') changes which copy is
+  // current: the lists show the new current copy at once.
+  useEffect(() => {
+    const onChanged = (e) => { if (e?.detail?.removed || e?.detail?.restored) refetchDocuments(); };
+    window.addEventListener(DOCUMENT_VERSIONS_CHANGED_EVENT, onChanged);
+    return () => window.removeEventListener(DOCUMENT_VERSIONS_CHANGED_EVENT, onChanged);
+  }, [refetchDocuments]);
 
   // Fetch all documents for file count display in project list
   const {
@@ -875,20 +882,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         perfUpload.mark('electron-dialog', 'File object created');
         perfUpload.end('electron-dialog');
 
-        // Upload check (Nightly): fix the name, sheet number and revision first.
-        let checkedSheet = null;
-        if (uploadCheckOn()) {
-          // One picked file here (its path is kept): no split, no remove.
-          const checked = await askUploadCheck([file], { allowSplit: false, allowRemove: false });
-          if (!checked?.length) return;
-          file = checked[0].file;
-          checkedSheet = checked[0].sheet;
-          if (user?.id) file.user_id = user.id;
-        }
-
-        // Start upload timing for this specific file
-        perfUpload.start(file.name);
-
         // Determine Project ID. An explicit id from the Projects tab wins;
         // a `local-` id is a not-yet-saved project, so it falls back to null.
         let projectId = (typeof explicitProjectId === 'string' && !explicitProjectId.startsWith('local-'))
@@ -897,6 +890,21 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         if (!projectId && selectedProjectId && activeSection === 'projects') {
           projectId = selectedProjectId;
         }
+
+        // Upload check (Nightly): fix the name, sheet number and revision first.
+        let checkedSheet = null;
+        if (uploadCheckOn()) {
+          // One picked file here (its path is kept): no split, no remove. The
+          // project lets the review warn on a sheet + revision already there.
+          const checked = await askUploadCheck([file], { projectId, allowSplit: false, allowRemove: false });
+          if (!checked?.length) return;
+          file = checked[0].file;
+          checkedSheet = checked[0].sheet;
+          if (user?.id) file.user_id = user.id;
+        }
+
+        // Start upload timing for this specific file
+        perfUpload.start(file.name);
 
         // Content fingerprint of the bytes → resolve the document's identity
         // BEFORE opening it. This is the keystone of the rebuild: the viewer

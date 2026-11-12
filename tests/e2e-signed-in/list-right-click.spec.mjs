@@ -118,10 +118,44 @@ for (const [layout, use] of Object.entries(LAYOUTS)) {
         await menu(page).getByRole('menuitem', { name: 'Remove' }).click();
         await expect(button(page, 'Rename Region 3')).toHaveCount(0);
 
-        // A right-click inside a name being typed keeps the browser's menu.
+        // Owner 2026-11-12: a right-click on the space's title (not being
+        // typed in) is a right-click on the space - never the browser's menu,
+        // and the name is not focused by it.
+        await page.evaluate(() => {
+          window.__lastContextMenu = null;
+          // Captured first, read once the event is done (row menus stop it
+          // from bubbling, so a late listener would never see it).
+          window.addEventListener('contextmenu', (event) => {
+            setTimeout(() => { window.__lastContextMenu = { prevented: event.defaultPrevented }; }, 0);
+          }, true);
+        });
+        await name.click({ button: 'right' });
+        await expect(menu(page)).toBeVisible();
+        expect(await menu(page).getByRole('menuitem').allTextContents()).toEqual(['Rename', 'Add pages', 'Turn on space', 'Delete']);
+        await expect(name).not.toBeFocused();
+        expect(await page.evaluate(() => window.__lastContextMenu)).toEqual({ prevented: true });
+        // (On the phone Escape would also close the Spaces sheet.)
+        if (phone) {
+          await menu(page).getByRole('menuitem', { name: 'Rename' }).click();
+          await expect(name).toBeFocused();
+          await name.press('Enter');
+        } else {
+          await page.keyboard.press('Escape');
+        }
+        await expect(menu(page)).toHaveCount(0);
+
+        // A right-click inside a name being typed is for its spelling fixes
+        // (owner 2026-11-12: spelling correction everywhere). On the web only
+        // the browser knows them, so its own menu is left to show there (the
+        // desktop app shows them in Survey's menu instead): no row menu, the
+        // event is not blocked, and the field keeps its focus.
         await name.click();
         await name.click({ button: 'right' });
+        await expect.poll(() => page.evaluate(() => window.__lastContextMenu)).toEqual({ prevented: false });
         await expect(menu(page)).toHaveCount(0);
+        await expect(page.getByRole('menu', { name: 'Text actions' })).toHaveCount(0);
+        await expect(name).toBeFocused();
+        expect(await name.getAttribute('spellcheck')).not.toBe('false');
         await page.keyboard.press('Enter');
 
         // 5. Delete the space from its menu.
@@ -131,6 +165,17 @@ for (const [layout, use] of Object.entries(LAYOUTS)) {
         // A space with regions may ask what to do with its marks first.
         if (await confirm.count()) await confirm.last().click().catch(() => {});
         await expect(page.locator('.space-card__name').filter({ visible: true })).toHaveCount(0, { timeout: 10_000 });
+
+        // Empty space: no menu at all, and not the browser's either.
+        await page.evaluate(() => { window.__lastContextMenu = null; });
+        const panelBox = await visible(page.locator('.spaces-panel')).boundingBox();
+        const viewportHeight = page.viewportSize().height;
+        const emptyX = panelBox.x + panelBox.width / 2;
+        const emptyY = Math.min(panelBox.y + panelBox.height, viewportHeight) - 40;
+        expect(await page.evaluate(([x, y]) => Boolean(document.elementFromPoint(x, y)?.closest('.spaces-panel')), [emptyX, emptyY])).toBe(true);
+        await page.mouse.click(emptyX, emptyY, { button: 'right' });
+        await expect.poll(() => page.evaluate(() => window.__lastContextMenu)).toEqual({ prevented: true });
+        await expect(page.getByRole('menu').filter({ visible: true })).toHaveCount(0);
 
         if (phone) return; // Phone bookmark rows: slide and the row's own controls.
 

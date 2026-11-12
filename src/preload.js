@@ -93,6 +93,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('sheetSync:consent', subscription);
   },
 
+  // Spelling fixes for Survey's own text-box right-click menu.
+  onEditableContextMenu: (callback) => {
+    const subscription = (_event, info) => callback(info);
+    ipcRenderer.on('editable-context-menu', subscription);
+    return () => ipcRenderer.removeListener('editable-context-menu', subscription);
+  },
+  replaceMisspelling: (word) => ipcRenderer.invoke('spelling:replace', word),
+  addWordToDictionary: (word) => ipcRenderer.invoke('spelling:addWord', word),
+
   // App lifecycle APIs
   onBeforeQuit: (callback) => {
     const subscription = (_event, request) => callback(request);

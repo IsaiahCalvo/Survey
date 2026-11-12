@@ -432,6 +432,20 @@ import { installStrayFileDropGuard } from './utils/fileDrop.js';
 // A file dropped where the app does not take it must never make the browser
 // or the Electron window leave the app to show that file (2026-10-13).
 if (typeof window !== 'undefined') installStrayFileDropGuard(window);
+import { installNativeContextMenuGuard } from './utils/nativeContextMenuGuard.js';
+// The browser's own right-click menu never shows (owner 2026-11-12): surfaces
+// with actions open the app's menu, text gets Cut / Copy / Paste, empty space
+// gets nothing. See the module's note.
+if (typeof window !== 'undefined') installNativeContextMenuGuard(window);
+import AppContextMenuHost from './components/AppContextMenuHost.jsx';
+// Its own root, so the standalone pages (invite, reset password, flags ...)
+// get the text-field menu too, not only the app.
+if (typeof document !== 'undefined' && document.body && !document.getElementById('app-context-menu-root')) {
+  const contextMenuRoot = document.createElement('div');
+  contextMenuRoot.id = 'app-context-menu-root';
+  document.body.appendChild(contextMenuRoot);
+  createRoot(contextMenuRoot).render(<AppContextMenuHost />);
+}
 import { installInputModalityTracking } from './utils/inputModality.js';
 // <html data-input="mouse|pen|touch">: the input in use right now (last press
 // or hover). Selection grabbers size their hit pads from it (touch audit T3).
