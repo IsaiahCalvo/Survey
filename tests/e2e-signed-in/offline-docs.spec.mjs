@@ -5,7 +5,7 @@
 // is NOT kept still fails to open offline (no silent stale copies).
 import fs from 'node:fs';
 import path from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { E2E_ACCOUNTS, E2E_BASE_URL, E2E_PROJECT } from './accounts.mjs';
 import { adminClient, expect, signIn, test } from './helpers.mjs';
 
@@ -13,18 +13,22 @@ const SERVER = new URL(process.env.E2E_SUPABASE_URL || 'http://127.0.0.1:54421')
 const PAGE = '.survey-pdfjs-page-div[data-page-number="1"]';
 const PAGE_TEXT = 'Type your name in the box:';
 
-async function seedDocument(label) {
+async function seedDocument(label, { sha = true } = {}) {
   const admin = adminClient();
   const { data } = await admin.auth.admin.listUsers({ perPage: 200 });
   const ownerId = data.users.find((u) => u.email === E2E_ACCOUNTS.owner.email).id;
-  const bytes = fs.readFileSync(path.resolve('debug/fixtures/clickable-link-test.pdf'));
   const id = randomUUID();
+  // A trailing comment makes each seeded file's bytes (and hash) its own, so
+  // it never collides with the sample drawing or another seeded row.
+  const bytes = Buffer.concat([fs.readFileSync(path.resolve('debug/fixtures/clickable-link-test.pdf')), Buffer.from(`\n%${id}\n`)]);
   const filePath = `${ownerId}/${id}.pdf`;
   const up = await admin.storage.from('documents').upload(filePath, new Blob([bytes], { type: 'application/pdf' }), { contentType: 'application/pdf', upsert: true });
   if (up.error) throw up.error;
   const name = `E2E ${label} ${Date.now()}.pdf`;
   const doc = await admin.from('documents').insert({
     id, user_id: ownerId, project_id: E2E_PROJECT.id, name, file_path: filePath, file_size: bytes.length, page_count: 1,
+    // Like a real upload, the row names its file's hash.
+    content_sha256: sha ? createHash('sha256').update(bytes).digest('hex') : null,
   });
   if (doc.error) throw doc.error;
   return {
@@ -215,9 +219,12 @@ test('a kept document opens with no server; marks drawn then sync when it is bac
   }
 });
 
-test('a kept copy the server is too slow to vouch for keeps its marks on the device, and never takes server marks once the file changed', async ({ page, context }) => {
+for (const serverFile of [
+  { name: 'once the file changed', sha: 'f'.repeat(64), notice: 'A newer version of this document is on the server' },
+  { name: 'while the server can\'t say which file it has', sha: null, notice: 'This offline copy couldn’t be checked against the server' },
+]) test(`a kept copy the server is too slow to vouch for keeps its marks on the device, and never takes server marks ${serverFile.name}`, async ({ page, context }) => {
   test.setTimeout(240_000);
-  const kept = await seedDocument('offline unverified');
+  const kept = await seedDocument('offline unverified', { sha: Boolean(serverFile.sha) });
   try {
     await signIn(page, E2E_ACCOUNTS.owner);
     await keepOffline(page, kept.name);
@@ -242,10 +249,12 @@ test('a kept copy the server is too slow to vouch for keeps its marks on the dev
 
     // The document gets another file on the server. When the server answers
     // again, the app sees the file changed: it says so and stays on the copy.
-    const { error } = await adminClient().from('documents').update({ content_sha256: 'f'.repeat(64) }).eq('id', kept.id);
-    if (error) throw error;
+    if (serverFile.sha) {
+      const { error } = await adminClient().from('documents').update({ content_sha256: serverFile.sha }).eq('id', kept.id);
+      if (error) throw error;
+    }
     await context.unroute(slowCheck, slow);
-    await expect(page.getByText('A newer version of this document is on the server', { exact: false }).first()).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText(serverFile.notice, { exact: false }).first()).toBeVisible({ timeout: 60_000 });
     await expect(page.getByRole('button', { name: /^Offline copy/ }).filter({ visible: true }).first()).toBeVisible();
     expect(await pageLines(page)).toHaveLength(1);
     expect(await savedRows(kept.id)).toBe(0);
