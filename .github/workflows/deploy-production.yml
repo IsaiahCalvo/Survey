@@ -281,6 +281,25 @@ jobs:
           ref: main
           fetch-depth: 300
 
+      - name: Use the same Node runtime as the build gate
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: Read recent main build runs
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh api "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?branch=main&per_page=100"
+          > "$RUNNER_TEMP/survey-main-runs.json"
+
+      - name: Validate successful main builds
+        shell: bash
+        run: >-
+          node scripts/successful-main-runs.mjs < "$RUNNER_TEMP/survey-main-runs.json"
+          > "$RUNNER_TEMP/survey-green-shas"
+
       - name: When did Vercel's daily cap last refuse a deploy?
         id: cap
         uses: actions/cache/restore@v6
@@ -300,8 +319,10 @@ jobs:
           EVENT: ${{ github.event_name }}
           WINDOW_SECONDS: '10500'
         run: |
-          green="$(gh api "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?branch=main&status=success&per_page=100" \
-            --jq '.workflow_runs[].head_sha')"
+          # The API's status=success list can lag behind completed runs. Read
+          # recent runs and require completed+success ourselves; the same full
+          # CI workflow remains the gate, with no failed/in-progress fallback.
+          green="$(cat "$RUNNER_TEMP/survey-green-shas")"
           sha=""
           for c in $(git rev-list --max-count=300 HEAD); do
             if grep -qx "$c" <<< "$green"; then sha="$c"; break; fi
