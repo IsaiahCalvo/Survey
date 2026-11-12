@@ -2,7 +2,7 @@
 // hooks/useDriveSyncBack.js pushes the marked-up PDF only after a change made
 // on this screen, on its timer or on "Sync to OneDrive now", and raises
 // Drawboard's dialogs for a conflict, a gone file and a read-only file.
-import test, { mock } from 'node:test';
+import test, { afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -67,10 +67,35 @@ function fakeServer({ pushAnswer } = {}) {
   return { calls, call, setLink: (patch) => { link = { ...link, ...patch }; } };
 }
 
+// Roots still mounted when a test ends (an assertion threw before its own
+// unmount) are unmounted here, so a failure never leaves the hook's
+// 15-second timer running and the file reports the failure instead of
+// hanging.
+const openRoots = new Set();
+afterEach(async () => {
+  for (const root of [...openRoots]) await act(async () => root.unmount());
+  openRoots.clear();
+});
+
+// A push runs through several awaits, one of them SHA-256 on node's worker
+// pool, so on a busy machine it can take many turns: wait for the outcome
+// (up to 10 s) rather than a fixed number of turns.
+async function settle(until = () => false, ms = 10_000) {
+  for (let i = 0; i < 10; i += 1) await new Promise((r) => setImmediate(r));
+  const end = Date.now() + ms;
+  while (!until() && Date.now() < end) await new Promise((r) => setTimeout(r, 5));
+}
+const tickTimer = (until) => act(async () => { mock.timers.tick(15_000); await settle(until, until ? 10_000 : 0); });
+
 async function mount(useDriveSyncBack, props) {
   const box = { state: null };
   function Probe(p) { box.state = useDriveSyncBack(p); return null; }
-  const root = createRoot(document.getElementById('root'));
+  const created = createRoot(document.getElementById('root'));
+  const root = {
+    render: (el) => created.render(el),
+    unmount: () => { openRoots.delete(root); created.unmount(); },
+  };
+  openRoots.add(root);
   await act(async () => { root.render(React.createElement(Probe, props)); });
   await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
   return { box, root, rerender: async (next) => act(async () => { root.render(React.createElement(Probe, next)); }) };
@@ -131,7 +156,7 @@ test('a change from another screen or an open never pushes; only this screen\'s 
     });
     // No local edit: ten minutes pass and nothing is pushed.
     clock += 10 * 60_000;
-    await act(async () => { mock.timers.tick(15_000); await new Promise((r) => setImmediate(r)); });
+    await tickTimer();
     assert.equal(uploads.length, 0);
     // An edit for another document does nothing here.
     await act(async () => { edit('other-doc'); });
@@ -139,10 +164,10 @@ test('a change from another screen or an open never pushes; only this screen\'s 
     // This screen's edit: not before 5 minutes, then once.
     await act(async () => { edit('doc-2'); });
     clock += 4 * 60_000;
-    await act(async () => { mock.timers.tick(15_000); await new Promise((r) => setImmediate(r)); });
+    await tickTimer();
     assert.equal(uploads.length, 0);
     clock += 61_000;
-    await act(async () => { mock.timers.tick(15_000); for (let i = 0; i < 10; i += 1) await new Promise((r) => setImmediate(r)); });
+    await tickTimer(() => uploads.length >= 1 && !box.state.dirty);
     assert.equal(uploads.length, 1);
     assert.equal(box.state.dirty, false);
     await act(async () => root.unmount());
@@ -278,7 +303,7 @@ test('a late confirm goes out on its own a minute later, and survives a reload',
     const confirms = () => server.calls.filter((c) => c.action === 'drivePushed').length;
     const pushes = () => server.calls.filter((c) => c.action === 'drivePush').length;
     clock += 61_000;
-    await act(async () => { mock.timers.tick(15_000); for (let i = 0; i < 10; i += 1) await new Promise((r) => setImmediate(r)); });
+    await tickTimer(() => confirms() >= 1 && window.localStorage.getItem('survey:drive-unconfirmed:doc-late') === null);
     assert.equal(confirms(), 1, 'the confirm went out with no new edit');
     const sent = server.calls.find((c) => c.action === 'drivePushed').body;
     assert.equal(sent.late, true);
@@ -288,7 +313,7 @@ test('a late confirm goes out on its own a minute later, and survives a reload',
     assert.equal(window.localStorage.getItem('survey:drive-unconfirmed:doc-late'), null);
     // Nothing more is owed: the timer stays quiet.
     clock += 10 * 60_000;
-    await act(async () => { mock.timers.tick(15_000); for (let i = 0; i < 10; i += 1) await new Promise((r) => setImmediate(r)); });
+    await tickTimer();
     assert.equal(confirms(), 1);
     await act(async () => second.root.unmount());
   } finally {
@@ -315,7 +340,7 @@ test('a change not yet saved back survives a reload and still goes out on the ti
     const second = await mount(useDriveSyncBack, props);
     assert.equal(second.box.state.dirty, true, 'still owed after the reload');
     clock += 5 * 60_000 + 1_000;
-    await act(async () => { mock.timers.tick(15_000); for (let i = 0; i < 10; i += 1) await new Promise((r) => setImmediate(r)); });
+    await tickTimer(() => uploads.length >= 1 && !second.box.state.dirty);
     assert.equal(uploads.length, 1);
     assert.equal(second.box.state.dirty, false);
     assert.equal(window.localStorage.getItem('survey:drive-dirty:doc-reload'), null);

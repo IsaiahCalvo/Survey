@@ -736,6 +736,48 @@ test('the move case works when the item\'s new tab is read first', async () => {
   assert.deepEqual(Object.values(quiet.summary).filter(Boolean), []);
 });
 
+// Real-Excel soak (11-12): the PM kept typing in a deleted item's kept row
+// after its note ran out, and the panel said nothing.
+test('a deleted item\'s kept row that the PM keeps changing keeps its note on the panel', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101'), d2: door('d2', 'D-102') } });
+  const t0 = Date.parse('2026-11-12T12:00:00Z');
+  await ctx.round({ now: new Date(t0) });
+  const row = await ctx.rowOf('d2');
+  const notes = await ctx.col('Notes');
+  await ctx.edit([{ row, col: notes, value: 'PM note' }]);
+  delete ctx.markers.d2;
+  await ctx.round({ now: new Date(t0 + 5000), force: true });
+  const kept = () => ctx.link.state.problems.filter((p) => /"D-102" was deleted in Survey, but its row was kept/.test(p.message));
+  assert.equal(kept().length, 1);
+  await ctx.edit([{ row, col: notes, value: 'PM note, more' }]);
+  await ctx.round({ now: new Date(t0 + 25 * 60_000), force: true });
+  assert.equal(kept().length, 1, 'once, not twice');
+  await ctx.round({ now: new Date(t0 + 40 * 60_000), force: true });
+  assert.equal(kept().length, 1, 'still said 15 minutes after the PM\'s last change');
+  await ctx.round({ now: new Date(t0 + 56 * 60_000), force: true });
+  assert.equal(kept().length, 0, 'and gone half an hour after it');
+  assert.equal(ctx.markers.d2, undefined, 'the PM\'s typing never brings the item back');
+});
+
+test('a kept row from a delete that clashed with a sheet edit keeps that one note when the PM keeps changing it', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101'), d2: door('d2', 'D-102') } });
+  const t0 = Date.parse('2026-11-12T12:00:00Z');
+  await ctx.round({ now: new Date(t0) });
+  const row = await ctx.rowOf('d2');
+  const notes = await ctx.col('Notes');
+  await ctx.edit([{ row, col: notes, value: 'PM note' }]);
+  delete ctx.markers.d2;
+  await ctx.round({ now: new Date(t0 + 5000), force: true, clashes: { d2: { deleted: true, scopeId: ctx.link.baseline.d2.scopeId, name: 'D-102' } } });
+  const forD2 = () => ctx.link.state.problems.filter((p) => p.markerId === 'd2').map((p) => p.message);
+  assert.equal(forD2().length, 1);
+  await ctx.edit([{ row, col: notes, value: 'PM note, more' }]);
+  await ctx.round({ now: new Date(t0 + 25 * 60_000), force: true });
+  assert.equal(forD2().length, 1, 'one note for the row');
+  assert.match(forD2()[0], /just after its row was changed/, 'in its own wording');
+  await ctx.round({ now: new Date(t0 + 40 * 60_000), force: true });
+  assert.equal(forD2().length, 1, 'still there after the first half hour');
+});
+
 test('a PM\'s late save over a deleted item\'s row still makes the PM\'s item when the note landed a round before the name', async () => {
   const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
   ctx.provider = { ...ctx.provider, savesLate: true };
