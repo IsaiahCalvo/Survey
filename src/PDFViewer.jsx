@@ -22540,11 +22540,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const hiddenLayerWarnAtRef = useRef(0);
   const layerStateNowRef = useRef(layerState);
   layerStateNowRef.current = layerState;
-  // `isNew()` says whether the commit adds a mark (only asked when the layer
-  // is hidden, so an ordinary commit pays nothing).
+  // `isNew(layerId)` says whether the commit adds a mark on that layer (only
+  // asked when the layer is hidden, so an ordinary commit pays nothing).
   warnIfDrawnOnHiddenLayerRef.current = (isNew) => {
     const hidden = hiddenActiveLayer(layerState, activeLayerIdRef.current);
-    if (!hidden || !isNew()) return;
+    if (!hidden || !isNew(hidden.id)) return;
     const now = Date.now();
     if (now - hiddenLayerWarnAtRef.current < 4000) return;
     hiddenLayerWarnAtRef.current = now;
@@ -28615,7 +28615,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       && saveContext?.action !== 'move-to-page') {
       const stamped = stampNewObjectsOnLayer(annotationsByPageRef.current?.[pageNumber]?.objects, json.objects, activeLayerIdRef.current);
       const objectsBeforeStamp = json.objects;
-      warnIfDrawnOnHiddenLayerRef.current(() => hasNewObjects(annotationsByPageRef.current?.[pageNumber]?.objects, objectsBeforeStamp));
+      warnIfDrawnOnHiddenLayerRef.current((layerId) => hasNewObjects(annotationsByPageRef.current?.[pageNumber]?.objects, objectsBeforeStamp, layerId));
       if (stamped !== json.objects) json = { ...json, objects: stamped };
     }
     const source_ = saveContext?.source || 'unknown';
@@ -29276,7 +29276,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       && saveContext?.action !== 'move-to-page' && saveContext?.action !== 'move-region') {
       const stampedByPage = stampNewMarksByPage(annotationsByPageRef.current, transaction.nextByPage, activeLayerIdRef.current);
       const nextBeforeStamp = transaction.nextByPage;
-      warnIfDrawnOnHiddenLayerRef.current(() => hasNewMarksByPage(annotationsByPageRef.current, nextBeforeStamp));
+      warnIfDrawnOnHiddenLayerRef.current((layerId) => hasNewMarksByPage(annotationsByPageRef.current, nextBeforeStamp, layerId));
       if (stampedByPage !== transaction.nextByPage) {
         transaction = { ...transaction, nextByPage: stampedByPage, action: buildTextMarkupDocumentAction(annotationsByPageRef.current || {}, stampedByPage) || transaction.action };
       }
