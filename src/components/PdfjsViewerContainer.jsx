@@ -125,6 +125,7 @@ import { hasTouchInput } from '../utils/layoutMode.js';
 import { notePageDrawn, pageMounted, pageUnmounted, PAGE_CACHE_KEEP_MOBILE, PAGE_CACHE_KEEP_DESKTOP } from '../utils/pdfPageCacheTrim';
 import { isInTabBehind } from '../utils/tabBehind.js';
 import { isFeatureOn } from '../featureFlags.js';
+import { pageStepForKey, steppedPage } from '../utils/drawboardKeys.js';
 import { ZOOM_AREA_MIN_PX, boxBetween, isZoomToAreaStart, zoomToAreaPlan } from '../utils/zoomToArea.js';
 import { registerSpotlightViewer, spotlightViewMovedByHand } from '../services/annotationSpotlight.js';
 import { pdfjsAssetOptions } from '../utils/pdfjsAssets.js';
@@ -5933,6 +5934,31 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [cancelPanInertia, glideScrollTopTo, goToPage]);
+
+  // Drawboard keys (Nightly 'drawboard-keys'): Shift+Up / Down go to the
+  // previous / next page on the same glide. Shift+arrows also nudge a picked
+  // mark by 10 (that handler claims the key), so the page only turns when
+  // nothing else took the press; fields and menus keep it.
+  const [drawboardKeysOn] = useState(() => isFeatureOn('drawboard-keys'));
+  useEffect(() => {
+    if (!drawboardKeysOn) return undefined;
+    const onKeyDown = (event) => {
+      const step = pageStepForKey(event);
+      if (!step || event.defaultPrevented) return;
+      const el = scrollerRef.current;
+      if (!el || !el.isConnected || isInTabBehind(el) || el.clientHeight <= 0 || el.getClientRects().length === 0) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target && (isEditableTarget(target) || isEditableTarget(document.activeElement))) return;
+      if (target?.closest?.('[role="menu"], [role="listbox"], [role="slider"], [role="dialog"], [role="tree"], [role="grid"], [role="radiogroup"], [role="tablist"]')) return;
+      setTimeout(() => {
+        if (event.defaultPrevented) return;
+        const next = steppedPage(currentPageRef.current, step, numPagesRef.current || topsRef.current.length);
+        if (next) goToPage(next, { smooth: true });
+      }, 0);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [drawboardKeysOn, goToPage]);
 
   // A glide never outlives the viewer.
   useEffect(() => () => { pageGlideRef.current?.cancel('cancel'); }, []);

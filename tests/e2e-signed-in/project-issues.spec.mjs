@@ -113,6 +113,9 @@ for (const layout of LAYOUTS) {
         await title.press('Enter');
         await expect.poll(async () => (await admin.from('project_items').select('title, number, status').eq('project_id', projectId)).data)
           .toEqual([{ title: 'Door 3 hinge loose', number: 1, status: 'draft' }]);
+        // On Hold is a Task's status: the database refuses it on an Issue.
+        const held = await admin.from('project_items').update({ status: 'on_hold' }).eq('project_id', projectId).select('id');
+        expect(held.error?.message || '').toContain('project_items_kind_status_check');
 
         // 2. Status, assignee, due date, tags, a linked document, a comment.
         await pick(page, layout, 'item-status-select', 'Open');

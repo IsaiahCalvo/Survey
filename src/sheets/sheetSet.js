@@ -5,8 +5,11 @@
 
 const COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
-export const GRID_COLUMNS = [4, 5, 6, 7, 8];
-export const DEFAULT_GRID_COLUMNS = 4;
+// Grid columns: Auto (as many as there are sheets, up to 4) or any whole
+// number the person types, as Drawboard's "Grid columns" box.
+export const GRID_AUTO = 'auto';
+export const GRID_AUTO_MAX = 4;
+export const GRID_MAX_COLUMNS = 24;
 export const SHEET_VIEWS = ['single', 'list', 'grid'];
 // Home's "Open all" asks the viewer for the List view with this event.
 export const SHEET_VIEW_EVENT = 'survey:sheet-view';
@@ -90,10 +93,61 @@ export function sheetStepForKey(event) {
   return 0;
 }
 
-export function clampGridColumns(value) {
+/** A picker row: the number in bold, the name under it ({ number, name }). */
+export function sheetRowParts(doc) {
+  const number = sheetNumber(doc);
+  const title = sheetTitle(doc);
+  if (!number) return { number: title, name: '' };
+  const name = title.toLowerCase().startsWith(number.toLowerCase())
+    ? title.slice(number.length).replace(/^[\s\-–—:_.]+/, '')
+    : title;
+  return { number, name };
+}
+
+/** A saved or typed setting: 'auto', or a whole number (0 reads as 1). */
+export function parseGridColumns(value) {
+  if (value == null || value === '' || value === GRID_AUTO) return GRID_AUTO;
   const n = Math.round(Number(value));
-  if (!Number.isFinite(n)) return DEFAULT_GRID_COLUMNS;
-  return Math.min(GRID_COLUMNS[GRID_COLUMNS.length - 1], Math.max(GRID_COLUMNS[0], n));
+  if (!Number.isFinite(n)) return GRID_AUTO;
+  return Math.min(GRID_MAX_COLUMNS, Math.max(1, n));
+}
+
+/** Sheets per row: Auto is min(sheets, 4); a number is that many. */
+export function gridColumnsFor(setting, count) {
+  const parsed = parseGridColumns(setting);
+  if (parsed !== GRID_AUTO) return parsed;
+  return Math.max(1, Math.min(GRID_AUTO_MAX, Number(count) || 1));
+}
+
+/** The strip under a sheet in List / Grid: "M-101 - Plan - Rev C". */
+export function sheetCardLabel(doc) {
+  const rev = clean(doc?.sheet_revision ?? doc?.sheetRevision);
+  return rev ? `${sheetLabel(doc)} - Rev ${rev}` : sheetLabel(doc);
+}
+
+/**
+ * "Open all" opens the list as it stands; with two or more rows ticked it
+ * reads "Open N selected" and opens only those. Order stays the list's.
+ */
+export function openAllChoice(files, selectedIds) {
+  const rows = Array.isArray(files) ? files : [];
+  const ticked = new Set([...(selectedIds || [])].map(String));
+  const picked = rows.filter((f) => ticked.has(String(f.id)));
+  return picked.length >= 2
+    ? { files: picked, label: `Open ${picked.length} selected` }
+    : { files: rows, label: 'Open all' };
+}
+
+/**
+ * The set Open all chose (ids), kept while its sheets are open: the project's
+ * sheets narrowed to those ids, in the project's order. With fewer than two of
+ * them left, or the open sheet not among them, the whole project set stands.
+ */
+export function narrowSheets(sheets, ids, currentId) {
+  if (!Array.isArray(ids) || !ids.length) return sheets || [];
+  const keep = new Set(ids.map(String));
+  const narrowed = (sheets || []).filter((s) => keep.has(String(s.id)));
+  return narrowed.length > 1 && narrowed.some((s) => String(s.id) === String(currentId)) ? narrowed : (sheets || []);
 }
 
 /** Case-blind search over number and name, as the picker's search field. */
