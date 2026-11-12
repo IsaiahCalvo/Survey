@@ -54,6 +54,7 @@ import { insetRectForFill, shouldKnockOutShapeFill } from './shapeFillKnockout.j
 import { createInkPathAffine } from './inkGeometryTransform.js';
 import { normalizeOperationalInkPath } from './inkPathNormalization.js';
 import { getCounterLabelLayout } from './counterGeometry.js';
+import { polySplineSpans } from './polySpline.js';
 
 const MAX_RASTER_SCALE = 2.5;
 const MAX_BACKING_DIMENSION = 8192;
@@ -792,7 +793,14 @@ function drawPoints(context, object, close) {
   context.translate(-pathOffsetX, -pathOffsetY);
 
   const strokeWidth = toNumber(object.strokeWidth, 1);
+  // A curved polyline draws its spans as true cubics, like the SVG layer.
+  const spans = close ? [] : polySplineSpans(object);
   const tracePoints = (target) => {
+    if (spans.length) {
+      target.moveTo(spans[0].from.x, spans[0].from.y);
+      for (const s of spans) target.bezierCurveTo(s.c1.x, s.c1.y, s.c2.x, s.c2.y, s.to.x, s.to.y);
+      return;
+    }
     points.forEach((point, index) => {
       const x = toNumber(point?.x);
       const y = toNumber(point?.y);

@@ -104,6 +104,7 @@ import { createInkPathAffine } from './inkGeometryTransform.js';
 // SVG renderer, and canvas painter consume — one home for the head math
 // (buildArrowheadRenderSpec in lineRenderHelpers.js). Pure JS, Node-safe.
 import { ARROWHEAD_STYLES, buildArrowheadRenderSpec, buildCurvedLineBody, calloutLineDashArray, insetOpenPolylinePoints, lineEndingBodyInset, resolveLineEndingStyles } from './lineRenderHelpers.js';
+import { polySplineStep, smoothPolylinePoints, trimPointsByLength } from './polySpline.js';
 import { getCounterLabelLayout } from './counterGeometry.js';
 import {
   adaptHighlight,
@@ -3520,7 +3521,9 @@ const createPolygonAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = 
 const createPolyLineAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {}) => {
   try {
     const color = hexToRGB(fabricObj.stroke || '#000000');
-    const points = fabricObj.points || [];
+    // A curved polyline writes its smooth curve as fine vertices, so a viewer
+    // that draws from /Vertices (and the XFDF copy) shows no corners.
+    const points = (polySplineStep(fabricObj) ? smoothPolylinePoints(fabricObj) : fabricObj.points) || [];
     if (points.length < 2) {
       return null;
     }
@@ -5214,7 +5217,10 @@ const fabricPolygonWorldPoints = (obj) => {
     x: scaleX * ((box.minX + box.maxX) / 2 - offsetX),
     y: scaleY * ((box.minY + box.maxY) / 2 - offsetY),
   };
-  return points.map((point) => {
+  // A curved polyline prints its smooth curve, cut finely (polySpline.js);
+  // the turn centre stays the stored points' box centre, as on screen.
+  const drawn = polySplineStep(obj) ? smoothPolylinePoints(obj) : points;
+  return drawn.map((point) => {
     const local = { x: ((Number(point?.x) || 0) - offsetX) * scaleX, y: ((Number(point?.y) || 0) - offsetY) * scaleY };
     const rotated = rotateAppPoint(local, center, Number(obj?.angle) || 0);
     return { x: (Number(obj?.left) || 0) + rotated.x, y: (Number(obj?.top) || 0) + rotated.y };
@@ -6316,7 +6322,9 @@ const drawFlattenedPolygon = (page, obj, pageHeight, closePath = true) => {
   // Open polylines: pull the first / last point back so the body stops at the
   // edge of a hollow ending — identical to the screen renderer.
   const plEndings = closePath ? null : resolveLineEndingStyles(obj);
-  const points = closePath ? rawPoints : insetOpenPolylinePoints(
+  // A finely cut curve is made of tiny pieces: trim it along its length.
+  const insetPoints = !closePath && polySplineStep(obj) ? trimPointsByLength : insetOpenPolylinePoints;
+  const points = closePath ? rawPoints : insetPoints(
     rawPoints,
     lineEndingBodyInset(plEndings.startStyle, Number(obj?.strokeWidth) || 1),
     lineEndingBodyInset(plEndings.endStyle, Number(obj?.strokeWidth) || 1),

@@ -167,9 +167,9 @@ test('handles survive the 0.01 save rounding within a hair', () => {
   });
 });
 
-test('dragging one handle bends only its own span; corners stay put', () => {
+test('Alt-dragging one handle bends only its own span; corners stay put', () => {
   const pts = sampleSpline(corners, SPLINE_STEP);
-  const bent = moveSplineHandle(pts, SPLINE_STEP, 1, 'c1', { x: 70, y: 120 });
+  const bent = moveSplineHandle(pts, SPLINE_STEP, 1, 'c1', { x: 70, y: 120 }, true);
   assert.equal(bent.length, pts.length);
   assert.deepEqual(splineCorners(bent, SPLINE_STEP), corners);
   // Spans 0 and 2 are untouched; span 1 moved toward the handle.
@@ -177,6 +177,29 @@ test('dragging one handle bends only its own span; corners stay put', () => {
   for (let i = 24; i < pts.length; i += 1) assert.ok(near(bent[i], pts[i], 1e-6));
   assert.ok(Math.max(...bent.slice(13, 24).map((p) => p.y)) > Math.max(...pts.slice(13, 24).map((p) => p.y)) + 10);
   assert.ok(near(splineSpans(bent, SPLINE_STEP)[1].c1, { x: 70, y: 120 }, 1e-6));
+});
+
+test('dragging a handle keeps its corner smooth: the other handle turns in line, same length', () => {
+  const pts = sampleSpline(corners, SPLINE_STEP);
+  const before = splineSpans(pts, SPLINE_STEP);
+  const bent = moveSplineHandle(pts, SPLINE_STEP, 1, 'c1', { x: 70, y: 120 });
+  const after = splineSpans(bent, SPLINE_STEP);
+  assert.deepEqual(splineCorners(bent, SPLINE_STEP), corners);
+  assert.ok(near(after[1].c1, { x: 70, y: 120 }, 1e-6));
+  const corner = corners[1];
+  const a = { x: after[1].c1.x - corner.x, y: after[1].c1.y - corner.y };
+  const b = { x: after[0].c2.x - corner.x, y: after[0].c2.y - corner.y };
+  const cos = (a.x * b.x + a.y * b.y) / (Math.hypot(a.x, a.y) * Math.hypot(b.x, b.y));
+  assert.ok(cos < -0.9999, `handles in line through the corner (cos ${cos})`);
+  const oldLen = Math.hypot(before[0].c2.x - corner.x, before[0].c2.y - corner.y);
+  assert.ok(Math.abs(Math.hypot(b.x, b.y) - oldLen) < 1e-6, 'the other handle keeps its length');
+  // Span 2 is untouched.
+  for (let i = 24; i < pts.length; i += 1) assert.ok(near(bent[i], pts[i], 1e-6));
+  // A corner made sharp with Alt stays sharp on the next plain drag.
+  const sharp = moveSplineHandle(pts, SPLINE_STEP, 1, 'c1', { x: 70, y: 120 }, true);
+  const again = moveSplineHandle(sharp, SPLINE_STEP, 1, 'c1', { x: 75, y: 100 });
+  const s0 = splineSpans(sharp, SPLINE_STEP)[0].c2;
+  assert.ok(near(splineSpans(again, SPLINE_STEP)[0].c2, s0, 0.05), 'sharp corner left alone');
 });
 
 test('a hand-bent curve: moving a corner carries its handles and keeps far spans', () => {
