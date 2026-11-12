@@ -645,9 +645,10 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
       const sparse = [];
       for (const [sheetId, group] of bySheet(cells)) for (const block of sparseBlocks(group, sparseMaxCells)) sparse.push({ sheetId, block });
       const ops = opsOf(sparse);
-      const answers = await send(ops, [400]);
+      const answers = await send(ops, [400, 409]);
       // A sparse rectangle Excel won't take (one crossing part of a merged
-      // area, say): its own cells go the old way, in solid blocks only.
+      // area, 400, or a PivotTable a PM put between the cells, 409): its own
+      // cells go the old way, in solid blocks only.
       const again = ops.filter((op, i) => answers[i] === REFUSED)
         .flatMap((op) => cellBlocks(op.block.cells).map((block) => ({ sheetId: op.sheetId, block })));
       if (again.length) await send(opsOf(again), []);
