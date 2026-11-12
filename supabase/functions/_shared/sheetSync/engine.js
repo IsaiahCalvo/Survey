@@ -134,6 +134,7 @@ export const MAX_CELL_CHARS = 32000;
 // and the longest late save seen was a little over 2 minutes.
 export const RECENT_WRITE_MS = 180_000;
 const RECENT_WRITE_MAX = 2000;
+const RECENT_APPENDS_MAX = 50;
 // A PM typing a new item into the first empty row under the list, unsaved,
 // while Survey appends a field tech's new item there (Graph still sees the
 // row as empty): the PM's late save lands on the tech's row. A changed Item
@@ -464,6 +465,10 @@ export async function planSheetRound({
     // one locked tab doesn't stop every other tab (real Excel 11-10).
     lockedTabs: [],
     heldErase: null,
+    // Excel only: the blocks of rows Survey added lately, { scopeId, t, n,
+    // last } (last = the id of the block's last row). See shiftedRows below.
+    recentAppends: lateSaves ? (Array.isArray(state.recentAppends) ? state.recentAppends : [])
+      .filter((b) => b && now.getTime() - Number(b.t) <= NEW_ROW_TAKEOVER_MS).slice(-RECENT_APPENDS_MAX) : [],
   };
   const notice = (p) => {
     next.notices = [{ ...p, t: now.getTime() }, ...next.notices.filter((n) => n.message !== p.message)].slice(0, NOTICE_MAX);
@@ -721,13 +726,54 @@ export async function planSheetRound({
       lostByName.set(name, [...(lostByName.get(name) || []), markerId]);
     }
 
+    // Excel on the web, real browser (11-12): a PM's new row typed 10 to 60 s
+    // after Survey inserted N rows at the end of the list is saved N rows
+    // lower than typed, and sometimes only its Item moves (the note stays on
+    // the row typed). The offset is always the size of a recent insert, the
+    // row typed sits right under Survey's new rows, and the rows between are
+    // blank. Such a row's cells go back to the row typed, and both rows wait
+    // for the next round, which reads them as one new row.
+    const shiftedRows = new Set();
+    const blocks = lateSaves ? next.recentAppends.filter((b) => b.scopeId === scope.scopeId && now.getTime() - Number(b.t) <= rowWindowMs) : [];
+    if (blocks.length && colOfKey.has('item')) {
+      const lastOf = new Map(blocks.map((b) => [String(b.last), b]));
+      const offsets = [...new Set([...blocks.map((b) => Number(b.n)), blocks.reduce((sum, b) => sum + Number(b.n), 0)])].filter((n) => n > 0);
+      const itemCol = colOfKey.get('item');
+      const filledKeys = (row) => scope.columns.filter((c) => c.key !== 'rowId' && colOfKey.has(c.key) && !isBlankCell(row[colOfKey.get(c.key)])).map((c) => c.key);
+      for (let o = headerAt + 2; o < rows.length; o += 1) {
+        const above = ids.get(o - 1);
+        if (!above || !lastOf.has(String(above.markerId)) || ownRow.get(above.markerId) !== o - 1) continue;
+        const typed = rows[o] || [];
+        if (ids.get(o) || !isBlankCell(typed[itemCol]) || hasOwnData(typed)) continue; // a Row ID, a name or the PM's own columns: not this
+        for (const n of offsets) {
+          const x = o + n;
+          const low = rows[x] || [];
+          if (!ids.has(x) || ids.get(x) || isBlankCell(low[itemCol]) || hasOwnData(low)) continue;
+          let between = true;
+          for (let k = o + 1; k < x; k += 1) if (ids.has(k)) { between = false; break; }
+          if (!between) continue;
+          const typedKeys = new Set(filledKeys(typed));
+          const lowKeys = filledKeys(low);
+          if (lowKeys.some((k) => typedKeys.has(k))) continue;
+          for (const k of lowKeys) {
+            writeCell(o, k, low[colOfKey.get(k)], typed[colOfKey.get(k)] ?? null);
+            writeCell(x, k, '', low[colOfKey.get(k)]);
+          }
+          shiftedRows.add(o); shiftedRows.add(x);
+          break;
+        }
+      }
+    }
+
     const appendRows = [];
+    const appendedIds = []; // the ids of appendRows, in order
     // Rows that are not items (a totals line, a heading): new items go above
     // the ones after the last item, so a totals line stays last.
     const summaryRows = [];
     for (let r = headerAt + 1; r < rows.length; r += 1) {
       const row = rows[r] || [];
       if (!ids.has(r)) continue; // blank
+      if (shiftedRows.has(r)) continue; // put back where it was typed; read next round
       const parsed = ids.get(r);
       const token = cellText(row[rowIdCol]).trim();
       let markerId = parsed?.markerId ?? null;
@@ -926,6 +972,7 @@ export async function planSheetRound({
       delete next.tombstones[markerId];
       const { out, rec } = await rowFor(markerId, markers[markerId]);
       appendRows.push(out);
+      appendedIds.push(markerId);
       nextBaseline[markerId] = { scopeId: scope.scopeId, fields: fieldPrintsOf(rec) };
       seenMarkers.add(markerId);
       plan.summary.appended += 1;
@@ -938,6 +985,9 @@ export async function planSheetRound({
     // totals line. A note a PM typed far below (Z400) is not: new items
     // inserted above it landed at row 400 (real Excel 11-10).
     const firstSummary = summaryRows.filter((r) => r > lastItemRow && r <= lastItemRow + 3).sort((a, b) => a - b)[0];
+    if (appendRows.length && lateSaves) {
+      next.recentAppends = [...next.recentAppends, { scopeId: scope.scopeId, t: now.getTime(), n: appendRows.length, last: appendedIds[appendedIds.length - 1] }].slice(-RECENT_APPENDS_MAX);
+    }
     if (appendRows.length) {
       plan.appends.push({
         sheetId: sheet.sheetId, title: sheet.title, rows: appendRows, width, listCols, ownCols,
@@ -1049,6 +1099,7 @@ export async function planSheetRound({
           plan.summary.created += 1;
           const made = await rowFor(id, item);
           appendRows.push(made.out);
+          appendedIds.push(id);
           plan.summary.appended += 1;
           nextBaseline[id] = { scopeId: scope.scopeId, fields: fieldPrintsOf(made.rec) };
           seenMarkers.add(id);

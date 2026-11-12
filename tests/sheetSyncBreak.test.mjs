@@ -1002,3 +1002,64 @@ test('the kept-row notice for an item deleted just after a sheet edit stays for 
   await ctx.round({ now: new Date(t0 + 5000 + 31 * 60_000), force: true });
   assert.ok(!said(), 'until half an hour has passed');
 });
+
+// Excel on the web, real browser (11-12): a PM's new row typed 10 to 60 s
+// after Survey inserted N rows is saved N rows lower, sometimes with only the
+// Item moved. Survey puts it back on the row typed.
+const shiftSetup = async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
+  ctx.provider = { ...ctx.provider, savesLate: true };
+  const t0 = Date.parse('2026-11-12T17:00:00Z');
+  await ctx.round({ now: new Date(t0) }); await ctx.round({ now: new Date(t0 + 1000), force: true });
+  for (const i of [2, 3, 4]) ctx.markers[`d${i}`] = door(`d${i}`, `D-10${i}`);
+  await ctx.round({ now: new Date(t0 + 5000) });
+  const typed = (await ctx.rowOf('d4')) + 1;
+  return { ctx, t0, typed, item: await ctx.col('Item'), notes: await ctx.col('Notes') };
+};
+const pmItems = (ctx) => Object.values(ctx.markers).filter((m) => m.source === 'sheet');
+
+test('a PM row whose Item Excel saved N rows low after Survey\'s insert is joined back to its note', async () => {
+  const { ctx, t0, typed, item, notes } = await shiftSetup();
+  await ctx.edit([{ row: typed, col: notes, value: 'PM note' }, { row: typed + 3, col: item, value: 'D-120' }]);
+  const fix = await ctx.round({ now: new Date(t0 + 30000), force: true });
+  assert.equal(fix.summary.created, 0, 'nothing made from the halves');
+  assert.ok(!ctx.link.state.problems.some((p) => /has no "Item"/.test(p.message)), 'and no orphan reported');
+  let rows = (await ctx.sheet()).rows;
+  assert.deepEqual([rows[typed][item], rows[typed][notes]], ['D-120', 'PM note'], 'one row again, where it was typed');
+  assert.ok(!(rows[typed + 3] || []).some((c) => String(c ?? '').trim()), 'the low row is empty');
+  await ctx.round({ now: new Date(t0 + 35000), force: true });
+  assert.deepEqual(pmItems(ctx).map((m) => [m.name, m.note.text]), [['D-120', 'PM note']]);
+  rows = (await ctx.sheet()).rows;
+  assert.equal(await ctx.rowOf(pmItems(ctx)[0].id), typed);
+  const quiet = await ctx.round({ now: new Date(t0 + 40000), force: true });
+  assert.deepEqual(Object.values(quiet.summary).filter(Boolean), []);
+});
+
+test('a whole PM row Excel saved N rows low after Survey\'s insert goes back up to the row typed', async () => {
+  const { ctx, t0, typed, item, notes } = await shiftSetup();
+  await ctx.edit([{ row: typed + 3, col: item, value: 'D-120' }, { row: typed + 3, col: notes, value: 'PM note' }]);
+  await ctx.round({ now: new Date(t0 + 30000), force: true });
+  await ctx.round({ now: new Date(t0 + 35000), force: true });
+  assert.deepEqual(pmItems(ctx).map((m) => [m.name, m.note.text]), [['D-120', 'PM note']]);
+  assert.equal(await ctx.rowOf(pmItems(ctx)[0].id), typed, 'right under the tech\'s new rows, no gap');
+});
+
+test('a row typed a few rows below the list long after Survey\'s insert is left where it is', async () => {
+  const { ctx, t0, typed, item, notes } = await shiftSetup();
+  await ctx.edit([{ row: typed, col: notes, value: 'PM note' }, { row: typed + 3, col: item, value: 'D-120' }]);
+  await ctx.round({ now: new Date(t0 + 5000 + 4 * 60_000), force: true });
+  assert.deepEqual(pmItems(ctx).map((m) => m.name), ['D-120'], 'an item where the name is');
+  assert.ok(ctx.link.state.problems.some((p) => /has no "Item"/.test(p.message)), 'and the note row is reported, as before');
+});
+
+test('the offset can be an earlier insert\'s size when a second insert followed it', async () => {
+  const { ctx, t0, item, notes } = await shiftSetup();
+  ctx.markers.d5 = door('d5', 'D-105');
+  await ctx.round({ now: new Date(t0 + 10000) });
+  const typed = (await ctx.rowOf('d5')) + 1;
+  await ctx.edit([{ row: typed, col: notes, value: 'PM note' }, { row: typed + 3, col: item, value: 'D-120' }]);
+  await ctx.round({ now: new Date(t0 + 30000), force: true });
+  await ctx.round({ now: new Date(t0 + 35000), force: true });
+  assert.deepEqual(pmItems(ctx).map((m) => [m.name, m.note.text]), [['D-120', 'PM note']]);
+  assert.equal(await ctx.rowOf(pmItems(ctx)[0].id), typed);
+});

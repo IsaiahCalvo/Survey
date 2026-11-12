@@ -841,3 +841,24 @@ test('a PM clearing the Item column never leaves the survey\'s items without nam
   await ctx.round();
   assert.equal((await ctx.round()).status, 'idle');
 });
+
+// Excel on the web, real browser (11-12): a PM's row typed just after
+// Survey's insert saved with its Item N rows low; Survey joins it back.
+test('a PM row whose Item Excel saved N rows low after Survey\'s insert is joined back, through Graph', async () => {
+  const mk = (id, name) => ({ id, name, moduleId: 'm1', categoryId: 'doors', pageNumber: 1, bounds: { x: 1, y: 1, width: 5, height: 5 }, checklistResponses: {}, note: { text: '' } });
+  const ctx = await setup({ markers: { d1: mk('d1', 'D-101') } });
+  const t0 = Date.parse('2026-11-12T17:00:00Z');
+  await ctx.round({ now: new Date(t0) }); await ctx.round({ now: new Date(t0 + 1000), force: true });
+  ctx.markers.d2 = mk('d2', 'D-102'); ctx.markers.d3 = mk('d3', 'D-103');
+  await ctx.round({ now: new Date(t0 + 5000), force: true });
+  const typed = (await ctx.rowOf('d3')) + 1;
+  const item = await ctx.col('Item'); const notes = await ctx.col('Notes');
+  await ctx.edit([{ row: typed, col: notes, value: 'PM note' }, { row: typed + 2, col: item, value: 'D-120' }]);
+  await ctx.round({ now: new Date(t0 + 30000), force: true });
+  await ctx.round({ now: new Date(t0 + 35000), force: true });
+  const pm = Object.values(ctx.markers).filter((m) => m.source === 'sheet');
+  assert.deepEqual(pm.map((m) => [m.name, m.note.text]), [['D-120', 'PM note']]);
+  const rows = (await ctx.sheet()).rows;
+  assert.deepEqual([rows[typed][item], rows[typed][notes]], ['D-120', 'PM note']);
+  assert.ok(!(rows[typed + 2] || []).some((c) => String(c ?? '').trim()), 'the low row is cleared in Excel');
+});
