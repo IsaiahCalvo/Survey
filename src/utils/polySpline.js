@@ -418,7 +418,7 @@ const reverseSpan = (s) => ({ from: s.to, c1: s.c2, c2: s.c1, to: s.from });
 
 // Cut `inset` of length off the front of `spans`, walking past whole spans
 // shorter than what is left to cut, as trimPointsByLength does for the fine
-// cut. A line shorter than the inset keeps its last span's far half.
+// cut. A line shorter than the inset keeps a stub at its far end.
 function trimFront(spans, inset) {
   if (!(inset > 0) || !spans.length) return spans;
   let left = inset;
@@ -431,8 +431,9 @@ function trimFront(spans, inset) {
   }
   const rest = spans.slice(i);
   const t = tAtLength(rest[0], left);
-  // Past the end of the whole line: keep the far half, never cut it all away.
-  rest[0] = splitCubic(rest[0], t >= 1 ? 0.5 : Math.max(0, t))[1];
+  // Past the end of the whole line: keep only a stub at the far end (as
+  // trimPointsByLength keeps a sliver of its last piece), never cut it all away.
+  rest[0] = splitCubic(rest[0], t >= 1 ? 0.99 : Math.max(0, t))[1];
   return rest;
 }
 

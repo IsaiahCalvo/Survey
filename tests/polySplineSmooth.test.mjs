@@ -210,3 +210,15 @@ test('hit tests follow the drawn curve, not the stored samples', async () => {
   assert.ok(farGap > 1);
   assert.equal(isPointOnPolyline(far, mark, 0.5), true);
 });
+
+test('a curve shorter than its ending inset keeps only a stub, on screen and in print', () => {
+  const tiny = sampleSpline([{ x: 0, y: 0 }, { x: 3, y: 2 }, { x: 6, y: 0 }], SPLINE_STEP);
+  const mark = curvedMark(tiny, { data: { id: 't', spline: { step: SPLINE_STEP } } });
+  const d = splinePathD(tiny, SPLINE_STEP, 50, 0);
+  const nums = d.match(/-?\d+(\.\d+)?/g).map(Number);
+  const [sx, sy] = nums; const [ex, ey] = nums.slice(-2);
+  assert.ok(Math.hypot(ex - sx, ey - sy) < 0.5, `screen stub ${Math.hypot(ex - sx, ey - sy)}`);
+  const trimmed = trimPointsByLength(smoothPolylinePoints(mark), 50, 0);
+  const a = trimmed[0]; const b = trimmed[trimmed.length - 1];
+  assert.ok(Math.hypot(b.x - a.x, b.y - a.y) < 0.5, 'print stub');
+});
