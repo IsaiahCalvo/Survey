@@ -8,6 +8,7 @@
  * Phase 9 Plan 01: Selection foundation utilities.
  */
 import { createInkPathAffine } from './inkGeometryTransform.js';
+import { polySplineStep, smoothPolylinePoints } from './polySpline.js';
 
 const stableSum = (...values) => {
   if (values.some((value) => Number.isNaN(value))) return NaN;
@@ -678,8 +679,11 @@ function getPointsBBox(obj) {
   const left = obj.left ?? 0;
   const top = obj.top ?? 0;
 
+  // A curved polyline draws true cubics that can bulge past its stored
+  // samples: frame the drawn curve (same local space, same transform).
+  const framePoints = polySplineStep(obj) ? smoothPolylinePoints(obj) : obj.points;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const p of obj.points) {
+  for (const p of framePoints) {
     const px = typeof p?.x === 'number' ? p.x : 0;
     const py = typeof p?.y === 'number' ? p.y : 0;
     if (px < minX) minX = px;

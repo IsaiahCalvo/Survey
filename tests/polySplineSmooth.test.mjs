@@ -14,6 +14,7 @@ import {
   smoothPolylinePoints, splinePathD, splineSpans, trimPointsByLength,
   fineHitToStored, fineSplinePoints, splinePointAt, splineCorners,
 } from '../src/utils/polySpline.js';
+import { getAnnotationBBox } from '../src/utils/svgBoundingBox.js';
 import { insertPolyVertex, insertVertexOnNearestEdge } from '../src/utils/polyVertices.js';
 import { createServer } from 'vite';
 import { drawAnnotationObject } from '../src/utils/annotationCanvasPainter.js';
@@ -250,4 +251,38 @@ test('the add-point side band follows the drawn curve and inserts on it', () => 
   const next = insertPolyVertex(mark, hit.segmentIndex, hit.t);
   const added = splineCorners(next.points, SPLINE_STEP)[1];
   assert.ok(Math.hypot(added.x - onCurve.x, added.y - onCurve.y) < 0.05, `corner ${added.x},${added.y} vs ${onCurve.x},${onCurve.y}`);
+});
+
+test('a handle pulled past its end along the chord still cuts the hook it draws', () => {
+  // All three corners on one line, then the first handle pulled out behind the
+  // start along that line (Alt, so only this span changes). The curve runs back
+  // past x = 0 before it turns: the cut must follow it, not the bare chord.
+  const flat = sampleSpline([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 200, y: 0 }], SPLINE_STEP);
+  const points = moveSplineHandle(flat, SPLINE_STEP, 0, 'c1', { x: -80, y: 0 }, true);
+  const mark = curvedMark(points);
+  const spans = polySplineSpans(mark);
+  let hookX = 0;
+  for (let i = 0; i <= 400; i += 1) hookX = Math.min(hookX, cubicAt(spans[0], i / 400).x);
+  assert.ok(hookX < -10, `the drawn curve hooks back to x = ${hookX.toFixed(2)}`);
+  const smooth = smoothPolylinePoints(mark);
+  const reach = Math.min(...smooth.map((p) => p.x));
+  assert.ok(Math.abs(reach - hookX) < 0.05, `the cut reaches x = ${reach.toFixed(3)}, curve ${hookX.toFixed(3)}`);
+  assert.ok(worstGap(spans, smooth) <= SPLINE_FLAT_TOLERANCE + 1e-6);
+});
+
+test('the selection frame wraps the drawn curve, not just the stored samples', () => {
+  const mark = curvedMark();
+  const spans = polySplineSpans(mark);
+  let minX = Infinity; let maxY = -Infinity;
+  for (const s of spans) {
+    for (let i = 0; i <= 400; i += 1) {
+      const p = cubicAt(s, i / 400);
+      minX = Math.min(minX, p.x); maxY = Math.max(maxY, p.y);
+    }
+  }
+  const storedMinX = Math.min(...mark.points.map((p) => p.x));
+  assert.ok(storedMinX - minX > 0.5, 'the bend pokes out past the stored samples');
+  const box = getAnnotationBBox(mark);
+  assert.ok(box.left <= minX + 0.02, `frame left ${box.left} vs ink ${minX}`);
+  assert.ok(box.top + box.height >= maxY - 0.02, `frame bottom ${box.top + box.height} vs ink ${maxY}`);
 });
