@@ -35,7 +35,12 @@ import {
   SEGMENT_CAPTION_KINDS,
   SEGMENT_CAPTION_PLACES,
   segmentCaptionPlace,
+  MEASURE_PRESETS,
+  isOwnScaleMeasure,
+  scaleFromPreset,
 } from '../utils/measure/measureScale.js';
+import { defaultMeasurePrecision, displayForScaleUnit } from '../utils/measure/measureFormat.js';
+import ValueSelect from './ValueSelect.jsx';
 import { isFeatureOn } from '../featureFlags.js';
 import {
   DIMENSION_CAPTION_PLACES,
@@ -81,7 +86,24 @@ export default function MeasureEditPopover({ measure, onPatch, onClose, side = '
   const savedPt = isDim ? dimensionCaptionPt(mark) : null;
   const captionStyle = isDim ? dimensionCaptionStyle(mark) : null;
   // A Polylength or Perimeter's segment captions (measure-plus).
-  const segmentPlace = SEGMENT_CAPTION_KINDS.includes(kind) && isFeatureOn('measure-plus') ? segmentCaptionPlace(mark) : null;
+  const plusOn = isFeatureOn('measure-plus');
+  const segmentPlace = SEGMENT_CAPTION_KINDS.includes(kind) && plusOn ? segmentCaptionPlace(mark) : null;
+  // Its own scale or the page's (measure-plus, Drawboard's per-measure scale).
+  const ownScale = plusOn && isOwnScaleMeasure(mark) ? saved.scale : null;
+  const ownPreset = ownScale ? MEASURE_PRESETS.find((p) => p.label === ownScale.label) : null;
+  const scaleValue = !ownScale ? 'page' : (ownPreset ? ownPreset.id : 'own');
+  const scaleOptions = plusOn ? [
+    { value: 'page', label: scale?.label ? `Page scale (${scale.label})` : 'Page scale' },
+    ...(ownScale && !ownPreset ? [{ value: 'own', label: ownScale.label || 'Own scale' }] : []),
+    ...MEASURE_PRESETS.map((p) => ({ value: p.id, label: p.label })),
+  ] : null;
+  const pickScale = (value) => {
+    if (value === 'page') { onPatch?.({ ownScale: null, pageScale: scale }); return; }
+    const base = scaleFromPreset(value);
+    if (!base) return;
+    const display = displayForScaleUnit(base.unit);
+    onPatch?.({ ownScale: { ...base, display, precision: defaultMeasurePrecision(display) } });
+  };
 
   const [labelDraft, setLabelDraft] = useState(savedLabel);
   const [depthDraft, setDepthDraft] = useState(depthText(savedDepth));
@@ -183,7 +205,8 @@ export default function MeasureEditPopover({ measure, onPatch, onClose, side = '
   // The app's dismiss rules: a press outside closes it (keeping what was
   // typed), Escape closes it (dropping what was typed).
   useEffect(() => watchLightPopover({
-    contains: (target) => Boolean(target?.closest?.('[data-measure-edit-popover], [data-selection-quick-measure]')),
+    // The Scale drop-down's list is portalled to <body>: a pick there is inside.
+    contains: (target) => Boolean(target?.closest?.('[data-measure-edit-popover], [data-selection-quick-measure], .measure-edit__scale-menu')),
     close: (_event, reason) => {
       if (reason === 'escape') discardRef.current = true;
       else commitTyped();
@@ -371,6 +394,12 @@ export default function MeasureEditPopover({ measure, onPatch, onClose, side = '
           </label>
         ))}
       </fieldset>
+      {scaleOptions && (
+        <div className="measure-edit__sizes measure-edit__sizes--stack" data-measure-edit-scale={scaleValue}>
+          <span className="measure-edit__name" aria-hidden="true">Scale</span>
+          <ValueSelect look="field" size="sm" label="Scale" value={scaleValue} onChange={pickScale} options={scaleOptions} menuClassName="measure-edit__scale-menu" />
+        </div>
+      )}
       {segmentPlace && (
         <div className="measure-edit__sizes measure-edit__sizes--stack" role="group" aria-label="Segment captions">
           <span className="measure-edit__name" aria-hidden="true">Segment captions</span>

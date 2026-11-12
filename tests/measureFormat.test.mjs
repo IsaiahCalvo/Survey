@@ -507,7 +507,47 @@ test('segment caption places: Off / Inline / Upright / Above, per mark, Perimete
 
 test('the Measurement card offers Segment captions only for Polylength / Perimeter under measure-plus', () => {
   const src = read('src/components/MeasureEditPopover.jsx');
-  assert.match(src, /SEGMENT_CAPTION_KINDS\.includes\(kind\) && isFeatureOn\('measure-plus'\) \? segmentCaptionPlace\(mark\) : null/);
+  assert.match(src, /const plusOn = isFeatureOn\('measure-plus'\);\s*const segmentPlace = SEGMENT_CAPTION_KINDS\.includes\(kind\) && plusOn \? segmentCaptionPlace\(mark\) : null;/);
   assert.match(src, /data-measure-edit-segments=\{place\}/);
   assert.match(src, /onPatch\?\.\(\{ segmentCaptions: place \}\)/);
+});
+
+test('per-mark scale: a measure on its own scale reads in it, keeps it on a page re-scale, and Apply to existing resets it', async () => {
+  const { applyMeasureEdit, applyPageScale, buildMeasureLabel, isOwnScaleMeasure, markMeasureScale, pageScaleFromObjects, scaleFromPreset } = await import('../src/utils/measure/measureScale.js');
+  const page = scaleFromPreset('1/8');
+  const own = scaleFromPreset('1/4');
+  const line = { type: 'line', left: 0, top: 0, width: 72, height: 0, x1: -36, y1: 0, x2: 36, y2: 0, data: { measure: { kind: 'length', scale: page } } };
+  const mine = applyMeasureEdit(line, { ownScale: own });
+  assert.equal(isOwnScaleMeasure(mine), true);
+  assert.equal(markMeasureScale(mine, page), mine.data.measure.scale);
+  // 72 pt = 1 in: 8 ft on the page scale, 4 ft on its own.
+  assert.equal(buildMeasureLabel(line, page).text, formatMeasureLength(72, page));
+  assert.equal(buildMeasureLabel(mine, page).text, formatMeasureLength(72, own));
+  assert.notEqual(buildMeasureLabel(mine, page).text, buildMeasureLabel(line, page).text);
+  // The page's scale comes from marks on the page scale only.
+  assert.equal(pageScaleFromObjects([line, mine]).label, page.label);
+  assert.equal(pageScaleFromObjects([mine]), null);
+  const next = scaleFromPreset('1/16');
+  const kept = applyPageScale({ objects: [line, mine] }, next);
+  assert.equal(kept.objects[0].data.measure.scale.label, next.label);
+  assert.equal(kept.objects[1].data.measure.scale.label, own.label, 'its own scale stays');
+  const reset = applyPageScale({ objects: [line, mine] }, next, [], { resetOwn: true });
+  assert.equal(reset.objects[1].data.measure.scale.label, next.label);
+  assert.equal(reset.objects[1].data.measure.ownScale, undefined);
+  // Back to the page scale from the card.
+  const back = applyMeasureEdit(mine, { ownScale: null, pageScale: page });
+  assert.equal(back.data.measure.ownScale, undefined);
+  assert.equal(back.data.measure.scale.label, page.label);
+  assert.equal(applyMeasureEdit(line, { ownScale: null, pageScale: page }), line, 'already on the page scale: no change');
+});
+
+test('the Measurement card offers a Scale drop-down and the dialog Apply to existing measurements, under measure-plus', () => {
+  const card = read('src/components/MeasureEditPopover.jsx');
+  assert.match(card, /const ownScale = plusOn && isOwnScaleMeasure\(mark\) \? saved\.scale : null;/);
+  assert.match(card, /onPatch\?\.\(\{ ownScale: null, pageScale: scale \}\)/);
+  assert.match(card, /\.measure-edit__scale-menu'\)\)/, 'a pick in the portalled list does not close the card');
+  const dialog = read('src/components/MeasureScaleDialog.jsx');
+  assert.match(dialog, /resetOwn: plusOn && resetOwn/);
+  const viewer = read('src/PDFViewer.jsx');
+  assert.match(viewer, /applyPageScale\(pageJson, scale, extra, \{ resetOwn: measurePlusOn && resetOwn \}\)/);
 });

@@ -334,6 +334,7 @@ test('calibrate: Drawboard\'s note with a close x; a traced span typed as 40\' r
     localStorage.setItem('survey.flag.measure-plus', '1');
     // The plain chip flag stays off: the calibrating note shows anyway.
     localStorage.setItem('survey.flag.measure-scale-chip', '0');
+    localStorage.setItem('survey.flag.measure-edit', '1');
     localStorage.removeItem('survey.measure.defaultScale');
   });
   const owner = E2E_ACCOUNTS.owner;
@@ -383,6 +384,51 @@ test('calibrate: Drawboard\'s note with a close x; a traced span typed as 40\' r
     await page.mouse.up();
     await expect(kept).toHaveCount(2, { timeout: 15_000 });
     await expect(kept.nth(1)).toHaveText('40′');
+
+    // Per-mark scale: the second Length picks 1/4" = 1' in the Measurement
+    // card and reads on it; the first stays on the page's 40′.
+    const bar = page.locator('[data-selection-quick-bar][data-visible="true"]');
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('v');
+    const second = surface.locator('[data-dimension-line]').nth(1);
+    const seg = await second.locator('line').nth(2).boundingBox();
+    await page.mouse.click(seg.x + seg.width / 2, seg.y + seg.height / 2);
+    await expect(bar).toBeVisible();
+    await bar.getByRole('button', { name: 'Measurement' }).click();
+    const card = page.getByRole('dialog', { name: 'Measurement' });
+    await expect(card.locator('[data-measure-edit-scale]')).toHaveAttribute('data-measure-edit-scale', 'page');
+    await card.locator('[data-measure-edit-scale] button').first().click();
+    await page.getByRole('listbox', { name: 'Scale' }).getByRole('option', { name: `1/4" = 1'`, exact: true }).click();
+    await expect(card.locator('[data-measure-edit-scale]')).toHaveAttribute('data-measure-edit-scale', '1/4');
+    await expect(kept.nth(1)).not.toHaveText('40′');
+    await expect(kept.nth(0)).toHaveText('40′');
+    const inchesOf = async (loc) => feetInches(await loc.textContent());
+    const quarter = await inchesOf(kept.nth(1));
+    expect(quarter).toBeGreaterThan(0);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+    await expect(card).toHaveCount(0);
+    await expect(bar).toHaveCount(0);
+
+    // A new page scale (1/8" = 1') moves the first, to twice the 1/4" one,
+    // but not the one on its own scale; "Apply to existing measurements"
+    // brings that one along too.
+    dialog = await openScaleDialog(page);
+    // A calibrated scale reopens on Custom; presets are one tap away.
+    await dialog.locator('[data-measure-scale-kind-option="preset"]').click();
+    await dialog.locator('[data-measure-preset-option="1/8"]').click();
+    await expect(dialog.locator('[data-measure-apply-existing]')).not.toBeChecked();
+    await dialog.locator('[data-measure-apply]').click();
+    await expect(kept.nth(0)).not.toHaveText('40′');
+    expect(Math.abs((await inchesOf(kept.nth(0))) - 2 * quarter)).toBeLessThanOrEqual(0.5);
+    expect(await inchesOf(kept.nth(1))).toBe(quarter);
+    dialog = await openScaleDialog(page);
+    await dialog.locator('[data-measure-scale-kind-option="preset"]').click();
+    await dialog.locator('[data-measure-preset-option="1/8"]').click();
+    await dialog.locator('[data-measure-apply-existing]').check();
+    await dialog.locator('[data-measure-apply]').click();
+    await expect.poll(() => inchesOf(kept.nth(1))).not.toBe(quarter);
+    expect(await kept.nth(1).textContent()).toBe(await kept.nth(0).textContent());
   } finally {
     if (!process.env.KEEP) await admin.from('documents').delete().eq('id', id);
   }
@@ -403,7 +449,7 @@ test('without the flag the dialog has no custom scale, units or default', async 
     await page.getByRole('button', { name: 'Shapes', exact: true }).click();
     const dialog = await openScaleDialog(page);
     await expect(dialog.locator('[data-measure-preset-option="1/4"]')).toBeVisible();
-    for (const sel of ['[data-measure-scale-kind]', '[data-measure-display]', '[data-measure-precision]', '[data-measure-set-default]']) {
+    for (const sel of ['[data-measure-scale-kind]', '[data-measure-display]', '[data-measure-precision]', '[data-measure-set-default]', '[data-measure-apply-existing]']) {
       await expect(dialog.locator(sel)).toHaveCount(0);
     }
     await dialog.locator('[data-measure-preset-option="1/4"]').click();

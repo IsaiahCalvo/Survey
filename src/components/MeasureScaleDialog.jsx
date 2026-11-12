@@ -78,6 +78,9 @@ export default function MeasureScaleDialog({ pageNumber, pageCount = 1, lengthPt
   const [paperUnit, setPaperUnit] = useState(customStart?.paperUnit || 'in');
   const [customReal, setCustomReal] = useState(customStart?.real || '');
   const [setDefault, setSetDefault] = useState(false);
+  // Drawboard's "Apply to existing measurements": also puts measures on
+  // their own scale back on this one. Off each time the dialog opens.
+  const [resetOwn, setResetOwn] = useState(false);
   const pickDisplay = (next) => {
     setDisplay(next);
     if (isFractionalDisplay(next) !== isFractionalDisplay(display)) setPrecision(normalizeMeasurePrecision(next, null));
@@ -93,7 +96,7 @@ export default function MeasureScaleDialog({ pageNumber, pageCount = 1, lengthPt
   useFocusTrap(cardRef, true, { onEscape: onCancel });
   const submit = (e) => {
     e.preventDefault();
-    if (scale) onApply(scale, { allPages: allPages && pageCount > 1, setDefault: plusOn && setDefault });
+    if (scale) onApply(scale, { allPages: allPages && pageCount > 1, setDefault: plusOn && setDefault, resetOwn: plusOn && resetOwn });
   };
   const chip = (id, label, active, onPick, marker) => (
     <button
@@ -246,6 +249,12 @@ export default function MeasureScaleDialog({ pageNumber, pageCount = 1, lengthPt
                   <ValueSelect menuClassName="measure-scale__menu" label="Precision" value={precision} onChange={setPrecision} options={(isFractionalDisplay(display) ? FRACTION_PRECISIONS : DECIMAL_PRECISIONS).map((p) => ({ value: p.value, label: p.label }))} />
                 </div>
               </div>
+            )}
+            {plusOn && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, fontSize: 13, color: 'var(--text-2)' }}>
+                <input type="checkbox" data-measure-apply-existing="true" checked={resetOwn} onChange={(e) => setResetOwn(e.target.checked)} />
+                Apply to existing measurements (ones on their own scale too)
+              </label>
             )}
             {plusOn && (
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, fontSize: 13, color: 'var(--text-2)' }}>

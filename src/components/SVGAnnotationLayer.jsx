@@ -571,6 +571,7 @@ import {
   pageScaleFromObjects,
   stampMeasure,
   isPolyMeasureFor,
+  markMeasureScale,
 } from '../utils/measure/measureScale.js';
 import { dimensionCaptionPlace, dimensionLeader, dimensionLineGeometry, isDimensionMeasure } from '../utils/measure/dimensionLine.js';
 import { measureSegmentCaptions, polylengthTotalPlace } from '../utils/measure/segmentCaptions.js';
@@ -999,7 +1000,7 @@ const SVGAnnotationLayerBody = memo(({
     const out = [];
     objects.forEach((obj, index) => {
       if (!obj?.data?.measure || obj.visible === false || isOnHiddenLayer(obj, hiddenLayerIds)) return;
-      const captions = measureSegmentCaptions(obj, effectiveMeasureScale);
+      const captions = measureSegmentCaptions(obj, markMeasureScale(obj, effectiveMeasureScale));
       if (captions.length) out.push({ key: obj.id || obj.data?.id || `m${index}`, color: obj.stroke || 'black', captions });
     });
     return out;
