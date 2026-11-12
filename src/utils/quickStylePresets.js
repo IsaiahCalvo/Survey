@@ -171,6 +171,11 @@ export const isCustomQuickColour = (value, colours = QUICK_COLOURS) => matchedQu
  * highlighter colours (yellow first, its default), not red / blue / black.
  * Every other tool keeps the shared three.
  */
+// Nightly 'properties-panel': Drawboard's Fill row leads with white, then
+// the usual presets (a "none" swatch sits before them in the panel).
+export const FILL_QUICK_COLOURS = Object.freeze(['#FFFFFF', ...QUICK_COLOURS]);
+export const FILL_QUICK_COLOUR_NAMES = Object.freeze({ '#FFFFFF': 'White', ...QUICK_COLOUR_NAMES });
+
 export const HIGHLIGHTER_QUICK_COLOURS = Object.freeze(['#FFFF00', '#22C55E', '#F472B6']);
 export const HIGHLIGHTER_QUICK_COLOUR_NAMES = Object.freeze({
   '#FFFF00': 'Yellow',

@@ -230,3 +230,139 @@ test('Ctrl / Cmd + Left / Right turn the picked mark, Up / Down scale it, each o
     await sheet.remove();
   }
 });
+
+test('Text: a picked text box shows Color, Opacity and Size, and each one changes the words', async ({ page }) => {
+  test.setTimeout(180_000);
+  const { sheet, pageDiv, marks } = await open(page, 'Props panel text', true);
+  try {
+    const box = await pageDiv.boundingBox();
+    await page.waitForTimeout(800);
+    await page.keyboard.press('t');
+    await page.mouse.move(box.x + 120, box.y + 220);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 360, box.y + 220, { steps: 6 });
+    await page.mouse.up();
+    await page.keyboard.type('panel text', { delay: 20 });
+    await page.keyboard.press('Escape');
+    await expect(marks).toHaveCount(1);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('v');
+    const mark = marks.first();
+    const mbox = await mark.boundingBox();
+    await page.mouse.click(mbox.x + mbox.width / 2, mbox.y + mbox.height / 2);
+    await page.locator('[data-selection-quick-expand]').click();
+    const text = panel(page).locator('[data-props-section="text"]');
+    await expect(text).toBeVisible();
+    await expect(text.locator('[data-props-value="Size"]')).toHaveText('16 pt');
+    const words = () => mark.evaluate((g) => {
+      const t = g.querySelector('text, tspan, foreignObject div, foreignObject span');
+      const cs = t ? getComputedStyle(t) : null;
+      return { fill: (t?.getAttribute('fill') || cs?.color || '').toLowerCase(), size: t ? parseFloat(t.getAttribute('font-size') || cs.fontSize) : null };
+    });
+    const before = await words();
+    // Color: a preset dot.
+    const dots = text.locator('[data-props-text-colour] [data-quick-colour-preset]');
+    const all = await dots.evaluateAll((els) => els.map((el) => el.getAttribute('data-quick-colour-preset')));
+    const to = all.find((c) => !before.fill.includes(c.toLowerCase())) || all[0];
+    await text.locator(`[data-props-text-colour] [data-quick-colour-preset="${to}"]`).click();
+    await expect.poll(async () => (await words()).fill).not.toBe(before.fill);
+    // Size: the slider, from the keyboard (one step up, saved on key up).
+    const size = text.getByRole('slider', { name: 'Size' });
+    await size.focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(text.locator('[data-props-value="Size"]')).toHaveText('17 pt');
+    await expect.poll(async () => (await words()).size).toBeGreaterThan(before.size);
+    // Opacity: down a step keeps the colour and lowers its strength.
+    const opacity = text.getByRole('slider', { name: 'Text opacity' });
+    await opacity.focus();
+    await page.keyboard.press('ArrowLeft');
+    await expect(text.locator('[data-props-value="Text opacity"]')).toHaveText('99%');
+  } finally {
+    await sheet.remove();
+  }
+});
+
+test('Pin to side panel docks the panel beside the page, keeps it with nothing picked and across a reload; unpin floats it again', async ({ page }) => {
+  test.setTimeout(180_000);
+  const { sheet, pageDiv, marks } = await open(page, 'Props panel pin', true);
+  try {
+    const box = await pageDiv.boundingBox();
+    await page.getByRole('button', { name: 'Shapes', exact: true }).click();
+    await page.getByRole('button', { name: 'Rectangle', exact: true }).filter({ visible: true }).first().click();
+    await drawRect(page, box, 150, 200, 80, 40);
+    await expect(marks).toHaveCount(1);
+    await page.locator('[data-selection-quick-expand]').click();
+    await expect(panel(page)).toBeVisible();
+    await expect(panel(page).getByRole('button', { name: 'Collapse menu' })).toBeVisible();
+    const viewer = page.locator('#chrome-right-host');
+    const railBefore = await viewer.boundingBox();
+    const before = await pageDiv.boundingBox();
+    await panel(page).locator('[data-props-pin]').click();
+    const dock = page.locator('[data-properties-dock]');
+    await expect(dock.locator('[data-properties-panel]')).toBeVisible();
+    await expect(panel(page).locator('[data-props-pin]')).toHaveAttribute('aria-pressed', 'true');
+    await expect(panel(page).getByRole('button', { name: 'Collapse menu' })).toHaveCount(0);
+    const dockBox = await dock.boundingBox();
+    expect(Math.round(dockBox.width)).toBe(260);
+    // The dock sits left of the right rail, full height, and the page moves left.
+    expect(Math.round(dockBox.x + dockBox.width)).toBe(Math.round(railBefore.x));
+    await expect.poll(async () => (await pageDiv.boundingBox()).x).toBeLessThan(before.x - 60);
+    await expect(panel(page).locator('[data-props-section="transform"]')).toBeVisible();
+    // Nothing picked: it stays, titled "Select".
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+    await expect(panel(page).locator('[data-props-count]')).toHaveText('Select');
+    await expect(panel(page).locator('[data-props-empty]')).toBeVisible();
+    // A reload keeps it pinned.
+    await page.reload();
+    await expect(pageDiv.locator('canvas').first()).toBeVisible({ timeout: 60_000 });
+    await expect(dock.locator('[data-properties-panel]')).toBeVisible();
+    // Unpin with a mark picked (no floating frame yet after the reload): the
+    // panel floats at once (Bugbot on #1387). Unpinned with nothing picked, it goes.
+    await page.keyboard.press('v');
+    const mbox = await marks.first().boundingBox();
+    await page.mouse.click(mbox.x + mbox.width / 2, mbox.y + 1);
+    await expect(panel(page).locator('[data-props-section="transform"]')).toBeVisible();
+    await panel(page).locator('[data-props-pin]').click();
+    await expect(dock).toHaveCount(0);
+    await expect(panel(page)).toBeVisible();
+    await expect(panel(page)).not.toHaveAttribute('data-properties-panel-docked', 'true');
+    await panel(page).getByRole('button', { name: 'Collapse menu' }).click();
+    await expect(panel(page)).toHaveCount(0);
+    await expect.poll(async () => Math.abs((await pageDiv.boundingBox()).x - before.x)).toBeLessThan(4);
+  } finally {
+    await sheet.remove();
+  }
+});
+
+test('Fill: "none", white and the presets set the picked shape\'s fill; a colour on no fill comes in at full strength', async ({ page }) => {
+  test.setTimeout(180_000);
+  const { sheet, pageDiv, marks } = await open(page, 'Props panel fill', true);
+  try {
+    const box = await pageDiv.boundingBox();
+    await page.getByRole('button', { name: 'Shapes', exact: true }).click();
+    await page.getByRole('button', { name: 'Rectangle', exact: true }).filter({ visible: true }).first().click();
+    await drawRect(page, box, 150, 200, 80, 40);
+    await expect(marks).toHaveCount(1);
+    await page.locator('[data-selection-quick-expand]').click();
+    const fill = panel(page).locator('[data-props-section="fill"]');
+    const row = fill.locator('[data-props-fill-colour]');
+    await expect(row).toBeVisible();
+    const paintOf = () => marks.first().evaluate((g) => {
+      const shape = g.querySelector('rect, path, polygon');
+      return { fill: (shape?.getAttribute('fill') || '').toLowerCase(), opacity: Number(shape?.getAttribute('fill-opacity') ?? 1) };
+    });
+    await expect(fill.locator('[data-props-value="Fill opacity"]')).toHaveText('0%');
+    await expect(row.locator('[data-props-fill-none]')).toHaveAttribute('aria-pressed', 'true');
+    await row.locator('[data-quick-colour-preset="#0000FF"]').click();
+    await expect(fill.locator('[data-props-value="Fill opacity"]')).toHaveText('100%');
+    await expect.poll(async () => (await paintOf()).fill).toMatch(/#0000ff|rgba?\(0, 0, 255(, 1)?\)/);
+    await row.locator('[data-quick-colour-preset="#FFFFFF"]').click();
+    await expect.poll(async () => (await paintOf()).fill).toMatch(/#ffffff|white|rgba?\(255, 255, 255(, 1)?\)/);
+    await row.locator('[data-props-fill-none]').click();
+    await expect(fill.locator('[data-props-value="Fill opacity"]')).toHaveText('0%');
+    await expect(row.locator('[data-props-fill-none]')).toHaveAttribute('aria-pressed', 'true');
+  } finally {
+    await sheet.remove();
+  }
+});

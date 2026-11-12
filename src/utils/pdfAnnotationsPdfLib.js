@@ -56,7 +56,9 @@ import {
   widthOfTextRunsAtSize,
 } from './pdfUnicodeText.js';
 import { deepClone } from './deepClone.js';
-import { buildMeasureLabel, getMeasureKind } from './measure/measureScale.js';
+import { buildMeasureLabel, getMeasureKind, layoutMeasureLabel } from './measure/measureScale.js';
+import { measureSegmentCaptions, polylengthTotalPlace } from './measure/segmentCaptions.js';
+import { isFeatureOn } from '../featureFlags.js';
 import { DIMENSION_CAPTION_BG_PAD_PT, DIMENSION_EXTENSION_PT, isDimensionMeasure } from './measure/dimensionLine.js';
 import { dimensionMarkLayout } from './measure/dimensionLayout.js';
 import { PDF_MEASURE_INTENT_BY_SUBTYPE, SURVEY_KIND_BY_PDF_SUBTYPE, pdfMeasureEntriesForScale } from './measure/pdfMeasureDict.js';
@@ -2524,7 +2526,18 @@ const boundsOfPoints = (points, pad) => {
  * the box of the shape's BASE geometry (what /RD must point back to).
  * Returns null for a shape this appearance path does not handle.
  */
+// Nightly 'measure-plus': a measurement's reading pill and side captions are
+// part of its appearance box too.
 const plainAppearanceGeometry = (obj, fonts = null) => {
+  const geometry = plainAppearanceInkGeometry(obj, fonts);
+  if (!geometry?.bounds) return geometry;
+  const readings = measureReadingCorners(obj);
+  return readings.length
+    ? { ...geometry, bounds: unionAppBounds(geometry.bounds, boundsOfPoints(readings, 1)) }
+    : geometry;
+};
+
+const plainAppearanceInkGeometry = (obj, fonts = null) => {
   const type = String(obj?.type || '').toLowerCase();
   const strokeWidth = plainAppearanceStrokeWidth(obj);
   const halfStroke = strokeWidth / 2 + PLAIN_APPEARANCE_EXTRA_PAD;
@@ -5534,6 +5547,150 @@ const dimensionCaptionCorners = (dim) => {
 // Helvetica (WinAnsi) has no prime marks; the plain ' and " read the same.
 const dimensionCaptionPrintText = (text) => String(text ?? '').replace(/′/g, "'").replace(/″/g, '"');
 
+// Nightly 'measure-plus': a measurement prints its reading as the screen
+// shows it - the pill (at its 100% zoom size, 12 pt) and, on a Polylength or
+// Perimeter, each side's caption. A dimension line draws its own caption.
+// Pill colours are the screen's (svgAnnotationLayer renderMeasureLabel).
+const MEASURE_PILL_FILL = '#ffffff';
+const MEASURE_PILL_EDGE = '#d1d5db';
+const MEASURE_PILL_TEXT = '#1f2937';
+// The flag check, as an object so a Node test (no Nightly build there) can
+// turn it on.
+export const measureReadingsPrintGate = { on: () => isFeatureOn('measure-plus') };
+const measurePrintReadings = (obj) => {
+  if (!obj?.data?.measure || obj.visible === false || isDimensionMeasure(obj)) return null;
+  if (!getMeasureKind(obj) || !measureReadingsPrintGate.on()) return null;
+  const pageScale = obj.data.measure.scale || null;
+  let label = null;
+  try { label = buildMeasureLabel(obj, pageScale); } catch { label = null; }
+  const totalAt = label ? polylengthTotalPlace(obj, pageScale) : null;
+  if (totalAt) label = { ...label, ...totalAt };
+  const pill = label ? layoutMeasureLabel(label, 1) : null;
+  let captions = [];
+  try { captions = measureSegmentCaptions(obj, obj.data.measure.ownScale ? obj.data.measure.scale : pageScale); } catch { captions = []; }
+  if (!pill && !captions.length) return null;
+  return { pill, captions };
+};
+
+// A turned box's corners (centre cx, cy; size w x h; angle in degrees).
+const turnedBoxCorners = (cx, cy, w, h, angle) => {
+  const rad = ((Number(angle) || 0) * Math.PI) / 180;
+  const c = { x: cx, y: cy };
+  return [[-w / 2, -h / 2], [w / 2, -h / 2], [w / 2, h / 2], [-w / 2, h / 2]]
+    .map(([x, y]) => rotateAbout({ x: cx + x, y: cy + y }, c, rad));
+};
+
+const measureCaptionHalo = (c) => c.fontPt * 0.2;
+const measureCaptionBox = (c) => ({
+  w: String(c.text).length * c.fontPt * 0.6 + 2 * measureCaptionHalo(c),
+  h: c.fontPt * 1.2 + 2 * measureCaptionHalo(c),
+});
+
+function measureReadingCorners(obj) {
+  const readings = measurePrintReadings(obj);
+  if (!readings) return [];
+  const out = [];
+  if (readings.pill) {
+    const { cx, cy, width, height, angle } = readings.pill;
+    out.push(...turnedBoxCorners(cx, cy, width, height, angle));
+  }
+  readings.captions.forEach((c) => {
+    const box = measureCaptionBox(c);
+    out.push(...turnedBoxCorners(c.x, c.y, box.w, box.h, c.angle));
+  });
+  return out;
+}
+
+// One run of text centred on (cx, cy), turned by `angle`.
+const drawCentredMeasureText = (page, pageHeight, text, { cx, cy, angle, size, font, color, opacity = 1, dx = 0, dy = 0 }) => {
+  const shown = dimensionCaptionPrintText(text);
+  let textWidth;
+  try { textWidth = font.widthOfTextAtSize(shown, size); } catch { return false; }
+  const centre = { x: cx, y: cy };
+  const origin = rotateAbout({ x: cx - textWidth / 2 + dx, y: cy + size * 0.35 + dy }, centre, ((Number(angle) || 0) * Math.PI) / 180);
+  try {
+    page.drawText(shown, {
+      x: origin.x,
+      y: getPdfY(pageHeight, origin.y),
+      size,
+      font,
+      color,
+      opacity,
+      rotate: degrees(-(Number(angle) || 0)),
+    });
+    return true;
+  } catch {
+    return false; // a character Helvetica can't draw: the reading stays in /Contents
+  }
+};
+
+function drawFlattenedMeasureReadings(page, obj, pageHeight, fonts, offset = { x: 0, y: 0 }) {
+  const readings = measurePrintReadings(obj);
+  if (!readings) return 0;
+  const ox = Number(offset?.x) || 0;
+  const oy = Number(offset?.y) || 0;
+  let drawn = 0;
+  const font = fonts?.bold || fonts?.regular || null;
+  const pill = readings.pill;
+  if (pill) {
+    // The pill: a rounded box (corners sampled) under the reading.
+    const r = Math.max(0, Math.min(pill.radius, pill.width / 2, pill.height / 2));
+    const hw = pill.width / 2; const hh = pill.height / 2;
+    const pts = [];
+    const arc = (cx, cy, from) => {
+      for (let i = 0; i <= 6; i += 1) {
+        const a = ((from + (90 * i) / 6) * Math.PI) / 180;
+        pts.push({ x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) });
+      }
+    };
+    arc(hw - r, hh - r, 0);
+    arc(-hw + r, hh - r, 90);
+    arc(-hw + r, -hh + r, 180);
+    arc(hw - r, -hh + r, 270);
+    const centre = { x: pill.cx + ox, y: pill.cy + oy };
+    const rad = (pill.angle * Math.PI) / 180;
+    const d = `${pts.map((p, i) => {
+      const q = rotateAbout({ x: centre.x + p.x, y: centre.y + p.y }, centre, rad);
+      return `${i ? 'L' : 'M'} ${q.x} ${q.y}`;
+    }).join(' ')} Z`;
+    const fill = parsePdfDrawColor(MEASURE_PILL_FILL, MEASURE_PILL_FILL);
+    const edge = parsePdfDrawColor(MEASURE_PILL_EDGE, MEASURE_PILL_EDGE);
+    drawSvgPathLinear(page, d, {
+      x: 0,
+      y: pageHeight,
+      color: fill.color,
+      opacity: 0.95,
+      borderColor: edge.color,
+      borderWidth: pill.fontSize / 12,
+    });
+    drawn += 1;
+    if (font) {
+      const ink = parsePdfDrawColor(MEASURE_PILL_TEXT, MEASURE_PILL_TEXT);
+      pill.lines.forEach((line, i) => {
+        const lineMid = (i - (pill.lines.length - 1) / 2) * pill.lineHeight;
+        const along = rotateAbout({ x: centre.x, y: centre.y + lineMid }, centre, rad);
+        if (drawCentredMeasureText(page, pageHeight, line, {
+          cx: along.x, cy: along.y, angle: pill.angle, size: pill.fontSize, font, color: ink.color,
+        })) drawn += 1;
+      });
+    }
+  }
+  const regular = fonts?.regular || null;
+  if (regular && readings.captions.length) {
+    // Side captions: the mark's colour on a white halo, as on screen.
+    const ink = parsePdfDrawColor(obj?.stroke || '#000000', '#000000') || parsePdfDrawColor('#000000');
+    const white = parsePdfDrawColor('#ffffff', '#ffffff');
+    readings.captions.forEach((c) => {
+      const base = { cx: c.x + ox, cy: c.y + oy, angle: c.angle, size: c.fontPt, font: regular };
+      const h = measureCaptionHalo(c);
+      [[-h, 0], [h, 0], [0, -h], [0, h], [-h * 0.7, -h * 0.7], [h * 0.7, -h * 0.7], [-h * 0.7, h * 0.7], [h * 0.7, h * 0.7]]
+        .forEach(([dx, dy]) => drawCentredMeasureText(page, pageHeight, c.text, { ...base, color: white.color, dx, dy }));
+      if (drawCentredMeasureText(page, pageHeight, c.text, { ...base, color: ink.color, opacity: ink.opacity ?? 1 })) drawn += 1;
+    });
+  }
+  return drawn;
+}
+
 const drawFlattenedDimensionLine = (page, obj, pageHeight, dim, fonts) => {
   const stroke = parsePdfDrawColor(obj?.stroke || '#000000', '#000000') || parsePdfDrawColor('#000000');
   const width = Math.max(0.5, Number(obj?.strokeWidth) || 1);
@@ -6589,6 +6746,11 @@ const drawFlattenedSymbolStamp = (page, obj, pageHeight) => {
 };
 
 const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0 }, stampImages = new Map()) => {
+  const drawn = drawFlattenedObjectInk(page, obj, pageHeight, fonts, offset, stampImages);
+  return drawn ? drawn + drawFlattenedMeasureReadings(page, obj, pageHeight, fonts, offset) : drawn;
+};
+
+const drawFlattenedObjectInk = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0 }, stampImages = new Map()) => {
   if (!obj || typeof obj !== 'object') return 0;
   // Nightly 'link-tool': a link prints its border only (no fill).
   if (isLinkMark(obj)) {
@@ -7986,6 +8148,8 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
       || ['textbox', 'text', 'i-text'].includes(String(item?.object?.type || '').toLowerCase())
       // A dimension line's /AP draws its reading inline (Nightly 'measure-plus').
       || isDimensionMeasure(item?.object)
+      // So does any measurement's reading pill (Nightly 'measure-plus').
+      || Boolean(measurePrintReadings(item?.object))
     ));
     const flattenFonts = exportHasTextAnnotation
       ? await embedFlattenFonts(pdfDoc, collectDrawnTextSamples(exportPlan.items || []))

@@ -138,7 +138,7 @@ import { showsColourRule, showsPaintSwatch, showsQuickColourDots } from './utils
 import { isAreaEditing, REGION_TOOLBAR_OPENING_STATE, resolveToolBarGroup, showsFormatRow, showsSurveyRow } from './utils/toolbarRows.js';
 import { LINE_STYLE_SAMPLE_ICONS, lineStyleOptionsWith } from './utils/lineStyleOptions.js';
 import SelectionQuickBar from './components/SelectionQuickBar.jsx';
-import SelectionPropertiesPanel from './components/SelectionPropertiesPanel.jsx';
+import SelectionPropertiesPanel, { PropertiesPanelDockHost } from './components/SelectionPropertiesPanel.jsx';
 import StampPickerCard from './components/StampPickerCard.jsx';
 import SignatureCard from './components/SignatureCard.jsx';
 import InsertImagePasteHost from './components/InsertImage.jsx';
@@ -436,6 +436,8 @@ const resolveAnnotationPaint = (bottomToolbarApi, colorPickerTab) => {
     opacity: picker.opacity,
     apply: picker.apply,
     quick,
+    // The fill side on its own (the properties panel's Fill colour row).
+    fill: isShape ? channel(true) : null,
   };
 };
 
@@ -5418,6 +5420,8 @@ export default function App({ devPreviewReturnTab = null }) {
             )}
           </div>
           </div>
+          {/* Nightly 'properties-panel': the pinned panel docks here, beside the viewer. */}
+          <PropertiesPanelDockHost enabled={Boolean(isViewerVisible && !isMobileViewer)} />
           {/* UX 2026-05-14/29: chrome-right-host — slim always-visible right rail.
               Pinned to the viewport's right edge. Survey owns this rail; page
               and zoom controls now live in the top-right toolbar pill.
@@ -6077,6 +6081,7 @@ export default function App({ devPreviewReturnTab = null }) {
         annotationsByPage={leftRailApi?.annotationsByPage || null}
         viewerId={signedInUserId}
         tip={chromeTip}
+        textFormat={textFormatSource}
       />
       {/* Nightly 'stamp-tool': Drawboard's Stamp card (the Text group's Stamp button opens it). */}
       <StampPickerCard enabled={Boolean(isViewerVisible && isFeatureOn('stamp-tool'))} phone={Boolean(isMobileViewer)} tip={chromeTip} />

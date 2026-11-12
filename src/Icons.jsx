@@ -750,6 +750,16 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
+    // Nightly 'properties-panel': Pin to side panel (a push pin).
+    pushPin: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <g stroke={color} strokeWidth={ICON_STROKE_WIDTH} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9 4h6l-1 6 3 3H7l3-3-1-6Z" />
+          <path d="M12 13v7" />
+        </g>
+      </svg>
+    ),
+
     hyperlink: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
         <g stroke={color} strokeWidth={ICON_STROKE_WIDTH} strokeLinecap="round" strokeLinejoin="round">

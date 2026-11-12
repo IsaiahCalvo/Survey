@@ -54,7 +54,7 @@
   cursor: pointer;
 }
 .props-panel__section-body { padding: 0 12px 10px; display: flex; flex-direction: column; gap: 8px; }
-.props-panel__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.props-panel__grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
 .props-panel__field { display: flex; align-items: center; gap: 6px; }
 .props-panel__field-label { width: 12px; opacity: 0.7; }
 .props-panel__number {
@@ -96,3 +96,49 @@
 .props-panel__tile { display: inline-flex; align-items: center; justify-content: center; min-width: 40px; }
 .props-panel__chip.is-current, .props-panel__tile.is-current { background: rgba(64, 100, 244, 0.25); border-color: rgba(64, 100, 244, 0.7); }
 .props-panel__check { display: flex; align-items: center; gap: 6px; }
+
+/* Pin to side panel: a full-height column beside the viewer (Drawboard's
+   docked panel, about 260 px wide). */
+.props-panel-dock {
+  flex: 0 0 260px;
+  width: 260px;
+  min-width: 260px;
+  align-self: stretch;
+  display: flex;
+  position: relative;
+  overflow: hidden;
+  z-index: 5550;
+}
+.props-panel.props-panel--docked {
+  position: relative;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  border-radius: 0;
+  border-width: 0 0 0 1px;
+  box-shadow: none;
+}
+.props-panel__icon-button.is-pinned { color: var(--success); }
+.props-panel__empty { padding: 16px 12px; opacity: 0.7; }
+/* Fill's "none" swatch: a ringed disc with a red slash. */
+.props-panel__none {
+  position: relative;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--chrome-border, rgba(255, 255, 255, 0.35));
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+.props-panel__none::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 1px;
+  bottom: 1px;
+  width: 1.5px;
+  background: var(--danger, #e5484d);
+  transform: translateX(-50%) rotate(45deg);
+}
+.props-panel__none.is-current { box-shadow: 0 0 0 2px var(--chrome-focus, #4064f4); }
