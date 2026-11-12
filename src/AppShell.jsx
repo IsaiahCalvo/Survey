@@ -26,6 +26,7 @@ import { HOME_DOWNLOAD_EVENT } from './utils/homeDownload.js';
 import { OPEN_EXPORT_PDF_EVENT } from './utils/exportPdfModes.js';
 import { PageGridMenu } from './components/PageGridSettings';
 import RailFlyout from './components/RailFlyout.jsx';
+import { setPageSpreadMode, usePageSpreadMode } from './utils/pageSpreadSetting.js';
 import { PinFilterMenu } from './components/pins/PinControls.jsx';
 import MenuGlide from './components/MenuGlide.jsx';
 import SnappingToggle, { SnappingGlyph, SnappingMenu, snappingLabel, useSnappingShortcut } from './components/SnappingToggle.jsx';
@@ -158,6 +159,13 @@ import useSpotlight from './spotlight/useSpotlight.js';
 import { clearSpotlightGo, setSpotlightDocument, setSpotlightIdentity } from './services/annotationSpotlight.js';
 import { SHEET_VIEW_EVENT, narrowSheets, parseGridColumns, projectSheets, sheetStepForKey, steppedSheet, storedProjectOrder } from './sheets/sheetSet.js';
 import { DEVICE_FILE_LEAVE_EVENT } from './services/deviceFiles.js';
+
+// Nightly 'page-spreads': Drawboard's View settings names (pageSpreads.js).
+const PAGE_SPREAD_OPTIONS = Object.freeze([
+  { id: 'single', label: 'Single' },
+  { id: 'double', label: 'Double' },
+  { id: 'cover', label: 'Cover' },
+]);
 
 // The dot between the current page and the page total in the right-rail
 // footer: a drawn 2px circle in the total's grey (see the rail audit note at
@@ -2314,6 +2322,9 @@ export default function App({ devPreviewReturnTab = null }) {
   const [lineDashesOn] = useState(() => isFeatureOn('line-dashes'));
   const [eraserLookOn] = useState(() => isFeatureOn('eraser-look'));
   const [pinsOn] = useState(() => isFeatureOn('comment-pins'));
+  // Nightly 'page-spreads': Single / Double / Cover rows in the Page fit card.
+  const [pageSpreadsOn] = useState(() => isFeatureOn('page-spreads'));
+  const pageSpread = usePageSpreadMode();
   const allMarksHidden = useMarksHidden();
   // Full screen (flag 'focus-mode'; utils/focusMode.js). Owner 2026-11-10:
   // "What is the point of full screen" when it took away the tabs, both rails
@@ -5716,6 +5727,42 @@ export default function App({ devPreviewReturnTab = null }) {
                       </button>
                     );
                   })}
+                  {/* Nightly 'page-spreads' (Drawboard View settings, row
+                      C17): pages one per row, two side by side, or page 1
+                      alone on the right then pairs. A fit mode re-fits the
+                      new row width, as Drawboard does. */}
+                  {pageSpreadsOn && (
+                    <>
+                      <div role="separator" className="rail-flyout__divider" />
+                      {PAGE_SPREAD_OPTIONS.map((option, index) => {
+                        const isActive = option.id === pageSpread;
+                        return (
+                          <button
+                            key={option.id}
+                            type="button"
+                            role="menuitemradio"
+                            aria-checked={isActive}
+                            data-page-spread={option.id}
+                            className="rail-flyout__row"
+                            style={{ '--menu-row': index + 3 }}
+                            onClick={() => {
+                              if (isActive) return;
+                              setPageSpreadMode(option.id);
+                              const mode = api.zoomMode;
+                              if (mode && mode !== ZOOM_MODES.MANUAL) {
+                                requestAnimationFrame(() => requestAnimationFrame(() => api.handleZoomModeSelect(mode)));
+                              }
+                            }}
+                          >
+                            <span className="rail-flyout__label">{option.label}</span>
+                            <span className="rail-flyout__tick" aria-hidden="true">
+                              {isActive && <Icon name="check" size={RAIL_CONTROL_GLYPH} color="currentColor" />}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </>
+                  )}
                   </div>
                 </RailFlyout>
               );

@@ -497,6 +497,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Keys: with nothing picked, Left / Right and Shift + Up / Down turn the page',
     stage: 'beta',
   }),
+  'page-spreads': Object.freeze({
+    label: 'Page fit card: Single / Double / Cover page views (pages side by side, like an open book)',
+    stage: 'beta',
+  }),
   'group-marks': Object.freeze({
     label: 'Group / Ungroup in the mark menu: a click on any member picks the whole group',
     stage: 'beta',
