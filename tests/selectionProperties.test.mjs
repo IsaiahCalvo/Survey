@@ -199,7 +199,10 @@ test('Fill colour row: none, then white and the presets, on the fill side of the
   assert.deepEqual(FILL_QUICK_COLOURS, ['#FFFFFF', ...QUICK_COLOURS]);
   const panel = read('src/components/SelectionPropertiesPanel.jsx');
   assert.match(panel, /data-props-fill-none/);
-  assert.match(panel, /paint\.fill\.apply\(paint\.fill\.color, 0\)/);
+  assert.match(panel, /onClick=\{clearFill\}/);
+  assert.doesNotMatch(panel, /paint\.fill\.apply\(paint\.fill\.color, 0\)/, 'No fill must not rewrite the colour');
+  assert.match(panel, /api\?\.handleFillOpacityChange\?\.\(0\)/);
+  assert.match(panel, /useLayoutEffect\(\(\) => \{\n    if \(!active \|\| docked\)/);
   assert.match(panel, /paint\.fill\.apply\(hex, paint\.fill\.opacity > 0 \? paint\.fill\.opacity : 1\)/);
   assert.match(read('src/AppShell.jsx'), /fill: isShape \? channel\(true\) : null,/);
 });

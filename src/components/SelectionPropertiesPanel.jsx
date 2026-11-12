@@ -16,7 +16,7 @@
 //   - Every change is the same write the tool bar makes (the published tool
 //     bar API) or the page layer's own move / turn / resize, so it saves,
 //     syncs and undoes like any other edit.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from '../Icons';
 import { QuickColourDots } from './QuickStyleControls';
@@ -204,8 +204,9 @@ export default function SelectionPropertiesPanel({
   const docked = Boolean(flagOn && enabled && !phone && pinned && dockEl);
   const active = docked || (flagOn && enabled && !phone && open && picked.list.length > 0);
 
-  // Sit on the right of the viewer, under the tool bar.
-  useEffect(() => {
+  // Sit on the right of the viewer, under the tool bar. Measured before paint,
+  // so a panel just unpinned (no frame yet this session) never blinks out.
+  useLayoutEffect(() => {
     if (!active || docked) return undefined;
     const place = () => {
       // The on-screen viewer (a tab behind keeps its own), under the tool bars.
@@ -295,6 +296,12 @@ export default function SelectionPropertiesPanel({
   const styleValue = (api?.lineBorderStyle === 'cloud' && !api?.supportsCloudStyle) ? 'solid' : (api?.lineBorderStyle || 'solid');
   const textParts = splitTextColor(textFormat?.state?.fontColor);
   const fillNone = Boolean(paint?.fill) && !mixed.fillOpacity && paint.fill.opacity <= 0;
+  // "No fill" changes only the opacity, so a pick of mixed fill colours keeps
+  // them (Bugbot on #1387). A shape keeps one side visible, as the dots do.
+  const clearFill = () => {
+    if (paint?.shapeOneVisibleRule && (api?.strokeOpacity ?? 100) <= 0) api?.handleStrokeOpacityChange?.(100);
+    api?.handleFillOpacityChange?.(0);
+  };
   const textSize = Number(textFormat?.state?.fontSize) || 16;
   const setWidth = (width) => {
     api?.handleStrokeWidthInputChange?.({ target: { value: String(width) } });
@@ -484,7 +491,7 @@ export default function SelectionPropertiesPanel({
                   aria-label="No fill"
                   aria-pressed={fillNone}
                   {...chromeTip('No fill', 'below')}
-                  onClick={() => paint.fill.apply(paint.fill.color, 0)}
+                  onClick={clearFill}
                 />
                 <QuickColourDots
                   value={fillNone || mixed.fillColor ? null : paint.fill.color}

@@ -38,6 +38,8 @@ const PIN_KEY = 'survey.propertiesPanel.pinned';
 let pinned = (() => {
   try { return typeof localStorage !== 'undefined' && localStorage.getItem(PIN_KEY) === '1'; } catch { return false; }
 })();
+// Pinned implies open, from the first read too.
+if (pinned) open = true;
 
 export function isPropertiesPanelPinned() {
   return pinned;

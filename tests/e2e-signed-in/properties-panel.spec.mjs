@@ -317,9 +317,17 @@ test('Pin to side panel docks the panel beside the page, keeps it with nothing p
     await page.reload();
     await expect(pageDiv.locator('canvas').first()).toBeVisible({ timeout: 60_000 });
     await expect(dock.locator('[data-properties-panel]')).toBeVisible();
-    // Unpin: the dock goes and the page comes back.
+    // Unpin with a mark picked (no floating frame yet after the reload): the
+    // panel floats at once (Bugbot on #1387). Unpinned with nothing picked, it goes.
+    await page.keyboard.press('v');
+    const mbox = await marks.first().boundingBox();
+    await page.mouse.click(mbox.x + mbox.width / 2, mbox.y + 1);
+    await expect(panel(page).locator('[data-props-section="transform"]')).toBeVisible();
     await panel(page).locator('[data-props-pin]').click();
     await expect(dock).toHaveCount(0);
+    await expect(panel(page)).toBeVisible();
+    await expect(panel(page)).not.toHaveAttribute('data-properties-panel-docked', 'true');
+    await panel(page).getByRole('button', { name: 'Collapse menu' }).click();
     await expect(panel(page)).toHaveCount(0);
     await expect.poll(async () => Math.abs((await pageDiv.boundingBox()).x - before.x)).toBeLessThan(4);
   } finally {
