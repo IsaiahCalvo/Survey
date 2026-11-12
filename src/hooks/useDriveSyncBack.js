@@ -1,8 +1,8 @@
-// OneDrive save-back for the open document (Nightly flag 'drive-sync-back').
-// Drawboard's model: the marks live in Survey; a linked OneDrive file gets the
-// marked-up PDF written back on a timer (every N minutes, only after a change
-// made on this screen) or on "Sync to OneDrive now". The bytes go straight to
-// Graph's one-file upload link (services/driveFilesClient.js).
+// OneDrive / Google Drive save-back for the open document (Nightly flag
+// 'drive-sync-back'). Drawboard's model: the marks live in Survey; a linked
+// drive file gets the marked-up PDF written back on a timer (every N minutes,
+// only after a change made on this screen) or on "Sync now". The bytes go
+// straight to the drive's one-file upload link (services/driveFilesClient.js).
 //
 // Three of Drawboard's dialogs come back as `dialog`:
 //   'conflict'  - the file changed in OneDrive since Survey last saved it:
@@ -63,7 +63,7 @@ export function useDriveSyncBack({
   const [problem, setProblem] = useState(null); // { code, error }
   const [dialog, setDialog] = useState(null); // 'conflict' | 'gone' | 'read_only'
   const [dirty, setDirty] = useState(false);
-  const stateRef = useRef({ dirtySince: 0, editsSeen: 0, lastAttemptAt: 0, retryAt: 0, pushing: false });
+  const stateRef = useRef({ dirtySince: 0, editsSeen: 0, lastAttemptAt: 0, retryAt: 0, pushing: false, unconfirmed: null });
   const linkRef = useRef(null);
   linkRef.current = link;
   const exportRef = useRef(exportBytes);
@@ -88,7 +88,7 @@ export function useDriveSyncBack({
     setProblem(null);
     setDialog(null);
     setDirty(false);
-    stateRef.current = { dirtySince: 0, editsSeen: 0, lastAttemptAt: 0, retryAt: 0, pushing: false };
+    stateRef.current = { dirtySince: 0, editsSeen: 0, lastAttemptAt: 0, retryAt: 0, pushing: false, unconfirmed: null };
     if (!active) return undefined;
     refresh();
     const onLink = (event) => { if (String(event?.detail?.documentId) === String(documentId)) refresh(); };
@@ -127,6 +127,14 @@ export function useDriveSyncBack({
       }
     };
     try {
+      // The last upload reached the drive but the server never heard: tell it
+      // first, or this push would meet Survey's own write as a conflict.
+      if (s.unconfirmed) {
+        const confirmed = await call('drivePushed', s.unconfirmed);
+        if (!confirmed || confirmed.error) throw Object.assign(new Error(confirmed?.error || 'Survey could not reach the server.'), { code: confirmed?.code || 'graph' });
+        s.unconfirmed = null;
+        if (confirmed.link) { setLink(confirmed.link); current = confirmed.link; }
+      }
       // Another screen may have pushed this change already.
       if (!manual && !force) {
         const fresh = await refresh();
@@ -139,10 +147,16 @@ export function useDriveSyncBack({
       if (!bytes) throw Object.assign(new Error('Survey could not make the PDF to save.'), { code: 'export' });
       const sha = await sha256Hex(bytes);
       if (!force && sha && sha === current.lastPushedSha) { clean(); setPhase('saved'); return true; }
-      const session = await call('drivePush', { documentId, ...(force ? { force: true } : {}) });
-      if (!session || session.error) throw Object.assign(new Error(session?.error || 'OneDrive did not take the file.'), { code: session?.code || 'graph' });
+      // appOrigin: Google's upload link then answers this browser (CORS).
+      const appOrigin = typeof window !== 'undefined' ? window.location?.origin : undefined;
+      const session = await call('drivePush', { documentId, ...(appOrigin && appOrigin !== 'null' ? { appOrigin } : {}), ...(force ? { force: true } : {}) });
+      if (!session || session.error) throw Object.assign(new Error(session?.error || 'The drive did not take the file.'), { code: session?.code || 'graph' });
       await upload(session.uploadUrl, bytes);
-      const done = await call('drivePushed', { documentId, sha, ...(force ? { force: true } : {}) });
+      const pushedBody = { documentId, sha, ...(force ? { force: true } : {}) };
+      let done = await call('drivePushed', pushedBody);
+      if (!done || done.error) done = await call('drivePushed', pushedBody);
+      // The drive has the file either way; the next push confirms it first.
+      if (!done || done.error) s.unconfirmed = pushedBody;
       if (done?.link) setLink(done.link);
       clean();
       s.retryAt = 0;
@@ -150,10 +164,15 @@ export function useDriveSyncBack({
       return true;
     } catch (err) {
       const code = err?.code || (Number(err?.status) === 412 ? 'conflict' : 'graph');
-      setProblem({ code, error: err?.message || 'OneDrive did not take the file.' });
+      setProblem({ code, error: err?.message || 'The drive did not take the file.' });
       setPhase('problem');
       if (DIALOG_CODES.has(code)) setDialog(code);
-      else s.retryAt = now() + RETRY_AFTER_MS;
+      else {
+        s.retryAt = now() + RETRY_AFTER_MS;
+        // A failed try is not a save: the retry comes after RETRY_AFTER_MS,
+        // not a whole save interval later.
+        s.lastAttemptAt = 0;
+      }
       return false;
     } finally {
       s.pushing = false;

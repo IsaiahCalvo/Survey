@@ -20,6 +20,7 @@ import calloutIconUrl from './assets/icons/callout-arrow-outline.svg';
 import textBoxIconUrl from './assets/icons/text-box-selection.svg';
 import shapesIconUrl from './assets/icons/shapes.svg';
 import oneDriveLogoUrl from './assets/brand/onedrive-logo.svg';
+import googleDriveLogoUrl from './assets/brand/googledrive-logo.svg';
 
 /*
  * HOUSE ICON GEOMETRY — owner ruling 2026-09-16.
@@ -140,6 +141,15 @@ const ICON_RENDERERS = {
         aria-hidden="true"
         className={className}
         style={{ ...style, width: size * 1.45, height: size, objectFit: 'contain' }}
+      />
+    ),
+    googleDrive: (size, _color, style, className) => (
+      <img
+        src={googleDriveLogoUrl}
+        alt=""
+        aria-hidden="true"
+        className={className}
+        style={{ ...style, width: size * 1.12, height: size, objectFit: 'contain' }}
       />
     ),
     google: (size, _color, style, className) => (

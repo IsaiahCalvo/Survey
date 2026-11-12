@@ -15347,6 +15347,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       path: file?.supabaseFilePath || file?.filePath || null,
       pages: pageViewRecords(loaded.doc),
     }), 'local');
+    // A page change is a change for drive save-back too, though no mark moved.
+    if (file?.id) announceLocalMarkEdit(file.id);
   }, [pageRecordsBase]);
   const applyPageViewForPageOps = useCallback((operation) => {
     const records = operation?.type !== 'presentation' && pageRecordsMode();

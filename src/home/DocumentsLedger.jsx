@@ -247,6 +247,8 @@ export default function DocumentsLedger({
   onUpload,
   // drive-sync-back (Nightly): opens the OneDrive picker; null hides it.
   onOpenFromDrive = null,
+  // drive-sync-back (Nightly): opens Google's Drive picker; null hides it.
+  onOpenFromGoogleDrive = null,
   onDropFiles,
   uploadBusy = false,
   onShare,
@@ -1001,7 +1003,7 @@ export default function DocumentsLedger({
       <div className="documents-mobile-search-actions hub-mobile-search-actions">
         <Search placeholder={tagsReady ? 'Search documents and tags...' : 'Search documents...'} value={search} onChange={setSearch} width="100%" />
         {mobileSortControl}
-        {canCreate || onOpenFromDrive ? (
+        {canCreate || onOpenFromDrive || onOpenFromGoogleDrive ? (
           <button className="btn primary hub-mobile-primary-action" data-home-new="phone" disabled={uploadBusy} aria-haspopup="dialog" onClick={() => setNewSheetOpen(true)}>
             {uploadBusy ? uploadButtonBody : (<><Icon name="plus" size={12} />New</>)}
           </button>
@@ -1043,6 +1045,11 @@ export default function DocumentsLedger({
           <Icon name="oneDrive" size={12} />OneDrive
         </button>
       )}
+      {onOpenFromGoogleDrive && (
+        <button className="btn documents-desktop-new" data-home-googledrive="desktop" aria-label="Open from Google Drive" {...tip('Open a PDF from Google Drive', 'below')} onClick={() => onOpenFromGoogleDrive()}>
+          <Icon name="googleDrive" size={12} />Google Drive
+        </button>
+      )}
       {registerOn && (
         <button className="btn documents-desktop-new" data-sheet-register-export="desktop" disabled={docs.length === 0} onClick={() => exportRegisterCsv(docs)} {...tip('Export the drawing list as a CSV')}>
           <Icon name="download" size={12} />Export list
@@ -1055,6 +1062,7 @@ export default function DocumentsLedger({
             {[
               { key: 'upload', icon: 'upload', label: 'Upload PDF', run: () => onUpload && onUpload() },
               ...(onOpenFromDrive ? [{ key: 'onedrive', icon: 'oneDrive', label: 'Open from OneDrive', run: () => onOpenFromDrive() }] : []),
+              ...(onOpenFromGoogleDrive ? [{ key: 'googledrive', icon: 'googleDrive', label: 'Open from Google Drive', run: () => onOpenFromGoogleDrive() }] : []),
               ...createItems,
             ].map((row) => (
               <button

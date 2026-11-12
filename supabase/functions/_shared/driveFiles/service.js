@@ -25,14 +25,20 @@ import { decryptToken, encryptToken } from '../sheetSync/tokenCrypto.js';
 import { msgraphAuthConfigFromEnv, refreshMsgraphToken } from '../sheetSync/msgraphAuth.js';
 import { folderTarget, placeToken, shareIdOf } from '../sheetSync/providers/msgraph.js';
 import { fetchWithTimeout } from '../sheetSync/providers/contract.js';
+import { googleEndpoints, refreshGoogleToken } from '../sheetSync/providers/google.js';
 
 export const DRIVE_SYNC_FLAG = 'drive-sync-back';
 export const DRIVE_ACTIONS = Object.freeze([
   'driveBrowse', 'driveOpen', 'driveLink', 'driveStatus', 'drivePush', 'drivePushed', 'driveSettings', 'driveUnlink',
+  'drivePickerToken',
 ]);
+// A Google Drive file has no drive id to keep; its link row stores this.
+export const GOOGLE_DRIVE_ID = 'google';
 export const DEFAULT_SYNC_MINUTES = 5;
 const REQUEST_TIMEOUT_MS = 20_000;
 const ID = /^[A-Za-z0-9!_.-]{1,200}$/;
+// The app's own origin, sent so Google's upload link answers its browser.
+const ORIGIN = /^(https?|capacitor):\/\/[A-Za-z0-9.:-]{1,190}$/;
 
 export class DriveError extends Error {
   constructor(message, status = 400, code = 'drive') {
@@ -119,9 +125,120 @@ export function createDriveClient({ getAccessToken, fetch: fetchImpl = globalThi
   };
 }
 
-/** A Graph client signed in as `userId` (their sheet-sync Microsoft connection). */
-async function driveClientFor(ctx, userId) {
-  if (ctx.driveClientFor) return ctx.driveClientFor(userId);
+// ---- Google Drive -------------------------------------------------------------
+//
+// Same model as OneDrive, through the Google sign-in the live Sheets sync keeps
+// (sheet_sync_connections, drive.file scope only). drive.file reaches only
+// files the person picked with Survey, so the app shows Google's own Picker
+// (drivePickerToken gives it a short-lived token of that sign-in, which can
+// reach nothing the person did not pick). Google has no short download link,
+// so driveOpen hands the app the file's address and that same kind of token.
+// A push checks the file's head revision (Drive v3 takes no If-Match), then
+// opens a resumable upload the app sends the PDF to (Origin set, so Google
+// answers the app's browser with CORS).
+
+/** A Drive v3 client. Items come back in the Graph shape the actions use. */
+export function createGoogleDriveClient({ getAccessToken, fetch: fetchImpl = globalThis.fetch, baseUrl = 'https://www.googleapis.com' }) {
+  const base = String(baseUrl).replace(/\/$/, '');
+  const FIELDS = 'id,name,mimeType,size,headRevisionId,modifiedTime,webViewLink,trashed,capabilities(canEdit),lastModifyingUser(displayName)';
+  async function call(method, url, { headers = {}, body } = {}) {
+    const token = await getAccessToken();
+    const response = await fetchWithTimeout(fetchImpl, url, {
+      method,
+      headers: { Authorization: `Bearer ${token}`, ...(body !== undefined ? { 'Content-Type': 'application/json; charset=UTF-8' } : {}), ...headers },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    }, REQUEST_TIMEOUT_MS);
+    const text = await response.text();
+    let parsed = null;
+    try { parsed = text ? JSON.parse(text) : null; } catch { parsed = null; }
+    if (!response.ok) {
+      const reason = parsed?.error?.errors?.[0]?.reason || parsed?.error?.status || null;
+      const err = new Error(parsed?.error?.message || `Google answered ${response.status}`);
+      // Google says "slow down" with a 403 too.
+      err.status = response.status === 403 && /rateLimit/i.test(String(reason)) ? 429 : response.status;
+      err.graphCode = reason;
+      if (response.status === 401) err.code = 'reconnect';
+      throw err;
+    }
+    return { parsed, response };
+  }
+  const fileUrl = (fileId) => `${base}/drive/v3/files/${encodeURIComponent(fileId)}`;
+  const file = async (fileId) => {
+    const { parsed: f } = await call('GET', `${fileUrl(fileId)}?supportsAllDrives=true&fields=${encodeURIComponent(FIELDS)}`);
+    // A file in the bin is gone, as Drawboard treats it.
+    if (!f || f.trashed) throw Object.assign(new Error('Google Drive file is in the bin'), { status: 404 });
+    return {
+      id: String(f.id),
+      name: String(f.name || ''),
+      eTag: f.headRevisionId || null,
+      size: Number(f.size) || 0,
+      webUrl: f.webViewLink || null,
+      file: { mimeType: f.mimeType || '' },
+      isPdf: f.mimeType === 'application/pdf' || /\.pdf$/i.test(String(f.name || '')),
+      canEdit: f.capabilities?.canEdit !== false,
+      lastModifiedDateTime: f.modifiedTime || null,
+      lastModifiedBy: { user: { displayName: f.lastModifyingUser?.displayName || null } },
+      parentReference: { driveId: GOOGLE_DRIVE_ID },
+      downloadUrl: `${fileUrl(fileId)}?alt=media&supportsAllDrives=true`,
+    };
+  };
+  return {
+    provider: 'google',
+    accessToken: () => getAccessToken(),
+    item: (_driveId, itemId) => file(itemId),
+    async uploadSession(_driveId, itemId, { ifMatch = null, origin = null } = {}) {
+      const it = await file(itemId);
+      if (ifMatch && it.eTag && it.eTag !== ifMatch) throw Object.assign(new Error('changed in Google Drive'), { status: 412 });
+      if (!it.canEdit) throw Object.assign(new Error('read only'), { status: 403 });
+      const { response } = await call('PATCH', `${base}/upload/drive/v3/files/${encodeURIComponent(itemId)}?uploadType=resumable&supportsAllDrives=true`, {
+        headers: { 'X-Upload-Content-Type': 'application/pdf', ...(origin ? { Origin: origin } : {}) },
+        body: {},
+      });
+      return { uploadUrl: response.headers.get('location') || null, expirationDateTime: null };
+    },
+  };
+}
+
+// The Picker's app id is the Cloud project number, the first part of an OAuth
+// client id ("123456789012-abc.apps.googleusercontent.com").
+export function googleProjectNumber(env = {}) {
+  if (/^\d{6,20}$/.test(String(env.GOOGLE_CLOUD_PROJECT_NUMBER || ''))) return String(env.GOOGLE_CLOUD_PROJECT_NUMBER);
+  const m = /^(\d{6,20})-/.exec(String(env.GOOGLE_SHEETS_CLIENT_ID || ''));
+  return m ? m[1] : null;
+}
+
+async function googleClientFor(ctx, userId) {
+  const env = ctx.env || {};
+  const clientId = env.GOOGLE_SHEETS_CLIENT_ID;
+  const clientSecret = env.GOOGLE_SHEETS_CLIENT_SECRET;
+  if (!clientId || !clientSecret) throw new DriveError('Google Drive is not set up on this server yet.', 503, 'not_configured');
+  const endpoints = googleEndpoints(env);
+  const { data: row } = await ctx.service.from('sheet_sync_connections')
+    .select('refresh_token_enc').eq('user_id', userId).eq('provider', 'google').maybeSingle();
+  if (!row) throw new DriveError('Connect Google first.', 409, 'not_connected');
+  const refreshToken = await decryptToken(row.refresh_token_enc, tokenKey(env));
+  let access = null;
+  const getAccessToken = async () => {
+    if (access && access.expiresAt > Date.now() + 60_000) return access.accessToken;
+    try {
+      access = await refreshGoogleToken({ endpoints, clientId, clientSecret, refreshToken, fetchImpl: ctx.fetchImpl });
+    } catch (err) {
+      if (err?.code === 'reconnect' || Number(err?.status) === 401) throw new DriveError('The Google sign-in has ended. Connect Google again.', 401, 'reconnect');
+      throw err;
+    }
+    return access.accessToken;
+  };
+  return createGoogleDriveClient({ getAccessToken, fetch: ctx.fetchImpl, baseUrl: endpoints.drive });
+}
+
+const providerOf = (value) => (value === 'google' ? 'google' : 'msgraph');
+const placeName = (provider) => (provider === 'google' ? 'Google Drive' : 'OneDrive');
+const companyName = (provider) => (provider === 'google' ? 'Google' : 'Microsoft');
+
+/** A drive client signed in as `userId`: Graph (default) or Google Drive. */
+async function driveClientFor(ctx, userId, provider = 'msgraph') {
+  if (ctx.driveClientFor) return ctx.driveClientFor(userId, provider);
+  if (provider === 'google') return googleClientFor(ctx, userId);
   const ms = msConfig(ctx.env);
   if (!ms) throw new DriveError('Microsoft 365 is not set up on this server yet.', 503, 'not_configured');
   const { data: row } = await ctx.service.from('sheet_sync_connections')
@@ -154,7 +271,7 @@ async function requireBeta(ctx) {
     ctx.userDb.rpc('can_use_nightly'),
   ]);
   if (flags?.[DRIVE_SYNC_FLAG] === true || nightly === true) return;
-  throw new DriveError('OneDrive files that save back are in beta on Survey Nightly.', 403, 'beta');
+  throw new DriveError('Drive files that save back are in beta on Survey Nightly.', 403, 'beta');
 }
 
 async function roleOf(ctx, documentId) {
@@ -166,7 +283,7 @@ async function roleOf(ctx, documentId) {
 
 async function requireEditor(ctx, documentId) {
   const role = await roleOf(ctx, documentId);
-  if (role !== 'owner' && role !== 'editor') throw new DriveError('Only editors of this document can save it back to OneDrive.', 403, 'not_editor');
+  if (role !== 'owner' && role !== 'editor') throw new DriveError('Only editors of this document can save it back to its drive.', 403, 'not_editor');
   return role;
 }
 
@@ -187,20 +304,23 @@ const publicLink = (row) => (row ? {
   linkedBy: row.linked_by,
 } : null);
 
-function graphProblem(err, { where = 'push' } = {}) {
+function graphProblem(err, { where = 'push', provider = 'msgraph' } = {}) {
   if (err instanceof DriveError) return err;
   const status = Number(err?.status);
-  if (err?.code === 'reconnect' || status === 401) return new DriveError('The Microsoft sign-in used for this file has ended. Connect Microsoft again.', 401, 'reconnect');
-  if (status === 412) return new DriveError('Someone changed this file in OneDrive since Survey last saved it.', 409, 'conflict');
-  if (status === 404 || status === 410) return new DriveError('The OneDrive file was moved or deleted.', 404, 'gone');
-  if (status === 403) return new DriveError(where === 'push' ? 'You can open this OneDrive file but not change it.' : 'You do not have access to that OneDrive file.', 403, 'read_only');
-  if (status === 423) return new DriveError('The file is open or checked out in OneDrive. Survey will try again.', 423, 'locked');
-  if (status === 429 || status === 503) return new DriveError('Microsoft asked Survey to slow down. It will try again.', 429, 'busy');
-  return new DriveError('Microsoft could not be reached. Survey will try again.', 502, 'graph');
+  const place = placeName(provider);
+  const company = companyName(provider);
+  if (err?.code === 'reconnect' || status === 401) return new DriveError(`The ${company} sign-in used for this file has ended. Connect ${company} again.`, 401, 'reconnect');
+  if (status === 412) return new DriveError(`Someone changed this file in ${place} since Survey last saved it.`, 409, 'conflict');
+  if (status === 404 || status === 410) return new DriveError(`The ${place} file was moved or deleted.`, 404, 'gone');
+  if (status === 403) return new DriveError(where === 'push' ? `You can open this ${place} file but not change it.` : `You do not have access to that ${place} file.`, 403, 'read_only');
+  if (status === 423) return new DriveError(`The file is open or checked out in ${place}. Survey will try again.`, 423, 'locked');
+  if (status === 429 || status === 503) return new DriveError(`${company} asked Survey to slow down. It will try again.`, 429, 'busy');
+  return new DriveError(`${company} could not be reached. Survey will try again.`, 502, 'graph');
 }
 
 async function browse(ctx) {
   await requireBeta(ctx);
+  if (providerOf(ctx.body.provider) === 'google') throw new DriveError('Pick Google Drive files with Google’s picker.', 400, 'use_picker');
   const client = await driveClientFor(ctx, ctx.user.id);
   try {
     let folder = String(ctx.body.folder || '');
@@ -229,39 +349,55 @@ async function browse(ctx) {
 }
 
 function needIds(body) {
-  const driveId = String(body.driveId || '');
+  const provider = providerOf(body.provider);
+  const driveId = provider === 'google' ? GOOGLE_DRIVE_ID : String(body.driveId || '');
   const itemId = String(body.itemId || '');
-  if (!ID.test(driveId) || !ID.test(itemId)) throw new DriveError('Say which OneDrive file.', 400, 'missing_file');
-  return { driveId, itemId };
+  if (!ID.test(driveId) || !ID.test(itemId)) throw new DriveError(`Say which ${placeName(provider)} file.`, 400, 'missing_file');
+  return { driveId, itemId, provider };
+}
+
+/** Google only: a short-lived token and app id for Google's Picker in the app. */
+async function pickerToken(ctx) {
+  await requireBeta(ctx);
+  const appId = googleProjectNumber(ctx.env || {});
+  const client = await driveClientFor(ctx, ctx.user.id, 'google');
+  let accessToken;
+  try { accessToken = await client.accessToken(); } catch (err) { throw graphProblem(err, { where: 'open', provider: 'google' }); }
+  return { accessToken, appId };
 }
 
 async function open(ctx) {
   await requireBeta(ctx);
-  const { driveId, itemId } = needIds(ctx.body);
-  const client = await driveClientFor(ctx, ctx.user.id);
+  const { driveId, itemId, provider } = needIds(ctx.body);
+  const client = await driveClientFor(ctx, ctx.user.id, provider);
   let it;
-  try { it = await client.item(driveId, itemId); } catch (err) { throw graphProblem(err, { where: 'open' }); }
-  if (!it?.file || !/\.pdf$/i.test(String(it.name || ''))) throw new DriveError('That OneDrive file is not a PDF.', 400, 'not_pdf');
-  const downloadUrl = it['@microsoft.graph.downloadUrl'];
-  if (!downloadUrl) throw new DriveError('Microsoft did not give a download link for that file.', 502, 'graph');
-  return { name: String(it.name), size: Number(it.size) || 0, eTag: it.eTag || null, webUrl: it.webUrl || null, downloadUrl, driveId, itemId };
+  try { it = await client.item(driveId, itemId); } catch (err) { throw graphProblem(err, { where: 'open', provider }); }
+  const isPdf = provider === 'google' ? it?.isPdf : (it?.file && /\.pdf$/i.test(String(it.name || '')));
+  if (!isPdf) throw new DriveError(`That ${placeName(provider)} file is not a PDF.`, 400, 'not_pdf');
+  const downloadUrl = provider === 'google' ? it.downloadUrl : it['@microsoft.graph.downloadUrl'];
+  if (!downloadUrl) throw new DriveError(`${companyName(provider)} did not give a download link for that file.`, 502, 'graph');
+  const out = { provider, name: String(it.name), size: Number(it.size) || 0, eTag: it.eTag || null, webUrl: it.webUrl || null, downloadUrl, driveId, itemId };
+  // Google's file address needs the sign-in; the token reaches only files the
+  // person picked with Survey (drive.file) and ends within the hour.
+  if (provider === 'google') out.accessToken = await client.accessToken();
+  return out;
 }
 
 async function link(ctx) {
   await requireBeta(ctx);
   const documentId = ctx.body.documentId;
   await requireEditor(ctx, documentId);
-  const { driveId, itemId } = needIds(ctx.body);
-  const client = await driveClientFor(ctx, ctx.user.id);
+  const { driveId, itemId, provider } = needIds(ctx.body);
+  const client = await driveClientFor(ctx, ctx.user.id, provider);
   let it;
-  try { it = await client.item(driveId, itemId); } catch (err) { throw graphProblem(err, { where: 'open' }); }
+  try { it = await client.item(driveId, itemId); } catch (err) { throw graphProblem(err, { where: 'open', provider }); }
   // The eTag of the bytes the app downloaded: a change at the source between
   // the download and this call is the first conflict, not a silent overwrite.
   const eTag = String(ctx.body.eTag || it.eTag || '') || null;
   const now = new Date().toISOString();
   const row = {
     document_id: documentId,
-    provider: 'msgraph',
+    provider,
     drive_id: driveId,
     item_id: itemId,
     name: String(it.name || 'file.pdf').slice(0, 300),
@@ -274,7 +410,7 @@ async function link(ctx) {
     updated_at: now,
   };
   const { error } = await ctx.service.from('document_drive_links').upsert(row, { onConflict: 'document_id' });
-  if (error) throw new DriveError('Could not save the OneDrive link.', 500, 'save');
+  if (error) throw new DriveError(`Could not save the ${placeName(provider)} link.`, 500, 'save');
   return { link: publicLink({ ...row, last_pushed_at: null, last_pushed_sha: null }) };
 }
 
@@ -287,12 +423,12 @@ async function status(ctx) {
   const out = { link: publicLink(row), canPush: role === 'owner' || role === 'editor' };
   if (!ctx.body.check) return out;
   try {
-    const client = await driveClientFor(ctx, row.linked_by);
+    const client = await driveClientFor(ctx, row.linked_by, row.provider);
     const it = await client.item(row.drive_id, row.item_id);
     out.changedAtSource = Boolean(row.etag && it?.eTag && it.eTag !== row.etag);
     out.source = { name: it?.name || row.name, modifiedAt: it?.lastModifiedDateTime || null, modifiedBy: it?.lastModifiedBy?.user?.displayName || null };
   } catch (err) {
-    const problem = graphProblem(err, { where: 'status' });
+    const problem = graphProblem(err, { where: 'status', provider: row.provider });
     out.problem = { code: problem.code, error: problem.message };
   }
   return out;
@@ -308,16 +444,19 @@ async function push(ctx) {
   const documentId = ctx.body.documentId;
   await requireEditor(ctx, documentId);
   const row = await linkRow(ctx, documentId);
-  if (!row) throw new DriveError('This document is not linked to a OneDrive file.', 404, 'not_linked');
-  if (row.sync_off && !ctx.body.force) throw new DriveError('Saving back to OneDrive is turned off for this document.', 409, 'sync_off');
-  const client = await driveClientFor(ctx, row.linked_by);
+  if (!row) throw new DriveError('This document is not linked to a drive file.', 404, 'not_linked');
+  if (row.sync_off && !ctx.body.force) throw new DriveError(`Saving back to ${placeName(row.provider)} is turned off for this document.`, 409, 'sync_off');
+  const client = await driveClientFor(ctx, row.linked_by, row.provider);
   try {
     // force: the person chose "Keep Survey's version" in the conflict dialog.
-    const session = await client.uploadSession(row.drive_id, row.item_id, { ifMatch: ctx.body.force ? null : row.etag });
-    if (!session?.uploadUrl) throw new DriveError('Microsoft did not open an upload.', 502, 'graph');
-    return { uploadUrl: session.uploadUrl, expiresAt: session.expirationDateTime || null };
+    const session = await client.uploadSession(row.drive_id, row.item_id, {
+      ifMatch: ctx.body.force ? null : row.etag,
+      origin: ORIGIN.test(String(ctx.body.appOrigin || '')) ? ctx.body.appOrigin : null,
+    });
+    if (!session?.uploadUrl) throw new DriveError(`${companyName(row.provider)} did not open an upload.`, 502, 'graph');
+    return { provider: row.provider, uploadUrl: session.uploadUrl, expiresAt: session.expirationDateTime || null };
   } catch (err) {
-    const problem = graphProblem(err);
+    const problem = graphProblem(err, { provider: row.provider });
     await recordError(ctx, documentId, problem);
     throw problem;
   }
@@ -327,10 +466,10 @@ async function pushed(ctx) {
   const documentId = ctx.body.documentId;
   await requireEditor(ctx, documentId);
   const row = await linkRow(ctx, documentId);
-  if (!row) throw new DriveError('This document is not linked to a OneDrive file.', 404, 'not_linked');
-  const client = await driveClientFor(ctx, row.linked_by);
+  if (!row) throw new DriveError('This document is not linked to a drive file.', 404, 'not_linked');
+  const client = await driveClientFor(ctx, row.linked_by, row.provider);
   let it;
-  try { it = await client.item(row.drive_id, row.item_id); } catch (err) { throw graphProblem(err, { where: 'status' }); }
+  try { it = await client.item(row.drive_id, row.item_id); } catch (err) { throw graphProblem(err, { where: 'status', provider: row.provider }); }
   const now = new Date().toISOString();
   const patch = {
     etag: it?.eTag || row.etag,
@@ -351,7 +490,7 @@ async function settings(ctx) {
   const documentId = ctx.body.documentId;
   await requireEditor(ctx, documentId);
   const row = await linkRow(ctx, documentId);
-  if (!row) throw new DriveError('This document is not linked to a OneDrive file.', 404, 'not_linked');
+  if (!row) throw new DriveError('This document is not linked to a drive file.', 404, 'not_linked');
   const patch = { updated_at: new Date().toISOString() };
   if (Number.isInteger(ctx.body.syncMinutes)) patch.sync_minutes = Math.min(1440, Math.max(1, ctx.body.syncMinutes));
   if (typeof ctx.body.syncOff === 'boolean') patch.sync_off = ctx.body.syncOff;
@@ -380,6 +519,7 @@ export async function driveAction(ctx) {
     case 'drivePushed': return pushed(ctx);
     case 'driveSettings': return settings(ctx);
     case 'driveUnlink': return unlink(ctx);
+    case 'drivePickerToken': return pickerToken(ctx);
     default: throw new DriveError('Unknown drive action.', 400, 'unknown_action');
   }
 }

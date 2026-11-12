@@ -232,6 +232,8 @@ function writeEnvFile(status) {
     `E2E_BASE_URL=${E2E_BASE_URL}`,
     '# Local GoTrue has no CAPTCHA; an empty key turns the Turnstile widget off.',
     'VITE_TURNSTILE_SITE_KEY=',
+    '# A made-up Google Picker key: the Google Drive entry shows; tests stand in for the Picker.',
+    'VITE_GOOGLE_PICKER_API_KEY=e2e-fake-picker-key',
     '# The MinIO standing in for Cloudflare R2 (scripts/e2e-minio.mjs).',
     ...Object.entries(E2E_R2).map(([k, v]) => `E2E_${k}=${v}`),
     '',

@@ -184,6 +184,9 @@ const NOT_SWEPT = {
   // Live sheet links (Nightly): document members read a few columns, never the
   // sync state; probed in sheet-sync.spec.mjs.
   sheet_sync_links: 'own spec',
+  // Drive files that save back (Nightly): document readers read a few columns,
+  // never the drive ids; only the function writes. Probed below.
+  document_drive_links: 'column grants',
 };
 
 // What a collaborator on the shared document may read; the rest stays the owner's.
@@ -238,6 +241,35 @@ test('collaborators see the shared document\'s rows and nothing else of the owne
       if (SHARED_WITH_COLLABORATORS.has(table)) expect(seen, `${account.email} ${table}`).toBeGreaterThan(0);
       else expect(seen, `${account.email} ${table}`).toBe(0);
     }
+  }
+});
+
+test('a drive link: document members read its few columns, never the drive ids; strangers see nothing; nobody writes it', async () => {
+  const row = { document_id: DOC, provider: 'google', drive_id: 'google', item_id: 'rls-secret-file', name: 'RLS plan.pdf', linked_by: ids.owner };
+  await must('drive link', admin.from('document_drive_links').upsert(row, { onConflict: 'document_id' }));
+  try {
+    const PUBLIC = 'document_id,provider,name,sync_minutes,sync_off,last_pushed_at';
+    for (const account of [E2E_ACCOUNTS.owner, E2E_ACCOUNTS.editor, E2E_ACCOUNTS.viewer]) {
+      const client = await clientFor(account);
+      const { data, error } = await client.from('document_drive_links').select(PUBLIC).eq('document_id', DOC);
+      expect(error, `${account.email} read`).toBeNull();
+      expect(data, `${account.email} read`).toHaveLength(1);
+      const ids = await client.from('document_drive_links').select('drive_id,item_id').eq('document_id', DOC);
+      expect(ids.error, `${account.email} drive ids`).toBeTruthy();
+      await client.from('document_drive_links').update({ name: 'rls-was-here', item_id: 'evil' }).eq('document_id', DOC);
+      await client.from('document_drive_links').delete().eq('document_id', DOC);
+      const { error: insertError } = await client.from('document_drive_links').insert({ ...row, document_id: DOC });
+      expect(insertError, `${account.email} add`).toBeTruthy();
+    }
+    for (const account of [null, E2E_ACCOUNTS.free, E2E_ACCOUNTS.pro]) {
+      const client = await clientFor(account);
+      const { data, error } = await client.from('document_drive_links').select('document_id').eq('document_id', DOC);
+      expect(error || data.length === 0, `${account?.email || 'anon'} read`).toBeTruthy();
+    }
+    const { data: after } = await admin.from('document_drive_links').select('item_id,name').eq('document_id', DOC).maybeSingle();
+    expect(after).toEqual({ item_id: 'rls-secret-file', name: 'RLS plan.pdf' });
+  } finally {
+    await admin.from('document_drive_links').delete().eq('document_id', DOC);
   }
 });
 
