@@ -419,3 +419,10 @@ test('dimension caption style: pt size, text colour, background and opacity', as
     assert.ok(card.includes(bit), bit);
   }
 });
+
+test('measure-plus: a Perimeter finished at its last point stays open (a polylength)', () => {
+  const layer = readFileSync(new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url), 'utf8');
+  assert.match(layer, /const openPerimeter = action === 'finish' && resolved\.finalType === 'polygon'\s*&& measureMode === 'perimeter' && isFeatureOn\('measure-plus'\);/);
+  assert.match(layer, /const tool = openPerimeter \? 'polyline' : resolved\.finalType;/);
+  assert.match(layer, /if \(openPerimeter\) rawJson = stampMeasure\(builtJson, 'polylength', effectiveMeasureScale\);/);
+});

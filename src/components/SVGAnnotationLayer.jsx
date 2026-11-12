@@ -3079,7 +3079,12 @@ const SVGAnnotationLayerBody = memo(({
     polyDraftRef.current = null;
     setPolyDraft(null);
 
-    const tool = resolved.finalType;
+    // Nightly 'measure-plus' (Drawboard, measure-extras.md §6): a Perimeter
+    // closes only on a click back on its first point; finished at its last
+    // point (double-click, the tick or Enter) it stays OPEN, a polylength.
+    const openPerimeter = action === 'finish' && resolved.finalType === 'polygon'
+      && measureMode === 'perimeter' && isFeatureOn('measure-plus');
+    const tool = openPerimeter ? 'polyline' : resolved.finalType;
     const gestureAction = `${tool}-draw`;
     markAnnotationPointerRelease(draft.gestureId, { action: gestureAction });
 
@@ -3108,12 +3113,12 @@ const SVGAnnotationLayerBody = memo(({
       selectedModuleId,
       stampRegionId,
       activeRegionId,
-      curve: polylineCurve,
+      curve: openPerimeter ? false : polylineCurve,
     });
     if (!builtJson) return false;
-    const rawJson = isPolyMeasureFor(tool, measureMode)
-      ? stampMeasure(builtJson, measureMode, effectiveMeasureScale, { depth: measureDepth })
-      : builtJson;
+    let rawJson = builtJson;
+    if (openPerimeter) rawJson = stampMeasure(builtJson, 'polylength', effectiveMeasureScale);
+    else if (isPolyMeasureFor(tool, measureMode)) rawJson = stampMeasure(builtJson, measureMode, effectiveMeasureScale, { depth: measureDepth });
 
     const json = stampAnnotationCreationIdentity(rawJson, { authorId: viewerId });
     updateAnnotationGesture(draft.gestureId, { annotationId: id });
