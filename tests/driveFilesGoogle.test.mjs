@@ -13,6 +13,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { createHash } from 'node:crypto';
 
 // The app's upload helper, without the modules that need a browser.
 async function loadUploadToDrive() {
@@ -30,10 +31,11 @@ function fakeDrive() {
   g.add = (id, { name, mimeType = 'application/pdf', canEdit = true } = {}) => {
     g.files.set(id, { name, mimeType, canEdit, rev: 1, trashed: false, bytes: 'pdf-1' });
   };
-  g.editAtSource = (id) => { g.files.get(id).rev += 1; };
+  g.editAtSource = (id, bytes) => { const f = g.files.get(id); f.rev += 1; if (bytes !== undefined) f.bytes = bytes; };
   const json = (status, body, headers = {}) => new Response(body === undefined ? null : JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...headers } });
   const meta = (id, f) => ({
     id, name: f.name, mimeType: f.mimeType, size: String(f.bytes.length), headRevisionId: `rev-${f.rev}`,
+    sha256Checksum: createHash('sha256').update(f.bytes).digest('hex'),
     modifiedTime: '2026-11-12T12:00:00Z', webViewLink: `https://drive.test/file/${id}/view`, trashed: f.trashed,
     capabilities: { canEdit: f.canEdit }, lastModifyingUser: { displayName: 'Pat Manager' },
   });
@@ -206,6 +208,30 @@ test('a change made in Google Drive is a conflict until Keep Survey’s version;
   await rejects(call('owner-1', { action: 'drivePush', documentId: DOC, force: true }), 'gone');
   drive.files.delete('FILE1');
   await rejects(call('owner-1', { action: 'drivePush', documentId: DOC, force: true }), 'gone');
+});
+
+test('a late Google Drive confirm tells Survey\'s upload from a later Drive edit by the content hash', async () => {
+  const { drive, db, call } = setup();
+  const sha = (text) => createHash('sha256').update(text).digest('hex');
+  drive.add('FILE1', { name: 'A.pdf' });
+  await call('owner-1', { action: 'driveLink', provider: 'google', documentId: DOC, itemId: 'FILE1', eTag: 'rev-1' });
+
+  // Drive's upload answer has no revision id (like the real one), so the app sends no eTag.
+  const first = await call('owner-1', { action: 'drivePush', documentId: DOC });
+  const answer = await (await drive.fetch(first.uploadUrl, { method: 'PUT', body: 'survey-v2' })).json();
+  assert.equal(answer.headRevisionId, undefined);
+  // Nothing changed since: the late confirm takes Survey's revision.
+  await call('owner-1', { action: 'drivePushed', documentId: DOC, sha: sha('survey-v2'), late: true });
+  assert.equal(db.tables.document_drive_links.get(DOC).etag, 'rev-2');
+
+  // Survey's next upload lands, then someone edits in Drive before the late confirm.
+  const second = await call('owner-1', { action: 'drivePush', documentId: DOC });
+  await drive.fetch(second.uploadUrl, { method: 'PUT', body: 'survey-v3' });
+  drive.editAtSource('FILE1', 'someone-else');
+  await call('owner-1', { action: 'drivePushed', documentId: DOC, sha: sha('survey-v3'), late: true });
+  assert.equal(db.tables.document_drive_links.get(DOC).etag, 'rev-2', 'their revision is not taken as Survey\'s');
+  await rejects(call('owner-1', { action: 'drivePush', documentId: DOC }), 'conflict');
+  assert.equal(drive.files.get('FILE1').bytes, 'someone-else');
 });
 
 test('open refuses a file that is not a PDF, and the messages name Google Drive', async () => {
