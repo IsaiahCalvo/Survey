@@ -536,3 +536,33 @@ export function trimPointsByLength(points, startInset = 0, endInset = 0) {
   const pts = points.map(copy);
   return cut(cut(pts, startInset).reverse(), endInset).reverse();
 }
+
+/**
+ * A curved polyline's spans sampled `fine` times finer than its stored points,
+ * at the same parameter spacing, so fine piece k lies inside stored piece
+ * floor(k / fine). Pick bands use it to follow the drawn curve and map a hit
+ * back to the stored piece with fineHitToStored.
+ */
+export function fineSplinePoints(points, step, fine) {
+  if (!Array.isArray(points) || !(step >= 2) || !(fine >= 1)) return Array.isArray(points) ? points : [];
+  const { spans } = cachedSpans(points, step);
+  return spans.length ? sampleSplineSpans(spans, step * fine) : points;
+}
+
+/** A side hit { segmentIndex, t } on fineSplinePoints, back on the stored points. */
+export function fineHitToStored(hit, fine, storedCount) {
+  if (!hit || !(fine > 1)) return hit;
+  const at = (hit.segmentIndex + hit.t) / fine;
+  const segmentIndex = Math.max(0, Math.min(Math.floor(at), storedCount - 2));
+  const t = Math.min(1 - 1e-6, Math.max(1e-6, at - segmentIndex));
+  return { ...hit, segmentIndex, t };
+}
+
+/** The point on a curved polyline's drawn curve at stored piece `segmentIndex`, fraction `t`. */
+export function splinePointAt(points, step, segmentIndex, t) {
+  const { spans } = cachedSpans(points, step);
+  const span = spans[Math.floor(segmentIndex / step)];
+  if (!span) return null;
+  return cubicAt(span, ((segmentIndex % step) + t) / step);
+}
+

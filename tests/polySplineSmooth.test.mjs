@@ -12,7 +12,9 @@ import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import {
   SPLINE_FLAT_TOLERANCE, SPLINE_STEP, moveSplineHandle, polySplineSpans, sampleSpline,
   smoothPolylinePoints, splinePathD, splineSpans, trimPointsByLength,
+  fineHitToStored, fineSplinePoints, splinePointAt, splineCorners,
 } from '../src/utils/polySpline.js';
+import { insertPolyVertex, insertVertexOnNearestEdge } from '../src/utils/polyVertices.js';
 import { createServer } from 'vite';
 import { drawAnnotationObject } from '../src/utils/annotationCanvasPainter.js';
 import { savePDFWithAnnotationsPdfLib } from '../src/utils/pdfAnnotationsPdfLib.js';
@@ -221,4 +223,31 @@ test('a curve shorter than its ending inset keeps only a stub, on screen and in 
   const trimmed = trimPointsByLength(smoothPolylinePoints(mark), 50, 0);
   const a = trimmed[0]; const b = trimmed[trimmed.length - 1];
   assert.ok(Math.hypot(b.x - a.x, b.y - a.y) < 0.5, 'print stub');
+});
+
+
+test('the add-point side band follows the drawn curve and inserts on it', () => {
+  const mark = curvedMark();
+  const spans = polySplineSpans(mark);
+  // The point on the drawn curve farthest from the stored chords.
+  let far = null; let farGap = 0; let farU = 0;
+  for (let i = 1; i < 400; i += 1) {
+    const p = cubicAt(spans[0], i / 400);
+    let best = Infinity;
+    for (let j = 1; j < mark.points.length; j += 1) best = Math.min(best, segDist(p, mark.points[j - 1], mark.points[j]));
+    if (best > farGap) { farGap = best; far = p; farU = i / 400; }
+  }
+  assert.ok(farGap > 1);
+  // The old band (stored chords) with a 1 pt reach misses it; the fine band hits it.
+  assert.equal(insertVertexOnNearestEdge(mark.points, far, 1, { closed: false }), null);
+  const fine = fineSplinePoints(mark.points, SPLINE_STEP, 8);
+  const hit = fineHitToStored(insertVertexOnNearestEdge(fine, far, 1, { closed: false }), 8, mark.points.length);
+  assert.ok(hit, 'fine band hits the drawn curve');
+  assert.ok(Math.abs((hit.segmentIndex + hit.t) / SPLINE_STEP - farU) < 0.01, 'mapped back to the same spot on the span');
+  const onCurve = splinePointAt(mark.points, SPLINE_STEP, hit.segmentIndex, hit.t);
+  assert.ok(Math.hypot(onCurve.x - far.x, onCurve.y - far.y) < 0.5);
+  // The new corner lands on the curve, and the curve keeps its shape.
+  const next = insertPolyVertex(mark, hit.segmentIndex, hit.t);
+  const added = splineCorners(next.points, SPLINE_STEP)[1];
+  assert.ok(Math.hypot(added.x - onCurve.x, added.y - onCurve.y) < 0.05, `corner ${added.x},${added.y} vs ${onCurve.x},${onCurve.y}`);
 });

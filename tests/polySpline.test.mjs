@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   SPLINE_STEP, insertSplineCorner, keepPivot, moveSplineCorner, polySplineStep, removeSplineCorner,
-  sampleSpline, setPolylineCurve, splineCorners, splineSpanMidpoint,
+  sampleSpline, setPolylineCurve, splineCorners, splineSpanMidpoint, splinePointAt,
 } from '../src/utils/polySpline.js';
 import { canRemovePolyVertex, insertPolyVertex, removePolyVertex } from '../src/utils/polyVertices.js';
 import { buildPolyShapeCommitJSON } from '../src/utils/annotationCreationCommit.js';
@@ -83,9 +83,9 @@ test('polyVertices helpers count and edit corners on a curve', () => {
   assert.equal(polySplineStep(inserted), 12);
   const c = splineCorners(inserted.points, 12);
   assert.equal(c.length, 5);
-  const a = obj.points[15];
-  const b = obj.points[16];
-  assert.deepEqual(c[2], { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+  // It sits on the drawn curve itself (not on the stored chord 15 -> 16).
+  const on = splinePointAt(obj.points, 12, 15, 0.5);
+  assert.ok(Math.hypot(c[2].x - on.x, c[2].y - on.y) < 1e-9, `${c[2].x},${c[2].y} vs ${on.x},${on.y}`);
 });
 
 test('the "+" handle sits on the curve halfway between corners', () => {
