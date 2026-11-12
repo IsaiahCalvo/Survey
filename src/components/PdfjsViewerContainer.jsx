@@ -1605,6 +1605,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // The phone keeps one column (two pages side by side are too small there).
   const pageSpreadSetting = usePageSpreadMode();
   const spreadMode = phoneLayout ? 'single' : pageSpreadSetting;
+  const spreadModeRef = useRef(spreadMode);
+  spreadModeRef.current = spreadMode;
   const coarsePointer = useCoarsePointer();
   const isMobileSurface = phoneLayout || coarsePointer;
   const [touchInput] = useState(() => hasTouchInput());
@@ -1893,15 +1895,28 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     // A spread view centres the ROW and puts the page at its slot in it.
     const place = spreadPlaceRef.current;
     const row = place ? stackPtRef.current[place.leader[pageIndex] ?? pageIndex] : null;
+    const rowOn = Boolean(row && !row.hidden);
     // The left side-panel room sits in front of every page.
     return resolveCentredPageLeft({
-      pageWidth: (row && !row.hidden ? row.w : dim.w) * nextScale,
+      pageWidth: (rowOn ? row.w : dim.w) * nextScale,
       columnWidth: getColumnWidthAtScale(nextScale),
       sideLeft: sideRoomRef.current.left,
-    }) + (row && !row.hidden ? (place.offsetX[pageIndex] || 0) * nextScale : 0);
+    }) + (rowOn ? (place.offsetX[pageIndex] || 0) * nextScale : 0);
   }, [getColumnWidthAtScale]);
   const getPageLeftAtScaleRef = useRef(getPageLeftAtScale);
   getPageLeftAtScaleRef.current = getPageLeftAtScale;
+  // What the side-panel band centres and measures: the page, or in a spread
+  // view its whole row (both pages and the gap).
+  const rowBoxAtScaleRef = useRef(null);
+  rowBoxAtScaleRef.current = (pageIndex, nextScale) => {
+    const dim = dimsPtRef.current[pageIndex];
+    if (!dim) return null;
+    const left = getPageLeftAtScale(pageIndex, nextScale);
+    const place = spreadPlaceRef.current;
+    const row = place ? stackPtRef.current[place.leader[pageIndex] ?? pageIndex] : null;
+    if (!row || row.hidden) return { left, width: dim.w * nextScale };
+    return { left: left - (place.offsetX[pageIndex] || 0) * nextScale, width: row.w * nextScale };
+  };
 
   // Plus the side-panel room on both sides, so a page can be scrolled out
   // from under either panel.
@@ -2067,9 +2082,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         // 2026-10-04: one draw, nothing jumps).
         const metrics = layoutMetricsRef.current;
         const side = sideInsetRef.current;
+        // A kept Double / Cover view fits the first row: two page widths and
+        // the gap (Cover's lone page 1 holds a pair's slot too).
+        const firstRowW = spreadModeRef.current === 'single' ? firstSize.w : firstSize.w * 2 + metrics.gap;
         const fitPageScale = hasViewport ? computeFitScale({
           mode: 'fitPage',
-          pageW: firstSize.w,
+          pageW: firstRowW,
           pageH: firstSize.h,
           viewportW: Math.max(1, cw - side.left - side.right),
           viewportH: Math.max(1, el.clientHeight - topInsetRef.current),
@@ -2633,13 +2651,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const bandCentreTarget = () => {
       const s = scaleRef.current;
       const i = Math.max(0, (currentPageRef.current || 1) - 1);
-      const d = dimsPtRef.current[i];
-      if (!d || !(s > 0)) return null;
+      const box = s > 0 ? rowBoxAtScaleRef.current(i, s) : null;
+      if (!box) return null;
       const insets = sideInsetRef.current;
-      const pageWidth = d.w * s;
+      const pageWidth = box.width;
       if (pageWidth > el.clientWidth - insets.left - insets.right + 0.5) return null;
       return resolveBandCentreScrollLeft({
-        pageLeft: getPageLeftAtScaleRef.current(i, s),
+        pageLeft: box.left,
         pageWidth,
         viewportWidth: el.clientWidth,
         insets,
@@ -2687,12 +2705,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       if (!lastFit || !(lastFit.scale > 0) || gestureRef.current || !el.isConnected) return;
       const s = scaleRef.current;
       if (Math.abs(s - lastFit.scale) > 1e-3) return; // zoomed since the fit: leave it
-      const d = dimsPtRef.current[lastFit.pageIndex];
-      if (!d || isInTabBehind(el) || !(el.clientWidth > 0)) return;
+      const box = rowBoxAtScaleRef.current(lastFit.pageIndex, s);
+      if (!box || isInTabBehind(el) || !(el.clientWidth > 0)) return;
       const insets = sideInsetRef.current;
       if (!shouldRefitForBand({
-        pageLeft: getPageLeftAtScaleRef.current(lastFit.pageIndex, s) - el.scrollLeft,
-        pageWidth: d.w * s,
+        pageLeft: box.left - el.scrollLeft,
+        pageWidth: box.width,
         viewportWidth: el.clientWidth,
         insets,
         lastBandW: lastFit.bandW,

@@ -137,7 +137,7 @@ test('the PDF engine draws through the queue and starts on Fit page', () => {
   assert.match(CONTAINER, /rasterQueue\.request\(pageIndex,/);
   assert.match(CONTAINER, /rasterQueue=\{rasterQueueRef\.current\}/);
   assert.match(CONTAINER, /visiblePageRangeRef\.current = \[visibleFirst, visibleLast\];\s*\n\s*rasterQueueRef\.current\?\.pump\(\);/);
-  assert.match(CONTAINER, /mode: 'fitPage',\s*\n\s*pageW: firstSize\.w,/);
+  assert.match(CONTAINER, /mode: 'fitPage',\s*\n\s*pageW: firstRowW,/);
   assert.doesNotMatch(CONTAINER, /RASTERDBG/);
 });
 

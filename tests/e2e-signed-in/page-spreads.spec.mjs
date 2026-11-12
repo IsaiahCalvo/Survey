@@ -78,6 +78,11 @@ test.describe('desktop', () => {
       const p1 = page.locator('.survey-pdfjs-page-div[data-page-number="1"]').filter({ visible: true }).first();
       await expect(p1.locator('canvas').first()).toBeVisible({ timeout: 60_000 });
       await expect.poll(async () => Math.round((await pageBox(page, 3)).y - (await pageBox(page, 2)).y)).toBe(0);
+      // It opens fitted to the row, not to one page: both pages are on screen.
+      await expect.poll(async () => {
+        const [a, b] = [await pageBox(page, 2), await pageBox(page, 3)];
+        return a.x >= 0 && b.x + b.width <= 1400;
+      }).toBe(true);
 
       await pickView(page, 'single');
       await expect.poll(async () => (await pageBox(page, 2)).y > (await pageBox(page, 1)).y + 10).toBe(true);
