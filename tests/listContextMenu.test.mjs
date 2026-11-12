@@ -52,7 +52,7 @@ test('a held finger opens it in the desktop layout but not on the phone (drag / 
   assert.equal(shouldOpenListMenu(fakeEvent(), { mobileMode: true, activeElement: null }), true);
 });
 
-test('a field being typed in keeps the browser menu (cut, copy, paste)', () => {
+test('a field being typed in is left to the app text menu (cut, copy, paste), not the row menu', () => {
   const field = fakeEvent({ tagName: 'INPUT' });
   assert.equal(isTypingTarget(field, field.target), true);
   assert.equal(listMenuPointFrom(field, { activeElement: field.target }), null);

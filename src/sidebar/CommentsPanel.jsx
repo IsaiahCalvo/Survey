@@ -17,6 +17,9 @@ import { supabase } from '../supabaseClient';
 import { useTooltip } from '../components/Tooltip';
 import { useConfirmDialog } from '../components/dialogPrompts';
 import { showToast } from '../utils/toast';
+import ListItemContextMenu from '../components/ListItemContextMenu.jsx';
+import { listMenuPointFrom } from '../utils/listContextMenu.js';
+import { copyText } from '../utils/appContextMenuItems.js';
 import { useMarkComments } from '../hooks/useMarkComments.js';
 import {
   MARK_COMMENT_MAX_CHARS,
@@ -168,10 +171,13 @@ const CommentBox = forwardRef(function CommentBox({ people, placeholder, initial
   );
 });
 
-function CommentItem({ comment, peopleById, mine, canWrite, onEdit, onDelete, onCopyLink, editing, setEditing, people, tip }) {
+function CommentItem({ comment, peopleById, mine, canWrite, onEdit, onDelete, onCopyLink, onReply, editing, setEditing, people, tip }) {
   const author = peopleById.get(comment.authorId);
   const boxRef = useRef(null);
   const [canSave, setCanSave] = useState(true);
+  // Right-click: the comment's own actions (owner 2026-11-12: no browser
+  // menu anywhere; a proper menu where there are actions).
+  const [menuPoint, setMenuPoint] = useState(null);
   if (comment.deletedAt) {
     return (
       <div className="comments-item comments-item--deleted" data-comment-id={comment.id}>
@@ -180,7 +186,32 @@ function CommentItem({ comment, peopleById, mine, canWrite, onEdit, onDelete, on
     );
   }
   return (
-    <div className={`comments-item${editing ? ' is-editing' : ''}`} data-comment-id={comment.id}>
+    <div
+      className={`comments-item${editing ? ' is-editing' : ''}`}
+      data-comment-id={comment.id}
+      onContextMenu={editing ? undefined : (event) => {
+        const point = listMenuPointFrom(event);
+        if (point) setMenuPoint(point);
+      }}
+    >
+      {menuPoint && (
+        // The menu is portalled, but React still bubbles its clicks here:
+        // they must not also open the thread.
+        // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
+        <span style={{ display: 'contents' }} onClick={(event) => event.stopPropagation()}>
+        <ListItemContextMenu
+          point={menuPoint}
+          onClose={() => setMenuPoint(null)}
+          items={[
+            { label: 'Copy link', onClick: () => onCopyLink(comment) },
+            { label: 'Copy text', icon: 'copy', onClick: () => { copyText(comment.body).then((ok) => { if (ok) showToast('Comment copied', 'success'); }); } },
+            canWrite && onReply && { label: 'Reply', icon: 'comment', onClick: onReply },
+            mine && canWrite && { label: 'Edit', icon: 'edit', onClick: () => setEditing(comment.id) },
+            mine && canWrite && { label: 'Delete', danger: true, onClick: () => onDelete(comment) },
+          ]}
+        />
+        </span>
+      )}
       <div className="comments-item__head">
         {/* Owner 2026-11-10 (Comments "very professional"): each comment
             wears its author's face - their own pastel and initials, the same
@@ -474,10 +505,10 @@ export default function CommentsPanel({
             <Icon name={markTarget(thread.markId, thread.pageNumber).icon} size={13} />
             <span>{markLabel(thread.markId, thread.pageNumber)}</span>
           </button>
-          <CommentItem comment={thread.root} mine={thread.root.authorId === userId} editing={editing === thread.root.id} {...itemProps} />
+          <CommentItem comment={thread.root} mine={thread.root.authorId === userId} editing={editing === thread.root.id} onReply={() => setReplyingTo(thread.id)} {...itemProps} />
           {thread.replies.map((reply) => (
             <div key={reply.id} className="comments-reply">
-              <CommentItem comment={reply} mine={reply.authorId === userId} editing={editing === reply.id} {...itemProps} />
+              <CommentItem comment={reply} mine={reply.authorId === userId} editing={editing === reply.id} onReply={() => setReplyingTo(thread.id)} {...itemProps} />
             </div>
           ))}
           {canWrite && (replyingTo === thread.id ? (
