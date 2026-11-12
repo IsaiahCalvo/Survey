@@ -6,7 +6,7 @@ import ExcelJS from 'exceljs';
 
 import {
   blankWorkbookBytes, cellValueForWrite, columnLetter, createMsGraphProvider, dropDownChoices, msgraphFileId,
-  columnRuns, parseMsgraphFileId, rowRuns, cellBlocks,
+  columnRuns, parseMsgraphFileId, rowRuns, cellBlocks, sparseBlocks,
 } from '../supabase/functions/_shared/sheetSync/providers/msgraph.js';
 
 const BASE = 'https://graph.test/v1.0';
@@ -556,6 +556,24 @@ test('cells one under another in the same columns go out as one block (300 notes
     { row: 5, col: 2, value: 'f' }, { row: 5, col: 3, value: 'g' },
   ]);
   assert.deepEqual(mixed.map((b) => [b.row, b.col, b.values.length, b.values[0].length]), [[4, 2, 1, 1], [1, 2, 2, 2], [5, 2, 1, 2]]);
+});
+
+test('scattered cells go out as one sparse write, null for every cell left alone', () => {
+  // 20 notes spread down 300 rows, plus a stamp beside one: one rectangle.
+  const cells = Array.from({ length: 20 }, (_, i) => ({ sheetId: 's', row: 5 + i * 13, col: 7, value: `n${i}` }));
+  cells.push({ sheetId: 's', row: 18, col: 5, value: 'IC' }, { sheetId: 's', row: 5, col: 7, value: 'last wins' });
+  const [one, ...rest] = sparseBlocks(cells);
+  assert.equal(rest.length, 0);
+  assert.deepEqual([one.row, one.col, one.values.length, one.values[0].length], [5, 5, 248, 3]);
+  assert.deepEqual(one.values[0], [null, null, "'last wins"]);
+  assert.deepEqual(one.values[1], [null, null, null]);
+  assert.deepEqual(one.values[13], ["'IC", null, "'n1"]);
+  assert.equal(one.values.flat().filter((v) => v !== null).length, 21);
+  // Blank stays a real write (it clears the cell); only cells not asked for are null.
+  assert.deepEqual(sparseBlocks([{ row: 1, col: 1, value: '' }])[0].values, [['']]);
+  // Over the size cap a new band starts, each spanning only its own columns.
+  const bands = sparseBlocks([{ row: 0, col: 0, value: 'a' }, { row: 3, col: 0, value: 'b' }, { row: 4, col: 9, value: 'c' }, { row: 9, col: 9, value: 'd' }], 8);
+  assert.deepEqual(bands.map((b) => [b.row, b.col, b.values.length, b.values[0].length]), [[0, 0, 4, 1], [4, 9, 6, 1]]);
 });
 
 test('a workbook the PM already has opens from its pasted link; folders, other files and bad links are told apart', async () => {
