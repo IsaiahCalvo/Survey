@@ -2,8 +2,11 @@
 //
 // Version history of the open document (Drawboard Projects' versions;
 // Nightly, flag 'document-versions'). Newest first: open an older version, or
-// lay it over the one that is open (VersionCompareDialog).
+// lay it over the one that is open (VersionCompareDialog). With 'version-delete'
+// (onDelete set; Drawboard DL-28) any one version can be deleted, Undo in the toast.
 import DialogCard from './DialogCard.jsx';
+import AppIcon from '../Icons';
+import { useTooltip } from './Tooltip';
 import { C } from '../uiPalette';
 import { Z_INDEX } from '../theme';
 
@@ -17,7 +20,8 @@ function versionLine(version) {
   return parts.join(' · ');
 }
 
-export default function DocumentVersionsDialog({ versions, openId, onOpen, onCompare, onClose }) {
+export default function DocumentVersionsDialog({ versions, openId, onOpen, onCompare, onDelete = null, onClose }) {
+  const tip = useTooltip();
   const newestFirst = [...(versions || [])].sort((a, b) => b.versionNumber - a.versionNumber);
   return (
     <DialogCard
@@ -61,6 +65,18 @@ export default function DocumentVersionsDialog({ versions, openId, onOpen, onCom
                     Open
                   </button>
                 </>
+              )}
+              {onDelete && newestFirst.length > 1 && (
+                <button
+                  type="button"
+                  className="hub-icon-btn dialog-touch-pad"
+                  data-version-delete-button={version.versionNumber}
+                  aria-label={`Delete v${version.versionNumber}`}
+                  {...tip(version.isCurrent ? 'Delete this version. The one before becomes current' : 'Delete this version')}
+                  onClick={() => onDelete(version)}
+                >
+                  <AppIcon name="trash" size={14} />
+                </button>
               )}
             </div>
           );

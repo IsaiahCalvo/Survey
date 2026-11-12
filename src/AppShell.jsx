@@ -17,6 +17,7 @@ import CounterSeriesMenu, { counterSeriesMenuWidth } from './components/CounterS
 import PageGridToggle, { PageGridGlyph } from './components/PageGridToggle';
 import DarkPagesToggle, { DarkPagesGlyph } from './components/DarkPagesToggle';
 import DocumentVersionsButton, { DocumentVersionsDialogs, useDocumentVersions } from './components/DocumentVersionsButton.jsx';
+import { DOCUMENT_VERSIONS_CHANGED_EVENT, chainLinksAfter, isFileSuperseded, withChainLinks } from './services/documentVersionService.js';
 import DriveSyncButton, { DriveSyncDialogs } from './components/DriveSyncButton.jsx';
 import { useDriveSyncBack } from './hooks/useDriveSyncBack.js';
 import OlderVersionBar from './components/OlderVersionBar.jsx';
@@ -2585,15 +2586,26 @@ export default function App({ devPreviewReturnTab = null }) {
     if (!documentId || !item?.id) return;
     requestMarkCommentsFocus({ documentId: String(documentId), markId: item.id, pageNumber: item.pageNumber });
   }, [activeTab?.file?.id]);
-  // Documents found superseded while open: they stay read-only after a
-  // document switch clears the versions list (a tab's file keeps the
-  // superseded_by it was opened with, which a later upload never updates).
-  const [supersededDocIds, setSupersededDocIds] = useState(() => new Set());
-  const markDocSuperseded = useCallback((id) => {
+  // Which open copies a newer one replaced, by document id. A tab's file
+  // keeps the superseded_by it was opened with, which a later upload, a
+  // deleted version or its Undo never update, so this record wins over it and
+  // outlives the versions list (a document switch clears that list). The
+  // latest word wins: a version change or the open copy's fresh list.
+  const [versionChain, setVersionChain] = useState(() => ({}));
+  const markDocSuperseded = useCallback((id, superseded = true) => {
     if (!id) return;
-    setSupersededDocIds((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+    setVersionChain((prev) => withChainLinks(prev, { [id]: superseded }));
   }, []);
   const documentVersions = useDocumentVersions(documentVersionsEnabled ? activeTab?.file?.id || null : null, handleDocumentSelect, markDocSuperseded);
+  const fileSuperseded = (file) => isFileSuperseded(file, versionChain);
+  useEffect(() => {
+    const onChanged = (e) => {
+      const links = chainLinksAfter(e?.detail);
+      setVersionChain((prev) => withChainLinks(prev, links));
+    };
+    window.addEventListener(DOCUMENT_VERSIONS_CHANGED_EVENT, onChanged);
+    return () => window.removeEventListener(DOCUMENT_VERSIONS_CHANGED_EVENT, onChanged);
+  }, []);
   // An older version opens read-only, with a bar to the current one.
   const olderVersionOpen = documentVersions.open && !documentVersions.open.isCurrent ? documentVersions.open : null;
   const currentVersion = documentVersions.versions.find((v) => v.isCurrent) || null;
@@ -5332,7 +5344,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       documentId={tab.file?.id || null}
                       viewerUserId={user?.id || null}
                       isActive={isVisible}
-                      readOnlyWithoutLock={Boolean(tab.file?.superseded_by) || supersededDocIds.has(tab.file?.id) || (tab.id === activeTabId && Boolean(olderVersionOpen))}
+                      readOnlyWithoutLock={fileSuperseded(tab.file) || (tab.id === activeTabId && Boolean(olderVersionOpen))}
                       onLockStateChange={(isLocked) => {
                         setDocumentLockedByTab((current) => (
                           current[tab.id] === isLocked
@@ -6133,7 +6145,7 @@ export default function App({ devPreviewReturnTab = null }) {
       )}
       <DocumentVersionsDialogs state={documentVersions} />
       <DriveSyncDialogs state={driveSync} cardOpen={driveSyncCardOpen} onCloseCard={() => setDriveSyncCardOpen(false)} />
-      {isViewerVisible && (olderVersionOpen || activeTab?.file?.superseded_by || supersededDocIds.has(activeTab?.file?.id)) && (
+      {isViewerVisible && (olderVersionOpen || fileSuperseded(activeTab?.file)) && (
         <OlderVersionBar
           versionNumber={olderVersionOpen?.versionNumber || null}
           onOpenCurrent={currentVersion ? () => documentVersions.openVersion(currentVersion) : null}
