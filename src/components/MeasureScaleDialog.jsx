@@ -22,6 +22,7 @@ import { useTooltip } from './Tooltip';
 import { moveGroupFocus } from '../utils/radioGroupKeys.js';
 import './MeasureScaleDialog.css';
 import {
+  CUSTOM_SCALE_TITLE_MAX,
   DECIMAL_PRECISIONS,
   FRACTION_PRECISIONS,
   MEASURE_DISPLAYS,
@@ -81,6 +82,8 @@ export default function MeasureScaleDialog({ pageNumber, pageCount = 1, lengthPt
   const [paper, setPaper] = useState(customStart?.paper || '1');
   const [paperUnit, setPaperUnit] = useState(customStart?.paperUnit || 'in');
   const [customReal, setCustomReal] = useState(customStart?.real || '');
+  // Drawboard's Title: empty follows the numbers live; typed, it names the scale.
+  const [customTitle, setCustomTitle] = useState(customStart?.title || '');
   const [setDefault, setSetDefault] = useState(false);
   // Drawboard's "Apply to existing measurements": also puts measures on
   // their own scale back on this one. Off each time the dialog opens.
@@ -95,6 +98,7 @@ export default function MeasureScaleDialog({ pageNumber, pageCount = 1, lengthPt
     setPaper(inputs.paper);
     setPaperUnit(inputs.paperUnit);
     setCustomReal(inputs.real);
+    setCustomTitle(inputs.title || '');
     setDisplay(saved.display);
     setPrecision(normalizeMeasurePrecision(saved.display, saved.precision));
   };
@@ -107,7 +111,7 @@ export default function MeasureScaleDialog({ pageNumber, pageCount = 1, lengthPt
     : (recentPick != null ? recent[recentPick] : scaleFromPreset(preset));
   let scale = baseScale;
   if (plusOn) {
-    if (custom && !calibrating) scale = customMeasureScale({ paper, paperUnit, realText: customReal, display, precision });
+    if (custom && !calibrating) scale = customMeasureScale({ paper, paperUnit, realText: customReal, display, precision, title: customTitle });
     else if (baseScale) scale = { ...baseScale, display, precision };
   }
   useFocusTrap(cardRef, true, { onEscape: onCancel });
@@ -246,6 +250,22 @@ export default function MeasureScaleDialog({ pageNumber, pageCount = 1, lengthPt
                     />
                     {!isFractionalDisplay(display) && <span style={{ color: 'var(--text-3)', fontSize: 13 }}>{display}</span>}
                   </div>
+                )}
+                {plusOn && custom && (
+                  <>
+                    <label className="measure-scale__label" htmlFor="measure-custom-title">Title</label>
+                    <input
+                      id="measure-custom-title"
+                      className="measure-scale__field"
+                      data-measure-custom-title="true"
+                      autoComplete="off"
+                      maxLength={CUSTOM_SCALE_TITLE_MAX}
+                      placeholder={customMeasureScale({ paper, paperUnit, realText: customReal, display, precision })?.label || 'Scale name'}
+                      value={customTitle}
+                      onChange={(e) => setCustomTitle(e.target.value)}
+                      style={{ fontSize: 16 }}
+                    />
+                  </>
                 )}
                 {(!plusOn || !custom) && recent.length > 0 && (
                   <>

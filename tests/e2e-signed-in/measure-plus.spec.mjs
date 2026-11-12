@@ -487,6 +487,8 @@ test('custom scales: an applied one is listed in Set page scale and the Measurem
     await dialog.locator('[data-measure-scale-kind-option="custom"]').click();
     await dialog.locator('[data-measure-custom-paper]').fill('1');
     await dialog.locator('[data-measure-custom-real]').fill("8'");
+    // The Title starts empty and shows what the numbers read.
+    await expect(dialog.locator('[data-measure-custom-title]')).toHaveAttribute('placeholder', '1″ = 8′');
     await dialog.locator('[data-measure-apply]').click();
     await expect(dialog).toBeHidden();
     // A second custom scale, in metres.
@@ -543,11 +545,17 @@ test('custom scales: an applied one is listed in Set page scale and the Measurem
     await dialog.locator('[data-measure-custom-scale-remove="1"]').click();
     await expect(chips).toHaveCount(1);
     await expect(chips.nth(0)).toHaveText('1″ = 8′');
-    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    // A typed Title names a new custom scale.
+    await chips.nth(0).click();
+    await dialog.locator('[data-measure-custom-title]').fill('Site plan');
+    await dialog.locator('[data-measure-apply]').click();
+    await expect(dialog).toBeHidden();
     await page.reload();
     await expect(page.getByText('Custom scales page')).toBeVisible({ timeout: 60_000 });
     dialog = await openScaleDialog(page);
-    await expect(dialog.locator('[data-measure-custom-scale]')).toHaveCount(1);
+    await expect(dialog).toContainText('now Site plan');
+    await expect(dialog.locator('[data-measure-custom-title]')).toHaveValue('Site plan');
+    await expect(dialog.locator('[data-measure-custom-scale]')).toHaveText(['Site plan', '1″ = 8′']);
   } finally {
     if (!process.env.KEEP) await admin.from('documents').delete().eq('id', id);
   }

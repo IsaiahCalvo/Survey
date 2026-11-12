@@ -297,7 +297,7 @@ test('dimension line: the canvas twin paints the same line, chevrons and caption
 test('a custom scale reopens with its typed row filled, so Apply keeps it', async () => {
   const m = await import('../src/utils/measure/measureFormat.js');
   const s = m.customMeasureScale({ paper: '2', paperUnit: 'cm', realText: '2.5', display: 'm', precision: 0.01 });
-  assert.deepEqual(m.customScaleInputs(s), { paper: '2', paperUnit: 'cm', real: '2.5' });
+  assert.deepEqual(m.customScaleInputs(s), { paper: '2', paperUnit: 'cm', real: '2.5', title: '' });
   // A custom scale saved before the typed row was kept still reopens to an
   // equal scale.
   for (const [display, realText] of [['ftin', "8'"], ['ft', '12.5'], ['m', '2.5']]) {
@@ -631,4 +631,19 @@ test('dimension caption turn: grabber, one-step drag and Reset caption position 
   assert.match(hook, /if \(e\.shiftKey\) turn = normalizeDimensionCaptionTurn\(Math\.round\(turn \/ 15\) \* 15\);/);
   const menu = read('src/hooks/useAnnotationContextMenu.jsx');
   assert.match(menu, /delete dim\.captionTurn;/);
+});
+
+test('a custom scale takes a typed Title; empty, the label follows the numbers', async () => {
+  const m = await import('../src/utils/measure/measureFormat.js');
+  const plain = m.customMeasureScale({ paper: '1', paperUnit: 'in', realText: `8'`, display: 'ftin', precision: 4 });
+  assert.equal(plain.label, '1″ = 8′');
+  assert.equal(plain.custom.title, undefined);
+  const named = m.customMeasureScale({ paper: '1', paperUnit: 'in', realText: `8'`, display: 'ftin', precision: 4, title: '  Site plan  ' });
+  assert.equal(named.label, 'Site plan');
+  assert.equal(named.ptPerUnit, plain.ptPerUnit, 'a title does not change the scale');
+  assert.equal(m.customScaleInputs(named).title, 'Site plan');
+  assert.equal(m.customMeasureScale({ paper: '1', paperUnit: 'in', realText: `8'`, display: 'ftin', precision: 4, title: 'x'.repeat(60) }).label.length, m.CUSTOM_SCALE_TITLE_MAX);
+  const dialog = read('src/components/MeasureScaleDialog.jsx');
+  assert.match(dialog, /data-measure-custom-title="true"/);
+  assert.match(dialog, /precision, title: customTitle \}\)/);
 });
