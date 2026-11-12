@@ -103,9 +103,9 @@
   content: '';
   position: absolute;
   inset: 1px;
-  border: 1.5px solid var(--accent);
+  border: 0;
   border-radius: var(--chrome-radius, 6px);
-  background: var(--accent-soft);
+  background: var(--surface-3);
   pointer-events: none;
 }
 .pinned-dock__glyph {

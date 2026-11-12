@@ -399,7 +399,7 @@ function ActionButton({ busy, busyLabel, label, primary = false, danger = false,
       aria-busy={busy || undefined}
       onClick={(e) => { if (busy) { e.preventDefault(); return; } onClick?.(e); }}
     >
-      {busy && <Spinner size={14} color={primary ? 'var(--accent-text)' : danger ? 'var(--on-danger)' : 'var(--text-1)'} trackColor={primary ? 'rgba(21,17,10,0.2)' : 'var(--surface-1)'} />}
+      {busy && <Spinner size={14} color={primary ? 'var(--accent-text)' : danger ? 'var(--on-danger)' : 'var(--text-1)'} trackColor={primary ? 'var(--accent-text-track)' : 'var(--surface-1)'} />}
       <span>{busy ? busyLabel : label}</span>
     </button>
   );

@@ -128,13 +128,14 @@
   }
 }
 
-/* PASS 7 (board 15, owner ruling): the CURRENT row is gold text and nothing
-   else — no tick, no fill, no gold edge. The pill above already shows the
-   current value, so the row only has to agree with it. */
+/* The CURRENT row (owner 2026-11-12, replacing board 15's gold text: "the
+   text turns gold. I just hate that"): white 600 words on the raised
+   surface. No tick, no accent words, no accent edge. */
 .annotation-dropdown__options > button.is-active,
 .annotation-dropdown__option.is-active {
-  color: var(--accent);
-  background: transparent;
+  color: var(--text-1);
+  font-weight: 600;
+  background: var(--surface-3);
   box-shadow: none;
 }
 

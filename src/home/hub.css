@@ -86,7 +86,7 @@
 .survey-hub .brand .brand-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--gold); margin-right: 6px; vertical-align: middle; }
 .survey-hub .nav { margin-top: 18px; display: grid; gap: 2px; }
 .survey-hub .nav button { background: transparent; border: 0; text-align: left; padding: 6px 8px; border-radius: 6px; color: var(--ink-200); cursor: pointer; font: inherit; display: flex; align-items: center; gap: 8px; font-size: 12px; }
-.survey-hub .nav button.active { background: var(--ink-600); color: var(--bone-100); box-shadow: inset 2px 0 var(--gold); }
+.survey-hub .nav button.active { background: var(--ink-600); color: var(--bone-100); }
 .survey-hub .nav button:disabled { color: var(--text-disabled); cursor: not-allowed; }
 .survey-hub .nav button .ico { width: 14px; height: 14px; opacity: .9; }
 /* KAL-280 — the Archive group takes the rail's flexible space so it settles at
@@ -800,7 +800,7 @@
 
 .survey-hub .archive-sort-menu button.active {
   background: var(--ink-600);
-  color: var(--gold);
+  color: var(--text-1);
   font-weight: 700;
 }
 
@@ -1659,7 +1659,7 @@
 
   .survey-hub .documents-mobile-sort-menu button.active {
     background: var(--ink-600);
-    color: var(--gold);
+    color: var(--text-1);
     font-weight: 700;
   }
 
@@ -2096,9 +2096,11 @@
      is that a selected thing is marked by gold INK and nothing else
      (tests/selectedStateGoldInkOnly.test.mjs enforces it); while the edge was
      an inline style the test could not see it. The card's own check mark is
-     already gold, and an OPEN project says so with a gold title. */
+     already the accent, and an OPEN project says so with a bold white title
+     (revision 5: never accent words). */
   .survey-hub .mobile-project-card.is-open .mobile-card-title {
-    color: var(--accent);
+    color: var(--text-1);
+    font-weight: 600;
   }
 
   /* A tapped card has to answer the finger. There is no hover on a phone, so
@@ -2242,8 +2244,8 @@
 
   .survey-hub .projects-mobile-folder-row.active,
   .survey-hub .projects-mobile-folder-section.active > .projects-mobile-folder-row {
-    border-color: var(--gold);
-    box-shadow: inset 0 2px var(--gold);
+    border-color: var(--border-strong);
+    background: var(--surface-3);
   }
 
   .survey-hub .projects-mobile-folder-glyph {
@@ -2706,9 +2708,8 @@
   }
 
   .survey-hub .projects-mobile-rail-list button.active {
-    background: var(--ink-700);
-    border-color: var(--gold);
-    box-shadow: inset 2px 0 var(--gold);
+    background: var(--surface-3);
+    border-color: var(--border-strong);
   }
 
   .survey-hub .projects-mobile-rail-list span {
@@ -2754,8 +2755,8 @@
   }
 
   .survey-hub .projects-mobile-folder-grid button.active {
-    border-color: var(--gold);
-    box-shadow: inset 0 2px var(--gold);
+    border-color: var(--border-strong);
+    background: var(--surface-3);
   }
 
   .survey-hub .projects-mobile-browser-row-heading {
@@ -2829,8 +2830,8 @@
   }
 
   .survey-hub .projects-mobile-tile-grid button.active {
-    border-color: var(--gold);
-    box-shadow: inset 0 2px var(--gold);
+    border-color: var(--border-strong);
+    background: var(--surface-3);
   }
 
   .survey-hub .projects-mobile-folder-art,
@@ -2875,8 +2876,8 @@
   }
 
   .survey-hub .projects-mobile-compact-list button.active {
-    background: var(--ink-700);
-    border-color: var(--gold);
+    background: var(--surface-3);
+    border-color: var(--border-strong);
   }
 
   .survey-hub .projects-mobile-compact-title {
@@ -2971,8 +2972,8 @@
   }
 
   .survey-hub .projects-mobile-project-strip button.active {
-    border-color: var(--gold);
-    box-shadow: inset 0 2px var(--gold);
+    border-color: var(--border-strong);
+    background: var(--surface-3);
   }
 
   .survey-hub .projects-mobile-project-strip span {
@@ -3011,7 +3012,8 @@
   }
 
   .survey-hub .projects-mobile-team-board button.active {
-    border-color: var(--gold);
+    border-color: var(--border-strong);
+    background: var(--surface-3);
   }
 
   .survey-hub .projects-mobile-team-name {
@@ -4350,7 +4352,6 @@
   .survey-hub .templates-mobile-category-row.is-selected,
   .survey-hub .templates-mobile-entity-row.is-selected {
     background: var(--surface-3);
-    box-shadow: inset 2px 0 var(--gold);
   }
 
   /* A pointer at this width is a narrow desktop window, so it gets a hover; a

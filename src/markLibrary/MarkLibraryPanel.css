@@ -64,7 +64,7 @@
 .mark-library__tab:first-child { border-top-left-radius: var(--radius-sm); border-bottom-left-radius: var(--radius-sm); }
 .mark-library__tab:last-child { border-top-right-radius: var(--radius-sm); border-bottom-right-radius: var(--radius-sm); }
 
-.mark-library__tab.is-active { color: var(--accent); }
+.mark-library__tab.is-active { color: var(--text-1); font-weight: 600; background: var(--surface-3); }
 .mark-library__tab:disabled { color: var(--text-disabled); cursor: not-allowed; }
 
 @media (hover: hover) {
@@ -113,7 +113,7 @@
   cursor: pointer;
 }
 
-.mark-library-tag-chip.is-active { color: var(--accent); }
+.mark-library-tag-chip.is-active { color: var(--text-1); font-weight: 600; background: var(--surface-3); }
 
 @media (hover: hover) {
   .mark-library-tag-chip:not(.is-active):hover { color: var(--text-1); background: var(--hover); }
@@ -166,7 +166,7 @@
 
 .mark-library__tile.is-armed,
 .mark-library__tile.is-selected { background: var(--pressed); border-color: var(--border-strong); }
-.mark-library__tile.is-armed .mark-library__name { color: var(--accent); }
+.mark-library__tile.is-armed .mark-library__name { color: var(--text-1); font-weight: 600; }
 
 @media (hover: hover) {
   .mark-library__tile:not(.is-armed):not(.is-selected):hover { background: var(--hover); }

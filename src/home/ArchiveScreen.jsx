@@ -825,7 +825,7 @@ export default function ArchiveScreen({
             borderBottom: '1px solid var(--border)',
             // Transparent on purpose: reserves the 2px the gold selected edge
             // fills, so the row does not shift when it becomes active.
-            borderLeft: active ? '2px solid var(--gold)' : '2px solid transparent',
+            borderLeft: '2px solid transparent',
             background: active ? 'var(--ink-600)' : 'transparent',
             cursor: 'pointer',
             height: ROW_HEIGHT, boxSizing: 'border-box',
@@ -893,7 +893,7 @@ export default function ArchiveScreen({
             style={{
               display: 'grid', gridTemplateColumns: grid, alignItems: 'center',
               borderBottom: '1px solid var(--border)',
-              borderLeft: previewId === child.id ? '2px solid var(--gold)' : '2px solid transparent',
+              borderLeft: '2px solid transparent',
               background: previewId === child.id ? 'var(--ink-600)' : 'transparent',
               cursor: selectMode ? 'default' : 'pointer',
               contentVisibility: 'auto',

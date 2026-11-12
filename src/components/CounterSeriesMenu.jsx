@@ -82,6 +82,18 @@ function CounterSeriesList({ api, onClose }) {
     setOptimisticIds(null);
   }, [api.__ownerToken]);
 
+  // An opened palette scrolls fully into view, so the rows under it never
+  // hide behind the list's edge.
+  const openSeriesId = colorRow?.seriesId || null;
+  useEffect(() => {
+    if (!openSeriesId || typeof document === 'undefined') return undefined;
+    const frame = requestAnimationFrame(() => {
+      const row = document.querySelector(`[data-counter-series-row="${CSS.escape(openSeriesId)}"]`);
+      row?.scrollIntoView?.({ block: 'nearest' });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [openSeriesId]);
+
   const liveKey = liveRows.map((row) => row.seriesId).join('\n');
   useEffect(() => { setOptimisticIds(null); }, [liveKey]);
 
@@ -281,6 +293,7 @@ function CounterSeriesList({ api, onClose }) {
                   </label>}
                   <Suspense fallback={<div className="counter-list__colors-loading" />}>
                     <CompactColorPicker
+                      key={layer}
                       color={layer === 'number' ? numberColor : fill}
                       opacity={1}
                       showOpacity={false}

@@ -22,7 +22,7 @@ export function showNightlyGate(doc, { onSignOut } = {}) {
     <div style="max-width:420px;text-align:center">
       <h1 id="${GATE_ID}-title" style="font-size:22px;margin:0 0 8px">Survey Nightly is for testers</h1>
       <p style="margin:0 0 20px;color:#c9c4b8">This test copy has features that are not finished. Your account is not on the tester list, so use Survey instead.</p>
-      <a href="${STABLE_URL}" style="display:inline-block;min-height:44px;line-height:44px;padding:0 20px;border-radius:6px;background:#d8a84e;color:#1a1408;font-weight:600;text-decoration:none">Open Survey</a>
+      <a href="${STABLE_URL}" style="display:inline-block;min-height:44px;line-height:44px;padding:0 20px;border-radius:6px;background:#6aa6f6;color:#0a1424;font-weight:600;text-decoration:none">Open Survey</a>
       <div><button type="button" style="margin-top:12px;min-height:44px;padding:0 16px;background:none;border:none;color:#c9c4b8;font:inherit;text-decoration:underline;cursor:pointer">Sign out</button></div>
     </div>`;
   gate.querySelector('button').addEventListener('click', () => { onSignOut?.(); });

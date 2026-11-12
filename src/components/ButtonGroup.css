@@ -91,7 +91,9 @@
 }
 
 .button-group > button[aria-checked='true'] {
-  color: var(--accent);
+  color: var(--text-1);
+  font-weight: 600;
+  background: var(--surface-3);
 }
 
 .button-group > button:disabled {

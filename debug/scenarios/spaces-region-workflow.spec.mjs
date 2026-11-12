@@ -19,10 +19,10 @@ test('Spaces edit mode, visibility animation, copy, move and scoped Undo', async
   await expect(button(page, 'Edit Spaces')).toBeVisible();
   await page.getByRole('switch', { name: 'Turn on space', exact: true }).first().click();
   await expect(button(page, 'Exit Fix19 Space A')).toHaveCount(0);
-  await expect(page.locator('.spaces-region__marks').first()).toHaveCSS('color', 'rgb(216, 168, 78)');
+  await expect(page.locator('.spaces-region__marks').first()).toHaveCSS('color', 'rgb(106, 166, 246)');
   // A switch that is on is gold like every lit toggle, never --success green.
   await expect.poll(() => page.getByRole('switch', { name: /^Turn off space/ }).first()
-    .evaluate((element) => getComputedStyle(element, '::before').backgroundColor)).toBe('rgb(216, 168, 78)');
+    .evaluate((element) => getComputedStyle(element, '::before').backgroundColor)).toBe('rgb(106, 166, 246)');
   const toggle = page.locator('.space-region-card .spaces-switch').first();
   await page.waitForTimeout(250);
   const frames = await toggle.evaluate(async (element) => {

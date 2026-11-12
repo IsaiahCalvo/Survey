@@ -349,7 +349,7 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, showShortcuts = 
                   type="button"
                   role="menuitem"
                   className={`hub-menu__item${tab === 'archive' ? ' active' : ''}`}
-                  style={tab === 'archive' ? { color: 'var(--gold)' } : undefined}
+                  style={tab === 'archive' ? { color: 'var(--text-1)', fontWeight: 600 } : undefined}
                   onClick={() => { setOpen(false); setConfirmSignOut(false); onNav && onNav('archive'); }}
                 >
                   <Icon name="clock" size={15} color={tab === 'archive' ? 'var(--gold)' : 'var(--ink-200)'} />Archive

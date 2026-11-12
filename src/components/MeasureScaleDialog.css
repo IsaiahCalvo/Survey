@@ -96,9 +96,11 @@
   transform: scale(0.95);
 }
 
-/* The current pick: gold ink only (tests/selectedStateGoldInkOnly). */
+/* The current pick: white words on the raised surface (revision 5). */
 .measure-scale__chip.is-active {
-  color: var(--accent);
+  color: var(--text-1);
+  font-weight: 600;
+  background: var(--surface-3);
 }
 
 .measure-scale__chip:focus-visible,

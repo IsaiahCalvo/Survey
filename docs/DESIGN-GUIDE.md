@@ -26,13 +26,27 @@ component for chrome.
 | Floating: menus, pop-ups, drop-downs, tooltips; a selected row | `--surface-3` + `--shadow-popover` |
 | Hover (pointer only) / pressed | `--hover` / `--pressed` |
 | Text: headings / body / captions | `--text-1` / `--text-2` / `--text-3` |
-| Gold: the action and the selected state | `--accent`, `--accent-light` (hover), `--accent-press` |
+| Blue accent: the action and a chosen icon | `--accent`, `--accent-light` (hover), `--accent-press` |
 | Delete and errors | `--danger` (fill, icon), `--danger-text` (words) |
 | Status dots only | `--success` (never a button, border or text) |
 
-- **Gold means "act" or "chosen".** A chosen tool, tab or option shows gold
-  ink with no box behind it (`tests/selectedStateGoldInkOnly.test.mjs`). Plain
-  information stays white or grey.
+- **The accent is blue** (owner 2026-11-12, replacing gold: "I hate when
+  things get that gold bar or border around them"). It matches the selection
+  handles. Gold is the brand only: logo, favicon, website.
+- **Colour the icon, never the words or the frame.** How a chosen thing looks:
+  - a chosen icon (tool, toggle, icon button): accent ink, no box behind it;
+  - chosen words (a list row, a menu's current value, a tab, a chip, a
+    segment): stay white (`--text-1`, 600) on the raised `--surface-3`;
+    words never turn the accent colour;
+  - no accent border, ring or left-edge bar round a chosen thing. A colour
+    swatch rings in its own colour. A tab may keep its one-sided underline;
+  - accent fills only where the fill is the control: primary buttons, an ON
+    switch, a ticked checkbox, a radio dot, a slider's filled part.
+  Guard: `tests/selectedStateGoldInkOnly.test.mjs`. Plain information stays
+  white or grey.
+- **Lists separate their rows.** A hairline (`--border`) between rows; an item
+  that folds open (a colour picker under a count) sits in its own framed well
+  (`--surface-1` with a `--border` frame) so the next row never runs into it.
 - **Two borders, split by job.** `--border` (subtle) for cards, panels, rows,
   dividers and every pop-up card. `--border-strong` only where the edge is the
   only thing that shows the control: inputs, outlined buttons, checkboxes,
@@ -84,7 +98,8 @@ component for chrome.
 | Fold open in place | `Expander` |
 
 - One hover strip glides between rows (`MenuGlide`), red on a danger row.
-- The current value in a list is gold text, no tick box.
+- The current value in a list is white 600 words on `--surface-3`, no tick
+  box, never accent words.
 - Width picker: typed number plus quick picks, on desktop and phone alike.
 - Guards: `tests/dropdownLook.test.mjs`, `tests/actionMenuLook.test.mjs`,
   `tests/annotationDropdownUniformity.test.mjs`.
@@ -149,8 +164,9 @@ dialogs 150 ms, toasts 150 ms, panels 200 ms, folds 300 ms. Every one drops to
 ## 13. Website
 
 The marketing pages (`public/welcome`, `features`, `pricing`, `use-cases`,
-`tools`, `whats-new`) share the app's colours and gold buttons but keep their
-own voice on purpose: the Figtree font and small capital eyebrows over
+`tools`, `whats-new`) share the app's surfaces and keep the gold brand
+buttons (the app's chrome accent turned blue on 2026-11-12; the site is the
+brand, not app chrome). They keep their own voice on purpose: the Figtree font and small capital eyebrows over
 headings. That is the only place capitals are allowed. Emails follow
 `docs/design/email-style-guide.md`.
 

@@ -162,11 +162,12 @@
   }
 }
 
-/* PASS 7 (board 15, owner ruling): the current row is gold text and nothing
-   else — no tick, no fill, no gold edge. */
+/* The current row, like every chrome menu (revision 5): white 600 words on
+   the raised surface; no accent words, no tick, no accent edge. */
 .annotation-size-control__presets button.is-active {
-  color: var(--accent);
-  background: transparent;
+  color: var(--text-1);
+  font-weight: 600;
+  background: var(--surface-3);
   box-shadow: none;
 }
 
@@ -315,9 +316,11 @@
   outline: 0;
 }
 
-/* The current pick is gold, like the current row in every chrome menu. */
+/* The current pick: white words on the raised surface, like every chrome menu. */
 .annotation-size-card__chip.is-active {
-  color: var(--accent);
+  color: var(--text-1);
+  font-weight: 600;
+  background: var(--surface-3);
 }
 
 @keyframes annotation-size-popover-in {

@@ -35,7 +35,7 @@
 .xpdf-page:disabled { cursor: default; color: var(--text-disabled, var(--text-3)); }
 .xpdf-page:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 @media (hover: hover) { .xpdf-page:not(:disabled):not(.is-on):hover { background: var(--hover); } }
-.xpdf-page.is-on { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.xpdf-page.is-on { background: var(--surface-3); }
 .xpdf-radio {
   flex: none; width: 16px; height: 16px; border-radius: 50%;
   border: 1.5px solid var(--border-strong, var(--text-3)); box-sizing: border-box;

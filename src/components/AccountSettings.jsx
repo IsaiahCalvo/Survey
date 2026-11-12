@@ -791,7 +791,7 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                             treatment — 14px ring left of a present-participle
                             label, disabled until the save resolves. */}
                         <button type="submit" className="account-btn-primary" disabled={loading || !hasProfileChanges}>
-                          {loading && <Spinner size={14} color="var(--accent-text)" trackColor="rgba(21,17,10,0.25)" />}
+                          {loading && <Spinner size={14} color="var(--accent-text)" trackColor="var(--accent-text-track)" />}
                           {loading ? 'Saving…' : 'Save changes'}
                         </button>
                         <button
@@ -1000,9 +1000,9 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                             padding: '8px 24px',
                             border: 'none',
                             borderRadius: '6px',
-                            background: billingPeriod === 'monthly' ? 'var(--accent)' : 'transparent',
-                            // A label sitting ON gold is --accent-text; white on gold is 2.0:1.
-                            color: billingPeriod === 'monthly' ? 'var(--accent-text)' : 'var(--text-3)',
+                            background: billingPeriod === 'monthly' ? 'var(--surface-3)' : 'transparent',
+                            // The chosen period steps up a surface; words stay white (revision 5).
+                            color: billingPeriod === 'monthly' ? 'var(--text-1)' : 'var(--text-3)',
                             cursor: 'pointer',
                             fontSize: '14px',
                             fontWeight: '500',
@@ -1017,8 +1017,8 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                             padding: '8px 24px',
                             border: 'none',
                             borderRadius: '6px',
-                            background: billingPeriod === 'annual' ? 'var(--accent)' : 'transparent',
-                            color: billingPeriod === 'annual' ? 'var(--accent-text)' : 'var(--text-3)',
+                            background: billingPeriod === 'annual' ? 'var(--surface-3)' : 'transparent',
+                            color: billingPeriod === 'annual' ? 'var(--text-1)' : 'var(--text-3)',
                             cursor: 'pointer',
                             fontSize: '14px',
                             fontWeight: '500',
@@ -1061,7 +1061,7 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                     <div className="account-subscription-grid">
                       {/* Free Plan */}
                       <div className="account-subscription-card" style={{
-                        border: subscription?.tier === 'free' && !viaCompany ? '2px solid var(--accent)' : '1px solid var(--border)',
+                        border: subscription?.tier === 'free' && !viaCompany ? '2px solid var(--border-strong)' : '1px solid var(--border)',
                         opacity: subscription?.tier === 'free' && !viaCompany ? 1 : 0.7
                       }}>
                         <div className="account-subscription-header">
@@ -1107,7 +1107,7 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                         // same mark the Free and Enterprise cards use. Pro alone wore a
                         // #4A90E2 blue, so "this is your plan" looked like two different
                         // things depending on which plan you were on.
-                        border: (subscription?.tier === 'pro' || subscription?.status === 'trialing') ? '2px solid var(--accent)' : '1px solid var(--border)',
+                        border: (subscription?.tier === 'pro' || subscription?.status === 'trialing') ? '2px solid var(--border-strong)' : '1px solid var(--border)',
                         opacity: (subscription?.tier === 'free' || subscription?.tier === 'enterprise' || subscription?.tier === 'developer') ? (subscription?.tier === 'free' ? 1 : 0.7) : 1
                       }}>
                         <div className="account-subscription-header">
@@ -1177,7 +1177,7 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
 
                       {/* Enterprise Plan */}
                       <div className="account-subscription-card" style={{
-                        border: subscription?.tier === 'enterprise' || viaCompany ? '2px solid var(--accent)' : '1px solid var(--border)',
+                        border: subscription?.tier === 'enterprise' || viaCompany ? '2px solid var(--border-strong)' : '1px solid var(--border)',
                         opacity: subscription?.tier === 'enterprise' || viaCompany ? 1 : subscription?.tier === 'developer' ? 0.7 : 1
                       }}>
                         <div className="account-subscription-header">

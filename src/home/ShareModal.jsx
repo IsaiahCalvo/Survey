@@ -391,7 +391,7 @@ export default function ShareModal({
             {/* UX (KAL-73): sending an invite is a network round-trip well over
                 500ms, so it takes the shared button loading treatment — 14px ring
                 on the left, label in its present-participle form, stays disabled. */}
-            {busy && <Spinner size={14} color="var(--accent-text)" trackColor="rgba(21,17,10,0.25)" />}
+            {busy && <Spinner size={14} color="var(--accent-text)" trackColor="var(--accent-text-track)" />}
             {busy ? 'Sending invite…' : `Send ${role.toLowerCase()} invite`}
           </button>
         </div>
