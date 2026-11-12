@@ -217,4 +217,6 @@ test('resolve (KAL-415): migration, list read and panel wiring', () => {
   assert.match(panel, /data-comment-resolve=\{thread\.id\}/);
   assert.match(panel, /data-comment-reopen=\{thread\.id\}/);
   assert.match(panel, /label: 'Undo'/, 'resolve acts at once with an Undo, no confirm');
+  // The right-click menu on a thread's first comment offers the same action.
+  assert.match(panel, /canWrite && onResolve && \{ label: comment\.resolvedAt \? 'Reopen' : 'Resolve'/);
 });

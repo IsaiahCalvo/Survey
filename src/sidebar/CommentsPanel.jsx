@@ -175,7 +175,7 @@ const CommentBox = forwardRef(function CommentBox({ people, placeholder, initial
   );
 });
 
-function CommentItem({ comment, peopleById, mine, canWrite, onEdit, onDelete, onCopyLink, onReply, editing, setEditing, people, tip }) {
+function CommentItem({ comment, peopleById, mine, canWrite, onEdit, onDelete, onCopyLink, onReply, onResolve = null, editing, setEditing, people, tip }) {
   const author = peopleById.get(comment.authorId);
   const boxRef = useRef(null);
   const [canSave, setCanSave] = useState(true);
@@ -210,6 +210,8 @@ function CommentItem({ comment, peopleById, mine, canWrite, onEdit, onDelete, on
             { label: 'Copy link', onClick: () => onCopyLink(comment) },
             { label: 'Copy text', icon: 'copy', onClick: () => { copyText(comment.body).then((ok) => { if (ok) showToast('Comment copied', 'success'); }); } },
             canWrite && onReply && { label: 'Reply', icon: 'comment', onClick: onReply },
+            // A thread's first comment also carries Resolve / Reopen, as under the thread.
+            canWrite && onResolve && { label: comment.resolvedAt ? 'Reopen' : 'Resolve', onClick: onResolve },
             mine && canWrite && { label: 'Edit', icon: 'edit', onClick: () => setEditing(comment.id) },
             mine && canWrite && { label: 'Delete', danger: true, onClick: () => onDelete(comment) },
           ]}
@@ -580,7 +582,7 @@ export default function CommentsPanel({
               </span>
             </div>
           )}
-          <CommentItem comment={thread.root} mine={thread.root.authorId === userId} editing={editing === thread.root.id} onReply={thread.root.resolvedAt ? null : () => setReplyingTo(thread.id)} {...itemProps} />
+          <CommentItem comment={thread.root} mine={thread.root.authorId === userId} editing={editing === thread.root.id} onReply={thread.root.resolvedAt ? null : () => setReplyingTo(thread.id)} onResolve={() => setResolved(thread, !thread.root.resolvedAt)} {...itemProps} />
           {thread.replies.map((reply) => (
             <div key={reply.id} className="comments-reply">
               <CommentItem comment={reply} mine={reply.authorId === userId} editing={editing === reply.id} onReply={thread.root.resolvedAt ? null : () => setReplyingTo(thread.id)} {...itemProps} />
