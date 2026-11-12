@@ -4,6 +4,10 @@ html[data-marks-hidden] [data-lightweight-annotation-overlay] {
   visibility: hidden !important;
 }
 
+/* Owner 2026-11-10 second pass ("doesn't look great"): it was a round pill
+   with a filled gold button floating over the drawing. It now wears the app
+   toast's card, like "Deleted · Undo" (UndoToast.css): the same surface,
+   edge, corner, padding, shadow and type, with Show as the calm text link. */
 .marks-hidden-chip {
   position: fixed;
   left: 50%;
@@ -12,25 +16,38 @@ html[data-marks-hidden] [data-lightweight-annotation-overlay] {
   z-index: 5400;
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 6px 6px 12px;
-  border-radius: 999px;
-  background: var(--panel-bg, #1c1f26);
-  color: var(--text-1, #fff);
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
-  font-size: 13px;
+  gap: 16px;
+  width: max-content;
+  padding: 9px 14px;
+  background: var(--surface-2);
+  border: var(--alert-neutral-border);
+  border-radius: var(--alert-radius);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+  color: var(--text-1);
+  font: 500 13px/1.45 var(--font-ui);
+  animation: sv-toast-in-up var(--motion-toast) var(--ease-out);
 }
 
 .marks-hidden-chip button {
-  font: inherit;
-  font-weight: 500;
-  padding: 4px 12px;
-  border-radius: 999px;
+  padding: 0;
   border: none;
+  background: none;
+  color: var(--link);
+  font: 400 13px/1.4 var(--font-ui);
+  text-decoration: underline;
   cursor: pointer;
-  background: var(--accent, #2f7cf6);
-  color: var(--accent-ink, #fff);
+}
+
+.marks-hidden-chip button:hover { color: var(--link-hover); }
+
+.marks-hidden-chip button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--focus);
+  border-radius: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marks-hidden-chip { animation: none; }
 }
 
 /* Phones: clear of the bottom tool bar. The chip is a direct child of #root,
@@ -41,26 +58,6 @@ html[data-marks-hidden] [data-lightweight-annotation-overlay] {
     bottom: calc(env(safe-area-inset-bottom, 0px) + 76px);
     height: auto !important;
   }
-}
-
-/* Focus mode's way out (src/utils/focusMode.js): always on screen. */
-.focus-mode-exit {
-  position: fixed;
-  top: 10px;
-  right: 12px;
-  z-index: 5600;
-  padding: 6px 12px;
-  border-radius: 999px;
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
-  background: var(--panel-bg, #1c1f26);
-  color: var(--text-1, #fff);
-  font: 500 12px/1.2 inherit;
-  cursor: pointer;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
-}
-
-.focus-mode-exit:hover {
-  background: var(--hover, #2a2e37);
 }
 
 /* Measuring on a page with no scale (PDFViewer, Nightly flag 'measure-scale-chip'). */

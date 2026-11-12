@@ -286,7 +286,7 @@ export const FEATURE_FLAGS = Object.freeze({
     stage: 'beta',
   }),
   'focus-mode': Object.freeze({
-    label: 'Focus mode: hide the tab strip and side rails, full screen (Ctrl/Cmd+Shift+F)',
+    label: 'Full screen: hide the browser and system bars, keep tabs and rails (Ctrl/Cmd+Shift+F)',
     stage: 'beta',
   }),
   'search-options': Object.freeze({

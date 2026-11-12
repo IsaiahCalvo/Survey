@@ -26,8 +26,6 @@ import { PageGridMenu } from './components/PageGridSettings';
 import RailFlyout from './components/RailFlyout.jsx';
 import { PinFilterMenu } from './components/pins/PinControls.jsx';
 import MenuGlide from './components/MenuGlide.jsx';
-import { chordKeycaps } from './utils/keyboardShortcuts.js';
-import { shortcutBinding } from './utils/customKeyboardShortcuts.js';
 import SnappingToggle, { SnappingGlyph, SnappingMenu, snappingLabel, useSnappingShortcut } from './components/SnappingToggle.jsx';
 import Dashboard from './Dashboard';
 import { createTabChromeCache } from './utils/tabChromeCache.js';
@@ -115,21 +113,6 @@ import { composeTextColor, splitTextColor } from './utils/textColorOpacity';
 import { CHROME_GLYPH, FONT_FAMILY, RAIL_CARET, RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_SPLIT_CONTROL_W, REVIEW_TOOL_IDS, ZOOM_MODE_OPTIONS, appDebug, coerceScrollMode, ensureRgbaOpacity, getWindowTrackpadInteractionDebugSavePayload, hexToRgba, writeSaveLogExtraFiles } from './viewerShared';
 // Owner 2026-09-22: undo/redo draw at 14 (the phone's HISTORY_GLYPH) - see MobilePdfViewerChrome.
 const HISTORY_GLYPH = 14;
-// The Page fit card shows each fit's shortcut (the keys PDFViewer's keydown
-// handler and the shortcuts sheet use; a remapped key shows its new keys).
-const FIT_MODE_CHORDS = Object.freeze({
-  [ZOOM_MODES.FIT_PAGE]: 'mod+0',
-  [ZOOM_MODES.FIT_WIDTH]: 'mod+1',
-  [ZOOM_MODES.FIT_HEIGHT]: 'mod+2',
-});
-const IS_MAC_KEYS = typeof navigator !== 'undefined' && /(Mac|iPhone|iPod|iPad)/i.test(`${navigator.platform || ''} ${navigator.userAgent || ''}`);
-// Mac shows ⌘0 tight, but a remapped chord with a named key keeps its
-// pluses (⌘+Shift+F, Alt+1) so the words don't run together.
-const fitChordLabel = (chord) => {
-  const caps = chordKeycaps(shortcutBinding(chord), { isMac: IS_MAC_KEYS });
-  const tight = IS_MAC_KEYS && caps.slice(0, -1).every((cap) => cap.length === 1);
-  return caps.join(tight ? '' : '+');
-};
 import { TooltipChipHost, TooltipContext, TooltipProvider, makeTooltipBinding } from './components/Tooltip';
 import { useViewerTopOverlayRef, subscribeViewerTopOverlays } from './utils/viewerTopOverlay.js';
 import DismissBarrier from './components/DismissBarrier.jsx';
@@ -2324,19 +2307,24 @@ export default function App({ devPreviewReturnTab = null }) {
   const [eraserLookOn] = useState(() => isFeatureOn('eraser-look'));
   const [pinsOn] = useState(() => isFeatureOn('comment-pins'));
   const allMarksHidden = useMarksHidden();
-  // Focus mode (Nightly, 'focus-mode'; utils/focusMode.js): no tab strip or
-  // side rails, browser full screen, an Exit chip that always shows.
+  // Full screen (flag 'focus-mode'; utils/focusMode.js). Owner 2026-11-10:
+  // "What is the point of full screen" when it took away the tabs, both rails
+  // and with them Survey mode. It is now just the browser's full screen: the
+  // tabs, both rails and the tool bar all stay; only the browser and OS
+  // chrome go. The rail button, Ctrl/Cmd+Shift+F or Esc leave it.
   const [focusModeEnabled] = useState(() => isFeatureOn('focus-mode'));
-  const [focusMode, setFocusMode] = useState(false);
-  const focusOn = focusModeEnabled && focusMode && Boolean(isViewerVisible) && !isNarrowShell;
+  const [isFullscreen, setIsFullscreen] = useState(() => typeof document !== 'undefined' && Boolean(document.fullscreenElement));
   const toggleFocusMode = useCallback((next) => {
-    setFocusMode((current) => {
-      const value = typeof next === 'boolean' ? next : !current;
-      if (value) enterBrowserFullscreen();
-      else leaveBrowserFullscreen();
-      return value;
-    });
+    const want = typeof next === 'boolean' ? next : !document.fullscreenElement;
+    if (want) enterBrowserFullscreen();
+    else leaveBrowserFullscreen();
   }, []);
+  useEffect(() => {
+    if (!focusModeEnabled) return undefined;
+    const onFullscreen = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', onFullscreen);
+    return () => document.removeEventListener('fullscreenchange', onFullscreen);
+  }, [focusModeEnabled]);
   useEffect(() => {
     // Only while a document is open: on Home the chord is the browser's own.
     if (!focusModeEnabled || !isViewerVisible) return undefined;
@@ -2347,25 +2335,9 @@ export default function App({ devPreviewReturnTab = null }) {
       event.stopImmediatePropagation();
       toggleFocusMode();
     };
-    const onFullscreen = () => { if (!document.fullscreenElement) setFocusMode(false); };
     window.addEventListener('keydown', onKey, true);
-    document.addEventListener('fullscreenchange', onFullscreen);
-    return () => {
-      window.removeEventListener('keydown', onKey, true);
-      document.removeEventListener('fullscreenchange', onFullscreen);
-    };
+    return () => window.removeEventListener('keydown', onKey, true);
   }, [focusModeEnabled, toggleFocusMode, Boolean(isViewerVisible)]); // eslint-disable-line react-hooks/exhaustive-deps
-  // The rails and tab strip come and go without a window resize when the
-  // browser refuses full screen, so tell the viewer the space changed; a
-  // fit zoom re-fits to it, a picked zoom stays.
-  useEffect(() => {
-    if (!focusModeEnabled) return undefined;
-    const frame = requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
-    return () => cancelAnimationFrame(frame);
-  }, [focusModeEnabled, focusOn]);
-  useEffect(() => {
-    if (focusMode && !isViewerVisible) toggleFocusMode(false);
-  }, [focusMode, Boolean(isViewerVisible)]); // eslint-disable-line react-hooks/exhaustive-deps
   // Alt+Shift+] / [ steps through the open documents (Nightly, 'tab-keys').
   const [tabKeysEnabled] = useState(() => isFeatureOn('tab-keys'));
   useEffect(() => {
@@ -3234,7 +3206,7 @@ export default function App({ devPreviewReturnTab = null }) {
         />
       </div>
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }} {...viewerDropProps}>
-        {tabs.length > 0 && !isNarrowShell && !focusOn && ( // Desktop-only: mobile navigation lives inside the home/viewer chrome.
+        {tabs.length > 0 && !isNarrowShell && ( // Desktop-only: mobile navigation lives inside the home/viewer chrome.
           // KAL-65: the tab strip shows over the hub too, where the viewer's
           // chip host is not mounted, so it brings its own shared host.
           <TooltipProvider>
@@ -5077,7 +5049,7 @@ export default function App({ devPreviewReturnTab = null }) {
           <div
             id="chrome-left-host"
             style={{
-              display: isViewerVisible && !focusOn ? 'flex' : 'none',
+              display: isViewerVisible ? 'flex' : 'none',
               flexGrow: 0,
               flexBasis: isMobileViewer ? 'var(--mobile-rail-w)' : '48px',
               width: isMobileViewer ? 'var(--mobile-rail-w)' : '48px',
@@ -5391,7 +5363,7 @@ export default function App({ devPreviewReturnTab = null }) {
           <div
             id="chrome-right-host"
             style={{
-              display: isViewerVisible && !focusOn ? 'flex' : 'none',
+              display: isViewerVisible ? 'flex' : 'none',
               flexGrow: 0,
               flexBasis: isMobileViewer ? '0px' : '48px',
               flexShrink: 0,
@@ -5634,9 +5606,11 @@ export default function App({ devPreviewReturnTab = null }) {
               // Owner 2026-11-10 ("these pop-ups don't look integrated or
               // professional"): the fit list is a RailFlyout now - the one
               // rail card with a title, standing off the rail's edge like the
-              // grid card beside it - with the shared menu rows (13px, the
-              // MenuGlide hover strip), the current fit in gold ink with its
-              // tick, and each fit's shortcut on the right.
+              // grid card beside it - with the shared menu rows (the MenuGlide
+              // hover strip) and the current fit in gold ink with its tick at
+              // the row's end. Owner 2026-11-10: no key hints here (they read
+              // as Mac-only, and he never asked for them); the keys stay in
+              // the shortcuts sheet.
               const fitMenu = () => (
                 <RailFlyout title="Page fit">
                   <div role="menu" aria-label="Fit modes" className="rail-flyout__rows">
@@ -5650,7 +5624,6 @@ export default function App({ devPreviewReturnTab = null }) {
                   <MenuGlide />
                   {ZOOM_MODE_OPTIONS.filter((option) => option.id !== ZOOM_MODES.MANUAL).map((option, index) => {
                     const isActive = option.id === api.zoomMode;
-                    const chord = FIT_MODE_CHORDS[option.id];
                     return (
                       <button
                         key={option.id}
@@ -5667,11 +5640,10 @@ export default function App({ devPreviewReturnTab = null }) {
                         className="rail-flyout__row"
                         style={{ '--menu-row': index }}
                       >
+                        <span className="rail-flyout__label">{option.label}</span>
                         <span className="rail-flyout__tick" aria-hidden="true">
                           {isActive && <Icon name="check" size={RAIL_CONTROL_GLYPH} color="currentColor" />}
                         </span>
-                        <span>{option.label}</span>
-                        {chord && <span className="rail-flyout__keys" aria-hidden="true">{fitChordLabel(chord)}</span>}
                       </button>
                     );
                   })}
@@ -5920,13 +5892,14 @@ export default function App({ devPreviewReturnTab = null }) {
                     {focusModeEnabled && (
                       <button
                         type="button"
-                        onClick={() => toggleFocusMode(true)}
-                        aria-label="Focus mode"
+                        onClick={() => toggleFocusMode(!isFullscreen)}
+                        aria-label={isFullscreen ? 'Exit full screen' : 'Full screen'}
+                        aria-pressed={isFullscreen}
                         data-focus-mode-toggle="true"
-                        {...chromeTip('Focus mode', 'left')}
-                        style={footerBtn()}
+                        {...chromeTip(isFullscreen ? 'Exit full screen' : 'Full screen', 'left')}
+                        style={{ ...footerBtn(), color: isFullscreen ? 'var(--text-1)' : undefined }}
                       >
-                        <Icon name="focusMode" size={RAIL_CONTROL_GLYPH} color="currentColor" />
+                        <Icon name={isFullscreen ? 'focusModeExit' : 'focusMode'} size={RAIL_CONTROL_GLYPH} color="currentColor" />
                       </button>
                     )}
                     {/* drawboardAudit C2: the Pencil-only switch sits where
@@ -6051,11 +6024,6 @@ export default function App({ devPreviewReturnTab = null }) {
           covered the zoom controls; that pill is gone, and the sheet itself
           renders nothing until it is opened.) */}
       <KeyboardShortcutsOverlay />
-      {focusOn && (
-        <button type="button" className="focus-mode-exit" data-focus-mode-exit="" onClick={() => toggleFocusMode(false)}>
-          Exit focus
-        </button>
-      )}
       {hideMarksEnabled && allMarksHidden && Boolean(isViewerVisible) && (
         <div className="marks-hidden-chip" role="status" data-marks-hidden-chip="">
           <span>Marks hidden</span>
