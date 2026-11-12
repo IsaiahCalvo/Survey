@@ -367,7 +367,9 @@ export default defineConfig(({ mode }) => {
             if (id.includes('vite/preload-helper')) return 'preload-helper';
             if (!id.includes('node_modules')) return undefined;
             if (id.includes('/pdfjs-dist/')) return 'vendor-pdfjs';
-            if (id.includes('/pdf-lib/')) return 'vendor-pdflib';
+            // @cantoo/pdf-lib (the encrypting fork, Restrict editing) stays in its
+            // own lazy chunk: its path also holds "/pdf-lib/".
+            if (id.includes('/pdf-lib/') && !id.includes('/@cantoo/')) return 'vendor-pdflib';
             if (id.includes('/fabric/')) return 'vendor-fabric';
             if (id.includes('/exceljs/')) return 'vendor-exceljs';
             if (id.includes('/yjs/') || id.includes('/y-protocols/') || id.includes('/y-indexeddb/') || id.includes('/lib0/')) return 'vendor-yjs';

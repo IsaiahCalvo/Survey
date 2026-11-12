@@ -233,3 +233,6 @@ de117e8d6a4f4d296ee32f3ab5c5d7ea479d7b5b:tests/sheetSync.test.mjs:generic-api-ke
 d024376656047d317f7b161eb441e58b030f8d2d:tests/sheetSyncMsgraphRounds.test.mjs:generic-api-key:30
 31550be924d369a8ee1dbd068dd9067e0d8f78f9:src/signature/signatureStore.js:generic-api-key:10
 d94b59918b4147dde21f3ae18e9b11c5cd09763b:tests/phoneSign.test.mjs:generic-api-key:17
+ca892192eee81cd8d3cb07b2eff0025325dd94be:src/utils/restrictPdfEditing.js:generic-api-key:14
+ca892192eee81cd8d3cb07b2eff0025325dd94be:tests/restrictPdfEditing.test.mjs:generic-api-key:74
+ca892192eee81cd8d3cb07b2eff0025325dd94be:tests/restrictPdfEditing.test.mjs:generic-api-key:75

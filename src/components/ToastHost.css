@@ -75,6 +75,11 @@ html[data-undo-toast-open] .app-toast-host {
   min-width: 0;
 }
 
+/* A password read off the toast stays on one line (it breaks at its hyphens otherwise). */
+.app-toast__keep {
+  white-space: nowrap;
+}
+
 /* The optional action (e.g. Undo): the app's calm text link, the same as the
    Undo toast's (UndoToast.css .undo-toast__action). */
 .app-toast__action {

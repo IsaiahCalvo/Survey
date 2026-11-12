@@ -126,7 +126,7 @@ export default function ToastHost() {
             onBlur: () => store.resume(t.id),
           })}
         >
-          <span className="app-toast__message">{t.message}</span>
+          <span className="app-toast__message">{t.message}{t.keep ? <> <span className="app-toast__keep">{t.keep}</span></> : null}</span>
           {t.action ? (
             <button
               type="button"

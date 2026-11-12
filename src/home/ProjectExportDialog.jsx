@@ -13,6 +13,7 @@ import { supabase } from '../supabaseClient';
 import { useStorage } from '../hooks/useDatabase';
 import { showToast } from '../utils/toast';
 import { exportProgressText } from './projectExport.js';
+import { isFeatureOn } from '../featureFlags.js';
 import '../components/PdfToolsDialog.css';
 import '../components/ExportPdfDialog.css';
 import './projectExport.css';
@@ -41,6 +42,8 @@ export default function ProjectExportDialog({ project, documents = [], lookupMem
   const [revisions, setRevisions] = useState('current');
   const [comments, setComments] = useState(true);
   const [issues, setIssues] = useState(true);
+  const [restrictOn] = useState(() => isFeatureOn('restrict-editing'));
+  const [restrict, setRestrict] = useState(false);
   const [progress, setProgress] = useState(null);
   const [error, setError] = useState('');
   const cancelled = useRef(false);
@@ -57,7 +60,7 @@ export default function ProjectExportDialog({ project, documents = [], lookupMem
         client: supabase,
         project,
         documents,
-        options: { withMarks: marks === 'marks', allRevisions: revisions === 'all', comments, issues },
+        options: { withMarks: marks === 'marks', allRevisions: revisions === 'all', comments, issues, restrict: restrictOn && restrict },
         download: downloadDocument,
         lookupMember,
         onProgress: (p) => { if (!cancelled.current) setProgress(p); },
@@ -76,6 +79,12 @@ export default function ProjectExportDialog({ project, documents = [], lookupMem
       });
       if (saved?.canceled) { setProgress(null); return; }
       const left = [...result.failed, ...result.skipped];
+      if (result.password) {
+        const { showRestrictedExportToast } = await import('../utils/restrictPdfEditing.js');
+        showRestrictedExportToast(left.length ? `${result.fileName} (not all files went in: ${left.slice(0, 3).join(', ')}${left.length > 3 ? ` and ${left.length - 3} more` : ''})` : result.fileName, result.password);
+        onClose();
+        return;
+      }
       showToast(left.length
         ? `Exported ${result.fileName}. Not all went in: ${left.slice(0, 3).join(', ')}${left.length > 3 ? ` and ${left.length - 3} more` : ''}.`
         : `Exported ${result.fileName}`, left.length ? 'warn' : 'success');
@@ -124,6 +133,14 @@ export default function ProjectExportDialog({ project, documents = [], lookupMem
             <Check on={issues} label="Issues and Tasks registers (.csv)" onToggle={() => !busy && setIssues((v) => !v)} attr={{ 'data-project-export-issues': '' }} />
           </div>
         </div>
+        {restrictOn && (
+          <div className="xpdf-section">
+            <div className="xpdf-pages">
+              <Check on={restrict} label="Restrict editing" onToggle={() => !busy && setRestrict((v) => !v)} attr={{ 'data-export-restrict': '' }} />
+            </div>
+            {restrict && <p className="pdft-help" data-export-restrict-help="">Every PDF opens without a password. Changes and new marks need the one password shown after export.</p>}
+          </div>
+        )}
         {busy && (
           <div className="project-export__bar" aria-hidden="true"><span style={{ width: `${pct}%` }} /></div>
         )}
