@@ -1307,6 +1307,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         ...buildCanvasPageItems({
           available: availableActions(pageMenu.handlers),
           canPasteInPlace: !pasteBlocked && Boolean(familyClipboard),
+          canUnlockAll: Boolean(pageMenu.canUnlockAll?.(ctx.pageNumber)),
           readOnly: pageMenuReadOnly,
         }),
         // Read-only / viewer: no page operation (they all edit).
@@ -1318,6 +1319,10 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           clipboardPage: pageMenu.clipboardPage,
           clipboardType: pageMenu.clipboardType,
           hasTransform: pageHasTransform(pageMenu.pageTransformations?.[ctx.pageNumber]),
+          // Nightly 'page-menu-extras': Move page up / down here too.
+          move: typeof pageMenu.handlers?.move === 'function'
+            ? { canUp: ctx.pageNumber > 1, canDown: ctx.pageNumber < (pageMenu.pageCount || 0) }
+            : null,
           available: availableActions(pageMenu.handlers),
           // Phone: the same compact rows as the Pages tab's menu.
           compact: Boolean(mobileMode),

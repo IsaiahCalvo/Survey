@@ -160,10 +160,13 @@ export function buildPageMenuItems({
  * @param {boolean} [o.canPasteInPlace] something is on the marks clipboard
  * @param {boolean} [o.readOnly]
  */
-export function buildCanvasPageItems({ available = {}, canPasteInPlace = false, readOnly = false } = {}) {
+export function buildCanvasPageItems({ available = {}, canPasteInPlace = false, canUnlockAll = false, readOnly = false } = {}) {
   const has = (key) => available[key] !== false;
   return joinGroups([[
     has('selectAll') && { key: 'selectAllMarks', label: 'Select all on page', icon: 'selectGroup' },
+    // Nightly 'page-menu-extras' (the host passes these handlers only then).
+    has('selectText') && { key: 'selectAllText', label: 'Select all text', icon: 'textSelect' },
+    !readOnly && has('unlockAll') && { key: 'unlockAll', label: 'Unlock all', icon: 'lock', disabled: !canUnlockAll },
     !readOnly && has('pasteInPlace') && { key: 'pasteInPlace', label: 'Paste in place', icon: 'paste', disabled: !canPasteInPlace },
     !readOnly && has('setScale') && { key: 'setScale', label: 'Set page scale', icon: 'measureScale' },
   ]]);
@@ -187,6 +190,7 @@ function joinGroups(rawGroups) {
  *   insertBlank(afterPage) rotate(page, delta) mirror(page, direction)
  *   reset(page) delete(page) move(page, offset)
  *   selectAll(page) pasteInPlace(page) setScale(page)  (viewer page menu)
+ *   selectText(page) unlockAll(page)                    (Nightly page-menu-extras)
  * Returns true when it ran something.
  */
 export function runPageMenuAction(key, pageNumber, handlers = {}) {
@@ -218,6 +222,8 @@ export function runPageMenuAction(key, pageNumber, handlers = {}) {
     case 'selectAllMarks': return call('selectAll', pageNumber);
     case 'pasteInPlace': return call('pasteInPlace', pageNumber);
     case 'setScale': return call('setScale', pageNumber);
+    case 'selectAllText': return call('selectText', pageNumber);
+    case 'unlockAll': return call('unlockAll', pageNumber);
     default: return false;
   }
 }
@@ -225,7 +231,7 @@ export function runPageMenuAction(key, pageNumber, handlers = {}) {
 /** { [handler name]: boolean } for buildPageMenuItems' `available`. */
 export function availableActions(handlers = {}) {
   return Object.fromEntries(
-    ['cut', 'copy', 'paste', 'duplicate', 'insertBlank', 'rotate', 'mirror', 'reset', 'delete', 'selectAll', 'pasteInPlace', 'setScale']
+    ['cut', 'copy', 'paste', 'duplicate', 'insertBlank', 'rotate', 'mirror', 'reset', 'delete', 'selectAll', 'pasteInPlace', 'setScale', 'selectText', 'unlockAll', 'move']
       .map((name) => [name, typeof handlers[name] === 'function']),
   );
 }

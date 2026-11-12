@@ -51,6 +51,27 @@ export function withMarkLock(object, lockedBy) {
   return next;
 }
 
+/**
+ * The locked marks on one page (the page menu's Unlock all, Nightly
+ * 'page-menu-extras'): `indices` of ordinary marks, `calloutIds` of callout
+ * groups, `any` when there is at least one. Who may unlock them is still
+ * decided by the lock toggle (author / document owner).
+ */
+export function lockedMarksOnPage(objects) {
+  const indices = [];
+  const calloutIds = [];
+  (Array.isArray(objects) ? objects : []).forEach((object, index) => {
+    if (getMarkLockedBy(object) == null) return;
+    if (object?.data?.type === 'callout') {
+      const id = lockMarkIdOf(object);
+      if (id != null) calloutIds.push(id);
+    } else {
+      indices.push(index);
+    }
+  });
+  return { indices, calloutIds, any: indices.length + calloutIds.length > 0 };
+}
+
 /** A copy of a callout record with its lock set / removed. */
 export function withCalloutLock(callout, lockedBy) {
   if (!callout || typeof callout !== 'object') return callout;

@@ -442,6 +442,11 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Measure formats: feet-inches readings, precision, custom scales and a default scale',
     stage: 'beta',
   }),
+  // Drawboard PDF Pro push (2026-11-12, drawboard-trial/pdf-pro/apps-side-by-side.md).
+  'page-menu-extras': Object.freeze({
+    label: 'Page right-click: Move page up / down, Unlock all, Select all text',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

@@ -223,7 +223,7 @@ import { areViewStatesEqual, normalizeViewState } from './utils/viewState';
 import { arrayMove } from '@dnd-kit/sortable';
 import { buildAnnotationSelectionContextKey, didAnnotationSelectionContextChange } from './utils/annotationSelectionContext';
 import { buildBulkDeletePlan } from './lib/collab/bulkDeletePlan.js';
-import { guardLockedMarksOnSave, withCalloutLock, withMarkLock, withSurveyMarkerLock } from './utils/markLock.js';
+import { guardLockedMarksOnSave, lockedMarksOnPage, withCalloutLock, withMarkLock, withSurveyMarkerLock } from './utils/markLock.js';
 import { calloutToAnnotationObject, projectCalloutsIntoByPage, deriveCalloutsFromByPage, applyCalloutListToByPage } from './utils/calloutAnnotationBridge';
 import { DISCARD_LOCAL_DRAFT_EVENT } from './tabs/tabStrip.js';
 import { buildHistoryEventRowFromDebugEvent, recordDocumentHistoryEvent, recordAndNotifyDocumentHistoryEvent, buildPartialEraseHistoryRow } from './services/documentHistoryService.js';
@@ -22588,6 +22588,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // Save to library card is open for.
   const [markLibraryEnabled] = useState(() => isFeatureOn('mark-library'));
   const [stampToolEnabled] = useState(() => isFeatureOn('stamp-tool'));
+  const [pageMenuExtrasEnabled] = useState(() => isFeatureOn('page-menu-extras'));
   const [insertImageEnabled] = useState(() => isFeatureOn('insert-image'));
   // Markups list (Nightly 'markup-list'): every mark in one rail panel.
   const [markupListEnabled] = useState(() => isFeatureOn('markup-list'));
@@ -38446,7 +38447,29 @@ ${pageBlocks}
           pageTransformations,
           // Drawboard gap #16: viewer role / locked doc hides editing rows.
           readOnly: Boolean(documentLocked) || yjsDocRole === 'viewer',
+          canUnlockAll: pageMenuExtrasEnabled
+            ? (page) => lockedMarksOnPage(annotationsByPageRef.current?.[page]?.objects).any
+            : null,
           handlers: {
+            ...(pageMenuExtrasEnabled ? {
+              move: (page, offset) => {
+                const target = page + offset;
+                if (target >= 1 && target <= numPages) handleReorderPages(page, target);
+              },
+              unlockAll: (page) => {
+                const { indices, calloutIds } = lockedMarksOnPage(annotationsByPageRef.current?.[page]?.objects);
+                if (indices.length || calloutIds.length) handleToggleMarkLock(page, { indices, calloutIds }, false);
+              },
+              selectText: (page) => {
+                // The text layer takes a selection only under Text Select.
+                setActiveToolLogged('text-select', { source: 'page-menu' });
+                requestAnimationFrame(() => requestAnimationFrame(() => {
+                  const layer = pdfjsWrapperRef.current?.querySelector(`.survey-pdfjs-page-div[data-page-number="${page}"] .pdfjsTextLayer`);
+                  if (layer?.textContent?.trim()) window.getSelection()?.selectAllChildren(layer);
+                  else showToast('This page has no text to select.', 'info');
+                }));
+              },
+            } : {}),
             selectAll: (page) => {
               if (marksHidden()) return; // nothing you cannot see is picked
               const annotationIndices = selectableMarkIndices(annotationsByPageRef.current?.[page]?.objects, hiddenLayerIdsRef.current);
