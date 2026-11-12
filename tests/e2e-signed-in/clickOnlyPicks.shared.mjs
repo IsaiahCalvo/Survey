@@ -101,6 +101,9 @@ export function boxesInPageUnits(page, list) {
     for (const { label, selector } of entries) {
       const rects = [...document.querySelectorAll(selector)]
         .filter((n) => !n.closest('[data-copy-drag-original]'))
+        // A callout's press surfaces grow with the input in use (a pen's band
+        // is wider than a mouse's); only what is drawn counts.
+        .filter((n) => !n.hasAttribute('data-callout-hit-targets'))
         .map((n) => n.getBoundingClientRect()).filter((r) => r.width > 0 || r.height > 0);
       if (!rects.length) { out[label] = null; continue; }
       const l = Math.min(...rects.map((r) => r.left));

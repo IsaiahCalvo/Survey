@@ -5791,6 +5791,9 @@ const SVGAnnotationLayerBody = memo(({
       <g
         key={`callout-hit-${callout.id}`}
         data-callout-id={callout.id}
+        // Press / hover surfaces and grabbers, not the drawn callout: their
+        // size follows the input in use (mouse, pen, finger).
+        data-callout-hit-targets="true"
       >
         {/* UX: widened line1 hit target (textbox→knee). pointerEvents: stroke
             so transparent fill doesn't catch events away from the visible
