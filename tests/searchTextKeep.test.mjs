@@ -12,6 +12,7 @@ import {
   unpackSearchText,
 } from '../src/utils/searchTextKeep.js';
 import { pdfFileStamp, setPdfFileStamp } from '../src/utils/pdfFileStamp.js';
+import { applyPageViewOperation, createPageView } from '../src/utils/pageViewDocument.js';
 
 const settle = async (n = 30) => { for (let i = 0; i < n; i += 1) await new Promise((r) => setTimeout(r, 0)); };
 
@@ -117,6 +118,57 @@ test('a reopened file searches from the kept text: no page is read through pdf.j
   await store.close();
 });
 
+test('kept text that lands after the read-ahead started fills the pages not read yet', async () => {
+  const store = await memoryStore();
+  const stampOf = async () => 'late42';
+  const first = fakeDoc(4);
+  const kept = [];
+  readSearchTextAhead(first, 4, {
+    delayMs: 0,
+    sideReaders: 0,
+    openReader: async () => null,
+    waitForIdle: async () => {},
+    waitForStill: () => null,
+    loadKept: async () => null,
+    keep: async (doc, done) => { kept.push(await keepSearchText(doc, done, { store, stampOf })); },
+  });
+  for (let i = 0; i < 100 && !kept.length; i += 1) await settle();
+  assert.deepEqual(kept, [true]);
+
+  // Reopen while the stamp is slow: the read-ahead stops waiting and starts
+  // reading, then the kept text lands and the rest is never read.
+  const again = fakeDoc(4);
+  let releaseStamp;
+  const slowStamp = new Promise((resolve) => { releaseStamp = resolve; });
+  const keptWaits = [];
+  let releasePage2;
+  const page2Gate = new Promise((resolve) => { releasePage2 = resolve; });
+  let idles = 0;
+  const stop = readSearchTextAhead(again, 4, {
+    delayMs: 0,
+    keptWaitMs: 5,
+    sideReaders: 0,
+    openReader: async () => null,
+    waitForIdle: async () => { idles += 1; if (idles === 2) await page2Gate; },
+    waitForStill: () => null,
+    loadKept: (doc, n, options) => {
+      keptWaits.push(options?.waitMs);
+      return loadKeptSearchText(doc, n, { store, stampOf: () => slowStamp.then(() => 'late42') });
+    },
+    keep: async () => {},
+  });
+  for (let i = 0; i < 100 && !again.reads.length; i += 1) await settle();
+  assert.deepEqual(again.reads, [1], 'page 1 read while the stamp was slow');
+  releaseStamp();
+  await settle(100);
+  releasePage2();
+  await settle(100);
+  assert.deepEqual(again.reads, [1], 'pages 2 to 4 came from the kept text');
+  assert.ok(keptWaits[0] > 2500, 'the kept text waits longer for the stamp than the read-ahead does');
+  stop();
+  await store.close();
+});
+
 test('no stamp in time, or no store: search reads through pdf.js as before', async () => {
   const doc = fakeDoc(2);
   const stop = readSearchTextAhead(doc, 2, {
@@ -135,4 +187,19 @@ test('the file stamp is shared from the preview session, and waits for it a whil
   assert.equal(await later, 'f00d');
   assert.equal(await pdfFileStamp(base), 'f00d');
   assert.equal(await pdfFileStamp({}, { waitMs: 10 }), null, 'none known in time');
+});
+
+test('nothing is kept while the Pages view shows a turned, moved or removed page', async () => {
+  const store = await memoryStore();
+  const stampOf = async () => 'view123';
+  const base = fakeDoc(3);
+  const done = new Map([1, 2, 3].map((n) => [n, { textContent: { items: runs(n), styles: {} }, viewport: new FakeViewport({ viewBox: [0, 0, 1224, 792], scale: 1, rotation: 0 }) }]));
+  const turned = applyPageViewOperation(createPageView(base), { type: 'rotate', page: 2, delta: 90 });
+  assert.equal(await keepSearchText(turned, done, { store, stampOf }), false, 'a turned page: not kept');
+  const removed = applyPageViewOperation(createPageView(base), { type: 'delete', page: 3 });
+  assert.equal(await keepSearchText(removed, new Map([...done].slice(0, 2)), { store, stampOf }), false, 'a removed page: not kept');
+  assert.deepEqual(await store.loadDoc(searchTextRowStamp('view123')), []);
+  // The view with no edit is the file itself: kept.
+  assert.equal(await keepSearchText(createPageView(base), done, { store, stampOf }), true);
+  await store.close();
 });

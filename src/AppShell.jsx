@@ -168,6 +168,7 @@ import SpotlightOverlay from './spotlight/SpotlightOverlay.jsx';
 import useSpotlight from './spotlight/useSpotlight.js';
 import { clearSpotlightGo, setSpotlightDocument, setSpotlightIdentity } from './services/annotationSpotlight.js';
 import { SHEET_VIEW_EVENT, clampGridColumns, projectSheets, sheetStepForKey, steppedSheet, storedProjectOrder, DEFAULT_GRID_COLUMNS } from './sheets/sheetSet.js';
+import { DEVICE_FILE_LEAVE_EVENT } from './services/deviceFiles.js';
 
 // The dot between the current page and the page total in the right-rail
 // footer: a drawn 2px circle in the total's grey (see the rail audit note at
@@ -1969,6 +1970,25 @@ export default function App({ devPreviewReturnTab = null }) {
   };
 
   const handleTabClose = (tabId) => closeTabsNow([tabId]);
+
+  // device-files (Nightly): "Save to my account" moves a device file into the
+  // cloud. Its open tabs close first, so no mark lands on the device copy
+  // after its marks are carried over (home/deviceFileActions.js reopens the
+  // cloud copy when a tab was open).
+  const closeTabsNowRef = useRef(closeTabsNow);
+  closeTabsNowRef.current = closeTabsNow;
+  useEffect(() => {
+    const onLeave = (event) => {
+      const deviceId = event?.detail?.deviceId;
+      if (!deviceId) return;
+      const ids = tabsRef.current.filter((t) => t.file?.id === deviceId).map((t) => t.id);
+      if (!ids.length) return;
+      event.detail.closed = true;
+      closeTabsNowRef.current(ids);
+    };
+    window.addEventListener(DEVICE_FILE_LEAVE_EVENT, onLeave);
+    return () => window.removeEventListener(DEVICE_FILE_LEAVE_EVENT, onLeave);
+  }, []);
 
   const requestCloseTabs = async (tabIds, action = 'close') => {
     const ids = (tabIds || []).filter((id) => id !== HOME_TAB_ID);

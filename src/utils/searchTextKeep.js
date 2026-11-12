@@ -142,6 +142,22 @@ function keyOf(pdfDoc, pageNumber) {
   return pageViewKey(pdfDoc, pageNumber - 1);
 }
 
+// The open document shows the file exactly as its bytes are: no page moved,
+// turned, removed or added in the Pages panel's view. Only then is text kept
+// under the file's SHA-256 (a view edit is saved as a rewritten file, which
+// gets its own SHA-256; text kept meanwhile would carry the view's page keys
+// and be wrong or partial for the original file, and a kept row is never
+// replaced).
+function showsFileAsIs(pdfDoc) {
+  const base = getPageViewBase(pdfDoc);
+  if (!base || base === pdfDoc) return true;
+  if (pdfDoc.numPages !== base.numPages) return false;
+  for (let index = 0; index < pdfDoc.numPages; index += 1) {
+    if (pageViewKey(pdfDoc, index) !== String(index)) return false;
+  }
+  return true;
+}
+
 /**
  * The kept text of the open file, as Map(pageNumber -> { textContent,
  * viewport }) with a real pdf.js viewport, or null (none kept, no stamp
@@ -179,9 +195,9 @@ export async function keepSearchText(pdfDoc, donePages, {
   store = pageThumbStore(),
   stampOf = pdfFileStamp,
 } = {}) {
-  if (!pdfDoc || !donePages?.size || store?.isDisabled) return false;
+  if (!pdfDoc || !donePages?.size || store?.isDisabled || !showsFileAsIs(pdfDoc)) return false;
   const stamp = await stampOf(getPageViewBase(pdfDoc), { waitMs: 60_000 });
-  if (!stamp) return false;
+  if (!stamp || !showsFileAsIs(pdfDoc)) return false;
   const pages = [];
   for (const [pageNumber, data] of [...donePages].sort((a, b) => a[0] - b[0])) {
     if (!data?.textContent || !data?.viewport) continue;

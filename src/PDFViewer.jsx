@@ -427,7 +427,7 @@ import { chooseCloudPdfOpenPath, shouldRetryStreamedOpenWithDownload, tryOpenClo
 import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox } from './utils/svgBoundingBox.js';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
 import { usePageOperations } from './hooks/usePageOperations.js';
-import { IDLE_REMOTE_PDF_STATE, PAGE_OP_BLOCKED_MESSAGE, PAGE_OP_SYNC_FLAG, clearedPdfVersion, isPageOpBlocked, newPdfVersionToken, framePageChanges, noteFramePageChanges, operationRewritesPdf, pendingPdfVersion, reframeMarks, remotePdfLoaded, remotePdfVersionStep, savedPdfVersion, stampableOperation } from './utils/pageOpSync.js';
+import { IDLE_REMOTE_PDF_STATE, PAGE_OP_BLOCKED_MESSAGE, PAGE_OP_SYNC_FLAG, clearedPdfVersion, isPageOpBlocked, newPdfVersionToken, framePageChanges, noteFramePageChanges, operationRewritesPdf, pendingPdfVersion, reframeMarks, remotePdfLoaded, remotePdfVersionStep, savedPdfVersion, splitFramePageChanges, stampableOperation } from './utils/pageOpSync.js';
 import { usePageViewDocument } from './hooks/usePageViewDocument.js';
 import { getPageViewBase } from './utils/pageViewDocument.js';
 import { destroyPdfDocument, pdfOrDestroy } from './utils/destroyPdfDocument.js';
@@ -22171,7 +22171,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // empty/partial overwrite, no documentId-timing gate.
   // device-files (Nightly): a PDF opened with no account keeps its marks in
   // the store's device copy under one device actor.
-  const annotationActorId = user?.id || (isDeviceDocumentId(pdfFile?.id) ? DEVICE_ACTOR_ID : null);
+  const annotationActorId = isDeviceDocumentId(pdfFile?.id) ? DEVICE_ACTOR_ID : (user?.id || null);
   const {
     initialHydration: normalAnnotationHydration,
     deletedPdfAnnotations: durableDeletedPdfAnnotations,
@@ -22196,6 +22196,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     // offline-docs: marks opened from this device's kept copy (no signal).
     offlineCopy: annotationOfflineCopy,
     editBlocked: annotationEditBlocked,
+    clearEditBlocked: clearAnnotationEditBlocked,
   } = useAnnotationDoc({
     documentId: pdfFile?.id || null,
     userId: annotationActorId,
@@ -22255,8 +22256,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     setArchivedLive(false);
     const documentId = pdfFile?.id;
     if (!documentId || !cloudSyncEnabled || isDeviceDocumentId(documentId)) return undefined;
-    return subscribeDocumentLockState(documentId, (state) => setArchivedLive(Boolean(state?.archivedAt)));
-  }, [pdfFile?.id, cloudSyncEnabled]);
+    // Unlocked or restored from Archive after a refused edit: the row reads
+    // free again, so the tools come back (a refusal that still stands blocks
+    // again on the next edit).
+    return subscribeDocumentLockState(documentId, (state) => {
+      setArchivedLive(Boolean(state?.archivedAt));
+      if (!state?.archivedAt && !state?.lockedAt) clearAnnotationEditBlocked?.();
+    });
+  }, [pdfFile?.id, cloudSyncEnabled, clearAnnotationEditBlocked]);
   const editBlockedReason = annotationEditBlocked || (archivedLive ? 'archived' : null);
   useEffect(() => {
     if (!editBlockedReason || !isActive) return undefined;
@@ -22395,6 +22402,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     window.addEventListener('pointercancel', onUp, true);
     let timer = null;
     let latest = null;
+    let latestKeys = [];
     const reload = (since) => {
       timer = null;
       const draftOpen = hasOpenPolyDraft(polyDraftOwner);
@@ -22406,9 +22414,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       // goes. Say so rather than wiping it silently (R4-C N6b).
       if (draftOpen) showToast('Pages changed in another window, so the shape you were placing was cleared.', 'info');
       // Marks drawn here on the old pages move with them once the new pages
-      // are loaded (the effect below).
-      sync.reframe = sync.frame;
-      sync.frame = null;
+      // are loaded (the effect below). The old pages stay up until then, so
+      // the frame keeps noting marks; a stamp seen meanwhile adds to it.
+      sync.reframe = { sha: latest.contentSha256, keys: latestKeys };
       sync.docBeforeReload = sync.pdfDoc;
       onRemotePdfVersion?.(tabId, latest);
     };
@@ -22424,10 +22432,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         if (!sync.frame) dropHistoryAfterPageChange();
         sync.frame = noteFramePageChanges(sync.frame, step.version);
       } else if (step.action === 'unblock') {
-        sync.frame = null;
+        // A reload still waiting (a pointer is down) or loading keeps the
+        // changes its bytes carry, with the marks noted so far.
+        const loadingKeys = sync.reframe?.keys || (timer ? latestKeys : null);
+        sync.frame = loadingKeys ? splitFramePageChanges(sync.frame, loadingKeys).taken : null;
       }
       if (step.action !== 'reload') return;
       latest = { filePath: step.version.filePath, contentSha256: step.version.contentSha256 };
+      latestKeys = [...(sync.frame?.batches?.keys() || [])];
       if (!timer) reload(Date.now());
     });
     return () => {
@@ -22440,24 +22452,37 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   }, [normalAnnotationHydration, pdfFile?.id, subscribeDocumentMeta, onRemotePdfVersion, tabId, polyDraftOwner, dropHistoryAfterPageChange]);
   useEffect(() => {
     const sync = pageOpSyncRef.current;
-    if (!sync.remote.awaitSha || !pdfDoc || pdfDoc === sync.docBeforeReload) return;
+    if (!pdfDoc || pdfDoc === sync.docBeforeReload) return;
     sync.remote = remotePdfLoaded(sync.remote, pdfFile?.contentSha256);
-    const frame = sync.reframe;
+    // Older bytes than the newest reload asked for: wait for those. The
+    // document on screen must be the one opened from them, not an earlier
+    // one still up while they load.
+    const target = sync.reframe;
+    const shown = sync.docSha;
+    if (!target || shown?.doc !== pdfDoc || shown.sha !== target.sha) return;
     sync.reframe = null;
+    // Runs stamped after this reload began stay in the frame for the next
+    // load, with the marks (now moved onto these pages) still noted.
+    const { taken: frame, rest } = splitFramePageChanges(sync.frame, target.keys);
+    sync.frame = rest;
     // Steps recorded while the old pages were up (the marks drawn on them)
     // would undo to the old frame.
     if (frame) dropHistoryAfterPageChange();
     const ops = framePageChanges(frame);
     if (!frame?.made?.size || !ops?.length) return;
+    // Marks these runs could not move must not be moved by later runs alone.
+    const forgetNotedMarks = () => { if (sync.frame) sync.frame = { ...sync.frame, made: new Set() }; };
     try {
       const byPage = annotationsByPageRef.current || {};
       const changed = reframeMarks(byPage, frame.made, ops, transformPageState);
       const save = handleSaveAnnotationsRef.current;
-      if (!changed || typeof save !== 'function') return;
+      if (!changed) return;
+      if (typeof save !== 'function') { forgetNotedMarks(); return; }
       for (const [page, objects] of Object.entries(changed)) {
         save(Number(page), { ...(byPage[page] || {}), objects }, { source: 'page-op-sync:reframe', checkpointPolicy: 'skip' });
       }
     } catch (err) {
+      forgetNotedMarks();
       console.warn('[page-op-sync] could not move marks drawn on the old pages:', err?.message || err);
     }
   }, [pdfDoc, pdfFile, dropHistoryAfterPageChange]);
@@ -25609,6 +25634,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           await destroyPdfDocument(pdf);
           return;
         }
+        // Page sync (pageOpSync.js) moves marks only once the document from
+        // the newest bytes is the one on screen.
+        if (pageOpSyncRef.current) pageOpSyncRef.current.docSha = { doc: pdf, sha: pdfFile?.contentSha256 || null };
         setPdfDoc(pdf);
         setNumPages(pdf.numPages);
         setPageNum(1);

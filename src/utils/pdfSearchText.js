@@ -100,6 +100,12 @@ export const SEARCH_TEXT_READ_AHEAD_MAX_PAGES = 400;
 // The whole file must be here within this long for the side reader; else the
 // read-ahead uses the viewer's own document.
 export const SEARCH_TEXT_SIDE_READER_WAIT_MS = 30_000;
+// The read-ahead waits this long for the kept text before reading pages; the
+// kept text itself waits much longer for the file stamp (a big file's bytes
+// and SHA-256 can take seconds on a phone) and, when it lands late, fills
+// every page not read yet.
+export const SEARCH_TEXT_KEPT_WAIT_MS = 2500;
+export const SEARCH_TEXT_KEPT_STAMP_WAIT_MS = 60_000;
 
 const idle = (timeout) => new Promise((resolve) => {
   if (typeof globalThis.requestIdleCallback === 'function') {
@@ -136,7 +142,7 @@ function entryFor(pdfDoc) {
 function loadKeptText(pdfDoc, numPages, entry, loadKept) {
   if (!entry.kept) {
     entry.kept = Promise.resolve()
-      .then(() => loadKept(pdfDoc, numPages))
+      .then(() => loadKept(pdfDoc, numPages, { waitMs: SEARCH_TEXT_KEPT_STAMP_WAIT_MS }))
       .then((kept) => {
         for (const [pageNumber, { textContent, viewport }] of kept || []) {
           if (entry.done.has(pageNumber)) continue;
@@ -201,6 +207,7 @@ async function openSideReader(pdfDoc, { waitMs, isStopped }) {
 export function readSearchTextAhead(pdfDoc, numPages, {
   delayMs = SEARCH_TEXT_READ_AHEAD_DELAY_MS,
   maxPages = SEARCH_TEXT_READ_AHEAD_MAX_PAGES,
+  keptWaitMs = SEARCH_TEXT_KEPT_WAIT_MS,
   sideReaderWaitMs = SEARCH_TEXT_SIDE_READER_WAIT_MS,
   waitForIdle = idle,
   openReader = openSideReader,
@@ -226,7 +233,9 @@ export function readSearchTextAhead(pdfDoc, numPages, {
   if (total) void loadKeptText(pdfDoc, Number(numPages) || 0, entry, loadKept);
   const run = async () => {
     if (!entry || !total) return;
-    await entry.kept;
+    let keptTimer = 0;
+    await Promise.race([entry.kept, new Promise((resolve) => { keptTimer = setTimeout(resolve, keptWaitMs); })]);
+    clearTimeout(keptTimer);
     if (stopped) return;
     if (entry.done.size >= total) {
       try { globalThis.performance?.mark?.('survey-search-text-read'); } catch { /* no marks */ }
