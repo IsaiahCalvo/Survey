@@ -165,6 +165,9 @@ const NOT_SWEPT = {
   sheet_sync_connections: 'service only', sheet_sync_pending_connections: 'service only',
   sheet_sync_settings: 'service only',
   project_item_counters: 'service only',
+  // Undo records for deleted versions (Nightly): only the version functions
+  // read or write them.
+  document_version_removals: 'service only',
   // Their write triggers need a signed-in editor, so the service role cannot
   // seed a row. Reads need viewer access to the document.
   annotation_snapshots: 'editor writes only', annotation_updates: 'editor writes only',
