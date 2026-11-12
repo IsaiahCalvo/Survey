@@ -12,7 +12,7 @@ import { isElectronApp } from '../utils/layoutMode.js';
 
 export const DRIVE_LINK_CHANGED_EVENT = 'survey:drive-link-changed';
 // Graph takes up to 60 MiB in one request; bigger files go in pieces that are
-// a multiple of 320 KiB (and of Google's 256 KiB).
+// a multiple of 320 KiB.
 const ONE_PIECE_MAX = 60 * 1024 * 1024;
 const PIECE = 32 * 320 * 1024;
 
@@ -32,13 +32,16 @@ export async function downloadDriveFile({ downloadUrl, name, accessToken = null,
 }
 
 /**
- * Send `bytes` to a one-file upload link (whole, or in pieces). Graph answers
- * a piece with 202, Google with 308; the last piece with the item.
+ * Send `bytes` to a one-file upload link. Graph takes up to 60 MiB in one
+ * request and answers each earlier piece with 202, the last with the item.
+ * Google (`wholeFile`) always gets the whole file in one request: its 308
+ * between pieces is a redirect status to a browser's fetch, so Survey never
+ * asks for pieces there.
  */
-export async function uploadToDrive(uploadUrl, bytes, fetchImpl = globalThis.fetch) {
+export async function uploadToDrive(uploadUrl, bytes, fetchImpl = globalThis.fetch, { wholeFile = false } = {}) {
   const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
   const total = data.byteLength;
-  const step = total <= ONE_PIECE_MAX ? Math.max(total, 1) : PIECE;
+  const step = wholeFile || total <= ONE_PIECE_MAX ? Math.max(total, 1) : PIECE;
   let last = null;
   for (let start = 0; start < total || (total === 0 && start === 0); start += step) {
     const end = Math.min(total, start + step);
@@ -47,7 +50,7 @@ export async function uploadToDrive(uploadUrl, bytes, fetchImpl = globalThis.fet
       headers: { 'Content-Range': `bytes ${start}-${Math.max(end - 1, 0)}/${total}` },
       body: data.subarray(start, end),
     });
-    const morePlease = response.status === 202 || response.status === 308;
+    const morePlease = response.status === 202 && end < total;
     if (!response.ok && !morePlease) {
       const err = new Error(`The drive did not take the file (${response.status}).`);
       err.status = response.status;

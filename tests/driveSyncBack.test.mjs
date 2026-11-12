@@ -248,6 +248,49 @@ test('an upload the server never heard about is confirmed before the next push, 
   await act(async () => { root.unmount(); });
 });
 
+test('a late confirm goes out on its own a minute later, and survives a reload', async () => {
+  setupDom();
+  mock.timers.enable({ apis: ['setInterval'] });
+  try {
+    const { useDriveSyncBack } = await loadHook();
+    const server = fakeServer();
+    let serverDown = true;
+    const call = async (action, body) => {
+      if (action === 'drivePushed' && serverDown) return { error: 'Survey could not reach the server.' };
+      return server.call(action, body);
+    };
+    let clock = 5_000_000;
+    const props = {
+      documentId: 'doc-late', enabled: true, call, now: () => clock,
+      exportBytes: async () => new TextEncoder().encode('%PDF-1.7 late'),
+      upload: async () => ({ id: 'item' }),
+    };
+    const first = await mount(useDriveSyncBack, props);
+    await act(async () => { edit('doc-late'); });
+    await act(async () => { await first.box.state.syncNow(); });
+    assert.equal(first.box.state.dirty, false);
+    assert.ok(window.localStorage.getItem('survey:drive-unconfirmed:doc-late'), 'kept on this device');
+    // Reload before the server is back: the new screen still owes the confirm.
+    await act(async () => first.root.unmount());
+    const second = await mount(useDriveSyncBack, props);
+    serverDown = false;
+    const confirms = () => server.calls.filter((c) => c.action === 'drivePushed').length;
+    const pushes = () => server.calls.filter((c) => c.action === 'drivePush').length;
+    clock += 61_000;
+    await act(async () => { mock.timers.tick(15_000); for (let i = 0; i < 10; i += 1) await new Promise((r) => setImmediate(r)); });
+    assert.equal(confirms(), 1, 'the confirm went out with no new edit');
+    assert.equal(pushes(), 1, 'no second upload');
+    assert.equal(window.localStorage.getItem('survey:drive-unconfirmed:doc-late'), null);
+    // Nothing more is owed: the timer stays quiet.
+    clock += 10 * 60_000;
+    await act(async () => { mock.timers.tick(15_000); for (let i = 0; i < 10; i += 1) await new Promise((r) => setImmediate(r)); });
+    assert.equal(confirms(), 1);
+    await act(async () => second.root.unmount());
+  } finally {
+    mock.timers.reset();
+  }
+});
+
 test('nextPushAt after a failed try: the 60 s retry wins, not a whole save interval', async () => {
   const { nextPushAt } = await loadHook();
   const t = 10 * 60_000;
