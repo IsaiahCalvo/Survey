@@ -1157,7 +1157,10 @@ export async function planSheetRound({
     next.heldErase = {
       count: Math.max(held, was.count || 0),
       items: Math.max(heldItems.size, was.items || 0),
-      scopes: [...new Set([...heldScopes, ...lockedPart])],
+      // While a choice waits, the hold it answers is only its locked part: a
+      // blank held meanwhile on another tab is not answered by that choice
+      // (it is held again each round, and asked about once the choice is used).
+      scopes: waitsOnLocked && state.eraseChoice ? lockedPart : [...new Set([...heldScopes, ...lockedPart])],
       at: state.heldErase?.at || nowIso,
     };
   } else {
