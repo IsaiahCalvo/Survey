@@ -923,9 +923,14 @@ export const summarizeHistoryActionForLog = (action) => {
       && batchCreated.length === 0 && batchDeleted.length === 0
       ? batchUpdated[0]
       : null);
+  // A batch that only adds marks (paste, duplicate) reads "added N marks",
+  // and its undo as "undid adding N marks" (it takes them off the page).
+  const batchOnlyCreated = action.type === 'fabric:batch'
+    && batchCreated.length > 0 && batchDeleted.length === 0 && batchUpdated.length === 0;
   const inferredActionType = action.type === 'fabric:update'
     ? inferHistoryUpdateType(action.before, action.after)
     : (batchLockToggle
+      || (batchOnlyCreated ? 'create' : null)
       || (singleUpdate ? inferHistoryUpdateType(singleUpdate.before, singleUpdate.after) : null)
       || normalizeHistoryActionType(action.type, firstAnnotation || batchFirst));
   // History option A: the mark as it was before an edit, so History can show

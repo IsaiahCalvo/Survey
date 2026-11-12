@@ -269,3 +269,15 @@ test('only an undo of an add takes a mark off the page', () => {
   assert.equal(historyUndoRemovesMark(row('x', { payload: { actionType: 'create', annotationType: 'rect' } })), false);
   assert.equal(historyUndoRemovesMark(row('b', { event_type: 'local_annotation_undo_applied', payload: {} })), false);
 });
+
+test('a batch that only adds marks reads as an add, and undoing it takes them off', () => {
+  const rect = (id) => ({ id, annotation: { type: 'rect', data: { id, type: 'rect' } } });
+  const summary = summarizeHistoryActionForLog({ type: 'fabric:batch', pageNumber: 1, created: [rect('a'), rect('b')] });
+  assert.equal(summary.actionType, 'create');
+  const added = classifyHistoryRow(row('add', { annotation_id: null, payload: summary }));
+  assert.equal(`${added.verb} ${added.noun}`, 'added 2 marks');
+  const undo = row('u', { event_type: 'local_annotation_undo_applied', annotation_id: null, payload: summary });
+  assert.equal(`${classifyHistoryRow(undo).verb} ${classifyHistoryRow(undo).noun}`, 'undid adding 2 marks');
+  assert.equal(historyUndoRemovesMark(undo), true);
+  assert.deepEqual(historyRowMarkIds(undo), ['a', 'b']);
+});
