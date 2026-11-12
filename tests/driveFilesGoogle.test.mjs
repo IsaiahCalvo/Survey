@@ -218,19 +218,32 @@ test('open refuses a file that is not a PDF, and the messages name Google Drive'
   });
 });
 
-test('uploadToDrive takes Google’s 308 between pieces and Graph’s 202', async () => {
-  const sizes = [];
-  const fetchImpl = async (_url, init) => {
-    sizes.push(init.body.byteLength);
-    const range = /bytes (\d+)-(\d+)\/(\d+)/.exec(init.headers['Content-Range']);
-    const last = Number(range[2]) + 1 === Number(range[3]);
-    return last ? new Response(JSON.stringify({ id: 'X' }), { status: 200 }) : new Response(null, { status: 308 });
-  };
+test('uploadToDrive sends Google the whole file in one request, and Graph pieces past 60 MiB', async () => {
   const uploadToDrive = await loadUploadToDrive();
   const big = new Uint8Array(61 * 1024 * 1024);
-  const out = await uploadToDrive('https://upload.session/x', big, fetchImpl);
+  const recorder = (pieceStatus) => {
+    const sizes = [];
+    const fetchImpl = async (_url, init) => {
+      sizes.push(init.body.byteLength);
+      const range = /bytes (\d+)-(\d+)\/(\d+)/.exec(init.headers['Content-Range']);
+      const last = Number(range[2]) + 1 === Number(range[3]);
+      return last ? new Response(JSON.stringify({ id: 'X' }), { status: 200 }) : new Response(null, { status: pieceStatus });
+    };
+    return { sizes, fetchImpl };
+  };
+  // Google: one request, never a 308 round (a browser's fetch treats 308 as a redirect).
+  const google = recorder(308);
+  const out = await uploadToDrive('https://upload.session/g', big, google.fetchImpl, { wholeFile: true });
   assert.equal(out.id, 'X');
-  assert.ok(sizes.length > 1);
-  assert.equal(sizes[0] % (256 * 1024), 0);
-  assert.equal(sizes.reduce((a, b) => a + b, 0), big.byteLength);
+  assert.deepEqual(google.sizes, [big.byteLength]);
+  // Graph: pieces of a multiple of 320 KiB, each answered 202.
+  const graph = recorder(202);
+  const outGraph = await uploadToDrive('https://upload.session/m', big, graph.fetchImpl);
+  assert.equal(outGraph.id, 'X');
+  assert.ok(graph.sizes.length > 1);
+  assert.equal(graph.sizes[0] % (320 * 1024), 0);
+  assert.equal(graph.sizes.reduce((a, b) => a + b, 0), big.byteLength);
+  // A 308 mid-upload is not taken as "send more".
+  const stray = recorder(308);
+  await assert.rejects(uploadToDrive('https://upload.session/m', big, stray.fetchImpl), /did not take the file \(308\)/);
 });

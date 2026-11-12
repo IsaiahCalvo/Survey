@@ -26,6 +26,25 @@ const DIALOG_CODES = new Set(['conflict', 'gone', 'read_only']);
 // Stable defaults: a fresh function each render would rerun the effects below.
 const wallClock = () => Date.now();
 
+// An upload the drive took but the server never heard about is kept on this
+// device until the server confirms it, so a reload does not turn Survey's own
+// write into a "changed in OneDrive" conflict.
+const unconfirmedKey = (documentId) => `survey:drive-unconfirmed:${documentId}`;
+const deviceStore = () => (typeof window !== 'undefined' ? window.localStorage : null);
+function readUnconfirmed(documentId) {
+  try {
+    const raw = deviceStore()?.getItem(unconfirmedKey(documentId));
+    const body = raw ? JSON.parse(raw) : null;
+    return body && String(body.documentId) === String(documentId) ? body : null;
+  } catch { return null; }
+}
+function keepUnconfirmed(documentId, body) {
+  try {
+    if (body) deviceStore()?.setItem(unconfirmedKey(documentId), JSON.stringify(body));
+    else deviceStore()?.removeItem(unconfirmedKey(documentId));
+  } catch { /* private window: the ref still holds it for this session */ }
+}
+
 /** When the next timed push is due, or null when nothing needs pushing. */
 export function nextPushAt({ link, canPush, dirtySince, lastAttemptAt = 0, retryAt = 0 }) {
   if (!link || !canPush || link.syncOff || !dirtySince) return null;
@@ -88,7 +107,7 @@ export function useDriveSyncBack({
     setProblem(null);
     setDialog(null);
     setDirty(false);
-    stateRef.current = { dirtySince: 0, editsSeen: 0, lastAttemptAt: 0, retryAt: 0, pushing: false, unconfirmed: null };
+    stateRef.current = { dirtySince: 0, editsSeen: 0, lastAttemptAt: 0, retryAt: 0, pushing: false, unconfirmed: active ? readUnconfirmed(documentId) : null };
     if (!active) return undefined;
     refresh();
     const onLink = (event) => { if (String(event?.detail?.documentId) === String(documentId)) refresh(); };
@@ -107,7 +126,7 @@ export function useDriveSyncBack({
     };
   }, [active, documentId, now, refresh]);
 
-  const push = useCallback(async ({ force = false, manual = false } = {}) => {
+  const push = useCallback(async ({ force = false, manual = false, confirmOnly = false } = {}) => {
     const s = stateRef.current;
     if (!active || s.pushing) return false;
     let current = linkRef.current;
@@ -133,8 +152,11 @@ export function useDriveSyncBack({
         const confirmed = await call('drivePushed', s.unconfirmed);
         if (!confirmed || confirmed.error) throw Object.assign(new Error(confirmed?.error || 'Survey could not reach the server.'), { code: confirmed?.code || 'graph' });
         s.unconfirmed = null;
+        keepUnconfirmed(documentId, null);
         if (confirmed.link) { setLink(confirmed.link); current = confirmed.link; }
+        if (confirmOnly) { setPhase('saved'); return true; }
       }
+      if (confirmOnly) { setPhase('idle'); return true; }
       // Another screen may have pushed this change already.
       if (!manual && !force) {
         const fresh = await refresh();
@@ -151,15 +173,21 @@ export function useDriveSyncBack({
       const appOrigin = typeof window !== 'undefined' ? window.location?.origin : undefined;
       const session = await call('drivePush', { documentId, ...(appOrigin && appOrigin !== 'null' ? { appOrigin } : {}), ...(force ? { force: true } : {}) });
       if (!session || session.error) throw Object.assign(new Error(session?.error || 'The drive did not take the file.'), { code: session?.code || 'graph' });
-      await upload(session.uploadUrl, bytes);
+      // Google takes the whole file in one request (no 308 rounds); Graph
+      // caps one request at 60 MiB, so bigger files go in pieces.
+      await upload(session.uploadUrl, bytes, undefined, { wholeFile: session.provider === 'google' });
       const pushedBody = { documentId, sha, ...(force ? { force: true } : {}) };
       let done = await call('drivePushed', pushedBody);
       if (!done || done.error) done = await call('drivePushed', pushedBody);
-      // The drive has the file either way; the next push confirms it first.
-      if (!done || done.error) s.unconfirmed = pushedBody;
+      // The drive has the file either way; the timer confirms it in a minute
+      // (or the next push does first), even after a reload.
+      if (!done || done.error) {
+        s.unconfirmed = pushedBody;
+        keepUnconfirmed(documentId, pushedBody);
+      }
       if (done?.link) setLink(done.link);
       clean();
-      s.retryAt = 0;
+      s.retryAt = s.unconfirmed ? now() + RETRY_AFTER_MS : 0;
       setPhase('saved');
       return true;
     } catch (err) {
@@ -185,6 +213,8 @@ export function useDriveSyncBack({
     const tick = () => {
       const s = stateRef.current;
       if (dialog || s.pushing) return;
+      // Nothing to push, but the server still owes a confirm: send just that.
+      if (s.unconfirmed && !s.dirtySince && now() >= (s.retryAt || 0)) { push({ confirmOnly: true }); return; }
       const due = nextPushAt({ link: linkRef.current, canPush, dirtySince: s.dirtySince, lastAttemptAt: s.lastAttemptAt, retryAt: s.retryAt });
       if (due != null && now() >= due) push();
     };
@@ -214,7 +244,11 @@ export function useDriveSyncBack({
     unlink: async () => {
       setDialog(null);
       const res = await call('driveUnlink', { documentId });
-      if (!res?.error) { setLink(null); setPhase('idle'); setProblem(null); }
+      if (!res?.error) {
+        stateRef.current.unconfirmed = null;
+        keepUnconfirmed(documentId, null);
+        setLink(null); setPhase('idle'); setProblem(null);
+      }
       return res;
     },
     closeDialog: () => setDialog(null),
