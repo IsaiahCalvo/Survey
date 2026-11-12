@@ -140,6 +140,46 @@ test('two marks: the group box, R reads their shared turn and only X and Y can b
   }
 });
 
+test('Selected colors: a swatch recolours every use of that colour in the pick, one Undo step', async ({ page }) => {
+  test.setTimeout(180_000);
+  const { sheet, pageDiv, marks } = await open(page, 'Props panel recolour', true);
+  try {
+    const box = await pageDiv.boundingBox();
+    await page.getByRole('button', { name: 'Shapes', exact: true }).click();
+    await page.getByRole('button', { name: 'Rectangle', exact: true }).filter({ visible: true }).first().click();
+    await drawRect(page, box, 150, 200, 80, 40);
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Rectangle', exact: true }).filter({ visible: true }).first().click();
+    await drawRect(page, box, 300, 260, 60, 50);
+    await expect(marks).toHaveCount(2);
+    await marquee(page, box, [120, 170], [400, 340]);
+    await page.locator('[data-selection-quick-expand]').click();
+    const swatches = panel(page).locator('[data-props-colour]');
+    await expect(swatches.first()).toBeVisible();
+    const from = await swatches.first().getAttribute('data-props-colour');
+    const strokes = () => marks.evaluateAll((els) => els.map((g) => {
+      const shape = g.querySelector('rect, path, polygon, ellipse');
+      return (shape?.getAttribute('stroke') || '').toLowerCase();
+    }));
+    expect(await strokes()).toEqual([from.toLowerCase(), from.toLowerCase()]);
+    await swatches.first().click();
+    const row = panel(page).locator(`[data-props-recolour]`);
+    await expect(row).toBeVisible();
+    const presets = row.locator('[data-quick-colour-preset]');
+    const all = await presets.evaluateAll((els) => els.map((el) => el.getAttribute('data-quick-colour-preset')));
+    const to = all.find((c) => c.toLowerCase() !== from.toLowerCase());
+    await row.locator(`[data-quick-colour-preset="${to}"]`).click();
+    await expect(row).toHaveCount(0);
+    await expect.poll(strokes).toEqual([to.toLowerCase(), to.toLowerCase()]);
+    await expect(panel(page).locator(`[data-props-colour="${to}"]`)).toBeVisible();
+    // One Undo puts both back.
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z');
+    await expect.poll(strokes).toEqual([from.toLowerCase(), from.toLowerCase()]);
+  } finally {
+    await sheet.remove();
+  }
+});
+
 test('without the flag there is no Expand menu', async ({ page }) => {
   test.setTimeout(120_000);
   const { sheet, pageDiv, marks } = await open(page, 'Props panel off', false);

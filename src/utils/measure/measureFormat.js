@@ -197,7 +197,10 @@ export function customMeasureScale({ paper, paperUnit = 'in', realText, display,
   return {
     ptPerUnit: paperPt / (realInches / unitInches),
     unit,
-    label: `${paperLabel} = ${formatDisplayLength(realInches, display, isFractionalDisplay(display) ? 16 : 4)}`,
+    // A decimal label drops trailing zeros: `1 cm = 2.5 m`, not `2.5000 m`.
+    label: `${paperLabel} = ${isFractionalDisplay(display)
+      ? formatDisplayLength(realInches, display, 16)
+      : formatDisplayLength(realInches, display, 4).replace(/(\.\d*?)0+(?=\D*$)/, '$1').replace(/\.(?=\D*$)/, '')}`,
     display,
     precision: p,
     // What was typed, so the dialog reopens on it and Apply works again.

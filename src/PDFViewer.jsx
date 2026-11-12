@@ -38084,7 +38084,7 @@ ${pageBlocks}
   // a page with no measurements keeps it), re-stamp every measurement on the
   // pages it covers (labels follow, one undo step per page) and keep a
   // calibration line as a Length measurement.
-  const applyMeasureScale = useCallback((scale, { allPages = false, setDefault = false } = {}) => {
+  const applyMeasureScale = useCallback((scale, { allPages = false, setDefault = false, resetOwn = false } = {}) => {
     const dialog = measureScaleDialog;
     setMeasureScaleDialog(null);
     if (!dialog || !scale) return;
@@ -38108,7 +38108,7 @@ ${pageBlocks}
       if (!hasMeasures && !extra.length) continue;
       handleSaveAnnotationsWithTextMarkupAtomicity(
         page,
-        applyPageScale(pageJson, scale, extra),
+        applyPageScale(pageJson, scale, extra, { resetOwn: measurePlusOn && resetOwn }),
         { source: 'measure:set-scale', tool: 'line' },
       );
     }

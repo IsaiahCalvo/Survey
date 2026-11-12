@@ -4,7 +4,11 @@ import { createPortal } from 'react-dom';
 import {
   MEASURE_PRESETS,
   MEASURE_UNITS,
+  customMeasureScaleIndex,
+  forgetCustomMeasureScale,
+  loadCustomMeasureScales,
   loadRecentMeasureScales,
+  rememberCustomMeasureScale,
   scaleFromCalibration,
   scaleFromPreset,
 } from '../utils/measure/measureScale.js';
@@ -78,6 +82,22 @@ export default function MeasureScaleDialog({ pageNumber, pageCount = 1, lengthPt
   const [paperUnit, setPaperUnit] = useState(customStart?.paperUnit || 'in');
   const [customReal, setCustomReal] = useState(customStart?.real || '');
   const [setDefault, setSetDefault] = useState(false);
+  // Drawboard's "Apply to existing measurements": also puts measures on
+  // their own scale back on this one. Off each time the dialog opens.
+  const [resetOwn, setResetOwn] = useState(false);
+  // Drawboard's CUSTOM SCALES: every custom scale applied on this screen.
+  // A chip fills the custom row; its x takes it off the list.
+  const [customs, setCustoms] = useState(() => (plusOn ? loadCustomMeasureScales() : []));
+  const pickCustomScale = (saved) => {
+    const inputs = customScaleInputs(saved);
+    if (!inputs) return;
+    setCustom(true);
+    setPaper(inputs.paper);
+    setPaperUnit(inputs.paperUnit);
+    setCustomReal(inputs.real);
+    setDisplay(saved.display);
+    setPrecision(normalizeMeasurePrecision(saved.display, saved.precision));
+  };
   const pickDisplay = (next) => {
     setDisplay(next);
     if (isFractionalDisplay(next) !== isFractionalDisplay(display)) setPrecision(normalizeMeasurePrecision(next, null));
@@ -93,7 +113,9 @@ export default function MeasureScaleDialog({ pageNumber, pageCount = 1, lengthPt
   useFocusTrap(cardRef, true, { onEscape: onCancel });
   const submit = (e) => {
     e.preventDefault();
-    if (scale) onApply(scale, { allPages: allPages && pageCount > 1, setDefault: plusOn && setDefault });
+    if (!scale) return;
+    if (plusOn && scale.custom) rememberCustomMeasureScale(scale);
+    onApply(scale, { allPages: allPages && pageCount > 1, setDefault: plusOn && setDefault, resetOwn: plusOn && resetOwn });
   };
   const chip = (id, label, active, onPick, marker) => (
     <button
@@ -175,6 +197,28 @@ export default function MeasureScaleDialog({ pageNumber, pageCount = 1, lengthPt
                     </div>
                   </>
                 )}
+                {plusOn && customs.length > 0 && (
+                  <>
+                    <div className="measure-scale__label">Custom scales</div>
+                    <div className="measure-scale__chips measure-scale__chips--custom" role="radiogroup" onKeyDown={moveGroupFocus} aria-label="Custom scale" data-measure-custom-scales="true">
+                      {customs.map((saved, i) => (
+                        <span key={`${saved.label}-${i}`} className="measure-scale__custom-chip">
+                          {chip(`custom-${i}`, saved.label, custom && customMeasureScaleIndex(customs, scale) === i, () => pickCustomScale(saved), { 'data-measure-custom-scale': i })}
+                          <button
+                            type="button"
+                            className="measure-scale__custom-remove"
+                            aria-label={`Remove ${saved.label}`}
+                            data-measure-custom-scale-remove={i}
+                            {...tip('Remove')}
+                            onClick={() => setCustoms(forgetCustomMeasureScale(i))}
+                          >
+                            <Icon name="close" size={10} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </>
+                )}
                 {plusOn && custom && (
                   <div className="measure-scale__custom" data-measure-custom-row="true" style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10 }}>
                     <input
@@ -246,6 +290,12 @@ export default function MeasureScaleDialog({ pageNumber, pageCount = 1, lengthPt
                   <ValueSelect menuClassName="measure-scale__menu" label="Precision" value={precision} onChange={setPrecision} options={(isFractionalDisplay(display) ? FRACTION_PRECISIONS : DECIMAL_PRECISIONS).map((p) => ({ value: p.value, label: p.label }))} />
                 </div>
               </div>
+            )}
+            {plusOn && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, fontSize: 13, color: 'var(--text-2)' }}>
+                <input type="checkbox" data-measure-apply-existing="true" checked={resetOwn} onChange={(e) => setResetOwn(e.target.checked)} />
+                Apply to existing measurements (ones on their own scale too)
+              </label>
             )}
             {plusOn && (
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, fontSize: 13, color: 'var(--text-2)' }}>
