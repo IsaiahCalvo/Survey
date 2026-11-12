@@ -977,6 +977,13 @@ export async function planSheetRound({
           if (stuckKeys.has(key) || errorKeys.has(key) || addedKeys.has(key) || !columnIsEditable(column) || !colOfKey.has(key)) continue;
           if (!isBlankCell(row[colOfKey.get(key)]) || isBlankCell(cellValueFor(scope, key, appRec))) continue;
           if (getFp(appFps, key) !== getFp(base, key) || getFp(sheetSide, key) === getFp(base, key)) continue;
+          // A blank Item cell is never a rename to nothing: the app's name
+          // goes back (real Excel 11-12: a PM cleared the Item column of an
+          // 8-item tab, under BIG_ERASE, and every item lost its name).
+          if (key === 'item') {
+            setFp(sheetSide, key, getFp(base, key));
+            continue;
+          }
           erasing += 1;
           const eraseMode = eraseModeOf(scope.scopeId);
           if (eraseMode === 'hold' || eraseMode === 'restore') setFp(sheetSide, key, getFp(base, key));

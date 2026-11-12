@@ -818,3 +818,26 @@ test('a choice about a held erase answers only its own blanks, not later ones on
   assert.equal(ctx.link.state.heldErase?.count, 1, 'it is now its own hold, to be asked about');
   assert.equal(ctx.link.state.heldErase.scopes.length, 1);
 });
+
+test('a PM clearing the Item column never leaves the survey\'s items without names', async () => {
+  // Real Excel 11-12: a PM cleared the Item column of an 8-item tab. Under
+  // BIG_ERASE, so not held: every item lost its name in the survey.
+  const markers = Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`d${i + 1}`, door(`d${i + 1}`, `D-${101 + i}`, { note: { text: `field note ${i + 1}` } })]));
+  const ctx = await setup({ markers });
+  await ctx.round(); await ctx.round();
+  const item = await ctx.col('Item');
+  const rows = {};
+  for (let i = 1; i <= 8; i += 1) rows[`d${i}`] = await ctx.rowOf(`d${i}`);
+  await ctx.edit(Object.values(rows).map((row) => ({ row, col: item, value: '' })));
+  await ctx.round({ force: true });
+  for (let i = 1; i <= 8; i += 1) assert.equal(ctx.markers[`d${i}`].name, `D-${100 + i}`, `d${i} keeps its name`);
+  const sheet = await ctx.sheet();
+  for (let i = 1; i <= 8; i += 1) assert.equal(sheet.rows[rows[`d${i}`]][item], `D-${100 + i}`, `d${i}'s name is written back`);
+  assert.equal(ctx.link.state.heldErase, undefined, 'nothing to ask about');
+  // A rename typed over a name still comes in.
+  await ctx.edit([{ row: rows.d3, col: item, value: 'D-103 East' }]);
+  await ctx.round({ force: true });
+  assert.equal(ctx.markers.d3.name, 'D-103 East');
+  await ctx.round();
+  assert.equal((await ctx.round()).status, 'idle');
+});
