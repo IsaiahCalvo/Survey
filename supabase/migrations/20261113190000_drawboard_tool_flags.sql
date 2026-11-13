@@ -6,5 +6,6 @@ INSERT INTO public.feature_flags (key, mode, description) VALUES
   ('laser-pointer', 'off', 'Laser pointer: a glowing line that follows the pen or mouse and fades away; never saved.'),
   ('measure-angle', 'off', 'Angle measure: click three points, the corner in the middle, to read the angle in degrees.'),
   ('note-tool', 'off', 'Note tool: click the page to leave a sticky note with words; exports as a PDF note.'),
-  ('hatch-fill', 'off', 'Hatch fill: rectangles, ellipses, polygons and clouds can be filled with diagonal, cross, horizontal, vertical or grid lines.')
+  ('hatch-fill', 'off', 'Hatch fill: rectangles, ellipses, polygons and clouds can be filled with diagonal, cross, horizontal, vertical or grid lines.'),
+  ('equation-tool', 'off', 'Equation tool: type LaTeX and drop the drawn equation on the page; Equation on the picked bar changes it.')
 ON CONFLICT (key) DO NOTHING;

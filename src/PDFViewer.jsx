@@ -408,6 +408,7 @@ import { setSignatureCardOpen, useSignatureCardOpen } from './components/Signatu
 import { pickImageToInsert } from './components/InsertImage.jsx';
 import LinkToolHost from './components/LinkToolHost.jsx';
 import StickyNoteHost from './components/StickyNoteHost.jsx';
+import EquationHost from './components/EquationHost.jsx';
 import PagePinsHost from './components/pins/PagePinsHost.jsx';
 import { readDefaultMeasureScale, saveDefaultMeasureScale, withDefaultMeasureScale } from './utils/measure/measureFormat.js';
 import PagePinsLayer from './components/pins/PagePinsLayer.jsx';
@@ -415,6 +416,7 @@ import { PinToolButton } from './components/pins/PinControls.jsx';
 import { LINK_EDIT_EVENT, applyLinkEdit, selectedLinkOf } from './utils/linkTool.js';
 import { NOTE_EDIT_EVENT, applyNoteEdit, selectedNoteOf } from './utils/stickyNote.js';
 import { applyHatch, hatchPatternOf, hatchShapeKind } from './utils/hatchFill.js';
+import { EQUATION_EDIT_EVENT, EQUATION_OPEN_EVENT, applyEquationEdit, selectedEquationOf } from './utils/equation.js';
 import SnapshotTool from './components/SnapshotTool.jsx';
 import PageTemplatePicker from './components/PageTemplatePicker.jsx';
 import { useTextHighlightMode, textDragKindOf } from './hooks/useTextHighlightMode.js';
@@ -3262,6 +3264,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const [laserToolEnabled] = useState(() => isFeatureOn('laser-pointer'));
   const [noteToolEnabled] = useState(() => isFeatureOn('note-tool'));
   const [hatchFillEnabled] = useState(() => isFeatureOn('hatch-fill'));
+  const [equationToolEnabled] = useState(() => isFeatureOn('equation-tool'));
   const [measureAngleEnabled] = useState(() => isFeatureOn('measure-angle'));
   const prevMeasureModeRef = useRef(null);
   useEffect(() => {
@@ -3889,6 +3892,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // Nightly 'hatch-fill': the picked shape's line pattern, same one-save write.
   const handleSetSelectedHatch = useCallback((pattern) => {
     handlePatchSelectedAnnotation({}, (obj) => applyHatch(obj, pattern));
+  }, [handlePatchSelectedAnnotation]);
+  // Nightly 'equation-tool': the picked equation redrawn, same one-save write.
+  const handlePatchSelectedEquation = useCallback((changes) => {
+    handlePatchSelectedAnnotation({}, (obj) => applyEquationEdit(obj, changes));
   }, [handlePatchSelectedAnnotation]);
   // Nightly 'note-tool': the picked note's words / colour, same one-save write.
   const handlePatchSelectedNote = useCallback((changes) => {
@@ -27562,6 +27569,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const editSelectedNote = useCallback(() => {
     window.dispatchEvent(new CustomEvent(NOTE_EDIT_EVENT));
   }, []);
+  // Nightly 'equation-tool': the one picked equation (its LaTeX and colour).
+  const selectedEquationForHost = useMemo(() => {
+    if (!equationToolEnabled || !selectedToolbarAnnotation || selectedToolbarCallout) return null;
+    const pageObjects = annotationsByPage?.[selectedToolbarAnnotation.pageNumber]?.objects || [];
+    const index = findSelectedAnnotationIndex(pageObjects, selectedToolbarAnnotation);
+    const obj = (index >= 0 ? pageObjects[index] : null) || selectedToolbarAnnotation.annotation;
+    return selectedEquationOf(obj, getAnnotationRenderIdentity(obj).annotationId);
+  }, [equationToolEnabled, selectedToolbarAnnotation, selectedToolbarCallout, annotationsByPage]);
+  const editSelectedEquation = useCallback(() => {
+    window.dispatchEvent(new CustomEvent(EQUATION_EDIT_EVENT));
+  }, []);
   // Nightly 'hatch-fill': the one picked shape that can hold a pattern.
   const selectedHatchForPanel = useMemo(() => {
     if (!hatchFillEnabled || !selectedToolbarAnnotation || selectedToolbarCallout) return null;
@@ -27895,6 +27913,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       // One picked shape's hatch pattern (Nightly 'hatch-fill'), for the properties panel.
       selectedHatch: hatchFillEnabled && !groupSummary ? selectedHatchForPanel : null,
       setSelectedHatch: hatchFillEnabled ? handleSetSelectedHatch : null,
+      // One picked equation (Nightly 'equation-tool'): Equation opens it again.
+      selectedEquation: equationToolEnabled && !groupSummary ? selectedEquationForHost : null,
+      editSelectedEquation: equationToolEnabled ? editSelectedEquation : null,
       // Nightly 'comment-pins': only a cloud document with a signed-in user.
       pinsAvailable: pinsDocOn,
       selectionMixed: groupSummary ? groupSummary.mixed : null,
@@ -28067,6 +28088,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     editSelectedNote,
     selectedHatchForPanel,
     handleSetSelectedHatch,
+    selectedEquationForHost,
+    editSelectedEquation,
     pickBarTool,
     liveTextSelection,
     selectionMode,
@@ -38605,6 +38628,14 @@ ${pageBlocks}
           onPatchSelectedLink={handlePatchSelectedLink}
         />
       )}
+      {equationToolEnabled && (
+        <EquationHost
+          isActive={isActive !== false}
+          readOnly={Boolean(documentLocked) || yjsDocRole === 'viewer'}
+          selectedEquation={selectedEquationForHost}
+          onPatchSelectedEquation={handlePatchSelectedEquation}
+        />
+      )}
       {noteToolEnabled && (
         <StickyNoteHost
           isActive={isActive !== false}
@@ -41697,6 +41728,8 @@ ${pageBlocks}
                   // Nightly 'note-tool': click the page to leave a sticky note.
                   // Imported PDF notes still render through pdfAnnotationImporter.
                   ...(noteToolEnabled ? [{ id: 'sticky-note', label: 'Note', iconName: 'stickyNote' }] : []),
+                  // Nightly 'equation-tool': type LaTeX, it lands mid-page as a picture.
+                  ...(equationToolEnabled ? [{ id: 'equation', label: 'Equation', iconName: 'equation', action: 'equation' }] : []),
                   // TODO: Revisit native PDF text markup tools later. Underline,
                   // squiggly, and strike-through are hidden from the toolbar for now.
                   // { id: 'underline', label: 'Underline', iconName: 'underline', menu: 'underline' },
@@ -41728,6 +41761,11 @@ ${pageBlocks}
                     if (signatureCardOpen) setSignatureCardOpen(false);
                     if (t.picker) {
                       setStampPickerOpen(!stampPickerOpen);
+                      return;
+                    }
+                    if (t.action === 'equation') {
+                      if (stampPickerOpen) setStampPickerOpen(false);
+                      window.dispatchEvent(new CustomEvent(EQUATION_OPEN_EVENT));
                       return;
                     }
                     if (t.action) {

@@ -531,6 +531,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Hatch fill: rectangles, ellipses, polygons and clouds can be filled with diagonal, cross, horizontal, vertical or grid lines',
     stage: 'beta',
   }),
+  'equation-tool': Object.freeze({
+    label: 'Equation tool: type LaTeX and drop the drawn equation on the page; Equation on the picked bar changes it',
+    stage: 'beta',
+  }),
   'note-tool': Object.freeze({
     label: 'Note tool: click the page to leave a sticky note with words; exports as a PDF note',
     stage: 'beta',

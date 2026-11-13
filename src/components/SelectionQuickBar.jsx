@@ -447,7 +447,7 @@ export default function SelectionQuickBar({
   // The bar's size changes with what it holds; place it again for that size.
   useLayoutEffect(() => {
     if (active) place();
-  }, [active, place, plan?.colour, plan?.width, plan?.style, plan?.remove, plan?.measure, plan?.link, plan?.note, propertiesPanelOpen]);
+  }, [active, place, plan?.colour, plan?.width, plan?.style, plan?.remove, plan?.measure, plan?.link, plan?.note, plan?.equation, propertiesPanelOpen]);
 
   // The Line popover's dismiss rules (outside press, Escape) are the app's.
   // KAL-66: opened from a keyboard, focus goes into it and Up / Down move
@@ -661,6 +661,14 @@ export default function SelectionQuickBar({
           {goTo}
         </button>
         {plan.linkEdit && button('Link', 'hyperlink', () => api.editSelectedLink(), { 'data-selection-quick-link-edit': '' })}
+      </span>,
+    );
+  }
+  // Equation (Nightly 'equation-tool'): Equation opens the picked one again.
+  if (plan?.equation) {
+    groups.push(
+      <span key="equation" className="selection-quick-bar__group" data-selection-quick-equation>
+        {button('Equation', 'equation', () => api.editSelectedEquation(), { 'data-selection-quick-equation-edit': '' })}
       </span>,
     );
   }

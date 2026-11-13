@@ -1,4 +1,5 @@
 import { CounterSeriesPicker } from '../components/CounterSeriesMenu.jsx';
+import { EQUATION_OPEN_EVENT } from '../utils/equation.js';
 import { useBackLayer } from '../utils/backNavigation.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -192,6 +193,8 @@ const TOOL_GROUPS = {
       { id: 'signature', label: 'Signature', icon: 'signature', flag: 'signature-tool', picker: 'signature' },
       // Nightly 'note-tool': tap the page to leave a sticky note.
       { id: 'sticky-note', label: 'Note', icon: 'stickyNote', flag: 'note-tool' },
+      // Nightly 'equation-tool': type LaTeX, it lands mid-page.
+      { id: 'equation', label: 'Equation', icon: 'equation', flag: 'equation-tool', action: 'equation' },
     ],
   },
 };
@@ -3224,6 +3227,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                       if (tool.picker === 'signature') { if (stampPickerOpen) setStampPickerOpen(false); setSignatureCardOpen(!signatureCardOpen); return; }
                       if (signatureCardOpen) setSignatureCardOpen(false);
                       if (tool.picker) { setStampPickerOpen(!stampPickerOpen); return; }
+                      if (tool.action === 'equation') { if (stampPickerOpen) setStampPickerOpen(false); window.dispatchEvent(new CustomEvent(EQUATION_OPEN_EVENT)); return; }
                       if (tool.action) { if (stampPickerOpen) setStampPickerOpen(false); pickImageToInsert(); return; }
                       if (stampPickerOpen) setStampPickerOpen(false);
                       selectTool(tool.id);
