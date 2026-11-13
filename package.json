@@ -59,6 +59,7 @@
   "dependencies": {
     "@azure/msal-browser": "^5.27.0",
     "@azure/msal-node": "^7.1.2",
+    "@cantoo/pdf-lib": "2.11.1",
     "@capacitor/android": "^8.6.0",
     "@capacitor/app": "^8.1.2",
     "@capacitor/core": "^8.6.0",
@@ -88,6 +89,7 @@
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^6.4.299",
     "pptxgenjs": "^4.0.1",
+    "qrcode-generator": "2.0.4",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "regenerator-runtime": "^0.14.1",

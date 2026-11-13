@@ -1487,7 +1487,7 @@ export default function DocumentsLedger({
                       // SELECTED and is not a boundary colour; --border is
                       // 3.60:1 here.
                       borderBottom: '1px solid var(--border)',
-                      borderLeft: !docSelectMode && isPreviewed ? '2px solid var(--gold)' : '2px solid transparent',
+                      borderLeft: '2px solid transparent',
                       background: isFilled ? 'var(--ink-600)' : 'transparent',
                       cursor: 'pointer',
                       // Skip layout/paint for off-screen rows. Intrinsic height ~50px:

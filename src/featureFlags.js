@@ -31,8 +31,10 @@ export const FEATURE_FLAGS = Object.freeze({
   // 2026-11-09 (owner: "get this onto production"): counter-list,
   // grid-settings, spline-polyline, export-modes, pinned-tools, layers,
   // marker-tracking, document-versions, survey-report, guest-links,
-  // microsoft-sign-in, custom-answers, own-excel-layouts and mark-comments moved from beta to rollout after their /flags rows were turned on, so
+  // microsoft-sign-in, custom-answers, own-excel-layouts (back to beta 2026-11-12) and mark-comments moved from beta to rollout after their /flags rows were turned on, so
   // surveytool.app follows /flags for them.
+  // 2026-11-12 (owner): grid-settings and survey-report went back to beta
+  // (Nightly only); the marker-tracking list chips got their own beta flag.
   // On surveytool.app since 2026-11-09 (owner: "let's deploy it", with a
   // "Beta" tag under its tool icon).
   'smart-fill': Object.freeze({
@@ -80,9 +82,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Make-your-own checklist answers in templates',
     stage: 'rollout',
   }),
+  // Owner 2026-11-12: back to Nightly only.
   'survey-report': Object.freeze({
     label: 'Survey report as a PowerPoint deck (cover, progress chart, issues)',
-    stage: 'rollout',
+    stage: 'beta',
   }),
   layers: Object.freeze({
     label: 'Layers panel (markup layers + PDF content opacity)',
@@ -108,17 +111,21 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Export PDF choices: annotated, flattened or plain, and which pages',
     stage: 'rollout',
   }),
+  // Owner 2026-11-12: back to Nightly only.
   'grid-settings': Object.freeze({
     label: 'Page grid spacing: fine, normal, wide or custom (paper or drawing units)',
-    stage: 'rollout',
+    stage: 'beta',
   }),
   'spline-polyline': Object.freeze({
     label: 'Curved polyline: bend smoothly through the clicked corners',
     stage: 'rollout',
   }),
+  // Back to Nightly only (owner 2026-11-12): it copies one row of column
+  // names from the first sheet, not the customer's real workbook, so the live
+  // app offers a custom layout built by our team instead.
   'own-excel-layouts': Object.freeze({
     label: 'Your own Excel layout: upload your sheet and match its columns',
-    stage: 'rollout',
+    stage: 'beta',
   }),
   // Owner 2026-10-27: wire it in but keep it hidden, so Nightly does not turn
   // it on by itself; /flags or 'survey.flag.conditional-lines' = '1' does.
@@ -143,8 +150,14 @@ export const FEATURE_FLAGS = Object.freeze({
     stage: 'rollout',
   }),
   'marker-tracking': Object.freeze({
-    label: 'Survey items: status, assigned to and due date, with list filters',
+    label: 'Survey items: status, assigned to and due date',
     stage: 'rollout',
+  }),
+  // Owner 2026-11-12: the Assigned to me / Due soon / Late / Hide done chips
+  // over the Survey list stay on Nightly until they look right.
+  'tracking-filters': Object.freeze({
+    label: 'Survey list chips: Assigned to me, Due soon, Late, Hide done',
+    stage: 'beta',
   }),
   'guest-links': Object.freeze({
     label: 'Guest links: open one document without an account, as viewer or editor, until a set time',
@@ -185,6 +198,10 @@ export const FEATURE_FLAGS = Object.freeze({
   // zip of every file (with marks, every revision if asked), comments and
   // the Issues and Tasks registers, built on the device.
   'project-export': Object.freeze({ label: 'Export project: one zip of every file with marks or originals, all revisions, comments and issues CSVs', stage: 'beta' }),
+  // Drawboard Projects parity EX-09 (2026-11-12): "Restrict editing" on
+  // export. The PDF opens without a password, but changes and new marks need
+  // the password shown after the export (AES-256).
+  'restrict-editing': Object.freeze({ label: 'Restrict editing: export a PDF that opens freely but needs a password to change or mark up', stage: 'beta' }),
   // Drawboard Projects parity UP-10..23 (2026-11-12): the upload check as a
   // review grid. On its own or with 'upload-check' (it replaces that step).
   'upload-review': Object.freeze({
@@ -498,6 +515,15 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'page-turn-keys': Object.freeze({
     label: 'Keys: with nothing picked, Left / Right and Shift + Up / Down turn the page',
+    stage: 'beta',
+  }),
+  'page-spreads': Object.freeze({
+    label: 'Page fit card: Single / Double / Cover page views (pages side by side, like an open book)',
+    stage: 'beta',
+  }),
+  'phone-sign': Object.freeze({ label: 'Add signature: Phone tab (scan a QR code, sign on the phone, it lands on the Draw pad)', stage: 'beta' }),
+  'group-marks': Object.freeze({
+    label: 'Group / Ungroup in the mark menu: a click on any member picks the whole group',
     stage: 'beta',
   }),
   // Drawboard file model (2026-11-10, page-records-plan.md): page changes are

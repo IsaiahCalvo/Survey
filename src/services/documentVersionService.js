@@ -45,7 +45,9 @@ export async function listDocumentVersions(client, documentId) {
   const { data, error } = await client.rpc(DOCUMENT_VERSIONS_RPC, { p_document_id: documentId });
   if (error) {
     if (isMissingFunctionError(error)) return [];
-    throw new Error(error.message || 'Could not read the versions');
+    const err = new Error(error.message || 'Could not read the versions');
+    err.code = error.code;
+    throw err;
   }
   return (data || []).map((row) => ({
     id: row.id,

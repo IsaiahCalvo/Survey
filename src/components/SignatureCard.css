@@ -104,3 +104,30 @@
   text-overflow: ellipsis;
 }
 .signature-fonts__option[aria-checked='true'] { border-color: #2f80ed; box-shadow: 0 0 0 1px #2f80ed; }
+
+/* Nightly 'phone-sign': the Phone tab (PhoneSignPanel.jsx) and /sign/<token>
+   (PhoneSignPage.jsx). */
+.phone-sign { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+.phone-sign__qr { width: 184px; height: 184px; border-radius: 6px; background: #fff; }
+.phone-sign__qr-paper { fill: #fff; }
+.phone-sign__qr-ink { fill: #000; }
+.phone-sign__qr--empty { border: 1px solid var(--border); }
+.phone-sign__hint { margin: 0; color: var(--text-2); font-size: 13px; max-width: 360px; }
+.phone-sign__wait { margin: 0; color: var(--text-3); font-size: 12px; }
+.phone-sign__link { color: var(--text-3); font-size: 11px; word-break: break-all; }
+.phone-sign-page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 14px;
+  padding: 16px;
+  background: var(--surface-0, #111);
+  color: var(--text-1, #fff);
+}
+.phone-sign-page h1 { margin: 0; font-size: 20px; font-weight: 600; }
+.phone-sign-page p { margin: 0; color: var(--text-2); font-size: 14px; }
+.phone-sign-page__actions { display: flex; gap: 8px; justify-content: flex-end; }
+.phone-sign-page__actions .hub-btn { min-height: 44px; min-width: 88px; }

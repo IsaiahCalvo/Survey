@@ -113,6 +113,8 @@ import {
   subscribeViewerTopOverlays,
 } from '../utils/viewerTopOverlay.js';
 import { buildVisiblePageStack } from '../utils/visiblePageLayout.js';
+import { rowMembers, steppedSpreadPage } from '../utils/pageSpreads.js';
+import { usePageSpreadMode } from '../utils/pageSpreadSetting.js';
 import { computeFitScale, pickCurrentPage, resolveFitPageLanding } from '../utils/pageNavigationMath.js';
 import { createPageRasterQueue } from '../utils/pageRasterQueue.js';
 import {
@@ -1599,6 +1601,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   //  - touchSurface: any touch screen, a touchscreen laptop's too: one finger
   //    runs the tool, two fingers pan and pinch the PDF (not the page).
   const phoneLayout = usePhoneLayout();
+  // Nightly 'page-spreads': Single / Double / Cover (utils/pageSpreads.js).
+  // The phone keeps one column (two pages side by side are too small there).
+  const pageSpreadSetting = usePageSpreadMode();
+  const spreadMode = phoneLayout ? 'single' : pageSpreadSetting;
+  const spreadModeRef = useRef(spreadMode);
+  spreadModeRef.current = spreadMode;
   const coarsePointer = useCoarsePointer();
   const isMobileSurface = phoneLayout || coarsePointer;
   const [touchInput] = useState(() => hasTouchInput());
@@ -1649,6 +1657,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const pageGlideRef = useRef(null);
   const pageGlideHoldsPageRef = useRef(false);
   const dimsPtRef = useRef([]);
+  // Spread views: the row stack (stack[i] is the row on its first page, other
+  // pages hidden) and where each page sits in its row. Single: the stack is
+  // the page list and place is null, so every sum below is unchanged.
+  const stackPtRef = useRef([]);
+  const spreadPlaceRef = useRef(null);
+  const rowLeader = (i) => spreadPlaceRef.current?.leader?.[i] ?? i;
   // Widest page in PDF points (rotation applied): sizes the shared column.
   const widestPagePtRef = useRef(0);
   const containerWRef = useRef(800);
@@ -1878,15 +1892,31 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const getPageLeftAtScale = useCallback((pageIndex, nextScale) => {
     const dim = dimsPtRef.current[pageIndex];
     if (!dim) return 0;
+    // A spread view centres the ROW and puts the page at its slot in it.
+    const place = spreadPlaceRef.current;
+    const row = place ? stackPtRef.current[place.leader[pageIndex] ?? pageIndex] : null;
+    const rowOn = Boolean(row && !row.hidden);
     // The left side-panel room sits in front of every page.
     return resolveCentredPageLeft({
-      pageWidth: dim.w * nextScale,
+      pageWidth: (rowOn ? row.w : dim.w) * nextScale,
       columnWidth: getColumnWidthAtScale(nextScale),
       sideLeft: sideRoomRef.current.left,
-    });
+    }) + (rowOn ? (place.offsetX[pageIndex] || 0) * nextScale : 0);
   }, [getColumnWidthAtScale]);
   const getPageLeftAtScaleRef = useRef(getPageLeftAtScale);
   getPageLeftAtScaleRef.current = getPageLeftAtScale;
+  // What the side-panel band centres and measures: the page, or in a spread
+  // view its whole row (both pages and the gap).
+  const rowBoxAtScaleRef = useRef(null);
+  rowBoxAtScaleRef.current = (pageIndex, nextScale) => {
+    const dim = dimsPtRef.current[pageIndex];
+    if (!dim) return null;
+    const left = getPageLeftAtScale(pageIndex, nextScale);
+    const place = spreadPlaceRef.current;
+    const row = place ? stackPtRef.current[place.leader[pageIndex] ?? pageIndex] : null;
+    if (!row || row.hidden) return { left, width: dim.w * nextScale };
+    return { left: left - (place.offsetX[pageIndex] || 0) * nextScale, width: row.w * nextScale };
+  };
 
   // Plus the side-panel room on both sides, so a page can be scrolled out
   // from under either panel.
@@ -2037,6 +2067,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         const firstViewport = firstPage.getViewport({ scale: 1 });
         const firstSize = { w: firstViewport.width, h: firstViewport.height };
         const sizes = Array.from({ length: pdf.numPages }, () => ({ ...firstSize }));
+        // A kept Double view opens fitted to its first pair, so page 2's own
+        // size is read before the first layout (one extra page, Double only).
+        if (spreadModeRef.current === 'double' && pdf.numPages >= 2) {
+          const secondViewport = (await pdf.getPage(2)).getViewport({ scale: 1 });
+          if (cancelled) return;
+          sizes[1] = { w: secondViewport.width, h: secondViewport.height };
+        }
         setPageSizes(sizes.slice());
 
         const el = scrollerRef.current;
@@ -2052,10 +2089,15 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         // 2026-10-04: one draw, nothing jumps).
         const metrics = layoutMetricsRef.current;
         const side = sideInsetRef.current;
+        // A kept Double / Cover view fits the first row: the pair's two widths
+        // and the gap (Cover's lone page 1 holds a pair's slot: twice its own).
+        const firstPair = spreadModeRef.current === 'double' ? sizes[1] || firstSize : firstSize;
+        const firstRowW = spreadModeRef.current === 'single' ? firstSize.w : firstSize.w + metrics.gap + firstPair.w;
+        const firstRowH = spreadModeRef.current === 'double' ? Math.max(firstSize.h, firstPair.h) : firstSize.h;
         const fitPageScale = hasViewport ? computeFitScale({
           mode: 'fitPage',
-          pageW: firstSize.w,
-          pageH: firstSize.h,
+          pageW: firstRowW,
+          pageH: firstRowH,
           viewportW: Math.max(1, cw - side.left - side.right),
           viewportH: Math.max(1, el.clientHeight - topInsetRef.current),
           padX: metrics.padX,
@@ -2128,9 +2170,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // ---- layout: cumulative offsets ------------------------------------------
   const layout = useMemo(() => {
     const metrics = layoutMetrics;
-    const { dims, tops, widestPt, height: y } = buildVisiblePageStack({
+    const { dims, tops, widestPt, height: y, stack, place } = buildVisiblePageStack({
       pageSizes, visiblePageNumbers, rotation, scale,
-      padTop: metrics.padTop, gap: metrics.gap,
+      padTop: metrics.padTop, gap: metrics.gap, spread: spreadMode,
     });
     // One column for every page (src/utils/pdfPageColumn.js).
     const columnW = resolveDocumentColumnWidth({
@@ -2153,15 +2195,17 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       rawTotalHeight: rawTotalH,
       topRoom,
     });
-    return { tops, dims, widestPt, columnW, totalH: rawTotalH, rawTotalH, padTop, contentHeight, contentW };
-  }, [pageSizes, visiblePageNumbers, scale, rotation, containerW, containerH, layoutMetrics, topRoom, sideRoom]);
+    return { tops, dims, stack, place, widestPt, columnW, totalH: rawTotalH, rawTotalH, padTop, contentHeight, contentW };
+  }, [pageSizes, visiblePageNumbers, scale, rotation, containerW, containerH, layoutMetrics, topRoom, sideRoom, spreadMode]);
 
   // A Space changes the page stack, not the physical page being read.
   // Capture its old scroll offset before React applies the filtered layout.
   const previousSpaceLayoutRef = useRef(null);
   const spaceLayoutAnchorRef = useRef(null);
   const previousSpaceLayout = previousSpaceLayoutRef.current;
-  if (previousSpaceLayout && previousSpaceLayout.visiblePages !== visiblePageNumbers) {
+  // A page view change (Single / Double / Cover) keeps the page too.
+  if (previousSpaceLayout && (previousSpaceLayout.visiblePages !== visiblePageNumbers
+    || previousSpaceLayout.spread !== spreadMode)) {
     const el = scrollerRef.current;
     const index = Math.max(0, (currentPageRef.current || 1) - 1);
     if (el && !previousSpaceLayout.layout.dims[index]?.hidden && !layout.dims[index]?.hidden) {
@@ -2170,7 +2214,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       };
     }
   }
-  previousSpaceLayoutRef.current = { visiblePages: visiblePageNumbers, layout };
+  previousSpaceLayoutRef.current = { visiblePages: visiblePageNumbers, spread: spreadMode, layout };
   useLayoutEffect(() => {
     const anchor = spaceLayoutAnchorRef.current;
     spaceLayoutAnchorRef.current = null;
@@ -2180,6 +2224,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   }, [layout]);
 
   dimsPtRef.current = layout.dims;
+  stackPtRef.current = layout.stack;
+  spreadPlaceRef.current = layout.place;
   widestPagePtRef.current = layout.widestPt;
   containerWRef.current = containerW;
   containerHRef.current = containerH;
@@ -2614,13 +2660,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const bandCentreTarget = () => {
       const s = scaleRef.current;
       const i = Math.max(0, (currentPageRef.current || 1) - 1);
-      const d = dimsPtRef.current[i];
-      if (!d || !(s > 0)) return null;
+      const box = s > 0 ? rowBoxAtScaleRef.current(i, s) : null;
+      if (!box) return null;
       const insets = sideInsetRef.current;
-      const pageWidth = d.w * s;
+      const pageWidth = box.width;
       if (pageWidth > el.clientWidth - insets.left - insets.right + 0.5) return null;
       return resolveBandCentreScrollLeft({
-        pageLeft: getPageLeftAtScaleRef.current(i, s),
+        pageLeft: box.left,
         pageWidth,
         viewportWidth: el.clientWidth,
         insets,
@@ -2668,12 +2714,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       if (!lastFit || !(lastFit.scale > 0) || gestureRef.current || !el.isConnected) return;
       const s = scaleRef.current;
       if (Math.abs(s - lastFit.scale) > 1e-3) return; // zoomed since the fit: leave it
-      const d = dimsPtRef.current[lastFit.pageIndex];
-      if (!d || isInTabBehind(el) || !(el.clientWidth > 0)) return;
+      const box = rowBoxAtScaleRef.current(lastFit.pageIndex, s);
+      if (!box || isInTabBehind(el) || !(el.clientWidth > 0)) return;
       const insets = sideInsetRef.current;
       if (!shouldRefitForBand({
-        pageLeft: getPageLeftAtScaleRef.current(lastFit.pageIndex, s) - el.scrollLeft,
-        pageWidth: d.w * s,
+        pageLeft: box.left - el.scrollLeft,
+        pageWidth: box.width,
         viewportWidth: el.clientWidth,
         insets,
         lastBandW: lastFit.bandW,
@@ -2849,7 +2895,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // to). Mirrors the layout memo: max(0,(containerH - rawTotalH)/2) on RAW total.
   const centerPadFor = (sc) => {
     const metrics = layoutMetricsRef.current;
-    const dims = dimsPtRef.current;
+    // Rows, not pages (one row holds two pages in a spread view).
+    const dims = stackPtRef.current;
     // Mirror the layout memo: gap is zoom-proportional, so anchor math at an
     // arbitrary scale sc uses metrics.gap * sc to match the layout it commits to.
     const gapPx = metrics.gap * sc;
@@ -2865,26 +2912,39 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // content-Y (el.scrollTop + cursorY) and the committed anchor are consistent.
   const topAt = (i, sc) => {
     const metrics = layoutMetricsRef.current;
-    const dims = dimsPtRef.current;
+    const dims = stackPtRef.current;
+    // A page shares its row's top (spread views); Single: lead === i.
+    const lead = rowLeader(i);
     // Zoom-proportional gap (see layout memo): stack with metrics.gap * sc.
     let y = metrics.padTop + (metrics.gap * sc) + padTopFor(sc);
-    for (let k = 0; k < i; k += 1) if (!dims[k].hidden) y += dims[k].h * sc + metrics.gap * sc;
+    for (let k = 0; k < lead; k += 1) if (!dims[k].hidden) y += dims[k].h * sc + metrics.gap * sc;
     return y;
   };
   const leftAt = (i, sc) => getPageLeftAtScale(i, sc);
-  const pageUnderContentY = (cY, sc) => {
+  // In a spread view the row is found by y, then its page by x (cX, when
+  // given): the one under it, or the nearer one in the gap between them.
+  const pickInRow = (lead, cX, sc) => {
+    const place = spreadPlaceRef.current;
+    if (!place || cX == null) return lead;
+    const members = rowMembers(place, lead);
+    if (members.length < 2) return lead;
+    const right = members[1];
+    return cX >= getPageLeftAtScale(right, sc) - (metricsGapAt(sc) / 2) ? right : lead;
+  };
+  const metricsGapAt = (sc) => layoutMetricsRef.current.gap * sc;
+  const pageUnderContentY = (cY, sc, cX = null) => {
     const metrics = layoutMetricsRef.current;
-    const dims = dimsPtRef.current;
+    const dims = stackPtRef.current;
     // Zoom-proportional gap (see layout memo): the hit band grows/shrinks with sc.
     const gapPx = metrics.gap * sc;
     let y = metrics.padTop + gapPx + padTopFor(sc);
     for (let i = 0; i < dims.length; i += 1) {
       if (dims[i].hidden) continue;
       const h = dims[i].h * sc;
-      if (cY < y + h + gapPx) return i;
+      if (cY < y + h + gapPx) return pickInRow(i, cX, sc);
       y += h + gapPx;
     }
-    for (let i = dims.length - 1; i >= 0; i -= 1) if (!dims[i].hidden) return i;
+    for (let i = dims.length - 1; i >= 0; i -= 1) if (!dims[i].hidden) return pickInRow(i, cX, sc);
     return 0;
   };
 
@@ -2913,7 +2973,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       : targetScale;
     const originContentX = Number(gesture.originContentX) || 0;
     const originContentY = Number(gesture.originContentY) || 0;
-    const pageIndex = pageUnderContentY(originContentY, oldScale);
+    const pageIndex = pageUnderContentY(originContentY, oldScale, originContentX);
     const page = dims[pageIndex];
     const fracX = Math.max(0, Math.min(1,
       (originContentX - leftAt(pageIndex, oldScale)) / Math.max(1, page.w * oldScale)));
@@ -2940,7 +3000,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       const metrics = layoutMetricsRef.current;
       const gapPx = metrics.gap * sc;
       let height = metrics.padTop + gapPx + metrics.padBottom;
-      dims.forEach((dim) => {
+      stackPtRef.current.forEach((dim) => {
         if (dim.hidden) return;
         height += dim.h * sc + gapPx;
       });
@@ -3044,7 +3104,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     }
     const cX = el.scrollLeft + cursorX;
     const cY = el.scrollTop + cursorY;
-    const i = pageUnderContentY(cY, oldScale);
+    const i = pageUnderContentY(cY, oldScale, cX);
     const fracX = Math.max(0, Math.min(1, (cX - leftAt(i, oldScale)) / (dims[i].w * oldScale)));
     const fracY = (cY - topAt(i, oldScale)) / (dims[i].h * oldScale);
     const newX = leftAt(i, newScale) + fracX * dims[i].w * newScale;
@@ -5271,7 +5331,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       : requestedIndex;
     if (isFit) {
       const metrics = layoutMetricsRef.current;
-      const pageDim = dimsPtRef.current[pageIndex] || { w: 612, h: 792 };
+      // A spread view fits the whole row (both pages), as Drawboard does.
+      const rowDim = spreadPlaceRef.current ? stackPtRef.current[rowLeader(pageIndex)] : null;
+      const pageDim = (rowDim && !rowDim.hidden ? rowDim : dimsPtRef.current[pageIndex]) || { w: 612, h: 792 };
       const d = { ...pageDim, w: resolveFitPageWidth({ phone: phoneLayout, mode: target, pageWidth: pageDim.w, widestPageWidth: widestPagePtRef.current }) };
       const fitRecord = {
         mode: target,
@@ -5322,11 +5384,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     // The typed page jump uses this same landing (Drawboard parity,
     // pageNavigationMath.resolveFitPageLanding).
     const s = scaleRef.current;
-    const d = dimsPtRef.current[pageIndex];
+    // In a spread view the fit lands the whole row, centred in the band.
+    const box = rowBoxAtScaleRef.current(pageIndex, s);
+    if (!box) return;
     const landing = resolveFitPageLanding({
       pageTop: topAt(pageIndex, s),
-      pageLeft: getPageLeftAtScale(pageIndex, s),
-      pageWidth: d.w * s,
+      pageLeft: box.left,
+      pageWidth: box.width,
       gap: layoutMetricsRef.current.gap * s,
       topInset: inset,
       viewportWidth: el.clientWidth,
@@ -5941,7 +6005,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       if (turn) {
         if (target && target.closest('[role="toolbar"], [role="tablist"], [role="radiogroup"], [role="menubar"], [role="spinbutton"], [role="slider"]')) return;
         const last = numPagesRef.current || topsRef.current.length;
-        const next = Math.min(last, Math.max(1, (currentPageRef.current || 1) + turn));
+        // A spread view turns a whole row (Double: 1 → 3), as Drawboard does.
+        const next = Math.min(last, Math.max(1, steppedSpreadPage(spreadPlaceRef.current, currentPageRef.current || 1, turn)));
         event.preventDefault();
         if (next !== currentPageRef.current) goToPage(next, { smooth: true });
         return;
@@ -5977,8 +6042,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       if (target?.closest?.('[role="menu"], [role="listbox"], [role="slider"], [role="dialog"], [role="tree"], [role="grid"], [role="radiogroup"], [role="tablist"]')) return;
       setTimeout(() => {
         if (event.defaultPrevented) return;
-        const next = steppedPage(currentPageRef.current, step, numPagesRef.current || topsRef.current.length);
-        if (next) goToPage(next, { smooth: true });
+        const last = numPagesRef.current || topsRef.current.length;
+        const next = spreadPlaceRef.current
+          ? Math.min(last, Math.max(1, steppedSpreadPage(spreadPlaceRef.current, currentPageRef.current || 1, step)))
+          : steppedPage(currentPageRef.current, step, last);
+        if (next && next !== currentPageRef.current) goToPage(next, { smooth: true });
       }, 0);
     };
     window.addEventListener('keydown', onKeyDown);
@@ -6570,7 +6638,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const metrics = layoutMetricsRef.current;
     const gapPx = metrics.gap * targetScale;
     let rawHeight = metrics.padTop + gapPx;
-    layout.dims.forEach((dim) => {
+    layout.stack.forEach((dim) => {
       if (dim.hidden) return;
       rawHeight += dim.h * targetScale + gapPx;
     });

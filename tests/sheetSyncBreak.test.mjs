@@ -1002,3 +1002,161 @@ test('the kept-row notice for an item deleted just after a sheet edit stays for 
   await ctx.round({ now: new Date(t0 + 5000 + 31 * 60_000), force: true });
   assert.ok(!said(), 'until half an hour has passed');
 });
+
+// Excel on the web, real browser (11-12): a PM's new row typed 10 to 60 s
+// after Survey inserted N rows is saved N rows lower, sometimes with only the
+// Item moved. Survey puts it back on the row typed.
+const shiftSetup = async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
+  ctx.provider = { ...ctx.provider, savesLate: true };
+  const t0 = Date.parse('2026-11-12T17:00:00Z');
+  await ctx.round({ now: new Date(t0) }); await ctx.round({ now: new Date(t0 + 1000), force: true });
+  for (const i of [2, 3, 4]) ctx.markers[`d${i}`] = door(`d${i}`, `D-10${i}`);
+  await ctx.round({ now: new Date(t0 + 5000) });
+  const typed = (await ctx.rowOf('d4')) + 1;
+  return { ctx, t0, typed, item: await ctx.col('Item'), notes: await ctx.col('Notes') };
+};
+const pmItems = (ctx) => Object.values(ctx.markers).filter((m) => m.source === 'sheet');
+
+test('a PM row whose Item Excel saved N rows low after Survey\'s insert is joined back to its note', async () => {
+  const { ctx, t0, typed, item, notes } = await shiftSetup();
+  await ctx.edit([{ row: typed, col: notes, value: 'PM note' }, { row: typed + 3, col: item, value: 'D-120' }]);
+  const fix = await ctx.round({ now: new Date(t0 + 30000), force: true });
+  assert.equal(fix.summary.created, 0, 'nothing made from the halves');
+  assert.ok(!ctx.link.state.problems.some((p) => /has no "Item"/.test(p.message)), 'and no orphan reported');
+  let rows = (await ctx.sheet()).rows;
+  assert.deepEqual([rows[typed][item], rows[typed][notes]], ['D-120', 'PM note'], 'one row again, where it was typed');
+  assert.ok(!(rows[typed + 3] || []).some((c) => String(c ?? '').trim()), 'the low row is empty');
+  await ctx.round({ now: new Date(t0 + 35000), force: true });
+  assert.deepEqual(pmItems(ctx).map((m) => [m.name, m.note.text]), [['D-120', 'PM note']]);
+  rows = (await ctx.sheet()).rows;
+  assert.equal(await ctx.rowOf(pmItems(ctx)[0].id), typed);
+  const quiet = await ctx.round({ now: new Date(t0 + 40000), force: true });
+  assert.deepEqual(Object.values(quiet.summary).filter(Boolean), []);
+});
+
+test('a whole PM row Excel saved N rows low after Survey\'s insert goes back up to the row typed', async () => {
+  const { ctx, t0, typed, item, notes } = await shiftSetup();
+  await ctx.edit([{ row: typed + 3, col: item, value: 'D-120' }, { row: typed + 3, col: notes, value: 'PM note' }]);
+  await ctx.round({ now: new Date(t0 + 30000), force: true });
+  await ctx.round({ now: new Date(t0 + 35000), force: true });
+  assert.deepEqual(pmItems(ctx).map((m) => [m.name, m.note.text]), [['D-120', 'PM note']]);
+  assert.equal(await ctx.rowOf(pmItems(ctx)[0].id), typed, 'right under the tech\'s new rows, no gap');
+});
+
+test('a block of rows a PM pasted, saved N rows low after Survey\'s insert, goes back up whole and in order', async () => {
+  const { ctx, t0, typed, item, notes } = await shiftSetup();
+  await ctx.edit([0, 1, 2].flatMap((k) => [{ row: typed + 3 + k, col: item, value: `P-${k}` }, { row: typed + 3 + k, col: notes, value: `paste ${k}` }]));
+  const fix = await ctx.round({ now: new Date(t0 + 30000), force: true });
+  assert.equal(fix.summary.created, 0, 'nothing made while the block moves');
+  const rows = (await ctx.sheet()).rows;
+  assert.deepEqual([0, 1, 2].map((k) => [rows[typed + k][item], rows[typed + k][notes]]), [['P-0', 'paste 0'], ['P-1', 'paste 1'], ['P-2', 'paste 2']]);
+  assert.ok([3, 4, 5].every((k) => !(rows[typed + k] || []).some((c) => String(c ?? '').trim())), 'the rows it left are empty');
+  await ctx.round({ now: new Date(t0 + 35000), force: true });
+  assert.deepEqual(pmItems(ctx).map((m) => [m.name, m.note.text]).sort(), [['P-0', 'paste 0'], ['P-1', 'paste 1'], ['P-2', 'paste 2']]);
+  for (const k of [0, 1, 2]) assert.equal(await ctx.rowOf(pmItems(ctx).find((m) => m.name === `P-${k}`).id), typed + k);
+});
+
+test('a totals line right under a pasted block saved low stays where it is', async () => {
+  const { ctx, t0, typed, item, notes } = await shiftSetup();
+  await ctx.edit([
+    ...[0, 1].flatMap((k) => [{ row: typed + 3 + k, col: item, value: `P-${k}` }, { row: typed + 3 + k, col: notes, value: `paste ${k}` }]),
+    { row: typed + 5, col: item, value: 'Total' }, { row: typed + 5, col: notes, value: '2' },
+  ]);
+  await ctx.round({ now: new Date(t0 + 30000), force: true });
+  const rows = (await ctx.sheet()).rows;
+  assert.deepEqual([0, 1].map((k) => rows[typed + k][item]), ['P-0', 'P-1'], 'the pasted rows went back up');
+  assert.deepEqual([rows[typed + 5][item], rows[typed + 5][notes]], ['Total', '2'], 'the totals line did not move');
+  assert.ok(![2, 3, 4].some((k) => (rows[typed + k] || []).some((c) => String(c ?? '').trim())), 'nothing else written');
+});
+
+test('a pasted block longer than the gap lands on the rows it leaves', async () => {
+  const { ctx, t0, typed, item, notes } = await shiftSetup();
+  await ctx.edit([0, 1, 2, 3, 4].flatMap((k) => [{ row: typed + 3 + k, col: item, value: `P-${k}` }, { row: typed + 3 + k, col: notes, value: `paste ${k}` }]));
+  await ctx.round({ now: new Date(t0 + 30000), force: true });
+  const rows = (await ctx.sheet()).rows;
+  assert.deepEqual([0, 1, 2, 3, 4].map((k) => rows[typed + k][item]), ['P-0', 'P-1', 'P-2', 'P-3', 'P-4']);
+  assert.deepEqual([0, 1, 2, 3, 4].map((k) => rows[typed + k][notes]), ['paste 0', 'paste 1', 'paste 2', 'paste 3', 'paste 4']);
+  assert.ok([5, 6, 7].every((k) => !(rows[typed + k] || []).some((c) => String(c ?? '').trim())));
+  await ctx.round({ now: new Date(t0 + 35000), force: true });
+  assert.equal(pmItems(ctx).length, 5);
+  assert.ok(pmItems(ctx).every((m) => m.note.text === `paste ${m.name.slice(2)}`), 'every name with its own note');
+});
+
+test('a row typed a few rows below the list long after Survey\'s insert is left where it is', async () => {
+  const { ctx, t0, typed, item, notes } = await shiftSetup();
+  await ctx.edit([{ row: typed, col: notes, value: 'PM note' }, { row: typed + 3, col: item, value: 'D-120' }]);
+  await ctx.round({ now: new Date(t0 + 5000 + 4 * 60_000), force: true });
+  assert.deepEqual(pmItems(ctx).map((m) => m.name), ['D-120'], 'an item where the name is');
+  assert.ok(ctx.link.state.problems.some((p) => /has no "Item"/.test(p.message)), 'and the note row is reported, as before');
+});
+
+test('the offset can be an earlier insert\'s size when a second insert followed it', async () => {
+  const { ctx, t0, item, notes } = await shiftSetup();
+  ctx.markers.d5 = door('d5', 'D-105');
+  await ctx.round({ now: new Date(t0 + 10000) });
+  const typed = (await ctx.rowOf('d5')) + 1;
+  await ctx.edit([{ row: typed, col: notes, value: 'PM note' }, { row: typed + 3, col: item, value: 'D-120' }]);
+  await ctx.round({ now: new Date(t0 + 30000), force: true });
+  await ctx.round({ now: new Date(t0 + 35000), force: true });
+  assert.deepEqual(pmItems(ctx).map((m) => [m.name, m.note.text]), [['D-120', 'PM note']]);
+  assert.equal(await ctx.rowOf(pmItems(ctx)[0].id), typed);
+});
+
+// Review (Bugbot): a note that starts with "Total" is the PM's typing, not a
+// totals line; its name saved low still joins it.
+test('a PM note that starts with "Total" still joins its name Excel saved low', async () => {
+  const { ctx, t0, typed, item, notes } = await shiftSetup();
+  await ctx.edit([{ row: typed, col: notes, value: 'Total rework, frame bent' }, { row: typed + 3, col: item, value: 'D-120' }]);
+  await ctx.round({ now: new Date(t0 + 30000), force: true });
+  await ctx.round({ now: new Date(t0 + 35000), force: true });
+  assert.deepEqual(pmItems(ctx).map((m) => [m.name, m.note.text]), [['D-120', 'Total rework, frame bent']]);
+  assert.equal(await ctx.rowOf(pmItems(ctx)[0].id), typed);
+});
+
+// Real Excel on the web (11-12): inserts of 2 then 1 saved the PM's row 3 low
+// (the two latest added up), while the tab's first fill, also in the window,
+// was not counted.
+test('a PM row saved low by the sum of the latest two inserts goes back up', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
+  ctx.provider = { ...ctx.provider, savesLate: true };
+  const t0 = Date.parse('2026-11-12T17:00:00Z');
+  await ctx.round({ now: new Date(t0) }); await ctx.round({ now: new Date(t0 + 1000), force: true });
+  ctx.markers.d2 = door('d2', 'D-102'); ctx.markers.d3 = door('d3', 'D-103');
+  await ctx.round({ now: new Date(t0 + 5000) });
+  ctx.markers.d4 = door('d4', 'D-104');
+  await ctx.round({ now: new Date(t0 + 12000) });
+  const typed = (await ctx.rowOf('d4')) + 1;
+  const item = await ctx.col('Item'); const notes = await ctx.col('Notes');
+  await ctx.edit([{ row: typed + 3, col: item, value: 'PM-1' }, { row: typed + 3, col: notes, value: 'pm note 1' }]);
+  await ctx.round({ now: new Date(t0 + 66000), force: true });
+  await ctx.round({ now: new Date(t0 + 76000), force: true });
+  assert.deepEqual(pmItems(ctx).map((m) => [m.name, m.note.text]), [['PM-1', 'pm note 1']]);
+  assert.equal(await ctx.rowOf(pmItems(ctx)[0].id), typed);
+});
+
+// Review (Bugbot): new rows put above an Excel table's Total Row ("Total" in
+// the hidden Row ID column, Item blank) have that line under them. It is
+// never taken for the PM's typed row.
+test('a totals line under rows Survey put above it is never taken for a PM row Excel saved low', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
+  ctx.provider = { ...ctx.provider, savesLate: true };
+  const t0 = Date.parse('2026-11-12T17:00:00Z');
+  await ctx.round({ now: new Date(t0) }); await ctx.round({ now: new Date(t0 + 1000), force: true });
+  const item = await ctx.col('Item'); const notes = await ctx.col('Notes'); const rowId = await ctx.col('Row ID');
+  const totalAt = (await ctx.sheet()).rows.length;
+  await ctx.edit([{ row: totalAt, col: rowId, value: 'Total' }, { row: totalAt, col: notes, value: '1' }]);
+  await ctx.round({ now: new Date(t0 + 2000), force: true });
+  ctx.markers.d2 = door('d2', 'D-102');
+  await ctx.round({ now: new Date(t0 + 5000), force: true });
+  let rows = (await ctx.sheet()).rows;
+  const total = rows.findIndex((r) => r[rowId] === 'Total');
+  assert.equal(rows[total - 1][item], 'D-102', 'the new item went above the totals line');
+  await ctx.edit([{ row: total + 1, col: item, value: 'D-120' }]);
+  await ctx.round({ now: new Date(t0 + 30000), force: true });
+  rows = (await ctx.sheet()).rows;
+  assert.equal(rows[total][rowId], 'Total');
+  assert.ok(!rows[total][item], 'nothing copied onto the totals line');
+  assert.equal(rows[total + 1][item], 'D-120', 'the PM\'s row stays where it is');
+  assert.ok(Object.values(ctx.markers).some((m) => m.name === 'D-120'), 'and comes in');
+});

@@ -85,7 +85,8 @@
 }
 
 .survey-tracking-badge.is-active {
-  color: var(--accent);
+  color: var(--text-1);
+  font-weight: 600;
   box-shadow: inset 0 0 0 1px var(--border-strong);
 }
 
@@ -127,9 +128,9 @@
   font-size: var(--font-size-lg);
 }
 
-/* Selected = gold ink on a neutral raised fill (selected states are gold ink only). */
+/* Selected = white words on a neutral raised fill (revision 5). */
 .survey-tracking-chip[aria-pressed="true"] {
-  color: var(--accent);
+  color: var(--text-1);
   background: var(--surface-3);
   font-weight: 600;
 }

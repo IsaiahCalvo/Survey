@@ -19,6 +19,8 @@
 //   duration ms                  overrides the per-type time; <= 0 or Infinity
 //                                keeps it until dismissToast(id) or a click.
 //   id       string              your own id (to dismiss it later).
+//   keep     string              shown after the message on one line, never
+//                                split (a password read off the toast).
 // Returns the toast id (or null when nothing was shown).
 
 const newId = () => `${Math.round(performance.now())}-${Math.random().toString(36).slice(2, 8)}`;
@@ -34,6 +36,7 @@ export function showToast(message, type = 'error', options = {}) {
       detail.action = { label: String(opts.action.label || 'Undo'), onClick: opts.action.onClick };
     }
     if (opts.duration !== undefined) detail.duration = opts.duration;
+    if (opts.keep != null && opts.keep !== '') detail.keep = String(opts.keep);
     window.dispatchEvent(new CustomEvent('app-toast', { detail }));
   } catch (_e) {
     // Last-ditch fallback so a notification is never silently lost if event

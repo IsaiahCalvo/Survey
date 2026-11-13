@@ -41,11 +41,12 @@
 */
 import { listExportKits, subscribeExportKits, getExportKit, DEFAULT_EXPORT_KIT_ID } from '../services/exportFormats/registry.js';
 import { DEFAULT_REPORT_KIT_ID, listReportKits } from '../services/reportKits/index.js';
-import { DEFAULT_ANSWER_SET, ITEM_ANSWER_KEYS, answerPresetIdOf, answerSetPresets, itemAnswerFields } from '../services/answerSets.js';
+import { DEFAULT_ANSWER_SET, ITEM_ANSWER_KEYS, answerPresetIdOf, answerSetPresets, itemAnswerFields, starterAnswerSets } from '../services/answerSets.js';
 import { isFeatureOn } from '../featureFlags.js';
 import AnswerSetEditor, { ItemKindPicker, ShowIfPicker } from './AnswerSetEditor.jsx';
 import { copyLines, showIfOf } from '../services/conditionalLines.js';
-import { checklistItemKind, manyOptionsOf } from '../../supabase/functions/_shared/kitShape.js';
+import { BUILT_IN_KIT_IDS, checklistItemKind, manyOptionsOf } from '../../supabase/functions/_shared/kitShape.js';
+import { customLayoutAskUrl } from '../services/supportContact.js';
 import { lazy, Suspense, useState, useMemo, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
 import { hoverOnly, useTooltip, withOwnHandlers } from '../components/Tooltip';
 import { createPortal, flushSync } from 'react-dom';
@@ -133,6 +134,12 @@ const OwnExcelLayoutDialog = lazy(() => Promise.all([
 // The "make your own" choice in the checklist-answers picker.
 const OWN_ANSWERS = '__own__';
 const OWN_LAYOUT = '__own_layout__';
+const CUSTOM_LAYOUT_ASK = '__custom_layout_ask__';
+// The trade layouts that ship in the app (Fire alarm, CCTV, ...). Owner
+// 2026-11-12: the menu offers Standard plus a custom build by our team; a
+// template already on one of these keeps it and still sees it listed.
+const RETIRED_TRADE_KIT_IDS = new Set(BUILT_IN_KIT_IDS.filter((id) => id !== DEFAULT_EXPORT_KIT_ID));
+const openCustomLayoutAsk = (templateName) => { window.open(customLayoutAskUrl(templateName), '_blank'); };
 
 /* Desktop/web already use this quiet chevron for category disclosure. Keep
    one shared glyph so mobile cannot drift to a different arrow treatment.
@@ -1085,11 +1092,15 @@ export default function TemplatesEditor({
   const exportKitPicker = (tpl, phone = false) => ({
     value: tpl.exportKitId || DEFAULT_EXPORT_KIT_ID,
     options: [
-      ...exportKitOptions.map((k) => ({ value: k.id, label: k.label || k.id, detail: exportKitDetail(k) })),
+      ...exportKitOptions
+        .filter((k) => !RETIRED_TRADE_KIT_IDS.has(k.id) || k.id === tpl.exportKitId)
+        .map((k) => ({ value: k.id, label: k.label || k.id, detail: exportKitDetail(k) })),
       ...(ownLayouts ? [{ value: OWN_LAYOUT, label: 'Use your own spreadsheet…', detail: 'Pick the sheet your company already uses; Survey fills in its columns' }] : []),
+      { value: CUSTOM_LAYOUT_ASK, label: 'Want your own layout?', detail: 'Our team builds custom spreadsheets, exports and templates for you' },
     ],
     onPick: (v) => {
       if (v === OWN_LAYOUT) { setOwnLayoutFor({ id: tpl.id, phone }); return; }
+      if (v === CUSTOM_LAYOUT_ASK) { openCustomLayoutAsk(tpl.name); return; }
       pickExportKit(tpl.id, v);
     },
   });
@@ -1112,6 +1123,7 @@ export default function TemplatesEditor({
     }),
   });
   const answerPresets = answerSetPresets({ extras: customAnswers });
+  const starterPresets = useMemo(() => starterAnswerSets(), []);
   const [answerEditorFor, setAnswerEditorFor] = useState(null);
   const ownAnswerSetOf = (t) => t.answerSet || getExportKit(t.exportKitId)?.answerSet;
   // `answerEditorFor` is { id, phone }: the desktop and phone layouts are both
@@ -1176,7 +1188,7 @@ export default function TemplatesEditor({
           <AnswerSetPicker
             templateName={t.name}
             set={set}
-            presets={answerPresets}
+            presets={starterPresets}
             onPick={(preset) => { pickAnswerPreset(t, preset); setAnswerPickerFor(null); }}
             onMakeOwn={() => { setAnswerPickerFor(null); setAnswerEditorFor({ id: t.id, phone }); }}
             onClose={() => setAnswerPickerFor(null)}
@@ -2660,7 +2672,7 @@ export default function TemplatesEditor({
                         height: 50, boxSizing: 'border-box',
                         background: tplEdit ? (isSel ? 'var(--ink-600)' : 'transparent') : (active ? 'var(--ink-600)' : 'transparent'),
                         cursor: 'pointer',
-                        borderLeft: !tplEdit && active ? '2px solid var(--accent)' : '2px solid transparent',
+                        borderLeft: '2px solid transparent',
                         transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                       }}
                     >
@@ -2782,7 +2794,7 @@ export default function TemplatesEditor({
                 {/* Excel layout (export kit). Only shown once there is a choice. */}
                 {/* Each pill says what it picks (owner 2026-11-09: a bare
                     "Full report" pill said nothing). */}
-                {exportKitOptions.length > 1 && (
+                {exportKitOptions.length > 0 && (
                   <div className="hub-template-picker">
                     <span className="hub-template-picker__label" aria-hidden="true">Excel layout</span>
                     <ValueSelect
@@ -3543,7 +3555,7 @@ export default function TemplatesEditor({
                   header (Excel layout, checklist answers), as full-width
                   44px rows - the desktop header holding them is not rendered here. */}
               <div className="templates-mobile-template-options">
-                {exportKitOptions.length > 1 && (
+                {exportKitOptions.length > 0 && (
                   <label className="templates-mobile-option templates-mobile-option--detailed">
                     <span>Excel layout</span>
                     <select aria-label="Excel layout" {...pickerSelectProps(exportKitPicker(tpl, true))} />

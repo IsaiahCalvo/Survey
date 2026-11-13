@@ -78,7 +78,7 @@
 .props-panel__colours { display: flex; flex-wrap: wrap; gap: 6px; }
 .props-panel__colour { width: 18px; height: 18px; padding: 0; border: none; border-radius: 4px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25); cursor: pointer; }
 .props-panel__colour:disabled { cursor: default; }
-.props-panel__colour.is-current { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25), 0 0 0 2px var(--chrome-bg, #1c1f26), 0 0 0 3.5px var(--accent, #2f7cf6); }
+.props-panel__colour.is-current { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25), 0 0 0 2px var(--chrome-bg, #1c1f26), 0 0 0 3.5px var(--ink-ring-strong); }
 .props-panel__colour:focus-visible { outline: 2px solid var(--accent, #2f7cf6); outline-offset: 2px; }
 .props-panel__recolour { margin-top: 8px; }
 .props-panel__chips, .props-panel__tiles { display: flex; flex-wrap: wrap; gap: 4px; }

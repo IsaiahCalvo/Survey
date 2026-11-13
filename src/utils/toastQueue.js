@@ -88,7 +88,10 @@ export function createToastStore({
   function add(detail = {}) {
     if (detail == null || detail.message == null || detail.message === '') return null;
     const message = String(detail.message);
-    const existing = toasts.find((t) => !t.leaving && t.message === message);
+    // keep: text shown after the message that never splits across lines (a
+    // password). It counts in the repeat check: a new password is a new toast.
+    const keep = detail.keep != null && detail.keep !== '' ? String(detail.keep) : '';
+    const existing = toasts.find((t) => !t.leaving && t.message === message && (t.keep || '') === keep);
     if (existing) return existing.id; // de-dupe rapid repeats
     const type = TYPES.has(detail.type) ? detail.type : 'info';
     // A toast that is only playing its exit must not keep its id: otherwise
@@ -101,7 +104,7 @@ export function createToastStore({
     const action = detail.action && typeof detail.action.onClick === 'function'
       ? { label: String(detail.action.label || 'Undo'), onClick: detail.action.onClick }
       : null;
-    toasts = [...toasts, { id, key: detail.id != null ? String(detail.id) : id, message, type, action, leaving: false }];
+    toasts = [...toasts, { id, key: detail.id != null ? String(detail.id) : id, message, ...(keep ? { keep } : {}), type, action, leaving: false }];
     startTimer(id, toastDurationMs(type, detail.duration));
     // Cap the stack so a runaway loop can't paper over the screen.
     const standing = toasts.filter((t) => !t.leaving);

@@ -74,11 +74,13 @@
 .measure-scale__chip {
   min-height: 44px;
   padding: 0 4px;
+  /* At rest a chip is a sunken well, so the chosen one (raised to
+     surface-3, white 600 words) stands out without accent ink. */
   color: var(--text-2);
-  background: var(--surface-3);
+  background: var(--surface-1);
   border: 1px solid transparent;
   border-radius: 8px;
-  font: 600 12px/1.1 var(--font-ui);
+  font: 500 12px/1.1 var(--font-ui);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   cursor: pointer;
@@ -86,7 +88,7 @@
 }
 
 @media (hover: hover) {
-  .measure-scale__chip:hover {
+  .measure-scale__chip:not(.is-active):hover {
     color: var(--text-1);
     background: var(--hover);
   }
@@ -96,9 +98,11 @@
   transform: scale(0.95);
 }
 
-/* The current pick: gold ink only (tests/selectedStateGoldInkOnly). */
+/* The current pick: white words on the raised surface (revision 5). */
 .measure-scale__chip.is-active {
-  color: var(--accent);
+  color: var(--text-1);
+  font-weight: 600;
+  background: var(--surface-3);
 }
 
 .measure-scale__chip:focus-visible,

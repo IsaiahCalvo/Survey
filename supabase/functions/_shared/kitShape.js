@@ -68,15 +68,16 @@ export function validateReportKit(kit) {
 
 export const ANSWER_TONES = Object.freeze(['good', 'bad', 'neutral']);
 // One answer is a plain "Done" tick. Up to six show as buttons on a card; a
-// longer list shows as a drop-down (CHOICE_BUTTONS_MAX in the app).
+// longer list shows as a drop-down (CHOICE_BUTTONS_MAX in the app). No upper
+// limit on how many (owner 2026-11-12); past Excel's drop-down size the
+// cell takes typed answers instead (excelValidationFor).
 export const MIN_ANSWERS = 1;
-export const MAX_ANSWERS = 20;
 // An answer's optional "means" line: a hint on the card, read by the agents.
 export const ANSWER_MEANS_MAX = 80;
 
 /** Returns a list of problems; empty means the set is usable. */
 export function validateAnswerSet(set) {
-  if (!Array.isArray(set) || set.length < MIN_ANSWERS || set.length > MAX_ANSWERS) return [`answer set needs ${MIN_ANSWERS} to ${MAX_ANSWERS} answers`];
+  if (!Array.isArray(set) || set.length < MIN_ANSWERS) return [`answer set needs at least ${MIN_ANSWERS} answer`];
   const errors = [];
   const seen = new Set();
   set.forEach((a, i) => {

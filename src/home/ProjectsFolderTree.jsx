@@ -1144,7 +1144,7 @@ export default function ProjectsFolderTree({
                       padding: '0 8px', borderRadius: 6,
                       background: jobsEdit ? (isSel ? 'var(--ink-600)' : 'transparent') : (isOpen ? 'var(--ink-600)' : 'transparent'),
                       cursor: isDragging ? 'grabbing' : 'pointer',
-                      borderLeft: !jobsEdit && isOpen ? '2px solid var(--gold)' : '2px solid transparent',
+                      borderLeft: '2px solid transparent',
                       height: 50, boxSizing: 'border-box',
                       transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                     }}
@@ -1216,7 +1216,6 @@ export default function ProjectsFolderTree({
           {open && (
             <>
               <div className="projects-open-head" style={{ padding: '14px 18px', borderBottom: '1px solid var(--ink-500)', display: 'flex', alignItems: 'center', gap: 14 }}>
-                <span style={{ width: 4, height: 36, background: 'var(--gold)', borderRadius: 2, flex: 'none' }}></span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   {/* Inline rename field. Typing raises Cancel / Save in the
                       header's subtitle row; Enter saves, Escape backs out. */}
@@ -2021,7 +2020,6 @@ export default function ProjectsFolderTree({
         {open && ['cards', 'focus', 'files'].includes(mobileProjectLayout) && (
           <div className="mobile-project-detail">
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-              <span style={{ width: 4, height: 32, background: 'var(--gold)', borderRadius: 2, flex: 'none' }}></span>
               <input
                 key={`mobile-${open.id}`}
                 {...projectNameField(open)}

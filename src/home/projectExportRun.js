@@ -141,10 +141,12 @@ async function addRegisters(zip, client, project, documents, lookupMember) {
 }
 
 /**
- * Build the zip. options: { allRevisions, withMarks, comments, issues }.
+ * Build the zip. options: { allRevisions, withMarks, comments, issues,
+ * restrict }. restrict (Nightly 'restrict-editing'): every PDF opens freely
+ * but needs one password, made here and returned, to change.
  * download(filePath) -> Blob (useStorage's downloadDocument).
  * onProgress({ done, total, phase }); isCancelled() stops between files.
- * -> { bytes, fileName, count, failed: [names], skipped: [names] } or null when cancelled.
+ * -> { bytes, fileName, count, failed: [names], skipped: [names], password } or null when cancelled.
  */
 export async function buildProjectExport({
   client, project, documents = [], options = {}, download, lookupMember = null,
@@ -157,6 +159,8 @@ export async function buildProjectExport({
   const taken = new Set(files.map((f) => f.path));
   const failed = [];
   let count = 0;
+  const lock = options.restrict ? await import('../utils/restrictPdfEditing.js') : null;
+  const password = lock ? lock.makeEditPassword() : null;
   for (const [i, file] of files.entries()) {
     if (isCancelled()) return null;
     onProgress({ done: i, total: files.length, phase: 'files' });
@@ -171,6 +175,8 @@ export async function buildProjectExport({
           failed.push(`${file.path.slice(file.path.indexOf('/') + 1)} (without marks)`);
         }
       }
+      // A file that should be locked and can't be stays out (and is listed).
+      if (lock) bytes = (await lock.restrictPdfEditing(bytes, { password })).bytes;
       zip.file(file.path, bytes);
       count += 1;
     } catch (error) {
@@ -185,5 +191,5 @@ export async function buildProjectExport({
   if (isCancelled()) return null;
   onProgress({ done: files.length, total: files.length, phase: 'zip' });
   const bytes = await zip.generateAsync({ type: 'uint8array' });
-  return { bytes, fileName: projectZipName(project?.name, count), count, failed, skipped };
+  return { bytes, fileName: projectZipName(project?.name, count), count, failed, skipped, password };
 }

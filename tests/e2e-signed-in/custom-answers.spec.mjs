@@ -79,13 +79,16 @@ test('flag on: type 5 / 10 / 20, save, and it is still there after a reload', as
   const dialog = await openOwnList(page, answers, templateName);
   const editor = dialog.getByTestId('answer-set-editor');
   await expect(editor).toBeVisible();
-  // Start from Y / N / N/A: rename to 5 / 10 / 20, all Neutral.
+  // Start from Y / N / N/A: rename to 5 / 10 / 20, all grey.
   for (const [i, v] of ['5', '10', '20'].entries()) {
     await editor.getByRole('textbox', { name: `Answer ${i + 1}`, exact: true }).fill(v);
     await editor.getByRole('button', { name: `Answer ${i + 1} counts as`, exact: true }).click();
-    await page.getByRole('listbox', { name: `Answer ${i + 1} counts as` }).getByRole('option', { name: 'Neutral', exact: true }).click();
+    await page.getByRole('listbox', { name: `Answer ${i + 1} counts as` }).getByRole('option', { name: "Grey: doesn't count", exact: true }).click();
     await expect(editor.getByRole('button', { name: `Answer ${i + 1} counts as`, exact: true })).toHaveAttribute('data-value', 'neutral');
   }
+  // The meaning lines wait behind "More".
+  await expect(editor.getByRole('textbox', { name: 'What answer 1 means' })).toHaveCount(0);
+  await editor.getByRole('button', { name: 'More: what each answer means' }).click();
   await editor.getByRole('textbox', { name: 'What answer 1 means' }).fill('a single door');
   // A comma is refused with a plain reason and is never saved.
   await editor.getByRole('button', { name: 'Add answer' }).click();
@@ -128,7 +131,7 @@ test('flag on: type 5 / 10 / 20, save, and it is still there after a reload', as
   await expect(reopened).toHaveCount(0);
 
   // Put the seed template back to Y / N / N/A for the other specs.
-  await (await openPicker(page, again)).getByRole('radio', { name: 'Y / N / N/A', exact: true }).click();
+  await (await openPicker(page, again)).getByRole('radio', { name: 'Yes or no: Y, N, N/A', exact: true }).click();
   await expect(again).toHaveAccessibleName('Checklist answers: Y, N, N/A. Change');
   await save.click();
   await expect.poll(async () => {
@@ -144,7 +147,7 @@ test('a preset can be edited after picking it, past six answers', async ({ page 
   const templateName = await page.getByRole('textbox', { name: 'Template name' }).filter({ visible: true }).first().inputValue();
   const save = page.getByRole('button', { name: 'Save', exact: true }).filter({ visible: true }).first();
 
-  await (await openPicker(page, answers)).getByRole('radio', { name: 'Small / Medium / Large' }).click();
+  await (await openPicker(page, answers)).getByRole('radio', { name: 'Size: Small, Medium, Large' }).click();
   await expect(answers).toHaveAccessibleName('Checklist answers: Small, Medium, Large. Change');
   const dialog = await openOwnList(page, answers, templateName);
   await expect(dialog.getByRole('textbox', { name: 'Answer 1', exact: true })).toHaveValue('Small');
@@ -152,7 +155,6 @@ test('a preset can be edited after picking it, past six answers', async ({ page 
     await dialog.getByRole('button', { name: 'Add answer' }).click();
     await dialog.getByRole('textbox', { name: `Answer ${i + 4}`, exact: true }).fill(v);
   }
-  await expect(dialog.getByText('8 of 20')).toBeVisible();
   await dialog.getByRole('button', { name: 'Save' }).click();
   await expect(answers).toHaveAccessibleName('Checklist answers: Small, Medium, Large, XS, XL, XXL, 2XL, 3XL. Change');
   await save.click();
@@ -162,7 +164,7 @@ test('a preset can be edited after picking it, past six answers', async ({ page 
     return (data?.config?.answerSet || []).map((a) => a.value).join(' ');
   }, { timeout: 20_000 }).toBe('Small Medium Large XS XL XXL 2XL 3XL');
 
-  await (await openPicker(page, answers)).getByRole('radio', { name: 'Y / N / N/A', exact: true }).click();
+  await (await openPicker(page, answers)).getByRole('radio', { name: 'Yes or no: Y, N, N/A', exact: true }).click();
   await save.click();
   await expect.poll(async () => {
     const { data } = await db.from('templates').select('config').eq('name', templateName).limit(1).maybeSingle();
@@ -170,19 +172,20 @@ test('a preset can be edited after picking it, past six answers', async ({ page 
   }, { timeout: 20_000 }).toBe(null);
 });
 
-test('the picker offers 1 to 5 and 1 to 10 ratings, grouped, and a pick shows on the button', async ({ page }) => {
+// Owner 2026-11-12: six starters, then people make their own.
+test('the picker offers six starters and a pick shows on the button', async ({ page }) => {
   await flag(true)(page);
   await signIn(page, E2E_ACCOUNTS.owner);
   const answers = await openAnswersButton(page);
   const picker = await openPicker(page, answers);
-  for (const group of ['Yes or no', 'Pass or fail', 'Condition', 'Status', 'Ratings and sizes']) {
+  await expect(picker.getByRole('radio')).toHaveCount(6);
+  for (const group of ['Yes or no', 'Pass or fail', 'Condition', 'Status', 'Rating', 'Size']) {
     await expect(picker.getByText(group, { exact: true })).toBeVisible();
   }
-  await expect(picker.getByRole('radio', { name: 'Y / N / N/A', exact: true })).toHaveAttribute('aria-checked', 'true');
-  await expect(picker.getByRole('radio', { name: 'Rating 1 to 10' })).toBeVisible();
-  await picker.getByRole('radio', { name: 'Rating 1 to 5', exact: true }).click();
+  await expect(picker.getByRole('radio', { name: 'Yes or no: Y, N, N/A', exact: true })).toHaveAttribute('aria-checked', 'true');
+  await picker.getByRole('radio', { name: 'Rating: 1, 2, 3, 4, 5, N/A', exact: true }).click();
   await expect(picker).toHaveCount(0);
-  await expect(answers).toHaveAccessibleName('Checklist answers: 1, 2, 3, 4, 5. Change');
+  await expect(answers).toHaveAccessibleName('Checklist answers: 1, 2, 3, 4, 5, N/A. Change');
   // Not saved: Cancel in the editor's bar puts Y / N / N/A back.
   await page.getByRole('button', { name: 'Cancel', exact: true }).filter({ visible: true }).first().click();
   await expect(answers).toHaveAccessibleName('Checklist answers: Y, N, N/A. Change');

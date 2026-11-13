@@ -621,9 +621,11 @@ const SurveySpacesRail = ({
   // Nightly, hidden: a line can show only after a certain answer.
   const [conditionalLinesOn] = useState(() => isFeatureOn('conditional-lines'));
   const shownLines = (category, responses) => shownChecklist(category?.checklist, responses, { on: conditionalLinesOn });
-  // Nightly 'marker-tracking': status, who has it and a due date per item,
-  // with Assigned to me / Late / Hide done chips over the list.
+  // 'marker-tracking': status, who has it and a due date per item. The
+  // Assigned to me / Due soon / Late / Hide done chips over the list are
+  // Nightly only ('tracking-filters', owner 2026-11-12).
   const [trackingOn] = useState(() => isFeatureOn('marker-tracking'));
+  const [trackingFiltersOn] = useState(() => isFeatureOn('tracking-filters'));
   const [trackingFilter, setTrackingFilter] = useState(EMPTY_TRACKING_FILTER);
   const trackingPeople = useDocumentPeople(pdfFile?.id || null, { enabled: trackingOn });
   const [isReporting, setIsReporting] = useState(false);
@@ -3206,7 +3208,7 @@ const SurveySpacesRail = ({
                             </div>
                           ) : null}
 
-                          {trackingOn && moduleHasMarkers ? (
+                          {trackingOn && trackingFiltersOn && moduleHasMarkers ? (
                             <div
                               className={`survey-tracking-filters${mobileMode ? ' survey-tracking-filters--phone' : ''}`}
                               role="group"

@@ -219,7 +219,7 @@ test('hands-free: talk, hear the reply, talk again, and a spoken correction move
   await expect(mic).toHaveAttribute('aria-pressed', 'true');
   await expect(mic).toHaveClass(/is-recording/);
   await expect(panel).toBeHidden();
-  await expect.poll(() => mic.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(216, 168, 78)');
+  await expect.poll(() => mic.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(106, 166, 246)');
 
   // The typing dots swap the Survey panel for the chat, in its place.
   await page.getByRole('button', { name: 'Open Survey agent chat' }).click();

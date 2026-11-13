@@ -10,7 +10,8 @@
 //     "annotations are annotations"). They used to be excluded because
 //     callouts drew in their own loop above every shape; callouts now sit in
 //     the page's one stacking order, so the items are live, not dead.
-//   - Group / Ungroup are hidden app-wide (2026-04-21) on BOTH menus.
+//   - Group / Ungroup show on both menus only with the Nightly 'group-marks'
+//     flag (groupMenuItems; tests/groupMarks.test.mjs).
 //
 // Source-assertion tests (the repo's pattern for guarding contracts inside
 // JSX files node --test can't import).

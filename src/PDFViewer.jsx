@@ -24958,7 +24958,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     return bytesKit.deliverCsv(csv, filters.commentsCsvFileName(name));
   }, [pdfFile?.id, pdfFile?.name]);
 
-  const handleExportPdfWithOptions = useCallback(async ({ mode = 'annotated', pages = 'all', custom = '', filter = null, commentsCsv = false, deliver = true } = {}) => {
+  const handleExportPdfWithOptions = useCallback(async ({ mode = 'annotated', pages = 'all', custom = '', filter = null, commentsCsv = false, deliver = true, restrict = false } = {}) => {
     if (!pdfFile) {
       showToast('Open a PDF first.', 'warn');
       return { ok: false, error: 'Open a PDF first.' };
@@ -25036,6 +25036,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       }
       if (!bytes) return { ok: false, error: 'Nothing to export.' };
       if (picked.pages) bytes = await bytesKit.keepOnlyPages(bytes, picked.pages);
+      // Restrict editing (Nightly 'restrict-editing'): opens freely, changes need the password.
+      let editPassword = null;
+      if (restrict) ({ bytes, password: editPassword } = await (await import('./utils/restrictPdfEditing.js')).restrictPdfEditing(bytes));
       const fileName = modes.exportFileName(pdfDisplayNameRef.current || pdfFile.name, mode, picked.pages);
       // deliver:false hands the bytes back (OneDrive save-back) instead of saving them.
       if (!deliver) return { ok: true, bytes, fileName };
@@ -25049,12 +25052,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           showToast('The PDF is ready, but the comments could not be saved.', 'warn');
         }
       }
-      if (redactionsSanitized > 0) {
+      if (editPassword) {
+        (await import('./utils/restrictPdfEditing.js')).showRestrictedExportToast(fileName, editPassword);
+      } else if (redactionsSanitized > 0) {
         showToast(`${redactionsSanitized} redaction marks were exported as outlines without their replacement text`, 'info');
       } else if (outcome === 'downloaded') {
         showToast(`Downloaded ${fileName}`, 'success');
       }
-      return { ok: true, fileName };
+      return { ok: true, fileName, ...(editPassword ? { editPassword } : {}) };
     } catch (err) {
       console.error('[ExportPdfWithOptions] failed:', err);
       return { ok: false, error: `Export failed: ${err?.message || err}` };
@@ -31976,8 +31981,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     const annotIdx = Array.isArray(annotationIndices) ? annotationIndices.filter((n) => typeof n === 'number') : [];
     const calIds = Array.isArray(calloutIds) ? calloutIds.filter((s) => typeof s === 'string') : [];
 
-    const page = annotationsByPageRef.current?.[pageNumber];
-    if (!page) return;
+    // A page whose group is only callouts may have no marks JSON yet: the
+    // callouts still ungroup.
+    const page = annotationsByPageRef.current?.[pageNumber] || { objects: [] };
 
     // Step 1: collect every distinct groupId touched by the supplied members.
     const groupIds = new Set();
@@ -38614,6 +38620,9 @@ ${pageBlocks}
         requestBulkDelete: (args) => requestBulkDeleteRef.current?.(args),
         // Owner ruling 2026-09-28: Lock / Unlock on every object menu.
         toggleLockSelection: handleToggleMarkLock,
+        // Nightly 'group-marks': Group / Ungroup (the menu checks the flag).
+        groupSelection: handleGroupSelected,
+        ungroupSelection: handleUngroupSelected,
         // Layers beta: Move to layer ▸.
         moveSelectionToLayer: layersEnabled ? handleMoveMarksToLayer : null,
         layerState: layersEnabled ? layerState : null,

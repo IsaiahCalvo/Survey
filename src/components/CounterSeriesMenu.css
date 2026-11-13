@@ -1,12 +1,13 @@
 .counter-series-menu { width: 100%; max-height: min(420px, 60vh); overflow-y: auto; color: var(--text-2); }
 .counter-series-menu__row { padding: 5px 8px 8px; border-bottom: 1px solid var(--border); }
 .counter-series-menu button { border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; border-radius: 5px; min-height: 36px; }
-.counter-series-menu button:hover { background: var(--hover); }
+/* The current count keeps its raised surface under the pointer. */
+.counter-series-menu button:not(.is-active):hover { background: var(--hover); }
 .counter-series-menu button:focus-visible, .counter-series-menu input:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .counter-series-menu__continue { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 12px; padding: 5px 8px; text-align: left; }
 .counter-series-menu__continue > span { overflow-wrap: anywhere; min-width: 0; }
 .counter-series-menu__continue small { white-space: nowrap; color: var(--text-3); font-size: 11px; }
-.counter-series-menu__continue.is-active { color: var(--accent); }
+.counter-series-menu__continue.is-active { color: var(--text-1); font-weight: 600; background: var(--surface-3); }
 .counter-series-menu__actions { display: flex; gap: 4px; }
 .counter-series-menu__actions button { padding: 0 8px; font-size: 12px; }
 .counter-series-menu .counter-series-menu__delete { color: var(--danger-text); }
@@ -19,13 +20,36 @@
 
 /* The counts list (beta 'counter-list'; CounterSeriesList). The app's list
    grammar: 32px rows, grip on the left, quiet icon buttons on the right, the
-   chosen row on the accent wash, the shared colour picker folding open under
-   its row. */
+   shared colour picker folding open under its row.
+   Owner 2026-11-12: "you can't really tell where the color palette ends and
+   the new count row starts, and the separation within the color palette is
+   missing", and no gold border or gold words for the chosen count. So:
+   - a hairline between rows;
+   - the open count is a framed well (surface-1, neutral hairline frame) with
+     a line under its row and one between the quick colours and the grid;
+   - the count the tool is on steps up to surface-3 with white 600 words;
+   - the open pin button steps up a surface; no accent ring. */
 .counter-list { display: flex; flex-direction: column; min-height: 0; width: 100%; color: var(--text-2); font: 400 12px/16px var(--font-ui); }
-.counter-list__rows { min-height: 0; max-height: min(360px, 55vh); overflow-y: auto; overscroll-behavior: contain; }
-.counter-list__item { border-radius: var(--chrome-radius, 6px); background: var(--surface-2); }
-.counter-list__item.is-active { background: var(--surface-3); }
-.counter-list__item.is-open { background: var(--surface-3); }
+.counter-list__rows { min-height: 0; max-height: min(640px, calc(100vh - 180px)); overflow-y: auto; overscroll-behavior: contain; }
+.counter-list__item { position: relative; border-radius: var(--chrome-radius, 6px); background: transparent; }
+/* Each row sits in its sortable wrapper, so the line is drawn between
+   wrappers. */
+.counter-list__rows [data-sortable-rearrange-item] + [data-sortable-rearrange-item] > .counter-list__item::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  top: 0;
+  height: 1px;
+  background: var(--border);
+  pointer-events: none;
+}
+.counter-list__item.is-open { margin: 4px 0; background: var(--surface-1); box-shadow: inset 0 0 0 1px var(--border); }
+.counter-list__rows [data-sortable-rearrange-item]:first-child > .counter-list__item.is-open { margin-top: 0; }
+.counter-list__rows [data-sortable-rearrange-item] > .counter-list__item.is-open::before,
+.counter-list__rows [data-sortable-rearrange-item]:has(> .counter-list__item.is-open) + [data-sortable-rearrange-item] > .counter-list__item::before { display: none; }
+.counter-list__item.is-active > .counter-list__row { background: var(--surface-3); border-radius: var(--chrome-radius, 6px); }
+.counter-list__item.is-open.is-active > .counter-list__row { border-radius: var(--chrome-radius, 6px) var(--chrome-radius, 6px) 0 0; }
 .counter-list__row { display: flex; align-items: center; gap: 2px; min-height: 30px; padding: 0 2px; }
 :where(.counter-list button) { border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; padding: 0; }
 .counter-list button:focus-visible, .counter-list input:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
@@ -42,7 +66,7 @@
   transition: transform 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
 }
 .counter-list__pin-glyph { width: 22px; height: 22px; display: block; overflow: visible; filter: drop-shadow(0 0 0.5px rgba(0, 0, 0, 0.45)); }
-.counter-list__pin[aria-expanded='true'] { box-shadow: 0 0 0 1.5px var(--accent); }
+.counter-list__pin[aria-expanded='true'] { background: var(--surface-3); }
 .counter-list__pin:active { transform: scale(0.92); }
 .counter-list__name {
   flex: 1 1 auto;
@@ -56,7 +80,7 @@
   text-align: left;
 }
 .counter-list__label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-1); }
-.counter-list__item.is-active .counter-list__label { font-weight: 600; color: var(--accent); }
+.counter-list__item.is-active .counter-list__label { font-weight: 600; color: var(--text-1); }
 .counter-list__count { flex: none; color: var(--text-3); font-size: 11px; font-variant-numeric: tabular-nums; }
 .counter-list__name-input {
   flex: 1 1 auto;
@@ -92,7 +116,24 @@
 /* The colour picker at the size of every other annotation's picker: the
    desktop picker's 188px content column (CompactColorPicker DESKTOP_CONTENT_W),
    centred, instead of stretching its cells across the whole list. */
-.counter-list__colors { width: 188px; max-width: 100%; margin: 0 auto; padding: 4px 0 8px; box-sizing: content-box; }
+.counter-list__colors { width: 188px; max-width: 100%; margin: 0 auto; padding: 10px 0 10px; box-sizing: content-box; position: relative; }
+/* The line under the open count's row, edge to edge of its well. */
+.counter-list__colors::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: calc(100% + 40px);
+  max-width: 236px;
+  height: 1px;
+  transform: translateX(-50%);
+  background: var(--border);
+  pointer-events: none;
+}
+/* Quick colours (and Recent), then a line, then the grid or spectrum. The
+   picker's own divider element sits just before the colour area, so the line
+   stays under the last disc row in both views, with or without Recent. */
+.counter-list__colors [data-picker-area-divider] { display: block !important; height: 1px; background: var(--border); }
 .counter-list__colors-loading { height: 200px; }
 .counter-list__start { display: flex; align-items: center; gap: 6px; margin: 0 0 8px; color: var(--text-3); font-size: 11px; }
 .counter-list__start input {
