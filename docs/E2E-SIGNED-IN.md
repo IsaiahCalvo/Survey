@@ -97,15 +97,15 @@ it in `.github/workflows/e2e-signed-in.yml` (manual dispatch, and pull requests
 that touch app/migration/E2E files). That workflow is informational: deploys do
 not depend on it.
 
-CI splits the specs across six machines at once, each with its own stack, and
+CI splits the specs across eight machines at once (35 minute cap each), each with its own stack, and
 the `Signed-in E2E` check turns green only when every shard passed. The split
 (`scripts/e2e-signed-in-shard.mjs`) balances shards by the per-spec seconds in
 `tests/e2e-signed-in/spec-seconds.json`. A new spec with no entry still runs
 (it counts as a median spec). Refresh the seconds now and then from the logs of
 a green run's shard jobs:
 `node scripts/e2e-signed-in-shard.mjs --record shard1.log shard2.log …`
-(see a split: `node scripts/e2e-signed-in-shard.mjs --plan 5`; run one shard
-locally: `npm run test:e2e:signed-in -- $(node scripts/e2e-signed-in-shard.mjs 2 5)`).
+(see a split: `node scripts/e2e-signed-in-shard.mjs --plan 8`; run one shard
+locally: `npm run test:e2e:signed-in -- $(node scripts/e2e-signed-in-shard.mjs 2 8)`).
 Because shards each start from a fresh seed, a spec must never count on what
 an earlier spec left in the database.
 
