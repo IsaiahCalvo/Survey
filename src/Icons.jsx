@@ -1031,6 +1031,10 @@ const ICON_RENDERERS = {
       'M3 12h3.28a1 1 0 0 1 .948.684l2.298 7.934a.5.5 0 0 0 .96-.044L13.82 4.771A1 1 0 0 1 14.792 4H21',
     ]),
     // Hatch fill (Drawboard hatch patterns): Tabler "texture" (MIT).
+    // Nightly 'audio-note': Lucide audio-lines (ISC).
+    audioNote: (size, color, style, className) => strokeGlyph(size, color, style, className, [
+      'M2 10v3', 'M6 6v11', 'M10 3v18', 'M14 8v7', 'M18 5v13', 'M22 10v3',
+    ]),
     // Nightly 'hatch-fill': the pattern choices in the properties panel.
     hatchDiagonal: (size, color, style, className) => strokeGlyph(size, color, style, className, [
       HATCH_BOX, 'M4 12l8-8', 'M5 19L19 5', 'M12 20l8-8',

@@ -447,7 +447,7 @@ export default function SelectionQuickBar({
   // The bar's size changes with what it holds; place it again for that size.
   useLayoutEffect(() => {
     if (active) place();
-  }, [active, place, plan?.colour, plan?.width, plan?.style, plan?.remove, plan?.measure, plan?.link, plan?.note, plan?.equation, propertiesPanelOpen]);
+  }, [active, place, plan?.colour, plan?.width, plan?.style, plan?.remove, plan?.measure, plan?.link, plan?.note, plan?.equation, plan?.audio, propertiesPanelOpen]);
 
   // The Line popover's dismiss rules (outside press, Escape) are the app's.
   // KAL-66: opened from a keyboard, focus goes into it and Up / Down move
@@ -661,6 +661,14 @@ export default function SelectionQuickBar({
           {goTo}
         </button>
         {plan.linkEdit && button('Link', 'hyperlink', () => api.editSelectedLink(), { 'data-selection-quick-link-edit': '' })}
+      </span>,
+    );
+  }
+  // Audio note (Nightly 'audio-note'): Play plays the picked clip (again stops it).
+  if (plan?.audio) {
+    groups.push(
+      <span key="audio" className="selection-quick-bar__group" data-selection-quick-audio>
+        {button('Play audio note', 'play', () => api.playSelectedAudio(), { 'data-selection-quick-audio-play': '' })}
       </span>,
     );
   }

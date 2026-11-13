@@ -409,6 +409,7 @@ import { pickImageToInsert } from './components/InsertImage.jsx';
 import LinkToolHost from './components/LinkToolHost.jsx';
 import StickyNoteHost from './components/StickyNoteHost.jsx';
 import EquationHost from './components/EquationHost.jsx';
+import AudioNoteHost from './components/AudioNoteHost.jsx';
 import PagePinsHost from './components/pins/PagePinsHost.jsx';
 import { readDefaultMeasureScale, saveDefaultMeasureScale, withDefaultMeasureScale } from './utils/measure/measureFormat.js';
 import PagePinsLayer from './components/pins/PagePinsLayer.jsx';
@@ -417,6 +418,7 @@ import { LINK_EDIT_EVENT, applyLinkEdit, selectedLinkOf } from './utils/linkTool
 import { NOTE_EDIT_EVENT, applyNoteEdit, selectedNoteOf } from './utils/stickyNote.js';
 import { applyHatch, hatchPatternOf, hatchShapeKind } from './utils/hatchFill.js';
 import { EQUATION_EDIT_EVENT, EQUATION_OPEN_EVENT, applyEquationEdit, selectedEquationOf } from './utils/equation.js';
+import { AUDIO_NOTE_OPEN_EVENT, AUDIO_NOTE_PLAY_EVENT, selectedAudioOf } from './utils/audioNote.js';
 import SnapshotTool from './components/SnapshotTool.jsx';
 import PageTemplatePicker from './components/PageTemplatePicker.jsx';
 import { useTextHighlightMode, textDragKindOf } from './hooks/useTextHighlightMode.js';
@@ -3265,6 +3267,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const [noteToolEnabled] = useState(() => isFeatureOn('note-tool'));
   const [hatchFillEnabled] = useState(() => isFeatureOn('hatch-fill'));
   const [equationToolEnabled] = useState(() => isFeatureOn('equation-tool'));
+  const [audioNoteEnabled] = useState(() => isFeatureOn('audio-note'));
   const [measureAngleEnabled] = useState(() => isFeatureOn('measure-angle'));
   const prevMeasureModeRef = useRef(null);
   useEffect(() => {
@@ -27580,6 +27583,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const editSelectedEquation = useCallback(() => {
     window.dispatchEvent(new CustomEvent(EQUATION_EDIT_EVENT));
   }, []);
+  // Nightly 'audio-note': the one picked audio note (its clip).
+  const selectedAudioForHost = useMemo(() => {
+    if (!audioNoteEnabled || !selectedToolbarAnnotation || selectedToolbarCallout) return null;
+    const pageObjects = annotationsByPage?.[selectedToolbarAnnotation.pageNumber]?.objects || [];
+    const index = findSelectedAnnotationIndex(pageObjects, selectedToolbarAnnotation);
+    const obj = (index >= 0 ? pageObjects[index] : null) || selectedToolbarAnnotation.annotation;
+    return selectedAudioOf(obj, getAnnotationRenderIdentity(obj).annotationId);
+  }, [audioNoteEnabled, selectedToolbarAnnotation, selectedToolbarCallout, annotationsByPage]);
+  const playSelectedAudio = useCallback(() => {
+    window.dispatchEvent(new CustomEvent(AUDIO_NOTE_PLAY_EVENT));
+  }, []);
   // Nightly 'hatch-fill': the one picked shape that can hold a pattern.
   const selectedHatchForPanel = useMemo(() => {
     if (!hatchFillEnabled || !selectedToolbarAnnotation || selectedToolbarCallout) return null;
@@ -27916,6 +27930,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       // One picked equation (Nightly 'equation-tool'): Equation opens it again.
       selectedEquation: equationToolEnabled && !groupSummary ? selectedEquationForHost : null,
       editSelectedEquation: equationToolEnabled ? editSelectedEquation : null,
+      // One picked audio note (Nightly 'audio-note'): Play plays it.
+      selectedAudio: audioNoteEnabled && !groupSummary ? selectedAudioForHost : null,
+      playSelectedAudio: audioNoteEnabled ? playSelectedAudio : null,
       // Nightly 'comment-pins': only a cloud document with a signed-in user.
       pinsAvailable: pinsDocOn,
       selectionMixed: groupSummary ? groupSummary.mixed : null,
@@ -28090,6 +28107,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     handleSetSelectedHatch,
     selectedEquationForHost,
     editSelectedEquation,
+    selectedAudioForHost,
+    playSelectedAudio,
     pickBarTool,
     liveTextSelection,
     selectionMode,
@@ -38636,6 +38655,13 @@ ${pageBlocks}
           onPatchSelectedEquation={handlePatchSelectedEquation}
         />
       )}
+      {audioNoteEnabled && (
+        <AudioNoteHost
+          isActive={isActive !== false}
+          readOnly={Boolean(documentLocked) || yjsDocRole === 'viewer'}
+          selectedAudio={selectedAudioForHost}
+        />
+      )}
       {noteToolEnabled && (
         <StickyNoteHost
           isActive={isActive !== false}
@@ -41730,6 +41756,8 @@ ${pageBlocks}
                   ...(noteToolEnabled ? [{ id: 'sticky-note', label: 'Note', iconName: 'stickyNote' }] : []),
                   // Nightly 'equation-tool': type LaTeX, it lands mid-page as a picture.
                   ...(equationToolEnabled ? [{ id: 'equation', label: 'Equation', iconName: 'equation', action: 'equation' }] : []),
+                  // Nightly 'audio-note': record or pick a clip, pinned mid-page as a speaker badge.
+                  ...(audioNoteEnabled ? [{ id: 'audio-note', label: 'Audio note', iconName: 'audioNote', action: 'audio-note' }] : []),
                   // TODO: Revisit native PDF text markup tools later. Underline,
                   // squiggly, and strike-through are hidden from the toolbar for now.
                   // { id: 'underline', label: 'Underline', iconName: 'underline', menu: 'underline' },
@@ -41763,9 +41791,9 @@ ${pageBlocks}
                       setStampPickerOpen(!stampPickerOpen);
                       return;
                     }
-                    if (t.action === 'equation') {
+                    if (t.action === 'equation' || t.action === 'audio-note') {
                       if (stampPickerOpen) setStampPickerOpen(false);
-                      window.dispatchEvent(new CustomEvent(EQUATION_OPEN_EVENT));
+                      window.dispatchEvent(new CustomEvent(t.action === 'equation' ? EQUATION_OPEN_EVENT : AUDIO_NOTE_OPEN_EVENT));
                       return;
                     }
                     if (t.action) {

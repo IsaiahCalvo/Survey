@@ -215,6 +215,11 @@ export function planSelectionQuickBar({ items, api, entityCount = 0, locked = fa
     && typeof api?.editSelectedEquation === 'function'
     && api?.selectedEquation != null
     && String(api.selectedEquation.id) === String(list[0].id);
+  // One audio note (Nightly 'audio-note'): Play plays it (also when locked).
+  const audio = list.length === 1
+    && typeof api?.playSelectedAudio === 'function'
+    && api?.selectedAudio != null
+    && String(api.selectedAudio.id) === String(list[0].id);
   const style = !link && !locked && !anyNoPaint && every(STYLE_KINDS)
     && typeof api?.setLineBorderStyle === 'function'
     && caps?.lineStyle !== false;
@@ -233,6 +238,7 @@ export function planSelectionQuickBar({ items, api, entityCount = 0, locked = fa
     ...(link ? { link: true, linkEdit: !locked && typeof api?.editSelectedLink === 'function' } : {}),
     ...(note ? { note: true } : {}),
     ...(equation ? { equation: true } : {}),
+    ...(audio ? { audio: true } : {}),
     duplicate: true,
     remove: !locked,
     more: true,

@@ -1,5 +1,6 @@
 import { CounterSeriesPicker } from '../components/CounterSeriesMenu.jsx';
 import { EQUATION_OPEN_EVENT } from '../utils/equation.js';
+import { AUDIO_NOTE_OPEN_EVENT } from '../utils/audioNote.js';
 import { useBackLayer } from '../utils/backNavigation.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -195,6 +196,8 @@ const TOOL_GROUPS = {
       { id: 'sticky-note', label: 'Note', icon: 'stickyNote', flag: 'note-tool' },
       // Nightly 'equation-tool': type LaTeX, it lands mid-page.
       { id: 'equation', label: 'Equation', icon: 'equation', flag: 'equation-tool', action: 'equation' },
+      // Nightly 'audio-note': record or pick a clip, pinned mid-page.
+      { id: 'audio-note', label: 'Audio note', icon: 'audioNote', flag: 'audio-note', action: 'audio-note' },
     ],
   },
 };
@@ -3228,6 +3231,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                       if (signatureCardOpen) setSignatureCardOpen(false);
                       if (tool.picker) { setStampPickerOpen(!stampPickerOpen); return; }
                       if (tool.action === 'equation') { if (stampPickerOpen) setStampPickerOpen(false); window.dispatchEvent(new CustomEvent(EQUATION_OPEN_EVENT)); return; }
+                      if (tool.action === 'audio-note') { if (stampPickerOpen) setStampPickerOpen(false); window.dispatchEvent(new CustomEvent(AUDIO_NOTE_OPEN_EVENT)); return; }
                       if (tool.action) { if (stampPickerOpen) setStampPickerOpen(false); pickImageToInsert(); return; }
                       if (stampPickerOpen) setStampPickerOpen(false);
                       selectTool(tool.id);

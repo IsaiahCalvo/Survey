@@ -62,7 +62,7 @@ test('an edit keeps how much the equation was resized', () => {
 test('toolbar, phone rail and picked bar are wired', () => {
   const viewer = read('src/PDFViewer.jsx');
   assert.match(viewer, /equationToolEnabled \? \[\{ id: 'equation', label: 'Equation', iconName: 'equation', action: 'equation' \}\]/);
-  assert.match(viewer, /if \(t\.action === 'equation'\) \{[\s\S]{0,300}EQUATION_OPEN_EVENT/);
+  assert.match(viewer, /if \(t\.action === 'equation' \|\| t\.action === 'audio-note'\) \{[\s\S]{0,300}EQUATION_OPEN_EVENT/);
   assert.match(read('src/mobile/MobilePdfViewerChrome.jsx'), /\{ id: 'equation', label: 'Equation', icon: 'equation', flag: 'equation-tool', action: 'equation' \}/);
   const api = { selectedEquation: { id: 'e1', tex: 'x', color: EQUATION_DEFAULT_COLOR }, editSelectedEquation: () => {} };
   assert.equal(planSelectionQuickBar({ items: [{ id: 'e1', typeKey: 'image' }], api }).equation, true);

@@ -535,6 +535,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Equation tool: type LaTeX and drop the drawn equation on the page; Equation on the picked bar changes it',
     stage: 'beta',
   }),
+  'audio-note': Object.freeze({
+    label: 'Audio note: record a short voice note (or pick an audio file) and pin it to the page; Play on the picked bar plays it',
+    stage: 'beta',
+  }),
   'note-tool': Object.freeze({
     label: 'Note tool: click the page to leave a sticky note with words; exports as a PDF note',
     stage: 'beta',
