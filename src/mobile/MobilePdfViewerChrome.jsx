@@ -20,6 +20,8 @@ import PenTypeTiles from '../components/PenTypePicker.jsx';
 import { setStampPickerOpen, useStampPickerOpen } from '../components/StampPickerCard.jsx';
 import { setSignatureCardOpen, useSignatureCardOpen } from '../components/SignatureCard.jsx';
 import { pickImageToInsert } from '../components/InsertImage.jsx';
+import { IMAGE_CAMERA_OPEN_EVENT } from '../components/ImageCameraHost.jsx';
+import { toggleRuler, useRulerOn } from '../utils/ruler.js';
 import { quickColoursForTool } from '../utils/quickStylePresets.js';
 import SnappingToggle, { SnapContentToggle } from '../components/SnappingToggle.jsx';
 import { composeTextColor, splitTextColor } from '../utils/textColorOpacity';
@@ -152,6 +154,8 @@ const TOOL_GROUPS = {
          wearing one name. The toggle keeps its own names, and they are the ones
          that mean partial and whole. */
       { id: 'eraser', label: 'Eraser', icon: 'eraser' },
+      // Nightly 'ruler-tool': a straight edge on the screen (a switch, not a tool).
+      { id: 'ruler', label: 'Ruler', icon: 'ruler', flag: 'ruler-tool', toggle: true },
     ],
   },
   shape: {
@@ -186,6 +190,8 @@ const TOOL_GROUPS = {
       { id: 'stamp', label: 'Stamp', icon: 'stamp', flag: 'stamp-tool', picker: true },
       // Nightly 'insert-image': picks a photo or picture and drops it mid-page.
       { id: 'image', label: 'Image', icon: 'image', flag: 'insert-image', action: true },
+      // Nightly 'image-camera': opens the phone's camera; the photo lands mid-page.
+      { id: 'camera', label: 'Camera', icon: 'camera', flag: 'image-camera', action: 'camera' },
       // Nightly 'link-tool': drag a box, then say where it links.
       { id: 'hyperlink', label: 'Hyperlink', icon: 'hyperlink', flag: 'link-tool' },
       // Pins save on a cloud document: hidden on a device file or signed out.
@@ -3021,6 +3027,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
   const [measureMenuRect, setMeasureMenuRect] = useState(null);
   const stampPickerOpen = useStampPickerOpen();
   const signatureCardOpen = useSignatureCardOpen();
+  const rulerOn = useRulerOn();
   const selectTool = (toolId) => {
     bottomToolbarApi?.setActiveTool?.(toolId);
     bottomToolbarApi?.setActiveCategoryDropdown?.(null);
@@ -3218,7 +3225,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                 ) : (
                   <RailButton
                     key={tool.id}
-                    active={tool.picker === 'signature' ? signatureCardOpen : tool.picker ? stampPickerOpen : activeTool === tool.id}
+                    active={tool.toggle ? rulerOn : tool.picker === 'signature' ? signatureCardOpen : tool.picker ? stampPickerOpen : activeTool === tool.id}
                     icon={tool.icon}
                     glyph={SUBTOOL_GLYPH}
                     label={tool.label}
@@ -3227,10 +3234,12 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                     data-tool-switch="true"
                     onClick={() => {
                       if (tool.disabled) return;
+                      if (tool.toggle) { toggleRuler(); return; }
                       if (tool.picker === 'signature') { if (stampPickerOpen) setStampPickerOpen(false); setSignatureCardOpen(!signatureCardOpen); return; }
                       if (signatureCardOpen) setSignatureCardOpen(false);
                       if (tool.picker) { setStampPickerOpen(!stampPickerOpen); return; }
                       if (tool.action === 'equation') { if (stampPickerOpen) setStampPickerOpen(false); window.dispatchEvent(new CustomEvent(EQUATION_OPEN_EVENT)); return; }
+                      if (tool.action === 'camera') { if (stampPickerOpen) setStampPickerOpen(false); window.dispatchEvent(new CustomEvent(IMAGE_CAMERA_OPEN_EVENT)); return; }
                       if (tool.action === 'audio-note') { if (stampPickerOpen) setStampPickerOpen(false); window.dispatchEvent(new CustomEvent(AUDIO_NOTE_OPEN_EVENT)); return; }
                       if (tool.action) { if (stampPickerOpen) setStampPickerOpen(false); pickImageToInsert(); return; }
                       if (stampPickerOpen) setStampPickerOpen(false);

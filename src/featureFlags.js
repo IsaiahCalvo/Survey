@@ -527,6 +527,18 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Underline, Squiggle, Strikethrough and Redact text tools: drag over words and letting go marks them',
     stage: 'beta',
   }),
+  'text-review-remove': Object.freeze({
+    label: 'Remove text marks tool: drag over words and their highlight, underline, squiggle and strike-through come off',
+    stage: 'beta',
+  }),
+  'image-camera': Object.freeze({
+    label: 'Camera on Image: take a photo with the camera and drop it on the page',
+    stage: 'beta',
+  }),
+  'ruler-tool': Object.freeze({
+    label: 'Ruler: a straight edge you move and turn on the page; pen lines drawn along it come out straight',
+    stage: 'beta',
+  }),
   'hatch-fill': Object.freeze({
     label: 'Hatch fill: rectangles, ellipses, polygons and clouds can be filled with diagonal, cross, horizontal, vertical or grid lines',
     stage: 'beta',
