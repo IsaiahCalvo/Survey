@@ -8293,9 +8293,11 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
       // generic fabric shape (Highlight/Text/Caret), re-emit that subtype so
       // the re-exported file keeps the annotation's real identity. All other
       // objects fall through to the fabric-type switch below.
+      // Nightly 'note-tool': a sticky note made in Survey is a /Text note
+      // with its words in /Contents, like an imported one.
       const editedImportSubtypeWriter = item.editedImportedReplacement
         ? EDITED_IMPORT_SUBTYPE_WRITERS[obj?.pdfAnnotationType || obj?.data?.pdfAnnotationType]
-        : null;
+        : (obj?.data?.type === 'note' && obj?.data?.surveyNote === true ? createImportedTextNoteAnnotation : null);
 
       if (editedImportSubtypeWriter) {
         annotRef = editedImportSubtypeWriter(pdfDoc, page, obj, pageHeight, appAnnotationOptions);

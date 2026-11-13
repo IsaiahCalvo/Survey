@@ -59,7 +59,7 @@ export function showsSurveyRow(api) {
 
 // Nightly tools whose button sits in a group's row but which make no mark of
 // that group: the row still shows while they are armed (Shift+H, N).
-const BETA_TOOL_ROWS = Object.freeze({ hyperlink: 'review', pin: 'review' });
+const BETA_TOOL_ROWS = Object.freeze({ hyperlink: 'review', pin: 'review', 'sticky-note': 'review' });
 /**
  * Does the survey bar push the page down (data-viewer-top-push) or lie over
  * it? Owner 2026-11-10: a click on a Survey Marker must only pick it. The bar

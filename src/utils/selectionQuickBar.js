@@ -205,6 +205,11 @@ export function planSelectionQuickBar({ items, api, entityCount = 0, locked = fa
     && typeof api?.followLink === 'function'
     && api?.selectedLink?.link != null
     && String(api.selectedLink.id) === String(list[0].id);
+  // One sticky note (Nightly 'note-tool'): Note opens its words.
+  const note = list.length === 1
+    && typeof api?.editSelectedNote === 'function'
+    && api?.selectedNote != null
+    && String(api.selectedNote.id) === String(list[0].id);
   const style = !link && !locked && !anyNoPaint && every(STYLE_KINDS)
     && typeof api?.setLineBorderStyle === 'function'
     && caps?.lineStyle !== false;
@@ -221,6 +226,7 @@ export function planSelectionQuickBar({ items, api, entityCount = 0, locked = fa
     // Only present when shown, so every other pick plans exactly as before.
     ...(measure ? { measure: true } : {}),
     ...(link ? { link: true, linkEdit: !locked && typeof api?.editSelectedLink === 'function' } : {}),
+    ...(note ? { note: true } : {}),
     duplicate: true,
     remove: !locked,
     more: true,

@@ -527,6 +527,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Underline, Squiggle, Strikethrough and Redact text tools: drag over words and letting go marks them',
     stage: 'beta',
   }),
+  'note-tool': Object.freeze({
+    label: 'Note tool: click the page to leave a sticky note with words; exports as a PDF note',
+    stage: 'beta',
+  }),
   'page-turn-keys': Object.freeze({
     label: 'Keys: with nothing picked, Left / Right and Shift + Up / Down turn the page',
     stage: 'beta',

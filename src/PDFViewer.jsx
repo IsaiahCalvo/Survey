@@ -407,11 +407,13 @@ import { setStampPickerOpen, useStampPickerOpen } from './components/StampPicker
 import { setSignatureCardOpen, useSignatureCardOpen } from './components/SignatureCard.jsx';
 import { pickImageToInsert } from './components/InsertImage.jsx';
 import LinkToolHost from './components/LinkToolHost.jsx';
+import StickyNoteHost from './components/StickyNoteHost.jsx';
 import PagePinsHost from './components/pins/PagePinsHost.jsx';
 import { readDefaultMeasureScale, saveDefaultMeasureScale, withDefaultMeasureScale } from './utils/measure/measureFormat.js';
 import PagePinsLayer from './components/pins/PagePinsLayer.jsx';
 import { PinToolButton } from './components/pins/PinControls.jsx';
 import { LINK_EDIT_EVENT, applyLinkEdit, selectedLinkOf } from './utils/linkTool.js';
+import { NOTE_EDIT_EVENT, applyNoteEdit, selectedNoteOf } from './utils/stickyNote.js';
 import SnapshotTool from './components/SnapshotTool.jsx';
 import PageTemplatePicker from './components/PageTemplatePicker.jsx';
 import { useTextHighlightMode, textDragKindOf } from './hooks/useTextHighlightMode.js';
@@ -3257,6 +3259,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const [tapeToolEnabled] = useState(() => isFeatureOn('tape-tool'));
   // Nightly 'laser-pointer': Drawboard Free-form > Laser pointer (never saved).
   const [laserToolEnabled] = useState(() => isFeatureOn('laser-pointer'));
+  const [noteToolEnabled] = useState(() => isFeatureOn('note-tool'));
   const [measureAngleEnabled] = useState(() => isFeatureOn('measure-angle'));
   const prevMeasureModeRef = useRef(null);
   useEffect(() => {
@@ -3880,6 +3883,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // and one Undo step like the Measurement popover.
   const handlePatchSelectedLink = useCallback((changes) => {
     handlePatchSelectedAnnotation({}, (obj) => applyLinkEdit(obj, changes));
+  }, [handlePatchSelectedAnnotation]);
+  // Nightly 'note-tool': the picked note's words / colour, same one-save write.
+  const handlePatchSelectedNote = useCallback((changes) => {
+    handlePatchSelectedAnnotation({}, (obj) => applyNoteEdit(obj, changes));
   }, [handlePatchSelectedAnnotation]);
   const [zoomGeneration, setZoomGeneration] = useState(0);
   // Edit mode state: tracks which annotation is being edited via double-click
@@ -27538,6 +27545,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const editSelectedLink = useCallback(() => {
     window.dispatchEvent(new CustomEvent(LINK_EDIT_EVENT));
   }, []);
+  // Nightly 'note-tool': the one picked sticky note (its words and colour).
+  const selectedNoteForHost = useMemo(() => {
+    if (!noteToolEnabled || !selectedToolbarAnnotation || selectedToolbarCallout) return null;
+    const pageObjects = annotationsByPage?.[selectedToolbarAnnotation.pageNumber]?.objects || [];
+    const index = findSelectedAnnotationIndex(pageObjects, selectedToolbarAnnotation);
+    const obj = (index >= 0 ? pageObjects[index] : null) || selectedToolbarAnnotation.annotation;
+    return selectedNoteOf(obj, getAnnotationRenderIdentity(obj).annotationId);
+  }, [noteToolEnabled, selectedToolbarAnnotation, selectedToolbarCallout, annotationsByPage]);
+  const editSelectedNote = useCallback(() => {
+    window.dispatchEvent(new CustomEvent(NOTE_EDIT_EVENT));
+  }, []);
 
   // UX 2026-05-13: Publish bottom toolbar state to the App shell when this tab
   // is active. Keep this effect below every value in the API object to avoid
@@ -27856,6 +27874,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       selectedLink: linkToolOn && !groupSummary ? selectedLinkForHost : null,
       followLink: linkToolOn ? followLink : null,
       editSelectedLink: linkToolOn ? editSelectedLink : null,
+      // One picked sticky note (Nightly 'note-tool'): Note opens its words.
+      selectedNote: noteToolEnabled && !groupSummary ? selectedNoteForHost : null,
+      editSelectedNote: noteToolEnabled ? editSelectedNote : null,
       // Nightly 'comment-pins': only a cloud document with a signed-in user.
       pinsAvailable: pinsDocOn,
       selectionMixed: groupSummary ? groupSummary.mixed : null,
@@ -28024,6 +28045,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     selectedLinkForHost,
     followLink,
     editSelectedLink,
+    selectedNoteForHost,
+    editSelectedNote,
     pickBarTool,
     liveTextSelection,
     selectionMode,
@@ -38562,6 +38585,16 @@ ${pageBlocks}
           onPatchSelectedLink={handlePatchSelectedLink}
         />
       )}
+      {noteToolEnabled && (
+        <StickyNoteHost
+          isActive={isActive !== false}
+          readOnly={Boolean(documentLocked) || yjsDocRole === 'viewer'}
+          activeTool={activeTool}
+          hostRef={pdfjsWrapperRef}
+          selectedNote={selectedNoteForHost}
+          onPatchSelectedNote={handlePatchSelectedNote}
+        />
+      )}
       {measureScaleDialog && (
         <MeasureScaleDialog
           pageNumber={measureScaleDialog.pageNumber}
@@ -41641,10 +41674,9 @@ ${pageBlocks}
                     { id: 'text-strikeout', label: 'Strike through text', iconName: 'textStrikeTool', highlightMode: 'strikeout' },
                     { id: 'text-redact', label: 'Redact text', iconName: 'textRedactTool', highlightMode: 'redact' },
                   ] : []),
-                  // TODO: Revisit the user-created Note tool later. Imported
-                  // PDF Text/sticky-note annotations still render through
-                  // pdfAnnotationImporter + the normal PDF annotation layers.
-                  // { id: 'note', label: 'Note', iconName: 'note' }
+                  // Nightly 'note-tool': click the page to leave a sticky note.
+                  // Imported PDF notes still render through pdfAnnotationImporter.
+                  ...(noteToolEnabled ? [{ id: 'sticky-note', label: 'Note', iconName: 'stickyNote' }] : []),
                   // TODO: Revisit native PDF text markup tools later. Underline,
                   // squiggly, and strike-through are hidden from the toolbar for now.
                   // { id: 'underline', label: 'Underline', iconName: 'underline', menu: 'underline' },

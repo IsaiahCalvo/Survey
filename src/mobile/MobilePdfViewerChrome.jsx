@@ -190,6 +190,8 @@ const TOOL_GROUPS = {
       { id: 'pin', label: 'Pin', icon: 'pagePin', flag: 'comment-pins', cloudOnly: true },
       // Nightly 'signature-tool': the saved signatures; a tap drops one mid-page.
       { id: 'signature', label: 'Signature', icon: 'signature', flag: 'signature-tool', picker: 'signature' },
+      // Nightly 'note-tool': tap the page to leave a sticky note.
+      { id: 'sticky-note', label: 'Note', icon: 'stickyNote', flag: 'note-tool' },
     ],
   },
 };
