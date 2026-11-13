@@ -199,7 +199,7 @@ test('resolve (KAL-415): rows carry the resolved mark and threads split into Ope
 });
 
 test('resolve (KAL-415): migration, list read and panel wiring', () => {
-  const sql = readFileSync(new URL('../supabase/migrations/20261112150000_mark_comment_resolve.sql', import.meta.url), 'utf8');
+  const sql = readFileSync(new URL('../supabase/migrations/20261113001000_mark_comment_resolve.sql', import.meta.url), 'utf8');
   assert.match(sql, /ADD COLUMN IF NOT EXISTS resolved_at timestamptz/);
   assert.match(sql, /CHECK \(resolved_at IS NULL OR thread_id IS NULL\)/);
   assert.match(sql, /FUNCTION public\.set_mark_comment_resolved\(p_comment_id uuid, p_resolved boolean\)[\s\S]*SECURITY DEFINER[\s\S]*SET search_path = ''/);

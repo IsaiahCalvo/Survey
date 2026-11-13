@@ -18,7 +18,7 @@ const SAMPLE_ID = '1b4e28ba-2fa1-41d2-883f-0016d3cca427';
 
 test('phone-sign is a Nightly beta flag with an off-by-default row', () => {
   assert.equal(FEATURE_FLAGS['phone-sign']?.stage, 'beta');
-  assert.match(read('../supabase/migrations/20261112162000_phone_signatures.sql'), /\('phone-sign', 'off'/);
+  assert.match(read('../supabase/migrations/20261113004000_phone_signatures.sql'), /\('phone-sign', 'off'/);
 });
 
 test('strokes pack small and come back the same', () => {
@@ -62,7 +62,7 @@ test('the phone sends through the one-time RPC, never a table write', async () =
 });
 
 test('the server side: owner-only rows, the anonymous phone only through the RPC', () => {
-  const sql = read('../supabase/migrations/20261112162000_phone_signatures.sql');
+  const sql = read('../supabase/migrations/20261113004000_phone_signatures.sql');
   assert.match(sql, /ENABLE ROW LEVEL SECURITY/);
   assert.match(sql, /REVOKE ALL ON public\.phone_signatures FROM anon;/);
   assert.match(sql, /SECURITY DEFINER\s+SET search_path = ''/);

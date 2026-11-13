@@ -42,7 +42,7 @@ async function pdfjsText(bytes, password) {
 
 test('the flag is a Nightly beta flag with its row', () => {
   assert.equal(FEATURE_FLAGS['restrict-editing']?.stage, 'beta');
-  assert.match(read('supabase/migrations/20261112172000_restrict_editing_flag.sql'), /'restrict-editing', 'off'/);
+  assert.match(read('supabase/migrations/20261113007000_restrict_editing_flag.sql'), /'restrict-editing', 'off'/);
 });
 
 test('the password: 12 easy-to-read letters in three groups, random each time', () => {

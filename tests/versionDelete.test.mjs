@@ -146,7 +146,7 @@ test('refreshes after a delete and its Undo go through the guarded look (Bugbot 
 });
 
 test('sharing follows the latest copy, and a deleted copy is never current (Bugbot on #1422)', () => {
-  const follow = readFileSync(new URL('../supabase/migrations/20261112171500_version_delete_sharing.sql', import.meta.url), 'utf8');
+  const follow = readFileSync(new URL('../supabase/migrations/20261113006000_version_delete_sharing.sql', import.meta.url), 'utf8');
   // The same things supersede_document carries: people, the owner, open invites, live guest links and their guests.
   assert.match(follow, /FUNCTION public\.move_document_sharing\(p_from uuid, p_to uuid, p_by uuid\)/);
   assert.match(follow, /INSERT INTO public\.document_collaborators[\s\S]*c\.status IN \('active', 'pending'\)/);
