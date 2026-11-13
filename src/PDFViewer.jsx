@@ -414,6 +414,7 @@ import PagePinsLayer from './components/pins/PagePinsLayer.jsx';
 import { PinToolButton } from './components/pins/PinControls.jsx';
 import { LINK_EDIT_EVENT, applyLinkEdit, selectedLinkOf } from './utils/linkTool.js';
 import { NOTE_EDIT_EVENT, applyNoteEdit, selectedNoteOf } from './utils/stickyNote.js';
+import { applyHatch, hatchPatternOf, hatchShapeKind } from './utils/hatchFill.js';
 import SnapshotTool from './components/SnapshotTool.jsx';
 import PageTemplatePicker from './components/PageTemplatePicker.jsx';
 import { useTextHighlightMode, textDragKindOf } from './hooks/useTextHighlightMode.js';
@@ -3260,6 +3261,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // Nightly 'laser-pointer': Drawboard Free-form > Laser pointer (never saved).
   const [laserToolEnabled] = useState(() => isFeatureOn('laser-pointer'));
   const [noteToolEnabled] = useState(() => isFeatureOn('note-tool'));
+  const [hatchFillEnabled] = useState(() => isFeatureOn('hatch-fill'));
   const [measureAngleEnabled] = useState(() => isFeatureOn('measure-angle'));
   const prevMeasureModeRef = useRef(null);
   useEffect(() => {
@@ -3883,6 +3885,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // and one Undo step like the Measurement popover.
   const handlePatchSelectedLink = useCallback((changes) => {
     handlePatchSelectedAnnotation({}, (obj) => applyLinkEdit(obj, changes));
+  }, [handlePatchSelectedAnnotation]);
+  // Nightly 'hatch-fill': the picked shape's line pattern, same one-save write.
+  const handleSetSelectedHatch = useCallback((pattern) => {
+    handlePatchSelectedAnnotation({}, (obj) => applyHatch(obj, pattern));
   }, [handlePatchSelectedAnnotation]);
   // Nightly 'note-tool': the picked note's words / colour, same one-save write.
   const handlePatchSelectedNote = useCallback((changes) => {
@@ -27556,6 +27562,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const editSelectedNote = useCallback(() => {
     window.dispatchEvent(new CustomEvent(NOTE_EDIT_EVENT));
   }, []);
+  // Nightly 'hatch-fill': the one picked shape that can hold a pattern.
+  const selectedHatchForPanel = useMemo(() => {
+    if (!hatchFillEnabled || !selectedToolbarAnnotation || selectedToolbarCallout) return null;
+    const pageObjects = annotationsByPage?.[selectedToolbarAnnotation.pageNumber]?.objects || [];
+    const index = findSelectedAnnotationIndex(pageObjects, selectedToolbarAnnotation);
+    const obj = (index >= 0 ? pageObjects[index] : null) || selectedToolbarAnnotation.annotation;
+    if (!hatchShapeKind(obj)) return null;
+    return { id: getAnnotationRenderIdentity(obj).annotationId, pattern: hatchPatternOf(obj) };
+  }, [hatchFillEnabled, selectedToolbarAnnotation, selectedToolbarCallout, annotationsByPage]);
 
   // UX 2026-05-13: Publish bottom toolbar state to the App shell when this tab
   // is active. Keep this effect below every value in the API object to avoid
@@ -27877,6 +27892,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       // One picked sticky note (Nightly 'note-tool'): Note opens its words.
       selectedNote: noteToolEnabled && !groupSummary ? selectedNoteForHost : null,
       editSelectedNote: noteToolEnabled ? editSelectedNote : null,
+      // One picked shape's hatch pattern (Nightly 'hatch-fill'), for the properties panel.
+      selectedHatch: hatchFillEnabled && !groupSummary ? selectedHatchForPanel : null,
+      setSelectedHatch: hatchFillEnabled ? handleSetSelectedHatch : null,
       // Nightly 'comment-pins': only a cloud document with a signed-in user.
       pinsAvailable: pinsDocOn,
       selectionMixed: groupSummary ? groupSummary.mixed : null,
@@ -28047,6 +28065,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     editSelectedLink,
     selectedNoteForHost,
     editSelectedNote,
+    selectedHatchForPanel,
+    handleSetSelectedHatch,
     pickBarTool,
     liveTextSelection,
     selectionMode,

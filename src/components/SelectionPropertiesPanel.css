@@ -142,3 +142,20 @@
   transform: translateX(-50%) rotate(45deg);
 }
 .props-panel__none.is-current { box-shadow: 0 0 0 2px var(--chrome-focus, #4064f4); }
+/* Nightly 'hatch-fill': the Pattern row's choices. */
+.props-panel__row--wrap { flex-wrap: wrap; row-gap: 6px; }
+.props-panel__hatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.props-panel__hatch:hover { background: var(--surface-3); color: var(--text-1); }
+.props-panel__hatch.is-current { background: var(--surface-3); border-color: var(--border-strong); color: var(--text-1); }

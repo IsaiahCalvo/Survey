@@ -4,6 +4,7 @@
  * Compatible with Adobe Acrobat and all PDF readers
  */
 
+import { hatchPaint } from './hatchFill.js';
 import {
   BlendMode,
   PDFArray,
@@ -6755,7 +6756,30 @@ const drawFlattenedSymbolStamp = (page, obj, pageHeight) => {
 
 const drawFlattenedObject = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0 }, stampImages = new Map()) => {
   const drawn = drawFlattenedObjectInk(page, obj, pageHeight, fonts, offset, stampImages);
+  if (drawn && obj?.data?.hatch) drawFlattenedHatch(page, obj, pageHeight, offset);
   return drawn ? drawn + drawFlattenedMeasureReadings(page, obj, pageHeight, fonts, offset) : drawn;
+};
+
+// Nightly 'hatch-fill': the same line segments the page draws (hatchFill.js),
+// so the print, the export's appearance stream and the screen all match.
+const drawFlattenedHatch = (page, obj, pageHeight, offset = { x: 0, y: 0 }) => {
+  const shifted = offset.x || offset.y
+    ? { ...obj, left: (Number(obj.left) || 0) + offset.x, top: (Number(obj.top) || 0) + offset.y }
+    : obj;
+  const paint = hatchPaint(shifted);
+  if (!paint) return 0;
+  const color = parsePdfDrawColor(paint.color) || parsePdfDrawColor('#000000');
+  const opacity = (color.opacity ?? 1) * paint.opacity;
+  for (const s of paint.segments) {
+    page.drawLine({
+      start: { x: s.x1, y: pageHeight - s.y1 },
+      end: { x: s.x2, y: pageHeight - s.y2 },
+      thickness: paint.width,
+      color: color.color,
+      opacity,
+    });
+  }
+  return paint.segments.length;
 };
 
 const drawFlattenedObjectInk = (page, obj, pageHeight, fonts, offset = { x: 0, y: 0 }, stampImages = new Map()) => {

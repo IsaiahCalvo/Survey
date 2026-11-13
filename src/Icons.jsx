@@ -145,6 +145,8 @@ const strokeGlyph = (size, color, style, className, paths) => (
   </svg>
 );
 
+const HATCH_BOX = 'M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z';
+
 const ICON_RENDERERS = {
     oneDrive: (size, _color, style, className) => (
       <img
@@ -1029,6 +1031,25 @@ const ICON_RENDERERS = {
       'M3 12h3.28a1 1 0 0 1 .948.684l2.298 7.934a.5.5 0 0 0 .96-.044L13.82 4.771A1 1 0 0 1 14.792 4H21',
     ]),
     // Hatch fill (Drawboard hatch patterns): Tabler "texture" (MIT).
+    // Nightly 'hatch-fill': the pattern choices in the properties panel.
+    hatchDiagonal: (size, color, style, className) => strokeGlyph(size, color, style, className, [
+      HATCH_BOX, 'M4 12l8-8', 'M5 19L19 5', 'M12 20l8-8',
+    ]),
+    hatchBackDiagonal: (size, color, style, className) => strokeGlyph(size, color, style, className, [
+      HATCH_BOX, 'M12 4l8 8', 'M5 5l14 14', 'M4 12l8 8',
+    ]),
+    hatchCross: (size, color, style, className) => strokeGlyph(size, color, style, className, [
+      HATCH_BOX, 'M4 12l8-8', 'M5 19L19 5', 'M12 20l8-8', 'M12 4l8 8', 'M5 5l14 14', 'M4 12l8 8',
+    ]),
+    hatchHorizontal: (size, color, style, className) => strokeGlyph(size, color, style, className, [
+      HATCH_BOX, 'M4 9.5h16', 'M4 14.5h16',
+    ]),
+    hatchVertical: (size, color, style, className) => strokeGlyph(size, color, style, className, [
+      HATCH_BOX, 'M9.5 4v16', 'M14.5 4v16',
+    ]),
+    hatchGrid: (size, color, style, className) => strokeGlyph(size, color, style, className, [
+      HATCH_BOX, 'M4 9.5h16', 'M4 14.5h16', 'M9.5 4v16', 'M14.5 4v16',
+    ]),
     hatch: (size, color, style, className) => strokeGlyph(size, color, style, className, [
       'M6 3l-3 3', 'M21 18l-3 3', 'M11 3l-8 8', 'M16 3l-13 13', 'M21 3l-18 18', 'M21 8l-13 13', 'M21 13l-8 8',
     ]),
