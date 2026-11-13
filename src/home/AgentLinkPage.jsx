@@ -154,6 +154,49 @@ function Consent({ authorizationId }) {
   );
 }
 
+// Another Kal Voe app (Walkthru, Plot) signing the person in with their Survey
+// account: one login for every app. These apps are listed in login_only_apps
+// and the database refuses their tokens any Survey data, so there is nothing
+// to choose: just confirm the app and the account, then go back to it.
+export function AppSignIn({ authorizationId, app, email }) {
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const decide = async (allow) => {
+    setBusy(true);
+    // Same human-only guard as an agent consent (begin_auth_change), so a token
+    // an app holds can never let itself or anything else in.
+    if (allow) {
+      const { error: askError } = await supabase.rpc('begin_auth_change', { p_action: 'consent', p_target: String(app.clientId) });
+      if (askError) { setBusy(false); setMessage(`Could not finish. Go back to ${app.name} and try again.`); return; }
+    }
+    const { data, error } = allow
+      ? await supabase.auth.oauth.approveAuthorization(authorizationId, { skipBrowserRedirect: true })
+      : await supabase.auth.oauth.denyAuthorization(authorizationId, { skipBrowserRedirect: true });
+    setBusy(false);
+    try { clearPendingConsent(window.localStorage); } catch { /* storage blocked */ }
+    if (error || !data?.redirect_url) { setMessage(`Could not finish. Go back to ${app.name} and try again.`); return; }
+    window.location.assign(data.redirect_url);
+  };
+
+  return (
+    <div style={card}>
+      <h2 style={{ marginTop: 0 }}>Sign in to {app.name}</h2>
+      <p style={{ fontSize: 16, margin: '8px 0' }}>
+        Continue to <strong>{app.name}</strong> as <strong>{email || 'you'}</strong>?
+      </p>
+      <p style={{ fontSize: 13, color: C.inkSoft, margin: '8px 0 16px' }}>
+        One Kal Voe account works in every Kal Voe app. {app.name} learns your name and email. It cannot see or change anything in Survey.
+      </p>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button style={btn} disabled={busy} onClick={() => decide(true)}>Continue</button>
+        <button style={plain} disabled={busy} onClick={() => decide(false)}>Cancel</button>
+      </div>
+      {message && <p style={{ fontSize: 14 }}>{message}</p>}
+    </div>
+  );
+}
+
 // AgentID (AgentMail) sends the agent's own browser back here after it signs
 // in to AgentID; the agent reads the code from the address and finishes on its
 // side (see /auth.md). Nothing for the person to do.
@@ -185,6 +228,10 @@ function AgentLinkScreen() {
   const [undoing, setUndoing] = useState({});
   const [lastActive, setLastActive] = useState({});
   const [identities, setIdentities] = useState({});
+  // Kal Voe apps that only sign people in ({ [clientId]: name }); null until known.
+  const [loginOnly, setLoginOnly] = useState(null);
+  // For a consent request: the Kal Voe app asking, if it is one (null until known).
+  const [consentApp, setConsentApp] = useState(null);
   // Closed at first so the person reads why they're here before signing in.
   const [authOpen, setAuthOpen] = useState(false);
 
@@ -230,6 +277,25 @@ function AgentLinkScreen() {
   }, [user]);
 
   useEffect(() => { loadLinks(); }, [loadLinks]);
+
+  useEffect(() => {
+    if (!user) return undefined;
+    let live = true;
+    (async () => {
+      const { data: apps } = await supabase.rpc('login_only_apps').then((r) => r, () => ({ data: [] }));
+      const map = Object.fromEntries((apps || []).map((a) => [a.client_id, a.app_name]));
+      let asking = false;
+      if (consentId) {
+        const { data } = await supabase.auth.oauth.getAuthorizationDetails(consentId).catch(() => ({ data: null }));
+        const clientId = data?.client?.id;
+        if (data && 'authorization_id' in data && clientId && map[clientId]) asking = { clientId, name: map[clientId] };
+      }
+      if (!live) return;
+      setLoginOnly(map);
+      setConsentApp(asking);
+    })();
+    return () => { live = false; };
+  }, [user, consentId]);
 
   const approve = async () => {
     if (code.length !== 8) { setMessage('The code has 8 letters and numbers.'); return; }
@@ -279,8 +345,8 @@ function AgentLinkScreen() {
       <div style={card}>
         <h2 style={{ marginTop: 0 }}>Sign in or create a free account</h2>
         <p style={{ margin: '8px 0 16px', color: C.inkSoft }}>
-          An AI agent asked to use Survey for you. The account is yours: it uses your email, starts on the free plan, and only you can pay or change it.
-          {consentId ? ' After you sign in, you\'ll see what the agent can do and choose Allow or Deny.'
+          {consentId ? 'A Kal Voe app or an AI agent asked to use your Survey account.' : 'An AI agent asked to use Survey for you.'} The account is yours: it uses your email, starts on the free plan, and only you can pay or change it.
+          {consentId ? ' After you sign in, you\'ll see which one is asking and choose.'
             : code ? ` After you sign in, you'll press Allow for code ${code}.` : ''}
         </p>
         <button style={btn} onClick={() => setAuthOpen(true)}>Sign in or sign up</button>
@@ -289,8 +355,15 @@ function AgentLinkScreen() {
     );
   }
 
+  if (loginOnly === null || (consentId && consentApp === null)) {
+    return <div style={card}><p style={{ margin: 0, color: C.inkSoft }}>Loading…</p></div>;
+  }
+  if (consentId && consentApp) {
+    return <AppSignIn authorizationId={consentId} app={consentApp} email={user.email} />;
+  }
+
   const agents = [
-    ...grants.map((g) => ({
+    ...grants.filter((g) => !loginOnly[g.client?.id]).map((g) => ({
       key: `g:${g.client?.id}`, name: g.client?.name || 'AI agent', remove: () => revokeGrant(g.client?.id),
       note: [
         identityNote(identities[g.client?.id]),

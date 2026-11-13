@@ -264,3 +264,26 @@ test('agent log keeps 90 days for everyone, without a scheduler', () => {
   assert.match(sql, /perform public\.prune_agent_activity\(\);/);
   assert.doesNotMatch(sql.slice(sql.indexOf('function public.prune_agent_activity')), /where user_id = v_uid/);
 });
+
+test('Kal Voe apps that only sign people in get a plain screen and no Survey data', () => {
+  const sql = read('supabase/migrations/20261112210000_kal_voe_login_only_apps.sql');
+  // Their tokens are refused by the pre-request hook before any agent rule.
+  assert.match(sql, /if public\.is_login_only_token\(\) then\s+raise exception 'This app can only sign you in/);
+  assert.ok(sql.indexOf('is_login_only_token() then') < sql.indexOf('if not public.agent_session_ok()'));
+  // ...and by a restrictive storage policy for every file request.
+  assert.match(sql, /"Login-only apps cannot use files" on storage\.objects as restrictive\s+for all to authenticated/);
+  // Only people's own sessions can list the apps; nothing in the app writes the table.
+  assert.match(sql, /revoke all on table public\.login_only_apps from public, anon, authenticated/);
+  assert.match(sql, /where auth\.uid\(\) is not null\s+and coalesce\(auth\.jwt\(\) ->> 'client_id', ''\) = ''/);
+  assert.ok(read('supabase/rollbacks/20261112210000_kal_voe_login_only_apps.down.sql').includes('drop table if exists public.login_only_apps'));
+
+  const page = read('src/home/AgentLinkPage.jsx');
+  // The app screen keeps the human-only consent guard and never grants agent access.
+  const appSignIn = page.slice(page.indexOf('export function AppSignIn'), page.indexOf('function AgentIdCallback'));
+  assert.match(appSignIn, /begin_auth_change', \{ p_action: 'consent'/);
+  assert.doesNotMatch(appSignIn, /set_agent_access/);
+  assert.match(appSignIn, /It cannot see or change anything in Survey/);
+  // Nothing shows until we know which kind is asking, and apps stay out of the agent list.
+  assert.match(page, /if \(loginOnly === null \|\| \(consentId && consentApp === null\)\)/);
+  assert.match(page, /grants\.filter\(\(g\) => !loginOnly\[g\.client\?\.id\]\)/);
+});
