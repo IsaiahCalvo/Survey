@@ -77,7 +77,7 @@ test('the formatting row shows for an armed tool, a picked mark, the eraser, an 
 });
 
 test('PDFViewer draws a group\'s tools into the tool bar, keyed on the picked mark in Select mode', () => {
-  assert.match(pdfViewer, /resolveToolBarGroup\(\{ activeTool, activeCategoryDropdown, contextTool: subToolContextTool \}\)/);
+  assert.match(pdfViewer, /resolveToolBarGroup\(\{ activeTool, activeCategoryDropdown, contextTool: subToolContextTool, textHighlightMode: textDragToolsOn && Boolean\(textHighlightMode\) \}\)/);
   assert.match(pdfViewer, /setSubToolContextTool\(\(prev\) => \(prev === subToolTool \? prev : subToolTool\)\)/);
   assert.match(pdfViewer, /document\.getElementById\('chrome-subtools-host'\)/);
   assert.match(pdfViewer, /TOOL_BAR_GROUPS\.includes\(toolBarGroup\) && subToolsHostEl/);

@@ -8,6 +8,7 @@
  * Each function takes a Fabric.js JSON object and returns a React SVG element.
  */
 import React from 'react';
+import { hatchPaint, hatchPathData } from './hatchFill.js';
 import { isLinkMark, linkMarkPaint } from './linkMarkPaint.js';
 import { dimensionMarkLayout } from './measure/dimensionLayout.js';
 import { DIMENSION_CAPTION_BG_PAD_PT, DIMENSION_EXTENSION_PT, isDimensionMeasure } from './measure/dimensionLine.js';
@@ -544,7 +545,7 @@ export const renderPath = (obj, index) => {
  * @param {number} index - Array index for key fallback
  * @returns {React.ReactElement}
  */
-export const renderRect = (obj, index) => {
+const renderRectBase = (obj, index) => {
   const effectiveWidth = Math.abs((obj.width || 0) * (obj.scaleX || 1));
   const effectiveHeight = Math.abs((obj.height || 0) * (obj.scaleY || 1));
   const isHighlight = obj.globalCompositeOperation === 'multiply';
@@ -1228,7 +1229,7 @@ export const renderArrow = (obj, index) => {
  * @param {number} index - Array index for key fallback
  * @returns {React.ReactElement|null}
  */
-export const renderPolygon = (obj, index) => {
+const renderPolygonBase = (obj, index) => {
   if (!Array.isArray(obj.points) || obj.points.length === 0) return null;
 
   const pointsStr = obj.points
@@ -1516,7 +1517,7 @@ export const renderPolyline = (obj, index) => {
  * @param {number} index - Array index for key fallback
  * @returns {React.ReactElement}
  */
-export const renderEllipse = (obj, index) => {
+const renderEllipseBase = (obj, index) => {
   let rx, ry;
 
   if (obj.type === 'circle' || obj.radius != null) {
@@ -2425,3 +2426,32 @@ export const renderCounter = (obj, index) => {
   );
 };
 export const UNAPPLIED_REDACTION_WARNING_COLOR = '#d0021b';
+
+// Nightly 'hatch-fill': a shape with data.hatch gets its pattern drawn over
+// it (utils/hatchFill.js works out the lines, already cut to the outline, in
+// page space). The shape's own element is untouched, so picking, hover and
+// every existing render path stay exactly as they were.
+const withHatch = (render) => (obj, index, ...rest) => {
+  const el = render(obj, index, ...rest);
+  if (!el || !obj?.data?.hatch) return el;
+  const paint = hatchPaint(obj);
+  if (!paint) return el;
+  return (
+    <React.Fragment key={el.key ?? `hatch-${index}`}>
+      {el}
+      <path
+        d={hatchPathData(paint.segments)}
+        fill="none"
+        stroke={paint.color}
+        strokeWidth={paint.width}
+        strokeLinecap="butt"
+        opacity={paint.opacity}
+        pointerEvents="none"
+        data-hatch-for={obj.id || obj.pdfAnnotationId || ''}
+      />
+    </React.Fragment>
+  );
+};
+export const renderRect = withHatch(renderRectBase);
+export const renderEllipse = withHatch(renderEllipseBase);
+export const renderPolygon = withHatch(renderPolygonBase);

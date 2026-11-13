@@ -49,7 +49,8 @@ const recordingFileName = (mime) => {
  */
 // onStream(stream | null): the open mic while recording, then null (the
 // Survey agent's mic pulses with it).
-export function useAudioRecorder({ onRecorded, onStream = null }) {
+// bitsPerSecond: an optional bitrate (the Audio note tool keeps clips small).
+export function useAudioRecorder({ onRecorded, onStream = null, bitsPerSecond = 0 }) {
   const [state, setState] = useState('idle'); // 'idle' | 'starting' | 'recording'
   const [elapsedMs, setElapsedMs] = useState(0);
   const sessionRef = useRef(null);
@@ -90,7 +91,11 @@ export function useAudioRecorder({ onRecorded, onStream = null }) {
     const mimeType = pickAudioRecordingMime();
     let recorder;
     try {
-      recorder = new window.MediaRecorder(session.stream, mimeType ? { mimeType } : undefined);
+      const options = {
+        ...(mimeType ? { mimeType } : {}),
+        ...(bitsPerSecond > 0 ? { audioBitsPerSecond: bitsPerSecond } : {}),
+      };
+      recorder = new window.MediaRecorder(session.stream, Object.keys(options).length ? options : undefined);
     } catch {
       release(session);
       sessionRef.current = null;
@@ -117,7 +122,7 @@ export function useAudioRecorder({ onRecorded, onStream = null }) {
     onStreamRef.current?.(session.stream);
     session.timer = window.setInterval(() => setElapsedMs(Date.now() - session.startedAt), 250);
     setState('recording');
-  }, [release]);
+  }, [release, bitsPerSecond]);
 
   const stop = useCallback(() => {
     const session = sessionRef.current;

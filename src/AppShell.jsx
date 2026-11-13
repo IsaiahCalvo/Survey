@@ -3706,13 +3706,13 @@ export default function App({ devPreviewReturnTab = null }) {
                   leaveAreasMode();
                   if (bottomToolbarApi.activeCategoryDropdown === 'draw') return;
                   bottomToolbarApi.setActiveCategoryDropdown('draw');
-                  if (!['pen', 'highlighter', 'text-highlight', 'tape', 'eraser'].includes(bottomToolbarApi.activeTool)) {
+                  if (!['pen', 'highlighter', 'text-highlight', 'tape', 'laser', 'eraser'].includes(bottomToolbarApi.activeTool)) {
                     bottomToolbarApi.setActiveTool(bottomToolbarApi.lastDrawTool, { source: 'category-tab' });
                   }
                 }}
                 {...chromeTip('Draw', 'below')}
-                className={`btn chrome-control ${isToolGroupPressed({ activeTool: bottomToolbarApi.activeTool, activeCategoryDropdown: bottomToolbarApi.activeCategoryDropdown, group: 'draw', toolIds: ['pen', 'highlighter', 'text-highlight', 'tape', 'eraser'] }) ? 'btn-active' : 'btn-default'}`}
-                aria-pressed={isToolGroupPressed({ activeTool: bottomToolbarApi.activeTool, activeCategoryDropdown: bottomToolbarApi.activeCategoryDropdown, group: 'draw', toolIds: ['pen', 'highlighter', 'text-highlight', 'tape', 'eraser'] })}
+                className={`btn chrome-control ${isToolGroupPressed({ activeTool: bottomToolbarApi.activeTool, activeCategoryDropdown: bottomToolbarApi.activeCategoryDropdown, group: 'draw', toolIds: ['pen', 'highlighter', 'text-highlight', 'tape', 'laser', 'eraser'] }) ? 'btn-active' : 'btn-default'}`}
+                aria-pressed={isToolGroupPressed({ activeTool: bottomToolbarApi.activeTool, activeCategoryDropdown: bottomToolbarApi.activeCategoryDropdown, group: 'draw', toolIds: ['pen', 'highlighter', 'text-highlight', 'tape', 'laser', 'eraser'] })}
                 data-tool-group="true"
                 data-tool-switch="true"
                 aria-label="Draw"

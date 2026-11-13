@@ -573,6 +573,7 @@ import {
   stampMeasure,
   isPolyMeasureFor,
   markMeasureScale,
+  ANGLE_MEASURE_POINTS,
 } from '../utils/measure/measureScale.js';
 import { dimensionCaptionPlace, dimensionLeader, dimensionLineGeometry, isDimensionMeasure } from '../utils/measure/dimensionLine.js';
 import { measureSegmentCaptions, polylengthTotalPlace } from '../utils/measure/segmentCaptions.js';
@@ -8289,6 +8290,8 @@ const SVGAnnotationLayerBody = memo(({
                 const next = addPolyDraftPoint(draft, resolveCreationSnap(last, point, e));
                 polyDraftRef.current = next;
                 setPolyDraft(next);
+                // Nightly 'measure-angle': an Angle is done on its third click.
+                if (measureMode === 'angle' && next?.points?.length >= ANGLE_MEASURE_POINTS) commitPolyDraft('finish');
               }
               e.preventDefault();
             }

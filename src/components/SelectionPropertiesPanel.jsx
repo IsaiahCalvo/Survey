@@ -39,6 +39,7 @@ import {
 } from '../utils/propertiesPanelStore.js';
 import { composeTextColor, splitTextColor } from '../utils/textColorOpacity.js';
 import { FILL_QUICK_COLOURS, FILL_QUICK_COLOUR_NAMES } from '../utils/quickStylePresets.js';
+import { HATCH_PATTERNS } from '../utils/hatchFill.js';
 import {
   TRANSFORM_SELECTION_EVENT,
   formatPt,
@@ -512,6 +513,35 @@ export default function SelectionPropertiesPanel({
               onPreview={(v) => api?.handleFillOpacityChange?.(v, { phase: 'preview' })}
               onCommit={(v) => api?.handleFillOpacityChange?.(v, { phase: 'commit' })}
             />
+            {api?.selectedHatch && typeof api?.setSelectedHatch === 'function' && (
+              // Nightly 'hatch-fill': Drawboard's hatch patterns, drawn in the border colour.
+              <div className="props-panel__row props-panel__row--wrap" data-props-hatch>
+                <span className="props-panel__row-label">Pattern</span>
+                <button
+                  type="button"
+                  className={`props-panel__none${api.selectedHatch.pattern ? '' : ' is-current'}`}
+                  data-props-hatch-none
+                  aria-label="No pattern"
+                  aria-pressed={!api.selectedHatch.pattern}
+                  {...chromeTip('No pattern', 'below')}
+                  onClick={() => api.setSelectedHatch(null)}
+                />
+                {HATCH_PATTERNS.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className={`props-panel__hatch${api.selectedHatch.pattern === p.id ? ' is-current' : ''}`}
+                    data-props-hatch-pattern={p.id}
+                    aria-label={p.label}
+                    aria-pressed={api.selectedHatch.pattern === p.id}
+                    {...chromeTip(p.label, 'below')}
+                    onClick={() => api.setSelectedHatch(p.id)}
+                  >
+                    <Icon name={p.icon} size={18} color="currentColor" />
+                  </button>
+                ))}
+              </div>
+            )}
           </Section>
         )}
         {textFormat?.api && (

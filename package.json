@@ -85,6 +85,7 @@
     "gifenc": "^1.0.3",
     "jszip": "3.10.2",
     "mammoth": "1.13.0",
+    "mathjax-full": "3.2.2",
     "omggif": "1.0.10",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^6.4.299",

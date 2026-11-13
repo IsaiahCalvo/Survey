@@ -20,6 +20,7 @@
  * Worker-safe: imported by annotationCanvasWorker.js — keep every import here
  * free of React/fabric/DOM side effects.
  */
+import { hatchPaint } from './hatchFill.js';
 import { calculateCalloutConnection } from './calloutGeometry.js';
 import { isLinkMark, linkMarkPaint } from './linkMarkPaint.js';
 import { calloutWrapsWords, textWrapsWords, wrapParagraph } from './textWrapMode.js';
@@ -1460,6 +1461,29 @@ function drawSurveyMarkerShape(context, object) {
 }
 
 export function drawAnnotationObject(context, object, displayScale = 1) {
+  drawAnnotationObjectInk(context, object, displayScale);
+  // Nightly 'hatch-fill': the SVG renderers' twin (same hatchFill.js segments).
+  if (context && object?.data?.hatch) {
+    const paint = hatchPaint(object);
+    if (paint) {
+      context.save();
+      context.globalAlpha *= paint.opacity;
+      context.strokeStyle = paint.color;
+      context.lineWidth = paint.width;
+      context.lineCap = 'butt';
+      context.setLineDash([]);
+      context.beginPath();
+      for (const seg of paint.segments) {
+        context.moveTo(seg.x1, seg.y1);
+        context.lineTo(seg.x2, seg.y2);
+      }
+      context.stroke();
+      context.restore();
+    }
+  }
+}
+
+function drawAnnotationObjectInk(context, object, displayScale = 1) {
   if (!context || !object) return;
   if (object.surveyMarkerShape) {
     drawSurveyMarkerShape(context, object);

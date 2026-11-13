@@ -513,6 +513,36 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Highlight text: the band follows the pointer as you drag over words, and letting go highlights them',
     stage: 'beta',
   }),
+  // Owner 2026-11-13 ("nothing can be missing" vs Drawboard PDF Pro): the
+  // Review group's other text tools, each a drag over words.
+  'laser-pointer': Object.freeze({
+    label: 'Laser pointer: a glowing line that follows the pen or mouse and fades away; never saved',
+    stage: 'beta',
+  }),
+  'measure-angle': Object.freeze({
+    label: 'Angle measure (Drawboard protractor): click three points, the corner in the middle, to read the angle in degrees',
+    stage: 'beta',
+  }),
+  'text-markup-tools': Object.freeze({
+    label: 'Underline, Squiggle, Strikethrough and Redact text tools: drag over words and letting go marks them',
+    stage: 'beta',
+  }),
+  'hatch-fill': Object.freeze({
+    label: 'Hatch fill: rectangles, ellipses, polygons and clouds can be filled with diagonal, cross, horizontal, vertical or grid lines',
+    stage: 'beta',
+  }),
+  'equation-tool': Object.freeze({
+    label: 'Equation tool: type LaTeX and drop the drawn equation on the page; Equation on the picked bar changes it',
+    stage: 'beta',
+  }),
+  'audio-note': Object.freeze({
+    label: 'Audio note: record a short voice note (or pick an audio file) and pin it to the page; Play on the picked bar plays it',
+    stage: 'beta',
+  }),
+  'note-tool': Object.freeze({
+    label: 'Note tool: click the page to leave a sticky note with words; exports as a PDF note',
+    stage: 'beta',
+  }),
   'page-turn-keys': Object.freeze({
     label: 'Keys: with nothing picked, Left / Right and Shift + Up / Down turn the page',
     stage: 'beta',

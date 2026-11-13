@@ -13,10 +13,14 @@ export const MOBILE_MEASURE_ITEMS = [
 
 // Nightly 'measure-depth': Polylength after Length, Wall area and Volume after
 // Perimeter, in the desktop menu's order.
-export function mobileMeasureItems(depthToolsOn = false) {
-  if (!depthToolsOn) return MOBILE_MEASURE_ITEMS;
+// Nightly 'measure-angle': Angle just before Page scale, as on desktop.
+export function mobileMeasureItems(depthToolsOn = false, { angle = false } = {}) {
+  const withAngle = (items) => (angle
+    ? [...items.slice(0, -1), { key: 'angle', label: 'Angle', icon: 'measureAngle' }, items[items.length - 1]]
+    : items);
+  if (!depthToolsOn) return withAngle(MOBILE_MEASURE_ITEMS);
   const [length, area, perimeter, scale] = MOBILE_MEASURE_ITEMS;
-  return [
+  return withAngle([
     length,
     { key: 'polylength', label: 'Polylength', icon: 'polyline' },
     area,
@@ -24,7 +28,7 @@ export function mobileMeasureItems(depthToolsOn = false) {
     { key: 'wallArea', label: 'Wall area', icon: 'measureWallArea' },
     { key: 'volume', label: 'Volume', icon: 'measureVolume' },
     scale,
-  ];
+  ]);
 }
 
 /** Whether a Shapes strip button shows pressed. */

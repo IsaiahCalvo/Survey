@@ -1,4 +1,6 @@
 import { CounterSeriesPicker } from '../components/CounterSeriesMenu.jsx';
+import { EQUATION_OPEN_EVENT } from '../utils/equation.js';
+import { AUDIO_NOTE_OPEN_EVENT } from '../utils/audioNote.js';
 import { useBackLayer } from '../utils/backNavigation.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -143,6 +145,7 @@ const TOOL_GROUPS = {
       { id: 'pen', label: 'Pen', icon: 'pen' },
       { id: 'highlighter', label: 'Highlighter', icon: 'highlighter' },
       { id: 'tape', label: 'Tape', icon: 'tape', flag: 'tape-tool' },
+      { id: 'laser', label: 'Laser pointer', icon: 'laser', flag: 'laser-pointer' },
       /* UX 2026-09-22 (owner, with the desktop rail): the tool is "Eraser". It
          was "Partial erase", which collided with the Partial half of the
          Partial / Whole toggle its own strip carries — two different things
@@ -168,7 +171,7 @@ const TOOL_GROUPS = {
       { id: 'line', label: 'Line', icon: 'line' },
       { id: 'arrow', label: 'Arrow', icon: 'arrow' },
       { id: 'counter', label: 'Counter', icon: 'counter' },
-      { id: 'measure', label: 'Measure', icon: 'measureScale', measure: true },
+      { id: 'measure', label: 'Measure', icon: 'tapeMeasure', measure: true },
     ],
   },
   review: {
@@ -188,7 +191,13 @@ const TOOL_GROUPS = {
       // Pins save on a cloud document: hidden on a device file or signed out.
       { id: 'pin', label: 'Pin', icon: 'pagePin', flag: 'comment-pins', cloudOnly: true },
       // Nightly 'signature-tool': the saved signatures; a tap drops one mid-page.
-      { id: 'signature', label: 'Signature', icon: 'pen', flag: 'signature-tool', picker: 'signature' },
+      { id: 'signature', label: 'Signature', icon: 'signature', flag: 'signature-tool', picker: 'signature' },
+      // Nightly 'note-tool': tap the page to leave a sticky note.
+      { id: 'sticky-note', label: 'Note', icon: 'stickyNote', flag: 'note-tool' },
+      // Nightly 'equation-tool': type LaTeX, it lands mid-page.
+      { id: 'equation', label: 'Equation', icon: 'equation', flag: 'equation-tool', action: 'equation' },
+      // Nightly 'audio-note': record or pick a clip, pinned mid-page.
+      { id: 'audio-note', label: 'Audio note', icon: 'audioNote', flag: 'audio-note', action: 'audio-note' },
     ],
   },
 };
@@ -3221,6 +3230,8 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                       if (tool.picker === 'signature') { if (stampPickerOpen) setStampPickerOpen(false); setSignatureCardOpen(!signatureCardOpen); return; }
                       if (signatureCardOpen) setSignatureCardOpen(false);
                       if (tool.picker) { setStampPickerOpen(!stampPickerOpen); return; }
+                      if (tool.action === 'equation') { if (stampPickerOpen) setStampPickerOpen(false); window.dispatchEvent(new CustomEvent(EQUATION_OPEN_EVENT)); return; }
+                      if (tool.action === 'audio-note') { if (stampPickerOpen) setStampPickerOpen(false); window.dispatchEvent(new CustomEvent(AUDIO_NOTE_OPEN_EVENT)); return; }
                       if (tool.action) { if (stampPickerOpen) setStampPickerOpen(false); pickImageToInsert(); return; }
                       if (stampPickerOpen) setStampPickerOpen(false);
                       selectTool(tool.id);
@@ -3241,7 +3252,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                         // Clamp by the real menu height (7 rows with the
                         // depth tools, not 4) plus the home-bar inset, so the
                         // last row is never off the bottom of the screen.
-                        top: Math.max(8, Math.min(measureMenuRect.top, window.innerHeight - (mobileMeasureItems(isFeatureOn('measure-depth')).length * 44 + 10) - 42)),
+                        top: Math.max(8, Math.min(measureMenuRect.top, window.innerHeight - (mobileMeasureItems(isFeatureOn('measure-depth'), { angle: isFeatureOn('measure-angle') }).length * 44 + 10) - 42)),
                         maxHeight: 'calc(100dvh - 16px)',
                         overflowY: 'auto',
                         width: 180,
@@ -3255,7 +3266,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                         color: 'var(--text-2)',
                       }}
                     >
-                      {mobileMeasureItems(isFeatureOn('measure-depth')).map((m) => (
+                      {mobileMeasureItems(isFeatureOn('measure-depth'), { angle: isFeatureOn('measure-angle') }).map((m) => (
                         <button
                           key={m.key}
                           type="button"

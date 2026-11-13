@@ -134,6 +134,7 @@ import TextMarkupLinkLayer from './components/TextMarkupLinkLayer';
 import PdfjsFormLayer from './components/PdfjsFormLayer';
 import TextSelectionActionBar from './components/TextSelectionActionBar';
 import TextSelectionQuickMenu from './components/TextSelectionQuickMenu';
+import LaserPointerLayer from './components/LaserPointerLayer.jsx';
 import { deviceCanHover, isTextSelectionCaptureTool, markTakesPanTextHover, shouldMountPanTextLayer } from './utils/panTextSelect.js';
 import { copyTextSelection } from './utils/textSelectionQuickMenu.js';
 import ApplyRedactionsModal from './components/ApplyRedactionsModal';
@@ -406,14 +407,21 @@ import { setStampPickerOpen, useStampPickerOpen } from './components/StampPicker
 import { setSignatureCardOpen, useSignatureCardOpen } from './components/SignatureCard.jsx';
 import { pickImageToInsert } from './components/InsertImage.jsx';
 import LinkToolHost from './components/LinkToolHost.jsx';
+import StickyNoteHost from './components/StickyNoteHost.jsx';
+import EquationHost from './components/EquationHost.jsx';
+import AudioNoteHost from './components/AudioNoteHost.jsx';
 import PagePinsHost from './components/pins/PagePinsHost.jsx';
 import { readDefaultMeasureScale, saveDefaultMeasureScale, withDefaultMeasureScale } from './utils/measure/measureFormat.js';
 import PagePinsLayer from './components/pins/PagePinsLayer.jsx';
 import { PinToolButton } from './components/pins/PinControls.jsx';
 import { LINK_EDIT_EVENT, applyLinkEdit, selectedLinkOf } from './utils/linkTool.js';
+import { NOTE_EDIT_EVENT, applyNoteEdit, selectedNoteOf } from './utils/stickyNote.js';
+import { applyHatch, hatchPatternOf, hatchShapeKind } from './utils/hatchFill.js';
+import { EQUATION_EDIT_EVENT, EQUATION_OPEN_EVENT, applyEquationEdit, selectedEquationOf } from './utils/equation.js';
+import { AUDIO_NOTE_OPEN_EVENT, AUDIO_NOTE_PLAY_EVENT, selectedAudioOf } from './utils/audioNote.js';
 import SnapshotTool from './components/SnapshotTool.jsx';
 import PageTemplatePicker from './components/PageTemplatePicker.jsx';
-import { useTextHighlightMode } from './hooks/useTextHighlightMode.js';
+import { useTextHighlightMode, textDragKindOf } from './hooks/useTextHighlightMode.js';
 import { selectPageMarkup } from './services/thumbnailRender.js';
 import { announceLocalMarkEdit } from './utils/localMarkEdit.js';
 import { marksHidden, setMarksHidden, subscribeMarksHidden } from './utils/marksHidden.js';
@@ -3254,6 +3262,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // Tape (beta 'tape-tool', Drawboard PDF): a band that covers part of the
   // page; a Pan tap reveals what is under it. Revealed tapes are per viewer.
   const [tapeToolEnabled] = useState(() => isFeatureOn('tape-tool'));
+  // Nightly 'laser-pointer': Drawboard Free-form > Laser pointer (never saved).
+  const [laserToolEnabled] = useState(() => isFeatureOn('laser-pointer'));
+  const [noteToolEnabled] = useState(() => isFeatureOn('note-tool'));
+  const [hatchFillEnabled] = useState(() => isFeatureOn('hatch-fill'));
+  const [equationToolEnabled] = useState(() => isFeatureOn('equation-tool'));
+  const [audioNoteEnabled] = useState(() => isFeatureOn('audio-note'));
+  const [measureAngleEnabled] = useState(() => isFeatureOn('measure-angle'));
   const prevMeasureModeRef = useRef(null);
   useEffect(() => {
     const prev = prevMeasureModeRef.current;
@@ -3876,6 +3891,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // and one Undo step like the Measurement popover.
   const handlePatchSelectedLink = useCallback((changes) => {
     handlePatchSelectedAnnotation({}, (obj) => applyLinkEdit(obj, changes));
+  }, [handlePatchSelectedAnnotation]);
+  // Nightly 'hatch-fill': the picked shape's line pattern, same one-save write.
+  const handleSetSelectedHatch = useCallback((pattern) => {
+    handlePatchSelectedAnnotation({}, (obj) => applyHatch(obj, pattern));
+  }, [handlePatchSelectedAnnotation]);
+  // Nightly 'equation-tool': the picked equation redrawn, same one-save write.
+  const handlePatchSelectedEquation = useCallback((changes) => {
+    handlePatchSelectedAnnotation({}, (obj) => applyEquationEdit(obj, changes));
+  }, [handlePatchSelectedAnnotation]);
+  // Nightly 'note-tool': the picked note's words / colour, same one-save write.
+  const handlePatchSelectedNote = useCallback((changes) => {
+    handlePatchSelectedAnnotation({}, (obj) => applyNoteEdit(obj, changes));
   }, [handlePatchSelectedAnnotation]);
   const [zoomGeneration, setZoomGeneration] = useState(0);
   // Edit mode state: tracks which annotation is being edited via double-click
@@ -5795,6 +5822,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const [lastDrawTool, setLastDrawTool] = useState(() => {
     try {
       const saved = localStorage.getItem('lastDrawTool') || 'pen';
+      if (saved === 'laser' && !isFeatureOn('laser-pointer')) return 'pen';
       return saved === 'tape' && !isFeatureOn('tape-tool') ? 'pen' : saved;
     } catch (e) {
       return 'pen';
@@ -5838,7 +5866,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     // indistinguishable from clicking the category button. The category
     // buttons' toggle-to-close still works: closing doesn't change the tool,
     // so this effect doesn't re-open.
-    if (['pen', 'highlighter', 'text-highlight', 'tape', 'eraser'].includes(activeTool)) {
+    if (['pen', 'highlighter', 'text-highlight', 'tape', 'laser', 'eraser'].includes(activeTool)) {
       setLastDrawTool(activeTool);
       setActiveCategoryDropdown((prev) => (prev === 'draw' ? prev : 'draw'));
       try {
@@ -22734,6 +22762,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const [snapshotToolEnabled] = useState(() => isFeatureOn('snapshot-tool'));
   const [signatureToolEnabled] = useState(() => isFeatureOn('signature-tool'));
   const [textHighlightToolEnabled] = useState(() => isFeatureOn('text-highlight-tool'));
+  // Nightly 'text-markup-tools': Drawboard's Underline / Squiggle /
+  // Strikethrough / Redact text tools ride the same drag-over-text mode;
+  // textHighlightMode then holds the kind ('highlight', 'underline', ...).
+  const [textMarkupToolsEnabled] = useState(() => isFeatureOn('text-markup-tools'));
+  const textDragToolsOn = textHighlightToolEnabled || textMarkupToolsEnabled;
   const [insertImageEnabled] = useState(() => isFeatureOn('insert-image'));
   // Markups list (Nightly 'markup-list'): every mark in one rail panel.
   const [markupListEnabled] = useState(() => isFeatureOn('markup-list'));
@@ -27528,6 +27561,48 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const editSelectedLink = useCallback(() => {
     window.dispatchEvent(new CustomEvent(LINK_EDIT_EVENT));
   }, []);
+  // Nightly 'note-tool': the one picked sticky note (its words and colour).
+  const selectedNoteForHost = useMemo(() => {
+    if (!noteToolEnabled || !selectedToolbarAnnotation || selectedToolbarCallout) return null;
+    const pageObjects = annotationsByPage?.[selectedToolbarAnnotation.pageNumber]?.objects || [];
+    const index = findSelectedAnnotationIndex(pageObjects, selectedToolbarAnnotation);
+    const obj = (index >= 0 ? pageObjects[index] : null) || selectedToolbarAnnotation.annotation;
+    return selectedNoteOf(obj, getAnnotationRenderIdentity(obj).annotationId);
+  }, [noteToolEnabled, selectedToolbarAnnotation, selectedToolbarCallout, annotationsByPage]);
+  const editSelectedNote = useCallback(() => {
+    window.dispatchEvent(new CustomEvent(NOTE_EDIT_EVENT));
+  }, []);
+  // Nightly 'equation-tool': the one picked equation (its LaTeX and colour).
+  const selectedEquationForHost = useMemo(() => {
+    if (!equationToolEnabled || !selectedToolbarAnnotation || selectedToolbarCallout) return null;
+    const pageObjects = annotationsByPage?.[selectedToolbarAnnotation.pageNumber]?.objects || [];
+    const index = findSelectedAnnotationIndex(pageObjects, selectedToolbarAnnotation);
+    const obj = (index >= 0 ? pageObjects[index] : null) || selectedToolbarAnnotation.annotation;
+    return selectedEquationOf(obj, getAnnotationRenderIdentity(obj).annotationId);
+  }, [equationToolEnabled, selectedToolbarAnnotation, selectedToolbarCallout, annotationsByPage]);
+  const editSelectedEquation = useCallback(() => {
+    window.dispatchEvent(new CustomEvent(EQUATION_EDIT_EVENT));
+  }, []);
+  // Nightly 'audio-note': the one picked audio note (its clip).
+  const selectedAudioForHost = useMemo(() => {
+    if (!audioNoteEnabled || !selectedToolbarAnnotation || selectedToolbarCallout) return null;
+    const pageObjects = annotationsByPage?.[selectedToolbarAnnotation.pageNumber]?.objects || [];
+    const index = findSelectedAnnotationIndex(pageObjects, selectedToolbarAnnotation);
+    const obj = (index >= 0 ? pageObjects[index] : null) || selectedToolbarAnnotation.annotation;
+    return selectedAudioOf(obj, getAnnotationRenderIdentity(obj).annotationId);
+  }, [audioNoteEnabled, selectedToolbarAnnotation, selectedToolbarCallout, annotationsByPage]);
+  const playSelectedAudio = useCallback(() => {
+    window.dispatchEvent(new CustomEvent(AUDIO_NOTE_PLAY_EVENT));
+  }, []);
+  // Nightly 'hatch-fill': the one picked shape that can hold a pattern.
+  const selectedHatchForPanel = useMemo(() => {
+    if (!hatchFillEnabled || !selectedToolbarAnnotation || selectedToolbarCallout) return null;
+    const pageObjects = annotationsByPage?.[selectedToolbarAnnotation.pageNumber]?.objects || [];
+    const index = findSelectedAnnotationIndex(pageObjects, selectedToolbarAnnotation);
+    const obj = (index >= 0 ? pageObjects[index] : null) || selectedToolbarAnnotation.annotation;
+    if (!hatchShapeKind(obj)) return null;
+    return { id: getAnnotationRenderIdentity(obj).annotationId, pattern: hatchPatternOf(obj) };
+  }, [hatchFillEnabled, selectedToolbarAnnotation, selectedToolbarCallout, annotationsByPage]);
 
   // UX 2026-05-13: Publish bottom toolbar state to the App shell when this tab
   // is active. Keep this effect below every value in the API object to avoid
@@ -27773,7 +27848,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       pageInputRef,
       activeTool,
       // Highlight text rides 'text-select'; the Select button stays unpressed.
-      textHighlightMode: textHighlightToolEnabled && textHighlightMode,
+      textHighlightMode: textDragToolsOn && Boolean(textHighlightMode),
       selectionMode,
       setSelectionMode,
       lassoTouchOperation,
@@ -27846,6 +27921,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       selectedLink: linkToolOn && !groupSummary ? selectedLinkForHost : null,
       followLink: linkToolOn ? followLink : null,
       editSelectedLink: linkToolOn ? editSelectedLink : null,
+      // One picked sticky note (Nightly 'note-tool'): Note opens its words.
+      selectedNote: noteToolEnabled && !groupSummary ? selectedNoteForHost : null,
+      editSelectedNote: noteToolEnabled ? editSelectedNote : null,
+      // One picked shape's hatch pattern (Nightly 'hatch-fill'), for the properties panel.
+      selectedHatch: hatchFillEnabled && !groupSummary ? selectedHatchForPanel : null,
+      setSelectedHatch: hatchFillEnabled ? handleSetSelectedHatch : null,
+      // One picked equation (Nightly 'equation-tool'): Equation opens it again.
+      selectedEquation: equationToolEnabled && !groupSummary ? selectedEquationForHost : null,
+      editSelectedEquation: equationToolEnabled ? editSelectedEquation : null,
+      // One picked audio note (Nightly 'audio-note'): Play plays it.
+      selectedAudio: audioNoteEnabled && !groupSummary ? selectedAudioForHost : null,
+      playSelectedAudio: audioNoteEnabled ? playSelectedAudio : null,
       // Nightly 'comment-pins': only a cloud document with a signed-in user.
       pinsAvailable: pinsDocOn,
       selectionMixed: groupSummary ? groupSummary.mixed : null,
@@ -28014,6 +28101,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     selectedLinkForHost,
     followLink,
     editSelectedLink,
+    selectedNoteForHost,
+    editSelectedNote,
+    selectedHatchForPanel,
+    handleSetSelectedHatch,
+    selectedEquationForHost,
+    editSelectedEquation,
+    selectedAudioForHost,
+    playSelectedAudio,
     pickBarTool,
     liveTextSelection,
     selectionMode,
@@ -35903,12 +35998,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const handleTextSelectionQuickAction = useCallback((action) => (
     handleTextSelectionAction(action, { keepSelection: false })
   ), [handleTextSelectionAction]);
+  const textDragKind = typeof textHighlightMode === 'string' ? textHighlightMode : 'highlight';
   useTextHighlightMode({
-    on: textHighlightToolEnabled && textHighlightMode && activeTool === 'text-select',
+    on: textDragToolsOn && Boolean(textHighlightMode) && activeTool === 'text-select',
     wrapperRef: pdfjsWrapperRef,
-    paint: textMarkupPaintByType.highlight,
+    kind: textDragKind,
+    paint: textMarkupPaintByType[textDragKind] || { color: '#000000', opacity: 35 },
     getSelection: () => liveTextSelectionActionSelection,
-    apply: () => handleTextSelectionAction('highlight', { keepSelection: false }),
+    apply: () => handleTextSelectionAction(textDragKind, { keepSelection: false }),
   });
   const handleTextSelectionCopy = useCallback(async (selection) => {
     const copied = await copyTextSelection(selection?.text);
@@ -38550,6 +38647,31 @@ ${pageBlocks}
           onPatchSelectedLink={handlePatchSelectedLink}
         />
       )}
+      {equationToolEnabled && (
+        <EquationHost
+          isActive={isActive !== false}
+          readOnly={Boolean(documentLocked) || yjsDocRole === 'viewer'}
+          selectedEquation={selectedEquationForHost}
+          onPatchSelectedEquation={handlePatchSelectedEquation}
+        />
+      )}
+      {audioNoteEnabled && (
+        <AudioNoteHost
+          isActive={isActive !== false}
+          readOnly={Boolean(documentLocked) || yjsDocRole === 'viewer'}
+          selectedAudio={selectedAudioForHost}
+        />
+      )}
+      {noteToolEnabled && (
+        <StickyNoteHost
+          isActive={isActive !== false}
+          readOnly={Boolean(documentLocked) || yjsDocRole === 'viewer'}
+          activeTool={activeTool}
+          hostRef={pdfjsWrapperRef}
+          selectedNote={selectedNoteForHost}
+          onPatchSelectedNote={handlePatchSelectedNote}
+        />
+      )}
       {measureScaleDialog && (
         <MeasureScaleDialog
           pageNumber={measureScaleDialog.pageNumber}
@@ -40810,7 +40932,7 @@ ${pageBlocks}
             The same buttons and handlers draw both; only the host and the
             wrapper differ. */}
         {isActive && pdfFile && typeof document !== 'undefined' && (() => {
-          const toolBarGroup = resolveToolBarGroup({ activeTool, activeCategoryDropdown, contextTool: subToolContextTool });
+          const toolBarGroup = resolveToolBarGroup({ activeTool, activeCategoryDropdown, contextTool: subToolContextTool, textHighlightMode: textDragToolsOn && Boolean(textHighlightMode) });
           // w46 (owner 2026-09-26: select modes in top bar): the Survey row
           // has its own slot ABOVE row 2 (AppShell #chrome-survey-row-slot).
           // In Select mode row 2 now comes and goes as a mark is picked and
@@ -40861,6 +40983,7 @@ ${pageBlocks}
                   { id: 'pen', label: 'Pen', iconName: 'pen' },
                   { id: 'highlighter', label: 'Highlighter', iconName: 'highlighter' },
                   ...(tapeToolEnabled ? [{ id: 'tape', label: 'Tape', iconName: 'tape' }] : []),
+                  ...(laserToolEnabled ? [{ id: 'laser', label: 'Laser pointer', iconName: 'laser' }] : []),
                   { id: 'eraser', label: 'Eraser', iconName: 'eraser' }
                 ].map(t => {
                   const isHighlighter = t.id === 'highlighter';
@@ -41086,7 +41209,7 @@ ${pageBlocks}
                   { id: 'line', label: 'Line', iconName: 'line' },
                   { id: 'arrow', label: 'Arrow', iconName: 'arrow' },
                   { id: 'counter', label: 'Counter', iconName: 'counter' },
-                  { id: 'measure', measure: true, label: 'Measure', iconName: 'measureScale' }
+                  { id: 'measure', measure: true, label: 'Measure', iconName: 'tapeMeasure' }
                 ].map(t => {
                   if (t.measure) {
                     // Drawboard Measure group, folded into one button so the
@@ -41101,6 +41224,8 @@ ${pageBlocks}
                         { key: 'wallArea', label: 'Wall area', iconName: 'measureWallArea' },
                         { key: 'volume', label: 'Volume', iconName: 'measureVolume' },
                       ] : []),
+                      // Nightly 'measure-angle': Drawboard's protractor.
+                      ...(measureAngleEnabled ? [{ key: 'angle', label: 'Angle', iconName: 'measureAngle' }] : []),
                       { key: 'scale', label: 'Page scale…', iconName: 'measureScale' },
                     ];
                     const pressed = !!measureMode || !!measureScaleDialog;
@@ -41614,15 +41739,25 @@ ${pageBlocks}
                   // Nightly 'comment-pins': the pin split button (N; M cycles the type).
                   ...(pinsDocOn ? [{ id: 'pin', label: 'Pin', pin: true }] : []),
                   // Nightly 'snapshot-tool': drag an area, it is copied as a picture.
-                  ...(snapshotToolEnabled ? [{ id: 'snapshot', label: 'Snapshot', iconName: 'camera' }] : []),
+                  ...(snapshotToolEnabled ? [{ id: 'snapshot', label: 'Snapshot', iconName: 'snapshot' }] : []),
                   // Nightly 'signature-tool': saved signatures, click the page to sign.
-                  ...(signatureToolEnabled ? [{ id: 'signature', label: 'Signature', iconName: 'pen', picker: 'signature' }] : []),
+                  ...(signatureToolEnabled ? [{ id: 'signature', label: 'Signature', iconName: 'signature', picker: 'signature' }] : []),
                   // Nightly 'text-highlight-tool': Select text that highlights as you drag.
-                  ...(textHighlightToolEnabled ? [{ id: 'text-highlight', label: 'Highlight text', iconName: 'formatHighlight', highlightMode: true }] : []),
-                  // TODO: Revisit the user-created Note tool later. Imported
-                  // PDF Text/sticky-note annotations still render through
-                  // pdfAnnotationImporter + the normal PDF annotation layers.
-                  // { id: 'note', label: 'Note', iconName: 'note' }
+                  ...(textDragToolsOn ? [{ id: 'text-highlight', label: 'Highlight text', iconName: 'textHighlightTool', highlightMode: 'highlight' }] : []),
+                  // Nightly 'text-markup-tools': Drawboard Review's other text tools.
+                  ...(textMarkupToolsEnabled ? [
+                    { id: 'text-underline', label: 'Underline text', iconName: 'textUnderlineTool', highlightMode: 'underline' },
+                    { id: 'text-squiggly', label: 'Squiggle text', iconName: 'textSquiggleTool', highlightMode: 'squiggly' },
+                    { id: 'text-strikeout', label: 'Strike through text', iconName: 'textStrikeTool', highlightMode: 'strikeout' },
+                    { id: 'text-redact', label: 'Redact text', iconName: 'textRedactTool', highlightMode: 'redact' },
+                  ] : []),
+                  // Nightly 'note-tool': click the page to leave a sticky note.
+                  // Imported PDF notes still render through pdfAnnotationImporter.
+                  ...(noteToolEnabled ? [{ id: 'sticky-note', label: 'Note', iconName: 'stickyNote' }] : []),
+                  // Nightly 'equation-tool': type LaTeX, it lands mid-page as a picture.
+                  ...(equationToolEnabled ? [{ id: 'equation', label: 'Equation', iconName: 'equation', action: 'equation' }] : []),
+                  // Nightly 'audio-note': record or pick a clip, pinned mid-page as a speaker badge.
+                  ...(audioNoteEnabled ? [{ id: 'audio-note', label: 'Audio note', iconName: 'audioNote', action: 'audio-note' }] : []),
                   // TODO: Revisit native PDF text markup tools later. Underline,
                   // squiggly, and strike-through are hidden from the toolbar for now.
                   // { id: 'underline', label: 'Underline', iconName: 'underline', menu: 'underline' },
@@ -41635,15 +41770,15 @@ ${pageBlocks}
                   const caretAttr = isUnderlineMenu ? 'data-underline-caret-button' : 'data-strike-caret-button';
                   const isActiveUnderline = isUnderlineMenu && (activeTool === 'underline' || activeTool === 'squiggly');
                   const isActiveStrike = isStrikeMenu && activeTool === 'strikeout';
-                  const isActive = t.highlightMode ? (textHighlightMode && activeTool === 'text-select') : t.picker === 'signature' ? signatureCardOpen : t.picker ? stampPickerOpen : (isActiveUnderline || isActiveStrike || activeTool === t.id);
+                  const isActive = t.highlightMode ? (textDragKindOf(textHighlightMode) === t.highlightMode && activeTool === 'text-select') : t.picker === 'signature' ? signatureCardOpen : t.picker ? stampPickerOpen : (isActiveUnderline || isActiveStrike || activeTool === t.id);
 
                   const onMainClick = (e) => {
                     if (t.highlightMode) {
                       if (stampPickerOpen) setStampPickerOpen(false);
                       if (signatureCardOpen) setSignatureCardOpen(false);
-                      const next = !(textHighlightMode && activeTool === 'text-select');
+                      const next = !(textDragKindOf(textHighlightMode) === t.highlightMode && activeTool === 'text-select');
                       if (next) setActiveToolLogged('text-select', { source: 'toolbar', keepTextHighlight: true });
-                      setTextHighlightMode(next);
+                      setTextHighlightMode(next ? t.highlightMode : false);
                       return;
                     }
                     if (t.picker === 'signature') {
@@ -41654,6 +41789,11 @@ ${pageBlocks}
                     if (signatureCardOpen) setSignatureCardOpen(false);
                     if (t.picker) {
                       setStampPickerOpen(!stampPickerOpen);
+                      return;
+                    }
+                    if (t.action === 'equation' || t.action === 'audio-note') {
+                      if (stampPickerOpen) setStampPickerOpen(false);
+                      window.dispatchEvent(new CustomEvent(t.action === 'equation' ? EQUATION_OPEN_EVENT : AUDIO_NOTE_OPEN_EVENT));
                       return;
                     }
                     if (t.action) {
@@ -44161,6 +44301,7 @@ ${pageBlocks}
         />,
         document.getElementById('chrome-sub-toolbar-host'),
       )}
+      <LaserPointerLayer active={isActive !== false && laserToolEnabled && activeTool === 'laser'} hostRef={pdfjsWrapperRef} />
       <TextSelectionQuickMenu
         active={isActive}
         selection={isTextSelectionCaptureTool(activeTool) && !selectedTextMarkupActionSelection && !showAnnotationColorPicker && !textLinkEditorOpen
