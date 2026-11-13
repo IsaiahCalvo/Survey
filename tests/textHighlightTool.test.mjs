@@ -17,10 +17,12 @@ test('flag, button and wiring', () => {
   const viewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
   // 2026-11-13: the Underline / Squiggle / Strikethrough / Redact text tools
   // ('text-markup-tools') share the mode, so it carries the kind.
-  assert.match(viewer, /const textDragToolsOn = textHighlightToolEnabled \|\| textMarkupToolsEnabled;/);
+  // 'text-review-remove' (Remove text marks) rides the same drag too.
+  assert.match(viewer, /const textDragToolsOn = textHighlightToolEnabled \|\| textMarkupToolsEnabled \|\| textReviewRemoveEnabled;/);
   assert.match(viewer, /textDragToolsOn \? \[\{ id: 'text-highlight', label: 'Highlight text', iconName: 'textHighlightTool', highlightMode: 'highlight' \}\]/);
   assert.match(viewer, /useTextHighlightMode\(\{\s*on: textDragToolsOn && Boolean\(textHighlightMode\) && activeTool === 'text-select'/);
-  assert.match(viewer, /apply: \(\) => handleTextSelectionAction\(textDragKind, \{ keepSelection: false \}\)/);
+  assert.match(viewer, /: handleTextSelectionAction\(textDragKind, \{ keepSelection: false \}\)\)/);
+  assert.match(viewer, /\? handleTextSelectionRemove\(\{ keepSelection: false \}\)/);
   const migration = readFileSync(new URL('../supabase/migrations/20261112093000_text_highlight_tool_flag.sql', import.meta.url), 'utf8');
   assert.match(migration, /'text-highlight-tool', 'off'/);
 });
