@@ -13,7 +13,8 @@ name: Signed-in E2E
 # once (scripts/e2e-signed-in-shard.mjs balances them by the measured seconds
 # in tests/e2e-signed-in/spec-seconds.json), each with its own throwaway
 # stack, so shards never share data. The repo is public, so these standard
-# runners cost nothing; each run holds one job slot per shard for ~8 minutes.
+# runners cost nothing; each run holds one job slot per shard for ~20 minutes
+# (8 shards, 35 minute cap per shard: owner OK 2026-11-12).
 # It still skips Dependabot and drafts, runs only when a pull request touches
 # something the suite exercises, and cancels superseded runs.
 
@@ -85,12 +86,12 @@ jobs:
     # Playwright 1.59 has no browsers for ubuntu-26.04, which ubuntu-latest
     # became in October 2026.
     runs-on: ubuntu-24.04
-    timeout-minutes: ${{ inputs.perf && 55 || 30 }}
+    timeout-minutes: ${{ inputs.perf && 55 || 35 }}
     strategy:
       # Let every shard finish so one run shows all failures, not just the first.
       fail-fast: false
       matrix:
-        shard: ${{ inputs.perf && fromJSON('[1]') || fromJSON('[1, 2, 3, 4, 5, 6]') }}
+        shard: ${{ inputs.perf && fromJSON('[1]') || fromJSON('[1, 2, 3, 4, 5, 6, 7, 8]') }}
     steps:
       - uses: actions/checkout@v7
 
