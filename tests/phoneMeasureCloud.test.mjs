@@ -15,7 +15,7 @@ test('phone Shapes strip offers Cloud and Measure', () => {
   assert.deepEqual(MOBILE_MEASURE_ITEMS.map((m) => m.key), ['length', 'area', 'perimeter', 'scale']);
   const chrome = readFileSync(new URL('../src/mobile/MobilePdfViewerChrome.jsx', import.meta.url), 'utf8');
   assert.match(chrome, /\{ id: 'cloud', label: 'Cloud', icon: 'shapeCloud' \}/);
-  assert.match(chrome, /\{ id: 'measure', label: 'Measure', icon: 'measureScale', measure: true \}/);
+  assert.match(chrome, /\{ id: 'measure', label: 'Measure', icon: 'tapeMeasure', measure: true \}/);
 });
 
 test('Cloud arms rect + cloud style and clears measure mode', () => {

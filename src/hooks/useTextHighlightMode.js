@@ -8,6 +8,12 @@
  * you drag, and letting go makes it a highlight (one save, one Undo step,
  * through the same action the selection bar's Highlight runs). A selection
  * that is already highlighted is left alone (no accidental removal).
+ *
+ * Nightly 'text-markup-tools' (owner 2026-11-13, "nothing can be missing"):
+ * Drawboard's Underline, Squiggle, Strikethrough and Redact text tools work
+ * the same way, so `kind` names the mark the release makes ('highlight',
+ * 'underline', 'squiggly', 'strikeout' or 'redact'). While dragging, the
+ * selection is tinted in that tool's colour.
  */
 import { useEffect, useRef } from 'react';
 
@@ -34,6 +40,24 @@ export function liveHighlightPaint(color, opacity) {
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
 }
 
+export const TEXT_DRAG_KINDS = Object.freeze(['highlight', 'underline', 'squiggly', 'strikeout', 'redact']);
+
+/** The drag kind a mode value stands for: true (the first, highlight-only
+ * build) and unknown strings read as 'highlight'; false/null read as null. */
+export function textDragKindOf(mode) {
+  if (!mode) return null;
+  return TEXT_DRAG_KINDS.includes(mode) ? mode : 'highlight';
+}
+
+/** The live tint for a kind: highlight shows its own band; the line marks
+ * show a lighter wash of their colour, since the line itself is drawn on
+ * release; redact shows a dark wash. */
+export function liveDragPaint(kind, paint) {
+  if (kind === 'redact') return 'rgba(0, 0, 0, 0.35)';
+  if (kind && kind !== 'highlight') return liveHighlightPaint(paint?.color, 25);
+  return liveHighlightPaint(paint?.color, paint?.opacity);
+}
+
 const CHROME = 'button, a, input, textarea, select, [role="toolbar"], [role="menu"], [role="menuitem"], [role="dialog"]';
 
 /** True when a release lands on a control (the selection bar, a menu, a dialog). */
@@ -43,7 +67,7 @@ export function releasedOnChrome(event) {
   return Boolean(el?.closest?.(CHROME));
 }
 
-export function useTextHighlightMode({ on, wrapperRef, paint, getSelection, apply }) {
+export function useTextHighlightMode({ on, wrapperRef, kind = 'highlight', paint, getSelection, apply }) {
   const latest = useRef({ getSelection, apply });
   latest.current = { getSelection, apply };
 
@@ -53,7 +77,7 @@ export function useTextHighlightMode({ on, wrapperRef, paint, getSelection, appl
     if (!wrapper) return undefined;
     ensureStyle();
     wrapper.setAttribute('data-text-highlight-mode', 'true');
-    wrapper.style.setProperty('--text-highlight-live', liveHighlightPaint(paint?.color, paint?.opacity));
+    wrapper.style.setProperty('--text-highlight-live', liveDragPaint(kind, paint));
     let frame = 0;
     const onUp = (event) => {
       if (event.button !== 0) return;
@@ -69,7 +93,7 @@ export function useTextHighlightMode({ on, wrapperRef, paint, getSelection, appl
           const el = node?.nodeType === 1 ? node : node?.parentElement;
           if (!el || !wrapper.contains(el) || !el.closest('.pdfjsTextLayer')) return;
           const live = latest.current.getSelection?.();
-          if (live?.activeMarkupTypes?.includes?.('highlight')) return;
+          if (kind !== 'redact' && live?.activeMarkupTypes?.includes?.(kind)) return;
           latest.current.apply?.();
         });
       });
@@ -81,5 +105,5 @@ export function useTextHighlightMode({ on, wrapperRef, paint, getSelection, appl
       wrapper.removeAttribute('data-text-highlight-mode');
       wrapper.style.removeProperty('--text-highlight-live');
     };
-  }, [on, wrapperRef, paint?.color, paint?.opacity]);
+  }, [on, wrapperRef, kind, paint?.color, paint?.opacity]);
 }

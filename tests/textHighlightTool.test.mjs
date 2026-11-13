@@ -15,9 +15,12 @@ test('the live band takes the highlight colour and opacity', () => {
 test('flag, button and wiring', () => {
   assert.equal(FEATURE_FLAGS['text-highlight-tool'].stage, 'beta');
   const viewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
-  assert.match(viewer, /textHighlightToolEnabled \? \[\{ id: 'text-highlight', label: 'Highlight text'/);
-  assert.match(viewer, /useTextHighlightMode\(\{\s*on: textHighlightToolEnabled && textHighlightMode && activeTool === 'text-select'/);
-  assert.match(viewer, /apply: \(\) => handleTextSelectionAction\('highlight', \{ keepSelection: false \}\)/);
+  // 2026-11-13: the Underline / Squiggle / Strikethrough / Redact text tools
+  // ('text-markup-tools') share the mode, so it carries the kind.
+  assert.match(viewer, /const textDragToolsOn = textHighlightToolEnabled \|\| textMarkupToolsEnabled;/);
+  assert.match(viewer, /textDragToolsOn \? \[\{ id: 'text-highlight', label: 'Highlight text', iconName: 'textHighlightTool', highlightMode: 'highlight' \}\]/);
+  assert.match(viewer, /useTextHighlightMode\(\{\s*on: textDragToolsOn && Boolean\(textHighlightMode\) && activeTool === 'text-select'/);
+  assert.match(viewer, /apply: \(\) => handleTextSelectionAction\(textDragKind, \{ keepSelection: false \}\)/);
   const migration = readFileSync(new URL('../supabase/migrations/20261112093000_text_highlight_tool_flag.sql', import.meta.url), 'utf8');
   assert.match(migration, /'text-highlight-tool', 'off'/);
 });
@@ -38,6 +41,6 @@ test('any other tool press, Select text included, ends Highlight text', () => {
   assert.match(viewer, /setActiveToolLogged = useCallback\(\(next, \{ source, keepTextHighlight \} = \{\}\) => \{[\s\S]{0,300}if \(!keepTextHighlight\) setTextHighlightMode\(false\);/);
   assert.match(viewer, /setActiveToolLogged\('text-select', \{ source: 'toolbar', keepTextHighlight: true \}\)/);
   assert.match(viewer, /setActiveTool\(next\.activeTool\);\n    setTextHighlightMode\(false\);/);
-  assert.match(viewer, /textHighlightMode: textHighlightToolEnabled && textHighlightMode,/);
+  assert.match(viewer, /textHighlightMode: textDragToolsOn && Boolean\(textHighlightMode\),/);
   assert.match(shell, /const isTextSelect = bottomToolbarApi\.activeTool === 'text-select' && !bottomToolbarApi\.textHighlightMode;/);
 });

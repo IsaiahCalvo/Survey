@@ -128,7 +128,7 @@ export function formatDisplayDepth(realInches, display, precision) {
 
 /** The caption prefix when more than one reading shows. */
 export const MEASURE_LINE_PREFIXES = Object.freeze({
-  length: 'L', perimeter: 'P', area: 'A', depth: 'D', wallArea: 'WA', volume: 'V',
+  length: 'L', perimeter: 'P', area: 'A', depth: 'D', wallArea: 'WA', volume: 'V', angle: '∠',
 });
 
 /** Whether a scale asks for these formats. */

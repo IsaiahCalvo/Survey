@@ -64,12 +64,17 @@ export const MEASURE_PRESETS = Object.freeze([
 // Drawboard Projects trial audit (2026-11-09, Nightly flag 'measure-depth'):
 // Polylength (an open run of segments), and Wall area / Volume, which take a
 // depth: wall area = perimeter x depth, volume = area x depth.
-export const MEASURE_KINDS = Object.freeze(['length', 'area', 'perimeter', 'polylength', 'wallArea', 'volume']);
+export const MEASURE_KINDS = Object.freeze(['length', 'area', 'perimeter', 'polylength', 'wallArea', 'volume', 'angle']);
+// Nightly 'measure-angle' (owner 2026-11-13, Drawboard's protractor): an
+// Angle is three clicks, the corner in the middle; it reads in degrees and
+// needs no page scale.
 
 // Measure kinds drawn with the Polygon tool; Polylength rides the Polyline
 // tool; the rest ride the Line tool.
 export const POLYGON_MEASURE_KINDS = Object.freeze(['area', 'perimeter', 'wallArea', 'volume']);
-export const POLYLINE_MEASURE_KINDS = Object.freeze(['polylength']);
+export const POLYLINE_MEASURE_KINDS = Object.freeze(['polylength', 'angle']);
+/** Points an Angle takes: it finishes by itself on the third click. */
+export const ANGLE_MEASURE_POINTS = 3;
 
 // Kinds that need a depth (in the page scale's unit) before they draw.
 export const DEPTH_MEASURE_KINDS = Object.freeze(['wallArea', 'volume']);
@@ -387,6 +392,7 @@ export function quadraticArcLength(a, mid, b) {
 export const MEASURE_CAPTION_FIELDS = Object.freeze({
   length: Object.freeze(['length']),
   polylength: Object.freeze(['length']),
+  angle: Object.freeze(['angle']),
   perimeter: Object.freeze(['perimeter', 'area']),
   area: Object.freeze(['area', 'perimeter']),
   wallArea: Object.freeze(['wallArea', 'perimeter', 'depth']),
@@ -401,6 +407,7 @@ export const MEASURE_FIELD_NAMES = Object.freeze({
   depth: 'Depth',
   wallArea: 'Wall area',
   volume: 'Volume',
+  angle: 'Angle',
 });
 
 export const MEASURE_CAPTION_SIZE_MIN = 8;
@@ -678,6 +685,21 @@ function buildMeasureReading(obj, pageScale) {
     };
   }
   const world = measurePolygonWorldPoints(obj);
+  if (kind === 'angle') {
+    if (world.length < 3) return null;
+    const [a, v, b] = world;
+    const degrees = measureAngleDegrees(a, v, b);
+    if (degrees == null) return null;
+    // The caption sits just inside the corner, along the line that halves it.
+    const ua = unitVector(a, v);
+    const ub = unitVector(b, v);
+    let bx = ua.x + ub.x;
+    let by = ua.y + ub.y;
+    const len = Math.hypot(bx, by);
+    if (len < 1e-6) { bx = -ua.y; by = ua.x; } else { bx /= len; by /= len; }
+    const reach = Math.min(Math.hypot(a.x - v.x, a.y - v.y), Math.hypot(b.x - v.x, b.y - v.y)) * 0.35;
+    return { kind, text: formatMeasureAngle(degrees), x: v.x + bx * reach, y: v.y + by * reach, angle: 0, value: degrees };
+  }
   if (kind === 'polylength') {
     if (world.length < 2) return null;
     const lengthPt = polylineLengthPt(world);
@@ -701,6 +723,31 @@ function buildMeasureReading(obj, pageScale) {
   }
   const areaPt2 = polygonAreaPt(world);
   return { kind, text: formatMeasureArea(areaPt2, scale), x: c.x, y: c.y, angle: 0, value: areaPt2 };
+}
+
+function unitVector(p, from) {
+  const dx = p.x - from.x;
+  const dy = p.y - from.y;
+  const len = Math.hypot(dx, dy);
+  return len < 1e-9 ? { x: 0, y: 0 } : { x: dx / len, y: dy / len };
+}
+
+/** The angle at corner `v` between the arms to `a` and `b`, 0-180 degrees
+ * (null when an arm has no length). */
+export function measureAngleDegrees(a, v, b) {
+  const ax = a.x - v.x;
+  const ay = a.y - v.y;
+  const bx = b.x - v.x;
+  const by = b.y - v.y;
+  if (Math.hypot(ax, ay) < 1e-9 || Math.hypot(bx, by) < 1e-9) return null;
+  const radians = Math.abs(Math.atan2(ax * by - ay * bx, ax * bx + ay * by));
+  return (radians * 180) / Math.PI;
+}
+
+/** An angle as Drawboard writes it: one decimal place and a degree sign. */
+export function formatMeasureAngle(degrees) {
+  const n = Math.round((Number(degrees) || 0) * 10) / 10;
+  return `${n.toFixed(1)}°`;
 }
 
 /** The document's saved scales, cleaned: { all, pages }. */

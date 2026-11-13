@@ -15,6 +15,8 @@ export const ANNOTATION_TOOL_CATALOG = Object.freeze([
   { id: 'text-highlight', label: 'Text highlight', group: 'draw', agentTools: ['survey_add_highlight', 'survey_recolor_highlight'] },
   // Tape (beta 'tape-tool'): an opaque pastel band; a tap under Pan reveals what is under it.
   { id: 'tape', label: 'Tape', group: 'draw', agentTools: [] },
+  // Laser pointer (beta 'laser-pointer'): a fading line that is never saved.
+  { id: 'laser', label: 'Laser pointer', group: 'draw', agentTools: [] },
   { id: 'eraser', label: 'Eraser', group: 'draw', agentTools: [] },
   { id: 'rect', label: 'Rectangle', group: 'shape', agentTools: ['survey_add_rectangle'] },
   { id: 'ellipse', label: 'Ellipse', group: 'shape', agentTools: ['survey_add_ellipse'] },

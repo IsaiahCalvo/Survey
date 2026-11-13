@@ -134,6 +134,7 @@ import TextMarkupLinkLayer from './components/TextMarkupLinkLayer';
 import PdfjsFormLayer from './components/PdfjsFormLayer';
 import TextSelectionActionBar from './components/TextSelectionActionBar';
 import TextSelectionQuickMenu from './components/TextSelectionQuickMenu';
+import LaserPointerLayer from './components/LaserPointerLayer.jsx';
 import { deviceCanHover, isTextSelectionCaptureTool, markTakesPanTextHover, shouldMountPanTextLayer } from './utils/panTextSelect.js';
 import { copyTextSelection } from './utils/textSelectionQuickMenu.js';
 import ApplyRedactionsModal from './components/ApplyRedactionsModal';
@@ -413,7 +414,7 @@ import { PinToolButton } from './components/pins/PinControls.jsx';
 import { LINK_EDIT_EVENT, applyLinkEdit, selectedLinkOf } from './utils/linkTool.js';
 import SnapshotTool from './components/SnapshotTool.jsx';
 import PageTemplatePicker from './components/PageTemplatePicker.jsx';
-import { useTextHighlightMode } from './hooks/useTextHighlightMode.js';
+import { useTextHighlightMode, textDragKindOf } from './hooks/useTextHighlightMode.js';
 import { selectPageMarkup } from './services/thumbnailRender.js';
 import { announceLocalMarkEdit } from './utils/localMarkEdit.js';
 import { marksHidden, setMarksHidden, subscribeMarksHidden } from './utils/marksHidden.js';
@@ -3254,6 +3255,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // Tape (beta 'tape-tool', Drawboard PDF): a band that covers part of the
   // page; a Pan tap reveals what is under it. Revealed tapes are per viewer.
   const [tapeToolEnabled] = useState(() => isFeatureOn('tape-tool'));
+  // Nightly 'laser-pointer': Drawboard Free-form > Laser pointer (never saved).
+  const [laserToolEnabled] = useState(() => isFeatureOn('laser-pointer'));
+  const [measureAngleEnabled] = useState(() => isFeatureOn('measure-angle'));
   const prevMeasureModeRef = useRef(null);
   useEffect(() => {
     const prev = prevMeasureModeRef.current;
@@ -5795,6 +5799,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const [lastDrawTool, setLastDrawTool] = useState(() => {
     try {
       const saved = localStorage.getItem('lastDrawTool') || 'pen';
+      if (saved === 'laser' && !isFeatureOn('laser-pointer')) return 'pen';
       return saved === 'tape' && !isFeatureOn('tape-tool') ? 'pen' : saved;
     } catch (e) {
       return 'pen';
@@ -5838,7 +5843,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     // indistinguishable from clicking the category button. The category
     // buttons' toggle-to-close still works: closing doesn't change the tool,
     // so this effect doesn't re-open.
-    if (['pen', 'highlighter', 'text-highlight', 'tape', 'eraser'].includes(activeTool)) {
+    if (['pen', 'highlighter', 'text-highlight', 'tape', 'laser', 'eraser'].includes(activeTool)) {
       setLastDrawTool(activeTool);
       setActiveCategoryDropdown((prev) => (prev === 'draw' ? prev : 'draw'));
       try {
@@ -22734,6 +22739,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const [snapshotToolEnabled] = useState(() => isFeatureOn('snapshot-tool'));
   const [signatureToolEnabled] = useState(() => isFeatureOn('signature-tool'));
   const [textHighlightToolEnabled] = useState(() => isFeatureOn('text-highlight-tool'));
+  // Nightly 'text-markup-tools': Drawboard's Underline / Squiggle /
+  // Strikethrough / Redact text tools ride the same drag-over-text mode;
+  // textHighlightMode then holds the kind ('highlight', 'underline', ...).
+  const [textMarkupToolsEnabled] = useState(() => isFeatureOn('text-markup-tools'));
+  const textDragToolsOn = textHighlightToolEnabled || textMarkupToolsEnabled;
   const [insertImageEnabled] = useState(() => isFeatureOn('insert-image'));
   // Markups list (Nightly 'markup-list'): every mark in one rail panel.
   const [markupListEnabled] = useState(() => isFeatureOn('markup-list'));
@@ -27773,7 +27783,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       pageInputRef,
       activeTool,
       // Highlight text rides 'text-select'; the Select button stays unpressed.
-      textHighlightMode: textHighlightToolEnabled && textHighlightMode,
+      textHighlightMode: textDragToolsOn && Boolean(textHighlightMode),
       selectionMode,
       setSelectionMode,
       lassoTouchOperation,
@@ -35903,12 +35913,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const handleTextSelectionQuickAction = useCallback((action) => (
     handleTextSelectionAction(action, { keepSelection: false })
   ), [handleTextSelectionAction]);
+  const textDragKind = typeof textHighlightMode === 'string' ? textHighlightMode : 'highlight';
   useTextHighlightMode({
-    on: textHighlightToolEnabled && textHighlightMode && activeTool === 'text-select',
+    on: textDragToolsOn && Boolean(textHighlightMode) && activeTool === 'text-select',
     wrapperRef: pdfjsWrapperRef,
-    paint: textMarkupPaintByType.highlight,
+    kind: textDragKind,
+    paint: textMarkupPaintByType[textDragKind] || { color: '#000000', opacity: 35 },
     getSelection: () => liveTextSelectionActionSelection,
-    apply: () => handleTextSelectionAction('highlight', { keepSelection: false }),
+    apply: () => handleTextSelectionAction(textDragKind, { keepSelection: false }),
   });
   const handleTextSelectionCopy = useCallback(async (selection) => {
     const copied = await copyTextSelection(selection?.text);
@@ -40810,7 +40822,7 @@ ${pageBlocks}
             The same buttons and handlers draw both; only the host and the
             wrapper differ. */}
         {isActive && pdfFile && typeof document !== 'undefined' && (() => {
-          const toolBarGroup = resolveToolBarGroup({ activeTool, activeCategoryDropdown, contextTool: subToolContextTool });
+          const toolBarGroup = resolveToolBarGroup({ activeTool, activeCategoryDropdown, contextTool: subToolContextTool, textHighlightMode: textDragToolsOn && Boolean(textHighlightMode) });
           // w46 (owner 2026-09-26: select modes in top bar): the Survey row
           // has its own slot ABOVE row 2 (AppShell #chrome-survey-row-slot).
           // In Select mode row 2 now comes and goes as a mark is picked and
@@ -40861,6 +40873,7 @@ ${pageBlocks}
                   { id: 'pen', label: 'Pen', iconName: 'pen' },
                   { id: 'highlighter', label: 'Highlighter', iconName: 'highlighter' },
                   ...(tapeToolEnabled ? [{ id: 'tape', label: 'Tape', iconName: 'tape' }] : []),
+                  ...(laserToolEnabled ? [{ id: 'laser', label: 'Laser pointer', iconName: 'laser' }] : []),
                   { id: 'eraser', label: 'Eraser', iconName: 'eraser' }
                 ].map(t => {
                   const isHighlighter = t.id === 'highlighter';
@@ -41086,7 +41099,7 @@ ${pageBlocks}
                   { id: 'line', label: 'Line', iconName: 'line' },
                   { id: 'arrow', label: 'Arrow', iconName: 'arrow' },
                   { id: 'counter', label: 'Counter', iconName: 'counter' },
-                  { id: 'measure', measure: true, label: 'Measure', iconName: 'measureScale' }
+                  { id: 'measure', measure: true, label: 'Measure', iconName: 'tapeMeasure' }
                 ].map(t => {
                   if (t.measure) {
                     // Drawboard Measure group, folded into one button so the
@@ -41101,6 +41114,8 @@ ${pageBlocks}
                         { key: 'wallArea', label: 'Wall area', iconName: 'measureWallArea' },
                         { key: 'volume', label: 'Volume', iconName: 'measureVolume' },
                       ] : []),
+                      // Nightly 'measure-angle': Drawboard's protractor.
+                      ...(measureAngleEnabled ? [{ key: 'angle', label: 'Angle', iconName: 'measureAngle' }] : []),
                       { key: 'scale', label: 'Page scale…', iconName: 'measureScale' },
                     ];
                     const pressed = !!measureMode || !!measureScaleDialog;
@@ -41614,11 +41629,18 @@ ${pageBlocks}
                   // Nightly 'comment-pins': the pin split button (N; M cycles the type).
                   ...(pinsDocOn ? [{ id: 'pin', label: 'Pin', pin: true }] : []),
                   // Nightly 'snapshot-tool': drag an area, it is copied as a picture.
-                  ...(snapshotToolEnabled ? [{ id: 'snapshot', label: 'Snapshot', iconName: 'camera' }] : []),
+                  ...(snapshotToolEnabled ? [{ id: 'snapshot', label: 'Snapshot', iconName: 'snapshot' }] : []),
                   // Nightly 'signature-tool': saved signatures, click the page to sign.
-                  ...(signatureToolEnabled ? [{ id: 'signature', label: 'Signature', iconName: 'pen', picker: 'signature' }] : []),
+                  ...(signatureToolEnabled ? [{ id: 'signature', label: 'Signature', iconName: 'signature', picker: 'signature' }] : []),
                   // Nightly 'text-highlight-tool': Select text that highlights as you drag.
-                  ...(textHighlightToolEnabled ? [{ id: 'text-highlight', label: 'Highlight text', iconName: 'formatHighlight', highlightMode: true }] : []),
+                  ...(textDragToolsOn ? [{ id: 'text-highlight', label: 'Highlight text', iconName: 'textHighlightTool', highlightMode: 'highlight' }] : []),
+                  // Nightly 'text-markup-tools': Drawboard Review's other text tools.
+                  ...(textMarkupToolsEnabled ? [
+                    { id: 'text-underline', label: 'Underline text', iconName: 'textUnderlineTool', highlightMode: 'underline' },
+                    { id: 'text-squiggly', label: 'Squiggle text', iconName: 'textSquiggleTool', highlightMode: 'squiggly' },
+                    { id: 'text-strikeout', label: 'Strike through text', iconName: 'textStrikeTool', highlightMode: 'strikeout' },
+                    { id: 'text-redact', label: 'Redact text', iconName: 'textRedactTool', highlightMode: 'redact' },
+                  ] : []),
                   // TODO: Revisit the user-created Note tool later. Imported
                   // PDF Text/sticky-note annotations still render through
                   // pdfAnnotationImporter + the normal PDF annotation layers.
@@ -41635,15 +41657,15 @@ ${pageBlocks}
                   const caretAttr = isUnderlineMenu ? 'data-underline-caret-button' : 'data-strike-caret-button';
                   const isActiveUnderline = isUnderlineMenu && (activeTool === 'underline' || activeTool === 'squiggly');
                   const isActiveStrike = isStrikeMenu && activeTool === 'strikeout';
-                  const isActive = t.highlightMode ? (textHighlightMode && activeTool === 'text-select') : t.picker === 'signature' ? signatureCardOpen : t.picker ? stampPickerOpen : (isActiveUnderline || isActiveStrike || activeTool === t.id);
+                  const isActive = t.highlightMode ? (textDragKindOf(textHighlightMode) === t.highlightMode && activeTool === 'text-select') : t.picker === 'signature' ? signatureCardOpen : t.picker ? stampPickerOpen : (isActiveUnderline || isActiveStrike || activeTool === t.id);
 
                   const onMainClick = (e) => {
                     if (t.highlightMode) {
                       if (stampPickerOpen) setStampPickerOpen(false);
                       if (signatureCardOpen) setSignatureCardOpen(false);
-                      const next = !(textHighlightMode && activeTool === 'text-select');
+                      const next = !(textDragKindOf(textHighlightMode) === t.highlightMode && activeTool === 'text-select');
                       if (next) setActiveToolLogged('text-select', { source: 'toolbar', keepTextHighlight: true });
-                      setTextHighlightMode(next);
+                      setTextHighlightMode(next ? t.highlightMode : false);
                       return;
                     }
                     if (t.picker === 'signature') {
@@ -44161,6 +44183,7 @@ ${pageBlocks}
         />,
         document.getElementById('chrome-sub-toolbar-host'),
       )}
+      <LaserPointerLayer active={isActive !== false && laserToolEnabled && activeTool === 'laser'} hostRef={pdfjsWrapperRef} />
       <TextSelectionQuickMenu
         active={isActive}
         selection={isTextSelectionCaptureTool(activeTool) && !selectedTextMarkupActionSelection && !showAnnotationColorPicker && !textLinkEditorOpen

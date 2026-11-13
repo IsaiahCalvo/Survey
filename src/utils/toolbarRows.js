@@ -95,12 +95,16 @@ export { TOOL_GROUP_BY_TOOL };
  * `contextTool` is the picked mark's own tool while Select or Pan holds a
  * pick (see PDFViewer's toolbar publish), else the armed tool.
  */
-export function resolveToolBarGroup({ activeTool, activeCategoryDropdown, contextTool, regionEditing } = {}) {
+export function resolveToolBarGroup({ activeTool, activeCategoryDropdown, contextTool, regionEditing, textHighlightMode } = {}) {
   // Editing a Space's areas: the tool bar shows the Areas tools instead
   // (AppShell), never a drawing group's.
   if (regionEditing || activeTool === 'region-edit') return null;
   if (activeTool === 'survey-marker') return null;
   if (TOOL_BAR_GROUPS.includes(activeCategoryDropdown)) return activeCategoryDropdown;
+  // The Text group's drag-over-text tools (Highlight / Underline / Squiggle /
+  // Strikethrough / Redact text) ride Select text: keep the Text group's row
+  // up, with the armed tool pressed, as Drawboard keeps its Review strip.
+  if (activeTool === 'text-select' && textHighlightMode) return 'review';
   if (isSelectFamilyTool(activeTool)) return TOOL_GROUP_BY_TOOL[contextTool] || 'select';
   // Owner 2026-10-04: a Pan pick brings up the picked mark's group as a
   // Select pick does (contextTool is then the mark's tool); Pan alone has none.

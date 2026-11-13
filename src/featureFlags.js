@@ -513,6 +513,20 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Highlight text: the band follows the pointer as you drag over words, and letting go highlights them',
     stage: 'beta',
   }),
+  // Owner 2026-11-13 ("nothing can be missing" vs Drawboard PDF Pro): the
+  // Review group's other text tools, each a drag over words.
+  'laser-pointer': Object.freeze({
+    label: 'Laser pointer: a glowing line that follows the pen or mouse and fades away; never saved',
+    stage: 'beta',
+  }),
+  'measure-angle': Object.freeze({
+    label: 'Angle measure (Drawboard protractor): click three points, the corner in the middle, to read the angle in degrees',
+    stage: 'beta',
+  }),
+  'text-markup-tools': Object.freeze({
+    label: 'Underline, Squiggle, Strikethrough and Redact text tools: drag over words and letting go marks them',
+    stage: 'beta',
+  }),
   'page-turn-keys': Object.freeze({
     label: 'Keys: with nothing picked, Left / Right and Shift + Up / Down turn the page',
     stage: 'beta',

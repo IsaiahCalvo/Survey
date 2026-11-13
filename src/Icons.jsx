@@ -133,6 +133,18 @@ const renderMaskIcon = (url, size, color, style, className, width = size) => (
   />
 );
 
+/** A plain stroked glyph in the house style: 24 grid, 1.5 stroke, round
+ * caps and joins. Paths are d strings, or { d, fill } for a filled dot. */
+const strokeGlyph = (size, color, style, className, paths) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+    <g stroke={color} strokeWidth={ICON_STROKE_WIDTH} strokeLinecap="round" strokeLinejoin="round">
+      {paths.map((path) => (typeof path === 'string'
+        ? <path key={path} d={path} />
+        : <path key={path.d} d={path.d} fill={path.fill ? color : 'none'} strokeDasharray={path.dash} />))}
+    </g>
+  </svg>
+);
+
 const ICON_RENDERERS = {
     oneDrive: (size, _color, style, className) => (
       <img
@@ -690,13 +702,16 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
-    // Tape (beta 'tape-tool'): a strip of tape with torn ends.
-    tape: (size, color, style, className) => (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <path d="M4.5 15.5 15.5 4.5l1.2 1.6 1.8-.2-.2 1.8 1.6 1.2L8.9 19.9l-1.2-1.6-1.8.2.2-1.8z" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
-        <path d="M9 13.5l4.5-4.5" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-      </svg>
-    ),
+    // Tape (beta 'tape-tool'), owner 2026-11-13 ("your tape icon looks like
+    // shit"): a roll of tape with a strip pulled off and a torn end, drawn in
+    // the house style (24 grid, 1.5 stroke, round caps). The old diagonal
+    // strip read as a bandage or a ruler.
+    tape: (size, color, style, className) => strokeGlyph(size, color, style, className, [
+      'M9.5 19A7 7 0 1 1 16.5 12',
+      'M9.5 14.75a2.75 2.75 0 1 0 0-5.5 2.75 2.75 0 0 0 0 5.5Z',
+      'M9.5 19H21.5l-1.2-1.5 1.2-1.5-1.2-1.5 1.2-1.5H16.5V12',
+    ]),
+
     eraser: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ ...style, transform: 'rotate(270deg)' }} className={className}>
         <g transform="rotate(-45 12 12)">
@@ -908,11 +923,12 @@ const ICON_RENDERERS = {
     // in the app. The arrowhead legs keep their old half-the-span proportion.
     // Measure tools (Drawboard Measure group): Length = a dimension line with
     // end ticks, Area = a dashed square with a corner tick, Scale = a ruler.
-    measureLength: (size, color, style, className) => (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <path d="M4 12H20M4 8V16M20 8V16M7 12L9 10M7 12L9 14M17 12L15 10M17 12L15 14" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    ),
+    // Length (owner 2026-11-13 icon pass): Lucide "ruler-dimension-line"
+    // (lucide-static 1.72.0, ISC) at the house 1.5 stroke.
+    measureLength: (size, color, style, className) => strokeGlyph(size, color, style, className, [
+      'M2 8V4', 'M22 6H2', 'M22 8V4', 'M6 15v-3', 'M10 15v-3', 'M14 15v-3', 'M18 15v-3',
+      'M4 12h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2Z',
+    ]),
     measureArea: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
         <path d="M4 4H20V20H4Z" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
@@ -943,12 +959,79 @@ const ICON_RENDERERS = {
         <path d="M4 9L9 4H20V15L15 20M15 9L20 4" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     ),
-    measureScale: (size, color, style, className) => (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <path d="M2 9H22V15H2Z" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
-        <path d="M6 9V12M10 9V13M14 9V12M18 9V13" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-      </svg>
-    ),
+    // Page scale / calibrate (owner 2026-11-13 icon pass): Lucide "ruler"
+    // (lucide-static 1.72.0, ISC) at the house 1.5 stroke. It was a flat
+    // box with ticks that read as a battery.
+    measureScale: (size, color, style, className) => strokeGlyph(size, color, style, className, [
+      'M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z',
+      'm14.5 12.5 2-2', 'm11.5 9.5 2-2', 'm8.5 6.5 2-2', 'm17.5 15.5 2-2',
+    ]),
+    // The Measure group button (owner 2026-11-13: "use hugeicons ... tape"):
+    // Hugeicons "tape-measure" (@hugeicons/core-free-icons 4.4.0, MIT), drawn
+    // at its own 1.5 stroke on the 24 grid.
+    tapeMeasure: (size, color, style, className) => strokeGlyph(size, color, style, className, [
+      'M5 9.97873C5 11.095 6.79086 12 9 12V9.97873C9 8.98454 9 8.48745 8.60252 8.18419C8.20504 7.88092 7.811 7.99435 7.02292 8.22121C5.81469 8.56902 5 9.2258 5 9.97873Z',
+      'M16 8.5C16 10.433 12.866 12 9 12C5.13401 12 2 10.433 2 8.5C2 6.567 5.13401 5 9 5C12.866 5 16 6.567 16 8.5Z',
+      'M2 9V15.6667C2 17.5076 5.13401 19 9 19H20C20.9428 19 21.4142 19 21.7071 18.7071C22 18.4142 22 17.9428 22 17V14C22 13.0572 22 12.5858 21.7071 12.2929C21.4142 12 20.9428 12 20 12H9',
+      'M18 19V17M14 19V17M10 19V17M6 18.5V16.5',
+    ]),
+    // Signature tool: Lucide "signature" (ISC). It used to borrow the Pen glyph,
+    // so Pen and Signature looked like the same tool.
+    signature: (size, color, style, className) => strokeGlyph(size, color, style, className, [
+      'm21 17-2.156-1.868A.5.5 0 0 0 18 15.5v.5a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1c0-2.545-3.991-3.97-8.5-4a1 1 0 0 0 0 5c4.153 0 4.745-11.295 5.708-13.5a2.5 2.5 0 1 1 3.31 3.284',
+      'M3 21h18',
+    ]),
+    // Snapshot tool: Tabler "capture" (MIT): a lens inside crop corners. It
+    // used to borrow the Take photo camera.
+    snapshot: (size, color, style, className) => strokeGlyph(size, color, style, className, [
+      'M4 8v-2a2 2 0 0 1 2 -2h2', 'M4 16v2a2 2 0 0 0 2 2h2', 'M16 4h2a2 2 0 0 1 2 2v2', 'M16 20h2a2 2 0 0 0 2 -2v-2',
+      'M9 12a3 3 0 1 0 6 0a3 3 0 1 0 -6 0',
+    ]),
+    // Text group drag tools (Drawboard Review: Text highlight, Underline,
+    // Squiggle, Strikethrough). Stroked, so they sit in the tool row with the
+    // rest; the selection bar keeps its filled letterforms.
+    textHighlightTool: (size, color, style, className) => strokeGlyph(size, color, style, className, [
+      'm6 15 4.5-11 4.5 11', 'M7.6 11h5.8', 'M4 18.5h16a.5.5 0 0 1 .5.5v1.5a.5.5 0 0 1-.5.5H4a.5.5 0 0 1-.5-.5V19a.5.5 0 0 1 .5-.5Z',
+    ]),
+    textUnderlineTool: (size, color, style, className) => strokeGlyph(size, color, style, className, [
+      'M6 4v6a6 6 0 0 0 12 0V4', 'M4 20h16',
+    ]),
+    textSquiggleTool: (size, color, style, className) => strokeGlyph(size, color, style, className, [
+      'M7 3.5v6a5 5 0 0 0 10 0v-6',
+      'M3.5 19.5c1.5-1.5 2.75-1.5 4.25 0s2.75 1.5 4.25 0 2.75-1.5 4.25 0 2.75 1.5 4.25 0',
+    ]),
+    textStrikeTool: (size, color, style, className) => strokeGlyph(size, color, style, className, [
+      'M16 4H9a3 3 0 0 0-2.83 4', 'M14 12a4 4 0 0 1 0 8H6', 'M4 12h16',
+    ]),
+    textRedactTool: (size, color, style, className) => strokeGlyph(size, color, style, className, [
+      'M4 5h16', 'M4 19h9',
+      'M4 9.5h16a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1Z',
+      { d: 'M5.5 11.25h13v1.5h-13z', fill: true },
+    ]),
+    // Laser pointer (Drawboard Free-form > Laser pointer): a lit dot at the
+    // end of a fading dotted trail.
+    laser: (size, color, style, className) => strokeGlyph(size, color, style, className, [
+      { d: 'M3.5 20c3-1 4.5-4 6.5-7s4-4.5 6-4.5', dash: '0.1 3' },
+      { d: 'M17.5 9.25a2.25 2.25 0 1 0 0-4.5 2.25 2.25 0 0 0 0 4.5Z', fill: true },
+      'M17.5 1.75v.5', 'M22.25 7h-.5', 'M20.85 3.65l-.35.35', 'M20.85 10.35l-.35-.35', 'M14.15 3.65l.35.35',
+    ]),
+    // Note (Drawboard Insert > Note): Lucide "sticky-note" (ISC).
+    stickyNote: (size, color, style, className) => strokeGlyph(size, color, style, className, [
+      'M21 9a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 15 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2z',
+      'M15 3v5a1 1 0 0 0 1 1h5',
+    ]),
+    // Angle (Drawboard's protractor): Lucide "angle" (ISC).
+    measureAngle: (size, color, style, className) => strokeGlyph(size, color, style, className, [
+      'M3 3v16a2 2 0 0 0 2 2h16', 'M3 11a10 10 0 0 1 10 10',
+    ]),
+    // Equation (Drawboard Insert > Equation): Lucide "radical" (ISC).
+    equation: (size, color, style, className) => strokeGlyph(size, color, style, className, [
+      'M3 12h3.28a1 1 0 0 1 .948.684l2.298 7.934a.5.5 0 0 0 .96-.044L13.82 4.771A1 1 0 0 1 14.792 4H21',
+    ]),
+    // Hatch fill (Drawboard hatch patterns): Tabler "texture" (MIT).
+    hatch: (size, color, style, className) => strokeGlyph(size, color, style, className, [
+      'M6 3l-3 3', 'M21 18l-3 3', 'M11 3l-8 8', 'M16 3l-13 13', 'M21 3l-18 18', 'M21 8l-13 13', 'M21 13l-8 8',
+    ]),
     line: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
         <line x1="3" y1="21" x2="21" y2="3" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
