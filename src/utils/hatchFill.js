@@ -157,18 +157,22 @@ export function hatchSegments(outline, pattern, { turn = 0, spacing = HATCH_SPAC
   return out;
 }
 
+/** The colour the lines are drawn in: the border's, or black when it has none. */
+export function hatchColor(obj) {
+  const raw = typeof obj?.stroke === 'string' ? obj.stroke.trim() : '';
+  const clear = !raw || raw === 'transparent' || /^rgba\([^)]*,\s*0(\.0+)?\s*\)$/i.test(raw);
+  return clear ? '#000000' : raw;
+}
+
 /** Everything a renderer needs: { segments, color, width, opacity } or null. */
 export function hatchPaint(obj) {
   const pattern = hatchPatternOf(obj);
   if (!pattern) return null;
   const segments = hatchSegments(hatchOutline(obj), pattern, { turn: n(obj.angle) });
   if (segments.length === 0) return null;
-  const raw = typeof obj.stroke === 'string' ? obj.stroke.trim() : '';
-  const clear = !raw || raw === 'transparent' || /^rgba\([^)]*,\s*0(\.0+)?\s*\)$/i.test(raw);
-  const stroke = clear ? '#000000' : raw;
   return {
     segments,
-    color: stroke,
+    color: hatchColor(obj),
     width: HATCH_LINE_WIDTH,
     opacity: Math.max(0, Math.min(1, n(obj.opacity, 1))),
   };
