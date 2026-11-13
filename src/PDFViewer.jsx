@@ -36010,7 +36010,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   ), [handleTextSelectionAction]);
   // Nightly 'text-review-remove': the words dragged over lose their
   // highlight / underline / squiggle / strike-through (one save, one Undo step).
-  const handleTextSelectionRemove = useCallback(() => {
+  const handleTextSelectionRemove = useCallback((options = {}) => {
     const selection = capturePdfjsTextSelection() || liveTextSelectionRef.current;
     if (!selection?.pages?.length) return;
     const transaction = buildTextMarkupRemoveTransaction(annotationsByPageRef.current || {}, selection.pages);
@@ -36019,7 +36019,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       action: 'text-markup-delete',
       selectionGroupIds: transaction.removedSelectionGroupIds,
     });
-    clearLiveTextSelection();
+    // Like the drag tools' create, the drag lets go of the range on release.
+    if (options.keepSelection === false) {
+      clearLiveTextSelection();
+    }
     if (committed) setSelectedToolbarAnnotation(null);
   }, [capturePdfjsTextSelection, clearLiveTextSelection, commitTextMarkupDocumentTransaction]);
   const textDragKind = typeof textHighlightMode === 'string' ? textHighlightMode : 'highlight';
@@ -36030,7 +36033,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     paint: textMarkupPaintByType[textDragKind] || { color: '#000000', opacity: 35 },
     getSelection: () => liveTextSelectionActionSelection,
     apply: () => (textDragKind === 'remove'
-      ? handleTextSelectionRemove()
+      ? handleTextSelectionRemove({ keepSelection: false })
       : handleTextSelectionAction(textDragKind, { keepSelection: false })),
   });
   const handleTextSelectionCopy = useCallback(async (selection) => {
