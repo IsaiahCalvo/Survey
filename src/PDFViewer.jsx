@@ -15839,7 +15839,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   }, [hasImportedPdfBookmarks, importPdfBookmarksIntoSidebar, pdfBookmarks, pdfId]);
 
   useEffect(() => {
-    if (!window.electronAPI?.onReimportPdfBookmarks) return undefined;
+    // Only the visible tab answers the menu; hidden tabs stay mounted.
+    if (!isActive || !window.electronAPI?.onReimportPdfBookmarks) return undefined;
     const unsubscribe = window.electronAPI.onReimportPdfBookmarks(() => {
       handleReimportPdfBookmarks();
     });
@@ -15848,7 +15849,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         unsubscribe();
       }
     };
-  }, [handleReimportPdfBookmarks]);
+  }, [isActive, handleReimportPdfBookmarks]);
 
   // UX 2026-04-22: The File-menu Save Log listener now lives at the outer
   // App level (see default export) so it's active on every screen, not only
@@ -25318,9 +25319,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     printableSurveyMarkers, showSurveyPanel, selectedModuleId,
   ]);
 
-  // Subscribe to the File menu item.
+  // Subscribe to the File menu item. Only the visible tab answers: hidden
+  // tabs stay mounted, and each used to open its own Save dialog.
   useEffect(() => {
-    if (typeof window === 'undefined' || !window.electronAPI?.onExportAnnotatedPdfMenu) {
+    if (!isActive || typeof window === 'undefined' || !window.electronAPI?.onExportAnnotatedPdfMenu) {
       return undefined;
     }
     const unsubscribe = window.electronAPI.onExportAnnotatedPdfMenu(() => {
@@ -25329,7 +25331,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     return () => {
       if (typeof unsubscribe === 'function') unsubscribe();
     };
-  }, [handleExportAnnotatedPDF]);
+  }, [isActive, handleExportAnnotatedPDF]);
 
   // KAL-393: File menu → Export markup (XFDF).
   useEffect(() => {
