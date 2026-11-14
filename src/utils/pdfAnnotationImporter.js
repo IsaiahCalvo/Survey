@@ -62,6 +62,7 @@ import {
   parsePdfAppLayerStateMetadata,
   parsePdfAppAnnotationMetadata,
 } from './pdfAppAnnotationMetadata.js';
+import { detectOutsideEdits, resolveLegacyOutsideEdits } from './pdfOutsideEdits.js';
 import {
   drawNamedStampAppearance,
   getPdfStampRotation,
@@ -2500,6 +2501,22 @@ async function buildRawAnnotationMetadataById(rawPdfBytes) {
         }
 
         const appearance = extractAppearanceMetadataForAnnotation(dict, rawPdfDoc.context, pdfLib);
+        // 2026-11-14: a Survey mark another app changed after export
+        // (pdfOutsideEdits.js) takes the changed parts from this dict.
+        const outsideEdits = appAnnotationMetadata
+          ? detectOutsideEdits(appAnnotationMetadata, {
+            rect,
+            color,
+            interiorColor,
+            opacity: CA,
+            borderWidth,
+            contents,
+            modified: readPdfLibText(dict.get(PDFName.of('M'))),
+          })
+          : null;
+        const currentAppAnnotationMetadata = outsideEdits
+          ? { ...appAnnotationMetadata, outsideEdits }
+          : appAnnotationMetadata;
 
         const metadata = {
           subtype,
@@ -2536,7 +2553,7 @@ async function buildRawAnnotationMetadataById(rawPdfBytes) {
           ...(surveyAppCalloutMetadataText ? { surveyAppCalloutMetadataText } : {}),
           ...(calloutMetadata ? { calloutMetadata } : {}),
           ...(surveyAppAnnotationMetadataText ? { surveyAppAnnotationMetadataText } : {}),
-          ...(appAnnotationMetadata ? { appAnnotationMetadata } : {}),
+          ...(currentAppAnnotationMetadata ? { appAnnotationMetadata: currentAppAnnotationMetadata } : {}),
           ...(daText ? { defaultAppearanceString: daText } : {}),
           ...(dsText ? { defaultStyleString: dsText } : {}),
           ...(Object.keys(defaultAppearanceData).length > 0 ? { defaultAppearanceData } : {}),
@@ -5611,7 +5628,7 @@ export function convertPdfAnnotationToFabric(annotation, viewport, scale = 1, ra
   const subtype = normalizedAnnotation.subtype;
   const finish = (fabricObj) => {
     if (!fabricObj) return fabricObj;
-    const metadata = normalizedAnnotation.appAnnotationMetadata;
+    const metadata = resolveLegacyOutsideEdits(normalizedAnnotation.appAnnotationMetadata, fabricObj);
     const primary = metadata
       ? applyPdfAppAnnotationMetadata(fabricObj, metadata)
       : fabricObj;
@@ -6481,7 +6498,16 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
     unsupportedCounts,
     diagnosticsByPage,
     nativeLayerPolicyByPage,
-    importStatistics
+    importStatistics,
+    // Every /NM (and object ref) the file's raw index still lists per page,
+    // or null when it could not be read: a mark the converter could not read
+    // is never taken as deleted by another app (pdfOutsideEdits.js).
+    rawAnnotationIdsByPage: rawAnnotationIndex
+      ? Object.fromEntries([...rawAnnotationsByPage].map(([pageNumber, entries]) => [
+        pageNumber,
+        (entries || []).flatMap((entry) => entry?.ids || []),
+      ]))
+      : null,
   };
 }
 
