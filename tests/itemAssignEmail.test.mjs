@@ -44,7 +44,7 @@ test('codes match the app; links go to a known site only', () => {
 
 test('the app reads the link back and drops it from the address', () => {
   const href = `https://surveytool.app/?mobileNav=tabs&project=${PROJECT}&item=${ITEM}&kind=task#x`;
-  assert.deepEqual(readItemLink(href), { projectId: PROJECT, itemId: ITEM, kind: 'task' });
+  assert.deepEqual(readItemLink(href), { projectId: PROJECT, itemId: ITEM, kind: 'task', list: 'task', docId: null });
   assert.equal(readItemLink('https://surveytool.app/?project=nope&item=x'), null);
   assert.equal(withoutItemLink(href), '/?mobileNav=tabs#x');
   requestItemLink({ projectId: PROJECT, itemId: ITEM, kind: 'issue' });

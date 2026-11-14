@@ -1,0 +1,36 @@
+/* Teams "add a tab" page (TeamsPinPanel.jsx): pick what a channel tab opens. */
+
+.teams-pin {
+  position: fixed; inset: 0; z-index: 900; overflow-y: auto; background: var(--surface-1); color: var(--text-1);
+  font-size: 13px;
+}
+.teams-pin-inner { max-width: 560px; margin: 0 auto; padding: 24px 16px 32px; display: flex; flex-direction: column; gap: 16px; }
+.teams-pin h1 { font-size: 18px; font-weight: 600; margin: 0; }
+.teams-pin h2 { font-size: 12px; font-weight: 600; color: var(--text-2); margin: 0 0 8px; }
+.teams-pin-help, .teams-pin-note { margin: 0; color: var(--text-3); font-size: 12px; line-height: 1.45; }
+.teams-pin-section { display: flex; flex-direction: column; }
+.teams-pin-search {
+  box-sizing: border-box; width: 100%; height: 34px; border-radius: 6px; border: 1px solid var(--border-strong);
+  background: var(--surface-2); color: var(--text-1); font: inherit; padding: 0 10px; margin-bottom: 8px;
+}
+.teams-pin-projects { display: flex; flex-direction: column; gap: 6px; }
+.teams-pin-option {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px; width: 100%; box-sizing: border-box;
+  padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--text-1);
+  font: inherit; text-align: left; cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.teams-pin-option strong { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.teams-pin-option small { flex: none; color: var(--text-3); font-size: 12px; }
+.teams-pin-option.is-on { background: var(--surface-3); border-color: var(--border-strong); }
+.teams-pin-lists { display: flex; flex-wrap: wrap; gap: 6px; }
+.teams-pin-chip {
+  height: 30px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--border); background: transparent;
+  color: var(--text-1); font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.teams-pin-chip.is-on { background: var(--surface-3); border-color: var(--border-strong); }
+.teams-pin-chip:disabled { color: var(--text-3); cursor: default; }
+.teams-pin-drawing { margin-top: 10px; }
+.teams-pin-status { margin: 0; color: var(--text-2); font-size: 12px; }
+@media (hover: hover) and (pointer: fine) {
+  .teams-pin-option:not(.is-on):hover, .teams-pin-chip:not(.is-on):not(:disabled):hover { background: var(--surface-2); }
+}

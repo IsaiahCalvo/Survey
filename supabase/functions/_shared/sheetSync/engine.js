@@ -138,6 +138,10 @@ const RECENT_WRITE_MAX = 2000;
 const RECENT_APPENDS_MAX = 50;
 // Fewest reshuffled cells in one column taken as that column sorted by itself.
 const SHUFFLE_MIN = 4;
+// A changed Row ID is taken as an item's own when they share this much of
+// their text (4-letter runs) and no other item's comes this close.
+const ROW_ID_MATCH_MIN = 0.7;
+const ROW_ID_MATCH_MARGIN = 0.15;
 // A PM typing a new item into the first empty row under the list, unsaved,
 // while Survey appends a field tech's new item there (Graph still sees the
 // row as empty): the PM's late save lands on the tech's row. A changed Item
@@ -723,15 +727,55 @@ export async function planSheetRound({
     // these names is that item's row, not a second item (real Excel 11-10:
     // a typo in the hidden Row ID made a duplicate of the item in Survey).
     const lostByName = new Map();
+    const lostIds = []; // the same items, named or not, for tokenMatch
     for (const markerId of markersByScope.get(scope.scopeId) || []) {
       // An item already gone from the sheet in an earlier round is not
       // matched: a new row typed later with its name is a new item, not the
       // old one with its old answers.
       if (copies.has(markerId) || nextBaseline[markerId]?.scopeId !== scope.scopeId || next.tombstones[markerId] || state.removedInSheet?.[markerId]) continue;
+      if (markers[markerId]) lostIds.push(markerId);
       const name = String(markers[markerId]?.name ?? '').trim().toLowerCase();
       if (!name) continue;
       lostByName.set(name, [...(lostByName.get(name) || []), markerId]);
     }
+
+    // A Row ID changed in place: Find and Replace in Excel and Google Sheets
+    // also changes the hidden Row ID column (real Excel 11-14: Replace All on
+    // a two-letter tag changed all 150 Row IDs along with the names, and every
+    // row became a twin item). Row IDs use only A-Z, 2-7 and dots, so a tag of
+    // capitals can match every one: the survey's own part is the same in all.
+    // A changed Row ID still shares most of its own text (the item's part and
+    // its signature) with the one it was, and none with any other item's, so
+    // it is matched to the item it is clearly closest to, among this tab's
+    // items that have no row now.
+    const gramsOf = (t) => { const out = new Set(); const u = String(t).toUpperCase(); for (let i = 0; i + 4 <= u.length; i += 1) out.add(u.slice(i, i + 4)); return out; };
+    let lostGrams = null;
+    let rowIdsMatched = 0;
+    const tokenMatch = async (token) => {
+      if (token.length < 24 || !lostIds.length) return null;
+      if (!lostGrams) {
+        lostGrams = await Promise.all(lostIds.map(async (id) => ({ id, grams: gramsOf(await tokenFor(id, scope.scopeId)) })));
+        // Runs every candidate holds (the survey's and the tab's own parts)
+        // tell them apart from nothing, so only the rest is compared.
+        if (lostGrams.length > 1) {
+          const common = [...lostGrams[0].grams].filter((g) => lostGrams.every((c) => c.grams.has(g)));
+          for (const c of lostGrams) for (const g of common) c.grams.delete(g);
+          lostGrams.common = new Set(common);
+        }
+      }
+      const grams = gramsOf(token);
+      if (lostGrams.common) for (const g of lostGrams.common) grams.delete(g);
+      if (!grams.size) return null;
+      let best = null; let bestScore = 0; let second = 0;
+      for (const c of lostGrams) {
+        if (seenMarkers.has(c.id)) continue;
+        let n = 0;
+        for (const g of grams) if (c.grams.has(g)) n += 1;
+        const score = c.grams.size ? n / Math.max(grams.size, c.grams.size) : 0;
+        if (score > bestScore) { second = bestScore; bestScore = score; best = c.id; } else if (score > second) second = score;
+      }
+      return best && bestScore >= ROW_ID_MATCH_MIN && bestScore - second >= ROW_ID_MATCH_MARGIN ? best : null;
+    };
 
     // Excel on the web, real browser (11-12): a PM's new row typed 10 to 60 s
     // after Survey inserted N rows at the end of the list is saved N rows
@@ -992,6 +1036,15 @@ export async function planSheetRound({
         }
         continue;
       }
+      const near = !recreate && !parsed && token ? await tokenMatch(token) : null;
+      if (near) {
+        seenMarkers.add(near);
+        delete next.removedInSheet[near];
+        await mergeRow({ markerId: near, marker: markers[near], row, r });
+        writeCell(r, 'rowId', await tokenFor(near, scope.scopeId), row[rowIdCol]);
+        rowIdsMatched += 1;
+        continue;
+      }
       const lost = !parsed && itemCol != null ? lostByName.get(cellText(row[itemCol]).trim().toLowerCase()) : null;
       if (!recreate && lost?.length === 1 && markers[lost[0]] && !seenMarkers.has(lost[0])) {
         const found = lost[0];
@@ -1084,6 +1137,9 @@ export async function planSheetRound({
     // Only a line just under the items (two blank rows at most) is their
     // totals line. A note a PM typed far below (Z400) is not: new items
     // inserted above it landed at row 400 (real Excel 11-10).
+    if (rowIdsMatched) {
+      notice({ scopeId: scope.scopeId, message: `${rowIdsMatched === 1 ? 'A hidden Row ID' : `${rowIdsMatched} hidden Row IDs`} in "${sheet.title}" changed (Find and Replace changes them too), so Survey matched ${rowIdsMatched === 1 ? 'the row' : 'each row'} to its own item and put the Row ID back.` });
+    }
     const firstSummary = summaryRows.filter((r) => r > lastItemRow && r <= lastItemRow + 3).sort((a, b) => a - b)[0];
     if (appendRows.length && lateSaves) {
       next.recentAppends = [...next.recentAppends, {
