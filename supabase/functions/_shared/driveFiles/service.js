@@ -57,6 +57,16 @@ const msConfig = (env) => {
   return msgraphAuthConfigFromEnv((name) => env[name], { redirectUri: `${base}/oauth/msgraph/callback` });
 };
 
+/** "Documents › Jobs" from a file's web address: where a search hit lives. */
+function whereFrom(webUrl) {
+  try {
+    const parts = new URL(String(webUrl)).pathname.split('/').filter(Boolean).map((p) => decodeURIComponent(p));
+    return parts.slice(0, -1).slice(-2).join(' › ') || null;
+  } catch {
+    return null;
+  }
+}
+
 /** A small Graph client for drive files. `getAccessToken` gives a fresh token. */
 export function createDriveClient({ getAccessToken, fetch: fetchImpl = globalThis.fetch, baseUrl }) {
   async function call(method, path, { headers = {}, body } = {}) {
@@ -112,6 +122,39 @@ export function createDriveClient({ getAccessToken, fetch: fetchImpl = globalThi
       places.sort(byName);
       files.sort(byName);
       return { folders, places, files };
+    },
+    // PDFs anywhere the sign-in reaches: its OneDrive, SharePoint and Teams
+    // libraries, and files others shared with it. Works with
+    // Files.ReadWrite.All alone (Sites.Read.All is not asked for), and for a
+    // guest with no OneDrive. Personal Microsoft accounts have no search
+    // service: their own OneDrive's search answers instead.
+    async search(text) {
+      const words = String(text || '').replace(/[():"*\\]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
+      const files = [];
+      const add = (it) => {
+        if (!it?.id || !/\.pdf$/i.test(String(it.name || '')) || it.folder) return;
+        if (files.some((f) => f.itemId === String(it.id))) return;
+        files.push({
+          name: String(it.name),
+          driveId: String(it.parentReference?.driveId || ''),
+          itemId: String(it.id),
+          size: Number(it.size) || 0,
+          modifiedAt: it.lastModifiedDateTime || null,
+          where: whereFrom(it.webUrl),
+        });
+      };
+      try {
+        const res = await call('POST', 'search/query', {
+          body: { requests: [{ entityTypes: ['driveItem'], query: { queryString: `${words ? `${words} ` : ''}filetype:pdf` }, from: 0, size: 50, fields: ['id', 'name', 'size', 'webUrl', 'parentReference', 'lastModifiedDateTime'] }] },
+        });
+        for (const box of res?.value?.[0]?.hitsContainers || []) for (const hit of box?.hits || []) add(hit?.resource);
+      } catch (err) {
+        if (Number(err?.status) === 401 || ![400, 403, 404, 501].includes(Number(err?.status))) throw err;
+        if (!words) throw err;
+        const res = await call('GET', `me/drive/root/search(q='${encodeURIComponent(words.replace(/'/g, "''"))}')?$select=${SELECT}&$top=50`);
+        for (const it of res?.value || []) add(it);
+      }
+      return { files };
     },
     async resolveLink(url) {
       return call('GET', `shares/${shareIdOf(url)}/driveItem?$select=${SELECT}`);
@@ -340,6 +383,9 @@ async function browse(ctx) {
   if (providerOf(ctx.body.provider) === 'google') throw new DriveError('Pick Google Drive files with Google’s picker.', 400, 'use_picker');
   const client = await driveClientFor(ctx, ctx.user.id);
   let folder = String(ctx.body.folder || '');
+  if (typeof ctx.body.search === 'string') {
+    try { return { search: ctx.body.search.trim(), ...(await client.search(ctx.body.search)) }; } catch (err) { throw graphProblem(err, { where: 'browse' }); }
+  }
   try {
     let name;
     const pasted = String(ctx.body.folderLink || '').trim();

@@ -214,6 +214,38 @@ test('a link made before cTags were kept still raises a conflict on any eTag cha
   await rejects(call('owner-1', { action: 'drivePush', documentId: DOC }), 'conflict');
 });
 
+test('search finds PDFs across drives with one Graph search, and falls back to OneDrive search for personal accounts', async () => {
+  const { graph, call } = setup({ roles: ROLES, flags: BETA });
+  graph.add('PDF1', { name: 'A-201 Plan.pdf' });
+  const real = graph.fetch;
+  const sent = [];
+  graph.fetch = async (url, init = {}) => {
+    if (url === `${BASE}/search/query`) {
+      sent.push(JSON.parse(init.body).requests[0].query.queryString);
+      // The shape Graph answered live (11-14), with a workbook that must be left out.
+      return new Response(JSON.stringify({ value: [{ hitsContainers: [{ hits: [
+        { resource: { id: 'PDF1', name: 'A-201 Plan.pdf', size: 5, webUrl: 'https://kalvoe.sharepoint.com/sites/Jobs/Shared%20Documents/Tower%20A/A-201%20Plan.pdf', parentReference: { driveId: 'b!sp' } } },
+        { resource: { id: 'XL1', name: 'survey.xlsx', webUrl: 'https://x/y.xlsx', parentReference: { driveId: 'b!sp' } } },
+      ] }] }] }), { status: 200 });
+    }
+    return real(url, init);
+  };
+  const found = await call('owner-1', { action: 'driveBrowse', search: ' A-201 "plan" (rev) ' });
+  assert.deepEqual(sent, ['A-201 plan rev filetype:pdf'], 'quotes and brackets are not search syntax');
+  assert.deepEqual(found.files.map((f) => [f.name, f.driveId, f.itemId, f.where]), [['A-201 Plan.pdf', 'b!sp', 'PDF1', 'Shared Documents › Tower A']]);
+  assert.deepEqual((await call('owner-1', { action: 'driveBrowse', search: '' })).files.length, 1);
+  assert.equal(sent[1], 'filetype:pdf', 'empty: everything shared or reachable');
+
+  // A personal Microsoft account: no search service, so its own OneDrive is searched.
+  graph.fetch = async (url, init = {}) => {
+    if (url === `${BASE}/search/query`) return new Response(JSON.stringify({ error: { code: 'BadRequest' } }), { status: 400 });
+    if (url.startsWith(`${BASE}/me/drive/root/search(q='A-201')`)) return new Response(JSON.stringify({ value: [{ id: 'PDF1', name: 'A-201 Plan.pdf', file: {}, parentReference: { driveId: DRIVE }, webUrl: 'https://onedrive.live.com/Plans/A-201%20Plan.pdf' }] }), { status: 200 });
+    return real(url, init);
+  };
+  const personal = await call('owner-1', { action: 'driveBrowse', search: 'A-201' });
+  assert.deepEqual(personal.files.map((f) => f.itemId), ['PDF1']);
+});
+
 test('the beta and a Microsoft sign-in are needed to browse and open', async () => {
   const { graph, call } = setup({ roles: ROLES, flags: {} });
   graph.add('PDF1', { name: 'A.pdf' });
@@ -331,6 +363,6 @@ test('every field the app sends to the drive actions passes the sheet-sync reque
   const { readFile } = await import('node:fs/promises');
   const src = await readFile(new URL('../supabase/functions/_shared/sheetSync/service.js', import.meta.url), 'utf8');
   const listed = new Set([...src.matchAll(/^\s+(\w+): s\.\w+\(/gm)].map((m) => m[1]));
-  const sent = ['action', 'documentId', 'driveId', 'itemId', 'eTag', 'cTag', 'sha', 'force', 'late', 'pushedAt', 'appOrigin', 'provider', 'check', 'syncMinutes', 'syncOff'];
+  const sent = ['action', 'documentId', 'driveId', 'itemId', 'eTag', 'cTag', 'sha', 'force', 'late', 'pushedAt', 'appOrigin', 'provider', 'check', 'syncMinutes', 'syncOff', 'search'];
   for (const key of sent) assert.ok(listed.has(key), `sheet-sync schema is missing "${key}"`);
 });
