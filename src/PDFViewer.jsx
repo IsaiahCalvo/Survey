@@ -135,6 +135,8 @@ import PdfjsFormLayer from './components/PdfjsFormLayer';
 import TextSelectionActionBar from './components/TextSelectionActionBar';
 import TextSelectionQuickMenu from './components/TextSelectionQuickMenu';
 import LaserPointerLayer from './components/LaserPointerLayer.jsx';
+import RulerLayer from './components/RulerLayer.jsx';
+import { toggleRuler, useRulerOn } from './utils/ruler.js';
 import { deviceCanHover, isTextSelectionCaptureTool, markTakesPanTextHover, shouldMountPanTextLayer } from './utils/panTextSelect.js';
 import { copyTextSelection } from './utils/textSelectionQuickMenu.js';
 import ApplyRedactionsModal from './components/ApplyRedactionsModal';
@@ -406,6 +408,8 @@ import { isFeatureOn } from './featureFlags.js';
 import { setStampPickerOpen, useStampPickerOpen } from './components/StampPickerCard.jsx';
 import { setSignatureCardOpen, useSignatureCardOpen } from './components/SignatureCard.jsx';
 import { pickImageToInsert } from './components/InsertImage.jsx';
+import ImageCameraHost, { IMAGE_CAMERA_OPEN_EVENT } from './components/ImageCameraHost.jsx';
+import AreaRedactHost, { boxQuad as areaRedactQuad } from './components/AreaRedactHost.jsx';
 import LinkToolHost from './components/LinkToolHost.jsx';
 import StickyNoteHost from './components/StickyNoteHost.jsx';
 import EquationHost from './components/EquationHost.jsx';
@@ -422,6 +426,7 @@ import { AUDIO_NOTE_OPEN_EVENT, AUDIO_NOTE_PLAY_EVENT, selectedAudioOf } from '.
 import SnapshotTool from './components/SnapshotTool.jsx';
 import PageTemplatePicker from './components/PageTemplatePicker.jsx';
 import { useTextHighlightMode, textDragKindOf } from './hooks/useTextHighlightMode.js';
+import { buildTextMarkupRemoveTransaction } from './utils/textMarkupRemove.js';
 import { selectPageMarkup } from './services/thumbnailRender.js';
 import { announceLocalMarkEdit } from './utils/localMarkEdit.js';
 import { marksHidden, setMarksHidden, subscribeMarksHidden } from './utils/marksHidden.js';
@@ -3264,6 +3269,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const [tapeToolEnabled] = useState(() => isFeatureOn('tape-tool'));
   // Nightly 'laser-pointer': Drawboard Free-form > Laser pointer (never saved).
   const [laserToolEnabled] = useState(() => isFeatureOn('laser-pointer'));
+  // Nightly 'ruler-tool': Drawboard's Ruler, a straight edge over the pages.
+  const [rulerToolEnabled] = useState(() => isFeatureOn('ruler-tool'));
+  const [imageCameraEnabled] = useState(() => isFeatureOn('image-camera'));
+  const [areaRedactEnabled] = useState(() => isFeatureOn('area-redact'));
+  const rulerOn = useRulerOn();
   const [noteToolEnabled] = useState(() => isFeatureOn('note-tool'));
   const [hatchFillEnabled] = useState(() => isFeatureOn('hatch-fill'));
   const [equationToolEnabled] = useState(() => isFeatureOn('equation-tool'));
@@ -22766,7 +22776,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // Strikethrough / Redact text tools ride the same drag-over-text mode;
   // textHighlightMode then holds the kind ('highlight', 'underline', ...).
   const [textMarkupToolsEnabled] = useState(() => isFeatureOn('text-markup-tools'));
-  const textDragToolsOn = textHighlightToolEnabled || textMarkupToolsEnabled;
+  // Nightly 'text-review-remove': the same drag takes marks off the words.
+  const [textReviewRemoveEnabled] = useState(() => isFeatureOn('text-review-remove'));
+  const textDragToolsOn = textHighlightToolEnabled || textMarkupToolsEnabled || textReviewRemoveEnabled;
   const [insertImageEnabled] = useState(() => isFeatureOn('insert-image'));
   // Markups list (Nightly 'markup-list'): every mark in one rail panel.
   const [markupListEnabled] = useState(() => isFeatureOn('markup-list'));
@@ -35998,6 +36010,50 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const handleTextSelectionQuickAction = useCallback((action) => (
     handleTextSelectionAction(action, { keepSelection: false })
   ), [handleTextSelectionAction]);
+  // Nightly 'text-review-remove': the words dragged over lose their
+  // highlight / underline / squiggle / strike-through (one save, one Undo step).
+  const handleTextSelectionRemove = useCallback((options = {}) => {
+    const selection = capturePdfjsTextSelection() || liveTextSelectionRef.current;
+    if (!selection?.pages?.length) return;
+    const transaction = buildTextMarkupRemoveTransaction(annotationsByPageRef.current || {}, selection.pages);
+    const committed = transaction && commitTextMarkupDocumentTransaction(transaction, {
+      source: 'text-markup:review-remove',
+      action: 'text-markup-delete',
+      selectionGroupIds: transaction.removedSelectionGroupIds,
+    });
+    // Like the drag tools' create, the drag lets go of the range on release.
+    if (options.keepSelection === false) {
+      clearLiveTextSelection();
+    }
+    if (committed) setSelectedToolbarAnnotation(null);
+  }, [capturePdfjsTextSelection, clearLiveTextSelection, commitTextMarkupDocumentTransaction]);
+  // Nightly 'area-redact': a box dragged over a page becomes a redaction with
+  // one quad, then runs the Redact text path (the Apply redactions card).
+  const handleRedactArea = useCallback(({ pageNumber, box }) => {
+    const mark = createTextMarkupAnnotation({
+      id: generateUUID(),
+      pageNumber,
+      selectionGroupId: generateUUID(),
+      markupType: 'redact',
+      selectedText: '',
+      quads: [areaRedactQuad(box)],
+      overlapMode: textMarkupOverlapMode,
+      authorId: user?.id || null,
+    });
+    if (!mark) return;
+    const scoped = applyAnnotationCreationScope(mark, {
+      selectedModuleId,
+      stampRegionId: shouldStampActiveRegionId({
+        regionId: activeRegionId,
+        spaceId: annotationSpaceId,
+        pageNumber,
+        spaces,
+        isRegionOverlayEnabled,
+      }),
+      activeRegionId,
+    });
+    queuePermanentRedactionConfirmation(buildTextMarkupGroupCreateTransaction(annotationsByPageRef.current || {}, [scoped]));
+  }, [textMarkupOverlapMode, user?.id, selectedModuleId, activeRegionId, annotationSpaceId, spaces, isRegionOverlayEnabled, queuePermanentRedactionConfirmation]);
   const textDragKind = typeof textHighlightMode === 'string' ? textHighlightMode : 'highlight';
   useTextHighlightMode({
     on: textDragToolsOn && Boolean(textHighlightMode) && activeTool === 'text-select',
@@ -36005,7 +36061,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     kind: textDragKind,
     paint: textMarkupPaintByType[textDragKind] || { color: '#000000', opacity: 35 },
     getSelection: () => liveTextSelectionActionSelection,
-    apply: () => handleTextSelectionAction(textDragKind, { keepSelection: false }),
+    apply: () => (textDragKind === 'remove'
+      ? handleTextSelectionRemove({ keepSelection: false })
+      : handleTextSelectionAction(textDragKind, { keepSelection: false })),
   });
   const handleTextSelectionCopy = useCallback(async (selection) => {
     const copied = await copyTextSelection(selection?.text);
@@ -38662,6 +38720,20 @@ ${pageBlocks}
           selectedAudio={selectedAudioForHost}
         />
       )}
+      {areaRedactEnabled && (
+        <AreaRedactHost
+          armed={isActive !== false && activeTool === 'area-redact' && !(Boolean(documentLocked) || yjsDocRole === 'viewer')}
+          hostRef={pdfjsWrapperRef}
+          onRedact={handleRedactArea}
+        />
+      )}
+      {/* Nightly 'image-camera': the Text group's Camera button takes a photo for the page. */}
+      {imageCameraEnabled && (
+        <ImageCameraHost
+          enabled={isActive !== false}
+          readOnly={Boolean(documentLocked) || yjsDocRole === 'viewer'}
+        />
+      )}
       {noteToolEnabled && (
         <StickyNoteHost
           isActive={isActive !== false}
@@ -40984,7 +41056,9 @@ ${pageBlocks}
                   { id: 'highlighter', label: 'Highlighter', iconName: 'highlighter' },
                   ...(tapeToolEnabled ? [{ id: 'tape', label: 'Tape', iconName: 'tape' }] : []),
                   ...(laserToolEnabled ? [{ id: 'laser', label: 'Laser pointer', iconName: 'laser' }] : []),
-                  { id: 'eraser', label: 'Eraser', iconName: 'eraser' }
+                  { id: 'eraser', label: 'Eraser', iconName: 'eraser' },
+                  // Nightly 'ruler-tool': a straight edge on the screen (a switch, not a tool).
+                  ...(rulerToolEnabled ? [{ id: 'ruler', label: 'Ruler', iconName: 'ruler', toggle: true }] : []),
                 ].map(t => {
                   const isHighlighter = t.id === 'highlighter';
                   const isEraser = t.id === 'eraser';
@@ -41003,7 +41077,7 @@ ${pageBlocks}
                   const isHighlighterSplitMenu = isHighlighter && showTextMarkupHighlightMenu;
                   const hasSplitMenu = isHighlighterSplitMenu;
                   const isActiveHighlighter = activeTool === 'highlighter';
-                  const isActive = isHighlighter ? isActiveHighlighter : activeTool === t.id;
+                  const isActive = t.toggle ? rulerOn : isHighlighter ? isActiveHighlighter : activeTool === t.id;
                   const button = (
                     <button
                       key={t.id}
@@ -41012,6 +41086,11 @@ ${pageBlocks}
                       data-morph-icon={t.iconName}
                       data-tool-switch="true"
                       onClick={(e) => {
+                        if (t.toggle) {
+                          e.stopPropagation();
+                          toggleRuler();
+                          return;
+                        }
                         if (isHighlighter) {
                           e.stopPropagation();
                           setActiveTool('highlighter');
@@ -41734,6 +41813,8 @@ ${pageBlocks}
                   ...(isFeatureOn('stamp-tool') ? [{ id: 'stamp', label: 'Stamp', iconName: 'stamp', picker: true }] : []),
                   // Nightly 'insert-image': picks a picture and drops it on the page.
                   ...(isFeatureOn('insert-image') ? [{ id: 'image', label: 'Image', iconName: 'image', action: true }] : []),
+                  // Nightly 'image-camera': take a photo and drop it on the page.
+                  ...(imageCameraEnabled ? [{ id: 'camera', label: 'Camera', iconName: 'camera', action: 'camera' }] : []),
                   // Nightly 'link-tool': drag a box, then say where it links (Shift+H).
                   ...(linkToolOn ? [{ id: 'hyperlink', label: 'Hyperlink', iconName: 'hyperlink' }] : []),
                   // Nightly 'comment-pins': the pin split button (N; M cycles the type).
@@ -41751,6 +41832,10 @@ ${pageBlocks}
                     { id: 'text-strikeout', label: 'Strike through text', iconName: 'textStrikeTool', highlightMode: 'strikeout' },
                     { id: 'text-redact', label: 'Redact text', iconName: 'textRedactTool', highlightMode: 'redact' },
                   ] : []),
+                  // Nightly 'area-redact': drag a box over any part of the page to black it out.
+                  ...(areaRedactEnabled ? [{ id: 'area-redact', label: 'Redact area', iconName: 'areaRedactTool' }] : []),
+                  // Nightly 'text-review-remove': drag over words to take their marks off.
+                  ...(textReviewRemoveEnabled ? [{ id: 'text-remove', label: 'Remove text marks', iconName: 'textRemoveTool', highlightMode: 'remove' }] : []),
                   // Nightly 'note-tool': click the page to leave a sticky note.
                   // Imported PDF notes still render through pdfAnnotationImporter.
                   ...(noteToolEnabled ? [{ id: 'sticky-note', label: 'Note', iconName: 'stickyNote' }] : []),
@@ -41789,6 +41874,11 @@ ${pageBlocks}
                     if (signatureCardOpen) setSignatureCardOpen(false);
                     if (t.picker) {
                       setStampPickerOpen(!stampPickerOpen);
+                      return;
+                    }
+                    if (t.action === 'camera') {
+                      if (stampPickerOpen) setStampPickerOpen(false);
+                      window.dispatchEvent(new CustomEvent(IMAGE_CAMERA_OPEN_EVENT));
                       return;
                     }
                     if (t.action === 'equation' || t.action === 'audio-note') {
@@ -44302,6 +44392,7 @@ ${pageBlocks}
         document.getElementById('chrome-sub-toolbar-host'),
       )}
       <LaserPointerLayer active={isActive !== false && laserToolEnabled && activeTool === 'laser'} hostRef={pdfjsWrapperRef} />
+      <RulerLayer active={isActive !== false && rulerToolEnabled && rulerOn} hostRef={pdfjsWrapperRef} />
       <TextSelectionQuickMenu
         active={isActive}
         selection={isTextSelectionCaptureTool(activeTool) && !selectedTextMarkupActionSelection && !showAnnotationColorPicker && !textLinkEditorOpen

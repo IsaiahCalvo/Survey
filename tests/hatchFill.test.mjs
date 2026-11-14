@@ -117,3 +117,38 @@ test('an exported hatched rectangle carries the lines in its appearance', async 
   const lines = (text) => (text.match(/ l\b/g) || []).length;
   assert.ok(lines(hatched) >= lines(plain) + Math.round(30 / HATCH_SPACING) - 1, `hatched appearance has the lines (${lines(plain)} -> ${lines(hatched)})`);
 });
+
+test('an exported hatched cloud carries the lines in its cloud appearance', async () => {
+  const source = await PDFDocument.create();
+  source.addPage([420, 320]);
+  const raw = await source.save();
+  const file = { name: 'c.pdf', async arrayBuffer() { return raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength); } };
+  const exportOne = async (object) => {
+    const { log, warn, error } = console;
+    const original = globalThis.window;
+    console.log = () => {}; console.warn = () => {}; console.error = () => {};
+    globalThis.window = {};
+    try {
+      return await savePDFWithAnnotationsPdfLib(file, { 1: { objects: [object] } }, { 1: { width: 420, height: 320 } }, null,
+        { returnBytes: true, actionType: 'pdf-export', documentId: 'hatch-cloud-export' });
+    } finally {
+      console.log = log; console.warn = warn; console.error = error; globalThis.window = original;
+    }
+  };
+  const apText = async (bytes) => {
+    const doc = await PDFDocument.load(bytes);
+    const annots = doc.getPage(0).node.lookup(PDFName.of('Annots'));
+    const dict = doc.context.lookup(annots.get(0));
+    const ap = dict.lookup(PDFName.of('AP')).lookup(PDFName.of('N'));
+    return Buffer.from(decodePDFRawStream(ap).decode()).toString('latin1');
+  };
+  const cloud = (extra = {}) => rect({ width: 120, height: 60, data: { pdfCloudIntensity: 1, ...(extra.data || {}) } });
+  const plain = await apText(await exportOne(cloud()));
+  const hatched = await apText(await exportOne(applyHatch(cloud(), 'horizontal')));
+  const lineOps = (text) => (text.match(/ m [\d.-]+ [\d.-]+ l/g) || []).length;
+  assert.equal(lineOps(plain), 0);
+  const expected = hatchSegments([{ x: 0, y: 0 }, { x: 120, y: 0 }, { x: 120, y: 60 }, { x: 0, y: 60 }], 'horizontal').length;
+  assert.ok(expected >= 9);
+  assert.equal(lineOps(hatched), expected, 'the same lines the page draws');
+  assert.match(hatched, /0\.75 w/);
+});

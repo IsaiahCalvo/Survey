@@ -1,0 +1,3 @@
+/* Nightly 'area-redact': components/AreaRedactHost.jsx. */
+[data-area-redact-tool='true'] .survey-pdfjs-page-div,
+[data-area-redact-tool='true'] .survey-pdfjs-page-div * { cursor: crosshair !important; }

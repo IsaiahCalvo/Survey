@@ -40,7 +40,9 @@ export function liveHighlightPaint(color, opacity) {
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
 }
 
-export const TEXT_DRAG_KINDS = Object.freeze(['highlight', 'underline', 'squiggly', 'strikeout', 'redact']);
+// Nightly 'text-review-remove': 'remove' takes the review marks off the words
+// instead of adding one.
+export const TEXT_DRAG_KINDS = Object.freeze(['highlight', 'underline', 'squiggly', 'strikeout', 'redact', 'remove']);
 
 /** The drag kind a mode value stands for: true (the first, highlight-only
  * build) and unknown strings read as 'highlight'; false/null read as null. */
@@ -54,6 +56,7 @@ export function textDragKindOf(mode) {
  * release; redact shows a dark wash. */
 export function liveDragPaint(kind, paint) {
   if (kind === 'redact') return 'rgba(0, 0, 0, 0.35)';
+  if (kind === 'remove') return 'rgba(148, 163, 184, 0.35)';
   if (kind && kind !== 'highlight') return liveHighlightPaint(paint?.color, 25);
   return liveHighlightPaint(paint?.color, paint?.opacity);
 }
@@ -93,7 +96,7 @@ export function useTextHighlightMode({ on, wrapperRef, kind = 'highlight', paint
           const el = node?.nodeType === 1 ? node : node?.parentElement;
           if (!el || !wrapper.contains(el) || !el.closest('.pdfjsTextLayer')) return;
           const live = latest.current.getSelection?.();
-          if (kind !== 'redact' && live?.activeMarkupTypes?.includes?.(kind)) return;
+          if (kind !== 'redact' && kind !== 'remove' && live?.activeMarkupTypes?.includes?.(kind)) return;
           latest.current.apply?.();
         });
       });

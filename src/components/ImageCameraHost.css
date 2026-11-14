@@ -1,0 +1,17 @@
+/* Nightly 'image-camera': components/ImageCameraHost.jsx. */
+.image-camera-dialog__frame {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 4 / 3;
+  border-radius: 8px;
+  background: var(--surface-2, #111);
+  overflow: hidden;
+}
+.image-camera-dialog__frame video,
+.image-camera-dialog__frame img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.image-camera-dialog__frame video[hidden] { display: none; }
+.image-camera-dialog__hint { position: absolute; font-size: 12px; color: var(--text-3); }
+.image-camera-dialog__error { padding: 0 24px; text-align: center; font-size: 13px; color: var(--text-2); }
+[data-image-camera-dialog] .hub-btn { display: inline-flex; align-items: center; gap: 6px; }
