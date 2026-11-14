@@ -52,7 +52,7 @@ export default function SyncStatusChip({ status, queueSize = 0, enabled = true, 
   const offline = !useBrowserOnline();
 
   if (!enabled) return null;
-  const { state, label, detail, retryLabel } = getSyncStatusViewModel(status, queueSize, manualSyncing, { offline });
+  const { state, label, detail, retryLabel, tone, canRetry: retryable = true } = getSyncStatusViewModel(status, queueSize, manualSyncing, { offline });
   const compactMessage = getCompactSyncStatusMessage(status, queueSize, { offline });
 
 // UX 2026-09-17 (revision-2 palette, owner amendment b): the sync status DOT
@@ -73,12 +73,14 @@ export default function SyncStatusChip({ status, queueSize = 0, enabled = true, 
     syncing: 'var(--warning)',
     offline: 'var(--danger)'
   };
-  const dotColor = dotColors[state];
+  const dotColor = tone ? `var(--${tone})` : dotColors[state];
 
   // UX: chip is always clickable when a retry handler is provided, regardless of
   // state. Even when "Up to date", a user typing rapidly may want to manually
   // confirm a flush rather than wait for the auto-debounce.
-  const canRetry = typeof onRetry === 'function';
+  // Not where nothing can be retried (a file only on this device, an edit
+  // the server turned down).
+  const canRetry = typeof onRetry === 'function' && retryable;
   const accessibleLabel = `${String(label).replace(/(\.\.\.|…)$/, '')}. ${detail} ${retryLabel}`.trim();
 
   // UX: retry for up to ~6 seconds with exponential backoff (immediate, +1s, +2s,
@@ -175,7 +177,8 @@ export default function SyncStatusChip({ status, queueSize = 0, enabled = true, 
             gap: '8px',
           }}
         >
-          <span data-sync-message style={{ minWidth: 0, flex: 1, lineHeight: 1.25, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{compactMessage}</span>
+          {/* Wraps: a cut-off sentence ("…save it to yo…") said nothing. */}
+          <span data-sync-message style={{ minWidth: 0, flex: 1, lineHeight: 1.3 }}>{compactMessage}</span>
           {canRetry && (
             <button
               type="button"

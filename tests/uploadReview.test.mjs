@@ -98,3 +98,10 @@ test('the crop box sits around the sheet number, else in the bottom-right corner
   assert.equal(centred.x, 420 - 120);
   assert.equal(titleBlockCropBox({ width: 0, height: 0 }), null);
 });
+
+test('signed out, a file from the Upload picker opens on the device at once, with no sheet review (2026-11-14)', () => {
+  // Dropped files and the desktop Open dialog already skipped it; the review
+  // only fills in upload details, and nothing is uploaded signed out.
+  const dashboard = readFileSync(new URL('../src/Dashboard.jsx', import.meta.url), 'utf8');
+  assert.match(dashboard, /if \(uploadCheckOn\(\) && user\) \{\n\s+event\.target\.value = '';\n\s+const checked = await askUploadCheck\(\[file\]/);
+});
