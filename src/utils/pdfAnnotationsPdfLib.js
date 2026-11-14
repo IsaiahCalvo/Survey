@@ -4,7 +4,7 @@
  * Compatible with Adobe Acrobat and all PDF readers
  */
 
-import { hatchPaint } from './hatchFill.js';
+import { HATCH_LINE_WIDTH, hatchColor, hatchPaint, hatchPatternOf, hatchSegments } from './hatchFill.js';
 import {
   BlendMode,
   PDFArray,
@@ -2264,6 +2264,25 @@ const buildCloudAppearance = (pdfDoc, fabricObj, pageHeight, options = {}) => {
     appendAllInto(content, cloudCommandsToOperators(geometry.fill, toForm));
     content.push('f');
     if (band) content.push('Q');
+  }
+  // Nightly 'hatch-fill': the same lines the page draws, laid out in the
+  // cloud's own (unturned) frame from its base outline; the form's /Matrix
+  // turns them with the cloud.
+  const hatchPattern = hatchPatternOf(fabricObj);
+  if (hatchPattern && Array.isArray(geometry.points) && geometry.points.length >= 3) {
+    const segments = hatchSegments(geometry.points, hatchPattern);
+    const hatchPaintColor = resolvedPdfPaint(hatchColor(fabricObj), '#000000');
+    if (segments.length && hatchPaintColor) {
+      content.push('q 0 J');
+      content.push(`${n(hatchPaintColor.color.red)} ${n(hatchPaintColor.color.green)} ${n(hatchPaintColor.color.blue)} RG`);
+      content.push(`${n(HATCH_LINE_WIDTH)} w`);
+      for (const seg of segments) {
+        const a = toForm(seg.x1, seg.y1);
+        const b = toForm(seg.x2, seg.y2);
+        content.push(`${n(a.x)} ${n(a.y)} m ${n(b.x)} ${n(b.y)} l`);
+      }
+      content.push('S Q');
+    }
   }
   if (hasStroke) {
     content.push(`${n(stroke.color.red)} ${n(stroke.color.green)} ${n(stroke.color.blue)} RG`);

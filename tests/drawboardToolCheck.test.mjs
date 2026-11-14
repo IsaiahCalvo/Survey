@@ -69,7 +69,8 @@ test('a finished laser stroke holds, then fades out', () => {
 });
 
 test('text drag tools: each kind is one of the text marks', () => {
-  assert.deepEqual([...TEXT_DRAG_KINDS], ['highlight', 'underline', 'squiggly', 'strikeout', 'redact']);
+  assert.deepEqual([...TEXT_DRAG_KINDS], ['highlight', 'underline', 'squiggly', 'strikeout', 'redact', 'remove']);
+  assert.equal(textDragKindOf('remove'), 'remove', "'text-review-remove' rides the same drag");
   assert.equal(textDragKindOf(false), null);
   assert.equal(textDragKindOf(true), 'highlight', 'the first highlight-only build stored true');
   assert.equal(textDragKindOf('underline'), 'underline');
@@ -77,6 +78,7 @@ test('text drag tools: each kind is one of the text marks', () => {
   assert.match(liveDragPaint('highlight', { color: '#ff0000', opacity: 40 }), /rgba\(255, 0, 0, 0\.4\)/);
   assert.match(liveDragPaint('underline', { color: '#0000ff', opacity: 100 }), /rgba\(0, 0, 255, 0\.25\)/);
   assert.equal(liveDragPaint('redact'), 'rgba(0, 0, 0, 0.35)');
+  assert.equal(liveDragPaint('remove'), 'rgba(148, 163, 184, 0.35)');
 });
 
 test('the Text row stays up while a drag-over-text tool is armed', () => {

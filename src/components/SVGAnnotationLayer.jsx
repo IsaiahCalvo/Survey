@@ -139,6 +139,7 @@ import {
   composeAnnotationColor,
 } from '../utils/annotationCreationCommit.js';
 import { SMART_INK_HOLD_MS, SMART_INK_STILL_PX, fitStroke, fittedPreviewPoints } from '../utils/smartInk.js';
+import { getRulerPlace, projectOntoEdge, rulerEdgeNear } from '../utils/ruler.js';
 import {
   POLY_DRAFT_TOOLS,
   POLY_FINISH_CONTROL_SCREEN_RADIUS,
@@ -1674,15 +1675,24 @@ const SVGAnnotationLayerBody = memo(({
   // Coalesced page-space sampling with the fabric canvas's exact 0.2-page-px
   // dedupe (FabricDrawingCanvas.appendPointerSamples parity).
   const variablePenRef = useRef(false);
+  const rulerEdgeRef = useRef(null);
   const appendCoalescedPagePoints = useCallback((nativeEvent) => {
     if (!svgRef.current) return;
     const coalesced = nativeEvent.getCoalescedEvents?.() || [];
     const events = coalesced.length ? coalesced : [nativeEvent];
+    // Nightly 'ruler-tool' (utils/ruler.js): a pen or highlighter line that
+    // starts just outside the ruler's edge runs along that edge.
+    if (freehandPointsRef.current.length === 0) {
+      const ruler = (activeTool === 'pen' || activeTool === 'highlighter') ? getRulerPlace() : null;
+      rulerEdgeRef.current = ruler ? rulerEdgeNear(ruler, nativeEvent.clientX, nativeEvent.clientY) : null;
+    }
+    const rulerEdge = rulerEdgeRef.current;
     for (const sample of events) {
       // Ink stops at the page edge (docs/page-edge rules, as shapes do): a
       // drag out past the edge runs along it instead of keeping points nobody
       // can see that stretch the mark's box into the gutter.
-      const raw = screenToSVG(svgRef.current, sample.clientX, sample.clientY);
+      const at = rulerEdge ? projectOntoEdge(rulerEdge, sample.clientX, sample.clientY) : { x: sample.clientX, y: sample.clientY };
+      const raw = screenToSVG(svgRef.current, at.x, at.y);
       const point = raw && width > 0 && height > 0 ? clampPointToPage(raw, width, height) : raw;
       const previous = freehandPointsRef.current[freehandPointsRef.current.length - 1];
       if (point && (!previous || Math.hypot(point.x - previous.x, point.y - previous.y) >= 0.2)) {
@@ -1693,7 +1703,7 @@ const SVGAnnotationLayerBody = memo(({
           : point);
       }
     }
-  }, [width, height]);
+  }, [width, height, activeTool]);
 
   const [rotInputVisible, setRotInputVisible] = useState(false);
   const rotInputHoverTimerRef = useRef(null);
