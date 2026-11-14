@@ -58,6 +58,7 @@ export async function buildAnnotationBundle({
   const xfdfResult = await exportAnnotationsAsXfdf(sourcePdf, annotationsByPage, pageSizes, {
     ...exportOptions,
     pdfFileName: pdfName,
+    now,
   });
   if (!xfdfResult) return null;
   const { xfdf, summary, sourceBytes, annotatedBytes } = xfdfResult;

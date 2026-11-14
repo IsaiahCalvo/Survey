@@ -1255,11 +1255,28 @@ test('PDF export embeds app annotation metadata on ordinary app-created annotati
       },
     );
 
+    // 2026-11-14: other apps list marks by /Subj, so it names the kind
+    // (pdfOutsideEdits.readableMarkSubject); ownership is the metadata blob.
+    const subjects = {};
     const metadata = (await getPdfAnnotationDicts(bytes)).map((dict) => {
-      assert.equal(dict.get(PDFName.of('Subj'))?.decodeText?.(), PDF_APP_ANNOTATION_SUBJECT);
-      return parsePdfAppAnnotationMetadata(
+      const parsed = parsePdfAppAnnotationMetadata(
         dict.get(PDFName.of(PDF_APP_ANNOTATION_METADATA_KEY))?.decodeText?.(),
       );
+      subjects[parsed.id] = dict.get(PDFName.of('Subj'))?.decodeText?.();
+      assert.notEqual(subjects[parsed.id], PDF_APP_ANNOTATION_SUBJECT);
+      return parsed;
+    });
+    assert.deepEqual(subjects, {
+      'meta-path': 'Pen',
+      'meta-rect': 'Rectangle',
+      'meta-circle': 'Ellipse',
+      'meta-line': 'Line',
+      'meta-arrow': 'Arrow',
+      'meta-polygon': 'Polygon',
+      'meta-polyline': 'Polyline',
+      'meta-text': 'Text Box',
+      // exportType 'highlight' is the Survey Marker export (/SurveyMarker).
+      'meta-highlight': 'Survey Marker',
     });
 
     assert.deepEqual(metadata.map((entry) => entry.id).sort(), [
