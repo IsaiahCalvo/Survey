@@ -119,6 +119,20 @@ export function namedApart(scopes, taken) {
 /** Blanked answers in one round from which they are held (see planSheetRound). */
 export const BIG_ERASE = 10;
 
+// Excel on the web shows a person "Can't Save Your Changes" (and makes them
+// reload) when any outside write lands while their typing is not saved yet.
+// Real Excel on the web, 11-13: a PM typing for 12 minutes with no writes
+// was never refused; with a write every 4 s, 6 to 11 times in 6 minutes, and
+// still 3 to 4 times with one every 30 s. How the writes are sent (one Graph
+// session, a new one each time, or none) made no difference. Holding the
+// writes while the PM's edits keep arriving cut it from about 8 to 2.
+// So while the synced tabs keep changing under someone else's hand, a round
+// that would write waits: nothing is written or saved, and the next round
+// plans again from the sheet as it is then. It goes ahead once the tabs have
+// been still for SHEET_BUSY_QUIET_MS, or after SHEET_BUSY_MAX_MS at most.
+export const SHEET_BUSY_QUIET_MS = 45_000;
+export const SHEET_BUSY_MAX_MS = 180_000;
+
 // Rows moved (a PM sort or row insert) between the round's check and its
 // writes, so some values may sit on other items' rows. Read the written tabs
 // again and, by Row ID, put each written value on its own item, and put back
@@ -247,7 +261,7 @@ export async function putMovedRowIdsRight({ provider, fileId, grid, idWrites }) 
  * (optional, read after saveMarkers): the writes to keep watching, saved on
  * the link as state.pulls.
  */
-export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, signing, force = false, now = new Date(), newMarkerId, fillBy = '', clashes: clashesOf = null, pulls: pullsOf = null }) {
+export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, signing, force = false, now = new Date(), newMarkerId, fillBy = '', clashes: clashesOf = null, pulls: pullsOf = null, hold = false }) {
   assertProvider(provider);
   const layout = link.layout;
   const version = await provider.getVersion(link.file_id);
@@ -320,6 +334,21 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
     }
   };
   await makePlan();
+
+  // Someone editing the synced tabs (see SHEET_BUSY_QUIET_MS): wait. Their
+  // edits are seen when they land (Excel saves them seconds to a minute
+  // after the keys), so the tabs as read are compared round to round.
+  if (hold && provider.savesLate === true && hasWork(plan)) {
+    const busy = state.sheetBusy && typeof state.sheetBusy === 'object' ? state.sheetBusy : null;
+    const tabs = await sha256Hex(stableStringify(grid.sheets.map((s) => [String(s.sheetId), s.rows || []])));
+    const pulled = Number(plan.summary?.toApp || 0) + Number(plan.summary?.created || 0) > 0;
+    const t = now.getTime();
+    let next = busy;
+    if (busy ? busy.tabs !== tabs : pulled) next = { tabs, at: t, since: busy?.since ?? t };
+    if (next && t - next.at < SHEET_BUSY_QUIET_MS && t - next.since < SHEET_BUSY_MAX_MS) {
+      return { status: 'held', state: { ...(link.state || {}), sheetBusy: next } };
+    }
+  }
 
   let wroteAt = state.lastWriteAt ?? null;
   let retry = false;
