@@ -90,6 +90,12 @@ async function toArrayBuffer(bytes) {
 }
 
 /** A device file as a Documents-list row (same field names as the documents table). */
+function sameBytes(a, b) {
+  if (a.byteLength !== b.byteLength) return false;
+  for (let i = 0; i < a.byteLength; i += 1) if (a[i] !== b[i]) return false;
+  return true;
+}
+
 export function deviceFileRow(meta) {
   return {
     id: meta.id,
@@ -155,6 +161,31 @@ export function createDeviceFiles({
     }
     notify();
     return deviceFileRow(meta);
+  };
+
+  /**
+   * The row already keeping these exact bytes, or null. Opening the same PDF
+   * again reopens that copy, with its marks, instead of a blank second one
+   * (Drawboard makes a new copy each time). Same size first, then bytes.
+   */
+  const findSame = async (bytes) => {
+    const database = await db();
+    const buffer = await toArrayBuffer(bytes);
+    if (!database || !buffer) return null;
+    const wanted = new Uint8Array(buffer);
+    try {
+      const tx = database.transaction(META_STORE, 'readonly');
+      const metas = await settle(tx.objectStore(META_STORE).getAll(), tx, timeoutMs);
+      const sameSize = (metas || []).filter((m) => m.size === wanted.byteLength).sort((a, b) => b.updatedAt - a.updatedAt);
+      for (const meta of sameSize) {
+        const kept = await read(meta.id);
+        const have = kept?.bytes ? new Uint8Array(kept.bytes) : null;
+        if (have && sameBytes(have, wanted)) return deviceFileRow(meta);
+      }
+    } catch (error) {
+      console.warn('[deviceFiles] find failed:', error?.message || error);
+    }
+    return null;
   };
 
   const list = async () => {
@@ -229,7 +260,7 @@ export function createDeviceFiles({
     return true;
   };
 
-  return { add, list, read, update, touch, remove, isDisabled: () => disabled };
+  return { add, findSame, list, read, update, touch, remove, isDisabled: () => disabled };
 }
 
 let shared = null;

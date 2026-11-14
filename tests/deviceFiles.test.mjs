@@ -63,3 +63,20 @@ test('a device file reads "Only on this device" and counts as saved there', asyn
   assert.equal(getSyncStatusViewModel(status).label, 'Only on this device');
   assert.equal(isCloudSaveConfirmed({ isCloudDocument: true, cloudSyncEnabled: true, status }), true);
 });
+
+// 2026-11-14: opening the same PDF again reopened a blank second copy, its
+// marks left on the first (Drawboard makes a new copy each time too).
+test('the same bytes find the copy already kept; other bytes do not', async () => {
+  let t = 1000;
+  const store = createDeviceFiles({ indexedDb: new IDBFactory(), now: () => (t += 10) });
+  const a = pdf(300);
+  const first = await store.add({ name: 'A-101.pdf', bytes: a });
+  await store.add({ name: 'other.pdf', bytes: pdf(200) });
+  const b = pdf(300); b[299] = 7; // same size, different bytes
+  assert.equal((await store.findSame(a.slice()))?.id, first.id);
+  assert.equal(await store.findSame(b), null);
+  assert.equal(await store.findSame(pdf(10)), null);
+  const { readFileSync } = await import('node:fs');
+  const actions = readFileSync(new URL('../src/home/deviceFileActions.js', import.meta.url), 'utf8');
+  assert.match(actions, /const same = await deviceFiles\(\)\.findSame\?\.\(file\);/);
+});

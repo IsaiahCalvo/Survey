@@ -2,7 +2,8 @@
 // once, each tab drawing its own mark. Drawboard PDF web keeps such a file in
 // one saved state per browser and the last tab to save wins: the other tab's
 // mark is gone for good, with no warning (file-model.md, test 3, 2026-11-09).
-// Survey must keep both marks (2026-11-14).
+// Survey must keep both marks, and opening the same PDF again reopens that
+// copy instead of a blank second one (2026-11-14).
 //
 // Run: start Vite on DEVICE_TABS_PORT (default 5203, Nightly), then
 //   npx playwright test debug/scenarios/device-file-two-tabs.spec.mjs --trace off
@@ -78,15 +79,18 @@ test('two tabs on one device file both keep their marks', async () => {
   await drawRect(a, [[300, 500], [360, 540], [420, 580]]);
   await shot(a, 'a'); await shot(b, 'b');
 
-  // A third tab, opened fresh, must show all three marks.
+  // A third tab opens the same PDF from the computer again: it reopens the
+  // copy already kept, with all three marks, not a blank second copy.
   await a.close(); await b.close();
   const c = await context.newPage();
   await home(c);
-  await c.getByText('two-tabs.pdf').filter({ visible: true }).first().click();
-  const openC = c.getByRole('button', { name: 'Open file' }).filter({ visible: true }).first();
-  if (await openC.isVisible().catch(() => false)) await openC.click();
+  const again = c.waitForEvent('filechooser');
+  await c.getByRole('button', { name: 'Upload', exact: true }).filter({ visible: true }).first().click();
+  await (await again).setFiles({ name: 'two-tabs.pdf', mimeType: 'application/pdf', buffer: bytes });
   await pageShown(c);
   await expect.poll(async () => (await windowMarks(c)).length, { timeout: 20_000 }).toBe(3);
   await shot(c, 'c');
+  await c.getByRole('button', { name: 'Home', exact: true }).first().click();
+  await expect(c.getByRole('button', { name: /^two-tabs\.pdf On this device/ }).filter({ visible: true })).toHaveCount(1, { timeout: 10_000 });
   await browser.close();
 });

@@ -22,7 +22,10 @@ export const deviceFilesOn = () => isFeatureOn('device-files');
  */
 export async function keepFileOnDevice(file) {
   if (!file) return null;
-  const row = await deviceFiles().add({ name: file.name, bytes: file });
+  // The same PDF kept before reopens that copy, marks and all.
+  const same = await deviceFiles().findSame?.(file);
+  if (same) await deviceFiles().touch(same.id);
+  const row = same || await deviceFiles().add({ name: file.name, bytes: file });
   if (!row) return null;
   const opened = new File([file], row.name, { type: 'application/pdf' });
   opened.id = row.id;
