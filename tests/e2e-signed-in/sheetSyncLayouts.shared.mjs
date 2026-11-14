@@ -269,6 +269,8 @@ export const LAYOUT_TESTS = [
       // deleted there, and a tab that lost its heading row.
       const at = new Date().toISOString();
       waiting = (link) => ({
+        // A PM is typing in the workbook: the app's changes wait (round.js).
+        sheetInUse: true,
         heldErase: { count: 14, items: 9, at },
         removedInSheet: [
           { markerId: 'gone-1', at, name: 'D-9-01 a long item name that wraps on a phone' },
@@ -293,6 +295,7 @@ export const LAYOUT_TESTS = [
       await expect(panel.getByRole('button', { name: 'Keep mine' })).toBeVisible();
       await expect(panel.getByText('Check these in the sheet:')).toBeVisible();
       await expect(panel.getByText('and 1 more.')).toBeVisible();
+      await expect(panel.getByText('Waiting while the sheet is edited', { exact: true })).toBeVisible();
       expect(await spills(page), 'panel, waiting items').toEqual([]);
       if (layout.use.hasTouch) expect(await smallButtons(page), 'buttons big enough to tap').toEqual([]);
       await shot('6-waiting');
