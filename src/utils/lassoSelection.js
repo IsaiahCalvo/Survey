@@ -31,6 +31,18 @@ export function cycleLassoMode(mode) {
   return mode === 'window' ? 'crossing' : mode === 'crossing' ? 'fence' : 'window';
 }
 
+/**
+ * Nightly 'ctrl-lasso' (Drawboard PDF Pro, 2026-11-14): Ctrl (Cmd on a Mac)
+ * held as a mouse drag starts makes Box Select draw a lasso for
+ * that drag. Touch and pen keep their own on-screen controls.
+ */
+export function isCtrlLassoPress(event = {}, flagOn = false) {
+  if (!flagOn || !event) return false;
+  if ((event.pointerType || 'mouse') !== 'mouse') return false;
+  if (event.button != null && event.button !== 0) return false;
+  return Boolean(event.ctrlKey || event.metaKey) && !event.altKey;
+}
+
 export function getLassoGestureIntent(event = {}, touchOperation = 'replace', touchMode = null) {
   const usesOnScreenControls = event.pointerType === 'touch' || event.pointerType === 'pen';
   if (usesOnScreenControls) {
