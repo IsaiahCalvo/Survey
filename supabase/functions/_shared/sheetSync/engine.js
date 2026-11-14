@@ -999,9 +999,10 @@ export async function planSheetRound({
           if (from && r - by >= k && tailRow(r) && !isBlankCell((rows[r] || [])[colOfKey.get(key)]) && getFp(fpsAt(r), key) === getFp(from.fields, key)) tail.push(r);
         }
         const values = [...fit.map((x) => getFp(x.sheetFps, key)), ...tail.map((r) => getFp(fpsAt(r), key))];
-        // Every value the move touched, before and after: a Y / N column
-        // never shows four.
-        const seen = new Set([...values, ...[...fit, ...gap].map((x) => getFp(x.fields, key))]).size;
+        // Every value the move touched, before and after, empty aside: a
+        // Y / N column never shows three.
+        const blank = printOf('');
+        const seen = new Set([...values, ...[...fit, ...gap].map((x) => getFp(x.fields, key))].filter((fp) => fp !== blank)).size;
         return { by, k, fit: fit.length, tail: tail.length, gap: gap.length, values, seen, cells: [...fit, ...exposed], changed: fit.length + gap.length > 0 };
       };
       // Moves worth trying: for each column, the one or two `by` most of its
@@ -1028,14 +1029,14 @@ export async function planSheetRound({
       }
       // A move is taken when one column shows it on its own (two fits, and
       // four pieces of evidence with three different values, or three with
-      // four different values before and after), or when two or more
+      // three different filled values before and after), or when two or more
       // columns that fit it show, together, as much. Columns that fit the
       // move and changed join it.
       const shifted = new Map(); // key -> { by, k, cells }
       const moves = [];
       const strength = (f) => f.fit + f.tail + f.gap;
       const taken = (fits) => {
-        const solo = fits.some((f) => f.fit >= 2 && ((strength(f) >= SHUFFLE_MIN && new Set(f.values).size >= 3) || (strength(f) >= 3 && f.seen >= 4)));
+        const solo = fits.some((f) => f.fit >= 2 && ((strength(f) >= SHUFFLE_MIN && new Set(f.values).size >= 3) || (strength(f) >= 3 && f.seen >= 3)));
         const backing = fits.filter((f) => f.fit + f.tail >= 1 && strength(f) >= 2);
         const pooled = backing.length >= 2 && backing.reduce((n, f) => n + f.fit + f.tail, 0) >= 3
           && backing.reduce((n, f) => n + strength(f), 0) >= SHUFFLE_MIN && new Set(backing.flatMap((f) => f.values)).size >= 3;

@@ -270,3 +270,24 @@ test('a PM clearing a note and typing it one column over is not taken for a side
   await ctx.round({ force: true });
   assert.equal(ctx.markers.d2.note.text, '', 'a plain clear is a clear');
 });
+
+test('notes shifted up two among empty cells: three moved cells with three different notes are enough', async () => {
+  const notes = ['plum', '', 'melon', '', 'fig', '', 'grape'];
+  const { ctx, shift, got } = await custom(notes);
+  await shift(['notes'], 2, -2);
+  assert.deepEqual(got(), notes);
+  assert.ok(said(ctx));
+});
+
+test('a PM flipping three Y / N cells in a pattern that looks like a shift up: still three edits', async () => {
+  const yn = ['Y', 'Y', 'N', '', 'Y', '', 'N'];
+  const markers = Object.fromEntries(yn.map((v, i) => [`d${i + 1}`, door(`d${i + 1}`, `D-${101 + i}`, { checklistResponses: v ? { c1: { selection: v } } : {}, note: { text: `n${i}` } })]));
+  const ctx = await setup({ markers });
+  await ctx.round(); await ctx.round({ force: true });
+  const c = (await ctx.sheet()).rows[0].indexOf('Locked?');
+  const first = await ctx.rowOf('d1');
+  await ctx.edit([{ row: first + 2, col: c, value: 'Y' }, { row: first + 4, col: c, value: 'N' }, { row: first + 6, col: c, value: '' }]);
+  await ctx.round({ force: true });
+  assert.deepEqual(yn.map((_, i) => ctx.markers[`d${i + 1}`].checklistResponses?.c1?.selection ?? ''), ['Y', 'Y', 'Y', '', 'N', '', '']);
+  assert.ok(!said(ctx));
+});
