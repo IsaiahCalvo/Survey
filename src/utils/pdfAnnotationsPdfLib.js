@@ -81,7 +81,15 @@ import {
   buildPdfAppLayerStateMetadata,
   serializePdfAppLayerStateMetadata,
   serializePdfAppAnnotationMetadata,
+  parsePdfAppAnnotationMetadata,
 } from './pdfAppAnnotationMetadata.js';
+import {
+  buildWrittenFingerprint,
+  exportedMarkEntry,
+  markSnapshotHash,
+  pdfDateString,
+  readableMarkSubject,
+} from './pdfOutsideEdits.js';
 import {
   applyFormFieldValuesToPdfDoc,
   collectFormFieldValues,
@@ -447,6 +455,79 @@ const applyAppAnnotationMetadataToDict = (annotationDict, options = {}) => {
   annotationDict.NM = pdfTextString(options.appAnnotationMetadata?.id || options.name || `survey-app-annotation-${Date.now()}`);
   annotationDict.Subj = pdfTextString(PDF_APP_ANNOTATION_SUBJECT);
   annotationDict[PDF_APP_ANNOTATION_METADATA_KEY] = pdfTextString(options.appAnnotationMetadataJson);
+};
+
+/**
+ * 2026-11-14 (pdfOutsideEdits.js): once a Survey mark's dict is final (after
+ * the page-frame remap), give other apps what they show and stamp what
+ * Survey needs to notice their edits later:
+ *   * /Subj a readable kind ("Rectangle", "Arrow"), /T the author when known,
+ *     /M and /CreationDate (Acrobat lists marks by these);
+ *   * `written` in the metadata blob: /Rect, colours, width, /Contents and
+ *     /M as written here, plus `snap`, the hash of the mark in Survey.
+ * Returns true when the dict carried Survey's blob.
+ */
+const stampExportedAppAnnotation = (pdfDoc, ref, { modified = null, created = null, author = null, snap = null } = {}) => {
+  const dict = lookupPdfValue(pdfDoc, ref);
+  if (!(dict instanceof PDFDict)) return false;
+  const metadataKey = PDFName.of(PDF_APP_ANNOTATION_METADATA_KEY);
+  let metadata = null;
+  try {
+    metadata = parsePdfAppAnnotationMetadata(lookupPdfValue(pdfDoc, dict.get(metadataKey))?.decodeText?.());
+  } catch {
+    metadata = null;
+  }
+  if (!metadata) return false;
+  const subtype = String(dict.get(PDFName.of('Subtype'))?.toString?.() || '').replace(/^\//, '');
+  const borderStyle = lookupPdfValue(pdfDoc, dict.get(PDFName.of('BS')));
+  let borderWidth = borderStyle instanceof PDFDict
+    ? readPdfNativeNumber(pdfDoc, borderStyle.get(PDFName.of('W')))
+    : null;
+  if (!Number.isFinite(borderWidth)) {
+    const border = readPdfNativeNumberArray(pdfDoc, dict.get(PDFName.of('Border')));
+    borderWidth = Array.isArray(border) && border.length >= 3 ? border[2] : null;
+  }
+  const borderEffect = lookupPdfValue(pdfDoc, dict.get(PDFName.of('BE')));
+  const hasCloudBorder = borderEffect instanceof PDFDict
+    && String(borderEffect.get(PDFName.of('S'))?.toString?.() || '') === '/C';
+
+  if (modified) {
+    dict.set(PDFName.of('M'), pdfTextString(modified));
+    if (dict.get(PDFName.of('CreationDate')) === undefined) {
+      dict.set(PDFName.of('CreationDate'), pdfTextString(created || modified));
+    }
+  }
+  if (author && dict.get(PDFName.of('T')) === undefined) {
+    dict.set(PDFName.of('T'), pdfTextString(author));
+  }
+  dict.set(PDFName.of('Subj'), pdfTextString(readableMarkSubject({
+    subtype,
+    appType: metadata.appType,
+    hasCloudBorder,
+  })));
+  metadata.written = buildWrittenFingerprint({
+    rect: readPdfExactNumberArray(pdfDoc, dict.get(PDFName.of('Rect'))),
+    color: readPdfNativeNumberArray(pdfDoc, dict.get(PDFName.of('C'))),
+    interiorColor: readPdfNativeNumberArray(pdfDoc, dict.get(PDFName.of('IC'))),
+    opacity: readPdfNativeNumber(pdfDoc, dict.get(PDFName.of('CA'))),
+    borderWidth,
+    contents: lookupPdfValue(pdfDoc, dict.get(PDFName.of('Contents')))?.decodeText?.() || '',
+    modified,
+    snap,
+  });
+  dict.set(metadataKey, pdfTextString(JSON.stringify(metadata)));
+  return true;
+};
+
+const markAuthorName = (obj, fallback = null) => {
+  const name = obj?.data?.authorName || obj?.meta?.authorName || obj?.authorName
+    || obj?.data?.createdByName || obj?.meta?.createdByName || fallback;
+  return typeof name === 'string' && name.trim() ? name.trim() : null;
+};
+
+const markCreatedDate = (obj) => {
+  const at = obj?.data?.createdAt || obj?.createdAt || null;
+  return at ? pdfDateString(at) : null;
 };
 
 const applyAppLayerStateMetadataToPdf = (pdfDoc, payload) => {
@@ -8186,6 +8267,9 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
       spaces: options?.spaces || [],
     });
     const appLayerStateEmbedded = applyAppLayerStateMetadataToPdf(pdfDoc, appLayerState);
+    // One /M for every mark this export writes (pdfOutsideEdits.js).
+    const exportModifiedDate = pdfDateString(new Date());
+    const exportedMarkEntriesByItem = new Map();
 
     // The /AP for a text box - and, since 2026-09-10, for a callout's text
     // part - is drawn by the print flattener, which needs real embedded fonts.
@@ -8454,6 +8538,22 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
       if (refsToPush.length !== createdRefs.length) {
         recordSkip(exportDiagnostics, item, 'invalid-or-outside-page-geometry');
       }
+      if (appAnnotationMetadataJson && refsToPush.length > 0) {
+        const snap = markSnapshotHash(obj);
+        const stampOptions = {
+          modified: exportModifiedDate,
+          created: markCreatedDate(obj),
+          author: markAuthorName(obj, options?.authorName || null),
+          snap,
+        };
+        const stamped = refsToPush
+          .map((ref) => stampExportedAppAnnotation(pdfDoc, ref, stampOptions))
+          .some(Boolean);
+        const entry = stamped
+          ? exportedMarkEntry(appAnnotationOptions.appAnnotationMetadata?.id, item.pageNumber, snap)
+          : null;
+        if (entry) exportedMarkEntriesByItem.set(item, entry);
+      }
       if (refsToPush.length > 0) {
         const compositeExportKey = compositeExportKeyForItem(item);
         pendingAnnotationRefs.push({
@@ -8552,6 +8652,16 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
       annotationsByPage,
       attachedAnnotationEntries,
     );
+    // The marks this file really carries, so a later import can tell a mark
+    // another app deleted from one this export never wrote.
+    if (appLayerStateEmbedded && appLayerState) {
+      const exportedMarks = attachedAnnotationEntries
+        .map(({ item }) => exportedMarkEntriesByItem.get(item))
+        .filter(Boolean);
+      if (exportedMarks.length > 0) {
+        applyAppLayerStateMetadataToPdf(pdfDoc, { ...appLayerState, exportedMarks });
+      }
+    }
 
     // KAL-441: carry the values the user typed into the PDF's own form fields
     // into the exported document. Without this the export silently returned a
