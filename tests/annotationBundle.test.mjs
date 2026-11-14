@@ -69,7 +69,7 @@ test('the bundle holds the XFDF, the audit log, page pictures and a manifest tha
     assert.equal(createHash('sha256').update(byName.get(entry.name)).digest('hex'), entry.sha256, `${entry.name} fingerprint`);
   }
 
-  const { xfdf } = await exportAnnotationsAsXfdf(fileFrom(sourceBytes), model, PAGE_SIZES, { pdfFileName: 'Level 2 plan.pdf' });
+  const { xfdf } = await exportAnnotationsAsXfdf(fileFrom(sourceBytes), model, PAGE_SIZES, { pdfFileName: 'Level 2 plan.pdf', now: NOW });
   assert.equal(Buffer.from(byName.get('annotations.xfdf')).toString('utf8'), xfdf, 'the bundle XFDF is the XFDF export');
 
   const log = JSON.parse(Buffer.from(byName.get('audit-log.json')).toString('utf8'));
