@@ -26,9 +26,13 @@ export function getSyncStatusViewModel(status, queueSize = 0, manualSyncing = fa
   }
 
   // device-files: a PDF opened with no account lives only on this device.
+  // Its changes ARE saved, so the dot is amber (take care), not red
+  // (broken), and there is no cloud backup to retry.
   if (stage === 'device-only') {
     return {
       state: 'offline',
+      tone: 'warning',
+      canRetry: false,
       label: 'Only on this device',
       detail: 'Your changes are saved on this device. Sign in and save it to your account to keep it safe and use it anywhere.',
       retryLabel: '',
@@ -39,6 +43,7 @@ export function getSyncStatusViewModel(status, queueSize = 0, manualSyncing = fa
   if (stage === 'blocked') {
     return {
       state: 'offline',
+      canRetry: false,
       label: 'Not saved',
       detail: BLOCKED_DETAIL[status?.reason] || BLOCKED_DETAIL.denied,
       retryLabel: '',

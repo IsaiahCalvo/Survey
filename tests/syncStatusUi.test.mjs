@@ -324,3 +324,29 @@ test('an edit the server turned down reads "Not saved" with the reason, never "s
   // The shared-document status passes the blocked stage through.
   assert.equal(combineCollaborationSyncStatus({ annotationStatus: { stage: 'blocked', reason: 'gone' }, transportState: 'connecting', isSharedDocument: true }).stage, 'blocked');
 });
+
+// 2026-11-14: a file only on this device is saved (amber, not red), has no
+// cloud backup to retry, and the popup's sentence wraps instead of cutting off.
+test('a file only on this device: amber dot, no retry, the whole sentence shows', () => {
+  const view = getSyncStatusViewModel({ stage: 'device-only' });
+  assert.equal(view.tone, 'warning');
+  assert.equal(view.canRetry, false);
+  assert.equal(getSyncStatusViewModel({ stage: 'blocked', reason: 'gone' }).canRetry, false);
+  assert.notEqual(getSyncStatusViewModel({ stage: 'error', error: 'x' }).canRetry, false);
+  const desktop = syncChipSource();
+  assert.match(desktop, /const canRetry = typeof onRetry === 'function' && retryable;/);
+  assert.match(desktop, /const dotColor = tone \? `var\(--\$\{tone\}\)` : dotColors\[state\];/);
+  assert.doesNotMatch(desktop, /data-sync-message style=\{\{[^}]*nowrap/);
+  const mobile = mobileChromeSource();
+  assert.match(mobile, /cloudSyncOnRetry === 'function' && sync\.canRetry !== false/);
+});
+
+// 2026-11-14: the phone viewer sits in a 5000 layer (AppShell); the sync
+// popup at 3100 opened under the page and never showed on a phone.
+test('the phone sync popup sits above the phone viewer layer', () => {
+  const css = readFileSync(new URL('../src/mobile/mobilePdfViewer.css', import.meta.url), 'utf8');
+  const block = css.slice(css.indexOf('.mobile-pdf-tools__sync-details {'), css.indexOf('}', css.indexOf('.mobile-pdf-tools__sync-details {')));
+  const z = Number(/z-index:\s*(\d+)/.exec(block)?.[1]);
+  assert.ok(z > 5000, `sync popup z-index ${z} must be above 5000`);
+  assert.match(readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8'), /position: 'absolute', inset: 0, zIndex: 5000/);
+});

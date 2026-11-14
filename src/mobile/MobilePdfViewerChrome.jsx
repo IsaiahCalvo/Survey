@@ -3589,7 +3589,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
           style={{ left: syncDetailsPosition.left, top: syncDetailsPosition.top }}
         >
           <span data-sync-message>{sync.compactMessage}</span>
-          {typeof leftRailApi?.cloudSyncOnRetry === 'function' && (
+          {typeof leftRailApi?.cloudSyncOnRetry === 'function' && sync.canRetry !== false && (
             <button
               type="button"
               aria-label="Retry now"

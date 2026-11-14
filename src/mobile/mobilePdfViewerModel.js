@@ -26,7 +26,7 @@ export const getMobileSyncPresentation = (status, queueSize = 0, enabled = true,
   return {
     ...view,
     compactMessage: getCompactSyncStatusMessage(status, queueSize, options),
-    color: SYNC_COLORS[view.state] || 'var(--text-disabled)',
+    color: view.tone ? `var(--${view.tone})` : (SYNC_COLORS[view.state] || 'var(--text-disabled)'),
   };
 };
 
