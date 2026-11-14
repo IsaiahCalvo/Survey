@@ -119,7 +119,7 @@ test('Google Sheets is never held, and neither is a round asked for by hand (hol
   }
 });
 
-test('a held round keeps the link\'s other state as it was; only the pulled item\'s baseline moves on', async () => {
+test('a held round keeps the link\'s other state as it was; only the pulled item\'s baseline (and its undo watch) moves on', async () => {
   const { ctx, pmTypes } = await linked();
   const before = structuredClone(ctx.link.state);
   const baseline = structuredClone(ctx.link.baseline);
@@ -128,9 +128,11 @@ test('a held round keeps the link\'s other state as it was; only the pulled item
   ctx.markers.d2.note = { text: 'tech 2' };
   const r = await ctx.round({ now: at(5000), hold: true });
   assert.equal(r.status, 'held');
-  const { sheetBusy, ...rest } = ctx.link.state;
-  assert.deepEqual(rest, before);
+  const { sheetBusy, undoWatch, ...rest } = ctx.link.state;
+  const { undoWatch: _w, ...restBefore } = before;
+  assert.deepEqual(rest, restBefore);
   assert.ok(sheetBusy && sheetBusy.since === T0 + 5000);
+  assert.deepEqual(Object.keys(undoWatch || {}), ['d1|notes'], 'only the pulled cell is watched for an undo');
   const { d1, ...others } = ctx.link.baseline;
   const { d1: d1Before, ...othersBefore } = baseline;
   assert.deepEqual(others, othersBefore, 'the other items\' baseline is as it was');

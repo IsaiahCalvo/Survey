@@ -104,3 +104,83 @@ test('a tech changes one item\'s note in the same round: that item keeps the tec
   assert.deepEqual(ctx.link.state.conflicts || {}, {});
   for (const row of await rowsOf()) assert.equal(row[col], row[itemCol] === 'D-104' ? 'tech 4' : want[row[itemCol]]);
 });
+
+// A column of a few repeated answers (Y / N): a PM who flips two Y to N and
+// two N to Y in one save leaves the same values, reshuffled, but the column is
+// not in order the way a sort leaves it. Those are four real edits (Excel on
+// the web saves a minute of typing at once, so they arrive together).
+test('a PM flipping two Y to N and two N to Y is four edits, not a sort', async () => {
+  const yn = ['Y', 'N', 'Y', 'N', 'Y', 'N', 'Y', 'N'];
+  const markers = Object.fromEntries(yn.map((v, i) => [`d${i + 1}`, door(`d${i + 1}`, `D-${101 + i}`, { checklistResponses: { c1: { selection: v } } })]));
+  const ctx = await setup({ markers });
+  await ctx.round(); await ctx.round({ force: true });
+  const col = (await ctx.sheet()).rows[0].indexOf('Locked?');
+  const flips = { d1: 'N', d2: 'Y', d5: 'N', d6: 'Y' };
+  const edits = [];
+  for (const [id, value] of Object.entries(flips)) edits.push({ row: await ctx.rowOf(id), col, value });
+  await ctx.edit(edits);
+  await ctx.round({ force: true });
+  for (const [id, value] of Object.entries(flips)) assert.equal(ctx.markers[id].checklistResponses.c1.selection, value, `${id} took the PM's ${value}`);
+  assert.ok(!(ctx.link.state.notices || []).some((n) => /sorted by itself/.test(n.message)), 'no false sort line');
+});
+
+test('a Y / N column sorted by itself still goes back', async () => {
+  const yn = ['Y', 'N', 'Y', 'N', 'Y', 'N', 'Y', 'N'];
+  const markers = Object.fromEntries(yn.map((v, i) => [`d${i + 1}`, door(`d${i + 1}`, `D-${101 + i}`, { checklistResponses: { c1: { selection: v } } })]));
+  const ctx = await setup({ markers });
+  await ctx.round(); await ctx.round({ force: true });
+  const sheet = await ctx.sheet();
+  const col = sheet.rows[0].indexOf('Locked?');
+  const itemCol = sheet.rows[0].indexOf('Item');
+  const rows = sheet.rows.slice(1).filter((r) => r[itemCol]);
+  const sorted = rows.map((r) => r[col]).sort(); // N N N N Y Y Y Y
+  await ctx.edit(sorted.map((value, i) => ({ row: i + 1, col, value })));
+  await ctx.round({ force: true });
+  yn.forEach((v, i) => assert.equal(ctx.markers[`d${i + 1}`].checklistResponses.c1.selection, v));
+  assert.ok((ctx.link.state.notices || []).some((n) => /"Locked\?" .* was sorted by itself/.test(n.message)));
+});
+
+// Excel's sort passes over case, accents, hyphens and apostrophes; this is the
+// order it left these notes in (Excel on the web, 11-14).
+test('mixed notes in Excel\'s own sort order still count as sorted', async () => {
+  const mix = ['Room 10', 'Zed', 'room 9', "O'Brien door", 'apple', 'OBrien hall', 'D1 check', 'D-10 check'];
+  const excelOrder = ['apple', 'D1 check', 'D-10 check', "O'Brien door", 'OBrien hall', 'Room 10', 'room 9', 'Zed'];
+  const markers = Object.fromEntries(mix.map((t, i) => [`d${i + 1}`, door(`d${i + 1}`, `D-${101 + i}`, { note: { text: t } })]));
+  const ctx = await setup({ markers });
+  await ctx.round(); await ctx.round({ force: true });
+  const col = (await ctx.sheet()).rows[0].indexOf('Notes');
+  const edits = [];
+  for (let i = 0; i < mix.length; i++) edits.push({ row: await ctx.rowOf(`d${i + 1}`), col, value: excelOrder[i] });
+  await ctx.edit(edits);
+  await ctx.round({ force: true });
+  mix.forEach((t, i) => assert.equal(ctx.markers[`d${i + 1}`].note.text, t));
+});
+
+// The visible columns sorted together, the hidden Row ID column left out (a
+// PM selects Item to Notes and sorts): whole rows land on other items' Row
+// IDs. One column alone is not left in order (Item, Y / N), so the rows are
+// matched whole (real Excel 11-14).
+test('the visible columns sorted without the Row ID column: every row goes back to its own item', async () => {
+  const yn = ['Y', 'N', 'Y', 'Y', 'N', 'N', 'Y', 'N'];
+  const words = ['pear', 'apple', 'kiwi', 'fig', 'plum', 'date', 'lime', 'banana'];
+  const markers = Object.fromEntries(words.map((w, i) => [`d${i + 1}`, door(`d${i + 1}`, `D-${101 + i}`, { checklistResponses: { c1: { selection: yn[i] } }, note: { text: w } })]));
+  const ctx = await setup({ markers });
+  await ctx.round(); await ctx.round({ force: true });
+  const head = (await ctx.sheet()).rows[0];
+  const cols = ['Item', 'Locked?', 'Notes'].map((h) => head.indexOf(h));
+  const first = await ctx.rowOf('d1');
+  const rows = (await ctx.sheet()).rows.slice(first, first + words.length);
+  const sorted = [...rows].sort((a, b) => String(a[cols[2]]).localeCompare(String(b[cols[2]])));
+  const edits = [];
+  sorted.forEach((row, i) => cols.forEach((c) => edits.push({ row: first + i, col: c, value: row[c] ?? '' })));
+  await ctx.edit(edits);
+  const r = await ctx.round({ force: true });
+  assert.equal(r.summary.toApp, 0);
+  words.forEach((w, i) => {
+    const m = ctx.markers[`d${i + 1}`];
+    assert.deepEqual([m.name, m.checklistResponses.c1.selection, m.note.text], [`D-${101 + i}`, yn[i], w]);
+  });
+  assert.ok((ctx.link.state.notices || []).some((n) => /were sorted or moved without their hidden Row ID column/.test(n.message)));
+  const after = (await ctx.sheet()).rows.slice(first, first + words.length);
+  after.forEach((row, i) => assert.deepEqual([row[cols[0]], row[cols[2]]], [`D-${101 + i}`, words[i]]));
+});
