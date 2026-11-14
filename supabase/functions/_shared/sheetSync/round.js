@@ -130,8 +130,15 @@ export const BIG_ERASE = 10;
 // that would write waits: nothing is written or saved, and the next round
 // plans again from the sheet as it is then. It goes ahead once the tabs have
 // been still for SHEET_BUSY_QUIET_MS, or after SHEET_BUSY_MAX_MS at most.
+// The wait outlives the write that ends it: Excel saves typing up to a
+// minute after the keys, so tabs that look still are no proof the PM has
+// stopped (20-minute soak, 11-13: the writes right after a wait, with
+// nothing held, met the PM's next new rows and caused the refusals left).
+// Until SHEET_ACTIVE_MS after the last change seen, each write is followed
+// by a fresh quiet time before the next one.
 export const SHEET_BUSY_QUIET_MS = 45_000;
 export const SHEET_BUSY_MAX_MS = 180_000;
+export const SHEET_ACTIVE_MS = 120_000;
 
 // Rows moved (a PM sort or row insert) between the round's check and its
 // writes, so some values may sit on other items' rows. Read the written tabs
@@ -338,16 +345,26 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
   // Someone editing the synced tabs (see SHEET_BUSY_QUIET_MS): wait. Their
   // edits are seen when they land (Excel saves them seconds to a minute
   // after the keys), so the tabs as read are compared round to round.
-  if (hold && provider.savesLate === true && hasWork(plan)) {
+  // sheetBusy: tabs = hash as last read (null right after our own write, so
+  // that write is not taken for someone's edit); at = start of the quiet
+  // time; seen = last change by someone else; since = first held round.
+  let busyNext = null;
+  if (hold && provider.savesLate === true) {
     const busy = state.sheetBusy && typeof state.sheetBusy === 'object' ? state.sheetBusy : null;
     const tabs = await sha256Hex(stableStringify(grid.sheets.map((s) => [String(s.sheetId), s.rows || []])));
+    // Held rounds save nothing, so a pull repeats until a round goes ahead:
+    // it only starts a wait.
     const pulled = Number(plan.summary?.toApp || 0) + Number(plan.summary?.created || 0) > 0;
     const t = now.getTime();
     let next = busy;
-    if (busy ? busy.tabs !== tabs : pulled) next = { tabs, at: t, since: busy?.since ?? t };
-    if (next && t - next.at < SHEET_BUSY_QUIET_MS && t - next.since < SHEET_BUSY_MAX_MS) {
-      return { status: 'held', state: { ...(link.state || {}), sheetBusy: next } };
+    if (!busy) { if (pulled) next = { tabs, at: t, seen: t }; }
+    else if (busy.tabs == null) next = { ...busy, tabs };
+    else if (busy.tabs !== tabs) next = { ...busy, tabs, at: t, seen: t };
+    if (next && !(t - Number(next.seen) < SHEET_ACTIVE_MS)) next = null;
+    if (next && hasWork(plan) && t - Number(next.at) < SHEET_BUSY_QUIET_MS && t - Number(next.since ?? t) < SHEET_BUSY_MAX_MS) {
+      return { status: 'held', state: { ...(link.state || {}), sheetBusy: { ...next, since: next.since ?? t } } };
     }
+    busyNext = next;
   }
 
   let wroteAt = state.lastWriteAt ?? null;
@@ -475,6 +492,8 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
         ...plan.state,
         ...(wroteAt ? { lastWriteAt: wroteAt } : {}),
         ...(pulls && Object.keys(pulls).length ? { pulls } : {}),
+        // Someone still editing: our write starts a fresh quiet time.
+        ...(busyNext ? { sheetBusy: hasWork(plan) ? { tabs: null, at: now.getTime(), seen: busyNext.seen } : busyNext } : {}),
       },
       // The version read BEFORE the grid: if the sheet changed during the
       // round (including our own writes), the next round reads it again.

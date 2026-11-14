@@ -839,7 +839,7 @@ export default function SheetSyncButton({ className, phone = false, documentId, 
       status: (
         <span className="sheet-sync-status">
           <span className={`sheet-sync-dot${state === 'paused' ? ' is-paused' : state === 'broken' ? ' is-broken' : ''}`} />
-          {busy === 'sync' ? 'Syncing…' : link.lastRoundAt ? `Synced ${linkSyncedAgo(link)}` : state === 'live' ? 'Starting…' : state === 'paused' ? 'Paused' : 'Stopped'}
+          {busy === 'sync' ? 'Syncing…' : link.sheetInUse && state === 'live' ? 'Waiting while the sheet is edited' : link.lastRoundAt ? `Synced ${linkSyncedAgo(link)}` : state === 'live' ? 'Starting…' : state === 'paused' ? 'Paused' : 'Stopped'}
         </span>
       ),
     };
