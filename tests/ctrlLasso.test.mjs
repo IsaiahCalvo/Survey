@@ -22,7 +22,8 @@ test('flag, migration and the bare-page lasso branch', () => {
   assert.equal(FEATURE_FLAGS['ctrl-lasso'].stage, 'beta');
   const hook = readFileSync(new URL('../src/hooks/useSVGInteraction.js', import.meta.url), 'utf8');
   assert.match(hook, /const \[ctrlLassoOn\] = useState\(\(\) => isFeatureOn\('ctrl-lasso'\)\);/);
-  assert.match(hook, /const ctrlLasso = selectionMode !== 'lasso' && isCtrlLassoPress\(e, ctrlLassoOn\);\s*if \(e\.target === svgRef\.current && activeTool === 'select' && \(selectionMode === 'lasso' \|\| ctrlLasso\)\) \{/);
+  // Ctrl under Pan (copy-drag.spec) takes the same branch: boxesUnderPan.
+  assert.match(hook, /const ctrlLasso = selectionMode !== 'lasso' && isCtrlLassoPress\(e, ctrlLassoOn\);[\s\S]{0,400}?if \(e\.target === svgRef\.current && \(activeTool === 'select' \|\| boxesUnderPan\) && \(selectionMode === 'lasso' \|\| ctrlLasso\)\) \{/);
   const migration = readFileSync(new URL('../supabase/migrations/20261114160000_ctrl_lasso_flag.sql', import.meta.url), 'utf8');
   assert.match(migration, /'ctrl-lasso', 'off'/);
 });
