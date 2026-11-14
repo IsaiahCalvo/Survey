@@ -25,7 +25,8 @@ test('a dragged box becomes a one-quad redaction the Apply redactions path picks
 test('the host maps the box through the page layer and wires into the Text row', () => {
   const host = src('components/AreaRedactHost.jsx');
   assert.match(host, /getScreenCTM/);
-  assert.match(host, /pointerMayUseTool\(event\.pointerType\)/, 'a finger still pans');
+  assert.match(host, /pointerMayUseTool\(event\.pointerType\)/, 'Pencil only keeps a finger panning');
+  assert.match(src('mobile/MobilePdfViewerChrome.jsx'), /\{ id: 'area-redact', label: 'Redact area', icon: 'areaRedactTool', flag: 'area-redact' \}/, 'phones get it too');
   assert.match(host, /export const boxQuad = /);
   const viewer = src('PDFViewer.jsx');
   assert.match(viewer, /areaRedactEnabled \? \[\{ id: 'area-redact', label: 'Redact area', iconName: 'areaRedactTool' \}\]/);
