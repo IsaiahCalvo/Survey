@@ -378,6 +378,10 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
       const early = Object.fromEntries(Object.entries(plan.markerWrites).filter(([id, m]) => m && markers[id] && plan.pullBaseline[id]));
       const ids = Object.keys(early);
       const heldState = { ...(link.state || {}), sheetBusy: { ...next, since: next.since ?? t } };
+      // The cells taken early are watched for an undo in the sheet, as if
+      // the round had gone through (engine UNDO_WATCH_MS).
+      const watched = Object.entries(plan.state.undoWatch || {}).filter(([flag]) => early[flag.split('|')[0]]);
+      if (watched.length) heldState.undoWatch = { ...(link.state?.undoWatch || {}), ...Object.fromEntries(watched) };
       if (!ids.length) return { status: 'held', state: heldState };
       await saveMarkers(early);
       const pulls = pullsOf?.();

@@ -138,6 +138,30 @@ const RECENT_WRITE_MAX = 2000;
 const RECENT_APPENDS_MAX = 50;
 // Fewest reshuffled cells in one column taken as that column sorted by itself.
 const SHUFFLE_MIN = 4;
+// Most cells inserted or deleted at once in one column that are put back.
+const SHIFT_MAX = 20;
+// Values in the order a sort leaves them, either way: numbers, then text
+// (case and accents aside), then yes/no. Excel's sort also passes over
+// hyphens and apostrophes ("D1 check" before "D-10 check", real Excel 11-14),
+// so text is tried both with and without them. Blanks are skipped (sorts put
+// them last either way); a long run may hold one odd pair per 10 cells.
+const SORT_TEXT = new Intl.Collator('en', { sensitivity: 'base' });
+const SORT_KEYS = [(t) => t, (t) => t.replace(/[-'\u2019]/g, '')];
+function inSortOrder(values) {
+  const filled = values.filter((v) => !isBlankCell(v));
+  const allowed = Math.floor((filled.length - 1) / 10);
+  const rank = (v) => (typeof v === 'number' ? 0 : typeof v === 'boolean' ? 2 : 1);
+  return SORT_KEYS.some((key) => {
+    const cmp = (a, b) => rank(a) - rank(b) || (typeof a === 'number' && typeof b === 'number' ? a - b : SORT_TEXT.compare(key(cellText(a)), key(cellText(b))));
+    let up = 0; let down = 0;
+    for (let i = 1; i < filled.length; i += 1) {
+      const c = cmp(filled[i - 1], filled[i]);
+      if (c > 0) up += 1;
+      if (c < 0) down += 1;
+    }
+    return up <= allowed || down <= allowed;
+  });
+}
 // A changed Row ID is taken as an item's own when they share this much of
 // their text (4-letter runs) and no other item's comes this close.
 const ROW_ID_MATCH_MIN = 0.7;
@@ -161,6 +185,20 @@ function noticesOf(saved, nowMs) {
   return (Array.isArray(saved) ? saved : [])
     .filter((n) => n && typeof n.message === 'string' && nowMs - Number(n.t) < NOTICE_MS)
     .slice(0, NOTICE_MAX);
+}
+// Undo in the sheet over a later app change (real Excel on the web 11-14: a
+// PM typed a note, a tech then changed it, and the PM's Ctrl+Z four minutes
+// later put back the note from before the PM's typing, over the tech's, with
+// no warning). Each cell pulled from the sheet is remembered this long with
+// the value it had before; the sheet going back to exactly that value after
+// the app changed the cell is held as a choice instead of replacing it.
+export const UNDO_WATCH_MS = 30 * 60_000;
+const UNDO_WATCH_MAX = 2000;
+function undoWatchOf(saved, nowMs) {
+  return Object.fromEntries(Object.entries(saved || {})
+    .filter(([, w]) => w && nowMs - Number(w.t) < UNDO_WATCH_MS)
+    .sort((a, b) => Number(b[1].t) - Number(a[1].t))
+    .slice(0, UNDO_WATCH_MAX));
 }
 function recentWritesOf(saved, nowMs) {
   const kept = Object.entries(saved || {})
@@ -461,6 +499,9 @@ export async function planSheetRound({
     // RECENT_WRITE_MS), as fingerprints.
     recentWrites: Object.fromEntries(Object.entries(recentWritesOf(state.recentWrites, now.getTime()))
       .filter(([k]) => lateSaves || isRowWatch(k))),
+    // "markerId|key" -> { t, before, pulled }: cells taken from the sheet
+    // lately, with the agreed value from before (see UNDO_WATCH_MS).
+    undoWatch: undoWatchOf(state.undoWatch, now.getTime()),
     problems: [],
     // Things that happened once, shown for NOTICE_MS: { t, message, markerId?, scopeId? }.
     notices: noticesOf(state.notices, now.getTime()),
@@ -863,7 +904,9 @@ export async function planSheetRound({
     // hold exactly the values they held before, reshuffled: each item keeps
     // its own value (or the one a tech just gave it) and it goes back in the
     // sheet. A whole-list sort moves Row IDs with their rows and never shows
-    // up here; a swap of two or three cells is a person's edit.
+    // up here; a swap of two or three cells is a person's edit, and so are
+    // changed cells left out of order (a PM flipping two Y to N and two N to
+    // Y in one save: same values, reshuffled, but no sort leaves Y N Y N).
     const shuffled = new Set(); // `${markerId}|${key}`
     {
       const live = [];
@@ -871,11 +914,156 @@ export async function planSheetRound({
         const marker = markers[markerId];
         const fields = nextBaseline[markerId]?.fields;
         if (!marker || !inThisScope(marker) || !fields || shiftedRows.has(r)) continue;
-        live.push({ markerId, row: rows[r] || [], fields, sheetFps: fieldPrintsOf(sheetRecordOf(rows[r] || [], {})) });
+        live.push({ markerId, r, row: rows[r] || [], fields, sheetFps: fieldPrintsOf(sheetRecordOf(rows[r] || [], {})) });
       }
-      for (const column of scope.columns) {
+      live.sort((x, y) => x.r - y.r);
+      const editable = scope.columns.filter((c) => c.key !== 'rowId' && columnIsEditable(c) && colOfKey.has(c.key));
+      const usable = (x, key) => {
+        const was = getFp(x.fields, key);
+        return was != null && !isLegacyPrint(was) && !isCellError(x.row[colOfKey.get(key)]);
+      };
+
+      // Whole rows sorted or moved without the hidden Row ID column (a PM
+      // selects the visible columns, or Item to Notes, and sorts them; real
+      // Excel 11-14): each changed row holds, in the columns that changed,
+      // exactly what another changed item held. Every such row goes back to
+      // its own item. Checked first, as one column alone is often not left
+      // in order and would be missed below.
+      const rowsMoved = (() => {
+        const keys = editable.map((c) => c.key).filter((key) => live.some((x) => usable(x, key) && getFp(x.sheetFps, key) !== getFp(x.fields, key)));
+        if (keys.length < 2) return null;
+        const changed = live.filter((x) => keys.some((key) => getFp(x.sheetFps, key) !== getFp(x.fields, key)));
+        if (changed.length < SHUFFLE_MIN || !changed.every((x) => keys.every((key) => usable(x, key)))) return null;
+        const tuple = (fps) => JSON.stringify(keys.map((key) => getFp(fps, key)));
+        const pool = new Map();
+        for (const x of changed) pool.set(tuple(x.fields), (pool.get(tuple(x.fields)) || 0) + 1);
+        for (const x of changed) {
+          const t = tuple(x.sheetFps);
+          if (!pool.get(t)) return null;
+          pool.set(t, pool.get(t) - 1);
+        }
+        return { keys, changed };
+      })();
+      if (rowsMoved) {
+        for (const x of rowsMoved.changed) for (const key of rowsMoved.keys) shuffled.add(`${x.markerId}|${key}`);
+        notice({ scopeId: scope.scopeId, message: `Rows in "${sheet.title}" were sorted or moved without their hidden Row ID column, so values landed on other markers' rows. Survey put each row back on its own marker (${rowsMoved.changed.length} rows). To sort the list, select all of it first.` });
+      }
+
+      // Cells inserted or deleted in a few columns only ("Shift cells down"
+      // or "up", or Insert with only the visible cells of a row selected, the
+      // hidden Row ID column left out; real Excel 11-14): every value below
+      // moves onto the next or previous item's row while the Row IDs stay,
+      // and the last ones drop off the end of the list or get pulled up from
+      // under it. Seen as a column whose cells from some row down hold, each,
+      // the value of the item `by` rows above (down) or below (up). A column
+      // with three or more different values shows it; one with fewer (Y / N)
+      // joins when it fits the same move. Each item keeps its own value, as
+      // for a sort; values pushed off the end are cleared, and a new item a
+      // PM typed in the gap goes there instead, to come in next round.
+      const atRow = new Map(live.map((x) => [x.r, x]));
+      const lastItem = live.length ? live[live.length - 1].r : -1;
+      const rowFps = new Map();
+      const fpsAt = (r) => {
+        if (!rowFps.has(r)) rowFps.set(r, fieldPrintsOf(sheetRecordOf(rows[r] || [], {})));
+        return rowFps.get(r);
+      };
+      // Rows past the list a move down pushed values onto: no Row ID.
+      const tailRow = (r) => r < rows.length && !ids.get(r) && !cellText((rows[r] || [])[rowIdCol]).trim();
+      const shiftOf = (key, fixed = null) => {
+        const changed = live.filter((x) => usable(x, key) && getFp(x.sheetFps, key) !== getFp(x.fields, key));
+        if (!changed.length) return null;
+        const tries = fixed ? [fixed] : (() => {
+          const votes = new Map();
+          for (const x of changed) {
+            for (let by = -SHIFT_MAX; by <= SHIFT_MAX; by += 1) {
+              const from = by && atRow.get(x.r - by);
+              if (from && getFp(from.fields, key) === getFp(x.sheetFps, key)) votes.set(by, (votes.get(by) || 0) + 1);
+            }
+          }
+          return [...votes].sort((a, b) => b[1] - a[1]).slice(0, 2).map(([by]) => ({ by, k: changed[0].r }));
+        })();
+        for (const { by, k } of tries) {
+          if (k > changed[0].r) continue;
+          let ok = true; const fit = []; const exposed = [];
+          for (let r = k; r <= lastItem && ok; r += 1) {
+            const x = atRow.get(r);
+            if (!x || !usable(x, key)) { ok = false; break; }
+            const from = r - by >= k && r - by <= lastItem ? atRow.get(r - by) : null;
+            if (!from) { exposed.push(x); continue; }
+            if (getFp(from.fields, key) !== getFp(x.sheetFps, key)) ok = false;
+            else if (getFp(x.sheetFps, key) !== getFp(x.fields, key)) fit.push(x);
+          }
+          if (!ok) continue;
+          // Values pushed off the end (down): more of the same evidence.
+          const tail = [];
+          for (let r = lastItem + 1; by > 0 && r <= lastItem + by; r += 1) {
+            const from = atRow.get(r - by);
+            if (from && r - by >= k && tailRow(r) && !isBlankCell((rows[r] || [])[colOfKey.get(key)]) && getFp(fpsAt(r), key) === getFp(from.fields, key)) tail.push(r);
+          }
+          const kinds = new Set([...fit.map((x) => getFp(x.sheetFps, key)), ...tail.map((r) => getFp(fpsAt(r), key))]).size;
+          if (fixed ? fit.length || tail.length : fit.length >= 2 && fit.length + tail.length >= SHUFFLE_MIN && kinds >= 3) return { by, k, cells: [...fit, ...exposed] };
+        }
+        return null;
+      };
+      const shifted = new Map(); // key -> { by, k, cells }
+      for (const column of rowsMoved ? [] : editable) {
+        const found = live.length >= SHUFFLE_MIN ? shiftOf(column.key) : null;
+        if (found) shifted.set(column.key, found);
+      }
+      const moves = [...new Map([...shifted.values()].map((m) => [`${m.by}|${m.k}`, { by: m.by, k: m.k }])).values()];
+      for (const column of editable) {
+        if (shifted.has(column.key)) continue;
+        for (const m of moves) {
+          const found = shiftOf(column.key, m);
+          if (found) { shifted.set(column.key, found); break; }
+        }
+      }
+      if (shifted.size) {
+        let cells = 0;
+        for (const [key, m] of shifted) {
+          m.cells.forEach((x) => shuffled.add(`${x.markerId}|${key}`));
+          cells += m.cells.length;
+        }
+        let typedRows = 0;
+        const syncedCol = new Set(scope.columns.map((c) => colOfKey.get(c.key)).filter((c) => c != null));
+        for (const m of moves.filter((mm) => mm.by > 0)) {
+          const keys = [...shifted].filter(([, v]) => v.by === m.by && v.k === m.k).map(([key]) => key);
+          // A tail row is cleared only when all it holds is values this move
+          // pushed there (Survey's own stamp columns aside).
+          const tails = [];
+          for (let r = lastItem + 1; r <= lastItem + m.by && tailRow(r); r += 1) {
+            const row = rows[r] || [];
+            const from = atRow.get(r - m.by);
+            if (!from || r - m.by < m.k) break;
+            const pm = row.some((c, i) => !isBlankCell(c) && !syncedCol.has(i));
+            const stray = editable.some((c) => !isBlankCell(row[colOfKey.get(c.key)]) && (!keys.includes(c.key) || getFp(fpsAt(r), c.key) !== getFp(from.fields, c.key)));
+            if (pm || stray) break;
+            tails.push(r);
+          }
+          // A new item a PM typed in the gap (its name in a moved Item cell).
+          const typed = keys.includes('item') ? live.filter((x) => x.r >= m.k && x.r < m.k + m.by && !isBlankCell(x.row[colOfKey.get('item')])
+            && getFp(x.sheetFps, 'item') !== getFp(x.fields, 'item')) : [];
+          tails.forEach((r, i) => {
+            const row = rows[r] || [];
+            const from = typed[i];
+            for (const column of scope.columns) {
+              if (column.key === 'rowId' || !colOfKey.has(column.key)) continue;
+              const col = colOfKey.get(column.key);
+              const want = from && keys.includes(column.key) && !isBlankCell(from.row[col]) ? from.row[col] : '';
+              if (cellText(want) !== cellText(row[col] ?? '')) writeCell(r, column.key, want, row[col] ?? null);
+            }
+            if (from) typedRows += 1;
+            shiftedRows.add(r);
+          });
+        }
+        const heads = editable.filter((c) => shifted.has(c.key)).map((c) => `"${c.header}"`);
+        const list = heads.length > 1 ? `${heads.slice(0, -1).join(', ')} and ${heads[heads.length - 1]}` : heads[0];
+        notice({ scopeId: scope.scopeId, message: `Cells in ${list} in "${sheet.title}" were inserted or deleted on their own, apart from the rest of each row, so values moved onto other markers' rows. Survey put each value back on its own marker (${cells} cells)${typedRows ? `, and moved the new ${typedRows === 1 ? 'row' : 'rows'} typed in the gap under the list` : ''}. To add or remove a marker's row, insert or delete the entire row.` });
+      }
+
+      for (const column of rowsMoved ? [] : editable) {
         const key = column.key;
-        if (key === 'rowId' || !columnIsEditable(column) || !colOfKey.has(key)) continue;
+        if (shifted.has(key)) continue;
         const moved = live.filter((x) => {
           const was = getFp(x.fields, key);
           if (was == null || isLegacyPrint(was) || isCellError(x.row[colOfKey.get(key)])) return false;
@@ -891,9 +1079,9 @@ export async function planSheetRound({
           if (!n) { same = false; break; }
           tally.set(fp, n - 1);
         }
-        if (!same) continue;
+        if (!same || !inSortOrder(moved.map((x) => x.row[colOfKey.get(key)]))) continue;
         moved.forEach((x) => shuffled.add(`${x.markerId}|${key}`));
-        notice({ scopeId: scope.scopeId, message: `"${column.header}" in "${sheet.title}" was sorted by itself, apart from the rest of each row, so Survey put each value back on its own item (${moved.length} cells). To sort the list, select all of it first.` });
+        notice({ scopeId: scope.scopeId, message: `"${column.header}" in "${sheet.title}" was sorted by itself, apart from the rest of each row, so Survey put each value back on its own marker (${moved.length} cells). To sort the list, select all of it first.` });
       }
     }
 
@@ -924,7 +1112,7 @@ export async function planSheetRound({
         const twinOf = markers[markerId];
         const typed = colOfKey.has('item') ? cellText(row[colOfKey.get('item')]).trim().toLowerCase() : '';
         if (twinOf && typed && typed === String(twinOf.name || '').trim().toLowerCase()) {
-          next.problems.push({ markerId, scopeId: scope.scopeId, message: `${where(r)} is a copy of the "${twinOf.name}" row, so it was not added. Give it its own name to add it as a new item.` });
+          next.problems.push({ markerId, scopeId: scope.scopeId, message: `${where(r)} is a copy of the "${twinOf.name}" row, so it was not added. Rename it to add it as a new marker.` });
           continue;
         }
         markerId = null;
@@ -1138,7 +1326,7 @@ export async function planSheetRound({
     // totals line. A note a PM typed far below (Z400) is not: new items
     // inserted above it landed at row 400 (real Excel 11-10).
     if (rowIdsMatched) {
-      notice({ scopeId: scope.scopeId, message: `${rowIdsMatched === 1 ? 'A hidden Row ID' : `${rowIdsMatched} hidden Row IDs`} in "${sheet.title}" changed (Find and Replace changes them too), so Survey matched ${rowIdsMatched === 1 ? 'the row' : 'each row'} to its own item and put the Row ID back.` });
+      notice({ scopeId: scope.scopeId, message: `${rowIdsMatched === 1 ? 'A hidden Row ID' : `${rowIdsMatched} hidden Row IDs`} in "${sheet.title}" changed (Find and Replace changes them too), so Survey matched ${rowIdsMatched === 1 ? 'the row' : 'each row'} to its own marker and put the Row ID back.` });
     }
     const firstSummary = summaryRows.filter((r) => r > lastItemRow && r <= lastItemRow + 3).sort((a, b) => a - b)[0];
     if (appendRows.length && lateSaves) {
@@ -1298,6 +1486,25 @@ export async function planSheetRound({
           setFp(base, key, w.was ?? null);
         }
       }
+      if (base) {
+        let copied = false;
+        for (const key of keys) {
+          const flag = `${markerId}|${key}`;
+          const u = next.undoWatch[flag];
+          if (!u) continue;
+          const sheetNow = getFp(sheetSide, key);
+          const agreed = getFp(base, key);
+          if (sheetNow === agreed) continue;
+          // Changed in the sheet to anything else: a new edit, not an undo.
+          if (sheetNow !== u.before) { delete next.undoWatch[flag]; continue; }
+          delete next.undoWatch[flag];
+          // Nothing changed in the app since the pull (a plain undo), or the
+          // app changed it again this round (a plain clash): as usual.
+          if (agreed === u.pulled || getFp(appFps, key) !== agreed) continue;
+          if (!copied) { base = JSON.parse(JSON.stringify(base)); copied = true; }
+          setFp(base, key, u.pulled);
+        }
+      }
       const { conflictFields, excelChangedFields, appChangedFields } = detectFieldConflicts({
         baseline: base || {},
         appNow: appFps,
@@ -1352,6 +1559,13 @@ export async function planSheetRound({
 
       const finalRec = appChanged ? appRecordOf(updated, scope, layout) : appRec;
       const finalFps = fieldPrintsOf(finalRec);
+      if (storedBase) {
+        for (const key of pulledKeys) {
+          const before = getFp(storedBase, key);
+          const pulled = getFp(finalFps, key);
+          if (before !== pulled && !isLegacyPrint(before)) next.undoWatch[`${markerId}|${key}`] = { t: now.getTime(), before, pulled };
+        }
+      }
       if (pulledKeys.size && storedBase) {
         const pulledFields = JSON.parse(JSON.stringify(storedBase));
         for (const key of pulledKeys) setFp(pulledFields, key, getFp(finalFps, key));
