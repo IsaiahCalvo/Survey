@@ -7,12 +7,16 @@ import { installCrashLog, setCrashLogBuild } from './utils/crashLog';
 import { agentLinkResumeUrl } from './home/agentLinkPending';
 import { installNativeDownloadShim } from './mobile/nativeDownloadShim';
 import { installNativeDeepLinks } from './mobile/nativeDeepLinks';
+import { isTeamsTab, startTeamsTab } from './teams/teamsHost';
 
 installSurveyAnalytics();
 // Exports in the iOS/Android app go to the share sheet (no-op elsewhere).
 installNativeDownloadShim();
 // Tapped surveytool.app invite links open in the app (no-op elsewhere).
 installNativeDeepLinks();
+// Survey as a Microsoft Teams tab: tell Teams the page is ready (only at
+// /teams inside Teams; the Teams library is never loaded anywhere else).
+if (isTeamsTab()) startTeamsTab();
 // WebMCP agent tools: loaded only in browsers that offer them.
 if (typeof document !== 'undefined' && document.modelContext) {
   Promise.all([

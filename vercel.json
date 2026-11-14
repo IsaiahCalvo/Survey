@@ -27,7 +27,7 @@
   ],
   "headers": [
     {
-      "source": "/(.*)",
+      "source": "/((?!teams(?:/|$)).*)",
       "headers": [
         { "key": "X-Frame-Options", "value": "DENY" },
         { "key": "X-Content-Type-Options", "value": "nosniff" },
@@ -38,7 +38,7 @@
       ]
     },
     {
-      "source": "/((?!(?:welcome|features|devices|pricing|faq|status|delete-account|whats-new|use-with-ai|use-cases|compare|tools)(?:/|$)|(?:privacy|terms|404|google-connected)\\.html$).*)",
+      "source": "/((?!(?:welcome|features|devices|pricing|faq|status|delete-account|whats-new|use-with-ai|use-cases|compare|tools|teams)(?:/|$)|(?:privacy|terms|404|google-connected)\\.html$).*)",
       "headers": [
         { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self' 'sha256-BGc+jgl/EbMGuqYayQWZd27/gSnabh2TUC+dHMGaq1I=' 'sha256-dcveo2muxWvLrM7H8rn3NZpgPKxGwVXzgVaZei7nzqk=' 'wasm-unsafe-eval' https://challenges.cloudflare.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' data: blob: https://surveytool.app https://cvamwtpsuvxvjdnotbeg.supabase.co wss://cvamwtpsuvxvjdnotbeg.supabase.co https://*.r2.cloudflarestorage.com https://graph.microsoft.com https://login.microsoftonline.com https://*.sharepoint.com https://*.1drv.com https://*.livefilestore.com https://*.microsoftpersonalcontent.com https://api.onedrive.com https://www.googleapis.com; worker-src 'self' blob:; frame-src 'self' blob: https://challenges.cloudflare.com https://login.microsoftonline.com https://docs.google.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" }
       ]
@@ -47,6 +47,16 @@
       "source": "/((?:welcome|features|devices|pricing|faq|status|delete-account|whats-new|use-with-ai|use-cases|compare|tools)(?:/.*)?|(?:privacy|terms|404|google-connected)\\.html)",
       "headers": [
         { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self' 'sha256-wsmnxD6kqdZZ/V2wQ85d92sMux2lvh7NN1y5/Y5SS5c=' 'sha256-WHLZ/YELHqy+opU9IqvqRd2140XchvBrOUUNPpZayho=' 'sha256-elZ4Aja5Hkq1Kd3D+fPP5jUgSXgIUGgD0TUGc15hE/4=' 'sha256-LD/KC18ObHl/LVNmg9OM7PRajdnDlaAvYMdx/t9v2Qk=' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self' data: blob:; worker-src 'self' blob:; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" }
+      ]
+    },
+    {
+      "source": "/teams(/.*)?",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "Strict-Transport-Security", "value": "max-age=31536000" },
+        { "key": "Permissions-Policy", "value": "camera=(self), microphone=(self), geolocation=()" },
+        { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self' 'sha256-BGc+jgl/EbMGuqYayQWZd27/gSnabh2TUC+dHMGaq1I=' 'sha256-dcveo2muxWvLrM7H8rn3NZpgPKxGwVXzgVaZei7nzqk=' 'wasm-unsafe-eval' https://challenges.cloudflare.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' data: blob: https://res.cdn.office.net https://surveytool.app https://cvamwtpsuvxvjdnotbeg.supabase.co wss://cvamwtpsuvxvjdnotbeg.supabase.co https://*.r2.cloudflarestorage.com https://graph.microsoft.com https://login.microsoftonline.com https://*.sharepoint.com https://*.1drv.com https://*.livefilestore.com https://*.microsoftpersonalcontent.com https://api.onedrive.com https://www.googleapis.com; worker-src 'self' blob:; frame-src 'self' blob: https://challenges.cloudflare.com https://login.microsoftonline.com https://docs.google.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors https://teams.microsoft.com https://*.teams.microsoft.com https://*.cloud.microsoft https://*.microsoft365.com https://*.office.com https://outlook.office.com https://outlook.office365.com" }
       ]
     },
     {
