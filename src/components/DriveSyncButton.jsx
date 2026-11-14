@@ -28,6 +28,18 @@ export function driveSyncLine(state, nowMs = Date.now()) {
   return `Survey saves your marks to ${place} after you change something.`;
 }
 
+// Who changed the PDF in the drive since Survey last opened or saved it, asked
+// when the card opens (state.checkSource). Empty when nothing changed there.
+export function driveSourceLine(state, nowMs = Date.now()) {
+  const link = state?.link;
+  const source = state?.source;
+  if (!link || !source?.changed) return '';
+  const when = source.at ? ` ${syncedAgo(source.at, nowMs)}` : '';
+  const who = source.by || 'Someone';
+  const next = state.canPush && !link.syncOff ? ' Survey will ask before it saves over that.' : '';
+  return `${who} changed this file in ${drivePlace(link)}${when}.${next}`;
+}
+
 export default function DriveSyncButton({ state, tip, onOpen }) {
   if (!state?.enabled || !state.link) return null;
   const warn = state.phase === 'problem' || state.link.syncOff;
@@ -62,6 +74,11 @@ export function DriveSyncDialogs({ state, cardOpen, onCloseCard }) {
   useEffect(() => {
     if (dialogUp && cardOpen) onCloseCard?.();
   }, [dialogUp, cardOpen, onCloseCard]);
+  // Opening the card asks the drive whether its copy changed.
+  const checkSource = state?.checkSource;
+  useEffect(() => {
+    if (cardOpen && typeof checkSource === 'function') checkSource();
+  }, [cardOpen, checkSource]);
   if (!state?.enabled || !state.link) return null;
   const { link, dialog } = state;
   const name = link.name || 'this file';
@@ -91,6 +108,9 @@ export function DriveSyncDialogs({ state, cardOpen, onCloseCard }) {
           )}
         >
           <p role="status" style={{ margin: '0 0 12px', fontSize: 13 }}>{driveSyncLine(state)}</p>
+          {driveSourceLine(state) && (
+            <p data-drive-source-changed="true" style={{ margin: '-6px 0 12px', fontSize: 13, color: 'var(--warning-text, var(--text-secondary))' }}>{driveSourceLine(state)}</p>
+          )}
           {state.canPush && (
             <div style={{ display: 'grid', gap: 10, fontSize: 13 }}>
               {!link.syncOff && (
@@ -122,7 +142,7 @@ export function DriveSyncDialogs({ state, cardOpen, onCloseCard }) {
       {dialog === 'conflict' && (
         <DialogCard
           title={`This file changed in ${place}`}
-          message={`Someone changed ${name} in ${place} since Survey last saved it. Keep Survey’s version to replace it, or stop saving back so both stay as they are.`}
+          message={`${state.source?.changed && state.source.by ? state.source.by : 'Someone'} changed ${name} in ${place} since Survey last saved it. Keep Survey’s version to replace it, or stop saving back so both stay as they are.`}
           onClose={state.closeDialog}
           role="alertdialog"
           atRoot
