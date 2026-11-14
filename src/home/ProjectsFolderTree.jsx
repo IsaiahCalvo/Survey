@@ -26,7 +26,7 @@ import { useStorage } from '../hooks/useDatabase';
 import { useOfflineDocumentActions } from './offlineDocumentActions.js';
 import { activateOrExplain } from '../utils/disabledReasonToast.js';
 import MenuRows from '../components/MenuRows.jsx';
-import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback, Suspense, lazy } from 'react';
 import { hoverOnly, useTooltip } from '../components/Tooltip';
 import { createPortal } from 'react-dom';
 import { mergeProjectDocumentOrder, orderDocumentsByProject } from './projectDocumentOrder.js';
@@ -51,12 +51,22 @@ import useFileDropZone from '../hooks/useFileDropZone';
 import FileDropOverlay from '../components/FileDropOverlay';
 import { resolveProjectDropTarget } from '../utils/fileDrop.js';
 import { isFeatureOn } from '../featureFlags.js';
+import { closedCount, leaveBlock, projectsForList } from '../projectAccess/projectAccess.js';
+import '../projectAccess/projectAccessList.css';
+import { dismissToast, showToast } from '../utils/toast';
 import ProjectItemsPanel, { ProjectItemsTabs } from '../projectItems/ProjectItemsPanel.jsx';
 import ProjectExportDialog from './ProjectExportDialog.jsx';
 import ProjectActivityPanel from '../projectItems/ProjectActivityPanel.jsx';
 import { keyboardControlProps } from '../utils/keyboardActivation.js';
+import { ITEM_LINK_EVENT, takePendingItemLink } from '../projectItems/itemLink.js';
 import { SHEET_VIEW_EVENT, openAllChoice, projectSheets, storedProjectOrder } from '../sheets/sheetSet.js';
 import { SheetViewGlyph } from '../sheets/SheetSetBar.jsx';
+// Nightly 'project-photos': the Photos tab loads only when opened.
+const ProjectPhotosPanelLazy = lazy(() => import('../projectPhotos/ProjectPhotosPanel.jsx'));
+// Nightly project-access: settings card + cover picture, loaded on demand.
+const loadProjectSettings = () => import('../projectAccess/ProjectSettings.jsx');
+const ProjectSettingsLazy = lazy(loadProjectSettings);
+const ProjectCoverLazy = lazy(() => loadProjectSettings().then((m) => ({ default: m.ProjectCover })));
 
 // Renders closed until someone picks Manage team, so it stays off the first
 // load; the chunk is fetched when the projects tree mounts.
@@ -210,6 +220,8 @@ export default function ProjectsFolderTree({
   onPdfTools,
   onShare,
   onShareDocument,
+  onProjectsChanged,
+  onAddFromDrive = null,
 }) {
   // Nightly offline-docs: "Make available offline" in the file menu.
   const { downloadDocument: downloadForOffline, fileStamp } = useStorage();
@@ -304,10 +316,23 @@ export default function ProjectsFolderTree({
   });
   const selCount = selProj.size;
 
+  // Nightly project-access: closed projects swap places with the open list
+  // ("Show closed"), and a project being left hides at once.
+  const [accessOn] = useState(() => isFeatureOn('project-access'));
+  const [showClosed, setShowClosed] = useState(false);
+  const [leavingIds, setLeavingIds] = useState(() => new Set());
+  const [settingsProject, setSettingsProject] = useState(null);
+  const listedProjects = useMemo(() => {
+    const live = localProjects.filter((p) => !leavingIds.has(p.id));
+    return accessOn ? projectsForList(live, showClosed) : live;
+  }, [localProjects, leavingIds, accessOn, showClosed]);
+  const closedTotal = accessOn ? closedCount(localProjects) : 0;
+  useEffect(() => { if (showClosed && closedTotal === 0) setShowClosed(false); }, [showClosed, closedTotal]);
+
   const filteredProjects = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return localProjects.filter((p) => !q || (p.name || '').toLowerCase().includes(q));
-  }, [localProjects, search]);
+    return listedProjects.filter((p) => !q || (p.name || '').toLowerCase().includes(q));
+  }, [listedProjects, search]);
 
   const filtered = useMemo(() => (
     // Pinned projects float to the TOP; relative order within each group
@@ -488,7 +513,12 @@ export default function ProjectsFolderTree({
   const [issuesOn] = useState(() => isFeatureOn('project-issues'));
   // Drawboard's project Activity page (Nightly, 'project-activity').
   const [activityOn] = useState(() => isFeatureOn('project-activity'));
-  const tabsOn = issuesOn || activityOn;
+  // Drawboard's project Photos page (Nightly, 'project-photos').
+  const [photosOn] = useState(() => isFeatureOn('project-photos'));
+  const tabsOn = issuesOn || activityOn || photosOn;
+  // A photo's link chip jumps to that item in its list.
+  const [openItemId, setOpenItemId] = useState(null);
+  const openItemFromPhoto = (item) => { setListTab(item.kind); setOpenItemId(item.id); };
   // Drawboard's "Open all" (Nightly, 'sheet-set-view'): the list as it
   // stands (or, with two or more rows ticked, "Open N selected") opens as one
   // set, in the List or Grid view picked beside the button.
@@ -514,6 +544,25 @@ export default function ProjectsFolderTree({
     onOpenDocument(sheets[0]);
   };
   const [listTab, setListTab] = useState('files');
+  // An "assigned to you" email link (Nightly 'item-assign-email', itemLink.js):
+  // open its project on the item's list with the item showing, as soon as
+  // that project is here. A closed project shows the closed list first.
+  useEffect(() => {
+    const take = () => {
+      const link = takePendingItemLink(localProjects.map((p) => p.id));
+      if (!link) return;
+      const target = localProjects.find((p) => p.id === link.projectId);
+      if (accessOn && target?.closed_at && !showClosed) setShowClosed(true);
+      setSearch('');
+      setOpenId(link.projectId);
+      if (isPhoneLayout()) setMobileDrillOpenId(link.projectId);
+      setListTab(link.kind);
+      setOpenItemId(link.itemId);
+    };
+    take();
+    window.addEventListener(ITEM_LINK_EVENT, take);
+    return () => window.removeEventListener(ITEM_LINK_EVENT, take);
+  }, [localProjects, accessOn, showClosed]);
   const projectRoleFor = (proj) => {
     if (!proj || !user?.id) return 'viewer';
     if (proj.user_id == null || proj.user_id === user.id) return 'owner';
@@ -844,6 +893,11 @@ export default function ProjectsFolderTree({
 
   /* ---- Render ---------------------------------------------------------- */
 
+  const closedToggle = accessOn && (closedTotal > 0 || showClosed) ? (
+    <button type="button" className="projects-closed-toggle" data-projects-closed-toggle onClick={() => setShowClosed((v) => !v)}>
+      {showClosed ? 'Back to open projects' : `Show closed projects (${closedTotal})`}
+    </button>
+  ) : null;
   const actions = (
     <>
       <div className="projects-mobile-search-actions hub-mobile-search-actions">
@@ -973,6 +1027,53 @@ export default function ProjectsFolderTree({
       </span>
     </>
   );
+  /* Nightly project-access: close / reopen (owner) and leave (anyone but
+     the owner). Close acts at once with Undo; leave hides the project at
+     once and only tells the server after the 5 s Undo window. */
+  const patchProject = (id, patch) => setLocalProjects((cur) => cur.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+  const setClosed = async (proj, closed, { quiet = false } = {}) => {
+    const before = { closed_at: proj.closed_at || null };
+    patchProject(proj.id, { closed_at: closed ? new Date().toISOString() : null });
+    const { setProjectClosed } = await loadProjectSettings();
+    const res = await setProjectClosed(proj.id, closed);
+    if (res.error) { patchProject(proj.id, before); showToast(res.error, 'error'); return; }
+    onProjectsChanged?.();
+    if (quiet) return;
+    showToast(closed ? `Closed ${proj.name || 'project'}` : `Reopened ${proj.name || 'project'}`, 'info', {
+      action: { label: 'Undo', onClick: () => { void setClosed(proj, !closed, { quiet: true }); } },
+      duration: 5000,
+    });
+  };
+  const leaveProjectNow = (proj) => {
+    let undone = false;
+    const unhide = () => setLeavingIds((cur) => { const n = new Set(cur); n.delete(proj.id); return n; });
+    setLeavingIds((cur) => new Set(cur).add(proj.id));
+    const toastId = showToast(`You left ${proj.name || 'the project'}`, 'info', {
+      action: { label: 'Undo', onClick: () => { undone = true; unhide(); } },
+      duration: 5000,
+    });
+    setTimeout(async () => {
+      dismissToast(toastId);
+      if (undone) return;
+      const { leaveProject } = await loadProjectSettings();
+      const res = await leaveProject(proj.id, user?.id);
+      if (res.error) { unhide(); showToast(res.error, 'error'); return; }
+      await onProjectsChanged?.();
+      unhide();
+    }, 5000);
+  };
+  const accessMenuItems = (proj) => {
+    if (!accessOn) return [];
+    const isOwner = canManageProject(proj, user?.id);
+    const ownerOnly = isOwner ? null : 'Only the project owner can do this';
+    return [
+      { icon: 'settings', label: 'Project settings', onClick: () => setSettingsProject(proj) },
+      proj.closed_at
+        ? { label: 'Reopen project', reason: ownerOnly, onClick: () => { void setClosed(proj, false); } }
+        : { label: 'Close project', reason: ownerOnly, onClick: () => { void setClosed(proj, true); } },
+      { label: 'Leave project', reason: leaveBlock(proj, user?.id, projectRoleFor(proj)), onClick: () => leaveProjectNow(proj) },
+    ];
+  };
   /* Owner 2026-10-27: slide a project or file row left for the same actions
      as its ⋮ menu, in the select-mode order, with the same owner rules. A
      file outside the open project (Recent) only offers Share and Delete. */
@@ -1112,7 +1213,7 @@ export default function ProjectsFolderTree({
                 search matches nothing. */}
             {filtered.length === 0 && localProjects.length > 0 && (
               <div className="meta" style={{ fontSize: 12, padding: '14px 8px' }}>
-                No projects match your search.
+                {!showClosed && closedTotal && !search.trim() ? 'Every project is closed.' : 'No projects match your search.'}
               </div>
             )}
             <SortableRearrangeList ids={filtered.map((p) => p.id)} onReorder={reorderProjects}>
@@ -1208,6 +1309,7 @@ export default function ProjectsFolderTree({
               );
             })}
             </SortableRearrangeList>
+            {closedToggle}
           </div>
         </div>
 
@@ -1216,6 +1318,9 @@ export default function ProjectsFolderTree({
           {open && (
             <>
               <div className="projects-open-head" style={{ padding: '14px 18px', borderBottom: '1px solid var(--ink-500)', display: 'flex', alignItems: 'center', gap: 14 }}>
+                {accessOn && open.cover_path ? (
+                  <Suspense fallback={null}><ProjectCoverLazy project={open} size={44} /></Suspense>
+                ) : null}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   {/* Inline rename field. Typing raises Cancel / Save in the
                       header's subtitle row; Enter saves, Escape backs out. */}
@@ -1238,11 +1343,21 @@ export default function ProjectsFolderTree({
                     }}
                   />
                   </span>
+                  {accessOn && open.closed_at ? <span className="project-closed-chip" data-project-closed>Closed</span> : null}
+                  {accessOn && open.description ? <div className="project-description-line" data-project-description>{open.description}</div> : null}
                 </div>
                 <div className="projects-open-actions" style={{ display: 'flex', gap: 8, flex: 'none' }}>
+                  {accessOn && (
+                    <button className="hub-icon-btn" data-project-settings-open aria-label="Project settings" {...tip('Project settings', 'below')} onClick={() => setSettingsProject(open)}>
+                      <Icon name="settings" size={14} />
+                    </button>
+                  )}
                   {/* Add files — opens the OS file picker; picked PDFs are
                       added to this project's document list. */}
                   <button className="btn" onClick={() => addFiles(open)}><Icon name="upload" size={12} />Add files</button>
+                  {onAddFromDrive && projectRoleFor(open) !== 'viewer' ? (
+                    <button className="btn" data-project-add-onedrive onClick={() => onAddFromDrive(open)}><Icon name="oneDrive" size={12} />From OneDrive</button>
+                  ) : null}
                   {/* Manage Team — opens the Manage Team modal (NOT the share
                       link modal) for the currently open project. */}
                   <button className="btn" onClick={() => setTeamModalProject(open)}><Icon name="users" size={12} />Manage team</button>
@@ -1274,8 +1389,12 @@ export default function ProjectsFolderTree({
                 </div>
               </div>
 
-              {tabsOn && <ProjectItemsTabs value={listTab} onChange={setListTab} issues={issuesOn} activity={activityOn} />}
-              {activityOn && listTab === 'activity' ? (isPhoneLayout() ? <div style={{ flex: 1 }} /> : (
+              {tabsOn && <ProjectItemsTabs value={listTab} onChange={(t) => { setOpenItemId(null); setListTab(t); }} issues={issuesOn} activity={activityOn} photos={photosOn} />}
+              {photosOn && listTab === 'photos' ? (isPhoneLayout() ? <div style={{ flex: 1 }} /> : (
+                <Suspense fallback={<div style={{ flex: 1 }} />}>
+                  <ProjectPhotosPanelLazy project={open} user={user} role={projectRoleFor(open)} lookupMember={lookupMember} itemsOn={issuesOn} onOpenItem={openItemFromPhoto} />
+                </Suspense>
+              )) : activityOn && listTab === 'activity' ? (isPhoneLayout() ? <div style={{ flex: 1 }} /> : (
                 <ProjectActivityPanel project={open} user={user} lookupMember={lookupMember} documents={openFiles} onOpenDocument={onOpenDocument} />
               )) : issuesOn && listTab !== 'files' ? (isPhoneLayout() ? <div style={{ flex: 1 }} /> : (
                 <ProjectItemsPanel
@@ -1288,6 +1407,8 @@ export default function ProjectsFolderTree({
                   documents={openFiles}
                   onOpenDocument={onOpenDocument}
                   phone={false}
+                  photosOn={photosOn}
+                  openItemId={openItemId}
                 />
               )) : (
               <div className="projects-open-body" style={{ display: 'grid', gap: 0, flex: 1, overflow: 'hidden' }}>
@@ -1496,7 +1617,10 @@ export default function ProjectsFolderTree({
           localProjects.length === 0 ? (
             <EmptyState icon="folder" line="No projects yet" description="Create a project to group related documents." actionLabel="New project" onAction={handleNewProject} />
           ) : (
-            <div className="meta" style={{ fontSize: 12, padding: '14px 4px' }}>No projects match your search.</div>
+            <>
+              <div className="meta" style={{ fontSize: 12, padding: '14px 4px' }}>{showClosed || !closedTotal || search.trim() ? 'No projects match your search.' : 'Every project is closed.'}</div>
+              {closedToggle}
+            </>
           )
         )}
         {mobileProjectLayout === 'drill' && filtered.length > 0 && (
@@ -1523,10 +1647,15 @@ export default function ProjectsFolderTree({
                         {...hoverOnly(tip('Tap to rename'))}
                       />
                     </span>
-                    <span>{mobileDrillAllFiles.length} {mobileDrillAllFiles.length === 1 ? 'file' : 'files'} · {projectLastEditedLabel(mobileDrillProject.id)}</span>
+                    <span>{mobileDrillAllFiles.length} {mobileDrillAllFiles.length === 1 ? 'file' : 'files'} · {projectLastEditedLabel(mobileDrillProject.id)}{accessOn && mobileDrillProject.closed_at ? <span className="project-closed-chip" data-project-closed>Closed</span> : null}</span>
+                    {accessOn && mobileDrillProject.description ? <div className="project-description-line" data-project-description>{mobileDrillProject.description}</div> : null}
                   </div>
-                  {tabsOn && <ProjectItemsTabs value={listTab} onChange={setListTab} issues={issuesOn} activity={activityOn} />}
-                  {activityOn && listTab === 'activity' ? (
+                  {tabsOn && <ProjectItemsTabs value={listTab} onChange={(t) => { setOpenItemId(null); setListTab(t); }} issues={issuesOn} activity={activityOn} photos={photosOn} />}
+                  {photosOn && listTab === 'photos' ? (
+                    <Suspense fallback={<div style={{ flex: 1 }} />}>
+                      <ProjectPhotosPanelLazy project={mobileDrillProject} user={user} role={projectRoleFor(mobileDrillProject)} lookupMember={lookupMember} itemsOn={issuesOn} onOpenItem={openItemFromPhoto} phone />
+                    </Suspense>
+                  ) : activityOn && listTab === 'activity' ? (
                     <ProjectActivityPanel project={mobileDrillProject} user={user} lookupMember={lookupMember} documents={mobileDrillAllFiles} onOpenDocument={onOpenDocument} phone />
                   ) : issuesOn && listTab !== 'files' ? (
                     <ProjectItemsPanel
@@ -1539,6 +1668,8 @@ export default function ProjectsFolderTree({
                       documents={mobileDrillAllFiles}
                       onOpenDocument={onOpenDocument}
                       phone
+                      photosOn={photosOn}
+                      openItemId={openItemId}
                     />
                   ) : (<>
                   <div className="projects-mobile-project-files-head">
@@ -1662,6 +1793,7 @@ export default function ProjectsFolderTree({
                     );
                   })}
                 </SortableRearrangeList>
+                  {closedToggle}
               </>
             )}
           </div>
@@ -2198,6 +2330,10 @@ export default function ProjectsFolderTree({
               { icon: 'users', label: 'Add member', reason: ownerOnly, onClick: () => onShare && onShare(proj) },
               { label: 'Get link to project', onClick: () => onShare && onShare(proj) },
               { icon: 'upload', label: 'Upload files', reason: viewerBlocked, onClick: () => { setOpenId(proj.id); addFiles(proj); } },
+              // Nightly drive-sync-back: a OneDrive / SharePoint PDF into this
+              // project, linked so marks save back (Drawboard Projects'
+              // New drawing > OneDrive).
+              ...(onAddFromDrive ? [{ icon: 'oneDrive', label: 'Add from OneDrive', reason: viewerBlocked, onClick: () => onAddFromDrive(proj) }] : []),
               {
                 // Pin / unpin — toggles local pinned state; the row floats to
                 // the top of the list and shows a pin icon when pinned.
@@ -2207,6 +2343,7 @@ export default function ProjectsFolderTree({
               },
               ...(exportOn ? [{ icon: 'download', label: 'Export project…', onClick: () => setExportProject(proj) }] : []),
               { label: 'Manage project', onClick: () => setTeamModalProject(proj) },
+              ...accessMenuItems(proj),
             ]}
           />
         );
@@ -2256,6 +2393,26 @@ export default function ProjectsFolderTree({
           lookupMember={lookupMember}
           onClose={() => setExportProject(null)}
         />
+      )}
+
+      {accessOn && settingsProject && (
+        <Suspense fallback={null}>
+          <ProjectSettingsLazy
+            project={localProjects.find((p) => p.id === settingsProject.id) || settingsProject}
+            role={projectRoleFor(settingsProject)}
+            isOwner={Boolean(canManageProject(settingsProject, user?.id))}
+            onClose={() => setSettingsProject(null)}
+            onSaved={(changes) => {
+              const patch = {};
+              if (changes.name) patch.name = changes.name;
+              if ('description' in changes) patch.description = changes.description || null;
+              if ('access' in changes) patch.company_access = changes.access;
+              patchProject(settingsProject.id, patch);
+              showToast('Project settings saved', 'success');
+              void onProjectsChanged?.();
+            }}
+          />
+        </Suspense>
       )}
 
       {/* Manage Team modal — open state driven entirely by local React state.

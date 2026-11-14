@@ -157,12 +157,11 @@ export const useProjects = ({ listCache = false } = {}) => {
       setLoading(true);
       // The last error stays until a read succeeds (2026-10-07): a retry that
       // cleared it up front flashed the empty list between two error screens.
-      // KAL-285 — explicit column list instead of select('*'). The live
-      // `projects` table has exactly these 8 columns (verified against prod
-      // schema); Dashboard.jsx and this hook consume id/name/user_id directly
-      // and sort/display off created_at/updated_at, so every real column is
-      // kept rather than guessing which ones are unused.
-      const projectColumns = 'id, user_id, name, description, color, archived, created_at, updated_at';
+      // KAL-285 — explicit column list instead of select('*'). Dashboard.jsx
+      // and this hook consume id/name/user_id directly and sort/display off
+      // created_at/updated_at. The last five are project settings (cover,
+      // company access, closed; migration 20261114130000_project_access.sql).
+      const projectColumns = 'id, user_id, name, description, color, archived, created_at, updated_at, cover_path, company_access, company_id, closed_at, closed_by';
       const [ownedResult, collaboratorResult] = await Promise.all([
         readLibraryRows(() => supabase
           .from('projects')

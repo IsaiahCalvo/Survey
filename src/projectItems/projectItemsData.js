@@ -176,3 +176,18 @@ export async function loadLatestComments(projectId, { client = defaultClient } =
   if (!error) for (const row of data || []) if (!map.has(row.item_id)) map.set(row.item_id, row.body);
   return map;
 }
+
+/* "Assigned to you" email (Nightly 'item-assign-email'): ask the server to
+   email the item's new assignee. The server reads who assigned whom from the
+   item's activity log, so the request carries only the item id. Best effort:
+   a failed send never blocks or undoes the assignment. */
+export async function notifyItemAssignee(itemId, { client = defaultClient } = {}) {
+  try {
+    const origin = typeof window !== 'undefined' ? window.location.origin : undefined;
+    const { data, error } = await client.functions.invoke('notify-comment-mentions', { body: { itemId, origin } });
+    if (error) return { sent: 0, error: error.message || String(error) };
+    return { sent: Number(data?.sent) || 0, reason: data?.reason || null };
+  } catch (err) {
+    return { sent: 0, error: err?.message || String(err) };
+  }
+}
