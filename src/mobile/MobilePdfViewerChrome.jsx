@@ -194,8 +194,12 @@ const TOOL_GROUPS = {
       { id: 'camera', label: 'Camera', icon: 'camera', flag: 'image-camera', action: 'camera' },
       // Nightly 'link-tool': drag a box, then say where it links.
       { id: 'hyperlink', label: 'Hyperlink', icon: 'hyperlink', flag: 'link-tool' },
+      // Nightly 'area-redact': drag a box to black out that part of the page.
+      { id: 'area-redact', label: 'Redact area', icon: 'areaRedactTool', flag: 'area-redact' },
       // Pins save on a cloud document: hidden on a device file or signed out.
       { id: 'pin', label: 'Pin', icon: 'pagePin', flag: 'comment-pins', cloudOnly: true },
+      // Nightly 'snapshot-tool': drag an area, it is copied as a picture.
+      { id: 'snapshot', label: 'Snapshot', icon: 'snapshot', flag: 'snapshot-tool' },
       // Nightly 'signature-tool': the saved signatures; a tap drops one mid-page.
       { id: 'signature', label: 'Signature', icon: 'signature', flag: 'signature-tool', picker: 'signature' },
       // Nightly 'note-tool': tap the page to leave a sticky note.
