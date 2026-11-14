@@ -933,7 +933,10 @@ export async function planSheetRound({
         const keys = editable.map((c) => c.key).filter((key) => live.some((x) => usable(x, key) && getFp(x.sheetFps, key) !== getFp(x.fields, key)));
         if (keys.length < 2) return null;
         const changed = live.filter((x) => keys.some((key) => getFp(x.sheetFps, key) !== getFp(x.fields, key)));
-        if (changed.length < SHUFFLE_MIN || !changed.every((x) => keys.every((key) => usable(x, key)))) return null;
+        // Two rows that swapped names as well (Item moved with them) are a
+        // move too: no one renames two markers to each other's names.
+        const named = keys.includes('item') && changed.every((x) => !isBlankCell(x.row[colOfKey.get('item')]) && getFp(x.sheetFps, 'item') !== getFp(x.fields, 'item'));
+        if (changed.length < (named ? 2 : SHUFFLE_MIN) || !changed.every((x) => keys.every((key) => usable(x, key)))) return null;
         const tuple = (fps) => JSON.stringify(keys.map((key) => getFp(fps, key)));
         const pool = new Map();
         for (const x of changed) pool.set(tuple(x.fields), (pool.get(tuple(x.fields)) || 0) + 1);
@@ -969,54 +972,85 @@ export async function planSheetRound({
       };
       // Rows past the list a move down pushed values onto: no Row ID.
       const tailRow = (r) => r < rows.length && !ids.get(r) && !cellText((rows[r] || [])[rowIdCol]).trim();
-      const shiftOf = (key, fixed = null) => {
-        const changed = live.filter((x) => usable(x, key) && getFp(x.sheetFps, key) !== getFp(x.fields, key));
-        if (!changed.length) return null;
-        const tries = fixed ? [fixed] : (() => {
-          const votes = new Map();
-          for (const x of changed) {
-            for (let by = -SHIFT_MAX; by <= SHIFT_MAX; by += 1) {
-              const from = by && atRow.get(x.r - by);
-              if (from && getFp(from.fields, key) === getFp(x.sheetFps, key)) votes.set(by, (votes.get(by) || 0) + 1);
-            }
+      // How well one column fits a move of `by` rows from list row `k` down:
+      // null when a cell from k down breaks it, else the evidence: cells that
+      // changed into the value of the item `by` rows away (fit), values
+      // pushed off the end of the list (tail), and cells the move left empty
+      // that held a value (gap).
+      const fitOf = (key, { by, k }) => {
+        const fit = []; const exposed = []; const gap = [];
+        for (let r = k; r <= lastItem; r += 1) {
+          const x = atRow.get(r);
+          if (!x || !usable(x, key)) return null;
+          const from = r - by >= k && r - by <= lastItem ? atRow.get(r - by) : null;
+          if (!from) {
+            // The inserted gap holds no value it held before.
+            if (by > 0 && !isBlankCell(x.row[colOfKey.get(key)]) && getFp(x.sheetFps, key) === getFp(x.fields, key)) return null;
+            exposed.push(x);
+            if (isBlankCell(x.row[colOfKey.get(key)]) && getFp(x.sheetFps, key) !== getFp(x.fields, key)) gap.push(x);
+            continue;
           }
-          return [...votes].sort((a, b) => b[1] - a[1]).slice(0, 2).map(([by]) => ({ by, k: changed[0].r }));
-        })();
-        for (const { by, k } of tries) {
-          if (k > changed[0].r) continue;
-          let ok = true; const fit = []; const exposed = [];
-          for (let r = k; r <= lastItem && ok; r += 1) {
-            const x = atRow.get(r);
-            if (!x || !usable(x, key)) { ok = false; break; }
-            const from = r - by >= k && r - by <= lastItem ? atRow.get(r - by) : null;
-            if (!from) { exposed.push(x); continue; }
-            if (getFp(from.fields, key) !== getFp(x.sheetFps, key)) ok = false;
-            else if (getFp(x.sheetFps, key) !== getFp(x.fields, key)) fit.push(x);
-          }
-          if (!ok) continue;
-          // Values pushed off the end (down): more of the same evidence.
-          const tail = [];
-          for (let r = lastItem + 1; by > 0 && r <= lastItem + by; r += 1) {
-            const from = atRow.get(r - by);
-            if (from && r - by >= k && tailRow(r) && !isBlankCell((rows[r] || [])[colOfKey.get(key)]) && getFp(fpsAt(r), key) === getFp(from.fields, key)) tail.push(r);
-          }
-          const kinds = new Set([...fit.map((x) => getFp(x.sheetFps, key)), ...tail.map((r) => getFp(fpsAt(r), key))]).size;
-          if (fixed ? fit.length || tail.length : fit.length >= 2 && fit.length + tail.length >= SHUFFLE_MIN && kinds >= 3) return { by, k, cells: [...fit, ...exposed] };
+          if (getFp(from.fields, key) !== getFp(x.sheetFps, key)) return null;
+          if (getFp(x.sheetFps, key) !== getFp(x.fields, key)) fit.push(x);
         }
-        return null;
+        const tail = [];
+        for (let r = lastItem + 1; by > 0 && r <= lastItem + by; r += 1) {
+          const from = atRow.get(r - by);
+          if (from && r - by >= k && tailRow(r) && !isBlankCell((rows[r] || [])[colOfKey.get(key)]) && getFp(fpsAt(r), key) === getFp(from.fields, key)) tail.push(r);
+        }
+        const values = [...fit.map((x) => getFp(x.sheetFps, key)), ...tail.map((r) => getFp(fpsAt(r), key))];
+        // Every value the move touched, before and after, empty aside: a
+        // Y / N column never shows three.
+        const blank = printOf('');
+        const seen = new Set([...values, ...[...fit, ...gap].map((x) => getFp(x.fields, key))].filter((fp) => fp !== blank)).size;
+        return { by, k, fit: fit.length, tail: tail.length, gap: gap.length, values, seen, cells: [...fit, ...exposed], changed: fit.length + gap.length > 0 };
       };
-      const shifted = new Map(); // key -> { by, k, cells }
-      for (const column of rowsMoved ? [] : editable) {
-        const found = live.length >= SHUFFLE_MIN ? shiftOf(column.key) : null;
-        if (found) shifted.set(column.key, found);
-      }
-      const moves = [...new Map([...shifted.values()].map((m) => [`${m.by}|${m.k}`, { by: m.by, k: m.k }])).values()];
-      for (const column of editable) {
-        if (shifted.has(column.key)) continue;
-        for (const m of moves) {
-          const found = shiftOf(column.key, m);
-          if (found) { shifted.set(column.key, found); break; }
+      // Moves worth trying: for each column, the one or two `by` most of its
+      // changed cells agree on, from its first changed row.
+      const candidates = new Map();
+      for (const column of rowsMoved || live.length < SHUFFLE_MIN ? [] : editable) {
+        const key = column.key;
+        const changed = live.filter((x) => usable(x, key) && getFp(x.sheetFps, key) !== getFp(x.fields, key));
+        if (!changed.length) continue;
+        const votes = new Map();
+        for (const x of changed) {
+          for (let by = -SHIFT_MAX; by <= SHIFT_MAX; by += 1) {
+            const from = by && atRow.get(x.r - by);
+            if (from && getFp(from.fields, key) === getFp(x.sheetFps, key)) votes.set(by, (votes.get(by) || 0) + 1);
+          }
         }
+        // The move can start a few rows above the first changed cell, where
+        // the cells it touched were empty before as well.
+        for (const [by] of [...votes].sort((a, b) => b[1] - a[1]).slice(0, 2)) {
+          for (let k = changed[0].r; k >= Math.max(live[0].r, changed[0].r - Math.abs(by)); k -= 1) {
+            if (atRow.has(k)) candidates.set(`${by}|${k}`, { by, k });
+          }
+        }
+      }
+      // A move is taken when one column shows it on its own (two fits, and
+      // four pieces of evidence with three different values, or three with
+      // three different filled values before and after), or when two or more
+      // columns that fit it show, together, as much. Columns that fit the
+      // move and changed join it.
+      const shifted = new Map(); // key -> { by, k, cells }
+      const moves = [];
+      const strength = (f) => f.fit + f.tail + f.gap;
+      const taken = (fits) => {
+        const solo = fits.some((f) => f.fit >= 2 && ((strength(f) >= SHUFFLE_MIN && new Set(f.values).size >= 3) || (strength(f) >= 3 && f.seen >= 3)));
+        const backing = fits.filter((f) => f.fit + f.tail >= 1 && strength(f) >= 2);
+        const pooled = backing.length >= 2 && backing.reduce((n, f) => n + f.fit + f.tail, 0) >= 3
+          && backing.reduce((n, f) => n + strength(f), 0) >= SHUFFLE_MIN && new Set(backing.flatMap((f) => f.values)).size >= 3;
+        return solo || pooled;
+      };
+      const ranked = [...candidates.values()].map((m) => {
+        const fits = editable.map((c) => [c.key, fitOf(c.key, m)]).filter(([, f]) => f && f.changed);
+        return { m, fits, score: fits.reduce((n, [, f]) => n + strength(f), 0) };
+      }).sort((a, b) => b.score - a.score);
+      for (const { m, fits } of ranked) {
+        const free = fits.filter(([key]) => !shifted.has(key));
+        if (!free.length || !taken(free.map(([, f]) => f))) continue;
+        moves.push(m);
+        for (const [key, f] of free) shifted.set(key, f);
       }
       if (shifted.size) {
         let cells = 0;
@@ -1077,8 +1111,20 @@ export async function planSheetRound({
       let sideRows = 0; let sideCells = 0;
       for (const x of rowsMoved ? [] : live) {
         const changed = editable.filter((c) => usable(x, c.key) && getFp(x.sheetFps, c.key) !== getFp(x.fields, c.key) && !shuffled.has(`${x.markerId}|${c.key}`));
-        if (changed.length < 2) continue;
+        if (!changed.length) continue;
         const c0 = Math.min(...changed.map((c) => colOfKey.get(c.key)));
+        // An unheaded cell past the last column holding the row's own value
+        // from `by` columns to its left: pushed out by inserted cells.
+        const pushedOut = (by) => {
+          const cols = [];
+          for (let col = lastCol + 1; by < 0 && col <= lastCol - by; col += 1) {
+            const src = atCol.get(col + by);
+            const v = x.row[col];
+            if (!src || src.col < c0 || !src.editable || !usable(x, src.key) || isBlankCell(v) || cellText(header[col]).trim()) continue;
+            if (printOf(cellText(v)) === getFp(x.fields, src.key)) cols.push(col);
+          }
+          return cols;
+        };
         for (const by of [1, 2, 3, -1, -2, -3]) {
           let explained = 0; let filled = 0; let ok = true;
           for (const c of synced) {
@@ -1091,20 +1137,21 @@ export async function planSheetRound({
             else if (atCol.has(from)) {
               if (!atCol.get(from).editable || !usable(x, atCol.get(from).key)) continue;
               expect = getFp(x.fields, atCol.get(from).key);
-            } else continue; // from a column outside the list: unknown
+            } else if (by > 0 && from > lastCol && !cellText(header[from]).trim()) expect = printOf(''); // pulled in from past the list: most often blank
+            else continue; // from a column outside the list: unknown
             if (now !== expect) { ok = false; break; }
             if (now !== was) { explained += 1; if (!isBlankCell(x.row[c.col])) filled += 1; }
           }
+          const out = ok ? pushedOut(by) : [];
+          explained += out.length; filled += out.length;
           if (!ok || explained < 2 || !filled) continue;
           const back = changed.filter((c) => colOfKey.get(c.key) >= c0);
           back.forEach((c) => shuffled.add(`${x.markerId}|${c.key}`));
           sideRows += 1; sideCells += back.length;
           // Pushed past the last column (inserted): an unheaded cell holding
           // the row's own value goes blank.
-          for (let col = lastCol + 1; by < 0 && col <= lastCol - by; col += 1) {
-            const src = atCol.get(col + by);
+          for (const col of out) {
             const v = x.row[col];
-            if (!src || isBlankCell(v) || cellText(header[col]).trim() || printOf(cellText(v)) !== getFp(x.fields, src.key)) continue;
             plan.cellWrites.push({ sheetId: sheet.sheetId, title: sheet.title, row: x.r, col, value: '', headerRow: headerAt });
             plan.verify.push({ sheetId: sheet.sheetId, title: sheet.title, row: x.r, col, expect: v });
           }
@@ -1123,7 +1170,15 @@ export async function planSheetRound({
           if (was == null || isLegacyPrint(was) || isCellError(x.row[colOfKey.get(key)])) return false;
           return getFp(x.sheetFps, key) !== was;
         });
-        if (moved.length < SHUFFLE_MIN) continue;
+        // Three cells are enough when the whole column now reads in order,
+        // blanks last, and it holds four or more different values (never a
+        // Y / N column).
+        const whole = live.filter((x) => usable(x, key)).map((x) => x.row[colOfKey.get(key)]);
+        const firstBlank = whole.findIndex((v) => isBlankCell(v));
+        const wholeSorted = () => (firstBlank < 0 || whole.slice(firstBlank).every((v) => isBlankCell(v)))
+          && new Set(whole.filter((v) => !isBlankCell(v)).map((v) => cellText(v))).size >= 4 && inSortOrder(whole)
+          && moved.filter((x) => !isBlankCell(x.row[colOfKey.get(key)])).length >= 2;
+        if (moved.length < SHUFFLE_MIN && !(moved.length === 3 && wholeSorted())) continue;
         const tally = new Map();
         for (const x of moved) tally.set(getFp(x.fields, key), (tally.get(getFp(x.fields, key)) || 0) + 1);
         let same = true;
