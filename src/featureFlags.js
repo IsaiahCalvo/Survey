@@ -608,7 +608,9 @@ export const FEATURE_FLAGS = Object.freeze({
   // Adobe round trip (2026-11-14, pdfOutsideEdits.js): an exported PDF
   // changed in Acrobat and uploaded as a new version brings those changes.
   'outside-edits': Object.freeze({
-    label: 'Upload as new version: marks changed or deleted in Adobe (or any PDF app) since export come across',
+    // Desktop too: Cmd/Ctrl+S saves back to the opened file only while no
+    // other app changed it, and a change there is said at once.
+    label: 'Edits made in Adobe (or any PDF app): new-version uploads bring them across; desktop saves back to the opened file and notices changes',
     stage: 'beta',
   }),
 });

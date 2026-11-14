@@ -405,6 +405,7 @@ import { bookmarkDeleteMessage, removeBookmarkWithDescendants, restoreRemovedBoo
 import { useYDoc } from './hooks/useYDoc.js';
 import { useZoomState } from './hooks/useZoomState';
 import { isFeatureOn } from './featureFlags.js';
+import { canLinkLocalFile, createLocalFileLink, fileNameOf, LOCAL_FILE_REOPEN_EVENT } from './services/localFileLink.js';
 import { planOutsideEditReconcile } from './utils/pdfOutsideEdits.js';
 import { setStampPickerOpen, useStampPickerOpen } from './components/StampPickerCard.jsx';
 import { setSignatureCardOpen, useSignatureCardOpen } from './components/SignatureCard.jsx';
@@ -24797,7 +24798,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // file path and writes the currently-open PDF with annotations baked in.
   // Cmd+S only saves app/cloud state; this explicit export path is the only
   // place the app generates PDF bytes and writes/downloads a PDF copy.
-  const handleExportAnnotatedPDF = useCallback(async () => {
+  // options.deliver(bytes): hand the bytes to the caller instead of Save As
+  // (Save back to the opened file, services/localFileLink.js).
+  const handleExportAnnotatedPDF = useCallback(async (options) => {
     if (!pdfFile) {
       showToast('Open a PDF first.', 'warn');
       return;
@@ -24858,6 +24861,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       );
       if (!buffer) {
         showToast('Nothing to export.', 'warn');
+        return;
+      }
+      if (typeof options?.deliver === 'function') {
+        await options.deliver(buffer);
         return;
       }
       if (api?.saveFile) {
@@ -25332,6 +25339,73 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       if (typeof unsubscribe === 'function') unsubscribe();
     };
   }, [isActive, handleExportAnnotatedPDF]);
+
+  // Desktop (flag 'outside-edits', services/localFileLink.js): the file this
+  // document was opened from. Drawboard for Mac writes back over the file on
+  // Save but never notices another app changing it, so its next Save wipes
+  // that app's work. Here Cmd/Ctrl+S writes the marked-up PDF back only while
+  // the file is still the one Survey last read or wrote, and a change made in
+  // another app is said at once, with a way to open the changed file.
+  const localFileLinkRef = useRef(null);
+  useEffect(() => {
+    const api = typeof window !== 'undefined' ? window.electronAPI : null;
+    if (!isFeatureOn('outside-edits') || !canLinkLocalFile(api, pdfFilePath)) return undefined;
+    const name = fileNameOf(pdfFilePath);
+    const toastId = `local-file-change-${tabId || pdfFilePath}`;
+    const link = createLocalFileLink({
+      api,
+      filePath: pdfFilePath,
+      onOutsideChange: (change) => {
+        if (change.kind === 'gone') {
+          showToast(`${name} was moved or deleted on this computer. Your marks are still here in Survey.`, 'warn', { id: toastId, duration: Infinity });
+          return;
+        }
+        showToast(`${name} was changed in another app.`, 'info', {
+          id: toastId,
+          duration: Infinity,
+          action: {
+            label: 'Open the changed file',
+            onClick: () => {
+              dismissToast(`local-file-save-${tabId || pdfFilePath}`);
+              window.dispatchEvent(new CustomEvent(LOCAL_FILE_REOPEN_EVENT, {
+                detail: { filePath: pdfFilePath, fileName: name, fileSize: change.bytes.length, data: change.bytes },
+              }));
+            },
+          },
+        });
+      },
+    });
+    let live = true;
+    link.start()
+      .then(() => { if (live) localFileLinkRef.current = link; })
+      .catch((error) => console.warn('[LocalFileLink] could not watch the file:', error?.message || error));
+    return () => {
+      live = false;
+      if (localFileLinkRef.current === link) localFileLinkRef.current = null;
+      link.stop();
+      dismissToast(toastId);
+    };
+  }, [pdfFilePath, tabId]);
+  const saveToLinkedFileRef = useRef(null);
+  saveToLinkedFileRef.current = async () => {
+    const link = localFileLinkRef.current;
+    if (!link) return;
+    const name = fileNameOf(link.filePath);
+    const id = `local-file-save-${tabId || link.filePath}`;
+    await handleExportAnnotatedPDF({
+      deliver: async (buffer) => {
+        const out = await link.save(buffer);
+        if (out.ok) showToast(`Saved to ${name}`, 'success', { id });
+        else if (out.reason === 'gone') showToast(`${name} was moved or deleted, so nothing was written. Use Export annotated PDF to save a copy.`, 'warn', { id });
+        else {
+          showToast(`${name} was changed in another app since Survey last saved it, so it was not overwritten.`, 'warn', {
+            id,
+            action: { label: 'Save a copy', onClick: () => handleExportAnnotatedPDF() },
+          });
+        }
+      },
+    });
+  };
 
   // KAL-393: File menu → Export markup (XFDF).
   useEffect(() => {
@@ -28561,6 +28635,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           if (key === 's') {
             e.preventDefault();
             handleSaveDocument();
+            saveToLinkedFileRef.current?.();
             return;
           }
           if (key === '0') {
@@ -30421,7 +30496,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     if (documentLocked) return undefined;
     const decision = embeddedImportDecision({
       // The document's owner may import even before the role RPC resolves.
-      role: yjsDocRole ?? (documentOwnerId && user?.id && documentOwnerId === user.id ? 'owner' : null),
+      // A file kept on this device has no server role: it is the device's own.
+      role: yjsDocRole ?? (isDeviceDocumentId(documentId) || (documentOwnerId && user?.id && documentOwnerId === user.id) ? 'owner' : null),
       marker: excelSyncMetaGet(EMBEDDED_IMPORT_MARKER_KEY),
     });
     if (decision === 'wait') return undefined;
