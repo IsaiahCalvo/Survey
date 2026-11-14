@@ -20,6 +20,7 @@ import {
   mentionRecipients,
 } from '../_shared/commentMentions.js';
 import { GUEST_REFUSED_MESSAGE, isGuestUser } from '../_shared/guestSession.js';
+import { itemCodeOf, itemKindWord, itemLink, prepareItemAssignEmail } from '../_shared/itemAssignEmail.js';
 
 const BREVO_API_KEY = Deno.env.get('BREVO_API_KEY')?.trim() || null;
 const EMAIL_SENDER = { name: 'Survey', email: 'no-reply@surveytool.app' };
@@ -59,14 +60,20 @@ Deno.serve(async (req) => {
   // A guest's comment sends no email (guests can mention, the team is not emailed by strangers).
   if (isGuestUser(user)) return reply({ error: GUEST_REFUSED_MESSAGE }, 403);
 
+  const raw = await req.json().catch(() => ({}));
+  const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
+  // "Assigned to you" for an issue or task (Nightly 'item-assign-email').
+  if (raw && typeof raw === 'object' && 'itemId' in raw) {
+    return await sendItemAssignEmail({ raw, user, caller, admin });
+  }
+
   const parsed = parseBody({
     commentId: s.string({ max: 64 }),
     origin: s.string({ max: 200, optional: true }),
-  }, await req.json().catch(() => ({})));
+  }, raw);
   if (!parsed.ok || !isUuid(parsed.value.commentId as string)) return reply({ error: 'Bad request' }, 400);
   const { commentId, origin } = parsed.value as { commentId: string; origin?: string };
 
-  const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
   const { data: comment } = await admin.from('mark_comments').select('*').eq('id', commentId).maybeSingle();
   const refusal = mentionEmailRefusal(comment, user.id);
   if (refusal) return reply({ sent: 0, reason: refusal }, refusal === 'not-found' || refusal === 'not-author' ? 404 : 200);
@@ -125,3 +132,56 @@ Deno.serve(async (req) => {
   }
   return reply({ sent });
 });
+
+// deno-lint-ignore no-explicit-any
+async function sendItemAssignEmail({ raw, user, caller, admin }: { raw: unknown; user: any; caller: any; admin: any }) {
+  const parsed = parseBody({
+    itemId: s.string({ max: 64 }),
+    origin: s.string({ max: 200, optional: true }),
+  }, raw);
+  if (!parsed.ok) return reply({ error: 'Bad request' }, 400);
+  const { itemId, origin } = parsed.value as { itemId: string; origin?: string };
+  const ready = await prepareItemAssignEmail({ admin, callerId: user.id, itemId });
+  if (ready.refusal) return reply({ sent: 0, reason: ready.refusal }, ready.refusal === 'not-found' || ready.refusal === 'bad-request' ? 404 : 200);
+  if (!BREVO_API_KEY) {
+    console.error('[notify-comment-mentions] BREVO_API_KEY is not set');
+    return reply({ error: 'Email is not set up' }, 500);
+  }
+  const { item, email, projectName } = ready;
+  const { data: allowed, error: claimError } = await caller.rpc('claim_email_send', {
+    p_template: 'item-assigned',
+    p_recipient: email,
+    p_is_invite: false,
+  });
+  if (claimError || allowed !== 'allowed') {
+    console.warn('[notify-comment-mentions] assign email not sent:', claimError?.message || allowed);
+    return reply({ sent: 0, reason: 'limit' });
+  }
+  const who = user.user_metadata?.full_name || user.user_metadata?.name || user.email || 'Someone';
+  const word = itemKindWord(item.kind);
+  const code = itemCodeOf(item);
+  const title = item.title || `Untitled ${word}`;
+  const due = item.due_date ? `<p style="${P}">Due ${escapeHtml(item.due_date)}.</p>` : '';
+  const html = renderEmailLayout({
+    heading: `${escapeHtml(who)} assigned you ${escapeHtml(code)}`,
+    preheader: escapeHtml(title),
+    bodyHtml:
+      `<p style="${P}">${escapeHtml(who)} assigned you a ${word} in <strong>${escapeHtml(projectName)}</strong>:</p>` +
+      `<p style="${P}border-left:3px solid #d0d5dd;padding-left:12px;"><strong>${escapeHtml(code)}</strong> ${escapeHtml(title)}</p>` +
+      due +
+      emailButton(`Open the ${word}`, escapeHtml(itemLink(origin, item))) +
+      `<p style="${FINE}">You get this because someone on the project assigned this ${word} to you.</p>`,
+    footerReason: `You were assigned a ${word} in Survey.`,
+  });
+  const subject = `${who} assigned you ${code}: ${title}`.slice(0, 180);
+  const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: { 'api-key': BREVO_API_KEY, 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify({ sender: EMAIL_SENDER, to: [{ email }], subject, htmlContent: html }),
+  });
+  if (!res.ok) {
+    console.error('[notify-comment-mentions] Brevo error', res.status, await res.text());
+    return reply({ sent: 0, reason: 'send-failed' }, 502);
+  }
+  return reply({ sent: 1 });
+}

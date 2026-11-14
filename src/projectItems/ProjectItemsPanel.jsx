@@ -11,7 +11,7 @@
    Discussion and Activity. Survey's way where it reads better: changes save
    as you go, and Archive / Delete act at once with an Undo toast instead of a
    confirm (Survey rule). */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTooltip } from '../components/Tooltip';
 import { Icon, Avatar, EmptyState } from '../home/HubShell';
@@ -32,8 +32,13 @@ import {
 } from './projectItems.js';
 import {
   useProjectItems, loadItemEvents, loadItemComments, addItemComment, deleteItemComment, loadLatestComments,
+  notifyItemAssignee,
 } from './projectItemsData.js';
+import { isFeatureOn } from '../featureFlags.js';
 import './projectItems.css';
+
+// Nightly 'project-photos': loads only when an item opens with the flag on.
+const ItemPhotosLazy = lazy(() => import('../projectPhotos/ProjectPhotosPanel.jsx').then((m) => ({ default: m.ItemPhotos })));
 
 function PopMenu({ anchorRect, items, onClose, minWidth = 180 }) {
   const tip = useTooltip();
@@ -130,7 +135,7 @@ function CommitText({ value, onCommit, multiline = false, placeholder, label, di
 }
 
 function ItemDetail({
-  item, kind, lookup, members, documents, userId, canEdit, canDelete, phone,
+  item, kind, lookup, members, documents, userId, canEdit, canDelete, phone, project, photosOn = false,
   onUpdate, onClose, onDuplicate, onArchive, onUnarchive, onDelete, onOpenDocument,
 }) {
   const tip = useTooltip();
@@ -168,6 +173,18 @@ function ItemDetail({
   const save = async (patch) => {
     const res = await onUpdate(item.id, patch);
     if (res?.error) showToast(`Survey could not save that change. ${res.error}`, 'error');
+    return res;
+  };
+  // Nightly 'item-assign-email': the new assignee gets an email with a link.
+  const [assignEmailOn] = useState(() => isFeatureOn('item-assign-email'));
+  const assign = async (id) => {
+    const res = await save({ assignee_id: id });
+    if (!assignEmailOn || res?.error || !id || id === userId) return;
+    const out = await notifyItemAssignee(item.id);
+    if (out.sent) {
+      const name = members.find((m) => m.id === id)?.name || 'They';
+      showToast(`${name} will get an email about ${itemCode(item.kind, item.number)}.`, 'success');
+    }
   };
 
   const addTags = () => {
@@ -249,7 +266,7 @@ function ItemDetail({
             value={item.assignee_id || ''}
             disabled={!canEdit}
             options={[{ value: '', label: 'Unassigned' }, ...members.map((m) => ({ value: m.id, label: m.id === userId ? `${m.name} (you)` : m.name }))]}
-            onChange={(id) => save({ assignee_id: id || null })}
+            onChange={(id) => assign(id || null)}
           />
           <span className="item-field-label">Due date</span>
           <span className="item-due-field">
@@ -324,6 +341,11 @@ function ItemDetail({
           )}
           {!(item.links || []).length && !(canEdit && unlinked.length) && <span className="meta item-empty-line">No linked documents.</span>}
         </div>
+        {photosOn && project && (
+          <Suspense fallback={null}>
+            <ItemPhotosLazy project={project} item={item} canEdit={canEdit} lookupMember={lookup} />
+          </Suspense>
+        )}
         <div className="item-tabs" role="tablist">
           <button type="button" role="tab" aria-selected={tab === 'discussion'} className={tab === 'discussion' ? 'is-on' : ''} onClick={() => setTab('discussion')}>
             Discussion<b className="hub-section-count">{comments.length}</b>
@@ -387,7 +409,7 @@ function ItemDetail({
 
 export default function ProjectItemsPanel({
   project, kind = 'issue', user = null, role = 'viewer', members = [], lookupMember, documents = [],
-  onOpenDocument, phone: phoneProp,
+  onOpenDocument, phone: phoneProp, photosOn = false, openItemId = null,
 }) {
   const tip = useTooltip();
   const phone = phoneProp ?? isPhoneLayout();
@@ -404,7 +426,9 @@ export default function ProjectItemsPanel({
   const [assignee, setAssignee] = useState('all');
   const [archived, setArchived] = useState(false);
   const [sort, setSort] = useState({ key: 'number', dir: 'desc' });
-  const [openId, setOpenId] = useState(null);
+  const [openId, setOpenId] = useState(openItemId);
+  // A photo's link chip opens its item here (Nightly 'project-photos').
+  useEffect(() => { if (openItemId) setOpenId(openItemId); }, [openItemId]);
   const [selecting, setSelecting] = useState(false);
   const [sel, setSel] = useState(() => new Set());
   const [menu, setMenu] = useState(null); // { rect, items }
@@ -423,9 +447,12 @@ export default function ProjectItemsPanel({
     return () => ro.disconnect();
   }, []);
 
-  // A new project or list starts clean.
+  // A new project or list starts clean, but for an item asked for from
+  // outside (a photo's link chip, an "assigned to you" email link).
+  const openItemIdRef = useRef(openItemId);
+  openItemIdRef.current = openItemId;
   useEffect(() => {
-    setOpenId(null); setSel(new Set()); setSelecting(false); setQ(''); setQuick(new Set());
+    setOpenId(openItemIdRef.current || null); setSel(new Set()); setSelecting(false); setQ(''); setQuick(new Set());
     setGroups(new Set()); setTagFilter(new Set()); setAssignee('all'); setArchived(false);
   }, [project?.id, kind]);
 
@@ -742,7 +769,7 @@ export default function ProjectItemsPanel({
       {open && (split ? (
         <ItemDetail
           item={open} kind={kind} lookup={lookup} members={members} documents={documents} userId={userId}
-          canEdit={canEdit} canDelete={canDelete} phone={false}
+          canEdit={canEdit} canDelete={canDelete} phone={false} project={project} photosOn={photosOn}
           onUpdate={data.update} onClose={() => setOpenId(null)} onDuplicate={duplicateItem}
           onArchive={archiveIds} onUnarchive={unarchiveIds} onDelete={deleteIds} onOpenDocument={onOpenDocument}
         />
@@ -751,7 +778,7 @@ export default function ProjectItemsPanel({
           <button type="button" className="item-sheet-scrim" aria-label="Close details" onClick={() => setOpenId(null)} />
           <ItemDetail
             item={open} kind={kind} lookup={lookup} members={members} documents={documents} userId={userId}
-            canEdit={canEdit} canDelete={canDelete} phone
+            canEdit={canEdit} canDelete={canDelete} phone project={project} photosOn={photosOn}
             onUpdate={data.update} onClose={() => setOpenId(null)} onDuplicate={duplicateItem}
             onArchive={archiveIds} onUnarchive={unarchiveIds} onDelete={deleteIds} onOpenDocument={onOpenDocument}
           />
@@ -764,12 +791,14 @@ export default function ProjectItemsPanel({
 }
 
 /* Files · Issues · Tasks, above the open project (one row of tabs). */
-export function ProjectItemsTabs({ value, onChange, counts = {}, issues = true, activity = false }) {
+export function ProjectItemsTabs({ value, onChange, counts = {}, issues = true, activity = false, photos = false }) {
   const tabs = [
     { key: 'files', label: 'Files' },
     ...(issues ? [{ key: 'issue', label: 'Issues' }, { key: 'task', label: 'Tasks' }] : []),
     // Nightly 'project-activity': Drawboard's project Activity page.
     ...(activity ? [{ key: 'activity', label: 'Activity' }] : []),
+    // Nightly 'project-photos': Drawboard's project Photos page.
+    ...(photos ? [{ key: 'photos', label: 'Photos' }] : []),
   ];
   return (
     <div className="project-items-tabs" role="tablist" aria-label="Project lists" data-project-items-tabs>
