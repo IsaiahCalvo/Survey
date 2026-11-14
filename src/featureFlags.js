@@ -539,6 +539,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Ruler: a straight edge you move and turn on the page; pen lines drawn along it come out straight',
     stage: 'beta',
   }),
+  'area-redact': Object.freeze({
+    label: 'Redact area: drag a box over any part of a page and it is blacked out (Apply redactions makes the redacted copy)',
+    stage: 'beta',
+  }),
   'hatch-fill': Object.freeze({
     label: 'Hatch fill: rectangles, ellipses, polygons and clouds can be filled with diagonal, cross, horizontal, vertical or grid lines',
     stage: 'beta',

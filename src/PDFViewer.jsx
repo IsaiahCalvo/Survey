@@ -409,6 +409,7 @@ import { setStampPickerOpen, useStampPickerOpen } from './components/StampPicker
 import { setSignatureCardOpen, useSignatureCardOpen } from './components/SignatureCard.jsx';
 import { pickImageToInsert } from './components/InsertImage.jsx';
 import ImageCameraHost, { IMAGE_CAMERA_OPEN_EVENT } from './components/ImageCameraHost.jsx';
+import AreaRedactHost, { boxQuad as areaRedactQuad } from './components/AreaRedactHost.jsx';
 import LinkToolHost from './components/LinkToolHost.jsx';
 import StickyNoteHost from './components/StickyNoteHost.jsx';
 import EquationHost from './components/EquationHost.jsx';
@@ -3271,6 +3272,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // Nightly 'ruler-tool': Drawboard's Ruler, a straight edge over the pages.
   const [rulerToolEnabled] = useState(() => isFeatureOn('ruler-tool'));
   const [imageCameraEnabled] = useState(() => isFeatureOn('image-camera'));
+  const [areaRedactEnabled] = useState(() => isFeatureOn('area-redact'));
   const rulerOn = useRulerOn();
   const [noteToolEnabled] = useState(() => isFeatureOn('note-tool'));
   const [hatchFillEnabled] = useState(() => isFeatureOn('hatch-fill'));
@@ -36025,6 +36027,33 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     }
     if (committed) setSelectedToolbarAnnotation(null);
   }, [capturePdfjsTextSelection, clearLiveTextSelection, commitTextMarkupDocumentTransaction]);
+  // Nightly 'area-redact': a box dragged over a page becomes a redaction with
+  // one quad, then runs the Redact text path (the Apply redactions card).
+  const handleRedactArea = useCallback(({ pageNumber, box }) => {
+    const mark = createTextMarkupAnnotation({
+      id: generateUUID(),
+      pageNumber,
+      selectionGroupId: generateUUID(),
+      markupType: 'redact',
+      selectedText: '',
+      quads: [areaRedactQuad(box)],
+      overlapMode: textMarkupOverlapMode,
+      authorId: user?.id || null,
+    });
+    if (!mark) return;
+    const scoped = applyAnnotationCreationScope(mark, {
+      selectedModuleId,
+      stampRegionId: shouldStampActiveRegionId({
+        regionId: activeRegionId,
+        spaceId: annotationSpaceId,
+        pageNumber,
+        spaces,
+        isRegionOverlayEnabled,
+      }),
+      activeRegionId,
+    });
+    queuePermanentRedactionConfirmation(buildTextMarkupGroupCreateTransaction(annotationsByPageRef.current || {}, [scoped]));
+  }, [textMarkupOverlapMode, user?.id, selectedModuleId, activeRegionId, annotationSpaceId, spaces, isRegionOverlayEnabled, queuePermanentRedactionConfirmation]);
   const textDragKind = typeof textHighlightMode === 'string' ? textHighlightMode : 'highlight';
   useTextHighlightMode({
     on: textDragToolsOn && Boolean(textHighlightMode) && activeTool === 'text-select',
@@ -38689,6 +38718,13 @@ ${pageBlocks}
           isActive={isActive !== false}
           readOnly={Boolean(documentLocked) || yjsDocRole === 'viewer'}
           selectedAudio={selectedAudioForHost}
+        />
+      )}
+      {areaRedactEnabled && (
+        <AreaRedactHost
+          armed={isActive !== false && activeTool === 'area-redact' && !(Boolean(documentLocked) || yjsDocRole === 'viewer')}
+          hostRef={pdfjsWrapperRef}
+          onRedact={handleRedactArea}
         />
       )}
       {/* Nightly 'image-camera': the Text group's Camera button takes a photo for the page. */}
@@ -41796,6 +41832,8 @@ ${pageBlocks}
                     { id: 'text-strikeout', label: 'Strike through text', iconName: 'textStrikeTool', highlightMode: 'strikeout' },
                     { id: 'text-redact', label: 'Redact text', iconName: 'textRedactTool', highlightMode: 'redact' },
                   ] : []),
+                  // Nightly 'area-redact': drag a box over any part of the page to black it out.
+                  ...(areaRedactEnabled ? [{ id: 'area-redact', label: 'Redact area', iconName: 'areaRedactTool' }] : []),
                   // Nightly 'text-review-remove': drag over words to take their marks off.
                   ...(textReviewRemoveEnabled ? [{ id: 'text-remove', label: 'Remove text marks', iconName: 'textRemoveTool', highlightMode: 'remove' }] : []),
                   // Nightly 'note-tool': click the page to leave a sticky note.

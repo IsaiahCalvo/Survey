@@ -1010,6 +1010,11 @@ const ICON_RENDERERS = {
       'M4 9.5h16a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1Z',
       { d: 'M5.5 11.25h13v1.5h-13z', fill: true },
     ]),
+    // Redact area (Drawboard Review > Redaction): Lucide "scan" corners (ISC) round a solid box.
+    areaRedactTool: (size, color, style, className) => strokeGlyph(size, color, style, className, [
+      'M3 7V5a2 2 0 0 1 2-2h2', 'M17 3h2a2 2 0 0 1 2 2v2', 'M21 17v2a2 2 0 0 1-2 2h-2', 'M7 21H5a2 2 0 0 1-2-2v-2',
+      { d: 'M7.5 9h9v6h-9z', fill: true },
+    ]),
     // Ruler (Drawboard Draw > Ruler): Lucide "ruler" (ISC).
     ruler: (size, color, style, className) => strokeGlyph(size, color, style, className, [
       'M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z',
