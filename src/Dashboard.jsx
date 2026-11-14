@@ -66,6 +66,7 @@ import { addedToProjectMessage, asPdfFile, isUploadableProjectId, rejectedFilesM
 import { freeDocumentName } from './tools/inApp.js';
 import { canReachServer } from './utils/serverReachable.js';
 import { ToolError } from './tools/errors.js';
+import { LOCAL_FILE_REOPEN_EVENT } from './services/localFileLink.js';
 import { FONT_FAMILY, hexToRgba, hasNameConflict } from './viewerShared.js';
 
 // --- helpers --------------------------------------------------------------
@@ -837,6 +838,21 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // An open document's file changed in another app and the person chose to
+  // open the changed file: the same flow as picking it in the dialog, so a
+  // same-name file asks "Upload as new version" (localFileLink.js).
+  const handleUploadClickRef = useRef(null);
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const onReopen = (event) => {
+      const picked = event?.detail;
+      if (!picked?.filePath || !picked?.data) return;
+      handleUploadClickRef.current?.(undefined, { picked: { canceled: false, ...picked } });
+    };
+    window.addEventListener(LOCAL_FILE_REOPEN_EVENT, onReopen);
+    return () => window.removeEventListener(LOCAL_FILE_REOPEN_EVENT, onReopen);
+  }, []);
+
   // Handle file upload via Electron dialog (preserves file path).
   // `explicitProjectId` — when the Projects tab's "Add files" / "Upload files"
   // triggers this, it passes the destination project id so the uploaded file
@@ -850,7 +866,10 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     if (window.electronAPI && window.electronAPI.openFile) {
       try {
         perfUpload.start('electron-dialog');
-        const result = await window.electronAPI.openFile({
+        // options.picked: a file already read from disk (an open document's
+        // file changed in another app, services/localFileLink.js) takes the
+        // same path as one picked in the dialog.
+        const result = options.picked || await window.electronAPI.openFile({
           title: 'Open PDF document',
           filters: [{ name: 'PDF files', extensions: ['pdf'] }]
         });
@@ -862,7 +881,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         }
 
         if (!user) {
-          if (deviceFilesOn() && await openOnDevice(new File([new Uint8Array(result.data)], result.fileName, { type: 'application/pdf' }))) return;
+          if (deviceFilesOn() && await openOnDevice(new File([new Uint8Array(result.data)], result.fileName, { type: 'application/pdf' }), { filePath: result.filePath })) return;
           setDashboardError('Please sign in to upload documents.');
           onShowAuthModal();
           return;
@@ -1074,6 +1093,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       fileInputRef.current?.click();
     }
   };
+  handleUploadClickRef.current = handleUploadClick;
 
   // The one upload path for a browser File: the Upload button's file picker
   // and (owner request 2026-10-13) PDFs dropped in from the computer. Same
@@ -2012,10 +2032,12 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
 
   // device-files (Nightly): with no account, a PDF opens and stays on this
   // device (Drawboard's "Temporary" files; home/deviceFileActions.js).
-  const openOnDevice = async (file, { open = true } = {}) => {
+  // filePath: the desktop app's picked file, so the viewer can save back to
+  // it and notice changes made there (services/localFileLink.js).
+  const openOnDevice = async (file, { open = true, filePath = null } = {}) => {
     const kept = await keepFileOnDevice(file);
     if (!kept) return false;
-    if (open) onDocumentSelect(kept);
+    if (open) onDocumentSelect(kept, filePath || undefined);
     return true;
   };
 

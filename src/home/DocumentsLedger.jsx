@@ -584,7 +584,7 @@ export default function DocumentsLedger({
   // role never shows editable fields that would fail to save.
   const [reviewEditAccess, setReviewEditAccess] = useState({ id: null, ok: false });
   useEffect(() => {
-    if (!reviewOn || !teamDocId || teamOwnerIsMe) return undefined;
+    if (!reviewOn || !teamDocId || teamOwnerIsMe || !supabase) return undefined;
     let live = true;
     supabase.rpc('user_can_access_document', { doc_id: teamDocId, required_role: 'editor' })
       .then(({ data, error }) => { if (live) setReviewEditAccess({ id: teamDocId, ok: !error && data === true }); })
