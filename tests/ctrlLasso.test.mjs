@@ -6,16 +6,19 @@ import { readFileSync } from 'node:fs';
 import { isCtrlLassoPress } from '../src/utils/lassoSelection.js';
 import { FEATURE_FLAGS } from '../src/featureFlags.js';
 
-test('Ctrl or Cmd with a left mouse press, only with the flag on', () => {
-  assert.equal(isCtrlLassoPress({ ctrlKey: true, pointerType: 'mouse', button: 0 }, true), true);
-  assert.equal(isCtrlLassoPress({ metaKey: true, pointerType: 'mouse', button: 0 }, true), true);
-  assert.equal(isCtrlLassoPress({ ctrlKey: true, pointerType: 'mouse', button: 0 }, false), false);
-  assert.equal(isCtrlLassoPress({ pointerType: 'mouse', button: 0 }, true), false);
-  assert.equal(isCtrlLassoPress({ ctrlKey: true, altKey: true, pointerType: 'mouse' }, true), false);
-  assert.equal(isCtrlLassoPress({ ctrlKey: true, pointerType: 'touch' }, true), false);
-  assert.equal(isCtrlLassoPress({ ctrlKey: true, pointerType: 'pen' }, true), false);
-  assert.equal(isCtrlLassoPress({ ctrlKey: true, pointerType: 'mouse', button: 2 }, true), false);
-  assert.equal(isCtrlLassoPress(null, true), false);
+test('the copy-drag key with a left mouse press, only with the flag on', () => {
+  const win = false; const mac = true;
+  assert.equal(isCtrlLassoPress({ ctrlKey: true, pointerType: 'mouse', button: 0 }, true, win), true);
+  assert.equal(isCtrlLassoPress({ metaKey: true, pointerType: 'mouse', button: 0 }, true, mac), true);
+  // Control+click is the right-click menu on a Mac; AltGr is not Ctrl.
+  assert.equal(isCtrlLassoPress({ ctrlKey: true, pointerType: 'mouse', button: 0 }, true, mac), false);
+  assert.equal(isCtrlLassoPress({ ctrlKey: true, altKey: true, pointerType: 'mouse' }, true, win), false);
+  assert.equal(isCtrlLassoPress({ ctrlKey: true, pointerType: 'mouse', button: 0 }, false, win), false);
+  assert.equal(isCtrlLassoPress({ pointerType: 'mouse', button: 0 }, true, win), false);
+  assert.equal(isCtrlLassoPress({ ctrlKey: true, pointerType: 'touch' }, true, win), false);
+  assert.equal(isCtrlLassoPress({ ctrlKey: true, pointerType: 'pen' }, true, win), false);
+  assert.equal(isCtrlLassoPress({ ctrlKey: true, pointerType: 'mouse', button: 2 }, true, win), false);
+  assert.equal(isCtrlLassoPress(null, true, win), false);
 });
 
 test('flag, migration and the bare-page lasso branch', () => {
