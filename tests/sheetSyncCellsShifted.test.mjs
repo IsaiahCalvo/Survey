@@ -122,7 +122,7 @@ test('real edits are not a shift: one note moved down, and a Y / N column flippe
 // reads as cleared (real Excel 11-14: 3 notes wiped in the app).
 const sideways = async (by) => {
   const markers = Object.fromEntries(Array.from({ length: 4 }, (_, i) => [`d${i + 1}`, door(`d${i + 1}`, `D-${101 + i}`, {
-    checklistResponses: { c1: { selection: 'Y' }, c2: { value: 80 + i } }, note: { text: `note ${i + 1}` },
+    checklistResponses: { c1: { selection: 'Y' }, c2: { selection: 80 + i } }, note: { text: `note ${i + 1}` },
   })]));
   const ctx = await setup({ markers });
   await ctx.round(); await ctx.round({ force: true });
@@ -176,4 +176,97 @@ test('a PM editing two cells of one row is not a sideways move', async () => {
   await ctx.round({ force: true });
   assert.equal(ctx.markers.d1.checklistResponses.c1.selection, 'N');
   assert.equal(ctx.markers.d1.note.text, '');
+});
+
+// Short lists and empty cells leave each column only a little evidence
+// (random accidents, 11-14). Any notes, some empty:
+const custom = async (notes, heights = []) => {
+  const markers = Object.fromEntries(notes.map((note, i) => [`d${i + 1}`, door(`d${i + 1}`, `D-${101 + i}`, {
+    checklistResponses: heights[i] ? { c2: { selection: heights[i] } } : {}, note: { text: note },
+  })]));
+  const ctx = await setup({ markers });
+  await ctx.round(); await ctx.round({ force: true });
+  const head = (await ctx.sheet()).rows[0];
+  const cols = { notes: head.indexOf('Notes'), height: head.indexOf('Height') };
+  const first = await ctx.rowOf('d1');
+  const shift = async (keys, at, by) => {
+    const rows = (await ctx.sheet()).rows;
+    const edits = [];
+    for (const key of keys) {
+      const vals = rows.slice(first, first + notes.length).map((r) => r[cols[key]] ?? '');
+      const moved = by > 0 ? [...vals.slice(0, at), ...Array(by).fill(''), ...vals.slice(at)] : [...vals.slice(0, at), ...vals.slice(at - by), ...Array(-by).fill('')];
+      moved.forEach((value, i) => edits.push({ row: first + i, col: cols[key], value }));
+    }
+    await ctx.edit(edits);
+    await ctx.round({ force: true });
+  };
+  const got = () => notes.map((_, i) => ctx.markers[`d${i + 1}`].note?.text ?? '');
+  const gotHeights = () => notes.map((_, i) => String(ctx.markers[`d${i + 1}`].checklistResponses?.c2?.selection ?? ''));
+  return { ctx, cols, first, shift, got, gotHeights };
+};
+
+test('notes shifted up two near the end: two moved notes and two emptied cells are enough', async () => {
+  const notes = ['n0', 'n1', 'n2', 'n3', 'n4', 'pear', 'peach', 'kiwi', 'fig'];
+  const { ctx, shift, got } = await custom(notes);
+  await shift(['notes'], 5, -2);
+  assert.deepEqual(got(), notes);
+  assert.ok(said(ctx));
+});
+
+test('Height and Notes shifted down two near the end: each column alone shows too little, both together are enough', async () => {
+  const notes = ['n0', 'n1', 'n2', 'n3', 'n4', 'pear', 'peach', 'kiwi'];
+  const heights = [80, 81, 82, 83, 84, 85, 86, 87];
+  const { ctx, cols, first, shift, got, gotHeights } = await custom(notes, heights);
+  await shift(['height', 'notes'], 5, 2);
+  assert.deepEqual(got(), notes);
+  assert.deepEqual(gotHeights(), heights.map(String));
+  const rows = (await ctx.sheet()).rows;
+  for (const r of [first + 8, first + 9]) assert.ok(!(rows[r]?.[cols.notes] ?? '') && !(rows[r]?.[cols.height] ?? ''), 'pushed-off values cleared');
+});
+
+test('cells inserted where the notes were already empty: the move starts at the gap, not at the first changed cell', async () => {
+  const notes = ['lime', 'lemon', '', 'grape', 'kiwi', 'fig'];
+  const { ctx, shift, got } = await custom(notes);
+  await shift(['notes'], 2, 2);
+  assert.deepEqual(got(), notes);
+  assert.ok(said(ctx));
+});
+
+test('cells inserted sideways in a row with only a note: the note pushed past the last column comes back', async () => {
+  const { ctx } = await custom(['n1', 'n2', 'n3', 'n4']);
+  const sheet = await ctx.sheet();
+  const h = sheet.rows[0];
+  const r = await ctx.rowOf('d2');
+  const from = h.indexOf('Locked?');
+  const tail = sheet.rows[r].slice(from, h.length);
+  await ctx.edit(['', ...tail].map((value, j) => ({ row: r, col: from + j, value: value ?? '' })));
+  await ctx.round({ force: true });
+  assert.equal(ctx.markers.d2.note.text, 'n2');
+  const row = (await ctx.sheet()).rows[r];
+  assert.equal(row[h.indexOf('Notes')], 'n2');
+  assert.ok(!(row[h.length] ?? ''), 'nothing left past the last column');
+});
+
+test('cells deleted sideways in a row with only a note: the note that slid into Entity goes back to Notes', async () => {
+  const { ctx } = await custom(['n1', 'n2', 'n3', 'n4']);
+  const sheet = await ctx.sheet();
+  const h = sheet.rows[0];
+  const r = await ctx.rowOf('d2');
+  const from = h.indexOf('Locked?');
+  const tail = sheet.rows[r].slice(from, h.length);
+  await ctx.edit([...tail.slice(1), ''].map((value, j) => ({ row: r, col: from + j, value: value ?? '' })));
+  await ctx.round({ force: true });
+  assert.equal(ctx.markers.d2.note.text, 'n2');
+  assert.equal(ctx.markers.d2.entityName || '', '');
+  const row = (await ctx.sheet()).rows[r];
+  assert.deepEqual([row[h.indexOf('Entity')] ?? '', row[h.indexOf('Notes')]], ['', 'n2']);
+});
+
+test('a PM clearing a note and typing it one column over is not taken for a sideways move unless the row shows it', async () => {
+  const { ctx } = await custom(['n1', 'n2', 'n3', 'n4']);
+  const h = (await ctx.sheet()).rows[0];
+  const r = await ctx.rowOf('d2');
+  await ctx.edit([{ row: r, col: h.indexOf('Notes'), value: '' }]);
+  await ctx.round({ force: true });
+  assert.equal(ctx.markers.d2.note.text, '', 'a plain clear is a clear');
 });
