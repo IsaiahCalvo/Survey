@@ -63,7 +63,7 @@ export async function setup({ markers = {}, layout = buildSyncLayout({ template:
       ...(opts.clashes ? { clashes: () => opts.clashes } : {}),
     });
     if (result.patch) Object.assign(ctx.link, result.patch);
-    if (result.status === 'held') ctx.link.state = result.state;
+    if (result.status === 'held') { ctx.link.state = result.state; if (result.baseline) ctx.link.baseline = result.baseline; }
     return result;
   };
   ctx.sheet = async (title = 'Doors - Level 1') => {
