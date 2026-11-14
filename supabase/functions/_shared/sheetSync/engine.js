@@ -138,6 +138,28 @@ const RECENT_WRITE_MAX = 2000;
 const RECENT_APPENDS_MAX = 50;
 // Fewest reshuffled cells in one column taken as that column sorted by itself.
 const SHUFFLE_MIN = 4;
+// Values in the order a sort leaves them, either way: numbers, then text
+// (case and accents aside), then yes/no. Excel's sort also passes over
+// hyphens and apostrophes ("D1 check" before "D-10 check", real Excel 11-14),
+// so text is tried both with and without them. Blanks are skipped (sorts put
+// them last either way); a long run may hold one odd pair per 10 cells.
+const SORT_TEXT = new Intl.Collator('en', { sensitivity: 'base' });
+const SORT_KEYS = [(t) => t, (t) => t.replace(/[-'\u2019]/g, '')];
+function inSortOrder(values) {
+  const filled = values.filter((v) => !isBlankCell(v));
+  const allowed = Math.floor((filled.length - 1) / 10);
+  const rank = (v) => (typeof v === 'number' ? 0 : typeof v === 'boolean' ? 2 : 1);
+  return SORT_KEYS.some((key) => {
+    const cmp = (a, b) => rank(a) - rank(b) || (typeof a === 'number' && typeof b === 'number' ? a - b : SORT_TEXT.compare(key(cellText(a)), key(cellText(b))));
+    let up = 0; let down = 0;
+    for (let i = 1; i < filled.length; i += 1) {
+      const c = cmp(filled[i - 1], filled[i]);
+      if (c > 0) up += 1;
+      if (c < 0) down += 1;
+    }
+    return up <= allowed || down <= allowed;
+  });
+}
 // A changed Row ID is taken as an item's own when they share this much of
 // their text (4-letter runs) and no other item's comes this close.
 const ROW_ID_MATCH_MIN = 0.7;
@@ -880,7 +902,9 @@ export async function planSheetRound({
     // hold exactly the values they held before, reshuffled: each item keeps
     // its own value (or the one a tech just gave it) and it goes back in the
     // sheet. A whole-list sort moves Row IDs with their rows and never shows
-    // up here; a swap of two or three cells is a person's edit.
+    // up here; a swap of two or three cells is a person's edit, and so are
+    // changed cells left out of order (a PM flipping two Y to N and two N to
+    // Y in one save: same values, reshuffled, but no sort leaves Y N Y N).
     const shuffled = new Set(); // `${markerId}|${key}`
     {
       const live = [];
@@ -888,8 +912,9 @@ export async function planSheetRound({
         const marker = markers[markerId];
         const fields = nextBaseline[markerId]?.fields;
         if (!marker || !inThisScope(marker) || !fields || shiftedRows.has(r)) continue;
-        live.push({ markerId, row: rows[r] || [], fields, sheetFps: fieldPrintsOf(sheetRecordOf(rows[r] || [], {})) });
+        live.push({ markerId, r, row: rows[r] || [], fields, sheetFps: fieldPrintsOf(sheetRecordOf(rows[r] || [], {})) });
       }
+      live.sort((x, y) => x.r - y.r);
       for (const column of scope.columns) {
         const key = column.key;
         if (key === 'rowId' || !columnIsEditable(column) || !colOfKey.has(key)) continue;
@@ -908,7 +933,7 @@ export async function planSheetRound({
           if (!n) { same = false; break; }
           tally.set(fp, n - 1);
         }
-        if (!same) continue;
+        if (!same || !inSortOrder(moved.map((x) => x.row[colOfKey.get(key)]))) continue;
         moved.forEach((x) => shuffled.add(`${x.markerId}|${key}`));
         notice({ scopeId: scope.scopeId, message: `"${column.header}" in "${sheet.title}" was sorted by itself, apart from the rest of each row, so Survey put each value back on its own marker (${moved.length} cells). To sort the list, select all of it first.` });
       }
