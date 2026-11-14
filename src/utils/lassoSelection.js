@@ -2,6 +2,7 @@ import { annotationToLassoGeometry, calloutToLassoGeometry } from './lassoObject
 import { boundsOfPoints } from './arrayExtrema.js';
 import { getAnnotationGroupId, getCalloutGroupId } from './annotationGroups.js';
 import { isBlockedFromAreaSelection } from './annotationSelectionEligibility.js';
+import { isMacLikePlatform, isMoveModifierEvent } from './moveModifier.js';
 
 const EPSILON = 1e-7;
 export const LASSO_SAMPLE_GAP_PX = 4;
@@ -36,11 +37,14 @@ export function cycleLassoMode(mode) {
  * held as a mouse drag starts makes Box Select draw a lasso for
  * that drag. Touch and pen keep their own on-screen controls.
  */
-export function isCtrlLassoPress(event = {}, flagOn = false) {
+export function isCtrlLassoPress(event = {}, flagOn = false, mac = isMacLikePlatform()) {
   if (!flagOn || !event) return false;
   if ((event.pointerType || 'mouse') !== 'mouse') return false;
   if (event.button != null && event.button !== 0) return false;
-  return Boolean(event.ctrlKey || event.metaKey) && !event.altKey;
+  // The same key as copy-drag (Visio's Ctrl+drag on a mark): Command on a
+  // Mac, where Control+click is the right-click menu; Ctrl elsewhere, not
+  // AltGr. A press on a mark or inside a picked selection never gets here.
+  return isMoveModifierEvent(event, mac);
 }
 
 export function getLassoGestureIntent(event = {}, touchOperation = 'replace', touchMode = null) {
