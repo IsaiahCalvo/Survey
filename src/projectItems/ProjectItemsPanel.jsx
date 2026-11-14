@@ -32,7 +32,9 @@ import {
 } from './projectItems.js';
 import {
   useProjectItems, loadItemEvents, loadItemComments, addItemComment, deleteItemComment, loadLatestComments,
+  notifyItemAssignee,
 } from './projectItemsData.js';
+import { isFeatureOn } from '../featureFlags.js';
 import './projectItems.css';
 
 // Nightly 'project-photos': loads only when an item opens with the flag on.
@@ -171,6 +173,18 @@ function ItemDetail({
   const save = async (patch) => {
     const res = await onUpdate(item.id, patch);
     if (res?.error) showToast(`Survey could not save that change. ${res.error}`, 'error');
+    return res;
+  };
+  // Nightly 'item-assign-email': the new assignee gets an email with a link.
+  const [assignEmailOn] = useState(() => isFeatureOn('item-assign-email'));
+  const assign = async (id) => {
+    const res = await save({ assignee_id: id });
+    if (!assignEmailOn || res?.error || !id || id === userId) return;
+    const out = await notifyItemAssignee(item.id);
+    if (out.sent) {
+      const name = members.find((m) => m.id === id)?.name || 'They';
+      showToast(`${name} will get an email about ${itemCode(item.kind, item.number)}.`, 'success');
+    }
   };
 
   const addTags = () => {
@@ -252,7 +266,7 @@ function ItemDetail({
             value={item.assignee_id || ''}
             disabled={!canEdit}
             options={[{ value: '', label: 'Unassigned' }, ...members.map((m) => ({ value: m.id, label: m.id === userId ? `${m.name} (you)` : m.name }))]}
-            onChange={(id) => save({ assignee_id: id || null })}
+            onChange={(id) => assign(id || null)}
           />
           <span className="item-field-label">Due date</span>
           <span className="item-due-field">
@@ -433,9 +447,12 @@ export default function ProjectItemsPanel({
     return () => ro.disconnect();
   }, []);
 
-  // A new project or list starts clean.
+  // A new project or list starts clean, but for an item asked for from
+  // outside (a photo's link chip, an "assigned to you" email link).
+  const openItemIdRef = useRef(openItemId);
+  openItemIdRef.current = openItemId;
   useEffect(() => {
-    setOpenId(null); setSel(new Set()); setSelecting(false); setQ(''); setQuick(new Set());
+    setOpenId(openItemIdRef.current || null); setSel(new Set()); setSelecting(false); setQ(''); setQuick(new Set());
     setGroups(new Set()); setTagFilter(new Set()); setAssignee('all'); setArchived(false);
   }, [project?.id, kind]);
 

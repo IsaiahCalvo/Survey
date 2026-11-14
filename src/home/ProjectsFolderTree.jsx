@@ -58,6 +58,7 @@ import ProjectItemsPanel, { ProjectItemsTabs } from '../projectItems/ProjectItem
 import ProjectExportDialog from './ProjectExportDialog.jsx';
 import ProjectActivityPanel from '../projectItems/ProjectActivityPanel.jsx';
 import { keyboardControlProps } from '../utils/keyboardActivation.js';
+import { ITEM_LINK_EVENT, takePendingItemLink } from '../projectItems/itemLink.js';
 import { SHEET_VIEW_EVENT, openAllChoice, projectSheets, storedProjectOrder } from '../sheets/sheetSet.js';
 import { SheetViewGlyph } from '../sheets/SheetSetBar.jsx';
 // Nightly 'project-photos': the Photos tab loads only when opened.
@@ -543,6 +544,25 @@ export default function ProjectsFolderTree({
     onOpenDocument(sheets[0]);
   };
   const [listTab, setListTab] = useState('files');
+  // An "assigned to you" email link (Nightly 'item-assign-email', itemLink.js):
+  // open its project on the item's list with the item showing, as soon as
+  // that project is here. A closed project shows the closed list first.
+  useEffect(() => {
+    const take = () => {
+      const link = takePendingItemLink(localProjects.map((p) => p.id));
+      if (!link) return;
+      const target = localProjects.find((p) => p.id === link.projectId);
+      if (accessOn && target?.closed_at && !showClosed) setShowClosed(true);
+      setSearch('');
+      setOpenId(link.projectId);
+      if (isPhoneLayout()) setMobileDrillOpenId(link.projectId);
+      setListTab(link.kind);
+      setOpenItemId(link.itemId);
+    };
+    take();
+    window.addEventListener(ITEM_LINK_EVENT, take);
+    return () => window.removeEventListener(ITEM_LINK_EVENT, take);
+  }, [localProjects, accessOn, showClosed]);
   const projectRoleFor = (proj) => {
     if (!proj || !user?.id) return 'viewer';
     if (proj.user_id == null || proj.user_id === user.id) return 'owner';

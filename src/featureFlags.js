@@ -397,6 +397,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Team page: a note in the invite email, invite many people from a CSV file (Email, Role), download the team list as a CSV',
     stage: 'beta',
   }),
+  'item-assign-email': Object.freeze({
+    label: 'Issues and tasks: email the person an item is assigned to, with a link that opens the item in its project',
+    stage: 'beta',
+  }),
   spotlight: Object.freeze({
     label: 'Spotlight: share your view from the people list; others follow your document, page and zoom (green frame, N following)',
     stage: 'beta',

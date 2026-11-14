@@ -17,6 +17,7 @@
      onCreateTemplate()    — start the new-template flow
 */
 import { useState, useEffect, lazy, Suspense, startTransition } from 'react';
+import { readItemLink, requestItemLink, withoutItemLink } from '../projectItems/itemLink.js';
 import { useTooltip } from '../components/Tooltip';
 import DocumentsLedger from './DocumentsLedger';
 import ProjectsFolderTree from './ProjectsFolderTree';
@@ -114,6 +115,18 @@ export default function SurveyHub({
     window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
     setSettingsTab('company');
     setSettingsOpen(true);
+  }, [user]);
+
+  // An "assigned to you" email links to ?project=&item=&kind= (Nightly
+  // 'item-assign-email'): show Projects once signed in; the project list opens
+  // the item when that project is listed. The query goes, so a reload stays put.
+  useEffect(() => {
+    if (!user || typeof window === 'undefined') return;
+    const link = readItemLink(window.location.href);
+    if (!link) return;
+    window.history.replaceState(window.history.state, '', withoutItemLink(window.location.href));
+    requestItemLink(link);
+    setTab('projects');
   }, [user]);
 
   // The account menu's open state, held here so it survives the loading shell
