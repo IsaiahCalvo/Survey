@@ -871,8 +871,20 @@ export async function planSheetRound({
         next.problems.push({ scopeId: scope.scopeId, message: `${where(r)}: this row belongs to another category's tab, so it was left alone.` });
         continue;
       }
-      // A second copy of an item's row: a new item from the sheet (below).
-      if (markerId && ownRow.get(markerId) !== r) markerId = null;
+      // A second copy of an item's row: a new item from the sheet (below),
+      // once it has a name of its own. A copy still named as its item is
+      // rows pasted over other items' rows, often undone a moment later
+      // (real Excel 11-14: the undo left three twin items in the app), so it
+      // waits for its own name.
+      if (markerId && ownRow.get(markerId) !== r) {
+        const twinOf = markers[markerId];
+        const typed = colOfKey.has('item') ? cellText(row[colOfKey.get('item')]).trim().toLowerCase() : '';
+        if (twinOf && typed && typed === String(twinOf.name || '').trim().toLowerCase()) {
+          next.problems.push({ markerId, scopeId: scope.scopeId, message: `${where(r)} is a copy of the "${twinOf.name}" row, so it was not added. Give it its own name to add it as a new item.` });
+          continue;
+        }
+        markerId = null;
+      }
 
       const marker = markerId ? markers[markerId] : null;
       // The row Survey just added for a tech's item, the item deleted (or
