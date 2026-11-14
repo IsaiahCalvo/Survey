@@ -856,6 +856,9 @@ const publicLink = (link, userId, role = null) => {
     // showed "Synced 3 h ago" (or "just now" forever) right after a round.
     lastRoundAgoMs: link.last_round_at ? Math.max(0, Date.now() - Date.parse(link.last_round_at)) : null,
     lastError: link.last_error,
+    // Excel: someone is editing the synced tabs, so the app's changes wait
+    // until they are still (round.js SHEET_BUSY_QUIET_MS). Sync now sends at once.
+    sheetInUse: Boolean(link.state?.sheetBusy?.since),
     isConnectionOwner: link.connection_user_id === userId,
     conflicts: editor ? Object.entries(link.state?.conflicts || {}).map(([markerId, c]) => ({ markerId, ...c })) : [],
     removedInSheet: editor ? Object.entries(link.state?.removedInSheet || {}).map(([markerId, r]) => ({ markerId, ...r })) : [],
@@ -1062,7 +1065,7 @@ async function runRoundFor(ctx, link, { provider = null, signing = null, force =
     const fillBy = await initialsFor(ctx, link.connection_user_id);
     let result = null;
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      result = await runSheetRound({ link, provider: p, loadMarkers: store.load, saveMarkers: store.save, clashes: store.clashes, pulls: store.pulls, signing: sign, force: force || attempt > 0 || Boolean(change), fillBy });
+      result = await runSheetRound({ link, provider: p, loadMarkers: store.load, saveMarkers: store.save, clashes: store.clashes, pulls: store.pulls, signing: sign, force: force || attempt > 0 || Boolean(change), fillBy, hold: !force && !change });
       if (result.status !== 'retry') break;
     }
     if (result.status === 'synced') {
@@ -1072,6 +1075,10 @@ async function runRoundFor(ctx, link, { provider = null, signing = null, force =
         ...(moved ? { last_change_at: new Date().toISOString() } : {}),
       });
       Object.assign(link, result.patch, { status: 'active', last_error: null, last_round_at: new Date().toISOString() });
+    } else if (result.status === 'held') {
+      // Someone is editing the sheet: nothing written; only the wait is kept.
+      await release({ last_round_at: new Date().toISOString(), state: result.state });
+      link.state = result.state;
     } else if (result.status === 'retry') {
       // Rows kept moving (someone sorting or typing fast): say so, try later.
       const message = `The ${sheetName(link.provider)} kept changing while syncing. Trying again soon.`;
