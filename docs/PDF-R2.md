@@ -82,11 +82,14 @@ sums (about $830 a month down to about $190 at 10,000 users).
 
 R2 bills the card on file on its own once a month passes 10 GB stored, 1
 million Class A operations (writes, lists) or 10 million Class B operations
-(reads), and Cloudflare has no spending cap. So Survey keeps its own:
+(reads), and Cloudflare has no spending cap. That tier is per account, and
+Survey, Walkthru and Plot share one Cloudflare account, so the three apps
+split 80% of it: Survey 5 GB / 500,000 / 5,000,000, Walkthru and Plot 1.5 GB /
+150,000 / 1,500,000 each. Survey keeps its own cap on its share:
 
 - Every R2 operation is reserved first with `public.r2_reserve` (migration
-  `20261028090000_pdf_r2_mirror.sql`). It refuses at 80% of each allowance:
-  8 GB stored, 800,000 Class A and 8,000,000 Class B, counted over a rolling
+  `20261028090000_pdf_r2_mirror.sql`). It refuses at Survey's share:
+  5 GB stored, 500,000 Class A and 5,000,000 Class B, counted over a rolling
   31 days so the cap holds whatever day Cloudflare's month starts.
 - `pdf_r2_copies` holds each copy's size (reserved before the copy is made,
   given back when a first copy fails or the sweep deletes it).
@@ -98,7 +101,9 @@ million Class A operations (writes, lists) or 10 million Class B operations
   503 `r2_budget` and the app opens from Supabase, the same as any other
   answer that is not a link. Existing copies keep their links when only
   storage is full. `scripts/r2-copy-pdfs.mjs` uses the same reservations.
-- `scripts/backend-alerts.mjs` opens an alert issue at 80% of each cap (about
-  64% of the free tier).
+- `scripts/backend-alerts.mjs` opens an alert issue at 80% of each of Survey's
+  caps (4 GB, 400,000, 4,000,000).
 
-To change the caps, change `public.r2_limits()` in a new migration.
+To change the caps, change `public.r2_limits()` in a new migration (latest:
+`20261114090000_r2_limits_shared_tier.sql`), and keep the three apps' shares
+adding up to no more than 80% of the free tier.

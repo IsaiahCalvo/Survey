@@ -151,7 +151,7 @@ test('with the flag on but R2 down, the app still opens the drawing from Supabas
 });
 
 // Never past Cloudflare's free tier (migration 20261028090000): r2_reserve
-// refuses at 80% of each allowance and the app reads from Supabase instead.
+// refuses at Survey's share (public.r2_limits()) and the app reads from Supabase instead.
 test('free-tier cap: nobody but the service role reaches the ledger; past the cap R2 is left alone', async ({ page }) => {
   test.setTimeout(120_000);
   const admin = adminClient();
