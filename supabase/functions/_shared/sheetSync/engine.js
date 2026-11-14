@@ -162,6 +162,20 @@ function noticesOf(saved, nowMs) {
     .filter((n) => n && typeof n.message === 'string' && nowMs - Number(n.t) < NOTICE_MS)
     .slice(0, NOTICE_MAX);
 }
+// Undo in the sheet over a later app change (real Excel on the web 11-14: a
+// PM typed a note, a tech then changed it, and the PM's Ctrl+Z four minutes
+// later put back the note from before the PM's typing, over the tech's, with
+// no warning). Each cell pulled from the sheet is remembered this long with
+// the value it had before; the sheet going back to exactly that value after
+// the app changed the cell is held as a choice instead of replacing it.
+export const UNDO_WATCH_MS = 30 * 60_000;
+const UNDO_WATCH_MAX = 2000;
+function undoWatchOf(saved, nowMs) {
+  return Object.fromEntries(Object.entries(saved || {})
+    .filter(([, w]) => w && nowMs - Number(w.t) < UNDO_WATCH_MS)
+    .sort((a, b) => Number(b[1].t) - Number(a[1].t))
+    .slice(0, UNDO_WATCH_MAX));
+}
 function recentWritesOf(saved, nowMs) {
   const kept = Object.entries(saved || {})
     .filter(([, w]) => w && nowMs - Number(w.t) < RECENT_WRITE_MS)
@@ -461,6 +475,9 @@ export async function planSheetRound({
     // RECENT_WRITE_MS), as fingerprints.
     recentWrites: Object.fromEntries(Object.entries(recentWritesOf(state.recentWrites, now.getTime()))
       .filter(([k]) => lateSaves || isRowWatch(k))),
+    // "markerId|key" -> { t, before, pulled }: cells taken from the sheet
+    // lately, with the agreed value from before (see UNDO_WATCH_MS).
+    undoWatch: undoWatchOf(state.undoWatch, now.getTime()),
     problems: [],
     // Things that happened once, shown for NOTICE_MS: { t, message, markerId?, scopeId? }.
     notices: noticesOf(state.notices, now.getTime()),
@@ -1298,6 +1315,25 @@ export async function planSheetRound({
           setFp(base, key, w.was ?? null);
         }
       }
+      if (base) {
+        let copied = false;
+        for (const key of keys) {
+          const flag = `${markerId}|${key}`;
+          const u = next.undoWatch[flag];
+          if (!u) continue;
+          const sheetNow = getFp(sheetSide, key);
+          const agreed = getFp(base, key);
+          if (sheetNow === agreed) continue;
+          // Changed in the sheet to anything else: a new edit, not an undo.
+          if (sheetNow !== u.before) { delete next.undoWatch[flag]; continue; }
+          delete next.undoWatch[flag];
+          // Nothing changed in the app since the pull (a plain undo), or the
+          // app changed it again this round (a plain clash): as usual.
+          if (agreed === u.pulled || getFp(appFps, key) !== agreed) continue;
+          if (!copied) { base = JSON.parse(JSON.stringify(base)); copied = true; }
+          setFp(base, key, u.pulled);
+        }
+      }
       const { conflictFields, excelChangedFields, appChangedFields } = detectFieldConflicts({
         baseline: base || {},
         appNow: appFps,
@@ -1352,6 +1388,13 @@ export async function planSheetRound({
 
       const finalRec = appChanged ? appRecordOf(updated, scope, layout) : appRec;
       const finalFps = fieldPrintsOf(finalRec);
+      if (storedBase) {
+        for (const key of pulledKeys) {
+          const before = getFp(storedBase, key);
+          const pulled = getFp(finalFps, key);
+          if (before !== pulled && !isLegacyPrint(before)) next.undoWatch[`${markerId}|${key}`] = { t: now.getTime(), before, pulled };
+        }
+      }
       if (pulledKeys.size && storedBase) {
         const pulledFields = JSON.parse(JSON.stringify(storedBase));
         for (const key of pulledKeys) setFp(pulledFields, key, getFp(finalFps, key));
