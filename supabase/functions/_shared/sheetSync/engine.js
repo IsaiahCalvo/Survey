@@ -483,6 +483,10 @@ export async function planSheetRound({
     deletes: [],    // { sheetId, title, row, token }
     headerAdds: [], // { sheetId, title, row, col, header }
     markerWrites: {},
+    // Per item updated from the sheet: its baseline with only the pulled
+    // fields moved on, for a round that saves the sheet's edits but holds
+    // its own writes (round.js SHEET_BUSY_QUIET_MS).
+    pullBaseline: {},
     summary: { toSheet: 0, toApp: 0, created: 0, appended: 0, deleted: 0, conflicts: 0 },
   };
   const nowIso = now.toISOString();
@@ -1044,6 +1048,7 @@ export async function planSheetRound({
     // ---- one matched row -------------------------------------------------
     async function mergeRow({ markerId, marker, row, r }) {
       let base = nextBaseline[markerId]?.fields || null;
+      const storedBase = base;
       const appRec = appRecordOf(marker, scope, layout);
       const appFps = fieldPrintsOf(appRec);
       const sheetRec = sheetRecordOf(row, appRec);
@@ -1203,6 +1208,7 @@ export async function planSheetRound({
 
       const updated = JSON.parse(JSON.stringify(marker));
       const bad = new Set();
+      const pulledKeys = new Set();
       let appChanged = false;
       for (const key of fromSheet) {
         const column = scope.columns.find((c) => c.key === key);
@@ -1215,6 +1221,7 @@ export async function planSheetRound({
         if (canonicalizeCellValue(getField(appRec, key) ?? '') === canonicalizeCellValue(conv.value)) continue;
         applyFieldToMarker(updated, key, conv, nowIso);
         appChanged = true;
+        pulledKeys.add(key);
         plan.summary.toApp += 1;
       }
       for (const key of errorKeys) {
@@ -1230,6 +1237,11 @@ export async function planSheetRound({
 
       const finalRec = appChanged ? appRecordOf(updated, scope, layout) : appRec;
       const finalFps = fieldPrintsOf(finalRec);
+      if (pulledKeys.size && storedBase) {
+        const pulledFields = JSON.parse(JSON.stringify(storedBase));
+        for (const key of pulledKeys) setFp(pulledFields, key, getFp(finalFps, key));
+        plan.pullBaseline[markerId] = { scopeId: scope.scopeId, fields: pulledFields };
+      }
       const nextFields = base ? JSON.parse(JSON.stringify(base)) : {};
       for (const key of keys) {
         if (conflicts.has(key) || bad.has(key)) continue;

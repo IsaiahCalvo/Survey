@@ -32,7 +32,7 @@ test('while a PM\'s edits keep landing, a tech\'s change waits; it goes in once 
   const first = await ctx.round({ now: at(5000), hold: true });
   assert.equal(first.status, 'held');
   assert.equal(await cell('d2'), 'n2', 'nothing written while the PM is editing');
-  assert.equal(ctx.markers.d1.note.text, 'n1', 'and nothing saved: the next round plans again');
+  assert.equal(ctx.markers.d1.note.text, 'pm 1', 'the PM\'s edit still comes into the app at once');
 
   const still = await ctx.round({ now: at(5000 + SHEET_BUSY_QUIET_MS - 5000), hold: true });
   assert.equal(still.status, 'held', 'still within the quiet time');
@@ -119,7 +119,7 @@ test('Google Sheets is never held, and neither is a round asked for by hand (hol
   }
 });
 
-test('a held round keeps the link\'s other state as it was', async () => {
+test('a held round keeps the link\'s other state as it was; only the pulled item\'s baseline moves on', async () => {
   const { ctx, pmTypes } = await linked();
   const before = structuredClone(ctx.link.state);
   const baseline = structuredClone(ctx.link.baseline);
@@ -131,7 +131,10 @@ test('a held round keeps the link\'s other state as it was', async () => {
   const { sheetBusy, ...rest } = ctx.link.state;
   assert.deepEqual(rest, before);
   assert.ok(sheetBusy && sheetBusy.since === T0 + 5000);
-  assert.deepEqual(ctx.link.baseline, baseline);
+  const { d1, ...others } = ctx.link.baseline;
+  const { d1: d1Before, ...othersBefore } = baseline;
+  assert.deepEqual(others, othersBefore, 'the other items\' baseline is as it was');
+  assert.notDeepEqual(d1, d1Before, 'the PM\'s edit is agreed on both sides now');
   assert.equal(ctx.link.remote_version, version);
 });
 
@@ -148,4 +151,44 @@ test('the panel says the app\'s changes wait while the sheet is edited, and stop
   assert.match(service, /sheetInUse: Boolean\(link\.state\?\.sheetBusy\?\.since\)/);
   const panel = readFileSync(new URL('../src/components/SheetSyncButton.jsx', import.meta.url), 'utf8');
   assert.match(panel, /link\.sheetInUse && state === 'live' \? 'Waiting while the sheet is edited'/);
+});
+
+test('while held, a PM who edits the same cell again is no clash, and a PM\'s new row waits for its Row ID', async () => {
+  const { ctx, cell, pmTypes } = await linked();
+  await pmTypes('d1', 'pm 1');
+  ctx.markers.d2.note = { text: 'tech 2' };
+  assert.equal((await ctx.round({ now: at(5000), hold: true })).status, 'held');
+  assert.equal(ctx.markers.d1.note.text, 'pm 1');
+  await pmTypes('d1', 'pm 2');
+  const r2 = await ctx.round({ now: at(10000), hold: true });
+  assert.equal(r2.status, 'held');
+  assert.equal(ctx.markers.d1.note.text, 'pm 2', 'the second edit comes in too');
+  // A new row typed under the list: not made an item until the round writes its Row ID.
+  const sheet = await ctx.sheet();
+  const before = Object.keys(ctx.markers).length;
+  await ctx.edit([{ row: sheet.rows.length, col: await ctx.col('Item'), value: 'D-NEW' }]);
+  assert.equal((await ctx.round({ now: at(15000), hold: true })).status, 'held');
+  assert.equal(Object.keys(ctx.markers).length, before, 'no item yet');
+  const go = await ctx.round({ now: at(15000 + SHEET_BUSY_QUIET_MS + 1000), hold: true });
+  assert.equal(go.status, 'synced');
+  assert.equal(Object.keys(ctx.markers).length, before + 1, 'one item for the new row');
+  assert.equal(Object.values(ctx.markers).filter((m) => m.name === 'D-NEW').length, 1);
+  assert.equal(await cell('d2'), 'tech 2');
+  assert.equal(ctx.markers.d1.note.text, 'pm 2');
+  assert.equal(await cell('d1'), 'pm 2');
+  assert.deepEqual(ctx.link.state.conflicts || {}, {}, 'no clash anywhere');
+});
+
+test('a PM\'s half-typed new row (a note, no Item yet) starts the wait before there is anything to bring in', async () => {
+  const { ctx, cell } = await linked();
+  await ctx.round({ now: at(2000), hold: true }); // a quiet round: the tabs as they are
+  const sheet = await ctx.sheet();
+  await ctx.edit([{ row: sheet.rows.length, col: await ctx.col('Notes'), value: 'half typed' }]);
+  ctx.markers.d2.note = { text: 'tech 2' };
+  const r = await ctx.round({ now: at(5000), hold: true });
+  assert.equal(r.status, 'held', 'the sheet changed under someone else\'s hand');
+  assert.equal(await cell('d2'), 'n2');
+  const go = await ctx.round({ now: at(5000 + SHEET_BUSY_QUIET_MS + 1000), hold: true });
+  assert.equal(go.status, 'synced');
+  assert.equal(await cell('d2'), 'tech 2');
 });
