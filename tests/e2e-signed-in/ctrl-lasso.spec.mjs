@@ -1,12 +1,17 @@
 // Ctrl+drag lasso (beta flag 'ctrl-lasso', Drawboard PDF Pro check
 // 2026-11-14): under Box Select, Ctrl+drag on bare page draws a lasso for
-// that drag and picks the marks inside it; flag off keeps the box.
+// that drag and picks the marks inside it; flag off keeps the box. On a mark
+// the same Ctrl+drag still drops a copy (Visio, owner 2026-11-14).
 import { E2E_ACCOUNTS } from './accounts.mjs';
 import { seedSheet } from './seedSheet.mjs';
 import { expect, signIn, test } from './helpers.mjs';
 
 const COUNT = '[data-selection-quick-bar][data-visible="true"] [data-selection-count]';
 const TRAIL = '[data-lasso-selection-trail="true"]';
+const markCount = (page) => page.evaluate(() => {
+  const host = document.querySelector('.survey-pdfjs-page-div[data-page-number="1"] [data-page-annotation-object-count], [data-page-annotation-object-count]');
+  return Number(host?.getAttribute('data-page-annotation-object-count') ?? -1);
+});
 
 async function drawMark(page, key, from, to) {
   await page.keyboard.press(key);
@@ -76,6 +81,38 @@ test.describe('desktop', () => {
       await expect(page.locator(TRAIL)).toHaveCount(0);
       await page.mouse.up();
       await expect(page.locator(COUNT)).toHaveText('3');
+    } finally {
+      await sheet.remove();
+    }
+  });
+
+  test('Ctrl+drag on a mark still copies it, picked or not', async ({ page }) => {
+    test.setTimeout(180_000);
+    await page.addInitScript(() => localStorage.setItem('survey.flag.ctrl-lasso', '1'));
+    const sheet = await seedSheet('Ctrl lasso copy', { pages: 1 });
+    try {
+      const at = await openWithThreeMarks(page, sheet);
+      await expect.poll(() => markCount(page)).toBe(3);
+      // Unpicked rectangle: press on its edge with Ctrl, drag, let go.
+      const edge = at(0.2, 0.66);
+      await page.mouse.move(edge.x, edge.y);
+      await page.keyboard.down('Control');
+      await page.mouse.down();
+      await page.mouse.move(at(0.2, 0.3).x, at(0.2, 0.3).y, { steps: 10 });
+      await expect(page.locator(TRAIL)).toHaveCount(0);
+      await page.mouse.up();
+      await page.keyboard.up('Control');
+      await expect.poll(() => markCount(page)).toBe(4);
+      // The copy is now picked: Ctrl+drag it again for another copy.
+      await page.waitForTimeout(400);
+      await page.mouse.move(at(0.2, 0.34).x, at(0.2, 0.34).y);
+      await page.keyboard.down('Control');
+      await page.mouse.down();
+      await page.mouse.move(at(0.6, 0.34).x, at(0.6, 0.34).y, { steps: 10 });
+      await expect(page.locator(TRAIL)).toHaveCount(0);
+      await page.mouse.up();
+      await page.keyboard.up('Control');
+      await expect.poll(() => markCount(page)).toBe(5);
     } finally {
       await sheet.remove();
     }
