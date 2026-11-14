@@ -134,3 +134,18 @@ test('a held round keeps the link\'s other state as it was', async () => {
   assert.deepEqual(ctx.link.baseline, baseline);
   assert.equal(ctx.link.remote_version, version);
 });
+
+test('the panel says the app\'s changes wait while the sheet is edited, and stops saying it once they go in', async () => {
+  const { ctx, pmTypes } = await linked();
+  await pmTypes('d1', 'pm 1');
+  ctx.markers.d2.note = { text: 'tech 2' };
+  await ctx.round({ now: at(5000), hold: true });
+  assert.ok(ctx.link.state.sheetBusy.since, 'held: the link says the sheet is in use');
+  await ctx.round({ now: at(5000 + SHEET_BUSY_QUIET_MS + 1000), hold: true });
+  assert.equal(ctx.link.state.sheetBusy.since, undefined, 'written: no longer waiting');
+  const { readFileSync } = await import('node:fs');
+  const service = readFileSync(new URL('../supabase/functions/_shared/sheetSync/service.js', import.meta.url), 'utf8');
+  assert.match(service, /sheetInUse: Boolean\(link\.state\?\.sheetBusy\?\.since\)/);
+  const panel = readFileSync(new URL('../src/components/SheetSyncButton.jsx', import.meta.url), 'utf8');
+  assert.match(panel, /link\.sheetInUse && state === 'live' \? 'Waiting while the sheet is edited'/);
+});

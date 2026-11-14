@@ -856,6 +856,9 @@ const publicLink = (link, userId, role = null) => {
     // showed "Synced 3 h ago" (or "just now" forever) right after a round.
     lastRoundAgoMs: link.last_round_at ? Math.max(0, Date.now() - Date.parse(link.last_round_at)) : null,
     lastError: link.last_error,
+    // Excel: someone is editing the synced tabs, so the app's changes wait
+    // until they are still (round.js SHEET_BUSY_QUIET_MS). Sync now sends at once.
+    sheetInUse: Boolean(link.state?.sheetBusy?.since),
     isConnectionOwner: link.connection_user_id === userId,
     conflicts: editor ? Object.entries(link.state?.conflicts || {}).map(([markerId, c]) => ({ markerId, ...c })) : [],
     removedInSheet: editor ? Object.entries(link.state?.removedInSheet || {}).map(([markerId, r]) => ({ markerId, ...r })) : [],
