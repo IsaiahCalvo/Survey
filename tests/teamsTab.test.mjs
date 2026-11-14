@@ -4,7 +4,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import JSZip from 'jszip';
-import { isTeamsTab, startTeamsTab } from '../src/teams/teamsHost.js';
+import { isTeamsTab, isTeamsConfig, startTeamsTab, connectTeamsConfig } from '../src/teams/teamsHost.js';
+import { pinnedTabConfig, pinChoiceValid, pinTabName } from '../src/teams/teamsPin.js';
 import { buildTeamsApp, teamsManifest } from '../scripts/build-teams-app.mjs';
 
 const frameWin = (pathname, framed = true) => {
@@ -21,6 +22,11 @@ test('only /teams inside a frame counts as the Teams tab', () => {
   assert.equal(isTeamsTab(frameWin('/')), false);
   assert.equal(isTeamsTab(frameWin('/teamsx')), false);
   assert.equal(isTeamsTab({}), false);
+  assert.equal(isTeamsTab(frameWin('/teams/config')), true);
+  assert.equal(isTeamsConfig(frameWin('/teams/config')), true);
+  assert.equal(isTeamsConfig(frameWin('/teams/config', false)), false);
+  assert.equal(isTeamsConfig(frameWin('/teams')), false);
+  assert.equal(isTeamsTab(frameWin('/teams/other')), false);
 });
 
 test('the tab says hello, then ready, and keeps the Teams theme', async () => {
@@ -82,8 +88,10 @@ test('the app package points at the right site and carries both icons', async ()
   const nightly = teamsManifest('nightly');
   assert.equal(nightly.staticTabs[0].contentUrl, 'https://surveytool-nightly.vercel.app/teams');
   assert.equal(nightly.name.short, 'Survey Nightly');
-  assert.deepEqual(nightly.staticTabs[0].scopes, ['personal', 'team', 'groupChat']);
-  assert.ok(Number(nightly.manifestVersion) >= 1.16, 'static tabs in chats and channels need 1.16+');
+  assert.deepEqual(nightly.staticTabs[0].scopes, ['personal']);
+  assert.equal(nightly.configurableTabs[0].configurationUrl, 'https://surveytool-nightly.vercel.app/teams/config');
+  assert.deepEqual(nightly.configurableTabs[0].scopes, ['team', 'groupChat']);
+  assert.equal(nightly.configurableTabs[0].canUpdateConfiguration, true);
   const stable = teamsManifest('stable');
   assert.equal(stable.staticTabs[0].contentUrl, 'https://surveytool.app/teams');
   for (const m of [nightly, stable]) {
@@ -94,4 +102,56 @@ test('the app package points at the right site and carries both icons', async ()
   const zip = await JSZip.loadAsync(await buildTeamsApp('nightly'));
   assert.deepEqual(Object.keys(zip.files).sort(), ['color.png', 'manifest.json', 'outline.png']);
   assert.throws(() => teamsManifest('beta'), /Unknown channel/);
+});
+
+const P = '0b7a3c1e-2d4f-4a6b-8c9d-0e1f2a3b4c5d';
+const D = '1c8b4d2f-3e5a-4b7c-9d0e-1f2a3b4c5d6e';
+
+test('a pinned tab opens one project list or one drawing', () => {
+  assert.equal(pinChoiceValid(null), false);
+  assert.equal(pinChoiceValid({ projectId: 'x' }), false);
+  assert.equal(pinChoiceValid({ projectId: P, docId: 'nope' }), false);
+  const issues = pinnedTabConfig('https://surveytool-nightly.vercel.app/teams/config?x=1', { projectId: P, projectName: 'Tower A', list: 'issue' });
+  assert.deepEqual(issues, {
+    entityId: `survey-${P}-issue`,
+    contentUrl: `https://surveytool-nightly.vercel.app/teams?project=${P}&list=issue`,
+    websiteUrl: `https://surveytool-nightly.vercel.app/?project=${P}&list=issue`,
+    suggestedDisplayName: 'Tower A issues',
+  });
+  const doc = pinnedTabConfig('https://surveytool.app', { projectId: P, projectName: 'Tower A', list: 'task', docId: D, docName: 'A-101 Level 1' });
+  assert.equal(doc.contentUrl, `https://surveytool.app/teams?project=${P}&doc=${D}`);
+  assert.equal(doc.suggestedDisplayName, 'A-101 Level 1');
+  assert.equal(pinTabName({ projectId: P, projectName: 'Tower A', list: 'bogus' }), 'Tower A');
+  assert.throws(() => pinnedTabConfig('https://surveytool.app', { projectId: 'x' }), /Pick a project/);
+});
+
+test('the setup page tells Teams when Save may be pressed and what it saves', async () => {
+  const calls = [];
+  let onSave = null;
+  const pages = { config: {
+    registerOnSaveHandler: (fn) => { onSave = fn; },
+    setValidityState: (v) => calls.push(['valid', v]),
+    setConfig: async (c) => { calls.push(['save', c.contentUrl]); },
+  } };
+  const app = { initialize: async () => {}, notifySuccess() {}, getContext: async () => ({ app: { theme: 'default' } }) };
+  await startTeamsTab({ win: frameWin('/teams/config'), load: async () => ({ app, pages }) });
+  const link = await connectTeamsConfig();
+  assert.deepEqual(calls, [['valid', false]]);
+  const failed = [];
+  onSave({ notifySuccess() {}, notifyFailure: (m) => failed.push(m) });
+  assert.deepEqual(failed, ['Pick a project first']);
+  const config = pinnedTabConfig('https://surveytool.app', { projectId: P, projectName: 'Tower A' });
+  link.setChoice(config);
+  const done = await new Promise((resolve) => onSave({ notifySuccess: () => resolve('ok'), notifyFailure: resolve }));
+  assert.equal(done, 'ok');
+  assert.deepEqual(calls.slice(1), [['valid', true], ['save', `https://surveytool.app/teams?project=${P}&list=files`]]);
+});
+
+test('the app reads a pinned tab address back', async () => {
+  const { readItemLink, withoutItemLink } = await import('../src/projectItems/itemLink.js');
+  assert.deepEqual(readItemLink(`https://surveytool.app/teams?project=${P}&list=photos`), { projectId: P, itemId: null, kind: null, list: 'photos', docId: null });
+  assert.deepEqual(readItemLink(`https://surveytool.app/teams?project=${P}&doc=${D}`), { projectId: P, itemId: null, kind: null, list: 'files', docId: D });
+  assert.equal(readItemLink(`https://surveytool.app/teams?project=${P}&list=nope`).list, 'files');
+  assert.equal(readItemLink(`https://surveytool.app/teams?project=${P}&doc=bad`), null);
+  assert.equal(withoutItemLink(`https://surveytool.app/teams?project=${P}&doc=${D}&x=1`), '/teams?x=1');
 });

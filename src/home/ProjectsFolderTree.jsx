@@ -547,6 +547,9 @@ export default function ProjectsFolderTree({
   // An "assigned to you" email link (Nightly 'item-assign-email', itemLink.js):
   // open its project on the item's list with the item showing, as soon as
   // that project is here. A closed project shows the closed list first.
+  // A tab pinned in Teams (teams/teamsPin.js) opens a list, or a drawing
+  // once that drawing is listed.
+  const pendingDocRef = useRef(null);
   useEffect(() => {
     const take = () => {
       const link = takePendingItemLink(localProjects.map((p) => p.id));
@@ -556,13 +559,23 @@ export default function ProjectsFolderTree({
       setSearch('');
       setOpenId(link.projectId);
       if (isPhoneLayout()) setMobileDrillOpenId(link.projectId);
-      setListTab(link.kind);
-      setOpenItemId(link.itemId);
+      const offered = { files: true, issue: issuesOn, task: issuesOn, photos: photosOn, activity: activityOn };
+      setListTab(offered[link.list] ? link.list : 'files');
+      setOpenItemId(link.itemId || null);
+      pendingDocRef.current = link.docId ? { projectId: link.projectId, docId: link.docId } : null;
     };
     take();
     window.addEventListener(ITEM_LINK_EVENT, take);
     return () => window.removeEventListener(ITEM_LINK_EVENT, take);
-  }, [localProjects, accessOn, showClosed]);
+  }, [localProjects, accessOn, showClosed, issuesOn, photosOn, activityOn]);
+  useEffect(() => {
+    const want = pendingDocRef.current;
+    if (!want || !onOpenDocument) return;
+    const doc = localDocs.find((d) => d.id === want.docId && d.project_id === want.projectId);
+    if (!doc) return;
+    pendingDocRef.current = null;
+    onOpenDocument(doc);
+  });
   const projectRoleFor = (proj) => {
     if (!proj || !user?.id) return 'viewer';
     if (proj.user_id == null || proj.user_id === user.id) return 'owner';

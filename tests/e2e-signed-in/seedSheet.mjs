@@ -33,6 +33,7 @@ export async function seedSheet(label, { size = [612, 792], pages = 1, lines = [
     content_sha256: crypto.createHash('sha256').update(bytes).digest('hex'),
   }));
   return {
+    id,
     name,
     remove: async () => {
       await admin.from('documents').delete().eq('id', id);

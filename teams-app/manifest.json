@@ -15,21 +15,42 @@
   },
   "description": {
     "short": "Open your Survey projects, drawings, issues and tasks in Teams.",
-    "full": "Survey is a PDF markup and site survey app for construction teams. Add it as a tab in a chat or channel to open your projects, drawings, issues and tasks without leaving Teams. Marks and survey data stay live with the people working in the field and with your Excel sheet."
+    "full": "Survey is a PDF markup and site survey app for construction teams. Add it as a tab in a chat or channel to keep one project, one of its lists or one drawing in front of the team without leaving Teams. Marks and survey data stay live with the people working in the field and with your Excel sheet."
   },
   "icons": {
     "color": "color.png",
     "outline": "outline.png"
   },
   "accentColor": "#12141A",
+  "configurableTabs": [
+    {
+      "configurationUrl": "{{SITE}}/teams/config",
+      "canUpdateConfiguration": true,
+      "scopes": [
+        "team",
+        "groupChat"
+      ],
+      "context": [
+        "channelTab",
+        "privateChatTab",
+        "meetingChatTab",
+        "meetingDetailsTab"
+      ]
+    }
+  ],
   "staticTabs": [
     {
       "entityId": "survey",
       "name": "Survey",
       "contentUrl": "{{SITE}}/teams",
       "websiteUrl": "{{SITE}}/",
-      "scopes": ["personal", "team", "groupChat"]
+      "scopes": [
+        "personal"
+      ]
     }
   ],
-  "validDomains": ["surveytool.app", "surveytool-nightly.vercel.app"]
+  "validDomains": [
+    "surveytool.app",
+    "surveytool-nightly.vercel.app"
+  ]
 }
