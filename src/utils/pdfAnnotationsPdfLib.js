@@ -8267,8 +8267,9 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
       spaces: options?.spaces || [],
     });
     const appLayerStateEmbedded = applyAppLayerStateMetadataToPdf(pdfDoc, appLayerState);
-    // One /M for every mark this export writes (pdfOutsideEdits.js).
-    const exportModifiedDate = pdfDateString(new Date());
+    // One /M for every mark this export writes (pdfOutsideEdits.js). A
+    // caller that pins the moment (the review package) gets the same bytes.
+    const exportModifiedDate = pdfDateString(options?.now instanceof Date ? options.now : new Date());
     const exportedMarkEntriesByItem = new Map();
 
     // The /AP for a text box - and, since 2026-09-10, for a callout's text
