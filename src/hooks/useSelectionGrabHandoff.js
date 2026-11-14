@@ -33,10 +33,17 @@
  * A second press on the same selected text within the double-click window is
  * reported through onDoublePress (rule 7: a double-click on selected text
  * edits it under any tool).
+ *
+ * Copy-drag under Pan (owner 2026-11-14, Visio's Ctrl+drag): with
+ * `copyPress` on, a press with Ctrl / Cmd held (utils/moveModifier.js
+ * isCopyDragEvent) arms the layer too, picked or not: on any mark it is handed
+ * to that mark (the layer drags a copy), on bare page to the layer itself (a
+ * box select). Ctrl+Shift on bare page stays the viewer's zoom to area.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { isPalmContact } from '../utils/touchContact.js';
+import { isCopyDragEvent } from '../utils/moveModifier.js';
 
 // The pointer currently held by a selection grab, if any. Viewer-level press
 // listeners (Pan quick-click, tool overlays) skip a press that belongs to it.
@@ -57,7 +64,9 @@ const NEVER_GRAB = 'button, input, textarea, select, a[href], [contenteditable]:
 const DOUBLE_PRESS_MS = 450;
 const DOUBLE_PRESS_PX = 8;
 
-export function useSelectionGrabHandoff({ svgRef, enabled, isSelectionTarget, onDoublePress }) {
+const ANY_MARK = '[data-annotation-index], [data-callout-id], [data-survey-marker-id]';
+
+export function useSelectionGrabHandoff({ svgRef, enabled, isSelectionTarget, onDoublePress, copyPress = false }) {
   const [armed, setArmed] = useState(false);
   const armedRef = useRef(false);
   const grabRef = useRef(null);
@@ -71,8 +80,9 @@ export function useSelectionGrabHandoff({ svgRef, enabled, isSelectionTarget, on
     flushSync(() => setArmed(next));
   }, []);
 
+  const live = enabled || copyPress;
   useEffect(() => {
-    if (!enabled) {
+    if (!live) {
       // The pick went away (or an editor opened) — never stay armed behind it.
       if (grabRef.current && activeGrabPointerId === grabRef.current.pointerId) activeGrabPointerId = null;
       grabRef.current = null;
@@ -88,6 +98,9 @@ export function useSelectionGrabHandoff({ svgRef, enabled, isSelectionTarget, on
       // A resting palm never grabs the selection (Drawboard audit C1).
       if (isPalmContact(event)) return;
       if (grabRef.current) return;
+      const copying = copyPress && isCopyDragEvent(event)
+        && !(typeof document !== 'undefined' && document.body?.getAttribute('data-readonly') === 'true');
+      if (!enabled && !copying) return;
       const svg = svgRef.current;
       const target = event.target;
       if (!svg || !(target instanceof Element)) return;
@@ -101,8 +114,20 @@ export function useSelectionGrabHandoff({ svgRef, enabled, isSelectionTarget, on
       try {
         stack = (document.elementsFromPoint(event.clientX, event.clientY) || []).filter((el) => svg.contains(el));
       } catch (_) { stack = []; }
-      const hit = stack[0] || null;
-      const info = hit ? latestRef.current.isSelectionTarget(hit) : null;
+      let hit = stack[0] || null;
+      let info = hit && enabled ? latestRef.current.isSelectionTarget(hit) : null;
+      if (!info && copying) {
+        // Copy-drag: any mark takes the press; bare page starts a box select
+        // on the layer (Ctrl+Shift there is the viewer's zoom to area).
+        const mark = stack.find((el) => el.closest(ANY_MARK)) || null;
+        if (mark) {
+          hit = mark;
+          info = { key: 'copy', text: false, index: null, calloutId: null, el: mark };
+        } else if (!event.shiftKey) {
+          hit = svg;
+          info = { key: 'copy-box', text: false, index: null, calloutId: null, el: svg };
+        }
+      }
       if (!info) {
         setArmedSync(false);
         return;
@@ -179,7 +204,7 @@ export function useSelectionGrabHandoff({ svgRef, enabled, isSelectionTarget, on
       window.removeEventListener('pointerup', onEnd, true);
       window.removeEventListener('pointercancel', onEnd, true);
     };
-  }, [enabled, svgRef, setArmedSync]);
+  }, [live, enabled, copyPress, svgRef, setArmedSync]);
 
   useEffect(() => () => {
     if (grabRef.current && activeGrabPointerId === grabRef.current.pointerId) activeGrabPointerId = null;

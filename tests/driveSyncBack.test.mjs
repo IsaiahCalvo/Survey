@@ -52,12 +52,12 @@ function setupDom() {
 
 const LINK = { provider: 'msgraph', name: 'Plan.pdf', webUrl: 'https://x.sharepoint.com/Plan.pdf', syncMinutes: 5, syncOff: false, lastPushedAt: null, lastPushedSha: null, lastError: null };
 
-function fakeServer({ pushAnswer } = {}) {
+function fakeServer({ pushAnswer, source = null } = {}) {
   const calls = [];
   let link = { ...LINK };
   const call = async (action, body) => {
     calls.push({ action, body });
-    if (action === 'driveStatus') return { link, canPush: true };
+    if (action === 'driveStatus') return body.check && source ? { link, canPush: true, ...source } : { link, canPush: true };
     if (action === 'drivePush') return pushAnswer ? pushAnswer(body) : { uploadUrl: 'https://up.example/session' };
     if (action === 'drivePushed') { link = { ...link, lastPushedAt: new Date().toISOString(), lastPushedSha: body.sha, syncOff: body.force ? false : link.syncOff }; return { link }; }
     if (action === 'driveSettings') { link = { ...link, ...(body.syncOff !== undefined ? { syncOff: body.syncOff } : {}), ...(body.syncMinutes ? { syncMinutes: body.syncMinutes } : {}) }; return { link }; }
@@ -355,4 +355,43 @@ test('nextPushAt after a failed try: the 60 s retry wins, not a whole save inter
   const t = 10 * 60_000;
   // A failed try clears lastAttemptAt and sets retryAt.
   assert.equal(nextPushAt({ link: LINK, canPush: true, dirtySince: 1000, lastAttemptAt: 0, retryAt: t + 60_000 }), t + 60_000);
+});
+
+test('the card asks the drive who changed it there; a conflict names them; a save clears it', async () => {
+  setupDom();
+  const { useDriveSyncBack } = await loadHook();
+  let refuse = true;
+  const server = fakeServer({
+    source: { changedAtSource: true, source: { name: 'Plan.pdf', modifiedAt: '2026-11-14T18:00:00Z', modifiedBy: 'Ana Ruiz' } },
+    pushAnswer: (body) => (refuse && !body.force ? { error: 'Someone changed this file in OneDrive since Survey last saved it.', code: 'conflict' } : { uploadUrl: 'https://up.example/forced' }),
+  });
+  const { box, root } = await mount(useDriveSyncBack, {
+    documentId: 'doc-src', enabled: true, call: server.call,
+    exportBytes: async () => new TextEncoder().encode('pdf'),
+    upload: async () => ({}),
+  });
+  // Opening only loads the link; the drive is asked when the card opens.
+  assert.equal(server.calls.some((c) => c.action === 'driveStatus' && c.body.check), false);
+  assert.equal(box.state.source, null);
+  await act(async () => { await box.state.checkSource(); });
+  assert.deepEqual(box.state.source, { changed: true, by: 'Ana Ruiz', at: '2026-11-14T18:00:00Z' });
+  // A conflict on save asks again, so the dialog can name who changed it.
+  const asked = server.calls.filter((c) => c.action === 'driveStatus' && c.body.check).length;
+  await act(async () => { edit('doc-src'); await box.state.syncNow(); await settle(); });
+  assert.equal(box.state.dialog, 'conflict');
+  assert.equal(server.calls.filter((c) => c.action === 'driveStatus' && c.body.check).length, asked + 1);
+  await act(async () => { await box.state.keepSurveyVersion(); });
+  assert.equal(box.state.source, null);
+  refuse = false;
+  await act(async () => root.unmount());
+});
+
+test('a drive that cannot answer leaves no note', async () => {
+  setupDom();
+  const { useDriveSyncBack } = await loadHook();
+  const server = fakeServer({ source: { problem: { code: 'auth', error: 'Sign in again.' } } });
+  const { box, root } = await mount(useDriveSyncBack, { documentId: 'doc-src2', enabled: true, call: server.call, exportBytes: async () => new Uint8Array() });
+  await act(async () => { await box.state.checkSource(); });
+  assert.equal(box.state.source, null);
+  await act(async () => root.unmount());
 });

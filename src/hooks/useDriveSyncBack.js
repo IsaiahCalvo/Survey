@@ -97,6 +97,9 @@ export function useDriveSyncBack({
   const [problem, setProblem] = useState(null); // { code, error }
   const [dialog, setDialog] = useState(null); // 'conflict' | 'gone' | 'read_only'
   const [dirty, setDirty] = useState(false);
+  // What the drive says about its own copy, asked when the card opens:
+  // { changed, by, at } or null (not asked yet, or the drive did not answer).
+  const [source, setSource] = useState(null);
   const stateRef = useRef({ dirtySince: 0, editsSeen: 0, lastAttemptAt: 0, retryAt: 0, pushing: false, unconfirmed: null });
   const linkRef = useRef(null);
   linkRef.current = link;
@@ -114,6 +117,17 @@ export function useDriveSyncBack({
     return res;
   }, [active, call, documentId]);
 
+  // Ask the drive whether someone changed the PDF there since Survey last
+  // opened or saved it (status check; the cTag ignores a rename or a move).
+  const checkSource = useCallback(async () => {
+    if (!active) return null;
+    const res = await call('driveStatus', { documentId, check: true });
+    if (!res || res.error || res.problem || typeof res.changedAtSource !== 'boolean') { setSource(null); return null; }
+    const next = { changed: res.changedAtSource, by: res.source?.modifiedBy || null, at: res.source?.modifiedAt || null };
+    setSource(next);
+    return next;
+  }, [active, call, documentId]);
+
   // Load on open and whenever this document is linked or unlinked.
   useEffect(() => {
     setLink(null);
@@ -122,6 +136,7 @@ export function useDriveSyncBack({
     setProblem(null);
     setDialog(null);
     setDirty(false);
+    setSource(null);
     stateRef.current = {
       dirtySince: active ? readDirtySince(documentId) : 0,
       editsSeen: 0,
@@ -224,14 +239,18 @@ export function useDriveSyncBack({
       if (done?.link) setLink(done.link);
       clean();
       s.retryAt = s.unconfirmed ? now() + RETRY_AFTER_MS : 0;
+      setSource(null); // Survey's copy is the drive's copy now.
       setPhase('saved');
       return true;
     } catch (err) {
       const code = err?.code || (Number(err?.status) === 412 ? 'conflict' : 'graph');
       setProblem({ code, error: err?.message || 'The drive did not take the file.' });
       setPhase('problem');
-      if (DIALOG_CODES.has(code)) setDialog(code);
-      else {
+      if (DIALOG_CODES.has(code)) {
+        setDialog(code);
+        // Name who changed it in the conflict dialog when the drive says.
+        if (code === 'conflict') checkSource().catch(() => {});
+      } else {
         s.retryAt = now() + RETRY_AFTER_MS;
         // A failed try is not a save: the retry comes after RETRY_AFTER_MS,
         // not a whole save interval later.
@@ -241,7 +260,7 @@ export function useDriveSyncBack({
     } finally {
       s.pushing = false;
     }
-  }, [active, call, documentId, now, refresh, upload]);
+  }, [active, call, checkSource, documentId, now, refresh, upload]);
 
   // The timer: push once the minutes since the first unsaved change pass.
   useEffect(() => {
@@ -272,6 +291,8 @@ export function useDriveSyncBack({
     problem,
     dialog,
     dirty,
+    source,
+    checkSource,
     syncNow: () => push({ manual: true }),
     keepSurveyVersion: async () => { setDialog(null); return push({ force: true, manual: true }); },
     stopSyncing: async () => { setDialog(null); return settings({ syncOff: true }); },

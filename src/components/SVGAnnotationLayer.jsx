@@ -1445,6 +1445,10 @@ const SVGAnnotationLayerBody = memo(({
     svgRef,
     enabled: selectionGrabbableByTool && !isSelectFamilyTool(activeTool)
       && !isCalloutTextEditMode && (editingAnnotationIndex == null || isBboxEditMode),
+    // Ctrl / Cmd + drag under Pan copies a mark, picked or not, and boxes
+    // marks on bare page, as under Select (owner 2026-11-14).
+    copyPress: activeTool === 'pan' && typeof onDuplicateFamily === 'function'
+      && !isCalloutTextEditMode && editingAnnotationIndex == null,
     isSelectionTarget: (el) => classifySelectionGrabTarget(el, svgRef.current, {
       selectedIds,
       selectedCalloutIds,
