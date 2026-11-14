@@ -493,6 +493,11 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Selection bar shows how many marks a multi-pick holds',
     stage: 'beta',
   }),
+  // Drawboard PDF Pro (2026-11-14): Ctrl+drag under Select is a lasso pick.
+  'ctrl-lasso': Object.freeze({
+    label: 'Select: Ctrl+drag (Cmd+drag on a Mac) on the page draws a lasso instead of a box',
+    stage: 'beta',
+  }),
   'tool-style-preview': Object.freeze({
     label: 'Desktop colour popover: a live preview of what the tool will draw (colour, width, line style)',
     stage: 'beta',

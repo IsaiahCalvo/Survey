@@ -108,6 +108,7 @@ import {
   getLassoModeFromTrail,
   getLassoPointerSamples,
   getLassoGestureIntent,
+  isCtrlLassoPress,
   LASSO_SIMPLIFY_PX,
   resolveLassoHits,
   shouldSampleLassoPoint,
@@ -556,6 +557,7 @@ export function useSVGInteraction({
   // annotation model or history. Shape: { points, shiftHeld, pointerId }.
   const [lassoState, setLassoState] = useState(null);
   const lassoStateRef = useRef(null);
+  const [ctrlLassoOn] = useState(() => isFeatureOn('ctrl-lasso'));
   const applyLassoState = useCallback((next) => {
     lassoStateRef.current = next;
     setLassoState(next);
@@ -2527,7 +2529,11 @@ export function useSVGInteraction({
     // UX: Lasso starts only on bare page space. Marks, callouts, group move
     // zones, and resize handles keep the same hit paths as Rectangle Select,
     // so a lasso-made selection stays safe and fully editable.
-    if (e.target === svgRef.current && activeTool === 'select' && selectionMode === 'lasso') {
+    // Nightly 'ctrl-lasso' (Drawboard PDF Pro): under Box Select, Ctrl (Cmd
+    // on a Mac) held as a mouse drag starts on bare page draws a lasso for
+    // that one drag.
+    const ctrlLasso = selectionMode !== 'lasso' && isCtrlLassoPress(e, ctrlLassoOn);
+    if (e.target === svgRef.current && activeTool === 'select' && (selectionMode === 'lasso' || ctrlLasso)) {
       if (e.button != null && e.button !== 0) return;
       const current = lassoStateRef.current;
       if (current && current.pointerId !== e.pointerId) {
@@ -2590,7 +2596,7 @@ export function useSVGInteraction({
       deselectAll();
       clearSelectedMarkers();
     }
-  }, [svgRef, deselectAll, callouts, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, selectionMode, lassoTouchOperation, lassoTouchMode, applyMarqueeState, applyLassoState, cancelLasso, pageWidth, pageHeight, selectedIds, annotations, isCalloutSelectable, clearSelectedMarkers, getGroupMarkerIds, getSurveyMarkerMembers, selectedMarkerCount, beginAreaSelectFromMark, dropForeignMarquee]);
+  }, [svgRef, deselectAll, callouts, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, selectionMode, ctrlLassoOn, lassoTouchOperation, lassoTouchMode, applyMarqueeState, applyLassoState, cancelLasso, pageWidth, pageHeight, selectedIds, annotations, isCalloutSelectable, clearSelectedMarkers, getGroupMarkerIds, getSurveyMarkerMembers, selectedMarkerCount, beginAreaSelectFromMark, dropForeignMarquee]);
 
   /**
    * Pointer move on root SVG: update visual transform during drag.
