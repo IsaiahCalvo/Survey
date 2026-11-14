@@ -31,6 +31,9 @@ import useAutoRetryLoad from './useAutoRetryLoad';
 import { installOverlayScrollbars } from '../utils/overlayScrollbars';
 import { TEMPLATE_EDITOR_REQUEST_EVENT, hasTemplateEditorRequest } from './templateEditorRequest';
 const AccountSettings = lazy(() => import('../components/AccountSettings').then(m => ({ default: m.AccountSettings })));
+import { isTeamsConfig } from '../teams/teamsHost.js';
+// Adding Survey to a Teams channel or chat: pick what the tab opens.
+const TeamsPinPanel = lazy(() => import('../teams/TeamsPinPanel.jsx'));
 import './hub.css';
 
 // The share dialogs render closed on every Home visit, so they need not be on
@@ -103,6 +106,7 @@ export default function SurveyHub({
   const [share, setShare] = useState(null); // null | { kind, name, item, manage }
   const [settingsOpen, setSettingsOpen] = useState(false); // settings page shown over the hub
   const [settingsTab, setSettingsTab] = useState(null);
+  const [teamsConfig] = useState(() => isTeamsConfig());
 
   // A company invite email links to ?settings=company: open Settings on the
   // Company page once signed in, then drop the query so a reload stays put.
@@ -344,6 +348,11 @@ export default function SurveyHub({
             initialTab={settingsTab}
             onClose={() => { setSettingsOpen(false); setSettingsTab(null); }}
           />
+        </Suspense>
+      )}
+      {teamsConfig && user && (
+        <Suspense fallback={null}>
+          <TeamsPinPanel projects={projects} documents={documents} loading={projectsInitialLoading} />
         </Suspense>
       )}
     </HubChromeContext.Provider>
