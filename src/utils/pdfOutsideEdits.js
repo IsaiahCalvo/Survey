@@ -103,7 +103,8 @@ export function readableMarkSubject({ subtype = null, appType = null, hasCloudBo
   const type = String(appType || '').toLowerCase();
   if (type === 'arrow') return 'Arrow';
   if (hasCloudBorder) return 'Cloud';
-  if (type === 'highlighter') return 'Highlight';
+  if (type === 'highlighter' || type === 'highlight') return 'Highlight';
+  if (type === 'survey-marker' || type === 'surveymarker') return 'Survey Marker';
   return SUBJECT_BY_SUBTYPE[String(subtype || '').replace(/^\//, '')] || 'Markup';
 }
 
