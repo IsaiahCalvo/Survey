@@ -86,6 +86,10 @@ async function seedOwnerRows(admin, ids) {
     .insert({ project_id: PROJECT, kind: 'issue', title: 'RLS sweep issue', created_by: owner }).select('id').single();
   if (rlsItemError) throw new Error(`project_items: ${rlsItemError.message}`);
   await must('project_item_comments', admin.from('project_item_comments').insert({ item_id: rlsItem.id, author_id: owner, body: 'rls sweep' }));
+  // Project photos (Nightly): the project's members read them and their links.
+  const RLS_PHOTO = 'e2e00000-0000-4000-8000-0000000005b1';
+  await must('project_photos', admin.from('project_photos').insert({ id: RLS_PHOTO, project_id: PROJECT, path: `${PROJECT}/${RLS_PHOTO}.jpg` }));
+  await must('project_photo_links', admin.from('project_photo_links').insert({ photo_id: RLS_PHOTO, item_id: rlsItem.id, project_id: PROJECT }));
   await replace('mark_library_items', 'created_by', owner, {
     library: 'personal', created_by: owner, name: 'RLS sweep item', payload: { version: 1, items: [] },
   });
@@ -146,6 +150,8 @@ const ownerRows = (ids) => ({
   project_items: ['project_id', PROJECT],
   project_item_events: ['project_id', PROJECT],
   project_item_comments: ['project_id', PROJECT],
+  project_photos: ['project_id', PROJECT],
+  project_photo_links: ['project_id', PROJECT],
   project_events: ['project_id', PROJECT],
   organizations: ['id', ORG],
   organization_members: ['organization_id', ORG],
@@ -206,6 +212,8 @@ const SHARED_WITH_COLLABORATORS = new Set([
   'survey_agent_memory',
   // So do the project's issues, their log and their discussion.
   'project_items', 'project_item_events', 'project_item_comments',
+  // And its photos and which items they are on.
+  'project_photos', 'project_photo_links',
   // And the project's Activity feed.
   'project_events',
 ]);

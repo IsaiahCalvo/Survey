@@ -385,6 +385,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Projects: an Activity tab with what happened to the project (files, revisions, issues, people) in 15-minute groups',
     stage: 'beta',
   }),
+  'project-photos': Object.freeze({
+    label: 'Projects: a Photos tab (add, group by day/week/month, filter, mark up with pen/text/arrow) and photos on issues and tasks',
+    stage: 'beta',
+  }),
   spotlight: Object.freeze({
     label: 'Spotlight: share your view from the people list; others follow your document, page and zoom (green frame, N following)',
     stage: 'beta',

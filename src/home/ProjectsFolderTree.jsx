@@ -26,7 +26,7 @@ import { useStorage } from '../hooks/useDatabase';
 import { useOfflineDocumentActions } from './offlineDocumentActions.js';
 import { activateOrExplain } from '../utils/disabledReasonToast.js';
 import MenuRows from '../components/MenuRows.jsx';
-import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback, Suspense, lazy } from 'react';
 import { hoverOnly, useTooltip } from '../components/Tooltip';
 import { createPortal } from 'react-dom';
 import { mergeProjectDocumentOrder, orderDocumentsByProject } from './projectDocumentOrder.js';
@@ -57,6 +57,8 @@ import ProjectActivityPanel from '../projectItems/ProjectActivityPanel.jsx';
 import { keyboardControlProps } from '../utils/keyboardActivation.js';
 import { SHEET_VIEW_EVENT, openAllChoice, projectSheets, storedProjectOrder } from '../sheets/sheetSet.js';
 import { SheetViewGlyph } from '../sheets/SheetSetBar.jsx';
+// Nightly 'project-photos': the Photos tab loads only when opened.
+const ProjectPhotosPanelLazy = lazy(() => import('../projectPhotos/ProjectPhotosPanel.jsx'));
 
 // Renders closed until someone picks Manage team, so it stays off the first
 // load; the chunk is fetched when the projects tree mounts.
@@ -488,7 +490,12 @@ export default function ProjectsFolderTree({
   const [issuesOn] = useState(() => isFeatureOn('project-issues'));
   // Drawboard's project Activity page (Nightly, 'project-activity').
   const [activityOn] = useState(() => isFeatureOn('project-activity'));
-  const tabsOn = issuesOn || activityOn;
+  // Drawboard's project Photos page (Nightly, 'project-photos').
+  const [photosOn] = useState(() => isFeatureOn('project-photos'));
+  const tabsOn = issuesOn || activityOn || photosOn;
+  // A photo's link chip jumps to that item in its list.
+  const [openItemId, setOpenItemId] = useState(null);
+  const openItemFromPhoto = (item) => { setListTab(item.kind); setOpenItemId(item.id); };
   // Drawboard's "Open all" (Nightly, 'sheet-set-view'): the list as it
   // stands (or, with two or more rows ticked, "Open N selected") opens as one
   // set, in the List or Grid view picked beside the button.
@@ -1274,8 +1281,12 @@ export default function ProjectsFolderTree({
                 </div>
               </div>
 
-              {tabsOn && <ProjectItemsTabs value={listTab} onChange={setListTab} issues={issuesOn} activity={activityOn} />}
-              {activityOn && listTab === 'activity' ? (isPhoneLayout() ? <div style={{ flex: 1 }} /> : (
+              {tabsOn && <ProjectItemsTabs value={listTab} onChange={(t) => { setOpenItemId(null); setListTab(t); }} issues={issuesOn} activity={activityOn} photos={photosOn} />}
+              {photosOn && listTab === 'photos' ? (isPhoneLayout() ? <div style={{ flex: 1 }} /> : (
+                <Suspense fallback={<div style={{ flex: 1 }} />}>
+                  <ProjectPhotosPanelLazy project={open} user={user} role={projectRoleFor(open)} lookupMember={lookupMember} itemsOn={issuesOn} onOpenItem={openItemFromPhoto} />
+                </Suspense>
+              )) : activityOn && listTab === 'activity' ? (isPhoneLayout() ? <div style={{ flex: 1 }} /> : (
                 <ProjectActivityPanel project={open} user={user} lookupMember={lookupMember} documents={openFiles} onOpenDocument={onOpenDocument} />
               )) : issuesOn && listTab !== 'files' ? (isPhoneLayout() ? <div style={{ flex: 1 }} /> : (
                 <ProjectItemsPanel
@@ -1288,6 +1299,8 @@ export default function ProjectsFolderTree({
                   documents={openFiles}
                   onOpenDocument={onOpenDocument}
                   phone={false}
+                  photosOn={photosOn}
+                  openItemId={openItemId}
                 />
               )) : (
               <div className="projects-open-body" style={{ display: 'grid', gap: 0, flex: 1, overflow: 'hidden' }}>
@@ -1525,8 +1538,12 @@ export default function ProjectsFolderTree({
                     </span>
                     <span>{mobileDrillAllFiles.length} {mobileDrillAllFiles.length === 1 ? 'file' : 'files'} · {projectLastEditedLabel(mobileDrillProject.id)}</span>
                   </div>
-                  {tabsOn && <ProjectItemsTabs value={listTab} onChange={setListTab} issues={issuesOn} activity={activityOn} />}
-                  {activityOn && listTab === 'activity' ? (
+                  {tabsOn && <ProjectItemsTabs value={listTab} onChange={(t) => { setOpenItemId(null); setListTab(t); }} issues={issuesOn} activity={activityOn} photos={photosOn} />}
+                  {photosOn && listTab === 'photos' ? (
+                    <Suspense fallback={<div style={{ flex: 1 }} />}>
+                      <ProjectPhotosPanelLazy project={mobileDrillProject} user={user} role={projectRoleFor(mobileDrillProject)} lookupMember={lookupMember} itemsOn={issuesOn} onOpenItem={openItemFromPhoto} phone />
+                    </Suspense>
+                  ) : activityOn && listTab === 'activity' ? (
                     <ProjectActivityPanel project={mobileDrillProject} user={user} lookupMember={lookupMember} documents={mobileDrillAllFiles} onOpenDocument={onOpenDocument} phone />
                   ) : issuesOn && listTab !== 'files' ? (
                     <ProjectItemsPanel
@@ -1539,6 +1556,8 @@ export default function ProjectsFolderTree({
                       documents={mobileDrillAllFiles}
                       onOpenDocument={onOpenDocument}
                       phone
+                      photosOn={photosOn}
+                      openItemId={openItemId}
                     />
                   ) : (<>
                   <div className="projects-mobile-project-files-head">
