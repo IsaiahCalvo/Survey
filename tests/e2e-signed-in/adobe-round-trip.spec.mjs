@@ -57,12 +57,12 @@ async function upload(page, name, buffer) {
 async function openIfClosed(page, name, phone) {
   const back = page.getByRole('button', { name: phone ? 'Back to documents' : `Close ${name}` }).filter({ visible: true }).first();
   const row = page.getByText(name, { exact: true }).filter({ visible: true }).first();
-  await expect(back.or(row)).toBeVisible({ timeout: 60_000 });
+  await expect(back.or(row).first()).toBeVisible({ timeout: 60_000 });
   await page.waitForTimeout(1_500);
   if (await back.isVisible().catch(() => false)) return;
   await row.click();
   const open = page.getByRole('button', { name: 'Open file' }).filter({ visible: true }).first();
-  await expect(back.or(open)).toBeVisible({ timeout: 20_000 });
+  await expect(back.or(open).first()).toBeVisible({ timeout: 20_000 });
   if (await open.isVisible().catch(() => false)) await open.click();
 }
 
