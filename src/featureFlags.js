@@ -393,6 +393,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Projects: project settings (cover picture, description, company-wide access), close and reopen a project, leave a project, role guide',
     stage: 'beta',
   }),
+  'team-plus': Object.freeze({
+    label: 'Team page: a note in the invite email, invite many people from a CSV file (Email, Role), download the team list as a CSV',
+    stage: 'beta',
+  }),
   spotlight: Object.freeze({
     label: 'Spotlight: share your view from the people list; others follow your document, page and zoom (green frame, N following)',
     stage: 'beta',

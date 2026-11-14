@@ -36,6 +36,11 @@ import { C } from '../uiPalette';
 import { useTooltip } from '../components/Tooltip';
 import ValueSelect from '../components/ValueSelect.jsx';
 import { listMemberProjectEdits } from '../services/memberActivity.js';
+import { isFeatureOn } from '../featureFlags.js';
+import { saveFile } from '../tools/browser.js';
+import {
+  INVITE_CSV_EXAMPLE, INVITE_NOTE_MAX, csvRoleSummary, parseInviteCsv, teamCsv, teamCsvFileName,
+} from '../teamPlus/teamCsv.js';
 import { menuAtButton, menuIconFor, menuRowHeight } from '../utils/menuItems.js';
 import {
   createProjectInvite,
@@ -204,6 +209,11 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
   const [success, setSuccess] = React.useState("");
   const [activeInvite, setActiveInvite] = React.useState(null); // last minted link invite
   const [sendEntries, setSendEntries] = React.useState(null); // last send needing a follow-up
+  // Nightly team-plus: a note in the email and a CSV of people (Email, Role).
+  const [teamPlusOn] = React.useState(() => isFeatureOn('team-plus'));
+  const [note, setNote] = React.useState("");
+  const [csv, setCsv] = React.useState(null); // { name, rows, problems } | null
+  const csvInputRef = React.useRef(null);
   const cardRef = React.useRef(null);
 
   // Accessibility (KAL-66): the shared modal primitive — Tab stays inside the
@@ -255,21 +265,42 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
   const sendInvites = async () => {
     setError(""); setSuccess("");
     if (blockedReason) { setError(blockedReason); return; }
-    const list = parseEmails(emails);
-    if (!list.length) { setError('Enter at least one valid email.'); return; }
+    const people = csv?.rows?.length
+      ? csv.rows
+      : parseEmails(emails).map((email) => ({ email, role: emailRole }));
+    if (!people.length) { setError('Enter at least one valid email.'); return; }
     setSendEntries(null);
     setBusy(true);
-    const results = await Promise.all(list.map((addr) => createProjectInvite({
+    const message = teamPlusOn ? note.trim().slice(0, INVITE_NOTE_MAX) : '';
+    const results = await Promise.all(people.map(({ email: addr, role }) => createProjectInvite({
       projectId,
-      role: emailRole.toLowerCase(),
+      role: role.toLowerCase(),
       email: addr,
       currentUser,
       projectName: project?.name || '',
       inviterName,
+      message,
     })));
     setBusy(false);
-    showSendOutcome(list.map((email, i) => ({ email, result: results[i] })));
+    showSendOutcome(people.map(({ email }, i) => ({ email, result: results[i] })));
+    if (csv && results.every((r) => r?.success)) setCsv(null);
     onChanged?.();
+  };
+
+  const pickCsv = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setError(""); setSuccess("");
+    let text = '';
+    try { text = await file.text(); } catch { setError('That file could not be read.'); return; }
+    const parsed = parseInviteCsv(text, { fallbackRole: emailRole });
+    if (!parsed.rows.length) { setCsv(null); setError(parsed.problems[0] || 'No email addresses in that file.'); return; }
+    setCsv({ name: file.name, ...parsed });
+  };
+
+  const downloadCsvExample = () => {
+    void saveFile(new Blob([INVITE_CSV_EXAMPLE], { type: 'text/csv' }), 'invite-example.csv');
   };
 
   /* inviteFix: one plain summary (inviteSendSummary.js) instead of
@@ -345,6 +376,27 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
               </div>
             </div>
             <div style={{ fontSize: 11, color: INK_200, marginTop: 8, lineHeight: 1.4 }}>Separate addresses with commas. Each invitee gets an email with a link to join as {emailRole}.</div>
+            {teamPlusOn && (
+              <>
+                <textarea value={note} maxLength={INVITE_NOTE_MAX} onChange={(e) => setNote(e.target.value)} placeholder="Add a note to the email (optional)" rows={2} aria-label="Note in the invite email" data-invite-note
+                  style={{ width: "100%", marginTop: 10, background: INK_800, border: `1px solid ${INK_500_FIELD}`, borderRadius: 6, padding: "8px 11px", fontSize: 13, fontFamily: "inherit", color: BONE_100, resize: "vertical", outline: "none", lineHeight: 1.45, boxSizing: "border-box" }} />
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8, flexWrap: "wrap" }}>
+                  <button type="button" className="hub-btn" data-invite-csv-pick onClick={() => csvInputRef.current?.click()} disabled={busy}>
+                    <Icon name="upload" size={12} />Invite from a CSV file
+                  </button>
+                  <button type="button" className="hub-link-btn" data-invite-csv-example onClick={downloadCsvExample} style={{ border: 0, background: "transparent", color: INK_200, fontSize: 12, padding: 0, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 2 }}>Download an example</button>
+                  <input ref={csvInputRef} type="file" accept=".csv,text/csv,text/plain" hidden data-invite-csv onChange={pickCsv} />
+                </div>
+                {csv && (
+                  <div data-invite-csv-summary style={{ marginTop: 8, fontSize: 12, color: BONE_200, lineHeight: 1.45 }}>
+                    <span>{csv.rows.length} {csv.rows.length === 1 ? 'person' : 'people'} from {csv.name}: {csvRoleSummary(csv.rows)}. </span>
+                    <button type="button" onClick={() => setCsv(null)} style={{ border: 0, background: "transparent", color: INK_200, fontSize: 12, padding: 0, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 2 }}>Clear</button>
+                    {csv.problems.slice(0, 3).map((p) => <div key={p} style={{ color: INK_200, fontSize: 11 }}>{p}</div>)}
+                    {csv.problems.length > 3 && <div style={{ color: INK_200, fontSize: 11 }}>And {csv.problems.length - 3} more.</div>}
+                  </div>
+                )}
+              </>
+            )}
           </div>
           {(blockedReason || error) && (
             <div style={{ background: "var(--alert-danger-bg)", border: "var(--alert-danger-border)", borderRadius: "var(--alert-radius)", padding: "8px 10px", color: BONE_100, fontSize: 12 }}>
@@ -370,7 +422,7 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
           {/* UX (KAL-73): invite sends are a network round-trip over 500ms, so the
               button takes the shared loading treatment — 14px ring on the left,
               present-participle label, disabled until the request resolves. */}
-          <button disabled={busy || !emails.trim() || !!blockedReason} onClick={sendInvites} className="hub-btn hub-btn--primary">{busy && <Spinner size={14} color="var(--accent-text)" trackColor="var(--accent-text-track)" />}{busy ? "Sending invite…" : `Send ${emailRole} invite`}</button>
+          <button disabled={busy || (!emails.trim() && !csv?.rows?.length) || !!blockedReason} onClick={sendInvites} className="hub-btn hub-btn--primary" data-invite-send>{busy && <Spinner size={14} color="var(--accent-text)" trackColor="var(--accent-text-track)" />}{busy ? "Sending invite…" : (csv?.rows?.length ? `Send ${csv.rows.length} ${csv.rows.length === 1 ? 'invite' : 'invites'}` : `Send ${emailRole} invite`)}</button>
         </div>
       </div>
     </div>
@@ -492,6 +544,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
         role: roleLabel(r.role),
         color: colorFor(r.user_id),
         added: fmtDate(r.created_at),
+        access: r.access_source === 'company' ? 'Company' : 'Invited',
         isCreator: false,
       }));
     return [...seedMembers, ...collabs];
@@ -513,6 +566,15 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
   const myId = currentUser?.id ?? null;
   const canManageMembers = myId != null && memberList.some((m) => m.userId === myId
     && (m.isCreator || String(m.role).toLowerCase() === 'owner'));
+
+  const [teamPlusOn] = React.useState(() => isFeatureOn('team-plus'));
+  const downloadTeam = () => {
+    const rows = [
+      ...memberList.map((m) => ({ name: m.name, email: m.email, role: m.isCreator ? 'Owner' : m.role, status: 'Active', access: m.isCreator ? 'Owner' : (m.access || 'Invited'), added: m.added || '' })),
+      ...pendingInvites.filter((i) => i.target_email).map((i) => ({ name: '', email: i.target_email, role: roleLabel(i.intended_role || i.role), status: 'Invited', access: 'Invited', added: fmtDate(i.created_at) })),
+    ];
+    void saveFile(new Blob([teamCsv(rows)], { type: 'text/csv' }), teamCsvFileName(projectName));
+  };
 
   if (!open) return null;
 
@@ -692,6 +754,11 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
               <div style={{ fontSize: 11, letterSpacing: 0, color: INK_200, fontWeight: 600 }}>Manage team</div>
               <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: -0.015, marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{project.name}</div>
             </div>
+            {teamPlusOn && (
+              <button aria-label="Download team list" {...tip('Download team list (CSV)', 'below')} data-team-csv className="hub-btn hub-btn--icon" onClick={downloadTeam}>
+                <Icon name="download" size={13} />
+              </button>
+            )}
             <button onClick={() => setInviteOpen(true)} className="hub-btn hub-btn--primary">
               <Icon name="plus" size={11}/>Invite
             </button>
