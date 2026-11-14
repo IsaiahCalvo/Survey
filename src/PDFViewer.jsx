@@ -405,6 +405,7 @@ import { bookmarkDeleteMessage, removeBookmarkWithDescendants, restoreRemovedBoo
 import { useYDoc } from './hooks/useYDoc.js';
 import { useZoomState } from './hooks/useZoomState';
 import { isFeatureOn } from './featureFlags.js';
+import { planOutsideEditReconcile } from './utils/pdfOutsideEdits.js';
 import { setStampPickerOpen, useStampPickerOpen } from './components/StampPickerCard.jsx';
 import { setSignatureCardOpen, useSignatureCardOpen } from './components/SignatureCard.jsx';
 import { pickImageToInsert } from './components/InsertImage.jsx';
@@ -24841,6 +24842,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         {
           returnBytes: true,
           actionType: 'pdf-export',
+          authorName: user?.user_metadata?.full_name || null,
           documentId: pdfFile?.id || null,
           pageTransformations,
           callouts: calloutsWithoutHiddenLayers(callouts, hiddenLayerIds),
@@ -24872,6 +24874,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         }
         console.log('[PDFSaveExport] action complete ' + JSON.stringify({
           actionType: 'pdf-export',
+          authorName: user?.user_metadata?.full_name || null,
           documentId: pdfFile?.id || null,
           supabaseAnnotationSaveRan: false,
           pdfBytesGenerated: true,
@@ -24924,6 +24927,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       showToast(`Export failed: ${err?.message || err}`, 'error');
     }
   }, [
+    user?.user_metadata?.full_name,
     annotationsByPage,
     callouts,
     deletedPdfAnnotations,
@@ -25110,6 +25114,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       return { ok: false, error: `Export failed: ${err?.message || err}` };
     }
   }, [
+    user?.user_metadata?.full_name,
     annotationsByPage,
     callouts,
     deletedPdfAnnotations,
@@ -30425,7 +30430,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     (async () => {
       try {
         const rawPdfBytes = await readOriginalPdfBytes(pdfFile, pdfDoc);
-        const { annotationsByPage: importedWithSource, nativeLayerPolicyByPage } =
+        const { annotationsByPage: importedWithSource, nativeLayerPolicyByPage, appLayerState, rawAnnotationIdsByPage } =
           await importAnnotationsFromPdf(pdfDoc, { rawPdfBytes });
         if (cancelled) return;
         // w33: the store keeps one geometry per imported mark, not the PDF's
@@ -30438,13 +30443,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         const totalImported = Object.values(importedAnnotations || {})
           .reduce((n, pg) => n + (Array.isArray(pg?.objects) ? pg.objects.length : 0), 0);
         const importedIds = [];
+        // Nightly 'outside-edits' (pdfOutsideEdits.js): a Survey export that
+        // comes back as a new version brings the marks another app changed
+        // or deleted, where Survey's copy is unchanged since that export.
+        const exportedMarks = isFeatureOn('outside-edits') && Array.isArray(appLayerState?.exportedMarks)
+          ? appLayerState.exportedMarks
+          : [];
+        const unreadablePages = new Set(embeddedImportFailedPages(nativeLayerPolicyByPage));
+        const pageKeys = new Set(Object.keys(importedAnnotations || {}));
+        exportedMarks.forEach((entry) => { if (Number(entry?.page) > 0) pageKeys.add(String(entry.page)); });
 
-        if (totalImported > 0) {
+        if (totalImported > 0 || exportedMarks.length > 0) {
           setPdfNativeAnnotationLayerPolicyByPage(nativeLayerPolicyByPage || {});
-          Object.entries(importedAnnotations || {}).forEach(([pageKey, pageData]) => {
+          pageKeys.forEach((pageKey) => {
             const pageNumber = Number(pageKey);
+            const pageData = importedAnnotations?.[pageKey];
             const objects = Array.isArray(pageData?.objects) ? pageData.objects : [];
-            if (objects.length === 0) return;
+            if (objects.length === 0 && exportedMarks.length === 0) return;
             const current = annotationsByPageRef.current?.[pageKey]
               || annotationsByPageRef.current?.[pageNumber]
               || { objects: [] };
@@ -30454,11 +30469,27 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
               existingIds,
               deletedPdfAnnotations: durableDeletedPdfAnnotationsRef.current,
             });
-            if (stamped.length === 0) return;
-            stamped.forEach((object) => importedIds.push(object.id));
+            const { replace, remove } = exportedMarks.length > 0
+              ? planOutsideEditReconcile({
+                pageNumber,
+                imported: selectEmbeddedImportObjects(objects, pageNumber),
+                current: currentObjects,
+                exportedMarks,
+                rawIds: rawAnnotationIdsByPage ? (rawAnnotationIdsByPage[pageNumber] || []) : null,
+                pageUnreadable: unreadablePages.has(pageNumber),
+              })
+              : { replace: new Map(), remove: new Set() };
+            if (stamped.length === 0 && replace.size === 0 && remove.size === 0) return;
+            const keptObjects = (replace.size > 0 || remove.size > 0)
+              ? currentObjects
+                .filter((o) => !remove.has(String(o?.id || o?.data?.id)))
+                .map((o) => replace.get(String(o?.id || o?.data?.id)) || o)
+              : currentObjects;
+            const writtenIds = [...stamped.map((object) => object.id), ...replace.keys()];
+            writtenIds.forEach((id) => importedIds.push(id));
             // 2026-10-07: saved as one checkpoint, apart from the user's edits.
-            annotationDocBeginBulkImport(stamped.map((object) => object.id));
-            handleSaveAnnotations(pageNumber, { ...current, objects: [...currentObjects, ...stamped] }, {
+            annotationDocBeginBulkImport(writtenIds);
+            handleSaveAnnotations(pageNumber, { ...current, objects: [...keptObjects, ...stamped] }, {
               source: 'embedded-import-once',
               action: 'import-pdf-annotations',
               checkpointPolicy: 'skip',
@@ -30473,6 +30504,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
             pages: Object.keys(importedAnnotations || {}).length,
             totalImported,
             added: importedIds.length,
+            outsideEditsChecked: exportedMarks.length,
           }));
         }
 
