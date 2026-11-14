@@ -11,6 +11,9 @@ import { E2E_ACCOUNTS, E2E_BASE_URL } from './accounts.mjs';
 import { expect, test } from './helpers.mjs';
 
 const HOST = 'https://teams.microsoft.com/_survey-e2e-host';
+// The stand-in page is answered by the test itself; nothing else may leave
+// the machine (helpers.mjs aborts every other non-local request).
+const LOCAL_HOSTS = new Set(['127.0.0.1', 'localhost']);
 
 // The stand-in is a public https address framing the local dev server on
 // 127.0.0.1; Chromium's private-network rules would refuse that frame, which
@@ -36,6 +39,12 @@ const hostPage = (src) => `<!doctype html><html><head><meta charset="utf-8"><tit
 
 test('inside Teams the tab says it is ready and offers email sign-in only', async ({ page, context }) => {
   test.setTimeout(120_000);
+  expect(LOCAL_HOSTS.has(new URL(E2E_BASE_URL).hostname)).toBe(true);
+  const outside = [];
+  page.on('request', (req) => {
+    const url = new URL(req.url());
+    if (!LOCAL_HOSTS.has(url.hostname) && !req.url().startsWith(HOST) && !['data:', 'blob:'].includes(url.protocol)) outside.push(req.url());
+  });
   await context.route(`${HOST}**`, (route) => route.fulfill({ status: 200, contentType: 'text/html', body: hostPage(`${E2E_BASE_URL}/teams`) }));
   await page.goto(HOST);
   const tab = page.frameLocator('#tab');
@@ -53,6 +62,8 @@ test('inside Teams the tab says it is ready and offers email sign-in only', asyn
   await dialog.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(dialog).toBeHidden();
   await expect(tab.getByRole('button', { name: 'Projects', exact: true }).filter({ visible: true }).first()).toBeVisible({ timeout: 45_000 });
+  // Asked for, never answered: helpers.mjs aborted each one.
+  expect(outside.every((u) => !u.includes('supabase.co'))).toBe(true);
 });
 
 test('the same address outside Teams never loads the Teams library', async ({ page }) => {
