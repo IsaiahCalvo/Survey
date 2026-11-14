@@ -69,6 +69,7 @@ export default function SurveyHub({
   uploadBusy = false,
   onCreateProject,
   onRenameProject,
+  onProjectsChanged,
   onCreateTemplate,
   onDeleteProjects,
   onDuplicateProjects,
@@ -255,6 +256,7 @@ export default function SurveyHub({
             onOpenDocument={(document) => onOpenDocument?.(document, 'projects')}
             onCreateProject={onCreateProject}
             onRenameProject={onRenameProject}
+            onProjectsChanged={onProjectsChanged}
             onUpload={onUpload}
             onDropFiles={onDropFiles}
             onDeleteProjects={onDeleteProjects}

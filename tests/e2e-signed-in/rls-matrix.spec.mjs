@@ -88,6 +88,7 @@ async function seedOwnerRows(admin, ids) {
   await must('project_item_comments', admin.from('project_item_comments').insert({ item_id: rlsItem.id, author_id: owner, body: 'rls sweep' }));
   // Project photos (Nightly): the project's members read them and their links.
   const RLS_PHOTO = 'e2e00000-0000-4000-8000-0000000005b1';
+  await must('clear project_photos', admin.from('project_photos').delete().eq('project_id', PROJECT));
   await must('project_photos', admin.from('project_photos').insert({ id: RLS_PHOTO, project_id: PROJECT, path: `${PROJECT}/${RLS_PHOTO}.jpg` }));
   await must('project_photo_links', admin.from('project_photo_links').insert({ photo_id: RLS_PHOTO, item_id: rlsItem.id, project_id: PROJECT }));
   await replace('mark_library_items', 'created_by', owner, {
@@ -339,7 +340,11 @@ test('signed-out callers, strangers and viewers cannot change or delete the owne
     const before = await snapshot(rows);
     for (const [table, [column, value]] of Object.entries(rows)) {
       for (const patch of PATCHES(ids[key] || ids.free)) await client.from(table).update(patch).eq(column, value);
-      await client.from(table).delete().eq(column, value);
+      // A member may delete their OWN row: that is Leave project (Nightly
+      // project-access; project-access.spec covers it). Everyone else's row
+      // must still be safe from the viewer.
+      if (key === 'viewer' && table === 'project_collaborators') await client.from(table).delete().eq(column, value).neq('user_id', ids.viewer);
+      else await client.from(table).delete().eq(column, value);
     }
     const after = await snapshot(rows);
     for (const table of Object.keys(rows)) {

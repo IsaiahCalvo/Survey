@@ -3146,6 +3146,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         uploadBusy={activeUploads > 0 || uploadInFlight}
         onCreateProject={handleCreateProjectClick}
         onRenameProject={hubRenameProject}
+        onProjectsChanged={refetchProjects}
         onCreateTemplate={openTemplateModal}
         onDeleteProjects={hubDeleteProjects}
         onDuplicateProjects={hubDuplicateProjects}
