@@ -62,6 +62,7 @@ export default function SurveyHub({
   onOpenDocument,
   onUpload,
   onOpenFromDrive = null,
+  onAddFromDrive = null,
   onOpenFromGoogleDrive = null,
   /* PDFs dragged in from the computer: (files, { projectId, projectName }).
      Without it the home screen takes no drops (the dev preview). */
@@ -257,6 +258,7 @@ export default function SurveyHub({
             onCreateProject={onCreateProject}
             onRenameProject={onRenameProject}
             onProjectsChanged={onProjectsChanged}
+            onAddFromDrive={onAddFromDrive}
             onUpload={onUpload}
             onDropFiles={onDropFiles}
             onDeleteProjects={onDeleteProjects}

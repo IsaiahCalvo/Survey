@@ -1969,16 +1969,21 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
   // becomes a normal Survey document (marks live in Survey, like Drawboard),
   // linked to the drive file so the viewer saves the marked-up PDF back to it.
   const [drivePickerOpen, setDrivePickerOpen] = useState(false);
+  // The project a OneDrive / SharePoint pick goes into (null: open on its own).
+  const [driveTargetProject, setDriveTargetProject] = useState(null);
   const canOpenFromDrive = Boolean(user) && isFeatureOn('drive-sync-back');
   // Google's Picker needs a browser key; without one the entry stays hidden.
   const canOpenFromGoogleDrive = canOpenFromDrive && Boolean(googlePickerApiKey());
-  const openFromDrive = async (picked) => {
+  const openFromDrive = async (picked, { project = null } = {}) => {
     const got = await fetchDrivePdf(picked);
     if (got.error) { showToast(got.error, 'warn'); return false; }
     const place = drivePlace(got);
     let documentId = null;
     const outcome = await uploadBrowserPdf(got.file, {
-      openAfterUpload: true,
+      // Into a project (Drawboard Projects' "New drawing > OneDrive"): added
+      // to the project's files, not opened.
+      projectId: project?.id || null,
+      openAfterUpload: !project,
       askDuplicates: false,
       onDocument: (doc) => { documentId = doc?.id || null; },
     });
@@ -1991,7 +1996,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       showToast(`It opened, but won’t save back to ${place}: ${linked.error}`, 'warn');
     } else {
       announceDriveLinkChanged(documentId);
-      showToast(`${got.file.name} opened from ${place}. Your marks save back to it.`, 'success');
+      showToast(project
+        ? `${got.file.name} added to ${project.name || 'the project'} from ${place}. Marks save back to it.`
+        : `${got.file.name} opened from ${place}. Your marks save back to it.`, 'success');
     }
     return true;
   };
@@ -3094,7 +3101,11 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
   return (
     <>
       {drivePickerOpen && (
-        <DriveFilePicker onPick={openFromDrive} onClose={() => setDrivePickerOpen(false)} />
+        <DriveFilePicker
+          onPick={(picked) => openFromDrive(picked, { project: driveTargetProject })}
+          onClose={() => { setDrivePickerOpen(false); setDriveTargetProject(null); }}
+          intoName={driveTargetProject?.name || null}
+        />
       )}
       <DismissBarrier
         active={showUserDropdown}
@@ -3140,7 +3151,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         isPro={!!features?.advancedSurvey}
         onOpenDocument={hubOpenDocument}
         onUpload={handleUploadClick}
-        onOpenFromDrive={canOpenFromDrive ? () => setDrivePickerOpen(true) : null}
+        onOpenFromDrive={canOpenFromDrive ? () => { setDriveTargetProject(null); setDrivePickerOpen(true); } : null}
+        onAddFromDrive={canOpenFromDrive ? (project) => { setDriveTargetProject(project || null); setDrivePickerOpen(true); } : null}
         onOpenFromGoogleDrive={canOpenFromGoogleDrive ? openFromGoogleDrive : null}
         onDropFiles={handleDroppedFiles}
         uploadBusy={activeUploads > 0 || uploadInFlight}

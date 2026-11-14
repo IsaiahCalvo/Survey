@@ -26,10 +26,11 @@ function sizeText(bytes) {
  *   opens the picked PDF; the picker stays up (busy) until it settles and
  *   closes when it resolves true or nothing.
  * @param {() => void} props.onClose
+ * @param {string|null} [props.intoName] the project a pick is added to (title only)
  * @param {object} [props.call] driveCall, for tests
  * @param {object} [props.connect] connectMicrosoftForDrive, for tests
  */
-export default function DriveFilePicker({ onPick, onClose, call = driveCall, connect = connectMicrosoftForDrive }) {
+export default function DriveFilePicker({ onPick, onClose, intoName = null, call = driveCall, connect = connectMicrosoftForDrive }) {
   const [at, setAt] = useState('');
   const [placeName, setPlaceName] = useState('');
   const [listing, setListing] = useState(null); // { folders, places, files } | null while loading
@@ -102,7 +103,7 @@ export default function DriveFilePicker({ onPick, onClose, call = driveCall, con
 
   return (
     <DialogCard
-      title="Open from OneDrive"
+      title={intoName ? `Add to ${intoName} from OneDrive` : 'Open from OneDrive'}
       message="Pick a PDF. Survey saves your marks back to it in OneDrive."
       onClose={onClose}
       busy={Boolean(busy) && busy !== 'connect'}

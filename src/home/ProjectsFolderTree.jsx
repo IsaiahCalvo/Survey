@@ -220,6 +220,7 @@ export default function ProjectsFolderTree({
   onShare,
   onShareDocument,
   onProjectsChanged,
+  onAddFromDrive = null,
 }) {
   // Nightly offline-docs: "Make available offline" in the file menu.
   const { downloadDocument: downloadForOffline, fileStamp } = useStorage();
@@ -1334,6 +1335,9 @@ export default function ProjectsFolderTree({
                   {/* Add files — opens the OS file picker; picked PDFs are
                       added to this project's document list. */}
                   <button className="btn" onClick={() => addFiles(open)}><Icon name="upload" size={12} />Add files</button>
+                  {onAddFromDrive && projectRoleFor(open) !== 'viewer' ? (
+                    <button className="btn" data-project-add-onedrive onClick={() => onAddFromDrive(open)}><Icon name="oneDrive" size={12} />From OneDrive</button>
+                  ) : null}
                   {/* Manage Team — opens the Manage Team modal (NOT the share
                       link modal) for the currently open project. */}
                   <button className="btn" onClick={() => setTeamModalProject(open)}><Icon name="users" size={12} />Manage team</button>
@@ -2306,6 +2310,10 @@ export default function ProjectsFolderTree({
               { icon: 'users', label: 'Add member', reason: ownerOnly, onClick: () => onShare && onShare(proj) },
               { label: 'Get link to project', onClick: () => onShare && onShare(proj) },
               { icon: 'upload', label: 'Upload files', reason: viewerBlocked, onClick: () => { setOpenId(proj.id); addFiles(proj); } },
+              // Nightly drive-sync-back: a OneDrive / SharePoint PDF into this
+              // project, linked so marks save back (Drawboard Projects'
+              // New drawing > OneDrive).
+              ...(onAddFromDrive ? [{ icon: 'oneDrive', label: 'Add from OneDrive', reason: viewerBlocked, onClick: () => onAddFromDrive(proj) }] : []),
               {
                 // Pin / unpin — toggles local pinned state; the row floats to
                 // the top of the list and shows a pin icon when pinned.
