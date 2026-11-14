@@ -136,6 +136,8 @@ export const MAX_CELL_CHARS = 32000;
 export const RECENT_WRITE_MS = 180_000;
 const RECENT_WRITE_MAX = 2000;
 const RECENT_APPENDS_MAX = 50;
+// Fewest reshuffled cells in one column taken as that column sorted by itself.
+const SHUFFLE_MIN = 4;
 // A PM typing a new item into the first empty row under the list, unsaved,
 // while Survey appends a field tech's new item there (Graph still sees the
 // row as empty): the PM's late save lands on the tech's row. A changed Item
@@ -810,6 +812,47 @@ export async function planSheetRound({
       }
     }
 
+    // One column sorted by itself, apart from the rest of each row (Excel on
+    // the web asks "Expand your selection?" and a PM picks "Just sort"; real
+    // Excel 11-14): the values stay but land on other items' rows, so every
+    // item would take another's value. Seen as a column whose changed cells
+    // hold exactly the values they held before, reshuffled: each item keeps
+    // its own value (or the one a tech just gave it) and it goes back in the
+    // sheet. A whole-list sort moves Row IDs with their rows and never shows
+    // up here; a swap of two or three cells is a person's edit.
+    const shuffled = new Set(); // `${markerId}|${key}`
+    {
+      const live = [];
+      for (const [markerId, r] of ownRow) {
+        const marker = markers[markerId];
+        const fields = nextBaseline[markerId]?.fields;
+        if (!marker || !inThisScope(marker) || !fields || shiftedRows.has(r)) continue;
+        live.push({ markerId, row: rows[r] || [], fields, sheetFps: fieldPrintsOf(sheetRecordOf(rows[r] || [], {})) });
+      }
+      for (const column of scope.columns) {
+        const key = column.key;
+        if (key === 'rowId' || !columnIsEditable(column) || !colOfKey.has(key)) continue;
+        const moved = live.filter((x) => {
+          const was = getFp(x.fields, key);
+          if (was == null || isLegacyPrint(was) || isCellError(x.row[colOfKey.get(key)])) return false;
+          return getFp(x.sheetFps, key) !== was;
+        });
+        if (moved.length < SHUFFLE_MIN) continue;
+        const tally = new Map();
+        for (const x of moved) tally.set(getFp(x.fields, key), (tally.get(getFp(x.fields, key)) || 0) + 1);
+        let same = true;
+        for (const x of moved) {
+          const fp = getFp(x.sheetFps, key);
+          const n = tally.get(fp) || 0;
+          if (!n) { same = false; break; }
+          tally.set(fp, n - 1);
+        }
+        if (!same) continue;
+        moved.forEach((x) => shuffled.add(`${x.markerId}|${key}`));
+        notice({ scopeId: scope.scopeId, message: `"${column.header}" in "${sheet.title}" was sorted by itself, apart from the rest of each row, so Survey put each value back on its own item (${moved.length} cells). To sort the list, select all of it first.` });
+      }
+    }
+
     const appendRows = [];
     const appendedIds = []; // the ids of appendRows, in order
     // Rows that are not items (a totals line, a heading): new items go above
@@ -1082,6 +1125,10 @@ export async function planSheetRound({
         if (errored) errorKeys.add(key);
         if (stuckKeys.has(key)) {
           setFp(sheetSide, key, base ? getFp(base, key) : getFp(appFps, key));
+          continue;
+        }
+        if (base && shuffled.has(`${markerId}|${key}`)) {
+          setFp(sheetSide, key, getFp(base, key)); // sorted apart from its row: the app's goes back
           continue;
         }
         // A column added this round is blank in the sheet: nothing changed
