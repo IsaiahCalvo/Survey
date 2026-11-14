@@ -1,6 +1,9 @@
 // "Open from OneDrive" (Nightly flag 'drive-sync-back'): walk OneDrive's
 // folders (and SharePoint folders added to it as shortcuts), or paste a link
 // to a PDF or a folder, and pick one PDF. Drawboard's "Add file > OneDrive".
+// The search box finds PDFs across OneDrive, SharePoint, Teams and files
+// shared with the person; an account with no OneDrive of its own (a guest)
+// opens on what was shared with it.
 // The server lists the folders with the person's Microsoft sign-in
 // (services/driveFilesClient.js); nothing here sees a Microsoft token.
 import { useCallback, useEffect, useState } from 'react';
@@ -39,6 +42,10 @@ export default function DriveFilePicker({ onPick, onClose, intoName = null, call
   const [pasteError, setPasteError] = useState('');
   const [busy, setBusy] = useState(null); // 'link' | 'connect' | itemId being opened
   const [round, setRound] = useState(0);
+  const [query, setQuery] = useState('');
+  const [found, setFound] = useState(null); // null: not searching | 'loading' | { files, error? }
+  const searchText = query.trim();
+  const noDrive = problem?.code === 'no_onedrive';
 
   useEffect(() => {
     let live = true;
@@ -59,6 +66,22 @@ export default function DriveFilePicker({ onPick, onClose, intoName = null, call
     });
     return () => { live = false; };
   }, [at, call, round]);
+
+  // Search as the person types; with no OneDrive, list what was shared.
+  useEffect(() => {
+    if (!searchText && !noDrive) { setFound(null); return undefined; }
+    let live = true;
+    setFound('loading');
+    const timer = setTimeout(() => {
+      call('driveBrowse', { search: searchText }).then((res) => {
+        if (!live) return;
+        setFound(res && !res.error
+          ? { files: Array.isArray(res.files) ? res.files : [] }
+          : { files: [], error: res?.error || 'Search did not work. Try again.' });
+      });
+    }, searchText ? 350 : 0);
+    return () => { live = false; clearTimeout(timer); };
+  }, [searchText, noDrive, call, round]);
 
   const pick = useCallback(async (file) => {
     if (busy) return;
@@ -100,6 +123,33 @@ export default function DriveFilePicker({ onPick, onClose, intoName = null, call
   const head = place ? [parts[0]] : [];
   const needsConnect = problem?.code === 'not_connected' || problem?.code === 'reconnect';
   const empty = listing && !listing.folders.length && !listing.places.length && !listing.files.length;
+  const fileRow = (f, meta) => (
+    <button
+      key={f.itemId}
+      type="button"
+      role="listitem"
+      className="sheet-sync-folder"
+      data-drive-file={f.name}
+      disabled={Boolean(busy) && busy !== f.itemId}
+      onClick={() => pick(f)}
+    >
+      {busy === f.itemId ? <Spinner size={14} color="currentColor" /> : <Icon name="document" size={14} color="currentColor" />}
+      <span>{f.name}</span>
+      <span className="sheet-sync-folder__meta" style={{ marginLeft: 'auto', opacity: 0.6, flex: 'none' }}>{meta}</span>
+    </button>
+  );
+  let searchBody = null;
+  if (found === 'loading') {
+    searchBody = (<><span className="sheet-sync-skeleton" /><span className="sheet-sync-skeleton is-short" /></>);
+  } else if (found) {
+    searchBody = found.files.length
+      ? found.files.map((f) => fileRow(f, f.where || sizeText(f.size)))
+      : (
+        <p className="sheet-sync-empty">
+          {found.error || (searchText ? `No PDFs match “${searchText}”.` : `${problem?.error || ''} No PDFs have been shared with you yet.`.trim())}
+        </p>
+      );
+  }
 
   return (
     <DialogCard
@@ -123,6 +173,28 @@ export default function DriveFilePicker({ onPick, onClose, intoName = null, call
         </div>
       ) : (
         <div className="sheet-sync-body sheet-sync-folders">
+          <div className="sheet-sync-code drive-picker-search">
+            <input
+              type="search"
+              aria-label="Find a PDF"
+              placeholder="Find a PDF by name"
+              autoComplete="off"
+              spellCheck={false}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Escape' && query) { e.stopPropagation(); setQuery(''); } }}
+            />
+          </div>
+          {searchBody ? (
+            <>
+              {noDrive && !searchText && found?.files?.length ? (
+                <p className="sheet-sync-empty" role="note">{problem.error} Shared with you:</p>
+              ) : null}
+              <div className="sheet-sync-folder-list" role="list" aria-label={searchText ? 'Search results' : 'Shared with you'} aria-busy={found === 'loading' || undefined}>
+                {searchBody}
+              </div>
+            </>
+          ) : (<>
           <nav className="sheet-sync-crumbs" aria-label="Folder">
             <button type="button" className="sheet-sync-crumb" onClick={() => setAt('')}>OneDrive</button>
             {place && (
@@ -160,24 +232,11 @@ export default function DriveFilePicker({ onPick, onClose, intoName = null, call
                     <span>{name}</span>
                   </button>
                 ))}
-                {listing.files.map((f) => (
-                  <button
-                    key={f.itemId}
-                    type="button"
-                    role="listitem"
-                    className="sheet-sync-folder"
-                    data-drive-file={f.name}
-                    disabled={Boolean(busy) && busy !== f.itemId}
-                    onClick={() => pick(f)}
-                  >
-                    {busy === f.itemId ? <Spinner size={14} color="currentColor" /> : <Icon name="document" size={14} color="currentColor" />}
-                    <span>{f.name}</span>
-                    <span className="sheet-sync-folder__meta" style={{ marginLeft: 'auto', opacity: 0.6, flex: 'none' }}>{sizeText(f.size)}</span>
-                  </button>
-                ))}
+                {listing.files.map((f) => fileRow(f, sizeText(f.size)))}
               </>
             )}
           </div>
+          </>)}
           <form className="sheet-sync-code" onSubmit={openLink}>
             <label htmlFor="drive-picker-link">File or folder in SharePoint or Teams? Paste its link.</label>
             <div className="sheet-sync-code__row">
