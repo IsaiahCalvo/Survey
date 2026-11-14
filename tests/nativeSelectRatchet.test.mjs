@@ -61,6 +61,9 @@ const ALLOWED = {
   // Other templates page size (beta 'home-templates'): the phone branch
   // keeps the browser's wheel; desktop uses ValueSelect.
   'src/home/PaperTemplatesDialog.jsx': 1,
+  // Photos filter Uploaded within (beta 'project-photos'): the phone branch
+  // keeps the browser's wheel; desktop uses ValueSelect.
+  'src/projectPhotos/ProjectPhotosPanel.jsx': 1,
 };
 
 // A JSX <select> element at the start of a line (comments that mention

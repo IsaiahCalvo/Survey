@@ -1,3 +1,5 @@
+import { isTeamsTab } from '../teams/teamsHost.js';
+
 const MOBILE_PATH = '/mobile';
 
 const currentLocation = () => (typeof window === 'undefined' ? null : window.location);
@@ -217,4 +219,6 @@ export const withUpgradeHint = (message, hint, windowObject) => (
 // reaches the app, so the button would sign people in to Chrome instead.
 // Bring it back on Android with a Custom Tab + app-link callback.
 // Web and Electron keep it.
-export const isGoogleSignInHidden = (windowObject) => getNativeAppPlatform(windowObject) !== null;
+// Inside a Microsoft Teams tab the sign-in sites refuse to open in the frame
+// (src/teams/teamsHost.js), so the buttons hide there too.
+export const isGoogleSignInHidden = (windowObject) => getNativeAppPlatform(windowObject) !== null || isTeamsTab(windowObject);

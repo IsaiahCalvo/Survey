@@ -261,6 +261,9 @@ export function describeEvent(event, { memberName = () => '', kind = 'issue' } =
       const after = Number(event.to_value) || 0;
       return after > before ? 'linked a document' : 'unlinked a document';
     }
+    // Nightly 'project-photos' (migration 20261114120000).
+    case 'photo_added': return 'added a photo';
+    case 'photo_removed': return 'removed a photo';
     case 'archived': return `archived the ${one}`;
     case 'unarchived': return `unarchived the ${one}`;
     default: return 'made a change';

@@ -53,7 +53,16 @@ export function describeProjectEvent(event, { memberName = () => '' } = {}) {
         ? `changed the revision of ${name} from ${q(event.from_value)} to ${q(event.to_value)}`
         : `set the revision of ${name} to ${q(event.to_value)}`;
     case 'member_added': return `added ${name || 'a teammate'} as ${roleWord(event.to_value)}`;
-    case 'member_removed': return `removed ${name || 'a teammate'}`;
+    case 'member_removed':
+      return event.actor_id && event.subject_id && event.actor_id === event.subject_id
+        ? 'left the project'
+        : `removed ${name || 'a teammate'}`;
+    case 'project_access': {
+      const word = (v) => (v === 'editor' ? 'everyone in the company as Editors' : v === 'viewer' ? 'everyone in the company as Viewers' : 'invited people only');
+      return `changed who can open the project from ${word(event.from_value)} to ${word(event.to_value)}`;
+    }
+    case 'project_closed': return 'closed the project';
+    case 'project_reopened': return 'reopened the project';
     case 'member_role': return `changed ${name || 'a teammate'} from ${roleWord(event.from_value)} to ${roleWord(event.to_value)}`;
     default: return 'made a change';
   }

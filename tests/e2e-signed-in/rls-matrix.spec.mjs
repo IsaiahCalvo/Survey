@@ -86,6 +86,11 @@ async function seedOwnerRows(admin, ids) {
     .insert({ project_id: PROJECT, kind: 'issue', title: 'RLS sweep issue', created_by: owner }).select('id').single();
   if (rlsItemError) throw new Error(`project_items: ${rlsItemError.message}`);
   await must('project_item_comments', admin.from('project_item_comments').insert({ item_id: rlsItem.id, author_id: owner, body: 'rls sweep' }));
+  // Project photos (Nightly): the project's members read them and their links.
+  const RLS_PHOTO = 'e2e00000-0000-4000-8000-0000000005b1';
+  await must('clear project_photos', admin.from('project_photos').delete().eq('project_id', PROJECT));
+  await must('project_photos', admin.from('project_photos').insert({ id: RLS_PHOTO, project_id: PROJECT, path: `${PROJECT}/${RLS_PHOTO}.jpg` }));
+  await must('project_photo_links', admin.from('project_photo_links').insert({ photo_id: RLS_PHOTO, item_id: rlsItem.id, project_id: PROJECT }));
   await replace('mark_library_items', 'created_by', owner, {
     library: 'personal', created_by: owner, name: 'RLS sweep item', payload: { version: 1, items: [] },
   });
@@ -146,6 +151,8 @@ const ownerRows = (ids) => ({
   project_items: ['project_id', PROJECT],
   project_item_events: ['project_id', PROJECT],
   project_item_comments: ['project_id', PROJECT],
+  project_photos: ['project_id', PROJECT],
+  project_photo_links: ['project_id', PROJECT],
   project_events: ['project_id', PROJECT],
   organizations: ['id', ORG],
   organization_members: ['organization_id', ORG],
@@ -164,7 +171,7 @@ const NOT_SWEPT = {
   email_send_events: 'service only', excel_sync_audit: 'service only', excel_sync_changesets: 'service only',
   excel_sync_head: 'service only', excel_sync_ops: 'service only', excel_sync_state: 'service only',
   integration_test_bytea_roundtrip: 'service only', invite_email_deliveries: 'service only',
-  login_only_apps: 'service only',
+  login_only_apps: 'service only', project_item_assign_emails: 'service only',
   pdf_r2_copies: 'service only', pdf_r2_deletes: 'service only', r2_usage_daily: 'service only',
   rowid_signing_secrets: 'service only', survey_agent_daily_usage: 'service only',
   sheet_sync_connections: 'service only', sheet_sync_pending_connections: 'service only',
@@ -206,6 +213,8 @@ const SHARED_WITH_COLLABORATORS = new Set([
   'survey_agent_memory',
   // So do the project's issues, their log and their discussion.
   'project_items', 'project_item_events', 'project_item_comments',
+  // And its photos and which items they are on.
+  'project_photos', 'project_photo_links',
   // And the project's Activity feed.
   'project_events',
 ]);
@@ -331,7 +340,11 @@ test('signed-out callers, strangers and viewers cannot change or delete the owne
     const before = await snapshot(rows);
     for (const [table, [column, value]] of Object.entries(rows)) {
       for (const patch of PATCHES(ids[key] || ids.free)) await client.from(table).update(patch).eq(column, value);
-      await client.from(table).delete().eq(column, value);
+      // A member may delete their OWN row: that is Leave project (Nightly
+      // project-access; project-access.spec covers it). Everyone else's row
+      // must still be safe from the viewer.
+      if (key === 'viewer' && table === 'project_collaborators') await client.from(table).delete().eq(column, value).neq('user_id', ids.viewer);
+      else await client.from(table).delete().eq(column, value);
     }
     const after = await snapshot(rows);
     for (const table of Object.keys(rows)) {
