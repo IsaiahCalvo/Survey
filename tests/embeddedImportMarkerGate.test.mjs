@@ -151,3 +151,11 @@ test('the viewer asks the w27 decision before the marker and retries next open, 
   assert.match(heldBack, /if \(!markerDecision\.write\) \{[\s\S]*excelSyncMetaSet\(EMBEDDED_IMPORT_INCOMPLETE_KEY[\s\S]*return;/);
   assert.doesNotMatch(heldBack, /embeddedImportFallbackDoneRef\.current = null/);
 });
+
+test('a file kept on this device imports the marks inside its PDF without a server role (2026-11-14)', () => {
+  // Signed out there is no role RPC, so the gate used to wait forever and a
+  // marked-up PDF opened from the computer showed none of its marks.
+  const viewer = fs.readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
+  assert.match(viewer, /role: yjsDocRole \?\? \(isDeviceDocumentId\(documentId\) \|\| \(documentOwnerId && user\?\.id && documentOwnerId === user\.id\) \? 'owner' : null\),/);
+  assert.equal(embeddedImportDecision({ role: 'owner', marker: null }), 'import');
+});
