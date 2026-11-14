@@ -16,6 +16,9 @@
 //               the built PDF straight to Microsoft, then calls drivePushed.
 // Graph answers 412 when the drive file changed since (a conflict), 404 when
 // it was moved or deleted, 403 when the person can't write to it.
+// The eTag also changes on a rename, a move or a SharePoint column edit, so
+// Survey keeps the cTag (content only) too: a 412 whose content is unchanged
+// is no conflict, and the push goes again with the fresh eTag.
 //
 // Who may do what: browse / open with your own Microsoft sign-in; link, push,
 // change settings: an editor or owner of the Survey document. Pushes use the
@@ -76,7 +79,7 @@ export function createDriveClient({ getAccessToken, fetch: fetchImpl = globalThi
     return parsed;
   }
   const itemPath = (driveId, itemId) => `drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(itemId)}`;
-  const SELECT = 'id,name,eTag,size,webUrl,file,folder,parentReference,lastModifiedDateTime,lastModifiedBy';
+  const SELECT = 'id,name,eTag,cTag,size,webUrl,file,folder,parentReference,lastModifiedDateTime,lastModifiedBy';
   return {
     async browse(folder = '') {
       const target = folderTarget(folder);
@@ -321,12 +324,23 @@ function graphProblem(err, { where = 'push', provider = 'msgraph' } = {}) {
   return new DriveError(`${company} could not be reached. Survey will try again.`, 502, 'graph');
 }
 
+// An account with no OneDrive of its own (a guest, or no OneDrive licence):
+// Graph answers 403 notAllowed (provisioningNotAllowed), 401 accessDenied or
+// 404 at the top of "my drive". It can still open SharePoint or Teams links.
+function noOwnDrive(err, folder) {
+  if (folderTarget(folder).driveId) return false;
+  const status = Number(err?.status);
+  const graphCode = String(err?.graphCode || '');
+  if (status === 401) return Boolean(graphCode) && !/token/i.test(graphCode);
+  return status === 403 || (status === 404 && !folder);
+}
+
 async function browse(ctx) {
   await requireBeta(ctx);
   if (providerOf(ctx.body.provider) === 'google') throw new DriveError('Pick Google Drive files with Google’s picker.', 400, 'use_picker');
   const client = await driveClientFor(ctx, ctx.user.id);
+  let folder = String(ctx.body.folder || '');
   try {
-    let folder = String(ctx.body.folder || '');
     let name;
     const pasted = String(ctx.body.folderLink || '').trim();
     if (pasted) {
@@ -346,7 +360,10 @@ async function browse(ctx) {
     const listed = await client.browse(folder);
     return { folder, ...(name ? { name } : {}), ...listed };
   } catch (err) {
-    if (Number(err?.status) === 404) return { folder: String(ctx.body.folder || ''), folders: [], places: [], files: [] };
+    if (!(err instanceof DriveError) && noOwnDrive(err, folder)) {
+      throw new DriveError('Your Microsoft account has no OneDrive. Paste a SharePoint or Teams link below.', 409, 'no_onedrive');
+    }
+    if (Number(err?.status) === 404) return { folder, folders: [], places: [], files: [] };
     throw graphProblem(err, { where: 'browse' });
   }
 }
@@ -379,7 +396,7 @@ async function open(ctx) {
   if (!isPdf) throw new DriveError(`That ${placeName(provider)} file is not a PDF.`, 400, 'not_pdf');
   const downloadUrl = provider === 'google' ? it.downloadUrl : it['@microsoft.graph.downloadUrl'];
   if (!downloadUrl) throw new DriveError(`${companyName(provider)} did not give a download link for that file.`, 502, 'graph');
-  const out = { provider, name: String(it.name), size: Number(it.size) || 0, eTag: it.eTag || null, webUrl: it.webUrl || null, downloadUrl, driveId, itemId };
+  const out = { provider, name: String(it.name), size: Number(it.size) || 0, eTag: it.eTag || null, cTag: it.cTag || null, webUrl: it.webUrl || null, downloadUrl, driveId, itemId };
   // Google's file address needs the sign-in; the token reaches only files the
   // person picked with Survey (drive.file) and ends within the hour.
   if (provider === 'google') out.accessToken = await client.accessToken();
@@ -397,6 +414,11 @@ async function link(ctx) {
   // The eTag of the bytes the app downloaded: a change at the source between
   // the download and this call is the first conflict, not a silent overwrite.
   const eTag = String(ctx.body.eTag || it.eTag || '') || null;
+  // The content tag of those bytes: the app's, or the drive's when the
+  // download is still the drive's version (else unknown: eTag rules alone).
+  const cTag = typeof ctx.body.cTag === 'string' && ctx.body.cTag
+    ? ctx.body.cTag
+    : (!ctx.body.eTag || ctx.body.eTag === it.eTag ? it.cTag || null : null);
   const now = new Date().toISOString();
   const row = {
     document_id: documentId,
@@ -406,6 +428,7 @@ async function link(ctx) {
     name: String(it.name || 'file.pdf').slice(0, 300),
     web_url: it.webUrl || null,
     etag: eTag,
+    ctag: cTag,
     linked_by: ctx.user.id,
     sync_minutes: DEFAULT_SYNC_MINUTES,
     sync_off: false,
@@ -428,7 +451,10 @@ async function status(ctx) {
   try {
     const client = await driveClientFor(ctx, row.linked_by, row.provider);
     const it = await client.item(row.drive_id, row.item_id);
-    out.changedAtSource = Boolean(row.etag && it?.eTag && it.eTag !== row.etag);
+    // A rename or move changes the eTag only; the cTag says if the PDF did.
+    out.changedAtSource = row.ctag && it?.cTag
+      ? it.cTag !== row.ctag
+      : Boolean(row.etag && it?.eTag && it.eTag !== row.etag);
     out.source = { name: it?.name || row.name, modifiedAt: it?.lastModifiedDateTime || null, modifiedBy: it?.lastModifiedBy?.user?.displayName || null };
   } catch (err) {
     const problem = graphProblem(err, { where: 'status', provider: row.provider });
@@ -450,12 +476,22 @@ async function push(ctx) {
   if (!row) throw new DriveError('This document is not linked to a drive file.', 404, 'not_linked');
   if (row.sync_off && !ctx.body.force) throw new DriveError(`Saving back to ${placeName(row.provider)} is turned off for this document.`, 409, 'sync_off');
   const client = await driveClientFor(ctx, row.linked_by, row.provider);
+  const origin = ORIGIN.test(String(ctx.body.appOrigin || '')) ? ctx.body.appOrigin : null;
   try {
     // force: the person chose "Keep Survey's version" in the conflict dialog.
-    const session = await client.uploadSession(row.drive_id, row.item_id, {
-      ifMatch: ctx.body.force ? null : row.etag,
-      origin: ORIGIN.test(String(ctx.body.appOrigin || '')) ? ctx.body.appOrigin : null,
-    });
+    let session;
+    try {
+      session = await client.uploadSession(row.drive_id, row.item_id, { ifMatch: ctx.body.force ? null : row.etag, origin });
+    } catch (err) {
+      // 412 after a rename, a move or a SharePoint column edit: same PDF, new
+      // eTag. Take the new eTag (and name) and go again, still with If-Match.
+      if (Number(err?.status) !== 412 || !row.ctag) throw err;
+      const it = await client.item(row.drive_id, row.item_id);
+      if (!it?.eTag || it.cTag !== row.ctag) throw err;
+      const fresh = { etag: it.eTag, name: String(it.name || row.name).slice(0, 300), web_url: it.webUrl || row.web_url, updated_at: new Date().toISOString() };
+      await ctx.service.from('document_drive_links').update(fresh).eq('document_id', documentId);
+      session = await client.uploadSession(row.drive_id, row.item_id, { ifMatch: it.eTag, origin });
+    }
     if (!session?.uploadUrl) throw new DriveError(`${companyName(row.provider)} did not open an upload.`, 502, 'graph');
     return { provider: row.provider, uploadUrl: session.uploadUrl, expiresAt: session.expirationDateTime || null };
   } catch (err) {
@@ -486,7 +522,9 @@ async function pushed(ctx) {
   if (ctx.body.late) {
     const sentSha = typeof ctx.body.sha === 'string' ? ctx.body.sha.toLowerCase() : null;
     const uploadedEtag = typeof ctx.body.eTag === 'string' ? ctx.body.eTag : null;
+    const uploadedCtag = typeof ctx.body.cTag === 'string' ? ctx.body.cTag : null;
     if (it?.sha256 && sentSha) changedSince = it.sha256 !== sentSha;
+    else if (uploadedCtag && it?.cTag) changedSince = it.cTag !== uploadedCtag;
     else if (uploadedEtag && it?.eTag) changedSince = it.eTag !== uploadedEtag;
     else changedSince = true;
   }
@@ -498,6 +536,7 @@ async function pushed(ctx) {
     : now;
   const patch = {
     etag: changedSince ? row.etag : (it?.eTag || row.etag),
+    ctag: changedSince ? (row.ctag ?? null) : (it?.cTag || null),
     name: String(it?.name || row.name).slice(0, 300),
     web_url: it?.webUrl || row.web_url,
     last_pushed_at: pushedAt,

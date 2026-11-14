@@ -117,7 +117,7 @@ export async function fetchDrivePdf({ driveId, itemId, provider = 'msgraph' }, {
   const opened = await call('driveOpen', { driveId, itemId, ...(provider === 'google' ? { provider } : {}) });
   if (!opened || opened.error) return { error: opened?.error || `Could not open that ${drivePlaceName(provider)} file.`, code: opened?.code || null };
   const file = await downloadDriveFile({ ...opened, provider }, fetchImpl);
-  return { file, provider, eTag: opened.eTag || null, driveId: opened.driveId || driveId, itemId: opened.itemId || itemId };
+  return { file, provider, eTag: opened.eTag || null, cTag: opened.cTag || null, driveId: opened.driveId || driveId, itemId: opened.itemId || itemId };
 }
 
 // ---- Google's Picker ------------------------------------------------------------

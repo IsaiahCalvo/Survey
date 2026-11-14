@@ -14,13 +14,16 @@ const DRIVE = 'b!drive1';
 function fakeGraph() {
   const g = { items: new Map(), uploads: new Map(), calls: [], next: 1 };
   g.add = (id, { name, bytes = 'pdf-1', readOnly = false, folder = '' } = {}) => {
-    g.items.set(id, { name, bytes, version: 1, readOnly, folder });
+    g.items.set(id, { name, bytes, version: 1, meta: 0, readOnly, folder });
     return id;
   };
   g.editAtSource = (id, bytes) => { const it = g.items.get(id); it.bytes = bytes; it.version += 1; };
+  // A rename (or a move, or a SharePoint column edit): a new eTag, same cTag.
+  g.renameAtSource = (id, name) => { const it = g.items.get(id); it.name = name; it.meta += 1; };
+  const eTagOf = (id, it) => (it.meta ? `"{${id}},${it.version}.${it.meta}"` : `"{${id}},${it.version}"`);
   const json = (status, body) => new Response(body === undefined ? null : JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
   const itemJson = (id, it) => ({
-    id, name: it.name, eTag: `"{${id}},${it.version}"`, size: it.bytes.length, webUrl: `https://contoso.example/${it.name}`,
+    id, name: it.name, eTag: eTagOf(id, it), cTag: `"c:{${id}},${it.version}"`, size: it.bytes.length, webUrl: `https://contoso.example/${it.name}`,
     file: { mimeType: 'application/pdf' }, parentReference: { driveId: DRIVE }, lastModifiedDateTime: '2026-11-10T12:00:00Z',
     lastModifiedBy: { user: { displayName: 'Pat Manager' } },
     '@microsoft.graph.downloadUrl': `https://dl.test/${id}?v=${it.version}`,
@@ -40,6 +43,10 @@ function fakeGraph() {
     }
     if (!/^Bearer tok-/.test(init.headers?.Authorization || '')) return json(401, { error: { code: 'InvalidAuthenticationToken' } });
     const path = decodeURIComponent(url.slice(BASE.length + 1)).replace(/\?.*$/, '');
+    if (method === 'GET' && path === 'me/drive/root/children' && g.noDrive) {
+      // What Graph really answers a guest with no OneDrive licence (11-14).
+      return json(403, { error: { code: 'notAllowed', innerError: { code: 'provisioningNotAllowed' }, message: 'You do not have access to create this personal site or you do not have a valid license' } });
+    }
     if (method === 'GET' && path === 'me/drive/root/children') {
       const value = [
         { name: 'Jobs', folder: { childCount: 1 } },
@@ -62,7 +69,7 @@ function fakeGraph() {
     if (method === 'POST' && m[3]) {
       if (it.readOnly) return json(403, { error: { code: 'accessDenied' } });
       const ifMatch = init.headers?.['If-Match'];
-      if (ifMatch && ifMatch !== `"{${m[2]}},${it.version}"`) return json(412, { error: { code: 'resourceModified' } });
+      if (ifMatch && ifMatch !== eTagOf(m[2], it)) return json(412, { error: { code: 'resourceModified' } });
       const uploadUrl = `https://up.test/${m[2]}/${g.next++}`;
       g.uploads.set(uploadUrl, { id: m[2] });
       return json(200, { uploadUrl, expirationDateTime: '2026-11-10T13:00:00Z' });
@@ -149,6 +156,62 @@ test('browse lists folders, SharePoint shortcuts and only the PDFs; a pasted lin
   assert.equal(pasted.file.itemId, 'PDF1');
   await rejects(call('owner-1', { action: 'driveBrowse', folderLink: 'http://plain' }), 'bad_link');
   await rejects(call('owner-1', { action: 'driveBrowse', folderLink: 'https://contoso.example/f/NOPE' }), 'bad_link');
+});
+
+test('an account with no OneDrive of its own is told so, and a pasted SharePoint link still opens', async () => {
+  const { graph, call } = setup({ roles: ROLES, flags: BETA });
+  graph.add('PDF1', { name: 'A-201 Plan.pdf' });
+  graph.noDrive = true;
+  await assert.rejects(call('owner-1', { action: 'driveBrowse' }), (err) => {
+    assert.equal(err.code, 'no_onedrive');
+    assert.match(err.message, /no OneDrive/);
+    return true;
+  });
+  const pasted = await call('owner-1', { action: 'driveBrowse', folderLink: 'https://contoso.example/f/PDF1' });
+  assert.equal(pasted.file.itemId, 'PDF1');
+});
+
+test('a rename in OneDrive is no conflict: the push goes again with the new eTag; a content change still is', async () => {
+  const { graph, db, call } = setup({ roles: ROLES, flags: BETA });
+  graph.add('PDF1', { name: 'A.pdf' });
+  const opened = await call('owner-1', { action: 'driveOpen', driveId: DRIVE, itemId: 'PDF1' });
+  assert.equal(opened.cTag, '"c:{PDF1},1"');
+  await call('owner-1', { action: 'driveLink', documentId: DOC, driveId: DRIVE, itemId: 'PDF1', eTag: opened.eTag, cTag: opened.cTag });
+  assert.equal(db.tables.document_drive_links.get(DOC).ctag, '"c:{PDF1},1"');
+
+  graph.renameAtSource('PDF1', 'A-201 Plan (rev B).pdf');
+  const status = await call('owner-1', { action: 'driveStatus', documentId: DOC, check: true });
+  assert.equal(status.changedAtSource, false, 'a rename is not a change to the PDF');
+  const { uploadUrl } = await call('owner-1', { action: 'drivePush', documentId: DOC });
+  assert.equal(db.tables.document_drive_links.get(DOC).name, 'A-201 Plan (rev B).pdf', 'the new name is kept');
+  const answer = await (await graph.fetch(uploadUrl, { method: 'PUT', body: 'survey-v2' })).json();
+  await call('owner-1', { action: 'drivePushed', documentId: DOC, sha: 'v2' });
+  assert.equal(graph.items.get('PDF1').bytes, 'survey-v2');
+  assert.equal(db.tables.document_drive_links.get(DOC).ctag, answer.cTag);
+
+  // A late confirm after a rename that came after Survey's upload: still Survey's write.
+  const second = await call('owner-1', { action: 'drivePush', documentId: DOC });
+  const up = await (await graph.fetch(second.uploadUrl, { method: 'PUT', body: 'survey-v3' })).json();
+  graph.renameAtSource('PDF1', 'A-201.pdf');
+  await call('owner-1', { action: 'drivePushed', documentId: DOC, sha: 'v3', late: true, eTag: up.eTag, cTag: up.cTag });
+  assert.equal(db.tables.document_drive_links.get(DOC).ctag, up.cTag);
+  assert.ok((await call('owner-1', { action: 'drivePush', documentId: DOC })).uploadUrl, 'no conflict after the rename');
+
+  // Rename and edit: a real conflict, nothing overwritten.
+  graph.renameAtSource('PDF1', 'A-201 final.pdf');
+  graph.editAtSource('PDF1', 'someone-else');
+  assert.equal((await call('owner-1', { action: 'driveStatus', documentId: DOC, check: true })).changedAtSource, true);
+  await rejects(call('owner-1', { action: 'drivePush', documentId: DOC }), 'conflict');
+  assert.equal(graph.items.get('PDF1').bytes, 'someone-else');
+});
+
+test('a link made before cTags were kept still raises a conflict on any eTag change', async () => {
+  const { graph, db, call } = setup({ roles: ROLES, flags: BETA });
+  graph.add('PDF1', { name: 'A.pdf' });
+  await call('owner-1', { action: 'driveLink', documentId: DOC, driveId: DRIVE, itemId: 'PDF1', eTag: '"{PDF1},1"' });
+  db.tables.document_drive_links.get(DOC).ctag = null;
+  graph.renameAtSource('PDF1', 'B.pdf');
+  await rejects(call('owner-1', { action: 'drivePush', documentId: DOC }), 'conflict');
 });
 
 test('the beta and a Microsoft sign-in are needed to browse and open', async () => {
@@ -268,6 +331,6 @@ test('every field the app sends to the drive actions passes the sheet-sync reque
   const { readFile } = await import('node:fs/promises');
   const src = await readFile(new URL('../supabase/functions/_shared/sheetSync/service.js', import.meta.url), 'utf8');
   const listed = new Set([...src.matchAll(/^\s+(\w+): s\.\w+\(/gm)].map((m) => m[1]));
-  const sent = ['action', 'documentId', 'driveId', 'itemId', 'eTag', 'sha', 'force', 'late', 'pushedAt', 'appOrigin', 'provider', 'check', 'syncMinutes', 'syncOff'];
+  const sent = ['action', 'documentId', 'driveId', 'itemId', 'eTag', 'cTag', 'sha', 'force', 'late', 'pushedAt', 'appOrigin', 'provider', 'check', 'syncMinutes', 'syncOff'];
   for (const key of sent) assert.ok(listed.has(key), `sheet-sync schema is missing "${key}"`);
 });
