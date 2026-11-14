@@ -12,10 +12,18 @@ import { E2E_ACCOUNTS } from './accounts.mjs';
 import { RUN } from './accountFixtures.mjs';
 import { adminClient, apiClientFor, expect, signIn, test } from './helpers.mjs';
 
-const MARKS = '[data-overlay-page="1"] [data-annotation-id]';
-const markIds = (page) => page.locator(MARKS).evaluateAll((nodes) => [...new Set(nodes.map((n) => n.getAttribute('data-annotation-id')))]);
+// Only the shown viewer counts: on a phone a closed document can stay
+// mounted, hidden, next to the one on screen.
+const markIds = (page) => page.evaluate(() => {
+  const isShown = (node) => node.checkVisibility({ visibilityProperty: true, opacityProperty: true });
+  const nodes = [...document.querySelectorAll('[data-overlay-page="1"]')].filter(isShown)
+    .flatMap((layer) => [...layer.querySelectorAll('[data-annotation-id]')]);
+  return [...new Set(nodes.map((n) => n.getAttribute('data-annotation-id')))];
+});
 const strokeOf = (page, id) => page.evaluate((markId) => {
-  const node = document.querySelector(`[data-overlay-page="1"] [data-annotation-id="${markId}"] rect[stroke], [data-overlay-page="1"] rect[data-annotation-id="${markId}"]`);
+  const isShown = (node) => node.checkVisibility({ visibilityProperty: true, opacityProperty: true });
+  const layer = [...document.querySelectorAll('[data-overlay-page="1"]')].find(isShown);
+  const node = layer?.querySelector(`[data-annotation-id="${markId}"] rect[stroke], rect[data-annotation-id="${markId}"]`);
   return node ? String(node.getAttribute('stroke') || '').toLowerCase() : null;
 }, id);
 
@@ -31,8 +39,8 @@ async function sourcePdf(label) {
 }
 
 async function expectPageDrawn(page) {
-  const pageDiv = page.locator('.survey-pdfjs-page-div[data-page-number="1"]').first();
-  await expect(pageDiv.locator('canvas').first()).toBeVisible({ timeout: 60_000 });
+  const pageDiv = page.locator('.survey-pdfjs-page-div[data-page-number="1"]').filter({ visible: true }).first();
+  await expect(pageDiv.locator('canvas').filter({ visible: true }).first()).toBeVisible({ timeout: 60_000 });
   await expect(pageDiv.locator('[data-svg-annotation-layer="1"]').first()).toBeAttached();
 }
 
@@ -42,6 +50,20 @@ async function upload(page, name, buffer) {
     page.getByRole('button', { name: 'Upload', exact: true }).filter({ visible: true }).first().click(),
   ]);
   await chooser.setFiles({ name, mimeType: 'application/pdf', buffer });
+}
+
+// The new version (or a reload) may land on the documents list instead of
+// the open file; open it from there.
+async function openIfClosed(page, name, phone) {
+  const back = page.getByRole('button', { name: phone ? 'Back to documents' : `Close ${name}` }).filter({ visible: true }).first();
+  const row = page.getByText(name, { exact: true }).filter({ visible: true }).first();
+  await expect(back.or(row)).toBeVisible({ timeout: 60_000 });
+  await page.waitForTimeout(1_500);
+  if (await back.isVisible().catch(() => false)) return;
+  await row.click();
+  const open = page.getByRole('button', { name: 'Open file' }).filter({ visible: true }).first();
+  await expect(back.or(open)).toBeVisible({ timeout: 20_000 });
+  if (await open.isVisible().catch(() => false)) await open.click();
 }
 
 const decode = (doc, dict, key) => {
@@ -126,6 +148,7 @@ test('Acrobat colour change and delete come back with "Upload as new version"', 
     await upload(page, name, edited);
     await page.getByRole('dialog', { name: 'You already have this file name' })
       .getByRole('button', { name: 'Upload as new version' }).click();
+    await openIfClosed(page, name, phone);
     await expectPageDrawn(page);
     await expect.poll(() => strokeOf(page, first), { timeout: 30_000 }).toBe('#0000ff');
     await expect.poll(() => markIds(page), { timeout: 20_000 }).toEqual([first]);
@@ -133,13 +156,7 @@ test('Acrobat colour change and delete come back with "Upload as new version"', 
     // It is stored, not just shown: a reload keeps both changes.
     await page.waitForTimeout(3_000);
     await page.reload({ waitUntil: 'domcontentloaded' });
-    const back = page.getByRole('button', { name: phone ? 'Back to documents' : `Close ${name}` });
-    const uploadButton = page.getByRole('button', { name: 'Upload', exact: true });
-    await expect(back.or(uploadButton).first()).toBeVisible({ timeout: 60_000 });
-    if (!(await back.first().isVisible())) {
-      await page.getByText(name, { exact: true }).filter({ visible: true }).first().click();
-      await page.getByRole('button', { name: 'Open file' }).filter({ visible: true }).first().click();
-    }
+    await openIfClosed(page, name, phone);
     await expectPageDrawn(page);
     await expect.poll(() => strokeOf(page, first), { timeout: 30_000 }).toBe('#0000ff');
     await expect.poll(() => markIds(page), { timeout: 20_000 }).toEqual([first]);
