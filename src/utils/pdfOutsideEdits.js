@@ -105,7 +105,7 @@ export function readableMarkSubject({ subtype = null, appType = null, hasCloudBo
   if (hasCloudBorder) return 'Cloud';
   if (type === 'highlighter' || type === 'highlight') return 'Highlight';
   if (type === 'survey-marker' || type === 'surveymarker') return 'Survey Marker';
-  return SUBJECT_BY_SUBTYPE[String(subtype || '').replace(/^\//, '')] || 'Markup';
+  return SUBJECT_BY_SUBTYPE[String(subtype || '').replace(/^\//, '')] || 'Annotation';
 }
 
 /**
