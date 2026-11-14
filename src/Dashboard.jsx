@@ -1303,7 +1303,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         projectId = selectedProjectId;
       }
 
-      if (uploadCheckOn()) {
+      // Signed out the file stays on this device and opens at once, like a
+      // dropped file: the sheet review only fills in upload details.
+      if (uploadCheckOn() && user) {
         event.target.value = '';
         const checked = await askUploadCheck([file], { projectId });
         if (!checked?.length) return;
