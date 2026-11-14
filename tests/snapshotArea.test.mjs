@@ -69,3 +69,10 @@ test('the release point makes the box, not the last rendered move', () => {
   assert.match(onUp, /const box = dragBox\(drag, at\);/);
   assert.doesNotMatch(onUp, /snapRef\.current/);
 });
+
+test('phones get Snapshot too; a finger runs it only where fingers run tools', () => {
+  const src = readFileSync(new URL('../src/components/SnapshotTool.jsx', import.meta.url), 'utf8');
+  assert.match(src, /!pointerMayUseTool\(event\.pointerType\)/);
+  const phone = readFileSync(new URL('../src/mobile/MobilePdfViewerChrome.jsx', import.meta.url), 'utf8');
+  assert.match(phone, /\{ id: 'snapshot', label: 'Snapshot', icon: 'snapshot', flag: 'snapshot-tool' \}/);
+});

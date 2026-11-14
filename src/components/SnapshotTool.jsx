@@ -3,7 +3,8 @@
 // over a page draws a box; the area (page + marks) is copied to the clipboard
 // as a picture. The box stays with 8 handles: carrying a handle or the box
 // copies again. A new drag replaces it; putting the tool down (Escape goes
-// to Pan) clears it. Mouse and pen only: a finger still pans.
+// to Pan) clears it. A finger runs it only where fingers run tools
+// (utils/pencilMode.js), so in Pencil only a finger still pans.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { composeThumbnail, releaseCanvas, renderPageToCanvas } from '../services/thumbnailRender.js';
@@ -15,6 +16,7 @@ import {
   renderTargetPx,
 } from '../utils/snapshotArea.js';
 import { showToast } from '../utils/toast.js';
+import { pointerMayUseTool } from '../utils/pencilMode.js';
 import './SnapshotTool.css';
 
 const PAGE_SELECTOR = '.survey-pdfjs-page-div[data-page-number]';
@@ -90,7 +92,7 @@ export default function SnapshotTool({ active, wrapperRef, pdfDoc, getMarkup }) 
     wrapper.setAttribute('data-snapshot-tool', 'true');
 
     const onDown = (event) => {
-      if (event.button !== 0 || event.pointerType === 'touch') return;
+      if (event.button !== 0 || !event.isPrimary || !pointerMayUseTool(event.pointerType)) return;
       const target = event.target instanceof Element ? event.target : null;
       if (!target || !wrapper.contains(target)) return;
       const handle = target.closest('[data-snapshot-handle]')?.getAttribute('data-snapshot-handle');
