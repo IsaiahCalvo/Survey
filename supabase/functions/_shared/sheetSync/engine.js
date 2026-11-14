@@ -910,7 +910,7 @@ export async function planSheetRound({
         }
         if (!same) continue;
         moved.forEach((x) => shuffled.add(`${x.markerId}|${key}`));
-        notice({ scopeId: scope.scopeId, message: `"${column.header}" in "${sheet.title}" was sorted by itself, apart from the rest of each row, so Survey put each value back on its own item (${moved.length} cells). To sort the list, select all of it first.` });
+        notice({ scopeId: scope.scopeId, message: `"${column.header}" in "${sheet.title}" was sorted by itself, apart from the rest of each row, so Survey put each value back on its own marker (${moved.length} cells). To sort the list, select all of it first.` });
       }
     }
 
@@ -941,7 +941,7 @@ export async function planSheetRound({
         const twinOf = markers[markerId];
         const typed = colOfKey.has('item') ? cellText(row[colOfKey.get('item')]).trim().toLowerCase() : '';
         if (twinOf && typed && typed === String(twinOf.name || '').trim().toLowerCase()) {
-          next.problems.push({ markerId, scopeId: scope.scopeId, message: `${where(r)} is a copy of the "${twinOf.name}" row, so it was not added. Give it its own name to add it as a new item.` });
+          next.problems.push({ markerId, scopeId: scope.scopeId, message: `${where(r)} is a copy of the "${twinOf.name}" row, so it was not added. Rename it to add it as a new marker.` });
           continue;
         }
         markerId = null;
@@ -1155,7 +1155,7 @@ export async function planSheetRound({
     // totals line. A note a PM typed far below (Z400) is not: new items
     // inserted above it landed at row 400 (real Excel 11-10).
     if (rowIdsMatched) {
-      notice({ scopeId: scope.scopeId, message: `${rowIdsMatched === 1 ? 'A hidden Row ID' : `${rowIdsMatched} hidden Row IDs`} in "${sheet.title}" changed (Find and Replace changes them too), so Survey matched ${rowIdsMatched === 1 ? 'the row' : 'each row'} to its own item and put the Row ID back.` });
+      notice({ scopeId: scope.scopeId, message: `${rowIdsMatched === 1 ? 'A hidden Row ID' : `${rowIdsMatched} hidden Row IDs`} in "${sheet.title}" changed (Find and Replace changes them too), so Survey matched ${rowIdsMatched === 1 ? 'the row' : 'each row'} to its own marker and put the Row ID back.` });
     }
     const firstSummary = summaryRows.filter((r) => r > lastItemRow && r <= lastItemRow + 3).sort((a, b) => a - b)[0];
     if (appendRows.length && lateSaves) {
