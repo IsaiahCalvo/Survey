@@ -184,3 +184,38 @@ test('the visible columns sorted without the Row ID column: every row goes back 
   const after = (await ctx.sheet()).rows.slice(first, first + words.length);
   after.forEach((row, i) => assert.deepEqual([row[cols[0]], row[cols[2]]], [`D-${101 + i}`, words[i]]));
 });
+
+test('two rows swapped without the Row ID column, names and all: both go back', async () => {
+  const yn = ['Y', 'N', 'Y', 'Y', 'N', 'N'];
+  const words = ['plum', 'fig', 'grape', 'peach', 'apple', 'pear'];
+  const markers = Object.fromEntries(words.map((w, i) => [`d${i + 1}`, door(`d${i + 1}`, `D-${101 + i}`, { checklistResponses: { c1: { selection: yn[i] } }, note: { text: w } })]));
+  const ctx = await setup({ markers });
+  await ctx.round(); await ctx.round({ force: true });
+  const head = (await ctx.sheet()).rows[0];
+  const cols = ['Item', 'Locked?', 'Notes'].map((h) => head.indexOf(h));
+  const first = await ctx.rowOf('d1');
+  const rows = (await ctx.sheet()).rows.slice(first, first + words.length);
+  // Sorted by Notes: only plum (D-101) and apple (D-105) trade places.
+  const sorted = [...rows].sort((a, b) => String(a[cols[2]]).localeCompare(String(b[cols[2]])));
+  const edits = [];
+  sorted.forEach((row, i) => cols.forEach((c) => edits.push({ row: first + i, col: c, value: row[c] ?? '' })));
+  await ctx.edit(edits);
+  await ctx.round({ force: true });
+  words.forEach((w, i) => {
+    const m = ctx.markers[`d${i + 1}`];
+    assert.deepEqual([m.name, m.checklistResponses.c1.selection, m.note.text], [`D-${101 + i}`, yn[i], w]);
+  });
+});
+
+test('a short Notes column sorted with only three cells moving still goes back when the whole column now reads in order', async () => {
+  const notes = ['plum', 'peach', '', 'tech a', 'tech b', 'banana'];
+  const markers = Object.fromEntries(notes.map((n, i) => [`d${i + 1}`, door(`d${i + 1}`, `D-${101 + i}`, { note: { text: n } })]));
+  const ctx = await setup({ markers });
+  await ctx.round(); await ctx.round({ force: true });
+  const col = (await ctx.sheet()).rows[0].indexOf('Notes');
+  const first = await ctx.rowOf('d1');
+  const sorted = ['banana', 'peach', 'plum', 'tech a', 'tech b', ''];
+  await ctx.edit(sorted.map((value, i) => ({ row: first + i, col, value })));
+  await ctx.round({ force: true });
+  assert.deepEqual(notes.map((_, i) => ctx.markers[`d${i + 1}`].note.text), notes);
+});
