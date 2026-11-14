@@ -204,11 +204,13 @@ export function useDriveSyncBack({
       // The eTag this upload made (Graph's item, Google's head revision), so a
       // late confirm can tell Survey's write from a later change in the drive.
       const uploadedEtag = uploaded?.eTag || uploaded?.headRevisionId || null;
+      const uploadedCtag = uploaded?.cTag || null;
       const pushedBody = {
         documentId,
         sha,
         pushedAt: new Date(startedAt).toISOString(),
         ...(uploadedEtag ? { eTag: uploadedEtag } : {}),
+        ...(uploadedCtag ? { cTag: uploadedCtag } : {}),
         ...(force ? { force: true } : {}),
       };
       let done = await call('drivePushed', pushedBody);

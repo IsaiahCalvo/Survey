@@ -1990,6 +1990,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     if (!documentId || outcome === 'failed' || outcome === 'skipped') return false;
     const linked = await driveCall('driveLink', {
       documentId, driveId: got.driveId, itemId: got.itemId, eTag: got.eTag,
+      ...(got.cTag ? { cTag: got.cTag } : {}),
       ...(got.provider === 'google' ? { provider: 'google' } : {}),
     });
     if (linked?.error) {
