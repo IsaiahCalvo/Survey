@@ -1077,8 +1077,10 @@ async function runRoundFor(ctx, link, { provider = null, signing = null, force =
       Object.assign(link, result.patch, { status: 'active', last_error: null, last_round_at: new Date().toISOString() });
     } else if (result.status === 'held') {
       // Someone is editing the sheet: nothing written; only the wait is kept.
-      await release({ last_round_at: new Date().toISOString(), state: result.state });
+      // The sheet's edits to existing items came in (with their baseline).
+      await release({ last_round_at: new Date().toISOString(), state: result.state, ...(result.baseline ? { baseline: result.baseline } : {}) });
       link.state = result.state;
+      if (result.baseline) link.baseline = result.baseline;
     } else if (result.status === 'retry') {
       // Rows kept moving (someone sorting or typing fast): say so, try later.
       const message = `The ${sheetName(link.provider)} kept changing while syncing. Trying again soon.`;
