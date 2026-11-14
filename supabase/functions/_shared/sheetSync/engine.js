@@ -1061,6 +1061,60 @@ export async function planSheetRound({
         notice({ scopeId: scope.scopeId, message: `Cells in ${list} in "${sheet.title}" were inserted or deleted on their own, apart from the rest of each row, so values moved onto other markers' rows. Survey put each value back on its own marker (${cells} cells)${typedRows ? `, and moved the new ${typedRows === 1 ? 'row' : 'rows'} typed in the gap under the list` : ''}. To add or remove a marker's row, insert or delete the entire row.` });
       }
 
+      // Cells deleted or inserted sideways in some rows ("Shift cells left"
+      // or "right"; real Excel 11-14): the rest of each such row slides into
+      // the next columns, so a note lands in Entity, a label in Locked?, and
+      // the cells they left read as cleared (3 notes and labels were wiped in
+      // the app). Seen as a row whose changed cells hold, each, the row's own
+      // value from `by` columns to the right (deleted) or left (inserted).
+      // Each value goes back to its own column; one pushed past the list's
+      // last column into an unheaded one is cleared.
+      const synced = scope.columns.filter((c) => c.key !== 'rowId' && colOfKey.has(c.key))
+        .map((c) => ({ key: c.key, col: colOfKey.get(c.key), editable: columnIsEditable(c) })).sort((a, b) => a.col - b.col);
+      const atCol = new Map(synced.map((c) => [c.col, c]));
+      const lastCol = synced.length ? synced[synced.length - 1].col : -1;
+      const header = rows[headerAt] || [];
+      let sideRows = 0; let sideCells = 0;
+      for (const x of rowsMoved ? [] : live) {
+        const changed = editable.filter((c) => usable(x, c.key) && getFp(x.sheetFps, c.key) !== getFp(x.fields, c.key) && !shuffled.has(`${x.markerId}|${c.key}`));
+        if (changed.length < 2) continue;
+        const c0 = Math.min(...changed.map((c) => colOfKey.get(c.key)));
+        for (const by of [1, 2, 3, -1, -2, -3]) {
+          let explained = 0; let filled = 0; let ok = true;
+          for (const c of synced) {
+            if (c.col < c0 || !c.editable) continue;
+            const was = getFp(x.fields, c.key);
+            const now = getFp(x.sheetFps, c.key);
+            const from = c.col + by;
+            let expect;
+            if (by < 0 && from < c0) expect = printOf(''); // the inserted blank cells
+            else if (atCol.has(from)) {
+              if (!atCol.get(from).editable || !usable(x, atCol.get(from).key)) continue;
+              expect = getFp(x.fields, atCol.get(from).key);
+            } else continue; // from a column outside the list: unknown
+            if (now !== expect) { ok = false; break; }
+            if (now !== was) { explained += 1; if (!isBlankCell(x.row[c.col])) filled += 1; }
+          }
+          if (!ok || explained < 2 || !filled) continue;
+          const back = changed.filter((c) => colOfKey.get(c.key) >= c0);
+          back.forEach((c) => shuffled.add(`${x.markerId}|${c.key}`));
+          sideRows += 1; sideCells += back.length;
+          // Pushed past the last column (inserted): an unheaded cell holding
+          // the row's own value goes blank.
+          for (let col = lastCol + 1; by < 0 && col <= lastCol - by; col += 1) {
+            const src = atCol.get(col + by);
+            const v = x.row[col];
+            if (!src || isBlankCell(v) || cellText(header[col]).trim() || printOf(cellText(v)) !== getFp(x.fields, src.key)) continue;
+            plan.cellWrites.push({ sheetId: sheet.sheetId, title: sheet.title, row: x.r, col, value: '', headerRow: headerAt });
+            plan.verify.push({ sheetId: sheet.sheetId, title: sheet.title, row: x.r, col, expect: v });
+          }
+          break;
+        }
+      }
+      if (sideRows) {
+        notice({ scopeId: scope.scopeId, message: `Cells in ${sideRows === 1 ? 'a row' : `${sideRows} rows`} of "${sheet.title}" were deleted or inserted sideways, so values slid into other columns. Survey put each value back in its own column (${sideCells} cells). To clear a value, select it and press Delete.` });
+      }
+
       for (const column of rowsMoved ? [] : editable) {
         const key = column.key;
         if (shifted.has(key)) continue;

@@ -116,3 +116,64 @@ test('real edits are not a shift: one note moved down, and a Y / N column flippe
   for (const [i, v] of Object.entries(flipped)) assert.equal(app[i].locked, v, `${app[i].name} took the PM's ${v}`);
   assert.ok(!said(ctx));
 });
+
+// Sideways: "Shift cells left" on a few rows' Locked? cells slides Height,
+// Entity and Notes one column left, so the note lands in Entity and Notes
+// reads as cleared (real Excel 11-14: 3 notes wiped in the app).
+const sideways = async (by) => {
+  const markers = Object.fromEntries(Array.from({ length: 4 }, (_, i) => [`d${i + 1}`, door(`d${i + 1}`, `D-${101 + i}`, {
+    checklistResponses: { c1: { selection: 'Y' }, c2: { value: 80 + i } }, note: { text: `note ${i + 1}` },
+  })]));
+  const ctx = await setup({ markers });
+  await ctx.round(); await ctx.round({ force: true });
+  const sheet = await ctx.sheet();
+  const from = sheet.rows[0].indexOf('Locked?');
+  const width = sheet.rows[0].length;
+  const edits = [];
+  for (const id of ['d2', 'd3']) {
+    const r = await ctx.rowOf(id);
+    const row = sheet.rows[r];
+    const tail = row.slice(from);
+    const moved = by > 0 ? [...tail.slice(by), ...Array(by).fill('')] : [...Array(-by).fill(''), ...tail];
+    moved.forEach((value, i) => edits.push({ row: r, col: from + i, value: value ?? '' }));
+  }
+  await ctx.edit(edits);
+  await ctx.round({ force: true });
+  return { ctx, width, from };
+};
+const kept = (ctx) => ['d1', 'd2', 'd3', 'd4'].map((id, i) => {
+  const m = ctx.markers[id];
+  return [m.note.text, m.checklistResponses.c1?.selection, String(m.checklistResponses.c2?.value ?? m.checklistResponses.c2?.selection), m.entityName || ''].join('|') === `note ${i + 1}|Y|${80 + i}|`;
+});
+
+test('cells deleted sideways in two rows: every note and answer stays, the sheet is put back', async () => {
+  const { ctx } = await sideways(1);
+  assert.deepEqual(kept(ctx), [true, true, true, true]);
+  assert.ok((ctx.link.state.notices || []).some((n) => /deleted or inserted sideways/.test(n.message)));
+  const sheet = await ctx.sheet();
+  const h = sheet.rows[0];
+  for (const id of ['d2', 'd3']) {
+    const row = sheet.rows[await ctx.rowOf(id)];
+    assert.equal(row[h.indexOf('Notes')], ctx.markers[id].note.text);
+    assert.equal(row[h.indexOf('Entity')] ?? '', '');
+  }
+});
+
+test('cells inserted sideways: values put back and nothing left past the last column', async () => {
+  const { ctx, width } = await sideways(-1);
+  assert.deepEqual(kept(ctx), [true, true, true, true]);
+  const sheet = await ctx.sheet();
+  for (const id of ['d2', 'd3']) assert.ok(!(sheet.rows[await ctx.rowOf(id)][width] ?? ''), 'the pushed-out note is gone from the unheaded column');
+});
+
+test('a PM editing two cells of one row is not a sideways move', async () => {
+  const markers = { d1: door('d1', 'D-101', { checklistResponses: { c1: { selection: 'Y' } }, note: { text: 'note 1' } }) };
+  const ctx = await setup({ markers });
+  await ctx.round(); await ctx.round({ force: true });
+  const h = (await ctx.sheet()).rows[0];
+  const r = await ctx.rowOf('d1');
+  await ctx.edit([{ row: r, col: h.indexOf('Locked?'), value: 'N' }, { row: r, col: h.indexOf('Notes'), value: '' }]);
+  await ctx.round({ force: true });
+  assert.equal(ctx.markers.d1.checklistResponses.c1.selection, 'N');
+  assert.equal(ctx.markers.d1.note.text, '');
+});
