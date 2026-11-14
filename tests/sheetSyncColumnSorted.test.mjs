@@ -155,3 +155,32 @@ test('mixed notes in Excel\'s own sort order still count as sorted', async () =>
   await ctx.round({ force: true });
   mix.forEach((t, i) => assert.equal(ctx.markers[`d${i + 1}`].note.text, t));
 });
+
+// The visible columns sorted together, the hidden Row ID column left out (a
+// PM selects Item to Notes and sorts): whole rows land on other items' Row
+// IDs. One column alone is not left in order (Item, Y / N), so the rows are
+// matched whole (real Excel 11-14).
+test('the visible columns sorted without the Row ID column: every row goes back to its own item', async () => {
+  const yn = ['Y', 'N', 'Y', 'Y', 'N', 'N', 'Y', 'N'];
+  const words = ['pear', 'apple', 'kiwi', 'fig', 'plum', 'date', 'lime', 'banana'];
+  const markers = Object.fromEntries(words.map((w, i) => [`d${i + 1}`, door(`d${i + 1}`, `D-${101 + i}`, { checklistResponses: { c1: { selection: yn[i] } }, note: { text: w } })]));
+  const ctx = await setup({ markers });
+  await ctx.round(); await ctx.round({ force: true });
+  const head = (await ctx.sheet()).rows[0];
+  const cols = ['Item', 'Locked?', 'Notes'].map((h) => head.indexOf(h));
+  const first = await ctx.rowOf('d1');
+  const rows = (await ctx.sheet()).rows.slice(first, first + words.length);
+  const sorted = [...rows].sort((a, b) => String(a[cols[2]]).localeCompare(String(b[cols[2]])));
+  const edits = [];
+  sorted.forEach((row, i) => cols.forEach((c) => edits.push({ row: first + i, col: c, value: row[c] ?? '' })));
+  await ctx.edit(edits);
+  const r = await ctx.round({ force: true });
+  assert.equal(r.summary.toApp, 0);
+  words.forEach((w, i) => {
+    const m = ctx.markers[`d${i + 1}`];
+    assert.deepEqual([m.name, m.checklistResponses.c1.selection, m.note.text], [`D-${101 + i}`, yn[i], w]);
+  });
+  assert.ok((ctx.link.state.notices || []).some((n) => /were sorted or moved without their hidden Row ID column/.test(n.message)));
+  const after = (await ctx.sheet()).rows.slice(first, first + words.length);
+  after.forEach((row, i) => assert.deepEqual([row[cols[0]], row[cols[2]]], [`D-${101 + i}`, words[i]]));
+});
