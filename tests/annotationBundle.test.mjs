@@ -192,9 +192,11 @@ test('XFDF and review package exports follow the page orientation and answer the
     assert.ok(at > 0, runner);
     assert.match(src.slice(at, at + 1200), /exportOptions: \{[\s\S]*?pageTransformations,[\s\S]*?\}/);
   }
-  for (const hook of ['onExportXfdfMenu', 'onExportReviewBundleMenu']) {
+  for (const hook of ['onExportXfdfMenu', 'onExportReviewBundleMenu', 'onExportAnnotatedPdfMenu']) {
     assert.match(src, new RegExp(`if \\(!isActive \\|\\| typeof window === 'undefined' \\|\\| !window\\.electronAPI\\?\\.${hook}\\)`));
   }
+  // File menu → Reimport PDF bookmarks: also the visible tab only.
+  assert.match(src, /if \(!isActive \|\| !window\.electronAPI\?\.onReimportPdfBookmarks\) return undefined;/);
 });
 
 test('custom stamps left out of XFDF still count as marks, get page pictures and are named in the toast', async () => {
