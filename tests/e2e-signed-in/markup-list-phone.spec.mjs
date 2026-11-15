@@ -40,11 +40,11 @@ test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true
     await page.waitForTimeout(1500);
     await page.getByRole('button', { name: 'Open pages, search, and bookmarks' }).tap();
     await page.waitForTimeout(800);
-    await page.getByRole('button', { name: 'Markups', exact: true }).filter({ visible: true }).first().tap();
+    await page.getByRole('button', { name: 'Annotations', exact: true }).filter({ visible: true }).first().tap();
     await page.waitForTimeout(1000);
     await expect(page.getByTestId('markups-panel')).toBeVisible();
-    await expect(page.getByTestId('markups-panel')).toContainText('No markups yet');
-    await expect(page.getByRole('button', { name: 'Open pages, search, and bookmarks' })).toContainText('Markups');
+    await expect(page.getByTestId('markups-panel')).toContainText('No annotations yet');
+    await expect(page.getByRole('button', { name: 'Open pages, search, and bookmarks' })).toContainText('Annotations');
   } finally {
     await admin.from('documents').delete().eq('id', id);
     await admin.storage.from('documents').remove([`${user.id}/${id}.pdf`]);

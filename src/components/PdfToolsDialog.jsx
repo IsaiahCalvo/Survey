@@ -300,7 +300,7 @@ export default function PdfToolsDialog({ open, onClose, sources = [], others = [
                     <li key={t.id}><button type="button" className="pdft-tool" onClick={() => setTool(t.id)}><span className="pdft-tname">{t.label}</span><span className="pdft-tshort">{t.short}</span></button></li>
                   ))}
                 </ul>
-                <p className="pdft-help">Runs on this device. The tools use the PDF as it was uploaded; markups you added in Survey aren't included.</p>
+                <p className="pdft-help">Runs on this device. The tools use the PDF as it was uploaded; annotations you added in Survey aren't included.</p>
               </>
             )}
             {tool && !result && options()}

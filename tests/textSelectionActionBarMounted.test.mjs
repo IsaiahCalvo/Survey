@@ -148,7 +148,7 @@ test('mounted text markup strip stacks marks, focuses paint, and opens both link
   }
   try {
     await act(async () => root.render(React.createElement(Harness)));
-    const toolbar = document.querySelector('[role="toolbar"][aria-label="Text markup toolbar"]');
+    const toolbar = document.querySelector('[role="toolbar"][aria-label="Text annotation toolbar"]');
     assert.ok(toolbar);
     assert.equal(toolbar.className, 'text-selection-action-bar__toolbar');
     assert.equal(toolbar.getAttribute('aria-orientation'), 'horizontal');

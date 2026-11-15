@@ -53,7 +53,7 @@ test('the Markups list shows, opens, follows and saves the marks', async ({ page
     await page.keyboard.press('Escape');
     await page.keyboard.press('Escape');
 
-    await page.getByRole('button', { name: 'Markups', exact: true }).filter({ visible: true }).first().click();
+    await page.getByRole('button', { name: 'Annotations', exact: true }).filter({ visible: true }).first().click();
     await expect(page.getByRole('button', { name: 'Close Markups', exact: true }).filter({ visible: true })).toHaveCount(1);
     const panel = page.getByTestId('markups-panel');
     await expect(panel).toBeVisible();
@@ -65,7 +65,7 @@ test('the Markups list shows, opens, follows and saves the marks', async ({ page
     await expect(rows.first()).toContainText('p. 1');
 
     // Words narrow the list; "p2" finds nothing on this sheet.
-    await panel.getByRole('searchbox', { name: 'Search markups' }).fill('p2');
+    await panel.getByRole('searchbox', { name: 'Search annotations' }).fill('p2');
     await expect(rows).toHaveCount(0);
     await expect(panel.locator('.markups-panel__summary')).toContainText('0 of 2 markups');
     await panel.getByRole('button', { name: 'Clear' }).click();
@@ -167,7 +167,7 @@ test('the Markups list totals measurements, shows only them, and saves their qua
     await page.keyboard.press('Escape');
     await drawRect(page, box, 450, 120);
 
-    await page.getByRole('button', { name: 'Markups', exact: true }).filter({ visible: true }).first().click();
+    await page.getByRole('button', { name: 'Annotations', exact: true }).filter({ visible: true }).first().click();
     const panel = page.getByTestId('markups-panel');
     await expect(panel.locator('.markups-panel__summary')).toContainText('2 markups', { timeout: 10_000 });
     await expect(panel.locator('[data-markups-total="perimeter"]')).toContainText(/Perimeter\s*[\d.,]+ ft/);
@@ -209,7 +209,7 @@ test('phone: Markups is a hub tab and a row steps the sheet down to its mark', a
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(800);
     await page.getByRole('button', { name: 'Open pages, search, and bookmarks' }).filter({ visible: true }).first().click();
-    await page.getByRole('button', { name: 'Markups', exact: true }).filter({ visible: true }).first().click();
+    await page.getByRole('button', { name: 'Annotations', exact: true }).filter({ visible: true }).first().click();
     const panel = page.getByTestId('markups-panel');
     await expect(panel).toBeVisible();
     await expect(panel.locator('.markups-panel__summary')).toContainText('1 markup', { timeout: 10_000 });

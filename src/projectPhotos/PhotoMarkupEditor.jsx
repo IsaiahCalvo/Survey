@@ -78,7 +78,7 @@ export async function renderMarkedPng(image, marks) {
   const ctx = canvas.getContext('2d');
   ctx.drawImage(image, 0, 0, w, h);
   for (const m of marks) drawMark(ctx, m, 1, false);
-  return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Could not save the markup.'))), 'image/png'));
+  return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Could not save the annotations.'))), 'image/png'));
 }
 
 export default function PhotoMarkupEditor({ src, onSave, onCancel, busy = false }) {
@@ -105,7 +105,7 @@ export default function PhotoMarkupEditor({ src, onSave, onCancel, busy = false 
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => { imageRef.current = img; setReady(true); };
-    img.onerror = () => setLoadError('This photo could not be opened for markup.');
+    img.onerror = () => setLoadError('This photo could not be opened for annotation.');
     img.src = src;
     return () => { img.onload = null; img.onerror = null; };
   }, [src]);
@@ -242,7 +242,7 @@ export default function PhotoMarkupEditor({ src, onSave, onCancel, busy = false 
   const cursor = tool === 'select' ? 'default' : tool === 'text' ? 'text' : 'crosshair';
   return (
     <div className="photo-markup" data-photo-markup>
-      <div className="photo-markup-bar" role="toolbar" aria-label="Photo markup">
+      <div className="photo-markup-bar" role="toolbar" aria-label="Photo annotations">
         <div className="photo-markup-group">
           {TOOL_LIST.map((t) => (
             <button
@@ -339,7 +339,7 @@ export default function PhotoMarkupEditor({ src, onSave, onCancel, busy = false 
       </div>
       <div className="photo-markup-actions">
         <button type="button" className="hub-btn hub-btn--primary dialog-touch-pad" data-photo-save disabled={busy || !ready || (!marks.length && !textValue.trim())} onClick={save}>
-          {busy ? 'Saving…' : 'Save markup'}
+          {busy ? 'Saving…' : 'Save annotations'}
         </button>
         <button type="button" className="hub-btn dialog-touch-pad" data-photo-cancel disabled={busy} onClick={onCancel}>Cancel</button>
       </div>
