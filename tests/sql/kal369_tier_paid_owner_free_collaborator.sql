@@ -34,7 +34,7 @@ BEGIN
     WHEN user_tier_text = 'enterprise' THEN 1099511627776 WHEN user_tier_text = 'developer' THEN 107374182400 ELSE 104857600 END;
 END; $function$;
 
-\ir ../../supabase/migrations/20261115230000_tier_counts_only_live_subscription.sql
+\ir ../../supabase/migrations/20261116040000_tier_counts_only_live_subscription.sql
 
 INSERT INTO public.user_subscriptions VALUES
   ('00000000-0000-0000-0000-00000000000a', 'pro', 'active'),   -- paid owner

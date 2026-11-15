@@ -8,7 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const sql = fs.readFileSync(path.join(repo, 'supabase', 'migrations', '20261115230000_tier_counts_only_live_subscription.sql'), 'utf8');
+const sql = fs.readFileSync(path.join(repo, 'supabase', 'migrations', '20261116040000_tier_counts_only_live_subscription.sql'), 'utf8');
 const body = sql.replace(/^\s*--.*$/gm, '');
 
 test('only active, trialing and past_due subscriptions keep their paid tier', () => {
