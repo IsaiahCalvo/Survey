@@ -141,6 +141,10 @@ function batchUpdate(f, requests) {
       const sheet = sheetById(f, body.range.sheetId);
       if (body.properties.hiddenByUser) sheet.hidden.push(body.range.startIndex);
       replies.push({});
+    } else if (kind === 'setBasicFilter') {
+      // One filter per tab; a new one replaces it (as in Google Sheets).
+      sheetById(f, body.filter.range.sheetId).basicFilter = { ...body.filter.range };
+      replies.push({});
     } else if (kind === 'setDataValidation') {
       sheetById(f, body.range.sheetId).validations += 1;
       replies.push({});

@@ -5,7 +5,7 @@
 // handleExportSurveyToExcel). Setting a sheet up through Graph took five or six
 // calls per category; this file carries everything at once and wears the same
 // look as the export:
-//   * header row: grey fill, thin borders, centred, wrapped; frozen;
+//   * header row: grey fill, thin borders, centred, wrapped; frozen; filter buttons;
 //   * Row ID column hidden, text columns as text ("@"), so 00123 stays 00123;
 //   * the export's column widths and centring;
 //   * drop-downs on pick-one answers and on Entity;
@@ -183,6 +183,10 @@ function sheetXml(scope, layout, { answerDxf, entityDxf }) {
     + '<sheetFormatPr defaultRowHeight="15"/>'
     + (cols ? `<cols>${cols}</cols>` : '')
     + `<sheetData>${width ? `<row r="1">${header}</row>` : ''}</sheetData>`
+    // Filter buttons on the header row (Data > Filter). Set on the header
+    // alone, Excel takes in the rows under it when a filter is picked, so the
+    // rows the sync adds later filter too.
+    + (width ? `<autoFilter ref="A1:${last}1"/>` : '')
     + cf.join('')
     + (validations.length ? `<dataValidations count="${validations.length}">${validations.join('')}</dataValidations>` : '')
     + '<pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>'
@@ -229,10 +233,14 @@ export function buildLiveWorkbook(layout, { answerFills } = {}) {
   parts.push(['_rels/.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>']);
   const names = scopes.length ? sheetNames : ['Sheet1'];
   const printTitles = names.map((name, i) => `<definedName name="_xlnm.Print_Titles" localSheetId="${i}">'${esc(name.replace(/'/g, "''"))}'!$1:$1</definedName>`).join('');
+  // The name Excel keeps beside each sheet's filter buttons.
+  const filterNames = scopes.map((scope, i) => ((scope.columns || []).length
+    ? `<definedName name="_xlnm._FilterDatabase" localSheetId="${i}" hidden="1">'${esc(names[i].replace(/'/g, "''"))}'!$A$1:$${columnLetter(scope.columns.length - 1)}$1</definedName>`
+    : '')).join('');
   parts.push(['xl/workbook.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
     + '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
     + `<sheets>${names.map((name, i) => `<sheet name="${esc(name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('')}</sheets>`
-    + (scopes.length ? `<definedNames>${printTitles}</definedNames>` : '')
+    + (scopes.length ? `<definedNames>${filterNames}${printTitles}</definedNames>` : '')
     + '</workbook>']);
   parts.push(['xl/_rels/workbook.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
     + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'

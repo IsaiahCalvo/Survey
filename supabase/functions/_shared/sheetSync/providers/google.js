@@ -188,6 +188,12 @@ function textFormatRequests(sheetId, scope) {
   return out;
 }
 
+// Filter buttons on the header row over whole columns (Data > Create a
+// filter), so rows the sync adds later filter too.
+const basicFilter = (sheetId, scope) => ({
+  setBasicFilter: { filter: { range: { sheetId: Number(sheetId), startRowIndex: 0, startColumnIndex: 0, endColumnIndex: scope.columns.length } } },
+});
+
 const hideRowIdColumn = (sheetId, scope) => {
   const i = scope.columns.findIndex((c) => c.key === 'rowId');
   return {
@@ -399,6 +405,7 @@ export function googleSheetsProvider({ endpoints, getAccessToken, fetchImpl = fe
       });
       await batchUpdate(book.spreadsheetId, layout.scopes.flatMap((scope) => (sheetIds[scope.scopeId] == null ? [] : [
         hideRowIdColumn(sheetIds[scope.scopeId], scope),
+        basicFilter(sheetIds[scope.scopeId], scope),
         ...textFormatRequests(sheetIds[scope.scopeId], scope),
         ...validationRequests(sheetIds[scope.scopeId], scope, layout),
       ])));
@@ -417,6 +424,7 @@ export function googleSheetsProvider({ endpoints, getAccessToken, fetchImpl = fe
       await batchUpdate(fileId, scopes.flatMap((scope) => (out[scope.scopeId] == null ? [] : [
         { updateCells: { start: { sheetId: Number(out[scope.scopeId]), rowIndex: 0, columnIndex: 0 }, rows: [{ values: scope.columns.map((c) => headerCell(c.header)) }], fields: 'userEnteredValue,userEnteredFormat' } },
         hideRowIdColumn(out[scope.scopeId], scope),
+        basicFilter(out[scope.scopeId], scope),
         ...textFormatRequests(out[scope.scopeId], scope),
         ...(layout ? validationRequests(out[scope.scopeId], scope, layout) : []),
       ])));

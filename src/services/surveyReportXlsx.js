@@ -8,6 +8,7 @@ import { itemFollowUp, surveyReportPlan } from './surveyReportPptx.js';
 import { todayKey } from '../utils/markerTracking.js';
 import { reportKitFor } from './reportKits/index.js';
 import { summarizeSurvey } from './surveySummary.js';
+import { addFilterNames } from './xlsxFilterNames.js';
 
 const STATUS = [['Done', '0CA30C'], ['Partly done', 'FAB219'], ['Not started', 'A6A6A6']];
 const STATUS_LABEL = { done: 'Done', partly: 'Partly done', notStarted: 'Not started' };
@@ -109,6 +110,12 @@ export async function addChartToWorkbook(JSZip, buffer, chart, anchor) {
   return zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
 }
 
+/** Header row frozen, with filter buttons over every row (Data > Filter). */
+function filterable(sheet) {
+  sheet.views = [{ state: 'frozen', xSplit: 0, ySplit: 1 }];
+  sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: Math.max(1, sheet.rowCount), column: sheet.columnCount } };
+}
+
 /** The workbook, as bytes. ExcelJS and JSZip are passed in (loaded on demand). */
 export async function buildSurveyReportXlsx({ ExcelJS, JSZip }, input) {
   const plan = surveyReportPlan(input);
@@ -192,6 +199,7 @@ export async function buildSurveyReportXlsx({ ExcelJS, JSZip }, input) {
     issues.getRow(1).font = { bold: true };
     plan.issueRows.forEach((r) => issues.addRow([r.category, r.item, r.lines, ...(plan.hasFollowUp ? [r.tracking, r.note] : [])]));
     if (!plan.issueRows.length) issues.addRow(['No issues found.']);
+    filterable(issues);
   }
 
   const items = wb.addWorksheet('Items');
@@ -208,7 +216,9 @@ export async function buildSurveyReportXlsx({ ExcelJS, JSZip }, input) {
     }
   }
 
-  const buffer = await wb.xlsx.writeBuffer();
+  filterable(items);
+
+  const buffer = await addFilterNames(JSZip, await wb.xlsx.writeBuffer());
   if (!chart) return new Uint8Array(buffer);
   return addChartToWorkbook(JSZip, buffer, chart, { fromRow: anchorRow + 1, toRow: anchorRow + 22, toCol: 6 });
 }
