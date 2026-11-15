@@ -72,6 +72,6 @@ test('CSS paints under the marks, hides in print; flag is beta with a migration'
   assert.equal(FEATURE_FLAGS['paper-overlays'].stage, 'beta');
   const shell = readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
   assert.match(shell, /isFeatureOn\('paper-overlays'\)/);
-  const migration = readFileSync(new URL('../supabase/migrations/20261115203000_paper_overlays_flag.sql', import.meta.url), 'utf8');
+  const migration = readFileSync(new URL('../supabase/migrations/20261116020000_paper_overlays_flag.sql', import.meta.url), 'utf8');
   assert.match(migration, /'paper-overlays', 'off'/);
 });

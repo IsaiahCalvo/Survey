@@ -56,6 +56,6 @@ test('CSS filters only the PDF canvases, not in print; flag is beta with a migra
   assert.equal(FEATURE_FLAGS['thin-lines'].stage, 'beta');
   const shell = readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
   assert.match(shell, /isFeatureOn\('thin-lines'\)/);
-  const migration = readFileSync(new URL('../supabase/migrations/20261115204000_thin_lines_flag.sql', import.meta.url), 'utf8');
+  const migration = readFileSync(new URL('../supabase/migrations/20261116021000_thin_lines_flag.sql', import.meta.url), 'utf8');
   assert.match(migration, /'thin-lines', 'off'/);
 });
