@@ -90,3 +90,35 @@ test('a stamp cell a PM cleared does not hold the PM\'s note edit', async () => 
   await t.ctx.round({ force: true });
   assert.equal(t.ctx.markers.d2.note.text, 'pm 2');
 });
+
+// A PM who writes their own initials in Changed By, or today's date in
+// Changed Date, beside an edit: not an older copy (those cells only ever go
+// back to a Changed By an item carries, or an earlier day).
+test('a PM stamping their own edit (their initials, today\'s date) still comes straight in', async () => {
+  const t = await linked();
+  t.sheet().rows[2][t.col('Changed By')] = 'JD';
+  t.sheet().rows[2][t.col('Notes')] = 'pm 2';
+  t.sheet().rows[3][t.col('Changed Date')] = '2026-11-15';
+  t.sheet().rows[3][t.col('Notes')] = 'pm 3';
+  fakeFile(t.ctx).version += 1;
+  const r = await t.ctx.round({ force: true });
+  assert.deepEqual(notes(t.ctx), ['alpha', 'pm 2', 'pm 3', 'delta', 'echo', 'fox']);
+  assert.equal(r.summary.conflicts, 0);
+  assert.ok(!(t.ctx.link.state.notices || []).some((n) => /older copy/.test(n.message)));
+});
+
+test('an older copy from earlier the same day (only Changed By went back) is still held', async () => {
+  const t = await linked();
+  const ab = (id, text) => { t.ctx.markers[id].note = { text }; t.ctx.markers[id].changedBy = 'AB'; t.ctx.markers[id].changedDate = '2026-11-15T13:00:00.000Z'; };
+  ab('d2', 'ab 2'); ab('d3', 'ab 3');
+  await t.ctx.round({ force: true });
+  const noon = t.snapshot();
+  t.tech('d2', 'tech 2');
+  await t.ctx.round({ force: true });
+  t.restore(noon);
+  // Pasted back by hand, Excel turns the date text into a date cell: same day.
+  t.sheet().rows[2][t.col('Changed Date')] = '2026-11-15';
+  await t.ctx.round({ force: true });
+  assert.equal(t.ctx.markers.d2.note.text, 'tech 2');
+  assert.ok(t.ctx.link.state.conflicts.d2);
+});

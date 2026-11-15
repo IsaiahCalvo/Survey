@@ -35,6 +35,11 @@
 //     After the last used row of each tab.
 // - deleteRows(fileId, [{ sheetId, title, row }])
 //     The runner sends them highest row first, per tab.
+// - moveHeaderUp(fileId, { sheetId, title, row, c1, c2, header })   (optional)
+//     A heading row sorted into the list (engine findSortedHeader) back on
+//     top: cells c1..c2 inserted above row 0, `header` written there, the old
+//     heading cells (now at row + 1) taken out, the rows between moved by the
+//     host so their formats and formulas stay.
 // - createFile({ title, layout }) -> { fileId, url, sheetIds: { [scopeId]: sheetId } }
 //     A new file with one tab per layout scope, its header row, the Row ID
 //     column hidden.
@@ -45,6 +50,12 @@
 //     call of its own). `me` is true when it was the signed-in account (the
 //     linker, which is also who Survey writes as). Sheet edits are credited to
 //     this person in Changed By (round.js sheetEditorLabel).
+// - readMerges(fileId, [{ sheetId, title }], [{ sheetId, row, col }])   (optional)
+//     -> { merges: { [sheetId]: merges }, filled: ["sheetId|row|col"] }
+//     For a provider whose readGrid can't give `merges` (Graph has no call
+//     for them), read from the saved file; `filled`: the asked cells that
+//     still hold a value there (the file is behind the grid). The runner asks
+//     only when a round finds filled cells blank.
 // - savesLate: true   (optional)
 //     A person's typing can reach the file a minute or more after they typed
 //     it (Excel on the web). The engine then holds a different value landing

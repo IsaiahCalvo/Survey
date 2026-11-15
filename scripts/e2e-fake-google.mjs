@@ -111,6 +111,18 @@ function batchUpdate(f, requests) {
       const sheet = sheetById(f, body.range.sheetId);
       if (body.range.dimension === 'ROWS') sheet.rows.splice(body.range.startIndex, 0, ...Array.from({ length: body.range.endIndex - body.range.startIndex }, () => []));
       replies.push({});
+    } else if (kind === 'insertRange' || kind === 'deleteRange') {
+      // Cells in a block of columns, the rest of those columns shifted down or up.
+      const sheet = sheetById(f, body.range.sheetId);
+      const { startRowIndex: r1, endRowIndex: r2, startColumnIndex: c1, endColumnIndex: c2 } = body.range;
+      const n = r2 - r1;
+      const last = sheet.rows.length + n;
+      for (let c = c1; c < c2; c += 1) {
+        const column = Array.from({ length: last }, (_, r) => sheet.rows[r]?.[c] ?? '');
+        if (kind === 'insertRange') column.splice(r1, 0, ...Array(n).fill('')); else column.splice(r1, n);
+        column.forEach((v, r) => { if (v !== '' || sheet.rows[r]?.[c] !== undefined) setCell(sheet, r, c, v); });
+      }
+      replies.push({});
     } else if (kind === 'deleteDimension') {
       const sheet = sheetById(f, body.range.sheetId);
       if (body.range.dimension === 'ROWS') sheet.rows.splice(body.range.startIndex, body.range.endIndex - body.range.startIndex);

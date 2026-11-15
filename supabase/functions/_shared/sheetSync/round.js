@@ -89,7 +89,7 @@ export function fillBlankStamps(layout, markers, by, at) {
 
 export { initialsOf };
 
-const hasWork = (plan) => plan.cellWrites.length || plan.appends.length || plan.deletes.length || plan.headerAdds.length;
+const hasWork = (plan) => plan.cellWrites.length || plan.appends.length || plan.deletes.length || plan.headerAdds.length || plan.headerMoves?.length;
 
 /**
  * @param {object} args
@@ -118,6 +118,8 @@ export function namedApart(scopes, taken) {
 
 /** Blanked answers in one round from which they are held (see planSheetRound). */
 export const BIG_ERASE = 10;
+// How long a blank the saved file doesn't show yet may wait (see makePlan).
+export const FILE_WAIT_MS = 5 * 60 * 1000;
 
 // Excel on the web shows a person "Can't Save Your Changes" (and makes them
 // reload) when any outside write lands while their typing is not saved yet.
@@ -325,6 +327,7 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
     locked = await provider.lockedTabs(link.file_id, state.lockedTabs.map(sheetIdOf).filter((id) => id != null));
   }
   let plan;
+  const mergesAsked = new WeakSet(); // grids readMerges was asked about
   const makePlan = async () => {
     const planArgs = {
       layout, grid, markers, baseline: roundBaseline, state, signing, now, sheetEditor,
@@ -333,6 +336,28 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
       ...(newMarkerId ? { newMarkerId } : {}),
     };
     plan = await planSheetRound(planArgs);
+    // Filled cells read blank: merging cells blanks all but the top-left one,
+    // so a provider whose grid can't say where merges are (Excel) is asked
+    // now, and the round is planned again knowing them (see engine `merges`).
+    // Excel's saved file can trail what Graph reads by a minute or two (real
+    // Excel 11-15: a merge reached the file ~100 s later), so a blank the file
+    // still shows filled waits, round to round, until the file has it, for
+    // up to FILE_WAIT_MS (then it is taken as it reads).
+    if (plan.erasing > 0 && typeof provider.readMerges === 'function' && !mergesAsked.has(grid)) {
+      mergesAsked.add(grid);
+      const found = await provider.readMerges(link.file_id, grid.sheets.filter((s) => !Array.isArray(s.merges))
+        .map((s) => ({ sheetId: s.sheetId, title: s.title })), plan.erased || []).catch(() => null);
+      let any = false;
+      for (const s of grid.sheets) {
+        const areas = found?.merges?.[String(s.sheetId)];
+        if (areas?.length && !Array.isArray(s.merges)) { s.merges = areas; any = true; }
+      }
+      const since = Number(state.fileBehind?.since);
+      const waited = Number.isFinite(since) ? now.getTime() - since : 0;
+      const wait = found?.filled?.length && waited < FILE_WAIT_MS ? new Set(found.filled) : null;
+      if (any || wait) plan = await planSheetRound({ ...planArgs, ...(wait ? { waitCells: wait } : {}) });
+      if (wait) plan.state.fileBehind = { since: Number.isFinite(since) ? since : now.getTime() };
+    }
     // Many filled answers blanked in the sheet at once: planned again with them
     // held, so an older copy restored from version history (or a column cleared
     // by mistake) can't wipe field work before an editor has looked.
@@ -398,7 +423,30 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
 
   let wroteAt = state.lastWriteAt ?? null;
   let retry = false;
+  let movedHeader = false;
   async function writePlan() {
+    // A heading row sorted into the list goes back on top first, and the
+    // round plans again from a fresh read. Only if the cells are still as
+    // read: an undo in the sheet meanwhile has already put it back.
+    if (plan.headerMoves?.length) {
+      const span = (m, row) => Array.from({ length: m.c2 - m.c1 + 1 }, (_, i) => ({ sheetId: m.sheetId, title: m.title, row, col: m.c1 + i }));
+      const moved = [];
+      for (const m of plan.headerMoves) {
+        const cells = [...span(m, m.row), ...span(m, 0)];
+        const now2 = await provider.readCells(link.file_id, cells);
+        const want = [...m.header, ...m.top];
+        if (!provider.moveHeaderUp || cells.some((c, i) => !sameCell(now2[i], want[i]))) continue;
+        await provider.moveHeaderUp(link.file_id, m);
+        moved.push(m.title);
+      }
+      if (moved.length) { movedHeader = true; wroteAt = new Date().toISOString(); }
+      const told = (plan.state.notices || []).filter((n) => /heading row/.test(n.message) && moved.some((t) => n.message.includes(`"${t}"`)));
+      grid = await provider.readGrid(link.file_id, { sheetIds: Object.values(state.sheetIds || {}) });
+      await makePlan();
+      if (plan.headerMoves?.length) { retry = true; return; }
+      plan.state.notices = [...told, ...(plan.state.notices || []).filter((n) => !told.some((t) => t.message === n.message))];
+      if (!hasWork(plan)) return;
+    }
     // A sort or row insert in the sheet since the read would move rows under
     // us, and a person typing would have their cell overwritten: check every
     // Row ID we write next to is still where it was, and every cell we write
@@ -522,9 +570,9 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
         ...(wroteAt ? { lastWriteAt: wroteAt } : {}),
         ...(pulls && Object.keys(pulls).length ? { pulls } : {}),
         // Someone still editing: our write starts a fresh quiet time.
-        ...(busyNext ? { sheetBusy: hasWork(plan) ? { tabs: null, at: now.getTime(), seen: busyNext.seen } : busyNext } : {}),
+        ...(busyNext ? { sheetBusy: hasWork(plan) || movedHeader ? { tabs: null, at: now.getTime(), seen: busyNext.seen } : busyNext } : {}),
         // No wait: the tabs as read, or unknown after our own write.
-        ...(holdTabs && !busyNext ? { sheetTabs: hasWork(plan) ? null : holdTabs } : {}),
+        ...(holdTabs && !busyNext ? { sheetTabs: hasWork(plan) || movedHeader ? null : holdTabs } : {}),
       },
       // The version read BEFORE the grid: if the sheet changed during the
       // round (including our own writes), the next round reads it again.

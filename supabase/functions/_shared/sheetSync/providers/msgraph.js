@@ -11,6 +11,7 @@
 // Rows and columns are 0-based from A1; row 0 is the header.
 import { cellError, fetchWithTimeout, REQUEST_TIMEOUT_MS } from './contract.js';
 import { buildLiveWorkbook, excelSheetNames } from './liveWorkbook.js';
+import { mergesFromXlsx } from './xlsxMerges.js';
 import { isTextColumn, trackingChoices } from '../layout.js';
 
 const GRAPH = 'https://graph.microsoft.com/v1.0';
@@ -18,6 +19,8 @@ const GRAPH = 'https://graph.microsoft.com/v1.0';
 const SESSION_TTL_MS = 4 * 60 * 1000;
 // "Save in" lists up to 10 pages of 200 folders in one folder.
 const FOLDER_PAGES = 10;
+// readMerges downloads the whole file: a bigger one is left unread.
+const MERGES_MAX_BYTES = 30 * 1024 * 1024;
 
 
 // "A/B" -> "A/B/" with each name URL-encoded; '' -> '' (the drive's top).
@@ -623,6 +626,27 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
       return { sheets };
     },
 
+    // Merged areas of these tabs, as readGrid's optional `merges`, read from
+    // the file (Graph has no merged-areas call; see xlsxMerges.js), and which
+    // of `cells` still hold a value there. The runner asks only when a round
+    // finds filled cells blanked, which is what merging does to every cell
+    // but the top-left one.
+    async readMerges(fileId, sheets, cells = []) {
+      const none = { merges: {}, filled: [] };
+      if (!sheets?.length) return none;
+      const token = await getAccessToken();
+      // Graph answers with a redirect to a signed download link.
+      const response = await fetchWithTimeout(fetchImpl, `${baseUrl}/${fileId}/content`, { headers: { Authorization: `Bearer ${token}` } }, timeoutMs);
+      if (!response.ok) throw graphError(response.status, null, response.headers, 'content');
+      if (Number(response.headers.get('content-length')) > MERGES_MAX_BYTES) {
+        try { await response.body?.cancel?.(); } catch { /* closed */ }
+        return none;
+      }
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (bytes.length > MERGES_MAX_BYTES) return none;
+      return mergesFromXlsx(bytes, sheets, cells);
+    },
+
     /** Reads just these cells (one box per sheet), e.g. to re-check Row IDs before a write. */
     async readCells(fileId, cells) {
       const out = new Map();
@@ -802,6 +826,17 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
         }
       }
       for (const run of runs.slice(done)) await cutRows(fileId, run);
+    },
+
+    // A heading row sorted into the list (engine findSortedHeader) back on
+    // top: cells inserted above row 1 in its columns, the headings written
+    // there, and the old heading cells taken out. Excel moves the rows
+    // between, so dates, formulas and formats stay as they are.
+    async moveHeaderUp(fileId, { sheetId, row, c1, c2, header }) {
+      const at = (r) => `${cellAddress(r, c1)}:${cellAddress(r, c2)}`;
+      await workbook(fileId, 'POST', `${sheetPath(sheetId)}/range(address='${at(0)}')/insert`, { body: { shift: 'Down' }, where: 'moveHeader', discard: true });
+      await writeBlock(fileId, sheetId, 0, c1, [header.map((v) => cellValueForWrite(v))]);
+      await workbook(fileId, 'POST', `${sheetPath(sheetId)}/range(address='${at(row + 1)}')/delete`, { body: { shift: 'Up' }, where: 'moveHeader', discard: true });
     },
 
     // The folders inside one folder, by name. At the top of the person's
