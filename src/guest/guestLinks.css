@@ -29,9 +29,22 @@
 
 .guest-links__make {
   display: grid;
-  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
+}
+
+/* KAL-401: the optional password for a new link. */
+.guest-links__password {
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px;
+  font: inherit;
+  font-size: var(--font-size-md);
+  color: var(--text-1);
+  background: var(--panel-well);
+  border: 1px solid var(--border);
+  border-radius: 6px;
 }
 
 .guest-links__made {

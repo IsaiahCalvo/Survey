@@ -125,12 +125,12 @@ for (const layout of LAYOUTS) {
         await tagInput.fill('Fire, Level 2, Temp, Old');
         await tagInput.press('Enter');
         // Two removes in the same moment (before the screen redraws) both stick.
-        await expect(detail.getByRole('button', { name: 'Remove tag Old' })).toBeVisible();
+        await expect(detail.getByRole('button', { name: 'Remove label Old' })).toBeVisible();
         await detail.evaluate((el) => {
-          el.querySelector('[aria-label="Remove tag Temp"]').click();
-          el.querySelector('[aria-label="Remove tag Old"]').click();
+          el.querySelector('[aria-label="Remove label Temp"]').click();
+          el.querySelector('[aria-label="Remove label Old"]').click();
         });
-        await expect(detail.getByRole('button', { name: /Remove tag (Temp|Old)/ })).toHaveCount(0);
+        await expect(detail.getByRole('button', { name: /Remove label (Temp|Old)/ })).toHaveCount(0);
         await pick(page, layout, 'item-link-select', docName);
         await expect(detail.locator('[data-item-links]')).toContainText(docName);
         await detail.getByTestId('item-comment-input').fill('Hinge screws stripped.');

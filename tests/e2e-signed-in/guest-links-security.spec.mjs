@@ -141,6 +141,30 @@ test('guest links: one document, its role, only while the link lives, nothing el
     expect(await must('owner archived role', owner.rpc('get_my_document_role', { doc_id: docId }))).toBe('owner');
     await must('unarchive', admin.from('documents').update({ user_archived_at: null }).eq('id', docId));
 
+    // KAL-401: a link with a password. Only the owner sets it; the old call
+    // can't skip it; wrong tries are counted and lock the link for a while.
+    const [pwLink] = await must('password link', owner.rpc('create_guest_link', { p_document_id: docId, p_role: 'viewer', p_expires_in: '1 day' }));
+    expect((await editor.rpc('set_guest_link_password', { p_link_id: pwLink.id, p_password: 'open sesame' })).error).toBeTruthy();
+    expect((await owner.rpc('set_guest_link_password', { p_link_id: pwLink.id, p_password: 'abc' })).error?.message).toContain('4 to 128');
+    expect(await must('set password', owner.rpc('set_guest_link_password', { p_link_id: pwLink.id, p_password: 'open sesame' }))).toBe(true);
+    expect((await owner.from('document_guest_links').select('password_hash').eq('id', pwLink.id)).error).toBeTruthy();
+    expect((await must('has password', owner.from('document_guest_links').select('has_password').eq('id', pwLink.id)))[0].has_password).toBe(true);
+    const locked = await guestClient();
+    expect((await locked.rpc('redeem_guest_link', { p_token: pwLink.token, p_name: 'Lou' })).error?.message).toContain('needs a password');
+    expect(await must('no password', locked.rpc('redeem_guest_link_checked', { p_token: pwLink.token, p_name: 'Lou' }))).toEqual({ status: 'password' });
+    for (let i = 0; i < 5; i += 1) {
+      expect(await must(`wrong ${i}`, locked.rpc('redeem_guest_link_checked', { p_token: pwLink.token, p_name: 'Lou', p_password: `nope ${i}` }))).toEqual({ status: 'wrong' });
+    }
+    expect(await must('locked', locked.rpc('redeem_guest_link_checked', { p_token: pwLink.token, p_name: 'Lou', p_password: 'open sesame' }))).toEqual({ status: 'locked' });
+    expect((await locked.from('documents').select('id').eq('id', docId)).data).toEqual([]);
+    const pwGuest = await guestClient();
+    const opened = await must('right password', pwGuest.rpc('redeem_guest_link_checked', { p_token: pwLink.token, p_name: 'Pat', p_password: 'open sesame' }));
+    expect(opened).toMatchObject({ status: 'ok', document_id: docId, role: 'viewer' });
+    expect(await must('pw doc', pwGuest.from('documents').select('id').eq('id', docId))).toHaveLength(1);
+    // Once in, a changed password does not throw them out.
+    await must('change password', owner.rpc('set_guest_link_password', { p_link_id: pwLink.id, p_password: 'new secret' }));
+    expect(await must('again', pwGuest.rpc('redeem_guest_link_checked', { p_token: pwLink.token, p_name: 'Pat' }))).toMatchObject({ status: 'ok' });
+
     // Turning the link off cuts the guest off at once; so does expiry.
     expect(await must('revoke', owner.rpc('revoke_guest_link', { p_link_id: editLink.id }))).toBe(true);
     expect((await guest.from('documents').select('id').eq('id', docId)).data).toEqual([]);
