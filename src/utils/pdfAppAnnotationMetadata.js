@@ -59,6 +59,8 @@ const DATA_ALLOWLIST = [
   'pdfCloudUnitScale',
   'pdfCloudInsets',
   'pdfCloudVertexState',
+  // Nightly 'mark-subject': the mark's own subject, written as /Subj too.
+  'subject',
 ];
 
 const STYLE_KEYS = [

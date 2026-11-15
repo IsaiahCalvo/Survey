@@ -90,6 +90,7 @@ import {
   pdfDateString,
   readableMarkSubject,
 } from './pdfOutsideEdits.js';
+import { markSubjectOf } from './markSubject.js';
 import {
   applyFormFieldValuesToPdfDoc,
   collectFormFieldValues,
@@ -500,7 +501,9 @@ const stampExportedAppAnnotation = (pdfDoc, ref, { modified = null, created = nu
   if (author && dict.get(PDFName.of('T')) === undefined) {
     dict.set(PDFName.of('T'), pdfTextString(author));
   }
-  dict.set(PDFName.of('Subj'), pdfTextString(readableMarkSubject({
+  // A mark's own subject (Nightly 'mark-subject') wins over its kind's name.
+  const ownSubject = markSubjectOf({ data: metadata.data });
+  dict.set(PDFName.of('Subj'), pdfTextString(ownSubject || readableMarkSubject({
     subtype,
     appType: metadata.appType,
     hasCloudBorder,

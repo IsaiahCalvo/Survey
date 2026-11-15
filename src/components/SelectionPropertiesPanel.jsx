@@ -29,6 +29,7 @@ import { ARRANGE_SELECTION_EVENT } from '../utils/alignMarks.js';
 import { getAnnotationAuthorId } from '../lib/collab/permissionScope.js';
 import { getAnnotationRenderIdentity } from '../utils/annotationStorageIdentity.js';
 import { authorLabel, markCreatedAt } from '../utils/markupList.js';
+import { MARK_SUBJECT_MAX, sharedMarkSubject } from '../utils/markSubject.js';
 import {
   setPropertiesDockElement,
   setPropertiesPanelOpen,
@@ -121,6 +122,55 @@ function NumberBox({ label, value, placeholder, disabled, onCommit, step = 1 }) 
   );
 }
 
+/**
+ * Nightly 'mark-subject': the pick's own subject. Commit on Enter or blur;
+ * Escape puts back what was there. Blank means "use the kind's name".
+ */
+function SubjectBox({ value, mixed, placeholder, disabled, onCommit }) {
+  const ref = useRef(null);
+  const editingRef = useRef(false);
+  useEffect(() => {
+    if (!editingRef.current && ref.current) ref.current.value = value ?? '';
+  }, [value]);
+  const commit = () => {
+    if (!editingRef.current) return;
+    editingRef.current = false;
+    const typed = ref.current?.value ?? '';
+    // A mixed pick left blank keeps each mark's own subject.
+    if (mixed && !typed.trim()) return;
+    if (typed !== (value ?? '')) onCommit(typed);
+  };
+  return (
+    <label className="props-panel__field props-panel__subject">
+      <span className="props-panel__field-label">Subject</span>
+      <input
+        ref={ref}
+        className="props-panel__number"
+        type="text"
+        aria-label="Subject"
+        maxLength={MARK_SUBJECT_MAX}
+        defaultValue={value ?? ''}
+        placeholder={mixed ? 'Mixed' : placeholder}
+        disabled={disabled}
+        data-props-subject
+        onFocus={() => { editingRef.current = true; }}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          event.stopPropagation();
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            event.currentTarget.blur();
+          } else if (event.key === 'Escape') {
+            editingRef.current = false;
+            event.currentTarget.value = value ?? '';
+            event.currentTarget.blur();
+          }
+        }}
+      />
+    </label>
+  );
+}
+
 function Section({ title, children, id }) {
   const [open, setOpen] = useState(true);
   return (
@@ -176,6 +226,7 @@ export default function SelectionPropertiesPanel({
   textFormat,
 }) {
   const flagOn = useMemo(() => isFeatureOn('properties-panel'), []);
+  const subjectOn = useMemo(() => isFeatureOn('mark-subject'), []);
   const items = useSelectedItems();
   const open = usePropertiesPanelOpen();
   const pinned = usePropertiesPanelPinned();
@@ -269,6 +320,15 @@ export default function SelectionPropertiesPanel({
 
   if (!active || (!docked && !frame) || typeof document === 'undefined') return null;
 
+  // Nightly 'mark-subject': only page marks carry one (a callout or Survey
+  // Marker in the pick hides the box), all on one page.
+  const subjectShown = subjectOn && picked.objects.length > 0 && picked.objects.length === picked.list.length;
+  const subject = subjectShown ? sharedMarkSubject(picked.objects) : '';
+  const commitSubject = (text) => {
+    if (picked.pageNumber == null) return;
+    window.dispatchEvent(new CustomEvent(TRANSFORM_SELECTION_EVENT, { detail: { pageNumber: picked.pageNumber, op: 'subject', text } }));
+  };
+
   // "Selected colors": a swatch opens a row of colours; a pick recolours
   // every use of that colour in the pick.
   const recolour = (from, to) => {
@@ -353,6 +413,17 @@ export default function SelectionPropertiesPanel({
         <div className="props-panel__body props-panel__empty" data-props-empty>Pick a mark to see its settings here.</div>
       ) : (
       <div className="props-panel__body">
+        {subjectShown && (
+          <Section title="Subject" id="subject">
+            <SubjectBox
+              value={subject ?? ''}
+              mixed={subject == null}
+              placeholder={kindLabel(picked.kinds)}
+              disabled={picked.pageNumber == null}
+              onCommit={commitSubject}
+            />
+          </Section>
+        )}
         {transform && (
           <Section title="Transform" id="transform">
             <div className="props-panel__grid">
