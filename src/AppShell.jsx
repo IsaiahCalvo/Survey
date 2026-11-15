@@ -28,6 +28,8 @@ import { OPEN_EXPORT_PDF_EVENT } from './utils/exportPdfModes.js';
 import { PageGridMenu } from './components/PageGridSettings';
 import { PaperOverlayGlyph, PaperOverlayMenu } from './components/PaperOverlayMenu.jsx';
 import { ThinLinesGlyph, ThinLinesMenu } from './components/ThinLinesMenu.jsx';
+import { applyToolBarHidden, useToolBarHidden } from './utils/toolBarVisibility';
+import './styles/toolBarVisibility.css';
 import RailFlyout from './components/RailFlyout.jsx';
 import { setPageSpreadMode, usePageSpreadMode } from './utils/pageSpreadSetting.js';
 import { PinFilterMenu } from './components/pins/PinControls.jsx';
@@ -2661,6 +2663,14 @@ export default function App({ devPreviewReturnTab = null }) {
   const [snapContentEnabled] = useState(() => isFeatureOn('snap-content'));
   const [paperOverlaysEnabled] = useState(() => isFeatureOn('paper-overlays'));
   const [thinLinesEnabled] = useState(() => isFeatureOn('thin-lines'));
+  // Nightly 'toolbar-settings' (Drawboard VT-33): the left rail's Toolbars
+  // card can hide the tool bar; only the desktop viewer honours it (the
+  // phone header is its own way back).
+  const [toolBarSettingsEnabled] = useState(() => isFeatureOn('toolbar-settings'));
+  const [toolBarHidden] = useToolBarHidden();
+  useEffect(() => {
+    applyToolBarHidden(toolBarSettingsEnabled && toolBarHidden && !isNarrowShell);
+  }, [toolBarSettingsEnabled, toolBarHidden, isNarrowShell]);
 
   const polylineCurve = usePolylineCurve();
   const pinnedTools = usePinnedTools();
