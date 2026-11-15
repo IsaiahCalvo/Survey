@@ -23,7 +23,7 @@ import { generateRowIdToken, parseRowIdToken, verifyRowIdSignature } from '../ma
 import { buildMarkerRowValues } from '../markerRowValues.js';
 import { checklistItemKind, dateAnswerOf, itemAnswerFor } from '../kitShape.js';
 import { noteObjectOf } from '../surveyUndoApply.js';
-import { TRACKING_STATUSES, columnIsEditable, personCellName } from './layout.js';
+import { TRACKING_STATUSES, columnIsEditable, isTextColumn, personCellName } from './layout.js';
 import { isCellError } from './providers/contract.js';
 
 const TRACKING_KEYS = ['status', 'assignee', 'due'];
@@ -580,6 +580,16 @@ export async function planSheetRound({
       continue;
     }
     const rows = Array.isArray(sheet.rows) ? sheet.rows : [];
+    // A text column's cell as the sheet shows it, when Excel formatted a
+    // number there (a PM typed 50%, $1,200 or 1/2 in a note: the tech sees
+    // that, not 0.5, 1200 or a date). Every other cell as read.
+    const shownOf = new Map();
+    if (Array.isArray(sheet.shown)) rows.forEach((row, r) => { if (row && sheet.shown[r]) shownOf.set(row, sheet.shown[r]); });
+    const cellOf = (row, column, col) => {
+      const raw = row[col];
+      const shown = isTextColumn(column) ? shownOf.get(row)?.[col] : null;
+      return shown != null && !isCellError(raw) ? shown : raw;
+    };
     const remembered = next.headers[scope.scopeId] || {};
     const headerAt = findHeaderRow(scope, rows, remembered);
     const header = rows[headerAt] || [];
@@ -652,7 +662,7 @@ export async function planSheetRound({
       const rec = { ...base, answers: { ...(base.answers || {}) } };
       for (const column of scope.columns) {
         if (!columnIsEditable(column) || !colOfKey.has(column.key)) continue;
-        const raw = row[colOfKey.get(column.key)];
+        const raw = cellOf(row, column, colOfKey.get(column.key));
         if (isCellError(raw)) continue; // a failed formula tells us nothing about the value
         // A checkbox reads as the answer it means, so it never looks changed.
         setField(rec, column.key, checkboxCellAnswer(layout, column, raw) ?? cellText(raw));
@@ -1381,7 +1391,7 @@ export async function planSheetRound({
         // The tech's own cells left in a row the PM took over: not the PM's,
         // so cleared below rather than copied.
         if (pmKeys && !pmKeys.has(column.key)) { conv[column.key] = null; continue; }
-        const c = sheetCellToApp(layout, column, row[colOfKey.get(column.key)]);
+        const c = sheetCellToApp(layout, column, cellOf(row, column, colOfKey.get(column.key)));
         if (c.error) {
           next.problems.push({ markerId: id, scopeId: scope.scopeId, message: `${where(r)}: ${c.error}` });
           continue;
@@ -1449,6 +1459,7 @@ export async function planSheetRound({
     if (appendRows.length) {
       plan.appends.push({
         sheetId: sheet.sheetId, title: sheet.title, rows: appendRows, width, listCols, ownCols,
+        textCols: scope.columns.filter((c) => isTextColumn(c) && colOfKey.has(c.key)).map((c) => colOfKey.get(c.key)),
         ...(firstSummary != null ? { before: firstSummary } : {}),
       });
     }
@@ -1553,7 +1564,8 @@ export async function planSheetRound({
             changedBy: sheetEditor, changedDate: nowIso, pageNumber: null, bounds: null, source: 'sheet',
           };
           for (const k of typedKeys) {
-            const conv = sheetCellToApp(layout, scope.columns.find((c) => c.key === k), row[colOfKey.get(k)]);
+            const column = scope.columns.find((c) => c.key === k);
+            const conv = sheetCellToApp(layout, column, cellOf(row, column, colOfKey.get(k)));
             if (conv.error) { next.problems.push({ markerId: id, scopeId: scope.scopeId, message: `${where(r)}: ${conv.error}` }); continue; }
             applyFieldToMarker(item, k, conv, nowIso);
           }
@@ -1643,7 +1655,7 @@ export async function planSheetRound({
       let appChanged = false;
       for (const key of fromSheet) {
         const column = scope.columns.find((c) => c.key === key);
-        const conv = sheetCellToApp(layout, column, row[colOfKey.get(key)]);
+        const conv = sheetCellToApp(layout, column, cellOf(row, column, colOfKey.get(key)));
         if (conv.error) {
           bad.add(key);
           next.problems.push({ markerId, scopeId: scope.scopeId, message: `${where(r)}: ${conv.error}` });
