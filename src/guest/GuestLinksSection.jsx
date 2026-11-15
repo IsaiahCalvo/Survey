@@ -8,7 +8,10 @@ import ValueSelect from '../components/ValueSelect.jsx';
 import { copyTextToClipboard } from '../utils/clipboard';
 import {
   GUEST_LINK_DURATIONS,
+  GUEST_PASSWORD_MAX,
+  GUEST_PASSWORD_MIN,
   createGuestLink,
+  setGuestLinkPassword,
   guestLinkEnds,
   guestLinkUrl,
   listGuestLinks,
@@ -26,6 +29,8 @@ export default function GuestLinksSection({ client, documentId }) {
   const [links, setLinks] = useState([]);
   const [role, setRole] = useState('viewer');
   const [expiresIn, setExpiresIn] = useState('1 week');
+  // KAL-401: an optional password the guest types after opening the link.
+  const [password, setPassword] = useState('');
   const [made, setMade] = useState(null); // { id, url, copied }
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -42,13 +47,25 @@ export default function GuestLinksSection({ client, documentId }) {
   useEffect(() => { setMade(null); setError(''); refresh(); }, [refresh]);
 
   const make = async () => {
+    const pw = password.trim() ? password : '';
+    if (pw && pw.length < GUEST_PASSWORD_MIN) { setError(`Use a password of at least ${GUEST_PASSWORD_MIN} characters, or leave it empty.`); return; }
     setBusy(true);
     setError('');
     try {
       const link = await createGuestLink(client, { documentId, role, expiresIn });
+      if (pw) {
+        try {
+          await setGuestLinkPassword(client, link.id, pw);
+        } catch (err) {
+          // Never hand out an open link the owner meant to lock.
+          await revokeGuestLink(client, link.id).catch(() => {});
+          throw err;
+        }
+      }
+      setPassword('');
       const url = guestLinkUrl(link.token);
       const result = await copyTextToClipboard(url, { surface: 'document_guest_link' });
-      setMade({ id: link.id, url, copied: result.ok });
+      setMade({ id: link.id, url, copied: result.ok, hasPassword: Boolean(pw) });
       await refresh();
     } catch (err) {
       setError(err.message);
@@ -81,12 +98,23 @@ export default function GuestLinksSection({ client, documentId }) {
       <div className="guest-links__make">
         <span className="guest-links__pick" data-guest-role><ValueSelect size="sm" label="Guests" value={role} options={ROLE_OPTIONS} onChange={setRole} /></span>
         <span className="guest-links__pick" data-guest-duration><ValueSelect size="sm" label="Link works" value={expiresIn} options={DURATION_OPTIONS} onChange={setExpiresIn} /></span>
+        <input
+          type="password"
+          className="guest-links__password"
+          placeholder="Password (optional)"
+          aria-label="Password for the link (optional)"
+          autoComplete="new-password"
+          maxLength={GUEST_PASSWORD_MAX}
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          data-guest-link-password
+        />
         <button type="button" className="hub-btn hub-btn--primary" onClick={make} disabled={busy} data-guest-make>Make link</button>
       </div>
       {made ? (
         <div className="guest-links__made" role="status">
           <input className="guest-links__url" readOnly value={made.url} aria-label="Guest link" data-guest-url onFocus={(e) => e.target.select()} />
-          <span>{made.copied ? 'Copied. This is the only time it shows.' : 'Copy it now: this is the only time it shows.'}</span>
+          <span>{made.copied ? 'Copied. This is the only time it shows.' : 'Copy it now: this is the only time it shows.'}{made.hasPassword ? ' Send the password separately.' : ''}</span>
         </div>
       ) : null}
       {error ? <div className="guest-links__error" role="alert">{error}</div> : null}
@@ -94,7 +122,7 @@ export default function GuestLinksSection({ client, documentId }) {
         <ul className="guest-links__list">
           {live.map((l) => (
             <li key={l.id} className="guest-links__row" data-guest-link={l.id}>
-              <span className="guest-links__role">{l.role === 'editor' ? 'Mark up and comment' : 'View'}</span>
+              <span className="guest-links__role">{l.role === 'editor' ? 'Mark up and comment' : 'View'}{l.hasPassword ? ', password' : ''}</span>
               <span className="guest-links__ends">{guestLinkEnds(l.expiresAt)}</span>
               <span className="guest-links__who">{l.guests.length ? l.guests.join(', ') : 'Nobody yet'}</span>
               <button type="button" className="hub-btn" onClick={() => turnOff(l.id)} disabled={busy} data-guest-revoke>Turn off</button>

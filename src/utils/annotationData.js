@@ -37,6 +37,10 @@ export function materializeFabricAnnotationFromYMap(annoYMap, fallbackId = null)
         if (authorId) {
           fabricObj.meta = { ...(fabricObj.meta || {}), authorId: fabricObj.meta?.authorId || authorId };
         }
+        // When it was made (written once on create), for the Markups list,
+        // the properties panel and the bar's author chip.
+        const createdAt = metaYMap.get('createdAt');
+        if (createdAt && fabricObj.meta && !fabricObj.meta.createdAt) fabricObj.meta.createdAt = createdAt;
         const lastEditorId = metaYMap.get('lastEditorId');
         if (lastEditorId) fabricObj.lastEditorId = fabricObj.lastEditorId || lastEditorId;
       }

@@ -38124,8 +38124,9 @@ ${pageBlocks}
       canEditLayers: canRestoreFromHistory,
       markLibraryEnabled,
       markupListEnabled,
-      // The Markups list and the properties panel (Nightly) read the marks.
-      annotationsByPage: (markupListEnabled || isFeatureOn('properties-panel')) ? annotationsByPage : null,
+      // The Markups list, the properties panel and the bar's author chip
+      // (Nightly) read the marks.
+      annotationsByPage: (markupListEnabled || isFeatureOn('properties-panel') || isFeatureOn('author-chip')) ? annotationsByPage : null,
       onOpenMarkup: openMarkupRow,
       pdfDisplayName,
     };
