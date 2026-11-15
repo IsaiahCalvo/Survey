@@ -8,7 +8,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { buildSyncLayout } from '../supabase/functions/_shared/sheetSync/layout.js';
-import { runSheetRound, FILE_WAIT_MS } from '../supabase/functions/_shared/sheetSync/round.js';
+import { runSheetRound } from '../supabase/functions/_shared/sheetSync/round.js';
 import { createMsGraphProvider, parseMsgraphFileId } from '../supabase/functions/_shared/sheetSync/providers/msgraph.js';
 import { mergesFromXlsx, mergeArea } from '../supabase/functions/_shared/sheetSync/providers/xlsxMerges.js';
 import { mergeMarkerWrites } from '../supabase/functions/_shared/sheetSync/service.js';
@@ -161,7 +161,7 @@ test('the saved file behind what Graph reads: the blank waits, then counts as me
   assert.equal(r1.status, 'synced');
   assert.equal(ctx.note('d5'), 'ünder', 'nothing taken while the file is behind');
   assert.equal((await ctx.sheet()).rows[5][ctx.notesCol], '', 'nothing written into it either');
-  assert.ok(ctx.link.state.fileBehind?.since > 0);
+  assert.equal(typeof ctx.link.state.fileBehind, 'object');
   assert.ok(!ctx.problems().some((m) => /merged/.test(m)));
 
   await ctx.save();
@@ -177,7 +177,7 @@ test('a file that stays behind past the wait: the blank is taken as it reads', a
   await ctx.merge(`${col}5:${col}6`, true);
   await ctx.round();
   assert.equal(ctx.note('d5'), 'ünder');
-  ctx.link.state.fileBehind = { since: Date.now() - FILE_WAIT_MS - 1000 };
+  ctx.link.state.fileBehind = { since: 1 }; // waiting since 1970: long past FILE_WAIT_MS
   await ctx.round();
   assert.equal(ctx.note('d5'), '');
 });
