@@ -5,7 +5,7 @@
 // While a guest, a small badge says so and offers to leave.
 import { useEffect, useRef, useState } from 'react';
 import TurnstileWidget, { TURNSTILE_ENABLED } from '../components/TurnstileWidget';
-import { GUEST_NAME_MAX, GUEST_LINK_PARAM, cleanGuestName, redeemGuestLink } from '../services/guestLinks.js';
+import { GUEST_NAME_MAX, GUEST_LINK_PARAM, GUEST_PASSWORD_MAX, cleanGuestName, redeemGuestLink } from '../services/guestLinks.js';
 import './guestLinks.css';
 
 function openDocument(documentId) {
@@ -30,6 +30,9 @@ export default function GuestLinkGate({ client, token, user, authReady, onSignIn
   const [captchaNonce, setCaptchaNonce] = useState(0);
   const [captchaBroken, setCaptchaBroken] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+  // KAL-401: a link with a password asks for it after the first try.
+  const [needsPassword, setNeedsPassword] = useState(false);
+  const [password, setPassword] = useState('');
   const redeemed = useRef(false);
 
   // Already signed in (an account, or a guest from before): open it straight away.
@@ -38,11 +41,34 @@ export default function GuestLinkGate({ client, token, user, authReady, onSignIn
     redeemed.current = true;
     const label = cleanGuestName(user.user_metadata?.full_name || user.user_metadata?.name || (user.email || '').split('@')[0] || 'Guest') || 'Guest';
     redeemGuestLink(client, { token, name: label })
-      .then((row) => openDocument(row.documentId))
+      .then((row) => {
+        if (row?.status === 'ok') { openDocument(row.documentId); return; }
+        setNeedsPassword(true);
+        setError(row?.status === 'password' ? '' : (row?.message || 'Could not open the guest link'));
+      })
       .catch((err) => { redeemed.current = false; setError(err.message); setDismissed(false); });
   }, [client, token, user, authReady]);
 
-  if (!token || dismissed || !authReady || (user && !error)) return null;
+  if (!token || dismissed || !authReady || (user && !error && !needsPassword)) return null;
+
+  // Signed in already (an account, or a guest whose link asked for a
+  // password): send the password.
+  const sendPassword = async (event) => {
+    event.preventDefault();
+    if (!password) { setError('Type the password.'); return; }
+    setBusy(true);
+    setError('');
+    try {
+      const label = cleanGuestName(user?.user_metadata?.full_name || user?.user_metadata?.name || (user?.email || '').split('@')[0] || name || 'Guest') || 'Guest';
+      const row = await redeemGuestLink(client, { token, name: label, password });
+      if (row?.status === 'ok') { openDocument(row.documentId); return; }
+      setError(row?.message || 'Could not open the guest link');
+      setPassword('');
+    } catch (err) {
+      setError(err.message || 'Could not open the guest link');
+    }
+    setBusy(false);
+  };
 
   const join = async (event) => {
     event.preventDefault();
@@ -59,7 +85,11 @@ export default function GuestLinkGate({ client, token, user, authReady, onSignIn
       });
       if (signInError) throw new Error(signInError.message);
       const row = await redeemGuestLink(client, { token, name: clean });
-      openDocument(row.documentId);
+      if (row?.status === 'ok') { openDocument(row.documentId); return; }
+      // Signed in now; the link wants its password next.
+      setNeedsPassword(true);
+      setError(row?.status === 'password' ? '' : (row?.message || ''));
+      setBusy(false);
     } catch (err) {
       redeemed.current = false;
       setError(err.message || 'Could not open the guest link');
@@ -68,6 +98,36 @@ export default function GuestLinkGate({ client, token, user, authReady, onSignIn
       setBusy(false);
     }
   };
+
+  if (needsPassword && user) {
+    return (
+      <div className="guest-join" data-testid="guest-join">
+        <form className="guest-join__card" role="dialog" aria-modal="true" aria-labelledby="guest-join-title" onSubmit={sendPassword}>
+          <h2 id="guest-join-title" className="guest-join__title">This link has a password</h2>
+          <p className="guest-join__text">Type the password the person who shared it gave you.</p>
+          <label className="guest-join__field">
+            Password
+            <input
+              type="password"
+              value={password}
+              maxLength={GUEST_PASSWORD_MAX}
+              autoComplete="off"
+              onChange={(e) => setPassword(e.target.value)}
+              data-guest-password
+              autoFocus
+            />
+          </label>
+          {error ? <div className="guest-join__error" role="alert">{error}</div> : null}
+          <div className="guest-join__actions">
+            <button type="button" className="hub-btn" onClick={() => { setDismissed(true); dropToken(); }}>Close</button>
+            <button type="submit" className="hub-btn hub-btn--primary" disabled={busy || !password} data-guest-password-submit>
+              {busy ? 'Opening…' : 'Open'}
+            </button>
+          </div>
+        </form>
+      </div>
+    );
+  }
 
   return (
     <div className="guest-join" data-testid="guest-join">
