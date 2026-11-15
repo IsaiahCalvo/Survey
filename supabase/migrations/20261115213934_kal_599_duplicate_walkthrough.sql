@@ -1,0 +1,11 @@
+-- Walkthru (schema walkthru), KAL-599: Duplicate a walkthrough.
+--
+-- Already live: this exact version was applied to the production database on
+-- 2026-11-15, straight from the Walkthru repo
+-- (supabase/migrations/20261115220000_kal_599_duplicate_walkthrough.sql there,
+-- which holds the real SQL). This file only records the version, so
+-- `supabase db push` finds every version the live database has; without it,
+-- push stops with "Remote migration versions not found in local migrations
+-- directory". The schema walkthru is not built by this repo's migrations, so a
+-- fresh local database has nothing for this file to do.
+select 1;
