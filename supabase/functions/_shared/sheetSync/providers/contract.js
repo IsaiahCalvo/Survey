@@ -42,6 +42,12 @@
 //     call of its own). `me` is true when it was the signed-in account (the
 //     linker, which is also who Survey writes as). Sheet edits are credited to
 //     this person in Changed By (round.js sheetEditorLabel).
+// - readMerges(fileId, [{ sheetId, title }], [{ sheetId, row, col }])   (optional)
+//     -> { merges: { [sheetId]: merges }, filled: ["sheetId|row|col"] }
+//     For a provider whose readGrid can't give `merges` (Graph has no call
+//     for them), read from the saved file; `filled`: the asked cells that
+//     still hold a value there (the file is behind the grid). The runner asks
+//     only when a round finds filled cells blank.
 // - savesLate: true   (optional)
 //     A person's typing can reach the file a minute or more after they typed
 //     it (Excel on the web). The engine then holds a different value landing
