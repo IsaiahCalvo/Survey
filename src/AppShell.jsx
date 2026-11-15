@@ -3453,7 +3453,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     }
                     : { label: 'Export annotated PDF', icon: 'download', onSelect: bottomToolbarApi.exportAnnotatedPdf },
                   {
-                    label: 'Export markup (XFDF)',
+                    label: 'Export annotations (XFDF)',
                     icon: 'download',
                     title: 'Your marks in a separate file for Acrobat or Bluebeam. Your PDF stays the same.',
                     onSelect: bottomToolbarApi.exportXfdf,

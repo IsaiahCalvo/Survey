@@ -351,6 +351,51 @@ test('a new workbook keeps text columns as text, like Google', async () => {
   assert.deepEqual([...sheet.textColumns].sort(), ['A2:A1000', 'B2:B1000', 'D2:D1000', 'E2:E1000', 'G2:G1000', 'H2:H1000']);
 });
 
+test('a PM typing "50%" or "$1,200" into a note on an old row: the survey gets what Excel shows', async () => {
+  // Rows an older link added, or rows inserted under the header, are General:
+  // Excel turns "50%" into 0.5 and "$1,200" into 1200 as the PM types (real
+  // Excel 11-15). The note must still read as the PM saw it.
+  const ctx = await setup({ markers: {
+    d1: door('d1', 'D-101', { note: { text: 'old' } }),
+    d2: door('d2', 'D-102', { note: { text: 'old' } }),
+  } });
+  await ctx.round(); await ctx.round();
+  const notes = await ctx.col('Notes'); const height = await ctx.col('Height');
+  const [r1, r2] = [await ctx.rowOf('d1'), await ctx.rowOf('d2')];
+  await ctx.edit([
+    { row: r1, col: notes, format: 'General' }, { row: r2, col: notes, format: 'General' },
+    { row: r1, col: notes, value: '50%', typed: true },
+    { row: r2, col: notes, value: '$1,200', typed: true },
+    { row: r1, col: height, value: '1,200', typed: true },
+  ]);
+  const typedRow = (await ctx.sheet()).rows[r1];
+  assert.equal(typedRow[notes], 0.5, 'the fake took the typing the way Excel does');
+  await ctx.round(); await ctx.round();
+  assert.equal(ctx.markers.d1.note.text, '50%');
+  assert.equal(ctx.markers.d2.note.text, '$1,200', 'without the space Excel pads a money format with');
+  assert.equal(Number(ctx.markers.d1.checklistResponses.c2.selection), 1200, 'a number answer stays a number');
+  const quiet = await ctx.round();
+  assert.ok(!quiet.summary?.toSheet && !quiet.summary?.toApp, JSON.stringify(quiet.summary));
+  assert.equal(ctx.link.state.problems?.length || 0, 0);
+});
+
+test('rows the survey adds keep text columns as text, so Excel never turns a PM\'s typing into a number', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
+  await ctx.round(); await ctx.round();
+  ctx.markers.d2 = door('d2', 'D-102', { checklistResponses: { c2: { selection: '84' } } });
+  await ctx.round();
+  const sheet = await ctx.sheet();
+  const r = await ctx.rowOf('d2');
+  const head = sheet.rows[0];
+  const formats = sheet.formats?.[r] || [];
+  for (const name of ['Row ID', 'Item', 'Notes', 'Locked?']) assert.equal(formats[head.indexOf(name)], '@', name);
+  assert.notEqual(formats[head.indexOf('Height')], '@', 'a number answer column is left alone');
+  await ctx.edit([{ row: r, col: head.indexOf('Notes'), value: '50%', typed: true }]);
+  await ctx.round(); await ctx.round();
+  assert.equal(ctx.markers.d2.note.text, '50%');
+  assert.equal((await ctx.sheet()).rows[r][head.indexOf('Notes')], '50%', 'still text in the sheet');
+});
+
 test('rounds read only the synced sheets, not a big sheet the PM added', async () => {
   const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
   await ctx.round(); await ctx.round();

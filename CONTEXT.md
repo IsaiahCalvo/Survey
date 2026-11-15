@@ -45,7 +45,7 @@ Markers under each Category, and the Checklist Items under each Survey Marker.
 Survey mode hides the **Base layer** while it is active.
 
 ### Base layer
-The default PDF markup layer — general-purpose annotation on a PDF, comparable
+The default PDF annotation layer — general-purpose annotation on a PDF, comparable
 to Adobe Acrobat. Available to all users, including the free tier. The Base
 layer and **Survey mode** are mutually exclusive — only one shows at a time.
 The **Region** layer can be shown on top of either of them. Every annotation
@@ -82,3 +82,42 @@ A focus mask on a single PDF page. A Region belongs to exactly one **Space**,
 with one Region per page in that Space. It dims everything on the page except
 the area under review, so that area stands out. Unlike a **Survey Marker**, a
 Region is not a free-floating shape — it can only be changed in edit mode.
+
+## Kal Voe suite words
+
+Survey, Walkthru and Plot share one set of words (suite spec KAL-584). Survey's
+screen text uses them; code names and stored keys stay as they are.
+
+### Annotation
+Any drawn mark that is not a device: pen, shapes, text, callouts, highlights.
+Was "Markup" on Survey's screens. The panel listing every mark is the
+Annotations panel.
+
+### Tag
+A device's name, the same in every app (e.g. "Camera 101", "D-117"). On a
+Survey Marker, the Tag is the marker's name. Smart fill fills a Tag's outline.
+
+### Labels
+Words a person adds to sort things: documents, project items and mark library
+items. Was "Tags" on Survey's screens; renamed so Tag can mean a device's name.
+
+### Library
+The company library of **Categories** and **Category Types** that Survey,
+Walkthru and Plot all point at. A person on their own sees **My library**; once
+they are in a company, a **Company library** shows too. Every Survey Category
+saves itself into the library and keeps a link to its entry. Anyone can add an
+entry; in the Company library only owners and admins rename or remove one.
+Not the same as the mark library (saved marks in the viewer).
+
+### Category Type
+An optional kind under a Category in the library (e.g. "PTZ" and "Fisheye"
+under "Camera").
+
+### Shared id
+The id one real device keeps in every app. A Survey Marker made in Survey uses
+its own id; a copy of it keeps the original's, so one camera never splits in
+two. Excel never changes it.
+
+### Building, Wing, Floor, Location
+Where a device is. Every app knows all four and they travel with the device.
+Location is the room or area name (e.g. "Parking lot", "Kitchen").

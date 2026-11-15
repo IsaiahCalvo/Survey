@@ -35,6 +35,8 @@
  */
 
 import { isBBoxFullyContained, isBBoxOverlapping } from './marqueeSelection.js';
+import { suiteFieldsForCopy } from '../survey/suiteMarkerFields.js';
+import { isFeatureOn } from '../featureFlags.js';
 import {
   doesGeometryCrossLasso,
   isGeometryFullyInsideLasso,
@@ -507,13 +509,23 @@ export const SURVEY_MARKER_COPIED_FIELDS = Object.freeze([
   'categoryId', 'entityId', 'entityName', 'entityColor', 'color', 'opacity',
 ]);
 
-/** A clipboard entry for one marker record (plain JSON). */
-export function surveyMarkerClipboardEntry(record) {
+// Kal Voe suite (KAL-588, Nightly flag 'suite'): a copy keeps the shared id,
+// library links and place of the marker it was copied from.
+const suiteCopyOn = () => { try { return isFeatureOn('suite'); } catch { return false; } };
+
+/**
+ * A clipboard entry for one marker record (plain JSON).
+ * @param {object} record
+ * @param {string} [ownId] the marker's id, for its shared suite id
+ */
+export function surveyMarkerClipboardEntry(record, ownId = null) {
   if (!record?.bounds) return null;
   const entry = { bounds: { ...record.bounds }, moduleId: record.moduleId ?? null };
   for (const field of SURVEY_MARKER_COPIED_FIELDS) {
     if (record[field] !== undefined) entry[field] = JSON.parse(JSON.stringify(record[field]));
   }
+  const suite = suiteFieldsForCopy(record, ownId);
+  if (Object.keys(suite).length > 0) entry.suite = suite;
   return entry;
 }
 
@@ -584,6 +596,7 @@ export function buildPastedSurveyMarker(entry, opts = {}) {
   record.categoryId = opts.categoryId ?? null;
   if (opts.userId) record.userId = opts.userId;
   if (opts.stack) record.stack = opts.stack;
+  if (entry.suite && (opts.suite ?? suiteCopyOn())) Object.assign(record, entry.suite);
   return record;
 }
 

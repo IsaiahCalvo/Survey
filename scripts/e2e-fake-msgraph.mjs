@@ -148,6 +148,32 @@ const touch = (f, by = null, at = null) => {
 function setCell(sheet, row, col, value) {
   while (sheet.cells.length <= row) sheet.cells.push([]);
   sheet.cells[row][col] = value;
+  if (sheet.shown?.[row]) delete sheet.shown[row][col];
+}
+const formatAt = (sheet, r, c) => sheet.formats?.[r]?.[c]
+  || ((sheet.textColumns || []).some((t) => { const q = parseAddress(t); return q && c >= q.c1 && c <= q.c2 && r >= q.r1 && r <= q.r2; }) ? '@' : 'General');
+function setFormat(sheet, row, col, format) {
+  sheet.formats = sheet.formats || [];
+  sheet.formats[row] = sheet.formats[row] || [];
+  sheet.formats[row][col] = format;
+}
+// A person typing into a cell the way Excel takes it: a text ("@") cell keeps
+// what they typed; any other cell turns "50%", "$1,200" or "1,200" into a
+// number with a format that shows it as typed (real Excel 11-15).
+function typeLikeExcel(sheet, row, col, text) {
+  if (typeof text !== 'string' || formatAt(sheet, row, col) === '@') { setCell(sheet, row, col, text); return; }
+  const plain = text.replace(/[$,%]/g, '');
+  const number = /^-?\d+(\.\d+)?$/.test(plain) && /^\$?-?[\d,]+(\.\d+)?%?$/.test(text) ? Number(plain) : null;
+  if (number === null) { setCell(sheet, row, col, typed(text)); return; }
+  const percent = text.endsWith('%');
+  setCell(sheet, row, col, percent ? number / 100 : number);
+  setFormat(sheet, row, col, percent ? '0%' : text.startsWith('$') ? '"$"#,##0_);("$"#,##0)' : text.includes(',') ? '#,##0' : 'General');
+  // Excel pads a money format with a space where a closing bracket would go.
+  if (percent || text.includes(',') || text.startsWith('$')) {
+    sheet.shown = sheet.shown || [];
+    sheet.shown[row] = sheet.shown[row] || [];
+    sheet.shown[row][col] = text.startsWith('$') ? `${text} ` : text;
+  }
 }
 const cellAt = (sheet, r, c) => sheet.cells[r]?.[c] ?? '';
 const newSheet = (name, position) => ({ id: `{${String(store.next++).padStart(8, '0')}-0001-0000-0000-000000000000}`, name, position, visibility: 'Visible', cells: [], hidden: [], frozen: 0, validations: {} });
@@ -162,8 +188,8 @@ function usedRange(sheet) {
   return {
     rowIndex: r1, columnIndex: c1, rowCount: r2 - r1 + 1, columnCount: c2 - c1 + 1,
     values: box((r, c) => cellAt(sheet, r, c)),
-    text: box((r, c) => String(cellAt(sheet, r, c))),
-    numberFormat: box(() => 'General'),
+    text: box((r, c) => sheet.shown?.[r]?.[c] ?? String(cellAt(sheet, r, c))),
+    numberFormat: box((r, c) => sheet.formats?.[r]?.[c] || 'General'),
   };
 }
 
@@ -270,7 +296,11 @@ export async function fakeMsgraphHandler(req) {
     }
     const sheet = f.sheets.find((s) => s.name === body?.title) || f.sheets[0];
     if (m[2] === '/edit') {
-      for (const e of body.edits || []) setCell(sheet, e.row, e.col, e.value);
+      for (const e of body.edits || []) {
+        if (e.format) setFormat(sheet, e.row, e.col, e.format);
+        if (e.typed) typeLikeExcel(sheet, e.row, e.col, e.value);
+        else if (!e.format || 'value' in e) setCell(sheet, e.row, e.col, e.value);
+      }
     } else if (m[2] === '/sort') {
       const [header, ...rest] = sheet.cells;
       sheet.cells = [header, ...rest.reverse()];
@@ -471,6 +501,10 @@ export async function fakeMsgraphHandler(req) {
     // A cell inside a merged block (not its top-left) keeps nothing, as in Excel.
     const covered = (r, c) => (sheet.merges || []).some((g) => r >= g.r1 && r <= g.r2 && c >= g.c1 && c <= g.c2 && (r !== g.r1 || c !== g.c1));
     values.forEach((line, r) => line.forEach((v, c) => { if (v !== null && !covered(a.r1 + r, a.c1 + c)) setCell(sheet, a.r1 + r, a.c1 + c, typed(v)); }));
+    // Formats sent with the values (a null leaves the cell's format alone).
+    if (Array.isArray(body.numberFormat)) {
+      body.numberFormat.forEach((line, r) => (line || []).forEach((fmt, c) => { if (fmt != null) setFormat(sheet, a.r1 + r, a.c1 + c, fmt); }));
+    }
     touch(f);
     return json(200, {});
   }

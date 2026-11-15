@@ -154,7 +154,7 @@ function PhotoViewer({ photos, index, setIndex, urls, data, lookupMember, itemLa
     setBusy(false);
     if (res.error) { showToast(`Survey could not save the markup. ${res.error}`, 'error'); return; }
     setEditing(false);
-    showToast('Markup saved', 'success');
+    showToast('Annotations saved', 'success');
   };
   const backToOriginal = async () => {
     const res = await data.clearMarkup(photo.id);

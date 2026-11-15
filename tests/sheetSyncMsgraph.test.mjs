@@ -6,7 +6,7 @@ import ExcelJS from 'exceljs';
 
 import {
   blankWorkbookBytes, cellValueForWrite, columnLetter, createMsGraphProvider, dropDownChoices, msgraphFileId,
-  columnRuns, parseMsgraphFileId, rowRuns, cellBlocks, sparseBlocks,
+  columnRuns, parseMsgraphFileId, rowRuns, cellBlocks, shownText, sparseBlocks,
 } from '../supabase/functions/_shared/sheetSync/providers/msgraph.js';
 
 const BASE = 'https://graph.test/v1.0';
@@ -603,4 +603,15 @@ test('tabs added to a workbook are named apart from the sheets already in it', a
   const { namedApart } = await import('../supabase/functions/_shared/sheetSync/round.js');
   const scopes = [{ scopeId: 'a', title: 'Doors - L1' }, { scopeId: 'b', title: 'Cameras - L1' }, { scopeId: 'c', title: 'Summary' }];
   assert.deepEqual(namedApart(scopes, ['Summary', 'doors - l1', 'Doors - L1 (2)']).map((s) => s.title), ['Doors - L1 (3)', 'Cameras - L1', 'Summary (2)']);
+});
+
+test('shownText: what Excel shows for a formatted number, never for plain or broken cells', () => {
+  assert.equal(shownText(0.5, '50%', '0%'), '50%');
+  assert.equal(shownText(1200, '$1,200 ', '"$"#,##0_);("$"#,##0)'), '$1,200', 'format padding trimmed');
+  assert.equal(shownText(46024, '2-Jan', 'd-mmm'), '2-Jan');
+  assert.equal(shownText(1200, '1200', 'General'), null, 'General: the value itself');
+  assert.equal(shownText('50%', '50%', '@'), null, 'text is already text');
+  assert.equal(shownText(1e9, '#####', '0'), null, 'a column too narrow to show it');
+  assert.equal(shownText(0, '#DIV/0!', '0%', 'Error'), null);
+  assert.equal(shownText(5, '', '0'), null);
 });

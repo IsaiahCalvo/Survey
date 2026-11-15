@@ -74,7 +74,7 @@ test('mobile text markup controls cover create and selected-mark editing state',
 
 test('mobile text markup toolbar wires color, opacity, overlap, and the action-bar picker flag', () => {
   assert.match(source, /data-mobile-text-markup-controls=/);
-  assert.match(source, /aria-label="Text markup color and opacity"/);
+  assert.match(source, /aria-label="Text annotation color and opacity"/);
   assert.match(source, /api\.showAnnotationColorPicker/);
   // RULED 2026-09-23 (owner: sliders must be smooth). Was an exact
   // `(hex, opacity)` / `(hex)` call. The paint writes now also carry the colour

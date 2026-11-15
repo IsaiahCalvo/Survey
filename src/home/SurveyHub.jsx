@@ -19,10 +19,13 @@
 import { useState, useEffect, lazy, Suspense, startTransition } from 'react';
 import { readItemLink, requestItemLink, withoutItemLink } from '../projectItems/itemLink.js';
 import { useTooltip } from '../components/Tooltip';
+import { isFeatureOn } from '../featureFlags.js';
 import DocumentsLedger from './DocumentsLedger';
 import ProjectsFolderTree from './ProjectsFolderTree';
 import TemplatesEditor from './TemplatesEditor';
 const ArchiveScreenContainer = lazy(() => import('./ArchiveScreenContainer'));
+// Kal Voe suite library (KAL-585): only reachable with the Nightly flag 'suite'.
+const LibraryScreen = lazy(() => import('../library/LibraryScreen.jsx'));
 import { templateShareTarget } from './templateShareTarget';
 import { preloadedComponent } from '../utils/preloadedComponent';
 import { HubChromeContext, HubShell } from './HubShell';
@@ -101,7 +104,11 @@ export default function SurveyHub({
   const [tab, setTab] = useState(() => {
     if (initialTab) return initialTab;
     if (hasTemplateEditorRequest()) return 'templates';
-    try { return localStorage.getItem(TAB_KEY) || 'documents'; } catch { return 'documents'; }
+    try {
+      const saved = localStorage.getItem(TAB_KEY) || 'documents';
+      // The Library tab exists only while the 'suite' flag is on.
+      return saved === 'library' && !isFeatureOn('suite') ? 'documents' : saved;
+    } catch { return 'documents'; }
   });
   const [share, setShare] = useState(null); // null | { kind, name, item, manage }
   const [settingsOpen, setSettingsOpen] = useState(false); // settings page shown over the hub
@@ -311,6 +318,12 @@ export default function SurveyHub({
             getChecklistItemUsageCount={getChecklistItemUsageCount}
           />
         )
+      )}
+
+      {tab === 'library' && (
+        <Suspense fallback={<HubLoading {...common} tab="templates" />}>
+          <LibraryScreen {...common} templates={templates} onSaveTemplates={onSaveTemplates} />
+        </Suspense>
       )}
 
       {/* KAL-280 — Archive owns its own data: it reads the archived slice

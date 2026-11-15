@@ -1006,7 +1006,7 @@ export default function DocumentsLedger({
   const actions = (
     <>
       <div className="documents-mobile-search-actions hub-mobile-search-actions">
-        <Search placeholder={tagsReady ? 'Search documents and tags...' : 'Search documents...'} value={search} onChange={setSearch} width="100%" />
+        <Search placeholder={tagsReady ? 'Search documents and labels...' : 'Search documents...'} value={search} onChange={setSearch} width="100%" />
         {mobileSortControl}
         {canCreate || onOpenFromDrive || onOpenFromGoogleDrive ? (
           <button className="btn primary hub-mobile-primary-action" data-home-new="phone" disabled={uploadBusy} aria-haspopup="dialog" onClick={() => setNewSheetOpen(true)}>
@@ -1017,7 +1017,7 @@ export default function DocumentsLedger({
         )}
       </div>
       <div className="documents-desktop-search">
-        <Search placeholder={tagsReady ? 'Search documents and tags...' : 'Search documents...'} value={search} onChange={setSearch} />
+        <Search placeholder={tagsReady ? 'Search documents and labels...' : 'Search documents...'} value={search} onChange={setSearch} />
       </div>
       {canCreateTemplates ? (
         <button
@@ -1261,7 +1261,7 @@ export default function DocumentsLedger({
     setDocMenu(null);
     setTagPopover({ ids: list.map((d) => d.id), rect });
   };
-  const HOME_HEAD_LABEL = { project: 'Project', opened: 'Last opened', created: 'Created', edited: 'Last edited', size: 'Size', tags: 'Tags' };
+  const HOME_HEAD_LABEL = { project: 'Project', opened: 'Last opened', created: 'Created', edited: 'Last edited', size: 'Size', tags: 'Labels' };
   const homeHeaderCell = (key) => {
     const label = HOME_HEAD_LABEL[key];
     if (key === 'tags') return <span key={key} style={{ paddingRight: 8 }}>{label}</span>;
@@ -1625,7 +1625,7 @@ export default function DocumentsLedger({
                 </button>
                 {tagsReady && (
                   <button type="button" className="hub-menu__item" data-home-bulk-tags="" onClick={(event) => openTags(selectedDocs, event.currentTarget.getBoundingClientRect())}>
-                    <Icon name="tag" size={15} color="var(--ink-200)" />Add tags…
+                    <Icon name="tag" size={15} color="var(--ink-200)" />Add labels…
                   </button>
                 )}
                 {registerBulkItems(selectedDocs).map((it) => (
@@ -1717,7 +1717,7 @@ export default function DocumentsLedger({
                 ) : null}
                 {tagsReady ? (
                   <div>
-                    <div className="section-label">Tags</div>
+                    <div className="section-label">Labels</div>
                     <div style={{ marginTop: 3 }}><TagCell tags={previewDoc.tags} onOpen={(rect) => openTags([previewDoc], rect)} /></div>
                   </div>
                 ) : null}
@@ -1840,7 +1840,7 @@ export default function DocumentsLedger({
                 <div><span>{columnsOn ? 'Created' : 'Uploaded'}</span><strong>{mobileDetailDoc.uploadedAbs}</strong></div>
                 {columnsOn ? <div><span>Last opened</span><strong>{mobileDetailDoc.openedMs ? relativeTime(mobileDetailDoc.openedMs) : 'Not opened yet'}</strong></div> : null}
                 {tagsReady ? (
-                  <div><span>Tags</span><TagCell tags={mobileDetailDoc.tags} onOpen={(rect) => openTags([mobileDetailDoc], rect)} /></div>
+                  <div><span>Labels</span><TagCell tags={mobileDetailDoc.tags} onOpen={(rect) => openTags([mobileDetailDoc], rect)} /></div>
                 ) : null}
               </div>
               {/* Same pair as the desktop preview panel: a wide Open file,
@@ -1900,7 +1900,7 @@ export default function DocumentsLedger({
             { label: 'Move to project…', onClick: () => { setMoveMode('move'); setMoveOpen(true); } },
             { label: 'Copy to project…', onClick: () => { setMoveMode('copy'); setMoveOpen(true); } },
             { label: 'Duplicate', onClick: () => { onDuplicate && onDuplicate(selectedRaw()); clearDesktopSelection(); } },
-            ...(tagsReady ? [{ label: 'Add tags…', onClick: () => openTags(docs.filter((x) => docMenu.ids.includes(x.id)), docMenu.rect || (docMenu.point ? { left: docMenu.point.x, right: docMenu.point.x, top: docMenu.point.y, bottom: docMenu.point.y } : null)) }] : []),
+            ...(tagsReady ? [{ label: 'Add labels…', onClick: () => openTags(docs.filter((x) => docMenu.ids.includes(x.id)), docMenu.rect || (docMenu.point ? { left: docMenu.point.x, right: docMenu.point.x, top: docMenu.point.y, bottom: docMenu.point.y } : null)) }] : []),
             ...registerBulkItems(docs.filter((x) => docMenu.ids.includes(x.id))).map(({ label, onClick }) => ({ label, onClick })),
             ...(onPdfTools ? [{ label: 'Merge into one PDF', onClick: () => onPdfTools(selectedRaw(), 'merge') }] : []),
             { label: 'Share', reason: selectionBlock('share'), onClick: () => onShare && onShare(selectedRaw()) },
@@ -1911,7 +1911,7 @@ export default function DocumentsLedger({
             { label: 'Copy', onClick: () => setClipboardDoc(doc.raw) },
             { label: 'Paste', disabled: !clipboardDoc, onClick: () => clipboardDoc && onDuplicate && onDuplicate([clipboardDoc]) },
             ...(onPdfTools ? [{ label: 'PDF tools…', onClick: () => onPdfTools([doc.raw]) }] : []),
-            ...(tagsReady ? [{ label: doc.tags.length ? 'Edit tags…' : 'Add tag…', onClick: () => openTags([doc], docMenu.rect || (docMenu.point ? { left: docMenu.point.x, right: docMenu.point.x, top: docMenu.point.y, bottom: docMenu.point.y } : null)) }] : []),
+            ...(tagsReady ? [{ label: doc.tags.length ? 'Edit labels…' : 'Add label…', onClick: () => openTags([doc], docMenu.rect || (docMenu.point ? { left: docMenu.point.x, right: docMenu.point.x, top: docMenu.point.y, bottom: docMenu.point.y } : null)) }] : []),
             ...(homeDownloadOn && onOpenDocument && canDownloadDoc(doc.raw) ? [{
               label: 'Download',
               onClick: () => { requestHomeDownload(doc.raw.id); onOpenDocument(doc.raw); },
@@ -1966,8 +1966,8 @@ export default function DocumentsLedger({
         anchorRect={tagPopover.rect || { left: 16, right: 16, top: 80, bottom: 80 }}
         docs={mapped.filter((d) => tagPopover.ids.includes(d.id))}
         tagsByDoc={homeExtras.tagsByDoc}
-        onAdd={(ids, tags) => homeExtras.addTags(ids, tags).then((ok) => { if (!ok) showToast('Survey could not save that tag. Try again.', 'error'); })}
-        onRemove={(ids, tag) => homeExtras.removeTag(ids, tag).then((ok) => { if (!ok) showToast('Survey could not remove that tag. Try again.', 'error'); })}
+        onAdd={(ids, tags) => homeExtras.addTags(ids, tags).then((ok) => { if (!ok) showToast('Survey could not save that label. Try again.', 'error'); })}
+        onRemove={(ids, tag) => homeExtras.removeTag(ids, tag).then((ok) => { if (!ok) showToast('Survey could not remove that label. Try again.', 'error'); })}
         onClose={() => setTagPopover(null)}
       />
     )}

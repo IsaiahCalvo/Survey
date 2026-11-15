@@ -78,7 +78,7 @@ test('a drawn or Smart fill marker opens its card, which names it; only an agent
   // falls back to it too (a marker always has a name - BL-22).
   const card = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../src/components/SurveyMarkerPlacementDialog.jsx'), 'utf8');
   assert.match(card, /name: \(name \?\? fallback\)\.trim\(\) \|\| fallback/);
-  assert.match(card, /aria-label="Survey Marker name"/);
+  assert.match(card, /aria-label="Survey Marker tag"/);
   assert.ok(!card.includes('>New Survey Marker<'), 'the title is the name field now');
   assert.match(src, /defaultNameFor=\{\(categoryId, moduleId\) => generateDefaultSurveyMarkerName\(/);
 });

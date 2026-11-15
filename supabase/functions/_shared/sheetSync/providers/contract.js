@@ -19,7 +19,10 @@
 //     same day whatever the sheet's locale); other dates and times as the text
 //     the sheet shows. A cell whose formula fails (#N/A, #REF!...) as
 //     { error: '#N/A' } (cellError), never as blank: blank would read as "the
-//     person cleared it" and wipe the survey's value.
+//     person cleared it" and wipe the survey's value. Optional `shown`
+//     (sparse, same rows and columns): what the sheet shows for a number it
+//     formats ("50%" for 0.5, "$1,200", "2-Jan"); the engine reads text
+//     columns (notes, names, text answers) as that.
 // - readCells(fileId, [{ sheetId, title, row, col }]) -> any[]
 //     Single cells, in the order asked, in exactly readGrid's form. Just before
 //     writing, the runner re-reads every Row ID it writes next to and every

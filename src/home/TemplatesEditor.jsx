@@ -278,6 +278,8 @@ const buildRich = (templates, mint = (_key, prefix) => newId(prefix)) => templat
       return {
       id: c?.id ?? mint(catKey, 'c'),
       name: c?.name || `Category ${ci + 1}`,
+      // Kal Voe suite library link (KAL-585): carried through untouched.
+      ...(typeof c?.libraryEntryId === 'string' && c.libraryEntryId ? { libraryEntryId: c.libraryEntryId } : {}),
       items: checklistOf(c).map((it) => {
         /* Preserve stable item ids when the persisted row already has one —
            archived items rely on the same id the marker's checklist_responses
@@ -2251,6 +2253,7 @@ export default function TemplatesEditor({
       categories: m.categories.map((c) => ({
         id: c.id,
         name: c.name,
+        ...(c.libraryEntryId ? { libraryEntryId: c.libraryEntryId } : {}),
         checklist: c.items.map((it) => {
           /* Persist archived metadata so KAL-44 archive survives save/reload.
              Active items round-trip the simple shape unchanged. */
