@@ -9,7 +9,6 @@ import { useMenuFocus } from '../hooks/useMenuFocus.js';
 import { presenceInitials } from '../components/presenceIdentity.js';
 import { USER_INITIALS_INK, userColorFill } from '../utils/userColors.js';
 import { openKeyboardShortcuts } from '../utils/keyboardShortcuts.js';
-import { isFeatureOn } from '../featureFlags.js';
 import HelpSupportDialog from '../help/HelpSupportDialog.jsx';
 import { useTooltip } from '../components/Tooltip';
 import { isDocumentDrag, readDocumentDragIds } from './documentSelection.js';
