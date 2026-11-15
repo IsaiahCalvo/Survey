@@ -11,7 +11,9 @@
 //
 // - getVersion(fileId) -> string | null
 //     Changes whenever the file's content changes (Drive `version`, Graph cTag).
-// - readGrid(fileId) -> { sheets: [{ sheetId, title, rows: any[][], columnCount? }] }
+// - readGrid(fileId) -> { sheets: [{ sheetId, title, rows: any[][], columnCount?, merges? }] }
+//     `merges` (optional): merged areas as { r0, r1, c0, c1 } (end exclusive,
+//     0-based). Every cell in one but its top-left reads blank.
 //     Every tab as plain values: string, number, boolean or null. A whole-day
 //     date as "YYYY-MM-DD" from the cell's serial number (so "05/10" means the
 //     same day whatever the sheet's locale); other dates and times as the text

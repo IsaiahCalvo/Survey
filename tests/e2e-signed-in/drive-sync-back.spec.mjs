@@ -42,6 +42,7 @@ function fakeOneDrive(fileName) {
   const item = (id, it) => ({
     id, name: it.name, eTag: `"{${id}},${it.version}"`, size: it.bytes.length, webUrl: `https://contoso.example/Plans/${encodeURIComponent(it.name)}`,
     file: { mimeType: 'application/pdf' }, parentReference: { driveId: DRIVE }, lastModifiedDateTime: new Date().toISOString(),
+    lastModifiedBy: { user: { displayName: it.editedBy || 'E2E Owner' } },
     '@microsoft.graph.downloadUrl': `${FILES}/dl/${id}?v=${it.version}`,
   });
   const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -63,7 +64,7 @@ function fakeOneDrive(fileName) {
     d.uploads.set(uploadUrl, id);
     return json(200, { uploadUrl, expirationDateTime: new Date(Date.now() + 3_600_000).toISOString() });
   };
-  d.editInOneDrive = () => { const it = d.items.get('PLAN1'); it.version += 1; it.bytes = Buffer.concat([it.bytes, Buffer.from('\n% edited in OneDrive\n')]); };
+  d.editInOneDrive = () => { const it = d.items.get('PLAN1'); it.version += 1; it.editedBy = 'Ana Ruiz'; it.bytes = Buffer.concat([it.bytes, Buffer.from('\n% edited in OneDrive\n')]); };
   d.remove = () => d.items.delete('PLAN1');
   return d;
 }
@@ -201,16 +202,21 @@ test('open from OneDrive, draw, Sync now writes the marked-up PDF back; a OneDri
       return data?.sync_minutes;
     }, { timeout: 20_000 }).toBe(15);
     await expect(card).toBeVisible();
+    // Nothing changed in OneDrive since Survey saved: no note.
+    await expect(card.locator('[data-drive-source-changed]')).toHaveCount(0);
     await card.getByRole('button', { name: 'Close', exact: true }).last().click();
 
-    // Someone edits the file in OneDrive; the next save asks first.
+    // Someone edits the file in OneDrive: the card says who before a save,
+    // and the next save asks first, naming them.
     drive.editInOneDrive();
     await drawLine(page, 1);
     await expect.poll(() => pageLines(page)).toHaveLength(2);
     await button.click();
+    await expect(card.locator('[data-drive-source-changed]')).toHaveText(/^Ana Ruiz changed this file in OneDrive .*Survey will ask before it saves over that\.$/, { timeout: 20_000 });
     await card.getByRole('button', { name: 'Sync to OneDrive now' }).click();
     const conflict = page.locator('[data-drive-dialog="conflict"]');
     await expect(conflict).toBeVisible({ timeout: 30_000 });
+    await expect(conflict).toContainText(`Ana Ruiz changed ${name} in OneDrive`);
     expect(drive.puts).toBe(1);
     await conflict.getByRole('button', { name: 'Keep Survey’s version' }).click();
     await expect.poll(() => drive.puts, { timeout: 30_000 }).toBe(2);

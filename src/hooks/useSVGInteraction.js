@@ -2533,7 +2533,11 @@ export function useSVGInteraction({
     // on a Mac) held as a mouse drag starts on bare page draws a lasso for
     // that one drag.
     const ctrlLasso = selectionMode !== 'lasso' && isCtrlLassoPress(e, ctrlLassoOn);
-    if (e.target === svgRef.current && activeTool === 'select' && (selectionMode === 'lasso' || ctrlLasso)) {
+    // Ctrl / Cmd under Pan selects on bare page as Select would, box or lasso
+    // (the layer is armed for that press, useSelectionGrabHandoff copyPress;
+    // owner 2026-11-14).
+    const boxesUnderPan = activeTool === 'pan' && isCopyDragEvent(e) && !e.shiftKey;
+    if (e.target === svgRef.current && (activeTool === 'select' || boxesUnderPan) && (selectionMode === 'lasso' || ctrlLasso)) {
       if (e.button != null && e.button !== 0) return;
       const current = lassoStateRef.current;
       if (current && current.pointerId !== e.pointerId) {
@@ -2568,7 +2572,7 @@ export function useSVGInteraction({
     // sub-threshold clicks still behave like plain empty-space clicks and
     // fall through to the existing deselect-on-release path. Shift is
     // captured here so the release handler can decide replace vs union.
-    if (e.target === svgRef.current && activeTool === 'select') {
+    if (e.target === svgRef.current && (activeTool === 'select' || boxesUnderPan)) {
       const svgPoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
       applyMarqueeState({
         startX: svgPoint.x,

@@ -405,6 +405,8 @@ import { bookmarkDeleteMessage, removeBookmarkWithDescendants, restoreRemovedBoo
 import { useYDoc } from './hooks/useYDoc.js';
 import { useZoomState } from './hooks/useZoomState';
 import { isFeatureOn } from './featureFlags.js';
+import { canLinkLocalFile, createLocalFileLink, fileNameOf, LOCAL_FILE_REOPEN_EVENT } from './services/localFileLink.js';
+import { planOutsideEditReconcile } from './utils/pdfOutsideEdits.js';
 import { setStampPickerOpen, useStampPickerOpen } from './components/StampPickerCard.jsx';
 import { setSignatureCardOpen, useSignatureCardOpen } from './components/SignatureCard.jsx';
 import { pickImageToInsert } from './components/InsertImage.jsx';
@@ -15838,7 +15840,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   }, [hasImportedPdfBookmarks, importPdfBookmarksIntoSidebar, pdfBookmarks, pdfId]);
 
   useEffect(() => {
-    if (!window.electronAPI?.onReimportPdfBookmarks) return undefined;
+    // Only the visible tab answers the menu; hidden tabs stay mounted.
+    if (!isActive || !window.electronAPI?.onReimportPdfBookmarks) return undefined;
     const unsubscribe = window.electronAPI.onReimportPdfBookmarks(() => {
       handleReimportPdfBookmarks();
     });
@@ -15847,7 +15850,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         unsubscribe();
       }
     };
-  }, [handleReimportPdfBookmarks]);
+  }, [isActive, handleReimportPdfBookmarks]);
 
   // UX 2026-04-22: The File-menu Save Log listener now lives at the outer
   // App level (see default export) so it's active on every screen, not only
@@ -24795,7 +24798,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // file path and writes the currently-open PDF with annotations baked in.
   // Cmd+S only saves app/cloud state; this explicit export path is the only
   // place the app generates PDF bytes and writes/downloads a PDF copy.
-  const handleExportAnnotatedPDF = useCallback(async () => {
+  // options.deliver(bytes): hand the bytes to the caller instead of Save As
+  // (Save back to the opened file, services/localFileLink.js).
+  const handleExportAnnotatedPDF = useCallback(async (options) => {
     if (!pdfFile) {
       showToast('Open a PDF first.', 'warn');
       return;
@@ -24841,6 +24846,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         {
           returnBytes: true,
           actionType: 'pdf-export',
+          authorName: user?.user_metadata?.full_name || null,
           documentId: pdfFile?.id || null,
           pageTransformations,
           callouts: calloutsWithoutHiddenLayers(callouts, hiddenLayerIds),
@@ -24855,6 +24861,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       );
       if (!buffer) {
         showToast('Nothing to export.', 'warn');
+        return;
+      }
+      if (typeof options?.deliver === 'function') {
+        await options.deliver(buffer);
         return;
       }
       if (api?.saveFile) {
@@ -24872,6 +24882,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         }
         console.log('[PDFSaveExport] action complete ' + JSON.stringify({
           actionType: 'pdf-export',
+          authorName: user?.user_metadata?.full_name || null,
           documentId: pdfFile?.id || null,
           supabaseAnnotationSaveRan: false,
           pdfBytesGenerated: true,
@@ -24924,6 +24935,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       showToast(`Export failed: ${err?.message || err}`, 'error');
     }
   }, [
+    user?.user_metadata?.full_name,
     annotationsByPage,
     callouts,
     deletedPdfAnnotations,
@@ -25110,6 +25122,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       return { ok: false, error: `Export failed: ${err?.message || err}` };
     }
   }, [
+    user?.user_metadata?.full_name,
     annotationsByPage,
     callouts,
     deletedPdfAnnotations,
@@ -25313,9 +25326,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     printableSurveyMarkers, showSurveyPanel, selectedModuleId,
   ]);
 
-  // Subscribe to the File menu item.
+  // Subscribe to the File menu item. Only the visible tab answers: hidden
+  // tabs stay mounted, and each used to open its own Save dialog.
   useEffect(() => {
-    if (typeof window === 'undefined' || !window.electronAPI?.onExportAnnotatedPdfMenu) {
+    if (!isActive || typeof window === 'undefined' || !window.electronAPI?.onExportAnnotatedPdfMenu) {
       return undefined;
     }
     const unsubscribe = window.electronAPI.onExportAnnotatedPdfMenu(() => {
@@ -25324,7 +25338,74 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     return () => {
       if (typeof unsubscribe === 'function') unsubscribe();
     };
-  }, [handleExportAnnotatedPDF]);
+  }, [isActive, handleExportAnnotatedPDF]);
+
+  // Desktop (flag 'outside-edits', services/localFileLink.js): the file this
+  // document was opened from. Drawboard for Mac writes back over the file on
+  // Save but never notices another app changing it, so its next Save wipes
+  // that app's work. Here Cmd/Ctrl+S writes the marked-up PDF back only while
+  // the file is still the one Survey last read or wrote, and a change made in
+  // another app is said at once, with a way to open the changed file.
+  const localFileLinkRef = useRef(null);
+  useEffect(() => {
+    const api = typeof window !== 'undefined' ? window.electronAPI : null;
+    if (!isFeatureOn('outside-edits') || !canLinkLocalFile(api, pdfFilePath)) return undefined;
+    const name = fileNameOf(pdfFilePath);
+    const toastId = `local-file-change-${tabId || pdfFilePath}`;
+    const link = createLocalFileLink({
+      api,
+      filePath: pdfFilePath,
+      onOutsideChange: (change) => {
+        if (change.kind === 'gone') {
+          showToast(`${name} was moved or deleted on this computer. Your marks are still here in Survey.`, 'warn', { id: toastId, duration: Infinity });
+          return;
+        }
+        showToast(`${name} was changed in another app.`, 'info', {
+          id: toastId,
+          duration: Infinity,
+          action: {
+            label: 'Open the changed file',
+            onClick: () => {
+              dismissToast(`local-file-save-${tabId || pdfFilePath}`);
+              window.dispatchEvent(new CustomEvent(LOCAL_FILE_REOPEN_EVENT, {
+                detail: { filePath: pdfFilePath, fileName: name, fileSize: change.bytes.length, data: change.bytes },
+              }));
+            },
+          },
+        });
+      },
+    });
+    let live = true;
+    link.start()
+      .then(() => { if (live) localFileLinkRef.current = link; })
+      .catch((error) => console.warn('[LocalFileLink] could not watch the file:', error?.message || error));
+    return () => {
+      live = false;
+      if (localFileLinkRef.current === link) localFileLinkRef.current = null;
+      link.stop();
+      dismissToast(toastId);
+    };
+  }, [pdfFilePath, tabId]);
+  const saveToLinkedFileRef = useRef(null);
+  saveToLinkedFileRef.current = async () => {
+    const link = localFileLinkRef.current;
+    if (!link) return;
+    const name = fileNameOf(link.filePath);
+    const id = `local-file-save-${tabId || link.filePath}`;
+    await handleExportAnnotatedPDF({
+      deliver: async (buffer) => {
+        const out = await link.save(buffer);
+        if (out.ok) showToast(`Saved to ${name}`, 'success', { id });
+        else if (out.reason === 'gone') showToast(`${name} was moved or deleted, so nothing was written. Use Export annotated PDF to save a copy.`, 'warn', { id });
+        else {
+          showToast(`${name} was changed in another app since Survey last saved it, so it was not overwritten.`, 'warn', {
+            id,
+            action: { label: 'Save a copy', onClick: () => handleExportAnnotatedPDF() },
+          });
+        }
+      },
+    });
+  };
 
   // KAL-393: File menu → Export markup (XFDF).
   useEffect(() => {
@@ -28554,6 +28635,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           if (key === 's') {
             e.preventDefault();
             handleSaveDocument();
+            saveToLinkedFileRef.current?.();
             return;
           }
           if (key === '0') {
@@ -30414,7 +30496,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     if (documentLocked) return undefined;
     const decision = embeddedImportDecision({
       // The document's owner may import even before the role RPC resolves.
-      role: yjsDocRole ?? (documentOwnerId && user?.id && documentOwnerId === user.id ? 'owner' : null),
+      // A file kept on this device has no server role: it is the device's own.
+      role: yjsDocRole ?? (isDeviceDocumentId(documentId) || (documentOwnerId && user?.id && documentOwnerId === user.id) ? 'owner' : null),
       marker: excelSyncMetaGet(EMBEDDED_IMPORT_MARKER_KEY),
     });
     if (decision === 'wait') return undefined;
@@ -30425,7 +30508,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     (async () => {
       try {
         const rawPdfBytes = await readOriginalPdfBytes(pdfFile, pdfDoc);
-        const { annotationsByPage: importedWithSource, nativeLayerPolicyByPage } =
+        const { annotationsByPage: importedWithSource, nativeLayerPolicyByPage, appLayerState, rawAnnotationIdsByPage } =
           await importAnnotationsFromPdf(pdfDoc, { rawPdfBytes });
         if (cancelled) return;
         // w33: the store keeps one geometry per imported mark, not the PDF's
@@ -30438,13 +30521,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         const totalImported = Object.values(importedAnnotations || {})
           .reduce((n, pg) => n + (Array.isArray(pg?.objects) ? pg.objects.length : 0), 0);
         const importedIds = [];
+        // Nightly 'outside-edits' (pdfOutsideEdits.js): a Survey export that
+        // comes back as a new version brings the marks another app changed
+        // or deleted, where Survey's copy is unchanged since that export.
+        const exportedMarks = isFeatureOn('outside-edits') && Array.isArray(appLayerState?.exportedMarks)
+          ? appLayerState.exportedMarks
+          : [];
+        const unreadablePages = new Set(embeddedImportFailedPages(nativeLayerPolicyByPage));
+        const pageKeys = new Set(Object.keys(importedAnnotations || {}));
+        exportedMarks.forEach((entry) => { if (Number(entry?.page) > 0) pageKeys.add(String(entry.page)); });
 
-        if (totalImported > 0) {
+        if (totalImported > 0 || exportedMarks.length > 0) {
           setPdfNativeAnnotationLayerPolicyByPage(nativeLayerPolicyByPage || {});
-          Object.entries(importedAnnotations || {}).forEach(([pageKey, pageData]) => {
+          pageKeys.forEach((pageKey) => {
             const pageNumber = Number(pageKey);
+            const pageData = importedAnnotations?.[pageKey];
             const objects = Array.isArray(pageData?.objects) ? pageData.objects : [];
-            if (objects.length === 0) return;
+            if (objects.length === 0 && exportedMarks.length === 0) return;
             const current = annotationsByPageRef.current?.[pageKey]
               || annotationsByPageRef.current?.[pageNumber]
               || { objects: [] };
@@ -30454,11 +30547,27 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
               existingIds,
               deletedPdfAnnotations: durableDeletedPdfAnnotationsRef.current,
             });
-            if (stamped.length === 0) return;
-            stamped.forEach((object) => importedIds.push(object.id));
+            const { replace, remove } = exportedMarks.length > 0
+              ? planOutsideEditReconcile({
+                pageNumber,
+                imported: selectEmbeddedImportObjects(objects, pageNumber),
+                current: currentObjects,
+                exportedMarks,
+                rawIds: rawAnnotationIdsByPage ? (rawAnnotationIdsByPage[pageNumber] || []) : null,
+                pageUnreadable: unreadablePages.has(pageNumber),
+              })
+              : { replace: new Map(), remove: new Set() };
+            if (stamped.length === 0 && replace.size === 0 && remove.size === 0) return;
+            const keptObjects = (replace.size > 0 || remove.size > 0)
+              ? currentObjects
+                .filter((o) => !remove.has(String(o?.id || o?.data?.id)))
+                .map((o) => replace.get(String(o?.id || o?.data?.id)) || o)
+              : currentObjects;
+            const writtenIds = [...stamped.map((object) => object.id), ...replace.keys()];
+            writtenIds.forEach((id) => importedIds.push(id));
             // 2026-10-07: saved as one checkpoint, apart from the user's edits.
-            annotationDocBeginBulkImport(stamped.map((object) => object.id));
-            handleSaveAnnotations(pageNumber, { ...current, objects: [...currentObjects, ...stamped] }, {
+            annotationDocBeginBulkImport(writtenIds);
+            handleSaveAnnotations(pageNumber, { ...current, objects: [...keptObjects, ...stamped] }, {
               source: 'embedded-import-once',
               action: 'import-pdf-annotations',
               checkpointPolicy: 'skip',
@@ -30473,6 +30582,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
             pages: Object.keys(importedAnnotations || {}).length,
             totalImported,
             added: importedIds.length,
+            outsideEditsChecked: exportedMarks.length,
           }));
         }
 

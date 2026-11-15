@@ -69,7 +69,7 @@ test('the bundle holds the XFDF, the audit log, page pictures and a manifest tha
     assert.equal(createHash('sha256').update(byName.get(entry.name)).digest('hex'), entry.sha256, `${entry.name} fingerprint`);
   }
 
-  const { xfdf } = await exportAnnotationsAsXfdf(fileFrom(sourceBytes), model, PAGE_SIZES, { pdfFileName: 'Level 2 plan.pdf' });
+  const { xfdf } = await exportAnnotationsAsXfdf(fileFrom(sourceBytes), model, PAGE_SIZES, { pdfFileName: 'Level 2 plan.pdf', now: NOW });
   assert.equal(Buffer.from(byName.get('annotations.xfdf')).toString('utf8'), xfdf, 'the bundle XFDF is the XFDF export');
 
   const log = JSON.parse(Buffer.from(byName.get('audit-log.json')).toString('utf8'));
@@ -192,9 +192,11 @@ test('XFDF and review package exports follow the page orientation and answer the
     assert.ok(at > 0, runner);
     assert.match(src.slice(at, at + 1200), /exportOptions: \{[\s\S]*?pageTransformations,[\s\S]*?\}/);
   }
-  for (const hook of ['onExportXfdfMenu', 'onExportReviewBundleMenu']) {
+  for (const hook of ['onExportXfdfMenu', 'onExportReviewBundleMenu', 'onExportAnnotatedPdfMenu']) {
     assert.match(src, new RegExp(`if \\(!isActive \\|\\| typeof window === 'undefined' \\|\\| !window\\.electronAPI\\?\\.${hook}\\)`));
   }
+  // File menu → Reimport PDF bookmarks: also the visible tab only.
+  assert.match(src, /if \(!isActive \|\| !window\.electronAPI\?\.onReimportPdfBookmarks\) return undefined;/);
 });
 
 test('custom stamps left out of XFDF still count as marks, get page pictures and are named in the toast', async () => {

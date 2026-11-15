@@ -21,7 +21,7 @@ export const OVERLAY = '[data-overlay-page="1"]';
 const LOCAL_HOSTS = new Set(['127.0.0.1', 'localhost']);
 
 export async function seed(admin) {
-  const { data } = await admin.auth.admin.listUsers({ perPage: 200 });
+  const { data } = await admin.auth.admin.listUsers({ perPage: 1000 });
   const ownerId = data.users.find((u) => u.email === E2E_ACCOUNTS.owner.email).id;
   const stamp = Date.now();
   const docId = randomUUID();

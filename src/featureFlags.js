@@ -605,6 +605,14 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Open PDFs from OneDrive and save the marked-up PDF back to OneDrive',
     stage: 'beta',
   }),
+  // Adobe round trip (2026-11-14, pdfOutsideEdits.js): an exported PDF
+  // changed in Acrobat and uploaded as a new version brings those changes.
+  'outside-edits': Object.freeze({
+    // Desktop too: Cmd/Ctrl+S saves back to the opened file only while no
+    // other app changed it, and a change there is said at once.
+    label: 'Edits made in Adobe (or any PDF app): new-version uploads bring them across; desktop saves back to the opened file and notices changes',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

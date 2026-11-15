@@ -1437,18 +1437,18 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   color: var(--text-2);
   box-shadow: var(--shadow-popover);
   text-align: left;
-  z-index: 3100;
+  /* Above the phone viewer's own layer (5000, AppShell) like the rail's other
+     popovers (7200): at 3100 it opened UNDER the page and never showed. */
+  z-index: 7200;
 }
 
 .mobile-pdf-tools__sync-details [data-sync-message] {
   min-width: 0;
   flex: 1;
-  overflow: hidden;
   color: var(--text-2);
   font-size: 12px;
-  line-height: 1.25;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* Wraps: a cut-off sentence ("…save it to yo…") said nothing. */
+  line-height: 1.3;
 }
 
 .mobile-pdf-tools__sync-details button {

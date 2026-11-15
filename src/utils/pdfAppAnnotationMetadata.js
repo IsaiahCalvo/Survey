@@ -129,6 +129,18 @@ const GEOMETRY_KEYS = [
   'startArrowheadStyle',
 ];
 
+// Survey-only data that describes a mark's shape; stale once another app
+// moved or reshaped the mark (pdfOutsideEdits.js).
+export const OUTSIDE_EDIT_STALE_DATA_KEYS = Object.freeze([
+  'pdfInkSourceGeometry',
+  'pdfInkPresentationGeometry',
+  'inkGeometrySpace',
+  'inkGeometryOrigin',
+  'pdfCalloutPoints',
+  'pdfCloudInsets',
+  'pdfCloudVertexState',
+]);
+
 const OWNER_KEYS = [
   'authorId',
   'authorName',
@@ -254,6 +266,19 @@ export function buildPdfAppAnnotationMetadata(fabricObj, item = {}) {
   };
 }
 
+/**
+ * The style and geometry a mark is exported with, as the metadata blob
+ * stores them. Outside-edit checks (pdfOutsideEdits.js) hash this to tell
+ * whether a mark changed in Survey since it was exported.
+ */
+export function pdfAppAnnotationSnapshot(fabricObj) {
+  if (!fabricObj || typeof fabricObj !== 'object') return null;
+  return {
+    style: pick(fabricObj, STYLE_KEYS),
+    geometry: pick(fabricObj, GEOMETRY_KEYS, GEOMETRY_METADATA_ARRAY_LIMIT),
+  };
+}
+
 export function serializePdfAppAnnotationMetadata(fabricObj, item = {}) {
   const metadata = buildPdfAppAnnotationMetadata(fabricObj, item);
   return metadata ? JSON.stringify(metadata) : null;
@@ -279,16 +304,41 @@ export function parsePdfAppAnnotationMetadata(rawValue) {
   return null;
 }
 
+function opaqueRgbaToHex(value) {
+  if (typeof value !== 'string') return value;
+  const match = value.trim().match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)$/i);
+  if (!match || (match[4] !== undefined && Number(match[4]) !== 1)) return value;
+  return `#${match.slice(1, 4).map((n) => Math.min(255, Number(n)).toString(16).padStart(2, '0')).join('')}`;
+}
+
 export function applyPdfAppAnnotationMetadata(fabricObj, metadata) {
   if (!fabricObj || !metadata || metadata.kind !== PDF_APP_ANNOTATION_SUBJECT) {
     return fabricObj;
   }
+  // 2026-11-14 (pdfOutsideEdits.js): parts another PDF app changed after
+  // Survey exported the mark come from the PDF itself (fabricObj), not from
+  // this blob, which that app kept but never updated.
+  const outside = metadata.outsideEdits && typeof metadata.outsideEdits === 'object'
+    ? metadata.outsideEdits
+    : null;
+  const outsideStyleKeys = new Set([
+    ...(outside?.stroke ? ['stroke'] : []),
+    ...(outside?.fill ? ['fill'] : []),
+    ...(outside?.opacity ? ['opacity'] : []),
+    ...(outside?.strokeWidth ? ['strokeWidth'] : []),
+  ]);
   const style = metadata.style && typeof metadata.style === 'object' ? metadata.style : null;
-  const geometry = metadata.geometry && typeof metadata.geometry === 'object' ? metadata.geometry : null;
+  const geometry = metadata.geometry && typeof metadata.geometry === 'object' && outside?.geometry !== true
+    ? metadata.geometry
+    : null;
+  const blobData = metadata.data && typeof metadata.data === 'object' ? { ...metadata.data } : {};
+  if (outside?.geometry === true) {
+    OUTSIDE_EDIT_STALE_DATA_KEYS.forEach((key) => { delete blobData[key]; });
+  }
 
   const data = {
     ...(fabricObj.data || {}),
-    ...(metadata.data && typeof metadata.data === 'object' ? metadata.data : {}),
+    ...blobData,
     id: metadata.id,
     type: metadata.appType,
     appAnnotationMetadata: metadata,
@@ -319,12 +369,27 @@ export function applyPdfAppAnnotationMetadata(fabricObj, metadata) {
 
   if (style) {
     STYLE_KEYS.forEach((key) => {
+      if (outsideStyleKeys.has(key)) return;
       if (style[key] !== undefined) out[key] = jsonSafe(style[key]);
     });
+  }
+  // The PDF's own value when the check read one (an app may change /C or
+  // /Contents without redrawing the appearance the importer drew from),
+  // else the imported one; the importer writes rgba(), Survey hex.
+  ['stroke', 'fill', 'opacity', 'strokeWidth'].forEach((key) => {
+    if (!outsideStyleKeys.has(key)) return;
+    const value = outside[key];
+    out[key] = value !== true && value !== undefined ? value : opaqueRgbaToHex(fabricObj[key]);
+  });
+  const outsideText = typeof outside?.text === 'string' ? outside.text : fabricObj.text;
+  if (outside?.text && outsideText !== undefined) {
+    // Words retyped elsewhere: keep the PDF's.
+    out.text = outsideText;
   }
 
   if (geometry) {
     GEOMETRY_KEYS.forEach((key) => {
+      if (key === 'text' && outside?.text && outsideText !== undefined) return;
       if (geometry[key] !== undefined) {
         out[key] = jsonSafe(geometry[key], 0, GEOMETRY_METADATA_ARRAY_LIMIT);
       }
@@ -380,10 +445,10 @@ export function applyPdfAppAnnotationMetadata(fabricObj, metadata) {
   // Accept both new ('survey-marker') and legacy ('surveyMarker') appType values.
   if (isSurveyMarkerType(metadata.appType)) {
     out.annotationId = metadata.id;
-    if (style?.fill !== undefined) out.fill = style.fill;
-    if (style?.opacity !== undefined) out.opacity = style.opacity;
-    if (style?.stroke !== undefined) out.stroke = style.stroke;
-    if (style?.strokeWidth !== undefined) out.strokeWidth = style.strokeWidth;
+    if (style?.fill !== undefined && !outsideStyleKeys.has('fill')) out.fill = style.fill;
+    if (style?.opacity !== undefined && !outsideStyleKeys.has('opacity')) out.opacity = style.opacity;
+    if (style?.stroke !== undefined && !outsideStyleKeys.has('stroke')) out.stroke = style.stroke;
+    if (style?.strokeWidth !== undefined && !outsideStyleKeys.has('strokeWidth')) out.strokeWidth = style.strokeWidth;
   }
 
   if (metadata.ownership && typeof metadata.ownership === 'object') {

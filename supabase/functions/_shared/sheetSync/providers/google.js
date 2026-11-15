@@ -18,7 +18,7 @@ const ROW_ID_HEADER_GREY = { red: 0.75, green: 0.75, blue: 0.75 };
 // Biggest sheet a round reads (cells across the synced tabs). Past it a round
 // would run out of the edge function's time and memory on every try.
 export const MAX_GRID_CELLS = 250000;
-const GRID_FIELDS = 'sheets(properties(sheetId,title,gridProperties(rowCount,columnCount)),'
+const GRID_FIELDS = 'sheets(properties(sheetId,title,gridProperties(rowCount,columnCount)),merges,'
   + 'data(startRow,startColumn,rowData(values(effectiveValue,formattedValue,effectiveFormat/numberFormat/type))))';
 // Columns a person types words into: formatted as plain text, so Google keeps
 // "00123", a 20-digit serial number or "3/4" as typed instead of turning them
@@ -289,7 +289,13 @@ export function googleSheetsProvider({ endpoints, getAccessToken, fetchImpl = fe
           rows[i] = rows[i] || [];
           cells += rows[i].length;
         }
-        return { sheetId, title: String(s.properties?.title || ''), columnCount, rows };
+        // Merged areas: Google keeps only the top-left cell's value, so the
+        // rest read blank whatever they held (see the engine's `merges`).
+        const merges = (s.merges || []).map((m) => ({
+          r0: Number(m.startRowIndex) || 0, r1: Number(m.endRowIndex) || 0,
+          c0: Number(m.startColumnIndex) || 0, c1: Number(m.endColumnIndex) || 0,
+        })).filter((m) => m.r1 > m.r0 && m.c1 > m.c0 && (m.r1 - m.r0) * (m.c1 - m.c0) > 1);
+        return { sheetId, title: String(s.properties?.title || ''), columnCount, rows, ...(merges.length ? { merges } : {}) };
       });
       if (cells > MAX_GRID_CELLS) throw providerError(`google: sheet too big (${cells} cells)`, 413);
       return { sheets };
