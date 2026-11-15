@@ -29,6 +29,7 @@
 //     (owner 2026-10-28: a visible Delete, like Drawboard; long press still
 //     opens the full menu).
 import { isFeatureOn } from '../featureFlags.js';
+import { dockedBarPosition, isSelectionBarDocked, useSelectionBarDocked } from '../utils/selectionBarDock.js';
 import { isInTabBehind } from '../utils/tabBehind.js';
 import { resolveViewerOcclusionInsets } from '../utils/searchMatchNavigation.js';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -283,6 +284,11 @@ export default function SelectionQuickBar({
   // picked measurement's caption (readSelection).
   const [measureEditOn] = useState(() => isFeatureOn('measure-edit'));
   const measureEditRef = useRef(measureEditOn);
+  // Nightly 'toolbar-settings' (VT-52): the bar can dock to the bottom of the
+  // page area (selectionBarDock.js) instead of following the mark.
+  const [dockOn] = useState(() => isFeatureOn('toolbar-settings'));
+  const docked = useSelectionBarDocked() && dockOn;
+  const dockOnRef = useRef(dockOn);
   const phoneRef = useRef(phone);
   phoneRef.current = phone;
 
@@ -312,7 +318,10 @@ export default function SelectionQuickBar({
       if (selection.gestureLayer) heldGestureRef.current = { layer: selection.gestureLayer, items: itemsRef.current };
       next.locked = selection.locked;
       if (selection.frame && !selection.gesture && !turningRef.current && !selection.inert) {
-        const placed = computeSelectionQuickBarPosition({
+        const dockedNow = dockOnRef.current && !phoneRef.current && isSelectionBarDocked();
+        const placed = dockedNow
+          ? dockedBarPosition(viewerBounds(false), bar.offsetWidth, bar.offsetHeight)
+          : computeSelectionQuickBarPosition({
           selectionRect: selection.frame,
           keepOut: selection.keepOut,
           preferBelow: selection.preferBelow,
@@ -323,7 +332,8 @@ export default function SelectionQuickBar({
         if (placed) {
           bar.style.left = `${placed.left}px`;
           bar.style.top = `${placed.top}px`;
-          next = { ...next, visible: true, side: placed.side };
+          // Docked, its popovers open upward, as they do over a mark.
+          next = { ...next, visible: true, side: placed.side === 'docked' ? 'above' : placed.side };
         }
       }
     }
@@ -341,7 +351,7 @@ export default function SelectionQuickBar({
   // data-selection-gesture; a zoom rewrites the page boxes).
   useLayoutEffect(() => {
     place();
-  }, [place, items, active, api?.contextTool, api?.selectionCount]);
+  }, [place, items, active, api?.contextTool, api?.selectionCount, docked]);
   useEffect(() => {
     if (!active) return undefined;
     const onAny = () => schedule();
@@ -776,6 +786,7 @@ export default function SelectionQuickBar({
       data-selection-quick-bar="true"
       data-visible={visible ? 'true' : 'false'}
       data-side={look.side}
+      data-docked={docked && !phone ? 'true' : undefined}
       data-phone={phone ? 'true' : undefined}
       role="toolbar"
       aria-label="Selection actions"
