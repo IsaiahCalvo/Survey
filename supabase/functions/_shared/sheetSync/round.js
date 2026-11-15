@@ -118,6 +118,8 @@ export function namedApart(scopes, taken) {
 
 /** Blanked answers in one round from which they are held (see planSheetRound). */
 export const BIG_ERASE = 10;
+// How long a blank the saved file doesn't show yet may wait (see makePlan).
+export const FILE_WAIT_MS = 5 * 60 * 1000;
 
 // Excel on the web shows a person "Can't Save Your Changes" (and makes them
 // reload) when any outside write lands while their typing is not saved yet.
@@ -325,6 +327,7 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
     locked = await provider.lockedTabs(link.file_id, state.lockedTabs.map(sheetIdOf).filter((id) => id != null));
   }
   let plan;
+  const mergesAsked = new WeakSet(); // grids readMerges was asked about
   const makePlan = async () => {
     const planArgs = {
       layout, grid, markers, baseline: roundBaseline, state, signing, now, sheetEditor,
@@ -333,6 +336,28 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
       ...(newMarkerId ? { newMarkerId } : {}),
     };
     plan = await planSheetRound(planArgs);
+    // Filled cells read blank: merging cells blanks all but the top-left one,
+    // so a provider whose grid can't say where merges are (Excel) is asked
+    // now, and the round is planned again knowing them (see engine `merges`).
+    // Excel's saved file can trail what Graph reads by a minute or two (real
+    // Excel 11-15: a merge reached the file ~100 s later), so a blank the file
+    // still shows filled waits, round to round, until the file has it, for
+    // up to FILE_WAIT_MS (then it is taken as it reads).
+    if (plan.erasing > 0 && typeof provider.readMerges === 'function' && !mergesAsked.has(grid)) {
+      mergesAsked.add(grid);
+      const found = await provider.readMerges(link.file_id, grid.sheets.filter((s) => !Array.isArray(s.merges))
+        .map((s) => ({ sheetId: s.sheetId, title: s.title })), plan.erased || []).catch(() => null);
+      let any = false;
+      for (const s of grid.sheets) {
+        const areas = found?.merges?.[String(s.sheetId)];
+        if (areas?.length && !Array.isArray(s.merges)) { s.merges = areas; any = true; }
+      }
+      const since = Number(state.fileBehind?.since);
+      const waited = Number.isFinite(since) ? now.getTime() - since : 0;
+      const wait = found?.filled?.length && waited < FILE_WAIT_MS ? new Set(found.filled) : null;
+      if (any || wait) plan = await planSheetRound({ ...planArgs, ...(wait ? { waitCells: wait } : {}) });
+      if (wait) plan.state.fileBehind = { since: Number.isFinite(since) ? since : now.getTime() };
+    }
     // Many filled answers blanked in the sheet at once: planned again with them
     // held, so an older copy restored from version history (or a column cleared
     // by mistake) can't wipe field work before an editor has looked.
