@@ -55,7 +55,10 @@ export function stampAnnotationCreationIdentity(annotation, { authorId = null } 
     ...object,
     ...(needsTopLevelId ? { id: annotationId } : {}),
     ...(needsAuthorStamp
-      ? { meta: { ...(object.meta || {}), authorId: authorIdToStamp } }
+      // When it was made, stamped with its author (write-once like the
+      // author): the Markups list, the properties panel and the bar's author
+      // chip show it.
+      ? { meta: { ...(object.meta || {}), authorId: authorIdToStamp, createdAt: object.meta?.createdAt ?? new Date().toISOString() } }
       : {}),
   };
 }
