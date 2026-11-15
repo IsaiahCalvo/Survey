@@ -140,6 +140,11 @@ function batchUpdate(f, requests) {
     } else if (kind === 'updateDimensionProperties') {
       const sheet = sheetById(f, body.range.sheetId);
       if (body.properties.hiddenByUser) sheet.hidden.push(body.range.startIndex);
+      if (body.properties.pixelSize) (sheet.widths ||= {})[body.range.startIndex] = body.properties.pixelSize;
+      replies.push({});
+    } else if (kind === 'setBasicFilter') {
+      // One filter per tab; a new one replaces it (as in Google Sheets).
+      sheetById(f, body.filter.range.sheetId).basicFilter = { ...body.filter.range };
       replies.push({});
     } else if (kind === 'setDataValidation') {
       sheetById(f, body.range.sheetId).validations += 1;
@@ -147,6 +152,12 @@ function batchUpdate(f, requests) {
     } else if (kind === 'repeatCell') {
       const sheet = sheetById(f, body.range.sheetId);
       if (body.cell?.userEnteredFormat?.numberFormat?.type === 'TEXT') (sheet.textColumns ||= []).push(body.range.startColumnIndex);
+      if (body.cell?.userEnteredFormat?.wrapStrategy === 'WRAP') (sheet.wrapColumns ||= []).push(body.range.startColumnIndex);
+      replies.push({});
+    } else if (kind === 'addConditionalFormatRule') {
+      const rule = body.rule;
+      sheetById(f, rule.ranges[0].sheetId).colorRules = [...(sheetById(f, rule.ranges[0].sheetId).colorRules || []),
+        { column: rule.ranges[0].startColumnIndex, value: rule.booleanRule.condition.values[0].userEnteredValue }];
       replies.push({});
     } else {
       return { error: gErr(400, `fake google: unsupported request ${kind}`) };
