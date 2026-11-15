@@ -10,7 +10,7 @@
 // fileId is `drives/<driveId>/items/<itemId>` (driveIds hold `!`, so no short form).
 // Rows and columns are 0-based from A1; row 0 is the header.
 import { cellError, fetchWithTimeout, REQUEST_TIMEOUT_MS } from './contract.js';
-import { buildLiveWorkbook, excelSheetNames } from './liveWorkbook.js';
+import { buildLiveWorkbook, excelSheetNames, widthOf } from './liveWorkbook.js';
 import { mergesFromXlsx } from './xlsxMerges.js';
 import { isTextColumn, trackingChoices } from '../layout.js';
 
@@ -280,6 +280,10 @@ export function sparseBlocks(cells, maxCells = SPARSE_MAX_CELLS) {
  * Side-by-side columns that get the same value from `valueOf` (null = none),
  * as { from, to, value } runs: one Graph call per run instead of per column.
  */
+// Excel column width (characters of the default font) as the points Graph's
+// columnWidth takes: 7 px a character plus 5 px of padding, 0.75 pt a pixel.
+export const excelPoints = (chars) => Math.round((Math.trunc(chars * 7 + 5) * 0.75) * 100) / 100;
+
 export function columnRuns(columns, valueOf) {
   const runs = [];
   (columns || []).forEach((column, index) => {
@@ -481,6 +485,24 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
     return Array.from({ length: rowCount }, () => line);
   };
 
+  // Rows inserted right under the header take the header's look in Excel
+  // (grey, centred, wrapped: real Excel 11-15), and a wrapped Row ID made each
+  // row eight lines tall. These put a data row's look back: no fill, no
+  // wrap, notes wrapped and read from the left. Best effort, as formats.
+  const plainLookOps = (batch, start, rowCount, width) => {
+    if (start !== (Number(batch.headerRow) || 0) + 1 || !rowCount || !width) return [];
+    const block = `${sheetPath(batch.sheetId)}/range(address='${cellAddress(start, 0)}:${cellAddress(start + rowCount - 1, width - 1)}')/format`;
+    const ops = [
+      { method: 'POST', path: `${block}/fill/clear`, body: {} },
+      { method: 'PATCH', path: block, body: { wrapText: false } },
+    ];
+    for (const c of batch.wrapCols || []) {
+      if (c >= width) continue;
+      ops.push({ method: 'PATCH', path: `${sheetPath(batch.sheetId)}/range(address='${cellAddress(start, c)}:${cellAddress(start + rowCount - 1, c)}')/format`, body: { wrapText: true, horizontalAlignment: 'General' } });
+    }
+    return ops;
+  };
+
   // New rows' values in Survey's own columns only, a run of columns at a
   // time: the last resort when a write across the list hits a PivotTable.
   async function writeOwnCols(fileId, sheetId, start, rows, ownCols, batch = {}) {
@@ -533,6 +555,23 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
       const width = run.to - run.from + 1;
       const formats = Array.from({ length: DROP_DOWN_ROWS - 1 }, () => Array(width).fill('@'));
       ops.push({ method: 'PATCH', path: range(`${columnLetter(run.from)}2:${columnLetter(run.to)}${DROP_DOWN_ROWS}`), body: { numberFormat: formats }, optional: true });
+    }
+    // The look a new workbook gets in its upload, as far as Graph can set it:
+    // the export's column widths, a grey, centred, wrapped header and notes
+    // that wrap. Formats only, so a refused one never fails the tabs.
+    const format = (address) => `${path}/range(address='${address}')/format`;
+    if (columns.every((c) => c?.key)) {
+      for (const run of columnRuns(columns, (column) => widthOf(column))) {
+        ops.push({ method: 'PATCH', path: format(`${columnLetter(run.from)}1:${columnLetter(run.to)}1`), body: { columnWidth: excelPoints(run.value) }, optional: true });
+      }
+    }
+    const header = `A1:${columnLetter(columns.length - 1)}1`;
+    ops.push({ method: 'PATCH', path: format(header), body: { horizontalAlignment: 'Center', verticalAlignment: 'Center', wrapText: true }, optional: true });
+    ops.push({ method: 'PATCH', path: `${format(header)}/fill`, body: { color: '#BFBFBF' }, optional: true });
+    const notesAt = columns.findIndex((c) => c?.key === 'notes');
+    if (notesAt >= 0) {
+      const L = columnLetter(notesAt);
+      ops.push({ method: 'PATCH', path: format(`${L}2:${L}${DROP_DOWN_ROWS}`), body: { wrapText: true, verticalAlignment: 'Center' }, optional: true });
     }
     return ops;
   }
@@ -747,6 +786,9 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
           if (!batch.ownCols?.length) throw Object.assign(new Error('The workbook refused new rows (409).'), { status: 409, code: 'PivotTableRangeConflict' });
           await writeOwnCols(fileId, batch.sheetId, starts[i], batch.rows, batch.ownCols, batch);
         }
+        const looks = todo.flatMap((batch, i) => plainLookOps(batch, starts[i], batch.rows.length, writeWidth(batch, widthOf(batch))));
+        // In order: the notes' wrap must land after the block's "no wrap".
+        if (looks.length) await workbookBatch(fileId, looks).catch(() => {});
         return;
       }
       for (const batch of batches || []) {
@@ -799,6 +841,8 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
           if (!isShiftBlocked(err) || !batch.ownCols?.length) throw err;
           await writeOwnCols(fileId, batch.sheetId, start, batch.rows, batch.ownCols, batch);
         }
+        const looks = plainLookOps(batch, start, values.length, cols);
+        if (looks.length) await workbookBatch(fileId, looks).catch(() => {});
       }
     },
 
@@ -1034,7 +1078,7 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
         } catch { /* the next round's names step around them */ }
         throw err;
       }
-      // Text formats are a nicety: a refused one must not fail the tabs.
+      // Formats are a nicety: a refused one must not fail the tabs.
       await workbookBatch(fileId, setup.filter((op) => op.optional), { parallel: true }).catch(() => {});
       return sheetIds;
     },

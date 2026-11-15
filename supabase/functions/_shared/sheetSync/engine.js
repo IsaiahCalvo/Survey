@@ -1663,6 +1663,8 @@ export async function planSheetRound({
       plan.appends.push({
         sheetId: sheet.sheetId, title: sheet.title, rows: appendRows, width, listCols, ownCols,
         textCols: scope.columns.filter((c) => isTextColumn(c) && colOfKey.has(c.key)).map((c) => colOfKey.get(c.key)),
+        wrapCols: colOfKey.has('notes') ? [colOfKey.get('notes')] : [],
+        headerRow: headerAt,
         ...(firstSummary != null ? { before: firstSummary } : {}),
       });
     }

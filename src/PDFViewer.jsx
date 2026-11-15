@@ -17052,6 +17052,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
             // Notes column (width 50)
             const notesColIndex = colOf.notes;
             worksheet.getColumn(notesColIndex).width = 50;
+            // Long notes wrap inside their cell instead of running off it.
+            worksheet.getColumn(notesColIndex).eachCell((cell, rowNum) => { if (rowNum > 1) cell.alignment = { ...cell.alignment, wrapText: true, vertical: 'middle' }; });
 
             // The header stays in view while scrolling, and the sheet prints
             // one page wide in landscape with the header on every page.
@@ -17066,6 +17068,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
               fitToHeight: 0,
               printTitlesRow: '1:1',
             };
+            // Tab name on the left of each printed page, "Page 1 of 3" on the right.
+            worksheet.headerFooter = { ...worksheet.headerFooter, oddFooter: '&L&A&RPage &P of &N' };
           });
         });
       }

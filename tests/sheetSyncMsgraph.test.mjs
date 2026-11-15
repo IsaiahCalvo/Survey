@@ -170,6 +170,11 @@ function fakeGraph({ driveType = 'business' } = {}) {
       if (JSON.parse(init.body).columnHidden) target.hidden.push(`${col}:${col}`);
       return json(200, {});
     }
+    const look = /^\/range\(address='([^']+)'\)(\/format(?:\/fill)?)$/.exec(tail);
+    if (look && method === 'PATCH') {
+      target.looks = [...(target.looks || []), `${look[1]}${look[2]} ${init.body}`];
+      return json(200, {});
+    }
     if (range && range[2] === '/dataValidation') {
       target.validation = target.validation || {};
       target.validation[range[1]] = JSON.parse(init.body).rule.list.source;
@@ -474,20 +479,29 @@ test('tabs added later go out in three batches, with small answers and no dead c
     assert.deepEqual(sh.cells[0], ['Row ID', 'Item', 'Entity', 'Q1', 'Q2', 'Height', 'Notes']);
     assert.equal(sh.hidden[0], 'A:A');
   }
-  // One GET of the tab names and three batches (adds, set-up, text formats),
-  // not about nine calls a tab.
+  // One GET of the tab names and a few batches (adds, set-up, then formats
+  // at 20 a batch), not about nine calls a tab.
   // (The fake logs each request inside a batch too.)
-  assert.equal(calls.filter((c) => c.endsWith('$batch')).length, 3, calls.join(' | '));
+  assert.equal(calls.filter((c) => c.endsWith('$batch')).length, 4, calls.join(' | '));
   const direct = calls.filter((c) => !c.endsWith('$batch') && !/worksheets\/add|range\(/.test(c));
   assert.ok(direct.length <= 2, `only the session and the tab names outside a batch: ${direct.join(' | ')}`);
   // Graph has no data-validation or freeze-panes API: never asked.
   assert.ok(!graph.calls.some((c) => /dataValidation|freezePanes/.test(c)), 'no dead calls');
   // Range writes ask for the address only, so Graph does not echo whole ranges.
-  const writes = graph.calls.filter((c) => /PATCH .*range\(/.test(c));
+  const writes = graph.calls.filter((c) => /PATCH .*range\(/.test(c) && !/\/format/.test(c));
   assert.ok(writes.length && writes.every((c) => c.includes('$select=address')), writes.join(' | '));
   const formats = writes.filter((c) => /2:[A-Z]+1000'\)/.test(c));
   assert.equal(formats.length, 6, `two text runs (A-E, G) a tab, got ${formats.join(' | ')}`);
   assert.deepEqual(sheets.find((x) => x.name === 'B').textRuns, ['A2:E1000', 'G2:G1000']);
+  // The look a new workbook has, as far as Graph can set it: the export's
+  // widths, a grey wrapped header and notes that wrap.
+  assert.deepEqual(sheets.find((x) => x.name === 'B').looks, [
+    'A1:A1/format {"columnWidth":87.75}', 'B1:B1/format {"columnWidth":129.75}',
+    'C1:F1/format {"columnWidth":82.5}', 'G1:G1/format {"columnWidth":266.25}',
+    'A1:G1/format {"horizontalAlignment":"Center","verticalAlignment":"Center","wrapText":true}',
+    'A1:G1/format/fill {"color":"#BFBFBF"}',
+    'G2:G1000/format {"wrapText":true,"verticalAlignment":"Center"}',
+  ]);
 });
 
 test('columnRuns groups neighbours with the same value', () => {
