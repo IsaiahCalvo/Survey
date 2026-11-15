@@ -176,6 +176,7 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   // Drawboard Projects parity spec SS-31 / MS-30 (2026-11-10): a subject on
   // any mark, shown in the Markups list and written as the PDF's /Subj.
+  'help-menu': Object.freeze({ label: 'Account menu: Help & support (start guide, stuck-page fix, help pages, version)', stage: 'beta' }),
   'mark-subject': Object.freeze({
     label: 'Marks: give any mark its own subject (Properties panel); shows in Markups and in exported PDFs',
     stage: 'beta',

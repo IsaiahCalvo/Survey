@@ -1,7 +1,7 @@
 /* Survey Hub — shared shell + small presentational components.
    Ported from the Claude Design prototype (survey-hub/shell.jsx). All markup is
    rendered inside a `.survey-hub` root so hub.css stays fully scoped. */
-import { useState, useRef, useEffect, useLayoutEffect, useContext, createContext } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, useContext, useMemo, createContext } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import AppIcon from '../Icons';
 import DismissBarrier from '../components/DismissBarrier';
@@ -9,6 +9,8 @@ import { useMenuFocus } from '../hooks/useMenuFocus.js';
 import { presenceInitials } from '../components/presenceIdentity.js';
 import { USER_INITIALS_INK, userColorFill } from '../utils/userColors.js';
 import { openKeyboardShortcuts } from '../utils/keyboardShortcuts.js';
+import { isFeatureOn } from '../featureFlags.js';
+import HelpSupportDialog from '../help/HelpSupportDialog.jsx';
 import { useTooltip } from '../components/Tooltip';
 import { isDocumentDrag, readDocumentDragIds } from './documentSelection.js';
 import { releaseChannel } from '../featureFlags.js';
@@ -247,6 +249,9 @@ const isExpoNativeShell = () => {
    would be the same destination offered twice. */
 const ProfileMenu = ({ userName, userMeta, showArchive = false, showShortcuts = false, tab, onNav }) => {
   const { user, onSettings, onSignOut, onSignIn, openProfileMenu, setOpenProfileMenu } = useContext(HubChromeContext);
+  // Nightly 'help-menu': "Help & support" in this menu.
+  const helpOn = useMemo(() => isFeatureOn('help-menu'), []);
+  const [helpOpen, setHelpOpen] = useState(false);
   const tip = useTooltip();
   // Resolve the per-tier badge text. Callers may pass `userMeta` explicitly;
   // otherwise we read from AuthContext so free users no longer see "Pro".
@@ -367,6 +372,11 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, showShortcuts = 
                   <Icon name="keyboard" size={15} color="var(--ink-200)" />Keyboard shortcuts
                 </button>
               )}
+              {helpOn && (
+                <button type="button" role="menuitem" className="hub-menu__item" data-help-menu-item onClick={() => { setOpen(false); setConfirmSignOut(false); setHelpOpen(true); }}>
+                  <Icon name="infoCircle" size={15} color="var(--ink-200)" />Help &amp; support
+                </button>
+              )}
               {confirmSignOut ? (
                 <div className="profile-signout-confirm" role="group" aria-label="Sign out of Survey?">
                   <div className="profile-signout-copy">Sign out of Survey?</div>
@@ -387,6 +397,9 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, showShortcuts = 
             </div>
           </div>
         </>
+      )}
+      {helpOn && (
+        <HelpSupportDialog open={helpOpen} onClose={() => setHelpOpen(false)} onShortcuts={showShortcuts ? openKeyboardShortcuts : null} />
       )}
     </div>
   );
