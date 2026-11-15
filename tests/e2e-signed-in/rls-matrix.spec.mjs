@@ -91,6 +91,10 @@ async function seedOwnerRows(admin, ids) {
   await must('clear project_photos', admin.from('project_photos').delete().eq('project_id', PROJECT));
   await must('project_photos', admin.from('project_photos').insert({ id: RLS_PHOTO, project_id: PROJECT, path: `${PROJECT}/${RLS_PHOTO}.jpg` }));
   await must('project_photo_links', admin.from('project_photo_links').insert({ photo_id: RLS_PHOTO, item_id: rlsItem.id, project_id: PROJECT }));
+  // Suite library (Nightly 'suite'): a My library entry is its maker's alone.
+  await replace('library_entries', 'id', 'e2e00000-0000-4000-8000-0000000005c1', {
+    id: 'e2e00000-0000-4000-8000-0000000005c1', kind: 'category', name: 'RLS sweep Camera', scope: 'mine', created_by: owner,
+  });
   await replace('mark_library_items', 'created_by', owner, {
     library: 'personal', created_by: owner, name: 'RLS sweep item', payload: { version: 1, items: [] },
   });
@@ -201,6 +205,8 @@ const NOT_SWEPT = {
   // own guest row, and the secret's hash nobody; probed in
   // guest-links-security.spec.mjs.
   document_guest_links: 'own spec', document_guests: 'own spec',
+  // Wrong guest link passwords (KAL-401): only the redeem function counts them.
+  document_guest_link_attempts: 'service only',
   // Live sheet links (Nightly): document members read a few columns, never the
   // sync state; probed in sheet-sync.spec.mjs.
   sheet_sync_links: 'own spec',

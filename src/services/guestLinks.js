@@ -30,6 +30,12 @@ export async function createGuestLink(client, { documentId, role, expiresIn }) {
   return row ? { id: row.id, token: row.token, role: row.role, expiresAt: row.expires_at } : null;
 }
 
+/** Put a password on a link (4 to 128 characters), or take it off with ''. */
+export async function setGuestLinkPassword(client, linkId, password) {
+  const { error } = await client.rpc('set_guest_link_password', { p_link_id: linkId, p_password: password || null });
+  if (error) throw new Error(error.message || 'Could not set the password');
+}
+
 export async function revokeGuestLink(client, linkId) {
   const { error } = await client.rpc('revoke_guest_link', { p_link_id: linkId });
   if (error) throw new Error(error.message || 'Could not turn the link off');
@@ -38,7 +44,7 @@ export async function revokeGuestLink(client, linkId) {
 /** Live links first, with who came in through each. */
 export async function listGuestLinks(client, documentId) {
   const [links, guests] = await Promise.all([
-    client.from('document_guest_links').select('id, role, expires_at, revoked_at, created_at, use_count').eq('document_id', documentId).order('created_at', { ascending: false }),
+    client.from('document_guest_links').select('id, role, expires_at, revoked_at, created_at, use_count, has_password').eq('document_id', documentId).order('created_at', { ascending: false }),
     client.from('document_guests').select('link_id, display_name, joined_at').eq('document_id', documentId),
   ]);
   if (links.error) throw new Error(links.error.message || 'Could not read the guest links');
@@ -54,16 +60,34 @@ export async function listGuestLinks(client, documentId) {
     expiresAt: l.expires_at,
     createdAt: l.created_at,
     live: !l.revoked_at && Date.parse(l.expires_at) > now,
+    hasPassword: l.has_password === true,
     revoked: Boolean(l.revoked_at),
     guests: byLink.get(l.id) || [],
   }));
 }
 
-export async function redeemGuestLink(client, { token, name }) {
-  const { data, error } = await client.rpc('redeem_guest_link', { p_token: token, p_name: cleanGuestName(name) });
+export const GUEST_PASSWORD_MIN = 4;
+export const GUEST_PASSWORD_MAX = 128;
+
+// What the guest sees for each answer of redeem_guest_link_checked (KAL-401).
+export const GUEST_PASSWORD_MESSAGES = Object.freeze({
+  password: 'This link needs a password. Ask the person who shared it.',
+  wrong: 'That password is not right. Try again.',
+  locked: 'Too many attempts. Try again later.',
+});
+
+/**
+ * Open a guest link. Resolves { status: 'ok', documentId, ... } or
+ * { status: 'password' | 'wrong' | 'locked', message } when the link has a
+ * password; an ended or unknown link throws.
+ */
+export async function redeemGuestLink(client, { token, name, password = null }) {
+  const { data, error } = await client.rpc('redeem_guest_link_checked', { p_token: token, p_name: cleanGuestName(name), p_password: password || null });
   if (error) throw new Error(error.message || 'Could not open the guest link');
   const row = rowOf(data);
-  return row ? { documentId: row.document_id, documentName: row.document_name, role: row.role, expiresAt: row.expires_at } : null;
+  if (!row || typeof row !== 'object') return null;
+  if (row.status && row.status !== 'ok') return { status: row.status, message: GUEST_PASSWORD_MESSAGES[row.status] || 'Could not open the guest link' };
+  return { status: 'ok', documentId: row.document_id, documentName: row.document_name, role: row.role, expiresAt: row.expires_at };
 }
 
 /** "Ends in 3 hours", "Ends tomorrow", "Ends Nov 30". */
