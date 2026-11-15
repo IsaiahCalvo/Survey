@@ -96,6 +96,25 @@ const STAMP_KEYS = ['changedBy', 'changedDate'];
 // A baseline value no cell can print: the agreed value is unknown, so both sides count as changed.
 const OLDER_COPY_PRINT = 'f2:older-copy';
 const isLegacyPrint = (fp) => typeof fp === 'string' && !fp.startsWith(FP_PREFIX);
+const normLabel = (v) => cellText(v).trim().toLowerCase();
+// A Changed Date cell as a day: "M/D/YYYY" as Survey writes it, or
+// "YYYY-MM-DD" as a date cell reads. NaN for anything else.
+function stampDay(v) {
+  const t = cellText(v).trim();
+  let m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(t);
+  if (m) return Date.UTC(+m[1], +m[2] - 1, +m[3]);
+  m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(t);
+  if (m) return Date.UTC(+m[3], +m[1] - 1, +m[2]);
+  return NaN;
+}
+const sameStampDay = (cell, appText) => Number.isFinite(stampDay(cell)) && stampDay(cell) === stampDay(appText);
+// The cell holds a day before the app's (or the app's can't be read).
+function stampDayBefore(cell, appText) {
+  const now = stampDay(appText);
+  if (!Number.isFinite(now)) return true;
+  const was = stampDay(cell);
+  return Number.isFinite(was) && was < now;
+}
 
 const getField = (rec, key) => (key.startsWith('answer:') ? (rec.answers || {})[key.slice(7)] : rec[key]);
 const setField = (rec, key, value) => {
@@ -307,6 +326,41 @@ function findHeaderRow(scope, rows, remembered = {}) {
   return 0;
 }
 
+// A sort with the heading row in it ("My data has headers" off in Excel or
+// Sheets) moves the heading row into the list: whole rows (Row ID column
+// sorted too) or only the columns sorted (Row ID column left out, its
+// heading still on top). Found when the top row holds at most one heading,
+// a lower row holds two or more, and the rows between carry this tab's own
+// Row IDs, so a title row the PM put above the headings is never taken for
+// it. Gives the heading row and the columns it moved in (c1..c2), or null.
+export function findSortedHeader(scope, rows, remembered = {}, ownToken = () => false) {
+  const rowIdCol = scope.columns.find((c) => c.key === 'rowId');
+  const idNames = new Set([normHeader(rowIdCol?.header), normHeader(remembered.rowId)].filter(Boolean));
+  const names = new Set(scope.columns.filter((c) => c.key !== 'rowId').flatMap((c) => [normHeader(c.header), normHeader(remembered[c.key])]).filter(Boolean));
+  const named = (row) => (row || []).flatMap((v, c) => (names.has(normHeader(v)) ? [c] : []));
+  const idAt = (row) => (row || []).findIndex((v) => idNames.has(normHeader(v)));
+  if (named(rows[0]).length >= 2) return null;
+  let k = -1;
+  for (let r = 1; r < rows.length; r += 1) if (named(rows[r]).length >= 2) { k = r; break; }
+  if (k < 0) return null;
+  const cols = named(rows[k]);
+  const idInRow = idAt(rows[k]);
+  // Whole rows: the Row ID heading went with the rest; else it stayed on top.
+  const idCol = idInRow >= 0 ? idInRow : idAt(rows[0]);
+  if (idCol < 0) return null;
+  if (idInRow >= 0) cols.push(idInRow);
+  const [from, to] = idInRow >= 0 ? [0, k - 1] : [1, k];
+  let own = 0;
+  for (let r = from; r <= to; r += 1) if (ownToken(cellText(rows[r]?.[idCol]).trim())) own += 1;
+  if (!own) return null;
+  const c1 = Math.min(...cols);
+  const c2 = Math.max(...cols);
+  // A column the sort left out (a heading still on top) between them: unsure.
+  for (let c = c1; c <= c2; c += 1) if (!cols.includes(c) && (names.has(normHeader(rows[0]?.[c])) || idNames.has(normHeader(rows[0]?.[c])))) return null;
+  if (idInRow < 0 && idCol >= c1 && idCol <= c2) return null;
+  return { row: k, c1, c2 };
+}
+
 const isChoiceColumn = (column) => Boolean(column?.key?.startsWith('answer:')) && checklistItemKind(column.item) === 'choice';
 const TICKED = ['y', 'yes', 'pass', 'ok', 'done', 'true', 'complete', 'completed', 'checked'];
 const CLEARED = ['n', 'no', 'fail', 'false'];
@@ -468,6 +522,12 @@ export async function planSheetRound({
   waitCells = null,
 }) {
   const nextBaseline = { ...baseline };
+  // Changed By labels the app's items carry, and the initials of whoever
+  // edited the sheet: a row gone back to an older copy holds the first, a PM
+  // stamping their own edit types the second.
+  let knownBy = null;
+  const knownChangedBy = () => knownBy || (knownBy = new Set(Object.values(markers || {}).map((m) => normLabel(m?.changedBy)).filter(Boolean)));
+  const editorLabels = new Set(sheetEditor && sheetEditor !== SHEET_EDITOR_UNKNOWN ? [normLabel(String(sheetEditor).replace(/\s*\(sheet\)$/i, ''))] : []);
   // Tabs that already had items before this round: the first fill of a new
   // tab is all appends, and a PM renaming one of those is a rename.
   const scopesWithItems = new Set(Object.values(baseline || {}).map((b) => b?.scopeId).filter(Boolean));
@@ -534,6 +594,9 @@ export async function planSheetRound({
     appends: [],    // { sheetId, title, rows: any[][] }
     deletes: [],    // { sheetId, title, row, token }
     headerAdds: [], // { sheetId, title, row, col, header }
+    // A heading row sorted into the list, moved back on top before anything
+    // else: { sheetId, title, row, c1, c2, header, top } (see findSortedHeader).
+    headerMoves: [],
     markerWrites: {},
     // Per item updated from the sheet: its baseline with only the pulled
     // fields moved on, for a round that saves the sheet's edits but holds
@@ -599,9 +662,24 @@ export async function planSheetRound({
     const merges = Array.isArray(sheet.merges) ? sheet.merges : [];
     const coveredByMerge = (r, c) => merges.some((m) => r >= m.r0 && r < m.r1 && c >= m.c0 && c < m.c1 && (r !== m.r0 || c !== m.c0));
     const remembered = next.headers[scope.scopeId] || {};
+    // The heading row sorted into the list: nothing else is read or written
+    // on this tab until it is back on top (the rows above it would read as
+    // no list at all, the columns under it as renamed).
+    const sortedHead = findSortedHeader(scope, rows, remembered, (t) => {
+      const p = parseRowIdToken(t);
+      return p.ok && p.documentId === signing.signingDocId && p.scopeId === scope.scopeId;
+    });
+    if (sortedHead) {
+      const { row: k, c1, c2 } = sortedHead;
+      const span = (row) => Array.from({ length: c2 - c1 + 1 }, (_, i) => row?.[c1 + i] ?? '');
+      plan.headerMoves.push({ sheetId: sheet.sheetId, title: sheet.title, row: k, c1, c2, header: span(rows[k]), top: span(rows[0]) });
+      notice({ scopeId: scope.scopeId, message: `The heading row of "${sheet.title}" was sorted into the list (row ${k + 1}), so Survey moved it back to the top. The rows keep your sort. To sort without the headings, tick "My data has headers".` });
+      continue;
+    }
     const headerAt = findHeaderRow(scope, rows, remembered);
     const header = rows[headerAt] || [];
     const { colOfKey, renamed } = mapHeader(scope, header, remembered);
+    const repeatsHeader = (row) => [...colOfKey].filter(([key, c]) => key !== 'rowId' && normHeader(header[c]) && normHeader(row?.[c]) === normHeader(header[c])).length >= 2;
     const where = (r) => `Row ${r + 1} in "${sheet.title}"`;
     // A column the template renamed keeps its place; its header follows the template.
     for (const column of renamed) {
@@ -686,6 +764,16 @@ export async function planSheetRound({
       if (want === checkboxAnswerOf(layout.answerValues, true)) return true;
       if (want === (checkboxAnswerOf(layout.answerValues, false) ?? '')) return false;
       return want;
+    };
+    // True when the cell already says `want`: as stored, or (a text column)
+    // as the sheet shows it. A PM's 50% stays the number 0.5 formatted as a
+    // percent, and a formula stays a formula, instead of Survey writing its
+    // own copy of the shown text over it.
+    const cellSays = (row, key, want) => {
+      const col = colOfKey.get(key);
+      if (sameCell(row[col], want)) return true;
+      const column = scope.columns.find((c) => c.key === key);
+      return isTextColumn(column) && sameCell(cellOf(row, column, col), want);
     };
     const writeCell = (rowIndex, key, value, was, markerId = null) => {
       const col = colOfKey.get(key);
@@ -926,6 +1014,10 @@ export async function planSheetRound({
     // changed cells left out of order (a PM flipping two Y to N and two N to
     // Y in one save: same values, reshuffled, but no sort leaves Y N Y N).
     const shuffled = new Set(); // `${markerId}|${key}`
+    // `${markerId}|${key}` -> what a PM typed into a moved row: written to
+    // the marker's own row, read as an edit next round (see rowsMoved).
+    const carriedEdits = new Map();
+    const clearedRows = []; // rows with every cell cleared, put back (mergeRow)
     {
       const live = [];
       for (const [markerId, r] of ownRow) {
@@ -947,7 +1039,7 @@ export async function planSheetRound({
       // exactly what another changed item held. Every such row goes back to
       // its own item. Checked first, as one column alone is often not left
       // in order and would be missed below.
-      const rowsMoved = (() => {
+      let rowsMoved = (() => {
         const keys = editable.map((c) => c.key).filter((key) => live.some((x) => usable(x, key) && getFp(x.sheetFps, key) !== getFp(x.fields, key)));
         if (keys.length < 2) return null;
         const changed = live.filter((x) => keys.some((key) => getFp(x.sheetFps, key) !== getFp(x.fields, key)));
@@ -957,17 +1049,79 @@ export async function planSheetRound({
         if (changed.length < (named ? 2 : SHUFFLE_MIN) || !changed.every((x) => keys.every((key) => usable(x, key)))) return null;
         const tuple = (fps) => JSON.stringify(keys.map((key) => getFp(fps, key)));
         const pool = new Map();
-        for (const x of changed) pool.set(tuple(x.fields), (pool.get(tuple(x.fields)) || 0) + 1);
+        for (const x of changed) pool.set(tuple(x.fields), [...(pool.get(tuple(x.fields)) || []), x]);
+        const left = [];
         for (const x of changed) {
           const t = tuple(x.sheetFps);
-          if (!pool.get(t)) return null;
-          pool.set(t, pool.get(t) - 1);
+          if (pool.get(t)?.length) pool.get(t).shift(); else left.push(x);
         }
-        return { keys, changed };
+        // A row the PM also typed into after the sort (a person editing the
+        // sheet at the same time, real Excel 11-15): still its marker's row
+        // when its name is that of exactly one marker left over. Its typing
+        // goes with it to that marker's own row (`carried`), to come in next
+        // round as a plain edit. Only a few such rows, among clear moves.
+        const carried = new Map();
+        if (left.length) {
+          if (!keys.includes('item') || left.length > Math.max(1, Math.floor(changed.length / 4)) || changed.length - left.length < 2) return null;
+          const unclaimed = [...pool.values()].flat();
+          for (const x of left) {
+            const name = getFp(x.sheetFps, 'item');
+            const owners = unclaimed.filter((y) => getFp(y.fields, 'item') === name);
+            if (owners.length !== 1 || isBlankCell(x.row[colOfKey.get('item')])) return null;
+            const y = owners[0];
+            unclaimed.splice(unclaimed.indexOf(y), 1);
+            for (const key of keys) {
+              if (getFp(x.sheetFps, key) !== getFp(y.fields, key)) carried.set(`${y.markerId}|${key}`, x.row[colOfKey.get(key)]);
+            }
+          }
+        }
+        return { keys, changed, carried };
       })();
       if (rowsMoved) {
+        for (const [flag, value] of rowsMoved.carried) carriedEdits.set(flag, value);
         for (const x of rowsMoved.changed) for (const key of rowsMoved.keys) shuffled.add(`${x.markerId}|${key}`);
         notice({ scopeId: scope.scopeId, message: `Rows in "${sheet.title}" were sorted or moved without their hidden Row ID column, so values landed on other markers' rows. Survey put each row back on its own marker (${rowsMoved.changed.length} rows). To sort the list, select all of it first.` });
+      }
+
+      // Rows taken out of some columns only, at more than one place (Data >
+      // Remove Duplicates on the visible columns, the hidden Row ID column
+      // left out; real Excel 11-15): from the first changed row down, each
+      // row holds what a marker further down held, in list order, with
+      // markers skipped where rows went, and blanks at the bottom. Every
+      // marker took a later one's name and values. Each row goes back to its
+      // own marker, removed rows included. (One place is a plain "shift
+      // cells up", found below.)
+      if (!rowsMoved && live.length >= SHUFFLE_MIN) {
+        rowsMoved = (() => {
+          const keys = editable.map((c) => c.key).filter((key) => live.some((x) => getFp(x.sheetFps, key) !== getFp(x.fields, key)));
+          if (!keys.length) return null;
+          const tuple = (fps) => JSON.stringify(keys.map((key) => getFp(fps, key)));
+          const blank = tuple(fieldPrintsOf(sheetRecordOf([], {})));
+          const i0 = live.findIndex((x) => tuple(x.sheetFps) !== tuple(x.fields));
+          if (i0 < 0 || !live.slice(i0).every((x) => keys.every((key) => usable(x, key)))) return null;
+          let j = i0; let cuts = 0; let pulled = 0; let ended = false;
+          const values = new Set();
+          for (let i = i0; i < live.length; i += 1) {
+            const t = tuple(live[i].sheetFps);
+            if (ended || (t === blank && tuple(live[i].fields) !== blank)) {
+              if (t !== blank) return null;
+              ended = true;
+              continue;
+            }
+            let k = j;
+            while (k < live.length && tuple(live[k].fields) !== t) k += 1;
+            if (k >= live.length) return null;
+            if (k > j) cuts += 1;
+            if (k > i) { pulled += 1; values.add(t); }
+            j = k + 1;
+          }
+          if (cuts < 2 || pulled < 2 || values.size < 2) return null;
+          return { keys, changed: live.slice(i0), carried: new Map(), cut: true };
+        })();
+        if (rowsMoved) {
+          for (const x of rowsMoved.changed) for (const key of rowsMoved.keys) shuffled.add(`${x.markerId}|${key}`);
+          notice({ scopeId: scope.scopeId, message: `Rows in "${sheet.title}" were taken out of only some columns (Remove Duplicates, or Delete with "Shift cells up", the hidden Row ID column left out), so values landed on other markers' rows. Survey put each row back on its own marker (${rowsMoved.changed.length} rows). To remove a marker's row, delete the whole row.` });
+        }
       }
 
       // Cells inserted or deleted in a few columns only ("Shift cells down"
@@ -1268,6 +1422,9 @@ export async function planSheetRound({
         next.problems.push({ scopeId: scope.scopeId, message: `${where(r)}: this row belongs to another category's tab, so it was left alone.` });
         continue;
       }
+      // The heading row again inside the list (pasted, or left by a move
+      // back on top that stopped half way): a heading, never a new item.
+      if (!markerId && repeatsHeader(row)) continue;
       // A second copy of an item's row: a new item from the sheet (below),
       // once it has a name of its own. A copy still named as its item is
       // rows pasted over other items' rows, often undone a moment later
@@ -1459,7 +1616,7 @@ export async function planSheetRound({
         if (columnIsEditable(column) && conv[column.key] === undefined) continue; // a bad value stays for the person to fix
         const was = row[colOfKey.get(column.key)];
         const want = sheetWant(column.key, cellValueFor(scope, column.key, rec), was);
-        if (!sameCell(was, want)) writeCell(r, column.key, want, was);
+        if (!cellSays(row, column.key, want)) writeCell(r, column.key, want, was);
       }
     }
 
@@ -1579,6 +1736,14 @@ export async function planSheetRound({
       // The sheet blanked a filled answer the app has not changed since both
       // last agreed: counted, and held or put back (see eraseModeOf).
       const heldKeys = new Set();
+      // Every cell of the row cleared, its name too (the row selected and
+      // Delete pressed, the hidden Row ID column left out): a marker taken
+      // out, not a marker with no name and no answers. Like a deleted row
+      // it never wipes the field's work: its values go back, and the panel
+      // says to delete the whole row to remove it.
+      const rowCleared = base && colOfKey.has('item') && scope.columns.every((c) => c.key === 'rowId' || !columnIsEditable(c) || !colOfKey.has(c.key) || isBlankCell(row[colOfKey.get(c.key)]))
+        && keys.some((key) => key !== 'item' && colOfKey.has(key) && columnIsEditable(scope.columns.find((c) => c.key === key)) && !isBlankCell(cellValueFor(scope, key, appRec)));
+      if (rowCleared) clearedRows.push(r);
       if (base) {
         for (const key of keys) {
           const column = scope.columns.find((c) => c.key === key);
@@ -1588,7 +1753,7 @@ export async function planSheetRound({
           // A blank Item cell is never a rename to nothing: the app's name
           // goes back (real Excel 11-12: a PM cleared the Item column of an
           // 8-item tab, under BIG_ERASE, and every item lost its name).
-          if (key === 'item') {
+          if (key === 'item' || rowCleared) {
             setFp(sheetSide, key, getFp(base, key));
             continue;
           }
@@ -1700,8 +1865,19 @@ export async function planSheetRound({
         // agreed: then the stamp cells hold exactly what Survey wrote, unless
         // someone put other ones there.
         const appSame = keys.every((k) => getFp(appFps, k) === getFp(base, k));
-        const stampBack = appSame && STAMP_KEYS.some((k) => colOfKey.has(k) && !isBlankCell(row[colOfKey.get(k)])
-          && !sameCell(row[colOfKey.get(k)], cellValueFor(scope, k, appRec)));
+        const stampMoved = (k) => colOfKey.has(k) && !isBlankCell(row[colOfKey.get(k)])
+          && !sameCell(row[colOfKey.get(k)], cellValueFor(scope, k, appRec));
+        // A restore puts back stamps Survey wrote: an earlier Changed Date, or
+        // a Changed By some item carries. A PM typing their own initials or
+        // today's date there beside an edit is not one (real-world habit:
+        // the edit came in held, with a wrong "older copy" line).
+        // The same day written another way (a date cell, not Survey's text) has not moved.
+        const dateMoved = stampMoved('changedDate') && !sameStampDay(row[colOfKey.get('changedDate')], appRec.changedDate);
+        const dateBack = dateMoved && stampDayBefore(row[colOfKey.get('changedDate')], appRec.changedDate);
+        const byBack = stampMoved('changedBy') && (!dateMoved || dateBack)
+          && knownChangedBy().has(normLabel(row[colOfKey.get('changedBy')]))
+          && !editorLabels.has(normLabel(row[colOfKey.get('changedBy')]));
+        const stampBack = appSame && (dateBack || byBack);
         if (stampBack) {
           let held = 0;
           for (const key of keys) {
@@ -1801,9 +1977,11 @@ export async function planSheetRound({
           }
           continue;
         }
-        const want = sheetWant(key, cellValueFor(scope, key, finalRec), row[col]);
-        if (!sameCell(row[col], want)) {
+        const carry = carriedEdits.has(`${markerId}|${key}`) && !appChangedSet.has(key);
+        const want = carry ? carriedEdits.get(`${markerId}|${key}`) : sheetWant(key, cellValueFor(scope, key, finalRec), row[col]);
+        if (!cellSays(row, key, want)) {
           writeCell(r, key, want, row[col], markerId);
+          if (carry) continue;
           if (!fromSheet.has(key)) {
             plan.summary.toSheet += 1;
             if (base && lateSaves && !isLegacyPrint(getFp(base, key))) next.recentWrites[`${markerId}|${key}`] = { t: now.getTime(), was: getFp(base, key), wrote: getFp(finalFps, key) };
@@ -1831,6 +2009,9 @@ export async function planSheetRound({
       } else {
         delete next.conflicts[markerId];
       }
+    }
+    if (clearedRows.length) {
+      notice({ scopeId: scope.scopeId, message: `${clearedRows.length === 1 ? `Row ${clearedRows[0] + 1}` : `${clearedRows.length} rows`} in "${sheet.title}" had every cell cleared, so Survey kept ${clearedRows.length === 1 ? 'that marker\'s' : 'those markers\''} values and put them back. To remove a marker, delete its whole row.` });
     }
   }
 

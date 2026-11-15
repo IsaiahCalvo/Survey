@@ -374,6 +374,9 @@ test('a PM typing "50%" or "$1,200" into a note on an old row: the survey gets w
   assert.equal(ctx.markers.d1.note.text, '50%');
   assert.equal(ctx.markers.d2.note.text, '$1,200', 'without the space Excel pads a money format with');
   assert.equal(Number(ctx.markers.d1.checklistResponses.c2.selection), 1200, 'a number answer stays a number');
+  // Survey never writes its own copy of the shown text over the PM's cell.
+  const after = (await ctx.sheet()).rows;
+  assert.deepEqual([after[r1][notes], after[r2][notes]], [0.5, 1200], 'the cells stay numbers Excel formats');
   const quiet = await ctx.round();
   assert.ok(!quiet.summary?.toSheet && !quiet.summary?.toApp, JSON.stringify(quiet.summary));
   assert.equal(ctx.link.state.problems?.length || 0, 0);
@@ -394,6 +397,26 @@ test('rows the survey adds keep text columns as text, so Excel never turns a PM\
   await ctx.round(); await ctx.round();
   assert.equal(ctx.markers.d2.note.text, '50%');
   assert.equal((await ctx.sheet()).rows[r][head.indexOf('Notes')], '50%', 'still text in the sheet');
+});
+
+test('a sort with the heading row in it: Excel moves it back on top and every item syncs again', async () => {
+  // Real Excel 11-15: rows above the heading row stopped syncing, silently.
+  const names = ['pear', 'apple', 'kiwi', 'fig'];
+  const ctx = await setup({ markers: Object.fromEntries(names.map((n, i) => [`d${i + 1}`, door(`d${i + 1}`, `D-${101 + i}`, { note: { text: n } })])) });
+  await ctx.round(); await ctx.round();
+  const before = await ctx.sheet();
+  const head = before.rows[0];
+  const notes = head.indexOf('Notes'); const item = head.indexOf('Item');
+  const sorted = before.rows.slice(0, 5).sort((a, b) => String(a[notes]).localeCompare(String(b[notes])));
+  await ctx.edit(sorted.flatMap((row, r) => head.map((_, c) => ({ row: r, col: c, value: row[c] ?? '' }))));
+  assert.equal((await ctx.sheet()).rows[3][item], 'Item', 'heading row sorted to row 4');
+  ctx.markers.d2 = { ...ctx.markers.d2, note: { text: 'apple, tech' }, changedDate: '2026-11-15T19:00:00.000Z' };
+  await ctx.round({ force: true });
+  const rows = (await ctx.sheet()).rows;
+  assert.deepEqual(rows[0], head);
+  assert.deepEqual(rows.slice(1, 5).map((r) => r[item]), ['D-102', 'D-104', 'D-103', 'D-101']);
+  assert.equal(rows.find((r) => r[item] === 'D-102')[notes], 'apple, tech');
+  assert.equal(Object.keys(ctx.markers).length, 4);
 });
 
 test('rounds read only the synced sheets, not a big sheet the PM added', async () => {

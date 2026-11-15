@@ -219,3 +219,21 @@ test('a short Notes column sorted with only three cells moving still goes back w
   await ctx.round({ force: true });
   assert.deepEqual(notes.map((_, i) => ctx.markers[`d${i + 1}`].note.text), notes);
 });
+
+test('the visible columns sorted while a tech and the PM both edit: names stay put, both edits land', async () => {
+  // Real Excel 11-15: with a tech's note and a PM's note in the same round as
+  // the sort, the PM's row matched no marker whole, the move was missed, and
+  // every marker took another's name and note in the app.
+  const { ctx, col, itemCol, rowsOf } = await linked();
+  const sheet = await ctx.sheet();
+  const block = sheet.rows.slice(1, N + 1).map((r) => r.slice(1));
+  block.sort((a, b) => String(a[col - 1]).localeCompare(String(b[col - 1])));
+  await ctx.edit(block.flatMap((cells, r) => cells.map((value, i) => ({ row: r + 1, col: 1 + i, value }))));
+  const pmRow = (await ctx.sheet()).rows.findIndex((r) => r[itemCol] === 'D-106');
+  await ctx.edit([{ row: pmRow, col, value: 'PM note' }]);
+  ctx.markers.d2 = { ...ctx.markers.d2, note: { text: 'tech note' }, changedDate: '2026-11-15T19:00:00.000Z' };
+  for (let k = 0; k < 3; k += 1) await ctx.round({ force: true });
+  const expected = { ...want, 'D-102': 'tech note', 'D-106': 'PM note' };
+  assert.deepEqual(appNotes(ctx), expected);
+  for (const row of await rowsOf()) assert.equal(row[col], expected[row[itemCol]], `${row[itemCol]} has its own note in the sheet`);
+});
