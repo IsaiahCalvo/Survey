@@ -7,7 +7,8 @@
 // look as the export:
 //   * header row: grey fill, thin borders, centred, wrapped; frozen; filter buttons;
 //   * Row ID column hidden, text columns as text ("@"), so 00123 stays 00123;
-//   * the export's column widths and centring;
+//   * the export's column widths and centring; notes wrap;
+//   * prints one page wide, header on every page, tab name and page number below;
 //   * drop-downs on pick-one answers and on Entity;
 //   * colours: answers by tone (green / red / grey), each entity in its own
 //     colour, a repeated item name in red, and thin borders on every row that
@@ -43,6 +44,17 @@ export function columnLetter(index) {
 const esc = (text) => String(text ?? '')
   .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+/**
+ * The answer colours a sheet shows ({ value, argb }): the template's, else
+ * Y / N / N/A by tone, kept to the answers the layout offers.
+ */
+export function answerFillList(layout, answerFills) {
+  return (Array.isArray(answerFills) && answerFills.length ? answerFills : DEFAULT_ANSWER_FILLS)
+    .filter((a) => a && a.value != null && /^[0-9A-F]{8}$/i.test(String(a.argb || '')))
+    .filter((a) => (layout?.answerValues || []).length === 0 || layout.answerValues.map(String).includes(String(a.value)))
+    .map((a) => ({ value: String(a.value), argb: String(a.argb).toUpperCase() }));
+}
 
 /** An entity colour (#rgb, #rrggbb, rgb(), rgba()) as Excel ARGB, or null. */
 export function excelArgb(color) {
@@ -87,8 +99,9 @@ function dropDown(column, layout) {
   return source.length <= 255 ? source : null;
 }
 
-const fitWidth = (text) => Math.min(36, Math.max(15, String(text ?? '').length + 2));
-function widthOf(column) {
+export const fitWidth = (text) => Math.min(36, Math.max(15, String(text ?? '').length + 2));
+/** A column's width in Excel's units (characters), the export's widths. */
+export function widthOf(column) {
   switch (column.key) {
     case 'rowId': return 16;
     case 'changedBy': case 'changedDate': case 'entity': return 15;
@@ -99,7 +112,7 @@ function widthOf(column) {
 }
 
 // ---- styles ---------------------------------------------------------------
-// cellXfs: 0 default, 1 header, 2 text, 3 text centred, 4 centred.
+// cellXfs: 0 default, 1 header, 2 text, 3 text centred, 4 centred, 5 text wrapped (notes).
 // dxfs (conditional formats): 0 thin borders, 1 repeated item, then one per
 // answer fill, then one per entity colour.
 function stylesXml(fills) {
@@ -116,19 +129,20 @@ function stylesXml(fills) {
     + '<fill><patternFill patternType="solid"><fgColor rgb="FFBFBFBF"/><bgColor indexed="64"/></patternFill></fill></fills>'
     + `<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border>${thin}<diagonal/></border></borders>`
     + '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
-    + '<cellXfs count="5">'
+    + '<cellXfs count="6">'
     + '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
     + '<xf numFmtId="49" fontId="0" fillId="2" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>'
     + '<xf numFmtId="49" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'
     + '<xf numFmtId="49" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>'
     + '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>'
+    + '<xf numFmtId="49" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>'
     + '</cellXfs>'
     + '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
     + `<dxfs count="${dxfs.length}">${dxfs.join('')}</dxfs>`
     + '</styleSheet>';
 }
 
-const columnStyle = (col) => (isTextColumn(col) ? (isCentred(col) ? 3 : 2) : (isCentred(col) ? 4 : 0));
+const columnStyle = (col) => (col?.key === 'notes' ? 5 : isTextColumn(col) ? (isCentred(col) ? 3 : 2) : (isCentred(col) ? 4 : 0));
 
 function sheetXml(scope, layout, { answerDxf, entityDxf }) {
   const columns = scope.columns || [];
@@ -191,6 +205,8 @@ function sheetXml(scope, layout, { answerDxf, entityDxf }) {
     + (validations.length ? `<dataValidations count="${validations.length}">${validations.join('')}</dataValidations>` : '')
     + '<pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>'
     + '<pageSetup orientation="landscape" fitToWidth="1" fitToHeight="0"/>'
+    // Tab name on the left of each printed page, "Page 1 of 3" on the right.
+    + '<headerFooter><oddFooter>&amp;L&amp;A&amp;RPage &amp;P of &amp;N</oddFooter></headerFooter>'
     + '</worksheet>';
 }
 
@@ -210,10 +226,7 @@ export function buildLiveWorkbook(layout, { answerFills } = {}) {
     fills.push(argb);
     return fills.length + 1;
   };
-  const answers = (Array.isArray(answerFills) && answerFills.length ? answerFills : DEFAULT_ANSWER_FILLS)
-    .filter((a) => a && a.value != null && /^[0-9A-F]{8}$/i.test(String(a.argb || '')))
-    .filter((a) => (layout?.answerValues || []).length === 0 || layout.answerValues.map(String).includes(String(a.value)))
-    .map((a) => ({ value: String(a.value), dxfId: fillIndex(String(a.argb).toUpperCase()) }));
+  const answers = answerFillList(layout, answerFills).map((a) => ({ value: a.value, dxfId: fillIndex(a.argb) }));
   const entities = (layout?.entities || [])
     .map((e) => ({ value: e?.name, argb: excelArgb(e?.color) }))
     .filter((e) => e.value && e.argb)
