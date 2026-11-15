@@ -192,7 +192,7 @@ export default function MarkLibrarySaveDialog({ open, payload, onClose }) {
             />
           </label>
           {knownTags.length > 0 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }} aria-label="Used before">
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }} aria-label="Tags you use">
               {knownTags.filter((t) => !typedTags.some((x) => x.toLowerCase() === t.toLowerCase())).slice(0, 12).map((tag) => (
                 <button key={tag} type="button" className="mark-library-tag-chip" onClick={() => addTag(tag)}>{tag}</button>
               ))}
