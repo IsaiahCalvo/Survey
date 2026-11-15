@@ -13,6 +13,7 @@ import React, { useState, useCallback, useImperativeHandle, useSyncExternalStore
 import Icon from './Icons';
 import { isFeatureOn } from './featureFlags.js';
 import { ToolbarsGlyph, ToolbarsMenu } from './components/ToolbarsMenu.jsx';
+import { applyLayerFocusCss, layerFocusCss, useLayerFocus } from './utils/layerFocus.js';
 import PagesPanel from './sidebar/PagesPanel';
 // Lazy so pdf.js (statically imported by SearchTextPanel for text-layer rendering)
 // stays out of the first-paint bundle; it loads when the viewer's rail mounts.
@@ -281,6 +282,16 @@ const PDFSidebar = React.forwardRef(({
   // Flags load async: read them at mount, never at module level.
   const [toolbarSettingsOn] = useState(() => isFeatureOn('toolbar-settings'));
   const [pinnedToolsOn] = useState(() => isFeatureOn('pinned-tools'));
+  // Nightly 'layer-focus': the rail is always mounted beside the viewer, so
+  // it keeps the focus stylesheet in step with the active layer even while
+  // the Layers panel is closed.
+  const [layerFocusOn] = useState(() => isFeatureOn('layer-focus'));
+  const layerFocus = useLayerFocus();
+  React.useEffect(() => {
+    if (!layerFocusOn) return undefined;
+    applyLayerFocusCss(layerFocusCss(layerFocus, activeLayerId, layerState));
+    return () => applyLayerFocusCss('');
+  }, [layerFocusOn, layerFocus, activeLayerId, layerState]);
   // Chunk D (owner 2026-10-13): the desktop rail comes back as it was left -
   // which panel and whether it was open - per user
   // (sidebar/panelLayoutStore.js). The phone's sheet always starts closed.

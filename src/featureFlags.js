@@ -174,6 +174,7 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Sheet revisions: read the sheet number from the title block on upload and offer it as a new version',
     stage: 'beta',
   }),
+  'layer-focus': Object.freeze({ label: 'Layers: Focus on selected layer fades the marks on other layers (10-80%), this sitting only', stage: 'beta' }),
   'thin-lines': Object.freeze({ label: 'Viewer: Thin PDF lines button (rail): Thin / Medium / Thick makes faint drawing lines easier to see on screen', stage: 'beta' }),
   'paper-overlays': Object.freeze({ label: 'Viewer: Paper button (rail) lays notebook, graph, isometric, hex or music paper over every page; this sitting only', stage: 'beta' }),
   // Drawboard Projects parity spec SS-31 / MS-30 (2026-11-10): a subject on
