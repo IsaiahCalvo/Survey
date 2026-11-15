@@ -94,6 +94,10 @@ async function seedOwnerRows(admin, ids) {
   await replace('mark_library_items', 'created_by', owner, {
     library: 'personal', created_by: owner, name: 'RLS sweep item', payload: { version: 1, items: [] },
   });
+  // My library (suite, #1463): a 'mine' entry is its maker's alone.
+  await replace('library_entries', 'created_by', owner, {
+    id: 'e2e00000-0000-4000-8000-0000000005c1', kind: 'category', name: 'RLS sweep category', scope: 'mine', created_by: owner,
+  });
   // The owner's company workspace (one company per person, so drop any other).
   const { data: memberships } = await admin.from('organization_members').select('organization_id').eq('user_id', owner);
   const orgs = [...new Set([ORG, ...(memberships || []).map((m) => m.organization_id)])];
@@ -145,6 +149,7 @@ const ownerRows = (ids) => ({
   survey_agent_memory: ['project_id', PROJECT],
   own_export_kits: ['user_id', ids.owner],
   mark_library_items: ['created_by', ids.owner],
+  library_entries: ['created_by', ids.owner],
   document_tags: ['user_id', ids.owner],
   document_opens: ['user_id', ids.owner],
   phone_signatures: ['user_id', ids.owner],

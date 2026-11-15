@@ -179,11 +179,11 @@ export default function MarkLibrarySaveDialog({ open, payload, onClose }) {
             </div>
           )}
           <label style={{ display: 'block' }}>
-            <span style={DIALOG_LABEL_STYLE}>Tags (comma between them)</span>
+            <span style={DIALOG_LABEL_STYLE}>Labels (comma between them)</span>
             <input
               className="dialog-prompt-input"
               type="text"
-              aria-label="Tags"
+              aria-label="Labels"
               value={tagText}
               placeholder="Electrical, Review"
               onChange={(e) => setTagText(e.target.value)}
@@ -192,7 +192,7 @@ export default function MarkLibrarySaveDialog({ open, payload, onClose }) {
             />
           </label>
           {knownTags.length > 0 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }} aria-label="Tags you use">
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }} aria-label="Used before">
               {knownTags.filter((t) => !typedTags.some((x) => x.toLowerCase() === t.toLowerCase())).slice(0, 12).map((tag) => (
                 <button key={tag} type="button" className="mark-library-tag-chip" onClick={() => addTag(tag)}>{tag}</button>
               ))}
