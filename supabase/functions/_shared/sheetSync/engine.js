@@ -92,6 +92,9 @@ export function fieldPrintsOf(rec) {
   out.answers = Object.fromEntries(Object.entries(rec?.answers || {}).map(([id, v]) => [String(id), printOf(v)]));
   return out;
 }
+const STAMP_KEYS = ['changedBy', 'changedDate'];
+// A baseline value no cell can print: the agreed value is unknown, so both sides count as changed.
+const OLDER_COPY_PRINT = 'f2:older-copy';
 const isLegacyPrint = (fp) => typeof fp === 'string' && !fp.startsWith(FP_PREFIX);
 
 const getField = (rec, key) => (key.startsWith('answer:') ? (rec.answers || {})[key.slice(7)] : rec[key]);
@@ -1659,6 +1662,33 @@ export async function planSheetRound({
           if (agreed === u.pulled || getFp(appFps, key) !== agreed) continue;
           if (!copied) { base = JSON.parse(JSON.stringify(base)); copied = true; }
           setFp(base, key, u.pulled);
+        }
+      }
+      // The row went back to an older copy of itself: its Changed By / Changed
+      // Date cells, which only Survey writes, hold something else now, along
+      // with values Survey had written since (Google's "Restore this version",
+      // OneDrive's "Restore", an old copy of the row pasted back; found 11-15).
+      // Those values are not the PM's edits: the app keeps its newer ones and
+      // each waits as a choice instead of quietly undoing a field tech's work.
+      if (base && !rowFresh) {
+        // Only when the app has not changed the item since both sides last
+        // agreed: then the stamp cells hold exactly what Survey wrote, unless
+        // someone put other ones there.
+        const appSame = keys.every((k) => getFp(appFps, k) === getFp(base, k));
+        const stampBack = appSame && STAMP_KEYS.some((k) => colOfKey.has(k) && !isBlankCell(row[colOfKey.get(k)])
+          && !sameCell(row[colOfKey.get(k)], cellValueFor(scope, k, appRec)));
+        if (stampBack) {
+          let held = 0;
+          for (const key of keys) {
+            if (STAMP_KEYS.includes(key) || key === 'item') continue;
+            const column = scope.columns.find((c) => c.key === key);
+            if (!columnIsEditable(column) || !colOfKey.has(key) || errorKeys.has(key) || stuckKeys.has(key)) continue;
+            if (getFp(sheetSide, key) === getFp(base, key) || getFp(appFps, key) !== getFp(base, key)) continue;
+            if (!held) base = JSON.parse(JSON.stringify(base));
+            setFp(base, key, OLDER_COPY_PRINT);
+            held += 1;
+          }
+          if (held) notice({ markerId, scopeId: scope.scopeId, message: `${where(r)}: "${String(marker.name || '')}" went back to an older copy of its row (its Changed By and Changed Date went back too, as after restoring an earlier version), so Survey kept the app's newer ${held === 1 ? 'value' : 'values'} and ${held === 1 ? 'it waits' : 'they wait'} for you to choose.` });
         }
       }
       const { conflictFields, excelChangedFields, appChangedFields } = detectFieldConflicts({
