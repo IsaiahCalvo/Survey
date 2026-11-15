@@ -64,7 +64,7 @@ const KIND_NAMES = Object.freeze({
   image: 'Image',
   measure: 'Measurement',
   surveyMarker: 'Survey Marker',
-  'text-markup': 'Text markup',
+  'text-markup': 'Text annotation',
 });
 
 /** The kind a picked object reads as in the header. */

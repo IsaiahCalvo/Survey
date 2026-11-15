@@ -283,21 +283,21 @@ function ItemDetail({
               <button type="button" className="hub-icon-btn" aria-label="Clear due date" {...tip('Clear due date')} onClick={() => save({ due_date: null })}><Icon name="close" size={12} /></button>
             )}
           </span>
-          <span className="item-field-label">Tags</span>
+          <span className="item-field-label">Labels</span>
           <span className="item-tags-field">
             {(item.tags || []).map((t) => (
               <span key={t} className="item-tag">
                 {t}
                 {canEdit && (
-                  <button type="button" aria-label={`Remove tag ${t}`} onClick={() => save((now) => ({ tags: (now.tags || []).filter((x) => x !== t) }))}><Icon name="close" size={10} /></button>
+                  <button type="button" aria-label={`Remove label ${t}`} onClick={() => save((now) => ({ tags: (now.tags || []).filter((x) => x !== t) }))}><Icon name="close" size={10} /></button>
                 )}
               </span>
             ))}
             {canEdit && (
               <input
                 className="item-tag-input"
-                aria-label="Add tags"
-                placeholder={(item.tags || []).length ? 'Add tag' : 'Separate tags with commas'}
+                aria-label="Add labels"
+                placeholder={(item.tags || []).length ? 'Add label' : 'Separate labels with commas'}
                 value={tagDraft}
                 onChange={(e) => setTagDraft(e.target.value)}
                 onBlur={addTags}

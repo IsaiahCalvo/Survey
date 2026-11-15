@@ -7,7 +7,7 @@ import { exportAnnotationsAsXfdf, xfdfFileNameForPdf } from './index.js';
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 export function xfdfResultMessage({ status, summary, fileName }) {
-  if (status === 'empty') return { text: 'No markup to export yet.', kind: 'warn' };
+  if (status === 'empty') return { text: 'No annotations to export yet.', kind: 'warn' };
   if (status === 'canceled') return null;
   const skipped = summary?.skipped || 0;
   const saved = `Saved ${plural(summary?.written || 0, 'mark')} to ${fileName}.`;
@@ -38,8 +38,8 @@ export async function runXfdfExport({
     data: result.xfdf,
     fileName,
     mimeType: 'application/vnd.adobe.xfdf',
-    title: 'Export markup',
-    filterName: 'XFDF markup files',
+    title: 'Export annotations',
+    filterName: 'XFDF annotation files',
     extensions: ['xfdf'],
   });
   if (saved?.canceled) return { status: 'canceled', fileName, summary: result.summary };

@@ -255,7 +255,7 @@ export function describeEvent(event, { memberName = () => '', kind = 'issue' } =
       return event.from_value
         ? `changed the due date from ${q(formatDue(event.from_value, localDay()))} to ${q(formatDue(event.to_value, localDay()))}`
         : `set the due date to ${q(formatDue(event.to_value, localDay()))}`;
-    case 'tags': return event.to_value ? `changed the tags to ${q(event.to_value)}` : 'removed the tags';
+    case 'tags': return event.to_value ? `changed the labels to ${q(event.to_value)}` : 'removed the labels';
     case 'links': {
       const before = Number(event.from_value) || 0;
       const after = Number(event.to_value) || 0;

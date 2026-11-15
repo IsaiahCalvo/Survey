@@ -121,7 +121,7 @@ for (const layout of LAYOUTS) {
         await pick(page, layout, 'item-status-select', 'Open');
         await pick(page, layout, 'item-assignee-select', editorName);
         await detail.getByTestId('item-due').fill('2026-12-01');
-        const tagInput = detail.getByLabel('Add tags');
+        const tagInput = detail.getByLabel('Add labels');
         await tagInput.fill('Fire, Level 2, Temp, Old');
         await tagInput.press('Enter');
         // Two removes in the same moment (before the screen redraws) both stick.

@@ -136,7 +136,7 @@ test('History is read page by page, without repeats, and a failed read is report
   assert.deepEqual(ok, { text: 'Saved a review.zip: 1 mark, 2 changes, 1 page picture.', kind: 'success' });
   const warn = bundleResultMessage({ status: 'saved', fileName: 'a review.zip', manifest: { marks: { total: 3 }, history: { events: 0, historyAvailable: false }, thumbnails: { pages: [], truncated: false } } });
   assert.match(warn.text, /History could not be read/);
-  assert.equal(bundleResultMessage({ status: 'empty' }).text, 'No markup or history to export yet.');
+  assert.equal(bundleResultMessage({ status: 'empty' }).text, 'No annotations or history to export yet.');
 });
 
 test('History paging keeps going when local rows fill part of a page (merged page trimmed to the limit)', async () => {

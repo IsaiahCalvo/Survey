@@ -186,7 +186,7 @@ export function buildFamilyClipboard({
     if (!marker) continue;
     items.push({
       kind: 'marker',
-      entry: surveyMarkerClipboardEntry(marker.record),
+      entry: surveyMarkerClipboardEntry(marker.record, marker.id),
       categoryName: marker.categoryName ?? null,
       sourceModuleId: marker.record.moduleId ?? null,
       ...(cut ? { cutMarkerId: String(marker.id) } : {}),

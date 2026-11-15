@@ -106,12 +106,12 @@ for (const layout of LAYOUTS) {
           ? visible(page.locator('.mobile-doc-card', { hasText: names.mine }))
           : visible(page.locator('.documents-ledger-row', { hasText: names.mine }));
         await press(layout, row.getByRole('button', { name: 'More' }));
-        await press(layout, visible(page.getByRole('menuitem', { name: 'Add tag…' })));
+        await press(layout, visible(page.getByRole('menuitem', { name: 'Add label…' })));
         const popover = page.locator('[data-home-tag-popover]');
         await expect(popover).toBeVisible();
         await expect(popover).toContainText(names.mine);
-        await popover.getByLabel('New tags').fill(`${tag}, Level 2`);
-        await popover.getByLabel('New tags').press('Enter');
+        await popover.getByLabel('New labels').fill(`${tag}, Level 2`);
+        await popover.getByLabel('New labels').press('Enter');
         await expect(popover.getByRole('button', { name: tag, exact: true })).toHaveAttribute('aria-pressed', 'true');
         await expect(popover.getByRole('button', { name: 'Level 2', exact: true })).toHaveAttribute('aria-pressed', 'true');
         await shot(page, layout, '1-tag-popover');
@@ -133,7 +133,7 @@ for (const layout of LAYOUTS) {
         await shot(page, layout, '2-tag-filter');
         await expect(page.getByText(names.shared, { exact: true }).filter({ visible: true })).toHaveCount(0);
         await press(layout, tagButton);
-        const search = visible(page.getByPlaceholder('Search documents and tags...'));
+        const search = visible(page.getByPlaceholder('Search documents and labels...'));
         await search.fill(tag);
         await expect(visible(page.getByText(names.mine, { exact: true }))).toBeVisible();
         await expect(page.getByText(names.shared, { exact: true }).filter({ visible: true })).toHaveCount(0);
