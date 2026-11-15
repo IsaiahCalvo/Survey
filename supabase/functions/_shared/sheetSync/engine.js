@@ -96,6 +96,25 @@ const STAMP_KEYS = ['changedBy', 'changedDate'];
 // A baseline value no cell can print: the agreed value is unknown, so both sides count as changed.
 const OLDER_COPY_PRINT = 'f2:older-copy';
 const isLegacyPrint = (fp) => typeof fp === 'string' && !fp.startsWith(FP_PREFIX);
+const normLabel = (v) => cellText(v).trim().toLowerCase();
+// A Changed Date cell as a day: "M/D/YYYY" as Survey writes it, or
+// "YYYY-MM-DD" as a date cell reads. NaN for anything else.
+function stampDay(v) {
+  const t = cellText(v).trim();
+  let m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(t);
+  if (m) return Date.UTC(+m[1], +m[2] - 1, +m[3]);
+  m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(t);
+  if (m) return Date.UTC(+m[3], +m[1] - 1, +m[2]);
+  return NaN;
+}
+const sameStampDay = (cell, appText) => Number.isFinite(stampDay(cell)) && stampDay(cell) === stampDay(appText);
+// The cell holds a day before the app's (or the app's can't be read).
+function stampDayBefore(cell, appText) {
+  const now = stampDay(appText);
+  if (!Number.isFinite(now)) return true;
+  const was = stampDay(cell);
+  return Number.isFinite(was) && was < now;
+}
 
 const getField = (rec, key) => (key.startsWith('answer:') ? (rec.answers || {})[key.slice(7)] : rec[key]);
 const setField = (rec, key, value) => {
@@ -503,6 +522,12 @@ export async function planSheetRound({
   waitCells = null,
 }) {
   const nextBaseline = { ...baseline };
+  // Changed By labels the app's items carry, and the initials of whoever
+  // edited the sheet: a row gone back to an older copy holds the first, a PM
+  // stamping their own edit types the second.
+  let knownBy = null;
+  const knownChangedBy = () => knownBy || (knownBy = new Set(Object.values(markers || {}).map((m) => normLabel(m?.changedBy)).filter(Boolean)));
+  const editorLabels = new Set(sheetEditor && sheetEditor !== SHEET_EDITOR_UNKNOWN ? [normLabel(String(sheetEditor).replace(/\s*\(sheet\)$/i, ''))] : []);
   // Tabs that already had items before this round: the first fill of a new
   // tab is all appends, and a PM renaming one of those is a rename.
   const scopesWithItems = new Set(Object.values(baseline || {}).map((b) => b?.scopeId).filter(Boolean));
@@ -1840,8 +1865,19 @@ export async function planSheetRound({
         // agreed: then the stamp cells hold exactly what Survey wrote, unless
         // someone put other ones there.
         const appSame = keys.every((k) => getFp(appFps, k) === getFp(base, k));
-        const stampBack = appSame && STAMP_KEYS.some((k) => colOfKey.has(k) && !isBlankCell(row[colOfKey.get(k)])
-          && !sameCell(row[colOfKey.get(k)], cellValueFor(scope, k, appRec)));
+        const stampMoved = (k) => colOfKey.has(k) && !isBlankCell(row[colOfKey.get(k)])
+          && !sameCell(row[colOfKey.get(k)], cellValueFor(scope, k, appRec));
+        // A restore puts back stamps Survey wrote: an earlier Changed Date, or
+        // a Changed By some item carries. A PM typing their own initials or
+        // today's date there beside an edit is not one (real-world habit:
+        // the edit came in held, with a wrong "older copy" line).
+        // The same day written another way (a date cell, not Survey's text) has not moved.
+        const dateMoved = stampMoved('changedDate') && !sameStampDay(row[colOfKey.get('changedDate')], appRec.changedDate);
+        const dateBack = dateMoved && stampDayBefore(row[colOfKey.get('changedDate')], appRec.changedDate);
+        const byBack = stampMoved('changedBy') && (!dateMoved || dateBack)
+          && knownChangedBy().has(normLabel(row[colOfKey.get('changedBy')]))
+          && !editorLabels.has(normLabel(row[colOfKey.get('changedBy')]));
+        const stampBack = appSame && (dateBack || byBack);
         if (stampBack) {
           let held = 0;
           for (const key of keys) {
