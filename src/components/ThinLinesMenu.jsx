@@ -42,12 +42,12 @@ export const useThinLines = () => {
     return [value, (next) => setValue(setThinLines(next))];
 };
 
-/** Line-weight glyph (Lucide-style, 24 grid, 1.5 stroke): three rules, thin to thick. */
+/** Line-weight glyph (Lucide-style, 24 grid, 1.5 stroke): a hairline, then two bars, each heavier. */
 export const ThinLinesGlyph = ({ size = 14 }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
-        <path d="M4 6h16" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
-        <path d="M4 12h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        <path d="M4 18h16" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+        <path d="M4 5.5h16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        <rect x="4" y="10" width="16" height="2.5" rx="1.25" stroke="currentColor" strokeWidth="1.5" />
+        <rect x="4" y="16" width="16" height="4" rx="2" stroke="currentColor" strokeWidth="1.5" fill="currentColor" />
     </svg>
 );
 
