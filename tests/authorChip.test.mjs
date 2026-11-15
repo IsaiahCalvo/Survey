@@ -31,5 +31,5 @@ test('flag is beta; the bar, AppShell and the viewer feed it; a migration adds t
   assert.match(read('src/components/SelectionQuickBar.jsx'), /isFeatureOn\('author-chip'\)/);
   assert.match(read('src/AppShell.jsx'), /layerState=\{leftRailApi\?\.layerState \|\| null\}/);
   assert.match(read('src/PDFViewer.jsx'), /isFeatureOn\('author-chip'\)\) \? annotationsByPage : null/);
-  assert.match(read('supabase/migrations/20261115201000_author_chip_flag.sql'), /'author-chip', 'off'/);
+  assert.match(read('supabase/migrations/20261115214300_author_chip_flag.sql'), /'author-chip', 'off'/);
 });
