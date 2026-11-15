@@ -1017,7 +1017,7 @@ export function createSurveyAgentToolbox({
         strokeWidth: 2,
         ...(kind === 'cloud' ? { borderStyle: 'cloud' } : {}),
       });
-      if (res?.reason === 'locked') throw new ToolError('A locked markup on that page blocked the save, so nothing was drawn.');
+      if (res?.reason === 'locked') throw new ToolError('A locked annotation on that page blocked the save, so nothing was drawn.');
       if (!res?.ok) throw new ToolError('Could not draw that on the plan.');
       const word = { circle: 'a circle', box: 'a box', cloud: 'a cloud' }[kind];
       const label = `Drew ${word} around ${what} on page ${page}.`;
@@ -1035,7 +1035,7 @@ export function createSurveyAgentToolbox({
     },
     // The server sends the markup tools on the model's next step.
     open_markup_tools() {
-      return { content: 'The markup tools are ready.' };
+      return { content: 'The annotation tools are ready.' };
     },
 
     // The chat's own Undo, by voice: "no, that was D-118" or "undo that".

@@ -24,6 +24,10 @@ export const IMPORTABLE_MARKER_FIELDS = Object.freeze([
 // Geometry / placement fields an import must never write.
 export const GEOMETRY_FIELDS = Object.freeze(['pageNumber', 'bounds']);
 
+// The Kal Voe suite id (KAL-588) is the device's identity across Walkthru,
+// Plot and Survey: only the app sets it, never a workbook.
+export const IMPORT_FROZEN_FIELDS = Object.freeze(['suiteId']);
+
 /**
  * Force a marker to be unplaced (no geometry). Used when an import CREATES a new
  * proposed marker — it always lands in the Survey panel as an unplaced item with
@@ -33,7 +37,9 @@ export const GEOMETRY_FIELDS = Object.freeze(['pageNumber', 'bounds']);
  * @returns {object}  the same marker with geometry forced null
  */
 export function forceUnplacedImportedMarker(marker) {
-  return { ...marker, pageNumber: null, bounds: null };
+  const out = { ...marker, pageNumber: null, bounds: null };
+  for (const field of IMPORT_FROZEN_FIELDS) delete out[field];
+  return out;
 }
 
 /**
@@ -49,6 +55,10 @@ export function freezeGeometryFromOriginal(updated, original) {
   const safe = { ...updated };
   for (const field of GEOMETRY_FIELDS) {
     safe[field] = original ? original[field] ?? null : null;
+  }
+  for (const field of IMPORT_FROZEN_FIELDS) {
+    if (original && original[field] !== undefined) safe[field] = original[field];
+    else delete safe[field];
   }
   return safe;
 }

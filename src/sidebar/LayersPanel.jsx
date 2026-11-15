@@ -26,6 +26,7 @@ import {
   setLayerVisible,
   setPdfOpacity,
 } from '../utils/layers.js';
+import { suiteWord } from '../suite/suiteWords.js';
 
 function EyeIcon({ open }) {
   return (
@@ -125,7 +126,7 @@ export default function LayersPanel({ layerState, activeLayerId, onLayersChange,
 
       <section className="layers-panel__section" aria-labelledby="layers-markup-head">
         <div className="layers-panel__head">
-          <span id="layers-markup-head" className="layers-panel__title">Markup layers</span>
+          <span id="layers-markup-head" className="layers-panel__title">{suiteWord('Markup layers')}</span>
           {!readOnly && !addInHead && (
             <button type="button" className="layers-panel__text-btn" data-layer-add="true" onClick={handleAdd}>
               <Icon name="plus" size={14} /> Add layer

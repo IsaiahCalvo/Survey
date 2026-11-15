@@ -9,6 +9,7 @@
  * Part of the separate survey-marker pipeline — see docs/ANNOTATION-CONTRACT.md.
  */
 import { EXPORT_ACK_FIELDS } from '../services/excelExportAck.js';
+import { SUITE_MARKER_FIELDS } from '../suite/suiteFields.js';
 
 // Export-acknowledgment fields are sync bookkeeping, not user content. Strip them
 // before hashing so stamping a marker as "exported" never makes a freshly-synced
@@ -30,6 +31,8 @@ const stripAckFields = (surveyMarkers = {}) => {
     // are canvas-only too — not Excel columns.
     delete copy.lockedBy;
     delete copy.unplacedByCut;
+    // Kal Voe suite fields (KAL-588) are not Excel columns either.
+    for (const field of SUITE_MARKER_FIELDS) delete copy[field];
     out[key] = copy;
   }
   return out;

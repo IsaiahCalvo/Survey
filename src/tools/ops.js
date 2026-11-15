@@ -8,6 +8,7 @@ import {
 
 import { ToolError } from './errors.js';
 import { parsePageSet } from './ranges.js';
+import { suiteWord } from '../suite/suiteWords.js';
 
 export { ToolError };
 
@@ -515,7 +516,7 @@ export async function flattenPdf(bytes) {
     if (keep.length) page.node.set(N('Annots'), context.obj(keep));
     else page.node.delete(N('Annots'));
   });
-  if (!changed) throw new ToolError('This PDF has no form fields or markups to flatten.');
+  if (!changed) throw new ToolError(suiteWord('This PDF has no form fields or markups to flatten.'));
   doc.catalog.delete(N('AcroForm'));
   return save(doc);
 }
@@ -565,7 +566,7 @@ export async function removeAnnotations(bytes, { keepLinks = true } = {}) {
     if (keep.length) page.node.set(N('Annots'), doc.context.obj(keep));
     else page.node.delete(N('Annots'));
   }
-  if (!removed) throw new ToolError('This PDF has no markups or comments to remove.');
+  if (!removed) throw new ToolError(suiteWord('This PDF has no markups or comments to remove.'));
   return save(doc);
 }
 

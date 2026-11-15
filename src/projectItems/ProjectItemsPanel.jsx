@@ -36,6 +36,7 @@ import {
 } from './projectItemsData.js';
 import { isFeatureOn } from '../featureFlags.js';
 import './projectItems.css';
+import { suiteWord } from '../suite/suiteWords.js';
 
 // Nightly 'project-photos': loads only when an item opens with the flag on.
 const ItemPhotosLazy = lazy(() => import('../projectPhotos/ProjectPhotosPanel.jsx').then((m) => ({ default: m.ItemPhotos })));
@@ -283,7 +284,7 @@ function ItemDetail({
               <button type="button" className="hub-icon-btn" aria-label="Clear due date" {...tip('Clear due date')} onClick={() => save({ due_date: null })}><Icon name="close" size={12} /></button>
             )}
           </span>
-          <span className="item-field-label">Tags</span>
+          <span className="item-field-label">{suiteWord('Tags')}</span>
           <span className="item-tags-field">
             {(item.tags || []).map((t) => (
               <span key={t} className="item-tag">

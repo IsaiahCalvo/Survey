@@ -59,6 +59,7 @@ import {
   sortLibraryItems,
 } from './markLibraryModel.js';
 import './MarkLibraryPanel.css';
+import { suiteWord } from '../suite/suiteWords.js';
 
 const LAYOUTS = [
   { id: 'large', label: 'Large grid' },
@@ -294,9 +295,9 @@ export default function MarkLibraryPanel({ phone = false, headActionsHost = null
     const answer = await askPrompt({
       title: list.length === 1 ? `Tags for “${list[0].name}”` : `Tags for ${list.length} items`,
       message: list.length === 1
-        ? 'Put a comma between tags.'
-        : 'Tags you type are added to each item. Start a tag with a minus (-Old) to take it off.',
-      label: 'Tags',
+        ? suiteWord('Put a comma between tags.')
+        : suiteWord('Tags you type are added to each item. Start a tag with a minus (-Old) to take it off.'),
+      label: suiteWord('Tags'),
       defaultValue: list.length === 1 ? current.join(', ') : '',
       placeholder: 'Electrical, Review',
       confirmLabel: 'Save',
@@ -347,7 +348,7 @@ export default function MarkLibraryPanel({ phone = false, headActionsHost = null
       items: [
         { label: 'Place in the middle of the page', icon: 'plus', onClick: () => placeLibraryItem(item, { center: true }) },
         { label: 'Rename', disabled: !canChange, reason: locked, onClick: () => rename(item) },
-        { label: 'Tags', icon: 'filter', disabled: !canChange, reason: locked, onClick: () => editTags([item]) },
+        { label: suiteWord('Tags'), icon: 'filter', disabled: !canChange, reason: locked, onClick: () => editTags([item]) },
         { label: 'Duplicate', disabled: !canAddHere, onClick: () => duplicate([item.id]) },
         ...(canAddOther ? [
           canChange
@@ -372,7 +373,7 @@ export default function MarkLibraryPanel({ phone = false, headActionsHost = null
         ...LIBRARY_SORTS.map((s) => ({
           label: `Sort: ${s.label}`, ...choice(state.view.sort === s.id), onClick: () => markLibraryStore.setView({ sort: s.id }),
         })),
-        { label: 'Group by tag', ...choice(state.view.groupByTag), onClick: () => markLibraryStore.setView({ groupByTag: !state.view.groupByTag }) },
+        { label: suiteWord('Group by tag'), ...choice(state.view.groupByTag), onClick: () => markLibraryStore.setView({ groupByTag: !state.view.groupByTag }) },
         ...(stampsTab ? [] : [{ label: 'Import to library', icon: 'upload', disabled: !canAddHere, onClick: () => fileRef.current?.click() }]),
         ...(stampsTab ? [] : [{ label: 'Export library', icon: 'download', disabled: items.length === 0, onClick: () => exportItems(items) }]),
       ],
@@ -523,7 +524,7 @@ export default function MarkLibraryPanel({ phone = false, headActionsHost = null
       <div className="mark-library__body">
         {visible.length === 0 ? <p className="mark-library__empty">{emptyText}</p> : groups.map((group) => (
           <section key={group.tag ?? '__all__'} className="mark-library__group">
-            {group.tag !== undefined && <h3 className="mark-library__group-title">{group.tag ?? 'No tag'}</h3>}
+            {group.tag !== undefined && <h3 className="mark-library__group-title">{group.tag ?? suiteWord('No tag')}</h3>}
             <div className={`mark-library__grid mark-library__grid--${layout}`}>
               {group.items.map((item) => (
                 <LibraryTile
@@ -546,7 +547,7 @@ export default function MarkLibraryPanel({ phone = false, headActionsHost = null
       </div>
       {selectMode && selected.size > 0 && (
         <div className="mark-library__footer">
-          <button type="button" className="hub-btn" disabled={!allChangeable} onClick={() => editTags(selectedItems)}>Tags</button>
+          <button type="button" className="hub-btn" disabled={!allChangeable} onClick={() => editTags(selectedItems)}>{suiteWord('Tags')}</button>
           <button type="button" className="hub-btn" onClick={() => exportItems(selectedItems)}>Export</button>
         </div>
       )}

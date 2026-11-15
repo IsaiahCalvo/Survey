@@ -35,6 +35,7 @@
  */
 
 import { isBBoxFullyContained, isBBoxOverlapping } from './marqueeSelection.js';
+import { pickStoredSuiteFields, suiteFieldsForCopy } from '../suite/suiteFields.js';
 import {
   doesGeometryCrossLasso,
   isGeometryFullyInsideLasso,
@@ -507,13 +508,21 @@ export const SURVEY_MARKER_COPIED_FIELDS = Object.freeze([
   'categoryId', 'entityId', 'entityName', 'entityColor', 'color', 'opacity',
 ]);
 
-/** A clipboard entry for one marker record (plain JSON). */
-export function surveyMarkerClipboardEntry(record) {
+/**
+ * A clipboard entry for one marker record (plain JSON). With `suite` (the Kal
+ * Voe suite flag, KAL-588) the copy keeps the device's suite id (the source's
+ * own id when it stored none), library links and places: one real camera
+ * never splits into two. Without it, only suite fields the record already
+ * stores travel.
+ */
+export function surveyMarkerClipboardEntry(record, { id = null, suite = false } = {}) {
   if (!record?.bounds) return null;
   const entry = { bounds: { ...record.bounds }, moduleId: record.moduleId ?? null };
   for (const field of SURVEY_MARKER_COPIED_FIELDS) {
     if (record[field] !== undefined) entry[field] = JSON.parse(JSON.stringify(record[field]));
   }
+  const suiteFields = suite ? suiteFieldsForCopy(record, id) : pickStoredSuiteFields(record);
+  if (Object.keys(suiteFields).length) entry.suite = suiteFields;
   return entry;
 }
 
@@ -584,6 +593,14 @@ export function buildPastedSurveyMarker(entry, opts = {}) {
   record.categoryId = opts.categoryId ?? null;
   if (opts.userId) record.userId = opts.userId;
   if (opts.stack) record.stack = opts.stack;
+  // Kal Voe suite fields (KAL-588) the copy carries; a suite id equal to the
+  // new id is the default, so it is not stored.
+  if (entry.suite && typeof entry.suite === 'object') {
+    for (const [field, value] of Object.entries(pickStoredSuiteFields(entry.suite))) {
+      if (field === 'suiteId' && value === String(opts.id)) continue;
+      record[field] = value;
+    }
+  }
   return record;
 }
 

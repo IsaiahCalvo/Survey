@@ -1,11 +1,12 @@
 import { SEG, base, pdfOut } from '../kit.js';
+import { suiteWord } from '../../suite/suiteWords.js';
 
 export default {
   view: 'pages',
   hint: 'Print on both sides, flipping on the short edge. Fold the stack in half and staple the fold.',
   options: [
     { key: 'paper', label: 'Paper you print on', type: SEG, def: 'letter', choices: [['letter', 'Letter'], ['a4', 'A4'], ['tabloid', 'Tabloid'], ['a3', 'A3'], ['double', 'Two pages wide']] },
-    { key: 'keepMarkups', label: 'Keep markups and filled-in forms', type: 'check', def: true },
+    { key: 'keepMarkups', label: suiteWord('Keep markups and filled-in forms'), type: 'check', def: true },
   ],
   notice([file]) {
     if (!file) return null;

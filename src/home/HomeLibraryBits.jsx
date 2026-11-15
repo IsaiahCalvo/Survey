@@ -11,6 +11,7 @@ import PdfPageThumb from './PdfPageThumb';
 import { PdfThumb } from './HubShell';
 import { LIST_DENSITIES, allTags, hasTag, parseTagInput } from './homeLibrary.js';
 import './homeLibrary.css';
+import { suiteWord, labelCellName } from '../suite/suiteWords.js';
 
 const VIEW_LABEL = { all: 'All files', 'shared-by-me': 'Shared by me', 'shared-with-me': 'Shared with me' };
 
@@ -83,11 +84,11 @@ export function TagPopover({ anchorRect, docs, tagsByDoc, onAdd, onRemove, onClo
             ref={inputRef}
             value={text}
             onChange={(event) => setText(event.target.value)}
-            placeholder="Separate tags with commas"
-            aria-label="New tags"
+            placeholder={suiteWord('Separate tags with commas')}
+            aria-label={suiteWord('New tags')}
             maxLength={400}
           />
-          <button type="submit" className="hub-icon-btn" aria-label="Add tags" disabled={!parseTagInput(text).length}>
+          <button type="submit" className="hub-icon-btn" aria-label={suiteWord('Add tags')} disabled={!parseTagInput(text).length}>
             <Icon name="plus" size={14} />
           </button>
         </form>
@@ -129,7 +130,7 @@ export function TagCell({ tags, onOpen, compact = false }) {
       data-home-tag-cell=""
       onClick={(event) => { event.stopPropagation(); onOpen(event.currentTarget.getBoundingClientRect()); }}
       onDoubleClick={(event) => event.stopPropagation()}
-      aria-label={tags?.length ? `Tags: ${tags.join(', ')}. Edit tags` : 'Add tag'}
+      aria-label={tags?.length ? labelCellName(tags) : suiteWord('Add tag')}
     >
       {tags?.length ? (
         <>
@@ -137,7 +138,7 @@ export function TagCell({ tags, onOpen, compact = false }) {
           {more > 0 ? <span className="home-tag-chip is-more">+{more}</span> : null}
         </>
       ) : (
-        <><Icon name="tag" size={12} color="currentColor" />Add tag</>
+        <><Icon name="tag" size={12} color="currentColor" />{suiteWord('Add tag')}</>
       )}
     </button>
   );
@@ -184,7 +185,7 @@ export function HomeNavSection({ views, view, counts, tags, tag, onView, onTag }
               <span className="home-nav-item__label">{row.tag}</span>
               <span className="home-nav-item__count">{row.count}</span>
             </button>
-          )) : <div className="home-nav-empty">No tags yet</div>)}
+          )) : <div className="home-nav-empty">{suiteWord('No tags yet')}</div>)}
         </>
       ) : null}
     </div>

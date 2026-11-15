@@ -119,8 +119,13 @@ export function syncSurveyMarkersToDoc(doc, markers, { origin = 'local', batchSi
 
   const changed = [];
   for (const id of ids) {
-    const next = desired[id];
+    let next = desired[id];
     const cur = map.get(id);
+    // Kal Voe suite (KAL-588): an Excel or sheet import can never write a
+    // marker's suite id. The stored one wins; an import that tries to set or
+    // clear it is refused for that field only.
+    if (!allowDeletes && cur !== undefined) next = keepStoredSuiteId(readSurveyMarkerValue(cur), next);
+    else if (!allowDeletes && next && typeof next === 'object' && 'suiteId' in next) next = withoutSuiteId(next);
     if (cur === undefined) changed.push([id, next, true]);
     else if (stableStringify(readSurveyMarkerValue(cur)) !== stableStringify(next)) changed.push([id, next, false]);
   }
@@ -138,6 +143,29 @@ export function syncSurveyMarkersToDoc(doc, markers, { origin = 'local', batchSi
   }
 
   return { added, updated, removed };
+}
+
+// Fields only the app writes; imports keep the stored value (KAL-588).
+export const IMPORT_FROZEN_SUITE_FIELDS = Object.freeze(['suiteId']);
+
+function withoutSuiteId(marker) {
+  const out = { ...marker };
+  for (const key of IMPORT_FROZEN_SUITE_FIELDS) delete out[key];
+  return out;
+}
+
+/** `next` with the stored marker's suite id put back (or dropped when it had none). */
+export function keepStoredSuiteId(stored, next) {
+  if (!next || typeof next !== 'object' || Array.isArray(next)) return next;
+  let out = next;
+  for (const key of IMPORT_FROZEN_SUITE_FIELDS) {
+    const had = stored && typeof stored === 'object' && stored[key] !== undefined;
+    if (had ? next[key] === stored[key] : !(key in next)) continue;
+    if (out === next) out = { ...next };
+    if (had) out[key] = stored[key];
+    else delete out[key];
+  }
+  return out;
 }
 
 // Key-order-independent JSON, so a marker read back from Yjs (whose key order

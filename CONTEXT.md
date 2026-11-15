@@ -31,6 +31,27 @@ the user can draw, select, move, and resize it. Previously called "Survey
 Highlight" or "Highlight" — renamed because the **Base layer** has a separate
 plain highlighter tool, and the two should not share a word.
 
+### Tag
+A Survey Marker's name: the device's name on the job, such as C-1-01. The same
+word is used in Walkthru and Plot (Kal Voe suite), so one device keeps one Tag
+in every app. The Excel column still says "Item".
+
+### Suite id
+A tracked device's shared id across the Kal Voe suite (Walkthru, Plot,
+Survey). A Survey Marker made in Survey takes its own id; a copy or an import
+keeps the original's. Excel can never change it.
+
+### Building, Wing, Floor, Location
+Where a device is. One PDF set can hold more than one Building; Floor is the
+floor a page shows; Location is the room or area the device sits in, as the
+plan names it. All four travel with the device between the suite's apps.
+
+### My library / Company library
+The Categories and Category Types a person or their company keeps, shared by
+Walkthru, Plot and Survey. A Survey Template's Categories link to entries
+here. Company library shows once the person is in a company. Any member can
+add an entry; only owners and admins can rename or remove one.
+
 ### Entity
 A responsible party or status (e.g. "GC", "Subcontractor", "100% Complete",
 "Removed"). An Entity is assigned to a **Survey Marker** and defines that
@@ -44,8 +65,16 @@ one a Category and an Entity. The survey panel lists Categories, the Survey
 Markers under each Category, and the Checklist Items under each Survey Marker.
 Survey mode hides the **Base layer** while it is active.
 
+### Annotation
+Lines, clouds, text, pen and the other marks that are not a device. Previously
+called "Markup" on screen (the code and stored values still say markup).
+
+### Labels
+Words a person sticks on files and marks to sort them. Previously called
+"Tags" on screen; renamed because **Tag** now means a device's name.
+
 ### Base layer
-The default PDF markup layer — general-purpose annotation on a PDF, comparable
+The default PDF annotation layer — general-purpose annotation on a PDF, comparable
 to Adobe Acrobat. Available to all users, including the free tier. The Base
 layer and **Survey mode** are mutually exclusive — only one shows at a time.
 The **Region** layer can be shown on top of either of them. Every annotation

@@ -24,6 +24,7 @@ import { translateAnnotationForMove } from './annotationFamilyRules.js';
 import { mintPastedCloneIdentity } from './pasteCloneIdentity.js';
 import { applyPasteScope } from './annotationCreationCommit.js';
 import { remapPastedGroupIds, stripGroupId } from './annotationGroups.js';
+import { isSuiteOn } from '../suite/suiteWords.js';
 import {
   buildFamilyStack,
   buildPastedSurveyMarker,
@@ -186,7 +187,7 @@ export function buildFamilyClipboard({
     if (!marker) continue;
     items.push({
       kind: 'marker',
-      entry: surveyMarkerClipboardEntry(marker.record),
+      entry: surveyMarkerClipboardEntry(marker.record, { id: marker.id, suite: isSuiteOn() }),
       categoryName: marker.categoryName ?? null,
       sourceModuleId: marker.record.moduleId ?? null,
       ...(cut ? { cutMarkerId: String(marker.id) } : {}),

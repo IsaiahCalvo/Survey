@@ -35,6 +35,9 @@ import { watchLightPopover } from './components/dismissRules.js';
 import { useConfirmDialog } from './components/dialogPrompts';
 import SurveyMarkerNotes from './components/SurveyMarkerNotes';
 import SurveyMarkerTracking, { SurveyMarkerTrackingBadge } from './components/SurveyMarkerTracking.jsx';
+import SurveyMarkerPlaces from './suite/SurveyMarkerPlaces.jsx';
+import { nextSuitePlaces } from './suite/suiteFields.js';
+import { isSuiteOn } from './suite/suiteWords.js';
 import { useDocumentPeople } from './hooks/useDocumentPeople.js';
 import { EMPTY_TRACKING_FILTER, nextTracking, passesTrackingFilter, todayKey } from './utils/markerTracking.js';
 import { buildNoteWithMedia, normalizeNoteMedia, uploadSurveyMedia } from './services/surveyMediaService';
@@ -74,6 +77,7 @@ import { publishSideRoom, subscribeRightPanelYield } from './sidebar/panelLayout
 import { publishChromeInset } from './utils/chromeInsets.js';
 import { useProLock } from './hooks/useProLock.js';
 import { keyboardControlProps } from './utils/keyboardActivation.js';
+import { suiteWord } from './suite/suiteWords.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
@@ -174,7 +178,7 @@ const SurveyMarkerLeadingSelect = ({
 
 const formatConflictFieldLabel = (field) => {
   if (!field) return null;
-  if (field === 'item') return 'Item name';
+  if (field === 'item') return suiteWord('Item name');
   if (field === 'entity') return 'Entity';
   if (field === 'notes') return 'Notes';
   if (field === 'changedBy') return 'Changed by';
@@ -1783,6 +1787,27 @@ const SurveySpacesRail = ({
       tip={tip}
     />
   ) : null);
+  // Kal Voe suite (KAL-588, Nightly 'suite'): where the device is.
+  const [suiteOn] = useState(() => isSuiteOn());
+  const updateSurveyMarkerPlaces = useCallback((annotationId, patch) => {
+    if (!annotationId) return;
+    setSurveyMarkers(prev => {
+      const existing = prev?.[annotationId];
+      if (!existing) return prev;
+      const next = nextSuitePlaces(existing, patch);
+      if (next === existing) return prev;
+      return { ...prev, [annotationId]: next };
+    });
+  }, [setSurveyMarkers]);
+  const renderSurveyMarkerPlaces = (annotationId, variant) => (suiteOn ? (
+    <SurveyMarkerPlaces
+      key={`places-${annotationId}`}
+      variant={variant}
+      marker={surveyMarkers?.[annotationId]}
+      canEdit={canEditSurveyMarkers !== false}
+      onChange={(patch) => updateSurveyMarkerPlaces(annotationId, patch)}
+    />
+  ) : null);
   const renderSurveyMarkerTrackingBadge = (annotationId) => (trackingOn ? (
     <SurveyMarkerTrackingBadge marker={surveyMarkers?.[annotationId]} people={trackingPeople} userId={user?.id || null} tip={tip} />
   ) : null);
@@ -1987,6 +2012,7 @@ const SurveySpacesRail = ({
               (audit chunk B, owner 2026-10-01) - the same block the desktop
               row shows. */}
           {renderSurveyMarkerTracking(annotationId, 'phone')}
+          {renderSurveyMarkerPlaces(annotationId, 'phone')}
           <div className="mobile-survey-open-notes" data-slot="survey-notes-media">
             {renderSurveyMarkerNotes(annotationId, 'phone')}
           </div>
@@ -2057,7 +2083,7 @@ const SurveySpacesRail = ({
               readOnly={!isOpen}
               tabIndex={isOpen ? undefined : -1}
               aria-label={`Rename ${markerName}`}
-              placeholder="Name"
+              placeholder={suiteWord('Name')}
               onFocus={() => setMobileDetailDropdown(null)}
               onBlur={(e) => {
                 if (!isOpen) return;
@@ -4178,6 +4204,7 @@ const SurveySpacesRail = ({
                                                     replaces the 600px Note dialog) - the same
                                                     block the phone's open Survey Marker shows. */}
                                                 {!mobileMode && isSurveyMarkerExpanded && renderSurveyMarkerTracking(annotationId, 'desktop')}
+                                                {!mobileMode && isSurveyMarkerExpanded && renderSurveyMarkerPlaces(annotationId, 'desktop')}
                                                 {!mobileMode && isSurveyMarkerExpanded && renderSurveyMarkerNotes(annotationId, 'desktop')}
                                               </div>
                                               </SwipeActionsRow>

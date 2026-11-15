@@ -9,6 +9,8 @@
  */
 import { ANNOTATION_VISIBILITY_SCOPE, getAnnotationVisibilityScope } from '../utils/annotationVisibilityRules.js';
 import { SURVEY_MARKER_TYPE } from '../utils/surveyMarkerType.js';
+import { pickStoredSuiteFields, suiteFieldsFromRow, suiteRowData } from '../suite/suiteFields.js';
+import { isSuiteOn } from '../suite/suiteWords.js';
 
 const getSurveyMarkerScope = (annotation) => getAnnotationVisibilityScope({
   moduleId: annotation?.moduleId ?? null,
@@ -20,9 +22,16 @@ export function buildSurveyMarkerRow({
   userId,
   annotationId,
   annotation = {},
+  suite = isSuiteOn(),
 }) {
   const regionId = annotation.regionId ?? null;
   const scope = getSurveyMarkerScope(annotation);
+  // Kal Voe suite (KAL-588): the shared id, library links and places ride in
+  // annotation_data.suite. Written with the flag on, or whenever the marker
+  // already stores a suite field (so turning the flag off never drops one).
+  const suiteData = suite || Object.keys(pickStoredSuiteFields(annotation)).length
+    ? suiteRowData(annotation, annotationId)
+    : undefined;
 
   return {
     document_id: documentId,
@@ -70,6 +79,7 @@ export function buildSurveyMarkerRow({
       // Nightly marker tracking: status / assignee / due ride in the row too
       // (undefined drops a cleared one that annotationData still carries).
       tracking: annotation.tracking && typeof annotation.tracking === 'object' ? annotation.tracking : undefined,
+      ...(suiteData ? { suite: suiteData } : {}),
     },
   };
 }
@@ -101,6 +111,7 @@ export function mapSurveyMarkerRowToLocalAnnotation(row) {
     entityName: row.entity_name,
     checklistResponses: row.checklist_responses || {},
     ...(annotationData.tracking && typeof annotationData.tracking === 'object' ? { tracking: annotationData.tracking } : {}),
+    ...suiteFieldsFromRow(annotationData.suite, row.annotation_id),
     changedBy: row.changed_by,
     changedDate: row.changed_date,
     color: row.color,

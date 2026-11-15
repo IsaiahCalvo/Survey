@@ -9,6 +9,7 @@ import { SurveyEntitySwatch } from './SurveyEntityBar';
 import { placeSurveyMarkerCard } from '../survey/markerPlacementCard.js';
 import { getInputModality } from '../utils/inputModality.js';
 import './SurveyMarkerPlacementDialog.css';
+import { suiteWord } from '../suite/suiteWords.js';
 
 /**
  * The card that opens beside every Survey Marker just drawn (owner
@@ -160,8 +161,8 @@ export default function SurveyMarkerPlacementDialog({ marker, template, category
             type="text"
             className="survey-place__name"
             data-survey-place-name="true"
-            aria-label="Survey Marker name"
-            placeholder={defaultName || 'Name'}
+            aria-label={suiteWord('Survey Marker name')}
+            placeholder={defaultName || suiteWord('Name')}
             value={name ?? defaultName}
             maxLength={120}
             autoComplete="off"

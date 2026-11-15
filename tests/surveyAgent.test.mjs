@@ -522,7 +522,7 @@ test('markup tools come on demand: a small stand-in until the model asks for the
   assert.equal(markupOpenInTurn([{ role: 'user', content: 'x' }, asked('open_markup_tools'), { role: 'tool', tool_call_id: 'c', content: 'ok' }, { role: 'assistant', content: 'Done.' }, { role: 'user', content: 'D-118 lock yes' }]), false);
   assert.equal(markupOpenInTurn([{ role: 'user', content: 'x' }, asked('set_answers')]), false);
   const box = createSurveyAgentToolbox({ getBridge: () => fakeBridge().bridge });
-  assert.deepEqual(await box.run('open_markup_tools', {}), { isError: false, content: 'The markup tools are ready.' });
+  assert.deepEqual(await box.run('open_markup_tools', {}), { isError: false, content: 'The annotation tools are ready.' });
 });
 
 test('mark_on_plan comes with the markup tools only', () => {

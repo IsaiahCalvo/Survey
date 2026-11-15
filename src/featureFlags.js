@@ -510,6 +510,14 @@ export const FEATURE_FLAGS = Object.freeze({
     stage: 'beta',
   }),
   // Drawboard PDF Pro (2026-11-14): Ctrl+drag under Select is a lasso pick.
+  // Kal Voe suite (KAL-584 spec; Isaiah's go 2026-11-15): Survey's part of
+  // one suite with Walkthru and Plot. Suite words on screen (KAL-591), the
+  // shared id and place fields on Survey Markers (KAL-588) and My library /
+  // Company library (KAL-585). Nightly only until the suite ships.
+  'suite': Object.freeze({
+    label: 'Kal Voe suite: suite words, shared device id and places, My library / Company library',
+    stage: 'beta',
+  }),
   'ctrl-lasso': Object.freeze({
     label: 'Select: Ctrl+drag (Cmd+drag on a Mac) on the page draws a lasso instead of a box',
     stage: 'beta',

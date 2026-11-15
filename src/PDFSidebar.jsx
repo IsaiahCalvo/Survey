@@ -47,6 +47,7 @@ import {
   subscribeSideRoom,
   writePanelLayout,
 } from './sidebar/panelLayoutStore.js';
+import { suiteWord } from './suite/suiteWords.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
@@ -154,7 +155,7 @@ const PANEL_TITLES = {
   layers: 'Layers',
   library: 'Library',
   comments: 'Comments',
-  markups: 'Markups',
+  markups: suiteWord('Markups'),
 };
 
 const PDFSidebar = React.forwardRef(({
@@ -540,7 +541,7 @@ const PDFSidebar = React.forwardRef(({
     ...(layersEnabled ? [{ id: 'layers', label: 'Layers', icon: 'layers' }] : []),
     ...(markLibraryEnabled ? [{ id: 'library', label: 'Library', icon: 'library' }] : []),
     ...(commentsOn ? [{ id: 'comments', label: 'Comments', icon: 'comment' }] : []),
-    ...(markupListEnabled ? [{ id: 'markups', label: 'Markups', icon: 'listChecks' }] : []),
+    ...(markupListEnabled ? [{ id: 'markups', label: suiteWord('Markups'), icon: 'listChecks' }] : []),
   ];
 
   const toggleHistoryPanel = useCallback(() => {
