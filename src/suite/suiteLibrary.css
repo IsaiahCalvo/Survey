@@ -1,0 +1,105 @@
+/* Library page (SuiteLibraryPage.jsx): My library / Company library. */
+
+.suite-library {
+  display: grid;
+  gap: 12px;
+  max-width: 720px;
+  padding: 16px;
+}
+
+.suite-library__tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--line, var(--border));
+}
+
+.suite-library__tab {
+  min-height: 36px;
+  padding: 0 12px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--ink-200, var(--text-2));
+  font: inherit;
+  cursor: pointer;
+}
+
+.suite-library__tab.is-active {
+  border-bottom-color: var(--accent, #6aa6f6);
+  color: var(--ink-0, var(--text-1));
+  font-weight: 600;
+}
+
+.suite-library__lead {
+  margin: 0;
+  color: var(--ink-200, var(--text-2));
+  font-size: 13px;
+}
+
+.suite-library__error {
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(220, 80, 60, 0.12);
+  font-size: 13px;
+}
+
+.suite-library__add {
+  display: flex;
+  gap: 6px;
+}
+
+.suite-library__add input {
+  flex: 1;
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--line, var(--border));
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.suite-library__list,
+.suite-library__types {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.suite-library__types {
+  display: grid;
+  gap: 4px;
+  padding: 4px 0 8px 24px;
+}
+
+.suite-library__category {
+  border-bottom: 1px solid var(--line, var(--border));
+  padding: 6px 0;
+}
+
+.suite-library__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+}
+
+.suite-library__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.suite-library__actions {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.suite-library__empty {
+  padding: 24px 0;
+  color: var(--ink-200, var(--text-2));
+  text-align: center;
+}

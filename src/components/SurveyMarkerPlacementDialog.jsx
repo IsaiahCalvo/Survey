@@ -161,7 +161,7 @@ export default function SurveyMarkerPlacementDialog({ marker, template, category
             type="text"
             className="survey-place__name"
             data-survey-place-name="true"
-            aria-label={suiteWord('Survey Marker name')}
+            aria-label="Survey Marker name"
             placeholder={defaultName || suiteWord('Name')}
             value={name ?? defaultName}
             maxLength={120}

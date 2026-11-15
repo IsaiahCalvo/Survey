@@ -13,6 +13,7 @@ import { useTooltip } from '../components/Tooltip';
 import { isDocumentDrag, readDocumentDragIds } from './documentSelection.js';
 import { releaseChannel } from '../featureFlags.js';
 import { NIGHTLY_COLOR } from '../nightlyBrand.js';
+import { isSuiteOn } from '../suite/suiteWords.js';
 
 const IS_MAC = typeof navigator !== 'undefined'
   && /(Mac|iPhone|iPod|iPad)/i.test(`${navigator.platform || ''} ${navigator.userAgent || ''}`);
@@ -589,6 +590,8 @@ export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userN
     ['documents', 'doc', 'Documents', false],
     ['projects', 'folder', 'Projects', false],
     ['templates', 'template', 'Templates', templatesLocked],
+    // Kal Voe suite library (KAL-585): Nightly-only behind 'suite'.
+    ...(isSuiteOn() ? [['library', 'library', 'Library', false]] : []),
   ];
   // KAL-280 — Archive is a recovery destination, not somewhere you work, so it
   // must never compete with the three main tabs for attention. It renders in its

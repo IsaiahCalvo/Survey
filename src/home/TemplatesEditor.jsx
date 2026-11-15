@@ -122,6 +122,7 @@ import { isSmartFillBetaEnabled } from '../survey/smartFillFlag.js';
 import { templateCategoryEmptyText } from './templateEmptyText.js';
 import { autoCompleteOn, findCompleteEntity } from '../utils/surveyAutoEntity.js';
 import { keyboardControlProps } from '../utils/keyboardActivation.js';
+import { linkTemplatesForSave, warmSuiteLibrary } from '../suite/templateLibraryLink.js';
 
 // Nightly 'own-excel-layouts': the dialog and its store load when first opened.
 const OwnExcelLayoutDialog = lazy(() => Promise.all([
@@ -278,6 +279,8 @@ const buildRich = (templates, mint = (_key, prefix) => newId(prefix)) => templat
       return {
       id: c?.id ?? mint(catKey, 'c'),
       name: c?.name || `Category ${ci + 1}`,
+      // Kal Voe suite (KAL-585): the Category's library entry, kept as is.
+      ...(c?.libraryEntryId ? { libraryEntryId: c.libraryEntryId } : {}),
       items: checklistOf(c).map((it) => {
         /* Preserve stable item ids when the persisted row already has one —
            archived items rely on the same id the marker's checklist_responses
@@ -913,11 +916,16 @@ export default function TemplatesEditor({
   const saveChainRef = useRef(Promise.resolve());
   const [persistenceError, setPersistenceError] = useState('');
   const dispatchTemplatesSave = useCallback((payload) => {
-    const run = () => Promise.resolve(onSaveTemplates(payload));
+    // Kal Voe suite (KAL-585, Nightly 'suite'): every Category links to a
+    // library entry as it saves (checklists untouched).
+    const linked = linkTemplatesForSave(payload, user?.id);
+    const run = () => Promise.resolve(onSaveTemplates(linked));
     const p = saveChainRef.current.then(run, run);
     saveChainRef.current = p.then(() => {}, () => {});
     return p;
-  }, [onSaveTemplates]);
+  }, [onSaveTemplates, user?.id]);
+
+  useEffect(() => { warmSuiteLibrary(user?.id); }, [user?.id]);
 
   /* ---- selection / edit state ---- */
   const [selectedId, setSelected] = useState(() => (initialMobileOpen ? (templates[0]?.id ?? null) : null));
@@ -2251,6 +2259,7 @@ export default function TemplatesEditor({
       categories: m.categories.map((c) => ({
         id: c.id,
         name: c.name,
+        ...(c.libraryEntryId ? { libraryEntryId: c.libraryEntryId } : {}),
         checklist: c.items.map((it) => {
           /* Persist archived metadata so KAL-44 archive survives save/reload.
              Active items round-trip the simple shape unchanged. */

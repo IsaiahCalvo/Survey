@@ -50,7 +50,7 @@ test('screens that said Markup or Tags go through suiteWord', () => {
     'src/markLibrary/MarkLibraryPanel.jsx': /suiteWord\('Group by tag'\)/,
     'src/markLibrary/MarkLibrarySaveDialog.jsx': /suiteWord\('Tags \(comma between them\)'\)/,
     'src/projectItems/ProjectItemsPanel.jsx': /suiteWord\('Tags'\)/,
-    'src/components/SurveyMarkerPlacementDialog.jsx': /suiteWord\('Survey Marker name'\)/,
+    'src/components/SurveyMarkerPlacementDialog.jsx': /placeholder=\{defaultName \|\| suiteWord\('Name'\)\}/,
     'src/SurveySpacesRail.jsx': /return suiteWord\('Item name'\)/,
   };
   for (const [file, re] of Object.entries(sites)) assert.match(read(file), re, file);
