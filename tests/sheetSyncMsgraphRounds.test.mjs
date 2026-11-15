@@ -374,6 +374,9 @@ test('a PM typing "50%" or "$1,200" into a note on an old row: the survey gets w
   assert.equal(ctx.markers.d1.note.text, '50%');
   assert.equal(ctx.markers.d2.note.text, '$1,200', 'without the space Excel pads a money format with');
   assert.equal(Number(ctx.markers.d1.checklistResponses.c2.selection), 1200, 'a number answer stays a number');
+  // Survey never writes its own copy of the shown text over the PM's cell.
+  const after = (await ctx.sheet()).rows;
+  assert.deepEqual([after[r1][notes], after[r2][notes]], [0.5, 1200], 'the cells stay numbers Excel formats');
   const quiet = await ctx.round();
   assert.ok(!quiet.summary?.toSheet && !quiet.summary?.toApp, JSON.stringify(quiet.summary));
   assert.equal(ctx.link.state.problems?.length || 0, 0);

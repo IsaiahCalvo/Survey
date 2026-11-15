@@ -740,6 +740,16 @@ export async function planSheetRound({
       if (want === (checkboxAnswerOf(layout.answerValues, false) ?? '')) return false;
       return want;
     };
+    // True when the cell already says `want`: as stored, or (a text column)
+    // as the sheet shows it. A PM's 50% stays the number 0.5 formatted as a
+    // percent, and a formula stays a formula, instead of Survey writing its
+    // own copy of the shown text over it.
+    const cellSays = (row, key, want) => {
+      const col = colOfKey.get(key);
+      if (sameCell(row[col], want)) return true;
+      const column = scope.columns.find((c) => c.key === key);
+      return isTextColumn(column) && sameCell(cellOf(row, column, col), want);
+    };
     const writeCell = (rowIndex, key, value, was, markerId = null) => {
       const col = colOfKey.get(key);
       if (col == null) return;
@@ -1581,7 +1591,7 @@ export async function planSheetRound({
         if (columnIsEditable(column) && conv[column.key] === undefined) continue; // a bad value stays for the person to fix
         const was = row[colOfKey.get(column.key)];
         const want = sheetWant(column.key, cellValueFor(scope, column.key, rec), was);
-        if (!sameCell(was, want)) writeCell(r, column.key, want, was);
+        if (!cellSays(row, column.key, want)) writeCell(r, column.key, want, was);
       }
     }
 
@@ -1933,7 +1943,7 @@ export async function planSheetRound({
         }
         const carry = carriedEdits.has(`${markerId}|${key}`) && !appChangedSet.has(key);
         const want = carry ? carriedEdits.get(`${markerId}|${key}`) : sheetWant(key, cellValueFor(scope, key, finalRec), row[col]);
-        if (!sameCell(row[col], want)) {
+        if (!cellSays(row, key, want)) {
           writeCell(r, key, want, row[col], markerId);
           if (carry) continue;
           if (!fromSheet.has(key)) {
