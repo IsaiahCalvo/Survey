@@ -32,5 +32,5 @@ test('the flag is beta, the account menu uses it, the dialog sits on the shell, 
   const dialog = read('src/help/HelpSupportDialog.jsx');
   assert.match(dialog, /import DialogCard from '\.\.\/components\/DialogCard\.jsx';/);
   assert.match(dialog, /target="_blank" rel="noopener noreferrer"/);
-  assert.match(read('supabase/migrations/20261115193000_help_menu_flag.sql'), /'help-menu', 'off'/);
+  assert.match(read('supabase/migrations/20261115214100_help_menu_flag.sql'), /'help-menu', 'off'/);
 });

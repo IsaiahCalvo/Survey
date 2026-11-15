@@ -32,5 +32,5 @@ test('flag, bar and mark menu are wired, and a migration adds the row', () => {
   assert.match(menu, /'Dock bar to bottom', 'dockSelectionBar'/);
   assert.match(menu, /'Float bar by mark', 'floatSelectionBar'/);
   assert.match(menu, /'Edit subject', 'editSubject'/);
-  assert.match(read('supabase/migrations/20261115200000_toolbar_settings_flag.sql'), /'toolbar-settings', 'off'/);
+  assert.match(read('supabase/migrations/20261115214200_toolbar_settings_flag.sql'), /'toolbar-settings', 'off'/);
 });
