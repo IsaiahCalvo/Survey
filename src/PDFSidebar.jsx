@@ -11,6 +11,8 @@
  */
 import React, { useState, useCallback, useImperativeHandle, useSyncExternalStore, lazy, Suspense } from 'react';
 import Icon from './Icons';
+import { isFeatureOn } from './featureFlags.js';
+import { PinIcon, getPinnedToolsStore, usePinnedTools } from './pinnedTools/pinnedToolsShared.jsx';
 import PagesPanel from './sidebar/PagesPanel';
 // Lazy so pdf.js (statically imported by SearchTextPanel for text-layer rendering)
 // stays out of the first-paint bundle; it loads when the viewer's rail mounts.
@@ -276,6 +278,11 @@ const PDFSidebar = React.forwardRef(({
   pdfDisplayName = '',
 }, ref) => {
   const commentsOn = Boolean(commentsEnabled && documentId);
+  // Nightly 'pinned-tools' (owner 2026-11-15): hidden, the pinned tools bar
+  // leaves its pin here in the rail, so it is one press to bring it back.
+  const [pinnedToolsFlag] = useState(() => isFeatureOn('pinned-tools'));
+  const pinnedTools = usePinnedTools();
+  const showPinnedToolsInRail = pinnedToolsFlag && !mobileMode && !pinnedTools.visible;
   // Chunk D (owner 2026-10-13): the desktop rail comes back as it was left -
   // which panel and whether it was open - per user
   // (sidebar/panelLayoutStore.js). The phone's sheet always starts closed.
@@ -910,6 +917,32 @@ const PDFSidebar = React.forwardRef(({
               style={{ width: `${RAIL_GLYPH}px`, height: `${RAIL_GLYPH}px`, flexShrink: 0 }}
             />
           </button>
+          {showPinnedToolsInRail && (
+            <button
+              type="button"
+              {...tip('Show pinned tools', 'right')}
+              aria-label="Show pinned tools"
+              data-pinned-tools-show="rail"
+              className="chrome-icon-btn"
+              onClick={() => getPinnedToolsStore().setVisible(true)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-2)',
+                borderRadius: 'var(--chrome-radius, 6px)',
+                padding: '11px 6px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                minWidth: '28px',
+                minHeight: '28px',
+                width: '100%'
+              }}
+            >
+              <PinIcon size={RAIL_GLYPH} />
+            </button>
+          )}
         </div>
 
         {/* 2026-04-25 — Collaboration footer (sync chip, History, presence)

@@ -8,8 +8,10 @@
  * - Press a pin to arm it. While it is armed, colour / width / line style
  *   changes in the settings row are saved into that pin.
  * - "+" pins the tool in use, or any tool, with no limit on how many.
- * - Drag a pin along the dock to reorder it (mouse or pen): the others slide
- *   aside and it glides into its slot; Alt+arrows from the keyboard.
+ * - Drag a pin along the dock to reorder it (mouse or pen; a finger holds it
+ *   a moment first): the others slide aside and it glides into its slot;
+ *   Alt+arrows from the keyboard. A pin behind "+N" drags out of its grid
+ *   onto the dock (owner 2026-11-15: drag replaces "Move to start").
  *   Right-click a pin to duplicate or unpin it; "Edit pins" in the dock's
  *   menu shows a remove mark on each for touch.
  * - Drag the grip to dock it left, right or bottom, as walkthu's
@@ -64,6 +66,7 @@ const DOCK_MORPH_MIN_MS = 300;
 const LIFT_SCALE_TRANSITION = 'scale 110ms cubic-bezier(0.2, 0.8, 0.2, 1)';
 const ZONES_FADE_OUT_MS = 240;
 const PIN_SLIDE_MS = 180;
+const TOUCH_HOLD_MS = 300; // a finger holds a pin this long before it lifts
 // How fast a carried dock catches up when something other than the pointer
 // moves it (its grip shifting as it reshapes, the magnet): eased over about
 // this long instead of in one frame. Pointer moves still pass straight on.
@@ -438,12 +441,6 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
     const index = pins.findIndex((entry) => entry.id === pin.id);
     closeMenu();
     animateDock(() => store.addPin(makePin(pin.kind, pin.style), index + 1));
-  };
-
-  // A pin behind "+N" cannot be dragged into view: its menu moves it first.
-  const moveToStart = (pin) => {
-    closeMenu();
-    flipPins(() => store.movePin(pin.id, 0));
   };
 
   // --- dock drag (grip) -----------------------------------------------------
@@ -900,62 +897,159 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
   // The lifted pin follows the pointer straight from the pointer event (no
   // render per move); the dock re-renders only when the slot it would land
   // in changes, to slide the others aside.
+  //
+  // How a press becomes a drag (owner 2026-11-15: drag to rearrange, no
+  // "Move to start"): a mouse or pen lifts the pin once it moves
+  // DRAG_START_PX; a finger has to hold still for TOUCH_HOLD_MS first, so a
+  // quick swipe still scrolls the phone's row and a tap still arms the pin.
   const pinDragOffsetRef = useRef(0);
-  const onPinPointerDown = (event, pin, index) => {
-    if (event.button !== 0 || event.pointerType === 'touch' || editing) return;
-    const list = listRef.current;
-    if (!list) return;
+  const touchDragRef = useRef(false);
+  const pressPin = (event, onStart) => {
+    if (event.button !== 0 || editing) return;
+    const touch = event.pointerType === 'touch';
+    const pointerId = event.pointerId;
     const startX = event.clientX;
     const startY = event.clientY;
+    let handlers = null;
+    let held = false;
+    let timer = 0;
+    // Once a finger's drag starts the page must not scroll under it.
+    const blockScroll = (ev) => { if (handlers && ev.cancelable) ev.preventDefault(); };
+    const end = (ev, cancelled) => {
+      if (ev && ev.pointerId !== pointerId) return;
+      window.clearTimeout(timer);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onCancel);
+      window.removeEventListener('touchmove', blockScroll);
+      if (!handlers) return;
+      suppressClickRef.current = true;
+      window.setTimeout(() => { suppressClickRef.current = false; touchDragRef.current = false; }, 0);
+      handlers.up(cancelled);
+    };
+    const move = (ev) => {
+      if (ev.pointerId !== pointerId) return;
+      if (!handlers) {
+        const dist = Math.hypot(ev.clientX - startX, ev.clientY - startY);
+        if (touch) {
+          // Moved before the hold finished: it is a scroll, not a drag.
+          if (!held && dist > DRAG_START_PX) end(null, true);
+          return;
+        }
+        if (dist < DRAG_START_PX) return;
+        handlers = onStart();
+        if (!handlers) { end(null, true); return; }
+      }
+      handlers.move(ev.clientX, ev.clientY, ev.clientX - startX, ev.clientY - startY);
+    };
+    const onUp = (ev) => end(ev, false);
+    const onCancel = (ev) => end(ev, true);
+    if (touch) {
+      timer = window.setTimeout(() => {
+        held = true;
+        touchDragRef.current = true;
+        handlers = onStart();
+        if (!handlers) { end(null, true); return; }
+        handlers.move(startX, startY, 0, 0);
+      }, TOUCH_HOLD_MS);
+      window.addEventListener('touchmove', blockScroll, { passive: false });
+    }
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onCancel);
+  };
+
+  // A pin on the dock: it slides along the dock to its new slot.
+  const onPinPointerDown = (event, pin) => {
+    const list = listRef.current;
+    if (!list) return;
     const slotEl = event.currentTarget.closest('[data-pin-slot]');
-    let activated = false;
-    let target = index;
-    let rects = [];
-    let scroll0 = { x: 0, y: 0 };
-    let slot = 0;
     const pinId = pin.id;
     const axis = vertical ? 'translateY' : 'translateX';
-    const move = (ev) => {
-      const dx = ev.clientX - startX;
-      const dy = ev.clientY - startY;
-      if (!activated) {
-        if (Math.abs(vertical ? dy : dx) < DRAG_START_PX) return;
-        activated = true;
-        // The other pins' boxes as laid out now, before any slides aside.
-        rects = [...list.querySelectorAll('[data-pin-slot]')]
-          .filter((el) => el.dataset.pinSlot !== pinId)
-          .map((el) => el.getBoundingClientRect());
-        scroll0 = { x: list.scrollLeft, y: list.scrollTop };
-        slot = (vertical ? slotEl?.offsetHeight : slotEl?.offsetWidth) + PIN_GAP_PX || 0;
-        target = -1;
-      }
-      // A long dock scrolls under the pin: measure in its scrolled frame.
-      const sx = list.scrollLeft - scroll0.x;
-      const sy = list.scrollTop - scroll0.y;
-      const next = reorderIndexAt({ x: ev.clientX + sx, y: ev.clientY + sy }, rects, vertical);
-      pinDragOffsetRef.current = vertical ? dy + sy : dx + sx;
-      if (slotEl) slotEl.style.transform = `${axis}(${pinDragOffsetRef.current}px) scale(1.08)`;
-      if (next !== target) {
-        target = next;
-        setPinDrag({ pinId, index: target, slot });
-      }
-    };
-    const up = () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-      window.removeEventListener('pointercancel', up);
-      if (!activated) return;
-      suppressClickRef.current = true;
-      window.setTimeout(() => { suppressClickRef.current = false; }, 0);
-      flipPins(() => {
-        setPinDrag(null);
-        store.movePin(pinId, target);
-      }, pinId);
-      if (slotEl) slotEl.style.removeProperty('transform');
-    };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
-    window.addEventListener('pointercancel', up);
+    pressPin(event, () => {
+      // The other pins' boxes as laid out now, before any slides aside.
+      const rects = [...list.querySelectorAll('[data-pin-slot]')]
+        .filter((el) => el.dataset.pinSlot !== pinId)
+        .map((el) => el.getBoundingClientRect());
+      const scroll0 = { x: list.scrollLeft, y: list.scrollTop };
+      const slot = (vertical ? slotEl?.offsetHeight : slotEl?.offsetWidth) + PIN_GAP_PX || 0;
+      let target = -1;
+      return {
+        move: (x, y, dx, dy) => {
+          // A long dock scrolls under the pin: measure in its scrolled frame.
+          const sx = list.scrollLeft - scroll0.x;
+          const sy = list.scrollTop - scroll0.y;
+          const next = reorderIndexAt({ x: x + sx, y: y + sy }, rects, vertical);
+          pinDragOffsetRef.current = vertical ? dy + sy : dx + sx;
+          if (slotEl) slotEl.style.transform = `${axis}(${pinDragOffsetRef.current}px) scale(1.08)`;
+          if (next !== target) {
+            target = next;
+            setPinDrag({ pinId, index: target, slot });
+          }
+        },
+        up: (cancelled) => {
+          flipPins(() => {
+            setPinDrag(null);
+            if (!cancelled && target >= 0) store.movePin(pinId, target);
+          }, pinId);
+          if (slotEl) slotEl.style.removeProperty('transform');
+        },
+      };
+    });
+  };
+
+  // A pin behind "+N": the grid closes and the pin is carried over the dock,
+  // where the shown pins open a slot for it; dropped there, it takes that
+  // slot. Let go away from the dock and nothing moves.
+  const onMorePinPointerDown = (event, pin) => {
+    const source = event.currentTarget;
+    const pinId = pin.id;
+    pressPin(event, () => {
+      const list = listRef.current;
+      const dock = dockRef.current;
+      if (!list || !dock) return null;
+      const box = source.getBoundingClientRect();
+      const ghost = source.cloneNode(true);
+      ghost.removeAttribute('id');
+      ghost.setAttribute('aria-hidden', 'true');
+      ghost.setAttribute('data-pin-ghost', 'true');
+      Object.assign(ghost.style, {
+        position: 'fixed', left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px`,
+        margin: '0', pointerEvents: 'none', zIndex: '2147483000', scale: '1.08',
+        background: 'var(--surface-2, var(--panel-bg))', borderRadius: '6px', boxShadow: '0 4px 14px rgba(0,0,0,0.35)',
+      });
+      document.body.appendChild(ghost);
+      flushSync(() => setMenu(null));
+      const slotEls = [...list.querySelectorAll('[data-pin-slot]')];
+      const rects = slotEls.map((el) => el.getBoundingClientRect());
+      const first = slotEls[0];
+      const slot = (vertical ? first?.offsetHeight : first?.offsetWidth) + PIN_GAP_PX || 0;
+      const grab = { x: box.width / 2, y: box.height / 2 };
+      let target = -1;
+      const overDock = (x, y) => {
+        const r = dock.getBoundingClientRect();
+        const pad = 28;
+        return x >= r.left - pad && x <= r.right + pad && y >= r.top - pad && y <= r.bottom + pad;
+      };
+      return {
+        move: (x, y) => {
+          ghost.style.left = `${x - grab.x}px`;
+          ghost.style.top = `${y - grab.y}px`;
+          const next = overDock(x, y) ? reorderIndexAt({ x, y }, rects, vertical) : -1;
+          if (next !== target) {
+            target = next;
+            setPinDrag(next >= 0 ? { pinId, index: next, slot } : null);
+          }
+        },
+        up: (cancelled) => {
+          ghost.remove();
+          flipPins(() => {
+            setPinDrag(null);
+            if (!cancelled && target >= 0) store.movePin(pinId, target);
+          });
+        },
+      };
+    });
   };
 
   const onPinKeyDown = (event, pin, index) => {
@@ -1067,8 +1161,10 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
           data-pin-width={badge || undefined}
           data-pin-armed={pressed ? 'true' : undefined}
           data-tool-switch="true"
-          {...withOwnHandlers(bindTip(pinTipText(description, index, phone), inMenu ? 'above' : tipSide), inMenu ? {} : {
-            onPointerDown: (event) => onPinPointerDown(event, pin, index),
+          {...withOwnHandlers(bindTip(pinTipText(description, index, phone), inMenu ? 'above' : tipSide), inMenu ? {
+            onPointerDown: (event) => onMorePinPointerDown(event, pin),
+          } : {
+            onPointerDown: (event) => onPinPointerDown(event, pin),
             onKeyDown: (event) => onPinKeyDown(event, pin, index),
           })}
           onClick={(event) => {
@@ -1084,6 +1180,9 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
           }}
           onContextMenu={(event) => {
             event.preventDefault();
+            // A finger's long press lifts the pin to drag it; Android also
+            // calls that a right-click, which must not open the menu too.
+            if (touchDragRef.current || pinDrag) return;
             openMenu('pin', event.currentTarget, { pinId: pin.id });
           }}
         >
@@ -1212,7 +1311,6 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
           onAdd={(kindId) => addPin(kindId, startingStyleFor(apiRef.current, sessionRef.current, kindId))}
           onUnpin={unpin}
           onDuplicate={duplicate}
-          onMoveToStart={moveToStart}
           onPlacement={(next) => {
             closeMenu();
             const dock = dockRef.current;
@@ -1256,7 +1354,7 @@ function menuPosition(rect, placement, width = 240) {
 
 function PinnedToolsMenu({
   menuRef, menu, placement, phone, pins, hiddenPins, renderPin, compact, pinSet, editing, currentKind, onPinCurrent, onAdd,
-  onUnpin, onDuplicate, onMoveToStart, onPlacement, onToggleCompact, onToggleEditing, onHide, api,
+  onUnpin, onDuplicate, onPlacement, onToggleCompact, onToggleEditing, onHide, api,
 }) {
   // The picker's search words; a fresh picker starts empty.
   const [query, setQuery] = useState('');
@@ -1291,11 +1389,6 @@ function PinnedToolsMenu({
         <button type="button" role="menuitem" onClick={() => onDuplicate(pin)}>
           <Icon name="duplicate" size={14} color="currentColor" /><span>Duplicate</span>
         </button>
-        {pins[0]?.id === pin.id ? null : (
-          <button type="button" role="menuitem" data-pin-move-first="true" onClick={() => onMoveToStart(pin)}>
-            <Icon name="chevronUp" size={14} color="currentColor" /><span>Move to start</span>
-          </button>
-        )}
         <button type="button" role="menuitem" className="is-danger" onClick={() => onUnpin(pin.id)}>
           <Icon name="close" size={14} color="currentColor" /><span>Unpin</span>
         </button>
