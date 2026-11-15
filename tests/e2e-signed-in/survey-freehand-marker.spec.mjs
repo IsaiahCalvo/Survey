@@ -148,7 +148,7 @@ for (const pointerType of ['mouse', 'pen']) {
       expect(c.x >= m.x + m.width || c.x + c.width <= m.x || c.y >= m.y + m.height).toBe(true);
 
       // Its title is the name, ready to type over: the armed category's next.
-      const name = card.getByRole('textbox', { name: 'Survey Marker name' });
+      const name = card.getByRole('textbox', { name: 'Survey Marker tag' });
       await expect(name).toHaveValue('Camera 1');
       await expect(name).toBeFocused();
       // Only the module in use is listed (owner 2026-10-22).
@@ -186,7 +186,7 @@ test('the card names the marker: typed + Enter, or untouched and a press off the
     // Typed over, Enter places it with that name, in the armed category.
     await drawStroke(page, 'mouse', box.x + box.width * 0.3, box.y + box.height * 0.6);
     await expect(card).toBeVisible();
-    await expect(card.getByRole('textbox', { name: 'Survey Marker name' })).toHaveValue('Camera 1');
+    await expect(card.getByRole('textbox', { name: 'Survey Marker tag' })).toHaveValue('Camera 1');
     await page.keyboard.type('Lobby camera');
     await page.keyboard.press('Enter');
     await expect(card).toBeHidden();
@@ -197,7 +197,7 @@ test('the card names the marker: typed + Enter, or untouched and a press off the
     // Untouched, a press off the card places it with the default name.
     await drawStroke(page, 'mouse', box.x + box.width * 0.3, box.y + box.height * 0.3);
     await expect(card).toBeVisible();
-    await expect(card.getByRole('textbox', { name: 'Survey Marker name' })).toHaveValue('Camera 1');
+    await expect(card.getByRole('textbox', { name: 'Survey Marker tag' })).toHaveValue('Camera 1');
     const c = await card.boundingBox();
     const offX = c.x > box.x + box.width / 2 ? box.x + 40 : Math.min(box.x + box.width - 40, c.x + c.width + 120);
     await page.mouse.click(offX, box.y + box.height * 0.9);

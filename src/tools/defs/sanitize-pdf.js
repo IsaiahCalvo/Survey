@@ -7,7 +7,7 @@ export default {
     { key: 'metadata', label: 'Hidden XMP metadata', type: 'check', def: true },
     { key: 'scripts', label: 'Scripts and actions that run on their own', type: 'check', def: true },
     { key: 'files', label: 'Attached files', type: 'check', def: true },
-    { key: 'comments', label: 'Comments and markups', type: 'check', def: false },
+    { key: 'comments', label: 'Comments and annotations', type: 'check', def: false },
   ],
   async run([file], opts) {
     if (!['info', 'metadata', 'scripts', 'files', 'comments'].some((k) => opts[k])) throw new ToolError('Tick at least one thing to remove.');

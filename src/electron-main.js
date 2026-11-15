@@ -641,7 +641,7 @@ function createAppMenu() {
         },
         {
           // KAL-393: XFDF sidecar; the source PDF is not changed.
-          label: 'Export markup (XFDF)…',
+          label: 'Export annotations (XFDF)…',
           click: () => {
             const win = getTargetWindow();
             if (win && !win.isDestroyed()) {

@@ -12,6 +12,8 @@
 //           look, no answers and no Excel identity (like a pasted copy).
 
 import { SURVEY_MARKER_COPIED_FIELDS } from './surveyMarkerFamily.js';
+import { suiteFieldsForCopy } from '../survey/suiteMarkerFields.js';
+import { isFeatureOn } from '../featureFlags.js';
 
 const modulesOf = (template) => (template?.modules || template?.spaces || []);
 
@@ -72,9 +74,10 @@ export function pickInTemplate(template, { moduleId = null, avoidCategoryId = nu
  * @param {(record) => boolean} [p.mayEdit]  move permission (copy makes the viewer's own)
  * @param {() => string} [p.mintId]          new id for a copy
  * @param {string|null} [p.userId]           author of a copy
+ * @param {boolean} [p.suite]                keep the suite fields on a copy (default: the 'suite' flag)
  * @returns {{ ok: true, changes: Array<{id, before, after}>, ids: string[] } | { ok: false, reason: string }}
  */
-export function planSurveyMarkerTransfer({ mode, markers, ids, moduleId, categoryId, mayEdit = () => true, mintId, userId = null }) {
+export function planSurveyMarkerTransfer({ mode, markers, ids, moduleId, categoryId, mayEdit = () => true, mintId, userId = null, suite = undefined }) {
   if (mode !== 'move' && mode !== 'copy') return { ok: false, reason: 'Choose Move or Copy.' };
   if (!moduleId || !categoryId) return { ok: false, reason: 'Choose a category.' };
   const all = markers && typeof markers === 'object' ? markers : {};
@@ -99,7 +102,10 @@ export function planSurveyMarkerTransfer({ mode, markers, ids, moduleId, categor
     return { ok: true, changes, ids: resultIds };
   }
   if (typeof mintId !== 'function') return { ok: false, reason: 'Could not copy.' };
-  for (const [, record] of records) {
+  // Kal Voe suite (KAL-588, flag 'suite'): a copy into another Module is the
+  // same real device, so it keeps the shared id, links and place.
+  const keepSuite = suite ?? (() => { try { return isFeatureOn('suite'); } catch { return false; } })();
+  for (const [sourceId, record] of records) {
     const id = String(mintId());
     const copy = {
       id,
@@ -116,6 +122,7 @@ export function planSurveyMarkerTransfer({ mode, markers, ids, moduleId, categor
       if (record[field] !== undefined) copy[field] = JSON.parse(JSON.stringify(record[field]));
     }
     if (userId) copy.userId = userId;
+    if (keepSuite) Object.assign(copy, suiteFieldsForCopy(record, sourceId));
     changes.push({ id, before: null, after: copy });
     resultIds.push(id);
   }
