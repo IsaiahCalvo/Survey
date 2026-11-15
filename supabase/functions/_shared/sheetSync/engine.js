@@ -465,6 +465,7 @@ export async function planSheetRound({
   holdErase = false,
   lateSaves = false,
   lockedTabs = [],
+  waitCells = null,
 }) {
   const nextBaseline = { ...baseline };
   // Tabs that already had items before this round: the first fill of a new
@@ -483,6 +484,7 @@ export async function planSheetRound({
   const otherMode = (holdErase || state.heldErase) ? 'hold' : 'count';
   const eraseModeOf = (scopeId) => (choiceMode && (heldOn === null || heldOn.includes(scopeId)) ? choiceMode : otherMode);
   let erasing = 0;
+  const erased = []; // { sheetId, row, col } of each blank counted in `erasing`
   let held = 0;
   const heldItems = new Set();
   const heldScopes = new Set();
@@ -1537,9 +1539,19 @@ export async function planSheetRound({
       // two Notes cells wiped the lower note in the app): the same, from the
       // first round, without waiting for a write to bounce off it.
       const stuckKeys = new Set();
+      // `waitCells`: blanks the file itself does not show yet (round.js
+      // readMerges: Excel's saved file can trail what Graph reads by a minute
+      // or two), so whether they were cleared or merged away is not known:
+      // left as they were for this round, nothing written or taken.
+      const waitKeys = new Set();
       for (const key of keys) {
         const flag = `${markerId}|${key}`;
         const col = colOfKey.get(key);
+        if (col != null && waitCells?.has(`${sheet.sheetId}|${r}|${col}`) && isBlankCell(row[col]) && !next.stuck[flag]) {
+          stuckKeys.add(key);
+          waitKeys.add(key);
+          continue;
+        }
         if (col != null && coveredByMerge(r, col)) next.stuck[flag] = true;
         if (!next.stuck[flag]) continue;
         if (colOfKey.has(key) && isBlankCell(row[colOfKey.get(key)])) stuckKeys.add(key);
@@ -1581,6 +1593,7 @@ export async function planSheetRound({
             continue;
           }
           erasing += 1;
+          erased.push({ sheetId: sheet.sheetId, row: r, col: colOfKey.get(key) });
           const eraseMode = eraseModeOf(scope.scopeId);
           if (eraseMode === 'hold' || eraseMode === 'restore') setFp(sheetSide, key, getFp(base, key));
           if (eraseMode === 'hold') {
@@ -1775,12 +1788,15 @@ export async function planSheetRound({
         // A formula showing an error, unchanged in the app: leave the person's
         // formula and the agreed value alone.
         if (errorKeys.has(key) && !appChangedSet.has(key)) continue;
+        // A blank still waiting on the file: the agreed value stays, so an app
+        // change made meanwhile is written once the wait is over.
+        if (waitKeys.has(key)) continue;
         setFp(nextFields, key, getFp(finalFps, key));
         const col = colOfKey.get(key);
         if (col == null) continue;
         if (heldKeys.has(key)) continue; // left blank in the sheet until an editor chooses
         if (stuckKeys.has(key)) {
-          if (!isBlankCell(cellValueFor(scope, key, finalRec))) {
+          if (!waitKeys.has(key) && !isBlankCell(cellValueFor(scope, key, finalRec))) {
             next.problems.push({ markerId, scopeId: scope.scopeId, message: `${where(r)}: "${scope.columns.find((c) => c.key === key)?.header || key}" is inside merged cells, so Survey can't fill it in. Unmerge those cells to sync it.` });
           }
           continue;
@@ -1875,5 +1891,6 @@ export async function planSheetRound({
     delete next.heldErase;
   }
   plan.erasing = erasing;
+  plan.erased = erased;
   return { ...plan, baseline: nextBaseline, state: next };
 }
