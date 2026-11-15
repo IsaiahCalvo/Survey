@@ -1,4 +1,5 @@
 // src/services/importFieldWhitelist.js
+import { freezeSuiteFields, stripSuiteFields } from '../survey/suiteMarkerFields.js';
 //
 // Stage 0 attribute-only import boundary. Excel is an asynchronous attribute
 // mirror: an import may edit answers / name / note / entity and may PROPOSE a
@@ -24,6 +25,10 @@ export const IMPORTABLE_MARKER_FIELDS = Object.freeze([
 // Geometry / placement fields an import must never write.
 export const GEOMETRY_FIELDS = Object.freeze(['pageNumber', 'bounds']);
 
+// Kal Voe suite fields (KAL-588): the shared id, library links and place.
+// Excel can never write them; an import keeps the marker's own.
+export { SUITE_MARKER_FIELDS } from '../survey/suiteMarkerFields.js';
+
 /**
  * Force a marker to be unplaced (no geometry). Used when an import CREATES a new
  * proposed marker — it always lands in the Survey panel as an unplaced item with
@@ -33,7 +38,8 @@ export const GEOMETRY_FIELDS = Object.freeze(['pageNumber', 'bounds']);
  * @returns {object}  the same marker with geometry forced null
  */
 export function forceUnplacedImportedMarker(marker) {
-  return { ...marker, pageNumber: null, bounds: null };
+  // A row made from a workbook brings no shared id or place from the sheet.
+  return { ...stripSuiteFields(marker), pageNumber: null, bounds: null };
 }
 
 /**
@@ -46,7 +52,8 @@ export function forceUnplacedImportedMarker(marker) {
  * @returns {object}  `updated` with original geometry restored
  */
 export function freezeGeometryFromOriginal(updated, original) {
-  const safe = { ...updated };
+  // The suite fields (shared id, library links, place) are frozen the same way.
+  const safe = original ? freezeSuiteFields(updated, original) : stripSuiteFields(updated);
   for (const field of GEOMETRY_FIELDS) {
     safe[field] = original ? original[field] ?? null : null;
   }
