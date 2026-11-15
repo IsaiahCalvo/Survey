@@ -351,6 +351,27 @@ test('a new workbook keeps text columns as text, like Google', async () => {
   assert.deepEqual([...sheet.textColumns].sort(), ['A2:A1000', 'B2:B1000', 'D2:D1000', 'E2:E1000', 'G2:G1000', 'H2:H1000']);
 });
 
+test('rows added right under the header get a data row\'s look back, not the header\'s', async () => {
+  // Real Excel 11-15: cells inserted under the header take its grey fill and
+  // wrap, and a wrapped Row ID made each row eight lines tall.
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101'), d2: door('d2', 'D-102') } });
+  await ctx.round();
+  const sheet = await ctx.sheet();
+  const notes = sheet.rows[0].indexOf('Notes');
+  const L = String.fromCharCode(65 + notes);
+  const last = String.fromCharCode(64 + sheet.rows[0].length);
+  assert.deepEqual(sheet.looks, [
+    `POST A2:${last}3/format/fill/clear {}`,
+    `PATCH A2:${last}3/format {"wrapText":false}`,
+    `PATCH ${L}2:${L}3/format {"wrapText":true,"horizontalAlignment":"General"}`,
+  ]);
+  // Rows added later go under a data row, whose look Excel copies: nothing to put back.
+  ctx.markers.d3 = door('d3', 'D-103');
+  await ctx.round();
+  assert.equal((await ctx.sheet()).looks.length, 3);
+  assert.ok((await ctx.rowOf('d3')) > 0, 'the new row is written');
+});
+
 test('a PM typing "50%" or "$1,200" into a note on an old row: the survey gets what Excel shows', async () => {
   // Rows an older link added, or rows inserted under the header, are General:
   // Excel turns "50%" into 0.5 and "$1,200" into 1200 as the PM types (real

@@ -14,6 +14,7 @@ import { checkCounterSeriesEdit } from './utils/counterSeriesActions.js';
 // HIGH-RISK FILE: keep diffs minimal and run `npm test` after every change.
 
 import { readOriginalPdfBytes } from './services/embeddedImportBytes.js';
+import { addFilterNames } from './services/xlsxFilterNames.js';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { pdfjsAssetOptions } from './utils/pdfjsAssets.js';
 import { loadPdfjs } from './utils/pdfWorkerConfig';
@@ -17051,10 +17052,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
             // Notes column (width 50)
             const notesColIndex = colOf.notes;
             worksheet.getColumn(notesColIndex).width = 50;
+            // Long notes wrap inside their cell instead of running off it.
+            worksheet.getColumn(notesColIndex).eachCell((cell, rowNum) => { if (rowNum > 1) cell.alignment = { ...cell.alignment, wrapText: true, vertical: 'middle' }; });
 
             // The header stays in view while scrolling, and the sheet prints
             // one page wide in landscape with the header on every page.
             worksheet.views = [{ state: 'frozen', xSplit: 0, ySplit: 1 }];
+            // Filter buttons on the header row, over every row (Data > Filter).
+            worksheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: dataRows.length, column: dataRows[0].length } };
             worksheet.pageSetup = {
               ...worksheet.pageSetup,
               orientation: 'landscape',
@@ -17063,6 +17068,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
               fitToHeight: 0,
               printTitlesRow: '1:1',
             };
+            // Tab name on the left of each printed page, "Page 1 of 3" on the right.
+            worksheet.headerFooter = { ...worksheet.headerFooter, oddFooter: '&L&A&RPage &P of &N' };
           });
         });
       }
@@ -17153,7 +17160,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       }
 
       // Write workbook to buffer
-      const workbookBuffer = await workbook.xlsx.writeBuffer();
+      // Excel's hidden name for each tab's filter buttons (ExcelJS leaves it out).
+      const workbookBuffer = await addFilterNames((await import('jszip')).default, await workbook.xlsx.writeBuffer());
 
       // The file changed after the pull read it (saved in Excel mid-push): pull again
       // once, then give up rather than overwrite it (Excel audit W5).

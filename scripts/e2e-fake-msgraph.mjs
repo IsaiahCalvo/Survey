@@ -43,13 +43,16 @@ function uploadedSheets(bytes) {
     const row = /<row r="1">(.*?)<\/row>/.exec(xml)?.[1] || '';
     const letter = (n) => { let out = ''; for (let x = n; x > 0; x = Math.floor((x - 1) / 26)) out = String.fromCharCode(65 + ((x - 1) % 26)) + out; return out; };
     const cols = [...xml.matchAll(/<col min="(\d+)"[^>]*?style="(\d+)"[^>]*?\/>/g)];
+    // Which cell styles are text ("@") and which wrap, from styles.xml.
+    const xfs = [...(/<cellXfs[^>]*>(.*?)<\/cellXfs>/.exec(parts['xl/styles.xml'] || '')?.[1] || '').matchAll(/<xf\b[^>]*?(?:\/>|>.*?<\/xf>)/g)].map((m) => m[0]);
+    const styled = (test) => cols.filter((m) => test(xfs[+m[2]] || '')).map((m) => `${letter(+m[1])}2:${letter(+m[1])}1000`);
     return {
       name,
       header: [...row.matchAll(/<t[^>]*>([^<]*)<\/t>/g)].map((m) => unescape(m[1])),
       hidden: cols.filter((m) => /hidden="1"/.test(m[0])).map((m) => `${letter(+m[1])}:${letter(+m[1])}`),
       frozen: Number(/ySplit="(\d+)"/.exec(xml)?.[1] || 0),
-      // Column styles 2 and 3 are text ("@") in liveWorkbook.js.
-      textColumns: cols.filter((m) => m[2] === '2' || m[2] === '3').map((m) => `${letter(+m[1])}2:${letter(+m[1])}1000`),
+      textColumns: styled((xf) => /numFmtId="49"/.test(xf)),
+      wrapColumns: styled((xf) => /wrapText="1"/.test(xf)),
       validations: Object.fromEntries([...xml.matchAll(/<dataValidation [^>]*sqref="([^"]+)"[^>]*><formula1>"(.*?)"<\/formula1>/g)]
         .map((m) => [m[1], unescape(m[2]).replace(/""/g, '"')])),
     };
@@ -351,10 +354,10 @@ export async function fakeMsgraphHandler(req) {
     for (let i = 1; names.has(name.toLowerCase()); i += 1) name = `${put[1]} ${i}.xlsx`;
     const id = `FAKEITEM${store.next++}`;
     const sheets = uploadedSheets(new Uint8Array(await req.arrayBuffer()))
-      .map(({ name: sheetName, header, hidden, frozen, textColumns, validations }, i) => {
+      .map(({ name: sheetName, header, hidden, frozen, textColumns, wrapColumns, validations }, i) => {
         const sheet = newSheet(sheetName, i);
         if (header.length) sheet.cells[0] = header;
-        Object.assign(sheet, { hidden, frozen, textColumns, validations });
+        Object.assign(sheet, { hidden, frozen, textColumns, wrapColumns, validations });
         return sheet;
       });
     const f = { name, version: 1, sheets: sheets.length ? sheets : [newSheet('Sheet1', 0)] };
@@ -441,6 +444,12 @@ export async function fakeMsgraphHandler(req) {
   // answer this 400; checked in a real tenant 11-09 and 11-10).
   if (/^\/freezePanes\b|\/dataValidation$|\/conditionalFormats\b/.test(tail)) {
     return gErr(400, 'BadRequest', `Resource not found for the segment '${/freezePanes|dataValidation|conditionalFormats/.exec(tail)[0]}'.`);
+  }
+  // Cell formats (widths, wrap, fill): kept as a log the tests read.
+  const look = /^\/range\(address='([^']+)'\)(\/format(?:\/fill(?:\/clear)?)?)$/.exec(tail);
+  if (look && (method === 'PATCH' || method === 'POST')) {
+    sheet.looks = [...(sheet.looks || []), `${method} ${look[1]}${look[2]} ${JSON.stringify(body || {})}`];
+    return json(200, {});
   }
   const range = /^\/range\(address='([^']+)'\)(\/delete|\/insert|\/clear)?$/.exec(tail);
   const a = range && parseAddress(range[1]);

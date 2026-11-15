@@ -10,6 +10,7 @@
 // something did; the runner spaces rounds out, and a 429 backs it off.
 import { providerError, cellError, fetchWithTimeout, REQUEST_TIMEOUT_MS } from './contract.js';
 import { trackingChoices } from '../layout.js';
+import { answerFillList, excelArgb, widthOf } from './liveWorkbook.js';
 
 export const GOOGLE_SCOPES = Object.freeze(['openid', 'email', 'https://www.googleapis.com/auth/drive.file']);
 
@@ -187,6 +188,46 @@ function textFormatRequests(sheetId, scope) {
   });
   return out;
 }
+
+// The Excel workbook's look: its column widths, notes that wrap, and answers
+// and entities in their colours. Formats only; the sync never reads them.
+const googleColor = (argb) => {
+  const hex = String(argb || '').slice(-6);
+  return { red: parseInt(hex.slice(0, 2), 16) / 255, green: parseInt(hex.slice(2, 4), 16) / 255, blue: parseInt(hex.slice(4, 6), 16) / 255 };
+};
+function lookRequests(sheetId, scope, layout, answerFills) {
+  const id = Number(sheetId);
+  const out = [];
+  scope.columns.forEach((col, i) => {
+    out.push({
+      updateDimensionProperties: {
+        range: { sheetId: id, dimension: 'COLUMNS', startIndex: i, endIndex: i + 1 },
+        properties: { pixelSize: Math.trunc(widthOf(col) * 7 + 5) },
+        fields: 'pixelSize',
+      },
+    });
+    const column = { sheetId: id, startRowIndex: 1, startColumnIndex: i, endColumnIndex: i + 1 };
+    if (col.key === 'notes') {
+      out.push({ repeatCell: { range: column, cell: { userEnteredFormat: { wrapStrategy: 'WRAP', verticalAlignment: 'MIDDLE' } }, fields: 'userEnteredFormat.wrapStrategy,userEnteredFormat.verticalAlignment' } });
+    }
+    const fills = col.key === 'entity'
+      ? (layout?.entities || []).map((e) => ({ value: e?.name, argb: excelArgb(e?.color) })).filter((e) => e.value && e.argb)
+      : col.key.startsWith('answer:') && (!col.item?.kind || col.item.kind === 'choice') ? answerFillList(layout, answerFills) : [];
+    fills.forEach(({ value, argb }) => out.push({
+      addConditionalFormatRule: {
+        index: 0,
+        rule: { ranges: [column], booleanRule: { condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: String(value) }] }, format: { backgroundColor: googleColor(argb) } } },
+      },
+    }));
+  });
+  return out;
+}
+
+// Filter buttons on the header row over whole columns (Data > Create a
+// filter), so rows the sync adds later filter too.
+const basicFilter = (sheetId, scope) => ({
+  setBasicFilter: { filter: { range: { sheetId: Number(sheetId), startRowIndex: 0, startColumnIndex: 0, endColumnIndex: scope.columns.length } } },
+});
 
 const hideRowIdColumn = (sheetId, scope) => {
   const i = scope.columns.findIndex((c) => c.key === 'rowId');
@@ -381,7 +422,7 @@ export function googleSheetsProvider({ endpoints, getAccessToken, fetchImpl = fe
       ]);
     },
 
-    async createFile({ title, layout }) {
+    async createFile({ title, layout, answerFills }) {
       const book = await call(`${endpoints.sheets}/v4/spreadsheets`, {
         method: 'POST',
         body: {
@@ -399,8 +440,10 @@ export function googleSheetsProvider({ endpoints, getAccessToken, fetchImpl = fe
       });
       await batchUpdate(book.spreadsheetId, layout.scopes.flatMap((scope) => (sheetIds[scope.scopeId] == null ? [] : [
         hideRowIdColumn(sheetIds[scope.scopeId], scope),
+        basicFilter(sheetIds[scope.scopeId], scope),
         ...textFormatRequests(sheetIds[scope.scopeId], scope),
         ...validationRequests(sheetIds[scope.scopeId], scope, layout),
+        ...lookRequests(sheetIds[scope.scopeId], scope, layout, answerFills),
       ])));
       return { fileId: String(book.spreadsheetId), url: String(book.spreadsheetUrl || `https://docs.google.com/spreadsheets/d/${book.spreadsheetId}/edit`), sheetIds };
     },
@@ -417,8 +460,10 @@ export function googleSheetsProvider({ endpoints, getAccessToken, fetchImpl = fe
       await batchUpdate(fileId, scopes.flatMap((scope) => (out[scope.scopeId] == null ? [] : [
         { updateCells: { start: { sheetId: Number(out[scope.scopeId]), rowIndex: 0, columnIndex: 0 }, rows: [{ values: scope.columns.map((c) => headerCell(c.header)) }], fields: 'userEnteredValue,userEnteredFormat' } },
         hideRowIdColumn(out[scope.scopeId], scope),
+        basicFilter(out[scope.scopeId], scope),
         ...textFormatRequests(out[scope.scopeId], scope),
         ...(layout ? validationRequests(out[scope.scopeId], scope, layout) : []),
+        ...lookRequests(out[scope.scopeId], scope, layout),
       ])));
       return out;
     },
