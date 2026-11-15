@@ -26,6 +26,8 @@ import { OPEN_VIEWER_SHARE_EVENT } from './utils/viewerShare.js';
 import { HOME_DOWNLOAD_EVENT } from './utils/homeDownload.js';
 import { OPEN_EXPORT_PDF_EVENT } from './utils/exportPdfModes.js';
 import { PageGridMenu } from './components/PageGridSettings';
+import { PaperOverlayGlyph, PaperOverlayMenu } from './components/PaperOverlayMenu.jsx';
+import { ThinLinesGlyph, ThinLinesMenu } from './components/ThinLinesMenu.jsx';
 import RailFlyout from './components/RailFlyout.jsx';
 import { setPageSpreadMode, usePageSpreadMode } from './utils/pageSpreadSetting.js';
 import { PinFilterMenu } from './components/pins/PinControls.jsx';
@@ -2657,6 +2659,8 @@ export default function App({ devPreviewReturnTab = null }) {
   // Page grid spacing (Survey Nightly only, beta flag 'grid-settings').
   const [gridSettingsEnabled] = useState(() => isFeatureOn('grid-settings'));
   const [snapContentEnabled] = useState(() => isFeatureOn('snap-content'));
+  const [paperOverlaysEnabled] = useState(() => isFeatureOn('paper-overlays'));
+  const [thinLinesEnabled] = useState(() => isFeatureOn('thin-lines'));
 
   const polylineCurve = usePolylineCurve();
   const pinnedTools = usePinnedTools();
@@ -5906,6 +5910,44 @@ export default function App({ devPreviewReturnTab = null }) {
                       </button>
                       {api.isZoomMenuOpen && fitMenu()}
                     </div>
+                    {/* Nightly 'paper-overlays' (Drawboard Projects VT-46):
+                        a paper pattern over every page, beside the grid. */}
+                    {paperOverlaysEnabled && (
+                      <PaperOverlayMenu renderButton={({ open, ref, onClick, on }) => (
+                        <button
+                          ref={ref}
+                          type="button"
+                          onClick={onClick}
+                          aria-label="Paper"
+                          aria-haspopup="dialog"
+                          aria-expanded={open}
+                          data-paper-overlay-toggle="true"
+                          {...chromeTip(open ? undefined : 'Paper', 'left')}
+                          style={{ ...footerBtn(), color: on || open ? 'var(--text-1)' : 'var(--text-3)' }}
+                        >
+                          <PaperOverlayGlyph size={RAIL_CONTROL_GLYPH} />
+                        </button>
+                      )} />
+                    )}
+                    {/* Nightly 'thin-lines' (Drawboard: Enhance thin PDF
+                        lines): faint drawing lines made easier to see. */}
+                    {thinLinesEnabled && (
+                      <ThinLinesMenu glyphSize={RAIL_CONTROL_GLYPH} renderButton={({ open, ref, onClick, on }) => (
+                        <button
+                          ref={ref}
+                          type="button"
+                          onClick={onClick}
+                          aria-label="Thin PDF lines"
+                          aria-haspopup="dialog"
+                          aria-expanded={open}
+                          data-thin-lines-toggle="true"
+                          {...chromeTip(open ? undefined : 'Thin PDF lines', 'left')}
+                          style={{ ...footerBtn(), color: on || open ? 'var(--text-1)' : 'var(--text-3)' }}
+                        >
+                          <ThinLinesGlyph size={RAIL_CONTROL_GLYPH} />
+                        </button>
+                      )} />
+                    )}
                     {/* Drawboard gap #10: View > page grid overlay. */}
                     <PageGridToggle render={({ on, toggle }) => (gridSettingsEnabled ? (
                       // Nightly (flag 'grid-settings'): the button opens the
