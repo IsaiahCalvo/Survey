@@ -73,6 +73,8 @@ import { menuKeyHint } from '../utils/menuKeyHints.js';
 import { shortcutBinding } from '../utils/customKeyboardShortcuts.js';
 import { marksHidden } from '../utils/marksHidden.js';
 import { DIMENSION_LEADER_PT, dimensionCaptionOffset, dimensionCaptionTurn, dimensionLeader, isDimensionMeasure } from '../utils/measure/dimensionLine.js';
+import { isSelectionBarDocked, setSelectionBarDocked } from '../utils/selectionBarDock.js';
+import { setPropertiesPanelOpen } from '../utils/propertiesPanelStore.js';
 
 // w61: `getPageObjects(pageNumber)` (optional) returns the page's mark list,
 // so the menu can note which marks it was opened on (by id) and still act on
@@ -568,6 +570,8 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
   // Survey Markers are survey rows, not drawing, so a pick holding one is
   // not grouped. `objs` are the members' page objects (callouts as their
   // projected objects); `indices` the ordinary marks' page indexes.
+  const barDockOn = isFeatureOn('toolbar-settings');
+  const subjectEditOn = isFeatureOn('mark-subject') && isFeatureOn('properties-panel');
   const groupMarksOn = isFeatureOn('group-marks')
     && typeof groupSelection === 'function' && typeof ungroupSelection === 'function';
   const groupIdOfObject = (obj) => (obj?.data?.type === 'callout'
@@ -696,6 +700,26 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     const libraryItems = (selection) => (typeof saveFamilyToLibrary === 'function'
       ? [item('Save to library', 'saveToLibrary', () => saveFamilyToLibrary(ctx.pageNumber, selection))]
       : []);
+    // Nightly 'toolbar-settings' (VT-52): dock the picked bar to the bottom of
+    // the page area, or float it by the mark again.
+    const barItems = () => (barDockOn
+      ? [isSelectionBarDocked()
+        ? item('Float bar by mark', 'floatSelectionBar', () => setSelectionBarDocked(false))
+        : item('Dock bar to bottom', 'dockSelectionBar', () => setSelectionBarDocked(true))]
+      : []);
+    // Nightly 'mark-subject': "Edit subject" opens the properties panel on the
+    // Subject box (page marks only; callouts and Survey Markers have none).
+    const subjectItems = () => (subjectEditOn
+      ? [item('Edit subject', 'editSubject', () => {
+        setPropertiesPanelOpen(true);
+        const focusBox = (tries) => {
+          const box = typeof document !== 'undefined' ? document.querySelector('[data-props-subject]') : null;
+          if (box) { box.focus(); box.select?.(); return; }
+          if (tries > 0) requestAnimationFrame(() => focusBox(tries - 1));
+        };
+        requestAnimationFrame(() => focusBox(20));
+      })]
+      : []);
     // Layers beta: "Move to layer ▸" (Drawboard's Change layer), listing the
     // document's layers. A layer every picked mark is already on is greyed
     // out; a hidden one says so (the marks vanish with it, as in Drawboard).
@@ -819,6 +843,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         duplicateItem({ calloutIds: [ctx.calloutId] }),
         ...libraryItems({ calloutIds: [ctx.calloutId] }),
         ...layerItems({ calloutIds: [ctx.calloutId] }),
+        ...barItems(),
         // UX: right-click Delete = the SAME gated delete as pressing Delete/
         // Backspace with the callout selected — PDFViewer's
         // handleDeleteSelectedCallouts (canModify ownership check, undo
@@ -916,6 +941,8 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         duplicateItem({ indices: [ctx.annotationIndex] }),
         ...libraryItems({ indices: [ctx.annotationIndex] }),
         ...layerItems({ indices: [ctx.annotationIndex] }),
+        ...subjectItems(),
+        ...barItems(),
         // UX: right-click Delete mirrors the keyboard Delete/Backspace path.
         // RULED 2026-09-28 owner: open editing + lock: Delete takes anyone's mark with no confirmation
         // (via the planner when present, for the History row); a user-locked mark
@@ -1215,6 +1242,8 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         duplicateItem(familySelection),
         ...libraryItems(familySelection),
         ...layerItems(familySelection),
+        ...((familySelection.calloutIds || []).length || (familySelection.markerIds || []).length ? [] : subjectItems()),
+        ...barItems(),
         // RULED 2026-09-28 owner: open editing + lock: multi-select Delete removes every member
         // that is not user-locked, with no confirmation (via the planner for the
         // History row).

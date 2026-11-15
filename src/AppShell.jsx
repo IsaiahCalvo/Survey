@@ -6130,6 +6130,10 @@ export default function App({ devPreviewReturnTab = null }) {
           (markerIds || []).forEach((markerId) => rightRailApi?.surveyEntityApplyRef?.current?.(markerId, entityId));
         }}
         tip={chromeTip}
+        annotationsByPage={leftRailApi?.annotationsByPage || null}
+        viewerId={signedInUserId}
+        layerState={leftRailApi?.layerState || null}
+        documentId={leftRailApi?.documentId || null}
       />
       {/* Nightly 'properties-panel': Drawboard's Expand menu card. */}
       <SelectionPropertiesPanel

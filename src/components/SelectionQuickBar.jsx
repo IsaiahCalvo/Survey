@@ -29,6 +29,9 @@
 //     (owner 2026-10-28: a visible Delete, like Drawboard; long press still
 //     opens the full menu).
 import { isFeatureOn } from '../featureFlags.js';
+import { authorChipText, authorGroups } from '../utils/authorChip.js';
+import { getAnnotationRenderIdentity } from '../utils/annotationStorageIdentity.js';
+import { dockedBarPosition, isSelectionBarDocked, useSelectionBarDocked } from '../utils/selectionBarDock.js';
 import { isInTabBehind } from '../utils/tabBehind.js';
 import { resolveViewerOcclusionInsets } from '../utils/searchMatchNavigation.js';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -257,6 +260,12 @@ export default function SelectionQuickBar({
   // The phone layout: Duplicate and Delete only (see the header).
   phone = false,
   tip,
+  // Nightly 'author-chip': the marks, the viewer, the layers and the
+  // document, so the bar can name who made the pick.
+  annotationsByPage = null,
+  viewerId = null,
+  layerState = null,
+  documentId = null,
 }) {
   const contextTip = useTooltip();
   const chromeTip = tip || contextTip;
@@ -283,6 +292,16 @@ export default function SelectionQuickBar({
   // picked measurement's caption (readSelection).
   const [measureEditOn] = useState(() => isFeatureOn('measure-edit'));
   const measureEditRef = useRef(measureEditOn);
+  // Nightly 'toolbar-settings' (VT-52): the bar can dock to the bottom of the
+  // page area (selectionBarDock.js) instead of following the mark.
+  const [dockOn] = useState(() => isFeatureOn('toolbar-settings'));
+  const docked = useSelectionBarDocked() && dockOn;
+  const dockOnRef = useRef(dockOn);
+  // Nightly 'author-chip' (SS-03 / SS-04): who made the pick, and a table of
+  // the pick by author with each mark's date and layer.
+  const [authorChipOn] = useState(() => isFeatureOn('author-chip'));
+  const [authorsOpen, setAuthorsOpen] = useState(false);
+  const [people, setPeople] = useState([]);
   const phoneRef = useRef(phone);
   phoneRef.current = phone;
 
@@ -312,7 +331,10 @@ export default function SelectionQuickBar({
       if (selection.gestureLayer) heldGestureRef.current = { layer: selection.gestureLayer, items: itemsRef.current };
       next.locked = selection.locked;
       if (selection.frame && !selection.gesture && !turningRef.current && !selection.inert) {
-        const placed = computeSelectionQuickBarPosition({
+        const dockedNow = dockOnRef.current && !phoneRef.current && isSelectionBarDocked();
+        const placed = dockedNow
+          ? dockedBarPosition(viewerBounds(false), bar.offsetWidth, bar.offsetHeight)
+          : computeSelectionQuickBarPosition({
           selectionRect: selection.frame,
           keepOut: selection.keepOut,
           preferBelow: selection.preferBelow,
@@ -323,7 +345,8 @@ export default function SelectionQuickBar({
         if (placed) {
           bar.style.left = `${placed.left}px`;
           bar.style.top = `${placed.top}px`;
-          next = { ...next, visible: true, side: placed.side };
+          // Docked, its popovers open upward, as they do over a mark.
+          next = { ...next, visible: true, side: placed.side === 'docked' ? 'above' : placed.side };
         }
       }
     }
@@ -341,7 +364,7 @@ export default function SelectionQuickBar({
   // data-selection-gesture; a zoom rewrites the page boxes).
   useLayoutEffect(() => {
     place();
-  }, [place, items, active, api?.contextTool, api?.selectionCount]);
+  }, [place, items, active, api?.contextTool, api?.selectionCount, docked]);
   useEffect(() => {
     if (!active) return undefined;
     const onAny = () => schedule();
@@ -438,6 +461,35 @@ export default function SelectionQuickBar({
   }), [api, entities, items, look.locked, look.readOnly]);
 
   const visible = active && look.visible && Boolean(plan);
+  const chipLive = authorChipOn && !phone && Boolean(annotationsByPage);
+  useEffect(() => {
+    if (!chipLive || !active || !documentId) return undefined;
+    let live = true;
+    // Loaded on first use: the Supabase client opens a connection on import.
+    Promise.all([import('../services/markComments.js'), import('../supabaseClient')])
+      .then(([{ listCommentPeople }, { supabase }]) => listCommentPeople(supabase, documentId))
+      .then((list) => { if (live) setPeople(list); })
+      .catch(() => { /* "Someone" stands in */ });
+    return () => { live = false; };
+  }, [chipLive, active, documentId]);
+  const authors = useMemo(() => {
+    if (!chipLive || !items.length) return [];
+    const objects = [];
+    for (const item of items) {
+      if (item.typeKey === 'surveyMarker') continue;
+      const objs = annotationsByPage?.[item.pageNumber]?.objects || [];
+      const found = item.typeKey === 'callout'
+        ? objs.find((o) => o?.data?.type === 'callout' && String(o?.data?.id) === String(item.id))
+        : objs.find((o) => String(getAnnotationRenderIdentity(o).annotationId ?? '') === String(item.id));
+      if (found) objects.push(found);
+    }
+    const peopleById = new Map(people.map((p) => [String(p.id), p]));
+    return authorGroups(objects, { viewerId, peopleById, layerState });
+  }, [chipLive, items, annotationsByPage, people, viewerId, layerState]);
+  const chipText = authorChipText(authors);
+  useEffect(() => {
+    if (!visible || !chipText) setAuthorsOpen(false);
+  }, [visible, chipText]);
   useEffect(() => {
     if (!visible) setLineOpen(false);
   }, [visible]);
@@ -532,6 +584,24 @@ export default function SelectionQuickBar({
   const panelAllowed = !phone && propertiesPanelOn;
   const panelHoldsStyles = panelAllowed && propertiesPanelOpen;
   const groups = [];
+  if (chipText) {
+    groups.push(
+      <span key="author" className="selection-quick-bar__group">
+        <button
+          type="button"
+          className="selection-quick-bar__author"
+          data-selection-author-chip="true"
+          aria-expanded={authorsOpen}
+          aria-haspopup="dialog"
+          {...chromeTip('Who made these marks', tipSide)}
+          onMouseDown={(event) => event.stopPropagation()}
+          onClick={() => setAuthorsOpen((open) => !open)}
+        >
+          {chipText}
+        </button>
+      </span>,
+    );
+  }
   if (selectionCountOn && items.length > 1) {
     groups.push(
       <span key="count" className="selection-quick-bar__group">
@@ -776,6 +846,7 @@ export default function SelectionQuickBar({
       data-selection-quick-bar="true"
       data-visible={visible ? 'true' : 'false'}
       data-side={look.side}
+      data-docked={docked && !phone ? 'true' : undefined}
       data-phone={phone ? 'true' : undefined}
       role="toolbar"
       aria-label="Selection actions"
@@ -789,6 +860,32 @@ export default function SelectionQuickBar({
         </span>
       ))}
       {linePopover}
+      {authorsOpen && visible && authors.length > 0 && (
+        <div
+          className="selection-quick-bar__popover selection-quick-bar__authors"
+          data-selection-quick-bar-popover="true"
+          data-selection-authors="true"
+          data-side={look.side === 'above' ? 'above' : 'below'}
+          role="dialog"
+          aria-label="Who made these marks"
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <table>
+            <thead><tr><th scope="col">Author</th><th scope="col">Date</th><th scope="col">Layer</th></tr></thead>
+            {authors.map((group) => (
+              <tbody key={group.authorId || 'unknown'} data-author-group={group.label}>
+                {group.marks.map((mark, index) => (
+                  <tr key={index}>
+                    <td>{index === 0 ? `${group.label}${group.marks.length > 1 ? ` (${group.marks.length})` : ''}` : ''}</td>
+                    <td>{mark.date || '—'}</td>
+                    <td>{mark.layer || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            ))}
+          </table>
+        </div>
+      )}
       {measureOpen && visible && plan?.measure && (
         <MeasureEditPopover
           key={api?.selectedMeasure?.id || 'measure'}

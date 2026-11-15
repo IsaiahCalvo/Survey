@@ -174,6 +174,15 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Sheet revisions: read the sheet number from the title block on upload and offer it as a new version',
     stage: 'beta',
   }),
+  // Drawboard Projects parity spec SS-31 / MS-30 (2026-11-10): a subject on
+  // any mark, shown in the Markups list and written as the PDF's /Subj.
+  'author-chip': Object.freeze({ label: 'Selection bar: who made the picked marks, with a table by author (date, layer)', stage: 'beta' }),
+  'toolbar-settings': Object.freeze({ label: 'Selection bar: Dock bar to bottom / Float bar by mark (mark menu), remembered', stage: 'beta' }),
+  'help-menu': Object.freeze({ label: 'Account menu: Help & support (start guide, stuck-page fix, help pages, version)', stage: 'beta' }),
+  'mark-subject': Object.freeze({
+    label: 'Marks: give any mark its own subject (Properties panel); shows in Markups and in exported PDFs',
+    stage: 'beta',
+  }),
   'measure-depth': Object.freeze({
     label: 'Measure: Polylength, Wall area and Volume (area or outline x a depth)',
     stage: 'beta',

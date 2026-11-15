@@ -1,5 +1,13 @@
 # Survey BetaSafeS2 — Claude Code Instructions
 
+## Kal Voe suite rules — read first
+
+This repo is one of three suite apps (Walkthru, Plot, Survey). Before building
+any ticket, follow the shared rules: check the ticket isn't taken, claim it,
+start from the newest default branch.
+
+@docs/suite/SUITE-RULES.md
+
 ## Phase Discipline — ENFORCED
 
 This project uses the global GSD phase discipline rules from `~/.claude/CLAUDE.md`
