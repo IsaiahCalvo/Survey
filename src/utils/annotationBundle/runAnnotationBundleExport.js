@@ -49,7 +49,7 @@ export async function loadAllHistoryRows(documentId, listEvents) {
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 export function bundleResultMessage({ status, manifest, fileName }) {
-  if (status === 'empty') return { text: 'No markup or history to export yet.', kind: 'warn' };
+  if (status === 'empty') return { text: 'No annotations or history to export yet.', kind: 'warn' };
   if (status === 'canceled') return null;
   const parts = [`Saved ${fileName}: ${plural(manifest?.marks?.total || 0, 'mark')}`];
   parts.push(`${plural(manifest?.history?.events || 0, 'change')}`);

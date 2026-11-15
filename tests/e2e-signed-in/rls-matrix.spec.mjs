@@ -91,8 +91,10 @@ async function seedOwnerRows(admin, ids) {
   await must('clear project_photos', admin.from('project_photos').delete().eq('project_id', PROJECT));
   await must('project_photos', admin.from('project_photos').insert({ id: RLS_PHOTO, project_id: PROJECT, path: `${PROJECT}/${RLS_PHOTO}.jpg` }));
   await must('project_photo_links', admin.from('project_photo_links').insert({ photo_id: RLS_PHOTO, item_id: rlsItem.id, project_id: PROJECT }));
-  // Suite library (Nightly 'suite'): a My library entry is its owner's alone.
-  await replace('library_entries', 'owner_id', owner, { kind: 'category', name: 'RLS sweep Camera', scope: 'mine', owner_id: owner });
+  // Suite library (Nightly 'suite'): a My library entry is its maker's alone.
+  await replace('library_entries', 'id', 'e2e00000-0000-4000-8000-0000000005c1', {
+    id: 'e2e00000-0000-4000-8000-0000000005c1', kind: 'category', name: 'RLS sweep Camera', scope: 'mine', created_by: owner,
+  });
   await replace('mark_library_items', 'created_by', owner, {
     library: 'personal', created_by: owner, name: 'RLS sweep item', payload: { version: 1, items: [] },
   });
@@ -147,7 +149,7 @@ const ownerRows = (ids) => ({
   survey_agent_memory: ['project_id', PROJECT],
   own_export_kits: ['user_id', ids.owner],
   mark_library_items: ['created_by', ids.owner],
-  library_entries: ['owner_id', ids.owner],
+  library_entries: ['created_by', ids.owner],
   document_tags: ['user_id', ids.owner],
   document_opens: ['user_id', ids.owner],
   phone_signatures: ['user_id', ids.owner],

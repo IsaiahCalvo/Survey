@@ -79,7 +79,7 @@ test('XFDF of a document with no app marks has an empty annots list', async () =
   const doc = parseXml(result.xfdf);
   assert.equal(annotElements(doc).length, 0);
   assert.equal(result.summary.written, 0);
-  assert.deepEqual(xfdfResultMessage({ status: 'empty' }), { text: 'No markup to export yet.', kind: 'warn' });
+  assert.deepEqual(xfdfResultMessage({ status: 'empty' }), { text: 'No annotations to export yet.', kind: 'warn' });
 });
 
 test('building from identical source and annotated bytes yields nothing new', async () => {
@@ -132,9 +132,9 @@ test('changed form values nest by partial name', () => {
 test('XFDF export is reachable from the desktop export menu, the phone More menu and the File menu', async () => {
   const { readFileSync } = await import('node:fs');
   const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
-  assert.match(read('src/AppShell.jsx'), /label: suiteWord\('Export markup \(XFDF\)'\)[\s\S]{0,200}onSelect: bottomToolbarApi\.exportXfdf/);
-  assert.match(read('src/mobile/MobilePdfViewerChrome.jsx'), /bottomToolbarApi\?\.exportXfdf\?\.\(\);[\s\S]{0,250}Export markup \(XFDF\)/);
-  assert.match(read('src/electron-main.js'), /label: 'Export markup \(XFDF\)…'[\s\S]{0,250}menu:export-xfdf/);
+  assert.match(read('src/AppShell.jsx'), /label: 'Export annotations \(XFDF\)'[\s\S]{0,200}onSelect: bottomToolbarApi\.exportXfdf/);
+  assert.match(read('src/mobile/MobilePdfViewerChrome.jsx'), /bottomToolbarApi\?\.exportXfdf\?\.\(\);[\s\S]{0,250}Export annotations \(XFDF\)/);
+  assert.match(read('src/electron-main.js'), /label: 'Export annotations \(XFDF\)…'[\s\S]{0,250}menu:export-xfdf/);
   assert.match(read('src/preload.js'), /onExportXfdfMenu[\s\S]{0,120}menu:export-xfdf/);
   assert.match(read('src/PDFViewer.jsx'), /exportXfdf: handleExportXfdf/);
 });

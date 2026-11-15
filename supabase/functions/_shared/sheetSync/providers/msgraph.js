@@ -11,13 +11,16 @@
 // Rows and columns are 0-based from A1; row 0 is the header.
 import { cellError, fetchWithTimeout, REQUEST_TIMEOUT_MS } from './contract.js';
 import { buildLiveWorkbook, excelSheetNames } from './liveWorkbook.js';
-import { trackingChoices } from '../layout.js';
+import { mergesFromXlsx } from './xlsxMerges.js';
+import { isTextColumn, trackingChoices } from '../layout.js';
 
 const GRAPH = 'https://graph.microsoft.com/v1.0';
 // Graph closes a saving session after about 5 minutes idle; reopen a bit before.
 const SESSION_TTL_MS = 4 * 60 * 1000;
 // "Save in" lists up to 10 pages of 200 folders in one folder.
 const FOLDER_PAGES = 10;
+// readMerges downloads the whole file: a bigger one is left unread.
+const MERGES_MAX_BYTES = 30 * 1024 * 1024;
 
 
 // "A/B" -> "A/B/" with each name URL-encoded; '' -> '' (the drive's top).
@@ -98,6 +101,16 @@ function isDateFormat(format) {
   return /[dmyhs]/i.test(bare);
 }
 
+// What Excel shows for a number it formats (a percent, money, thousands, a
+// date): a PM who types 50%, $1,200 or 1/2 in a note sees that, while the
+// value is 0.5, 1200 or a day's serial. Null for anything else.
+export function shownText(value, text, format, type) {
+  if (typeof value !== 'number' || type === 'Error') return null;
+  if (typeof format !== 'string' || !format || format === 'General') return null;
+  const shown = typeof text === 'string' ? text.trim() : '';
+  return shown && !/^#+$/.test(shown) ? shown : null; // "####": too narrow to show
+}
+
 // A whole-day date (no hours or seconds in the format) as YYYY-MM-DD from its
 // serial, so "05/10" reads the same day in any locale; a failed formula as
 // { error } (contract.js), never as its "#N/A" text.
@@ -127,10 +140,6 @@ const WRITE_BUDGET_MS = 60_000;
 
 // Drop-downs cover this many rows, like the desktop export.
 const DROP_DOWN_ROWS = 1000;
-const TEXT_KINDS = new Set(['choice', 'text', 'many']);
-// The same columns Google's provider formats as text (google.js textFormatRequests).
-const isTextColumn = (col) => ['rowId', 'changedBy', 'item', 'entity', 'notes', 'status', 'assignee'].includes(col?.key)
-  || (String(col?.key || '').startsWith('answer:') && TEXT_KINDS.has(col.item?.kind || 'choice'));
 
 /**
  * The comma list for a column's drop-down, or null. Excel caps a typed list at 255
@@ -460,14 +469,29 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
     }
   }
 
+  // A new row's text columns as text ("@"), sent with its values. A row
+  // Excel inserts takes the format of the row above (the header's General
+  // for the first one), so without this every row Survey adds lost the
+  // text format the tab was made with, and a PM typing 50% or 1/2 in a
+  // note got a percent or a date (real Excel 11-15). Other cells: unchanged.
+  const formatsFor = (batch, rowCount, from, width) => {
+    const text = new Set(batch.textCols || []);
+    if (![...text].some((c) => c >= from && c < from + width)) return null;
+    const line = Array.from({ length: width }, (_, k) => (text.has(from + k) ? '@' : null));
+    return Array.from({ length: rowCount }, () => line);
+  };
+
   // New rows' values in Survey's own columns only, a run of columns at a
   // time: the last resort when a write across the list hits a PivotTable.
-  async function writeOwnCols(fileId, sheetId, start, rows, ownCols) {
-    const ops = runsOf(ownCols).map(([a, b]) => ({
-      method: 'PATCH',
-      path: `${sheetPath(sheetId)}/range(address='${cellAddress(start, a)}:${cellAddress(start + rows.length - 1, b)}')?$select=address`,
-      body: { values: rows.map((row) => Array.from({ length: b - a + 1 }, (_, k) => cellValueForWrite(row[a + k]))) },
-    }));
+  async function writeOwnCols(fileId, sheetId, start, rows, ownCols, batch = {}) {
+    const ops = runsOf(ownCols).map(([a, b]) => {
+      const numberFormat = formatsFor(batch, rows.length, a, b - a + 1);
+      return {
+        method: 'PATCH',
+        path: `${sheetPath(sheetId)}/range(address='${cellAddress(start, a)}:${cellAddress(start + rows.length - 1, b)}')?$select=address`,
+        body: { values: rows.map((row) => Array.from({ length: b - a + 1 }, (_, k) => cellValueForWrite(row[a + k]))), ...(numberFormat ? { numberFormat } : {}) },
+      };
+    });
     await workbookBatch(fileId, ops, { parallel: true });
   }
 
@@ -570,6 +594,7 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
       for (const [index, sheet] of wanted.entries()) {
         const used = useds[index];
         const rows = [];
+        const shown = [];
         const rowOffset = used?.rowIndex || 0;
         const colOffset = used?.columnIndex || 0;
         const values = used?.values || [];
@@ -579,7 +604,12 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
           for (let r = 0; r < rowOffset; r += 1) rows.push([]);
           values.forEach((line, r) => {
             const out = new Array(colOffset).fill(null);
-            line.forEach((value, c) => out.push(plainCell(value, used.text?.[r]?.[c], used.numberFormat?.[r]?.[c], used.valueTypes?.[r]?.[c])));
+            line.forEach((value, c) => {
+              const args = [value, used.text?.[r]?.[c], used.numberFormat?.[r]?.[c], used.valueTypes?.[r]?.[c]];
+              out.push(plainCell(...args));
+              const text = shownText(...args);
+              if (text != null) (shown[rowOffset + r] || (shown[rowOffset + r] = []))[colOffset + c] = text;
+            });
             while (out.length && out[out.length - 1] === null) out.pop();
             rows.push(out);
           });
@@ -588,11 +618,33 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
           sheetId: sheet.id,
           title: sheet.name,
           rows,
+          ...(shown.length ? { shown } : {}),
           columnCount: empty ? 0 : colOffset + (used?.columnCount || 0),
           hidden: sheet.visibility !== 'Visible',
         });
       }
       return { sheets };
+    },
+
+    // Merged areas of these tabs, as readGrid's optional `merges`, read from
+    // the file (Graph has no merged-areas call; see xlsxMerges.js), and which
+    // of `cells` still hold a value there. The runner asks only when a round
+    // finds filled cells blanked, which is what merging does to every cell
+    // but the top-left one.
+    async readMerges(fileId, sheets, cells = []) {
+      const none = { merges: {}, filled: [] };
+      if (!sheets?.length) return none;
+      const token = await getAccessToken();
+      // Graph answers with a redirect to a signed download link.
+      const response = await fetchWithTimeout(fetchImpl, `${baseUrl}/${fileId}/content`, { headers: { Authorization: `Bearer ${token}` } }, timeoutMs);
+      if (!response.ok) throw graphError(response.status, null, response.headers, 'content');
+      if (Number(response.headers.get('content-length')) > MERGES_MAX_BYTES) {
+        try { await response.body?.cancel?.(); } catch { /* closed */ }
+        return none;
+      }
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (bytes.length > MERGES_MAX_BYTES) return none;
+      return mergesFromXlsx(bytes, sheets, cells);
     },
 
     /** Reads just these cells (one box per sheet), e.g. to re-check Row IDs before a write. */
@@ -683,7 +735,8 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
           const width = writeWidth(batch, widthOf(batch));
           const values = batch.rows.map((row) => Array.from({ length: width }, (_, c) => cellValueForWrite(row[c])));
           const address = `${cellAddress(start, 0)}:${cellAddress(start + values.length - 1, width - 1)}`;
-          return { method: 'PATCH', path: `${sheetPath(batch.sheetId)}/range(address='${address}')?$select=address`, body: { values } };
+          const numberFormat = formatsFor(batch, values.length, 0, width);
+          return { method: 'PATCH', path: `${sheetPath(batch.sheetId)}/range(address='${address}')?$select=address`, body: { values, ...(numberFormat ? { numberFormat } : {}) } };
         });
         // A tab whose write runs into a PivotTable (409) answers null here and
         // gets Survey's own columns alone, at the same rows, as one tab does.
@@ -692,7 +745,7 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
         for (const [i, batch] of todo.entries()) {
           if (answers[i] !== REFUSED) continue;
           if (!batch.ownCols?.length) throw Object.assign(new Error('The workbook refused new rows (409).'), { status: 409, code: 'PivotTableRangeConflict' });
-          await writeOwnCols(fileId, batch.sheetId, starts[i], batch.rows, batch.ownCols);
+          await writeOwnCols(fileId, batch.sheetId, starts[i], batch.rows, batch.ownCols, batch);
         }
         return;
       }
@@ -740,10 +793,11 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
         const values = batch.rows.map((row) => Array.from({ length: cols }, (_, c) => cellValueForWrite(row[c])));
         const address = `${cellAddress(start, 0)}:${cellAddress(start + values.length - 1, cols - 1)}`;
         try {
-          await workbook(fileId, 'PATCH', `${sheetPath(batch.sheetId)}/range(address='${address}')`, { body: { values }, where: 'appendRows', discard: true });
+          const numberFormat = formatsFor(batch, values.length, 0, cols);
+          await workbook(fileId, 'PATCH', `${sheetPath(batch.sheetId)}/range(address='${address}')`, { body: { values, ...(numberFormat ? { numberFormat } : {}) }, where: 'appendRows', discard: true });
         } catch (err) {
           if (!isShiftBlocked(err) || !batch.ownCols?.length) throw err;
-          await writeOwnCols(fileId, batch.sheetId, start, batch.rows, batch.ownCols);
+          await writeOwnCols(fileId, batch.sheetId, start, batch.rows, batch.ownCols, batch);
         }
       }
     },

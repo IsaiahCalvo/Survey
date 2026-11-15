@@ -31,27 +31,6 @@ the user can draw, select, move, and resize it. Previously called "Survey
 Highlight" or "Highlight" — renamed because the **Base layer** has a separate
 plain highlighter tool, and the two should not share a word.
 
-### Tag
-A Survey Marker's name: the device's name on the job, such as C-1-01. The same
-word is used in Walkthru and Plot (Kal Voe suite), so one device keeps one Tag
-in every app. The Excel column still says "Item".
-
-### Suite id
-A tracked device's shared id across the Kal Voe suite (Walkthru, Plot,
-Survey). A Survey Marker made in Survey takes its own id; a copy or an import
-keeps the original's. Excel can never change it.
-
-### Building, Wing, Floor, Location
-Where a device is. One PDF set can hold more than one Building; Floor is the
-floor a page shows; Location is the room or area the device sits in, as the
-plan names it. All four travel with the device between the suite's apps.
-
-### My library / Company library
-The Categories and Category Types a person or their company keeps, shared by
-Walkthru, Plot and Survey. A Survey Template's Categories link to entries
-here. Company library shows once the person is in a company. Any member can
-add an entry; only owners and admins can rename or remove one.
-
 ### Entity
 A responsible party or status (e.g. "GC", "Subcontractor", "100% Complete",
 "Removed"). An Entity is assigned to a **Survey Marker** and defines that
@@ -64,14 +43,6 @@ the Template's Modules, draws **Survey Markers** on the PDF, and assigns each
 one a Category and an Entity. The survey panel lists Categories, the Survey
 Markers under each Category, and the Checklist Items under each Survey Marker.
 Survey mode hides the **Base layer** while it is active.
-
-### Annotation
-Lines, clouds, text, pen and the other marks that are not a device. Previously
-called "Markup" on screen (the code and stored values still say markup).
-
-### Labels
-Words a person sticks on files and marks to sort them. Previously called
-"Tags" on screen; renamed because **Tag** now means a device's name.
 
 ### Base layer
 The default PDF annotation layer — general-purpose annotation on a PDF, comparable
@@ -111,3 +82,42 @@ A focus mask on a single PDF page. A Region belongs to exactly one **Space**,
 with one Region per page in that Space. It dims everything on the page except
 the area under review, so that area stands out. Unlike a **Survey Marker**, a
 Region is not a free-floating shape — it can only be changed in edit mode.
+
+## Kal Voe suite words
+
+Survey, Walkthru and Plot share one set of words (suite spec KAL-584). Survey's
+screen text uses them; code names and stored keys stay as they are.
+
+### Annotation
+Any drawn mark that is not a device: pen, shapes, text, callouts, highlights.
+Was "Markup" on Survey's screens. The panel listing every mark is the
+Annotations panel.
+
+### Tag
+A device's name, the same in every app (e.g. "Camera 101", "D-117"). On a
+Survey Marker, the Tag is the marker's name. Smart fill fills a Tag's outline.
+
+### Labels
+Words a person adds to sort things: documents, project items and mark library
+items. Was "Tags" on Survey's screens; renamed so Tag can mean a device's name.
+
+### Library
+The company library of **Categories** and **Category Types** that Survey,
+Walkthru and Plot all point at. A person on their own sees **My library**; once
+they are in a company, a **Company library** shows too. Every Survey Category
+saves itself into the library and keeps a link to its entry. Anyone can add an
+entry; in the Company library only owners and admins rename or remove one.
+Not the same as the mark library (saved marks in the viewer).
+
+### Category Type
+An optional kind under a Category in the library (e.g. "PTZ" and "Fisheye"
+under "Camera").
+
+### Shared id
+The id one real device keeps in every app. A Survey Marker made in Survey uses
+its own id; a copy of it keeps the original's, so one camera never splits in
+two. Excel never changes it.
+
+### Building, Wing, Floor, Location
+Where a device is. Every app knows all four and they travel with the device.
+Location is the room or area name (e.g. "Parking lot", "Kitchen").

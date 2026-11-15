@@ -6,7 +6,6 @@ import { useTooltip, withOwnHandlers } from './Tooltip';
 import ValueSelect from './ValueSelect.jsx';
 import ButtonGroup from './ButtonGroup.jsx';
 import './PrintPanel.css';
-import { suiteWord } from '../suite/suiteWords.js';
 
 const printPanelDebug = (...args) => {
   if (typeof window === 'undefined' || window.__PRINT_PANEL_DEBUG !== true) return;
@@ -1179,7 +1178,7 @@ export default function PrintPanel({
           <span className="pp-section-title">Output</span>
         </div>
         <div className="pp-tog-row">
-          <Toggle on={markupsOn} onChange={setMarkupsOn}>{suiteWord('Markups')}</Toggle>
+          <Toggle on={markupsOn} onChange={setMarkupsOn}>Annotations</Toggle>
           <Toggle on={colorOn} onChange={setColorOn}>Color</Toggle>
         </div>
       </div>

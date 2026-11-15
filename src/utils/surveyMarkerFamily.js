@@ -35,7 +35,8 @@
  */
 
 import { isBBoxFullyContained, isBBoxOverlapping } from './marqueeSelection.js';
-import { pickStoredSuiteFields, suiteFieldsForCopy } from '../suite/suiteFields.js';
+import { suiteFieldsForCopy } from '../survey/suiteMarkerFields.js';
+import { isFeatureOn } from '../featureFlags.js';
 import {
   doesGeometryCrossLasso,
   isGeometryFullyInsideLasso,
@@ -508,21 +509,23 @@ export const SURVEY_MARKER_COPIED_FIELDS = Object.freeze([
   'categoryId', 'entityId', 'entityName', 'entityColor', 'color', 'opacity',
 ]);
 
+// Kal Voe suite (KAL-588, Nightly flag 'suite'): a copy keeps the shared id,
+// library links and place of the marker it was copied from.
+const suiteCopyOn = () => { try { return isFeatureOn('suite'); } catch { return false; } };
+
 /**
- * A clipboard entry for one marker record (plain JSON). With `suite` (the Kal
- * Voe suite flag, KAL-588) the copy keeps the device's suite id (the source's
- * own id when it stored none), library links and places: one real camera
- * never splits into two. Without it, only suite fields the record already
- * stores travel.
+ * A clipboard entry for one marker record (plain JSON).
+ * @param {object} record
+ * @param {string} [ownId] the marker's id, for its shared suite id
  */
-export function surveyMarkerClipboardEntry(record, { id = null, suite = false } = {}) {
+export function surveyMarkerClipboardEntry(record, ownId = null) {
   if (!record?.bounds) return null;
   const entry = { bounds: { ...record.bounds }, moduleId: record.moduleId ?? null };
   for (const field of SURVEY_MARKER_COPIED_FIELDS) {
     if (record[field] !== undefined) entry[field] = JSON.parse(JSON.stringify(record[field]));
   }
-  const suiteFields = suite ? suiteFieldsForCopy(record, id) : pickStoredSuiteFields(record);
-  if (Object.keys(suiteFields).length) entry.suite = suiteFields;
+  const suite = suiteFieldsForCopy(record, ownId);
+  if (Object.keys(suite).length > 0) entry.suite = suite;
   return entry;
 }
 
@@ -593,14 +596,7 @@ export function buildPastedSurveyMarker(entry, opts = {}) {
   record.categoryId = opts.categoryId ?? null;
   if (opts.userId) record.userId = opts.userId;
   if (opts.stack) record.stack = opts.stack;
-  // Kal Voe suite fields (KAL-588) the copy carries; a suite id equal to the
-  // new id is the default, so it is not stored.
-  if (entry.suite && typeof entry.suite === 'object') {
-    for (const [field, value] of Object.entries(pickStoredSuiteFields(entry.suite))) {
-      if (field === 'suiteId' && value === String(opts.id)) continue;
-      record[field] = value;
-    }
-  }
+  if (entry.suite && (opts.suite ?? suiteCopyOn())) Object.assign(record, entry.suite);
   return record;
 }
 

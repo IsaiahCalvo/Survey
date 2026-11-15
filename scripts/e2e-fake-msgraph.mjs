@@ -56,6 +56,53 @@ function uploadedSheets(bytes) {
   });
 }
 
+const crcTable = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+const crc32 = (bytes) => { let c = 0xffffffff; for (const b of bytes) c = crcTable[(c ^ b) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+const escapeXml = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+async function deflateRaw(bytes) {
+  const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+// A zip of [name, text, deflate?] parts with its central directory.
+async function zipOf(parts) {
+  const enc = new TextEncoder();
+  const locals = []; const centrals = []; let offset = 0;
+  for (const [name, text, deflate] of parts) {
+    const raw = enc.encode(text); const data = deflate ? await deflateRaw(raw) : raw; const nm = enc.encode(name);
+    const head = new Uint8Array(30 + nm.length); const hv = new DataView(head.buffer);
+    hv.setUint32(0, 0x04034b50, true); hv.setUint16(4, 20, true); hv.setUint16(8, deflate ? 8 : 0, true);
+    hv.setUint32(14, crc32(raw), true); hv.setUint32(18, data.length, true); hv.setUint32(22, raw.length, true); hv.setUint16(26, nm.length, true);
+    head.set(nm, 30);
+    const cen = new Uint8Array(46 + nm.length); const cv = new DataView(cen.buffer);
+    cv.setUint32(0, 0x02014b50, true); cv.setUint16(4, 20, true); cv.setUint16(6, 20, true); cv.setUint16(10, deflate ? 8 : 0, true);
+    cv.setUint32(16, crc32(raw), true); cv.setUint32(20, data.length, true); cv.setUint32(24, raw.length, true); cv.setUint16(28, nm.length, true); cv.setUint32(42, offset, true);
+    cen.set(nm, 46);
+    locals.push(head, data); centrals.push(cen); offset += head.length + data.length;
+  }
+  const size = centrals.reduce((n, c) => n + c.length, 0);
+  const end = new Uint8Array(22); const ev = new DataView(end.buffer);
+  ev.setUint32(0, 0x06054b50, true); ev.setUint16(8, parts.length, true); ev.setUint16(10, parts.length, true); ev.setUint32(12, size, true); ev.setUint32(16, offset, true);
+  return new Blob([...locals, ...centrals, end]).arrayBuffer();
+}
+// Sheet parts are numbered out of tab order (sheet10 first), so the rels decide.
+function xlsxOf(f) {
+  const n = f.sheets.length;
+  const part = (i) => `worksheets/sheet${n - i}.xml`;
+  const ref = (g) => `${colName(g.c1)}${g.r1 + 1}:${colName(g.c2)}${g.r2 + 1}`;
+  const cellXml = (v, r, c) => (v === '' || v == null ? '' : typeof v === 'number'
+    ? `<c r="${colName(c)}${r + 1}"><v>${v}</v></c>`
+    : `<c r="${colName(c)}${r + 1}" t="inlineStr"><is><t>${escapeXml(v)}</t></is></c>`);
+  const dataOf = (cells) => `<sheetData>${cells.map((row, r) => `<row r="${r + 1}">${(row || []).map((v, c) => cellXml(v, r, c)).join('')}</row>`).join('')}</sheetData>`;
+  return zipOf([
+    ['xl/workbook.xml', `<?xml version="1.0"?><workbook xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${f.sheets.map((s, i) => `<sheet name="${escapeXml(s.name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('')}</sheets></workbook>`, false],
+    ['xl/_rels/workbook.xml.rels', `<?xml version="1.0"?><Relationships>${f.sheets.map((s, i) => `<Relationship Target="${part(i)}" Id="rId${i + 1}" Type="worksheet"/>`).join('')}</Relationships>`, false],
+    ...f.sheets.map((s, i) => {
+      const { cells, merges = [] } = s.saved || s;
+      return [`xl/${part(i)}`, `<?xml version="1.0"?><worksheet>${dataOf(cells)}${merges.length ? `<mergeCells count="${merges.length}">${merges.map((g) => `<mergeCell ref="${ref(g)}"/>`).join('')}</mergeCells>` : ''}</worksheet>`, true];
+    }),
+  ]);
+}
+
 export function resetFakeMsgraph() {
   store.files.clear();
   store.codes.clear();
@@ -101,6 +148,32 @@ const touch = (f, by = null, at = null) => {
 function setCell(sheet, row, col, value) {
   while (sheet.cells.length <= row) sheet.cells.push([]);
   sheet.cells[row][col] = value;
+  if (sheet.shown?.[row]) delete sheet.shown[row][col];
+}
+const formatAt = (sheet, r, c) => sheet.formats?.[r]?.[c]
+  || ((sheet.textColumns || []).some((t) => { const q = parseAddress(t); return q && c >= q.c1 && c <= q.c2 && r >= q.r1 && r <= q.r2; }) ? '@' : 'General');
+function setFormat(sheet, row, col, format) {
+  sheet.formats = sheet.formats || [];
+  sheet.formats[row] = sheet.formats[row] || [];
+  sheet.formats[row][col] = format;
+}
+// A person typing into a cell the way Excel takes it: a text ("@") cell keeps
+// what they typed; any other cell turns "50%", "$1,200" or "1,200" into a
+// number with a format that shows it as typed (real Excel 11-15).
+function typeLikeExcel(sheet, row, col, text) {
+  if (typeof text !== 'string' || formatAt(sheet, row, col) === '@') { setCell(sheet, row, col, text); return; }
+  const plain = text.replace(/[$,%]/g, '');
+  const number = /^-?\d+(\.\d+)?$/.test(plain) && /^\$?-?[\d,]+(\.\d+)?%?$/.test(text) ? Number(plain) : null;
+  if (number === null) { setCell(sheet, row, col, typed(text)); return; }
+  const percent = text.endsWith('%');
+  setCell(sheet, row, col, percent ? number / 100 : number);
+  setFormat(sheet, row, col, percent ? '0%' : text.startsWith('$') ? '"$"#,##0_);("$"#,##0)' : text.includes(',') ? '#,##0' : 'General');
+  // Excel pads a money format with a space where a closing bracket would go.
+  if (percent || text.includes(',') || text.startsWith('$')) {
+    sheet.shown = sheet.shown || [];
+    sheet.shown[row] = sheet.shown[row] || [];
+    sheet.shown[row][col] = text.startsWith('$') ? `${text} ` : text;
+  }
 }
 const cellAt = (sheet, r, c) => sheet.cells[r]?.[c] ?? '';
 const newSheet = (name, position) => ({ id: `{${String(store.next++).padStart(8, '0')}-0001-0000-0000-000000000000}`, name, position, visibility: 'Visible', cells: [], hidden: [], frozen: 0, validations: {} });
@@ -115,8 +188,8 @@ function usedRange(sheet) {
   return {
     rowIndex: r1, columnIndex: c1, rowCount: r2 - r1 + 1, columnCount: c2 - c1 + 1,
     values: box((r, c) => cellAt(sheet, r, c)),
-    text: box((r, c) => String(cellAt(sheet, r, c))),
-    numberFormat: box(() => 'General'),
+    text: box((r, c) => sheet.shown?.[r]?.[c] ?? String(cellAt(sheet, r, c))),
+    numberFormat: box((r, c) => sheet.formats?.[r]?.[c] || 'General'),
   };
 }
 
@@ -215,7 +288,7 @@ export async function fakeMsgraphHandler(req) {
       store.files.set(id, { name: body?.name || 'Tracker.xlsx', version: 1, sheets, readOnly: Boolean(body?.readOnly) });
       return json(200, { id, link: `https://contoso.sharepoint.example/:x:/r/${id}` });
     }
-    const m = /^\/__fake\/files\/([^/]+)(\/edit|\/sort|\/insert-row|\/delete-row|\/pivot|\/protect)?$/.exec(path);
+    const m = /^\/__fake\/files\/([^/]+)(\/edit|\/sort|\/insert-row|\/delete-row|\/pivot|\/protect|\/merge|\/save)?$/.exec(path);
     const f = m && store.files.get(m[1]);
     if (!f) return json(404, { error: 'no such file' });
     if (!m[2]) {
@@ -223,7 +296,11 @@ export async function fakeMsgraphHandler(req) {
     }
     const sheet = f.sheets.find((s) => s.name === body?.title) || f.sheets[0];
     if (m[2] === '/edit') {
-      for (const e of body.edits || []) setCell(sheet, e.row, e.col, e.value);
+      for (const e of body.edits || []) {
+        if (e.format) setFormat(sheet, e.row, e.col, e.format);
+        if (e.typed) typeLikeExcel(sheet, e.row, e.col, e.value);
+        else if (!e.format || 'value' in e) setCell(sheet, e.row, e.col, e.value);
+      }
     } else if (m[2] === '/sort') {
       const [header, ...rest] = sheet.cells;
       sheet.cells = [header, ...rest.reverse()];
@@ -231,6 +308,16 @@ export async function fakeMsgraphHandler(req) {
       sheet.cells.splice(body.row, 0, body.values || []);
     } else if (m[2] === '/delete-row') {
       sheet.cells.splice(body.row, 1);
+    } else if (m[2] === '/save') {
+      delete sheet.saved; // the saved file catches up
+    } else if (m[2] === '/merge') {
+      // Home > Merge: Excel keeps only the top-left value of the block.
+      // `late`: the saved file (/content) still shows the sheet from before
+      // until /save, as when Excel's file trails what Graph reads.
+      if (body.late && !sheet.saved) sheet.saved = { cells: sheet.cells.map((row) => [...(row || [])]), merges: [...(sheet.merges || [])] };
+      const area = parseAddress(body.range);
+      for (let r = area.r1; r <= area.r2; r += 1) for (let c = area.c1; c <= area.c2; c += 1) if (r !== area.r1 || c !== area.c1) setCell(sheet, r, c, '');
+      sheet.merges = [...(sheet.merges || []), { r1: area.r1, c1: area.c1, r2: area.r2, c2: area.c2 }];
     } else if (m[2] === '/protect') {
       sheet.protected = body.on !== false; // Review > Protect Sheet (or off)
     } else if (m[2] === '/pivot') {
@@ -291,6 +378,9 @@ export async function fakeMsgraphHandler(req) {
   if (!f) return gErr(404, 'itemNotFound', 'The resource could not be found.');
   const rest = m[3];
   if (method === 'GET' && rest === '') return json(200, itemJson(m[2], f));
+  // The file itself: only the parts readMerges reads (tab names and merged
+  // areas), sheets deflated like a real .xlsx.
+  if (method === 'GET' && rest === '/content') return new Response(await xlsxOf(f), { status: 200 });
   if (store.driveType === 'personal' && rest.startsWith('/workbook')) {
     return gErr(400, 'NotSupported', 'Workbooks on OneDrive Consumer are not supported.');
   }
@@ -408,7 +498,13 @@ export async function fakeMsgraphHandler(req) {
       return gErr(400, 'InvalidArgument', 'The number of rows or columns in the input array doesn\'t match the size or dimensions of the range.');
     }
     // A null leaves its cell as it is, as in real Graph.
-    values.forEach((line, r) => line.forEach((v, c) => { if (v !== null) setCell(sheet, a.r1 + r, a.c1 + c, typed(v)); }));
+    // A cell inside a merged block (not its top-left) keeps nothing, as in Excel.
+    const covered = (r, c) => (sheet.merges || []).some((g) => r >= g.r1 && r <= g.r2 && c >= g.c1 && c <= g.c2 && (r !== g.r1 || c !== g.c1));
+    values.forEach((line, r) => line.forEach((v, c) => { if (v !== null && !covered(a.r1 + r, a.c1 + c)) setCell(sheet, a.r1 + r, a.c1 + c, typed(v)); }));
+    // Formats sent with the values (a null leaves the cell's format alone).
+    if (Array.isArray(body.numberFormat)) {
+      body.numberFormat.forEach((line, r) => (line || []).forEach((fmt, c) => { if (fmt != null) setFormat(sheet, a.r1 + r, a.c1 + c, fmt); }));
+    }
     touch(f);
     return json(200, {});
   }

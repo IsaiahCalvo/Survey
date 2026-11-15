@@ -19,7 +19,10 @@
 //     same day whatever the sheet's locale); other dates and times as the text
 //     the sheet shows. A cell whose formula fails (#N/A, #REF!...) as
 //     { error: '#N/A' } (cellError), never as blank: blank would read as "the
-//     person cleared it" and wipe the survey's value.
+//     person cleared it" and wipe the survey's value. Optional `shown`
+//     (sparse, same rows and columns): what the sheet shows for a number it
+//     formats ("50%" for 0.5, "$1,200", "2-Jan"); the engine reads text
+//     columns (notes, names, text answers) as that.
 // - readCells(fileId, [{ sheetId, title, row, col }]) -> any[]
 //     Single cells, in the order asked, in exactly readGrid's form. Just before
 //     writing, the runner re-reads every Row ID it writes next to and every
@@ -42,6 +45,12 @@
 //     call of its own). `me` is true when it was the signed-in account (the
 //     linker, which is also who Survey writes as). Sheet edits are credited to
 //     this person in Changed By (round.js sheetEditorLabel).
+// - readMerges(fileId, [{ sheetId, title }], [{ sheetId, row, col }])   (optional)
+//     -> { merges: { [sheetId]: merges }, filled: ["sheetId|row|col"] }
+//     For a provider whose readGrid can't give `merges` (Graph has no call
+//     for them), read from the saved file; `filled`: the asked cells that
+//     still hold a value there (the file is behind the grid). The runner asks
+//     only when a round finds filled cells blank.
 // - savesLate: true   (optional)
 //     A person's typing can reach the file a minute or more after they typed
 //     it (Excel on the web). The engine then holds a different value landing

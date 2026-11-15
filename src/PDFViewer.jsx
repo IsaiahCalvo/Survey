@@ -25141,7 +25141,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     spaces,
   ]);
 
-  // KAL-393: "Export markup (XFDF)" — a sidecar built from the same
+  // KAL-393: "Export annotations (XFDF)" — a sidecar built from the same
   // inputs and writer as Export annotated PDF. The source PDF is not changed.
   const handleExportXfdf = useCallback(async () => {
     if (!pdfFile) {

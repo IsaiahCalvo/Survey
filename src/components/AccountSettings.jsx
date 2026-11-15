@@ -825,7 +825,7 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                         : 'Gathering your data…'}
                   </button>
                   <p className="account-danger-zone-description">
-                    One ZIP file with your documents, markups, survey photos and audio, and account details.
+                    One ZIP file with your documents, annotations, survey photos and audio, and account details.
                   </p>
                 </section>
 

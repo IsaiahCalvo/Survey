@@ -19,12 +19,13 @@
 import { useState, useEffect, lazy, Suspense, startTransition } from 'react';
 import { readItemLink, requestItemLink, withoutItemLink } from '../projectItems/itemLink.js';
 import { useTooltip } from '../components/Tooltip';
+import { isFeatureOn } from '../featureFlags.js';
 import DocumentsLedger from './DocumentsLedger';
 import ProjectsFolderTree from './ProjectsFolderTree';
 import TemplatesEditor from './TemplatesEditor';
 const ArchiveScreenContainer = lazy(() => import('./ArchiveScreenContainer'));
-const SuiteLibraryPage = lazy(() => import('../suite/SuiteLibraryPage.jsx'));
-import { isSuiteOn } from '../suite/suiteWords.js';
+// Kal Voe suite library (KAL-585): only reachable with the Nightly flag 'suite'.
+const LibraryScreen = lazy(() => import('../library/LibraryScreen.jsx'));
 import { templateShareTarget } from './templateShareTarget';
 import { preloadedComponent } from '../utils/preloadedComponent';
 import { HubChromeContext, HubShell } from './HubShell';
@@ -105,8 +106,8 @@ export default function SurveyHub({
     if (hasTemplateEditorRequest()) return 'templates';
     try {
       const saved = localStorage.getItem(TAB_KEY) || 'documents';
-      // The Library tab is Nightly-only ('suite'); with the flag off it falls back.
-      return saved === 'library' && !isSuiteOn() ? 'documents' : saved;
+      // The Library tab exists only while the 'suite' flag is on.
+      return saved === 'library' && !isFeatureOn('suite') ? 'documents' : saved;
     } catch { return 'documents'; }
   });
   const [share, setShare] = useState(null); // null | { kind, name, item, manage }
@@ -319,16 +320,15 @@ export default function SurveyHub({
         )
       )}
 
-      {/* KAL-280 — Archive owns its own data: it reads the archived slice
-          directly rather than filtering the hub's live lists, because those
-          lists deliberately exclude archived rows. */}
-      {/* Kal Voe suite library (KAL-585, Nightly 'suite'). */}
-      {tab === 'library' && isSuiteOn() && (
-        <Suspense fallback={<HubLoading {...common} tab="documents" />}>
-          <SuiteLibraryPage {...common} />
+      {tab === 'library' && (
+        <Suspense fallback={<HubLoading {...common} tab="templates" />}>
+          <LibraryScreen {...common} templates={templates} onSaveTemplates={onSaveTemplates} />
         </Suspense>
       )}
 
+      {/* KAL-280 — Archive owns its own data: it reads the archived slice
+          directly rather than filtering the hub's live lists, because those
+          lists deliberately exclude archived rows. */}
       {tab === 'archive' && (
         <Suspense fallback={<HubLoading {...common} tab="documents" />}>
           <ArchiveScreenContainer {...common} />

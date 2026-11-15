@@ -1,305 +1,271 @@
-// Kal Voe suite library (KAL-585): My library / Company library of
-// Categories and Category Types. Create, link template Categories, who may
-// rename or remove, offline sync one entry at a time, and the database rules.
-import test from 'node:test';
+// Suite library (KAL-585): create, link, permissions and offline sync.
+// libraryModel.js holds the rules; libraryStore.js keeps the device copy and
+// sends changes one at a time. A fake server stands in for Supabase here and
+// follows the same rules as supabase/migrations/20261115180000_suite_library.sql.
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
 import {
-  applyLibraryOp,
-  canAddToLibrary,
+  LIBRARY_SCOPE,
   canManageEntry,
-  flushLibraryOutbox,
-  libraryTabs,
-  libraryTree,
+  countUnlinkedCategories,
+  findEntryByName,
+  isPlaceholderCategoryName,
+  libraryOutline,
   linkTemplateCategories,
-  mergeServerEntries,
   newLibraryEntry,
-} from '../src/suite/libraryModel.js';
-import { createLibraryStore } from '../src/suite/libraryStore.js';
+} from '../src/library/libraryModel.js';
+import { classifyLibraryError, createLibraryStore } from '../src/library/libraryStore.js';
 
-const ME = 'u-me';
-const OTHER = 'u-other';
-const company = (role) => ({ id: 'org-1', name: 'Acme', my_role: role });
-let n = 0;
-const makeId = () => `id-${++n}`;
-
-test('tabs: My library always, Company library only in a company', () => {
-  assert.deepEqual(libraryTabs(null).map((t) => t.label), ['My library']);
-  assert.deepEqual(libraryTabs(company('member')).map((t) => t.label), ['My library', 'Company library']);
-});
-
-test('create: a Category and a Category Type under it', () => {
-  const cam = newLibraryEntry({ name: '  Camera ', userId: ME, id: 'c1' });
-  assert.equal(cam.name, 'Camera');
-  assert.equal(cam.scope, 'mine');
-  assert.equal(cam.organizationId, null);
-  const ptz = newLibraryEntry({ kind: 'categoryType', name: 'PTZ', parentId: 'c1', userId: ME, id: 't1' });
-  assert.equal(ptz.parentId, 'c1');
-  assert.throws(() => newLibraryEntry({ kind: 'categoryType', name: 'PTZ', userId: ME }), /needs a Category/);
-  assert.throws(() => newLibraryEntry({ name: '   ', userId: ME }), /name/);
-  assert.throws(() => newLibraryEntry({ name: 'Door', scope: 'company', userId: ME }), /cannot add/);
-  const tree = libraryTree([cam, ptz], 'mine', { userId: ME });
-  assert.equal(tree.length, 1);
-  assert.deepEqual(tree[0].types.map((t) => t.name), ['PTZ']);
-});
-
-test('permissions: any member adds; only owners and admins rename or remove', () => {
-  const companyEntry = { scope: 'company', organizationId: 'org-1', ownerId: OTHER };
-  assert.equal(canAddToLibrary('company', { userId: ME, company: company('member') }), true);
-  assert.equal(canAddToLibrary('company', { userId: ME, company: null }), false);
-  assert.equal(canManageEntry(companyEntry, { userId: ME, company: company('member') }), false);
-  assert.equal(canManageEntry(companyEntry, { userId: ME, company: company('admin') }), true);
-  assert.equal(canManageEntry(companyEntry, { userId: ME, company: company('owner') }), true);
-  assert.equal(canManageEntry({ ...companyEntry, organizationId: 'org-2' }, { userId: ME, company: company('owner') }), false);
-  assert.equal(canManageEntry({ scope: 'mine', ownerId: ME }, { userId: ME }), true);
-  assert.equal(canManageEntry({ scope: 'mine', ownerId: OTHER }, { userId: ME }), false);
-});
-
-test('a solo user sees only their own entries; Company library shows company ones', () => {
-  const mine = newLibraryEntry({ name: 'Camera', userId: ME, id: 'm1' });
-  const theirs = { ...newLibraryEntry({ name: 'Door', userId: OTHER, id: 'o1' }) };
-  const shared = newLibraryEntry({ name: 'Speaker', scope: 'company', userId: OTHER, company: company('member'), id: 's1' });
-  const all = [mine, theirs, shared];
-  assert.deepEqual(libraryTree(all, 'mine', { userId: ME }).map((e) => e.name), ['Camera']);
-  assert.deepEqual(libraryTree(all, 'company', { userId: ME, company: null }).map((e) => e.name), []);
-  assert.deepEqual(libraryTree(all, 'company', { userId: ME, company: company('member') }).map((e) => e.name), ['Speaker']);
-});
-
-const template = () => ({
-  id: 't1',
-  name: 'Security',
-  modules: [
-    { id: 'm1', name: 'Installation', categories: [
-      { id: 'c1', name: 'Cameras', checklist: [{ id: 'i1', text: 'Cable pulled?' }] },
-      { id: 'c2', name: 'Doors', checklist: [{ id: 'i2', text: 'Hung?' }], libraryEntryId: 'lib-doors' },
-    ] },
-    { id: 'm2', name: 'Commissioning', categories: [
-      { id: 'c3', name: 'cameras ', checklist: [{ id: 'i3', text: 'Aimed?' }] },
-    ] },
-  ],
-});
-
-test('making a Category in a template creates a library entry; the same name links once', () => {
-  const tpl = template();
-  const { templates, created } = linkTemplateCategories([tpl], [], { userId: ME, makeId });
-  assert.equal(created.length, 1);
-  assert.equal(created[0].name, 'Cameras');
-  const [out] = templates;
-  const cats = out.modules.flatMap((m) => m.categories);
-  assert.equal(cats[0].libraryEntryId, created[0].id);
-  assert.equal(cats[2].libraryEntryId, created[0].id, 'same name in another Module, one entry');
-  assert.equal(cats[1].libraryEntryId, 'lib-doors', 'an existing link is kept');
-  // Checklists are never changed.
-  assert.deepEqual(cats.map((c) => c.checklist), tpl.modules.flatMap((m) => m.categories).map((c) => c.checklist));
-  // Linking again changes nothing.
-  const again = linkTemplateCategories(templates, created, { userId: ME, makeId });
-  assert.equal(again.templates, templates);
-  assert.equal(again.created.length, 0);
-});
-
-test('existing template Categories link to a matching entry by exact name, company first', () => {
-  const mine = newLibraryEntry({ name: 'Cameras', userId: ME, id: 'mine-cam' });
-  const shared = newLibraryEntry({ name: 'CAMERAS', scope: 'company', userId: OTHER, company: company('member'), id: 'co-cam' });
-  const solo = linkTemplateCategories([template()], [mine, shared], { userId: ME, makeId });
-  assert.equal(solo.templates[0].modules[0].categories[0].libraryEntryId, 'mine-cam');
-  const inCompany = linkTemplateCategories([template()], [mine, shared], { userId: ME, company: company('member'), makeId });
-  assert.equal(inCompany.templates[0].modules[0].categories[0].libraryEntryId, 'co-cam');
-  assert.equal(inCompany.created.length, 0);
-  // No near-miss guessing: "Camera" is not "Cameras".
-  const near = linkTemplateCategories([template()], [newLibraryEntry({ name: 'Camera', userId: ME, id: 'x' })], { userId: ME, makeId });
-  assert.equal(near.created.length, 1);
-  // In a company, new entries go to the Company library.
-  const fresh = linkTemplateCategories([template()], [], { userId: ME, company: company('member'), makeId });
-  assert.equal(fresh.created[0].scope, 'company');
-  assert.equal(fresh.created[0].organizationId, 'org-1');
-});
-
-test('outbox: ops show at once, send one at a time, stop offline, drop refused ones', async () => {
-  const cam = newLibraryEntry({ name: 'Camera', userId: ME, id: 'c1' });
-  const door = newLibraryEntry({ name: 'Door', userId: ME, id: 'c2' });
-  const outbox = [{ op: 'create', entry: cam }, { op: 'rename', id: 'c1', name: 'Cameras' }, { op: 'create', entry: door }];
-  const shown = mergeServerEntries([], outbox);
-  assert.deepEqual(shown.map((e) => e.name), ['Cameras', 'Door']);
-
-  const seen = [];
-  let online = false;
-  const send = async (op) => {
-    if (!online) { const e = new Error('Failed to fetch'); e.offline = true; throw e; }
-    seen.push(op.op);
-  };
-  const offline = await flushLibraryOutbox(outbox, send);
-  assert.equal(offline.outbox.length, 3);
-  assert.equal(seen.length, 0);
-  online = true;
-  const done = await flushLibraryOutbox(offline.outbox, send);
-  assert.deepEqual(seen, ['create', 'rename', 'create']);
-  assert.equal(done.outbox.length, 0);
-
-  const refused = await flushLibraryOutbox([{ op: 'rename', id: 'c9', name: 'X' }, { op: 'create', entry: door }], async (op) => {
-    if (op.op === 'rename') throw new Error('Only an owner or admin can rename that.');
-  });
-  assert.equal(refused.refused.length, 1);
-  assert.equal(refused.sent.length, 1);
-
-  // Removing a Category removes its Types too (on the device).
-  const ptz = newLibraryEntry({ kind: 'categoryType', name: 'PTZ', parentId: 'c1', userId: ME, id: 't1' });
-  const after = applyLibraryOp([cam, ptz], { op: 'remove', id: 'c1' });
-  assert.ok(after.every((e) => e.removedAt));
-});
-
-function fakeClient({ online = { value: true }, rows = [] } = {}) {
-  const calls = [];
-  const table = {
-    _q: null,
-    upsert(row) { calls.push(['upsert', row.id]); if (!online.value) return Promise.resolve({ error: { message: 'Failed to fetch' } }); rows.push(row); return Promise.resolve({ error: null }); },
-    update(patch) {
-      const q = { patch, filters: [] };
-      const chain = {
-        eq(col, val) { q.filters.push([col, val]); return chain; },
-        is() { return chain; },
-        select() { calls.push(['update', q.patch, q.filters]); return Promise.resolve({ data: [{ id: q.filters[0]?.[1] }], error: null }); },
-        then(res, rej) { calls.push(['update', q.patch, q.filters]); return Promise.resolve({ error: null }).then(res, rej); },
-      };
-      return chain;
-    },
-    select() { return { limit: () => Promise.resolve({ data: rows.map((r) => ({ ...r, created_at: null, updated_at: null, removed_at: null })), error: null }) }; },
-  };
-  return {
-    calls,
-    from: () => table,
-    rpc: () => Promise.resolve({ data: null, error: null }),
-  };
-}
+const ME = 'user-me';
+const OTHER = 'user-other';
+const COMPANY = { id: 'org-1', my_role: 'member' };
 
 function memoryStorage() {
-  const m = new Map();
-  return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)) };
+  const map = new Map();
+  return { getItem: (k) => (map.has(k) ? map.get(k) : null), setItem: (k, v) => map.set(k, String(v)), removeItem: (k) => map.delete(k) };
 }
 
-test('store: works offline, keeps the outbox on the device, syncs one entry at a time when back', async () => {
-  const online = { value: false };
-  const client = fakeClient({ online });
-  const storage = memoryStorage();
-  const store = createLibraryStore({ client, userId: ME, storage });
-  const cam = store.add({ name: 'Camera', scope: 'mine' });
+let counter = 0;
+const mint = () => `00000000-0000-4000-8000-${String(++counter).padStart(12, '0')}`;
+
+// A small Supabase stand-in: library_entries with the migration's rules.
+function fakeServer({ userId = ME, role = null, companyId = 'org-1' } = {}) {
+  const rows = [];
+  const calls = [];
+  let online = true;
+  const manageable = (row) => (row.scope === 'mine' ? row.created_by === userId : (role === 'owner' || role === 'admin') && row.company_id === companyId);
+  const visible = (row) => (row.scope === 'mine' ? row.created_by === userId : role && row.company_id === companyId);
+  const offlineError = { message: 'TypeError: Failed to fetch' };
+  const client = {
+    from(table) {
+      assert.equal(table, 'library_entries');
+      return {
+        select() {
+          return { order: async () => (online ? { data: rows.filter(visible).map((r) => ({ ...r })), error: null } : { data: null, error: offlineError }) };
+        },
+        async insert(row) {
+          calls.push({ op: 'insert', id: row.id });
+          if (!online) return { error: offlineError };
+          if (rows.some((r) => r.id === row.id)) return { error: { code: '23505', message: 'duplicate key' } };
+          if (row.created_by !== userId) return { error: { code: '42501', message: 'rls' } };
+          if (row.scope === 'company' && !(role && row.company_id === companyId)) return { error: { code: '42501', message: 'rls' } };
+          rows.push({ ...row, created_at: new Date(Date.now() + rows.length).toISOString(), updated_at: null, removed_at: null });
+          return { error: null };
+        },
+        update(patch) {
+          return {
+            eq(_col, id) {
+              return {
+                async select() {
+                  calls.push({ op: 'update', id, patch });
+                  if (!online) return { data: null, error: offlineError };
+                  const row = rows.find((r) => r.id === id);
+                  if (!row || !manageable(row)) return { data: [], error: null };
+                  Object.assign(row, patch);
+                  return { data: [{ id }], error: null };
+                },
+              };
+            },
+          };
+        },
+      };
+    },
+  };
+  return { client, rows, calls, setOnline: (v) => { online = v; } };
+}
+
+test('library: placeholder names wait until the category is named', () => {
+  assert.equal(isPlaceholderCategoryName('Category 3'), true);
+  assert.equal(isPlaceholderCategoryName(' Untitled Category '), true);
+  assert.equal(isPlaceholderCategoryName('Cameras'), false);
+  assert.equal(isPlaceholderCategoryName('Category 3 cameras'), false);
+});
+
+test('library: making a Category in a template creates a library entry and links it', () => {
+  const templates = [{
+    id: 't1', name: 'Security',
+    modules: [{ id: 'm1', name: 'Installation', categories: [
+      { id: 'c1', name: 'Cameras', checklist: [{ id: 'i1', text: 'Cable pulled?' }] },
+      { id: 'c2', name: 'Category 2', checklist: [] },
+    ] }],
+  }];
+  const { templates: out, created, linked } = linkTemplateCategories(templates, { userId: ME, mintId: mint });
+  assert.equal(created.length, 1);
+  assert.equal(linked, 1);
+  assert.equal(created[0].name, 'Cameras');
+  assert.equal(created[0].scope, 'mine');
+  const cat = out[0].modules[0].categories[0];
+  assert.equal(cat.libraryEntryId, created[0].id);
+  // The checklist and the rest of the category are left exactly as they were.
+  assert.deepEqual(cat.checklist, templates[0].modules[0].categories[0].checklist);
+  assert.equal(cat.name, 'Cameras');
+  assert.equal(out[0].modules[0].categories[1].libraryEntryId, undefined, 'placeholder name is not saved');
+});
+
+test('library: existing categories link to an entry with the exact same name, never a near one', () => {
+  const entries = [newLibraryEntry({ id: 'e-cam', name: 'Cameras', userId: ME })];
+  const templates = [
+    { id: 't1', modules: [{ categories: [{ id: 'a', name: '  Cameras ', checklist: ['x'] }] }] },
+    { id: 't2', modules: [{ categories: [{ id: 'b', name: 'Camera', checklist: [] }] }] },
+    { id: 't3', modules: [{ categories: [{ id: 'c', name: 'Camera', checklist: [] }] }] },
+  ];
+  const { templates: out, created } = linkTemplateCategories(templates, { entries, userId: ME, mintId: mint });
+  assert.equal(out[0].modules[0].categories[0].libraryEntryId, 'e-cam');
+  assert.deepEqual(out[0].modules[0].categories[0].checklist, ['x']);
+  // "Camera" is not "Cameras": it gets its own entry, and both templates share it.
+  assert.equal(created.length, 1);
+  assert.equal(out[1].modules[0].categories[0].libraryEntryId, created[0].id);
+  assert.equal(out[2].modules[0].categories[0].libraryEntryId, created[0].id);
+});
+
+test('library: a link already there is kept, and untouched templates stay the same object', () => {
+  const kept = { id: 't1', modules: [{ categories: [{ id: 'a', name: 'Doors', libraryEntryId: 'gone-id' }] }] };
+  const shared = { id: 't2', sharedFrom: { ownerId: OTHER }, modules: [{ categories: [{ id: 'b', name: 'Cameras' }] }] };
+  const { templates: out, created } = linkTemplateCategories([kept, shared], { userId: ME, mintId: mint });
+  assert.equal(out[0], kept);
+  assert.equal(out[1], shared, 'a template shared with me is not mine to change');
+  assert.equal(created.length, 0);
+  assert.equal(countUnlinkedCategories([kept, shared]), 0);
+  assert.equal(countUnlinkedCategories([{ modules: [{ categories: [{ name: 'Racks' }, { name: 'Category 1' }] }] }]), 1);
+});
+
+test('library: in a company, new entries go to the Company library', () => {
+  const company = { id: 'org-1', role: 'member' };
+  const { created } = linkTemplateCategories(
+    [{ id: 't', modules: [{ categories: [{ id: 'c', name: 'Readers' }] }] }],
+    { userId: ME, company, mintId: mint },
+  );
+  assert.equal(created[0].scope, LIBRARY_SCOPE.COMPANY);
+  assert.equal(created[0].companyId, 'org-1');
+});
+
+test('library: rename and remove are refused for non-admins in the Company library', () => {
+  const companyEntry = newLibraryEntry({ id: 'e1', name: 'Cameras', scope: 'company', companyId: 'org-1', userId: OTHER });
+  const mineEntry = newLibraryEntry({ id: 'e2', name: 'Doors', userId: ME });
+  assert.equal(canManageEntry(companyEntry, { userId: ME, company: { id: 'org-1', role: 'member' } }), false);
+  assert.equal(canManageEntry(companyEntry, { userId: ME, company: { id: 'org-1', role: 'admin' } }), true);
+  assert.equal(canManageEntry(companyEntry, { userId: ME, company: { id: 'org-1', role: 'owner' } }), true);
+  assert.equal(canManageEntry(companyEntry, { userId: ME, company: { id: 'org-2', role: 'owner' } }), false);
+  assert.equal(canManageEntry(mineEntry, { userId: ME }), true);
+  assert.equal(canManageEntry(mineEntry, { userId: OTHER }), false);
+});
+
+test('library store: a member can add to the Company library but not rename or remove', async () => {
+  const server = fakeServer({ role: 'member' });
+  const store = createLibraryStore({ client: server.client, userId: ME, storage: memoryStorage(), mintId: mint, loadCompany: async () => COMPANY });
+  await store.refresh();
+  const added = store.add({ name: 'Cameras', scope: 'company' });
+  assert.equal(added.ok, true);
   await store.flush();
-  assert.deepEqual(store.getState().entries.map((e) => e.name), ['Camera']);
-  assert.equal(store.getState().outbox.length, 1, 'still waiting');
+  assert.equal(server.rows.length, 1);
+  const renamed = store.rename(added.entry.id, 'CCTV');
+  assert.equal(renamed.ok, false);
+  assert.match(renamed.reason, /owners and admins/);
+  assert.equal(store.remove(added.entry.id).ok, false);
+  assert.equal(server.calls.filter((c) => c.op === 'update').length, 0, 'nothing was sent');
+});
 
-  // A new session on the same device still has it.
-  const reopened = createLibraryStore({ client, userId: ME, storage });
-  assert.deepEqual(reopened.getState().entries.map((e) => e.id), [cam.id]);
+test('library store: a rename the server refuses is dropped and the server name comes back', async () => {
+  const server = fakeServer({ role: 'member' });
+  server.rows.push({ id: 'e-x', kind: 'category', parent_id: null, name: 'Cameras', scope: 'company', company_id: 'org-1', created_by: OTHER, created_at: '2026-01-01', updated_at: null, removed_at: null });
+  // This device still thinks it is an admin (role changed on the server).
+  const store = createLibraryStore({ client: server.client, userId: ME, storage: memoryStorage(), mintId: mint, loadCompany: async () => ({ id: 'org-1', my_role: 'admin' }) });
+  await store.refresh();
+  assert.equal(store.rename('e-x', 'CCTV').ok, true);
+  await store.flush();
+  assert.equal(server.rows[0].name, 'Cameras');
+  const state = store.getState();
+  assert.equal(state.outbox.length, 0);
+  assert.equal(state.entries.find((e) => e.id === 'e-x').name, 'Cameras');
+  assert.match(state.error, /owners and admins/);
+});
 
-  online.value = true;
-  const res = await reopened.flush();
-  assert.equal(res.sent.length, 1);
+test('library store: works offline and syncs one entry at a time, in order, without twins', async () => {
+  const server = fakeServer();
+  const storage = memoryStorage();
+  const store = createLibraryStore({ client: server.client, userId: ME, storage, mintId: mint, loadCompany: async () => null });
+  server.setOnline(false);
+  const a = store.add({ name: 'Cameras' });
+  const b = store.add({ name: 'Doors' });
+  await store.flush();
+  assert.equal(store.getState().status, 'offline');
+  assert.equal(store.getState().outbox.length, 2);
+  assert.deepEqual(libraryOutline(store.getState().entries, { scope: 'mine', userId: ME }).map((e) => e.name), ['Cameras', 'Doors']);
+  assert.equal(store.rename(b.entry.id, 'Door readers').ok, true);
+
+  // The app closes; a new store on the same device keeps the queue.
+  const reopened = createLibraryStore({ client: server.client, userId: ME, storage, mintId: mint, loadCompany: async () => null });
+  assert.equal(reopened.getState().outbox.length, 3);
+  server.setOnline(true);
+  await reopened.refresh();
   assert.equal(reopened.getState().outbox.length, 0);
-  assert.deepEqual(client.calls.filter((c) => c[0] === 'upsert').map((c) => c[1]), [cam.id, cam.id]);
+  assert.deepEqual(server.calls.filter((c) => c.op === 'insert' || c.op === 'update').slice(-3).map((c) => c.op), ['insert', 'insert', 'update']);
+  assert.deepEqual(server.rows.map((r) => r.name), ['Cameras', 'Door readers']);
+  assert.equal(server.rows[0].id, a.entry.id, 'the id made on the device is the id on the server');
 });
 
-test('templates editor and hub carry the link and the Library tab behind the flag', () => {
-  const editor = readFileSync(new URL('../src/home/TemplatesEditor.jsx', import.meta.url), 'utf8');
-  assert.match(editor, /\.\.\.\(c\?\.libraryEntryId \? \{ libraryEntryId: c\.libraryEntryId \} : \{\}\)/);
-  assert.match(editor, /\.\.\.\(c\.libraryEntryId \? \{ libraryEntryId: c\.libraryEntryId \} : \{\}\)/);
-  assert.match(editor, /const linked = linkTemplatesForSave\(payload, user\?\.id\);/);
-  const shell = readFileSync(new URL('../src/home/HubShell.jsx', import.meta.url), 'utf8');
-  assert.match(shell, /\.\.\.\(isSuiteOn\(\) \? \[\['library', 'library', 'Library', false\]\] : \[\]\)/);
-  const hub = readFileSync(new URL('../src/home/SurveyHub.jsx', import.meta.url), 'utf8');
-  assert.match(hub, /tab === 'library' && isSuiteOn\(\)/);
+test('library store: an insert whose answer was lost is not sent twice as a new entry', async () => {
+  const server = fakeServer();
+  const storage = memoryStorage();
+  const store = createLibraryStore({ client: server.client, userId: ME, storage, mintId: mint, loadCompany: async () => null });
+  const { entry } = store.add({ name: 'Racks' });
+  await store.flush();
+  // Pretend the answer was lost: put the same add back in the queue.
+  storage.setItem(`survey.suiteLibrary.v1:${ME}`, JSON.stringify({ serverRows: [], outbox: [{ op: 'add', entry }], company: null }));
+  const again = createLibraryStore({ client: server.client, userId: ME, storage, mintId: mint, loadCompany: async () => null });
+  await again.flush();
+  assert.equal(server.rows.length, 1);
+  assert.equal(again.getState().outbox.length, 0);
+  assert.equal(again.getState().error, '');
 });
 
-// ---------------------------------------------------------------------------
-// Database rules (run where Postgres is installed and not as root, like
-// tests/featureFlags.test.mjs).
-// ---------------------------------------------------------------------------
-const pgBin = ['/usr/lib/postgresql/16/bin', '/opt/homebrew/bin', '/usr/local/bin'].find((dir) => existsSync(join(dir, 'initdb')));
-const tool = (name) => {
-  if (pgBin && existsSync(join(pgBin, name))) return join(pgBin, name);
-  try { return execFileSync('which', [name], { encoding: 'utf8' }).trim(); } catch { return ''; }
-};
-const pgEnv = { ...process.env, LC_ALL: 'C', LANG: 'C' };
-const isRoot = process.getuid?.() === 0;
+test('library store: until the table is on the server, changes wait on the device', async () => {
+  const client = { from: () => ({
+    select: () => ({ order: async () => ({ data: null, error: { code: 'PGRST205', message: 'Could not find the table' } }) }),
+    insert: async () => ({ error: { code: 'PGRST205', message: 'Could not find the table' } }),
+  }) };
+  const store = createLibraryStore({ client, userId: ME, storage: memoryStorage(), mintId: mint });
+  store.add({ name: 'Cameras' });
+  await store.flush();
+  assert.equal(store.getState().status, 'not-on-server');
+  assert.equal(store.getState().outbox.length, 1);
+  assert.equal(classifyLibraryError({ message: 'Failed to fetch' }), 'offline');
+  assert.equal(classifyLibraryError({ code: '42501', message: 'x' }), 'refused');
+});
 
-test('library: database rules', { skip: isRoot || !tool('initdb') || !tool('pg_ctl') || !tool('psql') }, () => {
-  const cluster = mkdtempSync(join(tmpdir(), 'survey-library-postgres-'));
-  const socket = join(cluster, 'socket');
-  const data = join(cluster, 'data');
-  const port = String(32000 + Math.floor(Math.random() * 10000));
-  let started = false;
-  const psql = (sql) => execFileSync(tool('psql'), ['-h', socket, '-p', port, '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-Atq'], { input: sql, encoding: 'utf8', env: pgEnv, stdio: ['pipe', 'pipe', 'pipe'] }).trim();
-  const OWNER = '11111111-1111-4111-8111-111111111111';
-  const MEMBER = '22222222-2222-4222-8222-222222222222';
-  const SOLO = '33333333-3333-4333-8333-333333333333';
-  const ORG = '44444444-4444-4444-8444-444444444444';
-  const as = (uid, sql, claims = {}) => psql(`
-    set role authenticated;
-    set request.jwt.claims = '${JSON.stringify({ sub: uid, role: 'authenticated', ...claims })}';
-    ${sql}
-  `);
-  const fails = (fn, re) => assert.throws(fn, (err) => re.test(String(err.stderr || err.message)));
-  try {
-    mkdirSync(socket);
-    execFileSync(tool('initdb'), ['-D', data, '-A', 'trust', '-U', 'postgres', '--no-locale'], { stdio: 'ignore', env: pgEnv });
-    execFileSync(tool('pg_ctl'), ['-D', data, '-l', join(cluster, 'pg.log'), '-o', `-F -k ${socket} -p ${port}`, '-w', 'start'], { stdio: 'ignore', env: pgEnv });
-    started = true;
-    psql(`
-      create role anon; create role authenticated; create role service_role;
-      create schema auth;
-      create table auth.users (id uuid primary key);
-      create function auth.jwt() returns jsonb language sql stable
-        as $$ select coalesce(nullif(current_setting('request.jwt.claims', true), ''), '{}')::jsonb $$;
-      create function auth.uid() returns uuid language sql stable
-        as $$ select nullif(auth.jwt() ->> 'sub', '')::uuid $$;
-      create function public.is_agent_session() returns boolean language sql stable
-        as $$ select coalesce(auth.jwt() ->> 'client_id', '') <> '' $$;
-      create function public.is_guest_session() returns boolean language sql stable
-        as $$ select coalesce((auth.jwt() ->> 'is_anonymous')::boolean, false) $$;
-      grant usage on schema auth to anon, authenticated;
-      grant execute on all functions in schema auth to anon, authenticated;
-      create table public.organizations (id uuid primary key);
-      create table public.organization_members (organization_id uuid, user_id uuid, role text);
-      create function public.my_org_role(p_org uuid) returns text language sql stable security definer set search_path = ''
-        as $$ select m.role from public.organization_members m where m.organization_id = p_org and m.user_id = auth.uid() $$;
-      grant usage on schema public to authenticated;
-      insert into auth.users values ('${OWNER}'), ('${MEMBER}'), ('${SOLO}');
-      insert into public.organizations values ('${ORG}');
-      insert into public.organization_members values ('${ORG}', '${OWNER}', 'owner'), ('${ORG}', '${MEMBER}', 'member');
-    `);
-    psql(readFileSync(new URL('../supabase/migrations/20261115191000_suite_library.sql', import.meta.url), 'utf8'));
+test('library store: linking templates queues the new entries and a Category Type needs a Category', async () => {
+  const server = fakeServer();
+  const store = createLibraryStore({ client: server.client, userId: ME, storage: memoryStorage(), mintId: mint, loadCompany: async () => null });
+  const { templates } = store.linkTemplates([{ id: 't', modules: [{ categories: [{ id: 'c', name: 'Cameras' }] }] }]);
+  await store.flush();
+  assert.equal(server.rows.length, 1);
+  const cameras = findEntryByName(store.getState().entries, { name: 'Cameras', scope: 'mine', userId: ME });
+  assert.equal(templates[0].modules[0].categories[0].libraryEntryId, cameras.id);
+  assert.equal(store.add({ kind: 'categoryType', name: 'PTZ' }).ok, false);
+  const ptz = store.add({ kind: 'categoryType', name: 'PTZ', parentId: cameras.id });
+  assert.equal(ptz.ok, true);
+  await store.flush();
+  assert.deepEqual(libraryOutline(store.getState().entries, { scope: 'mine', userId: ME })[0].types.map((t) => t.name), ['PTZ']);
+});
 
-    const cat = 'aaaaaaaa-0000-4000-8000-000000000001';
-    const type = 'aaaaaaaa-0000-4000-8000-000000000002';
-    const mine = 'aaaaaaaa-0000-4000-8000-000000000003';
-    // A member adds to the Company library, and a Type under it.
-    as(MEMBER, `insert into public.library_entries (id, kind, name, scope, owner_id, organization_id) values ('${cat}', 'category', 'Camera', 'company', '${MEMBER}', '${ORG}');`);
-    as(MEMBER, `insert into public.library_entries (id, kind, parent_id, name, scope, owner_id, organization_id) values ('${type}', 'categoryType', '${cat}', 'PTZ', 'company', '${MEMBER}', '${ORG}');`);
-    // The same insert again (an offline retry) is a no-op.
-    as(MEMBER, `insert into public.library_entries (id, kind, name, scope, owner_id, organization_id) values ('${cat}', 'category', 'Camera', 'company', '${MEMBER}', '${ORG}') on conflict (id) do nothing;`);
-    // A solo user's My library is theirs alone.
-    as(SOLO, `insert into public.library_entries (id, kind, name, scope, owner_id) values ('${mine}', 'category', 'Door', 'mine', '${SOLO}');`);
-    assert.equal(as(SOLO, 'select count(*) from public.library_entries;'), '1');
-    assert.equal(as(OWNER, 'select count(*) from public.library_entries;'), '2');
-    assert.equal(as(MEMBER, `select count(*) from public.library_entries where id = '${mine}';`), '0');
-    // Nobody adds to a company they are not in, or as someone else.
-    fails(() => as(SOLO, `insert into public.library_entries (kind, name, scope, owner_id, organization_id) values ('category', 'X', 'company', '${SOLO}', '${ORG}');`), /row-level security/);
-    fails(() => as(MEMBER, `insert into public.library_entries (kind, name, scope, owner_id) values ('category', 'X', 'mine', '${SOLO}');`), /row-level security/);
-    fails(() => as(MEMBER, `insert into public.library_entries (kind, name, scope, owner_id) values ('category', 'X', 'mine', '${MEMBER}');`, { client_id: 'agent' }), /row-level security/);
-    // A Type needs a Category of the same library.
-    fails(() => as(SOLO, `insert into public.library_entries (kind, parent_id, name, scope, owner_id) values ('categoryType', '${cat}', 'X', 'mine', '${SOLO}');`), /Category/);
-    // A member cannot rename or remove; the change touches no row.
-    assert.equal(as(MEMBER, `with u as (update public.library_entries set name = 'Cam' where id = '${cat}' returning 1) select count(*) from u;`), '0');
-    assert.equal(as(MEMBER, `with u as (update public.library_entries set removed_at = now() where id = '${cat}' returning 1) select count(*) from u;`), '0');
-    fails(() => as(MEMBER, `delete from public.library_entries where id = '${cat}';`), /permission denied/);
-    // The owner can; only the name or removal may change.
-    assert.equal(as(OWNER, `with u as (update public.library_entries set name = ' Cameras ' where id = '${cat}' returning name) select name from u;`), 'Cameras');
-    fails(() => as(OWNER, `update public.library_entries set scope = 'mine', organization_id = null where id = '${cat}';`), /Only the name/);
-    as(OWNER, `update public.library_entries set removed_at = now() where id = '${cat}';`);
-    assert.equal(psql(`select count(*) from public.library_entries where removed_at is not null;`), '1', 'removed, not deleted');
-  } finally {
-    if (started) { try { execFileSync(tool('pg_ctl'), ['-D', data, '-m', 'immediate', 'stop'], { stdio: 'ignore', env: pgEnv }); } catch { /* already down */ } }
-    rmSync(cluster, { recursive: true, force: true });
-  }
+test('library: the migration keeps the rules the app relies on', () => {
+  const sql = readFileSync(new URL('../supabase/migrations/20261115180000_suite_library.sql', import.meta.url), 'utf8');
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS public\.library_entries/);
+  assert.match(sql, /REVOKE DELETE, TRUNCATE ON public\.library_entries FROM authenticated/);
+  assert.match(sql, /my_org_role\(p_company\) IN \('owner', 'admin'\)/);
+  assert.match(sql, /Only the name of a library entry can change/);
+  assert.doesNotMatch(sql, /ALTER TABLE public\.(templates|documents|projects)/, 'new table only');
+});
+
+test('library store: the first read loads the company once, so a member links into the Company library', async () => {
+  const server = fakeServer({ role: 'member' });
+  let companyReads = 0;
+  const store = createLibraryStore({ client: server.client, userId: ME, storage: memoryStorage(), mintId: mint, loadCompany: async () => { companyReads += 1; return COMPANY; } });
+  await Promise.all([store.ready(), store.ready()]);
+  assert.equal(companyReads, 1);
+  const { created } = store.linkTemplates([{ id: 't', modules: [{ categories: [{ id: 'c', name: 'Intercoms' }] }] }]);
+  assert.equal(created[0].scope, 'company');
+  await store.flush();
+  assert.equal(server.rows[0].company_id, 'org-1');
 });

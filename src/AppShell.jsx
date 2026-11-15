@@ -160,7 +160,6 @@ import useSpotlight from './spotlight/useSpotlight.js';
 import { clearSpotlightGo, setSpotlightDocument, setSpotlightIdentity } from './services/annotationSpotlight.js';
 import { SHEET_VIEW_EVENT, narrowSheets, parseGridColumns, projectSheets, sheetStepForKey, steppedSheet, storedProjectOrder } from './sheets/sheetSet.js';
 import { DEVICE_FILE_LEAVE_EVENT } from './services/deviceFiles.js';
-import { suiteWord } from './suite/suiteWords.js';
 
 // Nightly 'page-spreads': Drawboard's View settings names (pageSpreads.js).
 const PAGE_SPREAD_OPTIONS = Object.freeze([
@@ -3454,7 +3453,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     }
                     : { label: 'Export annotated PDF', icon: 'download', onSelect: bottomToolbarApi.exportAnnotatedPdf },
                   {
-                    label: suiteWord('Export markup (XFDF)'),
+                    label: 'Export annotations (XFDF)',
                     icon: 'download',
                     title: 'Your marks in a separate file for Acrobat or Bluebeam. Your PDF stays the same.',
                     onSelect: bottomToolbarApi.exportXfdf,

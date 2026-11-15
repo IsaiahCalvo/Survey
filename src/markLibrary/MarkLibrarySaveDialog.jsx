@@ -24,7 +24,6 @@ import {
   sortLibraryItems,
   summarizeLibraryKinds,
 } from './markLibraryModel.js';
-import { suiteWord } from '../suite/suiteWords.js';
 
 const NEW_ITEM = '__new__';
 
@@ -180,11 +179,11 @@ export default function MarkLibrarySaveDialog({ open, payload, onClose }) {
             </div>
           )}
           <label style={{ display: 'block' }}>
-            <span style={DIALOG_LABEL_STYLE}>{suiteWord('Tags (comma between them)')}</span>
+            <span style={DIALOG_LABEL_STYLE}>Tags (comma between them)</span>
             <input
               className="dialog-prompt-input"
               type="text"
-              aria-label={suiteWord('Tags')}
+              aria-label="Tags"
               value={tagText}
               placeholder="Electrical, Review"
               onChange={(e) => setTagText(e.target.value)}

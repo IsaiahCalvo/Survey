@@ -196,6 +196,15 @@ export function layoutProblems(layout) {
   return problems;
 }
 
+/**
+ * Columns a person types words into (names, notes, pick-one and text
+ * answers), kept as text in the sheet so "00123", "1/2" or "50%" stay as
+ * typed instead of turning into a number, a date or a percent.
+ */
+const TEXT_ANSWER_KINDS = new Set(['choice', 'text', 'many']);
+export const isTextColumn = (column) => ['rowId', 'changedBy', 'item', 'entity', 'notes', 'status', 'assignee'].includes(column?.key)
+  || (String(column?.key || '').startsWith('answer:') && TEXT_ANSWER_KINDS.has(column.item?.kind || 'choice'));
+
 /** Whether a sheet edit to this column may change the marker. */
 export function columnIsEditable(column) {
   if (!column) return false;

@@ -11,7 +11,6 @@ import PdfPageThumb from './PdfPageThumb';
 import { PdfThumb } from './HubShell';
 import { LIST_DENSITIES, allTags, hasTag, parseTagInput } from './homeLibrary.js';
 import './homeLibrary.css';
-import { suiteWord, labelCellName } from '../suite/suiteWords.js';
 
 const VIEW_LABEL = { all: 'All files', 'shared-by-me': 'Shared by me', 'shared-with-me': 'Shared with me' };
 
@@ -69,7 +68,7 @@ export function TagPopover({ anchorRect, docs, tagsByDoc, onAdd, onRemove, onClo
       <div
         ref={ref}
         role="dialog"
-        aria-label={`Tags for ${title}`}
+        aria-label={`Labels for ${title}`}
         className="home-tag-popover"
         data-home-tag-popover=""
         style={pos ? { top: pos.top, left: pos.left } : { top: -9999, left: -9999 }}
@@ -84,16 +83,16 @@ export function TagPopover({ anchorRect, docs, tagsByDoc, onAdd, onRemove, onClo
             ref={inputRef}
             value={text}
             onChange={(event) => setText(event.target.value)}
-            placeholder={suiteWord('Separate tags with commas')}
-            aria-label={suiteWord('New tags')}
+            placeholder="Separate labels with commas"
+            aria-label="New labels"
             maxLength={400}
           />
-          <button type="submit" className="hub-icon-btn" aria-label={suiteWord('Add tags')} disabled={!parseTagInput(text).length}>
+          <button type="submit" className="hub-icon-btn" aria-label="Add labels" disabled={!parseTagInput(text).length}>
             <Icon name="plus" size={14} />
           </button>
         </form>
         {known.length > 0 ? (
-          <div className="home-tag-popover__chips" role="group" aria-label="Your tags">
+          <div className="home-tag-popover__chips" role="group" aria-label="Your labels">
             {known.map((tag) => {
               const on = onAll(tag);
               return (
@@ -110,7 +109,7 @@ export function TagPopover({ anchorRect, docs, tagsByDoc, onAdd, onRemove, onClo
             })}
           </div>
         ) : (
-          <div className="home-tag-popover__empty">Tags you add show here, ready to reuse.</div>
+          <div className="home-tag-popover__empty">Labels you add show here, ready to reuse.</div>
         )}
       </div>
     </>,
@@ -130,7 +129,7 @@ export function TagCell({ tags, onOpen, compact = false }) {
       data-home-tag-cell=""
       onClick={(event) => { event.stopPropagation(); onOpen(event.currentTarget.getBoundingClientRect()); }}
       onDoubleClick={(event) => event.stopPropagation()}
-      aria-label={tags?.length ? labelCellName(tags) : suiteWord('Add tag')}
+      aria-label={tags?.length ? `Labels: ${tags.join(', ')}. Edit labels` : 'Add label'}
     >
       {tags?.length ? (
         <>
@@ -138,7 +137,7 @@ export function TagCell({ tags, onOpen, compact = false }) {
           {more > 0 ? <span className="home-tag-chip is-more">+{more}</span> : null}
         </>
       ) : (
-        <><Icon name="tag" size={12} color="currentColor" />{suiteWord('Add tag')}</>
+        <><Icon name="tag" size={12} color="currentColor" />Add label</>
       )}
     </button>
   );
@@ -185,7 +184,7 @@ export function HomeNavSection({ views, view, counts, tags, tag, onView, onTag }
               <span className="home-nav-item__label">{row.tag}</span>
               <span className="home-nav-item__count">{row.count}</span>
             </button>
-          )) : <div className="home-nav-empty">{suiteWord('No tags yet')}</div>)}
+          )) : <div className="home-nav-empty">No labels yet</div>)}
         </>
       ) : null}
     </div>

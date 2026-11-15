@@ -1,4 +1,5 @@
 // src/services/importFieldWhitelist.js
+import { freezeSuiteFields, stripSuiteFields } from '../survey/suiteMarkerFields.js';
 //
 // Stage 0 attribute-only import boundary. Excel is an asynchronous attribute
 // mirror: an import may edit answers / name / note / entity and may PROPOSE a
@@ -24,9 +25,9 @@ export const IMPORTABLE_MARKER_FIELDS = Object.freeze([
 // Geometry / placement fields an import must never write.
 export const GEOMETRY_FIELDS = Object.freeze(['pageNumber', 'bounds']);
 
-// The Kal Voe suite id (KAL-588) is the device's identity across Walkthru,
-// Plot and Survey: only the app sets it, never a workbook.
-export const IMPORT_FROZEN_FIELDS = Object.freeze(['suiteId']);
+// Kal Voe suite fields (KAL-588): the shared id, library links and place.
+// Excel can never write them; an import keeps the marker's own.
+export { SUITE_MARKER_FIELDS } from '../survey/suiteMarkerFields.js';
 
 /**
  * Force a marker to be unplaced (no geometry). Used when an import CREATES a new
@@ -37,9 +38,8 @@ export const IMPORT_FROZEN_FIELDS = Object.freeze(['suiteId']);
  * @returns {object}  the same marker with geometry forced null
  */
 export function forceUnplacedImportedMarker(marker) {
-  const out = { ...marker, pageNumber: null, bounds: null };
-  for (const field of IMPORT_FROZEN_FIELDS) delete out[field];
-  return out;
+  // A row made from a workbook brings no shared id or place from the sheet.
+  return { ...stripSuiteFields(marker), pageNumber: null, bounds: null };
 }
 
 /**
@@ -52,13 +52,10 @@ export function forceUnplacedImportedMarker(marker) {
  * @returns {object}  `updated` with original geometry restored
  */
 export function freezeGeometryFromOriginal(updated, original) {
-  const safe = { ...updated };
+  // The suite fields (shared id, library links, place) are frozen the same way.
+  const safe = original ? freezeSuiteFields(updated, original) : stripSuiteFields(updated);
   for (const field of GEOMETRY_FIELDS) {
     safe[field] = original ? original[field] ?? null : null;
-  }
-  for (const field of IMPORT_FROZEN_FIELDS) {
-    if (original && original[field] !== undefined) safe[field] = original[field];
-    else delete safe[field];
   }
   return safe;
 }

@@ -135,8 +135,8 @@ export default function MarkupsPanel({
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search markups"
-            aria-label="Search markups"
+            placeholder="Search annotations"
+            aria-label="Search annotations"
           />
         </div>
         <button
@@ -211,7 +211,7 @@ export default function MarkupsPanel({
 
       <div className="markups-panel__summary" aria-live="polite">
         {rows.length === 0
-          ? 'No markups yet. Marks you draw show up here.'
+          ? 'No annotations yet. Marks you draw show up here.'
           : filtered
             ? `${shown.length} of ${rows.length} markups`
             : `${rows.length} ${rows.length === 1 ? 'markup' : 'markups'}`}

@@ -29,7 +29,6 @@ import {
 } from './projectPhotos.js';
 import { downloadPhotoBlob, useProjectPhotos } from './projectPhotosData.js';
 import './projectPhotos.css';
-import { suiteWord } from '../suite/suiteWords.js';
 
 const canEditRole = (role) => role === 'owner' || role === 'editor';
 
@@ -155,7 +154,7 @@ function PhotoViewer({ photos, index, setIndex, urls, data, lookupMember, itemLa
     setBusy(false);
     if (res.error) { showToast(`Survey could not save the markup. ${res.error}`, 'error'); return; }
     setEditing(false);
-    showToast(suiteWord('Markup saved'), 'success');
+    showToast('Annotations saved', 'success');
   };
   const backToOriginal = async () => {
     const res = await data.clearMarkup(photo.id);
