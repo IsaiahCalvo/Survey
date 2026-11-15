@@ -580,6 +580,9 @@ export async function planSheetRound({
       continue;
     }
     const rows = Array.isArray(sheet.rows) ? sheet.rows : [];
+    // Cells hidden under a merged area (all but its top-left), when the host says.
+    const merges = Array.isArray(sheet.merges) ? sheet.merges : [];
+    const coveredByMerge = (r, c) => merges.some((m) => r >= m.r0 && r < m.r1 && c >= m.c0 && c < m.c1 && (r !== m.r0 || c !== m.c0));
     const remembered = next.headers[scope.scopeId] || {};
     const headerAt = findHeaderRow(scope, rows, remembered);
     const header = rows[headerAt] || [];
@@ -1515,9 +1518,15 @@ export async function planSheetRound({
       // A cell that would not keep Survey's last write (merged cells) and is
       // still blank: blank is not the PM clearing it, so it counts as
       // unchanged and is not written again. Once it holds a value it syncs.
+      // A cell someone merged into a cell above or to its left reads blank
+      // too (Google keeps only the top-left value; real Google 11-15: merging
+      // two Notes cells wiped the lower note in the app): the same, from the
+      // first round, without waiting for a write to bounce off it.
       const stuckKeys = new Set();
       for (const key of keys) {
         const flag = `${markerId}|${key}`;
+        const col = colOfKey.get(key);
+        if (col != null && coveredByMerge(r, col)) next.stuck[flag] = true;
         if (!next.stuck[flag]) continue;
         if (colOfKey.has(key) && isBlankCell(row[colOfKey.get(key)])) stuckKeys.add(key);
         else delete next.stuck[flag];

@@ -90,7 +90,11 @@ function batchUpdate(f, requests) {
         for (let c = 0; c < values.length; c += 1) {
           const col = body.start.columnIndex + c;
           if (col >= sheet.columnCount) return { error: gErr(400, `Range exceeds grid limits (column ${col})`) };
-          setCell(sheet, body.start.rowIndex + r, col, plain(values[c]));
+          // Google keeps only the top-left value of a merged area.
+          const row = body.start.rowIndex + r;
+          if ((sheet.merges || []).some((m) => row >= m.startRowIndex && row < m.endRowIndex && col >= m.startColumnIndex && col < m.endColumnIndex
+            && (row !== m.startRowIndex || col !== m.startColumnIndex))) continue;
+          setCell(sheet, row, col, plain(values[c]));
         }
       }
       replies.push({});
@@ -252,6 +256,7 @@ export async function fakeGoogleHandler(req) {
         sheets: f.sheets.map((s) => ({
           properties: { sheetId: s.sheetId, title: s.title, gridProperties: { rowCount: s.rowCount, columnCount: s.columnCount } },
           data: [{ rowData: s.rows.map((row) => ({ values: (row || []).map(effective) })) }],
+          ...(s.merges?.length ? { merges: s.merges } : {}),
         })),
       });
     }
@@ -278,6 +283,7 @@ export async function fakeGoogleHandler(req) {
         sheets: [...bySheet.values()].map(({ sheet, data }) => ({
           properties: { sheetId: sheet.sheetId, title: sheet.title, gridProperties: { rowCount: sheet.rowCount, columnCount: sheet.columnCount } },
           data,
+          ...(sheet.merges?.length ? { merges: sheet.merges } : {}),
         })),
       });
     }
