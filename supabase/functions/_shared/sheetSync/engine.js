@@ -1008,7 +1008,7 @@ export async function planSheetRound({
       // Moves worth trying: for each column, the one or two `by` most of its
       // changed cells agree on, from its first changed row.
       const candidates = new Map();
-      for (const column of rowsMoved || live.length < SHUFFLE_MIN ? [] : editable) {
+      for (const column of rowsMoved ? [] : editable) {
         const key = column.key;
         const changed = live.filter((x) => usable(x, key) && getFp(x.sheetFps, key) !== getFp(x.fields, key));
         if (!changed.length) continue;
@@ -1017,6 +1017,16 @@ export async function planSheetRound({
           for (let by = -SHIFT_MAX; by <= SHIFT_MAX; by += 1) {
             const from = by && atRow.get(x.r - by);
             if (from && getFp(from.fields, key) === getFp(x.sheetFps, key)) votes.set(by, (votes.get(by) || 0) + 1);
+          }
+        }
+        // A value pushed off the end of the list votes too: on the last item
+        // or two, a move down changes too few list cells to show otherwise.
+        for (let r = lastItem + 1; r <= lastItem + SHIFT_MAX && tailRow(r); r += 1) {
+          if (isBlankCell((rows[r] || [])[colOfKey.get(key)])) continue;
+          for (let by = 1; by <= SHIFT_MAX; by += 1) {
+            const from = atRow.get(r - by);
+            if (from && usable(from, key) && getFp(from.fields, key) === getFp(fpsAt(r), key)
+              && getFp(from.sheetFps, key) !== getFp(from.fields, key)) votes.set(by, (votes.get(by) || 0) + 1);
           }
         }
         // The move can start a few rows above the first changed cell, where
@@ -1035,8 +1045,36 @@ export async function planSheetRound({
       const shifted = new Map(); // key -> { by, k, cells }
       const moves = [];
       const strength = (f) => f.fit + f.tail + f.gap;
+      // Rows under the list holding nothing but the values a move down
+      // pushed there: no Row ID, no PM column, and every filled synced cell
+      // the value of the item `by` rows above.
+      const cleanTail = (f) => {
+        if (f.by <= 0 || !f.tail) return false;
+        const synced = new Set(scope.columns.map((c) => colOfKey.get(c.key)).filter((c) => c != null));
+        for (let r = lastItem + 1; r <= lastItem + f.by && r < rows.length; r += 1) {
+          if (!tailRow(r)) return false;
+          const row = rows[r] || [];
+          const from = atRow.get(r - f.by);
+          if (row.some((c, i) => !isBlankCell(c) && !synced.has(i))) return false;
+          for (const c of editable) {
+            if (isBlankCell(row[colOfKey.get(c.key)])) continue;
+            if (!from || r - f.by < f.k || getFp(fpsAt(r), c.key) !== getFp(from.fields, c.key)) return false;
+          }
+        }
+        return true;
+      };
       const taken = (fits) => {
         const solo = fits.some((f) => f.fit >= 2 && ((strength(f) >= SHUFFLE_MIN && new Set(f.values).size >= 3) || (strength(f) >= 3 && f.seen >= 3)));
+        // Cells inserted on the last item or two ("Shift cells down"): the
+        // list shows only a gap and a fit or two, but the value pushed off the
+        // end sits under the list on its own, which a person's edit does not
+        // leave. A move up ("Shift cells up") pulls in only a blank, which
+        // reads exactly like a person clearing a cell or moving a value, so
+        // it still needs the evidence above.
+        const pushedOff = fits.length && fits.every((f) => f.by > 0) && fits.some((f) => f.tail >= 1 && strength(f) >= 2 && cleanTail(f));
+        if (pushedOff) return true;
+        // A list this short shows a move only by what it pushed off the end.
+        if (live.length < SHUFFLE_MIN) return false;
         const backing = fits.filter((f) => f.fit + f.tail >= 1 && strength(f) >= 2);
         const pooled = backing.length >= 2 && backing.reduce((n, f) => n + f.fit + f.tail, 0) >= 3
           && backing.reduce((n, f) => n + strength(f), 0) >= SHUFFLE_MIN && new Set(backing.flatMap((f) => f.values)).size >= 3;
@@ -1092,7 +1130,7 @@ export async function planSheetRound({
         }
         const heads = editable.filter((c) => shifted.has(c.key)).map((c) => `"${c.header}"`);
         const list = heads.length > 1 ? `${heads.slice(0, -1).join(', ')} and ${heads[heads.length - 1]}` : heads[0];
-        notice({ scopeId: scope.scopeId, message: `Cells in ${list} in "${sheet.title}" were inserted or deleted on their own, apart from the rest of each row, so values moved onto other markers' rows. Survey put each value back on its own marker (${cells} cells)${typedRows ? `, and moved the new ${typedRows === 1 ? 'row' : 'rows'} typed in the gap under the list` : ''}. To add or remove a marker's row, insert or delete the entire row.` });
+        notice({ scopeId: scope.scopeId, message: `Cells in ${list} in "${sheet.title}" were inserted or deleted on their own, apart from the rest of each row, so values moved onto other markers' rows. Survey put each value back on its own marker (${cells} ${cells === 1 ? 'cell' : 'cells'})${typedRows ? `, and moved the new ${typedRows === 1 ? 'row' : 'rows'} typed in the gap under the list` : ''}. To add or remove a marker's row, insert or delete the entire row.` });
       }
 
       // Cells deleted or inserted sideways in some rows ("Shift cells left"
