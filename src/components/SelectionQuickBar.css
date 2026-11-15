@@ -584,7 +584,7 @@ body:has(.mobile-pdf-sheet:not(.is-collapsed)) .selection-quick-bar[data-phone='
   margin: 0 4px;
   padding: 0 8px;
   border: 0;
-  border-radius: 13px;
+  border-radius: var(--radius-pill);
   background: var(--surface-3, rgba(255, 255, 255, 0.12));
   color: var(--text-1);
   font: inherit;
