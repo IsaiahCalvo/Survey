@@ -160,8 +160,8 @@ export default function SurveyMarkerPlacementDialog({ marker, template, category
             type="text"
             className="survey-place__name"
             data-survey-place-name="true"
-            aria-label="Survey Marker name"
-            placeholder={defaultName || 'Name'}
+            aria-label="Survey Marker tag"
+            placeholder={defaultName || 'Tag'}
             value={name ?? defaultName}
             maxLength={120}
             autoComplete="off"

@@ -1178,7 +1178,7 @@ export default function PrintPanel({
           <span className="pp-section-title">Output</span>
         </div>
         <div className="pp-tog-row">
-          <Toggle on={markupsOn} onChange={setMarkupsOn}>Markups</Toggle>
+          <Toggle on={markupsOn} onChange={setMarkupsOn}>Annotations</Toggle>
           <Toggle on={colorOn} onChange={setColorOn}>Color</Toggle>
         </div>
       </div>

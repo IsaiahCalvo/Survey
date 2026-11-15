@@ -88,7 +88,7 @@ export const FEATURE_FLAGS = Object.freeze({
     stage: 'beta',
   }),
   layers: Object.freeze({
-    label: 'Layers panel (markup layers + PDF content opacity)',
+    label: 'Layers panel (annotation layers + PDF content opacity)',
     stage: 'rollout',
   }),
   'pinned-tools': Object.freeze({
@@ -217,7 +217,7 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   // Drawboard Projects round 2 (2026-11-10): review status per drawing.
   'document-review': Object.freeze({
-    label: 'Document review: status, owner and markup count on each document, with filter chips',
+    label: 'Document review: status, owner and annotation count on each document, with filter chips',
     stage: 'beta',
   }),
   // Drawboard phone apps (2026-11-10): PDFs opened from Files, Mail or Teams.
@@ -243,7 +243,7 @@ export const FEATURE_FLAGS = Object.freeze({
   // Drawboard (2026-11-10): every mark in one list, with search, filters,
   // measurement totals and a CSV.
   'markup-list': Object.freeze({
-    label: 'Markups panel: every mark in one list with search, filters, measurement totals and a CSV',
+    label: 'Annotations panel: every mark in one list with search, filters, measurement totals and a CSV',
     stage: 'beta',
   }),
   'measure-scale-chip': Object.freeze({
@@ -352,7 +352,7 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   // Drawboard Home parity (2026-11-10), one flag each so Isaiah can pick.
   'home-tags': Object.freeze({
-    label: 'Home: your own tags on documents (row chips, Tags list, search by tag)',
+    label: 'Home: your own labels on documents (row chips, Labels list, search by label)',
     stage: 'beta',
   }),
   'home-shared-views': Object.freeze({
@@ -618,6 +618,12 @@ export const FEATURE_FLAGS = Object.freeze({
     // Desktop too: Cmd/Ctrl+S saves back to the opened file only while no
     // other app changed it, and a change there is said at once.
     label: 'Edits made in Adobe (or any PDF app): new-version uploads bring them across; desktop saves back to the opened file and notices changes',
+    stage: 'beta',
+  }),
+  // Kal Voe suite groundwork (spec KAL-584): the shared library (KAL-585) and
+  // the shared id and places on Survey Markers (KAL-588).
+  suite: Object.freeze({
+    label: 'Kal Voe suite: My library / Company library, shared ids and places on Survey Markers',
     stage: 'beta',
   }),
 });

@@ -13,7 +13,7 @@ import { isFeatureOn } from '../featureFlags.js';
 import HelpSupportDialog from '../help/HelpSupportDialog.jsx';
 import { useTooltip } from '../components/Tooltip';
 import { isDocumentDrag, readDocumentDragIds } from './documentSelection.js';
-import { releaseChannel } from '../featureFlags.js';
+import { isFeatureOn, releaseChannel } from '../featureFlags.js';
 import { NIGHTLY_COLOR } from '../nightlyBrand.js';
 
 const IS_MAC = typeof navigator !== 'undefined'
@@ -575,6 +575,9 @@ const ProjectDropList = ({ projects = [], onDrop }) => {
 // are dragged; the rail then lists the projects as drop targets.
 // documentsNav (optional): a node shown under Documents in the side bar (the
 // Home views and Tags list, Nightly flags home-shared-views / home-tags).
+// Read once at load, like every feature flag (a /flags change shows on reload).
+const SUITE_LIBRARY_ON = (() => { try { return isFeatureOn('suite'); } catch { return false; } })();
+
 export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userName = 'You', userMeta = undefined, templatesLocked = false, mobileSwipeSurfaceRef = undefined, dropProps = undefined, projectDrop = null, documentsNav = null }) => {
   const tip = useTooltip();
   const expoNativeShell = isExpoNativeShell();
@@ -602,6 +605,8 @@ export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userN
     ['documents', 'doc', 'Documents', false],
     ['projects', 'folder', 'Projects', false],
     ['templates', 'template', 'Templates', templatesLocked],
+    // Kal Voe suite (KAL-585, Nightly flag 'suite'): My library / Company library.
+    ...(SUITE_LIBRARY_ON ? [['library', 'library', 'Library', false]] : []),
   ];
   // KAL-280 — Archive is a recovery destination, not somewhere you work, so it
   // must never compete with the three main tabs for attention. It renders in its

@@ -58,7 +58,7 @@ test('home row menus draw their rows through MenuRows, not by hand', () => {
 test('desktop and phone name the exports the same way', () => {
   const desktop = read('src/AppShell.jsx');
   const phone = read('src/mobile/MobilePdfViewerChrome.jsx');
-  for (const label of ['Export annotated PDF', 'Export markup (XFDF)', 'Export review package (ZIP)']) {
+  for (const label of ['Export annotated PDF', 'Export annotations (XFDF)', 'Export review package (ZIP)']) {
     assert.ok(desktop.includes(`'${label}'`), `desktop export menu lacks "${label}"`);
     assert.ok(phone.includes(label), `phone menu lacks "${label}"`);
   }
