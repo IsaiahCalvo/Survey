@@ -78,7 +78,7 @@ test('typed subject names the picked marks, shows in Markups, mixes, clears and 
 
     // The Markups list shows each mark by its subject.
     await page.keyboard.press('Escape');
-    await page.getByRole('button', { name: 'Markups', exact: true }).filter({ visible: true }).first().click();
+    await page.getByRole('button', { name: 'Annotations', exact: true }).filter({ visible: true }).first().click();
     const rows = page.getByTestId('markups-panel').locator('[data-markup-row]');
     await expect(rows).toHaveCount(2);
     await expect(rows.filter({ hasText: 'Exit sign' })).toHaveCount(1);
