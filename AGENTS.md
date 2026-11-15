@@ -1,5 +1,11 @@
 # Survey BetaSafeS2 — Agent Instructions (Codex / non-Claude agents)
 
+## Kal Voe suite rules — read first
+
+This repo is one of three suite apps (Walkthru, Plot, Survey). Read
+`docs/suite/SUITE-RULES.md` before building any ticket: check the ticket isn't
+taken, claim it, start from the newest default branch.
+
 Distilled from CLAUDE.md 2026-07-10 (Claude-specific hook/memory sections omitted — do not
 assume `~/.claude` loads for you). Full history and gotchas live in CLAUDE.md if you need depth.
 
