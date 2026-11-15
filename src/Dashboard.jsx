@@ -29,6 +29,7 @@ import { retryCompensatingCleanup, runCompensatingBatch } from './home/compensat
 import { readPdfPageCount, mapUploadsBounded } from './home/pdfUploadWork.js';
 import { DOCUMENT_VERSIONS_CHANGED_EVENT, supersedeDocument } from './services/documentVersionService.js';
 import { isFeatureOn } from './featureFlags.js';
+import { linkTemplatesForSave } from './library/suiteLibrary.js';
 import { OPEN_FILE_EVENT, takeOpenedFiles } from './mobile/nativeOpenFile.js';
 import { PHOTO_ACCEPT, isPhotoFile, photoToPdfFile, photosAsPdfs } from './home/photoToPdf.js';
 import { deviceFilesOn, keepFileOnDevice, openDeviceFile, saveDeviceFileToAccount } from './home/deviceFileActions.js';
@@ -2495,7 +2496,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     if (!Array.isArray(nextTemplates)) return;
     try {
       if (user) {
-        const freshRows = await persistTemplates(nextTemplates);
+        // Kal Voe suite (KAL-585, flag 'suite'): every named Category saves
+        // itself into the library and keeps a link to its entry.
+        const freshRows = await persistTemplates(await linkTemplatesForSave(nextTemplates, { userId: user.id }));
         updateTemplates(mapAuthoritativeTemplateRows(freshRows));
       } else {
         localStorage.setItem('templates', JSON.stringify(nextTemplates));

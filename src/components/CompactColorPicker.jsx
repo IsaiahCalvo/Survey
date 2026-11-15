@@ -173,7 +173,7 @@ const COLOUR_TRIGGER_SELECTOR = [
     'button[aria-label="Edit color"]',
     'button[aria-label="Text color"]',
     'button[aria-label="Font color"]',
-    'button[aria-label="Text markup color and opacity"]',
+    'button[aria-label="Text annotation color and opacity"]',
     'button[aria-label="Open Text color picker"]',
     '.quick-style__swatch',
     '.quick-style__dot--custom',

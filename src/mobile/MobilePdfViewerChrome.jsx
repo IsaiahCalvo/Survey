@@ -1846,7 +1846,7 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
           data-mobile-tool-properties="true"
           data-mobile-text-markup-controls={textMarkup.editingSelection ? 'edit' : 'create'}
           role="toolbar"
-          aria-label={textMarkup.editingSelection ? 'Edit text markup' : 'Text markup defaults'}
+          aria-label={textMarkup.editingSelection ? 'Edit text annotation' : 'Text annotation defaults'}
           ref={topOverlayRef}
         >
           {/* UX 2026-09-17 (owner): the same four quick colours the desktop
@@ -1867,8 +1867,8 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
                the class that used to put a gold ring here has had no rule behind
                it since the owner reversed that on 2026-09-21. */
             className="mobile-pdf-properties__color"
-            aria-label="Text markup color and opacity"
-            {...tip('Text markup color and opacity', 'left')}
+            aria-label="Text annotation color and opacity"
+            {...tip('Text annotation color and opacity', 'left')}
             aria-expanded={Boolean(api.showAnnotationColorPicker)}
             onClick={() => api.setShowAnnotationColorPicker?.(true)}
           >
@@ -1887,7 +1887,7 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
         </div>
         {api.showAnnotationColorPicker && (
           <MobileColorPickerSurface
-            title="Text markup color"
+            title="Text annotation color"
             color={markupColor}
             opacity={markupOpacity}
             minOpacity={0.05}
@@ -3437,7 +3437,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                 }}
               >
                 <Icon name="download" size={16} color="currentColor" />
-                Export markup (XFDF)
+                Export annotations (XFDF)
               </button>
               {/* KAL-410: marks, change log and page pictures in one ZIP. */}
               <button
@@ -3662,7 +3662,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
 }
 
 export function MobilePdfViewerDock({ onOpenPanel, onToggleHub, onOpenSurvey, hubMode = 'pages', hubOpen = false, spacesActive, surveyActive, covered = false, openPanel = null }) {
-  const hubLabels = { pages: 'Pages', search: 'Search', bookmarks: 'Bookmarks', layers: 'Layers', library: 'Library', comments: 'Comments', markups: 'Markups' };
+  const hubLabels = { pages: 'Pages', search: 'Search', bookmarks: 'Bookmarks', layers: 'Layers', library: 'Library', comments: 'Comments', markups: 'Annotations' };
   // Pages draws the desktop rail's Pages glyph (PDFSidebar), not the document.
   const hubIcons = { pages: 'pages', search: 'search', bookmarks: 'bookmark', layers: 'shapes', library: 'library', comments: 'comment', markups: 'listChecks' };
   // `covered`: a phone panel is open over the dock. The dock stays mounted

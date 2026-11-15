@@ -127,7 +127,7 @@ async function saveSelection(page, frame, { name, library, tags }) {
     await card.getByRole('button', { name: 'Library', exact: true }).click();
     await page.getByRole('listbox', { name: 'Library' }).getByRole('option', { name: library }).click();
   }
-  if (tags) await card.getByLabel('Tags').fill(tags);
+  if (tags) await card.getByLabel('Labels').fill(tags);
   await card.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(card).toHaveCount(0);
 }

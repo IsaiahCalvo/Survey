@@ -95,7 +95,7 @@ export default function TextSelectionActionBar({
       <div
         className="text-selection-action-bar__toolbar"
         role="toolbar"
-        aria-label="Text markup toolbar"
+        aria-label="Text annotation toolbar"
         aria-orientation="horizontal"
         onKeyDown={moveToolbarFocus}
         onPointerDown={(event) => { if (!event.target.closest('input, [data-text-link-control]')) event.preventDefault(); }}
