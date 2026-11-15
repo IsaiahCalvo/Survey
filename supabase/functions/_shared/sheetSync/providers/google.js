@@ -369,6 +369,18 @@ export function googleSheetsProvider({ endpoints, getAccessToken, fetchImpl = fe
       })));
     },
 
+    // A heading row sorted into the list (engine findSortedHeader) back on
+    // top, in one batch: cells inserted above row 1 in its columns, the
+    // headings written there, the old heading cells taken out.
+    async moveHeaderUp(fileId, { sheetId, row, c1, c2, header }) {
+      const span = (r) => ({ sheetId: Number(sheetId), startRowIndex: r, endRowIndex: r + 1, startColumnIndex: c1, endColumnIndex: c2 + 1 });
+      await batchUpdate(fileId, [
+        { insertRange: { range: span(0), shiftDimension: 'ROWS' } },
+        { updateCells: { start: { sheetId: Number(sheetId), rowIndex: 0, columnIndex: c1 }, rows: [{ values: header.map((v) => headerCell(v)) }], fields: 'userEnteredValue,userEnteredFormat' } },
+        { deleteRange: { range: span(row + 1), shiftDimension: 'ROWS' } },
+      ]);
+    },
+
     async createFile({ title, layout }) {
       const book = await call(`${endpoints.sheets}/v4/spreadsheets`, {
         method: 'POST',

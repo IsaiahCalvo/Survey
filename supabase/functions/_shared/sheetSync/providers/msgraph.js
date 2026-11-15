@@ -804,6 +804,17 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
       for (const run of runs.slice(done)) await cutRows(fileId, run);
     },
 
+    // A heading row sorted into the list (engine findSortedHeader) back on
+    // top: cells inserted above row 1 in its columns, the headings written
+    // there, and the old heading cells taken out. Excel moves the rows
+    // between, so dates, formulas and formats stay as they are.
+    async moveHeaderUp(fileId, { sheetId, row, c1, c2, header }) {
+      const at = (r) => `${cellAddress(r, c1)}:${cellAddress(r, c2)}`;
+      await workbook(fileId, 'POST', `${sheetPath(sheetId)}/range(address='${at(0)}')/insert`, { body: { shift: 'Down' }, where: 'moveHeader', discard: true });
+      await writeBlock(fileId, sheetId, 0, c1, [header.map((v) => cellValueForWrite(v))]);
+      await workbook(fileId, 'POST', `${sheetPath(sheetId)}/range(address='${at(row + 1)}')/delete`, { body: { shift: 'Up' }, where: 'moveHeader', discard: true });
+    },
+
     // The folders inside one folder, by name. At the top of the person's
     // OneDrive, a SharePoint/Teams folder they added as a shortcut comes back
     // in `places` with the folder string that opens it.

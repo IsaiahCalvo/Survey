@@ -291,3 +291,30 @@ test('a PM flipping three Y / N cells in a pattern that looks like a shift up: s
   assert.deepEqual(yn.map((_, i) => ctx.markers[`d${i + 1}`].checklistResponses?.c1?.selection ?? ''), ['Y', 'Y', 'Y', '', 'N', '', '']);
   assert.ok(!said(ctx));
 });
+
+test('Remove Duplicates on the visible columns (rows taken out at two places): every marker keeps its own row', async () => {
+  // Real Excel 11-15 (Data > Remove Duplicates with the hidden Row ID column
+  // left out): rows went at two places, the rest moved up under other Row
+  // IDs, and six markers took the next markers' names and notes in the app.
+  const names = ['D-101', 'D-102', 'D-103', 'D-103', 'D-105', 'D-106', 'D-106', 'D-108', 'D-109', 'D-110'];
+  const notes = ['pear', 'apple', 'kiwi', 'kiwi', 'plum', 'date', 'date', 'banana', 'lemon', 'mango'];
+  const ctx = await setup({ markers: Object.fromEntries(names.map((n, i) => [`d${i + 1}`, door(`d${i + 1}`, n, { note: { text: notes[i] } })])) });
+  await ctx.round(); await ctx.round({ force: true });
+  const sheet = await ctx.sheet();
+  const width = sheet.rows[0].length;
+  const seen = new Set(); const kept = [];
+  for (const row of sheet.rows.slice(1, 11)) {
+    const key = JSON.stringify(row.slice(1));
+    if (!seen.has(key)) { seen.add(key); kept.push(row.slice(1)); }
+  }
+  while (kept.length < 10) kept.push(Array(width - 1).fill(''));
+  await ctx.edit(kept.flatMap((cells, r) => cells.map((value, i) => ({ row: r + 1, col: i + 1, value }))));
+  await ctx.round({ force: true });
+  assert.deepEqual(Object.values(ctx.markers).map((m) => `${m.name}|${m.note.text}`), names.map((n, i) => `${n}|${notes[i]}`), 'no marker renamed or emptied');
+  const after = await ctx.sheet();
+  const item = after.rows[0].indexOf('Item'); const note = after.rows[0].indexOf('Notes');
+  assert.deepEqual(after.rows.slice(1, 11).map((r) => `${r[item]}|${r[note]}`), names.map((n, i) => `${n}|${notes[i]}`), 'each row back with its marker');
+  assert.ok((ctx.link.state.notices || []).some((n) => /taken out of only some columns/.test(n.message)));
+  const quiet = await ctx.round({ force: true });
+  assert.equal(quiet.summary.toSheet + quiet.summary.toApp, 0);
+});
