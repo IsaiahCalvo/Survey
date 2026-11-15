@@ -2,7 +2,8 @@
 -- RLS regression test for the document_collaborators table.
 --
 -- FOCUS: Only the document owner (documents.user_id = auth.uid()) OR a collaborator
--- with role='owner' can INSERT/UPDATE/DELETE collaborator rows. Editors and viewers are
+-- with role='owner' can UPDATE (role only) / DELETE collaborator rows; nobody signed
+-- in may INSERT one directly (KAL-369). Editors and viewers are
 -- blocked (INSERT → 42501; UPDATE/DELETE → 0 rows or 42501). Non-collaborators see zero
 -- rows on SELECT (silent RLS filter). The kal31_guard_last_owner_trg prevents
 -- demoting/deleting the last owner (check_violation, 23514).
@@ -104,9 +105,12 @@ BEGIN
     RETURN;
   END IF;
 
-  INSERT INTO documents (id, user_id)
+  INSERT INTO documents (id, user_id, name, file_path, file_size, page_count)
     VALUES ('99999999-9999-9999-9999-999999999999'::uuid,
-            '00000000-0000-0000-0000-000000000001'::uuid)
+            '00000000-0000-0000-0000-000000000001'::uuid,
+            'RLS test document',
+            '00000000-0000-0000-0000-000000000001/99999999-9999-9999-9999-999999999999.pdf',
+            1, 1)
     ON CONFLICT (id) DO NOTHING;
 
   -- editor collaborator
@@ -463,7 +467,10 @@ BEGIN
   RAISE NOTICE 'PASS J: document owner SELECT returned % row(s) (ALLOW as expected)', v_count;
 
   -- ============================================================================
-  -- TEST BLOCK K: Owner-via-documents (0001) can INSERT a new collaborator
+  -- TEST BLOCK K: Owner-via-documents (0001) can NOT insert a collaborator row
+  -- directly (KAL-369, 20261115210000): rows come only from the server (invite
+  -- accept, grant_document_invite_to_account, company sync). The row for L/M is
+  -- then added as the superuser.
   -- ============================================================================
 
   RESET ROLE;
@@ -474,12 +481,22 @@ BEGIN
                                        'role','authenticated')::text, true);
   SET LOCAL ROLE authenticated;
 
-  -- Insert a fresh collaborator row (non-collaborator 0004 becomes a viewer)
+  BEGIN
+    INSERT INTO document_collaborators (document_id, user_id, role, status)
+      VALUES ('99999999-9999-9999-9999-999999999999'::uuid,
+              '00000000-0000-0000-0000-000000000004'::uuid,
+              'viewer', 'active');
+    RAISE EXCEPTION 'FAIL K: document owner INSERT should have been rejected (42501)';
+  EXCEPTION
+    WHEN insufficient_privilege THEN
+      RAISE NOTICE 'PASS K: document owner direct INSERT correctly rejected (42501)';
+  END;
+
+  RESET ROLE;
   INSERT INTO document_collaborators (document_id, user_id, role, status)
     VALUES ('99999999-9999-9999-9999-999999999999'::uuid,
             '00000000-0000-0000-0000-000000000004'::uuid,
             'viewer', 'active');
-  RAISE NOTICE 'PASS K: document owner INSERT of new collaborator succeeded';
 
   -- ============================================================================
   -- TEST BLOCK L: Owner-via-documents (0001) can UPDATE a collaborator's role
@@ -541,12 +558,36 @@ BEGIN
                                        'role','authenticated')::text, true);
   SET LOCAL ROLE authenticated;
 
-  -- N1: INSERT — second-owner adds user 0004 as viewer
+  -- N1: INSERT — refused for the second owner too (KAL-369); add the row as
+  -- the superuser so N2/N3 have something to change.
+  BEGIN
+    INSERT INTO document_collaborators (document_id, user_id, role, status)
+      VALUES ('99999999-9999-9999-9999-999999999999'::uuid,
+              '00000000-0000-0000-0000-000000000004'::uuid,
+              'viewer', 'active');
+    RAISE EXCEPTION 'FAIL N1: owner-collaborator INSERT should have been rejected (42501)';
+  EXCEPTION
+    WHEN insufficient_privilege THEN
+      RAISE NOTICE 'PASS N1: owner-collaborator (0005) direct INSERT correctly rejected (42501)';
+  END;
+  RESET ROLE;
   INSERT INTO document_collaborators (document_id, user_id, role, status)
     VALUES ('99999999-9999-9999-9999-999999999999'::uuid,
             '00000000-0000-0000-0000-000000000004'::uuid,
             'viewer', 'active');
-  RAISE NOTICE 'PASS N1: owner-collaborator (0005) INSERT succeeded';
+  SET LOCAL ROLE authenticated;
+
+  -- N1b: only the role may change; moving the grant to another person is refused.
+  BEGIN
+    UPDATE document_collaborators
+       SET user_id = '00000000-0000-0000-0000-000000000003'::uuid
+     WHERE document_id = '99999999-9999-9999-9999-999999999999'::uuid
+       AND user_id     = '00000000-0000-0000-0000-000000000004'::uuid;
+    RAISE EXCEPTION 'FAIL N1b: owner-collaborator changed user_id';
+  EXCEPTION
+    WHEN insufficient_privilege THEN
+      RAISE NOTICE 'PASS N1b: owner-collaborator user_id change correctly rejected (42501)';
+  END;
 
   -- N2: UPDATE — promote 0004 from viewer to editor (a real change, not a no-op)
   UPDATE document_collaborators

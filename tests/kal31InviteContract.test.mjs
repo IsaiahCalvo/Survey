@@ -8,7 +8,7 @@
  *   - Invite link builder produces a deterministic URL shape from a token.
  */
 import test from 'node:test';
-import { deepStrictEqual, equal, ok, match } from 'node:assert/strict';
+import { deepStrictEqual, doesNotMatch, equal, ok, match } from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -81,9 +81,11 @@ test('KAL-31: email invites grant existing accounts access immediately', () => {
     path.join(repoRoot, 'src/services/documentInviteService.js'),
     'utf8',
   );
-  match(src, /check_collaborator_by_email/);
-  match(src, /from\('document_collaborators'\)/);
-  match(src, /upsert\(/);
+  // KAL-369: the server grants (lookup, Free-plan cap, insert in one call);
+  // the browser no longer writes document_collaborators itself.
+  match(src, /rpc\(\s*'grant_document_invite_to_account'/);
+  doesNotMatch(src, /\.upsert\(/);
+  doesNotMatch(src, /from\('document_collaborators'\)\s*\.(insert|upsert)/);
 });
 
 test('KAL-31: document owners always reach Manage Access from Share', () => {
