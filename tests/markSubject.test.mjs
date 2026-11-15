@@ -114,6 +114,6 @@ test('the flag is beta, the panel and page layer use it, and a migration adds it
   assert.match(panel, /op: 'subject'/);
   const layer = readFileSync(new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url), 'utf8');
   assert.match(layer, /detail\.op === 'subject'/);
-  const migration = readFileSync(new URL('../supabase/migrations/20261115190000_mark_subject_flag.sql', import.meta.url), 'utf8');
+  const migration = readFileSync(new URL('../supabase/migrations/20261115192500_mark_subject_flag.sql', import.meta.url), 'utf8');
   assert.match(migration, /'mark-subject', 'off'/);
 });
