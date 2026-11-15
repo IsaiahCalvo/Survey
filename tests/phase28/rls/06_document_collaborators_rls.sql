@@ -468,7 +468,7 @@ BEGIN
 
   -- ============================================================================
   -- TEST BLOCK K: Owner-via-documents (0001) can NOT insert a collaborator row
-  -- directly (KAL-369, 20261115210000): rows come only from the server (invite
+  -- directly (KAL-369, 20261116030000): rows come only from the server (invite
   -- accept, grant_document_invite_to_account, company sync). The row for L/M is
   -- then added as the superuser.
   -- ============================================================================
