@@ -16,6 +16,7 @@ import {
   isValidMeasureScale,
   pageScaleFromObjects,
 } from './measure/measureScale.js';
+import { markSubjectOf } from './markSubject.js';
 
 // Kinds the list shows, in this order, with their words.
 export const MARKUP_KINDS = Object.freeze([
@@ -166,7 +167,7 @@ function idOf(obj, pageNumber, index) {
 }
 
 /**
- * Every listable mark: { id, pageNumber, index, kind, kindLabel, text,
+ * Every listable mark: { id, pageNumber, index, kind, kindLabel, subject, text,
  * color, authorId, createdAt, calloutId, measure, layerId, layerName }.
  * Pages in order, marks in stacking order. `byPage` = { [page]: { objects } };
  * `layerState` (Layers beta) names each mark's layer.
@@ -195,6 +196,8 @@ export function buildMarkupRows(byPage, { layerState = null } = {}) {
         index,
         kind: listed,
         kindLabel: KIND_WORD[listed],
+        // The mark's own subject (Nightly 'mark-subject'), or null.
+        subject: markSubjectOf(obj),
         text: textOf(obj),
         color: colorOf(obj),
         authorId: getAnnotationAuthorId(obj) || null,
@@ -235,6 +238,7 @@ export function filterMarkupRows(rows, {
     if (!words.length) return true;
     const hay = [
       row.kindLabel,
+      row.subject,
       row.text,
       row.measure?.name,
       row.measure?.text,
@@ -295,12 +299,16 @@ function csvCell(value) {
  * The rows as CSV text (header + one line per mark). A measurement's
  * Quantity is a plain number in its Unit, so a spreadsheet can add it up.
  */
-export function markupRowsToCsv(rows, { labelFor = null } = {}) {
-  const lines = [['Page', 'Kind', 'Text', 'Colour', 'Author', 'Created', 'Quantity', 'Unit', 'Layer'].join(',')];
+export function markupRowsToCsv(rows, { labelFor = null, subjects = false } = {}) {
+  // Nightly 'mark-subject' adds Drawboard's Subject column: the mark's own
+  // subject, else its kind.
+  const head = ['Page', 'Kind', ...(subjects ? ['Subject'] : []), 'Text', 'Colour', 'Author', 'Created', 'Quantity', 'Unit', 'Layer'];
+  const lines = [head.join(',')];
   for (const row of rows || []) {
     lines.push([
       row.pageNumber,
       row.kindLabel,
+      ...(subjects ? [row.subject || row.kindLabel] : []),
       row.text,
       row.color || '',
       labelFor ? labelFor(row.authorId) : (row.authorId || ''),

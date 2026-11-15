@@ -174,6 +174,12 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Sheet revisions: read the sheet number from the title block on upload and offer it as a new version',
     stage: 'beta',
   }),
+  // Drawboard Projects parity spec SS-31 / MS-30 (2026-11-10): a subject on
+  // any mark, shown in the Markups list and written as the PDF's /Subj.
+  'mark-subject': Object.freeze({
+    label: 'Marks: give any mark its own subject (Properties panel); shows in Markups and in exported PDFs',
+    stage: 'beta',
+  }),
   'measure-depth': Object.freeze({
     label: 'Measure: Polylength, Wall area and Volume (area or outline x a depth)',
     stage: 'beta',

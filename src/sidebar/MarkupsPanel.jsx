@@ -20,6 +20,7 @@ import { showToast } from '../utils/toast';
 import ListItemContextMenu from '../components/ListItemContextMenu.jsx';
 import { listMenuPointFrom } from '../utils/listContextMenu.js';
 import { copyText } from '../utils/appContextMenuItems.js';
+import { isFeatureOn } from '../featureFlags.js';
 import { listCommentPeople } from '../services/markComments.js';
 import {
   authorLabel,
@@ -45,6 +46,8 @@ export default function MarkupsPanel({
   // Phone: the sheet steps down so the picked mark shows.
   onRequestSheetClose = undefined,
 }) {
+  // Nightly 'mark-subject': a mark's own subject shows in its row and the CSV.
+  const subjectsOn = useMemo(() => isFeatureOn('mark-subject'), []);
   const tip = useTooltip();
   const [query, setQuery] = useState('');
   const [kinds, setKinds] = useState(() => new Set());
@@ -108,7 +111,7 @@ export default function MarkupsPanel({
   const downloadCsv = () => {
     if (!shown.length) return;
     try {
-      const blob = new Blob([markupRowsToCsv(shown, { labelFor })], { type: 'text/csv;charset=utf-8;' });
+      const blob = new Blob([markupRowsToCsv(shown, { labelFor, subjects: subjectsOn })], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -267,10 +270,10 @@ export default function MarkupsPanel({
                           reads as it is, not with the reading a second time in front. */}
                       {row.measure?.text && !String(row.text || '').includes(row.measure.text)
                         ? <><strong>{row.measure.text}</strong> {row.text}</>
-                        : (row.text || row.kindLabel)}
+                        : (row.text || (subjectsOn && row.subject) || row.kindLabel)}
                     </span>
                     <span className="markups-panel__meta">
-                      {[row.measure ? row.measure.name : null, labelFor(row.authorId), manyLayers ? row.layerName : null].filter(Boolean).join(' · ')}
+                      {[subjectsOn && row.text ? row.subject : null, row.measure ? row.measure.name : null, labelFor(row.authorId), manyLayers ? row.layerName : null].filter(Boolean).join(' · ')}
                     </span>
                   </span>
                   <span className="markups-panel__page">p. {row.pageNumber}</span>
