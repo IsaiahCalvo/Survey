@@ -26,7 +26,7 @@ import { useStorage } from '../hooks/useDatabase';
 import { useOfflineDocumentActions } from './offlineDocumentActions.js';
 import { activateOrExplain } from '../utils/disabledReasonToast.js';
 import MenuRows from '../components/MenuRows.jsx';
-import { useState, useMemo, useEffect, useRef, useCallback, Suspense, lazy } from 'react';
+import { useState, useMemo, useEffect, useLayoutEffect, useRef, useCallback, Suspense, lazy } from 'react';
 import { hoverOnly, useTooltip } from '../components/Tooltip';
 import { createPortal } from 'react-dom';
 import { mergeProjectDocumentOrder, orderDocumentsByProject } from './projectDocumentOrder.js';
@@ -159,6 +159,19 @@ const manageCan = (files, project, userId) => {
 function PopupMenu({ anchorRect, onClose, items, align = 'right', minWidth = 160 }) {
   const tip = useTooltip();
   const ref = useRef(null);
+
+  // The width below is a floor, not the menu's real width: long rows such as
+  // "Make available offline" at the phone's 15px make it wider, and a menu
+  // placed by the floor ran off the right edge. Re-place it by what it measures
+  // before it paints.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || !anchorRect) return;
+    // offsetWidth, not the drawn box: the menu opens with a small grow-in.
+    const width = el.offsetWidth;
+    const wanted = align === 'right' ? anchorRect.right - width : anchorRect.left;
+    el.style.left = `${Math.max(8, Math.min(wanted, window.innerWidth - width - 8))}px`;
+  });
 
   if (!anchorRect) return null;
 

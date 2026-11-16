@@ -46,3 +46,13 @@ test('the Search text field is the height and inset of the other panel search fi
   assert.match(src, /padding: '8px 8px 0'/);
   assert.match(read('src/sidebar/MarkupsPanel.css'), /\.markups-panel__search \{[^}]*height: 30px;/);
 });
+
+test('the project and file menus are placed by their measured width, so a wide menu stays on a phone screen', () => {
+  const src = read('src/home/ProjectsFolderTree.jsx');
+  const menu = src.slice(src.indexOf('function PopupMenu('), src.indexOf('export default function ProjectsFolderTree('));
+  assert.match(menu, /useLayoutEffect\(\(\) => \{[\s\S]*?const width = el\.offsetWidth;[\s\S]*?window\.innerWidth - width - 8/);
+});
+
+test('the issue Labels field is the height of the fields above it', () => {
+  assert.match(read('src/projectItems/projectItems.css'), /\.item-tag-input \{ height: 30px;/);
+});
