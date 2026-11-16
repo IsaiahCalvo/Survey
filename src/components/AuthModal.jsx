@@ -22,6 +22,7 @@ import { isFeatureOn } from '../featureFlags.js';
 import { companyDomainFrom, companySignInErrorMessage, clearCompanySignInRequired, companySignInRequiredMessage, peekCompanySignInRequired } from '../utils/companySignIn.js';
 import { ssoRequiredForEmail } from '../services/companyService.js';
 import { termsAcceptance } from '../legal/legalVersions';
+import { SUITE_ACCOUNT_NAME, SUITE_APPS_LINE } from '../suite/suiteName.js';
 
 export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' }) => {
   const [mode, setMode] = useState(initialMode); // 'login', 'signup', 'confirm', 'sso', 'reset'
@@ -281,8 +282,8 @@ export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' })
             {mode === 'reset' && 'Reset password'}
           </h2>
           <p className="auth-modal-subtitle">
-            {mode === 'login' && 'Sign in to save and sync your work'}
-            {mode === 'signup' && 'Get started with a free account'}
+            {mode === 'login' && `Sign in to your ${SUITE_ACCOUNT_NAME}`}
+            {mode === 'signup' && `One free ${SUITE_ACCOUNT_NAME} for ${SUITE_APPS_LINE}`}
             {mode === 'confirm' && 'Verify your account to finish signing up'}
             {mode === 'sso' && 'Sign in with your company credentials'}
             {mode === 'reset' && 'We\'ll send you a password reset link'}
