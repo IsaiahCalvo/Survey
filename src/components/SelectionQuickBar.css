@@ -621,6 +621,11 @@ body:has(.mobile-pdf-sheet:not(.is-collapsed)) .selection-quick-bar[data-phone='
 button.selection-quick-bar__fill {
   cursor: pointer;
 }
+/* A swatch gets a ring, never a hover or pressed fill (suite rule "One look for every control"). */
+button.selection-quick-bar__fill:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
 .selection-quick-bar__fill.is-none::after {
   content: '';
   position: absolute;
@@ -632,7 +637,7 @@ button.selection-quick-bar__fill {
   transform: translateX(-50%) rotate(45deg);
 }
 .selection-quick-bar__fill.is-mixed {
-  background: repeating-linear-gradient(45deg, var(--text-3, #888) 0 3px, transparent 3px 6px);
+  background: repeating-linear-gradient(45deg, var(--text-3) 0 3px, transparent 3px 6px);
 }
 .selection-quick-bar__fill.is-current {
   box-shadow: 0 0 0 2px var(--surface-1, transparent), 0 0 0 4px var(--text-1);
