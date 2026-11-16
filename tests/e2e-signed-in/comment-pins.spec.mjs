@@ -89,7 +89,8 @@ test('N, click, composer, save; M to Issue; status hides a done pin; Show pins; 
     await composer(page).locator('[data-pin-save]').click();
     const issue = surface.locator('[data-pin-kind="issue"]');
     await expect(issue).toHaveAttribute('data-pin-status', 'draft');
-    expect((await pinRows(sheet.name)).rows.map((r) => [r.pin_kind, r.pin_number, r.pin_status])).toEqual([['comment', null, null], ['issue', 1, 'draft']]);
+    // The pin shows before its save reaches the server, so wait for the row.
+    await expect.poll(async () => (await pinRows(sheet.name)).rows.map((r) => [r.pin_kind, r.pin_number, r.pin_status])).toEqual([['comment', null, null], ['issue', 1, 'draft']]);
 
     // Same size after zooming in.
     await page.keyboard.press('ControlOrMeta+=');
