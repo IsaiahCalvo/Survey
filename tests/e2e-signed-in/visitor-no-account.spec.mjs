@@ -1,5 +1,5 @@
-// KAL-658: a visitor uses Survey with no account, and no flag set in the
-// browser (the no-account path is on for everyone). They close the sign-in
+// KAL-658: a visitor uses Survey with no account. The no-account flags are
+// not set in the browser (that path is on for everyone). They close the sign-in
 // card, upload a PDF, mark it up, change its pages and export it. A reload
 // brings the file back with its marks and its page changes. The tools that
 // need an account say so and offer Sign in, and the server is never asked
@@ -48,6 +48,8 @@ test.describe('desktop', () => {
       if (/device-[0-9a-f-]{8,}/.test(`${request.url()} ${request.postData() || ''}`)) leaked.push(`${request.method()} ${request.url()}`);
     });
 
+    // The Comments tab has its own flag, which a fresh test database leaves off.
+    await page.addInitScript(() => localStorage.setItem('survey.flag.mark-comments', '1'));
     await openAsVisitor(page);
     await drawBox(page);
     await expect.poll(() => marks(page)).toBe(1);
