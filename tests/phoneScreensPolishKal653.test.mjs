@@ -89,3 +89,8 @@ test('entering select mode does not push the select button or the avatar down', 
   // Flattened out of its 44px row, the 36px button must still take only 28px.
   assert.match(hub, /\.header:has\(\.mobile-header-select-actions\) \.mobile-header-select-button \{\s*order: 2;\s*margin-left: auto;[^}]*margin-block: -4px;/);
 });
+
+test('Templates says "no match" with the same plain line as Documents and Projects', () => {
+  const templates = read('src/home/TemplatesEditor.jsx');
+  assert.match(templates, /visibleTemplates\.length === 0 && rich\.length > 0 \? \([\s\S]{0,300}<div className="meta" style=\{\{ padding: '24px 16px', fontSize: 12 \}\}>No templates match your search\.<\/div>/);
+});
