@@ -69,6 +69,9 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DEFAULT_APP_ORIGINS = [
   'https://surveytool.app', 'https://surveytool-nightly.vercel.app',
   'http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:5199', 'http://127.0.0.1:5199',
+  // Walkthru shares this database and its users, and opens plans from the same
+  // Microsoft sign-in; its own finish page hands the code back to its tab.
+  'https://walkthru.tools', 'https://www.walkthru.tools', 'https://walkthrough-ashen.vercel.app', 'https://walkthu-nightly.vercel.app',
 ];
 
 export const corsHeaders = {
