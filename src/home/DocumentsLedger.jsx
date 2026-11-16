@@ -1171,15 +1171,17 @@ export default function DocumentsLedger({
       </span>
     );
   };
+  /* Owner 2026-11-16: the phone thumbnail is just the page, like the desktop
+     row's - the real page shape, no dark letterbox around it. */
   const renderMobileThumb = (d, height = 54) => (
     <div className="mobile-doc-thumbnail" style={{ height }}>
       <PdfPageThumb
         doc={d.raw}
         downloadDocument={downloadDocument}
-        variant="preview"
+        variant="row"
         height={height}
-        fill
-        fallback={<PdfThumb height={height} stamp="" color={d.color} />}
+        maxWidth={52}
+        fallback={<div style={{ width: Math.round(height * 0.77), height, flex: 'none' }}><PdfThumb height={height} stamp="" color={d.color} /></div>}
       />
     </div>
   );
@@ -1541,7 +1543,7 @@ export default function DocumentsLedger({
                       />
                       )}
                     </div>
-                    <div style={stickyCell(isFilled)}>
+                    <div className="documents-ledger-name-cell" style={stickyCell(isFilled)}>
                       {reviewOn || registerOn ? (
                         <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column' }}>
                           <span style={{ fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{d.name}</span>
