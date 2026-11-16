@@ -53,7 +53,8 @@ import { useDocsPendingDualWrite } from './hooks/useTabPendingDualWrite.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 const TAB_HEIGHT = 32;
-const HOME_TAB_WIDTH = 148;
+// The same width as the home page's left bar (hub.css `.survey-hub .shell`).
+const HOME_TAB_WIDTH = 168;
 const PDF_TAB_MIN_WIDTH = 96;
 const PDF_TAB_MAX_WIDTH = 280;
 const TAB_BAR_BG = 'var(--surface-0)';

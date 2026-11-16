@@ -32,6 +32,15 @@ test('every common home action gets an icon', () => {
   assert.equal(menuIconFor('Copy'), 'copy');
 });
 
+test('no row of the project and file menus is left without an icon, and no two meanings share one', () => {
+  for (const label of ['Close project', 'Reopen project', 'Leave project', 'Make available offline', 'Making available offline…']) {
+    assert.ok(menuIconFor(label), `no icon for "${label}"`);
+  }
+  assert.notEqual(menuIconFor('Get link to project'), menuIconFor('Share'));
+  assert.notEqual(menuIconFor('Manage project'), 'settings');
+  assert.equal(menuIconFor('Manage access'), 'settings');
+});
+
 test('the action menus read the shared menu row tokens', () => {
   const tokens = read('src/styles/tokens.css');
   assert.match(tokens, /--menu-font:\s*400 13px\/16px var\(--font-ui\)/);
