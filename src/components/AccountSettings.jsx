@@ -993,58 +993,16 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
 
                     {/* Billing Period Toggle (only show for paid users selecting new plan) */}
                     {!isPurchaseUiHidden() && subscription?.tier === 'free' && (
-                      <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '16px', background: 'var(--surface-1)', padding: '4px', borderRadius: '8px', width: 'fit-content', margin: '0 auto 16px auto' }}>
-                        <button
-                          type="button"
-                          className="account-period-btn"
-                          aria-pressed={billingPeriod === 'monthly'}
-                          onClick={() => setBillingPeriod('monthly')}
-                          style={{
-                            padding: '8px 24px',
-                            border: 'none',
-                            borderRadius: '6px',
-                            background: billingPeriod === 'monthly' ? 'var(--surface-3)' : undefined,
-                            // The chosen period steps up a surface; words stay white (revision 5).
-                            color: billingPeriod === 'monthly' ? 'var(--text-1)' : 'var(--text-3)',
-                            cursor: 'pointer',
-                            fontSize: '14px',
-                            fontWeight: '500',
-                            transition: 'all 0.2s'
-                          }}
-                        >
-                          Monthly
-                        </button>
-                        <button
-                          type="button"
-                          className="account-period-btn"
-                          aria-pressed={billingPeriod === 'annual'}
-                          onClick={() => setBillingPeriod('annual')}
-                          style={{
-                            padding: '8px 24px',
-                            border: 'none',
-                            borderRadius: '6px',
-                            background: billingPeriod === 'annual' ? 'var(--surface-3)' : undefined,
-                            color: billingPeriod === 'annual' ? 'var(--text-1)' : 'var(--text-3)',
-                            cursor: 'pointer',
-                            fontSize: '14px',
-                            fontWeight: '500',
-                            transition: 'all 0.2s',
-                            position: 'relative'
-                          }}
-                        >
-                          Annual
-                          <span style={{
-                            fontSize: '11px',
-                            marginLeft: '6px',
-                            padding: '2px 6px',
-                            background: 'var(--accent-soft)',
-                            color: 'var(--accent)',
-                            borderRadius: '4px',
-                            fontWeight: '600'
-                          }}>
-                            Save 17%
-                          </span>
-                        </button>
+                      <div className="account-period">
+                        <ButtonGroup
+                          label="Billing period"
+                          value={billingPeriod}
+                          onChange={setBillingPeriod}
+                          options={[
+                            { value: 'monthly', label: 'Monthly' },
+                            { value: 'annual', label: <>Annual<em className="account-period__save">Save 17%</em></> },
+                          ]}
+                        />
                       </div>
                     )}
 

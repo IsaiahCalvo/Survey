@@ -16,6 +16,7 @@ import { useTooltip } from '../components/Tooltip';
 import { renameSelectionRange } from './documentSelection.js';
 import MotionPresence from '../components/MotionPresence.jsx';
 import DialogCard from '../components/DialogCard.jsx';
+import ButtonGroup from '../components/ButtonGroup.jsx';
 import { DIALOG_FIELD_STYLE, DIALOG_LABEL_STYLE } from '../components/DialogCard.jsx';
 
 
@@ -62,22 +63,6 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
   // Closed: MotionPresence plays the exit of the last open card (motion.css).
   if (!open) return <MotionPresence open={false} />;
 
-  const modeBtn = (val, label) => (
-    <button
-      onClick={() => setMode(val)}
-      className="dialog-touch-pad"
-      style={{
-        flex: 1, height: 28, borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit',
-        fontSize: 12, fontWeight: 600,
-        background: mode === val ? 'var(--surface-3)' : 'transparent',
-        color: mode === val ? 'var(--text-1)' : C.inkSoft,
-        border: `1px solid ${mode === val ? 'var(--border-strong)' : C.ruleStrong}`,
-      }}
-    >
-      {label}
-    </button>
-  );
-
   return (
     <MotionPresence open>
     <div onClick={submitting ? undefined : onClose} style={overlay}>
@@ -90,10 +75,13 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
           <button disabled={submitting} onClick={onClose} aria-label="Close" {...tip('Close')} className="hub-icon-btn"><Icon name="close" size={13} /></button>
         </div>
         <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{ display: 'flex', gap: 6 }}>
-            {modeBtn('move', 'Move')}
-            {modeBtn('copy', 'Copy')}
-          </div>
+          <ButtonGroup
+            label="Move or copy"
+            fill
+            value={mode}
+            options={[{ value: 'move', label: 'Move', disabled: submitting }, { value: 'copy', label: 'Copy', disabled: submitting }]}
+            onChange={setMode}
+          />
           <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.4 }}>
             {mode === 'move' ? 'Moves the documents into the chosen project.' : 'Copies the documents into the chosen project; originals stay where they are.'}
           </div>
