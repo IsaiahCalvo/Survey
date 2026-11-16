@@ -6912,6 +6912,9 @@ const SVGAnnotationLayerBody = memo(({
         // (viewBox owns all zoom; no JS coordination added).
         data-anno-id={renderIdentity.annotationId}
         data-author-id={renderIdentity.authorId}
+        // Nightly 'layer-focus': the mark's layer, so the focus stylesheet
+        // (utils/layerFocus.js) can fade the other layers. Attribute only.
+        data-mark-layer={obj?.layerId || 'default'}
         // Pan/Select edit-entry hit layer (see panEditEntryEnabled). Present in
         // Pan AND in every Select mode; absent for annotations with no editor.
         data-edit-entry-kind={editEntryKind || undefined}

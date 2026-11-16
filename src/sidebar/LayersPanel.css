@@ -176,3 +176,9 @@
 .mobile-pdf-sheet .layers-row__btn { width: 44px; height: 44px; }
 .mobile-pdf-sheet .layers-row__input { height: 32px; font-size: 16px; }
 .mobile-pdf-sheet .layers-panel__note { margin: 4px 0 0; font: var(--sheet-row-meta); font-weight: 400; }
+
+/* Nightly 'layer-focus': the Focus switch, a title and a short second line. */
+.layers-panel__focus-switch { min-height: 40px; padding: 0 4px; text-align: left; }
+.layers-panel__focus-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.layers-panel__focus-text > :first-child { color: var(--text-1); font: 400 13px/18px var(--font-ui); }
+.layers-panel__focus-sub { color: var(--text-3); font: 400 12px/16px var(--font-ui); }

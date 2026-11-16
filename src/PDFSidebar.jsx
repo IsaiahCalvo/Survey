@@ -11,6 +11,9 @@
  */
 import React, { useState, useCallback, useImperativeHandle, useSyncExternalStore, lazy, Suspense } from 'react';
 import Icon from './Icons';
+import { isFeatureOn } from './featureFlags.js';
+import { ToolbarsGlyph, ToolbarsMenu } from './components/ToolbarsMenu.jsx';
+import { applyLayerFocusCss, layerFocusCss, useLayerFocus } from './utils/layerFocus.js';
 import PagesPanel from './sidebar/PagesPanel';
 // Lazy so pdf.js (statically imported by SearchTextPanel for text-layer rendering)
 // stays out of the first-paint bundle; it loads when the viewer's rail mounts.
@@ -276,6 +279,19 @@ const PDFSidebar = React.forwardRef(({
   pdfDisplayName = '',
 }, ref) => {
   const commentsOn = Boolean(commentsEnabled && documentId);
+  // Flags load async: read them at mount, never at module level.
+  const [toolbarSettingsOn] = useState(() => isFeatureOn('toolbar-settings'));
+  const [pinnedToolsOn] = useState(() => isFeatureOn('pinned-tools'));
+  // Nightly 'layer-focus': the rail is always mounted beside the viewer, so
+  // it keeps the focus stylesheet in step with the active layer even while
+  // the Layers panel is closed.
+  const [layerFocusOn] = useState(() => isFeatureOn('layer-focus'));
+  const layerFocus = useLayerFocus();
+  React.useEffect(() => {
+    if (!layerFocusOn) return undefined;
+    applyLayerFocusCss(layerFocusCss(layerFocus, activeLayerId, layerState));
+    return () => applyLayerFocusCss('');
+  }, [layerFocusOn, layerFocus, activeLayerId, layerState]);
   // Chunk D (owner 2026-10-13): the desktop rail comes back as it was left -
   // which panel and whether it was open - per user
   // (sidebar/panelLayoutStore.js). The phone's sheet always starts closed.
@@ -881,6 +897,42 @@ const PDFSidebar = React.forwardRef(({
             the same "name  key" chip the tool buttons use, so one visit is
             enough to learn it. */}
         <div data-chrome-rail="true" style={{ padding: '0 8px 8px', background: 'var(--panel-bg)' }}>
+          {/* Nightly 'toolbar-settings' (Drawboard VT-33): Show/hide
+              toolbars, above the shortcuts button like Drawboard's. */}
+          {toolbarSettingsOn && (
+            <ToolbarsMenu
+              pinnedToolsOn={pinnedToolsOn}
+              renderButton={({ open, ref, onClick, on }) => (
+                <button
+                  ref={ref}
+                  type="button"
+                  {...tip(open ? undefined : 'Show or hide toolbars', 'right')}
+                  aria-label="Toolbars"
+                  aria-haspopup="dialog"
+                  aria-expanded={open}
+                  data-toolbars-toggle="true"
+                  className="chrome-icon-btn"
+                  onClick={onClick}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: on || open ? 'var(--text-1)' : 'var(--text-2)',
+                    borderRadius: 'var(--chrome-radius, 6px)',
+                    padding: '11px 6px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    minWidth: '28px',
+                    minHeight: '28px',
+                    width: '100%'
+                  }}
+                >
+                  <ToolbarsGlyph size={RAIL_GLYPH} />
+                </button>
+              )}
+            />
+          )}
           <button
             type="button"
             {...tip('Keyboard shortcuts  ?', 'right')}
