@@ -336,8 +336,7 @@
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: #ffffff;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  background: var(--text-1);
   transition: transform 160ms ease;
 }
 .template-auto-complete__switch[aria-checked='true'] .template-auto-complete__track {
@@ -346,6 +345,7 @@
 }
 .template-auto-complete__switch[aria-checked='true'] .template-auto-complete__track::after {
   transform: translateX(16px);
+  background: var(--accent-text, #15110a);
 }
 .template-auto-complete__switch:focus-visible {
   outline: none;

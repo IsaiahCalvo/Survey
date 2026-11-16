@@ -1717,15 +1717,15 @@ input[type="text"].space-card__name:focus-visible {
   width: var(--sp-knob);
   height: var(--sp-knob);
   border-radius: 50%;
-  background: #ffffff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  background: var(--text-1);
   transform: translate(0, -50%);
-  transition: transform 0.2s ease;
+  transition: transform 0.2s ease, background 0.2s ease;
   pointer-events: none;
 }
 
 .spaces-switch[aria-checked='true'] .spaces-switch__knob {
   transform: translate(calc(var(--sp-track-w) - var(--sp-knob) - 4px), -50%);
+  background: var(--accent-text, #15110a);
 }
 
 .spaces-switch[aria-disabled='true'] {
