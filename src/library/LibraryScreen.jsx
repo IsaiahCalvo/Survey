@@ -172,7 +172,8 @@ export default function LibraryScreen({ user, onNav, templatesLocked = false, te
             <button type="button" className="btn primary" disabled={linking} onClick={linkTemplates}>Add them</button>
           </div>
         ) : null}
-        <div className="card">
+        {/* Clipped, so the last row's divider stops at the rounded corner. */}
+        <div className="card" style={{ overflow: 'hidden' }}>
           <form
             style={{ ...rowStyle }}
             onSubmit={(event) => { event.preventDefault(); addCategory(); }}
