@@ -9,6 +9,11 @@ import { installNativeDownloadShim } from './mobile/nativeDownloadShim';
 import { installNativeDeepLinks } from './mobile/nativeDeepLinks';
 import { isTeamsTab, startTeamsTab } from './teams/teamsHost';
 import { installDialogDragGuard } from './utils/dialogDragGuard';
+import { installSuiteLook } from './suiteLook';
+
+// The suite look (grey and coral, light or dark; Nightly flag 'one-look'):
+// set before anything renders, so no screen shows the old colours first.
+installSuiteLook();
 
 installSurveyAnalytics();
 // A text drag that ends outside a dialog must not close it.

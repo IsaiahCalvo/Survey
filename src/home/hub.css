@@ -425,6 +425,11 @@
   overflow: hidden;
   box-shadow: 0 4px 14px rgba(0,0,0,0.3);
 }
+/* KAL-663 - in light mode a white sheet sits on a white panel, so it takes a
+   hairline to show where it ends, and a softer shadow. */
+html[data-look="suite"][data-theme="light"] .survey-hub .pdf-thumb {
+  box-shadow: 0 0 0 1px var(--ink-ring), 0 2px 6px rgba(0,0,0,0.08);
+}
 /* Audit 2026-11-09: the stand-in shown while a page preview loads (or when
    it cannot draw) is a plain sheet with a few faint lines of "text", so the
    swap to the real page is quiet. It used to be a coloured header over a

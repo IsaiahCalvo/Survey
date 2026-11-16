@@ -395,6 +395,20 @@
   flex-shrink: 0;
 }
 
+/* KAL-663 - the Appearance row holds a three-way picker, which is too wide to
+   share a line with its words on a narrow screen. It wraps under them. */
+.account-pref-row:has(> .account-pref-appearance) {
+  flex-wrap: wrap;
+}
+
+.account-pref-row:has(> .account-pref-appearance) > .account-pref-copy {
+  flex: 1 1 220px;
+}
+
+.account-pref-appearance {
+  flex-shrink: 0;
+}
+
 .account-pref-copy {
   min-width: 0;
 }
