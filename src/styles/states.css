@@ -593,3 +593,46 @@ html[data-focus-ring='pointer'] :is(.tab-strip-list__open, .hero-swatch, .docume
     transform: none !important;
   }
 }
+
+/* --------------------------------------------------------------------------
+   SWITCHES — one hover and one press for every switch (2026-11-16).
+   -------------------------------------------------------------------------- */
+/* Measured on Settings: no switch answered the pointer. A switch that is on
+   is an accent control, so it takes the accent ladder from tokens.css
+   (--accent-light under the pointer, --accent-press while held). One that is
+   off has no fill to step, so its outline brightens instead. The selectors
+   name each track the app draws; a new switch adds its track here. */
+@media (hover: hover) and (pointer: fine) {
+  [role='switch'][aria-checked='true']:not(:disabled):not([aria-disabled='true']):hover :is(.page-grid-settings__knob, .account-switch-track, .template-auto-complete__track, .sheet-set-view__auto-track, .pp-tog-sw),
+  .photo-switch[aria-checked='true']:not(:disabled):hover,
+  .spaces-switch[aria-checked='true']:not([aria-disabled='true']):hover::before {
+    background: var(--accent-light);
+  }
+  [role='switch'][aria-checked='false']:not(:disabled):not([aria-disabled='true']):hover :is(.page-grid-settings__knob, .account-switch-track, .template-auto-complete__track, .sheet-set-view__auto-track),
+  .photo-switch[aria-checked='false']:not(:disabled):hover,
+  .spaces-switch[aria-checked='false']:not([aria-disabled='true']):hover::before {
+    box-shadow: inset 0 0 0 1px var(--text-3);
+  }
+}
+[role='switch'][aria-checked='true']:not(:disabled):not([aria-disabled='true']):active :is(.page-grid-settings__knob, .account-switch-track, .template-auto-complete__track, .sheet-set-view__auto-track, .pp-tog-sw),
+.spaces-switch[aria-checked='true']:not([aria-disabled='true']):active::before {
+  background: var(--accent-press);
+}
+/* The Photos switch is its own track and has no words, so two older rules
+   reach it while it is held: section 1's neutral press, and section 4's
+   "button with no text" rule, which wiped the track and swapped the knob's
+   slide for a shrink (the knob jumped back to the left). The doubled class
+   out-ranks both; !important is needed for the same reason the gold buttons
+   need it. */
+.photo-switch.photo-switch[aria-checked='true']:not(:disabled):active {
+  background-color: var(--accent-press) !important;
+}
+.photo-switch.photo-switch[aria-checked='false']:not(:disabled):active {
+  background-color: var(--pressed) !important;
+}
+.photo-switch.photo-switch:active > span { transform: none; }
+.photo-switch.photo-switch.is-on:active > span { transform: translateX(12px); }
+[role='switch'][aria-checked='false']:not(:disabled):not([aria-disabled='true']):active :is(.page-grid-settings__knob, .account-switch-track, .template-auto-complete__track, .sheet-set-view__auto-track),
+.spaces-switch[aria-checked='false']:not([aria-disabled='true']):active::before {
+  background: var(--pressed);
+}
