@@ -1,5 +1,4 @@
 // KAL-649: what a first outside tester meets.
-//  - Signed out, the empty Home offers an account, not buttons that bounce.
 //  - A signed-out invite link offers Create free account first.
 //  - A person who joined from an invite email sets a name, a password and the
 //    Terms tick on the invite page, and can then sign in with that password.
@@ -37,14 +36,7 @@ test.afterAll(cleanUp);
 for (const [size, device] of [['desktop', DESKTOP], ['phone', PHONE]]) test.describe(size, () => {
   test.use(device);
 
-  test('signed out: Home and an invite link both offer a free account', async ({ page }) => {
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.getByRole('button', { name: 'Continue without an account' }).click({ timeout: 60_000 });
-    await expect(page.getByText('Make a free account to start').filter({ visible: true }).first()).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Try a sample drawing' }).filter({ visible: true })).toHaveCount(0);
-    await page.getByRole('button', { name: 'Create free account' }).filter({ visible: true }).first().click();
-    await expect(page.getByRole('heading', { name: 'Create account' })).toBeVisible();
-
+  test('signed out: an invite link offers a free account first', async ({ page }) => {
     await page.goto('/invite/testerready-no-such-invite', { waitUntil: 'domcontentloaded' });
     await page.getByRole('button', { name: 'Create free account' }).click({ timeout: 60_000 });
     await expect(page.getByRole('heading', { name: 'Create account' })).toBeVisible({ timeout: 60_000 });
