@@ -154,43 +154,27 @@ export async function createDocumentInvite({ documentId, role, email = null, cur
   // whose accepted_at is already set (handler.js 409 "Invite already
   // accepted"), so marking first would silently drop the notification email
   // for exactly the existing-account branch this grant serves.
+  //
+  // KAL-369: the server does the account lookup, the Free-plan viewer cap and
+  // the grant in one call (grant_document_invite_to_account); the browser can
+  // no longer write collaborator rows itself.
   let pendingAcceptanceMarker = null;
-  if (row.target_email) {
-    const { data: matches, error: lookupError } = await supabase.rpc(
-      'check_collaborator_by_email',
-      { email_address: row.target_email },
+  if (row.target_email && data?.id) {
+    const { data: grant, error: grantError } = await supabase.rpc(
+      'grant_document_invite_to_account',
+      { p_invite_id: data.id },
     );
 
-    if (!lookupError) {
-      const existingUser = Array.isArray(matches) ? matches[0] : matches;
-      if (existingUser?.user_id) {
-        const effectiveRole = normRole === 'viewer' || existingUser.can_collaborate
-          ? normRole
-          : 'viewer';
-        const { error: grantError } = await supabase
-          .from('document_collaborators')
-          .upsert({
-            document_id: documentId,
-            user_id: existingUser.user_id,
-            email: existingUser.email || row.target_email,
-            role: effectiveRole,
-            status: 'active',
-            invited_by: currentUser.id,
-          }, { onConflict: 'document_id,user_id' });
-
-        if (grantError) {
-          console.error('[KAL-31] immediate collaborator grant failed:', grantError);
-          return { success: false, error: grantError.message };
-        }
-
-        pendingAcceptanceMarker = {
-          state: 'active',
-          userId: existingUser.user_id,
-          role: effectiveRole,
-        };
-      }
-    } else {
-      console.warn('[KAL-31] existing-account lookup failed; leaving invite pending:', lookupError.message);
+    if (grantError) {
+      console.error('[KAL-31] immediate collaborator grant failed:', grantError);
+      return { success: false, invite: data, error: grantError.message };
+    }
+    if (grant?.granted && grant.user_id) {
+      pendingAcceptanceMarker = {
+        state: 'active',
+        userId: grant.user_id,
+        role: grant.role,
+      };
     }
   }
 

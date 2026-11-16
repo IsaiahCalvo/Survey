@@ -55,9 +55,14 @@ async function ownerDoesThings(admin, ownerId, editorId, slug, { renames = 0 } =
   await must('revision', owner.from('documents').update({ sheet_revision: 'B' }).eq('id', docId));
   const item = await must('issue', owner.from('project_items').insert({ project_id: projectId, kind: 'issue', title: 'Leak' }).select('id').single());
   await must('status', owner.from('project_items').update({ status: 'open' }).eq('id', item.id));
-  await must('member', owner.from('project_collaborators').insert({
+  // Members join on the server (invite accept, company sync); the browser can
+  // no longer insert them (KAL-369). Add the row as the service role and credit
+  // the owner, as an owner-side add would read.
+  await must('member', admin.from('project_collaborators').insert({
     project_id: projectId, user_id: editorId, invited_by: ownerId, role: 'editor', email: E2E_ACCOUNTS.editor.email, status: 'active',
   }));
+  await must('member actor', admin.from('project_events').update({ actor_id: ownerId })
+    .eq('project_id', projectId).eq('action', 'member_added').is('actor_id', null));
   for (let i = 0; i < renames; i += 1) {
     await must('busy rename', owner.from('projects').update({ name: `PA ${slug} ${RUN} ${i}`.slice(0, 60) }).eq('id', projectId));
   }
