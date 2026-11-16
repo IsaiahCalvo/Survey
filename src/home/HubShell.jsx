@@ -14,6 +14,7 @@ import { useTooltip } from '../components/Tooltip';
 import { isDocumentDrag, readDocumentDragIds } from './documentSelection.js';
 import { isFeatureOn, releaseChannel } from '../featureFlags.js';
 import { NIGHTLY_COLOR } from '../nightlyBrand.js';
+import { walkthruAppUrl } from '../suite/suiteApps.js';
 
 const IS_MAC = typeof navigator !== 'undefined'
   && /(Mac|iPhone|iPod|iPad)/i.test(`${navigator.platform || ''} ${navigator.userAgent || ''}`);
@@ -363,6 +364,21 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, showShortcuts = 
               <button type="button" role="menuitem" className="hub-menu__item" onClick={() => { setOpen(false); setConfirmSignOut(false); onSettings && onSettings(); }}>
                 <Icon name="settings" size={15} color="var(--ink-200)" />Settings
               </button>
+              {/* Kal Voe suite (KAL-648, Nightly flag 'suite'): Walkthru signs in
+                  with this same account, so it is one tap away. */}
+              {SUITE_LIBRARY_ON && (
+                <a
+                  role="menuitem"
+                  className="hub-menu__item"
+                  href={walkthruAppUrl(releaseChannel())}
+                  style={{ textDecoration: 'none' }}
+                  target="_blank"
+                  rel="noopener"
+                  onClick={() => { setOpen(false); setConfirmSignOut(false); }}
+                >
+                  <Icon name="pagePin" size={15} color="var(--ink-200)" />Open Walkthru
+                </a>
+              )}
               {/* KAL-444: Home's visible way into the shortcuts sheet (the
                   viewer's is the keyboard button on its left rail). Desktop
                   only — the phone instance has no keyboard to describe. */}
