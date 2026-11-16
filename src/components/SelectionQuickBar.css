@@ -637,6 +637,15 @@ button.selection-quick-bar__fill {
 .selection-quick-bar__fill.is-current {
   box-shadow: 0 0 0 2px var(--surface-1, transparent), 0 0 0 4px var(--text-1);
 }
+/* The Fill popover is as wide as its row, and its "none" is a disc like the colours beside it. */
+.selection-quick-bar__popover[data-selection-quick-kind-popover='fill'] {
+  min-width: 0;
+}
+.selection-quick-bar__fill-row .selection-quick-bar__fill {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+}
 .selection-quick-bar__fill-row {
   display: flex;
   align-items: center;
