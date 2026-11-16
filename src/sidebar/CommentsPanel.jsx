@@ -23,6 +23,8 @@ import ListItemContextMenu from '../components/ListItemContextMenu.jsx';
 import { listMenuPointFrom } from '../utils/listContextMenu.js';
 import { copyText } from '../utils/appContextMenuItems.js';
 import { useMarkComments } from '../hooks/useMarkComments.js';
+import { isDeviceDocumentId } from '../services/deviceFiles.js';
+import AccountNeededNote from './AccountNeededNote.jsx';
 import {
   MARK_COMMENT_MAX_CHARS,
   addMarkComment,
@@ -530,6 +532,18 @@ export default function CommentsPanel({
       ))}
     </div>
   ) : null;
+
+  // A file opened with no account lives in this browser only: nobody else
+  // can read a comment on it, so say what would let them (KAL-658).
+  if (isDeviceDocumentId(documentId)) {
+    return (
+      <div className="comments-panel" data-testid="comments-panel" ref={listRef}>
+        <AccountNeededNote name="comments">
+          Comments are for files in an account, where other people can read and answer them.
+        </AccountNeededNote>
+      </div>
+    );
+  }
 
   return (
     <div className="comments-panel" data-testid="comments-panel" ref={listRef}>

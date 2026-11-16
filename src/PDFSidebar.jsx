@@ -30,6 +30,8 @@ import SyncStatusChip from './components/SyncStatusChip';
 import PresenceAvatars from './components/PresenceAvatars';
 import { withDevFakePresence } from './components/presenceIdentity.js';
 import RevisionsPanel from './components/revisions/RevisionsPanel';
+import { isDeviceDocumentId } from './services/deviceFiles.js';
+import AccountNeededNote from './sidebar/AccountNeededNote.jsx';
 import { useMobileSheetMotion } from './mobile/useMobileSheetMotion';
 import { useSheetFocus } from './mobile/useSheetFocus';
 import { useTooltip } from './components/Tooltip';
@@ -1315,8 +1317,16 @@ const PDFSidebar = React.forwardRef(({
 
             {/* Version History Panel */}
             <div style={{ display: activeTab === 'history' ? 'flex' : 'none', flex: 1, flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+              {/* A file opened with no account is not on the server, which
+                  is where History is kept: say so, with the way to get it
+                  (KAL-658). */}
+              {isDeviceDocumentId(documentId) && (
+                <AccountNeededNote name="history">
+                  History starts once this file is in an account. Until then, Undo and Redo step through your changes.
+                </AccountNeededNote>
+              )}
               <RevisionsPanel
-                documentId={documentId}
+                documentId={isDeviceDocumentId(documentId) ? null : documentId}
                 user={user}
                 embedded
                 mobileMode={mobileMode}

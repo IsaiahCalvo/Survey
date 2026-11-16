@@ -1,0 +1,29 @@
+/* A side panel that needs an account (AccountNeededNote.jsx): the quiet
+   centred line every empty side panel uses, with one button. */
+.account-needed-note {
+  margin: 0;
+  padding: 32px 20px;
+  text-align: center;
+  color: var(--text-3);
+  font-size: 13px;
+  line-height: 1.4;
+  user-select: none;
+}
+.account-needed-note__btn {
+  margin-top: 12px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 1px solid var(--ink-500, rgba(255, 255, 255, 0.18));
+  background: transparent;
+  color: var(--text-1);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, transform 80ms ease;
+}
+.account-needed-note__btn:hover { background: var(--ink-700, rgba(255, 255, 255, 0.06)); }
+.account-needed-note__btn:active { background: var(--ink-600, rgba(255, 255, 255, 0.1)); transform: scale(0.98); }
+.account-needed-note__btn:focus-visible { outline: 2px solid var(--accent, #5b9cf5); outline-offset: 2px; }
+.mobile-pdf-sheet .account-needed-note { font-size: 14px; }
+.mobile-pdf-sheet .account-needed-note__btn { height: 44px; padding: 0 18px; }

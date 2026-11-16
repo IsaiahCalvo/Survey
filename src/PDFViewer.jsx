@@ -30637,9 +30637,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           count: importedIds.length,
           ...(markerDecision.incompletePages ? { incompletePages: markerDecision.incompletePages } : {}),
         }, 'local');
-        // The reference build's server-side marker, kept for it.
+        // The reference build's server-side marker, kept for it. A file
+        // opened with no account has no row to stamp.
         try {
-          await supabase
+          if (!isDeviceDocumentId(documentId)) await supabase
             .from('documents')
             .update({ embedded_import_completed_at: new Date().toISOString() })
             .eq('id', documentId);

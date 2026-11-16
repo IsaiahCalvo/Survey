@@ -30,6 +30,9 @@ export const KNOWN_DOCUMENT_ROLES = Object.freeze(['owner', 'editor', 'viewer'])
  */
 export async function fetchMyDocumentRole(supabaseClient, docId) {
   if (!docId || typeof supabaseClient?.rpc !== 'function') return null;
+  // A file opened with no account lives in this browser only (ids from
+  // services/deviceFiles.js start 'device-'): the server has no role for it.
+  if (String(docId).startsWith('device-')) return null;
   try {
     const { data, error } = await supabaseClient.rpc('get_my_document_role', {
       doc_id: docId,
