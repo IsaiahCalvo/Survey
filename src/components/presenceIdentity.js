@@ -36,14 +36,17 @@ import { USER_INACTIVE_FILL, USER_INACTIVE_INK, USER_INITIALS_INK, assignUserCol
 export const PRESENCE_IDLE_MS = 60 * 1000;
 
 /** Initials: email -> the part before "@" split on . _ -; a name -> first and
- *  last word. Matches Astryx's "first + last" rule. */
+ *  last word. Matches Astryx's "first + last" rule. Each word gives its first
+ *  letter or digit, so "QA Test (agents)" is "QA", never "Q(". */
+const firstGlyph = (word) => String(word).match(/[\p{L}\p{N}]/u)?.[0] || '';
 export function presenceInitials(value) {
   const name = String(value || '').trim();
   if (!name) return '?';
   const source = name.includes('@') ? name.slice(0, name.indexOf('@')) : name;
-  const parts = source.split(/[\s._-]+/).filter(Boolean);
-  if (parts.length >= 2) return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
-  return (parts[0] || source).slice(0, 2).toUpperCase() || '?';
+  const parts = source.split(/[\s._-]+/).filter((part) => firstGlyph(part));
+  if (parts.length >= 2) return `${firstGlyph(parts[0])}${firstGlyph(parts[parts.length - 1])}`.toUpperCase();
+  const only = (parts[0] || '').replace(/[^\p{L}\p{N}]/gu, '');
+  return only.slice(0, 2).toUpperCase() || '?';
 }
 
 /** THE label rule, desktop and phone alike (owner 2026-10-02): the person's
