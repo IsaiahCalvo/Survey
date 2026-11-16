@@ -28,6 +28,30 @@ button,
   -webkit-touch-callout: none;
 }
 
+/* Owner 2026-11-16 (iPhone): "I'm able to select the header called
+   Documents and the file count. It's just text." On a touch screen the app
+   is an app, not a page: headers, counts, labels and list rows can't be
+   selected by a long press. What stays selectable is what you type in or
+   mean to copy: fields, the live text editor, the PDF's own text (for the
+   text markup tools) and the few blocks that opt in with `user-select: text`
+   (crash report, measure edit). Desktop, with a mouse, is unchanged. */
+@media (hover: none) and (pointer: coarse) {
+  body {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  input,
+  textarea,
+  [contenteditable]:not([contenteditable="false"]),
+  .textLayer,
+  .textLayer * {
+    -webkit-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
+  }
+}
+
 /* The app's global SIZE tokens. The COLOUR tokens moved out to
    src/styles/tokens.css (imported at the top of this file) on 2026-09-17 when
    the owner approved the revision-2 palette — one file decides every colour on
