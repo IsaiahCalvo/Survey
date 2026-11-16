@@ -10,22 +10,24 @@ const { writeFileAtomic } = require('./electron/atomicFileWriter.cjs');
 const { createTrustedIpcMain } = require('./electron/trustedIpc.cjs');
 const { isClearableDirectory, isOpenableSpreadsheet, isPathAllowed } = require('./electron/fsPathGuard.cjs');
 const { watchSheetSyncConsent } = require('./electron/sheetSyncConsent.cjs');
+const {
+  resolveTrustedSupabaseOrigin,
+  isTrustedSignInHost,
+  matchMainWindowCallback,
+} = require('./electron/mainWindowAuthPolicy.cjs');
 
 const DEV_PORT = process.env.DEV_PORT || '5173';
 const SURVEY_ANALYTICS_PROXY_URL = 'https://surveytool.app/api/analytics/track';
 const SURVEY_ANALYTICS_MAX_BYTES = 32 * 1024;
 let surveyMainWindow = null;
 
-const SIGN_IN_HOSTS = new Set([
-  'login.microsoftonline.com',
-  'login.live.com',
-  'login.microsoft.com',
-  'accounts.google.com',
-  'supabase.com',
-]);
+// KAL-369: the sign-in pages the main window may show, and the sign-in
+// callback it hands to the app, come from src/electron/mainWindowAuthPolicy.cjs.
+// Only Survey's own Supabase project is trusted, not every *.supabase.co site.
+const TRUSTED_SUPABASE_ORIGIN = resolveTrustedSupabaseOrigin(process.env);
 
 function isSignInHost(host) {
-  return SIGN_IN_HOSTS.has(host) || host.endsWith('.supabase.co') || host.endsWith('.microsoftonline.com');
+  return isTrustedSignInHost(host, { supabaseOrigin: TRUSTED_SUPABASE_ORIGIN });
 }
 
 function isAllowedMainWindowUrl(parsedUrl) {
@@ -413,7 +415,49 @@ function createWindow() {
     }
   });
 
-  // Handle OAuth redirects - Supabase redirects back to the app
+  // Hand a sign-in callback to the app. Only a callback that lands on the
+  // app's own address, while the window is on a trusted sign-in page, and that
+  // carries real OAuth parameters counts (KAL-369); only those parameters are
+  // passed on. Supabase usually reaches the app by a server redirect, which
+  // fires will-redirect rather than will-navigate, so both are checked.
+  const handOAuthCallbackToApp = (event, navigationUrl) => {
+    const callback = matchMainWindowCallback({
+      fromUrl: win.webContents.getURL(),
+      toUrl: navigationUrl,
+      supabaseOrigin: TRUSTED_SUPABASE_ORIGIN,
+      development: process.env.NODE_ENV === 'development',
+      devPort: DEV_PORT,
+      appPath: app.getAppPath(),
+    });
+    if (!callback) return false;
+    event.preventDefault();
+    if (process.env.NODE_ENV === 'development') {
+      win.loadURL(`http://localhost:${DEV_PORT}/` + callback.hash);
+    } else {
+      const distPath = path.join(app.getAppPath(), 'dist', 'index.html');
+      win.loadFile(distPath).then(() => {
+        win.webContents.once('did-finish-load', () => {
+          // JSON.stringify escapes quotes, backslashes and newlines, so the
+          // hash can't break out of the string literal.
+          win.webContents.executeJavaScript(`window.location.hash = ${JSON.stringify(callback.hash)};`).catch(err => {
+            console.error('Error setting OAuth hash:', err);
+          });
+        });
+      }).catch(err => {
+        console.error('Error loading OAuth callback:', err);
+      });
+    }
+    return true;
+  };
+
+  win.webContents.on('will-redirect', (event, navigationUrl) => {
+    try {
+      handOAuthCallbackToApp(event, navigationUrl);
+    } catch (err) {
+      console.warn('Redirect URL check error:', err);
+    }
+  });
+
   win.webContents.on('will-navigate', (event, navigationUrl) => {
     try {
       const parsedUrl = new URL(navigationUrl);
@@ -427,31 +471,7 @@ function createWindow() {
         return;
       }
 
-      // Check if this is an OAuth callback (contains hash with access_token or code)
-      if (parsedUrl.hash && (parsedUrl.hash.includes('access_token') || parsedUrl.hash.includes('code') || parsedUrl.hash.includes('error'))) {
-        event.preventDefault();
-        
-        // Reload the app to process the OAuth token
-        if (process.env.NODE_ENV === 'development') {
-          win.loadURL(`http://localhost:${DEV_PORT}` + parsedUrl.hash);
-        } else {
-          const distPath = path.join(app.getAppPath(), 'dist', 'index.html');
-          win.loadFile(distPath).then(() => {
-            // Wait for the page to load, then inject the hash
-            win.webContents.once('did-finish-load', () => {
-              // Inject the OAuth hash safely. JSON.stringify escapes quotes,
-              // backslashes and newlines; the old quote-only escape did not, so a
-              // crafted hash could break out of the string literal.
-              win.webContents.executeJavaScript(`window.location.hash = ${JSON.stringify(parsedUrl.hash)};`).catch(err => {
-                console.error('Error setting OAuth hash:', err);
-              });
-            });
-          }).catch(err => {
-            console.error('Error loading OAuth callback:', err);
-          });
-        }
-        return;
-      }
+      if (handOAuthCallbackToApp(event, navigationUrl)) return;
 
       // The main window holds the app's file bridge, so it only ever shows the
       // app itself or a sign-in page. Any other web page opens in the browser.
@@ -491,14 +511,7 @@ function createWindow() {
     try {
       const parsed = new URL(url);
       const host = parsed.hostname.toLowerCase();
-      const isAllowedHost =
-        host === 'login.microsoftonline.com' ||
-        host === 'login.live.com' ||
-        host === 'login.microsoft.com' ||
-        host === 'accounts.google.com' ||
-        host === 'supabase.com' ||
-        host.endsWith('.supabase.co') ||
-        host.endsWith('.microsoftonline.com');
+      const isAllowedHost = isSignInHost(host);
       if (parsed.protocol === 'https:' && isAllowedHost) {
         return { action: 'allow' };
       }
