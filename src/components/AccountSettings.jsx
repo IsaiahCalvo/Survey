@@ -995,12 +995,15 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                     {!isPurchaseUiHidden() && subscription?.tier === 'free' && (
                       <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '16px', background: 'var(--surface-1)', padding: '4px', borderRadius: '8px', width: 'fit-content', margin: '0 auto 16px auto' }}>
                         <button
+                          type="button"
+                          className="account-period-btn"
+                          aria-pressed={billingPeriod === 'monthly'}
                           onClick={() => setBillingPeriod('monthly')}
                           style={{
                             padding: '8px 24px',
                             border: 'none',
                             borderRadius: '6px',
-                            background: billingPeriod === 'monthly' ? 'var(--surface-3)' : 'transparent',
+                            background: billingPeriod === 'monthly' ? 'var(--surface-3)' : undefined,
                             // The chosen period steps up a surface; words stay white (revision 5).
                             color: billingPeriod === 'monthly' ? 'var(--text-1)' : 'var(--text-3)',
                             cursor: 'pointer',
@@ -1012,12 +1015,15 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                           Monthly
                         </button>
                         <button
+                          type="button"
+                          className="account-period-btn"
+                          aria-pressed={billingPeriod === 'annual'}
                           onClick={() => setBillingPeriod('annual')}
                           style={{
                             padding: '8px 24px',
                             border: 'none',
                             borderRadius: '6px',
-                            background: billingPeriod === 'annual' ? 'var(--surface-3)' : 'transparent',
+                            background: billingPeriod === 'annual' ? 'var(--surface-3)' : undefined,
                             color: billingPeriod === 'annual' ? 'var(--text-1)' : 'var(--text-3)',
                             cursor: 'pointer',
                             fontSize: '14px',
@@ -1061,7 +1067,7 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                     <div className="account-subscription-grid">
                       {/* Free Plan */}
                       <div className="account-subscription-card" style={{
-                        border: subscription?.tier === 'free' && !viaCompany ? '2px solid var(--border-strong)' : '1px solid var(--border)',
+                        ...((subscription?.tier === 'free' && !viaCompany) ? { borderColor: 'var(--border-strong)', boxShadow: '0 0 0 1px var(--border-strong)' } : null),
                         opacity: subscription?.tier === 'free' && !viaCompany ? 1 : 0.7
                       }}>
                         <div className="account-subscription-header">
@@ -1107,7 +1113,7 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                         // same mark the Free and Enterprise cards use. Pro alone wore a
                         // #4A90E2 blue, so "this is your plan" looked like two different
                         // things depending on which plan you were on.
-                        border: (subscription?.tier === 'pro' || subscription?.status === 'trialing') ? '2px solid var(--border-strong)' : '1px solid var(--border)',
+                        ...(((subscription?.tier === 'pro' || subscription?.status === 'trialing')) ? { borderColor: 'var(--border-strong)', boxShadow: '0 0 0 1px var(--border-strong)' } : null),
                         opacity: (subscription?.tier === 'free' || subscription?.tier === 'enterprise' || subscription?.tier === 'developer') ? (subscription?.tier === 'free' ? 1 : 0.7) : 1
                       }}>
                         <div className="account-subscription-header">
@@ -1177,7 +1183,7 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
 
                       {/* Enterprise Plan */}
                       <div className="account-subscription-card" style={{
-                        border: subscription?.tier === 'enterprise' || viaCompany ? '2px solid var(--border-strong)' : '1px solid var(--border)',
+                        ...((subscription?.tier === 'enterprise' || viaCompany) ? { borderColor: 'var(--border-strong)', boxShadow: '0 0 0 1px var(--border-strong)' } : null),
                         opacity: subscription?.tier === 'enterprise' || viaCompany ? 1 : subscription?.tier === 'developer' ? 0.7 : 1
                       }}>
                         <div className="account-subscription-header">

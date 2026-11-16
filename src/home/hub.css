@@ -120,6 +120,10 @@
 
 .survey-hub .main { overflow: hidden; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
 .survey-hub .header { display: flex; align-items: baseline; gap: 14px; padding: 12px 18px 8px; }
+/* A page with nothing on the right of its header (Library) has no search box
+   for the title to line up with, so the title sat 4px higher than on every
+   other page and the page under it began 4px early. */
+.survey-hub .header:has(> .actions:empty) { padding-top: 15.5px; }
 .survey-hub h1.title { font-size: 20px; line-height: 1; letter-spacing: -0.03em; margin: 0; font-weight: 700; }
 .survey-hub .crumb { color: var(--ink-200); font-size: 12px; }
 .survey-hub .crumb b { color: var(--bone-100); font-weight: 600; }
