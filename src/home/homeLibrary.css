@@ -2,13 +2,20 @@
    Nightly flags home-tags / home-shared-views / home-columns. Gold = on, as
    everywhere in Survey; it never changes on hover. */
 
-/* Side bar: views and Tags sit indented under Documents. */
-.survey-hub .home-nav-section { display: flex; flex-direction: column; gap: 1px; margin: 2px 0 6px; }
-.survey-hub .nav .home-nav-item { padding-left: 30px; font-size: 12px; }
+/* Side bar: views and Tags sit indented under Documents, their text in line
+   with the word "Documents". */
+.survey-hub .home-nav-section { display: flex; flex-direction: column; gap: 1px; margin: 0 0 6px; min-width: 0; }
+.survey-hub .nav .home-nav-item { padding-left: 30px; gap: 6px; font-size: 12px; }
 .survey-hub .nav .home-nav-item.is-tag { padding-left: 30px; gap: 6px; }
 .survey-hub .home-nav-item__label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .survey-hub .home-nav-item__count { flex: none; font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums; }
-.survey-hub .nav .home-nav-group { margin-top: 6px; padding-left: 12px; gap: 4px; font-size: 11px; font-weight: 600; color: var(--text-3); }
+.survey-hub .nav .home-nav-item.active .home-nav-item__count { color: var(--ink-200); }
+.survey-hub .nav .home-nav-group { margin-top: 6px; padding-left: 12px; gap: 6px; font-size: 11px; font-weight: 600; color: var(--text-3); }
+/* One highlight at a time. When a view or tag under Documents is the chosen
+   one, it carries the highlight and "Documents" above it reads as the open
+   heading: bright and bold, no fill. Two stacked fills looked like two
+   things were chosen. */
+.survey-hub .nav button.active:has(+ * .home-nav-item.active) { background: transparent; font-weight: 600; }
 .survey-hub .home-nav-empty { padding: 4px 8px 4px 30px; font-size: 11px; color: var(--text-3); }
 
 /* Tag chips. */
