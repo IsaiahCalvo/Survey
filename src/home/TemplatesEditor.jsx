@@ -114,6 +114,7 @@ import AnswerSetPicker, { AnswerChips } from './AnswerSetPicker.jsx';
 import { TEMPLATE_EDITOR_REQUEST_EVENT, takeTemplateEditorRequest } from './templateEditorRequest';
 import './TemplatesEditor.css';
 import DismissBarrier from '../components/DismissBarrier';
+import MenuRows from '../components/MenuRows.jsx';
 import ValueSelect from '../components/ValueSelect.jsx';
 import { OWN_KIT_PREFIX, ownKitCopyFor, templateOwnKitOf } from '../services/exportFormats/ownKitCopy.js';
 import { checkboxProps } from '../utils/keyActivate';
@@ -820,17 +821,9 @@ function MoreMenu({ anchorRect, items, onClose }) {
           visibility: pos ? 'visible' : 'hidden',
         }}
       >
-        {items.map(({ label, danger, onClick }) => (
-          <button
-            key={label}
-            type="button"
-            role="menuitem"
-            className={`hub-menu__item${danger ? ' is-danger' : ''}`}
-            onClick={() => { onClick(); onClose(); }}
-          >
-            {label}
-          </button>
-        ))}
+        {/* The shared rows (MenuRows): the same icons, Delete set apart at the
+            bottom, and the gliding hover strip as on Documents and Projects. */}
+        <MenuRows items={items} onClose={onClose} />
       </div>
     </>,
     document.body,

@@ -1769,7 +1769,7 @@ export default function DocumentsLedger({
                 {...sampleAction}
               />
             ) : (
-              <div className="meta" style={{ padding: '18px 4px', fontSize: 12 }}>{(reviewOn && !reviewFilterIsEmpty(reviewFilter)) || (registerOn && !registerFilterIsEmpty(registerFilter)) ? 'No documents match these filters.' : (extrasOn ? filteredEmpty : 'No documents match your search.')}</div>
+              <div className="meta" style={{ padding: '24px 16px', fontSize: 12 }}>{(reviewOn && !reviewFilterIsEmpty(reviewFilter)) || (registerOn && !registerFilterIsEmpty(registerFilter)) ? 'No documents match these filters.' : (extrasOn ? filteredEmpty : 'No documents match your search.')}</div>
             )
           )}
           {docs.length > 0 && (showTiles ? (
