@@ -366,3 +366,27 @@ test('every field the app sends to the drive actions passes the sheet-sync reque
   const sent = ['action', 'documentId', 'driveId', 'itemId', 'eTag', 'cTag', 'sha', 'force', 'late', 'pushedAt', 'appOrigin', 'provider', 'check', 'syncMinutes', 'syncOff', 'search'];
   for (const key of sent) assert.ok(listed.has(key), `sheet-sync schema is missing "${key}"`);
 });
+
+test('driveCreate opens an upload for a new file in a folder or a shared place, and refuses odd names', async () => {
+  const { graph, call } = setup({ roles: ROLES, flags: BETA });
+  const seen = [];
+  const inner = graph.fetch;
+  graph.fetch = async (url, init = {}) => {
+    const path = decodeURIComponent(url.slice(BASE.length + 1));
+    if ((init.method || 'GET') === 'POST' && /:\/createUploadSession$/.test(path)) {
+      seen.push({ path, body: JSON.parse(init.body) });
+      return new Response(JSON.stringify({ uploadUrl: 'https://up.test/new/1', expirationDateTime: '2026-11-16T18:00:00Z' }), { status: 200 });
+    }
+    return inner(url, init);
+  };
+  const made = await call('owner-1', { action: 'driveCreate', folder: 'Jobs/Collier', title: 'Level 2 nodes.xlsx' });
+  assert.deepEqual(made, { provider: 'msgraph', uploadUrl: 'https://up.test/new/1', expiresAt: '2026-11-16T18:00:00Z' });
+  assert.equal(seen[0].path, 'me/drive/root:/Jobs/Collier/Level 2 nodes.xlsx:/createUploadSession');
+  assert.equal(seen[0].body.item['@microsoft.graph.conflictBehavior'], 'rename');
+  await call('owner-1', { action: 'driveCreate', folder: placeToken('b!sp', 'LIB'), title: 'Nodes.csv' });
+  assert.equal(seen[1].path, 'drives/b!sp/items/LIB:/Nodes.csv:/createUploadSession');
+  await rejects(call('owner-1', { action: 'driveCreate', title: 'run.exe' }), 'bad_name');
+  await rejects(call('owner-1', { action: 'driveCreate', title: '../x.xlsx' }), 'bad_name');
+  await rejects(call('owner-1', { action: 'driveCreate', title: 'x.xlsx', provider: 'google' }), 'msgraph_only');
+  await rejects(call('nobody', { action: 'driveCreate', title: 'x.xlsx' }), 'beta');
+});
