@@ -6,7 +6,7 @@ This file is how they stay in step. The same text sits at
 `docs/suite/SUITE-RULES.md` in all three repos. Change it in all three in the
 same round, or not at all.
 
-Last checked against the code: 2026-11-15.
+Last checked against the code: 2026-11-16.
 
 ## Before you build anything
 
@@ -56,6 +56,83 @@ Do these in order, every time.
 - Database changes that add things are fine. Never lose customer data.
 - Use each app's real words (below). Matching is plain rules, never a best
   guess: library id first, else an exact name the user confirms.
+
+## One look for every control
+
+Owner, 2026-11-16: hover, press, drag and drop must look and act the same in
+all three apps (KAL-657). Each app keeps its own colours (Plot is light,
+Survey and Walkthru are dark). The steps, the timing and the cursors below
+are the same everywhere. A control that skips a step is a bug.
+
+### The states
+
+| State | When | Look | Cursor |
+| --- | --- | --- | --- |
+| Rest | Nothing is happening. | The control's own fill. | `default` |
+| Hover | A mouse is over it. Never on touch. | One step lighter than rest on a dark app, one step darker on a light app. Always the app's one hover colour. | `pointer` on anything you can click, `text` in a field, `grab` on anything you can drag |
+| Pressed | Mouse down, or a finger down. | Dark app: darker than rest. Light app: darker than hover. It must never look the same as hover. | same as hover |
+| Released | Mouse up. | Back to hover if the mouse is still over it, else to rest. The click runs on mouse up, not on mouse down. Letting go off the control cancels the click. | same as hover |
+| Selected | It is the chosen tab, row or tool. | The app's one selected fill. Hover does not repaint it. A press still shows. | `default` |
+| Keyboard focus | Reached with Tab. | A 2px ring, on `:focus-visible` only. Never on a mouse click. | no change |
+| Disabled | It can't be used now. | Dimmed ink. No hover, no press. | `not-allowed` |
+| Busy | The app is working on it. | A spinner in or beside the control. The control keeps its size. | `progress` |
+
+- A coloured button (the main blue or coral one, a red delete) has its own
+  three steps: rest, hover, pressed. It never falls back to the grey ones.
+- A colour swatch never gets a hover or pressed fill over it. Its colour is
+  the user's choice. Give it a ring instead.
+- One hover colour and one pressed colour per app. No one-off hex colours in
+  a component.
+
+### Timing
+
+| What | Time | Curve |
+| --- | --- | --- |
+| Hover in, hover out, pressed back to hover, selected | 150ms | ease out |
+| Pressed, on mouse down | at once | none |
+| A dragged item's neighbours opening a gap, and the dropped item settling | 200ms | ease out |
+| Tooltip | waits once, then the next ones show at once | none |
+
+Ease out is `cubic-bezier(0.33, 1, 0.68, 1)`. "Reduce motion" in the system
+settings sets every one of these to 0.
+
+### Drag and drop
+
+1. **Can be dragged:** the cursor is `grab` on the item or on its handle.
+2. **Picked up:** the cursor is `grabbing` for the whole drag, over anything.
+   The item lifts: one solid fill edge to edge (the app's selected fill), a
+   soft shadow, 6px corners. No see-through copy, no dashed outline, no ring,
+   no scale. Its text stays where it was.
+3. **Moving in a list, a tab row or a grid:** the items it passes slide apart
+   to open the gap it will land in. No drop line.
+4. **Over something that takes it** (a folder, a file drop area): that target
+   shows the selected fill and a 2px accent outline, and nothing else changes.
+5. **Over something that can't take it:** no change on that thing, and the
+   cursor is `not-allowed`.
+6. **Dropped:** the item glides into its gap. It never jumps.
+7. **Cancelled** (Escape, or dropped where it can't go): the item glides back
+   to where it started.
+8. Dragging near an edge of a list that scrolls, scrolls it.
+
+Things on the plan itself (a Node, a Block, a Survey Marker, a drawn mark)
+follow steps 1 and 2 for the cursor, then move with the pointer with no lift.
+
+### Where each app keeps it
+
+| | Survey | Walkthru | Plot |
+| --- | --- | --- | --- |
+| Hover | `--hover` | `--surface-hover` | `--fill` |
+| Pressed | `--pressed` | to add | to add |
+| Selected | `--surface-3` | `--accent-bg` | `--accent-wash` |
+| Coloured button: hover, pressed | `--accent-light`, `--accent-press` | to add | `--accent-hover`, pressed to add |
+| Focus ring | `--focus`, 2px | to add | `--focus-ring`, 2px |
+| State time | `--motion-state` | Tailwind `transition-colors` (150ms) | to add; hovers were instant |
+| Drag | `--drag-lift-*`, `--motion-drag`, `src/reorder/dragMotion.js` | to add | to add |
+| Files | `src/styles/tokens.css`, `src/styles/states.css` | `apps/web/src/app/globals.css` | `src/styles/base.css`, `DESIGN.md` |
+
+Survey has the full set today and is the one to copy the behaviour from.
+"To add" means the app has no shared colour or rule for it yet: add one
+token, then use it everywhere. When an app adds one, fill it in here.
 
 ## Shared words
 
