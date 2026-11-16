@@ -3292,6 +3292,16 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   border-radius: 50%;
 }
 
+/* Owner 2026-11-16 (iPhone): no circle behind the Spaces and Survey icons.
+   The plate and ring go clear; the 1px border stays (transparent) so the
+   touch pad sums above still measure from a 28px padding box. Active is the
+   gold glyph alone. */
+.mobile-pdf-dock__side,
+.mobile-pdf-dock__side.is-active {
+  background: transparent;
+  border-color: transparent;
+}
+
 /* The bottom dock. Same as the rail and the desktop bar: the glyph goes gold,
    the button keeps its resting --panel-bg plate and --border hairline. */
 .mobile-pdf-dock__side.is-active,
