@@ -71,3 +71,15 @@ test('every phone sheet shows its grab handle: the row is flex in the base rule'
 test("the sync popover's retry button has a 44px touch box", () => {
   assert.match(viewer, /\.mobile-pdf-tools__sync-details button::after \{\s*content: '';\s*position: absolute;\s*inset: -8px;/);
 });
+
+// Round 4: the phone sign-in card.
+test('the phone sign-in card may use the whole screen, so no row is cut at its edge', () => {
+  const auth = read('src/components/AuthModal.css');
+  const phone = auth.slice(auth.indexOf('@media (pointer: coarse) and (max-width: 599px)'));
+  assert.ok(phone.length > 0 && phone.length < auth.length, 'one phone block at the end of the sheet');
+  assert.match(phone, /\.auth-modal \{\s*padding: 20px;\s*max-height: calc\(100% - 16px\);/);
+  // The Expo shell already sits the page under the status bar.
+  assert.match(phone, /padding-top: env\(safe-area-inset-top, 0px\);/);
+  assert.doesNotMatch(phone, /padding-top: var\(--native-safe-area-top/);
+  assert.match(phone, /padding-bottom: var\(--native-safe-area-bottom, env\(safe-area-inset-bottom, 0px\)\);/);
+});
