@@ -902,6 +902,8 @@ const PDFSidebar = React.forwardRef(({
           {toolbarSettingsOn && (
             <ToolbarsMenu
               pinnedToolsOn={pinnedToolsOn}
+              panelState={{ open: !isCollapsed, panel: activeTab }}
+              onApplyPanel={(next) => (next.open ? openPanel(next.panel, { focus: false }) : closePanel())}
               renderButton={({ open, ref, onClick, on }) => (
                 <button
                   ref={ref}
