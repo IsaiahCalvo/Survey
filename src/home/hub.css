@@ -5722,7 +5722,8 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
    column squeezed Name to nothing. Narrow panes show the editor as an avatar
    and give Name the room; wide (desktop) panes keep the original columns. */
 .projects-open-pane { container-type: inline-size; }
-.projects-open-body { grid-template-columns: minmax(0, 1fr) 148px; }
+/* 184px: at 148 a two-word name lost its end ("QA Test (agen…"). */
+.projects-open-body { grid-template-columns: minmax(0, 1fr) 184px; }
 .projects-open-team { border-left: 1px solid var(--ink-500); }
 /* Tablet: the Team column moves under the files so Files gets the width. */
 @container (max-width: 600px) {

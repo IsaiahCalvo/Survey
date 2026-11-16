@@ -191,27 +191,31 @@
   cursor: pointer;
 }
 .sheet-set-view__auto:hover { color: var(--text-1); }
+/* The app's card-sized switch (PageGridSettings.css): on is the accent. It
+   was grey when on, which read as off. */
 .sheet-set-view__auto-track {
   position: relative;
-  width: 26px;
-  height: 14px;
+  flex: none;
+  width: 28px;
+  height: 16px;
+  box-sizing: border-box;
   border-radius: 999px;
   background: var(--surface-3);
-  border: 1px solid var(--border-strong);
-  transition: background 120ms ease;
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  transition: background 120ms ease, box-shadow 120ms ease;
 }
 .sheet-set-view__auto-knob {
   position: absolute;
-  top: 1px;
-  left: 1px;
-  width: 10px;
-  height: 10px;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
-  background: var(--text-3);
+  background: var(--text-1);
   transition: transform 120ms ease, background 120ms ease;
 }
-.sheet-set-view__auto.is-on .sheet-set-view__auto-track { background: var(--text-2); }
-.sheet-set-view__auto.is-on .sheet-set-view__auto-knob { transform: translateX(12px); background: var(--surface-0); }
+.sheet-set-view__auto.is-on .sheet-set-view__auto-track { background: var(--accent); box-shadow: none; }
+.sheet-set-view__auto.is-on .sheet-set-view__auto-knob { transform: translateX(12px); background: var(--accent-text, #15110a); }
 .sheet-set-view__scroll { flex: 1; min-height: 0; overflow: auto; padding: 4px 16px 72px; }
 .sheet-set-view.is-phone .sheet-set-view__scroll { padding: 4px 12px calc(var(--mobile-dock-bar-height, 46px) + 64px); }
 .sheet-set-view__scroll.is-list { display: flex; flex-direction: column; align-items: center; gap: 20px; }
