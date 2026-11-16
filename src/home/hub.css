@@ -1513,6 +1513,10 @@
   .survey-hub .header:has(.mobile-header-select-actions) .mobile-header-select-button {
     order: 2;
     margin-left: auto;
+    /* Out of select mode the button sits in a 44px row with -8px margins, so it
+       takes 28px of row 1. Flattened, the bare 36px button made row 1 4px taller
+       and pushed it and the avatar down (KAL-653). Keep it at 28px. */
+    margin-block: -4px;
   }
 
   .survey-hub .header .mobile-header-select-actions {

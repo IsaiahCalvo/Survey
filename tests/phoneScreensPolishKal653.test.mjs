@@ -83,3 +83,9 @@ test('the phone sign-in card may use the whole screen, so no row is cut at its e
   assert.doesNotMatch(phone, /padding-top: var\(--native-safe-area-top/);
   assert.match(phone, /padding-bottom: var\(--native-safe-area-bottom, env\(safe-area-inset-bottom, 0px\)\);/);
 });
+
+// Round 5: hub headers.
+test('entering select mode does not push the select button or the avatar down', () => {
+  // Flattened out of its 44px row, the 36px button must still take only 28px.
+  assert.match(hub, /\.header:has\(\.mobile-header-select-actions\) \.mobile-header-select-button \{\s*order: 2;\s*margin-left: auto;[^}]*margin-block: -4px;/);
+});
