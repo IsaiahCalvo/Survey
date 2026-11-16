@@ -424,6 +424,7 @@ import { PinToolButton } from './components/pins/PinControls.jsx';
 import { LINK_EDIT_EVENT, applyLinkEdit, selectedLinkOf } from './utils/linkTool.js';
 import { NOTE_EDIT_EVENT, applyNoteEdit, selectedNoteOf } from './utils/stickyNote.js';
 import { applyHatch, hatchPatternOf, hatchShapeKind } from './utils/hatchFill.js';
+import { applyKeepShape, keepsProportions } from './utils/snapGuides.js';
 import { EQUATION_EDIT_EVENT, EQUATION_OPEN_EVENT, applyEquationEdit, selectedEquationOf } from './utils/equation.js';
 import { AUDIO_NOTE_OPEN_EVENT, AUDIO_NOTE_PLAY_EVENT, selectedAudioOf } from './utils/audioNote.js';
 import SnapshotTool from './components/SnapshotTool.jsx';
@@ -3279,6 +3280,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const rulerOn = useRulerOn();
   const [noteToolEnabled] = useState(() => isFeatureOn('note-tool'));
   const [hatchFillEnabled] = useState(() => isFeatureOn('hatch-fill'));
+  // Nightly 'mark-bar-by-kind' (KAL-675): the bar's keep-proportions lock on a picked image.
+  const [markBarByKindOn] = useState(() => isFeatureOn('mark-bar-by-kind'));
   const [equationToolEnabled] = useState(() => isFeatureOn('equation-tool'));
   const [audioNoteEnabled] = useState(() => isFeatureOn('audio-note'));
   const [measureAngleEnabled] = useState(() => isFeatureOn('measure-angle'));
@@ -3904,6 +3907,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // and one Undo step like the Measurement popover.
   const handlePatchSelectedLink = useCallback((changes) => {
     handlePatchSelectedAnnotation({}, (obj) => applyLinkEdit(obj, changes));
+  }, [handlePatchSelectedAnnotation]);
+  // Nightly 'mark-bar-by-kind': the picked image's keep-proportions lock, same one-save write.
+  const handleSetSelectedImageKeepShape = useCallback((keep) => {
+    handlePatchSelectedAnnotation({}, (obj) => applyKeepShape(obj, keep));
   }, [handlePatchSelectedAnnotation]);
   // Nightly 'hatch-fill': the picked shape's line pattern, same one-save write.
   const handleSetSelectedHatch = useCallback((pattern) => {
@@ -27707,6 +27714,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     return { id: getAnnotationRenderIdentity(obj).annotationId, pattern: hatchPatternOf(obj) };
   }, [hatchFillEnabled, selectedToolbarAnnotation, selectedToolbarCallout, annotationsByPage]);
 
+  // Nightly 'mark-bar-by-kind': the one picked image, for the bar's lock.
+  const selectedImageShapeForBar = useMemo(() => {
+    if (!markBarByKindOn || !selectedToolbarAnnotation || selectedToolbarCallout) return null;
+    const pageObjects = annotationsByPage?.[selectedToolbarAnnotation.pageNumber]?.objects || [];
+    const index = findSelectedAnnotationIndex(pageObjects, selectedToolbarAnnotation);
+    const obj = (index >= 0 ? pageObjects[index] : null) || selectedToolbarAnnotation.annotation;
+    if (String(obj?.type || '').toLowerCase() !== 'image') return null;
+    return { id: getAnnotationRenderIdentity(obj).annotationId, keep: keepsProportions(obj) };
+  }, [markBarByKindOn, selectedToolbarAnnotation, selectedToolbarCallout, annotationsByPage]);
+
   // UX 2026-05-13: Publish bottom toolbar state to the App shell when this tab
   // is active. Keep this effect below every value in the API object to avoid
   // temporal-dead-zone crashes during PDFViewer's first render.
@@ -28030,6 +28047,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       // One picked shape's hatch pattern (Nightly 'hatch-fill'), for the properties panel.
       selectedHatch: hatchFillEnabled && !groupSummary ? selectedHatchForPanel : null,
       setSelectedHatch: hatchFillEnabled ? handleSetSelectedHatch : null,
+      // One picked image's keep-proportions lock (Nightly 'mark-bar-by-kind').
+      selectedImageShape: markBarByKindOn && !groupSummary ? selectedImageShapeForBar : null,
+      setSelectedImageKeepShape: markBarByKindOn ? handleSetSelectedImageKeepShape : null,
       // One picked equation (Nightly 'equation-tool'): Equation opens it again.
       selectedEquation: equationToolEnabled && !groupSummary ? selectedEquationForHost : null,
       editSelectedEquation: equationToolEnabled ? editSelectedEquation : null,
@@ -28208,6 +28228,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     editSelectedNote,
     selectedHatchForPanel,
     handleSetSelectedHatch,
+    selectedImageShapeForBar,
+    handleSetSelectedImageKeepShape,
     selectedEquationForHost,
     editSelectedEquation,
     selectedAudioForHost,

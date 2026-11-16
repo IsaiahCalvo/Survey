@@ -52,6 +52,7 @@ import { LINE_STYLE_SAMPLE_ICONS, lineStyleOptionsWith } from '../utils/lineStyl
 import { setPropertiesPanelOpen, usePropertiesPanelOpen } from '../utils/propertiesPanelStore.js';
 import {
   QUICK_BAR_WIDTHS,
+  QUICK_BAR_OPACITIES,
   computeSelectionQuickBarPosition,
   isQuickBarWidth,
   nextTextAlign,
@@ -597,6 +598,8 @@ export default function SelectionQuickBar({
   const styleMixed = Boolean(api?.selectionMixed?.lineStyle);
   const widthMixed = Boolean(api?.selectionMixed?.width);
   const widthValue = api?.strokeWidthInputValue;
+  const opacityMixed = Boolean(api?.selectionMixed?.strokeOpacity);
+  const opacityValue = Math.round(Number(api?.strokeOpacity ?? 100));
   const setWidth = (width) => {
     api?.handleStrokeWidthInputChange?.({ target: { value: String(width) } });
     api?.handleStrokeWidthInputBlur?.({ currentTarget: { value: String(width) } });
@@ -703,7 +706,7 @@ export default function SelectionQuickBar({
       />,
     );
   }
-  if (!phone && !panelHoldsStyles && (plan?.width || plan?.style)) {
+  if (!phone && !panelHoldsStyles && (plan?.width || plan?.style || plan?.opacity)) {
     groups.push(
       <span key="line" className="selection-quick-bar__group" data-selection-quick-line>
         <button
@@ -726,6 +729,20 @@ export default function SelectionQuickBar({
   // open lines get Start and end, closed shapes and text get Fill, and marks
   // that hold words get size, bold and align. Each is the same write the
   // tool bar and the properties panel make.
+  // One picked image: Drawboard's keep-proportions lock. On (the default) a
+  // corner drag keeps its shape; off lets it stretch.
+  if (plan?.imageLock) {
+    const keep = api?.selectedImageShape?.keep !== false;
+    groups.push(
+      <span key="image-lock" className="selection-quick-bar__group" data-selection-quick-kind="image-lock">
+        {button('Keep proportions', keep ? 'lock' : 'lockOpen', () => api?.setSelectedImageKeepShape?.(!keep), {
+          'aria-pressed': keep,
+          'data-selection-quick-image-lock': keep ? 'on' : 'off',
+          className: `selection-quick-bar__button${keep ? ' is-open' : ''}`,
+        })}
+      </span>,
+    );
+  }
   if (!panelHoldsStyles && plan?.ends) {
     groups.push(
       <span key="ends" className="selection-quick-bar__group" data-selection-quick-kind="ends">
@@ -901,6 +918,27 @@ export default function SelectionQuickBar({
               >
                 <span className="selection-quick-bar__width-line" aria-hidden="true" style={{ height: `${Math.min(6, width)}px` }} />
                 <span className="selection-quick-bar__width-label" aria-hidden="true">{width}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {plan?.opacity && (
+        <div className="selection-quick-bar__opacities" role="group" aria-label="Opacity" data-selection-quick-opacity>
+          {QUICK_BAR_OPACITIES.map((value) => {
+            const current = !opacityMixed && opacityValue === value;
+            return (
+              <button
+                key={value}
+                type="button"
+                className={`selection-quick-bar__opacity${current ? ' is-current' : ''}`}
+                aria-label={`Opacity ${value}%`}
+                aria-pressed={current}
+                onMouseDown={(event) => event.stopPropagation()}
+                onClick={() => api?.handleStrokeOpacityChange?.(value, { phase: 'commit' })}
+              >
+                <span className="selection-quick-bar__opacity-sample" aria-hidden="true" style={{ opacity: value / 100 }} />
+                <span className="selection-quick-bar__width-label" aria-hidden="true">{value}%</span>
               </button>
             );
           })}

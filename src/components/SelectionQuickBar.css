@@ -129,6 +129,7 @@ html:has(.mobile-pdf-sheet:not(.is-collapsed)) .selection-quick-bar {
 
 .selection-quick-bar__button:focus-visible,
 .selection-quick-bar__width:focus-visible,
+.selection-quick-bar__opacity:focus-visible,
 .selection-quick-bar__style:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: -2px;
@@ -222,7 +223,46 @@ html:has(.mobile-pdf-sheet:not(.is-collapsed)) .selection-quick-bar {
   border-top: 0;
 }
 
+/* Opacity (Nightly 'mark-bar-by-kind'): four presets under the widths. */
+.selection-quick-bar__opacities {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.selection-quick-bar__opacities:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.selection-quick-bar__opacity {
+  height: 36px;
+  padding: 4px 0 3px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-2);
+  font: 500 10px/1 var(--font-ui, -apple-system, system-ui, sans-serif);
+  cursor: pointer;
+}
+
+.selection-quick-bar__opacity-sample {
+  display: block;
+  width: 18px;
+  height: 10px;
+  margin-top: 3px;
+  border-radius: 3px;
+  background: currentColor;
+}
+
 @media (hover: hover) {
+  .selection-quick-bar__opacity:hover,
   .selection-quick-bar__width:hover,
   .selection-quick-bar__style:hover {
     background: var(--hover);
@@ -233,6 +273,7 @@ html:has(.mobile-pdf-sheet:not(.is-collapsed)) .selection-quick-bar {
 /* The chosen width / style: a quiet pressed well and full-strength ink (the
    app's "selected = no gold fill" rule for menu rows). */
 .selection-quick-bar__width.is-current,
+.selection-quick-bar__opacity.is-current,
 .selection-quick-bar__style.is-current {
   background: var(--pressed);
   color: var(--text-1);
@@ -249,7 +290,8 @@ html:has(.mobile-pdf-sheet:not(.is-collapsed)) .selection-quick-bar {
     height: 44px;
   }
 
-  .selection-quick-bar__width {
+  .selection-quick-bar__width,
+  .selection-quick-bar__opacity {
     height: 44px;
   }
 

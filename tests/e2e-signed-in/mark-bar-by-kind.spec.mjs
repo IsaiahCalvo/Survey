@@ -65,12 +65,33 @@ test('a picked rectangle gets Fill on its bar, and a fill colour picked there fi
   }
 });
 
+// KAL-675: opacity presets in the Line pop-up, a picked line fades to 25%.
+test('the Line pop-up has opacity presets, and 25% fades the picked rectangle', async ({ page }) => {
+  test.setTimeout(180_000);
+  const { sheet, pageDiv, marks } = await open(page, 'Bar opacity', true);
+  try {
+    await drawAndPickRect(page, pageDiv, marks);
+    const bar = page.locator('[data-selection-quick-bar]');
+    await bar.locator('[data-selection-quick-line] button').click();
+    const row = bar.locator('[data-selection-quick-opacity]');
+    await expect(row.locator('button')).toHaveCount(4);
+    await row.getByRole('button', { name: 'Opacity 25%' }).click();
+    await expect(row.getByRole('button', { name: 'Opacity 25%' })).toHaveAttribute('aria-pressed', 'true');
+    const strokeOf = () => marks.first().evaluate((g) => (g.querySelector('rect, path, polygon')?.getAttribute('stroke') || '').toLowerCase());
+    await expect.poll(strokeOf).toMatch(/0\.25\)$/);
+  } finally {
+    await sheet.remove();
+  }
+});
+
 test('with the flag off the bar has no Fill button', async ({ page }) => {
   test.setTimeout(180_000);
   const { sheet, pageDiv, marks } = await open(page, 'Bar by kind off', false);
   try {
     await drawAndPickRect(page, pageDiv, marks);
     await expect(page.locator('[data-selection-quick-kind]')).toHaveCount(0);
+    await page.locator('[data-selection-quick-line] button').click();
+    await expect(page.locator('[data-selection-quick-opacity]')).toHaveCount(0);
   } finally {
     await sheet.remove();
   }

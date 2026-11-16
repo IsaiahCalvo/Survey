@@ -343,7 +343,20 @@ export function calloutSnapBox(callout, pageWidth, pageHeight) {
  * (Drawboard: images and signatures always keep them).
  */
 export function keepsProportions(obj) {
-  return String(obj?.type || '').toLowerCase() === 'image';
+  return String(obj?.type || '').toLowerCase() === 'image' && obj?.data?.freeShape !== true;
+}
+
+/**
+ * The bar's keep-proportions lock (Nightly 'mark-bar-by-kind', KAL-675, as
+ * Drawboard's image bar has): off stores `data.freeShape` so a corner drag
+ * may stretch the image; on removes it again. Other marks pass through.
+ */
+export function applyKeepShape(obj, keep) {
+  if (String(obj?.type || '').toLowerCase() !== 'image') return obj;
+  const data = { ...(obj.data || {}) };
+  if (keep) delete data.freeShape;
+  else data.freeShape = true;
+  return { ...obj, data };
 }
 
 /**

@@ -247,10 +247,20 @@ export function planSelectionQuickBar({ items, api, entityCount = 0, locked = fa
     if (every(FILL_KINDS) && typeof api?.handleFillOpacityChange === 'function' && caps?.fill !== false) kindParts.fill = true;
     if (every(ENDS_KINDS) && api?.selectedLineEnds && caps?.arrowheads !== false) kindParts.ends = true;
     if (every(TEXT_KINDS) && typeof textFormat?.api?.setFontSize === 'function') kindParts.text = true;
+    // Opacity sits in the Line pop-up beside width (Drawboard keeps width,
+    // colour and opacity in one pop-up): the panel's Opacity slider write.
+    if (every(WIDTH_KINDS) && typeof api?.handleStrokeOpacityChange === 'function' && caps?.stroke !== false) kindParts.opacity = true;
   }
+  // One picked image (Nightly 'mark-bar-by-kind'): the keep-proportions lock,
+  // when the published pick is that very image.
+  const imageLock = byKind && !locked && list.length === 1 && kinds[0] === 'image'
+    && typeof api?.setSelectedImageKeepShape === 'function'
+    && api?.selectedImageShape != null
+    && String(api.selectedImageShape.id) === String(list[0].id);
   return {
     colour,
     width: Boolean(width),
+    ...(imageLock ? { imageLock: true } : {}),
     style: Boolean(style),
     ...kindParts,
     // Only present when shown, so every other pick plans exactly as before.
@@ -306,6 +316,9 @@ export function isQuickBarWidth(value, width) {
 }
 
 /** The font sizes the bar's size stepper walks through (pt). */
+/** Opacity presets in the Line pop-up, in percent (the panel slider's ticks). */
+export const QUICK_BAR_OPACITIES = Object.freeze([25, 50, 75, 100]);
+
 export const QUICK_BAR_FONT_SIZES = Object.freeze([6, 8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 42, 48, 64, 72]);
 
 /** The next size up (`dir` 1) or down (-1) from `size`; stays at the ends. */

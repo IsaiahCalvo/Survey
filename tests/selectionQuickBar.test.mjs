@@ -351,3 +351,45 @@ test('by kind: a beta flag with its database row, and the bar reads it', () => {
   assert.match(bar, /isFeatureOn\('mark-bar-by-kind'\)/);
   assert.match(readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8'), /documentId=\{leftRailApi\?\.documentId \|\| null\}\s+textFormat=\{textFormatSource\}/);
 });
+
+// KAL-675: opacity in the Line pop-up and the image keep-proportions lock.
+import { QUICK_BAR_OPACITIES } from '../src/utils/selectionQuickBar.js';
+import { applyKeepShape, keepsProportions as keepsShape } from '../src/utils/snapGuides.js';
+
+test('by kind: marks with a line get opacity in the Line pop-up', () => {
+  const api = { ...KIND_API, handleStrokeOpacityChange() {} };
+  for (const kind of ['pen', 'highlighter', 'rect', 'line', 'arrow', 'text', 'callout']) {
+    assert.equal(kindPlan([kind], { api }).opacity, true, kind);
+  }
+  assert.equal(kindPlan(['rect', 'line'], { api }).opacity, true);
+  assert.equal(kindPlan(['image'], { api }).opacity, undefined);
+  assert.equal(kindPlan(['rect'], { api, locked: true }).opacity, undefined);
+  assert.equal(kindPlan(['rect']).opacity, undefined, 'no write, no opacity');
+  assert.equal(kindPlan(['rect'], { api: { ...api, selectionCapabilities: { stroke: false } } }).opacity, undefined);
+  assert.equal(planSelectionQuickBar({ items: [{ id: '1', typeKey: 'rect' }], api }).opacity, undefined, 'flag off');
+  assert.deepEqual([...QUICK_BAR_OPACITIES], [25, 50, 75, 100]);
+});
+
+test('by kind: one picked image gets the keep-proportions lock', () => {
+  const api = { ...KIND_API, setSelectedImageKeepShape() {}, selectedImageShape: { id: '0', keep: true } };
+  assert.equal(kindPlan(['image'], { api }).imageLock, true);
+  assert.equal(kindPlan(['image', 'image'], { api }).imageLock, undefined, 'one image only');
+  assert.equal(kindPlan(['image'], { api, locked: true }).imageLock, undefined);
+  assert.equal(kindPlan(['image'], { api: { ...api, selectedImageShape: { id: '9', keep: true } } }).imageLock, undefined, 'published pick must match');
+  assert.equal(kindPlan(['rect'], { api }).imageLock, undefined);
+  assert.equal(planSelectionQuickBar({ items: [{ id: '0', typeKey: 'image' }], api }).imageLock, undefined, 'flag off');
+});
+
+test('keep-proportions lock: off lets an image stretch, on keeps its shape', () => {
+  const image = { type: 'image', data: { src: 'x' } };
+  assert.equal(keepsShape(image), true);
+  const free = applyKeepShape(image, false);
+  assert.equal(free.data.freeShape, true);
+  assert.equal(free.data.src, 'x');
+  assert.equal(keepsShape(free), false);
+  const back = applyKeepShape(free, true);
+  assert.equal('freeShape' in back.data, false);
+  assert.equal(keepsShape(back), true);
+  const rect = { type: 'rect', data: {} };
+  assert.equal(applyKeepShape(rect, false), rect);
+});
