@@ -11,7 +11,8 @@ import DialogCard from './DialogCard';
 import Icon from '../Icons';
 import Spinner from './Spinner';
 import { Z_INDEX } from '../theme';
-import { connectMicrosoftForDrive, driveCall } from '../services/driveFilesClient.js';
+import { connectForDrive, connectMicrosoftForDrive, driveCall } from '../services/driveFilesClient.js';
+import { ClaimCodeBox } from './SheetSyncButton.jsx';
 import './SheetSyncButton.css';
 
 const isPlace = (folder) => String(folder || '').startsWith('~');
@@ -21,6 +22,57 @@ function sizeText(bytes) {
   if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
   if (n >= 1024) return `${Math.round(n / 1024)} KB`;
   return `${n} B`;
+}
+
+const COMPANY = { google: 'Google', msgraph: 'Microsoft' };
+
+/**
+ * "Open from Google Drive" with no Google sign-in yet: Google's own file
+ * window can't open, so this asks first. It waits where the person can see
+ * it, and takes the code from a sign-in finished in another browser or on
+ * another device. onDone({ ok }) once Google is connected; onClose on cancel.
+ */
+export function DriveConnectDialog({ provider = 'google', onDone, onClose, call = driveCall, connect = connectForDrive }) {
+  const who = COMPANY[provider] || 'Google';
+  const [waiting, setWaiting] = useState(false);
+  const [error, setError] = useState('');
+  const connectNow = async () => {
+    setWaiting(true);
+    setError('');
+    const res = await connect(provider);
+    setWaiting(false);
+    if (res?.ok) onDone({ ok: true });
+    else setError(res?.error || `${who} was not connected.`);
+  };
+  const claimCode = async (_provider, code) => {
+    setError('');
+    const res = await call('claim', { provider, code });
+    if (!res || res.error) { setError(res?.error || 'That code did not work. Try again.'); return false; }
+    onDone({ ok: true });
+    return true;
+  };
+  return (
+    <DialogCard
+      title={`Connect ${who}`}
+      message={`Connect your ${who} account to open PDFs from ${provider === 'google' ? 'Google Drive' : 'OneDrive'}.`}
+      onClose={onClose}
+      width={420}
+      atRoot
+      zIndex={Z_INDEX.modalOverlay}
+      cardProps={{ 'data-drive-connect': provider }}
+    >
+      <div className="sheet-sync-body">
+        <div className="sheet-sync-row">
+          <button type="button" className="sheet-sync-btn sheet-sync-btn--primary sheet-sync-btn--block" disabled={waiting} onClick={connectNow}>
+            {waiting ? (<><Spinner size={14} color="currentColor" />Waiting for {who}…</>) : (<><Icon name={provider === 'google' ? 'google' : 'microsoft'} size={14} />Connect {who}</>)}
+          </button>
+        </div>
+        {waiting && <p className="sheet-sync-note">Say yes on the {who} page. Survey finishes on its own.</p>}
+        {error && <p className="sheet-sync-paste-error" role="alert">{error}</p>}
+        <ClaimCodeBox provider={provider} onClaim={claimCode} />
+      </div>
+    </DialogCard>
+  );
 }
 
 /**
@@ -109,6 +161,17 @@ export default function DriveFilePicker({ onPick, onClose, intoName = null, call
     setAt(res.folder || '');
   };
 
+  // A sign-in said yes in another browser or on another device: its last
+  // page shows a code to type here.
+  const claimCode = async (provider, code) => {
+    const res = await call('claim', { provider, code });
+    if (!res || res.error) { setProblem({ error: res?.error || 'That code did not work. Try again.', code: 'not_connected' }); return false; }
+    setProblem(null);
+    setListing(null);
+    setRound((n) => n + 1);
+    return true;
+  };
+
   const connectNow = async () => {
     setBusy('connect');
     const res = await connect();
@@ -170,6 +233,11 @@ export default function DriveFilePicker({ onPick, onClose, intoName = null, call
               {busy === 'connect' ? (<><Spinner size={14} color="currentColor" />Waiting for Microsoft…</>) : (<><Icon name="microsoft" size={14} />Connect Microsoft</>)}
             </button>
           </div>
+          {busy === 'connect' && <p className="sheet-sync-note">Say yes on the Microsoft page. Survey finishes on its own.</p>}
+          {problem.error && problem.code === 'not_connected' && !/^Connect Microsoft first/i.test(problem.error) && (
+            <p className="sheet-sync-paste-error" role="alert">{problem.error}</p>
+          )}
+          <ClaimCodeBox provider="msgraph" onClaim={claimCode} />
         </div>
       ) : (
         <div className="sheet-sync-body sheet-sync-folders">

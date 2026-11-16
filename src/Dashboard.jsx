@@ -53,7 +53,7 @@ import { lockDocument, unlockDocument } from './services/documentLockService.js'
 import { resolveDocumentMetadata } from './services/documentMetadataResolver.js';
 import { perfUpload } from './utils/performanceLogger';
 import { showToast } from './utils/toast';
-import DriveFilePicker from './components/DriveFilePicker.jsx';
+import DriveFilePicker, { DriveConnectDialog } from './components/DriveFilePicker.jsx';
 import { announceDriveLinkChanged, chooseGoogleDrivePdf, driveCall, fetchDrivePdf, googlePickerApiKey } from './services/driveFilesClient.js';
 import { drivePlace } from './utils/driveLinks.js';
 import { archiveItems, restoreArchiveItems } from './services/archiveService';
@@ -1994,6 +1994,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
   const [drivePickerOpen, setDrivePickerOpen] = useState(false);
   // The project a OneDrive / SharePoint pick goes into (null: open on its own).
   const [driveTargetProject, setDriveTargetProject] = useState(null);
+  const [driveConnectAsk, setDriveConnectAsk] = useState(null); // { resolve } while "Connect Google" is up
   const canOpenFromDrive = Boolean(user) && isFeatureOn('drive-sync-back');
   // Google's Picker needs a browser key; without one the entry stays hidden.
   const canOpenFromGoogleDrive = canOpenFromDrive && Boolean(googlePickerApiKey());
@@ -2026,8 +2027,15 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     }
     return true;
   };
+  // No Google sign-in yet: ask in a dialog the person can see (a Connect
+  // button, and a box for the code from a sign-in finished elsewhere).
+  const askGoogleConnect = () => new Promise((resolve) => setDriveConnectAsk({ resolve }));
+  const answerGoogleConnect = (answer) => {
+    driveConnectAsk?.resolve(answer);
+    setDriveConnectAsk(null);
+  };
   const openFromGoogleDrive = async () => {
-    const picked = await chooseGoogleDrivePdf();
+    const picked = await chooseGoogleDrivePdf({ connect: askGoogleConnect });
     if (!picked) return;
     if (picked.error) { showToast(picked.error, 'warn'); return; }
     await openFromDrive(picked);
@@ -3128,6 +3136,13 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
 
   return (
     <>
+      {driveConnectAsk && (
+        <DriveConnectDialog
+          provider="google"
+          onDone={answerGoogleConnect}
+          onClose={() => answerGoogleConnect({ ok: false, cancelled: true })}
+        />
+      )}
       {drivePickerOpen && (
         <DriveFilePicker
           onPick={(picked) => openFromDrive(picked, { project: driveTargetProject })}

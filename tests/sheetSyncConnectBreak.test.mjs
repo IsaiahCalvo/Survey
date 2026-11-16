@@ -351,7 +351,10 @@ test('web: a claim that fails offline keeps its code; a used code with the accou
   const claim = src.slice(src.indexOf('const claimNow = useCallback'), src.indexOf('// A sign-in finished while this survey was closed'));
   assert.match(claim, /if \(!res\.code\) return \{ retry: true/);
   assert.ok(claim.indexOf('forgetClaim()') > claim.indexOf("sheetSyncCall('claim'"), 'the code is only forgotten after the server answered');
-  assert.match(claim, /connected\) \{ forgetClaim\(\); apply\(s\); return \{ ok: true \}; \}/);
+  assert.match(claim, /connected\) \{ tellClaimResult\(provider, true\); forgetClaim\(\); apply\(s\); return \{ ok: true \}; \}/);
+  // The consent tab's last page reads a removed code as "connected" unless
+  // the app left word that the server refused it.
+  assert.ok(claim.indexOf('tellClaimResult(provider, false)') > 0 && claim.indexOf('tellClaimResult(provider, false)') < claim.lastIndexOf('forgetClaim()'), 'a refused code is reported before it is forgotten');
   assert.match(src, /window\.addEventListener\('storage', onStorage\)/, 'a code left after the loop gave up is still claimed');
 });
 
