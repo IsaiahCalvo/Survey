@@ -9,17 +9,21 @@
 <meta name="color-scheme" content="dark" />
 <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 <style>
-/* Survey's own colours (src/styles/tokens.css): the app is dark only. Owner
+/* Survey's own colours (src/styles/tokens.css). Owner
    2026-11-03: the old "Almost done" page "looks like shit" - a grey box with
    a big code nobody needed. Now it says what is happening, finishes on its
    own, and the code hides behind a small link for the rare case it is needed. */
+/* KAL-663: the suite's grey and coral (docs/suite/SUITE-RULES.md, "One colour
+   set"). This small page is dark in both modes for now. */
 :root{
-  --surface-0:#0d0f14;--surface-1:#171a21;--surface-2:#21252e;--surface-3:#2b303b;
-  --border:#404754;--text-1:#dadfe8;--text-2:#b7bec9;--text-3:#959eae;
-  --accent:#d8a84e;--accent-light:#edc26d;--accent-press:#b6904a;--accent-text:#15110a;
-  --success:#548c71;--danger:#d9534f;--danger-text:#e57f7b;
+  --surface-0:#131315;--surface-1:#131315;--surface-2:#1c1c1e;--surface-3:#2c2c2f;
+  --border:#2c2c2f;--text-1:#e8e7e2;--text-2:#d2d1cc;--text-3:#9a9a97;
+  --accent:#e07a5e;--accent-light:#e89179;--accent-press:#c7634a;--accent-text:#131315;
+  --success:#8baa6e;--danger:#ef4444;--danger-text:#f87171;
   color-scheme:dark;
 }
+/* Survey's own mark takes the accent. */
+.mark svg[stroke]{stroke:var(--accent)}
 *{box-sizing:border-box}
 html,body{height:100%}
 body{margin:0;min-height:100%;display:flex;align-items:center;justify-content:center;padding:24px 16px;background:var(--surface-0);color:var(--text-2);font:400 14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
@@ -54,7 +58,7 @@ p{margin:0}
 <main>
   <div class="marks" aria-hidden="true">
     <span class="mark">
-      <svg viewBox="0 0 512 512" fill="none" stroke="#d8a84e" stroke-width="52" stroke-linecap="round"><circle cx="256" cy="256" r="230"/><line x1="256" y1="30" x2="256" y2="90"/><line x1="256" y1="482" x2="256" y2="422"/><line x1="30" y1="256" x2="90" y2="256"/><line x1="482" y1="256" x2="422" y2="256"/><line x1="192" y1="200" x2="320" y2="200"/><line x1="192" y1="312" x2="269" y2="312"/></svg>
+      <svg viewBox="0 0 512 512" fill="none" stroke="#e07a5e" stroke-width="52" stroke-linecap="round"><circle cx="256" cy="256" r="230"/><line x1="256" y1="30" x2="256" y2="90"/><line x1="256" y1="482" x2="256" y2="422"/><line x1="30" y1="256" x2="90" y2="256"/><line x1="482" y1="256" x2="422" y2="256"/><line x1="192" y1="200" x2="320" y2="200"/><line x1="192" y1="312" x2="269" y2="312"/></svg>
     </span>
     <span class="join" id="join"></span>
     <span class="mark" id="logoGoogle">
