@@ -15,6 +15,8 @@ export const WATCHED = [
   'security_update_password_require_reauthentication',
   'external_anonymous_users_enabled', 'rate_limit_anonymous_users',
   'saml_enabled',
+  // Whether sign-ins (guest ones too) must carry a Turnstile token.
+  'security_captcha_enabled', 'security_captcha_provider',
 ];
 
 const LOWER_UPPER_DIGITS = 'abcdefghijklmnopqrstuvwxyz:ABCDEFGHIJKLMNOPQRSTUVWXYZ:0123456789';
