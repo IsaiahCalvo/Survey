@@ -60,3 +60,14 @@ test("Select mode's tick circle sits on the page picture, not the card corner", 
   assert.equal(panel.split('mobile-page-select-indicator').length - 1, 1);
   assert.match(viewer, /\.mobile-page-select-indicator \{\s*position: absolute;\s*left: 5px;\s*top: 5px;\s*pointer-events: none;/);
 });
+
+// Round 3: viewer sheets.
+test('every phone sheet shows its grab handle: the row is flex in the base rule', () => {
+  // The bar is the row's ::before. In a block row it is an inline box with no
+  // size, which is how Active users and the Colour sheet showed no handle.
+  assert.match(viewer, /\n\.mobile-pdf-sheet__handle \{[^}]*display: flex;\s*align-items: center;\s*height: 20px !important;/);
+});
+
+test("the sync popover's retry button has a 44px touch box", () => {
+  assert.match(viewer, /\.mobile-pdf-tools__sync-details button::after \{\s*content: '';\s*position: absolute;\s*inset: -8px;/);
+});

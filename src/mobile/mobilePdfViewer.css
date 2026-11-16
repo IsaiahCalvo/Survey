@@ -1461,6 +1461,14 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   border: 0;
   border-radius: 50%;
   background: transparent;
+  position: relative;
+}
+/* KAL-653: the retry glyph stays 28px; the pad fills the popover's own 8px
+   gap and padding, so the touch box is 44px. */
+.mobile-pdf-tools__sync-details button::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
 }
 
 /* Owner 2026-10-02: the people faces match the desktop sidebar footer
@@ -3613,6 +3621,11 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
    an 18px row and a 42x4 handle; where the two disagree the board wins for
    looks, and it is the board every approved sheet was drawn against. */
 .mobile-pdf-sheet__handle {
+  /* KAL-653: flex here, not sheet by sheet. The bar is this row's ::before;
+     in a plain block row it is an inline box with no size, so a sheet that
+     forgot its own flex rule (Active users) showed no handle at all. */
+  display: flex;
+  align-items: center;
   height: 20px !important;
   min-height: 20px;
   flex: 0 0 auto;
