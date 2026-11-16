@@ -122,6 +122,8 @@ import { isSmartFillBetaEnabled } from '../survey/smartFillFlag.js';
 import { templateCategoryEmptyText } from './templateEmptyText.js';
 import { autoCompleteOn, findCompleteEntity } from '../utils/surveyAutoEntity.js';
 import { keyboardControlProps } from '../utils/keyboardActivation.js';
+import CategoryTypesRow from './CategoryTypesRow.jsx';
+import { categoryTypesOf, normalizeEntryName } from '../library/libraryModel.js';
 
 // Nightly 'own-excel-layouts': the dialog and its store load when first opened.
 const OwnExcelLayoutDialog = lazy(() => Promise.all([
@@ -280,6 +282,8 @@ const buildRich = (templates, mint = (_key, prefix) => newId(prefix)) => templat
       name: c?.name || `Category ${ci + 1}`,
       // Kal Voe suite library link (KAL-585): carried through untouched.
       ...(typeof c?.libraryEntryId === 'string' && c.libraryEntryId ? { libraryEntryId: c.libraryEntryId } : {}),
+      // Category Types (KAL-618): carried whole, flag on or off.
+      ...(categoryTypesOf(c).length ? { types: categoryTypesOf(c) } : {}),
       items: checklistOf(c).map((it) => {
         /* Preserve stable item ids when the persisted row already has one —
            archived items rely on the same id the marker's checklist_responses
@@ -1071,6 +1075,8 @@ export default function TemplatesEditor({
      template's own typed list. */
   const [customAnswers] = useState(() => isFeatureOn('custom-answers'));
   const [conditionalLines] = useState(() => isFeatureOn('conditional-lines'));
+  // Category Types on a Category (KAL-618), with the rest of the suite parts.
+  const [suiteTypes] = useState(() => isFeatureOn('suite'));
   // Report layout per template (nightly 'survey-report').
   const [surveyReport] = useState(() => isFeatureOn('survey-report'));
   // The per-template pickers: { value, options, onPick }. Desktop shows them
@@ -1876,6 +1882,7 @@ export default function TemplatesEditor({
           out.push({
             ...c, id: newId('c'), name: `${c.name} copy`,
             items: copyLines(c.items, () => newId('i')),
+            ...(c.types?.length ? { types: c.types.map((type) => ({ ...type, id: newId('ct') })) } : {}),
           });
         }
       });
@@ -1913,6 +1920,17 @@ export default function TemplatesEditor({
     }, options);
   };
   const mutateCategory = (ci, fn) => mutateCategoryInModule(openMod, ci, fn);
+  /* Category Types (KAL-618). The row checks the name first (no blank, no
+     repeat), so these only write. */
+  const addCategoryType = (ci, name) => mutateCategory(ci, (c) => ({
+    ...c,
+    types: [...(c.types || []), { id: newId('ct'), name: normalizeEntryName(name) }],
+  }));
+  const removeCategoryType = (ci, typeId) => mutateCategory(ci, (c) => {
+    const types = (c.types || []).filter((type) => type.id !== typeId);
+    const { types: _dropped, ...rest } = c;
+    return types.length ? { ...c, types } : rest;
+  });
   /* Ids of the blank placeholder rows THIS session added and the user has not
      typed into yet. Two rules hang off this set (owner 2026-09-22): walking away
      from such a row deletes it silently, and neither adding nor deleting it
@@ -2254,6 +2272,7 @@ export default function TemplatesEditor({
         id: c.id,
         name: c.name,
         ...(c.libraryEntryId ? { libraryEntryId: c.libraryEntryId } : {}),
+        ...(c.types?.length ? { types: c.types } : {}),
         checklist: c.items.map((it) => {
           /* Persist archived metadata so KAL-44 archive survives save/reload.
              Active items round-trip the simple shape unchanged. */
@@ -3054,6 +3073,9 @@ export default function TemplatesEditor({
                         <div style={{ overflow: 'hidden', minHeight: 0 }}>
                           {/* 26 + grip 24 + gap 6 = 56: item text starts under the category name. */}
                           <div style={{ padding: '4px 14px 12px 26px', background: 'var(--paper-deep)' }}>
+                          {suiteTypes && (
+                            <CategoryTypesRow category={c} types={c.types || []} onAdd={(name) => addCategoryType(i, name)} onRemove={(typeId) => removeCategoryType(i, typeId)} />
+                          )}
                           <div style={{ display: 'grid', gap: 1, marginTop: 6 }}>
                             {items.length === 0 && (
                               <div className="meta" style={{ fontSize: 11, padding: '3px 0' }}>No checklist items yet.</div>
@@ -3772,6 +3794,9 @@ export default function TemplatesEditor({
                               </SwipeActionsRow>
                               {open ? (
                                 <div className="templates-mobile-items">
+                                  {suiteTypes && (
+                                    <CategoryTypesRow phone category={c} types={c.types || []} onAdd={(name) => addCategoryType(ci, name)} onRemove={(typeId) => removeCategoryType(ci, typeId)} />
+                                  )}
                                   {items.length === 0 ? <div className="templates-mobile-empty">No checklist items yet.</div> : null}
                                   <SortableRearrangeList ids={items.map((it) => it.id)} onReorder={(activeId, overId) => reorderItems(ci, activeId, overId)} gap={0}>
                                     {items.map((it) => (
