@@ -825,6 +825,17 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   white-space: nowrap;
 }
 .mobile-pdf-header__zoom-fits > button > svg { width: var(--sheet-icon-sm); height: var(--sheet-icon-sm); flex: 0 0 auto; }
+/* The on/off rows ("Snap to marks", "Dark pages", "Snap to drawing") have
+   words wider than the pill-wide menu: on one line the words ran to the edge
+   and the tick hung outside the menu. They wrap to a second line inside the
+   same 44px row, and always leave the tick's room (14 + 8 gap) so a row
+   reads the same on and off. */
+.mobile-pdf-header__zoom-fits > button[aria-pressed] > span {
+  min-width: 0;
+  max-width: calc(100% - 22px);
+  white-space: normal;
+  line-height: 1.15;
+}
 
 .mobile-pdf-header__zoom-fits > button.is-active {
   color: var(--text-1);
