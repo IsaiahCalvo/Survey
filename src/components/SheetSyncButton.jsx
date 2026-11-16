@@ -5,7 +5,7 @@
 // this asks for one every few seconds while the survey is open and shortly
 // after any change, so a field tech's phone writes to the PM's sheet without
 // either of them pressing anything.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import Icon from '../Icons';
 import Spinner from './Spinner';
 import { useTooltip } from './Tooltip';
@@ -426,6 +426,9 @@ function ConnectHelp({ provider, sync }) {
 // that starts a sign-in, the whole time the account is not connected, so the
 // page never asks for a thing Survey has no place for (owner 2026-11-16).
 export function ClaimCodeBox({ provider, onClaim }) {
+  // The panel shows one box per provider: each needs its own field id, or
+  // the second label points at the first field.
+  const inputId = `sheet-sync-claim-code-${useId().replace(/[^A-Za-z0-9_-]/g, '')}`;
   const [code, setCode] = useState('');
   const [sending, setSending] = useState(false);
   const [open, setOpen] = useState(false);
@@ -438,18 +441,18 @@ export function ClaimCodeBox({ provider, onClaim }) {
   };
   if (!open) {
     return (
-      <p className="sheet-sync-note" data-claim-code="closed">
+      <p className="sheet-sync-note" data-claim-code="closed" data-claim-provider={provider}>
         Signed in to {WHO[provider]} in another browser or on another device?{' '}
         <button type="button" className="sheet-sync-link" onClick={() => setOpen(true)}>Enter its code</button>
       </p>
     );
   }
   return (
-    <form onSubmit={send} className="sheet-sync-code" data-claim-code="open">
-      <label htmlFor="sheet-sync-claim-code">Type the code from the last page of the {WHO[provider]} sign-in.</label>
+    <form onSubmit={send} className="sheet-sync-code" data-claim-code="open" data-claim-provider={provider}>
+      <label htmlFor={inputId}>Type the code from the last page of the {WHO[provider]} sign-in.</label>
       <div className="sheet-sync-code__row">
         <input
-          id="sheet-sync-claim-code"
+          id={inputId}
           value={code}
           onChange={(e) => setCode(e.target.value.toUpperCase().slice(0, 9))}
           placeholder="ABCD-EFGH"
