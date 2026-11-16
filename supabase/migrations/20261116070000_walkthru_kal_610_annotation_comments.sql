@@ -33,6 +33,8 @@ begin
 --                                     "deleted" stub so replies keep their place.
 --   set_annotation_comment_resolved   an editor resolves or reopens a thread.
 --   annotation_comment_people         who can be @mentioned.
+--   claim_annotation_comment_mentions the author takes, once, the emails of the
+--                                     people a new comment mentions, to tell them.
 -- annotation_id has no foreign key: a thread outlives an erased mark.
 
 create table if not exists walkthru.annotation_comments (
@@ -50,6 +52,7 @@ create table if not exists walkthru.annotation_comments (
   deleted_at timestamptz,
   resolved_at timestamptz,
   resolved_by uuid references auth.users(id) on delete set null,
+  mentions_notified_at timestamptz,
   check (deleted_at is not null or char_length(btrim(body)) >= 1),
   check (resolved_at is null or thread_id is null)
 );
@@ -310,6 +313,43 @@ begin
 end;
 $fn$;
 
+-- Once per comment, for its author and only in its first ten minutes: the
+-- people it mentions, for the email that tells them.
+create or replace function walkthru.claim_annotation_comment_mentions(p_comment_id uuid)
+returns table (email text, name text, walkthrough_name text, author_name text, floor_id uuid, page_index integer, annotation_id uuid, body text)
+language plpgsql
+security definer
+set search_path = ''
+as $fn$
+#variable_conflict use_column
+declare
+  v_uid uuid := auth.uid();
+  v_row walkthru.annotation_comments;
+begin
+  select * into v_row from walkthru.annotation_comments where id = p_comment_id for update;
+  if v_uid is null or v_row.id is null or v_row.author_id is distinct from v_uid
+     or v_row.deleted_at is not null or v_row.mentions_notified_at is not null
+     or cardinality(v_row.mentions) = 0 or v_row.created_at < now() - interval '10 minutes' then
+    return;
+  end if;
+  update walkthru.annotation_comments set mentions_notified_at = now() where id = v_row.id;
+  return query
+  select u.email::text,
+         nullif(coalesce(p.display_name, u.raw_user_meta_data->>'full_name', u.raw_user_meta_data->>'name'), '')::text,
+         w.name::text,
+         nullif(coalesce(ap.display_name, au.raw_user_meta_data->>'full_name', au.raw_user_meta_data->>'name', au.email), '')::text,
+         v_row.floor_id, v_row.page_index, v_row.annotation_id, v_row.body
+  from unnest(v_row.mentions) as m(uid)
+  join auth.users u on u.id = m.uid
+  left join walkthru.profiles p on p.id = u.id
+  join walkthru.walkthroughs w on w.id = v_row.walkthrough_id
+  left join auth.users au on au.id = v_uid
+  left join walkthru.profiles ap on ap.id = v_uid
+  where m.uid <> v_uid and u.email is not null
+    and walkthru_private.annotation_comment_member(v_row.walkthrough_id, m.uid);
+end;
+$fn$;
+
 revoke all on function walkthru_private.annotation_comment_member(uuid, uuid) from public, anon, authenticated;
 revoke all on function walkthru_private.annotation_comment_clean_mentions(uuid, uuid[]) from public, anon, authenticated;
 grant execute on function walkthru_private.annotation_comment_member(uuid, uuid) to service_role;
@@ -318,6 +358,8 @@ revoke all on function walkthru.annotation_comment_people(uuid) from public, ano
 grant execute on function walkthru.annotation_comment_people(uuid) to authenticated, service_role;
 revoke all on function walkthru.add_annotation_comment(uuid, uuid, integer, text, uuid, uuid, uuid[], uuid) from public, anon;
 grant execute on function walkthru.add_annotation_comment(uuid, uuid, integer, text, uuid, uuid, uuid[], uuid) to authenticated;
+revoke all on function walkthru.claim_annotation_comment_mentions(uuid) from public, anon;
+grant execute on function walkthru.claim_annotation_comment_mentions(uuid) to authenticated;
 revoke all on function walkthru.edit_annotation_comment(uuid, text, uuid[]) from public, anon;
 grant execute on function walkthru.edit_annotation_comment(uuid, text, uuid[]) to authenticated;
 revoke all on function walkthru.delete_annotation_comment(uuid) from public, anon;
