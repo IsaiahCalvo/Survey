@@ -1,0 +1,104 @@
+/*
+ * Tool bar hidden (Nightly 'toolbar-settings', utils/toolBarVisibility.js):
+ * the desktop viewer's tool row, the settings row under it and the scroll
+ * room kept for that row all go, so the page moves up. AppShell sets the
+ * attribute only on the desktop viewer.
+ */
+html[data-tool-bar="hidden"] #chrome-top-host,
+html[data-tool-bar="hidden"] #chrome-sub-toolbar-host,
+html[data-tool-bar="hidden"] [data-viewer-top-reserve] {
+    display: none !important;
+}
+
+/*
+ * Compact tool bar (Drawboard Projects VT-34): the same two bars, shorter,
+ * with smaller buttons and glyphs. Only the chrome tokens change, and only
+ * inside these two bars, so every control keeps its own rules and the side
+ * panels' title rows keep their full height. 28 = 3 + 22 + 3.
+ */
+html[data-tool-bar-size="compact"] :is(#chrome-top-host, #chrome-sub-toolbar-host) {
+    --chrome-bar-h: 28px;
+    --chrome-control-h: 22px;
+    --chrome-control-w: 22px;
+    --chrome-control-split-w: 22px;
+    --chrome-sub-control-h: 22px;
+    --chrome-sub-control-w: 22px;
+    --chrome-glyph: 14px;
+    --chrome-field-glyph: 12px;
+    --chrome-gap: 4px;
+    --chrome-tool-gap: 4px;
+    --chrome-divider-h: 14px;
+    --chrome-divider-inset: 6px;
+    --chrome-colour-btn: 18px;
+    --chrome-field-h: 18px;
+    --chrome-field-radius: 9px;
+}
+html[data-tool-bar-size="compact"] :is(#chrome-top-host, #chrome-sub-toolbar-host) :is(.chrome-control, .chrome-subcontrol) svg {
+    width: var(--chrome-glyph);
+    height: var(--chrome-glyph);
+}
+
+/* The Toolbars card opens right of the left rail, bottom level with its
+   button: the right rail's card look (RailFlyout.css), mirrored. */
+.toolbars-menu { position: relative; }
+.toolbars-menu .rail-flyout.toolbars-card {
+    left: calc(100% + 16px);
+    right: auto;
+    width: 260px;
+    --menu-origin: bottom left;
+}
+
+/* Workspaces (utils/workspaces.js), under the Toolbars switches. */
+.toolbars-card__workspaces {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid var(--border);
+}
+.toolbars-card__section-title {
+    padding: 2px 10px 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-3, var(--text-2));
+}
+.toolbars-card__workspace { display: flex; align-items: center; }
+.toolbars-card__workspace > .rail-flyout__row { flex: 1 1 auto; min-width: 0; }
+.toolbars-card__workspace-delete {
+    flex: 0 0 auto;
+    width: 22px;
+    height: 22px;
+    margin-right: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-2);
+    cursor: pointer;
+}
+.toolbars-card__workspace-delete:hover { background: var(--surface-3, rgba(255, 255, 255, 0.06)); color: var(--text-1, inherit); }
+.toolbars-card__workspace-save { display: flex; gap: 6px; padding: 6px 10px 4px; }
+.toolbars-card__workspace-save input {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 26px;
+    padding: 0 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface-1, transparent);
+    color: inherit;
+    font: inherit;
+    font-size: 12px;
+}
+.toolbars-card__workspace-save button {
+    flex: 0 0 auto;
+    height: 26px;
+    padding: 0 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface-2);
+    color: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+.toolbars-card__workspace-save button:disabled { opacity: 0.5; cursor: default; }

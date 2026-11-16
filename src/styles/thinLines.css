@@ -1,0 +1,20 @@
+/*
+ * Enhance thin PDF lines (Nightly 'thin-lines', src/utils/thinLines.js): an
+ * SVG erode filter on the pdf.js page canvas and its deep-zoom tile, so thin
+ * dark ink grows on screen. Never the marks, the paper or grid overlays (they
+ * paint on the tile's host, not on these canvases), prints or exports.
+ */
+html[data-thin-lines="thin"] .survey-pdfjs-page-canvas,
+html[data-thin-lines="thin"] .survey-pdfjs-detail-tile { filter: url(#survey-thin-lines-thin); }
+html[data-thin-lines="medium"] .survey-pdfjs-page-canvas,
+html[data-thin-lines="medium"] .survey-pdfjs-detail-tile { filter: url(#survey-thin-lines-medium); }
+html[data-thin-lines="thick"] .survey-pdfjs-page-canvas,
+html[data-thin-lines="thick"] .survey-pdfjs-detail-tile { filter: url(#survey-thin-lines-thick); }
+
+@media print {
+    html[data-thin-lines] .survey-pdfjs-page-canvas,
+    html[data-thin-lines] .survey-pdfjs-detail-tile { filter: none; }
+}
+
+.thin-lines-card__hint { margin: 6px 10px 4px; max-width: 190px; }
+.thin-lines-card__switch { margin: 4px 0 0; padding-top: 4px; border-top: 1px solid var(--border); }

@@ -360,6 +360,17 @@ export function createPinnedToolsStore({ storage = safeStorage(), key = PINNED_T
       if (Boolean(visible) === state.visible) return;
       commit({ ...state, visible: Boolean(visible) });
     },
+    /** What a workspace keeps of the dock (utils/workspaces.js). */
+    exportLayout() {
+      return JSON.parse(JSON.stringify(saved));
+    },
+    /** Put a workspace's dock back: shown, placement, size and both pin sets. */
+    importLayout(raw) {
+      const next = sanitizePinnedToolsState(raw);
+      saved = next;
+      try { storage?.setItem(key, JSON.stringify(saved)); } catch { /* a full or blocked store must not block the dock */ }
+      notify();
+    },
   };
 }
 

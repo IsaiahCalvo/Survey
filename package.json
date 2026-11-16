@@ -133,6 +133,7 @@
       "src/electronAnalyticsBridge.js",
       "src/electron/atomicFileWriter.cjs",
       "src/electron/fsPathGuard.cjs",
+      "src/electron/mainWindowAuthPolicy.cjs",
       "src/electron/msalAuthMain.js",
       "src/electron/msalCacheStore.cjs",
       "src/electron/oauthWindowPolicy.cjs",
