@@ -33,7 +33,7 @@ export function BottomActionBar({
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Open spaces panel"
-        style={[styles.bottomSideButton, styles.bottomActionNudge, spacesModeActive && styles.bottomSideButtonActive]}
+        style={[styles.bottomSideButton, styles.bottomActionNudge]}
         onPress={openSpaces}
       >
         <Layers color={spacesModeActive ? colors.blue : colors.text} size={22} />
@@ -51,7 +51,7 @@ export function BottomActionBar({
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Open survey panel"
-        style={[styles.bottomSideButton, styles.bottomActionNudge, surveyModeActive && styles.bottomSideButtonActive]}
+        style={[styles.bottomSideButton, styles.bottomActionNudge]}
         onPress={openSurvey}
       >
         <SurveyIcon color={surveyModeActive ? colors.blue : colors.text} size={23} />
