@@ -58,3 +58,43 @@ test('adds Walkthru return addresses and keeps every existing one', () => {
   const some = planAuthPatch({ uri_allow_list: `x,${WALKTHRU_REDIRECTS[0]}` });
   assert.equal(some.uri_allow_list, ['x', ...WALKTHRU_REDIRECTS].join(','));
 });
+
+// Account emails carry the suite's name, not Survey's (KAL-664).
+{
+  const { test } = await import('node:test');
+  const assert = (await import('node:assert/strict')).default;
+  const { readStagedEmails, planEmailPatch, EMAIL_SENDER_NAME } = await import('../scripts/supabase-auth-settings.mjs');
+  const { SUITE_NAME } = await import('../src/suite/suiteName.js');
+
+  test('account emails: thirteen staged, each with a subject and a page', () => {
+    const staged = readStagedEmails();
+    assert.equal(Object.keys(staged).length, 26);
+    for (const [key, value] of Object.entries(staged)) assert.ok(value.length > 0, key);
+  });
+
+  test('account emails: every subject names the suite and none names one app', () => {
+    for (const [key, value] of Object.entries(readStagedEmails())) {
+      if (!key.startsWith('mailer_subjects_')) continue;
+      assert.ok(value.includes(SUITE_NAME), `${key}: ${value}`);
+      assert.ok(!/Survey|Walkthru|Plot/.test(value), `${key}: ${value}`);
+    }
+  });
+
+  test('account emails: no page is signed by Survey or links to its site', () => {
+    for (const [key, value] of Object.entries(readStagedEmails())) {
+      if (!key.endsWith('_content')) continue;
+      assert.ok(value.includes(`Sent by ${SUITE_NAME}`), key);
+      assert.ok(!value.includes('surveytool.app'), key);
+      assert.ok(!value.includes('>SURVEY<'), key);
+    }
+  });
+
+  test('account emails: the plan holds only what differs, and the sender name', () => {
+    const staged = readStagedEmails();
+    assert.deepEqual(planEmailPatch({ ...staged, smtp_sender_name: EMAIL_SENDER_NAME }, staged), {});
+    assert.deepEqual(
+      planEmailPatch({ ...staged, smtp_sender_name: 'Survey', mailer_subjects_recovery: 'Reset your Survey password' }, staged),
+      { smtp_sender_name: EMAIL_SENDER_NAME, mailer_subjects_recovery: staged.mailer_subjects_recovery },
+    );
+  });
+}
