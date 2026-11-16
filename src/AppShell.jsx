@@ -28,7 +28,7 @@ import { OPEN_EXPORT_PDF_EVENT } from './utils/exportPdfModes.js';
 import { PageGridMenu } from './components/PageGridSettings';
 import { PaperOverlayGlyph, PaperOverlayMenu } from './components/PaperOverlayMenu.jsx';
 import { ThinLinesGlyph, ThinLinesMenu } from './components/ThinLinesMenu.jsx';
-import { applyToolBarHidden, useToolBarHidden } from './utils/toolBarVisibility';
+import { applyToolBarCompact, applyToolBarHidden, useToolBarCompact, useToolBarHidden } from './utils/toolBarVisibility';
 import './styles/toolBarVisibility.css';
 import RailFlyout from './components/RailFlyout.jsx';
 import { setPageSpreadMode, usePageSpreadMode } from './utils/pageSpreadSetting.js';
@@ -2671,6 +2671,11 @@ export default function App({ devPreviewReturnTab = null }) {
   useEffect(() => {
     applyToolBarHidden(toolBarSettingsEnabled && toolBarHidden && !isNarrowShell);
   }, [toolBarSettingsEnabled, toolBarHidden, isNarrowShell]);
+  // VT-34: the same card can make the tool bar compact (desktop only too).
+  const [toolBarCompact] = useToolBarCompact();
+  useEffect(() => {
+    applyToolBarCompact(toolBarSettingsEnabled && toolBarCompact && !isNarrowShell);
+  }, [toolBarSettingsEnabled, toolBarCompact, isNarrowShell]);
 
   const polylineCurve = usePolylineCurve();
   const pinnedTools = usePinnedTools();

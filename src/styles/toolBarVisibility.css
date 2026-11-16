@@ -10,6 +10,34 @@ html[data-tool-bar="hidden"] [data-viewer-top-reserve] {
     display: none !important;
 }
 
+/*
+ * Compact tool bar (Drawboard Projects VT-34): the same two bars, shorter,
+ * with smaller buttons and glyphs. Only the chrome tokens change, and only
+ * inside these two bars, so every control keeps its own rules and the side
+ * panels' title rows keep their full height. 28 = 3 + 22 + 3.
+ */
+html[data-tool-bar-size="compact"] :is(#chrome-top-host, #chrome-sub-toolbar-host) {
+    --chrome-bar-h: 28px;
+    --chrome-control-h: 22px;
+    --chrome-control-w: 22px;
+    --chrome-control-split-w: 22px;
+    --chrome-sub-control-h: 22px;
+    --chrome-sub-control-w: 22px;
+    --chrome-glyph: 14px;
+    --chrome-field-glyph: 12px;
+    --chrome-gap: 4px;
+    --chrome-tool-gap: 4px;
+    --chrome-divider-h: 14px;
+    --chrome-divider-inset: 6px;
+    --chrome-colour-btn: 18px;
+    --chrome-field-h: 18px;
+    --chrome-field-radius: 9px;
+}
+html[data-tool-bar-size="compact"] :is(#chrome-top-host, #chrome-sub-toolbar-host) :is(.chrome-control, .chrome-subcontrol) svg {
+    width: var(--chrome-glyph);
+    height: var(--chrome-glyph);
+}
+
 /* The Toolbars card opens right of the left rail, bottom level with its
    button: the right rail's card look (RailFlyout.css), mirrored. */
 .toolbars-menu { position: relative; }

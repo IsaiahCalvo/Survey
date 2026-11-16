@@ -4,12 +4,13 @@
  * bar (the top tool row and its settings row) and, when the pinned-tools
  * dock is on, Pinned tools. Both remembered on this device. With the tool bar
  * off, this card is the way back (keys and the right-click menu still work).
+ * While the tool bar shows, a third switch makes it compact (VT-34).
  */
 import { useEffect, useRef, useState } from 'react';
 import './RailFlyout.css';
 import './PageGridSettings.css';
 import '../styles/toolBarVisibility.css';
-import { useToolBarHidden } from '../utils/toolBarVisibility';
+import { useToolBarCompact, useToolBarHidden } from '../utils/toolBarVisibility';
 import { getPinnedToolsStore, usePinnedTools } from '../pinnedTools/pinnedToolsShared.jsx';
 
 /** A window with its top bar (Lucide-style, 24 grid, 1.5 stroke). */
@@ -35,6 +36,7 @@ function SwitchRow({ label, sub, checked, onToggle, ...rest }) {
 /** `renderButton({ open, ref, onClick, on })`; `on` while the tool bar is hidden. */
 export function ToolbarsMenu({ renderButton, pinnedToolsOn = false }) {
     const [hidden, setHidden] = useToolBarHidden();
+    const [compact, setCompact] = useToolBarCompact();
     const pinned = usePinnedTools();
     const [open, setOpen] = useState(false);
     const buttonRef = useRef(null);
@@ -74,6 +76,15 @@ export function ToolbarsMenu({ renderButton, pinnedToolsOn = false }) {
                             onToggle={() => setHidden(!hidden)}
                             data-toolbars-tool-bar="true"
                         />
+                        {!hidden && (
+                            <SwitchRow
+                                label="Compact tool bar"
+                                sub="A shorter bar with smaller buttons"
+                                checked={compact}
+                                onToggle={() => setCompact(!compact)}
+                                data-toolbars-compact="true"
+                            />
+                        )}
                         {pinnedToolsOn && (
                             <SwitchRow
                                 label="Pinned tools"
