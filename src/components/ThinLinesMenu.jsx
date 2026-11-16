@@ -2,12 +2,15 @@
  * Nightly 'thin-lines' (Drawboard Projects: "Enhance thin PDF lines"): the
  * rail's line-weight button opens a card with Off / Thin / Medium / Thick.
  * The pick darkens and widens faint PDF lines on screen only, and is saved
- * on this device: src/utils/thinLines.js.
+ * on this device: src/utils/thinLines.js. Under it, "Ignore line weight"
+ * draws every PDF line one pixel wide (src/utils/pdfLineWeight.js).
  */
 import { useEffect, useRef, useState } from 'react';
 import RailFlyout from './RailFlyout.jsx';
 import Icon from '../Icons';
 import '../styles/thinLines.css';
+import './PageGridSettings.css';
+import { useIgnoreLineWeight } from '../utils/pdfLineWeight';
 import {
     THIN_LINES_EVENT,
     THIN_LINE_LEVELS,
@@ -54,6 +57,7 @@ export const ThinLinesGlyph = ({ size = 14 }) => (
 /** `renderButton({ open, ref, onClick, on })`; `on` while any level is picked. */
 export function ThinLinesMenu({ renderButton, glyphSize = 14 }) {
     const [value, pick] = useThinLines();
+    const [uniform, setUniform] = useIgnoreLineWeight();
     const [open, setOpen] = useState(false);
     const buttonRef = useRef(null);
     const cardRef = useRef(null);
@@ -78,7 +82,7 @@ export function ThinLinesMenu({ renderButton, glyphSize = 14 }) {
     }, [open]);
     return (
         <div className="page-grid-menu">
-            {renderButton({ open, ref: buttonRef, onClick: () => setOpen((v) => !v), on: value !== 'off' })}
+            {renderButton({ open, ref: buttonRef, onClick: () => setOpen((v) => !v), on: value !== 'off' || uniform })}
             {open && (
                 <RailFlyout
                     cardRef={cardRef}
@@ -108,6 +112,22 @@ export function ThinLinesMenu({ renderButton, glyphSize = 14 }) {
                                 </button>
                             );
                         })}
+                    </div>
+                    <div className="page-grid-settings snapping-card thin-lines-card__switch">
+                        <button
+                            type="button"
+                            role="switch"
+                            aria-checked={uniform}
+                            className="page-grid-settings__switch snapping-card__row"
+                            onClick={() => setUniform(!uniform)}
+                            data-thin-lines-uniform="true"
+                        >
+                            <span className="snapping-card__text">
+                                <span>Ignore line weight</span>
+                                <span className="snapping-card__sub">Every PDF line one pixel wide</span>
+                            </span>
+                            <span className="page-grid-settings__knob" aria-hidden="true" />
+                        </button>
                     </div>
                     <p className="page-grid-settings__hint thin-lines-card__hint">Makes faint lines easier to see. Only on your screen.</p>
                 </RailFlyout>

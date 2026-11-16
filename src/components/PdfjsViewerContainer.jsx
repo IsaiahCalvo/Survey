@@ -151,6 +151,7 @@ import {
   shouldRefitForBand,
   subscribeViewerSideOccluders,
 } from '../utils/viewerSideOverlay.js';
+import { applyUniformLineWeight, isIgnoreLineWeightOn, uniformLineWeightKeySuffix, useIgnoreLineWeight } from '../utils/pdfLineWeight';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -400,7 +401,9 @@ function isPdfDocumentProxy(source) {
 // each page by what it shows, so a moved page paints from cache at once.
 function rasterDocKey(pdf) {
   const base = getPageViewBase(pdf);
-  return (base?.fingerprints && base.fingerprints[0]) || base?.fingerprint || 'doc';
+  // Ignore PDF line weight (utils/pdfLineWeight.js) draws a different bitmap:
+  // its own namespace, so the two looks never share a cached page.
+  return `${(base?.fingerprints && base.fingerprints[0]) || base?.fingerprint || 'doc'}${uniformLineWeightKeySuffix()}`;
 }
 
 // Owner 2026-10-07 (far zoom: "maybe a more blurry version ... things need to
@@ -543,6 +546,8 @@ function markPageRasterShown(canvas) {
 
 const PdfPageCanvas = memo(function PdfPageCanvas({ pdf, pageIndex, pageW, pageH, renderScale, rotation, onRaster, isMobileSurface, rasterQueue }) {
   const canvasRef = useRef(null);
+  // Redraw when "Ignore PDF line weight" flips (it changes the cache key too).
+  const [uniformLines] = useIgnoreLineWeight();
   const taskRef = useRef(null);
   const genRef = useRef(0);
   // The bitmap on the canvas now: { id, scale } (scale = device px per point).
@@ -705,6 +710,7 @@ const PdfPageCanvas = memo(function PdfPageCanvas({ pdf, pageIndex, pageW, pageH
           target.width = Math.max(1, Math.floor(viewport.width));
           target.height = Math.max(1, Math.floor(viewport.height));
           const ctx = target.getContext('2d', { alpha: false });
+          if (isIgnoreLineWeightOn()) applyUniformLineWeight(ctx);
 
           if (taskRef.current) { try { taskRef.current.cancel(); } catch { /* noop */ } }
           t0 = performance.now();
@@ -781,7 +787,7 @@ const PdfPageCanvas = memo(function PdfPageCanvas({ pdf, pageIndex, pageW, pageH
       if (taskRef.current) { try { taskRef.current.cancel(); } catch { /* noop */ } }
       turn?.release();
     };
-  }, [pdf, pageIndex, pageW, pageH, want, rotation, tiled, onRaster, isMobileSurface, rasterQueue]);
+  }, [pdf, pageIndex, pageW, pageH, want, rotation, tiled, onRaster, isMobileSurface, rasterQueue, uniformLines]);
 
   // Hand the page bitmap back when the page leaves the mount window. React
   // clears canvasRef BEFORE this cleanup runs, so the element is captured at
@@ -862,6 +868,8 @@ const DetailTile = memo(function DetailTile({ pdf, pageIndex, scale, rotation, l
   // The generation of the render drawing into it now (0: none).
   const renderingRef = useRef(0);
   const [tile, setTile] = useState(null);
+  // A new render callback when "Ignore PDF line weight" flips redraws the tile.
+  const [uniformLines] = useIgnoreLineWeight();
 
   // Retire the tile: hide it and hand its backing store back. Used only where no
   // tile should be visible at all.
@@ -933,6 +941,7 @@ const DetailTile = memo(function DetailTile({ pdf, pageIndex, scale, rotation, l
       if (off.width !== cw) off.width = cw;
       if (off.height !== ch) off.height = ch;
       const ctx = off.getContext('2d', { alpha: false });
+      if (isIgnoreLineWeightOn()) applyUniformLineWeight(ctx);
       renderingRef.current = myGen;
       const transform = [DPR, 0, 0, DPR, -vx * DPR, -vy * DPR];
       // Page only, no baked annotation appearance — see PdfPageCanvas note.
@@ -965,7 +974,7 @@ const DetailTile = memo(function DetailTile({ pdf, pageIndex, scale, rotation, l
         if (isMobileSurface) releaseRasterCanvas(off);
       }
     }
-  }, [pdf, pageIndex, scale, rotation, liveZoomRef, interactionRef, glideSettlingRef, scrollerRef, isMobileSurface, dropTile]);
+  }, [pdf, pageIndex, scale, rotation, liveZoomRef, interactionRef, glideSettlingRef, scrollerRef, isMobileSurface, dropTile, uniformLines]);
 
   latestRenderRef.current = render;
   useEffect(() => {
