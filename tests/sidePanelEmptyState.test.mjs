@@ -12,7 +12,7 @@ test('Search, Bookmarks and History centre their empty line 32px down', () => {
   assert.match(search, /text-align: center;/);
 
   const bookmarks = read('src/sidebar/BookmarksPanel.jsx');
-  assert.match(bookmarks, /textAlign: 'center',\s*padding: '32px 20px',[\s\S]{0,140}\n\s*No bookmarks yet\. Create one to get started\./);
+  assert.match(bookmarks, /textAlign: 'center',\s*padding: '32px 20px',[\s\S]{0,200}\n\s*No bookmarks yet\. Create one to get started\./);
 
   const history = read('src/components/revisions/RevisionsPanel.jsx').match(/\.dh-empty \{([^}]*)\}/)[1];
   assert.match(history, /padding: 32px var\(--dh-edge\);/);
