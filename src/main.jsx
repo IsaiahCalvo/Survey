@@ -8,8 +8,11 @@ import { agentLinkResumeUrl } from './home/agentLinkPending';
 import { installNativeDownloadShim } from './mobile/nativeDownloadShim';
 import { installNativeDeepLinks } from './mobile/nativeDeepLinks';
 import { isTeamsTab, startTeamsTab } from './teams/teamsHost';
+import { installDialogDragGuard } from './utils/dialogDragGuard';
 
 installSurveyAnalytics();
+// A text drag that ends outside a dialog must not close it.
+installDialogDragGuard();
 // Exports in the iOS/Android app go to the share sheet (no-op elsewhere).
 installNativeDownloadShim();
 // Tapped surveytool.app invite links open in the app (no-op elsewhere).

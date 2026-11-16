@@ -449,9 +449,8 @@
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: #ffffff;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
-  transition: transform 160ms ease;
+  background: var(--text-1);
+  transition: transform 160ms ease, background 160ms ease;
 }
 
 .account-switch[aria-checked='true'] .account-switch-track {
@@ -463,6 +462,7 @@
 
 .account-switch[aria-checked='true'] .account-switch-track::after {
   transform: translateX(16px);
+  background: var(--accent-text, #15110a);
 }
 
 .account-switch:focus-visible {
@@ -689,11 +689,16 @@
   color: var(--accent);
 }
 
-/* Subscription Grid */
+/* Subscription Grid. The three cards share their rows (subgrid), so the
+   prices, the dividers and the buttons sit on the same lines whichever card
+   has the longer heading or list. Your current plan is marked by a 1px ring
+   drawn outside the 1px border (AccountSettings.jsx); a 2px border pushed
+   that card's whole content 1px down and in. */
 .account-subscription-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
+  grid-template-rows: auto 1fr auto;
+  gap: 0 12px;
   margin-top: 20px;
 }
 
@@ -702,10 +707,12 @@
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 16px;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: subgrid;
+  grid-row: span 3;
+  row-gap: 0;
   position: relative;
-  transition: all 0.2s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .account-subscription-header {
@@ -726,6 +733,11 @@
   align-items: baseline;
   gap: 6px;
   margin-bottom: 4px;
+}
+
+/* The name's own gap would stack on the row's and drop the price 4px. */
+.account-plan-info-row .account-plan-name {
+  margin-bottom: 0;
 }
 
 .account-plan-badge-text {
@@ -779,8 +791,28 @@
   color: var(--accent);
 }
 
+/* Monthly / Annual: the shared ButtonGroup, centred over the plan cards. */
+.account-period {
+  display: flex;
+  justify-content: center;
+  margin: 0 0 16px;
+}
+.account-period .button-group { align-self: center; }
+.account-period .button-group > button { flex-direction: row; gap: 6px; padding: 0 16px; }
+.account-period__save {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 600;
+  margin-left: 6px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
 .account-subscription-actions button {
   width: 100%;
+  min-height: 34px;
 }
 
 .account-btn-purple {
@@ -975,6 +1007,7 @@
 
   .account-subscription-grid {
     grid-template-columns: 1fr;
+    grid-template-rows: none;
     gap: 16px;
   }
 
