@@ -263,6 +263,7 @@ export default function SurveyHub({
           onLockDocument={onLockDocument}
           onPdfTools={onPdfTools}
           onSaveDeviceFile={onSaveDeviceFile}
+          onSignIn={onSignIn}
           />
         )
       )}

@@ -23,7 +23,8 @@ import PdfPageThumb from './PdfPageThumb';
 import { useThumbnailBackfill } from '../hooks/useThumbnailBackfill';
 import { useStorage } from '../hooks/useDatabase';
 import { useOfflineDocumentActions } from './offlineDocumentActions.js';
-import { useDeviceFileRows, deleteDeviceFile, renameDeviceFile } from './deviceFileActions.js';
+import { useDeviceFileRows, deleteDeviceFile, renameDeviceFile, deviceFilesOn } from './deviceFileActions.js';
+import { requestAuthMode } from '../components/AuthModal';
 import useBrowserOnline from '../hooks/useBrowserOnline.js';
 import { getDocumentCollaborators, getDocumentOwnerProfile } from '../services/documentAnnotationService';
 import { supabase } from '../supabaseClient';
@@ -259,6 +260,7 @@ export default function DocumentsLedger({
   onLockDocument,
   onPdfTools,
   onSaveDeviceFile = null,
+  onSignIn = null,
 }) {
   const tip = useTooltip();
   const [selId, setSelId] = useState(null);
@@ -534,6 +536,26 @@ export default function DocumentsLedger({
   const sampleAction = onDropFiles
     ? { secondaryLabel: sampleBusy ? 'Opening sample…' : 'Try a sample drawing', onSecondary: trySample }
     : {};
+  // Signed out on surveytool.app (no 'device-files' / 'guest-sample'), Upload
+  // and the sample both just ask for an account, so the empty Home says so up
+  // front instead of offering buttons that bounce (KAL-649).
+  const needsAccount = !user && Boolean(onSignIn) && !deviceFilesOn() && !isFeatureOn('guest-sample');
+  const askAccount = (mode) => { requestAuthMode(mode); onSignIn?.(); };
+  const emptyProps = (description) => (needsAccount ? {
+    line: 'Make a free account to start',
+    description: 'Your drawings are kept in your account, so they open on every device. No card needed.',
+    actionLabel: 'Create free account',
+    onAction: () => askAccount('signup'),
+    secondaryLabel: 'Sign in',
+    onSecondary: () => askAccount('login'),
+  } : {
+    line: 'No documents yet',
+    description,
+    actionIcon: 'upload',
+    actionLabel: 'Upload PDF',
+    onAction: () => onUpload && onUpload(),
+    ...sampleAction,
+  });
   const backfillDocs = useMemo(() => docs.map((d) => d.raw), [docs]);
   useThumbnailBackfill(backfillDocs, { downloadDocument, hostRef: backfillHostRef });
 
@@ -1423,12 +1445,7 @@ export default function DocumentsLedger({
                   <div style={{ paddingTop: 96 }}>
                     <EmptyState
                       icon="doc"
-                      line="No documents yet"
-                      description="Upload a PDF, or drag one here, to start marking it up."
-                      actionIcon="upload"
-                      actionLabel="Upload PDF"
-                      onAction={() => onUpload && onUpload()}
-                      {...sampleAction}
+                      {...emptyProps('Upload a PDF, or drag one here, to start marking it up.')}
                     />
                   </div>
                 ) : (
@@ -1761,12 +1778,7 @@ export default function DocumentsLedger({
             mapped.length === 0 ? (
               <EmptyState
                 icon="doc"
-                line="No documents yet"
-                description="Upload a PDF to start marking it up."
-                actionIcon="upload"
-                actionLabel="Upload PDF"
-                onAction={() => onUpload && onUpload()}
-                {...sampleAction}
+                {...emptyProps('Upload a PDF to start marking it up.')}
               />
             ) : (
               <div className="meta" style={{ padding: '18px 4px', fontSize: 12 }}>{(reviewOn && !reviewFilterIsEmpty(reviewFilter)) || (registerOn && !registerFilterIsEmpty(registerFilter)) ? 'No documents match these filters.' : (extrasOn ? filteredEmpty : 'No documents match your search.')}</div>

@@ -23,6 +23,13 @@ import { companyDomainFrom, companySignInErrorMessage, clearCompanySignInRequire
 import { ssoRequiredForEmail } from '../services/companyService.js';
 import { termsAcceptance } from '../legal/legalVersions';
 
+const AUTH_MODE_EVENT = 'survey:auth-mode';
+
+/** Ask the (possibly already mounted) AuthModal to show 'signup' or 'login'. */
+export function requestAuthMode(mode) {
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(AUTH_MODE_EVENT, { detail: mode }));
+}
+
 export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' }) => {
   const [mode, setMode] = useState(initialMode); // 'login', 'signup', 'confirm', 'sso', 'reset'
   const [email, setEmail] = useState('');
@@ -34,6 +41,15 @@ export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' })
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  // A button elsewhere can ask for a mode just before it opens the modal
+  // (requestAuthMode): the signed-out Home asks for Create account.
+  useEffect(() => {
+    const onRequest = (event) => {
+      if (['login', 'signup'].includes(event.detail)) { setMode(event.detail); setError(''); setMessage(''); }
+    };
+    window.addEventListener(AUTH_MODE_EVENT, onRequest);
+    return () => window.removeEventListener(AUTH_MODE_EVENT, onRequest);
+  }, []);
   // Epoch-ms of the last confirmation email send (signUp counts as one) and
   // the seconds left on the resend cooldown, ticked down by the effect below.
   const [resendLastSentAt, setResendLastSentAt] = useState(0);
