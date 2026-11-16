@@ -35,7 +35,8 @@ export function applyNightlyBrand(doc = typeof document !== 'undefined' ? docume
     #survey-nightly-line { position: fixed; top: env(safe-area-inset-top, 0px); left: 0; right: 0; height: 3px; background: ${NIGHTLY_COLOR}; z-index: 2147483646; pointer-events: none; }
     #survey-nightly-tag { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 3px); left: 50%; transform: translateX(-50%); z-index: 2147483646; pointer-events: none;
       padding: 1px 8px 2px; border-radius: 0 0 6px 6px; background: ${NIGHTLY_COLOR}; color: #fff;
-      font: 600 10px/14px system-ui, -apple-system, "Segoe UI", sans-serif; letter-spacing: 0.04em; text-transform: uppercase; }
+      font: 600 10px/14px system-ui, -apple-system, "Segoe UI", sans-serif; letter-spacing: 0.04em; text-transform: uppercase;
+      -webkit-user-select: none; user-select: none; }
     @media print { #survey-nightly-line, #survey-nightly-tag { display: none; } }
   `;
   doc.head.appendChild(style);

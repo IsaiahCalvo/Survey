@@ -54,7 +54,7 @@ export const DIALOG_FIELD_STYLE = Object.freeze({
 });
 
 // A field's name above it: sentence case, never ALL CAPS.
-export const DIALOG_LABEL_STYLE = Object.freeze({ display: 'block', fontSize: 11, color: C.muted, marginBottom: 6 });
+export const DIALOG_LABEL_STYLE = Object.freeze({ display: 'block', fontSize: 11, color: C.muted, marginBottom: 6, userSelect: 'none' });
 
 export const DIALOG_FOOTER_STYLE = Object.freeze({
   padding: '12px 16px', borderTop: `1px solid ${C.rule}`, background: C.deep,
@@ -154,7 +154,7 @@ export default function DialogCard({
           {...cardProps}
         >
           <div style={{ padding: '18px 18px 14px', display: 'flex', justifyContent: 'space-between', gap: 12, flex: 'none' }}>
-            <div style={{ minWidth: 0 }}>
+            <div className="dialog-heading" style={{ minWidth: 0 }}>
               <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.015em' }}>{title}</div>
               {message && <div style={{ fontSize: 12, color: C.muted, marginTop: 8, lineHeight: 1.5 }}>{message}</div>}
             </div>

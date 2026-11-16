@@ -749,8 +749,8 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
         <div ref={mainCardRef} role="dialog" aria-modal="true" aria-label="Manage team" data-kal31-manage-team="true" onClick={(e) => e.stopPropagation()} style={{ width: 560, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: "var(--radius-dialog)", boxShadow: "var(--shadow-dialog)", color: BONE_100, overflow: "hidden", display: "flex", flexDirection: "column", maxHeight: "84vh" }}>
           {/* Header */}
           <div style={{ padding: "16px 18px 14px", borderBottom: `1px solid ${INK_500}`, display: "flex", alignItems: "center", gap: 12 }}>
-            <span style={{ width: 3, height: 30, background: project.color || GOLD, borderRadius: 2, flex: "none", marginRight: 10 }}></span>
-            <div style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ width: 3, height: 30, background: project.color || GOLD, borderRadius: 2, flex: "none" }}></span>
+            <div className="dialog-heading" style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 11, letterSpacing: 0, color: INK_200, fontWeight: 600 }}>Manage team</div>
               <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: -0.015, marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{project.name}</div>
             </div>
