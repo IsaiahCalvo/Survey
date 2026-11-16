@@ -13,7 +13,8 @@
                        is contained (letterboxed) and centred inside. The
                        viewport never changes size between documents.
    variant="row"     — fixed height, width set from the page's TRUE aspect
-                       ratio, so the small thumbnail has the real page shape.
+                       ratio, so the small thumbnail has the real page shape
+                       (no backdrop margin). `maxWidth` caps a wide sheet.
 
    When a document has no usable source (or rendering fails) the `fallback`
    node is rendered instead — the existing stylised placeholder. */
@@ -218,6 +219,9 @@ export default function PdfPageThumb({
   variant = 'preview',
   height = variant === 'row' ? 30 : 460,
   fill = false,
+  // Row only: the widest the page may draw. A wide sheet that would run past
+  // it shrinks to fit, keeping its true shape.
+  maxWidth = null,
   fallback = null,
   // Set only on a selected preview: permits a cloud download on cache miss
   // and moves the request to the front of the shared queue.
@@ -315,8 +319,9 @@ export default function PdfPageThumb({
   // Row: fixed height, width follows the page's true aspect ratio.
   // Preview: fills the pane's width; `fill` lets it also fill the available
   // height (flexing inside a column) so the pane needs no scroll.
+  const rowWidth = maxWidth ? Math.min(maxWidth, height * aspect) : height * aspect;
   const box = isRow
-    ? { width: Math.round(height * aspect), height, borderRadius: 2, flex: 'none' }
+    ? { width: Math.round(rowWidth), height: Math.round(rowWidth / aspect), borderRadius: 2, flex: 'none' }
     : { width: '100%', height: fill ? '100%' : height, borderRadius: 6 };
 
   if (failed) {
