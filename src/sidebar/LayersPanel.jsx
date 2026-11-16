@@ -26,6 +26,9 @@ import {
   setLayerVisible,
   setPdfOpacity,
 } from '../utils/layers.js';
+import { isFeatureOn } from '../featureFlags.js';
+import { LAYER_FOCUS_LEVELS, setLayerFocus, useLayerFocus } from '../utils/layerFocus.js';
+import '../components/PageGridSettings.css';
 
 function EyeIcon({ open }) {
   return (
@@ -45,6 +48,9 @@ export default function LayersPanel({ layerState, activeLayerId, onLayersChange,
   // Owner 2026-11-12: right-click a layer for its row actions.
   const [rowMenu, setRowMenu] = useState(null);
   const tip = useTooltip();
+  // Flags load async: read at mount, never at module level.
+  const [focusOn] = useState(() => isFeatureOn('layer-focus'));
+  const focus = useLayerFocus();
 
   const commit = useCallback((next) => { onLayersChange?.(next); }, [onLayersChange]);
 
@@ -223,6 +229,39 @@ export default function LayersPanel({ layerState, activeLayerId, onLayersChange,
         })()}
         <p className="layers-panel__note">New annotations go on the selected layer. Hidden layers are left out of exports.</p>
       </section>
+
+      {/* Nightly 'layer-focus' (Drawboard Projects focus mode): fade the
+          marks on every other layer, so the selected one stands out. Steps,
+          not a slider (owner 2026-10-26: "I don't like the slider"). */}
+      {focusOn && (
+        <section className="layers-panel__section" aria-labelledby="layers-focus-head" data-layer-focus-section="true">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={focus.on}
+            data-layer-focus-switch="true"
+            className="page-grid-settings__switch layers-panel__focus-switch"
+            onClick={() => setLayerFocus({ on: !focus.on })}
+          >
+            <span className="layers-panel__focus-text">
+              <span id="layers-focus-head">Focus on selected layer</span>
+              <span className="layers-panel__focus-sub">Fades the marks on other layers</span>
+            </span>
+            <span className="page-grid-settings__knob" aria-hidden="true" />
+          </button>
+          {focus.on && (
+            <ButtonGroup
+              label="Other layers' strength"
+              size="sm"
+              fill
+              className="layers-opacity"
+              value={focus.level}
+              options={LAYER_FOCUS_LEVELS.map((level) => ({ value: level, label: `${level}%`, ariaLabel: `Other layers at ${level}%` }))}
+              onChange={(level) => setLayerFocus({ level })}
+            />
+          )}
+        </section>
+      )}
     </div>
   );
 }

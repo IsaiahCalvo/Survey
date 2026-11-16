@@ -1,0 +1,21 @@
+/*
+ * Tool bar hidden (Nightly 'toolbar-settings', utils/toolBarVisibility.js):
+ * the desktop viewer's tool row, the settings row under it and the scroll
+ * room kept for that row all go, so the page moves up. AppShell sets the
+ * attribute only on the desktop viewer.
+ */
+html[data-tool-bar="hidden"] #chrome-top-host,
+html[data-tool-bar="hidden"] #chrome-sub-toolbar-host,
+html[data-tool-bar="hidden"] [data-viewer-top-reserve] {
+    display: none !important;
+}
+
+/* The Toolbars card opens right of the left rail, bottom level with its
+   button: the right rail's card look (RailFlyout.css), mirrored. */
+.toolbars-menu { position: relative; }
+.toolbars-menu .rail-flyout.toolbars-card {
+    left: calc(100% + 16px);
+    right: auto;
+    width: 260px;
+    --menu-origin: bottom left;
+}
