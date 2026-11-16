@@ -26,7 +26,7 @@
 // Microsoft account still saves back. Unlink: the linker or the owner.
 import { decryptToken, encryptToken } from '../sheetSync/tokenCrypto.js';
 import { msgraphAuthConfigFromEnv, refreshMsgraphToken } from '../sheetSync/msgraphAuth.js';
-import { folderTarget, placeToken, shareIdOf } from '../sheetSync/providers/msgraph.js';
+import { folderTarget, linkItemPath, placeToken } from '../sheetSync/providers/msgraph.js';
 import { fetchWithTimeout } from '../sheetSync/providers/contract.js';
 import { googleEndpoints, refreshGoogleToken } from '../sheetSync/providers/google.js';
 
@@ -157,7 +157,7 @@ export function createDriveClient({ getAccessToken, fetch: fetchImpl = globalThi
       return { files };
     },
     async resolveLink(url) {
-      return call('GET', `shares/${shareIdOf(url)}/driveItem?$select=${SELECT}`);
+      return call('GET', `${linkItemPath(url)}?$select=${SELECT}`);
     },
     async item(driveId, itemId) {
       return call('GET', `${itemPath(driveId, itemId)}?$select=${SELECT},@microsoft.graph.downloadUrl`);

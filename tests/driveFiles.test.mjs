@@ -154,6 +154,9 @@ test('browse lists folders, SharePoint shortcuts and only the PDFs; a pasted lin
   assert.deepEqual(top.files.map((f) => [f.name, f.itemId, f.driveId]), [['A-201 Plan.pdf', 'PDF1', DRIVE]]);
   const pasted = await call('owner-1', { action: 'driveBrowse', folderLink: 'https://contoso.example/f/PDF1' });
   assert.equal(pasted.file.itemId, 'PDF1');
+  // A file link copied in Teams names the SharePoint file in objectUrl.
+  const teams = await call('owner-1', { action: 'driveBrowse', folderLink: `https://teams.microsoft.com/l/file/5E0DE993?tenantId=t1&fileType=pdf&objectUrl=${encodeURIComponent('https://contoso.example/f/PDF1')}` });
+  assert.equal(teams.file.itemId, 'PDF1');
   await rejects(call('owner-1', { action: 'driveBrowse', folderLink: 'http://plain' }), 'bad_link');
   await rejects(call('owner-1', { action: 'driveBrowse', folderLink: 'https://contoso.example/f/NOPE' }), 'bad_link');
 });
