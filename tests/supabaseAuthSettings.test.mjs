@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { planAuthPatch, pick } from '../scripts/supabase-auth-settings.mjs';
+import { planAuthPatch, pick, WALKTHRU_REDIRECTS } from '../scripts/supabase-auth-settings.mjs';
 
 test('plans every approved setting from a loose config', () => {
   const patch = planAuthPatch({
@@ -10,7 +10,7 @@ test('plans every approved setting from a loose config', () => {
     db_max_pool_size: 10, db_max_pool_size_unit: 'connections',
     security_update_password_require_current_password: false,
     external_anonymous_users_enabled: false, rate_limit_anonymous_users: 30,
-    saml_enabled: false,
+    saml_enabled: false, uri_allow_list: WALKTHRU_REDIRECTS.join(','),
   });
   assert.deepEqual(patch, {
     password_hibp_enabled: true, password_min_length: 8,
@@ -31,7 +31,7 @@ test('changes nothing once applied, and never loosens a tighter rate limit', () 
     rate_limit_otp: 10, rate_limit_verify: 30, rate_limit_email_sent: 4,
     db_max_pool_size: 20, db_max_pool_size_unit: 'percent',
     external_anonymous_users_enabled: true, rate_limit_anonymous_users: 30,
-    saml_enabled: true,
+    saml_enabled: true, uri_allow_list: WALKTHRU_REDIRECTS.join(','),
   };
   assert.deepEqual(planAuthPatch(done), {});
 });
@@ -47,4 +47,14 @@ test('prints only the watched settings, never secrets', () => {
   const shown = pick({ password_min_length: 8, smtp_pass: 'secret', external_google_secret: 'x' });
   assert.equal(shown.password_min_length, 8);
   assert.ok(!JSON.stringify(shown).includes('secret'));
+});
+
+test('adds Walkthru return addresses and keeps every existing one', () => {
+  const patch = planAuthPatch({ uri_allow_list: 'https://surveytool.app/**, capacitor://localhost' });
+  assert.equal(
+    patch.uri_allow_list,
+    ['https://surveytool.app/**', 'capacitor://localhost', ...WALKTHRU_REDIRECTS].join(','),
+  );
+  const some = planAuthPatch({ uri_allow_list: `x,${WALKTHRU_REDIRECTS[0]}` });
+  assert.equal(some.uri_allow_list, ['x', ...WALKTHRU_REDIRECTS].join(','));
 });

@@ -17,6 +17,21 @@ export const WATCHED = [
   'saml_enabled',
   // Whether sign-ins (guest ones too) must carry a Turnstile token.
   'security_captcha_enabled', 'security_captcha_provider',
+  // Where a sign-in may send people back to (no secrets in it).
+  'uri_allow_list',
+];
+
+// Walkthru shares this sign-in server (KAL-579). Its web copies and its phone
+// app (scheme walkthrough://, or exp:// while it runs inside Expo Go) must be
+// allowed return addresses, or Google and Microsoft sign-in send people back to
+// Survey instead. Added, never removed.
+export const WALKTHRU_REDIRECTS = [
+  'walkthrough://**',
+  'exp://**',
+  'https://walkthru.tools/**',
+  'https://www.walkthru.tools/**',
+  'https://walkthrough-ashen.vercel.app/**',
+  'https://walkthu-nightly.vercel.app/**',
 ];
 
 const LOWER_UPPER_DIGITS = 'abcdefghijklmnopqrstuvwxyz:ABCDEFGHIJKLMNOPQRSTUVWXYZ:0123456789';
@@ -60,6 +75,9 @@ export function planAuthPatch(current) {
     want.db_max_pool_size_unit = 'percent';
     want.db_max_pool_size = POOL_PERCENT;
   }
+  const allowed = String(current.uri_allow_list ?? '').split(',').map((u) => u.trim()).filter(Boolean);
+  const missing = WALKTHRU_REDIRECTS.filter((u) => !allowed.includes(u));
+  if (missing.length) want.uri_allow_list = [...allowed, ...missing].join(',');
   return Object.fromEntries(Object.entries(want).filter(([k, v]) => current[k] !== v));
 }
 

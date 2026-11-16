@@ -33,7 +33,7 @@ import { googleEndpoints, refreshGoogleToken } from '../sheetSync/providers/goog
 export const DRIVE_SYNC_FLAG = 'drive-sync-back';
 export const DRIVE_ACTIONS = Object.freeze([
   'driveBrowse', 'driveOpen', 'driveLink', 'driveStatus', 'drivePush', 'drivePushed', 'driveSettings', 'driveUnlink',
-  'drivePickerToken',
+  'drivePickerToken', 'driveCreate',
 ]);
 // A Google Drive file has no drive id to keep; its link row stores this.
 export const GOOGLE_DRIVE_ID = 'google';
@@ -161,6 +161,16 @@ export function createDriveClient({ getAccessToken, fetch: fetchImpl = globalThi
     },
     async item(driveId, itemId) {
       return call('GET', `${itemPath(driveId, itemId)}?$select=${SELECT},@microsoft.graph.downloadUrl`);
+    },
+    // A new file in `folder` ("" = the drive's top, "A/B", or a shared place
+    // token): an upload link the app sends the bytes to. A same-named file is
+    // kept; Microsoft adds " 1" to the new one.
+    async newFileSession(folder, name) {
+      const target = folderTarget(folder);
+      const parts = [...String(target.sub || '').split('/').filter(Boolean), name].map(encodeURIComponent).join('/');
+      return call('POST', `${target.base}:/${parts}:/createUploadSession`, {
+        body: { item: { '@microsoft.graph.conflictBehavior': 'rename' } },
+      });
     },
     async uploadSession(driveId, itemId, { ifMatch = null } = {}) {
       return call('POST', `${itemPath(driveId, itemId)}/createUploadSession`, {
@@ -618,6 +628,27 @@ async function unlink(ctx) {
   return { link: null };
 }
 
+// Files another suite app saves into the person's OneDrive (Walkthru's node
+// list): a spreadsheet, a CSV or a PDF, never anything that runs.
+const NEW_FILE_NAME = /^[^\\/:*?"<>|\u0000-\u001f]{1,180}\.(xlsx|csv|pdf)$/i;
+
+/** An upload link for a new file in the person's own OneDrive or a shared place. */
+async function create(ctx) {
+  await requireBeta(ctx);
+  if (providerOf(ctx.body.provider) === 'google') throw new DriveError('Saving new files works with OneDrive only.', 400, 'msgraph_only');
+  const name = String(ctx.body.title || '').trim();
+  if (!NEW_FILE_NAME.test(name) || /^\.|\.$/.test(name)) throw new DriveError('Give the file a plain name ending in .xlsx, .csv or .pdf.', 400, 'bad_name');
+  const folder = String(ctx.body.folder || '');
+  const client = await driveClientFor(ctx, ctx.user.id);
+  let session;
+  try { session = await client.newFileSession(folder, name); } catch (err) {
+    if (noOwnDrive(err, folder)) throw new DriveError('Your Microsoft account has no OneDrive. Pick a SharePoint or Teams folder instead.', 409, 'no_onedrive');
+    throw graphProblem(err, { where: 'push' });
+  }
+  if (!session?.uploadUrl) throw new DriveError('Microsoft did not open an upload.', 502, 'graph');
+  return { provider: 'msgraph', uploadUrl: session.uploadUrl, expiresAt: session.expirationDateTime || null };
+}
+
 /** One drive action; `ctx` is the sheet-sync function's (user, userDb, service, env, body). */
 export async function driveAction(ctx) {
   switch (ctx.body.action) {
@@ -630,6 +661,7 @@ export async function driveAction(ctx) {
     case 'driveSettings': return settings(ctx);
     case 'driveUnlink': return unlink(ctx);
     case 'drivePickerToken': return pickerToken(ctx);
+    case 'driveCreate': return create(ctx);
     default: throw new DriveError('Unknown drive action.', 400, 'unknown_action');
   }
 }
