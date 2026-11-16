@@ -16410,8 +16410,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       }
     }
 
-    const firstInitial = firstName ? firstName.charAt(0).toUpperCase() : '';
-    const lastInitial = lastName ? lastName.charAt(0).toUpperCase() : '';
+    // First letter or digit of each name, so "(agents)" gives "A", not "(".
+    const initialOf = (word) => (String(word).match(/[\p{L}\p{N}]/u)?.[0] || '').toUpperCase();
+    const firstInitial = initialOf(firstName);
+    const lastInitial = initialOf(lastName);
 
     return `${firstInitial}${lastInitial}`;
   }, [user]);
