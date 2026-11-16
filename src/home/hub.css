@@ -3214,10 +3214,15 @@
   .survey-hub .templates-mobile-option + .templates-mobile-option {
     border-top: 1px solid var(--rule);
   }
+  /* Owner 2026-11-16: "that dropdown is massive". It was 36px tall and as
+     wide as its longest choice (up to 2/3 of the row). Now it is the same
+     30px as the Entities button and as wide as the choice it shows. */
   .survey-hub .templates-mobile-option select {
     min-width: 0;
-    max-width: 66%;
-    height: 36px;
+    max-width: 58%;
+    width: auto;
+    field-sizing: content;
+    height: 30px;
     font: inherit;
     font-size: 13px;
     color: var(--ink);
