@@ -54,6 +54,8 @@ import BodyPortal from './components/BodyPortal.js';
 import AnchoredPopover from './components/AnchoredPopover';
 import ExportMenu from './components/ExportMenu.jsx';
 import ToolbarOverflowMenu from './components/ToolbarOverflowMenu';
+import LoadoutOverflowMenu from './components/LoadoutOverflowMenu.jsx';
+import useLoadoutOverflow from './hooks/useLoadoutOverflow.js';
 import useResponsiveToolbar from './hooks/useResponsiveToolbar.js';
 import usePhoneLayout from './hooks/usePhoneLayout.js';
 import { hasTouchInput, isElectronApp } from './utils/layoutMode.js';
@@ -2746,6 +2748,9 @@ export default function App({ devPreviewReturnTab = null }) {
   const [formatGhostLayerEl, setFormatGhostLayerEl] = useState(null);
   const chromeMotion = Boolean(isViewerVisible && !isMobileViewer);
   useLoadoutTransition(loadoutSlotEl, loadoutGhostLayerEl, chromeMotion);
+  // KAL-667: tools that do not fit before the right-hand buttons wait in a
+  // More menu at the end of the loadout (utils/loadoutOverflow.js).
+  const loadoutOverflow = useLoadoutOverflow(loadoutSlotEl, Boolean(isViewerVisible && !isMobileViewer && !isNarrowShell));
   // RULED 2026-09-28 owner: one motion for row 2 (in-place crossfade), row 3
   // drops down. Row 2 no longer shares the tool bar's morph / grow / shrink:
   // when its set of controls changes the WHOLE row crossfades in place (old
@@ -3916,6 +3921,11 @@ export default function App({ devPreviewReturnTab = null }) {
                   id="chrome-subtools-host"
                   data-chrome-subtools-host="true"
                   style={{ display: 'flex', alignItems: 'center', gap: 'var(--chrome-tool-gap)' }}
+                />
+                <LoadoutOverflowMenu
+                  items={loadoutOverflow.hidden}
+                  onPick={loadoutOverflow.pick}
+                  tooltip={chromeTip('More tools', 'below')}
                 />
               </div>
               {/* w47: where the outgoing loadout fades out — the same box as
