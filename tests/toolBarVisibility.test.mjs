@@ -36,3 +36,29 @@ test('applied on <html>, and only the shell applies it (desktop only)', () => {
   const rail = readFileSync(new URL('../src/PDFSidebar.jsx', import.meta.url), 'utf8');
   assert.match(rail, /useState\(\(\) => isFeatureOn\('toolbar-settings'\)\)/);
 });
+
+// VT-34: compact tool bar, same card, same flag.
+test('compact tool bar: saved on this device, applied on <html>, tokens only inside the two bars', async () => {
+  const mod = await import('../src/utils/toolBarVisibility.js');
+  const m = new Map();
+  const storage = { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)) };
+  assert.equal(mod.loadToolBarCompact(storage), false);
+  assert.equal(mod.setToolBarCompact(true, { storage }), true);
+  assert.equal(m.get(mod.TOOL_BAR_COMPACT_KEY), '1');
+  assert.equal(mod.loadToolBarCompact(storage), true);
+  assert.equal(mod.loadToolBarCompact({ getItem() { throw new Error('blocked'); } }), false);
+  const attrs = new Map();
+  const root = { setAttribute: (k, v) => attrs.set(k, v), removeAttribute: (k) => attrs.delete(k) };
+  mod.applyToolBarCompact(true, root);
+  assert.equal(attrs.get(mod.TOOL_BAR_SIZE_ATTR), 'compact');
+  mod.applyToolBarCompact(false, root);
+  assert.equal(attrs.size, 0);
+  const shell = readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
+  assert.match(shell, /applyToolBarCompact\(toolBarSettingsEnabled && toolBarCompact && !isNarrowShell\)/);
+  const css = readFileSync(new URL('../src/styles/toolBarVisibility.css', import.meta.url), 'utf8');
+  assert.ok(css.includes('html[data-tool-bar-size="compact"] :is(#chrome-top-host, #chrome-sub-toolbar-host) {'));
+  assert.match(css, /--chrome-bar-h: 28px/);
+  const card = readFileSync(new URL('../src/components/ToolbarsMenu.jsx', import.meta.url), 'utf8');
+  assert.match(card, /label="Compact tool bar"/);
+  assert.match(card, /\{!hidden && \(/);
+});
