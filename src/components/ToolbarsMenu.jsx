@@ -5,6 +5,8 @@
  * dock is on, Pinned tools. Both remembered on this device. With the tool bar
  * off, this card is the way back (keys and the right-click menu still work).
  * While the tool bar shows, a third switch makes it compact (VT-34).
+ * Under the switches, Workspaces saves the whole layout under a name and puts
+ * it back with one press (utils/workspaces.js).
  */
 import { useEffect, useRef, useState } from 'react';
 import './RailFlyout.css';
@@ -12,6 +14,8 @@ import './PageGridSettings.css';
 import '../styles/toolBarVisibility.css';
 import { useToolBarCompact, useToolBarHidden } from '../utils/toolBarVisibility';
 import { getPinnedToolsStore, usePinnedTools } from '../pinnedTools/pinnedToolsShared.jsx';
+import Icon from '../Icons';
+import { WORKSPACE_NAME_MAX, applyLayout, captureLayout, deleteWorkspace, saveWorkspace, useWorkspaces } from '../utils/workspaces';
 
 /** A window with its top bar (Lucide-style, 24 grid, 1.5 stroke). */
 export const ToolbarsGlyph = ({ size = 16 }) => (
@@ -33,8 +37,69 @@ function SwitchRow({ label, sub, checked, onToggle, ...rest }) {
     );
 }
 
-/** `renderButton({ open, ref, onClick, on })`; `on` while the tool bar is hidden. */
-export function ToolbarsMenu({ renderButton, pinnedToolsOn = false }) {
+function WorkspacesSection({ panelState, onApplyPanel }) {
+    const workspaces = useWorkspaces();
+    const [name, setName] = useState('');
+    const [applied, setApplied] = useState(null);
+    const save = (event) => {
+        event.preventDefault();
+        const entry = saveWorkspace(name, captureLayout({ panel: panelState, pinnedStore: getPinnedToolsStore() }));
+        if (entry) { setName(''); setApplied(entry.id); }
+    };
+    return (
+        <div className="toolbars-card__workspaces" data-workspaces="true">
+            <div className="toolbars-card__section-title">Workspaces</div>
+            {workspaces.length === 0 && <p className="page-grid-settings__hint">Save how your screen is laid out, then switch back with one press.</p>}
+            {workspaces.length > 0 && (
+                <div className="rail-flyout__rows" role="list">
+                    {workspaces.map((ws) => (
+                        <div key={ws.id} role="listitem" className="toolbars-card__workspace">
+                            <button
+                                type="button"
+                                className="rail-flyout__row"
+                                data-workspace-apply={ws.name}
+                                onClick={() => { applyLayout(ws.layout, { applyPanel: onApplyPanel, pinnedStore: getPinnedToolsStore() }); setApplied(ws.id); }}
+                            >
+                                <span className="rail-flyout__label">{ws.name}</span>
+                                <span className="rail-flyout__tick" aria-hidden="true">
+                                    {applied === ws.id && <Icon name="check" size={14} color="currentColor" />}
+                                </span>
+                            </button>
+                            <button
+                                type="button"
+                                className="toolbars-card__workspace-delete"
+                                aria-label={`Delete workspace ${ws.name}`}
+                                data-workspace-delete={ws.name}
+                                onClick={() => { deleteWorkspace(ws.id); if (applied === ws.id) setApplied(null); }}
+                            >
+                                <Icon name="close" size={12} color="currentColor" />
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            )}
+            <form className="toolbars-card__workspace-save" onSubmit={save}>
+                <input
+                    type="text"
+                    value={name}
+                    maxLength={WORKSPACE_NAME_MAX}
+                    placeholder="Name this layout"
+                    aria-label="Workspace name"
+                    data-workspace-name="true"
+                    onChange={(e) => setName(e.target.value)}
+                />
+                <button type="submit" disabled={!name.trim()} data-workspace-save="true">Save</button>
+            </form>
+        </div>
+    );
+}
+
+/**
+ * `renderButton({ open, ref, onClick, on })`; `on` while the tool bar is hidden.
+ * `panelState` ({ open, panel }) and `onApplyPanel` let a workspace read and
+ * set the left rail.
+ */
+export function ToolbarsMenu({ renderButton, pinnedToolsOn = false, panelState = null, onApplyPanel = null }) {
     const [hidden, setHidden] = useToolBarHidden();
     const [compact, setCompact] = useToolBarCompact();
     const pinned = usePinnedTools();
@@ -96,6 +161,7 @@ export function ToolbarsMenu({ renderButton, pinnedToolsOn = false }) {
                         )}
                         {hidden && <p className="page-grid-settings__hint">Keys and the right-click menu still work.</p>}
                     </div>
+                    <WorkspacesSection panelState={panelState} onApplyPanel={onApplyPanel} />
                 </div>
             )}
         </div>
