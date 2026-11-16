@@ -74,7 +74,11 @@
 .survey-hub .nums { font-variant-numeric: tabular-nums; }
 
 /* Shell — sidebar + main */
-.survey-hub .shell { display: grid; grid-template-columns: 148px 1fr; grid-template-rows: minmax(0, 1fr); height: 100%; min-height: 0; }
+/* 168px, up from 148: the views under Documents ("Shared with me" plus its
+   count) need 147px of row, and at 148 the rows grew past the bar and their
+   highlight was cut off by the page beside it. TabBar.jsx's HOME_TAB_WIDTH
+   matches this number so the Home tab sits square over the bar. */
+.survey-hub .shell { display: grid; grid-template-columns: 168px 1fr; grid-template-rows: minmax(0, 1fr); height: 100%; min-height: 0; }
 .survey-hub .side {
   background: var(--ink-800);
   border-right: 1px solid var(--ink-500);
@@ -84,7 +88,9 @@
 }
 .survey-hub .brand { font-weight: 700; font-size: 15px; letter-spacing: -0.04em; color: var(--bone-100); }
 .survey-hub .brand .brand-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--gold); margin-right: 6px; vertical-align: middle; }
-.survey-hub .nav { margin-top: 18px; display: grid; gap: 2px; }
+/* minmax(0, 1fr): a plain grid column grows to fit its longest row, so one
+   long label pushed every highlight out past the bar's right padding. */
+.survey-hub .nav { margin-top: 18px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; }
 .survey-hub .nav button { background: transparent; border: 0; text-align: left; padding: 6px 8px; border-radius: 6px; color: var(--ink-200); cursor: pointer; font: inherit; display: flex; align-items: center; gap: 8px; font-size: 12px; }
 .survey-hub .nav button.active { background: var(--ink-600); color: var(--bone-100); }
 .survey-hub .nav button:disabled { color: var(--text-disabled); cursor: not-allowed; }
@@ -114,6 +120,10 @@
 
 .survey-hub .main { overflow: hidden; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
 .survey-hub .header { display: flex; align-items: baseline; gap: 14px; padding: 12px 18px 8px; }
+/* A page with nothing on the right of its header (Library) has no search box
+   for the title to line up with, so the title sat 4px higher than on every
+   other page and the page under it began 4px early. */
+.survey-hub .header:has(> .actions:empty) { padding-top: 15.5px; }
 .survey-hub h1.title { font-size: 20px; line-height: 1; letter-spacing: -0.03em; margin: 0; font-weight: 700; }
 .survey-hub .crumb { color: var(--ink-200); font-size: 12px; }
 .survey-hub .crumb b { color: var(--bone-100); font-weight: 600; }
@@ -626,6 +636,13 @@
   color: var(--danger-text);
 }
 
+/* A brand mark (OneDrive) is wider than the icon slot. It hangs over the slot
+   evenly on both sides, so its row's word starts where every other row's does. */
+.hub-menu__item > img {
+  flex: none;
+  margin: 0 calc((var(--row-icon) - var(--row-icon) * 1.45) / 2);
+}
+
 /* MenuRows (components/MenuRows.jsx): the icon is quieter than the word, the
    empty slot of a row with no icon keeps the words in line, and one line
    sets Delete apart at the bottom. */
@@ -690,6 +707,9 @@
   .hub-menu__icon-gap {
     width: var(--sheet-icon);
     height: var(--sheet-icon);
+  }
+  .hub-menu__item > img {
+    margin: 0 calc((var(--sheet-icon) - var(--row-icon) * 1.45) / 2);
   }
 }
 
@@ -5734,7 +5754,8 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
    column squeezed Name to nothing. Narrow panes show the editor as an avatar
    and give Name the room; wide (desktop) panes keep the original columns. */
 .projects-open-pane { container-type: inline-size; }
-.projects-open-body { grid-template-columns: minmax(0, 1fr) 148px; }
+/* 184px: at 148 a two-word name lost its end ("QA Test (agen…"). */
+.projects-open-body { grid-template-columns: minmax(0, 1fr) 184px; }
 .projects-open-team { border-left: 1px solid var(--ink-500); }
 /* Tablet: the Team column moves under the files so Files gets the width. */
 @container (max-width: 600px) {

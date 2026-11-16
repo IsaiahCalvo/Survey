@@ -110,8 +110,11 @@
 .item-archived-badge { font-size: 11px; color: var(--text-3); border: 1px solid var(--border); border-radius: 10px; padding: 1px 8px; }
 .item-detail__body { flex: 1; min-height: 0; overflow: auto; padding: 0 16px 20px; display: flex; flex-direction: column; gap: 10px; }
 .item-title-input {
-  width: 100%; box-sizing: border-box; background: transparent; border: 1px solid transparent; border-radius: 6px;
-  color: var(--text-1); font: inherit; font-size: 16px; font-weight: 600; padding: 6px 8px; margin-left: -8px;
+  box-sizing: border-box; background: transparent; border: 1px solid transparent; border-radius: 6px;
+  color: var(--text-1); font: inherit; font-size: 16px; font-weight: 600; padding: 6px 8px;
+  /* The words line up with the labels below; the focus box reaches 8px past
+     them on BOTH sides (it stopped 8px short on the right). */
+  width: calc(100% + 16px); margin: 0 -8px;
 }
 .item-title-input:focus { border-color: var(--border-strong); background: var(--surface-1); outline: none; }
 .item-fields { display: grid; grid-template-columns: 92px 1fr; gap: 8px 10px; align-items: center; }

@@ -83,6 +83,10 @@ test('initials follow first + last', () => {
   assert.equal(presenceInitials('Jane Q Doe'), 'JD');
   assert.equal(presenceInitials('isaiah@example.com'), 'IS');
   assert.equal(presenceInitials(''), '?');
+  // A word gives its first letter or digit, never its punctuation.
+  assert.equal(presenceInitials('QA Test (agents)'), 'QA');
+  assert.equal(presenceInitials('Dana (EDC)'), 'DE');
+  assert.equal(presenceInitials('---'), '?');
 });
 
 test('the fake-people flag is dev only and builds N rows with you first', () => {
