@@ -945,19 +945,13 @@ const styles = StyleSheet.create({
   bottomActionNudge: {
     transform: [{ translateY: 4 }],
   },
+  // No circle behind the Spaces and Survey icons (owner, 2026-11-16). The
+  // 44pt box stays as the tap target; the active state is the blue icon.
   bottomSideButton: {
     width: 44,
     height: 44,
-    borderRadius: 22,
-    backgroundColor: '#181A1F',
-    borderWidth: 1,
-    borderColor: '#2E333C',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  bottomSideButtonActive: {
-    backgroundColor: '#162236',
-    borderColor: '#315F91',
   },
   bottomHubButton: {
     minWidth: 124,
