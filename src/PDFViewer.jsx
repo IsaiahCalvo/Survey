@@ -3266,6 +3266,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // Pins are mark_comments rows on a cloud document, so they need one and a
   // signed-in user: a device file or a signed-out visit shows no Pin tool.
   const pinsDocOn = pinsOn && Boolean(pdfFile?.id) && !isDeviceDocumentId(pdfFile?.id) && Boolean(user?.id);
+  // device-files (Nightly): with no account the device is the viewer, so its
+  // own edits get Undo steps (the history keeps nothing for an unknown viewer).
+  const deviceHistoryViewerIdRef = useRef(null);
+  deviceHistoryViewerIdRef.current = isDeviceDocumentId(pdfFile?.id) ? DEVICE_ACTOR_ID : null;
   const [measureDepth, setMeasureDepth] = useState(() => loadMeasureDepth());
   const [measureDepthDialog, setMeasureDepthDialog] = useState(null);
   // Tape (beta 'tape-tool', Drawboard PDF): a band that covers part of the
@@ -14213,7 +14217,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
 
   const applyLocalAnnotationHistoryAction = useCallback((action) => {
     if (!action) return 'unchanged';
-    const viewerId = yjsUndoCtx?.userId || user?.id || null;
+    const viewerId = yjsUndoCtx?.userId || user?.id || deviceHistoryViewerIdRef.current || null;
     if (!viewerId) return 'no-viewer';
     const scopedAction = filterAnnotationHistoryActionByOwner(
       action,
@@ -28884,7 +28888,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     const familyCompanion = surveyMarkerFamilyCompanionRef.current;
     surveyMarkerFamilyCompanionRef.current = null;
     if (!action || isUndoingRef.current) return;
-    const viewerId = yjsUndoCtx?.userId || user?.id || null;
+    const viewerId = yjsUndoCtx?.userId || user?.id || deviceHistoryViewerIdRef.current || null;
     const ownerScopedAction = filterAnnotationHistoryActionByOwner(
       action,
       viewerId,
@@ -29787,7 +29791,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         transaction = { ...transaction, nextByPage: stampedByPage, action: buildTextMarkupDocumentAction(annotationsByPageRef.current || {}, stampedByPage) || transaction.action };
       }
     }
-    const viewerId = yjsUndoCtx?.userId || user?.id || null;
+    const viewerId = yjsUndoCtx?.userId || user?.id || deviceHistoryViewerIdRef.current || null;
     // RULED 2026-09-28 owner: open editing + lock — a text-markup transaction
     // that would change a locked mark does not happen at all (it is one
     // atomic group; half of it must not land).
@@ -31394,7 +31398,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         });
       });
       if (!isDragFrame) {
-        const viewerId = yjsUndoCtx?.userId || user?.id || null;
+        const viewerId = yjsUndoCtx?.userId || user?.id || deviceHistoryViewerIdRef.current || null;
         const pageActions = updates.map(({ pageKey, json }) => {
           const numericKey = Number(pageKey);
           const pageNumber = Number.isFinite(numericKey) ? numericKey : pageKey;
@@ -31440,7 +31444,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     if (!counterSeriesActiveRef.current || !canRestoreFromHistoryRef.current) return { ok: false, reason: 'forbidden' };
     const seriesName = String(name || '').trim().slice(0, 80);
     if (!seriesName || !getCounterSeriesList(annotationsByPageRef.current).some(series => series.seriesId === seriesId)) return { ok: false, reason: 'invalid-series' };
-    const viewerId = yjsUndoCtx?.userId || user?.id || null;
+    const viewerId = yjsUndoCtx?.userId || user?.id || deviceHistoryViewerIdRef.current || null;
     const permission = checkCounterSeriesEdit(annotationsByPageRef.current, seriesId, { viewerId, documentOwnerId });
     if (!permission.ok) return permission;
     handleCounterGroupUpdateRef.current?.(seriesId, { seriesName });
@@ -31460,7 +31464,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     const series = getCounterSeriesList(annotationsByPageRef.current).find((item) => item.seriesId === seriesId);
     if (!series) return { ok: false, reason: 'invalid-series' };
     if (series.start === seriesStart) return { ok: true };
-    const viewerId = yjsUndoCtx?.userId || user?.id || null;
+    const viewerId = yjsUndoCtx?.userId || user?.id || deviceHistoryViewerIdRef.current || null;
     const permission = checkCounterSeriesEdit(annotationsByPageRef.current, seriesId, { viewerId, documentOwnerId });
     if (!permission.ok) return permission;
     handleCounterGroupUpdateRef.current?.(seriesId, { seriesStart });
@@ -31476,7 +31480,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     if (typeof paint?.fill === 'string' && paint.fill) patch.fill = paint.fill;
     if (typeof paint?.numberColor === 'string' && paint.numberColor) patch.numberColor = paint.numberColor;
     if (!Object.keys(patch).length) return { ok: false, reason: 'invalid-paint' };
-    const viewerId = yjsUndoCtx?.userId || user?.id || null;
+    const viewerId = yjsUndoCtx?.userId || user?.id || deviceHistoryViewerIdRef.current || null;
     const permission = checkCounterSeriesEdit(annotationsByPageRef.current, seriesId, { viewerId, documentOwnerId });
     if (!permission.ok) return permission;
     handleCounterGroupUpdateRef.current?.(seriesId, patch);
@@ -31494,7 +31498,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const handleReorderCounterSeries = useCallback((orderedIds) => {
     if (!counterSeriesActiveRef.current || !canRestoreFromHistoryRef.current) return { ok: false, reason: 'forbidden' };
     const allPages = annotationsByPageRef.current || {};
-    const viewerId = yjsUndoCtx?.userId || user?.id || null;
+    const viewerId = yjsUndoCtx?.userId || user?.id || deviceHistoryViewerIdRef.current || null;
     for (const seriesId of Array.isArray(orderedIds) ? orderedIds : []) {
       const permission = checkCounterSeriesEdit(allPages, seriesId, { viewerId, documentOwnerId });
       if (!permission.ok) return permission;
@@ -31535,7 +31539,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const handleDeleteCounterSeries = useCallback((seriesId) => {
     if (!counterSeriesActiveRef.current || !canRestoreFromHistoryRef.current) return { ok: false, reason: 'forbidden' };
     if (!seriesId) return { ok: false, reason: 'missing-series' };
-    const viewerId = yjsUndoCtx?.userId || user?.id || null;
+    const viewerId = yjsUndoCtx?.userId || user?.id || deviceHistoryViewerIdRef.current || null;
     const collectSeriesPins = (byPage) => Object.entries(byPage || {}).flatMap(([pageKey, page]) => (
       Array.isArray(page?.objects)
         ? page.objects.flatMap((annotation, index) => {
