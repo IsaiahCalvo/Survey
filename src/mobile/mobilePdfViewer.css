@@ -659,6 +659,12 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   border-radius: 0 0 10px 10px;
   box-shadow: 0 10px 18px -8px rgba(0, 0, 0, 0.5);
   z-index: 7200;
+  /* A phone held sideways leaves ~250px between the pill and the bottom bar,
+     less than the menu's height: the menu scrolls instead of running under
+     the bar. */
+  max-height: calc(100dvh - 96px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
   /* Closed: a zero-tall clip along the pill's bottom edge. The sides reach
      past the box so the open shadow is never cut. */
   clip-path: inset(0 -24px 100% -24px);
