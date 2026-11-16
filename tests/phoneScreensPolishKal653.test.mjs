@@ -34,3 +34,29 @@ test('a connected service row wraps its words beside the button and keeps its ic
 test('the Privacy policy link in Settings is the calm --link, not the browser colour', () => {
   assert.match(settings, /\.account-pref-description a \{\s*color: var\(--link\);/);
 });
+
+// Round 2: the phone Pages sheet.
+const viewer = read('src/mobile/mobilePdfViewer.css');
+
+test('Pages sheet tabs press like every other icon: the glyph tightens, no grey plate', () => {
+  assert.match(read('src/styles/states.css'), /:not\(\.mobile-pdf-dock__center\):not\(\.mobile-pdf-hub-tab\)/);
+  assert.match(viewer, /\.mobile-pdf-hub-tabs \.mobile-pdf-hub-tab:not\(:disabled\):active > :is\(svg, span\[aria-hidden="true"\]\) \{\s*scale: 0\.92;/);
+});
+
+test('Pages sheet tabs, the select bar and the action pill all have 44px touch boxes', () => {
+  // 34x32 tab + 5px / 6px each side.
+  assert.match(viewer, /\.mobile-pdf-hub-tabs \.mobile-pdf-hub-tab::after \{\s*content: '';\s*position: absolute;\s*inset: -6px -5px;/);
+  // 28px words; the sheet body clips above them, so the pad grows down 16px.
+  assert.match(viewer, /\.mobile-pages-counter\.is-selecting > button::after \{\s*content: '';\s*position: absolute;\s*inset: 0 -8px -16px;/);
+  // 28px chips; 10px up + 6px down (the sheet body clips 4px under the pill).
+  assert.match(viewer, /\.mobile-pages-actions > button::after \{\s*content: '';\s*position: absolute;\s*inset: -10px 0 -6px;/);
+});
+
+test("Select mode's tick circle sits on the page picture, not the card corner", () => {
+  const panel = read('src/sidebar/PagesPanel.jsx');
+  const preview = panel.slice(panel.indexOf("className={mobileMode ? 'mobile-page-preview' : 'pages-panel-preview'}"));
+  const circle = preview.indexOf('mobile-page-select-indicator');
+  assert.ok(circle > 0 && circle < preview.indexOf('{thumbnailSrc ? ('), 'the circle is drawn inside the page picture');
+  assert.equal(panel.split('mobile-page-select-indicator').length - 1, 1);
+  assert.match(viewer, /\.mobile-page-select-indicator \{\s*position: absolute;\s*left: 5px;\s*top: 5px;\s*pointer-events: none;/);
+});
