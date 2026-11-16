@@ -4197,6 +4197,31 @@
     border-bottom: 0;
   }
 
+  /* Owner 2026-11-16 (phone: "it's all blending too much"): every Documents
+     card now sits inside its SwipeActionsRow wrapper, so the `> .mobile-doc-card`
+     hairline above stopped matching and the rows ran together. The line goes
+     on the wrapper, the same way the desktop ledger draws one under each row. */
+  .survey-hub .documents-mobile-list > .mobile-doc-swipe {
+    border-bottom: 1px solid var(--border);
+  }
+  .survey-hub .documents-mobile-list > .mobile-doc-swipe:last-child {
+    border-bottom: 0;
+    box-shadow: 0 1px 0 var(--border);
+  }
+
+  /* Owner 2026-11-16: the More dots had too much room either side, which
+     pushed the name right. The lead column is narrower and the dots sit in it
+     without the -8px nudge; the 44px tap box is unchanged (it overhangs the
+     column, as before). Name starts 34px in, not 48px. */
+  .survey-hub .documents-mobile-list .mobile-doc-card {
+    grid-template-columns: 22px minmax(0, 1fr) 52px;
+    gap: 8px;
+    padding-left: 4px;
+  }
+  .survey-hub .documents-mobile-list .mobile-doc-card > :first-child {
+    transform: none;
+  }
+
   /* The LAST row still closes the list with a line when the panel runs on
      below it (owner 2026-09-23: "the last item also needs a divider line").
      It is a 1px shadow, not a border: the panel clips, so when the last row
@@ -5421,6 +5446,18 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
    dragged go half-clear so you can see what is moving. */
 .survey-hub .documents-ledger-row {
   transition: background-color 150ms var(--ease-standard), opacity 150ms var(--ease-standard);
+}
+/* Owner 2026-11-16: a row answers the pointer with a light fill. The rows
+   sit on the --surface-2 card, and --hover (#232830) is only 2 steps above
+   it there - measured, the hovered row was the same colour as its
+   neighbours. So the row hover is a step part-way to --surface-3: clearly
+   lighter than a resting row, still well short of the selected fill.
+   !important because the row's resting background is an inline style. */
+@media (hover: hover) and (pointer: fine) {
+  .survey-hub .documents-ledger-row:not(.is-selected):not(.is-dragging):hover,
+  .survey-hub .documents-ledger-row:not(.is-selected):not(.is-dragging):hover > .documents-ledger-name-cell {
+    background: color-mix(in srgb, var(--surface-2), var(--surface-3) 45%) !important;
+  }
 }
 .survey-hub .documents-ledger-row.is-dragging {
   opacity: .5;
