@@ -383,7 +383,7 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, showShortcuts = 
                   viewer's is the keyboard button on its left rail). Desktop
                   only — the phone instance has no keyboard to describe. */}
               {showShortcuts && (
-                <button type="button" className="hub-menu__item" onClick={() => { setOpen(false); setConfirmSignOut(false); openKeyboardShortcuts(); }}>
+                <button type="button" role="menuitem" className="hub-menu__item" onClick={() => { setOpen(false); setConfirmSignOut(false); openKeyboardShortcuts(); }}>
                   <Icon name="keyboard" size={15} color="var(--ink-200)" />Keyboard shortcuts
                 </button>
               )}
@@ -685,7 +685,10 @@ export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userN
             <div className="header-title-block">
               <MobileRailNav mode={mobileNavMode} title={title} tab={tab} navItems={navItems} onNav={onNav} />
               <h1 className="title">{title}</h1>
-              {subtitle ? <div className="crumb header-subtitle" style={{ marginTop: 6 }}>{subtitle}</div> : null}
+              {/* A plain-text subtitle gets its own element: on phones the
+                  subtitle row dissolves into the header row (display: contents),
+                  and bare text there has no order, so it landed before the title. */}
+              {subtitle ? <div className="crumb header-subtitle" style={{ marginTop: 6 }}>{typeof subtitle === 'string' ? <span>{subtitle}</span> : subtitle}</div> : null}
             </div>
             <div className="mobile-profile">
               <ProfileMenu userName={userName} userMeta={userMeta} showArchive tab={tab} onNav={onNav} />

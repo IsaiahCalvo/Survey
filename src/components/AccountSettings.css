@@ -531,11 +531,14 @@
   transform: none;
 }
 
+/* Outlined at rest, as the hub's plain button is. It used to rest on
+   --surface-3, which is lighter than --hover, so the button went darker under
+   the pointer; hover must lighten (tokens.css "Derived states"). */
 .account-btn-secondary {
   padding: 8px 16px;
-  background: var(--surface-3);
+  background: transparent;
   color: var(--text-1);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
   font-size: 13px;
   font-weight: 500;
@@ -577,10 +580,16 @@
    finger needs 44. Mouse/trackpad keeps 34. */
 @media (pointer: coarse) {
   .account-btn-danger { min-height: 44px; }
+  /* The buttons beside it are the same height, so the page reads as one set
+     (Delete account stood 10px taller than Download my data and Sign out). */
+  .account-btn-primary,
+  .account-btn-secondary { min-height: 44px; }
 }
 
+/* The hover repainted the resting fill, so only the 1px lift showed. The red
+   wash now deepens under the pointer. */
 .account-btn-danger:hover:not(:disabled) {
-  background: var(--danger-soft);
+  background: color-mix(in srgb, var(--danger) 28%, transparent);
   border-color: var(--danger);
   transform: translateY(-1px);
 }

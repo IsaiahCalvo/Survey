@@ -151,39 +151,23 @@ const KeyboardShortcutsOverlay = () => {
             style={{
               margin: 0,
               fontSize: TYPOGRAPHY.fontSize['2xl'],
-              fontWeight: TYPOGRAPHY.fontWeight.semibold,
-              color: COLORS.text.secondary,
+              fontWeight: 700,
+              letterSpacing: '-0.03em',
+              color: 'var(--text-1)',
               fontFamily: TYPOGRAPHY.fontFamily.default,
+              userSelect: 'none',
             }}
           >
             Keyboard shortcuts
           </h2>
+          {/* The one dialog x (DialogCard, Settings): 24px, no box, a 13px glyph. */}
           <button
             type="button"
             aria-label="Close keyboard shortcuts"
+            className="hub-icon-btn"
             onClick={() => setIsOpen(false)}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: COLORS.text.muted,
-              cursor: 'pointer',
-              padding: '4px',
-              borderRadius: BORDERS.radius.sm,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              transition: 'all 0.15s ease',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = COLORS.background.elevated;
-              e.currentTarget.style.color = COLORS.text.tertiary;
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'transparent';
-              e.currentTarget.style.color = COLORS.text.muted;
-            }}
           >
-            <Icon name="close" size={20} />
+            <Icon name="close" size={13} />
           </button>
         </div>
 
