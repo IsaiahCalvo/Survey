@@ -22,10 +22,12 @@ export const WATCHED = [
 ];
 
 // Walkthru shares this sign-in server (KAL-579). Its web copies and its phone
-// app (scheme walkthrough://) must be allowed return addresses, or Google and
-// Microsoft sign-in send people back to Survey instead. Added, never removed.
+// app (scheme walkthrough://, or exp:// while it runs inside Expo Go) must be
+// allowed return addresses, or Google and Microsoft sign-in send people back to
+// Survey instead. Added, never removed.
 export const WALKTHRU_REDIRECTS = [
   'walkthrough://**',
+  'exp://**',
   'https://walkthru.tools/**',
   'https://www.walkthru.tools/**',
   'https://walkthrough-ashen.vercel.app/**',
