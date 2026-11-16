@@ -450,6 +450,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: "Eraser look: Drawboard's cross-and-eraser cursor, a trail where it moves, hit marks lit orange until release, and icon mode buttons",
     stage: 'beta',
   }),
+  'mark-bar-by-kind': Object.freeze({
+    label: "The bar over a picked mark goes by its kind, like Drawboard's: fill for shapes, start and end for lines, size, bold and align for text",
+    stage: 'beta',
+  }),
   'properties-panel': Object.freeze({
     label: "Properties panel: Drawboard's Expand menu, a card with typed X Y W H R, stroke, border and fill for the picked marks",
     stage: 'beta',

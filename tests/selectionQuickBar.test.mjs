@@ -260,3 +260,94 @@ test('phones: the bar steps aside while a bottom sheet is open', () => {
     .replace(/\/\*[\s\S]*?\*\//g, '');
   assert.match(css, /html:has\(\.mobile-pdf-sheet:not\(\.is-collapsed\)\) \.selection-quick-bar \{\s*visibility: hidden;\s*pointer-events: none;\s*\}/);
 });
+
+// KAL-651 (Nightly 'mark-bar-by-kind'): the bar's front part goes by the kind
+// of mark, as Drawboard's does (recorded on Windows 2026-11-16).
+import { FEATURE_FLAGS } from '../src/featureFlags.js';
+import { QUICK_BAR_FONT_SIZES, nextTextAlign, stepFontSize } from '../src/utils/selectionQuickBar.js';
+
+const KIND_API = {
+  selectedColorTarget: 'stroke',
+  handleStrokeWidthInputChange() {},
+  setLineBorderStyle() {},
+  handleFillOpacityChange() {},
+  selectedLineEnds: '1|none|openArrow',
+};
+const TEXT_FORMAT = { state: { fontSize: 14 }, api: { setFontSize() {}, toggleBold() {}, setTextAlign() {} } };
+const kindPlan = (kinds, extra = {}) => planSelectionQuickBar({
+  items: kinds.map((typeKey, i) => ({ id: String(i), typeKey })),
+  api: KIND_API,
+  byKind: true,
+  textFormat: TEXT_FORMAT,
+  ...extra,
+});
+
+test('by kind: pen ink gets neither fill, ends nor text', () => {
+  const plan = kindPlan(['pen']);
+  assert.equal(plan.width, true);
+  assert.equal(plan.style, false);
+  assert.equal(plan.fill, undefined);
+  assert.equal(plan.ends, undefined);
+  assert.equal(plan.text, undefined);
+});
+
+test('by kind: lines get start and end, shapes get fill, text gets both fill and text', () => {
+  for (const kind of ['line', 'arrow', 'polyline']) {
+    const plan = kindPlan([kind]);
+    assert.equal(plan.ends, true, kind);
+    assert.equal(plan.fill, undefined, kind);
+    assert.equal(plan.text, undefined, kind);
+  }
+  for (const kind of ['rect', 'ellipse', 'polygon', 'cloud']) {
+    const plan = kindPlan([kind]);
+    assert.equal(plan.fill, true, kind);
+    assert.equal(plan.ends, undefined, kind);
+    assert.equal(plan.text, undefined, kind);
+  }
+  for (const kind of ['text', 'callout']) {
+    const plan = kindPlan([kind]);
+    assert.equal(plan.fill, true, kind);
+    assert.equal(plan.text, true, kind);
+  }
+});
+
+test('by kind: a mixed pick shows a part only when every mark takes it', () => {
+  assert.equal(kindPlan(['rect', 'line']).fill, undefined);
+  assert.equal(kindPlan(['rect', 'line']).ends, undefined);
+  assert.equal(kindPlan(['rect', 'text']).fill, true);
+  assert.equal(kindPlan(['rect', 'text']).text, undefined);
+});
+
+test('by kind: off, locked, or without the writes, the plan is as before', () => {
+  const off = planSelectionQuickBar({ items: [{ id: '1', typeKey: 'rect' }], api: KIND_API, textFormat: TEXT_FORMAT });
+  assert.equal(off.fill, undefined);
+  assert.equal(kindPlan(['rect'], { locked: true }).fill, undefined);
+  assert.equal(kindPlan(['text'], { textFormat: null }).text, undefined);
+  assert.equal(kindPlan(['line'], { api: { ...KIND_API, selectedLineEnds: null } }).ends, undefined);
+  assert.equal(kindPlan(['rect'], { api: { ...KIND_API, selectionCapabilities: { fill: false } } }).fill, undefined);
+});
+
+test('by kind: the size stepper walks the list and stops at its ends', () => {
+  assert.equal(stepFontSize(14, 1), 16);
+  assert.equal(stepFontSize(14, -1), 12);
+  assert.equal(stepFontSize(13, 1), 14);
+  assert.equal(stepFontSize(13, -1), 12);
+  assert.equal(stepFontSize(72, 1), 72);
+  assert.equal(stepFontSize(6, -1), 6);
+  assert.equal(QUICK_BAR_FONT_SIZES.includes(12), true);
+});
+
+test('by kind: align goes left, centre, right, left', () => {
+  assert.equal(nextTextAlign('left'), 'center');
+  assert.equal(nextTextAlign(undefined), 'center');
+  assert.equal(nextTextAlign('center'), 'right');
+  assert.equal(nextTextAlign('right'), 'left');
+});
+
+test('by kind: a beta flag with its database row, and the bar reads it', () => {
+  assert.equal(FEATURE_FLAGS['mark-bar-by-kind']?.stage, 'beta');
+  assert.match(readFileSync(new URL('../supabase/migrations/20261116110000_mark_bar_by_kind_flag.sql', import.meta.url), 'utf8'), /\('mark-bar-by-kind', 'off'/);
+  const bar = readFileSync(new URL('../src/components/SelectionQuickBar.jsx', import.meta.url), 'utf8');
+  assert.match(bar, /isFeatureOn\('mark-bar-by-kind'\)/);
+  assert.match(readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8'), /documentId=\{leftRailApi\?\.documentId \|\| null\}\s+textFormat=\{textFormatSource\}/);
+});

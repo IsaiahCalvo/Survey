@@ -6191,6 +6191,7 @@ export default function App({ devPreviewReturnTab = null }) {
         viewerId={signedInUserId}
         layerState={leftRailApi?.layerState || null}
         documentId={leftRailApi?.documentId || null}
+        textFormat={textFormatSource}
       />
       {/* Nightly 'properties-panel': Drawboard's Expand menu card. */}
       <SelectionPropertiesPanel

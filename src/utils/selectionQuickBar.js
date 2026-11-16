@@ -27,6 +27,14 @@ const NO_PAINT_KINDS = new Set(['surveyMarker', 'image', 'mark']);
 const WIDTH_KINDS = new Set(['rect', 'ellipse', 'line', 'arrow', 'polyline', 'polygon', 'cloud', 'pen', 'highlighter', 'text', 'callout']);
 // Marks with a line style (solid / dashed / dotted / cloud).
 const STYLE_KINDS = new Set(['rect', 'ellipse', 'line', 'arrow', 'polyline', 'polygon', 'cloud', 'text', 'callout']);
+// Nightly 'mark-bar-by-kind' (KAL-651, Drawboard's bar, recorded 2026-11-16):
+// the bar's front part goes by the kind of mark picked.
+// Closed shapes and text carry a fill.
+const FILL_KINDS = new Set(['rect', 'ellipse', 'polygon', 'cloud', 'text', 'callout']);
+// Open lines carry a start and an end style.
+const ENDS_KINDS = new Set(['line', 'arrow', 'polyline']);
+// Marks that hold words: size, bold and align.
+const TEXT_KINDS = new Set(['text', 'callout']);
 
 /**
  * Where the degree box (RotationInputField) shows for a rotate grabber: out
@@ -176,10 +184,12 @@ export function selectionFrameRect(rects) {
  * @param {number} [args.entityCount]  the template's entities (Survey Markers)
  * @param {boolean} [args.locked]      a picked mark is user-locked
  * @param {boolean} [args.readOnly]    the document is read-only
+ * @param {boolean} [args.byKind]      Nightly 'mark-bar-by-kind' is on
+ * @param {object|null} [args.textFormat]  the text settings of the pick (AppShell resolveTextFormatting)
  * @returns {null | { colour: 'dots'|'swatch'|'entity'|null, width: boolean,
  *   style: boolean, duplicate: boolean, remove: boolean, more: boolean }}
  */
-export function planSelectionQuickBar({ items, api, entityCount = 0, locked = false, readOnly = false } = {}) {
+export function planSelectionQuickBar({ items, api, entityCount = 0, locked = false, readOnly = false, byKind = false, textFormat = null } = {}) {
   const list = Array.isArray(items) ? items.filter((item) => item && item.typeKey) : [];
   if (readOnly || list.length === 0) return null;
   const kinds = list.map((item) => item.typeKey);
@@ -229,10 +239,20 @@ export function planSelectionQuickBar({ items, api, entityCount = 0, locked = fa
     && typeof api?.patchSelectedMeasure === 'function'
     && api?.selectedMeasure?.mark != null
     && String(api.selectedMeasure.id) === String(list[0].id);
+  // By kind (Nightly 'mark-bar-by-kind'): fill for closed shapes and text,
+  // start / end for open lines, size / bold / align for words. A mixed pick
+  // shows a part only when every mark picked can take it.
+  const kindParts = {};
+  if (byKind && !locked && !anyNoPaint) {
+    if (every(FILL_KINDS) && typeof api?.handleFillOpacityChange === 'function' && caps?.fill !== false) kindParts.fill = true;
+    if (every(ENDS_KINDS) && api?.selectedLineEnds && caps?.arrowheads !== false) kindParts.ends = true;
+    if (every(TEXT_KINDS) && typeof textFormat?.api?.setFontSize === 'function') kindParts.text = true;
+  }
   return {
     colour,
     width: Boolean(width),
     style: Boolean(style),
+    ...kindParts,
     // Only present when shown, so every other pick plans exactly as before.
     ...(measure ? { measure: true } : {}),
     ...(link ? { link: true, linkEdit: !locked && typeof api?.editSelectedLink === 'function' } : {}),
@@ -283,4 +303,23 @@ export const QUICK_BAR_WIDTHS = Object.freeze([1, 2, 3, 4, 6, 8]);
 export function isQuickBarWidth(value, width) {
   const n = Number(value);
   return Number.isFinite(n) && Math.abs(n - width) < 0.05;
+}
+
+/** The font sizes the bar's size stepper walks through (pt). */
+export const QUICK_BAR_FONT_SIZES = Object.freeze([6, 8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 42, 48, 64, 72]);
+
+/** The next size up (`dir` 1) or down (-1) from `size`; stays at the ends. */
+export function stepFontSize(size, dir) {
+  const n = Number(size);
+  const list = QUICK_BAR_FONT_SIZES;
+  if (!Number.isFinite(n)) return 12;
+  if (dir > 0) return list.find((v) => v > n + 0.01) ?? list[list.length - 1];
+  return [...list].reverse().find((v) => v < n - 0.01) ?? list[0];
+}
+
+/** Align goes left, centre, right, then left again. */
+export function nextTextAlign(value) {
+  if (value === 'center') return 'right';
+  if (value === 'right') return 'left';
+  return 'center';
 }
