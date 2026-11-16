@@ -30,6 +30,8 @@ Do these in order, every time.
    the checks.
 7. **When done,** comment on the ticket with the PR link and move it on.
    Code written is not Done: tests and checks must pass first.
+8. **Then archive it.** Once a ticket is Done and its work is merged, archive
+   it in Linear (archive, never delete). Linear's free plan caps open tickets.
 
 | Repo | Default branch | Checks |
 | --- | --- | --- |
