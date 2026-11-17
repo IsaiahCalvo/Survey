@@ -26,7 +26,7 @@ import { useStorage } from '../hooks/useDatabase';
 import { useOfflineDocumentActions } from './offlineDocumentActions.js';
 import { activateOrExplain } from '../utils/disabledReasonToast.js';
 import MenuRows from '../components/MenuRows.jsx';
-import { useState, useMemo, useEffect, useRef, useCallback, Suspense, lazy } from 'react';
+import { useState, useMemo, useEffect, useLayoutEffect, useRef, useCallback, Suspense, lazy } from 'react';
 import { hoverOnly, useTooltip } from '../components/Tooltip';
 import { createPortal } from 'react-dom';
 import { mergeProjectDocumentOrder, orderDocumentsByProject } from './projectDocumentOrder.js';
@@ -160,6 +160,19 @@ function PopupMenu({ anchorRect, onClose, items, align = 'right', minWidth = 160
   const tip = useTooltip();
   const ref = useRef(null);
 
+  // The width below is a floor, not the menu's real width: long rows such as
+  // "Make available offline" at the phone's 15px make it wider, and a menu
+  // placed by the floor ran off the right edge. Re-place it by what it measures
+  // before it paints.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || !anchorRect) return;
+    // offsetWidth, not the drawn box: the menu opens with a small grow-in.
+    const width = el.offsetWidth;
+    const wanted = align === 'right' ? anchorRect.right - width : anchorRect.left;
+    el.style.left = `${Math.max(8, Math.min(wanted, window.innerWidth - width - 8))}px`;
+  });
+
   if (!anchorRect) return null;
 
   // Hang below the trigger; flip up if it would run off the bottom. The items
@@ -222,6 +235,7 @@ export default function ProjectsFolderTree({
   onShareDocument,
   onProjectsChanged,
   onAddFromDrive = null,
+  onAddFromWalkthru = null,
 }) {
   // Nightly offline-docs: "Make available offline" in the file menu.
   const { downloadDocument: downloadForOffline, fileStamp } = useStorage();
@@ -1371,6 +1385,11 @@ export default function ProjectsFolderTree({
                   {onAddFromDrive && projectRoleFor(open) !== 'viewer' ? (
                     <button className="btn" data-project-add-onedrive onClick={() => onAddFromDrive(open)}><Icon name="oneDrive" size={12} />From OneDrive</button>
                   ) : null}
+                  {/* Kal Voe suite (KAL-594, Nightly flag 'suite'): a Walkthru
+                      walk's plan and nodes, as Survey Markers. */}
+                  {onAddFromWalkthru && projectRoleFor(open) !== 'viewer' ? (
+                    <button className="btn" data-project-add-walkthru onClick={() => onAddFromWalkthru(open)}><Icon name="pagePin" size={12} />From Walkthru</button>
+                  ) : null}
                   {/* Manage Team — opens the Manage Team modal (NOT the share
                       link modal) for the currently open project. */}
                   <button className="btn" onClick={() => setTeamModalProject(open)}><Icon name="users" size={12} />Manage team</button>
@@ -2347,6 +2366,7 @@ export default function ProjectsFolderTree({
               // project, linked so marks save back (Drawboard Projects'
               // New drawing > OneDrive).
               ...(onAddFromDrive ? [{ icon: 'oneDrive', label: 'Add from OneDrive', reason: viewerBlocked, onClick: () => onAddFromDrive(proj) }] : []),
+              ...(onAddFromWalkthru ? [{ icon: 'pagePin', label: 'Add a Walkthru walk', reason: viewerBlocked, onClick: () => onAddFromWalkthru(proj) }] : []),
               {
                 // Pin / unpin — toggles local pinned state; the row floats to
                 // the top of the list and shows a pin icon when pinned.

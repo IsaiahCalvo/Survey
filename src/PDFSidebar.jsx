@@ -12,6 +12,7 @@
 import React, { useState, useCallback, useImperativeHandle, useSyncExternalStore, lazy, Suspense } from 'react';
 import Icon from './Icons';
 import { isFeatureOn } from './featureFlags.js';
+import { PinIcon, getPinnedToolsStore, usePinnedTools } from './pinnedTools/pinnedToolsShared.jsx';
 import { ToolbarsGlyph, ToolbarsMenu } from './components/ToolbarsMenu.jsx';
 import { applyLayerFocusCss, layerFocusCss, useLayerFocus } from './utils/layerFocus.js';
 import PagesPanel from './sidebar/PagesPanel';
@@ -30,6 +31,8 @@ import SyncStatusChip from './components/SyncStatusChip';
 import PresenceAvatars from './components/PresenceAvatars';
 import { withDevFakePresence } from './components/presenceIdentity.js';
 import RevisionsPanel from './components/revisions/RevisionsPanel';
+import { isDeviceDocumentId } from './services/deviceFiles.js';
+import AccountNeededNote from './sidebar/AccountNeededNote.jsx';
 import { useMobileSheetMotion } from './mobile/useMobileSheetMotion';
 import { useSheetFocus } from './mobile/useSheetFocus';
 import { useTooltip } from './components/Tooltip';
@@ -282,6 +285,10 @@ const PDFSidebar = React.forwardRef(({
   // Flags load async: read them at mount, never at module level.
   const [toolbarSettingsOn] = useState(() => isFeatureOn('toolbar-settings'));
   const [pinnedToolsOn] = useState(() => isFeatureOn('pinned-tools'));
+  // Nightly 'pinned-tools' (owner 2026-11-15): hidden, the pinned tools bar
+  // leaves its pin here in the rail, so it is one press to bring it back.
+  const pinnedTools = usePinnedTools();
+  const showPinnedToolsInRail = pinnedToolsOn && !mobileMode && !pinnedTools.visible;
   // Nightly 'layer-focus': the rail is always mounted beside the viewer, so
   // it keeps the focus stylesheet in step with the active layer even while
   // the Layers panel is closed.
@@ -964,6 +971,32 @@ const PDFSidebar = React.forwardRef(({
               style={{ width: `${RAIL_GLYPH}px`, height: `${RAIL_GLYPH}px`, flexShrink: 0 }}
             />
           </button>
+          {showPinnedToolsInRail && (
+            <button
+              type="button"
+              {...tip('Show pinned tools', 'right')}
+              aria-label="Show pinned tools"
+              data-pinned-tools-show="rail"
+              className="chrome-icon-btn"
+              onClick={() => getPinnedToolsStore().setVisible(true)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-2)',
+                borderRadius: 'var(--chrome-radius, 6px)',
+                padding: '11px 6px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                minWidth: '28px',
+                minHeight: '28px',
+                width: '100%'
+              }}
+            >
+              <PinIcon size={RAIL_GLYPH} />
+            </button>
+          )}
         </div>
 
         {/* 2026-04-25 — Collaboration footer (sync chip, History, presence)
@@ -1315,8 +1348,16 @@ const PDFSidebar = React.forwardRef(({
 
             {/* Version History Panel */}
             <div style={{ display: activeTab === 'history' ? 'flex' : 'none', flex: 1, flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+              {/* A file opened with no account is not on the server, which
+                  is where History is kept: say so, with the way to get it
+                  (KAL-658). */}
+              {isDeviceDocumentId(documentId) && (
+                <AccountNeededNote name="history">
+                  History starts once this file is in an account. Until then, Undo and Redo step through your changes.
+                </AccountNeededNote>
+              )}
               <RevisionsPanel
-                documentId={documentId}
+                documentId={isDeviceDocumentId(documentId) ? null : documentId}
                 user={user}
                 embedded
                 mobileMode={mobileMode}

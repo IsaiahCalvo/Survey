@@ -129,7 +129,8 @@
 .item-date.is-overdue { color: var(--danger-text); }
 .item-native-select { height: 36px; padding: 0 8px; width: 100%; }
 .item-tags-field { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; min-width: 0; }
-.item-tag-input { height: 26px; padding: 0 8px; flex: 1; min-width: 110px; }
+/* 30px, the height of the Due date field and the Status and Assignee lists above it. */
+.item-tag-input { height: 30px; padding: 0 8px; flex: 1; min-width: 110px; }
 .item-description { width: 100%; min-height: 84px; padding: 8px; resize: vertical; line-height: 1.45; }
 .item-links { display: flex; flex-direction: column; gap: 4px; }
 .item-link-row { display: flex; align-items: center; gap: 4px; }

@@ -16,12 +16,12 @@ import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 
 // The app's upload helper, without the modules that need a browser.
-async function loadUploadToDrive() {
+async function loadUploadToDrive(name = 'uploadToDrive') {
   const source = await readFile(new URL('../src/services/driveFilesClient.js', import.meta.url), 'utf8');
   const dir = await mkdtemp(path.join(tmpdir(), 'drive-client-'));
   const file = path.join(dir, 'driveFilesClient.mjs');
-  await writeFile(file, source.replace(/^import .*$/gm, '').replace(/sheetSyncCall/g, '(async () => null)').replace(/readClaim|forgetClaim|isNativeApp|isElectronApp/g, '(() => null)'));
-  try { return (await import(pathToFileURL(file).href)).uploadToDrive; } finally { await rm(dir, { recursive: true, force: true }); }
+  await writeFile(file, source.replace(/^import .*$/gm, '').replace(/sheetSyncCall/g, '(async () => null)').replace(/readClaim|forgetClaim|tellClaimResult|isNativeApp|isElectronApp/g, '(() => null)'));
+  try { return (await import(pathToFileURL(file).href))[name]; } finally { await rm(dir, { recursive: true, force: true }); }
 }
 
 const BASE = 'https://google.test';
@@ -272,4 +272,28 @@ test('uploadToDrive sends Google the whole file in one request, and Graph pieces
   // A 308 mid-upload is not taken as "send more".
   const stray = recorder(308);
   await assert.rejects(uploadToDrive('https://upload.session/m', big, stray.fetchImpl), /did not take the file \(308\)/);
+});
+
+test('picking from Google Drive with no Google sign-in asks to connect first; closing that ask is not an error', async () => {
+  const choose = await loadUploadToDrive('chooseGoogleDrivePdf');
+  const tokens = (answers) => async () => answers.shift();
+  const picked = { itemId: 'g1', name: 'Plan.pdf' };
+  // Connected in the ask: the token is fetched again and Google's window opens.
+  assert.deepEqual(await choose({
+    call: tokens([{ error: 'Connect Google first.', code: 'not_connected' }, { accessToken: 't' }]),
+    connect: async (provider) => { assert.equal(provider, 'google'); return { ok: true }; },
+    pick: async ({ accessToken }) => { assert.equal(accessToken, 't'); return picked; },
+  }), { ...picked, provider: 'google' });
+  // Closed the ask: nothing happens, and nothing is reported as a failure.
+  assert.equal(await choose({
+    call: tokens([{ error: 'Connect Google first.', code: 'not_connected' }]),
+    connect: async () => ({ ok: false, cancelled: true }),
+    pick: async () => { throw new Error('Google\'s window must not open'); },
+  }), null);
+  // Refused: the reason reaches the person.
+  assert.deepEqual(await choose({
+    call: tokens([{ error: 'Your Google sign-in has ended.', code: 'reconnect' }]),
+    connect: async () => ({ ok: false, error: 'Google was not connected: you stopped before saying yes.' }),
+    pick: async () => null,
+  }), { error: 'Google was not connected: you stopped before saying yes.' });
 });

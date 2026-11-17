@@ -54,6 +54,8 @@ import BodyPortal from './components/BodyPortal.js';
 import AnchoredPopover from './components/AnchoredPopover';
 import ExportMenu from './components/ExportMenu.jsx';
 import ToolbarOverflowMenu from './components/ToolbarOverflowMenu';
+import LoadoutOverflowMenu from './components/LoadoutOverflowMenu.jsx';
+import useLoadoutOverflow from './hooks/useLoadoutOverflow.js';
 import useResponsiveToolbar from './hooks/useResponsiveToolbar.js';
 import usePhoneLayout from './hooks/usePhoneLayout.js';
 import { hasTouchInput, isElectronApp } from './utils/layoutMode.js';
@@ -153,6 +155,7 @@ import { PenTypeMenu } from './components/PenTypePicker.jsx';
 import { isToolGroupPressed } from './utils/toolbarToolPressed.js';
 import { pendingInviteRedirect } from './utils/pendingInvite.js';
 import { useProLock } from './hooks/useProLock.js';
+import { ASK_SIGN_IN_EVENT } from './utils/proLock.js';
 import { formatPageTotal } from './utils/pageTotalLabel.js';
 import { requestTemplateEditor } from './home/templateEditorRequest';
 import SheetSetBar from './sheets/SheetSetBar.jsx';
@@ -163,7 +166,7 @@ import SpotlightOverlay from './spotlight/SpotlightOverlay.jsx';
 import useSpotlight from './spotlight/useSpotlight.js';
 import { clearSpotlightGo, setSpotlightDocument, setSpotlightIdentity } from './services/annotationSpotlight.js';
 import { SHEET_VIEW_EVENT, narrowSheets, parseGridColumns, projectSheets, sheetStepForKey, steppedSheet, storedProjectOrder } from './sheets/sheetSet.js';
-import { DEVICE_FILE_LEAVE_EVENT } from './services/deviceFiles.js';
+import { DEVICE_FILE_LEAVE_EVENT, deviceFiles, isDeviceDocumentId } from './services/deviceFiles.js';
 
 // Nightly 'page-spreads': Drawboard's View settings names (pageSpreads.js).
 const PAGE_SPREAD_OPTIONS = Object.freeze([
@@ -1867,7 +1870,14 @@ export default function App({ devPreviewReturnTab = null }) {
       : selectedPDF);
     const durablePath = newFile?.supabaseFilePath || newFile?.filePath || null;
     let saved = null;
-    if (newFile?.id && durablePath) {
+    if (isDeviceDocumentId(newFile?.id)) {
+      // A file opened with no account: the page change is kept in this
+      // browser's copy. Its marks already follow the new pages, so a copy
+      // that could not be written must undo the change (the throw does).
+      if (!await deviceFiles().replaceBytes(newFile.id, newFile)) {
+        throw new Error('This page change could not be kept on this device.');
+      }
+    } else if (newFile?.id && durablePath) {
       saved = await replaceDocument(newFile, durablePath, { documentId: newFile.id });
       // The row may now read its own object (its old one is shared with
       // another document) and has a new fingerprint. Carry both, so the next
@@ -2213,6 +2223,12 @@ export default function App({ devPreviewReturnTab = null }) {
   const stableDocumentOpenEnd = useStableHandler(() => setPendingDocumentOpen(null));
   const stableBack = useStableHandler(handleBack);
   const stableShowAuthModal = useCallback(() => setShowAuthModal(true), [setShowAuthModal]);
+  // A "Sign in" pressed far from here (a toast on a tool that needs an
+  // account, the Comments or History panel of a file kept on this device).
+  useEffect(() => {
+    window.addEventListener(ASK_SIGN_IN_EVENT, stableShowAuthModal);
+    return () => window.removeEventListener(ASK_SIGN_IN_EVENT, stableShowAuthModal);
+  }, [stableShowAuthModal]);
   const stableTabClick = useStableHandler(handleTabClick);
   const stableTabClose = useStableHandler(handleTabClose);
   const stableTabReorder = useStableHandler(handleTabReorder);
@@ -2746,6 +2762,9 @@ export default function App({ devPreviewReturnTab = null }) {
   const [formatGhostLayerEl, setFormatGhostLayerEl] = useState(null);
   const chromeMotion = Boolean(isViewerVisible && !isMobileViewer);
   useLoadoutTransition(loadoutSlotEl, loadoutGhostLayerEl, chromeMotion);
+  // KAL-667: tools that do not fit before the right-hand buttons wait in a
+  // More menu at the end of the loadout (utils/loadoutOverflow.js).
+  const loadoutOverflow = useLoadoutOverflow(loadoutSlotEl, Boolean(isViewerVisible && !isMobileViewer && !isNarrowShell));
   // RULED 2026-09-28 owner: one motion for row 2 (in-place crossfade), row 3
   // drops down. Row 2 no longer shares the tool bar's morph / grow / shrink:
   // when its set of controls changes the WHOLE row crossfades in place (old
@@ -3916,6 +3935,11 @@ export default function App({ devPreviewReturnTab = null }) {
                   id="chrome-subtools-host"
                   data-chrome-subtools-host="true"
                   style={{ display: 'flex', alignItems: 'center', gap: 'var(--chrome-tool-gap)' }}
+                />
+                <LoadoutOverflowMenu
+                  items={loadoutOverflow.hidden}
+                  onPick={loadoutOverflow.pick}
+                  tooltip={chromeTip('More tools', 'below')}
                 />
               </div>
               {/* w47: where the outgoing loadout fades out — the same box as
@@ -6191,6 +6215,7 @@ export default function App({ devPreviewReturnTab = null }) {
         viewerId={signedInUserId}
         layerState={leftRailApi?.layerState || null}
         documentId={leftRailApi?.documentId || null}
+        textFormat={textFormatSource}
       />
       {/* Nightly 'properties-panel': Drawboard's Expand menu card. */}
       <SelectionPropertiesPanel

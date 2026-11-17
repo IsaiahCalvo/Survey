@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTooltip } from '../components/Tooltip';
 import { Icon, EmptyState } from '../home/HubShell';
+import ButtonGroup from '../components/ButtonGroup.jsx';
 import DialogCard from '../components/DialogCard.jsx';
 import DismissBarrier from '../components/DismissBarrier';
 import MenuRows from '../components/MenuRows.jsx';
@@ -320,11 +321,7 @@ export default function ProjectPhotosPanel({ project, user, role, lookupMember, 
       onDrop={(e) => { setDragOver(false); const files = imageFilesFrom(e.dataTransfer); if (files.length) { e.preventDefault(); addFiles(files); } }}
     >
       <div className="project-photos__bar">
-        <div className="photo-grouping" role="radiogroup" aria-label="Group photos by">
-          {GROUPINGS.map((g) => (
-            <button key={g.key} type="button" role="radio" aria-checked={grouping === g.key} data-photo-grouping={g.key} className={grouping === g.key ? 'is-on' : ''} onClick={() => pickGrouping(g.key)}>{g.label}</button>
-          ))}
-        </div>
+        <ButtonGroup label="Group photos by" size="sm" value={grouping} onChange={pickGrouping} options={GROUPINGS.map((g) => ({ value: g.key, label: g.label }))} />
         <button
           type="button"
           className={`item-chip${filterIsEmpty(filter) ? '' : ' is-active'}`}

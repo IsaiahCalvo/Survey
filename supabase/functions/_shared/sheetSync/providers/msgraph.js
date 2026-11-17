@@ -53,6 +53,33 @@ export function shareIdOf(url) {
   return `u!${b64.replace(/=+$/, '').replace(/\//g, '_').replace(/\+/g, '-')}`;
 }
 
+// Teams' own links (teams.microsoft.com/l/...) are not sharing links, so
+// Graph's /shares refuses them. A file link carries the file's SharePoint
+// address (objectUrl); a channel link names the team and the channel, whose
+// Files folder Graph gives directly.
+const TEAMS_HOST = /^teams\.(microsoft\.com|cloud\.microsoft)$/i;
+const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Graph's path to the file or folder behind a pasted OneDrive, SharePoint or Teams link. */
+export function linkItemPath(url) {
+  let u = null;
+  try { u = new URL(String(url)); } catch { u = null; }
+  if (u && TEAMS_HOST.test(u.hostname)) {
+    // The file's own address; `href` writes a space in it as %20.
+    let file = null;
+    try { file = new URL(u.searchParams.get('objectUrl') || ''); } catch { file = null; }
+    if (/^\/l\/file\//i.test(u.pathname) && file?.protocol === 'https:') return `shares/${shareIdOf(file.href)}/driveItem`;
+    const channel = /^\/l\/channel\/([^/]+)/i.exec(u.pathname);
+    const groupId = u.searchParams.get('groupId') || '';
+    if (channel && GUID.test(groupId)) {
+      let channelId = channel[1];
+      try { channelId = decodeURIComponent(channelId); } catch { /* as pasted */ }
+      return `teams/${groupId}/channels/${encodeURIComponent(channelId)}/filesFolder`;
+    }
+  }
+  return `shares/${shareIdOf(url)}/driveItem`;
+}
+
 export function msgraphFileId(driveId, itemId) {
   if (!driveId || !itemId) throw new Error('msgraph: drive id and item id are required');
   return `drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(itemId)}`;
@@ -931,12 +958,13 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
     /**
      * A SharePoint, Teams or OneDrive folder link pasted by the person, as a
      * folder string ("~drive~item") and its name. Graph's /shares opens any
-     * sharing link or plain address the person can reach.
+     * sharing link or plain address the person can reach; Teams' own links
+     * go through linkItemPath.
      */
     async resolveFolderLink(url) {
       let it;
       try {
-        it = await call('GET', `shares/${shareIdOf(url)}/driveItem?$select=id,name,folder,file,parentReference`, { where: 'shares' });
+        it = await call('GET', `${linkItemPath(url)}?$select=id,name,folder,file,parentReference`, { where: 'shares' });
       } catch (err) {
         if ([400, 403, 404].includes(Number(err?.status))) {
           throw Object.assign(new Error('Survey could not open that link with your Microsoft sign-in. Copy the folder\'s link from SharePoint or Teams and try again.'), { status: 400, code: 'bad_folder_link' });
@@ -958,7 +986,7 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
     async openFile(url) {
       let it;
       try {
-        it = await call('GET', `shares/${shareIdOf(url)}/driveItem?$select=id,name,file,folder,webUrl,parentReference`, { where: 'shares' });
+        it = await call('GET', `${linkItemPath(url)}?$select=id,name,file,folder,webUrl,parentReference`, { where: 'shares' });
       } catch (err) {
         if ([400, 403, 404].includes(Number(err?.status))) {
           throw Object.assign(new Error('Survey could not open that link with your Microsoft sign-in. Copy the workbook\'s link from Excel (Share > Copy link) and try again.'), { status: 400, code: 'bad_file_link' });

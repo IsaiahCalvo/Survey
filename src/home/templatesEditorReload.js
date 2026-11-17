@@ -156,6 +156,9 @@ export const templateFingerprint = (template, maps = {}, ignoreItemIds = null) =
           const tail = ['kind', kind, unit || ''];
           return withCond([...row, Object.keys(more).length ? [...tail, Object.entries(more).sort()] : tail]);
         }),
+      // Category Types (KAL-618); left out when there are none so older prints
+      // are unchanged.
+      ...(c.types?.length ? [['types', c.types.map((type) => [type.id, type.name])]] : []),
     ]),
   ]),
   (template?.roster || []).map((e) => {

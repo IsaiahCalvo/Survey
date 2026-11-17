@@ -285,7 +285,7 @@ export default function ShareModal({
         {/* Header */}
         <div style={{ padding: '16px 18px 14px', borderBottom: `1px solid ${C.rule}`, display: 'flex', alignItems: 'center', gap: 12, flex: 'none' }}>
           <span style={{ width: 3, height: 30, background: C.gold, borderRadius: 2, flex: 'none' }}></span>
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="dialog-heading" style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 11, letterSpacing: 0, color: C.muted, fontWeight: 600 }}>Share {noun}</div>
             <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-0.015em', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name || 'Untitled'}</div>
           </div>

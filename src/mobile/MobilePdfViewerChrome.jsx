@@ -289,7 +289,7 @@ const TOOL_LABELS = {
  * Rendered as a near-invisible-backdrop popover above the edit sheet, matching
  * the demo's never-dim overlay convention.
  */
-function MobileColorPickerSurface({ color, opacity, showOpacity = true, firstPreset, minOpacity, onChange, onClose, title, tabs = null }) {
+function MobileColorPickerSurface({ color, opacity, showOpacity = true, firstPreset, minOpacity, onChange, onClose, title, tabs = null, trapFocus = true }) {
   // Owner 2026-09-30: the colour sheet moves like every other phone sheet -
   // it slides up, follows a swipe down from anywhere on it (the gradient and
   // sliders keep their own drags), and slides off on a tap outside or Done.
@@ -299,6 +299,11 @@ function MobileColorPickerSurface({ color, opacity, showOpacity = true, firstPre
     sheetProps,
     requestClose,
   } = useMobileSheetMotion(onClose);
+  // KAL-460: the sheet is modal, so focus goes in, Tab stays in, Escape closes
+  // and focus goes back to the colour button. Not over live text editing
+  // (`trapFocus={false}`): moving focus off the text being typed would end the
+  // edit and drop the keyboard.
+  const sheetFocusRef = useSheetFocus(trapFocus, requestClose, sheetProps.ref);
   if (typeof document === 'undefined') return null;
   return createPortal(
     <>
@@ -333,8 +338,11 @@ function MobileColorPickerSurface({ color, opacity, showOpacity = true, firstPre
         className="mobile-pdf-colorpicker-surface"
         data-rich-text-toolbar
         role="dialog"
+        aria-modal={trapFocus ? 'true' : undefined}
         aria-label={`${title || 'Color'} picker`}
         {...sheetProps}
+        ref={sheetFocusRef}
+        tabIndex={-1}
         style={motionStyle}
       >
         <div className="mobile-pdf-sheet__handle" />
@@ -1458,6 +1466,14 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
     sheetProps: textSheetProps,
     requestClose: requestTextSheetClose,
   } = useMobileSheetMotion(() => setTextDefaultsOpen(false), { open: textDefaultsOpen });
+  // KAL-460: the tool settings sheet is modal (focus in, Tab stays in, Escape
+  // closes, focus back to "..."). Not while a text box is being typed in: the
+  // alignment sheet must leave focus on the text so the edit stays open.
+  const textSheetFocusRef = useSheetFocus(
+    textDefaultsOpen && !api?.richTextEditor,
+    requestTextSheetClose,
+    textSheetProps.ref,
+  );
   /* RESTORED 2026-09-23 (owner: "We had panels for every single annotation ...
      I hope we didn't lose what we had before"). The panel above is the ONE
      "<Tool> settings" panel again - opened from the "..." at the end of every
@@ -1719,6 +1735,7 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
             { ...meta, refocus: false },
           )}
           onClose={() => setColorPicker(null)}
+          trapFocus={false}
         />
       )}
       {/* The restored settings panel, on its alignment card, acting on the text
@@ -2451,8 +2468,12 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
         />
         <section
           className={`mobile-pdf-text-defaults mobile-tool-sheet is-${isEraser ? 'eraser' : sheetTab}${tool === 'callout' ? ' is-callout' : ''}`}
+          role="dialog"
+          aria-modal="true"
           aria-label={`${sheetTitle} settings`}
           {...textSheetProps}
+          ref={textSheetFocusRef}
+          tabIndex={-1}
           style={textSheetMotionStyle}
         >
           <div className="mobile-pdf-sheet__handle" />

@@ -53,7 +53,8 @@ import { lockDocument, unlockDocument } from './services/documentLockService.js'
 import { resolveDocumentMetadata } from './services/documentMetadataResolver.js';
 import { perfUpload } from './utils/performanceLogger';
 import { showToast } from './utils/toast';
-import DriveFilePicker from './components/DriveFilePicker.jsx';
+import DriveFilePicker, { DriveConnectDialog } from './components/DriveFilePicker.jsx';
+import WalkthruHandoffDialog from './home/WalkthruHandoffDialog.jsx';
 import { announceDriveLinkChanged, chooseGoogleDrivePdf, driveCall, fetchDrivePdf, googlePickerApiKey } from './services/driveFilesClient.js';
 import { drivePlace } from './utils/driveLinks.js';
 import { archiveItems, restoreArchiveItems } from './services/archiveService';
@@ -69,6 +70,10 @@ import { canReachServer } from './utils/serverReachable.js';
 import { ToolError } from './tools/errors.js';
 import { LOCAL_FILE_REOPEN_EVENT } from './services/localFileLink.js';
 import { FONT_FAMILY, hexToRgba, hasNameConflict } from './viewerShared.js';
+
+// Stable for the dialog's effects; the work module loads on first use.
+const listWalkthruWalks = (client) => import('./suite/walkthruHandoffRun.js').then((m) => m.listWalks(client));
+const readWalkthruWalk = (client, id) => import('./suite/walkthruHandoffRun.js').then((m) => m.readWalk(client, id));
 
 // --- helpers --------------------------------------------------------------
 // FONT_FAMILY (the one UI font), hexToRgba and hasNameConflict come from
@@ -1994,6 +1999,46 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
   const [drivePickerOpen, setDrivePickerOpen] = useState(false);
   // The project a OneDrive / SharePoint pick goes into (null: open on its own).
   const [driveTargetProject, setDriveTargetProject] = useState(null);
+  const [driveConnectAsk, setDriveConnectAsk] = useState(null); // { resolve } while "Connect Google" is up
+  // Kal Voe suite (KAL-594, Nightly flag 'suite'): the Project a Walkthru walk
+  // is being added to. Read once, like every flag.
+  const [walkthruTargetProject, setWalkthruTargetProject] = useState(null);
+  const [suiteOn] = useState(() => { try { return isFeatureOn('suite'); } catch { return false; } });
+  const sendWalkthruWalk = async ({ walk, template, moduleId, categoryFor }) => {
+    const project = walkthruTargetProject;
+    if (!project?.id || !user?.id) throw new Error('Sign in and pick a Project first.');
+    const [{ sendWalkToProject, readPdfPageSizes }, { openAnnotationDoc }, { linkDocumentTemplates }, { loadPdfjs }] = await Promise.all([
+      import('./suite/walkthruHandoffRun.js'),
+      import('./services/annotationDocSync.js'),
+      import('./services/sharedTemplates.js'),
+      import('./utils/pdfWorkerConfig.js'),
+    ]);
+    const templateRowId = resolveSupabaseTemplateId(template);
+    const result = await sendWalkToProject({
+      supabase,
+      walk,
+      template,
+      moduleId,
+      categoryFor,
+      newId: () => crypto.randomUUID(),
+      pageSizes: (blob) => readPdfPageSizes(blob, loadPdfjs),
+      addPdfToProject: async (file) => {
+        let doc = null;
+        const outcome = await uploadBrowserPdf(file, {
+          projectId: project.id, openAfterUpload: false, askDuplicates: false,
+          onDocument: (d) => { doc = d || null; },
+        });
+        if (!doc || outcome === 'failed' || outcome === 'skipped') return null;
+        return doc;
+      },
+      openDoc: (documentId) => openAnnotationDoc({ documentId, supabase, actorUserId: user.id, enableRealtime: false }),
+      linkTemplate: templateRowId
+        ? (documentId) => linkDocumentTemplates({ client: supabase, documentId, userId: user.id, templateRowIds: [templateRowId] })
+        : null,
+    });
+    refetchDocuments?.();
+    return result;
+  };
   const canOpenFromDrive = Boolean(user) && isFeatureOn('drive-sync-back');
   // Google's Picker needs a browser key; without one the entry stays hidden.
   const canOpenFromGoogleDrive = canOpenFromDrive && Boolean(googlePickerApiKey());
@@ -2026,8 +2071,15 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     }
     return true;
   };
+  // No Google sign-in yet: ask in a dialog the person can see (a Connect
+  // button, and a box for the code from a sign-in finished elsewhere).
+  const askGoogleConnect = () => new Promise((resolve) => setDriveConnectAsk({ resolve }));
+  const answerGoogleConnect = (answer) => {
+    driveConnectAsk?.resolve(answer);
+    setDriveConnectAsk(null);
+  };
   const openFromGoogleDrive = async () => {
-    const picked = await chooseGoogleDrivePdf();
+    const picked = await chooseGoogleDrivePdf({ connect: askGoogleConnect });
     if (!picked) return;
     if (picked.error) { showToast(picked.error, 'warn'); return; }
     await openFromDrive(picked);
@@ -3128,11 +3180,29 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
 
   return (
     <>
+      {driveConnectAsk && (
+        <DriveConnectDialog
+          provider="google"
+          onDone={answerGoogleConnect}
+          onClose={() => answerGoogleConnect({ ok: false, cancelled: true })}
+        />
+      )}
       {drivePickerOpen && (
         <DriveFilePicker
           onPick={(picked) => openFromDrive(picked, { project: driveTargetProject })}
           onClose={() => { setDrivePickerOpen(false); setDriveTargetProject(null); }}
           intoName={driveTargetProject?.name || null}
+        />
+      )}
+      {walkthruTargetProject && (
+        <WalkthruHandoffDialog
+          project={walkthruTargetProject}
+          templates={templates}
+          supabase={supabase}
+          listWalks={listWalkthruWalks}
+          readWalk={readWalkthruWalk}
+          onSend={sendWalkthruWalk}
+          onClose={() => setWalkthruTargetProject(null)}
         />
       )}
       <DismissBarrier
@@ -3181,6 +3251,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         onUpload={handleUploadClick}
         onOpenFromDrive={canOpenFromDrive ? () => { setDriveTargetProject(null); setDrivePickerOpen(true); } : null}
         onAddFromDrive={canOpenFromDrive ? (project) => { setDriveTargetProject(project || null); setDrivePickerOpen(true); } : null}
+        onAddFromWalkthru={suiteOn && user ? (project) => setWalkthruTargetProject(project || null) : null}
         onOpenFromGoogleDrive={canOpenFromGoogleDrive ? openFromGoogleDrive : null}
         onDropFiles={handleDroppedFiles}
         uploadBusy={activeUploads > 0 || uploadInFlight}

@@ -1510,9 +1510,10 @@ input[type="text"].survey-marker-name-inline:focus {
 }
 
 .spaces-list__empty {
-  padding: 32px var(--sp-edge);
+  /* Same size and inset as the other panels' "nothing here yet" line. */
+  padding: 32px 20px;
   color: var(--text-3);
-  font-size: var(--sp-label-type);
+  font-size: 13px;
   line-height: 1.4;
   text-align: center;
 }

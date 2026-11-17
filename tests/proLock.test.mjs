@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { FEATURE_FLAGS } from '../src/featureFlags.js';
 import {
-  PRO_LOCK_FEATURES, PRO_LOCK_FLAG, blockIfProLocked, isNativeApp, isProLocked, proLockPrompt,
+  ASK_SIGN_IN_EVENT, PRO_LOCK_FEATURES, PRO_LOCK_FLAG, accountNeededPrompt, askSignIn, blockForVisitor,
+  blockIfProLocked, isNativeApp, isProLocked, proLockPrompt,
 } from '../src/utils/proLock.js';
 
 const FEATURES = Object.keys(PRO_LOCK_FEATURES);
@@ -93,6 +94,44 @@ test('pro lock: blockIfProLocked shows the prompt only when locked', () => {
     assert.equal(blockIfProLocked('onedrive', 'free', { flagOn: true, native: true, onUpgrade }), true);
     assert.equal(seen[1].message, 'OneDrive is not available on your plan.');
     assert.equal(seen[1].action, undefined);
+  } finally {
+    if (prevWindow === undefined) delete globalThis.window;
+    else globalThis.window = prevWindow;
+  }
+});
+
+// KAL-658: nobody signed in (a visitor marking up a PDF kept on the device)
+// never gets these features, whatever the flag says. They are asked to sign
+// in, never to upgrade: there is no account to upgrade yet.
+test('visitor: every Pro feature asks for an account, in plain words', () => {
+  assert.equal(accountNeededPrompt('survey').message, 'Survey tools need an account. Sign in to use them.');
+  assert.equal(accountNeededPrompt('regions').message, 'Regions need an account. Sign in to use them.');
+  assert.equal(accountNeededPrompt('excel').message, 'Excel export needs an account. Sign in to use it.');
+  assert.equal(accountNeededPrompt('onedrive').message, 'OneDrive needs an account. Sign in to use it.');
+  for (const feature of FEATURES) {
+    const prompt = accountNeededPrompt(feature);
+    assert.equal(prompt.actionLabel, 'Sign in', feature);
+    assert.doesNotMatch(prompt.message, /upgrade|\$|price|checkout|pro\b/i, feature);
+  }
+  assert.equal(accountNeededPrompt('pdf_viewer'), null);
+});
+
+test('visitor: blockForVisitor stops the feature and its button opens sign-in', () => {
+  const seen = [];
+  const prevWindow = globalThis.window;
+  globalThis.window = { dispatchEvent: (event) => { seen.push(event); return true; } };
+  try {
+    assert.equal(blockForVisitor('pdf_viewer'), false);
+    assert.equal(seen.length, 0);
+    let asked = 0;
+    assert.equal(blockForVisitor('survey', { onSignIn: () => { asked += 1; } }), true);
+    assert.equal(seen[0].detail.message, 'Survey tools need an account. Sign in to use them.');
+    assert.equal(seen[0].detail.action.label, 'Sign in');
+    seen[0].detail.action.onClick();
+    assert.equal(asked, 1);
+    // The default button fires the event AppShell listens for.
+    askSignIn(globalThis.window);
+    assert.equal(seen[1].type, ASK_SIGN_IN_EVENT);
   } finally {
     if (prevWindow === undefined) delete globalThis.window;
     else globalThis.window = prevWindow;

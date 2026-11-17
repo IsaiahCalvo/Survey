@@ -424,6 +424,7 @@ import { PinToolButton } from './components/pins/PinControls.jsx';
 import { LINK_EDIT_EVENT, applyLinkEdit, selectedLinkOf } from './utils/linkTool.js';
 import { NOTE_EDIT_EVENT, applyNoteEdit, selectedNoteOf } from './utils/stickyNote.js';
 import { applyHatch, hatchPatternOf, hatchShapeKind } from './utils/hatchFill.js';
+import { applyKeepShape, keepsProportions } from './utils/snapGuides.js';
 import { EQUATION_EDIT_EVENT, EQUATION_OPEN_EVENT, applyEquationEdit, selectedEquationOf } from './utils/equation.js';
 import { AUDIO_NOTE_OPEN_EVENT, AUDIO_NOTE_PLAY_EVENT, selectedAudioOf } from './utils/audioNote.js';
 import SnapshotTool from './components/SnapshotTool.jsx';
@@ -3265,6 +3266,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // Pins are mark_comments rows on a cloud document, so they need one and a
   // signed-in user: a device file or a signed-out visit shows no Pin tool.
   const pinsDocOn = pinsOn && Boolean(pdfFile?.id) && !isDeviceDocumentId(pdfFile?.id) && Boolean(user?.id);
+  // device-files (Nightly): with no account the device is the viewer, so its
+  // own edits get Undo steps (the history keeps nothing for an unknown viewer).
+  const deviceHistoryViewerIdRef = useRef(null);
+  deviceHistoryViewerIdRef.current = isDeviceDocumentId(pdfFile?.id) ? DEVICE_ACTOR_ID : null;
   const [measureDepth, setMeasureDepth] = useState(() => loadMeasureDepth());
   const [measureDepthDialog, setMeasureDepthDialog] = useState(null);
   // Tape (beta 'tape-tool', Drawboard PDF): a band that covers part of the
@@ -3279,6 +3284,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const rulerOn = useRulerOn();
   const [noteToolEnabled] = useState(() => isFeatureOn('note-tool'));
   const [hatchFillEnabled] = useState(() => isFeatureOn('hatch-fill'));
+  // Nightly 'mark-bar-by-kind' (KAL-675): the bar's keep-proportions lock on a picked image.
+  const [markBarByKindOn] = useState(() => isFeatureOn('mark-bar-by-kind'));
   const [equationToolEnabled] = useState(() => isFeatureOn('equation-tool'));
   const [audioNoteEnabled] = useState(() => isFeatureOn('audio-note'));
   const [measureAngleEnabled] = useState(() => isFeatureOn('measure-angle'));
@@ -3904,6 +3911,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // and one Undo step like the Measurement popover.
   const handlePatchSelectedLink = useCallback((changes) => {
     handlePatchSelectedAnnotation({}, (obj) => applyLinkEdit(obj, changes));
+  }, [handlePatchSelectedAnnotation]);
+  // Nightly 'mark-bar-by-kind': the picked image's keep-proportions lock, same one-save write.
+  const handleSetSelectedImageKeepShape = useCallback((keep) => {
+    handlePatchSelectedAnnotation({}, (obj) => applyKeepShape(obj, keep));
   }, [handlePatchSelectedAnnotation]);
   // Nightly 'hatch-fill': the picked shape's line pattern, same one-save write.
   const handleSetSelectedHatch = useCallback((pattern) => {
@@ -14206,7 +14217,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
 
   const applyLocalAnnotationHistoryAction = useCallback((action) => {
     if (!action) return 'unchanged';
-    const viewerId = yjsUndoCtx?.userId || user?.id || null;
+    const viewerId = yjsUndoCtx?.userId || user?.id || deviceHistoryViewerIdRef.current || null;
     if (!viewerId) return 'no-viewer';
     const scopedAction = filterAnnotationHistoryActionByOwner(
       action,
@@ -27707,6 +27718,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     return { id: getAnnotationRenderIdentity(obj).annotationId, pattern: hatchPatternOf(obj) };
   }, [hatchFillEnabled, selectedToolbarAnnotation, selectedToolbarCallout, annotationsByPage]);
 
+  // Nightly 'mark-bar-by-kind': the one picked image, for the bar's lock.
+  const selectedImageShapeForBar = useMemo(() => {
+    if (!markBarByKindOn || !selectedToolbarAnnotation || selectedToolbarCallout) return null;
+    const pageObjects = annotationsByPage?.[selectedToolbarAnnotation.pageNumber]?.objects || [];
+    const index = findSelectedAnnotationIndex(pageObjects, selectedToolbarAnnotation);
+    const obj = (index >= 0 ? pageObjects[index] : null) || selectedToolbarAnnotation.annotation;
+    if (String(obj?.type || '').toLowerCase() !== 'image') return null;
+    return { id: getAnnotationRenderIdentity(obj).annotationId, keep: keepsProportions(obj) };
+  }, [markBarByKindOn, selectedToolbarAnnotation, selectedToolbarCallout, annotationsByPage]);
+
   // UX 2026-05-13: Publish bottom toolbar state to the App shell when this tab
   // is active. Keep this effect below every value in the API object to avoid
   // temporal-dead-zone crashes during PDFViewer's first render.
@@ -28030,6 +28051,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       // One picked shape's hatch pattern (Nightly 'hatch-fill'), for the properties panel.
       selectedHatch: hatchFillEnabled && !groupSummary ? selectedHatchForPanel : null,
       setSelectedHatch: hatchFillEnabled ? handleSetSelectedHatch : null,
+      // One picked image's keep-proportions lock (Nightly 'mark-bar-by-kind').
+      selectedImageShape: markBarByKindOn && !groupSummary ? selectedImageShapeForBar : null,
+      setSelectedImageKeepShape: markBarByKindOn ? handleSetSelectedImageKeepShape : null,
       // One picked equation (Nightly 'equation-tool'): Equation opens it again.
       selectedEquation: equationToolEnabled && !groupSummary ? selectedEquationForHost : null,
       editSelectedEquation: equationToolEnabled ? editSelectedEquation : null,
@@ -28208,6 +28232,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     editSelectedNote,
     selectedHatchForPanel,
     handleSetSelectedHatch,
+    selectedImageShapeForBar,
+    handleSetSelectedImageKeepShape,
     selectedEquationForHost,
     editSelectedEquation,
     selectedAudioForHost,
@@ -28862,7 +28888,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     const familyCompanion = surveyMarkerFamilyCompanionRef.current;
     surveyMarkerFamilyCompanionRef.current = null;
     if (!action || isUndoingRef.current) return;
-    const viewerId = yjsUndoCtx?.userId || user?.id || null;
+    const viewerId = yjsUndoCtx?.userId || user?.id || deviceHistoryViewerIdRef.current || null;
     const ownerScopedAction = filterAnnotationHistoryActionByOwner(
       action,
       viewerId,
@@ -29765,7 +29791,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         transaction = { ...transaction, nextByPage: stampedByPage, action: buildTextMarkupDocumentAction(annotationsByPageRef.current || {}, stampedByPage) || transaction.action };
       }
     }
-    const viewerId = yjsUndoCtx?.userId || user?.id || null;
+    const viewerId = yjsUndoCtx?.userId || user?.id || deviceHistoryViewerIdRef.current || null;
     // RULED 2026-09-28 owner: open editing + lock — a text-markup transaction
     // that would change a locked mark does not happen at all (it is one
     // atomic group; half of it must not land).
@@ -30639,9 +30665,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           count: importedIds.length,
           ...(markerDecision.incompletePages ? { incompletePages: markerDecision.incompletePages } : {}),
         }, 'local');
-        // The reference build's server-side marker, kept for it.
+        // The reference build's server-side marker, kept for it. A file
+        // opened with no account has no row to stamp.
         try {
-          await supabase
+          if (!isDeviceDocumentId(documentId)) await supabase
             .from('documents')
             .update({ embedded_import_completed_at: new Date().toISOString() })
             .eq('id', documentId);
@@ -31371,7 +31398,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         });
       });
       if (!isDragFrame) {
-        const viewerId = yjsUndoCtx?.userId || user?.id || null;
+        const viewerId = yjsUndoCtx?.userId || user?.id || deviceHistoryViewerIdRef.current || null;
         const pageActions = updates.map(({ pageKey, json }) => {
           const numericKey = Number(pageKey);
           const pageNumber = Number.isFinite(numericKey) ? numericKey : pageKey;
@@ -31417,7 +31444,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     if (!counterSeriesActiveRef.current || !canRestoreFromHistoryRef.current) return { ok: false, reason: 'forbidden' };
     const seriesName = String(name || '').trim().slice(0, 80);
     if (!seriesName || !getCounterSeriesList(annotationsByPageRef.current).some(series => series.seriesId === seriesId)) return { ok: false, reason: 'invalid-series' };
-    const viewerId = yjsUndoCtx?.userId || user?.id || null;
+    const viewerId = yjsUndoCtx?.userId || user?.id || deviceHistoryViewerIdRef.current || null;
     const permission = checkCounterSeriesEdit(annotationsByPageRef.current, seriesId, { viewerId, documentOwnerId });
     if (!permission.ok) return permission;
     handleCounterGroupUpdateRef.current?.(seriesId, { seriesName });
@@ -31437,7 +31464,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     const series = getCounterSeriesList(annotationsByPageRef.current).find((item) => item.seriesId === seriesId);
     if (!series) return { ok: false, reason: 'invalid-series' };
     if (series.start === seriesStart) return { ok: true };
-    const viewerId = yjsUndoCtx?.userId || user?.id || null;
+    const viewerId = yjsUndoCtx?.userId || user?.id || deviceHistoryViewerIdRef.current || null;
     const permission = checkCounterSeriesEdit(annotationsByPageRef.current, seriesId, { viewerId, documentOwnerId });
     if (!permission.ok) return permission;
     handleCounterGroupUpdateRef.current?.(seriesId, { seriesStart });
@@ -31453,7 +31480,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     if (typeof paint?.fill === 'string' && paint.fill) patch.fill = paint.fill;
     if (typeof paint?.numberColor === 'string' && paint.numberColor) patch.numberColor = paint.numberColor;
     if (!Object.keys(patch).length) return { ok: false, reason: 'invalid-paint' };
-    const viewerId = yjsUndoCtx?.userId || user?.id || null;
+    const viewerId = yjsUndoCtx?.userId || user?.id || deviceHistoryViewerIdRef.current || null;
     const permission = checkCounterSeriesEdit(annotationsByPageRef.current, seriesId, { viewerId, documentOwnerId });
     if (!permission.ok) return permission;
     handleCounterGroupUpdateRef.current?.(seriesId, patch);
@@ -31471,7 +31498,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const handleReorderCounterSeries = useCallback((orderedIds) => {
     if (!counterSeriesActiveRef.current || !canRestoreFromHistoryRef.current) return { ok: false, reason: 'forbidden' };
     const allPages = annotationsByPageRef.current || {};
-    const viewerId = yjsUndoCtx?.userId || user?.id || null;
+    const viewerId = yjsUndoCtx?.userId || user?.id || deviceHistoryViewerIdRef.current || null;
     for (const seriesId of Array.isArray(orderedIds) ? orderedIds : []) {
       const permission = checkCounterSeriesEdit(allPages, seriesId, { viewerId, documentOwnerId });
       if (!permission.ok) return permission;
@@ -31512,7 +31539,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const handleDeleteCounterSeries = useCallback((seriesId) => {
     if (!counterSeriesActiveRef.current || !canRestoreFromHistoryRef.current) return { ok: false, reason: 'forbidden' };
     if (!seriesId) return { ok: false, reason: 'missing-series' };
-    const viewerId = yjsUndoCtx?.userId || user?.id || null;
+    const viewerId = yjsUndoCtx?.userId || user?.id || deviceHistoryViewerIdRef.current || null;
     const collectSeriesPins = (byPage) => Object.entries(byPage || {}).flatMap(([pageKey, page]) => (
       Array.isArray(page?.objects)
         ? page.objects.flatMap((annotation, index) => {

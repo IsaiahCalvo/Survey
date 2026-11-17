@@ -234,8 +234,9 @@ export const LAYOUT_TESTS = [
         if (SHOTS) await browserPage.screenshot({ path: `${SHOTS}/${layout.name.replace(/[^a-z0-9]+/gi, '-')}-2-system-browser.png` });
         await other.close();
         // No "Open Survey" tap here (the app's own link): the code is typed.
-        await press(layout, panel.getByRole('button', { name: 'Enter its code' }).first());
-        const box = panel.getByLabel(/Type the code/);
+        // One code box per provider sits in the panel: use Microsoft's.
+        await press(layout, panel.locator('[data-claim-provider="msgraph"]').getByRole('button', { name: 'Enter its code' }));
+        const box = panel.getByLabel(/Type the code from the last page of the Microsoft sign-in/);
         await box.fill(code);
         expect(await spills(page), 'panel, code box').toEqual([]);
         await shot('2-code');
@@ -356,8 +357,9 @@ export const LAYOUT_TESTS = [
         await expect(browserPage.getByRole('link', { name: /Open Survey/ })).toHaveAttribute('href', /^com\.kalvoe\.survey:\/\/sheet-connected\?provider=google&code=/);
         const code = (await browserPage.locator('#code').textContent()).trim();
         await other.close();
-        await tap(panel.getByRole('button', { name: 'Enter its code' }).first());
-        await panel.getByLabel(/Type the code/).fill(code);
+        // One code box per provider sits in the panel: use Google's.
+        await tap(panel.locator('[data-claim-provider="google"]').getByRole('button', { name: 'Enter its code' }));
+        await panel.getByLabel(/Type the code from the last page of the Google sign-in/).fill(code);
         await tap(panel.getByRole('button', { name: 'Finish' }));
       } else {
         const consentTab = context.waitForEvent('page');

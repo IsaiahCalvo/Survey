@@ -17,6 +17,15 @@ const {
   EMAIL_DANGER, EMAIL_P_STYLE: P, EMAIL_MUTED_STYLE: MUTED, EMAIL_FINE_STYLE: FINE,
 } = layout;
 
+const { SUITE_NAME, SUITE_ACCOUNT_NAME: ACCOUNT, SUITE_APPS_LINE } = await import(
+  new URL('../src/suite/suiteName.js', import.meta.url).href
+);
+// These are account emails. One account signs in to all three apps, so they
+// carry the suite's name, not Survey's (owner 2026-11-16, KAL-664). No icon
+// and no link: the icon is Survey's own, and the suite has no home page yet.
+const SUITE_BRAND = { name: SUITE_NAME, logoUrl: null, link: null };
+const ONE_ACCOUNT = `It signs you in to ${SUITE_APPS_LINE}.`;
+
 const IGNORE = (what) => `If you didn&#8217;t ${what}, you can safely ignore this email.`;
 const NOT_YOU =
   `<p style="${MUTED}" class="em-mut"><strong>If this wasn&#8217;t you:</strong> reset your password immediately from the sign-in screen &#8212; someone may have access to your account.</p>`;
@@ -24,33 +33,36 @@ const NOT_YOU =
 // Subjects are managed alongside contents so one PATCH sets both.
 export const TEMPLATES = {
   confirmation: {
-    subject: 'Confirm your email for Survey',
+    subject: `Confirm your email for your ${ACCOUNT}`,
     html: renderEmailLayout({
+      brand: SUITE_BRAND,
       heading: 'Confirm your email',
       preheader: 'One click and your account is ready.',
-      footerReason: `You're receiving this because this address was used to create a Survey account.`,
+      footerReason: `You're receiving this because this address was used to create a ${ACCOUNT}.`,
       bodyHtml:
-        `<p style="${P}">You&#8217;re almost in. Confirm this email address to finish creating your Survey account.</p>` +
+        `<p style="${P}">You&#8217;re almost in. Confirm this email address to finish creating your ${ACCOUNT}. ${ONE_ACCOUNT}</p>` +
         emailButton('Confirm email', '{{ .ConfirmationURL }}') +
-        `<p style="${FINE}" class="em-mut">${IGNORE('create a Survey account')}</p>`,
+        `<p style="${FINE}" class="em-mut">${IGNORE(`create a ${ACCOUNT}`)}</p>`,
     }),
   },
   invite: {
-    subject: "You've been invited to Survey",
+    subject: `You've been invited to ${SUITE_NAME}`,
     html: renderEmailLayout({
-      heading: 'You&#8217;ve been invited to Survey',
+      brand: SUITE_BRAND,
+      heading: `You&#8217;ve been invited to ${SUITE_NAME}`,
       preheader: 'Accept the invitation to create your account.',
-      footerReason: `You're receiving this because someone invited this address to Survey.`,
+      footerReason: `You're receiving this because someone invited this address to ${SUITE_NAME}.`,
       bodyHtml:
-        `<p style="${P}">Survey is where teams review documents, mark them up, and keep survey data in sync. Accept the invitation to create your account and see what&#8217;s been shared with you.</p>` +
+        `<p style="${P}">Accept the invitation to create your ${ACCOUNT} and see what&#8217;s been shared with you. ${ONE_ACCOUNT}</p>` +
         emailButton('Accept invitation', '{{ .ConfirmationURL }}') +
         `<p style="${FINE}" class="em-mut">${IGNORE('expect this invitation')}</p>`,
     }),
   },
   magic_link: {
-    subject: 'Your Survey sign-in link',
+    subject: `Your ${SUITE_NAME} sign-in link`,
     html: renderEmailLayout({
-      heading: 'Sign in to Survey',
+      brand: SUITE_BRAND,
+      heading: `Sign in to your ${ACCOUNT}`,
       preheader: 'This link expires in one hour.',
       footerReason: `You're receiving this because a sign-in link was requested for this address.`,
       bodyHtml:
@@ -60,8 +72,9 @@ export const TEMPLATES = {
     }),
   },
   recovery: {
-    subject: 'Reset your Survey password',
+    subject: `Reset your ${SUITE_NAME} password`,
     html: renderEmailLayout({
+      brand: SUITE_BRAND,
       heading: 'Reset your password',
       preheader: 'This link expires in one hour.',
       footerReason: `You're receiving this because a password reset was requested for this address.`,
@@ -71,109 +84,118 @@ export const TEMPLATES = {
     }),
   },
   email_change: {
-    subject: 'Confirm your new email for Survey',
+    subject: `Confirm your new email for your ${ACCOUNT}`,
     html: renderEmailLayout({
+      brand: SUITE_BRAND,
       heading: 'Confirm your email change',
       preheader: 'Approve the change to finish updating your sign-in email.',
-      footerReason: `You're receiving this because an email change was requested on your Survey account.`,
+      footerReason: `You're receiving this because an email change was requested on your ${ACCOUNT}.`,
       bodyHtml:
-        `<p style="${P}">A request was made to change your Survey sign-in email from <strong>{{ .Email }}</strong> to <strong>{{ .NewEmail }}</strong>. Confirm to complete the change.</p>` +
+        `<p style="${P}">A request was made to change your ${SUITE_NAME} sign-in email from <strong>{{ .Email }}</strong> to <strong>{{ .NewEmail }}</strong>. Confirm to complete the change.</p>` +
         emailButton('Confirm email change', '{{ .ConfirmationURL }}') +
         `<p style="${FINE}" class="em-mut">${IGNORE('request this change')}</p>`,
     }),
   },
   email_changed_notification: {
-    subject: 'Your Survey email address was changed',
+    subject: `Your ${SUITE_NAME} email address was changed`,
     html: renderEmailLayout({
+      brand: SUITE_BRAND,
       heading: 'Your email address was changed',
       headingColor: EMAIL_DANGER,
       preheader: `If this wasn't you, secure your account now.`,
-      footerReason: `You're receiving this because the sign-in email on your Survey account changed.`,
+      footerReason: `You're receiving this because the sign-in email on your ${ACCOUNT} changed.`,
       bodyHtml:
-        `<p style="${P}">The sign-in email on your Survey account was changed from <strong>{{ .OldEmail }}</strong> to <strong>{{ .Email }}</strong>. If you made this change, no action is needed.</p>` +
+        `<p style="${P}">The sign-in email on your ${ACCOUNT} was changed from <strong>{{ .OldEmail }}</strong> to <strong>{{ .Email }}</strong>. If you made this change, no action is needed.</p>` +
         NOT_YOU,
     }),
   },
   identity_linked_notification: {
-    subject: 'A new sign-in method was linked to your Survey account',
+    subject: `A new sign-in method was linked to your ${ACCOUNT}`,
     html: renderEmailLayout({
+      brand: SUITE_BRAND,
       heading: 'A sign-in method was linked',
       headingColor: EMAIL_DANGER,
       preheader: `If this wasn't you, secure your account now.`,
-      footerReason: `You're receiving this because the sign-in methods on your Survey account changed.`,
+      footerReason: `You're receiving this because the sign-in methods on your ${ACCOUNT} changed.`,
       bodyHtml:
-        `<p style="${P}">A new <strong>{{ .Provider }}</strong> identity was linked to your Survey account (<strong>{{ .Email }}</strong>). If you made this change, no action is needed.</p>` +
+        `<p style="${P}">A new <strong>{{ .Provider }}</strong> identity was linked to your ${ACCOUNT} (<strong>{{ .Email }}</strong>). If you made this change, no action is needed.</p>` +
         NOT_YOU,
     }),
   },
   identity_unlinked_notification: {
-    subject: 'A sign-in method was removed from your Survey account',
+    subject: `A sign-in method was removed from your ${ACCOUNT}`,
     html: renderEmailLayout({
+      brand: SUITE_BRAND,
       heading: 'A sign-in method was removed',
       headingColor: EMAIL_DANGER,
       preheader: `If this wasn't you, secure your account now.`,
-      footerReason: `You're receiving this because the sign-in methods on your Survey account changed.`,
+      footerReason: `You're receiving this because the sign-in methods on your ${ACCOUNT} changed.`,
       bodyHtml:
-        `<p style="${P}">A <strong>{{ .Provider }}</strong> identity was unlinked from your Survey account (<strong>{{ .Email }}</strong>). If you made this change, no action is needed.</p>` +
+        `<p style="${P}">A <strong>{{ .Provider }}</strong> identity was unlinked from your ${ACCOUNT} (<strong>{{ .Email }}</strong>). If you made this change, no action is needed.</p>` +
         NOT_YOU,
     }),
   },
   mfa_factor_enrolled_notification: {
-    subject: 'Two-factor authentication was added to your Survey account',
+    subject: `Two-factor authentication was added to your ${ACCOUNT}`,
     html: renderEmailLayout({
+      brand: SUITE_BRAND,
       heading: 'Two-factor authentication added',
       headingColor: EMAIL_DANGER,
       preheader: `If this wasn't you, secure your account now.`,
-      footerReason: `You're receiving this because the security settings on your Survey account changed.`,
+      footerReason: `You're receiving this because the security settings on your ${ACCOUNT} changed.`,
       bodyHtml:
-        `<p style="${P}">A new two-factor method (<strong>{{ .FactorType }}</strong>) was added to your Survey account (<strong>{{ .Email }}</strong>). If you made this change, no action is needed.</p>` +
+        `<p style="${P}">A new two-factor method (<strong>{{ .FactorType }}</strong>) was added to your ${ACCOUNT} (<strong>{{ .Email }}</strong>). If you made this change, no action is needed.</p>` +
         NOT_YOU,
     }),
   },
   mfa_factor_unenrolled_notification: {
-    subject: 'Two-factor authentication was removed from your Survey account',
+    subject: `Two-factor authentication was removed from your ${ACCOUNT}`,
     html: renderEmailLayout({
+      brand: SUITE_BRAND,
       heading: 'Two-factor authentication removed',
       headingColor: EMAIL_DANGER,
       preheader: `If this wasn't you, secure your account now.`,
-      footerReason: `You're receiving this because the security settings on your Survey account changed.`,
+      footerReason: `You're receiving this because the security settings on your ${ACCOUNT} changed.`,
       bodyHtml:
-        `<p style="${P}">A two-factor method (<strong>{{ .FactorType }}</strong>) was removed from your Survey account (<strong>{{ .Email }}</strong>). If you made this change, no action is needed.</p>` +
+        `<p style="${P}">A two-factor method (<strong>{{ .FactorType }}</strong>) was removed from your ${ACCOUNT} (<strong>{{ .Email }}</strong>). If you made this change, no action is needed.</p>` +
         NOT_YOU,
     }),
   },
   password_changed_notification: {
-    subject: 'Your Survey password was changed',
+    subject: `Your ${SUITE_NAME} password was changed`,
     html: renderEmailLayout({
+      brand: SUITE_BRAND,
       heading: 'Your password was changed',
       headingColor: EMAIL_DANGER,
       preheader: `If this wasn't you, secure your account now.`,
-      footerReason: `You're receiving this because the password on your Survey account changed.`,
+      footerReason: `You're receiving this because the password on your ${ACCOUNT} changed.`,
       bodyHtml:
-        `<p style="${P}">The password for your Survey account (<strong>{{ .Email }}</strong>) was just changed. If you made this change, no action is needed.</p>` +
+        `<p style="${P}">The password for your ${ACCOUNT} (<strong>{{ .Email }}</strong>) was just changed. If you made this change, no action is needed.</p>` +
         `<p style="${MUTED}" class="em-mut"><strong>If this wasn&#8217;t you:</strong> use &#8220;Forgot password&#8221; on the sign-in screen right away to take back control, and contact us at <strong>isaiahcalvo123@gmail.com</strong>.</p>`,
     }),
   },
   phone_changed_notification: {
-    subject: 'Your Survey phone number was changed',
+    subject: `Your ${SUITE_NAME} phone number was changed`,
     html: renderEmailLayout({
+      brand: SUITE_BRAND,
       heading: 'Your phone number was changed',
       headingColor: EMAIL_DANGER,
       preheader: `If this wasn't you, secure your account now.`,
-      footerReason: `You're receiving this because the phone number on your Survey account changed.`,
+      footerReason: `You're receiving this because the phone number on your ${ACCOUNT} changed.`,
       bodyHtml:
-        `<p style="${P}">The phone number on your Survey account was changed from <strong>{{ .OldPhone }}</strong> to <strong>{{ .Phone }}</strong>. If you made this change, no action is needed.</p>` +
+        `<p style="${P}">The phone number on your ${ACCOUNT} was changed from <strong>{{ .OldPhone }}</strong> to <strong>{{ .Phone }}</strong>. If you made this change, no action is needed.</p>` +
         NOT_YOU,
     }),
   },
   reauthentication: {
-    subject: 'Your Survey verification code',
+    subject: `Your ${SUITE_NAME} verification code`,
     html: renderEmailLayout({
+      brand: SUITE_BRAND,
       heading: 'Confirm it&#8217;s you',
       preheader: 'Enter this code in the app to continue.',
-      footerReason: `You're receiving this because a sensitive change on your Survey account needs verification.`,
+      footerReason: `You're receiving this because a sensitive change on your ${ACCOUNT} needs verification.`,
       bodyHtml:
-        `<p style="${P}">Enter this code in Survey to confirm your identity and continue:</p>` +
+        `<p style="${P}">Enter this code in the app to confirm your identity and continue:</p>` +
         emailCode('{{ .Token }}') +
         `<p style="${FINE}" class="em-mut">${IGNORE('request a code')}</p>`,
     }),

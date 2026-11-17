@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { HubShell } from '../home/HubShell';
 import { useTooltip } from '../components/Tooltip';
+import { DIALOG_FIELD_STYLE } from '../components/DialogCard.jsx';
 import { useConfirmDialog, usePromptDialog } from '../components/dialogPrompts.jsx';
 import { showToast } from '../utils/toast';
 import {
@@ -157,7 +158,7 @@ export default function LibraryScreen({ user, onNav, templatesLocked = false, te
       tab="library"
       onNav={onNav}
       title={company?.id ? 'Library' : LIBRARY_WORDS.mine}
-      subtitle={statusLine(state)}
+      subtitle={<span>{statusLine(state)}</span>}
       actions={libraryTabs}
       userName={user?.name || user?.email?.split('@')[0] || 'You'}
       templatesLocked={templatesLocked}
@@ -171,7 +172,8 @@ export default function LibraryScreen({ user, onNav, templatesLocked = false, te
             <button type="button" className="btn primary" disabled={linking} onClick={linkTemplates}>Add them</button>
           </div>
         ) : null}
-        <div className="card">
+        {/* Clipped, so the last row's divider stops at the rounded corner. */}
+        <div className="card" style={{ overflow: 'hidden' }}>
           <form
             style={{ ...rowStyle }}
             onSubmit={(event) => { event.preventDefault(); addCategory(); }}
@@ -183,8 +185,9 @@ export default function LibraryScreen({ user, onNav, templatesLocked = false, te
               placeholder="New Category, for example Camera"
               aria-label={`New Category in ${LIBRARY_WORDS[scope]}`}
               maxLength={120}
-              className="hub-rename"
-              style={{ flex: 1, minWidth: 0, color: 'var(--text-1)', font: 'inherit', padding: '4px 0' }}
+              // A field, not an inline rename: it had no edge or fill and read
+              // as a plain row. 28px, the height of Add Category beside it.
+              style={{ ...DIALOG_FIELD_STYLE, flex: 1, minWidth: 0, width: 'auto', height: 28 }}
             />
             <button type="submit" className="btn primary" disabled={!newName.trim()}>Add Category</button>
           </form>

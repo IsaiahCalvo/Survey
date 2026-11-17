@@ -213,6 +213,8 @@ const categoriesKey = (m) => (Array.isArray(m?.categories) ? 'categories' : Arra
  *   - it still has the name Survey gave it ("Category 2"): left for now;
  *   - else it links to the entry with exactly its name in the target
  *     library, and when there is none, a new entry is made.
+ * A Category's Types (`types: [{ id, name }]`, KAL-618) link the same way to
+ * Category Types under that Category's entry.
  * Only `libraryEntryId` is added: names, checklists and everything else on
  * the template stay exactly as they were.
  *
@@ -237,17 +239,41 @@ export function linkTemplateCategories(templates, { entries = [], userId, compan
       let moduleChanged = false;
       const categories = mod[cKey].map((category) => {
         if (!category || typeof category !== 'object') return category;
-        if (category.libraryEntryId) return category;
-        if (isPlaceholderCategoryName(category.name) || !normalizeEntryName(category.name)) return category;
-        let entry = findEntryByName(pool, { name: category.name, ...target, userId });
-        if (!entry) {
-          entry = newLibraryEntry({ id: mintId(), name: category.name, ...target, userId, now });
-          pool = [...pool, entry];
-          created.push(entry);
+        let next = category;
+        if (!category.libraryEntryId && !isPlaceholderCategoryName(category.name) && normalizeEntryName(category.name)) {
+          let entry = findEntryByName(pool, { name: category.name, ...target, userId });
+          if (!entry) {
+            entry = newLibraryEntry({ id: mintId(), name: category.name, ...target, userId, now });
+            pool = [...pool, entry];
+            created.push(entry);
+          }
+          linked += 1;
+          next = { ...category, libraryEntryId: entry.id };
         }
-        linked += 1;
-        moduleChanged = true;
-        return { ...category, libraryEntryId: entry.id };
+        // Category Types (KAL-618): each named Type links to the Category Type
+        // with exactly its name under this Category's library entry, in that
+        // entry's own library. A Category whose entry is not loaded on this
+        // device waits: its library is not known, and nothing is guessed.
+        const parent = next.libraryEntryId ? pool.find((e) => e.id === next.libraryEntryId && !e.removedAt) : null;
+        if (parent && Array.isArray(next.types) && next.types.length > 0) {
+          let typesChanged = false;
+          const types = next.types.map((type) => {
+            if (!type || typeof type !== 'object' || type.libraryEntryId || !normalizeEntryName(type.name)) return type;
+            const where = { scope: parent.scope, companyId: parent.companyId };
+            let entry = findEntryByName(pool, { kind: LIBRARY_KIND.CATEGORY_TYPE, name: type.name, parentId: parent.id, ...where, userId });
+            if (!entry) {
+              entry = newLibraryEntry({ id: mintId(), kind: LIBRARY_KIND.CATEGORY_TYPE, name: type.name, parentId: parent.id, ...where, userId, now });
+              pool = [...pool, entry];
+              created.push(entry);
+            }
+            linked += 1;
+            typesChanged = true;
+            return { ...type, libraryEntryId: entry.id };
+          });
+          if (typesChanged) next = { ...next, types };
+        }
+        if (next !== category) moduleChanged = true;
+        return next;
       });
       if (!moduleChanged) return mod;
       templateChanged = true;
@@ -271,4 +297,36 @@ export function countUnlinkedCategories(templates) {
     }
   }
   return count;
+}
+
+/**
+ * A template Category's Types as the app holds them (KAL-618): a list of
+ * `{ id, name, libraryEntryId? }`, names normalized, nameless and repeated
+ * names dropped (the first one wins). Anything else comes back as [].
+ */
+export function categoryTypesOf(category) {
+  const list = Array.isArray(category?.types) ? category.types : [];
+  const seen = new Set();
+  const out = [];
+  for (const type of list) {
+    if (!type || typeof type !== 'object') continue;
+    const name = normalizeEntryName(type.name);
+    const key = name.toLocaleLowerCase();
+    if (!name || !type.id || seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      id: String(type.id),
+      name,
+      ...(typeof type.libraryEntryId === 'string' && type.libraryEntryId ? { libraryEntryId: type.libraryEntryId } : {}),
+    });
+  }
+  return out;
+}
+
+/** Why a new Type name is refused on a Category, in words, or ''. */
+export function newCategoryTypeProblem(category, name) {
+  const want = normalizeEntryName(name);
+  if (!want) return LIBRARY_WORDS.emptyName;
+  const taken = categoryTypesOf(category).some((t) => t.name.toLocaleLowerCase() === want.toLocaleLowerCase());
+  return taken ? `"${want}" is already a Type of this Category.` : '';
 }

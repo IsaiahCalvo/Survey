@@ -5,7 +5,7 @@ import { useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../supabaseClient';
 import { buildBillingReturnUrl, openDeferredExternalDestination } from '../utils/accountPlatform';
-import { blockIfProLocked, PRO_LOCK_FLAG } from '../utils/proLock.js';
+import { blockForVisitor, blockIfProLocked, PRO_LOCK_FLAG } from '../utils/proLock.js';
 import { isFeatureOn } from '../featureFlags.js';
 import { showToast } from '../utils/toast.js';
 
@@ -28,13 +28,16 @@ function startProCheckout() {
 }
 
 export function useProLock() {
-  const { user, tier, loadingTier, tierUserId } = useAuth();
+  const { user, tier, loading, loadingTier, tierUserId } = useAuth();
   return useCallback((feature) => {
+    // Nobody signed in (a visitor marking up a PDF kept on this device):
+    // these features need an account, so say that and offer Sign in.
+    if (!loading && !user) return blockForVisitor(feature);
     // While the plan is still loading (at start-up, or just after a sign-in
     // when `tier` is still the default) every account reads as Free: stop the
     // action without a prompt, so a paying user never sees an upgrade ask and
     // a Free user can't slip through (e.g. start OneDrive sign-in) meanwhile.
     if (loadingTier || (user?.id && tierUserId !== user.id)) return isFeatureOn(PRO_LOCK_FLAG);
     return blockIfProLocked(feature, tier, { onUpgrade: startProCheckout });
-  }, [user?.id, tier, loadingTier, tierUserId]);
+  }, [user, loading, tier, loadingTier, tierUserId]);
 }

@@ -197,7 +197,7 @@ export const Search = ({ placeholder = 'Search…', width = 240, value, onChange
    the no-description path byte-for-byte the same. */
 const EMPTY_STATE_CONTENT_TYPE = { doc: 'document', template: 'template' };
 export const EmptyState = ({ icon, line, description, actionLabel, actionIcon = 'plus', onAction, secondaryLabel, onSecondary }) => (
-  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '40px 16px', textAlign: 'center', letterSpacing: 0 }}>
+  <div className="hub-empty-state" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '40px 16px', textAlign: 'center', letterSpacing: 0 }}>
     <div style={{ width: 44, height: 44, borderRadius: 10, background: 'var(--ink-600)', border: '1px solid var(--ink-500)', display: 'grid', placeItems: 'center' }}>
       {/* The tile keeps the content-type colour (blue document, purple
           template); the button's glyph below draws in its own ink. */}
@@ -383,7 +383,7 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, showShortcuts = 
                   viewer's is the keyboard button on its left rail). Desktop
                   only — the phone instance has no keyboard to describe. */}
               {showShortcuts && (
-                <button type="button" className="hub-menu__item" onClick={() => { setOpen(false); setConfirmSignOut(false); openKeyboardShortcuts(); }}>
+                <button type="button" role="menuitem" className="hub-menu__item" onClick={() => { setOpen(false); setConfirmSignOut(false); openKeyboardShortcuts(); }}>
                   <Icon name="keyboard" size={15} color="var(--ink-200)" />Keyboard shortcuts
                 </button>
               )}
@@ -685,7 +685,10 @@ export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userN
             <div className="header-title-block">
               <MobileRailNav mode={mobileNavMode} title={title} tab={tab} navItems={navItems} onNav={onNav} />
               <h1 className="title">{title}</h1>
-              {subtitle ? <div className="crumb header-subtitle" style={{ marginTop: 6 }}>{subtitle}</div> : null}
+              {/* A plain-text subtitle gets its own element: on phones the
+                  subtitle row dissolves into the header row (display: contents),
+                  and bare text there has no order, so it landed before the title. */}
+              {subtitle ? <div className="crumb header-subtitle" style={{ marginTop: 6 }}>{typeof subtitle === 'string' ? <span>{subtitle}</span> : subtitle}</div> : null}
             </div>
             <div className="mobile-profile">
               <ProfileMenu userName={userName} userMeta={userMeta} showArchive tab={tab} onNav={onNav} />

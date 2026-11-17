@@ -9,7 +9,7 @@ import { EventEmitter } from 'node:events';
 import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { handleSheetSync } from '../supabase/functions/_shared/sheetSync/service.js';
-import { rememberClaim, readClaim, forgetClaim, CLAIM_KEY } from '../src/services/sheetSyncClaim.js';
+import { rememberClaim, readClaim, forgetClaim, tellClaimResult, CLAIM_KEY } from '../src/services/sheetSyncClaim.js';
 
 const require = createRequire(import.meta.url);
 const { sheetSyncFinishFromUrl, watchSheetSyncConsent } = require('../src/electron/sheetSyncConsent.cjs');
@@ -155,4 +155,94 @@ test('the last page learns which app pressed Connect (phone and desktop only)', 
   const ms = await landing('/oauth/msgraph/callback', 'phone');
   // A cancel may be Microsoft's "Need admin approval": the page offers the admin link.
   assert.equal(ms, `https://surveytool.app/google-connected.html?provider=msgraph&result=cancelled&app=phone&admin=${encodeURIComponent('https://x.supabase.co/functions/v1/sheet-sync/oauth/msgraph/admin')}`);
+});
+
+// ---- the finish page's endings (owner 2026-11-16: it spun for ever, and its
+// code box never said where to type the code) --------------------------------
+
+function finishPage(search, hash = '#code=ABCD-EFGH') {
+  const html = readFileSync(new URL('../public/google-connected.html', import.meta.url), 'utf8');
+  const script = html.slice(html.indexOf('<script>') + 8, html.indexOf('</script>'));
+  const els = {};
+  const el = (id) => (els[id] ||= { id, hidden: true, textContent: '', href: '', className: '', addEventListener() {} });
+  const store = new Map();
+  const localStorage = { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) };
+  let now = 1_800_000_000_000;
+  const timers = [];
+  const clock = { now: () => now };
+  class FakeDate extends Date { constructor(...a) { super(...(a.length ? a : [now])); } static now() { return clock.now(); } }
+  const setInterval = (fn, ms) => { timers.push({ fn, ms, every: true, at: now + ms }); return timers.length; };
+  const setTimeout = (fn, ms) => { timers.push({ fn, ms, every: false, at: now + ms }); return timers.length; };
+  const clearInterval = (id) => { if (timers[id - 1]) timers[id - 1].dead = true; };
+  const fn = new Function('document', 'location', 'localStorage', 'history', 'window', 'navigator', 'URL', 'URLSearchParams', 'setTimeout', 'setInterval', 'clearInterval', 'Date', script);
+  fn({ title: '', getElementById: el }, { search, hash, pathname: '/google-connected.html', origin: 'https://surveytool.app' }, localStorage, { replaceState() {} }, { addEventListener() {}, close() {} }, {}, URL, URLSearchParams, setTimeout, setInterval, clearInterval, FakeDate);
+  const pass = (ms) => {
+    const end = now + ms;
+    for (;;) {
+      const next = timers.filter((t) => !t.dead && t.at <= end).sort((a, b) => a.at - b.at)[0];
+      if (!next) break;
+      now = next.at;
+      if (next.every) next.at += next.ms; else next.dead = true;
+      next.fn();
+    }
+    now = end;
+  };
+  return { el: new Proxy(els, { get: (_t, id) => el(id) }), localStorage, pass, clock };
+}
+
+test('finish page, web: it says where the code goes after 20 s, and stops with a plain message when the code runs out', () => {
+  const page = finishPage('?provider=msgraph&result=finish');
+  assert.equal(page.el.title.textContent, 'Finishing up');
+  assert.equal(page.el.codeBox.hidden, true, 'no code while Survey is about to finish on its own');
+  page.pass(21_000);
+  assert.equal(page.el.title.textContent, 'Go back to Survey');
+  assert.equal(page.el.codeBox.hidden, false);
+  assert.equal(page.el.code.textContent, 'ABCD-EFGH');
+  assert.match(page.el.codeHow.textContent, /press “Enter its code” under the button you pressed to connect/, 'the box names the place in Survey');
+  assert.match(page.el.codeUntil.textContent, /^The code works (until|for) /);
+  page.pass(10 * 60_000);
+  assert.equal(page.el.title.textContent, 'This sign-in ran out');
+  assert.match(page.el.text.textContent, /connect Microsoft again/);
+  assert.equal(page.el.codeBox.hidden, true, 'a dead code is not shown');
+  assert.match(page.el.join.className, /is-failed/, 'the animation stops');
+});
+
+test('finish page, web: a used code says connected; a refused one does not, and keeps the code for where the sign-in started', () => {
+  const ok = finishPage('?provider=msgraph&result=finish');
+  tellClaimResult('msgraph', true, { setItem: (k, v) => ok.localStorage.setItem(k, v.replace(/"at":\d+/, `"at":${ok.clock.now()}`)) });
+  forgetClaim(ok.localStorage);
+  ok.pass(1_500);
+  assert.equal(ok.el.title.textContent, 'Microsoft is connected');
+
+  // An older Survey tab only removes the code: connected, as before.
+  const old = finishPage('?result=finish');
+  forgetClaim(old.localStorage);
+  old.pass(1_500);
+  assert.equal(old.el.title.textContent, 'Google is connected');
+
+  const no = finishPage('?provider=msgraph&result=finish');
+  tellClaimResult('msgraph', false, { setItem: (k, v) => no.localStorage.setItem(k, v.replace(/"at":\d+/, `"at":${no.clock.now()}`)) });
+  forgetClaim(no.localStorage);
+  no.pass(1_500);
+  assert.equal(no.el.title.textContent, 'Not connected in this browser');
+  assert.equal(no.el.codeBox.hidden, false);
+  no.pass(25_000);
+  assert.equal(no.el.title.textContent, 'Not connected in this browser', 'the 20 s hint does not paint over it');
+  no.pass(10 * 60_000);
+  assert.equal(no.el.title.textContent, 'This sign-in ran out');
+});
+
+test('finish page, desktop and phone: both get a time limit too', () => {
+  const desktop = finishPage('?provider=msgraph&result=finish&app=desktop');
+  assert.equal(desktop.el.title.textContent, 'Finishing in Survey');
+  desktop.pass(21_000);
+  assert.equal(desktop.el.title.textContent, 'Go back to Survey');
+  assert.equal(desktop.el.codeBox.hidden, false);
+  desktop.pass(10 * 60_000);
+  assert.equal(desktop.el.title.textContent, 'This sign-in ran out');
+  const phone = finishPage('?result=finish&app=phone');
+  assert.equal(phone.el.openApp.hidden, false);
+  phone.pass(10 * 60_000 + 1);
+  assert.equal(phone.el.title.textContent, 'This sign-in ran out');
+  assert.equal(phone.el.openApp.hidden, true);
 });

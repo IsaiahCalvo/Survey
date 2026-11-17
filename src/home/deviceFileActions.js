@@ -1,5 +1,5 @@
-// Device files (Nightly flag device-files, 2026-11-10): open a PDF with no
-// account, as Drawboard's "Temporary" files (drawboard-trial/file-model.md).
+// Device files (flag device-files, 2026-11-10; on for everyone since
+// KAL-658): open a PDF with no account, as Drawboard's "Temporary" files (drawboard-trial/file-model.md).
 // services/deviceFiles.js keeps the PDF; the annotation store keeps its marks
 // local-only under DEVICE_ACTOR_ID. This module is the glue the Documents
 // list and the upload paths use.

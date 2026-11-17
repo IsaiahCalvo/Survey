@@ -6,7 +6,7 @@
 // picked with Survey), and moves the PDF bytes itself (so a 200 MB drawing set
 // never passes through an edge function).
 import { sheetSyncCall } from './sheetSyncClient.js';
-import { forgetClaim, readClaim } from './sheetSyncClaim.js';
+import { forgetClaim, readClaim, tellClaimResult } from './sheetSyncClaim.js';
 import { isNativeApp } from '../utils/proLock.js';
 import { isElectronApp } from '../utils/layoutMode.js';
 
@@ -93,13 +93,16 @@ export async function connectForDrive(provider = 'msgraph', { open = (url) => wi
       await new Promise((r) => setTimeout(r, CONNECT_POLL_MS));
       if (refused) return { ok: false, error: refused === 'cancelled' ? `${company} was not connected: you stopped before saying yes.` : `${company} did not finish connecting. Try again.` };
       const code = readClaim(provider, started);
-      if (code) {
-        forgetClaim();
-        const claimed = await sheetSyncCall('claim', { provider, code });
-        if (claimed?.error) return { ok: false, error: claimed.error };
-      }
+      let claimed = null;
+      if (code) claimed = await sheetSyncCall('claim', { provider, code });
       const status = await sheetSyncCall('status', {});
-      if ((provider === 'google' ? status?.google : status?.microsoft)?.connected) return { ok: true };
+      const connected = Boolean((provider === 'google' ? status?.google : status?.microsoft)?.connected);
+      // The code goes only once the server has answered, and the consent
+      // tab's last page is told how it ended. Another tab may have used the
+      // code first: connected is connected.
+      if (code && (connected || claimed?.code)) { tellClaimResult(provider, connected); forgetClaim(); }
+      if (connected) return { ok: true };
+      if (claimed?.error && claimed.code) return { ok: false, error: claimed.error };
     }
     return { ok: false, error: `${company} sign-in did not finish. Try again.` };
   } finally {
@@ -184,6 +187,7 @@ export async function chooseGoogleDrivePdf({ call = driveCall, connect = connect
   let token = await call('drivePickerToken', { provider: 'google' });
   if (token?.code === 'not_connected' || token?.code === 'reconnect') {
     const connected = await connect('google');
+    if (connected?.cancelled) return null;
     if (!connected?.ok) return { error: connected?.error || 'Google was not connected.' };
     token = await call('drivePickerToken', { provider: 'google' });
   }

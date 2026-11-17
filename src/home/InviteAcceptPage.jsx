@@ -28,6 +28,9 @@ import { supabase } from '../supabaseClient';
 import { buildAppDestination, isPurchaseUiHidden, withUpgradeHint } from '../utils/accountPlatform';
 import { PENDING_INVITE_KEY as PENDING_KEY } from '../utils/pendingInvite';
 import { C } from '../uiPalette';
+import { SUITE_ACCOUNT_NAME } from '../suite/suiteName.js';
+import FinishAccountCard from './FinishAccountCard';
+import { needsAccountFinish } from './finishAccount';
 
 
 
@@ -66,6 +69,10 @@ export default function InviteAcceptPage() {
   const [phase, setPhase] = useState('loading'); // loading | needs-auth | result
   const [result, setResult] = useState(null); // { status, effectiveRole, intendedRole, upgradeRequired, documentId }
   const [error, setError] = useState('');
+  // Joined from an invite email: no name or password yet (finishAccount.js).
+  const [finished, setFinished] = useState(false);
+  const showFinish = phase === 'result' && !finished && needsAccountFinish(user)
+    && (result?.status === 'accepted' || result?.status === 'already_accepted');
 
   // Persist token for round-trip through sign-in/sign-up.
   useEffect(() => {
@@ -127,7 +134,7 @@ export default function InviteAcceptPage() {
 
   const description = (() => {
     if (phase === 'loading') return 'Validating your invite. One moment…';
-    if (phase === 'needs-auth') return 'Sign in or create a free Survey account to accept this invite.';
+    if (phase === 'needs-auth') return `Sign in or create a free ${SUITE_ACCOUNT_NAME} to accept this invite.`;
     if (!result) return '';
     switch (result.status) {
       case 'accepted':
@@ -176,6 +183,13 @@ export default function InviteAcceptPage() {
   const switchAccount = async () => {
     try { await supabase.auth.signOut(); } catch (_e) { /* ignore */ }
     if (typeof window !== 'undefined') window.location.reload();
+  };
+
+  // Most people who open an invite signed out have no account yet.
+  const signUp = () => {
+    if (typeof window !== 'undefined') {
+      window.location.assign(buildAppDestination({ params: { signup: '1', invite: token || '' } }));
+    }
   };
 
   const signIn = () => {
@@ -230,11 +244,24 @@ export default function InviteAcceptPage() {
             </div>
           )}
 
-          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
+          {showFinish && (
+            <FinishAccountCard
+              user={user}
+              updatePassword={auth.updatePassword}
+              updateProfile={auth.updateProfile}
+              onDone={() => setFinished(true)}
+              accent={accent}
+            />
+          )}
+
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4, flexWrap: 'wrap' }}>
             {phase === 'needs-auth' && (
-              <button onClick={signIn} style={btnPrimary(accent)}>Sign in to continue</button>
+              <>
+                <button onClick={signUp} style={btnPrimary(accent)}>Create free account</button>
+                <button onClick={signIn} style={btnGhost()}>Sign in to continue</button>
+              </>
             )}
-            {phase === 'result' && (
+            {phase === 'result' && !showFinish && (
               <>
                 {result?.status === 'accepted' && (
                   <button onClick={openTarget} style={btnPrimary(accent)}>{openLabel}</button>
@@ -247,6 +274,9 @@ export default function InviteAcceptPage() {
                 )}
                 <button onClick={goHome} style={btnGhost()}>Back to Survey</button>
               </>
+            )}
+            {showFinish && (
+              <button onClick={openTarget} style={btnGhost()}>Skip for now</button>
             )}
             {phase === 'loading' && (
               <span style={{ color: C.muted, fontSize: 12 }}>Loading…</span>

@@ -1857,7 +1857,8 @@ const SearchTextPanel = ({
     }}>
       {/* Search Bar */}
       <div className={`search-text-panel__bar${mobileMode ? ' mobile-search-panel__bar' : ''}`} style={{
-        padding: '12px 12px 0',
+        // 8px, the inset of the Library and Annotations fields.
+        padding: '8px 8px 0',
         boxSizing: 'border-box',
         background: 'var(--panel-bg)',
         borderBottom: '1px solid var(--border)',
@@ -1892,7 +1893,8 @@ const SearchTextPanel = ({
             spellCheck={false}
             style={{
               width: '100%',
-              height: '25px',
+              // 30px, the height of the Library and Annotations search fields.
+              height: '30px',
               boxSizing: 'border-box',
               padding: '0 30px 0 36px',
               // A recessed well in the panel, the same token on the phone.

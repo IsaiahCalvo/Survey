@@ -1473,6 +1473,12 @@ const ICON_RENDERERS = {
         <rect x="4" y="11" width="16" height="10" rx="1.11" stroke={color} strokeWidth="1.5" /><path d="M8 11V7A4 4 0 0 1 16 7V11" stroke={color} strokeWidth="1.5" />
       </svg>
     ),
+    // Keep-proportions lock turned off (KAL-675): the shackle swung open.
+    lockOpen: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
+        <rect x="4" y="11" width="16" height="10" rx="1.11" stroke={color} strokeWidth="1.5" /><path d="M8 11V7A4 4 0 0 1 15.75 5.6" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
     signout: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
         <path d="M9 21H5A2 2 0 0 1 3 19V5A2 2 0 0 1 5 3H9M16 17L21 12L16 7M21 12H9" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />

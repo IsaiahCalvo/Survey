@@ -2432,7 +2432,8 @@ const BookmarksPanel = ({
                 padding: '32px 20px',
                 color: 'var(--text-3)',
                 fontSize: '13px',
-                lineHeight: 1.4
+                lineHeight: 1.4,
+                userSelect: 'none'
               }}>
                 No bookmarks yet. Create one to get started.
               </div>

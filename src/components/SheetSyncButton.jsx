@@ -5,17 +5,18 @@
 // this asks for one every few seconds while the survey is open and shortly
 // after any change, so a field tech's phone writes to the PM's sheet without
 // either of them pressing anything.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import Icon from '../Icons';
 import Spinner from './Spinner';
 import { useTooltip } from './Tooltip';
 import AnchoredPopover from './AnchoredPopover';
 import { linkSyncedAgo, sheetLayoutInput, sheetSyncCall, sheetTemplateId } from '../services/sheetSyncClient.js';
-import { CLAIM_KEY, forgetClaim, readClaim } from '../services/sheetSyncClaim.js';
+import { CLAIM_KEY, forgetClaim, readClaim, tellClaimResult } from '../services/sheetSyncClaim.js';
 import { announceAccountSwitch, announceSignOut } from '../services/sheetSyncNotices.js';
 import { isNativeApp } from '../utils/proLock.js';
 import { isElectronApp } from '../utils/layoutMode.js';
 import './SheetSyncButton.css';
+import { SUITE_ACCOUNT_NAME } from '../suite/suiteName.js';
 
 // While the survey is open. An Excel workbook's version moves within a
 // second or two of an edit, and checking it is one cheap read, so Excel is
@@ -27,10 +28,6 @@ const HIDDEN_ROUND_MS = { msgraph: 10000, google: 30000 };
 const CHANGE_ROUND_MS = 1200;  // after a change in the app
 const CONNECT_POLL_MS = 1500;
 const CONNECT_POLL_FOR_MS = 5 * 60 * 1000;
-// The sign-in finishes on its own on every device (sheetSyncClaim.js). If it
-// has not after this long, the person said yes somewhere this app cannot hear
-// from (another browser or device): offer the code box as a way out.
-const ASK_CODE_AFTER_MS = 20000;
 
 // Which app pressed Connect, so the consent page's last screen knows how to
 // hand the person back (service.js appParam).
@@ -57,7 +54,6 @@ function useSheetSync({ documentId, template, markers, enabled }) {
   const [status, setStatus] = useState(null);
   const [busy, setBusy] = useState(null); // 'connect' | 'link' | 'sync' | 'choose' | 'unlink' | 'takeover' | 'disconnect'
   const [error, setError] = useState(null);
-  const [codeAsk, setCodeAsk] = useState(null); // provider whose code box shows while connecting
   const [busyFor, setBusyFor] = useState(null); // the provider a connect or link is for
   // { provider, url } when the browser blocked the sign-in window: the panel
   // shows a link to open it with a tap (a tap is never blocked).
@@ -190,6 +186,7 @@ function useSheetSync({ documentId, template, markers, enabled }) {
     try {
       const res = await sheetSyncCall('claim', { provider, code });
       if (!res?.error) {
+        tellClaimResult(provider, true);
         forgetClaim();
         announceAccountSwitch(provider, res, { onDone: async () => apply(await sheetSyncCall('status', ids)) });
         return { ok: true };
@@ -198,7 +195,10 @@ function useSheetSync({ documentId, template, markers, enabled }) {
       // Keep the code and try again on the next look.
       if (!res.code) return { retry: true, error: res.error };
       const s = await sheetSyncCall('status', ids);
-      if ((provider === 'msgraph' ? s?.microsoft : s?.google)?.connected) { forgetClaim(); apply(s); return { ok: true }; }
+      if ((provider === 'msgraph' ? s?.microsoft : s?.google)?.connected) { tellClaimResult(provider, true); forgetClaim(); apply(s); return { ok: true }; }
+      // Refused (another Survey account pressed Connect, or the code ran
+      // out): the consent tab's last page says so instead of "connected".
+      tellClaimResult(provider, false);
       forgetClaim();
       return { error: res.error };
     } finally {
@@ -302,12 +302,10 @@ function useSheetSync({ documentId, template, markers, enabled }) {
         }
         const s = await sheetSyncCall('status', ids);
         if ((provider === 'msgraph' ? s?.microsoft : s?.google)?.connected) { apply(s); return true; }
-        if (Date.now() - started > ASK_CODE_AFTER_MS) setCodeAsk(provider);
       }
       setError(`${who} sign-in did not finish. Try again.`);
     } finally {
       stopListening?.();
-      setCodeAsk(null);
       setConsentLink(null);
       setConnectNote(null);
     }
@@ -320,6 +318,9 @@ function useSheetSync({ documentId, template, markers, enabled }) {
     if (res?.error) { setError(res.error); return false; }
     setError(null);
     announceAccountSwitch(provider, res, { onDone: async () => apply(await sheetSyncCall('status', ids)) });
+    // Typed with no sign-in waiting here (the wait ran out, or Connect was
+    // pressed on another device): show the account at once.
+    apply(await sheetSyncCall('status', ids));
     return true;
   }, [apply, ids]);
 
@@ -378,7 +379,7 @@ function useSheetSync({ documentId, template, markers, enabled }) {
 
   const linking = busy === 'link' ? busyFor : null;
   const connecting = busy === 'connect' ? busyFor : null;
-  return { status, busy, error, live, codeAsk, consentLink, connectNote, linking, connecting, connect, claimCode, link, folders, choose, putBackTab, chooseForLink, unlink, takeOver, relink, disconnect, syncNow };
+  return { status, busy, error, live, consentLink, connectNote, linking, connecting, connect, claimCode, link, folders, choose, putBackTab, chooseForLink, unlink, takeOver, relink, disconnect, syncNow };
 }
 
 const GLYPH = { google: 'google', msgraph: 'microsoft' };
@@ -421,7 +422,14 @@ function ConnectHelp({ provider, sync }) {
   return <p className="sheet-sync-note">{note || `Say yes on the ${WHO[provider]} page. Survey finishes on its own.`}</p>;
 }
 
-function ClaimCodeBox({ provider, onClaim }) {
+// Where a sign-in said yes in another browser or on another device ends:
+// that page shows a code and sends the person here. Shown under every button
+// that starts a sign-in, the whole time the account is not connected, so the
+// page never asks for a thing Survey has no place for (owner 2026-11-16).
+export function ClaimCodeBox({ provider, onClaim }) {
+  // The panel shows one box per provider: each needs its own field id, or
+  // the second label points at the first field.
+  const inputId = `sheet-sync-claim-code-${useId().replace(/[^A-Za-z0-9_-]/g, '')}`;
   const [code, setCode] = useState('');
   const [sending, setSending] = useState(false);
   const [open, setOpen] = useState(false);
@@ -434,18 +442,18 @@ function ClaimCodeBox({ provider, onClaim }) {
   };
   if (!open) {
     return (
-      <p className="sheet-sync-note">
-        Said yes in another browser or on another device?{' '}
+      <p className="sheet-sync-note" data-claim-code="closed" data-claim-provider={provider}>
+        Signed in to {WHO[provider]} in another browser or on another device?{' '}
         <button type="button" className="sheet-sync-link" onClick={() => setOpen(true)}>Enter its code</button>
       </p>
     );
   }
   return (
-    <form onSubmit={send} className="sheet-sync-code">
-      <label htmlFor="sheet-sync-claim-code">Type the code that page shows to finish connecting {WHO[provider]}.</label>
+    <form onSubmit={send} className="sheet-sync-code" data-claim-code="open" data-claim-provider={provider}>
+      <label htmlFor={inputId}>Type the code from the last page of the {WHO[provider]} sign-in.</label>
       <div className="sheet-sync-code__row">
         <input
-          id="sheet-sync-claim-code"
+          id={inputId}
           value={code}
           onChange={(e) => setCode(e.target.value.toUpperCase().slice(0, 9))}
           placeholder="ABCD-EFGH"
@@ -777,7 +785,7 @@ export default function SheetSyncButton({ className, phone = false, documentId, 
           />
         )}
         {connecting && <ConnectHelp provider={provider} sync={sync} />}
-        {busy === 'connect' && sync.codeAsk === provider && <ClaimCodeBox provider={provider} onClaim={sync.claimCode} />}
+        {canEdit && !account?.connected && <ClaimCodeBox provider={provider} onClaim={sync.claimCode} />}
       </div>
     );
   };
@@ -786,7 +794,7 @@ export default function SheetSyncButton({ className, phone = false, documentId, 
   let menu = false;
   let body;
   if (!ready) {
-    body = <div className="sheet-sync-body"><p className="sheet-sync-note">Save this PDF to your Survey account to sync it.</p></div>;
+    body = <div className="sheet-sync-body"><p className="sheet-sync-note">Save this PDF to your {SUITE_ACCOUNT_NAME} to sync it.</p></div>;
   } else if (!status) {
     body = (
       <div className="sheet-sync-body" aria-busy="true">
@@ -916,7 +924,9 @@ export default function SheetSyncButton({ className, phone = false, documentId, 
             )
           )}
           {busy === 'connect' && sync.connecting && <ConnectHelp provider={sync.connecting} sync={sync} />}
-          {busy === 'connect' && sync.codeAsk && <ClaimCodeBox provider={sync.codeAsk} onClaim={sync.claimCode} />}
+          {link.status === 'broken' && canEdit && !(excelLink ? status.microsoft : status.google)?.connected && (
+            <ClaimCodeBox provider={link.provider} onClaim={sync.claimCode} />
+          )}
           {link.status === 'broken' && excelLink && canEdit && status.microsoft?.connected && (
             <p className="sheet-sync-place">
               <button type="button" className="sheet-sync-link" disabled={Boolean(busy)} onClick={() => setView('relink')}>Moved or copied the workbook? Paste its new link</button>

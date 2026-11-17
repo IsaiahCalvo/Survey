@@ -1,6 +1,8 @@
-// Try a sample drawing, signed out (beta flag 'guest-sample', Drawboard PDF
-// Pro trial audit 2026-11-10: Drawboard lets you mark up before signing up;
+// Try a sample drawing, signed out (flag 'guest-sample', Drawboard PDF Pro
+// trial audit 2026-11-10: Drawboard lets you mark up before signing up;
 // Survey's sample only reopened sign-in). The sample opens as a try-out.
+// On for everyone since KAL-658 (2026-11-16), so the "off" run switches both
+// no-account flags off in this browser: that is /flags set back to Off.
 import { expect, test } from './helpers.mjs';
 
 for (const on of [true, false]) {
@@ -8,7 +10,10 @@ for (const on of [true, false]) {
     test.setTimeout(120_000);
     const errors = [];
     page.on('pageerror', (e) => errors.push(String(e)));
-    if (on) await page.addInitScript(() => localStorage.setItem('survey.flag.guest-sample', '1'));
+    await page.addInitScript((value) => {
+      localStorage.setItem('survey.flag.guest-sample', value);
+      if (value === '0') localStorage.setItem('survey.flag.device-files', '0');
+    }, on ? '1' : '0');
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const skip = page.getByRole('button', { name: 'Continue without an account' });
     await skip.click({ timeout: 30_000 });

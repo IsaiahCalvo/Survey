@@ -39,7 +39,9 @@ import { createPortal } from 'react-dom';
 import Icon from '../Icons';
 import { useTooltip } from './Tooltip';
 import { QuickColourDots, QuickPaintSwatch } from './QuickStyleControls';
-import { quickColoursForTool } from '../utils/quickStylePresets.js';
+import { FILL_QUICK_COLOURS, FILL_QUICK_COLOUR_NAMES, quickColoursForTool } from '../utils/quickStylePresets.js';
+import { LineEndingsPanel, LineEndsSample } from './LineEndingsPicker.jsx';
+import { parsePickedLineEnds } from '../utils/lineEndingDefaults.js';
 import { SurveyEntitySwatch } from './SurveyEntityBar';
 import SurveyOverflowRow from './SurveyOverflowRow';
 import MeasureEditPopover from './MeasureEditPopover';
@@ -50,13 +52,16 @@ import { LINE_STYLE_SAMPLE_ICONS, lineStyleOptionsWith } from '../utils/lineStyl
 import { setPropertiesPanelOpen, usePropertiesPanelOpen } from '../utils/propertiesPanelStore.js';
 import {
   QUICK_BAR_WIDTHS,
+  QUICK_BAR_OPACITIES,
   computeSelectionQuickBarPosition,
   isQuickBarWidth,
+  nextTextAlign,
   planSelectionQuickBar,
   selectionCommandKey,
   selectionFrameRect,
   selectionItemSelector,
   selectionKeepOut,
+  stepFontSize,
 } from '../utils/selectionQuickBar.js';
 import { linkGoToLabel } from '../utils/linkTool.js';
 import './SelectionQuickBar.css';
@@ -266,6 +271,9 @@ export default function SelectionQuickBar({
   viewerId = null,
   layerState = null,
   documentId = null,
+  // Nightly 'mark-bar-by-kind' (KAL-651): the picked text box's or callout's
+  // text settings (AppShell resolveTextFormatting), for size, bold and align.
+  textFormat = null,
 }) {
   const contextTip = useTooltip();
   const chromeTip = tip || contextTip;
@@ -278,6 +286,10 @@ export default function SelectionQuickBar({
   // The Measurement popover (Nightly 'measure-edit', MeasureEditPopover).
   const [measureOpen, setMeasureOpen] = useState(false);
   const closeMeasure = useCallback(() => setMeasureOpen(false), []);
+  // Nightly 'mark-bar-by-kind' (KAL-651): the bar's front part goes by the
+  // kind of mark. `kindOpen` is its open popover: 'fill', 'ends' or null.
+  const [byKindOn] = useState(() => isFeatureOn('mark-bar-by-kind'));
+  const [kindOpen, setKindOpen] = useState(null);
   const itemsRef = useRef(items);
   itemsRef.current = items;
   const editingText = Boolean(api?.richTextEditor);
@@ -458,7 +470,9 @@ export default function SelectionQuickBar({
     entityCount: Array.isArray(entities) ? entities.length : 0,
     locked: look.locked,
     readOnly: look.readOnly,
-  }), [api, entities, items, look.locked, look.readOnly]);
+    byKind: byKindOn && !phone,
+    textFormat,
+  }), [api, entities, items, look.locked, look.readOnly, byKindOn, phone, textFormat]);
 
   const visible = active && look.visible && Boolean(plan);
   const chipLive = authorChipOn && !phone && Boolean(annotationsByPage);
@@ -494,12 +508,22 @@ export default function SelectionQuickBar({
     if (!visible) setLineOpen(false);
   }, [visible]);
   useEffect(() => {
+    if (!visible || (kindOpen === 'fill' && !plan?.fill) || (kindOpen === 'ends' && !plan?.ends)) setKindOpen(null);
+  }, [visible, kindOpen, plan?.fill, plan?.ends]);
+  useEffect(() => {
+    if (!kindOpen) return undefined;
+    return watchLightPopover({
+      contains: (target) => Boolean(target?.closest?.('[data-selection-quick-bar-popover], [data-selection-quick-kind]')),
+      close: () => setKindOpen(null),
+    });
+  }, [kindOpen]);
+  useEffect(() => {
     if (!visible || !plan?.measure) setMeasureOpen(false);
   }, [visible, plan?.measure]);
   // The bar's size changes with what it holds; place it again for that size.
   useLayoutEffect(() => {
     if (active) place();
-  }, [active, place, plan?.colour, plan?.width, plan?.style, plan?.remove, plan?.measure, plan?.link, plan?.note, plan?.equation, plan?.audio, propertiesPanelOpen]);
+  }, [active, place, plan?.colour, plan?.width, plan?.style, plan?.remove, plan?.measure, plan?.link, plan?.note, plan?.equation, plan?.audio, plan?.fill, plan?.ends, plan?.text, propertiesPanelOpen]);
 
   // The Line popover's dismiss rules (outside press, Escape) are the app's.
   // KAL-66: opened from a keyboard, focus goes into it and Up / Down move
@@ -574,10 +598,22 @@ export default function SelectionQuickBar({
   const styleMixed = Boolean(api?.selectionMixed?.lineStyle);
   const widthMixed = Boolean(api?.selectionMixed?.width);
   const widthValue = api?.strokeWidthInputValue;
+  const opacityMixed = Boolean(api?.selectionMixed?.strokeOpacity);
+  const opacityValue = Math.round(Number(api?.strokeOpacity ?? 100));
   const setWidth = (width) => {
     api?.handleStrokeWidthInputChange?.({ target: { value: String(width) } });
     api?.handleStrokeWidthInputBlur?.({ currentTarget: { value: String(width) } });
   };
+  // By kind: fill and text size, read the way the properties panel reads them.
+  const fillMixed = Boolean(api?.selectionMixed?.fillColor || api?.selectionMixed?.fillOpacity);
+  const fillNone = Boolean(paint?.fill) && !api?.selectionMixed?.fillOpacity && paint.fill.opacity <= 0;
+  // "No fill" changes only the opacity, and a shape keeps one side visible.
+  const clearFill = () => {
+    if (paint?.shapeOneVisibleRule && (api?.strokeOpacity ?? 100) <= 0) api?.handleStrokeOpacityChange?.(100);
+    api?.handleFillOpacityChange?.(0);
+  };
+  const textSize = Math.round(Number(textFormat?.state?.fontSize) || 16);
+  const lineEnds = plan?.ends ? parsePickedLineEnds(api?.selectedLineEnds) : null;
 
   // Nightly 'properties-panel': "Expand menu" opens Drawboard's panel; while
   // it is open the style buttons live there and the bar keeps its actions.
@@ -670,7 +706,7 @@ export default function SelectionQuickBar({
       />,
     );
   }
-  if (!phone && !panelHoldsStyles && (plan?.width || plan?.style)) {
+  if (!phone && !panelHoldsStyles && (plan?.width || plan?.style || plan?.opacity)) {
     groups.push(
       <span key="line" className="selection-quick-bar__group" data-selection-quick-line>
         <button
@@ -682,10 +718,85 @@ export default function SelectionQuickBar({
           aria-expanded={lineOpen}
           {...(lineOpen ? {} : chromeTip('Line', tipSide))}
           onMouseDown={(event) => event.stopPropagation()}
-          onClick={() => setLineOpen((open) => !open)}
+          onClick={() => { setKindOpen(null); setLineOpen((open) => !open); }}
         >
           <Icon name={LINE_STYLE_SAMPLE_ICONS[styleMixed ? 'solid' : styleValue] || 'lineSampleSolid'} size={20} color="currentColor" />
         </button>
+      </span>,
+    );
+  }
+  // By kind (Nightly 'mark-bar-by-kind', KAL-651), as Drawboard's bar does:
+  // open lines get Start and end, closed shapes and text get Fill, and marks
+  // that hold words get size, bold and align. Each is the same write the
+  // tool bar and the properties panel make.
+  // One picked image: Drawboard's keep-proportions lock. On (the default) a
+  // corner drag keeps its shape; off lets it stretch.
+  if (plan?.imageLock) {
+    const keep = api?.selectedImageShape?.keep !== false;
+    groups.push(
+      <span key="image-lock" className="selection-quick-bar__group" data-selection-quick-kind="image-lock">
+        {button('Keep proportions', keep ? 'lock' : 'lockOpen', () => api?.setSelectedImageKeepShape?.(!keep), {
+          'aria-pressed': keep,
+          'data-selection-quick-image-lock': keep ? 'on' : 'off',
+          className: `selection-quick-bar__button${keep ? ' is-open' : ''}`,
+        })}
+      </span>,
+    );
+  }
+  if (!panelHoldsStyles && plan?.ends) {
+    groups.push(
+      <span key="ends" className="selection-quick-bar__group" data-selection-quick-kind="ends">
+        <button
+          type="button"
+          className={`selection-quick-bar__button selection-quick-bar__button--wide${kindOpen === 'ends' ? ' is-open' : ''}`}
+          aria-label="Start and end"
+          aria-haspopup="dialog"
+          aria-expanded={kindOpen === 'ends'}
+          {...(kindOpen === 'ends' ? {} : chromeTip('Start and end', tipSide))}
+          onMouseDown={(event) => event.stopPropagation()}
+          onClick={() => { setLineOpen(false); setKindOpen((open) => (open === 'ends' ? null : 'ends')); }}
+        >
+          <LineEndsSample start={lineEnds?.start} end={lineEnds?.end} width={26} height={16} w={1.4} />
+        </button>
+      </span>,
+    );
+  }
+  if (!panelHoldsStyles && plan?.fill && paint?.fill) {
+    groups.push(
+      <span key="fill" className="selection-quick-bar__group" data-selection-quick-kind="fill">
+        <button
+          type="button"
+          className={`selection-quick-bar__button${kindOpen === 'fill' ? ' is-open' : ''}`}
+          aria-label="Fill"
+          aria-haspopup="dialog"
+          aria-expanded={kindOpen === 'fill'}
+          {...(kindOpen === 'fill' ? {} : chromeTip('Fill', tipSide))}
+          onMouseDown={(event) => event.stopPropagation()}
+          onClick={() => { setLineOpen(false); setKindOpen((open) => (open === 'fill' ? null : 'fill')); }}
+        >
+          <span
+            className={`selection-quick-bar__fill${fillNone ? ' is-none' : ''}${fillMixed ? ' is-mixed' : ''}`}
+            style={fillNone || fillMixed ? undefined : { background: paint.fill.color }}
+            aria-hidden="true"
+          />
+        </button>
+      </span>,
+    );
+  }
+  if (!panelHoldsStyles && plan?.text) {
+    const align = textFormat?.state?.textAlign || 'left';
+    const alignLabel = { left: 'Align left', center: 'Align center', right: 'Align right' }[align] || 'Align left';
+    groups.push(
+      <span key="text" className="selection-quick-bar__group" data-selection-quick-kind="text">
+        {button('Smaller text', 'minus', () => textFormat.api.setFontSize(stepFontSize(textSize, -1)), { 'data-selection-quick-size-down': '' })}
+        <span className="selection-quick-bar__size" data-selection-quick-size={textSize} aria-label={`Text size ${textSize} pt`}>{textSize}</span>
+        {button('Larger text', 'plus', () => textFormat.api.setFontSize(stepFontSize(textSize, 1)), { 'data-selection-quick-size-up': '' })}
+        {typeof textFormat.api.toggleBold === 'function' && button('Bold', 'formatBold', () => textFormat.api.toggleBold(), {
+          'aria-pressed': Boolean(textFormat.state?.bold),
+          'data-selection-quick-bold': '',
+          className: `selection-quick-bar__button${textFormat.state?.bold ? ' is-open' : ''}`,
+        })}
+        {typeof textFormat.api.setTextAlign === 'function' && button(alignLabel, { left: 'alignLeft', center: 'alignCenter', right: 'alignRight' }[align] || 'alignLeft', () => textFormat.api.setTextAlign(nextTextAlign(align)), { 'data-selection-quick-align': align })}
       </span>,
     );
   }
@@ -812,6 +923,27 @@ export default function SelectionQuickBar({
           })}
         </div>
       )}
+      {plan?.opacity && (
+        <div className="selection-quick-bar__opacities" role="group" aria-label="Opacity" data-selection-quick-opacity>
+          {QUICK_BAR_OPACITIES.map((value) => {
+            const current = !opacityMixed && opacityValue === value;
+            return (
+              <button
+                key={value}
+                type="button"
+                className={`selection-quick-bar__opacity${current ? ' is-current' : ''}`}
+                aria-label={`Opacity ${value}%`}
+                aria-pressed={current}
+                onMouseDown={(event) => event.stopPropagation()}
+                onClick={() => api?.handleStrokeOpacityChange?.(value, { phase: 'commit' })}
+              >
+                <span className="selection-quick-bar__opacity-sample" aria-hidden="true" style={{ opacity: value / 100 }} />
+                <span className="selection-quick-bar__width-label" aria-hidden="true">{value}%</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
       {plan?.style && (
         <div className="selection-quick-bar__styles" role="group" aria-label="Line style">
           {lineStyleOptionsWith(isFeatureOn('line-dashes') && api?.contextTool !== 'callout')
@@ -834,6 +966,39 @@ export default function SelectionQuickBar({
             })}
         </div>
       )}
+    </div>
+  ) : null;
+
+  const kindPopover = kindOpen && visible ? (
+    <div
+      className="selection-quick-bar__popover"
+      data-selection-quick-bar-popover="true"
+      data-selection-quick-kind-popover={kindOpen}
+      data-side={look.side === 'above' ? 'above' : 'below'}
+      role="dialog"
+      aria-label={kindOpen === 'fill' ? 'Fill' : 'Start and end'}
+      onMouseDown={(event) => event.stopPropagation()}
+    >
+      {kindOpen === 'fill' && paint?.fill && (
+        <div className="selection-quick-bar__fill-row">
+          <button
+            type="button"
+            className={`selection-quick-bar__fill is-none${fillNone ? ' is-current' : ''}`}
+            data-selection-quick-fill-none=""
+            aria-label="No fill"
+            aria-pressed={fillNone}
+            {...chromeTip('No fill', 'below')}
+            onClick={clearFill}
+          />
+          <QuickColourDots
+            value={fillNone || api?.selectionMixed?.fillColor ? null : paint.fill.color}
+            colours={FILL_QUICK_COLOURS}
+            names={FILL_QUICK_COLOUR_NAMES}
+            onPick={(hex) => paint.fill.apply(hex, paint.fill.opacity > 0 ? paint.fill.opacity : 1)}
+          />
+        </div>
+      )}
+      {kindOpen === 'ends' && <LineEndingsPanel api={api} tool={api?.contextTool} tip={chromeTip} compact />}
     </div>
   ) : null;
 
@@ -860,6 +1025,7 @@ export default function SelectionQuickBar({
         </span>
       ))}
       {linePopover}
+      {kindPopover}
       {authorsOpen && visible && authors.length > 0 && (
         <div
           className="selection-quick-bar__popover selection-quick-bar__authors"

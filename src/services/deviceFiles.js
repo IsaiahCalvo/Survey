@@ -1,6 +1,6 @@
 /**
- * Device files: open a PDF with no account (Nightly flag `device-files`,
- * 2026-11-10).
+ * Device files: open a PDF with no account (flag `device-files`, 2026-11-10;
+ * on for everyone since KAL-658, 2026-11-16).
  *
  * Drawboard lets anyone open a PDF from the device without signing in. Such a
  * "Temporary" file lives only in that browser (drawboard-trial/file-model.md),
@@ -241,6 +241,34 @@ export function createDeviceFiles({
     return true;
   };
 
+  /**
+   * Swap the kept PDF for new bytes (a page was moved, turned, added or
+   * deleted). The marks already follow the new pages, so the kept PDF must
+   * too, or a reload would lay them over the old pages. False when nothing
+   * was written; the caller then undoes the page change.
+   */
+  const replaceBytes = async (id, bytes, { pageCount } = {}) => {
+    const database = await db();
+    const buffer = await toArrayBuffer(bytes);
+    if (!database || !buffer || !isDeviceDocumentId(id)) return false;
+    try {
+      const tx = database.transaction([META_STORE, BYTES_STORE], 'readwrite');
+      const metaStore = tx.objectStore(META_STORE);
+      const meta = await settle(metaStore.get(id), tx, timeoutMs);
+      if (!meta) { try { tx.abort(); } catch { /* done */ } return false; }
+      tx.objectStore(BYTES_STORE).put({ id, bytes: buffer });
+      const next = { ...meta, size: buffer.byteLength, updatedAt: now() };
+      if (Number.isFinite(pageCount)) next.pageCount = pageCount;
+      metaStore.put(next);
+      await committed(tx, timeoutMs);
+    } catch (error) {
+      console.warn('[deviceFiles] replace failed:', error?.message || error);
+      return false;
+    }
+    notify();
+    return true;
+  };
+
   /** Bumps the "last edited" time (marks were made). Quiet: no list redraw needed mid-edit. */
   const touch = (id) => update(id, {});
 
@@ -260,7 +288,7 @@ export function createDeviceFiles({
     return true;
   };
 
-  return { add, findSame, list, read, update, touch, remove, isDisabled: () => disabled };
+  return { add, findSame, list, read, update, replaceBytes, touch, remove, isDisabled: () => disabled };
 }
 
 let shared = null;

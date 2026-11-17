@@ -129,6 +129,7 @@ html:has(.mobile-pdf-sheet:not(.is-collapsed)) .selection-quick-bar {
 
 .selection-quick-bar__button:focus-visible,
 .selection-quick-bar__width:focus-visible,
+.selection-quick-bar__opacity:focus-visible,
 .selection-quick-bar__style:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: -2px;
@@ -222,7 +223,46 @@ html:has(.mobile-pdf-sheet:not(.is-collapsed)) .selection-quick-bar {
   border-top: 0;
 }
 
+/* Opacity (Nightly 'mark-bar-by-kind'): four presets under the widths. */
+.selection-quick-bar__opacities {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.selection-quick-bar__opacities:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.selection-quick-bar__opacity {
+  height: 36px;
+  padding: 4px 0 3px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-2);
+  font: 500 10px/1 var(--font-ui, -apple-system, system-ui, sans-serif);
+  cursor: pointer;
+}
+
+.selection-quick-bar__opacity-sample {
+  display: block;
+  width: 18px;
+  height: 10px;
+  margin-top: 3px;
+  border-radius: 2px;
+  background: currentColor;
+}
+
 @media (hover: hover) {
+  .selection-quick-bar__opacity:hover,
   .selection-quick-bar__width:hover,
   .selection-quick-bar__style:hover {
     background: var(--hover);
@@ -233,6 +273,7 @@ html:has(.mobile-pdf-sheet:not(.is-collapsed)) .selection-quick-bar {
 /* The chosen width / style: a quiet pressed well and full-strength ink (the
    app's "selected = no gold fill" rule for menu rows). */
 .selection-quick-bar__width.is-current,
+.selection-quick-bar__opacity.is-current,
 .selection-quick-bar__style.is-current {
   background: var(--pressed);
   color: var(--text-1);
@@ -249,7 +290,8 @@ html:has(.mobile-pdf-sheet:not(.is-collapsed)) .selection-quick-bar {
     height: 44px;
   }
 
-  .selection-quick-bar__width {
+  .selection-quick-bar__width,
+  .selection-quick-bar__opacity {
     height: 44px;
   }
 
@@ -601,3 +643,67 @@ body:has(.mobile-pdf-sheet:not(.is-collapsed)) .selection-quick-bar[data-phone='
 .selection-quick-bar__authors th { text-align: left; font-weight: 600; color: var(--text-3); padding: 2px 10px 4px 0; white-space: nowrap; }
 .selection-quick-bar__authors td { padding: 3px 10px 3px 0; white-space: nowrap; }
 .selection-quick-bar__authors tbody + tbody tr:first-child td { border-top: 1px solid var(--border); }
+
+/* Nightly 'mark-bar-by-kind' (KAL-651): the parts that go by the kind of mark. */
+.selection-quick-bar__button--wide {
+  width: 38px;
+}
+.selection-quick-bar__fill {
+  position: relative;
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  box-sizing: border-box;
+  border: 1px solid var(--border-strong, var(--border));
+  border-radius: 4px;
+  background: transparent;
+  overflow: hidden;
+}
+button.selection-quick-bar__fill {
+  cursor: pointer;
+}
+/* A swatch gets a ring, never a hover or pressed fill (suite rule "One look for every control"). */
+button.selection-quick-bar__fill:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.selection-quick-bar__fill.is-none::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -3px;
+  bottom: -3px;
+  width: 1.5px;
+  background: var(--danger, #e5484d);
+  transform: translateX(-50%) rotate(45deg);
+}
+.selection-quick-bar__fill.is-mixed {
+  background: repeating-linear-gradient(45deg, var(--text-3) 0 3px, transparent 3px 6px);
+}
+.selection-quick-bar__fill.is-current {
+  box-shadow: 0 0 0 2px var(--surface-1, transparent), 0 0 0 4px var(--text-1);
+}
+/* The Fill popover is as wide as its row, and its "none" is a disc like the colours beside it. */
+.selection-quick-bar__popover[data-selection-quick-kind-popover='fill'] {
+  min-width: 0;
+}
+.selection-quick-bar__fill-row .selection-quick-bar__fill {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+}
+.selection-quick-bar__fill-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 4px;
+}
+.selection-quick-bar__size {
+  min-width: 22px;
+  text-align: center;
+  color: var(--text-1);
+  font: 600 12px/1 var(--font-ui, -apple-system, system-ui, sans-serif);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}

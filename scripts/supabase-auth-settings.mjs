@@ -3,7 +3,10 @@
 // Isaiah 2026-10-21, plus anonymous sign-ins for guest links (2026-10-28) and
 // SAML single sign-on for company sign-in (2026-11-01). Prints only the settings below: the auth config also
 // holds SMTP and provider secrets, and this repo's Action logs are public.
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
+import { readFileSync, readdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import path from 'node:path';
 
 export const WATCHED = [
   'password_hibp_enabled', 'password_min_length', 'password_required_characters',
@@ -81,6 +84,36 @@ export function planAuthPatch(current) {
   return Object.fromEntries(Object.entries(want).filter(([k, v]) => current[k] !== v));
 }
 
+// Account emails (KAL-664). One account signs in to Survey, Walkthru and Plot,
+// so the emails Supabase Auth sends carry the suite's name. The wording lives
+// in scripts/gen-auth-email-templates.mjs, which writes the staged files read
+// here. `--emails` checks them against the live ones; with `--apply` it sets
+// the ones that differ, and the sender name.
+export const EMAIL_SENDER_NAME = 'Kal Voe';
+const STAGED_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'debug', 'email-templates-staged');
+
+export function readStagedEmails(dir = STAGED_DIR) {
+  const want = {};
+  for (const file of readdirSync(dir).filter((f) => f.endsWith('.html')).sort()) {
+    const key = file.slice(0, -'.html'.length);
+    want[`mailer_subjects_${key}`] = readFileSync(path.join(dir, `${key}.subject.txt`), 'utf8');
+    want[`mailer_templates_${key}_content`] = readFileSync(path.join(dir, file), 'utf8');
+  }
+  return want;
+}
+
+export function planEmailPatch(current, staged = readStagedEmails()) {
+  const want = { ...staged, smtp_sender_name: EMAIL_SENDER_NAME };
+  return Object.fromEntries(Object.entries(want).filter(([k, v]) => current[k] !== v));
+}
+
+// Subjects and the sender name print as they are; a template prints as a short
+// hash, since thirteen pages of HTML would bury the log.
+const sha = (text) => createHash('sha256').update(String(text ?? '')).digest('hex').slice(0, 12);
+export const pickEmails = (config, keys) => Object.fromEntries(keys.map((k) => [
+  k, k.endsWith('_content') ? `sha256:${sha(config[k])}` : config[k] ?? null,
+]));
+
 export const pick = (config) => Object.fromEntries(WATCHED.map((k) => [k, config[k] ?? null]));
 
 async function main() {
@@ -94,9 +127,13 @@ async function main() {
     return res.json();
   };
   const before = await read();
-  const patch = planAuthPatch(before);
-  console.log('Before:', JSON.stringify(pick(before), null, 2));
-  console.log('Would change:', JSON.stringify(patch, null, 2));
+  const emails = process.argv.includes('--emails');
+  const patch = emails ? planEmailPatch(before) : planAuthPatch(before);
+  const show = emails
+    ? (config) => pickEmails(config, [...Object.keys(readStagedEmails()), 'smtp_sender_name'].filter((k) => !k.endsWith('_content') || k in patch))
+    : pick;
+  console.log('Before:', JSON.stringify(show(before), null, 2));
+  console.log('Would change:', JSON.stringify(emails ? pickEmails(patch, Object.keys(patch)) : patch, null, 2));
   if (!process.argv.includes('--apply') || !Object.keys(patch).length) return;
   const res = await fetch(url, { method: 'PATCH', headers, body: JSON.stringify(patch) });
   // The response echoes the whole config, secrets included; print only errors.
@@ -104,8 +141,9 @@ async function main() {
     const text = await res.text();
     throw new Error(`PATCH config/auth -> HTTP ${res.status}: ${text.slice(0, 300)}`);
   }
-  const after = pick(await read());
-  console.log('After:', JSON.stringify(after, null, 2));
+  const afterAll = await read();
+  console.log('After:', JSON.stringify(show(afterAll), null, 2));
+  const after = emails ? afterAll : pick(afterAll);
   const missed = Object.keys(patch).filter((k) => after[k] !== patch[k]);
   if (missed.length) throw new Error(`Not applied: ${missed.join(', ')}`);
 }

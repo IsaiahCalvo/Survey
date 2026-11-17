@@ -94,7 +94,9 @@ export default function FeatureFlagsPage() {
       .order('key');
     if (error) setMessage('Could not load the flags. Reload to try again.');
     // Only flags the app knows about can do anything.
-    else setFlags((data || []).filter((f) => FEATURE_FLAGS[f.key]));
+    // Pro free for testers is the switch used most when inviting people, so
+    // it comes first.
+    else setFlags((data || []).filter((f) => FEATURE_FLAGS[f.key]).sort((a, b) => (b.key === 'tester-pro') - (a.key === 'tester-pro')));
   }, [user]);
 
   useEffect(() => { load(); }, [load]);
