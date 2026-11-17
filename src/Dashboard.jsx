@@ -29,7 +29,7 @@ import { retryCompensatingCleanup, runCompensatingBatch } from './home/compensat
 import { readPdfPageCount, mapUploadsBounded } from './home/pdfUploadWork.js';
 import { DOCUMENT_VERSIONS_CHANGED_EVENT, supersedeDocument } from './services/documentVersionService.js';
 import { isFeatureOn } from './featureFlags.js';
-import { linkTemplatesForSave } from './library/suiteLibrary.js';
+import { linkTemplatesForSave, suiteLibraryStore } from './library/suiteLibrary.js';
 import { OPEN_FILE_EVENT, takeOpenedFiles } from './mobile/nativeOpenFile.js';
 import { PHOTO_ACCEPT, isPhotoFile, photoToPdfFile, photosAsPdfs } from './home/photoToPdf.js';
 import { deviceFilesOn, keepFileOnDevice, openDeviceFile, saveDeviceFileToAccount } from './home/deviceFileActions.js';
@@ -2004,7 +2004,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
   // is being added to. Read once, like every flag.
   const [walkthruTargetProject, setWalkthruTargetProject] = useState(null);
   const [suiteOn] = useState(() => { try { return isFeatureOn('suite'); } catch { return false; } });
-  const sendWalkthruWalk = async ({ walk, template, moduleId, categoryFor }) => {
+  const sendWalkthruWalk = async ({ walk, template, moduleId, categoryFor, links = [] }) => {
     const project = walkthruTargetProject;
     if (!project?.id || !user?.id) throw new Error('Sign in and pick a Project first.');
     const [{ sendWalkToProject, readPdfPageSizes }, { openAnnotationDoc }, { linkDocumentTemplates }, { loadPdfjs }] = await Promise.all([
@@ -2047,8 +2047,36 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     } catch (error) {
       console.warn('[suite] could not record the walk on the Project', error);
     }
+    // KAL-596: the Category links the user kept go to the library, so the
+    // next walk matches them on its own. The markers are already in.
+    let linkOutcome = null;
+    if (links.length) {
+      try {
+        const { saveCategoryLinks } = await import('./suite/categoryLinks.js');
+        const store = suiteLibraryStore(user.id);
+        if (store) {
+          linkOutcome = await saveCategoryLinks({
+            links,
+            templates,
+            templateId: template?.id,
+            moduleId,
+            linkTemplates: async (list) => {
+              await Promise.race([store.ready(), new Promise((resolve) => { setTimeout(resolve, 3000); })]);
+              return store.linkTemplates(list).templates;
+            },
+            saveTemplates: hubSaveTemplates,
+            flushLibrary: () => store.flush(),
+            entryOnServer: (id) => store.getState().serverRows.some((row) => row.id === id),
+            setNodeTypeEntry: (nodeTypeId, entryId) => supabase.schema('walkthru').from('node_types')
+              .update({ library_entry_id: entryId }).eq('id', nodeTypeId).select('id'),
+          });
+        }
+      } catch (error) {
+        console.warn('[suite] could not save the Category links', error);
+      }
+    }
     refetchDocuments?.();
-    return result;
+    return linkOutcome ? { ...result, links: linkOutcome } : result;
   };
   const canOpenFromDrive = Boolean(user) && isFeatureOn('drive-sync-back');
   // Google's Picker needs a browser key; without one the entry stays hidden.
