@@ -3001,16 +3001,32 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
       if (el.scrollHeight - room > el.clientHeight + 2) el.setAttribute('data-overflows', 'true');
       else el.removeAttribute('data-overflows');
     };
-    const schedule = () => { if (!frame) frame = requestAnimationFrame(update); };
+    // A phone held sideways scrolls the whole rail instead of this column
+    // (see the landscape rule in mobilePdfViewer.css), so the rail gets the
+    // same "more below" mark for its own fade.
+    const rail = el.parentElement;
+    const updateRail = () => {
+      if (!rail) return;
+      const scrolls = rail.scrollHeight > rail.clientHeight + 2;
+      const more = scrolls && rail.scrollTop + rail.clientHeight < rail.scrollHeight - 2;
+      if (more) rail.setAttribute('data-more-below', 'true');
+      else rail.removeAttribute('data-more-below');
+    };
+    const schedule = () => { if (!frame) frame = requestAnimationFrame(() => { update(); updateRail(); }); };
     update();
+    updateRail();
     el.addEventListener('scroll', schedule, { passive: true });
+    rail?.addEventListener('scroll', schedule, { passive: true });
     const resize = typeof ResizeObserver === 'function' ? new ResizeObserver(schedule) : null;
     resize?.observe(el);
+    if (rail) resize?.observe(rail);
     const mutation = typeof MutationObserver === 'function' ? new MutationObserver(schedule) : null;
-    mutation?.observe(el, { childList: true, subtree: true });
+    mutation?.observe(rail || el, { childList: true, subtree: true });
     return () => {
       if (frame) cancelAnimationFrame(frame);
       el.removeEventListener('scroll', schedule);
+      rail?.removeEventListener('scroll', schedule);
+      rail?.removeAttribute('data-more-below');
       resize?.disconnect();
       mutation?.disconnect();
     };
