@@ -446,3 +446,7 @@ html[data-look="suite"] .ed-scope .card-line { background: var(--surface-2); }
   background: var(--pressed) !important;
   transition: none !important;
 }
+/* The chosen row already wears the press grey in light: one step on. */
+.ed-scope :is(.tpl-list-row, .tpl-cat-row, .tpl-entity-row).is-selected:active:not(:has(button:active, input:active, [data-drag-rearrange-handle]:active)) {
+  background: var(--pressed-2, var(--pressed)) !important;
+}

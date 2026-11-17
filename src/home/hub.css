@@ -5873,6 +5873,10 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
     background: var(--pressed) !important;
     transition: none !important;
   }
+  /* The chosen row already wears the press grey in light: one step on. */
+  .survey-hub .projects-list-row.is-selected:active:not(:has(button:active, input:active, [data-drag-rearrange-handle]:active)) {
+    background: var(--pressed-2, var(--pressed)) !important;
+  }
 }
 @media (pointer: fine) {
   .survey-hub .projects-file-grid[data-document-id]:active:not(:has(button:active, [role='checkbox']:active, [data-drag-rearrange-handle]:active)) {

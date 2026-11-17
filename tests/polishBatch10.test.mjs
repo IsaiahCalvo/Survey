@@ -20,3 +20,10 @@ test('menus with the gliding hover strip show a press; pressed-2 from the suite 
   assert.match(tokens, /--pressed: #131315;\n[\s\S]{0,200}--pressed-2: #131315;/);
   assert.match(tokens, /--pressed: #ebebeb;\n\s*--pressed-2: #e0e0e0;/);
 });
+
+test('a chosen item shows a press in the light one look (pressed-2)', () => {
+  const states = read('src/styles/states.css');
+  assert.match(states, /:is\(\[aria-selected='true'\], \[aria-pressed='true'\], \[aria-current\]:not\(\[aria-current='false'\]\), \.is-selected, \.is-active, \.active\):active:not\(:disabled\)[^{]*:not\(\.primary\)[^{]*\{\s*background-color: var\(--pressed-2, var\(--pressed\)\) !important;/);
+  assert.match(read('src/home/hub.css'), /\.projects-list-row\.is-selected:active:not\([^{]*\{\s*background: var\(--pressed-2, var\(--pressed\)\) !important;/);
+  assert.match(read('src/home/TemplatesEditor.css'), /:is\(\.tpl-list-row, \.tpl-cat-row, \.tpl-entity-row\)\.is-selected:active/);
+});
