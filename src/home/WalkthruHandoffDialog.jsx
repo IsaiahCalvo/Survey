@@ -9,8 +9,13 @@
    so the next walk matches it on its own. Skipped ones are counted under
    "Not in this Module", never dropped.
    Rules: suite/walkthruHandoff.js, suite/categoryLinks.js; work:
-   suite/walkthruHandoffRun.js. */
+   suite/walkthruHandoffRun.js.
+   The same dialog takes a job file (.kvjob, KAL-617) when opened with
+   source "job": the user picks the file instead of a walk, and the rest is
+   the same. A job file's Categories are not Walkthru rows, so its links are
+   used for this file only. */
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { jobLeftOut } from '../suite/jobPackage.js';
 import DialogCard from '../components/DialogCard.jsx';
 import ValueSelect from '../components/ValueSelect.jsx';
 import Spinner from '../components/Spinner';
@@ -40,7 +45,11 @@ export function handoffSummary(result) {
   const missing = (result.notInModule || []).reduce((sum, m) => sum + m.count, 0);
   if (missing) parts.push(`${plural(missing, 'node')} not in this Module`);
   if (result.unplaced) parts.push(`${plural(result.unplaced, 'marker')} with no spot yet`);
-  if (result.defaultNodes) parts.push(`${plural(result.defaultNodes, 'node')} with no Category stayed in Walkthru`);
+  if (result.defaultNodes) {
+    parts.push(!result.source || result.source === 'Walkthru'
+      ? `${plural(result.defaultNodes, 'node')} with no Category stayed in Walkthru`
+      : `${plural(result.defaultNodes, 'item')} with no Category stayed in ${result.source}`);
+  }
   const links = result.links?.saved?.length || 0;
   if (links) parts.push(`${plural(links, 'Category link')} saved for the next walk`);
   return `${parts.join('. ')}.`;
@@ -49,8 +58,12 @@ export function handoffSummary(result) {
 export default function WalkthruHandoffDialog({
   project, templates = [], supabase, initialWalkId = null,
   listWalks, readWalk, onSend, onAddCategory = null, onClose,
+  source = 'walkthru', openJob = null,
 }) {
-  const [walks, setWalks] = useState(null);
+  const fromJob = source === 'job';
+  const [walks, setWalks] = useState(fromJob ? [] : null);
+  const [jobName, setJobName] = useState('');
+  const fileInput = useRef(null);
   const [walkId, setWalkId] = useState(initialWalkId);
   const [walk, setWalk] = useState(null);
   const [templateId, setTemplateId] = useState(templates[0]?.id ?? null);
@@ -64,19 +77,37 @@ export default function WalkthruHandoffDialog({
   useEffect(() => () => { alive.current = false; }, []);
 
   useEffect(() => {
+    if (fromJob) return;
     listWalks(supabase)
       .then((list) => { if (alive.current) setWalks(list); })
       .catch((err) => { if (alive.current) { setWalks([]); setError(err?.message || String(err)); } });
-  }, [listWalks, supabase]);
+  }, [listWalks, supabase, fromJob]);
 
   useEffect(() => {
+    if (fromJob) return;
     setWalk(null);
     setResult(null);
     if (!walkId) return;
     readWalk(supabase, walkId)
       .then((w) => { if (alive.current) setWalk(w); })
       .catch((err) => { if (alive.current) setError(err?.message || String(err)); });
-  }, [walkId, readWalk, supabase]);
+  }, [walkId, readWalk, supabase, fromJob]);
+
+  const pickJob = async (file) => {
+    if (!file || !openJob) return;
+    setError('');
+    setResult(null);
+    setWalk(null);
+    setJobName(file.name || 'Job file');
+    try {
+      const job = await openJob(file);
+      if (!alive.current) return;
+      setWalk(job);
+      setWalkId(`job:${file.name}:${file.size}:${file.lastModified || 0}`);
+    } catch (err) {
+      if (alive.current) { setJobName(''); setError(err?.message || String(err)); }
+    }
+  };
 
   useEffect(() => {
     const first = modulesOf(template)[0]?.id ?? null;
@@ -129,7 +160,7 @@ export default function WalkthruHandoffDialog({
     setError('');
     setBusy(true);
     try {
-      const links = linksToSave(rows, picks, template, moduleId);
+      const links = fromJob ? [] : linksToSave(rows, picks, template, moduleId);
       const out = await onSend({ walk, template, moduleId, categoryFor, links });
       if (alive.current) setResult(out);
     } catch (err) {
@@ -151,8 +182,10 @@ export default function WalkthruHandoffDialog({
 
   return (
     <DialogCard
-      title="Add a Walkthru walk"
-      message={`Into ${project?.name || 'this Project'}. Each node with a Category becomes a Survey Marker where it was dropped.`}
+      title={fromJob ? 'Add a job file' : 'Add a Walkthru walk'}
+      message={fromJob
+        ? `Into ${project?.name || 'this Project'}. Each device with a Category becomes a Survey Marker on its Tag.`
+        : `Into ${project?.name || 'this Project'}. Each node with a Category becomes a Survey Marker where it was dropped.`}
       onClose={busy ? undefined : onClose}
       width={480}
       zIndex={Z_INDEX.modalOverlay}
@@ -161,10 +194,10 @@ export default function WalkthruHandoffDialog({
         <button type="button" data-autofocus="" className="hub-btn hub-btn--primary dialog-touch-pad" onClick={onClose}>Done</button>
       ) : (
         <>
-          {busy && <span className="pdft-busy" role="status"><Spinner size={14} color="currentColor" /> Adding the walk…</span>}
+          {busy && <span className="pdft-busy" role="status"><Spinner size={14} color="currentColor" /> {fromJob ? 'Adding the job…' : 'Adding the walk…'}</span>}
           <button type="button" className="hub-btn dialog-touch-pad" onClick={onClose} disabled={busy}>Cancel</button>
           <button type="button" data-walkthru-handoff-send="" className="hub-btn hub-btn--primary dialog-touch-pad" onClick={send} disabled={!ready}>
-            <span>Add walk</span>
+            <span>{fromJob ? 'Add job' : 'Add walk'}</span>
           </button>
         </>
       )}
@@ -177,12 +210,17 @@ export default function WalkthruHandoffDialog({
             {(result.notInModule || []).length > 0 && (
               <p style={{ margin: '8px 0 0', color: 'var(--text-2)' }}>
                 Not in this Module: {result.notInModule.map((m) => `${m.name || 'Unnamed'} (${m.count})`).join(', ')}.
-                Add these Categories to the Module, then add the walk again; nothing is copied twice.
+                Add these Categories to the Module, then add the {fromJob ? 'file' : 'walk'} again; nothing is copied twice.
               </p>
             )}
             {(result.skippedFloors || []).length > 0 && (
               <p style={{ margin: '8px 0 0', color: 'var(--text-2)' }}>
                 Left out: {result.skippedFloors.map((f) => `${f.name} (${f.reason})`).join(', ')}.
+              </p>
+            )}
+            {fromJob && walk?.extras && jobLeftOut(walk.extras) && (
+              <p style={{ margin: '8px 0 0', color: 'var(--text-2)' }} data-job-left-out="">
+                Not brought in yet: {jobLeftOut(walk.extras)}.
               </p>
             )}
             {(result.links?.notSaved || []).length > 0 && (
@@ -193,6 +231,35 @@ export default function WalkthruHandoffDialog({
           </div>
         ) : (
           <>
+            {fromJob ? (
+              <div className="xpdf-section" data-job-file="">
+                <span className="xpdf-label">Job file</span>
+                <input
+                  ref={fileInput}
+                  type="file"
+                  accept=".kvjob,.zip,application/zip"
+                  hidden
+                  data-job-file-input=""
+                  onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; pickJob(f); }}
+                />
+                <div className="wt-job">
+                  {walk ? (
+                    <span className="wt-job__name">
+                      <b>{walk.walk?.name || jobName}</b>
+                      <span>
+                        {walk.source ? `From ${walk.source} · ` : ''}
+                        {plural(walk.floors.length, 'drawing')} · {plural(walk.floors.reduce((n, f) => n + f.nodes.filter((x) => x.node_type_id).length, 0), 'device')}
+                      </span>
+                    </span>
+                  ) : jobName && !error
+                    ? <span role="status"><Spinner size={14} color="currentColor" /> Reading {jobName}…</span>
+                    : <span className="wt-job__name"><span>A .kvjob file from Plot, Walkthru or Survey.</span></span>}
+                  <button type="button" className="hub-btn" data-job-file-pick="" onClick={() => fileInput.current?.click()} disabled={busy}>
+                    {walk ? 'Pick another' : 'Pick a file'}
+                  </button>
+                </div>
+              </div>
+            ) : (
             <div className="xpdf-section">
               <span className="xpdf-label">Walk</span>
               {walks === null
@@ -201,6 +268,7 @@ export default function WalkthruHandoffDialog({
                   ? <span>No Walkthru walks on this account yet.</span>
                   : <ValueSelect label="Walk" value={walkId} options={walkOptions} placeholder="Pick a walk" onChange={setWalkId} disabled={busy} />}
             </div>
+            )}
             <div className="xpdf-section">
               <span className="xpdf-label">Template</span>
               {templateOptions.length === 0
@@ -216,7 +284,7 @@ export default function WalkthruHandoffDialog({
             {walk && match && (
               <div className="xpdf-section" data-walkthru-handoff-match="">
                 <span className="xpdf-label">Categories</span>
-                {usedTypes.length === 0 && <span>This walk has no nodes with a Category.</span>}
+                {usedTypes.length === 0 && <span>{fromJob ? 'This job file has no devices with a Category.' : 'This walk has no nodes with a Category.'}</span>}
                 {Object.keys(match.linked).map((typeId) => {
                   const type = usedTypes.find((t) => t.id === typeId);
                   return <div key={typeId} className="wt-link__linked">{type?.name} ({nodeCount.get(typeId) || 0}): linked in the library</div>;
@@ -224,14 +292,14 @@ export default function WalkthruHandoffDialog({
                 {rows.length > 0 && (
                   <div className="wt-link" role="table" aria-label="Link Walkthru Categories to this Module" data-walkthru-link-table="">
                     <div className="wt-link__row wt-link__row--head" role="row">
-                      <span role="columnheader">In Walkthru</span>
+                      <span role="columnheader">{fromJob ? `In ${walk?.source || 'the job file'}` : 'In Walkthru'}</span>
                       <span role="columnheader">In this Module</span>
                     </div>
                     {rows.map((row) => (
                       <div key={row.nodeTypeId} className="wt-link__row" role="row" data-walkthru-link-row={row.nodeTypeId}>
                         <span className="wt-link__from" role="cell">
                           <b>{row.name}</b>
-                          <span>{plural(row.count, 'node')}{row.suggested != null ? ' · same name' : ''}</span>
+                          <span>{plural(row.count, fromJob ? 'device' : 'node')}{row.suggested != null ? ' · same name' : ''}</span>
                         </span>
                         <span role="cell">
                           <ValueSelect
@@ -256,7 +324,9 @@ export default function WalkthruHandoffDialog({
                         </span>
                       </div>
                     ))}
-                    <p className="wt-link__note">A link you keep is saved to the library, so the next walk uses it without asking.</p>
+                    <p className="wt-link__note">{fromJob
+                      ? 'These links are used for this file.'
+                      : 'A link you keep is saved to the library, so the next walk uses it without asking.'}</p>
                   </div>
                 )}
                 {notIn.length > 0 && (

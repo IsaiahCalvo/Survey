@@ -62,10 +62,29 @@ const LANGUAGE_NOTES = Object.freeze({
   es: 'The person speaks Spanish. Reply in Spanish, in the same short spoken style. Keep item names, checklist text, entity names and answer values exactly as written in the survey (do not translate them), and put notes in the language the person used.',
 });
 
-/** The system messages for one turn: the rules, then a language note if any. */
-export function surveyAgentSystemMessages(lang) {
+// How notes are written (KAL-529, a setting in the agent's menu). Sentences
+// is the default and needs no extra words.
+export const SURVEY_AGENT_NOTE_STYLES = Object.freeze(['sentences', 'bullets']);
+const NOTE_STYLE_NOTES = Object.freeze({
+  bullets: 'Write notes as short bullet points, one fact per line, each line starting with "- ". No full sentences, no filler.',
+});
+
+/**
+ * The system messages for one turn: the rules, then a language note and a
+ * note style if any.
+ */
+/**
+ * @param {unknown} [lang] the edge function passes the request's raw value
+ * @param {{ noteStyle?: unknown }} [options]
+ */
+export function surveyAgentSystemMessages(lang, { noteStyle = null } = {}) {
   const note = LANGUAGE_NOTES[lang];
-  return [{ role: 'system', content: SURVEY_AGENT_SYSTEM_PROMPT }, ...(note ? [{ role: 'system', content: note }] : [])];
+  const style = NOTE_STYLE_NOTES[noteStyle];
+  return [
+    { role: 'system', content: SURVEY_AGENT_SYSTEM_PROMPT },
+    ...(note ? [{ role: 'system', content: note }] : []),
+    ...(style ? [{ role: 'system', content: style }] : []),
+  ];
 }
 
 const id = (description) => ({ type: 'string', description });
@@ -116,7 +135,7 @@ function voiceAnnotationTools() {
 // from the open template's answer set, so the model cannot send an answer
 // the template does not have. annotations: add the markup tools (only for
 // people with the annotation-agent flag).
-export function buildSurveyAgentTools(answerValues, { annotations = false, markupOpen = true, webmcp = false, typedLines = false } = {}) {
+export function buildSurveyAgentTools(answerValues, { annotations = false, markupOpen = true, webmcp = false, typedLines = false, offers = false } = {}) {
   const answers = cleanAnswerValues(answerValues);
   // A template with typed lines (answer_kind in get_survey_context) cannot
   // hold set_answers values to the answer list.
@@ -275,6 +294,24 @@ export function buildSurveyAgentTools(answerValues, { annotations = false, marku
         ['item_id', 'image_base64']),
       tool('export_summary',
         'A plain-text summary of the survey counts to hand to the person: each category with how many items it has, and the breakdown by status. Read-only.'),
+    ] : []),
+    // KAL-529: grow the template from what people say. The tool only offers;
+    // the person says yes or no on a card, and only someone who may edit the
+    // template ever sees one (get_survey_context template_editable).
+    ...(offers && !webmcp ? [
+      tool('offer_checklist_line',
+        'Offer to add a checklist line to a category, when the person says something about an item that no line covers and that is worth checking on every item of that kind ("no power" on a door, and Door has no power line). Record what they said as usual first (the note). The person gets a Yes / No card; you change nothing in the template, so never say it was added. Yes adds the line and, with item_id and answer, answers it on that item. Offer each line once per chat, and only when template_editable is true.',
+        {
+          category_id: id('The category to add the line to.'),
+          text: { type: 'string', description: 'The new line, short like the others ("Power at door").' },
+          item_id: { type: ['string', 'null'], description: 'The item they were talking about, or null.' },
+          answer: { type: ['string', 'null'], enum: [...answers, null], description: 'The answer that item gets on the new line if they say yes ("N" for no power), or null.' },
+        },
+        ['category_id', 'text', 'item_id', 'answer']),
+      tool('offer_category',
+        'Offer to add a category to the open module, when the person keeps naming a kind of thing the template has no category for ("intercom" with no Intercom category). The person gets a Yes / No card; you change nothing in the template, so never say it was added. Offer each category once per chat, and only when template_editable is true.',
+        { name: { type: 'string', description: 'The category name ("Intercom").' } },
+        ['name']),
     ] : []),
     // The markup tools are many and long; most turns are about checklists.
     // Until the model asks for them, one small tool stands in, which keeps

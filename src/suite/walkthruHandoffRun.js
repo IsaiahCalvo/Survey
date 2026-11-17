@@ -9,6 +9,8 @@
 //   pageSizes(blob) -> (pageNumber) => {width, height, rotation} | null
 //   openDoc(documentId) -> annotation doc handle  (openAnnotationDoc)
 //   linkTemplate(documentId)                      (linkDocumentTemplates)
+//   outlines(blob, nodes) -> Map(node -> polygon) tag outlines, for a job file
+//                                                 (jobOutlines.js); optional
 //
 // Markers go into the document's live-editing doc, never document_annotations:
 // those rows are only a mirror and are not read back. The full map (what the
@@ -92,7 +94,7 @@ function pdfName(walkName, floor, floorCount) {
  */
 export async function sendWalkToProject({
   supabase, walk, template, moduleId, categoryFor, entityId = null,
-  addPdfToProject, pageSizes, openDoc, linkTemplate = null, newId,
+  addPdfToProject, pageSizes, openDoc, linkTemplate = null, newId, outlines = null,
   download = (path) => supabase.storage.from(WALKTHRU_BUCKET).download(path),
   now = new Date().toISOString(),
 }) {
@@ -120,6 +122,16 @@ export async function sendWalkToProject({
     const name = pdfName(walk.walk?.name, floor, floors.length);
     const file = typeof File === 'function' ? new File([blob], name, { type: 'application/pdf' }) : blob;
     const pageSize = await pageSizes(blob);
+    let outlineFor = null;
+    if (outlines) {
+      try {
+        const found = await outlines(blob, floor.nodes);
+        if (found?.size) outlineFor = (node) => found.get(node) || null;
+      } catch (outlineError) {
+        // No outlines: the devices land as dots.
+        console.warn('[suite] could not read tag outlines', outlineError);
+      }
+    }
     const doc = await addPdfToProject(file, name);
     if (!doc?.id) throw new Error(`Could not add "${name}" to the Project.`);
 
@@ -128,7 +140,7 @@ export async function sendWalkToProject({
       const existing = handle.getSurveyMarkers() || {};
       const out = buildWalkMarkers({
         nodes: floor.nodes, nodeTypes: walk.nodeTypes, template, moduleId, categoryFor,
-        pageSize, existingMarkers: existing, newId, entityId, now,
+        pageSize, existingMarkers: existing, newId, entityId, now, outlineFor,
       });
       handle.applySurveyMarkers({ ...existing, ...out.markers });
       if (typeof handle.drain === 'function') await handle.drain();

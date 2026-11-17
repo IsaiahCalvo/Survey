@@ -2097,6 +2097,53 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     refetchDocuments?.();
     return linkOutcome ? { ...result, links: linkOutcome } : result;
   };
+  // KAL-617 (Nightly 'suite'): a job file (.kvjob, from Plot before it joins
+  // the shared database) into a Project. Same arrival rule as a walk; each
+  // device's tag outline is looked up on its sheet (jobOutlines.js).
+  const [jobTargetProject, setJobTargetProject] = useState(null);
+  const openJobFile = async (file) => {
+    const { openJobFile: open, jobToWalk, jobFileDownload } = await import('./suite/jobPackage.js');
+    const { manifest, library, zip } = await open(file);
+    return { ...jobToWalk(manifest, library), download: jobFileDownload(zip) };
+  };
+  const sendJobFile = async ({ walk, template, moduleId, categoryFor }) => {
+    const project = jobTargetProject;
+    if (!project?.id || !user?.id) throw new Error('Sign in and pick a Project first.');
+    const [{ sendWalkToProject, readPdfPageSizes }, { readJobOutlines }, { openAnnotationDoc }, { linkDocumentTemplates }, { loadPdfjs }] = await Promise.all([
+      import('./suite/walkthruHandoffRun.js'),
+      import('./suite/jobOutlines.js'),
+      import('./services/annotationDocSync.js'),
+      import('./services/sharedTemplates.js'),
+      import('./utils/pdfWorkerConfig.js'),
+    ]);
+    const templateRowId = resolveSupabaseTemplateId(template);
+    const result = await sendWalkToProject({
+      supabase,
+      walk,
+      template,
+      moduleId,
+      categoryFor,
+      download: walk.download,
+      newId: () => crypto.randomUUID(),
+      pageSizes: (blob) => readPdfPageSizes(blob, loadPdfjs),
+      outlines: (blob, nodes) => readJobOutlines(blob, nodes, loadPdfjs),
+      addPdfToProject: async (file) => {
+        let doc = null;
+        const outcome = await uploadBrowserPdf(file, {
+          projectId: project.id, openAfterUpload: false, askDuplicates: false,
+          onDocument: (d) => { doc = d || null; },
+        });
+        if (!doc || outcome === 'failed' || outcome === 'skipped') return null;
+        return doc;
+      },
+      openDoc: (documentId) => openAnnotationDoc({ documentId, supabase, actorUserId: user.id, enableRealtime: false }),
+      linkTemplate: templateRowId
+        ? (documentId) => linkDocumentTemplates({ client: supabase, documentId, userId: user.id, templateRowIds: [templateRowId] })
+        : null,
+    });
+    refetchDocuments?.();
+    return { ...result, source: walk.source || null };
+  };
   // KAL-596 / suite spec: "Add Intercom to this Module" in the hand-off. A new
   // empty Category with exactly the Walkthru name, saved like any template
   // edit (which also links it to the library).
@@ -3278,6 +3325,18 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
           onClose={() => setWalkthruTargetProject(null)}
         />
       )}
+      {jobTargetProject && (
+        <WalkthruHandoffDialog
+          source="job"
+          project={jobTargetProject}
+          templates={templates}
+          supabase={supabase}
+          openJob={openJobFile}
+          onSend={sendJobFile}
+          onAddCategory={addWalkCategoryToModule}
+          onClose={() => setJobTargetProject(null)}
+        />
+      )}
       <DismissBarrier
         active={showUserDropdown}
         insideRefs={userDropdownInsideRefs}
@@ -3325,6 +3384,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         onOpenFromDrive={canOpenFromDrive ? () => { setDriveTargetProject(null); setDrivePickerOpen(true); } : null}
         onAddFromDrive={canOpenFromDrive ? (project) => { setDriveTargetProject(project || null); setDrivePickerOpen(true); } : null}
         onAddFromWalkthru={suiteOn && user ? (project) => setWalkthruTargetProject(project || null) : null}
+        onAddFromJobFile={suiteOn && user ? (project) => setJobTargetProject(project || null) : null}
         walkthruTabOn={suiteOn && Boolean(user)}
         onOpenFromGoogleDrive={canOpenFromGoogleDrive ? openFromGoogleDrive : null}
         onDropFiles={handleDroppedFiles}

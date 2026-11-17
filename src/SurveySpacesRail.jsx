@@ -463,6 +463,7 @@ const SurveySpacesRail = ({
   activeSpaceId,
   addCategoryAsNewTemplate,
   addCategoryToCurrentTemplate,
+  addChecklistItemToCurrentTemplate,
   applyLayoutDrivenZoom,
   categorySelectModeActive,
   copiedItemSelection,
@@ -1658,6 +1659,13 @@ const SurveySpacesRail = ({
       // id, or name and size for a local file (as its markers are kept).
       waitKey: pdfFile ? (pdfFile.id || getPDFId(pdfFile)) : null,
       canEdit: canEditSurveyMarkers !== false,
+      // KAL-529: the agent may offer a new line or category only to someone
+      // who can change this template (not one shared with them to use only).
+      canEditTemplate: canEditSurveyMarkers !== false && Boolean(selectedTemplate)
+        && !(selectedTemplate.sharedFrom && !selectedTemplate.sharedFrom.canEdit)
+        && typeof addChecklistItemToCurrentTemplate === 'function',
+      addChecklistLine: (moduleId, categoryId, text) => addChecklistItemToCurrentTemplate?.(moduleId, categoryId, text),
+      addCategory: (moduleId, name) => addCategoryToCurrentTemplate?.(moduleId, name),
       selectedMarkerId: Object.keys(expandedSurveyMarkers || {}).find((id) => expandedSurveyMarkers[id] && surveyMarkers?.[id]) || null,
       // The module open in the panel ("we're in installation").
       currentModuleId: selectedModuleId || null,
