@@ -317,21 +317,82 @@
   cursor: not-allowed;
 }
 
-.account-field-display {
-  padding: 8px 10px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  font-size: 13px;
-  color: var(--text-2);
-  min-height: 34px;
+/* General, Profile (polish pass, KAL-652): read-only rows, label left and
+   value right, with Edit profile in the heading line. The values used to sit
+   in grey boxes that looked like fields you could type in. */
+.account-section-head {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.account-section-head h3 {
+  margin: 0;
+}
+
+.account-profile-list {
+  margin: 0;
+}
+
+.account-profile-row {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 16px;
+  align-items: baseline;
+  padding: 10px 0;
+}
+
+.account-profile-row + .account-profile-row {
+  border-top: 1px solid var(--border);
+}
+
+.account-profile-row dt {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-3);
+}
+
+.account-profile-row dd {
+  margin: 0;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--text-1);
+  overflow-wrap: anywhere;
+}
+
+.account-profile-row dd.is-empty {
+  color: var(--text-3);
+}
+
+.account-profile-row .account-field-hint {
+  display: block;
+  margin-top: 2px;
+}
+
+/* Account actions: the same row as Annotations (words left, button right). */
+.account-action-row {
   align-items: center;
 }
 
-.account-field-display-empty {
-  color: var(--text-3);
-  font-style: italic;
+.account-action-row > button {
+  flex-shrink: 0;
+}
+
+/* The smaller Settings button: 28px, for buttons that sit in a row or a
+   heading line. Touch screens still get 44 (the coarse rule below). Two
+   classes, so it wins over each button's own padding further down. */
+.account-btn-secondary.account-btn-sm,
+.account-btn-danger.account-btn-sm {
+  min-height: 28px;
+  padding: 4px 12px;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
 }
 
 /* "Forgot your current password? Email me a reset link": a calm underlined
@@ -538,7 +599,7 @@
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background-color var(--motion-state) var(--ease-out), border-color var(--motion-state) var(--ease-out), color var(--motion-state) var(--ease-out);
   font-family: inherit;
   /* UX (KAL-73): inline-flex + 8px gap so the shared loading ring can sit to the
      left of the label without shifting the label off-centre. */
@@ -559,7 +620,6 @@
    rest colour, so the only hover feedback was the 1px lift. */
 .account-btn-primary:hover:not(:disabled) {
   background: var(--accent-light);
-  transform: translateY(-1px);
 }
 
 /* A disabled gold button drops its gold: grey ink on the gold fill could not
@@ -585,13 +645,12 @@
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background-color var(--motion-state) var(--ease-out), border-color var(--motion-state) var(--ease-out), color var(--motion-state) var(--ease-out);
   font-family: inherit;
 }
 
 .account-btn-secondary:hover:not(:disabled) {
   background: var(--hover);
-  transform: translateY(-1px);
 }
 
 .account-btn-secondary:disabled {
@@ -614,7 +673,7 @@
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background-color var(--motion-state) var(--ease-out), border-color var(--motion-state) var(--ease-out), color var(--motion-state) var(--ease-out);
   font-family: inherit;
 }
 
@@ -637,12 +696,26 @@
 .account-btn-danger:hover:not(:disabled) {
   background: color-mix(in srgb, var(--danger) 28%, transparent);
   border-color: var(--danger);
-  transform: translateY(-1px);
 }
 
 .account-btn-danger:disabled {
   color: var(--text-disabled);
   cursor: not-allowed;
+}
+
+/* Press (suite rules: "a coloured button never falls back to the grey ones";
+   pressed shows at once). The red wash goes one step past its hover. The
+   grey press in states.css skips this button for that reason. The 1px hover
+   lift on these buttons is gone too: hover is a colour step, nothing moves. */
+.account-btn-primary:not(:disabled):active,
+.account-btn-secondary:not(:disabled):active,
+.account-btn-danger:not(:disabled):active {
+  transition: none;
+}
+
+.account-btn-danger:not(:disabled):active {
+  background: color-mix(in srgb, var(--danger) 40%, transparent);
+  border-color: var(--danger);
 }
 
 .account-danger-zone {
@@ -1115,7 +1188,6 @@
   }
 
   .account-form-group input,
-  .account-field-display,
   .account-connected-account,
   .account-subscription-card {
     background: var(--panel-well);
