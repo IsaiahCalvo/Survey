@@ -4011,6 +4011,11 @@ html[data-look="suite"][data-theme="light"] :is(.pages-panel-preview, .mobile-pa
   /* The same hairline a floating thing takes in light mode (tokens.css). */
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08);
 }
+/* The open page on a phone (PdfjsViewerContainer): the same paper edge, and a
+   softer shadow, as shadows are lighter in light mode (SUITE-RULES). */
+html[data-look="suite"][data-theme="light"] {
+  --phone-page-frame: 0 0 0 1px rgba(0, 0, 0, 0.12), 0 4px 14px rgba(0, 0, 0, 0.1);
+}
 .pages-panel-card.is-selected [data-page-preview],
 .mobile-page-card.is-active .mobile-page-preview,
 .mobile-page-card.is-selected .mobile-page-preview {

@@ -92,3 +92,9 @@ test('a file kept on this device asks the server nothing about comments, people 
   assert.match(ledger, /if \(!teamDocId \|\| teamDocRaw\?\.device_file\) return undefined;/);
   assert.match(ledger, /teamOwnerIsMe \|\| !supabase \|\| teamDocRaw\?\.device_file\) return undefined;/);
 });
+
+test('the open page on a phone takes a hairline in the light look, and keeps its frame in dark', () => {
+  const viewer = read('../src/components/PdfjsViewerContainer.jsx');
+  assert.match(viewer, /'var\(--phone-page-frame, 0 0 0 1px var\(--text-2\), 0 10px 28px rgba\(0,0,0,0\.35\)\)'/);
+  assert.match(read('../src/styles.css'), /html\[data-look="suite"\]\[data-theme="light"\] \{\s*--phone-page-frame: 0 0 0 1px rgba\(0, 0, 0, 0\.12\)/);
+});
