@@ -15,7 +15,7 @@ const inputStyle = {
   background: 'transparent', color: C.ink, fontSize: 14, fontFamily: 'inherit',
 };
 
-export default function FinishAccountCard({ user, updatePassword, updateProfile, onDone, accent }) {
+export default function FinishAccountCard({ user, updatePassword, updateProfile, onDone, accent, skip = null }) {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [password, setPassword] = useState('');
@@ -81,7 +81,9 @@ export default function FinishAccountCard({ user, updatePassword, updateProfile,
           {error}
         </div>
       )}
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      {/* Skip sits beside Save, plain button first, like every other dialog. */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
+        {skip}
         <button type="submit" disabled={busy} style={{
           background: accent || C.gold, color: 'var(--accent-text)', border: 0, borderRadius: 6,
           padding: '6px 14px', height: 30, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
