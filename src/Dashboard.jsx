@@ -8,6 +8,7 @@
 // pdfjs worker is configured once at App.jsx module load; pdfjsLib is a shared
 // singleton in the Vite module graph, so no re-init is needed here.
 
+import { rememberJobProject } from './suite/jobProjects.js';
 import { loadPdfjs } from './utils/pdfWorkerConfig';
 import { resolveIncomingUpload, shouldOfferAlias, nextAvailableName } from './utils/incomingFileResolver';
 import DuplicateUploadModal from './components/DuplicateUploadModal';
@@ -2142,6 +2143,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         : null,
     });
     refetchDocuments?.();
+    rememberJobProject(project.id);
     return { ...result, source: walk.source || null };
   };
   // KAL-758 (Nightly 'suite'): send a Project that came from a Plot job back

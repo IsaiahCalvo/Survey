@@ -158,3 +158,18 @@ test('where a marker arrived survives live editing, the row copy and a reload', 
   const tree = readFileSync(new URL('../src/home/ProjectsFolderTree.jsx', import.meta.url), 'utf8');
   assert.match(tree, /data-project-send-plot/);
 });
+
+test('KAL-779: the header offers Send back to Plot only on a Project a job came into', async () => {
+  const { rememberJobProject, isJobProject } = await import('../src/suite/jobProjects.js');
+  const data = new Map();
+  const storage = { getItem: (k) => data.get(k) ?? null, setItem: (k, v) => data.set(k, v) };
+  assert.equal(isJobProject('p1', storage), false);
+  rememberJobProject('p1', storage);
+  rememberJobProject('p2', storage);
+  rememberJobProject('p1', storage);
+  assert.equal(isJobProject('p1', storage), true);
+  assert.equal(isJobProject('p3', storage), false);
+  assert.deepEqual(JSON.parse(data.get('survey.suite.jobProjects')), ['p1', 'p2']);
+  const tree = readFileSync(new URL('../src/home/ProjectsFolderTree.jsx', import.meta.url), 'utf8');
+  assert.match(tree, /onSendBackToPlot && isJobProject\(open\?\.id\)/);
+});

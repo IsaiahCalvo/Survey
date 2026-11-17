@@ -21,6 +21,7 @@
    clip them or force a scrollbar. Because the portal renders OUTSIDE the
    `.survey-hub` root, those popups use literal hex colors, not CSS vars.
 */
+import { isJobProject } from '../suite/jobProjects.js';
 import { canManageProject, canManageProjectFile, projectSelectionCan } from './projectFilePermissions.js';
 import { useStorage } from '../hooks/useDatabase';
 import { useOfflineDocumentActions } from './offlineDocumentActions.js';
@@ -1417,8 +1418,10 @@ export default function ProjectsFolderTree({
                   {onAddFromJobFile && projectRoleFor(open) !== 'viewer' ? (
                     <button className="btn" data-project-add-job onClick={() => onAddFromJobFile(open)}><Icon name="upload" size={12} />From a job file</button>
                   ) : null}
-                  {/* KAL-758 (Nightly 'suite'): field changes back to Plot. */}
-                  {onSendBackToPlot ? (
+                  {/* KAL-758 (Nightly 'suite'): field changes back to Plot. In
+                      the header only on a Project a job came into (KAL-779);
+                      the Project's menu always has it. */}
+                  {onSendBackToPlot && isJobProject(open?.id) ? (
                     <button className="btn" data-project-send-plot onClick={() => onSendBackToPlot(open)}><Icon name="download" size={12} />Send back to Plot</button>
                   ) : null}
                   {/* Manage Team — opens the Manage Team modal (NOT the share
