@@ -803,7 +803,7 @@ async function testTemplates(page, touch, device) {
   const match = page.getByText('MEP As-Built Markup', { exact: true }).filter({ visible: true });
   assert.ok(await match.count() >= 1, `${device}: template search exposes matching template`);
   await search.fill('nothing-can-match-this-template');
-  await waitForVisibleCopy(page, device === 'mobile' ? 'No templates match your search' : 'No templates match your search.');
+  await waitForVisibleCopy(page, 'No templates match your search.');
   await search.fill('');
 
   const bulkScope = device === 'mobile'
