@@ -4,8 +4,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { FEATURE_FLAGS } from '../src/featureFlags.js';
-import { buildSpreadRows, gridColumns, normalizeSpreadMode, placeSpreadPages, rowMembers, steppedSpreadPage } from '../src/utils/pageSpreads.js';
-import { buildVisiblePageStack } from '../src/utils/visiblePageLayout.js';
+import { autoGridColumns, buildSpreadRows, gridColumns, isGridMode, normalizeSpreadMode, placeSpreadPages, rowMembers, steppedSpreadPage } from '../src/utils/pageSpreads.js';
+import { buildVisiblePageStack, pagedRowIndex, pagedRows, pagedRowSpread } from '../src/utils/visiblePageLayout.js';
 
 const page = (w = 600, h = 800) => ({ w, h });
 
@@ -64,7 +64,8 @@ test('Next / Previous move a whole row in a spread view', () => {
 test('the viewer and the Page fit card use the setting; the phone keeps one column', () => {
   const viewer = readFileSync(new URL('../src/components/PdfjsViewerContainer.jsx', import.meta.url), 'utf8');
   assert.match(viewer, /const spreadMode = phoneLayout \? 'single' : pageSpreadSetting;/);
-  assert.match(viewer, /padTop: metrics\.padTop, gap: metrics\.gap, spread: spreadMode,/);
+  assert.match(viewer, /padTop: metrics\.padTop, gap: metrics\.gap, spread: rowSpread,/);
+  assert.match(viewer, /let rowSpread = spreadMode;/);
   const shell = readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
   assert.match(shell, /const \[pageSpreadsOn\] = useState\(\(\) => isFeatureOn\('page-spreads'\)\);/);
   assert.match(shell, /\{pageSpreadsOn && !isNarrowShell && \(/);
@@ -88,15 +89,15 @@ test('Grid rows hold N pages; hidden pages are skipped', () => {
   assert.deepEqual(buildSpreadRows(withHidden, 'grid-2'), [[0, 2], [3, 4]]);
 });
 
-test('Grid placement: pages left to right with the gap; a short last row keeps the full width', () => {
+test('Grid placement: pages left to right with the gap; a short last row keeps the full width, centred', () => {
   const dims = [page(600, 800), page(500, 900), page(600, 800), page(600, 800)];
   const grid = placeSpreadPages(dims, 'grid-3', 10);
   assert.deepEqual(grid.offsetX.slice(0, 3), [0, 610, 1120]);
   assert.deepEqual(grid.stack[0], { w: 1720, h: 900 });
   assert.equal(grid.leader[2], 0);
   assert.equal(grid.stack[1].hidden, true);
-  // Page 4 alone: two empty slots as wide as it, so it sits under column 1.
-  assert.equal(grid.offsetX[3], 0);
+  // Page 4 alone: two empty slots as wide as it, and it sits in the middle (KAL-711, Drawboard).
+  assert.equal(grid.offsetX[3], 610);
   assert.deepEqual(grid.stack[3], { w: 1820, h: 800 });
   assert.deepEqual(rowMembers(grid, 1), [0, 1, 2]);
   const stack = buildVisiblePageStack({ pageSizes: dims, scale: 1, gap: 10, spread: 'grid-3' });
@@ -116,15 +117,75 @@ test('the Page fit card offers Grid and a Columns choice of 2 to 6', () => {
   const shell = readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
   assert.match(shell, /\{ id: 'grid', label: 'Grid' \}/);
   assert.match(shell, /data-grid-columns=\{n\}/);
+  assert.match(shell, /\['auto', \.\.\.GRID_COLUMN_CHOICES\.map\(String\)\]/);
   const viewer = readFileSync(new URL('../src/components/PdfjsViewerContainer.jsx', import.meta.url), 'utf8');
+  assert.match(viewer, /gridColumns\(spreadModeRef\.current, pdf\.numPages\)/);
   assert.match(viewer, /gridN \* firstSize\.w \+ \(gridN - 1\) \* metrics\.gap/);
 });
 
 test('Grid: the zoom floor counts the row, and the rail Next / Previous step a whole row', () => {
   const viewer = readFileSync(new URL('../src/components/PdfjsViewerContainer.jsx', import.meta.url), 'utf8');
   assert.doesNotMatch(viewer, /getMinimumScaleForLayout\(\n\s*(dims|dimsPtRef\.current),/);
-  assert.match(viewer, /getSteppedPage: \(step\) => \(spreadPlaceRef\.current/);
+  assert.match(viewer, /getSteppedPage: \(step\) => pagedStepRef\.current\(step\) \?\? \(spreadPlaceRef\.current/);
   const pdfViewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
   assert.match(pdfViewer, /getSteppedPage\?\.\(1\) \?\? pageNum \+ 1/);
   assert.match(pdfViewer, /getSteppedPage\?\.\(-1\) \?\? pageNum - 1/);
+});
+
+// KAL-711: Drawboard's Auto columns come from the page count (10 pages: 4, 30 pages: 6).
+test('Grid Auto: columns are the square root of the page count, rounded up', () => {
+  assert.equal(normalizeSpreadMode('grid-auto'), 'grid-auto');
+  assert.equal(isGridMode('grid-auto'), true);
+  assert.equal(isGridMode('double'), false);
+  assert.equal(autoGridColumns(10), 4);
+  assert.equal(autoGridColumns(30), 6);
+  assert.equal(autoGridColumns(1), 1);
+  assert.equal(autoGridColumns(0), 1);
+  assert.equal(gridColumns('grid-auto', 9), 3);
+  const dims = Array.from({ length: 10 }, () => page());
+  assert.deepEqual(buildSpreadRows(dims, 'grid-auto').map((row) => row.length), [4, 4, 2]);
+  const place = placeSpreadPages(dims, 'grid-auto', 10);
+  // Pages 9 and 10 sit in the middle of the last row, as in Drawboard.
+  assert.deepEqual([place.offsetX[8], place.offsetX[9]], [610, 1220]);
+  assert.equal(place.stack[8].w, place.stack[0].w);
+  // Hidden pages do not count.
+  const someHidden = dims.map((dim, index) => (index < 6 ? { w: 0, h: 0, hidden: true } : dim));
+  assert.deepEqual(buildSpreadRows(someHidden, 'grid-auto'), [[6, 7], [8, 9]]);
+  // A lone page in Auto is one column, the page itself.
+  const one = placeSpreadPages([page()], 'grid-auto', 10);
+  assert.deepEqual(one.stack[0], { w: 600, h: 800 });
+});
+
+// KAL-712: Drawboard's Continuous mode off shows one page or pair at a time.
+test('Continuous off: the rows it turns through, the row a page sits in, and how a row lays out', () => {
+  const pageSizes = Array.from({ length: 5 }, () => page());
+  assert.deepEqual(pagedRows({ pageSizes }), [[1], [2], [3], [4], [5]]);
+  assert.deepEqual(pagedRows({ pageSizes, spread: 'double' }), [[1, 2], [3, 4], [5]]);
+  assert.deepEqual(pagedRows({ pageSizes, spread: 'cover' }), [[1], [2, 3], [4, 5]]);
+  // A Space hides pages 2 and 3.
+  const rows = pagedRows({ pageSizes, visiblePageNumbers: [1, 4, 5] });
+  assert.deepEqual(rows, [[1], [4], [5]]);
+  assert.equal(pagedRowIndex(rows, 4), 1);
+  assert.equal(pagedRowIndex(rows, 2), 1, 'a hidden page shows the next row');
+  assert.equal(pagedRowIndex(rows, 9), 2);
+  assert.equal(pagedRowIndex([], 1), -1);
+  assert.equal(pagedRowSpread([2, 3], 'cover'), 'double');
+  assert.equal(pagedRowSpread([1], 'cover'), 'cover');
+  assert.equal(pagedRowSpread([3], 'single'), 'single');
+  // Cover's later pair laid out alone stays a pair.
+  const pair = buildVisiblePageStack({ pageSizes, visiblePageNumbers: [2, 3], gap: 10, spread: pagedRowSpread([2, 3], 'cover') });
+  assert.deepEqual(pair.place.rows, [[1, 2]]);
+});
+
+test('Continuous off: the setting, the card row, and the viewer turning rows', async () => {
+  const setting = readFileSync(new URL('../src/utils/pageSpreadSetting.js', import.meta.url), 'utf8');
+  assert.match(setting, /const CONTINUOUS_KEY = 'survey\.pageContinuous\.v1';/);
+  assert.match(setting, /if \(!flagOn\) return true;/);
+  const shell = readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
+  assert.match(shell, /role="menuitemcheckbox"[\s\S]{0,120}aria-checked=\{gridOn \|\| pageContinuous\}/);
+  assert.match(shell, /aria-disabled=\{gridOn \|\| undefined\}/);
+  const viewer = readFileSync(new URL('../src/components/PdfjsViewerContainer.jsx', import.meta.url), 'utf8');
+  assert.match(viewer, /const pagedView = !phoneLayout && !pageContinuous && !isGridMode\(spreadMode\);/);
+  assert.match(viewer, /el\.addEventListener\('wheel', onWheel, \{ capture: true, passive: false \}\);/);
+  assert.match(viewer, /getSteppedPage: \(step\) => pagedStepRef\.current\(step\) \?\?/);
 });

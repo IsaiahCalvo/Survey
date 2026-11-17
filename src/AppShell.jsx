@@ -31,8 +31,8 @@ import { ThinLinesGlyph, ThinLinesMenu } from './components/ThinLinesMenu.jsx';
 import { applyToolBarCompact, applyToolBarHidden, useToolBarCompact, useToolBarHidden } from './utils/toolBarVisibility';
 import './styles/toolBarVisibility.css';
 import RailFlyout from './components/RailFlyout.jsx';
-import { setPageSpreadMode, usePageSpreadMode } from './utils/pageSpreadSetting.js';
-import { GRID_COLUMN_CHOICES, gridColumns } from './utils/pageSpreads.js';
+import { setPageContinuous, setPageSpreadMode, usePageContinuous, usePageSpreadMode } from './utils/pageSpreadSetting.js';
+import { GRID_COLUMN_CHOICES, isGridMode } from './utils/pageSpreads.js';
 import { PinFilterMenu } from './components/pins/PinControls.jsx';
 import MenuGlide from './components/MenuGlide.jsx';
 import SnappingToggle, { SnappingGlyph, SnappingMenu, snappingLabel, useSnappingShortcut } from './components/SnappingToggle.jsx';
@@ -2348,6 +2348,7 @@ export default function App({ devPreviewReturnTab = null }) {
   // Nightly 'page-spreads': Single / Double / Cover rows in the Page fit card.
   const [pageSpreadsOn] = useState(() => isFeatureOn('page-spreads'));
   const pageSpread = usePageSpreadMode();
+  const pageContinuous = usePageContinuous();
   const allMarksHidden = useMarksHidden();
   // Full screen (flag 'focus-mode'; utils/focusMode.js). Owner 2026-11-10:
   // "What is the point of full screen" when it took away the tabs, both rails
@@ -5791,19 +5792,21 @@ export default function App({ devPreviewReturnTab = null }) {
                       width, as Drawboard does. The phone keeps one column
                       (the viewer forces Single), so it shows none. */}
                   {pageSpreadsOn && !isNarrowShell && (() => {
-                    const columns = gridColumns(pageSpread);
-                    const choose = (mode) => {
-                      setPageSpreadMode(mode);
+                    const gridOn = isGridMode(pageSpread);
+                    // 'auto' or 2 to 6 while Grid is on (KAL-711: Auto, Drawboard).
+                    const columns = gridOn ? pageSpread.slice(5) : null;
+                    const refit = () => {
                       const fit = api.zoomMode;
                       if (fit && fit !== ZOOM_MODES.MANUAL) {
                         requestAnimationFrame(() => requestAnimationFrame(() => api.handleZoomModeSelect(fit)));
                       }
                     };
+                    const choose = (mode) => { setPageSpreadMode(mode); refit(); };
                     return (
                       <>
                         <div role="separator" className="rail-flyout__divider" />
                         {PAGE_SPREAD_OPTIONS.map((option, index) => {
-                          const isActive = option.id === 'grid' ? columns > 0 : option.id === pageSpread;
+                          const isActive = option.id === 'grid' ? gridOn : option.id === pageSpread;
                           return (
                             <button
                               key={option.id}
@@ -5822,27 +5825,47 @@ export default function App({ devPreviewReturnTab = null }) {
                             </button>
                           );
                         })}
-                        {columns > 0 && (
+                        {gridOn && (
                           <div role="group" aria-labelledby="page-grid-columns" className="rail-flyout__columns">
                             <span id="page-grid-columns" className="rail-flyout__label">Columns</span>
                             <span className="rail-flyout__steps">
-                              {GRID_COLUMN_CHOICES.map((n) => (
+                              {['auto', ...GRID_COLUMN_CHOICES.map(String)].map((n) => (
                                 <button
                                   key={n}
                                   type="button"
                                   role="menuitemradio"
                                   aria-checked={n === columns}
-                                  aria-label={`${n} columns`}
+                                  aria-label={n === 'auto' ? 'Columns from the page count' : `${n} columns`}
                                   data-grid-columns={n}
-                                  className="rail-flyout__step"
+                                  className={n === 'auto' ? 'rail-flyout__step rail-flyout__step--word' : 'rail-flyout__step'}
                                   onClick={() => { if (n !== columns) choose(`grid-${n}`); }}
                                 >
-                                  {n}
+                                  {n === 'auto' ? 'Auto' : n}
                                 </button>
                               ))}
                             </span>
                           </div>
                         )}
+                        {/* KAL-712, Drawboard's Continuous mode: off shows
+                            one page or pair at a time and the wheel turns
+                            them. A Grid always scrolls, so it is greyed out
+                            there, as in Drawboard. */}
+                        <div role="separator" className="rail-flyout__divider" />
+                        <button
+                          type="button"
+                          role="menuitemcheckbox"
+                          aria-checked={gridOn || pageContinuous}
+                          aria-disabled={gridOn || undefined}
+                          data-page-continuous=""
+                          className="rail-flyout__row"
+                          style={{ '--menu-row': PAGE_SPREAD_OPTIONS.length + 3 }}
+                          onClick={() => { if (!gridOn) { setPageContinuous(!pageContinuous); refit(); } }}
+                        >
+                          <span className="rail-flyout__label">Continuous</span>
+                          <span className="rail-flyout__tick" aria-hidden="true">
+                            {(gridOn || pageContinuous) && <Icon name="check" size={RAIL_CONTROL_GLYPH} color="currentColor" />}
+                          </span>
+                        </button>
                       </>
                     );
                   })()}
