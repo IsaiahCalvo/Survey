@@ -228,7 +228,7 @@ test('Horizontal: the setting, the card choice, and the viewer reading across', 
 
 test('Horizontal Double, Cover and Grid (KAL-716): pages stack in columns that run left to right', () => {
   assert.equal(FEATURE_FLAGS['page-direction-all']?.stage, 'beta');
-  const mig = readFileSync(new URL('../supabase/migrations/20261117130000_page_direction_all_flag.sql', import.meta.url), 'utf8');
+  const mig = readFileSync(new URL('../supabase/migrations/20261117160100_page_direction_all_flag.sql', import.meta.url), 'utf8');
   assert.match(mig, /'page-direction-all', 'off'/);
   assert.equal(stripSpreadMode('single'), 'strip');
   assert.equal(stripSpreadMode('double'), 'strip-double');

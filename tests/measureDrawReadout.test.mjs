@@ -34,6 +34,6 @@ test('wiring: Nightly flag, drawn in the page layer for a Length only', () => {
   const layer = readFileSync(new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url), 'utf8');
   assert.match(layer, /measureDrawReadoutOn && measureMode === 'length' && shapeCreation && shapeCreation\.tool === 'line'/);
   assert.match(layer, /data-measure-draw-readout/);
-  const migration = readFileSync(new URL('../supabase/migrations/20261117125000_measure_draw_readout_flag.sql', import.meta.url), 'utf8');
+  const migration = readFileSync(new URL('../supabase/migrations/20261117160000_measure_draw_readout_flag.sql', import.meta.url), 'utf8');
   assert.match(migration, /'measure-draw-readout', 'off'/);
 });
