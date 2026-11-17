@@ -497,3 +497,20 @@ test('a workbook opens with kind xlsx and is replaced only with the eTag the app
   await rejects(call('owner-1', { action: 'driveReplace', driveId: DRIVE, itemId: 'XL1', provider: 'google' }), 'msgraph_only');
   await rejects(call('nobody', { action: 'driveReplace', driveId: DRIVE, itemId: 'XL1' }), 'beta');
 });
+
+test('a plan PDF is replaced with kind pdf, only with the eTag the app read', async () => {
+  const { graph, call } = setup({ roles: ROLES, flags: BETA });
+  graph.add('PDF9', { name: 'Level 2 plan.pdf', bytes: 'pdf-1' });
+  graph.add('XL1', { name: 'Level 2 nodes.xlsx' });
+  const opened = await call('owner-1', { action: 'driveOpen', driveId: DRIVE, itemId: 'PDF9' });
+  const session = await call('owner-1', { action: 'driveReplace', kind: 'pdf', driveId: DRIVE, itemId: 'PDF9', eTag: opened.eTag });
+  assert.match(session.uploadUrl, /^https:\/\/up\.test\/PDF9\//);
+  // Kind pdf takes only a PDF; a workbook stays a workbook.
+  await rejects(call('owner-1', { action: 'driveReplace', kind: 'pdf', driveId: DRIVE, itemId: 'XL1' }), 'not_pdf');
+  // Someone saved the PDF after the app read it: Microsoft refuses, unless the app saves over it.
+  graph.editAtSource('PDF9', 'pdf-by-hand');
+  await rejects(call('owner-1', { action: 'driveReplace', kind: 'pdf', driveId: DRIVE, itemId: 'PDF9', eTag: opened.eTag }), 'conflict');
+  const over = await call('owner-1', { action: 'driveReplace', kind: 'pdf', driveId: DRIVE, itemId: 'PDF9' });
+  assert.match(over.uploadUrl, /^https:\/\/up\.test\/PDF9\//);
+  await rejects(call('owner-1', { action: 'driveReplace', kind: 'pdf', driveId: DRIVE, itemId: 'PDF9', provider: 'google' }), 'msgraph_only');
+});

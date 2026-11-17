@@ -719,21 +719,28 @@ async function create(ctx) {
 }
 
 const isWorkbook = (it) => Boolean(it?.file) && !it?.folder && /\.xlsx$/i.test(String(it?.name || ''));
+const isPdfFile = (it) => Boolean(it?.file) && !it?.folder && /\.pdf$/i.test(String(it?.name || ''));
 
 /**
- * An upload link that replaces a workbook another suite app made (Walkthru's
- * live node list). `eTag` is the version the app read: if someone saved the
- * workbook since, Microsoft refuses (conflict) and the app reads it again.
+ * An upload link that replaces a file another suite app keeps: Walkthru's
+ * live node list (a workbook), or with `kind: 'pdf'` the plan PDF a
+ * Walkthru floor was opened from. `eTag` is the version the app read: if
+ * someone saved the file since, Microsoft refuses (conflict) and the app
+ * reads it again. No `eTag` saves over whatever is there.
  */
 async function replace(ctx) {
   await requireBeta(ctx);
-  if (providerOf(ctx.body.provider) === 'google') throw new DriveError('Excel workbooks work with OneDrive only.', 400, 'msgraph_only');
+  const pdf = ctx.body.kind === 'pdf';
+  if (providerOf(ctx.body.provider) === 'google') {
+    throw new DriveError(pdf ? 'Saving back works with OneDrive only.' : 'Excel workbooks work with OneDrive only.', 400, 'msgraph_only');
+  }
   const { driveId, itemId } = needIds(ctx.body);
   const client = await driveClientFor(ctx, ctx.user.id);
   let session;
   try {
     const it = await client.item(driveId, itemId);
-    if (!isWorkbook(it)) throw new DriveError('That OneDrive file is not an Excel workbook.', 400, 'not_xlsx');
+    if (pdf && !isPdfFile(it)) throw new DriveError('That OneDrive file is not a PDF.', 400, 'not_pdf');
+    if (!pdf && !isWorkbook(it)) throw new DriveError('That OneDrive file is not an Excel workbook.', 400, 'not_xlsx');
     session = await client.uploadSession(driveId, itemId, { ifMatch: ctx.body.eTag || null });
   } catch (err) {
     throw graphProblem(err);
