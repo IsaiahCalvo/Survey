@@ -108,6 +108,9 @@ export default function StampPickerCard({ enabled = false, phone = false, tip = 
   }, [active, armedId]);
 
   useEffect(() => () => setStampPickerOpen(false), []);
+  // The open flag lives outside React, so closing the last document left it
+  // on and the card came back over the top bar with the next document.
+  useEffect(() => { if (!enabled) setStampPickerOpen(false); }, [enabled]);
 
   if (!active || !frame || typeof document === 'undefined') return null;
   const chip = typeof tip === 'function' ? tip : () => ({});

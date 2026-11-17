@@ -24888,6 +24888,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // place the app generates PDF bytes and writes/downloads a PDF copy.
   // options.deliver(bytes): hand the bytes to the caller instead of Save As
   // (Save back to the opened file, services/localFileLink.js).
+  // An exported mark's Author (/T, as Bluebeam shows it): the person's own
+  // marks carry their name. Others' marks get none rather than the exporter's
+  // name (the blanket fallback this replaced), and Export PDF wrote none.
+  const exportAuthorNameFor = useCallback((obj) => {
+    const id = getAnnotationAuthorId(obj)
+      || getAnnotationAuthorId(obj?.data?.legacyCallout)
+      || getAnnotationAuthorId(obj?.originalCallout);
+    return id && user?.id && String(id) === String(user.id)
+      ? (user?.user_metadata?.full_name || user?.email || null)
+      : null;
+  }, [user?.id, user?.email, user?.user_metadata?.full_name]);
+
   const handleExportAnnotatedPDF = useCallback(async (options) => {
     if (!pdfFile) {
       showToast('Open a PDF first.', 'warn');
@@ -24934,7 +24946,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         {
           returnBytes: true,
           actionType: 'pdf-export',
-          authorName: user?.user_metadata?.full_name || null,
+          authorNameFor: exportAuthorNameFor,
           documentId: pdfFile?.id || null,
           pageTransformations,
           callouts: calloutsWithoutHiddenLayers(callouts, hiddenLayerIds),
@@ -24970,7 +24982,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         }
         console.log('[PDFSaveExport] action complete ' + JSON.stringify({
           actionType: 'pdf-export',
-          authorName: user?.user_metadata?.full_name || null,
+          authorNameFor: exportAuthorNameFor,
           documentId: pdfFile?.id || null,
           supabaseAnnotationSaveRan: false,
           pdfBytesGenerated: true,
@@ -25023,7 +25035,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       showToast(`Export failed: ${err?.message || err}`, 'error');
     }
   }, [
-    user?.user_metadata?.full_name,
+    exportAuthorNameFor,
     annotationsByPage,
     callouts,
     deletedPdfAnnotations,
@@ -25169,6 +25181,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
             returnBytes: true,
             actionType: 'pdf-export',
             documentId: pdfFile?.id || null,
+            authorNameFor: exportAuthorNameFor,
             pageTransformations,
             callouts: marks.callouts,
             surveyMarkers: marks.surveyMarkers,
@@ -25211,6 +25224,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     }
   }, [
     user?.user_metadata?.full_name,
+    exportAuthorNameFor,
     annotationsByPage,
     callouts,
     deletedPdfAnnotations,

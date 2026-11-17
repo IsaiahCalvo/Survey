@@ -203,7 +203,9 @@ export function buildMarkupRows(byPage, { layerState = null } = {}) {
         note: markNoteOf(obj),
         text: textOf(obj),
         color: colorOf(obj),
-        authorId: getAnnotationAuthorId(obj) || null,
+        // A callout's projected group keeps its creator inside the callout
+        // record it carries (data.legacyCallout.meta), not on the group.
+        authorId: getAnnotationAuthorId(obj) || getAnnotationAuthorId(obj?.data?.legacyCallout) || null,
         createdAt: createdAtOf(obj),
         calloutId: obj?.data?.type === 'callout' && obj?.data?.id != null ? String(obj.data.id) : null,
         measure: listed === 'measure' ? measureQuantity(obj, pageScale) : null,
