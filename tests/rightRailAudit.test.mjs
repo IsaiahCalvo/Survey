@@ -139,7 +139,7 @@ test('viewer: fits measure the current page, Fit height is the viewer\'s own, an
   assert.match(viewer, /mode === ZOOM_MODES\.FIT_HEIGHT && typeof magnification\.fitToHeight === 'function'/);
   const goTo = container.slice(container.indexOf('const goToPage = useCallback('));
   assert.match(goTo.slice(0, 1600), /- layoutMetricsRef\.current\.gap \* scaleRef\.current\)/);
-  assert.match(container, /const page = pickCurrentPage\(\{/);
+  assert.match(container, /const page = (columns \? pickCurrentPageInColumns\(\{[\s\S]*?\}\) : )?pickCurrentPage\(\{/);
 });
 
 test('rail glyph buttons: no hover plate, the glyph grows and brightens instead', () => {

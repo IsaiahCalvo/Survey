@@ -617,6 +617,11 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Page fit card: Single / Double / Cover page views (pages side by side, like an open book)',
     stage: 'beta',
   }),
+  // Drawboard's Horizontal for every view (KAL-716): pairs and Grid columns run left to right.
+  'page-direction-all': Object.freeze({
+    label: 'Page view: Horizontal for Double, Cover and Grid (pages stack in columns that run left to right)',
+    stage: 'beta',
+  }),
   'phone-sign': Object.freeze({ label: 'Add signature: Phone tab (scan a QR code, sign on the phone, it lands on the Draw pad)', stage: 'beta' }),
   // Drawboard's More menu (KAL-718): one mark's look put on other marks.
   'copy-format': Object.freeze({

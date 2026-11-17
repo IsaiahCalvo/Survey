@@ -18,8 +18,9 @@ let flagOn = null;
 function read() {
   try {
     const kept = normalizeSpreadMode(globalThis.localStorage?.getItem(KEY));
-    // 'strip' is the viewer's Horizontal layout, never a saved view.
-    return kept === 'strip' ? 'single' : kept;
+    // 'strip' (and 'strip-double' ...) is the viewer's Horizontal layout,
+    // never a saved view.
+    return kept === 'strip' ? 'single' : kept.startsWith('strip-') ? kept.slice(6) : kept;
   } catch {
     return 'single';
   }

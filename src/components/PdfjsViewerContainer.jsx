@@ -113,9 +113,9 @@ import {
   subscribeViewerTopOverlays,
 } from '../utils/viewerTopOverlay.js';
 import { buildVisiblePageStack, pagedRowIndex, pagedRows, pagedRowSpread } from '../utils/visiblePageLayout.js';
-import { gridColumns, isGridMode, rowMembers, steppedSpreadPage } from '../utils/pageSpreads.js';
+import { gridColumns, isGridMode, rowMembers, steppedSpreadPage, stripSpreadMode } from '../utils/pageSpreads.js';
 import { usePageContinuous, usePageDirection, usePageSpreadMode } from '../utils/pageSpreadSetting.js';
-import { computeFitScale, pickCurrentPage, resolveFitPageLanding } from '../utils/pageNavigationMath.js';
+import { computeFitScale, pickCurrentPage, pickCurrentPageInColumns, resolveFitPageLanding } from '../utils/pageNavigationMath.js';
 import { createPageRasterQueue } from '../utils/pageRasterQueue.js';
 import {
   classifyRaster, pickRasterSource, planThumbPrefetch, resolveWantedRasterScale, thumbRasterScale,
@@ -1626,10 +1626,14 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const pagedViewRef = useRef(pagedView);
   pagedViewRef.current = pagedView;
   // KAL-713, Drawboard's "Horizontal": Single pages run left to right in one
-  // row (pageSpreads 'strip'). Double, Cover and Grid keep running down, a
-  // view with Continuous off keeps turning one page, the phone keeps a column.
+  // row (pageSpreads 'strip'). A view with Continuous off keeps turning one
+  // page, the phone keeps a column. Nightly 'page-direction-all' (KAL-716):
+  // Double, Cover and Grid turn on their side too, in columns.
   const pageDirection = usePageDirection();
-  const stripView = !phoneLayout && pageContinuous && spreadMode === 'single' && pageDirection === 'horizontal';
+  const [directionAllOn] = useState(() => isFeatureOn('page-direction-all'));
+  const stripView = !phoneLayout && pageDirection === 'horizontal' && (spreadMode === 'single'
+    ? pageContinuous
+    : directionAllOn && (pageContinuous || isGridMode(spreadMode)));
   const stripViewRef = useRef(stripView);
   stripViewRef.current = stripView;
   const [soloPage, setSoloPage] = useState(null);
@@ -2248,7 +2252,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     }
     const { dims, tops, widestPt, height: y, stack, place } = buildVisiblePageStack({
       pageSizes, visiblePageNumbers: shownPages, rotation, scale,
-      padTop: metrics.padTop, gap: metrics.gap, spread: stripView ? 'strip' : rowSpread,
+      padTop: metrics.padTop, gap: metrics.gap, spread: stripView ? stripSpreadMode(rowSpread) : rowSpread,
     });
     // One column for every page (src/utils/pdfPageColumn.js).
     const columnW = resolveDocumentColumnWidth({
@@ -2421,7 +2425,20 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     // Horizontal (KAL-713): the same rule across, between the side panels.
     const side = sideInsetRef.current;
     const across = stripViewRef.current;
-    const page = pickCurrentPage({
+    // Horizontal Double / Cover / Grid (KAL-716): across to the column, then down it.
+    const columns = across ? spreadPlaceRef.current?.columns : null;
+    const page = columns ? pickCurrentPageInColumns({
+      columns,
+      lefts: dims.map((_, i) => getPageLeftAtScaleRef.current(i, scaleRef.current)),
+      widths: dims.map((d) => (d.hidden ? 0 : d.w) * scaleRef.current),
+      tops,
+      heights: dims.map((d) => (d.hidden ? 0 : d.h) * scaleRef.current),
+      viewLeft: el.scrollLeft + side.left,
+      viewRight: el.scrollLeft + el.clientWidth - side.right,
+      viewTop: viewTop + inset,
+      viewBottom: viewTop + el.clientHeight,
+      currentPage: currentPageRef.current,
+    }) : pickCurrentPage({
       pageTops: across ? dims.map((_, i) => getPageLeftAtScaleRef.current(i, scaleRef.current)) : tops,
       pageHeights: dims.map((d) => (across ? (d.hidden ? 0 : d.w) : d.h) * scaleRef.current),
       viewTop: across ? el.scrollLeft + side.left : viewTop + inset,
@@ -3041,12 +3058,14 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     // Zoom-proportional gap (see layout memo): stack with metrics.gap * sc.
     let y = metrics.padTop + (metrics.gap * sc) + padTopFor(sc);
     for (let k = 0; k < lead; k += 1) if (!dims[k].hidden) y += dims[k].h * sc + metrics.gap * sc;
-    return y;
+    // Lower in its column (Horizontal Double / Cover / Grid).
+    return y + (spreadPlaceRef.current?.offsetY?.[i] || 0) * sc;
   };
   const leftAt = (i, sc) => getPageLeftAtScale(i, sc);
   // In a spread view the row is found by y, then its page by x (cX, when
-  // given): the one under it, or the nearer one in the gap between them.
-  const pickInRow = (lead, cX, sc) => {
+  // given): the one under it, or the nearer one in the gap between them. In
+  // a column (Horizontal Double / Cover / Grid) the page is then found by y.
+  const pickInRow = (lead, cX, sc, cY = null) => {
     const place = spreadPlaceRef.current;
     if (!place || cX == null) return lead;
     const members = rowMembers(place, lead);
@@ -3054,6 +3073,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     let picked = lead;
     for (let k = 1; k < members.length; k += 1) {
       if (cX >= getPageLeftAtScale(members[k], sc) - half) picked = members[k];
+    }
+    if (cY != null && place.columns) {
+      const column = place.columns.find((list) => list.includes(picked)) || [picked];
+      picked = column[0];
+      for (let k = 1; k < column.length; k += 1) {
+        if (cY >= topAt(column[k], sc) - half) picked = column[k];
+      }
     }
     return picked;
   };
@@ -3067,10 +3093,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     for (let i = 0; i < dims.length; i += 1) {
       if (dims[i].hidden) continue;
       const h = dims[i].h * sc;
-      if (cY < y + h + gapPx) return pickInRow(i, cX, sc);
+      if (cY < y + h + gapPx) return pickInRow(i, cX, sc, cY);
       y += h + gapPx;
     }
-    for (let i = dims.length - 1; i >= 0; i -= 1) if (!dims[i].hidden) return pickInRow(i, cX, sc);
+    for (let i = dims.length - 1; i >= 0; i -= 1) if (!dims[i].hidden) return pickInRow(i, cX, sc, cY);
     return 0;
   };
 
