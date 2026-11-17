@@ -32,41 +32,51 @@ ever appears, it gets its own guide.
 
 ## Anatomy of the frame
 
-Top to bottom, one 600px card on a bone background:
+Top to bottom, one 600px white card on a light grey background:
 
-1. **Header band** — dark ink surface (`#12151c`), the hosted logo
-   (`https://surveytool.app/logo192.png`, alt "Survey", 32px) plus the
-   wordmark "Survey" in bone. The text wordmark means the brand survives
-   image-blocking clients.
-2. **Body** — white surface, one sentence-case `<h2>` heading in gold-soft
-   (`#b6904a`) — or destructive red for alert emails — then paragraphs built
-   from the exported style fragments, and at most one CTA button.
-3. **Footer** — faint band: `Survey — surveytool.app`.
+1. **Header** — the hosted logo (`https://surveytool.app/logo192.png`, empty
+   alt, 30px) beside the spaced wordmark "SURVEY" in ink. Account emails
+   (sign-in, confirm, reset) carry the suite's name, "KAL VOE", with no logo.
+   The text wordmark means the brand survives image-blocking clients.
+2. **Coral rule** — a 2px coral line under the header.
+3. **Body** — one sentence-case `<h1>` in ink (or danger red for alert
+   emails), paragraphs built from the exported style fragments, and at most
+   one button.
+4. **Footer** — outside the card: who sent it, and the true reason the
+   recipient got it.
 
 ## Palette
 
-Literal hexes on purpose — email HTML cannot use CSS variables. These mirror
-`docs/design/design.md`:
+The suite's grey and coral (`docs/suite/SUITE-RULES.md`, "One colour set",
+KAL-663). Literal hexes on purpose — email HTML cannot use CSS variables.
+Light is written inline; the dark column applies in clients that honour
+dark mode (Apple Mail, Outlook). Gmail ignores it and inverts the light one.
 
-| Token | Hex | Use |
-|---|---|---|
-| Gold | `#d8a84e` | CTA button fill (the only button color) |
-| Gold-soft | `#b6904a` | Headings, footer link |
-| On-gold ink | `#15110a` | Button label text |
-| Ink | `#1f2430` | Body text |
-| Ink-deep | `#12151c` | Header band |
-| Bone | `#f4f1ea` | Page background, wordmark |
-| Destructive red | `#d95a56` | Headings of alert/removal emails only |
-| Muted / faint | `#666666` / `#999999` | Secondary text / fine print |
+| Name | Light | Dark | Use |
+|---|---|---|---|
+| ground | `#f4f4f6` | `#131315` | Page background |
+| panel | `#ffffff` | `#1c1c1e` | The card |
+| raised | `#f5f5f5` | `#242426` | Code block, file card, quote |
+| line | `#ececec` | `#3f3f43` | Rows inside the card |
+| line-strong | `#d4d4d4` | `#3f3f43` | Card and tile frames |
+| text | `#131313` | `#e8e7e2` | Headings, strong text |
+| text-2 | `#4b4b4b` | `#d2d1cc` | Body |
+| text-3 | `#666666` | `#9a9a97` | Fine print, footer |
+| coral | `#ba4f2c` | `#e07a5e` | Button, rule, file badge |
+| on-coral | `#ffffff` | `#131315` | Button label |
+| danger-text | `#b42318` | `#f87171` | Headings of alert emails only |
+
+No gold, no blue, no green accent.
 
 ## The button rule
 
 One primary button style, app-wide: a **link styled as a button** — a padded
-`<a>` with `background-color: #d8a84e`, `color: #15110a`, bold, 6px radius,
-wrapped in its own table cell that also carries the background (so Outlook
-fills it too). Never a `<button>` element (clients strip or ignore them),
-never per-template button colors, at most one button per email. Labels are
-sentence case ("Manage subscription", "Open invite").
+`<a>` with the coral fill and the on-coral label (re-declared on an inner
+`<span>`), bold, 6px radius, wrapped in its own table cell that also carries
+the background (so Outlook fills it too). In dark mode it takes the bright
+coral with dark words, as the apps do. Never a `<button>` element (clients
+strip or ignore them), never per-template button colors, at most one button
+per email. Labels are sentence case ("Manage subscription", "Open invite").
 
 One-time codes use `emailCode()` — a mono, high-contrast block — not a button.
 

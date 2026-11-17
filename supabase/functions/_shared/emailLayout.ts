@@ -1,12 +1,13 @@
 /**
  * emailLayout.ts — the ONE branded frame for every Survey transactional email.
  *
- * Visual precedent (locked 2026-08-12, owner-approved "style F"): white card on
- * warm bone canvas; left-aligned header of logo + spaced SURVEY wordmark; a 2px
- * gold rule dividing header from content; ink headline; muted body; optional
- * file card / detail rows; gold table-based button with a plain-URL fallback
- * line; centered footer stating the true reason the recipient got the email.
- * Dark mode is a first-class variant using the app's own ink palette.
+ * Visual precedent (locked 2026-08-12, owner-approved "style F"; recoloured to
+ * the suite's grey and coral 2026-11-17, KAL-663): white card on a light grey
+ * canvas; left-aligned header of logo + spaced SURVEY wordmark; a 2px coral
+ * rule dividing header from content; ink headline; muted body; optional file
+ * card / detail rows; coral table-based button with a plain-URL fallback line;
+ * centered footer stating the true reason the recipient got the email.
+ * Dark mode is a first-class variant using the suite's dark set.
  *
  * Email-client constraints (non-negotiable):
  *   - table-based layout, ALL base styles inline (light mode is the base)
@@ -14,7 +15,7 @@
  *     (prefers-color-scheme: dark) + [data-ogsc]/[data-ogsb] (Outlook.com
  *     apps). Apple Mail/Outlook honor it; Gmail ignores it and auto-inverts
  *     the light design instead — the light palette is chosen to survive that
- *     (no huge pure-white flats besides the card, gold keeps contrast against
+ *     (no huge pure-white flats besides the card, coral keeps contrast against
  *     both card colors, button text is re-declared on an inner <span>).
  *   - the button is a bgcolor'd <td> wrapping a padded <a> (Outlook desktop
  *     ignores padding/display on bare anchors)
@@ -32,34 +33,38 @@
  */
 
 // ---------------------------------------------------------------------------
-// Palette — mirrors docs/design/design.md tokens. Literal hexes on purpose:
-// email HTML cannot reference CSS variables. Light values are WCAG-checked
-// against their real backgrounds (muted #5f6875 ≥ 5.0:1 on card/canvas/tile).
+// Palette: the suite's one look, grey and coral (docs/suite/SUITE-RULES.md,
+// "One colour set", KAL-663). Literal hexes on purpose: email HTML cannot
+// reference CSS variables. Light is the inline base; the dark values are the
+// suite's dark set, applied by the <style> block below.
 // ---------------------------------------------------------------------------
-export const EMAIL_GOLD = '#d8a84e';          // --gold: action/accent/divider
-export const EMAIL_GOLD_SOFT = '#b6904a';     // legacy export (links on light)
-export const EMAIL_DANGER = '#c84c49';        // destructive/alert headings (light)
-export const EMAIL_DANGER_DARK = '#d95a56';   // destructive/alert headings (dark)
-export const EMAIL_INK = '#1a1d24';           // headline / strong text on light
-export const EMAIL_INK_DEEP = '#12151c';      // legacy export
-export const EMAIL_ON_GOLD = '#15110a';       // text on gold button
-export const EMAIL_BONE = '#f4f1ea';          // canvas (light)
-export const EMAIL_TEXT = '#3a4252';          // body text on light
-export const EMAIL_MUTED = '#5f6875';         // secondary/fine print on light (5.6:1 on white)
-export const EMAIL_FAINT = '#5f6875';         // legacy alias — same as muted (old #999 failed WCAG)
-export const EMAIL_BADGE = '#8a6a2f';         // file-type badge text on light (5.0:1)
-// Dark palette (the app's own ink scale)
-export const EMAIL_D_CANVAS = '#0d0f14';
-export const EMAIL_D_CARD = '#181c24';
-export const EMAIL_D_TILE = '#1f2430';
-export const EMAIL_D_BORDER = '#2a3140';
-export const EMAIL_D_INK = '#f4f1ea';
-export const EMAIL_D_TEXT = '#e8e2d4';
-export const EMAIL_D_MUTED = '#8d96a6';
+export const EMAIL_CORAL = '#ba4f2c';         // coral (light): button, rule, badge
+export const EMAIL_ON_CORAL = '#ffffff';      // on-coral (light): words on the button
+export const EMAIL_DANGER = '#b42318';        // danger-text (light): alert headings
+export const EMAIL_DANGER_DARK = '#f87171';   // danger-text (dark)
+export const EMAIL_INK = '#131313';           // text: headline / strong text
+export const EMAIL_BONE = '#f4f4f6';          // ground: canvas round the card
+export const EMAIL_TEXT = '#4b4b4b';          // text-2: body
+export const EMAIL_MUTED = '#666666';         // text-3: fine print (5.7:1 on white, 5.2:1 on ground)
+export const EMAIL_BADGE = EMAIL_CORAL;       // file-type badge words on the white card
+export const EMAIL_TILE = '#f5f5f5';          // raised: code block, file card, quote
+export const EMAIL_LINE = '#ececec';          // line: rows inside the card
+export const EMAIL_FRAME = '#d4d4d4';         // line-strong: card and tile frames
+// Dark set
+export const EMAIL_D_CORAL = '#e07a5e';
+export const EMAIL_D_ON_CORAL = '#131315';
+export const EMAIL_D_CANVAS = '#131315';
+export const EMAIL_D_CARD = '#1c1c1e';
+export const EMAIL_D_TILE = '#242426';
+export const EMAIL_D_BORDER = '#3f3f43';
+export const EMAIL_D_INK = '#e8e7e2';
+export const EMAIL_D_TEXT = '#d2d1cc';
+export const EMAIL_D_MUTED = '#9a9a97';
 // Light structural colors
 const CARD = '#ffffff';
-const TILE = '#faf9f6';
-const BORDER = '#e5e0d4';
+const TILE = EMAIL_TILE;
+const BORDER = EMAIL_FRAME;
+const LINE = EMAIL_LINE;
 
 export const EMAIL_LOGO_URL = 'https://surveytool.app/logo192.png';
 
@@ -79,7 +84,7 @@ export const EMAIL_LIST_STYLE =
   `margin:0 0 14px;padding:0 0 0 20px;font-family:${EMAIL_FONT};font-size:14px;line-height:1.6;color:${EMAIL_TEXT};`;
 
 /**
- * Bulletproof CTA button (gold, left-aligned) + plain-URL fallback line.
+ * Bulletproof CTA button (coral, left-aligned) + plain-URL fallback line.
  * bgcolor on the td AND background on the a so Outlook desktop and webmail
  * both fill it; the inner <span> re-declares the text color so Gmail's
  * dark-mode auto-invert is less likely to flip it illegible.
@@ -94,11 +99,11 @@ export function emailButton(label: string, url: string, withFallback: boolean = 
     : '';
   return (
     `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:26px 0 0;">` +
-    `<tr><td bgcolor="${EMAIL_GOLD}" style="border-radius:6px;background-color:${EMAIL_GOLD};">` +
-    `<a href="${url}" target="_blank" ` +
+    `<tr><td bgcolor="${EMAIL_CORAL}" class="em-btn" style="border-radius:6px;background-color:${EMAIL_CORAL};">` +
+    `<a href="${url}" target="_blank" class="em-btn" ` +
     `style="display:inline-block;padding:13px 32px;font-family:${EMAIL_FONT};font-size:14px;font-weight:600;` +
-    `color:${EMAIL_ON_GOLD};text-decoration:none;border-radius:6px;background-color:${EMAIL_GOLD};">` +
-    `<span style="color:${EMAIL_ON_GOLD};">${label}</span></a></td></tr></table>` +
+    `color:${EMAIL_ON_CORAL};text-decoration:none;border-radius:6px;background-color:${EMAIL_CORAL};">` +
+    `<span style="color:${EMAIL_ON_CORAL};">${label}</span></a></td></tr></table>` +
     fallback
   );
 }
@@ -128,7 +133,7 @@ export function emailFileCard(name: string, meta: string, ext: string = 'PDF'): 
     `class="em-tile" style="margin:24px 0 0;border:1px solid ${BORDER};border-radius:8px;background-color:${TILE};">` +
     `<tr><td style="padding:16px;width:44px;vertical-align:middle;">` +
     `<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>` +
-    `<td class="em-card" width="44" height="52" style="width:44px;height:52px;background-color:${CARD};border:1px solid ${BORDER};border-radius:6px;` +
+    `<td class="em-card em-badge" width="44" height="52" style="width:44px;height:52px;background-color:${CARD};border:1px solid ${BORDER};border-radius:6px;` +
     `text-align:center;vertical-align:middle;font-family:${EMAIL_FONT};font-size:10px;font-weight:700;letter-spacing:0.5px;color:${EMAIL_BADGE};" ` +
     `>${ext}</td></tr></table></td>` +
     `<td style="padding:16px 16px 16px 14px;vertical-align:middle;">` +
@@ -155,8 +160,8 @@ export function emailQuote(escapedName: string, escapedMessage: string): string 
 /** Style-F detail rows (receipts etc.): label left, bold value right. */
 export function emailDetailRows(rows: Array<[string, string]>): string {
   const trs = rows.map(([k, v]) =>
-    `<tr><td class="em-mut em-bdr" style="padding:10px 0;font-family:${EMAIL_FONT};font-size:13px;color:${EMAIL_MUTED};border-bottom:1px solid ${BORDER};">${k}</td>` +
-    `<td class="em-ink em-bdr" style="padding:10px 0;font-family:${EMAIL_FONT};font-size:13px;font-weight:600;color:${EMAIL_INK};text-align:right;border-bottom:1px solid ${BORDER};">${v}</td></tr>`
+    `<tr><td class="em-mut em-bdr" style="padding:10px 0;font-family:${EMAIL_FONT};font-size:13px;color:${EMAIL_MUTED};border-bottom:1px solid ${LINE};">${k}</td>` +
+    `<td class="em-ink em-bdr" style="padding:10px 0;font-family:${EMAIL_FONT};font-size:13px;font-weight:600;color:${EMAIL_INK};text-align:right;border-bottom:1px solid ${LINE};">${v}</td></tr>`
   ).join('');
   return (
     `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:24px 0 0;border-collapse:collapse;">` +
@@ -216,8 +221,11 @@ function darkModeStyle(headingDark: string): string {
     // Template-authored fragments carry inline light colors; recolor by tag.
     sel(`.em-main p`) + `,` + sel(`.em-main li`) + `{color:${EMAIL_D_TEXT} !important;}`,
     sel(`.em-main p.em-mut`) + `,` + sel(`.em-main a.em-mut`) + `{color:${EMAIL_D_MUTED} !important;}`,
-    // Never let the client flip the on-gold button text.
-    sel(`.em-main a[href] span`) + `{color:${EMAIL_ON_GOLD} !important;}`,
+    // The button takes the bright coral with dark words, as in the apps.
+    sel(`.em-btn`) + `{background-color:${EMAIL_D_CORAL} !important;}`,
+    sel(`.em-rule`) + `{background-color:${EMAIL_D_CORAL} !important;}`,
+    sel(`.em-badge`) + `{color:${EMAIL_D_CORAL} !important;}`,
+    sel(`.em-main a[href] span`) + `{color:${EMAIL_D_ON_CORAL} !important;}`,
   ].join('');
   return (
     `<style>` +
@@ -266,10 +274,10 @@ export function renderEmailLayout({ heading, bodyHtml, headingColor, preheader, 
     logoCell +
     `<td class="em-ink" style="vertical-align:middle;padding-left:${who.logoUrl ? 11 : 0}px;font-family:${EMAIL_FONT};font-size:13px;font-weight:600;letter-spacing:2.5px;color:${EMAIL_INK};">${who.name.toUpperCase()}</td>` +
     `</tr></table></td></tr>` +
-    // The gold rule dividing header from content.
+    // The coral rule dividing header from content.
     `<tr><td style="padding:22px 40px 0;">` +
     `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"><tr>` +
-    `<td height="2" bgcolor="${EMAIL_GOLD}" style="height:2px;line-height:2px;font-size:2px;mso-line-height-rule:exactly;background-color:${EMAIL_GOLD};">&nbsp;</td>` +
+    `<td height="2" bgcolor="${EMAIL_CORAL}" class="em-rule" style="height:2px;line-height:2px;font-size:2px;mso-line-height-rule:exactly;background-color:${EMAIL_CORAL};">&nbsp;</td>` +
     `</tr></table></td></tr>` +
     // Body.
     `<tr><td style="padding:28px 40px 38px;">` +

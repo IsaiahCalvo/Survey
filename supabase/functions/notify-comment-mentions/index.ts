@@ -101,7 +101,7 @@ Deno.serve(async (req) => {
     preheader: escapeHtml(commentExcerpt(comment.body, 120)),
     bodyHtml:
       `<p style="${P}">${escapeHtml(authorName)} mentioned you in a comment on <strong>${escapeHtml(docName)}</strong>, page ${Number(comment.page_number) || 1}:</p>` +
-      `<p style="${P}border-left:3px solid #d0d5dd;padding-left:12px;">${escapeHtml(commentExcerpt(comment.body))}</p>` +
+      `<p style="${P}border-left:3px solid #d4d4d4;padding-left:12px;">${escapeHtml(commentExcerpt(comment.body))}</p>` +
       emailButton('Open the comment', escapeHtml(link)) +
       `<p style="${FINE}">You get this because someone on the document mentioned you.</p>`,
     footerReason: 'You were mentioned in a comment in Survey.',
@@ -167,7 +167,7 @@ async function sendItemAssignEmail({ raw, user, caller, admin }: { raw: unknown;
     preheader: escapeHtml(title),
     bodyHtml:
       `<p style="${P}">${escapeHtml(who)} assigned you a ${word} in <strong>${escapeHtml(projectName)}</strong>:</p>` +
-      `<p style="${P}border-left:3px solid #d0d5dd;padding-left:12px;"><strong>${escapeHtml(code)}</strong> ${escapeHtml(title)}</p>` +
+      `<p style="${P}border-left:3px solid #d4d4d4;padding-left:12px;"><strong>${escapeHtml(code)}</strong> ${escapeHtml(title)}</p>` +
       due +
       emailButton(`Open the ${word}`, escapeHtml(itemLink(origin, item))) +
       `<p style="${FINE}">You get this because someone on the project assigned this ${word} to you.</p>`,
