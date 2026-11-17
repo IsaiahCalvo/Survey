@@ -27,3 +27,8 @@ test('a chosen item shows a press in the light one look (pressed-2)', () => {
   assert.match(read('src/home/hub.css'), /\.projects-list-row\.is-selected:active:not\([^{]*\{\s*background: var\(--pressed-2, var\(--pressed\)\) !important;/);
   assert.match(read('src/home/TemplatesEditor.css'), /:is\(\.tpl-list-row, \.tpl-cat-row, \.tpl-entity-row\)\.is-selected:active/);
 });
+
+test('every mark menu row carries an icon (Edit subject, Dock / Float bar)', () => {
+  const src = read('src/hooks/useAnnotationContextMenu.jsx');
+  assert.match(src, /editSubject: 'edit', dockSelectionBar: 'alignBottom', floatSelectionBar: 'alignBottom' \};/);
+});
