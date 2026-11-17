@@ -1631,7 +1631,7 @@ export default function ProjectsFolderTree({
             <EmptyState icon="folder" line="No projects yet" description="Create a project to group related documents." actionLabel="New project" onAction={handleNewProject} />
           ) : (
             <>
-              <div className="meta" style={{ fontSize: 12, padding: '14px 4px' }}>{showClosed || !closedTotal || search.trim() ? 'No projects match your search.' : 'Every project is closed.'}</div>
+              <div className="meta" style={{ fontSize: 12, padding: '24px 16px' }}>{showClosed || !closedTotal || search.trim() ? 'No projects match your search.' : 'Every project is closed.'}</div>
               {closedToggle}
             </>
           )
