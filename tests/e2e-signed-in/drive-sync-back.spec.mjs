@@ -170,7 +170,7 @@ test('open from OneDrive, draw, Sync now writes the marked-up PDF back; a OneDri
     // Home: OneDrive › Plans › the PDF.
     await page.getByRole('button', { name: 'Open from OneDrive' }).filter({ visible: true }).first().click();
     const picker = page.locator('[data-drive-picker="true"]');
-    await picker.getByRole('listitem').filter({ hasText: 'Plans' }).click();
+    await picker.locator('.sheet-sync-folder-list:not(.drive-picker-recent)').getByRole('listitem').filter({ hasText: 'Plans' }).click();
     await picker.locator(`[data-drive-file="${name}"]`).click();
     await expect(page.getByText(`${name} opened from OneDrive`, { exact: false })).toBeVisible({ timeout: 60_000 });
     await expect(page.locator(PAGE).first()).toBeVisible({ timeout: 60_000 });
@@ -273,7 +273,7 @@ for (const layout of [
         await page.locator('[data-home-new="phone"]').filter({ visible: true }).first().tap();
         await page.getByRole('menuitem', { name: 'Open from OneDrive' }).tap();
         const picker = page.locator('[data-drive-picker="true"]');
-        await picker.getByRole('listitem').filter({ hasText: 'Plans' }).tap();
+        await picker.locator('.sheet-sync-folder-list:not(.drive-picker-recent)').getByRole('listitem').filter({ hasText: 'Plans' }).tap();
         await picker.locator(`[data-drive-file="${name}"]`).tap();
         await expect(page.locator(`${PAGE} canvas`).first()).toBeVisible({ timeout: 60_000 });
         await page.waitForTimeout(1_500);

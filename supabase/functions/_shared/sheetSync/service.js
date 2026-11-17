@@ -275,6 +275,7 @@ export async function handleSheetSync(req, deps) {
       // A SharePoint/Teams folder link pasted into "Save in".
       folderLink: s.string({ max: 2000, optional: true }),
       search: s.string({ max: 200, optional: true }),
+      recent: s.boolean({ optional: true }),
       markerId: s.string({ max: 200, optional: true }),
       choice: s.enum(['app', 'sheet', 'putBack', 'putBackAll', 'putBackTab', 'blanksApp', 'blanksSheet'], { optional: true }),
       scopeId: s.string({ max: 300, optional: true }),

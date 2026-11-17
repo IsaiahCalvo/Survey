@@ -150,8 +150,17 @@ for (const layout of LAYOUTS) {
         }
         const picker = page.locator('[data-drive-picker="true"]');
         await expect(visible(page.getByText(`Add to ${projectName} from OneDrive`))).toBeVisible();
-        await press(layout, picker.getByRole('listitem').filter({ hasText: 'Plans' }));
-        await press(layout, picker.locator(`[data-drive-file="${fileName}"]`));
+        // Recent (KAL-702): the newest PDFs, with where each lives. The phone
+        // picks from it; the desktop walks the folders.
+        const recent = picker.getByRole('list', { name: 'Recent' });
+        await expect(recent.locator(`[data-drive-file="${fileName}"]`)).toContainText('Plans', { timeout: 30_000 });
+        if (layout.phone) {
+          await press(layout, recent.locator(`[data-drive-file="${fileName}"]`));
+        } else {
+          await press(layout, picker.locator('.sheet-sync-folder-list:not(.drive-picker-recent)').getByRole('listitem').filter({ hasText: 'Plans' }));
+          await expect(recent).toHaveCount(0);
+          await press(layout, picker.locator(`[data-drive-file="${fileName}"]`));
+        }
         await expect(visible(page.getByText(`${fileName} added to ${projectName} from OneDrive`, { exact: false }))).toBeVisible({ timeout: 60_000 });
 
         const { data: docs } = await admin.from('documents').select('id, project_id').eq('name', fileName);
