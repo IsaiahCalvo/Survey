@@ -32,6 +32,7 @@ import {
   SURVEY_AGENT_DEFAULT_PROVIDER,
   SURVEY_AGENT_LANGUAGES,
   SURVEY_AGENT_LIMITS,
+  SURVEY_AGENT_NOTE_STYLES,
   surveyAgentCappedTokens,
   surveyAgentSystemMessages,
   buildSurveyAgentTools,
@@ -173,6 +174,8 @@ Deno.serve(async (req) => {
     annotations: s.boolean({ optional: true }),
     typed_lines: s.boolean({ optional: true }),
     lang: s.enum([...SURVEY_AGENT_LANGUAGES], { optional: true }),
+    offers: s.boolean({ optional: true }),
+    note_style: s.enum([...SURVEY_AGENT_NOTE_STYLES], { optional: true }),
   }, parsedJson);
   if (!parsed.ok) return json(400, { error: 'bad_request', detail: parsed.error });
   const body: Record<string, unknown> = parsed.value;
@@ -353,8 +356,13 @@ Deno.serve(async (req) => {
         || (flag?.mode === 'testers' && Boolean(email) && (flag.tester_emails || []).includes(email));
     }
     const request = {
-      messages: [...surveyAgentSystemMessages(body.lang), ...(clean.messages || [])],
-      tools: buildSurveyAgentTools(body.answer_values, { annotations, markupOpen: markupOpenInTurn(clean.messages), typedLines: body.typed_lines === true }),
+      messages: [...surveyAgentSystemMessages(body.lang, { noteStyle: body.note_style }), ...(clean.messages || [])],
+      tools: buildSurveyAgentTools(body.answer_values, {
+        annotations,
+        markupOpen: markupOpenInTurn(clean.messages),
+        typedLines: body.typed_lines === true,
+        offers: body.offers === true,
+      }),
       tool_choice: 'auto',
       temperature: 0.2,
       max_tokens: SURVEY_AGENT_LIMITS.maxOutputTokens,
