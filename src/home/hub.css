@@ -1430,6 +1430,14 @@
     z-index: -1;
   }
 
+  /* What you type in the field is 16px on a phone (iOS zooms the page on a
+     smaller field), which made its hint the biggest words in a row of 11px
+     labels and cut "Search documents..." short. The hint alone takes the
+     desktop field's 12px; typed text stays 16px. */
+  .survey-hub .hub-search input::placeholder {
+    font-size: 12px;
+  }
+
   .survey-hub .projects-mobile-search-actions .projects-mobile-create-button,
   .survey-hub .templates-mobile-search-actions .templates-mobile-create-button {
     height: var(--mobile-header-row-h);
@@ -1505,6 +1513,10 @@
   .survey-hub .header:has(.mobile-header-select-actions) .mobile-header-select-button {
     order: 2;
     margin-left: auto;
+    /* Out of select mode the button sits in a 44px row with -8px margins, so it
+       takes 28px of row 1. Flattened, the bare 36px button made row 1 4px taller
+       and pushed it and the avatar down (KAL-653). Keep it at 28px. */
+    margin-block: -4px;
   }
 
   .survey-hub .header .mobile-header-select-actions {
@@ -4100,6 +4112,16 @@
     flex: 0 1 auto;
     height: var(--mobile-header-row-h);
     max-width: 50%;
+    position: relative;
+  }
+
+  /* The same 44px touch band as the Documents sort button beside its search
+     box (5px up, 13px down from inside the 1px border); it was the 28px box
+     alone. Nothing is drawn. */
+  .survey-hub .archive-mobile-search-row > .archive-filter-button::after {
+    content: '';
+    position: absolute;
+    inset: -5px 0 -13px;
   }
 
   .survey-hub .archive-desktop-search {

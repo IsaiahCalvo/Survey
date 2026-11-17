@@ -1704,12 +1704,6 @@ const PagesPanel = ({
             >
               {/* Owner 2026-10-07: no clipboard badge on copied/cut pages ("I
                   don't think we need that"); Paste in the page menu is enough. */}
-              {selectMode && (
-                <span className={`mobile-page-select-indicator${isPicked ? ' is-selected' : ''}`} aria-hidden="true">
-                  {isPicked ? <Icon name="check" size={13} color="currentColor" /> : null}
-                </span>
-              )}
-
               {/* Thumbnail */}
               {/* Owner 2026-10-07 ("the pages are being shown too big"):
                   the thumbnail fits one square box, keeping the page's shape
@@ -1745,6 +1739,15 @@ const PagesPanel = ({
                 }}>
                   {shownNumber}
                 </div>
+                {/* Select mode's tick circle: on the page's top-left corner,
+                    across from the number (KAL-653). On the card's corner it
+                    slid half under a tall page and floated clear of a wide
+                    one. */}
+                {selectMode && (
+                  <span className={`mobile-page-select-indicator${isPicked ? ' is-selected' : ''}`} aria-hidden="true">
+                    {isPicked ? <Icon name="check" size={13} color="currentColor" /> : null}
+                  </span>
+                )}
                 {thumbnailSrc ? (
                   <img
                     src={thumbnailSrc}
