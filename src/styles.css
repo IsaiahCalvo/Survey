@@ -4005,6 +4005,12 @@ svg[data-svg-annotation-layer][data-selection-hover="move"] {
 .pages-panel-card:hover:not([data-drag-placeholder]) {
   background: var(--hover);
 }
+/* Light look: a white page on a white panel had no edge at all, so the
+   pages ran together (visitor walk, Nov 17). A hairline shows the paper. */
+html[data-look="suite"][data-theme="light"] :is(.pages-panel-preview, .mobile-page-preview) {
+  /* The same hairline a floating thing takes in light mode (tokens.css). */
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08);
+}
 .pages-panel-card.is-selected [data-page-preview],
 .mobile-page-card.is-active .mobile-page-preview,
 .mobile-page-card.is-selected .mobile-page-preview {

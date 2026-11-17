@@ -64,3 +64,8 @@ test('a signed-in tester at the project limit hears it before the dialog, and er
   assert.doesNotMatch(limits, /tier\.`/);
   assert.match(limits, /project\$\{limits\.projects > 1 \? 's' : ''\} on the \$\{planName\(userTier\)\} plan\./);
 });
+
+test('in the light look a page thumbnail keeps a hairline edge on the white panel', () => {
+  const css = read('../src/styles.css');
+  assert.match(css, /html\[data-look="suite"\]\[data-theme="light"\] :is\(\.pages-panel-preview, \.mobile-page-preview\) \{[\s\S]{0,140}box-shadow: 0 0 0 1px rgba\(0, 0, 0, 0\.12\)/);
+});
