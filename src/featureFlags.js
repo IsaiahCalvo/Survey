@@ -633,6 +633,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'A note on any mark: Edit note in the mark menu and the properties panel; shown in the Markups list and exported as the PDF comment',
     stage: 'beta',
   }),
+  'measure-draw-readout': Object.freeze({
+    label: 'Measure: the length and angle beside the pointer while a Length is drawn',
+    stage: 'beta',
+  }),
   'markup-group-by': Object.freeze({
     label: 'Group the Markups list by kind, page or person',
     stage: 'beta',
