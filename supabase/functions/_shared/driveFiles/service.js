@@ -39,6 +39,8 @@ export const DRIVE_ACTIONS = Object.freeze([
 export const GOOGLE_DRIVE_ID = 'google';
 export const DEFAULT_SYNC_MINUTES = 5;
 const REQUEST_TIMEOUT_MS = 20_000;
+// How many PDFs the picker's Recent list shows.
+const RECENT_SIZE = 8;
 const ID = /^[A-Za-z0-9!_.-]{1,200}$/;
 // The app's own origin, sent so Google's upload link answers its browser.
 const ORIGIN = /^(https?|capacitor):\/\/[A-Za-z0-9.:-]{1,190}$/;
@@ -134,7 +136,9 @@ export function createDriveClient({ getAccessToken, fetch: fetchImpl = globalThi
     // Files.ReadWrite.All alone (Sites.Read.All is not asked for), and for a
     // guest with no OneDrive. Personal Microsoft accounts have no search
     // service: their own OneDrive's search answers instead.
-    async search(text) {
+    // `recent`: the newest PDFs first (Microsoft retired drive/recent in
+    // November 2026, so Search sorted by last change stands in for it).
+    async search(text, { recent = false } = {}) {
       const words = String(text || '').replace(/[():"*\\]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
       const files = [];
       const add = (it) => {
@@ -149,11 +153,25 @@ export function createDriveClient({ getAccessToken, fetch: fetchImpl = globalThi
           where: whereFrom(it.webUrl),
         });
       };
+      const ask = (sorted) => call('POST', 'search/query', {
+        body: { requests: [{
+          entityTypes: ['driveItem'],
+          query: { queryString: `${words ? `${words} ` : ''}filetype:pdf` },
+          from: 0,
+          size: recent ? RECENT_SIZE : 50,
+          fields: ['id', 'name', 'size', 'webUrl', 'parentReference', 'lastModifiedDateTime'],
+          ...(sorted ? { sortProperties: [{ name: 'lastModifiedDateTime', isDescending: true }] } : {}),
+        }] },
+      });
       try {
-        const res = await call('POST', 'search/query', {
-          body: { requests: [{ entityTypes: ['driveItem'], query: { queryString: `${words ? `${words} ` : ''}filetype:pdf` }, from: 0, size: 50, fields: ['id', 'name', 'size', 'webUrl', 'parentReference', 'lastModifiedDateTime'] }] },
-        });
+        let res;
+        try { res = await ask(recent); } catch (err) {
+          // A tenant whose search refuses a sort still gets the list.
+          if (!recent || Number(err?.status) !== 400) throw err;
+          res = await ask(false);
+        }
         for (const box of res?.value?.[0]?.hitsContainers || []) for (const hit of box?.hits || []) add(hit?.resource);
+        if (recent) files.sort((a, b) => String(b.modifiedAt || '').localeCompare(String(a.modifiedAt || '')));
       } catch (err) {
         if (Number(err?.status) === 401 || ![400, 403, 404, 501].includes(Number(err?.status))) throw err;
         if (!words) throw err;
@@ -424,7 +442,8 @@ async function browse(ctx) {
   const client = await driveClientFor(ctx, ctx.user.id);
   let folder = String(ctx.body.folder || '');
   if (typeof ctx.body.search === 'string') {
-    try { return { search: ctx.body.search.trim(), ...(await client.search(ctx.body.search)) }; } catch (err) { throw graphProblem(err, { where: 'browse' }); }
+    const recent = ctx.body.recent === true && !ctx.body.search.trim();
+    try { return { search: ctx.body.search.trim(), ...(recent ? { recent: true } : {}), ...(await client.search(ctx.body.search, { recent })) }; } catch (err) { throw graphProblem(err, { where: 'browse' }); }
   }
   try {
     let name;
