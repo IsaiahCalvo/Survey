@@ -1,0 +1,35 @@
+/* Side-by-side Category links in "Add a Walkthru walk" (KAL-596). One row
+   per Walkthru Category with no library link: its name on the left, the
+   Module's Category on the right. Dividers between rows, as in every list. */
+.wt-link {
+  display: flex; flex-direction: column;
+  border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+  background: var(--surface-1);
+}
+.wt-link__row {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center; gap: 12px; padding: 8px 10px;
+  border-top: 1px solid var(--border);
+}
+.wt-link__row:first-child { border-top: 0; }
+.wt-link__row--head {
+  padding-top: 6px; padding-bottom: 6px;
+  font-size: 11px; font-weight: 600; color: var(--text-3);
+  user-select: none;
+}
+.wt-link__from { display: flex; flex-direction: column; min-width: 0; user-select: none; }
+.wt-link__from b {
+  font-weight: 600; color: var(--text-1);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.wt-link__from span { font-size: 12px; color: var(--text-3); }
+.wt-link__note {
+  margin: 0; padding: 8px 10px; border-top: 1px solid var(--border);
+  font-size: 12px; color: var(--text-3);
+}
+.wt-link__linked { color: var(--text-2); }
+.wt-link__row > [role="cell"]:last-child { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.wt-link__add { align-self: flex-start; gap: 6px; }
+@media (max-width: 480px) {
+  .wt-link__row { gap: 8px; }
+}

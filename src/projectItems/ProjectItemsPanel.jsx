@@ -791,7 +791,7 @@ export default function ProjectItemsPanel({
 }
 
 /* Files · Issues · Tasks, above the open project (one row of tabs). */
-export function ProjectItemsTabs({ value, onChange, counts = {}, issues = true, activity = false, photos = false }) {
+export function ProjectItemsTabs({ value, onChange, counts = {}, issues = true, activity = false, photos = false, walkthru = false }) {
   const tabs = [
     { key: 'files', label: 'Files' },
     ...(issues ? [{ key: 'issue', label: 'Issues' }, { key: 'task', label: 'Tasks' }] : []),
@@ -799,6 +799,8 @@ export function ProjectItemsTabs({ value, onChange, counts = {}, issues = true, 
     ...(activity ? [{ key: 'activity', label: 'Activity' }] : []),
     // Nightly 'project-photos': Drawboard's project Photos page.
     ...(photos ? [{ key: 'photos', label: 'Photos' }] : []),
+    // Nightly 'suite' (KAL-595): walks added from Walkthru, when there are any.
+    ...(walkthru ? [{ key: 'walkthru', label: 'Walkthru' }] : []),
   ];
   return (
     <div className="project-items-tabs" role="tablist" aria-label="Project lists" data-project-items-tabs>

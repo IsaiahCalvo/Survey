@@ -29,7 +29,7 @@ import { retryCompensatingCleanup, runCompensatingBatch } from './home/compensat
 import { readPdfPageCount, mapUploadsBounded } from './home/pdfUploadWork.js';
 import { DOCUMENT_VERSIONS_CHANGED_EVENT, supersedeDocument } from './services/documentVersionService.js';
 import { isFeatureOn } from './featureFlags.js';
-import { linkTemplatesForSave } from './library/suiteLibrary.js';
+import { linkTemplatesForSave, suiteLibraryStore } from './library/suiteLibrary.js';
 import { OPEN_FILE_EVENT, takeOpenedFiles } from './mobile/nativeOpenFile.js';
 import { PHOTO_ACCEPT, isPhotoFile, photoToPdfFile, photosAsPdfs } from './home/photoToPdf.js';
 import { deviceFilesOn, keepFileOnDevice, openDeviceFile, saveDeviceFileToAccount } from './home/deviceFileActions.js';
@@ -2004,7 +2004,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
   // is being added to. Read once, like every flag.
   const [walkthruTargetProject, setWalkthruTargetProject] = useState(null);
   const [suiteOn] = useState(() => { try { return isFeatureOn('suite'); } catch { return false; } });
-  const sendWalkthruWalk = async ({ walk, template, moduleId, categoryFor }) => {
+  const sendWalkthruWalk = async ({ walk, template, moduleId, categoryFor, links = [] }) => {
     const project = walkthruTargetProject;
     if (!project?.id || !user?.id) throw new Error('Sign in and pick a Project first.');
     const [{ sendWalkToProject, readPdfPageSizes }, { openAnnotationDoc }, { linkDocumentTemplates }, { loadPdfjs }] = await Promise.all([
@@ -2036,8 +2036,61 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         ? (documentId) => linkDocumentTemplates({ client: supabase, documentId, userId: user.id, templateRowIds: [templateRowId] })
         : null,
     });
+    // KAL-595: the Project keeps the walk, so its Walkthru tab can show it.
+    // The markers are already in; a failed note here only hides the tab.
+    try {
+      const { recordProjectWalk, announceProjectWalks } = await import('./suite/projectWalks.js');
+      if (walk?.walk?.id) {
+        await recordProjectWalk(supabase, project.id, walk.walk.id);
+        announceProjectWalks(project.id);
+      }
+    } catch (error) {
+      console.warn('[suite] could not record the walk on the Project', error);
+    }
+    // KAL-596: the Category links the user kept go to the library, so the
+    // next walk matches them on its own. The markers are already in.
+    let linkOutcome = null;
+    if (links.length) {
+      try {
+        const { saveCategoryLinks } = await import('./suite/categoryLinks.js');
+        const store = suiteLibraryStore(user.id);
+        if (store) {
+          linkOutcome = await saveCategoryLinks({
+            links,
+            templates,
+            templateId: template?.id,
+            moduleId,
+            linkTemplates: async (list) => {
+              await Promise.race([store.ready(), new Promise((resolve) => { setTimeout(resolve, 3000); })]);
+              return store.linkTemplates(list).templates;
+            },
+            saveTemplates: hubSaveTemplates,
+            flushLibrary: () => store.flush(),
+            entryOnServer: (id) => store.getState().serverRows.some((row) => row.id === id),
+            setNodeTypeEntry: (nodeTypeId, entryId) => supabase.schema('walkthru').from('node_types')
+              .update({ library_entry_id: entryId }).eq('id', nodeTypeId).select('id'),
+          });
+        }
+      } catch (error) {
+        console.warn('[suite] could not save the Category links', error);
+      }
+    }
     refetchDocuments?.();
-    return result;
+    return linkOutcome ? { ...result, links: linkOutcome } : result;
+  };
+  // KAL-596 / suite spec: "Add Intercom to this Module" in the hand-off. A new
+  // empty Category with exactly the Walkthru name, saved like any template
+  // edit (which also links it to the library).
+  const addWalkCategoryToModule = async ({ template, moduleId, name }) => {
+    const { withCategoryAdded } = await import('./suite/categoryLinks.js');
+    const next = withCategoryAdded(templates, template?.id, moduleId, name, `cat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+    if (!next) return null;
+    try {
+      await hubSaveTemplates(next.templates);
+    } catch {
+      throw new Error(`Couldn’t add ${name} to the template. Templates can be changed on a Pro plan, and only by their owner or an editor.`);
+    }
+    return next.categoryId;
   };
   const canOpenFromDrive = Boolean(user) && isFeatureOn('drive-sync-back');
   // Google's Picker needs a browser key; without one the entry stays hidden.
@@ -3202,6 +3255,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
           listWalks={listWalkthruWalks}
           readWalk={readWalkthruWalk}
           onSend={sendWalkthruWalk}
+          onAddCategory={addWalkCategoryToModule}
           onClose={() => setWalkthruTargetProject(null)}
         />
       )}
@@ -3252,6 +3306,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         onOpenFromDrive={canOpenFromDrive ? () => { setDriveTargetProject(null); setDrivePickerOpen(true); } : null}
         onAddFromDrive={canOpenFromDrive ? (project) => { setDriveTargetProject(project || null); setDrivePickerOpen(true); } : null}
         onAddFromWalkthru={suiteOn && user ? (project) => setWalkthruTargetProject(project || null) : null}
+        walkthruTabOn={suiteOn && Boolean(user)}
         onOpenFromGoogleDrive={canOpenFromGoogleDrive ? openFromGoogleDrive : null}
         onDropFiles={handleDroppedFiles}
         uploadBusy={activeUploads > 0 || uploadInFlight}
