@@ -468,3 +468,42 @@
   line-height: 1.45;
   color: var(--text-3);
 }
+
+/* KAL-653: on a phone the sign-in card was 85px taller than its 90vh cap, so
+   it scrolled and "Forgot password?" sat cut in half on the bottom edge, with
+   "Continue without an account" out of sight below it. The card may now use
+   the whole screen between the status bar and the home indicator, and its
+   gaps tighten a little, so every row shows at once on a 6.1in iPhone.
+   Shorter phones still scroll. */
+@media (pointer: coarse) and (max-width: 599px) {
+  .auth-modal-overlay {
+    box-sizing: border-box;
+    /* env() only: the Expo shell already sits its web view under the status
+       bar, and its --native-safe-area-top is information, not a pad. */
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: var(--native-safe-area-bottom, env(safe-area-inset-bottom, 0px));
+  }
+
+  .auth-modal {
+    padding: 20px;
+    max-height: calc(100% - 16px);
+  }
+
+  .auth-modal-header {
+    margin-bottom: 16px;
+  }
+
+  /* !important: the widget's 12px top margin is an inline style
+     (TurnstileWidget.jsx); the form's own 14px gap is enough here. */
+  .auth-form .turnstile-widget {
+    margin-top: 0 !important;
+  }
+
+  .auth-divider {
+    margin: 12px 0;
+  }
+
+  .auth-footer {
+    margin-top: 4px;
+  }
+}
