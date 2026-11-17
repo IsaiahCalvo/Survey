@@ -15,6 +15,7 @@
  */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { isTurnstileEnabled, resolveTurnstileSiteKey } from './turnstileConfig';
+import { currentTheme } from '../suiteLook.js';
 
 // Public site key — safe to ship in client code (Cloudflare renders it in HTML).
 // Empty string disables the widget entirely (renders nothing, no gate).
@@ -75,9 +76,9 @@ export default function TurnstileWidget({ onToken, onError, action }) {
         widgetIdRef.current = ts.render(containerRef.current, {
           sitekey: TURNSTILE_SITE_KEY,
           action,
-          // Dark like the app. 'auto' follows the phone's own light/dark
-          // setting and flashed a white box onto the dark sheet.
-          theme: 'dark',
+          // The app's own mode, not 'auto': 'auto' follows the phone's
+          // light/dark setting and flashed a white box onto the dark sheet.
+          theme: currentTheme(),
           size: narrow ? 'compact' : 'normal',
           callback: (token) => onToken?.(token),
           'expired-callback': () => onToken?.(''),

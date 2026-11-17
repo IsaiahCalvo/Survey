@@ -220,7 +220,7 @@ export function page({ path, title, desc, body, schema = [], crumb, crumbs, scri
 <title>${esc(title)}</title>
 <meta name="description" content="${esc(desc)}" />
 <link rel="canonical" href="${url}" />
-<meta name="theme-color" content="#141a2b" />
+<meta name="theme-color" content="#131315" />
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="Survey" />
 <meta property="og:title" content="${esc(title)}" />
