@@ -17,7 +17,7 @@ test('an empty pick forgets the just-drawn mark', () => {
   const start = layerSource.indexOf('if (selectedAnnotationIndex == null) {');
   assert.ok(start > 0);
   const branch = layerSource.slice(start, layerSource.indexOf('onSelectionChange({', start));
-  assert.match(branch, /if \(annotationIndices\.length === 0\) justDrawnRef\.current = null;/);
+  assert.match(branch, /if \(annotationIndices\.length === 0\) \{\s*justDrawnRef\.current = null;/);
 });
 
 test('the auto-pick right after drawing is still "just drawn" (owner Test 15)', () => {

@@ -10,7 +10,7 @@
  * Returns { pageNumber, annotationId } while exactly one marker and nothing
  * else is picked, else null.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { HISTORY_PAGE_SELECTION_EVENT } from '../utils/historyMarkFilter.js';
 
 export function nextPickedSurveyMarker(current, detail) {
@@ -29,9 +29,18 @@ export function nextPickedSurveyMarker(current, detail) {
 
 export function usePickedSurveyMarker() {
   const [picked, setPicked] = useState(null);
+  // Only set state on a real change: this hook sits in PDFViewer, and a
+  // no-op set still re-renders it (KAL-371: a fast scroll chained those into
+  // React's update-depth error).
+  const pickedRef = useRef(null);
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
-    const onSelection = (event) => setPicked((current) => nextPickedSurveyMarker(current, event?.detail));
+    const onSelection = (event) => {
+      const next = nextPickedSurveyMarker(pickedRef.current, event?.detail);
+      if (next === pickedRef.current) return;
+      pickedRef.current = next;
+      setPicked(next);
+    };
     window.addEventListener(HISTORY_PAGE_SELECTION_EVENT, onSelection);
     return () => window.removeEventListener(HISTORY_PAGE_SELECTION_EVENT, onSelection);
   }, []);

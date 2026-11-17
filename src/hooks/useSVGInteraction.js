@@ -974,7 +974,10 @@ export function useSVGInteraction({
   }, []);
 
   const deselectAll = useCallback(() => {
-    setSelectedIds(new Set());
+    // Keep the same empty Set: a fresh one was a real update, so every page
+    // layer that mounted while you scrolled (its clear-token layout effect
+    // calls this) re-rendered for nothing (KAL-371 update-depth crash).
+    setSelectedIds((prev) => (prev instanceof Set && prev.size === 0 ? prev : new Set()));
     setHoveredId(null);
   }, []);
 

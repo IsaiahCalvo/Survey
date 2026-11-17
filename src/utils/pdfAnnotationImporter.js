@@ -830,9 +830,22 @@ function getShapeFillHex(annotation) {
   return pdfColorToHex(fillSource, annotation);
 }
 
+// The fill's own alpha: Drawboard and Bluebeam write a see-through fill as
+// /ca (and /FillOpacity) next to a solid /CA border, so /CA alone painted
+// their revision clouds solid red (KAL-371 side-by-side, SE-011 page 1).
+function extractAnnotationFillOpacity(annotation, fallback = 1) {
+  if (annotation && typeof annotation === 'object' && annotation._hasExplicitAnnotationOpacity !== false) {
+    for (const candidate of [annotation.fillOpacity, annotation.ca, annotation.fillAlpha]) {
+      const normalized = normalizeOpacityValue(candidate);
+      if (normalized !== null) return normalized;
+    }
+  }
+  return extractAnnotationOpacity(annotation, fallback);
+}
+
 function getShapeFillColor(annotation) {
   const explicitFillHex = getShapeFillHex(annotation);
-  const objectOpacity = extractAnnotationOpacity(annotation, 1);
+  const objectOpacity = extractAnnotationFillOpacity(annotation, 1);
 
   if (explicitFillHex) {
     return hexToRgba(explicitFillHex, objectOpacity);

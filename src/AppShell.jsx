@@ -2886,9 +2886,14 @@ export default function App({ devPreviewReturnTab = null }) {
   // to open under. Desktop only — the phone draws its own pickers.
   useEffect(() => {
     if (isMobileViewer || formatRowShown) return;
-    setOpenAnnotationDropdown(null);
-    setShowFontColorPicker(false);
+    // Only when open: the viewer republishes bottomToolbarApi on its renders,
+    // and an unconditional set here added an App render to each (KAL-371:
+    // with the page layers' renders that chained into React's update-depth
+    // error on a fast scroll through a big set).
+    if (openAnnotationDropdown !== null) setOpenAnnotationDropdown(null);
+    if (showFontColorPicker) setShowFontColorPicker(false);
     if (bottomToolbarApi?.showAnnotationColorPicker) bottomToolbarApi.setShowAnnotationColorPicker?.(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs when the row hides or the bar changes, not when a picker opens
   }, [formatRowShown, isMobileViewer, bottomToolbarApi]);
   // 2026-10-01: the dock stays usable under an open sheet, so a dock button can
   // now be pressed while the Active users sheet (the tool rail's own state) is
