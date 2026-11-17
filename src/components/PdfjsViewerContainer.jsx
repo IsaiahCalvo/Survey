@@ -113,7 +113,7 @@ import {
   subscribeViewerTopOverlays,
 } from '../utils/viewerTopOverlay.js';
 import { buildVisiblePageStack } from '../utils/visiblePageLayout.js';
-import { rowMembers, steppedSpreadPage } from '../utils/pageSpreads.js';
+import { gridColumns, rowMembers, steppedSpreadPage } from '../utils/pageSpreads.js';
 import { usePageSpreadMode } from '../utils/pageSpreadSetting.js';
 import { computeFitScale, pickCurrentPage, resolveFitPageLanding } from '../utils/pageNavigationMath.js';
 import { createPageRasterQueue } from '../utils/pageRasterQueue.js';
@@ -290,7 +290,9 @@ function getFitWidthForContainer(containerWidth, metrics) {
   return metrics.maxPageWidth ? Math.min(available, metrics.maxPageWidth) : available;
 }
 // Zoom-out floor: a quarter of fit width, Drawboard's (pdfZoomMath.js). The
-// height is no longer part of it; the argument stays for the callers.
+// height is no longer part of it; the argument stays for the callers. Callers
+// pass the row stack, so a spread view's floor is a quarter of the widest ROW
+// (a 5-column Grid fits below a quarter of one page's fit, KAL-707).
 function getMinimumScaleForLayout(dims, containerHeight, metrics, containerWidth) {
   return getWidthFitMinimumScale({
     viewportWidth: getFitWidthForContainer(containerWidth, metrics),
@@ -1610,7 +1612,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   //  - touchSurface: any touch screen, a touchscreen laptop's too: one finger
   //    runs the tool, two fingers pan and pinch the PDF (not the page).
   const phoneLayout = usePhoneLayout();
-  // Nightly 'page-spreads': Single / Double / Cover (utils/pageSpreads.js).
+  // Nightly 'page-spreads': Single / Double / Cover / Grid (utils/pageSpreads.js).
   // The phone keeps one column (two pages side by side are too small there).
   const pageSpreadSetting = usePageSpreadMode();
   const spreadMode = phoneLayout ? 'single' : pageSpreadSetting;
@@ -2100,8 +2102,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         const side = sideInsetRef.current;
         // A kept Double / Cover view fits the first row: the pair's two widths
         // and the gap (Cover's lone page 1 holds a pair's slot: twice its own).
+        // A Grid view fits N of page 1's width (the other pages' sizes come later).
+        const gridN = gridColumns(spreadModeRef.current);
         const firstPair = spreadModeRef.current === 'double' ? sizes[1] || firstSize : firstSize;
-        const firstRowW = spreadModeRef.current === 'single' ? firstSize.w : firstSize.w + metrics.gap + firstPair.w;
+        const firstRowW = gridN ? gridN * firstSize.w + (gridN - 1) * metrics.gap
+          : spreadModeRef.current === 'single' ? firstSize.w : firstSize.w + metrics.gap + firstPair.w;
         const firstRowH = spreadModeRef.current === 'double' ? Math.max(firstSize.h, firstPair.h) : firstSize.h;
         const fitPageScale = hasViewport ? computeFitScale({
           mode: 'fitPage',
@@ -2117,7 +2122,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         }) : NaN;
         const fit = !hasViewport ? scaleRef.current : Number.isFinite(fitPageScale) && fitPageScale > 0
           ? Math.min(isMobileSurface ? MOBILE_MAX_SCALE : MAX_SCALE, Math.max(
-            getMinimumScaleForLayout(sizes, el.clientHeight, metrics, cw),
+            getMinimumScaleForLayout(spreadModeRef.current === 'single' ? sizes : [{ w: firstRowW }], el.clientHeight, metrics, cw),
             fitPageScale,
           ))
           : Math.max(0.2, Math.min(2, getFitWidthForContainer(cw, metrics) / (sizes[0]?.w || 612)));
@@ -2936,9 +2941,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const place = spreadPlaceRef.current;
     if (!place || cX == null) return lead;
     const members = rowMembers(place, lead);
-    if (members.length < 2) return lead;
-    const right = members[1];
-    return cX >= getPageLeftAtScale(right, sc) - (metricsGapAt(sc) / 2) ? right : lead;
+    const half = metricsGapAt(sc) / 2;
+    let picked = lead;
+    for (let k = 1; k < members.length; k += 1) {
+      if (cX >= getPageLeftAtScale(members[k], sc) - half) picked = members[k];
+    }
+    return picked;
   };
   const metricsGapAt = (sc) => layoutMetricsRef.current.gap * sc;
   const pageUnderContentY = (cY, sc, cX = null) => {
@@ -2964,7 +2972,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const oldScale = Number(gesture.originScale) || scaleRef.current;
     const maxScale = isMobileSurface ? MOBILE_MAX_SCALE : MAX_SCALE;
     const minimumScale = getMinimumScaleForLayout(
-      dims,
+      stackPtRef.current,
       containerHRef.current,
       layoutMetricsRef.current,
       floorWidth(containerWRef.current),
@@ -3080,7 +3088,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const oldScale = scaleRef.current;
     const maxScale = isMobileSurface ? MOBILE_MAX_SCALE : MAX_SCALE;
     const minimumScale = getMinimumScaleForLayout(
-      dims,
+      stackPtRef.current,
       containerHRef.current,
       layoutMetricsRef.current,
       floorWidth(containerWRef.current),
@@ -3131,7 +3139,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const dims = dimsPtRef.current;
     if (!el || dims.length === 0) return;
     const minimumScale = getMinimumScaleForLayout(
-      dims,
+      stackPtRef.current,
       el.clientHeight,
       layoutMetricsRef.current,
       floorWidth(el.clientWidth),
@@ -3494,7 +3502,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     if (prefersReducedMotion() || (gestureRef.current && !glide)) return false;
     const maxScale = isMobileSurface ? MOBILE_MAX_SCALE : MAX_SCALE;
     const minimumScale = getMinimumScaleForLayout(
-      dims,
+      stackPtRef.current,
       containerHRef.current,
       layoutMetricsRef.current,
       floorWidth(containerWRef.current),
@@ -3658,7 +3666,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       const committed = scaleRef.current;
       const maxScale = isMobileSurface ? MOBILE_MAX_SCALE : MAX_SCALE;
       const minimumScale = getMinimumScaleForLayout(
-        dimsPtRef.current,
+        stackPtRef.current,
         containerHRef.current,
         layoutMetricsRef.current,
         floorWidth(containerWRef.current),
@@ -4940,7 +4948,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         const maxScale = isMobileSurface ? MOBILE_MAX_SCALE : MAX_SCALE;
         const distance = Math.max(1, getTouchDistance(touches));
         const minimumScale = getMinimumScaleForLayout(
-          dimsPtRef.current,
+          stackPtRef.current,
           containerHRef.current,
           layoutMetricsRef.current,
           floorWidth(containerWRef.current),
@@ -5727,7 +5735,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     if (canFly) {
       const maxScale = isMobileSurface ? MOBILE_MAX_SCALE : MAX_SCALE;
       const minimumScale = getMinimumScaleForLayout(
-        dims,
+        stackPtRef.current,
         containerHRef.current,
         layoutMetricsRef.current,
         floorWidth(containerWRef.current),
@@ -6151,12 +6159,17 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       // state getters (method + property forms)
       getPageCount: () => numPagesRef.current || 0,
       getCurrentPage: () => currentPageRef.current || 1,
+      // Next / Previous in a spread view move a whole row (Double 1 → 3,
+      // Grid of 4: 1 → 5); null in Single, where a step is one page.
+      getSteppedPage: (step) => (spreadPlaceRef.current
+        ? steppedSpreadPage(spreadPlaceRef.current, currentPageRef.current || 1, step)
+        : null),
       getZoomValue: () => Math.round((scaleRef.current || 1) * 100),
       // The scale a zoom glide is heading to (null when none plays): the next
       // zoom step counts from here, so quick presses add up like slow ones.
       getZoomGlideTarget: () => (zoomGlideRef.current ? zoomGlideRef.current.target : null),
       getMinimumScale: () => getMinimumScaleForLayout(
-        dimsPtRef.current,
+        stackPtRef.current,
         containerHRef.current,
         layoutMetricsRef.current,
         floorWidth(containerWRef.current),
@@ -6456,7 +6469,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       goToPage,
       getScale: () => scaleRef.current,
       getMinimumScale: () => getMinimumScaleForLayout(
-        dimsPtRef.current, containerHRef.current, layoutMetricsRef.current, floorWidth(containerWRef.current),
+        stackPtRef.current, containerHRef.current, layoutMetricsRef.current, floorWidth(containerWRef.current),
       ),
       getMaximumScale: () => (isMobileSurface ? MOBILE_MAX_SCALE : MAX_SCALE),
       rasterQueue: () => rasterQueueRef.current,

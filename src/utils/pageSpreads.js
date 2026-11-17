@@ -14,19 +14,38 @@
  * over the page list runs over the stack instead, so Single (the stack IS the
  * page list) behaves exactly as before.
  *
+ * Grid (KAL-707, Drawboard's View settings "Grid" with a column count) puts
+ * 2 to 6 pages in a row, as 'grid-N'. It is Double with N pages a row.
+ *
  * Pure (no React); every size is in PDF points at scale 1.
  */
 
-export const PAGE_SPREAD_MODES = Object.freeze(['single', 'double', 'cover']);
+export const GRID_COLUMN_CHOICES = Object.freeze([2, 3, 4, 5, 6]);
+export const DEFAULT_GRID_COLUMNS = 3;
+export const PAGE_SPREAD_MODES = Object.freeze(['single', 'double', 'cover', ...GRID_COLUMN_CHOICES.map((n) => `grid-${n}`)]);
 
 export function normalizeSpreadMode(mode) {
+  if (mode === 'grid') return `grid-${DEFAULT_GRID_COLUMNS}`;
   return PAGE_SPREAD_MODES.includes(mode) ? mode : 'single';
+}
+
+/** Pages a row holds in a Grid view; 0 when the view isn't a Grid. */
+export function gridColumns(mode) {
+  const match = /^grid-(\d)$/.exec(normalizeSpreadMode(mode));
+  return match ? Number(match[1]) : 0;
+}
+
+/** Pages a row holds: 1 Single, 2 Double / Cover, N Grid. */
+export function spreadRowSize(mode) {
+  const spread = normalizeSpreadMode(mode);
+  if (spread === 'single') return 1;
+  return gridColumns(spread) || 2;
 }
 
 /**
  * Rows of page indexes (hidden pages left out).
  * @param {{w:number,h:number,hidden?:boolean}[]} dims
- * @param {'single'|'double'|'cover'} mode
+ * @param {string} mode 'single' | 'double' | 'cover' | 'grid-N'
  * @returns {number[][]}
  */
 export function buildSpreadRows(dims, mode) {
@@ -34,14 +53,15 @@ export function buildSpreadRows(dims, mode) {
   (dims || []).forEach((dim, index) => { if (dim && !dim.hidden) shown.push(index); });
   const spread = normalizeSpreadMode(mode);
   if (spread === 'single') return shown.map((index) => [index]);
+  const size = spreadRowSize(spread);
   const rows = [];
   let start = 0;
   if (spread === 'cover' && shown.length > 0) {
     rows.push([shown[0]]);
     start = 1;
   }
-  for (let k = start; k < shown.length; k += 2) {
-    rows.push(shown.slice(k, k + 2));
+  for (let k = start; k < shown.length; k += size) {
+    rows.push(shown.slice(k, k + size));
   }
   return rows;
 }
@@ -64,8 +84,26 @@ export function placeSpreadPages(dims, mode, gapPt = 0) {
   const offsetX = list.map(() => 0);
   const stack = list.map(() => ({ w: 0, h: 0, hidden: true }));
   const rows = buildSpreadRows(list, spread);
+  const size = spreadRowSize(spread);
   rows.forEach((row, rowIndex) => {
     const [first, second] = row;
+    if (size > 2) {
+      // Grid: pages left to right with the gap between them. A short last
+      // row keeps the full row's width (each empty slot as wide as the row's
+      // first page), so its pages line up under the columns above.
+      let x = 0;
+      let h = 0;
+      row.forEach((index) => {
+        leader[index] = first;
+        offsetX[index] = x;
+        x += list[index].w + gap;
+        h = Math.max(h, list[index].h);
+      });
+      const empty = size - row.length;
+      const w = x - gap + empty * (list[first].w + gap);
+      stack[first] = { w, h };
+      return;
+    }
     const a = list[first];
     if (second == null) {
       // A page alone in its row keeps the slot it would have in a pair:
@@ -85,7 +123,7 @@ export function placeSpreadPages(dims, mode, gapPt = 0) {
   return { leader, offsetX, stack, rows };
 }
 
-/** The pages of the row a page sits in (one or two indexes). */
+/** The pages of the row a page sits in (one index, or the whole row). */
 export function rowMembers(place, index) {
   if (!place) return [index];
   const lead = place.leader[index] ?? index;

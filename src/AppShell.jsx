@@ -32,6 +32,7 @@ import { applyToolBarCompact, applyToolBarHidden, useToolBarCompact, useToolBarH
 import './styles/toolBarVisibility.css';
 import RailFlyout from './components/RailFlyout.jsx';
 import { setPageSpreadMode, usePageSpreadMode } from './utils/pageSpreadSetting.js';
+import { GRID_COLUMN_CHOICES, gridColumns } from './utils/pageSpreads.js';
 import { PinFilterMenu } from './components/pins/PinControls.jsx';
 import MenuGlide from './components/MenuGlide.jsx';
 import SnappingToggle, { SnappingGlyph, SnappingMenu, snappingLabel, useSnappingShortcut } from './components/SnappingToggle.jsx';
@@ -173,6 +174,7 @@ const PAGE_SPREAD_OPTIONS = Object.freeze([
   { id: 'single', label: 'Single' },
   { id: 'double', label: 'Double' },
   { id: 'cover', label: 'Cover' },
+  { id: 'grid', label: 'Grid' },
 ]);
 
 // The dot between the current page and the page total in the right-rail
@@ -5783,42 +5785,67 @@ export default function App({ devPreviewReturnTab = null }) {
                     );
                   })}
                   {/* Nightly 'page-spreads' (Drawboard View settings, row
-                      C17): pages one per row, two side by side, or page 1
-                      alone on the right then pairs. A fit mode re-fits the
-                      new row width, as Drawboard does. The phone keeps one
-                      column (the viewer forces Single), so it shows none. */}
-                  {pageSpreadsOn && !isNarrowShell && (
-                    <>
-                      <div role="separator" className="rail-flyout__divider" />
-                      {PAGE_SPREAD_OPTIONS.map((option, index) => {
-                        const isActive = option.id === pageSpread;
-                        return (
-                          <button
-                            key={option.id}
-                            type="button"
-                            role="menuitemradio"
-                            aria-checked={isActive}
-                            data-page-spread={option.id}
-                            className="rail-flyout__row"
-                            style={{ '--menu-row': index + 3 }}
-                            onClick={() => {
-                              if (isActive) return;
-                              setPageSpreadMode(option.id);
-                              const mode = api.zoomMode;
-                              if (mode && mode !== ZOOM_MODES.MANUAL) {
-                                requestAnimationFrame(() => requestAnimationFrame(() => api.handleZoomModeSelect(mode)));
-                              }
-                            }}
-                          >
-                            <span className="rail-flyout__label">{option.label}</span>
-                            <span className="rail-flyout__tick" aria-hidden="true">
-                              {isActive && <Icon name="check" size={RAIL_CONTROL_GLYPH} color="currentColor" />}
+                      C17): pages one per row, two side by side, page 1
+                      alone on the right then pairs, or a Grid of 2 to 6
+                      columns (KAL-707). A fit mode re-fits the new row
+                      width, as Drawboard does. The phone keeps one column
+                      (the viewer forces Single), so it shows none. */}
+                  {pageSpreadsOn && !isNarrowShell && (() => {
+                    const columns = gridColumns(pageSpread);
+                    const choose = (mode) => {
+                      setPageSpreadMode(mode);
+                      const fit = api.zoomMode;
+                      if (fit && fit !== ZOOM_MODES.MANUAL) {
+                        requestAnimationFrame(() => requestAnimationFrame(() => api.handleZoomModeSelect(fit)));
+                      }
+                    };
+                    return (
+                      <>
+                        <div role="separator" className="rail-flyout__divider" />
+                        {PAGE_SPREAD_OPTIONS.map((option, index) => {
+                          const isActive = option.id === 'grid' ? columns > 0 : option.id === pageSpread;
+                          return (
+                            <button
+                              key={option.id}
+                              type="button"
+                              role="menuitemradio"
+                              aria-checked={isActive}
+                              data-page-spread={option.id}
+                              className="rail-flyout__row"
+                              style={{ '--menu-row': index + 3 }}
+                              onClick={() => { if (!isActive) choose(option.id); }}
+                            >
+                              <span className="rail-flyout__label">{option.label}</span>
+                              <span className="rail-flyout__tick" aria-hidden="true">
+                                {isActive && <Icon name="check" size={RAIL_CONTROL_GLYPH} color="currentColor" />}
+                              </span>
+                            </button>
+                          );
+                        })}
+                        {columns > 0 && (
+                          <div role="group" aria-labelledby="page-grid-columns" className="rail-flyout__columns">
+                            <span id="page-grid-columns" className="rail-flyout__label">Columns</span>
+                            <span className="rail-flyout__steps">
+                              {GRID_COLUMN_CHOICES.map((n) => (
+                                <button
+                                  key={n}
+                                  type="button"
+                                  role="menuitemradio"
+                                  aria-checked={n === columns}
+                                  aria-label={`${n} columns`}
+                                  data-grid-columns={n}
+                                  className="rail-flyout__step"
+                                  onClick={() => { if (n !== columns) choose(`grid-${n}`); }}
+                                >
+                                  {n}
+                                </button>
+                              ))}
                             </span>
-                          </button>
-                        );
-                      })}
-                    </>
-                  )}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                   </div>
                 </RailFlyout>
               );
