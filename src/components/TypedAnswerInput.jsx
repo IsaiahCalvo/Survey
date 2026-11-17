@@ -49,6 +49,10 @@ function TypedBox({ item, saved, onCommit, phone, number, width }) {
     setDraft(null);
     if (next !== null && next !== saved) onCommit(next);
   };
+  // A text answer widens with what is typed, up to twice its resting width,
+  // so a model number ("Axis P3265-LVE Dome") reads whole instead of cut off.
+  const shown = String(draft ?? saved);
+  const boxWidth = number ? width : Math.min(width * 2, Math.max(width, Math.ceil(shown.length * (phone ? 7.6 : 6.6)) + 14));
   return (
     <input
       type="text"
@@ -67,7 +71,7 @@ function TypedBox({ item, saved, onCommit, phone, number, width }) {
       // Out of the line's min / max is an issue: red, like a past date or a low score.
       aria-invalid={draft === null && typedAnswerIsIssue(item, saved) ? true : undefined}
       style={{
-        ...boxStyle(phone, width, number ? 'right' : 'left'),
+        ...boxStyle(phone, boxWidth, number ? 'right' : 'left'),
         ...(draft === null && typedAnswerIsIssue(item, saved) ? { color: 'var(--danger-text)' } : {}),
       }}
     />

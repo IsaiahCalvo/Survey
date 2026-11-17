@@ -20,10 +20,12 @@ import {
   linkTemplateCategories,
   manageRefusal,
   mergeServerEntries,
+  nameTakenWords,
   newEntryProblem,
   newLibraryEntry,
   normalizeEntryName,
   rowFromEntry,
+  sameNameEntry,
 } from './libraryModel.js';
 
 export const LIBRARY_TABLE = 'library_entries';
@@ -214,6 +216,8 @@ export function createLibraryStore({
     const clean = normalizeEntryName(name);
     if (!clean) return { ok: false, reason: LIBRARY_WORDS.emptyName };
     if (clean === entry.name) return { ok: true, entry };
+    const twin = sameNameEntry(state.entries, { ...entry, name: clean });
+    if (twin) return { ok: false, reason: nameTakenWords(twin.name) };
     queue({ op: 'rename', id, name: clean, at: now() });
     return { ok: true };
   }

@@ -5549,8 +5549,11 @@ export default function App({ devPreviewReturnTab = null }) {
                 </TabChromeSlot>
               );
             })}
-            {/* Spacer pushes the bottom slot to the bottom of the rail. */}
-            <div style={{ flex: 1 }} />
+            {/* Spacer pushes the bottom slot to the bottom of the rail. Its
+                56px floor keeps the zoom / page stack below the Survey
+                button (8px in, 40px tall): on a short window the stack used
+                to climb over it and take its taps. */}
+            <div style={{ flex: 1, minHeight: isMobileViewer ? 0 : 56 }} />
 
             {/* UX 2026-07-14 (rail-footer redesign): zoom / page / fit controls
                 live in a footer pinned to the BOTTOM of the right rail — the

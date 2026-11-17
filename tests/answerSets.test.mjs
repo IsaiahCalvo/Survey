@@ -154,7 +154,7 @@ test('text and number items: saved answer, done, issue and Excel rule', async ()
   // Pick-one keeps today's exact rule.
   assert.deepEqual(excelValidationFor(pick, DEFAULT_ANSWER_SET), {
     type: 'list', allowBlank: true, formulae: ['"Y,N,N/A"'], showErrorMessage: true,
-    errorStyle: 'error', errorTitle: 'Invalid selection', error: 'Please select Y, N, or N/A',
+    errorStyle: 'stop', errorTitle: 'Invalid selection', error: 'Please select Y, N, or N/A',
   });
   assert.deepEqual(excelAnswerFills(DEFAULT_ANSWER_SET), [
     { value: 'Y', argb: 'FFCEEED0' }, { value: 'N', argb: 'FFF6C9CE' }, { value: 'N/A', argb: 'FFA6A6A6' },
