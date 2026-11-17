@@ -259,7 +259,7 @@ export default function ShareModal({
     return true;
   };
 
-  const fieldLabel = { fontSize: 11, letterSpacing: 0, color: C.muted, fontWeight: 600, marginBottom: 8 };
+  const fieldLabel = { fontSize: 11, letterSpacing: 0, color: C.muted, fontWeight: 600, marginBottom: 8, userSelect: 'none' };
 
   return (
     <div

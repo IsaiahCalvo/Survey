@@ -854,6 +854,13 @@ html[data-look="suite"][data-theme="light"] .survey-hub .pdf-thumb {
   align-items: center;
   gap: 8px;
 }
+/* The header lines its title up with this row by text baseline, and the
+   row's baseline came from the filter button, whose 11px label sits about 1px
+   higher than the search field's text on every other tab: the Archive title
+   and list sat 1px higher. The search field gives the baseline here too. */
+.survey-hub .archive-desktop-search > .hub-search {
+  align-self: baseline;
+}
 
 /* The sort control is an ordinary SECONDARY button that only needs a floor on
    its width so the label can change without the row jumping. Its padding is
