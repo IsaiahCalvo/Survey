@@ -35,6 +35,8 @@ export const FEATURE_FLAGS = Object.freeze({
   // surveytool.app follows /flags for them.
   // 2026-11-12 (owner): grid-settings and survey-report went back to beta
   // (Nightly only); the marker-tracking list chips got their own beta flag.
+  // 2026-11-17 (KAL-609): 34 small fixes (keys, wrapping, undo, paste and
+  // similar) moved to rollout, so surveytool.app follows /flags for them.
   // On surveytool.app since 2026-11-09 (owner: "let's deploy it", with a
   // "Beta" tag under its tool icon).
   'smart-fill': Object.freeze({
@@ -188,7 +190,7 @@ export const FEATURE_FLAGS = Object.freeze({
   // any mark, shown in the Markups list and written as the PDF's /Subj.
   'author-chip': Object.freeze({ label: 'Selection bar: who made the picked marks, with a table by author (date, layer)', stage: 'beta' }),
   'toolbar-settings': Object.freeze({ label: 'Selection bar: Dock bar to bottom / Float bar by mark (mark menu), remembered', stage: 'beta' }),
-  'help-menu': Object.freeze({ label: 'Account menu: Help & support (start guide, stuck-page fix, help pages, version)', stage: 'beta' }),
+  'help-menu': Object.freeze({ label: 'Account menu: Help & support (start guide, stuck-page fix, help pages, version)', stage: 'rollout' }),
   'mark-subject': Object.freeze({
     label: 'Marks: give any mark its own subject (Properties panel); shows in Markups and in exported PDFs',
     stage: 'beta',
@@ -260,23 +262,23 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'measure-scale-chip': Object.freeze({
     label: 'Measure: a "No scale on this page" chip with Set scale while a measure tool is armed',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'eraser-keeps-shapes': Object.freeze({
     label: 'Partial eraser only cuts ink and leaves shapes, text and callouts alone',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'tool-quick-colours': Object.freeze({
     label: 'Highlighter quick colours are highlighter colours (yellow, green, pink)',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'measure-keys': Object.freeze({
     label: 'Alt+Shift+L / P / A (and Q / V) pick a measure tool',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'calibrate-entry': Object.freeze({
     label: "Calibrate takes feet-inches (20' 6\", 20-6) and shows the traced paper length",
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'measure-edit': Object.freeze({
     label: 'Measure: a Measurement button on a picked measurement sets its label, depth, caption lines and caption size',
@@ -288,27 +290,27 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'word-wrap': Object.freeze({
     label: 'New text boxes and callouts wrap at spaces, not mid-word',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'paste-across-documents': Object.freeze({
     label: 'Copy marks in one document and paste them in another',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'shift-square': Object.freeze({
     label: 'Hold Shift while drawing a rectangle or ellipse for a square or circle',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'phone-mark-more': Object.freeze({
     label: 'Phone: a More button on the picked-mark bar opens the full mark menu',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'poly-back-step': Object.freeze({
     label: 'Backspace or Undo while placing a polygon or polyline takes the last point off',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'home-download': Object.freeze({
     label: 'Download a document, with its marks, from the Home list',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'new-document': Object.freeze({
     label: 'New blank document from Home (size, pages, lined, grid or dots)',
@@ -316,15 +318,15 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'default-units': Object.freeze({
     label: 'Default units setting: imperial or metric for page scale and new documents',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'menu-keys': Object.freeze({
     label: 'Keys shown on the mark right-click menu rows',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'zoom-to-area': Object.freeze({
     label: 'Zoom to an area: Ctrl+Shift+drag draws a box and the view fills with it',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   // On for everyone since 2026-11-16 (owner: people must be able to try
   // Survey with no account). KAL-658.
@@ -334,23 +336,23 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'viewer-share': Object.freeze({
     label: 'Share from inside a document: a Share button in the viewer top bar',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'focus-mode': Object.freeze({
     label: 'Full screen: hide the browser and system bars, keep tabs and rails (Ctrl/Cmd+Shift+F)',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'search-options': Object.freeze({
     label: 'Search: Match case and Whole word',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'hide-marks': Object.freeze({
     label: 'Hide all marks from the right rail, with a chip to bring them back',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'tab-keys': Object.freeze({
     label: 'Alt+Shift+] and Alt+Shift+[ step through the open documents',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'lazy-accepted-shadow': Object.freeze({
     label: 'Open: keep the second copy of the marks only in the background worker until something needs it here',
@@ -362,7 +364,7 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'back-button': Object.freeze({
     label: 'Back (browser or Android) closes the open sheet, then the document, instead of leaving Survey',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   // Drawboard Home parity (2026-11-10), one flag each so Isaiah can pick.
   'home-tags': Object.freeze({
@@ -396,7 +398,7 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'drawboard-keys': Object.freeze({
     label: 'Drawboard keys: Shift+Up / Down previous / next page; Alt+O / Alt+U next / previous version (with Versions on)',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'sheet-register': Object.freeze({
     label: 'Sheet register: sheet number, revision and discipline on Home, discipline and open-items filters, sheet number sort, bulk status and discipline, Edit details, list CSV',
@@ -437,7 +439,7 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'box-drag-move': Object.freeze({
     label: 'Drag inside a picked mark to move it',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   // Drawboard file model (2026-11-10, drawboard-trial/file-model.md): keep a
   // document on this device so it opens with no signal; marks sync later.
@@ -455,7 +457,7 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'line-dashes': Object.freeze({
     label: 'Line styles: Long dash and Dash-dot as well as Solid, Dashed and Dotted',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'eraser-look': Object.freeze({
     label: "Eraser look: Drawboard's cross-and-eraser cursor, a trail where it moves, hit marks lit orange until release, and icon mode buttons",
@@ -471,11 +473,11 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'text-fit-height': Object.freeze({
     label: 'Text box height fits its words both ways: widening a text box from its side brings its height back down',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'poly-click-starts': Object.freeze({
     label: 'Polygon and Polyline: with a mark picked, the first click drops the pick and places the first point',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'stamp-tool': Object.freeze({
     label: "Stamp tool: Drawboard's twelve preset stamps in a Stamp card; pick one, then click the page to drop it",
@@ -491,11 +493,11 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'typing-undo': Object.freeze({
     label: 'Undo while typing steps back one word at a time, not the whole typing session',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'drag-auto-scroll': Object.freeze({
     label: 'Drawing a shape, moving a mark or box selecting near the edge of the view scrolls it',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'insert-image': Object.freeze({
     label: 'Image: put a picture from a file or the clipboard on the page as a mark you can move, resize and rotate',
@@ -507,7 +509,7 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'turn-scale-keys': Object.freeze({
     label: 'Keys: Ctrl / Cmd + Left / Right turn the picked mark 1° (5° with Shift), Ctrl / Cmd + Up / Down scale it',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'link-tool': Object.freeze({
     label: 'Hyperlink tool (Shift+H): drag a box and link it to a page, a website or an area; "Go to" on the picked bar follows it',
@@ -530,20 +532,20 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'paste-in-place-key': Object.freeze({
     label: 'Ctrl+Shift+V pastes the copied marks at their original spot',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'selection-count': Object.freeze({
     label: 'Selection bar shows how many marks a multi-pick holds',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   // Drawboard PDF Pro (2026-11-14): Ctrl+drag under Select is a lasso pick.
   'ctrl-lasso': Object.freeze({
     label: 'Select: Ctrl+drag (Cmd+drag on a Mac) on the page draws a lasso instead of a box',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'tool-style-preview': Object.freeze({
     label: 'Desktop colour popover: a live preview of what the tool will draw (colour, width, line style)',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'page-templates': Object.freeze({
     label: 'Page right-click: Template page below (notebook, Cornell, grids, isometric, music papers)',
@@ -609,7 +611,7 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'page-turn-keys': Object.freeze({
     label: 'Keys: with nothing picked, Left / Right and Shift + Up / Down turn the page',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'page-spreads': Object.freeze({
     label: 'Page fit card: Single / Double / Cover page views (pages side by side, like an open book)',
