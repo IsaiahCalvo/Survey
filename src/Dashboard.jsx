@@ -1813,7 +1813,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       console.error('Error persisting templates:', err);
       // Templates are Pro-only in the database, so on Free the snapshot is
       // turned down. The server said "does not belong" until the
-      // 20261117170000 migration; both now read as the plan limit.
+      // 20261117190000 migration; both now read as the plan limit.
       const message = String(err?.message || '');
       if (/needs the Pro plan/.test(message)
         || (/does not belong to the signed-in user/.test(message) && !canCreateTemplate().allowed)) {

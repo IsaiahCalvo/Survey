@@ -18,7 +18,7 @@ test('a plan refusal reads as the plan, anything else as a failed save', () => {
 });
 
 test('the snapshot function says "needs the Pro plan" before the ownership check', () => {
-  const sql = read('../supabase/migrations/20261117170000_template_snapshot_plan_message.sql');
+  const sql = read('../supabase/migrations/20261117190000_template_snapshot_plan_message.sql');
   assert.match(sql, /plan_ok := public\.has_feature_access\(caller_id, 'templates'\);/);
   const plan = sql.indexOf("RAISE EXCEPTION 'Saving templates needs the Pro plan.'");
   const owner = sql.indexOf("RAISE EXCEPTION 'Template row does not belong to the signed-in user'");
