@@ -32,9 +32,23 @@
 }
 .doc-review-marks { white-space: nowrap; }
 
-.doc-review-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+/* Two pickers side by side when the pane has room; one above the other in a
+   narrow pane (an iPad held upright), where side by side cut "No status" to
+   "No st" (tablet pass, KAL-652). */
+.doc-review-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
 .doc-review-field { display: grid; gap: 4px; min-width: 0; }
 .doc-review-native {
   height: 44px; padding: 0 10px; font: inherit; font-size: 16px; color: var(--text-1);
   background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-sm, 6px);
 }
+
+/* One look: the chips rest on raised, like a grey button, so they can step
+   both ways. On the old well (ground) the dark press had no darker grey to
+   go to and showed nothing (phone pass, KAL-652). Hover is raised-2, press
+   is pressed-2, so a press never matches the hover. */
+html[data-look='suite'] .doc-review-chip { background: var(--hover); }
+@media (hover: hover) {
+  html[data-look='suite'] .doc-review-chip:not([aria-pressed='true']):hover { background: var(--surface-3); }
+}
+html[data-look='suite'] .doc-review-chip[aria-pressed='true'] { background: var(--surface-3); }
+:root .doc-review-chip:not(:disabled):active { background: var(--pressed-2, var(--pressed)); transition: none; }
