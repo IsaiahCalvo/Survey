@@ -20085,6 +20085,60 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     return updatedTemplate;
   }, [requireCurrentSurveyTemplate, selectedTemplate, updateSupabaseTemplate, sanitizeTemplateConfig, handleTemplatesChange, appTemplates]);
 
+  // KAL-529: the Survey agent's "add this line?" card. Appends one checklist
+  // line to a category of the CURRENT template, persisted the same way as a
+  // new category above. Returns the new line's id, or null.
+  const handleAddChecklistItemToCurrentTemplate = useCallback(async (moduleId, categoryId, text) => {
+    if (!requireCurrentSurveyTemplate()) return null;
+    if (!selectedTemplate || !moduleId || !categoryId || !String(text || '').trim()) return null;
+
+    const newItem = { id: `item-${crypto.randomUUID()}`, text: String(text).trim() };
+    let found = false;
+    const updatedModules = deepClone(selectedTemplate.modules || selectedTemplate.spaces || []).map((mod) => (
+      mod.id !== moduleId ? mod : {
+        ...mod,
+        categories: (mod.categories || []).map((cat) => {
+          if (cat.id !== categoryId) return cat;
+          found = true;
+          return { ...cat, checklist: [...(cat.checklist || []), newItem] };
+        }),
+      }
+    ));
+    if (!found) return null;
+
+    const updatedTemplate = {
+      ...selectedTemplate,
+      modules: updatedModules,
+      spaces: updatedModules,
+      updatedAt: new Date().toISOString()
+    };
+
+    setSelectedTemplate(updatedTemplate);
+
+    const supabaseTemplateId = selectedTemplate?.supabaseId || selectedTemplate?.id;
+    if (updateSupabaseTemplate && supabaseTemplateId) {
+      try {
+        await updateSupabaseTemplate(supabaseTemplateId, {
+          config: sanitizeTemplateConfig(updatedTemplate),
+          updated_at: new Date().toISOString()
+        });
+      } catch (err) {
+        console.error('Failed to persist new checklist line to Supabase:', err);
+        showToast('Warning: The line was added locally but failed to save to cloud. Your changes may not persist.', 'error');
+      }
+    }
+
+    if (handleTemplatesChange && appTemplates) {
+      handleTemplatesChange(appTemplates.map(t =>
+        (t.id === updatedTemplate.id || t.supabaseId === supabaseTemplateId)
+          ? updatedTemplate
+          : t
+      ));
+    }
+
+    return newItem.id;
+  }, [requireCurrentSurveyTemplate, selectedTemplate, updateSupabaseTemplate, sanitizeTemplateConfig, handleTemplatesChange, appTemplates]);
+
   // (b) Clone the current template with the category appended, persist it as a
   //     NEW template, and switch this document to it — mirrors
   //     handleCreateNewTemplateFromColumns's approach.
@@ -38510,6 +38564,7 @@ ${pageBlocks}
       // already ride the existing surveyTemplates/selectedTemplate/pdfFile keys.
       addCategoryAsNewTemplate: handleAddCategoryAsNewTemplate,
       addCategoryToCurrentTemplate: handleAddCategoryToCurrentTemplate,
+      addChecklistItemToCurrentTemplate: handleAddChecklistItemToCurrentTemplate,
       annotationsByPage,
       applyLayoutDrivenZoom,
       categorySelectModeActive,
@@ -38672,6 +38727,7 @@ ${pageBlocks}
     activeSpaceId,
     handleAddCategoryAsNewTemplate,
     handleAddCategoryToCurrentTemplate,
+    handleAddChecklistItemToCurrentTemplate,
     annotationsByPage,
     applyLayoutDrivenZoom,
     categorySelectModeActive,

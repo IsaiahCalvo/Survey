@@ -39,6 +39,11 @@ function categoryIndex(template) {
   return { list, find: (moduleId, categoryId) => byKey.get(`${moduleId}\0${categoryId}`) || byKey.get(`*\0${categoryId}`) || null };
 }
 
+// An offered line or category name: at most this many characters.
+const OFFER_TEXT_MAX = 120;
+// "Power at door" and "power at the door." are the same line.
+const offerKey = (text) => String(text || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\b(the|a|an)\b/g, ' ').replace(/\s+/g, ' ').trim();
+const sameWords = (a, b) => offerKey(a) === offerKey(b);
 const activeChecklist = (category) => checklistOf(category)
   .map((item, index) => (typeof item === 'string' ? { id: `item-${index}`, text: item } : item))
   .filter((item) => item && item.archived !== true && item.id);
@@ -140,6 +145,10 @@ export function createSurveyAgentToolbox({
   // What the agent learned in the project (agentMemory.js store), or null
   // where there is none (WebMCP, tests): remember / forget then refuse.
   memory = null,
+  // What the agent offered to add to the template in this chat (KAL-529),
+  // kept by the panel across turns so each offer is made once. null: no
+  // offer tools (WebMCP, tests that leave it out).
+  offered = null,
 } = {}) {
   const bridge = () => {
     const b = getBridge();
@@ -258,6 +267,13 @@ export function createSurveyAgentToolbox({
     throw new ToolError(`No item named ${heard}. Check with find_items, find_described or find_on_plan; nothing changed.`);
   };
   const nameOf = (marker) => marker?.name || 'Unnamed item';
+  // Only someone who may change the template sees an offer (KAL-529).
+  const templateEditable = (b) => b.canEdit !== false && b.canEditTemplate === true
+    && typeof b.addChecklistLine === 'function' && typeof b.addCategory === 'function';
+  const offerAllowed = (b) => {
+    if (!offered) throw new ToolError('Offering template changes is not on here.');
+    if (!templateEditable(b)) throw new ToolError('This person cannot change the template, so do not offer. Keep it in the note.');
+  };
   // Uploads files to an item's note, as a person adding them would.
   const attachFiles = async (b, itemId, marker, files) => {
     const field = { type: 'note', before: clone(marker.note), afterText: noteTextOf(marker.note), afterMedia: null };
@@ -511,6 +527,7 @@ export function createSurveyAgentToolbox({
           selected_item: selected ? { id: b.selectedMarkerId, name: nameOf(selected) } : null,
           page_on_screen: b.getCurrentPage?.() || null,
           can_edit: b.canEdit !== false,
+          ...(offered ? { template_editable: templateEditable(b) } : {}),
           // Names and note wording this project taught the agent.
           ...(memory && b.projectId ? { learned: learnedForModel(memoryRows(b)) } : {}),
         }),
@@ -1024,6 +1041,62 @@ export function createSurveyAgentToolbox({
       return {
         content: res.id ? `${label.slice(0, -1)} (id ${res.id}).` : label,
         ...(res.id ? { change: { annotationId: res.id, documentId: b.documentId || null, label } } : {}),
+      };
+    },
+
+    // KAL-529: offer a new checklist line or category. Nothing changes here;
+    // the panel shows a Yes / No card and adds it only on Yes.
+    offer_checklist_line({ category_id: categoryId, text, item_id: itemId = null, answer = null } = {}) {
+      const b = bridge();
+      offerAllowed(b);
+      const line = String(text || '').trim().replace(/\s+/g, ' ').slice(0, OFFER_TEXT_MAX);
+      if (!line) throw new ToolError('Say what the new line is.');
+      const entry = categoryIndex(b.template).list.find(({ category }) => category.id === categoryId);
+      if (!entry) throw new ToolError(`No category with id ${categoryId}. Use get_survey_context.`);
+      const have = activeChecklist(entry.category).find((l) => sameWords(itemText(l), line));
+      if (have) throw new ToolError(`${entry.category.name} already has the line "${itemText(have)}" (id ${have.id}). Answer that one instead; nothing was offered.`);
+      const key = `line|${entry.category.id}|${offerKey(line)}`;
+      if (offered.has(key)) throw new ToolError('That line was already offered in this chat. Do not offer it again.');
+      let item = null;
+      if (itemId) {
+        const marker = markerOf(b, itemId);
+        if (marker.categoryId !== entry.category.id) throw new ToolError(`${nameOf(marker)} is not a ${entry.category.name}. Offer the line on its own category, or leave item_id out.`);
+        item = { id: itemId, name: nameOf(marker) };
+      }
+      const value = answer == null ? null : String(answer).trim();
+      if (value && !answerSetFor(b.template).some((a) => a.value === value)) {
+        throw new ToolError(`"${value}" is not one of this template's answers (${answerSetFor(b.template).map((a) => a.value).join(', ')}).`);
+      }
+      offered.add(key);
+      return {
+        content: `Offered to add "${line}" to ${entry.category.name}. The person decides on a Yes / No card under your reply; nothing is added yet. Ask them to tap Yes if they want it, and do not say it was added.`,
+        offer: {
+          kind: 'line',
+          documentId: b.documentId || null,
+          moduleId: entry.module.id,
+          categoryId: entry.category.id,
+          categoryName: entry.category.name,
+          text: line,
+          ...(item && value ? { itemId: item.id, itemName: item.name, answer: value } : {}),
+        },
+      };
+    },
+
+    offer_category({ name } = {}) {
+      const b = bridge();
+      offerAllowed(b);
+      const label = String(name || '').trim().replace(/\s+/g, ' ').slice(0, OFFER_TEXT_MAX);
+      if (!label) throw new ToolError('Say what the new category is called.');
+      const module = modulesOf(b.template).find((m) => m.id === b.currentModuleId) || modulesOf(b.template)[0];
+      if (!module) throw new ToolError('This template has no module to add a category to.');
+      const have = categoriesOf(module).find((c) => sameWords(c.name, label));
+      if (have) throw new ToolError(`${module.name || 'This module'} already has the category ${have.name} (id ${have.id}); nothing was offered.`);
+      const key = `category|${module.id}|${offerKey(label)}`;
+      if (offered.has(key)) throw new ToolError('That category was already offered in this chat. Do not offer it again.');
+      offered.add(key);
+      return {
+        content: `Offered to add the category ${label}${module.name ? ` to ${module.name}` : ''}. The person decides on a Yes / No card under your reply; nothing is added yet. Do not say it was added.`,
+        offer: { kind: 'category', documentId: b.documentId || null, moduleId: module.id, moduleName: module.name || null, name: label },
       };
     },
 

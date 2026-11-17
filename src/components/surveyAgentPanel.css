@@ -202,6 +202,19 @@
 }
 .survey-agent__undo:hover { background: var(--hover, rgba(255, 255, 255, 0.05)); }
 .survey-agent__save { align-self: flex-start; }
+/* KAL-529: "Add this line to the checklist?" with Yes and No. */
+.survey-agent__offer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2, rgba(255, 255, 255, 0.03));
+}
+.survey-agent__offer-text { margin: 0; color: var(--text-1); font-size: 13px; line-height: 1.45; }
+.survey-agent__offer-actions { display: flex; gap: 6px; }
+.survey-agent__offer-actions .survey-agent__suggestion { flex: 1; text-align: center; padding: 6px 12px; }
 .survey-agent__undone { flex: none; color: var(--text-3); font-size: 12px; }
 .survey-agent__camera {
   display: flex;

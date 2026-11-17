@@ -65,6 +65,13 @@ const SPEAK_KEY = 'survey.agent.speak';
 const readSpeakSetting = () => {
   try { return window.localStorage.getItem(SPEAK_KEY) !== '0'; } catch { return true; }
 };
+// KAL-529 (Nightly flag agent-template-offers): offers to grow the template
+// on a Yes / No card, and how notes are written: sentences or bullets.
+const TEMPLATE_OFFERS_FLAG = 'agent-template-offers';
+const NOTE_STYLE_KEY = 'survey.agent.noteStyle';
+const readNoteStyle = () => {
+  try { return window.localStorage.getItem(NOTE_STYLE_KEY) === 'bullets' ? 'bullets' : 'sentences'; } catch { return 'sentences'; }
+};
 const canHandsFree = () => typeof window !== 'undefined'
   && Boolean(navigator.mediaDevices?.getUserMedia)
   && Boolean(window.AudioContext || window.webkitAudioContext);
@@ -92,6 +99,14 @@ const SpeakerIcon = ({ muted }) => (
   <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" />
     {muted ? <path d="M16 9.5l5 5M21 9.5l-5 5" /> : <path d="M15.5 9a4.5 4.5 0 010 6M18 6.5a8 8 0 010 11" />}
+  </svg>
+);
+// Notes as bullets (three dotted lines) or sentences (plain lines).
+const NoteStyleIcon = ({ bullets }) => (
+  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
+    {bullets
+      ? <path d="M9 7h11M9 12h11M9 17h11M4.5 7h.01M4.5 12h.01M4.5 17h.01" strokeWidth="1.5" />
+      : <path d="M4 7h16M4 12h16M4 17h10" />}
   </svg>
 );
 const ArrowUpIcon = () => (
@@ -261,6 +276,13 @@ export default function SurveyAgentPanel({
   const [speakReplies, setSpeakReplies] = useState(readSpeakSetting);
   const speakRef = useRef(speakReplies);
   speakRef.current = speakReplies;
+  const [noteStyle, setNoteStyle] = useState(readNoteStyle);
+  const noteStyleRef = useRef(noteStyle);
+  noteStyleRef.current = noteStyle;
+  // Template additions offered in this chat, so each is offered once, and
+  // what the person said Yes to, told to the agent with their next message.
+  const offeredRef = useRef(new Set());
+  const offerNotesRef = useRef([]);
   const historyRef = useRef([]);
   const listRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -328,6 +350,12 @@ export default function SurveyAgentPanel({
     try { window.localStorage.setItem(SPEAK_KEY, next ? '1' : '0'); } catch { /* storage blocked */ }
   };
 
+  const toggleNoteStyle = () => {
+    const next = noteStyle === 'bullets' ? 'sentences' : 'bullets';
+    setNoteStyle(next);
+    try { window.localStorage.setItem(NOTE_STYLE_KEY, next); } catch { /* storage blocked */ }
+  };
+
   const push = (entry) => setEntries((list) => [...list, { id: newId('e'), ...entry }]);
   // 'sending' | 'sent' | 'failed' | null, for the Send voice log button.
   const [logState, setLogState] = useState(null);
@@ -341,6 +369,68 @@ export default function SurveyAgentPanel({
   };
 
   const markEntry = (id, patch) => setEntries((list) => list.map((e) => (e.id === id ? { ...e, ...patch } : e)));
+
+  // A Yes / No card from offer_checklist_line or offer_category (KAL-529).
+  const setOfferState = (entryId, index, state) => setEntries((list) => list.map((e) => (e.id !== entryId ? e : {
+    ...e,
+    offers: e.offers.map((o, i) => (i === index ? { ...o, state } : o)),
+  })));
+  const answerOffer = async (entry, index, yes) => {
+    const offer = entry.offers?.[index];
+    if (!offer || offer.state !== 'open') return;
+    if (!yes) {
+      setOfferState(entry.id, index, 'declined');
+      offerNotesRef.current.push(offer.kind === 'line'
+        ? `The person said no to adding "${offer.text}" to ${offer.categoryName}.`
+        : `The person said no to adding the category ${offer.name}.`);
+      return;
+    }
+    const b = surveyAgentBridge.current;
+    if (!b?.template || (b.documentId || null) !== (offer.documentId || null) || !b.canEditTemplate) {
+      setOfferState(entry.id, index, 'failed');
+      return;
+    }
+    setOfferState(entry.id, index, 'adding');
+    try {
+      if (offer.kind === 'category') {
+        const saved = await b.addCategory(offer.moduleId, offer.name);
+        setOfferState(entry.id, index, saved ? 'added' : 'failed');
+        if (saved) offerNotesRef.current.push(`The person said yes: the category ${offer.name} was added; get its id from get_survey_context.`);
+        return;
+      }
+      const lineId = await b.addChecklistLine(offer.moduleId, offer.categoryId, offer.text);
+      if (!lineId) { setOfferState(entry.id, index, 'failed'); return; }
+      let answered = false;
+      if (offer.itemId && offer.answer) {
+        // The new line reaches the bridge's template on the next render.
+        for (let tries = 0; tries < 20 && !answered; tries += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          const now = surveyAgentBridge.current;
+          const hasLine = (now?.template?.modules || now?.template?.spaces || [])
+            .some((m) => (m.categories || []).some((c) => c.id === offer.categoryId && (c.checklist || []).some((l) => l?.id === lineId)));
+          if (hasLine && now.markers?.[offer.itemId]) {
+            const before = now.markers[offer.itemId].checklistResponses?.[lineId] || null;
+            now.setAnswers(offer.itemId, [{ checklistItemId: lineId, value: offer.answer }]);
+            answered = true;
+            // The answer joins the reply's changes, so its Undo takes it back
+            // (the new line stays in the template).
+            const change = {
+              itemId: offer.itemId,
+              documentId: offer.documentId || null,
+              label: `${offer.itemName}: ${offer.text} ${offer.answer}`,
+              fields: [{ type: 'answer', id: lineId, before, after: offer.answer }],
+            };
+            setEntries((list) => list.map((e) => (e.id !== entry.id || e.undone ? e : { ...e, changes: [...(e.changes || []), change] })));
+          }
+        }
+      }
+      setOfferState(entry.id, index, 'added');
+      offerNotesRef.current.push(`The person said yes: "${offer.text}" (id ${lineId}) was added to ${offer.categoryName}${answered ? ` and set to ${offer.answer} on ${offer.itemName}` : ''}.`);
+    } catch (err) {
+      console.warn('[survey-agent] template offer failed', err);
+      setOfferState(entry.id, index, 'failed');
+    }
+  };
 
   const reportEntry = async (entry) => {
     markEntry(entry.id, { reported: 'sending' });
@@ -372,6 +462,9 @@ export default function SurveyAgentPanel({
     // Markup tools (notes, shapes, callouts, highlights), shared with
     // WebMCP, for people with the annotation-agent flag.
     const annotations = isFeatureOn(ANNOTATION_AGENT_FLAG);
+    const offersOn = isFeatureOn(TEMPLATE_OFFERS_FLAG);
+    const offerNote = offerNotesRef.current.length ? `\n[${offerNotesRef.current.join(' ')}]` : '';
+    offerNotesRef.current = [];
     const turnToolbox = createSurveyAgentToolbox({
       attachments: attachmentsRef.current,
       documentId: bridge.documentId || null,
@@ -381,17 +474,20 @@ export default function SurveyAgentPanel({
       requestPhoto,
       walkItems: () => [...walkItemsRef.current],
       memory: agentMemory,
+      offered: offersOn ? offeredRef.current : null,
     });
     try {
       const result = await runSurveyAgentTurn({
         history: historyRef.current,
-        userText: `${job.said || 'Attach these files.'}${fileNote}${selectedNote}`,
+        userText: `${job.said || 'Attach these files.'}${fileNote}${selectedNote}${offerNote}`,
         call,
         toolbox: turnToolbox,
         answerValues: answerSetFor(bridge.template).map((a) => a.value),
         typedLines: templateHasTypedItems(bridge.template),
         annotations,
         lang: AGENT_LANG,
+        offers: offersOn,
+        noteStyle: offersOn ? noteStyleRef.current : null,
       });
       await new Promise((resolve) => setTimeout(resolve, 0));
       toolbox.settle(result.changes);
@@ -401,7 +497,13 @@ export default function SurveyAgentPanel({
       for (const id of touched) walkItemsRef.current.add(id);
       historyRef.current = result.history;
       if (job.entryId) markEntry(job.entryId, { waiting: false });
-      push({ role: 'agent', text: result.reply, changes: result.changes, summary: result.summary || null });
+      push({
+        role: 'agent',
+        text: result.reply,
+        changes: result.changes,
+        summary: result.summary || null,
+        offers: result.offers?.length ? result.offers.map((offer) => ({ ...offer, state: 'open' })) : null,
+      });
       voiceLog.event('turn_done', { reply: result.reply, changes: result.changes.map((c) => c.label || c.type || '') });
       return result.reply;
     } catch (err) {
@@ -1192,6 +1294,29 @@ export default function SurveyAgentPanel({
                 {entry.waiting ? <div className="survey-agent__files">Waiting for signal</div> : null}
                 {entry.files?.length ? <div className="survey-agent__files">{entry.files.join(', ')}</div> : null}
               </div>
+              {entry.offers?.map((offer, i) => (
+                <div key={i} className="survey-agent__offer" data-testid="survey-agent-offer" data-offer-state={offer.state}>
+                  <p className="survey-agent__offer-text">
+                    {offer.kind === 'line'
+                      ? <>Add &ldquo;{offer.text}&rdquo; to the {offer.categoryName} checklist{offer.itemName ? <>, set to {offer.answer} on {offer.itemName}</> : null}?</>
+                      : <>Add the category {offer.name}{offer.moduleName ? <> to {offer.moduleName}</> : null}?</>}
+                  </p>
+                  {offer.state === 'open' || offer.state === 'adding' ? (
+                    <div className="survey-agent__offer-actions">
+                      <button type="button" className="survey-agent__suggestion is-primary" disabled={offer.state === 'adding'} onClick={() => answerOffer(entry, i, true)}>
+                        {offer.state === 'adding' ? 'Adding…' : 'Yes'}
+                      </button>
+                      <button type="button" className="survey-agent__suggestion" disabled={offer.state === 'adding'} onClick={() => answerOffer(entry, i, false)}>
+                        No
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="survey-agent__undone">
+                      {offer.state === 'added' ? 'Added to the template' : offer.state === 'declined' ? 'Not added' : 'Could not add it. Add it in the template instead.'}
+                    </span>
+                  )}
+                </div>
+              ))}
               {entry.changes?.length ? (
                 <div className={`survey-agent__changes${entry.undone ? ' is-undone' : ''}`} data-testid="survey-agent-changes">
                   <ul>
@@ -1322,6 +1447,18 @@ export default function SurveyAgentPanel({
                     onClick={toggleSpeak}
                   >
                     <SpeakerIcon muted={!speakReplies} />
+                  </button>
+                )}
+                {isFeatureOn(TEMPLATE_OFFERS_FLAG) && (
+                  <button
+                    type="button"
+                    className="survey-agent__icon"
+                    aria-label={noteStyle === 'bullets' ? 'Notes as bullets' : 'Notes as sentences'}
+                    data-note-style={noteStyle}
+                    {...tip(noteStyle === 'bullets' ? 'Notes are written as bullets. Tap for sentences.' : 'Notes are written as sentences. Tap for bullets.', 'right')}
+                    onClick={toggleNoteStyle}
+                  >
+                    <NoteStyleIcon bullets={noteStyle === 'bullets'} />
                   </button>
                 )}
               </>

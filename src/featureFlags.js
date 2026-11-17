@@ -56,6 +56,12 @@ export const FEATURE_FLAGS = Object.freeze({
     env: 'VITE_ENABLE_ANNOTATION_AGENT',
     stage: 'beta',
   }),
+  // KAL-529: the agent offers a new checklist line or category on a Yes / No
+  // card, and a Notes setting (sentences or bullets) in its menu.
+  'agent-template-offers': Object.freeze({
+    label: 'Survey agent: offer a new checklist line or category (Yes / No card), and a note style setting',
+    stage: 'beta',
+  }),
   // Read by the survey-mcp edge function, not the app: Claude or ChatGPT
   // connectors write only for people this flag is on for at /flags.
   'survey-connector-writes': Object.freeze({

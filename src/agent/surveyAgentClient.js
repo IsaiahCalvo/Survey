@@ -194,11 +194,13 @@ const CLAIM_CHECK = {
  * tool_calls, tool), not changed on error. Returns { history, reply, changes }
  * where changes are the writes this turn made, oldest first.
  */
-export async function runSurveyAgentTurn({ history = [], userText, call, toolbox, answerValues, typedLines = false, annotations = false, lang = 'en', maxSteps = SURVEY_AGENT_LIMITS.maxToolSteps }) {
+export async function runSurveyAgentTurn({ history = [], userText, call, toolbox, answerValues, typedLines = false, annotations = false, lang = 'en', offers: offersOn = false, noteStyle = null, maxSteps = SURVEY_AGENT_LIMITS.maxToolSteps }) {
   const messages = [...compactHistory(history), { role: 'user', content: userText }];
   const changes = [];
   // A summary a tool made this turn ({ title, text }), for the person to save.
   let summary = null;
+  // Template additions a tool offered this turn (KAL-529), for Yes / No cards.
+  const offers = [];
   // The survey context goes in up front, as if the model had asked for it:
   // that saves a whole model step (the full prompt again) on a new chat.
   if (!hasContext(messages)) {
@@ -218,7 +220,7 @@ export async function runSurveyAgentTurn({ history = [], userText, call, toolbox
   for (let step = 0; step < maxSteps; step += 1) {
     let response;
     try {
-      response = await call({ action: 'turn', messages, answer_values: answerValues, ...(typedLines ? { typed_lines: true } : {}), ...(annotations ? { annotations: true } : {}), ...(lang && lang !== 'en' ? { lang } : {}) });
+      response = await call({ action: 'turn', messages, answer_values: answerValues, ...(typedLines ? { typed_lines: true } : {}), ...(annotations ? { annotations: true } : {}), ...(lang && lang !== 'en' ? { lang } : {}), ...(offersOn ? { offers: true } : {}), ...(noteStyle && noteStyle !== 'sentences' ? { note_style: noteStyle } : {}) });
     } catch (err) {
       // The caller keeps its old history; it still needs this turn's writes for Undo.
       err.changes = changes;
@@ -240,7 +242,7 @@ export async function runSurveyAgentTurn({ history = [], userText, call, toolbox
         : claim === 'show' ? (changes.length ? 'Done, but I did not show it.' : 'I did not show it.')
           : 'I did not change anything.';
       messages.push({ role: 'assistant', content: said || '(no reply)' });
-      return { history: messages, reply: said || (changes.length ? 'Done.' : 'I did not change anything.'), changes, summary };
+      return { history: messages, reply: said || (changes.length ? 'Done.' : 'I did not change anything.'), changes, summary, offers };
     }
     messages.push({
       role: 'assistant',
@@ -263,6 +265,7 @@ export async function runSurveyAgentTurn({ history = [], userText, call, toolbox
       if (result.change) changes.push(result.change);
       if (result.changes) changes.push(...result.changes);
       if (result.summary) summary = result.summary;
+      if (result.offer) offers.push(result.offer);
       messages.push({ role: 'tool', tool_call_id: c.id, content: result.isError ? `Error: ${result.content}` : result.content });
       // Let the panel re-render so the next tool reads the new state.
       await yieldToApp();
@@ -271,5 +274,5 @@ export async function runSurveyAgentTurn({ history = [], userText, call, toolbox
   // Too many steps: close the turn so the conversation stays valid.
   if (checked != null) messages.splice(checked, 2);
   messages.push({ role: 'assistant', content: 'I stopped there; that took too many steps.' });
-  return { history: messages, reply: 'I stopped there; that took too many steps. Check what I changed below.', changes, summary };
+  return { history: messages, reply: 'I stopped there; that took too many steps. Check what I changed below.', changes, summary, offers };
 }

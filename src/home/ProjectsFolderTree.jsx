@@ -237,6 +237,7 @@ export default function ProjectsFolderTree({
   onProjectsChanged,
   onAddFromDrive = null,
   onAddFromWalkthru = null,
+  onAddFromJobFile = null,
   walkthruTabOn = false,
 }) {
   // Nightly offline-docs: "Make available offline" in the file menu.
@@ -1404,6 +1405,10 @@ export default function ProjectsFolderTree({
                   {onAddFromWalkthru && projectRoleFor(open) !== 'viewer' ? (
                     <button className="btn" data-project-add-walkthru onClick={() => onAddFromWalkthru(open)}><Icon name="pagePin" size={12} />From Walkthru</button>
                   ) : null}
+                  {/* KAL-617 (Nightly 'suite'): a job file (.kvjob) from Plot. */}
+                  {onAddFromJobFile && projectRoleFor(open) !== 'viewer' ? (
+                    <button className="btn" data-project-add-job onClick={() => onAddFromJobFile(open)}><Icon name="upload" size={12} />From a job file</button>
+                  ) : null}
                   {/* Manage Team — opens the Manage Team modal (NOT the share
                       link modal) for the currently open project. */}
                   <button className="btn" onClick={() => setTeamModalProject(open)}><Icon name="users" size={12} />Manage team</button>
@@ -2385,6 +2390,7 @@ export default function ProjectsFolderTree({
               // New drawing > OneDrive).
               ...(onAddFromDrive ? [{ icon: 'oneDrive', label: 'Add from OneDrive', reason: viewerBlocked, onClick: () => onAddFromDrive(proj) }] : []),
               ...(onAddFromWalkthru ? [{ icon: 'pagePin', label: 'Add a Walkthru walk', reason: viewerBlocked, onClick: () => onAddFromWalkthru(proj) }] : []),
+              ...(onAddFromJobFile ? [{ icon: 'upload', label: 'Add a job file', reason: viewerBlocked, onClick: () => onAddFromJobFile(proj) }] : []),
               {
                 // Pin / unpin — toggles local pinned state; the row floats to
                 // the top of the list and shows a pin icon when pinned.
