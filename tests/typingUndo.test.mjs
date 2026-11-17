@@ -64,7 +64,7 @@ test('the keys: Ctrl/Cmd+Z undo, Shift+Ctrl/Cmd+Z and Ctrl+Y redo', () => {
 });
 
 test('wired: a beta flag, a migration, and the text editor keeps its own steps', () => {
-  assert.equal(FEATURE_FLAGS['typing-undo']?.stage, 'beta');
+  assert.equal(FEATURE_FLAGS['typing-undo']?.stage, 'rollout');
   assert.match(read('supabase/migrations/20261110151000_typing_undo_flag.sql'), /'typing-undo', 'off'/);
   const overlay = read('src/components/TextEditOverlay.jsx');
   assert.match(overlay, /typingHistoryRef\.current = isFeatureOn\('typing-undo'\) \? createTypingHistory\(el\.textContent\) : null;/);

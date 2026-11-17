@@ -33,5 +33,5 @@ test('menu badges', () => {
 });
 
 test('flag is a Nightly beta', () => {
-  assert.equal(FEATURE_FLAGS['measure-keys']?.stage, 'beta');
+  assert.equal(FEATURE_FLAGS['measure-keys']?.stage, 'rollout');
 });

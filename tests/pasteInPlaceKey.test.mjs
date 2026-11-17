@@ -43,7 +43,7 @@ test('pageNumberAtPoint reads the overlay page first, then the page div', () => 
 });
 
 test('the viewer arms its own steady listener behind the beta flag', () => {
-  assert.equal(FEATURE_FLAGS['paste-in-place-key']?.stage, 'beta');
+  assert.equal(FEATURE_FLAGS['paste-in-place-key']?.stage, 'rollout');
   const src = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
   assert.match(src, /const \[pasteInPlaceKeyOn\] = useState\(\(\) => isFeatureOn\('paste-in-place-key'\)\);/);
   assert.match(src, /if \(!isPasteInPlaceKey\(e\) \|\| e\.defaultPrevented\) return;/);

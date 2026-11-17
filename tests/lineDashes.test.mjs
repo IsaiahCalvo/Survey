@@ -61,7 +61,7 @@ test('a picked shape takes Long dash and Dash-dot and reports them back', () => 
 });
 
 test('a beta flag with its migration; callouts keep three styles; every picker is wired', () => {
-  assert.equal(FEATURE_FLAGS['line-dashes']?.stage, 'beta');
+  assert.equal(FEATURE_FLAGS['line-dashes']?.stage, 'rollout');
   assert.match(read('supabase/migrations/20261110143000_line_dashes_flag.sql'), /\('line-dashes', 'off'/);
   assert.match(read('src/AppShell.jsx'), /lineStyleOptionsWith\(lineDashesOn && bottomToolbarApi\.contextTool !== 'callout'\)/);
   assert.match(read('src/components/SelectionQuickBar.jsx'), /lineStyleOptionsWith\(isFeatureOn\('line-dashes'\) && api\?\.contextTool !== 'callout'\)/);

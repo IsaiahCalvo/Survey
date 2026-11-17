@@ -46,7 +46,7 @@ test('Nightly text-fit-height: a side drag fits the box to its words both ways',
   assert.equal(shrunk.height, 20);
   assert.ok(Math.abs(shrunk.left - 10) < 1e-9);
   assert.ok(Math.abs(shrunk.top - 10) < 1e-9);
-  assert.equal(FEATURE_FLAGS['text-fit-height']?.stage, 'beta');
+  assert.equal(FEATURE_FLAGS['text-fit-height']?.stage, 'rollout');
 });
 
 test('the measuring probe keeps a numeric font weight unitless, so bold text measures bold', () => {

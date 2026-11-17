@@ -20,7 +20,7 @@ test('Left / Right and Shift+Up / Down turn; anything else does not', () => {
 });
 
 test('flag and wiring: a picked mark or a text selection keeps the arrows', () => {
-  assert.equal(FEATURE_FLAGS['page-turn-keys'].stage, 'beta');
+  assert.equal(FEATURE_FLAGS['page-turn-keys'].stage, 'rollout');
   const src = readFileSync(new URL('../src/components/PdfjsViewerContainer.jsx', import.meta.url), 'utf8');
   assert.match(src, /isFeatureOn\('page-turn-keys'\)/);
   // Only Shift + arrows grow a text selection, so only they yield to one.

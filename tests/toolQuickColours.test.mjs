@@ -8,7 +8,7 @@ import {
 import { FEATURE_FLAGS } from '../src/featureFlags.js';
 
 test('highlighter gets yellow first (its default) only with the flag', () => {
-  assert.equal(FEATURE_FLAGS['tool-quick-colours']?.stage, 'beta');
+  assert.equal(FEATURE_FLAGS['tool-quick-colours']?.stage, 'rollout');
   assert.deepEqual(quickColoursForTool('highlighter', true).colours, HIGHLIGHTER_QUICK_COLOURS);
   assert.equal(HIGHLIGHTER_QUICK_COLOURS[0].toLowerCase(), '#ffff00');
   assert.deepEqual(quickColoursForTool('highlighter', false).colours, QUICK_COLOURS);

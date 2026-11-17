@@ -63,7 +63,7 @@ test('wired in: Ctrl+D, the arrow preview and commit, the callout box, drag high
   const hook = read('src/hooks/useSVGInteraction.js');
   assert.equal((hook.match(/clearDragTextSelection\(\);/g) || []).length, 4);
   for (const [key, file] of [['text-fit-height', '20261110146000_text_fit_height_flag.sql'], ['poly-click-starts', '20261110147000_poly_click_starts_flag.sql']]) {
-    assert.equal(FEATURE_FLAGS[key]?.stage, 'beta');
+    assert.equal(FEATURE_FLAGS[key]?.stage, 'rollout');
     assert.match(read(`supabase/migrations/${file}`), new RegExp(`\\('${key}', 'off'`));
   }
 });
