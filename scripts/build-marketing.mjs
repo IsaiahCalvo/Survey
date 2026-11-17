@@ -264,7 +264,7 @@ ${body}
     <div><h2 class="fh">Compare</h2>${COMPARE.map((c) => `<a href="/compare/${c.slug}">Survey vs ${c.them.split(' ')[0]}</a>`).join('')}</div>${TOOL_LINKS.length ? `
     <div><h2 class="fh">Free PDF tools</h2>${TOOL_LINKS.map(([h, l]) => `<a href="${h}">${l}</a>`).join('')}</div>` : ''}
     <div><h2 class="fh">Get started</h2><a href="${APP}">Log in</a><a href="${SIGNUP}">Start free</a><a href="${MAIL}">Contact</a><a href="/status">Status</a></div>
-    <div><h2 class="fh">Legal</h2><a href="/privacy.html">Privacy</a><a href="/terms.html">Terms</a><a href="/delete-account">Delete account</a></div>
+    <div><h2 class="fh">Legal</h2><a href="/privacy.html">Privacy</a><a href="/terms.html">Terms</a><a href="/delete-account">Delete account</a><a href="/kal-voe">Kal Voe</a></div>
   </div>
   <p class="copy">© <span class="yr">2026</span> Kal Voe LLC. Survey is made by Kal Voe LLC, New Jersey, United States.</p>
 </div></footer>
@@ -669,6 +669,28 @@ const deleteAccount = page({
 </div></section>`,
 });
 
+// Kal Voe: the one account behind Survey, Walkthru and Plot. Google's sign-in
+// page names the app "Kal Voe" with this page as its home page, so it must
+// say the name and show the same logo (public/kal-voe/logo-512.png).
+const kalVoe = page({
+  path: '/kal-voe', crumb: 'Kal Voe',
+  title: 'Kal Voe | Survey, Walkthru and Plot',
+  desc: 'Kal Voe makes Survey, Walkthru and Plot. One Kal Voe account signs you in to all three.',
+  body: `<section class="page-head"><div class="wrap narrow"><img src="/kal-voe/logo-512.png" alt="Kal Voe logo" width="96" height="96" style="border-radius:12px;display:block;margin-bottom:20px" /><h1>Kal Voe</h1><p class="lede">Kal Voe makes three apps for building systems work: Walkthru, Plot and Survey. One Kal Voe account signs you in to all three.</p></div></section>
+<section class="sec tight"><div class="wrap narrow">
+<h2>The apps</h2>
+<ul class="ticks">
+<li><strong>Walkthru</strong>: walk a site, drop devices on the floor plan, and record photos, voice notes and notes as you go. <a href="https://walkthru.tools">walkthru.tools</a></li>
+<li><strong>Plot</strong>: draw the design: devices, tags, cables and schedules on the plan set.</li>
+<li><strong>Survey</strong>: mark up drawings and run site surveys on the plan in the field. <a href="/welcome">surveytool.app</a></li>
+</ul>
+<h2>One account</h2>
+<p>Sign in to any of the three with Google, Microsoft or your email. It is the same account in every app, on the web and on your phone. Each app can be used on its own.</p>
+<p>Signing in with Google gives us your name, email address and profile picture, for your account. Read the <a href="/privacy.html">privacy policy</a> and <a href="/terms.html">terms</a>.</p>
+<p class="fine">Kal Voe LLC, New Jersey, United States. Questions? <a href="${MAIL}">Email us</a>.</p>
+</div></section>`,
+});
+
 const longDate = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
 // The newest two days stay open; older ones fold away so the page stays short.
 const newsDay = (day) => `<h2><time datetime="${day.date}">${longDate(day.date)}</time></h2><ul class="ticks">${day.items.map((item) => `<li>${esc(item)}</li>`).join('')}</ul>`;
@@ -790,14 +812,14 @@ ${cta('Try Survey free on your own drawings')}`,
 // Importing this file (build-free-tools.mjs does, for the layout) must not
 // rewrite the pages, so the writes only run when it is the script itself.
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const out = { ...usePages, ...comparePages, 'use-cases/index.html': useIndex, '404.html': notFound, 'welcome/index.html': home, 'features/index.html': features, 'devices/index.html': devices, 'pricing/index.html': pricing, 'faq/index.html': faq, 'status/index.html': status, 'delete-account/index.html': deleteAccount, 'whats-new/index.html': whatsNew, 'use-with-ai/index.html': useWithAi };
+  const out = { ...usePages, ...comparePages, 'use-cases/index.html': useIndex, '404.html': notFound, 'welcome/index.html': home, 'features/index.html': features, 'devices/index.html': devices, 'pricing/index.html': pricing, 'faq/index.html': faq, 'status/index.html': status, 'delete-account/index.html': deleteAccount, 'whats-new/index.html': whatsNew, 'use-with-ai/index.html': useWithAi, 'kal-voe/index.html': kalVoe };
   for (const [p, html] of Object.entries(out)) {
     const f = join(root, p);
     mkdirSync(dirname(f), { recursive: true });
     writeFileSync(f, html);
   }
 
-  const urls = ['/welcome', '/features', '/devices', '/pricing', '/faq', '/use-cases', '/use-with-ai', '/status', '/delete-account', '/whats-new', ...USES.map((u) => '/use-cases/' + u.slug), ...COMPARE.map((c) => '/compare/' + c.slug), ...TOOL_PATHS, '/privacy.html', '/terms.html'];
+  const urls = ['/welcome', '/features', '/devices', '/pricing', '/faq', '/use-cases', '/use-with-ai', '/status', '/delete-account', '/whats-new', '/kal-voe', ...USES.map((u) => '/use-cases/' + u.slug), ...COMPARE.map((c) => '/compare/' + c.slug), ...TOOL_PATHS, '/privacy.html', '/terms.html'];
   writeFileSync(join(root, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${urls.map((u) => `  <url><loc>${ORIGIN}${u}</loc><lastmod>${TODAY}</lastmod></url>`).join('\n')}
