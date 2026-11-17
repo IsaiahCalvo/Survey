@@ -887,9 +887,15 @@
   margin-bottom: 0;
 }
 
+/* A small coral-wash pill, not coral words in brackets (polish pass,
+   KAL-652). Coral on coral-wash passes 4.5:1 in both modes. */
 .account-plan-badge-text {
   font-size: 11px;
   font-weight: 600;
+  line-height: 16px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent-soft);
   color: var(--accent);
 }
 
@@ -1043,6 +1049,19 @@
 }
 
 /* Subscription View Tabs */
+/* The current plan is a status, not a button (polish pass, KAL-652). It
+   wore a coral wash inside a coral edge, the look of a button you could
+   press, beside the real coral Start trial button. It is now quiet words
+   with a tick on a plain edge. Doubled class so it wins over the three
+   outline classes above, whatever their order. */
+.account-plan-mark.account-plan-mark {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  font-weight: 500;
+  gap: 6px;
+}
+
 .account-subscription-tabs {
   display: flex;
   gap: 8px;

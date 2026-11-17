@@ -1098,6 +1098,7 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                             </button>
                           ) : subscription?.tier === 'free' ? (
                             <div className="account-btn-outline-green account-plan-mark">
+                              <Icon name="check" size={14} />
                               Current plan
                             </div>
                           ) : subscription?.tier === 'developer' ? (
@@ -1125,7 +1126,7 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                           <div className="account-plan-info-row">
                             <span className="account-plan-name">Pro</span>
                             {subscription?.tier !== 'pro' && subscription?.tier !== 'enterprise' && subscription?.tier !== 'developer' && (
-                              <span className="account-plan-badge-text">(Recommended)</span>
+                              <span className="account-plan-badge-text">Recommended</span>
                             )}
                           </div>
                           <div className="account-subscription-price">
@@ -1160,6 +1161,7 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                         <div className="account-subscription-actions">
                           {subscription?.tier === 'pro' ? (
                             <div className="account-btn-outline-blue account-plan-mark">
+                              <Icon name="check" size={14} />
                               Current plan
                             </div>
                           ) : subscription?.tier === 'developer' ? (
@@ -1214,6 +1216,7 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                         <div className="account-subscription-actions">
                           {subscription?.tier === 'enterprise' ? (
                             <div className="account-btn-outline-gold account-plan-mark">
+                              <Icon name="check" size={14} />
                               Current plan
                             </div>
                           ) : viaCompany ? (
