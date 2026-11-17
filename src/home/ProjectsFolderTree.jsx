@@ -238,6 +238,7 @@ export default function ProjectsFolderTree({
   onAddFromDrive = null,
   onAddFromWalkthru = null,
   onAddFromJobFile = null,
+  onSendBackToPlot = null,
   walkthruTabOn = false,
 }) {
   // Nightly offline-docs: "Make available offline" in the file menu.
@@ -1409,6 +1410,10 @@ export default function ProjectsFolderTree({
                   {onAddFromJobFile && projectRoleFor(open) !== 'viewer' ? (
                     <button className="btn" data-project-add-job onClick={() => onAddFromJobFile(open)}><Icon name="upload" size={12} />From a job file</button>
                   ) : null}
+                  {/* KAL-758 (Nightly 'suite'): field changes back to Plot. */}
+                  {onSendBackToPlot ? (
+                    <button className="btn" data-project-send-plot onClick={() => onSendBackToPlot(open)}><Icon name="download" size={12} />Send back to Plot</button>
+                  ) : null}
                   {/* Manage Team — opens the Manage Team modal (NOT the share
                       link modal) for the currently open project. */}
                   <button className="btn" onClick={() => setTeamModalProject(open)}><Icon name="users" size={12} />Manage team</button>
@@ -2391,6 +2396,7 @@ export default function ProjectsFolderTree({
               ...(onAddFromDrive ? [{ icon: 'oneDrive', label: 'Add from OneDrive', reason: viewerBlocked, onClick: () => onAddFromDrive(proj) }] : []),
               ...(onAddFromWalkthru ? [{ icon: 'pagePin', label: 'Add a Walkthru walk', reason: viewerBlocked, onClick: () => onAddFromWalkthru(proj) }] : []),
               ...(onAddFromJobFile ? [{ icon: 'upload', label: 'Add a job file', reason: viewerBlocked, onClick: () => onAddFromJobFile(proj) }] : []),
+              ...(onSendBackToPlot ? [{ icon: 'download', label: 'Send back to Plot', onClick: () => onSendBackToPlot(proj) }] : []),
               {
                 // Pin / unpin — toggles local pinned state; the row floats to
                 // the top of the list and shows a pin icon when pinned.

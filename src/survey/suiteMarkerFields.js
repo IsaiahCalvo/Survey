@@ -100,5 +100,8 @@ export function suiteFieldsFromRowData(annotationData) {
   for (const field of SUITE_MARKER_FIELDS) {
     if (nonEmpty(annotationData[field])) out[field] = annotationData[field];
   }
+  // Where a marker from a job file arrived (KAL-758, jobReturn.js).
+  const origin = annotationData.suiteOrigin;
+  if (origin && typeof origin === 'object' && !Array.isArray(origin) && nonEmpty(origin.pageId)) out.suiteOrigin = origin;
   return out;
 }
