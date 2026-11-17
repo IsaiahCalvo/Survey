@@ -65,3 +65,10 @@ test('a setting pill shows a press in the light one look (pressed-2)', () => {
 test('the Pages tab page dot (actions) shows a press', () => {
   assert.match(read('src/styles.css'), /\.pages-panel-more:active > span \{\n\s*background: var\(--pressed-2, var\(--pressed\)\);\n\s*transition: none;/);
 });
+
+test('History: legend filters and rows take the hover fill; Spotlight me hovers to the hover fill so its press shows', () => {
+  const jsx = read('src/components/revisions/RevisionsPanel.jsx');
+  assert.match(jsx, /\.dh-legend > button:not\(\[aria-pressed='true'\]\):hover \{ color: var\(--text-1\); background: var\(--hover\); border-radius: 4px; \}/);
+  assert.match(jsx, /\.dh-row:not\(\.sel\):hover \{ background: var\(--hover\); \}/);
+  assert.match(read('src/spotlight/spotlight.css'), /@media \(hover: hover\) \{ \.spotlight-me:hover \{ background: var\(--hover\); \} \}/);
+});
