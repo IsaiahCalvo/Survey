@@ -54,8 +54,10 @@ test('signed out: a PDF opens, keeps its marks on this device, and saves to an a
 
     // A reload keeps the file and its mark.
     await page.reload({ waitUntil: 'domcontentloaded' });
-    // The sign-in card comes back on a fresh load; carry on without an account.
-    await page.getByText('Continue without an account').click({ timeout: 60_000 });
+    // "Continue without an account" holds for the tab: no sign-in card again
+    // (KAL-752).
+    await expect(page.getByText(name, { exact: true }).filter({ visible: true }).first()).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText('Continue without an account')).toHaveCount(0);
     await page.getByText(name, { exact: true }).filter({ visible: true }).first().click();
     await page.getByRole('button', { name: 'Open file' }).click();
     await expect(page.getByText(PAGE_TEXT).filter({ visible: true }).first()).toBeVisible({ timeout: 60_000 });
