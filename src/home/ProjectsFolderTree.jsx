@@ -57,6 +57,7 @@ import { dismissToast, showToast } from '../utils/toast';
 import ProjectItemsPanel, { ProjectItemsTabs } from '../projectItems/ProjectItemsPanel.jsx';
 import ProjectExportDialog from './ProjectExportDialog.jsx';
 import ProjectActivityPanel from '../projectItems/ProjectActivityPanel.jsx';
+import ProjectWalkthruPanel, { useProjectWalks } from '../projectItems/ProjectWalkthruPanel.jsx';
 import { keyboardControlProps } from '../utils/keyboardActivation.js';
 import { ITEM_LINK_EVENT, takePendingItemLink } from '../projectItems/itemLink.js';
 import { SHEET_VIEW_EVENT, openAllChoice, projectSheets, storedProjectOrder } from '../sheets/sheetSet.js';
@@ -236,6 +237,7 @@ export default function ProjectsFolderTree({
   onProjectsChanged,
   onAddFromDrive = null,
   onAddFromWalkthru = null,
+  walkthruTabOn = false,
 }) {
   // Nightly offline-docs: "Make available offline" in the file menu.
   const { downloadDocument: downloadForOffline, fileStamp } = useStorage();
@@ -529,6 +531,13 @@ export default function ProjectsFolderTree({
   const [activityOn] = useState(() => isFeatureOn('project-activity'));
   // Drawboard's project Photos page (Nightly, 'project-photos').
   const [photosOn] = useState(() => isFeatureOn('project-photos'));
+  // Kal Voe suite (KAL-595, Nightly 'suite'): a Walkthru tab once a walk
+  // was added to the project. The phone's drilled-in project reads its own.
+  const deskWalks = useProjectWalks({ projectId: open?.id, enabled: walkthruTabOn });
+  const phoneWalksOwn = useProjectWalks({ projectId: mobileDrillProject?.id, enabled: walkthruTabOn && mobileDrillProject?.id !== open?.id });
+  const phoneWalks = mobileDrillProject?.id === open?.id ? deskWalks : phoneWalksOwn;
+  const deskWalksOn = walkthruTabOn && deskWalks.walks.length > 0;
+  const phoneWalksOn = walkthruTabOn && phoneWalks.walks.length > 0;
   const tabsOn = issuesOn || activityOn || photosOn;
   // A photo's link chip jumps to that item in its list.
   const [openItemId, setOpenItemId] = useState(null);
@@ -558,6 +567,11 @@ export default function ProjectsFolderTree({
     onOpenDocument(sheets[0]);
   };
   const [listTab, setListTab] = useState('files');
+  // A project with no walk has no Walkthru tab: fall back to Files.
+  useEffect(() => {
+    if (listTab !== 'walkthru' || deskWalks.loading || phoneWalks.loading) return;
+    if (!deskWalksOn && !phoneWalksOn) setListTab('files');
+  }, [listTab, deskWalksOn, phoneWalksOn, deskWalks.loading, phoneWalks.loading]);
   // An "assigned to you" email link (Nightly 'item-assign-email', itemLink.js):
   // open its project on the item's list with the item showing, as soon as
   // that project is here. A closed project shows the closed list first.
@@ -1421,14 +1435,16 @@ export default function ProjectsFolderTree({
                 </div>
               </div>
 
-              {tabsOn && <ProjectItemsTabs value={listTab} onChange={(t) => { setOpenItemId(null); setListTab(t); }} issues={issuesOn} activity={activityOn} photos={photosOn} />}
-              {photosOn && listTab === 'photos' ? (isPhoneLayout() ? <div style={{ flex: 1 }} /> : (
+              {(tabsOn || deskWalksOn) && <ProjectItemsTabs value={listTab} onChange={(t) => { setOpenItemId(null); setListTab(t); }} issues={issuesOn} activity={activityOn} photos={photosOn} walkthru={deskWalksOn} />}
+              {deskWalksOn && listTab === 'walkthru' ? (isPhoneLayout() ? <div style={{ flex: 1 }} /> : (
+                <ProjectWalkthruPanel project={open} walks={deskWalks.walks} loading={deskWalks.loading} />
+              )) : photosOn && listTab === 'photos' ? (isPhoneLayout() ? <div style={{ flex: 1 }} /> : (
                 <Suspense fallback={<div style={{ flex: 1 }} />}>
                   <ProjectPhotosPanelLazy project={open} user={user} role={projectRoleFor(open)} lookupMember={lookupMember} itemsOn={issuesOn} onOpenItem={openItemFromPhoto} />
                 </Suspense>
               )) : activityOn && listTab === 'activity' ? (isPhoneLayout() ? <div style={{ flex: 1 }} /> : (
                 <ProjectActivityPanel project={open} user={user} lookupMember={lookupMember} documents={openFiles} onOpenDocument={onOpenDocument} />
-              )) : issuesOn && listTab !== 'files' ? (isPhoneLayout() ? <div style={{ flex: 1 }} /> : (
+              )) : issuesOn && listTab !== 'files' && listTab !== 'walkthru' ? (isPhoneLayout() ? <div style={{ flex: 1 }} /> : (
                 <ProjectItemsPanel
                   project={open}
                   kind={listTab}
@@ -1682,14 +1698,16 @@ export default function ProjectsFolderTree({
                     <span>{mobileDrillAllFiles.length} {mobileDrillAllFiles.length === 1 ? 'file' : 'files'} · {projectLastEditedLabel(mobileDrillProject.id)}{accessOn && mobileDrillProject.closed_at ? <span className="project-closed-chip" data-project-closed>Closed</span> : null}</span>
                     {accessOn && mobileDrillProject.description ? <div className="project-description-line" data-project-description>{mobileDrillProject.description}</div> : null}
                   </div>
-                  {tabsOn && <ProjectItemsTabs value={listTab} onChange={(t) => { setOpenItemId(null); setListTab(t); }} issues={issuesOn} activity={activityOn} photos={photosOn} />}
-                  {photosOn && listTab === 'photos' ? (
+                  {(tabsOn || phoneWalksOn) && <ProjectItemsTabs value={listTab} onChange={(t) => { setOpenItemId(null); setListTab(t); }} issues={issuesOn} activity={activityOn} photos={photosOn} walkthru={phoneWalksOn} />}
+                  {phoneWalksOn && listTab === 'walkthru' ? (
+                    <ProjectWalkthruPanel project={mobileDrillProject} walks={phoneWalks.walks} loading={phoneWalks.loading} phone />
+                  ) : photosOn && listTab === 'photos' ? (
                     <Suspense fallback={<div style={{ flex: 1 }} />}>
                       <ProjectPhotosPanelLazy project={mobileDrillProject} user={user} role={projectRoleFor(mobileDrillProject)} lookupMember={lookupMember} itemsOn={issuesOn} onOpenItem={openItemFromPhoto} phone />
                     </Suspense>
                   ) : activityOn && listTab === 'activity' ? (
                     <ProjectActivityPanel project={mobileDrillProject} user={user} lookupMember={lookupMember} documents={mobileDrillAllFiles} onOpenDocument={onOpenDocument} phone />
-                  ) : issuesOn && listTab !== 'files' ? (
+                  ) : issuesOn && listTab !== 'files' && listTab !== 'walkthru' ? (
                     <ProjectItemsPanel
                       project={mobileDrillProject}
                       kind={listTab}

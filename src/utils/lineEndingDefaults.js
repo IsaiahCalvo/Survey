@@ -100,7 +100,8 @@ export function lineEndingCreateOptions(tool) {
  */
 export function pickedLineEndsKey(object, pageNumber) {
   if (!isFeatureOn('line-endings')) return null;
-  if (!object || pageNumber == null || String(object.type || '').toLowerCase() !== 'line' || !Number.isFinite(Number(pageNumber))) return null;
+  // A Line, an Arrow or a Polyline (Drawboard's polyline bar has Start and End too).
+  if (!object || pageNumber == null || !['line', 'polyline'].includes(String(object.type || '').toLowerCase()) || !Number.isFinite(Number(pageNumber))) return null;
   const { startStyle, endStyle } = resolveLineEndingStyles(object);
   return `${startStyle}|${endStyle}|${Number(pageNumber)}`;
 }

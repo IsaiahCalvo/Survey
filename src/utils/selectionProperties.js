@@ -214,7 +214,7 @@ export function resizeObjectTo(object, field, value) {
  * the other end keeps its head. Null for anything that is not a line.
  */
 export function setLineEndingOn(object, side, style) {
-  if (!object || String(object.type || '').toLowerCase() !== 'line') return null;
+  if (!object || !['line', 'polyline'].includes(String(object.type || '').toLowerCase())) return null;
   if (side !== 'start' && side !== 'end') return null;
   const key = side === 'start' ? 'startArrowheadStyle' : 'arrowheadStyle';
   return {

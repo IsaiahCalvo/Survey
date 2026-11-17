@@ -25,6 +25,12 @@
  * choice: the viewer asks for it when the direction is Horizontal, the view
  * is Single and Continuous is on. Next / Previous still step one page.
  *
+ * Horizontal with Double, Cover or Grid (KAL-716, Drawboard pictures 43 and
+ * 44) turns the view on its side: a pair stands one above the other (1 over
+ * 2), a Grid's N pages fill a column top to bottom, and the columns run left
+ * to right in one row, as 'strip-double', 'strip-cover', 'strip-grid-N'. Each
+ * page then has a y place in its column too (offsetY).
+ *
  * Pure (no React); every size is in PDF points at scale 1.
  */
 
@@ -35,11 +41,27 @@ export const PAGE_SPREAD_MODES = Object.freeze(['single', 'double', 'cover', ...
 export function normalizeSpreadMode(mode) {
   if (mode === 'grid') return `grid-${DEFAULT_GRID_COLUMNS}`;
   if (mode === 'strip') return mode;
+  if (typeof mode === 'string' && mode.startsWith('strip-')) {
+    const base = normalizeSpreadMode(mode.slice(6));
+    return base === 'single' || base === 'strip' ? 'strip' : `strip-${base}`;
+  }
   return PAGE_SPREAD_MODES.includes(mode) ? mode : 'single';
 }
 
 export function isGridMode(mode) {
   return normalizeSpreadMode(mode).startsWith('grid-');
+}
+
+/** The Horizontal form of a view: 'strip' for Single, 'strip-double' and so on. */
+export function stripSpreadMode(mode) {
+  const spread = normalizeSpreadMode(mode);
+  if (spread === 'single' || spread.startsWith('strip')) return spread === 'single' ? 'strip' : spread;
+  return `strip-${spread}`;
+}
+
+/** The view a Horizontal one turns on its side ('double' for 'strip-double'), else null. */
+function stripBase(spread) {
+  return spread.startsWith('strip-') ? spread.slice(6) : null;
 }
 
 /** Auto's column count for this many shown pages. */
@@ -62,7 +84,7 @@ export function gridColumns(mode, pageCount = 0) {
 export function spreadRowSize(mode, pageCount = 0) {
   const spread = normalizeSpreadMode(mode);
   if (spread === 'single') return 1;
-  if (spread === 'strip') return Math.max(1, Number(pageCount) || 0);
+  if (spread.startsWith('strip')) return Math.max(1, Number(pageCount) || 0);
   return isGridMode(spread) ? gridColumns(spread, pageCount) : 2;
 }
 
@@ -77,7 +99,7 @@ export function buildSpreadRows(dims, mode) {
   (dims || []).forEach((dim, index) => { if (dim && !dim.hidden) shown.push(index); });
   const spread = normalizeSpreadMode(mode);
   if (spread === 'single') return shown.map((index) => [index]);
-  if (spread === 'strip') return shown.length ? [shown] : [];
+  if (spread.startsWith('strip')) return shown.length ? [shown] : [];
   const size = spreadRowSize(spread, shown.length);
   const rows = [];
   let start = 0;
@@ -93,11 +115,13 @@ export function buildSpreadRows(dims, mode) {
 
 /**
  * Where each page sits in its row.
- * @returns {null | { leader: number[], offsetX: number[], stack: object[], rows: number[][], strip: boolean }}
+ * @returns {null | { leader: number[], offsetX: number[], offsetY: number[], stack: object[], rows: number[][], strip: boolean }}
  *   null for Single (the caller keeps the page list as the stack).
  *   strip      true for Horizontal's one row of every page
  *   leader[i]  the row's first page (i itself for a leader; i for hidden pages)
  *   offsetX[i] the page's left edge from the row's left edge, in points
+ *   offsetY[i] the page's top from the row's top, in points (0 but in a
+ *              Horizontal Double, Cover or Grid, where pages stack in columns)
  *   stack[i]   { w, h } of the row on its leader, { w: 0, h: 0, hidden: true }
  *              on the other page of a row and on hidden pages
  */
@@ -108,8 +132,36 @@ export function placeSpreadPages(dims, mode, gapPt = 0) {
   const gap = Math.max(0, Number(gapPt) || 0);
   const leader = list.map((_, index) => index);
   const offsetX = list.map(() => 0);
+  const offsetY = list.map(() => 0);
   const stack = list.map(() => ({ w: 0, h: 0, hidden: true }));
   const rows = buildSpreadRows(list, spread);
+  const base = stripBase(spread);
+  if (base) {
+    // Horizontal Double / Cover / Grid: the vertical view's rows become
+    // columns, side by side in one row as wide as the document.
+    const columns = buildSpreadRows(list, base);
+    const shown = rows[0] || [];
+    const first = shown[0];
+    let x = 0;
+    let tallest = 0;
+    columns.forEach((column, columnIndex) => {
+      // A page alone keeps its pair slot, as across: Cover's page 1 low
+      // (the open book's right-hand page, on its side).
+      let y = base === 'cover' && columnIndex === 0 && column.length === 1 ? list[column[0]].h + gap : 0;
+      let wide = 0;
+      column.forEach((index) => {
+        leader[index] = first;
+        offsetX[index] = x;
+        offsetY[index] = y;
+        y += list[index].h + gap;
+        wide = Math.max(wide, list[index].w);
+      });
+      tallest = Math.max(tallest, y - gap);
+      x += wide + gap;
+    });
+    if (first != null) stack[first] = { w: x - gap, h: tallest };
+    return { leader, offsetX, offsetY, stack, rows, strip: true, columns };
+  }
   const strip = spread === 'strip';
   // A strip is a Grid row as long as the document.
   const grid = strip || isGridMode(spread);
@@ -150,7 +202,7 @@ export function placeSpreadPages(dims, mode, gapPt = 0) {
     offsetX[second] = a.w + gap;
     stack[first] = { w: a.w + gap + b.w, h: Math.max(a.h, b.h) };
   });
-  return { leader, offsetX, stack, rows, strip };
+  return { leader, offsetX, offsetY, stack, rows, strip };
 }
 
 /** The pages of the row a page sits in (one index, or the whole row). */

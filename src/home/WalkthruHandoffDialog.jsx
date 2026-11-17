@@ -2,19 +2,26 @@
    Survey and Walkthru share one account and one database, so Survey reads
    the walk itself. The user picks the walk, then the Template and Module
    once. Each Walkthru node with a Category becomes a Survey Marker dot where
-   it was dropped. Categories linked through the library match on their own;
-   a Category with the exact same name is listed for the user to confirm;
-   the rest are counted under "Not in this Module", never dropped.
-   Rules: suite/walkthruHandoff.js; work: suite/walkthruHandoffRun.js. */
+   it was dropped. Categories linked through the library match on their own
+   and never ask. Each other Category gets a row, side by side with the
+   Module's Categories (KAL-596): only an exact-name match is filled in, the
+   user picks or skips the rest, and a link they keep is saved to the library
+   so the next walk matches it on its own. Skipped ones are counted under
+   "Not in this Module", never dropped.
+   Rules: suite/walkthruHandoff.js, suite/categoryLinks.js; work:
+   suite/walkthruHandoffRun.js. */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import DialogCard from '../components/DialogCard.jsx';
 import ValueSelect from '../components/ValueSelect.jsx';
 import Spinner from '../components/Spinner';
-import { Icon } from './HubShell';
 import { Z_INDEX } from '../theme';
 import { matchCategories } from '../suite/walkthruHandoff.js';
+import {
+  canAddToModule, categoryForPicks, keepPicks, linkRows, linksToSave, moduleCategories, startingPicks,
+} from '../suite/categoryLinks.js';
 import '../components/PdfToolsDialog.css';
 import '../components/ExportPdfDialog.css';
+import './WalkthruHandoffDialog.css';
 
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
@@ -22,14 +29,7 @@ function modulesOf(template) {
   return template?.modules || template?.spaces || template?.config?.modules || [];
 }
 
-function Check({ on, label, onToggle, attr }) {
-  return (
-    <button type="button" role="checkbox" aria-checked={on} className={`xpdf-page${on ? ' is-on' : ''}`} {...attr} onClick={onToggle}>
-      <span className="xpdf-check" aria-hidden="true">{on ? <Icon name="check" size={11} /> : null}</span>
-      <span className="xpdf-page__label">{label}</span>
-    </button>
-  );
-}
+const SKIP = '__skip';
 
 export function handoffSummary(result) {
   if (!result) return '';
@@ -41,12 +41,14 @@ export function handoffSummary(result) {
   if (missing) parts.push(`${plural(missing, 'node')} not in this Module`);
   if (result.unplaced) parts.push(`${plural(result.unplaced, 'marker')} with no spot yet`);
   if (result.defaultNodes) parts.push(`${plural(result.defaultNodes, 'node')} with no Category stayed in Walkthru`);
+  const links = result.links?.saved?.length || 0;
+  if (links) parts.push(`${plural(links, 'Category link')} saved for the next walk`);
   return `${parts.join('. ')}.`;
 }
 
 export default function WalkthruHandoffDialog({
   project, templates = [], supabase, initialWalkId = null,
-  listWalks, readWalk, onSend, onClose,
+  listWalks, readWalk, onSend, onAddCategory = null, onClose,
 }) {
   const [walks, setWalks] = useState(null);
   const [walkId, setWalkId] = useState(initialWalkId);
@@ -54,7 +56,7 @@ export default function WalkthruHandoffDialog({
   const [templateId, setTemplateId] = useState(templates[0]?.id ?? null);
   const template = templates.find((t) => t.id === templateId) || null;
   const [moduleId, setModuleId] = useState(modulesOf(templates[0])[0]?.id ?? null);
-  const [confirmed, setConfirmed] = useState({});
+  const [picks, setPicks] = useState({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
@@ -93,24 +95,42 @@ export default function WalkthruHandoffDialog({
   }, [walk]);
   const match = useMemo(() => (template && moduleId ? matchCategories(usedTypes, template, moduleId) : null), [usedTypes, template, moduleId]);
 
-  // A name match is confirmed by default; untick to leave it out.
+  const rows = useMemo(() => linkRows(match, nodeCount), [match, nodeCount]);
+  // Only an exact-name match starts filled in; the user picks the rest. A
+  // new walk, Template or Module starts over; a Category added to the Module
+  // keeps the choices already made.
+  const pickScope = useRef('');
   useEffect(() => {
-    if (!match) return;
-    setConfirmed(Object.fromEntries(match.nameMatches.map((m) => [m.nodeTypeId, true])));
-  }, [match]);
-
-  const categoryFor = useMemo(() => {
-    if (!match) return {};
-    const out = { ...match.linked };
-    for (const m of match.nameMatches) if (confirmed[m.nodeTypeId]) out[m.nodeTypeId] = m.categoryId;
-    return out;
-  }, [match, confirmed]);
+    const scope = `${walkId}|${templateId}|${moduleId}`;
+    const fresh = pickScope.current !== scope;
+    pickScope.current = scope;
+    setPicks((prev) => (fresh ? startingPicks(rows) : keepPicks(prev, rows, template, moduleId)));
+  }, [rows, walkId, templateId, moduleId, template]);
+  const [adding, setAdding] = useState(null); // node type id being added
+  const addToModule = async (row) => {
+    if (!onAddCategory || adding) return;
+    setError('');
+    setAdding(row.nodeTypeId);
+    try {
+      const categoryId = await onAddCategory({ template, moduleId, name: row.name });
+      if (alive.current && categoryId) setPicks((p) => ({ ...p, [row.nodeTypeId]: categoryId }));
+    } catch (err) {
+      if (alive.current) setError(err?.message || String(err));
+    } finally {
+      if (alive.current) setAdding(null);
+    }
+  };
+  const categoryFor = useMemo(
+    () => (match ? categoryForPicks(match, picks, template, moduleId) : {}),
+    [match, picks, template, moduleId],
+  );
 
   const send = async () => {
     setError('');
     setBusy(true);
     try {
-      const out = await onSend({ walk, template, moduleId, categoryFor });
+      const links = linksToSave(rows, picks, template, moduleId);
+      const out = await onSend({ walk, template, moduleId, categoryFor, links });
       if (alive.current) setResult(out);
     } catch (err) {
       if (alive.current) setError(err?.message || String(err));
@@ -122,8 +142,11 @@ export default function WalkthruHandoffDialog({
   const walkOptions = (walks || []).map((w) => ({ value: w.id, label: w.name || 'Untitled walk', detail: w.address || undefined }));
   const templateOptions = templates.map((t) => ({ value: t.id, label: t.name || 'Untitled template' }));
   const moduleOptions = modulesOf(template).map((m) => ({ value: m.id, label: m.name || 'Module' }));
-  const notIn = (match?.missing || []).map((m) => ({ ...m, count: nodeCount.get(m.nodeTypeId) || 0 }))
-    .concat((match?.nameMatches || []).filter((m) => !confirmed[m.nodeTypeId]).map((m) => ({ ...m, count: nodeCount.get(m.nodeTypeId) || 0 })));
+  const linkOptions = [
+    ...moduleCategories(template, moduleId).map((c) => ({ value: c.id, label: c.name })),
+    { value: SKIP, label: 'Not in this Module' },
+  ];
+  const notIn = rows.filter((r) => categoryFor[r.nodeTypeId] == null);
   const ready = Boolean(walk && template && moduleId && !busy);
 
   return (
@@ -162,6 +185,11 @@ export default function WalkthruHandoffDialog({
                 Left out: {result.skippedFloors.map((f) => `${f.name} (${f.reason})`).join(', ')}.
               </p>
             )}
+            {(result.links?.notSaved || []).length > 0 && (
+              <p style={{ margin: '8px 0 0', color: 'var(--text-2)' }} data-walkthru-links-not-saved="">
+                Used for this walk only, not saved: {result.links.notSaved.map(({ link, reason }) => `${link.nodeTypeName} to ${link.categoryName} (${reason})`).join(', ')}.
+              </p>
+            )}
           </div>
         ) : (
           <>
@@ -191,17 +219,46 @@ export default function WalkthruHandoffDialog({
                 {usedTypes.length === 0 && <span>This walk has no nodes with a Category.</span>}
                 {Object.keys(match.linked).map((typeId) => {
                   const type = usedTypes.find((t) => t.id === typeId);
-                  return <div key={typeId}>{type?.name} ({nodeCount.get(typeId) || 0}): linked in the library</div>;
+                  return <div key={typeId} className="wt-link__linked">{type?.name} ({nodeCount.get(typeId) || 0}): linked in the library</div>;
                 })}
-                {match.nameMatches.map((m) => (
-                  <Check
-                    key={m.nodeTypeId}
-                    on={Boolean(confirmed[m.nodeTypeId])}
-                    label={`${m.name} (${nodeCount.get(m.nodeTypeId) || 0}): same name in this Module`}
-                    attr={{ 'data-walkthru-name-match': m.nodeTypeId }}
-                    onToggle={() => setConfirmed((c) => ({ ...c, [m.nodeTypeId]: !c[m.nodeTypeId] }))}
-                  />
-                ))}
+                {rows.length > 0 && (
+                  <div className="wt-link" role="table" aria-label="Link Walkthru Categories to this Module" data-walkthru-link-table="">
+                    <div className="wt-link__row wt-link__row--head" role="row">
+                      <span role="columnheader">In Walkthru</span>
+                      <span role="columnheader">In this Module</span>
+                    </div>
+                    {rows.map((row) => (
+                      <div key={row.nodeTypeId} className="wt-link__row" role="row" data-walkthru-link-row={row.nodeTypeId}>
+                        <span className="wt-link__from" role="cell">
+                          <b>{row.name}</b>
+                          <span>{plural(row.count, 'node')}{row.suggested != null ? ' · same name' : ''}</span>
+                        </span>
+                        <span role="cell">
+                          <ValueSelect
+                            label={`Survey Category for ${row.name}`}
+                            value={picks[row.nodeTypeId] ?? SKIP}
+                            options={linkOptions}
+                            onChange={(value) => setPicks((p) => ({ ...p, [row.nodeTypeId]: value === SKIP ? null : value }))}
+                            disabled={busy || Boolean(adding)}
+                          />
+                          {onAddCategory && picks[row.nodeTypeId] == null && canAddToModule(row.name, template, moduleId) && (
+                            <button
+                              type="button"
+                              className="hub-btn wt-link__add"
+                              data-walkthru-add-category={row.nodeTypeId}
+                              onClick={() => addToModule(row)}
+                              disabled={busy || Boolean(adding)}
+                            >
+                              {adding === row.nodeTypeId ? <Spinner size={12} color="currentColor" /> : null}
+                              <span>Add {row.name} to this Module</span>
+                            </button>
+                          )}
+                        </span>
+                      </div>
+                    ))}
+                    <p className="wt-link__note">A link you keep is saved to the library, so the next walk uses it without asking.</p>
+                  </div>
+                )}
                 {notIn.length > 0 && (
                   <div style={{ marginTop: 6, color: 'var(--text-2)' }} data-walkthru-not-in-module="">
                     Not in this Module: {notIn.map((m) => `${m.name || 'Unnamed'} (${m.count})`).join(', ')}. They are counted, not added.

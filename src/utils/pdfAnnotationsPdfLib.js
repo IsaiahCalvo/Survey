@@ -5955,9 +5955,9 @@ const drawFlattenedLine = (page, obj, pageHeight, fonts = null) => {
 const drawFlattenedPolylineEndings = (page, obj, pageHeight) => {
   const points = fabricPolygonWorldPoints(obj);
   if (points.length < 2) return;
-  const { startStyle, endStyle, interiorColor } = resolveLineEndingStyles(obj);
+  const { startStyle, endStyle, interiorColor, geometry } = resolveLineEndingStyles(obj);
   if (startStyle === ARROWHEAD_STYLES.NONE && endStyle === ARROWHEAD_STYLES.NONE) return;
-  const headOptions = { fill: interiorColor };
+  const headOptions = { fill: interiorColor, geometry };
   const width = Math.max(0.5, Number(obj?.strokeWidth) || 1);
   const strokeHex = typeof obj?.stroke === 'string' ? obj.stroke : '#000000';
   const first = points[0]; const second = points[1];
@@ -6788,8 +6788,8 @@ const drawFlattenedPolygon = (page, obj, pageHeight, closePath = true) => {
   const insetPoints = !closePath && polySplineStep(obj) ? trimPointsByLength : insetOpenPolylinePoints;
   const points = closePath ? rawPoints : insetPoints(
     rawPoints,
-    lineEndingBodyInset(plEndings.startStyle, Number(obj?.strokeWidth) || 1),
-    lineEndingBodyInset(plEndings.endStyle, Number(obj?.strokeWidth) || 1),
+    lineEndingBodyInset(plEndings.startStyle, Number(obj?.strokeWidth) || 1, plEndings.geometry),
+    lineEndingBodyInset(plEndings.endStyle, Number(obj?.strokeWidth) || 1, plEndings.geometry),
   );
   // GOTCHA (drawSvgPath origin trap — see drawFlattenedArrowheadSpec):
   // origin {x: 0, y: pageHeight} + RAW app-space (y-down) coordinates; the

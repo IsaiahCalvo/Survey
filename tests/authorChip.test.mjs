@@ -18,6 +18,8 @@ test('one mark reads "who · date"; one author reads the name; more read a count
   assert.equal(authorChipText(mixed), '3 people');
   assert.deepEqual(mixed.map((g) => g.label), ['You', 'Ana Ruiz', 'Unknown']);
   assert.equal(authorChipText([]), '');
+  // No one known (a PDF's own marks, or marks made with no account): no chip.
+  assert.equal(authorChipText(authorGroups([{ type: 'rect' }, { type: 'path' }], { viewerId: null })), '');
 });
 
 test('groups list marks newest first with their layer names', () => {

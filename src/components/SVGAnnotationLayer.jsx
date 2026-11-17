@@ -578,6 +578,7 @@ import {
   markMeasureScale,
   ANGLE_MEASURE_POINTS,
 } from '../utils/measure/measureScale.js';
+import { drawReadout } from '../utils/measure/drawReadout.js';
 import { dimensionCaptionPlace, dimensionLeader, dimensionLineGeometry, isDimensionMeasure } from '../utils/measure/dimensionLine.js';
 import { measureSegmentCaptions, polylengthTotalPlace } from '../utils/measure/segmentCaptions.js';
 import { useTooltip } from './Tooltip';
@@ -1619,6 +1620,7 @@ const SVGAnnotationLayerBody = memo(({
   // Nightly 'snap-content': then onto the PDF's own line ends, midpoints and
   // lines (the Snapping menu's "Drawing" switch; Alt skips it too).
   const [snapContentFlag] = useState(() => isFeatureOn('snap-content'));
+  const [measureDrawReadoutOn] = useState(() => isFeatureOn('measure-draw-readout'));
   const resolveCreationSnap = useCallback((anchor, point, e) => {
     if (!point) return point;
     const endpointSnap = !isAnnotationSnapFree(e);
@@ -8829,6 +8831,18 @@ const SVGAnnotationLayerBody = memo(({
           x2: shapeCreation.current.x - (shapeCreation.start.x + shapeCreation.current.x) / 2,
           y2: shapeCreation.current.y - (shapeCreation.start.y + shapeCreation.current.y) / 2,
         }, 'length', null), measureMode === 'calibrate' ? null : effectiveMeasureScale), 'measure-draft-length', clampInverseScale(inverseScale))}
+      {/* Nightly 'measure-draw-readout': length and angle beside the pointer
+          while a Length is drawn (Drawboard's "4in · 0°"). */}
+      {measureDrawReadoutOn && measureMode === 'length' && shapeCreation && shapeCreation.tool === 'line'
+        && shapeCreation.start && shapeCreation.current && (() => {
+          const u = clampInverseScale(inverseScale);
+          const readout = drawReadout(shapeCreation.start, shapeCreation.current, effectiveMeasureScale, u, { width, height });
+          return readout ? (
+            <g data-measure-draw-readout={readout.text}>
+              {renderMeasureLabel({ kind: 'length', text: readout.text, x: readout.x, y: readout.y, angle: 0 }, 'measure-draw-readout', u)}
+            </g>
+          ) : null;
+        })()}
       {polyDraft && isPolyMeasureFor(polyDraft.tool, measureMode) && polyDraft.points.length >= (polyDraft.tool === 'polyline' ? 1 : 2)
         && renderMeasureLabel(buildMeasureLabel(stampMeasure({
           type: polyDraft.tool,
