@@ -63,6 +63,12 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Survey agent: answer questions about a photo on an item or one added in the chat',
     stage: 'beta',
   }),
+  // KAL-703: "Open in Survey" on a PDF in OneDrive or SharePoint on the web
+  // (Survey's Microsoft app file handler, api/onedrive-open.mjs).
+  'onedrive-file-handler': Object.freeze({
+    label: 'Open in Survey from OneDrive and SharePoint on the web',
+    stage: 'beta',
+  }),
   'agent-template-offers': Object.freeze({
     label: 'Survey agent: offer a new checklist line or category (Yes / No card), and a note style setting',
     stage: 'beta',
