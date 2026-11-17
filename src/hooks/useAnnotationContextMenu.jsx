@@ -212,7 +212,7 @@ export function useAnnotationContextMenu({ getPageObjects = null } = {}) {
 // targets (touchTargets.css + annotationContextMenu.css).
 // Design review 2026-10-27: the rows under the icon row carry an icon too,
 // like every other action menu (components/MenuRows.jsx picks by label).
-const MARK_ROW_ICONS = { group: 'selectGroup', ungroup: 'selectGroup', arrange: 'layers', moveToLayer: 'layers', align: 'alignLeft', lock: 'lock', unlock: 'lock', saveToLibrary: 'library', copyFormat: 'brush', pasteFormat: 'paintBucket', applyToPages: 'pages', editNote: 'comment', flip: 'flipHorizontal' };
+const MARK_ROW_ICONS = { group: 'selectGroup', ungroup: 'selectGroup', arrange: 'layers', moveToLayer: 'layers', align: 'alignLeft', lock: 'lock', unlock: 'lock', saveToLibrary: 'library', copyFormat: 'brush', pasteFormat: 'paintBucket', applyToPages: 'pages', editNote: 'comment', flip: 'flipHorizontal', editSubject: 'edit', dockSelectionBar: 'alignBottom', floatSelectionBar: 'alignBottom' };
 const markRowIcon = (it) => MARK_ROW_ICONS[it.key] || menuIconFor(it.label);
 const MENU_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter'];
 
@@ -1639,8 +1639,8 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
             items={pageMenuItems}
             mobile={isMobileMenu}
             onPick={pickPageMenuItem}
-            hoverBg={isMobileMenu ? 'var(--surface-2)' : 'var(--surface-3)'}
-            dangerHoverBg={isMobileMenu ? 'var(--surface-2)' : 'var(--surface-3)'}
+            hoverBg={isMobileMenu ? 'var(--surface-2)' : 'var(--hover)'}
+            dangerHoverBg={isMobileMenu ? 'var(--surface-2)' : 'var(--hover)'}
           />
         )}
         {!pageMenuItems && markLayout && (

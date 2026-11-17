@@ -94,7 +94,7 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
             <div style={{ fontSize: 11, letterSpacing: 0, color: C.muted, fontWeight: 600, marginBottom: 8 }}>Destination project</div>
             <div style={{ maxHeight: 200, overflowY: 'auto', border: `1px solid ${C.rule}`, borderRadius: 6 }}>
               {projects.length === 0 && <div style={{ padding: '12px', fontSize: 12, color: C.muted }}>No projects to move into.</div>}
-              {projects.map((p) => (
+              {projects.map((p, i) => (
                 <button
                   type="button"
                   key={p.id}
@@ -108,6 +108,8 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
                     // surface step plus the 2px gold left edge below.
                     background: destId === p.id ? 'var(--surface-3)' : 'transparent',
                     border: 0, borderLeft: `2px solid ${destId === p.id ? C.gold : 'transparent'}`,
+                    // A line between rows, so a long list doesn't run together.
+                    borderTop: i ? `1px solid ${C.rule}` : 0,
                   }}
                 >
                   {p.name}

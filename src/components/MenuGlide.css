@@ -49,6 +49,14 @@
   background: var(--danger-soft);
 }
 
+/* The press. A row under the strip clears its own fill (below), so its
+   :active fill never showed: the strip takes the press instead, at once.
+   The old look has no --pressed-2 and keeps its --pressed. */
+.menu-glide:not([data-danger]):has(~ :is([role='menuitem'], [role='option'], [role='menuitemradio'], [role='menuitemcheckbox']):active:not(:disabled):not([aria-disabled='true'])) {
+  background: var(--pressed-2, var(--pressed));
+  transition-property: opacity, transform, width, height;
+}
+
 .menu-glide[data-danger] .menu-glide__bar {
   background: var(--danger-text);
 }

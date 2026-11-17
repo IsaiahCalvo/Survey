@@ -2217,7 +2217,10 @@ const BookmarksPanel = ({
                   left: '8px',
                   right: '8px',
                   marginTop: '4px',
-                  background: 'var(--surface-3)',
+                  // The panel colour, as every other menu: on the step-darker
+                  // fill the hover read lighter in light mode and the press
+                  // matched the card.
+                  background: 'var(--surface-2)',
                   border: '1px solid var(--border)',
                   borderRadius: '8px',
                   padding: '4px',
@@ -2242,6 +2245,10 @@ const BookmarksPanel = ({
                     }}
                     onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
                     onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                    // The app-wide press rule skips a button whose one child
+                    // element is an icon (it can't see the words beside it).
+                    onMouseDown={(e) => e.currentTarget.style.background = 'var(--pressed)'}
+                    onMouseUp={(e) => e.currentTarget.style.background = 'var(--hover)'}
                   >
                     <Icon name="folder" size={14} color="var(--text-3)" />
                     {/* The phone's words (owner 2026-10-02). */}
@@ -2308,7 +2315,8 @@ const BookmarksPanel = ({
                         padding: '6px 12px',
                         background: 'var(--surface-2)',
                         color: 'var(--text-2)',
-                        border: '1px solid var(--border)',
+                        // On the panel-coloured card only its edge shows it is a button.
+                        border: '1px solid var(--border-strong)',
                         borderRadius: '6px',
                         fontSize: '12px',
                         fontWeight: '500',

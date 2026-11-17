@@ -145,6 +145,12 @@ function ensureHistoryPanelStyle() {
     .dh-legend { display: flex; flex-wrap: nowrap; align-items: center; column-gap: 4px; row-gap: 2px; color: var(--text-3); font-size: 11px; line-height: 16px; }
     .dh-legend > button { border: 0; padding: 3px 2px; background: transparent; color: inherit; font: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
     .dh-legend > button[aria-pressed='true'] { color: var(--text-1); background: var(--surface-3); border-radius: 4px; }
+    /* The legend filters and the rows take the panel's hover fill, like every other side-panel row (they only brightened their words). */
+    @media (hover: hover) {
+      .dh-legend > button:not([aria-pressed='true']):hover { color: var(--text-1); background: var(--hover); border-radius: 4px; }
+      .dh-row:not(.sel):hover { background: var(--hover); }
+    }
+    .dh-legend > button:active { border-radius: 4px; }
     .dh-legend i, .dh-st { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex: none; background: var(--dh-c, var(--dh-c-other)); }
     .dh-legend i { width: 6px; height: 6px; }
     .dh-panel [data-status="created"] { --dh-c: var(--dh-c-created); }

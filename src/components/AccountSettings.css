@@ -114,6 +114,10 @@
 .account-settings-close:hover {
   color: var(--text-1);
 }
+/* Press like the hub icon buttons too: the glyph shrinks, no box. */
+.account-settings-close > svg { transition: transform 100ms var(--ease-out); }
+.account-settings-close:active { background: transparent !important; color: var(--text-1); }
+.account-settings-close:active > svg { transform: scale(0.88); transition: none; }
 
 .account-settings-body {
   display: flex;
@@ -491,6 +495,17 @@
   transform: translateX(16px);
   background: var(--accent-text, #15110a);
 }
+
+/* Hover and press (suite rules, "One look for every control"). Off: the edge
+   firms up on hover and the track takes the next press step. On: the coral
+   button's own hover and press. The 44px hit box itself stays clear. */
+@media (hover: hover) {
+  .account-switch:not(:disabled):hover .account-switch-track { box-shadow: inset 0 0 0 1px var(--text-3); }
+  .account-switch[aria-checked='true']:not(:disabled):hover .account-switch-track { background: var(--accent-light); box-shadow: none; }
+}
+.account-switch:not(:disabled):active { background: transparent !important; }
+.account-switch:not(:disabled):active .account-switch-track { background: var(--pressed-2, var(--pressed)); transition: none; }
+.account-switch[aria-checked='true']:not(:disabled):active .account-switch-track { background: var(--accent-press); }
 
 .account-switch:focus-visible {
   outline: none;

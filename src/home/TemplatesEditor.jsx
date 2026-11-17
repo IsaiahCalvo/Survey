@@ -2685,6 +2685,7 @@ export default function TemplatesEditor({
                     <SwipeActionsRow label={t.name} disabled={tplEdit} actions={templateSwipeActions(t)} className="tpl-swipe-row">
                     <div
                       data-drag-rearrange-row
+                      className={`tpl-list-row${(tplEdit ? isSel : active) ? ' is-selected' : ''}`}
                       onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setTplMenu({ id: t.id, rect: { left: event.clientX, right: event.clientX + 150, top: event.clientY, bottom: event.clientY } }); }}
                       onClick={() => { if (tplEdit) toggleTplSel(t.id); else { setSelected(t.id); setOpenCat(-1); setOpenMod(0); } }}
                       {...keyboardControlProps()}
@@ -3144,7 +3145,10 @@ export default function TemplatesEditor({
                                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                               }}
                             >
-                              <Icon name="plus" size={13} /> Add checklist item
+                              {/* The words sit in a span: an icon beside bare text counts as
+                                  icon-only to the app's hover and press rules, so the button
+                                  showed neither. */}
+                              <Icon name="plus" size={13} /> <span>Add checklist item</span>
                             </button>
 
                             {/* KAL-44 — Archived items live in the template
@@ -4110,8 +4114,8 @@ export default function TemplatesEditor({
           anchorRect={tplMenu.rect}
           onClose={() => setTplMenu(null)}
           items={[
-            { label: 'Copy', onClick: () => duplicateTemplates(new Set([t.id])) },
-            { label: 'Duplicate', onClick: () => duplicateTemplates(new Set([t.id])) },
+            // One order in every ⋮ menu here: Rename, then the selection bar's
+            // Duplicate, Move, Copy, Share, then Delete.
             { label: 'Rename', onClick: () => {
               setTplEdit(false);
               if (t.id === tpl?.id && (!mobileLayoutActive() || mobileTemplateOpen)) { focusVisibleField('input[data-template-title]'); return; }
@@ -4123,6 +4127,8 @@ export default function TemplatesEditor({
               });
               focusVisibleField('input[data-template-title]');
             } },
+            { label: 'Duplicate', onClick: () => duplicateTemplates(new Set([t.id])) },
+            { label: 'Copy', onClick: () => duplicateTemplates(new Set([t.id])) },
             { label: 'Share', onClick: () => onShare && onShare(t) },
             { label: 'Delete', danger: true, onClick: () => deleteTemplates(new Set([t.id])) },
           ]}
@@ -4137,11 +4143,11 @@ export default function TemplatesEditor({
           anchorRect={entityMenu.rect}
           onClose={() => setEntityMenu(null)}
           items={[
+            { label: 'Rename', onClick: () => { focusVisibleField(`input[data-entity-name-id="${ent.id}"]`); } },
             { label: 'Duplicate', onClick: () => duplicateEntities(new Set([ent.id])) },
             { label: 'Move', onClick: () => { setSelEntities(new Set([ent.id])); setMoveModal({ count: 1, kind: 'entity', mode: 'move' }); } },
             { label: 'Copy', onClick: () => { setSelEntities(new Set([ent.id])); setMoveModal({ count: 1, kind: 'entity', mode: 'copy' }); } },
             { label: 'Share', onClick: () => { if (tpl) onShare && onShare(tpl); } },
-            { label: 'Rename', onClick: () => { focusVisibleField(`input[data-entity-name-id="${ent.id}"]`); } },
             { label: 'Delete', danger: true, onClick: () => deleteEntities(new Set([ent.id])) },
           ]}
         />

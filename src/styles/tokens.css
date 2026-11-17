@@ -666,6 +666,9 @@ html[data-look="suite"] {
 
   --hover: #242426;
   --pressed: #131315;
+  /* pressed-2 (suite colour table): the press on something that already
+     rests or hovers on --surface-3, so it never matches that fill. */
+  --pressed-2: #131315;
   --disabled-ink: rgba(210, 209, 204, 0.36);
   --focus: rgba(210, 209, 204, 0.7);
   --overlay-scrim: rgba(10, 10, 11, 0.6);
@@ -720,6 +723,7 @@ html[data-look="suite"][data-theme="light"] {
 
   --hover: #f5f5f5;
   --pressed: #ebebeb;
+  --pressed-2: #e0e0e0;
   --disabled-ink: rgba(75, 75, 75, 0.36);
   --focus: rgba(75, 75, 75, 0.7);
   --overlay-scrim: rgba(20, 20, 22, 0.32);

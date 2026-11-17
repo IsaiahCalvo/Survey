@@ -157,6 +157,12 @@ const manageCan = (files, project, userId) => {
   return { delete: reason, share: reason };
 };
 
+// A line between groups of rows in a long desktop menu (the project and file
+// menus ran to 10 and 14 rows in one block). Phones keep their plain list.
+function menuGroupLine(key) {
+  return isPhoneLayout() ? null : { separator: true, key: `group-${key}` };
+}
+
 function PopupMenu({ anchorRect, onClose, items, align = 'right', minWidth = 160 }) {
   const tip = useTooltip();
   const ref = useRef(null);
@@ -183,7 +189,7 @@ function PopupMenu({ anchorRect, onClose, items, align = 'right', minWidth = 160
   // label red); it used to be --danger, the fill red.
   const phone = isPhoneLayout();
   const menuWidth = phone ? Math.max(minWidth, 200) : minWidth;
-  const estHeight = items.length * (phone ? 44 : 28) + 10;
+  const estHeight = items.filter((it) => it && !it.separator).length * (phone ? 44 : 28) + items.filter((it) => it?.separator).length * 9 + 10;
   let top = anchorRect.bottom + 4;
   if (top + estHeight > window.innerHeight - 8) {
     top = Math.max(8, anchorRect.top - estHeight - 4);
@@ -1275,6 +1281,7 @@ export default function ProjectsFolderTree({
                   <div
                     data-drag-rearrange-row
                     data-project-id={p.id}
+                    className={`projects-list-row${(jobsEdit ? isSel : isOpen) ? ' is-selected' : ''}`}
                     onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setTeamMenu({ id: p.id, rect: { left: event.clientX, right: event.clientX + 184, top: event.clientY, bottom: event.clientY } }); setFileMenu(null); }}
                     onClick={() => { if (jobsEdit) toggleProjSel(p.id); else setOpenId(p.id); }}
                     {...keyboardControlProps()}
@@ -2385,10 +2392,12 @@ export default function ProjectsFolderTree({
               // "Get link to project". Only "Manage project" opens the modal.
               { label: 'Rename', reason: viewerBlocked, onClick: () => setRenameTarget({ kind: 'project', id: proj.id, name: proj.name || '' }) },
               { label: 'Duplicate', onClick: () => duplicateProjects([proj.id]) },
+              menuGroupLine('people'),
               { label: 'Share', reason: ownerOnly, onClick: () => onShare?.(proj) },
               { label: 'Delete', danger: true, reason: ownerOnly, onClick: () => { void deleteProjects([proj.id]); } },
               { icon: 'users', label: 'Add member', reason: ownerOnly, onClick: () => onShare && onShare(proj) },
               { label: 'Get link to project', onClick: () => onShare && onShare(proj) },
+              menuGroupLine('files'),
               { icon: 'upload', label: 'Upload files', reason: viewerBlocked, onClick: () => { setOpenId(proj.id); addFiles(proj); } },
               // Nightly drive-sync-back: a OneDrive / SharePoint PDF into this
               // project, linked so marks save back (Drawboard Projects'
@@ -2397,6 +2406,7 @@ export default function ProjectsFolderTree({
               ...(onAddFromWalkthru ? [{ icon: 'pagePin', label: 'Add a Walkthru walk', reason: viewerBlocked, onClick: () => onAddFromWalkthru(proj) }] : []),
               ...(onAddFromJobFile ? [{ icon: 'upload', label: 'Add a job file', reason: viewerBlocked, onClick: () => onAddFromJobFile(proj) }] : []),
               ...(onSendBackToPlot ? [{ icon: 'download', label: 'Send back to Plot', onClick: () => onSendBackToPlot(proj) }] : []),
+              menuGroupLine('keep'),
               {
                 // Pin / unpin — toggles local pinned state; the row floats to
                 // the top of the list and shows a pin icon when pinned.
@@ -2405,6 +2415,7 @@ export default function ProjectsFolderTree({
                 onClick: () => togglePin(proj.id),
               },
               ...(exportOn ? [{ icon: 'download', label: 'Export project…', onClick: () => setExportProject(proj) }] : []),
+              menuGroupLine('manage'),
               { label: 'Manage project', onClick: () => setTeamModalProject(proj) },
               ...accessMenuItems(proj),
             ]}
@@ -2431,13 +2442,16 @@ export default function ProjectsFolderTree({
             items={[
               ...(onRenameDocument ? [{ label: 'Rename', reason: manageSelectionBlock([f], user?.id, 'rename'), onClick: () => setRenameTarget({ kind: 'file', id: f.id, name: f.name || '' }) }] : []),
               { label: 'Duplicate', onClick: () => duplicateFiles([f.id]) },
+              menuGroupLine('place'),
               { label: 'Move to project', onClick: () => openMoveCopy([f], 'move') },
               { label: 'Copy to project', onClick: () => openMoveCopy([f], 'copy') },
               { label: 'Copy', onClick: () => copyFile(f) },
               { label: 'Paste', disabled: !clipboard, onClick: () => pasteFile() },
+              menuGroupLine('tools'),
               ...(onPdfTools ? [{ label: 'PDF tools…', onClick: () => onPdfTools([f]) }] : []),
               { label: 'Delete', danger: true, reason: canManage ? null : noManageTitle, onClick: () => deleteFiles([fileMenu.id]) },
               { label: 'Share', reason: canManage ? null : noManageTitle, onClick: () => onShareDocument ? onShareDocument([f]) : onShare && onShare(open) },
+              menuGroupLine('keep'),
               {
                 label: locked ? 'Unlock document' : 'Lock document',
                 disabled: !canLock,

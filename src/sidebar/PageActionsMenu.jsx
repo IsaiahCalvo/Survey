@@ -48,7 +48,9 @@ export const PageMenuItem = ({ mobile = false, icon, label, disabled = false, da
         color={danger ? 'var(--danger)' : (mobile ? 'currentColor' : 'var(--text-3)')}
       />
     ) : null}
-    {label}
+    {/* In its own span: the app-wide press rule (states.css) skips a button
+        whose one child element is an icon, and bare words don't count. */}
+    <span>{label}</span>
     {trailingIcon ? (
       <span style={{ marginLeft: 'auto', paddingLeft: 12, display: 'grid', placeItems: 'center', color: 'var(--text-3)' }}>
         <Icon name={trailingIcon} size={mobile ? 16 : 14} color="currentColor" />

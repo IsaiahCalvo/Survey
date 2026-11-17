@@ -69,6 +69,14 @@
 :where(button, [role='button'], [role='tab'], [role='option']):active:not(:disabled):not([aria-disabled='true']):not([data-quick-colour-preset]):not([data-quick-colour-custom]):not([data-quick-paint-swatch]):not([data-ink-swatch]):not([data-color-picker-hue]):not([data-color-picker-opacity]):not([data-color-picker-spectrum]):not([data-text-markup-link]):not([data-drag-rearrange-handle]):not([data-keyboard-control]):not([aria-roledescription='sortable']):not([aria-roledescription='sortable'] *):not([title='Edit color']):not([aria-label='Edit color']):not([aria-label='More']):not(.hub-icon-btn):not(.hub-btn--icon):not(.hero-swatch):not(:has(> svg:only-child)):not([data-glyph-only]):not(.section-icon-btn):not(.mobile-pdf-header__icon):not(.mobile-pdf-tools__button):not(.mobile-pdf-tools__sync):not(.hub-title-switch):not(.mobile-pdf-dock__side):not(.mobile-pdf-dock__center):not(.mobile-pdf-hub-tab):not(.mobile-pdf-header__page-chevron):not(.chrome-history):not(.chrome-control):not(.primary):not(.btn-primary):not(.btn-danger):not(.hub-btn--primary):not(.hub-btn--tertiary):not(.tertiary):not(.ghost):not(.btn-ink):not(.auth-submit-btn):not(.account-btn-primary):not(.account-btn-purple):not(.re-signin-modal__cta):not(.space-add-pages-icon-button):not(.mobile-survey-notes-save) {
   background-color: var(--pressed) !important;
 }
+
+/* A chosen item already wears --surface-3, which in the light one look is
+   the same grey as --pressed, so its press showed nothing. It takes the next
+   step, --pressed-2 (suite colour table). Same exclusions as above; the old
+   look has no --pressed-2 and keeps --pressed. */
+:where(button, [role='button'], [role='tab'], [role='option']):is([aria-selected='true'], [aria-pressed='true'], [aria-checked='true'], [aria-current]:not([aria-current='false']), .is-selected, .is-active, .active):active:not(:disabled):not([aria-disabled='true']):not([data-quick-colour-preset]):not([data-quick-colour-custom]):not([data-quick-paint-swatch]):not([data-ink-swatch]):not([data-color-picker-hue]):not([data-color-picker-opacity]):not([data-color-picker-spectrum]):not([data-text-markup-link]):not([data-drag-rearrange-handle]):not([data-keyboard-control]):not([aria-roledescription='sortable']):not([aria-roledescription='sortable'] *):not([title='Edit color']):not([aria-label='Edit color']):not([aria-label='More']):not(.hub-icon-btn):not(.hub-btn--icon):not(.hero-swatch):not(:has(> svg:only-child)):not([data-glyph-only]):not(.section-icon-btn):not(.mobile-pdf-header__icon):not(.mobile-pdf-tools__button):not(.mobile-pdf-tools__sync):not(.hub-title-switch):not(.mobile-pdf-dock__side):not(.mobile-pdf-dock__center):not(.mobile-pdf-hub-tab):not(.mobile-pdf-header__page-chevron):not(.chrome-history):not(.chrome-control):not(.primary):not(.btn-primary):not(.btn-danger):not(.hub-btn--primary):not(.hub-btn--tertiary):not(.tertiary):not(.ghost):not(.btn-ink):not(.auth-submit-btn):not(.account-btn-primary):not(.account-btn-purple):not(.re-signin-modal__cta):not(.space-add-pages-icon-button):not(.mobile-survey-notes-save) {
+  background-color: var(--pressed-2, var(--pressed)) !important;
+}
 /* A GOLD-FILLED control is excluded above by class. Its press is the darker
    gold (--accent-press), never the neutral --pressed: the round-3 colour grade
    (2026-09-22) measured every gold button going near-black under the finger
@@ -277,8 +285,10 @@ html[data-focus-ring='pointer'] :is(.tab-strip-list__open, .hero-swatch, .docume
    would paint one; the glyph or dot inside tightens to 88% instead.
    The phone dock's round buttons are the one exception to the plate reset:
    their --surface plate and hairline ARE the button at rest, so wiping them
-   under the finger flashed the button away (measured 2026-10-02). */
-[data-glyph-only][data-glyph-only]:not(.mobile-pdf-dock__side):not(.mobile-pdf-dock__center):active {
+   under the finger flashed the button away (measured 2026-10-02). So is a
+   colour swatch with nothing inside: its fill IS the colour, and wiping it
+   made the dot vanish under the pointer (the template editor's entity dots). */
+[data-glyph-only][data-glyph-only]:not(.mobile-pdf-dock__side):not(.mobile-pdf-dock__center):not(:is([aria-label='Edit color'], [title='Edit color']):empty):active {
   background-color: transparent !important;
   -webkit-tap-highlight-color: transparent;
 }

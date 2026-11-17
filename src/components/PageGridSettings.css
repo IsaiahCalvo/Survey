@@ -32,6 +32,16 @@
 }
 .page-grid-settings__switch[aria-checked="true"] .page-grid-settings__knob { background: var(--accent); box-shadow: none; }
 .page-grid-settings__switch[aria-checked="true"] .page-grid-settings__knob::after { transform: translateX(12px); background: var(--accent-text, #15110a); }
+/* Hover and press sit on the track, as on the account settings switch: the
+   row has no inset, so a row fill would run to the card's edge. Off hovers to
+   a firmer outline, on to the coral hover; a press darkens the track. */
+@media (hover: hover) {
+  .page-grid-settings__switch:not(:disabled):hover .page-grid-settings__knob { box-shadow: inset 0 0 0 1px var(--text-3); }
+  .page-grid-settings__switch[aria-checked="true"]:not(:disabled):hover .page-grid-settings__knob { background: var(--accent-light); box-shadow: none; }
+}
+.page-grid-settings__switch:not(:disabled):active { background: transparent !important; }
+.page-grid-settings__switch:not(:disabled):active .page-grid-settings__knob { background: var(--pressed-2, var(--pressed)); transition: none; }
+.page-grid-settings__switch[aria-checked="true"]:not(:disabled):active .page-grid-settings__knob { background: var(--accent-press); }
 /* Fine / Normal / Wide: the app's one ButtonGroup row (dropdownLook rule). */
 /* The spacing slider: the app's slim slider (thin track, 12px thumb), the
    part left of the thumb in the accent. */

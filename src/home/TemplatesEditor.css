@@ -198,7 +198,12 @@ html[data-look="suite"] .ed-scope .card-line { background: var(--surface-2); }
 .ed-scope .tpl-cat-chevron > svg { width: 18px; height: 18px; }
 .ed-scope .tpl-cat-row.is-open > .tpl-cat-chevron { transform: rotate(90deg); }
 .ed-scope .tpl-cat-row:hover .tpl-cat-chevron { color: var(--text-1); }
-.ed-scope .tpl-entity-row > button[aria-label="Edit color"] { flex: none; }
+.ed-scope .tpl-entity-row > button[aria-label="Edit color"] { flex: none; transition: box-shadow var(--motion-state) var(--ease-out), transform 100ms var(--ease-out); }
+/* A swatch never takes a hover fill (its colour is the user's): it takes a
+   ring. The press shrinks it (hub.css NO PRESS SQUARES). */
+@media (hover: hover) {
+  .ed-scope .tpl-entity-row > button[aria-label="Edit color"]:hover { box-shadow: 0 0 0 2px var(--border-strong); }
+}
 .ed-scope .tpl-cat-name,
 .ed-scope .tpl-entity-name {
   --aw-pad: 4px;
@@ -424,4 +429,29 @@ html[data-look="suite"] .ed-scope .card-line { background: var(--surface-2); }
 }
 @media (pointer: coarse) {
   .own-layout__row { min-height: 48px; }
+}
+
+/* A module tab is a sortable handle, which the app-wide press rule skips, so
+   it showed hover but no press. The press beats the tab's inline fill; a
+   lifted tab keeps the picked-up look. */
+.ed-scope [data-module-tab-id]:not([data-drag-lifted]):active {
+  background: var(--pressed) !important;
+  transition: none !important;
+}
+/* No inner block behind the label (owner 2026-10-01). */
+.ed-scope [data-module-tab-id]:active > button { background: transparent !important; }
+
+/* Template list rows: a keyboard-control row, which the hub's hover rule
+   skips, so a row that was not chosen showed no hover or press. The fills
+   beat the row's inline background. */
+@media (hover: hover) {
+  .ed-scope .tpl-list-row:not(.is-selected):hover { background: var(--hover) !important; }
+}
+.ed-scope .tpl-list-row:active:not(:has(button:active, input:active, [data-drag-rearrange-handle]:active)) {
+  background: var(--pressed) !important;
+  transition: none !important;
+}
+/* The chosen row already wears the press grey in light: one step on. */
+.ed-scope :is(.tpl-list-row, .tpl-cat-row, .tpl-entity-row).is-selected:active:not(:has(button:active, input:active, [data-drag-rearrange-handle]:active)) {
+  background: var(--pressed-2, var(--pressed)) !important;
 }

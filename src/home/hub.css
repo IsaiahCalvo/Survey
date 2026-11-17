@@ -4814,7 +4814,9 @@ button[aria-label="Edit color"],
 .hub-btn.hub-btn--icon, .templates-mobile-more {
   -webkit-tap-highlight-color: transparent;
 }
-button[aria-label="Edit color"]:active,
+/* Only the phone's swatch (a dot inside a padded button) clears its box: the
+   desktop swatch IS its button's fill, which the press used to wipe out. */
+button[aria-label="Edit color"]:has(> span):active,
 .hub-btn.hub-btn--icon:not(:disabled):active, .templates-mobile-more:active {
   background-color: transparent !important;
 }
@@ -5858,6 +5860,32 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
   .projects-open-actions { width: calc(100% - 18px); margin-left: 18px; }
 }
 .projects-file-grid { grid-template-columns: 24px minmax(0, 1fr) 90px 90px 28px; }
+/* A document row opens on a click but is a keyboard-control row, which the
+   hub's hover rule skips, so it showed no hover or press. A ticked row keeps
+   its fill. The fills beat the row's inline zebra wash. */
+@media (hover: hover) {
+  .survey-hub .projects-file-grid[data-document-id]:not(:has([aria-checked='true'])):hover { background: var(--hover) !important; }
+}
+/* Same for the project list rows beside it, when not the chosen one. */
+@media (hover: hover) {
+  .survey-hub .projects-list-row:not(.is-selected):hover { background: var(--hover) !important; }
+}
+@media (pointer: fine) {
+  .survey-hub .projects-list-row:active:not(:has(button:active, input:active, [data-drag-rearrange-handle]:active)) {
+    background: var(--pressed) !important;
+    transition: none !important;
+  }
+  /* The chosen row already wears the press grey in light: one step on. */
+  .survey-hub .projects-list-row.is-selected:active:not(:has(button:active, input:active, [data-drag-rearrange-handle]:active)) {
+    background: var(--pressed-2, var(--pressed)) !important;
+  }
+}
+@media (pointer: fine) {
+  .survey-hub .projects-file-grid[data-document-id]:active:not(:has(button:active, [role='checkbox']:active, [data-drag-rearrange-handle]:active)) {
+    background: var(--pressed) !important;
+    transition: none !important;
+  }
+}
 .projects-file-editor-label-short { display: none; }
 @container (max-width: 480px) {
   .projects-file-grid { grid-template-columns: 24px minmax(0, 1fr) 28px 64px 28px; }

@@ -795,6 +795,13 @@ html[data-look="suite"] .btn {
 .chrome-pill:active {
   background: var(--pressed);
 }
+/* The pill rests on --surface-3, which in the light one look is the same
+   grey as --pressed, so a press showed nothing (and the hub's press rule
+   repaints it --pressed). It takes the next step, --pressed-2; the old look
+   has none and keeps --pressed. */
+.chrome-pill:not(:disabled):active {
+  background-color: var(--pressed-2, var(--pressed)) !important;
+}
 
 .chrome-pill[data-state='open'] {
   color: var(--text-1);
@@ -3989,6 +3996,11 @@ svg[data-svg-annotation-layer][data-selection-hover="move"] {
 .pages-panel-card.is-menu-open .pages-panel-more > span {
   background: var(--surface-3);
   box-shadow: 0 0 0 1px var(--border-strong), 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+/* The press darkens the dot one step past its hover. */
+.pages-panel-more:active > span {
+  background: var(--pressed-2, var(--pressed));
+  transition: none;
 }
 .pages-panel-more:focus-visible > span {
   box-shadow: 0 0 0 2px var(--focus-ring, var(--text-2));
