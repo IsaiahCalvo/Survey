@@ -57,6 +57,9 @@
 .props-panel__grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
 .props-panel__field { display: flex; align-items: center; gap: 6px; }
 .props-panel__field-label { width: 12px; opacity: 0.7; }
+/* The Subject box's word is longer than X / Y / W / H: it takes its own width,
+   or it ran under the box's hint text. */
+.props-panel__subject .props-panel__field-label { width: auto; flex: none; }
 .props-panel__number {
   flex: 1;
   min-width: 0;
@@ -69,6 +72,8 @@
   font: inherit;
 }
 .props-panel__number:disabled { opacity: 0.5; }
+/* Nightly 'mark-note': the note box grows downward only, never sideways. */
+.props-panel__note { height: auto; min-height: 64px; padding: 6px 8px; line-height: 1.4; resize: vertical; }
 .props-panel__number:focus-visible { outline: 2px solid var(--chrome-focus, #4064f4); outline-offset: 0; }
 .props-panel__row, .props-panel__slider-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .props-panel__row-label { opacity: 0.75; min-width: 64px; }

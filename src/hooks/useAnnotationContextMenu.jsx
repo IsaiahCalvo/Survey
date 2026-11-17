@@ -211,7 +211,7 @@ export function useAnnotationContextMenu({ getPageObjects = null } = {}) {
 // targets (touchTargets.css + annotationContextMenu.css).
 // Design review 2026-10-27: the rows under the icon row carry an icon too,
 // like every other action menu (components/MenuRows.jsx picks by label).
-const MARK_ROW_ICONS = { group: 'selectGroup', ungroup: 'selectGroup', arrange: 'layers', moveToLayer: 'layers', align: 'alignLeft', lock: 'lock', unlock: 'lock', saveToLibrary: 'library', copyFormat: 'brush', pasteFormat: 'paintBucket', applyToPages: 'pages' };
+const MARK_ROW_ICONS = { group: 'selectGroup', ungroup: 'selectGroup', arrange: 'layers', moveToLayer: 'layers', align: 'alignLeft', lock: 'lock', unlock: 'lock', saveToLibrary: 'library', copyFormat: 'brush', pasteFormat: 'paintBucket', applyToPages: 'pages', editNote: 'comment' };
 const markRowIcon = (it) => MARK_ROW_ICONS[it.key] || menuIconFor(it.label);
 const MENU_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter'];
 
@@ -583,6 +583,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
   // projected objects); `indices` the ordinary marks' page indexes.
   const barDockOn = isFeatureOn('toolbar-settings');
   const subjectEditOn = isFeatureOn('mark-subject') && isFeatureOn('properties-panel');
+  const noteEditOn = isFeatureOn('mark-note') && isFeatureOn('properties-panel');
   const groupMarksOn = isFeatureOn('group-marks')
     && typeof groupSelection === 'function' && typeof ungroupSelection === 'function';
   const groupIdOfObject = (obj) => (obj?.data?.type === 'callout'
@@ -720,17 +721,27 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
       : []);
     // Nightly 'mark-subject': "Edit subject" opens the properties panel on the
     // Subject box (page marks only; callouts and Survey Markers have none).
-    const subjectItems = () => (subjectEditOn
-      ? [item('Edit subject', 'editSubject', () => {
-        setPropertiesPanelOpen(true);
-        const focusBox = (tries) => {
-          const box = typeof document !== 'undefined' ? document.querySelector('[data-props-subject]') : null;
-          if (box) { box.focus(); box.select?.(); return; }
-          if (tries > 0) requestAnimationFrame(() => focusBox(tries - 1));
-        };
-        requestAnimationFrame(() => focusBox(20));
-      })]
-      : []);
+    // Opens the properties panel and puts the cursor in one of its boxes.
+    const focusPanelBox = (selector, selectAll) => {
+      setPropertiesPanelOpen(true);
+      const focusBox = (tries) => {
+        const box = typeof document !== 'undefined' ? document.querySelector(selector) : null;
+        if (box) {
+          box.focus();
+          if (selectAll) box.select?.();
+          else if (typeof box.value === 'string') box.setSelectionRange?.(box.value.length, box.value.length);
+          return;
+        }
+        if (tries > 0) requestAnimationFrame(() => focusBox(tries - 1));
+      };
+      requestAnimationFrame(() => focusBox(20));
+    };
+    const subjectItems = () => [
+      ...(subjectEditOn ? [item('Edit subject', 'editSubject', () => focusPanelBox('[data-props-subject]', true))] : []),
+      // Nightly 'mark-note' (KAL-721, Drawboard's Edit Note): the panel's
+      // Note box, cursor at the end of what is there.
+      ...(noteEditOn ? [item('Edit note', 'editNote', () => focusPanelBox('[data-props-note]', false))] : []),
+    ];
     // Layers beta: "Move to layer ▸" (Drawboard's Change layer), listing the
     // document's layers. A layer every picked mark is already on is greyed
     // out; a hidden one says so (the marks vanish with it, as in Drawboard).

@@ -30,6 +30,7 @@ import { getAnnotationAuthorId } from '../lib/collab/permissionScope.js';
 import { getAnnotationRenderIdentity } from '../utils/annotationStorageIdentity.js';
 import { authorLabel, markCreatedAt } from '../utils/markupList.js';
 import { MARK_SUBJECT_MAX, sharedMarkSubject } from '../utils/markSubject.js';
+import { MARK_NOTE_MAX, sharedMarkNote } from '../utils/markNote.js';
 import {
   setPropertiesDockElement,
   setPropertiesPanelOpen,
@@ -171,6 +172,53 @@ function SubjectBox({ value, mixed, placeholder, disabled, onCommit }) {
   );
 }
 
+/**
+ * Nightly 'mark-note' (KAL-721): the pick's note, several lines. Commit on
+ * blur or Ctrl / Cmd + Enter; Enter starts a new line; Escape puts back what
+ * was there.
+ */
+function NoteBox({ value, mixed, disabled, onCommit }) {
+  const ref = useRef(null);
+  const editingRef = useRef(false);
+  useEffect(() => {
+    if (!editingRef.current && ref.current) ref.current.value = value ?? '';
+  }, [value]);
+  const commit = () => {
+    if (!editingRef.current) return;
+    editingRef.current = false;
+    const typed = ref.current?.value ?? '';
+    // A mixed pick left blank keeps each mark's own note.
+    if (mixed && !typed.trim()) return;
+    if (typed !== (value ?? '')) onCommit(typed);
+  };
+  return (
+    <textarea
+      ref={ref}
+      className="props-panel__number props-panel__note"
+      aria-label="Note"
+      rows={3}
+      maxLength={MARK_NOTE_MAX}
+      defaultValue={value ?? ''}
+      placeholder={mixed ? 'Mixed' : 'Add a note'}
+      disabled={disabled}
+      data-props-note
+      onFocus={() => { editingRef.current = true; }}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        event.stopPropagation();
+        if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+          event.preventDefault();
+          event.currentTarget.blur();
+        } else if (event.key === 'Escape') {
+          editingRef.current = false;
+          event.currentTarget.value = value ?? '';
+          event.currentTarget.blur();
+        }
+      }}
+    />
+  );
+}
+
 function Section({ title, children, id }) {
   const [open, setOpen] = useState(true);
   return (
@@ -227,6 +275,7 @@ export default function SelectionPropertiesPanel({
 }) {
   const flagOn = useMemo(() => isFeatureOn('properties-panel'), []);
   const subjectOn = useMemo(() => isFeatureOn('mark-subject'), []);
+  const noteOn = useMemo(() => isFeatureOn('mark-note'), []);
   const items = useSelectedItems();
   const open = usePropertiesPanelOpen();
   const pinned = usePropertiesPanelPinned();
@@ -328,6 +377,13 @@ export default function SelectionPropertiesPanel({
     if (picked.pageNumber == null) return;
     window.dispatchEvent(new CustomEvent(TRANSFORM_SELECTION_EVENT, { detail: { pageNumber: picked.pageNumber, op: 'subject', text } }));
   };
+  // Nightly 'mark-note': page marks only, as the subject.
+  const noteShown = noteOn && picked.objects.length > 0 && picked.objects.length === picked.list.length;
+  const note = noteShown ? sharedMarkNote(picked.objects) : '';
+  const commitNote = (text) => {
+    if (picked.pageNumber == null) return;
+    window.dispatchEvent(new CustomEvent(TRANSFORM_SELECTION_EVENT, { detail: { pageNumber: picked.pageNumber, op: 'note', text } }));
+  };
 
   // "Selected colors": a swatch opens a row of colours; a pick recolours
   // every use of that colour in the pick.
@@ -421,6 +477,16 @@ export default function SelectionPropertiesPanel({
               placeholder={kindLabel(picked.kinds)}
               disabled={picked.pageNumber == null}
               onCommit={commitSubject}
+            />
+          </Section>
+        )}
+        {noteShown && (
+          <Section title="Note" id="note">
+            <NoteBox
+              value={note ?? ''}
+              mixed={note == null}
+              disabled={picked.pageNumber == null}
+              onCommit={commitNote}
             />
           </Section>
         )}

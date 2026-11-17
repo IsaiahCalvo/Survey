@@ -21,6 +21,7 @@ import ListItemContextMenu from '../components/ListItemContextMenu.jsx';
 import { listMenuPointFrom } from '../utils/listContextMenu.js';
 import { copyText } from '../utils/appContextMenuItems.js';
 import { isFeatureOn } from '../featureFlags.js';
+import { markNotePreview } from '../utils/markNote.js';
 import { listCommentPeople } from '../services/markComments.js';
 import {
   authorLabel,
@@ -48,6 +49,8 @@ export default function MarkupsPanel({
 }) {
   // Nightly 'mark-subject': a mark's own subject shows in its row and the CSV.
   const subjectsOn = useMemo(() => isFeatureOn('mark-subject'), []);
+  // Nightly 'mark-note': a mark's note shows under its row and in the CSV.
+  const notesOn = useMemo(() => isFeatureOn('mark-note'), []);
   const tip = useTooltip();
   const [query, setQuery] = useState('');
   const [kinds, setKinds] = useState(() => new Set());
@@ -111,7 +114,7 @@ export default function MarkupsPanel({
   const downloadCsv = () => {
     if (!shown.length) return;
     try {
-      const blob = new Blob([markupRowsToCsv(shown, { labelFor, subjects: subjectsOn })], { type: 'text/csv;charset=utf-8;' });
+      const blob = new Blob([markupRowsToCsv(shown, { labelFor, subjects: subjectsOn, notes: notesOn })], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -275,6 +278,9 @@ export default function MarkupsPanel({
                     <span className="markups-panel__meta">
                       {[subjectsOn && row.text ? row.subject : null, row.measure ? row.measure.name : null, labelFor(row.authorId), manyLayers ? row.layerName : null].filter(Boolean).join(' · ')}
                     </span>
+                    {notesOn && row.note && (
+                      <span className="markups-panel__note" data-markup-note>{markNotePreview(row.note)}</span>
+                    )}
                   </span>
                   <span className="markups-panel__page">p. {row.pageNumber}</span>
                 </button>

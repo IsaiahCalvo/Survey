@@ -626,6 +626,11 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Apply to pages in the mark menu: a copy of the picked marks in the same spot on all pages or the pages typed',
     stage: 'beta',
   }),
+  // Drawboard's Edit Note (KAL-721): a written note on any mark.
+  'mark-note': Object.freeze({
+    label: 'A note on any mark: Edit note in the mark menu and the properties panel; shown in the Markups list and exported as the PDF comment',
+    stage: 'beta',
+  }),
   'group-marks': Object.freeze({
     label: 'Group / Ungroup in the mark menu: a click on any member picks the whole group',
     stage: 'beta',

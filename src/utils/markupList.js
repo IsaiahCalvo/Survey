@@ -17,6 +17,7 @@ import {
   pageScaleFromObjects,
 } from './measure/measureScale.js';
 import { markSubjectOf } from './markSubject.js';
+import { markNoteOf } from './markNote.js';
 
 // Kinds the list shows, in this order, with their words.
 export const MARKUP_KINDS = Object.freeze([
@@ -167,7 +168,7 @@ function idOf(obj, pageNumber, index) {
 }
 
 /**
- * Every listable mark: { id, pageNumber, index, kind, kindLabel, subject, text,
+ * Every listable mark: { id, pageNumber, index, kind, kindLabel, subject, note, text,
  * color, authorId, createdAt, calloutId, measure, layerId, layerName }.
  * Pages in order, marks in stacking order. `byPage` = { [page]: { objects } };
  * `layerState` (Layers beta) names each mark's layer.
@@ -198,6 +199,8 @@ export function buildMarkupRows(byPage, { layerState = null } = {}) {
         kindLabel: KIND_WORD[listed],
         // The mark's own subject (Nightly 'mark-subject'), or null.
         subject: markSubjectOf(obj),
+        // The mark's note (Nightly 'mark-note'), or null.
+        note: markNoteOf(obj),
         text: textOf(obj),
         color: colorOf(obj),
         authorId: getAnnotationAuthorId(obj) || null,
@@ -239,6 +242,7 @@ export function filterMarkupRows(rows, {
     const hay = [
       row.kindLabel,
       row.subject,
+      row.note,
       row.text,
       row.measure?.name,
       row.measure?.text,
@@ -299,10 +303,10 @@ function csvCell(value) {
  * The rows as CSV text (header + one line per mark). A measurement's
  * Quantity is a plain number in its Unit, so a spreadsheet can add it up.
  */
-export function markupRowsToCsv(rows, { labelFor = null, subjects = false } = {}) {
+export function markupRowsToCsv(rows, { labelFor = null, subjects = false, notes = false } = {}) {
   // Nightly 'mark-subject' adds Drawboard's Subject column: the mark's own
-  // subject, else its kind.
-  const head = ['Page', 'Kind', ...(subjects ? ['Subject'] : []), 'Text', 'Colour', 'Author', 'Created', 'Quantity', 'Unit', 'Layer'];
+  // subject, else its kind. Nightly 'mark-note' adds a Note column.
+  const head = ['Page', 'Kind', ...(subjects ? ['Subject'] : []), 'Text', ...(notes ? ['Note'] : []), 'Colour', 'Author', 'Created', 'Quantity', 'Unit', 'Layer'];
   const lines = [head.join(',')];
   for (const row of rows || []) {
     lines.push([
@@ -310,6 +314,7 @@ export function markupRowsToCsv(rows, { labelFor = null, subjects = false } = {}
       row.kindLabel,
       ...(subjects ? [row.subject || row.kindLabel] : []),
       row.text,
+      ...(notes ? [row.note || ''] : []),
       row.color || '',
       labelFor ? labelFor(row.authorId) : (row.authorId || ''),
       row.createdAt || '',
