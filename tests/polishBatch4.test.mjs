@@ -38,3 +38,14 @@ test('PDF tools: a chosen card keeps its fill under the pointer', () => {
   const css = read('src/components/PdfToolsDialog.css');
   assert.match(css, /\.pdft-tool:not\(\.is-on\):hover\{/);
 });
+
+test('Document access: share links toggle uses the app chevron and the quiet-word button; invite dates read like the rest', () => {
+  const jsx = read('src/home/AccessManagementModal.jsx');
+  assert.doesNotMatch(jsx, /linksOpen \? '▾' : '▸'/);
+  assert.match(jsx, /<Icon name=\{linksOpen \? 'chevronDown' : 'chevronRight'\}/);
+  assert.match(jsx, /className="hub-btn hub-btn--tertiary"\s+aria-expanded=\{linksOpen\}/);
+  assert.match(jsx, /secondary=\{`Expires \$\{shortDate\(inv\.expires_at\)\}`\}/);
+  assert.match(jsx, />Created \{shortDate\(inv\.created_at\)\}</);
+  // The links group lines its rows up with the member rows above.
+  assert.match(jsx, /marginTop: 6, padding: '6px 0', borderTop: `1px dashed/);
+});
