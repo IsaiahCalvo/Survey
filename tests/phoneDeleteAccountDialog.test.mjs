@@ -28,9 +28,13 @@ test('shared prompt and confirm dialog buttons get 44px touch pads', () => {
   assert.match(coarse, /\.dialog-touch-pad::after \{\s*content: '';\s*position: absolute;\s*inset: -9px 0;/);
 });
 
-test('Settings Delete account button is 44px tall on any touch screen', () => {
+test('every Settings button is 44px tall on any touch screen, Delete account included', () => {
   const css = read('src/components/AccountSettings.css');
-  assert.match(css, /@media \(pointer: coarse\) \{\s*\.account-btn-danger \{ min-height: 44px; \}/);
+  const rule = css.match(/@media \(pointer: coarse\) \{\s*((?:\.account-btn-[a-z-]+,?\s*)+)\{ min-height: 44px; \}/);
+  assert.ok(rule, 'one touch rule sets the Settings buttons to 44px');
+  for (const name of ['primary', 'secondary', 'danger', 'purple', 'outline-green', 'outline-blue', 'outline-gold']) {
+    assert.match(rule[1], new RegExp(`\\.account-btn-${name}[,\\s]`), `.account-btn-${name} is 44px on touch`);
+  }
 });
 
 test('a delete request that never reaches the server fails in plain words', async () => {
