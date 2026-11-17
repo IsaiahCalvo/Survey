@@ -20,8 +20,8 @@ const ALLOWED = {
   'src/PageAnnotationLayer.jsx': 2,
   // The phone layout's rows (the browser's wheel).
   'src/home/TemplatesEditor.jsx': 3,
-  // Beta answer editors (nightly 'custom-answers'): phone rows keep the
-  // wheel; the answer-kind list (it has groups) is still to move.
+  // Beta answer editors (nightly 'custom-answers'): all four are phone
+  // branches (the browser's wheel); desktop uses ValueSelect.
   'src/home/AnswerSetEditor.jsx': 4,
   'src/components/TypedAnswerInput.jsx': 2,
   // Phone panel (the browser's wheel).

@@ -150,6 +150,24 @@
   cursor: pointer;
 }
 .ed-scope .tpl-entity-row { height: 40px; }
+/* The row opens on a click, so it hovers and presses like every other row
+   (suite rules, "One look for every control"). The name, grip, chevron and
+   ⋮ inside it keep their own press. */
+.ed-scope .tpl-cat-row,
+.ed-scope .tpl-entity-row { transition: background var(--motion-state, 150ms) var(--ease-out); }
+@media (hover: hover) {
+  .ed-scope .tpl-cat-row:not(.is-selected):hover,
+  .ed-scope .tpl-entity-row:not(.is-selected):hover { background: var(--hover); }
+}
+.ed-scope :is(.tpl-cat-row, .tpl-entity-row):active:not(:has(input:active, button:active, [data-drag-rearrange-handle]:active)) {
+  background: var(--pressed);
+  transition: none !important; /* at once; beats the rows' inline fade */
+}
+/* In the one look the well is ground, which the hover (raised) cannot be
+   seen against in light and the press (ground) matches in dark. The cards
+   rest on the panel instead, with their line; an open category's body under
+   the header stays a well. */
+html[data-look="suite"] .ed-scope .card-line { background: var(--surface-2); }
 .ed-scope .tpl-cat-row.is-selected { background: var(--surface-3); }
 .ed-scope .tpl-cat-row > [data-drag-rearrange-handle],
 .ed-scope .tpl-entity-row > [data-drag-rearrange-handle] {

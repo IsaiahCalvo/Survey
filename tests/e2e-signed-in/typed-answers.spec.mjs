@@ -114,15 +114,16 @@ test('the template editor shows how each line is answered', async ({ page }) => 
   await signIn(page, E2E_ACCOUNTS.owner);
   await page.getByRole('tab', { name: /Templates/ }).or(page.getByRole('button', { name: /^Templates$/ })).filter({ visible: true }).first().click();
   const [cable, frame, door] = E2E_SURVEY.checklist.map((c) => c.text);
-  const kindOf = (line) => page.getByRole('combobox', { name: `How "${line}" is answered` }).filter({ visible: true }).first();
+  // Desktop shows the app drop-down (a button carrying data-value), not a native select.
+  const kindOf = (line) => page.getByRole('button', { name: `How "${line}" is answered`, exact: true }).filter({ visible: true }).first();
   // Other specs may have added templates; open this one, then its category.
   await page.getByText(E2E_SURVEY.templateName, { exact: true }).filter({ visible: true }).first().click();
   const expand = page.getByRole('button', { name: `Expand ${E2E_SURVEY.categoryName}` }).filter({ visible: true }).first();
   const collapse = page.getByRole('button', { name: `Collapse ${E2E_SURVEY.categoryName}` }).filter({ visible: true }).first();
   await expect(expand.or(collapse).first()).toBeVisible({ timeout: 30_000 });
   if (await expand.isVisible()) await expand.click();
-  await expect(kindOf(cable)).toHaveValue('number', { timeout: 30_000 });
+  await expect(kindOf(cable)).toHaveAttribute('data-value', 'number', { timeout: 30_000 });
   await expect(page.getByRole('textbox', { name: `Unit for "${cable}"` }).filter({ visible: true }).first()).toHaveValue('ft');
-  await expect(kindOf(frame)).toHaveValue('text');
-  await expect(kindOf(door)).toHaveValue('choice');
+  await expect(kindOf(frame)).toHaveAttribute('data-value', 'text');
+  await expect(kindOf(door)).toHaveAttribute('data-value', 'choice');
 });
