@@ -3997,6 +3997,11 @@ svg[data-svg-annotation-layer][data-selection-hover="move"] {
   background: var(--surface-3);
   box-shadow: 0 0 0 1px var(--border-strong), 0 1px 2px rgba(0, 0, 0, 0.3);
 }
+/* The press darkens the dot one step past its hover. */
+.pages-panel-more:active > span {
+  background: var(--pressed-2, var(--pressed));
+  transition: none;
+}
 .pages-panel-more:focus-visible > span {
   box-shadow: 0 0 0 2px var(--focus-ring, var(--text-2));
 }

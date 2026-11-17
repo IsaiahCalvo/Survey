@@ -61,3 +61,7 @@ test('template editor: Add checklist item hovers and presses, entity dots keep t
 test('a setting pill shows a press in the light one look (pressed-2)', () => {
   assert.match(read('src/styles.css'), /\.chrome-pill:not\(:disabled\):active \{\n\s*background-color: var\(--pressed-2, var\(--pressed\)\) !important;/);
 });
+
+test('the Pages tab page dot (actions) shows a press', () => {
+  assert.match(read('src/styles.css'), /\.pages-panel-more:active > span \{\n\s*background: var\(--pressed-2, var\(--pressed\)\);\n\s*transition: none;/);
+});
