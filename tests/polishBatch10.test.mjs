@@ -23,7 +23,7 @@ test('menus with the gliding hover strip show a press; pressed-2 from the suite 
 
 test('a chosen item shows a press in the light one look (pressed-2)', () => {
   const states = read('src/styles/states.css');
-  assert.match(states, /:is\(\[aria-selected='true'\], \[aria-pressed='true'\], \[aria-current\]:not\(\[aria-current='false'\]\), \.is-selected, \.is-active, \.active\):active:not\(:disabled\)[^{]*:not\(\.primary\)[^{]*\{\s*background-color: var\(--pressed-2, var\(--pressed\)\) !important;/);
+  assert.match(states, /:is\(\[aria-selected='true'\], \[aria-pressed='true'\], \[aria-checked='true'\], \[aria-current\]:not\(\[aria-current='false'\]\), \.is-selected, \.is-active, \.active\):active:not\(:disabled\)[^{]*:not\(\.primary\)[^{]*\{\s*background-color: var\(--pressed-2, var\(--pressed\)\) !important;/);
   assert.match(read('src/home/hub.css'), /\.projects-list-row\.is-selected:active:not\([^{]*\{\s*background: var\(--pressed-2, var\(--pressed\)\) !important;/);
   assert.match(read('src/home/TemplatesEditor.css'), /:is\(\.tpl-list-row, \.tpl-cat-row, \.tpl-entity-row\)\.is-selected:active/);
 });
@@ -31,4 +31,13 @@ test('a chosen item shows a press in the light one look (pressed-2)', () => {
 test('every mark menu row carries an icon (Edit subject, Dock / Float bar)', () => {
   const src = read('src/hooks/useAnnotationContextMenu.jsx');
   assert.match(src, /editSubject: 'edit', dockSelectionBar: 'alignBottom', floatSelectionBar: 'alignBottom' \};/);
+});
+
+test('Settings: chosen joined-choice options press, switches hover and press, the close glyph presses', () => {
+  assert.match(read('src/styles/states.css'), /:is\(\[aria-selected='true'\], \[aria-pressed='true'\], \[aria-checked='true'\],/);
+  const css = read('src/components/AccountSettings.css');
+  assert.match(css, /\.account-settings-close:active > svg \{ transform: scale\(0\.88\); transition: none; \}/);
+  assert.match(css, /\.account-switch:not\(:disabled\):hover \.account-switch-track \{ box-shadow: inset 0 0 0 1px var\(--text-3\); \}/);
+  assert.match(css, /\.account-switch:not\(:disabled\):active \.account-switch-track \{ background: var\(--pressed-2, var\(--pressed\)\); transition: none; \}/);
+  assert.match(css, /\.account-switch\[aria-checked='true'\]:not\(:disabled\):active \.account-switch-track \{ background: var\(--accent-press\); \}/);
 });
