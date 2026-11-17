@@ -42,3 +42,14 @@ test('project file rows show the first page and part with a line', () => {
   assert.match(hub, /\.projects-file-grid \{ grid-template-columns: 24px 40px minmax\(0, 1fr\) 90px 90px 28px; \}/);
   assert.match(hub, /\.projects-file-rows > :not\(:last-child\) \[data-document-id\]\.projects-file-grid::after \{/);
 });
+
+test('Issues and Tasks: all archived shows the full empty state and a way back', () => {
+  const panel = readFileSync(new URL('../src/projectItems/ProjectItemsPanel.jsx', import.meta.url), 'utf8');
+  const shell = readFileSync(new URL('../src/home/HubShell.jsx', import.meta.url), 'utf8');
+  assert.match(panel, /!archived && !filtersOn && archivedCount > 0 \? \(/);
+  assert.match(panel, /line=\{`No open \$\{k\.many\.toLowerCase\(\)\}`\}/);
+  assert.match(panel, /secondaryLabel=\{`Show archived \(\$\{archivedCount\}\)`\}/);
+  assert.match(panel, /className="btn ghost item-archived-back"[\s\S]{0,200}?>Show open \{k\.many\.toLowerCase\(\)\}</);
+  // No empty coral button for someone who can't add.
+  assert.match(shell, /\{actionLabel \? \(\n\s*<button className="btn primary"/);
+});
