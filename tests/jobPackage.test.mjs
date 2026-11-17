@@ -18,7 +18,7 @@ const manifest = {
   job: { suiteJobId: 'job-1', name: 'Collier NYC', source: 'plot' },
   pages: [
     { pageId: 'p1', file: 'pages/p1.pdf', pageIndex: 0, widthPt: 1000, heightPt: 500, building: 'HP 20', wing: 'East', floor: 'Level 2', title: 'E-201' },
-    { pageId: 'p2', file: 'pages/p2.pdf', pageIndex: 0, widthPt: 1000, heightPt: 500, building: 'HP 20', floor: 'Level 3', title: 'E-301' },
+    { pageId: 'p2', file: 'pages/p2.pdf', pageIndex: 1, widthPt: 1000, heightPt: 500, building: 'HP 20', floor: 'Level 3', title: 'E-301' },
   ],
   items: [
     {
@@ -107,6 +107,27 @@ test('items become nodes with their shared id, Tag and places; one floor per PDF
   assert.equal(jobLeftOut(walk.extras), '1 media file, the Schedule, the Riser, 1 item with no page');
 });
 
+test('a page is placed by its order in its own PDF, whatever pageIndex counts', () => {
+  // Plot: one PDF per page, pageIndex counted across the job.
+  const walk = jobToWalk(manifest, library);
+  assert.equal(walk.floors[1].nodes[0].page_index, 0, 'p2 (pageIndex 1) is page 1 of pages/p2.pdf');
+  // One PDF with two pages.
+  const shared = jobToWalk({
+    ...manifest,
+    pages: [
+      { pageId: 'b', file: 'pages/set.pdf', pageIndex: 1 },
+      { pageId: 'a', file: 'pages/set.pdf', pageIndex: 0 },
+    ],
+    items: [
+      { suiteId: 's-a', tag: 'A', library: { categoryName: 'Door' }, pageId: 'a', position: { x: 0, y: 0 } },
+      { suiteId: 's-b', tag: 'B', library: { categoryName: 'Door' }, pageId: 'b', position: { x: 0, y: 0 } },
+    ],
+    annotations: [],
+  });
+  assert.equal(shared.floors.length, 1);
+  assert.deepEqual(shared.floors[0].nodes.map((n) => [n.title, n.page_index]), [['A', 0], ['B', 1]]);
+});
+
 test('the arrival rule is the walk rule: library id, then exact name, the rest counted', () => {
   const walk = jobToWalk(manifest, library);
   const match = matchCategories(walk.nodeTypes, template, 'm1');
@@ -172,7 +193,7 @@ function square(x, y, size) {
   return { ring, minX: x, minY: y, maxX: x + size, maxY: y + size, width: size, height: size, area: size * size };
 }
 
-test('Smart Fill on arrival: the shape around the printed Tag, else the shape under the spot', () => {
+test('Smart Fill on arrival: the shape around the printed Tag, else a dot', () => {
   const tagA = square(100, 100, 20);
   const tagB = square(300, 100, 20);
   const room = square(0, 0, 100); // 100 pt: too big to trust from the spot alone
@@ -184,13 +205,11 @@ test('Smart Fill on arrival: the shape around the printed Tag, else the shape un
   assert.equal(byTag.by, 'tag');
   assert.deepEqual(byTag.polygon.coordinates[0], tagA.ring);
 
-  // No printed Tag: the tag-sized shape under the spot.
-  const bySpot = pickTagOutline({ shapes, texts, tag: 'C-9-99', point: [305, 105] });
-  assert.equal(bySpot.by, 'spot');
-  assert.deepEqual(bySpot.polygon.coordinates[0], tagB.ring);
-
-  // Only a room under the spot: no outline, so a dot.
-  assert.equal(pickTagOutline({ shapes, texts, tag: null, point: [50, 50] }), null);
+  // No printed Tag: a dot, even with a shape under the spot (in Plot that is
+  // the device symbol, not its tag).
+  assert.equal(pickTagOutline({ shapes, texts, tag: 'C-9-99', point: [305, 105] }), null);
+  // A grouped label is not the Tag.
+  assert.equal(pickTagOutline({ shapes, texts: [{ text: 'ACP-1-01 to ACP-1-04', x: 110, y: 110 }], tag: 'ACP-1-01', point: null }), null);
   // Exact text only: no near match.
   assert.equal(pickTagOutline({ shapes, texts, tag: 'C-2-0', point: null }), null);
   // The same Tag twice: the one nearest the spot.

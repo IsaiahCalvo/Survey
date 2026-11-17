@@ -116,6 +116,23 @@ export function jobToWalk(manifest, library = []) {
   };
   // Every page gets its floor, in the file's order, even with nothing on it.
   for (const page of pages) floorFor(page);
+  // Which page of its PDF a page is. Plot writes one PDF per page and counts
+  // pageIndex across the whole job (B01 is pageIndex 3 in pages/B01.pdf), so
+  // a page is placed by its order among the pages that share its file.
+  const pageInFile = new Map();
+  const byFile = new Map();
+  for (const page of pages) {
+    const file = clean(page.file) || `pages/${clean(page.pageId)}.pdf`;
+    const group = byFile.get(file) || [];
+    group.push(page);
+    byFile.set(file, group);
+  }
+  for (const group of byFile.values()) {
+    const order = Number.isInteger(group[0]?.pageIndex) && group.every((p) => Number.isInteger(p.pageIndex))
+      ? [...group].sort((a, b) => a.pageIndex - b.pageIndex)
+      : group;
+    order.forEach((page, index) => pageInFile.set(page, index));
+  }
 
   const nodeTypes = new Map();
   let noPage = 0;
@@ -134,7 +151,7 @@ export function jobToWalk(manifest, library = []) {
     const suiteId = tracked ? clean(raw.suiteId) : null;
     floorFor(page).nodes.push({
       id: clean(raw.source?.nativeId) || suiteId || null,
-      page_index: Number.isInteger(page.pageIndex) ? page.pageIndex : 0,
+      page_index: pageInFile.get(page) ?? 0,
       x_pct: fraction(raw.position?.x),
       y_pct: fraction(raw.position?.y),
       node_type_id: key,

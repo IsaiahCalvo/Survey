@@ -4,13 +4,15 @@
 // Plot prints each device's Tag inside its tag shape. On arrival Survey looks
 // on the page for that exact Tag text and takes the closed shape the PDF draws
 // around it, the same shape Smart Fill picks on a tap (smartFillVector.js).
-// When the Tag is not printed as text (outlined fonts, a scan), the shape at
-// the device's own spot is used if it is tag-sized. Otherwise the device lands
-// as a dot, like a Walkthru node, and the field can Smart Fill it by hand.
+// When the Tag is not printed on its own (a grouped label such as "ACP-1-01
+// to ACP-1-04", outlined fonts, a scan), the device lands as a dot where Plot
+// put it, like a Walkthru node, and the field can Smart Fill it by hand. The
+// shape under the device's own spot is not used: in Plot that is the device
+// symbol, not its tag.
 //
-// Plain rules only: exact Tag text, else the shape under the spot. No guess.
+// Plain rules only: the exact Tag text, else a dot. No guess.
 
-import { extractClosedShapes, pickShapeAtPoint, shapeToPolygon, vectorAnswerIsTagSized } from '../survey/smartFillVector.js';
+import { extractClosedShapes, pickShapeAtPoint, shapeToPolygon } from '../survey/smartFillVector.js';
 import { pageToPoint } from './walkthruHandoff.js';
 
 const norm = (value) => (typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '');
@@ -45,8 +47,9 @@ export function textCenters(items, viewport) {
  * @param {Array<object>} input.shapes  extractClosedShapes for the page
  * @param {Array<{text:string,x:number,y:number}>} input.texts  textCenters for the page
  * @param {string|null} input.tag
- * @param {[number, number]|null} input.point  the device's spot, page units
- * @returns {{polygon: object, by: 'tag'|'spot'} | null}
+ * @param {[number, number]|null} input.point  the device's spot, page units;
+ *   picks between two prints of the same Tag
+ * @returns {{polygon: object, by: 'tag'} | null}
  */
 export function pickTagOutline({ shapes = [], texts = [], tag = null, point = null }) {
   const pool = (shapes || []).filter((s) => s && !s.cloud);
@@ -67,10 +70,6 @@ export function pickTagOutline({ shapes = [], texts = [], tag = null, point = nu
       }
       return { polygon: shapeToPolygon(found[0]), by: 'tag' };
     }
-  }
-  if (point) {
-    const shape = pickShapeAtPoint(pool, { x: point[0], y: point[1] });
-    if (shape && vectorAnswerIsTagSized(shape)) return { polygon: shapeToPolygon(shape), by: 'spot' };
   }
   return null;
 }
