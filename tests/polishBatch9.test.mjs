@@ -56,3 +56,17 @@ test('Toolbars workspaces: field edge, hint on the title edge, delete hover fill
   assert.match(css, /\.toolbars-card__workspace-save input \{[^}]*border: 1px solid var\(--border-strong\)/);
   assert.match(css, /\.toolbars-card__workspace-delete:hover \{ background: var\(--hover\);/);
 });
+
+test('long project and file ⋮ menus split into groups with lines', async () => {
+  const { arrangeMenuItems } = await import('../src/utils/menuItems.js');
+  const line = (key) => ({ separator: true, key });
+  const keys = (rows) => rows.map((r) => (r.separator ? '|' : r.key));
+  // A line never starts, ends or doubles up, so a group that comes out empty leaves no stray line.
+  assert.deepEqual(keys(arrangeMenuItems([line('a'), { key: 'rename' }, line('b'), line('c'), { key: 'share' }, line('d')])), ['rename', '|', 'share']);
+  // Danger rows still go last behind one line.
+  assert.deepEqual(keys(arrangeMenuItems([{ key: 'del', danger: true }, { key: 'rename' }, line('x')])), ['rename', '|', 'del']);
+  assert.deepEqual(keys(arrangeMenuItems([line('x'), { key: 'del', danger: true }])), ['del']);
+  const tree = readFileSync(new URL('../src/home/ProjectsFolderTree.jsx', import.meta.url), 'utf8');
+  assert.match(tree, /function menuGroupLine\(key\) \{\s*return isPhoneLayout\(\) \? null : \{ separator: true, key: `group-\$\{key\}` \};/);
+  assert.ok((tree.match(/menuGroupLine\('/g) || []).length >= 7);
+});

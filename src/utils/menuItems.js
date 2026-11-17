@@ -40,11 +40,26 @@ export function menuIconFor(label) {
 }
 
 /** Danger rows last, behind one separator; the other rows keep their order. */
+// A caller may put { separator: true, key } between groups of rows. A line
+// never starts or ends a group of rows or sits next to another line, so a
+// group that comes out empty (a row that only shows for some people) leaves
+// no stray line.
+function tidySeparators(rows) {
+  const out = [];
+  for (const row of rows) {
+    if (row.separator && (!out.length || out[out.length - 1].separator)) continue;
+    out.push(row);
+  }
+  while (out.length && out[out.length - 1].separator) out.pop();
+  return out;
+}
+
 export function arrangeMenuItems(items = []) {
   const list = items.filter(Boolean);
-  const safe = list.filter((item) => !item.danger);
+  const safe = tidySeparators(list.filter((item) => !item.danger));
   const danger = list.filter((item) => item.danger);
-  if (!danger.length || !safe.length) return list;
+  if (!danger.length) return safe;
+  if (!safe.some((item) => !item.separator)) return danger;
   return [...safe, { separator: true, key: 'danger-separator' }, ...danger];
 }
 
