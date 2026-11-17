@@ -315,7 +315,7 @@ export default function ShareModal({
               {/* A block with a 28px line, not a flex box: text-overflow only
                   works on a block's own line, so the hint used to be cut
                   mid-letter on a phone instead of ending in an ellipsis. */}
-              <div style={{ minWidth: 0, boxSizing: 'border-box', background: C.deep, border: `1px solid ${C.rule}`, borderRadius: 6, padding: '0 11px', height: 30, lineHeight: '28px', fontSize: 12, color: C.inkSoft, fontFamily: 'ui-monospace, Menlo, monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{linkText}</div>
+              <div style={{ minWidth: 0, boxSizing: 'border-box', background: C.deep, border: `1px solid ${C.rule}`, borderRadius: 6, padding: '0 11px', height: 30, lineHeight: '28px', fontSize: 12, color: activeInvite ? C.inkSoft : C.muted, fontFamily: activeInvite ? 'var(--font-mono)' : 'inherit', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{linkText}</div>
               <button onClick={copyLink} disabled={busy || !!blockedReason} className="hub-btn share-dialog-touch-pad">{copied ? 'Copied' : 'Copy link'}</button>
             </div>
             <div style={{ fontSize: 11, color: C.muted, marginTop: 8, lineHeight: 1.4 }}>{explicitLinkText}{freeNote}</div>

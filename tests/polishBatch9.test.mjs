@@ -70,3 +70,14 @@ test('long project and file ⋮ menus split into groups with lines', async () =>
   assert.match(tree, /function menuGroupLine\(key\) \{\s*return isPhoneLayout\(\) \? null : \{ separator: true, key: `group-\$\{key\}` \};/);
   assert.ok((tree.match(/menuGroupLine\('/g) || []).length >= 7);
 });
+
+test('hub dialogs: link box placeholder in the normal font, move list lines, PDF tool cards on the panel', () => {
+  const share = readFileSync(new URL('../src/home/ShareModal.jsx', import.meta.url), 'utf8');
+  assert.match(share, /fontFamily: activeInvite \? 'var\(--font-mono\)' : 'inherit'/);
+  const team = readFileSync(new URL('../src/home/ManageTeamModal.jsx', import.meta.url), 'utf8');
+  assert.match(team, /fontFamily: activeInvite \? MONO_FONT : "inherit"/);
+  const bulk = readFileSync(new URL('../src/home/BulkModals.jsx', import.meta.url), 'utf8');
+  assert.match(bulk, /borderTop: i \? `1px solid \$\{C\.rule\}` : 0,/);
+  const pdft = readFileSync(new URL('../src/components/PdfToolsDialog.css', import.meta.url), 'utf8');
+  assert.match(pdft, /html\[data-look="suite"\] \.pdft-tool:not\(\.is-on\):not\(:hover\)\{background:var\(--surface-2\)\}/);
+});
