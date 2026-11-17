@@ -36,12 +36,17 @@ test('the app maps both server answers to the plan message, and the editor shows
   assert.doesNotMatch(editor, /setPersistenceError\('Could not save templates/);
 });
 
-test('on Free, New template and Duplicate say "part of Pro" first and make no copy', () => {
+test('on Free, New template, Duplicate and the library\'s Add them say "part of Pro" first', () => {
   const editor = read('../src/home/TemplatesEditor.jsx');
   assert.match(editor, /const duplicateTemplates = \(ids\) => \{\s*if \(templatesNeedPro\(\)\) return;/);
   assert.match(editor, /const createTemplate = \(\) => \{\s*if \(templatesNeedPro\(\)\) return;/);
+  assert.match(editor, /const templatesNeedPro = useTemplatesNeedPro\(\);/);
+  const library = read('../src/library/LibraryScreen.jsx');
+  assert.match(library, /if \(!store \|\| !onSaveTemplates \|\| linking\) return;[\s\S]{0,160}if \(templatesNeedPro\(\)\) return;\s*setLinking\(true\);/);
+  assert.match(library, /showToast\(isTemplatePlanError\(err\) \? TEMPLATE_PLAN_MESSAGE : 'Could not save the templates\. Try again\.', 'error'\);/);
+  const hook = read('../src/home/useTemplatesNeedPro.js');
   // Signed out, or the plan still loading, or a paid plan: never stopped here.
-  assert.match(editor, /if \(!authUser \|\| auth\.loadingTier \|\| auth\.tierUserId !== authUser\.id\) return false;\s*if \(PAID_TIERS\.includes\(auth\.tier\)\) return false;/);
+  assert.match(hook, /if \(!authUser \|\| auth\.loadingTier \|\| auth\.tierUserId !== authUser\.id\) return false;\s*if \(PAID_TIERS\.includes\(auth\.tier\)\) return false;/);
   // Not tied to 'pro-lock': the database refuses template saves on Free either way.
-  assert.match(editor, /if \(isFeatureOn\(PRO_LOCK_FLAG\)\) return proLocked\('templates'\);\s*showToast\(TEMPLATES_PRO_NOTE, 'warn'/);
+  assert.match(hook, /if \(isFeatureOn\(PRO_LOCK_FLAG\)\) return proLocked\('templates'\);\s*showToast\(TEMPLATES_PRO_NOTE, 'warn'/);
 });

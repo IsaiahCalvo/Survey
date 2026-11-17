@@ -22,6 +22,8 @@ import {
   manageRefusal,
 } from './libraryModel.js';
 import { suiteLibraryStore } from './suiteLibrary.js';
+import { useTemplatesNeedPro } from '../home/useTemplatesNeedPro.js';
+import { TEMPLATE_PLAN_MESSAGE, isTemplatePlanError } from '../home/templatePersistence.js';
 
 const EMPTY_STATE = { entries: [], outbox: [], company: null, status: 'idle', error: '' };
 
@@ -55,6 +57,7 @@ export default function LibraryScreen({ user, onNav, templatesLocked = false, te
   const [view, setView] = useState(LIBRARY_SCOPE.MINE);
   const [newName, setNewName] = useState('');
   const [linking, setLinking] = useState(false);
+  const templatesNeedPro = useTemplatesNeedPro();
 
   useEffect(() => { if (store) void store.ready().then(() => store.refresh()); }, [store]);
   useEffect(() => { if (state.error) showToast(state.error, 'warn'); }, [state.error]);
@@ -113,13 +116,16 @@ export default function LibraryScreen({ user, onNav, templatesLocked = false, te
 
   const linkTemplates = async () => {
     if (!store || !onSaveTemplates || linking) return;
+    // Linking saves the templates, which Free can't (KAL-755): say so before
+    // any library entry is made.
+    if (templatesNeedPro()) return;
     setLinking(true);
     try {
       const { templates: linked, linked: count } = store.linkTemplates(templates);
       if (count > 0) await onSaveTemplates(linked);
       showToast(count === 1 ? 'Added 1 Category to the library.' : `Added ${count} Categories to the library.`, 'success');
-    } catch {
-      showToast('Could not save the templates. Try again.', 'error');
+    } catch (err) {
+      showToast(isTemplatePlanError(err) ? TEMPLATE_PLAN_MESSAGE : 'Could not save the templates. Try again.', 'error');
     } finally {
       setLinking(false);
     }

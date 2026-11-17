@@ -33,8 +33,8 @@ const deterministicTemplateRowId = (ownerId, logicalId) => {
    'templates'): on Free every snapshot save is turned down. Before, the
    server said "Template row does not belong to the signed-in user" and the
    editor said only "Could not save" (tester walk, Nov 17). */
-/** Said before a new template or a copy is made on Free (TemplatesEditor). */
-export const TEMPLATES_PRO_NOTE = 'Templates are part of Pro, so new templates and copies can’t be saved on Free.';
+/** Said before New template, Duplicate or the library's Add them on Free. */
+export const TEMPLATES_PRO_NOTE = 'Templates are part of Pro, so template changes can’t be saved on Free.';
 export const TEMPLATE_PLAN_MESSAGE = 'Saving templates needs the Pro plan. Your edits are still here.';
 const SAVE_FAILED_MESSAGE = 'Could not save templates. Your edits are still here; try again.';
 
