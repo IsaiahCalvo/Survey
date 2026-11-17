@@ -41,6 +41,9 @@
   max-width: 440px;
   width: 92%;
   max-height: 90vh;
+  /* dvh: on a phone, vh counts the space under Safari's and Chrome's bars,
+     so 90vh could be taller than the screen you can see. */
+  max-height: 90dvh;
   overflow-y: auto;
   position: relative;
   box-shadow: var(--shadow-dialog);

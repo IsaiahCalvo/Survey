@@ -2,6 +2,8 @@
 // (every beta feature on, see src/featureFlags.js). It shares the production
 // database, so it must never pass for surveytool.app: its own name in the tab,
 // a violet icon, and a thin violet line with a "Nightly" tag on every screen.
+import { PHONE_LAYOUT_MEDIA } from './utils/layoutMode.js';
+
 export const NIGHTLY_NAME = 'Survey Nightly';
 export const NIGHTLY_COLOR = '#8b5cf6';
 
@@ -37,6 +39,14 @@ export function applyNightlyBrand(doc = typeof document !== 'undefined' ? docume
       padding: 1px 8px 2px; border-radius: 0 0 6px 6px; background: ${NIGHTLY_COLOR}; color: #fff;
       font: 600 10px/14px system-ui, -apple-system, "Segoe UI", sans-serif; letter-spacing: 0.04em; text-transform: uppercase;
       -webkit-user-select: none; user-select: none; }
+    /* Phone layout (src/utils/layoutMode.js): the top bar is full of controls.
+       On the home pages the tag shrinks to fit in the strip above them. An open
+       document has the page number in the middle of that strip, so there the
+       line alone marks Nightly. */
+    @media ${PHONE_LAYOUT_MEDIA} {
+      #survey-nightly-tag { padding: 0 6px 1px; border-radius: 0 0 5px 5px; font-size: 8px; line-height: 9px; }
+      html.survey-viewer-open #survey-nightly-tag { display: none; }
+    }
     @media print { #survey-nightly-line, #survey-nightly-tag { display: none; } }
   `;
   doc.head.appendChild(style);
