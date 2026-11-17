@@ -213,7 +213,7 @@ function diag(line) {
     }
 
     // The pinned tools dock floats over the page and owns its right-click (a
-    // pin's Duplicate / Move to start / Unpin menu). Without this the
+    // pin's Duplicate / Unpin menu). Without this the
     // hit-test below found the page behind it, and a right-click on a pin
     // opened the page's menu instead (seen 2026-11-12).
     if (e.target && typeof e.target.closest === 'function'

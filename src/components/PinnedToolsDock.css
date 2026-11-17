@@ -43,8 +43,11 @@
   box-shadow: var(--shadow-popover);
   user-select: none;
   -webkit-user-select: none;
+  /* A finger holds a pin to drag it: no iOS callout on that hold. */
+  -webkit-touch-callout: none;
   will-change: transform;
 }
+.pinned-dock-menu--pins { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .pinned-dock.is-vertical { flex-direction: column; }
 .pinned-dock.is-horizontal { flex-direction: row; }
 .pinned-dock.is-dragging { pointer-events: none; overflow: hidden; }
