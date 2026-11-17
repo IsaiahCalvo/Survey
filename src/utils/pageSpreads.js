@@ -20,6 +20,11 @@
  * the page count: the square root, rounded up (10 pages: 4, 30 pages: 6),
  * whatever the window or zoom, as Drawboard does.
  *
+ * Horizontal (KAL-713, Drawboard's View settings "Horizontal") with Single
+ * runs every page left to right in one row, as 'strip'. It is never a saved
+ * choice: the viewer asks for it when the direction is Horizontal, the view
+ * is Single and Continuous is on. Next / Previous still step one page.
+ *
  * Pure (no React); every size is in PDF points at scale 1.
  */
 
@@ -29,6 +34,7 @@ export const PAGE_SPREAD_MODES = Object.freeze(['single', 'double', 'cover', ...
 
 export function normalizeSpreadMode(mode) {
   if (mode === 'grid') return `grid-${DEFAULT_GRID_COLUMNS}`;
+  if (mode === 'strip') return mode;
   return PAGE_SPREAD_MODES.includes(mode) ? mode : 'single';
 }
 
@@ -56,13 +62,14 @@ export function gridColumns(mode, pageCount = 0) {
 export function spreadRowSize(mode, pageCount = 0) {
   const spread = normalizeSpreadMode(mode);
   if (spread === 'single') return 1;
+  if (spread === 'strip') return Math.max(1, Number(pageCount) || 0);
   return isGridMode(spread) ? gridColumns(spread, pageCount) : 2;
 }
 
 /**
  * Rows of page indexes (hidden pages left out).
  * @param {{w:number,h:number,hidden?:boolean}[]} dims
- * @param {string} mode 'single' | 'double' | 'cover' | 'grid-N'
+ * @param {string} mode 'single' | 'double' | 'cover' | 'grid-N' | 'strip'
  * @returns {number[][]}
  */
 export function buildSpreadRows(dims, mode) {
@@ -70,6 +77,7 @@ export function buildSpreadRows(dims, mode) {
   (dims || []).forEach((dim, index) => { if (dim && !dim.hidden) shown.push(index); });
   const spread = normalizeSpreadMode(mode);
   if (spread === 'single') return shown.map((index) => [index]);
+  if (spread === 'strip') return shown.length ? [shown] : [];
   const size = spreadRowSize(spread, shown.length);
   const rows = [];
   let start = 0;
@@ -85,8 +93,9 @@ export function buildSpreadRows(dims, mode) {
 
 /**
  * Where each page sits in its row.
- * @returns {null | { leader: number[], offsetX: number[], stack: object[], rows: number[][] }}
+ * @returns {null | { leader: number[], offsetX: number[], stack: object[], rows: number[][], strip: boolean }}
  *   null for Single (the caller keeps the page list as the stack).
+ *   strip      true for Horizontal's one row of every page
  *   leader[i]  the row's first page (i itself for a leader; i for hidden pages)
  *   offsetX[i] the page's left edge from the row's left edge, in points
  *   stack[i]   { w, h } of the row on its leader, { w: 0, h: 0, hidden: true }
@@ -101,8 +110,11 @@ export function placeSpreadPages(dims, mode, gapPt = 0) {
   const offsetX = list.map(() => 0);
   const stack = list.map(() => ({ w: 0, h: 0, hidden: true }));
   const rows = buildSpreadRows(list, spread);
-  const grid = isGridMode(spread);
-  const size = grid ? gridColumns(spread, rows.reduce((n, row) => n + row.length, 0)) : 2;
+  const strip = spread === 'strip';
+  // A strip is a Grid row as long as the document.
+  const grid = strip || isGridMode(spread);
+  const shownCount = rows.reduce((n, row) => n + row.length, 0);
+  const size = strip ? shownCount : grid ? gridColumns(spread, shownCount) : 2;
   rows.forEach((row, rowIndex) => {
     const [first, second] = row;
     if (grid) {
@@ -138,7 +150,7 @@ export function placeSpreadPages(dims, mode, gapPt = 0) {
     offsetX[second] = a.w + gap;
     stack[first] = { w: a.w + gap + b.w, h: Math.max(a.h, b.h) };
   });
-  return { leader, offsetX, stack, rows };
+  return { leader, offsetX, stack, rows, strip };
 }
 
 /** The pages of the row a page sits in (one index, or the whole row). */
@@ -154,7 +166,8 @@ export function rowMembers(place, index) {
  * @returns {number} 1-based page number
  */
 export function steppedSpreadPage(place, currentPage, step) {
-  if (!place) return currentPage + step;
+  // Horizontal's one row still steps one page.
+  if (!place || place.strip) return currentPage + step;
   const index = Math.max(0, currentPage - 1);
   const lead = place.leader[index] ?? index;
   const rowIndex = place.rows.findIndex((row) => row[0] === lead);

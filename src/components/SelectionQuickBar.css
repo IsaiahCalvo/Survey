@@ -707,3 +707,84 @@ button.selection-quick-bar__fill:focus-visible {
   font-variant-numeric: tabular-nums;
   user-select: none;
 }
+
+/* KAL-715, Drawboard's text bar: the words' colour (an A over a bar in the
+   current colour) and the font name, which opens the list of fonts. */
+.selection-quick-bar__text-colour {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.selection-quick-bar__text-colour-letter {
+  font: 600 14px/1 var(--font-ui, -apple-system, system-ui, sans-serif);
+}
+.selection-quick-bar__text-colour-bar {
+  width: 16px;
+  height: 3px;
+  border-radius: var(--radius-xs);
+  /* The user's own colour; a hairline keeps a white or black bar visible. */
+  box-shadow: 0 0 0 1px var(--border);
+}
+.selection-quick-bar__popover[data-selection-quick-kind-popover='textColour'] {
+  min-width: 0;
+}
+.selection-quick-bar__button--font {
+  width: auto;
+  max-width: 132px;
+  padding: 0 6px 0 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.selection-quick-bar__font-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  line-height: 1;
+}
+.selection-quick-bar__fonts {
+  display: flex;
+  flex-direction: column;
+  min-width: 168px;
+  padding: 2px;
+}
+.selection-quick-bar__font-option {
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-2);
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--motion-state, 150ms) var(--ease-out, ease-out);
+}
+@media (hover: hover) {
+  .selection-quick-bar__font-option:not([aria-checked='true']):hover {
+    background: var(--hover);
+    color: var(--text-1);
+  }
+}
+.selection-quick-bar__font-option[aria-checked='true'] {
+  background: var(--surface-3);
+  color: var(--text-1);
+  cursor: default;
+}
+.selection-quick-bar__font-option:active {
+  background: var(--pressed);
+  transition-duration: 0s;
+}
+.selection-quick-bar__font-option:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+@media (pointer: coarse) {
+  .selection-quick-bar__font-option { height: 44px; }
+  .selection-quick-bar__popover[data-selection-quick-kind-popover='textColour'] {
+  min-width: 0;
+}
+.selection-quick-bar__button--font { height: 44px; }
+}

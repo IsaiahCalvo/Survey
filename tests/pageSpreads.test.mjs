@@ -64,7 +64,7 @@ test('Next / Previous move a whole row in a spread view', () => {
 test('the viewer and the Page fit card use the setting; the phone keeps one column', () => {
   const viewer = readFileSync(new URL('../src/components/PdfjsViewerContainer.jsx', import.meta.url), 'utf8');
   assert.match(viewer, /const spreadMode = phoneLayout \? 'single' : pageSpreadSetting;/);
-  assert.match(viewer, /padTop: metrics\.padTop, gap: metrics\.gap, spread: rowSpread,/);
+  assert.match(viewer, /padTop: metrics\.padTop, gap: metrics\.gap, spread: stripView \? 'strip' : rowSpread,/);
   assert.match(viewer, /let rowSpread = spreadMode;/);
   const shell = readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
   assert.match(shell, /const \[pageSpreadsOn\] = useState\(\(\) => isFeatureOn\('page-spreads'\)\);/);
@@ -188,4 +188,38 @@ test('Continuous off: the setting, the card row, and the viewer turning rows', a
   assert.match(viewer, /const pagedView = !phoneLayout && !pageContinuous && !isGridMode\(spreadMode\);/);
   assert.match(viewer, /el\.addEventListener\('wheel', onWheel, \{ capture: true, passive: false \}\);/);
   assert.match(viewer, /getSteppedPage: \(step\) => pagedStepRef\.current\(step\) \?\?/);
+});
+
+test('Horizontal: one row of every page, left to right, stepping one page', () => {
+  const dims = [page(600, 800), { w: 0, h: 0, hidden: true }, page(500, 900), page(600, 800)];
+  assert.equal(normalizeSpreadMode('strip'), 'strip');
+  assert.equal(isGridMode('strip'), false);
+  assert.deepEqual(buildSpreadRows(dims, 'strip'), [[0, 2, 3]]);
+  const strip = placeSpreadPages(dims, 'strip', 10);
+  assert.equal(strip.strip, true);
+  assert.deepEqual([strip.offsetX[0], strip.offsetX[2], strip.offsetX[3]], [0, 610, 1120]);
+  assert.deepEqual(strip.stack[0], { w: 1720, h: 900 }, 'the row is every page and gap wide, as tall as the tallest');
+  assert.equal(strip.leader[3], 0);
+  assert.equal(steppedSpreadPage(strip, 3, 1), 4, 'Next steps one page, not the whole row');
+  assert.equal(steppedSpreadPage(strip, 3, -1), 2);
+  assert.equal(placeSpreadPages(dims, 'double', 10).strip, false);
+  const stack = buildVisiblePageStack({ pageSizes: [page(), page(), page()], gap: 10, spread: 'strip' });
+  assert.deepEqual(stack.tops, [stack.tops[0], stack.tops[0], stack.tops[0]], 'every page shares one top');
+});
+
+test('Horizontal: the setting, the card choice, and the viewer reading across', () => {
+  const setting = readFileSync(new URL('../src/utils/pageSpreadSetting.js', import.meta.url), 'utf8');
+  assert.match(setting, /const DIRECTION_KEY = 'survey\.pageDirection\.v1';/);
+  assert.match(setting, /if \(!flagOn\) return 'vertical';/);
+  assert.match(setting, /return kept === 'strip' \? 'single' : kept;/, 'the layout is never a saved view');
+  const shell = readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
+  assert.match(shell, /const directionOff = pageSpread !== 'single' \|\| !pageContinuous;/);
+  assert.match(shell, /data-page-direction=\{id\}/);
+  const viewer = readFileSync(new URL('../src/components/PdfjsViewerContainer.jsx', import.meta.url), 'utf8');
+  assert.match(viewer, /const stripView = !phoneLayout && pageContinuous && spreadMode === 'single' && pageDirection === 'horizontal';/);
+  assert.match(viewer, /spread: stripView \? 'strip' : rowSpread/);
+  // The mount window, the current page and a page jump all go across.
+  assert.match(viewer, /const strip = Boolean\(layout\.place\?\.strip\);/);
+  assert.match(viewer, /const across = stripViewRef\.current;\n\s+const page = pickCurrentPage\(\{\n\s+pageTops: across \?/);
+  assert.match(viewer, /el\.scrollLeft = stripViewRef\.current\n\s+\? pageScrollLeftRef\.current\(i\)/);
 });

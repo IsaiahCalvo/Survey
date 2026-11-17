@@ -31,7 +31,7 @@ import { ThinLinesGlyph, ThinLinesMenu } from './components/ThinLinesMenu.jsx';
 import { applyToolBarCompact, applyToolBarHidden, useToolBarCompact, useToolBarHidden } from './utils/toolBarVisibility';
 import './styles/toolBarVisibility.css';
 import RailFlyout from './components/RailFlyout.jsx';
-import { setPageContinuous, setPageSpreadMode, usePageContinuous, usePageSpreadMode } from './utils/pageSpreadSetting.js';
+import { setPageContinuous, setPageDirection, setPageSpreadMode, usePageContinuous, usePageDirection, usePageSpreadMode } from './utils/pageSpreadSetting.js';
 import { GRID_COLUMN_CHOICES, isGridMode } from './utils/pageSpreads.js';
 import { PinFilterMenu } from './components/pins/PinControls.jsx';
 import MenuGlide from './components/MenuGlide.jsx';
@@ -2349,6 +2349,7 @@ export default function App({ devPreviewReturnTab = null }) {
   const [pageSpreadsOn] = useState(() => isFeatureOn('page-spreads'));
   const pageSpread = usePageSpreadMode();
   const pageContinuous = usePageContinuous();
+  const pageDirection = usePageDirection();
   const allMarksHidden = useMarksHidden();
   // Full screen (flag 'focus-mode'; utils/focusMode.js). Owner 2026-11-10:
   // "What is the point of full screen" when it took away the tabs, both rails
@@ -5866,6 +5867,43 @@ export default function App({ devPreviewReturnTab = null }) {
                             {(gridOn || pageContinuous) && <Icon name="check" size={RAIL_CONTROL_GLYPH} color="currentColor" />}
                           </span>
                         </button>
+                        {/* KAL-713, Drawboard's Layout direction: Horizontal
+                            runs Single pages left to right. Double, Cover,
+                            Grid and Continuous off keep running down, so
+                            the choice is greyed out there. */}
+                        {(() => {
+                          const directionOff = pageSpread !== 'single' || !pageContinuous;
+                          return (
+                            <div
+                              role="group"
+                              aria-labelledby="page-direction"
+                              aria-disabled={directionOff || undefined}
+                              className="rail-flyout__columns"
+                              data-page-direction-group=""
+                            >
+                              <span id="page-direction" className="rail-flyout__label">Direction</span>
+                              <span className="rail-flyout__steps">
+                                {[['vertical', 'Vertical'], ['horizontal', 'Horizontal']].map(([id, label]) => {
+                                  const on = !directionOff && pageDirection === id;
+                                  return (
+                                    <button
+                                      key={id}
+                                      type="button"
+                                      role="menuitemradio"
+                                      aria-checked={on || (directionOff && id === 'vertical')}
+                                      aria-disabled={directionOff || undefined}
+                                      data-page-direction={id}
+                                      className="rail-flyout__step rail-flyout__step--word"
+                                      onClick={() => { if (!directionOff && pageDirection !== id) { setPageDirection(id); refit(); } }}
+                                    >
+                                      {label}
+                                    </button>
+                                  );
+                                })}
+                              </span>
+                            </div>
+                          );
+                        })()}
                       </>
                     );
                   })()}

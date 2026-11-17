@@ -114,7 +114,7 @@ import {
 } from '../utils/viewerTopOverlay.js';
 import { buildVisiblePageStack, pagedRowIndex, pagedRows, pagedRowSpread } from '../utils/visiblePageLayout.js';
 import { gridColumns, isGridMode, rowMembers, steppedSpreadPage } from '../utils/pageSpreads.js';
-import { usePageContinuous, usePageSpreadMode } from '../utils/pageSpreadSetting.js';
+import { usePageContinuous, usePageDirection, usePageSpreadMode } from '../utils/pageSpreadSetting.js';
 import { computeFitScale, pickCurrentPage, resolveFitPageLanding } from '../utils/pageNavigationMath.js';
 import { createPageRasterQueue } from '../utils/pageRasterQueue.js';
 import {
@@ -1625,6 +1625,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const pagedView = !phoneLayout && !pageContinuous && !isGridMode(spreadMode);
   const pagedViewRef = useRef(pagedView);
   pagedViewRef.current = pagedView;
+  // KAL-713, Drawboard's "Horizontal": Single pages run left to right in one
+  // row (pageSpreads 'strip'). Double, Cover and Grid keep running down, a
+  // view with Continuous off keeps turning one page, the phone keeps a column.
+  const pageDirection = usePageDirection();
+  const stripView = !phoneLayout && pageContinuous && spreadMode === 'single' && pageDirection === 'horizontal';
+  const stripViewRef = useRef(stripView);
+  stripViewRef.current = stripView;
   const [soloPage, setSoloPage] = useState(null);
   useEffect(() => { if (!pagedView) setSoloPage(null); }, [pagedView]);
   const pagedRowsRef = useRef({ rows: [], index: -1 });
@@ -1945,7 +1952,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     if (!dim) return null;
     const left = getPageLeftAtScale(pageIndex, nextScale);
     const place = spreadPlaceRef.current;
-    const row = place ? stackPtRef.current[place.leader[pageIndex] ?? pageIndex] : null;
+    // Horizontal's one row is the whole document: a fit measures the page.
+    const row = place && !place.strip ? stackPtRef.current[place.leader[pageIndex] ?? pageIndex] : null;
     if (!row || row.hidden) return { left, width: dim.w * nextScale };
     return { left: left - (place.offsetX[pageIndex] || 0) * nextScale, width: row.w * nextScale };
   };
@@ -1958,6 +1966,25 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     sideLeft: sideRoomRef.current.left,
     sideRight: sideRoomRef.current.right,
   }), [getColumnWidthAtScale]);
+
+  // Where scrollLeft puts a page across: centred in the band between the side
+  // panels, or with its left margin showing when it is wider than the band.
+  // A page jump and a Horizontal switch land a page here (KAL-713); in a
+  // column every page shares the centre line, so it is the centre either way.
+  const pageScrollLeftRef = useRef(null);
+  // Set when a Horizontal switch lands the page across (see appliedColumnRef).
+  const columnLandedRef = useRef(false);
+  pageScrollLeftRef.current = (pageIndex, nextScale = scaleRef.current) => {
+    const el = scrollerRef.current;
+    const dim = dimsPtRef.current[pageIndex];
+    if (!el || !dim) return el?.scrollLeft || 0;
+    const side = sideInsetRef.current;
+    const band = Math.max(1, el.clientWidth - side.left - side.right);
+    const width = dim.w * nextScale;
+    const left = getPageLeftAtScale(pageIndex, nextScale) - side.left;
+    const target = width <= band ? left - (band - width) / 2 : left - layoutMetricsRef.current.padX;
+    return Math.min(Math.max(0, target), getHorizontalScrollMax(nextScale));
+  };
 
   const clampHorizontalScroll = useCallback(() => {
     const el = scrollerRef.current;
@@ -2221,7 +2248,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     }
     const { dims, tops, widestPt, height: y, stack, place } = buildVisiblePageStack({
       pageSizes, visiblePageNumbers: shownPages, rotation, scale,
-      padTop: metrics.padTop, gap: metrics.gap, spread: rowSpread,
+      padTop: metrics.padTop, gap: metrics.gap, spread: stripView ? 'strip' : rowSpread,
     });
     // One column for every page (src/utils/pdfPageColumn.js).
     const columnW = resolveDocumentColumnWidth({
@@ -2245,7 +2272,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       topRoom,
     });
     return { tops, dims, stack, place, paged, widestPt, columnW, totalH: rawTotalH, rawTotalH, padTop, contentHeight, contentW };
-  }, [pageSizes, visiblePageNumbers, scale, rotation, containerW, containerH, layoutMetrics, topRoom, sideRoom, spreadMode, pagedView, soloPage]);
+  }, [pageSizes, visiblePageNumbers, scale, rotation, containerW, containerH, layoutMetrics, topRoom, sideRoom, spreadMode, pagedView, soloPage, stripView]);
 
   // A Space changes the page stack, not the physical page being read.
   // Capture its old scroll offset before React applies the filtered layout.
@@ -2254,16 +2281,21 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const previousSpaceLayout = previousSpaceLayoutRef.current;
   // A page view change (Single / Double / Cover, Continuous on / off) keeps the page too.
   if (previousSpaceLayout && (previousSpaceLayout.visiblePages !== visiblePageNumbers
-    || previousSpaceLayout.spread !== spreadMode || previousSpaceLayout.paged !== pagedView)) {
+    || previousSpaceLayout.spread !== spreadMode || previousSpaceLayout.paged !== pagedView
+    || previousSpaceLayout.strip !== stripView)) {
     const el = scrollerRef.current;
     const index = Math.max(0, (currentPageRef.current || 1) - 1);
     if (el && !previousSpaceLayout.layout.dims[index]?.hidden && !layout.dims[index]?.hidden) {
+      // Into or out of Horizontal the page lands the way a page jump lands
+      // it (its top below the strips, centred across); its old offset was
+      // measured along the other direction.
+      const turned = previousSpaceLayout.strip !== stripView;
       spaceLayoutAnchorRef.current = { index,
-        offset: el.scrollTop - previousSpaceLayout.layout.tops[index] - previousSpaceLayout.layout.padTop,
+        offset: turned ? null : el.scrollTop - previousSpaceLayout.layout.tops[index] - previousSpaceLayout.layout.padTop,
       };
     }
   }
-  previousSpaceLayoutRef.current = { visiblePages: visiblePageNumbers, spread: spreadMode, paged: pagedView, layout };
+  previousSpaceLayoutRef.current = { visiblePages: visiblePageNumbers, spread: spreadMode, paged: pagedView, strip: stripView, layout };
   pagedRowsRef.current = layout.paged;
   // A turned-to row lands at its top, or at its foot when turning back.
   useLayoutEffect(() => {
@@ -2287,6 +2319,19 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     spaceLayoutAnchorRef.current = null;
     const el = scrollerRef.current;
     if (!anchor || !el) return;
+    if (anchor.offset == null) {
+      el.scrollTop = resolvePageLandingScrollTop({
+        padTop: layout.padTop,
+        pageTop: layout.tops[anchor.index] - layoutMetricsRef.current.gap * scaleRef.current,
+        fixedTopInset: layoutMetricsRef.current.padTop,
+        overlayInset: topInsetRef.current,
+      });
+      el.scrollLeft = pageScrollLeftRef.current(anchor.index);
+      // This landing already places the page across; the centre-line hold
+      // below must not shift it again by half the column's change.
+      columnLandedRef.current = true;
+      return;
+    }
     el.scrollTop = Math.max(0, layout.tops[anchor.index] + layout.padTop + anchor.offset);
   }, [layout]);
 
@@ -2373,11 +2418,14 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     // (topInsetRef, owner: scroll the page out from under toolbars).
     const inset = Math.min(topInsetRef.current, el.clientHeight);
     const viewTop = el.scrollTop - padTop;
+    // Horizontal (KAL-713): the same rule across, between the side panels.
+    const side = sideInsetRef.current;
+    const across = stripViewRef.current;
     const page = pickCurrentPage({
-      pageTops: tops,
-      pageHeights: dims.map((d) => d.h * scaleRef.current),
-      viewTop: viewTop + inset,
-      viewBottom: viewTop + el.clientHeight,
+      pageTops: across ? dims.map((_, i) => getPageLeftAtScaleRef.current(i, scaleRef.current)) : tops,
+      pageHeights: dims.map((d) => (across ? (d.hidden ? 0 : d.w) : d.h) * scaleRef.current),
+      viewTop: across ? el.scrollLeft + side.left : viewTop + inset,
+      viewBottom: across ? el.scrollLeft + el.clientWidth - side.right : viewTop + el.clientHeight,
       currentPage: currentPageRef.current,
     });
     clampHorizontalScroll();
@@ -2405,16 +2453,22 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const top = el.scrollTop - padTop;
     const vh = el.clientHeight;
     const over = vh * 1.2;
-    const lo = top - over;
-    const hi = top + vh + over;
     let first = -1; let last = -1;
     let visibleFirst = -1; let visibleLast = -1;
+    // Horizontal (KAL-713): every page shares one top, so the pages across
+    // the view (and the same overscan either side) decide instead.
+    const strip = Boolean(layout.place?.strip);
+    const vw = el.clientWidth;
+    const left = el.scrollLeft;
     for (let i = 0; i < layout.tops.length; i += 1) {
       if (layout.dims[i].hidden) continue;
-      const t = layout.tops[i];
-      const b = t + layout.dims[i].h * scale;
-      if (b >= lo && t <= hi) { if (first === -1) first = i; last = i; }
-      if (b >= top && t <= top + vh) {
+      const t = strip ? getPageLeftAtScaleRef.current(i, scale) : layout.tops[i];
+      const b = t + (strip ? layout.dims[i].w : layout.dims[i].h) * scale;
+      const from = strip ? left : top;
+      const span = strip ? vw : vh;
+      const room = strip ? vw * 1.2 : over;
+      if (b >= from - room && t <= from + span + room) { if (first === -1) first = i; last = i; }
+      if (b >= from && t <= from + span) {
         if (visibleFirst === -1) visibleFirst = i;
         visibleLast = i;
       }
@@ -2870,7 +2924,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   useLayoutEffect(() => {
     const previous = appliedColumnRef.current;
     appliedColumnRef.current = { width: layout.columnW, scale, viewportW: containerW };
-    if (!previous || pendingAnchorRef.current || gestureRef.current) return;
+    const landed = columnLandedRef.current;
+    columnLandedRef.current = false;
+    if (!previous || landed || pendingAnchorRef.current || gestureRef.current) return;
     if (Math.abs(previous.scale - scale) > 1e-6 || previous.viewportW !== containerW) return;
     if (Math.abs(previous.width - layout.columnW) < 0.5) return;
     const el = scrollerRef.current;
@@ -5402,7 +5458,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     if (isFit) {
       const metrics = layoutMetricsRef.current;
       // A spread view fits the whole row (both pages), as Drawboard does.
-      const rowDim = spreadPlaceRef.current ? stackPtRef.current[rowLeader(pageIndex)] : null;
+      // Horizontal's one row is the whole document: it fits the page.
+      const rowDim = spreadPlaceRef.current && !spreadPlaceRef.current.strip ? stackPtRef.current[rowLeader(pageIndex)] : null;
       const pageDim = (rowDim && !rowDim.hidden ? rowDim : dimsPtRef.current[pageIndex]) || { w: 612, h: 792 };
       const d = { ...pageDim, w: resolveFitPageWidth({ phone: phoneLayout, mode: target, pageWidth: pageDim.w, widestPageWidth: widestPagePtRef.current }) };
       const fitRecord = {
@@ -6038,7 +6095,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       overlayInset: topInsetRef.current,
     });
     if (!smooth) el.scrollTop = landingTop;
-    el.scrollLeft = Math.min(el.scrollLeft, getHorizontalScrollMax(scaleRef.current));
+    // Horizontal (KAL-713): the pages run across, so the jump lands across.
+    el.scrollLeft = stripViewRef.current
+      ? pageScrollLeftRef.current(i)
+      : Math.min(el.scrollLeft, getHorizontalScrollMax(scaleRef.current));
     // The page you asked for IS the current page (the scroll event that
     // follows keeps it while it stays fully visible), so the rail never shows
     // a neighbour after a jump — including at the end of the document, where
@@ -6095,6 +6155,31 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     el.addEventListener('wheel', onWheel, { capture: true, passive: false });
     return () => el.removeEventListener('wheel', onWheel, true);
   }, [pagedView, goToPage]);
+
+  // Horizontal (KAL-713): when the pages fit the view's height, an up /
+  // down wheel scrolls across, so a plain mouse wheel
+  // still reads through the pages. Taller pages scroll down first as usual;
+  // sideways touchpad swipes and Shift + wheel already scroll across.
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el || !stripView) return undefined;
+    const onWheel = (e) => {
+      if (e.ctrlKey || e.metaKey || e.shiftKey || gestureRef.current) return;
+      if (Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return;
+      // Fits: the row is no taller than the view below the tool strips (the
+      // strips' own scroll room above page 1 is not room to read down).
+      const rowH = Math.max(0, ...stackPtRef.current.filter((dim) => !dim.hidden).map((dim) => dim.h)) * scaleRef.current;
+      if (rowH > el.clientHeight - Math.min(topInsetRef.current, el.clientHeight) + 1) return;
+      const dy = normalizeWheelDelta(e.deltaY, e.deltaMode, el.clientWidth);
+      if (!dy) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const maxLeft = getHorizontalScrollMax(scaleRef.current);
+      el.scrollLeft = Math.min(maxLeft, Math.max(0, el.scrollLeft + dy));
+    };
+    el.addEventListener('wheel', onWheel, { capture: true, passive: false });
+    return () => el.removeEventListener('wheel', onWheel, true);
+  }, [stripView, getHorizontalScrollMax]);
 
   // Chunk 6: PageUp / PageDown move one view (the part below the tool strips)
   // on the same 250 ms glide, wherever the focus is - unless it is in a field,
@@ -6162,6 +6247,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       if (pagedViewRef.current && (rowH <= screen + 1 || (down ? from >= maxTop - 1 : from <= 1))) {
         const next = pagedStepRef.current(down ? 1 : -1);
         if (next != null && next !== currentPageRef.current) goToPage(next, { landing: down ? 'top' : 'bottom' });
+        return;
+      }
+      // Horizontal (KAL-713): pages that fit the height turn one page across.
+      if (stripViewRef.current && rowH <= screen + 1) {
+        const last = numPagesRef.current || topsRef.current.length;
+        const next = Math.min(last, Math.max(1, (currentPageRef.current || 1) + (down ? 1 : -1)));
+        if (next !== currentPageRef.current) goToPage(next);
         return;
       }
       const to = Math.min(maxTop, Math.max(0, from + (event.key === 'PageDown' ? screen : -screen)));

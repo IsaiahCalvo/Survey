@@ -184,7 +184,7 @@
 }
 
 @media (hover: hover) {
-  .rail-flyout__step:not([aria-checked='true']):hover {
+  .rail-flyout__step:not([aria-checked='true']):not([aria-disabled='true']):hover {
     background: var(--hover);
     color: var(--text-1);
   }
@@ -205,6 +205,20 @@
 .rail-flyout__step:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: -2px;
+}
+
+/* Direction (KAL-713) greyed out where it does not apply (Double, Cover,
+   Grid, Continuous off): dimmed ink, no hover, no press (states table). */
+.rail-flyout__columns[aria-disabled='true'],
+.rail-flyout__columns[aria-disabled='true'] .rail-flyout__step {
+  color: var(--text-disabled);
+}
+
+.rail-flyout__step[aria-disabled='true'],
+.rail-flyout__step[aria-disabled='true']:active {
+  background: transparent;
+  font-weight: inherit;
+  cursor: not-allowed;
 }
 
 @media (pointer: coarse) {

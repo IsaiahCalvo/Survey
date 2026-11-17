@@ -315,10 +315,17 @@ export function isQuickBarWidth(value, width) {
   return Number.isFinite(n) && Math.abs(n - width) < 0.05;
 }
 
-/** The font sizes the bar's size stepper walks through (pt). */
+/**
+ * The fonts the text bar offers (Drawboard's text bar shows the font name).
+ * The same list as the text row while editing (AppShell). Single names only:
+ * a fallback stack makes Fabric's text cursor drift (CLAUDE.md, 2026-04-08).
+ */
+export const QUICK_BAR_FONT_FAMILIES = Object.freeze(['Arial', 'Helvetica', 'Times New Roman', 'Courier New', 'Georgia', 'Verdana']);
+
 /** Opacity presets in the Line pop-up, in percent (the panel slider's ticks). */
 export const QUICK_BAR_OPACITIES = Object.freeze([25, 50, 75, 100]);
 
+/** The font sizes the bar's size stepper walks through (pt). */
 export const QUICK_BAR_FONT_SIZES = Object.freeze([6, 8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 42, 48, 64, 72]);
 
 /** The next size up (`dir` 1) or down (-1) from `size`; stays at the ends. */
