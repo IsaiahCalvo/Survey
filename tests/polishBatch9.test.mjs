@@ -44,3 +44,8 @@ test('project list rows hover and press when not chosen', () => {
   assert.match(tree, /className=\{`projects-list-row\$\{\(jobsEdit \? isSel : isOpen\) \? ' is-selected' : ''\}`\}/);
   assert.match(hub, /\.projects-list-row:not\(\.is-selected\):hover \{ background: var\(--hover\) !important; \}/);
 });
+
+test('search text results take the hover fill', () => {
+  const css = readFileSync(new URL('../src/sidebar/searchTextPanel.css', import.meta.url), 'utf8');
+  assert.match(css, /\.search-text-result:not\(\.is-active\):hover \{\s*color: var\(--text-2\);\s*background: var\(--hover\);/);
+});

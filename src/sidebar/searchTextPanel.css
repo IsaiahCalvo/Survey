@@ -153,9 +153,14 @@
   border-top-color: transparent;
 }
 
-.search-text-result:hover {
-  color: var(--text-2);
+/* The app's one hover fill (suite rules), not just a darker word. */
+@media (hover: hover) {
+  .search-text-result:not(.is-active):hover {
+    color: var(--text-2);
+    background: var(--hover);
+  }
 }
+.search-text-result { transition: background-color var(--motion-state) var(--ease-out), color var(--motion-state) var(--ease-out); }
 
 .search-text-result.is-active {
   background: var(--surface-3);
