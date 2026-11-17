@@ -206,6 +206,16 @@
     gap: 22px !important; /* 24px zoom / page buttons, 20px fields */
     --rail-zone-gap: 22px;
   }
+  /* An iPad on its side is 820px tall: too short for the right rail's 19
+     controls on a 22px gap. The stack climbed under the Survey button (a tap
+     on Survey hit Zoom in) and Full screen fell off the bottom. Short screens
+     close the gap to 14px: 38px zones, still over the 36px floor. */
+  @media (max-height: 900px) {
+    #chrome-right-host [data-chrome-rail]:not(.survey-rail-strip) {
+      gap: 14px !important;
+      --rail-zone-gap: 14px;
+    }
+  }
 
   /* Menus: 44px rows by finger (the phone's rule). */
   [role='menu'] :is([role='menuitem'], [role='menuitemradio'], [role='menuitemcheckbox']) {

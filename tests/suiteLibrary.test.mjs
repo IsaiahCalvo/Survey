@@ -205,6 +205,26 @@ test('library store: works offline and syncs one entry at a time, in order, with
   assert.equal(server.rows[0].id, a.entry.id, 'the id made on the device is the id on the server');
 });
 
+test('library store: a second Category with the same name is refused, by add or rename', async () => {
+  const server = fakeServer();
+  const store = createLibraryStore({ client: server.client, userId: ME, storage: memoryStorage(), mintId: mint, loadCompany: async () => null });
+  server.setOnline(false);
+  const door = store.add({ name: 'Door' });
+  const camera = store.add({ name: 'Camera' });
+  const twin = store.add({ name: ' door ' });
+  assert.equal(twin.ok, false);
+  assert.match(twin.reason, /already in this library/);
+  const renamed = store.rename(camera.entry.id, 'DOOR');
+  assert.equal(renamed.ok, false);
+  assert.match(renamed.reason, /“Door” is already in this library/);
+  // A Type may share a name with a Type under another Category.
+  assert.equal(store.add({ kind: 'categoryType', name: 'Single', parentId: door.entry.id }).ok, true);
+  assert.equal(store.add({ kind: 'categoryType', name: 'Single', parentId: camera.entry.id }).ok, true);
+  assert.equal(store.add({ kind: 'categoryType', name: 'single', parentId: door.entry.id }).ok, false);
+  // Renaming an entry to its own name in other case is fine.
+  assert.equal(store.rename(door.entry.id, 'DOOR').ok, true);
+});
+
 test('library store: an insert whose answer was lost is not sent twice as a new entry', async () => {
   const server = fakeServer();
   const storage = memoryStorage();
