@@ -324,13 +324,16 @@ const BrowserPrintDocument = forwardRef(function BrowserPrintDocument({
               top: 24px;
               z-index: 2147483647;
               transform: translateX(-50%);
-              padding: 12px 18px;
-              border: 1px solid #5f5130;
-              border-radius: 8px;
-              background: #171717;
-              color: #f6d77b;
-              box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
-              font: 600 14px/1.4 system-ui, sans-serif;
+              /* The app's toast look (ToastHost.css .app-toast), not the
+                 old gold-on-black one-off. */
+              padding: 9px 14px;
+              border: var(--alert-neutral-border, 1px solid var(--border));
+              border-radius: var(--alert-radius, 8px);
+              background: var(--surface-2);
+              color: var(--text-1);
+              box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+              font: 500 13px/1.45 var(--font-ui, system-ui, sans-serif);
+              user-select: none;
             }
           }
           @media print {

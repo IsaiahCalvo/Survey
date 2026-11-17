@@ -14,3 +14,9 @@ test('"Current plan" is a mark, not a disabled button the shared rule fades', ()
 test('the Manage plans section draws no rule under the plan cards', () => {
   assert.match(jsx, /subscriptionViewTab === 'manage' \? 'block' : 'none', borderBottom: 'none'/);
 });
+
+test('the print notice wears the toast look, not gold on black', () => {
+  const print = readFileSync(new URL('../src/components/BrowserPrintDocument.jsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(print, /#f6d77b|#5f5130/);
+  assert.match(print, /\.survey-browser-print-progress \{[\s\S]*?background: var\(--surface-2\);[\s\S]*?color: var\(--text-1\);/);
+});
