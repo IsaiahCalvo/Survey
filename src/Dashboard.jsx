@@ -34,7 +34,7 @@ import { OPEN_FILE_EVENT, takeOpenedFiles } from './mobile/nativeOpenFile.js';
 import { PHOTO_ACCEPT, isPhotoFile, photoToPdfFile, photosAsPdfs } from './home/photoToPdf.js';
 import { deviceFilesOn, keepFileOnDevice, openDeviceFile, saveDeviceFileToAccount } from './home/deviceFileActions.js';
 import { moveOrCopyDocumentsAtomically, parseDocumentBatchRecovery } from './home/documentBatchOperations.js';
-import { mapAuthoritativeTemplateRows, persistTemplateSnapshot } from './home/templatePersistence.js';
+import { isTemplatePlanError, mapAuthoritativeTemplateRows, persistTemplateSnapshot, templatePlanError } from './home/templatePersistence.js';
 import { recordDocumentOpened } from './home/homeLibraryData.js';
 import { ownerDisplayName, parkForeignLocalExcelPath, sameTemplateConfig, sharedFromRow, splitTemplatesForSave, stripSharedFields } from './services/sharedTemplates.js';
 import { useAuth } from './contexts/AuthContext';
@@ -1811,6 +1811,14 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       return freshRows;
     } catch (err) {
       console.error('Error persisting templates:', err);
+      // Templates are Pro-only in the database, so on Free the snapshot is
+      // turned down. The server said "does not belong" until the
+      // 20261117170000 migration; both now read as the plan limit.
+      const message = String(err?.message || '');
+      if (/needs the Pro plan/.test(message)
+        || (/does not belong to the signed-in user/.test(message) && !canCreateTemplate().allowed)) {
+        throw templatePlanError();
+      }
       throw err;
     }
   };
@@ -2622,7 +2630,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       }
     } catch (e) {
       console.error('Failed to save templates', e);
-      showToast('Failed to save templates.', 'error');
+      showToast(isTemplatePlanError(e) ? 'Saving templates needs the Pro plan.' : 'Failed to save templates.', 'error');
       // BL-23: rethrow so the templates editor keeps its dirty state (and the
       // user's unsaved edits) when persistence fails.
       throw e;

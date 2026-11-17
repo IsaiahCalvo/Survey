@@ -249,13 +249,14 @@ test('BL-23 tripwire: Dashboard saves one atomic snapshot and rethrows failures'
   assert.match(dashboardSrc, /persist: replaceSupabaseTemplates/);
   assert.match(dashboardSrc, /supabaseRowsRef\.current = freshRows;/);
   assert.match(dashboardSrc, /\(supabaseRowsRef\.current \|\| supabaseTemplates \|\| \[\]\)\.find/);
-  assert.match(dashboardSrc, /console\.error\('Error persisting templates:', err\);\s*\n\s*throw err;/);
+  // A plan refusal rethrows as the plan error; anything else as it came.
+  assert.match(dashboardSrc, /console\.error\('Error persisting templates:', err\);[\s\S]{0,600}throw templatePlanError\(\);\s*\}\s*throw err;/);
 });
 
 test('BL-23 tripwire: Dashboard hubSaveTemplates rethrows after notifying', () => {
   const hub = dashboardSrc.slice(dashboardSrc.indexOf('const hubSaveTemplates'));
   const block = hub.slice(0, hub.indexOf('};') + 2);
   // KAL-57: the save-failure notice moved from native alert() to the in-app toast.
-  assert.match(block, /showToast\('Failed to save templates\.', 'error'\);/);
+  assert.match(block, /showToast\(isTemplatePlanError\(e\) \? 'Saving templates needs the Pro plan\.' : 'Failed to save templates\.', 'error'\);/);
   assert.match(block, /throw e;/);
 });

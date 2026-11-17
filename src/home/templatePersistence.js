@@ -29,6 +29,28 @@ const deterministicTemplateRowId = (ownerId, logicalId) => {
   return `${compact.slice(0, 8)}-${compact.slice(8, 12)}-${compact.slice(12, 16)}-${compact.slice(16, 20)}-${compact.slice(20)}`;
 };
 
+/* Templates are a Pro feature in the database (has_feature_access
+   'templates'): on Free every snapshot save is turned down. Before, the
+   server said "Template row does not belong to the signed-in user" and the
+   editor said only "Could not save" (tester walk, Nov 17). */
+export const TEMPLATE_PLAN_MESSAGE = 'Saving templates needs the Pro plan. Your edits are still here.';
+const SAVE_FAILED_MESSAGE = 'Could not save templates. Your edits are still here; try again.';
+
+export function templatePlanError() {
+  const err = new Error(TEMPLATE_PLAN_MESSAGE);
+  err.planLimit = true;
+  return err;
+}
+
+export function isTemplatePlanError(err) {
+  return Boolean(err?.planLimit) || /needs the Pro plan/.test(String(err?.message || ''));
+}
+
+/** The editor's words for a failed template save. */
+export function templateSaveErrorText(err) {
+  return isTemplatePlanError(err) ? TEMPLATE_PLAN_MESSAGE : SAVE_FAILED_MESSAGE;
+}
+
 export function buildAtomicTemplatePayload(templates, { ownerId } = {}) {
   if (!Array.isArray(templates)) {
     throw new TypeError('Template snapshot must be an array.');

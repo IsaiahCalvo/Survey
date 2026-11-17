@@ -50,7 +50,7 @@ import { customLayoutAskUrl } from '../services/supportContact.js';
 import { lazy, Suspense, useState, useMemo, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
 import { hoverOnly, useTooltip, withOwnHandlers } from '../components/Tooltip';
 import { createPortal, flushSync } from 'react-dom';
-import { reloadTemplatesAfterPendingSave } from './templatePersistence.js';
+import { reloadTemplatesAfterPendingSave, templateSaveErrorText } from './templatePersistence.js';
 import useMobileEdgeSwipeBack from './useMobileEdgeSwipeBack';
 import useModalFocusTrap from './useModalFocusTrap';
 import {
@@ -1571,7 +1571,7 @@ export default function TemplatesEditor({
           console.error('Failed to duplicate templates', err);
           if (editRevisionRef.current === rev && saveReqSeqRef.current === req) {
             setDirty(true);
-            setPersistenceError('Could not save templates. Your edits are still here; try again.');
+            setPersistenceError(templateSaveErrorText(err));
           }
         });
     } else {
@@ -1714,7 +1714,7 @@ export default function TemplatesEditor({
           console.error('Failed to delete templates', err);
           if (editRevisionRef.current === rev && saveReqSeqRef.current === req) {
             setDirty(true);
-            setPersistenceError('Could not save templates. Your edits are still here; try again.');
+            setPersistenceError(templateSaveErrorText(err));
           }
         });
     } else {
@@ -2370,7 +2370,7 @@ export default function TemplatesEditor({
         console.error('Failed to save templates', err);
         if (editRevisionRef.current === rev && saveReqSeqRef.current === req) {
           setDirty(true);
-          setPersistenceError('Could not save templates. Your edits are still here; try again.');
+          setPersistenceError(templateSaveErrorText(err));
         }
       });
   };
