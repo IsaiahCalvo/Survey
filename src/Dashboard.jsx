@@ -2236,8 +2236,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
   const canOpenFromDrive = Boolean(user) && isFeatureOn('drive-sync-back');
   // Google's Picker needs a browser key; without one the entry stays hidden.
   const canOpenFromGoogleDrive = canOpenFromDrive && Boolean(googlePickerApiKey());
-  const openFromDrive = async (picked, { project = null } = {}) => {
+  const openFromDrive = async (picked, { project = null, onNotConnected = null } = {}) => {
     const got = await fetchDrivePdf(picked);
+    if (got.error && onNotConnected && (got.code === 'not_connected' || got.code === 'reconnect')) { onNotConnected(got); return false; }
     if (got.error) { showToast(got.error, 'warn'); return false; }
     const place = drivePlace(got);
     let documentId = null;
@@ -2265,6 +2266,38 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     }
     return true;
   };
+  // KAL-703 (Nightly 'onedrive-file-handler'): "Open in Survey" on a PDF in
+  // OneDrive or SharePoint on the web lands here through
+  // api/onedrive-open.mjs. Once signed in, the file opens like one picked in
+  // Survey (linked, so marks save back). With no Microsoft connection yet,
+  // the OneDrive picker opens on its Connect step.
+  const fileHandlerOpenedRef = useRef(false);
+  useEffect(() => {
+    if (fileHandlerOpenedRef.current || !user?.id || typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const driveId = params.get('open-onedrive');
+    const itemId = params.get('item');
+    const failed = params.has('open-onedrive-error');
+    if (!driveId && !failed) return;
+    if (!isFeatureOn('onedrive-file-handler')) return;
+    fileHandlerOpenedRef.current = true;
+    for (const key of ['open-onedrive', 'item', 'open-onedrive-error']) params.delete(key);
+    const rest = params.toString();
+    window.history.replaceState(window.history.state, '', `${window.location.pathname}${rest ? `?${rest}` : ''}${window.location.hash}`);
+    if (failed || !driveId || !itemId) {
+      showToast('OneDrive did not say which file to open. Open it from Survey instead.', 'warn');
+      return;
+    }
+    openFromDrive({ driveId, itemId }, {
+      onNotConnected: () => {
+        showToast('Connect your Microsoft account, then open the file again.', 'warn');
+        setDriveTargetProject(null);
+        setDrivePickerOpen(true);
+      },
+    }).catch(() => showToast('That OneDrive file could not be opened.', 'warn'));
+    // Once per page: the address is cleared above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
   // No Google sign-in yet: ask in a dialog the person can see (a Connect
   // button, and a box for the code from a sign-in finished elsewhere).
   const askGoogleConnect = () => new Promise((resolve) => setDriveConnectAsk({ resolve }));

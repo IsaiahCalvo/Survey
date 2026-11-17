@@ -4766,8 +4766,23 @@ const SurveySpacesRail = ({
                           }}>
                             <Icon name="survey" size={26} color="var(--text-3)" />
                             <div style={{ color: 'var(--text-2)', fontSize: '13px', fontWeight: 600 }}>
-                              No templates available
+                              No templates yet
                             </div>
+                            {/* KAL-771: a new account's first Survey had no way on. */}
+                            <div style={{ fontSize: '12px', maxWidth: '240px', lineHeight: 1.45 }}>
+                              A template lists the things you check and what to check on each one.
+                            </div>
+                            {onRequestCreateTemplate && (
+                              <button
+                                type="button"
+                                className="btn btn-primary btn-md"
+                                data-survey-new-template
+                                style={{ marginTop: '4px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                                onClick={() => onRequestCreateTemplate({ mode: 'new-template' })}
+                              >
+                                <Icon name="plus" size={12} />New template
+                              </button>
+                            )}
                           </div>
                         ) : (
                           /* UX 2026-09-23 (owner: "I don't think the templates should be

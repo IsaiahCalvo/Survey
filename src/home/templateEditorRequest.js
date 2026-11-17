@@ -6,8 +6,12 @@ export const TEMPLATE_EDITOR_REQUEST_EVENT = 'survey:open-template-editor';
 
 let pending = null;
 
-export function requestTemplateEditor(templateId) {
-  pending = { templateId: templateId || null };
+/**
+ * @param {string|null} templateId the template to open
+ * @param {{ create?: boolean }} [options] create: add a new empty template and open it
+ */
+export function requestTemplateEditor(templateId, { create = false } = {}) {
+  pending = { templateId: templateId || null, create: Boolean(create) };
   try {
     globalThis.dispatchEvent?.(new CustomEvent(TEMPLATE_EDITOR_REQUEST_EVENT, { detail: pending }));
   } catch {
