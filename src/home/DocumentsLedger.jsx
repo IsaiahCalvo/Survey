@@ -77,6 +77,10 @@ const ledgerHeader = {
   fontSize: 11, letterSpacing: 0,
   color: 'var(--ink-200)', fontWeight: 600,
   padding: '8px 0',
+  /* The cells mix plain labels and flex groups (File, Sheet number, Status)
+     beside a taller columns button; centre them all, or the plain labels sat
+     4px above the File group (tester walk, Nov 17). */
+  alignItems: 'center',
   /* The rows carry a 2px left edge (gold on the previewed row); the header
      keeps the same edge so its select-all box and labels sit over the row
      boxes and cells, not 2px left of them (owner 2026-10-28). */
@@ -1382,10 +1386,13 @@ export default function DocumentsLedger({
                   if (!registerOn) return <span {...fileSort} style={{ padding: '0 14px', display: 'flex', alignItems: 'center', ...fileLook }}>File{arrow('name')}</span>;
                   // Sheet register: Sheet number and Status sorts beside File.
                   return (
-                    <span style={{ padding: '0 14px', display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, whiteSpace: 'nowrap' }}>
-                      <span {...fileSort} style={fileLook}>File{arrow('name')}</span>
+                    /* With the preview open the File column is narrow: the
+                       header says "Sheet", and the group clips with "…" rather
+                       than running into Project (tester walk, Nov 17). */
+                    <span style={{ padding: '0 14px', display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden' }}>
+                      <span {...fileSort} style={{ ...fileLook, flexShrink: 0 }}>File{arrow('name')}</span>
                       {sortOptions.filter(([key]) => key === 'sheet' || key === 'status').map(([key, label]) => (
-                        <span key={key} data-register-sort={key} {...clickableProps(() => onHeaderClick(key))} style={{ cursor: 'pointer', userSelect: 'none', color: sortKey === key ? 'var(--bone-100)' : 'inherit' }}>{label}{arrow(key)}</span>
+                        <span key={key} data-register-sort={key} {...clickableProps(() => onHeaderClick(key))} style={{ cursor: 'pointer', userSelect: 'none', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', flexShrink: key === 'sheet' ? 0 : 1, color: sortKey === key ? 'var(--bone-100)' : 'inherit' }}>{key === 'sheet' ? 'Sheet' : label}{arrow(key)}</span>
                       ))}
                     </span>
                   );

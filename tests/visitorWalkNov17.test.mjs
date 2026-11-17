@@ -69,3 +69,11 @@ test('in the light look a page thumbnail keeps a hairline edge on the white pane
   const css = read('../src/styles.css');
   assert.match(css, /html\[data-look="suite"\]\[data-theme="light"\] :is\(\.pages-panel-preview, \.mobile-page-preview\) \{[\s\S]{0,140}box-shadow: 0 0 0 1px rgba\(0, 0, 0, 0\.12\)/);
 });
+
+test('the Documents list header lines its labels up and keeps the File sorts out of Project', () => {
+  const ledger = read('../src/home/DocumentsLedger.jsx');
+  const head = ledger.slice(ledger.indexOf('const ledgerHeader = {'), ledger.indexOf('};', ledger.indexOf('const ledgerHeader = {')));
+  assert.match(head, /alignItems: 'center'/);
+  assert.match(ledger, /gap: 12, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden' \}\}>/);
+  assert.match(ledger, /\{key === 'sheet' \? 'Sheet' : label\}\{arrow\(key\)\}/);
+});
