@@ -5855,8 +5855,14 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
 /* Narrow pane (iPad portrait): Add files and Manage team took the header
    row and cut the project name to a few letters ("E2E Sa..."). They drop
    to their own row under the name, lined up with it past the gold bar. */
+/* Any width: the name keeps room for a few words (240px). When the header
+   buttons (Add files, the Nightly suite imports, Manage team) don't fit
+   beside it they drop to their own row instead of cutting the name to one
+   letter ("K..." at 1440 wide with all of them shown), and wrap there. */
+.projects-open-head { flex-wrap: wrap; row-gap: 10px; }
+.projects-open-head > :has(> .hub-title-field) { flex: 1 1 240px !important; }
+.projects-open-head > .projects-open-actions { flex: 0 1 auto !important; flex-wrap: wrap; min-width: 0; row-gap: 8px; }
 @container (max-width: 480px) {
-  .projects-open-head { flex-wrap: wrap; row-gap: 10px; }
   .projects-open-actions { width: calc(100% - 18px); margin-left: 18px; }
 }
 .projects-file-grid { grid-template-columns: 24px minmax(0, 1fr) 90px 90px 28px; }

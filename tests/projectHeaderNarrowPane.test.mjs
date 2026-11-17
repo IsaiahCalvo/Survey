@@ -10,6 +10,10 @@ const tree = readFileSync(new URL('../src/home/ProjectsFolderTree.jsx', import.m
 test('narrow project pane: header buttons wrap under the project name', () => {
   assert.match(tree, /className="projects-open-head"/);
   assert.match(tree, /className="projects-open-actions"/);
-  assert.match(css, /@container \(max-width: 480px\) \{\s*\.projects-open-head \{[^}]*flex-wrap: wrap/);
+  // The header wraps at any width now (KAL-652: with the Nightly suite
+  // buttons a 1440 desktop cut the name to "K..." too); narrow panes still
+  // line the dropped row up past the gold bar.
+  assert.match(css, /\.projects-open-head \{ flex-wrap: wrap; row-gap: 10px; \}/);
+  assert.match(css, /\.projects-open-head > :has\(> \.hub-title-field\) \{ flex: 1 1 240px !important; \}/);
   assert.match(css, /\.projects-open-actions \{[^}]*width: calc\(100% - 18px\)/);
 });
