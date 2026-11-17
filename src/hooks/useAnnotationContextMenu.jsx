@@ -76,6 +76,7 @@ import { DIMENSION_LEADER_PT, dimensionCaptionOffset, dimensionCaptionTurn, dime
 import { isSelectionBarDocked, setSelectionBarDocked } from '../utils/selectionBarDock.js';
 import { setPropertiesPanelOpen } from '../utils/propertiesPanelStore.js';
 import { canCopyMarkFormat } from '../utils/markFormat.js';
+import { FLIP_MENU_ROWS, canFlipMark } from '../utils/flipMarks.js';
 
 // w61: `getPageObjects(pageNumber)` (optional) returns the page's mark list,
 // so the menu can note which marks it was opened on (by id) and still act on
@@ -211,7 +212,7 @@ export function useAnnotationContextMenu({ getPageObjects = null } = {}) {
 // targets (touchTargets.css + annotationContextMenu.css).
 // Design review 2026-10-27: the rows under the icon row carry an icon too,
 // like every other action menu (components/MenuRows.jsx picks by label).
-const MARK_ROW_ICONS = { group: 'selectGroup', ungroup: 'selectGroup', arrange: 'layers', moveToLayer: 'layers', align: 'alignLeft', lock: 'lock', unlock: 'lock', saveToLibrary: 'library', copyFormat: 'brush', pasteFormat: 'paintBucket', applyToPages: 'pages', editNote: 'comment' };
+const MARK_ROW_ICONS = { group: 'selectGroup', ungroup: 'selectGroup', arrange: 'layers', moveToLayer: 'layers', align: 'alignLeft', lock: 'lock', unlock: 'lock', saveToLibrary: 'library', copyFormat: 'brush', pasteFormat: 'paintBucket', applyToPages: 'pages', editNote: 'comment', flip: 'flipHorizontal' };
 const markRowIcon = (it) => MARK_ROW_ICONS[it.key] || menuIconFor(it.label);
 const MENU_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter'];
 
@@ -522,6 +523,8 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     // Nightly 'apply-to-pages' (KAL-720): requestApplyToPages(pageNumber,
     // selection) opens the Apply to pages card. Null on a one-page PDF.
     requestApplyToPages = null,
+    // Nightly 'flip-marks': flipSelection(pageNumber, selection, axis).
+    flipSelection = null,
     copyMarkFormat = null,
     pasteMarkFormat = null,
     markFormat = null,
@@ -776,6 +779,31 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
       if (marks === 0) return [];
       return [item('Apply to pages…', 'applyToPages', () => requestApplyToPages(ctx.pageNumber, selection))];
     };
+    // Nightly 'flip-marks' (KAL-723): "Flip ▸ Horizontal / Vertical" mirrors
+    // the pick as one piece. Greyed when every picked member is locked or is
+    // a text highlight (nothing would move).
+    const flipItems = (selection) => {
+      if (typeof flipSelection !== 'function') return [];
+      const objects = annotationsByPageRef.current?.[ctx.pageNumber]?.objects || [];
+      const calloutIds = new Set((selection.calloutIds || []).map(String));
+      const picked = [
+        ...(selection.indices || []).map((i) => objects[i]).filter((o) => o && o?.data?.type !== 'callout'),
+        ...objects.filter((o) => o?.data?.type === 'callout' && calloutIds.has(String(o?.data?.id))),
+      ];
+      if (picked.length === 0) return [];
+      const movable = picked.some((o) => (o?.data?.type === 'callout' ? canModifyObj(o) && !isUserLocked(o) : canFlipMark(o)));
+      return [{
+        key: 'flip',
+        label: 'Flip',
+        disabled: ctx.targetsGone === true || !movable,
+        submenu: FLIP_MENU_ROWS.map((row) => item(
+          row.label,
+          `flip:${row.axis}`,
+          () => flipSelection(ctx.pageNumber, selection, row.axis),
+          movable,
+        )),
+      }];
+    };
     // Nightly 'copy-format': Copy format (one mark with a look to copy) and
     // Paste format (greyed until a look is kept), under Paste.
     const formatItems = (selection, sourceObj = null) => {
@@ -883,6 +911,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         duplicateItem({ calloutIds: [ctx.calloutId] }),
         ...libraryItems({ calloutIds: [ctx.calloutId] }),
         ...applyPagesItems({ calloutIds: [ctx.calloutId] }),
+        ...flipItems({ calloutIds: [ctx.calloutId] }),
         ...layerItems({ calloutIds: [ctx.calloutId] }),
         ...barItems(),
         // UX: right-click Delete = the SAME gated delete as pressing Delete/
@@ -983,6 +1012,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         duplicateItem({ indices: [ctx.annotationIndex] }),
         ...libraryItems({ indices: [ctx.annotationIndex] }),
         ...applyPagesItems({ indices: [ctx.annotationIndex] }),
+        ...flipItems({ indices: [ctx.annotationIndex] }),
         ...layerItems({ indices: [ctx.annotationIndex] }),
         ...subjectItems(),
         ...barItems(),
@@ -1286,6 +1316,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         duplicateItem(familySelection),
         ...libraryItems(familySelection),
         ...applyPagesItems(familySelection),
+        ...flipItems(familySelection),
         ...layerItems(familySelection),
         ...((familySelection.calloutIds || []).length || (familySelection.markerIds || []).length ? [] : subjectItems()),
         ...barItems(),
@@ -1621,7 +1652,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         )}
         {!pageMenuItems && !markLayout && items.flatMap((it) => (it.submenu
           // The phone menu is one plain list: a submenu's items join it.
-          ? it.submenu.map((sub) => ({ ...sub, label: it.key === 'moveToLayer' ? `Move to ${sub.label}` : sub.label }))
+          ? it.submenu.map((sub) => ({ ...sub, label: it.key === 'moveToLayer' ? `Move to ${sub.label}` : it.key === 'flip' ? `Flip ${sub.label.toLowerCase()}` : sub.label }))
           : [it])).map((it) => (
           it.separator
             ? <div key={it.key} role="separator" style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />

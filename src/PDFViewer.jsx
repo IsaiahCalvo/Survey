@@ -221,6 +221,8 @@ import {
 import { toolSupportsCloudBorderStyle } from './utils/pdfAnnotationAppearance.js';
 import { applyMarkFormatToPage, copyMarkFormat, markFormatCalloutPatch } from './utils/markFormat.js';
 import { applyToPagesClipboard, applyToPagesToast } from './utils/applyToPages.js';
+import { canFlipCallout, flipCallout, flipCentre, flipMarksOnPage } from './utils/flipMarks.js';
+import { roundCommittedAnnotationsGeometry } from './utils/annotationCommitRounding.js';
 import ApplyToPagesDialog from './components/ApplyToPagesDialog.jsx';
 import { isShapeToolButtonActive, resolveShapeToolPick } from './utils/cloudShapeTool.js';
 import { toolOffersCloudLineStyle } from './utils/textCloudBorder.js';
@@ -34282,6 +34284,78 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     return true;
   }, [showToast]);
 
+  // Nightly 'flip-marks' (KAL-723, Drawboard's Flip > Horizontal / Vertical):
+  // the picked marks and callouts mirror across the middle of their shared
+  // box as one piece, as a group resize dragged past its far side does
+  // (utils/flipMarks.js). One save, or one transaction, so one Undo.
+  const [flipMarksOn] = useState(() => isFeatureOn('flip-marks'));
+  const flipSelection = useCallback((pageNumber, selection = {}, axis = 'horizontal') => {
+    if (pageNumber == null || familyEditsBlocked()) return false;
+    const save = handleSaveAnnotationsRef.current;
+    if (typeof save !== 'function') return false;
+    const byPage = annotationsByPageRef.current || {};
+    const pageJSON = byPage[pageNumber] || byPage[String(pageNumber)];
+    const objects = Array.isArray(pageJSON?.objects) ? pageJSON.objects : [];
+    const indices = (selection.indices || [])
+      .filter((i) => Number.isInteger(i) && objects[i] && objects[i]?.data?.type !== 'callout');
+    const calloutIds = (selection.calloutIds || []).filter((id) => id != null);
+    if (indices.length === 0 && calloutIds.length === 0) return false;
+    const pageSize = pageSizeFor(pageNumber);
+    const pickedCallouts = collectFamilySelection(pageNumber, { calloutIds }).callouts || [];
+    const centre = flipCentre({ marks: indices.map((i) => objects[i]), callouts: pickedCallouts, page: pageSize });
+    if (!centre) return false;
+    const { nextPages, groupPages } = planGroupUpdate({
+      byPage,
+      selection: indices.length > 0 ? {
+        pageNumber,
+        indices,
+        ids: indices.map((i) => getAnnotationRenderIdentity(objects[i]).annotationId || ''),
+      } : null,
+      calloutIds,
+      calloutPageOf: (id) => (calloutsRef.current || []).find((callout) => callout?.id === id)?.pageNumber
+        ?? resolveCalloutPageNumber(id),
+      annotationPage: (page, members) => {
+        const flipped = flipMarksOnPage(page, members, axis, centre);
+        if (!flipped) return null;
+        // The flipped marks are new objects, so rounding them in place is safe.
+        roundCommittedAnnotationsGeometry(flipped.page, flipped.indexes);
+        return flipped.page;
+      },
+      calloutStyle: (callout) => (canFlipCallout(callout) ? {} : null),
+      calloutRefit: (patched, page) => {
+        const geometry = flipCallout(patched, axis, centre, pageSizeFor(page));
+        return geometry ? { ...patched, ...geometry } : patched;
+      },
+      deriveCallouts: deriveCalloutsFromByPage,
+      applyCalloutList: applyCalloutListToByPage,
+      pageSizes: pageSizesRef.current || {},
+    });
+    if (nextPages.size === 0) {
+      showToast('Locked marks stay as they are. Unlock them first.', 'info');
+      return false;
+    }
+    const write = resolveGroupWrite({
+      byPage,
+      plan: { nextPages, groupPages },
+      phase: null,
+      baseline: new Map(),
+      buildDocumentAction: buildTextMarkupDocumentAction,
+    });
+    if (write.kind === 'saves') {
+      write.saves.forEach(([page, json]) => {
+        save(page, json, { source: 'object:modified', action: 'flip', checkpointPolicy: 'normal' });
+      });
+    } else if (write.kind === 'transaction') {
+      commitTextMarkupDocumentTransactionRef.current?.({ action: write.action, nextByPage: write.nextByPage }, {
+        source: 'object:modified',
+        action: 'flip',
+        applyWithoutOwnedStep: true,
+        skipHistory: write.skipHistory,
+      });
+    }
+    return true;
+  }, [showToast, collectFamilySelection]);
+
   // Nightly 'apply-to-pages' (KAL-720, Drawboard's Apply to Pages): a copy
   // of the picked marks and callouts at the same spot on other pages. Each
   // page is planned like a Paste (new ids, the paster's own, the landing
@@ -39131,6 +39205,7 @@ ${pageBlocks}
         moveSelectionToLayer: layersEnabled ? handleMoveMarksToLayer : null,
         // Nightly 'apply-to-pages' (KAL-720): Apply to pages… card.
         requestApplyToPages: applyToPagesOn && numPages > 1 ? requestApplyToPages : null,
+        flipSelection: flipMarksOn ? flipSelection : null,
         // Nightly 'copy-format' (KAL-718): Copy format / Paste format.
         copyMarkFormat: copyFormatOn ? copyMarkFormatFrom : null,
         pasteMarkFormat: copyFormatOn ? pasteMarkFormat : null,
