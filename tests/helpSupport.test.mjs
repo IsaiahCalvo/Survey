@@ -25,7 +25,7 @@ test('the start guide is short and the version line skips unknowns', () => {
 });
 
 test('the flag is beta, the account menu uses it, the dialog sits on the shell, a migration adds the row', () => {
-  assert.equal(FEATURE_FLAGS['help-menu'].stage, 'beta');
+  assert.equal(FEATURE_FLAGS['help-menu'].stage, 'rollout');
   const hub = read('src/home/HubShell.jsx');
   assert.match(hub, /isFeatureOn\('help-menu'\)/);
   assert.match(hub, /<HelpSupportDialog /);

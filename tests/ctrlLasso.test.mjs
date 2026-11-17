@@ -22,7 +22,7 @@ test('the copy-drag key with a left mouse press, only with the flag on', () => {
 });
 
 test('flag, migration and the bare-page lasso branch', () => {
-  assert.equal(FEATURE_FLAGS['ctrl-lasso'].stage, 'beta');
+  assert.equal(FEATURE_FLAGS['ctrl-lasso'].stage, 'rollout');
   const hook = readFileSync(new URL('../src/hooks/useSVGInteraction.js', import.meta.url), 'utf8');
   assert.match(hook, /const \[ctrlLassoOn\] = useState\(\(\) => isFeatureOn\('ctrl-lasso'\)\);/);
   // Ctrl under Pan (copy-drag.spec) takes the same branch: boxesUnderPan.

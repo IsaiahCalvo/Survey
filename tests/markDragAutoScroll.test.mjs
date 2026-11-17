@@ -26,7 +26,7 @@ test('a finger never starts it (touch is pan-only)', () => {
 });
 
 test('wired: a beta flag, a migration, and the page layer starts it on a shape or select press', () => {
-  assert.equal(FEATURE_FLAGS['drag-auto-scroll']?.stage, 'beta');
+  assert.equal(FEATURE_FLAGS['drag-auto-scroll']?.stage, 'rollout');
   assert.match(read('supabase/migrations/20261110152000_drag_auto_scroll_flag.sql'), /'drag-auto-scroll', 'off'/);
   const layer = read('src/components/SVGAnnotationLayer.jsx');
   assert.match(layer, /AUTO_SCROLL_TOOLS\.has\(activeTool\) && isFeatureOn\('drag-auto-scroll'\)/);

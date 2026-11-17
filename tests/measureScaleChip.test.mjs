@@ -10,7 +10,7 @@ const viewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'u
 const css = readFileSync(new URL('../src/styles/marksHidden.css', import.meta.url), 'utf8');
 
 test('the chip is a Nightly beta flag with a seed migration', () => {
-  assert.equal(FEATURE_FLAGS['measure-scale-chip']?.stage, 'beta');
+  assert.equal(FEATURE_FLAGS['measure-scale-chip']?.stage, 'rollout');
   const sql = readFileSync(new URL('../supabase/migrations/20261110120000_measure_scale_chip_flag.sql', import.meta.url), 'utf8');
   assert.match(sql, /'measure-scale-chip', 'off'/);
 });

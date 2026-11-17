@@ -34,5 +34,5 @@ test('Survey Markers paste only back into their own document', () => {
 });
 
 test('the flag is a Nightly beta', () => {
-  assert.equal(FEATURE_FLAGS['paste-across-documents']?.stage, 'beta');
+  assert.equal(FEATURE_FLAGS['paste-across-documents']?.stage, 'rollout');
 });

@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import { FEATURE_FLAGS } from '../src/featureFlags.js';
 
 test('the count chip sits behind its beta flag and shows for two or more marks', () => {
-  assert.equal(FEATURE_FLAGS['selection-count']?.stage, 'beta');
+  assert.equal(FEATURE_FLAGS['selection-count']?.stage, 'rollout');
   const src = readFileSync(new URL('../src/components/SelectionQuickBar.jsx', import.meta.url), 'utf8');
   assert.match(src, /const \[selectionCountOn\] = useState\(\(\) => isFeatureOn\('selection-count'\)\);/);
   assert.match(src, /if \(selectionCountOn && items\.length > 1\) \{/);

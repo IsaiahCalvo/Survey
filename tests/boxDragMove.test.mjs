@@ -20,7 +20,7 @@ const near = (a, b, msg) => assert.ok(Math.abs(a - b) < 1e-9, `${msg}: ${a} vs $
 
 test('the flag is a beta flag, seeded off in its migration', () => {
   assert.equal(BOX_DRAG_MOVE_FLAG, 'box-drag-move');
-  assert.deepEqual({ ...FEATURE_FLAGS['box-drag-move'] }, { label: 'Drag inside a picked mark to move it', stage: 'beta' });
+  assert.deepEqual({ ...FEATURE_FLAGS['box-drag-move'] }, { label: 'Drag inside a picked mark to move it', stage: 'rollout' });
   assert.equal(
     read('supabase/migrations/20261110129000_box_drag_move_flag.sql').trim(),
     "insert into public.feature_flags (key, mode, description) values ('box-drag-move','off','Drag inside a picked mark to move it') on conflict (key) do nothing;",

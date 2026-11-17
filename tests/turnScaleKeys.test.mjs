@@ -38,7 +38,7 @@ test('text scales its box and its font; marks it cannot size are left alone', ()
 });
 
 test('wired: a beta flag, a migration, and a front-tab key listener on the page layer', () => {
-  assert.equal(FEATURE_FLAGS['turn-scale-keys']?.stage, 'beta');
+  assert.equal(FEATURE_FLAGS['turn-scale-keys']?.stage, 'rollout');
   assert.match(read('supabase/migrations/20261110154000_turn_scale_keys_flag.sql'), /'turn-scale-keys', 'off'/);
   const layer = read('src/components/SVGAnnotationLayer.jsx');
   assert.match(layer, /if \(e\.defaultPrevented \|\| !isFeatureOn\('turn-scale-keys'\)\) return;/);
