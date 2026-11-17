@@ -571,7 +571,7 @@ export default function DocumentsLedger({
   const [teamCollab, setTeamCollab] = useState({ id: null, rows: [], owner: null });
   const teamOwnerIsMe = Boolean(user?.id && teamDocRaw?.user_id === user.id);
   useEffect(() => {
-    if (!teamDocId) return undefined;
+    if (!teamDocId || teamDocRaw?.device_file) return undefined;
     let live = true;
     Promise.all([
       getDocumentCollaborators(teamDocId),
@@ -580,7 +580,7 @@ export default function DocumentsLedger({
       .then(([res, owner]) => { if (live) setTeamCollab({ id: teamDocId, rows: res?.data || [], owner }); })
       .catch(() => {});
     return () => { live = false; };
-  }, [teamDocId, teamOwnerIsMe]);
+  }, [teamDocId, teamOwnerIsMe, teamDocRaw?.device_file]);
   const teamFresh = teamCollab.id === teamDocId;
   // Review status and owner need edit access (set_document_review checks
   // user_can_access_document(..., 'editor')). Ask the server the same
@@ -588,13 +588,14 @@ export default function DocumentsLedger({
   // role never shows editable fields that would fail to save.
   const [reviewEditAccess, setReviewEditAccess] = useState({ id: null, ok: false });
   useEffect(() => {
-    if (!reviewOn || !teamDocId || teamOwnerIsMe || !supabase) return undefined;
+    // A file kept on this device is not on the server (and shows no review).
+    if (!reviewOn || !teamDocId || teamOwnerIsMe || !supabase || teamDocRaw?.device_file) return undefined;
     let live = true;
     supabase.rpc('user_can_access_document', { doc_id: teamDocId, required_role: 'editor' })
       .then(({ data, error }) => { if (live) setReviewEditAccess({ id: teamDocId, ok: !error && data === true }); })
       .catch(() => { if (live) setReviewEditAccess({ id: teamDocId, ok: false }); });
     return () => { live = false; };
-  }, [reviewOn, teamDocId, teamOwnerIsMe]);
+  }, [reviewOn, teamDocId, teamOwnerIsMe, teamDocRaw?.device_file]);
   const canEditReview = teamOwnerIsMe || (reviewEditAccess.id === teamDocId && reviewEditAccess.ok);
   const teamRows = documentTeamRows(teamDocRaw, teamFresh ? teamCollab.rows : [], user, teamFresh ? teamCollab.owner : null);
   const renderTeam = (nameStyle) => teamRows.map((p) => (

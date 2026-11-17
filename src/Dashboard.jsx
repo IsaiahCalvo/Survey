@@ -1344,9 +1344,20 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     const skipped = rejectedFilesMessage(rejected);
     if (skipped) showToast(skipped, 'info');
     if (pdfs.length === 0) return { added: 0, skipped: rejected.length };
+    // Signed out, the sample is kept on this device like any PDF, so its
+    // marks last (visitor walk, Nov 17: as a try-out its status spun on
+    // "Syncing..." for ever, and a refresh lost the marks).
+    if (!user && deviceFilesOn()) {
+      let kept = 0;
+      for (const pdf of pdfs) {
+        if (await openOnDevice(pdf, { open })) kept += 1;
+      }
+      if (kept > 0) return { added: kept, skipped: rejected.length };
+    }
     // Nightly 'guest-sample' (Drawboard PDF Pro trial audit 2026-11-10): the
     // sample drawing opens for someone signed out too, as a try-out that is
-    // not saved, so they can mark up before making an account.
+    // not saved, so they can mark up before making an account. Only when
+    // this device can't keep files (above).
     if (!user && sample && isFeatureOn('guest-sample')) {
       onDocumentSelect(asPdfFile(pdfs[0]));
       showToast('This is a try-out. Sign in to save your marks.', 'info', {
@@ -1354,13 +1365,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         action: { label: 'Sign in', onClick: () => onShowAuthModal?.() },
       });
       return { added: 0, skipped: rejected.length };
-    }
-    if (!user && deviceFilesOn()) {
-      let kept = 0;
-      for (const pdf of pdfs) {
-        if (await openOnDevice(pdf, { open })) kept += 1;
-      }
-      if (kept > 0) return { added: kept, skipped: rejected.length };
     }
     if (!user) {
       setDashboardError('Please sign in to upload documents.');

@@ -77,3 +77,18 @@ test('the Documents list header lines its labels up and keeps the File sorts out
   assert.match(ledger, /gap: 12, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden' \}\}>/);
   assert.match(ledger, /\{key === 'sheet' \? 'Sheet' : label\}\{arrow\(key\)\}/);
 });
+
+test('signed out, the sample drawing is kept on this device first; a try-out only when it cannot be', () => {
+  const dash = read('../src/Dashboard.jsx');
+  const keep = dash.indexOf('if (!user && deviceFilesOn()) {');
+  const tryOut = dash.indexOf("if (!user && sample && isFeatureOn('guest-sample')) {");
+  assert.ok(keep > 0 && tryOut > keep);
+});
+
+test('a file kept on this device asks the server nothing about comments, people or review', () => {
+  const comments = read('../src/services/markComments.js');
+  assert.equal((comments.match(/if \(!documentId \|\| isDeviceDocumentId\(documentId\)\) return \[\];/g) || []).length, 2);
+  const ledger = read('../src/home/DocumentsLedger.jsx');
+  assert.match(ledger, /if \(!teamDocId \|\| teamDocRaw\?\.device_file\) return undefined;/);
+  assert.match(ledger, /teamOwnerIsMe \|\| !supabase \|\| teamDocRaw\?\.device_file\) return undefined;/);
+});
