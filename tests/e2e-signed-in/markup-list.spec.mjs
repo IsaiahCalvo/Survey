@@ -57,7 +57,7 @@ test('the Markups list shows, opens, follows and saves the marks', async ({ page
     await expect(page.getByRole('button', { name: 'Close Annotations', exact: true }).filter({ visible: true })).toHaveCount(1);
     const panel = page.getByTestId('markups-panel');
     await expect(panel).toBeVisible();
-    await expect(panel.locator('.markups-panel__summary')).toContainText('2 markups');
+    await expect(panel.locator('.markups-panel__summary')).toContainText('2 annotations');
     await expect(panel.getByRole('button', { name: /Rectangles\s*2/ })).toBeVisible();
     const rows = panel.locator('[data-markup-row]');
     await expect(rows).toHaveCount(2);
@@ -67,7 +67,7 @@ test('the Markups list shows, opens, follows and saves the marks', async ({ page
     // Words narrow the list; "p2" finds nothing on this sheet.
     await panel.getByRole('searchbox', { name: 'Search annotations' }).fill('p2');
     await expect(rows).toHaveCount(0);
-    await expect(panel.locator('.markups-panel__summary')).toContainText('0 of 2 markups');
+    await expect(panel.locator('.markups-panel__summary')).toContainText('0 of 2 annotations');
     await panel.getByRole('button', { name: 'Clear' }).click();
     await expect(rows).toHaveCount(2);
 
@@ -79,7 +79,7 @@ test('the Markups list shows, opens, follows and saves the marks', async ({ page
     await page.keyboard.press('Delete');
     await expect(marks).toHaveCount(1);
     await expect(rows).toHaveCount(1);
-    await expect(panel.locator('.markups-panel__summary')).toContainText('1 markup');
+    await expect(panel.locator('.markups-panel__summary')).toContainText('1 annotation');
 
     // Save as CSV.
     const [download] = await Promise.all([
@@ -169,12 +169,12 @@ test('the Markups list totals measurements, shows only them, and saves their qua
 
     await page.getByRole('button', { name: 'Annotations', exact: true }).filter({ visible: true }).first().click();
     const panel = page.getByTestId('markups-panel');
-    await expect(panel.locator('.markups-panel__summary')).toContainText('2 markups', { timeout: 10_000 });
+    await expect(panel.locator('.markups-panel__summary')).toContainText('2 annotations', { timeout: 10_000 });
     await expect(panel.locator('[data-markups-total="perimeter"]')).toContainText(/Perimeter\s*[\d.,]+ ft/);
     await page.screenshot({ path: test.info().outputPath('markups-measured.png') });
 
     await panel.locator('[data-markups-measures-only]').click();
-    await expect(panel.locator('.markups-panel__summary')).toContainText('1 of 2 markups');
+    await expect(panel.locator('.markups-panel__summary')).toContainText('1 of 2 annotations');
     await expect(panel.locator('[data-markup-row]')).toHaveCount(1);
 
     const [download] = await Promise.all([
@@ -212,7 +212,7 @@ test('phone: Markups is a hub tab and a row steps the sheet down to its mark', a
     await page.getByRole('button', { name: 'Annotations', exact: true }).filter({ visible: true }).first().click();
     const panel = page.getByTestId('markups-panel');
     await expect(panel).toBeVisible();
-    await expect(panel.locator('.markups-panel__summary')).toContainText('1 markup', { timeout: 10_000 });
+    await expect(panel.locator('.markups-panel__summary')).toContainText('1 annotation', { timeout: 10_000 });
     await page.screenshot({ path: test.info().outputPath('markups-phone.png') });
     await panel.locator('[data-markup-row]').first().click();
     await expect(panel).toBeHidden({ timeout: 10_000 });

@@ -23,9 +23,13 @@
   align-items: center;
   gap: 6px;
   height: 30px;
+  box-sizing: border-box;
   padding: 0 8px;
-  background: var(--surface-2);
-  border-radius: 8px;
+  /* The same field as the Library panel's search: a sunk well with an edge.
+     It was the panel's own colour with no edge, so it could not be seen. */
+  background: var(--panel-well);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm, 6px);
   color: var(--text-3);
 }
 
@@ -123,6 +127,15 @@
   align-items: center;
   color: var(--text-3);
   font-size: 12px;
+}
+
+/* Nothing drawn yet: the same centred line as Bookmarks, Search and Library. */
+.markups-panel__summary.is-empty {
+  justify-content: center;
+  padding: 24px 12px;
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: center;
 }
 
 .markups-panel__clear {

@@ -636,3 +636,32 @@ html[data-focus-ring='pointer'] :is(.tab-strip-list__open, .hero-swatch, .docume
 .spaces-switch[aria-checked='false']:not([aria-disabled='true']):active::before {
   background: var(--pressed);
 }
+
+
+/* ==========================================================================
+   LABELS ARE NOT TEXT TO SELECT (2026-11-16)
+
+   A drag across a page used to paint its title, its column heads, its counts
+   and its "nothing here yet" line blue, as if the app were a web page.
+   Buttons were already safe (styles.css). This covers the words that label
+   the screen. What a person may want to copy stays selectable: names, email
+   addresses, IDs, activity lines, messages, and every field.
+   ========================================================================== */
+.survey-hub :is(.brand, h1.title, .crumb, .kbd, .hub-section-label, .hub-section-count, .section-label, .micro,
+  .projects-desktop-summary, .templates-desktop-summary, .archive-mobile-count, .projects-file-grid,
+  .projects-file-editor-label, .item-th, .photo-count, .hub-template-picker__label,
+  .template-auto-complete__title, .hub-empty-state),
+.left-rail__title,
+.layers-panel__title,
+.search-text-panel__empty,
+.spaces-list__empty,
+.mark-library__empty,
+.markups-panel__summary.is-empty,
+.account-settings-header,
+.account-section > :is(h2, h3),
+.account-form-group > label,
+.dialog-heading,
+:is([role='dialog'], [role='alertdialog']) :is(h1, h2, h3, label, legend, .xpdf-label, .pdft-h, .guest-links__title) {
+  -webkit-user-select: none;
+  user-select: none;
+}

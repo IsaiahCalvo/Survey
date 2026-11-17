@@ -1075,6 +1075,15 @@ html[data-look="suite"][data-theme="light"] .survey-hub .pdf-thumb {
     top: 0;
   }
 
+  /* A tab with nothing for the work row (My library, with no Company) keeps
+     one row. The empty second row left a blank band above the divider. */
+  .survey-hub:not(:has(.header > .actions > *)) {
+    --mobile-header-h: calc((var(--mobile-header-pad-y) * 2) + var(--mobile-header-row-h) + 1px);
+  }
+  .survey-hub .header > .actions:empty {
+    display: none;
+  }
+
   .survey-hub .header-title-block {
     display: contents;
   }

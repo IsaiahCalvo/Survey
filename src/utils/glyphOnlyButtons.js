@@ -16,11 +16,24 @@ const SELECTOR = 'button, [role="button"]';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
-const mark = (el) => {
+// A row that is itself a button (a Templates entity row: grip, colour dot,
+// name, More) has no text of its own when its name sits in a rename field,
+// so it used to count as a glyph button: on hover every part of the row grew
+// 12% and the name ran into the dot. A control that holds a field or another
+// control is a row, not a glyph.
+const HOLDS_CONTROLS = 'input, textarea, select, button, [role="button"]';
+
+export const isGlyphOnly = (el) => {
   // A role="button" drawn inside an svg (a polygon's "add point" grabber) is
   // left alone: the 88% press shrinks its shapes toward the svg's top-left
   // corner, not their own centre, so the grabber jumped away under the finger.
-  const glyphOnly = el.namespaceURI !== SVG_NS && (el.textContent || '').trim() === '';
+  if (el.namespaceURI === SVG_NS) return false;
+  if ((el.textContent || '').trim() !== '') return false;
+  return !el.querySelector(HOLDS_CONTROLS);
+};
+
+const mark = (el) => {
+  const glyphOnly = isGlyphOnly(el);
   if (glyphOnly) {
     if (!el.hasAttribute('data-glyph-only')) el.setAttribute('data-glyph-only', '');
   } else if (el.hasAttribute('data-glyph-only')) {

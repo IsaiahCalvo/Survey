@@ -120,7 +120,7 @@ export default function MarkupsPanel({
       link.click();
       link.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      showToast(`${shown.length} ${shown.length === 1 ? 'markup' : 'markups'} saved as CSV`, 'success');
+      showToast(`${shown.length} ${shown.length === 1 ? 'annotation' : 'annotations'} saved as CSV`, 'success');
     } catch {
       showToast('Could not save the list', 'error');
     }
@@ -212,12 +212,12 @@ export default function MarkupsPanel({
         </div>
       )}
 
-      <div className="markups-panel__summary" aria-live="polite">
+      <div className={`markups-panel__summary${rows.length === 0 ? ' is-empty' : ''}`} aria-live="polite">
         {rows.length === 0
           ? 'No annotations yet. Marks you draw show up here.'
           : filtered
-            ? `${shown.length} of ${rows.length} markups`
-            : `${rows.length} ${rows.length === 1 ? 'markup' : 'markups'}`}
+            ? `${shown.length} of ${rows.length} annotations`
+            : `${rows.length} ${rows.length === 1 ? 'annotation' : 'annotations'}`}
         {filtered && (
           <button type="button" className="markups-panel__clear" onClick={() => { setQuery(''); setKinds(new Set()); setAuthor(''); setLayer(''); setMeasuresOnly(false); }}>
             Clear
