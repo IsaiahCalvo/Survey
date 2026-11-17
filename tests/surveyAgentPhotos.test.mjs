@@ -118,7 +118,7 @@ test('wiring: flag, edge function, migration, panel, rail, staff page, Settings'
   assert.match(fn, /improve_survey_opt_in\?\.on !== true\) return json\(200, \{ recorded: false \}\)/);
   assert.match(fn, /prompt_version: SURVEY_AGENT_PROMPT_VERSION/);
   assert.match(fn, /photos: body\.photos === true && Boolean\(visionModel\(\)\)/);
-  const sql = readFileSync(new URL('../supabase/migrations/20261117180000_survey_agent_phase6.sql', import.meta.url), 'utf8');
+  const sql = readFileSync(new URL('../supabase/migrations/20261117181500_survey_agent_phase6.sql', import.meta.url), 'utf8');
   assert.match(sql, /check \(kind in \('turn', 'transcribe', 'speak', 'look'\)\)/);
   assert.match(sql, /\('agent-photo-questions', 'off'/);
   assert.match(sql, /where public\.is_feature_flag_admin\(\)/);
