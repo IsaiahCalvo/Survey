@@ -166,3 +166,60 @@ export async function saveCategoryLinks({
   }
   return { saved, notSaved };
 }
+
+/**
+ * The picks after the rows change (a Category was added to the Module, say):
+ * a choice the user already made is kept while it still points at one of
+ * the Module's Categories; every other row starts from its exact-name match.
+ */
+export function keepPicks(prev, rows, template, moduleId) {
+  const valid = new Set(moduleCategories(template, moduleId).map((c) => c.id));
+  const next = {};
+  for (const row of rows || []) {
+    const id = row.nodeTypeId;
+    if (prev && Object.prototype.hasOwnProperty.call(prev, id) && (prev[id] == null || valid.has(prev[id]))) {
+      if (prev[id] != null) next[id] = prev[id];
+      else next[id] = null;
+    } else if (row.suggested != null) {
+      next[id] = row.suggested;
+    }
+  }
+  return next;
+}
+
+/** True when the Module has no Category with exactly this name yet. */
+export function canAddToModule(name, template, moduleId) {
+  const wanted = clean(name);
+  if (!wanted || !modulesOf(template).some((m) => m?.id === moduleId)) return false;
+  return !moduleCategories(template, moduleId).some((c) => c.name === wanted);
+}
+
+/**
+ * "Add Intercom to this Module": the templates with a new, empty Category of
+ * exactly that name at the end of the Module. Survey keeps a template's
+ * Modules under `modules` and, in older saves, a copy under `spaces`; both
+ * get it, with one id.
+ * @returns {{ templates: Array, categoryId: string } | null}
+ */
+export function withCategoryAdded(templates, templateId, moduleId, name, categoryId) {
+  const wanted = clean(name);
+  if (!wanted || !categoryId) return null;
+  let added = false;
+  const out = (templates || []).map((template) => {
+    if (template?.id !== templateId) return template;
+    const next = { ...template };
+    for (const key of ['modules', 'spaces']) {
+      if (!Array.isArray(template[key])) continue;
+      next[key] = template[key].map((mod) => {
+        if (mod?.id !== moduleId) return mod;
+        const cKey = Array.isArray(mod.categories) ? 'categories' : (Array.isArray(mod.cats) ? 'cats' : 'categories');
+        const list = Array.isArray(mod[cKey]) ? mod[cKey] : [];
+        if (list.some((c) => clean(c?.name) === wanted)) return mod;
+        added = true;
+        return { ...mod, [cKey]: [...list, { id: categoryId, name: wanted, checklist: [] }] };
+      });
+    }
+    return next;
+  });
+  return added ? { templates: out, categoryId } : null;
+}

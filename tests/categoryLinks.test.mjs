@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { matchCategories } from '../src/suite/walkthruHandoff.js';
 import {
-  categoryForPicks, entryIdFor, linkRows, linksToSave, moduleCategories, saveCategoryLinks, startingPicks,
+  canAddToModule, categoryForPicks, entryIdFor, keepPicks, linkRows, linksToSave, moduleCategories,
+  saveCategoryLinks, startingPicks, withCategoryAdded,
 } from '../src/suite/categoryLinks.js';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
@@ -140,10 +141,32 @@ test('after saving, the next hand-off matches by library id and does not ask', (
 
 test('wired in: the dialog shows the side-by-side rows and Dashboard saves the links', () => {
   const dialog = read('src/home/WalkthruHandoffDialog.jsx');
-  assert.match(dialog, /data-walkthru-link-table/);
-  assert.match(dialog, /setPicks\(startingPicks\(rows\)\)/);
-  assert.match(dialog, /onSend\(\{ walk, template, moduleId, categoryFor, links \}\)/);
   const dash = read('src/Dashboard.jsx');
+  assert.match(dialog, /data-walkthru-link-table/);
+  assert.match(dialog, /fresh \? startingPicks\(rows\) : keepPicks\(prev, rows, template, moduleId\)/);
+  assert.match(dialog, /data-walkthru-add-category/);
+  assert.match(dash, /onAddCategory=\{addWalkCategoryToModule\}/);
+  assert.match(dialog, /onSend\(\{ walk, template, moduleId, categoryFor, links \}\)/);
   assert.match(dash, /saveCategoryLinks\(\{/);
   assert.match(dash, /from\('node_types'\)\s+\.update\(\{ library_entry_id: entryId \}\)\.eq\('id', nodeTypeId\)\.select\('id'\)/);
+});
+
+test('"Add Intercom to this Module": one new empty Category, in modules and spaces alike', () => {
+  const both = { id: 't2', modules: [{ id: 'm', categories: [{ id: 'c1', name: 'Camera' }] }], spaces: [{ id: 'm', categories: [{ id: 'c1', name: 'Camera' }] }] };
+  assert.equal(canAddToModule('Intercom', both, 'm'), true);
+  assert.equal(canAddToModule('Camera', both, 'm'), false);
+  assert.equal(canAddToModule('Intercom', both, 'nope'), false);
+  const out = withCategoryAdded([template, both], 't2', 'm', ' Intercom ', 'c-new');
+  assert.equal(out.categoryId, 'c-new');
+  assert.deepEqual(out.templates[1].modules[0].categories.at(-1), { id: 'c-new', name: 'Intercom', checklist: [] });
+  assert.deepEqual(out.templates[1].spaces[0].categories.at(-1), { id: 'c-new', name: 'Intercom', checklist: [] });
+  assert.equal(out.templates[0], template);
+  assert.equal(withCategoryAdded([both], 't2', 'm', 'Camera', 'x'), null);
+});
+
+test('after a Category is added, choices already made are kept and the new row is linked', () => {
+  const rows = [{ nodeTypeId: 'a', suggested: 'c-door' }, { nodeTypeId: 'b', suggested: null }, { nodeTypeId: 'c', suggested: 'c-cam' }];
+  const prev = { a: null, b: null, c: 'gone' };
+  assert.deepEqual(keepPicks(prev, rows, template, 'm1'), { a: null, b: null, c: 'c-cam' });
+  assert.deepEqual(keepPicks({}, rows, template, 'm1'), { a: 'c-door', c: 'c-cam' });
 });

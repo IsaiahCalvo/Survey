@@ -17,7 +17,7 @@ import Spinner from '../components/Spinner';
 import { Z_INDEX } from '../theme';
 import { matchCategories } from '../suite/walkthruHandoff.js';
 import {
-  categoryForPicks, linkRows, linksToSave, moduleCategories, startingPicks,
+  canAddToModule, categoryForPicks, keepPicks, linkRows, linksToSave, moduleCategories, startingPicks,
 } from '../suite/categoryLinks.js';
 import '../components/PdfToolsDialog.css';
 import '../components/ExportPdfDialog.css';
@@ -48,7 +48,7 @@ export function handoffSummary(result) {
 
 export default function WalkthruHandoffDialog({
   project, templates = [], supabase, initialWalkId = null,
-  listWalks, readWalk, onSend, onClose,
+  listWalks, readWalk, onSend, onAddCategory = null, onClose,
 }) {
   const [walks, setWalks] = useState(null);
   const [walkId, setWalkId] = useState(initialWalkId);
@@ -96,8 +96,30 @@ export default function WalkthruHandoffDialog({
   const match = useMemo(() => (template && moduleId ? matchCategories(usedTypes, template, moduleId) : null), [usedTypes, template, moduleId]);
 
   const rows = useMemo(() => linkRows(match, nodeCount), [match, nodeCount]);
-  // Only an exact-name match starts filled in; the user picks the rest.
-  useEffect(() => { setPicks(startingPicks(rows)); }, [rows]);
+  // Only an exact-name match starts filled in; the user picks the rest. A
+  // new walk, Template or Module starts over; a Category added to the Module
+  // keeps the choices already made.
+  const pickScope = useRef('');
+  useEffect(() => {
+    const scope = `${walkId}|${templateId}|${moduleId}`;
+    const fresh = pickScope.current !== scope;
+    pickScope.current = scope;
+    setPicks((prev) => (fresh ? startingPicks(rows) : keepPicks(prev, rows, template, moduleId)));
+  }, [rows, walkId, templateId, moduleId, template]);
+  const [adding, setAdding] = useState(null); // node type id being added
+  const addToModule = async (row) => {
+    if (!onAddCategory || adding) return;
+    setError('');
+    setAdding(row.nodeTypeId);
+    try {
+      const categoryId = await onAddCategory({ template, moduleId, name: row.name });
+      if (alive.current && categoryId) setPicks((p) => ({ ...p, [row.nodeTypeId]: categoryId }));
+    } catch (err) {
+      if (alive.current) setError(err?.message || String(err));
+    } finally {
+      if (alive.current) setAdding(null);
+    }
+  };
   const categoryFor = useMemo(
     () => (match ? categoryForPicks(match, picks, template, moduleId) : {}),
     [match, picks, template, moduleId],
@@ -217,8 +239,20 @@ export default function WalkthruHandoffDialog({
                             value={picks[row.nodeTypeId] ?? SKIP}
                             options={linkOptions}
                             onChange={(value) => setPicks((p) => ({ ...p, [row.nodeTypeId]: value === SKIP ? null : value }))}
-                            disabled={busy}
+                            disabled={busy || Boolean(adding)}
                           />
+                          {onAddCategory && picks[row.nodeTypeId] == null && canAddToModule(row.name, template, moduleId) && (
+                            <button
+                              type="button"
+                              className="hub-btn wt-link__add"
+                              data-walkthru-add-category={row.nodeTypeId}
+                              onClick={() => addToModule(row)}
+                              disabled={busy || Boolean(adding)}
+                            >
+                              {adding === row.nodeTypeId ? <Spinner size={12} color="currentColor" /> : null}
+                              <span>Add {row.name} to this Module</span>
+                            </button>
+                          )}
                         </span>
                       </div>
                     ))}

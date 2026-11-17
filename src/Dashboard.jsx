@@ -2078,6 +2078,20 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     refetchDocuments?.();
     return linkOutcome ? { ...result, links: linkOutcome } : result;
   };
+  // KAL-596 / suite spec: "Add Intercom to this Module" in the hand-off. A new
+  // empty Category with exactly the Walkthru name, saved like any template
+  // edit (which also links it to the library).
+  const addWalkCategoryToModule = async ({ template, moduleId, name }) => {
+    const { withCategoryAdded } = await import('./suite/categoryLinks.js');
+    const next = withCategoryAdded(templates, template?.id, moduleId, name, `cat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+    if (!next) return null;
+    try {
+      await hubSaveTemplates(next.templates);
+    } catch {
+      throw new Error(`Couldn’t add ${name} to the template. Templates can be changed on a Pro plan, and only by their owner or an editor.`);
+    }
+    return next.categoryId;
+  };
   const canOpenFromDrive = Boolean(user) && isFeatureOn('drive-sync-back');
   // Google's Picker needs a browser key; without one the entry stays hidden.
   const canOpenFromGoogleDrive = canOpenFromDrive && Boolean(googlePickerApiKey());
@@ -3241,6 +3255,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
           listWalks={listWalkthruWalks}
           readWalk={readWalkthruWalk}
           onSend={sendWalkthruWalk}
+          onAddCategory={addWalkCategoryToModule}
           onClose={() => setWalkthruTargetProject(null)}
         />
       )}

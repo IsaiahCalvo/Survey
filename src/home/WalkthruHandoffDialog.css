@@ -28,6 +28,8 @@
   font-size: 12px; color: var(--text-3);
 }
 .wt-link__linked { color: var(--text-2); }
+.wt-link__row > [role="cell"]:last-child { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.wt-link__add { align-self: flex-start; gap: 6px; }
 @media (max-width: 480px) {
   .wt-link__row { gap: 8px; }
 }
