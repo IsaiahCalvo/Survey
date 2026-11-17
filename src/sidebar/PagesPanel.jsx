@@ -2011,7 +2011,8 @@ const PagesPanel = ({
             position: 'fixed',
             left: contextMenu.x,
             top: contextMenu.y,
-            background: 'var(--surface-3)',
+            // The panel colour, as the viewer's page menu and the home menus.
+            background: 'var(--surface-2)',
             border: '1px solid var(--border)',
             borderRadius: 'var(--radius-md)',
             padding: '4px',
@@ -2033,7 +2034,7 @@ const PagesPanel = ({
             mobile={mobileMode}
             onPick={pickPageMenuItem}
             onLayout={placeContextMenu}
-            dangerHoverBg={mobileMode ? 'var(--surface-2)' : 'var(--surface-3)'}
+            dangerHoverBg={mobileMode ? 'var(--surface-2)' : 'var(--hover)'}
             items={buildPageMenuItems({
               pageNumber: contextMenu.pageNumber,
               pageNumbers: contextMenu.pages,

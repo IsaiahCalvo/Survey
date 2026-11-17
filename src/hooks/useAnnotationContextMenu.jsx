@@ -1639,8 +1639,8 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
             items={pageMenuItems}
             mobile={isMobileMenu}
             onPick={pickPageMenuItem}
-            hoverBg={isMobileMenu ? 'var(--surface-2)' : 'var(--surface-3)'}
-            dangerHoverBg={isMobileMenu ? 'var(--surface-2)' : 'var(--surface-3)'}
+            hoverBg={isMobileMenu ? 'var(--surface-2)' : 'var(--hover)'}
+            dangerHoverBg={isMobileMenu ? 'var(--surface-2)' : 'var(--hover)'}
           />
         )}
         {!pageMenuItems && markLayout && (
