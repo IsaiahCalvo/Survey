@@ -187,11 +187,15 @@ html[data-look="suite"] .mark-library__tabs { background: var(--surface-2); }
 }
 
 .mark-library__tile--small .mark-library__thumb { aspect-ratio: 1; }
+/* Review stamps are wide and short: a wide frame shows them big enough to read. */
+.mark-library__body--stamps .mark-library__tile--large .mark-library__thumb { aspect-ratio: 5 / 2; }
 .mark-library__tile--list .mark-library__thumb { width: 44px; flex: none; aspect-ratio: 1; }
 
+/* The drawing already keeps a small edge round the marks (thumbnailFrame),
+   so the picture fills its frame: no second margin. */
 .mark-library__thumb img {
-  max-width: 88%;
-  max-height: 88%;
+  max-width: 100%;
+  max-height: 100%;
   object-fit: contain;
   pointer-events: none;
 }
