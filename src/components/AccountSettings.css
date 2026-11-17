@@ -413,6 +413,19 @@
   margin: 0;
 }
 
+/* "Privacy policy" at the end of a description: the calm underlined link
+   (--link), as under the survey agent's notice. It was the browser's own
+   link colour, the only purple words in the app. */
+.account-pref-description a {
+  color: var(--link);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .account-pref-description a:hover {
+    color: var(--link-hover);
+  }
+}
+
 /* 44px tap target around a 36x20 switch. */
 .account-switch {
   position: relative;
@@ -573,10 +586,18 @@
   font-family: inherit;
 }
 
-/* Delete account paints 34px; on any touch screen (phone or tablet) a
-   finger needs 44. Mouse/trackpad keeps 34. */
+/* The Settings buttons paint 34px; on any touch screen (phone or tablet) a
+   finger needs 44. Mouse/trackpad keeps 34. It used to be Delete account
+   alone, which left it taller than Edit profile, Download my data and Sign
+   out on the same page; now every button here is one height. */
 @media (pointer: coarse) {
-  .account-btn-danger { min-height: 44px; }
+  .account-btn-primary,
+  .account-btn-secondary,
+  .account-btn-danger,
+  .account-btn-purple,
+  .account-btn-outline-green,
+  .account-btn-outline-blue,
+  .account-btn-outline-gold { min-height: 44px; }
 }
 
 .account-btn-danger:hover:not(:disabled) {
@@ -653,13 +674,32 @@
   background: var(--hover);
 }
 
+/* The words take the room the button leaves and wrap inside it. They used to
+   keep their full width, so on a phone "Not connected. Connect to sync
+   exported surveys" ran under the Connect button and squeezed the icon tile
+   (Microsoft's stayed 36px, Google's shrank to 26). */
+.account-connected-account {
+  gap: 12px;
+}
+
 .account-connected-account-info {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.account-connected-account-details {
+  min-width: 0;
+}
+
+.account-connected-account-actions {
+  flex: none;
 }
 
 .account-connected-account-icon {
+  flex: none;
   width: 36px;
   height: 36px;
   display: flex;
