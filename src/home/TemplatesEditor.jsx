@@ -51,7 +51,7 @@ import { lazy, Suspense, useState, useMemo, useEffect, useRef, useCallback, useS
 import { hoverOnly, useTooltip, withOwnHandlers } from '../components/Tooltip';
 import { createPortal, flushSync } from 'react-dom';
 import { reloadTemplatesAfterPendingSave, templateSaveErrorText } from './templatePersistence.js';
-import { useTemplatesNeedPro } from './useTemplatesNeedPro.js';
+import { useTemplatesNeedPro, useTemplatesPlanLocked } from './useTemplatesNeedPro.js';
 import useMobileEdgeSwipeBack from './useMobileEdgeSwipeBack';
 import useModalFocusTrap from './useModalFocusTrap';
 import {
@@ -915,6 +915,7 @@ export default function TemplatesEditor({
   // Templates are Pro in the database: on Free, New and Duplicate say so
   // instead of making a copy that vanishes on reload (KAL-755).
   const templatesNeedPro = useTemplatesNeedPro();
+  const templatesPlanLocked = useTemplatesPlanLocked();
   const dispatchTemplatesSave = useCallback((payload) => {
     const run = () => Promise.resolve(onSaveTemplates(payload));
     const p = saveChainRef.current.then(run, run);
@@ -2482,12 +2483,17 @@ export default function TemplatesEditor({
       })()}
     </div>
   );
+  // Said up front on Free, before anyone makes a change that can't be kept.
+  // Desktop only: the phone header has no room (the subtitle row dissolves
+  // into the title row there); New and Duplicate still say it on the phone.
+  const planNote = <span data-templates-plan-note="" style={{ color: 'var(--text-3)' }}>Saving needs Pro</span>;
   const subtitle = (
     <>
       {/* Owner 2026-09-22: the tagline is gone; when the template has unsaved
           edits, Cancel / Save sit right here in the subtitle row instead. */}
       <span className="templates-desktop-summary" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
         <span><b>{visibleTemplates.length}</b> {visibleTemplates.length === 1 ? 'template' : 'templates'}</span>
+        {templatesPlanLocked ? planNote : null}
         {saveRow('templates-desktop-save-row')}
       </span>
       <span className="templates-mobile-summary" style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>

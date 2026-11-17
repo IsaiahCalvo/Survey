@@ -17,13 +17,23 @@ import { PAID_TIERS, PRO_LOCK_FLAG } from '../utils/proLock.js';
 import { showToast } from '../utils/toast.js';
 import { TEMPLATES_PRO_NOTE } from './templatePersistence.js';
 
+/** True on a signed-in account whose plan is known and is not paid. */
+function planLockedFor(auth) {
+  const authUser = auth?.user;
+  if (!authUser || auth.loadingTier || auth.tierUserId !== authUser.id) return false;
+  return !PAID_TIERS.includes(auth.tier);
+}
+
+/** For the up-front note on the Templates screen (no toast). */
+export function useTemplatesPlanLocked() {
+  return planLockedFor(useAuth());
+}
+
 export function useTemplatesNeedPro() {
   const auth = useAuth();
   const proLocked = useProLock();
   return useCallback(() => {
-    const authUser = auth?.user;
-    if (!authUser || auth.loadingTier || auth.tierUserId !== authUser.id) return false;
-    if (PAID_TIERS.includes(auth.tier)) return false;
+    if (!planLockedFor(auth)) return false;
     if (isFeatureOn(PRO_LOCK_FLAG)) return proLocked('templates');
     showToast(TEMPLATES_PRO_NOTE, 'warn', { id: 'templates-need-pro' });
     return true;

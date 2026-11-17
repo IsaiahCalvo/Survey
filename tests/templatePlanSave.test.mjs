@@ -46,7 +46,16 @@ test('on Free, New template, Duplicate and the library\'s Add them say "part of 
   assert.match(library, /showToast\(isTemplatePlanError\(err\) \? TEMPLATE_PLAN_MESSAGE : 'Could not save the templates\. Try again\.', 'error'\);/);
   const hook = read('../src/home/useTemplatesNeedPro.js');
   // Signed out, or the plan still loading, or a paid plan: never stopped here.
-  assert.match(hook, /if \(!authUser \|\| auth\.loadingTier \|\| auth\.tierUserId !== authUser\.id\) return false;\s*if \(PAID_TIERS\.includes\(auth\.tier\)\) return false;/);
+  assert.match(hook, /if \(!authUser \|\| auth\.loadingTier \|\| auth\.tierUserId !== authUser\.id\) return false;\s*return !PAID_TIERS\.includes\(auth\.tier\);/);
   // Not tied to 'pro-lock': the database refuses template saves on Free either way.
   assert.match(hook, /if \(isFeatureOn\(PRO_LOCK_FLAG\)\) return proLocked\('templates'\);\s*showToast\(TEMPLATES_PRO_NOTE, 'warn'/);
+});
+
+test('the Templates screen says "Saving needs Pro" up front on a Free account', () => {
+  const editor = read('../src/home/TemplatesEditor.jsx');
+  assert.match(editor, /const planNote = <span data-templates-plan-note="" style=\{\{ color: 'var\(--text-3\)' \}\}>Saving needs Pro<\/span>;/);
+  assert.match(editor, /\{templatesPlanLocked \? planNote : null\}\s*\{saveRow\('templates-desktop-save-row'\)\}/);
+  assert.equal((editor.match(/\? planNote : null/g) || []).length, 1);
+  const hook = read('../src/home/useTemplatesNeedPro.js');
+  assert.match(hook, /export function useTemplatesPlanLocked\(\) \{\s*return planLockedFor\(useAuth\(\)\);/);
 });
