@@ -141,12 +141,12 @@ const MEASURED = {
 
 test('measurements carry their real quantity and unit; no scale reads paper inches', () => {
   const rows = buildMarkupRows(MEASURED);
-  assert.deepEqual(rows.find((r) => r.id === 'l1').measure, { kind: 'length', name: 'Length', text: '10\' 0"', quantity: 10, unit: 'ft', dimension: 'length', scaled: true });
+  assert.deepEqual(rows.find((r) => r.id === 'l1').measure, { kind: 'length', name: 'Length', text: '10\' 0"', quantity: 10, unit: 'ft', dimension: 'length', scaled: true, calibration: false });
   assert.equal(rows.find((r) => r.id === 'a1').measure.quantity, 50);
   assert.equal(rows.find((r) => r.id === 'a1').measure.unit, 'sq ft');
   assert.equal(rows.find((r) => r.id === 'r1').measure, null);
   const bare = { type: 'line', left: 0, top: 0, width: 144, height: 0, x1: -72, y1: 0, x2: 72, y2: 0, data: { measure: { kind: 'length' } } };
-  assert.deepEqual(measureQuantity(bare), { kind: 'length', name: 'Length', text: '2 in (no scale)', quantity: 2, unit: 'in', dimension: 'length', scaled: false });
+  assert.deepEqual(measureQuantity(bare), { kind: 'length', name: 'Length', text: '2 in (no scale)', quantity: 2, unit: 'in', dimension: 'length', scaled: false, calibration: false });
 });
 
 test('totals add like with like', () => {
@@ -154,6 +154,29 @@ test('totals add like with like', () => {
     ['Length', 20, 'ft', 2],
     ['Area', 50, 'sq ft', 1],
   ]);
+});
+
+test('the calibration line lists but stays out of the Length total', () => {
+  const page = MEASURED[1] || MEASURED[Object.keys(MEASURED)[0]];
+  const length = page.objects.find((o) => o?.data?.measure?.kind === 'length');
+  const calibration = { ...length, id: 'cal', data: { ...length.data, measure: { ...length.data.measure, calibration: true } } };
+  const withCal = { ...MEASURED, [Object.keys(MEASURED)[0]]: { objects: [...page.objects, calibration] } };
+  const rows = buildMarkupRows(withCal);
+  assert.equal(rows.find((r) => r.id === 'cal').measure.calibration, true);
+  assert.equal(rows.find((r) => r.id === 'cal').measure.name, 'Calibration');
+  assert.deepEqual(markupTotals(rows).map((t) => [t.name, t.quantity, t.count]), [
+    ['Length', 20, 2],
+    ['Area', 50, 1],
+  ]);
+});
+
+test('a stamp lists with images and stamps, not text boxes', () => {
+  const rows = buildMarkupRows({ 1: { objects: [
+    { id: 'st', type: 'textbox', text: 'APPROVED', data: { stampPreset: 'approved' } },
+    { id: 'tb', type: 'textbox', text: 'note' },
+  ] } });
+  assert.equal(rows.find((r) => r.id === 'st').kind, 'image');
+  assert.equal(rows.find((r) => r.id === 'tb').kind, 'text');
 });
 
 test('layer and measurements-only filters; search finds units and layers', () => {

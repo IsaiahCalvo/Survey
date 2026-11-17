@@ -38942,7 +38942,11 @@ ${pageBlocks}
       : [pageNumber];
     for (const page of pages) {
       const pageJson = byPage[page] || { objects: [] };
-      const extra = line && page === pageNumber ? [line] : [];
+      // The kept calibration line says so, so the Markups list keeps it out
+      // of the Length total.
+      const extra = line && page === pageNumber
+        ? [{ ...line, data: { ...(line.data || {}), measure: { ...(line.data?.measure || {}), calibration: true } } }]
+        : [];
       const hasMeasures = (pageJson.objects || []).some((o) => o?.data?.measure);
       if (!hasMeasures && !extra.length) continue;
       handleSaveAnnotationsWithTextMarkupAtomicity(

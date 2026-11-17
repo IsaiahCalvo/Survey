@@ -335,7 +335,7 @@ export default function MeasureScaleDialog({ pageNumber, pageCount = 1, lengthPt
             {pageCount > 1 && !markMode && (
               <>
                 <div className="measure-scale__label">Apply to</div>
-                <div className="measure-scale__chips measure-scale__chips--units" role="radiogroup" onKeyDown={moveGroupFocus} aria-label="Apply to" data-measure-apply-to="true">
+                <div className="measure-scale__chips measure-scale__chips--apply" role="radiogroup" onKeyDown={moveGroupFocus} aria-label="Apply to" data-measure-apply-to="true">
                   {chip('this-page', 'This page', !allPages, () => setAllPages(false), { 'data-measure-apply-to-option': 'page' })}
                   {chip('all-pages', `All ${pageCount} pages`, allPages, () => setAllPages(true), { 'data-measure-apply-to-option': 'all' })}
                 </div>

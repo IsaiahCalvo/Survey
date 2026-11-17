@@ -49,6 +49,9 @@ function kindOf(obj) {
   const data = obj?.data || {};
   if (getMeasureKind(obj)) return 'measure';
   if (data.type === 'counter') return 'counter'; // drawn as a circle, listed as what it is
+  // A stamp from the Stamp card is drawn as a text box or a group; it lists
+  // with images and stamps, not under Text boxes.
+  if (data.type === 'stamp' || data.stamp || data.stampPreset) return 'image';
   const type = data.type === 'callout' ? 'callout' : (data.type === 'text-markup' ? 'text-markup' : obj?.type);
   return historyTypeKey(type, obj);
 }
@@ -159,7 +162,19 @@ export function measureQuantity(object, pageScale = null) {
   else if (kind === 'volume' || kind === 'area') quantity = label.value / (per * per);
   else quantity = label.value / per;
   const unit = dimension === 'length' ? units.label : (dimension === 'area' ? units.area : units.volume);
-  return { kind, name: MEASURE_NAMES[kind], text: String(label.reading || label.text || ''), quantity: Math.round(quantity * 1000) / 1000, unit, dimension, scaled: Boolean(scale) };
+  const calibration = object?.data?.measure?.calibration === true;
+  return {
+    kind,
+    name: calibration ? 'Calibration' : MEASURE_NAMES[kind],
+    text: String(label.reading || label.text || ''),
+    quantity: Math.round(quantity * 1000) / 1000,
+    unit,
+    dimension,
+    scaled: Boolean(scale),
+    // The line the page was calibrated with sets the scale; it is not part
+    // of the takeoff, so totals leave it out.
+    calibration,
+  };
 }
 
 function idOf(obj, pageNumber, index) {
@@ -311,7 +326,7 @@ export function markupTotals(rows) {
   const totals = new Map();
   for (const row of rows || []) {
     const m = row.measure;
-    if (!m) continue;
+    if (!m || m.calibration) continue;
     const key = `${m.kind}|${m.unit}`;
     const item = totals.get(key) || { kind: m.kind, name: m.name, unit: m.unit, quantity: 0, count: 0 };
     item.quantity += m.quantity;
