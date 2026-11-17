@@ -87,3 +87,12 @@ test('Annotations panel group headers take the hover fill', () => {
   assert.match(css, /\.markups-panel__row:hover,\s*\.markups-panel__group-head:hover,/);
   assert.match(css, /\.markups-panel__group-head \{[^}]*border-radius: 6px;/);
 });
+
+test('bookmark add card sits on the panel colour; Current page shows its edge; New folder shows a press', () => {
+  const src = readFileSync(new URL('../src/sidebar/BookmarksPanel.jsx', import.meta.url), 'utf8');
+  const at = src.indexOf('ref={createMenuRef}');
+  assert.ok(at > 0);
+  assert.match(src.slice(at, at + 700), /background: 'var\(--surface-2\)',/);
+  assert.match(src, /border: '1px solid var\(--border-strong\)',\s*borderRadius: '6px',\s*fontSize: '12px',/);
+  assert.match(src, /onMouseDown=\{\(e\) => e\.currentTarget\.style\.background = 'var\(--pressed\)'\}/);
+});
