@@ -2420,21 +2420,14 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const viewTop = el.scrollTop - padTop;
     // Horizontal (KAL-713): the same rule across, between the side panels.
     const side = sideInsetRef.current;
-    const page = stripViewRef.current
-      ? pickCurrentPage({
-        pageTops: dims.map((_, i) => getPageLeftAtScaleRef.current(i, scaleRef.current)),
-        pageHeights: dims.map((d) => (d.hidden ? 0 : d.w * scaleRef.current)),
-        viewTop: el.scrollLeft + side.left,
-        viewBottom: el.scrollLeft + el.clientWidth - side.right,
-        currentPage: currentPageRef.current,
-      })
-      : pickCurrentPage({
-        pageTops: tops,
-        pageHeights: dims.map((d) => d.h * scaleRef.current),
-        viewTop: viewTop + inset,
-        viewBottom: viewTop + el.clientHeight,
-        currentPage: currentPageRef.current,
-      });
+    const across = stripViewRef.current;
+    const page = pickCurrentPage({
+      pageTops: across ? dims.map((_, i) => getPageLeftAtScaleRef.current(i, scaleRef.current)) : tops,
+      pageHeights: dims.map((d) => (across ? (d.hidden ? 0 : d.w) : d.h) * scaleRef.current),
+      viewTop: across ? el.scrollLeft + side.left : viewTop + inset,
+      viewBottom: across ? el.scrollLeft + el.clientWidth - side.right : viewTop + el.clientHeight,
+      currentPage: currentPageRef.current,
+    });
     clampHorizontalScroll();
     // A page jump still gliding keeps the page it is heading to (set by goToPage).
     if (pageGlideHoldsPageRef.current) return;

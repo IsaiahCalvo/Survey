@@ -220,6 +220,6 @@ test('Horizontal: the setting, the card choice, and the viewer reading across', 
   assert.match(viewer, /spread: stripView \? 'strip' : rowSpread/);
   // The mount window, the current page and a page jump all go across.
   assert.match(viewer, /const strip = Boolean\(layout\.place\?\.strip\);/);
-  assert.match(viewer, /const page = stripViewRef\.current\n\s+\? pickCurrentPage\(/);
+  assert.match(viewer, /const across = stripViewRef\.current;\n\s+const page = pickCurrentPage\(\{\n\s+pageTops: across \?/);
   assert.match(viewer, /el\.scrollLeft = stripViewRef\.current\n\s+\? pageScrollLeftRef\.current\(i\)/);
 });
