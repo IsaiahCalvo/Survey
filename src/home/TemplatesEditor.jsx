@@ -50,7 +50,11 @@ import { customLayoutAskUrl } from '../services/supportContact.js';
 import { lazy, Suspense, useState, useMemo, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
 import { hoverOnly, useTooltip, withOwnHandlers } from '../components/Tooltip';
 import { createPortal, flushSync } from 'react-dom';
-import { reloadTemplatesAfterPendingSave, templateSaveErrorText } from './templatePersistence.js';
+import { TEMPLATES_PRO_NOTE, reloadTemplatesAfterPendingSave, templateSaveErrorText } from './templatePersistence.js';
+import { useAuth } from '../contexts/AuthContext';
+import { useProLock } from '../hooks/useProLock.js';
+import { PAID_TIERS, PRO_LOCK_FLAG } from '../utils/proLock.js';
+import { showToast } from '../utils/toast.js';
 import useMobileEdgeSwipeBack from './useMobileEdgeSwipeBack';
 import useModalFocusTrap from './useModalFocusTrap';
 import {
@@ -911,6 +915,22 @@ export default function TemplatesEditor({
      newest payload always lands last. Payloads are snapshotted at dispatch. */
   const saveChainRef = useRef(Promise.resolve());
   const [persistenceError, setPersistenceError] = useState('');
+  // Templates are Pro in the database. A signed-in Free account gets the Pro
+  // note when it asks for a new template or a copy, instead of one that
+  // vanishes on reload (KAL-755). Signed out, templates live on this device.
+  // Paid plans are not switched on yet ('pro-lock' off), so the note then
+  // carries no Upgrade button. While the plan is still loading it lets the
+  // action through; the save then says the same (templateSaveErrorText).
+  const auth = useAuth();
+  const proLocked = useProLock();
+  const templatesNeedPro = () => {
+    const authUser = auth?.user;
+    if (!authUser || auth.loadingTier || auth.tierUserId !== authUser.id) return false;
+    if (PAID_TIERS.includes(auth.tier)) return false;
+    if (isFeatureOn(PRO_LOCK_FLAG)) return proLocked('templates');
+    showToast(TEMPLATES_PRO_NOTE, 'warn', { id: 'templates-need-pro' });
+    return true;
+  };
   const dispatchTemplatesSave = useCallback((payload) => {
     const run = () => Promise.resolve(onSaveTemplates(payload));
     const p = saveChainRef.current.then(run, run);
@@ -1526,6 +1546,7 @@ export default function TemplatesEditor({
     }));
   };
   const duplicateTemplates = (ids) => {
+    if (templatesNeedPro()) return;
     const next = [];
     const clonedEntities = [];
     rich.forEach((t) => {
@@ -1612,6 +1633,7 @@ export default function TemplatesEditor({
      this editor did nothing at all. The hub callback is still invoked for its
      remaining side effect (seeding the viewer's default entities). */
   const createTemplate = () => {
+    if (templatesNeedPro()) return;
     const existing = rich.map((t) => t.name);
     let n = rich.length + 1, name;
     do { name = `Template ${n++}`; } while (existing.includes(name));

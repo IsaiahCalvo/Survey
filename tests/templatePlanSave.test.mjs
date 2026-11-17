@@ -35,3 +35,13 @@ test('the app maps both server answers to the plan message, and the editor shows
   assert.equal((editor.match(/setPersistenceError\(templateSaveErrorText\(err\)\);/g) || []).length, 3);
   assert.doesNotMatch(editor, /setPersistenceError\('Could not save templates/);
 });
+
+test('on Free, New template and Duplicate say "part of Pro" first and make no copy', () => {
+  const editor = read('../src/home/TemplatesEditor.jsx');
+  assert.match(editor, /const duplicateTemplates = \(ids\) => \{\s*if \(templatesNeedPro\(\)\) return;/);
+  assert.match(editor, /const createTemplate = \(\) => \{\s*if \(templatesNeedPro\(\)\) return;/);
+  // Signed out, or the plan still loading, or a paid plan: never stopped here.
+  assert.match(editor, /if \(!authUser \|\| auth\.loadingTier \|\| auth\.tierUserId !== authUser\.id\) return false;\s*if \(PAID_TIERS\.includes\(auth\.tier\)\) return false;/);
+  // Not tied to 'pro-lock': the database refuses template saves on Free either way.
+  assert.match(editor, /if \(isFeatureOn\(PRO_LOCK_FLAG\)\) return proLocked\('templates'\);\s*showToast\(TEMPLATES_PRO_NOTE, 'warn'/);
+});
