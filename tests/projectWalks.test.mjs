@@ -107,7 +107,7 @@ test('wired in: the hand-off records the walk, the project shows the tab behind 
 });
 
 test('the database gate is the Project: only members read, only editors who can open the walk add it', () => {
-  const sql = read('supabase/migrations/20261117150000_kal_595_project_walkthroughs.sql');
+  const sql = read('supabase/migrations/20261117161000_kal_595_project_walkthroughs.sql');
   assert.match(sql, /create table if not exists public\.project_walkthroughs/);
   assert.match(sql, /using \(public\.user_can_access_project\(project_id, 'viewer'\)\)/);
   assert.match(sql, /public\.user_can_access_project\(project_id, 'editor'\)\s+and exists \(\s+select 1 from walkthru\.walkthroughs w/);
