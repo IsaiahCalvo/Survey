@@ -1109,6 +1109,10 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, contentKey = null, di
   const [visible, setVisible] = useState(false);
   const [painted, setPainted] = useState(false);
   const visibleRef = useRef(false);
+  // Mirrors painted, set beside every setPainted, so a scroll event while the
+  // rails already show sets nothing (KAL-371: those no-op sets added renders
+  // to a fast scroll's chain, up to React's update-depth error).
+  const paintedRef = useRef(false);
   const paintedTimerRef = useRef(null);
   const [hoveredAxis, setHoveredAxis] = useState(null);
   const [measuredMetrics, setMeasuredMetrics] = useState({});
@@ -1156,9 +1160,13 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, contentKey = null, di
     // UX: layout can emit scroll events while a fitting page settles; never reveal stale rails.
     const scroller = scrollerRef.current;
     if (!scroller || Math.max(scroller.scrollWidth - scroller.clientWidth, scroller.scrollHeight - scroller.clientHeight) <= 0) return;
+    const wasVisible = visibleRef.current;
     visibleRef.current = true;
-    setVisible(true);
-    setPainted(true);
+    if (!wasVisible) setVisible(true);
+    if (!paintedRef.current) {
+      paintedRef.current = true;
+      setPainted(true);
+    }
     if (paintedTimerRef.current) clearTimeout(paintedTimerRef.current);
     const finishPaint = () => {
       paintedTimerRef.current = null;
@@ -1169,6 +1177,7 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, contentKey = null, di
         paintedTimerRef.current = setTimeout(finishPaint, 16);
         return;
       }
+      paintedRef.current = false;
       setPainted(false);
     };
     paintedTimerRef.current = setTimeout(finishPaint, VIEWPORT_SCROLLBAR_HOLD_MS + VIEWPORT_SCROLLBAR_FADE_MS);
@@ -1382,6 +1391,7 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, contentKey = null, di
     if (event.target !== event.currentTarget || event.propertyName !== 'opacity' || visibleRef.current) return;
     if (paintedTimerRef.current) clearTimeout(paintedTimerRef.current);
     paintedTimerRef.current = null;
+    paintedRef.current = false;
     setPainted(false);
   };
 

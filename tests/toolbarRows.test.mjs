@@ -217,7 +217,7 @@ test('marks of several kinds picked together borrow no group: the tool bar shows
 });
 
 test('a popover opened from row 2 closes when the row goes away, and never flies to the corner', () => {
-  assert.match(appShell, /if \(isMobileViewer \|\| formatRowShown\) return;\s*setOpenAnnotationDropdown\(null\);\s*setShowFontColorPicker\(false\);/);
+  assert.match(appShell, /if \(isMobileViewer \|\| formatRowShown\) return;[\s\S]{0,400}?if \(openAnnotationDropdown !== null\) setOpenAnnotationDropdown\(null\);\s*if \(showFontColorPicker\) setShowFontColorPicker\(false\);/);
   const anchored = readFileSync(new URL('../src/components/AnchoredPopover.jsx', import.meta.url), 'utf8');
   assert.match(anchored, /anchor\.getClientRects\(\)\.length === 0/);
 });

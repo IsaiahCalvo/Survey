@@ -583,6 +583,15 @@ import { dimensionCaptionPlace, dimensionLeader, dimensionLineGeometry, isDimens
 import { measureSegmentCaptions, polylengthTotalPlace } from '../utils/measure/segmentCaptions.js';
 import { useTooltip } from './Tooltip';
 
+// Pages whose layer told this viewer (by its onSelectionChange) about a pick
+// that it has not cleared yet. A layer with nothing picked only reports "no
+// pick" for a page listed here: each layer that mounted while you scrolled
+// used to report it, one PDFViewer render each, and a fast scroll through a
+// big set chained enough of them for React's update-depth error (KAL-371).
+// Kept per viewer, not per layer, so a layer that remounts with nothing picked
+// still clears the pick an earlier copy of it reported.
+const pagesWithReportedPick = new WeakMap();
+
 // Measure label (Length / Area): a white pill at a fixed SCREEN size (12 px
 // text). Sizes are page units multiplied by inverseScale, so the viewBox still
 // owns zoom; the pill sits off the line's midpoint, never under its handles.
@@ -1905,7 +1914,7 @@ const SVGAnnotationLayerBody = memo(({
 
   useEffect(() => {
     if (activeTool !== 'text-select') {
-      setTextSelectManipulationArmed(false);
+      if (textSelectManipulationArmed) setTextSelectManipulationArmed(false);
       return undefined;
     }
     const updatePointerOwnership = (event) => {
@@ -1959,10 +1968,19 @@ const SVGAnnotationLayerBody = memo(({
 
   const textSelectOwnsPointer = activeTool === 'text-select'
     && (textSelectManipulationArmed || interactionState !== 'idle');
+  // Report only changes: every page layer that mounts or unmounts while you
+  // scroll used to tell PDFViewer "false" (and History "nothing picked"), one
+  // PDFViewer render each, and a fast scroll through a 120-page set chained
+  // more than 50 of them: React's update-depth error took the viewer down.
+  const reportedTextSelectOwnsRef = useRef(false);
   useEffect(() => {
+    if (reportedTextSelectOwnsRef.current === textSelectOwnsPointer) return;
+    reportedTextSelectOwnsRef.current = textSelectOwnsPointer;
     onTextSelectManipulationChange?.(pageNumber, textSelectOwnsPointer);
   }, [onTextSelectManipulationChange, pageNumber, textSelectOwnsPointer]);
   useEffect(() => () => {
+    if (!reportedTextSelectOwnsRef.current) return;
+    reportedTextSelectOwnsRef.current = false;
     onTextSelectManipulationChange?.(pageNumber, false);
   }, [onTextSelectManipulationChange, pageNumber]);
 
@@ -3875,11 +3893,24 @@ const SVGAnnotationLayerBody = memo(({
     const idsFor = (indices) => indices.map((index) => (
       getAnnotationRenderIdentity(annotations?.objects?.[index]).annotationId || ''
     ));
+    let reportedPages = pagesWithReportedPick.get(onSelectionChange);
+    if (!reportedPages) {
+      reportedPages = new Set();
+      pagesWithReportedPick.set(onSelectionChange, reportedPages);
+    }
     if (selectedAnnotationIndex == null) {
       // Review round 9: once the pick is dropped the mark is no longer "just
       // drawn" - picking it again later is an ordinary pick, whose bar edits
       // must not rewrite the tool's saved settings.
-      if (annotationIndices.length === 0) justDrawnRef.current = null;
+      if (annotationIndices.length === 0) {
+        justDrawnRef.current = null;
+        // Nothing picked here and nothing told before: skip the no-op (see
+        // pagesWithReportedPick).
+        if (!reportedPages.has(pageNumber)) return;
+        reportedPages.delete(pageNumber);
+      } else {
+        reportedPages.add(pageNumber);
+      }
       onSelectionChange({
         pageNumber,
         annotationIndex: null,
@@ -3892,6 +3923,7 @@ const SVGAnnotationLayerBody = memo(({
     const annotation = annotations?.objects?.[selectedAnnotationIndex] || null;
     const annotationIds = idsFor([selectedAnnotationIndex]);
     const drawn = justDrawnRef.current;
+    reportedPages.add(pageNumber);
     onSelectionChange({
       pageNumber,
       annotationIndex: selectedAnnotationIndex,
@@ -3934,10 +3966,18 @@ const SVGAnnotationLayerBody = memo(({
   const historyPickKey = historyPickItems.map((item) => `${item.id}:${item.typeKey}`).join('|');
   const historyPickItemsRef = useRef(historyPickItems);
   historyPickItemsRef.current = historyPickItems;
+  // Like the text-select report above: an empty pick is only sent to clear one
+  // this layer sent, not on every mount and unmount while scrolling.
+  const broadcastPickRef = useRef(false);
   useEffect(() => {
-    broadcastPageSelection(typeof window === 'undefined' ? null : window, pageNumber, historyPickItemsRef.current, documentId);
+    const items = historyPickItemsRef.current || [];
+    if (items.length === 0 && !broadcastPickRef.current) return;
+    broadcastPickRef.current = items.length > 0;
+    broadcastPageSelection(typeof window === 'undefined' ? null : window, pageNumber, items, documentId);
   }, [historyPickKey, pageNumber, documentId]);
   useEffect(() => () => {
+    if (!broadcastPickRef.current) return;
+    broadcastPickRef.current = false;
     broadcastPageSelection(typeof window === 'undefined' ? null : window, pageNumber, [], documentId);
   }, [pageNumber, documentId]);
   // UX 2026-04-20: counter pill reads data.pointerAngle + 90 so 0°
@@ -5040,8 +5080,14 @@ const SVGAnnotationLayerBody = memo(({
     }
   }, [selectedSurveyMarkerIds, surveyMarkerElements]);
 
+  // The marker pick starts empty, so a layer that mounts on another tool has
+  // nothing to drop (a mount-time no-op set still re-rendered it, see
+  // pagesWithReportedPick).
+  const surveyMarkerResetSeenRef = useRef(false);
   useEffect(() => {
-    if (isSelectTool) return;
+    const firstRun = !surveyMarkerResetSeenRef.current;
+    surveyMarkerResetSeenRef.current = true;
+    if (isSelectTool || firstRun) return;
     setSelectedSurveyMarkerId(null);
     setHoveredSurveyMarkerId(null);
     setSurveyMarkerPreviewBounds(null);

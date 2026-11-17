@@ -90,6 +90,12 @@ export function installCrashReporter(supabase, {
   now = () => Date.now(), storage, win, userAgent, schedule = (fn, ms) => setTimeout(fn, ms),
 } = {}) {
   if (!supabase?.rpc) return () => {};
+  // Test robots (Playwright, other WebDriver runs) close pages mid-use on
+  // purpose, which reads as "the page closed by itself" on their next load:
+  // most of the live table's crash reports in Nov 2026 were those runs. They
+  // keep their own logs, so their reports stay on the device.
+  const nav = (win || (typeof window !== 'undefined' ? window : null))?.navigator;
+  if (nav?.webdriver === true) return () => {};
   let sent = 0;
   let stopped = false;
   const timers = [];

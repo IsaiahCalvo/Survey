@@ -9995,6 +9995,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const [oneDriveFileId, setOneDriveFileId] = useState(null);
   const [excelSessionId, setExcelSessionId] = useState(null);
   const [linkedExcelExists, setLinkedExcelExists] = useState(null); // null = not checked, true/false = result
+  const linkedExcelExistsRef = useRef(linkedExcelExists);
+  linkedExcelExistsRef.current = linkedExcelExists;
   const [useFallbackSync, setUseFallbackSync] = useState(false); // true = use ETag-based polling (for personal accounts)
   const excelSessionRef = useRef({ sessionId: null, expiresAt: null });
   const liveSyncPollRef = useRef(null);
@@ -17411,7 +17413,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       const fileId = selectedTemplate?.oneDriveFileId;
 
       if (!excelPath) {
-        setLinkedExcelExists(null);
+        // This effect re-runs while you scroll (its perf-window deps change);
+        // a no-op set here was one more viewer render each time (KAL-371).
+        if (linkedExcelExistsRef.current !== null) setLinkedExcelExists(null);
         lastCheckedExcelRef.current = { path: null, fileId: null, cleared: false };
         return;
       }

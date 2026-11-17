@@ -1698,13 +1698,21 @@ const SearchTextPanel = ({
   }, [searchResults, setCurrentMatchIndex, onNavigateToMatch, onNavigateToPage]);
 
   // Go to next match
+  // Enter pressed before the first hit came back (type, then Enter at once)
+  // goes to the first hit when it lands, as the PDF.js test page's Find does
+  // (KAL-371 side-by-side). Typing again drops it.
+  const pendingFirstMatchRef = useRef(false);
+  useEffect(() => { pendingFirstMatchRef.current = false; }, [internalSearchQuery]);
   const goToNextMatch = useCallback(() => {
-    if (searchResults.length === 0) return;
+    if (searchResults.length === 0) {
+      if ((internalSearchQuery || '').trim()) pendingFirstMatchRef.current = true;
+      return;
+    }
     const nextIndex = currentMatchIndex < searchResults.length - 1
       ? currentMatchIndex + 1
       : 0;
     navigateToMatch(nextIndex);
-  }, [searchResults, currentMatchIndex, navigateToMatch]);
+  }, [searchResults, currentMatchIndex, navigateToMatch, internalSearchQuery]);
 
   // Go to previous match
   const goToPrevMatch = useCallback(() => {
@@ -1747,6 +1755,12 @@ const SearchTextPanel = ({
   // result-set change, so we reach them through refs (written during render)
   // and bind the document listener ONCE instead of tearing it down and
   // rebinding it on every keystroke of a live search.
+  useEffect(() => {
+    if (!pendingFirstMatchRef.current || searchResults.length === 0) return;
+    pendingFirstMatchRef.current = false;
+    navigateToMatch(0);
+  }, [searchResults, navigateToMatch]);
+
   const goToNextMatchRef = useRef(goToNextMatch);
   goToNextMatchRef.current = goToNextMatch;
   const goToPrevMatchRef = useRef(goToPrevMatch);

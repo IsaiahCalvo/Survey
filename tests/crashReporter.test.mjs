@@ -168,3 +168,24 @@ test('crash reporter: database rules', { skip: isRoot || !tool('initdb') || !too
     if (existsSync(cluster)) rmSync(cluster, { recursive: true, force: true });
   }
 });
+
+test('crash reporter: a test robot (navigator.webdriver) sends nothing', async () => {
+  __resetCrashLogForTests();
+  const now = Date.parse('2026-11-17T12:00:00Z');
+  const storage = memoryStorage();
+  recordCrash({ kind: 'closed', message: 'The page closed by itself while in use' }, { storage, now: now - 60000 });
+  const calls = [];
+  const supabase = { rpc: async (name, args) => { calls.push(args); return { data: true, error: null }; } };
+  const stop = installCrashReporter(supabase, {
+    now: () => now, storage, schedule: (fn) => { fn(); return 0; }, win: { navigator: { webdriver: true } },
+  });
+  await tick();
+  assert.equal(calls.length, 0);
+  stop();
+  // A person's browser still sends it.
+  installCrashReporter(supabase, {
+    now: () => now, storage, schedule: (fn) => { fn(); return 0; }, win: { navigator: { webdriver: false } },
+  })();
+  await tick();
+  assert.equal(calls.length, 1);
+});
