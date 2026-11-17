@@ -168,7 +168,8 @@ test('invites are emailed, the email opens Settings, Company, and Subscription n
   // Subscription: Enterprise through the company, own plan left alone.
   await page.getByRole('tab', { name: 'Subscription' }).click();
   await expect(page.getByTestId('company-plan-line')).toHaveText(/^Enterprise through Mail Co\. Your company pays for your seat\./);
-  await expect(page.getByRole('button', { name: 'Through Mail Co' })).toBeVisible();
+  // A mark, not a button, since it can't be pressed (KAL-652 batch 6).
+  await expect(page.locator('.account-plan-mark', { hasText: 'Through Mail Co' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Included with your company' })).toBeVisible();
 });
 

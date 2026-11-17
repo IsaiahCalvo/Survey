@@ -23,6 +23,11 @@ export const SEARCH_SHORTCUT_LABEL = IS_MAC ? '⌘K' : 'Ctrl K';
 const HUB_BUILD_STAMP = (
   typeof __BUILD_STAMP__ !== 'undefined' && __BUILD_STAMP__
 ) || 'unknown';
+// The same version Help & support prints (package.json via vite). The menu
+// used to say a fixed "Survey App version 1.0" while Help said 0.1.48.
+const HUB_APP_VERSION = (
+  typeof __APP_VERSION__ !== 'undefined' && __APP_VERSION__ && __APP_VERSION__ !== 'unknown' && __APP_VERSION__
+) || '';
 
 /* Friendly per-tier label used in the bottom-left profile chip. Maps the
    raw plan/tier string from AuthContext to the short capitalised form. The
@@ -407,7 +412,7 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, showShortcuts = 
               )}
             </div>
             <div className="profile-menu-build-footer">
-              <span>Survey App version 1.0</span>
+              <span>{HUB_APP_VERSION ? `Survey ${HUB_APP_VERSION}` : 'Survey'}</span>
               <span>Build {HUB_BUILD_STAMP}</span>
             </div>
           </div>

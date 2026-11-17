@@ -874,6 +874,18 @@
   min-height: 34px;
 }
 
+/* "Current plan" is a mark, not a control. As a disabled button the shared
+   disabled rule faded its words to a ghost inside a bright coral frame. */
+.account-plan-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 34px;
+  user-select: none;
+}
+
 .account-btn-purple {
   background: var(--accent);
   color: var(--accent-text);
