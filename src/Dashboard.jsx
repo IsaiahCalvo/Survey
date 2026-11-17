@@ -2036,6 +2036,17 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         ? (documentId) => linkDocumentTemplates({ client: supabase, documentId, userId: user.id, templateRowIds: [templateRowId] })
         : null,
     });
+    // KAL-595: the Project keeps the walk, so its Walkthru tab can show it.
+    // The markers are already in; a failed note here only hides the tab.
+    try {
+      const { recordProjectWalk, announceProjectWalks } = await import('./suite/projectWalks.js');
+      if (walk?.walk?.id) {
+        await recordProjectWalk(supabase, project.id, walk.walk.id);
+        announceProjectWalks(project.id);
+      }
+    } catch (error) {
+      console.warn('[suite] could not record the walk on the Project', error);
+    }
     refetchDocuments?.();
     return result;
   };
@@ -3252,6 +3263,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         onOpenFromDrive={canOpenFromDrive ? () => { setDriveTargetProject(null); setDrivePickerOpen(true); } : null}
         onAddFromDrive={canOpenFromDrive ? (project) => { setDriveTargetProject(project || null); setDrivePickerOpen(true); } : null}
         onAddFromWalkthru={suiteOn && user ? (project) => setWalkthruTargetProject(project || null) : null}
+        walkthruTabOn={suiteOn && Boolean(user)}
         onOpenFromGoogleDrive={canOpenFromGoogleDrive ? openFromGoogleDrive : null}
         onDropFiles={handleDroppedFiles}
         uploadBusy={activeUploads > 0 || uploadInFlight}
