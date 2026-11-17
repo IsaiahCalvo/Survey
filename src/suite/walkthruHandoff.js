@@ -25,7 +25,7 @@
 // Dependency-free apart from two pure Survey helpers, so the Node tests run it
 // as it is.
 
-import { buildDotMarkerBounds } from '../survey/markerShapes.js';
+import { buildDotMarkerBounds, buildPolygonMarkerBounds } from '../survey/markerShapes.js';
 import { resolveNextSurveyEntity } from '../survey/nextSurveyEntity.js';
 
 const nonEmpty = (value) => typeof value === 'string' && value.trim() !== '';
@@ -122,6 +122,9 @@ export function matchCategories(nodeTypes, template, moduleId) {
  * @param {string|null} [input.entityId]  the Entity new markers start with,
  *   when it is still in the template (else the template's first)
  * @param {string} [input.now]  ISO time stamp
+ * @param {(node:object) => object|null} [input.outlineFor]  a tag outline
+ *   (polygon, page units) for a node, from a job file (jobOutlines.js); a
+ *   node without one lands as a dot
  * @returns {{
  *   markers: Record<string,object>,
  *   added: number, updated: number, defaultNodes: number,
@@ -133,7 +136,7 @@ export function buildWalkMarkers(input) {
   const {
     nodes = [], nodeTypes = [], template, moduleId, categoryFor = {},
     pageSize, existingMarkers = {}, newId, entityId = null,
-    now = new Date().toISOString(),
+    now = new Date().toISOString(), outlineFor = null,
   } = input || {};
   const typeById = new Map((nodeTypes || []).map((t) => [t.id, t]));
   const categoryById = new Map(categoriesOf(moduleOf(template, moduleId)).map((c) => [c.id, c]));
@@ -175,7 +178,8 @@ export function buildWalkMarkers(input) {
     const pageNumber = Number.isInteger(node.page_index) ? node.page_index + 1 : null;
     const page = pageNumber ? pageSize?.(pageNumber) : null;
     const point = page ? pageToPoint(node.x_pct, node.y_pct, page) : null;
-    const bounds = point ? buildDotMarkerBounds(point) : null;
+    const outline = point && outlineFor ? outlineFor(node) : null;
+    const bounds = point ? ((outline && buildPolygonMarkerBounds(outline)) || buildDotMarkerBounds(point)) : null;
 
     const fromWalk = {
       name: clean(node.title) || category.name || '',
@@ -183,6 +187,7 @@ export function buildWalkMarkers(input) {
       moduleId,
       suiteId,
       libraryEntryId: clean(category.libraryEntryId) || clean(type?.library_entry_id) || null,
+      ...(clean(node.library_type_entry_id) ? { libraryTypeEntryId: clean(node.library_type_entry_id) } : {}),
       building: clean(node.building),
       wing: clean(node.wing),
       floor: clean(node.floor_label),
