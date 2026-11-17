@@ -31,3 +31,9 @@ test('template list rows hover and press when not chosen', () => {
   assert.match(css, /\.ed-scope \.tpl-list-row:not\(\.is-selected\):hover \{ background: var\(--hover\) !important; \}/);
   assert.match(css, /\.ed-scope \.tpl-list-row:active:not\(:has\(button:active, input:active, \[data-drag-rearrange-handle\]:active\)\) \{\s*background: var\(--pressed\) !important;/);
 });
+
+test('project document rows hover and press', () => {
+  const hub = readFileSync(new URL('../src/home/hub.css', import.meta.url), 'utf8');
+  assert.match(hub, /\.projects-file-grid\[data-document-id\]:not\(:has\(\[aria-checked='true'\]\)\):hover \{ background: var\(--hover\) !important; \}/);
+  assert.match(hub, /\.projects-file-grid\[data-document-id\]:active:not\(:has\(button:active, \[role='checkbox'\]:active, \[data-drag-rearrange-handle\]:active\)\) \{\s*background: var\(--pressed\) !important;/);
+});
