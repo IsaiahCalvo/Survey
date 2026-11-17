@@ -37,6 +37,10 @@ create table if not exists walkthru.floor_drive_links (
   linked_by uuid references auth.users(id) on delete set null,
   last_saved_at timestamptz,
   last_saved_by uuid references auth.users(id) on delete set null,
+  -- KAL-754: save back on its own this many minutes after a change, as
+  -- Survey does; sync_off stops that (a press still saves back).
+  sync_minutes integer not null default 5 check (sync_minutes between 1 and 1440),
+  sync_off boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
