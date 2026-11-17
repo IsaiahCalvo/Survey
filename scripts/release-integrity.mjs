@@ -219,9 +219,11 @@ export function assertStaticReleaseContract(root = process.cwd()) {
   assert.ok(ciWorkflowName, 'ci.yml must declare a workflow name');
   const quotedCiName = ciWorkflowName.replace(/^['"]|['"]$/g, '');
   const escapedCiName = quotedCiName.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // 2026-11-17 — the deploy also listens to a few scheduled checks (quiet
+  // nights), so the CI name must be one entry of the list, not the only one.
   assert.match(
     deployWorkflow,
-    new RegExp(`workflows:\\s*\\[\\s*['"]?${escapedCiName}['"]?\\s*\\]`),
+    new RegExp(`workflows:\\s*\\[[^\\]\\n]*?['"]${escapedCiName}['"][^\\]\\n]*\\]`),
     `deploy-production.yml must trigger on the CI workflow named "${quotedCiName}" — `
       + 'workflow_run matches the display name, so these two must be renamed together',
   );
