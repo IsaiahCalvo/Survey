@@ -6155,7 +6155,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         if (next != null && next !== currentPageRef.current) goToPage(next, { landing: down ? 'top' : 'bottom' });
         return;
       }
-      const to = Math.min(maxTop, Math.max(0, from + (down ? screen : -screen)));
+      const to = Math.min(maxTop, Math.max(0, from + (event.key === 'PageDown' ? screen : -screen)));
       glideScrollTopTo(to, { holdsPage: false });
     };
     window.addEventListener('keydown', onKeyDown);
