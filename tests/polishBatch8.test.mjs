@@ -1,0 +1,21 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+
+const css = readFileSync(new URL('../src/home/TemplatesEditor.css', import.meta.url), 'utf8');
+
+test('template category and entity rows hover and press', () => {
+  assert.match(css, /\.tpl-entity-row:not\(\.is-selected\):hover \{ background: var\(--hover\); \}/);
+  assert.match(css, /:is\(\.tpl-cat-row, \.tpl-entity-row\):active:not\(:has\(input:active, button:active, \[data-drag-rearrange-handle\]:active\)\) \{\s*background: var\(--pressed\);/);
+});
+
+test('in the one look the template cards rest on the panel, so hover and press show', () => {
+  assert.match(css, /html\[data-look="suite"\] \.ed-scope \.card-line \{ background: var\(--surface-2\); \}/);
+});
+
+test('desktop checklist line kind is the app drop-down, phones keep the wheel', () => {
+  const src = readFileSync(new URL('../src/home/AnswerSetEditor.jsx', import.meta.url), 'utf8');
+  const kind = src.slice(src.indexOf('export function ItemKindPicker'));
+  assert.match(kind, /\{phone \? \(\s*<select\s+aria-label=\{`How "\$\{name\}" is answered`\}/);
+  assert.match(kind, /<ValueSelect\s+look="pill"\s+width="auto"\s+label=\{`How "\$\{name\}" is answered`\}/);
+});

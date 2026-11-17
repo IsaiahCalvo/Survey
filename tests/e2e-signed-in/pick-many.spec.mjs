@@ -116,7 +116,9 @@ test('the template editor edits a Pick many line\'s options', async ({ page }) =
   const collapse = visible(page.getByRole('button', { name: `Collapse ${E2E_SURVEY.categoryName}` }));
   await expect(expand.or(collapse).first()).toBeVisible({ timeout: 30_000 });
   if (await expand.isVisible()) await expand.click();
-  await expect(visible(page.getByRole('combobox', { name: `How "${cable}" is answered` }))).toHaveValue('many', { timeout: 30_000 });
+  // The kind is the app's drop-down pill on desktop; data-value holds the pick.
+  const how = visible(page.getByRole('button', { name: `How "${cable}" is answered`, exact: true }));
+  await expect(how).toHaveAttribute('data-value', 'many', { timeout: 30_000 });
   const options = visible(page.getByRole('button', { name: `Options for "${cable}"` }));
   await expect(options).toHaveText('Options (3)');
   await options.click();
@@ -128,9 +130,10 @@ test('the template editor edits a Pick many line\'s options', async ({ page }) =
 
   // Five kinds only (owner 2026-11-12): no ready line types, Score, Count,
   // Photo or Signature for a new line.
-  const how = visible(page.getByRole('combobox', { name: `How "${cable}" is answered` }));
-  await expect(how.locator('option')).toHaveText(['Pick one', 'Text', 'Number', 'Date', 'Pick many']);
-  await how.selectOption({ label: 'Date' });
-  await expect(how).toHaveValue('date');
+  await how.click();
+  const kinds = page.getByRole('listbox', { name: `How "${cable}" is answered` });
+  await expect(kinds.getByRole('option')).toHaveText(['Pick one', 'Text', 'Number', 'Date', 'Pick many']);
+  await kinds.getByRole('option', { name: 'Date', exact: true }).click();
+  await expect(how).toHaveAttribute('data-value', 'date');
   await expect(visible(page.getByRole('checkbox', { name: 'Issue once past' }))).not.toBeChecked();
 });
