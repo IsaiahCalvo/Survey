@@ -10,8 +10,9 @@
    crisp image looks right at any display size.
 
    variant="preview" — fills its container's width at a fixed height; the page
-                       is contained (letterboxed) and centred inside. The
-                       viewport never changes size between documents.
+                       is drawn at its true shape and centred inside, with
+                       no backdrop round it. The viewport never changes size
+                       between documents.
    variant="row"     — fixed height, width set from the page's TRUE aspect
                        ratio, so the small thumbnail has the real page shape
                        (no backdrop margin). `maxWidth` caps a wide sheet.
@@ -231,6 +232,10 @@ export default function PdfPageThumb({
   variant = 'preview',
   height = variant === 'row' ? 30 : 460,
   fill = false,
+  // Preview only: the box takes the page's own shape (full width, height
+  // from the page) and may shrink inside a flex column. The side pane uses
+  // it, so no gap opens above or below the page.
+  fit = false,
   // Row only: the widest the page may draw. A wide sheet that would run past
   // it shrinks to fit, keeping its true shape.
   maxWidth = null,
@@ -334,7 +339,9 @@ export default function PdfPageThumb({
   const rowWidth = maxWidth ? Math.min(maxWidth, height * aspect) : height * aspect;
   const box = isRow
     ? { width: Math.round(rowWidth), height: Math.round(rowWidth / aspect), borderRadius: 2, flex: 'none' }
-    : { width: '100%', height: fill ? '100%' : height, borderRadius: 6 };
+    : fit
+      ? { width: '100%', aspectRatio: String(aspect), flex: '0 1 auto', minHeight: 0, borderRadius: 2 }
+      : { width: '100%', height: fill ? '100%' : height, borderRadius: 6 };
 
   if (failed) {
     // Keep the observed element mounted in every state. Replacing it with
@@ -364,18 +371,30 @@ export default function PdfPageThumb({
     );
   }
 
+  if (!isRow) {
+    // Preview: the page itself is the picture, at its true shape, centred in
+    // the pane. No backdrop round it: the old slate box showed as bands above
+    // and below every page ("thumbnails without margins", owner, Nov 16).
+    return (
+      <div ref={hostRef} style={{ ...box, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 0 }}>
+        <img
+          src={data.url}
+          alt=""
+          data-preview-page=""
+          style={{ maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto', display: 'block', boxSizing: 'border-box', border: '1px solid var(--ink-500)', borderRadius: 2 }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div ref={hostRef} style={{
       ...box,
-      // Dark slate backdrop — the page (white paper) is letterboxed against
-      // it; the surrounding margin reads as part of the app's dark aesthetic,
-      // not a white block.
       background: 'var(--ink-800)',
       border: '1px solid var(--ink-500)',
       boxSizing: 'border-box',
       overflow: 'hidden',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      boxShadow: isRow ? 'none' : '0 2px 12px rgba(0,0,0,0.35)',
     }}>
       <img
         src={data.url}
