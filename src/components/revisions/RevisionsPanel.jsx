@@ -43,6 +43,7 @@ import { UndoToast } from '../collab/UndoToast.jsx';
 import { useUndoToast } from '../../hooks/useUndoToast.js';
 import { supabase } from '../../supabaseClient';
 import Icon from '../../Icons';
+import { SECTION_ICON_SIZES } from '../SectionIconButton.jsx';
 import {
   createRevision,
   listRevisions,
@@ -1625,7 +1626,7 @@ export default function RevisionsPanel({
               }
             }}
           >
-            <span><Icon name={searchOpen && !headActionsHost ? 'close' : 'search'} size={mobileMode ? 20 : 17} /></span>
+            <span><Icon name={searchOpen && !headActionsHost ? 'close' : 'search'} size={mobileMode ? 20 : SECTION_ICON_SIZES.desktop.glyph} /></span>
           </button>
           {!embedded && (
             <button

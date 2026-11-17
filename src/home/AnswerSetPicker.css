@@ -49,8 +49,15 @@
   text-align: left;
   cursor: pointer;
 }
-.answer-set-option:hover { background: var(--surface-3); }
+/* Hover is the app's one hover fill and leaves the chosen row alone
+   (One look for every control). The grey answer chip paints --border,
+   which is the same grey as the chosen fill, so on that row it takes the
+   panel fill or "N/A" lost its chip. */
+@media (hover: hover) {
+  .answer-set-option:not(.is-current):hover { background: var(--hover); }
+}
 .answer-set-option.is-current { background: var(--surface-3); }
+.answer-set-option:is(.is-current, :active) .answer-chip:not(.is-good):not(.is-bad):not(.is-more) { background: var(--surface-2); }
 .answer-set-option .answer-chips { flex: 1; }
 .answer-set-option__check {
   flex: none;
