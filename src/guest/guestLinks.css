@@ -43,7 +43,9 @@
   font-size: var(--font-size-md);
   color: var(--text-1);
   background: var(--panel-well);
-  border: 1px solid var(--border);
+  /* Fields take the edge colour: with the faint divider colour an empty box
+     all but vanished in the light look. */
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
 }
 
@@ -62,7 +64,7 @@
   font-size: var(--font-size-md);
   color: var(--text-1);
   background: var(--panel-well);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
 }
 
@@ -157,7 +159,7 @@
   font-size: var(--font-size-lg);
   color: var(--text-1);
   background: var(--panel-well);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
 }
 

@@ -11,3 +11,11 @@ test('Library panel: the Personal / Project / Stamps switch spans the panel, lik
   assert.doesNotMatch(rule('.mark-library__tabs'), /max-width/);
   assert.doesNotMatch(rule('.mark-library__tabs--3'), /max-width/);
 });
+
+test('Guest link fields (password, link, guest name) carry the edge colour, not the faint divider', () => {
+  const css = read('src/guest/guestLinks.css');
+  for (const sel of ['.guest-links__password', '.guest-links__url', '.guest-join__field input[type="text"]']) {
+    const body = new RegExp(`${sel.replace(/[.\-[\]"=]/g, '\\$&')} \\{([^}]*)\\}`).exec(css)?.[1] || '';
+    assert.match(body, /border: 1px solid var\(--border-strong\);/, sel);
+  }
+});
