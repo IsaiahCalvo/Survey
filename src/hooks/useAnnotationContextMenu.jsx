@@ -51,6 +51,7 @@ import {
   DESKTOP_RIGHT_RAIL_WIDTH,
   fitMenuInBand,
   getPageViewportBounds,
+  placeAnchoredMenu,
 } from '../utils/floatingUiGeometry.js';
 // RULED 2026-09-28 owner: open editing + lock. Cut / Delete take ANY mark
 // (own or someone else's) with no confirmation; a user-locked mark greys them
@@ -67,7 +68,7 @@ import { getAnnotationGroupId, getCalloutGroupId } from '../utils/annotationGrou
 import { requestArrangeSelection } from '../utils/alignMarks.js';
 import { contextMenuInputOf, isTouchMenuInput } from '../utils/touchLongPress.js';
 import { PageMenuList } from '../sidebar/PageActionsMenu.jsx';
-import { availableActions, buildCanvasPageItems, buildPageMenuItems, runPageMenuAction } from '../sidebar/pageMenuItems.js';
+import { availableActions, buildCanvasPageItems, buildPageMenuItems, nestPageMenuItems, runPageMenuAction } from '../sidebar/pageMenuItems.js';
 import { keyboardControlProps } from '../utils/keyboardActivation.js';
 import { menuKeyHint } from '../utils/menuKeyHints.js';
 import { shortcutBinding } from '../utils/customKeyboardShortcuts.js';
@@ -213,18 +214,20 @@ export function useAnnotationContextMenu({ getPageObjects = null } = {}) {
 // Design review 2026-10-27: the rows under the icon row carry an icon too,
 // like every other action menu (components/MenuRows.jsx picks by label).
 const MARK_ROW_ICONS = { group: 'selectGroup', ungroup: 'selectGroup', arrange: 'layers', moveToLayer: 'layers', align: 'alignLeft', lock: 'lock', unlock: 'lock', saveToLibrary: 'library', copyFormat: 'brush', pasteFormat: 'paintBucket', applyToPages: 'pages', editNote: 'comment', flip: 'flipHorizontal', editSubject: 'edit', dockSelectionBar: 'alignBottom', floatSelectionBar: 'alignBottom' };
-const markRowIcon = (it) => MARK_ROW_ICONS[it.key] || menuIconFor(it.label);
+const markRowIcon = (it) => it.icon || MARK_ROW_ICONS[it.key] || menuIconFor(it.label);
+// A row that is only a line or a title (the page menu has both).
+const isPlainRow = (it) => Boolean(it?.separator || it?.header);
 const MENU_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter'];
 
 const MENU_IS_MAC = typeof navigator !== 'undefined'
   && /(Mac|iPhone|iPod|iPad)/i.test(`${navigator.platform || ''} ${navigator.userAgent || ''}`);
 
-function MarkMenuBody({ layout, touchRows }) {
+function MarkMenuBody({ layout, touchRows, keyHints = true }) {
   const tip = useTooltip();
   // Nightly 'menu-keys': each item's key on its row and in its hint. Not on
   // a finger- or pen-opened menu, which has no keyboard to hand.
   const [keysOn] = useState(() => isFeatureOn('menu-keys'));
-  const keyOf = (key) => (keysOn && !touchRows ? menuKeyHint(key, { isMac: MENU_IS_MAC, binding: shortcutBinding }) : null);
+  const keyOf = (key) => (keysOn && keyHints && !touchRows ? menuKeyHint(key, { isMac: MENU_IS_MAC, binding: shortcutBinding }) : null);
   const keyCap = (key) => {
     const hint = keyOf(key);
     return hint ? <span className="annotation-menu-key" aria-hidden="true">{hint}</span> : null;
@@ -271,12 +274,19 @@ function MarkMenuBody({ layout, touchRows }) {
       boundRight: window.innerWidth - (touchRows ? 8 : DESKTOP_RIGHT_RAIL_WIDTH + 8),
     });
     sub.dataset.side = side;
-    sub.style.left = side === 'right' ? 'calc(100% + 2px)' : 'auto';
-    sub.style.right = side === 'left' ? 'calc(100% + 2px)' : 'auto';
-    // Line the first submenu row up with the Arrange row (1px border + 4px pad).
-    const wantTop = rr.top - pr.top - 5;
-    const maxTop = window.innerHeight - 8 - sr.height - pr.top;
-    sub.style.top = `${Math.max(-pr.top + 8, Math.min(wantTop, maxTop))}px`;
+    // KAL-793: fixed to the window, not hung off the menu, so a menu that
+    // scrolls (a short window) never clips it. Taller than the window, it
+    // scrolls too.
+    const room = Math.max(0, window.innerHeight - 16);
+    const subHeight = Math.min(sr.height, room);
+    sub.style.position = 'fixed';
+    sub.style.right = 'auto';
+    sub.style.maxHeight = sr.height > room ? `${room}px` : '';
+    sub.style.overflowY = sr.height > room ? 'auto' : '';
+    sub.style.left = `${Math.round(side === 'right' ? pr.right + 2 : pr.left - 2 - sr.width)}px`;
+    // Line the first submenu row up with its row (1px border + 4px pad).
+    const wantTop = rr.top - 5;
+    sub.style.top = `${Math.round(Math.max(8, Math.min(wantTop, window.innerHeight - 8 - subHeight)))}px`;
     if (focusSubmenuOnOpenRef.current) {
       focusSubmenuOnOpenRef.current = false;
       focusEl(sub.querySelector('[data-submenu-key]:not([aria-disabled="true"])'));
@@ -338,7 +348,7 @@ function MarkMenuBody({ layout, touchRows }) {
       }
       const stops = [
         layout.quick.filter((it) => !it.disabled).map((it) => it.key),
-        ...layout.rows.filter((it) => !it.disabled).map((it) => [it.key]),
+        ...layout.rows.filter((it) => !it.disabled && !isPlainRow(it)).map((it) => [it.key]),
       ];
       let current = null;
       if (activeKey) {
@@ -365,6 +375,7 @@ function MarkMenuBody({ layout, touchRows }) {
   return (
     <div ref={rootRef} className="annotation-menu-body">
       <MenuGlide />
+      {layout.quick.length > 0 && (
       <div role="group" aria-label="Edit" className="annotation-menu-quick">
         {layout.quick.map((it) => {
           const hint = tipFor(it.label, it.key);
@@ -387,8 +398,13 @@ function MarkMenuBody({ layout, touchRows }) {
           );
         })}
       </div>
-      {layout.rows.length > 0 && <div role="separator" className="annotation-menu-separator" />}
-      {layout.rows.map((it) => (it.submenu ? (
+      )}
+      {layout.quick.length > 0 && layout.rows.length > 0 && <div role="separator" className="annotation-menu-separator" />}
+      {layout.rows.map((it) => (it.separator ? (
+        <div key={it.key} role="separator" className="annotation-menu-separator" />
+      ) : it.header ? (
+        <div key={it.key} className="annotation-menu-header">{it.label}</div>
+      ) : it.submenu ? (
         <div key={it.key} className="annotation-menu-subhost">
           <div
             ref={(el) => { subRowRefs.current[it.key] = el; }}
@@ -418,9 +434,10 @@ function MarkMenuBody({ layout, touchRows }) {
                   tabIndex={-1}
                   data-submenu-key={sub.key}
                   aria-disabled={sub.disabled ? 'true' : undefined}
-                  className="annotation-menu-row"
+                  className={`annotation-menu-row${sub.danger ? ' is-danger' : ''}`}
                   onClick={sub.disabled ? undefined : sub.onClick}
                 >
+                  {sub.icon && <Icon name={sub.icon} size={14} color="currentColor" />}
                   {sub.label}
                   {keyCap(sub.key)}
                 </div>
@@ -435,7 +452,7 @@ function MarkMenuBody({ layout, touchRows }) {
           tabIndex={-1}
           data-menu-key={it.key}
           aria-disabled={it.disabled ? 'true' : undefined}
-          className="annotation-menu-row"
+          className={`annotation-menu-row${it.danger ? ' is-danger' : ''}`}
           onPointerEnter={onMouseHover(false)}
           onClick={it.disabled ? undefined : it.onClick}
         >
@@ -1476,8 +1493,9 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
             ? { canUp: ctx.pageNumber > 1, canDown: ctx.pageNumber < (pageMenu.pageCount || 0) }
             : null,
           available: availableActions(pageMenu.handlers),
-          // Phone: the same compact rows as the Pages tab's menu.
-          compact: Boolean(mobileMode),
+          // KAL-793: nested below (submenus on the desktop, "More"-style
+          // drill-downs on the phone), so the flat list here.
+          compact: false,
         }),
         ]),
       ]
@@ -1487,6 +1505,21 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
       if (key === 'pasteMarks') { doPasteAny(); return; }
       runPageMenuAction(key, ctx.pageNumber, pageMenu?.handlers);
     };
+    // KAL-793: on the desktop the page menu is the mark menu's body (rows,
+    // submenus, keys) with the rarer page operations folded into submenus.
+    const withPick = (it) => (isPlainRow(it) ? it : {
+      ...it,
+      ...(it.submenu ? { submenu: it.submenu.map(withPick) } : { onClick: () => pickPageMenuItem(it.key) }),
+    });
+    const pageLayout = pageMenuItems && !mobileMode
+      ? { quick: [], rows: nestPageMenuItems(pageMenuItems).map(withPick) }
+      : null;
+    // The phone opens a submenu in the same box, under a "< Page 3" row.
+    const phonePageItems = pageMenuItems && mobileMode
+      ? nestPageMenuItems(pageMenuItems).map((it) => (it.submenu
+        ? { ...it, more: it.submenu, backLabel: `Page ${ctx.pageNumber}` }
+        : it))
+      : null;
 
     // UX: mobile context-menu chrome (Phase D parity). Panel width tracks the
     // demo per menu type: object menus (annotation / group / callout) = 176px,
@@ -1506,74 +1539,96 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
       : ctx.kind === 'callout' ? 'Callout'
       : 'Page';
 
+    const placePanel = (el) => {
+      // UX: keep the menu inside both the visible viewport and the PDF
+      // page the user right-clicked. When the cursor is near the right
+      // or bottom edge of a page, flip the menu's anchor so its
+      // right/bottom corner aligns with the cursor — this keeps the
+      // pointer still resting on the clicked item/shape. The viewport
+      // also excludes the desktop right rail. If the page element can't
+      // be found, use that viewport alone. An 8px margin keeps the menu
+      // off each bound.
+      if (!el) return;
+      if (isMobileMenu) el.style.maxHeight = 'none';
+      const rect = el.getBoundingClientRect();
+
+      // Find the PDF page wrapper for ctx.pageNumber, then cut its rect
+      // to the visible viewport. The helper uses the viewport if no page
+      // can be found.
+      let pageRect = null;
+      if (ctx.pageNumber != null) {
+        const pageEl =
+          queryFrontTab(`[data-diag-svg-wrapper="${ctx.pageNumber}"]`)
+          || queryFrontTab(`[data-pal-root="${ctx.pageNumber}"]`);
+        if (pageEl) {
+          // Walk up to the pdfjs page div so the bounds match
+          // what the user visually sees as "the page".
+          const pageDiv = pageEl.closest('.survey-pdfjs-page-div') || pageEl;
+          const r = pageDiv.getBoundingClientRect();
+          if (r.width > 0 && r.height > 0) pageRect = r;
+        }
+      }
+      const bounds = getPageViewportBounds(
+        pageRect,
+        window.innerWidth,
+        window.innerHeight,
+        isMobileMenu ? 0 : DESKTOP_RIGHT_RAIL_WIDTH,
+      );
+      const position = clampFloatingMenuPosition({
+        x: ctx.x,
+        y: ctx.y,
+        width: rect.width,
+        height: rect.height,
+        bounds,
+      });
+
+      // KAL-793: the page decides where it opens, the window where it
+      // may go. A menu that does not fit inside the page (a small or
+      // half-scrolled page) is placed in the window instead, and one
+      // taller than the window scrolls inside.
+      if (!isMobileMenu) {
+        const windowBounds = getPageViewportBounds(null, window.innerWidth, window.innerHeight, DESKTOP_RIGHT_RAIL_WIDTH);
+        const fitsPage = rect.width + 16 <= bounds.width && rect.height + 16 <= bounds.height;
+        if (!fitsPage) {
+          const placed = placeAnchoredMenu({
+            anchor: { left: ctx.x, top: ctx.y },
+            width: rect.width,
+            height: rect.height,
+            bounds: windowBounds,
+          });
+          position.left = placed.left;
+          position.top = placed.top;
+          el.style.maxHeight = placed.maxHeight == null ? '' : `${placed.maxHeight}px`;
+          el.style.overflowY = placed.maxHeight == null ? '' : 'auto';
+        }
+      }
+      el.style.left = `${position.left}px`;
+      el.style.top = `${position.top}px`;
+      // Chunk 7: it slides in from the pointer's side - down when it
+      // opens below the pointer, up when it flipped above it.
+      el.dataset.side = position.top < ctx.y - 0.5 ? 'top' : 'bottom';
+      if (isMobileMenu) {
+        // Polish round 6: on the phone the menu stays between the header
+        // and the dock (it ran 25px under the dock on a 375x667), and
+        // scrolls inside when it is taller than that band.
+        const vv = window.visualViewport;
+        let bandTop = 0;
+        let bandBottom = vv ? Math.min(window.innerHeight, vv.offsetTop + vv.height) : window.innerHeight;
+        const header = document.querySelector('[data-mobile-pdf-header]')?.getBoundingClientRect();
+        if (header && header.height > 0) bandTop = Math.max(bandTop, header.bottom);
+        const dock = document.querySelector('.mobile-pdf-dock')?.getBoundingClientRect();
+        if (dock && dock.height > 0 && dock.top < bandBottom) bandBottom = dock.top;
+        const fit = fitMenuInBand({ top: position.top, height: rect.height, band: { top: bandTop, bottom: bandBottom } });
+        el.style.top = `${fit.top}px`;
+        el.style.maxHeight = fit.maxHeight == null ? '' : `${fit.maxHeight}px`;
+        el.style.overflowY = fit.maxHeight == null ? '' : 'auto';
+      }
+    };
+
     const panel = (
       <div
         data-annotation-context-menu="true"
-        ref={(el) => {
-          // UX: keep the menu inside both the visible viewport and the PDF
-          // page the user right-clicked. When the cursor is near the right
-          // or bottom edge of a page, flip the menu's anchor so its
-          // right/bottom corner aligns with the cursor — this keeps the
-          // pointer still resting on the clicked item/shape. The viewport
-          // also excludes the desktop right rail. If the page element can't
-          // be found, use that viewport alone. An 8px margin keeps the menu
-          // off each bound.
-          if (!el) return;
-          if (isMobileMenu) el.style.maxHeight = 'none';
-          const rect = el.getBoundingClientRect();
-
-          // Find the PDF page wrapper for ctx.pageNumber, then cut its rect
-          // to the visible viewport. The helper uses the viewport if no page
-          // can be found.
-          let pageRect = null;
-          if (ctx.pageNumber != null) {
-            const pageEl =
-              queryFrontTab(`[data-diag-svg-wrapper="${ctx.pageNumber}"]`)
-              || queryFrontTab(`[data-pal-root="${ctx.pageNumber}"]`);
-            if (pageEl) {
-              // Walk up to the pdfjs page div so the bounds match
-              // what the user visually sees as "the page".
-              const pageDiv = pageEl.closest('.survey-pdfjs-page-div') || pageEl;
-              const r = pageDiv.getBoundingClientRect();
-              if (r.width > 0 && r.height > 0) pageRect = r;
-            }
-          }
-          const bounds = getPageViewportBounds(
-            pageRect,
-            window.innerWidth,
-            window.innerHeight,
-            isMobileMenu ? 0 : DESKTOP_RIGHT_RAIL_WIDTH,
-          );
-          const position = clampFloatingMenuPosition({
-            x: ctx.x,
-            y: ctx.y,
-            width: rect.width,
-            height: rect.height,
-            bounds,
-          });
-
-          el.style.left = `${position.left}px`;
-          el.style.top = `${position.top}px`;
-          // Chunk 7: it slides in from the pointer's side - down when it
-          // opens below the pointer, up when it flipped above it.
-          el.dataset.side = position.top < ctx.y - 0.5 ? 'top' : 'bottom';
-          if (isMobileMenu) {
-            // Polish round 6: on the phone the menu stays between the header
-            // and the dock (it ran 25px under the dock on a 375x667), and
-            // scrolls inside when it is taller than that band.
-            const vv = window.visualViewport;
-            let bandTop = 0;
-            let bandBottom = vv ? Math.min(window.innerHeight, vv.offsetTop + vv.height) : window.innerHeight;
-            const header = document.querySelector('[data-mobile-pdf-header]')?.getBoundingClientRect();
-            if (header && header.height > 0) bandTop = Math.max(bandTop, header.bottom);
-            const dock = document.querySelector('.mobile-pdf-dock')?.getBoundingClientRect();
-            if (dock && dock.height > 0 && dock.top < bandBottom) bandBottom = dock.top;
-            const fit = fitMenuInBand({ top: position.top, height: rect.height, band: { top: bandTop, bottom: bandBottom } });
-            el.style.top = `${fit.top}px`;
-            el.style.maxHeight = fit.maxHeight == null ? '' : `${fit.maxHeight}px`;
-            el.style.overflowY = fit.maxHeight == null ? '' : 'auto';
-          }
-        }}
+        ref={placePanel}
         role="menu"
         className="annotation-context-menu"
         aria-label={pageMenuItems ? `Page ${ctx.pageNumber} actions` : `${mobileTitle} actions`}
@@ -1632,13 +1687,18 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
             <div role="separator" style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
           </>
         )}
-        {pageMenuItems && (
+        {pageLayout && (
+          <MarkMenuBody key={`page:${ctx.pageNumber}:${ctx.x}:${ctx.y}`} layout={pageLayout} touchRows={touchRows} keyHints={false} />
+        )}
+        {pageMenuItems && !pageLayout && (
           // The Pages tab's own rows (sidebar/PageActionsMenu.jsx); hover is
           // this menu's (it sits on --surface-2 / --surface-1).
           <PageMenuList
-            items={pageMenuItems}
+            items={phonePageItems || pageMenuItems}
             mobile={isMobileMenu}
             onPick={pickPageMenuItem}
+            // A drill-down swaps the rows: place the menu again for its new height.
+            onLayout={() => placePanel(document.querySelector('[data-annotation-context-menu="true"]'))}
             hoverBg={isMobileMenu ? 'var(--surface-2)' : 'var(--hover)'}
             dangerHoverBg={isMobileMenu ? 'var(--surface-2)' : 'var(--hover)'}
           />

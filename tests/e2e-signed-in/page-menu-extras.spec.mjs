@@ -23,6 +23,8 @@ async function openSheet(page, sheet) {
 
 const pageMenu = (page) => page.locator('[data-page-menu]');
 const row = (page, name) => pageMenu(page).getByRole('menuitem', { name, exact: true });
+// KAL-793: the rarer page rows sit in submenus; clicking the row opens it (desktop and phone).
+const openSub = (page, name) => row(page, name).click();
 
 async function openPageMenu(page, pageDiv, fx = 0.8, fy = 0.85) {
   const box = await pageDiv.boundingBox();
@@ -44,13 +46,15 @@ test.describe('desktop', () => {
 
       // Page 1 of 2: Move up off, Move down on, nothing locked yet.
       await openPageMenu(page, pageDiv);
-      await expect(row(page, 'Move up')).toBeDisabled();
-      await expect(row(page, 'Move down')).toBeEnabled();
-      await expect(row(page, 'Unlock all')).toBeDisabled();
-      await expect(row(page, 'Select all text')).toBeVisible();
+      await openSub(page, 'Copy or move page');
+      await expect(row(page, 'Move up')).toHaveAttribute('aria-disabled', 'true');
+      await expect(row(page, 'Move down')).not.toHaveAttribute('aria-disabled', 'true');
+      await expect(row(page, 'Unlock all')).toHaveAttribute('aria-disabled', 'true');
+      await openSub(page, 'Select all');
+      await expect(row(page, 'Text on this page')).toBeVisible();
 
       // Select all text: the page's own words, under Text Select.
-      await row(page, 'Select all text').click();
+      await row(page, 'Text on this page').click();
       await expect.poll(() => page.evaluate(() => window.getSelection()?.toString() || '')).toContain('Page menu extras sheet page 1');
       await page.keyboard.press('Escape');
       await page.keyboard.press('v');
@@ -71,7 +75,7 @@ test.describe('desktop', () => {
 
       // Unlock all is on now and unlocks it.
       await openPageMenu(page, pageDiv);
-      await expect(row(page, 'Unlock all')).toBeEnabled();
+      await expect(row(page, 'Unlock all')).not.toHaveAttribute('aria-disabled', 'true');
       await row(page, 'Unlock all').click();
       await page.mouse.click(at(0.3, 0.375).x, at(0.3, 0.375).y);
       await page.mouse.click(at(0.3, 0.375).x, at(0.3, 0.375).y, { button: 'right' });
@@ -81,6 +85,7 @@ test.describe('desktop', () => {
 
       // Move down: the page (and its mark) is page 2 now; the view follows it.
       await openPageMenu(page, pageDiv);
+      await openSub(page, 'Copy or move page');
       await row(page, 'Move down').click();
       await expect.poll(() => page.evaluate(() => document.querySelectorAll('[data-overlay-page="2"] [data-annotation-id]').length), { timeout: 60_000 }).toBeGreaterThan(0);
       await expect.poll(() => page.evaluate(() => document.querySelectorAll('[data-overlay-page="1"] [data-annotation-id]').length)).toBe(0);
@@ -96,9 +101,11 @@ test.describe('desktop', () => {
     try {
       const pageDiv = await openSheet(page, sheet);
       await openPageMenu(page, pageDiv);
-      await expect(row(page, 'Delete')).toBeVisible();
-      await expect(row(page, 'Select all text')).toHaveCount(0);
+      await expect(row(page, 'Delete page')).toBeVisible();
+      await expect(row(page, 'Select all on page')).toBeVisible();
       await expect(row(page, 'Unlock all')).toHaveCount(0);
+      await openSub(page, 'Copy or move page');
+      await expect(row(page, 'Duplicate')).toBeVisible();
       await expect(row(page, 'Move down')).toHaveCount(0);
     } finally {
       await sheet.remove();

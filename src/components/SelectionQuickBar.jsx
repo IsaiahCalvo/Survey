@@ -45,6 +45,7 @@ import { parsePickedLineEnds } from '../utils/lineEndingDefaults.js';
 import { SurveyEntitySwatch } from './SurveyEntityBar';
 import SurveyOverflowRow from './SurveyOverflowRow';
 import MeasureEditPopover from './MeasureEditPopover';
+import { useHangingPopoverPlace } from './useHangingPopoverPlace.js';
 import { watchLightPopover } from './dismissRules.js';
 import { useMenuFocus } from '../hooks/useMenuFocus.js';
 import { HISTORY_PAGE_SELECTION_EVENT } from '../utils/historyMarkFilter.js';
@@ -928,12 +929,30 @@ export default function SelectionQuickBar({
     );
   }
 
+  // KAL-793: each card opens away from the mark, but flips to the other side
+  // of the bar (or scrolls) rather than run under the tool bars or off the
+  // window, and slides sideways to stay inside the page area.
+  const barSide = look.side === 'above' ? 'above' : 'below';
+  const popoverBounds = useCallback(() => viewerBounds(phone), [phone]);
+  const kindPopoverRef = useRef(null);
+  const authorsPopoverRef = useRef(null);
+  const linePlace = useHangingPopoverPlace(linePopoverRef, {
+    open: Boolean(lineOpen && visible), preferred: barSide, getBounds: popoverBounds, deps: [plan?.width, plan?.opacity, plan?.style],
+  });
+  const kindPlace = useHangingPopoverPlace(kindPopoverRef, {
+    open: Boolean(kindOpen && visible), preferred: barSide, getBounds: popoverBounds, deps: [kindOpen],
+  });
+  const authorsPlace = useHangingPopoverPlace(authorsPopoverRef, {
+    open: Boolean(authorsOpen && visible), preferred: barSide, getBounds: popoverBounds, align: 'start', deps: [authors.length],
+  });
+
   const linePopover = lineOpen && visible ? (
     <div
       ref={linePopoverRef}
       className="selection-quick-bar__popover"
       data-selection-quick-bar-popover="true"
-      data-side={look.side === 'above' ? 'above' : 'below'}
+      data-side={linePlace.side}
+      style={linePlace.style}
       role="dialog"
       aria-label="Line"
     >
@@ -1006,10 +1025,12 @@ export default function SelectionQuickBar({
 
   const kindPopover = kindOpen && visible ? (
     <div
+      ref={kindPopoverRef}
       className="selection-quick-bar__popover"
       data-selection-quick-bar-popover="true"
       data-selection-quick-kind-popover={kindOpen}
-      data-side={look.side === 'above' ? 'above' : 'below'}
+      data-side={kindPlace.side}
+      style={kindPlace.style}
       role="dialog"
       aria-label={{ fill: 'Fill', ends: 'Start and end', font: 'Font', textColour: 'Text colour' }[kindOpen]}
       onMouseDown={(event) => event.stopPropagation()}
@@ -1092,10 +1113,12 @@ export default function SelectionQuickBar({
       {kindPopover}
       {authorsOpen && visible && authors.length > 0 && (
         <div
+          ref={authorsPopoverRef}
           className="selection-quick-bar__popover selection-quick-bar__authors"
           data-selection-quick-bar-popover="true"
           data-selection-authors="true"
-          data-side={look.side === 'above' ? 'above' : 'below'}
+          data-side={authorsPlace.side}
+          style={authorsPlace.style}
           role="dialog"
           aria-label="Who made these marks"
           onMouseDown={(event) => event.stopPropagation()}
