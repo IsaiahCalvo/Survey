@@ -165,6 +165,13 @@ button,
   font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'SF Pro Display', 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
 }
 
+/* The suite look (Nightly flag 'one-look') wears the suite's one font,
+   Geist, through --font-ui (src/styles/tokens.css). */
+html[data-look="suite"] body,
+html[data-look="suite"] .btn {
+  font-family: var(--font-ui);
+}
+
 /* UX 2026-05-14: Hide every scrollbar everywhere, every browser. Scroll
    behavior itself stays — users can still wheel-scroll, trackpad-pan, and
    keyboard-arrow through long lists. Only the painted track / thumb is
