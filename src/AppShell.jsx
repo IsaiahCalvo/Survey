@@ -153,6 +153,7 @@ import { PenTypeMenu } from './components/PenTypePicker.jsx';
 import { isToolGroupPressed } from './utils/toolbarToolPressed.js';
 import { pendingInviteRedirect } from './utils/pendingInvite.js';
 import { useProLock } from './hooks/useProLock.js';
+import { ASK_SIGN_IN_EVENT } from './utils/proLock.js';
 import { formatPageTotal } from './utils/pageTotalLabel.js';
 import { requestTemplateEditor } from './home/templateEditorRequest';
 import SheetSetBar from './sheets/SheetSetBar.jsx';
@@ -163,7 +164,7 @@ import SpotlightOverlay from './spotlight/SpotlightOverlay.jsx';
 import useSpotlight from './spotlight/useSpotlight.js';
 import { clearSpotlightGo, setSpotlightDocument, setSpotlightIdentity } from './services/annotationSpotlight.js';
 import { SHEET_VIEW_EVENT, narrowSheets, parseGridColumns, projectSheets, sheetStepForKey, steppedSheet, storedProjectOrder } from './sheets/sheetSet.js';
-import { DEVICE_FILE_LEAVE_EVENT } from './services/deviceFiles.js';
+import { DEVICE_FILE_LEAVE_EVENT, deviceFiles, isDeviceDocumentId } from './services/deviceFiles.js';
 
 // Nightly 'page-spreads': Drawboard's View settings names (pageSpreads.js).
 const PAGE_SPREAD_OPTIONS = Object.freeze([
@@ -1867,7 +1868,14 @@ export default function App({ devPreviewReturnTab = null }) {
       : selectedPDF);
     const durablePath = newFile?.supabaseFilePath || newFile?.filePath || null;
     let saved = null;
-    if (newFile?.id && durablePath) {
+    if (isDeviceDocumentId(newFile?.id)) {
+      // A file opened with no account: the page change is kept in this
+      // browser's copy. Its marks already follow the new pages, so a copy
+      // that could not be written must undo the change (the throw does).
+      if (!await deviceFiles().replaceBytes(newFile.id, newFile)) {
+        throw new Error('This page change could not be kept on this device.');
+      }
+    } else if (newFile?.id && durablePath) {
       saved = await replaceDocument(newFile, durablePath, { documentId: newFile.id });
       // The row may now read its own object (its old one is shared with
       // another document) and has a new fingerprint. Carry both, so the next
@@ -2213,6 +2221,12 @@ export default function App({ devPreviewReturnTab = null }) {
   const stableDocumentOpenEnd = useStableHandler(() => setPendingDocumentOpen(null));
   const stableBack = useStableHandler(handleBack);
   const stableShowAuthModal = useCallback(() => setShowAuthModal(true), [setShowAuthModal]);
+  // A "Sign in" pressed far from here (a toast on a tool that needs an
+  // account, the Comments or History panel of a file kept on this device).
+  useEffect(() => {
+    window.addEventListener(ASK_SIGN_IN_EVENT, stableShowAuthModal);
+    return () => window.removeEventListener(ASK_SIGN_IN_EVENT, stableShowAuthModal);
+  }, [stableShowAuthModal]);
   const stableTabClick = useStableHandler(handleTabClick);
   const stableTabClose = useStableHandler(handleTabClose);
   const stableTabReorder = useStableHandler(handleTabReorder);

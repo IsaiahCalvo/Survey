@@ -256,6 +256,8 @@ export function usePageOperations({
       newFile.contentSha256 = currentPdfFile.contentSha256 || null;
       newFile.user_id = currentPdfFile.user_id || null;
       newFile.filePath = currentPdfFile.filePath || null;
+      // A file opened with no account stays a device file (services/deviceFiles.js).
+      if (currentPdfFile.deviceFile) newFile.deviceFile = true;
       ownFilesRef.current.add(newFile);
       producedFile = newFile;
       ownVersionRef.current = newFile;

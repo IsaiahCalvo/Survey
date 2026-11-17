@@ -6,12 +6,14 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { listCommentPeople } from '../services/markComments.js';
+import { isDeviceDocumentId } from '../services/deviceFiles.js';
 
 export function useDocumentPeople(documentId, { enabled = true } = {}) {
   const [people, setPeople] = useState([]);
   useEffect(() => {
     setPeople([]);
-    if (!enabled || !documentId) return undefined;
+    // A file opened with no account is not on the server.
+    if (!enabled || !documentId || isDeviceDocumentId(documentId)) return undefined;
     let cancelled = false;
     listCommentPeople(supabase, documentId)
       .then((list) => { if (!cancelled) setPeople(list); })

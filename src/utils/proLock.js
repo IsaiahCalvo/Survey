@@ -68,6 +68,40 @@ export function proLockPrompt(feature, { native = isNativeApp() } = {}) {
   };
 }
 
+/** Fired on window to open the sign-in card from anywhere (AppShell listens). */
+export const ASK_SIGN_IN_EVENT = 'survey:ask-sign-in';
+
+export function askSignIn(win = typeof window === 'undefined' ? null : window) {
+  try { win?.dispatchEvent(new CustomEvent(ASK_SIGN_IN_EVENT)); } catch { /* no DOM */ }
+}
+
+/**
+ * A visitor (nobody signed in) never gets these features, whatever the
+ * 'pro-lock' flag says: they need an account to live in (KAL-658, owner
+ * 2026-11-16: no account means no Pro tools). Unknown features never lock.
+ */
+export function accountNeededPrompt(feature) {
+  if (!Object.prototype.hasOwnProperty.call(PRO_LOCK_FEATURES, feature)) return null;
+  const def = PRO_LOCK_FEATURES[feature];
+  return {
+    feature,
+    label: def.label,
+    message: `${def.label} ${def.plural ? 'need' : 'needs'} an account. Sign in to use ${def.plural ? 'them' : 'it'}.`,
+    actionLabel: 'Sign in',
+  };
+}
+
+/** The visitor form of blockIfProLocked: true when the caller must stop. */
+export function blockForVisitor(feature, { onSignIn = askSignIn } = {}) {
+  const prompt = accountNeededPrompt(feature);
+  if (!prompt) return false;
+  showToast(prompt.message, 'warn', {
+    id: `account-needed-${feature}`,
+    action: { label: prompt.actionLabel, onClick: () => onSignIn() },
+  });
+  return true;
+}
+
 /**
  * The one-line check for a call site: when the feature is locked, show the
  * prompt and return true (the caller stops). onUpgrade starts checkout; it is

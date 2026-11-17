@@ -13,6 +13,7 @@
 // frozen. Never trust the client.
 
 import { supabase } from '../supabaseClient.js';
+import { isDeviceDocumentId } from './deviceFiles.js';
 
 export function createDocumentLockStateSequence(onChange) {
   let realtimeGeneration = 0;
@@ -41,7 +42,8 @@ export function createDocumentLockStateSequence(onChange) {
  * @returns {Promise<{ lockedAt: string|null, lockedBy: string|null, lockedLabel: string|null }>}
  */
 export async function fetchDocumentLockState(documentId, client = supabase) {
-  if (!documentId || !client) {
+  // A file opened with no account (services/deviceFiles.js) has no row to lock.
+  if (!documentId || !client || isDeviceDocumentId(documentId)) {
     return { lockedAt: null, lockedBy: null, lockedLabel: null };
   }
   // Deliberately bypass documentMetadataResolver's 5s open-time cache. A

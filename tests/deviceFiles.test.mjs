@@ -80,3 +80,35 @@ test('the same bytes find the copy already kept; other bytes do not', async () =
   const actions = readFileSync(new URL('../src/home/deviceFileActions.js', import.meta.url), 'utf8');
   assert.match(actions, /const same = await deviceFiles\(\)\.findSame\?\.\(file\);/);
 });
+
+// KAL-658: a page moved, turned or deleted on a file opened with no account
+// was shown but never kept, so a reload brought the old pages back under
+// marks that had already moved with the new ones.
+test('a page change swaps the kept PDF for the new bytes', async () => {
+  let t = 1000;
+  let changes = 0;
+  const store = createDeviceFiles({ indexedDb: new IDBFactory(), now: () => (t += 10), onChange: () => { changes += 1; } });
+  const row = await store.add({ name: 'plans.pdf', bytes: pdf(300), pageCount: 8 });
+  const before = changes;
+  const smaller = pdf(120);
+  smaller[119] = 7;
+  assert.equal(await store.replaceBytes(row.id, smaller, { pageCount: 7 }), true);
+  const kept = await store.read(row.id);
+  assert.equal(kept.bytes.byteLength, 120);
+  assert.equal(new Uint8Array(kept.bytes)[119], 7);
+  assert.equal(kept.row.file_size, 120);
+  assert.equal(kept.row.page_count, 7);
+  assert.equal(kept.row.name, 'plans.pdf');
+  assert.ok(Date.parse(kept.row.updated_at) > Date.parse(row.updated_at));
+  assert.equal(changes, before + 1);
+});
+
+test('new bytes are never written for a cloud id, a deleted file or with no storage', async () => {
+  const store = createDeviceFiles({ indexedDb: new IDBFactory() });
+  assert.equal(await store.replaceBytes('5f0c-uuid', pdf(10)), false);
+  const row = await store.add({ name: 'gone.pdf', bytes: pdf(10) });
+  await store.remove(row.id);
+  assert.equal(await store.replaceBytes(row.id, pdf(20)), false);
+  assert.equal(await store.read(row.id), null);
+  assert.equal(await createDeviceFiles({ indexedDb: null }).replaceBytes('device-1', pdf(10)), false);
+});

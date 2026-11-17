@@ -319,9 +319,11 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Zoom to an area: Ctrl+Shift+drag draws a box and the view fills with it',
     stage: 'beta',
   }),
+  // On for everyone since 2026-11-16 (owner: people must be able to try
+  // Survey with no account). KAL-658.
   'guest-sample': Object.freeze({
     label: 'Try the sample drawing signed out, as a try-out that is not saved',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'viewer-share': Object.freeze({
     label: 'Share from inside a document: a Share button in the viewer top bar',
@@ -438,9 +440,11 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   // Open a PDF with no account; it stays on this device until saved to an
   // account (Drawboard's "Temporary" files, without their two-tab data loss).
+  // On for everyone since 2026-11-16 (owner: a visitor uploads, marks up,
+  // flattens and exports with no account). KAL-658.
   'device-files': Object.freeze({
     label: 'Open a PDF with no account (kept on this device)',
-    stage: 'beta',
+    stage: 'rollout',
   }),
   'line-dashes': Object.freeze({
     label: 'Line styles: Long dash and Dash-dot as well as Solid, Dashed and Dotted',

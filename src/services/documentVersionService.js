@@ -4,6 +4,7 @@
 // 20261028010000_document_versions.sql). "Upload as new version" points the
 // old copy at the new one (supersede_document) instead of archiving it, so
 // the old copy leaves the lists but stays openable as an older version.
+import { isDeviceDocumentId } from './deviceFiles.js';
 
 export const SUPERSEDE_DOCUMENT_RPC = 'supersede_document';
 export const DOCUMENT_VERSIONS_RPC = 'document_versions';
@@ -41,7 +42,8 @@ export async function supersedeDocument(client, oldDocumentId, newDocumentId) {
 
 /** The version chain a document belongs to, oldest first: [{ id, name, createdAt, pageCount, versionNumber, isCurrent }]. */
 export async function listDocumentVersions(client, documentId) {
-  if (!documentId) return [];
+  // A file opened with no account has no versions on the server.
+  if (!documentId || isDeviceDocumentId(documentId)) return [];
   const { data, error } = await client.rpc(DOCUMENT_VERSIONS_RPC, { p_document_id: documentId });
   if (error) {
     if (isMissingFunctionError(error)) return [];

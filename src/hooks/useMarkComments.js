@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { listCommentPeople, listMarkComments, mapCommentRow, mergeComment } from '../services/markComments.js';
+import { isDeviceDocumentId } from '../services/deviceFiles.js';
 
 export function useMarkComments(documentId, { enabled = true } = {}) {
   const [comments, setComments] = useState([]);
@@ -15,7 +16,8 @@ export function useMarkComments(documentId, { enabled = true } = {}) {
   useEffect(() => {
     setComments([]);
     setPeople([]);
-    if (!enabled || !documentId) {
+    // A file opened with no account is not on the server: nothing to ask it.
+    if (!enabled || !documentId || isDeviceDocumentId(documentId)) {
       setStatus('idle');
       return undefined;
     }
