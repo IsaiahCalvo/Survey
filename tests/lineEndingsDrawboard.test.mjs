@@ -145,6 +145,20 @@ test('setting one end of a picked line keeps the other and marks it', () => {
   assert.equal(setLineEndingOn({ type: 'Rect' }, 'end', 'slash'), null);
 });
 
+test("a polyline takes Start and End too, drawn and printed at Drawboard's sizes", () => {
+  const poly = { type: 'polyline', points: [{ x: 0, y: 0 }, { x: 10, y: 10 }], data: { id: 'p' } };
+  const next = setLineEndingOn(poly, 'end', 'vShape');
+  assert.deepEqual(next.data, { id: 'p', arrowheadStyle: 'vShape', lineEndingSet: 'drawboard' });
+  assert.equal(setLineEndingOn({ type: 'polygon' }, 'end', 'slash'), null);
+  const renderers = read('src/utils/svgAnnotationRenderers.jsx');
+  assert.match(renderers, /const plHeadOptions = \{ fill: plInterior, geometry: plGeometry \};/);
+  assert.match(renderers, /lineEndingBodyInset\(plEndStyle, strokeWidth, plGeometry\)/);
+  const pdf = read('src/utils/pdfAnnotationsPdfLib.js');
+  assert.match(pdf, /const headOptions = \{ fill: interiorColor, geometry \};\n  const width = Math\.max\(0\.5/);
+  assert.match(pdf, /lineEndingBodyInset\(plEndings\.endStyle, Number\(obj\?\.strokeWidth\) \|\| 1, plEndings\.geometry\)/);
+  assert.match(read('src/utils/lineEndingDefaults.js'), /\['line', 'polyline'\]\.includes/);
+});
+
 test('the reverse heads export as their PDF names; a filled one writes /IC', () => {
   const pdf = read('src/utils/pdfAnnotationsPdfLib.js');
   assert.match(pdf, /\[ARROWHEAD_STYLES\.R_OPEN_ARROW\]: 'ROpenArrow'/);

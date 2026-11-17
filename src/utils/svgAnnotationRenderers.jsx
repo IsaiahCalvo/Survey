@@ -1443,8 +1443,9 @@ export const renderPolyline = (obj, index) => {
   // interior-colour rule) and the body's first / last segment is pulled back
   // so it stops at the edge of a hollow ending — same rule as lines, and the
   // print flattener uses the same helpers.
-  const { startStyle: plStartStyle, endStyle: plEndStyle, interiorColor: plInterior } = resolveLineEndingStyles(obj);
-  const plHeadOptions = { fill: plInterior };
+  // Heads set from the bar carry Drawboard's sizes (geometry), as a Line's do.
+  const { startStyle: plStartStyle, endStyle: plEndStyle, interiorColor: plInterior, geometry: plGeometry } = resolveLineEndingStyles(obj);
+  const plHeadOptions = { fill: plInterior, geometry: plGeometry };
   // A curved polyline draws its spans as true cubics (polySpline.js), so it
   // stays smooth at any zoom; its endings sit on the curve's own tangent.
   const splineStep = polySplineStep(obj);
@@ -1455,8 +1456,8 @@ export const renderPolyline = (obj, index) => {
   const last = drawnPoints[drawnPoints.length - 1];
   const stroke = obj.stroke || '#000';
   const strokeWidth = obj.strokeWidth || 1;
-  const startInset = lineEndingBodyInset(plStartStyle, strokeWidth);
-  const endInset = lineEndingBodyInset(plEndStyle, strokeWidth);
+  const startInset = lineEndingBodyInset(plStartStyle, strokeWidth, plGeometry);
+  const endInset = lineEndingBodyInset(plEndStyle, strokeWidth, plGeometry);
   const curveD = splineStep ? splinePathD(obj.points, splineStep, startInset, endInset) : null;
   const bodyPointsStr = curveD ? null : insetOpenPolylinePoints(
     obj.points,

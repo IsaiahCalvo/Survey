@@ -60,6 +60,35 @@ export function pickCurrentPage({ pageTops, pageHeights, viewTop, viewBottom, cu
 }
 
 /**
+ * Horizontal Double / Cover / Grid (KAL-716): the pages stand in columns that
+ * run across. The same rule twice: the column with the largest share across
+ * the view, then the page of it with the largest share down it. `columns`
+ * are lists of page indexes; the other arrays run over every page.
+ */
+export function pickCurrentPageInColumns({ columns, lefts, widths, tops, heights, viewLeft, viewRight, viewTop, viewBottom, currentPage = null }) {
+  const list = Array.isArray(columns) ? columns.filter((column) => column?.length) : [];
+  if (!list.length) return currentPage || 1;
+  const own = list.find((column) => column.includes((currentPage || 0) - 1));
+  const firsts = new Set(list.map((column) => column[0]));
+  const across = pickCurrentPage({
+    pageTops: lefts,
+    pageHeights: widths.map((w, i) => (firsts.has(i) ? w : 0)),
+    viewTop: viewLeft,
+    viewBottom: viewRight,
+    currentPage: own ? own[0] + 1 : null,
+  });
+  const column = list.find((c) => c[0] === across - 1) || list[0];
+  const inColumn = new Set(column);
+  return pickCurrentPage({
+    pageTops: tops,
+    pageHeights: heights.map((h, i) => (inColumn.has(i) ? h : 0)),
+    viewTop,
+    viewBottom,
+    currentPage,
+  });
+}
+
+/**
  * The go-to-page field's commit rule. Digits are read as a page number and
  * clamped into 1..numPages (typing 99 in a 36-page document goes to 36,
  * typing 0 goes to 1). Anything without digits returns null = cancel.

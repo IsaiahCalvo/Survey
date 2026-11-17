@@ -623,6 +623,11 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Page fit card: Single / Double / Cover page views (pages side by side, like an open book)',
     stage: 'beta',
   }),
+  // Drawboard's Horizontal for every view (KAL-716): pairs and Grid columns run left to right.
+  'page-direction-all': Object.freeze({
+    label: 'Page view: Horizontal for Double, Cover and Grid (pages stack in columns that run left to right)',
+    stage: 'beta',
+  }),
   'phone-sign': Object.freeze({ label: 'Add signature: Phone tab (scan a QR code, sign on the phone, it lands on the Draw pad)', stage: 'beta' }),
   // Drawboard's More menu (KAL-718): one mark's look put on other marks.
   'copy-format': Object.freeze({
@@ -637,6 +642,10 @@ export const FEATURE_FLAGS = Object.freeze({
   // Drawboard's Edit Note (KAL-721): a written note on any mark.
   'mark-note': Object.freeze({
     label: 'A note on any mark: Edit note in the mark menu and the properties panel; shown in the Markups list and exported as the PDF comment',
+    stage: 'beta',
+  }),
+  'measure-draw-readout': Object.freeze({
+    label: 'Measure: the length and angle beside the pointer while a Length is drawn',
     stage: 'beta',
   }),
   'markup-group-by': Object.freeze({
