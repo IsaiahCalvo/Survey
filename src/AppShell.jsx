@@ -5868,11 +5868,16 @@ export default function App({ devPreviewReturnTab = null }) {
                           </span>
                         </button>
                         {/* KAL-713, Drawboard's Layout direction: Horizontal
-                            runs Single pages left to right. Double, Cover,
-                            Grid and Continuous off keep running down, so
-                            the choice is greyed out there. */}
+                            runs Single pages left to right. Continuous off
+                            keeps running down (a Grid always scrolls), so
+                            the choice is greyed out there. Double, Cover and
+                            Grid turn on their side with Nightly
+                            'page-direction-all' (KAL-716), else they keep
+                            running down too. */}
                         {(() => {
-                          const directionOff = pageSpread !== 'single' || !pageContinuous;
+                          const directionOff = pageSpread === 'single'
+                            ? !pageContinuous
+                            : !isFeatureOn('page-direction-all') || (!pageContinuous && !isGridMode(pageSpread));
                           return (
                             <div
                               role="group"

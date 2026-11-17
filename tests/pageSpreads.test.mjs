@@ -4,7 +4,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { FEATURE_FLAGS } from '../src/featureFlags.js';
-import { autoGridColumns, buildSpreadRows, gridColumns, isGridMode, normalizeSpreadMode, placeSpreadPages, rowMembers, steppedSpreadPage } from '../src/utils/pageSpreads.js';
+import { autoGridColumns, buildSpreadRows, gridColumns, isGridMode, normalizeSpreadMode, placeSpreadPages, rowMembers, steppedSpreadPage, stripSpreadMode } from '../src/utils/pageSpreads.js';
+import { pickCurrentPageInColumns } from '../src/utils/pageNavigationMath.js';
 import { buildVisiblePageStack, pagedRowIndex, pagedRows, pagedRowSpread } from '../src/utils/visiblePageLayout.js';
 
 const page = (w = 600, h = 800) => ({ w, h });
@@ -64,7 +65,7 @@ test('Next / Previous move a whole row in a spread view', () => {
 test('the viewer and the Page fit card use the setting; the phone keeps one column', () => {
   const viewer = readFileSync(new URL('../src/components/PdfjsViewerContainer.jsx', import.meta.url), 'utf8');
   assert.match(viewer, /const spreadMode = phoneLayout \? 'single' : pageSpreadSetting;/);
-  assert.match(viewer, /padTop: metrics\.padTop, gap: metrics\.gap, spread: stripView \? 'strip' : rowSpread,/);
+  assert.match(viewer, /padTop: metrics\.padTop, gap: metrics\.gap, spread: stripView \? stripSpreadMode\(rowSpread\) : rowSpread,/);
   assert.match(viewer, /let rowSpread = spreadMode;/);
   const shell = readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
   assert.match(shell, /const \[pageSpreadsOn\] = useState\(\(\) => isFeatureOn\('page-spreads'\)\);/);
@@ -211,15 +212,76 @@ test('Horizontal: the setting, the card choice, and the viewer reading across', 
   const setting = readFileSync(new URL('../src/utils/pageSpreadSetting.js', import.meta.url), 'utf8');
   assert.match(setting, /const DIRECTION_KEY = 'survey\.pageDirection\.v1';/);
   assert.match(setting, /if \(!flagOn\) return 'vertical';/);
-  assert.match(setting, /return kept === 'strip' \? 'single' : kept;/, 'the layout is never a saved view');
+  assert.match(setting, /return kept === 'strip' \? 'single' : kept\.startsWith\('strip-'\) \? kept\.slice\(6\) : kept;/, 'the layout is never a saved view');
   const shell = readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
-  assert.match(shell, /const directionOff = pageSpread !== 'single' \|\| !pageContinuous;/);
+  assert.match(shell, /const directionOff = pageSpread === 'single'\n\s+\? !pageContinuous\n\s+: !isFeatureOn\('page-direction-all'\) \|\| \(!pageContinuous && !isGridMode\(pageSpread\)\);/);
   assert.match(shell, /data-page-direction=\{id\}/);
   const viewer = readFileSync(new URL('../src/components/PdfjsViewerContainer.jsx', import.meta.url), 'utf8');
-  assert.match(viewer, /const stripView = !phoneLayout && pageContinuous && spreadMode === 'single' && pageDirection === 'horizontal';/);
-  assert.match(viewer, /spread: stripView \? 'strip' : rowSpread/);
+  assert.match(viewer, /const stripView = !phoneLayout && pageDirection === 'horizontal' && \(spreadMode === 'single'\n\s+\? pageContinuous\n\s+: directionAllOn && \(pageContinuous \|\| isGridMode\(spreadMode\)\)\);/);
+  assert.match(viewer, /spread: stripView \? stripSpreadMode\(rowSpread\) : rowSpread/);
   // The mount window, the current page and a page jump all go across.
   assert.match(viewer, /const strip = Boolean\(layout\.place\?\.strip\);/);
-  assert.match(viewer, /const across = stripViewRef\.current;\n\s+const page = pickCurrentPage\(\{\n\s+pageTops: across \?/);
+  assert.match(viewer, /const across = stripViewRef\.current;/);
+  assert.match(viewer, /\}\) : pickCurrentPage\(\{\n\s+pageTops: across \?/);
   assert.match(viewer, /el\.scrollLeft = stripViewRef\.current\n\s+\? pageScrollLeftRef\.current\(i\)/);
+});
+
+test('Horizontal Double, Cover and Grid (KAL-716): pages stack in columns that run left to right', () => {
+  assert.equal(FEATURE_FLAGS['page-direction-all']?.stage, 'beta');
+  const mig = readFileSync(new URL('../supabase/migrations/20261117160100_page_direction_all_flag.sql', import.meta.url), 'utf8');
+  assert.match(mig, /'page-direction-all', 'off'/);
+  assert.equal(stripSpreadMode('single'), 'strip');
+  assert.equal(stripSpreadMode('double'), 'strip-double');
+  assert.equal(stripSpreadMode('grid-auto'), 'strip-grid-auto');
+  assert.equal(normalizeSpreadMode('strip-single'), 'strip');
+  assert.equal(normalizeSpreadMode('strip-nope'), 'strip');
+  assert.equal(isGridMode('strip-grid-3'), false, 'a turned Grid is a strip, not a Grid row');
+  const dims = [page(100, 150), page(100, 150), page(100, 150), page(100, 150), page(100, 150)];
+  // Double: 1 over 2, 3 over 4, then 5 at the top of its own column (picture 43).
+  const double = placeSpreadPages(dims, 'strip-double', 10);
+  assert.equal(double.strip, true);
+  assert.deepEqual(double.offsetX, [0, 0, 110, 110, 220]);
+  assert.deepEqual(double.offsetY, [0, 160, 0, 160, 0]);
+  assert.deepEqual(double.stack[0], { w: 320, h: 310 });
+  assert.deepEqual(double.rows, [[0, 1, 2, 3, 4]]);
+  assert.deepEqual(double.columns, [[0, 1], [2, 3], [4]]);
+  assert.equal(steppedSpreadPage(double, 2, 1), 3, 'Next steps one page');
+  // Cover: page 1 alone in the low slot, then 2 over 3, 4 over 5.
+  const cover = placeSpreadPages(dims, 'strip-cover', 10);
+  assert.deepEqual(cover.offsetY, [160, 0, 160, 0, 160]);
+  assert.deepEqual(cover.offsetX, [0, 110, 110, 220, 220]);
+  // Grid 3: columns of three, top to bottom (picture 44 is Auto's columns of six).
+  const grid = placeSpreadPages(dims, 'strip-grid-3', 10);
+  assert.deepEqual(grid.offsetY, [0, 160, 320, 0, 160]);
+  assert.deepEqual(grid.stack[0], { w: 210, h: 470 });
+  const thirty = Array.from({ length: 30 }, () => page(100, 100));
+  assert.equal(placeSpreadPages(thirty, 'strip-grid-auto', 0).columns.length, 5, '30 pages: five columns of six');
+  // Every other view has no y place, so nothing below the row moves.
+  assert.deepEqual(placeSpreadPages(dims, 'double', 10).offsetY, [0, 0, 0, 0, 0]);
+  // The page stack puts a page lower in its row by its y place.
+  const stack = buildVisiblePageStack({ pageSizes: dims, gap: 10, scale: 2, spread: 'strip-double' });
+  assert.equal(stack.tops[1] - stack.tops[0], 320);
+  assert.equal(stack.tops[2], stack.tops[0]);
+  const viewer = readFileSync(new URL('../src/components/PdfjsViewerContainer.jsx', import.meta.url), 'utf8');
+  assert.match(viewer, /return y \+ \(spreadPlaceRef\.current\?\.offsetY\?\.\[i\] \|\| 0\) \* sc;/);
+  assert.match(viewer, /if \(cY != null && place\.columns\) \{/);
+  assert.match(viewer, /const page = columns \? pickCurrentPageInColumns\(\{/);
+});
+
+test('Horizontal columns: the current page is across to the column, then down it', () => {
+  // Two columns of two 100 x 100 pages, 10 apart.
+  const columns = [[0, 1], [2, 3]];
+  const args = {
+    columns,
+    lefts: [0, 0, 110, 110],
+    widths: [100, 100, 100, 100],
+    tops: [0, 110, 0, 110],
+    heights: [100, 100, 100, 100],
+  };
+  // The view shows the lower half of column one.
+  assert.equal(pickCurrentPageInColumns({ ...args, viewLeft: 0, viewRight: 100, viewTop: 110, viewBottom: 210, currentPage: 1 }), 2);
+  // Scrolled across to column two, top row.
+  assert.equal(pickCurrentPageInColumns({ ...args, viewLeft: 110, viewRight: 210, viewTop: 0, viewBottom: 100, currentPage: 2 }), 3);
+  // A page still fully in view stays current.
+  assert.equal(pickCurrentPageInColumns({ ...args, viewLeft: 0, viewRight: 220, viewTop: 0, viewBottom: 220, currentPage: 4 }), 4);
 });

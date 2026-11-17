@@ -26,7 +26,8 @@ export function buildVisiblePageStack({ pageSizes, visiblePageNumbers = null, ro
     }
     return top;
   });
-  const tops = place ? rowTops.map((_, index) => rowTops[place.leader[index]]) : rowTops;
+  // A page in a Horizontal Double / Cover / Grid column sits lower in its row.
+  const tops = place ? rowTops.map((_, index) => rowTops[place.leader[index]] + (place.offsetY?.[index] || 0) * scale) : rowTops;
   return { dims, tops, height, widestPt, stack, place };
 }
 

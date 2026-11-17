@@ -43,10 +43,16 @@ export function authorGroups(objects, { viewerId = null, peopleById = null, laye
   });
 }
 
-/** The chip's words: "You · Nov 15, 2026" for one mark, "You" for one author, "3 people" for more. */
+/**
+ * The chip's words: "You · Nov 15, 2026" for one mark, "You" for one author,
+ * "3 people" for more. None when no one in the pick is known (marks from the
+ * PDF itself, or made with no account): Drawboard shows no author for those,
+ * and "Unknown" tells the user nothing.
+ */
 export function authorChipText(groups) {
   const list = groups || [];
   if (!list.length) return '';
+  if (list.every((group) => !group.authorId)) return '';
   if (list.length > 1) return `${list.length} people`;
   const [only] = list;
   if (only.marks.length === 1 && only.marks[0].date) return `${only.label} · ${only.marks[0].date}`;
