@@ -25,3 +25,9 @@ test('a shut category leaves no see-through line under its header', () => {
   assert.match(src, /borderTop: open \? '1px solid var\(--rule\)' : 0,/);
   assert.doesNotMatch(src, /borderTop: open \? '1px solid var\(--rule\)' : '1px solid transparent'/);
 });
+
+test('PDF tools fields show their edge and ticks wear the accent', () => {
+  const css = readFileSync(new URL('../src/components/PdfToolsDialog.css', import.meta.url), 'utf8');
+  assert.match(css, /\.pdft-input\{[^}]*border:1px solid var\(--border-strong\)/);
+  assert.match(css, /\.pdft-check input\{[^}]*accent-color:var\(--accent\)/);
+});
