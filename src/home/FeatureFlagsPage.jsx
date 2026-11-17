@@ -76,6 +76,62 @@ function FlagRow({ flag, onSave }) {
   );
 }
 
+// KAL-532: what the Survey agent cost each account this month (the cap
+// stops each person at SURVEY_AGENT_MONTHLY_CAP_USD), and how often people
+// took back what it did, per prompt version (only people who turned on
+// "Help improve Survey" are counted).
+const dollars = (micros) => `$${(Number(micros || 0) / 1_000_000).toFixed(2)}`;
+const cell = { padding: '6px 8px', borderTop: `1px solid ${C.rule}`, fontSize: 13, textAlign: 'left' };
+const numCell = { ...cell, textAlign: 'right', fontVariantNumeric: 'tabular-nums' };
+
+export function AgentUsageSection({ usage, feedback }) {
+  if (!usage && !feedback) return null;
+  const rows = usage || [];
+  const total = rows.reduce((sum, r) => sum + Number(r.cost_micros || 0), 0);
+  const requests = rows.reduce((sum, r) => sum + Number(r.requests || 0), 0);
+  return (
+    <section data-agent-usage style={{ borderTop: `1px solid ${C.rule}`, padding: '16px 0' }}>
+      <h3 style={{ margin: '0 0 4px', fontSize: 16 }}>Survey agent this month</h3>
+      <p style={{ margin: '0 0 8px', fontSize: 13, color: C.inkSoft }}>
+        {rows.length
+          ? `${rows.length} ${rows.length === 1 ? 'account' : 'accounts'}, ${requests} requests, ${dollars(total)} at paid prices.`
+          : 'Nobody has used the agent this month.'}
+      </p>
+      {rows.length > 0 && (
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr><th style={cell}>Account</th><th style={numCell}>Requests</th><th style={numCell}>Cost</th></tr>
+          </thead>
+          <tbody>
+            {rows.slice(0, 20).map((r) => (
+              <tr key={r.email}><td style={{ ...cell, wordBreak: 'break-all' }}>{r.email}</td><td style={numCell}>{r.requests}</td><td style={numCell}>{dollars(r.cost_micros)}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <h3 style={{ margin: '16px 0 4px', fontSize: 16 }}>Taken back, by prompt version</h3>
+      <p style={{ margin: '0 0 8px', fontSize: 13, color: C.inkSoft }}>Last 30 days, from people who turned on Help improve Survey.</p>
+      {(feedback || []).length ? (
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr><th style={cell}>Version</th><th style={numCell}>Changed</th><th style={numCell}>Taken back</th><th style={numCell}>Rate</th></tr>
+          </thead>
+          <tbody>
+            {feedback.map((f) => (
+              <tr key={f.prompt_version}>
+                <td style={{ ...cell, fontFamily: 'ui-monospace, monospace' }}>{f.prompt_version}</td>
+                <td style={numCell}>{f.changed}</td>
+                <td style={numCell}>{f.undone}</td>
+                <td style={numCell}>{Number(f.changed) > 0 ? `${Math.round((Number(f.undone) / Number(f.changed)) * 100)}%` : '-'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : <p style={{ margin: 0, fontSize: 13, color: C.inkSoft }}>Nothing counted yet.</p>}
+    </section>
+  );
+}
+
 export default function FeatureFlagsPage() {
   const auth = useContext(AuthContext) || {};
   const user = auth.user || null;
@@ -83,12 +139,17 @@ export default function FeatureFlagsPage() {
   const [flags, setFlags] = useState([]);
   const [message, setMessage] = useState('');
   const [authOpen, setAuthOpen] = useState(false);
+  const [agentUsage, setAgentUsage] = useState(null);
+  const [agentFeedback, setAgentFeedback] = useState(null);
 
   const load = useCallback(async () => {
     if (!user) return;
     const { data: admin } = await supabase.rpc('is_feature_flag_admin');
     setIsAdmin(admin === true);
     if (admin !== true) return;
+    // Agent use (KAL-532); a missing function (older database) just hides it.
+    supabase.rpc('staff_survey_agent_usage').then(({ data, error }) => setAgentUsage(error ? null : data || []));
+    supabase.rpc('staff_survey_agent_feedback').then(({ data, error }) => setAgentFeedback(error ? null : data || []));
     const { data, error } = await supabase.from('feature_flags')
       .select('key, mode, tester_emails, description, updated_at')
       .order('key');
@@ -145,6 +206,7 @@ export default function FeatureFlagsPage() {
       </p>
       {flags.map((f) => <FlagRow key={f.key} flag={f} onSave={saveFlag} />)}
       {flags.length === 0 && !message && <p style={{ color: C.inkSoft }}>No features are waiting behind a switch.</p>}
+      <AgentUsageSection usage={agentUsage} feedback={agentFeedback} />
       {message && <p role="status" style={{ fontSize: 14 }}>{message}</p>}
       <a href="/" style={{ color: C.gold, fontSize: 14 }}>Back to Survey</a>
     </div>

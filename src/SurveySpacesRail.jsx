@@ -37,7 +37,7 @@ import SurveyMarkerNotes from './components/SurveyMarkerNotes';
 import SurveyMarkerTracking, { SurveyMarkerTrackingBadge } from './components/SurveyMarkerTracking.jsx';
 import { useDocumentPeople } from './hooks/useDocumentPeople.js';
 import { EMPTY_TRACKING_FILTER, nextTracking, passesTrackingFilter, todayKey } from './utils/markerTracking.js';
-import { buildNoteWithMedia, normalizeNoteMedia, uploadSurveyMedia } from './services/surveyMediaService';
+import { buildNoteWithMedia, getSurveyMediaUrl, normalizeNoteMedia, uploadSurveyMedia } from './services/surveyMediaService';
 import SurveyAgentPanel from './components/SurveyAgentPanel.jsx';
 import { isSurveyAgentEnabled } from './agent/surveyAgentFlag.js';
 import { surveyAgentBridge } from './agent/surveyAgentTools.js';
@@ -1688,6 +1688,14 @@ const SurveySpacesRail = ({
         applyEntitySelectionForMarker(annotationId, moduleId, category, entityId);
       },
       updateNote: (annotationId, updater) => updateSurveyMarkerNote(annotationId, updater, { requireExisting: true }),
+      // KAL-532: an item's photos, oldest first, and one photo's file.
+      photosOf: (annotationId) => normalizeNoteMedia(surveyMarkers?.[annotationId]?.note).filter((m) => m?.kind === 'photo' && !m.unavailable),
+      readMedia: async (ref) => {
+        const url = await getSurveyMediaUrl(ref);
+        if (!url) return null;
+        const res = await fetch(url);
+        return res.ok ? res.blob() : null;
+      },
       uploadMedia: (annotationId, file, kind) => uploadSurveyMedia({ documentId: pdfFile?.id || null, markerId: annotationId, file, kind }),
       addMediaRefs: (annotationId, refs) => updateSurveyMarkerNote(
         annotationId,

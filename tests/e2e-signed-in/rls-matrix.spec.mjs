@@ -179,6 +179,7 @@ const NOT_SWEPT = {
   login_only_apps: 'service only', project_item_assign_emails: 'service only',
   pdf_r2_copies: 'service only', pdf_r2_deletes: 'service only', r2_usage_daily: 'service only',
   rowid_signing_secrets: 'service only', survey_agent_daily_usage: 'service only',
+  survey_agent_feedback_daily: 'service only',
   sheet_sync_connections: 'service only', sheet_sync_pending_connections: 'service only',
   sheet_sync_settings: 'service only',
   project_item_counters: 'service only',

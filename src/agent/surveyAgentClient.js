@@ -28,7 +28,7 @@ export class SurveyAgentError extends Error {
   }
 }
 
-const CALL_TIMEOUT_MS = { status: 15_000, turn: 45_000, transcribe: 30_000, speak: 20_000 };
+const CALL_TIMEOUT_MS = { status: 15_000, turn: 45_000, transcribe: 30_000, speak: 20_000, look: 45_000, feedback: 10_000 };
 
 const isOffline = () => typeof navigator !== 'undefined' && navigator.onLine === false;
 
@@ -194,13 +194,15 @@ const CLAIM_CHECK = {
  * tool_calls, tool), not changed on error. Returns { history, reply, changes }
  * where changes are the writes this turn made, oldest first.
  */
-export async function runSurveyAgentTurn({ history = [], userText, call, toolbox, answerValues, typedLines = false, annotations = false, lang = 'en', offers: offersOn = false, noteStyle = null, maxSteps = SURVEY_AGENT_LIMITS.maxToolSteps }) {
+export async function runSurveyAgentTurn({ history = [], userText, call, toolbox, answerValues, typedLines = false, annotations = false, lang = 'en', offers: offersOn = false, noteStyle = null, photos = false, maxSteps = SURVEY_AGENT_LIMITS.maxToolSteps }) {
   const messages = [...compactHistory(history), { role: 'user', content: userText }];
   const changes = [];
   // A summary a tool made this turn ({ title, text }), for the person to save.
   let summary = null;
   // Template additions a tool offered this turn (KAL-529), for Yes / No cards.
   const offers = [];
+  // Which prompt the server ran (KAL-532 learning loop).
+  let promptVersion = null;
   // The survey context goes in up front, as if the model had asked for it:
   // that saves a whole model step (the full prompt again) on a new chat.
   if (!hasContext(messages)) {
@@ -220,12 +222,13 @@ export async function runSurveyAgentTurn({ history = [], userText, call, toolbox
   for (let step = 0; step < maxSteps; step += 1) {
     let response;
     try {
-      response = await call({ action: 'turn', messages, answer_values: answerValues, ...(typedLines ? { typed_lines: true } : {}), ...(annotations ? { annotations: true } : {}), ...(lang && lang !== 'en' ? { lang } : {}), ...(offersOn ? { offers: true } : {}), ...(noteStyle && noteStyle !== 'sentences' ? { note_style: noteStyle } : {}) });
+      response = await call({ action: 'turn', messages, answer_values: answerValues, ...(typedLines ? { typed_lines: true } : {}), ...(annotations ? { annotations: true } : {}), ...(lang && lang !== 'en' ? { lang } : {}), ...(offersOn ? { offers: true } : {}), ...(noteStyle && noteStyle !== 'sentences' ? { note_style: noteStyle } : {}), ...(photos ? { photos: true } : {}) });
     } catch (err) {
       // The caller keeps its old history; it still needs this turn's writes for Undo.
       err.changes = changes;
       throw err;
     }
+    if (typeof response?.prompt_version === 'string') promptVersion = response.prompt_version;
     const reply = String(response?.message?.content || '').trim();
     const calls = (Array.isArray(response?.message?.tool_calls) ? response.message.tool_calls : [])
       .filter((c) => c?.id && c?.function?.name);
@@ -242,7 +245,7 @@ export async function runSurveyAgentTurn({ history = [], userText, call, toolbox
         : claim === 'show' ? (changes.length ? 'Done, but I did not show it.' : 'I did not show it.')
           : 'I did not change anything.';
       messages.push({ role: 'assistant', content: said || '(no reply)' });
-      return { history: messages, reply: said || (changes.length ? 'Done.' : 'I did not change anything.'), changes, summary, offers };
+      return { history: messages, reply: said || (changes.length ? 'Done.' : 'I did not change anything.'), changes, summary, offers, promptVersion };
     }
     messages.push({
       role: 'assistant',
@@ -274,5 +277,5 @@ export async function runSurveyAgentTurn({ history = [], userText, call, toolbox
   // Too many steps: close the turn so the conversation stays valid.
   if (checked != null) messages.splice(checked, 2);
   messages.push({ role: 'assistant', content: 'I stopped there; that took too many steps.' });
-  return { history: messages, reply: 'I stopped there; that took too many steps. Check what I changed below.', changes, summary, offers };
+  return { history: messages, reply: 'I stopped there; that took too many steps. Check what I changed below.', changes, summary, offers, promptVersion };
 }
