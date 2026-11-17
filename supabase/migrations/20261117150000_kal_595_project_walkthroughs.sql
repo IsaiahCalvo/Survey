@@ -6,7 +6,16 @@
 -- can show a Walkthru tab, and lets everyone in the Project read that walk
 -- (nodes, notes, photos, audio, transcripts, next actions) read only, whether
 -- or not they can open it in Walkthru. Only adds things; nothing is removed.
-
+--
+-- Production has schema walkthru (KAL-579), but this repo's migrations don't
+-- build it, so a fresh local database skips this file instead of failing.
+do $kal595$
+begin
+  if to_regclass('walkthru.walkthroughs') is null then
+    raise notice 'KAL-595 project walkthroughs skipped: schema walkthru is not in this database';
+    return;
+  end if;
+  execute $kal595sql$
 -- 1. Which walk is in which Project -------------------------------------------
 create table if not exists public.project_walkthroughs (
   project_id uuid not null references public.projects(id) on delete cascade,
@@ -274,3 +283,6 @@ $$;
 
 revoke all on function walkthru.get_project_walkthrough(uuid, uuid) from public, anon;
 grant execute on function walkthru.get_project_walkthrough(uuid, uuid) to authenticated;
+  $kal595sql$;
+end
+$kal595$;
