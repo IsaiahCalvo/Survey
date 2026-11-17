@@ -53,3 +53,14 @@ test('no Team, review or people face for a file kept on this device', () => {
   const phone = read('../src/mobile/MobilePdfViewerChrome.jsx');
   assert.match(phone, /\{!isDeviceDocumentId\(leftRailApi\?\.documentId\) && \(\s*<RailButton\s+label=\{`\$\{presenceCount\} active user/);
 });
+
+test('a signed-in tester at the project limit hears it before the dialog, and errors show inside it', () => {
+  const dash = read('../src/Dashboard.jsx');
+  assert.match(dash, /const handleCreateProjectClick = \(\) => \{[\s\S]{0,260}const projectCheck = canCreateProject\(\);\s*if \(!projectCheck\.allowed\) \{\s*setDashboardError\(projectCheck\.reason\);\s*return;/);
+  assert.match(dash, /error=\{isProjectModalOpen \? dashboardError : ''\}/);
+  assert.match(dash, /\{dashboardError && !isProjectModalOpen && \(/);
+  assert.match(read('../src/home/CreateProjectModal.jsx'), /\{error \? \(\s*<p role="alert"/);
+  const limits = read('../src/hooks/useSubscriptionLimits.js');
+  assert.doesNotMatch(limits, /tier\.`/);
+  assert.match(limits, /project\$\{limits\.projects > 1 \? 's' : ''\} on the \$\{planName\(userTier\)\} plan\./);
+});

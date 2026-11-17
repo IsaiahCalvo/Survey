@@ -1430,6 +1430,13 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
 
   // Create Project flow
   const handleCreateProjectClick = () => {
+    // At the plan's project limit, say so now, not after a name and PDFs are
+    // picked and Create is pressed (tester walk, Nov 17).
+    const projectCheck = canCreateProject();
+    if (!projectCheck.allowed) {
+      setDashboardError(projectCheck.reason);
+      return;
+    }
     setProjectName('');
     setProjectFiles([]);
     setIsDragOver(false);
@@ -3354,6 +3361,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         onRemoveFile={(index) => setProjectFiles((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}
         onCancel={handleCancelCreateProject}
         onConfirm={handleConfirmCreateProject}
+        error={isProjectModalOpen ? dashboardError : ''}
       />
       {uploadCheck?.review ? (
         <UploadReviewModal
@@ -3384,7 +3392,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         onResolve={settleDuplicateModal}
         onClose={() => settleDuplicateModal(duplicateModal?.mode === 'alias' ? 'skip-alias' : 'cancel')}
       />
-      {dashboardError && (
+      {/* While Create project is open its error shows inside it; this card
+          sat behind the dialog's dimmed backdrop. */}
+      {dashboardError && !isProjectModalOpen && (
         <div
           role="alert"
           style={{
