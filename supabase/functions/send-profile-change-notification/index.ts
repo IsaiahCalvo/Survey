@@ -4,7 +4,10 @@ import { parseBody, s } from '../_shared/inputSchema.js';
 import {
   renderEmailLayout,
   EMAIL_DANGER,
-  EMAIL_GOLD,
+  EMAIL_CORAL,
+  EMAIL_TILE,
+  EMAIL_FRAME,
+  EMAIL_INK,
   EMAIL_P_STYLE as P,
   EMAIL_FINE_STYLE as FINE,
 } from '../_shared/emailLayout.ts'
@@ -133,9 +136,9 @@ Deno.serve(async (req) => {
         `<p style="${P}">Hello ${escapeHtml(userName)},</p>` +
         `<p style="${P}">This email confirms that the following information on your Survey account was recently changed: <strong>${escapeHtml(fieldList)}</strong>. If you made this change, no action is needed.</p>` +
         `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="em-tile" ` +
-        `style="margin:20px 0 0;background-color:#faf9f6;border:1px solid #e5e0d4;border-left:4px solid ${EMAIL_GOLD};border-radius:8px;">` +
+        `style="margin:20px 0 0;background-color:${EMAIL_TILE};border:1px solid ${EMAIL_FRAME};border-left:4px solid ${EMAIL_CORAL};border-radius:8px;">` +
         `<tr><td style="padding:14px 16px;font-family:-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:14px;line-height:1.5;">` +
-        `<span class="em-ink" style="color:#1a1d24;"><strong>If this wasn't you:</strong> reset your password immediately and contact us at ` +
+        `<span class="em-ink" style="color:${EMAIL_INK};"><strong>If this wasn't you:</strong> reset your password immediately and contact us at ` +
         `<strong>isaiahcalvo123@gmail.com</strong> &#8212; someone may have access to your account.</span>` +
         `</td></tr></table>` +
         `<p style="${FINE}" class="em-mut">This is an automated security notification from Survey.</p>`,

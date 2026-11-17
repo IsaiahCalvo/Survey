@@ -34,8 +34,13 @@ test('emailLayout frame invariants', async () => {
   assert.ok(/img [^>]*alt=""[^>]*width="30" height="30"/.test(html), 'logo alt + attribute dimensions');
   assert.ok(html.includes('>SURVEY<'), 'hardcoded uppercase wordmark (Outlook ignores text-transform)');
 
-  // Gold accent present (divider + button background).
-  assert.ok(html.includes('#d8a84e'), 'gold accent');
+  // Suite coral accent present (divider + button background), gold gone
+  // (KAL-663: grey and coral in every app, emails included).
+  assert.ok(html.includes('#ba4f2c'), 'coral accent');
+  assert.ok(!/#(d8a84e|b6904a|15110a|8a6a2f|f4f1ea|e5e0d4|faf9f6)/i.test(html), 'no old gold or bone colours');
+  // Dark mode swaps in the bright coral with dark words, as the apps do.
+  assert.ok(/\.em-btn\{background-color:#e07a5e !important;\}/.test(html), 'dark button is the bright coral');
+  assert.ok(html.includes('a[href] span{color:#131315 !important;}'), 'dark button words are dark');
 
   // Card + footer tables, both capped at 600px, table-based layout.
   assert.equal(html.split('max-width:600px').length - 1, 2, 'card + footer 600px tables');
@@ -52,17 +57,17 @@ test('emailLayout frame invariants', async () => {
   // Bulletproof button: bgcolor'd td + padded link, never a <button> element,
   // text color re-declared on an inner span (Gmail dark-mode armor).
   assert.ok(!html.includes('<button'), 'no <button> element');
-  assert.ok(/<td bgcolor="#d8a84e"[^>]*><a href="https:\/\/surveytool\.app\/doc\/123"/.test(html),
-    'CTA is a gold bgcolor td wrapping the link');
-  assert.ok(/<a href="https:\/\/surveytool\.app\/doc\/123"[^>]*background-color:#d8a84e[^>]*><span style="color:#15110a;">/.test(html),
+  assert.ok(/<td bgcolor="#ba4f2c"[^>]*><a href="https:\/\/surveytool\.app\/doc\/123"/.test(html),
+    'CTA is a coral bgcolor td wrapping the link');
+  assert.ok(/<a href="https:\/\/surveytool\.app\/doc\/123"[^>]*background-color:#ba4f2c[^>]*><span style="color:#ffffff;">/.test(html),
     'button link carries background + span-redeclared text color');
 
   // Plain-URL fallback under the button (auth emails need it; all get it).
   assert.ok(html.includes('copy and paste this link'), 'plain-URL fallback line');
 
   // The divider is a height-attributed td (a styled div renders ~15px in Outlook).
-  assert.ok(/<td height="2" bgcolor="#d8a84e"[^>]*mso-line-height-rule:exactly/.test(html),
-    'gold divider is an Outlook-safe td');
+  assert.ok(/<td height="2" bgcolor="#ba4f2c"[^>]*mso-line-height-rule:exactly/.test(html),
+    'coral divider is an Outlook-safe td');
 
   // Body content, heading, file card, and footer reason all made it in.
   assert.ok(html.includes('Alex shared a document with you'), 'heading rendered');
