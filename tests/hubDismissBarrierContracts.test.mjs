@@ -46,7 +46,10 @@ test('document, project, and template More menus use the same barrier', () => {
   assert.match(projects, /function PopupMenu[\s\S]*<DismissBarrier insideRefs=\{\[ref\]\} onDismiss=\{onClose\}/);
   assert.match(templates, /function MoreMenu[\s\S]*<DismissBarrier insideRefs=\{\[ref\]\} onDismiss=\{onClose\}/);
   assert.match(templates, /className="ed-tpl-menu"[\s\S]*role="menu"/);
-  assert.match(templates, /role="menuitem"/);
+  // Its rows are the shared MenuRows (icons, Delete set apart), as on
+  // Documents and Projects; a hand-made row list is not allowed back.
+  assert.match(templates, /className="ed-tpl-menu"[\s\S]*<MenuRows items=\{items\} onClose=\{onClose\} \/>/);
+  assert.doesNotMatch(templates, /function MoreMenu[\s\S]{0,2500}role="menuitem"/);
 });
 
 test('Manage Team search and transient menus use the first-tap barrier', () => {

@@ -114,6 +114,7 @@ import AnswerSetPicker, { AnswerChips } from './AnswerSetPicker.jsx';
 import { TEMPLATE_EDITOR_REQUEST_EVENT, takeTemplateEditorRequest } from './templateEditorRequest';
 import './TemplatesEditor.css';
 import DismissBarrier from '../components/DismissBarrier';
+import MenuRows from '../components/MenuRows.jsx';
 import ValueSelect from '../components/ValueSelect.jsx';
 import { OWN_KIT_PREFIX, ownKitCopyFor, templateOwnKitOf } from '../services/exportFormats/ownKitCopy.js';
 import { checkboxProps } from '../utils/keyActivate';
@@ -820,17 +821,9 @@ function MoreMenu({ anchorRect, items, onClose }) {
           visibility: pos ? 'visible' : 'hidden',
         }}
       >
-        {items.map(({ label, danger, onClick }) => (
-          <button
-            key={label}
-            type="button"
-            role="menuitem"
-            className={`hub-menu__item${danger ? ' is-danger' : ''}`}
-            onClick={() => { onClick(); onClose(); }}
-          >
-            {label}
-          </button>
-        ))}
+        {/* The shared rows (MenuRows): the same icons, Delete set apart at the
+            bottom, and the gliding hover strip as on Documents and Projects. */}
+        <MenuRows items={items} onClose={onClose} />
       </div>
     </>,
     document.body,
@@ -3423,15 +3416,16 @@ export default function TemplatesEditor({
         <div className="templates-mobile-layout slim-scroll">
           {!mobileTemplateOpen ? (
             <div className="templates-mobile-browser">
-              {visibleTemplates.length === 0 ? (
+              {visibleTemplates.length === 0 && rich.length > 0 ? (
+                /* A search that matches nothing gets the same plain line as
+                   Documents and Projects (KAL-653), not the big "start here"
+                   card: the user has templates and needs to fix the search. */
+                <div className="meta" style={{ padding: '24px 16px', fontSize: 12 }}>No templates match your search.</div>
+              ) : visibleTemplates.length === 0 ? (
                 <EmptyState
                   icon="template"
-                  line={rich.length === 0 ? 'No templates yet' : 'No templates match your search'}
-                  // UX (KAL-58): the coaching sentence belongs only on the
-                  // genuinely-empty case. A user whose SEARCH returned nothing
-                  // already has templates and doesn't need to be told what a
-                  // template is for — they need to fix their search.
-                  description={rich.length === 0 ? 'Create a template to define your survey structure.' : undefined}
+                  line="No templates yet"
+                  description="Create a template to define your survey structure."
                   actionLabel="New template"
                   onAction={createTemplate}
                 />
