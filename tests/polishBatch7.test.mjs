@@ -10,7 +10,7 @@ test('Checklist answers: hover uses the hover fill and the grey chip shows on th
 
 test('History search glyph is the shared panel-head size', () => {
   const rp = readFileSync(new URL('../src/components/revisions/RevisionsPanel.jsx', import.meta.url), 'utf8');
-  assert.match(rp, /size=\{mobileMode \? 20 : SECTION_ICON_SIZES\.desktop\.glyph\}/);
+  assert.match(rp, /size=\{mobileMode \? 20 : 16 \/\* SectionIconButton desktop glyph/);
 });
 
 test('hover fills on panels use --hover, not the chosen fill', () => {
