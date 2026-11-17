@@ -631,6 +631,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'A note on any mark: Edit note in the mark menu and the properties panel; shown in the Markups list and exported as the PDF comment',
     stage: 'beta',
   }),
+  'markup-group-by': Object.freeze({
+    label: 'Group the Markups list by kind, page or person',
+    stage: 'beta',
+  }),
   'flip-marks': Object.freeze({
     label: 'Flip horizontal / vertical in the mark menu: the pick mirrors as one piece, words stay readable',
     stage: 'beta',

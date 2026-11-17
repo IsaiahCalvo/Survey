@@ -27,10 +27,13 @@ import {
   authorLabel,
   buildMarkupRows,
   filterMarkupRows,
+  MARKUP_GROUPINGS,
   groupMarkupRows,
   markupRowsToCsv,
   markupTotals,
 } from '../utils/markupList.js';
+
+const GROUP_BY_KEY = 'survey:markups-group-by';
 
 function safeName(name) {
   return String(name || 'document').replace(/\.pdf$/i, '').replace(/[^\w.-]+/g, '_').slice(0, 80) || 'document';
@@ -51,6 +54,22 @@ export default function MarkupsPanel({
   const subjectsOn = useMemo(() => isFeatureOn('mark-subject'), []);
   // Nightly 'mark-note': a mark's note shows under its row and in the CSV.
   const notesOn = useMemo(() => isFeatureOn('mark-note'), []);
+  // Nightly 'markup-group-by' (KAL-724): group by kind, page (Drawboard's
+  // way) or person; the pick is kept on this device.
+  const groupByOn = useMemo(() => isFeatureOn('markup-group-by'), []);
+  const [groupBy, setGroupByState] = useState(() => {
+    if (!groupByOn) return 'kind';
+    try {
+      const saved = localStorage.getItem(GROUP_BY_KEY);
+      return MARKUP_GROUPINGS.some((g) => g.value === saved) ? saved : 'kind';
+    } catch {
+      return 'kind';
+    }
+  });
+  const setGroupBy = (value) => {
+    setGroupByState(value);
+    try { localStorage.setItem(GROUP_BY_KEY, value); } catch { /* kept for this visit only */ }
+  };
   const tip = useTooltip();
   const [query, setQuery] = useState('');
   const [kinds, setKinds] = useState(() => new Set());
@@ -97,7 +116,7 @@ export default function MarkupsPanel({
     measuresOnly,
     labelFor,
   }), [rows, query, kinds, author, layer, measuresOnly, labelFor]);
-  const groups = useMemo(() => groupMarkupRows(shown), [shown]);
+  const groups = useMemo(() => groupMarkupRows(shown, { by: groupBy, labelFor }), [shown, groupBy, labelFor]);
   const totals = useMemo(() => markupTotals(shown), [shown]);
 
   const toggleKind = (kind) => setKinds((prev) => {
@@ -171,6 +190,19 @@ export default function MarkupsPanel({
               {k.label} <span className="markups-panel__count">{k.count}</span>
             </button>
           ))}
+        </div>
+      )}
+
+      {groupByOn && rows.length > 0 && (
+        <div className="markups-panel__author" data-markups-group-by="true">
+          <span aria-hidden="true">Group by</span>
+          <ValueSelect
+            label="Group by"
+            size="sm"
+            value={groupBy}
+            options={MARKUP_GROUPINGS}
+            onChange={setGroupBy}
+          />
         </div>
       )}
 
@@ -282,7 +314,7 @@ export default function MarkupsPanel({
                       <span className="markups-panel__note" data-markup-note>{markNotePreview(row.note)}</span>
                     )}
                   </span>
-                  <span className="markups-panel__page">p. {row.pageNumber}</span>
+                  {groupBy !== 'page' && <span className="markups-panel__page">p. {row.pageNumber}</span>}
                 </button>
               ))}
             </div>

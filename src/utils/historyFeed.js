@@ -219,6 +219,9 @@ export function historyTypeKey(value, annotation = null) {
   if (tool === 'arrow') return 'arrow';
   if (tool === 'highlighter') return 'highlighter';
   if (data.lineStyle === 'cloud' || data.style?.lineStyle === 'cloud' || data.cloud === true || data.borderStyle === 'cloud') return 'cloud';
+  // The Cloud tool saves a rectangle, ellipse or polygon with a bump size
+  // (pdfCloudIntensity); a clouded text box is still a text box.
+  if (data.pdfCloudIntensity != null && !['textbox', 'text', 'i-text', 'freetext'].includes(text)) return 'cloud';
   if (!text) return 'mark';
   if (text.includes('survey') || text === 'highlight-survey') return 'surveyMarker';
   if (text === 'rect' || text === 'rectangle' || text === 'square') return 'rect';

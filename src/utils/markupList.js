@@ -257,13 +257,43 @@ export function filterMarkupRows(rows, {
 }
 
 /** Rows grouped by kind, in MARKUP_KINDS order: [{ kind, label, rows }]. */
-export function groupMarkupRows(rows) {
+/** The ways the list can be grouped (Nightly 'markup-group-by'): Drawboard groups by page. */
+export const MARKUP_GROUPINGS = Object.freeze([
+  { value: 'kind', label: 'Kind' },
+  { value: 'page', label: 'Page' },
+  { value: 'author', label: 'Person' },
+]);
+
+/**
+ * The rows in groups: [{ kind, label, rows }], `kind` being the group's key.
+ * By kind (the default) in kind order; by page ("Page 3") in page order; by
+ * author (`labelFor(authorId)`, "Someone" without one) by name.
+ */
+export function groupMarkupRows(rows, { by = 'kind', labelFor = null } = {}) {
+  const keyOf = by === 'page'
+    ? (row) => `page:${row.pageNumber}`
+    : by === 'author'
+      ? (row) => `author:${row.authorId || ''}`
+      : (row) => row.kind;
   const groups = new Map();
   for (const row of rows || []) {
-    if (!groups.has(row.kind)) groups.set(row.kind, []);
-    groups.get(row.kind).push(row);
+    const key = keyOf(row);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(row);
   }
-  return [...groups.entries()]
+  const entries = [...groups.entries()];
+  if (by === 'page') {
+    return entries
+      .sort((a, b) => Number(a[1][0].pageNumber) - Number(b[1][0].pageNumber))
+      .map(([kind, list]) => ({ kind, label: `Page ${list[0].pageNumber}`, rows: list }));
+  }
+  if (by === 'author') {
+    const name = (id) => (typeof labelFor === 'function' ? labelFor(id || null) : null) || 'Someone';
+    return entries
+      .map(([kind, list]) => ({ kind, label: name(list[0].authorId), rows: list }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }
+  return entries
     .sort((a, b) => (KIND_ORDER[a[0]] ?? 99) - (KIND_ORDER[b[0]] ?? 99))
     .map(([kind, list]) => {
       const entry = MARKUP_KINDS.find(([key]) => key === kind);
