@@ -120,6 +120,13 @@ test('saving: offline, refused or unlinkable links are kept for this walk only, 
     entryOnServer: () => true, setNodeTypeEntry: async () => ({ data: [{ id: 'a' }] }),
   });
   assert.match(noEntry.notSaved[0].reason, /not in the library/);
+  const saveRefused = await saveCategoryLinks({
+    ...base, links: [{ nodeTypeId: 'a', categoryId: 'c-reader' }],
+    linkTemplates: async () => [{ ...template }],
+    saveTemplates: async () => { throw new Error('Template row does not belong to the signed-in user'); },
+    entryOnServer: () => true, setNodeTypeEntry: async () => { throw new Error('not called'); },
+  });
+  assert.match(saveRefused.notSaved[0].reason, /template could not be saved/);
   assert.equal(entryIdFor([template], 't1', 'm1', 'c-cam'), 'e-cam');
 });
 

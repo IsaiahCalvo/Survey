@@ -120,6 +120,7 @@ export async function saveCategoryLinks({
   if (!links.length) return { saved, notSaved };
 
   let current = templates;
+  let templateSaveFailed = false;
   if (templatesNeedLinking(links, current, templateId, moduleId)) {
     try {
       const linked = await linkTemplates(current);
@@ -128,6 +129,9 @@ export async function saveCategoryLinks({
         current = linked;
       }
     } catch (error) {
+      // A plan without template editing, or offline: the Survey side can't
+      // keep the link, so nothing is half-saved on the Walkthru side either.
+      templateSaveFailed = true;
       console.warn('[suite] category links: template save failed', error);
     }
   }
@@ -136,7 +140,10 @@ export async function saveCategoryLinks({
   for (const link of links) {
     const entryId = entryIdFor(current, templateId, moduleId, link.categoryId);
     if (!entryId) {
-      notSaved.push({ link, reason: 'the Survey Category is not in the library yet' });
+      notSaved.push({
+        link,
+        reason: templateSaveFailed ? 'the template could not be saved' : 'the Survey Category is not in the library yet',
+      });
       continue;
     }
     if (entryOnServer && !entryOnServer(entryId)) {
