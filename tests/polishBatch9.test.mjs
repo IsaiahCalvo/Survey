@@ -49,3 +49,10 @@ test('search text results take the hover fill', () => {
   const css = readFileSync(new URL('../src/sidebar/searchTextPanel.css', import.meta.url), 'utf8');
   assert.match(css, /\.search-text-result:not\(\.is-active\):hover \{\s*color: var\(--text-2\);\s*background: var\(--hover\);/);
 });
+
+test('Toolbars workspaces: field edge, hint on the title edge, delete hover fill', () => {
+  const css = readFileSync(new URL('../src/styles/toolBarVisibility.css', import.meta.url), 'utf8');
+  assert.match(css, /\.toolbars-card__workspaces > \.page-grid-settings__hint \{ padding: 0 10px; \}/);
+  assert.match(css, /\.toolbars-card__workspace-save input \{[^}]*border: 1px solid var\(--border-strong\)/);
+  assert.match(css, /\.toolbars-card__workspace-delete:hover \{ background: var\(--hover\);/);
+});
