@@ -5864,6 +5864,16 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
 @media (hover: hover) {
   .survey-hub .projects-file-grid[data-document-id]:not(:has([aria-checked='true'])):hover { background: var(--hover) !important; }
 }
+/* Same for the project list rows beside it, when not the chosen one. */
+@media (hover: hover) {
+  .survey-hub .projects-list-row:not(.is-selected):hover { background: var(--hover) !important; }
+}
+@media (pointer: fine) {
+  .survey-hub .projects-list-row:active:not(:has(button:active, input:active, [data-drag-rearrange-handle]:active)) {
+    background: var(--pressed) !important;
+    transition: none !important;
+  }
+}
 @media (pointer: fine) {
   .survey-hub .projects-file-grid[data-document-id]:active:not(:has(button:active, [role='checkbox']:active, [data-drag-rearrange-handle]:active)) {
     background: var(--pressed) !important;

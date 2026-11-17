@@ -1275,6 +1275,7 @@ export default function ProjectsFolderTree({
                   <div
                     data-drag-rearrange-row
                     data-project-id={p.id}
+                    className={`projects-list-row${(jobsEdit ? isSel : isOpen) ? ' is-selected' : ''}`}
                     onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setTeamMenu({ id: p.id, rect: { left: event.clientX, right: event.clientX + 184, top: event.clientY, bottom: event.clientY } }); setFileMenu(null); }}
                     onClick={() => { if (jobsEdit) toggleProjSel(p.id); else setOpenId(p.id); }}
                     {...keyboardControlProps()}

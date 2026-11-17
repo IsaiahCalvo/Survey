@@ -37,3 +37,10 @@ test('project document rows hover and press', () => {
   assert.match(hub, /\.projects-file-grid\[data-document-id\]:not\(:has\(\[aria-checked='true'\]\)\):hover \{ background: var\(--hover\) !important; \}/);
   assert.match(hub, /\.projects-file-grid\[data-document-id\]:active:not\(:has\(button:active, \[role='checkbox'\]:active, \[data-drag-rearrange-handle\]:active\)\) \{\s*background: var\(--pressed\) !important;/);
 });
+
+test('project list rows hover and press when not chosen', () => {
+  const hub = readFileSync(new URL('../src/home/hub.css', import.meta.url), 'utf8');
+  const tree = readFileSync(new URL('../src/home/ProjectsFolderTree.jsx', import.meta.url), 'utf8');
+  assert.match(tree, /className=\{`projects-list-row\$\{\(jobsEdit \? isSel : isOpen\) \? ' is-selected' : ''\}`\}/);
+  assert.match(hub, /\.projects-list-row:not\(\.is-selected\):hover \{ background: var\(--hover\) !important; \}/);
+});
