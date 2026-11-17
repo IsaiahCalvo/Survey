@@ -795,13 +795,22 @@ html[data-look="suite"] .btn {
 .chrome-pill:active {
   background: var(--pressed);
 }
-/* The pill rests on --surface-3, which in the light one look is the same
-   grey as --pressed, so a press showed nothing (and the hub's press rule
-   repaints it --pressed). It takes the next step, --pressed-2; the old look
-   has none and keeps --pressed. */
+/* The press is one step past the hover: --pressed-2 (the app-wide press
+   rule in states.css leaves the pill to this rule). The old look has no
+   --pressed-2 and keeps --pressed. */
 .chrome-pill:not(:disabled):active {
   background-color: var(--pressed-2, var(--pressed)) !important;
 }
+/* One look (suite rules, "a control that already rests on raised"): on
+   --surface-3 the hover had nowhere to go, so in light mode it got LIGHTER
+   (--hover) and in dark mode darker. The pill rests on the raised step like a
+   field, hovers to raised-2 and presses to pressed-2; open stays raised-2,
+   the selected fill. The old look keeps its own steps. */
+html[data-look='suite'] .chrome-pill { background: var(--hover); }
+@media (hover: hover) {
+  html[data-look='suite'] .chrome-pill:not(:disabled):hover { background: var(--surface-3); }
+}
+html[data-look='suite'] .chrome-pill[data-state='open'] { background: var(--surface-3); }
 
 .chrome-pill[data-state='open'] {
   color: var(--text-1);

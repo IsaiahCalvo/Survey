@@ -455,3 +455,13 @@ html[data-look="suite"] .ed-scope .card-line { background: var(--surface-2); }
 .ed-scope :is(.tpl-list-row, .tpl-cat-row, .tpl-entity-row).is-selected:active:not(:has(button:active, input:active, [data-drag-rearrange-handle]:active)) {
   background: var(--pressed-2, var(--pressed)) !important;
 }
+
+/* One look: a setting pill rests one step off what it sits on. The checklist
+   rows inside an open category sit on the ground colour, where the pill's
+   usual raised fill all but vanished in light mode; there it rests on the
+   panel colour, hovers to raised and presses to pressed-2 (styles.css). */
+html[data-look='suite'] .ed-scope .swipe-row .chrome-pill { background: var(--surface-2); }
+@media (hover: hover) {
+  html[data-look='suite'] .ed-scope .swipe-row .chrome-pill:not(:disabled):hover { background: var(--hover); }
+}
+html[data-look='suite'] .ed-scope .swipe-row .chrome-pill[data-state='open'] { background: var(--hover); }
