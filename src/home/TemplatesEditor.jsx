@@ -2685,6 +2685,7 @@ export default function TemplatesEditor({
                     <SwipeActionsRow label={t.name} disabled={tplEdit} actions={templateSwipeActions(t)} className="tpl-swipe-row">
                     <div
                       data-drag-rearrange-row
+                      className={`tpl-list-row${(tplEdit ? isSel : active) ? ' is-selected' : ''}`}
                       onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setTplMenu({ id: t.id, rect: { left: event.clientX, right: event.clientX + 150, top: event.clientY, bottom: event.clientY } }); }}
                       onClick={() => { if (tplEdit) toggleTplSel(t.id); else { setSelected(t.id); setOpenCat(-1); setOpenMod(0); } }}
                       {...keyboardControlProps()}

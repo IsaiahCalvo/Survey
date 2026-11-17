@@ -24,3 +24,10 @@ test('a module tab shows a press with no inner block behind its label', () => {
   assert.match(css, /\.ed-scope \[data-module-tab-id\]:not\(\[data-drag-lifted\]\):active \{\s*background: var\(--pressed\) !important;/);
   assert.match(css, /\.ed-scope \[data-module-tab-id\]:active > button \{ background: transparent !important; \}/);
 });
+
+test('template list rows hover and press when not chosen', () => {
+  const css = readFileSync(new URL('../src/home/TemplatesEditor.css', import.meta.url), 'utf8');
+  assert.match(src, /className=\{`tpl-list-row\$\{\(tplEdit \? isSel : active\) \? ' is-selected' : ''\}`\}/);
+  assert.match(css, /\.ed-scope \.tpl-list-row:not\(\.is-selected\):hover \{ background: var\(--hover\) !important; \}/);
+  assert.match(css, /\.ed-scope \.tpl-list-row:active:not\(:has\(button:active, input:active, \[data-drag-rearrange-handle\]:active\)\) \{\s*background: var\(--pressed\) !important;/);
+});
