@@ -211,7 +211,7 @@ export function useAnnotationContextMenu({ getPageObjects = null } = {}) {
 // targets (touchTargets.css + annotationContextMenu.css).
 // Design review 2026-10-27: the rows under the icon row carry an icon too,
 // like every other action menu (components/MenuRows.jsx picks by label).
-const MARK_ROW_ICONS = { group: 'selectGroup', ungroup: 'selectGroup', arrange: 'layers', moveToLayer: 'layers', align: 'alignLeft', lock: 'lock', unlock: 'lock', saveToLibrary: 'library', copyFormat: 'brush', pasteFormat: 'paintBucket' };
+const MARK_ROW_ICONS = { group: 'selectGroup', ungroup: 'selectGroup', arrange: 'layers', moveToLayer: 'layers', align: 'alignLeft', lock: 'lock', unlock: 'lock', saveToLibrary: 'library', copyFormat: 'brush', pasteFormat: 'paintBucket', applyToPages: 'pages' };
 const markRowIcon = (it) => MARK_ROW_ICONS[it.key] || menuIconFor(it.label);
 const MENU_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter'];
 
@@ -519,6 +519,9 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     // Format): copyMarkFormat(pageObject) keeps one mark's look,
     // pasteMarkFormat(pageNumber, selection) puts it on the picked marks;
     // markFormat is the kept look (null = nothing kept yet).
+    // Nightly 'apply-to-pages' (KAL-720): requestApplyToPages(pageNumber,
+    // selection) opens the Apply to pages card. Null on a one-page PDF.
+    requestApplyToPages = null,
     copyMarkFormat = null,
     pasteMarkFormat = null,
     markFormat = null,
@@ -754,6 +757,14 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         )),
       }];
     };
+    // Nightly 'apply-to-pages': "Apply to pages…" under Save to library.
+    // Survey Markers stay on their page, so a pick of only markers has none.
+    const applyPagesItems = (selection) => {
+      if (typeof requestApplyToPages !== 'function') return [];
+      const marks = (selection.indices || []).length + (selection.calloutIds || []).length;
+      if (marks === 0) return [];
+      return [item('Apply to pages…', 'applyToPages', () => requestApplyToPages(ctx.pageNumber, selection))];
+    };
     // Nightly 'copy-format': Copy format (one mark with a look to copy) and
     // Paste format (greyed until a look is kept), under Paste.
     const formatItems = (selection, sourceObj = null) => {
@@ -860,6 +871,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         ...formatItems({ calloutIds: [ctx.calloutId] }, calloutObj),
         duplicateItem({ calloutIds: [ctx.calloutId] }),
         ...libraryItems({ calloutIds: [ctx.calloutId] }),
+        ...applyPagesItems({ calloutIds: [ctx.calloutId] }),
         ...layerItems({ calloutIds: [ctx.calloutId] }),
         ...barItems(),
         // UX: right-click Delete = the SAME gated delete as pressing Delete/
@@ -959,6 +971,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         ...formatItems({ indices: [ctx.annotationIndex] }, menuObj),
         duplicateItem({ indices: [ctx.annotationIndex] }),
         ...libraryItems({ indices: [ctx.annotationIndex] }),
+        ...applyPagesItems({ indices: [ctx.annotationIndex] }),
         ...layerItems({ indices: [ctx.annotationIndex] }),
         ...subjectItems(),
         ...barItems(),
@@ -1261,6 +1274,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         ...formatItems(familySelection),
         duplicateItem(familySelection),
         ...libraryItems(familySelection),
+        ...applyPagesItems(familySelection),
         ...layerItems(familySelection),
         ...((familySelection.calloutIds || []).length || (familySelection.markerIds || []).length ? [] : subjectItems()),
         ...barItems(),
