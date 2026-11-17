@@ -42,6 +42,8 @@
   /* Full width, like the search field under it and the Layers panel's PDF
      page picker: capped at 200px it stopped short of the field's edge. */
 }
+/* Rests on the panel in the one look, like ButtonGroup, so its hover shows. */
+html[data-look="suite"] .mark-library__tabs { background: var(--surface-2); }
 
 /* Personal / Project / Stamps (review-stamps beta): three in one row. */
 .mark-library__tabs--3 {

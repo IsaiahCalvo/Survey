@@ -31,3 +31,10 @@ test('PDF tools fields show their edge and ticks wear the accent', () => {
   assert.match(css, /\.pdft-input\{[^}]*border:1px solid var\(--border-strong\)/);
   assert.match(css, /\.pdft-check input\{[^}]*accent-color:var\(--accent\)/);
 });
+
+test('joined-choice groups rest on the panel in the one look', () => {
+  const bg = readFileSync(new URL('../src/components/ButtonGroup.css', import.meta.url), 'utf8');
+  const lib = readFileSync(new URL('../src/markLibrary/MarkLibraryPanel.css', import.meta.url), 'utf8');
+  assert.match(bg, /html\[data-look="suite"\] \.button-group \{ background: var\(--surface-2\); \}/);
+  assert.match(lib, /html\[data-look="suite"\] \.mark-library__tabs \{ background: var\(--surface-2\); \}/);
+});
