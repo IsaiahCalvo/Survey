@@ -39,13 +39,13 @@
   border-radius: var(--radius-sm);
   min-width: 0;
   flex: 1;
-  max-width: 200px;
+  /* Full width, like the search field under it and the Layers panel's PDF
+     page picker: capped at 200px it stopped short of the field's edge. */
 }
 
 /* Personal / Project / Stamps (review-stamps beta): three in one row. */
 .mark-library__tabs--3 {
   grid-template-columns: 1fr 1fr 1fr;
-  max-width: 260px;
 }
 
 .mark-library__tab {
