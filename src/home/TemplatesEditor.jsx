@@ -1375,6 +1375,7 @@ export default function TemplatesEditor({
   useEffect(() => {
     const openRequested = () => {
       const request = takeTemplateEditorRequest();
+      if (request?.create) { createTemplateRef.current?.(); return; }
       if (!request?.templateId) return;
       setSearch('');
       setTemplateContentSearch('');
@@ -1652,6 +1653,11 @@ export default function TemplatesEditor({
     focusVisibleInput('input[data-template-title]');
     if (onCreateTemplate) onCreateTemplate();
   };
+
+  // A request from the survey panel can arrive before this render's
+  // createTemplate exists, so the request effect reads the newest one here.
+  const createTemplateRef = useRef(null);
+  createTemplateRef.current = createTemplate;
 
   const reorderTemplates = (activeId, overId) => {
     if (!activeId || !overId || activeId === overId) return;

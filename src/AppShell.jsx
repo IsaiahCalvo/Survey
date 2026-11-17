@@ -2207,6 +2207,11 @@ export default function App({ devPreviewReturnTab = null }) {
       requestTemplateEditor(options.templateId);
       setActiveTabId(HOME_TAB_ID);
       setCurrentView('dashboard');
+    } else if (options?.mode === 'new-template') {
+      // The survey panel's empty picker: Templates, a new template open.
+      requestTemplateEditor(null, { create: true });
+      setActiveTabId(HOME_TAB_ID);
+      setCurrentView('dashboard');
     } else if (options?.mode === 'edit' && options.templateId) {
       dashboardRef.current?.openEditTemplateModal?.(options.templateId, {
         moduleId: options.moduleId,

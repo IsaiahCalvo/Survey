@@ -208,6 +208,27 @@ export function buildDotMarkerBounds(rawPoint, { width = MARKER_STROKE_DEFAULT_W
   };
 }
 
+/**
+ * KAL-773: the box a tap with the (rectangle) Survey Marker tool places: a
+ * square 2.5% of the page's short side (16 to 48 page units), centred on the
+ * tap and kept on the page.
+ * @param {{ x: number, y: number }} point the tap, in page units
+ * @param {number} pageWidth
+ * @param {number} pageHeight
+ * @returns {{ x: number, y: number, width: number, height: number } | null}
+ */
+export function tapSurveyMarkerBox(point, pageWidth, pageHeight) {
+  const x = Number(point?.x);
+  const y = Number(point?.y);
+  const w = Number(pageWidth);
+  const h = Number(pageHeight);
+  if (![x, y, w, h].every(Number.isFinite) || w <= 0 || h <= 0) return null;
+  const side = Math.min(w, h, Math.max(16, Math.min(48, Math.min(w, h) * 0.025)));
+  const left = Math.max(0, Math.min(w - side, x - side / 2));
+  const top = Math.max(0, Math.min(h - side, y - side / 2));
+  return { x: round2(left), y: round2(top), width: round2(side), height: round2(side) };
+}
+
 // --- Smart fill polygons ----------------------------------------------------
 
 function depthOf(value) {

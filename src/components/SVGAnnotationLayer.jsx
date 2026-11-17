@@ -236,7 +236,7 @@ import { beginLiveStroke } from '../services/annotationLiveStrokes.js';
 import LiveStrokeGhosts from './LiveStrokeGhosts.jsx';
 import { crossPageGhostFor, crossPageGhostKind, subscribeCrossPageGhost } from '../utils/crossPageMove.js';
 // Owner 2026-10-13: Survey Marker draw modes — Rectangle / Freehand / Smart fill.
-import { buildDotMarkerBounds, buildPolygonMarkerBounds, buildStrokeMarkerBounds } from '../survey/markerShapes.js';
+import { buildDotMarkerBounds, buildPolygonMarkerBounds, buildStrokeMarkerBounds, tapSurveyMarkerBox } from '../survey/markerShapes.js';
 import { getMarkerStrokeWidth, useMarkerStrokeWidth } from '../survey/markerStrokeWidth.js';
 import '../survey/smartFillBeta.js';
 import { prewarmSmartFillPage } from '../survey/smartFillProvider.js';
@@ -3388,6 +3388,8 @@ const SVGAnnotationLayerBody = memo(({
 
   const commitShapeCreationRef = useRef(commitShapeCreation);
   useEffect(() => { commitShapeCreationRef.current = commitShapeCreation; }, [commitShapeCreation]);
+  const onSurveyMarkerCreatedRef = useRef(onSurveyMarkerCreated);
+  useEffect(() => { onSurveyMarkerCreatedRef.current = onSurveyMarkerCreated; }, [onSurveyMarkerCreated]);
 
   // Window-level move/up/cancel while a creation gesture is in flight — the
   // same listener pattern the callout creation uses, so drags survive leaving
@@ -3510,6 +3512,30 @@ const SVGAnnotationLayerBody = memo(({
         // page with something picked it only drops the pick. Nothing drawn.
         cancelDraft();
         applyPressFallbackRef.current?.(state.pressFallback);
+        return;
+      }
+      if (clicked && state.tool === 'survey-marker' && state.start) {
+        // KAL-773: a tap with the Survey Marker tool places a small square
+        // centred on it. A field user taps where the door is; before, only a
+        // drag drew one, and a tap did nothing at all.
+        cancelDraft();
+        // A tap on a Survey Marker already there adds no second one on top.
+        // (Markers take no presses while this tool is armed, so test boxes.)
+        const onMarker = Array.from(svgRef.current?.querySelectorAll?.('[data-survey-marker-id]') || []).some((node) => {
+          const r = node.getBoundingClientRect();
+          return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+        });
+        if (onMarker) return;
+        const box = tapSurveyMarkerBox(state.start, width, height);
+        if (box && typeof onSurveyMarkerCreatedRef.current === 'function') {
+          recordAnnotationCommit({
+            surface: 'SVGAnnotationLayer',
+            source: 'survey-marker:create',
+            action: 'survey-marker-tap',
+            pageNumber,
+          });
+          onSurveyMarkerCreatedRef.current(box);
+        }
         return;
       }
       if (clicked && CLICK_PLACE_SHAPE_TOOLS.includes(state.tool)) {
