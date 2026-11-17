@@ -470,6 +470,10 @@ import { installBackdropBlurTier } from './utils/backdropBlur.js';
 // <html data-backdrop-blur="off">: weak devices skip the dialog backdrop blur
 // (launch polish 2026-11-02; styles.css).
 if (typeof window !== 'undefined') installBackdropBlurTier(window);
+import { installKeepOnScreen } from './utils/keepOnScreen.js';
+// Every floating menu and list stays inside the window, capped and scrolling
+// when the window is too small for it (KAL-793; see the module's note).
+if (typeof document !== 'undefined' && document.body) installKeepOnScreen();
 
 // Suppress PDF.js "TT: undefined function" warnings
 // Suppress PDF.js "TT: undefined function" warnings

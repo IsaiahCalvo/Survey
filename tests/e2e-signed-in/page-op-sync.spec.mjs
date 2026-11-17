@@ -76,6 +76,8 @@ async function rotateRight(page) {
   const pd = pageDivOf(page);
   const box = await pd.boundingBox();
   await pd.click({ button: 'right', position: { x: box.width * 0.97, y: box.height * 0.985 } });
+  // KAL-793: Rotate sits in the page menu's "Rotate or mirror page" submenu.
+  await page.getByRole('menuitem', { name: 'Rotate or mirror page' }).filter({ visible: true }).first().click();
   await page.getByRole('menuitem', { name: 'Rotate right' }).filter({ visible: true }).first().click();
 }
 

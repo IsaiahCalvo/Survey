@@ -152,3 +152,16 @@
   width: 18px;
   height: 18px;
 }
+
+/* ---- page menu (KAL-793): title row and the red Delete page row ---------- */
+.annotation-menu-header {
+  padding: 4px var(--menu-item-pad-x) 2px;
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 600;
+  user-select: none;
+}
+.annotation-menu-row.is-danger:not([aria-disabled='true']),
+.annotation-menu-row.is-danger:not([aria-disabled='true']) > svg {
+  color: var(--danger-text);
+}
