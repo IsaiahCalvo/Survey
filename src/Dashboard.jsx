@@ -2125,6 +2125,81 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     refetchDocuments?.();
     return { ...result, source: walk.source || null };
   };
+  // KAL-758 (Nightly 'suite'): send a Project that came from a Plot job back
+  // as a .kvjob, so Plot shows what the field changed as suggestions. The
+  // user picks the job file Plot sent; Survey writes the same package with
+  // each device's Tag, Location and spot now, the devices added in the field
+  // and the red lines (jobReturn.js).
+  const sendBackToPlot = (project) => {
+    if (!project?.id || !user?.id) return;
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.kvjob,application/zip';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      try {
+        const [{ openJobFile: open }, ret, { openAnnotationDoc }] = await Promise.all([
+          import('./suite/jobPackage.js'),
+          import('./suite/jobReturn.js'),
+          import('./services/annotationDocSync.js'),
+        ]);
+        const { manifest, zip } = await open(file);
+        const { data: rows, error } = await supabase.from('documents').select('id').eq('project_id', project.id).eq('archived', false);
+        if (error) throw new Error('Could not read the Project\'s drawings.');
+        const documents = [];
+        const marksByDoc = new Map();
+        for (const row of rows || []) {
+          const handle = await openAnnotationDoc({ documentId: row.id, supabase, actorUserId: user.id, enableRealtime: false });
+          try {
+            documents.push({ documentId: row.id, markers: handle.getSurveyMarkers() || {} });
+            marksByDoc.set(row.id, handle.getByPage() || {});
+          } finally {
+            if (typeof handle.destroy === 'function') await handle.destroy();
+          }
+        }
+        const markups = [];
+        for (const at of ret.jobPagesOf(documents).values()) {
+          const marks = marksByDoc.get(at.documentId)?.[at.pageNumber] || [];
+          markups.push(...ret.markupsFromPage(marks, { pageId: at.pageId, page: at.page }));
+        }
+        const categoryName = (marker) => {
+          for (const t of templates || []) {
+            for (const mod of t?.modules || t?.config?.modules || []) {
+              const cat = (mod?.categories || []).find((c) => c?.id === marker.categoryId);
+              if (cat) return { categoryName: cat.name || null, typeName: (cat.types || []).find((ty) => ty?.libraryEntryId && ty.libraryEntryId === marker.libraryTypeEntryId)?.name || null };
+            }
+          }
+          return null;
+        };
+        const { manifest: back, counts } = ret.buildReturnManifest({ manifest, documents, markups, libraryOf: categoryName });
+        if (!documents.some((d) => Object.values(d.markers).some((m) => m?.suiteOrigin))) {
+          showToast('Nothing in this Project came from that job file, so there is nothing to send back.', 'error');
+          return;
+        }
+        const blob = await ret.writeReturnJob(zip, back);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = ret.returnFileName(manifest);
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        const parts = [
+          counts.moved && `${counts.moved} moved`,
+          counts.retagged && `${counts.retagged} retagged`,
+          counts.relocated && `${counts.relocated} with a new Location`,
+          counts.added && `${counts.added} added`,
+          counts.markups && `${counts.markups} red ${counts.markups === 1 ? 'line' : 'lines'}`,
+        ].filter(Boolean);
+        showToast(parts.length ? `Saved for Plot: ${parts.join(', ')}.` : 'Saved for Plot. Nothing changed in the field.', 'success');
+      } catch (err) {
+        showToast(err?.message || 'Could not make the file for Plot.', 'error');
+      }
+    };
+    input.click();
+  };
   // KAL-596 / suite spec: "Add Intercom to this Module" in the hand-off. A new
   // empty Category with exactly the Walkthru name, saved like any template
   // edit (which also links it to the library).
@@ -3366,6 +3441,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         onAddFromDrive={canOpenFromDrive ? (project) => { setDriveTargetProject(project || null); setDrivePickerOpen(true); } : null}
         onAddFromWalkthru={suiteOn && user ? (project) => setWalkthruTargetProject(project || null) : null}
         onAddFromJobFile={suiteOn && user ? (project) => setJobTargetProject(project || null) : null}
+        onSendBackToPlot={suiteOn && user ? sendBackToPlot : null}
         walkthruTabOn={suiteOn && Boolean(user)}
         onOpenFromGoogleDrive={canOpenFromGoogleDrive ? openFromGoogleDrive : null}
         onDropFiles={handleDroppedFiles}

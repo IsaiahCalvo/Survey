@@ -148,6 +148,26 @@ export function matchCategories(nodeTypes, template, moduleId) {
  *   unplaced: number
  * }}
  */
+// What a marker from a job file looked like when it arrived (KAL-758): the
+// sender's page, spot and words, the page size it was placed with, and the
+// middle of the marker then. A send back compares the marker now with this.
+function originOf(node, page, bounds) {
+  const round = (n) => Math.round(Number(n) * 100) / 100;
+  return {
+    pageId: clean(node.origin_page_id),
+    x: fractionOrNull(node.x_pct),
+    y: fractionOrNull(node.y_pct),
+    tag: clean(node.title),
+    location: clean(node.location),
+    page: { width: round(page.width), height: round(page.height), rotation: normalizeRotation(page.rotation) },
+    center: { x: round(bounds.x + bounds.width / 2), y: round(bounds.y + bounds.height / 2) },
+  };
+}
+const fractionOrNull = (value) => {
+  const n = Number(value);
+  return value == null || !Number.isFinite(n) ? null : n;
+};
+
 export function buildWalkMarkers(input) {
   const {
     nodes = [], nodeTypes = [], template, moduleId, categoryFor = {},
@@ -240,6 +260,7 @@ export function buildWalkMarkers(input) {
       changedBy: '',
       pageNumber: bounds ? pageNumber : null,
       bounds: bounds || null,
+      ...(bounds && clean(node.origin_page_id) ? { suiteOrigin: originOf(node, page, bounds) } : {}),
     };
     added += 1;
   }

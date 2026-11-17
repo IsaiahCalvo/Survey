@@ -164,6 +164,9 @@ export function jobToWalk(manifest, library = []) {
       wing: clean(raw.wing) || clean(page.wing),
       floor_label: clean(raw.floor) || clean(page.floor),
       location: clean(raw.location),
+      // Where Plot had it, so a send back can tell what the field changed
+      // (KAL-758). Only job files carry it.
+      origin_page_id: tracked ? clean(page.pageId) : null,
     });
   };
   for (const item of list(manifest?.items)) addNode(item, { tracked: true });

@@ -89,7 +89,7 @@ test('items become nodes with their shared id, Tag and places; one floor per PDF
     {
       id: 'blk-1', page_index: 0, x_pct: 0.1, y_pct: 0.2, node_type_id: 'entry:e-cam',
       library_type_entry_id: 'e-ptz', library_type_name: 'PTZ', title: 'C-2-01', suite_device_id: 'dev-cam-1',
-      building: 'HP 20', wing: 'East', floor_label: 'Level 2', location: 'Lobby',
+      building: 'HP 20', wing: 'East', floor_label: 'Level 2', location: 'Lobby', origin_page_id: 'p1',
     },
   );
   // The item's own Floor wins over the page's.
