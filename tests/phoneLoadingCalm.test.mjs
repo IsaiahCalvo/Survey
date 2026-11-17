@@ -80,8 +80,11 @@ test('on a touch screen the sign-in sheet opens without raising the keyboard or 
   assert.match(AUTH_MODAL_CSS, /\.auth-modal-header h2\[tabindex='-1'\]:focus-visible \{\s*outline: none !important;/);
 });
 
-test('the human check keeps its room from the first frame and is dark', () => {
-  assert.match(TURNSTILE, /theme: 'dark'/);
+test('the human check keeps its room from the first frame and follows the app mode', () => {
+  // Never 'auto' (the phone's own setting flashed a white box on the dark
+  // sheet). The app's mode: dark unless the suite look is on in light mode.
+  assert.match(TURNSTILE, /theme: currentTheme\(\)/);
+  assert.doesNotMatch(TURNSTILE, /theme: 'auto'/);
   assert.match(TURNSTILE, /size: narrow \? 'compact' : 'normal'/);
   assert.match(TURNSTILE, /minHeight: unavailable \? 0 : \(compact \? 140 : 65\)/);
 });

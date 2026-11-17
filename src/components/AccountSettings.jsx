@@ -57,6 +57,7 @@ import { readUsageStatsOff, writeUsageStatsOff } from '../utils/surveyAnalytics'
 import { IMPROVE_SURVEY_POLICY_VERSION } from '../legal/legalVersions';
 import { useTooltip } from './Tooltip';
 import ButtonGroup from './ButtonGroup.jsx';
+import { isSuiteLookOn, readAppearance, writeAppearance } from '../suiteLook.js';
 import { SURVEY_SUPPORT_EMAIL } from '../services/supportContact.js';
 
 const SUBSCRIPTION_TIMEOUT_MS = 10_000;
@@ -96,6 +97,9 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
   const [snapAngle, setSnapAngle] = useState(() => readSnapAngle());
   const [defaultUnitsOn] = useState(() => isFeatureOn('default-units'));
   const [units, setUnits] = useState(() => readUnits());
+  // KAL-663 - the suite look's light and dark mode. This device's setting.
+  const [suiteLookOn] = useState(() => isSuiteLookOn());
+  const [appearance, setAppearance] = useState(() => readAppearance());
   // Privacy tab. Usage statistics are per device; the learning opt-in lives on
   // the account so the server can check it before using anything.
   const [usageStatsOn, setUsageStatsOn] = useState(() => !readUsageStatsOff());
@@ -806,6 +810,27 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                     </form>
                   )}
                 </section>
+
+                {/* KAL-663 - Appearance: light, dark, or follow the device. */}
+                {suiteLookOn && (
+                  <section className="account-section" aria-labelledby="account-appearance-heading">
+                    <h3 id="account-appearance-heading">Appearance</h3>
+                    <div className="account-pref-row">
+                      <div className="account-pref-copy">
+                        <div className="account-pref-title" id="account-pref-appearance">Light or dark</div>
+                        <p className="account-pref-description">How Survey looks on this device. Match system follows your computer or phone. Pages keep their own paper colour.</p>
+                      </div>
+                      <ButtonGroup
+                        size="sm"
+                        labelledBy="account-pref-appearance"
+                        className="account-pref-appearance"
+                        value={appearance}
+                        options={[{ value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }, { value: 'system', label: 'Match system' }]}
+                        onChange={(next) => setAppearance(writeAppearance(next))}
+                      />
+                    </div>
+                  </section>
+                )}
 
                 {!isEditing && (
                   <>

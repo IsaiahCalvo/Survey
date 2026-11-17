@@ -577,3 +577,133 @@ button {
     --motion-drag: 0ms;
   }
 }
+
+/* ============================================================================
+   THE SUITE LOOK: grey and coral, dark and light (KAL-663, owner 2026-11-16)
+   ============================================================================
+   "A consistent UI across the board, like Walkthru with its gray and coral."
+   Survey, Walkthru and Plot now share one colour set. The values and their
+   names are in docs/suite/SUITE-RULES.md ("One colour set"); nothing here is
+   Survey's own pick. The dark values are Walkthru's, the light values are
+   Plot's greys with a deeper coral.
+
+   Nightly first: the flag 'one-look' (src/suiteLook.js) puts data-look="suite"
+   on <html>. Without it the app keeps the palette above. data-theme="light"
+   picks the light set; anything else is dark.
+
+   How Survey's layers read the shared names:
+     --surface-0   ground      behind everything, round the page
+     --surface-1   ground      a sunken well inside a panel
+     --surface-2   panel       bars, rails, sheets, cards
+     --surface-3   raised-2    a selected row, a field, a menu
+     --hover       raised      --pressed  ground (dark) / raised-2 (light)
+   Every rule above this block still holds: a chosen thing never takes accent
+   words or an accent frame, borders are split by job, one focus ring. */
+html[data-look="suite"] {
+  color-scheme: dark;
+  --surface-0: #131315;
+  --surface-1: #131315;
+  --surface-2: #1c1c1e;
+  --surface-3: #2c2c2f;
+  --shadow-popover: 0 12px 28px rgba(0, 0, 0, 0.5);
+  --shadow-sheet: 0 -15px 38px rgba(0, 0, 0, 0.5);
+  --shadow-dialog: 0 24px 60px rgba(0, 0, 0, 0.55);
+
+  --border: #2c2c2f;          /* line */
+  --border-strong: #737378;   /* edge · 3.61 on a panel, 3.29 on raised */
+
+  --text-1: #e8e7e2;          /* 13.74 on a panel */
+  --text-2: #d2d1cc;          /* 11.13 */
+  --text-3: #9a9a97;          /* 6.03 on a panel, 4.93 on --surface-3 */
+  --text-disabled: #5c5c5a;
+
+  --accent-light: #e89179;    /* coral-hover */
+  --accent: #e07a5e;          /* coral · 5.76 on a panel, 4.72 on --surface-3 */
+  --accent-press: #c7634a;    /* coral-pressed. Never a text colour. */
+  --accent-text: #131315;     /* on-coral · 6.29. White measures 2.95: never. */
+  --accent-soft: rgba(224, 122, 94, 0.15);
+  --accent-soft-strong: rgba(224, 122, 94, 0.22);
+  --accent-text-track: rgba(19, 19, 21, 0.22);
+
+  --danger: #ef4444;
+  --danger-text: #f87171;     /* 6.15 on a panel, 5.03 on --surface-3 */
+  --danger-fill: #dc2626;     /* a white label on it measures 4.83 */
+  --on-danger: #ffffff;
+  --danger-press: #b91c1c;
+  --danger-soft: rgba(239, 68, 68, 0.16);
+  --danger-plate: #76292a;
+  --on-danger-plate: #fbeceb;
+  --warning: #d4a54a;
+  --warning-soft: rgba(212, 165, 74, 0.14);
+  --success: #8baa6e;
+  --success-text: #8baa6e;    /* 6.54 on a panel, 5.35 on --surface-3 */
+  --success-plate: #49573d;
+  --on-success-plate: #eef5f1;
+
+  --ink-ring: rgba(255, 255, 255, 0.22);
+  --ink-ring-strong: rgba(255, 255, 255, 0.55);
+
+  --hover: #242426;
+  --pressed: #131315;
+  --disabled-ink: rgba(210, 209, 204, 0.36);
+  --focus: rgba(210, 209, 204, 0.7);
+  --overlay-scrim: rgba(10, 10, 11, 0.6);
+  --drag-lift-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+html[data-look="suite"][data-theme="light"] {
+  color-scheme: light;
+  --surface-0: #f4f4f6;
+  --surface-1: #f4f4f6;
+  --surface-2: #ffffff;
+  --surface-3: #ebebeb;
+  /* A shadow alone is weak on white, so a floating thing also takes a
+     hairline (the last layer of each shadow). */
+  --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.14), 0 0 0 1px rgba(0, 0, 0, 0.06);
+  --shadow-sheet: 0 -12px 32px rgba(0, 0, 0, 0.16);
+  --shadow-dialog: 0 24px 60px rgba(0, 0, 0, 0.22), 0 0 0 1px rgba(0, 0, 0, 0.06);
+
+  --border: #ececec;          /* line */
+  --border-strong: #8a8a8f;   /* edge · 3.44 on a panel */
+
+  --text-1: #131313;          /* 18.58 on a panel */
+  --text-2: #4b4b4b;          /* 8.72 */
+  --text-3: #666666;          /* 5.74 on a panel, 4.82 on --surface-3 */
+  --text-disabled: #a3a3a3;
+
+  --accent-light: #a64525;    /* coral-hover: darker in light mode */
+  --accent: #ba4f2c;          /* coral · 4.95 on a panel */
+  --accent-press: #8f3a1e;
+  --accent-text: #ffffff;     /* on-coral · 4.95 */
+  --accent-soft: rgba(186, 79, 44, 0.10);
+  --accent-soft-strong: rgba(186, 79, 44, 0.16);
+  --accent-text-track: rgba(255, 255, 255, 0.3);
+
+  --danger: #d92d20;
+  --danger-text: #b42318;     /* 6.57 on a panel */
+  --danger-fill: #d92d20;     /* a white label on it measures 4.83 */
+  --on-danger: #ffffff;
+  --danger-press: #b42318;
+  --danger-soft: rgba(217, 45, 32, 0.10);
+  --danger-plate: #f8d5d2;
+  --on-danger-plate: #6e1610;
+  --warning: #9a5b00;
+  --warning-soft: rgba(154, 91, 0, 0.12);
+  --success: #1f7a4d;
+  --success-text: #1b6b44;
+  --success-plate: #d3ecdf;
+  --on-success-plate: #0f3d27;
+
+  --ink-ring: rgba(0, 0, 0, 0.18);
+  --ink-ring-strong: rgba(0, 0, 0, 0.5);
+
+  --hover: #f5f5f5;
+  --pressed: #ebebeb;
+  --disabled-ink: rgba(75, 75, 75, 0.36);
+  --focus: rgba(75, 75, 75, 0.7);
+  --overlay-scrim: rgba(20, 20, 22, 0.32);
+  --drag-lift-shadow: 0 8px 24px rgba(0, 0, 0, 0.16), 0 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+html[data-look="suite"][data-backdrop-blur="off"] { --overlay-scrim: rgba(10, 10, 11, 0.72); }
+html[data-look="suite"][data-theme="light"][data-backdrop-blur="off"] { --overlay-scrim: rgba(20, 20, 22, 0.45); }
