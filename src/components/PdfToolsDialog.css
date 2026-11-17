@@ -13,7 +13,9 @@
 .pdft-busy{margin-right:auto;display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--text-2)}
 .pdft-tools{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .pdft-tool{width:100%;min-height:64px;text-align:left;display:flex;flex-direction:column;gap:3px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--surface-1);color:inherit;font:inherit;cursor:pointer}
-.pdft-tool:hover{border-color:var(--border-strong);background:var(--hover)}
+.pdft-tool:not(.is-on):hover{border-color:var(--border-strong);background:var(--hover)}
+/* The cards and page buttons had a hover but no press. */
+.pdft-tool:not(.is-on):active{background:var(--pressed)}
 .pdft-tool:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
 /* Export PDF (ExportPdfDialog.jsx): the three mark choices side by side, the
    picked one outlined in the accent. */
@@ -43,6 +45,7 @@
 .pdft-pbtns{display:flex;gap:2px}
 .pdft-pbtns button{min-width:26px;min-height:36px;padding:0 4px;border:0;border-radius:6px;background:transparent;color:inherit;font-size:15px;cursor:pointer}
 .pdft-pbtns button:hover:not(:disabled){background:var(--hover)}
+.pdft-pbtns button:active:not(:disabled){background:var(--pressed)}
 .pdft-pbtns button:disabled{opacity:.35;cursor:default}
 .pdft-big{font-size:16px;font-weight:700;margin:0 0 6px}
 .pdft-names{list-style:none;margin:10px 0 0;padding:0;font-size:13px;max-height:200px;overflow:auto}

@@ -34,3 +34,10 @@ test('Export PDF: a chosen page row keeps its count pill, rows have a pressed lo
   assert.match(css, /\.xpdf-page:not\(:disabled\):not\(\.is-on\):active \{ background: var\(--pressed\); \}/);
   assert.match(read('src/components/ExportPdfDialog.jsx'), /const summary = summaryText\.charAt\(0\)\.toUpperCase\(\) \+ summaryText\.slice\(1\);/);
 });
+
+test('PDF tools: cards and page buttons have a pressed look, and a chosen card keeps its fill under the pointer', () => {
+  const css = read('src/components/PdfToolsDialog.css');
+  assert.match(css, /\.pdft-tool:not\(\.is-on\):hover\{/);
+  assert.match(css, /\.pdft-tool:not\(\.is-on\):active\{background:var\(--pressed\)\}/);
+  assert.match(css, /\.pdft-pbtns button:active:not\(:disabled\)\{background:var\(--pressed\)\}/);
+});
