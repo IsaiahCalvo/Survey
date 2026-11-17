@@ -73,6 +73,10 @@ const NOTE_STYLE_NOTES = Object.freeze({
  * The system messages for one turn: the rules, then a language note and a
  * note style if any.
  */
+/**
+ * @param {unknown} [lang] the edge function passes the request's raw value
+ * @param {{ noteStyle?: unknown }} [options]
+ */
 export function surveyAgentSystemMessages(lang, { noteStyle = null } = {}) {
   const note = LANGUAGE_NOTES[lang];
   const style = NOTE_STYLE_NOTES[noteStyle];
