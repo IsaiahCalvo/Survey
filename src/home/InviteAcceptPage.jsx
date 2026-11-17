@@ -251,18 +251,21 @@ export default function InviteAcceptPage() {
               updateProfile={auth.updateProfile}
               onDone={() => setFinished(true)}
               accent={accent}
+              skip={<button type="button" onClick={openTarget} style={btnGhost()}>Skip for now</button>}
             />
           )}
 
+          {!showFinish && (
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4, flexWrap: 'wrap' }}>
             {phase === 'needs-auth' && (
               <>
-                <button onClick={signUp} style={btnPrimary(accent)}>Create free account</button>
                 <button onClick={signIn} style={btnGhost()}>Sign in to continue</button>
+                <button onClick={signUp} style={btnPrimary(accent)}>Create free account</button>
               </>
             )}
-            {phase === 'result' && !showFinish && (
+            {phase === 'result' && (
               <>
+                <button onClick={goHome} style={btnGhost()}>Back to Survey</button>
                 {result?.status === 'accepted' && (
                   <button onClick={openTarget} style={btnPrimary(accent)}>{openLabel}</button>
                 )}
@@ -272,16 +275,13 @@ export default function InviteAcceptPage() {
                 {result?.status === 'wrong_account' && (
                   <button onClick={switchAccount} style={btnPrimary(accent)}>Sign out and switch</button>
                 )}
-                <button onClick={goHome} style={btnGhost()}>Back to Survey</button>
               </>
-            )}
-            {showFinish && (
-              <button onClick={openTarget} style={btnGhost()}>Skip for now</button>
             )}
             {phase === 'loading' && (
               <span style={{ color: C.muted, fontSize: 12 }}>Loading…</span>
             )}
           </div>
+          )}
         </div>
       </div>
     </div>
