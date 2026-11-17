@@ -393,3 +393,16 @@ test('keep-proportions lock: off lets an image stretch, on keeps its shape', () 
   const rect = { type: 'rect', data: {} };
   assert.equal(applyKeepShape(rect, false), rect);
 });
+
+test('by kind: text gets its font name and text colour (KAL-715, Drawboard text bar)', async () => {
+  const { QUICK_BAR_FONT_FAMILIES } = await import('../src/utils/selectionQuickBar.js');
+  // Single names only: a fallback stack makes Fabric's text cursor drift.
+  assert.ok(QUICK_BAR_FONT_FAMILIES.length >= 4);
+  for (const family of QUICK_BAR_FONT_FAMILIES) assert.doesNotMatch(family, /,/);
+  const bar = readFileSync(new URL('../src/components/SelectionQuickBar.jsx', import.meta.url), 'utf8');
+  assert.match(bar, /const canFont = plan\?\.text && typeof textFormat\?\.api\?\.setFontFamily === 'function';/);
+  assert.match(bar, /const canTextColour = plan\?\.text && typeof textFormat\?\.api\?\.setFontColor === 'function';/);
+  // The colour keeps the words' own opacity; the font list closes on a pick.
+  assert.match(bar, /textFormat\.api\.setFontColor\(composeTextColor\(hex, textColour\.opacity\)\)/);
+  assert.match(bar, /onClick=\{\(\) => \{ textFormat\.api\.setFontFamily\(family\); setKindOpen\(null\); \}\}/);
+});

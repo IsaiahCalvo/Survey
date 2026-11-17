@@ -51,6 +51,7 @@ import { HISTORY_PAGE_SELECTION_EVENT } from '../utils/historyMarkFilter.js';
 import { LINE_STYLE_SAMPLE_ICONS, lineStyleOptionsWith } from '../utils/lineStyleOptions.js';
 import { setPropertiesPanelOpen, usePropertiesPanelOpen } from '../utils/propertiesPanelStore.js';
 import {
+  QUICK_BAR_FONT_FAMILIES,
   QUICK_BAR_WIDTHS,
   QUICK_BAR_OPACITIES,
   computeSelectionQuickBarPosition,
@@ -64,6 +65,7 @@ import {
   stepFontSize,
 } from '../utils/selectionQuickBar.js';
 import { linkGoToLabel } from '../utils/linkTool.js';
+import { composeTextColor, splitTextColor } from '../utils/textColorOpacity.js';
 import './SelectionQuickBar.css';
 
 // How many entity swatches the bar draws before "All N" (SurveyOverflowRow).
@@ -508,7 +510,8 @@ export default function SelectionQuickBar({
     if (!visible) setLineOpen(false);
   }, [visible]);
   useEffect(() => {
-    if (!visible || (kindOpen === 'fill' && !plan?.fill) || (kindOpen === 'ends' && !plan?.ends)) setKindOpen(null);
+    if (!visible || (kindOpen === 'fill' && !plan?.fill) || (kindOpen === 'ends' && !plan?.ends)
+      || ((kindOpen === 'font' || kindOpen === 'textColour') && !plan?.text)) setKindOpen(null);
   }, [visible, kindOpen, plan?.fill, plan?.ends]);
   useEffect(() => {
     if (!kindOpen) return undefined;
@@ -613,6 +616,26 @@ export default function SelectionQuickBar({
     api?.handleFillOpacityChange?.(0);
   };
   const textSize = Math.round(Number(textFormat?.state?.fontSize) || 16);
+  // KAL-715, Drawboard's text bar: the font name and the words' colour.
+  const fontFamily = textFormat?.state?.fontFamily || 'Arial';
+  const textColour = splitTextColor(textFormat?.state?.fontColor || '#1e293b');
+  const canFont = plan?.text && typeof textFormat?.api?.setFontFamily === 'function';
+  const canTextColour = plan?.text && typeof textFormat?.api?.setFontColor === 'function';
+  const kindButton = (kind, label, children, extra = {}) => (
+    <button
+      type="button"
+      className={`selection-quick-bar__button${extra.wide ? ' selection-quick-bar__button--font' : ''}${kindOpen === kind ? ' is-open' : ''}`}
+      aria-label={label}
+      aria-haspopup="dialog"
+      aria-expanded={kindOpen === kind}
+      {...(kindOpen === kind ? {} : chromeTip(label, tipSide))}
+      onMouseDown={(event) => event.stopPropagation()}
+      onClick={() => { setLineOpen(false); setKindOpen((open) => (open === kind ? null : kind)); }}
+      {...(extra.data || {})}
+    >
+      {children}
+    </button>
+  );
   const lineEnds = plan?.ends ? parsePickedLineEnds(api?.selectedLineEnds) : null;
 
   // Nightly 'properties-panel': "Expand menu" opens Drawboard's panel; while
@@ -788,6 +811,18 @@ export default function SelectionQuickBar({
     const alignLabel = { left: 'Align left', center: 'Align center', right: 'Align right' }[align] || 'Align left';
     groups.push(
       <span key="text" className="selection-quick-bar__group" data-selection-quick-kind="text">
+        {canTextColour && kindButton('textColour', 'Text colour', (
+          <span className="selection-quick-bar__text-colour" aria-hidden="true">
+            <span className="selection-quick-bar__text-colour-letter">A</span>
+            <span className="selection-quick-bar__text-colour-bar" style={{ background: textColour.hex }} />
+          </span>
+        ), { data: { 'data-selection-quick-text-colour': textColour.hex } })}
+        {canFont && kindButton('font', `Font ${fontFamily}`, (
+          <>
+            <span className="selection-quick-bar__font-name" style={{ fontFamily }}>{fontFamily}</span>
+            <Icon name="chevronDown" size={14} color="currentColor" />
+          </>
+        ), { wide: true, data: { 'data-selection-quick-font': fontFamily } })}
         {button('Smaller text', 'minus', () => textFormat.api.setFontSize(stepFontSize(textSize, -1)), { 'data-selection-quick-size-down': '' })}
         <span className="selection-quick-bar__size" data-selection-quick-size={textSize} aria-label={`Text size ${textSize} pt`}>{textSize}</span>
         {button('Larger text', 'plus', () => textFormat.api.setFontSize(stepFontSize(textSize, 1)), { 'data-selection-quick-size-up': '' })}
@@ -976,7 +1011,7 @@ export default function SelectionQuickBar({
       data-selection-quick-kind-popover={kindOpen}
       data-side={look.side === 'above' ? 'above' : 'below'}
       role="dialog"
-      aria-label={kindOpen === 'fill' ? 'Fill' : 'Start and end'}
+      aria-label={{ fill: 'Fill', ends: 'Start and end', font: 'Font', textColour: 'Text colour' }[kindOpen]}
       onMouseDown={(event) => event.stopPropagation()}
     >
       {kindOpen === 'fill' && paint?.fill && (
@@ -999,6 +1034,35 @@ export default function SelectionQuickBar({
         </div>
       )}
       {kindOpen === 'ends' && <LineEndingsPanel api={api} tool={api?.contextTool} tip={chromeTip} compact />}
+      {kindOpen === 'textColour' && canTextColour && (
+        <div className="selection-quick-bar__fill-row">
+          {/* The fill's colours: white words read on a dark fill. */}
+          <QuickColourDots
+            value={textColour.hex}
+            colours={FILL_QUICK_COLOURS}
+            names={FILL_QUICK_COLOUR_NAMES}
+            onPick={(hex) => textFormat.api.setFontColor(composeTextColor(hex, textColour.opacity))}
+          />
+        </div>
+      )}
+      {kindOpen === 'font' && canFont && (
+        <div className="selection-quick-bar__fonts" role="menu" aria-label="Font">
+          {QUICK_BAR_FONT_FAMILIES.map((family) => (
+            <button
+              key={family}
+              type="button"
+              role="menuitemradio"
+              aria-checked={family === fontFamily}
+              className="selection-quick-bar__font-option"
+              data-selection-quick-font-option={family}
+              style={{ fontFamily: family }}
+              onClick={() => { textFormat.api.setFontFamily(family); setKindOpen(null); }}
+            >
+              {family}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   ) : null;
 
