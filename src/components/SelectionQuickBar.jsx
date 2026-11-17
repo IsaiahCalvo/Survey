@@ -618,7 +618,7 @@ export default function SelectionQuickBar({
   const textSize = Math.round(Number(textFormat?.state?.fontSize) || 16);
   // KAL-715, Drawboard's text bar: the font name and the words' colour.
   const fontFamily = textFormat?.state?.fontFamily || 'Arial';
-  const textColour = splitTextColor(textFormat?.state?.fontColor || '#1e293b');
+  const textColour = splitTextColor(textFormat?.state?.fontColor);
   const canFont = plan?.text && typeof textFormat?.api?.setFontFamily === 'function';
   const canTextColour = plan?.text && typeof textFormat?.api?.setFontColor === 'function';
   const kindButton = (kind, label, children, extra = {}) => (

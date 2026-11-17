@@ -722,7 +722,7 @@ button.selection-quick-bar__fill:focus-visible {
 .selection-quick-bar__text-colour-bar {
   width: 16px;
   height: 3px;
-  border-radius: 1px;
+  border-radius: var(--radius-xs);
   /* The user's own colour; a hairline keeps a white or black bar visible. */
   box-shadow: 0 0 0 1px var(--border);
 }
@@ -754,7 +754,7 @@ button.selection-quick-bar__fill:focus-visible {
   height: 32px;
   padding: 0 10px;
   border: 0;
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-2);
   font-size: 14px;
