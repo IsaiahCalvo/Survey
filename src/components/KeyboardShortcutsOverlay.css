@@ -1,0 +1,38 @@
+/* Keyboard shortcuts sheet (KeyboardShortcutsOverlay.jsx). The key fields were
+   inline-styled: no hover or pressed look, and an <input> does not inherit the
+   page font, so they drew in Arial beside the sheet's UI font. Keys that can't
+   be changed were bare monospace words, a third look in the same column. */
+.shortcut-key-field,
+.shortcut-key-fixed {
+  box-sizing: border-box;
+  width: 132px;
+  height: 30px;
+  padding: 0 7px;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  line-height: 28px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: none;
+}
+.shortcut-key-field {
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface-1);
+  color: var(--text-1);
+  cursor: pointer;
+  caret-color: transparent;
+  transition: background-color var(--motion-state) var(--ease-standard);
+}
+@media (hover: hover) and (pointer: fine) {
+  .shortcut-key-field:hover:not(:focus):not(:active) { background: var(--hover); }
+}
+.shortcut-key-field:active { background: var(--pressed); }
+/* A key the app owns: the same slot and type, no edge, so it reads as fixed. */
+.shortcut-key-fixed {
+  display: inline-block;
+  color: var(--text-2);
+}
+.keyboard-shortcuts-sheet :is(h2, h3, p, .shortcut-row-label) { user-select: none; }

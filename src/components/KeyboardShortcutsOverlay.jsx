@@ -18,6 +18,7 @@ import { COLORS, TYPOGRAPHY, BORDERS, SHADOWS } from '../theme';
 import Icon from '../Icons';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import MotionPresence from './MotionPresence.jsx';
+import './KeyboardShortcutsOverlay.css';
 import { isTypingTarget } from '../utils/typingTarget.js';
 import {
   OPEN_SHORTCUTS_EVENT,
@@ -116,6 +117,7 @@ const KeyboardShortcutsOverlay = () => {
         role="dialog"
         aria-modal="true"
         aria-label="Keyboard shortcuts"
+        className="keyboard-shortcuts-sheet"
         style={{
           background: COLORS.background.secondary,
           borderRadius: BORDERS.radius.dialog,
@@ -208,6 +210,7 @@ const KeyboardShortcutsOverlay = () => {
                     }}
                   >
                     <div
+                      className="shortcut-row-label"
                       style={{
                         fontSize: TYPOGRAPHY.fontSize.md,
                         color: COLORS.text.tertiary,
@@ -222,6 +225,7 @@ const KeyboardShortcutsOverlay = () => {
                           {canAssignShortcut(item.chords[groupIdx]) ? (
                             <input
                               aria-label={`Shortcut for ${item.description}`}
+                              className="shortcut-key-field"
                               readOnly
                               value={editingChord === item.chords[groupIdx] ? 'Press keys…' : item.keyGroups[groupIdx].join(' + ')}
                               onFocus={() => { setEditingChord(item.chords[groupIdx]); setBindingError(''); }}
@@ -235,10 +239,10 @@ const KeyboardShortcutsOverlay = () => {
                                 setBindingError(error || '');
                                 if (!error) { setBindingTick(bindingTick + 1); event.currentTarget.blur(); }
                               }}
-                              style={{ width: '132px', border: '1px solid var(--border-strong)', borderRadius: '6px', background: 'var(--surface-1)', color: 'var(--text-1)', padding: '7px', textAlign: 'center', cursor: 'pointer', fontSize: '12px' }}
+                             
                             />
-                          ) : keys.map((key, keyIdx) => <kbd key={keyIdx} style={{ padding: '2px 7px', color: COLORS.text.secondary }}>{key}</kbd>)}
-                          {shortcutBinding(item.chords[groupIdx]) !== item.chords[groupIdx] && <button type="button" aria-label={`Reset shortcut for ${item.description}`} onClick={() => { setBindingError(resetShortcut(item.chords[groupIdx]) || ''); setBindingTick(bindingTick + 1); }}>Reset</button>}
+                          ) : <kbd className="shortcut-key-fixed">{keys.join(' + ')}</kbd>}
+                          {shortcutBinding(item.chords[groupIdx]) !== item.chords[groupIdx] && <button type="button" className="hub-btn hub-btn--tertiary" aria-label={`Reset shortcut for ${item.description}`} onClick={() => { setBindingError(resetShortcut(item.chords[groupIdx]) || ''); setBindingTick(bindingTick + 1); }}>Reset</button>}
                         </React.Fragment>
                       ))}
                     </div>
