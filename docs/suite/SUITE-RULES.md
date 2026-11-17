@@ -221,7 +221,8 @@ Line and line-strong are below 3:1 on purpose: they never stand alone.
 ### One font
 
 Geist for every word in the chrome, Geist Mono for numbers that line up.
-Walkthru and Plot have it. Survey uses the system font today: to change.
+Walkthru and Plot have it. Survey has it under the Nightly flag `one-look`
+(KAL-663, PR 1512).
 Words drawn on a page keep the font their mark picked.
 
 ### Where each app keeps the colours
@@ -246,7 +247,8 @@ Survey and Walkthru show the new colours and the light mode in Nightly
 first. When an app fills a "to add" cell, or its theme ships, write it here.
 
 Survey: built (KAL-663, PR 1505). The look sits behind the Nightly flag
-`one-look`. Appearance is in Settings, General.
+`one-look`. Appearance is in Settings, General. Emails and the sign-in
+emails wear grey and coral for everyone (PR 1510).
 
 Walkthru: built (KAL-663, PR 218). Light mode sits on
 `html[data-theme="light"]`. Appearance is in Settings, behind the Nightly
