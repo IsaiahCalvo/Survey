@@ -17,7 +17,9 @@ let flagOn = null;
 
 function read() {
   try {
-    return normalizeSpreadMode(globalThis.localStorage?.getItem(KEY));
+    const kept = normalizeSpreadMode(globalThis.localStorage?.getItem(KEY));
+    // 'strip' is the viewer's Horizontal layout, never a saved view.
+    return kept === 'strip' ? 'single' : kept;
   } catch {
     return 'single';
   }
@@ -97,4 +99,35 @@ function subscribeContinuous(fn) {
 
 export function usePageContinuous() {
   return useSyncExternalStore(subscribeContinuous, getPageContinuous, () => true);
+}
+
+// ---- Direction (KAL-713, Drawboard's "Vertical" / "Horizontal") -----------
+// Vertical (the default): pages run down. Horizontal: Single pages run left
+// to right in one row. Kept on this device; without the flag always vertical.
+const DIRECTION_KEY = 'survey.pageDirection.v1';
+const directionListeners = new Set();
+let direction = null;
+
+export function getPageDirection() {
+  if (flagOn == null) flagOn = isFeatureOn('page-spreads');
+  if (!flagOn) return 'vertical';
+  if (direction == null) {
+    try { direction = globalThis.localStorage?.getItem(DIRECTION_KEY) === 'horizontal' ? 'horizontal' : 'vertical'; } catch { direction = 'vertical'; }
+  }
+  return direction;
+}
+
+export function setPageDirection(next) {
+  direction = next === 'horizontal' ? 'horizontal' : 'vertical';
+  try { globalThis.localStorage?.setItem(DIRECTION_KEY, direction); } catch { /* private window */ }
+  directionListeners.forEach((fn) => fn());
+}
+
+function subscribeDirection(fn) {
+  directionListeners.add(fn);
+  return () => directionListeners.delete(fn);
+}
+
+export function usePageDirection() {
+  return useSyncExternalStore(subscribeDirection, getPageDirection, () => 'vertical');
 }
