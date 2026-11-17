@@ -5533,6 +5533,14 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
     background: color-mix(in srgb, var(--surface-2), var(--surface-3) 45%) !important;
   }
 }
+/* Pressed: the row goes a step DARKER than the card for as long as the
+   pointer or finger is down (the app's one press colour, --pressed), so a
+   click or tap on a row answers before the preview or the file opens. */
+.survey-hub .documents-ledger-row:not(.is-selected):not(.is-dragging):active,
+.survey-hub .documents-ledger-row:not(.is-selected):not(.is-dragging):active > .documents-ledger-name-cell {
+  background: var(--pressed) !important;
+  transition-duration: 90ms;
+}
 .survey-hub .documents-ledger-row.is-dragging {
   opacity: .5;
 }
