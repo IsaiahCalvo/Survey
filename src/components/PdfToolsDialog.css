@@ -13,7 +13,8 @@
 .pdft-busy{margin-right:auto;display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--text-2)}
 .pdft-tools{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .pdft-tool{width:100%;min-height:64px;text-align:left;display:flex;flex-direction:column;gap:3px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--surface-1);color:inherit;font:inherit;cursor:pointer}
-.pdft-tool:hover{border-color:var(--border-strong);background:var(--hover)}
+.pdft-tool:not(.is-on):hover{border-color:var(--border-strong);background:var(--hover)}
+/* A chosen card kept turning to the hover fill under the pointer. */
 .pdft-tool:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
 /* Export PDF (ExportPdfDialog.jsx): the three mark choices side by side, the
    picked one outlined in the accent. */

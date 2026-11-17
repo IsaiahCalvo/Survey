@@ -48,6 +48,15 @@ import MenuRows from '../components/MenuRows.jsx';
 import { menuAtButton, menuRowHeight } from '../utils/menuItems.js';
 import { isFeatureOn } from '../featureFlags.js';
 
+// Invite dates read like the rest of the dialog ("Opened Nov 16"), not a
+// lowercase "created 11/17/2026". The year only when it isn't this one: the
+// status column is narrow, and "Created Nov 17, 2026" was cut off.
+const shortDate = (value) => {
+  const date = new Date(value);
+  const sameYear = date.getFullYear() === new Date().getFullYear();
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', ...(sameYear ? {} : { year: 'numeric' }) });
+};
+
 // Guest links (Nightly) load only when an owner opens this with the flag on.
 const GuestLinksSection = lazy(() => import('../guest/GuestLinksSection.jsx'));
 
@@ -410,7 +419,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
                 rowProps={{ 'data-kal31-row': 'invite' }}
                 avatar={{ text: initialsOf(inv.target_email), background: 'var(--text-3)', color: 'var(--accent-text)' }}
                 primary={inv.target_email}
-                secondary={`expires ${new Date(inv.expires_at).toLocaleDateString()}`}
+                secondary={`Expires ${shortDate(inv.expires_at)}`}
                 role={roleLabel(inv.intended_role)}
                 status={<span style={{ color: C.gold }}>Pending</span>}
                 tip={tip}
@@ -426,12 +435,20 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
 
             {/* Active link-only invites group. */}
             {activeLinks.length > 0 && (
-              <div style={{ marginTop: 6, padding: '6px 4px', borderTop: `1px dashed ${C.rule}` }}>
+              <div style={{ marginTop: 6, padding: '6px 0', borderTop: `1px dashed ${C.rule}` }}>
                 <button
+                  type="button"
+                  className="hub-btn hub-btn--tertiary"
+                  aria-expanded={linksOpen}
                   onClick={() => setLinksOpen((o) => !o)}
-                  style={{ background: 'transparent', border: 0, color: C.muted, fontSize: 11, fontWeight: 600, letterSpacing: 0, cursor: 'pointer', padding: '8px 14px', display: 'block', width: '100%', textAlign: 'left', fontFamily: 'inherit' }}
+                  style={{ height: 'auto', padding: '8px 14px', width: '100%', justifyContent: 'flex-start' }}
                 >
-                  {linksOpen ? '▾' : '▸'} Active share links ({activeLinks.length})
+                  {/* The app's own chevron, not the text triangles ▸ ▾, which
+                      drew in a different weight from every other disclosure.
+                      The quiet-word button: its ink brightens under the pointer
+                      (it had no hover or pressed look at all). */}
+                  <Icon name={linksOpen ? 'chevronDown' : 'chevronRight'} size={12} color="currentColor" />
+                  Active share links ({activeLinks.length})
                 </button>
                 {linksOpen && activeLinks.map((inv) => (
                   <AccessRow
@@ -441,7 +458,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
                     primary="Link invite"
                     secondary={buildInviteUrl(inv)}
                     role={roleLabel(inv.intended_role)}
-                    status={<span style={{ color: C.muted, fontWeight: 400 }}>created {new Date(inv.created_at).toLocaleDateString()}</span>}
+                    status={<span style={{ color: C.muted, fontWeight: 400 }}>Created {shortDate(inv.created_at)}</span>}
                     tip={tip}
                     menuOpen={openMenu === `l:${inv.id}`}
                     onMenu={() => setOpenMenu(openMenu === `l:${inv.id}` ? null : `l:${inv.id}`)}

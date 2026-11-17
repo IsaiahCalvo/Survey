@@ -49,6 +49,9 @@
   background: var(--surface-3, rgba(255,255,255,0.08)); color: var(--text-2);
   font-size: 12px; font-variant-numeric: tabular-nums;
 }
+/* The pill and a chosen row were both --surface-3, so the chosen row's count
+   lost its pill. On a chosen row it sinks to the list's own well instead. */
+.xpdf-page.is-on .xpdf-page__count { background: var(--surface-1); }
 .xpdf-custom { display: flex; flex-direction: column; gap: 2px; }
 .xpdf-custom .pdft-help.is-error { color: var(--danger-text); }
 .xpdf-summary { margin-right: auto; font-size: 12.5px; color: var(--text-3); }
