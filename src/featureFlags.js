@@ -64,6 +64,13 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Lock Pro features for Free plan',
     stage: 'rollout',
   }),
+  // Read by the database, not the app (migration 20261116180000_tester_pro):
+  // the people this flag is on for get a Pro plan with no card. Paid plans are
+  // never touched; taking someone off puts them back on Free.
+  'tester-pro': Object.freeze({
+    label: 'Pro free for testers',
+    stage: 'rollout',
+  }),
   'legacy-collab-retired': Object.freeze({
     label: 'Retire the legacy collab layer (step 1)',
     stage: 'rollout',
