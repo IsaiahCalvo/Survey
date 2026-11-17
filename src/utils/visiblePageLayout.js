@@ -2,7 +2,7 @@ import { placeSpreadPages } from './pageSpreads.js';
 
 /**
  * Keep physical page indices while removing hidden Spaces pages from layout.
- * `spread` ('double' / 'cover', Nightly 'page-spreads') sets pages side by side
+ * `spread` ('double' / 'cover' / 'grid-N', Nightly 'page-spreads') sets pages side by side
  * in rows (utils/pageSpreads.js); both pages of a row get the row's top, and
  * `place` says where each sits in its row. Single returns place: null and the
  * stack is the page list itself.

@@ -26533,12 +26533,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // Store zoom adjustment data  
   const zoomDataRef = useRef(null);
 
+  // A spread view (Nightly 'page-spreads') steps a whole row; the viewer
+  // says where that lands (KAL-707).
   const goToPreviousPage = useCallback(() => {
-    goToPage(pageNum - 1, { fallback: 'previous', smooth: true });
+    goToPage(pdfjsViewerRef.current?.getSteppedPage?.(-1) ?? pageNum - 1, { fallback: 'previous', smooth: true });
   }, [goToPage, pageNum]);
 
   const goToNextPage = useCallback(() => {
-    goToPage(pageNum + 1, { fallback: 'next', smooth: true });
+    goToPage(pdfjsViewerRef.current?.getSteppedPage?.(1) ?? pageNum + 1, { fallback: 'next', smooth: true });
   }, [goToPage, pageNum]);
 
   /**

@@ -130,3 +130,67 @@
   margin: 4px 10px;
   background: var(--border);
 }
+
+/* Page fit, Grid view (KAL-707): "Columns" and five small number buttons
+   (2 to 6) under the Grid row. They sit inside one row, so the menu's glide
+   strip skips them and they take the shared states (states table, suite
+   rules): hover --hover, press --pressed at once, chosen --surface-3. */
+.rail-flyout__columns {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 32px;
+  padding: 0 4px 0 10px;
+  color: var(--text-2);
+}
+
+.rail-flyout__steps {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+}
+
+.rail-flyout__step {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-state) var(--ease-out),
+    color var(--motion-state) var(--ease-out);
+}
+
+@media (hover: hover) {
+  .rail-flyout__step:not([aria-checked='true']):hover {
+    background: var(--hover);
+    color: var(--text-1);
+  }
+}
+
+.rail-flyout__step[aria-checked='true'] {
+  background: var(--surface-3);
+  color: var(--text-1);
+  font-weight: 600;
+  cursor: default;
+}
+
+.rail-flyout__step:active {
+  background: var(--pressed);
+  transition-duration: 0s;
+}
+
+.rail-flyout__step:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+@media (pointer: coarse) {
+  .rail-flyout__columns { min-height: 44px; }
+  .rail-flyout__step { width: 36px; height: 36px; }
+}
