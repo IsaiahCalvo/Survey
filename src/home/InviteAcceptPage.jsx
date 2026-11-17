@@ -28,6 +28,7 @@ import { supabase } from '../supabaseClient';
 import { buildAppDestination, isPurchaseUiHidden, withUpgradeHint } from '../utils/accountPlatform';
 import { PENDING_INVITE_KEY as PENDING_KEY } from '../utils/pendingInvite';
 import { C } from '../uiPalette';
+import { SUITE_ACCOUNT_NAME } from '../suite/suiteName.js';
 
 
 
@@ -127,7 +128,7 @@ export default function InviteAcceptPage() {
 
   const description = (() => {
     if (phase === 'loading') return 'Validating your invite. One moment…';
-    if (phase === 'needs-auth') return 'Sign in or create a free Survey account to accept this invite.';
+    if (phase === 'needs-auth') return `Sign in or create a free ${SUITE_ACCOUNT_NAME} to accept this invite.`;
     if (!result) return '';
     switch (result.status) {
       case 'accepted':

@@ -10,13 +10,15 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "check (read only) or apply"
+        description: "check (read only) or apply; emails-check and emails-apply do the same for the account emails"
         required: true
         type: choice
         default: check
         options:
           - check
           - apply
+          - emails-check
+          - emails-apply
 
 permissions:
   contents: read
@@ -38,4 +40,4 @@ jobs:
         with:
           node-version: '24'
       - name: Read or apply
-        run: node scripts/supabase-auth-settings.mjs ${{ inputs.mode == 'apply' && '--apply' || '' }}
+        run: node scripts/supabase-auth-settings.mjs ${{ startsWith(inputs.mode, 'emails-') && '--emails' || '' }} ${{ endsWith(inputs.mode, 'apply') && '--apply' || '' }}

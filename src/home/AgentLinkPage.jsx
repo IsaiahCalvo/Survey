@@ -17,6 +17,7 @@ import {
   readPendingAgentCode, savePendingAgentCode, clearPendingAgentCode,
   isConsentId, readPendingConsent, savePendingConsent, clearPendingConsent,
 } from './agentLinkPending';
+import { SUITE_ACCOUNT_NAME } from '../suite/suiteName.js';
 
 export function normalizeAgentCode(value) {
   return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
@@ -345,7 +346,7 @@ function AgentLinkScreen() {
       <div style={card}>
         <h2 style={{ marginTop: 0 }}>Sign in or create a free account</h2>
         <p style={{ margin: '8px 0 16px', color: C.inkSoft }}>
-          {consentId ? 'A Kal Voe app or an AI agent asked to use your Survey account.' : 'An AI agent asked to use Survey for you.'} The account is yours: it uses your email, starts on the free plan, and only you can pay or change it.
+          {consentId ? `A Kal Voe app or an AI agent asked to use your ${SUITE_ACCOUNT_NAME}.` : 'An AI agent asked to use Survey for you.'} The account is yours: it uses your email, starts on the free plan, and only you can pay or change it.
           {consentId ? ' After you sign in, you\'ll see which one is asking and choose.'
             : code ? ` After you sign in, you'll press Allow for code ${code}.` : ''}
         </p>

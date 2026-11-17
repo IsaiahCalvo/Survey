@@ -9,6 +9,7 @@ import { isFeatureOn } from '../featureFlags.js';
 import { connectTeamsConfig } from './teamsHost.js';
 import { PIN_LISTS, pinnedTabConfig } from './teamsPin.js';
 import './teams.css';
+import { SUITE_ACCOUNT_NAME } from '../suite/suiteName.js';
 
 const ONE_DRAWING = 'doc';
 const fileCount = (n) => `${n} ${n === 1 ? 'file' : 'files'}`;
@@ -68,7 +69,7 @@ export default function TeamsPinPanel({ projects = [], documents = [], loading =
     <div className="teams-pin" role="region" aria-labelledby="teams-pin-title" data-teams-pin>
       <div className="teams-pin-inner">
         <h1 id="teams-pin-title">Pick what this tab shows</h1>
-        <p className="teams-pin-help">Everyone here opens it with their own Survey account and sees only what they already have access to.</p>
+        <p className="teams-pin-help">Everyone here opens it with their own {SUITE_ACCOUNT_NAME} and sees only what they already have access to.</p>
 
         <section className="teams-pin-section" aria-labelledby="teams-pin-project">
           <h2 id="teams-pin-project">Project</h2>

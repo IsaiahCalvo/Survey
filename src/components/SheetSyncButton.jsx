@@ -16,6 +16,7 @@ import { announceAccountSwitch, announceSignOut } from '../services/sheetSyncNot
 import { isNativeApp } from '../utils/proLock.js';
 import { isElectronApp } from '../utils/layoutMode.js';
 import './SheetSyncButton.css';
+import { SUITE_ACCOUNT_NAME } from '../suite/suiteName.js';
 
 // While the survey is open. An Excel workbook's version moves within a
 // second or two of an edit, and checking it is one cheap read, so Excel is
@@ -793,7 +794,7 @@ export default function SheetSyncButton({ className, phone = false, documentId, 
   let menu = false;
   let body;
   if (!ready) {
-    body = <div className="sheet-sync-body"><p className="sheet-sync-note">Save this PDF to your Survey account to sync it.</p></div>;
+    body = <div className="sheet-sync-body"><p className="sheet-sync-note">Save this PDF to your {SUITE_ACCOUNT_NAME} to sync it.</p></div>;
   } else if (!status) {
     body = (
       <div className="sheet-sync-body" aria-busy="true">

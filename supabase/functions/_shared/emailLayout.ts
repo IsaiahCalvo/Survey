@@ -179,7 +179,26 @@ export interface EmailLayoutOptions {
    * Never claim "activity on your account" to someone who has no account.
    */
   footerReason?: string;
+  /**
+   * Who the email is from. Left out, it is Survey. Account emails (sign-in,
+   * confirm, reset) pass the suite's name, since one account signs in to
+   * Survey, Walkthru and Plot. `logoUrl: null` shows the name with no icon;
+   * `link: null` drops the footer link.
+   */
+  brand?: EmailBrand;
 }
+
+export interface EmailBrand {
+  name: string;
+  logoUrl?: string | null;
+  link?: { href: string; label: string } | null;
+}
+
+const SURVEY_BRAND: Required<EmailBrand> = {
+  name: 'Survey',
+  logoUrl: EMAIL_LOGO_URL,
+  link: { href: 'https://surveytool.app', label: 'surveytool.app' },
+};
 
 // Dark-mode stylesheet: base (light) styles are inline; these class/descendant
 // rules flip the frame in clients that honor prefers-color-scheme (Apple Mail,
@@ -209,7 +228,15 @@ function darkModeStyle(headingDark: string): string {
 }
 
 /** Wrap body content in the Survey email frame; returns a full HTML document. */
-export function renderEmailLayout({ heading, bodyHtml, headingColor, preheader, footerReason }: EmailLayoutOptions): string {
+export function renderEmailLayout({ heading, bodyHtml, headingColor, preheader, footerReason, brand }: EmailLayoutOptions): string {
+  const who = { ...SURVEY_BRAND, ...(brand || {}) };
+  const logoCell = who.logoUrl
+    ? `<td width="34" style="vertical-align:middle;">` +
+      `<img src="${who.logoUrl}" alt="" width="30" height="30" style="display:block;border:0;border-radius:6px;"></td>`
+    : '';
+  const footerLink = who.link
+    ? ` &#183; <a href="${who.link.href}" target="_blank" class="em-mut" style="color:${EMAIL_MUTED};text-decoration:underline;">${who.link.label}</a>`
+    : '';
   const accent = headingColor || EMAIL_INK;
   const accentDark = headingColor === EMAIL_DANGER || headingColor === EMAIL_DANGER_DARK
     ? EMAIL_DANGER_DARK
@@ -224,7 +251,7 @@ export function renderEmailLayout({ heading, bodyHtml, headingColor, preheader, 
     `<!DOCTYPE html>` +
     `<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">` +
     `<meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark">` +
-    `<title>Survey</title>` + darkModeStyle(accentDark) + `</head>` +
+    `<title>${who.name}</title>` + darkModeStyle(accentDark) + `</head>` +
     `<body class="em-canvas" style="margin:0;padding:0;background-color:${EMAIL_BONE};">` +
     preheaderHtml +
     // Full-width wrapper carries the canvas color (Gmail strips body styles).
@@ -236,9 +263,8 @@ export function renderEmailLayout({ heading, bodyHtml, headingColor, preheader, 
     // Header: logo chip + hardcoded uppercase wordmark, left-aligned.
     `<tr><td style="padding:30px 40px 0;">` +
     `<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>` +
-    `<td width="34" style="vertical-align:middle;">` +
-    `<img src="${EMAIL_LOGO_URL}" alt="" width="30" height="30" style="display:block;border:0;border-radius:6px;"></td>` +
-    `<td class="em-ink" style="vertical-align:middle;padding-left:11px;font-family:${EMAIL_FONT};font-size:13px;font-weight:600;letter-spacing:2.5px;color:${EMAIL_INK};">SURVEY</td>` +
+    logoCell +
+    `<td class="em-ink" style="vertical-align:middle;padding-left:${who.logoUrl ? 11 : 0}px;font-family:${EMAIL_FONT};font-size:13px;font-weight:600;letter-spacing:2.5px;color:${EMAIL_INK};">${who.name.toUpperCase()}</td>` +
     `</tr></table></td></tr>` +
     // The gold rule dividing header from content.
     `<tr><td style="padding:22px 40px 0;">` +
@@ -254,7 +280,7 @@ export function renderEmailLayout({ heading, bodyHtml, headingColor, preheader, 
     // Footer (outside the card): sender identity + the true receipt reason.
     `<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;">` +
     `<tr><td class="em-mut" style="padding:20px 8px;font-family:${EMAIL_FONT};font-size:12px;line-height:1.6;color:${EMAIL_MUTED};text-align:center;">` +
-    `Sent by Survey &#183; <a href="https://surveytool.app" target="_blank" class="em-mut" style="color:${EMAIL_MUTED};text-decoration:underline;">surveytool.app</a>` +
+    `Sent by ${who.name}` + footerLink +
     footerLine +
     `</td></tr></table>` +
     `</td></tr></table></body></html>`
