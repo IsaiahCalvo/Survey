@@ -1,0 +1,96 @@
+// KAL-653 (owner 2026-11-16: "check the UIs, make sure all the UIs are
+// pretty"): what the phone screen pass fixed, so it stays fixed.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+
+const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+const hub = read('src/home/hub.css');
+const settings = read('src/components/AccountSettings.css');
+
+test('a phone search field shows its hint at 12px, so "Search documents..." fits', () => {
+  assert.match(hub, /\.survey-hub \.hub-search input::placeholder \{\s*font-size: 12px;\s*\}/);
+});
+
+test('the phone "no match" lines keep clear of the card edge, as Archive and desktop do', () => {
+  const documents = read('src/home/DocumentsLedger.jsx');
+  const projects = read('src/home/ProjectsFolderTree.jsx');
+  assert.doesNotMatch(documents, /padding: '18px 4px'/);
+  assert.doesNotMatch(projects, /padding: '14px 4px'/);
+  assert.match(projects, /padding: '24px 16px' \}\}>\{showClosed \|\| !closedTotal \|\| search\.trim\(\) \? 'No projects match your search\.'/);
+});
+
+test('the Archive sort button has a 44px touch band on the phone', () => {
+  assert.match(hub, /\.archive-mobile-search-row > \.archive-filter-button::after \{\s*content: '';\s*position: absolute;\s*inset: -5px 0 -13px;/);
+});
+
+test('a connected service row wraps its words beside the button and keeps its icon tile', () => {
+  assert.match(settings, /\.account-connected-account-info \{[^}]*flex: 1 1 auto;[^}]*min-width: 0;/);
+  assert.match(settings, /\.account-connected-account-details \{\s*min-width: 0;/);
+  assert.match(settings, /\.account-connected-account-actions \{\s*flex: none;/);
+  assert.match(settings, /\.account-connected-account-icon \{\s*flex: none;/);
+});
+
+test('the Privacy policy link in Settings is the calm --link, not the browser colour', () => {
+  assert.match(settings, /\.account-pref-description a \{\s*color: var\(--link\);/);
+});
+
+// Round 2: the phone Pages sheet.
+const viewer = read('src/mobile/mobilePdfViewer.css');
+
+test('Pages sheet tabs press like every other icon: the glyph tightens, no grey plate', () => {
+  assert.match(read('src/styles/states.css'), /:not\(\.mobile-pdf-dock__center\):not\(\.mobile-pdf-hub-tab\)/);
+  assert.match(viewer, /\.mobile-pdf-hub-tabs \.mobile-pdf-hub-tab:not\(:disabled\):active > :is\(svg, span\[aria-hidden="true"\]\) \{\s*scale: 0\.92;/);
+});
+
+test('Pages sheet tabs, the select bar and the action pill all have 44px touch boxes', () => {
+  // 34x32 tab + 5px / 6px each side.
+  assert.match(viewer, /\.mobile-pdf-hub-tabs \.mobile-pdf-hub-tab::after \{\s*content: '';\s*position: absolute;\s*inset: -6px -5px;/);
+  // 28px words; the sheet body clips above them, so the pad grows down 16px.
+  assert.match(viewer, /\.mobile-pages-counter\.is-selecting > button::after \{\s*content: '';\s*position: absolute;\s*inset: 0 -8px -16px;/);
+  // 28px chips; 10px up + 6px down (the sheet body clips 4px under the pill).
+  assert.match(viewer, /\.mobile-pages-actions > button::after \{\s*content: '';\s*position: absolute;\s*inset: -10px 0 -6px;/);
+});
+
+test("Select mode's tick circle sits on the page picture, not the card corner", () => {
+  const panel = read('src/sidebar/PagesPanel.jsx');
+  const preview = panel.slice(panel.indexOf("className={mobileMode ? 'mobile-page-preview' : 'pages-panel-preview'}"));
+  const circle = preview.indexOf('mobile-page-select-indicator');
+  assert.ok(circle > 0 && circle < preview.indexOf('{thumbnailSrc ? ('), 'the circle is drawn inside the page picture');
+  assert.equal(panel.split('mobile-page-select-indicator').length - 1, 1);
+  assert.match(viewer, /\.mobile-page-select-indicator \{\s*position: absolute;\s*left: 5px;\s*top: 5px;\s*pointer-events: none;/);
+});
+
+// Round 3: viewer sheets.
+test('every phone sheet shows its grab handle: the row is flex in the base rule', () => {
+  // The bar is the row's ::before. In a block row it is an inline box with no
+  // size, which is how Active users and the Colour sheet showed no handle.
+  assert.match(viewer, /\n\.mobile-pdf-sheet__handle \{[^}]*display: flex;\s*align-items: center;\s*height: 20px !important;/);
+});
+
+test("the sync popover's retry button has a 44px touch box", () => {
+  assert.match(viewer, /\.mobile-pdf-tools__sync-details button::after \{\s*content: '';\s*position: absolute;\s*inset: -8px;/);
+});
+
+// Round 4: the phone sign-in card.
+test('the phone sign-in card may use the whole screen, so no row is cut at its edge', () => {
+  const auth = read('src/components/AuthModal.css');
+  const phone = auth.slice(auth.indexOf('@media (pointer: coarse) and (max-width: 599px)'));
+  assert.ok(phone.length > 0 && phone.length < auth.length, 'one phone block at the end of the sheet');
+  assert.match(phone, /\.auth-modal \{\s*padding: 20px;\s*max-height: calc\(100% - 16px\);/);
+  // The Expo shell already sits the page under the status bar.
+  assert.match(phone, /padding-top: env\(safe-area-inset-top, 0px\);/);
+  assert.doesNotMatch(phone, /padding-top: var\(--native-safe-area-top/);
+  assert.match(phone, /padding-bottom: var\(--native-safe-area-bottom, env\(safe-area-inset-bottom, 0px\)\);/);
+});
+
+// Round 5: hub headers.
+test('entering select mode does not push the select button or the avatar down', () => {
+  // Flattened out of its 44px row, the 36px button must still take only 28px.
+  assert.match(hub, /\.header:has\(\.mobile-header-select-actions\) \.mobile-header-select-button \{\s*order: 2;\s*margin-left: auto;[^}]*margin-block: -4px;/);
+});
+
+test('Templates says "no match" with the same plain line as Documents and Projects', () => {
+  const templates = read('src/home/TemplatesEditor.jsx');
+  assert.match(templates, /visibleTemplates\.length === 0 && rich\.length > 0 \? \([\s\S]{0,300}<div className="meta" style=\{\{ padding: '24px 16px', fontSize: 12 \}\}>No templates match your search\.<\/div>/);
+});
