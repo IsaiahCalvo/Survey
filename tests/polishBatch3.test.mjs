@@ -25,7 +25,11 @@ test('Settings buttons: the plain one rests clear so hover lightens, and Delete 
   const hover = /background: ([^;]+);/.exec(rule('.account-btn-danger:hover:not(:disabled)'))[1];
   assert.notEqual(hover, rest, 'Delete account repaints its resting fill on hover');
   // On a touch screen the three kinds are one height.
-  assert.match(css, /@media \(pointer: coarse\) \{\s*\.account-btn-danger \{ min-height: 44px; \}\s*\.account-btn-primary,\s*\.account-btn-secondary \{ min-height: 44px; \}/);
+  // (Main's rule lists every Settings button in one block; the train kept it.)
+  const coarse = /@media \(pointer: coarse\) \{([^}]*)\{ min-height: 44px; \}/.exec(css)?.[1] || '';
+  for (const kind of ['.account-btn-danger', '.account-btn-primary', '.account-btn-secondary']) {
+    assert.ok(coarse.includes(kind), `${kind} is 44px on touch`);
+  }
 });
 
 test('Keyboard shortcuts wears the one dialog close button', () => {
