@@ -417,3 +417,7 @@
 
 /* "Open from OneDrive": the search box above the folder list. */
 .sheet-sync-folders .drive-picker-search { margin: 0 0 4px; }
+/* "Recent" in Open from OneDrive: the newest PDFs, above the folders. */
+.sheet-sync-folders .drive-picker-recent-head { margin: 10px 0 0; }
+.sheet-sync-folders .drive-picker-recent { max-height: 180px; }
+.sheet-sync-folders .drive-picker-recent + .sheet-sync-crumbs { margin-top: 12px; }

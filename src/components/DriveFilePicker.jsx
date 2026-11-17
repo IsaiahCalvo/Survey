@@ -3,7 +3,8 @@
 // to a PDF or a folder, and pick one PDF. Drawboard's "Add file > OneDrive".
 // The search box finds PDFs across OneDrive, SharePoint, Teams and files
 // shared with the person; an account with no OneDrive of its own (a guest)
-// opens on what was shared with it.
+// opens on what was shared with it. Its first view lists the newest PDFs
+// the sign-in reaches ("Recent"), as Microsoft's own picker does.
 // The server lists the folders with the person's Microsoft sign-in
 // (services/driveFilesClient.js); nothing here sees a Microsoft token.
 import { useCallback, useEffect, useState } from 'react';
@@ -98,6 +99,9 @@ export default function DriveFilePicker({ onPick, onClose, intoName = null, call
   const [found, setFound] = useState(null); // null: not searching | 'loading' | { files, error? }
   const searchText = query.trim();
   const noDrive = problem?.code === 'no_onedrive';
+  // The newest PDFs the sign-in reaches, as Microsoft's own picker opens on.
+  // Asked once per sign-in; a refusal hides the list, never the picker.
+  const [recent, setRecent] = useState(null); // null: not known yet | files[]
 
   useEffect(() => {
     let live = true;
@@ -118,6 +122,17 @@ export default function DriveFilePicker({ onPick, onClose, intoName = null, call
     });
     return () => { live = false; };
   }, [at, call, round]);
+
+  const connected = listing !== null && !problem;
+  useEffect(() => {
+    if (!connected || recent) return undefined;
+    let live = true;
+    call('driveBrowse', { search: '', recent: true }).then((res) => {
+      if (!live) return;
+      setRecent(res && !res.error && Array.isArray(res.files) ? res.files : []);
+    });
+    return () => { live = false; };
+  }, [connected, recent, call]);
 
   // Search as the person types; with no OneDrive, list what was shared.
   useEffect(() => {
@@ -198,7 +213,7 @@ export default function DriveFilePicker({ onPick, onClose, intoName = null, call
     >
       {busy === f.itemId ? <Spinner size={14} color="currentColor" /> : <Icon name="document" size={14} color="currentColor" />}
       <span>{f.name}</span>
-      <span className="sheet-sync-folder__meta" style={{ marginLeft: 'auto', opacity: 0.6, flex: 'none' }}>{meta}</span>
+      <span className="sheet-sync-folder__meta" style={{ marginLeft: 'auto', opacity: 0.6, flex: '0 1 auto', maxWidth: '45%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{meta}</span>
     </button>
   );
   let searchBody = null;
@@ -263,6 +278,14 @@ export default function DriveFilePicker({ onPick, onClose, intoName = null, call
               </div>
             </>
           ) : (<>
+          {!at && recent?.length ? (
+            <>
+              <p className="sheet-sync-crumbs drive-picker-recent-head" id="drive-picker-recent">Recent</p>
+              <div className="sheet-sync-folder-list drive-picker-recent" role="list" aria-labelledby="drive-picker-recent">
+                {recent.map((f) => fileRow(f, f.where || sizeText(f.size)))}
+              </div>
+            </>
+          ) : null}
           <nav className="sheet-sync-crumbs" aria-label="Folder">
             <button type="button" className="sheet-sync-crumb" onClick={() => setAt('')}>OneDrive</button>
             {place && (

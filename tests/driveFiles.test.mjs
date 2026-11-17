@@ -268,6 +268,41 @@ test('search finds PDFs across drives with one Graph search, and falls back to O
   assert.deepEqual(personal.files.map((f) => f.itemId), ['PDF1']);
 });
 
+test('recent lists the newest PDFs first with a sorted search, and still lists them when the sort is refused', async () => {
+  const { graph, call } = setup({ roles: ROLES, flags: BETA });
+  graph.add('PDF1', { name: 'A.pdf' });
+  const real = graph.fetch;
+  const asked = [];
+  let refuseSort = false;
+  graph.fetch = async (url, init = {}) => {
+    if (url === `${BASE}/search/query`) {
+      const req = JSON.parse(init.body).requests[0];
+      asked.push({ size: req.size, sort: req.sortProperties || null, q: req.query.queryString });
+      if (refuseSort && req.sortProperties) return new Response(JSON.stringify({ error: { code: 'BadRequest' } }), { status: 400 });
+      return new Response(JSON.stringify({ value: [{ hitsContainers: [{ hits: [
+        { resource: { id: 'OLD', name: 'Old.pdf', lastModifiedDateTime: '2026-10-01T00:00:00Z', webUrl: 'https://kalvoe.sharepoint.com/sites/Jobs/Shared%20Documents/Old.pdf', parentReference: { driveId: 'b!sp' } } },
+        { resource: { id: 'NEW', name: 'New.pdf', lastModifiedDateTime: '2026-11-16T00:00:00Z', webUrl: 'https://kalvoe-my.sharepoint.com/personal/a/Documents/Survey/New.pdf', parentReference: { driveId: 'b!me' } } },
+      ] }] }] }), { status: 200 });
+    }
+    return real(url, init);
+  };
+  const got = await call('owner-1', { action: 'driveBrowse', search: '', recent: true });
+  assert.equal(got.recent, true);
+  assert.deepEqual(got.files.map((f) => [f.itemId, f.where]), [['NEW', 'Documents › Survey'], ['OLD', 'Jobs › Shared Documents']]);
+  assert.deepEqual(asked[0], { size: 8, sort: [{ name: 'lastModifiedDateTime', isDescending: true }], q: 'filetype:pdf' });
+
+  refuseSort = true;
+  const again = await call('owner-1', { action: 'driveBrowse', search: '', recent: true });
+  assert.deepEqual(again.files.map((f) => f.itemId), ['NEW', 'OLD'], 'sorted here when Microsoft will not');
+  assert.deepEqual(asked.slice(1).map((a) => Boolean(a.sort)), [true, false]);
+
+  // Words in the box are a search, not the recent list.
+  const typed = await call('owner-1', { action: 'driveBrowse', search: 'New', recent: true });
+  assert.equal(typed.recent, undefined);
+  assert.equal(asked.at(-1).size, 50);
+  assert.equal(asked.at(-1).sort, null);
+});
+
 test('the beta and a Microsoft sign-in are needed to browse and open', async () => {
   const { graph, call } = setup({ roles: ROLES, flags: {} });
   graph.add('PDF1', { name: 'A.pdf' });
@@ -414,7 +449,7 @@ test('every field the app sends to the drive actions passes the sheet-sync reque
   const { readFile } = await import('node:fs/promises');
   const src = await readFile(new URL('../supabase/functions/_shared/sheetSync/service.js', import.meta.url), 'utf8');
   const listed = new Set([...src.matchAll(/^\s+(\w+): s\.\w+\(/gm)].map((m) => m[1]));
-  const sent = ['action', 'documentId', 'driveId', 'itemId', 'eTag', 'kind', 'cTag', 'sha', 'force', 'late', 'pushedAt', 'appOrigin', 'provider', 'check', 'syncMinutes', 'syncOff', 'search'];
+  const sent = ['action', 'documentId', 'driveId', 'itemId', 'eTag', 'kind', 'cTag', 'sha', 'force', 'late', 'pushedAt', 'appOrigin', 'provider', 'check', 'syncMinutes', 'syncOff', 'search', 'recent'];
   for (const key of sent) assert.ok(listed.has(key), `sheet-sync schema is missing "${key}"`);
 });
 
