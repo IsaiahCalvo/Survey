@@ -5871,7 +5871,15 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
 @container (max-width: 480px) {
   .projects-open-actions { width: calc(100% - 18px); margin-left: 18px; }
 }
-.projects-file-grid { grid-template-columns: 24px minmax(0, 1fr) 90px 90px 28px; }
+.projects-file-grid { grid-template-columns: 24px 40px minmax(0, 1fr) 90px 90px 28px; }
+.projects-file-thumb { display: flex; align-items: center; justify-content: center; min-width: 0; }
+/* Rows part with a line, as on Documents (owner, Nov 16: dividers between
+   list rows). Inset to the row's rounded fill; none under the last row. */
+.survey-hub .projects-file-rows > :not(:last-child) [data-document-id].projects-file-grid { position: relative; }
+.survey-hub .projects-file-rows > :not(:last-child) [data-document-id].projects-file-grid::after {
+  content: ''; position: absolute; left: 10px; right: 10px; bottom: 0; height: 1px;
+  background: var(--ink-500); pointer-events: none;
+}
 /* A document row opens on a click but is a keyboard-control row, which the
    hub's hover rule skips, so it showed no hover or press. A ticked row keeps
    its fill. The fills beat the row's inline zebra wash. */
@@ -5898,7 +5906,7 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
 }
 .projects-file-editor-label-short { display: none; }
 @container (max-width: 480px) {
-  .projects-file-grid { grid-template-columns: 24px minmax(0, 1fr) 28px 64px 28px; }
+  .projects-file-grid { grid-template-columns: 24px 32px minmax(0, 1fr) 28px 64px 28px; }
   .projects-file-editor-label { display: none; }
   .projects-file-editor-label-short { display: inline; }
   .projects-file-editor-name { display: none; }

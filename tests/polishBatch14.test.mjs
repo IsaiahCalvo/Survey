@@ -33,3 +33,12 @@ test('a wide sheet thumbnail stays inside its column', () => {
   assert.match(ledger, /height=\{densityRow\.thumb\}\n\s*maxWidth=\{densityRow\.thumb \+ 16\}/);
   assert.match(ledger, /height=\{30\}\n\s*maxWidth=\{46\}/);
 });
+
+test('project file rows show the first page and part with a line', () => {
+  const tree = readFileSync(new URL('../src/home/ProjectsFolderTree.jsx', import.meta.url), 'utf8');
+  const hub = readFileSync(new URL('../src/home/hub.css', import.meta.url), 'utf8');
+  assert.match(tree, /<PdfPageThumb\n\s*doc=\{f\}\n\s*downloadDocument=\{downloadForOffline\}\n\s*variant="row"\n\s*height=\{26\}\n\s*maxWidth=\{40\}/);
+  assert.doesNotMatch(tree, /rgba\(255,255,255,0\.02\)/);
+  assert.match(hub, /\.projects-file-grid \{ grid-template-columns: 24px 40px minmax\(0, 1fr\) 90px 90px 28px; \}/);
+  assert.match(hub, /\.projects-file-rows > :not\(:last-child\) \[data-document-id\]\.projects-file-grid::after \{/);
+});
