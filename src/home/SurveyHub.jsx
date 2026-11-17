@@ -17,6 +17,7 @@
      onCreateTemplate()    — start the new-template flow
 */
 import { useState, useEffect, lazy, Suspense, startTransition } from 'react';
+import { OPEN_SETTINGS_EVENT } from './openSettings.js';
 import { readItemLink, requestItemLink, withoutItemLink } from '../projectItems/itemLink.js';
 import { useTooltip } from '../components/Tooltip';
 import { isFeatureOn } from '../featureFlags.js';
@@ -129,6 +130,19 @@ export default function SurveyHub({
     window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
     setSettingsTab('company');
     setSettingsOpen(true);
+  }, [user]);
+
+  // Any screen can open Settings on a page: window event OPEN_SETTINGS_EVENT
+  // with detail.tab (the plan-limit toast's See plans opens Subscription).
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const onOpen = (event) => {
+      if (!user) return;
+      setSettingsTab(event?.detail?.tab || null);
+      setSettingsOpen(true);
+    };
+    window.addEventListener(OPEN_SETTINGS_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_SETTINGS_EVENT, onOpen);
   }, [user]);
 
   // An "assigned to you" email links to ?project=&item=&kind= (Nightly

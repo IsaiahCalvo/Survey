@@ -180,8 +180,11 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
       // remembered tab produces a "why am I on this weird screen?" moment days
       // later. Landing on General every time is predictable.
       // The one exception: a link that names a page (a company invite email
-      // opens Company).
-      setActiveTab(initialTab === 'company' && isFeatureOn(COMPANY_FLAG) ? 'company' : 'general');
+      // opens Company, a plan-limit toast opens Subscription).
+      // The plan-limit toast's See plans opens Subscription.
+      setActiveTab(initialTab === 'company' && isFeatureOn(COMPANY_FLAG)
+        ? 'company'
+        : initialTab === 'subscription' ? 'subscription' : 'general');
       setSubscriptionViewTab('manage');
       setIsEditing(false);
       setCurrentPassword('');
