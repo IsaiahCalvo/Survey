@@ -139,6 +139,7 @@ export function jobToWalk(manifest, library = []) {
       y_pct: fraction(raw.position?.y),
       node_type_id: key,
       library_type_entry_id: tracked ? clean(raw.library?.typeEntryId) : null,
+      library_type_name: tracked ? clean(raw.library?.typeName) : null,
       title: tracked ? clean(raw.tag) : null,
       suite_device_id: suiteId,
       // The item's own place wins; the page gives the rest.

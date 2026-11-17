@@ -29,7 +29,7 @@ const manifest = {
     },
     {
       suiteId: 'dev-door-1', tag: 'D-2-01',
-      library: { categoryName: 'Door' },
+      library: { categoryName: 'Door', typeName: 'Maglock' },
       pageId: 'p1', position: { x: 0.5, y: 0.5 }, floor: 'Mezzanine',
       source: { app: 'plot', nativeId: 'blk-2', version: 1 },
     },
@@ -62,7 +62,7 @@ const template = {
     id: 'm1',
     categories: [
       { id: 'c-cam', name: 'Camera', libraryEntryId: 'e-cam' },
-      { id: 'c-door', name: 'Door' },
+      { id: 'c-door', name: 'Door', types: [{ id: 'ty-mag', name: 'Maglock', libraryEntryId: 'e-mag' }] },
     ],
   }],
 };
@@ -88,7 +88,7 @@ test('items become nodes with their shared id, Tag and places; one floor per PDF
     { ...cam },
     {
       id: 'blk-1', page_index: 0, x_pct: 0.1, y_pct: 0.2, node_type_id: 'entry:e-cam',
-      library_type_entry_id: 'e-ptz', title: 'C-2-01', suite_device_id: 'dev-cam-1',
+      library_type_entry_id: 'e-ptz', library_type_name: 'PTZ', title: 'C-2-01', suite_device_id: 'dev-cam-1',
       building: 'HP 20', wing: 'East', floor_label: 'Level 2', location: 'Lobby',
     },
   );
@@ -156,6 +156,8 @@ test('sending a job: tag outlines where found, dots elsewhere, shared ids kept, 
   const door = markers.find((mk) => mk.suiteId === 'dev-door-1');
   assert.notEqual(door.bounds.shape?.type, 'polygon', 'no outline: a dot where Plot put it');
   assert.equal(door.floor, 'Mezzanine');
+  // A Type with no library id in the file links by its exact name in the Module.
+  assert.equal(door.libraryTypeEntryId, 'e-mag');
   assert.equal(door.entityId, 'ent-1');
 
   const again = await run();

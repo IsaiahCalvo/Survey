@@ -46,6 +46,22 @@ function normalizeRotation(value) {
 }
 
 /**
+ * The Category Type a job file's device carries (KAL-617, KAL-618), as the
+ * marker's libraryTypeEntryId: the Survey Category's Type with that library
+ * id, else its Type with exactly that name, else the job file's own id.
+ */
+function typeLink(category, node) {
+  const entryId = clean(node?.library_type_entry_id);
+  const name = clean(node?.library_type_name);
+  if (!entryId && !name) return {};
+  const types = Array.isArray(category?.types) ? category.types : [];
+  const byId = entryId ? types.find((t) => clean(t?.libraryEntryId) === entryId) : null;
+  const byName = !byId && name ? types.find((t) => clean(t?.name) === name) : null;
+  const id = clean(byId?.libraryEntryId) || clean(byName?.libraryEntryId) || entryId;
+  return id ? { libraryTypeEntryId: id } : {};
+}
+
+/**
  * A Walkthru spot (fractions of the unrotated page) as a point on the page as
  * Survey shows it. `page` is the pdf.js viewport at scale 1: its width and
  * height already include the page's own rotation.
@@ -187,7 +203,7 @@ export function buildWalkMarkers(input) {
       moduleId,
       suiteId,
       libraryEntryId: clean(category.libraryEntryId) || clean(type?.library_entry_id) || null,
-      ...(clean(node.library_type_entry_id) ? { libraryTypeEntryId: clean(node.library_type_entry_id) } : {}),
+      ...typeLink(category, node),
       building: clean(node.building),
       wing: clean(node.wing),
       floor: clean(node.floor_label),
