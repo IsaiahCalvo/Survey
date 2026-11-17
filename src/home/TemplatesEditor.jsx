@@ -4110,8 +4110,8 @@ export default function TemplatesEditor({
           anchorRect={tplMenu.rect}
           onClose={() => setTplMenu(null)}
           items={[
-            { label: 'Copy', onClick: () => duplicateTemplates(new Set([t.id])) },
-            { label: 'Duplicate', onClick: () => duplicateTemplates(new Set([t.id])) },
+            // One order in every ⋮ menu here: Rename, then the selection bar's
+            // Duplicate, Move, Copy, Share, then Delete.
             { label: 'Rename', onClick: () => {
               setTplEdit(false);
               if (t.id === tpl?.id && (!mobileLayoutActive() || mobileTemplateOpen)) { focusVisibleField('input[data-template-title]'); return; }
@@ -4123,6 +4123,8 @@ export default function TemplatesEditor({
               });
               focusVisibleField('input[data-template-title]');
             } },
+            { label: 'Duplicate', onClick: () => duplicateTemplates(new Set([t.id])) },
+            { label: 'Copy', onClick: () => duplicateTemplates(new Set([t.id])) },
             { label: 'Share', onClick: () => onShare && onShare(t) },
             { label: 'Delete', danger: true, onClick: () => deleteTemplates(new Set([t.id])) },
           ]}
@@ -4137,11 +4139,11 @@ export default function TemplatesEditor({
           anchorRect={entityMenu.rect}
           onClose={() => setEntityMenu(null)}
           items={[
+            { label: 'Rename', onClick: () => { focusVisibleField(`input[data-entity-name-id="${ent.id}"]`); } },
             { label: 'Duplicate', onClick: () => duplicateEntities(new Set([ent.id])) },
             { label: 'Move', onClick: () => { setSelEntities(new Set([ent.id])); setMoveModal({ count: 1, kind: 'entity', mode: 'move' }); } },
             { label: 'Copy', onClick: () => { setSelEntities(new Set([ent.id])); setMoveModal({ count: 1, kind: 'entity', mode: 'copy' }); } },
             { label: 'Share', onClick: () => { if (tpl) onShare && onShare(tpl); } },
-            { label: 'Rename', onClick: () => { focusVisibleField(`input[data-entity-name-id="${ent.id}"]`); } },
             { label: 'Delete', danger: true, onClick: () => deleteEntities(new Set([ent.id])) },
           ]}
         />
