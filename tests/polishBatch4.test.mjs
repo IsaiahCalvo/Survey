@@ -27,3 +27,10 @@ test('Keyboard shortcuts sheet: key fields share one class with hover and presse
   assert.match(css, /\.shortcut-key-field:hover:not\(:focus\):not\(:active\) \{ background: var\(--hover\); \}/);
   assert.match(css, /\.shortcut-key-field:active \{ background: var\(--pressed\); \}/);
 });
+
+test('Export PDF: a chosen page row keeps its count pill, rows have a pressed look, the summary starts with a capital', () => {
+  const css = read('src/components/ExportPdfDialog.css');
+  assert.match(css, /\.xpdf-page\.is-on \.xpdf-page__count \{ background: var\(--surface-1\); \}/);
+  assert.match(css, /\.xpdf-page:not\(:disabled\):not\(\.is-on\):active \{ background: var\(--pressed\); \}/);
+  assert.match(read('src/components/ExportPdfDialog.jsx'), /const summary = summaryText\.charAt\(0\)\.toUpperCase\(\) \+ summaryText\.slice\(1\);/);
+});

@@ -150,7 +150,9 @@ export default function ExportPdfDialog({ open, api, fileName = '', onClose }) {
     withComments && 'comments CSV',
     restrict && 'editing locked',
   ].filter(Boolean);
-  const summary = [pageCount ? `${pageCount} page${pageCount === 1 ? '' : 's'}` : '', modeLabel, ...filterBits].filter(Boolean).join(' · ');
+  const summaryText = [pageCount ? `${pageCount} page${pageCount === 1 ? '' : 's'}` : '', modeLabel, ...filterBits].filter(Boolean).join(' · ');
+  // Before the page count arrives the line starts with the mode ("editable marks").
+  const summary = summaryText.charAt(0).toUpperCase() + summaryText.slice(1);
 
   const run = async () => {
     if (!api?.exportPdfWithOptions) return;
