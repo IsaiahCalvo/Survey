@@ -49,3 +49,9 @@ test('Document access: share links toggle uses the app chevron and the quiet-wor
   // The links group lines its rows up with the member rows above.
   assert.match(jsx, /marginTop: 6, padding: '6px 0', borderTop: `1px dashed/);
 });
+
+test('Page grid card: "Spacing" keeps its whole word, the unit list takes what is left', () => {
+  const css = read('src/components/PageGridSettings.css');
+  assert.match(css, /\.page-grid-settings__card \.page-grid-settings__label \{ flex: none; \}/);
+  assert.match(css, /\.page-grid-settings__card \.page-grid-settings__custom \.value-select \{ flex: 1 1 0; width: auto; min-width: 0; \}/);
+});
