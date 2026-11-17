@@ -18,7 +18,7 @@ test('phone pass: the chosen coral filter chip presses to the darker coral, neve
 test('phone pass: document review chips rest on raised and press a step past hover', () => {
   const css = read('src/home/documentReview.css');
   assert.match(css, /html\[data-look='suite'\] \.doc-review-chip \{ background: var\(--hover\); \}/);
-  assert.match(css, /html\[data-look='suite'\] \.doc-review-chip:not\(\[aria-pressed='true'\]\):hover \{ background: var\(--surface-3\); \}/);
+  assert.match(css, /html\[data-look='suite'\] \.doc-review-chip:not\(\[aria-pressed='true'\]\):hover:not\(:active\) \{ background: var\(--surface-3\); \}/);
   assert.match(css, /:root \.doc-review-chip:not\(:disabled\):active \{ background: var\(--pressed-2, var\(--pressed\)\);/);
   assert.equal(pressEnds('\\.doc-review-chip'), 2);
   assert.match(states, /:not\(\.chrome-pill\):not\(\.doc-review-chip\)/);

@@ -48,7 +48,7 @@
    is pressed-2, so a press never matches the hover. */
 html[data-look='suite'] .doc-review-chip { background: var(--hover); }
 @media (hover: hover) {
-  html[data-look='suite'] .doc-review-chip:not([aria-pressed='true']):hover { background: var(--surface-3); }
+  html[data-look='suite'] .doc-review-chip:not([aria-pressed='true']):hover:not(:active) { background: var(--surface-3); }
 }
 html[data-look='suite'] .doc-review-chip[aria-pressed='true'] { background: var(--surface-3); }
 :root .doc-review-chip:not(:disabled):active { background: var(--pressed-2, var(--pressed)); transition: none; }
