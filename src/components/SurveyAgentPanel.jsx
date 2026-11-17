@@ -69,6 +69,27 @@ const readSpeakSetting = () => {
 // on a Yes / No card, and how notes are written: sentences or bullets.
 const TEMPLATE_OFFERS_FLAG = 'agent-template-offers';
 const NOTE_STYLE_KEY = 'survey.agent.noteStyle';
+// KAL-532 (Nightly flag agent-photo-questions): questions about a photo.
+const PHOTO_QUESTIONS_FLAG = 'agent-photo-questions';
+// A photo goes to the model at most this wide or tall, as a JPEG.
+const PHOTO_QUESTION_MAX_SIDE = 1280;
+const shrinkPhoto = async (blob) => {
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(blob);
+  } catch {
+    throw new Error('That photo type cannot be read here.');
+  }
+  const scale = Math.min(1, PHOTO_QUESTION_MAX_SIDE / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+  canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+  canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close?.();
+  const jpeg = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.82));
+  if (!jpeg) throw new Error('Could not prepare that photo.');
+  return jpeg;
+};
 const readNoteStyle = () => {
   try { return window.localStorage.getItem(NOTE_STYLE_KEY) === 'bullets' ? 'bullets' : 'sentences'; } catch { return 'sentences'; }
 };
@@ -225,6 +246,15 @@ export default function SurveyAgentPanel({
   const voiceLog = voiceLogRef.current;
   const rawCall = useMemo(() => loggedCaller(makeSurveyAgentCaller(supabase, { onUsage: setUsageLeft }), () => voiceLogRef.current), []);
   const call = useMemo(() => withRetries(rawCall), [rawCall]);
+  // KAL-532 learning loop: a turn that changed something, or one taken back,
+  // counted per prompt version, only with "Help improve Survey" on.
+  const sendFeedback = (event, promptVersion) => {
+    if (!promptVersion || auth?.user?.user_metadata?.improve_survey_opt_in?.on !== true) return;
+    rawCall({ action: 'feedback', event, prompt_version: promptVersion }).catch(() => { /* a lost count is fine */ });
+  };
+  const sendFeedbackRef = useRef(sendFeedback);
+  const saveSummaryRef = useRef(null);
+  sendFeedbackRef.current = sendFeedback;
   // Spoken replies: the server's natural voice when it has one, else the
   // device's own voice.
   const voice = useMemo(() => createAgentVoice({ call: rawCall }), [rawCall]);
@@ -232,6 +262,8 @@ export default function SurveyAgentPanel({
   const stopSpeaking = voice.stop;
   const attachmentsRef = useRef(new Map());
   const [status, setStatus] = useState(null);
+  const statusRef = useRef(status);
+  statusRef.current = status;
   const [entries, setEntries] = useState([]);
   const entriesRef = useRef(entries);
   entriesRef.current = entries;
@@ -463,6 +495,7 @@ export default function SurveyAgentPanel({
     // WebMCP, for people with the annotation-agent flag.
     const annotations = isFeatureOn(ANNOTATION_AGENT_FLAG);
     const offersOn = isFeatureOn(TEMPLATE_OFFERS_FLAG);
+    const photosOn = isFeatureOn(PHOTO_QUESTIONS_FLAG) && statusRef.current?.photos === true;
     const offerNote = offerNotesRef.current.length ? `\n[${offerNotesRef.current.join(' ')}]` : '';
     offerNotesRef.current = [];
     const turnToolbox = createSurveyAgentToolbox({
@@ -475,6 +508,11 @@ export default function SurveyAgentPanel({
       walkItems: () => [...walkItemsRef.current],
       memory: agentMemory,
       offered: offersOn ? offeredRef.current : null,
+      askPhoto: photosOn ? async ({ blob, question }) => {
+        const jpeg = await shrinkPhoto(blob);
+        const res = await call({ action: 'look', image: await blobToBase64(jpeg), mime: 'image/jpeg', question, ...(AGENT_LANG !== 'en' ? { lang: AGENT_LANG } : {}) });
+        return res?.text || '';
+      } : null,
     });
     try {
       const result = await runSurveyAgentTurn({
@@ -488,6 +526,7 @@ export default function SurveyAgentPanel({
         lang: AGENT_LANG,
         offers: offersOn,
         noteStyle: offersOn ? noteStyleRef.current : null,
+        photos: photosOn,
       });
       await new Promise((resolve) => setTimeout(resolve, 0));
       toolbox.settle(result.changes);
@@ -503,7 +542,11 @@ export default function SurveyAgentPanel({
         changes: result.changes,
         summary: result.summary || null,
         offers: result.offers?.length ? result.offers.map((offer) => ({ ...offer, state: 'open' })) : null,
+        promptVersion: result.promptVersion || null,
       });
+      if (result.changes.length) sendFeedbackRef.current('changed', result.promptVersion);
+      // "Export the summary": saved at once, as the button would (KAL-532).
+      if (result.summary?.save) saveSummaryRef.current?.(result.summary);
       voiceLog.event('turn_done', { reply: result.reply, changes: result.changes.map((c) => c.label || c.type || '') });
       return result.reply;
     } catch (err) {
@@ -688,10 +731,12 @@ export default function SurveyAgentPanel({
   // The agent's undo_last_turn: the newest reply with changes not yet undone.
   undoLastRef.current = () => {
     const entry = [...entriesRef.current].reverse().find((e) => e.role === 'agent' && e.changes?.length && !e.undone);
+    if (entry) sendFeedbackRef.current('voice_undo', entry.promptVersion);
     return entry ? applyUndo(entry) : null;
   };
 
   const undoEntry = (entry) => {
+    sendFeedbackRef.current('undo', entry.promptVersion);
     const { reverted, kept } = applyUndo(entry);
     // Tell the agent, so it does not build on what was taken back.
     const note = kept
@@ -1147,6 +1192,8 @@ export default function SurveyAgentPanel({
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
   };
+
+  saveSummaryRef.current = saveSummary;
 
   const removePending = (id) => {
     attachmentsRef.current.delete(id);

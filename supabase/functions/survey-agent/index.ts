@@ -33,6 +33,10 @@ import {
   SURVEY_AGENT_LANGUAGES,
   SURVEY_AGENT_LIMITS,
   SURVEY_AGENT_NOTE_STYLES,
+  SURVEY_AGENT_PHOTO_LIMITS,
+  SURVEY_AGENT_PROMPT_VERSION,
+  SURVEY_AGENT_FEEDBACK_EVENTS,
+  surveyAgentPhotoMessages,
   surveyAgentCappedTokens,
   surveyAgentSystemMessages,
   buildSurveyAgentTools,
@@ -106,6 +110,25 @@ function modelProvider() {
   };
 }
 
+// KAL-532: the model that looks at a photo (action 'look'). Groq's free
+// Llama 4 Scout takes images; SURVEY_AGENT_VISION_MODEL picks another, or
+// 'off'. With a custom provider there is no default: set it by hand.
+const DEFAULT_VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
+const PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+function visionModel() {
+  const named = Deno.env.get('SURVEY_AGENT_VISION_MODEL') || '';
+  if (named === 'off') return null;
+  const provider = modelProvider();
+  if (!provider?.baseUrl) return null;
+  const model = named || (Deno.env.get('SURVEY_AGENT_API_KEY') ? '' : DEFAULT_VISION_MODEL);
+  if (!model) return null;
+  return {
+    ...provider,
+    model,
+    prices: { input: envNumber('SURVEY_AGENT_VISION_PRICE_IN', 0), output: envNumber('SURVEY_AGENT_VISION_PRICE_OUT', 0) },
+  };
+}
+
 // How long to wait for the main model's per-minute cap before moving on.
 const MAIN_MODEL_WAIT_MS = 8000;
 const MODEL_GONE_REST_MS = 24 * 60 * 60 * 1000;
@@ -163,7 +186,7 @@ Deno.serve(async (req) => {
   try { parsedJson = JSON.parse(raw || '{}'); } catch { return json(400, { error: 'bad_json' }); }
   // Types and sizes; sanitizeAgentMessages / buildSurveyAgentTools check the insides.
   const parsed = parseBody({
-    action: s.enum(['status', 'transcribe', 'turn', 'speak']),
+    action: s.enum(['status', 'transcribe', 'turn', 'speak', 'look', 'feedback']),
     text: s.string({ max: 1000, optional: true }),
     mime: s.string({ max: 200, optional: true }),
     audio: s.string({ max: Math.ceil(MAX_AUDIO_BYTES * 1.4), optional: true }),
@@ -175,6 +198,11 @@ Deno.serve(async (req) => {
     typed_lines: s.boolean({ optional: true }),
     lang: s.enum([...SURVEY_AGENT_LANGUAGES], { optional: true }),
     offers: s.boolean({ optional: true }),
+    photos: s.boolean({ optional: true }),
+    event: s.enum([...SURVEY_AGENT_FEEDBACK_EVENTS], { optional: true }),
+    prompt_version: s.string({ max: 32, optional: true }),
+    image: s.string({ max: Math.ceil(SURVEY_AGENT_PHOTO_LIMITS.maxImageBytes * 1.4), optional: true }),
+    question: s.string({ max: SURVEY_AGENT_PHOTO_LIMITS.maxQuestionChars, optional: true }),
     note_style: s.enum([...SURVEY_AGENT_NOTE_STYLES], { optional: true }),
   }, parsedJson);
   if (!parsed.ok) return json(400, { error: 'bad_request', detail: parsed.error });
@@ -223,6 +251,7 @@ Deno.serve(async (req) => {
       reason: !allowed ? 'not_enabled_for_you' : !modelReady ? 'not_set_up' : overCap ? 'monthly_cap_reached' : null,
       transcription: Boolean(transcriber()),
       speech: Boolean(speaker()),
+      photos: Boolean(visionModel()),
       over_cap: overCap,
       usage_left: allowed ? usageLeft() : null,
     });
@@ -362,6 +391,7 @@ Deno.serve(async (req) => {
         markupOpen: markupOpenInTurn(clean.messages),
         typedLines: body.typed_lines === true,
         offers: body.offers === true,
+        photos: body.photos === true && Boolean(visionModel()),
       }),
       tool_choice: 'auto',
       temperature: 0.2,
@@ -448,8 +478,70 @@ Deno.serve(async (req) => {
         tool_calls: Array.isArray(message.tool_calls) ? message.tool_calls : [],
       },
       finish_reason: choice.finish_reason || null,
+      prompt_version: SURVEY_AGENT_PROMPT_VERSION,
       usage_left: usageLeft(1),
     });
+  }
+
+  // KAL-532 learning loop: a turn that changed something, or the person
+  // taking one back. Counted per day and prompt version only, and only for
+  // people who turned on "Help improve Survey". Costs no model call.
+  if (action === 'feedback') {
+    if (user.user_metadata?.improve_survey_opt_in?.on !== true) return json(200, { recorded: false });
+    const version = String(body.prompt_version || '');
+    if (!body.event || !/^[a-z0-9-]{1,32}$/.test(version)) return json(400, { error: 'bad_request' });
+    const { error } = await admin.rpc('record_survey_agent_feedback', { p_prompt_version: version, p_event: body.event });
+    if (error) console.warn('[survey-agent] feedback not recorded', error.message);
+    return json(200, { recorded: !error });
+  }
+
+  if (action === 'look') {
+    const v = visionModel();
+    if (!v) return json(501, { error: 'photos_not_set_up' });
+    const mime = String(body.mime || '').split(';')[0].trim().toLowerCase();
+    if (!PHOTO_TYPES.has(mime)) return json(400, { error: 'unsupported_image' });
+    const question = String(body.question || '').trim();
+    if (!question) return json(400, { error: 'bad_request' });
+    let bytes: Uint8Array<ArrayBuffer>;
+    try { bytes = decodeBase64(String(body.image || '')); } catch { return json(400, { error: 'bad_image' }); }
+    if (!bytes.length || bytes.length > SURVEY_AGENT_PHOTO_LIMITS.maxImageBytes) return json(413, { error: 'image_too_large' });
+    if (!(await reserve())) return refused();
+    let res: Response;
+    try {
+      res = await fetch(`${v.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${v.key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: v.model,
+          messages: surveyAgentPhotoMessages(question, `data:${mime};base64,${String(body.image)}`, body.lang),
+          temperature: 0.1,
+          max_tokens: SURVEY_AGENT_PHOTO_LIMITS.maxOutputTokens,
+        }),
+      });
+    } catch (err) {
+      console.error('[survey-agent] photo call failed', err);
+      return json(502, { error: 'model_unavailable' });
+    }
+    if (res.status === 429) return json(429, { error: 'busy_try_again', retry_after: null });
+    if (res.status === 404 || (res.status === 400 && /model_not_found|decommissioned/.test(await res.clone().text()))) {
+      console.error('[survey-agent] vision model missing', v.model);
+      return json(501, { error: 'photos_not_set_up' });
+    }
+    if (!res.ok) {
+      console.error('[survey-agent] photo error', res.status, (await res.text()).slice(0, 300));
+      return json(502, { error: 'model_unavailable' });
+    }
+    const out = await res.json();
+    const lookCost = surveyAgentCostMicros(out?.usage, v.prices);
+    await admin.rpc('record_survey_agent_usage', {
+      p_user_id: user.id,
+      p_input_tokens: Number(out?.usage?.prompt_tokens || 0),
+      p_output_tokens: Number(out?.usage?.completion_tokens || 0),
+      p_cost_micros: lookCost,
+    });
+    await countDaily('look', surveyAgentCappedTokens(out?.usage), 0, lookCost);
+    const answer = String(out?.choices?.[0]?.message?.content || '').trim();
+    return json(200, { text: answer, usage_left: usageLeft(1) });
   }
 
   return json(400, { error: 'unknown_action' });

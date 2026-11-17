@@ -30,6 +30,7 @@ import {
 import CrashReportsPanel from './CrashReportsPanel';
 import CompanyPanel from './company/CompanyPanel.jsx';
 import { isFeatureOn } from '../featureFlags.js';
+import { makeSurveyAgentCaller } from '../agent/surveyAgentClient.js';
 import { COMPANY_FLAG, getMyCompany } from '../services/companyService.js';
 import { downloadMyData } from '../services/accountExport';
 import {
@@ -104,6 +105,17 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
   // the account so the server can check it before using anything.
   const [usageStatsOn, setUsageStatsOn] = useState(() => !readUsageStatsOff());
   const improveSurveyOptIn = user?.user_metadata?.improve_survey_opt_in?.on === true;
+  // KAL-532: what is left of this month's Survey agent allowance, from the
+  // agent's own status (it holds the caps). null while unknown.
+  const [agentLeft, setAgentLeft] = useState(null);
+  useEffect(() => {
+    if (!isOpen || activeTab !== 'privacy' || !user || !isFeatureOn('survey-agent')) return undefined;
+    let live = true;
+    makeSurveyAgentCaller(supabase)({ action: 'status' })
+      .then((s) => { if (live) setAgentLeft(s?.usage_left || null); })
+      .catch(() => { if (live) setAgentLeft(null); });
+    return () => { live = false; };
+  }, [isOpen, activeTab, user]);
   const handleImproveSurveyToggle = async () => {
     setError('');
     setLoading(true);
@@ -1242,7 +1254,7 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                   <div className="account-pref-copy">
                     <div className="account-pref-title" id="account-pref-improve-survey">Let Survey learn from my survey work</div>
                     <p className="account-pref-description">
-                      When on, we may use the marks you make and your Smart fill fixes, in projects you own, to make tools like Smart fill better for everyone. We never show your plans or marks to other customers, never sell them, and never use files synced from Google or Microsoft. Only turn it on for work you have the right to share. Off unless you turn it on.{' '}
+                      When on, we may use the marks you make and your Smart fill fixes, in projects you own, to make tools like Smart fill better for everyone. We also count, with no names, how often the Survey agent's changes are taken back. We never show your plans or marks to other customers, never sell them, and never use files synced from Google or Microsoft. Only turn it on for work you have the right to share. Off unless you turn it on.{' '}
                       <a href="/privacy.html" target="_blank" rel="noreferrer">Privacy policy</a>
                     </p>
                   </div>
@@ -1259,6 +1271,19 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                     <span className="account-switch-track" aria-hidden="true" />
                   </button>
                 </div>
+                {agentLeft ? (
+                  <>
+                    <h3>Survey agent</h3>
+                    <div className="account-pref-row" data-agent-allowance>
+                      <div className="account-pref-copy">
+                        <div className="account-pref-title">Left this month</div>
+                        <p className="account-pref-description">
+                          {agentLeft.requests} requests and {Math.round(Number(agentLeft.cost_share || 0) * 100)}% of your monthly allowance. It starts again on the 1st.
+                        </p>
+                      </div>
+                    </div>
+                  </>
+                ) : null}
                 <h3>Usage statistics</h3>
                 <div className="account-pref-row">
                   <div className="account-pref-copy">

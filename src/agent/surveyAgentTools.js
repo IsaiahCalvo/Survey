@@ -22,6 +22,12 @@ const STATUS_LIST_MAX = 20;
 // One tidy_notes call rewrites at most this many items' notes.
 const MAX_TIDY_ITEMS = 300;
 
+// "Floor 2", "level 2", "2nd floor" and "2" are one floor; "Ground" stays a word.
+const floorKeyOf = (value) => {
+  const text = String(value ?? '').toLowerCase().replace(/\b(floor|level|lvl|fl|storey|story)\b/g, ' ').replace(/(\d+)(st|nd|rd|th)\b/g, '$1').replace(/[^a-z0-9]+/g, ' ').trim();
+  return text.replace(/^0+(\d)/, '$1');
+};
+
 // The panel fills this while Survey mode is open (SurveySpacesRail).
 export const surveyAgentBridge = { current: null };
 
@@ -149,6 +155,9 @@ export function createSurveyAgentToolbox({
   // kept by the panel across turns so each offer is made once. null: no
   // offer tools (WebMCP, tests that leave it out).
   offered = null,
+  // KAL-532: askPhoto({ blob, question }) -> the answer text, from a model
+  // that can see. null: no photo questions here.
+  askPhoto = null,
 } = {}) {
   const bridge = () => {
     const b = getBridge();
@@ -930,12 +939,25 @@ export function createSurveyAgentToolbox({
 
     // "What's left on this sheet?": each item's checklist progress on one
     // page (default the page on screen) or the whole survey.
-    survey_status({ page = null, all_pages: allPages = false } = {}) {
+    survey_status({ page = null, all_pages: allPages = false, category_id: categoryId = null, floor = null } = {}) {
       const b = bridge();
-      const onPage = allPages ? null : (Number(page) || b.getCurrentPage?.() || null);
       const index = categoryIndex(b.template);
+      const floorKey = floorKeyOf(floor);
+      // A floor spans pages: it reads across the survey unless a page is named.
+      const onPage = allPages || (floorKey && !Number(page)) ? null : (Number(page) || b.getCurrentPage?.() || null);
+      let kind = null;
+      if (categoryId) {
+        kind = index.list.find((e) => e.category.id === categoryId) || null;
+        if (!kind) throw new ToolError(`No category ${categoryId}. Use get_survey_context for the category ids.`);
+      }
+      const all = Object.values(b.markers || {}).filter(Boolean);
+      if (floorKey && !all.some((m) => floorKeyOf(m.floor))) {
+        throw new ToolError('No item in this survey has a floor set, so I cannot tell floors apart. Ask which page that floor is on.');
+      }
       const items = Object.entries(b.markers || {})
         .filter(([, m]) => m && (onPage == null || m.pageNumber === onPage))
+        .filter(([, m]) => !kind || m.categoryId === kind.category.id)
+        .filter(([, m]) => !floorKey || floorKeyOf(m.floor) === floorKey)
         .map(([id, m]) => {
           const entry = index.find(m.moduleId, m.categoryId);
           const checklist = entry ? activeChecklist(entry.category) : [];
@@ -950,7 +972,7 @@ export function createSurveyAgentToolbox({
       const names = (list) => list.slice(0, STATUS_LIST_MAX).map((i) => i.name);
       return {
         content: out({
-          scope: onPage == null ? 'whole survey' : `page ${onPage}`,
+          scope: [onPage == null ? (floorKey ? `floor ${String(floor).trim()}` : 'whole survey') : `page ${onPage}`, kind ? kind.category.name : null].filter(Boolean).join(', '),
           items: items.length,
           done: done.length,
           not_started: { count: notStarted.length, names: names(notStarted) },
@@ -965,7 +987,7 @@ export function createSurveyAgentToolbox({
     // "Wrap up": what this walk did (the items worked on in this chat), or
     // a page, or the whole survey, with the items that have issues. The
     // panel offers the text to save or share.
-    walk_summary({ scope = 'walk', page = null } = {}) {
+    walk_summary({ scope = 'walk', page = null, save = false } = {}) {
       const b = bridge();
       const walked = typeof walkItems === 'function' ? walkItems() : [];
       const useWalk = scope === 'walk' && walked.length > 0;
@@ -987,7 +1009,7 @@ export function createSurveyAgentToolbox({
             with_issues: c.issues.slice(0, STATUS_LIST_MAX).map((i) => ({ name: i.name, issues: i.lines.slice(0, 4).map((l) => `${l.text} = ${l.answer}`) })),
           })),
         }),
-        summary: { title, text: summaryText(summary, { title }) },
+        summary: { title, text: summaryText(summary, { title }), ...(save === true ? { save: true } : {}) },
       };
     },
 
@@ -1098,6 +1120,39 @@ export function createSurveyAgentToolbox({
         content: `Offered to add the category ${label}${module.name ? ` to ${module.name}` : ''}. The person decides on a Yes / No card under your reply; nothing is added yet. Do not say it was added.`,
         offer: { kind: 'category', documentId: b.documentId || null, moduleId: module.id, moduleName: module.name || null, name: label },
       };
+    },
+
+    // KAL-532: "is the reader mounted in the photo?"
+    async ask_about_photo({ item_id: itemId = null, photo = null, attachment_id: attachmentId = null, question } = {}) {
+      const b = bridge();
+      if (typeof askPhoto !== 'function') throw new ToolError('Photo questions are not on here.');
+      const asked = String(question || '').trim();
+      if (!asked) throw new ToolError('Say what to find out from the photo.');
+      if (Boolean(itemId) === Boolean(attachmentId)) throw new ToolError('Give item_id or attachment_id, not both.');
+      let blob;
+      let what;
+      if (attachmentId) {
+        const a = attachments.get(attachmentId);
+        if (!a) throw new ToolError(`No file ${attachmentId} in this chat.`);
+        if (a.kind !== 'photo') throw new ToolError(`${a.name || attachmentId} is not a photo.`);
+        blob = a.file;
+        what = a.name || 'the photo';
+      } else {
+        const marker = markerOf(b, itemId);
+        const photos = typeof b.photosOf === 'function' ? b.photosOf(itemId) : [];
+        if (!photos.length) throw new ToolError(`${nameOf(marker)} has no photos.`);
+        const n = photo == null ? photos.length : Number(photo);
+        if (!Number.isInteger(n) || n < 1 || n > photos.length) {
+          throw new ToolError(`${nameOf(marker)} has ${photos.length} photo${photos.length === 1 ? '' : 's'}; say which, 1 to ${photos.length}.`);
+        }
+        if (typeof b.readMedia !== 'function') throw new ToolError('Photos cannot be read here.');
+        blob = await b.readMedia(photos[n - 1]);
+        what = `photo ${n} of ${photos.length} on ${nameOf(marker)}`;
+      }
+      if (!blob) throw new ToolError('Could not open that photo.');
+      const answer = String(await askPhoto({ blob, question: asked }) || '').trim();
+      if (!answer) throw new ToolError('The photo check gave no answer. Try again.');
+      return { content: out({ photo: what, answer }) };
     },
 
     show_item({ item_id: itemId } = {}) {

@@ -58,6 +58,11 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   // KAL-529: the agent offers a new checklist line or category on a Yes / No
   // card, and a Notes setting (sentences or bullets) in its menu.
+  // KAL-532: the agent answers a question about a photo (a model that can see).
+  'agent-photo-questions': Object.freeze({
+    label: 'Survey agent: answer questions about a photo on an item or one added in the chat',
+    stage: 'beta',
+  }),
   'agent-template-offers': Object.freeze({
     label: 'Survey agent: offer a new checklist line or category (Yes / No card), and a note style setting',
     stage: 'beta',
