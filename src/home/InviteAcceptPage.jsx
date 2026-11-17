@@ -118,7 +118,7 @@ export default function InviteAcceptPage() {
     if (phase === 'needs-auth') return 'Sign in to accept this invite';
     if (!result) return 'Invite';
     switch (result.status) {
-      case 'accepted': return result.upgradeRequired ? 'Welcome — Viewer access granted' : 'Welcome!';
+      case 'accepted': return result.upgradeRequired ? 'Welcome. You have view access' : 'Welcome!';
       case 'already_accepted': return 'You already accepted this invite';
       case 'wrong_account': return 'Wrong account';
       case 'expired': return 'This invite has expired';
