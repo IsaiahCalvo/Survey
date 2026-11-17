@@ -5981,6 +5981,33 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
 
   // `options.smooth`: glide there (Previous / Next page, the typed page jump, a
   // page thumbnail, PageUp / PageDown). Everything else lands at once, as before.
+  // Continuous off (KAL-712): goToPage's turn to another row. True when the
+  // page sits in a row not on screen (the row turns); false lets the jump
+  // scroll within the row on screen as usual.
+  const turnPagedRowRef = useRef(null);
+  turnPagedRowRef.current = (n, options) => {
+    const el = scrollerRef.current;
+    const tops = topsRef.current;
+    const paged = pagedViewRef.current ? pagedRowsRef.current : null;
+    const wanted = Math.max(1, Math.min(tops.length, Number(n) || 1));
+    if (!el || !paged || paged.index < 0 || paged.rows[paged.index].includes(wanted)) return false;
+    cancelPageGlide();
+    cancelPanInertia(false);
+    pagedLandingRef.current = options?.landing === 'bottom' ? 'bottom' : 'top';
+    setSoloPage(wanted);
+    if (currentPageRef.current !== wanted) {
+      const prev = currentPageRef.current;
+      currentPageRef.current = wanted;
+      cb.current.onPageChanged?.({
+        currentPageNumber: wanted,
+        previousPageNumber: prev ?? null,
+        pageCount: numPagesRef.current,
+        raw: { scrollTop: el.scrollTop },
+      });
+    }
+    return true;
+  };
+
   const goToPage = useCallback((n, options) => {
     // A zoom glide still playing lands first (where it is shown), so the jump
     // is measured on the laid-out page and the glide's commit cannot undo it.
@@ -5989,25 +6016,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const tops = topsRef.current;
     if (!el || !tops.length) return false;
     // Continuous off (KAL-712): a page in another row turns to that row.
-    const paged = pagedViewRef.current ? pagedRowsRef.current : null;
-    const wanted = Math.max(1, Math.min(tops.length, Number(n) || 1));
-    if (paged && paged.index >= 0 && !paged.rows[paged.index].includes(wanted)) {
-      cancelPageGlide();
-      cancelPanInertia(false);
-      pagedLandingRef.current = options?.landing === 'bottom' ? 'bottom' : 'top';
-      setSoloPage(wanted);
-      if (currentPageRef.current !== wanted) {
-        const prev = currentPageRef.current;
-        currentPageRef.current = wanted;
-        cb.current.onPageChanged?.({
-          currentPageNumber: wanted,
-          previousPageNumber: prev ?? null,
-          pageCount: numPagesRef.current,
-          raw: { scrollTop: el.scrollTop },
-        });
-      }
-      return true;
-    }
+    if (turnPagedRowRef.current(n, options)) return true;
     const smooth = options?.smooth === true;
     if (!smooth) cancelPageGlide();
     // UX: Previous/Next page, the page-number field, a sidebar thumbnail, a
