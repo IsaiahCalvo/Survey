@@ -19,3 +19,9 @@ test('desktop checklist line kind is the app drop-down, phones keep the wheel', 
   assert.match(kind, /\{phone \? \(\s*<select\s+aria-label=\{`How "\$\{name\}" is answered`\}/);
   assert.match(kind, /<ValueSelect\s+look="pill"\s+width="auto"\s+label=\{`How "\$\{name\}" is answered`\}/);
 });
+
+test('a shut category leaves no see-through line under its header', () => {
+  const src = readFileSync(new URL('../src/home/TemplatesEditor.jsx', import.meta.url), 'utf8');
+  assert.match(src, /borderTop: open \? '1px solid var\(--rule\)' : 0,/);
+  assert.doesNotMatch(src, /borderTop: open \? '1px solid var\(--rule\)' : '1px solid transparent'/);
+});

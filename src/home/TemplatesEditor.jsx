@@ -3059,7 +3059,9 @@ export default function TemplatesEditor({
                           opacity: open ? 1 : 0,
                           visibility: open ? 'visible' : 'hidden',
                           transition: `${CATEGORY_COLLAPSE_TRANSITION}, visibility 0s linear ${open ? '0s' : '0.18s'}`,
-                          borderTop: open ? '1px solid var(--rule)' : '1px solid transparent',
+                          // No border while shut: a see-through line left a 1px strip of card
+                          // under a hovered or ticked header.
+                          borderTop: open ? '1px solid var(--rule)' : 0,
                           minHeight: 0,
                         }}
                       >
