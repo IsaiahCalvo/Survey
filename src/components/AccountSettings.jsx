@@ -901,7 +901,9 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                   </button>
                 </div>
 
-                <section className="account-section" style={{ display: subscriptionViewTab === 'manage' ? 'block' : 'none' }}>
+                {/* Manage and Usage take turns, so neither draws the rule between
+                    sections: hidden Usage left one under the plan cards. */}
+                <section className="account-section" style={{ display: subscriptionViewTab === 'manage' ? 'block' : 'none', borderBottom: 'none', paddingBottom: 0, marginBottom: 0 }}>
                     {loadingSubscription ? (
                   <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-3)', fontSize: '13px' }}>
                     Loading subscription...
@@ -1075,9 +1077,9 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                               Your own plan
                             </button>
                           ) : subscription?.tier === 'free' ? (
-                            <button className="account-btn-outline-green" disabled>
+                            <div className="account-btn-outline-green account-plan-mark">
                               Current plan
-                            </button>
+                            </div>
                           ) : subscription?.tier === 'developer' ? (
                             <button className="account-btn-secondary" disabled>
                               Developer account
@@ -1137,9 +1139,9 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                         </div>
                         <div className="account-subscription-actions">
                           {subscription?.tier === 'pro' ? (
-                            <button className="account-btn-outline-blue" disabled>
+                            <div className="account-btn-outline-blue account-plan-mark">
                               Current plan
-                            </button>
+                            </div>
                           ) : subscription?.tier === 'developer' ? (
                             <button className="account-btn-secondary" disabled>
                               Developer account
@@ -1191,13 +1193,13 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                         </div>
                         <div className="account-subscription-actions">
                           {subscription?.tier === 'enterprise' ? (
-                            <button className="account-btn-outline-gold" disabled>
+                            <div className="account-btn-outline-gold account-plan-mark">
                               Current plan
-                            </button>
+                            </div>
                           ) : viaCompany ? (
-                            <button className="account-btn-outline-gold" disabled>
+                            <div className="account-btn-outline-gold account-plan-mark">
                               {`Through ${companySeat.name}`}
-                            </button>
+                            </div>
                           ) : subscription?.tier === 'developer' ? (
                             <button className="account-btn-secondary" disabled>
                               Developer account

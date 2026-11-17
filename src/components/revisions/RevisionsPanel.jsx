@@ -1625,7 +1625,7 @@ export default function RevisionsPanel({
               }
             }}
           >
-            <span><Icon name={searchOpen && !headActionsHost ? 'close' : 'search'} size={mobileMode ? 20 : 17} /></span>
+            <span><Icon name={searchOpen && !headActionsHost ? 'close' : 'search'} size={mobileMode ? 20 : 16 /* SectionIconButton desktop glyph */} /></span>
           </button>
           {!embedded && (
             <button

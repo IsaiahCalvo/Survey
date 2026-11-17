@@ -268,5 +268,7 @@
   color: var(--text-3);
   cursor: pointer;
 }
-.projects-open-all-view:hover { background: var(--surface-3); color: var(--text-1); }
+@media (hover: hover) {
+  .projects-open-all-view:not(.is-picked):hover { background: var(--hover); color: var(--text-1); }
+}
 .projects-open-all-view.is-picked { background: var(--surface-3); border-color: var(--border-strong); color: var(--text-1); }
