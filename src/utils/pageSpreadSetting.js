@@ -6,7 +6,7 @@
  */
 import { useSyncExternalStore } from 'react';
 import { isFeatureOn } from '../featureFlags.js';
-import { DEFAULT_GRID_COLUMNS, GRID_COLUMN_CHOICES, gridColumns, normalizeSpreadMode } from './pageSpreads.js';
+import { DEFAULT_GRID_COLUMNS, GRID_COLUMN_CHOICES, normalizeSpreadMode } from './pageSpreads.js';
 
 const KEY = 'survey.pageSpread.v1';
 // The last Grid column count, so Grid opens again with the columns it had.
@@ -32,22 +32,28 @@ export function getPageSpreadMode() {
 }
 
 export function setPageSpreadMode(mode) {
-  const next = normalizeSpreadMode(mode === 'grid' ? `grid-${getGridColumns()}` : mode);
+  const next = normalizeSpreadMode(mode === 'grid' ? `grid-${getGridChoice()}` : mode);
   current = next;
   try {
     globalThis.localStorage?.setItem(KEY, next);
-    if (gridColumns(next)) globalThis.localStorage?.setItem(GRID_KEY, String(gridColumns(next)));
+    if (next.startsWith('grid-')) globalThis.localStorage?.setItem(GRID_KEY, next.slice(5));
   } catch { /* private window */ }
   listeners.forEach((fn) => fn());
 }
 
-/** The Grid's column count: the current one, else the last one used, else 3. */
-export function getGridColumns() {
-  const now = gridColumns(current);
-  if (now) return now;
+/**
+ * The Grid's columns: the current choice, else the last one used, else 3.
+ * A number 2 to 6, or 'auto' (KAL-711).
+ */
+export function getGridChoice() {
+  if (current?.startsWith('grid-')) {
+    const now = current.slice(5);
+    return now === 'auto' ? now : Number(now);
+  }
   try {
-    const kept = Number(globalThis.localStorage?.getItem(GRID_KEY));
-    if (GRID_COLUMN_CHOICES.includes(kept)) return kept;
+    const kept = globalThis.localStorage?.getItem(GRID_KEY);
+    if (kept === 'auto') return kept;
+    if (GRID_COLUMN_CHOICES.includes(Number(kept))) return Number(kept);
   } catch { /* private window */ }
   return DEFAULT_GRID_COLUMNS;
 }
@@ -59,4 +65,36 @@ function subscribe(fn) {
 
 export function usePageSpreadMode() {
   return useSyncExternalStore(subscribe, getPageSpreadMode, () => 'single');
+}
+
+// ---- Continuous (KAL-712, Drawboard's "Continuous mode") -------------------
+// On (the default): pages scroll one after another. Off: the viewer shows one
+// row at a time (a page, or a pair) and the wheel turns rows. Kept on this
+// device like the page view; without the flag it is always on.
+const CONTINUOUS_KEY = 'survey.pageContinuous.v1';
+const continuousListeners = new Set();
+let continuous = null;
+
+export function getPageContinuous() {
+  if (flagOn == null) flagOn = isFeatureOn('page-spreads');
+  if (!flagOn) return true;
+  if (continuous == null) {
+    try { continuous = globalThis.localStorage?.getItem(CONTINUOUS_KEY) !== 'off'; } catch { continuous = true; }
+  }
+  return continuous;
+}
+
+export function setPageContinuous(on) {
+  continuous = Boolean(on);
+  try { globalThis.localStorage?.setItem(CONTINUOUS_KEY, continuous ? 'on' : 'off'); } catch { /* private window */ }
+  continuousListeners.forEach((fn) => fn());
+}
+
+function subscribeContinuous(fn) {
+  continuousListeners.add(fn);
+  return () => continuousListeners.delete(fn);
+}
+
+export function usePageContinuous() {
+  return useSyncExternalStore(subscribeContinuous, getPageContinuous, () => true);
 }

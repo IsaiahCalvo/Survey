@@ -112,9 +112,9 @@ import {
   resolveVerticalPlacement,
   subscribeViewerTopOverlays,
 } from '../utils/viewerTopOverlay.js';
-import { buildVisiblePageStack } from '../utils/visiblePageLayout.js';
-import { gridColumns, rowMembers, steppedSpreadPage } from '../utils/pageSpreads.js';
-import { usePageSpreadMode } from '../utils/pageSpreadSetting.js';
+import { buildVisiblePageStack, pagedRowIndex, pagedRows, pagedRowSpread } from '../utils/visiblePageLayout.js';
+import { gridColumns, isGridMode, rowMembers, steppedSpreadPage } from '../utils/pageSpreads.js';
+import { usePageContinuous, usePageSpreadMode } from '../utils/pageSpreadSetting.js';
 import { computeFitScale, pickCurrentPage, resolveFitPageLanding } from '../utils/pageNavigationMath.js';
 import { createPageRasterQueue } from '../utils/pageRasterQueue.js';
 import {
@@ -1618,6 +1618,27 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const spreadMode = phoneLayout ? 'single' : pageSpreadSetting;
   const spreadModeRef = useRef(spreadMode);
   spreadModeRef.current = spreadMode;
+  // KAL-712, Drawboard's "Continuous mode" off: one row at a time (a page or
+  // a pair). A Grid always scrolls and the phone keeps continuous. soloPage
+  // is the page whose row shows; null follows the current page.
+  const pageContinuous = usePageContinuous();
+  const pagedView = !phoneLayout && !pageContinuous && !isGridMode(spreadMode);
+  const pagedViewRef = useRef(pagedView);
+  pagedViewRef.current = pagedView;
+  const [soloPage, setSoloPage] = useState(null);
+  useEffect(() => { if (!pagedView) setSoloPage(null); }, [pagedView]);
+  const pagedRowsRef = useRef({ rows: [], index: -1 });
+  // Where a turned-to row lands: its top (turning on) or its foot (back).
+  const pagedLandingRef = useRef(null);
+  // Continuous off: the first page of the next / previous row (null when
+  // Continuous is on, so callers keep their own step).
+  const pagedStepRef = useRef(null);
+  pagedStepRef.current = (step) => {
+    if (!pagedViewRef.current) return null;
+    const { rows, index } = pagedRowsRef.current;
+    if (index < 0) return null;
+    return rows[Math.max(0, Math.min(rows.length - 1, index + (step > 0 ? 1 : -1)))][0];
+  };
   const coarsePointer = useCoarsePointer();
   const isMobileSurface = phoneLayout || coarsePointer;
   const [touchInput] = useState(() => hasTouchInput());
@@ -2103,7 +2124,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         // A kept Double / Cover view fits the first row: the pair's two widths
         // and the gap (Cover's lone page 1 holds a pair's slot: twice its own).
         // A Grid view fits N of page 1's width (the other pages' sizes come later).
-        const gridN = gridColumns(spreadModeRef.current);
+        const gridN = gridColumns(spreadModeRef.current, pdf.numPages);
         const firstPair = spreadModeRef.current === 'double' ? sizes[1] || firstSize : firstSize;
         const firstRowW = gridN ? gridN * firstSize.w + (gridN - 1) * metrics.gap
           : spreadModeRef.current === 'single' ? firstSize.w : firstSize.w + metrics.gap + firstPair.w;
@@ -2184,9 +2205,23 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // ---- layout: cumulative offsets ------------------------------------------
   const layout = useMemo(() => {
     const metrics = layoutMetrics;
+    // Continuous off: lay out only the current row (the other pages hide the
+    // way a Space hides pages), laid out on its own (pagedRowSpread).
+    let shownPages = visiblePageNumbers;
+    let rowSpread = spreadMode;
+    let paged = { rows: [], index: -1 };
+    if (pagedView) {
+      const rows = pagedRows({ pageSizes, visiblePageNumbers, spread: spreadMode });
+      const index = pagedRowIndex(rows, soloPage ?? currentPageRef.current ?? 1);
+      if (index >= 0) {
+        shownPages = rows[index];
+        rowSpread = pagedRowSpread(rows[index], spreadMode);
+        paged = { rows, index };
+      }
+    }
     const { dims, tops, widestPt, height: y, stack, place } = buildVisiblePageStack({
-      pageSizes, visiblePageNumbers, rotation, scale,
-      padTop: metrics.padTop, gap: metrics.gap, spread: spreadMode,
+      pageSizes, visiblePageNumbers: shownPages, rotation, scale,
+      padTop: metrics.padTop, gap: metrics.gap, spread: rowSpread,
     });
     // One column for every page (src/utils/pdfPageColumn.js).
     const columnW = resolveDocumentColumnWidth({
@@ -2209,17 +2244,17 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       rawTotalHeight: rawTotalH,
       topRoom,
     });
-    return { tops, dims, stack, place, widestPt, columnW, totalH: rawTotalH, rawTotalH, padTop, contentHeight, contentW };
-  }, [pageSizes, visiblePageNumbers, scale, rotation, containerW, containerH, layoutMetrics, topRoom, sideRoom, spreadMode]);
+    return { tops, dims, stack, place, paged, widestPt, columnW, totalH: rawTotalH, rawTotalH, padTop, contentHeight, contentW };
+  }, [pageSizes, visiblePageNumbers, scale, rotation, containerW, containerH, layoutMetrics, topRoom, sideRoom, spreadMode, pagedView, soloPage]);
 
   // A Space changes the page stack, not the physical page being read.
   // Capture its old scroll offset before React applies the filtered layout.
   const previousSpaceLayoutRef = useRef(null);
   const spaceLayoutAnchorRef = useRef(null);
   const previousSpaceLayout = previousSpaceLayoutRef.current;
-  // A page view change (Single / Double / Cover) keeps the page too.
+  // A page view change (Single / Double / Cover, Continuous on / off) keeps the page too.
   if (previousSpaceLayout && (previousSpaceLayout.visiblePages !== visiblePageNumbers
-    || previousSpaceLayout.spread !== spreadMode)) {
+    || previousSpaceLayout.spread !== spreadMode || previousSpaceLayout.paged !== pagedView)) {
     const el = scrollerRef.current;
     const index = Math.max(0, (currentPageRef.current || 1) - 1);
     if (el && !previousSpaceLayout.layout.dims[index]?.hidden && !layout.dims[index]?.hidden) {
@@ -2228,7 +2263,25 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       };
     }
   }
-  previousSpaceLayoutRef.current = { visiblePages: visiblePageNumbers, spread: spreadMode, layout };
+  previousSpaceLayoutRef.current = { visiblePages: visiblePageNumbers, spread: spreadMode, paged: pagedView, layout };
+  pagedRowsRef.current = layout.paged;
+  // A turned-to row lands at its top, or at its foot when turning back.
+  useLayoutEffect(() => {
+    const landing = pagedLandingRef.current;
+    pagedLandingRef.current = null;
+    const el = scrollerRef.current;
+    if (!landing || !el) return;
+    if (landing === 'bottom') { el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight); return; }
+    // The row's top lands the way a page jump lands a page (goToPage).
+    const first = layout.dims.findIndex((dim) => !dim.hidden);
+    if (first < 0) return;
+    el.scrollTop = resolvePageLandingScrollTop({
+      padTop: layout.padTop,
+      pageTop: layout.tops[first] - layoutMetricsRef.current.gap * scaleRef.current,
+      fixedTopInset: layoutMetricsRef.current.padTop,
+      overlayInset: topInsetRef.current,
+    });
+  }, [layout]);
   useLayoutEffect(() => {
     const anchor = spaceLayoutAnchorRef.current;
     spaceLayoutAnchorRef.current = null;
@@ -5928,6 +5981,33 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
 
   // `options.smooth`: glide there (Previous / Next page, the typed page jump, a
   // page thumbnail, PageUp / PageDown). Everything else lands at once, as before.
+  // Continuous off (KAL-712): goToPage's turn to another row. True when the
+  // page sits in a row not on screen (the row turns); false lets the jump
+  // scroll within the row on screen as usual.
+  const turnPagedRowRef = useRef(null);
+  turnPagedRowRef.current = (n, options) => {
+    const el = scrollerRef.current;
+    const tops = topsRef.current;
+    const paged = pagedViewRef.current ? pagedRowsRef.current : null;
+    const wanted = Math.max(1, Math.min(tops.length, Number(n) || 1));
+    if (!el || !paged || paged.index < 0 || paged.rows[paged.index].includes(wanted)) return false;
+    cancelPageGlide();
+    cancelPanInertia(false);
+    pagedLandingRef.current = options?.landing === 'bottom' ? 'bottom' : 'top';
+    setSoloPage(wanted);
+    if (currentPageRef.current !== wanted) {
+      const prev = currentPageRef.current;
+      currentPageRef.current = wanted;
+      cb.current.onPageChanged?.({
+        currentPageNumber: wanted,
+        previousPageNumber: prev ?? null,
+        pageCount: numPagesRef.current,
+        raw: { scrollTop: el.scrollTop },
+      });
+    }
+    return true;
+  };
+
   const goToPage = useCallback((n, options) => {
     // A zoom glide still playing lands first (where it is shown), so the jump
     // is measured on the laid-out page and the glide's commit cannot undo it.
@@ -5935,6 +6015,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const el = scrollerRef.current;
     const tops = topsRef.current;
     if (!el || !tops.length) return false;
+    // Continuous off (KAL-712): a page in another row turns to that row.
+    if (turnPagedRowRef.current(n, options)) return true;
     const smooth = options?.smooth === true;
     if (!smooth) cancelPageGlide();
     // UX: Previous/Next page, the page-number field, a sidebar thumbnail, a
@@ -5974,6 +6056,45 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     if (smooth) glideScrollTopTo(landingTop, { holdsPage: true });
     return true;
   }, [cancelPanInertia, cancelPageGlide, getHorizontalScrollMax, glideScrollTopTo]);
+
+  // Continuous off (KAL-712): Drawboard turns one row per wheel notch. While
+  // the row can still scroll that way (zoomed in) the wheel scrolls it; at
+  // its edge the wheel turns the row instead. One notch is one row; a
+  // touchpad swipe turns one row, and its coasting tail turns nothing.
+  // Capture, so the scroll and edge-stretch handlers never see a turn.
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el || !pagedView) return undefined;
+    let lockUntil = 0;
+    let swept = 0;
+    const onWheel = (e) => {
+      if (e.ctrlKey || e.metaKey || gestureRef.current) return;
+      const dy = normalizeWheelDelta(e.deltaY, e.deltaMode, el.clientHeight);
+      if (!dy || Math.abs(e.deltaX) > Math.abs(e.deltaY) || e.shiftKey) return;
+      const maxTop = Math.max(0, el.scrollHeight - el.clientHeight);
+      // A row that fits the view turns on every notch (the few pixels of
+      // room round it are not worth a notch); a taller one scrolls to its edge.
+      const rowH = Math.max(0, ...stackPtRef.current.filter((dim) => !dim.hidden).map((dim) => dim.h)) * scaleRef.current;
+      const fits = rowH <= el.clientHeight - Math.min(topInsetRef.current, el.clientHeight) + 1;
+      if (!fits && (dy > 0 ? el.scrollTop < maxTop - 1 : el.scrollTop > 1)) { swept = 0; return; }
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const now = e.timeStamp || performance.now();
+      const touchpad = e.deltaMode === 0 && Math.abs(dy) < 50;
+      if (now < lockUntil) {
+        if (touchpad) lockUntil = now + 220;
+        return;
+      }
+      swept += dy;
+      if (touchpad && Math.abs(swept) < 60) return;
+      swept = 0;
+      lockUntil = now + (touchpad ? 220 : 120);
+      const next = pagedStepRef.current(dy > 0 ? 1 : -1);
+      if (next != null && next !== currentPageRef.current) goToPage(next, { landing: dy > 0 ? 'top' : 'bottom' });
+    };
+    el.addEventListener('wheel', onWheel, { capture: true, passive: false });
+    return () => el.removeEventListener('wheel', onWheel, true);
+  }, [pagedView, goToPage]);
 
   // Chunk 6: PageUp / PageDown move one view (the part below the tool strips)
   // on the same 250 ms glide, wherever the focus is - unless it is in a field,
@@ -6023,7 +6144,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         if (target && target.closest('[role="toolbar"], [role="tablist"], [role="radiogroup"], [role="menubar"], [role="spinbutton"], [role="slider"]')) return;
         const last = numPagesRef.current || topsRef.current.length;
         // A spread view turns a whole row (Double: 1 → 3), as Drawboard does.
-        const next = Math.min(last, Math.max(1, steppedSpreadPage(spreadPlaceRef.current, currentPageRef.current || 1, turn)));
+        const next = Math.min(last, Math.max(1, pagedStepRef.current(turn) ?? steppedSpreadPage(spreadPlaceRef.current, currentPageRef.current || 1, turn)));
         event.preventDefault();
         if (next !== currentPageRef.current) goToPage(next, { smooth: true });
         return;
@@ -6035,6 +6156,14 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       const running = pageGlideRef.current;
       const from = running?.isRunning() ? running.target : el.scrollTop;
       const maxTop = Math.max(0, el.scrollHeight - el.clientHeight);
+      // Continuous off (KAL-712): at the row's edge the key turns the row.
+      const down = event.key === 'PageDown';
+      const rowH = Math.max(0, ...stackPtRef.current.filter((dim) => !dim.hidden).map((dim) => dim.h)) * scaleRef.current;
+      if (pagedViewRef.current && (rowH <= screen + 1 || (down ? from >= maxTop - 1 : from <= 1))) {
+        const next = pagedStepRef.current(down ? 1 : -1);
+        if (next != null && next !== currentPageRef.current) goToPage(next, { landing: down ? 'top' : 'bottom' });
+        return;
+      }
       const to = Math.min(maxTop, Math.max(0, from + (event.key === 'PageDown' ? screen : -screen)));
       glideScrollTopTo(to, { holdsPage: false });
     };
@@ -6060,9 +6189,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       setTimeout(() => {
         if (event.defaultPrevented) return;
         const last = numPagesRef.current || topsRef.current.length;
-        const next = spreadPlaceRef.current
+        const next = pagedStepRef.current(step) ?? (spreadPlaceRef.current
           ? Math.min(last, Math.max(1, steppedSpreadPage(spreadPlaceRef.current, currentPageRef.current || 1, step)))
-          : steppedPage(currentPageRef.current, step, last);
+          : steppedPage(currentPageRef.current, step, last));
         if (next && next !== currentPageRef.current) goToPage(next, { smooth: true });
       }, 0);
     };
@@ -6161,7 +6290,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       getCurrentPage: () => currentPageRef.current || 1,
       // Next / Previous in a spread view move a whole row (Double 1 → 3,
       // Grid of 4: 1 → 5); null in Single, where a step is one page.
-      getSteppedPage: (step) => (spreadPlaceRef.current
+      getSteppedPage: (step) => pagedStepRef.current(step) ?? (spreadPlaceRef.current
         ? steppedSpreadPage(spreadPlaceRef.current, currentPageRef.current || 1, step)
         : null),
       getZoomValue: () => Math.round((scaleRef.current || 1) * 100),
