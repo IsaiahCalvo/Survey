@@ -967,6 +967,25 @@ html[data-native-shell="expo"] .mobile-pdf-header {
     flex: none;
     margin-top: 12px;
   }
+  /* The hint that more of the rail sits below: its last 18px fade into the
+     rail's own fill. A sticky strip rather than a mask, so the rail's fill and
+     its edge line stay solid. Set by MobilePdfViewerChrome; gone once the
+     rail is scrolled to the end. */
+  .mobile-pdf-tools::after {
+    content: '';
+    flex: none;
+    position: sticky;
+    bottom: -8px;
+    height: 18px;
+    margin-top: -18px;
+    pointer-events: none;
+    background: linear-gradient(to bottom, transparent, var(--surface-2));
+    opacity: 0;
+    transition: opacity var(--motion-state, 150ms) cubic-bezier(0.33, 1, 0.68, 1);
+  }
+  .mobile-pdf-tools[data-more-below='true']::after {
+    opacity: 1;
+  }
 }
 
 /* More tools below the fold (the rail scrolls): fade the column's last 18px
