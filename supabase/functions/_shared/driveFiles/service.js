@@ -14,6 +14,9 @@
 //   drivePush   opens a Graph upload session (If-Match: the eTag Survey last
 //               saw) and gives the app its one-file upload link; the app sends
 //               the built PDF straight to Microsoft, then calls drivePushed.
+//   driveOpen with kind 'xlsx' and driveReplace (If-Match: the eTag the app
+//               read) do the same for an Excel workbook another suite app
+//               keeps in step with its own list (Walkthru's node list).
 // Graph answers 412 when the drive file changed since (a conflict), 404 when
 // it was moved or deleted, 403 when the person can't write to it.
 // The eTag also changes on a rename, a move or a SharePoint column edit, so
@@ -33,7 +36,7 @@ import { googleEndpoints, refreshGoogleToken } from '../sheetSync/providers/goog
 export const DRIVE_SYNC_FLAG = 'drive-sync-back';
 export const DRIVE_ACTIONS = Object.freeze([
   'driveBrowse', 'driveOpen', 'driveLink', 'driveStatus', 'drivePush', 'drivePushed', 'driveSettings', 'driveUnlink',
-  'drivePickerToken', 'driveCreate',
+  'drivePickerToken', 'driveCreate', 'driveReplace',
 ]);
 // A Google Drive file has no drive id to keep; its link row stores this.
 export const GOOGLE_DRIVE_ID = 'google';
@@ -497,8 +500,15 @@ async function open(ctx) {
   const client = await driveClientFor(ctx, ctx.user.id, provider);
   let it;
   try { it = await client.item(driveId, itemId); } catch (err) { throw graphProblem(err, { where: 'open', provider }); }
-  const isPdf = provider === 'google' ? it?.isPdf : (it?.file && /\.pdf$/i.test(String(it.name || '')));
-  if (!isPdf) throw new DriveError(`That ${placeName(provider)} file is not a PDF.`, 400, 'not_pdf');
+  // kind 'xlsx': a workbook another suite app keeps in step with its own
+  // list (Walkthru's node list), OneDrive only.
+  if (ctx.body.kind === 'xlsx') {
+    if (provider === 'google') throw new DriveError('Excel workbooks work with OneDrive only.', 400, 'msgraph_only');
+    if (!isWorkbook(it)) throw new DriveError('That OneDrive file is not an Excel workbook.', 400, 'not_xlsx');
+  } else {
+    const isPdf = provider === 'google' ? it?.isPdf : (it?.file && /\.pdf$/i.test(String(it.name || '')));
+    if (!isPdf) throw new DriveError(`That ${placeName(provider)} file is not a PDF.`, 400, 'not_pdf');
+  }
   let downloadUrl = provider === 'google' ? it.downloadUrl : it['@microsoft.graph.downloadUrl'];
   if (!downloadUrl && provider !== 'google') {
     try {
@@ -708,6 +718,30 @@ async function create(ctx) {
   return { provider: 'msgraph', uploadUrl: session.uploadUrl, expiresAt: session.expirationDateTime || null };
 }
 
+const isWorkbook = (it) => Boolean(it?.file) && !it?.folder && /\.xlsx$/i.test(String(it?.name || ''));
+
+/**
+ * An upload link that replaces a workbook another suite app made (Walkthru's
+ * live node list). `eTag` is the version the app read: if someone saved the
+ * workbook since, Microsoft refuses (conflict) and the app reads it again.
+ */
+async function replace(ctx) {
+  await requireBeta(ctx);
+  if (providerOf(ctx.body.provider) === 'google') throw new DriveError('Excel workbooks work with OneDrive only.', 400, 'msgraph_only');
+  const { driveId, itemId } = needIds(ctx.body);
+  const client = await driveClientFor(ctx, ctx.user.id);
+  let session;
+  try {
+    const it = await client.item(driveId, itemId);
+    if (!isWorkbook(it)) throw new DriveError('That OneDrive file is not an Excel workbook.', 400, 'not_xlsx');
+    session = await client.uploadSession(driveId, itemId, { ifMatch: ctx.body.eTag || null });
+  } catch (err) {
+    throw graphProblem(err);
+  }
+  if (!session?.uploadUrl) throw new DriveError('Microsoft did not open an upload.', 502, 'graph');
+  return { provider: 'msgraph', uploadUrl: session.uploadUrl, expiresAt: session.expirationDateTime || null };
+}
+
 /** One drive action; `ctx` is the sheet-sync function's (user, userDb, service, env, body). */
 export async function driveAction(ctx) {
   switch (ctx.body.action) {
@@ -721,6 +755,7 @@ export async function driveAction(ctx) {
     case 'driveUnlink': return unlink(ctx);
     case 'drivePickerToken': return pickerToken(ctx);
     case 'driveCreate': return create(ctx);
+    case 'driveReplace': return replace(ctx);
     default: throw new DriveError('Unknown drive action.', 400, 'unknown_action');
   }
 }

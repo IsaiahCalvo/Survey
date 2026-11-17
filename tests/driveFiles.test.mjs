@@ -449,7 +449,7 @@ test('every field the app sends to the drive actions passes the sheet-sync reque
   const { readFile } = await import('node:fs/promises');
   const src = await readFile(new URL('../supabase/functions/_shared/sheetSync/service.js', import.meta.url), 'utf8');
   const listed = new Set([...src.matchAll(/^\s+(\w+): s\.\w+\(/gm)].map((m) => m[1]));
-  const sent = ['action', 'documentId', 'driveId', 'itemId', 'eTag', 'cTag', 'sha', 'force', 'late', 'pushedAt', 'appOrigin', 'provider', 'check', 'syncMinutes', 'syncOff', 'search', 'recent'];
+  const sent = ['action', 'documentId', 'driveId', 'itemId', 'eTag', 'kind', 'cTag', 'sha', 'force', 'late', 'pushedAt', 'appOrigin', 'provider', 'check', 'syncMinutes', 'syncOff', 'search', 'recent'];
   for (const key of sent) assert.ok(listed.has(key), `sheet-sync schema is missing "${key}"`);
 });
 
@@ -475,4 +475,25 @@ test('driveCreate opens an upload for a new file in a folder or a shared place, 
   await rejects(call('owner-1', { action: 'driveCreate', title: '../x.xlsx' }), 'bad_name');
   await rejects(call('owner-1', { action: 'driveCreate', title: 'x.xlsx', provider: 'google' }), 'msgraph_only');
   await rejects(call('nobody', { action: 'driveCreate', title: 'x.xlsx' }), 'beta');
+});
+
+test('a workbook opens with kind xlsx and is replaced only with the eTag the app read', async () => {
+  const { graph, call } = setup({ roles: ROLES, flags: BETA });
+  graph.add('XL1', { name: 'Level 2 nodes.xlsx', bytes: 'xlsx-1' });
+  graph.add('PDF9', { name: 'Plan.pdf' });
+  const opened = await call('owner-1', { action: 'driveOpen', kind: 'xlsx', driveId: DRIVE, itemId: 'XL1' });
+  assert.equal(opened.name, 'Level 2 nodes.xlsx');
+  assert.match(opened.downloadUrl, /^https:\/\/dl\.test\/XL1/);
+  // A PDF is not a workbook, and a workbook is not a PDF.
+  await rejects(call('owner-1', { action: 'driveOpen', kind: 'xlsx', driveId: DRIVE, itemId: 'PDF9' }), 'not_xlsx');
+  await rejects(call('owner-1', { action: 'driveOpen', driveId: DRIVE, itemId: 'XL1' }), 'not_pdf');
+  await rejects(call('owner-1', { action: 'driveReplace', driveId: DRIVE, itemId: 'PDF9', eTag: opened.eTag }), 'not_xlsx');
+
+  const session = await call('owner-1', { action: 'driveReplace', driveId: DRIVE, itemId: 'XL1', eTag: opened.eTag });
+  assert.match(session.uploadUrl, /^https:\/\/up\.test\/XL1\//);
+  // Someone saved the workbook after the app read it: Microsoft refuses.
+  graph.editAtSource('XL1', 'xlsx-by-hand');
+  await rejects(call('owner-1', { action: 'driveReplace', driveId: DRIVE, itemId: 'XL1', eTag: opened.eTag }), 'conflict');
+  await rejects(call('owner-1', { action: 'driveReplace', driveId: DRIVE, itemId: 'XL1', provider: 'google' }), 'msgraph_only');
+  await rejects(call('nobody', { action: 'driveReplace', driveId: DRIVE, itemId: 'XL1' }), 'beta');
 });
