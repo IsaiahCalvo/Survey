@@ -520,7 +520,7 @@ export default function MarkLibraryPanel({ phone = false, headActionsHost = null
           ))}
         </div>
       )}
-      <div className="mark-library__body">
+      <div className={`mark-library__body${stampsTab ? ' mark-library__body--stamps' : ''}`}>
         {visible.length === 0 ? <p className="mark-library__empty">{emptyText}</p> : groups.map((group) => (
           <section key={group.tag ?? '__all__'} className="mark-library__group">
             {group.tag !== undefined && <h3 className="mark-library__group-title">{group.tag ?? 'No label'}</h3>}
