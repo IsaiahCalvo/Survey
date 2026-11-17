@@ -22,7 +22,17 @@ function fakeGraph() {
   g.renameAtSource = (id, name) => { const it = g.items.get(id); it.name = name; it.meta += 1; };
   const eTagOf = (id, it) => (it.meta ? `"{${id}},${it.version}.${it.meta}"` : `"{${id}},${it.version}"`);
   const json = (status, body) => new Response(body === undefined ? null : JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
-  const itemJson = (id, it) => ({
+  // How a tenant hands out the short download link: 'select' (in a $select
+  // answer), 'whole' (only with no $select), 'content' (only as the redirect
+  // of /content), 'none' (/content sends the bytes itself) or 'blocked'.
+  g.linkBy = 'select';
+  const itemJson = (id, it, { selected = true } = {}) => {
+    const out = fullItemJson(id, it);
+    const gives = g.linkBy === 'select' || (g.linkBy === 'whole' && !selected);
+    if (!gives) delete out['@microsoft.graph.downloadUrl'];
+    return out;
+  };
+  const fullItemJson = (id, it) => ({
     id, name: it.name, eTag: eTagOf(id, it), cTag: `"c:{${id}},${it.version}"`, size: it.bytes.length, webUrl: `https://contoso.example/${it.name}`,
     file: { mimeType: 'application/pdf' }, parentReference: { driveId: DRIVE }, lastModifiedDateTime: '2026-11-10T12:00:00Z',
     lastModifiedBy: { user: { displayName: 'Pat Manager' } },
@@ -62,10 +72,19 @@ function fakeGraph() {
       const id = /\/f\/([A-Z0-9]+)$/.exec(target)?.[1];
       return id && g.items.has(id) ? json(200, itemJson(id, g.items.get(id))) : json(404, { error: { code: 'itemNotFound' } });
     }
+    const content = /^drives\/([^/]+)\/items\/([^/]+)\/content$/.exec(path);
+    if (method === 'GET' && content) {
+      const it = content[1] === DRIVE ? g.items.get(content[2]) : null;
+      if (!it) return json(404, { error: { code: 'itemNotFound' } });
+      if (g.linkBy === 'blocked') return json(403, { error: { code: 'accessDenied' } });
+      if (g.linkBy === 'none') return new Response(it.bytes, { status: 200 });
+      assert.equal(init.redirect, 'manual', 'the redirect is read, not followed');
+      return new Response(null, { status: 302, headers: { Location: `https://dl.test/${content[2]}?v=${it.version}&via=content` } });
+    }
     const m = /^drives\/([^/]+)\/items\/([^/]+)(\/createUploadSession)?$/.exec(path);
     if (!m || m[1] !== DRIVE || !g.items.has(m[2])) return json(404, { error: { code: 'itemNotFound' } });
     const it = g.items.get(m[2]);
-    if (method === 'GET' && !m[3]) return json(200, itemJson(m[2], it));
+    if (method === 'GET' && !m[3]) return json(200, itemJson(m[2], it, { selected: /[?&]\$select=/.test(url) }));
     if (method === 'POST' && m[3]) {
       if (it.readOnly) return json(403, { error: { code: 'accessDenied' } });
       const ifMatch = init.headers?.['If-Match'];
@@ -154,6 +173,9 @@ test('browse lists folders, SharePoint shortcuts and only the PDFs; a pasted lin
   assert.deepEqual(top.files.map((f) => [f.name, f.itemId, f.driveId]), [['A-201 Plan.pdf', 'PDF1', DRIVE]]);
   const pasted = await call('owner-1', { action: 'driveBrowse', folderLink: 'https://contoso.example/f/PDF1' });
   assert.equal(pasted.file.itemId, 'PDF1');
+  // A file link copied in Teams names the SharePoint file in objectUrl.
+  const teams = await call('owner-1', { action: 'driveBrowse', folderLink: `https://teams.microsoft.com/l/file/5E0DE993?tenantId=t1&fileType=pdf&objectUrl=${encodeURIComponent('https://contoso.example/f/PDF1')}` });
+  assert.equal(teams.file.itemId, 'PDF1');
   await rejects(call('owner-1', { action: 'driveBrowse', folderLink: 'http://plain' }), 'bad_link');
   await rejects(call('owner-1', { action: 'driveBrowse', folderLink: 'https://contoso.example/f/NOPE' }), 'bad_link');
 });
@@ -277,6 +299,35 @@ test('open gives a download link; link records the version downloaded; push and 
   // A second push sends the new version as If-Match and goes through.
   const again = await call('owner-1', { action: 'drivePush', documentId: DOC });
   assert.ok(again.uploadUrl);
+});
+
+test('open still gets a download link from a tenant that leaves it out of the first answer', async () => {
+  const { graph, call } = setup({ roles: ROLES, flags: BETA });
+  graph.add('PDF1', { name: 'A-201 Plan.pdf' });
+  const open = () => call('owner-1', { action: 'driveOpen', driveId: DRIVE, itemId: 'PDF1' });
+  // Only the whole item (no $select) carries the link.
+  graph.linkBy = 'whole';
+  assert.equal((await open()).downloadUrl, 'https://dl.test/PDF1?v=1');
+  // Only the file's own address gives it, as a redirect Survey reads.
+  graph.linkBy = 'content';
+  const viaContent = await open();
+  assert.equal(viaContent.downloadUrl, 'https://dl.test/PDF1?v=1&via=content');
+  assert.equal(viaContent.eTag, '"{PDF1},1"');
+  // The tenant blocks downloads: said plainly, not "could not be reached".
+  graph.linkBy = 'blocked';
+  await rejects(open(), 'read_only');
+  // No link anywhere: the old plain refusal.
+  graph.linkBy = 'none';
+  await assert.rejects(open(), (err) => {
+    assert.equal(err.code, 'graph');
+    assert.match(err.message, /did not give a download link/);
+    return true;
+  });
+  // A tenant that answers the first ask is asked once only.
+  graph.linkBy = 'select';
+  graph.calls.length = 0;
+  await open();
+  assert.equal(graph.calls.length, 1);
 });
 
 test('a change made in OneDrive since the last save is a conflict; "keep Survey\'s version" overwrites', async () => {

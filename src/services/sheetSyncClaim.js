@@ -37,3 +37,13 @@ export function readClaim(provider, since, storage = globalThis.localStorage) {
 export function forgetClaim(storage = globalThis.localStorage) {
   try { storage.removeItem(CLAIM_KEY); } catch { /* nothing to forget */ }
 }
+
+// How the claim ended, for the consent tab's last page: it used to read a
+// removed code as "connected", and so said "connected" when the server had
+// refused the code (another Survey account in this browser, a code that ran
+// out). Leave this before forgetClaim: the page reads it when the code goes.
+export const CLAIM_RESULT_KEY = 'survey-sheet-sync-claim-result';
+
+export function tellClaimResult(provider, ok, storage = globalThis.localStorage) {
+  try { storage.setItem(CLAIM_RESULT_KEY, JSON.stringify({ provider, ok: Boolean(ok), at: Date.now() })); } catch { /* the page falls back to "go back to Survey" */ }
+}

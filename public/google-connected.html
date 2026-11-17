@@ -48,6 +48,7 @@ p{margin:0}
 .more:hover{color:var(--text-1)}
 .codebox{margin:12px 0 0;padding:12px;border-radius:8px;background:var(--surface-1)}
 .codebox p{font-size:12px;color:var(--text-3)}
+#codeUntil{margin-top:6px}
 #code{margin:6px 0 0;font:600 22px/1.2 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.08em;color:var(--text-1);user-select:all}
 .link{margin:8px 0 0;font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--text-1);word-break:break-all;user-select:all}
 .codebox .btn{margin-top:12px}
@@ -79,8 +80,9 @@ p{margin:0}
   </div>
   <button id="showCode" class="more" type="button" hidden>Using Survey in another browser or on another device?</button>
   <div id="codeBox" class="codebox" hidden>
-    <p>Type this code there to finish.</p>
+    <p id="codeHow"></p>
     <p id="code"></p>
+    <p id="codeUntil"></p>
   </div>
 </main>
 <script>
@@ -180,11 +182,28 @@ p{margin:0}
   try { localStorage.setItem(CLAIM_KEY, JSON.stringify({ provider: provider, code: code, at: Date.now() })); } catch (e) { /* the code below still works */ }
   // Out of the address bar and history once it is saved.
   try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* stays */ }
+  // The code is good for ten minutes (service.js CLAIM_TTL_MS). The box says
+  // where to type it: Survey shows "Enter its code" under every button that
+  // starts a sign-in (SheetSyncButton.jsx ClaimCodeBox).
+  var GOOD_FOR_MS = 10 * 60 * 1000;
+  var loadedAt = Date.now();
+  var until = '';
+  try { until = new Date(loadedAt + GOOD_FOR_MS).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); } catch (e) { until = ''; }
   $('code').textContent = code;
-  $('showCode').addEventListener('click', function () {
+  $('codeHow').textContent = 'Started in another browser or on another device? There, in Survey, press “Enter its code” under the button you pressed to connect, and type this code.';
+  $('codeUntil').textContent = until ? 'The code works until ' + until + '.' : 'The code works for 10 minutes.';
+  function showCodeBox() {
     $('showCode').hidden = true;
     $('codeBox').hidden = false;
-  });
+  }
+  $('showCode').addEventListener('click', showCodeBox);
+  // No page waits for ever: when the code has run out, say so and stop.
+  function ranOut() {
+    $('showCode').hidden = true;
+    $('codeBox').hidden = true;
+    $('openApp').hidden = true;
+    say('This sign-in ran out', 'Go back to Survey and connect ' + who + ' again.', 'failed');
+  }
 
   if (app === 'phone') {
     say('Almost there', 'Go back to the Survey app to finish connecting ' + who + '.', 'working');
@@ -192,6 +211,7 @@ p{margin:0}
     open.href = 'com.kalvoe.survey://sheet-connected?provider=' + provider + '&code=' + encodeURIComponent(code);
     open.hidden = false;
     $('showCode').hidden = false;
+    setTimeout(ranOut, GOOD_FOR_MS);
     // Try once on its own; browsers that need a tap get the button.
     setTimeout(function () { try { location.href = open.href; } catch (e) { /* the button stays */ } }, 400);
     return;
@@ -199,33 +219,70 @@ p{margin:0}
 
   if (app === 'desktop') {
     say('Finishing in Survey', 'This window closes on its own in a moment.', 'working');
+    // The app reads the code off this window and closes it. If it has not,
+    // the app is not listening: hand the person back with the code.
+    setTimeout(function () {
+      say('Go back to Survey', 'You can close this window. If Survey is still waiting, press “Enter its code” there and type this code.', 'working');
+      $('codeHow').textContent = '';
+      showCodeBox();
+    }, 20000);
+    setTimeout(ranOut, GOOD_FOR_MS);
     return;
   }
 
-  // Web: the Survey tab claims the code within a couple of seconds and then
-  // removes it, which fires a storage event here.
+  // Web: the Survey tab claims the code within a couple of seconds, leaves
+  // word of how that ended (src/services/sheetSyncClaim.js tellClaimResult),
+  // then removes the code, which fires a storage event here. An older Survey
+  // tab leaves no word; for it a removed code means connected, as before.
+  var RESULT_KEY = 'survey-sheet-sync-claim-result';
+  try { localStorage.removeItem(RESULT_KEY); } catch (e) { /* an older sign-in's ending, if any, stays unread */ }
   say('Finishing up', 'Connecting ' + who + ' to your Survey account…', 'working');
   var settled = false;
+  var timer = 0;
+  function claimResult() {
+    try {
+      var r = JSON.parse(localStorage.getItem(RESULT_KEY) || 'null');
+      return r && r.provider === provider && r.at >= loadedAt - 1000 ? r : null;
+    } catch (e) { return null; }
+  }
   function done() {
     if (settled) return;
     settled = true;
+    clearInterval(timer);
+    $('showCode').hidden = true;
+    $('codeBox').hidden = true;
     say(who + ' is connected', 'You can close this tab and go back to Survey.', 'done');
     setTimeout(function () { try { window.close(); } catch (e) { /* stays open */ } }, 1500);
   }
+  // Survey in this browser could not use the code: it is signed in to another
+  // Survey account than the one that started this (or to none). The code
+  // still works where the sign-in was started.
+  var refused = false;
+  function refuse() {
+    if (settled || refused) return;
+    refused = true;
+    say('Not connected in this browser', 'Survey here is signed in to a different account than the one that started this sign-in.', 'failed');
+    showCodeBox();
+  }
+  function codeGone() {
+    var r = claimResult();
+    if (r && !r.ok) refuse(); else done();
+  }
   window.addEventListener('storage', function (event) {
-    if (event.key === CLAIM_KEY && !event.newValue) done();
+    if (event.key === CLAIM_KEY && !event.newValue) codeGone();
   });
   // Also look now and then, for browsers that skip the event.
-  var started = Date.now();
-  var timer = setInterval(function () {
+  var waited = false;
+  timer = setInterval(function () {
+    if (settled) return;
+    if (Date.now() - loadedAt > GOOD_FOR_MS) { settled = true; clearInterval(timer); ranOut(); return; }
     var left = null;
     try { left = localStorage.getItem(CLAIM_KEY); } catch (e) { left = 'unknown'; }
-    if (!left) { clearInterval(timer); done(); return; }
-    if (Date.now() - started > 20000) {
-      clearInterval(timer);
-      if (settled) return;
-      say('Go back to Survey', 'Survey finishes connecting ' + who + ' when you return to it.', 'working');
-      $('showCode').hidden = false;
+    if (!left) { codeGone(); return; }
+    if (!waited && !refused && Date.now() - loadedAt > 20000) {
+      waited = true;
+      say('Go back to Survey', 'Survey finishes connecting ' + who + ' when you return to the tab where you started.', 'working');
+      showCodeBox();
     }
   }, 1000);
 })();

@@ -26,7 +26,7 @@
 // Microsoft account still saves back. Unlink: the linker or the owner.
 import { decryptToken, encryptToken } from '../sheetSync/tokenCrypto.js';
 import { msgraphAuthConfigFromEnv, refreshMsgraphToken } from '../sheetSync/msgraphAuth.js';
-import { folderTarget, placeToken, shareIdOf } from '../sheetSync/providers/msgraph.js';
+import { folderTarget, linkItemPath, placeToken } from '../sheetSync/providers/msgraph.js';
 import { fetchWithTimeout } from '../sheetSync/providers/contract.js';
 import { googleEndpoints, refreshGoogleToken } from '../sheetSync/providers/google.js';
 
@@ -50,6 +50,12 @@ export class DriveError extends Error {
     this.code = code;
   }
 }
+
+// One line in the function's log: an event name and plain fields, never a
+// link or a token.
+const note = (event, fields = {}) => {
+  try { console.log(JSON.stringify({ fn: 'sheet-sync', event, ...fields })); } catch { /* never throw */ }
+};
 
 const tokenKey = (env) => env.SHEET_SYNC_TOKEN_KEY || env.SUPABASE_SERVICE_ROLE_KEY;
 const msConfig = (env) => {
@@ -157,10 +163,34 @@ export function createDriveClient({ getAccessToken, fetch: fetchImpl = globalThi
       return { files };
     },
     async resolveLink(url) {
-      return call('GET', `shares/${shareIdOf(url)}/driveItem?$select=${SELECT}`);
+      return call('GET', `${linkItemPath(url)}?$select=${SELECT}`);
     },
     async item(driveId, itemId) {
       return call('GET', `${itemPath(driveId, itemId)}?$select=${SELECT},@microsoft.graph.downloadUrl`);
+    },
+    // The short download link, when item() came back without one. A work
+    // account's OneDrive can leave it out of a $select answer (seen live on a
+    // Microsoft 365 Business tenant, 2026-11-16). Ask for the whole item, then
+    // for the file itself: Graph answers that with a redirect to the same
+    // kind of link. Resolves { url, by } or throws with Graph's status.
+    async downloadLink(driveId, itemId) {
+      let whole = null;
+      try { whole = await call('GET', itemPath(driveId, itemId)); } catch (err) {
+        if ([401, 403, 404, 410, 429, 503].includes(Number(err?.status))) throw err;
+      }
+      if (whole?.['@microsoft.graph.downloadUrl']) return { url: whole['@microsoft.graph.downloadUrl'], by: 'item' };
+      const token = await getAccessToken();
+      const response = await fetchWithTimeout(fetchImpl, `${baseUrl}/${itemPath(driveId, itemId)}/content`, {
+        method: 'GET', headers: { Authorization: `Bearer ${token}` }, redirect: 'manual',
+      }, REQUEST_TIMEOUT_MS);
+      const where = response.headers?.get?.('location') || null;
+      try { await response.body?.cancel?.(); } catch { /* nothing to drop */ }
+      if (response.status >= 300 && response.status < 400 && /^https:\/\//i.test(String(where))) return { url: where, by: 'content' };
+      const err = new Error(`Microsoft answered ${response.status} with no download link`);
+      err.status = response.ok ? 502 : response.status;
+      err.answered = response.status;
+      if (response.status === 401) err.code = 'reconnect';
+      throw err;
     },
     // A new file in `folder` ("" = the drive's top, "A/B", or a shared place
     // token): an upload link the app sends the bytes to. A same-named file is
@@ -450,7 +480,17 @@ async function open(ctx) {
   try { it = await client.item(driveId, itemId); } catch (err) { throw graphProblem(err, { where: 'open', provider }); }
   const isPdf = provider === 'google' ? it?.isPdf : (it?.file && /\.pdf$/i.test(String(it.name || '')));
   if (!isPdf) throw new DriveError(`That ${placeName(provider)} file is not a PDF.`, 400, 'not_pdf');
-  const downloadUrl = provider === 'google' ? it.downloadUrl : it['@microsoft.graph.downloadUrl'];
+  let downloadUrl = provider === 'google' ? it.downloadUrl : it['@microsoft.graph.downloadUrl'];
+  if (!downloadUrl && provider !== 'google') {
+    try {
+      const link = await client.downloadLink(driveId, itemId);
+      downloadUrl = link.url;
+      note('download_link_fallback', { by: link.by });
+    } catch (err) {
+      note('download_link_missing', { status: Number(err?.answered || err?.status) || null, graphCode: err?.graphCode || null });
+      if ([401, 403, 404, 410, 423, 429, 503].includes(Number(err?.status)) || err?.code === 'reconnect') throw graphProblem(err, { where: 'open', provider });
+    }
+  }
   if (!downloadUrl) throw new DriveError(`${companyName(provider)} did not give a download link for that file.`, 502, 'graph');
   const out = { provider, name: String(it.name), size: Number(it.size) || 0, eTag: it.eTag || null, cTag: it.cTag || null, webUrl: it.webUrl || null, downloadUrl, driveId, itemId };
   // Google's file address needs the sign-in; the token reaches only files the

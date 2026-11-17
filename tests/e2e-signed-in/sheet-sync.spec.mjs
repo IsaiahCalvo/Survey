@@ -471,8 +471,8 @@ test('consent given in another browser: the panel takes the typed code', async (
     const code = new URL(callback.headers.get('location')).hash.replace('#code=', '');
     expect(code).toMatch(/^[A-Z0-9]{4}-[A-Z0-9]{4}$/);
 
-    await panel.getByRole('button', { name: 'Enter its code' }).click({ timeout: 40_000 });
-    const box = panel.getByLabel(/Type the code/);
+    await panel.locator('[data-claim-provider="google"]').getByRole('button', { name: 'Enter its code' }).click({ timeout: 40_000 });
+    const box = panel.getByLabel(/Type the code from the last page of the Google sign-in/);
     await expect(box).toBeVisible();
     await box.fill('ZZZZ-ZZZZ');
     await panel.getByRole('button', { name: 'Finish' }).click();

@@ -6,7 +6,7 @@ import ExcelJS from 'exceljs';
 
 import {
   blankWorkbookBytes, cellValueForWrite, columnLetter, createMsGraphProvider, dropDownChoices, msgraphFileId,
-  columnRuns, parseMsgraphFileId, rowRuns, cellBlocks, shownText, sparseBlocks,
+  columnRuns, linkItemPath, parseMsgraphFileId, rowRuns, cellBlocks, shownText, shareIdOf, sparseBlocks,
 } from '../supabase/functions/_shared/sheetSync/providers/msgraph.js';
 
 const BASE = 'https://graph.test/v1.0';
@@ -73,6 +73,12 @@ function fakeGraph({ driveType = 'business' } = {}) {
       const url = Buffer.from(share[1].replace(/_/g, '/').replace(/-/g, '+'), 'base64').toString();
       const hit = state.shared?.[url];
       return hit ? json(200, hit) : json(404, { error: { code: 'itemNotFound' } });
+    }
+    // A Teams channel's Files folder, for a pasted channel link.
+    const channelFiles = /^teams\/([^/]+)\/channels\/([^/]+)\/filesFolder/.exec(path);
+    if (method === 'GET' && channelFiles) {
+      const hit = state.channelFolders?.[`${channelFiles[1]}/${channelFiles[2]}`];
+      return hit ? json(200, hit) : json(404, { error: { code: 'NotFound' } });
     }
     const put = /^(?:me\/drive\/root|drives\/[^/]+\/items\/[^/:]+):\/(.+)\.xlsx:\/content/.exec(path);
     if (method === 'PUT' && put) {
@@ -549,6 +555,16 @@ test('SharePoint: a shortcut in My files or a pasted folder link is a place to s
   assert.deepEqual(await p.resolveFolderLink(link), { folder: '~b!team~TEAMROOT', name: 'Documents' });
   await assert.rejects(p.resolveFolderLink('https://kalvoe.sharepoint.com/:x:/s/Team/EabcFile'), (e) => e.code === 'not_a_folder');
   await assert.rejects(p.resolveFolderLink('https://kalvoe.sharepoint.com/nope'), (e) => e.code === 'bad_folder_link');
+  // Teams' own links are not sharing links: a channel link opens the
+  // channel's Files folder, a file link the SharePoint file it names.
+  const GROUP = '0a1b2c3d-1111-2222-3333-444455556666';
+  graph.channelFolders = { [`${GROUP}/19:abc@thread.tacv2`]: { id: 'CHANROOT', name: 'General', folder: { childCount: 2 }, parentReference: { driveId: 'b!team' } } };
+  const channelLink = `https://teams.microsoft.com/l/channel/19%3Aabc%40thread.tacv2/General?groupId=${GROUP}&tenantId=t1`;
+  assert.deepEqual(await p.resolveFolderLink(channelLink), { folder: '~b!team~CHANROOT', name: 'General' });
+  assert.deepEqual(await p.resolveFolderLink(channelLink.replace('teams.microsoft.com', 'teams.cloud.microsoft')), { folder: '~b!team~CHANROOT', name: 'General' });
+  await assert.rejects(p.resolveFolderLink(`https://teams.microsoft.com/l/channel/19%3Anope%40thread.tacv2/Gone?groupId=${GROUP}`), (e) => e.code === 'bad_folder_link');
+  const teamsFile = `https://teams.microsoft.com/l/file/5E0DE993-A68A-4F2D-B6C4-2D7B9D1D6A3C?tenantId=t1&fileType=xlsx&objectUrl=${encodeURIComponent('https://kalvoe.sharepoint.com/:x:/s/Team/EabcFile')}&serviceName=teams`;
+  await assert.rejects(p.resolveFolderLink(teamsFile), (e) => e.code === 'not_a_folder', 'the file behind a Teams file link was found');
   const layout = { scopes: [{ scopeId: 'm:c', title: 'Doors', columns: [{ key: 'rowId', header: 'Row ID' }] }], entities: [], answerValues: [] };
   const made = await p.createFile({ title: 'Floor 2', layout, folder: '~b!team~TEAMROOT/Jobs/2026 Hospital' });
   const file = graph.files.get('NEW-1');
@@ -628,4 +644,29 @@ test('shownText: what Excel shows for a formatted number, never for plain or bro
   assert.equal(shownText(1e9, '#####', '0'), null, 'a column too narrow to show it');
   assert.equal(shownText(0, '#DIV/0!', '0%', 'Error'), null);
   assert.equal(shownText(5, '', '0'), null);
+});
+
+test('linkItemPath: Teams file and channel links go where Graph can open them; every other link goes to /shares', () => {
+  const sp = 'https://kalvoe.sharepoint.com/sites/Team/Shared%20Documents/General/A-201.pdf';
+  assert.equal(linkItemPath(sp), `shares/${shareIdOf(sp)}/driveItem`);
+  // Teams writes the file's address with %20 or with a plain space.
+  for (const inLink of [sp, sp.replace('%20', ' ')]) {
+    assert.equal(
+      linkItemPath(`https://teams.microsoft.com/l/file/ABC?tenantId=t&fileType=pdf&objectUrl=${encodeURIComponent(inLink)}&baseUrl=x`),
+      `shares/${shareIdOf(sp)}/driveItem`,
+    );
+  }
+  const group = '0a1b2c3d-1111-2222-3333-444455556666';
+  assert.equal(
+    linkItemPath(`https://teams.microsoft.com/l/channel/19%3Aabc%40thread.tacv2/Site%20Walks?groupId=${group}&tenantId=t`),
+    `teams/${group}/channels/19%3Aabc%40thread.tacv2/filesFolder`,
+  );
+  // A Teams link with nothing Graph can use, a look-alike host and a link
+  // that is not an address at all: left to /shares, which refuses them.
+  for (const odd of [
+    'https://teams.microsoft.com/l/channel/19%3Aabc%40thread.tacv2/General?groupId=not-a-guid',
+    'https://teams.microsoft.com/l/file/ABC?objectUrl=javascript:alert(1)',
+    `https://teams.microsoft.com.evil.example/l/file/ABC?objectUrl=${encodeURIComponent(sp)}`,
+    'not a link',
+  ]) assert.equal(linkItemPath(odd), `shares/${shareIdOf(odd)}/driveItem`, odd);
 });
