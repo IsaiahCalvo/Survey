@@ -286,17 +286,41 @@ export function linkTemplateCategories(templates, { entries = [], userId, compan
 
 /** How many categories of my own templates are not linked yet (named ones only). */
 export function countUnlinkedCategories(templates) {
-  let count = 0;
+  return unlinkedCategorySummary(templates).total;
+}
+
+/**
+ * The unlinked Categories of my own templates, and how many of them already
+ * have a library entry with exactly their name (linking those adds nothing new,
+ * so the Library screen says "link", not "add"). Same matching rule as
+ * linkTemplateCategories.
+ */
+export function unlinkedCategorySummary(templates, { entries = [], userId = null, company = null } = {}) {
+  const target = defaultLibraryFor({ company });
+  const pool = Array.isArray(entries) ? entries : [];
+  let total = 0;
+  let inLibrary = 0;
   for (const template of templates || []) {
     if (!template || template.sharedFrom) continue;
     const mods = template.modules || template.spaces || [];
     for (const mod of mods) {
       for (const category of mod?.categories || mod?.cats || []) {
-        if (!category?.libraryEntryId && !isPlaceholderCategoryName(category?.name) && normalizeEntryName(category?.name)) count += 1;
+        if (category?.libraryEntryId || isPlaceholderCategoryName(category?.name) || !normalizeEntryName(category?.name)) continue;
+        total += 1;
+        if (userId && findEntryByName(pool, { name: category.name, ...target, userId })) inLibrary += 1;
       }
     }
   }
-  return count;
+  return { total, inLibrary };
+}
+
+/** The banner over the list: "link" when every unlinked Category is already here by name. */
+export function unlinkedNoteFor({ total, inLibrary }) {
+  const one = total === 1;
+  const lead = one ? '1 Category in your templates' : `${total} Categories in your templates`;
+  if (inLibrary >= total) return { text: `${lead} ${one ? 'is' : 'are'} in the library but not linked to it yet.`, action: one ? 'Link it' : 'Link them' };
+  if (inLibrary === 0) return { text: `${lead} ${one ? 'is' : 'are'} not in the library yet.`, action: one ? 'Add it' : 'Add them' };
+  return { text: `${lead} ${one ? 'is' : 'are'} not linked to the library yet. ${total - inLibrary} of them ${total - inLibrary === 1 ? 'is' : 'are'} new.`, action: 'Add and link' };
 }
 
 /**

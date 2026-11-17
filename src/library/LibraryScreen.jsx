@@ -17,7 +17,8 @@ import {
   LIBRARY_KIND,
   LIBRARY_SCOPE,
   LIBRARY_WORDS,
-  countUnlinkedCategories,
+  unlinkedCategorySummary,
+  unlinkedNoteFor,
   libraryOutline,
   manageRefusal,
 } from './libraryModel.js';
@@ -69,7 +70,9 @@ export default function LibraryScreen({ user, onNav, templatesLocked = false, te
     ? { scope, companyId: company.id }
     : { scope, userId };
   const outline = libraryOutline(state.entries, library);
-  const unlinked = countUnlinkedCategories(templates);
+  const unlinkedSummary = unlinkedCategorySummary(templates, { entries: state.entries, userId, company });
+  const unlinked = unlinkedSummary.total;
+  const unlinkedNote = unlinkedNoteFor(unlinkedSummary);
   const who = { userId, company };
 
   const report = (result) => {
@@ -121,9 +124,10 @@ export default function LibraryScreen({ user, onNav, templatesLocked = false, te
     if (templatesNeedPro()) return;
     setLinking(true);
     try {
-      const { templates: linked, linked: count } = store.linkTemplates(templates);
+      const { templates: linked, linked: count, created } = store.linkTemplates(templates);
       if (count > 0) await onSaveTemplates(linked);
-      showToast(count === 1 ? 'Added 1 Category to the library.' : `Added ${count} Categories to the library.`, 'success');
+      // `count` also counts Category Types, so the words don't give a number.
+      showToast(created.length > 0 ? 'Added to the library and linked.' : 'Linked to the library.', 'success');
     } catch (err) {
       showToast(isTemplatePlanError(err) ? TEMPLATE_PLAN_MESSAGE : 'Could not save the templates. Try again.', 'error');
     } finally {
@@ -169,13 +173,11 @@ export default function LibraryScreen({ user, onNav, templatesLocked = false, te
       userName={user?.name || user?.email?.split('@')[0] || 'You'}
       templatesLocked={templatesLocked}
     >
-      <div style={{ padding: '0 8px 8px', flex: 1, minHeight: 0, overflow: 'auto' }} className="slim-scroll">
+      <div style={{ padding: 'var(--library-body-top, 0px) 8px 8px', flex: 1, minHeight: 0, overflow: 'auto' }} className="slim-scroll library-body">
         {unlinked > 0 && onSaveTemplates ? (
           <div className="card" role="status" style={{ ...rowStyle, borderBottom: 0, marginBottom: 8 }}>
-            <span style={{ flex: 1 }}>
-              {unlinked === 1 ? '1 Category in your templates is not in the library yet.' : `${unlinked} Categories in your templates are not in the library yet.`}
-            </span>
-            <button type="button" className="btn primary" disabled={linking} onClick={linkTemplates}>Add them</button>
+            <span style={{ flex: 1 }}>{unlinkedNote.text}</span>
+            <button type="button" className="btn primary" disabled={linking} onClick={linkTemplates}>{unlinkedNote.action}</button>
           </div>
         ) : null}
         {/* Clipped, so the last row's divider stops at the rounded corner. */}
