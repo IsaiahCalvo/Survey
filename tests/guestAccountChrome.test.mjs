@@ -66,7 +66,8 @@ test('authenticated account menu identifies the exact app build without a global
     HUB_SHELL.indexOf('const MobileRailNav'),
   );
 
-  assert.match(profileMenu, /Survey App version 1\.0/);
+  assert.match(profileMenu, /HUB_APP_VERSION \? `Survey \$\{HUB_APP_VERSION\}`/);
+  assert.match(HUB_SHELL, /typeof __APP_VERSION__ !== 'undefined'/);
   assert.match(profileMenu, /Build \{HUB_BUILD_STAMP\}/);
   assert.match(HUB_SHELL, /typeof __BUILD_STAMP__ !== 'undefined'/);
   assert.match(HUB_CSS, /\.survey-hub \.profile-menu-build-footer\s*\{[^}]*justify-content:\s*space-between;/s);
