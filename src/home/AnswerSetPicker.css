@@ -57,7 +57,8 @@
   .answer-set-option:not(.is-current):hover { background: var(--hover); }
 }
 .answer-set-option.is-current { background: var(--surface-3); }
-.answer-set-option:is(.is-current, :active) .answer-chip:not(.is-good):not(.is-bad):not(.is-more) { background: var(--surface-2); }
+.answer-set-option:is(.is-current, :active) .answer-chip:not(.is-good):not(.is-bad):not(.is-more),
+.template-answers-button:active .answer-chip:not(.is-good):not(.is-bad):not(.is-more) { background: var(--surface-2); }
 .answer-set-option .answer-chips { flex: 1; }
 .answer-set-option__check {
   flex: none;
@@ -85,7 +86,9 @@
   font-size: 12px;
   cursor: pointer;
 }
-.template-answers-button:hover { background: var(--surface-3); color: var(--text-1); }
+@media (hover: hover) {
+  .template-answers-button:hover { background: var(--hover); color: var(--text-1); }
+}
 .template-answers-button__label { flex: none; font-weight: 600; }
 .template-answers-button .answer-chips { flex-wrap: nowrap; overflow: hidden; }
 @media (pointer: coarse) {

@@ -12,3 +12,10 @@ test('History search glyph is the shared panel-head size', () => {
   const rp = readFileSync(new URL('../src/components/revisions/RevisionsPanel.jsx', import.meta.url), 'utf8');
   assert.match(rp, /size=\{mobileMode \? 20 : SECTION_ICON_SIZES\.desktop\.glyph\}/);
 });
+
+test('hover fills on panels use --hover, not the chosen fill', () => {
+  const ans = readFileSync(new URL('../src/home/AnswerSetPicker.css', import.meta.url), 'utf8');
+  const sheets = readFileSync(new URL('../src/sheets/sheetSet.css', import.meta.url), 'utf8');
+  assert.match(ans, /\.template-answers-button:hover \{ background: var\(--hover\);/);
+  assert.match(sheets, /\.projects-open-all-view:not\(\.is-picked\):hover \{ background: var\(--hover\);/);
+});
