@@ -83,6 +83,10 @@ export default function ProjectActivityPanel({ project, lookupMember, documents 
   };
   const docsById = new Map(documents.map((d) => [String(d.id), d]));
   const groups = groupActivity(data.events);
+  // Same name the account button reads (first and last name), so your
+  // avatar shows the same letters here as in the corner, not your email's.
+  const meta = user?.user_metadata || {};
+  const ownName = user?.name || meta.full_name || [meta.first_name, meta.last_name].filter(Boolean).join(' ') || user?.email;
 
   return (
     <div className={`project-activity${phone ? ' is-phone' : ''}`} data-project-activity>
@@ -101,7 +105,7 @@ export default function ProjectActivityPanel({ project, lookupMember, documents 
               const who = nameOf(event.actor_id);
               const body = (
                 <>
-                  <Avatar initials={presenceInitials(who === 'You' ? (user?.user_metadata?.full_name || user?.email || 'You') : who)} id={event.actor_id || 'system'} size={phone ? 28 : 24} />
+                  <Avatar initials={presenceInitials(who === 'You' ? (ownName || 'You') : who)} id={event.actor_id || 'system'} size={phone ? 28 : 24} />
                   <span className="project-activity__text"><b>{who}</b> {text}</span>
                   <span className="project-activity__ago">{timeAgo(event.created_at, now)}</span>
                 </>

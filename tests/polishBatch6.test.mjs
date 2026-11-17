@@ -20,3 +20,9 @@ test('the print notice wears the toast look, not gold on black', () => {
   assert.doesNotMatch(print, /#f6d77b|#5f5130/);
   assert.match(print, /\.survey-browser-print-progress \{[\s\S]*?background: var\(--surface-2\);[\s\S]*?color: var\(--text-1\);/);
 });
+
+test('Activity shows your avatar letters from your name, like the account button', () => {
+  const act = readFileSync(new URL('../src/projectItems/ProjectActivityPanel.jsx', import.meta.url), 'utf8');
+  assert.match(act, /const ownName = user\?\.name \|\| meta\.full_name \|\| \[meta\.first_name, meta\.last_name\]/);
+  assert.match(act, /presenceInitials\(who === 'You' \? \(ownName \|\| 'You'\) : who\)/);
+});
