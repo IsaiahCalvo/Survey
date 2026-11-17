@@ -65,6 +65,7 @@ import { RENAME_OPEN_DOCUMENT_EVENT } from '../tabs/tabStrip.js';
 import { usePolylineCurve } from '../hooks/usePolylineCurve.js';
 import { POLYLINE_CURVE_SET_EVENT } from '../utils/polySpline.js';
 import { driveIcon, drivePlace } from '../utils/driveLinks.js';
+import { isDeviceDocumentId } from '../services/deviceFiles.js';
 
 // UX 2026-09-16 (phone sweep, owner ruling "everything reads a little big").
 // ONE glyph:control ratio for every phone tier, and it is Drawboard's: its
@@ -3437,6 +3438,9 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                 onOpenPanel?.('history');
               }}
             />
+            {/* A visitor's file on this device has no one else on it, and
+                the visitor no name: the "U" face read as a stranger. */}
+            {!isDeviceDocumentId(leftRailApi?.documentId) && (
             <RailButton
               label={`${presenceCount} active user${presenceCount === 1 ? '' : 's'}`}
               aria-haspopup="dialog"
@@ -3449,6 +3453,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
               </span>
               {presenceCount > 1 && <span className="mobile-pdf-tools__user-count">+{presenceCount - 1}</span>}
             </RailButton>
+            )}
           </div>
 
           {moreOpen && (

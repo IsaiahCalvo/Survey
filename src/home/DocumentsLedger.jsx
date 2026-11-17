@@ -77,6 +77,10 @@ const ledgerHeader = {
   fontSize: 11, letterSpacing: 0,
   color: 'var(--ink-200)', fontWeight: 600,
   padding: '8px 0',
+  /* The cells mix plain labels and flex groups (File, Sheet number, Status)
+     beside a taller columns button; centre them all, or the plain labels sat
+     4px above the File group (tester walk, Nov 17). */
+  alignItems: 'center',
   /* The rows carry a 2px left edge (gold on the previewed row); the header
      keeps the same edge so its select-all box and labels sit over the row
      boxes and cells, not 2px left of them (owner 2026-10-28). */
@@ -395,7 +399,7 @@ export default function DocumentsLedger({
       color: RIBBON[i % RIBBON.length],
       shared: !!d.shared,
       createdMs: Date.parse(d.created_at || '') || 0,
-      openedMs: homeExtras.openedByDoc.get(d.id) || 0,
+      openedMs: homeExtras.openedByDoc.get(d.id) || (d.device_file && Date.parse(d.last_opened_at || '')) || 0,
       tags: homeExtras.tagsByDoc.get(d.id) || [],
     };
   }), [listDocuments, projects, homeExtras.openedByDoc, homeExtras.tagsByDoc]);
@@ -567,7 +571,7 @@ export default function DocumentsLedger({
   const [teamCollab, setTeamCollab] = useState({ id: null, rows: [], owner: null });
   const teamOwnerIsMe = Boolean(user?.id && teamDocRaw?.user_id === user.id);
   useEffect(() => {
-    if (!teamDocId) return undefined;
+    if (!teamDocId || teamDocRaw?.device_file) return undefined;
     let live = true;
     Promise.all([
       getDocumentCollaborators(teamDocId),
@@ -576,7 +580,7 @@ export default function DocumentsLedger({
       .then(([res, owner]) => { if (live) setTeamCollab({ id: teamDocId, rows: res?.data || [], owner }); })
       .catch(() => {});
     return () => { live = false; };
-  }, [teamDocId, teamOwnerIsMe]);
+  }, [teamDocId, teamOwnerIsMe, teamDocRaw?.device_file]);
   const teamFresh = teamCollab.id === teamDocId;
   // Review status and owner need edit access (set_document_review checks
   // user_can_access_document(..., 'editor')). Ask the server the same
@@ -584,13 +588,14 @@ export default function DocumentsLedger({
   // role never shows editable fields that would fail to save.
   const [reviewEditAccess, setReviewEditAccess] = useState({ id: null, ok: false });
   useEffect(() => {
-    if (!reviewOn || !teamDocId || teamOwnerIsMe || !supabase) return undefined;
+    // A file kept on this device is not on the server (and shows no review).
+    if (!reviewOn || !teamDocId || teamOwnerIsMe || !supabase || teamDocRaw?.device_file) return undefined;
     let live = true;
     supabase.rpc('user_can_access_document', { doc_id: teamDocId, required_role: 'editor' })
       .then(({ data, error }) => { if (live) setReviewEditAccess({ id: teamDocId, ok: !error && data === true }); })
       .catch(() => { if (live) setReviewEditAccess({ id: teamDocId, ok: false }); });
     return () => { live = false; };
-  }, [reviewOn, teamDocId, teamOwnerIsMe]);
+  }, [reviewOn, teamDocId, teamOwnerIsMe, teamDocRaw?.device_file]);
   const canEditReview = teamOwnerIsMe || (reviewEditAccess.id === teamDocId && reviewEditAccess.ok);
   const teamRows = documentTeamRows(teamDocRaw, teamFresh ? teamCollab.rows : [], user, teamFresh ? teamCollab.owner : null);
   const renderTeam = (nameStyle) => teamRows.map((p) => (
@@ -1382,10 +1387,13 @@ export default function DocumentsLedger({
                   if (!registerOn) return <span {...fileSort} style={{ padding: '0 14px', display: 'flex', alignItems: 'center', ...fileLook }}>File{arrow('name')}</span>;
                   // Sheet register: Sheet number and Status sorts beside File.
                   return (
-                    <span style={{ padding: '0 14px', display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, whiteSpace: 'nowrap' }}>
-                      <span {...fileSort} style={fileLook}>File{arrow('name')}</span>
+                    /* With the preview open the File column is narrow: the
+                       header says "Sheet", and the group clips with "…" rather
+                       than running into Project (tester walk, Nov 17). */
+                    <span style={{ padding: '0 14px', display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden' }}>
+                      <span {...fileSort} style={{ ...fileLook, flexShrink: 0 }}>File{arrow('name')}</span>
                       {sortOptions.filter(([key]) => key === 'sheet' || key === 'status').map(([key, label]) => (
-                        <span key={key} data-register-sort={key} {...clickableProps(() => onHeaderClick(key))} style={{ cursor: 'pointer', userSelect: 'none', color: sortKey === key ? 'var(--bone-100)' : 'inherit' }}>{label}{arrow(key)}</span>
+                        <span key={key} data-register-sort={key} {...clickableProps(() => onHeaderClick(key))} style={{ cursor: 'pointer', userSelect: 'none', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', flexShrink: key === 'sheet' ? 0 : 1, color: sortKey === key ? 'var(--bone-100)' : 'inherit' }}>{key === 'sheet' ? 'Sheet' : label}{arrow(key)}</span>
                       ))}
                     </span>
                   );
@@ -1689,14 +1697,18 @@ export default function DocumentsLedger({
                   }
                 />
               </div>
-              {/* Team — the document's owner (uploader), then its collaborators. */}
+              {/* Team — the document's owner (uploader), then its collaborators.
+                  A file kept on this device has no team and no review: both
+                  showed as an empty heading and two greyed-out fields. */}
+              {!previewDoc.raw?.device_file && (
               <div style={{ marginTop: 14, flex: 'none' }}>
                 <div className="section-label">Team</div>
                 <div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
                   {renderTeam({ fontSize: 12, fontWeight: 600 })}
                 </div>
               </div>
-              {reviewOn && (
+              )}
+              {reviewOn && !previewDoc.raw?.device_file && (
                 <div style={{ marginTop: 14, flex: 'none' }} data-doc-review-panel="">
                   <ReviewFields review={reviews.get(previewDoc.id)} people={reviewPeople} canEdit={canEditReview} onSave={(patch) => saveReview(previewDoc.id, patch)} />
                 </div>
@@ -1822,6 +1834,7 @@ export default function DocumentsLedger({
                 />
               </div>
               <div className="documents-mobile-detail-facts">
+                {!mobileDetailDoc.raw?.device_file && (
                 <div>
                   <span>Team</span>
                   <div style={{ display: 'grid', gap: 6 }}>
@@ -1833,7 +1846,8 @@ export default function DocumentsLedger({
                     ))}
                   </div>
                 </div>
-                {reviewOn && (
+                )}
+                {reviewOn && !mobileDetailDoc.raw?.device_file && (
                   <div data-doc-review-panel="">
                     <ReviewFields review={reviews.get(mobileDetailDoc.id)} people={reviewPeople} canEdit={canEditReview} onSave={(patch) => saveReview(mobileDetailDoc.id, patch)} />
                   </div>

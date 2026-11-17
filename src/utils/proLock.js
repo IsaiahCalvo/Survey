@@ -23,6 +23,10 @@ export const PRO_LOCK_FEATURES = Object.freeze({
   regions: Object.freeze({ label: 'Regions', plural: true }),
   survey: Object.freeze({ label: 'Survey tools', plural: true }),
   onedrive: Object.freeze({ label: 'OneDrive', plural: false }),
+  // The database turns down every template save on Free (has_feature_access
+  // 'templates'); New and Duplicate say so before making a copy that can't
+  // be kept (KAL-755).
+  templates: Object.freeze({ label: 'Templates', plural: true }),
 });
 
 /** True when the app runs inside the iOS / Android shell. */

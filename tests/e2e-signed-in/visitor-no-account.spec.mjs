@@ -85,8 +85,10 @@ test.describe('desktop', () => {
     // A reload: the file is listed, and opens with seven pages and the mark.
     await page.waitForTimeout(1_000);
     await page.reload({ waitUntil: 'domcontentloaded' });
-    await page.getByRole('button', { name: 'Continue without an account' }).click({ timeout: 60_000 });
-    await expect(page.getByText('These files are only on this device', { exact: false }).filter({ visible: true }).first()).toBeVisible();
+    // Closing the card counts as going on without an account for the tab
+    // (KAL-752), so it does not come back on the reload.
+    await expect(page.getByText('These files are only on this device', { exact: false }).filter({ visible: true }).first()).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByRole('button', { name: 'Continue without an account' })).toHaveCount(0);
     await page.getByText(NAME, { exact: true }).filter({ visible: true }).first().dblclick();
     await expect(page.locator(PAGE)).toBeVisible({ timeout: 60_000 });
     await expect.poll(() => pageCount(page), { timeout: 20_000 }).toBe(7);

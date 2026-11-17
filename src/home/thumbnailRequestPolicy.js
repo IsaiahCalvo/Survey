@@ -1,6 +1,7 @@
 /** Rows can render bytes already on the device, but must not fetch a PDF. */
 export function canResolveThumbnailBytes(doc, priority = false) {
-  return Boolean(priority || doc?.file || /^(data:|blob:)/i.test(doc?.dataUrl || ''));
+  // A visitor's file kept on this device (IndexedDB) is local bytes too.
+  return Boolean(priority || doc?.file || doc?.device_file || /^(data:|blob:)/i.test(doc?.dataUrl || ''));
 }
 
 /** Share work only among requests with the same policy. A cache-only row must

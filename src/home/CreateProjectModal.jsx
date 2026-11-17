@@ -17,6 +17,7 @@ export default function CreateProjectModal({
   onNameChange,
   onRemoveFile,
   open,
+  error = '',
 }) {
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -114,6 +115,9 @@ export default function CreateProjectModal({
               </div>
             ))}
           </div>
+        ) : null}
+        {error ? (
+          <p role="alert" style={{ margin: 0, fontSize: 13, lineHeight: 1.45, color: 'var(--danger-text)', whiteSpace: 'pre-line' }}>{error}</p>
         ) : null}
       </div>
     </DialogCard>

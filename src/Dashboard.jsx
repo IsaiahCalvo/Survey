@@ -34,7 +34,7 @@ import { OPEN_FILE_EVENT, takeOpenedFiles } from './mobile/nativeOpenFile.js';
 import { PHOTO_ACCEPT, isPhotoFile, photoToPdfFile, photosAsPdfs } from './home/photoToPdf.js';
 import { deviceFilesOn, keepFileOnDevice, openDeviceFile, saveDeviceFileToAccount } from './home/deviceFileActions.js';
 import { moveOrCopyDocumentsAtomically, parseDocumentBatchRecovery } from './home/documentBatchOperations.js';
-import { mapAuthoritativeTemplateRows, persistTemplateSnapshot } from './home/templatePersistence.js';
+import { isTemplatePlanError, mapAuthoritativeTemplateRows, persistTemplateSnapshot, templatePlanError } from './home/templatePersistence.js';
 import { recordDocumentOpened } from './home/homeLibraryData.js';
 import { ownerDisplayName, parkForeignLocalExcelPath, sameTemplateConfig, sharedFromRow, splitTemplatesForSave, stripSharedFields } from './services/sharedTemplates.js';
 import { useAuth } from './contexts/AuthContext';
@@ -1344,9 +1344,20 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     const skipped = rejectedFilesMessage(rejected);
     if (skipped) showToast(skipped, 'info');
     if (pdfs.length === 0) return { added: 0, skipped: rejected.length };
+    // Signed out, the sample is kept on this device like any PDF, so its
+    // marks last (visitor walk, Nov 17: as a try-out its status spun on
+    // "Syncing..." for ever, and a refresh lost the marks).
+    if (!user && deviceFilesOn()) {
+      let kept = 0;
+      for (const pdf of pdfs) {
+        if (await openOnDevice(pdf, { open })) kept += 1;
+      }
+      if (kept > 0) return { added: kept, skipped: rejected.length };
+    }
     // Nightly 'guest-sample' (Drawboard PDF Pro trial audit 2026-11-10): the
     // sample drawing opens for someone signed out too, as a try-out that is
-    // not saved, so they can mark up before making an account.
+    // not saved, so they can mark up before making an account. Only when
+    // this device can't keep files (above).
     if (!user && sample && isFeatureOn('guest-sample')) {
       onDocumentSelect(asPdfFile(pdfs[0]));
       showToast('This is a try-out. Sign in to save your marks.', 'info', {
@@ -1354,13 +1365,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         action: { label: 'Sign in', onClick: () => onShowAuthModal?.() },
       });
       return { added: 0, skipped: rejected.length };
-    }
-    if (!user && deviceFilesOn()) {
-      let kept = 0;
-      for (const pdf of pdfs) {
-        if (await openOnDevice(pdf, { open })) kept += 1;
-      }
-      if (kept > 0) return { added: kept, skipped: rejected.length };
     }
     if (!user) {
       setDashboardError('Please sign in to upload documents.');
@@ -1430,6 +1434,13 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
 
   // Create Project flow
   const handleCreateProjectClick = () => {
+    // At the plan's project limit, say so now, not after a name and PDFs are
+    // picked and Create is pressed (tester walk, Nov 17).
+    const projectCheck = canCreateProject();
+    if (!projectCheck.allowed) {
+      setDashboardError(projectCheck.reason);
+      return;
+    }
     setProjectName('');
     setProjectFiles([]);
     setIsDragOver(false);
@@ -1800,6 +1811,14 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       return freshRows;
     } catch (err) {
       console.error('Error persisting templates:', err);
+      // Templates are Pro-only in the database, so on Free the snapshot is
+      // turned down. The server said "does not belong" until the
+      // 20261117190000 migration; both now read as the plan limit.
+      const message = String(err?.message || '');
+      if (/needs the Pro plan/.test(message)
+        || (/does not belong to the signed-in user/.test(message) && !canCreateTemplate().allowed)) {
+        throw templatePlanError();
+      }
       throw err;
     }
   };
@@ -2658,7 +2677,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       }
     } catch (e) {
       console.error('Failed to save templates', e);
-      showToast('Failed to save templates.', 'error');
+      showToast(isTemplatePlanError(e) ? 'Saving templates needs the Pro plan.' : 'Failed to save templates.', 'error');
       // BL-23: rethrow so the templates editor keeps its dirty state (and the
       // user's unsaved edits) when persistence fails.
       throw e;
@@ -3414,6 +3433,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         onRemoveFile={(index) => setProjectFiles((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}
         onCancel={handleCancelCreateProject}
         onConfirm={handleConfirmCreateProject}
+        error={isProjectModalOpen ? dashboardError : ''}
       />
       {uploadCheck?.review ? (
         <UploadReviewModal
@@ -3444,7 +3464,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         onResolve={settleDuplicateModal}
         onClose={() => settleDuplicateModal(duplicateModal?.mode === 'alias' ? 'skip-alias' : 'cancel')}
       />
-      {dashboardError && (
+      {/* While Create project is open its error shows inside it; this card
+          sat behind the dialog's dimmed backdrop. */}
+      {dashboardError && !isProjectModalOpen && (
         <div
           role="alert"
           style={{

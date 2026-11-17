@@ -1,12 +1,14 @@
 // Try a sample drawing, signed out (flag 'guest-sample', Drawboard PDF Pro
 // trial audit 2026-11-10: Drawboard lets you mark up before signing up;
-// Survey's sample only reopened sign-in). The sample opens as a try-out.
-// On for everyone since KAL-658 (2026-11-16), so the "off" run switches both
-// no-account flags off in this browser: that is /flags set back to Off.
+// Survey's sample only reopened sign-in). Since KAL-752 (2026-11-17) the
+// sample is kept on this device like any PDF, so its marks last; the try-out
+// is only for a device that can't keep files. On for everyone since KAL-658
+// (2026-11-16), so the "off" run switches both no-account flags off in this
+// browser: that is /flags set back to Off.
 import { expect, test } from './helpers.mjs';
 
 for (const on of [true, false]) {
-  test(`signed out, the sample ${on ? 'opens as a try-out' : 'asks to sign in'}`, async ({ page }) => {
+  test(`signed out, the sample ${on ? 'opens, kept on this device' : 'asks to sign in'}`, async ({ page }) => {
     test.setTimeout(120_000);
     const errors = [];
     page.on('pageerror', (e) => errors.push(String(e)));
@@ -25,9 +27,9 @@ for (const on of [true, false]) {
       await expect(page.getByRole('dialog').filter({ hasText: /Sign in|Welcome/ }).first()).toBeVisible({ timeout: 10_000 });
       return;
     }
-    await expect(page.getByText('This is a try-out. Sign in to save your marks.')).toBeVisible({ timeout: 10_000 });
     await expect(page.locator('.survey-pdfjs-page-div[data-page-number="1"]')).toBeVisible({ timeout: 60_000 });
-    // A mark can be drawn on the try-out.
+    await expect(page.getByText('This is a try-out. Sign in to save your marks.')).toHaveCount(0);
+    // A mark can be drawn on it.
     const pageBox = await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').boundingBox();
     await page.keyboard.press('r');
     await page.mouse.move(pageBox.x + pageBox.width * 0.3, pageBox.y + pageBox.height * 0.3);

@@ -27,6 +27,7 @@ export async function keepFileOnDevice(file) {
   if (same) await deviceFiles().touch(same.id);
   const row = same || await deviceFiles().add({ name: file.name, bytes: file });
   if (!row) return null;
+  deviceFiles().markOpened?.(row.id);
   const opened = new File([file], row.name, { type: 'application/pdf' });
   opened.id = row.id;
   opened.deviceFile = true;
@@ -38,6 +39,8 @@ export async function keepFileOnDevice(file) {
 export async function openDeviceFile(row) {
   const kept = await deviceFiles().read(row?.id);
   if (!kept) return null;
+  // Last opened, kept in this browser (a visitor's file has no server row).
+  deviceFiles().markOpened?.(kept.row.id);
   const file = new File([kept.bytes], kept.row.name, { type: 'application/pdf' });
   file.id = kept.row.id;
   file.deviceFile = true;

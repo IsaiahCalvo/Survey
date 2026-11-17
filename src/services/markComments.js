@@ -7,6 +7,7 @@
 // replies that point at it; it hangs off one mark (markId) or a page.
 
 import { readLibraryRows } from '../hooks/libraryPagination.js';
+import { isDeviceDocumentId } from './deviceFiles.js';
 
 // The link-focus bits live apart so the app shell can load them without this
 // whole service on first load.
@@ -59,7 +60,8 @@ export function mapCommentRow(row) {
 }
 
 export async function listMarkComments(client, documentId) {
-  if (!documentId) return [];
+  // A file kept on this device with no account is not on the server.
+  if (!documentId || isDeviceDocumentId(documentId)) return [];
   // Page by id past PostgREST's row cap, then sort oldest first for display.
   const { data, error } = await readLibraryRows(() => client
     .from('mark_comments')
@@ -72,7 +74,7 @@ export async function listMarkComments(client, documentId) {
 }
 
 export async function listCommentPeople(client, documentId) {
-  if (!documentId) return [];
+  if (!documentId || isDeviceDocumentId(documentId)) return [];
   const { data, error } = await client.rpc('mark_comment_people', { p_document_id: documentId });
   if (error) throw new Error(error.message || 'Could not read who is on this document');
   return (data || []).map((row) => ({ id: row.user_id, name: row.name || null, email: row.email || null, guest: row.guest === true }));

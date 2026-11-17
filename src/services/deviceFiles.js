@@ -104,6 +104,8 @@ export function deviceFileRow(meta) {
     page_count: meta.pageCount ?? null,
     created_at: new Date(meta.createdAt).toISOString(),
     updated_at: new Date(meta.updatedAt).toISOString(),
+    // When this browser last opened it (a visitor has no server to keep it).
+    last_opened_at: meta.openedAt ? new Date(meta.openedAt).toISOString() : null,
     project_id: null,
     file_path: null,
     device_file: true,
@@ -269,6 +271,25 @@ export function createDeviceFiles({
     return true;
   };
 
+  /** Stamps "last opened" (not "last edited") when the file is opened. */
+  const markOpened = async (id) => {
+    const database = await db();
+    if (!database || !isDeviceDocumentId(id)) return false;
+    try {
+      const tx = database.transaction(META_STORE, 'readwrite');
+      const store = tx.objectStore(META_STORE);
+      const meta = await settle(store.get(id), tx, timeoutMs);
+      if (!meta) return false;
+      store.put({ ...meta, openedAt: now() });
+      await committed(tx, timeoutMs);
+    } catch (error) {
+      console.warn('[deviceFiles] mark opened failed:', error?.message || error);
+      return false;
+    }
+    notify();
+    return true;
+  };
+
   /** Bumps the "last edited" time (marks were made). Quiet: no list redraw needed mid-edit. */
   const touch = (id) => update(id, {});
 
@@ -288,7 +309,7 @@ export function createDeviceFiles({
     return true;
   };
 
-  return { add, findSame, list, read, update, replaceBytes, touch, remove, isDisabled: () => disabled };
+  return { add, findSame, list, read, update, replaceBytes, touch, markOpened, remove, isDisabled: () => disabled };
 }
 
 let shared = null;

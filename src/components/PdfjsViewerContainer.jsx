@@ -6840,8 +6840,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
           transform: pageTransformations[i + 1]?.mirrorH || pageTransformations[i + 1]?.mirrorV
             ? `scale(${pageTransformations[i + 1]?.mirrorH ? -1 : 1}, ${pageTransformations[i + 1]?.mirrorV ? -1 : 1})`
             : undefined,
+          // The light look swaps in a hairline (styles.css): a dark grey
+          // frame round white paper read as heavy there (visitor walk, Nov 17).
           boxShadow: phoneLayout
-            ? '0 0 0 1px var(--text-2), 0 10px 28px rgba(0,0,0,0.35)'
+            ? 'var(--phone-page-frame, 0 0 0 1px var(--text-2), 0 10px 28px rgba(0,0,0,0.35))'
             : undefined,
         }}
       >

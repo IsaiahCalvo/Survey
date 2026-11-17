@@ -23,6 +23,9 @@ import { useAuth } from '../contexts/AuthContext';
 import { coalesceRead } from './requestCoalescer.js';
 import { withUpgradeHint } from '../utils/accountPlatform';
 
+// "Free", "Pro": the plan's name as the pricing page writes it.
+const planName = (tier) => { const t = String(tier || 'free'); return t.charAt(0).toUpperCase() + t.slice(1); };
+
 /**
  * Subscription tier limits
  * These should match the database functions get_storage_limit(), get_project_limit(), etc.
@@ -171,7 +174,7 @@ export const useSubscriptionLimits = () => {
     }
     return {
       allowed: false,
-      reason: withUpgradeHint(`You've reached the limit of ${limits.projects} project${limits.projects > 1 ? 's' : ''} for your ${userTier || 'free'} tier.`, 'Upgrade to Pro for unlimited projects.'),
+      reason: withUpgradeHint(`You've reached the limit of ${limits.projects} project${limits.projects > 1 ? 's' : ''} on the ${planName(userTier)} plan.`, 'Upgrade to Pro for unlimited projects.'),
     };
   }, [usage.projects, limits.projects, userTier]);
 
@@ -185,7 +188,7 @@ export const useSubscriptionLimits = () => {
     if (usage.documents >= limits.documents) {
       return {
         allowed: false,
-        reason: withUpgradeHint(`You've reached the limit of ${limits.documents} document${limits.documents > 1 ? 's' : ''} for your ${userTier || 'free'} tier.`, 'Upgrade to Pro for unlimited documents.'),
+        reason: withUpgradeHint(`You've reached the limit of ${limits.documents} document${limits.documents > 1 ? 's' : ''} on the ${planName(userTier)} plan.`, 'Upgrade to Pro for unlimited documents.'),
       };
     }
 

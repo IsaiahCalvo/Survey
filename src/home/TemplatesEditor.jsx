@@ -50,7 +50,8 @@ import { customLayoutAskUrl } from '../services/supportContact.js';
 import { lazy, Suspense, useState, useMemo, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
 import { hoverOnly, useTooltip, withOwnHandlers } from '../components/Tooltip';
 import { createPortal, flushSync } from 'react-dom';
-import { reloadTemplatesAfterPendingSave } from './templatePersistence.js';
+import { reloadTemplatesAfterPendingSave, templateSaveErrorText } from './templatePersistence.js';
+import { useTemplatesNeedPro, useTemplatesPlanLocked } from './useTemplatesNeedPro.js';
 import useMobileEdgeSwipeBack from './useMobileEdgeSwipeBack';
 import useModalFocusTrap from './useModalFocusTrap';
 import {
@@ -911,6 +912,10 @@ export default function TemplatesEditor({
      newest payload always lands last. Payloads are snapshotted at dispatch. */
   const saveChainRef = useRef(Promise.resolve());
   const [persistenceError, setPersistenceError] = useState('');
+  // Templates are Pro in the database: on Free, New and Duplicate say so
+  // instead of making a copy that vanishes on reload (KAL-755).
+  const templatesNeedPro = useTemplatesNeedPro();
+  const templatesPlanLocked = useTemplatesPlanLocked();
   const dispatchTemplatesSave = useCallback((payload) => {
     const run = () => Promise.resolve(onSaveTemplates(payload));
     const p = saveChainRef.current.then(run, run);
@@ -1526,6 +1531,7 @@ export default function TemplatesEditor({
     }));
   };
   const duplicateTemplates = (ids) => {
+    if (templatesNeedPro()) return;
     const next = [];
     const clonedEntities = [];
     rich.forEach((t) => {
@@ -1571,7 +1577,7 @@ export default function TemplatesEditor({
           console.error('Failed to duplicate templates', err);
           if (editRevisionRef.current === rev && saveReqSeqRef.current === req) {
             setDirty(true);
-            setPersistenceError('Could not save templates. Your edits are still here; try again.');
+            setPersistenceError(templateSaveErrorText(err));
           }
         });
     } else {
@@ -1612,6 +1618,7 @@ export default function TemplatesEditor({
      this editor did nothing at all. The hub callback is still invoked for its
      remaining side effect (seeding the viewer's default entities). */
   const createTemplate = () => {
+    if (templatesNeedPro()) return;
     const existing = rich.map((t) => t.name);
     let n = rich.length + 1, name;
     do { name = `Template ${n++}`; } while (existing.includes(name));
@@ -1714,7 +1721,7 @@ export default function TemplatesEditor({
           console.error('Failed to delete templates', err);
           if (editRevisionRef.current === rev && saveReqSeqRef.current === req) {
             setDirty(true);
-            setPersistenceError('Could not save templates. Your edits are still here; try again.');
+            setPersistenceError(templateSaveErrorText(err));
           }
         });
     } else {
@@ -2370,7 +2377,7 @@ export default function TemplatesEditor({
         console.error('Failed to save templates', err);
         if (editRevisionRef.current === rev && saveReqSeqRef.current === req) {
           setDirty(true);
-          setPersistenceError('Could not save templates. Your edits are still here; try again.');
+          setPersistenceError(templateSaveErrorText(err));
         }
       });
   };
@@ -2476,12 +2483,17 @@ export default function TemplatesEditor({
       })()}
     </div>
   );
+  // Said up front on Free, before anyone makes a change that can't be kept.
+  // Desktop only: the phone header has no room (the subtitle row dissolves
+  // into the title row there); New and Duplicate still say it on the phone.
+  const planNote = <span data-templates-plan-note="" style={{ color: 'var(--text-3)' }}>Saving needs Pro</span>;
   const subtitle = (
     <>
       {/* Owner 2026-09-22: the tagline is gone; when the template has unsaved
           edits, Cancel / Save sit right here in the subtitle row instead. */}
       <span className="templates-desktop-summary" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
         <span><b>{visibleTemplates.length}</b> {visibleTemplates.length === 1 ? 'template' : 'templates'}</span>
+        {templatesPlanLocked ? planNote : null}
         {saveRow('templates-desktop-save-row')}
       </span>
       <span className="templates-mobile-summary" style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>

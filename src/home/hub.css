@@ -5921,3 +5921,9 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
 @media (hover: none), (pointer: coarse) {
   .documents-preview-open-hint { display: none; }
 }
+
+/* The phone header has no space under it, so the Library's first card
+   would touch its hairline. */
+@media (max-width: 860px), screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
+  .survey-hub.hub-tab-library .library-body { --library-body-top: 8px; }
+}

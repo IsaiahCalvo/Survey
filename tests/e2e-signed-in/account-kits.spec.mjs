@@ -93,9 +93,11 @@ test('an account without the kit does not get it', async ({ page }) => {
   await signIn(page, E2E_ACCOUNTS.free);
   const rows = await (await clientFromPageSession(page)).from('kits').select('id');
   expect(rows.data).toEqual([]);
-  const layout = await openTemplateEditor(page);
-  await layout.click();
-  const list = page.getByRole('listbox', { name: 'Excel layout' });
-  await expect(list.getByRole('option', { name: /^Survey \(standard\)/ })).toHaveCount(1);
-  await expect(list.getByRole('option', { name: /Acme doors/ })).toHaveCount(0);
+  // The free account can't save templates (KAL-755), so New template says so
+  // up front instead of opening an editor whose save would fail. The empty
+  // kits read above is what keeps the kit out of its Excel layout list.
+  await page.getByRole('tab', { name: /Templates/ }).or(page.getByRole('button', { name: /^Templates$/ })).filter({ visible: true }).first().click();
+  await page.getByRole('button', { name: /New template|Create template|Add template/ }).filter({ visible: true }).first().click();
+  await expect(page.getByText(/Templates are part of Pro/).first()).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('button', { name: 'Excel layout', exact: true }).filter({ visible: true })).toHaveCount(0);
 });

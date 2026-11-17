@@ -14,7 +14,7 @@ const FEATURES = Object.keys(PRO_LOCK_FEATURES);
 test('pro lock: the flag is registered', () => {
   assert.equal(PRO_LOCK_FLAG, 'pro-lock');
   assert.equal(FEATURE_FLAGS['pro-lock'].label, 'Lock Pro features for Free plan');
-  assert.deepEqual(FEATURES.sort(), ['excel', 'onedrive', 'regions', 'survey']);
+  assert.deepEqual(FEATURES.sort(), ['excel', 'onedrive', 'regions', 'survey', 'templates']);
 });
 
 test('pro lock: flag off never locks, for any plan', () => {

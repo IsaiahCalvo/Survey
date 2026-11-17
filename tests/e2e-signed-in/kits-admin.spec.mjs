@@ -26,8 +26,26 @@ async function routeFunction(page) {
   });
 }
 
+// The customer opens the template editor, which needs the Pro plan (KAL-755):
+// on Free, New template only says templates are part of Pro. The suite runs
+// one test at a time, so the editor account is Pro only while this file runs.
+async function setEditorTier(tier) {
+  const admin = adminClient();
+  const { data, error } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+  if (error) throw error;
+  const user = data.users.find((u) => u.email === E2E_ACCOUNTS.editor.email);
+  const { error: upsertError } = await admin.from('user_subscriptions')
+    .upsert({ user_id: user.id, tier, status: 'active' }, { onConflict: 'user_id' });
+  if (upsertError) throw upsertError;
+}
+
+test.beforeAll(async () => {
+  await setEditorTier('pro');
+});
+
 test.afterAll(async () => {
   await adminClient().from('account_kits').delete().eq('kit_id', KIT_ID);
+  await setEditorTier(E2E_ACCOUNTS.editor.tier);
 });
 
 test('an admin publishes a kit on /kits, gives it to a customer, and the customer sees it', async ({ page, browser }) => {
