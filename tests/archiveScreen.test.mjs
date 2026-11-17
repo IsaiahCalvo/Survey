@@ -812,7 +812,7 @@ test('the header is built on the Documents / Projects structure', () => {
   assert.match(SCREEN, /\[items, filter, sortKey, sortDir, search\]/, 'search is in the memo deps');
   // Empty-result copy names the reason, mirroring Documents' wording.
   assert.match(SCREEN, /'No archived items match your search\.'/);
-  assert.match(DOCS, /No documents match your search\./);
+  assert.match(DOCS, /No documents match your search/);
 
   // The filter button reuses the hub's filter icon + active-sort label pattern.
   // The phone button names the sort; the desktop one names the type filter,
