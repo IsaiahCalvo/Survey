@@ -17,7 +17,14 @@ on:
     # display name, not its filename, so a rename that misses this line would
     # silently stop every production deploy. scripts/release-integrity.mjs
     # asserts the two are still paired, and that check runs in CI.
-    workflows: ["Build and tests"]
+    #
+    # 2026-11-17 — the three others are scheduled checks that GitHub does
+    # start now and then. On a quiet night no CI run finishes, and the cron
+    # below was dropped from 05:28 to 09:10 UTC, so merged work sat green and
+    # undeployed (and Nightly with it). Each finish of any of them asks `pick`
+    # too; `pick` still ships only the newest green main commit, only when the
+    # 3-hour window is open, and skips in seconds otherwise.
+    workflows: ["Build and tests", "Monitor production", "Live journey check", "Backend alerts"]
     types: [completed]
   # So a window opens even when no tests run (quiet nights), `pick` is also
   # asked every 15 minutes. GitHub drops many of this repo's scheduled runs,
