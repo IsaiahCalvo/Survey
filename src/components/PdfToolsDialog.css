@@ -30,10 +30,10 @@
 /* The note under the grid of tools sat 4px below the last card. */
 .pdft-tools+.pdft-help{margin-top:12px}
 .pdft-error{font-size:13px;color:var(--danger-text);margin:12px 0 0}
-.pdft-input{font:inherit;font-size:14px;min-height:36px;padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface-1);color:inherit}
+.pdft-input{font:inherit;font-size:14px;min-height:36px;padding:6px 10px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface-1);color:inherit}
 .pdft-input:focus{outline:2px solid var(--focus);outline-offset:0}
 .pdft-check{display:flex;align-items:center;gap:10px;min-height:36px;font-size:14px;cursor:pointer}
-.pdft-check input{width:18px;height:18px;flex:none}
+.pdft-check input{width:18px;height:18px;flex:none;accent-color:var(--accent)}
 .pdft-pick{max-height:260px;overflow:auto}
 .pdft-all{margin-bottom:12px}
 .pdft-pages{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:10px}

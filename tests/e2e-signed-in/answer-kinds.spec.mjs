@@ -129,17 +129,18 @@ test('the template editor shows each kind with its settings', async ({ page }) =
   await page.getByRole('tab', { name: /Templates/ }).or(page.getByRole('button', { name: /^Templates$/ })).filter({ visible: true }).first().click();
   const [cable, frame, door] = E2E_SURVEY.checklist.map((c) => c.text);
   const visible = (locator) => locator.filter({ visible: true }).first();
-  const kindOf = (line) => visible(page.getByRole('combobox', { name: `How "${line}" is answered` }));
+  // The kind is the app's drop-down pill on desktop; data-value holds the pick.
+  const kindOf = (line) => visible(page.getByRole('button', { name: `How "${line}" is answered`, exact: true }));
   await visible(page.getByText(E2E_SURVEY.templateName, { exact: true })).click();
   const expand = visible(page.getByRole('button', { name: `Expand ${E2E_SURVEY.categoryName}` }));
   const collapse = visible(page.getByRole('button', { name: `Collapse ${E2E_SURVEY.categoryName}` }));
   await expect(expand.or(collapse).first()).toBeVisible({ timeout: 30_000 });
   if (await expand.isVisible()) await expand.click();
-  await expect(kindOf(cable)).toHaveValue('score', { timeout: 30_000 });
+  await expect(kindOf(cable)).toHaveAttribute('data-value', 'score', { timeout: 30_000 });
   await expect(visible(page.getByRole('button', { name: `Score scale for "${cable}"`, exact: true }))).toHaveAttribute('data-value', '5');
   await expect(visible(page.getByRole('button', { name: `Issue at or below, for "${cable}"`, exact: true }))).toHaveAttribute('data-value', '2');
-  await expect(kindOf(frame)).toHaveValue('count');
+  await expect(kindOf(frame)).toHaveAttribute('data-value', 'count');
   await expect(visible(page.getByRole('textbox', { name: `Lowest fine value for "${frame}"` }))).toHaveValue('1');
-  await expect(kindOf(door)).toHaveValue('date');
+  await expect(kindOf(door)).toHaveAttribute('data-value', 'date');
   await expect(visible(page.getByRole('checkbox', { name: 'Issue once past' }))).toBeChecked();
 });

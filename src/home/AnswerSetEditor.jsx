@@ -287,18 +287,32 @@ export function ItemKindPicker({ item, onChange, phone = false, children = null 
   );
   return (
     <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-      <select
-        aria-label={`How "${name}" is answered`}
-        value={kind}
-        onChange={(e) => {
-          const v = e.target.value;
-          onChange(v === 'choice' ? {} : itemAnswerFields({ ...fields, kind: v }));
-        }}
-        style={selectStyle}
-      >
-        {KIND_OPTIONS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
-        {OLD_KIND_LABELS[kind] && <option value={kind}>{OLD_KIND_LABELS[kind]}</option>}
-      </select>
+      {/* Desktop takes the app's drop-down pill, like the score settings
+          beside it (owner 2026-10-27: a browser list "looks nothing like any
+          of our other dropdowns"); phones keep the browser's own wheel. */}
+      {phone ? (
+        <select
+          aria-label={`How "${name}" is answered`}
+          value={kind}
+          onChange={(e) => {
+            const v = e.target.value;
+            onChange(v === 'choice' ? {} : itemAnswerFields({ ...fields, kind: v }));
+          }}
+          style={selectStyle}
+        >
+          {KIND_OPTIONS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
+          {OLD_KIND_LABELS[kind] && <option value={kind}>{OLD_KIND_LABELS[kind]}</option>}
+        </select>
+      ) : (
+        <ValueSelect
+          look="pill"
+          width="auto"
+          label={`How "${name}" is answered`}
+          value={kind}
+          options={OLD_KIND_LABELS[kind] ? [...KIND_OPTIONS, { value: kind, label: OLD_KIND_LABELS[kind] }] : KIND_OPTIONS}
+          onChange={(v) => onChange(v === 'choice' ? {} : itemAnswerFields({ ...fields, kind: v }))}
+        />
+      )}
       {kind === 'number' && (
         <SettingBox text label={`Unit for "${name}"`} placeholder="unit" value={fields.unit} maxLength={ITEM_UNIT_MAX} width={phone ? 56 : 44} size={size} onCommit={(unit) => set({ unit })} />
       )}
