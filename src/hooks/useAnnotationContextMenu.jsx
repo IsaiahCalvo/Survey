@@ -75,6 +75,7 @@ import { marksHidden } from '../utils/marksHidden.js';
 import { DIMENSION_LEADER_PT, dimensionCaptionOffset, dimensionCaptionTurn, dimensionLeader, isDimensionMeasure } from '../utils/measure/dimensionLine.js';
 import { isSelectionBarDocked, setSelectionBarDocked } from '../utils/selectionBarDock.js';
 import { setPropertiesPanelOpen } from '../utils/propertiesPanelStore.js';
+import { canCopyMarkFormat } from '../utils/markFormat.js';
 
 // w61: `getPageObjects(pageNumber)` (optional) returns the page's mark list,
 // so the menu can note which marks it was opened on (by id) and still act on
@@ -210,7 +211,7 @@ export function useAnnotationContextMenu({ getPageObjects = null } = {}) {
 // targets (touchTargets.css + annotationContextMenu.css).
 // Design review 2026-10-27: the rows under the icon row carry an icon too,
 // like every other action menu (components/MenuRows.jsx picks by label).
-const MARK_ROW_ICONS = { group: 'selectGroup', ungroup: 'selectGroup', arrange: 'layers', moveToLayer: 'layers', align: 'alignLeft', lock: 'lock', unlock: 'lock', saveToLibrary: 'library' };
+const MARK_ROW_ICONS = { group: 'selectGroup', ungroup: 'selectGroup', arrange: 'layers', moveToLayer: 'layers', align: 'alignLeft', lock: 'lock', unlock: 'lock', saveToLibrary: 'library', copyFormat: 'brush', pasteFormat: 'paintBucket' };
 const markRowIcon = (it) => MARK_ROW_ICONS[it.key] || menuIconFor(it.label);
 const MENU_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter'];
 
@@ -514,6 +515,13 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     // layerId) and the document's layer list ({ layers, pdfOpacity }).
     moveSelectionToLayer = null,
     layerState = null,
+    // Nightly 'copy-format' (KAL-718, Drawboard's Copy Format / Paste
+    // Format): copyMarkFormat(pageObject) keeps one mark's look,
+    // pasteMarkFormat(pageNumber, selection) puts it on the picked marks;
+    // markFormat is the kept look (null = nothing kept yet).
+    copyMarkFormat = null,
+    pasteMarkFormat = null,
+    markFormat = null,
     // Nightly 'group-marks' (Drawboard PDF Pro, row B13): PDFViewer's
     // handleGroupSelected(pageNumber, indices, calloutIds) and
     // handleUngroupSelected(...). Optional: without them no Group rows.
@@ -746,6 +754,15 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         )),
       }];
     };
+    // Nightly 'copy-format': Copy format (one mark with a look to copy) and
+    // Paste format (greyed until a look is kept), under Paste.
+    const formatItems = (selection, sourceObj = null) => {
+      if (typeof copyMarkFormat !== 'function' || typeof pasteMarkFormat !== 'function') return [];
+      return [
+        item('Copy format', 'copyFormat', () => copyMarkFormat(sourceObj), canCopyMarkFormat(sourceObj)),
+        item('Paste format', 'pasteFormat', () => pasteMarkFormat(ctx.pageNumber, selection), Boolean(markFormat)),
+      ];
+    };
     // Owner ruling 2026-09-28: Lock / Unlock, right under Delete.
     const lockMenuItems = (members, selection) => {
       const spec = lockItemFor(members, selection);
@@ -840,6 +857,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         // as Cmd+V and the shape menu's doPasteAnnotation). ctx.x/y are the
         // right-click's client coords. doPasteAny covers both clipboards.
         item('Paste', 'paste', doPasteAny, hasAnyClipboard),
+        ...formatItems({ calloutIds: [ctx.calloutId] }, calloutObj),
         duplicateItem({ calloutIds: [ctx.calloutId] }),
         ...libraryItems({ calloutIds: [ctx.calloutId] }),
         ...layerItems({ calloutIds: [ctx.calloutId] }),
@@ -938,6 +956,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         // behavior + live diagnostic dump. Grayed out when the clipboard
         // is empty — matches Acrobat, Drawboard PDF, Bluebeam, Figma.
         item('Paste', 'paste', doPasteAny, hasAnyClipboard),
+        ...formatItems({ indices: [ctx.annotationIndex] }, menuObj),
         duplicateItem({ indices: [ctx.annotationIndex] }),
         ...libraryItems({ indices: [ctx.annotationIndex] }),
         ...layerItems({ indices: [ctx.annotationIndex] }),
@@ -1239,6 +1258,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           clearCalloutClipboard();
         }),
         item('Paste', 'paste', doPasteAny, hasAnyClipboard),
+        ...formatItems(familySelection),
         duplicateItem(familySelection),
         ...libraryItems(familySelection),
         ...layerItems(familySelection),
