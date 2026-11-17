@@ -81,3 +81,9 @@ test('hub dialogs: link box placeholder in the normal font, move list lines, PDF
   const pdft = readFileSync(new URL('../src/components/PdfToolsDialog.css', import.meta.url), 'utf8');
   assert.match(pdft, /html\[data-look="suite"\] \.pdft-tool:not\(\.is-on\):not\(:hover\)\{background:var\(--surface-2\)\}/);
 });
+
+test('Annotations panel group headers take the hover fill', () => {
+  const css = readFileSync(new URL('../src/sidebar/MarkupsPanel.css', import.meta.url), 'utf8');
+  assert.match(css, /\.markups-panel__row:hover,\s*\.markups-panel__group-head:hover,/);
+  assert.match(css, /\.markups-panel__group-head \{[^}]*border-radius: 6px;/);
+});
