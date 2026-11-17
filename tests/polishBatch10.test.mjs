@@ -49,3 +49,15 @@ test('card switch rows (Toolbars, Snapping, grid, layers) hover and press on the
   assert.match(css, /\.page-grid-settings__switch:not\(:disabled\):active \{ background: transparent !important; \}/);
   assert.match(css, /\.page-grid-settings__switch\[aria-checked="true"\]:not\(:disabled\):active \.page-grid-settings__knob \{ background: var\(--accent-press\); \}/);
 });
+
+test('template editor: Add checklist item hovers and presses, entity dots keep their colour when pressed and ring on hover', () => {
+  const jsx = read('src/home/TemplatesEditor.jsx');
+  assert.match(jsx, /<Icon name="plus" size=\{13\} \/> <span>Add checklist item<\/span>/);
+  assert.match(read('src/home/hub.css'), /button\[aria-label="Edit color"\]:has\(> span\):active,\n\.hub-btn\.hub-btn--icon/);
+  assert.match(read('src/styles/states.css'), /\[data-glyph-only\]\[data-glyph-only\]:not\(\.mobile-pdf-dock__side\):not\(\.mobile-pdf-dock__center\):not\(:is\(\[aria-label='Edit color'\], \[title='Edit color'\]\):empty\):active \{/);
+  assert.match(read('src/home/TemplatesEditor.css'), /\.tpl-entity-row > button\[aria-label="Edit color"\]:hover \{ box-shadow: 0 0 0 2px var\(--border-strong\); \}/);
+});
+
+test('a setting pill shows a press in the light one look (pressed-2)', () => {
+  assert.match(read('src/styles.css'), /\.chrome-pill:not\(:disabled\):active \{\n\s*background-color: var\(--pressed-2, var\(--pressed\)\) !important;/);
+});

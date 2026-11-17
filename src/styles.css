@@ -795,6 +795,13 @@ html[data-look="suite"] .btn {
 .chrome-pill:active {
   background: var(--pressed);
 }
+/* The pill rests on --surface-3, which in the light one look is the same
+   grey as --pressed, so a press showed nothing (and the hub's press rule
+   repaints it --pressed). It takes the next step, --pressed-2; the old look
+   has none and keeps --pressed. */
+.chrome-pill:not(:disabled):active {
+  background-color: var(--pressed-2, var(--pressed)) !important;
+}
 
 .chrome-pill[data-state='open'] {
   color: var(--text-1);

@@ -4814,7 +4814,9 @@ button[aria-label="Edit color"],
 .hub-btn.hub-btn--icon, .templates-mobile-more {
   -webkit-tap-highlight-color: transparent;
 }
-button[aria-label="Edit color"]:active,
+/* Only the phone's swatch (a dot inside a padded button) clears its box: the
+   desktop swatch IS its button's fill, which the press used to wipe out. */
+button[aria-label="Edit color"]:has(> span):active,
 .hub-btn.hub-btn--icon:not(:disabled):active, .templates-mobile-more:active {
   background-color: transparent !important;
 }

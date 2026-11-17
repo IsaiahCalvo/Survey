@@ -285,8 +285,10 @@ html[data-focus-ring='pointer'] :is(.tab-strip-list__open, .hero-swatch, .docume
    would paint one; the glyph or dot inside tightens to 88% instead.
    The phone dock's round buttons are the one exception to the plate reset:
    their --surface plate and hairline ARE the button at rest, so wiping them
-   under the finger flashed the button away (measured 2026-10-02). */
-[data-glyph-only][data-glyph-only]:not(.mobile-pdf-dock__side):not(.mobile-pdf-dock__center):active {
+   under the finger flashed the button away (measured 2026-10-02). So is a
+   colour swatch with nothing inside: its fill IS the colour, and wiping it
+   made the dot vanish under the pointer (the template editor's entity dots). */
+[data-glyph-only][data-glyph-only]:not(.mobile-pdf-dock__side):not(.mobile-pdf-dock__center):not(:is([aria-label='Edit color'], [title='Edit color']):empty):active {
   background-color: transparent !important;
   -webkit-tap-highlight-color: transparent;
 }

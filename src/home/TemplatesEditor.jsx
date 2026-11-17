@@ -3145,7 +3145,10 @@ export default function TemplatesEditor({
                                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                               }}
                             >
-                              <Icon name="plus" size={13} /> Add checklist item
+                              {/* The words sit in a span: an icon beside bare text counts as
+                                  icon-only to the app's hover and press rules, so the button
+                                  showed neither. */}
+                              <Icon name="plus" size={13} /> <span>Add checklist item</span>
                             </button>
 
                             {/* KAL-44 — Archived items live in the template
