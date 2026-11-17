@@ -70,3 +70,18 @@ test('tablet pass: project and file rows press under a finger, and the previewed
   assert.match(css, /\n\.survey-hub \.projects-list-row:active:not\(:has\(/);
   assert.match(css, /\.survey-hub \.documents-ledger-row\.is-selected:not\(\.is-dragging\):active,/);
 });
+
+test('ground steps: an idle top tab hovers and presses on the suite ground steps, for mouse and finger', () => {
+  const tokens = read('src/styles/tokens.css');
+  assert.match(tokens, /--hover-ground: #242426;\n\s*--pressed-ground: #0b0b0c;/);
+  assert.match(tokens, /--hover-ground: #ebebeb;\n\s*--pressed-ground: #e0e0e0;/);
+  const tabs = read('src/TabBar.jsx');
+  assert.match(tabs, /const TAB_HOVER_BG = 'var\(--hover-ground, var\(--hover\)\)';/);
+  assert.match(tabs, /const TAB_PRESSED_BG = 'var\(--pressed-ground, var\(--pressed\)\)';/);
+  assert.match(tabs, /isActive \? TAB_ACTIVE_PRESSED_BG : TAB_PRESSED_BG/);
+  const css = read('src/styles.css');
+  assert.match(css, /\[data-app-tab\]:not\(\[data-tab-active\]\):not\(\[aria-pressed='true'\]\):not\(:has\(:is\(button, \[role='button'\]\):active\)\):active \{\n\s*background: var\(--pressed-ground, var\(--pressed\)\) !important;/);
+  assert.equal(pressEnds('\\[data-app-tab\\]'), 2);
+  const rules = read('docs/suite/SUITE-RULES.md');
+  assert.match(rules, /\| ground-pressed \| Press on a control that rests on ground \| `#0b0b0c` \| `#e0e0e0` \|/);
+});
