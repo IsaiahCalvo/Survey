@@ -177,6 +177,7 @@ import { getTextMarkupRangeHandlePositions, getTextMarkupSelectionChrome } from 
 import RotationInputField from './RotationInputField';
 import { TRANSFORM_SELECTION_EVENT, canTypeTurn, recolourObject, resizeObjectTo, scaleObjectBy, setLineEndingOn, turnScaleKeyStep, wrapDegrees } from '../utils/selectionProperties.js';
 import { withMarkSubject } from '../utils/markSubject.js';
+import { withMarkNote } from '../utils/markNote.js';
 import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox, isImportedPath, isAbsoluteCoordPath, getLineEndpoints, computeLineBboxCenter } from '../utils/svgBoundingBox';
 import { resolveMidpointHandlePosition } from '../utils/lineDragMath.js';
 import { buildArrowheadRenderSpec, resolveLineEndingStyles, arrowheadShapePathD } from '../utils/lineRenderHelpers.js';
@@ -4072,6 +4073,22 @@ const SVGAnnotationLayerBody = memo(({
           updated.objects[i] = next;
         }
         if (updated) t.onSaveAnnotations(updated, { source: 'properties-panel', action: 'recolour', checkpointPolicy: 'normal' });
+        return;
+      }
+      if (detail.op === 'note') {
+        // Nightly 'mark-note': every picked mark takes the typed note (blank
+        // clears it), in one save. Locked marks keep theirs.
+        const objects = t.annotations?.objects || [];
+        let updated = null;
+        for (const i of t.selectedIds || []) {
+          const object = objects[i];
+          if (!object || object.locked || !canMoveAnnotation(object)) continue;
+          const next = withMarkNote(object, detail.text);
+          if (!next) continue;
+          updated = updated || deepClone(t.annotations);
+          updated.objects[i] = next;
+        }
+        if (updated) t.onSaveAnnotations(updated, { source: 'properties-panel', action: 'note', checkpointPolicy: 'normal' });
         return;
       }
       if (detail.op === 'subject') {

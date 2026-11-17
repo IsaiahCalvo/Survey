@@ -616,6 +616,21 @@ export const FEATURE_FLAGS = Object.freeze({
     stage: 'beta',
   }),
   'phone-sign': Object.freeze({ label: 'Add signature: Phone tab (scan a QR code, sign on the phone, it lands on the Draw pad)', stage: 'beta' }),
+  // Drawboard's More menu (KAL-718): one mark's look put on other marks.
+  'copy-format': Object.freeze({
+    label: 'Copy format / Paste format in the mark menu: give marks the line, fill, width, style and arrow heads of another',
+    stage: 'beta',
+  }),
+  // Drawboard's More menu (KAL-720): a copy of the picked marks on other pages.
+  'apply-to-pages': Object.freeze({
+    label: 'Apply to pages in the mark menu: a copy of the picked marks in the same spot on all pages or the pages typed',
+    stage: 'beta',
+  }),
+  // Drawboard's Edit Note (KAL-721): a written note on any mark.
+  'mark-note': Object.freeze({
+    label: 'A note on any mark: Edit note in the mark menu and the properties panel; shown in the Markups list and exported as the PDF comment',
+    stage: 'beta',
+  }),
   'group-marks': Object.freeze({
     label: 'Group / Ungroup in the mark menu: a click on any member picks the whole group',
     stage: 'beta',

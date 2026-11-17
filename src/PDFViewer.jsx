@@ -219,6 +219,9 @@ import {
   summarizeSelectionRestyle,
 } from './utils/selectionRestyle.js';
 import { toolSupportsCloudBorderStyle } from './utils/pdfAnnotationAppearance.js';
+import { applyMarkFormatToPage, copyMarkFormat, markFormatCalloutPatch } from './utils/markFormat.js';
+import { applyToPagesClipboard, applyToPagesToast } from './utils/applyToPages.js';
+import ApplyToPagesDialog from './components/ApplyToPagesDialog.jsx';
 import { isShapeToolButtonActive, resolveShapeToolPick } from './utils/cloudShapeTool.js';
 import { toolOffersCloudLineStyle } from './utils/textCloudBorder.js';
 import { trackSurveyAnalyticsEvent } from './utils/surveyAnalytics';
@@ -34207,6 +34210,150 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     return moved > 0;
   }, [handleSaveAnnotations, layerState, layersEnabled, showToast]);
 
+  // Nightly 'copy-format' (KAL-718, Drawboard's Copy Format / Paste Format):
+  // one mark's look kept, then put on the picked marks and callouts in one
+  // write (one undo step), each taking only what it has. Locked ones stay.
+  const [copyFormatOn] = useState(() => isFeatureOn('copy-format'));
+  const [markFormat, setMarkFormat] = useState(null);
+  const markFormatRef = useRef(null);
+  const copyMarkFormatFrom = useCallback((object) => {
+    const format = copyMarkFormat(object);
+    if (!format) return false;
+    markFormatRef.current = format;
+    setMarkFormat(format);
+    return true;
+  }, []);
+  const pasteMarkFormat = useCallback((pageNumber, selection = {}) => {
+    const format = markFormatRef.current;
+    if (!format || pageNumber == null || familyEditsBlocked()) return false;
+    const save = handleSaveAnnotationsRef.current;
+    if (typeof save !== 'function') return false;
+    const byPage = annotationsByPageRef.current || {};
+    const pageJSON = byPage[pageNumber] || byPage[String(pageNumber)];
+    const objects = Array.isArray(pageJSON?.objects) ? pageJSON.objects : [];
+    const indices = (selection.indices || [])
+      .filter((i) => Number.isInteger(i) && objects[i] && objects[i]?.data?.type !== 'callout');
+    const calloutIds = (selection.calloutIds || []).filter((id) => id != null);
+    if (indices.length === 0 && calloutIds.length === 0) return false;
+    let lockedCount = 0;
+    const mayChange = (mark) => {
+      if (isUserLocked(mark)) { lockedCount += 1; return false; }
+      return true;
+    };
+    const { nextPages, groupPages } = planGroupUpdate({
+      byPage,
+      selection: indices.length > 0 ? {
+        pageNumber,
+        indices,
+        ids: indices.map((i) => getAnnotationRenderIdentity(objects[i]).annotationId || ''),
+      } : null,
+      calloutIds,
+      calloutPageOf: (id) => (calloutsRef.current || []).find((callout) => callout?.id === id)?.pageNumber
+        ?? resolveCalloutPageNumber(id),
+      annotationPage: (page, members) => applyMarkFormatToPage(page, members, format, mayChange),
+      calloutStyle: (callout) => (mayChange(callout) ? markFormatCalloutPatch(callout, format) : null),
+      deriveCallouts: deriveCalloutsFromByPage,
+      applyCalloutList: applyCalloutListToByPage,
+      pageSizes: pageSizesRef.current || {},
+    });
+    if (nextPages.size === 0) {
+      if (lockedCount > 0) showToast('Locked marks keep their look. Unlock them first.', 'info');
+      return false;
+    }
+    const write = resolveGroupWrite({
+      byPage,
+      plan: { nextPages, groupPages },
+      phase: null,
+      baseline: new Map(),
+      buildDocumentAction: buildTextMarkupDocumentAction,
+    });
+    if (write.kind === 'saves') {
+      write.saves.forEach(([page, json]) => {
+        save(page, json, { source: 'object:modified', action: 'paste-format', checkpointPolicy: 'normal' });
+      });
+    } else if (write.kind === 'transaction') {
+      commitTextMarkupDocumentTransactionRef.current?.({ action: write.action, nextByPage: write.nextByPage }, {
+        source: 'object:modified',
+        action: 'paste-format',
+        applyWithoutOwnedStep: true,
+        skipHistory: write.skipHistory,
+      });
+    }
+    return true;
+  }, [showToast]);
+
+  // Nightly 'apply-to-pages' (KAL-720, Drawboard's Apply to Pages): a copy
+  // of the picked marks and callouts at the same spot on other pages. Each
+  // page is planned like a Paste (new ids, the paster's own, the landing
+  // page's scope, kept on a smaller page) and every page lands in ONE
+  // document transaction, so one Undo takes all the copies away.
+  const [applyToPagesOn] = useState(() => isFeatureOn('apply-to-pages'));
+  const [applyToPagesRequest, setApplyToPagesRequest] = useState(null);
+  const applyMarksToPages = useCallback((pageNumber, selection = {}, pages = []) => {
+    if (pageNumber == null || familyEditsBlocked()) return false;
+    const collected = collectFamilySelection(pageNumber, { ...selection, markerIds: [] });
+    const source = pageSizeFor(pageNumber);
+    const clipboard = applyToPagesClipboard(buildFamilyClipboard({
+      pageNumber,
+      objects: collected.objects,
+      indices: collected.indices,
+      callouts: collected.callouts,
+      markers: [],
+      pageMarkers: collected.pageMarkers,
+      pageWidth: source.width,
+      pageHeight: source.height,
+    }));
+    if (!clipboard) {
+      showToast('Highlights and Survey Markers stay on their own page.', 'info');
+      return false;
+    }
+    const pagesNow = annotationsByPageRef.current || {};
+    const nextByPage = { ...pagesNow };
+    let placed = 0;
+    for (const target of pages) {
+      const landing = Number(target);
+      if (!Number.isFinite(landing) || landing === Number(pageNumber)) continue;
+      const page = pagesNow[landing] || pagesNow[String(landing)] || { objects: [] };
+      const { width, height } = pageSizeFor(landing);
+      const held = clipboard.extent ? clampNudgeDelta([clipboard.extent], 0, 0, width, height) : { dx: 0, dy: 0 };
+      const plan = planFamilyPaste(clipboard, {
+        objects: Array.isArray(page.objects) ? page.objects : [],
+        dx: held.dx,
+        dy: held.dy,
+        pageWidth: width,
+        pageHeight: height,
+        scope: currentPasteScope(landing),
+        authorId: user?.id || null,
+        userId: user?.id || null,
+        pageNumber: landing,
+      });
+      if (plan.newMarkIds.length === 0 && plan.callouts.length === 0) continue;
+      const withMarks = { ...page, objects: plan.objects };
+      const pageMap = { [landing]: withMarks };
+      const projected = plan.callouts.length > 0
+        ? (applyCalloutListToByPage(pageMap, [...deriveCalloutsFromByPage(pageMap), ...plan.callouts], pageSizesRef.current || {})[landing] || withMarks)
+        : withMarks;
+      nextByPage[landing] = { ...projected, objects: orderPastedFamily(projected.objects, plan.pastedOrder, []) };
+      placed += 1;
+    }
+    if (placed === 0) return false;
+    const action = buildTextMarkupDocumentAction(pagesNow, nextByPage);
+    if (!action) return false;
+    const done = commitTextMarkupDocumentTransactionRef.current?.(
+      { action, nextByPage },
+      { source: 'object:modified', action: 'apply-to-pages', applyWithoutOwnedStep: true },
+    );
+    if (done) showToast(applyToPagesToast(placed), 'info');
+    return Boolean(done);
+  }, [collectFamilySelection, showToast, user?.id]);
+  const requestApplyToPages = useCallback((pageNumber, selection = {}) => {
+    const objects = annotationsByPageRef.current?.[pageNumber]?.objects || [];
+    const markCount = (selection.indices || []).filter((i) => objects[i] && objects[i]?.data?.type !== 'callout').length
+      + (selection.calloutIds || []).length;
+    if (pageNumber == null || markCount === 0) return;
+    setApplyToPagesRequest({ pageNumber, selection, markCount });
+  }, []);
+
   const pasteFamilyAt = useCallback((pageNumber, clientX, clientY) => {
     const clipboard = familyClipboardRef.current;
     if (!clipboard || pageNumber == null) return false;
@@ -38814,6 +38961,19 @@ ${pageBlocks}
           ),
           document.body,
         )}
+      {applyToPagesRequest && (
+        <ApplyToPagesDialog
+          pageCount={numPages}
+          sourcePage={applyToPagesRequest.pageNumber}
+          markCount={applyToPagesRequest.markCount}
+          onApply={(pages) => {
+            const request = applyToPagesRequest;
+            setApplyToPagesRequest(null);
+            applyMarksToPages(request.pageNumber, request.selection, pages);
+          }}
+          onCancel={() => setApplyToPagesRequest(null)}
+        />
+      )}
       {measureDepthDialog && (
         <MeasureDepthDialog
           kind={measureDepthDialog.kind}
@@ -38969,6 +39129,12 @@ ${pageBlocks}
         ungroupSelection: handleUngroupSelected,
         // Layers beta: Move to layer ▸.
         moveSelectionToLayer: layersEnabled ? handleMoveMarksToLayer : null,
+        // Nightly 'apply-to-pages' (KAL-720): Apply to pages… card.
+        requestApplyToPages: applyToPagesOn && numPages > 1 ? requestApplyToPages : null,
+        // Nightly 'copy-format' (KAL-718): Copy format / Paste format.
+        copyMarkFormat: copyFormatOn ? copyMarkFormatFrom : null,
+        pasteMarkFormat: copyFormatOn ? pasteMarkFormat : null,
+        markFormat: copyFormatOn ? markFormat : null,
         layerState: layersEnabled ? layerState : null,
         // w56: group-menu Delete of a mixed marks+callouts selection.
         beginBatchDelete: handleBeginBatchDelete,

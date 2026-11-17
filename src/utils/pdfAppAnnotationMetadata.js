@@ -61,6 +61,9 @@ const DATA_ALLOWLIST = [
   'pdfCloudVertexState',
   // Nightly 'mark-subject': the mark's own subject, written as /Subj too.
   'subject',
+  // Nightly 'mark-note': the mark's note, written as /Contents too when
+  // the mark has no words of its own.
+  'note',
 ];
 
 const STYLE_KEYS = [

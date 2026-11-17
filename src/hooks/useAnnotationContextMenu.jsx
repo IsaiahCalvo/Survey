@@ -75,6 +75,7 @@ import { marksHidden } from '../utils/marksHidden.js';
 import { DIMENSION_LEADER_PT, dimensionCaptionOffset, dimensionCaptionTurn, dimensionLeader, isDimensionMeasure } from '../utils/measure/dimensionLine.js';
 import { isSelectionBarDocked, setSelectionBarDocked } from '../utils/selectionBarDock.js';
 import { setPropertiesPanelOpen } from '../utils/propertiesPanelStore.js';
+import { canCopyMarkFormat } from '../utils/markFormat.js';
 
 // w61: `getPageObjects(pageNumber)` (optional) returns the page's mark list,
 // so the menu can note which marks it was opened on (by id) and still act on
@@ -210,7 +211,7 @@ export function useAnnotationContextMenu({ getPageObjects = null } = {}) {
 // targets (touchTargets.css + annotationContextMenu.css).
 // Design review 2026-10-27: the rows under the icon row carry an icon too,
 // like every other action menu (components/MenuRows.jsx picks by label).
-const MARK_ROW_ICONS = { group: 'selectGroup', ungroup: 'selectGroup', arrange: 'layers', moveToLayer: 'layers', align: 'alignLeft', lock: 'lock', unlock: 'lock', saveToLibrary: 'library' };
+const MARK_ROW_ICONS = { group: 'selectGroup', ungroup: 'selectGroup', arrange: 'layers', moveToLayer: 'layers', align: 'alignLeft', lock: 'lock', unlock: 'lock', saveToLibrary: 'library', copyFormat: 'brush', pasteFormat: 'paintBucket', applyToPages: 'pages', editNote: 'comment' };
 const markRowIcon = (it) => MARK_ROW_ICONS[it.key] || menuIconFor(it.label);
 const MENU_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter'];
 
@@ -514,6 +515,16 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     // layerId) and the document's layer list ({ layers, pdfOpacity }).
     moveSelectionToLayer = null,
     layerState = null,
+    // Nightly 'copy-format' (KAL-718, Drawboard's Copy Format / Paste
+    // Format): copyMarkFormat(pageObject) keeps one mark's look,
+    // pasteMarkFormat(pageNumber, selection) puts it on the picked marks;
+    // markFormat is the kept look (null = nothing kept yet).
+    // Nightly 'apply-to-pages' (KAL-720): requestApplyToPages(pageNumber,
+    // selection) opens the Apply to pages card. Null on a one-page PDF.
+    requestApplyToPages = null,
+    copyMarkFormat = null,
+    pasteMarkFormat = null,
+    markFormat = null,
     // Nightly 'group-marks' (Drawboard PDF Pro, row B13): PDFViewer's
     // handleGroupSelected(pageNumber, indices, calloutIds) and
     // handleUngroupSelected(...). Optional: without them no Group rows.
@@ -572,6 +583,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
   // projected objects); `indices` the ordinary marks' page indexes.
   const barDockOn = isFeatureOn('toolbar-settings');
   const subjectEditOn = isFeatureOn('mark-subject') && isFeatureOn('properties-panel');
+  const noteEditOn = isFeatureOn('mark-note') && isFeatureOn('properties-panel');
   const groupMarksOn = isFeatureOn('group-marks')
     && typeof groupSelection === 'function' && typeof ungroupSelection === 'function';
   const groupIdOfObject = (obj) => (obj?.data?.type === 'callout'
@@ -709,17 +721,27 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
       : []);
     // Nightly 'mark-subject': "Edit subject" opens the properties panel on the
     // Subject box (page marks only; callouts and Survey Markers have none).
-    const subjectItems = () => (subjectEditOn
-      ? [item('Edit subject', 'editSubject', () => {
-        setPropertiesPanelOpen(true);
-        const focusBox = (tries) => {
-          const box = typeof document !== 'undefined' ? document.querySelector('[data-props-subject]') : null;
-          if (box) { box.focus(); box.select?.(); return; }
-          if (tries > 0) requestAnimationFrame(() => focusBox(tries - 1));
-        };
-        requestAnimationFrame(() => focusBox(20));
-      })]
-      : []);
+    // Opens the properties panel and puts the cursor in one of its boxes.
+    const focusPanelBox = (selector, selectAll) => {
+      setPropertiesPanelOpen(true);
+      const focusBox = (tries) => {
+        const box = typeof document !== 'undefined' ? document.querySelector(selector) : null;
+        if (box) {
+          box.focus();
+          if (selectAll) box.select?.();
+          else if (typeof box.value === 'string') box.setSelectionRange?.(box.value.length, box.value.length);
+          return;
+        }
+        if (tries > 0) requestAnimationFrame(() => focusBox(tries - 1));
+      };
+      requestAnimationFrame(() => focusBox(20));
+    };
+    const subjectItems = () => [
+      ...(subjectEditOn ? [item('Edit subject', 'editSubject', () => focusPanelBox('[data-props-subject]', true))] : []),
+      // Nightly 'mark-note' (KAL-721, Drawboard's Edit Note): the panel's
+      // Note box, cursor at the end of what is there.
+      ...(noteEditOn ? [item('Edit note', 'editNote', () => focusPanelBox('[data-props-note]', false))] : []),
+    ];
     // Layers beta: "Move to layer ▸" (Drawboard's Change layer), listing the
     // document's layers. A layer every picked mark is already on is greyed
     // out; a hidden one says so (the marks vanish with it, as in Drawboard).
@@ -745,6 +767,23 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           !(onLayer.size === 1 && onLayer.has(layer.id)),
         )),
       }];
+    };
+    // Nightly 'apply-to-pages': "Apply to pages…" under Save to library.
+    // Survey Markers stay on their page, so a pick of only markers has none.
+    const applyPagesItems = (selection) => {
+      if (typeof requestApplyToPages !== 'function') return [];
+      const marks = (selection.indices || []).length + (selection.calloutIds || []).length;
+      if (marks === 0) return [];
+      return [item('Apply to pages…', 'applyToPages', () => requestApplyToPages(ctx.pageNumber, selection))];
+    };
+    // Nightly 'copy-format': Copy format (one mark with a look to copy) and
+    // Paste format (greyed until a look is kept), under Paste.
+    const formatItems = (selection, sourceObj = null) => {
+      if (typeof copyMarkFormat !== 'function' || typeof pasteMarkFormat !== 'function') return [];
+      return [
+        item('Copy format', 'copyFormat', () => copyMarkFormat(sourceObj), canCopyMarkFormat(sourceObj)),
+        item('Paste format', 'pasteFormat', () => pasteMarkFormat(ctx.pageNumber, selection), Boolean(markFormat)),
+      ];
     };
     // Owner ruling 2026-09-28: Lock / Unlock, right under Delete.
     const lockMenuItems = (members, selection) => {
@@ -840,8 +879,10 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         // as Cmd+V and the shape menu's doPasteAnnotation). ctx.x/y are the
         // right-click's client coords. doPasteAny covers both clipboards.
         item('Paste', 'paste', doPasteAny, hasAnyClipboard),
+        ...formatItems({ calloutIds: [ctx.calloutId] }, calloutObj),
         duplicateItem({ calloutIds: [ctx.calloutId] }),
         ...libraryItems({ calloutIds: [ctx.calloutId] }),
+        ...applyPagesItems({ calloutIds: [ctx.calloutId] }),
         ...layerItems({ calloutIds: [ctx.calloutId] }),
         ...barItems(),
         // UX: right-click Delete = the SAME gated delete as pressing Delete/
@@ -938,8 +979,10 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         // behavior + live diagnostic dump. Grayed out when the clipboard
         // is empty — matches Acrobat, Drawboard PDF, Bluebeam, Figma.
         item('Paste', 'paste', doPasteAny, hasAnyClipboard),
+        ...formatItems({ indices: [ctx.annotationIndex] }, menuObj),
         duplicateItem({ indices: [ctx.annotationIndex] }),
         ...libraryItems({ indices: [ctx.annotationIndex] }),
+        ...applyPagesItems({ indices: [ctx.annotationIndex] }),
         ...layerItems({ indices: [ctx.annotationIndex] }),
         ...subjectItems(),
         ...barItems(),
@@ -1239,8 +1282,10 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           clearCalloutClipboard();
         }),
         item('Paste', 'paste', doPasteAny, hasAnyClipboard),
+        ...formatItems(familySelection),
         duplicateItem(familySelection),
         ...libraryItems(familySelection),
+        ...applyPagesItems(familySelection),
         ...layerItems(familySelection),
         ...((familySelection.calloutIds || []).length || (familySelection.markerIds || []).length ? [] : subjectItems()),
         ...barItems(),

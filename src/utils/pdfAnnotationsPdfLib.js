@@ -91,6 +91,7 @@ import {
   readableMarkSubject,
 } from './pdfOutsideEdits.js';
 import { markSubjectOf } from './markSubject.js';
+import { markNoteOf } from './markNote.js';
 import {
   applyFormFieldValuesToPdfDoc,
   collectFormFieldValues,
@@ -508,6 +509,13 @@ const stampExportedAppAnnotation = (pdfDoc, ref, { modified = null, created = nu
     appType: metadata.appType,
     hasCloudBorder,
   })));
+  // A mark's note (Nightly 'mark-note') is its comment in other apps, when
+  // the mark has no words of its own (a text box's words, a measure's
+  // reading). Set before the fingerprint, so it never reads as an outside edit.
+  const ownNote = markNoteOf({ data: metadata.data });
+  if (ownNote && !String(lookupPdfValue(pdfDoc, dict.get(PDFName.of('Contents')))?.decodeText?.() || '').trim()) {
+    dict.set(PDFName.of('Contents'), pdfTextString(ownNote));
+  }
   metadata.written = buildWrittenFingerprint({
     rect: readPdfExactNumberArray(pdfDoc, dict.get(PDFName.of('Rect'))),
     color: readPdfNativeNumberArray(pdfDoc, dict.get(PDFName.of('C'))),
