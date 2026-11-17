@@ -41,3 +41,11 @@ test('Settings: chosen joined-choice options press, switches hover and press, th
   assert.match(css, /\.account-switch:not\(:disabled\):active \.account-switch-track \{ background: var\(--pressed-2, var\(--pressed\)\); transition: none; \}/);
   assert.match(css, /\.account-switch\[aria-checked='true'\]:not\(:disabled\):active \.account-switch-track \{ background: var\(--accent-press\); \}/);
 });
+
+test('card switch rows (Toolbars, Snapping, grid, layers) hover and press on the track, not the row', () => {
+  const css = read('src/components/PageGridSettings.css');
+  assert.match(css, /\.page-grid-settings__switch:not\(:disabled\):hover \.page-grid-settings__knob \{ box-shadow: inset 0 0 0 1px var\(--text-3\); \}/);
+  assert.match(css, /\.page-grid-settings__switch\[aria-checked="true"\]:not\(:disabled\):hover \.page-grid-settings__knob \{ background: var\(--accent-light\); box-shadow: none; \}/);
+  assert.match(css, /\.page-grid-settings__switch:not\(:disabled\):active \{ background: transparent !important; \}/);
+  assert.match(css, /\.page-grid-settings__switch\[aria-checked="true"\]:not\(:disabled\):active \.page-grid-settings__knob \{ background: var\(--accent-press\); \}/);
+});
