@@ -599,8 +599,29 @@ button {
      --hover       raised      --pressed  ground (dark) / raised-2 (light)
    Every rule above this block still holds: a chosen thing never takes accent
    words or an accent frame, borders are split by job, one focus ring. */
+/* The suite's one font (SUITE-RULES.md, "One font"): Geist for the chrome,
+   Geist Mono for numbers that line up. Bundled, so it works offline; the
+   browser only fetches it once the suite look asks for it. Licence:
+   src/styles/fonts/Geist-OFL.txt. Annotations keep their own single-name
+   fonts. */
+@font-face {
+  font-family: "Geist";
+  src: url("./fonts/Geist-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Geist Mono";
+  src: url("./fonts/GeistMono-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
 html[data-look="suite"] {
   color-scheme: dark;
+  --font-ui: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", Consolas, monospace;
   --surface-0: #131315;
   --surface-1: #131315;
   --surface-2: #1c1c1e;
