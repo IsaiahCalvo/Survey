@@ -98,10 +98,19 @@ export const OptionalAuthPrompt = ({ showAuthModal, onAuthModalChange }) => {
  *
  * Then render: <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
  */
+// "Continue without an account", kept for this tab only (sessionStorage).
+const VISITOR_KEY = 'survey.visitorNoAccount.v1';
+export function visitorChoseNoAccount() {
+  try { return globalThis.sessionStorage?.getItem(VISITOR_KEY) === '1'; } catch { return false; }
+}
+function rememberVisitorChoice() {
+  try { globalThis.sessionStorage?.setItem(VISITOR_KEY, '1'); } catch { /* private window */ }
+}
+
 export const useOptionalAuth = () => {
   const { isAuthenticated, loading } = useAuth();
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [authPromptDismissed, setAuthPromptDismissed] = useState(false);
+  const [authPromptDismissed, setAuthPromptDismissed] = useState(visitorChoseNoAccount);
 
   // Clear dismissal flag for non-authenticated users on app load
   // Only authenticated users should have their dismissal remembered
@@ -110,8 +119,10 @@ export const useOptionalAuth = () => {
       if (!isAuthenticated) {
         // Clear dismissal flag for non-authenticated users (so modal shows on each new session)
         localStorage.removeItem('authPromptDismissed');
-        // Reset to false so modal can be shown for this new session
-        setAuthPromptDismissed(false);
+        // A visitor who chose "Continue without an account" is not asked again
+        // in the same tab: a refresh while marking up a file on this device
+        // put the sign-in card back over their work. A new tab or visit asks.
+        setAuthPromptDismissed(visitorChoseNoAccount());
       } else {
         // Only check for dismissal if user is authenticated
         const dismissed = localStorage.getItem('authPromptDismissed');
@@ -123,7 +134,7 @@ export const useOptionalAuth = () => {
   }, [loading, isAuthenticated]);
 
   useEffect(() => {
-    if (!loading && !isAuthenticated && !authPromptDismissed && !showAuthModal) {
+    if (!loading && !isAuthenticated && !authPromptDismissed && !showAuthModal && !visitorChoseNoAccount()) {
       // Skip auth modal in dev test mode (eliminated from production builds)
       if (import.meta.env.DEV && window.__devTestPdf) return;
       // Show modal immediately for non-authenticated users
@@ -144,9 +155,11 @@ export const useOptionalAuth = () => {
     // For authenticated users: persist dismissal to localStorage
     if (isAuthenticated) {
       localStorage.setItem('authPromptDismissed', 'true');
+    } else {
+      rememberVisitorChoice();
     }
-    // Set dismissed to true so modal doesn't show again this session
-    // (but will show again on next session/reload for non-authenticated users)
+    // Set dismissed to true so modal doesn't show again in this tab
+    // (a new tab or visit asks again for non-authenticated users)
     setAuthPromptDismissed(true);
     setShowAuthModal(false);
   };

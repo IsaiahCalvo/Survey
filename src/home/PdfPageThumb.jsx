@@ -22,6 +22,7 @@ import { useState, useEffect, useRef } from 'react';
 import { loadPdfjs } from '../utils/pdfWorkerConfig';
 import { pdfjsAssetOptions } from '../utils/pdfjsAssets.js';
 import { readBlobAsArrayBuffer } from '../utils/blobArrayBuffer';
+import { deviceFiles, isDeviceDocumentId } from '../services/deviceFiles.js';
 import { thumbnailStore, thumbCacheKey } from '../services/thumbnailStore';
 import {
   canResolveThumbnailBytes,
@@ -104,7 +105,18 @@ const resolvePdfBytes = async (doc, downloadDocument) => {
     return res.arrayBuffer();
   }
 
-  // 3. A Supabase storage path via the authenticated download only. The bucket
+  // 3. A visitor's file kept on this device: its bytes are in IndexedDB. Without
+  // this the preview drew a made-up page with made-up marks (the fallback).
+  if (doc.device_file && isDeviceDocumentId(doc.id)) {
+    const stored = await deviceFiles().read(doc.id);
+    const bytes = stored?.bytes;
+    if (!bytes) return null;
+    if (bytes instanceof ArrayBuffer) return bytes;
+    if (ArrayBuffer.isView(bytes)) return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    return readBlobAsArrayBuffer(bytes);
+  }
+
+  // 4. A Supabase storage path via the authenticated download only. The bucket
   // is private, so a getPublicUrl() fetch can never succeed — no public fallback.
   const filePath = doc.file_path || doc.filePath;
   if (filePath) {

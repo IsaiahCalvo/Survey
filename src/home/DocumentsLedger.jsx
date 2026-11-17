@@ -395,7 +395,7 @@ export default function DocumentsLedger({
       color: RIBBON[i % RIBBON.length],
       shared: !!d.shared,
       createdMs: Date.parse(d.created_at || '') || 0,
-      openedMs: homeExtras.openedByDoc.get(d.id) || 0,
+      openedMs: homeExtras.openedByDoc.get(d.id) || (d.device_file && Date.parse(d.last_opened_at || '')) || 0,
       tags: homeExtras.tagsByDoc.get(d.id) || [],
     };
   }), [listDocuments, projects, homeExtras.openedByDoc, homeExtras.tagsByDoc]);
@@ -1689,14 +1689,18 @@ export default function DocumentsLedger({
                   }
                 />
               </div>
-              {/* Team — the document's owner (uploader), then its collaborators. */}
+              {/* Team — the document's owner (uploader), then its collaborators.
+                  A file kept on this device has no team and no review: both
+                  showed as an empty heading and two greyed-out fields. */}
+              {!previewDoc.raw?.device_file && (
               <div style={{ marginTop: 14, flex: 'none' }}>
                 <div className="section-label">Team</div>
                 <div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
                   {renderTeam({ fontSize: 12, fontWeight: 600 })}
                 </div>
               </div>
-              {reviewOn && (
+              )}
+              {reviewOn && !previewDoc.raw?.device_file && (
                 <div style={{ marginTop: 14, flex: 'none' }} data-doc-review-panel="">
                   <ReviewFields review={reviews.get(previewDoc.id)} people={reviewPeople} canEdit={canEditReview} onSave={(patch) => saveReview(previewDoc.id, patch)} />
                 </div>
@@ -1822,6 +1826,7 @@ export default function DocumentsLedger({
                 />
               </div>
               <div className="documents-mobile-detail-facts">
+                {!mobileDetailDoc.raw?.device_file && (
                 <div>
                   <span>Team</span>
                   <div style={{ display: 'grid', gap: 6 }}>
@@ -1833,7 +1838,8 @@ export default function DocumentsLedger({
                     ))}
                   </div>
                 </div>
-                {reviewOn && (
+                )}
+                {reviewOn && !mobileDetailDoc.raw?.device_file && (
                   <div data-doc-review-panel="">
                     <ReviewFields review={reviews.get(mobileDetailDoc.id)} people={reviewPeople} canEdit={canEditReview} onSave={(patch) => saveReview(mobileDetailDoc.id, patch)} />
                   </div>
