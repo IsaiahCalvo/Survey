@@ -17,8 +17,9 @@
 //     plans the database thinks are live although Stripe should have renewed
 //     or ended them days ago (a missed webhook strands a payer or gives away Pro)
 //   - Cloudflare R2 bytes and operations (public.r2_usage_daily /
-//     pdf_r2_copies) at 80% of pdf-file-url's own cap, which is itself 80% of
-//     R2's free tier: a warning well before the app falls back to Supabase
+//     pdf_r2_copies) at 80% of pdf-file-url's own cap, which is Survey's share
+//     of 80% of R2's free tier (shared with Walkthru and Plot on one Cloudflare
+//     account): a warning well before the app falls back to Supabase
 // Prints counts and function names only, plus crash messages, which the
 // browser already scrubbed (crashReporter.js): CI logs on this repo are public.
 //
@@ -124,11 +125,11 @@ export const QUOTAS = Object.freeze({
   groqSpeakRequests: { label: 'Voice agent spoken replies today (orpheus)', limit: 100, over: 'Groq Developer plan, about $22 per million characters' },
   groqSpeakTokens: { label: 'Voice agent spoken-reply tokens today (orpheus)', limit: 3_600, over: 'Groq Developer plan, about $22 per million characters' },
   // Cloudflare R2 (docs/PDF-R2.md). The limits are Survey's own hard stop,
-  // 80% of R2's free tier (public.r2_limits()); past it PDFs open from
-  // Supabase again, so this alert comes at 64% of the free tier.
-  r2StoredBytes: { label: 'Cloudflare R2 PDF copies (Survey stops copying here, 80% of the free 10 GB)', limit: 8e9, bytes: true, decimal: true, over: 'nothing: opens fall back to Supabase; R2 would charge $0.015 per GB a month past 10 GB' },
-  r2ClassAOps: { label: 'Cloudflare R2 writes, last 31 days (Survey stops here, 80% of the free 1M)', limit: 800_000, over: 'nothing: opens fall back to Supabase; R2 would charge $4.50 per million past 1M' },
-  r2ClassBOps: { label: 'Cloudflare R2 reads, last 31 days (Survey stops here, 80% of the free 10M)', limit: 8_000_000, over: 'nothing: opens fall back to Supabase; R2 would charge $0.36 per million past 10M' },
+  // Survey's share of 80% of R2's account-wide free tier, which Walkthru and
+  // Plot share (public.r2_limits()); past it PDFs open from Supabase again.
+  r2StoredBytes: { label: 'Cloudflare R2 PDF copies (Survey stops copying here, its 5 GB share of the free 10 GB)', limit: 5e9, bytes: true, decimal: true, over: 'nothing: opens fall back to Supabase; R2 would charge $0.015 per GB a month past 10 GB' },
+  r2ClassAOps: { label: 'Cloudflare R2 writes, last 31 days (Survey stops here, its 500,000 share of the free 1M)', limit: 500_000, over: 'nothing: opens fall back to Supabase; R2 would charge $4.50 per million past 1M' },
+  r2ClassBOps: { label: 'Cloudflare R2 reads, last 31 days (Survey stops here, its 5M share of the free 10M)', limit: 5_000_000, over: 'nothing: opens fall back to Supabase; R2 would charge $0.36 per million past 10M' },
 });
 
 const formatAmount = (value, quota) => (quota.bytes
