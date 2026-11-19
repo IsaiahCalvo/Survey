@@ -217,17 +217,21 @@ test('two spellings in one folder queue in call order', async (t) => {
   const { directory } = await fixture(t);
   let release;
   const held = new Promise((resolve) => { release = resolve; });
+  // Wait for the first write to reach its rename, not a fixed 20 ms: on a
+  // busy CI runner the write and flush took longer and the check saw [].
+  let reachedRename;
+  const firstAtRename = new Promise((resolve) => { reachedRename = resolve; });
   const order = [];
   const writer = createAtomicFileWriter({ filesystem: {
     ...fs,
     async rename(from, to) {
       order.push(path.basename(to));
-      if (path.basename(to) === 'Target.pdf') await held;
+      if (path.basename(to) === 'Target.pdf') { reachedRename(); await held; }
       return fs.rename(from, to);
     },
   } });
   const first = writer(path.join(directory, 'Target.pdf'), 'older');
-  await new Promise((resolve) => setTimeout(resolve, 20));
+  await firstAtRename;
   const second = writer(path.join(directory, 'target.pdf'), 'newer');
   await new Promise((resolve) => setTimeout(resolve, 20));
   assert.deepEqual(order, ['Target.pdf']);

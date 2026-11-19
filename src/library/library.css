@@ -1,0 +1,34 @@
+/* Library (My library / Company library). Rows match the Templates
+   Category rows: the name, a quiet count, and one More button that opens
+   the shared action menu (Add Category Type, Rename, Remove). The three
+   bordered buttons on every row read as an unfinished form. */
+.library-card__head { padding: 8px 8px 0 14px; }
+/* The Templates section labels: 11/600, muted (TemplatesEditor's .micro). */
+.library-card__head .hub-section-label { font-size: 11px; font-weight: 600; color: var(--text-3); }
+.library-add {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 14px 10px;
+  border-bottom: 1px solid var(--ink-500);
+}
+.library-list { list-style: none; margin: 0; padding: 0; }
+.library-row {
+  display: flex; align-items: center; gap: 8px;
+  min-height: 40px; padding: 4px 8px 4px 14px;
+  border-bottom: 1px solid var(--ink-500);
+  transition: background-color var(--motion-state, 150ms) var(--ease-state, cubic-bezier(0.33, 1, 0.68, 1));
+}
+.library-card .library-list > li:last-child > .library-row:last-child,
+.library-card .library-list > li:last-child > .library-list > li:last-child > .library-row { border-bottom: 0; }
+.library-row__name { flex: 1; min-width: 0; font-weight: 500; color: var(--text-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.library-row.is-type { padding-left: 34px; }
+.library-row.is-type .library-row__name { font-weight: 400; color: var(--text-2); }
+.library-row__count { flex: none; color: var(--text-3); font-size: 12px; font-variant-numeric: tabular-nums; }
+@media (hover: hover) {
+  .library-row:hover { background: var(--hover); }
+}
+.library-row.is-menu-open { background: var(--hover); }
+/* A finger gets a 40px target on the More button (the row's full height). */
+@media (pointer: coarse) {
+  .library-row__more { position: relative; }
+  .library-row__more::after { content: ''; position: absolute; inset: -8px; }
+}

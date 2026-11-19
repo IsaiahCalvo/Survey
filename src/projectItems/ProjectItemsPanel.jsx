@@ -656,7 +656,13 @@ export default function ProjectItemsPanel({
             <button type="button" className="item-chip is-clear" onClick={() => { setQ(''); setQuick(new Set()); setGroups(new Set()); setTagFilter(new Set()); setAssignee('all'); }}>Clear</button>
           ) : null}
         </div>
-        {archived && <div className="item-archived-note">Showing archived {k.many.toLowerCase()}.</div>}
+        {archived && (
+          <div className="item-archived-note">
+            Showing archived {k.many.toLowerCase()}.{' '}
+            {/* The way back sat only in the ... menu. */}
+            <button type="button" className="btn ghost item-archived-back" onClick={() => { setArchived(false); setSel(new Set()); setOpenId(null); }}>Show open {k.many.toLowerCase()}</button>
+          </div>
+        )}
         {selecting && (
           <div className="project-items__bulk" data-item-bulk>
             <span
@@ -693,6 +699,19 @@ export default function ProjectItemsPanel({
               ) : (
                 <div className="meta item-empty-line">No {k.many.toLowerCase()} yet.</div>
               )
+            ) : !archived && !filtersOn && archivedCount > 0 ? (
+              /* Every one is archived and no filter is on: "match these
+                 filters" was wrong (KAL-652), and the bare line sat where
+                 Tasks shows its full empty state. */
+              <EmptyState
+                icon="listChecks"
+                line={`No open ${k.many.toLowerCase()}`}
+                description={`${archivedCount} archived. New ${k.many.toLowerCase()} show here.`}
+                actionLabel={canEdit ? `New ${k.one.toLowerCase()}` : undefined}
+                onAction={canEdit ? createItem : undefined}
+                secondaryLabel={`Show archived (${archivedCount})`}
+                onSecondary={() => { setArchived(true); setSel(new Set()); setOpenId(null); }}
+              />
             ) : (
               <div className="meta item-empty-line">{archived ? `No archived ${k.many.toLowerCase()}.` : `No ${k.many.toLowerCase()} match these filters.`}</div>
             )

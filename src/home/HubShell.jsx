@@ -216,9 +216,11 @@ export const EmptyState = ({ icon, line, description, actionLabel, actionIcon = 
     ) : (
       <div style={{ fontSize: 13, color: 'var(--ink-200)' }}>{line}</div>
     )}
-    <button className="btn primary" type="button" onClick={() => onAction && onAction()}>
-      <Icon name={actionIcon} size={12} />{actionLabel}
-    </button>
+    {actionLabel ? (
+      <button className="btn primary" type="button" onClick={() => onAction && onAction()}>
+        <Icon name={actionIcon} size={12} />{actionLabel}
+      </button>
+    ) : null}
     {secondaryLabel && (
       <button className="btn ghost" type="button" onClick={() => onSecondary && onSecondary()}>
         {secondaryLabel}

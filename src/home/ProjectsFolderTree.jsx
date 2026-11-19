@@ -31,7 +31,8 @@ import { useState, useMemo, useEffect, useLayoutEffect, useRef, useCallback, Sus
 import { hoverOnly, useTooltip } from '../components/Tooltip';
 import { createPortal } from 'react-dom';
 import { mergeProjectDocumentOrder, orderDocumentsByProject } from './projectDocumentOrder.js';
-import { HubShell, Icon, Avatar, AvatarStack, Search, EmptyState } from './HubShell';
+import { HubShell, Icon, Avatar, AvatarStack, Search, EmptyState, PdfThumb } from './HubShell';
+import PdfPageThumb from './PdfPageThumb.jsx';
 import { presenceInitials } from '../components/presenceIdentity.js';
 import { userColorFill } from '../utils/userColors.js';
 import { countLabel } from './countLabel.js';
@@ -1522,14 +1523,14 @@ export default function ProjectsFolderTree({
                     </div>
                   </div>
                   <div className="projects-file-grid" style={{ display: 'grid', gap: 12, padding: '0 10px 6px', fontSize: 11, color: 'var(--ink-200)', letterSpacing: 0 }}>
-                    <span></span><span>Name</span><span className="projects-file-editor-head"><span className="projects-file-editor-label">Last edited by</span><span className="projects-file-editor-label-short" aria-label="Last edited by">By</span></span><span>Edited</span><span></span>
+                    <span></span><span></span><span>Name</span><span className="projects-file-editor-head"><span className="projects-file-editor-label">Last edited by</span><span className="projects-file-editor-label-short" aria-label="Last edited by">By</span></span><span>Edited</span><span></span>
                   </div>
                   {openFiles.length === 0 ? (
                     <div className="meta" style={{ fontSize: 12, padding: '12px 10px' }}>No files in this project yet.</div>
                   ) : (
                     <SortableRearrangeList ids={openFiles.map((f) => f.id)} onReorder={reorderFiles}>
-                    <div style={{ display: 'grid', gap: 1 }}>
-                      {openFiles.map((f, i) => {
+                    <div className="projects-file-rows" style={{ display: 'grid' }}>
+                      {openFiles.map((f) => {
                         const isChecked = selFiles.has(f.id);
                         // "Last edited by" owner — the document's own user id
                         // when present, else the project owner. Resolved to a
@@ -1554,14 +1555,10 @@ export default function ProjectsFolderTree({
                             {...keyboardControlProps()}
                             style={{
                               // UX 2026-09-17 (owner ruling): a ticked row lifts a
-                              // surface step, never a warm gold wash.
-                              // UX 2026-09-22: the 2% zebra stripe KEEPS its wash on
-                              // purpose. The obvious token swap is --surface-3, but
-                              // --ink-600 (the ticked look, left) already IS
-                              // --surface-3, so a striped row would be painted the
-                              // selected colour. Fixing this needs a new banding
-                              // token, which is a palette decision, not a rename.
-                              background: fileSelect && isChecked ? 'var(--ink-600)' : (i % 2 ? 'transparent' : 'rgba(255,255,255,0.02)'),
+                              // surface step, never a warm gold wash. Rows part
+                              // with a divider (hub.css .projects-file-rows), as on
+                              // Documents; the old 2% white stripe vanished in light.
+                              background: fileSelect && isChecked ? 'var(--ink-600)' : 'transparent',
                               borderRadius: 6,
                               display: 'grid',
                               gap: 12, alignItems: 'center', padding: '8px 10px', fontSize: 12,
@@ -1576,6 +1573,18 @@ export default function ProjectsFolderTree({
                               isDragging={isDragging}
                               style={{ width: 24, height: 24 }}
                             />
+                            {/* First page, as on Documents: fixed height, true
+                                shape, a wide sheet shrinks to its column. */}
+                            <span className="projects-file-thumb">
+                              <PdfPageThumb
+                                doc={f}
+                                downloadDocument={downloadForOffline}
+                                variant="row"
+                                height={26}
+                                maxWidth={40}
+                                fallback={<span style={{ width: 20, height: 26, flex: 'none' }}><PdfThumb height={26} stamp="" /></span>}
+                              />
+                            </span>
                             <div style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: '16px' }}>{f.name}</div>
                             {/* "Last edited by" — file's owner resolved against
                                 the member directory: avatar + first name. */}

@@ -1529,7 +1529,8 @@ export default function DocumentsLedger({
                     {/* Thumbnail column — its own cell, centred so every
                         thumbnail lines up under the next. A real first-page
                         render, fixed in height with width set to the page's
-                        true aspect ratio. Shares the by-id render cache with
+                        true aspect ratio; a wide sheet shrinks to keep 8 px
+                        clear of the name. Shares the by-id render cache with
                         the preview pane; falls back to the stylised
                         placeholder on failure. */}
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1539,6 +1540,7 @@ export default function DocumentsLedger({
                           downloadDocument={downloadDocument}
                           variant="row"
                           height={densityRow.thumb}
+                          maxWidth={densityRow.thumb + 16}
                           fallback={<div style={{ width: Math.round(densityRow.thumb * 0.77), height: densityRow.thumb, flex: 'none' }}><PdfThumb height={densityRow.thumb} stamp="" color={d.color} /></div>}
                         />
                       ) : (
@@ -1547,6 +1549,7 @@ export default function DocumentsLedger({
                         downloadDocument={downloadDocument}
                         variant="row"
                         height={30}
+                        maxWidth={46}
                         fallback={<div style={{ width: 23, height: 30, flex: 'none' }}><PdfThumb height={30} stamp="" color={d.color} /></div>}
                       />
                       )}
@@ -1672,16 +1675,16 @@ export default function DocumentsLedger({
               <div className="meta" style={{ marginTop: 4, fontSize: 12, flex: 'none' }}>
                 {[previewDoc.project === 'Sandbox' ? null : previewDoc.project, previewDoc.size, previewDoc.pages != null ? countLabel(previewDoc.pages, 'page') : null, previewDoc.rev || null].filter(Boolean).join(' · ')}
               </div>
-              {/* Preview viewport — a set custom size; the page is contained
-                  inside at its true aspect ratio, letterboxed against a dark
-                  backdrop. It can shrink (never scroll) on a short pane. */}
-              <div style={{ marginTop: 14, height: 360, flex: '0 1 auto', minHeight: 0 }}>
+              {/* Preview: the page at its true shape, full width, at most
+                  360 px tall, with no backdrop round it. It can shrink
+                  (never scroll) on a short pane. */}
+              <div style={{ marginTop: 14, maxHeight: 360, flex: '0 1 auto', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
                 <PdfPageThumb
                   key={previewDoc.id}
                   doc={previewDoc.raw}
                   downloadDocument={downloadDocument}
                   variant="preview"
-                  fill
+                  fit
                   priority
                   fallback={
                     <div style={{ width: '100%', height: '100%' }}>

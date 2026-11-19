@@ -6,7 +6,7 @@ This file is how they stay in step. The same text sits at
 `docs/suite/SUITE-RULES.md` in all three repos. Change it in all three in the
 same round, or not at all.
 
-Last checked against the code: 2026-11-16.
+Last checked against the code: 2026-11-17.
 
 ## Before you build anything
 
@@ -154,6 +154,8 @@ with a deeper coral, because the bright coral is too pale to read on white.
 | raised | A field, a well, a menu, a raised card | `#242426` | `#f5f5f5` |
 | raised-2 | One step past raised | `#2c2c2f` | `#ebebeb` |
 | pressed-2 | Press on a control that rests on raised, such as a grey button | `#131315` | `#e0e0e0` |
+| ground-hover | Hover on a control that rests on ground, such as an idle tab | `#242426` | `#ebebeb` |
+| ground-pressed | Press on a control that rests on ground | `#0b0b0c` | `#e0e0e0` |
 | line | A thin line between things | `#2c2c2f` | `#ececec` |
 | line-strong | A frame, a firmer divider | `#3f3f43` | `#d4d4d4` |
 | edge | The only thing that shows a control is there (an empty field, a ghost button, a checkbox) | `#737378` | `#8a8a8f` |
@@ -174,7 +176,10 @@ with a deeper coral, because the bright coral is too pale to read on white.
 Hover and pressed fills come from the states table above: hover is `raised`
 on a panel; pressed is `ground` in dark and `raised-2` in light. A control
 that already rests on `raised` (a grey button) hovers to `raised-2` and
-presses to `pressed-2`, so a press never matches its hover.
+presses to `pressed-2`, so a press never matches its hover. A control that
+rests on `ground` (an idle tab in the top bar) hovers to `ground-hover` and
+presses to `ground-pressed`: in dark, ground is already the pressed grey, and
+in light, raised is one level off ground, too close to see.
 
 Checked for contrast (WCAG 2.1). Text, text-2 and text-3 pass 4.5:1 on
 ground, panel, raised and raised-2 in both modes. Coral passes 4.5:1 as
@@ -236,6 +241,7 @@ Words drawn on a page keep the font their mark picked.
 | edge | `--border-strong` | `--edge` | `--edge` |
 | text, text-2, text-3 | `--text-1`, `--text-2`, `--text-3` | `--text-primary`, `--text-secondary`, `--text-muted`, `--ink`, `--ink-soft`, `--ink-muted` | `--ink`, `--ink-body`, `--ink-muted` |
 | text-off | `--text-disabled` | `--text-off` | `--ink-off` |
+| ground-hover, ground-pressed | `--hover-ground`, `--pressed-ground` | not needed: `--state-hover` and `--state-pressed` are tints, so they show over ground | `--hover-ground`, `--pressed-ground` |
 | coral | `--accent` | `--accent` | `--accent` |
 | on-coral | `--accent-text` | `--on-accent` | `--ink-inverse` |
 | danger | `--danger`, `--danger-text` | `--destructive`, `--danger-text`; words on a red fill `--on-destructive` | `--error`, `--error-text` |
