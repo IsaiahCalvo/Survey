@@ -16945,7 +16945,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
                       allowBlank: true,
                       formulae: [validationFormula],
                       showErrorMessage: true,
-                      errorStyle: 'error',
+                      errorStyle: 'stop',
                       errorTitle: 'Invalid selection',
                       error: 'Please select a valid entity from the list.'
                     };
@@ -24865,11 +24865,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     }
 
     try {
-      // Update document metadata
+      // Update document metadata. documents.template_id is a uuid; a
+      // template made in this app keeps its own id ("t_...") until it has a
+      // row, and sending that made the whole write fail, page and zoom too.
+      const templateId = currentTemplate?.id || null;
+      const templateIdFits = templateId === null || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(templateId));
       await updateSupabaseDocument(pdfFile.id, {
         current_page: pageNum,
         zoom_level: scale,
-        template_id: currentTemplate?.id || null
+        ...(templateIdFits ? { template_id: templateId } : {})
       });
 
     } catch (error) {

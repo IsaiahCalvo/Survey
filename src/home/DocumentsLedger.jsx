@@ -1052,17 +1052,17 @@ export default function DocumentsLedger({
       )}
       {onOpenFromDrive && (
         <button className="btn documents-desktop-new" data-home-onedrive="desktop" aria-label="Open from OneDrive" {...tip('Open a PDF from OneDrive', 'below')} onClick={() => onOpenFromDrive()}>
-          <Icon name="oneDrive" size={12} />OneDrive
+          <Icon name="oneDrive" size={12} /><span className="documents-desktop-label">OneDrive</span>
         </button>
       )}
       {onOpenFromGoogleDrive && (
         <button className="btn documents-desktop-new" data-home-googledrive="desktop" aria-label="Open from Google Drive" {...tip('Open a PDF from Google Drive', 'below')} onClick={() => onOpenFromGoogleDrive()}>
-          <Icon name="googleDrive" size={12} />Google Drive
+          <Icon name="googleDrive" size={12} /><span className="documents-desktop-label">Google Drive</span>
         </button>
       )}
       {registerOn && (
-        <button className="btn documents-desktop-new" data-sheet-register-export="desktop" disabled={docs.length === 0} onClick={() => exportRegisterCsv(docs)} {...tip('Export the drawing list as a CSV')}>
-          <Icon name="download" size={12} />Export list
+        <button className="btn documents-desktop-new" data-sheet-register-export="desktop" disabled={docs.length === 0} aria-label="Export list" onClick={() => exportRegisterCsv(docs)} {...tip('Export the drawing list as a CSV')}>
+          <Icon name="download" size={12} /><span className="documents-desktop-label">Export list</span>
         </button>
       )}
       <button className="btn primary documents-desktop-upload" disabled={uploadBusy} onClick={() => onUpload && onUpload()}>{uploadButtonBody}</button>

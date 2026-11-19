@@ -277,8 +277,10 @@ export function excelValidationFor(item, set) {
   // Photo and signature cells only report what the app holds.
   if (kind === 'text' || APP_ONLY_KINDS_SET.has(kind)) return null;
   const hint = itemAnswerHint(item);
+  // errorStyle 'stop' is the file format's own word for "refuse it"; 'error'
+  // is not one, and readers such as openpyxl then refuse the whole export.
   const rule = (type, operator, formulae, errorTitle, error) => ({
-    type, operator, allowBlank: true, formulae, showErrorMessage: true, errorStyle: 'error', errorTitle, error,
+    type, operator, allowBlank: true, formulae, showErrorMessage: true, errorStyle: 'stop', errorTitle, error,
     ...(hint && hint !== 'Number' ? { showInputMessage: true, promptTitle: 'Answer', prompt: hint.slice(0, 255) } : {}),
   });
   if (kind === 'number') {
@@ -303,7 +305,7 @@ export function excelValidationFor(item, set) {
       allowBlank: true,
       formulae: [20],
       showErrorMessage: true,
-      errorStyle: 'error',
+      errorStyle: 'stop',
       errorTitle: 'Invalid selection',
       error: 'Please type one of the answers',
       showInputMessage: true,
@@ -317,7 +319,7 @@ export function excelValidationFor(item, set) {
     allowBlank: true,
     formulae: [list],
     showErrorMessage: true,
-    errorStyle: 'error',
+    errorStyle: 'stop',
     errorTitle: 'Invalid selection',
     error: set === DEFAULT_ANSWER_SET
       ? 'Please select Y, N, or N/A'
