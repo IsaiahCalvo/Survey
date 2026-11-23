@@ -280,6 +280,7 @@ export default function SelectionQuickBar({
   const chromeTip = tip || contextTip;
   const items = useSelectedItems();
   const barRef = useRef(null);
+  const protectedRects = useRef([]);
   const lineButtonRef = useRef(null);
   const linePopoverRef = useRef(null);
   const [look, setLook] = useState({ visible: false, side: 'above', locked: false, readOnly: false });
@@ -342,6 +343,7 @@ export default function SelectionQuickBar({
     if (activeRef.current && !readOnly) {
       const selection = readSelection(itemsRef.current, { measureEdit: measureEditRef.current });
       if (selection.gestureLayer) heldGestureRef.current = { layer: selection.gestureLayer, items: itemsRef.current };
+      protectedRects.current = [selection.frame, ...selection.keepOut].filter(Boolean);
       next.locked = selection.locked;
       if (selection.frame && !selection.gesture && !turningRef.current && !selection.inert) {
         const dockedNow = dockOnRef.current && !phoneRef.current && isSelectionBarDocked();
@@ -935,13 +937,13 @@ export default function SelectionQuickBar({
   const kindPopoverRef = useRef(null);
   const authorsPopoverRef = useRef(null);
   const linePlace = useHangingPopoverPlace(linePopoverRef, {
-    open: Boolean(lineOpen && visible), preferred: barSide, getBounds: popoverBounds, deps: [plan?.width, plan?.opacity, plan?.style],
+    open: Boolean(lineOpen && visible), preferred: barSide, getBounds: popoverBounds, protectedRects, deps: [plan?.width, plan?.opacity, plan?.style],
   });
   const kindPlace = useHangingPopoverPlace(kindPopoverRef, {
-    open: Boolean(kindOpen && visible), preferred: barSide, getBounds: popoverBounds, deps: [kindOpen],
+    open: Boolean(kindOpen && visible), preferred: barSide, getBounds: popoverBounds, protectedRects, deps: [kindOpen],
   });
   const authorsPlace = useHangingPopoverPlace(authorsPopoverRef, {
-    open: Boolean(authorsOpen && visible), preferred: barSide, getBounds: popoverBounds, align: 'start', deps: [authors.length],
+    open: Boolean(authorsOpen && visible), preferred: barSide, getBounds: popoverBounds, protectedRects, align: 'start', deps: [authors.length],
   });
 
   const linePopover = lineOpen && visible ? (

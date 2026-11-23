@@ -1,3 +1,4 @@
+import { clearPosition } from '../utils/markMenuPlacement.js';
 import { useLayoutEffect, useState } from 'react';
 
 const EDGE = 8;
@@ -37,7 +38,7 @@ export function placeHangingPopover({ barRect, width, height, preferred = 'below
  * card (`align: 'start'` for a card pinned to the bar's left edge).
  * `getBounds` gives the area it must stay in (default: the window).
  */
-export function useHangingPopoverPlace(ref, { open, preferred = 'below', getBounds, align = 'centre', deps = [] }) {
+export function useHangingPopoverPlace(ref, { open, preferred = 'below', getBounds, protectedRects, align = 'centre', deps = [] }) {
   const [place, setPlace] = useState({ side: preferred, dx: 0, maxHeight: null });
   useLayoutEffect(() => {
     if (!open || typeof window === 'undefined') return undefined;
@@ -51,8 +52,9 @@ export function useHangingPopoverPlace(ref, { open, preferred = 'below', getBoun
       const height = card.scrollHeight;
       card.style.maxHeight = lastMax;
       const bounds = getBounds?.() || { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight };
+      const barRect = bar.getBoundingClientRect();
       const next = placeHangingPopover({
-        barRect: bar.getBoundingClientRect(),
+        barRect,
         width: card.offsetWidth,
         height,
         preferred,
@@ -64,7 +66,23 @@ export function useHangingPopoverPlace(ref, { open, preferred = 'below', getBoun
           bottom: Math.min(window.innerHeight, bounds.bottom),
         },
       });
-      setPlace((current) => (current.side === next.side && current.dx === next.dx && current.maxHeight === next.maxHeight
+      if (protectedRects) {
+        const w = card.offsetWidth;
+        const left = (align === 'start' ? barRect.left : barRect.left + (barRect.width - w) / 2) + next.dx;
+        const top = next.side === 'above' ? barRect.top - GAP - height : barRect.bottom + GAP;
+        const avoid = [barRect, ...protectedRects.current];
+        const windowBox = { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight };
+        const size = { width: w, height }, desired = { left, top };
+        const clear = clearPosition(bounds, size, desired, avoid)
+          || clearPosition(windowBox, size, desired, avoid, true);
+        next.hidden = !clear;
+        if (clear) {
+          next.x = clear.left - barRect.left - bar.clientLeft;
+          next.y = clear.top - barRect.top - bar.clientTop;
+          next.maxHeight = clear.height < height ? clear.height : null;
+        }
+      }
+      setPlace((current) => (current.hidden === next.hidden && current.x === next.x && current.y === next.y && current.side === next.side && current.dx === next.dx && current.maxHeight === next.maxHeight
         ? current
         : next));
     };
@@ -72,9 +90,12 @@ export function useHangingPopoverPlace(ref, { open, preferred = 'below', getBoun
     // The bar follows the mark on scroll and zoom without a render.
     let frame = 0;
     const later = () => { if (!frame) frame = window.requestAnimationFrame(() => { frame = 0; fit(); }); };
+    const observer = protectedRects && typeof MutationObserver !== 'undefined' ? new MutationObserver(later) : null;
+    if (ref.current?.parentElement) observer?.observe(ref.current.parentElement, { attributes: true, attributeFilter: ['style'] });
     window.addEventListener('resize', later);
     window.addEventListener('scroll', later, true);
     return () => {
+      observer?.disconnect();
       window.removeEventListener('resize', later);
       window.removeEventListener('scroll', later, true);
       if (frame) window.cancelAnimationFrame(frame);
@@ -83,6 +104,8 @@ export function useHangingPopoverPlace(ref, { open, preferred = 'below', getBoun
   }, [open, preferred, ...deps]);
   const style = open ? {
     ...(place.dx ? { translate: align === 'start' ? `${place.dx}px 0` : `calc(-50% + ${place.dx}px) 0` } : null),
+    ...(place.x != null ? { left: place.x, top: place.y, bottom: 'auto', translate: 'none' } : null),
+    ...(place.hidden ? { visibility: 'hidden' } : null),
     ...(place.maxHeight ? { maxHeight: `${place.maxHeight}px`, overflowY: 'auto' } : null),
   } : undefined;
   return { side: open ? place.side : preferred, style };
