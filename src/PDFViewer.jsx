@@ -43397,7 +43397,7 @@ ${pageBlocks}
                             padding: '12px 16px',
                             background: COLORS.modal.panel,
                             border: `1px solid ${COLORS.modal.borderStrong}`,
-                            transition: 'background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease'
+                            transition: 'background var(--state-time, 0.2s) var(--state-ease, ease), border-color var(--state-time, 0.2s) var(--state-ease, ease), box-shadow var(--state-time, 0.2s) var(--state-ease, ease)'
                           }}
                           onMouseEnter={handleModalOptionMouseEnter}
                           onMouseLeave={handleModalOptionMouseLeave}
@@ -43764,7 +43764,7 @@ ${pageBlocks}
                             padding: '12px 16px',
                             background: COLORS.modal.panel,
                             border: `1px solid ${COLORS.modal.borderStrong}`,
-                            transition: 'background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease'
+                            transition: 'background var(--state-time, 0.2s) var(--state-ease, ease), border-color var(--state-time, 0.2s) var(--state-ease, ease), box-shadow var(--state-time, 0.2s) var(--state-ease, ease)'
                           }}
                           onMouseEnter={handleModalOptionMouseEnter}
                           onMouseLeave={handleModalOptionMouseLeave}
@@ -44199,7 +44199,7 @@ ${pageBlocks}
                         borderRadius: '6px',
                         cursor: 'pointer',
                         textAlign: 'left',
-                        transition: 'background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease'
+                        transition: 'background var(--state-time, 0.2s) var(--state-ease, ease), border-color var(--state-time, 0.2s) var(--state-ease, ease), box-shadow var(--state-time, 0.2s) var(--state-ease, ease)'
                       }}
                       onMouseEnter={handleModalOptionMouseEnter}
                       onMouseLeave={handleModalOptionMouseLeave}
@@ -44326,7 +44326,7 @@ ${pageBlocks}
                   fontSize: '14px',
                   fontWeight: 600,
                   cursor: 'pointer',
-                  transition: 'all 0.2s ease',
+                  transition: 'var(--state-all, all 0.2s ease)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'flex-start',
@@ -44392,7 +44392,7 @@ ${pageBlocks}
                   fontSize: '14px',
                   fontWeight: 600,
                   cursor: isExportingToOneDrive ? 'wait' : 'pointer',
-                  transition: 'all 0.2s ease',
+                  transition: 'var(--state-all, all 0.2s ease)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'flex-start',
@@ -44601,7 +44601,7 @@ ${pageBlocks}
                     fontWeight: 600,
                     cursor: 'pointer',
                     marginBottom: '12px',
-                    transition: 'all 0.2s',
+                    transition: 'var(--state-all, all 0.2s)',
                     fontFamily: FONT_FAMILY
                   }}
                   onMouseEnter={(e) => {
@@ -44669,7 +44669,7 @@ ${pageBlocks}
                     fontWeight: 600,
                     cursor: 'pointer',
                     marginBottom: '12px',
-                    transition: 'all 0.2s',
+                    transition: 'var(--state-all, all 0.2s)',
                     fontFamily: FONT_FAMILY
                   }}
                   onMouseEnter={(e) => {

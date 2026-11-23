@@ -90,7 +90,7 @@ const ExcelSyncConfirmModal = ({
                 borderRadius: BORDERS.radius.md,
                 marginBottom: '8px',
                 cursor: 'pointer',
-                transition: 'all 0.15s ease',
+                transition: 'var(--state-all, all 0.15s ease)',
               }}
             >
               <div style={{

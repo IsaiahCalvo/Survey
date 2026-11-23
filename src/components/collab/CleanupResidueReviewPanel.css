@@ -164,7 +164,7 @@
   border: 1px solid transparent;
   cursor: pointer;
   line-height: 1.4;
-  transition: background-color 120ms ease-out, color 120ms ease-out;
+  transition: background-color var(--state-time, 120ms) var(--state-ease, ease-out), color var(--state-time, 120ms) var(--state-ease, ease-out);
 }
 
 .cleanup-residue-review__action:focus {

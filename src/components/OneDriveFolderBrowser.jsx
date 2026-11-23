@@ -386,7 +386,7 @@ const OneDriveFolderBrowser = ({
             fontWeight: TYPOGRAPHY.fontWeight.medium,
             fontFamily: TYPOGRAPHY.fontFamily.default,
             cursor: 'pointer',
-            transition: 'all 0.15s ease',
+            transition: 'var(--state-all, all 0.15s ease)',
           }}
         >
           <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
@@ -417,7 +417,7 @@ const OneDriveFolderBrowser = ({
             fontWeight: TYPOGRAPHY.fontWeight.medium,
             fontFamily: TYPOGRAPHY.fontFamily.default,
             cursor: 'pointer',
-            transition: 'all 0.15s ease',
+            transition: 'var(--state-all, all 0.15s ease)',
           }}
         >
           SharePoint sites
@@ -540,7 +540,7 @@ const OneDriveFolderBrowser = ({
                       cursor: 'pointer',
                       textAlign: 'left',
                       width: '100%',
-                      transition: 'all 0.15s ease',
+                      transition: 'var(--state-all, all 0.15s ease)',
                     }}
                   >
                     <FolderIcon />
@@ -604,7 +604,7 @@ const OneDriveFolderBrowser = ({
                           cursor: 'pointer',
                           textAlign: 'left',
                           width: '100%',
-                          transition: 'all 0.15s ease',
+                          transition: 'var(--state-all, all 0.15s ease)',
                         }}
                       >
                         <SiteIcon />
@@ -670,7 +670,7 @@ const OneDriveFolderBrowser = ({
                           cursor: 'pointer',
                           textAlign: 'left',
                           width: '100%',
-                          transition: 'all 0.15s ease',
+                          transition: 'var(--state-all, all 0.15s ease)',
                         }}
                       >
                         <LibraryIcon />
@@ -775,7 +775,7 @@ const OneDriveFolderBrowser = ({
                           cursor: 'pointer',
                           textAlign: 'left',
                           width: '100%',
-                          transition: 'all 0.15s ease',
+                          transition: 'var(--state-all, all 0.15s ease)',
                         }}
                       >
                         <FolderIcon />

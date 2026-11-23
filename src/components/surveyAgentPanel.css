@@ -243,7 +243,7 @@
   border: 1px solid var(--border-strong, var(--border));
   border-radius: 16px;
   background: var(--panel-well, var(--surface-0, rgba(0, 0, 0, 0.15)));
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition: border-color var(--state-time, 0.15s) var(--state-ease, ease), box-shadow var(--state-time, 0.15s) var(--state-ease, ease);
 }
 .survey-agent__box:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .survey-agent__box.is-recording { border-color: var(--danger, #d95a56); box-shadow: 0 0 0 3px var(--danger-soft, rgba(217, 90, 86, 0.16)); }
@@ -390,7 +390,7 @@
   background: var(--danger, #d95a56);
   transform: scale(calc(1 + var(--survey-mic-level, 0) * 0.9));
   box-shadow: 0 0 0 calc(var(--survey-mic-level, 0) * 6px) var(--danger-soft, rgba(217, 90, 86, 0.16));
-  transition: transform 80ms linear, box-shadow 80ms linear;
+  transition: transform 80ms linear, box-shadow var(--state-time, 80ms) var(--state-ease, linear);
 }
 .survey-agent__live.is-listening .survey-agent__dot { transform: scale(calc(1 + var(--survey-mic-level, 0) * 0.5)); transition: transform 80ms linear; }
 .survey-agent__live.is-working .survey-agent__dot { background: var(--accent); animation: survey-agent-pulse 1.4s ease-in-out infinite; }
@@ -450,7 +450,7 @@
 .survey-agent-mic.is-recording,
 #chrome-right-host .survey-agent-mic.is-recording.is-recording.is-recording.is-recording.is-recording.is-recording.is-recording {
   box-shadow: 0 0 0 calc(2px + var(--survey-mic-level, 0) * 9px) var(--accent-soft-strong) !important;
-  transition: box-shadow 80ms linear;
+  transition: box-shadow var(--state-time, 80ms) var(--state-ease, linear);
 }
 @media (prefers-reduced-motion: reduce) {
   .survey-agent-mic.is-recording { transition: none; }

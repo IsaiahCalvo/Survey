@@ -455,7 +455,7 @@
 
 .mobile-survey-sheet .mobile-survey-template-row:active {
   background: var(--pressed);
-  transition: background 90ms ease-out;
+  transition: background var(--state-time, 90ms) var(--state-ease, ease-out);
 }
 
 .mobile-survey-sheet .mobile-survey-template-name {
@@ -954,7 +954,7 @@
 /* A full-width ROW takes the house pressed fill while the finger is down. */
 .mobile-survey-sheet .mobile-survey-marker-cover:active {
   background: var(--pressed);
-  transition: background 90ms ease-out;
+  transition: background var(--state-time, 90ms) var(--state-ease, ease-out);
 }
 
 /* Closed, the dot, the name and the badges let a tap through to the cover. */
@@ -1047,7 +1047,7 @@
   background: transparent;
   border-radius: 6px;
   font: var(--sheet-row-text);
-  transition: background-color 200ms ease-out;
+  transition: background-color var(--state-time, 200ms) var(--state-ease, ease-out);
 }
 
 .mobile-survey-sheet .mobile-survey-marker.is-open .mobile-survey-marker-field {

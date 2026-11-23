@@ -308,7 +308,7 @@ const NewColumnsModal = ({
               borderRadius: BORDERS.radius.md,
               marginBottom: '8px',
               cursor: 'pointer',
-              transition: 'all 0.15s ease',
+              transition: 'var(--state-all, all 0.15s ease)',
             }}
           >
             <div style={{
@@ -396,7 +396,7 @@ const NewColumnsModal = ({
               border: `2px solid ${selectedOption === 'modifyTemplate' ? COLORS.modal.optionSelectedBorder : COLORS.border.default}`,
               borderRadius: BORDERS.radius.md,
               cursor: canModifyTemplate ? 'pointer' : 'not-allowed',
-              transition: 'all 0.15s ease',
+              transition: 'var(--state-all, all 0.15s ease)',
               opacity: canModifyTemplate ? 1 : 0.6,
             }}
           >

@@ -146,6 +146,7 @@ import {
   computeSideOverlayInsets,
   getViewerSideOccluders,
   resolveBandCentreScrollLeft,
+  resolveRefitPivotX,
   resolveSideRoom,
   shouldAutoRefit,
   shouldRefitForBand,
@@ -1866,6 +1867,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // screen; the rest follow one per idle moment, so their marks are not
   // built before the page you look at has drawn.
   const [openVisibleFirst] = useState(() => isFeatureOn('open-visible-first'));
+  // KAL-819 (Nightly, with the suite look): a panel opening or closing glides
+  // the page to its new fit (zoomToScale) instead of snapping.
+  const [bandRefitGlides] = useState(() => isFeatureOn('one-look'));
   // What may draw right now (pageRasterQueue kinds): during a pinch or a
   // ctrl+wheel zoom nothing does (pages a pinch reveals are not mounted until
   // it ends anyway, and a draw slice costs a whole frame); while a pan, a
@@ -5529,6 +5533,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       });
     }
     const before = scaleRef.current;
+    // KAL-819: where the page is on screen before a band re-fit (see the end).
+    // Read from the page itself: the side room is not in the layout's row box.
+    const flipFromNode = band && bandRefitGlides && !prefersReducedMotion()
+      ? el.querySelector(`.survey-pdfjs-page-div[data-page-number="${pageIndex + 1}"]`)
+      : null;
+    const flipFrom = flipFromNode ? flipFromNode.getBoundingClientRect() : null;
+    const flipViewLeft = flipFrom ? el.getBoundingClientRect().left : 0;
     // Zoom buttons and fits hold the middle of the VISIBLE area still.
     const inset = Math.min(topInsetRef.current, el.clientHeight);
     applyAnchoredScale(newScale, side.left + bandW / 2, inset + (el.clientHeight - inset) / 2);
@@ -5588,7 +5599,39 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         };
       }
     }
-  }, [applyAnchoredScale, getPageLeftAtScale, getHorizontalScrollMax, phoneLayout]);
+    // KAL-819 (Nightly; owner 2026-11-17: every app must feel right, motion
+    // included): a panel opening or closing re-fits the page in one commit,
+    // as before, but it no longer snaps. The new layout is drawn from where
+    // the page was (the same leftover transform a zoom-limit ease uses) and
+    // eases into place, pivoting on the one point that carries the old box
+    // straight onto the new one, so no second glide is needed to centre it.
+    const anchor = pendingAnchorRef.current;
+    if (flipFrom?.width > 0 && anchor && Math.abs(s - before) > 1e-4) {
+      // The page's new width; a band re-fit centres it in the band.
+      const toWidth = flipFrom.width * (s / before);
+      if (toWidth > 0) {
+        const pivotX = resolveRefitPivotX({
+          fromLeft: flipFrom.left - flipViewLeft,
+          fromWidth: flipFrom.width,
+          toLeft: side.left + (bandW - toWidth) / 2,
+          toWidth,
+          fallback: side.left + bandW / 2,
+        });
+        stopElastic(false);
+        elasticRef.current = {
+          ax: pivotX + anchor.left,
+          ay: inset + (el.clientHeight - inset) / 2 + anchor.top,
+          z: before / s,
+          tx: 0,
+          ty: 0,
+          anim: null,
+        };
+        // The anchor folds any scroll clamp into this leftover (no jump).
+        anchor.elastic = true;
+        releaseElastic();
+      }
+    }
+  }, [applyAnchoredScale, bandRefitGlides, getPageLeftAtScale, getHorizontalScrollMax, phoneLayout, releaseElastic, stopElastic]);
   zoomToScaleRef.current = zoomToScale;
 
   // Nightly 'zoom-to-area' (Drawboard PDF Pro trial audit 2026-11-09):

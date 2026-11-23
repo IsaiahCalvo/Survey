@@ -6,7 +6,7 @@ This file is how they stay in step. The same text sits at
 `docs/suite/SUITE-RULES.md` in all three repos. Change it in all three in the
 same round, or not at all.
 
-Last checked against the code: 2026-11-17.
+Last checked against the code: 2026-11-23.
 
 ## Before you build anything
 
@@ -96,6 +96,41 @@ everywhere. A control that skips a step is a bug.
 Ease out is `cubic-bezier(0.33, 1, 0.68, 1)`. "Reduce motion" in the system
 settings sets every one of these to 0.
 
+### Motion
+
+Owner, 2026-11-17: every app must feel right, motion included (KAL-819).
+Everything that moves takes one of these times, by its shared name. A new
+kind of motion is added here first, in all three repos.
+
+| Name | What | Time | Curve |
+| --- | --- | --- | --- |
+| `--motion-state` | Hover, press back to hover, selected (the table above) | 150ms | ease out |
+| `--motion-menu`, `--motion-menu-exit` | A menu or popover opens, closes. It slides 8px from the side it opens on. | 100ms, 80ms | ease out, ease in |
+| `--motion-dialog`, `--motion-dialog-exit` | A dialog and its scrim open, close. Fade and grow from 0.98. | 150ms, 120ms | ease out, ease in |
+| `--motion-toast`, `--motion-toast-exit` | A toast comes in, goes. It slides 8px. | 150ms, 120ms | ease out, ease in |
+| `--motion-panel` | A side panel or a second toolbar row opens or closes | 200ms | ease out |
+| `--motion-collapse` | A section folds open or shut | 300ms | ease out |
+| `--motion-drag` | Drag and drop (above) | 200ms | ease out |
+| set in code (Survey: `src/utils/zoomGlide.js`, `src/utils/pageScrollGlide.js`) | The view glides to a page, a mark or a zoom step | 220ms to 250ms | ease out |
+
+Ease in is `cubic-bezier(0.32, 0, 0.67, 0)`. Leaving is a little faster than
+coming in, so a closed thing gets out of the way.
+
+- **One motion, never hold then snap.** When a panel opens or closes, the
+  page beside it moves to its new place at the same time, in one glide. It
+  never waits for the panel and then jumps.
+- **Nothing jumps.** A hover, a press or a load never changes a thing's
+  width, height or place. Animate colour, opacity and transform only, never
+  `all`, `width`, `height`, `top` or `left`.
+- **Show the frame at once.** The window's frame (the top bar, the rails)
+  shows on the first paint, before the app's code runs. A list that is
+  still loading shows grey placeholder rows of the real rows' size, never a
+  blank space that the rows pop into.
+- **Keyboard focus always shows.** Every control reached with Tab shows the
+  2px ring. A field whose input draws no outline puts the ring on the box
+  around it.
+- "Reduce motion" sets every time here to 0.
+
 ### Drag and drop
 
 1. **Can be dragged:** the cursor is `grab` on the item or on its handle.
@@ -127,6 +162,7 @@ follow steps 1 and 2 for the cursor, then move with the pointer with no lift.
 | Coloured button: hover, pressed | `--accent-light`, `--accent-press` | `--accent-hover`, `--accent-pressed` (coral); `--ink-hover`, `--ink-pressed` (light); `--danger-hover`, `--danger-pressed` (red) | `--accent-hover`, `--accent-press` (coral); `--error-hover`, `--error-press` (red) |
 | Focus ring | `--focus`, 2px | `--focus`, 2px; `src/lib/focus-ring-source.ts` | `--focus-ring`, 2px |
 | State time | `--motion-state` | `--motion-state`, `--ease-state` | `--motion-state` |
+| Motion times (the Motion table) | all, in `src/styles/tokens.css`; JS copy `src/utils/motion.js`; `--state-time`, `--state-ease`, `--state-all` under the suite look | `--motion-state`, `--motion-drag`, `--motion-menu-open`; the rest to add | `--motion-state`, `--motion-drag`; the rest to add (`--dur-*` are Plot's older steps) |
 | Drag | `--drag-lift-*`, `--motion-drag`, `src/reorder/dragMotion.js` | `--drag-lift-*`, `--motion-drag`, `[data-drag-lifted]`; `src/lib/drag-motion.ts` | `--drag-lift-*`, `--drop-outline`, `--motion-drag` |
 | Files | `src/styles/tokens.css`, `src/styles/states.css` | `apps/web/src/app/globals.css` | `src/styles/tokens.css`, `src/styles/states.css`, `DESIGN.md` |
 
