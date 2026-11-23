@@ -372,7 +372,7 @@ export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' })
           )}
 
           {(mode === 'login' || mode === 'signup') && (
-            <div className="auth-form-group">
+            <div className={`auth-form-group${mode === 'login' ? ' has-forgot' : ''}`}>
               <label htmlFor="password">Password</label>
               <input
                 id="password"
@@ -387,6 +387,22 @@ export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' })
                 required
                 disabled={loading}
               />
+              {mode === 'login' && (
+                // "Forgot password?" sits on the Password label's row, by the
+                // field it's about, not at the foot under "Create an account".
+                // It comes after the field in the page, so Tab reaches the
+                // password before it.
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('reset');
+                    setError('');
+                  }}
+                  className="auth-forgot-link"
+                >
+                  Forgot password?
+                </button>
+              )}
               {mode === 'signup' && (
                 <div style={{ marginTop: 6 }}>
                   <PasswordRequirements password={password} email={email} firstName={firstName} lastName={lastName} inline />
@@ -528,7 +544,7 @@ export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' })
                 onClick={() => setMode('sso')}
                 disabled={loading}
               >
-                Sign in with company SSO (enterprise)
+                Sign in with company SSO
               </button>
             )}
           </>
@@ -550,16 +566,6 @@ export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' })
                   Create an account
                 </button>
               </p>
-              <button
-                type="button"
-                onClick={() => {
-                  setMode('reset');
-                  setError('');
-                }}
-                className="auth-link-btn"
-              >
-                Forgot password?
-              </button>
             </>
           )}
 
