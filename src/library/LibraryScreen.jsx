@@ -8,7 +8,7 @@
    Company library: owners and admins). Changes made offline wait on this
    device and sync one at a time. */
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { HubShell, Icon } from '../home/HubShell';
+import { HubShell, Icon, EmptyState } from '../home/HubShell';
 import SectionIconButton from '../components/SectionIconButton.jsx';
 import ListItemContextMenu from '../components/ListItemContextMenu.jsx';
 import { countLabel } from '../home/countLabel.js';
@@ -47,11 +47,6 @@ function statusLine(state) {
   return 'Synced';
 }
 
-const rowStyle = {
-  display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px',
-  borderBottom: '1px solid var(--ink-500)', minHeight: 40,
-};
-
 // The menu opens under its More button, right edges lined up, as the
 // Templates rows' menus do.
 const MENU_WIDTH = 180;
@@ -75,7 +70,15 @@ export default function LibraryScreen({ user, onNav, templatesLocked = false, te
   const addFieldRef = useRef(null);
   const templatesNeedPro = useTemplatesNeedPro();
 
-  useEffect(() => { if (store) void store.ready().then(() => store.refresh()); }, [store]);
+  // The first visit on a device has no saved copy: until the server answers,
+  // the list is blank rather than claiming the library is empty.
+  const [checked, setChecked] = useState(false);
+  useEffect(() => {
+    if (!store) return undefined;
+    let live = true;
+    void store.ready().then(() => store.refresh()).catch(() => {}).finally(() => { if (live) setChecked(true); });
+    return () => { live = false; };
+  }, [store]);
   useEffect(() => { if (state.error) showToast(state.error, 'warn'); }, [state.error]);
 
   const company = state.company;
@@ -185,14 +188,16 @@ export default function LibraryScreen({ user, onNav, templatesLocked = false, te
   );
 
   const libraryTabs = company?.id ? (
-    <div role="tablist" aria-label="Library" style={{ display: 'flex', gap: 6 }}>
+    // One switch with the chosen side on the selected fill, not two buttons
+    // with the chosen one painted coral like a main action.
+    <div role="tablist" aria-label="Library" className="library-tabs">
       {[LIBRARY_SCOPE.MINE, LIBRARY_SCOPE.COMPANY].map((key) => (
         <button
           key={key}
           type="button"
           role="tab"
           aria-selected={scope === key}
-          className={`btn${scope === key ? ' primary' : ''}`}
+          className="library-tabs__tab"
           onClick={() => setView(key)}
         >{LIBRARY_WORDS[key]}</button>
       ))}
@@ -211,8 +216,9 @@ export default function LibraryScreen({ user, onNav, templatesLocked = false, te
     >
       <div style={{ padding: 'var(--library-body-top, 0px) 8px 8px', flex: 1, minHeight: 0, overflow: 'auto' }} className="slim-scroll library-body">
         {unlinked > 0 && onSaveTemplates ? (
-          <div className="card" role="status" style={{ ...rowStyle, borderBottom: 0, marginBottom: 8 }}>
-            <span style={{ flex: 1 }}>{unlinkedNote.text}</span>
+          <div className="card library-note" role="status">
+            <Icon name="infoCircle" size={14} className="library-note__icon" />
+            <span className="library-note__text">{unlinkedNote.text}</span>
             <button type="button" className="btn primary" disabled={linking} onClick={linkTemplates}>{unlinkedNote.action}</button>
           </div>
         ) : null}
@@ -242,13 +248,14 @@ export default function LibraryScreen({ user, onNav, templatesLocked = false, te
             />
             <button type="submit" className="btn primary" disabled={!newName.trim()}>Add</button>
           </form>
-          {outline.length === 0 ? (
-            <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-100)' }}>
-              {scope === LIBRARY_SCOPE.COMPANY
-                ? 'Nothing in the Company library yet. Categories your team adds show here.'
-                : 'Nothing here yet. Name a Category in a template, or add one above.'}
-            </div>
-          ) : (
+          {outline.length === 0 ? (!checked ? null : (
+            <EmptyState
+              icon="library"
+              {...(scope === LIBRARY_SCOPE.COMPANY
+                ? { line: 'Nothing in the Company library yet', description: 'Categories your team adds show here. Add one above.' }
+                : { line: 'Your library is empty', description: 'Name a Category in a template, or add one above.' })}
+            />
+          )) : (
             <ul aria-label={LIBRARY_WORDS[scope]} className="library-list">
               {outline.map((category) => (
                 <li key={category.id}>
