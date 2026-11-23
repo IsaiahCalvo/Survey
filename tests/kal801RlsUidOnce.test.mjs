@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const sql = readFileSync(new URL('../supabase/migrations/20261117220000_kal801_rls_uid_once.sql', import.meta.url), 'utf8');
+const sql = readFileSync(new URL('../supabase/migrations/20261123210000_kal801_rls_uid_once.sql', import.meta.url), 'utf8');
 const code = sql.replace(/--.*$/gm, '');
 
 test('KAL-801: every auth.uid() in the rewritten rules runs once per query', () => {
