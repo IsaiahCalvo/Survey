@@ -334,7 +334,7 @@ function TabItem({
             alignItems: 'center',
             justifyContent: 'center',
             color: 'var(--text-3)',
-            transition: 'all 0.15s ease',
+            transition: 'var(--state-all, all 0.15s ease)',
             flexShrink: 0
           }}
           // Owner 2026-10-02 (test plan U2, "an X ... a grey box shows behind

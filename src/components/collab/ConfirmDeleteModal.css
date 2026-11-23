@@ -106,7 +106,7 @@
 .confirm-delete-modal__btn {
   font-family: inherit;
   cursor: pointer;
-  transition: background-color 120ms ease-out, color 120ms ease-out;
+  transition: background-color var(--state-time, 120ms) var(--state-ease, ease-out), color var(--state-time, 120ms) var(--state-ease, ease-out);
 }
 
 .confirm-delete-modal__btn--cancel {

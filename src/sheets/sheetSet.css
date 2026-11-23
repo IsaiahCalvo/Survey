@@ -202,7 +202,7 @@
   border-radius: 999px;
   background: var(--surface-3);
   box-shadow: inset 0 0 0 1px var(--border-strong);
-  transition: background 120ms ease, box-shadow 120ms ease;
+  transition: background var(--state-time, 120ms) var(--state-ease, ease), box-shadow var(--state-time, 120ms) var(--state-ease, ease);
 }
 .sheet-set-view__auto-knob {
   position: absolute;
@@ -212,7 +212,7 @@
   height: 12px;
   border-radius: 50%;
   background: var(--text-1);
-  transition: transform 120ms ease, background 120ms ease;
+  transition: transform 120ms ease, background var(--state-time, 120ms) var(--state-ease, ease);
 }
 .sheet-set-view__auto.is-on .sheet-set-view__auto-track { background: var(--accent); box-shadow: none; }
 .sheet-set-view__auto.is-on .sheet-set-view__auto-knob { transform: translateX(12px); background: var(--accent-text, #15110a); }

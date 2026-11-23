@@ -39,7 +39,7 @@
 .xpdf-radio {
   flex: none; width: 16px; height: 16px; border-radius: 50%;
   border: 1.5px solid var(--border-strong, var(--text-3)); box-sizing: border-box;
-  transition: border-width 120ms ease, border-color 120ms ease;
+  transition: border-width 120ms ease, border-color var(--state-time, 120ms) var(--state-ease, ease);
 }
 .xpdf-page.is-on .xpdf-radio { border: 5px solid var(--accent); }
 .xpdf-page__label { flex: 1 1 auto; min-width: 0; }
@@ -67,7 +67,7 @@
   flex: none; width: 16px; height: 16px; border-radius: 4px; box-sizing: border-box;
   display: inline-flex; align-items: center; justify-content: center;
   border: 1.5px solid var(--border-strong, var(--text-3)); color: var(--accent-text);
-  transition: background-color 120ms ease, border-color 120ms ease;
+  transition: background-color var(--state-time, 120ms) var(--state-ease, ease), border-color var(--state-time, 120ms) var(--state-ease, ease);
 }
 .xpdf-page.is-on .xpdf-check { background: var(--accent); border-color: var(--accent); }
 .xpdf-page[data-last-on="true"] { cursor: default; }

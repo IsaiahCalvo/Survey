@@ -180,7 +180,7 @@ class ErrorBoundary extends React.Component {
                   fontWeight: TYPOGRAPHY.fontWeight.medium,
                   cursor: 'pointer',
                   fontFamily: TYPOGRAPHY.fontFamily.default,
-                  transition: 'background 0.15s ease',
+                  transition: 'background var(--state-time, 0.15s) var(--state-ease, ease)',
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.background = COLORS.accent.primaryHover;
@@ -203,7 +203,7 @@ class ErrorBoundary extends React.Component {
                   fontWeight: TYPOGRAPHY.fontWeight.medium,
                   cursor: 'pointer',
                   fontFamily: TYPOGRAPHY.fontFamily.default,
-                  transition: 'all 0.15s ease',
+                  transition: 'var(--state-all, all 0.15s ease)',
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.background = COLORS.border.light;

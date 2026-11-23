@@ -20,7 +20,7 @@
   font: inherit;
   font-weight: 600;
   cursor: pointer;
-  transition: background-color 120ms ease, border-color 120ms ease, transform 80ms ease;
+  transition: background-color var(--state-time, 120ms) var(--state-ease, ease), border-color var(--state-time, 120ms) var(--state-ease, ease), transform 80ms ease;
 }
 .account-needed-note__btn:hover { background: var(--ink-700, rgba(255, 255, 255, 0.06)); }
 .account-needed-note__btn:active { background: var(--ink-600, rgba(255, 255, 255, 0.1)); transform: scale(0.98); }

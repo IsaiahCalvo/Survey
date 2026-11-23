@@ -1136,7 +1136,7 @@ const PDFSidebar = React.forwardRef(({
                     color: isActive ? 'var(--text-1)' : 'var(--text-2)',
                     fontWeight: isActive ? '500' : '400',
                     fontFamily: FONT_FAMILY,
-                    transition: 'all 0.15s ease',
+                    transition: 'var(--state-all, all 0.15s ease)',
                     whiteSpace: 'nowrap'
                   }}
                 >

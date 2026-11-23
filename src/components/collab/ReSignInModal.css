@@ -222,7 +222,7 @@
   border-radius: 6px;
   cursor: pointer;
   font-family: inherit;
-  transition: background-color 120ms ease-out;
+  transition: background-color var(--state-time, 120ms) var(--state-ease, ease-out);
 }
 
 .re-signin-modal__cta:active:not(:disabled) {

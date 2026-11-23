@@ -1721,7 +1721,7 @@ input[type="text"].space-card__name:focus-visible {
   border-radius: 999px;
   background: var(--surface-3);
   box-shadow: inset 0 0 0 1px var(--border-strong);
-  transition: background 0.2s ease, box-shadow 0.2s ease;
+  transition: background var(--state-time, 0.2s) var(--state-ease, ease), box-shadow var(--state-time, 0.2s) var(--state-ease, ease);
 }
 
 .spaces-switch[aria-checked='true']::before {
@@ -1743,7 +1743,7 @@ input[type="text"].space-card__name:focus-visible {
   border-radius: 50%;
   background: var(--text-1);
   transform: translate(0, -50%);
-  transition: transform 0.2s ease, background 0.2s ease;
+  transition: transform 0.2s ease, background var(--state-time, 0.2s) var(--state-ease, ease);
   pointer-events: none;
 }
 
@@ -1782,7 +1782,7 @@ input[type="text"].space-card__name:focus-visible {
   cursor: pointer;
   font-family: inherit;
   -webkit-tap-highlight-color: transparent;
-  transition: color 0.15s ease;
+  transition: color var(--state-time, 0.15s) var(--state-ease, ease);
 }
 
 .space-card__icon svg {
@@ -1853,7 +1853,7 @@ input[type="text"].space-card__name:focus-visible {
   background: var(--panel-well);
   border: 1px solid transparent;
   overflow: hidden;
-  transition: border-color 120ms ease-out;
+  transition: border-color var(--state-time, 120ms) var(--state-ease, ease-out);
 }
 
 .space-card__add:focus-within {
@@ -1896,7 +1896,7 @@ input[type="text"].space-card__add-input {
   color: var(--text-2);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
-  transition: color 90ms ease-out, background 90ms ease-out;
+  transition: color var(--state-time, 90ms) var(--state-ease, ease-out), background var(--state-time, 90ms) var(--state-ease, ease-out);
 }
 
 .space-card__add-go > svg {
@@ -2370,7 +2370,7 @@ input[type="text"].spaces-transfer__input {
   font: inherit;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
-  transition: color 0.15s ease;
+  transition: color var(--state-time, 0.15s) var(--state-ease, ease);
 }
 
 .spaces-transfer__act:disabled {
@@ -3247,7 +3247,7 @@ input[type="text"].spaces-transfer__input {
   border-radius: 5px;
   padding: 2px 5px;
   overflow: visible;
-  transition: background 0.15s ease, opacity 0.15s ease;
+  transition: background var(--state-time, 0.15s) var(--state-ease, ease), opacity 0.15s ease;
 }
 
 /* Survey calm gold (2026-10-01): a chosen category card is a neutral edge;
@@ -3283,7 +3283,7 @@ input[type="text"].spaces-transfer__input {
   cursor: pointer;
   font-family: inherit;
   transform: none;
-  transition: background 0.12s ease, color 0.12s ease;
+  transition: background var(--state-time, 0.12s) var(--state-ease, ease), color var(--state-time, 0.12s) var(--state-ease, ease);
 }
 
 .survey-marker-category-main {
@@ -3995,7 +3995,7 @@ svg[data-svg-annotation-layer][data-selection-hover="move"] {
   border-radius: 50%;
   background: color-mix(in srgb, var(--surface-3) 82%, transparent);
   box-shadow: 0 0 0 1px var(--border);
-  transition: background-color 0.12s ease, box-shadow 0.12s ease, color 0.12s ease;
+  transition: background-color var(--state-time, 0.12s) var(--state-ease, ease), box-shadow var(--state-time, 0.12s) var(--state-ease, ease), color var(--state-time, 0.12s) var(--state-ease, ease);
 }
 .pages-panel-more:hover,
 .pages-panel-card.is-menu-open .pages-panel-more {

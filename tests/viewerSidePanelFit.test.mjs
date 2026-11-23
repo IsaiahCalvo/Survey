@@ -154,7 +154,10 @@ test('wiring: auto re-fits are marked and never land; user fits use the band', (
   // (open, or still sliding closed). 2026-10-14: the panel is one fixed width
   // with no resize drag, so the desktop ref is the side occluder again.
   // KAL-66: the ref sits after the phone sheet's prop spread (see above).
-  assert.match(sidebar, /data-viewer-occluder=\{mobileMode \? \(isCollapsed \? undefined : 'sheet'\) : \(layoutOpen \? 'side' : undefined\)\}[\s\S]{0,400}ref=\{mobileMode \? sheetFocusRef : sideOccluderRef\}/);
+  // KAL-819 (Nightly, the suite look): a closing panel stops covering the page
+  // at once, so the page eases back while the panel slides away.
+  assert.match(sidebar, /data-viewer-occluder=\{mobileMode \? \(isCollapsed \? undefined : 'sheet'\) : \(\(panelLeavesAtOnce \? !isCollapsed : layoutOpen\) \? 'side' : undefined\)\}[\s\S]{0,400}ref=\{mobileMode \? sheetFocusRef : sideOccluderRef\}/);
+  assert.match(sidebar, /const \[panelLeavesAtOnce\] = useState\(\(\) => isFeatureOn\('one-look'\)\);/);
   assert.doesNotMatch(sidebar, /setRailEl|railElRef/);
 });
 
