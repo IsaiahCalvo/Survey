@@ -1112,13 +1112,13 @@ export default function ArchiveScreen({
                   ].filter(Boolean).join(' · ')}
                 </div>
                 {previewItem.type === 'document' && (
-                  <div style={{ marginTop: 14, height: 360, flex: '0 1 auto', minHeight: 0 }}>
+                  <div style={{ marginTop: 14, maxHeight: 360, flex: '0 1 auto', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
                     <PdfPageThumb
                       key={previewItem.id}
                       doc={{ id: previewItem.id, file_path: previewItem.filePath }}
                       downloadDocument={downloadDocument}
                       variant="preview"
-                      fill
+                      fit
                       priority
                       fallback={<div style={{ width: '100%', height: '100%' }}><PdfThumb height="100%" /></div>}
                     />

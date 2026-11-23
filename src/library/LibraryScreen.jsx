@@ -7,8 +7,12 @@
    entries by hand, and renames or removes them (your own library: you; the
    Company library: owners and admins). Changes made offline wait on this
    device and sync one at a time. */
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
-import { HubShell } from '../home/HubShell';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { HubShell, Icon } from '../home/HubShell';
+import SectionIconButton from '../components/SectionIconButton.jsx';
+import ListItemContextMenu from '../components/ListItemContextMenu.jsx';
+import { countLabel } from '../home/countLabel.js';
+import './library.css';
 import { useTooltip } from '../components/Tooltip';
 import { DIALOG_FIELD_STYLE } from '../components/DialogCard.jsx';
 import { useConfirmDialog, usePromptDialog } from '../components/dialogPrompts.jsx';
@@ -48,6 +52,14 @@ const rowStyle = {
   borderBottom: '1px solid var(--ink-500)', minHeight: 40,
 };
 
+// The menu opens under its More button, right edges lined up, as the
+// Templates rows' menus do.
+const MENU_WIDTH = 180;
+const menuPointFor = (button) => {
+  const r = button.getBoundingClientRect();
+  return { x: r.right - MENU_WIDTH, y: r.bottom + 4 };
+};
+
 export default function LibraryScreen({ user, onNav, templatesLocked = false, templates = [], onSaveTemplates }) {
   const tip = useTooltip();
   const userId = user?.id || null;
@@ -58,6 +70,9 @@ export default function LibraryScreen({ user, onNav, templatesLocked = false, te
   const [view, setView] = useState(LIBRARY_SCOPE.MINE);
   const [newName, setNewName] = useState('');
   const [linking, setLinking] = useState(false);
+  // { entry, point }: the row whose More menu (or right-click menu) is open.
+  const [menu, setMenu] = useState(null);
+  const addFieldRef = useRef(null);
   const templatesNeedPro = useTemplatesNeedPro();
 
   useEffect(() => { if (store) void store.ready().then(() => store.refresh()); }, [store]);
@@ -135,18 +150,39 @@ export default function LibraryScreen({ user, onNav, templatesLocked = false, te
     }
   };
 
-  const manageButtons = (entry) => {
+  // Rename and Remove for this person, or the reason they can't (a Company
+  // entry for a member who is not an owner or admin).
+  const menuItems = (entry) => {
     const refusal = manageRefusal(entry, who);
-    const props = (label) => (refusal
-      ? { 'aria-disabled': 'true', ...tip(refusal, 'left') }
-      : { 'aria-label': `${label} ${entry.name}` });
-    return (
-      <>
-        <button type="button" className="btn" {...props('Rename')} onClick={() => (refusal ? showToast(refusal, 'warn') : rename(entry))}>Rename</button>
-        <button type="button" className="btn" {...props('Remove')} onClick={() => (refusal ? showToast(refusal, 'warn') : remove(entry))}>Remove</button>
-      </>
-    );
+    return [
+      entry.kind === LIBRARY_KIND.CATEGORY
+        ? { label: 'Add Category Type', icon: 'plus', onClick: () => addType(entry) }
+        : null,
+      { label: 'Rename', reason: refusal || undefined, onClick: () => rename(entry) },
+      { label: 'Remove', danger: true, reason: refusal || undefined, onClick: () => remove(entry) },
+    ].filter(Boolean);
   };
+
+  const openMenu = (entry, point) => setMenu((open) => (open?.entry.id === entry.id && !point.fromContext ? null : { entry, point }));
+
+  const entryRow = (entry, { type = false, count = null } = {}) => (
+    <div
+      className={`library-row${type ? ' is-type' : ''}${menu?.entry.id === entry.id ? ' is-menu-open' : ''}`}
+      onContextMenu={(event) => { event.preventDefault(); openMenu(entry, { x: event.clientX, y: event.clientY, fromContext: true }); }}
+    >
+      <span className="library-row__name">{entry.name}</span>
+      {count != null ? <span className="library-row__count">{count}</span> : null}
+      <button
+        type="button"
+        className="hub-icon-btn library-row__more"
+        aria-haspopup="menu"
+        aria-expanded={menu?.entry.id === entry.id}
+        aria-label="More"
+        {...tip(`More for ${entry.name}`)}
+        onClick={(event) => openMenu(entry, menuPointFor(event.currentTarget))}
+      ><Icon name="more" size={14} /></button>
+    </div>
+  );
 
   const libraryTabs = company?.id ? (
     <div role="tablist" aria-label="Library" style={{ display: 'flex', gap: 6 }}>
@@ -181,12 +217,19 @@ export default function LibraryScreen({ user, onNav, templatesLocked = false, te
           </div>
         ) : null}
         {/* Clipped, so the last row's divider stops at the rounded corner. */}
-        <div className="card" style={{ overflow: 'hidden' }}>
+        <div className="card library-card" style={{ overflow: 'hidden' }}>
+          <div className="hub-section-head library-card__head">
+            <p className="micro hub-section-label" style={{ margin: 0 }}>Categories<span className="hub-section-count">{outline.length}</span></p>
+            <div className="hub-section-actions">
+              <SectionIconButton action="add" label="Add Category" onClick={() => addFieldRef.current?.focus()} />
+            </div>
+          </div>
           <form
-            style={{ ...rowStyle }}
+            className="library-add"
             onSubmit={(event) => { event.preventDefault(); addCategory(); }}
           >
             <input
+              ref={addFieldRef}
               type="text"
               value={newName}
               onChange={(event) => setNewName(event.target.value)}
@@ -194,10 +237,10 @@ export default function LibraryScreen({ user, onNav, templatesLocked = false, te
               aria-label={`New Category in ${LIBRARY_WORDS[scope]}`}
               maxLength={120}
               // A field, not an inline rename: it had no edge or fill and read
-              // as a plain row. 28px, the height of Add Category beside it.
+              // as a plain row. 28px, the height of Add beside it.
               style={{ ...DIALOG_FIELD_STYLE, flex: 1, minWidth: 0, width: 'auto', height: 28 }}
             />
-            <button type="submit" className="btn primary" disabled={!newName.trim()}>Add Category</button>
+            <button type="submit" className="btn primary" disabled={!newName.trim()}>Add</button>
           </form>
           {outline.length === 0 ? (
             <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-100)' }}>
@@ -206,21 +249,14 @@ export default function LibraryScreen({ user, onNav, templatesLocked = false, te
                 : 'Nothing here yet. Name a Category in a template, or add one above.'}
             </div>
           ) : (
-            <ul aria-label={LIBRARY_WORDS[scope]} style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+            <ul aria-label={LIBRARY_WORDS[scope]} className="library-list">
               {outline.map((category) => (
                 <li key={category.id}>
-                  <div style={rowStyle}>
-                    <span style={{ flex: 1, fontWeight: 600 }}>{category.name}</span>
-                    <button type="button" className="btn" aria-label={`Add a Category Type under ${category.name}`} onClick={() => addType(category)}>Add type</button>
-                    {manageButtons(category)}
-                  </div>
+                  {entryRow(category, { count: category.types.length ? countLabel(category.types.length, 'type') : null })}
                   {category.types.length > 0 ? (
-                    <ul aria-label={`${category.name} Category Types`} style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                    <ul aria-label={`${category.name} Category Types`} className="library-list">
                       {category.types.map((type) => (
-                        <li key={type.id} style={{ ...rowStyle, paddingLeft: 34 }}>
-                          <span style={{ flex: 1 }}>{type.name}</span>
-                          {manageButtons(type)}
-                        </li>
+                        <li key={type.id}>{entryRow(type, { type: true })}</li>
                       ))}
                     </ul>
                   ) : null}
@@ -230,6 +266,9 @@ export default function LibraryScreen({ user, onNav, templatesLocked = false, te
           )}
         </div>
       </div>
+      {menu ? (
+        <ListItemContextMenu point={menu.point} items={menuItems(menu.entry)} onClose={() => setMenu(null)} />
+      ) : null}
       {promptDialog}
       {confirmDialog}
     </HubShell>

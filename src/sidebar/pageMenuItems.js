@@ -240,3 +240,72 @@ export function availableActions(handlers = {}) {
       .map((name) => [name, typeof handlers[name] === 'function']),
   );
 }
+
+// KAL-793 (owner 2026-11-17: "the massive context menu just extends past the
+// screen... some things should be condensed into submenus"). The viewer's
+// desktop page menu keeps the everyday rows on top and folds the page
+// operations into three submenus. Same items and keys as the flat list, so
+// runPageMenuAction runs them unchanged; only the order and nesting differ.
+const PAGE_SUBMENUS = Object.freeze([
+  { key: 'insertPage', label: 'Insert page', icon: 'plus', keys: ['insertAbove', 'insertBelow', 'insertTemplate'] },
+  { key: 'copyMovePage', label: 'Copy or move page', icon: 'copy', keys: ['cut', 'copy', 'pasteAbove', 'pasteBelow', 'duplicate', 'moveUp', 'moveDown'] },
+  { key: 'rotatePage', label: 'Rotate or mirror page', icon: 'rotateCw', keys: ['rotateLeft', 'rotateRight', 'mirrorH', 'mirrorV', 'reset'] },
+]);
+const PAGE_TOP_KEYS = Object.freeze(['pasteMarks', 'pasteInPlace', 'selectAllMarks', 'selectAllText', 'unlockAll', 'setScale']);
+
+/**
+ * Sort the flat page menu (the canvas rows + buildPageMenuItems) into
+ *   Page 3                       (title)
+ *   Paste, Paste in place, Select all, Unlock all, Set page scale
+ *   ──
+ *   Insert page ›   Copy or move page ›   Rotate or mirror page ›
+ *   ──
+ *   Delete page
+ * A submenu with one item shows that item as a plain row; one with none is
+ * left out. "Select all on page" and "Select all text" share a "Select all ›"
+ * when both are there. Rows it does not know stay in the top group.
+ * @returns {Array<object>} rows; a submenu row is { key, label, icon, submenu, disabled }
+ */
+export function nestPageMenuItems(flat = []) {
+  const items = (Array.isArray(flat) ? flat : []).filter((it) => it && !it.separator);
+  const header = items.find((it) => it.header) || null;
+  const byKey = new Map(items.filter((it) => !it.header).map((it) => [it.key, it]));
+  const submenuKeys = new Set(PAGE_SUBMENUS.flatMap((group) => group.keys));
+  const asRow = (group, list) => (list.length === 1
+    ? list[0]
+    : { key: group.key, label: group.label, icon: group.icon, submenu: list, disabled: list.every((it) => it.disabled) });
+
+  const top = [];
+  PAGE_TOP_KEYS.forEach((key) => {
+    if (key === 'selectAllText') return;
+    const it = byKey.get(key);
+    if (!it) return;
+    if (key === 'selectAllMarks' && byKey.has('selectAllText')) {
+      top.push(asRow({ key: 'selectAll', label: 'Select all', icon: 'selectGroup' }, [
+        { ...it, label: 'Marks on this page' },
+        { ...byKey.get('selectAllText'), label: 'Text on this page' },
+      ]));
+      return;
+    }
+    top.push(it);
+  });
+  if (!byKey.has('selectAllMarks') && byKey.has('selectAllText')) top.push(byKey.get('selectAllText'));
+  byKey.forEach((it, key) => {
+    if (!PAGE_TOP_KEYS.includes(key) && !submenuKeys.has(key) && key !== 'delete') top.push(it);
+  });
+
+  const middle = PAGE_SUBMENUS
+    .map((group) => [group, group.keys.map((key) => byKey.get(key)).filter(Boolean)])
+    .filter(([, list]) => list.length > 0)
+    .map(([group, list]) => asRow(group, list));
+  const del = byKey.get('delete');
+
+  const rows = header ? [header] : [];
+  [top, middle, del ? [{ ...del, label: 'Delete page' }] : []]
+    .filter((group) => group.length > 0)
+    .forEach((group, index) => {
+      if (index > 0) rows.push({ key: `sep-nest-${index}`, separator: true });
+      rows.push(...group);
+    });
+  return rows;
+}

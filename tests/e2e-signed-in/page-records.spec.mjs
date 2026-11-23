@@ -77,6 +77,12 @@ async function openDoc(page, name, phone = false) {
   await page.waitForTimeout(1500);
 }
 
+const PAGE_SUBMENU_OF = {
+  'Rotate right': 'Rotate or mirror page',
+  'Rotate left': 'Rotate or mirror page',
+  'Blank page below': 'Insert page',
+};
+
 async function pageMenu(page, n, item) {
   await page.mouse.click(5, 450);
   await page.keyboard.press('v');
@@ -84,6 +90,9 @@ async function pageMenu(page, n, item) {
   await pd.scrollIntoViewIfNeeded();
   const box = await pd.boundingBox();
   await pd.click({ button: 'right', position: { x: box.width * 0.97, y: box.height * 0.985 } });
+  // KAL-793: the rarer page rows sit in submenus; click the row that holds it.
+  const holder = PAGE_SUBMENU_OF[item];
+  if (holder) await page.getByRole('menuitem', { name: holder, exact: true }).filter({ visible: true }).first().click();
   await page.getByRole('menuitem', { name: item, exact: true }).filter({ visible: true }).first().click();
 }
 
@@ -140,7 +149,7 @@ test('page changes follow in the other window at once, upload nothing, and expor
     await expect(b.getByText(BLOCKED)).toHaveCount(0);
 
     // 2. A deletes page 2: B drops it.
-    await pageMenu(a, 2, 'Delete');
+    await pageMenu(a, 2, 'Delete page');
     await expect.poll(() => shapes(a)).toEqual(['tall', 'square']);
     await expect.poll(() => shapes(b), { timeout: 5000 }).toEqual(['tall', 'square']);
 

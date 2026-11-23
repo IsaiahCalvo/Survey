@@ -64,9 +64,14 @@ const TAB_ACTIVE_BG = 'var(--surface-2)';
    for SELECTED ("--surface-3 is a SELECTED or a FIELD surface. It is never a
    hover"). Hovering an idle tab therefore painted it the active tab's colour, so
    the bar appeared to have two active tabs. Hover is --hover, press is
-   --pressed, like every other control. */
-const TAB_HOVER_BG = 'var(--hover)';
-const TAB_PRESSED_BG = 'var(--pressed)';
+   --pressed, like every other control.
+   An idle tab rests on ground, where the dark press grey IS ground and the
+   light hover is one level off it, so it takes the suite's ground steps
+   (KAL-652); the active tab rests on the panel and keeps --pressed. The
+   old look has no ground steps and falls back to --hover / --pressed. */
+const TAB_HOVER_BG = 'var(--hover-ground, var(--hover))';
+const TAB_PRESSED_BG = 'var(--pressed-ground, var(--pressed))';
+const TAB_ACTIVE_PRESSED_BG = 'var(--pressed)';
 const TAB_BORDER = 'var(--border)';
 const TAB_TEXT = 'var(--text-3)';
 const TAB_TEXT_ACTIVE = 'var(--text-1)';
@@ -240,7 +245,7 @@ function TabItem({
         if (e.button !== 0) return;
         sortableListeners.onMouseDown?.(e);
         if (!isSorting) {
-          e.currentTarget.style.background = TAB_PRESSED_BG;
+          e.currentTarget.style.background = isActive ? TAB_ACTIVE_PRESSED_BG : TAB_PRESSED_BG;
         }
       }}
       onMouseUp={(e) => {

@@ -2799,7 +2799,7 @@ export default function TemplatesEditor({
               </div>
             ) : (
             <>
-            <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--rule)', display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div className="templates-editor-head" style={{ padding: '14px 18px', borderBottom: '1px solid var(--rule)', display: 'flex', alignItems: 'center', gap: 14 }}>
               <span style={{ width: 4, height: 36, background: tpl.accent, borderRadius: 2, flex: 'none' }}></span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 {/* Inline rename field. Typing raises Cancel / Save in the
