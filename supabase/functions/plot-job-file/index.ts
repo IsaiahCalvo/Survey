@@ -2,8 +2,8 @@
 // Plot asks for an upload link after it shares or saves a job, says when the
 // upload landed, and asks for a download link to open a job shared from
 // another computer. The rules and the ledger are in ../_shared/plotJobFile.js.
-import { handlePlotJobFile } from '../_shared/plotJobFile.js';
-import { plotR2Env } from '../_shared/plotJobFile.js';
+import { handlePlotJobFile, plotR2Env } from '../_shared/plotJobFile.js';
+import { parseBody, s } from '../_shared/inputSchema.js';
 import { deleteObject, headObject, presignGet, presignPut, putBucketCors, r2ConfigFromEnv } from '../_shared/r2.js';
 
 const corsHeaders = {
@@ -52,10 +52,20 @@ Deno.serve(async (req) => {
     return res.json();
   };
 
+  // Only the fields the handler reads; it checks the rules (UUID, size cap).
+  const parsed = parseBody({
+    op: s.enum(['upload', 'commit', 'download']),
+    jobId: s.string({ min: 1, max: 64 }),
+    revision: s.string({ max: 200, optional: true }),
+    bytes: s.integer({ min: 0, optional: true }),
+    key: s.string({ max: 512, optional: true }),
+  }, await req.json().catch(() => null));
+  if (!parsed.ok) return json(400, { error: 'invalid_request', detail: parsed.error });
+
   const config = r2ConfigFromEnv(plotR2Env((name: string) => Deno.env.get(name)));
   try {
     const answer = await handlePlotJobFile({
-      body: await req.json().catch(() => null),
+      body: parsed.value,
       config,
       // The caller's own token: the Project's roles decide.
       roleOf: async (jobId: string) => (await rpc('plot_job_role', { p_id: jobId }, false)) ?? null,
