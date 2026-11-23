@@ -57,23 +57,28 @@ export default function CrashReportsPanel() {
         When Survey crashes, freezes or closes by itself on this device, a short note is kept here
         (the last 20). Nothing is sent anywhere. Copy them and paste them to us.
       </p>
-      <div className="crash-reports-actions">
-        <button
-          type="button"
-          className="account-btn-secondary"
-          disabled={records.length === 0}
-          onClick={async () => setNote(await copyText(formatCrashReports(records)) ? 'Copied.' : 'Could not copy. Select the text below instead.')}
-        >
-          Copy
-        </button>
-        <button
-          type="button"
-          className="account-btn-secondary"
-          disabled={records.length === 0}
-          onClick={() => { clearCrashReports(); setRecords([]); setNote('Cleared.'); }}
-        >
-          Clear
-        </button>
+      {/* Copy and Clear show only when there is something to copy or clear:
+          two dimmed buttons over "No crashes" read as broken. The status line
+          stays mounted, so "Cleared." is still read out. */}
+      <div className={`crash-reports-actions${records.length === 0 && !note ? ' is-quiet' : ''}`}>
+        {records.length > 0 && (
+          <>
+            <button
+              type="button"
+              className="account-btn-secondary account-btn-sm"
+              onClick={async () => setNote(await copyText(formatCrashReports(records)) ? 'Copied.' : 'Could not copy. Select the text below instead.')}
+            >
+              Copy
+            </button>
+            <button
+              type="button"
+              className="account-btn-secondary account-btn-sm"
+              onClick={() => { clearCrashReports(); setRecords([]); setNote('Cleared.'); }}
+            >
+              Clear
+            </button>
+          </>
+        )}
         <span className="crash-reports-note" role="status" aria-live="polite">{note}</span>
       </div>
       {newestFirst.length === 0 ? (

@@ -1410,11 +1410,11 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                         </div>
                       ) : msNeedsReconnect ? (
                         <div className="account-connected-account-status" style={{ color: 'var(--warning)' }}>
-                          Session expired. Click Reconnect to restore access.
+                          Your sign-in ran out. Reconnect to keep syncing.
                         </div>
                       ) : (
                         <div className="account-connected-account-status">
-                          Not connected. Connect to sync exported surveys
+                          Not connected. Connect to sync exports to OneDrive.
                         </div>
                       )}
                     </div>
@@ -1435,8 +1435,11 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                         Disconnect
                       </button>
                     ) : (
+                      // Connect is a plain grey button: two coral Connects
+                      // on one screen were two main actions. Reconnect is
+                      // the one thing to do, so it keeps the coral.
                       <button
-                        className={msNeedsReconnect ? "account-btn-primary" : "account-btn-primary"}
+                        className={msNeedsReconnect ? "account-btn-primary" : "account-btn-secondary"}
                         onClick={async () => {
                           if (proLocked('onedrive')) return;
                           try {
@@ -1446,7 +1449,6 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                           }
                         }}
                         disabled={loading}
-                        style={msNeedsReconnect ? { backgroundColor: 'var(--warning)', borderColor: 'var(--warning)' } : {}}
                       >
                         {msNeedsReconnect ? 'Reconnect' : 'Connect'}
                       </button>
@@ -1471,14 +1473,14 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                         </div>
                       ) : (
                         <div className="account-connected-account-status">
-                          Not connected. Use as an alternative login method
+                          Not connected. Connect to sign in with Google too.
                         </div>
                       )}
                     </div>
                   </div>
                   <div className="account-connected-account-actions">
                     <button
-                      className={user?.app_metadata?.provider === 'google' || user?.identities?.some(id => id.provider === 'google') ? "account-btn-secondary" : "account-btn-primary"}
+                      className="account-btn-secondary"
                       onClick={async () => {
                         const googleConnected = Boolean(user?.app_metadata?.provider === 'google'
                           || user?.identities?.some((id) => id.provider === 'google'));
