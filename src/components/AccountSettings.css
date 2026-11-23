@@ -106,7 +106,7 @@
   align-items: center;
   justify-content: center;
   border-radius: 6px;
-  transition: all 0.2s ease;
+  transition: var(--state-all, all 0.2s ease);
   font-family: inherit;
 }
 
@@ -149,7 +149,7 @@
   cursor: pointer;
   font-size: 12.5px;
   font-weight: 500;
-  transition: all 0.15s ease;
+  transition: var(--state-all, all 0.15s ease);
   font-family: inherit;
   /* UX (KAL-68): safety net for the fixed-width sidebar. Today's labels all fit
      on one line, but a long label at a 1.25x OS scale used to wrap and push the
@@ -291,7 +291,7 @@
   font-size: 13px;
   background: var(--surface-2);
   color: var(--text-1);
-  transition: all 0.2s ease;
+  transition: var(--state-all, all 0.2s ease);
   font-family: inherit;
 }
 
@@ -399,7 +399,7 @@
    text link (--link), never gold (owner 2026-10-04). */
 .account-text-link {
   color: var(--link);
-  transition: color 0.15s ease;
+  transition: color var(--state-time, 0.15s) var(--state-ease, ease);
 }
 
 .account-text-link:hover:not(:disabled) {
@@ -530,7 +530,7 @@
   border-radius: 999px;
   background: var(--surface-3);
   box-shadow: inset 0 0 0 1px var(--border-strong);
-  transition: background 160ms ease, box-shadow 160ms ease;
+  transition: background var(--state-time, 160ms) var(--state-ease, ease), box-shadow var(--state-time, 160ms) var(--state-ease, ease);
 }
 
 .account-switch-track::after {
@@ -542,7 +542,7 @@
   height: 14px;
   border-radius: 50%;
   background: var(--text-1);
-  transition: transform 160ms ease, background 160ms ease;
+  transition: transform 160ms ease, background var(--state-time, 160ms) var(--state-ease, ease);
 }
 
 .account-switch[aria-checked='true'] .account-switch-track {
@@ -771,7 +771,7 @@
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 10px;
-  transition: all 0.2s ease;
+  transition: var(--state-all, all 0.2s ease);
   margin-bottom: 12px;
 }
 
@@ -859,7 +859,7 @@
   grid-row: span 3;
   row-gap: 0;
   position: relative;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: border-color var(--state-time, 0.2s) var(--state-ease, ease), box-shadow var(--state-time, 0.2s) var(--state-ease, ease);
 }
 
 .account-subscription-header {
@@ -989,7 +989,7 @@
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background var(--state-time, 0.2s) var(--state-ease, ease);
 }
 
 /* UX: a gold control's hover step is --accent-light and its pressed step is
@@ -1078,7 +1078,7 @@
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
-  transition: all 0.2s ease;
+  transition: var(--state-all, all 0.2s ease);
   font-family: inherit;
   outline: none;
   margin-bottom: -1px;

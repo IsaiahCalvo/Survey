@@ -39,7 +39,7 @@
   background: var(--panel-well);
   border: 1px solid transparent;
   border-radius: 8px;
-  transition: border-color 120ms ease-out;
+  transition: border-color var(--state-time, 120ms) var(--state-ease, ease-out);
 }
 
 .survey-notes__box:focus-within {

@@ -271,7 +271,7 @@
   border-radius: 4px;
   background: var(--pp-paper-thumb); color: var(--pp-paper-ink);
   border: 2px solid transparent;
-  transition: border-color 120ms, box-shadow 120ms, background 120ms, opacity 120ms;
+  transition: border-color var(--state-time, 120ms) var(--state-ease, ease), box-shadow var(--state-time, 120ms) var(--state-ease, ease), background var(--state-time, 120ms) var(--state-ease, ease), opacity 120ms;
 }
 .pp-thumb-cell:hover .pp-thumb {
   box-shadow: 0 4px 10px rgba(0,0,0,0.35);
@@ -481,7 +481,7 @@
   font: 600 10px/1 var(--pp-font, inherit);
   display: inline-flex; align-items: center; justify-content: center;
   cursor: pointer;
-  transition: background 120ms, transform 120ms, border-color 120ms, color 120ms;
+  transition: background var(--state-time, 120ms) var(--state-ease, ease), transform 120ms, border-color var(--state-time, 120ms) var(--state-ease, ease), color var(--state-time, 120ms) var(--state-ease, ease);
 }
 .pp-pager-dot:hover { background: var(--pp-hover); color: var(--text-1); transform: translateY(-1px); }
 .pp-pager-dot:active { background: var(--pp-pressed); }
@@ -633,7 +633,7 @@
   width: 26px; height: 26px; padding: 0;
   cursor: pointer; font-family: inherit;
   display: inline-flex; align-items: center; justify-content: center;
-  transition: background 120ms, border-color 120ms, color 120ms, transform 120ms;
+  transition: background var(--state-time, 120ms) var(--state-ease, ease), border-color var(--state-time, 120ms) var(--state-ease, ease), color var(--state-time, 120ms) var(--state-ease, ease), transform 120ms;
 }
 .pp-rbtn:hover { background: var(--pp-hover); color: var(--pp-ink); }
 .pp-rbtn:active { background: var(--pp-pressed); }
@@ -650,7 +650,7 @@
 .pp-tog .pp-tog-sw {
   position: relative; width: 28px; height: 16px;
   background: var(--surface-3); border-radius: 9px;
-  transition: background 160ms;
+  transition: background var(--state-time, 160ms) var(--state-ease, ease);
   flex-shrink: 0;
 }
 .pp-tog .pp-tog-sw::after {
@@ -779,7 +779,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: background 120ms ease, color 120ms ease;
+  transition: background var(--state-time, 120ms) var(--state-ease, ease), color var(--state-time, 120ms) var(--state-ease, ease);
   font-family: inherit;
   cursor: pointer;
 }
@@ -817,7 +817,7 @@
   justify-content: center;
   font-family: inherit;
   cursor: pointer;
-  transition: background 120ms ease, color 120ms ease;
+  transition: background var(--state-time, 120ms) var(--state-ease, ease), color var(--state-time, 120ms) var(--state-ease, ease);
 }
 .pp-bigprev-head .pp-bigprev-close:hover {
   background: var(--hover);
@@ -978,7 +978,7 @@
   }
   .pp-pager-dot,
   .pp-rbtn {
-    transition: background 120ms, border-color 120ms, color 120ms;
+    transition: background var(--state-time, 120ms) var(--state-ease, ease), border-color var(--state-time, 120ms) var(--state-ease, ease), color var(--state-time, 120ms) var(--state-ease, ease);
   }
   .pp-rbtn:active {
     transform: none;

@@ -2395,7 +2395,7 @@ const SurveySpacesRail = ({
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        transition: 'background 0.15s',
+                        transition: 'background var(--state-time, 0.15s) var(--state-ease, ease)',
                         minWidth: '28px',
                         minHeight: '28px',
                         width: '100%'
@@ -4253,7 +4253,7 @@ const SurveySpacesRail = ({
                                       alignItems: 'center',
                                       justifyContent: 'center',
                                       gap: '6px',
-                                      transition: 'background 0.2s ease, border-color 0.2s ease'
+                                      transition: 'background var(--state-time, 0.2s) var(--state-ease, ease), border-color var(--state-time, 0.2s) var(--state-ease, ease)'
                                     }}
                                     onMouseEnter={(event) => {
                                       event.currentTarget.style.background = 'var(--hover)';

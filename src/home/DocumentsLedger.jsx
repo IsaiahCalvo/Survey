@@ -760,7 +760,7 @@ export default function DocumentsLedger({
     background: selected ? 'var(--ink-600)' : 'var(--ink-700)',
     // Fades with its row (hub.css, 150ms): changed at once it showed as a
     // dark box over the name while the rest of the row faded (2026-10-27).
-    transition: 'background-color 150ms var(--ease-standard)',
+    transition: 'background-color var(--state-time, 150ms) var(--state-ease, var(--ease-standard))',
     ...(homeCols ? { padding: `${densityRow.pad}px 14px` } : { padding: '12px 14px' }),
     display: 'flex', alignItems: 'center', gap: 10,
     minWidth: 0,

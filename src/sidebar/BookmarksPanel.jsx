@@ -2271,7 +2271,7 @@ const BookmarksPanel = ({
                         fontFamily: FONT_FAMILY,
                         marginBottom: '8px',
                         outline: 'none',
-                        transition: 'border-color 0.15s ease'
+                        transition: 'border-color var(--state-time, 0.15s) var(--state-ease, ease)'
                       }}
                       // UX 2026-09-23: focus lifts the border to a lighter
                       // neutral — no gold ring on a field (owner rule).
@@ -2294,7 +2294,7 @@ const BookmarksPanel = ({
                         fontFamily: FONT_FAMILY,
                         marginBottom: '8px',
                         outline: 'none',
-                        transition: 'border-color 0.15s ease'
+                        transition: 'border-color var(--state-time, 0.15s) var(--state-ease, ease)'
                       }}
                       onFocus={(e) => e.currentTarget.style.borderColor = 'var(--text-3)'}
                       onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border-strong)'}
@@ -2323,7 +2323,7 @@ const BookmarksPanel = ({
                         cursor: 'pointer',
                         fontFamily: FONT_FAMILY,
                         marginBottom: '8px',
-                        transition: 'background 0.15s ease'
+                        transition: 'background var(--state-time, 0.15s) var(--state-ease, ease)'
                       }}
                       onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
                       onMouseLeave={(e) => e.currentTarget.style.background = 'var(--surface-2)'}
@@ -2576,7 +2576,7 @@ const BookmarksPanel = ({
                   fontSize: '13px',
                   fontFamily: FONT_FAMILY,
                   outline: 'none',
-                  transition: 'border-color 0.15s ease'
+                  transition: 'border-color var(--state-time, 0.15s) var(--state-ease, ease)'
                 }}
                 onFocus={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
                 onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border-strong)'}

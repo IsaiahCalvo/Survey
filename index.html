@@ -117,6 +117,20 @@
           padding-bottom: 0;
         }
       }
+      /* KAL-819: until the app's code has run (about half a second on a
+         reload), the suite look draws the one line every desktop screen
+         starts with, under the 32px tab bar, so the window is not an empty
+         field that the app then pops into. React replaces #root's children
+         on its first render, so this goes away on its own. */
+      .boot-frame { display: none; }
+      @media screen and (min-device-width: 600px) and (min-device-height: 600px) {
+        html[data-look="suite"] .boot-frame {
+          display: block;
+          height: 32px;
+          border-bottom: 1px solid #2c2c2f;
+        }
+        html[data-look="suite"][data-theme="light"] .boot-frame { border-bottom-color: #ececec; }
+      }
     </style>
     <script>
       /* UX 2026-07-12 (mobile demo parity, S5 first-paint determinism): the
@@ -161,7 +175,7 @@
     <title>Survey</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><div class="boot-frame" aria-hidden="true"></div></div>
     <script type="module" src="/src/entry.jsx"></script>
   </body>
 </html>

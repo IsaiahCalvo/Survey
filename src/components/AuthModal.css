@@ -85,7 +85,7 @@
   align-items: center;
   justify-content: center;
   border-radius: 6px;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: background var(--state-time, 0.15s) var(--state-ease, ease), color var(--state-time, 0.15s) var(--state-ease, ease);
   font-family: inherit;
   font-weight: 400;
 }
@@ -196,7 +196,7 @@
   border: 1px solid var(--border-strong);
   border-radius: 6px;
   font-size: 13px;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition: border-color var(--state-time, 0.15s) var(--state-ease, ease), background var(--state-time, 0.15s) var(--state-ease, ease);
   font-family: inherit;
   background: var(--surface-1);
   color: var(--text-1);
@@ -240,7 +240,7 @@
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background var(--state-time, 0.15s) var(--state-ease, ease);
   margin-top: 6px;
   font-family: inherit;
   letter-spacing: 0;
@@ -291,7 +291,7 @@
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  transition: background var(--state-time, 0.15s) var(--state-ease, ease), border-color var(--state-time, 0.15s) var(--state-ease, ease);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -334,7 +334,7 @@
   padding: 8px;
   margin-top: 6px;
   text-decoration: underline;
-  transition: color 0.15s ease;
+  transition: color var(--state-time, 0.15s) var(--state-ease, ease);
   font-family: inherit;
   font-weight: 600;
   letter-spacing: 0;
@@ -369,7 +369,7 @@
   text-decoration: underline;
   padding: 0;
   font-weight: 600;
-  transition: color 0.15s ease;
+  transition: color var(--state-time, 0.15s) var(--state-ease, ease);
   font-family: inherit;
   letter-spacing: 0;
 }
@@ -390,7 +390,7 @@
   font-size: 12px;
   cursor: pointer;
   padding: 8px;
-  transition: color 0.15s ease;
+  transition: color var(--state-time, 0.15s) var(--state-ease, ease);
   font-family: inherit;
   font-weight: 400;
   letter-spacing: 0;
