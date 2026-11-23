@@ -158,7 +158,7 @@ follow steps 1 and 2 for the cursor, then move with the pointer with no lift.
 | --- | --- | --- | --- |
 | Hover | `--hover` | `--state-hover` (a light tint, so it works over any fill) | `--fill` |
 | Pressed | `--pressed` | `--state-pressed` (a dark tint, for the same reason) | `--pressed` |
-| Selected | `--surface-3` | `--accent-bg` | `--accent-wash` |
+| Selected | `--surface-3` | `--bg-elev-3` (raised-2, as Survey, since KAL-797); a chosen tool icon is coral with no fill | `--accent-wash` |
 | Coloured button: hover, pressed | `--accent-light`, `--accent-press` | `--accent-hover`, `--accent-pressed` (coral); `--ink-hover`, `--ink-pressed` (light); `--danger-hover`, `--danger-pressed` (red) | `--accent-hover`, `--accent-press` (coral); `--error-hover`, `--error-press` (red) |
 | Focus ring | `--focus`, 2px | `--focus`, 2px; `src/lib/focus-ring-source.ts` | `--focus-ring`, 2px |
 | State time | `--motion-state` | `--motion-state`, `--ease-state` | `--motion-state` |
