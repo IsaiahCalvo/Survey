@@ -5550,6 +5550,12 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
   background: var(--pressed) !important;
   transition-duration: 90ms;
 }
+/* The previewed row still shows a press: one step past its chosen grey. */
+.survey-hub .documents-ledger-row.is-selected:not(.is-dragging):active,
+.survey-hub .documents-ledger-row.is-selected:not(.is-dragging):active > .documents-ledger-name-cell {
+  background: var(--pressed-2, var(--pressed)) !important;
+  transition: none;
+}
 .survey-hub .documents-ledger-row.is-dragging {
   opacity: .5;
 }
@@ -5865,7 +5871,15 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
 @container (max-width: 480px) {
   .projects-open-actions { width: calc(100% - 18px); margin-left: 18px; }
 }
-.projects-file-grid { grid-template-columns: 24px minmax(0, 1fr) 90px 90px 28px; }
+.projects-file-grid { grid-template-columns: 24px 40px minmax(0, 1fr) 90px 90px 28px; }
+.projects-file-thumb { display: flex; align-items: center; justify-content: center; min-width: 0; }
+/* Rows part with a line, as on Documents (owner, Nov 16: dividers between
+   list rows). Inset to the row's rounded fill; none under the last row. */
+.survey-hub .projects-file-rows > :not(:last-child) [data-document-id].projects-file-grid { position: relative; }
+.survey-hub .projects-file-rows > :not(:last-child) [data-document-id].projects-file-grid::after {
+  content: ''; position: absolute; left: 10px; right: 10px; bottom: 0; height: 1px;
+  background: var(--ink-500); pointer-events: none;
+}
 /* A document row opens on a click but is a keyboard-control row, which the
    hub's hover rule skips, so it showed no hover or press. A ticked row keeps
    its fill. The fills beat the row's inline zebra wash. */
@@ -5876,25 +5890,23 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
 @media (hover: hover) {
   .survey-hub .projects-list-row:not(.is-selected):hover { background: var(--hover) !important; }
 }
-@media (pointer: fine) {
-  .survey-hub .projects-list-row:active:not(:has(button:active, input:active, [data-drag-rearrange-handle]:active)) {
-    background: var(--pressed) !important;
-    transition: none !important;
-  }
-  /* The chosen row already wears the press grey in light: one step on. */
-  .survey-hub .projects-list-row.is-selected:active:not(:has(button:active, input:active, [data-drag-rearrange-handle]:active)) {
-    background: var(--pressed-2, var(--pressed)) !important;
-  }
+/* A finger down presses too (tablet pass, KAL-652): these sat behind a
+   fine-pointer guard, so an iPad showed no press on a project or file row. */
+.survey-hub .projects-list-row:active:not(:has(button:active, input:active, [data-drag-rearrange-handle]:active)) {
+  background: var(--pressed) !important;
+  transition: none !important;
 }
-@media (pointer: fine) {
-  .survey-hub .projects-file-grid[data-document-id]:active:not(:has(button:active, [role='checkbox']:active, [data-drag-rearrange-handle]:active)) {
-    background: var(--pressed) !important;
-    transition: none !important;
-  }
+/* The chosen row already wears the press grey in light: one step on. */
+.survey-hub .projects-list-row.is-selected:active:not(:has(button:active, input:active, [data-drag-rearrange-handle]:active)) {
+  background: var(--pressed-2, var(--pressed)) !important;
+}
+.survey-hub .projects-file-grid[data-document-id]:active:not(:has(button:active, [role='checkbox']:active, [data-drag-rearrange-handle]:active)) {
+  background: var(--pressed) !important;
+  transition: none !important;
 }
 .projects-file-editor-label-short { display: none; }
 @container (max-width: 480px) {
-  .projects-file-grid { grid-template-columns: 24px minmax(0, 1fr) 28px 64px 28px; }
+  .projects-file-grid { grid-template-columns: 24px 32px minmax(0, 1fr) 28px 64px 28px; }
   .projects-file-editor-label { display: none; }
   .projects-file-editor-label-short { display: inline; }
   .projects-file-editor-name { display: none; }
@@ -5960,4 +5972,26 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
    would touch its hairline. */
 @media (max-width: 860px), screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
   .survey-hub.hub-tab-library .library-body { --library-body-top: 8px; }
+}
+
+/* One look, phone: the "< Projects" / "< Templates" back buttons rested on
+   the ground colour, so in dark mode the press had no darker grey to step to
+   and showed nothing. They rest on the panel colour, like the search field
+   beside them, and the shared press steps down from there (phone pass,
+   KAL-652). */
+html[data-look='suite'] .survey-hub .projects-mobile-back-button,
+html[data-look='suite'] .survey-hub .templates-mobile-back-button { background: var(--surface-2); }
+
+/* Tablet pass (KAL-652): on an iPad held upright the Documents header needs
+   576px for its search and four buttons, and the coral Upload ran off the
+   right edge. The search gives way instead, down to 140px. A desktop window
+   has the room, so the search keeps its 240px there. */
+.survey-hub .header > .actions { min-width: 0; }
+.survey-hub .header > .actions > .documents-desktop-search { min-width: 140px; }
+.survey-hub .header > .actions > .documents-desktop-search > .hub-search { max-width: 100%; }
+/* A small iPad (744px) has no room even with the search at 140px: there the
+   header's buttons drop under the title. The phone layout (a screen under
+   600px) has its own header and is left alone. */
+@media screen and (min-device-width: 600px) and (min-device-height: 600px) and (max-width: 800px) {
+  .survey-hub .header:has(> .actions > .documents-desktop-search) { flex-wrap: wrap; row-gap: 8px; }
 }

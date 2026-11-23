@@ -73,6 +73,9 @@
   font: 500 13px var(--font-ui); cursor: pointer; white-space: nowrap;
 }
 .survey-hub .home-filter-chip.is-on { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+@media (hover: hover) {
+  .survey-hub .home-filter-chip.is-on:hover:not(:active) { background: var(--accent-light); border-color: var(--accent-light); }
+}
 .survey-hub .home-filter-chip__count { font-size: 11px; opacity: .75; font-variant-numeric: tabular-nums; }
 
 /* Desktop: the list's own view bar above the rows (view label + count,

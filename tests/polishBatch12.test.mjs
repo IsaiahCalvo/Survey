@@ -12,7 +12,7 @@ test('one look: a setting pill rests on raised, hovers to raised-2 and presses t
   const states = read('src/styles/states.css');
   // The app-wide hover and press rules leave the pill to its own steps.
   assert.match(states, /\.survey-hub button:not\(:disabled\):not\(\[aria-disabled='true'\]\):not\(\[aria-pressed='true'\]\):not\(\.hub-title-switch\):not\(\.chrome-pill\)/);
-  assert.equal((states.match(/:not\(\.mobile-survey-notes-save\):not\(\.chrome-pill\) \{\n\s*background-color: var\(--pressed/g) || []).length, 2);
+  assert.equal((states.match(/:not\(\.mobile-survey-notes-save\):not\(\.chrome-pill\)[^{]*\{\n\s*background-color: var\(--pressed/g) || []).length, 2);
 });
 
 test('one look: a pill on the ground colour (template checklist rows) rests on the panel colour', () => {

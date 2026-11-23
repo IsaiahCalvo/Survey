@@ -10,6 +10,9 @@ const ICON_BY_LABEL = [
   [/^cut\b/i, 'scissors'],
   [/^paste\b/i, 'paste'],
   [/^rename\b/i, 'edit'],
+  // Phone pass (KAL-652): these rows sat bare among rows with icons.
+  [/^edit details\b/i, 'editList'],
+  [/^(add|edit) labels?\b/i, 'tag'],
   [/^pdf tools\b/i, 'document'],
   [/^merge\b/i, 'pages'],
   [/^(un)?lock\b/i, 'lock'],

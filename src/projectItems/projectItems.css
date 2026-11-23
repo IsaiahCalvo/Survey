@@ -36,7 +36,8 @@
 .item-chip-sep { flex: none; width: 1px; height: 16px; background: var(--border); }
 .item-assignee-filter { flex: none; width: 160px; }
 
-.item-archived-note { margin: 0 14px 6px; font-size: 12px; color: var(--text-3); }
+.item-archived-note { margin: 0 14px 6px; font-size: 12px; color: var(--text-3); display: flex; align-items: center; gap: 4px; }
+.item-archived-note .item-archived-back { height: 24px; padding: 0 8px; font-size: 12px; }
 .project-items__bulk { display: flex; align-items: center; gap: 8px; padding: 4px 14px 8px; }
 
 .item-row {
