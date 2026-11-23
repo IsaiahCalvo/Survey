@@ -547,3 +547,14 @@
   .auth-forgot-link { position: relative; }
   .auth-forgot-link::after { content: ''; position: absolute; inset: -14px -8px; }
 }
+
+/* Sign-up: First name and Last name side by side; a narrow card stacks them. */
+.auth-name-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.auth-name-row > .auth-form-group { min-width: 0; }
+@media (max-width: 480px) {
+  .auth-name-row { grid-template-columns: 1fr; gap: 14px; }
+}

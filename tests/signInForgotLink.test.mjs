@@ -27,3 +27,9 @@ test('the link is the calm link colour', () => {
   assert.match(css, /\.auth-forgot-link \{[^}]*color: var\(--link\);/);
   assert.match(css, /\.auth-forgot-link:hover \{\s*color: var\(--link-hover\);/);
 });
+
+test('sign-up puts First and Last name on one row, stacked on a narrow card', () => {
+  assert.match(jsx, /<div className="auth-name-row">[\s\S]{0,200}id="firstName"/);
+  assert.match(css, /\.auth-name-row \{\s*display: grid;\s*grid-template-columns: 1fr 1fr;/);
+  assert.match(css, /@media \(max-width: 480px\) \{\s*\.auth-name-row \{ grid-template-columns: 1fr;/);
+});

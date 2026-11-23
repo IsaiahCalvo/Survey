@@ -338,7 +338,9 @@ export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' })
           )}
 
           {mode === 'signup' && (
-            <>
+            // First and last name share a row on a wide card, so the sign-up
+            // form fits a laptop screen; a phone stacks them again.
+            <div className="auth-name-row">
               <div className="auth-form-group">
                 <label htmlFor="firstName">First name</label>
                 <input
@@ -368,7 +370,7 @@ export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' })
                   disabled={loading}
                 />
               </div>
-            </>
+            </div>
           )}
 
           {(mode === 'login' || mode === 'signup') && (
