@@ -451,6 +451,12 @@ verify_jwt = false
 [functions.pdf-file-url]
 verify_jwt = false
 
+# KAL-581 Plot job files. Browser-invoked from Plot (desktop localhost and the web):
+# the gateway JWT check would refuse the CORS preflight, so the function checks the
+# caller's token itself (every role read goes through PostgREST with it).
+[functions.plot-job-file]
+verify_jwt = false
+
 # Comment @mention email (Nightly). Browser-invoked: answers the CORS
 # preflight, then does its own auth (auth.getUser on the Bearer JWT) and only
 # emails for the caller's own fresh comment.
