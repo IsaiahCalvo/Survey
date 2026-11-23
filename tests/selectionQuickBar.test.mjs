@@ -7,6 +7,7 @@
 //    nothing at all on a read-only document.
 // 3. Its actions are the existing ones (the Delete / Cmd+D keys, the
 //    right-click menu), and it is mounted for the desktop layout only.
+import { dockedBarPosition } from '../src/utils/selectionBarDock.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -135,6 +136,14 @@ test('placement: a docked bar yields when the selected mark reaches the dock', (
   const spot = computeSelectionQuickBarPosition({ selectionRect, bounds: VIEWER, dock, ...BAR });
   assert.equal(spot.side, 'above');
   assert.ok(!hits(barRect(spot), selectionRect));
+});
+
+test('placement: a docked bar stays docked when the mark is far from the dock', () => {
+  // dockedBarPosition puts it DOCKED_BAR_GAP (8 px) off the bottom, inside the
+  // floating margin; it must still win (Dock bar to bottom, e2e toolbar-settings).
+  const dock = dockedBarPosition(VIEWER, BAR.barWidth, BAR.barHeight);
+  const spot = computeSelectionQuickBarPosition({ selectionRect: { left: 500, top: 200, right: 580, bottom: 240 }, bounds: VIEWER, dock, ...BAR });
+  assert.deepEqual(spot, dock);
 });
 
 test('frame: the union of the page overlays', () => {
