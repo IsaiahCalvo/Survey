@@ -21,6 +21,7 @@
 
 import MenuGlide from '../components/MenuGlide.jsx';
 import { menuIconFor } from '../utils/menuItems.js';
+import { clearMarkMenu } from '../utils/markMenuPlacement.js';
 import { queryFrontTab } from '../utils/tabBehind.js';
 import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import { useBackLayer } from '../utils/backNavigation.js';
@@ -222,7 +223,7 @@ const MENU_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'E
 const MENU_IS_MAC = typeof navigator !== 'undefined'
   && /(Mac|iPhone|iPod|iPad)/i.test(`${navigator.platform || ''} ${navigator.userAgent || ''}`);
 
-function MarkMenuBody({ layout, touchRows, keyHints = true }) {
+function MarkMenuBody({ layout, touchRows, menuTarget, keyHints = true }) {
   const tip = useTooltip();
   // Nightly 'menu-keys': each item's key on its row and in its hint. Not on
   // a finger- or pen-opened menu, which has no keyboard to hand.
@@ -287,11 +288,12 @@ function MarkMenuBody({ layout, touchRows, keyHints = true }) {
     // Line the first submenu row up with its row (1px border + 4px pad).
     const wantTop = rr.top - 5;
     sub.style.top = `${Math.round(Math.max(8, Math.min(wantTop, window.innerHeight - 8 - subHeight)))}px`;
+    clearMarkMenu(sub, menuTarget, getPageViewportBounds(null, window.innerWidth, window.innerHeight), [pr]);
     if (focusSubmenuOnOpenRef.current) {
       focusSubmenuOnOpenRef.current = false;
       focusEl(sub.querySelector('[data-submenu-key]:not([aria-disabled="true"])'));
     }
-  }, [openKey, touchRows]);
+  }, [openKey, touchRows, menuTarget]);
 
   useEffect(() => {
     const onKeyDown = (event) => {
@@ -1549,7 +1551,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
       // be found, use that viewport alone. An 8px margin keeps the menu
       // off each bound.
       if (!el) return;
-      if (isMobileMenu) el.style.maxHeight = 'none';
+      el.style.maxHeight = isMobileMenu ? 'none' : '';
       const rect = el.getBoundingClientRect();
 
       // Find the PDF page wrapper for ctx.pageNumber, then cut its rect
@@ -1607,6 +1609,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
       // Chunk 7: it slides in from the pointer's side - down when it
       // opens below the pointer, up when it flipped above it.
       el.dataset.side = position.top < ctx.y - 0.5 ? 'top' : 'bottom';
+      let clearBounds = getPageViewportBounds(null, window.innerWidth, window.innerHeight);
       if (isMobileMenu) {
         // Polish round 6: on the phone the menu stays between the header
         // and the dock (it ran 25px under the dock on a 375x667), and
@@ -1618,16 +1621,19 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         if (header && header.height > 0) bandTop = Math.max(bandTop, header.bottom);
         const dock = document.querySelector('.mobile-pdf-dock')?.getBoundingClientRect();
         if (dock && dock.height > 0 && dock.top < bandBottom) bandBottom = dock.top;
+        clearBounds = { ...clearBounds, top: bandTop, bottom: bandBottom };
         const fit = fitMenuInBand({ top: position.top, height: rect.height, band: { top: bandTop, bottom: bandBottom } });
         el.style.top = `${fit.top}px`;
         el.style.maxHeight = fit.maxHeight == null ? '' : `${fit.maxHeight}px`;
         el.style.overflowY = fit.maxHeight == null ? '' : 'auto';
       }
+      clearMarkMenu(el, ctx, clearBounds);
     };
 
     const panel = (
       <div
         data-annotation-context-menu="true"
+        data-keep-on-screen={ctx.kind !== 'page' ? 'off' : undefined}
         ref={placePanel}
         role="menu"
         className="annotation-context-menu"
@@ -1707,6 +1713,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           <MarkMenuBody
             key={`${ctx.kind}:${ctx.pageNumber}:${ctx.x}:${ctx.y}`}
             layout={markLayout}
+            menuTarget={ctx}
             touchRows={touchRows}
           />
         )}
