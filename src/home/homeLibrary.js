@@ -172,7 +172,11 @@ export const DENSITY_ROW = {
    at least 160 px and the row's More button stays on screen. */
 const COLUMN_WIDTH = { project: 120, opened: 108, created: 104, edited: 110, size: 72, tags: 156 };
 const DROP_ORDER = ['size', 'created', 'project', 'edited', 'tags', 'opened'];
-const FIXED = 32 + 54 + 36;
+// Check, More, and the row's 2 px left edge (the selected bar). The
+// thumbnail column is thumb + 24 px, as in the template below; counting
+// only the thumb left the grid 24 px wider than the list, so More hid
+// under the preview pane at 1440 px.
+const FIXED = 32 + 36 + 2;
 const NAME_MIN = 160;
 
 export function homeLedgerColumns({ width = 0, opened = false, created = false, tags = false, thumb = 54 } = {}) {
@@ -182,7 +186,7 @@ export function homeLedgerColumns({ width = 0, opened = false, created = false, 
   keys.push('edited', 'size');
   if (tags) keys.push('tags');
   const shown = new Set(keys);
-  const need = () => FIXED - 54 + thumb + NAME_MIN + [...shown].reduce((sum, key) => sum + COLUMN_WIDTH[key], 0);
+  const need = () => FIXED + thumb + 24 + NAME_MIN + [...shown].reduce((sum, key) => sum + COLUMN_WIDTH[key], 0);
   if (width > 0) {
     for (const key of DROP_ORDER) {
       if (need() <= width) break;

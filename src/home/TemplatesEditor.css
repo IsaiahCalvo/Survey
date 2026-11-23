@@ -465,3 +465,11 @@ html[data-look='suite'] .ed-scope .swipe-row .chrome-pill { background: var(--su
   html[data-look='suite'] .ed-scope .swipe-row .chrome-pill:not(:disabled):hover { background: var(--hover); }
 }
 html[data-look='suite'] .ed-scope .swipe-row .chrome-pill[data-state='open'] { background: var(--hover); }
+
+/* Tablet pass (KAL-652): in a narrow middle column (an iPad either way up)
+   the name was cut to "KAL-594 QA..." and the layout pills to "Survey
+   (stan". The layout pickers drop under the name instead, on the right, at
+   full width. A wide column keeps them beside the name. */
+.templates-editor-head { flex-wrap: wrap; row-gap: 10px; }
+.templates-editor-head > div:nth-child(2) { flex: 1 1 200px !important; }
+.templates-editor-head > .micro { margin-left: auto; max-width: 100% !important; }

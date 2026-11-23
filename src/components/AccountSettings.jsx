@@ -649,45 +649,43 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
               <>
                 {/* Profile Section */}
                 <section className="account-section">
-                  <h3>Profile information</h3>
-
                   {!isEditing ? (
-                    /* View Mode */
-                    <div>
-                      <div className="account-form-group">
-                        <label>First name</label>
-                        <div className={`account-field-display ${!firstName ? 'account-field-display-empty' : ''}`}>
-                          {firstName || 'Not set'}
-                        </div>
+                    /* View Mode. Plain rows, not boxes: the old grey boxes looked
+                       like fields you could type in, with an Edit button under
+                       them (polish pass, KAL-652). */
+                    <>
+                      <div className="account-section-head">
+                        <h3>Profile</h3>
+                        <button
+                          type="button"
+                          onClick={() => setIsEditing(true)}
+                          className="account-btn-secondary account-btn-sm"
+                        >
+                          Edit profile
+                        </button>
                       </div>
-
-                      <div className="account-form-group">
-                        <label>Last name</label>
-                        <div className={`account-field-display ${!lastName ? 'account-field-display-empty' : ''}`}>
-                          {lastName || 'Not set'}
+                      <dl className="account-profile-list">
+                        <div className="account-profile-row">
+                          <dt>First name</dt>
+                          <dd className={!firstName ? 'is-empty' : undefined}>{firstName || 'Not set'}</dd>
                         </div>
-                      </div>
-
-                      <div className="account-form-group">
-                        <label>Email</label>
-                        <div className="account-field-display">
-                          {email}
+                        <div className="account-profile-row">
+                          <dt>Last name</dt>
+                          <dd className={!lastName ? 'is-empty' : undefined}>{lastName || 'Not set'}</dd>
                         </div>
-                        <div className="account-field-hint">
-                          Email cannot be changed
+                        <div className="account-profile-row">
+                          <dt>Email</dt>
+                          <dd>
+                            <span className="account-profile-value">{email}</span>
+                            <span className="account-field-hint">You can't change your email.</span>
+                          </dd>
                         </div>
-                      </div>
-
-                      <button
-                        onClick={() => setIsEditing(true)}
-                        className="account-btn-primary"
-                      >
-                        Edit profile
-                      </button>
-                    </div>
+                      </dl>
+                    </>
                   ) : (
                     /* Edit Mode */
                     <form onSubmit={handleSaveChanges}>
+                      <h3>Profile</h3>
                       <div className="account-form-row">
                         <div className="account-form-group">
                           <label htmlFor="firstName">First name</label>
@@ -727,7 +725,7 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                           autoComplete="email"
                         />
                         <div className="account-field-hint">
-                          Email cannot be changed
+                          You can't change your email.
                         </div>
                       </div>
 
@@ -846,49 +844,59 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
 
                 {!isEditing && (
                   <>
-                {/* Your data */}
-                <section className="account-section account-data-export">
-                  <button
-                    className="account-btn-secondary account-btn-secondary-full"
-                    type="button"
-                    disabled={loading || exportProgress !== null}
-                    onClick={handleDownloadMyData}
-                  >
-                    {exportProgress !== null && <Spinner size={14} />}
-                    {exportProgress === null
-                      ? 'Download my data'
-                      : exportProgress.total
-                        ? `Downloading files ${exportProgress.done} of ${exportProgress.total}…`
-                        : 'Gathering your data…'}
-                  </button>
-                  <p className="account-danger-zone-description">
-                    One ZIP file with your documents, annotations, survey photos and audio, and account details.
-                  </p>
-                </section>
-
-                {/* Danger Zone */}
-                <section className="account-section account-danger-zone">
-                  <button
-                    className="account-btn-danger"
-                    type="button"
-                    disabled={deleteAccountButtonState({ loading }).disabled}
-                    onClick={handleDeleteAccount}
-                  >
-                    {deleteAccountButtonState({ loading }).label}
-                  </button>
-                  <p className="account-danger-zone-description">
-                    Permanently remove your account and its data.
-                  </p>
-                </section>
-
-                {/* Sign Out Section */}
-                <section className="account-section">
-                  <button
-                    className="account-btn-secondary account-btn-secondary-full"
-                    onClick={handleSignOut}
-                  >
-                    Sign out
-                  </button>
+                {/* Account actions: one row each, words on the left and the
+                    button on the right, as the Annotations tab lays out its
+                    settings. Delete sits last, away from the everyday ones. */}
+                <section className="account-section" aria-labelledby="account-actions-heading">
+                  <h3 id="account-actions-heading">Account</h3>
+                  <div className="account-pref-row account-action-row account-data-export">
+                    <div className="account-pref-copy">
+                      <div className="account-pref-title">Your data</div>
+                      <p className="account-pref-description">
+                        One ZIP file with your documents, annotations, survey photos and audio, and account details.
+                      </p>
+                    </div>
+                    <button
+                      className="account-btn-secondary account-btn-sm"
+                      type="button"
+                      disabled={loading || exportProgress !== null}
+                      onClick={handleDownloadMyData}
+                    >
+                      {exportProgress !== null && <Spinner size={14} />}
+                      {exportProgress === null
+                        ? 'Download my data'
+                        : exportProgress.total
+                          ? `Downloading files ${exportProgress.done} of ${exportProgress.total}…`
+                          : 'Gathering your data…'}
+                    </button>
+                  </div>
+                  <div className="account-pref-row account-action-row">
+                    <div className="account-pref-copy">
+                      <div className="account-pref-title">Sign out</div>
+                      <p className="account-pref-description">Sign out of Survey on this device.</p>
+                    </div>
+                    <button
+                      className="account-btn-secondary account-btn-sm"
+                      type="button"
+                      onClick={handleSignOut}
+                    >
+                      Sign out
+                    </button>
+                  </div>
+                  <div className="account-pref-row account-action-row account-danger-zone">
+                    <div className="account-pref-copy">
+                      <div className="account-pref-title">Delete account</div>
+                      <p className="account-pref-description">Permanently remove your account and its data.</p>
+                    </div>
+                    <button
+                      className="account-btn-danger account-btn-sm"
+                      type="button"
+                      disabled={deleteAccountButtonState({ loading }).disabled}
+                      onClick={handleDeleteAccount}
+                    >
+                      {deleteAccountButtonState({ loading }).label}
+                    </button>
+                  </div>
                 </section>
                   </>
                 )}
@@ -1090,6 +1098,7 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                             </button>
                           ) : subscription?.tier === 'free' ? (
                             <div className="account-btn-outline-green account-plan-mark">
+                              <Icon name="check" size={14} />
                               Current plan
                             </div>
                           ) : subscription?.tier === 'developer' ? (
@@ -1117,7 +1126,7 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                           <div className="account-plan-info-row">
                             <span className="account-plan-name">Pro</span>
                             {subscription?.tier !== 'pro' && subscription?.tier !== 'enterprise' && subscription?.tier !== 'developer' && (
-                              <span className="account-plan-badge-text">(Recommended)</span>
+                              <span className="account-plan-badge-text">Recommended</span>
                             )}
                           </div>
                           <div className="account-subscription-price">
@@ -1152,6 +1161,7 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                         <div className="account-subscription-actions">
                           {subscription?.tier === 'pro' ? (
                             <div className="account-btn-outline-blue account-plan-mark">
+                              <Icon name="check" size={14} />
                               Current plan
                             </div>
                           ) : subscription?.tier === 'developer' ? (
@@ -1206,6 +1216,7 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                         <div className="account-subscription-actions">
                           {subscription?.tier === 'enterprise' ? (
                             <div className="account-btn-outline-gold account-plan-mark">
+                              <Icon name="check" size={14} />
                               Current plan
                             </div>
                           ) : viaCompany ? (

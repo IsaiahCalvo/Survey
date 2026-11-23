@@ -23,6 +23,18 @@ const getProgressBarColor = (percentage) => {
   return 'var(--accent)';
 };
 
+// The Free-plan nudge names the limit that set it off. It always said
+// "Running low on space?", even with 3 KB of 100 MB used and the one free
+// project taken (polish pass, KAL-652).
+export const freeNudgeTitle = ({ storagePercentage = 0, projectsPercentage = 0, documentsPercentage = 0 }) => {
+  const countTop = Math.max(projectsPercentage, documentsPercentage);
+  if (storagePercentage >= countTop) {
+    return storagePercentage >= 100 ? 'Your storage is full' : 'Running low on space';
+  }
+  const what = projectsPercentage >= documentsPercentage ? 'projects' : 'documents';
+  return countTop >= 100 ? `You've used all your free ${what}` : `You're close to your free ${what} limit`;
+};
+
 const ProgressBar = ({ percentage, color }) => (
   <div style={{
     width: '100%',
@@ -186,10 +198,10 @@ const UsageIndicator = () => {
           lineHeight: '1.5'
         }}>
           <div style={{ fontWeight: 600, marginBottom: '4px' }}>
-            Running low on space?
+            {freeNudgeTitle({ storagePercentage, projectsPercentage, documentsPercentage })}
           </div>
           <div style={{ color: 'var(--text-3)' }}>
-            Upgrade to Pro for unlimited projects, documents, and 10GB of storage.
+            Pro has unlimited projects and documents, and 10 GB of storage.
           </div>
         </div>
       )}

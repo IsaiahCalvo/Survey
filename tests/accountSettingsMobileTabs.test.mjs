@@ -47,7 +47,7 @@ test('phone settings: page is --panel-bg, fields and cards are --panel-well', ()
     assert.ok(sheet.includes(sel), `${sel} is --panel-bg on the phone`);
   }
   const well = group('--panel-well');
-  for (const sel of ['.account-form-group input', '.account-field-display', '.account-connected-account', '.account-subscription-card']) {
+  for (const sel of ['.account-form-group input', '.account-connected-account', '.account-subscription-card']) {
     assert.ok(well.includes(sel), `${sel} is --panel-well on the phone`);
   }
 });

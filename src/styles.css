@@ -4117,3 +4117,16 @@ html[data-backdrop-blur="off"] *::after {
     -webkit-backdrop-filter: none !important;
   }
 }
+
+/* A document tab paints its mouse press by hand (TabBar.jsx), which a finger
+   never reaches, so an iPad showed no press on a tab. These paint the same
+   press for any pointer (tablet pass, KAL-652). Left out: the tab being
+   dragged (dnd-kit marks it aria-pressed) and a press on its close X. */
+[data-app-tab]:not([data-tab-active]):not([aria-pressed='true']):not(:has(:is(button, [role='button']):active)):active {
+  background: var(--pressed-ground, var(--pressed)) !important;
+  transition: none !important;
+}
+[data-app-tab][data-tab-active]:not([aria-pressed='true']):not(:has(:is(button, [role='button']):active)):active {
+  background: var(--pressed) !important;
+  transition: none !important;
+}

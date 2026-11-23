@@ -2318,6 +2318,10 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
 
 .mobile-styled-select__trigger.is-open { color: var(--text-1); }
 .mobile-styled-select__trigger.is-open > svg { color: var(--text-1); }
+/* The pill rests on --surface-3, the same grey as --pressed in the light one
+   look, so the shared press showed nothing there. It takes the next step
+   (phone pass, KAL-652); states.css leaves it out of the shared press. */
+.mobile-styled-select__trigger:not(:disabled):active { background: var(--pressed-2, var(--pressed)); transition: none; }
 .mobile-styled-select__trigger:disabled { color: var(--text-3);
   cursor: not-allowed;
 }
