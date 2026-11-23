@@ -6,7 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const sql = readFileSync(new URL('../supabase/migrations/20261117224500_plot_kal_580_jobs.sql', import.meta.url), 'utf8');
+const sql = readFileSync(new URL('../supabase/migrations/20261123213000_plot_kal_580_jobs.sql', import.meta.url), 'utf8');
 
 test('plot.jobs keeps its row rules on, keyed to the Project roles', () => {
   assert.match(sql, /alter table plot\.jobs enable row level security/);
