@@ -293,6 +293,11 @@ const PDFSidebar = React.forwardRef(({
   // it keeps the focus stylesheet in step with the active layer even while
   // the Layers panel is closed.
   const [layerFocusOn] = useState(() => isFeatureOn('layer-focus'));
+  // KAL-819 (Nightly, with the suite look): a closing panel stops covering the
+  // page at once, so the page glides back while the panel slides away, as the
+  // Survey panel on the right already does. Without the flag the page waits for
+  // the slide to end.
+  const [panelLeavesAtOnce] = useState(() => isFeatureOn('one-look'));
   const layerFocus = useLayerFocus();
   React.useEffect(() => {
     if (!layerFocusOn) return undefined;
@@ -715,8 +720,9 @@ const PDFSidebar = React.forwardRef(({
       // Text search centres a picked match in the part of the PDF you can see,
       // so the open panel marks itself as covering the viewer: a side panel on
       // desktop, a bottom sheet on the phone (see utils/searchMatchNavigation).
-      // Desktop: while the panel is laid out (open, or still sliding closed).
-      data-viewer-occluder={mobileMode ? (isCollapsed ? undefined : 'sheet') : (layoutOpen ? 'side' : undefined)}
+      // Desktop: while the panel is laid out (open, or still sliding closed);
+      // with panelLeavesAtOnce, only while it is open.
+      data-viewer-occluder={mobileMode ? (isCollapsed ? undefined : 'sheet') : ((panelLeavesAtOnce ? !isCollapsed : layoutOpen) ? 'side' : undefined)}
       // Phone: swipe down anywhere on the sheet + the keyboard lift (owner
       // 2026-09-30, see useMobileSheetMotion). The ref is set after the
       // spread below (sheetFocusRef also feeds the sheet motion's ref).
