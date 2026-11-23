@@ -138,7 +138,11 @@ export function computeSelectionQuickBarPosition({
     || x >= guards.right + QUICK_MENU_GAP || y + height <= guards.top - QUICK_MENU_GAP
     || y >= guards.bottom + QUICK_MENU_GAP;
   const fits = (x, y) => x >= minLeft && x <= maxLeft && y >= minTop && y <= maxTop;
-  if (dock && fits(dock.left, dock.top) && clear(dock.left, dock.top)) return dock;
+  // The docked spot keeps its own gap to the viewer's bottom (DOCKED_BAR_GAP,
+  // 8 px), closer than the floating margin, so only ask that it stays clear of
+  // the selection; asking it to fit the floating margin sent every docked bar
+  // back beside its mark.
+  if (dock && clear(dock.left, dock.top)) return dock;
   const above = { left, top: Math.floor(guards.top - QUICK_MENU_GAP - height), side: 'above' };
   const below = { left, top: Math.ceil(guards.bottom + QUICK_MENU_GAP), side: 'below' };
   const middle = (Math.max(sel.top, box.top) + Math.min(sel.bottom, box.bottom) - height) / 2;

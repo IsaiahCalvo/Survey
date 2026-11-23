@@ -36079,15 +36079,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     };
   }, [activeTool, annotationsByPage, selectedToolbarAnnotation, scale, zoomGeneration, selectedTextMarkupAnchorTick]);
 
-  const liveTextMarkupRangeProbes = useMemo(() => {
-    if (!liveTextSelection?.pages?.length) return [];
-    return liveTextSelection.pages.map(({ pageNumber, quads, selectedText, textRange, textRangeModel }, index) => (
+  const buildLiveTextMarkupProbes = useCallback((textSelection) => {
+    if (!textSelection?.pages?.length) return [];
+    return textSelection.pages.map(({ pageNumber, quads, selectedText, textRange, textRangeModel }, index) => (
       createTextMarkupAnnotation({
         id: `live-text-selection-${pageNumber}-${index}`,
         pageNumber,
         selectionGroupId: 'live-text-selection',
         markupType: 'highlight',
-        selectedText: selectedText || liveTextSelection.text,
+        selectedText: selectedText || textSelection.text,
         textRange,
         textRangeModel,
         quads,
@@ -36098,7 +36098,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         authorId: user?.id || null,
       })
     )).filter(Boolean);
-  }, [liveTextSelection, textMarkupOverlapMode, user?.id]);
+  }, [textMarkupOverlapMode, user?.id]);
+  const liveTextMarkupRangeProbes = useMemo(
+    () => buildLiveTextMarkupProbes(liveTextSelection),
+    [buildLiveTextMarkupProbes, liveTextSelection],
+  );
 
   const liveTextSelectionActionSelection = useMemo(() => {
     if (!liveTextSelection) return null;
@@ -36488,7 +36492,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     wrapperRef: pdfjsWrapperRef,
     kind: textDragKind,
     paint: textMarkupPaintByType[textDragKind] || { color: '#000000', opacity: 35 },
-    getSelection: () => liveTextSelectionActionSelection,
+    // Read the finished drag now, not the last render's copy: the capture
+    // runs on a timer, so the render can still hold the drag's first half and
+    // miss that the words are already marked (KAL-802).
+    getSelection: () => {
+      const fresh = capturePdfjsTextSelection();
+      if (!fresh) return liveTextSelectionActionSelection;
+      return {
+        ...fresh,
+        activeMarkupTypes: getTextMarkupRangeTypes(
+          annotationsByPageRef.current || {},
+          buildLiveTextMarkupProbes(fresh),
+        ),
+      };
+    },
     apply: () => (textDragKind === 'remove'
       ? handleTextSelectionRemove({ keepSelection: false })
       : handleTextSelectionAction(textDragKind, { keepSelection: false })),
