@@ -28,6 +28,8 @@ test('Rotate right turns the marks with the page', async ({ page }) => {
     await page.keyboard.press('v');
     await page.screenshot({ path: test.info().outputPath('before.png') });
     await pageDiv.click({ button: 'right', position: { x: box.width * 0.7, y: box.height * 0.7 } });
+    // KAL-793: Rotate sits in the page menu's "Rotate or mirror page" submenu.
+    await page.getByRole('menuitem', { name: 'Rotate or mirror page' }).click();
     await page.getByRole('menuitem', { name: 'Rotate right' }).click();
     await page.waitForTimeout(2500);
     await page.screenshot({ path: test.info().outputPath('after.png') });

@@ -50,9 +50,9 @@ test('placement: held inside the viewer at the side edges', () => {
   assert.equal(right.left, VIEWER.right - QUICK_BAR_MARGIN - BAR.barWidth);
 });
 
-test('placement: a selection taller than the view pins the bar inside it', () => {
+test('placement: a selection taller than the view puts the bar beside it', () => {
   const p = computeSelectionQuickBarPosition({ selectionRect: { left: 300, top: 0, right: 900, bottom: 2000 }, bounds: VIEWER, ...BAR });
-  assert.equal(p.side, 'pinned');
+  assert.equal(p.side, 'right');
   assert.ok(p.top >= VIEWER.top + QUICK_BAR_MARGIN && p.top + BAR.barHeight <= VIEWER.bottom - QUICK_BAR_MARGIN);
 });
 
@@ -116,12 +116,25 @@ test('keep-out: no room below either way, the bar goes above everything it must 
   for (const r of keepOut) assert.ok(!hits(barRect(p), r));
 });
 
-test('keep-out: pinned, it covers the selection before a grabber', () => {
+test('keep-out: a tall selection and all its grabbers stay clear', () => {
   const sel = { left: 300, top: 0, right: 900, bottom: 2000 };
   const grabber = { left: 590, top: 860, right: 610, bottom: 880 };
   const p = computeSelectionQuickBarPosition({ selectionRect: sel, keepOut: [grabber], bounds: VIEWER, ...BAR });
-  assert.equal(p.side, 'pinned');
+  assert.ok(!hits(barRect(p), sel));
   assert.ok(!hits(barRect(p), grabber));
+});
+
+test('placement: hides if the pick fills the viewer or the bar itself cannot fit', () => {
+  assert.equal(computeSelectionQuickBarPosition({ selectionRect: VIEWER, bounds: VIEWER, ...BAR }), null);
+  assert.equal(computeSelectionQuickBarPosition({ selectionRect: VIEWER, bounds: VIEWER, barWidth: 2000, barHeight: 36 }), null);
+});
+
+test('placement: a docked bar yields when the selected mark reaches the dock', () => {
+  const selectionRect = { left: 500, top: 810, right: 800, bottom: 899 };
+  const dock = { left: 550, top: 835, side: 'docked' };
+  const spot = computeSelectionQuickBarPosition({ selectionRect, bounds: VIEWER, dock, ...BAR });
+  assert.equal(spot.side, 'above');
+  assert.ok(!hits(barRect(spot), selectionRect));
 });
 
 test('frame: the union of the page overlays', () => {

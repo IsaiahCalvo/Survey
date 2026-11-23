@@ -27,7 +27,7 @@ test('flag, bar and mark menu are wired, and a migration adds the row', () => {
   assert.equal(FEATURE_FLAGS['toolbar-settings'].stage, 'beta');
   const bar = read('src/components/SelectionQuickBar.jsx');
   assert.match(bar, /isFeatureOn\('toolbar-settings'\)/);
-  assert.match(bar, /dockedBarPosition\(viewerBounds\(false\)/);
+  assert.match(bar, /dock: dockedNow \? dockedBarPosition\(bounds,/);
   const menu = read('src/hooks/useAnnotationContextMenu.jsx');
   assert.match(menu, /'Dock bar to bottom', 'dockSelectionBar'/);
   assert.match(menu, /'Float bar by mark', 'floatSelectionBar'/);

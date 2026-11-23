@@ -20,6 +20,8 @@ async function openSheet(page, sheet) {
 
 const pageMenu = (page) => page.locator('[data-page-menu]');
 const row = (page, name) => pageMenu(page).getByRole('menuitem', { name, exact: true });
+// KAL-793: the rarer page rows sit in submenus; clicking the row opens it (desktop and phone).
+const openSub = (page, name) => row(page, name).click();
 
 // Light-blue ruled pixels on page `n`'s canvas (the paper's rule tone).
 const bluePixels = (page, n) => page.evaluate((num) => {
@@ -48,6 +50,7 @@ test.describe('desktop', () => {
       const box = await pageDiv.boundingBox();
       await page.mouse.click(box.x + box.width * 0.8, box.y + box.height * 0.85, { button: 'right' });
       await expect(pageMenu(page)).toBeVisible();
+      await openSub(page, 'Insert page');
       await row(page, 'Template page below').click();
       const picker = page.locator('[data-page-template-picker]');
       await expect(picker).toBeVisible();
@@ -87,6 +90,7 @@ test.describe('desktop', () => {
       const pageDiv = await openSheet(page, sheet);
       const box = await pageDiv.boundingBox();
       await page.mouse.click(box.x + box.width * 0.8, box.y + box.height * 0.85, { button: 'right' });
+      await openSub(page, 'Insert page');
       await expect(row(page, 'Blank page below')).toBeVisible();
       await expect(row(page, 'Template page below')).toHaveCount(0);
     } finally {
