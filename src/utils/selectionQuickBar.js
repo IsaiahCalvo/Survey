@@ -97,29 +97,11 @@ export function selectionKeepOut({ handles = [], extra = [] } = {}) {
   return { keepOut, preferBelow: rise > 0.5 };
 }
 
-const overlapArea = (a, b) => Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left))
-  * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
-
-/**
- * Where the bar goes: centred on the selection, just above or below
- * everything it must keep clear of (the frame, the rotate grabbers, the
- * degree box's spot). Above first, or below first when `preferBelow` (the
- * rotate grabber is on top). When neither fits, it pins to whichever edge of
- * the viewer covers least — a grabber or degree box first, then the
- * selection. Mouse menus share these numbers with the floating menu next to
- * a PDF text selection (textSelectionQuickMenu.js).
- *
- * @param {{left,top,right,bottom}} selectionRect  the selection frame, handles
- *   included, in client pixels
- * @param {Array<{left,top,right,bottom}>} [keepOut]  more boxes to keep clear
- * @param {boolean} [preferBelow]
- * @param {{left,top,right,bottom}} bounds          the visible viewer area
- * @returns {{left:number, top:number, side:'above'|'below'|'pinned'} | null}
- *   null when the selection is wholly out of view (the bar hides).
- */
+/** Keep the whole bar inside the viewer and clear of the selection and its handles. */
 export function computeSelectionQuickBarPosition({
   selectionRect,
   keepOut = [],
+  dock = null,
   preferBelow = false,
   bounds,
   barWidth,
@@ -136,12 +118,14 @@ export function computeSelectionQuickBarPosition({
   if (!sel || !Object.values(box).every(Number.isFinite)) return null;
   if (sel.bottom <= box.top || sel.top >= box.bottom || sel.right <= box.left || sel.left >= box.right) return null;
   const margin = QUICK_BAR_MARGIN;
-  const width = Math.max(1, Math.min(Number(barWidth) || 1, box.right - box.left - margin * 2));
+  const width = Math.max(1, Number(barWidth) || 1);
   const height = Math.max(1, Number(barHeight) || 1);
   const minLeft = box.left + margin;
   const maxLeft = box.right - margin - width;
   const minTop = box.top + margin;
   const maxTop = box.bottom - margin - height;
+
+  if (maxLeft < minLeft || maxTop < minTop) return null;
 
   // Centred on the part of the selection that is on screen.
   const centre = (Math.max(sel.left, box.left) + Math.min(sel.right, box.right)) / 2;
@@ -150,24 +134,21 @@ export function computeSelectionQuickBarPosition({
   const guards = unionClientRects([sel, ...(keepOut || [])].map((r) => r && {
     left: r.left, top: r.top, right: r.right, bottom: r.bottom,
   })) || sel;
-  const aboveTop = guards.top - QUICK_MENU_GAP - height;
-  const belowTop = guards.bottom + QUICK_MENU_GAP;
-  const order = preferBelow ? ['below', 'above'] : ['above', 'below'];
-  for (const side of order) {
-    if (side === 'above' && aboveTop >= minTop) return { left, top: Math.round(aboveTop), side };
-    if (side === 'below' && belowTop <= maxTop) return { left, top: Math.round(belowTop), side };
-  }
-
-  // No room either side: pin to the edge that covers least — a grabber or
-  // degree box costs far more than the selection (the bottom on a tie).
-  const cost = (top) => {
-    const bar = { left, top, right: left + width, bottom: top + height };
-    const grabbers = (keepOut || []).reduce((sum, r) => sum + (r ? overlapArea(bar, r) : 0), 0);
-    return grabbers * 1000 + overlapArea(bar, sel);
-  };
-  const low = Math.round(Math.max(minTop, maxTop));
-  const high = Math.round(minTop);
-  return { left, top: cost(high) < cost(low) ? high : low, side: 'pinned' };
+  const clear = (x, y) => x + width <= guards.left - QUICK_MENU_GAP
+    || x >= guards.right + QUICK_MENU_GAP || y + height <= guards.top - QUICK_MENU_GAP
+    || y >= guards.bottom + QUICK_MENU_GAP;
+  const fits = (x, y) => x >= minLeft && x <= maxLeft && y >= minTop && y <= maxTop;
+  if (dock && fits(dock.left, dock.top) && clear(dock.left, dock.top)) return dock;
+  const above = { left, top: Math.floor(guards.top - QUICK_MENU_GAP - height), side: 'above' };
+  const below = { left, top: Math.ceil(guards.bottom + QUICK_MENU_GAP), side: 'below' };
+  const middle = (Math.max(sel.top, box.top) + Math.min(sel.bottom, box.bottom) - height) / 2;
+  const top = Math.round(Math.min(maxTop, Math.max(minTop, middle)));
+  const candidates = [
+    ...(preferBelow ? [below, above] : [above, below]),
+    { left: Math.ceil(guards.right + QUICK_MENU_GAP), top, side: 'right' },
+    { left: Math.floor(guards.left - QUICK_MENU_GAP - width), top, side: 'left' },
+  ];
+  return candidates.find((spot) => fits(spot.left, spot.top) && clear(spot.left, spot.top)) || null;
 }
 
 /** The selection frame: the union of the page layers' selection overlays. */

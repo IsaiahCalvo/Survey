@@ -67,6 +67,7 @@ import {
 } from '../utils/selectionQuickBar.js';
 import { linkGoToLabel } from '../utils/linkTool.js';
 import { composeTextColor, splitTextColor } from '../utils/textColorOpacity.js';
+import { SELECTION_CONTROLS } from '../utils/markMenuPlacement.js';
 import './SelectionQuickBar.css';
 
 // How many entity swatches the bar draws before "All N" (SurveyOverflowRow).
@@ -195,7 +196,7 @@ function readSelection(items, { measureEdit = false } = {}) {
     }
     if (svg.getAttribute('data-selection-chrome-inert') === 'true') inert = true;
     if (svg.querySelector('[data-selection-lock-badge]')) locked = true;
-    svg.querySelectorAll('.svg-selection-overlay').forEach((overlay) => {
+    svg.querySelectorAll(SELECTION_CONTROLS).forEach((overlay) => {
       const rect = visibleRect(overlay);
       if (rect) rects.push(rect);
     });
@@ -212,15 +213,12 @@ function readSelection(items, { measureEdit = false } = {}) {
       });
     });
   }
-  // A pick drawn without the shared frame (a Survey Marker's own ring, say):
-  // the picked marks' own boxes.
-  if (rects.length === 0) {
-    for (const item of items) {
-      const selector = selectionItemSelector(item);
-      const element = selector ? (pageLayer(item.pageNumber)?.querySelector(selector) || null) : null;
-      const rect = visibleRect(element) || (measureEdit ? hairlineRect(element) : null);
-      if (rect) rects.push(rect);
-    }
+  // Callout leaders and line ends can extend beyond the selection frame.
+  for (const item of items) {
+    const selector = selectionItemSelector(item);
+    const element = selector ? pageLayer(item.pageNumber)?.querySelector(selector) : null;
+    const rect = visibleRect(element) || hairlineRect(element);
+    if (rect) rects.push(rect);
   }
   // A degree box already open (it can be held inside the page, away from
   // the spot selectionKeepOut keeps for it), and a finger's move grip under
@@ -282,6 +280,7 @@ export default function SelectionQuickBar({
   const chromeTip = tip || contextTip;
   const items = useSelectedItems();
   const barRef = useRef(null);
+  const protectedRects = useRef([]);
   const lineButtonRef = useRef(null);
   const linePopoverRef = useRef(null);
   const [look, setLook] = useState({ visible: false, side: 'above', locked: false, readOnly: false });
@@ -344,16 +343,17 @@ export default function SelectionQuickBar({
     if (activeRef.current && !readOnly) {
       const selection = readSelection(itemsRef.current, { measureEdit: measureEditRef.current });
       if (selection.gestureLayer) heldGestureRef.current = { layer: selection.gestureLayer, items: itemsRef.current };
+      protectedRects.current = [selection.frame, ...selection.keepOut].filter(Boolean);
       next.locked = selection.locked;
       if (selection.frame && !selection.gesture && !turningRef.current && !selection.inert) {
         const dockedNow = dockOnRef.current && !phoneRef.current && isSelectionBarDocked();
-        const placed = dockedNow
-          ? dockedBarPosition(viewerBounds(false), bar.offsetWidth, bar.offsetHeight)
-          : computeSelectionQuickBarPosition({
+        const bounds = viewerBounds(phoneRef.current);
+        const placed = computeSelectionQuickBarPosition({
+          dock: dockedNow ? dockedBarPosition(bounds, bar.offsetWidth, bar.offsetHeight) : null,
           selectionRect: selection.frame,
           keepOut: selection.keepOut,
           preferBelow: selection.preferBelow,
-          bounds: viewerBounds(phoneRef.current),
+          bounds,
           barWidth: bar.offsetWidth,
           barHeight: bar.offsetHeight,
         });
@@ -937,13 +937,13 @@ export default function SelectionQuickBar({
   const kindPopoverRef = useRef(null);
   const authorsPopoverRef = useRef(null);
   const linePlace = useHangingPopoverPlace(linePopoverRef, {
-    open: Boolean(lineOpen && visible), preferred: barSide, getBounds: popoverBounds, deps: [plan?.width, plan?.opacity, plan?.style],
+    open: Boolean(lineOpen && visible), preferred: barSide, getBounds: popoverBounds, protectedRects, deps: [plan?.width, plan?.opacity, plan?.style],
   });
   const kindPlace = useHangingPopoverPlace(kindPopoverRef, {
-    open: Boolean(kindOpen && visible), preferred: barSide, getBounds: popoverBounds, deps: [kindOpen],
+    open: Boolean(kindOpen && visible), preferred: barSide, getBounds: popoverBounds, protectedRects, deps: [kindOpen],
   });
   const authorsPlace = useHangingPopoverPlace(authorsPopoverRef, {
-    open: Boolean(authorsOpen && visible), preferred: barSide, getBounds: popoverBounds, align: 'start', deps: [authors.length],
+    open: Boolean(authorsOpen && visible), preferred: barSide, getBounds: popoverBounds, protectedRects, align: 'start', deps: [authors.length],
   });
 
   const linePopover = lineOpen && visible ? (
