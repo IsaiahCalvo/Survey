@@ -81,6 +81,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Survey agent: work with no signal (answers, notes and undo on the device)',
     stage: 'beta',
   }),
+  'survey-agent-device-voice': Object.freeze({
+    label: 'Survey agent: choose an on-device voice (Pocket TTS, downloads ~146 MB once)',
+    stage: 'beta',
+  }),
   // Read by the survey-mcp edge function, not the app: Claude or ChatGPT
   // connectors write only for people this flag is on for at /flags.
   'survey-connector-writes': Object.freeze({

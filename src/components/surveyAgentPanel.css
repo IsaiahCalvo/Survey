@@ -86,6 +86,20 @@
 .survey-agent__icon:hover:not(:disabled) { background: var(--hover, rgba(255, 255, 255, 0.05)); color: var(--text-1); }
 .survey-agent__icon:disabled { opacity: 0.4; cursor: default; }
 .survey-agent__icon[aria-pressed="false"] { color: var(--text-3); }
+/* The on-device voice downloading: a thin ring turns round the icon. */
+.survey-agent__icon[aria-busy="true"] { cursor: progress; }
+.survey-agent__icon[aria-busy="true"]::after {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border: 1.5px solid transparent;
+  border-top-color: var(--accent, currentColor);
+  border-radius: 50%;
+  animation: survey-agent-spin 0.9s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .survey-agent__icon[aria-busy="true"]::after { animation: none; border-color: var(--accent, currentColor); opacity: 0.5; }
+}
 
 /* Messages. */
 .survey-agent__list {
