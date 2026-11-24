@@ -22,18 +22,15 @@
     </script>
     <script>
       // The suite look (src/suiteLook.js, Nightly flag 'one-look'): put the
-      // look and its mode on <html> before the first paint, from the two keys
-      // the app saved last time, so a reload never flashes the old colours
-      // or the wrong mode. The app sets them again once it has loaded.
+      // look on <html> before the first paint, from the key the app saved
+      // last time, so a reload never flashes the old colours. Survey is dark
+      // only. The app sets it again once it has loaded.
       (function () {
         try {
-          var ls = window.localStorage;
-          if (ls.getItem('survey:look') !== '1') return;
-          var choice = ls.getItem('survey:appearance');
-          var light = choice === 'light' || (choice === 'system' && window.matchMedia && !window.matchMedia('(prefers-color-scheme: dark)').matches);
+          if (window.localStorage.getItem('survey:look') !== '1') return;
           var root = document.documentElement;
           root.setAttribute('data-look', 'suite');
-          root.setAttribute('data-theme', light ? 'light' : 'dark');
+          root.setAttribute('data-theme', 'dark');
         } catch (e) {}
       })();
     </script>
@@ -70,10 +67,9 @@
            before that sheet loads). */
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       }
-      /* The suite look's ground colour, dark and light (tokens.css
+      /* The suite look's ground colour (tokens.css
          html[data-look="suite"]), written out for the same reason. */
       html[data-look="suite"] body { background: #131315; }
-      html[data-look="suite"][data-theme="light"] body { background: #f4f4f6; color-scheme: light; }
       #root {
         /* UX 2026-04-22: Apply iPad/iPhone safe-area ONLY on the root
            element so padding isn't tripled across html+body+root. Zero on
@@ -129,7 +125,6 @@
           height: 32px;
           border-bottom: 1px solid #2c2c2f;
         }
-        html[data-look="suite"][data-theme="light"] .boot-frame { border-bottom-color: #ececec; }
       }
     </style>
     <script>

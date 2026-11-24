@@ -170,25 +170,28 @@ Survey has the full set today and is the one to copy the behaviour from.
 "To add" means the app has no shared colour or rule for it yet: add one
 token, then use it everywhere. When an app adds one, fill it in here.
 
-## One colour set: shared greys, one accent per app, light and dark
+## One colour set: shared greys, one accent per app
 
-Owner, 2026-11-23: every app has a light mode and a dark mode, and all three
-use the same greys in both. Only the accent differs, one per app:
+Owner, 2026-11-23: all three apps use the same greys. Only the accent
+differs, one per app. Owner, 2026-11-24: Survey and Walkthru are dark only;
+Plot alone has a light mode and a dark mode.
 
 - **Plot: blue**, close to Rayon's.
 - **Walkthru: coral**, as it has always been.
-- **Survey: green**, close to Drawboard's. Survey shows it in Nightly only
-  (the `one-look` flag) until the owner picks it.
+- **Survey: gold**, its own gold from before 2026-11-16 (owner 2026-11-24:
+  not green, not blue). Survey shows it in Nightly only (the `one-look`
+  flag) until the look leaves Nightly.
 
 This replaces the 2026-11-16 rule that put coral on all three (KAL-663). Each
 app's logo, app icon, tab icon, loading mark and emails wear its own accent.
-Green is an accent in Survey only; in Walkthru and Plot it may only say
-"done" or "synced".
+Green is never an accent: in every app it only says "done" or "synced".
+Gold is Survey's accent alone.
 
 The light greys are Plot's own. The dark greys are Walkthru's own. Each
 accent has a bright tone with dark words for dark mode and a deeper tone with
 white words for light mode, because a bright accent is too pale to read on
-white.
+white. Survey and Walkthru use their light rows only where the page is white
+outside the app: their public web pages and their emails.
 
 ### The colours
 
@@ -221,8 +224,8 @@ white.
 | Plot (blue) | Light | `#0062e6` | `#0054c7` | `#0046a6` | `#ffffff` | `#0062e61a` |
 | Walkthru (coral) | Dark | `#e07a5e` | `#e89179` | `#c7634a` | `#131315` | `#e07a5e26` |
 | Walkthru (coral) | Light | `#ba4f2c` | `#a64525` | `#8f3a1e` | `#ffffff` | `#ba4f2c1a` |
-| Survey (green) | Dark | `#3dc98a` | `#5ad49d` | `#2bb077` | `#131315` | `#3dc98a26` |
-| Survey (green) | Light | `#157f55` | `#116d49` | `#0d5a3c` | `#ffffff` | `#157f551a` |
+| Survey (gold) | Dark | `#d8a84e` | `#edc26d` | `#b6904a` | `#131315` | `#d8a84e26` |
+| Survey (gold) | Light | `#8b6500` | `#775600` | `#634800` | `#ffffff` | `#8b65001a` |
 
 accent is the main button, an ON switch, a chosen icon and a link.
 accent-hover and accent-pressed are that button's hover and press.
@@ -247,12 +250,13 @@ alone.
 - In dark mode an accent button has dark words, never white: white on the
   bright tones measures under 3:1. In light mode the accent is deeper and
   the words are white.
-- In light mode, coral and green words on raised-2 measure 4.2:1. Put an
-  accent link or a chosen icon on ground, panel or raised, not on raised-2.
+- In light mode, coral words on raised-2 measure 4.2:1 and gold 4.4:1. Put
+  an accent link or a chosen icon on ground, panel or raised, not on
+  raised-2.
 - Walkthru's coral sits close to danger red. Never put a coral button beside
   a red one without a word on each.
-- Survey's green sits close to ok. In Survey, show "done" with a tick or a
-  word, never by colour alone.
+- Survey's gold sits close to warn. In Survey, show a caution with an icon
+  and a word, never by colour alone.
 - Plot's blue sits close to the selection blue. Selection keeps its handles
   and marquee, so it reads by shape, not by colour.
 - No app adds a grey or an accent of its own. Need a new step? Add it here
@@ -271,10 +275,11 @@ alone.
 
 ### Light and dark
 
-- Each app has one setting, **Appearance**: Light, Dark, or Match system.
-  It is saved on the device, not on the account.
-- Until the user picks: Survey and Walkthru open dark, Plot opens light, as
-  they did before.
+- Survey and Walkthru are dark only (owner 2026-11-24). They have no
+  light mode and no Appearance setting. The rest of this list is for Plot.
+- Plot has one setting, **Appearance**: Light, Dark, or Match system.
+  It is saved on the device, not on the account. Until the user picks, Plot
+  opens light.
 - The choice sits on `<html>` as `data-theme="light"` or
   `data-theme="dark"`, with `color-scheme` set to match. Colour names take
   their values from that one attribute. A component never asks which mode
@@ -283,7 +288,7 @@ alone.
   wrong one.
 - Shadows are lighter in light mode. A floating thing in light mode also
   takes a `line` hairline, since a shadow alone is weak on white.
-- Every screen is checked on screen in both modes before it ships.
+- Every Plot screen is checked on screen in both modes before it ships.
 
 ### One font
 
@@ -312,18 +317,18 @@ Words drawn on a page keep the font their mark picked.
 | scrim, floating shadow | to add | `--scrim`; `--shadow-float` with `--float-hairline` | to add |
 | Files | `src/styles/tokens.css`, `src/suiteLook.js` | `apps/web/src/app/globals.css` | `src/styles/tokens.css` |
 
-Survey and Walkthru show the new colours and the light mode in Nightly
-first. When an app fills a "to add" cell, or its theme ships, write it here.
+Survey and Walkthru show the new colours in Nightly first. When an app
+fills a "to add" cell, or its theme ships, write it here.
 
 Survey: built (KAL-663, PR 1505). The look sits behind the Nightly flag
-`one-look`, and wears green there since 2026-11-23. Appearance is in
-Settings, General. Emails and the sign-in emails still wear coral for
-everyone (PR 1510); they move to green when the look leaves Nightly.
+`one-look`, and wears gold there (green from 2026-11-23, gold again from
+2026-11-24), dark only. The tab icon, public pages
+and emails still wear coral for everyone (PR 1510); they turn gold in one
+step when the look leaves Nightly (`docs/suite/survey-gold-flip.md`).
 
-Walkthru: built (KAL-663, PR 218). Light mode sits on
-`html[data-theme="light"]`. Appearance is in Settings, behind the Nightly
-flag `appearance`, saved in `walkthrough.appearance`. The first-paint script
-comes from `apps/web/src/lib/appearance.ts`.
+Walkthru: built (KAL-663, PR 218), dark only. Its light mode and the
+Nightly flag `appearance` were removed on 2026-11-24, on the web and the
+phone.
 
 Plot: built and shipped, no flag (KAL-663, PR 420). Plot opens light until
 the user picks. Its accent went back to blue on 2026-11-23, tab icon too.
@@ -346,9 +351,9 @@ first, in all three repos.
 ### Settings
 
 Settings has the same sections, in the same order, in every app: General
-first (Profile, Appearance, then the account itself), the app's own tool
-settings next, then Subscription. A section an app does not need is left out,
-not left empty.
+first (Profile, Appearance where the app has it, then the account itself),
+the app's own tool settings next, then Subscription. A section an app does
+not need is left out, not left empty.
 
 | Survey | Walkthru | Plot |
 | --- | --- | --- |
@@ -367,6 +372,7 @@ same round. Survey's icon wins unless another app's is clearly better.
 | Pinned tools | Lucide `pin` | Built | `PinIcon` in `pinned-tools-toggle.tsx` | none |
 | Line, Arrow, Polyline, Polygon, Rectangle, Circle, Cloud | Survey's own tool glyphs | Survey's own | `public/survey-icons/tools/` | `src/shell/icons.ts` |
 | Share (with Export) | Lucide `share-2`: three dots joined by two lines | Nightly | Built | `share` in `src/shell/icons.ts` |
+| Expand menu: open the picked thing's full panel on the right | A box with a column of three short lines on its right. The word is "Expand menu" | `expandMenu` in `src/Icons.jsx`, on the selection quick bar and the marker tap card | `ExpandMenuIcon` in `popup-header.tsx`, on the Node pop-up (opens the Node's side panel) | none: Plot's right panel is always open |
 
 ## Shared words
 

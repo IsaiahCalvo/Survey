@@ -715,12 +715,12 @@ export const FEATURE_FLAGS = Object.freeze({
     stage: 'beta',
   }),
   // One look for Survey, Walkthru and Plot (KAL-663, owner 2026-11-16; one
-  // accent per app since 2026-11-23): the suite's greys and Survey's green in
-  // place of the blue-grey and blue, with a light and a dark mode
-  // (Settings -> General -> Appearance). src/suiteLook.js. When it leaves
-  // Nightly, follow docs/suite/survey-green-flip.md.
+  // accent per app since 2026-11-23): the suite's greys and Survey's gold in
+  // place of the blue-grey and blue. Dark only (owner 2026-11-24): no light
+  // mode, no Appearance setting. src/suiteLook.js. When it leaves
+  // Nightly, follow docs/suite/survey-gold-flip.md.
   'one-look': Object.freeze({
-    label: 'Suite look: grey and green, with light and dark mode',
+    label: 'Suite look: dark grey and gold',
     stage: 'beta',
   }),
   // Owner 2026-11-23: Survey mode gets its own tools in the pinned tools bar
