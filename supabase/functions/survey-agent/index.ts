@@ -89,8 +89,11 @@ const envNumber = (name: string, fallback: number) => {
   return Number.isFinite(value) && value >= 0 ? value : fallback;
 };
 
+// The agent's own monthly cap. On the OpenAI credits, the shared credit
+// budget ($200 a month for every app) is the real limit, so the agent's own
+// default steps aside; SURVEY_AGENT_MONTHLY_CAP_USD still sets one by hand.
 function capMicros() {
-  return Math.round(envNumber('SURVEY_AGENT_MONTHLY_CAP_USD', 5) * 1_000_000);
+  return Math.round(envNumber('SURVEY_AGENT_MONTHLY_CAP_USD', onOpenAi() ? 200 : 5) * 1_000_000);
 }
 
 // GROQ_BASE_URL points every Groq call (chat, hearing, voice) somewhere
@@ -105,28 +108,46 @@ function creditFor(url: string) {
   return String(url || '').startsWith(groqBase()) ? null : creditProviderFor(url);
 }
 
-// SURVEY_AGENT_BASE_URL on OpenAI with no SURVEY_AGENT_API_KEY uses the
-// suite's OPENAI_API_KEY, so one key serves hearing and thinking.
+// Owner 2026-11-24: the agent runs on the monthly OpenAI API credits,
+// capped by the shared credit budget. With OPENAI_API_KEY set and no other
+// provider named, OpenAI is the default. SURVEY_AGENT_PROVIDER=groq goes
+// back to Groq's free tier; the E2E stack (GROQ_BASE_URL) stays on its fake.
+const OPENAI_DEFAULT = { baseUrl: 'https://api.openai.com/v1', model: 'gpt-4.1-mini', priceIn: 0.4, priceOut: 1.6 };
+function openAiByDefault() {
+  return Boolean(Deno.env.get('OPENAI_API_KEY'))
+    && !Deno.env.get('SURVEY_AGENT_BASE_URL')
+    && !Deno.env.get('SURVEY_AGENT_API_KEY')
+    && !Deno.env.get('GROQ_BASE_URL')
+    && Deno.env.get('SURVEY_AGENT_PROVIDER') !== 'groq';
+}
+
+// On OpenAI with no SURVEY_AGENT_API_KEY, the suite's OPENAI_API_KEY is
+// used, so one key serves hearing and thinking.
 function onOpenAi() {
-  return creditProviderFor(Deno.env.get('SURVEY_AGENT_BASE_URL') || '') === 'openai';
+  return openAiByDefault() || creditProviderFor(Deno.env.get('SURVEY_AGENT_BASE_URL') || '') === 'openai';
 }
 
 function modelProvider() {
-  const openAiKey = onOpenAi() ? Deno.env.get('OPENAI_API_KEY') : '';
+  const openAi = onOpenAi();
+  const openAiKey = openAi ? Deno.env.get('OPENAI_API_KEY') : '';
   const key = Deno.env.get('SURVEY_AGENT_API_KEY') || openAiKey || Deno.env.get('GROQ_API_KEY');
   if (!key) return null;
   const custom = Boolean(Deno.env.get('SURVEY_AGENT_API_KEY') || openAiKey);
-  const baseUrl = (Deno.env.get('SURVEY_AGENT_BASE_URL') || (custom ? '' : groqBase())).replace(/\/$/, '');
-  const model = Deno.env.get('SURVEY_AGENT_MODEL') || SURVEY_AGENT_DEFAULT_PROVIDER.model;
+  const named = Deno.env.get('SURVEY_AGENT_BASE_URL') || (openAiByDefault() ? OPENAI_DEFAULT.baseUrl : '');
+  const baseUrl = (named || (custom ? '' : groqBase())).replace(/\/$/, '');
+  const model = Deno.env.get('SURVEY_AGENT_MODEL') || (openAi ? OPENAI_DEFAULT.model : SURVEY_AGENT_DEFAULT_PROVIDER.model);
   return {
     key,
     baseUrl,
     model,
     models: modelChain(model, {
-      fallbackEnv: Deno.env.get('SURVEY_AGENT_FALLBACK_MODELS') ?? null,
+      fallbackEnv: Deno.env.get('SURVEY_AGENT_FALLBACK_MODELS') ?? (openAi ? '' : null),
       groqDefault: baseUrl === groqBase(),
     }),
-    prices: { input: envNumber('SURVEY_AGENT_PRICE_IN', 0), output: envNumber('SURVEY_AGENT_PRICE_OUT', 0) },
+    prices: {
+      input: envNumber('SURVEY_AGENT_PRICE_IN', openAi ? OPENAI_DEFAULT.priceIn : 0),
+      output: envNumber('SURVEY_AGENT_PRICE_OUT', openAi ? OPENAI_DEFAULT.priceOut : 0),
+    },
   };
 }
 
@@ -140,12 +161,16 @@ function visionModel() {
   if (named === 'off') return null;
   const provider = modelProvider();
   if (!provider?.baseUrl) return null;
-  const model = named || (Deno.env.get('SURVEY_AGENT_API_KEY') || onOpenAi() ? '' : DEFAULT_VISION_MODEL);
+  const openAi = onOpenAi();
+  const model = named || (openAi ? OPENAI_DEFAULT.model : Deno.env.get('SURVEY_AGENT_API_KEY') ? '' : DEFAULT_VISION_MODEL);
   if (!model) return null;
   return {
     ...provider,
     model,
-    prices: { input: envNumber('SURVEY_AGENT_VISION_PRICE_IN', 0), output: envNumber('SURVEY_AGENT_VISION_PRICE_OUT', 0) },
+    prices: {
+      input: envNumber('SURVEY_AGENT_VISION_PRICE_IN', openAi ? OPENAI_DEFAULT.priceIn : 0),
+      output: envNumber('SURVEY_AGENT_VISION_PRICE_OUT', openAi ? OPENAI_DEFAULT.priceOut : 0),
+    },
   };
 }
 
