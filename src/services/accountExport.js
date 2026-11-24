@@ -1,7 +1,6 @@
 // "Download my data" (Account settings): the export-account function returns
 // every row the person owns plus one-hour links to their stored files; this
 // zips both on the device, so file bytes never pass through the function.
-import JSZip from 'jszip';
 import { deliverGeneratedFile } from '../utils/xfdfExport/deliverFile.js';
 
 export const ACCOUNT_EXPORT_ERROR_TEXT = {
@@ -102,7 +101,9 @@ Other files/   Anything else stored for your account.
 // into parts a phone can hold (the native download shim reads a whole file).
 export const EXPORT_PART_BYTES = 250 * 1024 * 1024;
 
-const newZip = () => new JSZip();
+// jszip loads when an export starts, not with the app: this file sits in
+// Settings, which is part of the first load (size budget, KAL-652).
+const loadJSZip = () => import('jszip').then((m) => m.default);
 const finish = (zip) => zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE', compressionOptions: { level: 6 } });
 
 /**
@@ -114,6 +115,8 @@ const finish = (zip) => zip.generateAsync({ type: 'uint8array', compression: 'DE
 export async function buildAccountExportZips(manifest, {
   fetchImpl = fetch, onProgress, onPart, partBytes = EXPORT_PART_BYTES,
 } = {}) {
+  const JSZip = await loadJSZip();
+  const newZip = () => new JSZip();
   let zip = newZip();
   zip.file('README.txt', README(manifest));
   zip.file('data.json', JSON.stringify({

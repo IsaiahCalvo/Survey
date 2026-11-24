@@ -5,12 +5,17 @@
 .shortcut-key-field,
 .shortcut-key-fixed {
   box-sizing: border-box;
-  width: 132px;
-  height: 30px;
-  padding: 0 7px;
+  /* A key, not a form field (polish pass, KAL-652): it was a 132px box with
+     the strong edge on every row, so the sheet read as a long form. Now it is
+     as wide as its keys, on the grey a field rests on. */
+  width: auto;
+  min-width: 44px;
+  max-width: 160px;
+  height: 26px;
+  padding: 0 8px;
   font-family: var(--font-ui);
   font-size: 12px;
-  line-height: 28px;
+  line-height: 24px;
   text-align: center;
   white-space: nowrap;
   overflow: hidden;
@@ -18,21 +23,27 @@
   user-select: none;
 }
 .shortcut-key-field {
-  border: 1px solid var(--border-strong);
+  field-sizing: content;
+  border: 1px solid var(--border);
   border-radius: 6px;
-  background: var(--surface-1);
+  background: var(--hover);
   color: var(--text-1);
   cursor: pointer;
   caret-color: transparent;
-  transition: background-color var(--motion-state) var(--ease-standard);
+  outline: none;
+  transition: background-color var(--motion-state) var(--ease-standard), border-color var(--motion-state) var(--ease-standard);
 }
+/* It rests on raised, so it hovers to raised-2 and presses to pressed-2. */
 @media (hover: hover) and (pointer: fine) {
-  .shortcut-key-field:hover:not(:focus):not(:active) { background: var(--hover); }
+  .shortcut-key-field:hover:not(:focus):not(:active) { background: var(--surface-3); }
 }
-.shortcut-key-field:active { background: var(--pressed); }
-/* A key the app owns: the same slot and type, no edge, so it reads as fixed. */
+.shortcut-key-field:active { background: var(--pressed-2); transition: none; }
+/* Listening for the new keys: a 2px accent edge says so, and is the focus
+   ring too (a mouse click focuses the field just as Tab does). */
+.shortcut-key-field:focus:not(:active) { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); background: var(--surface-2); color: var(--text-2); }
+/* A key the app owns: the same slot and type, no fill or edge, so it reads as fixed. */
 .shortcut-key-fixed {
   display: inline-block;
-  color: var(--text-2);
+  color: var(--text-3);
 }
 .keyboard-shortcuts-sheet :is(h2, h3, p, .shortcut-row-label) { user-select: none; }

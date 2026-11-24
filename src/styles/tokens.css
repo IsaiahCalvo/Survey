@@ -579,13 +579,14 @@ button {
 }
 
 /* ============================================================================
-   THE SUITE LOOK: grey and coral, dark and light (KAL-663, owner 2026-11-16)
+   THE SUITE LOOK: shared greys and Survey's green, dark and light
    ============================================================================
-   "A consistent UI across the board, like Walkthru with its gray and coral."
-   Survey, Walkthru and Plot now share one colour set. The values and their
-   names are in docs/suite/SUITE-RULES.md ("One colour set"); nothing here is
-   Survey's own pick. The dark values are Walkthru's, the light values are
-   Plot's greys with a deeper coral.
+   Survey, Walkthru and Plot share one set of greys (KAL-663, owner
+   2026-11-16). Since owner 2026-11-23 each app has its own accent: Plot blue,
+   Walkthru coral, Survey green (close to Drawboard's). The values and their
+   names are in docs/suite/SUITE-RULES.md ("One colour set"). The dark greys
+   are Walkthru's, the light greys are Plot's; the green is deeper in light
+   mode so white words on it pass 4.5:1.
 
    Nightly first: the flag 'one-look' (src/suiteLook.js) puts data-look="suite"
    on <html>. Without it the app keeps the palette above. data-theme="light"
@@ -638,12 +639,12 @@ html[data-look="suite"] {
   --text-3: #9a9a97;          /* 6.03 on a panel, 4.93 on --surface-3 */
   --text-disabled: #5c5c5a;
 
-  --accent-light: #e89179;    /* coral-hover */
-  --accent: #e07a5e;          /* coral · 5.76 on a panel, 4.72 on --surface-3 */
-  --accent-press: #c7634a;    /* coral-pressed. Never a text colour. */
-  --accent-text: #131315;     /* on-coral · 6.29. White measures 2.95: never. */
-  --accent-soft: rgba(224, 122, 94, 0.15);
-  --accent-soft-strong: rgba(224, 122, 94, 0.22);
+  --accent-light: #5ad49d;    /* accent-hover */
+  --accent: #3dc98a;          /* Survey green · 8.04 on a panel, 6.58 on --surface-3 */
+  --accent-press: #2bb077;    /* accent-pressed. Never a text colour. */
+  --accent-text: #131315;     /* on-accent · 8.77. White fails: never. */
+  --accent-soft: rgba(61, 201, 138, 0.15);
+  --accent-soft-strong: rgba(61, 201, 138, 0.22);
   --accent-text-track: rgba(19, 19, 21, 0.22);
 
   --danger: #ef4444;
@@ -699,12 +700,12 @@ html[data-look="suite"][data-theme="light"] {
   --text-3: #666666;          /* 5.74 on a panel, 4.82 on --surface-3 */
   --text-disabled: #a3a3a3;
 
-  --accent-light: #a64525;    /* coral-hover: darker in light mode */
-  --accent: #ba4f2c;          /* coral · 4.95 on a panel */
-  --accent-press: #8f3a1e;
-  --accent-text: #ffffff;     /* on-coral · 4.95 */
-  --accent-soft: rgba(186, 79, 44, 0.10);
-  --accent-soft-strong: rgba(186, 79, 44, 0.16);
+  --accent-light: #116d49;    /* accent-hover: darker in light mode */
+  --accent: #157f55;          /* Survey green · 5.00 on a panel */
+  --accent-press: #0d5a3c;
+  --accent-text: #ffffff;     /* on-accent · 5.00 */
+  --accent-soft: rgba(21, 127, 85, 0.10);
+  --accent-soft-strong: rgba(21, 127, 85, 0.16);
   --accent-text-track: rgba(255, 255, 255, 0.3);
 
   --danger: #d92d20;
