@@ -24,8 +24,9 @@ test('Keyboard shortcuts sheet: key fields share one class with hover and presse
   assert.match(jsx, /<kbd className="shortcut-key-fixed">\{keys\.join\(' \+ '\)\}<\/kbd>/);
   assert.match(jsx, /className="hub-btn hub-btn--tertiary" aria-label=\{`Reset shortcut/);
   assert.match(css, /font-family: var\(--font-ui\);/);
-  assert.match(css, /\.shortcut-key-field:hover:not\(:focus\):not\(:active\) \{ background: var\(--hover\); \}/);
-  assert.match(css, /\.shortcut-key-field:active \{ background: var\(--pressed\); \}/);
+  // Batch 25: the key rests on raised, so it hovers to raised-2 and presses to pressed-2.
+  assert.match(css, /\.shortcut-key-field:hover:not\(:focus\):not\(:active\) \{ background: var\(--surface-3\); \}/);
+  assert.match(css, /\.shortcut-key-field:active \{ background: var\(--pressed-2\); transition: none; \}/);
 });
 
 test('Export PDF: a chosen page row keeps its count pill, and the summary starts with a capital', () => {

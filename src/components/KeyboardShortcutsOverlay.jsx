@@ -119,7 +119,9 @@ const KeyboardShortcutsOverlay = () => {
         aria-label="Keyboard shortcuts"
         className="keyboard-shortcuts-sheet"
         style={{
-          background: COLORS.background.tertiary, // a dialog is panel colour, like Export and Share
+          // The panel fill every other dialog card wears; it sat on the
+          // ground grey (polish pass, KAL-652).
+          background: 'var(--surface-2)',
           borderRadius: BORDERS.radius.dialog,
           padding: '24px',
           width: 'min(620px, calc(100vw - 32px))',
@@ -176,7 +178,7 @@ const KeyboardShortcutsOverlay = () => {
         {/* Shortcuts List */}
         {/* KAL-444: the list grew from 6 honest-ish rows to every key the app
             answers to, so rows are compact enough to scan instead of scroll. */}
-        <p style={{ color: COLORS.text.muted, margin: '0 0 16px', fontSize: '13px' }}>Click a key field, then press your new shortcut.</p>
+        <p style={{ color: COLORS.text.muted, margin: '0 0 16px', fontSize: '13px' }}>To change a shortcut, click it, then press the new keys.</p>
         {bindingError && <p role="alert" style={{ color: 'var(--danger)' }}>{bindingError}</p>}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {shortcuts.map((section, idx) => (
@@ -213,7 +215,7 @@ const KeyboardShortcutsOverlay = () => {
                       className="shortcut-row-label"
                       style={{
                         fontSize: TYPOGRAPHY.fontSize.md,
-                        color: COLORS.text.tertiary,
+                        color: 'var(--text-2)',
                         fontFamily: TYPOGRAPHY.fontFamily.default,
                       }}
                     >
@@ -228,6 +230,8 @@ const KeyboardShortcutsOverlay = () => {
                               className="shortcut-key-field"
                               readOnly
                               value={editingChord === item.chords[groupIdx] ? 'Press keys…' : item.keyGroups[groupIdx].join(' + ')}
+                              // Sized to its keys where field-sizing is missing (Safari, iOS).
+                              size={Math.max(3, (editingChord === item.chords[groupIdx] ? 'Press keys…' : item.keyGroups[groupIdx].join(' + ')).length)}
                               onFocus={() => { setEditingChord(item.chords[groupIdx]); setBindingError(''); }}
                               onBlur={() => setEditingChord(null)}
                               onKeyDown={(event) => {
