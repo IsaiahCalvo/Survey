@@ -367,6 +367,7 @@ same round. Survey's icon wins unless another app's is clearly better.
 | Pinned tools | Lucide `pin` | Built | `PinIcon` in `pinned-tools-toggle.tsx` | none |
 | Line, Arrow, Polyline, Polygon, Rectangle, Circle, Cloud | Survey's own tool glyphs | Survey's own | `public/survey-icons/tools/` | `src/shell/icons.ts` |
 | Share (with Export) | Lucide `share-2`: three dots joined by two lines | Nightly | Built | `share` in `src/shell/icons.ts` |
+| Expand menu: open the picked thing's full panel on the right | A box with a column of three short lines on its right. The word is "Expand menu" | `expandMenu` in `src/Icons.jsx`, on the selection quick bar and the marker tap card | `ExpandMenuIcon` in `popup-header.tsx`, on the Node pop-up (opens the Node's side panel) | none: Plot's right panel is always open |
 
 ## Shared words
 
