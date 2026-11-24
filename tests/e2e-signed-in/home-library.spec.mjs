@@ -217,3 +217,32 @@ test.describe('Home extras, shared views only', () => {
     await expect(page.locator('[data-home-col]')).toHaveCount(0);
   });
 });
+
+// A share made in the Share dialog shows in "Shared by me" as soon as the
+// dialog closes, without a reload (round-2 audit, projects-sharing #8).
+test.describe('Home extras, a new share', () => {
+  test.use({ viewport: { width: 1400, height: 900 } });
+  test('Shared by me picks up a share when the dialog closes', async ({ page }) => {
+    test.setTimeout(150_000);
+    const admin = adminClient();
+    const ownerId = await userIdOf(admin, E2E_ACCOUNTS.owner);
+    const editorId = await userIdOf(admin, E2E_ACCOUNTS.editor);
+    const name = `HL new share ${RUN}.pdf`;
+    const docId = await addDoc(admin, ownerId, name);
+    await page.addInitScript(() => { localStorage.setItem('survey.flag.home-shared-views', '1'); });
+    await signInAt(page, E2E_ACCOUNTS.owner, '/');
+    const row = visible(page.locator('.documents-ledger-row', { hasText: name }));
+    await expect(row).toBeVisible({ timeout: 45_000 });
+    await row.getByRole('button', { name: 'More' }).click();
+    await visible(page.getByRole('menuitem', { name: 'Share', exact: true })).click();
+    const dialog = page.getByRole('dialog', { name: /Document access:/ });
+    await expect(dialog).toBeVisible({ timeout: 15_000 });
+    // The share itself lands while the dialog is open (the dialog's own invite
+    // flow needs the email function, which the local stack does not run).
+    await must('share', admin.from('document_collaborators').insert({ document_id: docId, user_id: editorId, role: 'viewer', status: 'active' }));
+    await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+    await expect(dialog).toBeHidden();
+    await visible(page.locator('[data-home-nav] button', { hasText: 'Shared by me' })).click();
+    await expect(visible(page.getByText(name, { exact: true }))).toBeVisible({ timeout: 15_000 });
+  });
+});

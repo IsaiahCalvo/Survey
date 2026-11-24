@@ -21,6 +21,7 @@ import { OPEN_SETTINGS_EVENT } from './openSettings.js';
 import { readItemLink, requestItemLink, withoutItemLink } from '../projectItems/itemLink.js';
 import { useTooltip } from '../components/Tooltip';
 import { isFeatureOn } from '../featureFlags.js';
+import { notifyLibraryChanged } from '../hooks/libraryChangeBus.js';
 import DocumentsLedger from './DocumentsLedger';
 import ProjectsFolderTree from './ProjectsFolderTree';
 import TemplatesEditor from './TemplatesEditor';
@@ -127,6 +128,9 @@ export default function SurveyHub({
     } catch { return 'documents'; }
   });
   const [share, setShare] = useState(null); // null | { kind, name, item, manage }
+  // A share made in either dialog changes "Shared by me" and the Preview's
+  // Team list, which are read elsewhere; ask them to read again on close.
+  const closeShare = () => { setShare(null); notifyLibraryChanged(); };
   const [settingsOpen, setSettingsOpen] = useState(false); // settings page shown over the hub
   const [settingsTab, setSettingsTab] = useState(null);
   const [teamsConfig] = useState(() => isTeamsConfig());
@@ -392,7 +396,7 @@ export default function SurveyHub({
         kind={share?.kind}
         name={share?.name}
         item={share?.item}
-        onClose={() => setShare(null)}
+        onClose={closeShare}
       />
 
       <AccessManagementModal
@@ -400,7 +404,7 @@ export default function SurveyHub({
         kind={share?.kind}
         item={share?.item}
         user={user}
-        onClose={() => setShare(null)}
+        onClose={closeShare}
       />
 
       {/* Settings page — shown full-screen over the hub. AccountSettings
