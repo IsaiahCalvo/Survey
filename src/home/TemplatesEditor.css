@@ -482,3 +482,12 @@ html[data-look='suite'] .ed-scope .swipe-row .chrome-pill[data-state='open'] { b
 .templates-editor-head { flex-wrap: wrap; row-gap: 10px; }
 .templates-editor-head > div:nth-child(2) { flex: 1 1 200px !important; }
 .templates-editor-head > .micro { margin-left: auto; max-width: 100% !important; }
+
+/* Checklist rows (polish pass, KAL-652): a red x sat on every line at rest,
+   so a list of ten read as ten warnings. It is quiet until you point at the
+   line or Tab to it, then red as every delete glyph is. */
+.te-item-delete.hub-icon-btn.is-danger { color: var(--text-3); }
+@media (hover: hover) and (pointer: fine) {
+  [data-drag-rearrange-row]:hover .te-item-delete.hub-icon-btn.is-danger { color: var(--danger); }
+}
+.te-item-delete.hub-icon-btn.is-danger:focus-visible { color: var(--danger); }
