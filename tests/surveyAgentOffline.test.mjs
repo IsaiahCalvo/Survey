@@ -465,3 +465,23 @@ test('by place on a bare PDF: the printed tag nearest the label becomes the item
   assert.equal(made.name, 'PS-1-07');
   assert.equal(made.checklistResponses['l-sign'].selection, 'Pass');
 });
+
+// ---- Scanned sheets. ----
+
+test('a scanned sheet is read on the device, then the tag is found', async () => {
+  const scanned = sheet(7, ['SECOND', 'FLOOR'], ['PS-2-03']);
+  let readable = false;
+  const recognized = [];
+  const { bridge, toolbox, markers } = tradeBridge({
+    readSheets: async () => (readable ? { pages: [scanned], unreadPages: [] } : { pages: [], unreadPages: [7, 8] }),
+    recognizePage: async (page) => { recognized.push(page); if (page === 7) readable = true; return page === 7; },
+    getCurrentPage: () => 7,
+  });
+  const done = await runOfflineTurn({ text: 'pull station 3 second floor signage pass', toolbox, bridge });
+  assert.deepEqual(recognized, [7, 8]);
+  assert.equal(done.calls[0].name, 'create_item');
+  assert.equal(Object.values(markers)[0].name, 'PS-2-03');
+  // The tool on its own: nothing left to read.
+  const again = await toolbox.run('read_scanned_pages', { pages: null });
+  assert.equal(again.content, 'Every page already has text to read.');
+});

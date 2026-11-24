@@ -20,6 +20,8 @@ export { normalizeItemName, scoreItemName };
 const MAX_BULK_ITEMS = 60;
 // survey_status names at most this many items per group; the counts are whole.
 const STATUS_LIST_MAX = 20;
+// One read_scanned_pages call reads at most this many pages (seconds each).
+const MAX_OCR_PAGES = 4;
 // One tidy_notes call rewrites at most this many items' notes.
 const MAX_TIDY_ITEMS = 300;
 
@@ -983,6 +985,31 @@ export function createSurveyAgentToolbox({
           ...(unreadPages.length ? { pages_without_text: unreadPages.length } : {}),
         }),
       };
+    },
+
+    // Scanned sheets have no text, so tags on them can't be found until text
+    // recognition reads them (on the device, no signal needed). The current
+    // page first when no pages are named.
+    async read_scanned_pages({ pages = null } = {}) {
+      const b = bridge();
+      if (typeof b.recognizePage !== 'function') throw new ToolError('Text recognition is not available here.');
+      const { unreadPages = [] } = typeof b.readSheets === 'function' ? await b.readSheets() : {};
+      const named = Array.isArray(pages) ? pages.map(Number).filter(Number.isFinite) : [];
+      let list = named.length ? named.filter((p) => unreadPages.includes(p)) : [...unreadPages];
+      const current = b.getCurrentPage?.();
+      if (!named.length && current && list.includes(current)) list = [current, ...list.filter((p) => p !== current)];
+      list = list.slice(0, MAX_OCR_PAGES);
+      if (!list.length) return { content: unreadPages.length ? 'Those pages already have text to read.' : 'Every page already has text to read.' };
+      const read = [];
+      const failed = [];
+      for (const page of list) {
+        try { if (await b.recognizePage(page)) read.push(page); else failed.push(page); } catch { failed.push(page); }
+      }
+      const left = unreadPages.length - read.length;
+      const parts = [read.length ? `Read the text on page${read.length === 1 ? '' : 's'} ${read.join(', ')}.` : 'No page could be read.'];
+      if (failed.length) parts.push(`Page${failed.length === 1 ? '' : 's'} ${failed.join(', ')} gave no text.`);
+      if (left > 0) parts.push(`${left} scanned page${left === 1 ? '' : 's'} still unread; ask again for more.`);
+      return { content: parts.join(' '), read };
     },
 
     show_on_plan({ plan_match_id: matchId } = {}) {

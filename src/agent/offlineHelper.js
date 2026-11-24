@@ -346,61 +346,74 @@ export async function planDescribedTurn(text, bridge, toolbox, { learned = [] } 
   if (lead >= tokens.length) return null;
   const kinds = projectKinds(bridge);
   const found = new Map();
-  for (let end = tokens.length; end > lead; end -= 1) {
-    const description = String(text).slice(tokens[lead].start, tokens[end - 1].end);
-    // Kind and number ("camera 2 second floor"), else kind and a place
-    // printed on the plan ("the camera by stair 2").
-    let target = parseDescribedTarget(description, { kinds });
-    if (!target || target.number == null || !target.kind || target.leftover.length) target = null;
-    const place = parsePlaceTarget(description, { kinds });
-    if (place) target = place;
-    if (!target) continue;
-    const key = JSON.stringify(target);
-    if (!found.has(key)) {
-      const res = await toolbox.run('find_described', { description });
-      let parsed = null;
-      try { parsed = res?.isError ? null : JSON.parse(res.content); } catch { parsed = null; }
-      found.set(key, parsed);
+  const first = await describedAttempt();
+  if (first) return first;
+  // Nothing found, and some sheets are scans with no text yet: read them on
+  // the device (the current page first), then look once more.
+  const unread = [...found.values()].some((f) => f?.pages_without_text);
+  if (!unread || typeof bridge.recognizePage !== 'function') return null;
+  const res = await toolbox.run('read_scanned_pages', { pages: null });
+  if (res?.isError || !res?.read?.length) return null;
+  found.clear();
+  return describedAttempt();
+
+  async function describedAttempt() {
+    for (let end = tokens.length; end > lead; end -= 1) {
+      const description = String(text).slice(tokens[lead].start, tokens[end - 1].end);
+      // Kind and number ("camera 2 second floor"), else kind and a place
+      // printed on the plan ("the camera by stair 2").
+      let target = parseDescribedTarget(description, { kinds });
+      if (!target || target.number == null || !target.kind || target.leftover.length) target = null;
+      const place = parsePlaceTarget(description, { kinds });
+      if (place) target = place;
+      if (!target) continue;
+      const key = JSON.stringify(target);
+      if (!found.has(key)) {
+        const res = await toolbox.run('find_described', { description });
+        let parsed = null;
+        try { parsed = res?.isError ? null : JSON.parse(res.content); } catch { parsed = null; }
+        found.set(key, parsed);
+      }
+      const fits = found.get(key);
+      if (!fits) continue;
+      const before = tokens.slice(0, lead);
+      const after = tokens.slice(end);
+      const items = fits.items || [];
+      const plan = (fits.plan || []).filter((m) => !m.already_item || !items.some((i) => i.id === m.already_item.id));
+      const onItem = (id) => readItemTurn({ text, template, marker: markers[id], itemId: id, before, after, named: true, learned });
+      const pick = (list) => (fits.by_place ? list.find((m) => m.clear) || null : clearBest(list));
+      const bestItem = pick(items);
+      if (bestItem) {
+        const reading = onItem(bestItem.id);
+        if (reading) return reading;
+        continue;
+      }
+      if (items.length >= 2) {
+        if (onItem(items[0].id)) return { ask: `More than one fits "${description}": ${listFits(items)}. Which one? Nothing changed.` };
+        continue;
+      }
+      // No item fits: a tag printed on the plan (a bare PDF, or one not added yet).
+      const bestTag = pick(plan);
+      if (bestTag?.already_item) {
+        const reading = onItem(bestTag.already_item.id);
+        if (reading) return reading;
+        continue;
+      }
+      if (bestTag) {
+        const homes = categoriesOfKind(template, target.kind, bridge.currentModuleId);
+        if (homes.length !== 1) continue;
+        const name = String(bestTag.text).trim();
+        const fresh = { name, moduleId: homes[0].module.id, categoryId: homes[0].category.id };
+        const reading = readItemTurn({ text, template, marker: fresh, itemId: NEW_ITEM, before, after, named: true, learned });
+        if (!reading) continue;
+        if (reading.ask) return reading;
+        const create = { name: 'create_item', input: { name, category_id: homes[0].category.id, plan_match_id: bestTag.id } };
+        return { calls: [create, ...reading.calls.filter((c) => c.name !== 'show_item')] };
+      }
+      if (plan.length >= 2) return { ask: `More than one tag on the plan fits "${description}": ${listFits(plan)}. Which one? Nothing changed.` };
     }
-    const fits = found.get(key);
-    if (!fits) continue;
-    const before = tokens.slice(0, lead);
-    const after = tokens.slice(end);
-    const items = fits.items || [];
-    const plan = (fits.plan || []).filter((m) => !m.already_item || !items.some((i) => i.id === m.already_item.id));
-    const onItem = (id) => readItemTurn({ text, template, marker: markers[id], itemId: id, before, after, named: true, learned });
-    const pick = (list) => (fits.by_place ? list.find((m) => m.clear) || null : clearBest(list));
-    const bestItem = pick(items);
-    if (bestItem) {
-      const reading = onItem(bestItem.id);
-      if (reading) return reading;
-      continue;
-    }
-    if (items.length >= 2) {
-      if (onItem(items[0].id)) return { ask: `More than one fits "${description}": ${listFits(items)}. Which one? Nothing changed.` };
-      continue;
-    }
-    // No item fits: a tag printed on the plan (a bare PDF, or one not added yet).
-    const bestTag = pick(plan);
-    if (bestTag?.already_item) {
-      const reading = onItem(bestTag.already_item.id);
-      if (reading) return reading;
-      continue;
-    }
-    if (bestTag) {
-      const homes = categoriesOfKind(template, target.kind, bridge.currentModuleId);
-      if (homes.length !== 1) continue;
-      const name = String(bestTag.text).trim();
-      const fresh = { name, moduleId: homes[0].module.id, categoryId: homes[0].category.id };
-      const reading = readItemTurn({ text, template, marker: fresh, itemId: NEW_ITEM, before, after, named: true, learned });
-      if (!reading) continue;
-      if (reading.ask) return reading;
-      const create = { name: 'create_item', input: { name, category_id: homes[0].category.id, plan_match_id: bestTag.id } };
-      return { calls: [create, ...reading.calls.filter((c) => c.name !== 'show_item')] };
-    }
-    if (plan.length >= 2) return { ask: `More than one tag on the plan fits "${description}": ${listFits(plan)}. Which one? Nothing changed.` };
+    return null;
   }
-  return null;
 }
 
 // Stands for the item create_item adds earlier in the same turn.
