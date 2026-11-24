@@ -213,19 +213,24 @@ export default function ProjectSettingsDialog({ project, role, isOwner, onClose,
         <div className="project-settings">
           <div className={`project-settings-cover${hasCover ? ' has-cover' : ''}`}>
             {hasCover && coverUrl ? <img src={coverUrl} alt="" /> : null}
-            {!hasCover && <span className="project-settings-cover-empty"><Icon name="image" size={18} />No cover picture</span>}
-            {canEdit && (
+            {/* An empty cover offers one plain button, not a lone pencil in
+                the corner of a blank box. */}
+            {!hasCover && canEdit && (
+              <button type="button" className="hub-btn project-settings-cover-add" data-project-cover-pick onClick={() => fileRef.current?.click()}>
+                <Icon name="image" size={14} />Add cover picture
+              </button>
+            )}
+            {!hasCover && !canEdit && <span className="project-settings-cover-empty"><Icon name="image" size={18} />No cover picture</span>}
+            {canEdit && hasCover && (
               <div className="project-settings-cover-actions">
-                <button type="button" className="project-settings-cover-btn" aria-label={hasCover ? 'Change cover picture' : 'Add cover picture'}
-                  data-project-cover-pick onClick={() => fileRef.current?.click()} {...tip(hasCover ? 'Change cover picture' : 'Add cover picture', 'below')}>
+                <button type="button" className="project-settings-cover-btn" aria-label="Change cover picture"
+                  data-project-cover-pick onClick={() => fileRef.current?.click()} {...tip('Change cover picture', 'below')}>
                   <Icon name="edit" size={14} />
                 </button>
-                {hasCover && (
-                  <button type="button" className="project-settings-cover-btn" aria-label="Remove cover picture" data-project-cover-remove
-                    onClick={() => { setCoverFile(null); setRemoveCover(true); }} {...tip('Remove cover picture', 'below')}>
-                    <Icon name="trash" size={14} />
-                  </button>
-                )}
+                <button type="button" className="project-settings-cover-btn" aria-label="Remove cover picture" data-project-cover-remove
+                  onClick={() => { setCoverFile(null); setRemoveCover(true); }} {...tip('Remove cover picture', 'below')}>
+                  <Icon name="trash" size={14} />
+                </button>
               </div>
             )}
             <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" hidden data-project-cover-input onChange={pickCover} />

@@ -597,17 +597,22 @@ export default function ProjectItemsPanel({
   ];
 
   const filtersOn = q || quick.size || groups.size || tagFilter.size || assignee !== 'all';
+  // Nothing raised yet: the search, Select, filter chips (all at 0) and a
+  // second coral New button sat over the empty state, which has its own
+  // (polish pass, KAL-652). They show once there is one.
+  const nothingYet = !data.loading && listItems.length === 0 && !archived;
+  const clearFilters = () => { setQ(''); setQuick(new Set()); setGroups(new Set()); setTagFilter(new Set()); setAssignee('all'); };
 
   return (
     <div ref={rootRef} className={`project-items${split && open ? ' has-detail' : ''}${phone ? ' is-phone' : ''}${compact ? ' is-compact' : ''}`} data-project-items={kind}>
       <div ref={listRef} className="project-items__list">
         <div className="project-items__bar">
-          {canEdit && (
+          {canEdit && !nothingYet && (
             <button type="button" className="btn primary hub-new-btn" data-testid="item-new" onClick={createItem}>
               <Icon name="plus" size={11} />New {k.one.toLowerCase()}
             </button>
           )}
-          <div className="hub-search item-search">
+          {!nothingYet && <div className="hub-search item-search">
             <Icon name="search" size={13} color="var(--ink-200)" />
             <input
               aria-label={`Search ${k.many.toLowerCase()}`}
@@ -616,9 +621,9 @@ export default function ProjectItemsPanel({
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />
-          </div>
+          </div>}
           <span style={{ flex: 1 }} />
-          {canEdit && <SectionIconButton
+          {canEdit && !nothingYet && <SectionIconButton
             action="select"
             label={selecting ? 'Done' : 'Select'}
             nothingToSelect={visible.length === 0}
@@ -635,7 +640,7 @@ export default function ProjectItemsPanel({
             onClick={(e) => { const rect = e.currentTarget.getBoundingClientRect(); setMenu((m) => (m ? null : { rect, items: listMenu })); }}
           ><Icon name="moreHorizontal" size={14} /></button>
         </div>
-        <div className="project-items__chips" data-item-chips>
+        {!nothingYet && <div className="project-items__chips" data-item-chips>
           {QUICK_FILTERS.map((f) => (
             <button key={f.key} type="button" className="item-chip" aria-pressed={quick.has(f.key)} onClick={() => toggle(setQuick)(f.key)}>{f.label}</button>
           ))}
@@ -653,9 +658,9 @@ export default function ProjectItemsPanel({
             <FieldSelect label="Assignee filter" testId="item-assignee-filter" value={assignee} options={memberOptions} onChange={setAssignee} />
           </span>
           {filtersOn ? (
-            <button type="button" className="item-chip is-clear" onClick={() => { setQ(''); setQuick(new Set()); setGroups(new Set()); setTagFilter(new Set()); setAssignee('all'); }}>Clear</button>
+            <button type="button" className="item-chip is-clear" onClick={clearFilters}>Clear</button>
           ) : null}
-        </div>
+        </div>}
         {archived && (
           <div className="item-archived-note">
             Showing archived {k.many.toLowerCase()}.{' '}
@@ -713,7 +718,23 @@ export default function ProjectItemsPanel({
                 onSecondary={() => { setArchived(true); setSel(new Set()); setOpenId(null); }}
               />
             ) : (
-              <div className="meta item-empty-line">{archived ? `No archived ${k.many.toLowerCase()}.` : `No ${k.many.toLowerCase()} match these filters.`}</div>
+              /* The bare grey line, as Documents had: now the same empty
+                 state with the way back. */
+              archived && !filtersOn ? (
+                <EmptyState
+                  icon="history"
+                  line={`No archived ${k.many.toLowerCase()}`}
+                  secondaryLabel={`Show open ${k.many.toLowerCase()}`}
+                  onSecondary={() => { setArchived(false); setSel(new Set()); setOpenId(null); }}
+                />
+              ) : (
+                <EmptyState
+                  icon="search"
+                  line={`No ${k.many.toLowerCase()} match these filters`}
+                  secondaryLabel="Clear filters"
+                  onSecondary={clearFilters}
+                />
+              )
             )
           ) : visible.map((item) => {
             const isSel = sel.has(item.id);

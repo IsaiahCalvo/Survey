@@ -169,7 +169,7 @@ for (const layout of LAYOUTS) {
         // 5. Linked filter: nothing linked yet.
         await press(layout, panel.locator('[data-photo-filter-open]'));
         await press(layout, visible(page.locator('[data-photo-filter="linked"]')));
-        await expect(panel.getByText('No photos match these filters.')).toBeVisible();
+        await expect(panel.getByText('No photos match these filters')).toBeVisible();
         await page.keyboard.press('Escape');
 
         // 6. The issue attaches it from "Browse project photos".

@@ -507,3 +507,54 @@
     margin-top: 4px;
   }
 }
+
+/* KAL-652: "Forgot password?" on the Password label's row, right-aligned.
+   Quiet like the label (no underline at rest), the calm link on hover. */
+.auth-form-group.has-forgot {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  column-gap: 8px;
+  align-items: baseline;
+}
+.auth-form-group.has-forgot > label { grid-row: 1; grid-column: 1; }
+.auth-form-group.has-forgot > .auth-forgot-link { grid-row: 1; grid-column: 2; justify-self: end; }
+.auth-form-group.has-forgot > input { grid-row: 2; grid-column: 1 / -1; }
+.auth-forgot-link {
+  background: none;
+  border: none;
+  /* A little pad so the shared press fill reads as a chip, not a tight box;
+     the negative margin keeps the words lined up with the field's edge. */
+  padding: 2px 4px;
+  margin: -2px -4px;
+  border-radius: 4px;
+  color: var(--link);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color var(--motion-state, 150ms) var(--ease-out, ease-out);
+}
+.auth-forgot-link:hover {
+  color: var(--link-hover);
+  text-decoration: underline;
+}
+.auth-forgot-link:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+@media (pointer: coarse) {
+  .auth-forgot-link { position: relative; }
+  .auth-forgot-link::after { content: ''; position: absolute; inset: -14px -8px; }
+}
+
+/* Sign-up: First name and Last name side by side; a narrow card stacks them. */
+.auth-name-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.auth-name-row > .auth-form-group { min-width: 0; }
+@media (max-width: 480px) {
+  .auth-name-row { grid-template-columns: 1fr; gap: 14px; }
+}

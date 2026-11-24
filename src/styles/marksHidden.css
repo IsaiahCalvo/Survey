@@ -107,7 +107,16 @@ html[data-marks-hidden] [data-lightweight-annotation-overlay] {
   border: none;
   cursor: pointer;
   background: var(--accent, #2f7cf6);
-  color: var(--accent-ink, #fff);
+  color: var(--accent-text, #fff);
+  transition: background-color var(--motion-state, 150ms) cubic-bezier(0.33, 1, 0.68, 1);
+}
+/* A coloured button keeps its own three steps (suite rules). */
+.measure-no-scale-chip button:not(.measure-no-scale-chip__close):hover {
+  background: var(--accent-light, var(--accent, #2f7cf6));
+}
+.measure-no-scale-chip button:not(.measure-no-scale-chip__close):active {
+  background: var(--accent-press, var(--accent, #2f7cf6));
+  transition: none;
 }
 
 /* Nightly 'measure-plus': the calibrating note closes with a round x. */

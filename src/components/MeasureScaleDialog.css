@@ -71,6 +71,12 @@
   grid-template-columns: repeat(6, 1fr);
 }
 
+/* "This page" / "All 12 pages" are words, not unit codes: two across, like
+   Preset / Custom, so they never touch the chip's edges. */
+.measure-scale__chips--apply {
+  grid-template-columns: repeat(2, 1fr);
+}
+
 .measure-scale__chip {
   min-height: 44px;
   padding: 0 4px;

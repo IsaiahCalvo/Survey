@@ -4,24 +4,31 @@
 .stamp-card__group { padding: 10px 12px 6px; font-weight: 600; }
 .stamp-card__grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  /* Two across, so each tile draws the stamp near its real size: three
+     across shrank the 11 pt words to about 7 px. */
+  grid-template-columns: repeat(2, 1fr);
   gap: 8px;
-  padding: 0 12px;
+  padding: 0 12px 12px;
 }
 .stamp-card__tile {
   display: flex;
   align-items: center;
   justify-content: center;
   aspect-ratio: 2 / 1;
-  padding: 4px;
+  padding: 2px;
   border: 1px solid var(--chrome-border, rgba(255, 255, 255, 0.12));
   border-radius: 6px;
   background: #fff;
   cursor: pointer;
+  transition: border-color var(--motion-state, 150ms) cubic-bezier(0.33, 1, 0.68, 1);
+}
+/* The tile is paper the theme never paints, so hover shows as a ring. */
+@media (hover: hover) {
+  .stamp-card__tile:hover { border-color: var(--border-strong, rgba(255, 255, 255, 0.4)); }
 }
 .stamp-card__tile[aria-selected='true'] {
-  border-color: #2f80ed;
-  box-shadow: 0 0 0 1px #2f80ed;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
 }
 .stamp-card__stamp {
   display: block;

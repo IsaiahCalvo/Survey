@@ -320,6 +320,13 @@ export default function ProjectPhotosPanel({ project, user, role, lookupMember, 
       onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOver(false); }}
       onDrop={(e) => { setDragOver(false); const files = imageFilesFrom(e.dataTransfer); if (files.length) { e.preventDefault(); addFiles(files); } }}
     >
+      {canEdit && (
+        <input ref={fileRef} type="file" accept="image/*" multiple hidden data-photo-input onChange={(e) => { addFiles(e.target.files); e.target.value = ''; }} />
+      )}
+      {/* With no photos yet the bar had nothing to group, filter or count,
+          and a second coral Add photo above the empty state's own (polish
+          pass, KAL-652). It shows once there is a photo, or one is adding. */}
+      {(!empty || uploading > 0) && (
       <div className="project-photos__bar">
         <ButtonGroup label="Group photos by" size="sm" value={grouping} onChange={pickGrouping} options={GROUPINGS.map((g) => ({ value: g.key, label: g.label }))} />
         <button
@@ -335,12 +342,10 @@ export default function ProjectPhotosPanel({ project, user, role, lookupMember, 
         <span style={{ flex: 1 }} />
         {uploading > 0 && <span className="photo-count" data-photo-uploading>Adding {uploading}…</span>}
         {canEdit && (
-          <>
-            <input ref={fileRef} type="file" accept="image/*" multiple hidden data-photo-input onChange={(e) => { addFiles(e.target.files); e.target.value = ''; }} />
-            <button type="button" className="hub-btn hub-btn--primary" data-photo-add onClick={() => fileRef.current?.click()}><Icon name="plus" size={12} />Add photo</button>
-          </>
+          <button type="button" className="hub-btn hub-btn--primary" data-photo-add onClick={() => fileRef.current?.click()}><Icon name="plus" size={12} />Add photo</button>
         )}
       </div>
+      )}
       {selPhotos.length > 0 && (
         <div className="project-photos__bulk" data-photo-bulk>
           <span>{selPhotos.length} selected</span>
@@ -358,7 +363,9 @@ export default function ProjectPhotosPanel({ project, user, role, lookupMember, 
             actionLabel={canEdit ? 'Add photo' : undefined}
             onAction={canEdit ? () => fileRef.current?.click() : undefined}
           />
-        ) : !shown.length ? <div className="photo-empty-note">No photos match these filters.</div> : groups.map((g) => {
+        ) : !shown.length ? (
+          <EmptyState icon="search" line="No photos match these filters" secondaryLabel="Clear filters" onSecondary={() => setFilter({ ...EMPTY_FILTER })} />
+        ) : groups.map((g) => {
           const allOn = g.photos.every((p) => sel.has(p.id));
           return (
             <section key={g.key} className="photo-group" data-photo-group={g.key}>

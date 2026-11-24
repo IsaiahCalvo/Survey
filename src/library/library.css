@@ -8,13 +8,13 @@
 .library-add {
   display: flex; align-items: center; gap: 8px;
   padding: 6px 14px 10px;
-  border-bottom: 1px solid var(--ink-500);
+  border-bottom: 1px solid var(--border);
 }
 .library-list { list-style: none; margin: 0; padding: 0; }
 .library-row {
   display: flex; align-items: center; gap: 8px;
   min-height: 40px; padding: 4px 8px 4px 14px;
-  border-bottom: 1px solid var(--ink-500);
+  border-bottom: 1px solid var(--border);
   transition: background-color var(--motion-state, 150ms) var(--ease-state, cubic-bezier(0.33, 1, 0.68, 1));
 }
 .library-card .library-list > li:last-child > .library-row:last-child,
@@ -32,3 +32,36 @@
   .library-row__more { position: relative; }
   .library-row__more::after { content: ''; position: absolute; inset: -8px; }
 }
+
+/* My library / Company library: one switch, like the viewer's segmented
+   controls. The chosen side steps up to the selected fill; it was a coral
+   main-action button, which read as "press me", not "you are here". */
+.library-tabs {
+  display: inline-flex; gap: 2px; padding: 2px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface-2);
+}
+.library-tabs__tab {
+  height: 26px; padding: 0 12px;
+  border: 0; border-radius: 6px;
+  background: transparent; color: var(--text-2);
+  font: 500 12px/1 var(--font-ui, inherit);
+  cursor: pointer;
+  transition: background-color var(--motion-state, 150ms) var(--ease-state, cubic-bezier(0.33, 1, 0.68, 1)),
+    color var(--motion-state, 150ms) var(--ease-state, cubic-bezier(0.33, 1, 0.68, 1));
+}
+@media (hover: hover) {
+  .library-tabs__tab:hover { background: var(--hover); color: var(--text-1); }
+}
+.library-tabs__tab[aria-selected='true'] { background: var(--surface-3); color: var(--text-1); cursor: default; }
+/* A press shows at once (suite timing); the fill itself comes from states.css. */
+.library-tabs__tab:active { transition: none; }
+.library-tabs__tab:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+/* The "not linked yet" note: an info mark, the words, one button. */
+.library-note {
+  display: flex; align-items: center; gap: 8px;
+  min-height: 40px; padding: 6px 8px 6px 14px; margin-bottom: 8px;
+}
+.library-note__icon { flex: none; color: var(--text-3); }
+.library-note__text { flex: 1; min-width: 0; color: var(--text-2); }

@@ -267,11 +267,20 @@ html[data-look="suite"] .ed-scope .card-line { background: var(--surface-2); }
     padding: 0 12px !important;
   }
 }
+/* On a touch tablet the pair is a 44px target, but drawn 28px: drawn 44px
+   tall in the 22px subtitle row it stood over the "Templates" title and the
+   count. The extra height is an invisible zone above and below. */
 @media (min-width: 768px) and (pointer: coarse) {
   .survey-hub .templates-desktop-save-row .hub-btn {
-    height: 44px !important;
-    min-height: 44px;
+    position: relative;
+    height: 28px !important;
+    min-height: 28px;
     padding: 0 14px !important;
+  }
+  .survey-hub .templates-desktop-save-row .hub-btn::after {
+    content: '';
+    position: absolute;
+    inset: -8px 0;
   }
 }
 

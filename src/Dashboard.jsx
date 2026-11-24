@@ -54,6 +54,8 @@ import { lockDocument, unlockDocument } from './services/documentLockService.js'
 import { resolveDocumentMetadata } from './services/documentMetadataResolver.js';
 import { perfUpload } from './utils/performanceLogger';
 import { showToast } from './utils/toast';
+import { isPurchaseUiHidden } from './utils/accountPlatform';
+import { OPEN_SETTINGS_EVENT } from './home/openSettings.js';
 import DriveFilePicker, { DriveConnectDialog } from './components/DriveFilePicker.jsx';
 import WalkthruHandoffDialog from './home/WalkthruHandoffDialog.jsx';
 import { announceDriveLinkChanged, chooseGoogleDrivePdf, driveCall, fetchDrivePdf, googlePickerApiKey } from './services/driveFilesClient.js';
@@ -1439,7 +1441,15 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     // picked and Create is pressed (tester walk, Nov 17).
     const projectCheck = canCreateProject();
     if (!projectCheck.allowed) {
-      setDashboardError(projectCheck.reason);
+      // A plan limit is news, not an error: a calm toast with a way to the
+      // plans, not the red card that stayed on screen until closed (polish
+      // pass, KAL-652). No plans link where store rules hide purchases.
+      showToast(projectCheck.reason, 'info', {
+        duration: 10000,
+        ...(isPurchaseUiHidden() ? {} : {
+          action: { label: 'See plans', onClick: () => window.dispatchEvent(new CustomEvent(OPEN_SETTINGS_EVENT, { detail: { tab: 'subscription' } })) },
+        }),
+      });
       return;
     }
     setProjectName('');
@@ -3588,7 +3598,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
             maxWidth: 520,
             background: 'var(--surface-1)',
             color: 'var(--text-1)',
-            border: '1px solid rgba(249, 115, 115, 0.65)',
+            border: 'var(--alert-danger-border)',
             borderRadius: 8,
             padding: '12px 14px 12px 16px',
             display: 'flex',

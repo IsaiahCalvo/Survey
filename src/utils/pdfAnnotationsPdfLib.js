@@ -8555,7 +8555,7 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
         const stampOptions = {
           modified: exportModifiedDate,
           created: markCreatedDate(obj),
-          author: markAuthorName(obj, options?.authorName || null),
+          author: markAuthorName(obj, options?.authorNameFor?.(obj) || options?.authorName || null),
           snap,
         };
         const stamped = refsToPush
@@ -8565,6 +8565,18 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
           ? exportedMarkEntry(appAnnotationOptions.appAnnotationMetadata?.id, item.pageNumber, snap)
           : null;
         if (entry) exportedMarkEntriesByItem.set(item, entry);
+      }
+      if (refsToPush.length > 0) {
+        // Counters and callout parts are not stamped above (their dicts hold
+        // their own metadata); they still carry their maker as the PDF's
+        // Author (/T) when the caller knows it.
+        const author = markAuthorName(obj, options?.authorNameFor?.(obj) || null);
+        if (author) {
+          refsToPush.forEach((ref) => {
+            const dict = pdfDoc.context.lookup(ref);
+            if (dict instanceof PDFDict && dict.get(PDFName.of('T')) === undefined) dict.set(PDFName.of('T'), pdfTextString(author));
+          });
+        }
       }
       if (refsToPush.length > 0) {
         const compositeExportKey = compositeExportKeyForItem(item);
