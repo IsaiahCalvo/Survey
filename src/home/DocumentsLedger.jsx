@@ -34,7 +34,7 @@ import DismissBarrier from '../components/DismissBarrier';
 import { clickableProps } from '../utils/keyActivate';
 import useModalFocusTrap from './useModalFocusTrap';
 import { isPhoneLayout } from '../utils/layoutMode.js';
-import { canManageDocument, manageSelectionBlock } from './documentPermissions.js';
+import { canManageDocument, manageSelectionBlock, shareBlockReason } from './documentPermissions.js';
 import { activateOrExplain } from '../utils/disabledReasonToast.js';
 import MenuRows from '../components/MenuRows.jsx';
 import DialogCard from '../components/DialogCard.jsx';
@@ -1784,7 +1784,7 @@ export default function DocumentsLedger({
               <div style={{ flex: 1, minHeight: 0 }} />
               <div style={{ display: 'flex', gap: 8, marginTop: 14, flex: 'none' }}>
                 <button className="btn primary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => onOpenDocument && onOpenDocument(previewDoc.raw)}>Open file</button>
-                <button className="btn documents-preview-share" aria-disabled={canManageDoc(previewDoc.raw) ? undefined : true} {...tip(canManageDoc(previewDoc.raw) ? 'Share' : 'Only the owner can share this', 'above')} onClick={() => activateOrExplain(manageSelectionBlock([previewDoc.raw], user?.id, 'share'), () => onShare && onShare([previewDoc.raw]))} aria-label="Share"><Icon name="share" size={16} /></button>
+                <button className="btn documents-preview-share" aria-disabled={shareBlockReason(previewDoc.raw, user?.id) ? true : undefined} {...tip(shareBlockReason(previewDoc.raw, user?.id) || 'Share', 'above')} onClick={() => activateOrExplain(shareBlockReason(previewDoc.raw, user?.id), () => onShare && onShare([previewDoc.raw]))} aria-label="Share"><Icon name="share" size={16} /></button>
                 {homeDownloadOn && onOpenDocument && canDownloadDoc(previewDoc.raw) && (
                   <button className="btn documents-preview-share" data-home-download="" {...tip('Download with marks', 'above')} onClick={() => { requestHomeDownload(previewDoc.raw.id); onOpenDocument(previewDoc.raw); }} aria-label="Download"><Icon name="download" size={16} /></button>
                 )}
@@ -1906,7 +1906,7 @@ export default function DocumentsLedger({
                   for actions; phone and desktop match). */}
               <div className="documents-mobile-detail-actions">
                 <button type="button" className="btn primary" onClick={() => { setMobileDetailId(null); onOpenDocument && onOpenDocument(mobileDetailDoc.raw); }}>Open file</button>
-                <button type="button" className="btn documents-preview-share" aria-disabled={canManageDoc(mobileDetailDoc.raw) ? undefined : true} {...tip(canManageDoc(mobileDetailDoc.raw) ? 'Share' : 'Only the owner can share this', 'above')} onClick={() => activateOrExplain(manageSelectionBlock([mobileDetailDoc.raw], user?.id, 'share'), () => { setMobileDetailId(null); onShare && onShare([mobileDetailDoc.raw]); })} aria-label="Share"><Icon name="share" size={18} /></button>
+                <button type="button" className="btn documents-preview-share" aria-disabled={shareBlockReason(mobileDetailDoc.raw, user?.id) ? true : undefined} {...tip(shareBlockReason(mobileDetailDoc.raw, user?.id) || 'Share', 'above')} onClick={() => activateOrExplain(shareBlockReason(mobileDetailDoc.raw, user?.id), () => { setMobileDetailId(null); onShare && onShare([mobileDetailDoc.raw]); })} aria-label="Share"><Icon name="share" size={18} /></button>
                 {homeDownloadOn && onOpenDocument && canDownloadDoc(mobileDetailDoc.raw) && (
                   <button type="button" className="btn documents-preview-share" data-home-download="" onClick={() => { setMobileDetailId(null); requestHomeDownload(mobileDetailDoc.raw.id); onOpenDocument(mobileDetailDoc.raw); }} aria-label="Download"><Icon name="download" size={18} /></button>
                 )}

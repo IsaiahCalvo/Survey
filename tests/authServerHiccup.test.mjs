@@ -22,7 +22,11 @@ test('a server hiccup reads as plain words, other errors keep their message', ()
   assert.equal(isAuthServerHiccup(wrongPassword), false);
   assert.equal(authErrorMessage(hiccup), AUTH_SERVER_HICCUP_MESSAGE);
   assert.doesNotMatch(AUTH_SERVER_HICCUP_MESSAGE, /captcha|verification|human/i);
-  assert.equal(authErrorMessage(wrongPassword), 'Invalid login credentials');
+  // Plain words for the server's own (round 4 audit, r4d #8).
+  assert.equal(authErrorMessage(wrongPassword), "That email and password don't match. Try again, or use Forgot password.");
+  assert.match(authErrorMessage({ message: 'User already registered' }), /^There is already an account for this email\./);
+  assert.match(authErrorMessage({ code: 'email_not_confirmed', message: 'Email not confirmed' }), /^Confirm your email first/);
+  assert.equal(authErrorMessage({ message: 'Password should be at least 6 characters.' }), 'Password should be at least 6 characters.');
   assert.equal(authErrorMessage({}), 'An error occurred');
 });
 

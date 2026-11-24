@@ -33,3 +33,11 @@ test('desktop bulk pane shows the block reason on greyed Share / Delete', async 
     );
   }
 });
+
+test('a file kept on this device says why it cannot be shared (round 4, r4d #5)', async () => {
+  const { shareBlockReason } = await import('../src/home/documentPermissions.js');
+  assert.match(shareBlockReason({ device_file: true }, null), /^Files on this device can’t be shared\. Sign in/);
+  assert.match(shareBlockReason({ device_file: true, user_id: 'u1' }, 'u1'), /Save it to your account first\.$/);
+  assert.equal(shareBlockReason({ user_id: 'u1' }, 'u1'), null);
+  assert.equal(shareBlockReason({ user_id: 'u2' }, 'u1'), 'Only the owner can share this');
+});

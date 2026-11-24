@@ -56,6 +56,7 @@ import { resolveDocumentMetadata } from './services/documentMetadataResolver.js'
 import { perfUpload } from './utils/performanceLogger';
 import { showToast } from './utils/toast';
 import { isPurchaseUiHidden } from './utils/accountPlatform';
+import { documentCreateFailure } from './utils/documentCreateFailure.js';
 import { OPEN_SETTINGS_EVENT } from './home/openSettings.js';
 import DriveFilePicker, { DriveConnectDialog } from './components/DriveFilePicker.jsx';
 import WalkthruHandoffDialog from './home/WalkthruHandoffDialog.jsx';
@@ -233,8 +234,25 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     hasFeatureAccess,
     usage,
     limits,
-    refetch: refetchUsage
+    refetch: refetchUsage,
+    tier: subscriptionTier,
   } = useSubscriptionLimits();
+
+  // The plans link on a plan-limit toast (none where store rules hide purchases).
+  const seePlansAction = () => (isPurchaseUiHidden() ? {} : {
+    action: { label: 'See plans', onClick: () => window.dispatchEvent(new CustomEvent(OPEN_SETTINGS_EVENT, { detail: { tab: 'subscription' } })) },
+  });
+  // A refused document row at the plan's limit says so, with the plans link,
+  // like the project limit; never the server's row-rule text (r4d #11).
+  const reportDocumentCreateFailure = async (createErr) => {
+    const { text, limit } = await documentCreateFailure(createErr, { client: supabase, userId: user?.id, tier: subscriptionTier });
+    if (limit) {
+      showToast(text, 'info', { duration: 10000, ...seePlansAction() });
+      refetchUsage();
+      return;
+    }
+    setDashboardError(text);
+  };
 
   const [projectName, setProjectName] = useState('');
   const [projectFiles, setProjectFiles] = useState([]);
@@ -980,7 +998,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
           });
         } catch (createErr) {
           console.error('Could not create/resolve document before open:', createErr);
-          setDashboardError('Couldn’t prepare the document in the cloud: ' + (createErr.message || 'Unknown error'));
+          await reportDocumentCreateFailure(createErr);
           perfUpload.end(file.name);
           return;
         }
@@ -1168,7 +1186,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       });
     } catch (createErr) {
       console.error('Could not create/resolve document before open:', createErr);
-      setDashboardError('Couldn’t prepare the document in the cloud: ' + (createErr.message || 'Unknown error'));
+      await reportDocumentCreateFailure(createErr);
       return 'failed';
     }
     if (resolvedDoc?.id === newDocId) saveSheetReading(newDocId, duplicateGate.sheet);
@@ -1450,6 +1468,15 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         ...(isPurchaseUiHidden() ? {} : {
           action: { label: 'See plans', onClick: () => window.dispatchEvent(new CustomEvent(OPEN_SETTINGS_EVENT, { detail: { tab: 'subscription' } })) },
         }),
+      });
+      return;
+    }
+    // Projects live in an account. Say so before the form, not after a name
+    // is typed and Create fails (round 4 audit, r4d #3).
+    if (!user) {
+      showToast('Projects need a free account. Sign in or create one to make a project.', 'info', {
+        duration: 10000,
+        action: { label: 'Sign in', onClick: () => onShowAuthModal?.() },
       });
       return;
     }
