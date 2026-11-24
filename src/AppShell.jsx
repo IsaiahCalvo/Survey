@@ -5980,14 +5980,6 @@ export default function App({ devPreviewReturnTab = null }) {
                 </RailFlyout>
               );
 
-              // Owner 2026-10-07 (Drawboard rail): the Survey rail never
-              // widens now - its open panel stands BESIDE it - so the footer
-              // is always this vertical stack at the foot of the 48px rail
-              // (the 320px one-row footer portalled into the open panel is
-              // gone). position:relative + zIndex 2 keeps it above (and
-              // clickable over) the Survey rail strip, which is absolute at the
-              // rail's full height; a transparent background lets the strip's
-              // --panel-bg show through.
               // The rail's view buttons. In the rail their tips point left;
               // in the View row (Nightly 'view-strip') they point up, clear of
               // the row's other buttons.
@@ -6145,6 +6137,14 @@ export default function App({ devPreviewReturnTab = null }) {
                     )}
                 </>
               );
+              // Owner 2026-10-07 (Drawboard rail): the Survey rail never
+              // widens now - its open panel stands BESIDE it - so the footer
+              // is always this vertical stack at the foot of the 48px rail
+              // (the 320px one-row footer portalled into the open panel is
+              // gone). position:relative + zIndex 2 keeps it above (and
+              // clickable over) the Survey rail strip, which is absolute at the
+              // rail's full height; a transparent background lets the strip's
+              // --panel-bg show through.
                 return (
                   <div data-chrome-rail="true" data-keyboard-lift="" style={{ position: 'relative', zIndex: 2, width: '100%', borderTop: '1px solid var(--border)', padding: '8px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', background: 'transparent' }}>
                     {/* data-keyboard-lift (owner 2026-10-13, touch audit K1):
