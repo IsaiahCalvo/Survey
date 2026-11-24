@@ -162,7 +162,7 @@ follow steps 1 and 2 for the cursor, then move with the pointer with no lift.
 | Coloured button: hover, pressed | `--accent-light`, `--accent-press` | `--accent-hover`, `--accent-pressed` (coral); `--ink-hover`, `--ink-pressed` (light); `--danger-hover`, `--danger-pressed` (red) | `--accent-hover`, `--accent-press` (blue); `--error-hover`, `--error-press` (red) |
 | Focus ring | `--focus`, 2px | `--focus`, 2px; `src/lib/focus-ring-source.ts` | `--focus-ring`, 2px |
 | State time | `--motion-state` | `--motion-state`, `--ease-state` | `--motion-state` |
-| Motion times (the Motion table) | all, in `src/styles/tokens.css`; JS copy `src/utils/motion.js`; `--state-time`, `--state-ease`, `--state-all` under the suite look | `--motion-state`, `--motion-drag`, `--motion-menu-open`; the rest to add | `--motion-state`, `--motion-drag`; the rest to add (`--dur-*` are Plot's older steps) |
+| Motion times (the Motion table) | all, in `src/styles/tokens.css`; JS copy `src/utils/motion.js`; `--state-time`, `--state-ease`, `--state-all` under the suite look | all, in `apps/web/src/app/globals.css` (`--motion-menu-open` is the old name for the menu time) | all, in `src/styles/tokens.css`; Plot's older steps point at them: `--dur-fade` (menus), `--dur-window` (windows over the desk), `--dur-grow` (strips and the Schedule dock) |
 | Drag | `--drag-lift-*`, `--motion-drag`, `src/reorder/dragMotion.js` | `--drag-lift-*`, `--motion-drag`, `[data-drag-lifted]`; `src/lib/drag-motion.ts` | `--drag-lift-*`, `--drop-outline`, `--motion-drag` |
 | Files | `src/styles/tokens.css`, `src/styles/states.css` | `apps/web/src/app/globals.css` | `src/styles/tokens.css`, `src/styles/states.css`, `DESIGN.md` |
 
