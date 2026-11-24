@@ -87,7 +87,7 @@ export default function AgentLearnedDialog({ store, projectId, canEdit = true, o
           {section('Wording', wording, 'None yet. Say "Always write not installed, not missing".', (row) => (
             <>Write <strong>{row.means}</strong> for <strong>{row.heard}</strong></>
           ))}
-          {section('Entities', states, 'None yet. Say "Done means Commissioned".', (row) => (
+          {section('Entities', states, 'None yet. When a word like "done" is unclear, the agent asks once and keeps your answer here.', (row) => (
             <><strong>{row.heard}</strong> means <strong>{row.means}</strong>{row.pending ? ' (saved on this device)' : ''}</>
           ))}
         </>
