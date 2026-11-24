@@ -1017,9 +1017,9 @@ export default function DocumentsLedger({
           <button className="btn primary hub-mobile-primary-action" data-home-new="phone" disabled={uploadBusy} aria-haspopup="dialog" onClick={() => setNewSheetOpen(true)}>
             {uploadBusy ? uploadButtonBody : (<><Icon name="plus" size={12} />New</>)}
           </button>
-        ) : (
-          <button className="btn primary hub-mobile-primary-action" disabled={uploadBusy} onClick={() => onUpload && onUpload()}>{uploadButtonBody}</button>
-        )}
+        ) : onUpload ? (
+          <button className="btn primary hub-mobile-primary-action" disabled={uploadBusy} onClick={() => onUpload()}>{uploadButtonBody}</button>
+        ) : null}
       </div>
       <div className="documents-desktop-search">
         <Search placeholder={tagsReady ? 'Search documents and labels...' : 'Search documents...'} value={search} onChange={setSearch} dismissActionSelector=".hub-empty-state button" />
@@ -1065,12 +1065,14 @@ export default function DocumentsLedger({
           <Icon name="download" size={12} /><span className="documents-desktop-label">Export list</span>
         </button>
       )}
-      <button className="btn primary documents-desktop-upload" disabled={uploadBusy} onClick={() => onUpload && onUpload()}>{uploadButtonBody}</button>
+      {onUpload && (
+        <button className="btn primary documents-desktop-upload" disabled={uploadBusy} onClick={() => onUpload()}>{uploadButtonBody}</button>
+      )}
       {newSheetOpen && (
         <DialogCard title="New" onClose={() => setNewSheetOpen(false)} width={320} atRoot cardProps={{ 'data-home-new-sheet': 'true' }}>
           <div role="menu" aria-label="New" style={{ display: 'grid', gap: 4 }}>
             {[
-              { key: 'upload', icon: 'upload', label: 'Upload PDF', run: () => onUpload && onUpload() },
+              ...(onUpload ? [{ key: 'upload', icon: 'upload', label: 'Upload PDF', run: () => onUpload() }] : []),
               ...(onOpenFromDrive ? [{ key: 'onedrive', icon: 'oneDrive', label: 'Open from OneDrive', run: () => onOpenFromDrive() }] : []),
               ...(onOpenFromGoogleDrive ? [{ key: 'googledrive', icon: 'googleDrive', label: 'Open from Google Drive', run: () => onOpenFromGoogleDrive() }] : []),
               ...createItems,
@@ -1460,9 +1462,9 @@ export default function DocumentsLedger({
                     <EmptyState
                       icon="doc"
                       line="No documents yet"
-                      description="Upload a PDF, or drag one here, to start marking it up."
+                      description={onUpload ? "Upload a PDF, or drag one here, to start marking it up." : "Nothing has been shared with you yet."}
                       actionIcon="upload"
-                      actionLabel="Upload PDF"
+                      actionLabel={onUpload ? "Upload PDF" : undefined}
                       onAction={() => onUpload && onUpload()}
                       {...sampleAction}
                     />
@@ -1807,9 +1809,9 @@ export default function DocumentsLedger({
               <EmptyState
                 icon="doc"
                 line="No documents yet"
-                description="Upload a PDF to start marking it up."
+                description={onUpload ? "Upload a PDF to start marking it up." : "Nothing has been shared with you yet."}
                 actionIcon="upload"
-                actionLabel="Upload PDF"
+                actionLabel={onUpload ? "Upload PDF" : undefined}
                 onAction={() => onUpload && onUpload()}
                 {...sampleAction}
               />
@@ -1911,6 +1913,8 @@ export default function DocumentsLedger({
       initialMode={moveMode}
       onClose={() => setMoveOpen(false)}
       projects={projects}
+      itemName={selDocs.size === 1 ? (selectedRaw()[0]?.name || '') : ''}
+      currentProjectId={(() => { const ids = [...new Set(selectedRaw().map((d) => d?.project_id ?? null))]; return ids.length === 1 ? ids[0] : null; })()}
       count={selDocs.size}
       onConfirm={async (destId, mode) => {
         await onMoveCopy?.(selectedRaw(), destId, mode);
@@ -2003,6 +2007,7 @@ export default function DocumentsLedger({
           name={d.name}
           info={infoById.get(d.id)}
           canRename={canManageDoc(d.raw)}
+          canEdit={canManageDoc(d.raw) || d.raw?.my_role !== 'viewer'}
           onSave={(value) => saveSheetDetails(d, value)}
           onClose={() => setDetailsTarget(null)}
         />

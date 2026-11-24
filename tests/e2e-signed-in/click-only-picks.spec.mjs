@@ -45,7 +45,7 @@ test('desktop: every mark and Survey Marker, clicked with a mouse and a pen unde
       if (mode === 'regular mode') {
         // The Survey button brings the survey bar back; its Done leaves Survey.
         await button(page, 'Survey').click();
-        await button(page, 'Leave Survey').click();
+        await button(page, 'Done').click();
         await page.waitForTimeout(800);
       }
       await page.keyboard.press('v');

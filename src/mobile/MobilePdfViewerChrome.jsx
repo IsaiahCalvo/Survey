@@ -1608,7 +1608,7 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
         <button
           type="button"
           className="mobile-pdf-properties__done"
-          aria-label="Leave Survey"
+          aria-label="Done"
           onClick={() => survey.onExit?.()}
         >
           Done

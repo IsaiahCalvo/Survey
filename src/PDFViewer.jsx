@@ -17179,6 +17179,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         if (isSurveyAgentEnabled()) addSummarySheet(workbook, { template: selectedTemplate, markers: surveyMarkers });
       }
 
+      (await import('./services/excelOpeningSheet.js')).openOnFirstVisibleSheet(workbook);
+
       // Write workbook to buffer
       // Excel's hidden name for each tab's filter buttons (ExcelJS leaves it out).
       const workbookBuffer = await addFilterNames((await import('jszip')).default, await workbook.xlsx.writeBuffer());
@@ -42780,7 +42782,9 @@ ${pageBlocks}
                     <button
                       type="button"
                       className="survey-subrow__done"
-                      aria-label="Leave Survey"
+                      // The name matches the word on the button, so "click Done"
+                      // works by voice; the chip still says where it goes.
+                      aria-label="Done"
                       onClick={handleLeaveSurvey}
                       {...chromeTip('Leave Survey', 'below')}
                     >

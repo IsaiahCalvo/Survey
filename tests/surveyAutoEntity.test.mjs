@@ -123,3 +123,17 @@ test('the template editor saves the switch and counts it as a change', async () 
   assert.match(editorSrc, /\.\.\.\(r\.autoComplete === false \? \{ autoComplete: false \} : \{\}\)/, 'the save keeps autoComplete: false');
   assert.match(editorSrc, /autoComplete: _oldAuto/, 'turning it back on drops the stored false');
 });
+
+test('a red pick-many option or an out-of-range number holds Complete back, like an N', async () => {
+  const { resolveAutoCompleteEntity } = await import('../src/utils/surveyAutoEntity.js');
+  const checklist = [
+    { id: 'a', text: 'Mounted' },
+    { id: 'b', text: 'Location', kind: 'many', options: [{ value: 'Lobby', tone: 'good' }, { value: 'Parking', tone: 'bad' }] },
+    { id: 'c', text: 'Height', kind: 'number', min: 7, max: 9 },
+  ];
+  const entities = [{ id: 'done', name: 'Complete' }];
+  const answers = (b, c) => ({ a: { selection: 'Y' }, b: { selection: b }, c: { selection: c } });
+  assert.equal(resolveAutoCompleteEntity({ checklist, responses: answers('Parking', '8'), entities }), null);
+  assert.equal(resolveAutoCompleteEntity({ checklist, responses: answers('Lobby', '12'), entities }), null);
+  assert.equal(resolveAutoCompleteEntity({ checklist, responses: answers('Lobby', '8'), entities })?.id, 'done');
+});

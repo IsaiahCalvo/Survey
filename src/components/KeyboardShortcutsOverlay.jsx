@@ -119,7 +119,7 @@ const KeyboardShortcutsOverlay = () => {
         aria-label="Keyboard shortcuts"
         className="keyboard-shortcuts-sheet"
         style={{
-          background: COLORS.background.secondary,
+          background: COLORS.background.tertiary, // a dialog is panel colour, like Export and Share
           borderRadius: BORDERS.radius.dialog,
           padding: '24px',
           width: 'min(620px, calc(100vw - 32px))',

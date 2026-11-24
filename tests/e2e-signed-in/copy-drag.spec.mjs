@@ -41,7 +41,7 @@ test('Ctrl + drag copies any mark under Select and under Pan, and boxes marks on
     for (const mode of ['survey mode', 'regular mode']) {
       if (mode === 'regular mode') {
         await button(page, 'Survey').click();
-        await button(page, 'Leave Survey').click();
+        await button(page, 'Done').click();
         await page.waitForTimeout(800);
       }
       // Spots are found under Select: under Pan the marks take no hover hits
