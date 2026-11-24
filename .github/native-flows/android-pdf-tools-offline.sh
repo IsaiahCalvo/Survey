@@ -60,7 +60,7 @@ open_tools
 pick "Rotate pages"
 wait_button "Turn every page" 60
 pick "Turn every page"
-pick "Run"
+pick "Rotate"
 wait_button "Save as new document" 120
 adb exec-out screencap -p > "$OUT/21-offline-rotated.png"
 pick "Save as new document"
@@ -77,7 +77,8 @@ share_sheet 23-offline-rotate-share
 pick "Close"
 open_tools
 pick "Compress"
-pick "Run"
+# The tool page's main button is named after the tool (an exact name wins).
+pick "Compress"
 wait_button "Download" 120
 adb exec-out screencap -p > "$OUT/24-offline-compressed.png"
 pick "Download"
