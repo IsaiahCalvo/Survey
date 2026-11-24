@@ -8,9 +8,15 @@ const photos = readFileSync(new URL('../src/projectPhotos/ProjectPhotosPanel.jsx
 
 test('Issues and Tasks: nothing yet hides the controls with nothing to act on', () => {
   assert.match(items, /const nothingYet = !data\.loading && listItems\.length === 0 && !archived;/);
-  assert.match(items, /canEdit && !nothingYet && \(\s*<button type="button" className="btn primary hub-new-btn"/, 'one coral New, in the empty state');
-  assert.match(items, /\{!nothingYet && <div className="hub-search item-search">/);
-  assert.match(items, /\{!nothingYet && <div className="project-items__chips" data-item-chips>/);
+  assert.match(items, /canEdit && !nothingOpen && \(\s*<button type="button" className="btn primary hub-new-btn"/, 'one coral New, in the empty state');
+  assert.match(items, /\{!nothingOpen && <div className="hub-search item-search">/);
+  assert.match(items, /\{!nothingOpen && <div className="project-items__chips" data-item-chips>/);
+});
+
+test('Issues and Tasks: all archived hides the same controls, unless a filter is on (batch 25)', () => {
+  assert.match(items, /const nothingOpen = nothingYet \|\| \(!data\.loading && !archived && !filtersOn && listItems\.length === archivedCount\);/);
+  assert.match(items, /canEdit && !nothingOpen && <SectionIconButton/);
+  assert.match(items, /archived \$\{archivedCount === 1 \? k\.one\.toLowerCase\(\) : k\.many\.toLowerCase\(\)\}\. New ones show here\./);
 });
 
 test('Issues and Tasks: no match and no archived get the empty state with a way back', () => {

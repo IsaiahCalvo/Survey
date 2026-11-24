@@ -287,10 +287,12 @@ export function duplicateFields(item) {
 }
 
 /* Counts for the status-group chips, over the live (not archived) items. */
-export function groupCounts(items) {
+/* Counts for the list you are looking at: open by default, archived when the
+   archived list is showing, so a chip never says 0 over rows it would find. */
+export function groupCounts(items, { archived = false } = {}) {
   const counts = { unstarted: 0, started: 0, done: 0 };
   for (const item of items || []) {
-    if (item.archived_at) continue;
+    if (Boolean(item.archived_at) !== Boolean(archived)) continue;
     counts[statusInfo(item.status).group] += 1;
   }
   return counts;
