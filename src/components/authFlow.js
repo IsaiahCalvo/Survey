@@ -89,9 +89,21 @@ export function isAuthServerHiccup(error) {
   return error?.name === 'AuthRetryableFetchError';
 }
 
+// The sign-in server's own words for the common cases read as plain words
+// (round 4 audit, r4d #8: "Invalid login credentials", "User already
+// registered" were shown as they came). Anything else keeps its own text.
+export const WRONG_PASSWORD_MESSAGE = "That email and password don't match. Try again, or use Forgot password.";
+export const ACCOUNT_EXISTS_MESSAGE = 'There is already an account for this email. Sign in instead, or use Forgot password.';
+export const EMAIL_NOT_CONFIRMED_MESSAGE = 'Confirm your email first: open the link we sent you, then sign in.';
+
 export function authErrorMessage(error, fallback = 'An error occurred') {
   if (isAuthServerHiccup(error)) return AUTH_SERVER_HICCUP_MESSAGE;
-  return error?.message || fallback;
+  const text = String(error?.message || '');
+  const code = String(error?.code || '');
+  if (code === 'invalid_credentials' || /^invalid login credentials$/i.test(text)) return WRONG_PASSWORD_MESSAGE;
+  if (code === 'user_already_exists' || /^user already registered$/i.test(text)) return ACCOUNT_EXISTS_MESSAGE;
+  if (code === 'email_not_confirmed' || /^email not confirmed$/i.test(text)) return EMAIL_NOT_CONFIRMED_MESSAGE;
+  return text || fallback;
 }
 
 // A password sign-in retries a server hiccup a few times before giving up.

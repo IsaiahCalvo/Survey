@@ -168,6 +168,19 @@ test('the calibration line lists but stays out of the Length total', () => {
     ['Length', 20, 2],
     ['Area', 50, 1],
   ]);
+  // The CSV names it Calibration with no Quantity, so a column sum matches
+  // the panel total (round 3 audit, r3b #7).
+  const lines = markupRowsToCsv(rows).trim().split('\r\n');
+  const calLine = lines.find((l) => l.split(',')[1] === 'Calibration');
+  assert.ok(calLine, 'the calibration line is named');
+  const cells = calLine.split(',');
+  assert.equal(cells[cells.length - 3], '');
+  assert.equal(cells[cells.length - 2], '');
+  const lengthSum = lines.slice(1)
+    .map((l) => l.split(','))
+    .filter((c) => c[c.length - 2] === 'ft')
+    .reduce((sum, c) => sum + Number(c[c.length - 3]), 0);
+  assert.equal(lengthSum, 20);
 });
 
 test('a stamp lists with images and stamps, not text boxes', () => {

@@ -109,6 +109,21 @@ test('history but no marks: a bundle with the log and no pictures', async () => 
   assert.equal(bundle.manifest.history.events, 3);
 });
 
+test('pages moved in the app: the package carries those pages and says the source changed (round 3, r3b #5)', async () => {
+  const sourceBytes = await makeSourcePdf();
+  const same = await buildAnnotationBundle({ sourcePdf: fileFrom(sourceBytes), pdfName: 'a.pdf', annotationsByPage: {}, pageSizes: PAGE_SIZES, historyRows: HISTORY, now: NOW, renderThumbnails: thumbs });
+  assert.equal(same.manifest.source.changed, false);
+  assert.equal(same.manifest.source.file, undefined);
+  const moved = await buildAnnotationBundle({ sourcePdf: fileFrom(sourceBytes), sourceChanged: true, pdfName: 'a.pdf', annotationsByPage: {}, pageSizes: PAGE_SIZES, historyRows: HISTORY, now: NOW, renderThumbnails: thumbs });
+  assert.equal(moved.manifest.source.changed, true);
+  assert.equal(moved.manifest.source.file, 'document.pdf');
+  const files = readZip(moved.zip, nodeCrc32);
+  const pdf = files.find((f) => f.name === 'document.pdf');
+  assert.ok(pdf, 'document.pdf is in the package');
+  assert.equal(sha256(pdf.data), moved.manifest.source.sha256);
+  assert.ok(moved.manifest.files.some((f) => f.name === 'document.pdf'));
+});
+
 test('file name', () => {
   assert.equal(bundleFileNameForPdf('Level 2 plan.pdf'), 'Level 2 plan review.zip');
   assert.equal(bundleFileNameForPdf(''), 'document review.zip');

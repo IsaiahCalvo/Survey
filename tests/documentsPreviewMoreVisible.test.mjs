@@ -27,5 +27,8 @@ test('narrow list panes drop Size and Project so More stays visible', () => {
 
 test('preview Share tooltip matches the owner-only toast wording', () => {
   assert.doesNotMatch(jsx, /'Only the owner can share'/);
-  assert.equal((jsx.match(/'Only the owner can share this', 'above'/g) || []).length, 2);
+  // The tooltip and the toast read the same reason (shareBlockReason gives
+  // "Only the owner can share this", or why a device file can't be shared).
+  assert.equal((jsx.match(/tip\(shareBlockReason\([^)]*\) \|\| 'Share', 'above'\)/g) || []).length, 2);
+  assert.equal((jsx.match(/activateOrExplain\(shareBlockReason\(/g) || []).length, 2);
 });
