@@ -237,8 +237,10 @@
 }
 .sheet-set-view__scroll.is-list .sheet-set-card { max-width: 960px; }
 .sheet-set-card:hover { border-color: var(--border-strong); color: var(--text-1); }
-/* The current sheet: a strong frame and a lifted strip, never gold (gold is ink). */
-.sheet-set-card.is-current { border-color: var(--text-2); box-shadow: 0 0 0 1px var(--text-2); color: var(--text-1); }
+/* The current sheet: the 2px accent frame the Pages panel puts round the
+   current page (it was a heavy dark frame no other list used), and the
+   selected fill on its name strip. */
+.sheet-set-card.is-current { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); color: var(--text-1); }
 .sheet-set-card__label {
   padding: 5px 8px;
   border-top: 1px solid var(--border);
@@ -249,7 +251,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.sheet-set-card.is-current .sheet-set-card__label { background: var(--surface-3); border-top-color: var(--text-2); font-weight: 600; }
+.sheet-set-card.is-current .sheet-set-card__label { background: var(--surface-3); font-weight: 600; }
 .sheet-set-view.is-phone .sheet-set-card__label { padding: 3px 5px; font-size: 11px; }
 .sheet-set-card__page { display: block; width: 100%; aspect-ratio: 11 / 8.5; background: var(--surface-1); overflow: hidden; }
 .sheet-set-view__scroll.is-list .sheet-set-card__page { aspect-ratio: auto; height: min(72vh, 680px); }
