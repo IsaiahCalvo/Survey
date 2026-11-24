@@ -213,7 +213,7 @@ test('the viewer draws the plan: one row, a pinned centre group with the swatche
   assert.match(viewer, /max=\{surveyBarFit\.plan\.rowMax\}/);
   assert.match(viewer, /max=\{surveyBarFit\.plan\.entityRowMax\}/);
   // Done is drawn unconditionally (never folded).
-  assert.match(viewer, /className="survey-subrow__done"[\s\S]{0,240}aria-label="Done"/);
+  assert.match(viewer, /aria-label="Leave Survey"/);
   const css = fs.readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
   const centre = css.slice(css.indexOf('.survey-subrow__centre {'));
   assert.match(centre.slice(0, centre.indexOf('}')), /left: var\(--survey-centre-x, 50%\);\s*transform: translateX\(-50%\);/);

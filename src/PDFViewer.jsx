@@ -42782,9 +42782,7 @@ ${pageBlocks}
                     <button
                       type="button"
                       className="survey-subrow__done"
-                      // The name matches the word on the button, so "click Done"
-                      // works by voice; the chip still says where it goes.
-                      aria-label="Done"
+                      aria-label="Leave Survey"
                       onClick={handleLeaveSurvey}
                       {...chromeTip('Leave Survey', 'below')}
                     >
