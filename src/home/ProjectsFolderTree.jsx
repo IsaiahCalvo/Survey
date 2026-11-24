@@ -2550,6 +2550,8 @@ export default function ProjectsFolderTree({
         initialMode={moveMode}
         onClose={() => setMoveOpen(false)}
         projects={localProjects}
+        currentProjectId={openId}
+        itemName={pickByIds(openFiles, moveIds)[0]?.name || ''}
         count={pickByIds(openFiles, moveIds).length}
         onConfirm={(destId, mode) => moveCopyFiles(moveIds, destId, mode)}
       />
