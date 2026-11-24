@@ -177,13 +177,14 @@ use the same greys in both. Only the accent differs, one per app:
 
 - **Plot: blue**, close to Rayon's.
 - **Walkthru: coral**, as it has always been.
-- **Survey: green**, close to Drawboard's. Survey shows it in Nightly only
-  (the `one-look` flag) until the owner picks it.
+- **Survey: gold**, its own gold from before 2026-11-16 (owner 2026-11-24:
+  not green, not blue). Survey shows it in Nightly only (the `one-look`
+  flag) until the look leaves Nightly.
 
 This replaces the 2026-11-16 rule that put coral on all three (KAL-663). Each
 app's logo, app icon, tab icon, loading mark and emails wear its own accent.
-Green is an accent in Survey only; in Walkthru and Plot it may only say
-"done" or "synced".
+Green is never an accent: in every app it only says "done" or "synced".
+Gold is Survey's accent alone.
 
 The light greys are Plot's own. The dark greys are Walkthru's own. Each
 accent has a bright tone with dark words for dark mode and a deeper tone with
@@ -221,8 +222,8 @@ white.
 | Plot (blue) | Light | `#0062e6` | `#0054c7` | `#0046a6` | `#ffffff` | `#0062e61a` |
 | Walkthru (coral) | Dark | `#e07a5e` | `#e89179` | `#c7634a` | `#131315` | `#e07a5e26` |
 | Walkthru (coral) | Light | `#ba4f2c` | `#a64525` | `#8f3a1e` | `#ffffff` | `#ba4f2c1a` |
-| Survey (green) | Dark | `#3dc98a` | `#5ad49d` | `#2bb077` | `#131315` | `#3dc98a26` |
-| Survey (green) | Light | `#157f55` | `#116d49` | `#0d5a3c` | `#ffffff` | `#157f551a` |
+| Survey (gold) | Dark | `#d8a84e` | `#edc26d` | `#b6904a` | `#131315` | `#d8a84e26` |
+| Survey (gold) | Light | `#8b6500` | `#775600` | `#634800` | `#ffffff` | `#8b65001a` |
 
 accent is the main button, an ON switch, a chosen icon and a link.
 accent-hover and accent-pressed are that button's hover and press.
@@ -247,12 +248,13 @@ alone.
 - In dark mode an accent button has dark words, never white: white on the
   bright tones measures under 3:1. In light mode the accent is deeper and
   the words are white.
-- In light mode, coral and green words on raised-2 measure 4.2:1. Put an
-  accent link or a chosen icon on ground, panel or raised, not on raised-2.
+- In light mode, coral words on raised-2 measure 4.2:1 and gold 4.4:1. Put
+  an accent link or a chosen icon on ground, panel or raised, not on
+  raised-2.
 - Walkthru's coral sits close to danger red. Never put a coral button beside
   a red one without a word on each.
-- Survey's green sits close to ok. In Survey, show "done" with a tick or a
-  word, never by colour alone.
+- Survey's gold sits close to warn. In Survey, show a caution with an icon
+  and a word, never by colour alone.
 - Plot's blue sits close to the selection blue. Selection keeps its handles
   and marquee, so it reads by shape, not by colour.
 - No app adds a grey or an accent of its own. Need a new step? Add it here
@@ -316,9 +318,10 @@ Survey and Walkthru show the new colours and the light mode in Nightly
 first. When an app fills a "to add" cell, or its theme ships, write it here.
 
 Survey: built (KAL-663, PR 1505). The look sits behind the Nightly flag
-`one-look`, and wears green there since 2026-11-23. Appearance is in
-Settings, General. Emails and the sign-in emails still wear coral for
-everyone (PR 1510); they move to green when the look leaves Nightly.
+`one-look`, and wears gold there (green from 2026-11-23, gold again from
+2026-11-24). Appearance is in Settings, General. The tab icon, public pages
+and emails still wear coral for everyone (PR 1510); they turn gold in one
+step when the look leaves Nightly (`docs/suite/survey-gold-flip.md`).
 
 Walkthru: built (KAL-663, PR 218). Light mode sits on
 `html[data-theme="light"]`. Appearance is in Settings, behind the Nightly

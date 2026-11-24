@@ -1,4 +1,4 @@
-// src/suiteLook.js - the suite look: shared greys and Survey's green, dark and light (KAL-663; green since 2026-11-23).
+// src/suiteLook.js - the suite look: shared greys and Survey's gold, dark and light (KAL-663; gold again since 2026-11-24).
 //
 // Survey, Walkthru and Plot share one colour set (docs/suite/SUITE-RULES.md,
 // "One colour set"). The values live in src/styles/tokens.css under

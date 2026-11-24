@@ -1,37 +1,37 @@
 #!/usr/bin/env node
-// Turn Survey's public face from coral to its own green in one step, for the
-// day the suite look leaves Nightly (docs/suite/survey-green-flip.md).
+// Turn Survey's public face from coral to its own gold in one step, for the
+// day the suite look leaves Nightly (docs/suite/survey-gold-flip.md).
 //
-// Until then Survey wears green only under the Nightly flag 'one-look'. The
+// Until then Survey wears gold only under the Nightly flag 'one-look'. The
 // tab icon, the public pages, the free tools and the emails are seen by
 // everyone and can't sit behind a flag, so they stay coral. This script holds
 // the whole change so nobody has to hunt for it later:
 //
-//   node scripts/survey-green-flip.mjs           list what would change
-//   node scripts/survey-green-flip.mjs --apply   change it, rebuild, check
+//   node scripts/survey-gold-flip.mjs           list what would change
+//   node scripts/survey-gold-flip.mjs --apply   change it, rebuild, check
 //
-// --apply swaps each coral tone for the matching green one (the accents table
-// in docs/suite/SUITE-RULES.md) in the source files below, copies the green
-// icons from public/brand-green/ over the coral ones, rebuilds the public
+// --apply swaps each coral tone for the matching gold one (the accents table
+// in docs/suite/SUITE-RULES.md) in the source files below, copies the gold
+// icons from public/brand-gold/ over the coral ones, rebuilds the public
 // pages, the free tools and the email templates, then fails if any coral is
 // left in what visitors see.
-import { readFileSync, writeFileSync, copyFileSync, readdirSync, statSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, copyFileSync, readdirSync, statSync, existsSync, rmSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-// Coral (Walkthru's accent, worn by Survey since KAL-663) to Survey green.
-export const CORAL_TO_GREEN = Object.freeze({
+// Coral (Walkthru's accent, worn by Survey since KAL-663) to Survey gold.
+export const CORAL_TO_GOLD = Object.freeze({
   // dark mode: accent, hover, pressed
-  '#e07a5e': '#3dc98a',
-  '#e89179': '#5ad49d',
-  '#c7634a': '#2bb077',
+  '#e07a5e': '#d8a84e',
+  '#e89179': '#edc26d',
+  '#c7634a': '#b6904a',
   // light mode: accent, hover, pressed
-  '#ba4f2c': '#157f55',
-  '#a64525': '#116d49',
-  '#8f3a1e': '#0d5a3c',
+  '#ba4f2c': '#8b6500',
+  '#a64525': '#775600',
+  '#8f3a1e': '#634800',
 });
 
 // Hand-written sources. Built pages come from public/welcome/site.css.
@@ -49,6 +49,13 @@ export const SOURCES = Object.freeze([
   'tests/emailLayout.test.mjs',
 ]);
 
+// Guards that kept gold out while Survey wore coral. Gold is Survey's again
+// after the switch, so these come out with it.
+export const TEXT_EDITS = Object.freeze([
+  ['tests/suiteMarks.test.mjs', 'const OLD_GOLD = /#(d8a84e|edc26d|b6904a|654500)/i;', 'const OLD_GOLD = /#(654500)/i;'],
+  ['tests/emailLayout.test.mjs', '/#(d8a84e|b6904a|15110a|', '/#(15110a|'],
+]);
+
 export const ICONS = Object.freeze([
   'favicon.svg', 'favicon.png', 'favicon-16x16.png', 'favicon-64x64.png',
   'favicon.ico', 'logo192.png', 'logo512.png',
@@ -58,14 +65,14 @@ export const ICONS = Object.freeze([
 const SCAN = ['public', 'tools', 'debug/email-templates-staged', 'supabase/functions/_shared'];
 // Coral that is not Survey's accent: the Walkthru pages name Walkthru's own
 // colour, and a template's colour choices are the user's ink.
-const SCAN_SKIP = [/^public\/brand-green\//, /^public\/nightly\//];
+const SCAN_SKIP = [/^public\/brand-gold\//, /^public\/nightly\//];
 
-const CORAL_RE = new RegExp(Object.keys(CORAL_TO_GREEN).map((h) => h.slice(1)).join('|'), 'gi');
+const CORAL_RE = new RegExp(Object.keys(CORAL_TO_GOLD).map((h) => h.slice(1)).join('|'), 'gi');
 
-export function toGreen(text) {
+export function toGold(text) {
   return text.replace(new RegExp(`#(${CORAL_RE.source})\\b`, 'gi'), (hex) => {
-    const green = CORAL_TO_GREEN[hex.toLowerCase()];
-    return hex === hex.toUpperCase() ? green.toUpperCase() : green;
+    const gold = CORAL_TO_GOLD[hex.toLowerCase()];
+    return hex === hex.toUpperCase() ? gold.toUpperCase() : gold;
   });
 }
 
@@ -107,17 +114,27 @@ function main() {
     const n = coralIn(before);
     if (!n) continue;
     changed += 1;
-    console.log(`${apply ? 'green' : 'would turn green'}: ${rel} (${n})`);
-    if (apply) writeFileSync(abs, toGreen(before));
+    console.log(`${apply ? 'gold' : 'would turn gold'}: ${rel} (${n})`);
+    if (apply) writeFileSync(abs, toGold(before));
   }
   for (const name of ICONS) {
-    console.log(`${apply ? 'copied' : 'would copy'}: public/brand-green/${name} -> public/${name}`);
-    if (apply) copyFileSync(join(ROOT, 'public/brand-green', name), join(ROOT, 'public', name));
+    console.log(`${apply ? 'copied' : 'would copy'}: public/brand-gold/${name} -> public/${name}`);
+    if (apply) copyFileSync(join(ROOT, 'public/brand-gold', name), join(ROOT, 'public', name));
+  }
+  for (const [rel, from, to] of TEXT_EDITS) {
+    const abs = join(ROOT, rel);
+    const text = readFileSync(abs, 'utf8');
+    if (!text.includes(from)) { console.log(`not found in ${rel}: ${from}`); continue; }
+    console.log(`${apply ? 'edited' : 'would edit'}: ${rel}`);
+    if (apply) writeFileSync(abs, text.replace(from, to));
   }
   if (!apply) {
     console.log(`\n${changed} source files and ${ICONS.length} icons. Run with --apply to make the change.`);
     return;
   }
+  // The icons are in place; the waiting folder goes, which also tells
+  // tests/surveyGoldFlip.test.mjs the switch is done.
+  rmSync(join(ROOT, 'public/brand-gold'), { recursive: true, force: true });
   for (const script of ['build-marketing.mjs', 'build-free-tools.mjs', 'gen-auth-email-templates.mjs']) {
     console.log(`running scripts/${script}`);
     execFileSync(process.execPath, [join(ROOT, 'scripts', script)], { cwd: ROOT, stdio: 'inherit' });
@@ -127,7 +144,7 @@ function main() {
     console.error(`\nCoral is still here:\n  ${left.join('\n  ')}\nAdd each file to SOURCES or SCAN_SKIP, then run again.`);
     process.exit(1);
   }
-  console.log('\nNo coral left where visitors look. Next steps: docs/suite/survey-green-flip.md');
+  console.log('\nNo coral left where visitors look. Next steps: docs/suite/survey-gold-flip.md');
 }
 
 if (process.argv[1] && relative(process.argv[1], fileURLToPath(import.meta.url)) === '') main();

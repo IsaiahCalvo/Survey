@@ -11,7 +11,7 @@ import { isTeamsTab, startTeamsTab } from './teams/teamsHost';
 import { installDialogDragGuard } from './utils/dialogDragGuard';
 import { installSuiteLook } from './suiteLook';
 
-// The suite look (grey and green, light or dark; Nightly flag 'one-look'):
+// The suite look (grey and gold, light or dark; Nightly flag 'one-look'):
 // set before anything renders, so no screen shows the old colours first.
 installSuiteLook();
 

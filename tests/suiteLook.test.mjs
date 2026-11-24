@@ -1,4 +1,4 @@
-// The suite look (KAL-663): shared greys and Survey's green, dark and light, behind the Nightly
+// The suite look (KAL-663): shared greys and Survey's gold, dark and light, behind the Nightly
 // flag 'one-look'. Checks the mode logic in src/suiteLook.js, that index.html
 // reads the same saved keys before the first paint, and that the colour values
 // in src/styles/tokens.css match docs/suite/SUITE-RULES.md and stay readable.
@@ -133,8 +133,8 @@ const contrast = (a, b) => {
 
 test('suite look: the values are the ones in docs/suite/SUITE-RULES.md', () => {
   const want = {
-    dark: { '--surface-0': '#131315', '--surface-2': '#1c1c1e', '--hover': '#242426', '--surface-3': '#2c2c2f', '--border': '#2c2c2f', '--border-strong': '#737378', '--text-1': '#e8e7e2', '--text-2': '#d2d1cc', '--text-3': '#9a9a97', '--text-disabled': '#5c5c5a', '--accent': '#3dc98a', '--accent-light': '#5ad49d', '--accent-press': '#2bb077', '--accent-text': '#131315', '--danger': '#ef4444', '--danger-text': '#f87171', '--success': '#8baa6e', '--warning': '#d4a54a' },
-    light: { '--surface-0': '#f4f4f6', '--surface-2': '#ffffff', '--hover': '#f5f5f5', '--surface-3': '#ebebeb', '--border': '#ececec', '--border-strong': '#8a8a8f', '--text-1': '#131313', '--text-2': '#4b4b4b', '--text-3': '#666666', '--text-disabled': '#a3a3a3', '--accent': '#157f55', '--accent-light': '#116d49', '--accent-press': '#0d5a3c', '--accent-text': '#ffffff', '--danger': '#d92d20', '--danger-text': '#b42318', '--success': '#1f7a4d', '--warning': '#9a5b00' },
+    dark: { '--surface-0': '#131315', '--surface-2': '#1c1c1e', '--hover': '#242426', '--surface-3': '#2c2c2f', '--border': '#2c2c2f', '--border-strong': '#737378', '--text-1': '#e8e7e2', '--text-2': '#d2d1cc', '--text-3': '#9a9a97', '--text-disabled': '#5c5c5a', '--accent': '#d8a84e', '--accent-light': '#edc26d', '--accent-press': '#b6904a', '--accent-text': '#131315', '--danger': '#ef4444', '--danger-text': '#f87171', '--success': '#8baa6e', '--warning': '#d4a54a' },
+    light: { '--surface-0': '#f4f4f6', '--surface-2': '#ffffff', '--hover': '#f5f5f5', '--surface-3': '#ebebeb', '--border': '#ececec', '--border-strong': '#8a8a8f', '--text-1': '#131313', '--text-2': '#4b4b4b', '--text-3': '#666666', '--text-disabled': '#a3a3a3', '--accent': '#8b6500', '--accent-light': '#775600', '--accent-press': '#634800', '--accent-text': '#ffffff', '--danger': '#d92d20', '--danger-text': '#b42318', '--success': '#1f7a4d', '--warning': '#9a5b00' },
   };
   for (const [mode, set] of [['dark', dark], ['light', light]]) {
     for (const [name, value] of Object.entries(want[mode])) assert.equal(set[name], value, `${mode} ${name}`);
@@ -151,12 +151,12 @@ test('suite look: words stay readable on every surface, in both modes', () => {
         assert.ok(c >= 4.5, `${mode}: ${text} on ${surface} is ${c.toFixed(2)}:1`);
       }
     }
-    // The green as words (a link, a chosen icon) on the three main surfaces.
+    // The gold as words (a link, a chosen icon) on the three main surfaces.
     for (const surface of ['--surface-0', '--surface-2', '--hover']) {
       const c = contrast(set['--accent'], set[surface]);
-      assert.ok(c >= 4.5, `${mode}: green on ${surface} is ${c.toFixed(2)}:1`);
+      assert.ok(c >= 4.5, `${mode}: gold on ${surface} is ${c.toFixed(2)}:1`);
     }
-    // Words on a green button, in each of its three steps.
+    // Words on a gold button, in each of its three steps.
     for (const fill of ['--accent', '--accent-light', '--accent-press']) {
       const c = contrast(set['--accent-text'], set[fill]);
       assert.ok(c >= 4.5, `${mode}: words on ${fill} are ${c.toFixed(2)}:1`);
@@ -177,11 +177,16 @@ test('suite look: hover and pressed never look the same', () => {
   }
 });
 
-test('suite look: no blue or gold from the old palette is left in the set', () => {
-  const old = ['#6aa6f6', '#8dbcf9', '#4b8ae8', '#d8a84e', '#edc26d', '#b6904a'];
+test('suite look: no blue from the old palette is left, and the gold is only the accent', () => {
+  // Owner 2026-11-24: Survey's accent is its own gold again. It belongs to the
+  // accent names only, never to a focus ring, a border or a selected row.
+  const blue = ['#6aa6f6', '#8dbcf9', '#4b8ae8'];
+  const gold = ['#d8a84e', '#edc26d', '#b6904a', '#8b6500', '#775600', '#634800'];
   for (const [mode, set] of [['dark', dark], ['light', light]]) {
     for (const [name, value] of Object.entries(set)) {
-      for (const hex of old) assert.ok(!value.includes(hex), `${mode} ${name} still holds ${hex}`);
+      for (const hex of blue) assert.ok(!value.includes(hex), `${mode} ${name} still holds ${hex}`);
+      if (name.startsWith('--accent')) continue;
+      for (const hex of gold) assert.ok(!value.includes(hex), `${mode} ${name} holds the accent gold ${hex}`);
     }
   }
 });
