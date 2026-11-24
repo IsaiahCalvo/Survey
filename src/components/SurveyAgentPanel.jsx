@@ -34,6 +34,7 @@ import { startNativeHandsFree } from '../agent/nativeHandsFree.js';
 import { loadNativeSpeech } from '../agent/nativeSpeechLoader.js';
 import { hearLocally, isSureHearing, prepareLocalHearing, sharesMicSafely, startDeviceHearing } from '../agent/deviceHearing.js';
 import { runOfflineTurn } from '../agent/offlineHelper.js';
+import { deviceModelState, downloadDeviceModel, readyDeviceModel } from '../agent/deviceModel.js';
 import { keepScreenAwake } from '../agent/keepAwake.js';
 import { getMicLevel, levelFromRms, setMicLevel, startStreamMeter, subscribeMicLevel } from '../agent/micLevel.js';
 import { AGENT_LANG, CANCEL_WORDS, SHUTTER_WORDS, agentLocale, agentSays } from '../agent/agentLanguage.js';
@@ -478,10 +479,27 @@ export default function SurveyAgentPanel({
     markEntry(entry.id, { reported: ok ? 'sent' : 'failed' });
   };
 
+  const offlineAskRef = useRef(null);
+  // The device's own model (Chrome/Edge built-in): fetched once on a tap.
+  const [deviceModel, setDeviceModel] = useState({ state: 'none', progress: 0 });
+  useEffect(() => {
+    if (!isFeatureOn(OFFLINE_FLAG)) return undefined;
+    let live = true;
+    deviceModelState().then((state) => { if (live) setDeviceModel((prev) => ({ ...prev, state })); });
+    return () => { live = false; };
+  }, []);
+  const fetchDeviceModel = async () => {
+    setDeviceModel({ state: 'downloading', progress: 0 });
+    try {
+      await downloadDeviceModel({ onProgress: (progress) => setDeviceModel({ state: 'downloading', progress }) });
+      setDeviceModel({ state: await deviceModelState(), progress: 1 });
+    } catch {
+      setDeviceModel({ state: await deviceModelState(), progress: 0 });
+    }
+  };
   // No signal (or the server busy): a message the plain rules can read is
   // done on the device now instead of waiting. Returns the reply, or null.
   // The server's chat hears about it, so later turns build on it.
-  const offlineAskRef = useRef(null);
   const tryOffline = async (job) => {
     if (!isFeatureOn(OFFLINE_FLAG) || !job?.said || job.files?.length) return null;
     const bridge = surveyAgentBridge.current;
@@ -498,7 +516,9 @@ export default function SurveyAgentPanel({
     const pending = offlineAskRef.current;
     offlineAskRef.current = null;
     try {
-      result = await runOfflineTurn({ text: job.said, toolbox: box, bridge, learned: agentMemory.cached(bridge.projectId), pending });
+      // Free speech, with a model on this device: it picks among the items the rules found.
+      const model = await readyDeviceModel();
+      result = await runOfflineTurn({ text: job.said, toolbox: box, bridge, learned: agentMemory.cached(bridge.projectId), pending, model });
     } catch (err) {
       console.warn('[survey-agent] offline turn failed', err);
       return null;
@@ -514,7 +534,7 @@ export default function SurveyAgentPanel({
       { role: 'user', content: job.said },
       { role: 'assistant', content: `${result.reply} [Done on the device with no signal.]` }];
     if (job.entryId) markEntry(job.entryId, { waiting: false });
-    push({ role: 'agent', text: result.reply, changes: result.changes, offline: true });
+    push({ role: 'agent', text: result.reply, changes: result.changes, offline: true, byModel: Boolean(result.byModel) });
     voiceLog.event('offline_turn', { calls: result.calls.map((c) => c.name), changes: result.changes.length });
     return result.reply;
   };
@@ -1343,6 +1363,16 @@ export default function SurveyAgentPanel({
             </button>
           );
         })() : null}
+        {deviceModel.state === 'downloadable' || deviceModel.state === 'downloading' ? (() => {
+          const label = deviceModel.state === 'downloading'
+            ? `Getting the offline helper… ${Math.round(deviceModel.progress * 100)}%`
+            : 'Get the offline helper: reads free speech with no signal (about 2 GB, use Wi-Fi)';
+          return (
+            <button type="button" className="survey-agent__icon" aria-label={label} data-testid="survey-agent-device-model" {...tip(label, 'below')} disabled={deviceModel.state === 'downloading'} onClick={fetchDeviceModel}>
+              <Icon name="download" size={16} color="currentColor" />
+            </button>
+          );
+        })() : null}
         {surveyAgentBridge.current?.projectId ? (
           <button type="button" className="survey-agent__icon" aria-label="Learned" {...tip('What the agent learned on this project', 'below')} onClick={() => setLearnedOpen(true)}>
             <Icon name="lightbulbOn" size={16} color="currentColor" />
@@ -1402,7 +1432,7 @@ export default function SurveyAgentPanel({
                 {entry.role === 'error' && <Icon name="warningCircle" size={14} color="currentColor" />}
                 <span>{entry.text}</span>
                 {entry.waiting ? <div className="survey-agent__files">Waiting for signal</div> : null}
-                {entry.offline ? <div className="survey-agent__files" data-testid="survey-agent-offline-done">{entry.changes?.length ? 'Done on this device, no signal needed' : 'Answered on this device, no signal needed'}</div> : null}
+                {entry.offline ? <div className="survey-agent__files" data-testid="survey-agent-offline-done">{entry.byModel ? 'Read by the model on this device, no signal needed. Check it.' : entry.changes?.length ? 'Done on this device, no signal needed' : 'Answered on this device, no signal needed'}</div> : null}
                 {entry.files?.length ? <div className="survey-agent__files">{entry.files.join(', ')}</div> : null}
               </div>
               {entry.offers?.map((offer, i) => (

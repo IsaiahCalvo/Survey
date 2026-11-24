@@ -485,3 +485,81 @@ test('a scanned sheet is read on the device, then the tag is found', async () =>
   const again = await toolbox.run('read_scanned_pages', { pages: null });
   assert.equal(again.content, 'Every page already has text to read.');
 });
+
+// ---- Free speech: the device's model picks among the items the rules found. ----
+
+import { askDeviceModel, deviceModelState, readyDeviceModel } from '../src/agent/deviceModel.js';
+
+const fakeModel = (answer) => {
+  const seen = [];
+  return { seen, ask: async (req) => { seen.push(req); return typeof answer === 'function' ? answer(req) : answer; } };
+};
+
+test('the model reads a free sentence, only among real items, lines and answers', async () => {
+  const { bridge, markers } = fakeBridge({ selectedMarkerId: 'm118' });
+  const toolbox = createSurveyAgentToolbox({ getBridge: () => bridge, documentId: 'doc-1' });
+  const model = fakeModel((req) => {
+    // The shape lists only the candidates.
+    // D-117 in both modules, and the selected D-118.
+    assert.deepEqual(req.schema.properties.item.enum, ['i1', 'i2', 'i3', 'none']);
+    assert.ok(req.schema.properties.answers.items.properties.value.enum.includes('N/A'));
+    assert.match(req.prompt, /i1: D-117 \(Door\)/);
+    return { action: 'answers', item: 'i1', answers: [{ line: 'i1.l2', value: 'Y' }], entity: 'none', note: '', question: '' };
+  });
+  const done = await runOfflineTurn({ text: 'on D-117 the reader went in fine', toolbox, bridge, model });
+  assert.equal(done.byModel, true);
+  assert.equal(markers.m117.checklistResponses['chk-reader'].selection, 'Y');
+  assert.equal(done.changes.length, 1);
+});
+
+test('model answers that break the rules are dropped or become a question', async () => {
+  const { bridge, markers } = fakeBridge({ selectedMarkerId: 'm118' });
+  const toolbox = createSurveyAgentToolbox({ getBridge: () => bridge, documentId: 'doc-1' });
+  const run = (answer, text = 'the one by the door is finished I think') => runOfflineTurn({ text, toolbox, bridge, model: fakeModel(answer) });
+  // An invented item, a line of another item, an answer not in the set: nothing.
+  assert.equal(await run({ action: 'answers', item: 'i9', answers: [{ line: 'i1.l1', value: 'Y' }] }), null);
+  assert.equal(await run({ action: 'answers', item: 'i1', answers: [{ line: 'i2.l1', value: 'Y' }] }), null);
+  assert.equal(await run({ action: 'answers', item: 'i1', answers: [{ line: 'i1.l1', value: 'Maybe' }] }), null);
+  assert.equal(await run({ action: 'none', item: 'none' }), null);
+  assert.equal(await run(null), null);
+  // "Finished" is no entity's name and nothing was taught: ask, never guess.
+  const guess = await run({ action: 'entity', item: 'i1', entity: 'Commissioned' });
+  assert.deepEqual(guess.changes, []);
+  assert.match(guess.reply, /Which entity for D-118: Installed or Commissioned\?/);
+  assert.equal(markers.m118.entityId, undefined);
+  // Said by name: fine.
+  const named = await run({ action: 'entity', item: 'i1', entity: 'Commissioned' }, 'that one is commissioned now');
+  assert.equal(named.byModel, true);
+  assert.equal(markers.m118.entityId, 'ent-commissioned');
+  // A note in their words.
+  const note = await run({ action: 'note', item: 'i1', note: 'reader loose by the stairs' }, 'the reader by the stairs is loose');
+  assert.equal(markers.m118.note.text, 'Reader loose by the stairs');
+  assert.equal(note.changes.length, 1);
+  // No candidate at all: the model is not asked.
+  const lone = fakeBridge();
+  const m = fakeModel({ action: 'note', item: 'i1', note: 'x' });
+  const box = createSurveyAgentToolbox({ getBridge: () => lone.bridge, documentId: 'doc-1' });
+  assert.equal(await runOfflineTurn({ text: 'the reader by the stairs is loose', toolbox: box, bridge: lone.bridge, model: m }), null);
+  assert.equal(m.seen.length, 0);
+});
+
+test('the browser\'s built-in model: state, shape and failure', async () => {
+  assert.equal(await deviceModelState(null), 'none');
+  const calls = [];
+  const LM = {
+    availability: async () => 'available',
+    create: async (opts) => ({
+      prompt: async (text, o) => { calls.push([opts.initialPrompts[0].content, text, o.responseConstraint]); return '{"action":"none"}'; },
+      destroy() {},
+    }),
+  };
+  assert.equal(await deviceModelState(LM), 'ready');
+  assert.deepEqual(await askDeviceModel({ system: 'S', prompt: 'P', schema: { type: 'object' }, LM }), { action: 'none' });
+  assert.deepEqual(calls[0], ['S', 'P', { type: 'object' }]);
+  const ready = await readyDeviceModel(LM);
+  assert.ok(ready.ask);
+  assert.equal(await readyDeviceModel({ availability: async () => 'downloadable' }), null);
+  assert.equal(await deviceModelState({ availability: async () => 'downloadable' }), 'downloadable');
+  const broken = { availability: async () => 'available', create: async () => ({ prompt: async () => 'not json', destroy() {} }) };
+  assert.equal(await askDeviceModel({ system: 'S', prompt: 'P', schema: {}, LM: broken }), null);
+});
