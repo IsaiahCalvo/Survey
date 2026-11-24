@@ -85,8 +85,18 @@ jobs:
             /usr/libexec/PlistBuddy -c "Print :$k" "$APP/Info.plist" >/dev/null || { echo "::error::missing $k"; exit 1; }
           done
           # Native plugins the web code calls must be registered in the shell.
-          for p in FilesystemPlugin SharePlugin; do
+          for p in FilesystemPlugin SharePlugin DeviceModelPlugin; do
             grep -q "$p" "$APP/capacitor.config.json" || { echo "::error::$p not registered"; exit 1; }
+          done
+          # Apple's on-device model needs iOS 26 but the app starts on iOS 15,
+          # so FoundationModels must be linked weakly (else older iPhones
+          # crash at launch).
+          for bin in "$APP/App" "$APP/App.debug.dylib"; do
+            [ -f "$bin" ] || continue
+            if otool -l "$bin" | grep -B2 "FoundationModels.framework" | grep -q "LC_LOAD_DYLIB$"; then
+              echo "::error::$(basename "$bin") links FoundationModels strongly"; exit 1
+            fi
+            otool -l "$bin" | grep -B2 "FoundationModels.framework" | grep -E "cmd LC_" || true
           done
       - name: Install, launch and stay up
         run: |

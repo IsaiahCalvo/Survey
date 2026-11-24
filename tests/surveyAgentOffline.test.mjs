@@ -488,7 +488,7 @@ test('a scanned sheet is read on the device, then the tag is found', async () =>
 
 // ---- Free speech: the device's model picks among the items the rules found. ----
 
-import { askDeviceModel, deviceModelState, readyDeviceModel } from '../src/agent/deviceModel.js';
+import { askDeviceModel, deviceModelInfo, deviceModelState, downloadDeviceModel, parseModelJson, readyDeviceModel } from '../src/agent/deviceModel.js';
 
 const fakeModel = (answer) => {
   const seen = [];
@@ -562,4 +562,64 @@ test('the browser\'s built-in model: state, shape and failure', async () => {
   assert.equal(await deviceModelState({ availability: async () => 'downloadable' }), 'downloadable');
   const broken = { availability: async () => 'available', create: async () => ({ prompt: async () => 'not json', destroy() {} }) };
   assert.equal(await askDeviceModel({ system: 'S', prompt: 'P', schema: {}, LM: broken }), null);
+});
+
+// A stand-in for the phone app's DeviceModel plugin (packages/device-model).
+function fakePhone({ state = 'ready', engine = 'gemini-nano', text = '{"action":"none"}', fail = false } = {}) {
+  const seen = [];
+  const listeners = [];
+  return {
+    seen,
+    availability: async () => ({ state, engine }),
+    generate: async (opts) => { seen.push(opts); if (fail) throw new Error('no'); return { text }; },
+    addListener: async (name, fn) => { listeners.push(fn); return { remove() { listeners.length = 0; } }; },
+    download: async () => { listeners.forEach((fn) => fn({ bytes: 1024 })); return { ok: true }; },
+  };
+}
+
+test('the phone\'s own model: Gemini Nano and Apple through the plugin', async () => {
+  const nano = fakePhone({ text: '```json\n{"action":"ask","question":"Which one?"}\n```' });
+  assert.deepEqual(await deviceModelInfo(null, { native: nano }), { state: 'ready', engine: 'gemini-nano' });
+  const ready = await readyDeviceModel(null, { native: nano });
+  assert.deepEqual(await ready.ask({ system: 'S', prompt: 'P', schema: { type: 'object' } }), { action: 'ask', question: 'Which one?' });
+  // The answer shape travels as JSON text, the same shape the browser model gets.
+  assert.deepEqual(nano.seen[0], { system: 'S', prompt: 'P', schemaJson: '{"type":"object"}' });
+
+  const apple = fakePhone({ engine: 'apple', state: 'downloading' });
+  assert.deepEqual(await deviceModelInfo(null, { native: apple }), { state: 'downloading', engine: 'apple' });
+  assert.equal(await readyDeviceModel(null, { native: apple }), null);
+  // An unknown state, or a plugin that throws (an older app build), is no model.
+  assert.equal(await deviceModelState(null, { native: fakePhone({ state: 'weird' }) }), 'none');
+  assert.equal(await deviceModelState(null, { native: { availability: async () => { throw new Error('UNIMPLEMENTED'); } } }), 'none');
+  assert.equal(await askDeviceModel({ system: 'S', prompt: 'P', schema: {}, native: fakePhone({ fail: true }) }), null);
+  assert.equal(await askDeviceModel({ system: 'S', prompt: 'P', schema: {}, native: fakePhone({ text: 'sorry, no' }) }), null);
+  // Too slow is no answer.
+  const slow = { generate: () => new Promise(() => {}) };
+  assert.equal(await askDeviceModel({ system: 'S', prompt: 'P', schema: {}, native: slow, timeoutMs: 20 }), null);
+  // Android tells bytes, not the total: progress comes as null.
+  const progress = [];
+  assert.equal(await downloadDeviceModel({ native: nano, onProgress: (p) => progress.push(p) }), true);
+  assert.deepEqual(progress, [null]);
+});
+
+test('model answers with words around the JSON still read', () => {
+  assert.deepEqual(parseModelJson('{"a":1}'), { a: 1 });
+  assert.deepEqual(parseModelJson('Here it is: {"a":{"b":2}} done'), { a: { b: 2 } });
+  assert.equal(parseModelJson('no json here'), null);
+  assert.equal(parseModelJson(''), null);
+});
+
+test('the phone\'s model drives a free-speech turn, checked like the browser\'s', async () => {
+  const { bridge, markers } = fakeBridge({ selectedMarkerId: 'm118' });
+  const toolbox = createSurveyAgentToolbox({ getBridge: () => bridge, documentId: 'doc-1' });
+  const nano = fakePhone({ text: JSON.stringify({ action: 'answers', item: 'i1', answers: [{ line: 'i1.l2', value: 'Y' }], entity: 'none', note: '', question: '' }) });
+  const model = await readyDeviceModel(null, { native: nano });
+  const done = await runOfflineTurn({ text: 'on D-117 the reader went in fine', toolbox, bridge, model });
+  assert.equal(done.byModel, true);
+  assert.equal(markers.m117.checklistResponses['chk-reader'].selection, 'Y');
+  // The phone got the same fixed shape: only real candidates to pick from.
+  assert.deepEqual(JSON.parse(nano.seen[0].schemaJson).properties.item.enum, ['i1', 'i2', 'i3', 'none']);
+  // An invented item from the phone's model is dropped the same way.
+  const liar = await readyDeviceModel(null, { native: fakePhone({ text: '{"action":"answers","item":"i9","answers":[{"line":"i1.l1","value":"Y"}]}' }) });
+  assert.equal(await runOfflineTurn({ text: 'the one by the door is finished I think', toolbox, bridge, model: liar }), null);
 });

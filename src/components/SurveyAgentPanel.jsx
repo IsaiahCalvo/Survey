@@ -34,7 +34,7 @@ import { startNativeHandsFree } from '../agent/nativeHandsFree.js';
 import { loadNativeSpeech } from '../agent/nativeSpeechLoader.js';
 import { hearLocally, isSureHearing, prepareLocalHearing, sharesMicSafely, startDeviceHearing } from '../agent/deviceHearing.js';
 import { runOfflineTurn } from '../agent/offlineHelper.js';
-import { deviceModelState, downloadDeviceModel, readyDeviceModel } from '../agent/deviceModel.js';
+import { deviceModelInfo, downloadDeviceModel, readyDeviceModel } from '../agent/deviceModel.js';
 import { keepScreenAwake } from '../agent/keepAwake.js';
 import { getMicLevel, levelFromRms, setMicLevel, startStreamMeter, subscribeMicLevel } from '../agent/micLevel.js';
 import { AGENT_LANG, CANCEL_WORDS, SHUTTER_WORDS, agentLocale, agentSays } from '../agent/agentLanguage.js';
@@ -480,21 +480,22 @@ export default function SurveyAgentPanel({
   };
 
   const offlineAskRef = useRef(null);
-  // The device's own model (Chrome/Edge built-in): fetched once on a tap.
-  const [deviceModel, setDeviceModel] = useState({ state: 'none', progress: 0 });
+  // The device's own model (the phone's, or Chrome/Edge's built-in):
+  // fetched once on a tap where the app may start that.
+  const [deviceModel, setDeviceModel] = useState({ state: 'none', engine: 'browser', progress: 0 });
   useEffect(() => {
     if (!isFeatureOn(OFFLINE_FLAG)) return undefined;
     let live = true;
-    deviceModelState().then((state) => { if (live) setDeviceModel((prev) => ({ ...prev, state })); });
+    deviceModelInfo().then((info) => { if (live) setDeviceModel((prev) => ({ ...prev, ...info })); });
     return () => { live = false; };
   }, []);
   const fetchDeviceModel = async () => {
-    setDeviceModel({ state: 'downloading', progress: 0 });
+    setDeviceModel((prev) => ({ ...prev, state: 'downloading', progress: 0 }));
     try {
-      await downloadDeviceModel({ onProgress: (progress) => setDeviceModel({ state: 'downloading', progress }) });
-      setDeviceModel({ state: await deviceModelState(), progress: 1 });
+      await downloadDeviceModel({ onProgress: (progress) => setDeviceModel((prev) => ({ ...prev, state: 'downloading', progress })) });
+      setDeviceModel({ ...(await deviceModelInfo()), progress: 1 });
     } catch {
-      setDeviceModel({ state: await deviceModelState(), progress: 0 });
+      setDeviceModel({ ...(await deviceModelInfo()), progress: 0 });
     }
   };
   // No signal (or the server busy): a message the plain rules can read is
@@ -1364,9 +1365,12 @@ export default function SurveyAgentPanel({
           );
         })() : null}
         {deviceModel.state === 'downloadable' || deviceModel.state === 'downloading' ? (() => {
+          const progress = typeof deviceModel.progress === 'number' ? ` ${Math.round(deviceModel.progress * 100)}%` : '';
           const label = deviceModel.state === 'downloading'
-            ? `Getting the offline helper… ${Math.round(deviceModel.progress * 100)}%`
-            : 'Get the offline helper: reads free speech with no signal (about 2 GB, use Wi-Fi)';
+            ? (deviceModel.engine === 'apple' ? 'The iPhone is still getting its own model' : `Getting the offline helper…${progress}`)
+            : deviceModel.engine === 'browser'
+              ? 'Get the offline helper: reads free speech with no signal (about 2 GB, use Wi-Fi)'
+              : "Get the offline helper: the phone's own model reads free speech with no signal (use Wi-Fi)";
           return (
             <button type="button" className="survey-agent__icon" aria-label={label} data-testid="survey-agent-device-model" {...tip(label, 'below')} disabled={deviceModel.state === 'downloading'} onClick={fetchDeviceModel}>
               <Icon name="download" size={16} color="currentColor" />
