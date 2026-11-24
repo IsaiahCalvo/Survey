@@ -11,6 +11,7 @@ import { USER_INITIALS_INK, userColorFill } from '../utils/userColors.js';
 import { openKeyboardShortcuts } from '../utils/keyboardShortcuts.js';
 import HelpSupportDialog from '../help/HelpSupportDialog.jsx';
 import { useTooltip } from '../components/Tooltip';
+import useBrowserOnline from '../hooks/useBrowserOnline.js';
 import { isDocumentDrag, readDocumentDragIds } from './documentSelection.js';
 import { isFeatureOn, releaseChannel } from '../featureFlags.js';
 import { NIGHTLY_COLOR } from '../nightlyBrand.js';
@@ -263,7 +264,10 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, showShortcuts = 
   // Resolve the per-tier badge text. Callers may pass `userMeta` explicitly;
   // otherwise we read from AuthContext so free users no longer see "Pro".
   const auth = useAuth();
-  const resolvedMeta = userMeta || `Synced · ${tierLabelFromAuth(auth?.tier)}`;
+  // "Synced" stayed up the whole time a device was offline, the only steady
+  // place Home says how its saves are going.
+  const online = useBrowserOnline();
+  const resolvedMeta = userMeta || `${online ? 'Synced' : 'Offline'} · ${tierLabelFromAuth(auth?.tier)}`;
   // Whether the menu is open lives in SurveyHub when it provides it: the
   // loading screen and the loaded list are two different shells, so a menu
   // opened while the list was still loading closed the moment it arrived.
