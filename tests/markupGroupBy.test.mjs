@@ -56,3 +56,14 @@ test('a mark drawn with the Cloud tool lists as a Cloud, a clouded text box as a
   ] } });
   assert.deepEqual(rows.map((r) => r.kind), ['cloud', 'cloud', 'text']);
 });
+
+test('a callout is credited to its maker, kept inside the callout record it carries', () => {
+  const rows = buildMarkupRows({
+    1: { objects: [
+      { id: 'g1', type: 'group', data: { type: 'callout', id: 'c1', legacyCallout: { id: 'c1', text: 'Mount at 10ft', meta: { authorId: 'u1' } } } },
+    ] },
+  });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].authorId, 'u1');
+  assert.equal(authorLabel(rows[0].authorId, { viewerId: 'u1' }), 'You');
+});

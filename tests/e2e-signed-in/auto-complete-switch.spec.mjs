@@ -125,7 +125,7 @@ test('the template editor switch saves on and off', async ({ page }) => {
   await page.getByText(E2E_SURVEY.templateName, { exact: true }).filter({ visible: true }).first().click();
   const toggle = page.getByRole('switch', { name: 'Auto-mark as Complete' }).filter({ visible: true }).first();
   await expect(toggle).toHaveAttribute('aria-checked', 'true', { timeout: 30_000 });
-  await expect(page.getByText('Items turn Complete once every line is answered.').filter({ visible: true })).toBeVisible();
+  await expect(page.getByText('Items turn Complete once every line is answered and none is an issue.').filter({ visible: true })).toBeVisible();
 
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-checked', 'false');

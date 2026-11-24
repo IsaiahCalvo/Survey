@@ -39,6 +39,7 @@
    the parent panels' `overflow: hidden` can never clip them or spawn
    scrollbars.
 */
+import { isElectronApp } from '../utils/layoutMode.js';
 import { listExportKits, subscribeExportKits, getExportKit, DEFAULT_EXPORT_KIT_ID } from '../services/exportFormats/registry.js';
 import { DEFAULT_REPORT_KIT_ID, listReportKits } from '../services/reportKits/index.js';
 import { DEFAULT_ANSWER_SET, ITEM_ANSWER_KEYS, answerPresetIdOf, answerSetPresets, itemAnswerFields, starterAnswerSets } from '../services/answerSets.js';
@@ -259,6 +260,14 @@ const ENTITY_COLORS = [
 /* Monotonic id generator — every new module/category/item/entity gets a
    stable unique React key so renames and reorders don't churn the tree. */
 let _uid = 0;
+/* The Move / Copy card names what it carries: "Camera" for one Category,
+   "3 Categories" for a pick, never "1 item". */
+const MOVE_KIND_WORDS = { category: ['Category', 'Categories'], entity: ['Entity', 'Entities'], module: ['Module', 'Modules'] };
+const moveModalHeading = ({ count = 0, kind, name }) => {
+  if (count === 1 && String(name || '').trim()) return String(name).trim();
+  const [one, many] = MOVE_KIND_WORDS[kind] || ['item', 'items'];
+  return `${count} ${count === 1 ? one : many}`;
+};
 const newId = (prefix) => `${prefix}_${Date.now().toString(36)}_${(_uid++).toString(36)}`;
 
 /* Normalise the `templates` prop into the editor's mutable working shape.
@@ -378,7 +387,7 @@ function AutoCompleteSwitch({ template, onToggle, onAddComplete, phone = false }
       <p className="template-auto-complete__hint">
         {!complete ? (
           <>
-            Turns items Complete once every line is answered. Needs a Complete entity
+            Turns items Complete once every line is answered and none is an issue. Needs a Complete entity
             {onAddComplete ? (
               <>
                 {': '}
@@ -387,7 +396,7 @@ function AutoCompleteSwitch({ template, onToggle, onAddComplete, phone = false }
             ) : '.'}
           </>
         ) : on
-          ? `Items turn ${name} once every line is answered.`
+          ? `Items turn ${name} once every line is answered and none is an issue.`
           : `Items turn ${name} only when set by hand.`}
       </p>
     </div>
@@ -2169,14 +2178,14 @@ export default function TemplatesEditor({
   });
   const categorySwipeActions = (cat) => buildSwipeActions({
     onDuplicate: () => duplicateCategories(new Set([cat.id])),
-    onMove: () => { setSelCats(new Set([cat.id])); setMoveModal({ count: 1, kind: 'category', mode: 'move' }); },
-    onCopy: () => { setSelCats(new Set([cat.id])); setMoveModal({ count: 1, kind: 'category', mode: 'copy' }); },
+    onMove: () => { setSelCats(new Set([cat.id])); setMoveModal({ count: 1, kind: 'category', mode: 'move', name: cat.name }); },
+    onCopy: () => { setSelCats(new Set([cat.id])); setMoveModal({ count: 1, kind: 'category', mode: 'copy', name: cat.name }); },
     onDelete: () => deleteCategories(new Set([cat.id])),
   });
   const entitySwipeActions = (ent) => buildSwipeActions({
     onDuplicate: () => duplicateEntities(new Set([ent.id])),
-    onMove: () => { setSelEntities(new Set([ent.id])); setMoveModal({ count: 1, kind: 'entity', mode: 'move' }); },
-    onCopy: () => { setSelEntities(new Set([ent.id])); setMoveModal({ count: 1, kind: 'entity', mode: 'copy' }); },
+    onMove: () => { setSelEntities(new Set([ent.id])); setMoveModal({ count: 1, kind: 'entity', mode: 'move', name: ent.name }); },
+    onCopy: () => { setSelEntities(new Set([ent.id])); setMoveModal({ count: 1, kind: 'entity', mode: 'copy', name: ent.name }); },
     onDelete: () => deleteEntities(new Set([ent.id])),
   });
 
@@ -2433,8 +2442,22 @@ export default function TemplatesEditor({
     if (typeof document === 'undefined') return undefined;
     const onHide = () => { if (document.visibilityState === 'hidden') saveOnLeaveRef.current?.(); };
     document.addEventListener('visibilitychange', onHide);
+    // A reload or a closed browser tab gives the save no time to finish, so
+    // the edits were lost with no word. Start the save and let the browser
+    // ask "Leave site?" so the person can stay until it lands.
+    const onUnload = (event) => {
+      if (!saveOnLeaveRef.current) return;
+      saveOnLeaveRef.current();
+      // The desktop app shows no "Leave site?" box: a cancelled unload would
+      // only leave its window stuck open.
+      if (isElectronApp()) return;
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onUnload);
     return () => {
       document.removeEventListener('visibilitychange', onHide);
+      window.removeEventListener('beforeunload', onUnload);
       saveOnLeaveRef.current?.();
     };
   }, []);
@@ -4151,8 +4174,8 @@ export default function TemplatesEditor({
           items={[
             { label: 'Rename', onClick: () => { focusVisibleField(`input[data-entity-name-id="${ent.id}"]`); } },
             { label: 'Duplicate', onClick: () => duplicateEntities(new Set([ent.id])) },
-            { label: 'Move', onClick: () => { setSelEntities(new Set([ent.id])); setMoveModal({ count: 1, kind: 'entity', mode: 'move' }); } },
-            { label: 'Copy', onClick: () => { setSelEntities(new Set([ent.id])); setMoveModal({ count: 1, kind: 'entity', mode: 'copy' }); } },
+            { label: 'Move', onClick: () => { setSelEntities(new Set([ent.id])); setMoveModal({ count: 1, kind: 'entity', mode: 'move', name: ent.name }); } },
+            { label: 'Copy', onClick: () => { setSelEntities(new Set([ent.id])); setMoveModal({ count: 1, kind: 'entity', mode: 'copy', name: ent.name }); } },
             { label: 'Share', onClick: () => { if (tpl) onShare && onShare(tpl); } },
             { label: 'Delete', danger: true, onClick: () => deleteEntities(new Set([ent.id])) },
           ]}
@@ -4176,8 +4199,8 @@ export default function TemplatesEditor({
               focusVisibleField(`input[data-category-name-id="${cat.id}"]`);
             } },
             { label: 'Duplicate', onClick: () => duplicateCategories(new Set([cat.id])) },
-            { label: 'Move', onClick: () => { setSelCats(new Set([cat.id])); setMoveModal({ count: 1, kind: 'category', mode: 'move' }); } },
-            { label: 'Copy', onClick: () => { setSelCats(new Set([cat.id])); setMoveModal({ count: 1, kind: 'category', mode: 'copy' }); } },
+            { label: 'Move', onClick: () => { setSelCats(new Set([cat.id])); setMoveModal({ count: 1, kind: 'category', mode: 'move', name: cat.name }); } },
+            { label: 'Copy', onClick: () => { setSelCats(new Set([cat.id])); setMoveModal({ count: 1, kind: 'category', mode: 'copy', name: cat.name }); } },
             { label: 'Share', onClick: () => onShare?.(tpl) },
             { label: 'Delete', danger: true, onClick: () => deleteCategories(new Set([cat.id])) },
           ]}
@@ -4196,8 +4219,8 @@ export default function TemplatesEditor({
             // tap, so a phone raises its keyboard.
             { label: 'Rename', onClick: () => flushSync(() => setModRename(mod.id)) },
             { label: 'Duplicate', onClick: () => duplicateModules(new Set([mod.id])) },
-            { label: 'Move', onClick: () => { setSelMods(new Set([mod.id])); setMoveModal({ count: 1, kind: 'module', mode: 'move' }); } },
-            { label: 'Copy', onClick: () => { setSelMods(new Set([mod.id])); setMoveModal({ count: 1, kind: 'module', mode: 'copy' }); } },
+            { label: 'Move', onClick: () => { setSelMods(new Set([mod.id])); setMoveModal({ count: 1, kind: 'module', mode: 'move', name: mod.name }); } },
+            { label: 'Copy', onClick: () => { setSelMods(new Set([mod.id])); setMoveModal({ count: 1, kind: 'module', mode: 'copy', name: mod.name }); } },
             { label: 'Share', onClick: () => onShare?.(tpl) },
             { label: 'Delete', danger: true, onClick: () => deleteModules(new Set([mod.id])) },
           ]}
@@ -4396,7 +4419,7 @@ export default function TemplatesEditor({
           <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <p style={{ margin: 0, fontSize: 11, letterSpacing: 0, color: 'var(--text-3)', fontWeight: 600, fontFamily: 'var(--font-ui)' }}>{moveModal.mode === 'copy' ? 'Copy' : 'Move'}</p>
-              <h3 style={{ fontSize: 14, fontWeight: 700, margin: '2px 0 0', color: 'var(--text-1)', letterSpacing: '-0.025em', fontFamily: 'var(--font-ui)' }}>{moveModal.count} item{moveModal.count === 1 ? '' : 's'}</h3>
+              <h3 style={{ fontSize: 14, fontWeight: 700, margin: '2px 0 0', color: 'var(--text-1)', letterSpacing: '-0.025em', fontFamily: 'var(--font-ui)' }}>{moveModalHeading(moveModal)}</h3>
             </div>
             <button ref={moveModalCloseRef} onClick={closeMoveModal} aria-label="Close" {...tip('Close')} className="hub-icon-btn"><Icon name="close" size={13} /></button>
           </div>

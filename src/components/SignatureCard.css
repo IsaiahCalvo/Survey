@@ -32,8 +32,8 @@
 }
 .signature-card__title { font-size: 12px; padding-right: 24px; }
 .signature-card__tile[aria-selected='true'] {
-  border-color: #2f80ed;
-  box-shadow: 0 0 0 1px #2f80ed;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
 }
 .signature-card__remove {
   position: absolute;
@@ -78,7 +78,7 @@
   background: var(--surface-1);
   cursor: pointer;
 }
-.signature-choice__option[aria-checked='true'] { border-color: #2f80ed; box-shadow: 0 0 0 1px #2f80ed; }
+.signature-choice__option[aria-checked='true'] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .signature-ink { width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--ink-ring, rgba(255, 255, 255, 0.3)); }
 .signature-width { width: 16px; border-radius: 2px; background: var(--text-2); }
 .signature-clear { margin-left: auto; }
@@ -103,7 +103,7 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-.signature-fonts__option[aria-checked='true'] { border-color: #2f80ed; box-shadow: 0 0 0 1px #2f80ed; }
+.signature-fonts__option[aria-checked='true'] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 
 /* Nightly 'phone-sign': the Phone tab (PhoneSignPanel.jsx) and /sign/<token>
    (PhoneSignPage.jsx). */

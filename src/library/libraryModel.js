@@ -23,6 +23,11 @@ export const LIBRARY_WORDS = Object.freeze({
   typeNeedsCategory: 'A Category Type goes under a Category.',
 });
 
+/** Words for a name the library already holds. */
+export function nameTakenWords(name) {
+  return `“${normalizeEntryName(name)}” is already in this library.`;
+}
+
 const PLACEHOLDER_CATEGORY = /^(Category \d+|Untitled Category)$/;
 
 /** The name as stored and compared: ends trimmed, inner runs of space made one. */
@@ -99,7 +104,26 @@ export function newEntryProblem(entry, { userId, company, entries = [] } = {}) {
     if (!parent || parent.kind !== LIBRARY_KIND.CATEGORY || parent.removedAt) return LIBRARY_WORDS.typeNeedsCategory;
     if (parent.scope !== entry.scope || parent.companyId !== entry.companyId) return LIBRARY_WORDS.typeNeedsCategory;
   }
+  const twin = sameNameEntry(entries, entry);
+  if (twin) return nameTakenWords(twin.name);
   return '';
+}
+
+/**
+ * Another live entry of the same kind (and, for a Type, the same Category) in
+ * the same library whose name differs only in case or spacing, or null.
+ * Suite matching goes by exact name, so two "Door" rows in one library would
+ * split one kind of device in two; the library refuses the second instead.
+ */
+export function sameNameEntry(entries, { id = null, kind, name, parentId = null, scope, companyId = null, createdBy = null }) {
+  const want = normalizeEntryName(name).toLowerCase();
+  if (!want) return null;
+  return entriesInLibrary(entries, { scope, companyId, userId: createdBy }).find((e) => (
+    e.id !== id
+    && e.kind === kind
+    && (kind !== LIBRARY_KIND.CATEGORY_TYPE || e.parentId === parentId)
+    && normalizeEntryName(e.name).toLowerCase() === want
+  )) || null;
 }
 
 /** A library_entries row as the app holds it. */
