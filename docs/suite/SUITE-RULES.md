@@ -336,12 +336,12 @@ first, in all three repos.
 
 | Thing | Where | Survey | Walkthru | Plot |
 | --- | --- | --- | --- | --- |
-| Share, with Export inside it | Top bar, right side, one button | Nightly flag `share-export-one` | Built | To add. Export sits in the File menu. |
+| Share, with Export inside it | Top bar, right side, one button | Nightly flag `share-export-one` | Built | Built. Plot has no top bar, so it sits in the right panel's header, left of Issue, where Rayon puts it. |
 | Pinned tools: show or hide the pinned bar | Top bar, right side, left of Share. The pin icon below. | Built | Built | No pinned tools |
 | Pin the tool in use | A + at the end of the pinned bar | Built | Built | No pinned tools |
-| Your picture and account menu | The top bar, right end | Built | Built (tab strip) | To add. Sign in sits on the start page. |
-| Sync status, History | Left rail, at the foot | Built | No history or sync status yet | History is a left rail panel; Saved shows in the title bar |
-| View tools (Page fit, Paper, Grid, Dark pages, Full screen) | One View button on the right rail opens them in a strip | Nightly flag `view-strip` | To add. Page grid and Dark pages still sit on the rail. | No view tools |
+| Your picture and account menu | The top bar, right end | Built | Built (tab strip) | Built. Right end of the right panel's header, after Issue. |
+| Sync status, History | Left rail, at the foot | Built | Sync status: Nightly flag `sync-status`. No History yet: the `drawing_history_events` table has no writer. | History is a left rail panel; Saved shows in the right panel's header |
+| View tools (Page fit, Paper, Grid, Dark pages, Full screen) | One View button on the right rail opens them in a strip | Nightly flag `view-strip` | Nightly flag `view-strip`: Page grid and Dark pages. Page fit stays on the rail, as in Survey. No Full screen. | No view tools |
 
 ### Settings
 
@@ -352,7 +352,7 @@ not left empty.
 
 | Survey | Walkthru | Plot |
 | --- | --- | --- |
-| General, Annotations, Connected services, Subscription, Company, Crash reports, Privacy | General, Nodes, Capture & Audio, Subscription | To add. Appearance sits at the foot of the File menu. |
+| General, Annotations, Connected services, Subscription, Company, Crash reports, Privacy | General, Nodes, Capture & Audio, Subscription | General, Drawing. Opens from your picture or the File menu's Settings…. No Subscription: Plot has no plans. |
 
 ## One icon for one thing
 
@@ -366,7 +366,7 @@ same round. Survey's icon wins unless another app's is clearly better.
 | Summary | Three lines and a spark | none | `actions` in `global-workspace-rail.tsx` | none |
 | Pinned tools | Lucide `pin` | Built | `PinIcon` in `pinned-tools-toggle.tsx` | none |
 | Line, Arrow, Polyline, Polygon, Rectangle, Circle, Cloud | Survey's own tool glyphs | Survey's own | `public/survey-icons/tools/` | `src/shell/icons.ts` |
-| Share (with Export) | Lucide `share-2`: three dots joined by two lines | Nightly | Built | To add |
+| Share (with Export) | Lucide `share-2`: three dots joined by two lines | Nightly | Built | `share` in `src/shell/icons.ts` |
 
 ## Shared words
 
