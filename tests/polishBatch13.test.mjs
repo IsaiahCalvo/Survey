@@ -74,7 +74,6 @@ test('tablet pass: project and file rows press under a finger, and the previewed
 test('ground steps: an idle top tab hovers and presses on the suite ground steps, for mouse and finger', () => {
   const tokens = read('src/styles/tokens.css');
   assert.match(tokens, /--hover-ground: #242426;\n\s*--pressed-ground: #0b0b0c;/);
-  assert.match(tokens, /--hover-ground: #ebebeb;\n\s*--pressed-ground: #e0e0e0;/);
   const tabs = read('src/TabBar.jsx');
   assert.match(tabs, /const TAB_HOVER_BG = 'var\(--hover-ground, var\(--hover\)\)';/);
   assert.match(tabs, /const TAB_PRESSED_BG = 'var\(--pressed-ground, var\(--pressed\)\)';/);

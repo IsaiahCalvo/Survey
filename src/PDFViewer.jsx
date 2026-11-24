@@ -42396,7 +42396,7 @@ ${pageBlocks}
                   // Nightly 'link-tool': drag a box, then say where it links (Shift+H).
                   ...(linkToolOn ? [{ id: 'hyperlink', label: 'Hyperlink', iconName: 'hyperlink' }] : []),
                   // Nightly 'comment-pins': the pin split button (N; M cycles the type).
-                  ...(pinsDocOn ? [{ id: 'pin', label: 'Pin', pin: true }] : []),
+                  ...(pinsDocOn ? [{ id: 'pin', label: 'Page comment', pin: true }] : []),
                   // Nightly 'snapshot-tool': drag an area, it is copied as a picture.
                   ...(snapshotToolEnabled ? [{ id: 'snapshot', label: 'Snapshot', iconName: 'snapshot' }] : []),
                   // Nightly 'signature-tool': saved signatures, click the page to sign.
