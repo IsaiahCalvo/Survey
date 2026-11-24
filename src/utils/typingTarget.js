@@ -60,12 +60,24 @@ export function isOrphanTyping(element, now = Date.now()) {
   return now - lastFieldKeyAt <= ORPHAN_TYPING_MS;
 }
 
+// Keys that close a field on purpose: Escape, Tab, Cmd/Ctrl+Enter, and Enter
+// in a one-line field. The field going away after one of these is the
+// person's own doing, so the next key is a shortcut again (a text box closed
+// with Escape, then Q for Callout).
+function leavesField(tag, key) {
+  if (!key) return false;
+  if (key.key === 'Escape' || key.key === 'Tab') return true;
+  if (key.key !== 'Enter') return false;
+  return tag === 'INPUT' || key.metaKey === true || key.ctrlKey === true;
+}
+
 /** Note a keydown (window capture). Exported for tests. */
-export function noteTypingKey(target, now = Date.now()) {
+export function noteTypingKey(target, now = Date.now(), key = null) {
   if (!target) return;
   if (isOrphanTyping(target, now)) { lastFieldKeyAt = now; return; }
   const tag = String(target.tagName || '').toUpperCase();
   if (tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable === true) {
+    if (leavesField(tag, key)) { forgetTypingField(); return; }
     lastField = target;
     lastFieldKeyAt = now;
   } else {
@@ -91,6 +103,6 @@ export function forgetTypingField() {
 }
 
 if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
-  window.addEventListener('keydown', (event) => noteTypingKey(event?.target), true);
+  window.addEventListener('keydown', (event) => noteTypingKey(event?.target, Date.now(), event), true);
   window.addEventListener('pointerdown', forgetTypingField, true);
 }

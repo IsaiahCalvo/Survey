@@ -63,3 +63,21 @@ test('only the page root counts: a real control keeps its own rules', () => {
   note.isConnected = false;
   assert.equal(isOrphanTyping({ tagName: 'BUTTON' }, 1100), false);
 });
+
+test('closing the field yourself (Escape, Tab, Enter in a one-line field) makes the next key a shortcut again', () => {
+  for (const [tag, key] of [['TEXTAREA', { key: 'Escape' }], ['INPUT', { key: 'Tab' }], ['INPUT', { key: 'Enter' }], ['TEXTAREA', { key: 'Enter', metaKey: true }]]) {
+    forgetTypingField();
+    const box = { tagName: tag, isConnected: true };
+    noteTypingKey(box, 1000, { key: 'a' });
+    noteTypingKey(box, 1100, key);
+    box.isConnected = false; // the editor closes
+    assert.equal(isOrphanTyping(body, 1200), false, `${tag} ${key.key}`);
+    assert.equal(typedFieldJustLeft(10000, 1200), false);
+  }
+  // Enter in a note is a new line, not a close.
+  forgetTypingField();
+  const note = { tagName: 'TEXTAREA', isConnected: true };
+  noteTypingKey(note, 1000, { key: 'Enter' });
+  note.isConnected = false;
+  assert.equal(isOrphanTyping(body, 1200), true);
+});
