@@ -26,6 +26,8 @@ import { isFeatureOn } from '../featureFlags.js';
 import { makeSurveyAgentCaller, runSurveyAgentTurn, surveyAgentErrorText, usageWarning, withRetries } from '../agent/surveyAgentClient.js';
 import { cleanTranscript, heardOwnVoice, snapItemNames, spokenReply, transcriptionHints } from '../agent/voiceLoop.js';
 import { canSpeakReplies, createAgentVoice, unlockPlayback } from '../agent/agentVoice.js';
+import { canRunPocketVoice, createPocketVoice } from '../agent/pocketVoice/pocketVoice.js';
+import { VOICE_CREDIT } from '../agent/pocketVoice/pocketModelFiles.js';
 import { letGoOfWarmMic, startHandsFreeMic } from '../agent/handsFreeMic.js';
 import { createTurnJoiner, joinTurnText, joinWavs } from '../agent/turnJoiner.js';
 import { createHoldToTalk } from '../agent/holdToTalk.js';
@@ -77,6 +79,14 @@ const PHOTO_QUESTIONS_FLAG = 'agent-photo-questions';
 // Nightly flag survey-agent-offline: with no signal, plain-rules commands are
 // done on the device (offlineHelper.js) and hearing uses offline speech.
 const OFFLINE_FLAG = 'survey-agent-offline';
+// Nightly flag survey-agent-device-voice: replies can be spoken by Kyutai
+// Pocket TTS on the device instead of the cloud voice. Off until chosen,
+// because the first use downloads ~146 MB.
+const DEVICE_VOICE_FLAG = 'survey-agent-device-voice';
+const VOICE_ENGINE_KEY = 'survey.agent.voiceEngine';
+const readVoiceEngine = () => {
+  try { return window.localStorage.getItem(VOICE_ENGINE_KEY) === 'device' ? 'device' : 'cloud'; } catch { return 'cloud'; }
+};
 // A photo goes to the model at most this wide or tall, as a JPEG.
 const PHOTO_QUESTION_MAX_SIDE = 1280;
 const shrinkPhoto = async (blob) => {
@@ -126,6 +136,14 @@ const SpeakerIcon = ({ muted }) => (
   <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" />
     {muted ? <path d="M16 9.5l5 5M21 9.5l-5 5" /> : <path d="M15.5 9a4.5 4.5 0 010 6M18 6.5a8 8 0 010 11" />}
+  </svg>
+);
+// The voice that reads replies: on this device (a chip) or the cloud.
+const VoiceEngineIcon = ({ device }) => (
+  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    {device
+      ? <><rect x="7" y="7" width="10" height="10" rx="1.5" /><path d="M10 4v3M14 4v3M10 17v3M14 17v3M4 10h3M4 14h3M17 10h3M17 14h3" /></>
+      : <path d="M7 18h10a4 4 0 00.6-7.95A5.5 5.5 0 006.6 9.1 4.5 4.5 0 007 18z" />}
   </svg>
 );
 // Notes as bullets (three dotted lines) or sentences (plain lines).
@@ -272,6 +290,17 @@ export default function SurveyAgentPanel({
   // Spoken replies: the server's natural voice when it has one, else the
   // device's own voice.
   const voice = useMemo(() => createAgentVoice({ call: rawCall }), [rawCall]);
+  const [deviceVoiceState, setDeviceVoiceState] = useState({ state: 'idle', progress: 0, error: null });
+  const pocket = useMemo(() => (isFeatureOn(DEVICE_VOICE_FLAG) && canRunPocketVoice()
+    ? createPocketVoice({ onChange: setDeviceVoiceState })
+    : null), []);
+  const [voiceEngine, setVoiceEngine] = useState(readVoiceEngine);
+  useEffect(() => {
+    const useDevice = Boolean(pocket) && voiceEngine === 'device';
+    voice.setDeviceVoice(useDevice ? pocket : null);
+    if (useDevice && pocket.state === 'idle') pocket.prepare().catch(() => { /* shown on the button; the cloud voice carries on */ });
+  }, [pocket, voice, voiceEngine]);
+  useEffect(() => () => { try { pocket?.stop(); } catch { /* nothing playing */ } }, [pocket]);
   const speak = (text, opts = {}) => voice.speak(text, { locale: agentLocale(), ...opts });
   const stopSpeaking = voice.stop;
   const attachmentsRef = useRef(new Map());
@@ -401,6 +430,22 @@ export default function SurveyAgentPanel({
     setSpeakReplies(next);
     if (!next) stopSpeaking();
     try { window.localStorage.setItem(SPEAK_KEY, next ? '1' : '0'); } catch { /* storage blocked */ }
+  };
+
+  const toggleVoiceEngine = () => {
+    const next = voiceEngine === 'device' ? 'cloud' : 'device';
+    unlockPlayback();
+    stopSpeaking();
+    setVoiceEngine(next);
+    // A failed download can be tried again by choosing the device voice again.
+    if (next === 'device' && pocket?.state === 'error') pocket.prepare().catch(() => {});
+    try { window.localStorage.setItem(VOICE_ENGINE_KEY, next); } catch { /* storage blocked */ }
+  };
+  const deviceVoiceTip = () => {
+    if (voiceEngine !== 'device') return 'Replies use the cloud voice. Tap to use the voice on this device (downloads about 146 MB once).';
+    if (deviceVoiceState.state === 'loading') return `Getting the on-device voice ready (${Math.round(deviceVoiceState.progress * 100)}%). The cloud voice speaks until then.`;
+    if (deviceVoiceState.state === 'error') return 'The on-device voice could not start, so the cloud voice speaks. Tap twice to try again.';
+    return `Replies use the voice on this device. Tap for the cloud voice. ${VOICE_CREDIT}`;
   };
 
   const toggleNoteStyle = () => {
@@ -1768,6 +1813,21 @@ export default function SurveyAgentPanel({
                     onClick={toggleSpeak}
                   >
                     <SpeakerIcon muted={!speakReplies} />
+                  </button>
+                )}
+                {pocket && speakReplies && (
+                  <button
+                    type="button"
+                    className="survey-agent__icon"
+                    aria-pressed={voiceEngine === 'device'}
+                    aria-busy={voiceEngine === 'device' && deviceVoiceState.state === 'loading'}
+                    data-voice-engine={voiceEngine}
+                    data-voice-state={deviceVoiceState.state}
+                    aria-label={voiceEngine === 'device' ? 'Voice on this device' : 'Cloud voice'}
+                    {...tip(deviceVoiceTip(), 'right')}
+                    onClick={toggleVoiceEngine}
+                  >
+                    <VoiceEngineIcon device={voiceEngine === 'device'} />
                   </button>
                 )}
                 {isFeatureOn(TEMPLATE_OFFERS_FLAG) && (

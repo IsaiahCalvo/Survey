@@ -1,7 +1,8 @@
-// The Survey agent's spoken replies. A natural voice from the server
-// (survey-agent's speak action, Groq Orpheus) when it is set up, else the
-// device's own voice; any failure falls back to the device voice, so a
-// reply is never silently lost. Playback goes through Web Audio, unlocked
+// The Survey agent's spoken replies. The on-device Pocket TTS voice when it
+// is chosen and ready (Nightly flag survey-agent-device-voice), else a
+// natural voice from the server (survey-agent's speak action) when it is set
+// up, else the device's own system voice; any failure falls to the next one,
+// so a reply is never silently lost. Playback goes through Web Audio, unlocked
 // during a tap, because phones block audio that starts after a network
 // wait without one.
 import { spokenReply } from './voiceLoop.js';
@@ -54,8 +55,9 @@ const SERVER_VOICE_OFF = new Set(['speech_not_set_up', 'speech_unavailable', 'sp
  * call: the survey-agent caller (no retries: a slow voice is worse than the
  * device voice). serverVoice: whether the server said it can speak.
  */
-export function createAgentVoice({ call, serverVoice = false } = {}) {
+export function createAgentVoice({ call, serverVoice = false, deviceVoice = null } = {}) {
   let useServer = Boolean(serverVoice);
+  let pocket = deviceVoice;
   let source = null;
   let turn = 0;
 
@@ -63,6 +65,7 @@ export function createAgentVoice({ call, serverVoice = false } = {}) {
     turn += 1;
     try { source?.stop(); } catch { /* already over */ }
     source = null;
+    try { pocket?.stop(); } catch { /* nothing playing */ }
     try { if (canDeviceSpeak()) window.speechSynthesis.cancel(); } catch { /* nothing playing */ }
   };
 
@@ -86,6 +89,8 @@ export function createAgentVoice({ call, serverVoice = false } = {}) {
   return {
     get usesServer() { return useServer; },
     setServerVoice(on) { useServer = Boolean(on); },
+    /** The on-device voice engine (pocketVoice.js), or null for none. */
+    setDeviceVoice(engine) { pocket = engine || null; },
     stop,
     /**
      * Resolves when the reply has been spoken (or could not be). here: use
@@ -99,6 +104,15 @@ export function createAgentVoice({ call, serverVoice = false } = {}) {
       stop();
       const mine = turn;
       const english = !locale || /^en\b/i.test(locale);
+      // The on-device voice needs no signal, so it speaks "here" words too.
+      if (english && pocket?.state === 'ready' && playback && playback.state === 'running') {
+        try {
+          await pocket.speak(words, playback);
+          return;
+        } catch {
+          if (mine !== turn) return;
+        }
+      }
       if (!here && english && useServer && playback && playback.state === 'running') {
         try {
           await playServer(words, mine);
