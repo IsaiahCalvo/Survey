@@ -14,8 +14,11 @@
   color: var(--text-1); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; padding: 0;
 }
 @media (hover: hover) and (pointer: fine) {
-  .project-settings-cover-btn:hover { background: var(--surface-3); }
+  /* It rests on the ground grey, so it hovers to that grey's own hover step
+     (suite rules), not to the selected fill. */
+  .project-settings-cover-btn:hover { background: var(--hover-ground, var(--hover)); }
 }
+.project-settings-cover-add { gap: 6px; }
 
 .project-settings-field { display: flex; flex-direction: column; gap: 6px; }
 .project-settings-field > span, .project-settings-access legend { font-size: 12px; color: var(--text-2); font-weight: 600; }

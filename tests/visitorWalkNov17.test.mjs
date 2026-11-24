@@ -56,7 +56,8 @@ test('no Team, review or people face for a file kept on this device', () => {
 
 test('a signed-in tester at the project limit hears it before the dialog, and errors show inside it', () => {
   const dash = read('../src/Dashboard.jsx');
-  assert.match(dash, /const handleCreateProjectClick = \(\) => \{[\s\S]{0,260}const projectCheck = canCreateProject\(\);\s*if \(!projectCheck\.allowed\) \{\s*setDashboardError\(projectCheck\.reason\);\s*return;/);
+  // KAL-652 polish: the limit is a calm toast with See plans, not the red card.
+  assert.match(dash, /const handleCreateProjectClick = \(\) => \{[\s\S]{0,260}const projectCheck = canCreateProject\(\);\s*if \(!projectCheck\.allowed\) \{[\s\S]{0,300}showToast\(projectCheck\.reason, 'info'[\s\S]{0,400}label: 'See plans'[\s\S]{0,200}\}\);\s*return;/);
   assert.match(dash, /error=\{isProjectModalOpen \? dashboardError : ''\}/);
   assert.match(dash, /\{dashboardError && !isProjectModalOpen && \(/);
   assert.match(read('../src/home/CreateProjectModal.jsx'), /\{error \? \(\s*<p role="alert"/);

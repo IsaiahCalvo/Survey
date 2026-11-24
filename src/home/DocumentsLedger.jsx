@@ -1011,7 +1011,7 @@ export default function DocumentsLedger({
   const actions = (
     <>
       <div className="documents-mobile-search-actions hub-mobile-search-actions">
-        <Search placeholder={tagsReady ? 'Search documents and labels...' : 'Search documents...'} value={search} onChange={setSearch} width="100%" />
+        <Search placeholder={tagsReady ? 'Search documents and labels...' : 'Search documents...'} value={search} onChange={setSearch} dismissActionSelector=".hub-empty-state button" width="100%" />
         {mobileSortControl}
         {canCreate || onOpenFromDrive || onOpenFromGoogleDrive ? (
           <button className="btn primary hub-mobile-primary-action" data-home-new="phone" disabled={uploadBusy} aria-haspopup="dialog" onClick={() => setNewSheetOpen(true)}>
@@ -1022,7 +1022,7 @@ export default function DocumentsLedger({
         )}
       </div>
       <div className="documents-desktop-search">
-        <Search placeholder={tagsReady ? 'Search documents and labels...' : 'Search documents...'} value={search} onChange={setSearch} />
+        <Search placeholder={tagsReady ? 'Search documents and labels...' : 'Search documents...'} value={search} onChange={setSearch} dismissActionSelector=".hub-empty-state button" />
       </div>
       {canCreateTemplates ? (
         <button
@@ -1325,11 +1325,37 @@ export default function DocumentsLedger({
       onTag={(tag) => setTagFilter((cur) => (cur && cur.toLowerCase() === tag.toLowerCase() ? null : tag))}
     />
   ) : null;
-  const filteredEmpty = (() => {
-    if (tagFilter) return `No documents tagged "${tagFilter}".`;
-    if (homeView === 'shared-by-me') return 'Documents you share with others show here.';
-    if (homeView === 'shared-with-me') return 'Documents others share with you show here.';
-    return 'No documents match your search.';
+  // An empty list says why and offers the way out, as Archive and Issues do.
+  // It used to be one small grey line at the top left, under filter chips and
+  // column heads that had nothing to filter or sort (polish pass, KAL-652).
+  const chipFiltersOn = (reviewOn && !reviewFilterIsEmpty(reviewFilter)) || (registerOn && !registerFilterIsEmpty(registerFilter));
+  const viewIsEmpty = sharedViewsOn && homeView !== 'all' && viewCounts[homeView] === 0;
+  const showAll = { secondaryLabel: 'Show all files', onSecondary: () => pickHomeView('all') };
+  const emptyNotice = (() => {
+    if (chipFiltersOn) {
+      return {
+        icon: 'search', line: 'No documents match these filters',
+        secondaryLabel: 'Clear filters',
+        onSecondary: () => { setReviewFilter(EMPTY_REVIEW_FILTER); setRegisterFilter(EMPTY_REGISTER_FILTER); },
+      };
+    }
+    if (search.trim()) {
+      return { icon: 'search', line: 'No documents match your search', secondaryLabel: 'Clear search', onSecondary: () => setSearch('') };
+    }
+    if (extrasOn && tagFilter) {
+      return { icon: 'tag', line: `No documents tagged "${tagFilter}"`, secondaryLabel: 'Show all files', onSecondary: () => setTagFilter(null) };
+    }
+    if (extrasOn && homeView === 'shared-by-me') {
+      return {
+        icon: 'share', line: 'Nothing shared yet',
+        description: "Documents you share with others show here. To share one, open its More menu and choose Share.",
+        ...showAll,
+      };
+    }
+    if (extrasOn && homeView === 'shared-with-me') {
+      return { icon: 'users', line: 'Nothing shared with you yet', description: 'Documents others share with you show here.', ...showAll };
+    }
+    return { icon: 'search', line: 'No documents match your search' };
   })();
 
   return (
@@ -1355,13 +1381,13 @@ export default function DocumentsLedger({
           <div ref={listScrollRef} className="slim-scroll documents-ledger-scroll" style={{ overflow: 'auto', borderRight: showPreview ? '1px solid var(--ink-500)' : 0 }}>
             {deviceNotice}
             <div>
-              {reviewOn && mapped.length > 0 && (
+              {reviewOn && mapped.length > 0 && !viewIsEmpty && (
                 <ReviewChips filter={reviewFilter} onChange={setReviewFilter} counts={reviewCounts} />
               )}
-              {registerOn && mapped.length > 0 && (
+              {registerOn && mapped.length > 0 && !viewIsEmpty && (
                 <RegisterChips filter={registerFilter} onChange={setRegisterFilter} disciplines={disciplineRows} openCounts={{ with: openWithCount }} />
               )}
-              <div className={gridClass} style={{ ...ledgerHeader, display: 'grid', gridTemplateColumns: grid, position: 'sticky', top: 0, zIndex: 3 }}>
+              {!viewIsEmpty && <div className={gridClass} style={{ ...ledgerHeader, display: 'grid', gridTemplateColumns: grid, position: 'sticky', top: 0, zIndex: 3 }}>
                 {!showTiles && <span className="documents-ledger-head-check" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   {docSelectMode && docs.length > 0 && (
                     <button
@@ -1427,7 +1453,7 @@ export default function DocumentsLedger({
                 <span></span>
                   </>
                 )}
-              </div>
+              </div>}
               {docs.length === 0 && (
                 mapped.length === 0 ? (
                   <div style={{ paddingTop: 96 }}>
@@ -1442,7 +1468,9 @@ export default function DocumentsLedger({
                     />
                   </div>
                 ) : (
-                  <div className="meta" style={{ padding: '24px 16px', fontSize: 12 }}>{(reviewOn && !reviewFilterIsEmpty(reviewFilter)) || (registerOn && !registerFilterIsEmpty(registerFilter)) ? 'No documents match these filters.' : (extrasOn ? filteredEmpty : 'No documents match your search.')}</div>
+                  <div className="documents-empty-notice" style={{ paddingTop: viewIsEmpty ? 96 : 48 }}>
+                    <EmptyState {...emptyNotice} />
+                  </div>
                 )
               )}
               {showTiles && docs.length > 0 ? (
@@ -1786,7 +1814,7 @@ export default function DocumentsLedger({
                 {...sampleAction}
               />
             ) : (
-              <div className="meta" style={{ padding: '24px 16px', fontSize: 12 }}>{(reviewOn && !reviewFilterIsEmpty(reviewFilter)) || (registerOn && !registerFilterIsEmpty(registerFilter)) ? 'No documents match these filters.' : (extrasOn ? filteredEmpty : 'No documents match your search.')}</div>
+              <EmptyState {...emptyNotice} />
             )
           )}
           {docs.length > 0 && (showTiles ? (

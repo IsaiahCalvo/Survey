@@ -811,8 +811,12 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                 )}
               </div>
             )}
-            {(canManageMembers || editMode) && (
-              <button onClick={toggleEdit} className="hub-btn hub-btn--tertiary">{editMode ? "Done" : "Edit"}</button>
+            {/* It picks teammates for the bulk actions, so it says Select, as
+                Documents and Issues do, and hides while there is no one to pick
+                (only the creator, who can't be picked). It said Edit, and did
+                nothing in a team of one (polish pass, KAL-652). */}
+            {((canManageMembers && selectable.length > 0) || editMode) && (
+              <button onClick={toggleEdit} className="hub-btn hub-btn--tertiary">{editMode ? "Done" : "Select"}</button>
             )}
           </div>
 
