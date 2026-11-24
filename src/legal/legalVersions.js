@@ -12,7 +12,7 @@ export const IMPROVE_SURVEY_POLICY_VERSION = '2026-11-02';
 // The AI assistant notice the agent panel shows before its first use
 // (user_metadata.ai_assistant_consent.version). Bump when the list of AI
 // providers or what is sent to them changes.
-export const AI_NOTICE_VERSION = '2026-11-02';
+export const AI_NOTICE_VERSION = '2026-11-24';
 
 export const termsAcceptance = (now = new Date()) => ({
   terms: TERMS_VERSION,
