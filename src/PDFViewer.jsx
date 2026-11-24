@@ -1,4 +1,5 @@
 import { checkCounterSeriesEdit } from './utils/counterSeriesActions.js';
+import { exportFailureMessage } from './utils/exportFailureMessage.js';
 // PDFViewer — the document viewer (pdf.js canvas, annotation overlays,
 // zoom/scroll lifecycle, save/sync, history). Extracted verbatim from App.jsx.
 //
@@ -25035,7 +25036,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       }
     } catch (err) {
       console.error('[ExportAnnotatedPDF] failed:', err);
-      showToast(`Export failed: ${err?.message || err}`, 'error');
+      showToast(exportFailureMessage(err), 'error');
     }
   }, [
     exportAuthorNameFor,
@@ -25223,7 +25224,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       return { ok: true, fileName, ...(editPassword ? { editPassword } : {}) };
     } catch (err) {
       console.error('[ExportPdfWithOptions] failed:', err);
-      return { ok: false, error: `Export failed: ${err?.message || err}` };
+      return { ok: false, error: exportFailureMessage(err) };
     }
   }, [
     user?.user_metadata?.full_name,
@@ -25275,7 +25276,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       if (message) showToast(message.text, message.kind);
     } catch (err) {
       console.error('[XfdfExport] failed:', err);
-      showToast(`Export failed: ${err?.message || err}`, 'error');
+      showToast(exportFailureMessage(err), 'error');
     }
   }, [
     annotationsByPage,
@@ -25323,7 +25324,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       if (message) showToast(message.text, message.kind);
     } catch (err) {
       console.error('[ReviewBundle] failed:', err);
-      showToast(`Export failed: ${err?.message || err}`, 'error');
+      showToast(exportFailureMessage(err), 'error');
     }
   }, [
     annotationsByPage,

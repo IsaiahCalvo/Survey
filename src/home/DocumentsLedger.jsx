@@ -28,6 +28,7 @@ import useBrowserOnline from '../hooks/useBrowserOnline.js';
 import { getDocumentCollaborators, getDocumentOwnerProfile } from '../services/documentAnnotationService';
 import { supabase } from '../supabaseClient';
 import { documentTeamRows } from './documentTeam.js';
+import { subscribeLibraryChange } from '../hooks/libraryChangeBus.js';
 import Spinner from '../components/Spinner';
 import DismissBarrier from '../components/DismissBarrier';
 import { clickableProps } from '../utils/keyActivate';
@@ -570,6 +571,10 @@ export default function DocumentsLedger({
   const teamDocId = teamDocRaw?.id || null;
   const [teamCollab, setTeamCollab] = useState({ id: null, rows: [], owner: null });
   const teamOwnerIsMe = Boolean(user?.id && teamDocRaw?.user_id === user.id);
+  // A share made from the Share dialog changes this list; read it again then.
+  // The old rows stay on screen until the new ones arrive.
+  const [teamReadCount, setTeamReadCount] = useState(0);
+  useEffect(() => subscribeLibraryChange(() => setTeamReadCount((n) => n + 1)), []);
   useEffect(() => {
     if (!teamDocId || teamDocRaw?.device_file) return undefined;
     let live = true;
@@ -580,7 +585,7 @@ export default function DocumentsLedger({
       .then(([res, owner]) => { if (live) setTeamCollab({ id: teamDocId, rows: res?.data || [], owner }); })
       .catch(() => {});
     return () => { live = false; };
-  }, [teamDocId, teamOwnerIsMe, teamDocRaw?.device_file]);
+  }, [teamDocId, teamOwnerIsMe, teamDocRaw?.device_file, teamReadCount]);
   const teamFresh = teamCollab.id === teamDocId;
   // Review status and owner need edit access (set_document_review checks
   // user_can_access_document(..., 'editor')). Ask the server the same
