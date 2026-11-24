@@ -69,6 +69,7 @@ export function bundleResultMessage({ status, manifest, fileName }) {
 
 export async function runAnnotationBundleExport({
   sourcePdf,
+  sourceChanged = false,
   pdfName,
   documentId,
   annotationsByPage,
@@ -82,6 +83,7 @@ export async function runAnnotationBundleExport({
   const fileName = bundleFileNameForPdf(pdfName);
   const bundle = await buildAnnotationBundle({
     sourcePdf,
+    sourceChanged,
     pdfName,
     annotationsByPage,
     pageSizes,

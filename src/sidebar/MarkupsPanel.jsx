@@ -133,7 +133,9 @@ export default function MarkupsPanel({
   const downloadCsv = () => {
     if (!shown.length) return;
     try {
-      const blob = new Blob([markupRowsToCsv(shown, { labelFor, subjects: subjectsOn, notes: notesOn })], { type: 'text/csv;charset=utf-8;' });
+      // A shared file names people, never "You" (round 3 audit, r3b #7).
+      const csvAuthor = (id) => (id && peopleById.has(String(id)) ? authorLabel(id, { peopleById }) : labelFor(id));
+      const blob = new Blob([markupRowsToCsv(shown, { labelFor: csvAuthor, subjects: subjectsOn, notes: notesOn })], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;

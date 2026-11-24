@@ -358,15 +358,18 @@ export function markupRowsToCsv(rows, { labelFor = null, subjects = false, notes
   for (const row of rows || []) {
     lines.push([
       row.pageNumber,
-      row.kindLabel,
+      // The calibration line sets the scale; it is not takeoff, so it is
+      // named for what it is and leaves Quantity empty, and a column sum
+      // matches the panel total (round 3 audit, r3b #7).
+      row.measure?.calibration ? 'Calibration' : row.kindLabel,
       ...(subjects ? [row.subject || row.kindLabel] : []),
       row.text,
       ...(notes ? [row.note || ''] : []),
       row.color || '',
       labelFor ? labelFor(row.authorId) : (row.authorId || ''),
       row.createdAt || '',
-      row.measure ? row.measure.quantity : '',
-      row.measure?.unit || '',
+      row.measure && !row.measure.calibration ? row.measure.quantity : '',
+      row.measure && !row.measure.calibration ? (row.measure.unit || '') : '',
       row.layerName || '',
     ].map(csvCell).join(','));
   }

@@ -658,6 +658,8 @@ import { stampChangedSurveyMarkers } from './services/surveyMarkerStamp.js';
 // the same screen spot (utils/tabBehind.js). Look this tab's pages and
 // overlays up under its own root (pdfjsWrapperRef), never document-wide.
 const queryInViewer = (root, selector) => root?.querySelector?.(selector) || null;
+// Export sources built from the page list, so not the stored file (r3b #5).
+const rebuiltExportSources = new WeakSet();
 
 // KAL-309: read the workbook registration (workbook_id + sync_token) out of a
 // loaded ExcelJS workbook's hidden _SurveyMetadata sheet (cells B5/B6). Duck-typed
@@ -15609,7 +15611,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       ? operations.map((step) => (step.type === 'restore' && !step.entry?.blank ? { ...step, baseBytes: baseBytes.slice(0) } : step))
       : operations;
     const built = await mutatePdfPagesOffThread(() => baseBytes.slice(0), steps);
-    return new File([built], file?.name || 'document.pdf', { type: 'application/pdf' });
+    const rebuilt = new File([built], file?.name || 'document.pdf', { type: 'application/pdf' });
+    // The review package must say this PDF is not the stored file (r3b #5).
+    rebuiltExportSources.add(rebuilt);
+    return rebuilt;
   }, [flushPageOperations, pageRecordsBase, pdfFile, readPageMutationPdfBytes]);
   const handleMirrorPage = useCallback((...args) => {
     if (!canRestoreFromHistoryRef.current) {
@@ -25303,8 +25308,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     try {
       showToast('Making the review package…', 'info');
       const { runAnnotationBundleExport, bundleResultMessage } = await import('./utils/annotationBundle/runAnnotationBundleExport.js');
+      const sourcePdf = await getExportSourcePdf();
       const result = await runAnnotationBundleExport({
-        sourcePdf: await getExportSourcePdf(),
+        sourcePdf,
+        sourceChanged: rebuiltExportSources.has(sourcePdf),
         pdfName: pdfDisplayNameRef.current || 'document.pdf',
         documentId: pdfFile?.id || null,
         annotationsByPage: withoutHiddenLayers(annotationsByPage, hiddenLayerIds),

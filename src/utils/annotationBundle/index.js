@@ -3,8 +3,11 @@
 //   audit-log.json     who changed what and when, from the document's History
 //   thumbnails/        a picture of every page with marks, plus contact-sheet.png
 //   manifest.json      what is inside, with SHA-256 of each file and of the PDF
-// The source PDF is never written; its hash goes in the manifest so a reviewer
-// can check the bundle belongs to that exact file.
+// The source PDF is not written when it is the stored file; its hash goes in
+// the manifest so a reviewer can check the bundle belongs to that exact file.
+// When pages were moved, added or removed in the app, the stored file no
+// longer matches the XFDF's page numbers, so the current pages (no marks) go
+// in as document.pdf and the manifest says "changed" (round 3 audit, r3b #5).
 
 import { exportAnnotationsAsXfdf } from '../xfdfExport/index.js';
 import { buildAuditLog } from './auditLog.js';
@@ -33,6 +36,7 @@ export function bundleFileNameForPdf(pdfName) {
 /**
  * @param {object} args
  * @param {Blob|File|Uint8Array} args.sourcePdf
+ * @param {boolean} [args.sourceChanged]  the pages differ from the stored file
  * @param {string} args.pdfName
  * @param {object} args.annotationsByPage
  * @param {object} args.pageSizes
@@ -45,6 +49,7 @@ export function bundleFileNameForPdf(pdfName) {
  */
 export async function buildAnnotationBundle({
   sourcePdf,
+  sourceChanged = false,
   pdfName,
   annotationsByPage,
   pageSizes,
@@ -85,6 +90,7 @@ export async function buildAnnotationBundle({
     { name: 'annotations.xfdf', data: xfdf },
     { name: 'audit-log.json', data: `${JSON.stringify(auditLog, null, 2)}\n` },
     ...thumbs.files,
+    ...(sourceChanged ? [{ name: 'document.pdf', data: sourceBytes }] : []),
   ];
   const files = [];
   for (const file of contentFiles) {
@@ -95,7 +101,13 @@ export async function buildAnnotationBundle({
     format: BUNDLE_FORMAT,
     version: BUNDLE_VERSION,
     exportedAt,
-    source: { name: pdfName, sha256: sourceSha256, bytes: sourceBytes.length, changed: false },
+    source: {
+      name: pdfName,
+      sha256: sourceSha256,
+      bytes: sourceBytes.length,
+      changed: Boolean(sourceChanged),
+      ...(sourceChanged ? { file: 'document.pdf' } : {}),
+    },
     marks,
     history: auditLog.coverage,
     thumbnails: { pages: thumbs.pages, truncated: thumbs.truncated },

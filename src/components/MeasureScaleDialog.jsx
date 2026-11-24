@@ -59,6 +59,11 @@ export default function MeasureScaleDialog({ pageNumber, pageCount = 1, lengthPt
   const tip = useTooltip();
   const cardRef = useRef(null);
   const [real, setReal] = useState('');
+  // Without 'calibrate-entry' the box is a number field, which drops ' and "
+  // without a word, so 12' 6" became 126, a scale ten times too big (round 3
+  // audit, r3b #8). A typed foot or inch mark turns the box into a text box
+  // read as feet and inches, so what was typed is what counts.
+  const [typedMark, setTypedMark] = useState(false);
   // With no scale yet, start from the default units (Settings > Annotations).
   // Nightly 'default-units': with the flag off a stored metric choice is ignored.
   const [metric] = useState(() => isFeatureOn('default-units') && readUnits() === 'metric');
@@ -74,7 +79,8 @@ export default function MeasureScaleDialog({ pageNumber, pageCount = 1, lengthPt
   // (20' 6", 20-6, 6") and says what the traced line is on paper.
   // 'measure-plus' takes it too: Drawboard's calibrate reads `40'` as typed.
   const [entryOn] = useState(() => isFeatureOn('calibrate-entry') || isFeatureOn('measure-plus'));
-  const realValue = entryOn ? parseRealLength(real, unit) : real;
+  const textEntry = entryOn || typedMark;
+  const realValue = textEntry ? parseRealLength(real, unit) : real;
   // Nightly 'measure-plus': a custom scale row, Drawboard's number formats
   // (units + precision) and "Set as default". Reopens on the live scale.
   const [plusOn] = useState(() => isFeatureOn('measure-plus'));
@@ -184,14 +190,23 @@ export default function MeasureScaleDialog({ pageNumber, pageCount = 1, lengthPt
                   data-autofocus
                   data-measure-real-length="true"
                   className="measure-scale__field"
-                  type={entryOn ? 'text' : 'number'}
-                  inputMode={entryOn ? 'text' : 'decimal'}
+                  type={textEntry ? 'text' : 'number'}
+                  inputMode={textEntry ? 'text' : 'decimal'}
                   autoComplete="off"
-                  min={entryOn ? undefined : '0'}
-                  step={entryOn ? undefined : 'any'}
+                  min={textEntry ? undefined : '0'}
+                  step={textEntry ? undefined : 'any'}
                   placeholder={entryOn ? (unit === 'ft' ? `e.g. 20' 6"` : '0') : '0'}
                   value={real}
                   onChange={(e) => setReal(e.target.value)}
+                  onKeyDown={textEntry ? undefined : (e) => {
+                    // A number field takes no mark; add it by hand and
+                    // switch to the text box (the caret is at the end).
+                    if (["'", '"', '’', '”', '′', '″'].includes(e.key)) {
+                      e.preventDefault();
+                      setTypedMark(true);
+                      setReal((prev) => `${prev}${e.key}`);
+                    }
+                  }}
                   style={{ fontSize: 16 }}
                 />
                 <div className="measure-scale__label">Unit</div>
