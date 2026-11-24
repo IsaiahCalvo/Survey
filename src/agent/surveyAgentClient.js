@@ -176,6 +176,11 @@ const CLAIMS_WRITE = /(?:^|[.!]\s+|\bI(?:'ve| have)?\s+(?:also\s+)?)(?:recorded|
 const DENIES = /\b(did not|didn't|could not|couldn't|cannot|can't|unable|nothing|no changes?|have not|haven't|was not|wasn't|not (?:find|found|sure|able))\b|\?\s*$/i;
 const SHOW_TOOLS = new Set(['show_item', 'show_on_plan']);
 
+// The model's way of saying a spoken message stopped mid-thought: wait for the rest.
+const UNFINISHED_REPLY = /^\s*(\.\.\.|…)\s*$/;
+/** Whether a model reply means "go on, I'm waiting for the rest". */
+export const isUnfinishedReply = (reply) => !String(reply || '').trim() || UNFINISHED_REPLY.test(String(reply));
+
 /** What the reply claims that no tool did this turn: 'show', 'write' or null. */
 export function unbackedClaim(reply, { shown = false, wrote = false } = {}) {
   const text = String(reply || '');
@@ -195,9 +200,29 @@ const CLAIM_CHECK = {
  * tool_calls, tool), not changed on error. Returns { history, reply, changes }
  * where changes are the writes this turn made, oldest first.
  */
-export async function runSurveyAgentTurn({ history = [], userText, call, toolbox, answerValues, typedLines = false, annotations = false, lang = 'en', offers: offersOn = false, noteStyle = null, photos = false, maxSteps = SURVEY_AGENT_LIMITS.maxToolSteps }) {
+/**
+ * shouldStop(): the person started talking again. Checked before each model
+ * call and before the reply; while nothing has changed yet the turn stops
+ * with code 'superseded', so its words can join what they say next (as a
+ * live voice agent drops a reply the person talks over). Once something
+ * changed, the turn runs to its end.
+ *
+ * A reply of "…" (or nothing) with nothing changed is { unfinished: true }:
+ * the words stopped mid-thought, and the history stays as it was so the
+ * whole thought goes out once the rest is heard.
+ */
+export async function runSurveyAgentTurn({ history = [], userText, call, toolbox, answerValues, typedLines = false, annotations = false, lang = 'en', offers: offersOn = false, noteStyle = null, photos = false, maxSteps = SURVEY_AGENT_LIMITS.maxToolSteps, shouldStop = null }) {
   const messages = [...compactHistory(history), { role: 'user', content: userText }];
   const changes = [];
+  // "Page 6 or 33?" buttons a tool asked for this turn.
+  let choice = null;
+  const stopIfTalkedOver = () => {
+    if (!changes.length && typeof shouldStop === 'function' && shouldStop()) {
+      const err = new SurveyAgentError('superseded');
+      err.changes = [];
+      throw err;
+    }
+  };
   // A summary a tool made this turn ({ title, text }), for the person to save.
   let summary = null;
   // Template additions a tool offered this turn (KAL-529), for Yes / No cards.
@@ -221,6 +246,7 @@ export async function runSurveyAgentTurn({ history = [], userText, call, toolbox
   // left out of the history kept.
   let checked = null;
   for (let step = 0; step < maxSteps; step += 1) {
+    stopIfTalkedOver();
     let response;
     try {
       response = await call({ action: 'turn', messages, answer_values: answerValues, ...(typedLines ? { typed_lines: true } : {}), ...(annotations ? { annotations: true } : {}), ...(lang && lang !== 'en' ? { lang } : {}), ...(offersOn ? { offers: true } : {}), ...(noteStyle && noteStyle !== 'sentences' ? { note_style: noteStyle } : {}), ...(photos ? { photos: true } : {}) });
@@ -234,6 +260,10 @@ export async function runSurveyAgentTurn({ history = [], userText, call, toolbox
     const calls = (Array.isArray(response?.message?.tool_calls) ? response.message.tool_calls : [])
       .filter((c) => c?.id && c?.function?.name);
     if (!calls.length) {
+      stopIfTalkedOver();
+      if (!changes.length && !choice && isUnfinishedReply(reply)) {
+        return { history, reply: '', unfinished: true, changes, summary, offers, choice, promptVersion };
+      }
       const claim = unbackedClaim(reply, { shown, wrote: changes.length > 0 });
       if (claim && !checked) {
         checked = messages.length;
@@ -246,7 +276,7 @@ export async function runSurveyAgentTurn({ history = [], userText, call, toolbox
         : claim === 'show' ? (changes.length ? 'Done, but I did not show it.' : 'I did not show it.')
           : 'I did not change anything.';
       messages.push({ role: 'assistant', content: said || '(no reply)' });
-      return { history: messages, reply: said || (changes.length ? 'Done.' : 'I did not change anything.'), changes, summary, offers, promptVersion };
+      return { history: messages, reply: said || (changes.length ? 'Done.' : 'I did not change anything.'), changes, summary, offers, choice, promptVersion };
     }
     messages.push({
       role: 'assistant',
@@ -270,6 +300,7 @@ export async function runSurveyAgentTurn({ history = [], userText, call, toolbox
       if (result.changes) changes.push(...result.changes);
       if (result.summary) summary = result.summary;
       if (result.offer) offers.push(result.offer);
+      if (result.choice) choice = result.choice;
       messages.push({ role: 'tool', tool_call_id: c.id, content: result.isError ? `Error: ${result.content}` : result.content });
       // Let the panel re-render so the next tool reads the new state.
       await yieldToApp();
@@ -278,5 +309,5 @@ export async function runSurveyAgentTurn({ history = [], userText, call, toolbox
   // Too many steps: close the turn so the conversation stays valid.
   if (checked != null) messages.splice(checked, 2);
   messages.push({ role: 'assistant', content: 'I stopped there; that took too many steps.' });
-  return { history: messages, reply: 'I stopped there; that took too many steps. Check what I changed below.', changes, summary, offers, promptVersion };
+  return { history: messages, reply: 'I stopped there; that took too many steps. Check what I changed below.', changes, summary, offers, choice, promptVersion };
 }

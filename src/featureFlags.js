@@ -73,6 +73,14 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Survey agent: offer a new checklist line or category (Yes / No card), and a note style setting',
     stage: 'beta',
   }),
+  // With no signal, the agent does the common things said (answers by line,
+  // all lines, a note, show an item, undo) on the device by plain rules
+  // (src/agent/offlineHelper.js), and hears with the device's offline speech
+  // where the browser or phone has it. The rest still waits for the signal.
+  'survey-agent-offline': Object.freeze({
+    label: 'Survey agent: work with no signal (answers, notes and undo on the device)',
+    stage: 'beta',
+  }),
   // Read by the survey-mcp edge function, not the app: Claude or ChatGPT
   // connectors write only for people this flag is on for at /flags.
   'survey-connector-writes': Object.freeze({

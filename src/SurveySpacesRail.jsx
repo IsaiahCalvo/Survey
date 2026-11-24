@@ -1724,6 +1724,8 @@ const SurveySpacesRail = ({
       findAllOnPlan: (like, page) => findTagsLikeInDocument(activeAgentDocument(), like, page),
       // find_described: every sheet's words and the floor its title shows.
       readSheets: () => readDocumentSheets(activeAgentDocument(), sheetFloorOf),
+      // read_scanned_pages: on-device text recognition of one scanned page.
+      recognizePage: (page) => activeAgentDocument()?.recognizePageWords?.(page) ?? false,
       showPlace: (page, box) => handleLocateItemOnPDF({ pageNumber: page, bounds: box }),
       getCurrentPage: () => activeAgentDocument()?.getCurrentPage?.() || null,
       getPageSize: (page) => activeAgentDocument()?.getPageSize?.(page) || null,

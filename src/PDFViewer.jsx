@@ -650,6 +650,7 @@ import {
   resolveLocalOcrProvider,
   saveCachedOcrResult,
 } from './utils/localOcrProvider.js';
+import { renderPageForOcr } from './utils/agentPageOcr.js';
 import { isInTabBehind } from './utils/tabBehind.js';
 import { stampChangedSurveyMarkers } from './services/surveyMarkerStamp.js';
 
@@ -35258,7 +35259,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       // text layer, else from text recognition the person already ran.
       getPageWords: async (page) => {
         const state = agentMarkerStateRef.current;
-        const ocrWords = state.ocrStateByPage?.[page]?.result?.words;
+        const ocrWords = state.ocrStateByPage?.[page]?.result?.words || state.ocrResultForPage?.(page)?.words;
         if (!state.pdfDoc) return { words: [], source: 'none' };
         const pdfPage = await state.pdfDoc.getPage(page);
         const content = await pdfPage.getTextContent();
@@ -35266,6 +35267,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         if (words.length) return { words, source: 'text' };
         if (ocrWords?.length) return { words: ocrWordsToWords(ocrWords), source: 'ocr' };
         return { words: [], source: 'none' };
+      },
+      // Survey agent: text recognition on a scanned page, on the device.
+      // True once the page has words to read.
+      recognizePageWords: async (page) => {
+        const result = await agentMarkerStateRef.current.recognizeTextOnPage?.(page, { offscreen: true });
+        return Boolean(result?.words?.length);
       },
       getPageCount: () => agentMarkerStateRef.current.pdfDoc?.numPages || 0,
       getCurrentPage: () => pageNumRef.current || 1,
@@ -35870,10 +35877,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     setTextAvailabilityByPage((prev) => (prev[pageNumber] === usable ? prev : { ...prev, [pageNumber]: usable }));
   }, []);
 
-  const recognizeTextOnPage = useCallback(async (pageNumber) => {
+  const recognizeTextOnPage = useCallback(async (pageNumber, { offscreen = false } = {}) => {
     const pageElement = pdfjsViewerRef.current?.getPageContainers?.()?.[pageNumber];
-    const canvas = pageElement?.querySelector?.('canvas');
-    const pageSize = pageSizesRef.current?.[pageNumber];
+    let canvas = pageElement?.querySelector?.('canvas');
+    let pageSize = pageSizesRef.current?.[pageNumber];
+    // The Survey agent asks for pages that are not on screen: draw one off screen.
+    if ((!canvas || !pageSize) && offscreen && pdfDoc) {
+      try { ({ canvas, pageSize } = await renderPageForOcr(pdfDoc, pageNumber)); } catch { canvas = null; }
+    }
     if (!canvas || !pageSize) {
       setOcrStateByPage((prev) => ({ ...prev, [pageNumber]: { status: 'error', message: 'Page image is not ready.' } }));
       return;
@@ -35883,7 +35894,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     const cached = ocrCacheRef.current.get(cacheKey) || loadCachedOcrResult(cacheKey);
     if (cached) {
       setOcrStateByPage((prev) => ({ ...prev, [pageNumber]: { status: 'complete', result: cached } }));
-      return;
+      return cached;
     }
     const controller = new AbortController();
     ocrAbortByPageRef.current.get(pageNumber)?.abort?.();
@@ -35907,6 +35918,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       ocrCacheRef.current.set(cacheKey, result);
       saveCachedOcrResult(cacheKey, result);
       setOcrStateByPage((prev) => ({ ...prev, [pageNumber]: { status: 'complete', result } }));
+      return result;
     } catch (error) {
       setOcrStateByPage((prev) => ({
         ...prev,
@@ -35918,6 +35930,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       if (ocrAbortByPageRef.current.get(pageNumber) === controller) ocrAbortByPageRef.current.delete(pageNumber);
     }
   }, [pdfDoc, pdfFile?.id, pdfFile?.name]);
+
+  // Survey agent: recognition it can run on a scanned page, and a page's
+  // earlier recognition (kept on the device) before this render's state has it.
+  agentMarkerStateRef.current.recognizeTextOnPage = recognizeTextOnPage;
+  agentMarkerStateRef.current.ocrResultForPage = (pageNumber) => {
+    const fingerprint = pdfDoc?.fingerprints?.[0] || pdfDoc?.fingerprint || pdfFile?.id || pdfFile?.name;
+    const cacheKey = buildOcrCacheKey({ documentFingerprint: fingerprint, pageNumber, language: 'eng' });
+    return ocrCacheRef.current.get(cacheKey) || loadCachedOcrResult(cacheKey);
+  };
 
   // Text Select pays the OCR cost only when the user asks for text interaction.
   // A page with embedded text never starts OCR. A scanned page starts once when

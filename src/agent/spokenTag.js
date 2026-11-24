@@ -58,6 +58,11 @@ export function kindOf(word) {
   return KIND_ALIASES[single] || (KIND_CODES[single] ? single : null);
 }
 
+const escapeRe = (v) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// Lower case, letters and digits only, hyphens as spaces: how a sentence
+// and a category name are compared.
+export const spokenForm = (text) => lower(text).replace(/[^a-z0-9#\s-]/g, ' ').replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
+
 const toNumber = (word) => {
   if (/^\d+$/.test(word)) return Number(word);
   const ordinal = /^(\d+)(st|nd|rd|th)$/.exec(word);
@@ -67,52 +72,71 @@ const toNumber = (word) => {
   return null;
 };
 
+const FLOOR_PATTERNS = [
+  /\b(\d+)(?:st|nd|rd|th)?\s+(?:floor|level|fl|story|storey)\b/,
+  /\b(ground|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth)\s+(?:floor|level|story|storey)\b/,
+  /\b(?:floor|level|lvl|fl)\s*(?:number\s+)?(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b/,
+  /\bl(\d{1,2})\b/,
+];
+
+/** The floor said in a spoken-form string, and the string without it. */
+export function takeFloor(s) {
+  for (const re of FLOOR_PATTERNS) {
+    const m = re.exec(s);
+    if (m) return { floor: toNumber(m[1]), s: `${s.slice(0, m.index)} ${s.slice(m.index + m[0].length)}` };
+  }
+  return { floor: null, s };
+}
+
+/**
+ * The kind of device said in a spoken-form string, and the string without
+ * it: the project's own categories first (any trade: "smoke detector",
+ * "pull station", "VAV box"), longest words first; then the usual kinds.
+ */
+export function takeKind(s, kinds = []) {
+  const own = (kinds || []).flatMap((k) => k.words.map((word) => ({ word, k })))
+    .sort((a, b) => b.word.length - a.word.length);
+  for (const { word, k } of own) {
+    const m = new RegExp(`\\b${escapeRe(word)}\\b`).exec(s);
+    if (m) return { kind: k.kind, kindWord: word, codes: k.codes, at: m.index, end: m.index + m[0].length, s: `${s.slice(0, m.index)} ${s.slice(m.index + m[0].length)}` };
+  }
+  for (const word of KIND_WORDS) {
+    const m = new RegExp(`\\b${word}\\b`).exec(s);
+    if (m) return { kind: KIND_ALIASES[word] || word, kindWord: word, codes: null, at: m.index, end: m.index + m[0].length, s: `${s.slice(0, m.index)} ${s.slice(m.index + m[0].length)}` };
+  }
+  return { kind: null, kindWord: null, codes: null, at: -1, end: -1, s };
+}
+
 /**
  * What a person asked for: { kind, kindWord, number, floor, wing, code }.
  * "find camera 6 on the 4th floor" -> { kind: 'camera', number: 6, floor: 4 }.
  * "C six, fourth floor west" -> { code: 'c', number: 6, floor: 4, wing: 'w' }.
  * Null when there is no number to look for.
  */
-export function parseDescribedTarget(text) {
-  let s = ` ${lower(text).replace(/[^a-z0-9#\s-]/g, ' ').replace(/-/g, ' ')} `;
+export function parseDescribedTarget(text, { kinds = [] } = {}) {
+  let s = ` ${spokenForm(text)} `;
   s = s.replace(/\b(twenty|thirty|forty|fifty)\s+(one|two|three|four|five|six|seven|eight|nine)\b/g,
     (_, t, o) => ` ${NUMBER_WORDS[t] + NUMBER_WORDS[o]} `);
-  let floor = null;
+  const took = takeFloor(s);
+  s = took.s;
+  let { floor } = took;
   let wing = null;
-  const floorPatterns = [
-    /\b(\d+)(?:st|nd|rd|th)?\s+(?:floor|level|fl|story|storey)\b/,
-    /\b(ground|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth)\s+(?:floor|level|story|storey)\b/,
-    /\b(?:floor|level|lvl|fl)\s*(?:number\s+)?(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b/,
-    /\bl(\d{1,2})\b/,
-  ];
-  for (const re of floorPatterns) {
-    const m = re.exec(s);
-    if (m) {
-      floor = toNumber(m[1]);
-      s = `${s.slice(0, m.index)} ${s.slice(m.index + m[0].length)}`;
-      break;
-    }
-  }
   const wingMatch = /\b(west|east|north|south)\b/.exec(s);
   if (wingMatch) {
     wing = WINGS[wingMatch[1]];
     s = `${s.slice(0, wingMatch.index)} ${s.slice(wingMatch.index + wingMatch[0].length)}`;
   }
-  let kind = null;
-  let kindWord = null;
-  for (const word of KIND_WORDS) {
-    const m = new RegExp(`\\b${word}\\b`).exec(s);
-    if (m) {
-      kind = KIND_ALIASES[word] || word;
-      kindWord = word;
-      s = `${s.slice(0, m.index)} ${s.slice(m.index + m[0].length)}`;
-      break;
-    }
-  }
+  const said = takeKind(s, kinds);
+  s = said.s;
+  const { kindWord } = said;
+  let { kind, codes } = said;
   const words = s.split(/\s+/).filter(Boolean);
   // Numbers in a row: typed digit groups ("C-4-06") are a floor then a
   // number; spoken ones run together ("one seventeen" is 117, "four oh six" 406).
   const runs = [];
+  // Words that are none of kind, number, floor, wing, code or filler: a
+  // caller that must account for every word (the offline helper) checks it.
+  const leftover = [];
   let code = null;
   let run = null;
   for (let i = 0; i < words.length; i += 1) {
@@ -137,6 +161,7 @@ export function parseDescribedTarget(text) {
     }
     run = null;
     if (/^[a-z]{1,4}$/.test(w) && !code && !runs.length && !(w in ORDINAL_WORDS)) code = w;
+    else leftover.push(w);
   }
   const first = runs[0];
   if (!first) return null;
@@ -148,12 +173,20 @@ export function parseDescribedTarget(text) {
     number = Number(first.groups.join(''));
   }
   if (!Number.isFinite(number)) return null;
-  // A bare letter code the kind list knows ("cam 6") is that kind.
-  if (!kind && code) {
-    const known = Object.entries(KIND_CODES).find(([, codes]) => codes.includes(code) && code.length > 1);
-    if (known) kind = known[0];
+  // A bare letter code one kind knows ("cam 6", "SD 4") is that kind: the
+  // project's own kinds first, and only when one kind alone has it.
+  if (!kind && code && code.length > 1) {
+    const mine = (kinds || []).filter((k) => k.codes.includes(code));
+    if (mine.length === 1) { kind = mine[0].kind; codes = mine[0].codes; }
+    else if (!mine.length) {
+      const known = Object.entries(KIND_CODES).find(([, list]) => list.includes(code));
+      if (known) kind = known[0];
+    }
   }
-  return { kind, kindWord, number, floor, wing, code };
+  const target = { kind, kindWord, number, floor, wing, code, ...(codes ? { codes } : {}) };
+  // Not shown to the model or compared in tests: only for callers that check.
+  Object.defineProperty(target, 'leftover', { value: leftover, enumerable: false });
+  return target;
 }
 
 /** Letter and digit groups of a tag: "4W-CAM-06" -> letters [w, cam], digits ["4", "06"]. */
@@ -165,10 +198,17 @@ export function tagParts(text) {
   };
 }
 
+const initials = (words) => (words.includes(' ') ? words.split(' ').map((w) => w[0]).join('') : null);
 const kindCodes = (kind, kindWord) => {
   const codes = new Set(KIND_CODES[kind] || []);
-  if (kind) { codes.add(kind.replace(/\s+/g, '')); codes.add(kind[0]); }
-  if (kindWord) { codes.add(kindWord.replace(/\s+/g, '')); codes.add(kindWord[0]); }
+  // "pull station" is PS, "data drop" DD: the initials of the words said.
+  for (const w of [kind, kindWord]) {
+    if (!w) continue;
+    codes.add(w.replace(/\s+/g, ''));
+    codes.add(w[0]);
+    const i = initials(w);
+    if (i) codes.add(i);
+  }
   return codes;
 };
 
@@ -231,6 +271,7 @@ export function scoreDescribedTag(target, text, { category = null, pageFloor = n
   }
   if (target.kind || target.code) {
     const codes = kindCodes(target.kind, target.kindWord);
+    for (const c of target.codes || []) codes.add(c);
     if (target.code) codes.add(target.code);
     if (codeLetters.some((l) => codes.has(l))) score += 0.2;
     else if (sameKindName(category, target.kind)) score += 0.2;
@@ -285,4 +326,97 @@ export function sheetFloorOf(words) {
     return best && best[1] >= total * 0.6 ? best[0] : null;
   };
   return { floor: pick(floors), wing: pick(wings) };
+}
+
+const plural = (word) => (/(s|x|ch|sh)$/.test(word) ? `${word}es` : /[^aeiou]y$/.test(word) ? `${word.slice(0, -1)}ies` : `${word}s`);
+const singular = (word) => (/ies$/.test(word) ? `${word.slice(0, -3)}y` : /(xes|ches|shes|sses)$/.test(word) ? word.slice(0, -2) : /[^s]s$/.test(word) ? word.slice(0, -1) : word);
+
+/**
+ * Kinds from a project's own categories, so any trade's words work: with a
+ * "Smoke Detector" category, "smoke detector 4 on the third floor" finds
+ * SD-3-04. Nothing is hard-coded per trade: each category's name gives the
+ * words, and the tags of items already in it give the letters.
+ *
+ * categories: [{ name, tags: [item names in it] }]. Returns
+ * [{ kind, words, codes }]: kind is the name as said ("smoke detector");
+ * words are how it may be said (the name, singular and plural, and its last
+ * word or two when no other category ends the same way); codes are the
+ * letters its tags may start with (initials, first letter, first three
+ * letters, letters seen in its tags, and the usual codes of a known kind).
+ */
+export function templateKinds(categories) {
+  const byKind = new Map();
+  for (const c of categories || []) {
+    const name = spokenForm(c?.name);
+    if (!name || !/[a-z]/.test(name)) continue;
+    // "Smoke Detectors" and "Smoke Detector" are one kind, said in the singular.
+    const parts = name.split(' ');
+    parts[parts.length - 1] = singular(parts[parts.length - 1]);
+    const kind = parts.join(' ');
+    const entry = byKind.get(kind) || { kind, words: new Set(), codes: new Set(), tails: [] };
+    byKind.set(kind, entry);
+    const last = parts[parts.length - 1];
+    const head = parts.slice(0, -1).join(' ');
+    for (const w of [last, singular(last), plural(singular(last))]) entry.words.add(head ? `${head} ${w}` : w);
+    if (parts.length >= 2) entry.tails.push(parts.slice(-1));
+    if (parts.length >= 3) entry.tails.push(parts.slice(-2));
+    const letters = parts.filter((p) => /^[a-z]/.test(p));
+    if (letters.length) {
+      entry.codes.add(letters[0][0]);
+      if (letters.length >= 2) entry.codes.add(letters.map((p) => p[0]).join(''));
+      if (letters[0].length >= 3) entry.codes.add(letters[0].slice(0, 3));
+      if (letters.length === 1 && letters[0].length <= 4) entry.codes.add(letters[0]);
+    }
+    const known = kindOf(kind) || kindOf(last);
+    for (const code of KIND_CODES[known] || []) entry.codes.add(code);
+    for (const tag of c?.tags || []) {
+      const { letters: tagLetters } = tagParts(tag);
+      for (const l of tagLetters) if (l.length <= 4 && !(isWingLetter(l) && tagLetters.length > 1)) entry.codes.add(l);
+    }
+  }
+  // "Pull station 3" for "Fire Alarm Pull Station": a short tail counts only
+  // when no other category ends with the same words or has them as a word.
+  const all = [...byKind.values()];
+  for (const entry of all) {
+    for (const tail of entry.tails) {
+      const said = tail.join(' ');
+      const forms = [said, tail.length === 1 ? singular(said) : null, tail.length === 1 ? plural(singular(said)) : null].filter(Boolean);
+      const clash = all.some((o) => o !== entry && (o.kind.split(' ').slice(-tail.length).join(' ') === said || [...o.words].some((w) => forms.includes(w))));
+      if (clash) continue;
+      forms.forEach((f) => entry.words.add(f));
+      if (tail.length > 1) entry.codes.add(tail.map((w) => w[0]).join(''));
+    }
+  }
+  return all.map(({ kind, words, codes }) => ({ kind, words: [...words].filter(Boolean), codes: [...codes] }));
+}
+
+/** The kind one word or name is, among a project's kinds, else the usual ones. */
+export function kindFromWord(word, kinds = []) {
+  const said = spokenForm(word);
+  if (!said) return null;
+  const mine = (kinds || []).find((k) => k.kind === said || k.words.includes(said));
+  if (mine) return { kind: mine.kind, codes: mine.codes };
+  return { kind: kindOf(said) || said, codes: null };
+}
+
+/**
+ * A floor number from how a floor is written on an item ("Floor 2", "2nd",
+ * "Level 02", "second", "L2"), or null when it is not a plain number
+ * ("Basement", "Mezzanine").
+ */
+export function floorNumberOf(value) {
+  const text = lower(value).replace(/\b(floor|level|lvl|fl|storey|story|flr)\b/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
+  if (!text) return null;
+  const l = /^l(\d{1,2})$/.exec(text);
+  if (l) return Number(l[1]);
+  if (text.includes(' ')) return null;
+  const n = toNumber(text);
+  return n != null && n < 200 ? n : null;
+}
+
+/** The wing letter from how a wing is written on an item ("West", "W wing"). */
+export function wingLetterOf(value) {
+  const text = lower(value).replace(/\b(wing|side)\b/g, ' ').replace(/[^a-z]+/g, ' ').trim();
+  if (WINGS[text]) return WINGS[text];
+  return /^[nsew]$/.test(text) ? text : null;
 }

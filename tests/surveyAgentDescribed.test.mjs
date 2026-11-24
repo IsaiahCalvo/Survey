@@ -168,7 +168,11 @@ test('find_described finds the item, then the plan tag, without the wing or whol
   assert.deepEqual(again.items.map((i) => i.name), ['C-06']);
   assert.equal(again.items[0].sheet_floor, 4);
   assert.equal(again.plan[0].already_item.id, 'm6');
-  assert.equal((await box.run('find_described', { description: 'the camera by the stairs' })).isError, true);
+  // By place: no STAIR label on these sheets, so nothing fits (and no error).
+  const byPlace = JSON.parse((await box.run('find_described', { description: 'the camera by the stairs' })).content);
+  assert.equal(byPlace.by_place, true);
+  assert.deepEqual([byPlace.items, byPlace.plan], [[], []]);
+  assert.equal((await box.run('find_described', { description: 'the camera' })).isError, true);
 });
 
 test('answers for the Commissioning lines go to the same camera in Commissioning, added on the same spot', async () => {

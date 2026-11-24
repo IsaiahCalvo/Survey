@@ -232,3 +232,8 @@ test('add_all_from_plan adds every new door on the page as one undoable reply', 
   assert.equal((await box.run('add_all_from_plan', { category_id: 'cat-door', like: '118', page: 2, entity_id: null })).isError, true);
   assert.equal((await box.run('add_all_from_plan', { category_id: 'cat-nope', like: 'D-118', page: 2, entity_id: null })).isError, true);
 });
+
+test('text recognition words in the stored quad shape (x1..y4) get boxes too', () => {
+  const words = ocrWordsToWords([{ text: 'PS-2-03', quad: { x1: 10, y1: 20, x2: 50, y2: 20, x3: 10, y3: 30, x4: 50, y4: 30 } }]);
+  assert.deepEqual(words, [{ text: 'PS-2-03', box: { x: 10, y: 20, width: 40, height: 10 } }]);
+});

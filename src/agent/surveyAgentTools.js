@@ -9,9 +9,11 @@ import { MARK_COLOR_HEX, normalizeItemName, scoreItemName } from '../../supabase
 import { markBox, visiblePageBox } from './planView.js';
 import { answerSetMeaning, moduleKind, moduleMeaning } from '../../supabase/functions/_shared/surveyAgentMeaning.js';
 import { boundsCover, findDescribedOnPages, markerBoxAroundTag, tagShape } from './planText.js';
-import { kindOf, parseDescribedTarget, scoreDescribedTag } from './spokenTag.js';
+import { floorNumberOf, kindFromWord, parseDescribedTarget, scoreDescribedTag, templateKinds, wingLetterOf } from './spokenTag.js';
+import { nearestToPlace, parsePlaceTarget } from './placeFind.js';
 import { summarizeSurvey, summaryText } from '../services/surveySummary.js';
-import { learnedForModel, learnedNameFor, memoryKey, rewordText } from './agentMemory.js';
+import { learnedForModel, learnedNameFor, learnedStateFor, memoryKey, rewordText } from './agentMemory.js';
+import { DEFAULT_PLACEMENT, placementFromWords, placementWords } from './sheetKind.js';
 
 export { normalizeItemName, scoreItemName };
 
@@ -19,6 +21,8 @@ export { normalizeItemName, scoreItemName };
 const MAX_BULK_ITEMS = 60;
 // survey_status names at most this many items per group; the counts are whole.
 const STATUS_LIST_MAX = 20;
+// One read_scanned_pages call reads at most this many pages (seconds each).
+const MAX_OCR_PAGES = 4;
 // One tidy_notes call rewrites at most this many items' notes.
 const MAX_TIDY_ITEMS = 300;
 
@@ -43,6 +47,81 @@ function categoryIndex(template) {
     }
   }
   return { list, find: (moduleId, categoryId) => byKey.get(`${moduleId}\0${categoryId}`) || byKey.get(`*\0${categoryId}`) || null };
+}
+
+/**
+ * The project's own kinds of device, from its template's categories and the
+ * names of items already in them (spokenTag.templateKinds), so "smoke
+ * detector 4" or "VAV 12" works for any trade, not a fixed list.
+ */
+export function projectKinds(b) {
+  const tags = new Map();
+  for (const marker of Object.values(b?.markers || {})) {
+    if (!marker?.categoryId || !marker.name) continue;
+    if (!tags.has(marker.categoryId)) tags.set(marker.categoryId, []);
+    tags.get(marker.categoryId).push(marker.name);
+  }
+  return templateKinds(categoryIndex(b?.template).list.map(({ category }) => ({
+    name: category.name,
+    tags: tags.get(category.id) || [],
+  })));
+}
+
+/**
+ * The one item that clearly fits best, or null. A lone fit is enough
+ * ("camera twelve" when there is one camera 12, whatever floor); with
+ * others, it must be clearly the best.
+ */
+export function clearBest(list) {
+  const [best, next] = list || [];
+  if (!best) return null;
+  return (next ? best.score >= 0.8 && next.score < best.score - 0.1 : best.score >= 0.6) ? best : null;
+}
+
+/**
+ * Items that fit a described device ("camera 6, fourth floor"), best first.
+ * An item's own floor and wing (brought from Walkthru or Plot, or typed)
+ * count before the sheet title's, which a bare PDF needs. The same item in
+ * several modules (same name, same page) is kept once, the open module's;
+ * same-named items on other pages are separate devices.
+ */
+export async function describedItems(b, target) {
+  const { pages = [], unreadPages = [] } = typeof b.readSheets === 'function' ? await b.readSheets() : {};
+  const sheetOfPage = new Map(pages.map((p) => [p.page, p.sheet || {}]));
+  const { find } = categoryIndex(b.template);
+  const items = [];
+  for (const [id, marker] of Object.entries(b.markers || {})) {
+    if (!marker) continue;
+    const entry = find(marker.moduleId, marker.categoryId);
+    const sheet = sheetOfPage.get(marker.pageNumber) || {};
+    const ownFloor = floorNumberOf(marker.floor);
+    const ownWing = wingLetterOf(marker.wing);
+    const floor = ownFloor ?? sheet.floor ?? null;
+    const score = scoreDescribedTag(target, marker.name, { category: entry?.category?.name, pageFloor: floor, pageWing: ownWing ?? sheet.wing ?? null });
+    if (score < 0.5) continue;
+    items.push({
+      id,
+      name: marker.name || 'Unnamed item',
+      category: entry?.category?.name || null,
+      ...(entry?.module?.name ? { module: entry.module.name } : {}),
+      page: marker.pageNumber || null,
+      ...(ownFloor != null ? { floor: ownFloor } : sheet.floor != null ? { sheet_floor: sheet.floor } : {}),
+      ...(sheet.kind ? { sheet: sheet.kind } : {}),
+      score,
+      here: !b.currentModuleId || marker.moduleId === b.currentModuleId,
+      moduleId: marker.moduleId,
+    });
+  }
+  items.sort((x, y) => y.score - x.score || Number(y.here) - Number(x.here) || x.name.localeCompare(y.name, undefined, { numeric: true }));
+  const keptModules = new Map();
+  const kept = items.filter((m) => {
+    const key = `${normalizeItemName(m.name)}|${m.page}`;
+    const modules = keptModules.get(key);
+    if (modules && !modules.has(m.moduleId)) return false;
+    keptModules.set(key, (modules || new Set()).add(m.moduleId));
+    return true;
+  });
+  return { items: kept, pages, unreadPages };
 }
 
 // An offered line or category name: at most this many characters.
@@ -138,6 +217,32 @@ function decodePhotoBase64(input) {
  * nobody has changed since. Markup an extra tool added is
  * { annotationId, documentId, label }; undo deletes it through getDocument.
  */
+// A plan match's sheet kind and, for a table row, its spot (sheetKind.js).
+const sheetFields = (m) => ({
+  ...(m.sheetKind ? { sheet: m.sheetKind } : {}),
+  ...(m.spot === 'table' ? { spot: 'table row' } : {}),
+});
+
+/** The project's placement rule: the sheet kinds a device is put on. */
+export function placementOf(rows) {
+  const row = (rows || []).find((r) => r.kind === 'placement');
+  const kinds = row ? placementFromWords(row.means) : [];
+  return { kinds: kinds.length ? kinds : [...DEFAULT_PLACEMENT], saved: Boolean(row && kinds.length) };
+}
+
+/**
+ * Which plan matches the placement rule picks: on a sheet of a kind it
+ * names, and not a table row unless it names schedules. Sheets whose kind
+ * can't be told are left to the model and the person.
+ */
+export function placementPick(matches, kinds) {
+  const want = new Set(kinds || DEFAULT_PLACEMENT);
+  const fits = (m) => m.sheet && want.has(m.sheet) && (m.spot !== 'table row' || want.has('schedule'));
+  const picked = (matches || []).filter(fits);
+  const unknown = (matches || []).filter((m) => !m.sheet);
+  return { picked, unknown };
+}
+
 export function createSurveyAgentToolbox({
   getBridge = () => surveyAgentBridge.current,
   attachments = new Map(),
@@ -176,6 +281,28 @@ export function createSurveyAgentToolbox({
   // single clear match is used; anything else sends the model back to ask.
   // A name the project taught ("D101" is D-1-01) stands for that item's name.
   const memoryRows = (b) => (memory && b?.projectId ? memory.cached(b.projectId) : []);
+  // With a device on several sheets: which matches the project's placement
+  // rule picks (default the floor plan), so the model need not ask, or that
+  // it should ask with ask_which_page.
+  const placementHint = (b, matches) => {
+    // Only the ones that fit about as well as the best: the same tag twice.
+    const top = Math.max(0, ...(matches || []).map((m) => m.score ?? 1));
+    const near = (matches || []).filter((m) => (m.score ?? 1) >= top - 0.1);
+    if (near.length < 2) return {};
+    const rule = placementOf(memoryRows(b));
+    const { picked } = placementPick(near, rule.kinds);
+    const perKind = new Map();
+    for (const m of picked) perKind.set(m.sheet, (perKind.get(m.sheet) || 0) + 1);
+    const clear = picked.length > 0 && [...perKind.values()].every((n) => n === 1);
+    return {
+      placement: {
+        rule: placementWords(rule.kinds),
+        ...(clear
+          ? { use: picked.map((m) => m.id), say: `Use ${picked.length === 1 ? 'this one' : 'these'} without asking.` }
+          : { use: [], say: 'The rule does not pick one clearly: ask with ask_which_page.' }),
+      },
+    };
+  };
   const learnedName = (b, heard) => learnedNameFor(memoryRows(b), heard) || heard;
   const markerIdByName = (b, name) => {
     const heard = learnedName(b, String(name || '').trim());
@@ -205,7 +332,10 @@ export function createSurveyAgentToolbox({
     if (!said) return null;
     const list = entitiesOf(b.template);
     const key = normalizeItemName(said);
-    const found = list.find((e) => e.id === said) || list.find((e) => normalizeItemName(e.name) === key);
+    // A state word the project taught ("done" is Commissioned here).
+    const taught = learnedStateFor(memoryRows(b), said);
+    const found = list.find((e) => e.id === said) || list.find((e) => normalizeItemName(e.name) === key)
+      || (taught ? list.find((e) => normalizeItemName(e.name) === normalizeItemName(taught)) : null);
     if (!found) throw new ToolError(`"${said}" is not one of this template's entities (${list.map((e) => e.name).join(', ') || 'it has none'}). Nothing changed.`);
     return found;
   };
@@ -218,56 +348,17 @@ export function createSurveyAgentToolbox({
       change: { itemId, documentId: b.documentId || null, label: `${nameOf(marker)}: entity ${entity ? entity.name : 'cleared'}`, fields: [field] },
     };
   };
-  // Items that fit a described device ("camera 6, fourth floor"), best first.
-  // The same item in several modules (same name, same page) is kept once, the
-  // open module's; same-named items on other pages are separate devices.
-  const describedItems = async (b, target) => {
-    const { pages = [], unreadPages = [] } = typeof b.readSheets === 'function' ? await b.readSheets() : {};
-    const sheetOfPage = new Map(pages.map((p) => [p.page, p.sheet || {}]));
-    const { find } = categoryIndex(b.template);
-    const items = [];
-    for (const [id, marker] of Object.entries(b.markers || {})) {
-      if (!marker) continue;
-      const entry = find(marker.moduleId, marker.categoryId);
-      const sheet = sheetOfPage.get(marker.pageNumber) || {};
-      const score = scoreDescribedTag(target, marker.name, { category: entry?.category?.name, pageFloor: sheet.floor ?? null, pageWing: sheet.wing ?? null });
-      if (score < 0.5) continue;
-      items.push({
-        id,
-        name: nameOf(marker),
-        category: entry?.category?.name || null,
-        ...(entry?.module?.name ? { module: entry.module.name } : {}),
-        page: marker.pageNumber || null,
-        ...(sheet.floor != null ? { sheet_floor: sheet.floor } : {}),
-        score,
-        here: !b.currentModuleId || marker.moduleId === b.currentModuleId,
-        moduleId: marker.moduleId,
-      });
-    }
-    items.sort((x, y) => y.score - x.score || Number(y.here) - Number(x.here) || x.name.localeCompare(y.name, undefined, { numeric: true }));
-    const keptModules = new Map();
-    const kept = items.filter((m) => {
-      const key = `${normalizeItemName(m.name)}|${m.page}`;
-      const modules = keptModules.get(key);
-      if (modules && !modules.has(m.moduleId)) return false;
-      keptModules.set(key, (modules || new Set()).add(m.moduleId));
-      return true;
-    });
-    return { items: kept, pages, unreadPages };
-  };
   // set_answers' item_name: the item by name, or else by description
   // ("camera twelve fourth floor" is C-4-12), when one clearly fits best.
   const itemIdFor = async (b, name) => {
     const heard = learnedName(b, String(name || '').trim());
     const byName = markerIdByName(b, heard);
     if (byName) return byName;
-    const target = parseDescribedTarget(heard);
+    const target = parseDescribedTarget(heard, { kinds: projectKinds(b) });
     if (target?.number != null && target.kind) {
       const { items } = await describedItems(b, target);
       const [best, next] = items;
-      // A lone fit is enough ("camera twelve" when there is one camera 12,
-      // whatever floor); with others, it must be clearly the best.
-      if (best && (next ? best.score >= 0.8 && next.score < best.score - 0.1 : best.score >= 0.6)) return best.id;
+      if (clearBest(items)) return best.id;
       if (best && next) {
         const list = items.slice(0, 5).map((m) => `${m.name}${m.page ? ` (page ${m.page})` : ''}`).join(', ');
         throw new ToolError(`Several items fit ${heard}: ${list}. Ask which one; nothing changed.`);
@@ -421,6 +512,112 @@ export function createSurveyAgentToolbox({
     return { text: `Set ${answers.length} ${moduleName} answer${answers.length === 1 ? '' : 's'} on ${nameOf(marker)}.`, changes };
   };
 
+  const saveMemory = async (b, row, line) => {
+    let saved;
+    try {
+      saved = await memory.save(b.projectId, row);
+    } catch (err) {
+      throw new ToolError(`Could not save it: ${err.message}`);
+    }
+    if (saved.same) return { content: `Already saved: ${line}.` };
+    return {
+      content: `Saved for this project: ${line}.${saved.before ? ` (Replaced "${saved.before.means}".)` : ''}`,
+      change: { memory: { projectId: b.projectId, row: saved.row, before: saved.before }, label: `Learned: ${line}` },
+    };
+  };
+
+  // Items, then plan tags, that fit a kind and number ("reader 1409" fits
+  // tag 310H-R1409). find_described's search, and the fallback when
+  // find_items or find_on_plan find nothing by exact name.
+  const describedSearch = async (b, target, { min } = {}) => {
+    const { items, pages, unreadPages } = await describedItems(b, target);
+    const shownItems = items.slice(0, 5).map(({ here: _, moduleId: __, ...m }) => m);
+    const markers = Object.entries(b.markers || {});
+    const plan = findDescribedOnPages(target, pages, { score: scoreDescribedTag, ...(min != null ? { min } : {}) })
+      .map((m) => {
+        const covering = markers.find(([, marker]) => marker?.pageNumber === m.page && boundsCover(marker.bounds, m.box));
+        const id = `plan-${planMatches.size + 1}`;
+        planMatches.set(id, m);
+        return {
+          id,
+          page: m.page,
+          text: m.text,
+          ...(m.sheetFloor != null ? { sheet_floor: m.sheetFloor } : {}),
+          ...sheetFields(m),
+          score: m.score,
+          ...(covering ? { already_item: { id: covering[0], name: nameOf(covering[1]) } } : {}),
+        };
+      })
+      .slice(0, 5);
+    return {
+      looked_for: { kind: target.kind, number: target.number, floor: target.floor, wing: target.wing },
+      items: shownItems,
+      plan,
+      ...placementHint(b, plan),
+      ...(unreadPages.length ? { pages_without_text: unreadPages.length } : {}),
+    };
+  };
+
+  // The kind-and-number reading of words that matched nothing exactly, or
+  // null when there is no number in them or nothing fits.
+  const describedFallback = async (b, words) => {
+    const kinds = projectKinds(b);
+    const parsed = parseDescribedTarget(words, { kinds });
+    if (!parsed || parsed.number == null) return null;
+    const target = { kind: parsed.kind || null, kindWord: parsed.kindWord || null, code: parsed.code || null, codes: parsed.codes || null, number: parsed.number, floor: parsed.floor ?? null, wing: parsed.wing || null };
+    // A bare number of three or more digits ("1409") is the end of one tag
+    // in a few hundred; with no kind said it may still fit, ranked lower.
+    const min = !target.kind && !target.code && String(target.number).length >= 3 ? 0.3 : undefined;
+    const found = await describedSearch(b, target, { min });
+    return found.items.length || found.plan.length ? found : null;
+  };
+
+  // find_described by place: items of the kind nearest a printed place label
+  // (on a bare PDF, printed tags of the kind), with the one clearly nearest.
+  const findByPlace = async (b, place) => {
+    const { pages = [], unreadPages = [] } = typeof b.readSheets === 'function' ? await b.readSheets() : {};
+    const sheetFloor = new Map(pages.map((p) => [p.page, p.sheet?.floor ?? null]));
+    const ofKind = (name) => templateKinds([{ name }])[0]?.kind === place.kind || kindFromWord(name).kind === place.kind;
+    const onFloor = (page, own = null) => place.floor == null || (own ?? sheetFloor.get(page)) === place.floor;
+    const { find } = categoryIndex(b.template);
+    const markers = Object.entries(b.markers || {});
+    const items = markers
+      .filter(([, m]) => m?.bounds && m.pageNumber && ofKind(find(m.moduleId, m.categoryId)?.category?.name || '')
+        && onFloor(m.pageNumber, floorNumberOf(m.floor)))
+      .map(([id, m]) => ({ key: id, id, name: nameOf(m), page: m.pageNumber, box: m.bounds, here: !b.currentModuleId || m.moduleId === b.currentModuleId }));
+    // The same device in two modules is one candidate: the open module's.
+    const seen = new Set();
+    const oneEach = items.sort((x, y) => Number(y.here) - Number(x.here))
+      .filter((i) => { const k = `${normalizeItemName(i.name)}|${i.page}`; if (seen.has(k)) return false; seen.add(k); return true; });
+    const near = nearestToPlace(place, oneEach, pages, { pageSize: (page) => b.getPageSize?.(page) || null });
+    const codes = new Set([...(place.codes || []), place.kind[0], place.kind.split(' ').map((w) => w[0]).join('')]);
+    const tags = [];
+    if (!near.list.length) {
+      for (const { page, words = [] } of pages) {
+        if (!onFloor(page)) continue;
+        for (const w of words) {
+          const m = /^([a-z]{1,4})[-\s.]?\d[\w-]*$/i.exec(String(w.text || '').trim());
+          if (!m || !codes.has(m[1].toLowerCase()) || !w.box) continue;
+          if (markers.some(([, mk]) => mk?.pageNumber === page && boundsCover(mk.bounds, w.box))) continue;
+          tags.push({ key: `${page}:${w.text}`, page, box: w.box, text: w.text.trim() });
+        }
+      }
+    }
+    const nearTags = tags.length ? nearestToPlace(place, tags, pages, { pageSize: (page) => b.getPageSize?.(page) || null }) : { list: [], clear: null };
+    const plan = nearTags.list.slice(0, 5).map((t) => {
+      const id = `plan-${planMatches.size + 1}`;
+      planMatches.set(id, { page: t.page, text: t.text, box: t.box, source: 'text', score: 1 });
+      return { id, page: t.page, text: t.text, place: t.place, distance: t.distance, clear: t === nearTags.clear };
+    });
+    return {
+      looked_for: { kind: place.kind, place: place.place.join(' '), floor: place.floor },
+      by_place: true,
+      items: near.list.slice(0, 5).map((i) => ({ id: i.id, name: i.name, page: i.page, place: i.place, distance: i.distance, clear: i === near.clear })),
+      plan,
+      ...(unreadPages.length ? { pages_without_text: unreadPages.length } : {}),
+    };
+  };
+
   const tools = {
     // "Whenever I say D101 I mean D-1-01" (a name) or "always write not
     // installed, not missing" (wording): saved for everyone on the project.
@@ -436,20 +633,58 @@ export function createSurveyAgentToolbox({
         const itemId = await itemIdFor(b, target);
         target = nameOf(markerOf(b, itemId));
         if (said.toLowerCase() === target.toLowerCase()) throw new ToolError(`${said} is already that item's own name; nothing saved.`);
+      } else if (kind === 'placement') {
+        // "Mark it on the floor plan, schedule and riser": one rule per project.
+        const kinds = placementFromWords(`${said} ${target}`);
+        if (!kinds.length) throw new ToolError('Say which sheets: floor plan, schedule, riser, detail or legend. Nothing saved.');
+        target = kinds.join(', ');
+        return saveMemory(b, { kind, heard: 'sheets', means: target }, `mark devices on ${placementWords(kinds)}`);
+      } else if (kind === 'state') {
+        // "Done means commissioned": the saved meaning is one entity's own name.
+        const entity = entitiesOf(b.template).find((e) => normalizeItemName(e.name) === normalizeItemName(target));
+        if (!entity) throw new ToolError(`"${target}" is not one of this template's entities (${entitiesOf(b.template).map((e) => e.name).join(', ') || 'it has none'}). Nothing saved.`);
+        if (entitiesOf(b.template).some((e) => normalizeItemName(e.name) === normalizeItemName(said))) throw new ToolError(`${said} is already an entity's own name; nothing saved.`);
+        target = entity.name;
       } else if (kind !== 'wording') {
-        throw new ToolError('kind is name or wording.');
+        throw new ToolError('kind is name, wording, state or placement.');
       }
+      const lineOf = (row) => (kind === 'name' ? `"${row.heard}" means ${row.means}`
+        : kind === 'state' ? `"${row.heard}" means ${row.means}` : `write "${row.means}" for "${row.heard}"`);
       let saved;
       try {
         saved = await memory.save(b.projectId, { kind, heard: said, means: target });
       } catch (err) {
-        throw new ToolError(`Could not save it: ${err.message}`);
+        // No signal: keep it on the device; it is saved for the project later.
+        if (typeof memory.saveLater !== 'function') throw new ToolError(`Could not save it: ${err.message}`);
+        const { row } = memory.saveLater(b.projectId, { kind, heard: said, means: target });
+        return { content: `Saved on this device: ${lineOf(row)}. It is shared with the project when there is signal.` };
       }
-      const line = kind === 'name' ? `"${saved.row.heard}" means ${saved.row.means}` : `write "${saved.row.means}" for "${saved.row.heard}"`;
+      const line = lineOf(saved.row);
       if (saved.same) return { content: `Already saved: ${line}.` };
       return {
         content: `Saved for this project: ${line}.${saved.before ? ` (Replaced "${saved.before.means}".)` : ''}`,
         change: { memory: { projectId: b.projectId, row: saved.row, before: saved.before }, label: `Learned: ${line}` },
+      };
+    },
+
+    // "Page 6 or 33?": the panel shows a button per page plus both, neither
+    // and other, and a "remember for this project" switch. Nothing changes.
+    ask_which_page({ plan_match_ids: ids = [], question = '' } = {}) {
+      const b = bridge();
+      const seen = new Set();
+      const options = (Array.isArray(ids) ? ids : []).map((id) => [id, planMatches.get(id)])
+        .filter(([id, m]) => m && !seen.has(`${m.page}|${m.text}`) && seen.add(`${m.page}|${m.text}`))
+        .slice(0, 4)
+        .map(([id, m]) => ({ id, page: m.page, text: m.text, sheet: m.sheetKind || null, spot: m.spot || 'drawing' }))
+        .sort((a, c) => a.page - c.page);
+      if (options.length < 2) throw new ToolError('Give two or more plan match ids from find_described or find_on_plan.');
+      return {
+        content: 'The person now sees a button for each page, plus all, none and other, and a switch to remember the answer for this project. Ask in one short sentence naming each page and its sheet, then wait for their answer.',
+        choice: {
+          question: String(question || '').trim().slice(0, 200) || null,
+          options,
+          canRemember: Boolean(memory && b.projectId && b.canEdit !== false),
+        },
       };
     },
 
@@ -539,11 +774,13 @@ export function createSurveyAgentToolbox({
           ...(offered ? { template_editable: templateEditable(b) } : {}),
           // Names and note wording this project taught the agent.
           ...(memory && b.projectId ? { learned: learnedForModel(memoryRows(b)) } : {}),
+          // Which sheets a device goes on (sheetKind.js): the project's rule, else the floor plan.
+          placement: placementWords(placementOf(memoryRows(b)).kinds),
         }),
       };
     },
 
-    find_items({ query, category_id: categoryId } = {}) {
+    async find_items({ query, category_id: categoryId } = {}) {
       const b = bridge();
       if (!String(query || '').trim()) throw new ToolError('Say which item to look for.');
       query = learnedName(b, String(query).trim());
@@ -577,6 +814,12 @@ export function createSurveyAgentToolbox({
       const kept = bestHere.length ? [...bestHere, ...matches.filter((m) => m.score < top)] : matches;
       const shown = kept.slice(0, 5).map(({ here: _, ...m }) => m);
       const otherModules = bestHere.length ? [...new Set(best.filter((m) => !m.here).map((m) => m.module).filter(Boolean))] : [];
+      // No item by that name, but a kind and a number were said ("reader
+      // 1409"): look the way find_described does, so tag 310H-R1409 is found.
+      if (!shown.length) {
+        const fit = await describedFallback(b, query);
+        if (fit) return { content: out({ matches: [], by_kind_and_number: fit }) };
+      }
       return {
         content: out({
           matches: shown,
@@ -826,12 +1069,19 @@ export function createSurveyAgentToolbox({
           id,
           page: m.page,
           text: m.text,
+          ...sheetFields(m),
           ...(covering ? { already_item: { id: covering[0], name: nameOf(covering[1]) } } : {}),
         };
       });
+      // "1409" or "reader 1409" is no exact tag; 310H-R1409 ends in it.
+      if (!matches.length) {
+        const fit = await describedFallback(b, query);
+        if (fit) return { content: out({ matches: [], by_kind_and_number: fit }) };
+      }
       return {
         content: out({
           matches,
+          ...placementHint(b, matches),
           ...(found?.unreadPages?.length ? { pages_without_text: found.unreadPages.length } : {}),
         }),
       };
@@ -841,43 +1091,52 @@ export function createSurveyAgentToolbox({
     // floor or wing, never the whole tag. Items first, then tags on the plan.
     async find_described({ description = '', kind = null, number = null, floor = null, wing = null } = {}) {
       const b = bridge();
-      const parsed = parseDescribedTarget(description) || {};
+      const kinds = projectKinds(b);
+      const parsed = parseDescribedTarget(description, { kinds }) || {};
       const said = String(kind || '').trim().toLowerCase();
+      const saidKind = said ? kindFromWord(said, kinds) : null;
       const target = {
-        kind: said ? (kindOf(said) || said) : parsed.kind || null,
+        kind: saidKind ? saidKind.kind : parsed.kind || null,
         kindWord: said || parsed.kindWord || null,
         code: parsed.code || null,
+        codes: saidKind ? saidKind.codes : parsed.codes || null,
         number: Number.isFinite(Number(number)) && number !== null ? Number(number) : parsed.number ?? null,
         floor: Number.isFinite(Number(floor)) && floor !== null ? Number(floor) : parsed.floor ?? null,
         wing: ({ west: 'w', east: 'e', north: 'n', south: 's' })[String(wing || '').toLowerCase()] || parsed.wing || null,
       };
-      if (target.number == null) throw new ToolError('Say the number of the one to find, for example camera 6.');
-      const { items, pages, unreadPages } = await describedItems(b, target);
-      const shownItems = items.slice(0, 5).map(({ here: _, moduleId: __, ...m }) => m);
-      const markers = Object.entries(b.markers || {});
-      const plan = findDescribedOnPages(target, pages, { score: scoreDescribedTag })
-        .map((m) => {
-          const covering = markers.find(([, marker]) => marker?.pageNumber === m.page && boundsCover(marker.bounds, m.box));
-          const id = `plan-${planMatches.size + 1}`;
-          planMatches.set(id, m);
-          return {
-            id,
-            page: m.page,
-            text: m.text,
-            ...(m.sheetFloor != null ? { sheet_floor: m.sheetFloor } : {}),
-            score: m.score,
-            ...(covering ? { already_item: { id: covering[0], name: nameOf(covering[1]) } } : {}),
-          };
-        })
-        .slice(0, 5);
-      return {
-        content: out({
-          looked_for: { kind: target.kind, number: target.number, floor: target.floor, wing: target.wing },
-          items: shownItems,
-          plan,
-          ...(unreadPages.length ? { pages_without_text: unreadPages.length } : {}),
-        }),
-      };
+      // "The camera by the stairs" (or "by stair 2"): by a place printed on
+      // the plan, unless the model gave the number itself.
+      const place = number == null ? parsePlaceTarget(description, { kinds }) : null;
+      if (place) return { content: out(await findByPlace(b, place)) };
+      if (target.number == null) {
+        throw new ToolError('Say the number of the one to find (camera 6), or where it is (the camera by the stairs).');
+      }
+      return { content: out(await describedSearch(b, target)) };
+    },
+
+    // Scanned sheets have no text, so tags on them can't be found until text
+    // recognition reads them (on the device, no signal needed). The current
+    // page first when no pages are named.
+    async read_scanned_pages({ pages = null } = {}) {
+      const b = bridge();
+      if (typeof b.recognizePage !== 'function') throw new ToolError('Text recognition is not available here.');
+      const { unreadPages = [] } = typeof b.readSheets === 'function' ? await b.readSheets() : {};
+      const named = Array.isArray(pages) ? pages.map(Number).filter(Number.isFinite) : [];
+      let list = named.length ? named.filter((p) => unreadPages.includes(p)) : [...unreadPages];
+      const current = b.getCurrentPage?.();
+      if (!named.length && current && list.includes(current)) list = [current, ...list.filter((p) => p !== current)];
+      list = list.slice(0, MAX_OCR_PAGES);
+      if (!list.length) return { content: unreadPages.length ? 'Those pages already have text to read.' : 'Every page already has text to read.' };
+      const read = [];
+      const failed = [];
+      for (const page of list) {
+        try { if (await b.recognizePage(page)) read.push(page); else failed.push(page); } catch { failed.push(page); }
+      }
+      const left = unreadPages.length - read.length;
+      const parts = [read.length ? `Read the text on page${read.length === 1 ? '' : 's'} ${read.join(', ')}.` : 'No page could be read.'];
+      if (failed.length) parts.push(`Page${failed.length === 1 ? '' : 's'} ${failed.join(', ')} gave no text.`);
+      if (left > 0) parts.push(`${left} scanned page${left === 1 ? '' : 's'} still unread; ask again for more.`);
+      return { content: parts.join(' '), read };
     },
 
     show_on_plan({ plan_match_id: matchId } = {}) {
