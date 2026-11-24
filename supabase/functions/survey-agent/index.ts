@@ -16,7 +16,8 @@
 //   SURVEY_AGENT_PRICE_IN / SURVEY_AGENT_PRICE_OUT: USD per million tokens
 //     (default 0, free tier). SURVEY_AGENT_MONTHLY_CAP_USD (default 5) and
 //     SURVEY_AGENT_MONTHLY_REQUEST_CAP (default 3000) per person.
-//   SURVEY_AGENT_TESTERS: comma-separated emails allowed in while testing.
+//   SURVEY_AGENT_TESTERS: comma-separated emails allowed in while testing
+//   (the survey-agent flag's tester list in feature_flags also lets people in).
 //   SURVEY_AGENT_OPEN: 'true' also lets in paid plans.
 //   OPENAI_API_KEY: speech to text when there is no Groq key, or first when
 //     SURVEY_AGENT_STT is 'openai'.
@@ -302,6 +303,14 @@ Deno.serve(async (req) => {
 
   const email = (user.email || '').toLowerCase();
   let allowed = Boolean(email) && testers().has(email);
+  if (!allowed && email) {
+    // The tester list on the app's own survey-agent flag (/flags) lets people
+    // in too, so adding a tester needs no secret change. Only the list counts:
+    // mode 'on' must not open the paid model to everyone.
+    const { data: flag } = await admin.from('feature_flags')
+      .select('tester_emails').eq('key', 'survey-agent').maybeSingle();
+    allowed = (flag?.tester_emails || []).map((e: string) => String(e).toLowerCase()).includes(email);
+  }
   if (!allowed && Deno.env.get('SURVEY_AGENT_OPEN') === 'true') {
     const { data: sub } = await admin.from('user_subscriptions')
       .select('tier, status').eq('user_id', user.id).maybeSingle();
