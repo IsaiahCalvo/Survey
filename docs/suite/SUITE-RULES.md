@@ -346,7 +346,7 @@ first, in all three repos.
 | Pin the tool in use | A + at the end of the pinned bar | Built | Built | No pinned tools |
 | Your picture and account menu | The top bar, right end | Built | Built (tab strip) | Built. Right end of the right panel's header, after Issue. |
 | Sync status, History | Left rail, at the foot | Built | Sync status: Nightly flag `sync-status`. No History yet: the `drawing_history_events` table has no writer. | History is a left rail panel; Saved shows in the right panel's header |
-| View tools (Page fit, Paper, Grid, Dark pages, Full screen) | One View button on the right rail opens them in a strip | Nightly flag `view-strip` | Nightly flag `view-strip`: Page grid and Dark pages. Page fit stays on the rail, as in Survey. No Full screen. | No view tools |
+| View tools (Page fit, Paper, Grid, Dark pages, Full screen) | The Page fit button on the right rail opens one View card: fit, page layout, then the view buttons | Nightly flag `view-strip`: Page fit opens the View card (Fit, Pages, Scroll, then Paper, Thin PDF lines, Page grid, Snapping, Dark pages, Hide marks). Full screen stays on the rail. | Nightly flag `view-strip`: Page fit opens the View card (Fit, Pages, Page grid, Dark pages). No Full screen. | No view tools |
 
 ### Settings
 
