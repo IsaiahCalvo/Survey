@@ -400,7 +400,7 @@ const ICON_RENDERERS = {
     ),
     // View options (rail, Nightly 'view-strip'): two sliders, the button
     // that slides out Paper, Thin PDF lines, Page grid, Snapping, Dark pages,
-    // Hide marks and Show pins in one row.
+    // Hide marks and the comments-on-the-page filter.
     viewOptions: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
         <g stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

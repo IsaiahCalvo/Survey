@@ -227,14 +227,26 @@
   .rail-flyout__step--word { width: auto; padding: 0 10px; }
 }
 
-/* Nightly 'view-strip' (ViewStripMenu.jsx): the rail's view buttons in one
-   row that slides out beside the View button. Same card, no title; the
-   buttons keep the rail's own 36x28 cells and looks. */
-.rail-flyout.rail-flyout--strip {
+/* Nightly 'view-strip' (ViewStripMenu.jsx, owner 2026-11-24): the one View
+   card off the rail's Page fit button. Each row is a short label and its
+   choices; the labels share one width so every row's choices start on one
+   line. The view buttons sit under them in one row and keep the rail's own
+   36x28 cells and looks. */
+.rail-flyout.rail-flyout--view {
+  min-width: 0;
+}
+
+.rail-flyout--view .rail-flyout__columns {
+  gap: 8px;
+}
+
+.rail-flyout--view .rail-flyout__columns > .rail-flyout__label {
+  flex: 0 0 60px;
+}
+
+.rail-flyout__tools {
   display: flex;
-  flex-direction: row;
   align-items: center;
   gap: 2px;
-  min-width: 0;
-  padding: 4px;
+  padding: 0 4px;
 }
