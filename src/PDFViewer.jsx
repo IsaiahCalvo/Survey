@@ -453,6 +453,7 @@ import { PAGE_GRID_SETTINGS_EVENT, applyPageGridPageSteps, applyPageGridSettings
 import { LAYERS_META_KEY, DEFAULT_LAYER_ID, DEFAULT_LAYER_STATE, normalizeLayerState, hiddenLayerIdSet, resolveActiveLayerId, withoutHiddenLayers, calloutsWithoutHiddenLayers, stampNewObjectsOnLayer, stampNewMarksByPage, hasNewObjects, hasNewMarksByPage, selectableMarkIndices, hiddenActiveLayer, setLayerVisible } from './utils/layers.js';
 import { PAGE_PRESENTATION_META_KEY, PDF_FILE_VERSION_META_KEY, normalizePagePresentations, pagePresentationFrame, clientPointInPageFrame, clientPastePointInPageFrame } from './utils/pagePresentation.js';
 import { normalizePresentationPdf, pdfBytesHavePresentationTag } from './utils/pdfPagePresentation.js';
+import { buildPdfAsSeen } from './utils/pdfAsSeen.js';
 import { chooseCloudPdfOpenPath, shouldRetryStreamedOpenWithDownload, tryOpenCloudPdfStream } from './services/cloudPdfStream.js';
 import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox } from './utils/svgBoundingBox.js';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
@@ -15616,6 +15617,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     rebuiltExportSources.add(rebuilt);
     return rebuilt;
   }, [flushPageOperations, pageRecordsBase, pdfFile, readPageMutationPdfBytes]);
+  // PDF tools opened from the viewer work on the pages and form answers as
+  // shown (r4c #1-#3). Read through refs: the left rail API keeps the first
+  // function it was given.
+  const getExportSourcePdfRef = useRef(getExportSourcePdf);
+  getExportSourcePdfRef.current = getExportSourcePdf;
+  const pageTransformationsRef = useRef(pageTransformations);
+  pageTransformationsRef.current = pageTransformations;
+  const getPdfForTools = useCallback(async () => {
+    const file = await getExportSourcePdfRef.current();
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    return buildPdfAsSeen(bytes, {
+      annotationsByPage: annotationsByPageRef.current,
+      pageTransformations: pageTransformationsRef.current,
+    });
+  }, []);
   const handleMirrorPage = useCallback((...args) => {
     if (!canRestoreFromHistoryRef.current) {
       showToast('This document is read-only.', 'info');
@@ -38509,6 +38525,7 @@ ${pageBlocks}
       annotationsByPage: (markupListEnabled || isFeatureOn('properties-panel') || isFeatureOn('author-chip')) ? annotationsByPage : null,
       onOpenMarkup: openMarkupRow,
       pdfDisplayName,
+      getPdfForTools,
     };
     onLeftRailApiChange((prev) => {
       if (prev) {

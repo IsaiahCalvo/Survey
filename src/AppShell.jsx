@@ -2299,6 +2299,18 @@ export default function App({ devPreviewReturnTab = null }) {
   const openPdfToolsForActiveTab = async () => {
     const openTab = tabs.find((t) => t.id === activeTabId);
     const file = openTab?.file;
+    // The pages and form answers as shown, not the upload (round 4 audit,
+    // r4c #1-#3: Flatten and Lock gave blank forms, a turned page came out
+    // flat). Falls back to the open file's bytes below.
+    try {
+      const seen = await leftRailApi?.getPdfForTools?.();
+      if (seen?.byteLength > 0) {
+        dashboardRef.current?.openPdfTools?.([{ id: file?.id || null, name: openTab?.name || file?.name, file_path: file?.supabaseFilePath || null, project_id: file?.projectId ?? null, blob: new Blob([seen], { type: 'application/pdf' }), asSeen: true }]);
+        return;
+      }
+    } catch (err) {
+      console.warn('[PdfTools] could not build the shown pages; using the open file', err);
+    }
     // The open tab already holds the PDF, so the tools work offline too. A
     // streamed open (#1097) has no File, only the library row: take the bytes
     // from the viewer's loaded pdf.js document instead of downloading again.

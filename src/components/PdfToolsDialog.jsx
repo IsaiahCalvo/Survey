@@ -5,8 +5,9 @@
 
    sources: [{ id, name, getBytes: () => Promise<Uint8Array> }]. The first is
    the document the tools work on; `others` are documents that can be added
-   to a merge. Markups made in Survey live beside the PDF, not in it, so the
-   tools work on the PDF as it was uploaded. */
+   to a merge. Markups made in Survey live beside the PDF, not in it, so they
+   stay out. From the viewer the first source is the pages and form answers
+   as shown (asSeen, utils/pdfAsSeen.js); from Home, the stored upload. */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../home/HubShell';
 
@@ -312,7 +313,9 @@ export default function PdfToolsDialog({ open, onClose, sources = [], others = [
                     <li key={t.id}><button type="button" className="pdft-tool" onClick={() => setTool(t.id)}><span className="pdft-tname">{t.label}</span><span className="pdft-tshort">{t.short}</span></button></li>
                   ))}
                 </ul>
-                <p className="pdft-help">Runs on this device. The tools use the PDF as it was uploaded; annotations you added in Survey aren't included.</p>
+                <p className="pdft-help">{sources?.[0]?.asSeen
+                  ? 'Runs on this device. The tools use the pages and form answers as you see them; annotations you added in Survey aren’t included.'
+                  : 'Runs on this device. The tools use the PDF as it was uploaded; annotations you added in Survey aren’t included.'}</p>
               </>
             )}
             {tool && !result && options()}

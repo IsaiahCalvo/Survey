@@ -3050,6 +3050,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
   const pdfToolSource = (doc) => ({
     id: doc.id || 'open-tab',
     name: doc.name,
+    asSeen: Boolean(doc.asSeen),
     getBytes: async () => {
       if (doc.blob) return new Uint8Array(await doc.blob.arrayBuffer());
       try {
@@ -3066,7 +3067,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     const rows = (docs || [])
       .map((doc) => {
         const row = (allDocuments || []).find((candidate) => candidate.id === doc?.id);
-        return row ? { ...row, blob: doc.blob || null } : doc;
+        return row ? { ...row, blob: doc.blob || null, asSeen: Boolean(doc.asSeen) } : doc;
       })
       .filter((doc) => doc?.file_path || doc?.blob);
     if (!rows.length || rows.length < (docs || []).length) {
