@@ -59,7 +59,7 @@ import { useViewerSideOccluderRef } from './utils/viewerSideOverlay.js';
 import { autoCompleteOn, resolveAutoCompleteEntity } from './utils/surveyAutoEntity.js';
 import { shownChecklist } from './services/conditionalLines.js';
 import { reportKitFor } from './services/reportKits/index.js';
-import { answerMeans, answerSetFor, answerTone, itemKind, sameAnswer } from './services/answerSets.js';
+import { answerMeans, answerSetFor, answerTone, isItemIssue, itemKind, sameAnswer } from './services/answerSets.js';
 import TypedAnswerInput, { CHOICE_BUTTONS_MAX, ChoiceSelect } from './components/TypedAnswerInput.jsx';
 import SurveyReportMenu from './components/SurveyReportMenu.jsx';
 import SheetSyncButton from './components/SheetSyncButton.jsx';
@@ -458,6 +458,19 @@ const MobileSurveyMarkerCollapse = ({ open, children }) => {
     </div>
   );
 };
+
+// document_annotations.notes is TEXT: an object note can arrive as JSON
+// text; anything else is a plain-text note.
+function markerNoteObject(rawNote) {
+  if (rawNote && typeof rawNote === 'object') return rawNote;
+  if (typeof rawNote !== 'string') return {};
+  try {
+    const parsed = rawNote.trim().startsWith('{') ? JSON.parse(rawNote) : null;
+    return parsed && typeof parsed === 'object' ? parsed : { text: rawNote };
+  } catch {
+    return { text: rawNote };
+  }
+}
 
 const SurveySpacesRail = ({
   activeSpaceId,
@@ -1567,20 +1580,7 @@ const SurveySpacesRail = ({
     setSurveyMarkers(prev => {
       const existing = prev?.[annotationId];
       if (!existing && requireExisting) return prev;
-      const rawNote = existing?.note;
-      let prevNote = {};
-      if (rawNote && typeof rawNote === 'object') {
-        prevNote = rawNote;
-      } else if (typeof rawNote === 'string') {
-        // document_annotations.notes is TEXT: an object note can arrive as
-        // JSON text; anything else is a plain-text note.
-        try {
-          const parsed = rawNote.trim().startsWith('{') ? JSON.parse(rawNote) : null;
-          prevNote = parsed && typeof parsed === 'object' ? parsed : { text: rawNote };
-        } catch {
-          prevNote = { text: rawNote };
-        }
-      }
+      const prevNote = markerNoteObject(existing?.note);
       const nextNote = updater(prevNote);
       if (!nextNote || nextNote === prevNote) return prev;
       const answered = lineAnswer ? {
@@ -1825,8 +1825,13 @@ const SurveySpacesRail = ({
     const responses = surveyMarkers?.[annotationId]?.checklistResponses || {};
     const active = shownLines(category, responses);
     const answered = active.filter((item) => Boolean(responses[item.id]?.selection)).length;
-    // A typed text line answered "N" (a direction, say) is not a No.
-    const no = active.filter((item) => itemKind(item) === 'choice' && responses[item.id]?.selection === 'N').length;
+    // Lines whose answer is an issue: an N (a bad answer of the template's
+    // own set), a red pick-many option, a number out of range. A typed text
+    // line answered "N" (a direction, say) is not one. Same rule as the
+    // auto Complete and the report's Issues table, so a marker never shows
+    // green while the report lists its issue.
+    const set = answerSetFor(selectedTemplate);
+    const no = active.filter((item) => isItemIssue(item, set, responses[item.id]?.selection)).length;
     return { answered, total: active.length, no };
   };
   // The "answered/total" count. Owner 2026-10-01 (after a design debate):
@@ -1839,7 +1844,7 @@ const SurveySpacesRail = ({
     const state = no > 0 ? ' is-no' : done ? ' is-done' : '';
     const label = done
       ? `All ${total} checklist items answered, complete`
-      : `${answered} of ${total} checklist items answered${no > 0 ? `, ${no} answered No` : ''}`;
+      : `${answered} of ${total} checklist items answered${no > 0 ? `, ${no} with an issue` : ''}`;
     return (
       <span className={`survey-marker-progress${state}`} aria-label={label} {...tip(label, 'left')}>
         {done ? <Icon name="check" size={12} color="currentColor" /> : null}
@@ -1848,7 +1853,9 @@ const SurveySpacesRail = ({
     );
   };
   const getSurveyMarkerNoteInfo = (annotationId) => {
-    const note = surveyMarkers?.[annotationId]?.note || {};
+    // A reloaded note can arrive as text (see markerNoteObject): read it the
+    // same way, or the row loses its note badge after a reload.
+    const note = markerNoteObject(surveyMarkers?.[annotationId]?.note);
     // Every photo, video and audio clip: stored refs (note.media) and any
     // legacy inline photos / videos.
     const mediaCount = normalizeNoteMedia(note).length;

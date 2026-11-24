@@ -103,7 +103,19 @@ export default function SurveyHub({
   onSettings,
   onSignOut,
   onSignIn,
+  /* A guest (signed in through a guest link) can only open what was shared
+     with them: the database refuses their uploads and new projects, so the
+     home screen offers neither. */
+  guest = false,
 }) {
+  if (guest) {
+    onUpload = null;
+    onDropFiles = null;
+    onOpenFromDrive = null;
+    onAddFromDrive = null;
+    onOpenFromGoogleDrive = null;
+    onCreateProject = null;
+  }
   const tip = useTooltip();
   const [tab, setTab] = useState(() => {
     if (initialTab) return initialTab;
@@ -231,6 +243,24 @@ export default function SurveyHub({
     if (onSettings) onSettings();
   };
 
+  const HubGuestNotice = ({ tabName }) => (
+    <HubShell
+      {...common}
+      tab={tabName}
+      title={tabName === 'projects' ? 'Projects' : 'Templates'}
+      userName={user?.name || 'Guest'}
+    >
+      <div role="status" data-hub-guest-notice={tabName} style={{ display: 'grid', placeItems: 'center', minHeight: 220, padding: 24, textAlign: 'center' }}>
+        <div>
+          <p style={{ margin: '0 0 12px', color: 'var(--ink-100)' }}>
+            Guests can only open what was shared with them.
+          </p>
+          <button type="button" className="btn primary" onClick={() => setTab('documents')}>Go to documents</button>
+        </div>
+      </div>
+    </HubShell>
+  );
+
   const HubLoadError = ({ tabName, error, onRetry }) => (
     <HubShell
       {...common}
@@ -283,7 +313,9 @@ export default function SurveyHub({
           />
         )
       )}
-      {tab === 'projects' && (
+      {tab === 'projects' && guest && <HubGuestNotice tabName="projects" />}
+      {tab === 'templates' && guest && <HubGuestNotice tabName="templates" />}
+      {tab === 'projects' && !guest && (
         projectsInitialLoading ? (
           <HubLoading {...common} tab="projects" />
         ) : projectsLoadError && projects.length === 0 ? (
@@ -320,7 +352,7 @@ export default function SurveyHub({
           />
         )
       )}
-      {tab === 'templates' && (
+      {tab === 'templates' && !guest && (
         templatesInitialLoading ? (
           <HubLoading {...common} tab="templates" />
         ) : templatesLoadError && templates.length === 0 ? (

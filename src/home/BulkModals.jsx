@@ -27,7 +27,7 @@ const overlay = {
   fontFamily: 'var(--font-ui)',
 };
 
-export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfirm, initialMode = 'move' }) {
+export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfirm, initialMode = 'move', currentProjectId = null, itemName = '' }) {
   const tip = useTooltip();
   const [mode, setMode] = useState(initialMode); // 'move' | 'copy'
   const [destId, setDestId] = useState(null);
@@ -37,6 +37,7 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
 
   const handleConfirm = async () => {
     if (!destId || submitting) return;
+    if (mode === 'move' && currentProjectId != null && String(destId) === String(currentProjectId)) return;
     setSubmitting(true);
     setSubmitError('');
     try {
@@ -70,7 +71,7 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
         <div style={{ padding: '16px 18px 14px', borderBottom: `1px solid ${C.rule}`, display: 'flex', justifyContent: 'space-between', gap: 12 }}>
           <div className="dialog-heading">
             <div style={{ fontSize: 11, letterSpacing: 0, color: C.muted, fontWeight: 600 }}>Move or copy</div>
-            <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-0.015em', marginTop: 4 }}>{count} {count === 1 ? 'document' : 'documents'}</div>
+            <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-0.015em', marginTop: 4, overflowWrap: 'anywhere' }}>{count === 1 && itemName ? itemName : `${count} ${count === 1 ? 'document' : 'documents'}`}</div>
           </div>
           <button disabled={submitting} onClick={onClose} aria-label="Close" {...tip('Close')} className="hub-icon-btn"><Icon name="close" size={13} /></button>
         </div>
@@ -94,15 +95,19 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
             <div style={{ fontSize: 11, letterSpacing: 0, color: C.muted, fontWeight: 600, marginBottom: 8 }}>Destination project</div>
             <div style={{ maxHeight: 200, overflowY: 'auto', border: `1px solid ${C.rule}`, borderRadius: 6 }}>
               {projects.length === 0 && <div style={{ padding: '12px', fontSize: 12, color: C.muted }}>No projects to move into.</div>}
-              {projects.map((p, i) => (
+              {projects.map((p, i) => {
+                // Moving into the project it is already in does nothing.
+                const here = mode === 'move' && currentProjectId != null && String(p.id) === String(currentProjectId);
+                return (
                 <button
                   type="button"
                   key={p.id}
+                  disabled={here}
                   onClick={() => setDestId(p.id)}
                   aria-pressed={destId === p.id}
                   style={{
                     display: 'block', width: '100%', padding: '9px 12px', fontSize: 13,
-                    cursor: 'pointer', color: C.ink, textAlign: 'left', fontFamily: 'inherit',
+                    cursor: here ? 'not-allowed' : 'pointer', color: here ? 'var(--text-disabled)' : C.ink, textAlign: 'left', fontFamily: 'inherit',
                     // UX 2026-09-17 (owner ruling: no warm fill on a selected thing).
                     // A destination is a ROW, so it takes the approved row cue — a
                     // surface step plus the 2px gold left edge below.
@@ -112,16 +117,17 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
                     borderTop: i ? `1px solid ${C.rule}` : 0,
                   }}
                 >
-                  {p.name}
+                  {p.name}{here ? ' (it is here now)' : ''}
                 </button>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
         <div style={{ padding: '12px 16px', borderTop: `1px solid ${C.rule}`, background: C.deep, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button disabled={submitting} onClick={onClose} className="hub-btn dialog-touch-pad">Cancel</button>
           <button
-            disabled={!destId || submitting}
+            disabled={!destId || submitting || (mode === 'move' && currentProjectId != null && String(destId) === String(currentProjectId))}
             onClick={handleConfirm}
             className="hub-btn hub-btn--primary dialog-touch-pad"
           >

@@ -960,7 +960,7 @@ export default function SurveyAgentPanel({
     }
     const last = entriesRef.current[entriesRef.current.length - 1];
     // Out of allowance: stop listening and say why.
-    if (last?.code === 'monthly_cap_reached' || last?.code === 'not_enabled_for_you') {
+    if (last?.code === 'monthly_cap_reached' || last?.code === 'credit_used_up' || last?.code === 'not_enabled_for_you') {
       if (speakRef.current) await speak(last.text);
       stopHandsFree();
       return;
