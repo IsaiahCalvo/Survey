@@ -526,6 +526,52 @@ export function createSurveyAgentToolbox({
     };
   };
 
+  // Items, then plan tags, that fit a kind and number ("reader 1409" fits
+  // tag 310H-R1409). find_described's search, and the fallback when
+  // find_items or find_on_plan find nothing by exact name.
+  const describedSearch = async (b, target, { min } = {}) => {
+    const { items, pages, unreadPages } = await describedItems(b, target);
+    const shownItems = items.slice(0, 5).map(({ here: _, moduleId: __, ...m }) => m);
+    const markers = Object.entries(b.markers || {});
+    const plan = findDescribedOnPages(target, pages, { score: scoreDescribedTag, ...(min != null ? { min } : {}) })
+      .map((m) => {
+        const covering = markers.find(([, marker]) => marker?.pageNumber === m.page && boundsCover(marker.bounds, m.box));
+        const id = `plan-${planMatches.size + 1}`;
+        planMatches.set(id, m);
+        return {
+          id,
+          page: m.page,
+          text: m.text,
+          ...(m.sheetFloor != null ? { sheet_floor: m.sheetFloor } : {}),
+          ...sheetFields(m),
+          score: m.score,
+          ...(covering ? { already_item: { id: covering[0], name: nameOf(covering[1]) } } : {}),
+        };
+      })
+      .slice(0, 5);
+    return {
+      looked_for: { kind: target.kind, number: target.number, floor: target.floor, wing: target.wing },
+      items: shownItems,
+      plan,
+      ...placementHint(b, plan),
+      ...(unreadPages.length ? { pages_without_text: unreadPages.length } : {}),
+    };
+  };
+
+  // The kind-and-number reading of words that matched nothing exactly, or
+  // null when there is no number in them or nothing fits.
+  const describedFallback = async (b, words) => {
+    const kinds = projectKinds(b);
+    const parsed = parseDescribedTarget(words, { kinds });
+    if (!parsed || parsed.number == null) return null;
+    const target = { kind: parsed.kind || null, kindWord: parsed.kindWord || null, code: parsed.code || null, codes: parsed.codes || null, number: parsed.number, floor: parsed.floor ?? null, wing: parsed.wing || null };
+    // A bare number of three or more digits ("1409") is the end of one tag
+    // in a few hundred; with no kind said it may still fit, ranked lower.
+    const min = !target.kind && !target.code && String(target.number).length >= 3 ? 0.3 : undefined;
+    const found = await describedSearch(b, target, { min });
+    return found.items.length || found.plan.length ? found : null;
+  };
+
   // find_described by place: items of the kind nearest a printed place label
   // (on a bare PDF, printed tags of the kind), with the one clearly nearest.
   const findByPlace = async (b, place) => {
@@ -734,7 +780,7 @@ export function createSurveyAgentToolbox({
       };
     },
 
-    find_items({ query, category_id: categoryId } = {}) {
+    async find_items({ query, category_id: categoryId } = {}) {
       const b = bridge();
       if (!String(query || '').trim()) throw new ToolError('Say which item to look for.');
       query = learnedName(b, String(query).trim());
@@ -768,6 +814,12 @@ export function createSurveyAgentToolbox({
       const kept = bestHere.length ? [...bestHere, ...matches.filter((m) => m.score < top)] : matches;
       const shown = kept.slice(0, 5).map(({ here: _, ...m }) => m);
       const otherModules = bestHere.length ? [...new Set(best.filter((m) => !m.here).map((m) => m.module).filter(Boolean))] : [];
+      // No item by that name, but a kind and a number were said ("reader
+      // 1409"): look the way find_described does, so tag 310H-R1409 is found.
+      if (!shown.length) {
+        const fit = await describedFallback(b, query);
+        if (fit) return { content: out({ matches: [], by_kind_and_number: fit }) };
+      }
       return {
         content: out({
           matches: shown,
@@ -1021,6 +1073,11 @@ export function createSurveyAgentToolbox({
           ...(covering ? { already_item: { id: covering[0], name: nameOf(covering[1]) } } : {}),
         };
       });
+      // "1409" or "reader 1409" is no exact tag; 310H-R1409 ends in it.
+      if (!matches.length) {
+        const fit = await describedFallback(b, query);
+        if (fit) return { content: out({ matches: [], by_kind_and_number: fit }) };
+      }
       return {
         content: out({
           matches,
@@ -1054,34 +1111,7 @@ export function createSurveyAgentToolbox({
       if (target.number == null) {
         throw new ToolError('Say the number of the one to find (camera 6), or where it is (the camera by the stairs).');
       }
-      const { items, pages, unreadPages } = await describedItems(b, target);
-      const shownItems = items.slice(0, 5).map(({ here: _, moduleId: __, ...m }) => m);
-      const markers = Object.entries(b.markers || {});
-      const plan = findDescribedOnPages(target, pages, { score: scoreDescribedTag })
-        .map((m) => {
-          const covering = markers.find(([, marker]) => marker?.pageNumber === m.page && boundsCover(marker.bounds, m.box));
-          const id = `plan-${planMatches.size + 1}`;
-          planMatches.set(id, m);
-          return {
-            id,
-            page: m.page,
-            text: m.text,
-            ...(m.sheetFloor != null ? { sheet_floor: m.sheetFloor } : {}),
-            ...sheetFields(m),
-            score: m.score,
-            ...(covering ? { already_item: { id: covering[0], name: nameOf(covering[1]) } } : {}),
-          };
-        })
-        .slice(0, 5);
-      return {
-        content: out({
-          looked_for: { kind: target.kind, number: target.number, floor: target.floor, wing: target.wing },
-          items: shownItems,
-          plan,
-          ...placementHint(b, plan),
-          ...(unreadPages.length ? { pages_without_text: unreadPages.length } : {}),
-        }),
-      };
+      return { content: out(await describedSearch(b, target)) };
     },
 
     // Scanned sheets have no text, so tags on them can't be found until text
