@@ -384,6 +384,33 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
+    // Annotations panel (owner 2026-11-23: it must not share the checklist
+    // with another panel): a list led by a circle, a square and a triangle.
+    // The suite's one Annotations glyph (SUITE-RULES, "One icon for one
+    // thing"); Walkthru and Plot draw the same paths.
+    annotations: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <g stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="5.5" cy="5.75" r="2.25" />
+          <rect x="3.25" y="9.75" width="4.5" height="4.5" rx="0.5" />
+          <path d="M5.5 16.5 7.9 20.75H3.1Z" />
+          <path d="M11 6h9.5M11 12h9.5M11 18.5h9.5" />
+        </g>
+      </svg>
+    ),
+    // View options (rail, Nightly 'view-strip'): two sliders, the button
+    // that slides out Paper, Thin PDF lines, Page grid, Snapping, Dark pages,
+    // Hide marks and Show pins in one row.
+    viewOptions: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <g stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M4 8h9M17 8h3M4 16h3M11 16h9" />
+          <circle cx="15" cy="8" r="2" />
+          <circle cx="9" cy="16" r="2" />
+        </g>
+      </svg>
+    ),
+
     // Arrow icons
     chevronLeft: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>

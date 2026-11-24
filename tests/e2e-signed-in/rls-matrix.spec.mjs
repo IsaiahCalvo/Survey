@@ -184,6 +184,7 @@ const NOT_SWEPT = {
   sheet_sync_connections: 'service only', sheet_sync_pending_connections: 'service only',
   sheet_sync_settings: 'service only',
   project_item_counters: 'service only',
+  ai_credit_budgets: 'service only', ai_credit_spend: 'service only',
   // Undo records for deleted versions (Nightly): only the version functions
   // read or write them.
   document_version_removals: 'service only',
