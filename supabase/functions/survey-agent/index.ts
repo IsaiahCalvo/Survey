@@ -98,6 +98,12 @@ function groqBase() {
   return (Deno.env.get('GROQ_BASE_URL') || SURVEY_AGENT_DEFAULT_PROVIDER.baseUrl).replace(/\/$/, '');
 }
 
+// Which credit budget a call spends. The Groq path (its free tier, or the
+// E2E fake that GROQ_BASE_URL names) spends none, whatever host it is on.
+function creditFor(url: string) {
+  return String(url || '').startsWith(groqBase()) ? null : creditProviderFor(url);
+}
+
 function modelProvider() {
   const key = Deno.env.get('SURVEY_AGENT_API_KEY') || Deno.env.get('GROQ_API_KEY');
   if (!key) return null;
@@ -365,7 +371,7 @@ Deno.serve(async (req) => {
     }
     const seconds = Math.min(600, Math.max(1, Number(body.duration_ms || 0) / 1000 || bytes.length / 4000));
     const heardCost = Math.ceil(seconds * t.microsPerSecond);
-    const settle = await holdCredit(admin, { provider: creditProviderFor(t.url), micros: heardCost, app: 'survey-agent' });
+    const settle = await holdCredit(admin, { provider: creditFor(t.url), micros: heardCost, app: 'survey-agent' });
     if (!settle) return json(429, { error: 'credit_used_up' });
     let res: Response;
     try {
@@ -417,7 +423,7 @@ Deno.serve(async (req) => {
       temperature: 0.2,
       max_tokens: SURVEY_AGENT_LIMITS.maxOutputTokens,
     };
-    const credit = creditProviderFor(provider.baseUrl);
+    const credit = creditFor(provider.baseUrl);
     const settle = await holdCredit(admin, {
       provider: credit,
       micros: chatHoldMicros({ promptChars: JSON.stringify(request).length, maxOutputTokens: request.max_tokens, prices: provider.prices }),
@@ -547,7 +553,7 @@ Deno.serve(async (req) => {
     try { bytes = decodeBase64(String(body.image || '')); } catch { return json(400, { error: 'bad_image' }); }
     if (!bytes.length || bytes.length > SURVEY_AGENT_PHOTO_LIMITS.maxImageBytes) return json(413, { error: 'image_too_large' });
     if (!(await reserve())) return refused();
-    const lookCredit = creditProviderFor(v.baseUrl);
+    const lookCredit = creditFor(v.baseUrl);
     // A photo is billed by its tiles, not its bytes: hold for a large one.
     const settleLook = await holdCredit(admin, {
       provider: lookCredit,
