@@ -25,6 +25,9 @@ export async function startNativeHandsFree({
   onBargeIn = () => {},
   onFatal = () => {},
   spokenNow = () => '',
+  // Nightly flag survey-agent-offline: the phone hears on the device when
+  // there is no signal (nativeSpeech.js).
+  offline = false,
 }) {
   const granted = await speech.requestPermission();
   if (granted === false || granted?.granted === false) {
@@ -41,6 +44,7 @@ export async function startNativeHandsFree({
   const begin = () => {
     session = speech.start({
       lang,
+      offline,
       onSpeechStart: () => { talking = true; onHearing(true); },
       onSpeechEnd: () => { talking = false; onHearing(false); },
       onFinal: ({ text, confidence } = {}) => {

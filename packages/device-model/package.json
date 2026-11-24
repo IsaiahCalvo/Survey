@@ -1,0 +1,26 @@
+{
+  "name": "@survey/device-model",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The phone's own AI model for Survey's offline agent: Apple's on-device model (iOS 26) and Gemini Nano on Android (ML Kit).",
+  "type": "module",
+  "main": "index.js",
+  "files": [
+    "index.js",
+    "Package.swift",
+    "ios/Sources",
+    "android/build.gradle",
+    "android/src/main/"
+  ],
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    },
+    "android": {
+      "src": "android"
+    }
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.0.0"
+  }
+}

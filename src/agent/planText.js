@@ -50,11 +50,19 @@ export function textItemsToWords(items, viewport) {
   return words;
 }
 
-/** Text recognition words ({ text, quad: [{x, y} x4] }, page points) to words with boxes. */
+// A quad as text recognition stores it ({ x1, y1, ... x4, y4 }, from
+// mapOcrBoxToPage) or as a list of { x, y } points.
+const quadPoints = (quad) => {
+  if (Array.isArray(quad)) return quad;
+  if (!quad || typeof quad !== 'object') return [];
+  return [1, 2, 3, 4].map((i) => ({ x: quad[`x${i}`], y: quad[`y${i}`] }));
+};
+
+/** Text recognition words ({ text, quad }, page points) to words with boxes. */
 export function ocrWordsToWords(ocrWords) {
   const words = [];
   for (const w of ocrWords || []) {
-    const pts = Array.isArray(w?.quad) ? w.quad.filter((p) => Number.isFinite(p?.x) && Number.isFinite(p?.y)) : [];
+    const pts = quadPoints(w?.quad).filter((p) => Number.isFinite(p?.x) && Number.isFinite(p?.y));
     if (!String(w?.text || '').trim() || pts.length < 2) continue;
     const xs = pts.map((p) => p.x);
     const ys = pts.map((p) => p.y);
