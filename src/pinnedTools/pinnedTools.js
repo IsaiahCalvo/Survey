@@ -11,6 +11,8 @@
 // saved list (one per browser, not per document) and the dock's placement
 // maths. components/PinnedToolsDock.jsx draws it and arms pins.
 
+import { SEED_MARKER_KINDS, isSurveyPinKind, sanitizeSurveyRef, surveyPinDescription, surveyPinKind } from './surveyPins.js';
+
 export const PINNED_TOOLS_STORAGE_KEY = 'survey:pinned-tools.v1';
 
 // The tools a pin can hold, in tool-bar order. `id` is the pin's own kind;
@@ -74,7 +76,8 @@ const FILL_TOOLS = new Set(['rect', 'ellipse', 'polygon', 'callout', 'counter'])
 // Tools with a size and no colour: the eraser.
 const SIZE_ONLY_TOOLS = new Set(['eraser']);
 
-export const pinKind = (id) => KIND_BY_ID.get(id) || null;
+// Survey pins (surveyPins.js) are kinds too, so the dock draws and names them.
+export const pinKind = (id) => KIND_BY_ID.get(id) || surveyPinKind(id);
 
 /** The pin kind for an armed tool and line style ('rect' + cloud = Cloud). */
 export function pinKindForTool(tool, lineStyle) {
@@ -104,7 +107,7 @@ const cleanNumber = (value, min, max) => {
  */
 export function pinStyleFor(kindId, raw = {}) {
   const kind = pinKind(kindId);
-  if (!kind) return {};
+  if (!kind || kind.survey) return {};
   const style = {};
   if (SIZE_ONLY_TOOLS.has(kind.tool)) {
     const size = cleanNumber(raw.strokeWidth, 1, 100);
@@ -149,6 +152,7 @@ export function pinStylesEqual(a = {}, b = {}) {
 
 /** The colour a pin's glyph is drawn in: a counter shows its fill. */
 export function pinFaceColor(pin) {
+  if (isSurveyPinKind(pin?.kind)) return pin.ref?.color || null;
   if (!pin?.style) return null;
   return pinKind(pin.kind)?.tool === 'counter'
     ? (pin.style.fillColor || pin.style.strokeColor || null)
@@ -166,6 +170,7 @@ export function pinBadge(pin) {
 export function pinDescription(pin) {
   const kind = pinKind(pin?.kind);
   if (!kind) return '';
+  if (kind.survey) return surveyPinDescription(pin);
   const parts = [kind.label];
   const color = pinFaceColor(pin);
   if (color) parts.push(colorName(color));
@@ -206,9 +211,15 @@ function newPinId() {
   return `pin-${Date.now().toString(36)}-${idCounter}`;
 }
 
-export function makePin(kindId, rawStyle, id = newPinId()) {
+export function makePin(kindId, rawStyle, id = newPinId(), rawRef = null) {
   if (!pinKind(kindId)) return null;
-  return { id, kind: kindId, style: pinStyleFor(kindId, rawStyle) };
+  const pin = { id, kind: kindId, style: pinStyleFor(kindId, rawStyle) };
+  if (isSurveyPinKind(kindId) && !surveyPinKind(kindId).drawMode) {
+    const ref = sanitizeSurveyRef(kindId, rawRef);
+    if (!ref) return null;
+    pin.ref = ref;
+  }
+  return pin;
 }
 
 export const DOCK_PLACEMENTS = Object.freeze(['left', 'right', 'bottom']);
@@ -222,6 +233,9 @@ export const DEFAULT_PINNED_TOOLS_STATE = Object.freeze({
   // Survey mode keeps its own pins (owner 2026-11-09). null until Survey is
   // first opened with the dock, which starts it as a copy of the markup pins.
   surveyPins: null,
+  // Nightly 'survey-mode-tools': the Rectangle and Freehand marker pins were
+  // put at the front of the survey set once (seedSurveyMarkerPins).
+  surveyMarkersSeeded: false,
 });
 
 /** The pin sets: markup (everywhere) and survey (while Survey mode is on). */
@@ -239,6 +253,12 @@ export const PIN_DEFAULT_WIDTH = Object.freeze({
 
 function sanitizePin(raw) {
   if (!raw || typeof raw !== 'object' || !pinKind(raw.kind)) return null;
+  if (isSurveyPinKind(raw.kind)) {
+    const id = typeof raw.id === 'string' && raw.id ? raw.id.slice(0, 80) : newPinId();
+    if (surveyPinKind(raw.kind).drawMode) return { id, kind: raw.kind, style: {} };
+    const ref = sanitizeSurveyRef(raw.kind, raw.ref);
+    return ref ? { id, kind: raw.kind, style: {}, ref } : null;
+  }
   const style = pinStyleFor(raw.kind, raw.style || {});
   if (!Number.isFinite(style.strokeWidth) && PIN_DEFAULT_WIDTH[raw.kind] !== undefined) {
     style.strokeWidth = PIN_DEFAULT_WIDTH[raw.kind];
@@ -266,6 +286,7 @@ export function sanitizePinnedToolsState(raw) {
     compact: typeof raw.compact === 'boolean' ? raw.compact : DEFAULT_PINNED_TOOLS_STATE.compact,
     pins,
     surveyPins,
+    surveyMarkersSeeded: raw.surveyMarkersSeeded === true,
   };
 }
 
@@ -315,6 +336,19 @@ export function createPinnedToolsStore({ storage = safeStorage(), key = PINNED_T
         return;
       }
       notify();
+    },
+    /**
+     * Nightly 'survey-mode-tools': once per browser, put the marker pins
+     * (Rectangle, Freehand, and Smart fill where it is on) at the front of the
+     * survey set, so Survey mode's bar starts with its own tools. Nothing is
+     * taken away; a marker kind already pinned is not pinned twice.
+     */
+    seedSurveyMarkerPins({ smartFill = false } = {}) {
+      if (pinSet !== 'survey' || saved.surveyMarkersSeeded) return;
+      const kinds = smartFill ? [...SEED_MARKER_KINDS, 'survey-smartfill'] : SEED_MARKER_KINDS;
+      const have = new Set(state.pins.map((pin) => pin.kind));
+      const fresh = kinds.filter((kind) => !have.has(kind)).map((kind) => makePin(kind, {}));
+      commit({ ...state, pins: [...fresh, ...state.pins], surveyMarkersSeeded: true });
     },
     subscribe(listener) {
       listeners.add(listener);
