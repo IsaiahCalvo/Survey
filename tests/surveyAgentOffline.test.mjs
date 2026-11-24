@@ -103,6 +103,7 @@ test('an entity by its exact name; "done" is asked, never guessed', () => {
   // "Done" could be either of this template's entities: ask, change nothing.
   assert.deepEqual(planOfflineTurn('Mark D-118 done', bridge), {
     ask: 'Which is "done" for D-118: Installed or Commissioned? Nothing changed.',
+    pending: { itemId: 'm118', heard: 'done' },
   });
   assert.equal(planOfflineTurn('D-118 is finished', bridge).ask.startsWith('Which is "finished"'), true);
   // Not setting a state, or a line's words: left for the server.
@@ -357,4 +358,56 @@ test('with an item selected, "mark done" asks among the entities', () => {
   const { bridge } = fakeBridge({ selectedMarkerId: 'm118' });
   assert.equal(planOfflineTurn('mark done', bridge).ask, 'Which is "done" for D-118: Installed or Commissioned? Nothing changed.');
   assert.deepEqual(planOfflineTurn('mark commissioned', bridge).calls, [{ name: 'set_entity', input: { item_id: 'm118', entity_id: 'ent-commissioned' } }]);
+});
+
+// ---- What "done" means, asked once per project. ----
+
+test('a state word the project taught is used; otherwise asked', () => {
+  const { bridge } = fakeBridge();
+  const learned = [{ kind: 'state', heard: 'Done', means: 'Commissioned' }];
+  assert.deepEqual(planOfflineTurn('Mark D-118 done', bridge, { learned }).calls, [
+    { name: 'set_entity', input: { item_id: 'm118', entity_id: 'ent-commissioned' } },
+  ]);
+  const asked = planOfflineTurn('Mark D-118 finished', bridge, { learned });
+  assert.deepEqual(asked.pending, { itemId: 'm118', heard: 'finished' });
+});
+
+test('the answer to the question sets it and is remembered, saved later with no signal', async () => {
+  const { bridge, markers } = fakeBridge({ projectId: 'proj-1' });
+  const saved = [];
+  const memory = {
+    cached: () => saved,
+    list: async () => saved,
+    save: async () => { throw new Error('Failed to fetch'); },
+    saveLater: (projectId, row) => { const r = { ...row, id: 'local-1', pending: true }; saved.push(r); return { row: r }; },
+  };
+  const toolbox = createSurveyAgentToolbox({ getBridge: () => bridge, documentId: 'doc-1', memory });
+  const asked = await runOfflineTurn({ text: 'Mark D-118 done', toolbox, bridge, learned: saved });
+  assert.match(asked.reply, /^Which is "done" for D-118: Installed or Commissioned\?/);
+  const answered = await runOfflineTurn({ text: 'commissioned', toolbox, bridge, learned: saved, pending: asked.pending });
+  assert.equal(markers.m118.entityId, 'ent-commissioned');
+  assert.equal(answered.changes.length, 1);
+  assert.match(answered.reply, /Saved on this device: "done" means Commissioned/);
+  assert.deepEqual(saved.map((r) => [r.kind, r.heard, r.means]), [['state', 'done', 'Commissioned']]);
+  // Next time, on another item, no question.
+  const next = await runOfflineTurn({ text: 'Mark D-117 done', toolbox, bridge, learned: saved });
+  assert.equal(markers.m117.entityId, 'ent-commissioned');
+  assert.equal(next.changes.length, 1);
+  // An answer that is no entity is not taken as one.
+  assert.equal(await runOfflineTurn({ text: 'maybe', toolbox, bridge, learned: saved, pending: asked.pending }), null);
+});
+
+test('remember kind state takes only an entity of this template', async () => {
+  const { bridge } = fakeBridge({ projectId: 'proj-1' });
+  const rows = [];
+  const memory = { cached: () => rows, list: async () => rows, save: async (p, row) => { const r = { ...row, id: 'r1' }; rows.push(r); return { row: r, before: null }; } };
+  const toolbox = createSurveyAgentToolbox({ getBridge: () => bridge, documentId: 'doc-1', memory });
+  assert.equal((await toolbox.run('remember', { kind: 'state', heard: 'done', means: 'Tested' })).isError, true);
+  assert.equal((await toolbox.run('remember', { kind: 'state', heard: 'installed', means: 'Commissioned' })).isError, true);
+  const ok = await toolbox.run('remember', { kind: 'state', heard: 'done', means: 'commissioned' });
+  assert.equal(ok.isError, false);
+  assert.deepEqual(rows[0], { kind: 'state', heard: 'done', means: 'Commissioned', id: 'r1' });
+  // set_entity reads it too (the server agent's path).
+  const set = await toolbox.run('set_entity', { item_id: 'm118', entity_id: 'done' });
+  assert.equal(set.isError, false, set.content);
 });

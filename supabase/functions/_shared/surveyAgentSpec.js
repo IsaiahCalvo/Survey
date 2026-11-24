@@ -42,6 +42,7 @@ Rules:
 - If their words could mean two answers ("it's done" over mixed lines, "mostly in"), ask one short question and change nothing yet.
 - Notes: short, clean sentences, no filler; keep their facts exactly, add none. Use the project's learned wording (get_survey_context learned.wording: write the second for the first). If they word one fact two ways in a walk ("missing", "not installed"), write the way they say it most and ask once if you should always write it that way.
 - When they teach a name or wording ("whenever I say D101 I mean D-1-01", "third door on the first floor is D-1-03", "always write not installed, not missing"), call remember. After a new wording, also call tidy_notes so older notes match. "Forget D101" is forget. Learned names (learned.names) already work in item_name.
+- A state word that is no entity's name ("done", "finished") means different entities to different customers: unless learned.states has it, ask which of this template's entities it means, set that, and call remember kind state so you never ask again on this project. Learned states already work in set_entity.
 - Photos or files they attached go on the item with attach_media; "take a photo" is take_photo.
 - When they tell you to do something, do it; don't ask to confirm. If they correct you ("no, D-118", "undo that"), call undo_last_turn, then redo it right.
 - A device named by kind and number, not tag ("camera 6 on the 4th floor"): use find_described with the kind, number, and floor or wing if said. Never ask for the wing or the full tag. If one item or plan tag clearly fits best, it is the one: show it (show_item, show_on_plan) when they ask to find it; work on it when they say what to record. A plan tag that is not an item yet becomes one with create_item when they say what to record or what it is ("it's a camera" names the category). If several fit equally, name them by page and ask.
@@ -292,11 +293,11 @@ export function buildSurveyAgentTools(answerValues, { annotations = false, marku
     // What the project taught the agent; not for browser agents.
     ...(webmcp ? [] : [
       tool('remember',
-        'Save, for everyone on this project, a name the person uses for an item (kind name: heard "D101", means the item, by its name as heard) or the words they want in notes (kind wording: heard "missing", means "not installed"). The same heard replaces the old one. One Undo takes it back.',
+        'Save, for everyone on this project, a name the person uses for an item (kind name: heard "D101", means the item, by its name as heard), the words they want in notes (kind wording: heard "missing", means "not installed"), or what a state word means here (kind state: heard "done", means an entity\'s exact name). The same heard replaces the old one. One Undo takes it back.',
         {
-          kind: { type: 'string', enum: ['name', 'wording'] },
+          kind: { type: 'string', enum: ['name', 'wording', 'state'] },
           heard: { type: 'string', description: 'What they say, as heard.' },
-          means: { type: 'string', description: 'kind name: the item it is. kind wording: the words to write instead.' },
+          means: { type: 'string', description: 'kind name: the item it is. kind wording: the words to write instead. kind state: the entity\'s exact name.' },
         },
         ['kind', 'heard', 'means']),
       tool('forget',

@@ -29,6 +29,7 @@ import { categoriesOf, checklistOf, entitiesOf, itemText, modulesOf } from '../s
 import { normalizeItemName } from '../../supabase/functions/_shared/surveyAgentSpec.js';
 import { clearBest, projectKinds } from './surveyAgentTools.js';
 import { parseDescribedTarget, templateKinds } from './spokenTag.js';
+import { learnedStateFor } from './agentMemory.js';
 
 // Fixed spoken forms of the usual answers, keyed by the answer's own value
 // (lower case). An answer set's own values are always heard as themselves.
@@ -200,7 +201,7 @@ const joinOr = (list) => (list.length <= 1 ? list.join('') : `${list.slice(0, -1
  * question, nothing changed), or null when the words are not clear.
  * `marker` may be an item about to be added ({ name, moduleId, categoryId }).
  */
-function readItemTurn({ text, template, marker, itemId, before, after, named }) {
+function readItemTurn({ text, template, marker, itemId, before, after, named, learned = [] }) {
   if (!marker) return null;
   const category = categoryOf(template, marker);
   // "Door D-117": the category's name just before the item's name is part of it.
@@ -229,7 +230,10 @@ function readItemTurn({ text, template, marker, itemId, before, after, named }) 
   const entities = entitiesOf(template).filter((e) => e?.id && e?.name);
   const saidWords = restWords.filter((w) => !FILLER.has(w));
   const said = saidWords.join(' ');
-  const entity = said && entities.find((e) => withoutArticles(plainWords(e.name)).join(' ') === said);
+  const byName = (name) => entities.find((e) => withoutArticles(plainWords(e.name)).join(' ') === withoutArticles(plainWords(name)).join(' '));
+  // Its own name, or a word this project taught ("done" is Commissioned here).
+  const taught = said ? learnedStateFor(learned, said) : null;
+  const entity = said && (byName(said) || (taught ? byName(taught) : null));
   if (entity) return { calls: [{ name: 'set_entity', input: { item_id: itemId, entity_id: entity.id } }] };
   if (category) {
     const read = readAnswers(restWords, lineOptions(category), answerForms(template));
@@ -252,7 +256,11 @@ function readItemTurn({ text, template, marker, itemId, before, after, named }) 
   const lineWords = new Set(category ? checklistOf(category).flatMap((l) => plainWords(itemText(typeof l === 'string' ? { text: l } : l))) : []);
   if (setting && entities.length >= 2 && saidWords.length && saidWords.length <= 2
     && !saidWords.some((w) => answerWords.has(w) || lineWords.has(w) || /\d/.test(w))) {
-    return { ask: `Which is "${said}" for ${marker.name || 'this item'}: ${joinOr(entities.map((e) => e.name))}? Nothing changed.` };
+    return {
+      ask: `Which is "${said}" for ${marker.name || 'this item'}: ${joinOr(entities.map((e) => e.name))}? Nothing changed.`,
+      // The answer ("commissioned") sets it and is remembered for the project.
+      ...(itemId !== NEW_ITEM ? { pending: { itemId, heard: said } } : {}),
+    };
   }
   return null;
 }
@@ -263,7 +271,7 @@ function readItemTurn({ text, template, marker, itemId, before, after, named }) 
  * selectedMarkerId, currentModuleId).
  * @returns {{ calls: { name: string, input: object }[] } | null}
  */
-export function planOfflineTurn(text, bridge) {
+export function planOfflineTurn(text, bridge, { learned = [] } = {}) {
   const template = bridge?.template;
   const markers = bridge?.markers || {};
   if (!template) return null;
@@ -284,7 +292,7 @@ export function planOfflineTurn(text, bridge) {
   }
   const readings = [];
   const tryItem = (itemId, before, after, span) => {
-    const reading = readItemTurn({ text, template, marker: markers[itemId], itemId, before, after, named: Boolean(span) });
+    const reading = readItemTurn({ text, template, marker: markers[itemId], itemId, before, after, named: Boolean(span), learned });
     if (reading) readings.push(reading);
   };
 
@@ -327,7 +335,7 @@ const listFits = (list) => list.slice(0, 5).map((m) => `${m.name || m.text}${m.p
  * the device and the server agent pick the same item.
  * @returns {Promise<{ calls?: object[], ask?: string } | null>}
  */
-export async function planDescribedTurn(text, bridge, toolbox) {
+export async function planDescribedTurn(text, bridge, toolbox, { learned = [] } = {}) {
   const template = bridge?.template;
   const markers = bridge?.markers || {};
   if (!template || !toolbox) return null;
@@ -354,7 +362,7 @@ export async function planDescribedTurn(text, bridge, toolbox) {
     const after = tokens.slice(end);
     const items = fits.items || [];
     const plan = (fits.plan || []).filter((m) => !m.already_item || !items.some((i) => i.id === m.already_item.id));
-    const onItem = (id) => readItemTurn({ text, template, marker: markers[id], itemId: id, before, after, named: true });
+    const onItem = (id) => readItemTurn({ text, template, marker: markers[id], itemId: id, before, after, named: true, learned });
     const bestItem = clearBest(items);
     if (bestItem) {
       const reading = onItem(bestItem.id);
@@ -377,7 +385,7 @@ export async function planDescribedTurn(text, bridge, toolbox) {
       if (homes.length !== 1) continue;
       const name = String(bestTag.text).trim();
       const fresh = { name, moduleId: homes[0].module.id, categoryId: homes[0].category.id };
-      const reading = readItemTurn({ text, template, marker: fresh, itemId: NEW_ITEM, before, after, named: true });
+      const reading = readItemTurn({ text, template, marker: fresh, itemId: NEW_ITEM, before, after, named: true, learned });
       if (!reading) continue;
       if (reading.ask) return reading;
       const create = { name: 'create_item', input: { name, category_id: homes[0].category.id, plan_match_id: bestTag.id } };
@@ -392,15 +400,38 @@ export async function planDescribedTurn(text, bridge, toolbox) {
 const NEW_ITEM = '$new';
 
 /**
- * Does one sentence on the device. Returns { reply, changes } once
- * something was done or asked (a question changes nothing), or null when
- * the rules can't read it or a tool refused before any change: then the
- * message waits for the server as before.
+ * The answer to a question just asked ("Which is "done" for D-118:
+ * Installed or Commissioned?"): exactly one entity's name, maybe with
+ * filler ("commissioned", "the commissioned one" is not). Sets it and
+ * remembers the word for the project. null for anything else.
  */
-export async function runOfflineTurn({ text, toolbox, bridge }) {
-  const plan = planOfflineTurn(text, bridge) || await planDescribedTurn(text, bridge, toolbox);
+export function answerPending(text, bridge, pending) {
+  if (!pending?.itemId || !bridge?.markers?.[pending.itemId]) return null;
+  const said = withoutArticles(plainWords(text)).filter((w) => !FILLER.has(w)).join(' ');
+  const entity = said && entitiesOf(bridge.template).find((e) => e?.id && withoutArticles(plainWords(e.name)).join(' ') === said);
+  if (!entity) return null;
+  return {
+    calls: [
+      { name: 'set_entity', input: { item_id: pending.itemId, entity_id: entity.id } },
+      ...(bridge.projectId ? [{ name: 'remember', input: { kind: 'state', heard: pending.heard, means: entity.name } }] : []),
+    ],
+  };
+}
+
+/**
+ * Does one sentence on the device. Returns { reply, changes } once
+ * something was done or asked (a question changes nothing, and comes with
+ * `pending` for the answer), or null when the rules can't read it or a
+ * tool refused before any change: then the message waits for the server
+ * as before. `learned`: the project's saved rows (state words);
+ * `pending`: the question this chat just asked on the device.
+ */
+export async function runOfflineTurn({ text, toolbox, bridge, learned = [], pending = null }) {
+  const plan = answerPending(text, bridge, pending)
+    || planOfflineTurn(text, bridge, { learned })
+    || await planDescribedTurn(text, bridge, toolbox, { learned });
   if (!plan) return null;
-  if (plan.ask) return { reply: plan.ask, changes: [], calls: [] };
+  if (plan.ask) return { reply: plan.ask, changes: [], calls: [], pending: plan.pending || null };
   const changes = [];
   const said = [];
   let added = null;

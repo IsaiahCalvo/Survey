@@ -481,6 +481,7 @@ export default function SurveyAgentPanel({
   // No signal (or the server busy): a message the plain rules can read is
   // done on the device now instead of waiting. Returns the reply, or null.
   // The server's chat hears about it, so later turns build on it.
+  const offlineAskRef = useRef(null);
   const tryOffline = async (job) => {
     if (!isFeatureOn(OFFLINE_FLAG) || !job?.said || job.files?.length) return null;
     const bridge = surveyAgentBridge.current;
@@ -493,13 +494,17 @@ export default function SurveyAgentPanel({
       memory: agentMemory,
     });
     let result = null;
+    // A question asked on the device is answered by the very next message.
+    const pending = offlineAskRef.current;
+    offlineAskRef.current = null;
     try {
-      result = await runOfflineTurn({ text: job.said, toolbox: box, bridge });
+      result = await runOfflineTurn({ text: job.said, toolbox: box, bridge, learned: agentMemory.cached(bridge.projectId), pending });
     } catch (err) {
       console.warn('[survey-agent] offline turn failed', err);
       return null;
     }
     if (!result) return null;
+    offlineAskRef.current = result.pending || null;
     await new Promise((resolve) => setTimeout(resolve, 0));
     toolbox.settle(result.changes);
     const touched = result.changes.map((c) => c.itemId).filter(Boolean);

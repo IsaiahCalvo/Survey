@@ -11,7 +11,7 @@ import { answerSetMeaning, moduleKind, moduleMeaning } from '../../supabase/func
 import { boundsCover, findDescribedOnPages, markerBoxAroundTag, tagShape } from './planText.js';
 import { floorNumberOf, kindFromWord, parseDescribedTarget, scoreDescribedTag, templateKinds, wingLetterOf } from './spokenTag.js';
 import { summarizeSurvey, summaryText } from '../services/surveySummary.js';
-import { learnedForModel, learnedNameFor, memoryKey, rewordText } from './agentMemory.js';
+import { learnedForModel, learnedNameFor, learnedStateFor, memoryKey, rewordText } from './agentMemory.js';
 
 export { normalizeItemName, scoreItemName };
 
@@ -279,7 +279,10 @@ export function createSurveyAgentToolbox({
     if (!said) return null;
     const list = entitiesOf(b.template);
     const key = normalizeItemName(said);
-    const found = list.find((e) => e.id === said) || list.find((e) => normalizeItemName(e.name) === key);
+    // A state word the project taught ("done" is Commissioned here).
+    const taught = learnedStateFor(memoryRows(b), said);
+    const found = list.find((e) => e.id === said) || list.find((e) => normalizeItemName(e.name) === key)
+      || (taught ? list.find((e) => normalizeItemName(e.name) === normalizeItemName(taught)) : null);
     if (!found) throw new ToolError(`"${said}" is not one of this template's entities (${list.map((e) => e.name).join(', ') || 'it has none'}). Nothing changed.`);
     return found;
   };
@@ -471,16 +474,27 @@ export function createSurveyAgentToolbox({
         const itemId = await itemIdFor(b, target);
         target = nameOf(markerOf(b, itemId));
         if (said.toLowerCase() === target.toLowerCase()) throw new ToolError(`${said} is already that item's own name; nothing saved.`);
+      } else if (kind === 'state') {
+        // "Done means commissioned": the saved meaning is one entity's own name.
+        const entity = entitiesOf(b.template).find((e) => normalizeItemName(e.name) === normalizeItemName(target));
+        if (!entity) throw new ToolError(`"${target}" is not one of this template's entities (${entitiesOf(b.template).map((e) => e.name).join(', ') || 'it has none'}). Nothing saved.`);
+        if (entitiesOf(b.template).some((e) => normalizeItemName(e.name) === normalizeItemName(said))) throw new ToolError(`${said} is already an entity's own name; nothing saved.`);
+        target = entity.name;
       } else if (kind !== 'wording') {
-        throw new ToolError('kind is name or wording.');
+        throw new ToolError('kind is name, wording or state.');
       }
+      const lineOf = (row) => (kind === 'name' ? `"${row.heard}" means ${row.means}`
+        : kind === 'state' ? `"${row.heard}" means ${row.means}` : `write "${row.means}" for "${row.heard}"`);
       let saved;
       try {
         saved = await memory.save(b.projectId, { kind, heard: said, means: target });
       } catch (err) {
-        throw new ToolError(`Could not save it: ${err.message}`);
+        // No signal: keep it on the device; it is saved for the project later.
+        if (typeof memory.saveLater !== 'function') throw new ToolError(`Could not save it: ${err.message}`);
+        const { row } = memory.saveLater(b.projectId, { kind, heard: said, means: target });
+        return { content: `Saved on this device: ${lineOf(row)}. It is shared with the project when there is signal.` };
       }
-      const line = kind === 'name' ? `"${saved.row.heard}" means ${saved.row.means}` : `write "${saved.row.means}" for "${saved.row.heard}"`;
+      const line = lineOf(saved.row);
       if (saved.same) return { content: `Already saved: ${line}.` };
       return {
         content: `Saved for this project: ${line}.${saved.before ? ` (Replaced "${saved.before.means}".)` : ''}`,
