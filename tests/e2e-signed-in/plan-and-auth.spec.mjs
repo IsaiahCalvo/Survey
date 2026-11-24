@@ -6,6 +6,16 @@ test('Pro account shows the Pro plan', async ({ page }) => {
   await expect(profileChip(page, E2E_ACCOUNTS.pro)).toContainText('Synced · Pro');
 });
 
+test('offline, the profile chip says Offline and keeps the Pro plan', async ({ page, context }) => {
+  await signIn(page, E2E_ACCOUNTS.pro);
+  const chip = profileChip(page, E2E_ACCOUNTS.pro);
+  await expect(chip).toContainText('Synced · Pro');
+  await context.setOffline(true);
+  await expect(chip).toContainText('Offline · Pro');
+  await context.setOffline(false);
+  await expect(chip).toContainText('Synced · Pro');
+});
+
 test('free account shows the Free plan and has no documents of its own', async ({ page }) => {
   await signIn(page, E2E_ACCOUNTS.free);
   const chip = profileChip(page, E2E_ACCOUNTS.free);
