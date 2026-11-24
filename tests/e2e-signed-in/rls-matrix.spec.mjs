@@ -170,7 +170,6 @@ const ownerRows = (ids) => ({
 // completeness test until it is added to ownerRows or here.
 const NOT_SWEPT = {
   // No grants to anon or authenticated: only the service role reaches them.
-  ai_credit_budgets: 'service only', ai_credit_spend: 'service only',
   agent_access: 'service only', agent_links: 'service only', agent_rate_counters: 'service only',
   ai_credit_budgets: 'service only', ai_credit_spend: 'service only',
   analytics_ingestion_daily_counters: 'service only', archive_purge_failures: 'service only',
