@@ -37,6 +37,9 @@ function ModuleTab({ module, isActive, canDrag, onSelect }) {
       {...listeners}
       // dnd-kit's attributes call every sortable a button; these are tabs.
       role="tab"
+      // ...and mark a tab that can't be dragged aria-disabled, which drew it
+      // in disabled ink. It can still be picked.
+      aria-disabled={undefined}
       aria-selected={isActive}
       aria-roledescription={canDrag ? 'draggable tab' : undefined}
       data-survey-module-tab={module.id}

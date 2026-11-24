@@ -165,6 +165,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
   const [openMenu, setOpenMenu] = useState(null);
   const cardRef = useRef(null);
   const [guestLinksOn] = useState(() => isFeatureOn('guest-links'));
+  const [guestLinkCount, setGuestLinkCount] = useState(0);
 
   // Accessibility (KAL-66): the shared modal primitive — Tab stays inside the
   // dialog, Escape closes it, focus moves in on open and returns to the opener
@@ -311,6 +312,8 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
   // member (e.g. their invite email failed after access was granted) is not
   // listed again as Pending with Resend. See accessRows.js.
   const { links: activeLinks, emails: emailPending } = accessInviteRows(invites, members);
+  const showGuestLinks = guestLinksOn && kind === 'document' && Boolean(documentId) && isOwner;
+  const linkCount = activeLinks.length + (showGuestLinks ? guestLinkCount : 0);
   const docOwnerId = item?.user_id || ownerProfile?.user_id || null;
   const identOf = (m) => memberIdentity(m, { owner: ownerProfile, currentUser });
   const shownMembers = extrasOn && fresh
@@ -477,9 +480,9 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
             )}
 
             {/* Guest links (Nightly): owners only; the server checks too. */}
-            {guestLinksOn && kind === 'document' && documentId && isOwner && (
+            {showGuestLinks && (
               <Suspense fallback={null}>
-                <GuestLinksSection client={supabase} documentId={documentId} />
+                <GuestLinksSection client={supabase} documentId={documentId} onLiveCount={setGuestLinkCount} />
               </Suspense>
             )}
           </div>
@@ -493,7 +496,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
 
           <div style={{ padding: '12px 16px', borderTop: `1px solid ${C.rule}`, background: C.deep, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: 11, color: C.muted, letterSpacing: 0, fontWeight: 600 }}>
-              {shownMembers.length} member{shownMembers.length === 1 ? '' : 's'} · {emailPending.length} pending · {activeLinks.length} share link{activeLinks.length === 1 ? '' : 's'}
+              {shownMembers.length} member{shownMembers.length === 1 ? '' : 's'} · {emailPending.length} pending · {linkCount} share link{linkCount === 1 ? '' : 's'}
             </span>
             <button onClick={onClose} className="hub-btn">Done</button>
           </div>

@@ -1,4 +1,4 @@
-import { DEFAULT_ANSWER_SET, isItemDone } from '../services/answerSets.js';
+import { DEFAULT_ANSWER_SET, isItemDone, isItemIssue } from '../services/answerSets.js';
 // Auto "Complete" entity for a Survey Marker (owner ruling 2026-10-01).
 //
 // Owner: "When every checklist answer is Y or N/A, set the entity to Complete
@@ -49,14 +49,17 @@ export function findCompleteEntity(entities) {
 /**
  * True when every active checklist item has a "done" answer: Y or N/A by
  * default, or a good / neutral answer of the template's answer set. A text
- * or number item is done once it has an answer.
+ * or number item is done once it has an answer that is not an issue.
  */
 export function isChecklistAllYesOrNA(checklist, responses, answerSet = DEFAULT_ANSWER_SET) {
   const active = (Array.isArray(checklist) ? checklist : []).filter((item) => item && item.archived !== true);
   if (active.length === 0) return false;
   return active.every((item) => {
     const selection = responses?.[item.id]?.selection;
-    return isItemDone(item, answerSet, selection);
+    // "Every line is answered and none is an issue" (the template's switch):
+    // a typed answer can be an issue too (a red pick-many option, a number
+    // out of range), and it holds Complete back like an N does.
+    return isItemDone(item, answerSet, selection) && !isItemIssue(item, answerSet, selection);
   });
 }
 
