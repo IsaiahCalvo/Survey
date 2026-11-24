@@ -73,7 +73,8 @@ for (const layout of LAYOUTS) {
       await must('project', admin.from('projects').insert({ id: projectId, user_id: ownerId, name: projectName }));
       await must('member', admin.from('project_collaborators').insert({ project_id: projectId, user_id: editorId, role: 'editor', status: 'active', email: E2E_ACCOUNTS.editor.email }));
       const [item] = await must('item', admin.from('project_items').insert({ project_id: projectId, kind: 'issue', title: 'Door 3 hinge loose', created_by: ownerId }).select('id, project_id, kind, number'));
-      const editorName = E2E_ACCOUNTS.editor.email.split('@')[0];
+      // Team lists show the account name, not the email's first part (r5b #2/#5).
+      const editorName = 'Eddie Editor';
       const flags = () => { try { localStorage.setItem('survey.flag.project-issues', '1'); localStorage.setItem('survey.flag.item-assign-email', '1'); } catch { /* */ } };
       await context.addInitScript(flags);
       const asks = [];
