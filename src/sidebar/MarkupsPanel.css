@@ -129,10 +129,11 @@
   font-size: 12px;
 }
 
-/* Nothing drawn yet: the same centred line as Bookmarks, Search and Library. */
+/* Nothing drawn yet: the same centred line, 32px down, as Bookmarks,
+   Search and Comments (tests/sidePanelEmptyState.test.mjs). */
 .markups-panel__summary.is-empty {
   justify-content: center;
-  padding: 24px 12px;
+  padding: 32px 20px;
   font-size: 13px;
   line-height: 1.4;
   text-align: center;
