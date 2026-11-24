@@ -15,7 +15,8 @@ test('shared prompt and confirm dialog buttons get 44px touch pads', () => {
   // The prompt sits on DialogCard (design review 2026-10-27): its x is the
   // shell's hub-icon-btn "Close", which hub.css pads to 44px on touch.
   assert.match(prompt, /className="hub-btn dialog-touch-pad" onClick=\{onCancel\}>Cancel/);
-  assert.match(prompt, /className="hub-btn hub-btn--primary dialog-touch-pad" onClick=\{submit\}/);
+  // Both the plain and the red (danger) primary keep the touch pad.
+  assert.match(prompt, /className=\{danger \? 'hub-btn hub-btn--primary is-danger dialog-touch-pad' : 'hub-btn hub-btn--primary dialog-touch-pad'\} onClick=\{submit\}/);
   assert.match(read('src/components/DialogCard.jsx'), /aria-label="Close" \{\.\.\.tip\('Close'\)\} className="hub-icon-btn"/);
 
   const bulk = read('src/home/BulkModals.jsx');
