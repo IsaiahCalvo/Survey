@@ -18,3 +18,21 @@ test('Search, Bookmarks and History centre their empty line 32px down', () => {
   assert.match(history, /padding: 32px var\(--dh-edge\);/);
   assert.match(history, /text-align: center;/);
 });
+
+test('Annotations, with nothing drawn, shows only the empty line, 32px down', () => {
+  const jsx = read('src/sidebar/MarkupsPanel.jsx');
+  const head = jsx.indexOf('<div className="markups-panel__head">');
+  assert.ok(head > 0);
+  assert.match(jsx.slice(head - 300, head), /\{rows\.length > 0 && \(\s*$/);
+  assert.match(jsx, /\{filtered && rows\.length > 0 && \(/);
+  const css = read('src/sidebar/MarkupsPanel.css').match(/\.markups-panel__summary\.is-empty \{([^}]*)\}/)[1];
+  assert.match(css, /padding: 32px 20px;/);
+  assert.match(css, /text-align: center;/);
+});
+
+test('An empty Library hides its search box; Stamps and a loading library keep it', () => {
+  const jsx = read('src/markLibrary/MarkLibraryPanel.jsx');
+  assert.match(jsx, /const libraryEmpty = !stampsTab && status === 'ready' && items\.length === 0;/);
+  const search = jsx.indexOf('className="mark-library__search"');
+  assert.match(jsx.slice(search - 250, search), /\{!libraryEmpty && \(\s*<input\s*$/);
+});

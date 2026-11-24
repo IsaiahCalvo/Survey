@@ -415,6 +415,7 @@ export default function MarkLibraryPanel({ phone = false, headActionsHost = null
   });
 
   const status = stampsTab ? 'ready' : bucket.status;
+  const libraryEmpty = !stampsTab && status === 'ready' && items.length === 0;
   const emptyText = (() => {
     if (status === 'loading' || status === 'idle') return 'Loading…';
     if (status === 'error') return 'Could not load the library. Check your connection.';
@@ -497,6 +498,9 @@ export default function MarkLibraryPanel({ phone = false, headActionsHost = null
           />
         </div>
       )}
+      {/* An empty library shows only its empty line: no search box over
+          nothing, as in Annotations (tests/sidePanelEmptyState.test.mjs). */}
+      {!libraryEmpty && (
       <input
         className="mark-library__search"
         type="search"
@@ -505,6 +509,7 @@ export default function MarkLibraryPanel({ phone = false, headActionsHost = null
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />
+      )}
       {tags.length > 0 && (
         <div className="mark-library__tags" role="group" aria-label="Show one label">
           {tags.map((t) => (

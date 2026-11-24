@@ -3156,7 +3156,7 @@ export default function TemplatesEditor({
                                 <button
                                   aria-label="Delete item" {...tip('Delete item')}
                                   onClick={(e) => { e.stopPropagation(); deleteItem(i, it.id); }}
-                                  className="hub-icon-btn is-danger"
+                                  className="hub-icon-btn is-danger te-item-delete"
                                 ><Icon name="close" size={11} /></button>
                               </div>
                               </SwipeActionsRow>

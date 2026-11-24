@@ -171,6 +171,7 @@ const ownerRows = (ids) => ({
 const NOT_SWEPT = {
   // No grants to anon or authenticated: only the service role reaches them.
   agent_access: 'service only', agent_links: 'service only', agent_rate_counters: 'service only',
+  ai_credit_budgets: 'service only', ai_credit_spend: 'service only',
   analytics_ingestion_daily_counters: 'service only', archive_purge_failures: 'service only',
   archive_purge_runs: 'service only', auth_change_intents: 'service only', client_errors: 'service only',
   email_send_events: 'service only', excel_sync_audit: 'service only', excel_sync_changesets: 'service only',
@@ -185,6 +186,7 @@ const NOT_SWEPT = {
   sheet_sync_connections: 'service only', sheet_sync_pending_connections: 'service only',
   sheet_sync_settings: 'service only',
   project_item_counters: 'service only',
+  ai_credit_budgets: 'service only', ai_credit_spend: 'service only',
   // Undo records for deleted versions (Nightly): only the version functions
   // read or write them.
   document_version_removals: 'service only',

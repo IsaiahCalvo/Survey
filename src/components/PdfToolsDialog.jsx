@@ -9,6 +9,18 @@
    tools work on the PDF as it was uploaded. */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../home/HubShell';
+
+// The main button says what the tool does (docs writing rules), not "Run".
+const RUN_LABELS = {
+  merge: 'Merge',
+  split: 'Split',
+  organize: 'Organize',
+  rotate: 'Rotate',
+  compress: 'Compress',
+  ocr: 'Make searchable',
+  flatten: 'Flatten',
+  protect: 'Lock a copy',
+};
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import Spinner from './Spinner';
 import ButtonGroup from './ButtonGroup.jsx';
@@ -285,7 +297,7 @@ export default function PdfToolsDialog({ open, onClose, sources = [], others = [
       <div className="pdft-overlay" style={{ background: C.scrim }} onClick={busy ? undefined : onClose}>
         <div ref={cardRef} role="dialog" aria-modal="true" aria-label={title} className="pdft-card" onClick={(e) => e.stopPropagation()}>
           <div className="pdft-head">
-            {tool && !result && !initialTool && <button type="button" className="hub-icon-btn dialog-touch-pad" aria-label="Back to all tools" onClick={() => { setTool(null); setError(''); }} disabled={Boolean(busy)}>←</button>}
+            {tool && !result && !initialTool && <button type="button" className="hub-icon-btn dialog-touch-pad" aria-label="Back to all tools" onClick={() => { setTool(null); setError(''); }} disabled={Boolean(busy)}><Icon name="arrowLeft" size={14} /></button>}
             <div className="pdft-title">
               <div className="pdft-h">{title}</div>
               <div className="pdft-sub">{tool === 'merge' && sources.length > 1 ? `${sources.length} documents` : main.name}</div>
@@ -310,7 +322,7 @@ export default function PdfToolsDialog({ open, onClose, sources = [], others = [
           {tool && (
             <div className="pdft-foot">
               {busy && <span className="pdft-busy" role="status"><Spinner size={14} color="currentColor" /> {busy}</span>}
-              {!result && <button type="button" className="hub-btn hub-btn--primary dialog-touch-pad" disabled={Boolean(busy) || (wantsPages && !order.length) || (tool === 'merge' && mergeList.length < 2 && sources.length < 2)} onClick={run}>{def?.id === 'protect' ? 'Lock a copy' : 'Run'}</button>}
+              {!result && <button type="button" className="hub-btn hub-btn--primary dialog-touch-pad" disabled={Boolean(busy) || (wantsPages && !order.length) || (tool === 'merge' && mergeList.length < 2 && sources.length < 2)} onClick={run}>{RUN_LABELS[def?.id] || 'Run'}</button>}
               {result && !saved && (
                 <>
                   <button type="button" className="hub-btn dialog-touch-pad" disabled={Boolean(busy)} onClick={download}>Download</button>

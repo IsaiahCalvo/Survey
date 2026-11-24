@@ -27,6 +27,7 @@ import { HOME_DOWNLOAD_EVENT } from './utils/homeDownload.js';
 import { OPEN_EXPORT_PDF_EVENT } from './utils/exportPdfModes.js';
 import { PageGridMenu } from './components/PageGridSettings';
 import { PaperOverlayGlyph, PaperOverlayMenu } from './components/PaperOverlayMenu.jsx';
+import ViewStripMenu from './components/ViewStripMenu.jsx';
 import { ThinLinesGlyph, ThinLinesMenu } from './components/ThinLinesMenu.jsx';
 import { applyToolBarCompact, applyToolBarHidden, useToolBarCompact, useToolBarHidden } from './utils/toolBarVisibility';
 import './styles/toolBarVisibility.css';
@@ -2583,6 +2584,10 @@ export default function App({ devPreviewReturnTab = null }) {
   // Drawboard shares from its viewer top bar; Survey only from Home). The
   // owner gets Manage access, anyone else the plain Share dialog, as on Home.
   const [viewerShareEnabled] = useState(() => isFeatureOn('viewer-share'));
+  // Nightly 'share-export-one' (owner 2026-11-23): one Share button, its
+  // menu sharing first and then every export, as Walkthru's top bar.
+  const [shareExportOne] = useState(() => isFeatureOn('share-export-one'));
+  const [viewStripEnabled] = useState(() => isFeatureOn('view-strip'));
   const [viewerShare, setViewerShare] = useState(null);
   const activeShareDocId = viewerShareEnabled ? persistableDocumentId(activeTab) : null;
   const openViewerShare = () => {
@@ -3461,7 +3466,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 />
               )}
               {/* A guest can't share: the invite dialog only told them to upgrade. */}
-              {activeShareDocId && user?.id && !user.is_anonymous && (
+              {activeShareDocId && user?.id && !user.is_anonymous && !shareExportOne && (
                 <button
                   type="button"
                   data-viewer-share="true"
@@ -3477,6 +3482,50 @@ export default function App({ devPreviewReturnTab = null }) {
               )}
               <DocumentVersionsButton state={documentVersions} tip={chromeTip} />
               <DriveSyncButton state={driveSync} tip={chromeTip} onOpen={() => setDriveSyncCardOpen(true)} />
+              {shareExportOne ? (
+                // One Share button (Nightly 'share-export-one'): Share first,
+                // then every export below a rule.
+                <ExportMenu
+                  triggerIcon="share"
+                  triggerLabel="Share or export"
+                  glyphSize={CHROME_GLYPH}
+                  triggerProps={{ 'data-toolbar-export': activeSpaceForChip ? undefined : 'true', 'data-viewer-share': 'true' }}
+                  tooltip={chromeTip('Share or export', 'below')}
+                  items={[
+                    activeShareDocId && user?.id && !user.is_anonymous
+                      ? { label: 'Share…', icon: 'share', title: 'Invite people or copy a link to this document.', onSelect: openViewerShare }
+                      : null,
+                    exportModesEnabled && typeof bottomToolbarApi.exportPdfWithOptions === 'function'
+                      ? {
+                        separatorBefore: true,
+                        label: 'Export PDF…',
+                        icon: 'download',
+                        title: 'Annotated, flattened or plain, and which pages.',
+                        onSelect: () => setExportPdfDialogOpen(true),
+                      }
+                      : { separatorBefore: true, label: 'Export annotated PDF', icon: 'download', onSelect: bottomToolbarApi.exportAnnotatedPdf },
+                    {
+                      label: 'Export annotations (XFDF)',
+                      icon: 'download',
+                      title: 'Your marks in a separate file for Acrobat or Bluebeam. Your PDF stays the same.',
+                      onSelect: bottomToolbarApi.exportXfdf,
+                    },
+                    {
+                      label: 'Export review package (ZIP)',
+                      icon: 'download',
+                      title: 'Your marks, a log of changes and page pictures in one ZIP file. Your PDF stays the same.',
+                      onSelect: bottomToolbarApi.exportReviewBundle,
+                    },
+                    {
+                      label: 'PDF tools…',
+                      icon: 'document',
+                      title: 'Merge, split, compress, make searchable and more. The result is saved as a new document.',
+                      onSelect: openPdfToolsForActiveTab,
+                    },
+                  ].filter(Boolean)}
+                />
+              ) : (
+              <>
               {/* Export annotated PDF — browser-visible entry point for the
                   same handler the desktop File menu drives. */}
               <button
@@ -3525,6 +3574,8 @@ export default function App({ devPreviewReturnTab = null }) {
                   },
                 ]}
               />
+              </>
+              )}
             </div>
           )}
 
@@ -5930,6 +5981,163 @@ export default function App({ devPreviewReturnTab = null }) {
                 </RailFlyout>
               );
 
+              // The rail's view buttons. In the rail their tips point left;
+              // in the View row (Nightly 'view-strip') they point up, clear of
+              // the row's other buttons.
+              const viewButtons = (tipSide) => (
+                <>
+                    {/* Nightly 'paper-overlays' (Drawboard Projects VT-46):
+                        a paper pattern over every page, beside the grid. */}
+                    {paperOverlaysEnabled && (
+                      <PaperOverlayMenu renderButton={({ open, ref, onClick, on }) => (
+                        <button
+                          ref={ref}
+                          type="button"
+                          onClick={onClick}
+                          aria-label="Paper"
+                          aria-haspopup="dialog"
+                          aria-expanded={open}
+                          data-paper-overlay-toggle="true"
+                          {...chromeTip(open ? undefined : 'Paper', tipSide)}
+                          style={{ ...footerBtn(), color: on || open ? 'var(--text-1)' : 'var(--text-3)' }}
+                        >
+                          <PaperOverlayGlyph size={RAIL_CONTROL_GLYPH} />
+                        </button>
+                      )} />
+                    )}
+                    {/* Nightly 'thin-lines' (Drawboard: Enhance thin PDF
+                        lines): faint drawing lines made easier to see. */}
+                    {thinLinesEnabled && (
+                      <ThinLinesMenu glyphSize={RAIL_CONTROL_GLYPH} renderButton={({ open, ref, onClick, on }) => (
+                        <button
+                          ref={ref}
+                          type="button"
+                          onClick={onClick}
+                          aria-label="Thin PDF lines"
+                          aria-haspopup="dialog"
+                          aria-expanded={open}
+                          data-thin-lines-toggle="true"
+                          {...chromeTip(open ? undefined : 'Thin PDF lines', tipSide)}
+                          style={{ ...footerBtn(), color: on || open ? 'var(--text-1)' : 'var(--text-3)' }}
+                        >
+                          <ThinLinesGlyph size={RAIL_CONTROL_GLYPH} />
+                        </button>
+                      )} />
+                    )}
+                    {/* Drawboard gap #10: View > page grid overlay. */}
+                    <PageGridToggle render={({ on, toggle }) => (gridSettingsEnabled ? (
+                      // Nightly (flag 'grid-settings'): the button opens the
+                      // grid card - show or hide, and the spacing.
+                      <PageGridMenu on={on} toggle={toggle} renderButton={({ open, ref, onClick }) => (
+                        <button
+                          ref={ref}
+                          type="button"
+                          onClick={onClick}
+                          aria-label="Page grid"
+                          aria-haspopup="dialog"
+                          aria-expanded={open}
+                          data-page-grid-toggle="true"
+                          {...chromeTip(open ? undefined : 'Page grid', tipSide)}
+                          style={{ ...footerBtn(), color: on || open ? 'var(--text-1)' : 'var(--text-3)' }}
+                        >
+                          <PageGridGlyph size={RAIL_CONTROL_GLYPH} />
+                        </button>
+                      )} />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={toggle}
+                        aria-label="Page grid"
+                        aria-pressed={on}
+                        data-page-grid-toggle="true"
+                        {...chromeTip(on ? 'Hide page grid' : 'Show page grid', tipSide)}
+                        style={{ ...footerBtn(), color: on ? 'var(--text-1)' : 'var(--text-3)' }}
+                      >
+                        <PageGridGlyph size={RAIL_CONTROL_GLYPH} />
+                      </button>
+                    ))} />
+                    {/* Owner 2026-10-22: snapping's switch, beside the grid
+                        (Bluebeam keeps SNAP and GRID side by side too). */}
+                    {snapContentEnabled ? (
+                      // Nightly (flag 'snap-content'): the magnet opens the
+                      // Snapping card - Marks and Drawing switches.
+                      <SnappingMenu renderButton={({ open, ref, onClick, on }) => (
+                        <button
+                          ref={ref}
+                          type="button"
+                          onClick={onClick}
+                          aria-label="Snapping"
+                          aria-haspopup="dialog"
+                          aria-expanded={open}
+                          data-snapping-toggle="true"
+                          {...chromeTip(open ? undefined : 'Snapping', tipSide)}
+                          style={{ ...footerBtn(), color: on || open ? 'var(--text-1)' : 'var(--text-3)' }}
+                        >
+                          <SnappingGlyph size={RAIL_CONTROL_GLYPH} off={!on} />
+                        </button>
+                      )} />
+                    ) : (
+                    <SnappingToggle render={({ on, toggle }) => (
+                      <button
+                        type="button"
+                        onClick={toggle}
+                        aria-label="Snapping"
+                        aria-pressed={on}
+                        data-snapping-toggle="true"
+                        {...chromeTip(snappingLabel(on), tipSide)}
+                        style={{ ...footerBtn(), color: on ? 'var(--text-1)' : 'var(--text-3)' }}
+                      >
+                        <SnappingGlyph size={RAIL_CONTROL_GLYPH} off={!on} />
+                      </button>
+                    )} />
+                    )}
+                    {/* Nightly (flag 'dark-pages'): light-on-dark pages. */}
+                    <DarkPagesToggle render={({ on, toggle }) => (
+                      <button
+                        type="button"
+                        onClick={toggle}
+                        aria-label="Dark pages"
+                        aria-pressed={on}
+                        data-dark-pages-toggle="true"
+                        {...chromeTip(on ? 'Light pages' : 'Dark pages', tipSide)}
+                        style={{ ...footerBtn(), color: on ? 'var(--text-1)' : 'var(--text-3)' }}
+                      >
+                        <DarkPagesGlyph size={RAIL_CONTROL_GLYPH} />
+                      </button>
+                    )} />
+                    {hideMarksEnabled && (
+                      <button
+                        type="button"
+                        onClick={() => setMarksHidden(!allMarksHidden)}
+                        aria-label="Hide all marks"
+                        aria-pressed={allMarksHidden}
+                        data-hide-marks-toggle="true"
+                        {...chromeTip(allMarksHidden ? 'Show all marks' : 'Hide all marks', tipSide)}
+                        style={{ ...footerBtn(), color: allMarksHidden ? 'var(--text-1)' : 'var(--text-3)' }}
+                      >
+                        <EyeGlyph open={!allMarksHidden} size={RAIL_CONTROL_GLYPH} />
+                      </button>
+                    )}
+                    {/* Nightly 'comment-pins': the "Show pins" card. */}
+                    {pinsOn && (
+                      <PinFilterMenu renderButton={({ open, ref, onClick, on }) => (
+                        <button
+                          ref={ref}
+                          type="button"
+                          onClick={onClick}
+                          aria-label="Show pins"
+                          aria-haspopup="dialog"
+                          aria-expanded={open}
+                          data-pin-filter-toggle="true"
+                          {...chromeTip(open ? undefined : 'Show pins', tipSide)}
+                          style={{ ...footerBtn(), color: on || open ? 'var(--text-1)' : 'var(--text-3)' }}
+                        >
+                          <Icon name="pagePin" size={RAIL_CONTROL_GLYPH} color="currentColor" />
+                        </button>
+                      )} />
+                    )}
+                </>
+              );
               // Owner 2026-10-07 (Drawboard rail): the Survey rail never
               // widens now - its open panel stands BESIDE it - so the footer
               // is always this vertical stack at the foot of the 48px rail
@@ -6056,156 +6264,33 @@ export default function App({ devPreviewReturnTab = null }) {
                       </button>
                       {api.isZoomMenuOpen && fitMenu()}
                     </div>
-                    {/* Nightly 'paper-overlays' (Drawboard Projects VT-46):
-                        a paper pattern over every page, beside the grid. */}
-                    {paperOverlaysEnabled && (
-                      <PaperOverlayMenu renderButton={({ open, ref, onClick, on }) => (
+                    {/* Nightly 'view-strip' (owner 2026-11-23): one View button
+                        slides these out in a row (ViewStripMenu.jsx), so the
+                        rail stops at Page fit, View and Full screen. */}
+                    {viewStripEnabled ? (
+                      <ViewStripMenu renderButton={({ open, ref, onClick }) => (
                         <button
                           ref={ref}
                           type="button"
                           onClick={onClick}
-                          aria-label="Paper"
-                          aria-haspopup="dialog"
+                          aria-label="View"
+                          aria-haspopup="true"
                           aria-expanded={open}
-                          data-paper-overlay-toggle="true"
-                          {...chromeTip(open ? undefined : 'Paper', 'left')}
-                          style={{ ...footerBtn(), color: on || open ? 'var(--text-1)' : 'var(--text-3)' }}
+                          data-view-strip-toggle="true"
+                          {...chromeTip(open ? undefined : 'View', 'left')}
+                          style={{ ...footerBtn(), position: 'relative', width: `${RAIL_SPLIT_CONTROL_W}px`, color: open ? 'var(--text-1)' : 'var(--text-2)' }}
                         >
-                          <PaperOverlayGlyph size={RAIL_CONTROL_GLYPH} />
+                          {/* The caret points left: the row slides out over the
+                              page, as Page fit's list does. */}
+                          <Icon name="chevronLeft" size={RAIL_CARET} color="currentColor" style={{ position: 'absolute', left: '2px', top: 0, bottom: 0, margin: 'auto 0' }} />
+                          <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <Icon name="viewOptions" size={RAIL_CONTROL_GLYPH} color="currentColor" />
+                          </span>
                         </button>
-                      )} />
-                    )}
-                    {/* Nightly 'thin-lines' (Drawboard: Enhance thin PDF
-                        lines): faint drawing lines made easier to see. */}
-                    {thinLinesEnabled && (
-                      <ThinLinesMenu glyphSize={RAIL_CONTROL_GLYPH} renderButton={({ open, ref, onClick, on }) => (
-                        <button
-                          ref={ref}
-                          type="button"
-                          onClick={onClick}
-                          aria-label="Thin PDF lines"
-                          aria-haspopup="dialog"
-                          aria-expanded={open}
-                          data-thin-lines-toggle="true"
-                          {...chromeTip(open ? undefined : 'Thin PDF lines', 'left')}
-                          style={{ ...footerBtn(), color: on || open ? 'var(--text-1)' : 'var(--text-3)' }}
-                        >
-                          <ThinLinesGlyph size={RAIL_CONTROL_GLYPH} />
-                        </button>
-                      )} />
-                    )}
-                    {/* Drawboard gap #10: View > page grid overlay. */}
-                    <PageGridToggle render={({ on, toggle }) => (gridSettingsEnabled ? (
-                      // Nightly (flag 'grid-settings'): the button opens the
-                      // grid card - show or hide, and the spacing.
-                      <PageGridMenu on={on} toggle={toggle} renderButton={({ open, ref, onClick }) => (
-                        <button
-                          ref={ref}
-                          type="button"
-                          onClick={onClick}
-                          aria-label="Page grid"
-                          aria-haspopup="dialog"
-                          aria-expanded={open}
-                          data-page-grid-toggle="true"
-                          {...chromeTip(open ? undefined : 'Page grid', 'left')}
-                          style={{ ...footerBtn(), color: on || open ? 'var(--text-1)' : 'var(--text-3)' }}
-                        >
-                          <PageGridGlyph size={RAIL_CONTROL_GLYPH} />
-                        </button>
-                      )} />
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={toggle}
-                        aria-label="Page grid"
-                        aria-pressed={on}
-                        data-page-grid-toggle="true"
-                        {...chromeTip(on ? 'Hide page grid' : 'Show page grid', 'left')}
-                        style={{ ...footerBtn(), color: on ? 'var(--text-1)' : 'var(--text-3)' }}
-                      >
-                        <PageGridGlyph size={RAIL_CONTROL_GLYPH} />
-                      </button>
-                    ))} />
-                    {/* Owner 2026-10-22: snapping's switch, beside the grid
-                        (Bluebeam keeps SNAP and GRID side by side too). */}
-                    {snapContentEnabled ? (
-                      // Nightly (flag 'snap-content'): the magnet opens the
-                      // Snapping card - Marks and Drawing switches.
-                      <SnappingMenu renderButton={({ open, ref, onClick, on }) => (
-                        <button
-                          ref={ref}
-                          type="button"
-                          onClick={onClick}
-                          aria-label="Snapping"
-                          aria-haspopup="dialog"
-                          aria-expanded={open}
-                          data-snapping-toggle="true"
-                          {...chromeTip(open ? undefined : 'Snapping', 'left')}
-                          style={{ ...footerBtn(), color: on || open ? 'var(--text-1)' : 'var(--text-3)' }}
-                        >
-                          <SnappingGlyph size={RAIL_CONTROL_GLYPH} off={!on} />
-                        </button>
-                      )} />
-                    ) : (
-                    <SnappingToggle render={({ on, toggle }) => (
-                      <button
-                        type="button"
-                        onClick={toggle}
-                        aria-label="Snapping"
-                        aria-pressed={on}
-                        data-snapping-toggle="true"
-                        {...chromeTip(snappingLabel(on), 'left')}
-                        style={{ ...footerBtn(), color: on ? 'var(--text-1)' : 'var(--text-3)' }}
-                      >
-                        <SnappingGlyph size={RAIL_CONTROL_GLYPH} off={!on} />
-                      </button>
-                    )} />
-                    )}
-                    {/* Nightly (flag 'dark-pages'): light-on-dark pages. */}
-                    <DarkPagesToggle render={({ on, toggle }) => (
-                      <button
-                        type="button"
-                        onClick={toggle}
-                        aria-label="Dark pages"
-                        aria-pressed={on}
-                        data-dark-pages-toggle="true"
-                        {...chromeTip(on ? 'Light pages' : 'Dark pages', 'left')}
-                        style={{ ...footerBtn(), color: on ? 'var(--text-1)' : 'var(--text-3)' }}
-                      >
-                        <DarkPagesGlyph size={RAIL_CONTROL_GLYPH} />
-                      </button>
-                    )} />
-                    {hideMarksEnabled && (
-                      <button
-                        type="button"
-                        onClick={() => setMarksHidden(!allMarksHidden)}
-                        aria-label="Hide all marks"
-                        aria-pressed={allMarksHidden}
-                        data-hide-marks-toggle="true"
-                        {...chromeTip(allMarksHidden ? 'Show all marks' : 'Hide all marks', 'left')}
-                        style={{ ...footerBtn(), color: allMarksHidden ? 'var(--text-1)' : 'var(--text-3)' }}
-                      >
-                        <EyeGlyph open={!allMarksHidden} size={RAIL_CONTROL_GLYPH} />
-                      </button>
-                    )}
-                    {/* Nightly 'comment-pins': the "Show pins" card. */}
-                    {pinsOn && (
-                      <PinFilterMenu renderButton={({ open, ref, onClick, on }) => (
-                        <button
-                          ref={ref}
-                          type="button"
-                          onClick={onClick}
-                          aria-label="Show pins"
-                          aria-haspopup="dialog"
-                          aria-expanded={open}
-                          data-pin-filter-toggle="true"
-                          {...chromeTip(open ? undefined : 'Show pins', 'left')}
-                          style={{ ...footerBtn(), color: on || open ? 'var(--text-1)' : 'var(--text-3)' }}
-                        >
-                          <Icon name="pagePin" size={RAIL_CONTROL_GLYPH} color="currentColor" />
-                        </button>
-                      )} />
-                    )}
+                      )}>
+                        {viewButtons('above')}
+                      </ViewStripMenu>
+                    ) : viewButtons('left')}
                     {focusModeEnabled && (
                       <button
                         type="button"
