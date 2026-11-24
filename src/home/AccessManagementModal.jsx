@@ -329,10 +329,9 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: C.scrim, backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1300, fontFamily: 'var(--font-ui)' }}>
         <div ref={cardRef} role="dialog" aria-modal="true" aria-label={`${labelForKind(kind)}: ${documentName}`} onClick={(e) => e.stopPropagation()} style={{ width: 620, maxWidth: '94vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 'var(--radius-dialog)', boxShadow: 'var(--shadow-dialog)', color: C.ink, overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: '88vh' }}>
           <div style={{ padding: '16px 18px 14px', borderBottom: `1px solid ${C.rule}`, display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ width: 3, height: 30, background: C.gold, borderRadius: 2, flex: 'none' }} />
             <div className="dialog-heading" style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 11, letterSpacing: 0, color: C.muted, fontWeight: 600 }}>{labelForKind(kind)}</div>
-              <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: -0.015, marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{documentName}</div>
+              <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-0.015em', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{documentName}</div>
             </div>
             <button onClick={() => setInviteOpen(true)} data-kal31-invite-btn="true" className="hub-btn hub-btn--primary">Invite</button>
             <button onClick={onClose} aria-label="Close" {...tip('Close')} className="hub-icon-btn"><Icon name="close" size={13} /></button>
