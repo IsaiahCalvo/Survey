@@ -12,12 +12,18 @@
 //   GROQ_BASE_URL: test only; sends Groq calls to a fake (E2E stack).
 //   SURVEY_AGENT_BASE_URL / SURVEY_AGENT_API_KEY / SURVEY_AGENT_MODEL: any
 //     other provider (Cloudflare Workers AI, OpenRouter, a paid model later).
+//     On api.openai.com the key may be left out: OPENAI_API_KEY is used.
 //   SURVEY_AGENT_PRICE_IN / SURVEY_AGENT_PRICE_OUT: USD per million tokens
 //     (default 0, free tier). SURVEY_AGENT_MONTHLY_CAP_USD (default 5) and
 //     SURVEY_AGENT_MONTHLY_REQUEST_CAP (default 3000) per person.
 //   SURVEY_AGENT_TESTERS: comma-separated emails allowed in while testing.
 //   SURVEY_AGENT_OPEN: 'true' also lets in paid plans.
-//   OPENAI_API_KEY: optional, speech to text when there is no Groq key.
+//   OPENAI_API_KEY: speech to text when there is no Groq key, or first when
+//     SURVEY_AGENT_STT is 'openai'.
+//   Paid calls (OpenAI, Anthropic, any host but Groq) also spend the suite's
+//   shared monthly AI credit budget (_shared/aiCredit.js): each holds its
+//   most possible cost first and is refused with 'credit_used_up' once the
+//   provider's monthly cap (public.ai_credit_budgets) would be passed.
 //   SURVEY_AGENT_TTS: 'off' turns the server voice off (the app then uses
 //     the device's own voice). SURVEY_AGENT_TTS_MODEL / _VOICE pick the
 //     voice (Groq Orpheus by default); SURVEY_AGENT_TTS_PRICE is USD per
@@ -54,6 +60,7 @@ import {
   restWhenNearCap,
 } from '../_shared/surveyAgentModels.js';
 import { GUEST_REFUSED_MESSAGE, isGuestUser } from '../_shared/guestSession.js';
+import { chatBodyFor, chatHoldMicros, creditProviderFor, holdCredit, refusesTemperature } from '../_shared/aiCredit.js';
 
 const corsHeaders = {
   // INTENTIONAL: web, Electron (file://) and Capacitor all call this with a
@@ -92,10 +99,23 @@ function groqBase() {
   return (Deno.env.get('GROQ_BASE_URL') || SURVEY_AGENT_DEFAULT_PROVIDER.baseUrl).replace(/\/$/, '');
 }
 
+// Which credit budget a call spends. The Groq path (its free tier, or the
+// E2E fake that GROQ_BASE_URL names) spends none, whatever host it is on.
+function creditFor(url: string) {
+  return String(url || '').startsWith(groqBase()) ? null : creditProviderFor(url);
+}
+
+// SURVEY_AGENT_BASE_URL on OpenAI with no SURVEY_AGENT_API_KEY uses the
+// suite's OPENAI_API_KEY, so one key serves hearing and thinking.
+function onOpenAi() {
+  return creditProviderFor(Deno.env.get('SURVEY_AGENT_BASE_URL') || '') === 'openai';
+}
+
 function modelProvider() {
-  const key = Deno.env.get('SURVEY_AGENT_API_KEY') || Deno.env.get('GROQ_API_KEY');
+  const openAiKey = onOpenAi() ? Deno.env.get('OPENAI_API_KEY') : '';
+  const key = Deno.env.get('SURVEY_AGENT_API_KEY') || openAiKey || Deno.env.get('GROQ_API_KEY');
   if (!key) return null;
-  const custom = Boolean(Deno.env.get('SURVEY_AGENT_API_KEY'));
+  const custom = Boolean(Deno.env.get('SURVEY_AGENT_API_KEY') || openAiKey);
   const baseUrl = (Deno.env.get('SURVEY_AGENT_BASE_URL') || (custom ? '' : groqBase())).replace(/\/$/, '');
   const model = Deno.env.get('SURVEY_AGENT_MODEL') || SURVEY_AGENT_DEFAULT_PROVIDER.model;
   return {
@@ -120,7 +140,7 @@ function visionModel() {
   if (named === 'off') return null;
   const provider = modelProvider();
   if (!provider?.baseUrl) return null;
-  const model = named || (Deno.env.get('SURVEY_AGENT_API_KEY') ? '' : DEFAULT_VISION_MODEL);
+  const model = named || (Deno.env.get('SURVEY_AGENT_API_KEY') || onOpenAi() ? '' : DEFAULT_VISION_MODEL);
   if (!model) return null;
   return {
     ...provider,
@@ -137,10 +157,13 @@ const modelRest = createModelRest();
 
 function transcriber() {
   const groq = Deno.env.get('GROQ_API_KEY');
-  if (groq) return { url: `${groqBase()}/audio/transcriptions`, key: groq, model: 'whisper-large-v3-turbo', microsPerSecond: 12 };
   const openai = Deno.env.get('OPENAI_API_KEY');
-  if (openai) return { url: 'https://api.openai.com/v1/audio/transcriptions', key: openai, model: 'gpt-4o-mini-transcribe', microsPerSecond: 50 };
-  return null;
+  const viaOpenai = openai
+    ? { url: 'https://api.openai.com/v1/audio/transcriptions', key: openai, model: Deno.env.get('SURVEY_AGENT_STT_MODEL') || 'gpt-4o-mini-transcribe', microsPerSecond: 50 }
+    : null;
+  if (viaOpenai && Deno.env.get('SURVEY_AGENT_STT') === 'openai') return viaOpenai;
+  if (groq) return { url: `${groqBase()}/audio/transcriptions`, key: groq, model: 'whisper-large-v3-turbo', microsPerSecond: 12 };
+  return viaOpenai;
 }
 
 function speaker() {
@@ -354,15 +377,26 @@ Deno.serve(async (req) => {
         ? `Inspección de obra. Palabras y nombres: ${hints}.`
         : `Construction site survey. Words and item names: ${hints}.`);
     }
-    const res = await fetch(t.url, { method: 'POST', headers: { Authorization: `Bearer ${t.key}` }, body: form });
+    const seconds = Math.min(600, Math.max(1, Number(body.duration_ms || 0) / 1000 || bytes.length / 4000));
+    const heardCost = Math.ceil(seconds * t.microsPerSecond);
+    const settle = await holdCredit(admin, { provider: creditFor(t.url), micros: heardCost, app: 'survey-agent' });
+    if (!settle) return json(429, { error: 'credit_used_up' });
+    let res: Response;
+    try {
+      res = await fetch(t.url, { method: 'POST', headers: { Authorization: `Bearer ${t.key}` }, body: form });
+    } catch (err) {
+      await settle(0);
+      console.error('[survey-agent] transcription call failed', err);
+      return json(502, { error: 'transcription_failed' });
+    }
+    if (!res.ok) await settle(0);
     if (res.status === 429) return json(429, { error: 'busy_try_again', retry_after: null });
     if (!res.ok) {
       console.error('[survey-agent] transcription failed', res.status, (await res.text()).slice(0, 300));
       return json(502, { error: 'transcription_failed' });
     }
+    await settle(heardCost);
     const out = await res.json();
-    const seconds = Math.min(600, Math.max(1, Number(body.duration_ms || 0) / 1000 || bytes.length / 4000));
-    const heardCost = Math.ceil(seconds * t.microsPerSecond);
     await admin.rpc('record_survey_agent_usage', {
       p_user_id: user.id, p_input_tokens: 0, p_output_tokens: 0, p_cost_micros: heardCost,
     });
@@ -397,90 +431,111 @@ Deno.serve(async (req) => {
       temperature: 0.2,
       max_tokens: SURVEY_AGENT_LIMITS.maxOutputTokens,
     };
-    let res: Response | null = null;
-    const chain = modelRest.available(provider.models);
-    let waited = false;
-    let askedAgain = false;
-    for (let i = 0; i < chain.length; i += 1) {
-      const model = chain[i];
-      try {
-        res = await fetch(`${provider.baseUrl}/chat/completions`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${provider.key}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model, ...request }),
-        });
-      } catch (err) {
-        console.error('[survey-agent] model call failed', err);
+    const credit = creditFor(provider.baseUrl);
+    const settle = await holdCredit(admin, {
+      provider: credit,
+      micros: chatHoldMicros({ promptChars: JSON.stringify(request).length, maxOutputTokens: request.max_tokens, prices: provider.prices }),
+      app: 'survey-agent',
+    });
+    if (!settle) return json(429, { error: 'credit_used_up' });
+    let spent = 0;
+    try {
+      let res: Response | null = null;
+      const chain = modelRest.available(provider.models);
+      let waited = false;
+      let askedAgain = false;
+      let droppedTemperature = false;
+      for (let i = 0; i < chain.length; i += 1) {
+        const model = chain[i];
+        try {
+          res = await fetch(`${provider.baseUrl}/chat/completions`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${provider.key}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify(chatBodyFor(credit, { model, ...request })),
+          });
+        } catch (err) {
+          console.error('[survey-agent] model call failed', err);
+          return json(502, { error: 'model_unavailable' });
+        }
+        if (!droppedTemperature && res.status === 400 && refusesTemperature(400, await res.clone().text())) {
+          droppedTemperature = true;
+          delete (request as { temperature?: number }).temperature;
+          res = null;
+          i -= 1;
+          continue;
+        }
+        // A model the provider no longer has (or never had for this key):
+        // leave it alone for a day and go on down the chain.
+        if (res.status === 404 || (res.status === 400 && /model_not_found|decommissioned/.test(await res.clone().text()))) {
+          modelRest.rest(model, MODEL_GONE_REST_MS);
+          console.error('[survey-agent] model missing, resting a day', model);
+          res = null;
+          continue;
+        }
+        if (!askedAgain && isRejectedToolCall(res.status, res.status === 400 ? await res.clone().text() : '')) {
+          askedAgain = true;
+          console.info('[survey-agent] model sent a tool call that did not fit, asking again', model);
+          res = null;
+          i -= 1;
+          continue;
+        }
+        if (res.status !== 429) {
+          const nearCap = restWhenNearCap({
+            remaining: res.headers.get('x-ratelimit-remaining-requests'),
+            resetIn: res.headers.get('x-ratelimit-reset-requests'),
+          });
+          if (nearCap && provider.models.length > 1) {
+            modelRest.rest(model, nearCap);
+            console.info('[survey-agent] model near its daily cap, resting', model, Math.round(nearCap / 1000));
+          }
+          break;
+        }
+        const refusal = restAfterRefusal({ retryAfter: res.headers.get('retry-after'), message: await res.text() });
+        res = null;
+        // The main model's per-minute cap frees up in seconds: wait for it
+        // once rather than hand the turn to a weaker model.
+        if (i === 0 && !refusal.daily && !waited && refusal.ms <= MAIN_MODEL_WAIT_MS) {
+          waited = true;
+          console.info('[survey-agent] model busy for a moment, waiting', model, Math.round(refusal.ms / 1000));
+          await new Promise((r) => setTimeout(r, refusal.ms + 250));
+          i -= 1;
+          continue;
+        }
+        // A cap on this model: rest it and try the next one in the same turn.
+        modelRest.rest(model, refusal.ms);
+        console.info('[survey-agent] model refused, moving on', model, refusal.daily ? 'daily' : 'per minute', Math.round(refusal.ms / 1000));
+      }
+      // Every model is resting: say how long until the first is free.
+      if (!res) return json(429, { error: 'busy_try_again', retry_after: Math.min(modelRest.soonest(provider.models), 60) });
+      if (!res.ok) {
+        console.error('[survey-agent] model error', res.status, (await res.text()).slice(0, 500));
         return json(502, { error: 'model_unavailable' });
       }
-      // A model the provider no longer has (or never had for this key):
-      // leave it alone for a day and go on down the chain.
-      if (res.status === 404 || (res.status === 400 && /model_not_found|decommissioned/.test(await res.clone().text()))) {
-        modelRest.rest(model, MODEL_GONE_REST_MS);
-        console.error('[survey-agent] model missing, resting a day', model);
-        res = null;
-        continue;
-      }
-      if (!askedAgain && isRejectedToolCall(res.status, res.status === 400 ? await res.clone().text() : '')) {
-        askedAgain = true;
-        console.info('[survey-agent] model sent a tool call that did not fit, asking again', model);
-        res = null;
-        i -= 1;
-        continue;
-      }
-      if (res.status !== 429) {
-        const nearCap = restWhenNearCap({
-          remaining: res.headers.get('x-ratelimit-remaining-requests'),
-          resetIn: res.headers.get('x-ratelimit-reset-requests'),
-        });
-        if (nearCap && provider.models.length > 1) {
-          modelRest.rest(model, nearCap);
-          console.info('[survey-agent] model near its daily cap, resting', model, Math.round(nearCap / 1000));
-        }
-        break;
-      }
-      const refusal = restAfterRefusal({ retryAfter: res.headers.get('retry-after'), message: await res.text() });
-      res = null;
-      // The main model's per-minute cap frees up in seconds: wait for it
-      // once rather than hand the turn to a weaker model.
-      if (i === 0 && !refusal.daily && !waited && refusal.ms <= MAIN_MODEL_WAIT_MS) {
-        waited = true;
-        console.info('[survey-agent] model busy for a moment, waiting', model, Math.round(refusal.ms / 1000));
-        await new Promise((r) => setTimeout(r, refusal.ms + 250));
-        i -= 1;
-        continue;
-      }
-      // A cap on this model: rest it and try the next one in the same turn.
-      modelRest.rest(model, refusal.ms);
-      console.info('[survey-agent] model refused, moving on', model, refusal.daily ? 'daily' : 'per minute', Math.round(refusal.ms / 1000));
+      const out = await res.json();
+      const choice = out?.choices?.[0] || {};
+      const message = choice.message || {};
+      const turnCost = surveyAgentCostMicros(out?.usage, provider.prices);
+      spent = turnCost;
+      await admin.rpc('record_survey_agent_usage', {
+        p_user_id: user.id,
+        p_input_tokens: Number(out?.usage?.prompt_tokens || 0),
+        p_output_tokens: Number(out?.usage?.completion_tokens || 0),
+        p_cost_micros: turnCost,
+      });
+      // What the call took from Groq's daily cap (a cached prompt prefix is free).
+      await countDaily('turn', surveyAgentCappedTokens(out?.usage), 0, turnCost);
+      return json(200, {
+        message: {
+          content: typeof message.content === 'string' ? message.content : '',
+          tool_calls: Array.isArray(message.tool_calls) ? message.tool_calls : [],
+        },
+        finish_reason: choice.finish_reason || null,
+        prompt_version: SURVEY_AGENT_PROMPT_VERSION,
+        usage_left: usageLeft(1),
+      });
+    } finally {
+      await settle(spent);
     }
-    // Every model is resting: say how long until the first is free.
-    if (!res) return json(429, { error: 'busy_try_again', retry_after: Math.min(modelRest.soonest(provider.models), 60) });
-    if (!res.ok) {
-      console.error('[survey-agent] model error', res.status, (await res.text()).slice(0, 500));
-      return json(502, { error: 'model_unavailable' });
-    }
-    const out = await res.json();
-    const choice = out?.choices?.[0] || {};
-    const message = choice.message || {};
-    const turnCost = surveyAgentCostMicros(out?.usage, provider.prices);
-    await admin.rpc('record_survey_agent_usage', {
-      p_user_id: user.id,
-      p_input_tokens: Number(out?.usage?.prompt_tokens || 0),
-      p_output_tokens: Number(out?.usage?.completion_tokens || 0),
-      p_cost_micros: turnCost,
-    });
-    // What the call took from Groq's daily cap (a cached prompt prefix is free).
-    await countDaily('turn', surveyAgentCappedTokens(out?.usage), 0, turnCost);
-    return json(200, {
-      message: {
-        content: typeof message.content === 'string' ? message.content : '',
-        tool_calls: Array.isArray(message.tool_calls) ? message.tool_calls : [],
-      },
-      finish_reason: choice.finish_reason || null,
-      prompt_version: SURVEY_AGENT_PROMPT_VERSION,
-      usage_left: usageLeft(1),
-    });
   }
 
   // KAL-532 learning loop: a turn that changed something, or the person
@@ -506,42 +561,56 @@ Deno.serve(async (req) => {
     try { bytes = decodeBase64(String(body.image || '')); } catch { return json(400, { error: 'bad_image' }); }
     if (!bytes.length || bytes.length > SURVEY_AGENT_PHOTO_LIMITS.maxImageBytes) return json(413, { error: 'image_too_large' });
     if (!(await reserve())) return refused();
-    let res: Response;
-    try {
-      res = await fetch(`${v.baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${v.key}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: v.model,
-          messages: surveyAgentPhotoMessages(question, `data:${mime};base64,${String(body.image)}`, body.lang),
-          temperature: 0.1,
-          max_tokens: SURVEY_AGENT_PHOTO_LIMITS.maxOutputTokens,
-        }),
-      });
-    } catch (err) {
-      console.error('[survey-agent] photo call failed', err);
-      return json(502, { error: 'model_unavailable' });
-    }
-    if (res.status === 429) return json(429, { error: 'busy_try_again', retry_after: null });
-    if (res.status === 404 || (res.status === 400 && /model_not_found|decommissioned/.test(await res.clone().text()))) {
-      console.error('[survey-agent] vision model missing', v.model);
-      return json(501, { error: 'photos_not_set_up' });
-    }
-    if (!res.ok) {
-      console.error('[survey-agent] photo error', res.status, (await res.text()).slice(0, 300));
-      return json(502, { error: 'model_unavailable' });
-    }
-    const out = await res.json();
-    const lookCost = surveyAgentCostMicros(out?.usage, v.prices);
-    await admin.rpc('record_survey_agent_usage', {
-      p_user_id: user.id,
-      p_input_tokens: Number(out?.usage?.prompt_tokens || 0),
-      p_output_tokens: Number(out?.usage?.completion_tokens || 0),
-      p_cost_micros: lookCost,
+    const lookCredit = creditFor(v.baseUrl);
+    // A photo is billed by its tiles, not its bytes: hold for a large one.
+    const settleLook = await holdCredit(admin, {
+      provider: lookCredit,
+      micros: chatHoldMicros({ promptChars: 4000 * 3.5, maxOutputTokens: SURVEY_AGENT_PHOTO_LIMITS.maxOutputTokens, prices: v.prices }),
+      app: 'survey-agent',
     });
-    await countDaily('look', surveyAgentCappedTokens(out?.usage), 0, lookCost);
-    const answer = String(out?.choices?.[0]?.message?.content || '').trim();
-    return json(200, { text: answer, usage_left: usageLeft(1) });
+    if (!settleLook) return json(429, { error: 'credit_used_up' });
+    let lookSpent = 0;
+    try {
+      let res: Response;
+      try {
+        res = await fetch(`${v.baseUrl}/chat/completions`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${v.key}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(chatBodyFor(lookCredit, {
+            model: v.model,
+            messages: surveyAgentPhotoMessages(question, `data:${mime};base64,${String(body.image)}`, body.lang),
+            temperature: 0.1,
+            max_tokens: SURVEY_AGENT_PHOTO_LIMITS.maxOutputTokens,
+          })),
+        });
+      } catch (err) {
+        console.error('[survey-agent] photo call failed', err);
+        return json(502, { error: 'model_unavailable' });
+      }
+      if (res.status === 429) return json(429, { error: 'busy_try_again', retry_after: null });
+      if (res.status === 404 || (res.status === 400 && /model_not_found|decommissioned/.test(await res.clone().text()))) {
+        console.error('[survey-agent] vision model missing', v.model);
+        return json(501, { error: 'photos_not_set_up' });
+      }
+      if (!res.ok) {
+        console.error('[survey-agent] photo error', res.status, (await res.text()).slice(0, 300));
+        return json(502, { error: 'model_unavailable' });
+      }
+      const out = await res.json();
+      const lookCost = surveyAgentCostMicros(out?.usage, v.prices);
+      lookSpent = lookCost;
+      await admin.rpc('record_survey_agent_usage', {
+        p_user_id: user.id,
+        p_input_tokens: Number(out?.usage?.prompt_tokens || 0),
+        p_output_tokens: Number(out?.usage?.completion_tokens || 0),
+        p_cost_micros: lookCost,
+      });
+      await countDaily('look', surveyAgentCappedTokens(out?.usage), 0, lookCost);
+      const answer = String(out?.choices?.[0]?.message?.content || '').trim();
+      return json(200, { text: answer, usage_left: usageLeft(1) });
+    } finally {
+      await settleLook(lookSpent);
+    }
   }
 
   return json(400, { error: 'unknown_action' });

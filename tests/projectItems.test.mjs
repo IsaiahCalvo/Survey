@@ -123,6 +123,8 @@ test('small helpers', () => {
   assert.deepEqual(parseItemTags(' Fire, fire , Level 2,,'), ['Fire', 'Level 2']);
   assert.deepEqual(allItemTags([item({ tags: ['b', 'A'] }), item({ tags: ['a'] })]), ['A', 'b']);
   assert.deepEqual(groupCounts([item({ status: 'open' }), item({ status: 'draft' }), item({ status: 'closed', archived_at: 'x' })]), { unstarted: 1, started: 1, done: 0 });
+  // The archived list counts its own rows, not the open ones (KAL-652).
+  assert.deepEqual(groupCounts([item({ status: 'open' }), item({ status: 'draft', archived_at: 'x' }), item({ status: 'closed', archived_at: 'x' })], { archived: true }), { unstarted: 1, started: 0, done: 1 });
   assert.equal(formatDue('2026-11-12', TODAY), 'Nov 12');
   assert.equal(formatDue('2027-01-02', TODAY), 'Jan 2, 2027');
   const now = Date.parse('2026-11-10T12:00:00Z');
