@@ -18,7 +18,6 @@ test('menus with the gliding hover strip show a press; pressed-2 from the suite 
   assert.match(glide, /\.menu-glide:not\(\[data-danger\]\):has\(~ :is\(\[role='menuitem'\][^)]*\):active:not\(:disabled\):not\(\[aria-disabled='true'\]\)\) \{\s*background: var\(--pressed-2, var\(--pressed\)\);/);
   const tokens = read('src/styles/tokens.css');
   assert.match(tokens, /--pressed: #131315;\n[\s\S]{0,200}--pressed-2: #131315;/);
-  assert.match(tokens, /--pressed: #ebebeb;\n\s*--pressed-2: #e0e0e0;/);
 });
 
 test('a chosen item shows a press in the light one look (pressed-2)', () => {

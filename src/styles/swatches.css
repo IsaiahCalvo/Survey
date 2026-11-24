@@ -43,12 +43,6 @@
 }
 /* A resting hairline only where the colour would vanish into the panel. */
 .hero-swatch__fill.has-hairline { box-shadow: inset 0 0 0 1px var(--ink-ring) !important; }
-/* KAL-715: in the light look a white disc sits on a white panel, where the
-   dark-panel contrast rule (needsSwatchHairline) gives it no edge. It takes
-   the edge colour, the one that shows a control is there. */
-html[data-theme='light'] .hero-swatch[data-quick-colour-preset='#FFFFFF' i]:not([data-selected='true']) .hero-swatch__fill {
-  box-shadow: inset 0 0 0 1px var(--border-strong) !important;
-}
 @media (hover: hover) {
   .hero-swatch:hover .hero-swatch__fill { transform: scale(1.1); }
 }

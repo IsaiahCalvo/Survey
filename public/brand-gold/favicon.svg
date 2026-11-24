@@ -1,11 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <!-- Survey's tab icon in its own green (docs/suite/SUITE-RULES.md, one
-       accent per app). Not in use yet: scripts/survey-green-flip.mjs copies
+  <!-- Survey's tab icon in its own gold (docs/suite/SUITE-RULES.md, one
+       accent per app). Not in use yet: scripts/survey-gold-flip.mjs copies
        it over public/favicon.svg when the suite look leaves Nightly. Deep
-       green on light tab strips, bright green on dark ones. -->
+       gold on light tab strips, bright gold on dark ones. -->
   <style>
-    .m { stroke: #157f55; }
-    @media (prefers-color-scheme: dark) { .m { stroke: #3dc98a; } }
+    .m { stroke: #8b6500; }
+    @media (prefers-color-scheme: dark) { .m { stroke: #d8a84e; } }
   </style>
   <g class="m" fill="none" stroke-width="52" stroke-linecap="round">
   <circle cx="256" cy="256" r="230"/>
