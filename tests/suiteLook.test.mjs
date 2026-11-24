@@ -1,14 +1,15 @@
-// The suite look (KAL-663): shared greys and Survey's gold, dark and light, behind the Nightly
-// flag 'one-look'. Checks the mode logic in src/suiteLook.js, that index.html
-// reads the same saved keys before the first paint, and that the colour values
-// in src/styles/tokens.css match docs/suite/SUITE-RULES.md and stay readable.
+// The suite look (KAL-663): shared greys and Survey's gold, dark only (owner
+// 2026-11-24), behind the Nightly flag 'one-look'. Checks src/suiteLook.js,
+// that index.html reads the same saved key before the first paint, and that
+// the colour values in src/styles/tokens.css match docs/suite/SUITE-RULES.md
+// and stay readable.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { FEATURE_FLAGS, isBetaFlag } from '../src/featureFlags.js';
 import {
-  APPEARANCE_DEFAULT, APPEARANCE_KEY, LOOK_CACHE_KEY, SUITE_LOOK_FLAG, THEME_COLOR,
-  applySuiteLook, currentTheme, readAppearance, resolveTheme, writeAppearance,
+  LOOK_CACHE_KEY, OLD_APPEARANCE_KEY, SUITE_LOOK_FLAG, THEME_COLOR,
+  applySuiteLook, currentTheme,
 } from '../src/suiteLook.js';
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
@@ -36,73 +37,50 @@ function fakeDoc() {
   };
 }
 
-const fakeWin = (dark) => ({ matchMedia: () => ({ matches: dark }), dispatchEvent: () => true });
-
 test('suite look: the flag is a beta flag, so it reaches Nightly first', () => {
   assert.ok(FEATURE_FLAGS[SUITE_LOOK_FLAG], 'flag is listed');
   assert.equal(isBetaFlag(SUITE_LOOK_FLAG), true);
 });
 
-test('suite look: Survey opens dark until the person picks', () => {
-  assert.equal(APPEARANCE_DEFAULT, 'dark');
-  assert.equal(readAppearance(memoryStorage()), 'dark');
-  assert.equal(readAppearance(memoryStorage({ [APPEARANCE_KEY]: 'purple' })), 'dark');
-  assert.equal(readAppearance(memoryStorage({ [APPEARANCE_KEY]: 'light' })), 'light');
-});
-
-test('suite look: Match system follows the device, the other two do not', () => {
-  assert.equal(resolveTheme('light', true), 'light');
-  assert.equal(resolveTheme('dark', false), 'dark');
-  assert.equal(resolveTheme('system', true), 'dark');
-  assert.equal(resolveTheme('system', false), 'light');
-  assert.equal(resolveTheme('nonsense', false), 'dark');
-});
-
 test('suite look: off leaves the page alone and clears the first-paint key', () => {
   const doc = fakeDoc();
-  const storage = memoryStorage({ [LOOK_CACHE_KEY]: '1', [APPEARANCE_KEY]: 'light' });
+  const storage = memoryStorage({ [LOOK_CACHE_KEY]: '1', [OLD_APPEARANCE_KEY]: 'light' });
   doc.documentElement.setAttribute('data-look', 'suite');
-  doc.documentElement.setAttribute('data-theme', 'light');
-  assert.equal(applySuiteLook({ doc, win: fakeWin(true), storage, on: false }), null);
+  doc.documentElement.setAttribute('data-theme', 'dark');
+  assert.equal(applySuiteLook({ doc, storage, on: false }), null);
   assert.equal(doc.documentElement.getAttribute('data-look'), null);
   assert.equal(doc.documentElement.getAttribute('data-theme'), null);
   assert.equal(storage.getItem(LOOK_CACHE_KEY), null);
-  assert.equal(currentTheme(doc), 'dark');
+  assert.equal(storage.getItem(OLD_APPEARANCE_KEY), null, 'the old light/dark choice is cleared');
 });
 
-test('suite look: on sets the look, the mode and the browser bar colour', () => {
+test('suite look: on is always dark, whatever was saved before', () => {
   const doc = fakeDoc();
-  const storage = memoryStorage({ [APPEARANCE_KEY]: 'light' });
-  assert.equal(applySuiteLook({ doc, win: fakeWin(true), storage, on: true }), 'light');
+  const storage = memoryStorage({ [OLD_APPEARANCE_KEY]: 'light' });
+  assert.equal(applySuiteLook({ doc, storage, on: true }), 'dark');
   assert.equal(doc.documentElement.getAttribute('data-look'), 'suite');
-  assert.equal(doc.documentElement.getAttribute('data-theme'), 'light');
+  assert.equal(doc.documentElement.getAttribute('data-theme'), 'dark');
   assert.equal(storage.getItem(LOOK_CACHE_KEY), '1');
-  assert.equal(doc.meta('meta[name="theme-color"]'), THEME_COLOR.light);
-  assert.equal(doc.meta('meta[name="color-scheme"]'), 'light');
-  assert.equal(currentTheme(doc), 'light');
-
-  const system = memoryStorage({ [APPEARANCE_KEY]: 'system' });
-  assert.equal(applySuiteLook({ doc, win: fakeWin(true), storage: system, on: true }), 'dark');
-  assert.equal(applySuiteLook({ doc, win: fakeWin(false), storage: system, on: true }), 'light');
+  assert.equal(storage.getItem(OLD_APPEARANCE_KEY), null);
+  assert.equal(doc.meta('meta[name="theme-color"]'), THEME_COLOR);
+  assert.equal(doc.meta('meta[name="color-scheme"]'), 'dark');
+  assert.equal(currentTheme(), 'dark');
 });
 
-test('suite look: a bad choice is saved as the default', () => {
-  const storage = memoryStorage();
-  assert.equal(writeAppearance('system', { storage, win: fakeWin(true) }), 'system');
-  assert.equal(storage.getItem(APPEARANCE_KEY), 'system');
-  assert.equal(writeAppearance('sepia', { storage, win: fakeWin(true) }), 'dark');
-  assert.equal(storage.getItem(APPEARANCE_KEY), 'dark');
+test('suite look: there is no Appearance setting and no light set', () => {
+  const settings = read('../src/components/AccountSettings.jsx');
+  assert.ok(!settings.includes('Match system'), 'no Light / Dark / Match system picker');
+  assert.ok(!/data-theme="light"/.test(read('../src/styles/tokens.css')), 'tokens.css has no light block');
+  assert.ok(!/data-theme="light"/.test(read('../index.html')), 'index.html paints no light ground');
 });
 
-test('suite look: index.html reads the same keys before the first paint', () => {
+test('suite look: index.html reads the same key before the first paint', () => {
   const html = read('../index.html');
   assert.ok(html.includes(`getItem('${LOOK_CACHE_KEY}') !== '1'`), 'look key');
-  assert.ok(html.includes(`getItem('${APPEARANCE_KEY}')`), 'appearance key');
+  assert.ok(!html.includes(`'${OLD_APPEARANCE_KEY}'`), 'no light/dark choice is read');
   // The script must run before the stylesheet paints anything.
   assert.ok(html.indexOf(`getItem('${LOOK_CACHE_KEY}')`) < html.indexOf('<body'), 'runs in <head>');
-  // The page behind the app is the ground colour of each mode.
-  assert.ok(html.includes(`html[data-look="suite"] body { background: ${THEME_COLOR.dark}`), 'dark ground');
-  assert.ok(html.includes(`html[data-look="suite"][data-theme="light"] body { background: ${THEME_COLOR.light}`), 'light ground');
+  assert.ok(html.includes(`html[data-look="suite"] body { background: ${THEME_COLOR}`), 'dark ground');
 });
 
 // ---- the colour values ----
@@ -119,7 +97,6 @@ function block(selector) {
 }
 
 const dark = block('html[data-look="suite"]');
-const light = { ...dark, ...block('html[data-look="suite"][data-theme="light"]') };
 
 const lum = (hex) => {
   const n = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
@@ -134,16 +111,15 @@ const contrast = (a, b) => {
 test('suite look: the values are the ones in docs/suite/SUITE-RULES.md', () => {
   const want = {
     dark: { '--surface-0': '#131315', '--surface-2': '#1c1c1e', '--hover': '#242426', '--surface-3': '#2c2c2f', '--border': '#2c2c2f', '--border-strong': '#737378', '--text-1': '#e8e7e2', '--text-2': '#d2d1cc', '--text-3': '#9a9a97', '--text-disabled': '#5c5c5a', '--accent': '#d8a84e', '--accent-light': '#edc26d', '--accent-press': '#b6904a', '--accent-text': '#131315', '--danger': '#ef4444', '--danger-text': '#f87171', '--success': '#8baa6e', '--warning': '#d4a54a' },
-    light: { '--surface-0': '#f4f4f6', '--surface-2': '#ffffff', '--hover': '#f5f5f5', '--surface-3': '#ebebeb', '--border': '#ececec', '--border-strong': '#8a8a8f', '--text-1': '#131313', '--text-2': '#4b4b4b', '--text-3': '#666666', '--text-disabled': '#a3a3a3', '--accent': '#8b6500', '--accent-light': '#775600', '--accent-press': '#634800', '--accent-text': '#ffffff', '--danger': '#d92d20', '--danger-text': '#b42318', '--success': '#1f7a4d', '--warning': '#9a5b00' },
   };
-  for (const [mode, set] of [['dark', dark], ['light', light]]) {
+  for (const [mode, set] of [['dark', dark]]) {
     for (const [name, value] of Object.entries(want[mode])) assert.equal(set[name], value, `${mode} ${name}`);
   }
   assert.equal(dark['color-scheme'] ?? 'dark', 'dark');
 });
 
 test('suite look: words stay readable on every surface, in both modes', () => {
-  for (const [mode, set] of [['dark', dark], ['light', light]]) {
+  for (const [mode, set] of [['dark', dark]]) {
     const surfaces = ['--surface-0', '--surface-1', '--surface-2', '--surface-3', '--hover', '--pressed'];
     for (const surface of surfaces) {
       for (const text of ['--text-1', '--text-2', '--text-3', '--danger-text']) {
@@ -170,7 +146,7 @@ test('suite look: words stay readable on every surface, in both modes', () => {
 });
 
 test('suite look: hover and pressed never look the same', () => {
-  for (const [mode, set] of [['dark', dark], ['light', light]]) {
+  for (const [mode, set] of [['dark', dark]]) {
     assert.notEqual(set['--hover'], set['--pressed'], mode);
     assert.notEqual(set['--hover'], set['--surface-2'], mode);
     assert.notEqual(set['--accent-light'], set['--accent-press'], mode);
@@ -182,7 +158,7 @@ test('suite look: no blue from the old palette is left, and the gold is only the
   // accent names only, never to a focus ring, a border or a selected row.
   const blue = ['#6aa6f6', '#8dbcf9', '#4b8ae8'];
   const gold = ['#d8a84e', '#edc26d', '#b6904a', '#8b6500', '#775600', '#634800'];
-  for (const [mode, set] of [['dark', dark], ['light', light]]) {
+  for (const [mode, set] of [['dark', dark]]) {
     for (const [name, value] of Object.entries(set)) {
       for (const hex of blue) assert.ok(!value.includes(hex), `${mode} ${name} still holds ${hex}`);
       if (name.startsWith('--accent')) continue;

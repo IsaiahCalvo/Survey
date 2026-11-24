@@ -66,11 +66,6 @@ test('a signed-in tester at the project limit hears it before the dialog, and er
   assert.match(limits, /project\$\{limits\.projects > 1 \? 's' : ''\} on the \$\{planName\(userTier\)\} plan\./);
 });
 
-test('in the light look a page thumbnail keeps a hairline edge on the white panel', () => {
-  const css = read('../src/styles.css');
-  assert.match(css, /html\[data-look="suite"\]\[data-theme="light"\] :is\(\.pages-panel-preview, \.mobile-page-preview\) \{[\s\S]{0,140}box-shadow: 0 0 0 1px rgba\(0, 0, 0, 0\.12\)/);
-});
-
 test('the Documents list header lines its labels up and keeps the File sorts out of Project', () => {
   const ledger = read('../src/home/DocumentsLedger.jsx');
   const head = ledger.slice(ledger.indexOf('const ledgerHeader = {'), ledger.indexOf('};', ledger.indexOf('const ledgerHeader = {')));
@@ -94,8 +89,8 @@ test('a file kept on this device asks the server nothing about comments, people 
   assert.match(ledger, /teamOwnerIsMe \|\| !supabase \|\| teamDocRaw\?\.device_file\) return undefined;/);
 });
 
-test('the open page on a phone takes a hairline in the light look, and keeps its frame in dark', () => {
+// Survey is dark only since 2026-11-24, so the light-look paper edges went.
+test('the open page on a phone keeps its frame in dark', () => {
   const viewer = read('../src/components/PdfjsViewerContainer.jsx');
   assert.match(viewer, /'var\(--phone-page-frame, 0 0 0 1px var\(--text-2\), 0 10px 28px rgba\(0,0,0,0\.35\)\)'/);
-  assert.match(read('../src/styles.css'), /html\[data-look="suite"\]\[data-theme="light"\] \{\s*--phone-page-frame: 0 0 0 1px rgba\(0, 0, 0, 0\.12\)/);
 });
