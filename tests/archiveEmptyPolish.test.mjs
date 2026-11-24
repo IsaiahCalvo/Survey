@@ -18,3 +18,9 @@ test('no match offers Clear search or Show all types, working on the first press
   assert.match(screen, /line="No archived items of this type" secondaryLabel="Show all types" onSecondary=\{\(\) => setFilter\('all'\)\}/);
   assert.match(screen, /dismissActionSelector="\.hub-empty-state button"/);
 });
+
+test('the Documents side bar names its label list Labels, not Tags', () => {
+  const bits = readFileSync(new URL('../src/home/HomeLibraryBits.jsx', import.meta.url), 'utf8');
+  assert.match(bits, /color="currentColor" \/>Labels\n/);
+  assert.doesNotMatch(bits, /color="currentColor" \/>Tags\n/);
+});
