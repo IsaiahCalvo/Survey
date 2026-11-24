@@ -198,7 +198,7 @@ const TOOL_GROUPS = {
       // Nightly 'area-redact': drag a box to black out that part of the page.
       { id: 'area-redact', label: 'Redact area', icon: 'areaRedactTool', flag: 'area-redact' },
       // Pins save on a cloud document: hidden on a device file or signed out.
-      { id: 'pin', label: 'Pin', icon: 'pagePin', flag: 'comment-pins', cloudOnly: true },
+      { id: 'pin', label: 'Page comment', icon: 'pagePin', flag: 'comment-pins', cloudOnly: true },
       // Nightly 'snapshot-tool': drag an area, it is copied as a picture.
       { id: 'snapshot', label: 'Snapshot', icon: 'snapshot', flag: 'snapshot-tool' },
       // Nightly 'signature-tool': the saved signatures; a tap drops one mid-page.
