@@ -170,7 +170,9 @@ export function HomeNavSection({ views, view, counts, tags, tag, onView, onTag }
             aria-expanded={tagsOpen}
             onClick={() => setTagsOpen((open) => !open)}
           >
-            <Icon name={tagsOpen ? 'chevronDown' : 'chevronRight'} size={12} color="currentColor" />Tags
+            {/* "Labels", as the column, the chips and "No labels yet" say:
+                Tag is a device's name across the suite (CONTEXT.md). */}
+            <Icon name={tagsOpen ? 'chevronDown' : 'chevronRight'} size={12} color="currentColor" />Labels
           </button>
           {tagsOpen && (tags.length ? tags.map((row) => (
             <button
