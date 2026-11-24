@@ -18,7 +18,7 @@ import { AuthContext } from '../contexts/AuthContext';
 import { AI_NOTICE_VERSION, hasAiConsent } from '../legal/legalVersions';
 import { classifyMediaFile } from '../services/surveyMediaService';
 import { answerSetFor, templateHasTypedItems } from '../services/answerSets.js';
-import { createSurveyAgentToolbox, surveyAgentBridge } from '../agent/surveyAgentTools.js';
+import { createSurveyAgentToolbox, placementOf, surveyAgentBridge } from '../agent/surveyAgentTools.js';
 import { buildAnnotationTools } from '../agent/annotationTools.js';
 import { ANNOTATION_AGENT_FLAG } from '../../supabase/functions/_shared/annotationAgentSpec.js';
 import { activeAgentDocument } from '../agent/webmcp.js';
@@ -32,7 +32,9 @@ import { createHoldToTalk } from '../agent/holdToTalk.js';
 import { createVoiceLog, loggedCaller, reportAgentAnswer, sendVoiceLog } from '../agent/voiceLog.js';
 import { startNativeHandsFree } from '../agent/nativeHandsFree.js';
 import { loadNativeSpeech } from '../agent/nativeSpeechLoader.js';
-import { isSureHearing, sharesMicSafely, startDeviceHearing } from '../agent/deviceHearing.js';
+import { hearLocally, isSureHearing, prepareLocalHearing, sharesMicSafely, startDeviceHearing } from '../agent/deviceHearing.js';
+import { runOfflineTurn } from '../agent/offlineHelper.js';
+import { deviceModelInfo, downloadDeviceModel, readyDeviceModel } from '../agent/deviceModel.js';
 import { keepScreenAwake } from '../agent/keepAwake.js';
 import { getMicLevel, levelFromRms, setMicLevel, startStreamMeter, subscribeMicLevel } from '../agent/micLevel.js';
 import { AGENT_LANG, CANCEL_WORDS, SHUTTER_WORDS, agentLocale, agentSays } from '../agent/agentLanguage.js';
@@ -42,6 +44,7 @@ import SurveyAgentCamera from './SurveyAgentCamera';
 import { useTooltip } from './Tooltip';
 import AgentLearnedDialog from './AgentLearnedDialog.jsx';
 import { createAgentMemoryStore } from '../agent/agentMemory.js';
+import { SHEET_KINDS, placementWords } from '../agent/sheetKind.js';
 import './surveyAgentPanel.css';
 
 // What the agent learned per project (names, note wording), shared by every
@@ -71,6 +74,9 @@ const TEMPLATE_OFFERS_FLAG = 'agent-template-offers';
 const NOTE_STYLE_KEY = 'survey.agent.noteStyle';
 // KAL-532 (Nightly flag agent-photo-questions): questions about a photo.
 const PHOTO_QUESTIONS_FLAG = 'agent-photo-questions';
+// Nightly flag survey-agent-offline: with no signal, plain-rules commands are
+// done on the device (offlineHelper.js) and hearing uses offline speech.
+const OFFLINE_FLAG = 'survey-agent-offline';
 // A photo goes to the model at most this wide or tall, as a JPEG.
 const PHOTO_QUESTION_MAX_SIDE = 1280;
 const shrinkPhoto = async (blob) => {
@@ -176,6 +182,14 @@ function MicWaveform() {
 
 // A tapped mic sends once the person has been quiet this long after talking.
 const TAP_END_SILENCE_MS = 1600;
+
+// "10:12 PM" on each message, and how long a reply took ("2.4 s", "1 min 5 s").
+const clockTime = (at) => new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+const tookText = (ms) => {
+  const seconds = Math.max(0, ms) / 1000;
+  if (seconds < 60) return `${seconds < 10 ? seconds.toFixed(1) : Math.round(seconds)} s`;
+  return `${Math.floor(seconds / 60)} min ${Math.round(seconds % 60)} s`;
+};
 
 let nextId = 1;
 const newId = (prefix) => `${prefix}${nextId++}`;
@@ -293,6 +307,7 @@ export default function SurveyAgentPanel({
   }, []);
   const [phase, setPhase] = useState('listening');
   const [hearing, setHearing] = useState(false);
+  const hearingRef = useRef(false);
   const micRef = useRef(null);
   const recentItemsRef = useRef([]);
   // Every item worked on in this chat: what an end-of-walk summary covers.
@@ -304,6 +319,12 @@ export default function SurveyAgentPanel({
   const [transcribing, setTranscribing] = useState(false);
   // One turn at a time; a ref, so a send started from a stale closure still sees it.
   const turnRef = useRef(false);
+  // The turn running now ({ stop, spoken }), so new speech can stop it.
+  const activeTurnRef = useRef(null);
+  // Words held to lead the next spoken turn ({ text, unfinished, timer }).
+  const carryRef = useRef(null);
+  // The per-minute limit's wait, from the last busy reply.
+  const retryAfterRef = useRef(null);
   const [listening, setListening] = useState(false);
   const [speakReplies, setSpeakReplies] = useState(readSpeakSetting);
   const speakRef = useRef(speakReplies);
@@ -388,7 +409,7 @@ export default function SurveyAgentPanel({
     try { window.localStorage.setItem(NOTE_STYLE_KEY, next); } catch { /* storage blocked */ }
   };
 
-  const push = (entry) => setEntries((list) => [...list, { id: newId('e'), ...entry }]);
+  const push = (entry) => setEntries((list) => [...list, { id: newId('e'), at: Date.now(), ...entry }]);
   // 'sending' | 'sent' | 'failed' | null, for the Send voice log button.
   const [logState, setLogState] = useState(null);
   // "What Survey learned" for the drawing's project.
@@ -401,12 +422,49 @@ export default function SurveyAgentPanel({
   };
 
   const markEntry = (id, patch) => setEntries((list) => list.map((e) => (e.id === id ? { ...e, ...patch } : e)));
+  const dropEntry = (id) => setEntries((list) => list.filter((e) => e.id !== id));
 
   // A Yes / No card from offer_checklist_line or offer_category (KAL-529).
   const setOfferState = (entryId, index, state) => setEntries((list) => list.map((e) => (e.id !== entryId ? e : {
     ...e,
     offers: e.offers.map((o, i) => (i === index ? { ...o, state } : o)),
   })));
+  // "Page 6 or 33?" (ask_which_page): a tap answers as if said. With
+  // "Remember for this project" on, the picked sheets join the project's
+  // placement rule (saved here, so it holds whatever the model does next).
+  const setChoice = (entryId, patch) => setEntries((list) => list.map((e) => (e.id !== entryId || !e.choice ? e : { ...e, choice: { ...e.choice, ...patch } })));
+  const answerChoice = async (entry, { pick = [], none = false, other = false } = {}) => {
+    const choice = entry.choice;
+    if (!choice || choice.state !== 'open' || turnRef.current) return;
+    if (other) {
+      setChoice(entry.id, { state: 'answered', answer: 'Another page' });
+      setDraft('Page ');
+      inputRef.current?.focus();
+      return;
+    }
+    const pages = [...new Set(pick.map((o) => o.page))];
+    const label = (o) => `page ${o.page}${o.sheet ? ` (the ${o.sheet})` : ''}`;
+    const text = none ? 'Neither of those pages.'
+      : pick.length === 1 ? `${label(pick[0])[0].toUpperCase()}${label(pick[0]).slice(1)}.`
+        : `All of them: pages ${pages.slice(0, -1).join(', ')} and ${pages[pages.length - 1]}.`;
+    let note = null;
+    const kinds = [...new Set(pick.map((o) => o.sheet).filter(Boolean))];
+    const b = surveyAgentBridge.current;
+    if (choice.remember && !none && kinds.length && kinds.length === pick.length && b?.projectId) {
+      const rule = placementOf(agentMemory.cached(b.projectId));
+      const merged = SHEET_KINDS.filter((k) => kinds.includes(k) || (rule.saved && rule.kinds.includes(k)));
+      try {
+        await agentMemory.save(b.projectId, { kind: 'placement', heard: 'sheets', means: merged.join(', ') });
+        note = `Saved for this project: put devices on ${placementWords(merged)}. Do not call remember for it.`;
+      } catch {
+        note = null;
+      }
+    }
+    setChoice(entry.id, { state: 'answered', answer: `${text}${note ? ' Remembered for this project.' : ''}` });
+    const reply = await send(text, { note });
+    if (reply && speakRef.current && !handsFreeRef.current) speak(reply);
+  };
+
   const answerOffer = async (entry, index, yes) => {
     const offer = entry.offers?.[index];
     if (!offer || offer.state !== 'open') return;
@@ -474,6 +532,69 @@ export default function SurveyAgentPanel({
     markEntry(entry.id, { reported: ok ? 'sent' : 'failed' });
   };
 
+  const offlineAskRef = useRef(null);
+  // The device's own model (the phone's, or Chrome/Edge's built-in):
+  // fetched once on a tap where the app may start that.
+  const [deviceModel, setDeviceModel] = useState({ state: 'none', engine: 'browser', progress: 0 });
+  useEffect(() => {
+    if (!isFeatureOn(OFFLINE_FLAG)) return undefined;
+    let live = true;
+    deviceModelInfo().then((info) => { if (live) setDeviceModel((prev) => ({ ...prev, ...info })); });
+    return () => { live = false; };
+  }, []);
+  const fetchDeviceModel = async () => {
+    setDeviceModel((prev) => ({ ...prev, state: 'downloading', progress: 0 }));
+    try {
+      await downloadDeviceModel({ onProgress: (progress) => setDeviceModel((prev) => ({ ...prev, state: 'downloading', progress })) });
+      setDeviceModel({ ...(await deviceModelInfo()), progress: 1 });
+    } catch {
+      setDeviceModel({ ...(await deviceModelInfo()), progress: 0 });
+    }
+  };
+  // No signal (or the server busy): a message the plain rules can read is
+  // done on the device now instead of waiting. Returns the reply, or null.
+  // The server's chat hears about it, so later turns build on it.
+  const tryOffline = async (job) => {
+    if (!isFeatureOn(OFFLINE_FLAG) || !job?.said || job.files?.length) return null;
+    const bridge = surveyAgentBridge.current;
+    if (!bridge?.template) return null;
+    const box = createSurveyAgentToolbox({
+      documentId: bridge.documentId || null,
+      undoLastTurn: () => undoLastRef.current(),
+      getDocument: activeAgentDocument,
+      walkItems: () => [...walkItemsRef.current],
+      memory: agentMemory,
+    });
+    let result = null;
+    // A question asked on the device is answered by the very next message.
+    const pending = offlineAskRef.current;
+    offlineAskRef.current = null;
+    try {
+      // Free speech, with a model on this device: it picks among the items the rules found.
+      const model = await readyDeviceModel();
+      result = await runOfflineTurn({ text: job.said, toolbox: box, bridge, learned: agentMemory.cached(bridge.projectId), pending, model });
+    } catch (err) {
+      console.warn('[survey-agent] offline turn failed', err);
+      return null;
+    }
+    if (!result) return null;
+    offlineAskRef.current = result.pending || null;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    toolbox.settle(result.changes);
+    const touched = result.changes.map((c) => c.itemId).filter(Boolean);
+    if (touched.length) recentItemsRef.current = [...recentItemsRef.current.filter((id) => !touched.includes(id)), ...touched].slice(-8);
+    for (const id of touched) walkItemsRef.current.add(id);
+    historyRef.current = [...historyRef.current,
+      { role: 'user', content: job.said },
+      { role: 'assistant', content: `${result.reply} [Done on the device with no signal.]` }];
+    if (job.entryId) markEntry(job.entryId, { waiting: false });
+    push({ role: 'agent', text: result.reply, changes: result.changes, offline: true, byModel: Boolean(result.byModel) });
+    voiceLog.event('offline_turn', { calls: result.calls.map((c) => c.name), changes: result.changes.length });
+    return result.reply;
+  };
+  const tryOfflineRef = useRef(tryOffline);
+  tryOfflineRef.current = tryOffline;
+
   // Runs one message through the agent. Returns the reply text, or null when
   // nothing was answered (error, or queued for lack of signal).
   const runJob = useCallback(async (job) => {
@@ -489,6 +610,11 @@ export default function SurveyAgentPanel({
     const selectedNote = selected ? `\n[Selected item: ${selected.name || 'Unnamed'} (id ${bridge.selectedMarkerId})]` : '';
     turnRef.current = true;
     setBusy(true);
+    // The person talking again over a spoken turn stops it while it has
+    // changed nothing yet (onHearingChange); its words join the next turn.
+    const turn = { stop: false, spoken: Boolean(job.spoken) };
+    activeTurnRef.current = turn;
+    const startedAt = Date.now();
     // Bound to this document: if the person opens another one mid-turn, the
     // remaining tools refuse instead of writing there.
     // Markup tools (notes, shapes, callouts, highlights), shared with
@@ -517,7 +643,7 @@ export default function SurveyAgentPanel({
     try {
       const result = await runSurveyAgentTurn({
         history: historyRef.current,
-        userText: `${job.said || 'Attach these files.'}${fileNote}${selectedNote}${offerNote}`,
+        userText: `${job.said || 'Attach these files.'}${fileNote}${selectedNote}${offerNote}${job.note ? `\n[${job.note}]` : ''}`,
         call,
         toolbox: turnToolbox,
         answerValues: answerSetFor(bridge.template).map((a) => a.value),
@@ -527,7 +653,21 @@ export default function SurveyAgentPanel({
         offers: offersOn,
         noteStyle: offersOn ? noteStyleRef.current : null,
         photos: photosOn,
+        shouldStop: () => turn.stop,
       });
+      // Stopped mid-thought ("I need you to camera 80 on floor three um"):
+      // a spoken turn waits for the rest; a typed one is asked for it.
+      if (result.unfinished) {
+        voiceLog.event('turn_unfinished', { ms: Date.now() - startedAt });
+        if (job.spoken && job.onCarry && !job.note) {
+          if (job.entryId) dropEntry(job.entryId);
+          job.onCarry(job.said, { unfinished: true });
+          return null;
+        }
+        if (job.entryId) markEntry(job.entryId, { waiting: false });
+        push({ role: 'agent', text: 'Go on, what should I do?', tookMs: Date.now() - startedAt });
+        return 'Go on, what should I do?';
+      }
       await new Promise((resolve) => setTimeout(resolve, 0));
       toolbox.settle(result.changes);
       // Items worked on lately: speech to text expects these names most.
@@ -542,7 +682,9 @@ export default function SurveyAgentPanel({
         changes: result.changes,
         summary: result.summary || null,
         offers: result.offers?.length ? result.offers.map((offer) => ({ ...offer, state: 'open' })) : null,
+        choice: result.choice ? { ...result.choice, state: 'open', remember: false } : null,
         promptVersion: result.promptVersion || null,
+        tookMs: Date.now() - startedAt,
       });
       if (result.changes.length) sendFeedbackRef.current('changed', result.promptVersion);
       // "Export the summary": saved at once, as the button would (KAL-532).
@@ -550,11 +692,21 @@ export default function SurveyAgentPanel({
       voiceLog.event('turn_done', { reply: result.reply, changes: result.changes.map((c) => c.label || c.type || '') });
       return result.reply;
     } catch (err) {
+      // Talked over before anything changed: these words lead the next turn.
+      if (err?.code === 'superseded') {
+        voiceLog.event('turn_talked_over', { ms: Date.now() - startedAt });
+        if (job.entryId) dropEntry(job.entryId);
+        job.onCarry?.(job.said, { unfinished: false });
+        return null;
+      }
       // No signal (or too weak to finish) before anything changed: keep the
       // message for later. Each call is one model step with no writes on the
       // server, so sending it again later cannot double anything.
       if (WAIT_CODES.has(err?.code) && !err?.changes?.length) {
+        const done = await tryOfflineRef.current(job);
+        if (done !== null) return done;
         waitReasonRef.current = err.code;
+        retryAfterRef.current = Number(err.retryAfter) || null;
         enqueueRef.current(job);
         return null;
       }
@@ -566,12 +718,16 @@ export default function SurveyAgentPanel({
       push({ role: 'error', text: err?.message || surveyAgentErrorText(err?.code), changes: err?.changes || [], code: err?.code });
       return null;
     } finally {
+      if (activeTurnRef.current === turn) activeTurnRef.current = null;
       turnRef.current = false;
       setBusy(false);
     }
   }, [call, toolbox]);
 
-  const send = useCallback(async (text) => {
+  // spoken: said hands-free, so it may be talked over or cut off mid-thought;
+  // onCarry(words) then takes the words back to lead the next turn. note:
+  // a line for the agent only, not shown.
+  const send = useCallback(async (text, { spoken = false, onCarry = null, note = null } = {}) => {
     const said = String(text || '').trim();
     const files = pendingFiles;
     if ((!said && !files.length) || turnRef.current) return null;
@@ -582,10 +738,13 @@ export default function SurveyAgentPanel({
     setDraft('');
     setPendingFiles([]);
     const entryId = newId('e');
-    setEntries((list) => [...list, { id: entryId, role: 'user', text: said || 'Attach these.', files: files.map((f) => f.name) }]);
+    setEntries((list) => [...list, { id: entryId, role: 'user', text: said || 'Attach these.', files: files.map((f) => f.name), at: Date.now() }]);
     // Messages wait their turn behind ones still waiting for signal.
-    const job = { said, files, entryId, docKey: surveyAgentBridge.current?.waitKey || null };
+    const job = { said, files, entryId, docKey: surveyAgentBridge.current?.waitKey || null, spoken, onCarry, note };
     if (queueRef.current.length) {
+      // With no signal, what the rules can read is done now; the rest waits.
+      const done = await tryOfflineRef.current(job);
+      if (done !== null) return done;
       enqueueRef.current(job, { quiet: true });
       return null;
     }
@@ -680,6 +839,8 @@ export default function SurveyAgentPanel({
   // sent from there), keeps it on the device, and says so: "saved, will
   // send" once per stretch without signal, then just "Saved."
   const savedNoticeRef = useRef(false);
+  const busyTimerRef = useRef(null);
+  useEffect(() => () => clearTimeout(busyTimerRef.current), []);
   const waitReasonRef = useRef('offline');
   const enqueue = (job, { quiet = false } = {}) => {
     // Back from a send attempt: same place in line, and nothing new to say.
@@ -691,6 +852,12 @@ export default function SurveyAgentPanel({
     if (!job.files?.length && job.docKey) {
       job.waitId = job.waitId || waitIdOf();
       keepWaiting({ id: job.waitId, docKey: job.docKey, said: job.said || null, clip: job.clip || null, durationMs: job.durationMs || null });
+    }
+    // Busy (the per-minute limit), not offline: try again as soon as the
+    // limit says, not at the next 20 s check.
+    if (waitReasonRef.current === 'busy_try_again' && !busyTimerRef.current) {
+      const ms = Math.min(20_000, Math.max(2_000, (retryAfterRef.current || 3) * 1000));
+      busyTimerRef.current = setTimeout(() => { busyTimerRef.current = null; flushQueueRef.current(); }, ms);
     }
     if (quiet || retried) return;
     const busy = waitReasonRef.current === 'busy_try_again';
@@ -712,7 +879,7 @@ export default function SurveyAgentPanel({
       for (const row of rows) {
         if (queueRef.current.some((j) => j.waitId === row.id)) continue;
         const entryId = newId('e');
-        setEntries((list) => [...list, { id: entryId, role: 'user', text: row.said || 'Voice message', waiting: true }]);
+        setEntries((list) => [...list, { id: entryId, role: 'user', text: row.said || 'Voice message', waiting: true, at: Date.now() }]);
         queueRef.current.push({ said: row.said || '', files: [], clip: row.clip || null, durationMs: row.durationMs || null, entryId, docKey, waitId: row.id });
       }
       savedNoticeRef.current = true;
@@ -791,7 +958,7 @@ export default function SurveyAgentPanel({
 
   const queueClip = (clip, durationMs) => {
     const entryId = newId('e');
-    setEntries((list) => [...list, { id: entryId, role: 'user', text: 'Voice message' }]);
+    setEntries((list) => [...list, { id: entryId, role: 'user', text: 'Voice message', at: Date.now() }]);
     enqueue({ clip, durationMs, files: [], entryId, docKey: surveyAgentBridge.current?.waitKey || null });
   };
 
@@ -832,6 +999,8 @@ export default function SurveyAgentPanel({
     if (handsFreeRef.current) voiceLogRef.current?.event('hands_free_stop');
     // Words still held for joining are dropped with hands-free.
     joinerRef.current?.clear();
+    clearTimeout(carryRef.current?.timer);
+    carryRef.current = null;
     handsFreeRef.current = false;
     setHandsFree(false);
     setHearing(false);
@@ -867,13 +1036,49 @@ export default function SurveyAgentPanel({
     if (text === null) { queueClip(clip, durationMs); return; }
     await handleHandsFreeText(text, { cutIn });
   };
+  // One thought, one turn (the way a live voice agent waits for the end of
+  // what is said): words whose turn was talked over, or that stopped
+  // mid-thought, wait here and lead the next turn. If nothing more comes,
+  // they go out alone; after a stop mid-thought, with a note to answer now.
+  const takeCarry = () => {
+    const held = carryRef.current;
+    if (!held) return '';
+    clearTimeout(held.timer);
+    carryRef.current = null;
+    return held.text;
+  };
+  const CARRY_WAIT_MS = { talkedOver: 4000, unfinished: 6000 };
+  const carry = (words, { unfinished = false } = {}) => {
+    const text = String(words || '').trim();
+    if (!text) return;
+    const held = carryRef.current;
+    if (held) clearTimeout(held.timer);
+    const next = { text: held ? `${held.text} ${text}` : text, unfinished };
+    const check = () => {
+      if (carryRef.current !== next) return;
+      // Still talking, or a turn is on its way: it will take the words.
+      if (!handsFreeRef.current) { carryRef.current = null; return; }
+      if (hearingRef.current || joinerRef.current?.holding || handsFreePendingRef.current > 0) {
+        next.timer = setTimeout(check, 1000);
+        return;
+      }
+      const alone = takeCarry();
+      runHandsFree(() => handleHandsFreeTextRef.current(alone, { note: next.unfinished ? 'Nothing more was said. Answer now; do not reply with only "…".' : null }));
+    };
+    next.timer = setTimeout(check, unfinished ? CARRY_WAIT_MS.unfinished : CARRY_WAIT_MS.talkedOver);
+    carryRef.current = next;
+  };
+
   // What was said, as words: from a clip, or from the phone's own hearing.
-  const handleHandsFreeText = async (text, { cutIn = false } = {}) => {
-    if (!text || !handsFreeRef.current) return;
+  const handleHandsFreeText = async (heardText, { cutIn = false, note = null } = {}) => {
+    if (!heardText || !handsFreeRef.current) return;
     // Cut in on the agent, but it was the agent's own voice leaking back in.
-    if (cutIn && heardOwnVoice(text, lastSpokenRef.current)) return;
+    if (cutIn && heardOwnVoice(heardText, lastSpokenRef.current)) return;
+    // Words from a turn that was talked over, or stopped mid-thought, lead.
+    const carried = takeCarry();
+    const text = carried ? `${carried} ${heardText}` : heardText;
     if (turnRef.current) { setDraft((d) => (d.trim() ? `${d.trim()} ${text}` : text)); return; }
-    const reply = await send(text);
+    const reply = await send(text, { spoken: true, onCarry: carry, note });
     const mic = micRef.current;
     // Not while the person is already saying something else.
     if (reply && speakRef.current && handsFreeRef.current && mic?.guard() !== false) {
@@ -935,6 +1140,10 @@ export default function SurveyAgentPanel({
   }
   const onHearingChange = (on) => {
     setHearing(on);
+    hearingRef.current = on;
+    // Talking again while a spoken turn works: stop it if it changed nothing
+    // yet, and say it all as one turn.
+    if (on && activeTurnRef.current?.spoken) activeTurnRef.current.stop = true;
     // The phone's own hearing gives no loudness: a steady pulse while it hears.
     if (micRef.current?.native) setMicLevel(on ? 0.7 : 0, { reset: !on });
     // A new log turn only when nothing is held for joining: clips joined
@@ -992,6 +1201,7 @@ export default function SurveyAgentPanel({
           onHearing: (on) => onHearingChange(on),
           onBargeIn: () => stopSpeaking(),
           spokenNow: () => lastSpokenRef.current,
+          offline: isFeatureOn(OFFLINE_FLAG),
           onFatal: () => { if (handsFreeRef.current) restartHandsFreeRef.current(); },
         }).catch(() => null)
         : null;
@@ -1002,7 +1212,11 @@ export default function SurveyAgentPanel({
         onLevel: (v) => setMicLevel(levelFromRms(v)),
       });
       voiceLog.event('mic_started', { native: Boolean(micRef.current.native) });
-      if (!micRef.current.native) deviceHearingRef.current = startDeviceHearing({ lang: agentLocale() });
+      if (!micRef.current.native) {
+        // Offline speech pack (Chrome/Edge): fetched once, then heard with no signal.
+        if (isFeatureOn(OFFLINE_FLAG)) await prepareLocalHearing(agentLocale());
+        deviceHearingRef.current = startDeviceHearing({ lang: agentLocale() });
+      }
       awakeRef.current?.release();
       awakeRef.current = keepScreenAwake();
       handsFreeRef.current = true;
@@ -1051,6 +1265,10 @@ export default function SurveyAgentPanel({
     }
     const rec = new Recognition();
     rec.lang = agentLocale();
+    if (isFeatureOn(OFFLINE_FLAG)) {
+      hearLocally(rec, rec.lang);
+      prepareLocalHearing(rec.lang);
+    }
     rec.interimResults = true;
     rec.continuous = true;
     let finalText = '';
@@ -1100,6 +1318,8 @@ export default function SurveyAgentPanel({
   const startTalk = () => {
     if (recorder.state !== 'idle') return;
     pttHearingRef.current?.stop();
+    // The offline speech pack is checked for next time (a tap may fetch it).
+    if (isFeatureOn(OFFLINE_FLAG)) prepareLocalHearing(agentLocale());
     pttHearingRef.current = startDeviceHearing({ lang: agentLocale() });
     recorder.start();
   };
@@ -1280,6 +1500,19 @@ export default function SurveyAgentPanel({
             </button>
           );
         })() : null}
+        {deviceModel.state === 'downloadable' || deviceModel.state === 'downloading' ? (() => {
+          const progress = typeof deviceModel.progress === 'number' ? ` ${Math.round(deviceModel.progress * 100)}%` : '';
+          const label = deviceModel.state === 'downloading'
+            ? (deviceModel.engine === 'apple' ? 'The iPhone is still getting its own model' : `Getting the offline helper…${progress}`)
+            : deviceModel.engine === 'browser'
+              ? 'Get the offline helper: reads free speech with no signal (about 2 GB, use Wi-Fi)'
+              : "Get the offline helper: the phone's own model reads free speech with no signal (use Wi-Fi)";
+          return (
+            <button type="button" className="survey-agent__icon" aria-label={label} data-testid="survey-agent-device-model" {...tip(label, 'below')} disabled={deviceModel.state === 'downloading'} onClick={fetchDeviceModel}>
+              <Icon name="download" size={16} color="currentColor" />
+            </button>
+          );
+        })() : null}
         {surveyAgentBridge.current?.projectId ? (
           <button type="button" className="survey-agent__icon" aria-label="Learned" {...tip('What the agent learned on this project', 'below')} onClick={() => setLearnedOpen(true)}>
             <Icon name="lightbulbOn" size={16} color="currentColor" />
@@ -1295,7 +1528,7 @@ export default function SurveyAgentPanel({
             <span className="survey-agent__badge is-big" aria-hidden="true"><SparkleIcon /></span>
             <p className="survey-agent__hello">Before you start</p>
             <p className="survey-agent__hint">
-              The agent uses AI from outside companies. What you type or say, voice recordings, photos you add, and the survey data it needs to answer go to Groq, which runs the AI model, and to OpenAI if Groq can&rsquo;t turn your speech into text. They use it only to answer you. Answers can be wrong, so check them.{' '}
+              The agent uses AI from outside companies. What you type or say, voice recordings, photos you add, and the survey data it needs to answer go to OpenAI or Groq, which run the AI models that answer you and turn your speech into text. They use it only to answer you. Answers can be wrong, so check them.{' '}
               <a href="/privacy.html" target="_blank" rel="noreferrer">Privacy policy</a>
             </p>
             {consentError ? <p className="survey-agent__status" role="alert">{consentError}</p> : null}
@@ -1339,8 +1572,49 @@ export default function SurveyAgentPanel({
                 {entry.role === 'error' && <Icon name="warningCircle" size={14} color="currentColor" />}
                 <span>{entry.text}</span>
                 {entry.waiting ? <div className="survey-agent__files">Waiting for signal</div> : null}
+                {entry.offline ? <div className="survey-agent__files" data-testid="survey-agent-offline-done">{entry.byModel ? 'Read by the model on this device, no signal needed. Check it.' : entry.changes?.length ? 'Done on this device, no signal needed' : 'Answered on this device, no signal needed'}</div> : null}
                 {entry.files?.length ? <div className="survey-agent__files">{entry.files.join(', ')}</div> : null}
               </div>
+              {entry.at ? (
+                <div className="survey-agent__time" data-testid="survey-agent-time">
+                  <time dateTime={new Date(entry.at).toISOString()}>{clockTime(entry.at)}</time>
+                  {entry.tookMs != null ? <span>{` · took ${tookText(entry.tookMs)}`}</span> : null}
+                </div>
+              ) : null}
+              {entry.choice ? (
+                <div className="survey-agent__offer survey-agent__choice" data-testid="survey-agent-choice" data-choice-state={entry.choice.state}>
+                  {entry.choice.state === 'open' ? (
+                    <>
+                      <div className="survey-agent__offer-actions">
+                        {entry.choice.options.map((o) => (
+                          <button key={o.id} type="button" className="survey-agent__suggestion" disabled={thinking} onClick={() => answerChoice(entry, { pick: [o] })}>
+                            {`Page ${o.page}`}{o.sheet ? <span className="survey-agent__choice-sheet">{` ${o.spot === 'table' ? `${o.sheet} table` : o.sheet}`}</span> : null}
+                          </button>
+                        ))}
+                        <button type="button" className="survey-agent__suggestion" disabled={thinking} onClick={() => answerChoice(entry, { pick: entry.choice.options })}>
+                          {entry.choice.options.length === 2 ? 'Both' : 'All'}
+                        </button>
+                        <button type="button" className="survey-agent__suggestion" disabled={thinking} onClick={() => answerChoice(entry, { none: true })}>
+                          {entry.choice.options.length === 2 ? 'Neither' : 'None'}
+                        </button>
+                        <button type="button" className="survey-agent__suggestion" disabled={thinking} onClick={() => answerChoice(entry, { other: true })}>
+                          Other
+                        </button>
+                      </div>
+                      {entry.choice.canRemember && entry.choice.options.every((o) => o.sheet) ? (
+                        <div className="survey-agent__offer-actions survey-agent__remember" role="group" aria-label="Remember this answer">
+                          <button type="button" className="survey-agent__suggestion" aria-pressed={!entry.choice.remember} onClick={() => setChoice(entry.id, { remember: false })}>
+                            Just this time
+                          </button>
+                          <button type="button" className="survey-agent__suggestion" aria-pressed={entry.choice.remember} onClick={() => setChoice(entry.id, { remember: true })}>
+                            Remember for this project
+                          </button>
+                        </div>
+                      ) : null}
+                    </>
+                  ) : <span className="survey-agent__undone">{entry.choice.answer}</span>}
+                </div>
+              ) : null}
               {entry.offers?.map((offer, i) => (
                 <div key={i} className="survey-agent__offer" data-testid="survey-agent-offer" data-offer-state={offer.state}>
                   <p className="survey-agent__offer-text">
@@ -1376,7 +1650,7 @@ export default function SurveyAgentPanel({
                     : <button type="button" className="survey-agent__undo" onClick={() => undoEntry(entry)}><Icon name="undo" size={12} color="currentColor" />Undo</button>}
                 </div>
               ) : null}
-              {entry.role === 'agent' && entry.text ? (
+              {entry.role === 'agent' && entry.text && !entry.offline ? (
                 <button
                   type="button"
                   className="survey-agent__report"

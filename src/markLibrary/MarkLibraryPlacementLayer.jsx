@@ -7,7 +7,9 @@
  * pointer over the pages at the size it will land, so the person sees where
  * it goes. A mouse or pen press on a page places it there (the press does not
  * reach the page's own tools); a press anywhere else lets go of it, as does
- * Esc. Touch presses are left alone: a finger pans.
+ * Esc. A press on the selection (the stamp just placed) or a button lets go
+ * of it and goes through, so that stamp can be moved or resized at once.
+ * A finger still pans: only a tap (no drag, one finger) places.
  */
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -33,6 +35,26 @@ function pageScreenScale(page) {
   if (!rect || !vb || vb.length !== 4 || !(vb[2] > 0)) return null;
   return rect.width / vb[2];
 }
+
+// What a press edits or clicks instead of placing (round 4: grabbing the new
+// stamp's handle dropped a second stamp). Only the selection counts: a press
+// on any other mark still stamps on top of it.
+const SELECTION_HANDLE = '[data-resize-handle], [data-handle], [data-handle-hit-pad], [data-rotation-handle], [data-curve-handle]';
+const CONTROL = 'button, input, textarea, select, [role="toolbar"], [contenteditable="true"]';
+function pressGoesThrough(event, page) {
+  const target = event.target;
+  if (target?.closest?.(`${SELECTION_HANDLE}, ${CONTROL}`)) return true;
+  if (!page) return false;
+  const mark = target?.closest?.('[data-annotation-index]');
+  if (mark && page.querySelector(`[data-selection-context-index="${mark.getAttribute('data-annotation-index')}"]`)) return true;
+  for (const frame of page.querySelectorAll('[data-selection-context-hitbox]')) {
+    const r = frame.getBoundingClientRect();
+    if (event.clientX >= r.left && event.clientX <= r.right && event.clientY >= r.top && event.clientY <= r.bottom) return true;
+  }
+  return false;
+}
+const TAP_SLOP_PX = 10;
+const TAP_MS = 500;
 
 export default function MarkLibraryPlacementLayer({ active = false, rootRef = null, place }) {
   const placeRef = useRef(place);
@@ -74,6 +96,13 @@ export default function MarkLibraryPlacementLayer({ active = false, rootRef = nu
       setGhost({ x: event.clientX, y: event.clientY, width: frame.width * scale, height: frame.height * scale });
     };
     let swallowUntil = 0;
+    const fingers = new Set();
+    let tap = null; // { id, x, y, t }
+    const placeAt = (event) => {
+      const current = getArmedLibraryItem();
+      if (!current?.keep) disarmLibraryItem();
+      placeLibraryItem(current?.item || item, { clientX: event.clientX, clientY: event.clientY });
+    };
     const swallow = (event) => {
       // A pick in a panel right after a drop (another stamp) is not the drop's own click.
       if (event.target?.closest?.('[data-mark-library-panel]')) return;
@@ -85,10 +114,17 @@ export default function MarkLibraryPlacementLayer({ active = false, rootRef = nu
     };
     const onDown = (event) => {
       if (getLibraryDrag()) return;
-      if (event.pointerType === 'touch') return;
       if (event.target?.closest?.('[data-mark-library-panel]')) return;
       const page = pageElementAt(root(), event.clientX, event.clientY);
-      if (!page || event.button !== 0) {
+      if (event.pointerType === 'touch') {
+        // The press itself goes through so a drag or a pinch still moves the page.
+        fingers.add(event.pointerId);
+        tap = page && fingers.size === 1 && !pressGoesThrough(event, page)
+          ? { id: event.pointerId, x: event.clientX, y: event.clientY, t: Date.now() }
+          : null;
+        return;
+      }
+      if (!page || event.button !== 0 || pressGoesThrough(event, page)) {
         disarmLibraryItem();
         return;
       }
@@ -96,11 +132,25 @@ export default function MarkLibraryPlacementLayer({ active = false, rootRef = nu
       event.stopPropagation();
       event.stopImmediatePropagation?.();
       swallowUntil = Date.now() + 600;
-      const current = getArmedLibraryItem();
-      if (!current?.keep) disarmLibraryItem();
-      placeLibraryItem(current?.item || item, { clientX: event.clientX, clientY: event.clientY });
+      placeAt(event);
+    };
+    const onTouchEnd = (event) => {
+      fingers.delete(event.pointerId);
+      const start = tap;
+      tap = null;
+      if (event.type !== 'pointerup' || !start || start.id !== event.pointerId) return;
+      if (Date.now() - start.t > TAP_MS || Math.hypot(event.clientX - start.x, event.clientY - start.y) > TAP_SLOP_PX) return;
+      if (!pageElementAt(root(), event.clientX, event.clientY)) return;
+      const at = { clientX: event.clientX, clientY: event.clientY };
+      // After the tap's own click, so the page's tap handling (a deselect)
+      // doesn't clear the selection the placement makes.
+      setTimeout(() => placeAt(at), 0);
+    };
+    const onCancel = (event) => {
+      if (event.pointerType === 'touch') onTouchEnd(event);
     };
     const onUp = (event) => {
+      if (event.pointerType === 'touch' && !getLibraryDrag()) { onTouchEnd(event); return; }
       if (!getLibraryDrag()) { swallow(event); return; }
       const dragged = getLibraryDrag().item;
       endLibraryDrag();
@@ -118,12 +168,14 @@ export default function MarkLibraryPlacementLayer({ active = false, rootRef = nu
     window.addEventListener('pointermove', follow, true);
     window.addEventListener('pointerdown', onDown, true);
     window.addEventListener('pointerup', onUp, true);
+    window.addEventListener('pointercancel', onCancel, true);
     window.addEventListener('click', swallow, true);
     window.addEventListener('keydown', onKey, true);
     return () => {
       window.removeEventListener('pointermove', follow, true);
       window.removeEventListener('pointerdown', onDown, true);
       window.removeEventListener('pointerup', onUp, true);
+      window.removeEventListener('pointercancel', onCancel, true);
       window.removeEventListener('click', swallow, true);
       window.removeEventListener('keydown', onKey, true);
     };

@@ -48,6 +48,8 @@ export function PromptModal({
   placeholder = '',
   defaultValue = '',
   confirmLabel = 'OK',
+  danger = false,
+  canSubmit = null,
   zIndex,
   onSubmit,
   onCancel,
@@ -61,7 +63,10 @@ export function PromptModal({
     if (open) setValue(defaultValue);
   }, [open, defaultValue]);
 
-  const submit = () => { onSubmit?.(value); };
+  // A typed-word confirm (Delete account) keeps its button off until the word
+  // is right, so it can never close the dialog on a wrong answer.
+  const ready = typeof canSubmit === 'function' ? canSubmit(value) : true;
+  const submit = () => { if (ready) onSubmit?.(value); };
 
   // KAL-461: a tap on the scrim cancels only while nothing has been typed;
   // with a changed answer it does nothing (Cancel, x and Escape still cancel),
@@ -85,7 +90,7 @@ export function PromptModal({
       footer={(
         <>
           <button type="button" className="hub-btn dialog-touch-pad" onClick={onCancel}>Cancel</button>
-          <button type="button" className="hub-btn hub-btn--primary dialog-touch-pad" onClick={submit}>{confirmLabel}</button>
+          <button type="button" className={danger ? 'hub-btn hub-btn--primary is-danger dialog-touch-pad' : 'hub-btn hub-btn--primary dialog-touch-pad'} onClick={submit} disabled={!ready}>{confirmLabel}</button>
         </>
       )}
     >
@@ -215,6 +220,8 @@ export function usePromptDialog() {
       placeholder={state?.placeholder}
       defaultValue={state?.defaultValue ?? ''}
       confirmLabel={state?.confirmLabel}
+      danger={Boolean(state?.danger)}
+      canSubmit={state?.canSubmit || null}
       zIndex={state?.zIndex}
       onSubmit={(value) => settle(value)}
       onCancel={() => settle(null)}

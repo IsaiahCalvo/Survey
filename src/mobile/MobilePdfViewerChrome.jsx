@@ -3706,7 +3706,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
 export function MobilePdfViewerDock({ onOpenPanel, onToggleHub, onOpenSurvey, hubMode = 'pages', hubOpen = false, spacesActive, surveyActive, covered = false, openPanel = null }) {
   const hubLabels = { pages: 'Pages', search: 'Search', bookmarks: 'Bookmarks', layers: 'Layers', library: 'Library', comments: 'Comments', markups: 'Annotations' };
   // Pages draws the desktop rail's Pages glyph (PDFSidebar), not the document.
-  const hubIcons = { pages: 'pages', search: 'search', bookmarks: 'bookmark', layers: 'shapes', library: 'library', comments: 'comment', markups: 'listChecks' };
+  const hubIcons = { pages: 'pages', search: 'search', bookmarks: 'bookmark', layers: 'shapes', library: 'library', comments: 'comment', markups: 'annotations' };
   // `covered`: a phone panel is open over the dock. The dock stays mounted
   // under it (so it is already in place when the panel slides away - see
   // AppShell), but takes no focus, taps or screen-reader reads meanwhile.

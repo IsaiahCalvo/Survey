@@ -62,10 +62,29 @@ export function errorCode(err) {
   if (/not available|unavailable|not supported on this device/.test(msg)) return 'unavailable';
   if (/language|locale/.test(msg)) return 'language-not-supported';
   if (/no match|no speech|didn't understand/.test(msg)) return 'no-speech';
+  if (/network|internet|offline|connection/.test(msg)) return 'network';
   return 'error';
 }
 
-export async function start({ lang = 'en-US', onFinal, onPartial, onSpeechStart, onSpeechEnd, onError } = {}) {
+// Whether the phone can hear this language on the device (no signal
+// needed), asked once per language. iOS takes the older recognizer
+// (SFSpeechRecognizer with requiresOnDeviceRecognition): on iOS 26 the new
+// one can start and stop without sending any partial words, and this file
+// lives on partial words.
+const onDeviceByLang = new Map();
+const ON_DEVICE_OPTIONS = Object.freeze({ useOnDeviceRecognition: true, preferLegacyRecognizer: true });
+async function canHearOnDevice(sr, lang) {
+  if (!onDeviceByLang.has(lang)) {
+    onDeviceByLang.set(lang, Promise.resolve()
+      .then(() => sr.isOnDeviceRecognitionAvailable?.({ language: lang, preferLegacyRecognizer: true }))
+      .then((r) => Boolean(r?.available))
+      .catch(() => false));
+  }
+  return onDeviceByLang.get(lang);
+}
+const noSignal = () => typeof navigator !== 'undefined' && navigator.onLine === false;
+
+export async function start({ lang = 'en-US', onFinal, onPartial, onSpeechStart, onSpeechEnd, onError, offline = false } = {}) {
   if (!isNative() && !fakeSpeech()) {
     onError?.('unavailable');
     throw Object.assign(new Error('Native speech is unavailable'), { code: 'unavailable' });
@@ -89,15 +108,24 @@ export async function start({ lang = 'en-US', onFinal, onPartial, onSpeechStart,
     if (said) onFinal?.({ text: said, confidence: 0 });
   };
 
+  // With offline on: once the cloud recognizer fails, or with no signal,
+  // each new listen hears on the device instead.
+  let forceOnDevice = false;
   const listen = async () => {
     if (stopped) return;
+    const onDevice = offline && (forceOnDevice || noSignal()) && await canHearOnDevice(sr, lang);
     try {
-      await sr.start({ language: lang, partialResults: true, popup: false, maxResults: 1, muteRecognizerBeep: true });
+      await sr.start({ language: lang, partialResults: true, popup: false, maxResults: 1, muteRecognizerBeep: true, ...(onDevice ? ON_DEVICE_OPTIONS : {}) });
     } catch (err) {
       if (stopped) return;
       const code = errorCode(err);
       // A pause with nothing heard ends a session on Android; just listen again.
       if (code === 'no-speech') return void listen();
+      // The phone's cloud speech lost its signal: hear on the device instead.
+      if (offline && !onDevice && (code === 'network' || code === 'error') && await canHearOnDevice(sr, lang)) {
+        forceOnDevice = true;
+        return void listen();
+      }
       stopped = true;
       onError?.(code);
     }

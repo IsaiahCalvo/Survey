@@ -22,7 +22,9 @@ html[data-look="suite"] .pdft-tool:not(.is-on):not(:hover){background:var(--surf
 /* Export PDF (ExportPdfDialog.jsx): the three mark choices side by side, the
    picked one outlined in the accent. */
 .pdft-tools--three{grid-template-columns:repeat(3,minmax(0,1fr))}
-.pdft-tools--three>li{display:flex}
+/* Each card fills its grid cell, so two cards in a row are the same height
+   even when one hint wraps to two lines (Export PDF's three and PDF tools). */
+.pdft-tools>li{display:flex}
 .pdft-tool.is-on{border-color:var(--border-strong);background:var(--surface-3)}
 .pdft-tname{font-size:14px;font-weight:650}
 .pdft-tshort{font-size:12px;color:var(--text-3);line-height:1.35}
@@ -45,9 +47,13 @@ html[data-look="suite"] .pdft-tool:not(.is-on):not(:hover){background:var(--surf
 .pdft-thumb img{max-width:100%;max-height:100%;box-shadow:0 1px 3px rgba(0,0,0,.2);background:#fff;transition:transform .15s}
 .pdft-pnum{font-size:11.5px;color:var(--text-3)}
 .pdft-pbtns{display:flex;gap:2px}
-.pdft-pbtns button{min-width:26px;min-height:36px;padding:0 4px;border:0;border-radius:6px;background:transparent;color:inherit;font-size:15px;cursor:pointer}
-.pdft-pbtns button:hover:not(:disabled){background:var(--hover)}
-.pdft-pbtns button:disabled{opacity:.35;cursor:default}
+/* Move, turn and remove: the app's icons (they were typed arrows that drew
+   bigger and bolder than the turn icon), with the shared hover, press and
+   disabled looks. */
+.pdft-pbtns button{display:inline-grid;place-items:center;min-width:26px;min-height:36px;padding:0 4px;border:0;border-radius:6px;background:transparent;color:var(--text-2);cursor:pointer;transition:background-color var(--motion-state,150ms) var(--ease-out,ease-out),color var(--motion-state,150ms) var(--ease-out,ease-out)}
+@media (hover:hover){.pdft-pbtns button:hover:not(:disabled){background:var(--hover);color:var(--text-1)}}
+.pdft-pbtns button:active:not(:disabled){background:var(--pressed-2,var(--pressed));transition:none}
+.pdft-pbtns button:disabled{color:var(--text-disabled,var(--text-3));cursor:not-allowed}
 .pdft-big{font-size:16px;font-weight:700;margin:0 0 6px}
 .pdft-names{list-style:none;margin:10px 0 0;padding:0;font-size:13px;max-height:200px;overflow:auto}
 .pdft-names li{padding:4px 0;overflow-wrap:anywhere}

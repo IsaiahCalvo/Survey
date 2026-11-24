@@ -16,7 +16,8 @@
 //   SURVEY_AGENT_PRICE_IN / SURVEY_AGENT_PRICE_OUT: USD per million tokens
 //     (default 0, free tier). SURVEY_AGENT_MONTHLY_CAP_USD (default 5) and
 //     SURVEY_AGENT_MONTHLY_REQUEST_CAP (default 3000) per person.
-//   SURVEY_AGENT_TESTERS: comma-separated emails allowed in while testing.
+//   SURVEY_AGENT_TESTERS: comma-separated emails allowed in while testing
+//   (the survey-agent flag's tester list in feature_flags also lets people in).
 //   SURVEY_AGENT_OPEN: 'true' also lets in paid plans.
 //   OPENAI_API_KEY: speech to text when there is no Groq key, or first when
 //     SURVEY_AGENT_STT is 'openai'.
@@ -25,9 +26,11 @@
 //   most possible cost first and is refused with 'credit_used_up' once the
 //   provider's monthly cap (public.ai_credit_budgets) would be passed.
 //   SURVEY_AGENT_TTS: 'off' turns the server voice off (the app then uses
-//     the device's own voice). SURVEY_AGENT_TTS_MODEL / _VOICE pick the
-//     voice (Groq Orpheus by default); SURVEY_AGENT_TTS_PRICE is USD per
-//     million characters (default 0, free tier; Orpheus lists 22).
+//     the device's own voice). With OPENAI_API_KEY set the voice is
+//     gpt-4o-mini-tts (voice 'marin'), on the credit cap; 'groq' keeps Orpheus. SURVEY_AGENT_TTS_MODEL
+//     / _VOICE / _INSTRUCTIONS pick the voice (Groq Orpheus by default);
+//     SURVEY_AGENT_TTS_PRICE is USD per million characters for Orpheus
+//     (default 0, free tier; Orpheus lists 22).
 //   SURVEY_AGENT_FALLBACK_MODELS: comma list of models to move to when the
 //     main one is near or past its daily cap ('' turns it off). On the
 //     default Groq provider it defaults to the free models in
@@ -89,8 +92,11 @@ const envNumber = (name: string, fallback: number) => {
   return Number.isFinite(value) && value >= 0 ? value : fallback;
 };
 
+// The agent's own monthly cap. On the OpenAI credits, the shared credit
+// budget ($200 a month for every app) is the real limit, so the agent's own
+// default steps aside; SURVEY_AGENT_MONTHLY_CAP_USD still sets one by hand.
 function capMicros() {
-  return Math.round(envNumber('SURVEY_AGENT_MONTHLY_CAP_USD', 5) * 1_000_000);
+  return Math.round(envNumber('SURVEY_AGENT_MONTHLY_CAP_USD', onOpenAi() ? 200 : 5) * 1_000_000);
 }
 
 // GROQ_BASE_URL points every Groq call (chat, hearing, voice) somewhere
@@ -105,28 +111,46 @@ function creditFor(url: string) {
   return String(url || '').startsWith(groqBase()) ? null : creditProviderFor(url);
 }
 
-// SURVEY_AGENT_BASE_URL on OpenAI with no SURVEY_AGENT_API_KEY uses the
-// suite's OPENAI_API_KEY, so one key serves hearing and thinking.
+// Owner 2026-11-24: the agent runs on the monthly OpenAI API credits,
+// capped by the shared credit budget. With OPENAI_API_KEY set and no other
+// provider named, OpenAI is the default. SURVEY_AGENT_PROVIDER=groq goes
+// back to Groq's free tier; the E2E stack (GROQ_BASE_URL) stays on its fake.
+const OPENAI_DEFAULT = { baseUrl: 'https://api.openai.com/v1', model: 'gpt-4.1-mini', priceIn: 0.4, priceOut: 1.6 };
+function openAiByDefault() {
+  return Boolean(Deno.env.get('OPENAI_API_KEY'))
+    && !Deno.env.get('SURVEY_AGENT_BASE_URL')
+    && !Deno.env.get('SURVEY_AGENT_API_KEY')
+    && !Deno.env.get('GROQ_BASE_URL')
+    && Deno.env.get('SURVEY_AGENT_PROVIDER') !== 'groq';
+}
+
+// On OpenAI with no SURVEY_AGENT_API_KEY, the suite's OPENAI_API_KEY is
+// used, so one key serves hearing and thinking.
 function onOpenAi() {
-  return creditProviderFor(Deno.env.get('SURVEY_AGENT_BASE_URL') || '') === 'openai';
+  return openAiByDefault() || creditProviderFor(Deno.env.get('SURVEY_AGENT_BASE_URL') || '') === 'openai';
 }
 
 function modelProvider() {
-  const openAiKey = onOpenAi() ? Deno.env.get('OPENAI_API_KEY') : '';
+  const openAi = onOpenAi();
+  const openAiKey = openAi ? Deno.env.get('OPENAI_API_KEY') : '';
   const key = Deno.env.get('SURVEY_AGENT_API_KEY') || openAiKey || Deno.env.get('GROQ_API_KEY');
   if (!key) return null;
   const custom = Boolean(Deno.env.get('SURVEY_AGENT_API_KEY') || openAiKey);
-  const baseUrl = (Deno.env.get('SURVEY_AGENT_BASE_URL') || (custom ? '' : groqBase())).replace(/\/$/, '');
-  const model = Deno.env.get('SURVEY_AGENT_MODEL') || SURVEY_AGENT_DEFAULT_PROVIDER.model;
+  const named = Deno.env.get('SURVEY_AGENT_BASE_URL') || (openAiByDefault() ? OPENAI_DEFAULT.baseUrl : '');
+  const baseUrl = (named || (custom ? '' : groqBase())).replace(/\/$/, '');
+  const model = Deno.env.get('SURVEY_AGENT_MODEL') || (openAi ? OPENAI_DEFAULT.model : SURVEY_AGENT_DEFAULT_PROVIDER.model);
   return {
     key,
     baseUrl,
     model,
     models: modelChain(model, {
-      fallbackEnv: Deno.env.get('SURVEY_AGENT_FALLBACK_MODELS') ?? null,
+      fallbackEnv: Deno.env.get('SURVEY_AGENT_FALLBACK_MODELS') ?? (openAi ? '' : null),
       groqDefault: baseUrl === groqBase(),
     }),
-    prices: { input: envNumber('SURVEY_AGENT_PRICE_IN', 0), output: envNumber('SURVEY_AGENT_PRICE_OUT', 0) },
+    prices: {
+      input: envNumber('SURVEY_AGENT_PRICE_IN', openAi ? OPENAI_DEFAULT.priceIn : 0),
+      output: envNumber('SURVEY_AGENT_PRICE_OUT', openAi ? OPENAI_DEFAULT.priceOut : 0),
+    },
   };
 }
 
@@ -140,12 +164,16 @@ function visionModel() {
   if (named === 'off') return null;
   const provider = modelProvider();
   if (!provider?.baseUrl) return null;
-  const model = named || (Deno.env.get('SURVEY_AGENT_API_KEY') || onOpenAi() ? '' : DEFAULT_VISION_MODEL);
+  const openAi = onOpenAi();
+  const model = named || (openAi ? OPENAI_DEFAULT.model : Deno.env.get('SURVEY_AGENT_API_KEY') ? '' : DEFAULT_VISION_MODEL);
   if (!model) return null;
   return {
     ...provider,
     model,
-    prices: { input: envNumber('SURVEY_AGENT_VISION_PRICE_IN', 0), output: envNumber('SURVEY_AGENT_VISION_PRICE_OUT', 0) },
+    prices: {
+      input: envNumber('SURVEY_AGENT_VISION_PRICE_IN', openAi ? OPENAI_DEFAULT.priceIn : 0),
+      output: envNumber('SURVEY_AGENT_VISION_PRICE_OUT', openAi ? OPENAI_DEFAULT.priceOut : 0),
+    },
   };
 }
 
@@ -166,24 +194,52 @@ function transcriber() {
   return viaOpenai;
 }
 
+// The server voice: OpenAI's gpt-4o-mini-tts when OPENAI_API_KEY is set
+// (natural, about $0.015 a minute, on the shared credit cap); otherwise, or
+// with SURVEY_AGENT_TTS='groq', Groq Orpheus on its free tier, which allows
+// only about 100 replies a day for everyone and takes at most 200 characters.
+const OPENAI_TTS_INSTRUCTIONS = 'Speak like a friendly, quick coworker on a job site: natural and relaxed, '
+  + 'normal speed, no announcer voice. Read tags such as 310H-R1409 or C-4-06 plainly, character groups as written.';
 function speaker() {
+  const mode = Deno.env.get('SURVEY_AGENT_TTS') || '';
+  if (mode === 'off') return null;
+  const openai = Deno.env.get('OPENAI_API_KEY');
+  // OpenAI's voice whenever its key is set (secrets are typed by hand in the
+  // dashboard, so the default lives here); 'groq' keeps Orpheus.
+  if (mode !== 'groq' && openai) {
+    return {
+      url: 'https://api.openai.com/v1/audio/speech',
+      key: openai,
+      model: Deno.env.get('SURVEY_AGENT_TTS_MODEL') || 'gpt-4o-mini-tts',
+      voice: Deno.env.get('SURVEY_AGENT_TTS_VOICE') || 'marin',
+      instructions: Deno.env.get('SURVEY_AGENT_TTS_INSTRUCTIONS') || OPENAI_TTS_INSTRUCTIONS,
+      format: 'mp3',
+      maxChars: 600,
+      // $0.60 per million text tokens in (about 4 characters a token) plus
+      // about $0.015 a minute of speech out (about 14 characters a second).
+      costMicros: (chars: number) => Math.ceil(chars / 4 * 0.6 + (chars / 14) * 250),
+    };
+  }
   const groq = Deno.env.get('GROQ_API_KEY');
-  if (!groq || Deno.env.get('SURVEY_AGENT_TTS') === 'off') return null;
+  if (!groq) return null;
+  const microsPerChar = envNumber('SURVEY_AGENT_TTS_PRICE', 0);
   return {
     url: `${groqBase()}/audio/speech`,
     key: groq,
     model: Deno.env.get('SURVEY_AGENT_TTS_MODEL') || 'canopylabs/orpheus-v1-english',
     voice: Deno.env.get('SURVEY_AGENT_TTS_VOICE') || 'hannah',
-    microsPerChar: envNumber('SURVEY_AGENT_TTS_PRICE', 0),
+    instructions: null,
+    format: 'wav',
+    maxChars: 200,
+    costMicros: (chars: number) => Math.ceil(chars * microsPerChar),
   };
 }
 
-// Orpheus takes at most 200 characters; cut at a word.
-const MAX_SPEECH_CHARS = 200;
-function speechText(value: unknown): string {
+// Cut at a word, within what the voice takes.
+function speechText(value: unknown, max = 200): string {
   const text = String(value || '').replace(/\s+/g, ' ').trim();
-  if (text.length <= MAX_SPEECH_CHARS) return text;
-  return text.slice(0, MAX_SPEECH_CHARS).replace(/\s+\S*$/, '');
+  if (text.length <= max) return text;
+  return text.slice(0, max).replace(/\s+\S*$/, '');
 }
 
 function encodeBase64(bytes: Uint8Array): string {
@@ -247,6 +303,14 @@ Deno.serve(async (req) => {
 
   const email = (user.email || '').toLowerCase();
   let allowed = Boolean(email) && testers().has(email);
+  if (!allowed && email) {
+    // The tester list on the app's own survey-agent flag (/flags) lets people
+    // in too, so adding a tester needs no secret change. Only the list counts:
+    // mode 'on' must not open the paid model to everyone.
+    const { data: flag } = await admin.from('feature_flags')
+      .select('tester_emails').eq('key', 'survey-agent').maybeSingle();
+    allowed = (flag?.tester_emails || []).map((e: string) => String(e).toLowerCase()).includes(email);
+  }
   if (!allowed && Deno.env.get('SURVEY_AGENT_OPEN') === 'true') {
     const { data: sub } = await admin.from('user_subscriptions')
       .select('tier, status').eq('user_id', user.id).maybeSingle();
@@ -322,22 +386,26 @@ Deno.serve(async (req) => {
   if (action === 'speak') {
     const v = speaker();
     if (!v) return json(501, { error: 'speech_not_set_up' });
-    const input = speechText(body.text);
+    const input = speechText(body.text, v.maxChars);
     if (!input) return json(400, { error: 'bad_request' });
     if (!(await reserve())) return refused();
+    const speakCost = v.costMicros(input.length);
+    const settle = await holdCredit(admin, { provider: creditFor(v.url), micros: speakCost, app: 'survey-agent' });
+    if (!settle) return json(429, { error: 'credit_used_up' });
     let res: Response;
     try {
       res = await fetch(v.url, {
         method: 'POST',
         headers: { Authorization: `Bearer ${v.key}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: v.model, voice: v.voice, input, response_format: 'wav' }),
+        body: JSON.stringify({ model: v.model, voice: v.voice, input, response_format: v.format, ...(v.instructions ? { instructions: v.instructions } : {}) }),
       });
     } catch (err) {
+      await settle(0);
       console.error('[survey-agent] speech failed', err);
       return json(502, { error: 'speech_unavailable' });
     }
-    // Orpheus's free tier allows only about 100 replies a day for everyone;
-    // the app falls back to the device's voice for the rest of the session.
+    if (!res.ok) await settle(0);
+    // A busy voice: the app uses the device's voice for the rest of the session.
     if (res.status === 429) return json(429, { error: 'speech_limit_reached' });
     if (!res.ok) {
       // For example the model's terms not yet accepted on the Groq account.
@@ -345,12 +413,12 @@ Deno.serve(async (req) => {
       return json(502, { error: 'speech_unavailable' });
     }
     const audio = new Uint8Array(await res.arrayBuffer());
-    const speakCost = Math.ceil(input.length * v.microsPerChar);
+    await settle(speakCost);
     await admin.rpc('record_survey_agent_usage', {
       p_user_id: user.id, p_input_tokens: 0, p_output_tokens: 0, p_cost_micros: speakCost,
     });
     await countDaily('speak', input.length, 0, speakCost);
-    return json(200, { audio: encodeBase64(audio), mime: res.headers.get('content-type') || 'audio/wav', usage_left: usageLeft(1) });
+    return json(200, { audio: encodeBase64(audio), mime: res.headers.get('content-type') || (v.format === 'mp3' ? 'audio/mpeg' : 'audio/wav'), usage_left: usageLeft(1) });
   }
 
   if (action === 'transcribe') {

@@ -5,10 +5,23 @@
 
    sources: [{ id, name, getBytes: () => Promise<Uint8Array> }]. The first is
    the document the tools work on; `others` are documents that can be added
-   to a merge. Markups made in Survey live beside the PDF, not in it, so the
-   tools work on the PDF as it was uploaded. */
+   to a merge. Markups made in Survey live beside the PDF, not in it, so they
+   stay out. From the viewer the first source is the pages and form answers
+   as shown (asSeen, utils/pdfAsSeen.js); from Home, the stored upload. */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../home/HubShell';
+
+// The main button says what the tool does (docs writing rules), not "Run".
+const RUN_LABELS = {
+  merge: 'Merge',
+  split: 'Split',
+  organize: 'Organize',
+  rotate: 'Rotate',
+  compress: 'Compress',
+  ocr: 'Make searchable',
+  flatten: 'Flatten',
+  protect: 'Lock a copy',
+};
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import Spinner from './Spinner';
 import ButtonGroup from './ButtonGroup.jsx';
@@ -92,10 +105,10 @@ function PageGrid({ thumbs, error, order, setOrder, rotateOnly }) {
           </div>
           <span className="pdft-pnum">Page {p.index + 1}</span>
           <div className="pdft-pbtns">
-            {!rotateOnly && <button type="button" onClick={() => move(k, -1)} disabled={k === 0} aria-label={`Move page ${p.index + 1} earlier`}>←</button>}
-            <button type="button" onClick={() => turn(k)} aria-label={`Turn page ${p.index + 1}`}>↻</button>
-            {!rotateOnly && <button type="button" onClick={() => move(k, 1)} disabled={k === order.length - 1} aria-label={`Move page ${p.index + 1} later`}>→</button>}
-            {!rotateOnly && <button type="button" onClick={() => remove(k)} disabled={order.length === 1} aria-label={`Remove page ${p.index + 1}`}>✕</button>}
+            {!rotateOnly && <button type="button" onClick={() => move(k, -1)} disabled={k === 0} aria-label={`Move page ${p.index + 1} earlier`}><Icon name="arrowLeft" size={15} /></button>}
+            <button type="button" onClick={() => turn(k)} aria-label={`Turn page ${p.index + 1}`}><Icon name="rotateCw" size={15} /></button>
+            {!rotateOnly && <button type="button" onClick={() => move(k, 1)} disabled={k === order.length - 1} aria-label={`Move page ${p.index + 1} later`}><Icon name="arrowRight" size={15} /></button>}
+            {!rotateOnly && <button type="button" onClick={() => remove(k)} disabled={order.length === 1} aria-label={`Remove page ${p.index + 1}`}><Icon name="close" size={14} /></button>}
           </div>
         </li>
       ))}
@@ -220,7 +233,7 @@ export default function PdfToolsDialog({ open, onClose, sources = [], others = [
       case 'split':
         return (
           <>
-            <Seg label="Split" value={opts.mode || 'ranges'} choices={[['ranges', 'By ranges'], ['every', 'Every few pages'], ['each', 'Every page']]} onChange={(v) => set('mode', v)} />
+            <Seg label="How to split" value={opts.mode || 'ranges'} choices={[['ranges', 'By ranges'], ['every', 'Every few pages'], ['each', 'Every page']]} onChange={(v) => set('mode', v)} />
             {(opts.mode || 'ranges') === 'ranges' && (
               <label className="pdft-field"><span className="pdft-label">Ranges</span>
                 <input className="pdft-input" value={opts.ranges ?? ''} placeholder="1-3, 4-10" onChange={(e) => set('ranges', e.target.value)} />
@@ -285,7 +298,7 @@ export default function PdfToolsDialog({ open, onClose, sources = [], others = [
       <div className="pdft-overlay" style={{ background: C.scrim }} onClick={busy ? undefined : onClose}>
         <div ref={cardRef} role="dialog" aria-modal="true" aria-label={title} className="pdft-card" onClick={(e) => e.stopPropagation()}>
           <div className="pdft-head">
-            {tool && !result && !initialTool && <button type="button" className="hub-icon-btn dialog-touch-pad" aria-label="Back to all tools" onClick={() => { setTool(null); setError(''); }} disabled={Boolean(busy)}>←</button>}
+            {tool && !result && !initialTool && <button type="button" className="hub-icon-btn dialog-touch-pad" aria-label="Back to all tools" onClick={() => { setTool(null); setError(''); }} disabled={Boolean(busy)}><Icon name="arrowLeft" size={14} /></button>}
             <div className="pdft-title">
               <div className="pdft-h">{title}</div>
               <div className="pdft-sub">{tool === 'merge' && sources.length > 1 ? `${sources.length} documents` : main.name}</div>
@@ -300,7 +313,9 @@ export default function PdfToolsDialog({ open, onClose, sources = [], others = [
                     <li key={t.id}><button type="button" className="pdft-tool" onClick={() => setTool(t.id)}><span className="pdft-tname">{t.label}</span><span className="pdft-tshort">{t.short}</span></button></li>
                   ))}
                 </ul>
-                <p className="pdft-help">Runs on this device. The tools use the PDF as it was uploaded; annotations you added in Survey aren't included.</p>
+                <p className="pdft-help">{sources?.[0]?.asSeen
+                  ? 'Runs on this device. The tools use the pages and form answers as you see them; annotations you added in Survey aren’t included.'
+                  : 'Runs on this device. The tools use the PDF as it was uploaded; annotations you added in Survey aren’t included.'}</p>
               </>
             )}
             {tool && !result && options()}
@@ -310,7 +325,7 @@ export default function PdfToolsDialog({ open, onClose, sources = [], others = [
           {tool && (
             <div className="pdft-foot">
               {busy && <span className="pdft-busy" role="status"><Spinner size={14} color="currentColor" /> {busy}</span>}
-              {!result && <button type="button" className="hub-btn hub-btn--primary dialog-touch-pad" disabled={Boolean(busy) || (wantsPages && !order.length) || (tool === 'merge' && mergeList.length < 2 && sources.length < 2)} onClick={run}>{def?.id === 'protect' ? 'Lock a copy' : 'Run'}</button>}
+              {!result && <button type="button" className="hub-btn hub-btn--primary dialog-touch-pad" disabled={Boolean(busy) || (wantsPages && !order.length) || (tool === 'merge' && mergeList.length < 2 && sources.length < 2)} onClick={run}>{RUN_LABELS[def?.id] || 'Run'}</button>}
               {result && !saved && (
                 <>
                   <button type="button" className="hub-btn dialog-touch-pad" disabled={Boolean(busy)} onClick={download}>Download</button>

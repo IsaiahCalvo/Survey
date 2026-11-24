@@ -28,7 +28,7 @@ test('owner rotates a document from the Documents list and saves it as a new doc
   await expect(dialog.getByText(E2E_DOCUMENT.name)).toBeVisible();
   await dialog.getByRole('button', { name: /Rotate pages/ }).click();
   await dialog.getByRole('button', { name: 'Turn every page' }).click({ timeout: 60_000 });
-  await dialog.getByRole('button', { name: 'Run' }).click();
+  await dialog.getByRole('button', { name: 'Rotate', exact: true }).click();
   await expect(dialog.getByText('Your document is ready')).toBeVisible({ timeout: 60_000 });
   await dialog.getByRole('button', { name: 'Save as new document' }).click();
   await expect(dialog.getByText('Saved as a new document')).toBeVisible({ timeout: 60_000 });
@@ -58,7 +58,7 @@ test('the viewer export menu opens PDF tools on the open document', async ({ pag
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByText(E2E_DOCUMENT.name)).toBeVisible();
   await dialog.getByRole('button', { name: /Compress/ }).click();
-  await dialog.getByRole('button', { name: 'Run' }).click();
+  await dialog.getByRole('button', { name: 'Compress', exact: true }).click();
   await expect(dialog.getByText('Your document is ready')).toBeVisible({ timeout: 60_000 });
   await expect(dialog.getByRole('button', { name: 'Save as new document' })).toBeVisible();
   await dialog.getByRole('button', { name: 'Close' }).click();

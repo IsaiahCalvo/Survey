@@ -1,4 +1,5 @@
 import { checkCounterSeriesEdit } from './utils/counterSeriesActions.js';
+import { exportFailureMessage } from './utils/exportFailureMessage.js';
 // PDFViewer — the document viewer (pdf.js canvas, annotation overlays,
 // zoom/scroll lifecycle, save/sync, history). Extracted verbatim from App.jsx.
 //
@@ -446,12 +447,14 @@ import { useMarkClipboard } from './utils/sharedMarkClipboard.js';
 import MarkLibraryPlacementLayer from './markLibrary/MarkLibraryPlacementLayer.jsx';
 import MarkLibrarySaveDialog from './markLibrary/MarkLibrarySaveDialog.jsx';
 import { markLibraryStore } from './markLibrary/markLibraryStore.js';
+import { getArmedLibraryItem, subscribeLibraryPlacement } from './markLibrary/markLibraryPlacement.js';
 import { LIBRARY_PAYLOAD_MAX_BYTES, libraryPayloadBytes, libraryPayloadFromClipboard, planLibraryPlacement } from './markLibrary/markLibraryModel.js';
 import { fitPlacedTextBoxes, resolveLibraryDrop } from './markLibrary/markLibraryViewer.js';
 import { PAGE_GRID_SETTINGS_EVENT, applyPageGridPageSteps, applyPageGridSettings, loadPageGridSettings } from './utils/pageGrid';
 import { LAYERS_META_KEY, DEFAULT_LAYER_ID, DEFAULT_LAYER_STATE, normalizeLayerState, hiddenLayerIdSet, resolveActiveLayerId, withoutHiddenLayers, calloutsWithoutHiddenLayers, stampNewObjectsOnLayer, stampNewMarksByPage, hasNewObjects, hasNewMarksByPage, selectableMarkIndices, hiddenActiveLayer, setLayerVisible } from './utils/layers.js';
 import { PAGE_PRESENTATION_META_KEY, PDF_FILE_VERSION_META_KEY, normalizePagePresentations, pagePresentationFrame, clientPointInPageFrame, clientPastePointInPageFrame } from './utils/pagePresentation.js';
 import { normalizePresentationPdf, pdfBytesHavePresentationTag } from './utils/pdfPagePresentation.js';
+import { buildPdfAsSeen } from './utils/pdfAsSeen.js';
 import { chooseCloudPdfOpenPath, shouldRetryStreamedOpenWithDownload, tryOpenCloudPdfStream } from './services/cloudPdfStream.js';
 import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox } from './utils/svgBoundingBox.js';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
@@ -649,6 +652,7 @@ import {
   resolveLocalOcrProvider,
   saveCachedOcrResult,
 } from './utils/localOcrProvider.js';
+import { renderPageForOcr } from './utils/agentPageOcr.js';
 import { isInTabBehind } from './utils/tabBehind.js';
 import { stampChangedSurveyMarkers } from './services/surveyMarkerStamp.js';
 
@@ -656,6 +660,8 @@ import { stampChangedSurveyMarkers } from './services/surveyMarkerStamp.js';
 // the same screen spot (utils/tabBehind.js). Look this tab's pages and
 // overlays up under its own root (pdfjsWrapperRef), never document-wide.
 const queryInViewer = (root, selector) => root?.querySelector?.(selector) || null;
+// Export sources built from the page list, so not the stored file (r3b #5).
+const rebuiltExportSources = new WeakSet();
 
 // KAL-309: read the workbook registration (workbook_id + sync_token) out of a
 // loaded ExcelJS workbook's hidden _SurveyMetadata sheet (cells B5/B6). Duck-typed
@@ -15607,8 +15613,26 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       ? operations.map((step) => (step.type === 'restore' && !step.entry?.blank ? { ...step, baseBytes: baseBytes.slice(0) } : step))
       : operations;
     const built = await mutatePdfPagesOffThread(() => baseBytes.slice(0), steps);
-    return new File([built], file?.name || 'document.pdf', { type: 'application/pdf' });
+    const rebuilt = new File([built], file?.name || 'document.pdf', { type: 'application/pdf' });
+    // The review package must say this PDF is not the stored file (r3b #5).
+    rebuiltExportSources.add(rebuilt);
+    return rebuilt;
   }, [flushPageOperations, pageRecordsBase, pdfFile, readPageMutationPdfBytes]);
+  // PDF tools opened from the viewer work on the pages and form answers as
+  // shown (r4c #1-#3). Read through refs: the left rail API keeps the first
+  // function it was given.
+  const getExportSourcePdfRef = useRef(getExportSourcePdf);
+  getExportSourcePdfRef.current = getExportSourcePdf;
+  const pageTransformationsRef = useRef(pageTransformations);
+  pageTransformationsRef.current = pageTransformations;
+  const getPdfForTools = useCallback(async () => {
+    const file = await getExportSourcePdfRef.current();
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    return buildPdfAsSeen(bytes, {
+      annotationsByPage: annotationsByPageRef.current,
+      pageTransformations: pageTransformationsRef.current,
+    });
+  }, []);
   const handleMirrorPage = useCallback((...args) => {
     if (!canRestoreFromHistoryRef.current) {
       showToast('This document is read-only.', 'info');
@@ -22872,6 +22896,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // Markups list (Nightly 'markup-list'): every mark in one rail panel.
   const [markupListEnabled] = useState(() => isFeatureOn('markup-list'));
   const [libraryDraft, setLibraryDraft] = useState(null);
+  // Round 4: while a stamp, signature or library item is armed, the page's
+  // own tool steps aside for Select. A tap on the iPad then places the item
+  // instead of opening a text box, and the placed item's handles can be grabbed.
+  useEffect(() => {
+    if (isActive === false || !(markLibraryEnabled || stampToolEnabled || insertImageEnabled || signatureToolEnabled)) return undefined;
+    const sync = () => { if (getArmedLibraryItem()) setActiveTool((tool) => (tool === 'select' ? tool : 'select')); };
+    sync();
+    return subscribeLibraryPlacement(sync);
+  }, [isActive, markLibraryEnabled, stampToolEnabled, insertImageEnabled, signatureToolEnabled]);
   useEffect(() => {
     if (!markLibraryEnabled || isActive === false) return;
     markLibraryStore.setContext({ userId: user?.id || null, projectId: pdfFile?.projectId || null });
@@ -25039,7 +25072,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       }
     } catch (err) {
       console.error('[ExportAnnotatedPDF] failed:', err);
-      showToast(`Export failed: ${err?.message || err}`, 'error');
+      showToast(exportFailureMessage(err), 'error');
     }
   }, [
     exportAuthorNameFor,
@@ -25227,7 +25260,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       return { ok: true, fileName, ...(editPassword ? { editPassword } : {}) };
     } catch (err) {
       console.error('[ExportPdfWithOptions] failed:', err);
-      return { ok: false, error: `Export failed: ${err?.message || err}` };
+      return { ok: false, error: exportFailureMessage(err) };
     }
   }, [
     user?.user_metadata?.full_name,
@@ -25279,7 +25312,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       if (message) showToast(message.text, message.kind);
     } catch (err) {
       console.error('[XfdfExport] failed:', err);
-      showToast(`Export failed: ${err?.message || err}`, 'error');
+      showToast(exportFailureMessage(err), 'error');
     }
   }, [
     annotationsByPage,
@@ -25306,8 +25339,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     try {
       showToast('Making the review package…', 'info');
       const { runAnnotationBundleExport, bundleResultMessage } = await import('./utils/annotationBundle/runAnnotationBundleExport.js');
+      const sourcePdf = await getExportSourcePdf();
       const result = await runAnnotationBundleExport({
-        sourcePdf: await getExportSourcePdf(),
+        sourcePdf,
+        sourceChanged: rebuiltExportSources.has(sourcePdf),
         pdfName: pdfDisplayNameRef.current || 'document.pdf',
         documentId: pdfFile?.id || null,
         annotationsByPage: withoutHiddenLayers(annotationsByPage, hiddenLayerIds),
@@ -25327,7 +25362,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       if (message) showToast(message.text, message.kind);
     } catch (err) {
       console.error('[ReviewBundle] failed:', err);
-      showToast(`Export failed: ${err?.message || err}`, 'error');
+      showToast(exportFailureMessage(err), 'error');
     }
   }, [
     annotationsByPage,
@@ -35271,7 +35306,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       // text layer, else from text recognition the person already ran.
       getPageWords: async (page) => {
         const state = agentMarkerStateRef.current;
-        const ocrWords = state.ocrStateByPage?.[page]?.result?.words;
+        const ocrWords = state.ocrStateByPage?.[page]?.result?.words || state.ocrResultForPage?.(page)?.words;
         if (!state.pdfDoc) return { words: [], source: 'none' };
         const pdfPage = await state.pdfDoc.getPage(page);
         const content = await pdfPage.getTextContent();
@@ -35279,6 +35314,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         if (words.length) return { words, source: 'text' };
         if (ocrWords?.length) return { words: ocrWordsToWords(ocrWords), source: 'ocr' };
         return { words: [], source: 'none' };
+      },
+      // Survey agent: text recognition on a scanned page, on the device.
+      // True once the page has words to read.
+      recognizePageWords: async (page) => {
+        const result = await agentMarkerStateRef.current.recognizeTextOnPage?.(page, { offscreen: true });
+        return Boolean(result?.words?.length);
       },
       getPageCount: () => agentMarkerStateRef.current.pdfDoc?.numPages || 0,
       getCurrentPage: () => pageNumRef.current || 1,
@@ -35883,10 +35924,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     setTextAvailabilityByPage((prev) => (prev[pageNumber] === usable ? prev : { ...prev, [pageNumber]: usable }));
   }, []);
 
-  const recognizeTextOnPage = useCallback(async (pageNumber) => {
+  const recognizeTextOnPage = useCallback(async (pageNumber, { offscreen = false } = {}) => {
     const pageElement = pdfjsViewerRef.current?.getPageContainers?.()?.[pageNumber];
-    const canvas = pageElement?.querySelector?.('canvas');
-    const pageSize = pageSizesRef.current?.[pageNumber];
+    let canvas = pageElement?.querySelector?.('canvas');
+    let pageSize = pageSizesRef.current?.[pageNumber];
+    // The Survey agent asks for pages that are not on screen: draw one off screen.
+    if ((!canvas || !pageSize) && offscreen && pdfDoc) {
+      try { ({ canvas, pageSize } = await renderPageForOcr(pdfDoc, pageNumber)); } catch { canvas = null; }
+    }
     if (!canvas || !pageSize) {
       setOcrStateByPage((prev) => ({ ...prev, [pageNumber]: { status: 'error', message: 'Page image is not ready.' } }));
       return;
@@ -35896,7 +35941,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     const cached = ocrCacheRef.current.get(cacheKey) || loadCachedOcrResult(cacheKey);
     if (cached) {
       setOcrStateByPage((prev) => ({ ...prev, [pageNumber]: { status: 'complete', result: cached } }));
-      return;
+      return cached;
     }
     const controller = new AbortController();
     ocrAbortByPageRef.current.get(pageNumber)?.abort?.();
@@ -35920,6 +35965,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       ocrCacheRef.current.set(cacheKey, result);
       saveCachedOcrResult(cacheKey, result);
       setOcrStateByPage((prev) => ({ ...prev, [pageNumber]: { status: 'complete', result } }));
+      return result;
     } catch (error) {
       setOcrStateByPage((prev) => ({
         ...prev,
@@ -35931,6 +35977,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       if (ocrAbortByPageRef.current.get(pageNumber) === controller) ocrAbortByPageRef.current.delete(pageNumber);
     }
   }, [pdfDoc, pdfFile?.id, pdfFile?.name]);
+
+  // Survey agent: recognition it can run on a scanned page, and a page's
+  // earlier recognition (kept on the device) before this render's state has it.
+  agentMarkerStateRef.current.recognizeTextOnPage = recognizeTextOnPage;
+  agentMarkerStateRef.current.ocrResultForPage = (pageNumber) => {
+    const fingerprint = pdfDoc?.fingerprints?.[0] || pdfDoc?.fingerprint || pdfFile?.id || pdfFile?.name;
+    const cacheKey = buildOcrCacheKey({ documentFingerprint: fingerprint, pageNumber, language: 'eng' });
+    return ocrCacheRef.current.get(cacheKey) || loadCachedOcrResult(cacheKey);
+  };
 
   // Text Select pays the OCR cost only when the user asks for text interaction.
   // A page with embedded text never starts OCR. A scanned page starts once when
@@ -38494,6 +38549,7 @@ ${pageBlocks}
       annotationsByPage: (markupListEnabled || isFeatureOn('properties-panel') || isFeatureOn('author-chip')) ? annotationsByPage : null,
       onOpenMarkup: openMarkupRow,
       pdfDisplayName,
+      getPdfForTools,
     };
     onLeftRailApiChange((prev) => {
       if (prev) {

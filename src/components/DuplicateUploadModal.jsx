@@ -80,6 +80,9 @@ const DuplicateUploadModal = ({
       message={body}
       onClose={onClose}
       width={440}
+      // Over an open document the home (and so this card) is inert; at the
+      // screen root it still takes clicks (round 4 audit, r4d #1).
+      atRoot
       zIndex={Z_INDEX.modalOverlay}
       footer={actions.map((a) => (
         <button

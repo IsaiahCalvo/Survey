@@ -27,6 +27,9 @@ export default function UploadCheckModal({ rows, onChange, onUpload, onCancel })
       onClose={onCancel}
       width={640}
       zIndex={Z_INDEX.modalOverlay}
+      // Over an open document the home (and so this card) is inert; at the
+      // screen root it still takes clicks (round 4 audit, r4d #1).
+      atRoot
       cardProps={{ 'data-upload-check': '' }}
       footer={(
         <>

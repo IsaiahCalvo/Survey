@@ -10,7 +10,7 @@
  * The database checks every action's role itself (companyService.js); the
  * buttons here are hidden for people who could not use them anyway.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useConfirmDialog } from '../dialogPrompts';
 import ValueSelect from '../ValueSelect.jsx';
@@ -460,13 +460,21 @@ export default function CompanyPanel() {
 
   useEffect(() => { reload(); }, [reload]);
 
+  // The banner sits at the top of a long, scrolled panel: an error from the
+  // domain or invite rows further down landed out of sight, so the button
+  // seemed to do nothing. Bring a new error or message into view.
+  const bannerRef = useRef(null);
+  useEffect(() => {
+    if (error || message) bannerRef.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [error, message]);
+
   if (company === undefined) return <section className="account-section"><h3>Company</h3><p className="company-note">Loading…</p></section>;
 
   const banner = (
-    <>
+    <div ref={bannerRef}>
       {error && <div className="account-error" role="alert">{error}</div>}
       {message && <div className="account-message" role="status">{message}</div>}
-    </>
+    </div>
   );
 
   if (!company) {

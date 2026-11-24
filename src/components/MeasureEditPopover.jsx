@@ -109,7 +109,8 @@ export default function MeasureEditPopover({ measure, onPatch, onClose, side = '
   const ownCustom = ownScale && !ownPreset ? customMeasureScaleIndex(customScales, ownScale) : -1;
   const scaleValue = !ownScale ? 'page' : (ownPreset ? ownPreset.id : (ownCustom >= 0 ? `custom:${ownCustom}` : 'own'));
   const scaleOptions = plusOn ? [
-    { value: 'page', label: scale?.label ? `Page scale (${scale.label})` : 'Page scale' },
+    // Short, so the menu shows it whole (no nested brackets; r3b #14).
+    { value: 'page', label: scale?.label ? `Page · ${scale.label}` : 'Page scale' },
     ...(ownScale && !ownPreset && ownCustom < 0 ? [{ value: 'own', label: ownScale.label || 'Own scale' }] : []),
     ...MEASURE_PRESETS.map((p) => ({ value: p.id, label: p.label })),
     ...customScales.map((s, i) => ({ value: `custom:${i}`, label: s.label })),

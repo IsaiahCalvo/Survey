@@ -328,6 +328,46 @@ comes from `apps/web/src/lib/appearance.ts`.
 Plot: built and shipped, no flag (KAL-663, PR 420). Plot opens light until
 the user picks. Its accent went back to blue on 2026-11-23, tab icon too.
 
+## Where things sit
+
+Owner, 2026-11-23: when two apps have the same control, it sits in the same
+spot in both. Survey is the one to copy. A new shared control is added here
+first, in all three repos.
+
+| Thing | Where | Survey | Walkthru | Plot |
+| --- | --- | --- | --- | --- |
+| Share, with Export inside it | Top bar, right side, one button | Nightly flag `share-export-one` | Built | Built. Plot has no top bar, so it sits in the right panel's header, left of Issue, where Rayon puts it. |
+| Pinned tools: show or hide the pinned bar | Top bar, right side, left of Share. The pin icon below. | Built | Built | No pinned tools |
+| Pin the tool in use | A + at the end of the pinned bar | Built | Built | No pinned tools |
+| Your picture and account menu | The top bar, right end | Built | Built (tab strip) | Built. Right end of the right panel's header, after Issue. |
+| Sync status, History | Left rail, at the foot | Built | Sync status: Nightly flag `sync-status`. No History yet: the `drawing_history_events` table has no writer. | History is a left rail panel; Saved shows in the right panel's header |
+| View tools (Page fit, Paper, Grid, Dark pages, Full screen) | One View button on the right rail opens them in a strip | Nightly flag `view-strip` | Nightly flag `view-strip`: Page grid and Dark pages. Page fit stays on the rail, as in Survey. No Full screen. | No view tools |
+
+### Settings
+
+Settings has the same sections, in the same order, in every app: General
+first (Profile, Appearance, then the account itself), the app's own tool
+settings next, then Subscription. A section an app does not need is left out,
+not left empty.
+
+| Survey | Walkthru | Plot |
+| --- | --- | --- |
+| General, Annotations, Connected services, Subscription, Company, Crash reports, Privacy | General, Nodes, Capture & Audio, Subscription | General, Drawing. Opens from your picture or the File menu's Settings…. No Subscription: Plot has no plans. |
+
+## One icon for one thing
+
+Owner, 2026-11-23: one thing has one icon in all three apps, and two things
+never share an icon. Change an icon in one app, change it in all three in the
+same round. Survey's icon wins unless another app's is clearly better.
+
+| Thing | Icon | Survey | Walkthru | Plot |
+| --- | --- | --- | --- | --- |
+| Annotations | A list led by a circle, a square and a triangle | `annotations` in `src/Icons.jsx` | `markups` in `floor-rail-icons.tsx` | `annotations` in `src/shell/icons.ts` |
+| Summary | Three lines and a spark | none | `actions` in `global-workspace-rail.tsx` | none |
+| Pinned tools | Lucide `pin` | Built | `PinIcon` in `pinned-tools-toggle.tsx` | none |
+| Line, Arrow, Polyline, Polygon, Rectangle, Circle, Cloud | Survey's own tool glyphs | Survey's own | `public/survey-icons/tools/` | `src/shell/icons.ts` |
+| Share (with Export) | Lucide `share-2`: three dots joined by two lines | Nightly | Built | `share` in `src/shell/icons.ts` |
+
 ## Shared words
 
 | Walkthru | Plot | Survey | Meaning |

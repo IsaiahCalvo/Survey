@@ -28,12 +28,13 @@ import useBrowserOnline from '../hooks/useBrowserOnline.js';
 import { getDocumentCollaborators, getDocumentOwnerProfile } from '../services/documentAnnotationService';
 import { supabase } from '../supabaseClient';
 import { documentTeamRows } from './documentTeam.js';
+import { subscribeLibraryChange } from '../hooks/libraryChangeBus.js';
 import Spinner from '../components/Spinner';
 import DismissBarrier from '../components/DismissBarrier';
 import { clickableProps } from '../utils/keyActivate';
 import useModalFocusTrap from './useModalFocusTrap';
 import { isPhoneLayout } from '../utils/layoutMode.js';
-import { canManageDocument, manageSelectionBlock } from './documentPermissions.js';
+import { canManageDocument, manageSelectionBlock, shareBlockReason } from './documentPermissions.js';
 import { activateOrExplain } from '../utils/disabledReasonToast.js';
 import MenuRows from '../components/MenuRows.jsx';
 import DialogCard from '../components/DialogCard.jsx';
@@ -570,6 +571,10 @@ export default function DocumentsLedger({
   const teamDocId = teamDocRaw?.id || null;
   const [teamCollab, setTeamCollab] = useState({ id: null, rows: [], owner: null });
   const teamOwnerIsMe = Boolean(user?.id && teamDocRaw?.user_id === user.id);
+  // A share made from the Share dialog changes this list; read it again then.
+  // The old rows stay on screen until the new ones arrive.
+  const [teamReadCount, setTeamReadCount] = useState(0);
+  useEffect(() => subscribeLibraryChange(() => setTeamReadCount((n) => n + 1)), []);
   useEffect(() => {
     if (!teamDocId || teamDocRaw?.device_file) return undefined;
     let live = true;
@@ -580,7 +585,7 @@ export default function DocumentsLedger({
       .then(([res, owner]) => { if (live) setTeamCollab({ id: teamDocId, rows: res?.data || [], owner }); })
       .catch(() => {});
     return () => { live = false; };
-  }, [teamDocId, teamOwnerIsMe, teamDocRaw?.device_file]);
+  }, [teamDocId, teamOwnerIsMe, teamDocRaw?.device_file, teamReadCount]);
   const teamFresh = teamCollab.id === teamDocId;
   // Review status and owner need edit access (set_document_review checks
   // user_can_access_document(..., 'editor')). Ask the server the same
@@ -865,6 +870,10 @@ export default function DocumentsLedger({
   ]), ...(registerOn ? REGISTER_SORTS.filter(([key]) => key !== 'status' || reviewOn) : [])];
   const activeSortLabel = sortOptions.find(([key]) => key === sortKey)?.[1] || 'Sort';
 
+  // Shared by me or Shared with me holds nothing: the count read "0 files"
+  // and a dimmed Select sat over the empty state, which says it already
+  // (polish pass, KAL-652, as Archive and Issues). All files keeps them.
+  const sharedViewEmpty = sharedViewsOn && homeView !== 'all' && viewCounts[homeView] === 0;
   const subtitle = (
     <>
     <DismissBarrier
@@ -876,7 +885,7 @@ export default function DocumentsLedger({
     {/* Centred, not baseline (owner 2026-10-28): Select mode's taller row
         moved the baseline and pushed "N files" down 3 px. Centred in the
         header's fixed 22 px band, the count stays put in both modes. */}
-    <span className="documents-mobile-summary" style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+    <span className="documents-mobile-summary" style={{ display: 'inline-flex', alignItems: 'center', gap: 10, visibility: sharedViewEmpty ? 'hidden' : undefined }} aria-hidden={sharedViewEmpty || undefined}>
       <span className="documents-file-count"><b>{docs.length}</b> {docs.length === 1 ? 'file' : 'files'}</span>
       <span className="documents-select-row mobile-header-select-row documents-mobile-select-sort-row documents-select-toolbar">
         <span className="documents-mobile-select-main">
@@ -1060,7 +1069,7 @@ export default function DocumentsLedger({
           <Icon name="googleDrive" size={12} /><span className="documents-desktop-label">Google Drive</span>
         </button>
       )}
-      {registerOn && (
+      {registerOn && !sharedViewEmpty && (
         <button className="btn documents-desktop-new" data-sheet-register-export="desktop" disabled={docs.length === 0} aria-label="Export list" onClick={() => exportRegisterCsv(docs)} {...tip('Export the drawing list as a CSV')}>
           <Icon name="download" size={12} /><span className="documents-desktop-label">Export list</span>
         </button>
@@ -1331,7 +1340,7 @@ export default function DocumentsLedger({
   // It used to be one small grey line at the top left, under filter chips and
   // column heads that had nothing to filter or sort (polish pass, KAL-652).
   const chipFiltersOn = (reviewOn && !reviewFilterIsEmpty(reviewFilter)) || (registerOn && !registerFilterIsEmpty(registerFilter));
-  const viewIsEmpty = sharedViewsOn && homeView !== 'all' && viewCounts[homeView] === 0;
+  const viewIsEmpty = sharedViewEmpty;
   const showAll = { secondaryLabel: 'Show all files', onSecondary: () => pickHomeView('all') };
   const emptyNotice = (() => {
     if (chipFiltersOn) {
@@ -1775,7 +1784,7 @@ export default function DocumentsLedger({
               <div style={{ flex: 1, minHeight: 0 }} />
               <div style={{ display: 'flex', gap: 8, marginTop: 14, flex: 'none' }}>
                 <button className="btn primary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => onOpenDocument && onOpenDocument(previewDoc.raw)}>Open file</button>
-                <button className="btn documents-preview-share" aria-disabled={canManageDoc(previewDoc.raw) ? undefined : true} {...tip(canManageDoc(previewDoc.raw) ? 'Share' : 'Only the owner can share this', 'above')} onClick={() => activateOrExplain(manageSelectionBlock([previewDoc.raw], user?.id, 'share'), () => onShare && onShare([previewDoc.raw]))} aria-label="Share"><Icon name="share" size={16} /></button>
+                <button className="btn documents-preview-share" aria-disabled={shareBlockReason(previewDoc.raw, user?.id) ? true : undefined} {...tip(shareBlockReason(previewDoc.raw, user?.id) || 'Share', 'above')} onClick={() => activateOrExplain(shareBlockReason(previewDoc.raw, user?.id), () => onShare && onShare([previewDoc.raw]))} aria-label="Share"><Icon name="share" size={16} /></button>
                 {homeDownloadOn && onOpenDocument && canDownloadDoc(previewDoc.raw) && (
                   <button className="btn documents-preview-share" data-home-download="" {...tip('Download with marks', 'above')} onClick={() => { requestHomeDownload(previewDoc.raw.id); onOpenDocument(previewDoc.raw); }} aria-label="Download"><Icon name="download" size={16} /></button>
                 )}
@@ -1897,7 +1906,7 @@ export default function DocumentsLedger({
                   for actions; phone and desktop match). */}
               <div className="documents-mobile-detail-actions">
                 <button type="button" className="btn primary" onClick={() => { setMobileDetailId(null); onOpenDocument && onOpenDocument(mobileDetailDoc.raw); }}>Open file</button>
-                <button type="button" className="btn documents-preview-share" aria-disabled={canManageDoc(mobileDetailDoc.raw) ? undefined : true} {...tip(canManageDoc(mobileDetailDoc.raw) ? 'Share' : 'Only the owner can share this', 'above')} onClick={() => activateOrExplain(manageSelectionBlock([mobileDetailDoc.raw], user?.id, 'share'), () => { setMobileDetailId(null); onShare && onShare([mobileDetailDoc.raw]); })} aria-label="Share"><Icon name="share" size={18} /></button>
+                <button type="button" className="btn documents-preview-share" aria-disabled={shareBlockReason(mobileDetailDoc.raw, user?.id) ? true : undefined} {...tip(shareBlockReason(mobileDetailDoc.raw, user?.id) || 'Share', 'above')} onClick={() => activateOrExplain(shareBlockReason(mobileDetailDoc.raw, user?.id), () => { setMobileDetailId(null); onShare && onShare([mobileDetailDoc.raw]); })} aria-label="Share"><Icon name="share" size={18} /></button>
                 {homeDownloadOn && onOpenDocument && canDownloadDoc(mobileDetailDoc.raw) && (
                   <button type="button" className="btn documents-preview-share" data-home-download="" onClick={() => { setMobileDetailId(null); requestHomeDownload(mobileDetailDoc.raw.id); onOpenDocument(mobileDetailDoc.raw); }} aria-label="Download"><Icon name="download" size={18} /></button>
                 )}

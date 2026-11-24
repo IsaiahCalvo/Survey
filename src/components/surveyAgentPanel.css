@@ -216,6 +216,16 @@
 .survey-agent__offer-actions { display: flex; gap: 6px; }
 .survey-agent__offer-actions .survey-agent__suggestion { flex: 1; text-align: center; padding: 6px 12px; }
 .survey-agent__undone { flex: none; color: var(--text-3); font-size: 12px; }
+/* "Page 6 or 33?": a button per page, both, neither, other, and whether to
+   remember it. The buttons wrap on a narrow panel. */
+.survey-agent__choice .survey-agent__offer-actions { flex-wrap: wrap; }
+.survey-agent__choice .survey-agent__offer-actions .survey-agent__suggestion { flex: 1 1 auto; }
+.survey-agent__choice-sheet { color: var(--text-3); }
+.survey-agent__remember .survey-agent__suggestion { font-size: 12px; }
+.survey-agent__remember .survey-agent__suggestion[aria-pressed="true"] { background: var(--surface-3, rgba(255, 255, 255, 0.08)); color: var(--text-1); border-color: var(--border-strong, var(--border)); }
+/* When each message was sent, and how long a reply took. */
+.survey-agent__time { color: var(--text-3); font-size: 11px; font-variant-numeric: tabular-nums; padding: 0 4px; }
+.survey-agent__msg.is-user .survey-agent__time { align-self: flex-end; }
 .survey-agent__camera {
   display: flex;
   flex-direction: column;
