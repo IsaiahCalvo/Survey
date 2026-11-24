@@ -9,7 +9,7 @@ import { MARK_COLOR_HEX, normalizeItemName, scoreItemName } from '../../supabase
 import { markBox, visiblePageBox } from './planView.js';
 import { answerSetMeaning, moduleKind, moduleMeaning } from '../../supabase/functions/_shared/surveyAgentMeaning.js';
 import { boundsCover, findDescribedOnPages, markerBoxAroundTag, tagShape } from './planText.js';
-import { kindOf, parseDescribedTarget, scoreDescribedTag } from './spokenTag.js';
+import { floorNumberOf, kindFromWord, parseDescribedTarget, scoreDescribedTag, templateKinds, wingLetterOf } from './spokenTag.js';
 import { summarizeSurvey, summaryText } from '../services/surveySummary.js';
 import { learnedForModel, learnedNameFor, memoryKey, rewordText } from './agentMemory.js';
 
@@ -43,6 +43,80 @@ function categoryIndex(template) {
     }
   }
   return { list, find: (moduleId, categoryId) => byKey.get(`${moduleId}\0${categoryId}`) || byKey.get(`*\0${categoryId}`) || null };
+}
+
+/**
+ * The project's own kinds of device, from its template's categories and the
+ * names of items already in them (spokenTag.templateKinds), so "smoke
+ * detector 4" or "VAV 12" works for any trade, not a fixed list.
+ */
+export function projectKinds(b) {
+  const tags = new Map();
+  for (const marker of Object.values(b?.markers || {})) {
+    if (!marker?.categoryId || !marker.name) continue;
+    if (!tags.has(marker.categoryId)) tags.set(marker.categoryId, []);
+    tags.get(marker.categoryId).push(marker.name);
+  }
+  return templateKinds(categoryIndex(b?.template).list.map(({ category }) => ({
+    name: category.name,
+    tags: tags.get(category.id) || [],
+  })));
+}
+
+/**
+ * The one item that clearly fits best, or null. A lone fit is enough
+ * ("camera twelve" when there is one camera 12, whatever floor); with
+ * others, it must be clearly the best.
+ */
+export function clearBest(list) {
+  const [best, next] = list || [];
+  if (!best) return null;
+  return (next ? best.score >= 0.8 && next.score < best.score - 0.1 : best.score >= 0.6) ? best : null;
+}
+
+/**
+ * Items that fit a described device ("camera 6, fourth floor"), best first.
+ * An item's own floor and wing (brought from Walkthru or Plot, or typed)
+ * count before the sheet title's, which a bare PDF needs. The same item in
+ * several modules (same name, same page) is kept once, the open module's;
+ * same-named items on other pages are separate devices.
+ */
+export async function describedItems(b, target) {
+  const { pages = [], unreadPages = [] } = typeof b.readSheets === 'function' ? await b.readSheets() : {};
+  const sheetOfPage = new Map(pages.map((p) => [p.page, p.sheet || {}]));
+  const { find } = categoryIndex(b.template);
+  const items = [];
+  for (const [id, marker] of Object.entries(b.markers || {})) {
+    if (!marker) continue;
+    const entry = find(marker.moduleId, marker.categoryId);
+    const sheet = sheetOfPage.get(marker.pageNumber) || {};
+    const ownFloor = floorNumberOf(marker.floor);
+    const ownWing = wingLetterOf(marker.wing);
+    const floor = ownFloor ?? sheet.floor ?? null;
+    const score = scoreDescribedTag(target, marker.name, { category: entry?.category?.name, pageFloor: floor, pageWing: ownWing ?? sheet.wing ?? null });
+    if (score < 0.5) continue;
+    items.push({
+      id,
+      name: marker.name || 'Unnamed item',
+      category: entry?.category?.name || null,
+      ...(entry?.module?.name ? { module: entry.module.name } : {}),
+      page: marker.pageNumber || null,
+      ...(ownFloor != null ? { floor: ownFloor } : sheet.floor != null ? { sheet_floor: sheet.floor } : {}),
+      score,
+      here: !b.currentModuleId || marker.moduleId === b.currentModuleId,
+      moduleId: marker.moduleId,
+    });
+  }
+  items.sort((x, y) => y.score - x.score || Number(y.here) - Number(x.here) || x.name.localeCompare(y.name, undefined, { numeric: true }));
+  const keptModules = new Map();
+  const kept = items.filter((m) => {
+    const key = `${normalizeItemName(m.name)}|${m.page}`;
+    const modules = keptModules.get(key);
+    if (modules && !modules.has(m.moduleId)) return false;
+    keptModules.set(key, (modules || new Set()).add(m.moduleId));
+    return true;
+  });
+  return { items: kept, pages, unreadPages };
 }
 
 // An offered line or category name: at most this many characters.
@@ -218,56 +292,17 @@ export function createSurveyAgentToolbox({
       change: { itemId, documentId: b.documentId || null, label: `${nameOf(marker)}: entity ${entity ? entity.name : 'cleared'}`, fields: [field] },
     };
   };
-  // Items that fit a described device ("camera 6, fourth floor"), best first.
-  // The same item in several modules (same name, same page) is kept once, the
-  // open module's; same-named items on other pages are separate devices.
-  const describedItems = async (b, target) => {
-    const { pages = [], unreadPages = [] } = typeof b.readSheets === 'function' ? await b.readSheets() : {};
-    const sheetOfPage = new Map(pages.map((p) => [p.page, p.sheet || {}]));
-    const { find } = categoryIndex(b.template);
-    const items = [];
-    for (const [id, marker] of Object.entries(b.markers || {})) {
-      if (!marker) continue;
-      const entry = find(marker.moduleId, marker.categoryId);
-      const sheet = sheetOfPage.get(marker.pageNumber) || {};
-      const score = scoreDescribedTag(target, marker.name, { category: entry?.category?.name, pageFloor: sheet.floor ?? null, pageWing: sheet.wing ?? null });
-      if (score < 0.5) continue;
-      items.push({
-        id,
-        name: nameOf(marker),
-        category: entry?.category?.name || null,
-        ...(entry?.module?.name ? { module: entry.module.name } : {}),
-        page: marker.pageNumber || null,
-        ...(sheet.floor != null ? { sheet_floor: sheet.floor } : {}),
-        score,
-        here: !b.currentModuleId || marker.moduleId === b.currentModuleId,
-        moduleId: marker.moduleId,
-      });
-    }
-    items.sort((x, y) => y.score - x.score || Number(y.here) - Number(x.here) || x.name.localeCompare(y.name, undefined, { numeric: true }));
-    const keptModules = new Map();
-    const kept = items.filter((m) => {
-      const key = `${normalizeItemName(m.name)}|${m.page}`;
-      const modules = keptModules.get(key);
-      if (modules && !modules.has(m.moduleId)) return false;
-      keptModules.set(key, (modules || new Set()).add(m.moduleId));
-      return true;
-    });
-    return { items: kept, pages, unreadPages };
-  };
   // set_answers' item_name: the item by name, or else by description
   // ("camera twelve fourth floor" is C-4-12), when one clearly fits best.
   const itemIdFor = async (b, name) => {
     const heard = learnedName(b, String(name || '').trim());
     const byName = markerIdByName(b, heard);
     if (byName) return byName;
-    const target = parseDescribedTarget(heard);
+    const target = parseDescribedTarget(heard, { kinds: projectKinds(b) });
     if (target?.number != null && target.kind) {
       const { items } = await describedItems(b, target);
       const [best, next] = items;
-      // A lone fit is enough ("camera twelve" when there is one camera 12,
-      // whatever floor); with others, it must be clearly the best.
-      if (best && (next ? best.score >= 0.8 && next.score < best.score - 0.1 : best.score >= 0.6)) return best.id;
+      if (clearBest(items)) return best.id;
       if (best && next) {
         const list = items.slice(0, 5).map((m) => `${m.name}${m.page ? ` (page ${m.page})` : ''}`).join(', ');
         throw new ToolError(`Several items fit ${heard}: ${list}. Ask which one; nothing changed.`);
@@ -841,12 +876,15 @@ export function createSurveyAgentToolbox({
     // floor or wing, never the whole tag. Items first, then tags on the plan.
     async find_described({ description = '', kind = null, number = null, floor = null, wing = null } = {}) {
       const b = bridge();
-      const parsed = parseDescribedTarget(description) || {};
+      const kinds = projectKinds(b);
+      const parsed = parseDescribedTarget(description, { kinds }) || {};
       const said = String(kind || '').trim().toLowerCase();
+      const saidKind = said ? kindFromWord(said, kinds) : null;
       const target = {
-        kind: said ? (kindOf(said) || said) : parsed.kind || null,
+        kind: saidKind ? saidKind.kind : parsed.kind || null,
         kindWord: said || parsed.kindWord || null,
         code: parsed.code || null,
+        codes: saidKind ? saidKind.codes : parsed.codes || null,
         number: Number.isFinite(Number(number)) && number !== null ? Number(number) : parsed.number ?? null,
         floor: Number.isFinite(Number(floor)) && floor !== null ? Number(floor) : parsed.floor ?? null,
         wing: ({ west: 'w', east: 'e', north: 'n', south: 's' })[String(wing || '').toLowerCase()] || parsed.wing || null,

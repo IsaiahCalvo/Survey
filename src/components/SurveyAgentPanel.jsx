@@ -1397,7 +1397,7 @@ export default function SurveyAgentPanel({
                 {entry.role === 'error' && <Icon name="warningCircle" size={14} color="currentColor" />}
                 <span>{entry.text}</span>
                 {entry.waiting ? <div className="survey-agent__files">Waiting for signal</div> : null}
-                {entry.offline ? <div className="survey-agent__files" data-testid="survey-agent-offline-done">Done on this device, no signal needed</div> : null}
+                {entry.offline ? <div className="survey-agent__files" data-testid="survey-agent-offline-done">{entry.changes?.length ? 'Done on this device, no signal needed' : 'Answered on this device, no signal needed'}</div> : null}
                 {entry.files?.length ? <div className="survey-agent__files">{entry.files.join(', ')}</div> : null}
               </div>
               {entry.offers?.map((offer, i) => (

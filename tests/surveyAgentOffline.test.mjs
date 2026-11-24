@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { planOfflineTurn, runOfflineTurn } from '../src/agent/offlineHelper.js';
+import { planDescribedTurn, planOfflineTurn, runOfflineTurn } from '../src/agent/offlineHelper.js';
+import { sheetFloorOf, templateKinds } from '../src/agent/spokenTag.js';
 import { createSurveyAgentToolbox } from '../src/agent/surveyAgentTools.js';
 import { hearLocally, prepareLocalHearing, startDeviceHearing } from '../src/agent/deviceHearing.js';
 
@@ -94,13 +95,19 @@ test('all lines, a note, show and undo', () => {
   assert.deepEqual(planOfflineTurn('Undo that', bridge).calls, [{ name: 'undo_last_turn', input: {} }]);
 });
 
-test('an entity by its exact name; "done" is not guessed', () => {
+test('an entity by its exact name; "done" is asked, never guessed', () => {
   const { bridge } = fakeBridge();
   assert.deepEqual(planOfflineTurn('Mark D-118 commissioned', bridge).calls, [
     { name: 'set_entity', input: { item_id: 'm118', entity_id: 'ent-commissioned' } },
   ]);
-  // "Done" could be Installed or Commissioned: the server's agent asks.
-  assert.equal(planOfflineTurn('Mark D-118 done', bridge), null);
+  // "Done" could be either of this template's entities: ask, change nothing.
+  assert.deepEqual(planOfflineTurn('Mark D-118 done', bridge), {
+    ask: 'Which is "done" for D-118: Installed or Commissioned? Nothing changed.',
+  });
+  assert.equal(planOfflineTurn('D-118 is finished', bridge).ask.startsWith('Which is "finished"'), true);
+  // Not setting a state, or a line's words: left for the server.
+  assert.equal(planOfflineTurn('D-118 done', bridge), null);
+  assert.equal(planOfflineTurn('Mark D-118 damage', bridge), null);
 });
 
 test('with no name, the selected item is used', () => {
@@ -184,4 +191,170 @@ test('offline speech pack: used once ready, asked for when it can be fetched', a
   const plain = new Old();
   assert.equal(hearLocally(plain, 'en-US'), false);
   assert.equal(plain.processLocally, undefined);
+});
+
+// ---- Other trades: nothing in the rules knows security work. ----
+
+const word = (text, x, y, height = 8) => ({ text, box: { x, y, width: text.length * height * 0.6, height } });
+const sheet = (page, title, tags) => {
+  const words = [...title.map((t, i) => word(t, 600 + i * 80, 560, 18)), ...tags.map((t, i) => word(t, 40 + i * 120, 100))];
+  return { page, words, source: 'text', sheet: sheetFloorOf(words) };
+};
+
+const FIRE = {
+  name: 'Fire alarm',
+  answerSet: [{ value: 'Pass', tone: 'good' }, { value: 'Fail', tone: 'bad' }, { value: 'N/A', tone: 'neutral' }],
+  entities: [{ id: 'e-rough', name: 'Rough-in' }, { id: 'e-trim', name: 'Trim' }, { id: 'e-tested', name: 'Tested' }],
+  modules: [{
+    id: 'fa',
+    name: 'Fire alarm devices',
+    categories: [
+      { id: 'c-smoke', name: 'Smoke Detector', checklist: [{ id: 'l-head', text: 'Head installed' }, { id: 'l-base', text: 'Base wired' }, { id: 'l-cover', text: 'Dust cover removed' }] },
+      { id: 'c-pull', name: 'Fire Alarm Pull Station', checklist: [{ id: 'l-mount', text: 'Mounted at 48 inches' }, { id: 'l-sign', text: 'Signage' }] },
+      { id: 'c-horn', name: 'Horn Strobe', checklist: [{ id: 'l-cand', text: 'Candela set' }] },
+    ],
+  }, {
+    id: 'hvac',
+    name: 'Mechanical',
+    categories: [{ id: 'c-vav', name: 'VAV Box', checklist: [{ id: 'l-damper', text: 'Damper works' }, { id: 'l-ctrl', text: 'Controller online' }] }],
+  }],
+};
+
+function tradeBridge({ markers = {}, pages = [], currentModuleId = 'fa', ...rest } = {}) {
+  let n = 0;
+  const bridge = {
+    template: FIRE,
+    markers,
+    documentId: 'doc-fa',
+    canEdit: true,
+    selectedMarkerId: null,
+    currentModuleId,
+    readSheets: async () => ({ pages, unreadPages: [] }),
+    setAnswers: (id, answers) => {
+      const responses = { ...markers[id].checklistResponses };
+      for (const a of answers) responses[a.checklistItemId] = { selection: a.value };
+      markers[id] = { ...markers[id], checklistResponses: responses };
+    },
+    setEntity: (id, entityId) => { markers[id] = { ...markers[id], entityId }; },
+    updateNote: (id, updater) => { markers[id] = { ...markers[id], note: updater(markers[id].note || {}) }; },
+    restoreMarker: (id, snap) => { markers[id] = { ...markers[id], ...snap }; },
+    showMarker: () => {},
+    createItem: (spec) => {
+      n += 1;
+      const id = `new-${n}`;
+      markers[id] = { name: spec.name, moduleId: spec.moduleId, categoryId: spec.categoryId, pageNumber: spec.page, bounds: spec.bounds, checklistResponses: {} };
+      return id;
+    },
+    getPageSize: () => ({ width: 1224, height: 792 }),
+    ...rest,
+  };
+  const toolbox = createSurveyAgentToolbox({ getBridge: () => bridge, documentId: 'doc-fa' });
+  return { bridge, toolbox, markers };
+}
+
+const marker = (name, categoryId, page, extra = {}) => ({ name, moduleId: categoryId === 'c-vav' ? 'hvac' : 'fa', categoryId, pageNumber: page, bounds: { x: 10, y: 10, width: 20, height: 20 }, checklistResponses: {}, ...extra });
+
+test('kinds come from the project\'s own categories', () => {
+  const kinds = templateKinds([{ name: 'Smoke Detector', tags: ['SD-3-04'] }, { name: 'Fire Alarm Pull Station' }, { name: 'VAV Box', tags: ['VAV-2-12'] }]);
+  const smoke = kinds.find((k) => k.kind === 'smoke detector');
+  assert.ok(smoke.words.includes('smoke detectors'));
+  assert.ok(smoke.words.includes('detector'));
+  assert.ok(smoke.codes.includes('sd'));
+  const pull = kinds.find((k) => k.kind === 'fire alarm pull station');
+  assert.ok(pull.words.includes('pull station'));
+  assert.ok(pull.codes.includes('fapS'.toLowerCase()));
+  assert.ok(kinds.find((k) => k.kind === 'vav box').codes.includes('vav'));
+  // A tail two categories share is neither's.
+  const two = templateKinds([{ name: 'Ceiling Speaker' }, { name: 'Wall Speaker' }]);
+  assert.ok(two.every((k) => !k.words.includes('speaker')));
+});
+
+test('fire alarm: a described device by the floor in its tag, with Pass/Fail answers', async () => {
+  const { bridge, toolbox, markers } = tradeBridge({
+    markers: { a: marker('SD-3-04', 'c-smoke', 3), b: marker('SD-2-04', 'c-smoke', 2), h: marker('HS-3-04', 'c-horn', 3) },
+  });
+  const done = await runOfflineTurn({ text: 'Smoke detector 4 on the third floor, head installed pass, base wired fail', toolbox, bridge });
+  assert.equal(done.changes.length, 1);
+  assert.equal(markers.a.checklistResponses['l-head'].selection, 'Pass');
+  assert.equal(markers.a.checklistResponses['l-base'].selection, 'Fail');
+  assert.deepEqual(markers.b.checklistResponses, {});
+  // Two fit with no floor said: ask, change nothing.
+  const which = await runOfflineTurn({ text: 'smoke detector 4 head installed pass', toolbox, bridge });
+  assert.deepEqual(which.changes, []);
+  assert.match(which.reply, /More than one fits .*SD-2-04 \(page 2\), SD-3-04 \(page 3\)/);
+});
+
+test('fire alarm: "done" asks among this template\'s own stages', async () => {
+  const { bridge, toolbox, markers } = tradeBridge({ markers: { a: marker('SD-3-04', 'c-smoke', 3) } });
+  const asked = await runOfflineTurn({ text: 'Mark smoke detector 4 on the third floor done', toolbox, bridge });
+  assert.equal(asked.reply, 'Which is "done" for SD-3-04: Rough-in, Trim or Tested? Nothing changed.');
+  assert.equal(markers.a.entityId, undefined);
+  const set = await runOfflineTurn({ text: 'Mark smoke detector 4 on the third floor tested', toolbox, bridge });
+  assert.equal(set.changes.length, 1);
+  assert.equal(markers.a.entityId, 'e-tested');
+});
+
+test('items brought from Walkthru or Plot: their own floor picks between twins', async () => {
+  // Same tag on two floors; only the item's floor field tells them apart.
+  const { bridge, toolbox, markers } = tradeBridge({
+    currentModuleId: 'hvac',
+    markers: { two: marker('VAV-12', 'c-vav', 1, { floor: 'Floor 2' }), three: marker('VAV-12', 'c-vav', 1, { floor: '3rd' }) },
+  });
+  const done = await runOfflineTurn({ text: 'VAV 12 second floor damper works yes', toolbox, bridge });
+  assert.equal(done, null, '"yes" is not this template\'s answer: left for the server');
+  const ok = await runOfflineTurn({ text: 'VAV box twelve on the second floor, damper works pass', toolbox, bridge });
+  assert.equal(ok.changes.length, 1);
+  assert.equal(markers.two.checklistResponses['l-damper'].selection, 'Pass');
+  assert.deepEqual(markers.three.checklistResponses, {});
+  const byCode = await runOfflineTurn({ text: 'VAV 12 third floor controller online fail', toolbox, bridge });
+  assert.equal(markers.three.checklistResponses['l-ctrl'].selection, 'Fail');
+  assert.equal(byCode.changes.length, 1);
+});
+
+test('a bare PDF: the tag on the plan becomes an item, then the answers go on it', async () => {
+  const pages = [sheet(5, ['FIRST', 'FLOOR'], ['PS-1-07', 'PS-1-08']), sheet(6, ['SECOND', 'FLOOR'], ['PS-2-07'])];
+  const { bridge, toolbox, markers } = tradeBridge({ pages });
+  // No floor said: two tags fit, so it asks and adds nothing.
+  const which = await planDescribedTurn('pull station 7 signage pass', bridge, toolbox);
+  assert.match(which.ask, /More than one tag on the plan fits .*PS-1-07 \(page 5\).*PS-2-07 \(page 6\)/);
+  assert.deepEqual(markers, {});
+  const done = await runOfflineTurn({ text: 'Pull station 7 first floor, everything pass', toolbox, bridge });
+  assert.equal(done.calls[0].name, 'create_item');
+  const [id, made] = Object.entries(markers)[0];
+  assert.equal(made.name, 'PS-1-07');
+  assert.equal(made.categoryId, 'c-pull');
+  assert.equal(made.pageNumber, 5);
+  assert.equal(made.checklistResponses['l-mount'].selection, 'Pass');
+  assert.equal(made.checklistResponses['l-sign'].selection, 'Pass');
+  assert.equal(done.changes.length, 2);
+  assert.match(done.reply, /^Added PS-1-07 \(Fire Alarm Pull Station\) on page 5\./);
+  assert.doesNotMatch(done.reply, new RegExp(id));
+  // Undo takes back the answers and the new item.
+  toolbox.undo(done.changes);
+  // Now it is an item: the next sentence finds it, not a second copy.
+  markers.again = { ...made, checklistResponses: {} };
+  delete markers[id];
+  const next = await runOfflineTurn({ text: 'pull station 7 first floor signage fail', toolbox, bridge });
+  assert.equal(next.calls[0].name, 'set_answers');
+  assert.equal(markers.again.checklistResponses['l-sign'].selection, 'Fail');
+});
+
+test('a bare PDF with a kind two categories share: never guessed', async () => {
+  const twins = {
+    ...FIRE,
+    modules: [{ id: 'fa', name: 'Fire', categories: [
+      { id: 'x1', name: 'Smoke Detector', checklist: [{ id: 'l1', text: 'Head installed' }] },
+      { id: 'x2', name: 'Smoke detectors', checklist: [{ id: 'l2', text: 'Head installed' }] },
+    ] }],
+  };
+  const pages = [sheet(2, ['THIRD', 'FLOOR'], ['SD-3-09'])];
+  const { bridge, toolbox, markers } = tradeBridge({ pages, template: twins });
+  assert.equal(await runOfflineTurn({ text: 'smoke detector 9 third floor head installed pass', toolbox, bridge }), null);
+  assert.deepEqual(markers, {});
+});
+
+test('with an item selected, "mark done" asks among the entities', () => {
+  const { bridge } = fakeBridge({ selectedMarkerId: 'm118' });
+  assert.equal(planOfflineTurn('mark done', bridge).ask, 'Which is "done" for D-118: Installed or Commissioned? Nothing changed.');
+  assert.deepEqual(planOfflineTurn('mark commissioned', bridge).calls, [{ name: 'set_entity', input: { item_id: 'm118', entity_id: 'ent-commissioned' } }]);
 });

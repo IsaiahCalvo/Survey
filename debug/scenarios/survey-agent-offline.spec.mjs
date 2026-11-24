@@ -108,6 +108,12 @@ test('with no signal, the agent answers on the device and a free sentence waits'
   await card.getByRole('button', { name: /Undo/ }).click();
   await expect.poll(async () => (await readMarker(page))?.checklistResponses?.['cl-power']?.selection || null).toBe(null);
 
+  // Described, not named: "door 117" is D-117 in the Doors category.
+  await input.fill('door 117, card reader no');
+  await input.press('Enter');
+  await expect.poll(async () => (await readMarker(page))?.checklistResponses?.['cl-reader']?.selection).toBe('N');
+  expect(turns).toHaveLength(0);
+
   // A sentence the rules can't read waits for the signal.
   await input.fill('the reader by the stairs looks loose');
   await input.press('Enter');
