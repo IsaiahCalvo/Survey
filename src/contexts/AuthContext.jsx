@@ -18,6 +18,7 @@ import {
   recoverSupabaseAuthSession,
 } from '../supabaseClient';
 import { requestAccountDeletion, unlinkOAuthProvider } from '../utils/accountPlatform';
+import { tierAfterFailedRead, writeLastKnownTier } from '../services/lastKnownTier.js';
 import { retryAuthServerHiccups } from '../components/authFlow.js';
 import { pdfByteCache } from '../services/pdfByteCache.js';
 import { loadAccountExportKits } from '../services/exportFormats/accountKits.js';
@@ -191,6 +192,8 @@ export const AuthProvider = ({ children }) => {
   // Whose plan `subscriptionTier` is. After a sign-in the tier still reads the
   // default 'free' until this user's read lands; pro-lock waits for a match.
   const [tierUserId, setTierUserId] = useState(null);
+  // The plan on screen, for a failed read to keep (lastKnownTier.js).
+  const shownTierRef = useRef({ shownTier: null, shownUserId: null });
 
   // KAL-token-refresh: the live `user` object reference, kept in a ref so the
   // onAuthStateChange handler (created once, no deps) can compare an incoming
@@ -358,8 +361,9 @@ export const AuthProvider = ({ children }) => {
   };
 
   // Resolve the effective tier string for a user. Returns 'free' on no-row /
-  // canceled / error; the active tier on active|trialing. Never throws on a
-  // Supabase error (logs + returns 'free'); only an unexpected throw rejects.
+  // canceled; the active tier on active|trialing; null when the read failed
+  // (logs it), so the caller keeps the last known plan (lastKnownTier.js).
+  // Only an unexpected throw rejects.
   const resolveSubscriptionTier = async (userId) => {
     // my_effective_tier() is the same rule on the server, plus a paid company
     // seat (Enterprise company workspace) lifting Free or Pro to Enterprise.
@@ -368,7 +372,7 @@ export const AuthProvider = ({ children }) => {
     if (!effective.error && typeof effective.data === 'string') return effective.data;
     if (effective.error && !['PGRST202', '42883'].includes(effective.error.code)) {
       console.error('Error fetching subscription tier:', effective.error);
-      return 'free';
+      return null;
     }
     const { data, error } = await supabase
       .from('user_subscriptions')
@@ -378,7 +382,7 @@ export const AuthProvider = ({ children }) => {
 
     if (error) {
       console.error('Error fetching subscription tier:', error);
-      return 'free';
+      return null;
     }
     if (data && ['active', 'trialing'].includes(data.status)) {
       // Only allow Pro/Enterprise if subscription is active or trialing.
@@ -394,6 +398,11 @@ export const AuthProvider = ({ children }) => {
   // Fetch subscription tier from database. `coalesce:true` (the two boot paths)
   // shares a single in-flight read per userId; the focus/interval/manual
   // refreshes call with the default (a fresh read) so Stripe upgrades land.
+  const showTier = (userId, tier) => {
+    shownTierRef.current = { shownTier: tier, shownUserId: userId };
+    setSubscriptionTier(tier);
+    setTierUserId(userId);
+  };
   const fetchSubscriptionTier = async (userId, { coalesce = false } = {}) => {
     if (!userId || !isSupabaseAvailable()) {
       setSubscriptionTier('free');
@@ -419,12 +428,12 @@ export const AuthProvider = ({ children }) => {
           tierPromise.then(done, done);
         }
       }
-      setSubscriptionTier(await tierPromise);
-      setTierUserId(userId);
+      const tier = await tierPromise;
+      if (typeof tier === 'string') writeLastKnownTier(userId, tier);
+      showTier(userId, typeof tier === 'string' ? tier : tierAfterFailedRead({ userId, ...shownTierRef.current }));
     } catch (err) {
       console.error('Error:', err);
-      setSubscriptionTier('free');
-      setTierUserId(userId);
+      showTier(userId, tierAfterFailedRead({ userId, ...shownTierRef.current }));
     } finally {
       setLoadingTier(false);
     }
@@ -623,7 +632,12 @@ export const AuthProvider = ({ children }) => {
     };
 
     window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
+    // Back online: read the plan again rather than wait for the next poll.
+    window.addEventListener('online', handleFocus);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('online', handleFocus);
+    };
   }, [user]);
 
   // 2026-04-30 — Periodic subscription tier refresh (every 5 minutes).

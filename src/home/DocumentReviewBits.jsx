@@ -12,6 +12,7 @@ import ValueSelect from '../components/ValueSelect.jsx';
 import { isPhoneLayout } from '../utils/layoutMode.js';
 import { presenceInitials } from '../components/presenceIdentity.js';
 import { showToast } from '../utils/toast';
+import { isNetworkFailure } from '../services/offlineDocuments.js';
 import {
   MARKUP_COUNT_EVENT,
   REVIEW_STATUSES,
@@ -103,7 +104,9 @@ export function useDocumentReviews(enabled, ids) {
         // An earlier save that landed while this one waited updated
         // entry.confirmed; roll back to that, never to the queue-time value.
         setReviews((m) => new Map(m).set(documentId, entry.confirmed));
-        showToast(err?.message || 'Could not save the review status', 'warn');
+        showToast(isNetworkFailure(err)
+          ? "You're offline. The review status needs a connection."
+          : (err?.message || 'Could not save the review status'), 'warn');
       }
     };
     entry.chain = (pending?.chain || Promise.resolve()).then(run, run);

@@ -2591,7 +2591,7 @@ export default function App({ devPreviewReturnTab = null }) {
   const [viewerShare, setViewerShare] = useState(null);
   const activeShareDocId = viewerShareEnabled ? persistableDocumentId(activeTab) : null;
   const openViewerShare = () => {
-    if (!activeShareDocId || !user?.id) return;
+    if (!activeShareDocId || !user?.id || user.is_anonymous) return;
     const row = documents.find((d) => String(d?.id) === String(activeShareDocId))
       || { id: activeShareDocId, name: activeTab?.name || '' };
     setViewerShare({ item: row, name: row.name || activeTab?.name || '', manage: row.user_id === user.id });
@@ -3465,7 +3465,8 @@ export default function App({ devPreviewReturnTab = null }) {
                   onTurnOff={turnOffSpaceFromChip}
                 />
               )}
-              {activeShareDocId && user?.id && !shareExportOne && (
+              {/* A guest can't share: the invite dialog only told them to upgrade. */}
+              {activeShareDocId && user?.id && !user.is_anonymous && !shareExportOne && (
                 <button
                   type="button"
                   data-viewer-share="true"
@@ -3491,7 +3492,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   triggerProps={{ 'data-toolbar-export': activeSpaceForChip ? undefined : 'true', 'data-viewer-share': 'true' }}
                   tooltip={chromeTip('Share or export', 'below')}
                   items={[
-                    activeShareDocId && user?.id
+                    activeShareDocId && user?.id && !user.is_anonymous
                       ? { label: 'Share…', icon: 'share', title: 'Invite people or copy a link to this document.', onSelect: openViewerShare }
                       : null,
                     exportModesEnabled && typeof bottomToolbarApi.exportPdfWithOptions === 'function'

@@ -79,7 +79,9 @@ const FROM_NUMBER = '__from_number__';
 /* Drawboard's "Edit details": number, name and revision in one card, plus
    the discipline (Drawboard sets it from the row menu). The name needs the
    owner (rename is owner-only); the rest needs edit access. */
-export function SheetDetailsDialog({ name, info, canRename, onSave, onClose }) {
+export function SheetDetailsDialog({ name, info, canRename, canEdit = true, onSave, onClose }) {
+  // A viewer sees the details but can't change them (the server refuses it).
+  const readOnly = !canEdit;
   const phone = isPhoneLayout();
   const [number, setNumber] = useState(info?.number || '');
   const [title, setTitle] = useState(name || '');
@@ -100,7 +102,7 @@ export function SheetDetailsDialog({ name, info, canRename, onSave, onClose }) {
   }, [auto, discipline]);
   const submit = async (event) => {
     event?.preventDefault?.();
-    if (busy) return;
+    if (busy || readOnly) return;
     const checked = checkSheetDetails({ number, name: title, revision, discipline: discipline === FROM_NUMBER ? '' : discipline });
     if (checked.error) { setError(checked.error); return; }
     setBusy(true);
@@ -121,7 +123,7 @@ export function SheetDetailsDialog({ name, info, canRename, onSave, onClose }) {
   );
   return (
     <DialogCard
-      title="Edit details"
+      title={readOnly ? 'Details' : 'Edit details'}
       onClose={onClose}
       busy={busy}
       width={400}
@@ -130,29 +132,30 @@ export function SheetDetailsDialog({ name, info, canRename, onSave, onClose }) {
       cardProps={{ onSubmit: submit, 'data-sheet-details-dialog': '' }}
       footer={(
         <>
-          <button type="button" className="hub-btn dialog-touch-pad" onClick={onClose} disabled={busy}>Cancel</button>
-          <button type="submit" className="hub-btn hub-btn--primary dialog-touch-pad" disabled={busy}>Save</button>
+          <button type="button" className="hub-btn dialog-touch-pad" onClick={onClose} disabled={busy}>{readOnly ? 'Close' : 'Cancel'}</button>
+          {!readOnly && <button type="submit" className="hub-btn hub-btn--primary dialog-touch-pad" disabled={busy}>Save</button>}
         </>
       )}
     >
+      {readOnly && <div className="sheet-register-note" data-sheet-details-readonly style={{ marginTop: 0, marginBottom: 12 }}>You have view access, so you can&apos;t change these details.</div>}
       {field('Sheet number', (
-        <input ref={firstRef} className="dialog-prompt-input" style={DIALOG_FIELD_STYLE} aria-label="Sheet number" value={number} maxLength={SHEET_NUMBER_MAX_LENGTH} placeholder="A-101" onChange={(e) => setNumber(e.target.value)} />
+        <input ref={firstRef} className="dialog-prompt-input" style={DIALOG_FIELD_STYLE} aria-label="Sheet number" value={number} disabled={readOnly} maxLength={SHEET_NUMBER_MAX_LENGTH} placeholder={readOnly ? 'None' : 'For example, A-101'} onChange={(e) => setNumber(e.target.value)} />
       ))}
       {field('Name', (
-        <input className="dialog-prompt-input" style={DIALOG_FIELD_STYLE} aria-label="Name" value={title} disabled={!canRename} onChange={(e) => setTitle(e.target.value)} />
+        <input className="dialog-prompt-input" style={DIALOG_FIELD_STYLE} aria-label="Name" value={title} disabled={readOnly || !canRename} onChange={(e) => setTitle(e.target.value)} />
       ))}
-      {!canRename && <div className="sheet-register-note">Only the owner can rename this drawing.</div>}
+      {!readOnly && !canRename && <div className="sheet-register-note">Only the owner can rename this drawing.</div>}
       {field('Revision', (
-        <input className="dialog-prompt-input" style={DIALOG_FIELD_STYLE} aria-label="Revision" value={revision} maxLength={SHEET_REVISION_MAX_LENGTH} placeholder="B" onChange={(e) => setRevision(e.target.value)} />
+        <input className="dialog-prompt-input" style={DIALOG_FIELD_STYLE} aria-label="Revision" value={revision} disabled={readOnly} maxLength={SHEET_REVISION_MAX_LENGTH} placeholder={readOnly ? 'None' : 'For example, B'} onChange={(e) => setRevision(e.target.value)} />
       ))}
       <div style={{ marginBottom: 4 }}>
         <span style={DIALOG_LABEL_STYLE}>Discipline</span>
         {phone ? (
-          <select className="doc-review-native" style={{ width: '100%' }} aria-label="Discipline" value={discipline} onChange={(e) => setDiscipline(e.target.value)}>
+          <select className="doc-review-native" style={{ width: '100%' }} aria-label="Discipline" value={discipline} disabled={readOnly} onChange={(e) => setDiscipline(e.target.value)}>
             {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         ) : (
-          <ValueSelect label="Discipline" value={discipline} options={options} onChange={setDiscipline} />
+          <ValueSelect label="Discipline" value={discipline} options={options} onChange={setDiscipline} disabled={readOnly} />
         )}
       </div>
       {error && <div role="alert" className="sheet-register-error">{error}</div>}
