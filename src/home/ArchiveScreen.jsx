@@ -402,7 +402,8 @@ export default function ArchiveScreen({
   );
 
   const searchField = (width) => (
-    <Search placeholder="Search archive..." value={search} onChange={setSearch} width={width} />
+    // The empty state's buttons work on the first press while typing.
+    <Search placeholder="Search archive..." value={search} onChange={setSearch} width={width} dismissActionSelector=".hub-empty-state button" />
   );
 
   const headerActions = (
@@ -1020,6 +1021,7 @@ export default function ArchiveScreen({
     <EmptyState
       icon="clock"
       line="Nothing in Archive"
+      description="Things you archive wait here for 30 days, so you can restore them."
       actionIcon="doc"
       actionLabel="Go to documents"
       onAction={() => onNav && onNav('documents')}
@@ -1036,11 +1038,14 @@ export default function ArchiveScreen({
      documents match your search."); an empty type filter keeps its own
      message. Naming the reason is what tells the user whether to clear the
      search box or the filter. */
-  const noMatchLine = (
-    <div className="meta" style={{ padding: '24px 16px', fontSize: 12 }}>
-      {search.trim() ? 'No archived items match your search.' : 'No archived items of this type.'}
-    </div>
+  const noMatchLine = search.trim() ? (
+    <EmptyState icon="search" line="No archived items match your search" secondaryLabel="Clear search" onSecondary={() => setSearch('')} />
+  ) : (
+    <EmptyState icon="filter" line="No archived items of this type" secondaryLabel="Show all types" onSecondary={() => setFilter('all')} />
   );
+  // An empty Archive shows only its empty state: no column heads to sort,
+  // no type filter and no search over nothing.
+  const archiveEmpty = !error && !loading && items.length === 0;
 
   return (
     <>
@@ -1055,7 +1060,7 @@ export default function ArchiveScreen({
         onNav={onNav}
         title="Archive"
         subtitle={subtitle}
-        actions={headerActions}
+        actions={archiveEmpty ? null : headerActions}
         userName={user?.name || user?.email?.split('@')[0] || 'You'}
         // Left undefined on purpose: HubShell's profile badge then falls back
         // to the live "Synced · <tier>" text. Archive has no status of its own.
@@ -1066,7 +1071,7 @@ export default function ArchiveScreen({
           <div className="card archive-desktop-card" style={{ display: 'grid', gridTemplateColumns: showPreview ? '2.2fr 1fr' : '1fr', height: '100%', overflow: 'hidden' }}>
             <div className="slim-scroll" style={{ overflow: 'auto', height: '100%', borderRight: showPreview ? '1px solid var(--ink-500)' : 0 }}>
               <div>
-                <div style={{ ...ledgerHeader, display: 'grid', gridTemplateColumns: grid, position: 'sticky', top: 0, zIndex: 3 }}>
+                {!archiveEmpty && <div style={{ ...ledgerHeader, display: 'grid', gridTemplateColumns: grid, position: 'sticky', top: 0, zIndex: 3 }}>
                   <span></span>
                   {/* The thumbnail column carries no header, exactly as in
                       Documents, so "Name" sits over the name. */}
@@ -1075,13 +1080,13 @@ export default function ArchiveScreen({
                   {headerCell('type', 'Type')}
                   {headerCell('archived', 'Archived')}
                   {headerCell('days', 'Days remaining')}
-                </div>
+                </div>}
                 {error ? errorLine : null}
                 {!error && loading ? loadingRows : null}
                 {!error && !loading && rows.length === 0 && (
                   items.length === 0
                     ? <div style={{ paddingTop: 96 }}>{emptyState}</div>
-                    : noMatchLine
+                    : <div style={{ paddingTop: 48 }}>{noMatchLine}</div>
                 )}
                 {!error && !loading && rows.map(renderRow)}
               </div>

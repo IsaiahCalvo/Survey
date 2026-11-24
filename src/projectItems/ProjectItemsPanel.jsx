@@ -460,7 +460,7 @@ export default function ProjectItemsPanel({
   const memberName = useCallback((id) => lookup(id)?.name || '', [lookup]);
   const today = localDay();
   const listItems = useMemo(() => items.filter((i) => i.kind === kind), [items, kind]);
-  const counts = useMemo(() => groupCounts(listItems), [listItems]);
+  const counts = useMemo(() => groupCounts(listItems, { archived }), [archived, listItems]);
   const tags = useMemo(() => allItemTags(listItems), [listItems]);
   const archivedCount = useMemo(() => listItems.filter((i) => i.archived_at).length, [listItems]);
   const shown = useMemo(() => sortItems(filterItems(listItems, {
@@ -599,20 +599,23 @@ export default function ProjectItemsPanel({
   const filtersOn = q || quick.size || groups.size || tagFilter.size || assignee !== 'all';
   // Nothing raised yet: the search, Select, filter chips (all at 0) and a
   // second coral New button sat over the empty state, which has its own
-  // (polish pass, KAL-652). They show once there is one.
+  // (polish pass, KAL-652). They show once there is one. The same goes when
+  // every one is archived: the chips all read 0 and filter nothing. A filter
+  // left on keeps the bar, so Clear stays in reach.
   const nothingYet = !data.loading && listItems.length === 0 && !archived;
+  const nothingOpen = nothingYet || (!data.loading && !archived && !filtersOn && listItems.length === archivedCount);
   const clearFilters = () => { setQ(''); setQuick(new Set()); setGroups(new Set()); setTagFilter(new Set()); setAssignee('all'); };
 
   return (
     <div ref={rootRef} className={`project-items${split && open ? ' has-detail' : ''}${phone ? ' is-phone' : ''}${compact ? ' is-compact' : ''}`} data-project-items={kind}>
       <div ref={listRef} className="project-items__list">
         <div className="project-items__bar">
-          {canEdit && !nothingYet && (
+          {canEdit && !nothingOpen && (
             <button type="button" className="btn primary hub-new-btn" data-testid="item-new" onClick={createItem}>
               <Icon name="plus" size={11} />New {k.one.toLowerCase()}
             </button>
           )}
-          {!nothingYet && <div className="hub-search item-search">
+          {!nothingOpen && <div className="hub-search item-search">
             <Icon name="search" size={13} color="var(--ink-200)" />
             <input
               aria-label={`Search ${k.many.toLowerCase()}`}
@@ -623,7 +626,7 @@ export default function ProjectItemsPanel({
             />
           </div>}
           <span style={{ flex: 1 }} />
-          {canEdit && !nothingYet && <SectionIconButton
+          {canEdit && !nothingOpen && <SectionIconButton
             action="select"
             label={selecting ? 'Done' : 'Select'}
             nothingToSelect={visible.length === 0}
@@ -640,7 +643,7 @@ export default function ProjectItemsPanel({
             onClick={(e) => { const rect = e.currentTarget.getBoundingClientRect(); setMenu((m) => (m ? null : { rect, items: listMenu })); }}
           ><Icon name="moreHorizontal" size={14} /></button>
         </div>
-        {!nothingYet && <div className="project-items__chips" data-item-chips>
+        {!nothingOpen && <div className="project-items__chips" data-item-chips>
           {QUICK_FILTERS.map((f) => (
             <button key={f.key} type="button" className="item-chip" aria-pressed={quick.has(f.key)} onClick={() => toggle(setQuick)(f.key)}>{f.label}</button>
           ))}
@@ -711,7 +714,7 @@ export default function ProjectItemsPanel({
               <EmptyState
                 icon="listChecks"
                 line={`No open ${k.many.toLowerCase()}`}
-                description={`${archivedCount} archived. New ${k.many.toLowerCase()} show here.`}
+                description={`${archivedCount} archived ${archivedCount === 1 ? k.one.toLowerCase() : k.many.toLowerCase()}. New ones show here.`}
                 actionLabel={canEdit ? `New ${k.one.toLowerCase()}` : undefined}
                 onAction={canEdit ? createItem : undefined}
                 secondaryLabel={`Show archived (${archivedCount})`}

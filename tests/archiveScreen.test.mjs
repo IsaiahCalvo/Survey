@@ -807,11 +807,11 @@ test('the header is built on the Documents / Projects structure', () => {
   assert.doesNotMatch(CSS, /\.archive-filter-row/);
 
   // Search is a real Search field wired to the row list.
-  assert.match(SCREEN, /<Search placeholder="Search archive\.\.\." value=\{search\} onChange=\{setSearch\} width=\{width\} \/>/);
+  assert.match(SCREEN, /<Search placeholder="Search archive\.\.\." value=\{search\} onChange=\{setSearch\} width=\{width\} dismissActionSelector="\.hub-empty-state button" \/>/);
   assert.match(SCREEN, /visibleArchiveItems\(items, \{ filter, sortKey, sortDir, search \}\)/);
   assert.match(SCREEN, /\[items, filter, sortKey, sortDir, search\]/, 'search is in the memo deps');
   // Empty-result copy names the reason, mirroring Documents' wording.
-  assert.match(SCREEN, /'No archived items match your search\.'/);
+  assert.match(SCREEN, /No archived items match your search/);
   assert.match(DOCS, /No documents match your search/);
 
   // The filter button reuses the hub's filter icon + active-sort label pattern.
