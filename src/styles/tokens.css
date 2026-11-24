@@ -739,3 +739,33 @@ html[data-look="suite"][data-theme="light"] {
 
 html[data-look="suite"][data-backdrop-blur="off"] { --overlay-scrim: rgba(10, 10, 11, 0.72); }
 html[data-look="suite"][data-theme="light"][data-backdrop-blur="off"] { --overlay-scrim: rgba(20, 20, 22, 0.45); }
+
+/* ============================================================================
+   EVEN STATE TIMING under the suite look (KAL-819, owner 2026-11-17: every app
+   must feel right, motion included)
+   ============================================================================
+   The suite rule (docs/suite/SUITE-RULES.md, "Motion") is one state change:
+   hover in and out, press back to hover, selected, 150 ms ease out. Rules
+   written before it carried their own numbers (90 ms, 100 ms, 0.2 s, plain
+   `ease`, `all`). They now read these three names, with their old numbers as
+   the fallback, so outside the suite look nothing changes:
+     transition: background var(--state-time, 90ms) var(--state-ease, ease-out);
+     transition: var(--state-all, all 0.2s ease);
+   --state-all names the colour properties instead of `all`, so a hover never
+   animates width, height or position (a layout jump). It keeps transform and
+   opacity, which some of those `all` rules used for a small turn or fade.
+   Reduced motion makes all three 0 through --motion-state. */
+html[data-look="suite"] {
+  --state-time: var(--motion-state);
+  --state-ease: var(--ease-out);
+  --state-all:
+    background-color var(--motion-state) var(--ease-out),
+    border-color var(--motion-state) var(--ease-out),
+    color var(--motion-state) var(--ease-out),
+    box-shadow var(--motion-state) var(--ease-out),
+    outline-color var(--motion-state) var(--ease-out),
+    fill var(--motion-state) var(--ease-out),
+    stroke var(--motion-state) var(--ease-out),
+    opacity var(--motion-state) var(--ease-out),
+    transform var(--motion-state) var(--ease-out);
+}

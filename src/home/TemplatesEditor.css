@@ -349,7 +349,7 @@ html[data-look="suite"] .ed-scope .card-line { background: var(--surface-2); }
   border-radius: 999px;
   background: var(--surface-3);
   box-shadow: inset 0 0 0 1px var(--border-strong);
-  transition: background 160ms ease, box-shadow 160ms ease;
+  transition: background var(--state-time, 160ms) var(--state-ease, ease), box-shadow var(--state-time, 160ms) var(--state-ease, ease);
 }
 .template-auto-complete__track::after {
   content: '';

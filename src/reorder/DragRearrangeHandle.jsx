@@ -75,7 +75,7 @@ const handleStyle = (isDragging, style = {}) => ({
   lineHeight: 1,
   userSelect: 'none',
   touchAction: 'none',
-  transition: 'color 0.15s ease, opacity 0.15s ease',
+  transition: 'color var(--state-time, 0.15s) var(--state-ease, ease), opacity 0.15s ease',
   ...style,
 });
 

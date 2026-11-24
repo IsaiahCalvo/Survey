@@ -4853,5 +4853,5 @@ html:has([data-mobile-tool-properties]) .mobile-pdf-header__space {
 .mobile-pdf-header__zoom-menu button:active,
 .mobile-spaces-panel .spaces-header-export-menu-button:active {
   background: var(--pressed);
-  transition: background 90ms ease-out;
+  transition: background var(--state-time, 90ms) var(--state-ease, ease-out);
 }

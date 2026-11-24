@@ -154,6 +154,22 @@ export function resolveBandCentreScrollLeft({
 }
 
 /**
+ * KAL-819: the one screen x that stays put while a page scales from the box
+ * [fromLeft, fromLeft + fromWidth] to [toLeft, toLeft + toWidth] (screen px).
+ * A zoom glide pivoting there lands the page exactly in its new box in one
+ * motion, so a panel's re-fit never needs a second glide to re-centre it.
+ * Returns `fallback` when the width does not change (no single pivot).
+ */
+export function resolveRefitPivotX({ fromLeft, fromWidth, toLeft, toWidth, fallback = 0 } = {}) {
+  const l0 = finite(fromLeft);
+  const w0 = finite(fromWidth);
+  const l1 = finite(toLeft);
+  const w1 = finite(toWidth);
+  if (!(w0 > 0) || !(w1 > 0) || Math.abs(w0 - w1) < 0.5) return fallback;
+  return (l1 * w0 - l0 * w1) / (w0 - w1);
+}
+
+/**
  * Whether an automatic (layout-driven) re-fit has anything to do.
  *
  * RULED 2026-09-23 (coordinator: auto refits keep the view; fits use the band

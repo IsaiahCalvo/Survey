@@ -63,7 +63,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: transform 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+  transition: transform 120ms ease, box-shadow var(--state-time, 120ms) var(--state-ease, ease), background-color var(--state-time, 120ms) var(--state-ease, ease);
 }
 .counter-list__pin-glyph { width: 22px; height: 22px; display: block; overflow: visible; filter: drop-shadow(0 0 0.5px rgba(0, 0, 0, 0.45)); }
 .counter-list__pin[aria-expanded='true'] { background: var(--surface-3); }
@@ -104,7 +104,7 @@
   justify-content: center;
   border-radius: 5px;
   color: var(--text-3);
-  transition: transform 120ms ease, background-color 120ms ease, color 120ms ease;
+  transition: transform 120ms ease, background-color var(--state-time, 120ms) var(--state-ease, ease), color var(--state-time, 120ms) var(--state-ease, ease);
 }
 .counter-list__icon:active { transform: scale(0.9); }
 .counter-list__icon.is-danger { color: var(--text-3); }

@@ -84,7 +84,7 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   cursor: pointer;
-  transition: transform 90ms ease-out, background-color 100ms ease-out;
+  transition: transform 90ms ease-out, background-color var(--state-time, 100ms) var(--state-ease, ease-out);
 }
 
 @media (hover: hover) {
@@ -143,7 +143,7 @@
   text-align: left;
   font-family: inherit;
   cursor: pointer;
-  transition: transform 90ms ease-out, background-color 100ms ease-out;
+  transition: transform 90ms ease-out, background-color var(--state-time, 100ms) var(--state-ease, ease-out);
 }
 
 @media (hover: hover) {

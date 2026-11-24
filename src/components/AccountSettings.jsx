@@ -1024,7 +1024,7 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
                             cursor: 'pointer',
                             fontSize: '13px',
                             fontWeight: '500',
-                            transition: 'all 0.2s'
+                            transition: 'var(--state-all, all 0.2s)'
                           }}
                           onMouseEnter={(e) => {
                             e.target.style.background = 'var(--accent-soft)';

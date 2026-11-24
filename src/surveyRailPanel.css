@@ -144,7 +144,7 @@
 .survey-rail .survey-rail__title-button > svg {
   flex: 0 0 auto;
   color: var(--text-3);
-  transition: transform 100ms var(--ease-out), color 90ms ease-out;
+  transition: transform 100ms var(--ease-out), color var(--state-time, 90ms) var(--state-ease, ease-out);
 }
 
 .survey-rail .survey-rail__title-button[aria-expanded='true'] > svg {
@@ -329,7 +329,7 @@
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
-  transition: color 90ms ease-out;
+  transition: color var(--state-time, 90ms) var(--state-ease, ease-out);
 }
 
 .survey-rail .survey-rail__foot-more {
@@ -543,7 +543,7 @@
   font-size: var(--sv-label-type);
   font-weight: 500;
   cursor: pointer;
-  transition: color 90ms ease-out;
+  transition: color var(--state-time, 90ms) var(--state-ease, ease-out);
 }
 
 .survey-rail .survey-rail__tabs > button > span {
@@ -967,7 +967,7 @@
   border: 0;
   border-radius: 0;
   cursor: pointer;
-  transition: color 90ms ease-out;
+  transition: color var(--state-time, 90ms) var(--state-ease, ease-out);
 }
 
 .survey-rail .survey-rail__marker-action--end {
@@ -1144,7 +1144,7 @@
   font-size: var(--sv-small-type);
   font-weight: 600;
   cursor: pointer;
-  transition: color 90ms ease-out, transform 100ms var(--ease-out);
+  transition: color var(--state-time, 90ms) var(--state-ease, ease-out), transform 100ms var(--ease-out);
 }
 
 .survey-rail .survey-rail__answer:active {
