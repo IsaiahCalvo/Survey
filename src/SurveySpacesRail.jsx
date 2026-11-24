@@ -1505,6 +1505,9 @@ const SurveySpacesRail = ({
   // `baseResponses`: the Survey agent sets several answers in one go before
   // the panel re-renders, so it passes the answers it already set.
   const applyChecklistResponseSelection = (annotationId, markerModuleId, category, markerRowName, checklistItemId, option, baseResponses = null) => {
+    // A Viewer can read the answers but not change them (r5b #20: the click
+    // used to go out and come back 403).
+    if (canEditSurveyMarkers === false) return;
     const currentMarker = surveyMarkers[annotationId] || {};
     if (currentMarker.checklistResponses?.[checklistItemId]?.selection !== option) checkpointSurveyAnswer?.(annotationId);
     const nextResponses = {
@@ -1993,6 +1996,7 @@ const SurveySpacesRail = ({
                         className={`mobile-survey-check-btn${sameAnswer(response, option) ? ` is-active is-${answerToneName === 'good' ? 'yes' : answerToneName === 'bad' ? 'no' : 'na'}` : ''}`}
                         aria-pressed={sameAnswer(response, option)}
                         aria-label={`${item.text} ${option}`}
+                        disabled={canEditSurveyMarkers === false}
                         onClick={() => applyChecklistResponseSelection(annotationId, markerModuleId, category, surveyMarker.name || '', item.id, option)}
                       >
                         {option}
@@ -4079,6 +4083,7 @@ const SurveySpacesRail = ({
                                                                 type="button"
                                                                 aria-pressed={isAnswer}
                                                                 className={`survey-rail__answer${isAnswer ? ` is-active ${tone}` : ''}`}
+                                                                disabled={canEditSurveyMarkers === false}
                                                                 {...(means ? tip(`${option}: ${means}`, 'below') : {})}
                                                                 onClick={(e) => {
                                                                   e.stopPropagation();

@@ -6432,6 +6432,7 @@ export default function App({ devPreviewReturnTab = null }) {
         onOpenColourPicker={toggleAnnotationColourPicker}
         annotationsByPage={leftRailApi?.annotationsByPage || null}
         viewerId={signedInUserId}
+        documentId={leftRailApi?.documentId || null}
         tip={chromeTip}
         textFormat={textFormatSource}
       />

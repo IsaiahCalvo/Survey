@@ -177,19 +177,39 @@ function SubjectBox({ value, mixed, placeholder, disabled, onCommit }) {
  * blur or Ctrl / Cmd + Enter; Enter starts a new line; Escape puts back what
  * was there.
  */
+// r5b #10 (2026-11-24): a note typed and never clicked out of was lost on a
+// reload, and the other person saw nothing until the blur. It now also saves
+// after a short pause in typing.
+const NOTE_SAVE_PAUSE_MS = 700;
+
 function NoteBox({ value, mixed, disabled, onCommit }) {
   const ref = useRef(null);
   const editingRef = useRef(false);
+  const savedRef = useRef(value ?? '');
+  const timerRef = useRef(null);
+  const startRef = useRef(value ?? '');
+  const onCommitRef = useRef(onCommit);
+  onCommitRef.current = onCommit;
   useEffect(() => {
+    savedRef.current = value ?? '';
     if (!editingRef.current && ref.current) ref.current.value = value ?? '';
   }, [value]);
-  const commit = () => {
-    if (!editingRef.current) return;
-    editingRef.current = false;
+  useEffect(() => () => clearTimeout(timerRef.current), []);
+  const save = () => {
+    clearTimeout(timerRef.current);
+    timerRef.current = null;
     const typed = ref.current?.value ?? '';
     // A mixed pick left blank keeps each mark's own note.
     if (mixed && !typed.trim()) return;
-    if (typed !== (value ?? '')) onCommit(typed);
+    if (typed !== savedRef.current) {
+      savedRef.current = typed;
+      onCommitRef.current(typed);
+    }
+  };
+  const commit = () => {
+    if (!editingRef.current) return;
+    editingRef.current = false;
+    save();
   };
   return (
     <textarea
@@ -202,7 +222,11 @@ function NoteBox({ value, mixed, disabled, onCommit }) {
       placeholder={mixed ? 'Mixed' : 'Add a note'}
       disabled={disabled}
       data-props-note
-      onFocus={() => { editingRef.current = true; }}
+      onFocus={() => { editingRef.current = true; startRef.current = savedRef.current; }}
+      onInput={() => {
+        clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => { if (editingRef.current) save(); }, NOTE_SAVE_PAUSE_MS);
+      }}
       onBlur={commit}
       onKeyDown={(event) => {
         event.stopPropagation();
@@ -210,8 +234,15 @@ function NoteBox({ value, mixed, disabled, onCommit }) {
           event.preventDefault();
           event.currentTarget.blur();
         } else if (event.key === 'Escape') {
+          // Back to the note as it was when the box was entered, taking back
+          // any pause-saves made since.
+          clearTimeout(timerRef.current);
           editingRef.current = false;
-          event.currentTarget.value = value ?? '';
+          event.currentTarget.value = startRef.current;
+          if (savedRef.current !== startRef.current) {
+            savedRef.current = startRef.current;
+            onCommitRef.current(startRef.current);
+          }
           event.currentTarget.blur();
         }
       }}
@@ -270,6 +301,7 @@ export default function SelectionPropertiesPanel({
   onOpenColourPicker,
   annotationsByPage,
   viewerId,
+  documentId = null,
   tip,
   textFormat,
 }) {
@@ -284,6 +316,21 @@ export default function SelectionPropertiesPanel({
   // The "Selected colors" swatch whose colour row is open.
   const [recolourFrom, setRecolourFrom] = useState(null);
   const chromeTip = tip || (() => ({}));
+  // The document's people, so a mark's maker reads by name here as on the
+  // selection bar (r5b #12, 2026-11-24: the bar said "Cal Tester", this said
+  // "Someone"). Same lookup the bar makes.
+  const [people, setPeople] = useState([]);
+  const wantsPeople = Boolean(enabled && open && documentId);
+  useEffect(() => {
+    if (!wantsPeople) return undefined;
+    let live = true;
+    Promise.all([import('../services/markComments.js'), import('../supabaseClient')])
+      .then(([{ listCommentPeople }, { supabase }]) => listCommentPeople(supabase, documentId))
+      .then((list) => { if (live) setPeople(Array.isArray(list) ? list : []); })
+      .catch(() => { /* "Someone" stands in */ });
+    return () => { live = false; };
+  }, [wantsPeople, documentId]);
+  const peopleById = useMemo(() => new Map(people.map((p) => [String(p.id), p])), [people]);
 
   const picked = useMemo(() => {
     const list = Array.isArray(items) ? items : [];
@@ -406,7 +453,7 @@ export default function SelectionPropertiesPanel({
   const mixed = api?.selectionMixed || {};
   const onlyInk = picked.kinds.length > 0 && picked.kinds.every((k) => k === 'pen' || k === 'highlighter');
   const single = picked.list.length === 1 ? picked.objects[0] : null;
-  const author = single ? authorLabel(getAnnotationAuthorId(single), { viewerId }) : null;
+  const author = single ? authorLabel(getAnnotationAuthorId(single), { viewerId, peopleById }) : null;
   const created = single ? formatDate(markCreatedAt(single)) : '';
   const colours = [...new Set(picked.objects.flatMap((o) => [o.stroke, o.fill])
     .filter((c) => typeof c === 'string' && c && c !== 'transparent' && !/rgba\([^)]*,\s*0\)$/.test(c)))].slice(0, 12);
