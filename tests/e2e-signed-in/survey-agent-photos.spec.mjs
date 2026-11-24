@@ -49,6 +49,9 @@ test('a photo added in the chat: the agent asks the photo model and says what it
     await page.getByRole('button', { name: 'Survey', exact: true }).click();
     const chooser = page.getByText('Choose a survey template', { exact: true });
     await expect(chooser.or(category).first()).toBeVisible({ timeout: 30_000 });
+    // With no memory on this device, Survey opens the drawing's own template;
+    // a newer version of it is asked about first, over the picker.
+    await page.getByRole('button', { name: 'Use latest version' }).click({ timeout: 2_000 }).catch(() => {});
     if (await chooser.isVisible()) {
       await page.getByText(E2E_SURVEY.templateName, { exact: true }).last().click();
       const latest = page.getByRole('button', { name: 'Use latest version' });

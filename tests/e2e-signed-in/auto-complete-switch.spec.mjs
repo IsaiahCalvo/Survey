@@ -49,6 +49,9 @@ async function openSurveyItem(page, { reopened = false } = {}) {
     const latest = page.getByRole('button', { name: 'Use latest version' });
     await expect(chooser.or(category).or(latest).first()).toBeVisible({ timeout: 30_000 });
     if (await latest.isVisible()) await latest.click();
+    // With no memory on this device, Survey opens the drawing's own template;
+    // a newer version of it is asked about first, over the picker.
+    await page.getByRole('button', { name: 'Use latest version' }).click({ timeout: 2_000 }).catch(() => {});
     if (await chooser.isVisible()) {
       await page.getByText(E2E_SURVEY.templateName, { exact: true }).last().click();
       await takeLatest(page);
