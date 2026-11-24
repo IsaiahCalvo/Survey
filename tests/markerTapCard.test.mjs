@@ -48,7 +48,7 @@ test('finds the Category in its own Module first, then anywhere; unknown is plai
 
 test('a beta flag with its migration; the quick bar and viewer are wired', () => {
   assert.equal(FEATURE_FLAGS['marker-tap-card']?.stage, 'beta');
-  assert.match(read('supabase/migrations/20261124200000_marker_tap_card_flag.sql'), /\('marker-tap-card', 'off'/);
+  assert.match(read('supabase/migrations/20261124203000_marker_tap_card_flag.sql'), /\('marker-tap-card', 'off'/);
   const bar = read('src/components/SelectionQuickBar.jsx');
   assert.match(bar, /isFeatureOn\('marker-tap-card'\)/);
   assert.match(bar, /data-selection-quick-marker-card/);
