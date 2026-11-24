@@ -1324,11 +1324,11 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
             {/* KAL-397 — Settings -> Annotations (Acrobat's name for it). */}
             {activeTab === 'annotations' && (
               <section className="account-section" aria-labelledby="account-annotations-text-boxes">
-                <h3>Snapping</h3>
+                <h3>Drawing</h3>
                 <div className="account-pref-row">
                   <div className="account-pref-copy">
                     <div className="account-pref-title" id="account-pref-annotation-snapping">Snapping</div>
-                    <p className="account-pref-description">Line marks up with nearby annotations, pull line ends onto other ends, and stop turns at right angles. Also the magnet button beside the page controls, or Shift+S. Hold Alt while dragging to skip it once.</p>
+                    <p className="account-pref-description">Lines up marks with nearby annotations, pulls line ends onto other ends, and stops turns at right angles. The magnet button beside the page controls, or Shift+S, also turns it on and off. Hold Alt while dragging to skip it once.</p>
                   </div>
                   <button type="button" className="account-switch" role="switch" aria-checked={annotationSnapping} aria-labelledby="account-pref-annotation-snapping" data-pref="annotation-snapping" onClick={() => setAnnotationSnapping(writeAnnotationSnapping(!annotationSnapping))}>
                     <span className="account-switch-track" aria-hidden="true" />
