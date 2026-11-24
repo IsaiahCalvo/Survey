@@ -170,10 +170,11 @@ Survey has the full set today and is the one to copy the behaviour from.
 "To add" means the app has no shared colour or rule for it yet: add one
 token, then use it everywhere. When an app adds one, fill it in here.
 
-## One colour set: shared greys, one accent per app, light and dark
+## One colour set: shared greys, one accent per app
 
-Owner, 2026-11-23: every app has a light mode and a dark mode, and all three
-use the same greys in both. Only the accent differs, one per app:
+Owner, 2026-11-23: all three apps use the same greys. Only the accent
+differs, one per app. Owner, 2026-11-24: Survey and Walkthru are dark only;
+Plot alone has a light mode and a dark mode.
 
 - **Plot: blue**, close to Rayon's.
 - **Walkthru: coral**, as it has always been.
@@ -189,7 +190,8 @@ Gold is Survey's accent alone.
 The light greys are Plot's own. The dark greys are Walkthru's own. Each
 accent has a bright tone with dark words for dark mode and a deeper tone with
 white words for light mode, because a bright accent is too pale to read on
-white.
+white. Survey and Walkthru use their light rows only where the page is white
+outside the app: their public web pages and their emails.
 
 ### The colours
 
@@ -273,10 +275,11 @@ alone.
 
 ### Light and dark
 
-- Each app has one setting, **Appearance**: Light, Dark, or Match system.
-  It is saved on the device, not on the account.
-- Until the user picks: Survey and Walkthru open dark, Plot opens light, as
-  they did before.
+- Survey and Walkthru are dark only (owner 2026-11-24). They have no
+  light mode and no Appearance setting. The rest of this list is for Plot.
+- Plot has one setting, **Appearance**: Light, Dark, or Match system.
+  It is saved on the device, not on the account. Until the user picks, Plot
+  opens light.
 - The choice sits on `<html>` as `data-theme="light"` or
   `data-theme="dark"`, with `color-scheme` set to match. Colour names take
   their values from that one attribute. A component never asks which mode
@@ -285,7 +288,7 @@ alone.
   wrong one.
 - Shadows are lighter in light mode. A floating thing in light mode also
   takes a `line` hairline, since a shadow alone is weak on white.
-- Every screen is checked on screen in both modes before it ships.
+- Every Plot screen is checked on screen in both modes before it ships.
 
 ### One font
 
@@ -314,19 +317,17 @@ Words drawn on a page keep the font their mark picked.
 | scrim, floating shadow | to add | `--scrim`; `--shadow-float` with `--float-hairline` | to add |
 | Files | `src/styles/tokens.css`, `src/suiteLook.js` | `apps/web/src/app/globals.css` | `src/styles/tokens.css` |
 
-Survey and Walkthru show the new colours and the light mode in Nightly
-first. When an app fills a "to add" cell, or its theme ships, write it here.
+Survey and Walkthru show the new colours in Nightly first. When an app fills a "to add" cell, or its theme ships, write it here.
 
 Survey: built (KAL-663, PR 1505). The look sits behind the Nightly flag
 `one-look`, and wears gold there (green from 2026-11-23, gold again from
-2026-11-24). Appearance is in Settings, General. The tab icon, public pages
+2026-11-24), dark only. The tab icon, public pages
 and emails still wear coral for everyone (PR 1510); they turn gold in one
 step when the look leaves Nightly (`docs/suite/survey-gold-flip.md`).
 
-Walkthru: built (KAL-663, PR 218). Light mode sits on
-`html[data-theme="light"]`. Appearance is in Settings, behind the Nightly
-flag `appearance`, saved in `walkthrough.appearance`. The first-paint script
-comes from `apps/web/src/lib/appearance.ts`.
+Walkthru: built (KAL-663, PR 218), dark only. Its light mode and the
+Nightly flag `appearance` were removed on 2026-11-24, on the web and the
+phone.
 
 Plot: built and shipped, no flag (KAL-663, PR 420). Plot opens light until
 the user picks. Its accent went back to blue on 2026-11-23, tab icon too.
@@ -349,9 +350,9 @@ first, in all three repos.
 ### Settings
 
 Settings has the same sections, in the same order, in every app: General
-first (Profile, Appearance, then the account itself), the app's own tool
-settings next, then Subscription. A section an app does not need is left out,
-not left empty.
+first (Profile, Appearance where the app has it, then the account itself),
+the app's own tool settings next, then Subscription. A section an app does
+not need is left out, not left empty.
 
 | Survey | Walkthru | Plot |
 | --- | --- | --- |
