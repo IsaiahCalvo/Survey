@@ -215,7 +215,7 @@ test('the table: project roles read and write, outside agents never write, rows 
 
 test('the panel and rail wire the store and the project', () => {
   const panel = readFileSync(new URL('../src/components/SurveyAgentPanel.jsx', import.meta.url), 'utf8');
-  assert.equal((panel.match(/memory: agentMemory/g) || []).length, 2, 'both toolboxes get the store');
+  assert.equal((panel.match(/memory: agentMemory/g) || []).length, 3, 'every toolbox (chat, turn, offline) gets the store');
   const rail = readFileSync(new URL('../src/SurveySpacesRail.jsx', import.meta.url), 'utf8');
   assert.match(rail, /projectId: pdfFile\?\.projectId \|\| null/);
 });

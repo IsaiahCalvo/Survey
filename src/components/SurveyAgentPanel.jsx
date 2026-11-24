@@ -32,7 +32,8 @@ import { createHoldToTalk } from '../agent/holdToTalk.js';
 import { createVoiceLog, loggedCaller, reportAgentAnswer, sendVoiceLog } from '../agent/voiceLog.js';
 import { startNativeHandsFree } from '../agent/nativeHandsFree.js';
 import { loadNativeSpeech } from '../agent/nativeSpeechLoader.js';
-import { isSureHearing, sharesMicSafely, startDeviceHearing } from '../agent/deviceHearing.js';
+import { hearLocally, isSureHearing, prepareLocalHearing, sharesMicSafely, startDeviceHearing } from '../agent/deviceHearing.js';
+import { runOfflineTurn } from '../agent/offlineHelper.js';
 import { keepScreenAwake } from '../agent/keepAwake.js';
 import { getMicLevel, levelFromRms, setMicLevel, startStreamMeter, subscribeMicLevel } from '../agent/micLevel.js';
 import { AGENT_LANG, CANCEL_WORDS, SHUTTER_WORDS, agentLocale, agentSays } from '../agent/agentLanguage.js';
@@ -71,6 +72,9 @@ const TEMPLATE_OFFERS_FLAG = 'agent-template-offers';
 const NOTE_STYLE_KEY = 'survey.agent.noteStyle';
 // KAL-532 (Nightly flag agent-photo-questions): questions about a photo.
 const PHOTO_QUESTIONS_FLAG = 'agent-photo-questions';
+// Nightly flag survey-agent-offline: with no signal, plain-rules commands are
+// done on the device (offlineHelper.js) and hearing uses offline speech.
+const OFFLINE_FLAG = 'survey-agent-offline';
 // A photo goes to the model at most this wide or tall, as a JPEG.
 const PHOTO_QUESTION_MAX_SIDE = 1280;
 const shrinkPhoto = async (blob) => {
@@ -474,6 +478,44 @@ export default function SurveyAgentPanel({
     markEntry(entry.id, { reported: ok ? 'sent' : 'failed' });
   };
 
+  // No signal (or the server busy): a message the plain rules can read is
+  // done on the device now instead of waiting. Returns the reply, or null.
+  // The server's chat hears about it, so later turns build on it.
+  const tryOffline = async (job) => {
+    if (!isFeatureOn(OFFLINE_FLAG) || !job?.said || job.files?.length) return null;
+    const bridge = surveyAgentBridge.current;
+    if (!bridge?.template) return null;
+    const box = createSurveyAgentToolbox({
+      documentId: bridge.documentId || null,
+      undoLastTurn: () => undoLastRef.current(),
+      getDocument: activeAgentDocument,
+      walkItems: () => [...walkItemsRef.current],
+      memory: agentMemory,
+    });
+    let result = null;
+    try {
+      result = await runOfflineTurn({ text: job.said, toolbox: box, bridge });
+    } catch (err) {
+      console.warn('[survey-agent] offline turn failed', err);
+      return null;
+    }
+    if (!result) return null;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    toolbox.settle(result.changes);
+    const touched = result.changes.map((c) => c.itemId).filter(Boolean);
+    if (touched.length) recentItemsRef.current = [...recentItemsRef.current.filter((id) => !touched.includes(id)), ...touched].slice(-8);
+    for (const id of touched) walkItemsRef.current.add(id);
+    historyRef.current = [...historyRef.current,
+      { role: 'user', content: job.said },
+      { role: 'assistant', content: `${result.reply} [Done on the device with no signal.]` }];
+    if (job.entryId) markEntry(job.entryId, { waiting: false });
+    push({ role: 'agent', text: result.reply, changes: result.changes, offline: true });
+    voiceLog.event('offline_turn', { calls: result.calls.map((c) => c.name), changes: result.changes.length });
+    return result.reply;
+  };
+  const tryOfflineRef = useRef(tryOffline);
+  tryOfflineRef.current = tryOffline;
+
   // Runs one message through the agent. Returns the reply text, or null when
   // nothing was answered (error, or queued for lack of signal).
   const runJob = useCallback(async (job) => {
@@ -554,6 +596,8 @@ export default function SurveyAgentPanel({
       // message for later. Each call is one model step with no writes on the
       // server, so sending it again later cannot double anything.
       if (WAIT_CODES.has(err?.code) && !err?.changes?.length) {
+        const done = await tryOfflineRef.current(job);
+        if (done !== null) return done;
         waitReasonRef.current = err.code;
         enqueueRef.current(job);
         return null;
@@ -586,6 +630,9 @@ export default function SurveyAgentPanel({
     // Messages wait their turn behind ones still waiting for signal.
     const job = { said, files, entryId, docKey: surveyAgentBridge.current?.waitKey || null };
     if (queueRef.current.length) {
+      // With no signal, what the rules can read is done now; the rest waits.
+      const done = await tryOfflineRef.current(job);
+      if (done !== null) return done;
       enqueueRef.current(job, { quiet: true });
       return null;
     }
@@ -992,6 +1039,7 @@ export default function SurveyAgentPanel({
           onHearing: (on) => onHearingChange(on),
           onBargeIn: () => stopSpeaking(),
           spokenNow: () => lastSpokenRef.current,
+          offline: isFeatureOn(OFFLINE_FLAG),
           onFatal: () => { if (handsFreeRef.current) restartHandsFreeRef.current(); },
         }).catch(() => null)
         : null;
@@ -1002,7 +1050,11 @@ export default function SurveyAgentPanel({
         onLevel: (v) => setMicLevel(levelFromRms(v)),
       });
       voiceLog.event('mic_started', { native: Boolean(micRef.current.native) });
-      if (!micRef.current.native) deviceHearingRef.current = startDeviceHearing({ lang: agentLocale() });
+      if (!micRef.current.native) {
+        // Offline speech pack (Chrome/Edge): fetched once, then heard with no signal.
+        if (isFeatureOn(OFFLINE_FLAG)) await prepareLocalHearing(agentLocale());
+        deviceHearingRef.current = startDeviceHearing({ lang: agentLocale() });
+      }
       awakeRef.current?.release();
       awakeRef.current = keepScreenAwake();
       handsFreeRef.current = true;
@@ -1051,6 +1103,10 @@ export default function SurveyAgentPanel({
     }
     const rec = new Recognition();
     rec.lang = agentLocale();
+    if (isFeatureOn(OFFLINE_FLAG)) {
+      hearLocally(rec, rec.lang);
+      prepareLocalHearing(rec.lang);
+    }
     rec.interimResults = true;
     rec.continuous = true;
     let finalText = '';
@@ -1100,6 +1156,8 @@ export default function SurveyAgentPanel({
   const startTalk = () => {
     if (recorder.state !== 'idle') return;
     pttHearingRef.current?.stop();
+    // The offline speech pack is checked for next time (a tap may fetch it).
+    if (isFeatureOn(OFFLINE_FLAG)) prepareLocalHearing(agentLocale());
     pttHearingRef.current = startDeviceHearing({ lang: agentLocale() });
     recorder.start();
   };
@@ -1339,6 +1397,7 @@ export default function SurveyAgentPanel({
                 {entry.role === 'error' && <Icon name="warningCircle" size={14} color="currentColor" />}
                 <span>{entry.text}</span>
                 {entry.waiting ? <div className="survey-agent__files">Waiting for signal</div> : null}
+                {entry.offline ? <div className="survey-agent__files" data-testid="survey-agent-offline-done">Done on this device, no signal needed</div> : null}
                 {entry.files?.length ? <div className="survey-agent__files">{entry.files.join(', ')}</div> : null}
               </div>
               {entry.offers?.map((offer, i) => (
@@ -1376,7 +1435,7 @@ export default function SurveyAgentPanel({
                     : <button type="button" className="survey-agent__undo" onClick={() => undoEntry(entry)}><Icon name="undo" size={12} color="currentColor" />Undo</button>}
                 </div>
               ) : null}
-              {entry.role === 'agent' && entry.text ? (
+              {entry.role === 'agent' && entry.text && !entry.offline ? (
                 <button
                   type="button"
                   className="survey-agent__report"

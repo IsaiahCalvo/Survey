@@ -41,6 +41,46 @@ export function isSureHearing(heard, minConfidence = DEVICE_HEARING_MIN_CONFIDEN
   return !(c > 0 && c < minConfidence);
 }
 
+// Offline speech (Nightly flag survey-agent-offline): Chrome and Edge can
+// hear on the device once a language pack is fetched (the Web Speech API's
+// processLocally, available() and install()). Then hearing keeps working
+// with no signal, where the cloud recognizer stops with a "network" error.
+// Languages whose pack is ready, by the Recognition class that checked.
+const localReady = new Map();
+const localKey = (Recognition, lang) => `${Recognition?.name || 'r'}\0${lang}`;
+
+/**
+ * Checks for the language's offline pack and asks for it when it can be
+ * fetched (call from a tap: the browser wants the person's gesture).
+ * Resolves true once the pack is ready, false where there is none.
+ */
+export async function prepareLocalHearing(lang, Recognition = (typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition)) || null) {
+  if (!Recognition || typeof Recognition.available !== 'function' || !lang) return false;
+  const key = localKey(Recognition, lang);
+  if (localReady.get(key)) return true;
+  const ask = { langs: [lang], processLocally: true };
+  try {
+    let state = await Recognition.available(ask);
+    if (state === 'downloadable' && typeof Recognition.install === 'function') {
+      // Fetch it in the background; it is used from the next start once ready.
+      Promise.resolve(Recognition.install(ask)).then((ok) => { if (ok) localReady.set(key, true); }).catch(() => {});
+      state = 'downloading';
+    }
+    const ready = state === 'available';
+    localReady.set(key, ready);
+    return ready;
+  } catch {
+    return false;
+  }
+}
+
+/** Turns on offline hearing for one recognizer when the pack is ready. */
+export function hearLocally(rec, lang, Recognition = rec?.constructor) {
+  if (!rec || !localReady.get(localKey(Recognition, lang))) return false;
+  try { rec.processLocally = true; } catch { return false; }
+  return true;
+}
+
 export function startDeviceHearing({ lang, Recognition = deviceRecognition(), now = () => Date.now() } = {}) {
   if (!Recognition) return null;
   const finals = [];
@@ -53,6 +93,7 @@ export function startDeviceHearing({ lang, Recognition = deviceRecognition(), no
   const begin = () => {
     rec = new Recognition();
     rec.lang = lang || (typeof navigator !== 'undefined' && navigator.language) || 'en-US';
+    hearLocally(rec, rec.lang, Recognition);
     rec.continuous = true;
     rec.interimResults = false;
     rec.maxAlternatives = 1;
