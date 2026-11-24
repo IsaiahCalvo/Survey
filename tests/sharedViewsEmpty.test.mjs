@@ -17,8 +17,14 @@ test('an empty list is a full empty state with a way out, not a grey line', () =
 });
 
 test('a view with nothing in it drops the chips and column heads it cannot use', () => {
-  assert.match(src, /const viewIsEmpty = sharedViewsOn && homeView !== 'all' && viewCounts\[homeView\] === 0;/);
+  assert.match(src, /const sharedViewEmpty = sharedViewsOn && homeView !== 'all' && viewCounts\[homeView\] === 0;/);
+  assert.match(src, /const viewIsEmpty = sharedViewEmpty;/);
   assert.match(src, /reviewOn && mapped\.length > 0 && !viewIsEmpty && \(\s*<ReviewChips/);
   assert.match(src, /registerOn && mapped\.length > 0 && !viewIsEmpty && \(\s*<RegisterChips/);
   assert.match(src, /\{!viewIsEmpty && <div className=\{gridClass\}/);
+});
+
+test('an empty shared view hides "0 files", Select and Export list; the band keeps its height (batch 27)', () => {
+  assert.match(src, /className="documents-mobile-summary" style=\{\{[^}]*visibility: sharedViewEmpty \? 'hidden' : undefined \}\} aria-hidden=\{sharedViewEmpty \|\| undefined\}/);
+  assert.match(src, /\{registerOn && !sharedViewEmpty && \(\s*<button className="btn documents-desktop-new" data-sheet-register-export="desktop"/);
 });

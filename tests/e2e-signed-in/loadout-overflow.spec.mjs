@@ -65,10 +65,12 @@ for (const width of [1440, 1024]) {
     for (const name of names) expect(before.tools.map((t) => t.label)).not.toContain(name);
     await page.screenshot({ path: test.info().outputPath(`loadout-${width}-menu.png`), clip: { x: Math.max(0, width - 520), y: 0, width: Math.min(520, width), height: 520 } });
 
-    // Picking one arms it and brings it back into the row, still clear.
-    const target = 'Redact area';
-    expect(names).toContain(target);
-    await menu.getByRole('menuitem', { name: target }).click();
+    // Picking one arms it and brings it back into the row, still clear. Which
+    // tools spill depends on how wide the right-hand buttons are (one Share
+    // button under share-export-one is narrower than Share + Export), so pick
+    // Redact area when it spilled, else the first tool that did.
+    const target = names.includes('Redact area') ? 'Redact area' : names[0];
+    await menu.getByRole('menuitem', { name: target, exact: true }).click();
     await expect(menu).toHaveCount(0);
     await expect(page.locator(`#chrome-subtools-host button[aria-label="${target}"]`)).toBeVisible();
     await expect(page.locator(`#chrome-subtools-host button[aria-label="${target}"]`)).toHaveAttribute('aria-pressed', 'true');

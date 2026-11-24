@@ -22,7 +22,9 @@ html[data-look="suite"] .pdft-tool:not(.is-on):not(:hover){background:var(--surf
 /* Export PDF (ExportPdfDialog.jsx): the three mark choices side by side, the
    picked one outlined in the accent. */
 .pdft-tools--three{grid-template-columns:repeat(3,minmax(0,1fr))}
-.pdft-tools--three>li{display:flex}
+/* Each card fills its grid cell, so two cards in a row are the same height
+   even when one hint wraps to two lines (Export PDF's three and PDF tools). */
+.pdft-tools>li{display:flex}
 .pdft-tool.is-on{border-color:var(--border-strong);background:var(--surface-3)}
 .pdft-tname{font-size:14px;font-weight:650}
 .pdft-tshort{font-size:12px;color:var(--text-3);line-height:1.35}
