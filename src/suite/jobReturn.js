@@ -31,6 +31,8 @@ const MOVE_PT = 1;
 
 const clean = (value) => (typeof value === 'string' && value.trim() ? value.trim() : null);
 const list = (value) => (Array.isArray(value) ? value : []);
+// getByPage() returns { [pageNumber]: { objects: [...] } }, not a bare array.
+const pageMarks = (value) => (Array.isArray(value) ? value : list(value?.objects));
 const clamp01 = (n) => Math.min(1, Math.max(0, Number(n.toFixed(5))));
 
 function normalizeRotation(value) {
@@ -275,12 +277,12 @@ function markShape(a, type) {
 /**
  * One page's red lines as the job's markup: the page's drawn marks (not
  * Survey Markers, not highlights), points as page fractions.
- * @param {Array<object>} annotations  the page's marks, in page units
+ * @param {Array<object>|{objects?:Array<object>}} annotations  the page's marks, in page units (an array, or a store page `{ objects }`)
  * @param {{pageId:string, page:{width:number,height:number,rotation?:number}, author?:string|null}} at
  */
 export function markupsFromPage(annotations, { pageId, page, author = null }) {
   const out = [];
-  for (const a of list(annotations)) {
+  for (const a of pageMarks(annotations)) {
     if (!a || a.deleted || a.hidden) continue;
     const type = typeOf(a);
     if (!type || type.includes('surveymarker') || type.includes('marker') || type.includes('highlight') || type.includes('image') || type.includes('measure')) continue;
