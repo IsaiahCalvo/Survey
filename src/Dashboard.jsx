@@ -29,6 +29,7 @@ import { resolveHubInitialLoading } from './home/hubInitialLoadingState.js';
 import { retryCompensatingCleanup, runCompensatingBatch } from './home/compensatingBatch.js';
 import { readPdfPageCount, mapUploadsBounded } from './home/pdfUploadWork.js';
 import { DOCUMENT_VERSIONS_CHANGED_EVENT, supersedeDocument } from './services/documentVersionService.js';
+import { isNetworkFailure } from './services/offlineDocuments.js';
 import { isFeatureOn } from './featureFlags.js';
 import { linkTemplatesForSave, suiteLibraryStore } from './library/suiteLibrary.js';
 import { OPEN_FILE_EVENT, takeOpenedFiles } from './mobile/nativeOpenFile.js';
@@ -3004,7 +3005,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       return true;
     } catch (err) {
       console.error('[DocumentRename] survey-hub:error', serializeError(err));
-      showToast('Failed to rename document: ' + (err.message || 'Unknown error'), 'error');
+      showToast(isNetworkFailure(err)
+        ? "You're offline. Renaming a document needs a connection."
+        : 'Failed to rename document: ' + (err.message || 'Unknown error'), 'error');
       failLocalRename(doc.id, renameToken, previousName);
       await refetchDocuments();
       return false;
@@ -3500,6 +3503,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         user={user ? { id: user.id, name: user.user_metadata?.full_name || user.name || user.email, email: user.email } : null}
         isPro={!!features?.advancedSurvey}
         onOpenDocument={hubOpenDocument}
+        guest={Boolean(user?.is_anonymous)}
         onUpload={handleUploadClick}
         onOpenFromDrive={canOpenFromDrive ? () => { setDriveTargetProject(null); setDrivePickerOpen(true); } : null}
         onAddFromDrive={canOpenFromDrive ? (project) => { setDriveTargetProject(project || null); setDrivePickerOpen(true); } : null}

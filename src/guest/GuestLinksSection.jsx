@@ -25,7 +25,7 @@ const ROLE_OPTIONS = [
 ];
 const DURATION_OPTIONS = GUEST_LINK_DURATIONS.map((d) => ({ value: d, label: `For ${d}` }));
 
-export default function GuestLinksSection({ client, documentId }) {
+export default function GuestLinksSection({ client, documentId, onLiveCount }) {
   const [links, setLinks] = useState([]);
   const [role, setRole] = useState('viewer');
   const [expiresIn, setExpiresIn] = useState('1 week');
@@ -89,6 +89,9 @@ export default function GuestLinksSection({ client, documentId }) {
   };
 
   const live = links.filter((l) => l.live);
+  // The dialog's footer counts these with its own share links.
+  const liveCount = live.length;
+  useEffect(() => { onLiveCount?.(liveCount); }, [onLiveCount, liveCount]);
   return (
     <section className="guest-links" data-testid="guest-links" aria-label="Guest links">
       <div className="guest-links__head">

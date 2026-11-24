@@ -9,6 +9,7 @@ const ERROR_TEXT = {
   not_enabled_for_you: 'The Survey agent is not turned on for your account yet.',
   not_set_up: 'The Survey agent is not set up on the server yet.',
   monthly_cap_reached: 'You reached this month\'s Survey agent limit.',
+  credit_used_up: 'The Survey agent used up this month\'s AI allowance. It starts again next month.',
   offline: 'No signal. It will send when you are back online.',
   busy_try_again: 'The agent is busy. Try again in a moment.',
   conversation_too_long: 'This chat is too long. Start a new one.',

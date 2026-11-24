@@ -17180,6 +17180,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         if (isSurveyAgentEnabled()) addSummarySheet(workbook, { template: selectedTemplate, markers: surveyMarkers });
       }
 
+      (await import('./services/excelOpeningSheet.js')).openOnFirstVisibleSheet(workbook);
+
       // Write workbook to buffer
       // Excel's hidden name for each tab's filter buttons (ExcelJS leaves it out).
       const workbookBuffer = await addFilterNames((await import('jszip')).default, await workbook.xlsx.writeBuffer());
