@@ -25,9 +25,11 @@
 //   most possible cost first and is refused with 'credit_used_up' once the
 //   provider's monthly cap (public.ai_credit_budgets) would be passed.
 //   SURVEY_AGENT_TTS: 'off' turns the server voice off (the app then uses
-//     the device's own voice). SURVEY_AGENT_TTS_MODEL / _VOICE pick the
-//     voice (Groq Orpheus by default); SURVEY_AGENT_TTS_PRICE is USD per
-//     million characters (default 0, free tier; Orpheus lists 22).
+//     the device's own voice); 'openai' speaks with gpt-4o-mini-tts on
+//     OPENAI_API_KEY (voice 'marin'), on the credit cap. SURVEY_AGENT_TTS_MODEL
+//     / _VOICE / _INSTRUCTIONS pick the voice (Groq Orpheus by default);
+//     SURVEY_AGENT_TTS_PRICE is USD per million characters for Orpheus
+//     (default 0, free tier; Orpheus lists 22).
 //   SURVEY_AGENT_FALLBACK_MODELS: comma list of models to move to when the
 //     main one is near or past its daily cap ('' turns it off). On the
 //     default Groq provider it defaults to the free models in
@@ -166,24 +168,50 @@ function transcriber() {
   return viaOpenai;
 }
 
+// The server voice. SURVEY_AGENT_TTS='openai' speaks with OpenAI's
+// gpt-4o-mini-tts (natural, about $0.015 a minute, on the shared credit cap);
+// otherwise Groq Orpheus on its free tier, which allows only about 100
+// replies a day for everyone and takes at most 200 characters.
+const OPENAI_TTS_INSTRUCTIONS = 'Speak like a friendly, quick coworker on a job site: natural and relaxed, '
+  + 'normal speed, no announcer voice. Read tags such as 310H-R1409 or C-4-06 plainly, character groups as written.';
 function speaker() {
+  const mode = Deno.env.get('SURVEY_AGENT_TTS') || '';
+  if (mode === 'off') return null;
+  const openai = Deno.env.get('OPENAI_API_KEY');
+  if (mode === 'openai' && openai) {
+    return {
+      url: 'https://api.openai.com/v1/audio/speech',
+      key: openai,
+      model: Deno.env.get('SURVEY_AGENT_TTS_MODEL') || 'gpt-4o-mini-tts',
+      voice: Deno.env.get('SURVEY_AGENT_TTS_VOICE') || 'marin',
+      instructions: Deno.env.get('SURVEY_AGENT_TTS_INSTRUCTIONS') || OPENAI_TTS_INSTRUCTIONS,
+      format: 'mp3',
+      maxChars: 600,
+      // $0.60 per million text tokens in (about 4 characters a token) plus
+      // about $0.015 a minute of speech out (about 14 characters a second).
+      costMicros: (chars: number) => Math.ceil(chars / 4 * 0.6 + (chars / 14) * 250),
+    };
+  }
   const groq = Deno.env.get('GROQ_API_KEY');
-  if (!groq || Deno.env.get('SURVEY_AGENT_TTS') === 'off') return null;
+  if (!groq) return null;
+  const microsPerChar = envNumber('SURVEY_AGENT_TTS_PRICE', 0);
   return {
     url: `${groqBase()}/audio/speech`,
     key: groq,
     model: Deno.env.get('SURVEY_AGENT_TTS_MODEL') || 'canopylabs/orpheus-v1-english',
     voice: Deno.env.get('SURVEY_AGENT_TTS_VOICE') || 'hannah',
-    microsPerChar: envNumber('SURVEY_AGENT_TTS_PRICE', 0),
+    instructions: null,
+    format: 'wav',
+    maxChars: 200,
+    costMicros: (chars: number) => Math.ceil(chars * microsPerChar),
   };
 }
 
-// Orpheus takes at most 200 characters; cut at a word.
-const MAX_SPEECH_CHARS = 200;
-function speechText(value: unknown): string {
+// Cut at a word, within what the voice takes.
+function speechText(value: unknown, max = 200): string {
   const text = String(value || '').replace(/\s+/g, ' ').trim();
-  if (text.length <= MAX_SPEECH_CHARS) return text;
-  return text.slice(0, MAX_SPEECH_CHARS).replace(/\s+\S*$/, '');
+  if (text.length <= max) return text;
+  return text.slice(0, max).replace(/\s+\S*$/, '');
 }
 
 function encodeBase64(bytes: Uint8Array): string {
@@ -322,22 +350,26 @@ Deno.serve(async (req) => {
   if (action === 'speak') {
     const v = speaker();
     if (!v) return json(501, { error: 'speech_not_set_up' });
-    const input = speechText(body.text);
+    const input = speechText(body.text, v.maxChars);
     if (!input) return json(400, { error: 'bad_request' });
     if (!(await reserve())) return refused();
+    const speakCost = v.costMicros(input.length);
+    const settle = await holdCredit(admin, { provider: creditFor(v.url), micros: speakCost, app: 'survey-agent' });
+    if (!settle) return json(429, { error: 'credit_used_up' });
     let res: Response;
     try {
       res = await fetch(v.url, {
         method: 'POST',
         headers: { Authorization: `Bearer ${v.key}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: v.model, voice: v.voice, input, response_format: 'wav' }),
+        body: JSON.stringify({ model: v.model, voice: v.voice, input, response_format: v.format, ...(v.instructions ? { instructions: v.instructions } : {}) }),
       });
     } catch (err) {
+      await settle(0);
       console.error('[survey-agent] speech failed', err);
       return json(502, { error: 'speech_unavailable' });
     }
-    // Orpheus's free tier allows only about 100 replies a day for everyone;
-    // the app falls back to the device's voice for the rest of the session.
+    if (!res.ok) await settle(0);
+    // A busy voice: the app uses the device's voice for the rest of the session.
     if (res.status === 429) return json(429, { error: 'speech_limit_reached' });
     if (!res.ok) {
       // For example the model's terms not yet accepted on the Groq account.
@@ -345,12 +377,12 @@ Deno.serve(async (req) => {
       return json(502, { error: 'speech_unavailable' });
     }
     const audio = new Uint8Array(await res.arrayBuffer());
-    const speakCost = Math.ceil(input.length * v.microsPerChar);
+    await settle(speakCost);
     await admin.rpc('record_survey_agent_usage', {
       p_user_id: user.id, p_input_tokens: 0, p_output_tokens: 0, p_cost_micros: speakCost,
     });
     await countDaily('speak', input.length, 0, speakCost);
-    return json(200, { audio: encodeBase64(audio), mime: res.headers.get('content-type') || 'audio/wav', usage_left: usageLeft(1) });
+    return json(200, { audio: encodeBase64(audio), mime: res.headers.get('content-type') || (v.format === 'mp3' ? 'audio/mpeg' : 'audio/wav'), usage_left: usageLeft(1) });
   }
 
   if (action === 'transcribe') {
