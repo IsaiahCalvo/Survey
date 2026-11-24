@@ -1552,8 +1552,12 @@ export default function RevisionsPanel({
     return rows;
   };
 
+  // With a legend filter on (Added, Edited, Deleted, Restored), an empty list
+  // means "none of that kind", never "no changes yet".
   const emptyText = query.trim()
     ? 'Nothing matches that search.'
+    : statuses.length > 0
+      ? 'Nothing matches this filter.'
     : filter === 'me'
       ? 'You haven’t changed anything in this document yet.'
       : filter === 'deleted'
@@ -1714,7 +1718,17 @@ export default function RevisionsPanel({
         {!loading && !err && hasLoadedRef.current && feed.items.length === 0 && (
           <div className="dh-empty" data-testid="document-history-empty">
             {!markFilter
-              ? emptyText
+              ? (
+                <>
+                  {emptyText}
+                  {statuses.length > 0 && !query.trim() && (
+                    <>
+                      {' '}
+                      <button type="button" className="hub-btn" style={{ marginTop: 8 }} onClick={() => setStatuses([])}>Clear filter</button>
+                    </>
+                  )}
+                </>
+              )
               : markLookup === 'none'
                 ? historyMarkFilterEmptyText(markFilter.items, { searchedAll: true })
                 : markLookup === 'partial'

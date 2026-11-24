@@ -60,6 +60,7 @@ import { useTooltip } from './Tooltip';
 import ButtonGroup from './ButtonGroup.jsx';
 import { isSuiteLookOn, readAppearance, writeAppearance } from '../suiteLook.js';
 import { SURVEY_SUPPORT_EMAIL } from '../services/supportContact.js';
+import { profileNameParts } from './profileNameParts.js';
 
 const SUBSCRIPTION_TIMEOUT_MS = 10_000;
 
@@ -198,8 +199,9 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
   // Update form fields when user data changes
   useEffect(() => {
     if (user) {
-      setFirstName(user?.user_metadata?.first_name || '');
-      setLastName(user?.user_metadata?.last_name || '');
+      const name = profileNameParts(user?.user_metadata);
+      setFirstName(name.first);
+      setLastName(name.last);
       setEmail(user?.email || '');
     }
   }, [user]);
@@ -309,8 +311,9 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
   /* Owner 2026-10-02: only a real change asks to be saved. A missing name in
      the profile and an empty field are the same thing, and stray spaces are
      not a change, so Save stays off until something actually differs. */
-  const nameDiffers = (firstName || '').trim() !== (user?.user_metadata?.first_name || '').trim()
-    || (lastName || '').trim() !== (user?.user_metadata?.last_name || '').trim();
+  const savedName = profileNameParts(user?.user_metadata);
+  const nameDiffers = (firstName || '').trim() !== savedName.first
+    || (lastName || '').trim() !== savedName.last;
   const hasProfileChanges = nameDiffers || !!(newPassword || confirmPassword || currentPassword);
 
   const handleSaveChanges = async (e) => {
@@ -455,8 +458,9 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
 
   const handleCancelEdit = () => {
     // Reset to original values
-    setFirstName(user?.user_metadata?.first_name || '');
-    setLastName(user?.user_metadata?.last_name || '');
+    const name = profileNameParts(user?.user_metadata);
+    setFirstName(name.first);
+    setLastName(name.last);
     setCurrentPassword('');
     setNewPassword('');
     setConfirmPassword('');
@@ -474,6 +478,8 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
         message: 'This permanently removes your account, your documents, projects, survey photos and audio. Documents other people own stay with them.',
         label: `Type ${ACCOUNT_DELETION_CONFIRMATION} to continue`,
         confirmLabel: 'Continue',
+        danger: true,
+        canSubmit: isAccountDeletionConfirmed,
       });
       if (typed === null) return;
       if (!isAccountDeletionConfirmed(typed)) {
