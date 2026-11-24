@@ -447,6 +447,7 @@ import { useMarkClipboard } from './utils/sharedMarkClipboard.js';
 import MarkLibraryPlacementLayer from './markLibrary/MarkLibraryPlacementLayer.jsx';
 import MarkLibrarySaveDialog from './markLibrary/MarkLibrarySaveDialog.jsx';
 import { markLibraryStore } from './markLibrary/markLibraryStore.js';
+import { getArmedLibraryItem, subscribeLibraryPlacement } from './markLibrary/markLibraryPlacement.js';
 import { LIBRARY_PAYLOAD_MAX_BYTES, libraryPayloadBytes, libraryPayloadFromClipboard, planLibraryPlacement } from './markLibrary/markLibraryModel.js';
 import { fitPlacedTextBoxes, resolveLibraryDrop } from './markLibrary/markLibraryViewer.js';
 import { PAGE_GRID_SETTINGS_EVENT, applyPageGridPageSteps, applyPageGridSettings, loadPageGridSettings } from './utils/pageGrid';
@@ -22895,6 +22896,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // Markups list (Nightly 'markup-list'): every mark in one rail panel.
   const [markupListEnabled] = useState(() => isFeatureOn('markup-list'));
   const [libraryDraft, setLibraryDraft] = useState(null);
+  // Round 4: while a stamp, signature or library item is armed, the page's
+  // own tool steps aside for Select. A tap on the iPad then places the item
+  // instead of opening a text box, and the placed item's handles can be grabbed.
+  useEffect(() => {
+    if (isActive === false || !(markLibraryEnabled || stampToolEnabled || insertImageEnabled || signatureToolEnabled)) return undefined;
+    const sync = () => { if (getArmedLibraryItem()) setActiveTool((tool) => (tool === 'select' ? tool : 'select')); };
+    sync();
+    return subscribeLibraryPlacement(sync);
+  }, [isActive, markLibraryEnabled, stampToolEnabled, insertImageEnabled, signatureToolEnabled]);
   useEffect(() => {
     if (!markLibraryEnabled || isActive === false) return;
     markLibraryStore.setContext({ userId: user?.id || null, projectId: pdfFile?.projectId || null });
