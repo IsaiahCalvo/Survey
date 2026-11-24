@@ -26,7 +26,7 @@
  *   pin pops it in, unpinning shrinks it away, the dock's box eases to its new
  *   length, hiding shrinks the dock away. Nothing jumps a frame.
  */
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal, flushSync } from 'react-dom';
 import Icon from '../Icons.jsx';
 import { watchLightPopover } from './dismissRules.js';
@@ -53,6 +53,19 @@ import {
   visiblePinCount,
 } from '../pinnedTools/pinnedTools.js';
 import { armPin, endPinSession, pinEditFromViewer, sessionStatus, startingStyleFor } from '../pinnedTools/pinSession.js';
+import {
+  armSurveyPin,
+  choiceIsPinned,
+  isSurveyPinKind,
+  markerPinKindForMode,
+  matchSurveyPinChoices,
+  surveyPinChoices,
+  surveyPinStatus,
+} from '../pinnedTools/surveyPins.js';
+import { isFeatureOn } from '../featureFlags.js';
+import { getCategoryGlyphLabel } from '../viewerShared.js';
+import { setMarkerDrawMode, useShownMarkerDrawMode } from '../survey/markerDrawMode.js';
+import { getMarkerShapeProviders, subscribeMarkerShapeProviders } from '../survey/markerShapeProviders.js';
 import { PinIcon, getPinnedToolsStore, usePinnedTools } from '../pinnedTools/pinnedToolsShared.jsx';
 import './PinnedToolsDock.css';
 
@@ -95,9 +108,24 @@ function glyphHalo(color) {
   return undefined;
 }
 
-function PinGlyph({ kindId, color, size = 16 }) {
+function PinGlyph({ kindId, color, size = 16, pin = null }) {
   const kind = pinKind(kindId);
   if (!kind) return null;
+  // Survey pins (Nightly 'survey-mode-tools') wear the survey bar's own faces:
+  // a category's initials in a ring, an entity's colour disc.
+  if (kindId === 'survey-category') {
+    const glyph = getCategoryGlyphLabel(pin?.ref?.name || '');
+    return (
+      <span className={`pinned-dock__glyph is-survey survey-subrow__glyph${glyph.length > 1 ? ' is-wide' : ''}`} aria-hidden="true">{glyph}</span>
+    );
+  }
+  if (kindId === 'survey-entity') {
+    return (
+      <span className="pinned-dock__glyph is-survey" aria-hidden="true">
+        <span className="pinned-dock__disc" style={{ background: color || 'var(--text-3)' }} />
+      </span>
+    );
+  }
   return (
     <span className="pinned-dock__glyph" style={{ filter: glyphHalo(color) }} aria-hidden="true">
       <Icon name={kind.iconName} size={size} color={color || 'currentColor'} />
@@ -124,7 +152,15 @@ export function pinTipText(description, index, phone = false) {
 export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone = false }) {
   const store = suppliedStore || getPinnedToolsStore();
   const state = usePinnedTools(store);
-  const { pins, visible } = state;
+  // Survey pins (Nightly 'survey-mode-tools') belong to Survey mode's set and
+  // show only there, and only where the flag is on.
+  const [surveyToolsOn] = useState(() => isFeatureOn('survey-mode-tools'));
+  const surveyPinsShown = surveyToolsOn && state.pinSet === 'survey';
+  const pins = surveyPinsShown ? state.pins : state.pins.filter((pin) => !isSurveyPinKind(pin.kind));
+  const { visible } = state;
+  const shownMarkerMode = useShownMarkerDrawMode();
+  const shapeProviders = useSyncExternalStore(subscribeMarkerShapeProviders, getMarkerShapeProviders, getMarkerShapeProviders);
+  const smartFillReady = shapeProviders.some((provider) => provider.id === 'smartFill');
   // The phone has one place for it: a row above its bottom bar. The saved
   // desktop placement is left alone.
   const placement = phone ? 'bottom' : state.placement;
@@ -203,9 +239,21 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
   }, []);
 
   // --- arming pins ---------------------------------------------------------
+  const smartFillReadyRef = useRef(smartFillReady);
+  smartFillReadyRef.current = smartFillReady;
   const arm = useCallback((pin) => {
     const current = apiRef.current;
     if (!current || !pin) return;
+    if (isSurveyPinKind(pin.kind)) {
+      // A survey pin goes through the survey bar's own handlers; a drawing
+      // pin left armed gives its tool its own settings back.
+      if (sessionRef.current) {
+        endPinSession(sessionRef.current);
+        setSession(null);
+      }
+      armSurveyPin(pin, current.surveyToolbar, { setDrawMode: setMarkerDrawMode, smartFillReady: smartFillReadyRef.current });
+      return;
+    }
     setSession(armPin(current, sessionRef.current, pin));
   }, [setSession]);
 
@@ -240,7 +288,8 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
   const surveyOn = Boolean(api?.showSurveyPanel);
   useEffect(() => {
     store.setPinSet(surveyOn ? 'survey' : 'markup');
-  }, [store, surveyOn]);
+    if (surveyOn && surveyToolsOn) store.seedSurveyMarkerPins?.({ smartFill: smartFillReadyRef.current });
+  }, [store, surveyOn, surveyToolsOn]);
 
   // Leave the pin when another tool is armed or the document changes.
   useEffect(() => {
@@ -416,15 +465,22 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
     return result;
   };
 
-  const addPin = (kindId, style) => {
+  const addPin = (kindId, style, ref = null) => {
     closeMenu();
-    const pin = animateDock(() => store.addPin(makePin(kindId, style)));
+    const pin = animateDock(() => store.addPin(makePin(kindId, style, undefined, ref)));
     if (pin) arm(pin);
   };
 
-  const currentKind = api ? pinKindForTool(api.activeTool, api.lineBorderStyle) : null;
+  const surveyMarkerKind = surveyPinsShown && api?.activeTool === 'survey-marker' && api?.surveyToolbar
+    ? markerPinKindForMode(shownMarkerMode)
+    : null;
+  const currentKind = api ? (surveyMarkerKind || pinKindForTool(api.activeTool, api.lineBorderStyle)) : null;
   const pinCurrent = () => {
     if (!currentKind || !api) return;
+    if (currentKind.survey) {
+      addPin(currentKind.id, {});
+      return;
+    }
     const source = typeof api.readToolStyle === 'function'
       ? api.readToolStyle(currentKind.tool, currentKind.lineStyle)
       : {};
@@ -440,7 +496,7 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
   const duplicate = (pin) => {
     const index = pins.findIndex((entry) => entry.id === pin.id);
     closeMenu();
-    animateDock(() => store.addPin(makePin(pin.kind, pin.style), index + 1));
+    animateDock(() => store.addPin(makePin(pin.kind, pin.style, undefined, pin.ref), index + 1));
   };
 
   // --- dock drag (grip) -----------------------------------------------------
@@ -1135,11 +1191,16 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
   const armedHidden = armedPin && hidden.includes(armedPin) ? armedPin : null;
 
   const renderPin = (pin, index, { inMenu = false } = {}) => {
-    const kind = pinKind(pin.kind);
     const color = pinFaceColor(pin);
     const badge = pinBadge(pin);
-    const description = pinDescription(pin);
-    const pressed = armedPin === pin;
+    const survey = isSurveyPinKind(pin.kind)
+      ? surveyPinStatus(pin, { toolbar: api.surveyToolbar, activeTool, shownMode: shownMarkerMode, smartFillReady })
+      : null;
+    const unavailable = Boolean(survey && !survey.available);
+    // A survey pin whose thing is not in the template in use stays (it may
+    // be the next document's), dimmed, and says why.
+    const description = unavailable ? `${pinDescription(pin)}: not in this template` : pinDescription(pin);
+    const pressed = survey ? survey.pressed : armedPin === pin;
     return (
       <div
         key={pin.id}
@@ -1149,7 +1210,8 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
       >
         <button
           type="button"
-          className={`btn chrome-subcontrol pinned-dock__pin ${pressed ? 'btn-active' : 'btn-ghost'}`}
+          className={`btn chrome-subcontrol pinned-dock__pin ${pressed ? 'btn-active' : 'btn-ghost'}${survey ? ' is-survey' : ''}${unavailable ? ' is-unavailable' : ''}`}
+          aria-disabled={unavailable || undefined}
           role={inMenu ? 'menuitem' : undefined}
           aria-pressed={inMenu ? undefined : pressed}
           aria-current={inMenu && pressed ? 'true' : undefined}
@@ -1186,7 +1248,7 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
             openMenu('pin', event.currentTarget, { pinId: pin.id });
           }}
         >
-          <PinGlyph kindId={pin.kind} color={color} />
+          <PinGlyph kindId={pin.kind} color={color} pin={pin} />
           {badge ? <span className="pinned-dock__badge" aria-hidden="true">{badge}</span> : null}
         </button>
         {editing ? (
@@ -1222,7 +1284,7 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
       >
         {armedHidden ? (
           <>
-            <PinGlyph kindId={armedHidden.kind} color={pinFaceColor(armedHidden)} />
+            <PinGlyph kindId={armedHidden.kind} color={pinFaceColor(armedHidden)} pin={armedHidden} />
             <span className="pinned-dock__badge" aria-hidden="true">+{hidden.length}</span>
           </>
         ) : (
@@ -1309,6 +1371,8 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
           currentKind={currentKind}
           onPinCurrent={pinCurrent}
           onAdd={(kindId) => addPin(kindId, startingStyleFor(apiRef.current, sessionRef.current, kindId))}
+          surveyChoices={surveyPinsShown ? surveyPinChoices(api.surveyToolbar, { smartFillReady }) : null}
+          onAddSurvey={(choice) => addPin(choice.kind, {}, choice.ref || null)}
           onUnpin={unpin}
           onDuplicate={duplicate}
           onPlacement={(next) => {
@@ -1354,7 +1418,7 @@ function menuPosition(rect, placement, width = 240) {
 
 function PinnedToolsMenu({
   menuRef, menu, placement, phone, pins, hiddenPins, renderPin, compact, pinSet, editing, currentKind, onPinCurrent, onAdd,
-  onUnpin, onDuplicate, onPlacement, onToggleCompact, onToggleEditing, onHide, api,
+  onUnpin, onDuplicate, onPlacement, onToggleCompact, onToggleEditing, onHide, api, surveyChoices = null, onAddSurvey,
 }) {
   // The picker's search words; a fresh picker starts empty.
   const [query, setQuery] = useState('');
@@ -1429,11 +1493,17 @@ function PinnedToolsMenu({
   }
   const groups = ['Draw', 'Shapes', 'Text'];
   const found = matchPinKinds(query);
+  // Survey mode (Nightly 'survey-mode-tools'): its own things come first.
+  const surveyFound = surveyChoices ? matchSurveyPinChoices(query, surveyChoices) : [];
   const searching = query.trim().length > 0;
-  const currentStyle = currentKind && typeof api?.readToolStyle === 'function'
+  const currentStyle = currentKind && !currentKind.survey && typeof api?.readToolStyle === 'function'
     ? api.readToolStyle(currentKind.tool, currentKind.lineStyle)
     : null;
-  const currentPreview = currentKind ? makePin(currentKind.id, { ...currentStyle, lineStyle: currentKind.lineStyle || api?.lineBorderStyle }, 'preview') : null;
+  const currentPinned = currentKind?.survey && pins.some((pin) => pin.kind === currentKind.id);
+  const currentPreview = currentKind && !currentPinned
+    ? makePin(currentKind.id, { ...currentStyle, lineStyle: currentKind.lineStyle || api?.lineBorderStyle }, 'preview')
+    : null;
+  const surveyGroups = ['Survey markers', 'Entities', 'Modules', 'Categories'];
   return (
     <div ref={menuRef} role="menu" aria-label="Pin a tool" className="pinned-dock-menu is-picker" style={style} data-pinned-tools-picker="true" data-side={side}>
       {currentPreview ? (
@@ -1465,19 +1535,61 @@ function PinnedToolsMenu({
           enterKeyHint="done"
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === 'Enter' && searching && found.length) {
+            const firstSurvey = surveyFound.find((choice) => !choiceIsPinned(choice, pins));
+            if (event.key === 'Enter' && searching && firstSurvey) {
+              event.preventDefault();
+              onAddSurvey?.(firstSurvey);
+            } else if (event.key === 'Enter' && searching && found.length) {
               event.preventDefault();
               onAdd(found[0].id);
             } else if (event.key === 'ArrowDown') {
               event.preventDefault();
-              menuRef.current?.querySelector('[data-pin-kind]')?.focus();
+              menuRef.current?.querySelector('[data-pin-kind]:not(:disabled), [data-pin-survey]:not(:disabled)')?.focus();
             }
           }}
         />
       </div>
-      {searching && !found.length ? (
+      {searching && !found.length && !surveyFound.length ? (
         <p className="pinned-dock-menu__note" data-pin-search-empty="true">No tool matches “{query.trim()}”.</p>
       ) : null}
+      {surveyGroups.map((group) => {
+        const choices = surveyFound.filter((choice) => choice.group === group);
+        if (!choices.length) return null;
+        const markers = group === 'Survey markers';
+        return (
+          <div key={group} role="group" aria-label={group} data-pin-survey-group={group}>
+            <div className="pinned-dock-menu__heading">{group}</div>
+            <div className={markers ? 'pinned-dock-menu__grid' : 'pinned-dock-menu__list'}>
+              {choices.map((choice) => {
+                const pinned = choiceIsPinned(choice, pins);
+                const face = makePin(choice.kind, {}, 'preview', choice.ref);
+                return (
+                  <button
+                    key={choice.key}
+                    type="button"
+                    role="menuitem"
+                    data-pin-survey={choice.key}
+                    disabled={pinned}
+                    aria-label={pinned ? `${choice.label}, pinned` : choice.label}
+                    onClick={() => onAddSurvey?.(choice)}
+                  >
+                    {markers
+                      ? <Icon name={pinKind(choice.kind)?.iconName} size={16} color="currentColor" />
+                      : <span className="pinned-dock-menu__face is-small"><PinGlyph kindId={choice.kind} color={pinFaceColor(face)} pin={face} /></span>}
+                    <span className={markers ? undefined : 'pinned-dock-menu__text'}>
+                      <span>{choice.label}</span>
+                      {!markers && (choice.sub || pinned)
+                        ? <span className="pinned-dock-menu__sub">{pinned ? 'Pinned' : choice.sub}</span>
+                        : null}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+      {surveyFound.length && found.length ? <div className="pinned-dock-menu__rule" /> : null}
       {groups.map((group) => {
         const kinds = found.filter((kind) => kind.group === group);
         if (!kinds.length) return null;

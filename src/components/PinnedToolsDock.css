@@ -19,7 +19,20 @@
   align-items: center;
 }
 .pinned-dock-shell.is-left { left: 10px; }
-.pinned-dock-shell.is-right { right: 14px; }
+.pinned-dock-shell.is-right {
+  right: 14px;
+  transition: transform var(--motion-panel, 200ms) var(--ease-out, ease-out);
+}
+/* The open Survey panel (320px, SurveySpacesRail) lies over the page area's
+   right edge, and hid a dock docked right in Survey mode, where the survey
+   pins live (owner 2026-11-23). The dock moves clear of it, in the panel's
+   own time. */
+#root:has(#survey-rail-panel:not(.is-collapsed)) .pinned-dock-shell.is-right:not(.is-phone) {
+  transform: translateX(-320px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .pinned-dock-shell.is-right { transition: none; }
+}
 .pinned-dock-shell.is-bottom {
   left: 12px;
   right: 12px;
@@ -419,3 +432,23 @@ html:has(.mobile-pdf-sheet:not(.is-collapsed)) .pinned-dock-shell.is-phone {
   padding: 0;
   justify-content: center;
 }
+
+/* Survey pins (Nightly 'survey-mode-tools', owner 2026-11-23). They carry no
+   width figure, so the glyph sits in the middle of the pin. A category wears
+   its survey-bar ring of initials, an entity its colour disc. */
+.pinned-dock__pin.is-survey .pinned-dock__glyph { transform: none; }
+.pinned-dock__glyph.is-survey.survey-subrow__glyph { color: inherit; }
+.pinned-dock__disc {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px var(--border-strong);
+}
+/* A pin whose entity, module or category is not in the template in use. */
+.pinned-dock__pin.is-unavailable { color: var(--text-disabled); cursor: not-allowed; }
+.pinned-dock__pin.is-unavailable .pinned-dock__glyph { opacity: 0.45; }
+/* The picker's entity, module and category rows: face, name, module. */
+.pinned-dock-menu__list { display: flex; flex-direction: column; gap: 1px; }
+.pinned-dock-menu__face.is-small { width: 24px; height: 24px; background: transparent; }
+.pinned-dock .pinned-dock__pin.is-unavailable.btn-ghost:hover,
+.pinned-dock .pinned-dock__pin.is-unavailable.btn-ghost:active { background: transparent; }
