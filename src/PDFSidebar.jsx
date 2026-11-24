@@ -568,7 +568,7 @@ const PDFSidebar = React.forwardRef(({
     ...(layersEnabled ? [{ id: 'layers', label: 'Layers', icon: 'layers' }] : []),
     ...(markLibraryEnabled ? [{ id: 'library', label: 'Library', icon: 'library' }] : []),
     ...(commentsOn ? [{ id: 'comments', label: 'Comments', icon: 'comment' }] : []),
-    ...(markupListEnabled ? [{ id: 'markups', label: 'Annotations', icon: 'listChecks' }] : []),
+    ...(markupListEnabled ? [{ id: 'markups', label: 'Annotations', icon: 'annotations' }] : []),
   ];
 
   const toggleHistoryPanel = useCallback(() => {
