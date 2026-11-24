@@ -788,3 +788,79 @@ button.selection-quick-bar__fill:focus-visible {
 }
 .selection-quick-bar__button--font { height: 44px; }
 }
+
+/* Nightly 'marker-tap-card': a picked Survey Marker says what it is. */
+.selection-quick-bar__marker {
+  padding: 0 4px 0 8px;
+  gap: 8px;
+  min-width: 0;
+}
+.selection-quick-bar__marker-what {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  line-height: 1.15;
+  max-width: 160px;
+  min-width: 0;
+}
+.selection-quick-bar__marker-category {
+  color: var(--text-1);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.selection-quick-bar__marker-tag {
+  color: var(--text-3);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.selection-quick-bar__marker-lines {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.selection-quick-bar__marker-line {
+  height: 26px;
+  max-width: 150px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color var(--motion-state, 150ms) var(--ease-out, cubic-bezier(0.33, 1, 0.68, 1));
+  -webkit-tap-highlight-color: transparent;
+}
+@media (hover: hover) {
+  .selection-quick-bar__marker-line:hover { background: var(--hover); color: var(--text-1); }
+}
+.selection-quick-bar__marker-line:active { background: var(--pressed); color: var(--text-1); transition: none; }
+.selection-quick-bar__marker-line:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.selection-quick-bar__marker-line-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.selection-quick-bar__marker-line-answer {
+  color: var(--text-3);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  flex: 0 0 auto;
+}
+.selection-quick-bar__marker-line[data-answered='true'] .selection-quick-bar__marker-line-answer { color: var(--text-1); }
+.selection-quick-bar__marker-more { color: var(--text-3); font-weight: 600; }
+@media (prefers-reduced-motion: reduce) {
+  .selection-quick-bar__marker-line { transition: none; }
+}

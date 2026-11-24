@@ -32692,6 +32692,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       }
     }, 300);
   }, [surveyMarkers, selectedTemplate, showSurveyPanel, rightRailCollapsed, requestRightRailExpand, mobileMode]);
+  // Nightly 'marker-tap-card': the quick bar's Expand on a Survey Marker opens
+  // the Survey panel on it. Stable, so the published rail API doesn't churn.
+  const handleSurveyMarkerClickedRef = useRef(handleSurveyMarkerClicked);
+  handleSurveyMarkerClickedRef.current = handleSurveyMarkerClicked;
+  const openSurveyMarker = useCallback((annotationId) => handleSurveyMarkerClickedRef.current?.(annotationId), []);
 
   // A Survey Marker picked on the page opens its row in the open Survey panel
   // (desktop), as a markup list follows the picked markup. The panel is not
@@ -38655,6 +38660,7 @@ ${pageBlocks}
   useEffect(() => {
     if (typeof onRightRailApiChange !== 'function') return;
     const nextRightRailApi = {
+      openSurveyMarker,
       activeSpaceId,
       // Create Category modal plumbing (survey rail plus button). The modal's
       // other data needs (existingTemplateNames, templateId, document id)

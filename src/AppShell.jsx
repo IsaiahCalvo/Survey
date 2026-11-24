@@ -6409,6 +6409,8 @@ export default function App({ devPreviewReturnTab = null }) {
         onOpenColourPicker={toggleAnnotationColourPicker}
         entities={rightRailApi?.selectedTemplate?.entities || null}
         surveyMarkers={rightRailApi?.surveyMarkers || null}
+        surveyTemplate={rightRailApi?.selectedTemplate || null}
+        onOpenSurveyMarker={(id) => rightRailApi?.openSurveyMarker?.(id)}
         onComment={markCommentsEnabled && activeTab?.file?.id ? commentOnMark : null}
         onPickEntity={(entityId, markerIds) => {
           rightRailApi?.rememberSurveyEntity?.(entityId);
