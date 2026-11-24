@@ -7,8 +7,8 @@
  * pointer over the pages at the size it will land, so the person sees where
  * it goes. A mouse or pen press on a page places it there (the press does not
  * reach the page's own tools); a press anywhere else lets go of it, as does
- * Esc. A press on a mark, a selection handle or a button lets go of it and
- * goes through, so the stamp just placed can be moved or resized at once.
+ * Esc. A press on the selection (the stamp just placed) or a button lets go
+ * of it and goes through, so that stamp can be moved or resized at once.
  * A finger still pans: only a tap (no drag, one finger) places.
  */
 import { useEffect, useRef, useState } from 'react';
@@ -37,12 +37,22 @@ function pageScreenScale(page) {
 }
 
 // What a press edits or clicks instead of placing (round 4: grabbing the new
-// stamp's handle dropped a second stamp).
-const PRESS_GOES_THROUGH = [
-  '[data-annotation-index]', '[data-annotation-id]', '[data-resize-handle]', '[data-handle]',
-  '[data-handle-hit-pad]', '[data-rotation-handle]', '[data-curve-handle]',
-  'button', 'input', 'textarea', 'select', '[role="toolbar"]', '[contenteditable="true"]',
-].join(', ');
+// stamp's handle dropped a second stamp). Only the selection counts: a press
+// on any other mark still stamps on top of it.
+const SELECTION_HANDLE = '[data-resize-handle], [data-handle], [data-handle-hit-pad], [data-rotation-handle], [data-curve-handle]';
+const CONTROL = 'button, input, textarea, select, [role="toolbar"], [contenteditable="true"]';
+function pressGoesThrough(event, page) {
+  const target = event.target;
+  if (target?.closest?.(`${SELECTION_HANDLE}, ${CONTROL}`)) return true;
+  if (!page) return false;
+  const mark = target?.closest?.('[data-annotation-index]');
+  if (mark && page.querySelector(`[data-selection-context-index="${mark.getAttribute('data-annotation-index')}"]`)) return true;
+  for (const frame of page.querySelectorAll('[data-selection-context-hitbox]')) {
+    const r = frame.getBoundingClientRect();
+    if (event.clientX >= r.left && event.clientX <= r.right && event.clientY >= r.top && event.clientY <= r.bottom) return true;
+  }
+  return false;
+}
 const TAP_SLOP_PX = 10;
 const TAP_MS = 500;
 
@@ -109,12 +119,12 @@ export default function MarkLibraryPlacementLayer({ active = false, rootRef = nu
       if (event.pointerType === 'touch') {
         // The press itself goes through so a drag or a pinch still moves the page.
         fingers.add(event.pointerId);
-        tap = page && fingers.size === 1 && !event.target?.closest?.(PRESS_GOES_THROUGH)
+        tap = page && fingers.size === 1 && !pressGoesThrough(event, page)
           ? { id: event.pointerId, x: event.clientX, y: event.clientY, t: Date.now() }
           : null;
         return;
       }
-      if (!page || event.button !== 0 || event.target?.closest?.(PRESS_GOES_THROUGH)) {
+      if (!page || event.button !== 0 || pressGoesThrough(event, page)) {
         disarmLibraryItem();
         return;
       }
