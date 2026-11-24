@@ -2,7 +2,7 @@
 // N arms the Pin tool, M cycles Comment / Issue / Task, a click drops a pin
 // with its bottom-left corner on the point and opens the composer (Enter is a
 // new line, the send button saves, the tool stays on). Pins stay 26 px at any
-// zoom; a done issue hides unless "Show done items" is on; the "Show pins"
+// zoom; a done issue hides unless "Show done items" is on; the "On the page"
 // switches are kept per person; a pin drags (Survey goes past Drawboard).
 import { E2E_ACCOUNTS } from './accounts.mjs';
 import { seedSheet } from './seedSheet.mjs';
@@ -119,7 +119,7 @@ test('N, click, composer, save; M to Issue; status hides a done pin; Show pins; 
     expect(closedRow.pin_x).toBeGreaterThan(250);
     expect(closedRow.pin_y).toBeGreaterThan(350);
 
-    // Show pins: done items back; Comments off hides the comment pin and the master.
+    // On the page card: done items back; Comments off hides the comment pin and the master.
     await page.locator('[data-pin-filter-toggle]').filter({ visible: true }).click();
     const filterCard = page.locator('[data-pin-filter-menu]');
     await filterCard.locator('[data-pin-filter="done"]').click();
@@ -199,7 +199,7 @@ for (const layout of [{ name: 'phone web', native: false }, { name: 'phone app',
       try {
         const { surface, pins } = await openSheet(page, sheet, { tap: true });
         await page.getByRole('button', { name: 'Text', exact: true }).filter({ visible: true }).first().tap();
-        await page.getByRole('button', { name: 'Pin', exact: true }).filter({ visible: true }).last().tap();
+        await page.getByRole('button', { name: 'Page comment', exact: true }).filter({ visible: true }).last().tap();
         await page.waitForTimeout(300);
         const box = await surface.boundingBox();
         await page.touchscreen.tap(box.x + box.width * 0.4, box.y + box.height * 0.3);

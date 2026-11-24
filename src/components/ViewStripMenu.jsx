@@ -2,17 +2,18 @@ import { useEffect, useRef, useState } from 'react';
 import RailFlyout from './RailFlyout.jsx';
 
 /**
- * Nightly 'view-strip' (owner 2026-11-23: "the right rail ... is way too big
- * ... a lot of those things can be one button that slides out"). One View
- * button in the right rail; pressed, a row of the rail's view buttons (Paper,
- * Thin PDF lines, Page grid, Snapping, Dark pages, Hide marks, Show pins)
- * slides out beside it, each working exactly as it did in the rail.
+ * Nightly 'view-strip'. Owner 2026-11-24: the Page fit list stood almost as
+ * tall as the rail from Full screen up to the zoom buttons; he wanted one
+ * small card that slides out and holds all of it, the view options (Paper,
+ * Thin PDF lines, Page grid ...) included. So the rail's Page fit button opens
+ * this card: Fit, Pages and Scroll as short rows of choices, then the view
+ * buttons in one row, each opening its own card as it did in the rail.
  *
- * The row is a RailFlyout card that is itself a rail (data-chrome-rail): a
- * card one of its buttons opens stands off the row's left edge, never over
- * the row, as the rail's own cards stand off the rail.
+ * The card is itself a rail (data-chrome-rail): a card one of its buttons
+ * opens stands off the card's left edge, never over it, as the rail's own
+ * cards stand off the rail.
  *
- * `renderButton({ open, ref, onClick })`.
+ * `renderButton({ open, ref, onClick })`; children are the card's body.
  */
 export default function ViewStripMenu({ renderButton, children }) {
   const [open, setOpen] = useState(false);
@@ -21,13 +22,13 @@ export default function ViewStripMenu({ renderButton, children }) {
   useEffect(() => {
     if (!open) return undefined;
     // Capture, as the cards inside do; a click in one of their cards is
-    // inside the row too (they render inside it), so it keeps the row open.
+    // inside this card too (they render inside it), so it stays open.
     const onPointerDown = (event) => {
       if (buttonRef.current?.contains(event.target) || cardRef.current?.contains(event.target)) return;
       setOpen(false);
     };
     // Bubble, not capture: an open card inside takes Escape first (its own
-    // capture handler stops it), so Escape closes the card, then the row.
+    // capture handler stops it), so Escape closes that card, then this one.
     const onKeyDown = (event) => {
       if (event.key !== 'Escape') return;
       setOpen(false);
@@ -46,12 +47,12 @@ export default function ViewStripMenu({ renderButton, children }) {
       {open && (
         <RailFlyout
           cardRef={cardRef}
-          role="toolbar"
+          title="View"
+          role="dialog"
           aria-label="View"
-          aria-orientation="horizontal"
           data-chrome-rail="true"
-          data-view-strip="true"
-          className="rail-flyout--strip"
+          data-view-card="true"
+          className="rail-flyout--view"
         >
           {children}
         </RailFlyout>

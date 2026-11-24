@@ -1,5 +1,8 @@
 /* Nightly 'comment-pins': the Pin tool's split button (desktop tool row) and
-   the "Show pins" card on the right rail. */
+   the "On the page" card on the right rail. Owner 2026-11-24 ("I don't even
+   know what a pin is"): Survey already says pin for Pinned tools and Counter
+   pins, so the words people see call these comments, issues and tasks on the
+   page; the code keeps its pin names. */
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import RailFlyout from '../RailFlyout.jsx';
@@ -46,7 +49,7 @@ export function PinToolButton({ active, onArm, glyphSize = 18 }) {
   const buttonRef = useRef(null);
   const menuRef = useRef(null);
   useOutsideClose(open, setOpen, [buttonRef, menuRef]);
-  const label = kind === 'comment' ? 'Add a pinned comment' : `Add a pinned ${PIN_KIND_LABELS[kind].toLowerCase()}`;
+  const label = kind === 'issue' ? 'Add an issue on the page' : `Add a ${PIN_KIND_LABELS[kind].toLowerCase()} on the page`;
   const rect = open ? buttonRef.current?.getBoundingClientRect() : null;
   return (
     <>
@@ -75,7 +78,7 @@ export function PinToolButton({ active, onArm, glyphSize = 18 }) {
         <div
           ref={menuRef}
           role="listbox"
-          aria-label="Pin type"
+          aria-label="Comment, issue or task"
           data-pin-kind-menu="true"
           style={{
             position: 'fixed',
@@ -135,7 +138,7 @@ const SWITCHES = [
   ['tasks', 'Tasks'],
 ];
 
-/** The rail's "Show pins" card. `renderButton({ open, ref, onClick, on })`. */
+/** The rail's "On the page" card. `renderButton({ open, ref, onClick, on })`. */
 export function PinFilterMenu({ renderButton }) {
   const tip = useTooltip();
   const enabled = usePagePins((s) => s.enabled);
@@ -155,10 +158,10 @@ export function PinFilterMenu({ renderButton }) {
     <div className="page-grid-menu">
       {renderButton({ open, ref: buttonRef, onClick: () => setOpen((v) => !v), on: allOn })}
       {open && (
-        <RailFlyout cardRef={cardRef} role="dialog" aria-label="Show pins" title="Show pins" data-pin-filter-menu="true" className="page-grid-settings__card">
+        <RailFlyout cardRef={cardRef} role="dialog" aria-label="Comments, issues and tasks" title="On the page" data-pin-filter-menu="true" className="page-grid-settings__card">
           <div className="page-grid-settings">
             <button type="button" role="switch" aria-checked={allOn} data-pin-filter="all" className="page-grid-settings__switch" onClick={() => set(togglePinFilterMaster(filter))}>
-              <span style={{ fontWeight: 600 }}>Show pins</span>
+              <span style={{ fontWeight: 600 }}>Show all</span>
               <span className="page-grid-settings__knob" aria-hidden="true" />
             </button>
             {SWITCHES.map(([key, label]) => (
@@ -174,10 +177,10 @@ export function PinFilterMenu({ renderButton }) {
               aria-checked={filter.done}
               data-pin-filter="done"
               className="page-grid-settings__switch"
-              {...tip('Pins count as done when an Issue is Closed, Approved or Rejected, or a Task is Closed.', 'left')}
+              {...tip('An issue is done when it is Closed, Approved or Rejected; a task when it is Closed.', 'left')}
               onClick={() => set({ ...filter, done: !filter.done })}
             >
-              <span>Show done items</span>
+              <span>Show done ones</span>
               <span className="page-grid-settings__knob" aria-hidden="true" />
             </button>
           </div>

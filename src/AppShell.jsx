@@ -6130,18 +6130,19 @@ export default function App({ devPreviewReturnTab = null }) {
                         <EyeGlyph open={!allMarksHidden} size={RAIL_CONTROL_GLYPH} />
                       </button>
                     )}
-                    {/* Nightly 'comment-pins': the "Show pins" card. */}
+                    {/* Nightly 'comment-pins': the "On the page" card (comments,
+                        issues and tasks dropped on the page). */}
                     {pinsOn && (
                       <PinFilterMenu renderButton={({ open, ref, onClick, on }) => (
                         <button
                           ref={ref}
                           type="button"
                           onClick={onClick}
-                          aria-label="Show pins"
+                          aria-label="Comments, issues and tasks"
                           aria-haspopup="dialog"
                           aria-expanded={open}
                           data-pin-filter-toggle="true"
-                          {...chromeTip(open ? undefined : 'Show pins', tipSide)}
+                          {...chromeTip(open ? undefined : 'Comments, issues and tasks', tipSide)}
                           style={{ ...footerBtn(), color: on || open ? 'var(--text-1)' : 'var(--text-3)' }}
                         >
                           <Icon name="pagePin" size={RAIL_CONTROL_GLYPH} color="currentColor" />
@@ -6150,6 +6151,103 @@ export default function App({ devPreviewReturnTab = null }) {
                     )}
                 </>
               );
+              // Nightly 'view-strip' (owner 2026-11-24): the View card the
+              // rail's Page fit button opens (ViewStripMenu.jsx). The fit
+              // list's eleven rows become three short rows of choices (Fit,
+              // Pages, Scroll), and the view buttons sit under them in one row.
+              const viewCardBody = () => {
+                const gridOn = isGridMode(pageSpread);
+                const columns = gridOn ? pageSpread.slice(5) : null;
+                const refit = () => {
+                  const fit = api.zoomMode;
+                  if (fit && fit !== ZOOM_MODES.MANUAL) {
+                    requestAnimationFrame(() => requestAnimationFrame(() => api.handleZoomModeSelect(fit)));
+                  }
+                };
+                // Scroll folds Continuous and Direction into one choice:
+                // Down and Across scroll all the pages that way; Page by page
+                // shows one page (or pair) at a time. A Grid always scrolls,
+                // so Page by page is greyed out there; Across needs Single,
+                // or Nightly 'page-direction-all' for the other views (KAL-716).
+                const acrossOff = pageSpread !== 'single' && !isFeatureOn('page-direction-all');
+                const scroll = !gridOn && !pageContinuous ? 'page' : (acrossOff ? 'down' : (pageDirection === 'horizontal' ? 'across' : 'down'));
+                const scrollChoices = [
+                  ['down', 'Down', false],
+                  ['across', 'Across', acrossOff],
+                  ['page', 'Page by page', gridOn],
+                ];
+                const chooseScroll = (id) => {
+                  if (id === 'page') setPageContinuous(false);
+                  else {
+                    if (!gridOn) setPageContinuous(true);
+                    setPageDirection(id === 'across' ? 'horizontal' : 'vertical');
+                  }
+                  refit();
+                };
+                const step = ({ key, label, on, off = false, onPick, ...rest }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    role="radio"
+                    aria-checked={on}
+                    aria-disabled={off || undefined}
+                    className="rail-flyout__step rail-flyout__step--word"
+                    onClick={() => { if (!on && !off) onPick(); }}
+                    {...rest}
+                  >
+                    {label}
+                  </button>
+                );
+                const row = (id, label, steps) => (
+                  <div role="radiogroup" aria-labelledby={id} className="rail-flyout__columns">
+                    <span id={id} className="rail-flyout__label">{label}</span>
+                    <span className="rail-flyout__steps">{steps}</span>
+                  </div>
+                );
+                return (
+                  <>
+                    {row('view-card-fit', 'Fit', ZOOM_MODE_OPTIONS.filter((o) => o.id !== ZOOM_MODES.MANUAL).map((o) => step({
+                      key: o.id,
+                      label: o.label.replace(/^Fit\s+/i, '').replace(/^./, (c) => c.toUpperCase()),
+                      'aria-label': o.label,
+                      'data-fit-mode': o.id,
+                      on: o.id === api.zoomMode,
+                      onPick: () => api.handleZoomModeSelect(o.id),
+                    })))}
+                    {pageSpreadsOn && !isNarrowShell && (
+                      <>
+                        {row('view-card-pages', 'Pages', PAGE_SPREAD_OPTIONS.map((o) => step({
+                          key: o.id,
+                          label: o.label,
+                          'data-page-spread': o.id,
+                          on: o.id === 'grid' ? gridOn : o.id === pageSpread,
+                          onPick: () => { setPageSpreadMode(o.id); refit(); },
+                        })))}
+                        {gridOn && row('view-card-columns', 'Columns', ['auto', ...GRID_COLUMN_CHOICES.map(String)].map((n) => step({
+                          key: n,
+                          label: n === 'auto' ? 'Auto' : n,
+                          'aria-label': n === 'auto' ? 'Columns from the page count' : `${n} columns`,
+                          'data-grid-columns': n,
+                          on: n === columns,
+                          onPick: () => { setPageSpreadMode(`grid-${n}`); refit(); },
+                        })))}
+                        {row('view-card-scroll', 'Scroll', scrollChoices.map(([id, label, off]) => step({
+                          key: id,
+                          label,
+                          'data-view-scroll': id,
+                          on: scroll === id,
+                          off,
+                          onPick: () => chooseScroll(id),
+                        })))}
+                      </>
+                    )}
+                    <div role="separator" className="rail-flyout__divider" />
+                    <div role="toolbar" aria-label="View options" className="rail-flyout__tools">
+                      {viewButtons('above')}
+                    </div>
+                  </>
+                );
+              };
               // Owner 2026-10-07 (Drawboard rail): the Survey rail never
               // widens now - its open panel stands BESIDE it - so the footer
               // is always this vertical stack at the foot of the 48px rail
@@ -6226,6 +6324,35 @@ export default function App({ devPreviewReturnTab = null }) {
 
                     <div style={{ width: '24px', height: '1px', background: 'var(--surface-3)', margin: '4px 0' }} />
 
+                    {/* Nightly 'view-strip' (owner 2026-11-24): Page fit opens
+                        the one View card (ViewStripMenu.jsx) that holds the
+                        fits, the page views and the view buttons, so the rail
+                        stops at Page fit and Full screen. */}
+                    {viewStripEnabled ? (
+                      <ViewStripMenu renderButton={({ open, ref, onClick }) => (
+                        <button
+                          ref={ref}
+                          type="button"
+                          onClick={onClick}
+                          aria-label="View"
+                          aria-haspopup="dialog"
+                          aria-expanded={open}
+                          data-view-strip-toggle="true"
+                          {...chromeTip(open ? undefined : `View: ${api.zoomDropdownLabel}`, 'left')}
+                          style={{ ...footerBtn(), position: 'relative', width: `${RAIL_SPLIT_CONTROL_W}px`, color: open ? 'var(--text-1)' : (fitMode !== ZOOM_MODES.MANUAL ? 'var(--text-2)' : 'var(--text-3)') }}
+                        >
+                          {/* The caret points left: the card slides out over
+                              the page. The glyph is the current fit's. */}
+                          <Icon name="chevronLeft" size={RAIL_CARET} color="currentColor" style={{ position: 'absolute', left: '2px', top: 0, bottom: 0, margin: 'auto 0' }} />
+                          <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {renderFitIcon(fitIconMode, RAIL_CONTROL_GLYPH)}
+                          </span>
+                        </button>
+                      )}>
+                        {viewCardBody()}
+                      </ViewStripMenu>
+                    ) : (
+                    <>
                     {/* Page-fit — Walkthru slim-rail pattern: current mode's
                         icon centered in a 36×28 cell with a small LEFT
                         chevron pinned to the left edge signalling the popup
@@ -6276,33 +6403,9 @@ export default function App({ devPreviewReturnTab = null }) {
                       </button>
                       {api.isZoomMenuOpen && fitMenu()}
                     </div>
-                    {/* Nightly 'view-strip' (owner 2026-11-23): one View button
-                        slides these out in a row (ViewStripMenu.jsx), so the
-                        rail stops at Page fit, View and Full screen. */}
-                    {viewStripEnabled ? (
-                      <ViewStripMenu renderButton={({ open, ref, onClick }) => (
-                        <button
-                          ref={ref}
-                          type="button"
-                          onClick={onClick}
-                          aria-label="View"
-                          aria-haspopup="true"
-                          aria-expanded={open}
-                          data-view-strip-toggle="true"
-                          {...chromeTip(open ? undefined : 'View', 'left')}
-                          style={{ ...footerBtn(), position: 'relative', width: `${RAIL_SPLIT_CONTROL_W}px`, color: open ? 'var(--text-1)' : 'var(--text-2)' }}
-                        >
-                          {/* The caret points left: the row slides out over the
-                              page, as Page fit's list does. */}
-                          <Icon name="chevronLeft" size={RAIL_CARET} color="currentColor" style={{ position: 'absolute', left: '2px', top: 0, bottom: 0, margin: 'auto 0' }} />
-                          <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <Icon name="viewOptions" size={RAIL_CONTROL_GLYPH} color="currentColor" />
-                          </span>
-                        </button>
-                      )}>
-                        {viewButtons('above')}
-                      </ViewStripMenu>
-                    ) : viewButtons('left')}
+                    {viewButtons('left')}
+                    </>
+                    )}
                     {focusModeEnabled && (
                       <button
                         type="button"
