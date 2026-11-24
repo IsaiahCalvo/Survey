@@ -25,8 +25,8 @@
 //   most possible cost first and is refused with 'credit_used_up' once the
 //   provider's monthly cap (public.ai_credit_budgets) would be passed.
 //   SURVEY_AGENT_TTS: 'off' turns the server voice off (the app then uses
-//     the device's own voice); 'openai' speaks with gpt-4o-mini-tts on
-//     OPENAI_API_KEY (voice 'marin'), on the credit cap. SURVEY_AGENT_TTS_MODEL
+//     the device's own voice). With OPENAI_API_KEY set the voice is
+//     gpt-4o-mini-tts (voice 'marin'), on the credit cap; 'groq' keeps Orpheus. SURVEY_AGENT_TTS_MODEL
 //     / _VOICE / _INSTRUCTIONS pick the voice (Groq Orpheus by default);
 //     SURVEY_AGENT_TTS_PRICE is USD per million characters for Orpheus
 //     (default 0, free tier; Orpheus lists 22).
@@ -168,17 +168,19 @@ function transcriber() {
   return viaOpenai;
 }
 
-// The server voice. SURVEY_AGENT_TTS='openai' speaks with OpenAI's
-// gpt-4o-mini-tts (natural, about $0.015 a minute, on the shared credit cap);
-// otherwise Groq Orpheus on its free tier, which allows only about 100
-// replies a day for everyone and takes at most 200 characters.
+// The server voice: OpenAI's gpt-4o-mini-tts when OPENAI_API_KEY is set
+// (natural, about $0.015 a minute, on the shared credit cap); otherwise, or
+// with SURVEY_AGENT_TTS='groq', Groq Orpheus on its free tier, which allows
+// only about 100 replies a day for everyone and takes at most 200 characters.
 const OPENAI_TTS_INSTRUCTIONS = 'Speak like a friendly, quick coworker on a job site: natural and relaxed, '
   + 'normal speed, no announcer voice. Read tags such as 310H-R1409 or C-4-06 plainly, character groups as written.';
 function speaker() {
   const mode = Deno.env.get('SURVEY_AGENT_TTS') || '';
   if (mode === 'off') return null;
   const openai = Deno.env.get('OPENAI_API_KEY');
-  if (mode === 'openai' && openai) {
+  // OpenAI's voice whenever its key is set (secrets are typed by hand in the
+  // dashboard, so the default lives here); 'groq' keeps Orpheus.
+  if (mode !== 'groq' && openai) {
     return {
       url: 'https://api.openai.com/v1/audio/speech',
       key: openai,
