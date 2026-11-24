@@ -9,7 +9,10 @@ import Icon from '../Icons';
 import MenuGlide from './MenuGlide.jsx';
 import { useTooltip } from './Tooltip';
 
-export default function ExportMenu({ items = [], tooltip = {}, glyphSize = 10 }) {
+// Nightly 'share-export-one': with `triggerIcon`, the trigger is the top
+// bar's one Share button (a full-size glyph, its own label) instead of the
+// caret, and an item with `separatorBefore` starts a new group.
+export default function ExportMenu({ items = [], tooltip = {}, glyphSize = 10, triggerIcon = null, triggerLabel = 'More export options', triggerProps = {} }) {
   const tip = useTooltip();
   const [open, setOpen] = useState(false);
   const buttonRef = useRef(null);
@@ -48,15 +51,18 @@ export default function ExportMenu({ items = [], tooltip = {}, glyphSize = 10 })
         ref={buttonRef}
         type="button"
         className="chrome-control"
-        aria-label="More export options"
+        aria-label={triggerLabel}
         aria-haspopup="menu"
         aria-expanded={open}
         data-export-menu-trigger="true"
         onClick={() => setOpen((value) => !value)}
         {...tooltip}
-        style={{ border: 'none', background: 'transparent', color: 'var(--text-2)', cursor: 'pointer', width: 'auto', minWidth: 16, padding: '0 2px' }}
+        {...triggerProps}
+        style={triggerIcon
+          ? { border: 'none', background: 'transparent', color: 'var(--text-2)', cursor: 'pointer' }
+          : { border: 'none', background: 'transparent', color: 'var(--text-2)', cursor: 'pointer', width: 'auto', minWidth: 16, padding: '0 2px' }}
       >
-        <Icon name="chevronDown" size={glyphSize} />
+        <Icon name={triggerIcon || 'chevronDown'} size={glyphSize} />
       </button>
       {open && (
         <AnchoredPopover getAnchor={getAnchor} gap={6}>
@@ -74,7 +80,10 @@ export default function ExportMenu({ items = [], tooltip = {}, glyphSize = 10 })
             style={{ position: 'absolute', top: '100%', left: '50%', marginTop: 6, minWidth: 220, transform: 'translate(-50%, 0)', '--menu-origin': 'top center' }}
           >
             <MenuGlide />
-            {visibleItems.map((item, index) => (
+            {visibleItems.map((item, index) => [
+              item.separatorBefore && index > 0
+                ? <div key={`${item.label}-rule`} role="separator" className="hub-menu__separator" />
+                : null,
               <button
                 key={item.label}
                 type="button"
@@ -89,8 +98,8 @@ export default function ExportMenu({ items = [], tooltip = {}, glyphSize = 10 })
               >
                 {item.icon ? <Icon name={item.icon} size={14} color="currentColor" /> : null}
                 {item.label}
-              </button>
-            ))}
+              </button>,
+            ])}
           </div>
         </AnchoredPopover>
       )}

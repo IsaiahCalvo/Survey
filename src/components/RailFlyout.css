@@ -226,3 +226,15 @@
   .rail-flyout__step { width: 36px; height: 36px; }
   .rail-flyout__step--word { width: auto; padding: 0 10px; }
 }
+
+/* Nightly 'view-strip' (ViewStripMenu.jsx): the rail's view buttons in one
+   row that slides out beside the View button. Same card, no title; the
+   buttons keep the rail's own 36x28 cells and looks. */
+.rail-flyout.rail-flyout--strip {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 4px;
+}
