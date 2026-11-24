@@ -68,6 +68,8 @@ for (const layout of LAYOUTS) {
         await press(layout, visible(page.getByRole('button', { name: 'Manage team' })));
         const team = page.getByRole('dialog', { name: 'Manage team' });
         await expect(team.getByText(E2E_ACCOUNTS.editor.email)).toBeVisible({ timeout: 30_000 });
+        // Each person by their account name, not their email's first part (r5b #2/#5).
+        await expect(team.getByText('Eddie Editor').first()).toBeVisible();
 
         // Team list as a CSV.
         const downloading = page.waitForEvent('download');

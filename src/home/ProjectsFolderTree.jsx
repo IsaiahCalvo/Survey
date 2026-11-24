@@ -39,7 +39,7 @@ import { countLabel } from './countLabel.js';
 import SectionIconButton, { SectionIconActions, SelectModeButtons } from '../components/SectionIconButton.jsx';
 import SwipeActionsRow, { buildSwipeActions } from '../components/SwipeActionsRow.jsx';
 import { preloadedComponent } from '../utils/preloadedComponent';
-import { listProjectCollaboratorsForProjects } from '../services/projectInviteService';
+import { listProjectCollaboratorsForProjects, listProjectPeopleNames } from '../services/projectInviteService';
 import { MoveCopyModal, RenameModal } from './BulkModals';
 import { manageSelectionBlock } from './documentPermissions.js';
 import DragRearrangeHandle from '../reorder/DragRearrangeHandle';
@@ -465,13 +465,19 @@ export default function ProjectsFolderTree({
   // Local-only projects (numeric ids from nextLocalId) are skipped so the
   // uuid column never sees a bad cast. Failure degrades to owner-only teams.
   const [collabByProject, setCollabByProject] = useState(() => new Map());
+  // Each project person's account name, owners included (r5b #2/#5: the
+  // owner read as "Teammate" and others by their email's first part).
+  const [peopleNames, setPeopleNames] = useState(() => new Map());
   useEffect(() => {
     let cancelled = false;
     const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const ids = localProjects.map((p) => p.id).filter((id) => typeof id === 'string' && UUID_RE.test(id));
-    if (!ids.length) { setCollabByProject(new Map()); return undefined; }
+    if (!ids.length) { setCollabByProject(new Map()); setPeopleNames(new Map()); return undefined; }
     (async () => {
-      const { data } = await listProjectCollaboratorsForProjects(ids);
+      const [{ data }, people] = await Promise.all([
+        listProjectCollaboratorsForProjects(ids),
+        listProjectPeopleNames(ids),
+      ]);
       if (cancelled) return;
       const map = new Map();
       (data || []).forEach((row) => {
@@ -479,6 +485,9 @@ export default function ProjectsFolderTree({
         map.get(row.project_id).push(row);
       });
       setCollabByProject(map);
+      const names = new Map();
+      (people || []).forEach((p) => { if (p?.user_id != null) names.set(p.user_id, { name: p.name || null, email: p.email || null }); });
+      setPeopleNames(names);
     })();
     return () => { cancelled = true; };
   }, [localProjects]);
@@ -517,20 +526,35 @@ export default function ProjectsFolderTree({
     collabByProject.forEach((rows) => {
       rows.forEach((r) => {
         if (r?.user_id == null || map.has(r.user_id)) return;
-        const name = (r.email || '').split('@')[0] || 'Teammate';
+        const person = peopleNames.get(r.user_id);
+        const email = r.email || person?.email || '';
+        const name = r.name || person?.name || email.split('@')[0] || 'Teammate';
         const role = String(r.role || 'viewer');
         map.set(r.user_id, {
           id: r.user_id,
           name,
-          email: r.email || '',
+          email,
           role: role.charAt(0).toUpperCase() + role.slice(1),
           color: userColorFill(r.user_id),
           online: false,
         });
       });
     });
+    // Owners of shared projects have no collaborator row: name them too.
+    peopleNames.forEach((person, id) => {
+      if (map.has(id)) return;
+      const email = person.email || '';
+      map.set(id, {
+        id,
+        name: person.name || email.split('@')[0] || 'Teammate',
+        email,
+        role: 'Owner',
+        color: userColorFill(id),
+        online: false,
+      });
+    });
     return map;
-  }, [members, ownerMember, collabByProject]);
+  }, [members, ownerMember, collabByProject, peopleNames]);
   const lookupMember = (id) => memberById.get(id) || null;
 
   /* Issues and Tasks (flag project-issues): a Files · Issues · Tasks row of

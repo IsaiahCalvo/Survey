@@ -441,6 +441,7 @@ import { selectPageMarkup } from './services/thumbnailRender.js';
 import { announceLocalMarkEdit } from './utils/localMarkEdit.js';
 import { marksHidden, setMarksHidden, subscribeMarksHidden } from './utils/marksHidden.js';
 import { isTypingTarget, isOrphanTyping } from './utils/typingTarget.js';
+import { presenceDisplayName } from './components/presenceIdentity.js';
 import { isPasteInPlaceKey, pageNumberAtPoint } from './utils/pasteInPlaceKey.js';
 import { useMarkClipboard } from './utils/sharedMarkClipboard.js';
 // Beta 'mark-library' (Survey Nightly): save marks once, drop them on any page.
@@ -21459,7 +21460,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
             }
             const deferredPresenceResult = await updateDocumentPresence(documentId, user.id, {
               clientType: 'app',
-              displayName: user.email || user.user_metadata?.full_name || 'Anonymous',
+              displayName: presenceDisplayName(user),
               currentPage: coercePageNumber(pageNumRef.current, Number.POSITIVE_INFINITY) || pageNum
             });
 
@@ -21484,7 +21485,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
 
         const presenceResult = await updateDocumentPresence(documentId, user.id, {
           clientType: 'app',
-          displayName: user.email || user.user_metadata?.full_name || 'Anonymous',
+          displayName: presenceDisplayName(user),
           currentPage: coercePageNumber(pageNumRef.current, Number.POSITIVE_INFINITY) || pageNum
         });
 
@@ -23236,7 +23237,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     const runPresenceUpdate = async () => {
       const presenceResult = await updateDocumentPresence(documentId, user.id, {
         clientType: 'app',
-        displayName: user.email || user.user_metadata?.full_name || 'Anonymous',
+        displayName: presenceDisplayName(user),
         currentPage: pageNum
       });
 

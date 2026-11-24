@@ -49,11 +49,19 @@ export function presenceInitials(value) {
   return only.slice(0, 2).toUpperCase() || '?';
 }
 
+/** What this person writes as their presence `display_name`: their account
+ *  name, else their email (r5b #5, 2026-11-24: peers read as
+ *  "qa-c@example.com" while comments said "Cal Tester"). */
+export function presenceDisplayName(user) {
+  const meta = user?.user_metadata || {};
+  const name = String(meta.full_name || meta.name || '').trim();
+  return name || user?.email || 'Anonymous';
+}
+
 /** THE label rule, desktop and phone alike (owner 2026-10-02): the person's
  *  name, falling back to their email. A `document_presence` row carries only
- *  `display_name`, which the viewer writes as the email, so a peer reads as
- *  their email; you read as your account name once presenceRowForUser has put
- *  it on your row. */
+ *  `display_name`, which the viewer writes as the account name (email when
+ *  there is none, presenceDisplayName). */
 export function presenceLabel(row) {
   return row?.name || row?.full_name || row?.display_name || row?.displayName || row?.email || row?.user_id || 'Someone';
 }
