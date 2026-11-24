@@ -181,8 +181,6 @@ const NOT_SWEPT = {
   pdf_r2_copies: 'service only', pdf_r2_deletes: 'service only', r2_usage_daily: 'service only',
   rowid_signing_secrets: 'service only', survey_agent_daily_usage: 'service only',
   survey_agent_feedback_daily: 'service only',
-  // The shared monthly AI credit cap (#1571): only the agent's functions.
-  ai_credit_budgets: 'service only', ai_credit_spend: 'service only',
   sheet_sync_connections: 'service only', sheet_sync_pending_connections: 'service only',
   sheet_sync_settings: 'service only',
   project_item_counters: 'service only',
