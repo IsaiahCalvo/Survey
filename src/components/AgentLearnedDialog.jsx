@@ -42,6 +42,7 @@ export default function AgentLearnedDialog({ store, projectId, canEdit = true, o
 
   const names = rows.filter((r) => r.kind === 'name');
   const wording = rows.filter((r) => r.kind === 'wording');
+  const states = rows.filter((r) => r.kind === 'state');
   const section = (title, list, empty, render) => (
     <section className="agent-learned__section" aria-label={title}>
       <h3 className="agent-learned__heading">{title}<span className="agent-learned__count">{list.length}</span></h3>
@@ -71,7 +72,7 @@ export default function AgentLearnedDialog({ store, projectId, canEdit = true, o
   return (
     <DialogCard
       title="What Survey learned"
-      message="Names and wording the Survey agent saved for this project. Everyone on the project shares them."
+      message="Names, wording and entity words the Survey agent saved for this project. Everyone on the project shares them."
       onClose={onClose}
       width={420}
       zIndex={12000}
@@ -85,6 +86,9 @@ export default function AgentLearnedDialog({ store, projectId, canEdit = true, o
           ))}
           {section('Wording', wording, 'None yet. Say "Always write not installed, not missing".', (row) => (
             <>Write <strong>{row.means}</strong> for <strong>{row.heard}</strong></>
+          ))}
+          {section('Entities', states, 'None yet. When a word like "done" is unclear, the agent asks once and keeps your answer here.', (row) => (
+            <><strong>{row.heard}</strong> means <strong>{row.means}</strong>{row.pending ? ' (saved on this device)' : ''}</>
           ))}
         </>
       ) : null}

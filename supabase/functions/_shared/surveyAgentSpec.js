@@ -42,6 +42,7 @@ Rules:
 - If their words could mean two answers ("it's done" over mixed lines, "mostly in"), ask one short question and change nothing yet.
 - Notes: short, clean sentences, no filler; keep their facts exactly, add none. Use the project's learned wording (get_survey_context learned.wording: write the second for the first). If they word one fact two ways in a walk ("missing", "not installed"), write the way they say it most and ask once if you should always write it that way.
 - When they teach a name or wording ("whenever I say D101 I mean D-1-01", "third door on the first floor is D-1-03", "always write not installed, not missing"), call remember. After a new wording, also call tidy_notes so older notes match. "Forget D101" is forget. Learned names (learned.names) already work in item_name.
+- A state word that is no entity's name ("done", "finished") means different entities to different customers: unless learned.states has it, ask which of this template's entities it means, set that, and call remember kind state so you never ask again on this project. Learned states already work in set_entity.
 - Photos or files they attached go on the item with attach_media; "take a photo" is take_photo.
 - When they tell you to do something, do it; don't ask to confirm. If they correct you ("no, D-118", "undo that"), call undo_last_turn, then redo it right.
 - A device named by kind and number, not tag ("camera 6 on the 4th floor"): use find_described with the kind, number, and floor or wing if said. Never ask for the wing or the full tag. If one item or plan tag clearly fits best, it is the one: show it (show_item, show_on_plan) when they ask to find it; work on it when they say what to record. A plan tag that is not an item yet becomes one with create_item when they say what to record or what it is ("it's a camera" names the category). If several fit equally, name them by page and ask.
@@ -237,7 +238,7 @@ export function buildSurveyAgentTools(answerValues, { annotations = false, marku
       { text: { type: 'string', description: 'The tag as it would be printed on the plan, for example "D-117".' } },
       ['text']),
     tool('find_described',
-      'Find a device described by kind and number, not tag ("camera 6 on the 4th floor"), among survey items and tags on every plan sheet; the floor may be in the tag (C-4-06, 4W-CAM-06, CAM-406) or the sheet title. Returns the best items and plan tags (match ids for show_on_plan, create_item, mark_on_plan), scored 0 to 1.',
+      'Find a device described by kind and number, not tag ("camera 6 on the 4th floor"), among survey items and tags on every plan sheet; the floor may be in the tag (C-4-06, 4W-CAM-06, CAM-406) or the sheet title. Returns the best items and plan tags (match ids for show_on_plan, create_item, mark_on_plan), scored 0 to 1. With no number but a place ("the camera by the stairs"), number null: it returns items (else plan tags) of that kind nearest a label printed on the plan, by_place true, with clear true on the one clearly nearest; ask when none is clear.',
       {
         description: { type: 'string', description: 'What the person said, for example "camera 6 on the 4th floor".' },
         kind: { type: ['string', 'null'], description: 'The kind of device ("camera", "door"), or null.' },
@@ -246,6 +247,10 @@ export function buildSurveyAgentTools(answerValues, { annotations = false, marku
         wing: { type: ['string', 'null'], enum: ['west', 'east', 'north', 'south', null], description: 'The wing if they said one, else null.' },
       },
       ['description', 'kind', 'number', 'floor', 'wing']),
+    tool('read_scanned_pages',
+      'Scanned sheets have no text, so their tags cannot be found (find tools report pages_without_text). This reads them with text recognition on the device, up to 4 pages a call, a few seconds each; the current page first when pages is null. Then search again.',
+      { pages: { type: ['array', 'null'], items: { type: 'integer' }, description: 'Page numbers to read, or null for the current page and the next unread ones.' } },
+      ['pages']),
     tool('show_on_plan',
       'Go to a tag found with find_described or find_on_plan on the plan, so the person sees it.',
       { plan_match_id: id('A match id from find_described or find_on_plan.') },
@@ -294,11 +299,11 @@ export function buildSurveyAgentTools(answerValues, { annotations = false, marku
     // What the project taught the agent; not for browser agents.
     ...(webmcp ? [] : [
       tool('remember',
-        'Save, for everyone on this project, a name the person uses for an item (kind name: heard "D101", means the item, by its name as heard), the words they want in notes (kind wording: heard "missing", means "not installed"), or which sheets devices go on (kind placement: heard "sheets", means "floor plan, schedule, riser"). The same heard replaces the old one. One Undo takes it back.',
+        'Save, for everyone on this project, a name the person uses for an item (kind name: heard "D101", means the item, by its name as heard), the words they want in notes (kind wording: heard "missing", means "not installed"), what a state word means here (kind state: heard "done", means an entity\'s exact name), or which sheets devices go on (kind placement: heard "sheets", means "floor plan, schedule, riser"). The same heard replaces the old one. One Undo takes it back.',
         {
-          kind: { type: 'string', enum: ['name', 'wording', 'placement'] },
+          kind: { type: 'string', enum: ['name', 'wording', 'state', 'placement'] },
           heard: { type: 'string', description: 'What they say, as heard.' },
-          means: { type: 'string', description: 'kind name: the item it is. kind wording: the words to write instead.' },
+          means: { type: 'string', description: 'kind name: the item it is. kind wording: the words to write instead. kind state: the entity\'s exact name. kind placement: the sheet kinds.' },
         },
         ['kind', 'heard', 'means']),
       tool('ask_which_page',

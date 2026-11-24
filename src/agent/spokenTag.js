@@ -61,7 +61,7 @@ export function kindOf(word) {
 const escapeRe = (v) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 // Lower case, letters and digits only, hyphens as spaces: how a sentence
 // and a category name are compared.
-const spokenForm = (text) => lower(text).replace(/[^a-z0-9#\s-]/g, ' ').replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
+export const spokenForm = (text) => lower(text).replace(/[^a-z0-9#\s-]/g, ' ').replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
 
 const toNumber = (word) => {
   if (/^\d+$/.test(word)) return Number(word);
@@ -71,6 +71,41 @@ const toNumber = (word) => {
   if (word in ORDINAL_WORDS) return ORDINAL_WORDS[word];
   return null;
 };
+
+const FLOOR_PATTERNS = [
+  /\b(\d+)(?:st|nd|rd|th)?\s+(?:floor|level|fl|story|storey)\b/,
+  /\b(ground|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth)\s+(?:floor|level|story|storey)\b/,
+  /\b(?:floor|level|lvl|fl)\s*(?:number\s+)?(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b/,
+  /\bl(\d{1,2})\b/,
+];
+
+/** The floor said in a spoken-form string, and the string without it. */
+export function takeFloor(s) {
+  for (const re of FLOOR_PATTERNS) {
+    const m = re.exec(s);
+    if (m) return { floor: toNumber(m[1]), s: `${s.slice(0, m.index)} ${s.slice(m.index + m[0].length)}` };
+  }
+  return { floor: null, s };
+}
+
+/**
+ * The kind of device said in a spoken-form string, and the string without
+ * it: the project's own categories first (any trade: "smoke detector",
+ * "pull station", "VAV box"), longest words first; then the usual kinds.
+ */
+export function takeKind(s, kinds = []) {
+  const own = (kinds || []).flatMap((k) => k.words.map((word) => ({ word, k })))
+    .sort((a, b) => b.word.length - a.word.length);
+  for (const { word, k } of own) {
+    const m = new RegExp(`\\b${escapeRe(word)}\\b`).exec(s);
+    if (m) return { kind: k.kind, kindWord: word, codes: k.codes, at: m.index, end: m.index + m[0].length, s: `${s.slice(0, m.index)} ${s.slice(m.index + m[0].length)}` };
+  }
+  for (const word of KIND_WORDS) {
+    const m = new RegExp(`\\b${word}\\b`).exec(s);
+    if (m) return { kind: KIND_ALIASES[word] || word, kindWord: word, codes: null, at: m.index, end: m.index + m[0].length, s: `${s.slice(0, m.index)} ${s.slice(m.index + m[0].length)}` };
+  }
+  return { kind: null, kindWord: null, codes: null, at: -1, end: -1, s };
+}
 
 /**
  * What a person asked for: { kind, kindWord, number, floor, wing, code }.
@@ -82,53 +117,19 @@ export function parseDescribedTarget(text, { kinds = [] } = {}) {
   let s = ` ${spokenForm(text)} `;
   s = s.replace(/\b(twenty|thirty|forty|fifty)\s+(one|two|three|four|five|six|seven|eight|nine)\b/g,
     (_, t, o) => ` ${NUMBER_WORDS[t] + NUMBER_WORDS[o]} `);
-  let floor = null;
+  const took = takeFloor(s);
+  s = took.s;
+  let { floor } = took;
   let wing = null;
-  const floorPatterns = [
-    /\b(\d+)(?:st|nd|rd|th)?\s+(?:floor|level|fl|story|storey)\b/,
-    /\b(ground|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth)\s+(?:floor|level|story|storey)\b/,
-    /\b(?:floor|level|lvl|fl)\s*(?:number\s+)?(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b/,
-    /\bl(\d{1,2})\b/,
-  ];
-  for (const re of floorPatterns) {
-    const m = re.exec(s);
-    if (m) {
-      floor = toNumber(m[1]);
-      s = `${s.slice(0, m.index)} ${s.slice(m.index + m[0].length)}`;
-      break;
-    }
-  }
   const wingMatch = /\b(west|east|north|south)\b/.exec(s);
   if (wingMatch) {
     wing = WINGS[wingMatch[1]];
     s = `${s.slice(0, wingMatch.index)} ${s.slice(wingMatch.index + wingMatch[0].length)}`;
   }
-  let kind = null;
-  let kindWord = null;
-  let codes = null;
-  // The project's own categories first (any trade: "smoke detector",
-  // "pull station", "VAV box"), longest words first; then the usual kinds.
-  const own = (kinds || []).flatMap((k) => k.words.map((word) => ({ word, k })))
-    .sort((a, b) => b.word.length - a.word.length);
-  for (const { word, k } of own) {
-    const m = new RegExp(`\\b${escapeRe(word)}\\b`).exec(s);
-    if (m) {
-      kind = k.kind;
-      kindWord = word;
-      codes = k.codes;
-      s = `${s.slice(0, m.index)} ${s.slice(m.index + m[0].length)}`;
-      break;
-    }
-  }
-  for (const word of kind ? [] : KIND_WORDS) {
-    const m = new RegExp(`\\b${word}\\b`).exec(s);
-    if (m) {
-      kind = KIND_ALIASES[word] || word;
-      kindWord = word;
-      s = `${s.slice(0, m.index)} ${s.slice(m.index + m[0].length)}`;
-      break;
-    }
-  }
+  const said = takeKind(s, kinds);
+  s = said.s;
+  const { kindWord } = said;
+  let { kind, codes } = said;
   const words = s.split(/\s+/).filter(Boolean);
   // Numbers in a row: typed digit groups ("C-4-06") are a floor then a
   // number; spoken ones run together ("one seventeen" is 117, "four oh six" 406).

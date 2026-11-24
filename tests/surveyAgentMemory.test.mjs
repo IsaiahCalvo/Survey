@@ -219,3 +219,29 @@ test('the panel and rail wire the store and the project', () => {
   const rail = readFileSync(new URL('../src/SurveySpacesRail.jsx', import.meta.url), 'utf8');
   assert.match(rail, /projectId: pdfFile\?\.projectId \|\| null/);
 });
+
+test('rows stay on the device, and one saved with no signal is saved on the next load', async () => {
+  const store = new Map();
+  const saved = globalThis.localStorage;
+  globalThis.localStorage = { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) };
+  try {
+    const client = fakeClient();
+    client.rows.push({ id: 'r9', project_id: 'p-local', kind: 'name', heard: 'D101', means: 'D-1-01', created_at: 'x' });
+    const online = createAgentMemoryStore(client);
+    await online.list('p-local');
+    // A fresh start with no signal reads the device's copy.
+    const offline = createAgentMemoryStore({ from: () => { throw new Error('offline'); } });
+    assert.deepEqual(offline.cached('p-local').map((r) => r.heard), ['D101']);
+    offline.saveLater('p-local', { kind: 'state', heard: 'done', means: 'Commissioned' });
+    assert.deepEqual(offline.cached('p-local').map((r) => [r.heard, Boolean(r.pending)]), [['D101', false], ['done', true]]);
+    // Back online: the next load saves it for the project.
+    const back = createAgentMemoryStore(client);
+    const rows = await back.list('p-local');
+    assert.ok(rows.some((r) => r.heard === 'done'));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.ok(client.rows.some((r) => r.kind === 'state' && r.heard === 'done' && r.means === 'Commissioned'));
+    assert.ok(back.cached('p-local').every((r) => !r.pending));
+  } finally {
+    globalThis.localStorage = saved;
+  }
+});

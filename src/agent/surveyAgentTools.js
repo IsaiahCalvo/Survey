@@ -10,8 +10,9 @@ import { markBox, visiblePageBox } from './planView.js';
 import { answerSetMeaning, moduleKind, moduleMeaning } from '../../supabase/functions/_shared/surveyAgentMeaning.js';
 import { boundsCover, findDescribedOnPages, markerBoxAroundTag, tagShape } from './planText.js';
 import { floorNumberOf, kindFromWord, parseDescribedTarget, scoreDescribedTag, templateKinds, wingLetterOf } from './spokenTag.js';
+import { nearestToPlace, parsePlaceTarget } from './placeFind.js';
 import { summarizeSurvey, summaryText } from '../services/surveySummary.js';
-import { learnedForModel, learnedNameFor, memoryKey, rewordText } from './agentMemory.js';
+import { learnedForModel, learnedNameFor, learnedStateFor, memoryKey, rewordText } from './agentMemory.js';
 import { DEFAULT_PLACEMENT, placementFromWords, placementWords } from './sheetKind.js';
 
 export { normalizeItemName, scoreItemName };
@@ -20,6 +21,8 @@ export { normalizeItemName, scoreItemName };
 const MAX_BULK_ITEMS = 60;
 // survey_status names at most this many items per group; the counts are whole.
 const STATUS_LIST_MAX = 20;
+// One read_scanned_pages call reads at most this many pages (seconds each).
+const MAX_OCR_PAGES = 4;
 // One tidy_notes call rewrites at most this many items' notes.
 const MAX_TIDY_ITEMS = 300;
 
@@ -329,7 +332,10 @@ export function createSurveyAgentToolbox({
     if (!said) return null;
     const list = entitiesOf(b.template);
     const key = normalizeItemName(said);
-    const found = list.find((e) => e.id === said) || list.find((e) => normalizeItemName(e.name) === key);
+    // A state word the project taught ("done" is Commissioned here).
+    const taught = learnedStateFor(memoryRows(b), said);
+    const found = list.find((e) => e.id === said) || list.find((e) => normalizeItemName(e.name) === key)
+      || (taught ? list.find((e) => normalizeItemName(e.name) === normalizeItemName(taught)) : null);
     if (!found) throw new ToolError(`"${said}" is not one of this template's entities (${list.map((e) => e.name).join(', ') || 'it has none'}). Nothing changed.`);
     return found;
   };
@@ -520,6 +526,52 @@ export function createSurveyAgentToolbox({
     };
   };
 
+  // find_described by place: items of the kind nearest a printed place label
+  // (on a bare PDF, printed tags of the kind), with the one clearly nearest.
+  const findByPlace = async (b, place) => {
+    const { pages = [], unreadPages = [] } = typeof b.readSheets === 'function' ? await b.readSheets() : {};
+    const sheetFloor = new Map(pages.map((p) => [p.page, p.sheet?.floor ?? null]));
+    const ofKind = (name) => templateKinds([{ name }])[0]?.kind === place.kind || kindFromWord(name).kind === place.kind;
+    const onFloor = (page, own = null) => place.floor == null || (own ?? sheetFloor.get(page)) === place.floor;
+    const { find } = categoryIndex(b.template);
+    const markers = Object.entries(b.markers || {});
+    const items = markers
+      .filter(([, m]) => m?.bounds && m.pageNumber && ofKind(find(m.moduleId, m.categoryId)?.category?.name || '')
+        && onFloor(m.pageNumber, floorNumberOf(m.floor)))
+      .map(([id, m]) => ({ key: id, id, name: nameOf(m), page: m.pageNumber, box: m.bounds, here: !b.currentModuleId || m.moduleId === b.currentModuleId }));
+    // The same device in two modules is one candidate: the open module's.
+    const seen = new Set();
+    const oneEach = items.sort((x, y) => Number(y.here) - Number(x.here))
+      .filter((i) => { const k = `${normalizeItemName(i.name)}|${i.page}`; if (seen.has(k)) return false; seen.add(k); return true; });
+    const near = nearestToPlace(place, oneEach, pages, { pageSize: (page) => b.getPageSize?.(page) || null });
+    const codes = new Set([...(place.codes || []), place.kind[0], place.kind.split(' ').map((w) => w[0]).join('')]);
+    const tags = [];
+    if (!near.list.length) {
+      for (const { page, words = [] } of pages) {
+        if (!onFloor(page)) continue;
+        for (const w of words) {
+          const m = /^([a-z]{1,4})[-\s.]?\d[\w-]*$/i.exec(String(w.text || '').trim());
+          if (!m || !codes.has(m[1].toLowerCase()) || !w.box) continue;
+          if (markers.some(([, mk]) => mk?.pageNumber === page && boundsCover(mk.bounds, w.box))) continue;
+          tags.push({ key: `${page}:${w.text}`, page, box: w.box, text: w.text.trim() });
+        }
+      }
+    }
+    const nearTags = tags.length ? nearestToPlace(place, tags, pages, { pageSize: (page) => b.getPageSize?.(page) || null }) : { list: [], clear: null };
+    const plan = nearTags.list.slice(0, 5).map((t) => {
+      const id = `plan-${planMatches.size + 1}`;
+      planMatches.set(id, { page: t.page, text: t.text, box: t.box, source: 'text', score: 1 });
+      return { id, page: t.page, text: t.text, place: t.place, distance: t.distance, clear: t === nearTags.clear };
+    });
+    return {
+      looked_for: { kind: place.kind, place: place.place.join(' '), floor: place.floor },
+      by_place: true,
+      items: near.list.slice(0, 5).map((i) => ({ id: i.id, name: i.name, page: i.page, place: i.place, distance: i.distance, clear: i === near.clear })),
+      plan,
+      ...(unreadPages.length ? { pages_without_text: unreadPages.length } : {}),
+    };
+  };
+
   const tools = {
     // "Whenever I say D101 I mean D-1-01" (a name) or "always write not
     // installed, not missing" (wording): saved for everyone on the project.
@@ -541,11 +593,32 @@ export function createSurveyAgentToolbox({
         if (!kinds.length) throw new ToolError('Say which sheets: floor plan, schedule, riser, detail or legend. Nothing saved.');
         target = kinds.join(', ');
         return saveMemory(b, { kind, heard: 'sheets', means: target }, `mark devices on ${placementWords(kinds)}`);
+      } else if (kind === 'state') {
+        // "Done means commissioned": the saved meaning is one entity's own name.
+        const entity = entitiesOf(b.template).find((e) => normalizeItemName(e.name) === normalizeItemName(target));
+        if (!entity) throw new ToolError(`"${target}" is not one of this template's entities (${entitiesOf(b.template).map((e) => e.name).join(', ') || 'it has none'}). Nothing saved.`);
+        if (entitiesOf(b.template).some((e) => normalizeItemName(e.name) === normalizeItemName(said))) throw new ToolError(`${said} is already an entity's own name; nothing saved.`);
+        target = entity.name;
       } else if (kind !== 'wording') {
-        throw new ToolError('kind is name, wording or placement.');
+        throw new ToolError('kind is name, wording, state or placement.');
       }
-      return saveMemory(b, { kind, heard: said, means: target },
-        kind === 'name' ? `"${said}" means ${target}` : `write "${target}" for "${said}"`);
+      const lineOf = (row) => (kind === 'name' ? `"${row.heard}" means ${row.means}`
+        : kind === 'state' ? `"${row.heard}" means ${row.means}` : `write "${row.means}" for "${row.heard}"`);
+      let saved;
+      try {
+        saved = await memory.save(b.projectId, { kind, heard: said, means: target });
+      } catch (err) {
+        // No signal: keep it on the device; it is saved for the project later.
+        if (typeof memory.saveLater !== 'function') throw new ToolError(`Could not save it: ${err.message}`);
+        const { row } = memory.saveLater(b.projectId, { kind, heard: said, means: target });
+        return { content: `Saved on this device: ${lineOf(row)}. It is shared with the project when there is signal.` };
+      }
+      const line = lineOf(saved.row);
+      if (saved.same) return { content: `Already saved: ${line}.` };
+      return {
+        content: `Saved for this project: ${line}.${saved.before ? ` (Replaced "${saved.before.means}".)` : ''}`,
+        change: { memory: { projectId: b.projectId, row: saved.row, before: saved.before }, label: `Learned: ${line}` },
+      };
     },
 
     // "Page 6 or 33?": the panel shows a button per page plus both, neither
@@ -974,7 +1047,13 @@ export function createSurveyAgentToolbox({
         floor: Number.isFinite(Number(floor)) && floor !== null ? Number(floor) : parsed.floor ?? null,
         wing: ({ west: 'w', east: 'e', north: 'n', south: 's' })[String(wing || '').toLowerCase()] || parsed.wing || null,
       };
-      if (target.number == null) throw new ToolError('Say the number of the one to find, for example camera 6.');
+      // "The camera by the stairs" (or "by stair 2"): by a place printed on
+      // the plan, unless the model gave the number itself.
+      const place = number == null ? parsePlaceTarget(description, { kinds }) : null;
+      if (place) return { content: out(await findByPlace(b, place)) };
+      if (target.number == null) {
+        throw new ToolError('Say the number of the one to find (camera 6), or where it is (the camera by the stairs).');
+      }
       const { items, pages, unreadPages } = await describedItems(b, target);
       const shownItems = items.slice(0, 5).map(({ here: _, moduleId: __, ...m }) => m);
       const markers = Object.entries(b.markers || {});
@@ -1003,6 +1082,31 @@ export function createSurveyAgentToolbox({
           ...(unreadPages.length ? { pages_without_text: unreadPages.length } : {}),
         }),
       };
+    },
+
+    // Scanned sheets have no text, so tags on them can't be found until text
+    // recognition reads them (on the device, no signal needed). The current
+    // page first when no pages are named.
+    async read_scanned_pages({ pages = null } = {}) {
+      const b = bridge();
+      if (typeof b.recognizePage !== 'function') throw new ToolError('Text recognition is not available here.');
+      const { unreadPages = [] } = typeof b.readSheets === 'function' ? await b.readSheets() : {};
+      const named = Array.isArray(pages) ? pages.map(Number).filter(Number.isFinite) : [];
+      let list = named.length ? named.filter((p) => unreadPages.includes(p)) : [...unreadPages];
+      const current = b.getCurrentPage?.();
+      if (!named.length && current && list.includes(current)) list = [current, ...list.filter((p) => p !== current)];
+      list = list.slice(0, MAX_OCR_PAGES);
+      if (!list.length) return { content: unreadPages.length ? 'Those pages already have text to read.' : 'Every page already has text to read.' };
+      const read = [];
+      const failed = [];
+      for (const page of list) {
+        try { if (await b.recognizePage(page)) read.push(page); else failed.push(page); } catch { failed.push(page); }
+      }
+      const left = unreadPages.length - read.length;
+      const parts = [read.length ? `Read the text on page${read.length === 1 ? '' : 's'} ${read.join(', ')}.` : 'No page could be read.'];
+      if (failed.length) parts.push(`Page${failed.length === 1 ? '' : 's'} ${failed.join(', ')} gave no text.`);
+      if (left > 0) parts.push(`${left} scanned page${left === 1 ? '' : 's'} still unread; ask again for more.`);
+      return { content: parts.join(' '), read };
     },
 
     show_on_plan({ plan_match_id: matchId } = {}) {

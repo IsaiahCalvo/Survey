@@ -11,6 +11,7 @@
 //   "D-117"                                     shows the item
 //   "undo" / "undo that"                        takes back the last change
 //   "camera 2 on the second floor, power yes"   a described item (below)
+//   anything else, when the device has a model  planModelTurn (bottom)
 // With no item name, the selected item is used. An item is named by its
 // exact name (normalized as the agent does: "D one seventeen" is D-117); a
 // line by its exact words; an answer by its own value or the fixed spoken
@@ -29,6 +30,8 @@ import { categoriesOf, checklistOf, entitiesOf, itemText, modulesOf } from '../s
 import { normalizeItemName } from '../../supabase/functions/_shared/surveyAgentSpec.js';
 import { clearBest, projectKinds } from './surveyAgentTools.js';
 import { parseDescribedTarget, templateKinds } from './spokenTag.js';
+import { parsePlaceTarget } from './placeFind.js';
+import { learnedStateFor } from './agentMemory.js';
 
 // Fixed spoken forms of the usual answers, keyed by the answer's own value
 // (lower case). An answer set's own values are always heard as themselves.
@@ -200,7 +203,7 @@ const joinOr = (list) => (list.length <= 1 ? list.join('') : `${list.slice(0, -1
  * question, nothing changed), or null when the words are not clear.
  * `marker` may be an item about to be added ({ name, moduleId, categoryId }).
  */
-function readItemTurn({ text, template, marker, itemId, before, after, named }) {
+function readItemTurn({ text, template, marker, itemId, before, after, named, learned = [] }) {
   if (!marker) return null;
   const category = categoryOf(template, marker);
   // "Door D-117": the category's name just before the item's name is part of it.
@@ -229,7 +232,10 @@ function readItemTurn({ text, template, marker, itemId, before, after, named }) 
   const entities = entitiesOf(template).filter((e) => e?.id && e?.name);
   const saidWords = restWords.filter((w) => !FILLER.has(w));
   const said = saidWords.join(' ');
-  const entity = said && entities.find((e) => withoutArticles(plainWords(e.name)).join(' ') === said);
+  const byName = (name) => entities.find((e) => withoutArticles(plainWords(e.name)).join(' ') === withoutArticles(plainWords(name)).join(' '));
+  // Its own name, or a word this project taught ("done" is Commissioned here).
+  const taught = said ? learnedStateFor(learned, said) : null;
+  const entity = said && (byName(said) || (taught ? byName(taught) : null));
   if (entity) return { calls: [{ name: 'set_entity', input: { item_id: itemId, entity_id: entity.id } }] };
   if (category) {
     const read = readAnswers(restWords, lineOptions(category), answerForms(template));
@@ -252,7 +258,11 @@ function readItemTurn({ text, template, marker, itemId, before, after, named }) 
   const lineWords = new Set(category ? checklistOf(category).flatMap((l) => plainWords(itemText(typeof l === 'string' ? { text: l } : l))) : []);
   if (setting && entities.length >= 2 && saidWords.length && saidWords.length <= 2
     && !saidWords.some((w) => answerWords.has(w) || lineWords.has(w) || /\d/.test(w))) {
-    return { ask: `Which is "${said}" for ${marker.name || 'this item'}: ${joinOr(entities.map((e) => e.name))}? Nothing changed.` };
+    return {
+      ask: `Which is "${said}" for ${marker.name || 'this item'}: ${joinOr(entities.map((e) => e.name))}? Nothing changed.`,
+      // The answer ("commissioned") sets it and is remembered for the project.
+      ...(itemId !== NEW_ITEM ? { pending: { itemId, heard: said } } : {}),
+    };
   }
   return null;
 }
@@ -263,7 +273,7 @@ function readItemTurn({ text, template, marker, itemId, before, after, named }) 
  * selectedMarkerId, currentModuleId).
  * @returns {{ calls: { name: string, input: object }[] } | null}
  */
-export function planOfflineTurn(text, bridge) {
+export function planOfflineTurn(text, bridge, { learned = [] } = {}) {
   const template = bridge?.template;
   const markers = bridge?.markers || {};
   if (!template) return null;
@@ -284,7 +294,7 @@ export function planOfflineTurn(text, bridge) {
   }
   const readings = [];
   const tryItem = (itemId, before, after, span) => {
-    const reading = readItemTurn({ text, template, marker: markers[itemId], itemId, before, after, named: Boolean(span) });
+    const reading = readItemTurn({ text, template, marker: markers[itemId], itemId, before, after, named: Boolean(span), learned });
     if (reading) readings.push(reading);
   };
 
@@ -327,7 +337,7 @@ const listFits = (list) => list.slice(0, 5).map((m) => `${m.name || m.text}${m.p
  * the device and the server agent pick the same item.
  * @returns {Promise<{ calls?: object[], ask?: string } | null>}
  */
-export async function planDescribedTurn(text, bridge, toolbox) {
+export async function planDescribedTurn(text, bridge, toolbox, { learned = [] } = {}) {
   const template = bridge?.template;
   const markers = bridge?.markers || {};
   if (!template || !toolbox) return null;
@@ -337,70 +347,258 @@ export async function planDescribedTurn(text, bridge, toolbox) {
   if (lead >= tokens.length) return null;
   const kinds = projectKinds(bridge);
   const found = new Map();
-  for (let end = tokens.length; end > lead; end -= 1) {
-    const description = String(text).slice(tokens[lead].start, tokens[end - 1].end);
-    const target = parseDescribedTarget(description, { kinds });
-    if (!target || target.number == null || !target.kind || target.leftover.length) continue;
-    const key = JSON.stringify(target);
-    if (!found.has(key)) {
-      const res = await toolbox.run('find_described', { description });
-      let parsed = null;
-      try { parsed = res?.isError ? null : JSON.parse(res.content); } catch { parsed = null; }
-      found.set(key, parsed);
+  const first = await describedAttempt();
+  if (first) return first;
+  // Nothing found, and some sheets are scans with no text yet: read them on
+  // the device (the current page first), then look once more.
+  const unread = [...found.values()].some((f) => f?.pages_without_text);
+  if (!unread || typeof bridge.recognizePage !== 'function') return null;
+  const res = await toolbox.run('read_scanned_pages', { pages: null });
+  if (res?.isError || !res?.read?.length) return null;
+  found.clear();
+  return describedAttempt();
+
+  async function describedAttempt() {
+    for (let end = tokens.length; end > lead; end -= 1) {
+      const description = String(text).slice(tokens[lead].start, tokens[end - 1].end);
+      // Kind and number ("camera 2 second floor"), else kind and a place
+      // printed on the plan ("the camera by stair 2").
+      let target = parseDescribedTarget(description, { kinds });
+      if (!target || target.number == null || !target.kind || target.leftover.length) target = null;
+      const place = parsePlaceTarget(description, { kinds });
+      if (place) target = place;
+      if (!target) continue;
+      const key = JSON.stringify(target);
+      if (!found.has(key)) {
+        const res = await toolbox.run('find_described', { description });
+        let parsed = null;
+        try { parsed = res?.isError ? null : JSON.parse(res.content); } catch { parsed = null; }
+        found.set(key, parsed);
+      }
+      const fits = found.get(key);
+      if (!fits) continue;
+      const before = tokens.slice(0, lead);
+      const after = tokens.slice(end);
+      const items = fits.items || [];
+      const plan = (fits.plan || []).filter((m) => !m.already_item || !items.some((i) => i.id === m.already_item.id));
+      const onItem = (id) => readItemTurn({ text, template, marker: markers[id], itemId: id, before, after, named: true, learned });
+      const pick = (list) => (fits.by_place ? list.find((m) => m.clear) || null : clearBest(list));
+      const bestItem = pick(items);
+      if (bestItem) {
+        const reading = onItem(bestItem.id);
+        if (reading) return reading;
+        continue;
+      }
+      if (items.length >= 2) {
+        if (onItem(items[0].id)) return { ask: `More than one fits "${description}": ${listFits(items)}. Which one? Nothing changed.` };
+        continue;
+      }
+      // No item fits: a tag printed on the plan (a bare PDF, or one not added yet).
+      const bestTag = pick(plan);
+      if (bestTag?.already_item) {
+        const reading = onItem(bestTag.already_item.id);
+        if (reading) return reading;
+        continue;
+      }
+      if (bestTag) {
+        const homes = categoriesOfKind(template, target.kind, bridge.currentModuleId);
+        if (homes.length !== 1) continue;
+        const name = String(bestTag.text).trim();
+        const fresh = { name, moduleId: homes[0].module.id, categoryId: homes[0].category.id };
+        const reading = readItemTurn({ text, template, marker: fresh, itemId: NEW_ITEM, before, after, named: true, learned });
+        if (!reading) continue;
+        if (reading.ask) return reading;
+        const create = { name: 'create_item', input: { name, category_id: homes[0].category.id, plan_match_id: bestTag.id } };
+        return { calls: [create, ...reading.calls.filter((c) => c.name !== 'show_item')] };
+      }
+      if (plan.length >= 2) return { ask: `More than one tag on the plan fits "${description}": ${listFits(plan)}. Which one? Nothing changed.` };
     }
-    const fits = found.get(key);
-    if (!fits) continue;
-    const before = tokens.slice(0, lead);
-    const after = tokens.slice(end);
-    const items = fits.items || [];
-    const plan = (fits.plan || []).filter((m) => !m.already_item || !items.some((i) => i.id === m.already_item.id));
-    const onItem = (id) => readItemTurn({ text, template, marker: markers[id], itemId: id, before, after, named: true });
-    const bestItem = clearBest(items);
-    if (bestItem) {
-      const reading = onItem(bestItem.id);
-      if (reading) return reading;
-      continue;
-    }
-    if (items.length >= 2) {
-      if (onItem(items[0].id)) return { ask: `More than one fits "${description}": ${listFits(items)}. Which one? Nothing changed.` };
-      continue;
-    }
-    // No item fits: a tag printed on the plan (a bare PDF, or one not added yet).
-    const bestTag = clearBest(plan);
-    if (bestTag?.already_item) {
-      const reading = onItem(bestTag.already_item.id);
-      if (reading) return reading;
-      continue;
-    }
-    if (bestTag) {
-      const homes = categoriesOfKind(template, target.kind, bridge.currentModuleId);
-      if (homes.length !== 1) continue;
-      const name = String(bestTag.text).trim();
-      const fresh = { name, moduleId: homes[0].module.id, categoryId: homes[0].category.id };
-      const reading = readItemTurn({ text, template, marker: fresh, itemId: NEW_ITEM, before, after, named: true });
-      if (!reading) continue;
-      if (reading.ask) return reading;
-      const create = { name: 'create_item', input: { name, category_id: homes[0].category.id, plan_match_id: bestTag.id } };
-      return { calls: [create, ...reading.calls.filter((c) => c.name !== 'show_item')] };
-    }
-    if (plan.length >= 2) return { ask: `More than one tag on the plan fits "${description}": ${listFits(plan)}. Which one? Nothing changed.` };
+    return null;
   }
-  return null;
+}
+
+// ---- Free speech: a small model on the device picks among real items. ----
+
+const MODEL_ITEMS_MAX = 6;
+const MODEL_FINDS_MAX = 4;
+
+// Items the plain rules can see in a sentence: the selected one, ones named
+// exactly, and the best fits of any described device or place in it.
+async function modelCandidates(text, bridge, toolbox) {
+  const markers = bridge.markers || {};
+  const ids = [];
+  const add = (id) => { if (id && markers[id] && !ids.includes(id)) ids.push(id); };
+  const tokens = wordsOf(text);
+  const index = nameIndex(markers);
+  for (let i = 0; i < tokens.length; i += 1) {
+    for (let j = Math.min(tokens.length, i + NAME_SPAN_MAX); j > i; j -= 1) {
+      const hit = index.get(normalizeItemName(tokens.slice(i, j).map((t) => t.w).join(' ')));
+      if (hit) { hit.forEach(add); break; }
+    }
+  }
+  const kinds = projectKinds(bridge);
+  const asked = new Set();
+  for (let i = 0; i < tokens.length && asked.size < MODEL_FINDS_MAX; i += 1) {
+    for (let j = Math.min(tokens.length, i + 8); j > i && asked.size < MODEL_FINDS_MAX; j -= 1) {
+      const description = String(text).slice(tokens[i].start, tokens[j - 1].end);
+      const numbered = parseDescribedTarget(description, { kinds });
+      const target = parsePlaceTarget(description, { kinds }) || (numbered?.number != null && numbered.kind ? numbered : null);
+      if (!target) continue;
+      const key = JSON.stringify(target);
+      if (asked.has(key)) continue;
+      asked.add(key);
+      const res = await toolbox.run('find_described', { description });
+      try {
+        const fits = res?.isError ? null : JSON.parse(res.content);
+        for (const item of (fits?.items || []).slice(0, 3)) add(item.id);
+      } catch { /* not JSON: skip */ }
+    }
+  }
+  if (bridge.selectedMarkerId) add(bridge.selectedMarkerId);
+  return ids.slice(0, MODEL_ITEMS_MAX);
+}
+
+const MODEL_SYSTEM = [
+  'You fill a construction site survey from what a field worker said, with no internet.',
+  'Pick only from the items, lines, answers and entities you are given; never invent one.',
+  'If the words do not clearly say which item, or which answer, use action "ask" with a short question.',
+  'Set an entity only when they said its name or a word the project taught for it; otherwise ask.',
+  'A remark that is not a checklist answer is a note: write it as one short sentence, in their words.',
+  'If it is none of these (a question about the survey, small talk), use action "none".',
+].join(' ');
+
+/**
+ * What a free sentence asks for, read by the device's model among the
+ * items the rules found. { calls } or { ask }, or null (no model, no
+ * candidates, or the model's answer did not hold up).
+ */
+export async function planModelTurn(text, bridge, toolbox, { model, learned = [] } = {}) {
+  const template = bridge?.template;
+  if (!model?.ask || !template || !toolbox) return null;
+  const ids = await modelCandidates(text, bridge, toolbox);
+  if (!ids.length) return null;
+  const values = [...new Set(answerSetFor(template).map((a) => String(a.value)))];
+  const entities = entitiesOf(template).filter((e) => e?.id && e?.name);
+  const items = ids.map((id, n) => {
+    const marker = bridge.markers[id];
+    const category = categoryOf(template, marker);
+    const lines = category ? choiceLines(category).map((line, k) => ({ ref: `i${n + 1}.l${k + 1}`, id: line.id, text: itemText(line) })) : [];
+    return { ref: `i${n + 1}`, id, marker, category, lines };
+  });
+  const taught = (learned || []).filter((r) => r.kind === 'state').map((r) => `"${r.heard}" means ${r.means}`);
+  const prompt = [
+    `They said: "${String(text).slice(0, 500)}"`,
+    'Items:',
+    ...items.map((i) => `${i.ref}: ${i.marker.name || 'Unnamed'}${i.category ? ` (${i.category.name})` : ''}${i.marker.pageNumber ? `, page ${i.marker.pageNumber}` : ''}${i.marker.floor ? `, floor ${i.marker.floor}` : ''}${bridge.selectedMarkerId === i.id ? ', selected' : ''}`
+      + (i.lines.length ? `\n  lines: ${i.lines.map((l) => `${l.ref} "${l.text}"`).join('; ')}` : '')),
+    `Answers: ${values.join(', ') || 'none'}`,
+    `Entities: ${entities.map((e) => e.name).join(', ') || 'none'}`,
+    taught.length ? `Taught words: ${taught.join('; ')}` : '',
+  ].filter(Boolean).join('\n');
+  const lineRefs = items.flatMap((i) => i.lines.map((l) => l.ref));
+  const schema = {
+    type: 'object',
+    properties: {
+      action: { type: 'string', enum: ['answers', 'note', 'entity', 'ask', 'none'] },
+      item: { type: 'string', enum: [...items.map((i) => i.ref), 'none'] },
+      answers: {
+        type: 'array',
+        maxItems: 20,
+        items: {
+          type: 'object',
+          properties: { line: { type: 'string', enum: lineRefs.length ? lineRefs : ['none'] }, value: { type: 'string', enum: values.length ? values : ['none'] } },
+          required: ['line', 'value'],
+          additionalProperties: false,
+        },
+      },
+      entity: { type: 'string', enum: [...entities.map((e) => e.name), 'none'] },
+      note: { type: 'string', maxLength: 300 },
+      question: { type: 'string', maxLength: 200 },
+    },
+    required: ['action', 'item', 'answers', 'entity', 'note', 'question'],
+    additionalProperties: false,
+  };
+  const out = await model.ask({ system: MODEL_SYSTEM, prompt, schema });
+  return checkModelAnswer(out, { text, items, values, entities, learned });
+}
+
+// Every pick checked against the candidates again: the shape is a promise
+// the model may break, the checks are not.
+export function checkModelAnswer(out, { text, items, values, entities, learned = [] }) {
+  if (!out || typeof out !== 'object') return null;
+  const clean = (v, max) => String(v || '').replace(/\s+/g, ' ').trim().slice(0, max);
+  if (out.action === 'ask') {
+    const question = clean(out.question, 200);
+    return { ask: `${question || 'Which item do you mean?'} Nothing changed.` };
+  }
+  const item = items.find((i) => i.ref === out.item);
+  if (!item || !['answers', 'note', 'entity'].includes(out.action)) return null;
+  if (out.action === 'answers') {
+    const seen = new Set();
+    const answers = [];
+    for (const a of Array.isArray(out.answers) ? out.answers : []) {
+      const line = item.lines.find((l) => l.ref === a?.line);
+      if (!line || !values.includes(String(a.value)) || seen.has(line.id)) return null;
+      seen.add(line.id);
+      answers.push({ checklist_item_id: line.id, value: String(a.value) });
+    }
+    if (!answers.length) return null;
+    return { calls: [{ name: 'set_answers', input: { item_id: item.id, answers, all_lines: null } }], byModel: true };
+  }
+  if (out.action === 'note') {
+    const note = clean(out.note, 300);
+    if (!note) return null;
+    return { calls: [{ name: 'add_note', input: { item_id: item.id, text: note.charAt(0).toUpperCase() + note.slice(1) } }], byModel: true };
+  }
+  // An entity only by its own name or a taught word said: "done" is never guessed.
+  const entity = entities.find((e) => e.name === out.entity);
+  if (!entity) return null;
+  const said = new Set(withoutArticles(plainWords(text)));
+  const named = withoutArticles(plainWords(entity.name)).every((w) => said.has(w));
+  const taught = [...said].some((w) => normalizeItemName(learnedStateFor(learned, w) || '') === normalizeItemName(entity.name));
+  if (!named && !taught) {
+    return { ask: `Which entity for ${item.marker.name || 'this item'}: ${joinOr(entities.map((e) => e.name))}? Nothing changed.` };
+  }
+  return { calls: [{ name: 'set_entity', input: { item_id: item.id, entity_id: entity.id } }], byModel: true };
 }
 
 // Stands for the item create_item adds earlier in the same turn.
 const NEW_ITEM = '$new';
 
 /**
- * Does one sentence on the device. Returns { reply, changes } once
- * something was done or asked (a question changes nothing), or null when
- * the rules can't read it or a tool refused before any change: then the
- * message waits for the server as before.
+ * The answer to a question just asked ("Which is "done" for D-118:
+ * Installed or Commissioned?"): exactly one entity's name, maybe with
+ * filler ("commissioned", "the commissioned one" is not). Sets it and
+ * remembers the word for the project. null for anything else.
  */
-export async function runOfflineTurn({ text, toolbox, bridge }) {
-  const plan = planOfflineTurn(text, bridge) || await planDescribedTurn(text, bridge, toolbox);
+export function answerPending(text, bridge, pending) {
+  if (!pending?.itemId || !bridge?.markers?.[pending.itemId]) return null;
+  const said = withoutArticles(plainWords(text)).filter((w) => !FILLER.has(w)).join(' ');
+  const entity = said && entitiesOf(bridge.template).find((e) => e?.id && withoutArticles(plainWords(e.name)).join(' ') === said);
+  if (!entity) return null;
+  return {
+    calls: [
+      { name: 'set_entity', input: { item_id: pending.itemId, entity_id: entity.id } },
+      ...(bridge.projectId ? [{ name: 'remember', input: { kind: 'state', heard: pending.heard, means: entity.name } }] : []),
+    ],
+  };
+}
+
+/**
+ * Does one sentence on the device. Returns { reply, changes } once
+ * something was done or asked (a question changes nothing, and comes with
+ * `pending` for the answer), or null when the rules can't read it or a
+ * tool refused before any change: then the message waits for the server
+ * as before. `learned`: the project's saved rows (state words);
+ * `pending`: the question this chat just asked on the device.
+ */
+export async function runOfflineTurn({ text, toolbox, bridge, learned = [], pending = null, model = null }) {
+  const plan = answerPending(text, bridge, pending)
+    || planOfflineTurn(text, bridge, { learned })
+    || await planDescribedTurn(text, bridge, toolbox, { learned })
+    || (model ? await planModelTurn(text, bridge, toolbox, { model, learned }) : null);
   if (!plan) return null;
-  if (plan.ask) return { reply: plan.ask, changes: [], calls: [] };
+  if (plan.ask) return { reply: plan.ask, changes: [], calls: [], pending: plan.pending || null };
   const changes = [];
   const said = [];
   let added = null;
@@ -418,5 +616,5 @@ export async function runOfflineTurn({ text, toolbox, bridge }) {
     if (Array.isArray(res?.changes)) changes.push(...res.changes);
     if (res?.content) said.push(String(res.content).replace(/\s*\(item id [^)]+\)/g, '').replace(/,\s*id [^\s.]+/g, ''));
   }
-  return { reply: said.join(' ').trim() || 'Done.', changes, calls: plan.calls };
+  return { reply: said.join(' ').trim() || 'Done.', changes, calls: plan.calls, ...(plan.byModel ? { byModel: true } : {}) };
 }
