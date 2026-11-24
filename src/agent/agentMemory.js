@@ -5,7 +5,7 @@
 // editors change (RLS). The agent reads them through get_survey_context and
 // item lookups; people see and remove them under "What Survey learned".
 
-export const MEMORY_KINDS = Object.freeze(['name', 'wording']);
+export const MEMORY_KINDS = Object.freeze(['name', 'wording', 'placement']);
 export const MEMORY_LIMITS = Object.freeze({ heard: 120, means: 200, perProject: 500 });
 
 /** The spoken form folded for matching, as the database's heard_key. */

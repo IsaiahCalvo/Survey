@@ -12,6 +12,7 @@ import { boundsCover, findDescribedOnPages, markerBoxAroundTag, tagShape } from 
 import { floorNumberOf, kindFromWord, parseDescribedTarget, scoreDescribedTag, templateKinds, wingLetterOf } from './spokenTag.js';
 import { summarizeSurvey, summaryText } from '../services/surveySummary.js';
 import { learnedForModel, learnedNameFor, memoryKey, rewordText } from './agentMemory.js';
+import { DEFAULT_PLACEMENT, placementFromWords, placementWords } from './sheetKind.js';
 
 export { normalizeItemName, scoreItemName };
 
@@ -102,6 +103,7 @@ export async function describedItems(b, target) {
       ...(entry?.module?.name ? { module: entry.module.name } : {}),
       page: marker.pageNumber || null,
       ...(ownFloor != null ? { floor: ownFloor } : sheet.floor != null ? { sheet_floor: sheet.floor } : {}),
+      ...(sheet.kind ? { sheet: sheet.kind } : {}),
       score,
       here: !b.currentModuleId || marker.moduleId === b.currentModuleId,
       moduleId: marker.moduleId,
@@ -212,6 +214,32 @@ function decodePhotoBase64(input) {
  * nobody has changed since. Markup an extra tool added is
  * { annotationId, documentId, label }; undo deletes it through getDocument.
  */
+// A plan match's sheet kind and, for a table row, its spot (sheetKind.js).
+const sheetFields = (m) => ({
+  ...(m.sheetKind ? { sheet: m.sheetKind } : {}),
+  ...(m.spot === 'table' ? { spot: 'table row' } : {}),
+});
+
+/** The project's placement rule: the sheet kinds a device is put on. */
+export function placementOf(rows) {
+  const row = (rows || []).find((r) => r.kind === 'placement');
+  const kinds = row ? placementFromWords(row.means) : [];
+  return { kinds: kinds.length ? kinds : [...DEFAULT_PLACEMENT], saved: Boolean(row && kinds.length) };
+}
+
+/**
+ * Which plan matches the placement rule picks: on a sheet of a kind it
+ * names, and not a table row unless it names schedules. Sheets whose kind
+ * can't be told are left to the model and the person.
+ */
+export function placementPick(matches, kinds) {
+  const want = new Set(kinds || DEFAULT_PLACEMENT);
+  const fits = (m) => m.sheet && want.has(m.sheet) && (m.spot !== 'table row' || want.has('schedule'));
+  const picked = (matches || []).filter(fits);
+  const unknown = (matches || []).filter((m) => !m.sheet);
+  return { picked, unknown };
+}
+
 export function createSurveyAgentToolbox({
   getBridge = () => surveyAgentBridge.current,
   attachments = new Map(),
@@ -250,6 +278,28 @@ export function createSurveyAgentToolbox({
   // single clear match is used; anything else sends the model back to ask.
   // A name the project taught ("D101" is D-1-01) stands for that item's name.
   const memoryRows = (b) => (memory && b?.projectId ? memory.cached(b.projectId) : []);
+  // With a device on several sheets: which matches the project's placement
+  // rule picks (default the floor plan), so the model need not ask, or that
+  // it should ask with ask_which_page.
+  const placementHint = (b, matches) => {
+    // Only the ones that fit about as well as the best: the same tag twice.
+    const top = Math.max(0, ...(matches || []).map((m) => m.score ?? 1));
+    const near = (matches || []).filter((m) => (m.score ?? 1) >= top - 0.1);
+    if (near.length < 2) return {};
+    const rule = placementOf(memoryRows(b));
+    const { picked } = placementPick(near, rule.kinds);
+    const perKind = new Map();
+    for (const m of picked) perKind.set(m.sheet, (perKind.get(m.sheet) || 0) + 1);
+    const clear = picked.length > 0 && [...perKind.values()].every((n) => n === 1);
+    return {
+      placement: {
+        rule: placementWords(rule.kinds),
+        ...(clear
+          ? { use: picked.map((m) => m.id), say: `Use ${picked.length === 1 ? 'this one' : 'these'} without asking.` }
+          : { use: [], say: 'The rule does not pick one clearly: ask with ask_which_page.' }),
+      },
+    };
+  };
   const learnedName = (b, heard) => learnedNameFor(memoryRows(b), heard) || heard;
   const markerIdByName = (b, name) => {
     const heard = learnedName(b, String(name || '').trim());
@@ -456,6 +506,20 @@ export function createSurveyAgentToolbox({
     return { text: `Set ${answers.length} ${moduleName} answer${answers.length === 1 ? '' : 's'} on ${nameOf(marker)}.`, changes };
   };
 
+  const saveMemory = async (b, row, line) => {
+    let saved;
+    try {
+      saved = await memory.save(b.projectId, row);
+    } catch (err) {
+      throw new ToolError(`Could not save it: ${err.message}`);
+    }
+    if (saved.same) return { content: `Already saved: ${line}.` };
+    return {
+      content: `Saved for this project: ${line}.${saved.before ? ` (Replaced "${saved.before.means}".)` : ''}`,
+      change: { memory: { projectId: b.projectId, row: saved.row, before: saved.before }, label: `Learned: ${line}` },
+    };
+  };
+
   const tools = {
     // "Whenever I say D101 I mean D-1-01" (a name) or "always write not
     // installed, not missing" (wording): saved for everyone on the project.
@@ -471,20 +535,37 @@ export function createSurveyAgentToolbox({
         const itemId = await itemIdFor(b, target);
         target = nameOf(markerOf(b, itemId));
         if (said.toLowerCase() === target.toLowerCase()) throw new ToolError(`${said} is already that item's own name; nothing saved.`);
+      } else if (kind === 'placement') {
+        // "Mark it on the floor plan, schedule and riser": one rule per project.
+        const kinds = placementFromWords(`${said} ${target}`);
+        if (!kinds.length) throw new ToolError('Say which sheets: floor plan, schedule, riser, detail or legend. Nothing saved.');
+        target = kinds.join(', ');
+        return saveMemory(b, { kind, heard: 'sheets', means: target }, `mark devices on ${placementWords(kinds)}`);
       } else if (kind !== 'wording') {
-        throw new ToolError('kind is name or wording.');
+        throw new ToolError('kind is name, wording or placement.');
       }
-      let saved;
-      try {
-        saved = await memory.save(b.projectId, { kind, heard: said, means: target });
-      } catch (err) {
-        throw new ToolError(`Could not save it: ${err.message}`);
-      }
-      const line = kind === 'name' ? `"${saved.row.heard}" means ${saved.row.means}` : `write "${saved.row.means}" for "${saved.row.heard}"`;
-      if (saved.same) return { content: `Already saved: ${line}.` };
+      return saveMemory(b, { kind, heard: said, means: target },
+        kind === 'name' ? `"${said}" means ${target}` : `write "${target}" for "${said}"`);
+    },
+
+    // "Page 6 or 33?": the panel shows a button per page plus both, neither
+    // and other, and a "remember for this project" switch. Nothing changes.
+    ask_which_page({ plan_match_ids: ids = [], question = '' } = {}) {
+      const b = bridge();
+      const seen = new Set();
+      const options = (Array.isArray(ids) ? ids : []).map((id) => [id, planMatches.get(id)])
+        .filter(([id, m]) => m && !seen.has(`${m.page}|${m.text}`) && seen.add(`${m.page}|${m.text}`))
+        .slice(0, 4)
+        .map(([id, m]) => ({ id, page: m.page, text: m.text, sheet: m.sheetKind || null, spot: m.spot || 'drawing' }))
+        .sort((a, c) => a.page - c.page);
+      if (options.length < 2) throw new ToolError('Give two or more plan match ids from find_described or find_on_plan.');
       return {
-        content: `Saved for this project: ${line}.${saved.before ? ` (Replaced "${saved.before.means}".)` : ''}`,
-        change: { memory: { projectId: b.projectId, row: saved.row, before: saved.before }, label: `Learned: ${line}` },
+        content: 'The person now sees a button for each page, plus all, none and other, and a switch to remember the answer for this project. Ask in one short sentence naming each page and its sheet, then wait for their answer.',
+        choice: {
+          question: String(question || '').trim().slice(0, 200) || null,
+          options,
+          canRemember: Boolean(memory && b.projectId && b.canEdit !== false),
+        },
       };
     },
 
@@ -574,6 +655,8 @@ export function createSurveyAgentToolbox({
           ...(offered ? { template_editable: templateEditable(b) } : {}),
           // Names and note wording this project taught the agent.
           ...(memory && b.projectId ? { learned: learnedForModel(memoryRows(b)) } : {}),
+          // Which sheets a device goes on (sheetKind.js): the project's rule, else the floor plan.
+          placement: placementWords(placementOf(memoryRows(b)).kinds),
         }),
       };
     },
@@ -861,12 +944,14 @@ export function createSurveyAgentToolbox({
           id,
           page: m.page,
           text: m.text,
+          ...sheetFields(m),
           ...(covering ? { already_item: { id: covering[0], name: nameOf(covering[1]) } } : {}),
         };
       });
       return {
         content: out({
           matches,
+          ...placementHint(b, matches),
           ...(found?.unreadPages?.length ? { pages_without_text: found.unreadPages.length } : {}),
         }),
       };
@@ -903,6 +988,7 @@ export function createSurveyAgentToolbox({
             page: m.page,
             text: m.text,
             ...(m.sheetFloor != null ? { sheet_floor: m.sheetFloor } : {}),
+            ...sheetFields(m),
             score: m.score,
             ...(covering ? { already_item: { id: covering[0], name: nameOf(covering[1]) } } : {}),
           };
@@ -913,6 +999,7 @@ export function createSurveyAgentToolbox({
           looked_for: { kind: target.kind, number: target.number, floor: target.floor, wing: target.wing },
           items: shownItems,
           plan,
+          ...placementHint(b, plan),
           ...(unreadPages.length ? { pages_without_text: unreadPages.length } : {}),
         }),
       };

@@ -2,6 +2,7 @@
 // Survey agent's find_on_plan tool. Words come from the pdf.js text layer or,
 // on a scanned sheet, from a text recognition result the person already ran.
 // Boxes are in page points with the origin at the top left, like marker bounds.
+import { cachedSheetKind, spotOf } from './sheetKind.js';
 
 const compact = (text) => String(text || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
@@ -97,6 +98,13 @@ function adjacent(a, b) {
   return nextOnLine(a, b, DOWN, 1) || nextOnLine(a, b, DOWN, -1);
 }
 
+// The sheet's kind (floor plan, schedule...) and whether this spot is a
+// table row or the drawing itself (sheetKind.js).
+function whereOnSheet(words, box) {
+  const sheet = cachedSheetKind(words);
+  return { sheetKind: sheet.kind, spot: spotOf(box, sheet.table) };
+}
+
 /**
  * Places on the sheets where `query` appears as a whole tag. "D-117" matches
  * "D-117", "D117" and "D - 117" (split across words), never "D-1170". Each
@@ -115,7 +123,8 @@ export function findTagOnPages(query, pages) {
         run.push(words[j]);
         joined += compact(words[j].text);
         if (joined === want) {
-          matches.push({ page, text: run.map((w) => w.text).join(' '), box: union(run.map((w) => w.box)), source });
+          const box = union(run.map((w) => w.box));
+          matches.push({ page, text: run.map((w) => w.text).join(' '), box, source, ...whereOnSheet(words, box) });
           break;
         }
         if (!want.startsWith(joined)) break;
@@ -382,7 +391,8 @@ export function findDescribedOnPages(target, pages, { score, sheetOf, limit = MA
       const key = compact(best.text);
       if (seen.has(key)) continue;
       seen.add(key);
-      found.push({ page, text: best.text, box: union(best.run.map((w) => w.box)), source, score: best.score, sheetFloor: sheet.floor });
+      const box = union(best.run.map((w) => w.box));
+      found.push({ page, text: best.text, box, source, score: best.score, sheetFloor: sheet.floor, ...whereOnSheet(words, box) });
     }
   }
   return found.sort((a, b) => b.score - a.score || a.page - b.page).slice(0, limit);
@@ -397,7 +407,7 @@ export async function readDocumentSheets(doc, sheetOf) {
   for (let page = 1; page <= count; page += 1) {
     const entry = await readPageWords(doc, page);
     if (entry.source === 'none') unreadPages.push(page);
-    else pages.push({ page, words: entry.words, source: entry.source, sheet: sheetOf ? sheetOf(entry.words) : null });
+    else pages.push({ page, words: entry.words, source: entry.source, sheet: { ...(sheetOf ? sheetOf(entry.words) : {}), kind: cachedSheetKind(entry.words).kind } });
   }
   return { pages, unreadPages };
 }
