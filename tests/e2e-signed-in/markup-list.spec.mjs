@@ -91,7 +91,8 @@ test('the Markups list shows, opens, follows and saves the marks', async ({ page
     const lines = text.trim().split(/\r\n/);
     expect(lines[0]).toBe('Page,Kind,Text,Colour,Author,Created,Quantity,Unit,Layer');
     expect(lines).toHaveLength(2);
-    expect(lines[1]).toMatch(/^1,Rectangle,,("[^"]*"|[^,]*),You,/);
+    // A saved list goes to other people, so it names the author, never "You".
+    expect(lines[1]).toMatch(/^1,Rectangle,,("[^"]*"|[^,]*),(?!You,)[^,]+,/);
   } finally {
     await admin.from('documents').delete().eq('id', id);
     await admin.storage.from('documents').remove([`${user.id}/${id}.pdf`]);
