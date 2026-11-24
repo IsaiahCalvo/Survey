@@ -29,3 +29,10 @@ test('Annotations, with nothing drawn, shows only the empty line, 32px down', ()
   assert.match(css, /padding: 32px 20px;/);
   assert.match(css, /text-align: center;/);
 });
+
+test('An empty Library hides its search box; Stamps and a loading library keep it', () => {
+  const jsx = read('src/markLibrary/MarkLibraryPanel.jsx');
+  assert.match(jsx, /const libraryEmpty = !stampsTab && status === 'ready' && items\.length === 0;/);
+  const search = jsx.indexOf('className="mark-library__search"');
+  assert.match(jsx.slice(search - 250, search), /\{!libraryEmpty && \(\s*<input\s*$/);
+});
