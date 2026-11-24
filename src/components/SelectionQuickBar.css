@@ -833,7 +833,7 @@ button.selection-quick-bar__fill:focus-visible {
   gap: 6px;
   box-sizing: border-box;
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: var(--radius-xs);
   background: transparent;
   color: var(--text-2);
   font: inherit;
