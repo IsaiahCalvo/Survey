@@ -80,3 +80,26 @@ export function resolveLastSurveyTemplate(documentId, templates, storage = defau
   }
   return match;
 }
+
+// r5a #10 (2026-11-24): on a device that never opened this document (a fresh
+// sign-in on the iPad) there is no memory, so Survey showed the template
+// picker as if the walk were gone. The document's own Survey Markers say
+// which template it uses: the one whose Modules hold the most of them.
+export function templateForDocumentMarkers(markers, templates) {
+  const list = Array.isArray(templates) ? templates : [];
+  const counts = new Map();
+  for (const marker of Object.values(markers || {})) {
+    const moduleId = marker?.moduleId ?? marker?.spaceId;
+    if (moduleId === null || moduleId === undefined || moduleId === '') continue;
+    counts.set(String(moduleId), (counts.get(String(moduleId)) || 0) + 1);
+  }
+  if (counts.size === 0) return null;
+  let best = null;
+  let bestCount = 0;
+  for (const template of list) {
+    const modules = template?.modules || template?.spaces || [];
+    const count = modules.reduce((sum, module) => sum + (counts.get(String(module?.id)) || 0), 0);
+    if (count > bestCount) { best = template; bestCount = count; }
+  }
+  return best;
+}

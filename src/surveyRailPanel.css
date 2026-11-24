@@ -1152,6 +1152,13 @@
   transform: scale(0.88);
 }
 
+/* A Viewer reads the answers but can't change them (r5b #20): no pointer,
+   no press, and the chosen answer keeps its plate so it stays readable. */
+.survey-rail .survey-rail__answer:disabled {
+  cursor: default;
+  transform: none;
+}
+
 /* The chosen answer (owner 2026-10-01): Y green, N red, N/A neutral grey,
    each a near-white word on a small solid plate of its hue (7:1); the phone
    sheet uses the same chips (mobileSurveyPanel.css). */
@@ -1227,7 +1234,7 @@
   .survey-rail .survey-marker-category-arrow:hover svg {
     transform: scale(1.1);
   }
-  .survey-rail .survey-rail__answer:not(.is-active):hover {
+  .survey-rail .survey-rail__answer:not(.is-active):not(:disabled):hover {
     color: var(--text-1);
   }
 }

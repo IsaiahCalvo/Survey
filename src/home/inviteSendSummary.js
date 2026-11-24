@@ -34,7 +34,10 @@ export function describeInviteSendResult(email, result) {
 
   // Nothing was created: no access, no invite, nothing to copy.
   if (!invite) {
-    const reason = asSentence(result?.error) || 'Try again.';
+    // Never show database words (r5b #1, 2026-11-24): a refusal by the
+    // server's access rules means this person may not invite here.
+    const refused = /row-level security|permission denied|42501/i.test(String(result?.error || ''));
+    const reason = refused ? 'Only the project owner can invite people.' : (asSentence(result?.error) || 'Try again.');
     return {
       email,
       state: 'failed',

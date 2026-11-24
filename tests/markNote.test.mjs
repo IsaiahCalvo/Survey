@@ -114,3 +114,12 @@ test('wiring: beta flag, panel box, page layer, menu row, list, migration', () =
   const migration = readFileSync(new URL('../supabase/migrations/20261117122000_mark_note_flag.sql', import.meta.url), 'utf8');
   assert.match(migration, /'mark-note', 'off'/);
 });
+
+// r5b #10 (2026-11-24): a note saves after a pause in typing, not only when
+// the box loses focus, so a reload or the other person sees it.
+test('the note box saves after a pause in typing, and Escape takes it back', () => {
+  const panel = readFileSync(new URL('../src/components/SelectionPropertiesPanel.jsx', import.meta.url), 'utf8');
+  assert.match(panel, /const NOTE_SAVE_PAUSE_MS = \d+;/);
+  assert.match(panel, /onInput=\{\(\) => \{\s*clearTimeout\(timerRef\.current\);\s*timerRef\.current = setTimeout/);
+  assert.match(panel, /event\.currentTarget\.value = startRef\.current;/);
+});

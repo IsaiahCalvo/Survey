@@ -144,3 +144,9 @@ test('both invite dialogs use the builder, not the old "First failure" string', 
   assert.match(notice, /--alert-warning-bg/);
   assert.match(notice, /--alert-warning-border/);
 });
+
+test('a refusal by the access rules reads as plain words, never database text', async () => {
+  const { describeInviteSendResult } = await import('../src/home/inviteSendSummary.js');
+  const item = describeInviteSendResult('a@example.com', { success: false, error: 'new row violates row-level security policy for table "project_invites"' });
+  assert.equal(item.text, "Couldn't invite a@example.com. Only the project owner can invite people.");
+});

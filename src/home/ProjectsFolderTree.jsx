@@ -1052,7 +1052,7 @@ export default function ProjectsFolderTree({
   ) : null;
   const mobileFileActions = open ? (
     <div className="projects-mobile-action-row two">
-      <button className="btn" onClick={() => addFiles(open)}><Icon name="upload" size={12} />Add files</button>
+      {projectRoleFor(open) !== 'viewer' ? <button className="btn" onClick={() => addFiles(open)}><Icon name="upload" size={12} />Add files</button> : null}
       <button className="btn" onClick={() => setTeamModalProject(open)}><Icon name="users" size={12} />Team</button>
     </div>
   ) : null;
@@ -1406,7 +1406,9 @@ export default function ProjectsFolderTree({
                   )}
                   {/* Add files — opens the OS file picker; picked PDFs are
                       added to this project's document list. */}
-                  <button className="btn" onClick={() => addFiles(open)}><Icon name="upload" size={12} />Add files</button>
+                  {projectRoleFor(open) !== 'viewer' ? (
+                    <button className="btn" onClick={() => addFiles(open)}><Icon name="upload" size={12} />Add files</button>
+                  ) : null}
                   {onAddFromDrive && projectRoleFor(open) !== 'viewer' ? (
                     <button className="btn" data-project-add-onedrive onClick={() => onAddFromDrive(open)}><Icon name="oneDrive" size={12} />From OneDrive</button>
                   ) : null}
@@ -1760,7 +1762,7 @@ export default function ProjectsFolderTree({
                       {sheetSetOn && mobileDrillFiles.length > 1 ? (
                         <SectionIconButton phone action="open-all" icon="pages" label={openAllChoice(mobileDrillFiles, fileSelect ? selFiles : null).label} data-open-all-sheets onClick={() => openAllSheets(mobileDrillProject, openAllChoice(mobileDrillFiles, fileSelect ? selFiles : null).files)} />
                       ) : null}
-                      <SectionIconButton phone action="add" label="Add files" onClick={() => addFiles(mobileDrillProject)} />
+                      {projectRoleFor(mobileDrillProject) !== 'viewer' ? <SectionIconButton phone action="add" label="Add files" onClick={() => addFiles(mobileDrillProject)} /> : null}
                     </SectionIconActions>
                   </div>
                   <div className="projects-mobile-file-list">
@@ -1768,7 +1770,7 @@ export default function ProjectsFolderTree({
                       <div className="projects-mobile-empty-card">
                         <Icon name="doc" size={18} contentType="document" />
                         <span>{mobileDrillAllFiles.length === 0 ? 'No files in this project yet.' : 'No files match your search.'}</span>
-                        {mobileDrillAllFiles.length === 0 ? (
+                        {mobileDrillAllFiles.length === 0 && projectRoleFor(mobileDrillProject) !== 'viewer' ? (
                           <button type="button" onClick={() => addFiles(mobileDrillProject)}>Add files</button>
                         ) : null}
                       </div>
@@ -2251,7 +2253,7 @@ export default function ProjectsFolderTree({
               />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
-              <button className="btn" style={{ justifyContent: 'center' }} onClick={() => addFiles(open)}><Icon name="upload" size={12} />Add files</button>
+              {projectRoleFor(open) !== 'viewer' ? <button className="btn" style={{ justifyContent: 'center' }} onClick={() => addFiles(open)}><Icon name="upload" size={12} />Add files</button> : null}
               <button className="btn" style={{ justifyContent: 'center' }} onClick={() => setTeamModalProject(open)}><Icon name="users" size={12} />Team</button>
             </div>
 

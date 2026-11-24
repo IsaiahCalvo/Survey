@@ -6526,6 +6526,8 @@ export default function App({ devPreviewReturnTab = null }) {
         onOpenColourPicker={toggleAnnotationColourPicker}
         entities={rightRailApi?.selectedTemplate?.entities || null}
         surveyMarkers={rightRailApi?.surveyMarkers || null}
+        surveyTemplate={rightRailApi?.selectedTemplate || null}
+        onOpenSurveyMarker={(id) => rightRailApi?.openSurveyMarker?.(id)}
         onComment={markCommentsEnabled && activeTab?.file?.id ? commentOnMark : null}
         onPickEntity={(entityId, markerIds) => {
           rightRailApi?.rememberSurveyEntity?.(entityId);
@@ -6547,6 +6549,7 @@ export default function App({ devPreviewReturnTab = null }) {
         onOpenColourPicker={toggleAnnotationColourPicker}
         annotationsByPage={leftRailApi?.annotationsByPage || null}
         viewerId={signedInUserId}
+        documentId={leftRailApi?.documentId || null}
         tip={chromeTip}
         textFormat={textFormatSource}
       />

@@ -44,6 +44,7 @@ import { LineEndingsPanel, LineEndsSample } from './LineEndingsPicker.jsx';
 import { parsePickedLineEnds } from '../utils/lineEndingDefaults.js';
 import { SurveyEntitySwatch } from './SurveyEntityBar';
 import SurveyOverflowRow from './SurveyOverflowRow';
+import { markerTapCardModel } from '../survey/markerTapCard.js';
 import MeasureEditPopover from './MeasureEditPopover';
 import { useHangingPopoverPlace } from './useHangingPopoverPlace.js';
 import { watchLightPopover } from './dismissRules.js';
@@ -72,6 +73,8 @@ import './SelectionQuickBar.css';
 
 // How many entity swatches the bar draws before "All N" (SurveyOverflowRow).
 const ENTITY_SWATCH_MAX = 6;
+// Nightly 'marker-tap-card': checklist lines shown on the bar before "+N".
+const MARKER_CARD_LINE_MAX = 4;
 // About the height of the right-click menu on a mark (10 rows), for More.
 const MORE_MENU_ROOM = 320;
 
@@ -261,6 +264,10 @@ export default function SelectionQuickBar({
   entities = null,
   surveyMarkers = null,
   onPickEntity,
+  // Nightly 'marker-tap-card': the document's template (to name a marker's
+  // Category and list its checklist) and the Survey panel's opener.
+  surveyTemplate = null,
+  onOpenSurveyMarker = null,
   // Comments on marks (Nightly): start a thread on the one picked mark.
   onComment = null,
   // The phone layout: Duplicate and Delete only (see the header).
@@ -583,6 +590,14 @@ export default function SelectionQuickBar({
     [items],
   );
   const markerEntityId = markerIds.length ? (surveyMarkers?.[markerIds[0]]?.entityId || null) : null;
+  // Nightly 'marker-tap-card' (owner 2026-11-24): one Survey Marker picked on
+  // the desktop layout shows what it is (Category, Tag, checklist answers)
+  // instead of Comment / Duplicate / Delete, which stay in More, and Expand
+  // opens the Survey panel on it, not the shape panel.
+  const markerTapCardOn = useMemo(() => isFeatureOn('marker-tap-card'), []);
+  const markerCard = markerTapCardOn && !phone && items.length === 1 && markerIds.length === 1
+    ? markerTapCardModel(surveyMarkers?.[markerIds[0]], surveyTemplate)
+    : null;
   const tipSide = look.side === 'above' ? 'above' : 'below';
   const button = (label, icon, onActivate, extra = {}) => (
     <button
@@ -905,14 +920,64 @@ export default function SelectionQuickBar({
       </span>,
     );
   }
-  groups.push(
+  if (markerCard) {
+    const openMarker = () => onOpenSurveyMarker?.(markerIds[0]);
+    groups.unshift(
+      <span key="marker-card" className="selection-quick-bar__group selection-quick-bar__marker" data-selection-quick-marker-card="">
+        <span className="selection-quick-bar__marker-what">
+          <span className="selection-quick-bar__marker-category">{markerCard.categoryName}</span>
+          {markerCard.tag && <span className="selection-quick-bar__marker-tag">{markerCard.tag}</span>}
+        </span>
+        {markerCard.lines.length > 0 && (
+          <span className="selection-quick-bar__marker-lines" role="list" aria-label={`${markerCard.answered} of ${markerCard.lines.length} answered`}>
+            {markerCard.lines.slice(0, MARKER_CARD_LINE_MAX).map((line) => (
+              <button
+                key={line.id}
+                type="button"
+                role="listitem"
+                className="selection-quick-bar__marker-line"
+                data-answered={line.answer != null ? 'true' : undefined}
+                aria-label={`${line.text}: ${line.answer ?? 'not answered'}`}
+                {...chromeTip(line.answer != null ? `${line.text}: ${line.answer}` : `${line.text}: not answered`, tipSide)}
+                onMouseDown={(event) => event.stopPropagation()}
+                onClick={openMarker}
+              >
+                <span className="selection-quick-bar__marker-line-text">{line.text}</span>
+                <span className="selection-quick-bar__marker-line-answer">{line.answer ?? '–'}</span>
+              </button>
+            ))}
+            {markerCard.lines.length > MARKER_CARD_LINE_MAX && (
+              <button
+                type="button"
+                role="listitem"
+                className="selection-quick-bar__marker-line selection-quick-bar__marker-more"
+                aria-label={`${markerCard.lines.length - MARKER_CARD_LINE_MAX} more in the Survey panel`}
+                {...chromeTip('See every item in the Survey panel', tipSide)}
+                onMouseDown={(event) => event.stopPropagation()}
+                onClick={openMarker}
+              >
+                +{markerCard.lines.length - MARKER_CARD_LINE_MAX}
+              </button>
+            )}
+          </span>
+        )}
+      </span>,
+    );
+  }
+  if (!markerCard) groups.push(
     <span key="actions" className="selection-quick-bar__group">
       {onComment && items.length === 1 && button('Comment', 'comment', () => onComment(items[0]), { 'data-selection-quick-comment': 'true' })}
       {plan?.duplicate && button('Duplicate', 'duplicate', () => runKey('duplicate'))}
       {plan?.remove && button('Delete', 'trash', () => runKey('delete'))}
     </span>,
   );
-  if (panelAllowed && !propertiesPanelOpen) {
+  if (markerCard && onOpenSurveyMarker) {
+    groups.push(
+      <span key="expand" className="selection-quick-bar__group">
+        {button('Expand menu', 'expandMenu', () => onOpenSurveyMarker?.(markerIds[0]), { 'data-selection-quick-expand': 'true', 'data-selection-quick-expand-survey': 'true' })}
+      </span>,
+    );
+  } else if (panelAllowed && !propertiesPanelOpen) {
     groups.push(
       <span key="expand" className="selection-quick-bar__group">
         {button('Expand menu', 'expandMenu', () => setPropertiesPanelOpen(true), { 'data-selection-quick-expand': 'true' })}

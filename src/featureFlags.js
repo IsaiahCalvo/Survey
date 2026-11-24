@@ -513,6 +513,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Polygon and Polyline: with a mark picked, the first click drops the pick and places the first point',
     stage: 'rollout',
   }),
+  'marker-tap-card': Object.freeze({
+    label: 'Marker tap card: a tapped Survey Marker shows its Category, Tag and checklist items; Expand opens the Survey panel on it',
+    stage: 'beta',
+  }),
   'stamp-tool': Object.freeze({
     label: "Stamp tool: Drawboard's twelve preset stamps in a Stamp card; pick one, then click the page to drop it",
     stage: 'beta',

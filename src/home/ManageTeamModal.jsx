@@ -759,9 +759,15 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                 <Icon name="download" size={13} />
               </button>
             )}
-            <button onClick={() => setInviteOpen(true)} className="hub-btn hub-btn--primary">
-              <Icon name="plus" size={11}/>Invite
-            </button>
+            {/* r5b #1 (2026-11-24): only the owner may invite (the server
+                refuses anyone else), so a Viewer or Editor is not offered it. */}
+            {canManageMembers ? (
+              <button onClick={() => setInviteOpen(true)} className="hub-btn hub-btn--primary">
+                <Icon name="plus" size={11}/>Invite
+              </button>
+            ) : (
+              <span data-team-owner-invites style={{ fontSize: 12, color: INK_200, whiteSpace: "nowrap" }}>Only the owner can invite</span>
+            )}
           </div>
 
           {/* Toolbar */}
@@ -890,7 +896,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                   {!editMode && openMenu === m.id && menuPos && (
                     <div data-manage-team-dismiss-surface="true" className="hub-menu" onClick={(e) => e.stopPropagation()} style={{ left: menuPos.left, top: menuPos.top, zIndex: 1400, width: 180 }}>
                       {[
-                        { label: "Invite user", onClick: () => { setOpenMenu(null); setInviteOpen(true); } },
+                        ...(canManageMembers ? [{ label: "Invite user", onClick: () => { setOpenMenu(null); setInviteOpen(true); } }] : []),
                         ...(m.isCreator || !canManageMembers ? [] : [{ label: "Change role", onClick: () => { setOpenMenu(null); setEditMode(true); setOpenRoleSel(m.id); } }]),
                         { label: "View activity", onClick: () => { setOpenMenu(null); setActivityFor(m); } },
                         { label: "Copy email", disabled: !m.email, onClick: async () => {

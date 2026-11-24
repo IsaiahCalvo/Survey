@@ -55,6 +55,9 @@ async function openPanel(page) {
   const chooser = page.getByText('Choose a survey template', { exact: true });
   await expect(async () => {
     if (await sync.isVisible()) return;
+    // With no memory on this device, Survey opens the drawing's own template;
+    // a newer version of it is asked about first, over the picker.
+    await page.getByRole('button', { name: 'Keep previous version' }).click({ timeout: 2_000 }).catch(() => {});
     if (await chooser.isVisible()) {
       await page.getByText(E2E_SURVEY.templateName, { exact: true }).last().click();
       const keep = page.getByRole('button', { name: 'Keep previous version' });

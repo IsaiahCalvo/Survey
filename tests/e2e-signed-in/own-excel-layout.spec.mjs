@@ -115,16 +115,31 @@ test('make a layout from your own sheet, pick it, and Export data uses it', asyn
   // The drawing keeps the template as it was; the new layout is a new version.
   const latest = page.getByRole('button', { name: 'Use latest version' });
   if (!(await category.isVisible().catch(() => false))) {
+    // With no memory on this device, Survey opens the template the drawing's
+    // Survey Markers belong to (or shows the picker while templates load).
     await page.getByRole('button', { name: 'Survey', exact: true }).click();
     const chooser = page.getByText('Choose a survey template', { exact: true });
     await expect(chooser.or(category).or(latest).first()).toBeVisible({ timeout: 30_000 });
-    if (await chooser.isVisible()) await page.getByText(E2E_SURVEY.templateName, { exact: true }).last().click();
+    if (await chooser.isVisible()) {
+      await page.getByText(E2E_SURVEY.templateName, { exact: true }).last().click({ timeout: 5_000 }).catch(() => {});
+    }
   }
-  await latest.click({ timeout: 15_000 });
+  // The new layout is a new template version: it is offered when Survey
+  // opens, or at the latest when Export data is pressed.
+  await expect(latest.or(category).first()).toBeVisible({ timeout: 15_000 });
+  if (await latest.isVisible()) await latest.click();
   await expect(category).toBeVisible();
 
+  const exportData = page.getByRole('button', { name: 'Export data' }).filter({ visible: true }).first();
   const download = page.waitForEvent('download', { timeout: 60_000 });
-  await page.getByRole('button', { name: 'Export data' }).filter({ visible: true }).first().click();
+  await exportData.click();
+  // Export data never uses an old layout silently: if the drawing still has
+  // the older version, it asks first; pick the latest and export again.
+  if (await latest.waitFor({ state: 'visible', timeout: 3_000 }).then(() => true).catch(() => false)) {
+    await latest.click();
+    await expect(category).toBeVisible();
+    await exportData.click();
+  }
   const file = await download;
   const book = new ExcelJS.Workbook();
   await book.xlsx.load(readFileSync(await file.path()));

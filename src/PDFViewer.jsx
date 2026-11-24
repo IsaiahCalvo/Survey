@@ -626,7 +626,7 @@ import { createCounterDragPreview, removeCounterDragPreview, updateCounterDragPr
 import { getExportErrorMessage, isFileLocked } from './utils/exportHelpers';
 import { buildTrackpadInteractionDebugSummaryText, summarizeOverlayLagSamples } from './utils/overlayDebug';
 import { EXCEL_AUTOMATIC_WRITEBACK_ENABLED, isSilentWritebackBlocked } from './utils/excelWritebackGate';
-import { rememberLastSurveyTemplate, resolveLastSurveyTemplate, surveyMemoryDocumentKey } from './utils/surveyLastTemplate.js';
+import { rememberLastSurveyTemplate, resolveLastSurveyTemplate, surveyMemoryDocumentKey, templateForDocumentMarkers } from './utils/surveyLastTemplate.js';
 import { shouldCaptureToolSwitchDiag } from './utils/toolSwitchDiag.js';
 import { createPageDrawnSignal } from './utils/pageDrawnSignal.js';
 import { polySplineStep } from './utils/polySpline.js';
@@ -6584,7 +6584,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       return;
     }
     if (!showSurveyPanel) {
-      const remembered = resolveLastSurveyTemplate(surveyMemoryDocKey, appTemplates);
+      const remembered = resolveLastSurveyTemplate(surveyMemoryDocKey, appTemplates)
+        || templateForDocumentMarkers(surveyMarkersRef.current, appTemplates);
       if (remembered) {
         handleSelectSurveyTemplate(remembered);
       } else {
@@ -8770,13 +8771,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         selectedModuleId,
       });
       if (!visible) return;
-      // Same fields the per-page screen preview carries: the marker's own
-      // colour, and needsEntity only when it was stored as such.
+      // Paint by the canvas's own rule (surveyMarkerRenderEntry): the
+      // Entity's colour first, then the marker's own; dashed until it has an
+      // Entity. The record's `color` alone goes stale when the Entity changes.
+      const entry = surveyMarkerRenderEntry(annotationId, marker, normalizeSurveyMarkerColor);
       result[annotationId] = {
         ...marker,
         annotationId,
-        color: marker?.color || null,
-        needsEntity: marker?.needsEntity === true,
+        color: entry ? (entry.color || null) : (marker?.color || null),
+        needsEntity: entry ? entry.needsEntity === true : marker?.needsEntity === true,
       };
     });
     return result;
@@ -16523,6 +16526,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       if (!silent) showToast('Please select a survey template before exporting.', 'warn');
       return;
     }
+    // r5a #9 (2026-11-24): the template changed on the Templates page (say,
+    // its Excel layout) since this document took it. Exporting now would use
+    // the old layout without a word, so ask which version first.
+    if (!silent && !requireCurrentSurveyTemplate()) {
+      showToast('This template changed since you opened it. Pick which version to use, then export again.', 'info');
+      return;
+    }
     const localWorkbookIsOpen = async (path) => {
       try {
         const lockPath = excelLockFilePath(path);
@@ -17408,7 +17418,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       }
       showToast('Unable to create the Excel file. Please try again.', 'error');
     }
-  }, [selectedTemplate, items, surveyMarkers, graphClient, liveSyncEnabled, excelSessionId, oneDriveFileId, liveSyncStatus, markExcelSyncCheckpoint]);
+  }, [selectedTemplate, items, surveyMarkers, graphClient, liveSyncEnabled, excelSessionId, oneDriveFileId, liveSyncStatus, markExcelSyncCheckpoint, requireCurrentSurveyTemplate]);
 
   const handleOpenExcel = useCallback(async () => {
     if (!selectedTemplate?.linkedExcelPath) {
@@ -32706,6 +32716,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       }
     }, 300);
   }, [surveyMarkers, selectedTemplate, showSurveyPanel, rightRailCollapsed, requestRightRailExpand, mobileMode]);
+  // Nightly 'marker-tap-card': the quick bar's Expand on a Survey Marker opens
+  // the Survey panel on it. Stable, so the published rail API doesn't churn.
+  const handleSurveyMarkerClickedRef = useRef(handleSurveyMarkerClicked);
+  handleSurveyMarkerClickedRef.current = handleSurveyMarkerClicked;
+  const openSurveyMarker = useCallback((annotationId) => handleSurveyMarkerClickedRef.current?.(annotationId), []);
 
   // A Survey Marker picked on the page opens its row in the open Survey panel
   // (desktop), as a markup list follows the picked markup. The panel is not
@@ -38669,6 +38684,7 @@ ${pageBlocks}
   useEffect(() => {
     if (typeof onRightRailApiChange !== 'function') return;
     const nextRightRailApi = {
+      openSurveyMarker,
       activeSpaceId,
       // Create Category modal plumbing (survey rail plus button). The modal's
       // other data needs (existingTemplateNames, templateId, document id)

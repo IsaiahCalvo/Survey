@@ -1373,6 +1373,12 @@
   transform: scale(0.88);
 }
 
+/* A Viewer reads the answers but can't change them (r5b #20). */
+.mobile-survey-sheet .mobile-survey-check-btn:disabled {
+  cursor: default;
+  transform: none;
+}
+
 /* The answers are 32px words (26px once chosen) in a 44px checklist line: a
    transparent pad gives each the line's full 44px height, so a thumb that lands
    just above or below the well still answers (it measured 32). Sideways the
