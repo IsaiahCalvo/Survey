@@ -10,6 +10,7 @@ import { markBox, visiblePageBox } from './planView.js';
 import { answerSetMeaning, moduleKind, moduleMeaning } from '../../supabase/functions/_shared/surveyAgentMeaning.js';
 import { boundsCover, findDescribedOnPages, markerBoxAroundTag, tagShape } from './planText.js';
 import { floorNumberOf, kindFromWord, parseDescribedTarget, scoreDescribedTag, templateKinds, wingLetterOf } from './spokenTag.js';
+import { nearestToPlace, parsePlaceTarget } from './placeFind.js';
 import { summarizeSurvey, summaryText } from '../services/surveySummary.js';
 import { learnedForModel, learnedNameFor, learnedStateFor, memoryKey, rewordText } from './agentMemory.js';
 
@@ -459,6 +460,52 @@ export function createSurveyAgentToolbox({
     return { text: `Set ${answers.length} ${moduleName} answer${answers.length === 1 ? '' : 's'} on ${nameOf(marker)}.`, changes };
   };
 
+  // find_described by place: items of the kind nearest a printed place label
+  // (on a bare PDF, printed tags of the kind), with the one clearly nearest.
+  const findByPlace = async (b, place) => {
+    const { pages = [], unreadPages = [] } = typeof b.readSheets === 'function' ? await b.readSheets() : {};
+    const sheetFloor = new Map(pages.map((p) => [p.page, p.sheet?.floor ?? null]));
+    const ofKind = (name) => templateKinds([{ name }])[0]?.kind === place.kind || kindFromWord(name).kind === place.kind;
+    const onFloor = (page, own = null) => place.floor == null || (own ?? sheetFloor.get(page)) === place.floor;
+    const { find } = categoryIndex(b.template);
+    const markers = Object.entries(b.markers || {});
+    const items = markers
+      .filter(([, m]) => m?.bounds && m.pageNumber && ofKind(find(m.moduleId, m.categoryId)?.category?.name || '')
+        && onFloor(m.pageNumber, floorNumberOf(m.floor)))
+      .map(([id, m]) => ({ key: id, id, name: nameOf(m), page: m.pageNumber, box: m.bounds, here: !b.currentModuleId || m.moduleId === b.currentModuleId }));
+    // The same device in two modules is one candidate: the open module's.
+    const seen = new Set();
+    const oneEach = items.sort((x, y) => Number(y.here) - Number(x.here))
+      .filter((i) => { const k = `${normalizeItemName(i.name)}|${i.page}`; if (seen.has(k)) return false; seen.add(k); return true; });
+    const near = nearestToPlace(place, oneEach, pages, { pageSize: (page) => b.getPageSize?.(page) || null });
+    const codes = new Set([...(place.codes || []), place.kind[0], place.kind.split(' ').map((w) => w[0]).join('')]);
+    const tags = [];
+    if (!near.list.length) {
+      for (const { page, words = [] } of pages) {
+        if (!onFloor(page)) continue;
+        for (const w of words) {
+          const m = /^([a-z]{1,4})[-\s.]?\d[\w-]*$/i.exec(String(w.text || '').trim());
+          if (!m || !codes.has(m[1].toLowerCase()) || !w.box) continue;
+          if (markers.some(([, mk]) => mk?.pageNumber === page && boundsCover(mk.bounds, w.box))) continue;
+          tags.push({ key: `${page}:${w.text}`, page, box: w.box, text: w.text.trim() });
+        }
+      }
+    }
+    const nearTags = tags.length ? nearestToPlace(place, tags, pages, { pageSize: (page) => b.getPageSize?.(page) || null }) : { list: [], clear: null };
+    const plan = nearTags.list.slice(0, 5).map((t) => {
+      const id = `plan-${planMatches.size + 1}`;
+      planMatches.set(id, { page: t.page, text: t.text, box: t.box, source: 'text', score: 1 });
+      return { id, page: t.page, text: t.text, place: t.place, distance: t.distance, clear: t === nearTags.clear };
+    });
+    return {
+      looked_for: { kind: place.kind, place: place.place.join(' '), floor: place.floor },
+      by_place: true,
+      items: near.list.slice(0, 5).map((i) => ({ id: i.id, name: i.name, page: i.page, place: i.place, distance: i.distance, clear: i === near.clear })),
+      plan,
+      ...(unreadPages.length ? { pages_without_text: unreadPages.length } : {}),
+    };
+  };
+
   const tools = {
     // "Whenever I say D101 I mean D-1-01" (a name) or "always write not
     // installed, not missing" (wording): saved for everyone on the project.
@@ -903,7 +950,13 @@ export function createSurveyAgentToolbox({
         floor: Number.isFinite(Number(floor)) && floor !== null ? Number(floor) : parsed.floor ?? null,
         wing: ({ west: 'w', east: 'e', north: 'n', south: 's' })[String(wing || '').toLowerCase()] || parsed.wing || null,
       };
-      if (target.number == null) throw new ToolError('Say the number of the one to find, for example camera 6.');
+      // "The camera by the stairs" (or "by stair 2"): by a place printed on
+      // the plan, unless the model gave the number itself.
+      const place = number == null ? parsePlaceTarget(description, { kinds }) : null;
+      if (place) return { content: out(await findByPlace(b, place)) };
+      if (target.number == null) {
+        throw new ToolError('Say the number of the one to find (camera 6), or where it is (the camera by the stairs).');
+      }
       const { items, pages, unreadPages } = await describedItems(b, target);
       const shownItems = items.slice(0, 5).map(({ here: _, moduleId: __, ...m }) => m);
       const markers = Object.entries(b.markers || {});

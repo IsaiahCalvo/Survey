@@ -29,6 +29,7 @@ import { categoriesOf, checklistOf, entitiesOf, itemText, modulesOf } from '../s
 import { normalizeItemName } from '../../supabase/functions/_shared/surveyAgentSpec.js';
 import { clearBest, projectKinds } from './surveyAgentTools.js';
 import { parseDescribedTarget, templateKinds } from './spokenTag.js';
+import { parsePlaceTarget } from './placeFind.js';
 import { learnedStateFor } from './agentMemory.js';
 
 // Fixed spoken forms of the usual answers, keyed by the answer's own value
@@ -347,8 +348,13 @@ export async function planDescribedTurn(text, bridge, toolbox, { learned = [] } 
   const found = new Map();
   for (let end = tokens.length; end > lead; end -= 1) {
     const description = String(text).slice(tokens[lead].start, tokens[end - 1].end);
-    const target = parseDescribedTarget(description, { kinds });
-    if (!target || target.number == null || !target.kind || target.leftover.length) continue;
+    // Kind and number ("camera 2 second floor"), else kind and a place
+    // printed on the plan ("the camera by stair 2").
+    let target = parseDescribedTarget(description, { kinds });
+    if (!target || target.number == null || !target.kind || target.leftover.length) target = null;
+    const place = parsePlaceTarget(description, { kinds });
+    if (place) target = place;
+    if (!target) continue;
     const key = JSON.stringify(target);
     if (!found.has(key)) {
       const res = await toolbox.run('find_described', { description });
@@ -363,7 +369,8 @@ export async function planDescribedTurn(text, bridge, toolbox, { learned = [] } 
     const items = fits.items || [];
     const plan = (fits.plan || []).filter((m) => !m.already_item || !items.some((i) => i.id === m.already_item.id));
     const onItem = (id) => readItemTurn({ text, template, marker: markers[id], itemId: id, before, after, named: true, learned });
-    const bestItem = clearBest(items);
+    const pick = (list) => (fits.by_place ? list.find((m) => m.clear) || null : clearBest(list));
+    const bestItem = pick(items);
     if (bestItem) {
       const reading = onItem(bestItem.id);
       if (reading) return reading;
@@ -374,7 +381,7 @@ export async function planDescribedTurn(text, bridge, toolbox, { learned = [] } 
       continue;
     }
     // No item fits: a tag printed on the plan (a bare PDF, or one not added yet).
-    const bestTag = clearBest(plan);
+    const bestTag = pick(plan);
     if (bestTag?.already_item) {
       const reading = onItem(bestTag.already_item.id);
       if (reading) return reading;

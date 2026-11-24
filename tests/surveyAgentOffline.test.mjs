@@ -411,3 +411,57 @@ test('remember kind state takes only an entity of this template', async () => {
   const set = await toolbox.run('set_entity', { item_id: 'm118', entity_id: 'done' });
   assert.equal(set.isError, false, set.content);
 });
+
+// ---- A device said by where it is. ----
+
+const placed = (text, x, y, h = 10) => word(text, x, y, h);
+
+test('by place: the item of that kind nearest a printed label, else ask', async () => {
+  const pages = [{
+    page: 3,
+    source: 'text',
+    words: [placed('THIRD', 600, 760, 18), placed('FLOOR', 680, 760, 18), placed('STAIR', 100, 100), placed('2', 140, 100), placed('LOBBY', 800, 500), placed('CORRIDOR', 400, 300)],
+  }].map((p) => ({ ...p, sheet: sheetFloorOf(p.words) }));
+  const box = (x, y) => ({ x, y, width: 20, height: 20 });
+  const { bridge, toolbox, markers } = tradeBridge({
+    pages,
+    markers: {
+      a: marker('SD-3-01', 'c-smoke', 3, { bounds: box(120, 120) }),
+      b: marker('SD-3-02', 'c-smoke', 3, { bounds: box(790, 470) }),
+      c: marker('SD-3-03', 'c-smoke', 3, { bounds: box(380, 280) }),
+      d: marker('SD-3-04', 'c-smoke', 3, { bounds: box(440, 330) }),
+      h: marker('HS-3-01', 'c-horn', 3, { bounds: box(805, 505) }),
+    },
+  });
+  const byLobby = await runOfflineTurn({ text: 'the smoke detector by the lobby, head installed pass', toolbox, bridge });
+  assert.equal(byLobby.changes.length, 1);
+  assert.equal(markers.b.checklistResponses['l-head'].selection, 'Pass');
+  const byStair = await runOfflineTurn({ text: 'smoke detector next to stair 2 base wired fail', toolbox, bridge });
+  assert.equal(byStair.changes.length, 1);
+  assert.equal(markers.a.checklistResponses['l-base'].selection, 'Fail');
+  // Plural said, singular printed: "stairs" is STAIR.
+  const found = JSON.parse((await toolbox.run('find_described', { description: 'the smoke detector by the stairs' })).content);
+  assert.equal(found.by_place, true);
+  assert.deepEqual(found.items.filter((i) => i.clear).map((i) => i.name), ['SD-3-01']);
+  // Two about as near the corridor label: ask.
+  const which = await runOfflineTurn({ text: 'smoke detector in the corridor head installed pass', toolbox, bridge });
+  assert.deepEqual(which.changes, []);
+  assert.match(which.reply, /More than one fits .*SD-3-03.*SD-3-04/);
+  // No such label, or a free sentence: left for the server.
+  assert.equal(await runOfflineTurn({ text: 'smoke detector by the kitchen head installed pass', toolbox, bridge }), null);
+  assert.equal(await runOfflineTurn({ text: 'the smoke detector by the lobby looks loose', toolbox, bridge }), null);
+});
+
+test('by place on a bare PDF: the printed tag nearest the label becomes the item', async () => {
+  const pages = [{
+    page: 5,
+    source: 'text',
+    words: [placed('FIRST', 600, 760, 18), placed('FLOOR', 680, 760, 18), placed('EXIT', 100, 100), placed('PS-1-07', 120, 130), placed('PS-1-08', 900, 600)],
+  }].map((p) => ({ ...p, sheet: sheetFloorOf(p.words) }));
+  const { bridge, toolbox, markers } = tradeBridge({ pages });
+  const done = await runOfflineTurn({ text: 'pull station by the exit signage pass', toolbox, bridge });
+  assert.equal(done.calls[0].name, 'create_item');
+  const made = Object.values(markers)[0];
+  assert.equal(made.name, 'PS-1-07');
+  assert.equal(made.checklistResponses['l-sign'].selection, 'Pass');
+});

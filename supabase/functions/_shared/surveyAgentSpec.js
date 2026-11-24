@@ -236,7 +236,7 @@ export function buildSurveyAgentTools(answerValues, { annotations = false, marku
       { text: { type: 'string', description: 'The tag as it would be printed on the plan, for example "D-117".' } },
       ['text']),
     tool('find_described',
-      'Find a device described by kind and number, not tag ("camera 6 on the 4th floor"), among survey items and tags on every plan sheet; the floor may be in the tag (C-4-06, 4W-CAM-06, CAM-406) or the sheet title. Returns the best items and plan tags (match ids for show_on_plan, create_item, mark_on_plan), scored 0 to 1.',
+      'Find a device described by kind and number, not tag ("camera 6 on the 4th floor"), among survey items and tags on every plan sheet; the floor may be in the tag (C-4-06, 4W-CAM-06, CAM-406) or the sheet title. Returns the best items and plan tags (match ids for show_on_plan, create_item, mark_on_plan), scored 0 to 1. With no number but a place ("the camera by the stairs"), number null: it returns items (else plan tags) of that kind nearest a label printed on the plan, by_place true, with clear true on the one clearly nearest; ask when none is clear.',
       {
         description: { type: 'string', description: 'What the person said, for example "camera 6 on the 4th floor".' },
         kind: { type: ['string', 'null'], description: 'The kind of device ("camera", "door"), or null.' },
