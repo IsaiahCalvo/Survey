@@ -104,10 +104,10 @@ function PageGrid({ thumbs, error, order, setOrder, rotateOnly }) {
           </div>
           <span className="pdft-pnum">Page {p.index + 1}</span>
           <div className="pdft-pbtns">
-            {!rotateOnly && <button type="button" onClick={() => move(k, -1)} disabled={k === 0} aria-label={`Move page ${p.index + 1} earlier`}>←</button>}
-            <button type="button" onClick={() => turn(k)} aria-label={`Turn page ${p.index + 1}`}>↻</button>
-            {!rotateOnly && <button type="button" onClick={() => move(k, 1)} disabled={k === order.length - 1} aria-label={`Move page ${p.index + 1} later`}>→</button>}
-            {!rotateOnly && <button type="button" onClick={() => remove(k)} disabled={order.length === 1} aria-label={`Remove page ${p.index + 1}`}>✕</button>}
+            {!rotateOnly && <button type="button" onClick={() => move(k, -1)} disabled={k === 0} aria-label={`Move page ${p.index + 1} earlier`}><Icon name="arrowLeft" size={15} /></button>}
+            <button type="button" onClick={() => turn(k)} aria-label={`Turn page ${p.index + 1}`}><Icon name="rotateCw" size={15} /></button>
+            {!rotateOnly && <button type="button" onClick={() => move(k, 1)} disabled={k === order.length - 1} aria-label={`Move page ${p.index + 1} later`}><Icon name="arrowRight" size={15} /></button>}
+            {!rotateOnly && <button type="button" onClick={() => remove(k)} disabled={order.length === 1} aria-label={`Remove page ${p.index + 1}`}><Icon name="close" size={14} /></button>}
           </div>
         </li>
       ))}
@@ -232,7 +232,7 @@ export default function PdfToolsDialog({ open, onClose, sources = [], others = [
       case 'split':
         return (
           <>
-            <Seg label="Split" value={opts.mode || 'ranges'} choices={[['ranges', 'By ranges'], ['every', 'Every few pages'], ['each', 'Every page']]} onChange={(v) => set('mode', v)} />
+            <Seg label="How to split" value={opts.mode || 'ranges'} choices={[['ranges', 'By ranges'], ['every', 'Every few pages'], ['each', 'Every page']]} onChange={(v) => set('mode', v)} />
             {(opts.mode || 'ranges') === 'ranges' && (
               <label className="pdft-field"><span className="pdft-label">Ranges</span>
                 <input className="pdft-input" value={opts.ranges ?? ''} placeholder="1-3, 4-10" onChange={(e) => set('ranges', e.target.value)} />

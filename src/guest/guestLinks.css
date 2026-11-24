@@ -3,7 +3,9 @@
 
 .guest-links {
   margin: 8px 6px 4px;
-  padding: 12px;
+  /* 4px sides: the title lines up with "People" and the avatars above it
+     (12px sat it 8px further in). */
+  padding: 12px 4px;
   border-top: 1px dashed var(--border);
   display: grid;
   gap: 10px;
