@@ -91,6 +91,6 @@ export function forgetTypingField() {
 }
 
 if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
-  window.addEventListener('keydown', (event) => noteTypingKey(event.target), true);
+  window.addEventListener('keydown', (event) => noteTypingKey(event?.target), true);
   window.addEventListener('pointerdown', forgetTypingField, true);
 }
