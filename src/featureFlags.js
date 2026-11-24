@@ -697,11 +697,13 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Kal Voe suite: My library / Company library, shared ids and places on Survey Markers',
     stage: 'beta',
   }),
-  // One look for Survey, Walkthru and Plot (KAL-663, owner 2026-11-16):
-  // Walkthru's grey and coral in place of the blue-grey and blue, with a
-  // light and a dark mode (Settings -> General -> Appearance). src/suiteLook.js.
+  // One look for Survey, Walkthru and Plot (KAL-663, owner 2026-11-16; one
+  // accent per app since 2026-11-23): the suite's greys and Survey's green in
+  // place of the blue-grey and blue, with a light and a dark mode
+  // (Settings -> General -> Appearance). src/suiteLook.js. When it leaves
+  // Nightly, follow docs/suite/survey-green-flip.md.
   'one-look': Object.freeze({
-    label: 'Suite look: grey and coral, with light and dark mode',
+    label: 'Suite look: grey and green, with light and dark mode',
     stage: 'beta',
   }),
 });
