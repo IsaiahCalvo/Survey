@@ -26,3 +26,14 @@ test('the main button names what each tool does', () => {
   for (const id of ids) assert.match(map, new RegExp(`\\b${id}: '[A-Z][a-z ]+'`), id);
   assert.match(jsx, /\{RUN_LABELS\[def\?\.id\] \|\| 'Run'\}/);
 });
+
+test('the page picker uses the app icons, with hover, press and disabled looks', () => {
+  const jsx = read('src/components/PdfToolsDialog.jsx');
+  const picker = jsx.slice(jsx.indexOf('<div className="pdft-pbtns">'), jsx.indexOf('</div>', jsx.indexOf('<div className="pdft-pbtns">')));
+  assert.doesNotMatch(picker, /[←→↻✕]/);
+  for (const name of ['arrowLeft', 'rotateCw', 'arrowRight', 'close']) assert.match(picker, new RegExp(`<Icon name="${name}"`));
+  const css = read('src/components/PdfToolsDialog.css');
+  assert.match(css, /\.pdft-pbtns button:active:not\(:disabled\)\{background:var\(--pressed-2,var\(--pressed\)\);transition:none\}/);
+  assert.match(css, /\.pdft-pbtns button:disabled\{color:var\(--text-disabled,var\(--text-3\)\);cursor:not-allowed\}/);
+  assert.match(jsx, /<Seg label="How to split"/);
+});
