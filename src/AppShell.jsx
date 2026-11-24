@@ -71,6 +71,7 @@ import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from '.
 // stay here, in the same place in the cascade they always had.
 import './surveyRailStyles.js';
 import ActiveSpaceChip from './sidebar/ActiveSpaceChip';
+import SurveyModeChip from './components/SurveyModeChip';
 import TabBar from './TabBar';
 import { RenameModal } from './home/BulkModals';
 import { useConfirmDialog } from './components/dialogPrompts';
@@ -2588,6 +2589,9 @@ export default function App({ devPreviewReturnTab = null }) {
   // Pinned tools dock (Survey Nightly only, beta flag 'pinned-tools'):
   // components/PinnedToolsDock.jsx. Read once at load, like every flag.
   const [pinnedToolsEnabled] = useState(() => isFeatureOn('pinned-tools'));
+  // Nightly 'survey-mode-tools' (owner 2026-11-23): the Survey chip beside
+  // Undo / Redo says you are in Survey mode and leaves it.
+  const [surveyModeChipEnabled] = useState(() => isFeatureOn('survey-mode-tools'));
   // Export PDF choices (Survey Nightly only, beta flag 'export-modes'):
   // components/ExportPdfDialog.jsx. The phone header asks with an event.
   const [exportModesEnabled] = useState(() => isFeatureOn('export-modes'));
@@ -3660,6 +3664,16 @@ export default function App({ devPreviewReturnTab = null }) {
                 <Icon name="redo" size={HISTORY_GLYPH} />
               </button>
             </span>
+            {/* Inside the Undo / Redo block, so the tool bar's plan
+                (useResponsiveToolbar) keeps the tools clear of it. */}
+            {surveyModeChipEnabled && bottomToolbarApi?.showSurveyPanel && (
+              <SurveyModeChip
+                toolbar={bottomToolbarApi.surveyToolbar || null}
+                onLeave={bottomToolbarApi.onLeaveSurvey || null}
+                tip={chromeTip}
+                compact={isNarrowShell}
+              />
+            )}
           </div>
 
           {/* UX 2026-05-14: Tools section — Pan / Select / Draw / Shapes /

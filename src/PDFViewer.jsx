@@ -22921,6 +22921,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   }, [markLibraryEnabled, isActive, user?.id, pdfFile?.projectId]);
   // Nightly: the survey bar's template menu links to the Templates editor.
   const [customAnswersEnabled] = useState(() => isFeatureOn('custom-answers'));
+  // Nightly 'survey-mode-tools' (owner 2026-11-23): the template menu and the
+  // way out of Survey move to a Survey chip at the tool bar's left (AppShell),
+  // which stays while Survey is on whatever tool is armed; the survey bar
+  // keeps its middle (entities, module, categories).
+  const [surveyModeToolsOn] = useState(() => isFeatureOn('survey-mode-tools'));
   const [layerState, setLayerState] = useState(DEFAULT_LAYER_STATE);
   const [activeLayerId, setActiveLayerId] = useState(DEFAULT_LAYER_ID);
   useEffect(() => {
@@ -28144,7 +28149,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         templates: (appTemplates || []).map((template) => ({ id: template.id, name: template.name || 'Untitled template' })),
         onSelectTemplate: handleSwitchSurveyTemplateById,
         onExit: handleLeaveSurvey,
+        // Nightly 'survey-mode-tools': the tool bar's Survey chip carries the
+        // template menu, with the survey bar's "Edit template…" under it.
+        onEditTemplate: customAnswersEnabled && selectedTemplate.id && onRequestCreateTemplate
+          ? () => onRequestCreateTemplate({ mode: 'open-editor', templateId: selectedTemplate.id })
+          : null,
       } : null,
+      // The Survey chip leaves Survey even before a template is picked.
+      onLeaveSurvey: handleLeaveSurvey,
       regionEditing: showRegionSelection,
       regionToolbarApi: mobileRegionToolbarApi,
       showAnnotationColorPicker,
@@ -28401,6 +28413,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     appTemplates,
     handleSwitchSurveyTemplateById,
     handleLeaveSurvey,
+    customAnswersEnabled,
+    onRequestCreateTemplate,
     showRegionSelection,
     mobileRegionToolbarApi,
     showAnnotationColorPicker,
@@ -42788,6 +42802,7 @@ ${pageBlocks}
                       only shows in Survey, so the bar IS the "you are in
                       Survey" signal. */}
                   <div className="survey-subrow__side survey-subrow__side--start">
+                    {(!surveyModeToolsOn || mobileMode) && (
                     <SurveyTemplateMenu
                       open={surveyTemplateMenuOpen}
                       onOpenChange={setSurveyTemplateMenuOpen}
@@ -42800,6 +42815,7 @@ ${pageBlocks}
                         ? () => onRequestCreateTemplate({ mode: 'open-editor', templateId: selectedTemplate.id })
                         : null}
                     />
+                    )}
                     {/* Narrow: the module menu (and Width) wait in More, beside
                         the template menu, so the centre is the swatches and
                         the chips. */}
@@ -42851,6 +42867,7 @@ ${pageBlocks}
                   </div>
 
                   <div className="survey-subrow__side survey-subrow__side--end">
+                    {(!surveyModeToolsOn || mobileMode) && (
                     <button
                       type="button"
                       className="survey-subrow__done"
@@ -42860,6 +42877,7 @@ ${pageBlocks}
                     >
                       {surveyBarFit.plan.done === 'glyph' ? <Icon name="editListDone" size={16} color="currentColor" /> : 'Done'}
                     </button>
+                    )}
                   </div>
                 </div>
               );

@@ -723,6 +723,15 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Suite look: grey and green, with light and dark mode',
     stage: 'beta',
   }),
+  // Owner 2026-11-23: Survey mode gets its own tools in the pinned tools bar
+  // (Rectangle / Freehand / Smart fill markers, entities, modules,
+  // categories), and a "Survey" chip at the tool bar's left that says you are
+  // in Survey mode and leaves it (Plot's Viewport strip is the model; it
+  // replaces the survey bar's "Done").
+  'survey-mode-tools': Object.freeze({
+    label: 'Survey mode: survey tools in the pinned tools bar, and a Survey chip in the tool bar to see and leave Survey mode',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';
