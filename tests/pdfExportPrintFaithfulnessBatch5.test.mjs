@@ -290,3 +290,28 @@ test('the export action owns the single sanitized-redaction notice copy', async 
   assert.match(viewer, /onRedactionsSanitized: \(count\) => \{ redactionsSanitizedForExport = count; \}/);
   assert.match(viewer, /redaction marks were exported as outlines without their replacement text/);
 });
+
+// r5a #5 (2026-11-24): an exported Survey Marker carried no words, so a PDF
+// viewer's comment list showed a blank row for every device. It now carries
+// its Tag, then its Entity.
+test('an exported Survey Marker names its Tag and Entity', async () => {
+  const output = await savePDFWithAnnotationsPdfLib(await blankFile(), {}, PAGE_SIZES, null, {
+    returnBytes: true,
+    surveyMarkers: {
+      'marker-1': {
+        pageNumber: 1,
+        bounds: { x: 20, y: 20, width: 40, height: 30 },
+        moduleId: 'module-1',
+        name: 'D-1-17',
+        entityName: '100% Complete',
+        entityId: 'entity-complete',
+        color: 'rgba(61,201,138,0.35)',
+      },
+    },
+    activeModuleId: 'module-1',
+  });
+  const pdf = await PDFDocument.load(output);
+  const marker = pageAnnotationDicts(pdf).find((dict) => dict.get(PDFName.of('Subtype'))?.asString?.() === '/SurveyMarker');
+  assert.ok(marker, 'the Survey Marker is exported');
+  assert.equal(textValue(marker, 'Contents'), 'D-1-17, 100% Complete');
+});

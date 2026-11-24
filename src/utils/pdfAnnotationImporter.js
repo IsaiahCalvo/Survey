@@ -428,6 +428,35 @@ const buildDirectPdfNativeAnnotationIdentities = (
   return identities;
 };
 
+// "D:20251112093000-05'00'" (PDF 32000-1 7.9.4) as an ISO time, else null.
+export const pdfDateToIso = (raw) => {
+  const match = /^(?:D:)?(\d{4})(\d{2})?(\d{2})?(\d{2})?(\d{2})?(\d{2})?([Zz]|[+-]\d{2}'?\d{2}'?)?/.exec(String(raw ?? '').trim());
+  if (!match) return null;
+  const [, y, mo = '01', d = '01', h = '00', mi = '00', se = '00', zone] = match;
+  let offset = 'Z';
+  if (zone && !/^[Zz]$/.test(zone)) {
+    const digits = zone.replace(/'/g, '');
+    offset = `${digits.slice(0, 3)}:${digits.slice(3, 5) || '00'}`;
+  }
+  const date = new Date(`${y}-${mo}-${d}T${h}:${mi}:${se}${offset}`);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+};
+
+// r5a #12 (2026-11-24): a mark brought in from a PDF keeps who made it
+// (/T) and when (/CreationDate), so the Annotations list and its CSV say
+// "JOHN DIBLASIO, Nov 12 2025" instead of "Unknown" with no date.
+const attachPdfAuthorship = (fabricObj, annotation, rawMetadata) => {
+  if (!fabricObj) return fabricObj;
+  const data = fabricObj.data || {};
+  const name = data.authorName ? null : (getAnnotationTitle(annotation) || String(rawMetadata?.title || '').trim() || null);
+  const created = data.createdAt ? null : pdfDateToIso(annotation?.creationDate || rawMetadata?.creationDate);
+  if (!name && !created) return fabricObj;
+  return {
+    ...fabricObj,
+    data: { ...data, ...(name ? { authorName: name } : {}), ...(created ? { createdAt: created } : {}) },
+  };
+};
+
 const attachPdfNativeAnnotationIdentity = (fabricObj, identity) => {
   if (!fabricObj || !identity) return fabricObj;
   return {
@@ -2410,6 +2439,7 @@ async function buildRawAnnotationMetadataById(rawPdfBytes) {
         const rcText = readPdfLibText(dict.get(PDFName.of('RC')));
         const contents = readPdfLibText(dict.get(PDFName.of('Contents')));
         const title = readPdfLibText(dict.get(PDFName.of('T')));
+        const creationDate = readPdfLibText(dict.get(PDFName.of('CreationDate')));
         const subject = readPdfLibText(dict.get(PDFName.of('Subj')));
         const surveyAppMetadataText = readPdfLibText(dict.get(PDFName.of(PDF_COUNTER_METADATA_KEY)));
         const counterMetadata = parsePdfCounterMetadata(surveyAppMetadataText);
@@ -6222,7 +6252,7 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
             : [];
           const fabricObjectsForAnnotation = convertedObjects.map((fabricObject) => (
             attachPdfNativeAnnotationIdentity(
-              fabricObject,
+              attachPdfAuthorship(fabricObject, annotation, rawMetadata),
               directNativeIdentities.get(annotation),
             )
           ));

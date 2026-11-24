@@ -23,7 +23,9 @@ export function addSummarySheet(workbook, { template, markers, when = new Date()
 
   const head = ws.addRow(['Category', 'Items', 'Done', 'Partly done', 'Not started', 'With issues']);
   head.font = { bold: true };
-  head.eachCell((cell) => { cell.fill = HEADER_FILL; });
+  // Counts are numbers, which Excel right-aligns; their headers follow, so
+  // each count sits under its own header.
+  head.eachCell((cell, col) => { cell.fill = HEADER_FILL; if (col > 1) cell.alignment = { horizontal: 'right' }; });
   for (const c of summary.categories) ws.addRow([c.name, c.items, c.done, c.partly, c.notStarted, c.issues.length]);
   ws.addRow(['Total', t.items, t.done, t.partly, t.notStarted, t.withIssues]).font = { bold: true };
 
@@ -31,11 +33,27 @@ export function addSummarySheet(workbook, { template, markers, when = new Date()
   ws.addRow([]);
   if (!issues.length) {
     ws.addRow(['No items with issues.']);
-    return name;
+  } else {
+    const issueHead = ws.addRow(['Category', 'Item', 'Checklist line', 'Answer']);
+    issueHead.font = { bold: true };
+    issueHead.eachCell((cell) => { cell.fill = HEADER_FILL; });
+    for (const row of issues) ws.addRow(row);
   }
-  const issueHead = ws.addRow(['Category', 'Item', 'Checklist line', 'Answer']);
-  issueHead.font = { bold: true };
-  issueHead.eachCell((cell) => { cell.fill = HEADER_FILL; });
-  for (const row of issues) ws.addRow(row);
+  fitColumns(ws);
+  // One page wide when printed, so "With issues" never spills to its own page.
+  ws.pageSetup = { ...ws.pageSetup, fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
   return name;
+}
+
+// Each column as wide as its longest cell (within limits). The first three
+// rows are one-line notes that run across the sheet, so they don't count.
+function fitColumns(ws) {
+  ws.columns.forEach((column, index) => {
+    let longest = 0;
+    column.eachCell({ includeEmpty: false }, (cell) => {
+      if (Number(cell.row) <= 3) return;
+      longest = Math.max(longest, String(cell.value ?? '').length);
+    });
+    ws.getColumn(index + 1).width = Math.min(60, Math.max(10, longest + 2));
+  });
 }

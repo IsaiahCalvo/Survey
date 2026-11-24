@@ -608,6 +608,9 @@ const surveyMarkerToFabricRect = (surveyMarker, annotationId) => {
     moduleId: surveyMarker?.moduleId ?? surveyMarker?.spaceId ?? null,
     spaceId: surveyMarker?.spaceId ?? null,
     regionId: surveyMarker?.regionId ?? null,
+    // What a PDF viewer's comment list shows for it: the Tag, then the Entity.
+    markerLabel: [surveyMarker?.name, surveyMarker?.entityName]
+      .map((part) => String(part ?? '').trim()).filter(Boolean).join(', '),
   };
 };
 
@@ -3589,7 +3592,7 @@ const createHighlightAnnotation = (pdfDoc, page, fabricObj, pageHeight, options 
       CA: dashedOutline ? 1 : fillAlpha,
       F: 4,
       AP: pdfDoc.context.obj({ N: appearanceRef }),
-      Contents: pdfTextString(''),
+      Contents: pdfTextString(typeof fabricObj.markerLabel === 'string' ? fabricObj.markerLabel : ''),
       P: page.ref,
     };
 

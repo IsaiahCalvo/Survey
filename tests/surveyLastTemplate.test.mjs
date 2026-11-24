@@ -118,3 +118,17 @@ test('without a window (node), the default storage is simply absent', () => {
   assert.equal(readLastSurveyTemplateId('doc-1'), null);
   assert.equal(rememberLastSurveyTemplate('doc-1', 'tpl-a'), false);
 });
+
+test('a document with Survey Markers picks the template whose Modules hold them', async () => {
+  const { templateForDocumentMarkers } = await import('../src/utils/surveyLastTemplate.js');
+  const templates = [
+    { id: 't-a', modules: [{ id: 'm-a1' }] },
+    { id: 't-b', spaces: [{ id: 'm-b1' }, { id: 'm-b2' }] },
+  ];
+  const markers = {
+    x: { moduleId: 'm-b1' }, y: { moduleId: 'm-b2' }, z: { moduleId: 'm-a1' },
+  };
+  assert.equal(templateForDocumentMarkers(markers, templates)?.id, 't-b');
+  assert.equal(templateForDocumentMarkers({}, templates), null, 'no markers, no guess');
+  assert.equal(templateForDocumentMarkers({ q: { moduleId: 'gone' } }, templates), null, 'a deleted template is not replaced');
+});

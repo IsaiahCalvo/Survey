@@ -220,7 +220,10 @@ export function buildMarkupRows(byPage, { layerState = null } = {}) {
         color: colorOf(obj),
         // A callout's projected group keeps its creator inside the callout
         // record it carries (data.legacyCallout.meta), not on the group.
-        authorId: getAnnotationAuthorId(obj) || getAnnotationAuthorId(obj?.data?.legacyCallout) || null,
+        // A mark brought in from a PDF has no member id, only the name the
+        // PDF gave (/T): it lists under that name.
+        authorId: getAnnotationAuthorId(obj) || getAnnotationAuthorId(obj?.data?.legacyCallout)
+          || (typeof obj?.data?.authorName === 'string' && obj.data.authorName.trim() ? `${PDF_AUTHOR_PREFIX}${obj.data.authorName.trim()}` : null),
         createdAt: createdAtOf(obj),
         calloutId: obj?.data?.type === 'callout' && obj?.data?.id != null ? String(obj.data.id) : null,
         measure: listed === 'measure' ? measureQuantity(obj, pageScale) : null,
@@ -232,9 +235,12 @@ export function buildMarkupRows(byPage, { layerState = null } = {}) {
   return rows;
 }
 
+const PDF_AUTHOR_PREFIX = 'pdf-author:';
+
 /** Who made a mark, in words: "You", a member's name, or "Someone". */
 export function authorLabel(authorId, { viewerId = null, peopleById = null } = {}) {
   if (!authorId) return 'Unknown';
+  if (String(authorId).startsWith(PDF_AUTHOR_PREFIX)) return String(authorId).slice(PDF_AUTHOR_PREFIX.length);
   if (viewerId && String(authorId) === String(viewerId)) return 'You';
   const person = peopleById?.get?.(String(authorId)) || peopleById?.[String(authorId)];
   if (person) return person.name || (person.email ? String(person.email).split('@')[0] : 'Someone');

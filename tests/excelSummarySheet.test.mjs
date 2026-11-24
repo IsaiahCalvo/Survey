@@ -57,3 +57,21 @@ test('the Summary sheet goes last, with a table per category and the issues, and
   const again = addSummarySheet(back, { template: TEMPLATE, markers: {} });
   assert.equal(again, 'Survey summary', 'never two sheets with one name');
 });
+
+// r5a #4 (2026-11-24): "Power available" read "Power availabl" in a 12-wide
+// column, and left-aligned headers put each count under the wrong one.
+test('the Summary sheet fits its columns and lines counts up under their headers', () => {
+  const workbook = new ExcelJS.Workbook();
+  const template = {
+    ...TEMPLATE,
+    modules: [{ ...TEMPLATE.modules[0], categories: [{ id: 'cat-door', name: 'Door', checklist: [{ id: 'c1', text: 'Door hardware compatible' }] }] }],
+  };
+  addSummarySheet(workbook, { template, markers: { a: { name: 'D-1', moduleId: 'mod-1', categoryId: 'cat-door', checklistResponses: { c1: { selection: 'Fail' } } } } });
+  const ws = workbook.getWorksheet('Summary');
+  assert.ok(ws.getColumn(3).width >= 'Door hardware compatible'.length, 'the checklist line fits');
+  assert.ok(ws.getColumn(1).width < 40, 'the long title row does not stretch column A');
+  const head = ws.getRow(5);
+  assert.equal(head.getCell(1).value, 'Category');
+  assert.equal(head.getCell(2).alignment?.horizontal, 'right');
+  assert.equal(ws.pageSetup.fitToWidth, 1);
+});
