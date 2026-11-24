@@ -213,7 +213,7 @@ export const FEATURE_FLAGS = Object.freeze({
   // Owner 2026-11-23: the right rail is too tall below Page fit, and Share
   // and Export are one job. Both match Walkthru (SUITE-RULES, "Where things
   // sit").
-  'view-strip': Object.freeze({ label: 'Right rail: one View button slides out Paper, Thin PDF lines, Page grid, Snapping, Dark pages, Hide marks and Show pins in a row', stage: 'beta' }),
+  'view-strip': Object.freeze({ label: 'Right rail: Page fit opens one small View card with Fit, Pages, Scroll and the view buttons (Paper, Thin PDF lines, Page grid and more)', stage: 'beta' }),
   'share-export-one': Object.freeze({ label: 'Top bar: Share and Export are one Share button; its menu shares first, then every export', stage: 'beta' }),
   'paper-overlays': Object.freeze({ label: 'Viewer: Paper button (rail) lays notebook, graph, isometric, hex or music paper over every page; this sitting only', stage: 'beta' }),
   // Drawboard Projects parity spec SS-31 / MS-30 (2026-11-10): a subject on
@@ -548,7 +548,7 @@ export const FEATURE_FLAGS = Object.freeze({
   // Drawboard Projects' page pins: drop a Comment, Issue or Task pin on the
   // page (N; M cycles the type), with the rail's "Show pins" filter.
   'comment-pins': Object.freeze({
-    label: 'Page pins (N): drop a Comment, Issue or Task pin on the page, with a Show pins filter',
+    label: 'Page comments (N): drop a Comment, Issue or Task on the page, with an On the page filter on the rail',
     stage: 'beta',
   }),
   'measure-plus': Object.freeze({
@@ -717,6 +717,15 @@ export const FEATURE_FLAGS = Object.freeze({
   // Nightly, follow docs/suite/survey-green-flip.md.
   'one-look': Object.freeze({
     label: 'Suite look: grey and green, with light and dark mode',
+    stage: 'beta',
+  }),
+  // Owner 2026-11-23: Survey mode gets its own tools in the pinned tools bar
+  // (Rectangle / Freehand / Smart fill markers, entities, modules,
+  // categories), and a "Survey" chip at the tool bar's left that says you are
+  // in Survey mode and leaves it (Plot's Viewport strip is the model; it
+  // replaces the survey bar's "Done").
+  'survey-mode-tools': Object.freeze({
+    label: 'Survey mode: survey tools in the pinned tools bar, and a Survey chip in the tool bar to see and leave Survey mode',
     stage: 'beta',
   }),
 });
