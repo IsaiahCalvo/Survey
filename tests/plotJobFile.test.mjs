@@ -113,7 +113,7 @@ test('the R2 helper signs an upload link and keeps Survey\'s read-only CORS rule
 });
 
 test('the migration caps Plot at its share and keeps the ledger off the public API', () => {
-  const sql = readFileSync(new URL('../supabase/migrations/20261123230000_plot_kal_581_files.sql', import.meta.url), 'utf8');
+  const sql = readFileSync(new URL('../supabase/migrations/20261124010000_plot_kal_581_files.sql', import.meta.url), 'utf8');
   assert.match(sql, /select 1500000000::bigint, 150000::bigint, 1500000::bigint/);
   assert.match(sql, /revoke all on function public\.plot_r2_reserve\(text, uuid, bigint, bigint, bigint\) from public, anon, authenticated;/);
   assert.match(sql, /grant execute on function public\.plot_r2_reserve\(text, uuid, bigint, bigint, bigint\) to service_role;/);
