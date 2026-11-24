@@ -1,0 +1,93 @@
+name: Tester report
+description: A problem or idea found while testing Walkthru, Survey or Plot (people and test bots).
+title: "[Tester] "
+labels: ["tester-report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing. One problem per report. Never paste a password, a bypass link or a sign-in token here.
+  - type: dropdown
+    id: app
+    attributes:
+      label: App
+      description: Pick "Between apps" when a hand-off from one app to another is wrong.
+      options:
+        - Walkthru
+        - Survey
+        - Plot
+        - Between apps
+    validations:
+      required: true
+  - type: dropdown
+    id: channel
+    attributes:
+      label: Copy of the app
+      options:
+        - Stable
+        - Nightly
+        - Phone app
+        - Desktop app
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      options:
+        - Bug (something is broken or wrong)
+        - Looks wrong (layout, colour, hover, motion)
+        - Hard to use
+        - Idea
+    validations:
+      required: true
+  - type: input
+    id: url
+    attributes:
+      label: Page address
+      description: The address in the browser bar when it happened, with any secret part removed.
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps
+      description: Numbered steps from a fresh start, so someone else can make it happen again.
+      placeholder: |
+        1. Sign in as the tester account
+        2. Open ...
+        3. Press ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+      description: Add the exact error text and any console errors. Drag screenshots in here.
+    validations:
+      required: true
+  - type: input
+    id: setup
+    attributes:
+      label: Browser, device and screen size
+      placeholder: Chrome 131 on macOS, 1440x900
+  - type: dropdown
+    id: severity
+    attributes:
+      label: How bad
+      options:
+        - Blocks the work (no way round it)
+        - Wrong result or lost work
+        - Annoying, has a way round
+        - Small polish
+    validations:
+      required: true
+  - type: input
+    id: tester
+    attributes:
+      label: Who found it
+      placeholder: Grok, Meta Muse, or your name
