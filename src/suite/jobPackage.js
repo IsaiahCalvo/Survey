@@ -22,7 +22,6 @@
 //
 // Pure apart from jszip, so the Node tests run it as it is.
 
-import JSZip from 'jszip';
 
 export const JOB_FORMAT = 'kalvoe.job';
 export const JOB_VERSION = 1;
@@ -47,6 +46,9 @@ function parseJson(text, what) {
  * @returns {Promise<{manifest:object, library:Array<object>, zip:JSZip}>}
  */
 export async function openJobFile(input) {
+  // jszip loads when a job file opens: jobLeftOut here is read by the
+  // Walkthru hand-off, which is part of the first load (size budget, KAL-652).
+  const { default: JSZip } = await import('jszip');
   let zip;
   try {
     zip = await JSZip.loadAsync(input);

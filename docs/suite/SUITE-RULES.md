@@ -6,7 +6,7 @@ This file is how they stay in step. The same text sits at
 `docs/suite/SUITE-RULES.md` in all three repos. Change it in all three in the
 same round, or not at all.
 
-Last checked against the code: 2026-11-23.
+Last checked against the code: 2026-11-24.
 
 ## Before you build anything
 
@@ -60,9 +60,9 @@ Do these in order, every time.
 ## One look for every control
 
 Owner, 2026-11-16: hover, press, drag and drop must look and act the same in
-all three apps (KAL-657). The colours come from the colour set below
-(KAL-663). The steps, the timing and the cursors below are the same
-everywhere. A control that skips a step is a bug.
+all three apps (KAL-657). The colours come from the colour set below: shared
+greys, and each app's own accent. The steps, the timing and the cursors
+below are the same everywhere. A control that skips a step is a bug.
 
 ### The states
 
@@ -77,7 +77,7 @@ everywhere. A control that skips a step is a bug.
 | Disabled | It can't be used now. | Dimmed ink. No hover, no press. | `not-allowed` |
 | Busy | The app is working on it. | A spinner in or beside the control. The control keeps its size. | `progress` |
 
-- A coloured button (the main blue or coral one, a red delete) has its own
+- A coloured button (the app's accent one, a red delete) has its own
   three steps: rest, hover, pressed. It never falls back to the grey ones.
 - A colour swatch never gets a hover or pressed fill over it. Its colour is
   the user's choice. Give it a ring instead.
@@ -159,7 +159,7 @@ follow steps 1 and 2 for the cursor, then move with the pointer with no lift.
 | Hover | `--hover` | `--state-hover` (a light tint, so it works over any fill) | `--fill` |
 | Pressed | `--pressed` | `--state-pressed` (a dark tint, for the same reason) | `--pressed` |
 | Selected | `--surface-3` | `--bg-elev-3` (raised-2, as Survey, since KAL-797); a chosen tool icon is coral with no fill | `--accent-wash` |
-| Coloured button: hover, pressed | `--accent-light`, `--accent-press` | `--accent-hover`, `--accent-pressed` (coral); `--ink-hover`, `--ink-pressed` (light); `--danger-hover`, `--danger-pressed` (red) | `--accent-hover`, `--accent-press` (coral); `--error-hover`, `--error-press` (red) |
+| Coloured button: hover, pressed | `--accent-light`, `--accent-press` | `--accent-hover`, `--accent-pressed` (coral); `--ink-hover`, `--ink-pressed` (light); `--danger-hover`, `--danger-pressed` (red) | `--accent-hover`, `--accent-press` (blue); `--error-hover`, `--error-press` (red) |
 | Focus ring | `--focus`, 2px | `--focus`, 2px; `src/lib/focus-ring-source.ts` | `--focus-ring`, 2px |
 | State time | `--motion-state` | `--motion-state`, `--ease-state` | `--motion-state` |
 | Motion times (the Motion table) | all, in `src/styles/tokens.css`; JS copy `src/utils/motion.js`; `--state-time`, `--state-ease`, `--state-all` under the suite look | all, in `apps/web/src/app/globals.css` (`--motion-menu-open` is the old name for the menu time) | all, in `src/styles/tokens.css`; Plot's older steps point at them: `--dur-fade` (menus), `--dur-window` (windows over the desk), `--dur-grow` (strips and the Schedule dock) |
@@ -170,16 +170,25 @@ Survey has the full set today and is the one to copy the behaviour from.
 "To add" means the app has no shared colour or rule for it yet: add one
 token, then use it everywhere. When an app adds one, fill it in here.
 
-## One colour set: grey and coral, light and dark
+## One colour set: shared greys, one accent per app, light and dark
 
-Owner, 2026-11-16: all three apps wear Walkthru's grey and coral (KAL-663).
-Every app has a light mode and a dark mode. Coral is the one accent. Plot's
-blue and Survey's blue and gold are gone from the chrome, and from every
-logo, app icon, tab icon, loading mark and email. Green is never an accent
-(it is Drawboard's colour). It may only say "done" or "synced".
+Owner, 2026-11-23: every app has a light mode and a dark mode, and all three
+use the same greys in both. Only the accent differs, one per app:
 
-The dark values are Walkthru's own. The light values are Plot's own greys
-with a deeper coral, because the bright coral is too pale to read on white.
+- **Plot: blue**, close to Rayon's.
+- **Walkthru: coral**, as it has always been.
+- **Survey: green**, close to Drawboard's. Survey shows it in Nightly only
+  (the `one-look` flag) until the owner picks it.
+
+This replaces the 2026-11-16 rule that put coral on all three (KAL-663). Each
+app's logo, app icon, tab icon, loading mark and emails wear its own accent.
+Green is an accent in Survey only; in Walkthru and Plot it may only say
+"done" or "synced".
+
+The light greys are Plot's own. The dark greys are Walkthru's own. Each
+accent has a bright tone with dark words for dark mode and a deeper tone with
+white words for light mode, because a bright accent is too pale to read on
+white.
 
 ### The colours
 
@@ -199,15 +208,26 @@ with a deeper coral, because the bright coral is too pale to read on white.
 | text-2 | Body | `#d2d1cc` | `#4b4b4b` |
 | text-3 | Captions, quiet icons | `#9a9a97` | `#666666` |
 | text-off | Disabled. Too faint to read, on purpose | `#5c5c5a` | `#a3a3a3` |
-| coral | The accent: main button, an ON switch, a chosen icon, a link | `#e07a5e` | `#ba4f2c` |
-| coral-hover | Hover on a coral button | `#e89179` | `#a64525` |
-| coral-pressed | Press on a coral button | `#c7634a` | `#8f3a1e` |
-| on-coral | Words and icons on a coral fill | `#131315` | `#ffffff` |
-| coral-wash | A soft coral tint: coral at 15% (dark), 10% (light) | `#e07a5e26` | `#ba4f2c1a` |
 | danger | A delete icon, a red fill | `#ef4444` | `#d92d20` |
 | danger-text | The word "Delete" | `#f87171` | `#b42318` |
 | ok | Done, synced. A dot or a tick, never a button | `#8baa6e` | `#1f7a4d` |
 | warn | A caution | `#d4a54a` | `#9a5b00` |
+
+### The accents
+
+| App | Mode | accent | accent-hover | accent-pressed | on-accent | accent-wash |
+| --- | --- | --- | --- | --- | --- | --- |
+| Plot (blue) | Dark | `#5b9cff` | `#7aafff` | `#3f86f0` | `#131315` | `#5b9cff26` |
+| Plot (blue) | Light | `#0062e6` | `#0054c7` | `#0046a6` | `#ffffff` | `#0062e61a` |
+| Walkthru (coral) | Dark | `#e07a5e` | `#e89179` | `#c7634a` | `#131315` | `#e07a5e26` |
+| Walkthru (coral) | Light | `#ba4f2c` | `#a64525` | `#8f3a1e` | `#ffffff` | `#ba4f2c1a` |
+| Survey (green) | Dark | `#3dc98a` | `#5ad49d` | `#2bb077` | `#131315` | `#3dc98a26` |
+| Survey (green) | Light | `#157f55` | `#116d49` | `#0d5a3c` | `#ffffff` | `#157f551a` |
+
+accent is the main button, an ON switch, a chosen icon and a link.
+accent-hover and accent-pressed are that button's hover and press.
+on-accent is words and icons on an accent fill. accent-wash is a soft tint
+of the accent: 15% in dark, 10% in light.
 
 Hover and pressed fills come from the states table above: hover is `raised`
 on a panel; pressed is `ground` in dark and `raised-2` in light. A control
@@ -218,19 +238,24 @@ presses to `ground-pressed`: in dark, ground is already the pressed grey, and
 in light, raised is one level off ground, too close to see.
 
 Checked for contrast (WCAG 2.1). Text, text-2 and text-3 pass 4.5:1 on
-ground, panel, raised and raised-2 in both modes. Coral passes 4.5:1 as
-words on ground, panel and raised. On-coral passes 4.5:1 on coral,
-coral-hover and coral-pressed. Edge passes 3:1 on ground, panel and raised.
-Line and line-strong are below 3:1 on purpose: they never stand alone.
+ground, panel, raised and raised-2 in both modes. Every accent passes 4.5:1
+as words on ground, panel and raised, in both modes. On-accent passes 4.5:1
+on accent, accent-hover and accent-pressed. Edge passes 3:1 on ground, panel
+and raised. Line and line-strong are below 3:1 on purpose: they never stand
+alone.
 
-- White words on the bright coral (`#e07a5e`) measure 2.9:1 and are not
-  allowed. In dark mode a coral button has dark words. In light mode the
-  coral is deeper and the words are white.
-- Coral words on raised-2 measure 4.2:1 in light mode. Put a coral link or
-  a chosen icon on ground, panel or raised, not on raised-2.
-- Coral and danger sit close. Never put a coral button beside a red one
-  without a word on each.
-- No app adds a grey or a coral of its own. Need a new step? Add it here
+- In dark mode an accent button has dark words, never white: white on the
+  bright tones measures under 3:1. In light mode the accent is deeper and
+  the words are white.
+- In light mode, coral and green words on raised-2 measure 4.2:1. Put an
+  accent link or a chosen icon on ground, panel or raised, not on raised-2.
+- Walkthru's coral sits close to danger red. Never put a coral button beside
+  a red one without a word on each.
+- Survey's green sits close to ok. In Survey, show "done" with a tick or a
+  word, never by colour alone.
+- Plot's blue sits close to the selection blue. Selection keeps its handles
+  and marquee, so it reads by shape, not by colour.
+- No app adds a grey or an accent of its own. Need a new step? Add it here
   first, in all three repos.
 
 ### What the theme never paints
@@ -238,8 +263,9 @@ Line and line-strong are below 3:1 on purpose: they never stand alone.
 - The paper a page, a thumbnail or a print preview is drawn on.
 - Ink the user picked: mark colours, swatches, Category colours, Node and
   Block colours.
-- Selection handles and the marquee on the plan. They stay blue
-  (`#4a90e2`), so they stand off coral marks and red clouds.
+- Selection handles and the marquee on the plan. They stay the one
+  selection blue (`#4a90e2`) in every app, so they stand off coloured marks
+  and red clouds.
 - Other makers' logos (Microsoft, Google, Apple).
 - A person's own colour (live cursors, avatars).
 
@@ -278,8 +304,9 @@ Words drawn on a page keep the font their mark picked.
 | text, text-2, text-3 | `--text-1`, `--text-2`, `--text-3` | `--text-primary`, `--text-secondary`, `--text-muted`, `--ink`, `--ink-soft`, `--ink-muted` | `--ink`, `--ink-body`, `--ink-muted` |
 | text-off | `--text-disabled` | `--text-off` | `--ink-off` |
 | ground-hover, ground-pressed | `--hover-ground`, `--pressed-ground` | not needed: `--state-hover` and `--state-pressed` are tints, so they show over ground | `--hover-ground`, `--pressed-ground` |
-| coral | `--accent` | `--accent` | `--accent` |
-| on-coral | `--accent-text` | `--on-accent` | `--ink-inverse` |
+| accent | `--accent` (hover `--accent-light`, pressed `--accent-press`) | `--accent` (`--accent-hover`, `--accent-pressed`) | `--accent` (`--accent-hover`, `--accent-press`) |
+| on-accent | `--accent-text` | `--on-accent` | `--ink-inverse` |
+| accent-wash | `--accent-soft` | `--accent-bg` | `--accent-wash` |
 | danger | `--danger`, `--danger-text` | `--destructive`, `--danger-text`; words on a red fill `--on-destructive` | `--error`, `--error-text` |
 | ok, warn | `--success`, `--warning` | `--ok`, `--warn` | `--ok`, `--warn` |
 | scrim, floating shadow | to add | `--scrim`; `--shadow-float` with `--float-hairline` | to add |
@@ -289,8 +316,9 @@ Survey and Walkthru show the new colours and the light mode in Nightly
 first. When an app fills a "to add" cell, or its theme ships, write it here.
 
 Survey: built (KAL-663, PR 1505). The look sits behind the Nightly flag
-`one-look`. Appearance is in Settings, General. Emails and the sign-in
-emails wear grey and coral for everyone (PR 1510).
+`one-look`, and wears green there since 2026-11-23. Appearance is in
+Settings, General. Emails and the sign-in emails still wear coral for
+everyone (PR 1510); they move to green when the look leaves Nightly.
 
 Walkthru: built (KAL-663, PR 218). Light mode sits on
 `html[data-theme="light"]`. Appearance is in Settings, behind the Nightly
@@ -298,7 +326,7 @@ flag `appearance`, saved in `walkthrough.appearance`. The first-paint script
 comes from `apps/web/src/lib/appearance.ts`.
 
 Plot: built and shipped, no flag (KAL-663, PR 420). Plot opens light until
-the user picks.
+the user picks. Its accent went back to blue on 2026-11-23, tab icon too.
 
 ## Where things sit
 
