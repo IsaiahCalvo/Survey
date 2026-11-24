@@ -12,6 +12,7 @@
 //   GROQ_BASE_URL: test only; sends Groq calls to a fake (E2E stack).
 //   SURVEY_AGENT_BASE_URL / SURVEY_AGENT_API_KEY / SURVEY_AGENT_MODEL: any
 //     other provider (Cloudflare Workers AI, OpenRouter, a paid model later).
+//     On api.openai.com the key may be left out: OPENAI_API_KEY is used.
 //   SURVEY_AGENT_PRICE_IN / SURVEY_AGENT_PRICE_OUT: USD per million tokens
 //     (default 0, free tier). SURVEY_AGENT_MONTHLY_CAP_USD (default 5) and
 //     SURVEY_AGENT_MONTHLY_REQUEST_CAP (default 3000) per person.
@@ -104,10 +105,17 @@ function creditFor(url: string) {
   return String(url || '').startsWith(groqBase()) ? null : creditProviderFor(url);
 }
 
+// SURVEY_AGENT_BASE_URL on OpenAI with no SURVEY_AGENT_API_KEY uses the
+// suite's OPENAI_API_KEY, so one key serves hearing and thinking.
+function onOpenAi() {
+  return creditProviderFor(Deno.env.get('SURVEY_AGENT_BASE_URL') || '') === 'openai';
+}
+
 function modelProvider() {
-  const key = Deno.env.get('SURVEY_AGENT_API_KEY') || Deno.env.get('GROQ_API_KEY');
+  const openAiKey = onOpenAi() ? Deno.env.get('OPENAI_API_KEY') : '';
+  const key = Deno.env.get('SURVEY_AGENT_API_KEY') || openAiKey || Deno.env.get('GROQ_API_KEY');
   if (!key) return null;
-  const custom = Boolean(Deno.env.get('SURVEY_AGENT_API_KEY'));
+  const custom = Boolean(Deno.env.get('SURVEY_AGENT_API_KEY') || openAiKey);
   const baseUrl = (Deno.env.get('SURVEY_AGENT_BASE_URL') || (custom ? '' : groqBase())).replace(/\/$/, '');
   const model = Deno.env.get('SURVEY_AGENT_MODEL') || SURVEY_AGENT_DEFAULT_PROVIDER.model;
   return {
@@ -132,7 +140,7 @@ function visionModel() {
   if (named === 'off') return null;
   const provider = modelProvider();
   if (!provider?.baseUrl) return null;
-  const model = named || (Deno.env.get('SURVEY_AGENT_API_KEY') ? '' : DEFAULT_VISION_MODEL);
+  const model = named || (Deno.env.get('SURVEY_AGENT_API_KEY') || onOpenAi() ? '' : DEFAULT_VISION_MODEL);
   if (!model) return null;
   return {
     ...provider,
