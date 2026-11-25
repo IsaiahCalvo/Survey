@@ -61,5 +61,8 @@ export function clearCompanySignInRequired() {
   try { sessionStorage.removeItem(REQUIRED_NOTE_KEY); } catch { /* storage off */ }
 }
 
+export const companySignInOfferMessage = (domain) =>
+  `${domain ? `${domain} signs in` : 'Your company signs in'} with its work account. Continue with company SSO below.`;
+
 export const companySignInRequiredMessage = (domain) =>
   `${domain ? `${domain} asks` : 'Your company asks'} you to sign in with your work account. Continue with company SSO below.`;
