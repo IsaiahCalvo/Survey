@@ -41,6 +41,15 @@ export function driveSourceLine(state, nowMs = Date.now()) {
 }
 
 export default function DriveSyncButton({ state, tip, onOpen }) {
+  // "Saved to OneDrive 6 s ago" is worked out at render; without a clock the
+  // button's label and tip stayed at the first answer until the next save.
+  const [, setNow] = useState(0);
+  const counting = Boolean(state?.enabled && state.link?.lastPushedAt && !state.dirty && state.phase !== 'saving');
+  useEffect(() => {
+    if (!counting) return undefined;
+    const clock = setInterval(() => setNow(Date.now()), 15000);
+    return () => clearInterval(clock);
+  }, [counting]);
   if (!state?.enabled || !state.link) return null;
   const warn = state.phase === 'problem' || state.link.syncOff;
   const place = drivePlace(state.link);
