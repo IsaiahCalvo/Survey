@@ -1019,7 +1019,7 @@ const SVGAnnotationLayerBody = memo(({
       // With segment captions ('measure-plus') the total moves above the last segment.
       const totalAt = label && plusOn ? polylengthTotalPlace(obj, effectiveMeasureScale) : null;
       if (totalAt) label = { ...label, ...totalAt };
-      if (label) labels.push({ key: obj.id || obj.data?.id || `m${index}`, index, label });
+      if (label) labels.push({ key: obj.id || obj.data?.id || `m${index}`, index, label, layerId: obj?.layerId || 'default' });
     });
     return labels;
   }, [annotations, effectiveMeasureScale, hiddenLayerIds]);
@@ -8903,14 +8903,19 @@ const SVGAnnotationLayerBody = memo(({
       )}
       {measureLabels.length > 0 && (
         <g className="measure-labels" data-measure-label-count={measureLabels.length} style={{ pointerEvents: 'none' }}>
-          {measureLabels.map(({ key, index, label }) => {
+          {measureLabels.map(({ key, index, label, layerId }) => {
             const live = liveMeasureLabels.get(index);
             // The same rule as the line's own halo (annotationIsHovered).
             const halo = (hoveredId === index && !selectedIds.has(index))
               || (selectedIds.has(index) && ((selectedIds?.size || 0) + (effectiveSelectedCalloutIds?.size || 0)) > 1);
-            if (!live) return renderMeasureLabel(label, key, clampInverseScale(inverseScale), { width, height }, { halo });
-            const pill = renderMeasureLabel(live.label, key, clampInverseScale(inverseScale), { width, height }, { halo });
-            return live.transform && pill ? <g key={key} transform={live.transform}>{pill}</g> : pill;
+            const pill = renderMeasureLabel(live ? live.label : label, key, clampInverseScale(inverseScale), { width, height }, { halo });
+            if (!pill) return null;
+            // Layer focus (utils/layerFocus.js) fades a label with its mark (#1651).
+            return (
+              <g key={key} data-measure-label-for={index} data-mark-layer={layerId} transform={live?.transform || undefined}>
+                {pill}
+              </g>
+            );
           })}
         </g>
       )}

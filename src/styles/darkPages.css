@@ -13,10 +13,22 @@
 html[data-dark-pages="on"] :is(.survey-pdfjs-page-canvas, .survey-pdfjs-detail-tile) {
     filter: invert(0.9) hue-rotate(180deg);
 }
+/* With Thin PDF lines on too, one filter does both, thicken first, then
+   invert: two rules each setting `filter` would drop one of them (#1643). */
+html[data-dark-pages="on"][data-thin-lines="thin"] :is(.survey-pdfjs-page-canvas, .survey-pdfjs-detail-tile) {
+    filter: url(#survey-thin-lines-thin) invert(0.9) hue-rotate(180deg);
+}
+html[data-dark-pages="on"][data-thin-lines="medium"] :is(.survey-pdfjs-page-canvas, .survey-pdfjs-detail-tile) {
+    filter: url(#survey-thin-lines-medium) invert(0.9) hue-rotate(180deg);
+}
+html[data-dark-pages="on"][data-thin-lines="thick"] :is(.survey-pdfjs-page-canvas, .survey-pdfjs-detail-tile) {
+    filter: url(#survey-thin-lines-thick) invert(0.9) hue-rotate(180deg);
+}
 html[data-dark-pages="on"] .survey-pdfjs-page-canvas {
     box-shadow: 0 2px 14px rgba(255, 255, 255, 0.45) !important;
 }
 
 @media print {
-    html[data-dark-pages="on"] :is(.survey-pdfjs-page-canvas, .survey-pdfjs-detail-tile) { filter: none; }
+    html[data-dark-pages="on"] :is(.survey-pdfjs-page-canvas, .survey-pdfjs-detail-tile),
+    html[data-dark-pages="on"][data-thin-lines] :is(.survey-pdfjs-page-canvas, .survey-pdfjs-detail-tile) { filter: none; }
 }
