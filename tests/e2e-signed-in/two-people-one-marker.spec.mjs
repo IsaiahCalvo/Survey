@@ -171,3 +171,88 @@ test('two people save one note at the same instant: both words kept', async ({ b
     await admin.storage.from('documents').remove([seeded.filePath]);
   }
 });
+
+// Round 5 #14: the owner's Undo then Redo of their own mark keeps what a
+// teammate did to it in between.
+test('Undo then Redo of my mark keeps a teammate\'s later resize', async ({ browser }) => {
+  test.setTimeout(240_000);
+  const admin = adminClient();
+  const seeded = await seed(admin);
+  const owner = await browser.newContext();
+  const guest = await browser.newContext();
+  const a = await owner.newPage();
+  const b = await guest.newPage();
+  const PAGE = '.survey-pdfjs-page-div[data-page-number="1"]';
+  const MARK = '[data-overlay-page="1"] [data-annotation-id]';
+  try {
+    await signIn(a, E2E_ACCOUNTS.owner);
+    await signIn(b, E2E_ACCOUNTS.editor);
+    await a.getByText(seeded.docName, { exact: true }).filter({ visible: true }).first().click();
+    const openFile = a.getByRole('button', { name: 'Open file' });
+    if (await openFile.isVisible().catch(() => false)) await openFile.click();
+    await expect(a.locator(`${PAGE} canvas`).first()).toBeVisible({ timeout: 60_000 });
+    await expect(a.getByRole('button', { name: /^Up to date/ }).filter({ visible: true }).first()).toBeVisible({ timeout: 30_000 });
+
+    const ids = () => a.locator(MARK).evaluateAll((els) => [...new Set(els.map((el) => el.getAttribute('data-annotation-id')))]);
+    await a.waitForTimeout(1500);
+    const before = await ids();
+    const box = await a.locator(PAGE).boundingBox();
+    await a.keyboard.press('r');
+    await a.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.3);
+    await a.mouse.down();
+    await a.mouse.move(box.x + box.width * 0.3 + 60, box.y + box.height * 0.3 + 40, { steps: 6 });
+    await a.mouse.up();
+    await a.keyboard.press('Escape');
+    await expect.poll(async () => (await ids()).length, { timeout: 10_000 }).toBe(before.length + 1);
+    const newId = (await ids()).find((id) => !before.includes(id));
+    const mine = a.locator(`[data-overlay-page="1"] [data-annotation-id="${newId}"]`);
+    await expect(a.getByRole('button', { name: /^Up to date/ }).filter({ visible: true }).first()).toBeVisible({ timeout: 30_000 });
+    const drawnWidth = (await mine.first().boundingBox()).width;
+
+    // The teammate makes it three times as wide.
+    const guestWidth = await b.evaluate(async ({ docId, id }) => {
+      const sync = await import('/src/services/annotationDocSync.js');
+      const { supabase } = await import('/src/supabaseClient.js');
+      const { data } = await supabase.auth.getUser();
+      const handle = await sync.openAnnotationDoc({ documentId: docId, supabase, actorUserId: data.user.id, enableLocal: false, enableRealtime: false });
+      const byPage = handle.getByPage();
+      const isMine = (o) => (o?.data?.id || o?.id) === id;
+      const objects = byPage['1'].objects.map((o) => (isMine(o) ? { ...o, width: o.width * 3 } : o));
+      handle.applyByPage({ ...byPage, 1: { ...byPage['1'], objects } });
+      await handle.drain();
+      const w = handle.getByPage()['1'].objects.find(isMine)?.width;
+      handle.destroy();
+      return w;
+    }, { docId: seeded.docId, id: newId });
+    await expect.poll(async () => (await mine.first().boundingBox())?.width || 0, { timeout: 20_000 })
+      .toBeGreaterThan(drawnWidth * 2);
+
+    // Owner: Undo (gone), then Redo (back, as the teammate left it).
+    await a.locator(PAGE).click({ position: { x: 5, y: 5 } });
+    await a.keyboard.press('Control+z');
+    await expect(mine).toHaveCount(0, { timeout: 10_000 });
+    await a.keyboard.press('Control+Shift+z');
+    await expect(mine.first()).toBeVisible({ timeout: 10_000 });
+    expect((await mine.first().boundingBox()).width).toBeGreaterThan(drawnWidth * 2);
+    await expect(a.getByRole('button', { name: /^Up to date/ }).filter({ visible: true }).first()).toBeVisible({ timeout: 30_000 });
+    const storedWidth = await b.evaluate(async ({ docId, id }) => {
+      const sync = await import('/src/services/annotationDocSync.js');
+      const { supabase } = await import('/src/supabaseClient.js');
+      const { data } = await supabase.auth.getUser();
+      const handle = await sync.openAnnotationDoc({ documentId: docId, supabase, actorUserId: data.user.id, enableLocal: false, enableRealtime: false });
+      const w = handle.getByPage()['1']?.objects?.find((o) => (o?.data?.id || o?.id) === id)?.width;
+      handle.destroy();
+      return w;
+    }, { docId: seeded.docId, id: newId });
+    expect(guestWidth).toBeTruthy();
+    expect(storedWidth).toBe(guestWidth);
+  } finally {
+    await owner.close();
+    await guest.close();
+    await admin.from('document_templates').delete().eq('document_id', seeded.docId);
+    await admin.from('document_collaborators').delete().eq('document_id', seeded.docId);
+    await admin.from('documents').delete().eq('id', seeded.docId);
+    await admin.from('templates').delete().eq('id', seeded.templateId);
+    await admin.storage.from('documents').remove([seeded.filePath]);
+  }
+});
