@@ -16,6 +16,10 @@ import CounterSeriesMenu, { counterSeriesMenuWidth } from './components/CounterS
 
 import PageGridToggle, { PageGridGlyph } from './components/PageGridToggle';
 import DarkPagesToggle, { DarkPagesGlyph } from './components/DarkPagesToggle';
+import { applyDarkPages, loadDarkPages } from './utils/darkPages';
+import { applyThinLines, ensureThinLinesFilters, loadThinLines } from './utils/thinLines';
+import './styles/thinLines.css';
+import './styles/darkPages.css';
 import DocumentVersionsButton, { DocumentVersionsDialogs, useDocumentVersions } from './components/DocumentVersionsButton.jsx';
 import { DOCUMENT_VERSIONS_CHANGED_EVENT, chainLinksAfter, isFileSuperseded, withChainLinks } from './services/documentVersionService.js';
 import DriveSyncButton, { DriveSyncDialogs } from './components/DriveSyncButton.jsx';
@@ -2725,6 +2729,15 @@ export default function App({ devPreviewReturnTab = null }) {
   const [snapContentEnabled] = useState(() => isFeatureOn('snap-content'));
   const [paperOverlaysEnabled] = useState(() => isFeatureOn('paper-overlays'));
   const [thinLinesEnabled] = useState(() => isFeatureOn('thin-lines'));
+  // The saved Thin PDF lines and Dark pages show from the first page, not
+  // only once their controls (inside the View card) are opened (#1644, #1643).
+  useEffect(() => {
+    if (thinLinesEnabled) {
+      applyThinLines(loadThinLines());
+      ensureThinLinesFilters();
+    }
+    if (isFeatureOn('dark-pages')) applyDarkPages(loadDarkPages());
+  }, [thinLinesEnabled]);
   // Nightly 'toolbar-settings' (Drawboard VT-33): the left rail's Toolbars
   // card can hide the tool bar; only the desktop viewer honours it (the
   // phone header is its own way back).

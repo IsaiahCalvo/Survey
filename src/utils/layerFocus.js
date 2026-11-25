@@ -38,14 +38,16 @@ export function layerFocusCss({ on, level }, activeLayerId, layerState) {
     if (!on) return '';
     const layers = normalizeLayerState(layerState).layers;
     const active = layers.some((l) => l.id === activeLayerId) ? activeLayerId : DEFAULT_LAYER_ID;
-    const marks = '[data-svg-annotation-layer] [data-annotation-index]';
+    // A measurement's label is drawn apart from its line, so it is faded too (#1651).
+    const kinds = ['[data-annotation-index]', '[data-measure-label-for]'];
+    const scoped = (suffix) => kinds.map((k) => `[data-svg-annotation-layer] ${k}${suffix}`).join(',\n');
     const opacity = `opacity: ${level / 100} !important;`;
-    if (active !== DEFAULT_LAYER_ID) return `${marks}:not([data-mark-layer=${cssString(active)}]) { ${opacity} }`;
+    if (active !== DEFAULT_LAYER_ID) return `${scoped(`:not([data-mark-layer=${cssString(active)}])`)} { ${opacity} }`;
     // Default layer active: fade only the named layers, so a mark on a layer
     // that is gone (it reads as the default layer) stays bright.
     const others = layers.filter((l) => l.id !== DEFAULT_LAYER_ID);
     if (!others.length) return '';
-    return `${others.map((l) => `${marks}[data-mark-layer=${cssString(l.id)}]`).join(',\n')} { ${opacity} }`;
+    return `${others.map((l) => scoped(`[data-mark-layer=${cssString(l.id)}]`)).join(',\n')} { ${opacity} }`;
 }
 
 /** Put the stylesheet in the page (or take it out). */
