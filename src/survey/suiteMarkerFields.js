@@ -103,5 +103,19 @@ export function suiteFieldsFromRowData(annotationData) {
   // Where a marker from a job file arrived (KAL-758, jobReturn.js).
   const origin = annotationData.suiteOrigin;
   if (origin && typeof origin === 'object' && !Array.isArray(origin) && nonEmpty(origin.pageId)) out.suiteOrigin = origin;
+  // Last arrived Tag/place values from a Walkthru/Plot handoff (#1593), so a
+  // resend can tell a field edit from an untouched field.
+  const walkBaseline = annotationData.suiteWalkBaseline;
+  if (walkBaseline && typeof walkBaseline === 'object' && !Array.isArray(walkBaseline)) {
+    const picked = {};
+    let hasAny = false;
+    for (const key of ['name', ...SUITE_PLACE_FIELDS]) {
+      if (Object.prototype.hasOwnProperty.call(walkBaseline, key)) {
+        picked[key] = nonEmpty(walkBaseline[key]) ? walkBaseline[key].trim() : null;
+        hasAny = true;
+      }
+    }
+    if (hasAny) out.suiteWalkBaseline = picked;
+  }
   return out;
 }

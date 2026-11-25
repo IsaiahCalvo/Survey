@@ -144,3 +144,92 @@ test('a node on a page Survey cannot size arrives unplaced, still counted', () =
   assert.equal(out.unplaced, 1);
   assert.equal(out.markers['new-1'].bounds, null);
 });
+
+test('resending a walk keeps field-edited Tag and place fields while still updating untouched fields (#1593)', () => {
+  const first = buildWalkMarkers({
+    nodes: [nodes[0]], nodeTypes, template, moduleId: 'm1', categoryFor: { 'nt-cam': 'c-cam' },
+    pageSize: page, newId: ids(),
+  });
+  // Field retags C-1-01 -> C-1-01X and updates building + location, leaving wing & floor untouched.
+  const existing = {
+    'new-1': {
+      ...first.markers['new-1'],
+      name: 'C-1-01X',
+      building: 'B',
+      location: 'Server Room',
+    },
+  };
+  // Walk is resent with original title/building/location and an updated wing/floor.
+  const resentNodes = [{ ...nodes[0], wing: 'West', floor_label: '2' }];
+  const again = buildWalkMarkers({
+    nodes: resentNodes, nodeTypes, template, moduleId: 'm1', categoryFor: { 'nt-cam': 'c-cam' },
+    pageSize: page, existingMarkers: existing, newId: ids(),
+  });
+  const m = again.markers['new-1'];
+  assert.equal(m.name, 'C-1-01X', 'field-edited Tag must not be overwritten on resend');
+  assert.equal(m.building, 'B', 'field-edited building must not be overwritten on resend');
+  assert.equal(m.location, 'Server Room', 'field-edited location must not be overwritten on resend');
+  assert.equal(m.wing, 'West', 'untouched wing still picks up walk update');
+  assert.equal(m.floor, '2', 'untouched floor still picks up walk update');
+
+  // A third resend still keeps the field's edits.
+  const third = buildWalkMarkers({
+    nodes: resentNodes, nodeTypes, template, moduleId: 'm1', categoryFor: { 'nt-cam': 'c-cam' },
+    pageSize: page, existingMarkers: again.markers, newId: ids(),
+  });
+  assert.equal(third.markers['new-1'].name, 'C-1-01X');
+  assert.equal(third.markers['new-1'].building, 'B');
+  assert.equal(third.markers['new-1'].location, 'Server Room');
+});
+
+test('resending keeps field Tag and place edits even on legacy markers without suiteWalkBaseline (#1593)', () => {
+  const legacyMarker = {
+    id: 'm-legacy',
+    name: 'C-2-01X',
+    categoryId: 'c-cam',
+    moduleId: 'm1',
+    suiteId: 's1',
+    building: 'Annex',
+    wing: 'North',
+    floor: '3',
+    location: 'Closet',
+    pageNumber: 1,
+    bounds: { x: 10, y: 10, width: 12, height: 12 },
+    suiteOrigin: {
+      pageId: 'B01', x: 0.5, y: 0.25, tag: 'C-1-01', location: 'Lobby',
+      page: { width: 1224, height: 792, rotation: 0 }, center: { x: 612, y: 198 },
+    },
+  };
+  const again = buildWalkMarkers({
+    nodes: [nodes[0]], nodeTypes, template, moduleId: 'm1', categoryFor: { 'nt-cam': 'c-cam' },
+    pageSize: page, existingMarkers: { 'm-legacy': legacyMarker }, newId: ids(),
+  });
+  const m = again.markers['m-legacy'];
+  assert.equal(m.name, 'C-2-01X');
+  assert.equal(m.building, 'Annex');
+  assert.equal(m.wing, 'North');
+  assert.equal(m.floor, '3');
+  assert.equal(m.location, 'Closet');
+});
+
+test('suiteWalkBaseline survives Yjs live editing and Supabase row mirror round-trips (#1593)', async () => {
+  const Y = await import('yjs');
+  const { docToSurveyMarkers, syncSurveyMarkersToDoc } = await import('../src/services/annotationDocStore.js');
+  const { buildSurveyMarkerRow, mapSurveyMarkerRowToLocalAnnotation } = await import('../src/services/documentSurveyMarkerMapper.js');
+  const first = buildWalkMarkers({
+    nodes: [nodes[0]], nodeTypes, template, moduleId: 'm1', categoryFor: { 'nt-cam': 'c-cam' },
+    pageSize: page, newId: ids(),
+  });
+  const cam = first.markers['new-1'];
+  assert.ok(cam.suiteWalkBaseline, 'new walk marker stores suiteWalkBaseline');
+  for (const fieldMaps of [false, true]) {
+    const a = new Y.Doc();
+    syncSurveyMarkersToDoc(a, { [cam.id]: cam }, { fieldMaps });
+    const reloaded = new Y.Doc();
+    Y.applyUpdate(reloaded, Y.encodeStateAsUpdate(a));
+    assert.deepEqual(docToSurveyMarkers(reloaded)[cam.id].suiteWalkBaseline, cam.suiteWalkBaseline, `fieldMaps=${fieldMaps}`);
+  }
+  const row = buildSurveyMarkerRow({ documentId: 'd', userId: 'u', annotationId: cam.id, annotation: cam });
+  assert.deepEqual(mapSurveyMarkerRowToLocalAnnotation({ ...row, id: 'r1' }).suiteWalkBaseline, cam.suiteWalkBaseline);
+});
+

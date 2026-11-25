@@ -168,6 +168,55 @@ const fractionOrNull = (value) => {
   return value == null || !Number.isFinite(n) ? null : n;
 };
 
+const WALK_EDITABLE_FIELDS = ['name', 'building', 'wing', 'floor', 'location'];
+
+function walkBaselineOf(fromWalk) {
+  return {
+    name: clean(fromWalk.name),
+    building: clean(fromWalk.building),
+    wing: clean(fromWalk.wing),
+    floor: clean(fromWalk.floor),
+    location: clean(fromWalk.location),
+  };
+}
+
+function mergeFieldEditedText(priorMarker, fromWalk) {
+  const priorBaseline = priorMarker.suiteWalkBaseline && typeof priorMarker.suiteWalkBaseline === 'object'
+    ? priorMarker.suiteWalkBaseline
+    : null;
+  const origin = priorMarker.suiteOrigin && typeof priorMarker.suiteOrigin === 'object'
+    ? priorMarker.suiteOrigin
+    : null;
+  const merged = {};
+  const nextBaseline = {};
+
+  for (const field of WALK_EDITABLE_FIELDS) {
+    const incoming = fromWalk[field];
+    const current = priorMarker[field];
+    const hasStoredBaseline = Boolean(priorBaseline && Object.prototype.hasOwnProperty.call(priorBaseline, field));
+    const hasOriginFallback = !hasStoredBaseline && origin && (field === 'name' || field === 'location');
+
+    if (hasStoredBaseline || hasOriginFallback) {
+      const baseValue = hasStoredBaseline
+        ? clean(priorBaseline[field])
+        : clean(field === 'name' ? origin.tag : origin.location);
+      const fieldEdited = clean(current) !== baseValue;
+      merged[field] = fieldEdited ? current : incoming;
+      nextBaseline[field] = fieldEdited ? baseValue : clean(incoming);
+    } else if (nonEmpty(current)) {
+      // Legacy marker created before suiteWalkBaseline existed: never clobber a
+      // non-empty Tag or place value already sitting on the marker.
+      merged[field] = current;
+      nextBaseline[field] = clean(incoming);
+    } else {
+      merged[field] = incoming;
+      nextBaseline[field] = clean(incoming);
+    }
+  }
+
+  return { merged, suiteWalkBaseline: nextBaseline };
+}
+
 export function buildWalkMarkers(input) {
   const {
     nodes = [], nodeTypes = [], template, moduleId, categoryFor = {},
@@ -233,11 +282,15 @@ export function buildWalkMarkers(input) {
 
     const prior = suiteId ? (bySuiteId.get(suiteId) || []).shift() : null;
     if (prior) {
-      // Keep what the field has done: answers, Entity, note and where it sits.
+      // Keep what the field has done: answers, Entity, note, spot, and any
+      // Tag or place fields edited in Survey (#1593).
       const keepSpot = prior.marker.bounds && prior.marker.pageNumber != null;
+      const { merged, suiteWalkBaseline } = mergeFieldEditedText(prior.marker, fromWalk);
       markers[prior.key] = {
         ...prior.marker,
         ...fromWalk,
+        ...merged,
+        suiteWalkBaseline,
         checklistResponses: prior.marker.checklistResponses || {},
         pageNumber: keepSpot ? prior.marker.pageNumber : (bounds ? pageNumber : prior.marker.pageNumber ?? null),
         bounds: keepSpot ? prior.marker.bounds : (bounds || prior.marker.bounds || null),
@@ -251,6 +304,7 @@ export function buildWalkMarkers(input) {
     markers[id] = {
       id,
       ...fromWalk,
+      suiteWalkBaseline: walkBaselineOf(fromWalk),
       checklistResponses: {},
       entityId: entity?.id ?? null,
       entityName: entity?.name ?? null,
