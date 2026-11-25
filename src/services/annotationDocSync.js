@@ -782,6 +782,7 @@ export async function openAnnotationDoc({
             persistenceDatabaseName(documentId, actorUserId, state.persistenceGeneration),
             persistenceDoc,
           );
+          guardClosedIdbStore(state.idbProvider, persistenceDoc);
           skipStoreEncodeWhileLoading(state.idbProvider, persistenceDoc);
         }
         const localReady = await whenSynced(state.idbProvider, localSyncTimeoutMs);
@@ -1159,6 +1160,39 @@ function idbStoreListener(provider, doc) {
   return provider?.doc === doc && typeof provider._storeUpdate === 'function'
     ? provider._storeUpdate
     : null;
+}
+
+// The browser closes this device's copy (IndexedDB) under the open document
+// when another tab deletes or upgrades the same database. y-indexeddb then
+// throws "The database connection is closing" from its store, inside the
+// Yjs update that carried the user's edit, and the throw reached React: the
+// app showed "Something went wrong" and the edit was lost (#1659, seen in
+// client_errors on Nightly). The cloud queue still carries every edit, so a
+// closed local copy only skips the local write.
+export function isClosedIdbError(error) {
+  return error?.name === 'InvalidStateError'
+    || /database connection is closing|connection is closing|database is closed/i.test(String(error?.message || ''));
+}
+
+export function guardClosedIdbStore(provider, doc) {
+  const original = provider?._storeUpdate;
+  if (typeof original !== 'function' || provider.doc !== doc) return;
+  let warned = false;
+  const guarded = (update, origin) => {
+    try {
+      return original(update, origin);
+    } catch (error) {
+      if (!isClosedIdbError(error)) throw error;
+      if (!warned) {
+        warned = true;
+        console.warn('[annotationDocSync] this device\'s copy closed; edits go to the cloud only until reopen');
+      }
+      return undefined;
+    }
+  };
+  doc.off('update', original);
+  doc.on('update', guarded);
+  provider._storeUpdate = guarded;
 }
 
 function skipStoreEncodeWhileLoading(provider, doc) {

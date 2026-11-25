@@ -32,6 +32,7 @@ import { isSnappingToggleKey } from '../utils/keyboardShortcuts.js';
 import { isTypingTarget } from '../utils/typingTarget.js';
 import { showToast } from '../utils/toast.js';
 import { isMacLikePlatform } from '../utils/moveModifier.js';
+import { isFeatureOn } from '../featureFlags.js';
 
 // The skip key in the user's own words: Option on a Mac, Alt elsewhere.
 const SKIP_KEY = isMacLikePlatform() ? 'Option' : 'Alt';
@@ -71,8 +72,14 @@ export function useSnappingShortcut(enabled = true) {
             if (!isSnappingToggleKey(event)) return;
             if (isTypingTarget(event.target) || isTypingTarget(document.activeElement)) return;
             event.preventDefault();
-            const on = writeAnnotationSnapping(!readAnnotationSnapping());
-            showToast(on ? 'Snapping on' : 'Snapping off', 'info', { duration: 1600 });
+            // With the Drawing switch (Nightly 'snap-content') the key flips
+            // both switches as one, so the toast and the card agree (tester
+            // report #1637): any on turns both off, both off turns both on.
+            const withDrawing = isFeatureOn('snap-content');
+            const anyOn = readAnnotationSnapping() || (withDrawing && readSnapContent());
+            writeAnnotationSnapping(!anyOn);
+            if (withDrawing) writeSnapContent(!anyOn);
+            showToast(anyOn ? 'Snapping off' : 'Snapping on', 'info', { duration: 1600 });
         };
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);

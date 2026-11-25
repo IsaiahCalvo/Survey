@@ -16,6 +16,10 @@ import CounterSeriesMenu, { counterSeriesMenuWidth } from './components/CounterS
 
 import PageGridToggle, { PageGridGlyph } from './components/PageGridToggle';
 import DarkPagesToggle, { DarkPagesGlyph } from './components/DarkPagesToggle';
+import { applyDarkPages, loadDarkPages } from './utils/darkPages';
+import { applyThinLines, ensureThinLinesFilters, loadThinLines } from './utils/thinLines';
+import './styles/thinLines.css';
+import './styles/darkPages.css';
 import DocumentVersionsButton, { DocumentVersionsDialogs, useDocumentVersions } from './components/DocumentVersionsButton.jsx';
 import { DOCUMENT_VERSIONS_CHANGED_EVENT, chainLinksAfter, isFileSuperseded, withChainLinks } from './services/documentVersionService.js';
 import DriveSyncButton, { DriveSyncDialogs } from './components/DriveSyncButton.jsx';
@@ -2008,6 +2012,22 @@ export default function App({ devPreviewReturnTab = null }) {
     return () => window.removeEventListener(DEVICE_FILE_LEAVE_EVENT, onLeave);
   }, []);
 
+  // A different account signed in on this page without a reload (the old
+  // session was ended from another app or copy, then someone else signed in):
+  // the old account's documents must not stay open. Left open, the new
+  // account kept writing presence and marks to them and got 403s, and could
+  // read what the old account had on screen. A session that only lapses
+  // (no user, then the same user again) keeps its tabs.
+  const lastSignedInUserIdRef = useRef(null);
+  useEffect(() => {
+    if (!signedInUserId) return;
+    const previous = lastSignedInUserIdRef.current;
+    lastSignedInUserIdRef.current = signedInUserId;
+    if (!previous || previous === signedInUserId) return;
+    const ids = tabsRef.current.filter((t) => t.id !== HOME_TAB_ID).map((t) => t.id);
+    if (ids.length) closeTabsNowRef.current(ids);
+  }, [signedInUserId]);
+
   const requestCloseTabs = async (tabIds, action = 'close') => {
     const ids = (tabIds || []).filter((id) => id !== HOME_TAB_ID);
     if (!ids.length) return;
@@ -2709,6 +2729,15 @@ export default function App({ devPreviewReturnTab = null }) {
   const [snapContentEnabled] = useState(() => isFeatureOn('snap-content'));
   const [paperOverlaysEnabled] = useState(() => isFeatureOn('paper-overlays'));
   const [thinLinesEnabled] = useState(() => isFeatureOn('thin-lines'));
+  // The saved Thin PDF lines and Dark pages show from the first page, not
+  // only once their controls (inside the View card) are opened (#1644, #1643).
+  useEffect(() => {
+    if (thinLinesEnabled) {
+      applyThinLines(loadThinLines());
+      ensureThinLinesFilters();
+    }
+    if (isFeatureOn('dark-pages')) applyDarkPages(loadDarkPages());
+  }, [thinLinesEnabled]);
   // Nightly 'toolbar-settings' (Drawboard VT-33): the left rail's Toolbars
   // card can hide the tool bar; only the desktop viewer honours it (the
   // phone header is its own way back).
@@ -4773,9 +4802,19 @@ export default function App({ devPreviewReturnTab = null }) {
 
                 {/* Nightly 'pen-types': Drawboard's three pens (a tool
                     setting, so only while the Pen is armed). */}
-                {isFeatureOn('pen-types') && bottomToolbarApi.activeTool === 'pen' && toolbarSlot('pen', (compact) => (
-                  <PenTypeMenu tip={chromeTip} compact={compact} />
-                ))}
+                {isFeatureOn('pen-types') && bottomToolbarApi.selectedPenType && typeof bottomToolbarApi.setSelectedPenType === 'function'
+                  ? toolbarSlot('pen', (compact) => (
+                    // Picked Pen strokes (tester report #1619): the pill edits them.
+                    <PenTypeMenu
+                      tip={chromeTip}
+                      compact={compact}
+                      value={bottomToolbarApi.selectedPenType.type}
+                      onPick={bottomToolbarApi.setSelectedPenType}
+                    />
+                  ))
+                  : (isFeatureOn('pen-types') && bottomToolbarApi.activeTool === 'pen' && toolbarSlot('pen', (compact) => (
+                    <PenTypeMenu tip={chromeTip} compact={compact} />
+                  )))}
                 {(bottomToolbarApi.contextTool === 'pen'
                   || bottomToolbarApi.contextTool === 'highlighter'
                   || bottomToolbarApi.contextTool === 'tape'

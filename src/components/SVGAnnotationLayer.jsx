@@ -173,7 +173,7 @@ import {
 } from '../utils/annotationPreviewDiag';
 import SVGSelectionOverlay, { SelectionLockBadge } from './SVGSelectionOverlay';
 import { isUserLocked } from '../lib/collab/permissionScope.js';
-import { getTextMarkupRangeHandlePositions, getTextMarkupSelectionChrome } from '../utils/pdfTextMarkup.js';
+import { getTextMarkupRangeHandlePositions, getTextMarkupSelectionChrome, textMarkupHitPath } from '../utils/pdfTextMarkup.js';
 import RotationInputField from './RotationInputField';
 import { TRANSFORM_SELECTION_EVENT, canTypeTurn, recolourObject, resizeObjectTo, scaleObjectBy, setLineEndingOn, turnScaleKeyStep, wrapDegrees } from '../utils/selectionProperties.js';
 import { withMarkSubject } from '../utils/markSubject.js';
@@ -1019,7 +1019,7 @@ const SVGAnnotationLayerBody = memo(({
       // With segment captions ('measure-plus') the total moves above the last segment.
       const totalAt = label && plusOn ? polylengthTotalPlace(obj, effectiveMeasureScale) : null;
       if (totalAt) label = { ...label, ...totalAt };
-      if (label) labels.push({ key: obj.id || obj.data?.id || `m${index}`, index, label });
+      if (label) labels.push({ key: obj.id || obj.data?.id || `m${index}`, index, label, layerId: obj?.layerId || 'default' });
     });
     return labels;
   }, [annotations, effectiveMeasureScale, hiddenLayerIds]);
@@ -1334,7 +1334,8 @@ const SVGAnnotationLayerBody = memo(({
     setSelectedSurveyMarkerId(null);
     setSurveyMarkerPreviewBounds(null);
     surveyMarkerDragRef.current = null;
-    if (pendingSelection.subtractFromSelection) {
+    if (pendingSelection.subtractFromSelection
+      || (pendingSelection.toggleSelection === true && selectedIds.has(pendingSelection.annotationIndex))) {
       selectAnnotations([...selectedIds].filter((index) => index !== pendingSelection.annotationIndex));
     } else {
       selectAnnotation(pendingSelection.annotationIndex, pendingSelection.addToSelection === true);
@@ -7830,8 +7831,28 @@ const SVGAnnotationLayerBody = memo(({
                   style={{ pointerEvents: 'none' }}
                 />
               )}
-              {/* Invisible hit-area rect ON TOP for easier clicking */}
-              <rect
+              {/* Invisible hit-area ON TOP for easier clicking. A text
+                  markup takes clicks on its own word runs only: one box over
+                  every line of a multi-line highlight covered most of the
+                  page and swallowed every box-select started on it (#1650). */}
+              {(() => {
+                const quadHitPath = textMarkupHitPath(renderObj);
+                return quadHitPath ? (
+                  <path
+                    d={quadHitPath}
+                    fill="transparent"
+                    stroke="transparent"
+                    strokeWidth={4}
+                    vectorEffect="non-scaling-stroke"
+                    pointerEvents={annotationHitTargetsInteractive && isObjectInteractive ? 'all' : 'none'}
+                    onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
+                    onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
+                    onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
+                    onDoubleClick={(e) => handleAnnotationDoubleClick(e, i)}
+                  />
+                ) : null;
+              })()}
+              {!textMarkupHitPath(renderObj) && <rect
                 x={bbox.left}
                 y={bbox.top}
                 width={Math.max(bbox.width, 10)}
@@ -7847,7 +7868,7 @@ const SVGAnnotationLayerBody = memo(({
                 onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
                 onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
                 onDoubleClick={(e) => handleAnnotationDoubleClick(e, i)}
-              />
+              />}
             </g>
           );
         })()}
@@ -8882,14 +8903,19 @@ const SVGAnnotationLayerBody = memo(({
       )}
       {measureLabels.length > 0 && (
         <g className="measure-labels" data-measure-label-count={measureLabels.length} style={{ pointerEvents: 'none' }}>
-          {measureLabels.map(({ key, index, label }) => {
+          {measureLabels.map(({ key, index, label, layerId }) => {
             const live = liveMeasureLabels.get(index);
             // The same rule as the line's own halo (annotationIsHovered).
             const halo = (hoveredId === index && !selectedIds.has(index))
               || (selectedIds.has(index) && ((selectedIds?.size || 0) + (effectiveSelectedCalloutIds?.size || 0)) > 1);
-            if (!live) return renderMeasureLabel(label, key, clampInverseScale(inverseScale), { width, height }, { halo });
-            const pill = renderMeasureLabel(live.label, key, clampInverseScale(inverseScale), { width, height }, { halo });
-            return live.transform && pill ? <g key={key} transform={live.transform}>{pill}</g> : pill;
+            const pill = renderMeasureLabel(live ? live.label : label, key, clampInverseScale(inverseScale), { width, height }, { halo });
+            if (!pill) return null;
+            // Layer focus (utils/layerFocus.js) fades a label with its mark (#1651).
+            return (
+              <g key={key} data-measure-label-for={index} data-mark-layer={layerId} transform={live?.transform || undefined}>
+                {pill}
+              </g>
+            );
           })}
         </g>
       )}

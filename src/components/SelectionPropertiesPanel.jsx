@@ -44,6 +44,7 @@ import {
 import { composeTextColor, splitTextColor } from '../utils/textColorOpacity.js';
 import { FILL_QUICK_COLOURS, FILL_QUICK_COLOUR_NAMES } from '../utils/quickStylePresets.js';
 import { HATCH_PATTERNS } from '../utils/hatchFill.js';
+import { PEN_TYPES } from '../utils/penTypes.js';
 import {
   TRANSFORM_SELECTION_EVENT,
   formatPt,
@@ -274,6 +275,28 @@ function SliderRow({ label, value, ticks, min, max, unit, onPreview, onCommit, m
   const [draft, setDraft] = useState(null);
   const shown = draft ?? (Number.isFinite(Number(value)) ? Number(value) : min);
   const ticksId = `props-ticks-${label.replace(/\s+/g, '-')}`;
+  // One drag = one commit = one undo step (tester report #1627). The value
+  // is committed on the input's native change event too (a release off the
+  // slider, a typed or scripted value), not only on pointer or key up, so a
+  // drag never ends as previews alone; the ref keeps a release from
+  // committing twice.
+  const inputRef = useRef(null);
+  const draftRef = useRef(null);
+  const commitRef = useRef(onCommit);
+  commitRef.current = onCommit;
+  const commitDraft = useCallback(() => {
+    const v = draftRef.current;
+    if (v == null) return;
+    draftRef.current = null;
+    commitRef.current?.(v);
+    setDraft(null);
+  }, []);
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return undefined;
+    el.addEventListener('change', commitDraft);
+    return () => el.removeEventListener('change', commitDraft);
+  }, [commitDraft]);
   return (
     <div className="props-panel__slider-row">
       <span className="props-panel__row-label">{label}</span>
@@ -285,9 +308,10 @@ function SliderRow({ label, value, ticks, min, max, unit, onPreview, onCommit, m
         value={shown}
         aria-label={label}
         list={ticksId}
-        onChange={(event) => { const v = Number(event.target.value); setDraft(v); onPreview(v); }}
-        onPointerUp={() => { if (draft != null) { onCommit(draft); setDraft(null); } }}
-        onKeyUp={() => { if (draft != null) { onCommit(draft); setDraft(null); } }}
+        ref={inputRef}
+        onChange={(event) => { const v = Number(event.target.value); draftRef.current = v; setDraft(v); onPreview(v); }}
+        onPointerUp={commitDraft}
+        onKeyUp={commitDraft}
       />
       <datalist id={ticksId}>{ticks.map((t) => <option key={t} value={t} />)}</datalist>
       <span className="props-panel__value" data-props-value={label}>{mixed && draft == null ? 'Mixed' : `${Math.round(shown)}${unit}`}</span>
@@ -622,6 +646,32 @@ export default function SelectionPropertiesPanel({
               onPreview={(v) => api?.handleStrokeOpacityChange?.(v, { phase: 'preview' })}
               onCommit={(v) => api?.handleStrokeOpacityChange?.(v, { phase: 'commit' })}
             />
+            {api?.selectedPenType && typeof api?.setSelectedPenType === 'function' && (
+              // Nightly 'pen-types' (tester report #1619): change the pen of
+              // strokes already drawn, as the bar's pen pill does for new ones.
+              <div className="props-panel__row" role="radiogroup" aria-label="Pen type" data-props-pen-type>
+                <span className="props-panel__row-label">Pen</span>
+                <div className="props-panel__chips">
+                  {PEN_TYPES.map((type) => {
+                    const current = api.selectedPenType.type === type.id;
+                    return (
+                      <button
+                        key={type.id}
+                        type="button"
+                        role="radio"
+                        className={`props-panel__chip${current ? ' is-current' : ''}`}
+                        aria-checked={current}
+                        data-props-pen-type={type.id}
+                        {...chromeTip(`${type.label}: ${type.sub}`, 'below')}
+                        onClick={() => { if (!current) api.setSelectedPenType(type.id); }}
+                      >
+                        {type.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             {caps.width !== false && !onlyInk && (
               <div className="props-panel__row" role="group" aria-label="Thickness">
                 <span className="props-panel__row-label">Thickness</span>

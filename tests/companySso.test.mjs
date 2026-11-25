@@ -2,6 +2,7 @@
 // the checks on what a company's IT person pastes.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   dohAnswerHasToken, readMetadataInput, signOnErrorText, txtRecordName, txtRecordValue,
 } from '../supabase/functions/_shared/companySso.js';
@@ -54,4 +55,13 @@ test('the two details the IT person needs', () => {
   assert.match(text, /ACS URL .*: https:\/\/abc\.supabase\.co\/auth\/v1\/sso\/saml\/acs/);
   assert.match(text, /acme\.com/);
   assert.doesNotMatch(text, /\n\n\n/);
+});
+
+test('connect sends Supabase where Entra, Google and Okta put the email', async () => {
+  const { SAML_ATTRIBUTE_MAPPING } = await import('../supabase/functions/_shared/companySso.js');
+  const emailNames = SAML_ATTRIBUTE_MAPPING.keys.email.names;
+  assert.equal(emailNames[0], 'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress');
+  assert.ok(emailNames.includes('email') && emailNames.includes('mail'));
+  const fn = readFileSync(new URL('../supabase/functions/company-sso/index.ts', import.meta.url), 'utf8');
+  assert.match(fn, /attribute_mapping: SAML_ATTRIBUTE_MAPPING/);
 });

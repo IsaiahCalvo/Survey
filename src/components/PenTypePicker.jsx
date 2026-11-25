@@ -36,8 +36,12 @@ export function PenTypeSample({ type, width = 3, color = 'currentColor' }) {
   );
 }
 
-export default function PenTypeTiles({ tip, onPicked }) {
-  const current = usePenType();
+// `value` / `onPick` (tester report #1619): the tiles edit picked strokes
+// instead of the tool's pen (value null = the picked strokes differ).
+export default function PenTypeTiles({ tip, onPicked, value, onPick }) {
+  const toolPen = usePenType();
+  const controlled = typeof onPick === 'function';
+  const current = controlled ? value : toolPen;
   return (
     <div className="pen-types" role="radiogroup" aria-label="Pen type" data-pen-types="true">
       {PEN_TYPES.map((type) => {
@@ -52,7 +56,10 @@ export default function PenTypeTiles({ tip, onPicked }) {
             data-pen-type={type.id}
             className={`pen-types__tile${on ? ' is-current' : ''}`}
             {...(tip ? tip(`${type.label}: ${type.sub}`, 'below') : {})}
-            onClick={() => { setPenType(type.id); onPicked?.(type.id); }}
+            onClick={() => {
+              if (controlled) { if (!on) onPick(type.id); } else setPenType(type.id);
+              onPicked?.(type.id);
+            }}
           >
             <span className="pen-types__disc"><PenTypeSample type={type.id} /></span>
             <span className="pen-types__name">{type.label}</span>
@@ -65,24 +72,26 @@ export default function PenTypeTiles({ tip, onPicked }) {
 }
 
 /** The desktop bar's Pen pill: names the pen and opens the three tiles. */
-export function PenTypeMenu({ tip, compact = false }) {
+export function PenTypeMenu({ tip, compact = false, value, onPick }) {
   const [open, setOpen] = useState(false);
-  const current = usePenType();
-  const label = PEN_TYPES.find((type) => type.id === current)?.label || 'Basic';
+  const toolPen = usePenType();
+  const controlled = typeof onPick === 'function';
+  const current = controlled ? value : toolPen;
+  const label = controlled && !current ? 'Mixed' : (PEN_TYPES.find((type) => type.id === current)?.label || 'Basic');
   return (
     <AnnotationDropdown
       compact={compact}
       open={open}
       onOpenChange={setOpen}
       label="Pen type"
-      value={current}
+      value={current || 'mixed'}
       triggerContent={label}
       dataMarker="data-pen-type-menu"
-      preview={<span className="pen-types__pill-sample"><PenTypeSample type={current} width={2.4} /></span>}
+      preview={<span className="pen-types__pill-sample"><PenTypeSample type={current || 'basic'} width={2.4} /></span>}
       width="var(--chrome-field-w-arrowhead)"
       contentClassName="pen-types-popover"
     >
-      <PenTypeTiles tip={tip} onPicked={() => setOpen(false)} />
+      <PenTypeTiles tip={tip} value={value} onPick={onPick} onPicked={() => setOpen(false)} />
     </AnnotationDropdown>
   );
 }

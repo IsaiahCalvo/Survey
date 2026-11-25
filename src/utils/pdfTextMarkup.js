@@ -354,6 +354,15 @@ export function getTextMarkupRangeFixedOffset(annotation, handleId) {
   return undefined;
 }
 
+// The click target of a text markup: its word-run quads, never the box
+// round all of them (#1650). Null for any other mark.
+export function textMarkupHitPath(annotation) {
+  if (annotation?.data?.type !== 'text-markup') return null;
+  const quads = (annotation.data.quads || []).filter((q) => [q?.x1, q?.y1, q?.x2, q?.y2, q?.x3, q?.y3, q?.x4, q?.y4].every((v) => Number.isFinite(Number(v))));
+  if (quads.length === 0) return null;
+  return quads.map((q) => `M ${q.x1} ${q.y1} L ${q.x2} ${q.y2} L ${q.x4} ${q.y4} L ${q.x3} ${q.y3} Z`).join(' ');
+}
+
 export function getTextMarkupStackAtPoint(annotations, point, tolerance = 2) {
   const x = Number(point?.x);
   const y = Number(point?.y);

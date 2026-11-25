@@ -93,7 +93,9 @@ test('the PDF rewrite draws the paper on the inserted page', async () => {
 test('the viewer wires the picker behind the flag', () => {
   const src = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
   assert.match(src, /const \[pageTemplatesEnabled\] = useState\(\(\) => isFeatureOn\('page-templates'\)\);/);
-  assert.match(src, /\.\.\.\(pageTemplatesEnabled \? \{ insertTemplate: \(page\) => setPageTemplatePicker\(\{ afterPage: page \}\) \} : \{\}\),/);
+  // One handler feeds the viewer page menu and the Pages panel (#1648).
+  assert.match(src, /pageTemplatesEnabled \? \(page\) => setPageTemplatePicker\(\{ afterPage: page \}\) : undefined/);
+  assert.match(src, /\.\.\.\(handleInsertTemplatePage \? \{ insertTemplate: handleInsertTemplatePage \} : \{\}\),/);
   assert.match(src, /onPick=\{\(afterPage, paper\) => handleInsertBlankPage\(afterPage, paper\)\}/);
   const mig = readFileSync(new URL('../supabase/migrations/20261112095000_page_templates_flag.sql', import.meta.url), 'utf8');
   assert.match(mig, /'page-templates', 'off'/);

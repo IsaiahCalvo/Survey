@@ -20,7 +20,15 @@ test('off or a lone default layer fades nothing', () => {
 
 test('a named layer active fades every other mark', () => {
   const css = layerFocusCss({ on: true, level: 20 }, 'L1', layers);
-  assert.match(css, /\[data-annotation-index\]:not\(\[data-mark-layer="L1"\]\) \{ opacity: 0\.2 !important; \}/);
+  assert.match(css, /\[data-annotation-index\]:not\(\[data-mark-layer="L1"\]\),/);
+  assert.match(css, /\[data-measure-label-for\]:not\(\[data-mark-layer="L1"\]\) \{ opacity: 0\.2 !important; \}/);
+});
+
+test('#1651: a measurement label fades with its line', () => {
+  const css = layerFocusCss({ on: true, level: 40 }, 'default', layers);
+  assert.match(css, /\[data-svg-annotation-layer\] \[data-measure-label-for\]\[data-mark-layer="L1"\]/);
+  const source = readFileSync(new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url), 'utf8');
+  assert.match(source, /data-measure-label-for=\{index\} data-mark-layer=\{layerId\}/);
 });
 
 test('default active fades only the named layers, quoting odd ids', () => {

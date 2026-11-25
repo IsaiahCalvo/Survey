@@ -30,7 +30,16 @@ export default function MeasureDepthDialog({ kind, initialDepth = 1, scale = nul
       <div
         className="measure-scale__scrim"
         data-measure-depth-dialog="true"
-        onPointerDown={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+        // A press beside the card keeps it open (tester report #1638: a page
+        // click closed it and the press went on to draw a measure with the old
+        // depth). Only Use, Cancel, Close or Esc end it.
+        onPointerDown={(e) => {
+          if (e.target !== e.currentTarget) return;
+          e.preventDefault();
+          e.stopPropagation();
+          cardRef.current?.querySelector('[data-measure-depth]')?.focus();
+        }}
+        onClick={(e) => e.stopPropagation()}
       >
         <form
           ref={cardRef}

@@ -30,6 +30,10 @@ export const writeUsageStatsOff = (off) => {
 
 const analyticsRateLimiter = createAnalyticsRateLimiter();
 let lastDeliveryWarningAt = 0;
+// The server has no collector set up (Survey Nightly, a preview copy: 503
+// analytics_not_configured). Asking again cannot change that, so this page
+// stops sending (tester report #1628: a red 503 on every event).
+let collectorNotConfigured = false;
 
 const safeIdentifier = (value, limit = 240) => String(value || '').replace(/[\r\n]+/g, ' ').slice(0, limit);
 
@@ -64,7 +68,10 @@ export const resolveSurveyAnalyticsEndpoint = (locationLike = globalThis.window?
   const hostname = String(locationLike?.hostname || '').toLowerCase();
   const isOfficialOrigin = locationLike?.protocol === 'https:'
     && !locationLike?.port
-    && (hostname === 'surveytool.app' || hostname === 'www.surveytool.app');
+    && (hostname === 'surveytool.app' || hostname === 'www.surveytool.app'
+      // Nightly is the same Vercel project, so it has its own proxy route; a
+      // call to surveytool.app from here is cross-origin and CORS blocks it.
+      || hostname === 'surveytool-nightly.vercel.app');
   if (isOfficialOrigin) return DEFAULT_ENDPOINT;
   return HOSTED_PROXY_ENDPOINT;
 };
@@ -111,6 +118,12 @@ const observeDelivery = async (request) => {
     if (!body && contentType.toLowerCase().includes('application/json')) {
       body = await response.json().catch(() => null);
     }
+    if (Number(response.status) === 503 && body?.error === 'analytics_not_configured') {
+      collectorNotConfigured = true;
+      const off = { ok: false, reason: 'not_configured', status: 503, disabled: true };
+      publishDeliveryStatus(off);
+      return off;
+    }
     const result = classifyAnalyticsDelivery({
       ok: response.ok,
       status: response.status,
@@ -145,6 +158,7 @@ const deliverSurveyAnalyticsEvent = async (event, properties = {}) => {
   // Turned off in Settings: nothing leaves the device. The phone apps' queued
   // events get a non-retryable nack below, so they drop instead of piling up.
   if (readUsageStatsOff()) return Promise.resolve({ ok: false, reason: 'turned_off', status: 0, disabled: true });
+  if (collectorNotConfigured) return Promise.resolve({ ok: false, reason: 'not_configured', status: 503, disabled: true });
   // Hard client ceiling: analytics must never create an unbounded event bill or
   // error-loop storm. No retries and no session replay are installed here.
   if (!analyticsRateLimiter.allow()) return false;

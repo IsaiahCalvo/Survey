@@ -6,7 +6,7 @@ This file is how they stay in step. The same text sits at
 `docs/suite/SUITE-RULES.md` in all three repos. Change it in all three in the
 same round, or not at all.
 
-Last checked against the code: 2026-11-24.
+Last checked against the code: 2026-11-25.
 
 ## Before you build anything
 
@@ -151,6 +151,32 @@ coming in, so a closed thing gets out of the way.
 
 Things on the plan itself (a Node, a Block, a Survey Marker, a drawn mark)
 follow steps 1 and 2 for the cursor, then move with the pointer with no lift.
+
+### Menu text and save status
+
+Owner, 2026-11-25: where the apps differ on the same thing, copy Survey,
+unless another app's way is clearly better. Plot moves away from copying
+Rayon exactly over time.
+
+- **Menu rows:** 13px words, 16px line, 10px side inset, 10px gap between
+  icon and words, in every action menu and popover list (Survey's
+  `--menu-font`, `--menu-item-pad-x`, `--menu-item-gap`). Plot's other
+  chrome words stay 12px.
+- **Save status:** Survey's sync chip (`src/components/SyncStatusChip.jsx`):
+  a dot and a short word, with the details on click. Where there is no
+  room for the word (a narrow rail, a panel header), the dot shows alone
+  and the word is its tooltip, as in Survey's left rail. Its words where the
+  meaning is the same: "Up to date", "Saving...", "Offline", "Not saved".
+  Each app keeps its own spot for it (see "Where things sit") and its own
+  `ok`, `warn` and `danger` colours.
+
+### Test reports on looks
+
+Owner, 2026-11-25: a tester (person or bot) may report two apps, or two
+screens, doing the same thing differently only with proof the fix is right:
+Survey, Rayon or another real app does it that way, or two things collide
+or overlap when they shouldn't. Nobody invents new UI from a report. A
+report with no proof is closed.
 
 ### Where each app keeps it
 

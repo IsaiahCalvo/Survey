@@ -1,6 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
 import { isAgentSession, AGENT_REFUSED_MESSAGE } from '../_shared/agentSession.ts';
-import { dohAnswerHasToken, METADATA_XML_MAX, readMetadataInput, signOnErrorText, txtRecordName } from '../_shared/companySso.js';
+import { dohAnswerHasToken, METADATA_XML_MAX, readMetadataInput, SAML_ATTRIBUTE_MAPPING, signOnErrorText, txtRecordName } from '../_shared/companySso.js';
 import { parseBody, s } from '../_shared/inputSchema.js';
 
 // Company sign-in setup for the Enterprise company workspace, done by the
@@ -128,7 +128,7 @@ Deno.serve(async (req) => {
       const domains = await provedDomains();
       if (domains.length === 0) return json(400, { error: 'Prove you own at least one email domain first.' });
 
-      const payload = { ...input.value, domains };
+      const payload = { ...input.value, domains, attribute_mapping: SAML_ATTRIBUTE_MAPPING };
       const res = org.sso_provider_id
         ? await authAdmin(supabaseUrl, serviceKey, 'PUT', `/${org.sso_provider_id}`, payload)
         : await authAdmin(supabaseUrl, serviceKey, 'POST', '', { type: 'saml', ...payload });

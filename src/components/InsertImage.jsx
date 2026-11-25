@@ -1,9 +1,11 @@
 // Nightly 'insert-image' (Drawboard parity): the Text group's Image button
-// picks a picture file, and a picture pasted from the clipboard (Ctrl/Cmd+V
+// picks a picture file, then the picture follows the pointer and lands where
+// the page is clicked (Esc or a click off the page lets go; a phone drops it
+// mid-page, since a finger pans). A picture pasted from the clipboard (Ctrl/Cmd+V
 // with no text field focused) lands where the pointer is over a page, else in
 // the middle of the page in view. See utils/insertedImage.js for the mark.
 import { useEffect } from 'react';
-import { placeLibraryItem } from '../markLibrary/markLibraryPlacement.js';
+import { armLibraryItem, placeLibraryItem } from '../markLibrary/markLibraryPlacement.js';
 import { isTypingTarget } from '../utils/typingTarget.js';
 import {
   INSERTED_IMAGE_MAX_BYTES,
@@ -61,22 +63,39 @@ export async function imageFileToDataUrl(file, { maxPx = INSERTED_IMAGE_MAX_PX, 
   }
 }
 
-/** Place a picture file on the page; `where` as placeLibraryItem takes it. */
-export async function insertImageFile(file, where = { center: true }) {
-  if (!file || !/^image\//i.test(file.type || '')) return false;
+async function imageItemFromFile(file) {
+  if (!file || !/^image\//i.test(file.type || '')) return null;
   let picture = null;
   try { picture = await imageFileToDataUrl(file); } catch (error) { console.warn('[insert-image] could not read the picture', error); }
-  if (!picture) return false;
-  const item = insertedImageItem({
+  if (!picture) return null;
+  return insertedImageItem({
     src: picture.src,
     pixelWidth: picture.width,
     pixelHeight: picture.height,
     name: String(file.name || 'Image').replace(/\.[^.]+$/, '') || 'Image',
   });
+}
+
+/** Place a picture file on the page; `where` as placeLibraryItem takes it. */
+export async function insertImageFile(file, where = { center: true }) {
+  const item = await imageItemFromFile(file);
   return Boolean(item) && placeLibraryItem(item, where);
 }
 
-/** Open the file picker and place the picture chosen. */
+// A mouse or pen can aim; a finger-only screen drops the picture mid-page.
+function canAim() {
+  try { return typeof window !== 'undefined' && window.matchMedia?.('(any-pointer: fine)')?.matches === true; } catch { return false; }
+}
+
+/** Arm a picture file so the next click on a page places it there (tester report #1633). */
+export async function armImageFile(file) {
+  const item = await imageItemFromFile(file);
+  if (!item) return false;
+  armLibraryItem(item);
+  return true;
+}
+
+/** Open the file picker; the picture chosen lands where the page is clicked next. */
 export function pickImageToInsert() {
   if (typeof document === 'undefined') return;
   const input = document.createElement('input');
@@ -87,7 +106,9 @@ export function pickImageToInsert() {
   input.addEventListener('change', () => {
     const file = input.files?.[0];
     input.remove();
-    if (file) insertImageFile(file);
+    if (!file) return;
+    if (canAim()) armImageFile(file);
+    else insertImageFile(file);
   }, { once: true });
   document.body.appendChild(input);
   input.click();

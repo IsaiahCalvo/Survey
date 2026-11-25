@@ -178,6 +178,7 @@ function PinTextBox({ people, placeholder, initial = '', initialMentions = [], e
   if (boxRef) {
     boxRef.current = {
       submit,
+      focus: () => areaRef.current?.focus({ preventScroll: true }),
       startMention: () => {
         const area = areaRef.current;
         if (!area) return;
@@ -343,6 +344,23 @@ function PinComposer({ draft, people, coarse, onSave, onDiscard }) {
   // fall back to that kind's first status rather than save one it refuses.
   const kindStatuses = PIN_STATUSES[kind] || [];
   const shownStatus = kindStatuses.includes(status) ? status : (kindStatuses[0] || 'draft');
+  // #1664: on a phone the placing tap's late focus() can miss, so the field
+  // isn't focused; then a letter ran a tool shortcut (E: Eraser), the tool
+  // switch dropped this draft and the comment was lost. While the composer is
+  // open, typing outside a field goes into it instead: focusing it inside the
+  // keydown lets that same key land there.
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (typeof event.key !== 'string' || event.key.length !== 1) return;
+      if (isTypingTarget(document.activeElement)) return;
+      if (!boxRef.current?.focus) return;
+      boxRef.current.focus();
+      event.stopImmediatePropagation();
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, []);
   const save = async (body, mentions) => {
     if (busyRef.current) return false;
     busyRef.current = true;

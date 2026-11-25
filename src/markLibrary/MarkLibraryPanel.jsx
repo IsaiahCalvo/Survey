@@ -34,11 +34,11 @@ import { showToast } from '../utils/toast.js';
 import { libraryErrorMessage, markLibraryStore, useMarkLibrary } from './markLibraryStore.js';
 import {
   armLibraryItem,
-  beginLibraryDrag,
   disarmLibraryItem,
   getArmedLibraryItem,
   placeLibraryItem,
   subscribeLibraryPlacement,
+  watchLibraryPressDrag,
 } from './markLibraryPlacement.js';
 import { libraryThumbnail } from './markLibraryThumbnail.js';
 import { isFeatureOn } from '../featureFlags.js';
@@ -65,7 +65,6 @@ const LAYOUTS = [
   { id: 'small', label: 'Small grid' },
   { id: 'list', label: 'List' },
 ];
-const DRAG_START_PX = 6;
 
 function downloadText(text, fileName) {
   const blob = new Blob([text], { type: 'application/json' });
@@ -111,29 +110,11 @@ function LibraryTile({
 }) {
   const tip = useTooltip();
   const press = useRef(null);
-  // The drag starts once the press moves a few pixels, wherever the pointer
-  // is by then (a quick move leaves the tile before its own move fires).
+  // The drag starts once the press moves a few pixels (markLibraryPlacement.js).
   const handlePointerDown = (event) => {
-    if (selectMode || event.button !== 0 || event.pointerType === 'touch') return;
+    if (selectMode) return;
     if (event.target.closest('.mark-library__more')) return;
-    const p = { x: event.clientX, y: event.clientY, id: event.pointerId, dragging: false };
-    press.current = p;
-    const stop = () => {
-      window.removeEventListener('pointermove', onMove, true);
-      window.removeEventListener('pointerup', stop, true);
-      window.removeEventListener('pointercancel', stop, true);
-    };
-    const onMove = (move) => {
-      if (move.pointerId !== p.id) return;
-      if (Math.hypot(move.clientX - p.x, move.clientY - p.y) < DRAG_START_PX) return;
-      stop();
-      p.dragging = true;
-      disarmLibraryItem();
-      beginLibraryDrag(item);
-    };
-    window.addEventListener('pointermove', onMove, true);
-    window.addEventListener('pointerup', stop, true);
-    window.addEventListener('pointercancel', stop, true);
+    press.current = watchLibraryPressDrag(event, item);
   };
   const handleClick = (event) => {
     const dragged = press.current?.dragging;

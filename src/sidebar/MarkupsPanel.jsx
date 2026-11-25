@@ -26,6 +26,7 @@ import { listCommentPeople } from '../services/markComments.js';
 import {
   authorLabel,
   buildMarkupRows,
+  countSurveyMarkers,
   filterMarkupRows,
   MARKUP_GROUPINGS,
   groupMarkupRows,
@@ -41,6 +42,8 @@ function safeName(name) {
 
 export default function MarkupsPanel({
   annotationsByPage = null,
+  // Placed Survey Markers: not Annotations, so not in this list.
+  surveyMarkerCount: placedSurveyMarkers = 0,
   layerState = null,
   viewerId = null,
   documentId = null,
@@ -95,6 +98,10 @@ export default function MarkupsPanel({
   const labelFor = useMemo(() => (id) => authorLabel(id, { viewerId, peopleById }), [viewerId, peopleById]);
   // Only build while the panel is in view: a big set has thousands of marks.
   const rows = useMemo(() => (isActive ? buildMarkupRows(annotationsByPage, { layerState }) : []), [isActive, annotationsByPage, layerState]);
+  const surveyMarkerCount = useMemo(
+    () => (isActive ? Math.max(Number(placedSurveyMarkers) || 0, countSurveyMarkers(annotationsByPage)) : 0),
+    [isActive, annotationsByPage, placedSurveyMarkers],
+  );
   const kindCounts = useMemo(() => groupMarkupRows(rows).map((g) => ({ kind: g.kind, label: g.label, count: g.rows.length })), [rows]);
   const authors = useMemo(() => {
     const ids = [...new Set(rows.map((r) => r.authorId || ''))];
@@ -255,7 +262,9 @@ export default function MarkupsPanel({
 
       <div className={`markups-panel__summary${rows.length === 0 ? ' is-empty' : ''}`} aria-live="polite">
         {rows.length === 0
-          ? 'No annotations yet. Marks you draw show up here.'
+          ? (surveyMarkerCount > 0
+            ? `No annotations yet. The ${surveyMarkerCount} Survey ${surveyMarkerCount === 1 ? 'Marker is' : 'Markers are'} listed in the Survey panel.`
+            : 'No annotations yet. Marks you draw show up here.')
           : filtered
             ? `${shown.length} of ${rows.length} annotations`
             : `${rows.length} ${rows.length === 1 ? 'annotation' : 'annotations'}`}
@@ -298,7 +307,14 @@ export default function MarkupsPanel({
                   type="button"
                   className="markups-panel__row"
                   data-markup-row={row.id}
-                  onClick={() => { onRequestSheetClose?.(); onOpenMark?.(row); }}
+                  onClick={(event) => {
+                    // Shift adds the row's mark to the pick; Ctrl / Cmd adds
+                    // or takes it out, as in a file list (tester #1624).
+                    const toggle = Boolean(event.metaKey || event.ctrlKey);
+                    const add = toggle || event.shiftKey;
+                    if (!add) onRequestSheetClose?.();
+                    onOpenMark?.(row, add ? { add: true, toggle } : undefined);
+                  }}
                   onContextMenu={(event) => {
                     const point = listMenuPointFrom(event);
                     if (point) setRowMenu({ row, ...point });

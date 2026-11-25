@@ -62,6 +62,8 @@ const KIND_NAMES = Object.freeze({
   counter: 'Counter',
   stamp: 'Stamp',
   image: 'Image',
+  equation: 'Equation',
+  audioNote: 'Audio note',
   measure: 'Measurement',
   surveyMarker: 'Survey Marker',
   'text-markup': 'Text annotation',
@@ -87,7 +89,12 @@ export function kindOfObject(object, typeKey = null) {
     return head && head !== 'none' ? 'arrow' : 'line';
   }
   if (type === 'textbox' || type === 'i-text' || type === 'text') return 'text';
-  if (type === 'image') return 'image';
+  if (type === 'image') {
+    // #1656: an equation and an audio note are inserted images underneath.
+    if (typeof data.equation?.tex === 'string') return 'equation';
+    if (data.audio?.src) return 'audioNote';
+    return 'image';
+  }
   return KIND_NAMES[type] ? type : 'rect';
 }
 

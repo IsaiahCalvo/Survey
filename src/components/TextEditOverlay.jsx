@@ -63,6 +63,7 @@ import {
   visibleAreaInHost,
 } from '../utils/pageAnchoredControls.js';
 import { useTooltip } from './Tooltip';
+import { isTypingTarget } from '../utils/typingTarget.js';
 
 const DEFAULT_FONT_FAMILY = 'Helvetica';
 
@@ -1102,6 +1103,25 @@ export default function TextEditOverlay({
     escape: false,
   }), []);
 
+  // #1664: on a phone the box can open without its field holding focus; a
+  // letter then ran a tool shortcut (E: Eraser) and the tool switch threw the
+  // new box away. While this editor is open, typing outside a field goes into
+  // it: focusing it inside the keydown lets that same key land there.
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (committedRef.current || event.defaultPrevented) return;
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      if (typeof event.key !== 'string' || event.key.length !== 1) return;
+      if (isTypingTarget(document.activeElement)) return;
+      const field = editableRef.current;
+      if (!field?.isConnected) return;
+      field.focus({ preventScroll: true });
+      event.stopImmediatePropagation();
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, []);
+
   // Owner 2026-10-04: while a callout is open for typing, row 2 keeps the
   // Callout tool's settings (Width, Style, Arrowhead, colour) and they change
   // THIS callout (PDFViewer: the callout being typed in stands in for the
@@ -1222,6 +1242,15 @@ export default function TextEditOverlay({
           data-keyboard-reveal-defer=""
           // The pair sits under the box's descender strip, which grows with zoom.
           data-keyboard-reveal-margin={ACTION_BOX_GAP + ACTION_TOUCH_TARGET + ACTION_EDGE_MARGIN + Math.ceil(s.fontSize * TEXT_DESCENDER_RATIO * effScale.y)}
+          // #1664: a finger on the box must reach it, not pan the page (the
+          // scroller lets [data-pan-interactive] presses through), and a tap
+          // on its padding focuses the field: touch may send no mousedown.
+          data-pan-interactive="true"
+          onPointerDown={(e) => {
+            if (e.pointerType === 'mouse' || e.target === editableRef.current) return;
+            if (editableRef.current?.contains(e.target)) return;
+            editableRef.current?.focus({ preventScroll: true });
+          }}
           onMouseDown={(e) => {
             // Clicks in the gutter/padding keep focus in the editor.
             if (e.target !== editableRef.current) {

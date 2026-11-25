@@ -185,6 +185,7 @@ const PagesPanel = ({
   onNavigateToPage,
   onDuplicatePage,
   onInsertBlankPage,
+  onInsertTemplatePage,
   onDeletePage,
   onCutPage,
   onCopyPage,
@@ -1298,12 +1299,13 @@ const PagesPanel = ({
     paste: onPastePage ? (pageNumber, position) => pasteAt(pageNumber, position) : undefined,
     duplicate: onDuplicatePage,
     insertBlank: onInsertBlankPage,
+    insertTemplate: onInsertTemplatePage,
     rotate: onRotatePage,
     mirror: onMirrorPage,
     reset: onResetPage,
     // No confirm: the viewer deletes at once and offers an Undo toast.
     delete: onDeletePage ? (pageNumber) => onDeletePage(pageNumber) : undefined,
-  }), [cardKeys, mobileMode, movePageByOffset, onReorderPages, onCutPage, onCopyPage, onPastePage, pasteAt, onDuplicatePage, onInsertBlankPage, onRotatePage, onMirrorPage, onResetPage, onDeletePage]);
+  }), [cardKeys, mobileMode, movePageByOffset, onReorderPages, onCutPage, onCopyPage, onPastePage, pasteAt, onDuplicatePage, onInsertBlankPage, onInsertTemplatePage, onRotatePage, onMirrorPage, onResetPage, onDeletePage]);
 
   // The same items on a selection of several pages: each is ONE change and
   // ONE Undo step for all of them (hooks/usePageOperations.js).

@@ -34,6 +34,7 @@ export const MARKUP_KINDS = Object.freeze([
   ['counter', 'Counter', 'Counters'],
   ['pen', 'Pen', 'Pen strokes'],
   ['highlighter', 'Highlighter', 'Highlighter strokes'],
+  ['tape', 'Tape', 'Tape strips'],
   ['markup', 'Text highlight', 'Text highlights'],
   ['image', 'Image or stamp', 'Images and stamps'],
   ['mark', 'Other mark', 'Other marks'],
@@ -52,6 +53,9 @@ function kindOf(obj) {
   // A stamp from the Stamp card is drawn as a text box or a group; it lists
   // with images and stamps, not under Text boxes.
   if (data.type === 'stamp' || data.stamp || data.stampPreset) return 'image';
+  // A tape strip is drawn as a pen path; it lists as Tape, as Properties
+  // and the PDF export name it.
+  if (data.tape === true) return 'tape';
   const type = data.type === 'callout' ? 'callout' : (data.type === 'text-markup' ? 'text-markup' : obj?.type);
   return historyTypeKey(type, obj);
 }
@@ -233,6 +237,23 @@ export function buildMarkupRows(byPage, { layerState = null } = {}) {
     });
   }
   return rows;
+}
+
+/**
+ * How many Survey Markers sit on the pages. They are not Annotations, so the
+ * list leaves them out; the empty list says where they are instead of
+ * claiming the page has nothing on it (tester report Survey #1613).
+ */
+export function countSurveyMarkers(byPage) {
+  let count = 0;
+  for (const key of Object.keys(byPage || {})) {
+    const objects = byPage[key]?.objects;
+    if (!Array.isArray(objects)) continue;
+    for (const obj of objects) {
+      if (obj && obj.visible !== false && !obj?.data?.helper && kindOf(obj) === 'surveyMarker') count += 1;
+    }
+  }
+  return count;
 }
 
 const PDF_AUTHOR_PREFIX = 'pdf-author:';

@@ -1010,6 +1010,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         // spawn a second tab of the same document under the new name (the
         // tab-matcher keys on the name), double-mounting the viewer.
         if (resolvedDoc.content_sha256 === contentSha && resolvedDoc.name !== file.name) {
+          // The extra-name question first, before the slow re-upload (#1636).
+          await maybeOfferAlias(resolvedDoc, file.name, contentSha);
           // A deduped row does not GUARANTEE a durable object (a prior failed
           // upload can leave a row whose object is missing). We hold identical
           // bytes — store them AT THE ROW'S OWN file_path (which is what the
@@ -1030,7 +1032,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
           if (!(duplicateGate.archiveDocId && replacesWithOlderVersion(resolvedDoc))) {
             await archiveReplacedDocument(duplicateGate.archiveDocId, resolvedDoc.id);
           }
-          await maybeOfferAlias(resolvedDoc, file.name, contentSha);
           if (openAfterUpload) await handleDocumentClick(resolvedDoc);
           refetchAllDocuments();
           perfUpload.end(file.name);
@@ -1201,6 +1202,10 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     // by its own identity (a second same-document tab under the new name
     // double-mounts the viewer — see the Electron path note).
     if (resolvedDoc.content_sha256 === contentSha && resolvedDoc.name !== file.name) {
+      // Ask about the extra name first, before the bytes go back up: the
+      // upload below can take seconds, and the question came only after it,
+      // so Upload looked like it did nothing (tester #1636).
+      if (askDuplicates) await maybeOfferAlias(resolvedDoc, file.name, contentSha);
       // A deduped row does not GUARANTEE a durable object (a prior failed
       // upload can leave a row whose object is missing). We hold identical
       // bytes — store them AT THE ROW'S OWN file_path (which is what the
@@ -1220,7 +1225,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       if (!(duplicateGate.archiveDocId && replacesWithOlderVersion(resolvedDoc))) {
         await archiveReplacedDocument(duplicateGate.archiveDocId, resolvedDoc.id);
       }
-      if (askDuplicates) await maybeOfferAlias(resolvedDoc, file.name, contentSha);
       if (wantsOpen()) await handleDocumentClick(resolvedDoc);
       refetchAllDocuments();
       file.id = resolvedDoc.id; // device-files: the caller carries marks into it
@@ -1345,6 +1349,16 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         return;
       }
       await uploadBrowserPdf(file, { projectId, openAfterUpload });
+    } else if (file) {
+      // A picker can still hand back another kind of file (a .kvjob, or "All
+      // files" chosen in the dialog). Say where it goes instead of doing nothing.
+      const isJobFile = /\.kvjob$/i.test(String(file.name || ''));
+      showToast(
+        isJobFile && suiteOn
+          ? 'A job file goes into a Project: open a Project, then choose From a job file.'
+          : `Upload takes a PDF${photoUploadOn ? ' or a photo' : ''}.`,
+        'error',
+      );
     }
     // Reset input
     event.target.value = '';
@@ -2080,8 +2094,10 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       categoryFor,
       newId: () => crypto.randomUUID(),
       pageSizes: (blob) => readPdfPageSizes(blob, loadPdfjs),
-      addPdfToProject: async (file) => {
+      addPdfToProject: async (sentFile) => {
         let doc = null;
+        const { withFreeProjectName } = await import('./suite/projectFileName.js');
+        const file = await withFreeProjectName(sentFile, { supabase, projectId: project.id });
         const outcome = await uploadBrowserPdf(file, {
           projectId: project.id, openAfterUpload: false, askDuplicates: false,
           onDocument: (d) => { doc = d || null; },
@@ -2166,8 +2182,10 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       newId: () => crypto.randomUUID(),
       pageSizes: (blob) => readPdfPageSizes(blob, loadPdfjs),
       outlines: (blob, nodes) => readJobOutlines(blob, nodes, loadPdfjs),
-      addPdfToProject: async (file) => {
+      addPdfToProject: async (sentFile) => {
         let doc = null;
+        const { withFreeProjectName } = await import('./suite/projectFileName.js');
+        const file = await withFreeProjectName(sentFile, { supabase, projectId: project.id });
         const outcome = await uploadBrowserPdf(file, {
           projectId: project.id, openAfterUpload: false, askDuplicates: false,
           onDocument: (d) => { doc = d || null; },

@@ -178,6 +178,7 @@ const PDFSidebar = React.forwardRef(({
   onCurrentMatchIndexChange,
   onDuplicatePage,
   onInsertBlankPage,
+  onInsertTemplatePage,
   onDeletePage,
   onCutPage,
   onCopyPage,
@@ -278,6 +279,7 @@ const PDFSidebar = React.forwardRef(({
   // to open one mark (go to it and pick it).
   markupListEnabled = false,
   annotationsByPage = null,
+  surveyMarkerCount = 0,
   onOpenMarkup = null,
   pdfDisplayName = '',
 }, ref) => {
@@ -1185,6 +1187,7 @@ const PDFSidebar = React.forwardRef(({
                 onNavigateToPage={onNavigateToPage}
                 onDuplicatePage={onDuplicatePage}
                 onInsertBlankPage={onInsertBlankPage}
+                onInsertTemplatePage={onInsertTemplatePage}
                 onDeletePage={onDeletePage}
                 onCutPage={onCutPage}
                 onCopyPage={onCopyPage}
@@ -1274,6 +1277,7 @@ const PDFSidebar = React.forwardRef(({
               <div style={{ display: activeTab === 'markups' ? 'flex' : 'none', flex: 1, flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
                 <MarkupsPanel
                   annotationsByPage={annotationsByPage}
+                  surveyMarkerCount={surveyMarkerCount}
                   layerState={layersEnabled ? layerState : null}
                   viewerId={currentUserId || user?.id || null}
                   documentId={documentId}

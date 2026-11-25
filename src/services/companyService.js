@@ -255,6 +255,18 @@ export async function ssoRequiredForEmail(email) {
   }
 }
 
+// True when the email's company has connected its own sign-in, required or
+// not. The sign-in form uses it after a password fails.
+export async function companySignInForEmail(email) {
+  if (!String(email || '').includes('@')) return false;
+  try {
+    const { data, error } = await supabase.rpc('company_sign_in_for_email', { p_email: String(email).trim() });
+    return !error && data === true;
+  } catch {
+    return false;
+  }
+}
+
 export async function setCompanyRequireSso(orgId, on) {
   return unwrap(await supabase.rpc('set_organization_require_sso', { p_org: orgId, p_on: Boolean(on) }), 'Could not change company sign-in.');
 }

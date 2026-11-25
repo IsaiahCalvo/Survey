@@ -21,6 +21,7 @@ import {
   repairCollapsedTextDragSelection,
 } from '../utils/nativeTextDragSelection';
 import { readPdfjsTextContent } from '../utils/pdfjsTextContent';
+import { END_OF_CONTENT_CSS, guardTextLayerDrag } from '../utils/textLayerEndOfContent';
 import { keepTextLayer, restoreTextLayer, textContentInSlices, textLayerKey, whenViewerStill } from '../utils/pdfjsTextLayerCache';
 
 // Inject the glyph-positioning + selection CSS once for the whole app.
@@ -116,7 +117,7 @@ export function ensureTextLayerStyles() {
     :is([data-pan-text='on'], [data-pan-text='keep']) .pdfjsTextLayer.is-pan-text :is(span, br) { -webkit-user-select: text !important; user-select: text !important; }
     .pdfjsTextLayer ::selection { background: rgba(58, 122, 254, 0.45); }
     .pdfjsTextLayer ::-moz-selection { background: rgba(58, 122, 254, 0.45); }
-  `;
+  ${END_OF_CONTENT_CSS}`;
   document.head.appendChild(style);
 }
 
@@ -149,6 +150,7 @@ function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, interactive = fa
   useEffect(() => {
     const el = ref.current;
     if (!interactive || !el || typeof document === 'undefined') return undefined;
+    const unguardDrag = guardTextLayerDrag(el);
     let drag = null;
     let repairTimer = 0;
     const clearDrag = () => { drag = null; };
@@ -221,6 +223,7 @@ function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, interactive = fa
     document.addEventListener('touchend', onTouchEnd, true);
     document.addEventListener('touchcancel', clearDrag, true);
     return () => {
+      unguardDrag();
       window.clearTimeout(repairTimer);
       el.removeEventListener('pointerdown', onPointerDown, true);
       document.removeEventListener('pointerup', onPointerUp, true);
