@@ -163,7 +163,9 @@ Rayon exactly over time.
   `--menu-font`, `--menu-item-pad-x`, `--menu-item-gap`). Plot's other
   chrome words stay 12px.
 - **Save status:** Survey's sync chip (`src/components/SyncStatusChip.jsx`):
-  a dot and a short word, with the details on click. Its words where the
+  a dot and a short word, with the details on click. Where there is no
+  room for the word (a narrow rail, a panel header), the dot shows alone
+  and the word is its tooltip, as in Survey's left rail. Its words where the
   meaning is the same: "Up to date", "Saving...", "Offline", "Not saved".
   Each app keeps its own spot for it (see "Where things sit") and its own
   `ok`, `warn` and `danger` colours.
