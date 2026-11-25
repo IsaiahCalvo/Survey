@@ -235,6 +235,23 @@ export function buildMarkupRows(byPage, { layerState = null } = {}) {
   return rows;
 }
 
+/**
+ * How many Survey Markers sit on the pages. They are not Annotations, so the
+ * list leaves them out; the empty list says where they are instead of
+ * claiming the page has nothing on it (tester report Survey #1613).
+ */
+export function countSurveyMarkers(byPage) {
+  let count = 0;
+  for (const key of Object.keys(byPage || {})) {
+    const objects = byPage[key]?.objects;
+    if (!Array.isArray(objects)) continue;
+    for (const obj of objects) {
+      if (obj && obj.visible !== false && !obj?.data?.helper && kindOf(obj) === 'surveyMarker') count += 1;
+    }
+  }
+  return count;
+}
+
 const PDF_AUTHOR_PREFIX = 'pdf-author:';
 
 /** Who made a mark, in words: "You", a member's name, or "Someone". */

@@ -38456,6 +38456,17 @@ ${pageBlocks}
 
   const currentDocumentId = pdfFile?.id || null;
 
+  // The Annotations list leaves Survey Markers out; its empty line says how
+  // many there are and where they list (tester report Survey #1613).
+  const placedSurveyMarkerCount = useMemo(() => {
+    if (!markupListEnabled) return 0;
+    let count = 0;
+    for (const record of Object.values(surveyMarkers || {})) {
+      if (isSurveyMarkerPlaced(record)) count += 1;
+    }
+    return count;
+  }, [markupListEnabled, surveyMarkers]);
+
   // UX 2026-05-13: Publish left rail state to the App shell when this tab is
   // active. Placed immediately before the loading/full render branches so every
   // sidebar prop and handler in the API has already been declared.
@@ -38563,6 +38574,7 @@ ${pageBlocks}
       // (Nightly) read the marks.
       annotationsByPage: (markupListEnabled || isFeatureOn('properties-panel') || isFeatureOn('author-chip')) ? annotationsByPage : null,
       onOpenMarkup: openMarkupRow,
+      surveyMarkerCount: placedSurveyMarkerCount,
       pdfDisplayName,
       getPdfForTools,
     };
@@ -38677,6 +38689,7 @@ ${pageBlocks}
     locateHistoryMark,
     focusHistoryMark,
     selectHistoryMark,
+    placedSurveyMarkerCount,
   ]);
 
   // UX 2026-05-29: Publish the active PDF viewer's right-rail data to the App

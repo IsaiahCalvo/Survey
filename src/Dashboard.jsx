@@ -2090,8 +2090,10 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       categoryFor,
       newId: () => crypto.randomUUID(),
       pageSizes: (blob) => readPdfPageSizes(blob, loadPdfjs),
-      addPdfToProject: async (file) => {
+      addPdfToProject: async (sentFile) => {
         let doc = null;
+        const { withFreeProjectName } = await import('./suite/projectFileName.js');
+        const file = await withFreeProjectName(sentFile, { supabase, projectId: project.id });
         const outcome = await uploadBrowserPdf(file, {
           projectId: project.id, openAfterUpload: false, askDuplicates: false,
           onDocument: (d) => { doc = d || null; },
@@ -2176,8 +2178,10 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       newId: () => crypto.randomUUID(),
       pageSizes: (blob) => readPdfPageSizes(blob, loadPdfjs),
       outlines: (blob, nodes) => readJobOutlines(blob, nodes, loadPdfjs),
-      addPdfToProject: async (file) => {
+      addPdfToProject: async (sentFile) => {
         let doc = null;
+        const { withFreeProjectName } = await import('./suite/projectFileName.js');
+        const file = await withFreeProjectName(sentFile, { supabase, projectId: project.id });
         const outcome = await uploadBrowserPdf(file, {
           projectId: project.id, openAfterUpload: false, askDuplicates: false,
           onDocument: (d) => { doc = d || null; },
