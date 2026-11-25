@@ -444,8 +444,23 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, showShortcuts = 
    outline icons so nothing in the menu competes with the page.
    Rendered in `?mobileNav=rail` only (the phone web default); the tabs mode
    keeps its bottom bar, and desktop hides this and shows the plain title. */
+// Home swaps its loading frame (HubLoading) for the real page when the list
+// arrives, and that remounts this nav. A menu opened on the loading frame
+// stays open across that swap instead of shutting under the finger. The new
+// nav renders while the old one is still mounted, so it takes the old one's
+// state only then (a nav that left earlier hands nothing on).
+const railNav = { open: false, tab: null, mounted: 0 };
+
 const MobileRailNav = ({ mode, title, tab, navItems, onNav }) => {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(() => railNav.mounted > 0 && railNav.open && railNav.tab === tab);
+  useEffect(() => {
+    railNav.mounted += 1;
+    return () => { railNav.mounted -= 1; };
+  }, []);
+  useEffect(() => {
+    railNav.open = open;
+    railNav.tab = tab;
+  }, [open, tab]);
   const rootRef = useRef(null);
   const buttonRef = useRef(null);
   const itemRefs = useRef([]);
