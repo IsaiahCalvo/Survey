@@ -173,7 +173,7 @@ import {
 } from '../utils/annotationPreviewDiag';
 import SVGSelectionOverlay, { SelectionLockBadge } from './SVGSelectionOverlay';
 import { isUserLocked } from '../lib/collab/permissionScope.js';
-import { getTextMarkupRangeHandlePositions, getTextMarkupSelectionChrome } from '../utils/pdfTextMarkup.js';
+import { getTextMarkupRangeHandlePositions, getTextMarkupSelectionChrome, textMarkupHitPath } from '../utils/pdfTextMarkup.js';
 import RotationInputField from './RotationInputField';
 import { TRANSFORM_SELECTION_EVENT, canTypeTurn, recolourObject, resizeObjectTo, scaleObjectBy, setLineEndingOn, turnScaleKeyStep, wrapDegrees } from '../utils/selectionProperties.js';
 import { withMarkSubject } from '../utils/markSubject.js';
@@ -7831,8 +7831,28 @@ const SVGAnnotationLayerBody = memo(({
                   style={{ pointerEvents: 'none' }}
                 />
               )}
-              {/* Invisible hit-area rect ON TOP for easier clicking */}
-              <rect
+              {/* Invisible hit-area ON TOP for easier clicking. A text
+                  markup takes clicks on its own word runs only: one box over
+                  every line of a multi-line highlight covered most of the
+                  page and swallowed every box-select started on it (#1650). */}
+              {(() => {
+                const quadHitPath = textMarkupHitPath(renderObj);
+                return quadHitPath ? (
+                  <path
+                    d={quadHitPath}
+                    fill="transparent"
+                    stroke="transparent"
+                    strokeWidth={4}
+                    vectorEffect="non-scaling-stroke"
+                    pointerEvents={annotationHitTargetsInteractive && isObjectInteractive ? 'all' : 'none'}
+                    onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
+                    onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
+                    onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
+                    onDoubleClick={(e) => handleAnnotationDoubleClick(e, i)}
+                  />
+                ) : null;
+              })()}
+              {!textMarkupHitPath(renderObj) && <rect
                 x={bbox.left}
                 y={bbox.top}
                 width={Math.max(bbox.width, 10)}
@@ -7848,7 +7868,7 @@ const SVGAnnotationLayerBody = memo(({
                 onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
                 onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
                 onDoubleClick={(e) => handleAnnotationDoubleClick(e, i)}
-              />
+              />}
             </g>
           );
         })()}
