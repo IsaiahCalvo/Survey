@@ -21,10 +21,50 @@ test('flag, button and wiring', () => {
   assert.match(viewer, /const textDragToolsOn = textHighlightToolEnabled \|\| textMarkupToolsEnabled \|\| textReviewRemoveEnabled;/);
   assert.match(viewer, /textDragToolsOn \? \[\{ id: 'text-highlight', label: 'Highlight text', iconName: 'textHighlightTool', highlightMode: 'highlight' \}\]/);
   assert.match(viewer, /useTextHighlightMode\(\{\s*on: textDragToolsOn && Boolean\(textHighlightMode\) && activeTool === 'text-select'/);
-  assert.match(viewer, /: handleTextSelectionAction\(textDragKind, \{ keepSelection: false \}\)\)/);
+  assert.match(viewer, /: handleTextSelectionAction\(textDragKind, \{ keepSelection: false, preferLiveSelection: true, allowToggleOff: false \}\)\)/);
   assert.match(viewer, /\? handleTextSelectionRemove\(\{ keepSelection: false \}\)/);
   const migration = readFileSync(new URL('../supabase/migrations/20261112093000_text_highlight_tool_flag.sql', import.meta.url), 'utf8');
   assert.match(migration, /'text-highlight-tool', 'off'/);
+});
+
+test('#1693: a second highlight or underline drag takes the fresh live selection and never toggles off an earlier mark', async () => {
+  const { resolveTextSelectionForAction } = await import('../src/hooks/useTextHighlightMode.js');
+  const staleFirst = { text: 'Building', pages: [{ pageNumber: 1 }] };
+  const freshSecond = { text: 'above', pages: [{ pageNumber: 1 }] };
+  const selectedHighlight = { data: { type: 'text-markup', markupType: 'highlight' } };
+
+  // A fresh drag (preferLive) ignores both a stale selected highlight and stale React state.
+  assert.equal(resolveTextSelectionForAction({
+    preferLive: true,
+    selectedMarkup: selectedHighlight,
+    selectedMarkupSelection: staleFirst,
+    liveSelectionRef: staleFirst,
+    liveSelectionState: staleFirst,
+    captureLive: () => freshSecond,
+  }), freshSecond);
+
+  // Even without preferLive, the synchronous ref wins over lagging render state.
+  assert.equal(resolveTextSelectionForAction({
+    preferLive: false,
+    selectedMarkup: null,
+    liveSelectionRef: freshSecond,
+    liveSelectionState: staleFirst,
+    captureLive: () => freshSecond,
+  }), freshSecond);
+
+  // Non-drag toolbar clicks on a selected text markup still target that markup.
+  assert.equal(resolveTextSelectionForAction({
+    preferLive: false,
+    selectedMarkup: selectedHighlight,
+    selectedMarkupSelection: staleFirst,
+    liveSelectionRef: null,
+    liveSelectionState: null,
+    captureLive: () => null,
+  }), staleFirst);
+
+  const viewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
+  assert.match(viewer, /resolveTextSelectionForAction\(/);
+  assert.match(viewer, /options\.allowToggleOff !== false/);
 });
 
 test('a release on the selection bar or other chrome is not the end of a drag', async () => {
