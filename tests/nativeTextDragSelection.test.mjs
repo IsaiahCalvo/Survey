@@ -269,3 +269,121 @@ test('does not create a range outside an interactive PDF text layer', () => {
   assert.equal(repaired, false);
   assert.equal(selection.rangeCount, 0);
 });
+
+const makeGeomLineSetup = () => {
+  const dom = new JSDOM(`<!doctype html>
+    <div class="pdfjsTextLayer is-interactive">
+      <span>Ground</span>
+      <span>Kitchen</span>
+    </div>`, { pretendToBeVisual: true });
+  const { document } = dom.window;
+  const layer = document.querySelector('.pdfjsTextLayer');
+  const [groundSpan, kitchenSpan] = Array.from(layer.querySelectorAll('span'));
+  const groundText = groundSpan.firstChild;
+  const kitchenText = kitchenSpan.firstChild;
+  groundSpan.getBoundingClientRect = () => ({ left: 100, right: 160, top: 40, bottom: 54, width: 60, height: 14 });
+  kitchenSpan.getBoundingClientRect = () => ({ left: 100, right: 170, top: 180, bottom: 194, width: 70, height: 14 });
+  const nativeCreateRange = document.createRange.bind(document);
+  document.createRange = () => {
+    const range = nativeCreateRange();
+    range.getBoundingClientRect = () => {
+      const node = range.startContainer;
+      const baseLeft = 100;
+      const top = node === kitchenText ? 180 : 40;
+      const left = baseLeft + range.startOffset * 10;
+      const right = baseLeft + range.endOffset * 10;
+      return { left, right, top, bottom: top + 14, width: right - left, height: 14 };
+    };
+    return range;
+  };
+  // Blank paper on the layer returns the layer div itself.
+  document.caretPositionFromPoint = () => ({ offsetNode: layer, offset: 0 });
+  return { dom, document, layer, groundText, kitchenText };
+};
+
+test('#1669: collapsed drag ending past a word on blank paper (>32px) still selects the word without grabbing other lines', () => {
+  const { dom, document, groundText } = makeGeomLineSetup();
+  const selection = dom.window.getSelection();
+  selection.removeAllRanges();
+
+  const repaired = repairCollapsedTextDragSelection({
+    documentRef: document,
+    windowRef: dom.window,
+    startBoundary: { node: groundText, offset: 0 },
+    startClientPoint: { x: 92, y: 47 },
+    endClientPoint: { x: 240, y: 47 },
+  });
+
+  assert.equal(repaired, true);
+  assert.equal(selection.toString(), 'Ground');
+  assert.equal(selection.getRangeAt(0).startContainer, groundText);
+  assert.equal(selection.getRangeAt(0).startOffset, 0);
+  assert.equal(selection.getRangeAt(0).endContainer, groundText);
+  assert.equal(selection.getRangeAt(0).endOffset, 6);
+});
+
+test('#1669: native drag that stopped early on .endOfContent extends to the end of the word when pointer overshot past it', () => {
+  const { dom, document, groundText } = makeGeomLineSetup();
+  const selection = dom.window.getSelection();
+  const snapshot = captureNativeSelectionSnapshot(selection);
+  const partial = document.createRange();
+  partial.setStart(groundText, 0);
+  partial.setEnd(groundText, 4); // Chromium stopped at "Grou" on .endOfContent
+  selection.removeAllRanges();
+  selection.addRange(partial);
+
+  const repaired = repairCollapsedTextDragSelection({
+    documentRef: document,
+    windowRef: dom.window,
+    selectionSnapshot: snapshot,
+    startBoundary: { node: groundText, offset: 0 },
+    startClientPoint: { x: 102, y: 47 },
+    endClientPoint: { x: 240, y: 47 },
+  });
+
+  assert.equal(repaired, true);
+  assert.equal(selection.toString(), 'Ground');
+  assert.equal(selection.getRangeAt(0).endOffset, 6);
+});
+
+test('#1669: reverse drag ending >32px past the left edge selects to offset 0', () => {
+  const { dom, document, groundText } = makeGeomLineSetup();
+  const selection = dom.window.getSelection();
+  selection.removeAllRanges();
+
+  const repaired = repairCollapsedTextDragSelection({
+    documentRef: document,
+    windowRef: dom.window,
+    startBoundary: { node: groundText, offset: 6 },
+    startClientPoint: { x: 162, y: 47 },
+    endClientPoint: { x: 20, y: 47 },
+  });
+
+  assert.equal(repaired, true);
+  assert.equal(selection.toString(), 'Ground');
+  assert.equal(selection.getRangeAt(0).startOffset, 0);
+  assert.equal(selection.getRangeAt(0).endOffset, 6);
+});
+
+test('#1669: narrow upright glyph in a horizontal span starts at offset 0 when drag begins left of the word', () => {
+  const { document, layer, groundText } = makeGeomLineSetup();
+  // Normal upright letters are taller than they are wide (10x20px) inside a horizontal span (60x20px).
+  const groundSpan = layer.querySelector('span');
+  groundSpan.getBoundingClientRect = () => ({ left: 100, right: 160, top: 40, bottom: 60, width: 60, height: 20 });
+  const nativeCreateRange = document.createRange.bind(document);
+  document.createRange = () => {
+    const range = nativeCreateRange();
+    range.getBoundingClientRect = () => {
+      const left = 100 + range.startOffset * 10;
+      const right = 100 + range.endOffset * 10;
+      return { left, right, top: 40, bottom: 60, width: right - left, height: 20 };
+    };
+    return range;
+  };
+  assert.deepEqual(getCaretBoundaryFromClientPoint(document, 94, 52, layer), {
+    node: groundText,
+    offset: 0,
+  });
+});
+
+
