@@ -19,9 +19,13 @@ export function cleanMarkNote(text) {
   return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, MARK_NOTE_MAX).trim();
 }
 
+const isStickyNote = (object) => object?.data?.type === 'note';
+
 /** The mark's note, or null when it has none. */
 export function markNoteOf(object) {
-  const raw = object?.data?.note;
+  const raw = isStickyNote(object) && typeof object?.data?.noteText === 'string'
+    ? object.data.noteText
+    : object?.data?.note;
   if (typeof raw !== 'string') return null;
   const clean = cleanMarkNote(raw);
   return clean || null;
@@ -34,8 +38,14 @@ export function withMarkNote(object, text) {
   const current = markNoteOf(object);
   if ((current || '') === next) return null;
   const data = { ...(object.data || {}) };
-  if (next) data.note = next;
-  else delete data.note;
+  if (isStickyNote(object)) {
+    data.noteText = next;
+    delete data.note;
+  } else if (next) {
+    data.note = next;
+  } else {
+    delete data.note;
+  }
   return { ...object, data };
 }
 

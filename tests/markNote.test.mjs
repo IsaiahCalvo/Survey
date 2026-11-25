@@ -123,3 +123,17 @@ test('the note box saves after a pause in typing, and Escape takes it back', () 
   assert.match(panel, /onInput=\{\(\) => \{\s*clearTimeout\(timerRef\.current\);\s*timerRef\.current = setTimeout/);
   assert.match(panel, /event\.currentTarget\.value = startRef\.current;/);
 });
+
+test('#1695: sticky notes show and edit their data.noteText through markNoteOf and withMarkNote', async () => {
+  const { stickyNoteItem } = await import('../src/utils/stickyNote.js');
+  const noteObj = stickyNoteItem({ text: 'Zorvel test note one' }).payload.items[0].object;
+  assert.equal(markNoteOf(noteObj), 'Zorvel test note one');
+  assert.equal(sharedMarkNote([noteObj]), 'Zorvel test note one');
+  const edited = withMarkNote(noteObj, 'Updated sticky text');
+  assert.equal(edited.data.noteText, 'Updated sticky text');
+  assert.equal('note' in edited.data, false, 'keeps one canonical field on sticky notes');
+  assert.equal(markNoteOf(edited), 'Updated sticky text');
+  const cleared = withMarkNote(edited, '   ');
+  assert.equal(cleared.data.noteText, '');
+  assert.equal(markNoteOf(cleared), null);
+});

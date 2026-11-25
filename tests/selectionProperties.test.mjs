@@ -206,3 +206,11 @@ test('Fill colour row: none, then white and the presets, on the fill side of the
   assert.match(panel, /paint\.fill\.apply\(hex, paint\.fill\.opacity > 0 \? paint\.fill\.opacity : 1\)/);
   assert.match(read('src/AppShell.jsx'), /fill: isShape \? channel\(true\) : null,/);
 });
+
+test('#1695: sticky notes read as Note rather than Rectangle in the Properties header and Subject box', async () => {
+  const { stickyNoteItem } = await import('../src/utils/stickyNote.js');
+  const { kindOfObject, kindLabel } = await import('../src/utils/selectionProperties.js');
+  const noteObj = stickyNoteItem({ text: 'Zorvel test note one' }).payload.items[0].object;
+  assert.equal(kindOfObject(noteObj), 'note');
+  assert.equal(kindLabel([kindOfObject(noteObj)]), 'Note');
+});

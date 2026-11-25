@@ -64,6 +64,7 @@ const KIND_NAMES = Object.freeze({
   image: 'Image',
   equation: 'Equation',
   audioNote: 'Audio note',
+  note: 'Note',
   measure: 'Measurement',
   surveyMarker: 'Survey Marker',
   'text-markup': 'Text annotation',
@@ -76,6 +77,7 @@ export function kindOfObject(object, typeKey = null) {
   if (!object) return null;
   const data = object.data || {};
   if (data.type === 'text-markup') return 'text-markup';
+  if (data.type === 'note') return 'note';
   if (data.type === 'counter') return 'counter';
   if (data.measure || data.measurement || data.type === 'measurement') return 'measure';
   if (data.type === 'stamp' || data.stamp || data.stampPreset) return 'stamp';
