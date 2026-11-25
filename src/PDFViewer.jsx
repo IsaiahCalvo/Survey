@@ -9266,6 +9266,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     } else if (annotation?.data?.type === 'text-markup') {
       const color = getHexFromColor(rgba) || rgba;
       handlePatchSelectedAnnotation({ fill: color, stroke: color });
+    } else if (annotation?.data?.type === 'note') {
+      handlePatchSelectedAnnotation({ fill: rgba });
     } else if (isFilledInkPath(annotation)) {
       // w41 (regression since a3380bbf9, 2026-07-10): a pen / highlighter
       // stroke is a filled outline, so its colour is its FILL - writing
@@ -9422,6 +9424,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   }, [pickBarTool, counterSeriesList, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
 
   const handleTextMarkupPaintChange = useCallback((color, opacity) => {
+    const previousStrokeColor = strokeColorStateRef.current;
+    const previousStrokeOpacity = strokeOpacityStateRef.current;
     const normalizedOpacity = Math.max(5, Math.min(100, Number(opacity)
       || TEXT_MARKUP_DEFAULT_PAINT[focusedTextMarkupPaint]?.opacity
       || 100));
@@ -9444,6 +9448,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     ));
     if (pdfId && pickBarTool !== 'select' && paintPhaseRef.current !== 'preview') {
       updateToolPreference(pickBarTool, { strokeColor: color, strokeOpacity: normalizedOpacity });
+    }
+    if (pickBarTool === 'select' && restyleGroupRef.current) {
+      const colorChanged = String(previousStrokeColor ?? '') !== String(color ?? '');
+      const opacityChanged = String(previousStrokeOpacity ?? '') !== String(normalizedOpacity ?? '');
+      if (colorChanged || !paintPhaseRef.current) {
+        writeGroupPaint('strokeColor', color, previousStrokeColor);
+      }
+      if (opacityChanged || (paintPhaseRef.current === 'commit' && !colorChanged)) {
+        writeGroupPaint('strokeOpacity', normalizedOpacity, previousStrokeOpacity);
+      }
+      return;
     }
     if (selectedToolbarAnnotationRef.current?.annotation?.data?.type === 'text-markup') {
       handlePatchSelectedAnnotation({
@@ -27929,6 +27944,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     if (selectedToolbarCallout) {
       selectionMappedTool = 'callout';
     } else if (selectedAnnot?.data?.type === 'text-markup') selectionMappedTool = 'text-markup';
+    else if (selectedAnnot?.data?.type === 'note') selectionMappedTool = 'note';
     else if (selectedType === 'rect') selectionMappedTool = 'rect';
     else if (selectedType === 'ellipse' || (selectedType === 'circle' && selectedAnnot?.data?.type !== 'counter')) selectionMappedTool = 'ellipse';
     else if (selectedType === 'path') selectionMappedTool = 'pen';
@@ -28007,11 +28023,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     // What the picked mark(s) can change: a partly erased or imported pen
     // stroke has no rebuildable width, a group only offers what at least one
     // member has. Null while nothing is picked (the tool's own controls).
+    const multiSelectionCount = (selectedToolbarIndices?.indices?.length || 0) + (selectedCalloutIds?.size || 0);
     const selectionCapabilities = groupSummary
       ? groupSummary.capabilities
-      : (pickBarTool === 'select' && !selectedToolbarCallout && isFilledInkPath(selectedAnnot)
-        ? restyleCapabilities(selectedAnnot)
-        : null);
+      : (pickBarTool === 'select' && multiSelectionCount > 1
+        ? { stroke: false, fill: false, width: false, lineStyle: false, cloud: false, arrowheads: false }
+        : (pickBarTool === 'select' && !selectedToolbarCallout && selectedAnnot && (
+          isFilledInkPath(selectedAnnot)
+          || selectedAnnot.data?.type === 'note'
+          || selectedAnnot.data?.type === 'text-markup'
+          || selectedType === 'image'
+        )
+          ? restyleCapabilities(selectedAnnot)
+          : null));
     const textMarkupSelectionRect = (() => {
       if (contextTool === 'text-select' && liveTextSelection?.anchor) return liveTextSelection.anchor;
       if (selectedAnnot?.data?.type !== 'text-markup') return null;
@@ -28475,6 +28499,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     cycleLassoTouchMode,
     annotationsByPage,
     selectedToolbarAnnotation,
+    selectedToolbarIndices,
+    selectedCalloutIds,
     selectedToolbarCallout,
     restyleGroup,
     activeCategoryDropdown,

@@ -54,6 +54,7 @@ import {
   parseTyped,
   planTypedMove,
   readTransform,
+  recolourableColoursOf,
   shiftRead,
   wrapDegrees,
 } from '../utils/selectionProperties.js';
@@ -499,8 +500,7 @@ export default function SelectionPropertiesPanel({
   const single = picked.list.length === 1 ? picked.objects[0] : null;
   const author = single ? authorLabel(getAnnotationAuthorId(single), { viewerId, peopleById }) : null;
   const created = single ? formatDate(markCreatedAt(single)) : '';
-  const colours = [...new Set(picked.objects.flatMap((o) => [o.stroke, o.fill])
-    .filter((c) => typeof c === 'string' && c && c !== 'transparent' && !/rgba\([^)]*,\s*0\)$/.test(c)))].slice(0, 12);
+  const colours = [...new Set(picked.objects.flatMap(recolourableColoursOf))].slice(0, 12);
   const styleValue = (api?.lineBorderStyle === 'cloud' && !api?.supportsCloudStyle) ? 'solid' : (api?.lineBorderStyle || 'solid');
   const textParts = splitTextColor(textFormat?.state?.fontColor);
   const fillNone = Boolean(paint?.fill) && !mixed.fillOpacity && paint.fill.opacity <= 0;

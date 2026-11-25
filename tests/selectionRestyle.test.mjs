@@ -710,3 +710,82 @@ test('a mixed Width field keeps what the user types (the draft is not reset mid-
   const size = fs.readFileSync(new URL('../src/components/AnnotationSizeControl.jsx', import.meta.url), 'utf8');
   assert.match(size, /if \(mixed && fieldFocusedRef\.current\) return;/);
 });
+
+test('regression #1694: two selected strikeouts (text-markups) summarise as a restylable group and recolour in place', () => {
+  const strike = (id, color = '#ef4444') => ({
+    id,
+    type: 'path',
+    fill: color,
+    stroke: color,
+    opacity: 0.9,
+    data: { id, type: 'text-markup', markupType: 'strikeout', quads: [{ x1: 10, y1: 10, x2: 50, y2: 10, x3: 10, y3: 20, x4: 50, y4: 20 }] },
+  });
+  const redact = {
+    id: 'rd-1',
+    type: 'path',
+    fill: '#000000',
+    stroke: '#000000',
+    opacity: 1,
+    data: { id: 'rd-1', type: 'text-markup', markupType: 'redact', quads: [] },
+  };
+  assert.deepEqual(restyleCapabilities(strike('s1')), {
+    stroke: true, fill: false, width: false, lineStyle: false, cloud: false, arrowheads: false,
+  });
+  assert.equal(restyleCapabilities(redact).stroke, false, 'redactions are never recoloured');
+  const s1 = strike('s1', '#ef4444');
+  const s2 = strike('s2', '#ef4444');
+  const summary = summarizeSelectionRestyle([
+    { kind: 'annotation', annotation: s1 },
+    { kind: 'annotation', annotation: s2 },
+  ]);
+  assert.ok(summary, 'two strikeouts form a restylable group');
+  assert.equal(summary.contextTool, 'text-markup');
+  assert.equal(summary.capabilities.stroke, true);
+  assert.equal(summary.values.strokeColor, '#ef4444');
+  assert.equal(summary.values.strokeOpacity, 90);
+  const page = { objects: [s1, s2] };
+  const members = [{ index: 0, annotation: s1 }, { index: 1, annotation: s2 }];
+  const next = applyRestyleChangeToPage(page, members, { kind: 'strokeColor', color: '#2563eb' });
+  assert.equal(next.objects[0].fill, '#2563eb');
+  assert.equal(next.objects[0].stroke, '#2563eb');
+  assert.equal(next.objects[0].opacity, 0.9, 'recolouring keeps text-markup opacity');
+  assert.equal(next.objects[1].fill, '#2563eb');
+  assert.equal(next.objects[1].stroke, '#2563eb');
+  const faded = applyRestyleChangeToPage(next, next.objects.map((annotation, index) => ({ index, annotation })), { kind: 'strokeOpacity', opacity: 50 });
+  assert.equal(faded.objects[0].opacity, 0.5);
+  assert.equal(faded.objects[1].opacity, 0.5);
+});
+
+test('regression #1694: sticky notes recolour their visible fill (not the unused stroke)', () => {
+  const note = (id, fill = '#FFD43B') => ({
+    id,
+    type: 'rect',
+    left: 40,
+    top: 40,
+    width: 22,
+    height: 22,
+    fill,
+    stroke: 'rgba(0, 0, 0, 0.4)',
+    strokeWidth: 1,
+    data: { id, type: 'note', surveyNote: true, pdfNoteGlyph: 'note', noteText: 'hello' },
+  });
+  assert.deepEqual(restyleCapabilities(note('n1')), {
+    stroke: true, fill: false, width: false, lineStyle: false, cloud: false, arrowheads: false,
+  });
+  assert.equal(readRestyleStyle(note('n1')).strokeColor, '#ffd43b');
+  const summary = summarizeSelectionRestyle([
+    { kind: 'annotation', annotation: note('n1') },
+    { kind: 'annotation', annotation: note('n2') },
+  ]);
+  assert.ok(summary);
+  assert.equal(summary.contextTool, 'note');
+  const next = applyRestyleChangeToPage(
+    { objects: [note('n1'), note('n2')] },
+    [{ index: 0, annotation: note('n1') }, { index: 1, annotation: note('n2') }],
+    { kind: 'strokeColor', color: '#dc2626' },
+  );
+  assert.equal(next.objects[0].fill, 'rgba(220, 38, 38, 1)');
+  assert.equal(next.objects[0].stroke, 'rgba(0, 0, 0, 0.4)', 'unused stroke is untouched');
+  assert.equal(next.objects[1].fill, 'rgba(220, 38, 38, 1)');
+});
+

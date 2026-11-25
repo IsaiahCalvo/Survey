@@ -282,11 +282,34 @@ export function scaleObjectBy(object, factor) {
 // Drawboard's "Selected colors" (Expand menu): a swatch per colour used in
 // the pick; picking a new colour for one swatch recolours every use of it.
 const colourKey = (c) => (typeof c === 'string' ? c.trim().toLowerCase() : '');
+const isVisibleColour = (c) => typeof c === 'string' && c && c !== 'transparent' && !/rgba\([^)]*,\s*0\)$/.test(c);
+const isImageMark = (obj) => String(obj?.type || '').toLowerCase() === 'image';
+const isRedactTextMarkup = (obj) => obj?.data?.type === 'text-markup'
+  && String(obj?.data?.markupType || obj?.exportType || '').toLowerCase() === 'redact';
+
+/** Visible paint colours this mark exposes to "Selected colors". */
+export function recolourableColoursOf(obj) {
+  if (!obj || isImageMark(obj) || isRedactTextMarkup(obj)) return [];
+  if (obj.data?.type === 'note') return isVisibleColour(obj.fill) ? [obj.fill] : [];
+  if (obj.data?.type === 'text-markup') {
+    const color = isVisibleColour(obj.fill) ? obj.fill : (isVisibleColour(obj.stroke) ? obj.stroke : null);
+    return color ? [color] : [];
+  }
+  return [obj.stroke, obj.fill].filter(isVisibleColour);
+}
 
 /** The mark with every stroke / fill equal to `from` set to `to`, or null when none is. */
 export function recolourObject(obj, from, to) {
   const key = colourKey(from);
   if (!obj || !key || typeof to !== 'string' || !to || colourKey(to) === key) return null;
+  if (isImageMark(obj) || isRedactTextMarkup(obj)) return null;
+  if (obj.data?.type === 'note') {
+    return colourKey(obj.fill) === key ? { ...obj, fill: to } : null;
+  }
+  if (obj.data?.type === 'text-markup') {
+    const matches = colourKey(obj.fill) === key || colourKey(obj.stroke) === key;
+    return matches ? { ...obj, fill: to, stroke: to } : null;
+  }
   let next = null;
   for (const field of ['stroke', 'fill']) {
     if (colourKey(obj[field]) === key) {
