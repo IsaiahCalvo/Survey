@@ -250,3 +250,10 @@
   gap: 2px;
   padding: 0 4px;
 }
+
+/* #1660: the floating Properties panel (z-index 5700, fixed) sits above the
+   right rail's host (5600, inline), so a rail card that flew out over it was
+   drawn behind it. While a card is open the rail rises over the panel. */
+#chrome-right-host:has(.rail-flyout) {
+  z-index: 5750 !important;
+}

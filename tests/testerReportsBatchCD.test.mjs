@@ -52,3 +52,15 @@ test('#1659: a closed device copy never throws into the edit that carried the ch
   guardClosedIdbStore(failing, other);
   assert.throws(() => other.getMap('m').set('x', 1), /boom/);
 });
+
+test('#1662: a hatch on a shape filled in its own border colour still shows', async () => {
+  const { hatchColor } = await import('../src/utils/hatchFill.js');
+  assert.equal(hatchColor({ stroke: '#ff0000', fill: '#ff0000' }), '#ffffff');
+  assert.equal(hatchColor({ stroke: '#fc0000', fill: 'rgb(255, 0, 0)' }), '#ffffff');
+  assert.equal(hatchColor({ stroke: '#ffff00', fill: '#ffff00' }), '#000000');
+  // A different or see-through fill keeps the border colour, as before.
+  assert.equal(hatchColor({ stroke: '#ff0000', fill: '#0000ff' }), '#ff0000');
+  assert.equal(hatchColor({ stroke: '#ff0000', fill: 'rgba(255,0,0,0.2)' }), '#ff0000');
+  assert.equal(hatchColor({ stroke: '#ff0000', fill: 'transparent' }), '#ff0000');
+  assert.equal(hatchColor({ stroke: 'transparent', fill: '' }), '#000000');
+});
