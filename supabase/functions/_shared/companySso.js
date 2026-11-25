@@ -72,6 +72,8 @@ export function signOnErrorText(status, body) {
 export const SAML_ATTRIBUTE_MAPPING = Object.freeze({
   keys: {
     email: {
+      // `name` too: older Supabase Auth reads only the single name.
+      name: 'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress',
       names: [
         'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress',
         'email',
