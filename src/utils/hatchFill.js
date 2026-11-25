@@ -158,10 +158,37 @@ export function hatchSegments(outline, pattern, { turn = 0, spacing = HATCH_SPAC
 }
 
 /** The colour the lines are drawn in: the border's, or black when it has none. */
+// '#f00', '#ff0000', 'rgb(…)', 'rgba(…)' → { r, g, b, a } (0-255, alpha 0-1), else null.
+function parseColor(value) {
+  const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  let m = raw.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/);
+  if (m) {
+    const hex = m[1].length === 3 ? m[1].split('').map((c) => c + c).join('') : m[1];
+    return { r: parseInt(hex.slice(0, 2), 16), g: parseInt(hex.slice(2, 4), 16), b: parseInt(hex.slice(4, 6), 16), a: 1 };
+  }
+  m = raw.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)$/);
+  if (m) return { r: Number(m[1]), g: Number(m[2]), b: Number(m[3]), a: m[4] == null ? 1 : Number(m[4]) };
+  return null;
+}
+
 export function hatchColor(obj) {
   const raw = typeof obj?.stroke === 'string' ? obj.stroke.trim() : '';
   const clear = !raw || raw === 'transparent' || /^rgba\([^)]*,\s*0(\.0+)?\s*\)$/i.test(raw);
-  return clear ? '#000000' : raw;
+  const line = clear ? '#000000' : raw;
+  // #1662: a shape filled in its own border colour (a red rectangle with a
+  // solid red fill) drew red lines on red: the pattern was there but could
+  // not be seen. Then the lines take black or white, whichever stands off
+  // the fill.
+  const fill = parseColor(obj?.fill);
+  const ink = parseColor(line);
+  if (fill && ink && fill.a >= 0.5) {
+    const close = Math.abs(fill.r - ink.r) + Math.abs(fill.g - ink.g) + Math.abs(fill.b - ink.b) < 60;
+    if (close) {
+      const luminance = (0.2126 * fill.r + 0.7152 * fill.g + 0.0722 * fill.b) / 255;
+      return luminance > 0.5 ? '#000000' : '#ffffff';
+    }
+  }
+  return line;
 }
 
 /** Everything a renderer needs: { segments, color, width, opacity } or null. */
