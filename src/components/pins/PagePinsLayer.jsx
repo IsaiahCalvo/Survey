@@ -28,6 +28,12 @@ import { USER_INITIALS_INK, userColorFill } from '../../utils/userColors.js';
 
 export const PIN_MOVE_EVENT = 'survey:page-pin-move';
 const DRAG_SLOP = 4;
+// Tools that leave a pin its own press (a click opens it, an editor's drag
+// moves it). Any other tool marks the page (pen, eraser, shapes...): its
+// press goes through a pin to that tool, so an eraser drag across a pin
+// erases instead of moving the pin (#1657).
+const PIN_PRESS_TOOLS = new Set(['select', 'pan', 'text-select', PIN_TOOL_ID]);
+export const pinTakesPress = (activeTool) => !activeTool || PIN_PRESS_TOOLS.has(activeTool);
 
 export function PinFace({ kind, status, authorId, people, size = PIN_FACE }) {
   if (kind === 'issue' || kind === 'task') {
@@ -80,13 +86,14 @@ function pinLabel(pin) {
   return `${pinCode(pin) || PIN_KIND_LABELS[pin.kind]}, ${PIN_STATUS_LABELS[pin.status] || ''}`.trim();
 }
 
-function Pin({ pin, anchor, people, open, faded, pageWidth, pageHeight, canMove, onPress }) {
+function Pin({ pin, anchor, people, open, faded, pageWidth, pageHeight, canMove, onPress, passThrough = false }) {
   const place = pinPlacement(pin, pageWidth, pageHeight);
   return (
     <button
       type="button"
       // Pan leaves a pin to its own press (click opens, drag moves).
-      data-pan-interactive="true"
+      data-pan-interactive={passThrough ? undefined : 'true'}
+      data-pin-pass-through={passThrough ? 'true' : undefined}
       data-page-pin-anchor={anchor}
       data-page-pin-id={pin.id || undefined}
       data-pin-kind={pin.kind}
@@ -112,8 +119,8 @@ function Pin({ pin, anchor, people, open, faded, pageWidth, pageHeight, canMove,
         boxShadow: open ? '0 0 0 2px #87ABF8, 0 1px 3px rgba(0, 0, 0, 0.35)' : '0 1px 3px rgba(0, 0, 0, 0.35)',
         opacity: faded ? 0.5 : 1,
         cursor: canMove ? 'grab' : 'pointer',
-        pointerEvents: 'auto',
-        touchAction: 'none',
+        pointerEvents: passThrough ? 'none' : 'auto',
+        touchAction: passThrough ? undefined : 'none',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -140,6 +147,7 @@ export default function PagePinsLayer({ documentId, pageNumber, pageWidth, pageH
   const placeRef = useRef(null);
 
   const armed = enabled && canWrite && activeTool === PIN_TOOL_ID;
+  const passThrough = !pinTakesPress(activeTool);
 
   const pointAt = useCallback((clientX, clientY) => {
     const rect = layerRef.current?.getBoundingClientRect();
@@ -244,6 +252,7 @@ export default function PagePinsLayer({ documentId, pageNumber, pageWidth, pageH
           pageWidth={pageWidth}
           pageHeight={pageHeight}
           canMove={canWrite}
+          passThrough={passThrough}
           onPress={pressPin(pin)}
         />
       ))}

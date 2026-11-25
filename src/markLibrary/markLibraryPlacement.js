@@ -40,6 +40,39 @@ export function beginLibraryDrag(item) {
   emit();
 }
 export const getLibraryDrag = () => dragging;
+export const LIBRARY_DRAG_START_PX = 6;
+
+/**
+ * Watch a mouse or pen press on a panel tile: once it moves a few pixels it
+ * becomes a library drag (the viewer's layer drops it where it is let go).
+ * Returns the press state; `press.dragging` turns true when the drag starts,
+ * so the tile's own click can skip picking. A finger only pans: null.
+ */
+export function watchLibraryPressDrag(event, item) {
+  if (!item || !event || event.button !== 0 || event.pointerType === 'touch') return null;
+  if (typeof window === 'undefined') return null;
+  const press = { x: event.clientX, y: event.clientY, id: event.pointerId, dragging: false };
+  const stop = () => {
+    window.removeEventListener('pointermove', onMove, true);
+    window.removeEventListener('pointerup', stop, true);
+    window.removeEventListener('pointercancel', stop, true);
+  };
+  // The drag starts wherever the pointer is by then (a quick move leaves the
+  // tile before its own move fires), so listen on the window.
+  const onMove = (move) => {
+    if (move.pointerId !== press.id) return;
+    if (Math.hypot(move.clientX - press.x, move.clientY - press.y) < LIBRARY_DRAG_START_PX) return;
+    stop();
+    press.dragging = true;
+    disarmLibraryItem();
+    beginLibraryDrag(item);
+  };
+  window.addEventListener('pointermove', onMove, true);
+  window.addEventListener('pointerup', stop, true);
+  window.addEventListener('pointercancel', stop, true);
+  return press;
+}
+
 export function endLibraryDrag() {
   if (!dragging) return;
   dragging = null;
