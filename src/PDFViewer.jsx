@@ -429,6 +429,7 @@ import PagePinsHost from './components/pins/PagePinsHost.jsx';
 import { readDefaultMeasureScale, saveDefaultMeasureScale, withDefaultMeasureScale } from './utils/measure/measureFormat.js';
 import PagePinsLayer from './components/pins/PagePinsLayer.jsx';
 import { PinToolButton } from './components/pins/PinControls.jsx';
+import ReviewToolGroupButton from './components/ReviewToolGroupButton.jsx';
 import { LINK_EDIT_EVENT, applyLinkEdit, selectedLinkOf } from './utils/linkTool.js';
 import { NOTE_EDIT_EVENT, applyNoteEdit, selectedNoteOf } from './utils/stickyNote.js';
 import { applyHatch, hatchPatternOf, hatchShapeKind } from './utils/hatchFill.js';
@@ -42534,281 +42535,176 @@ ${pageBlocks}
               </>
             )}
 
-            {subRowCategory === 'review' && (
-              <>
-                {[
-                  { id: 'text', label: 'Text', iconName: 'textBox' },
-                  { id: 'callout', label: 'Callout', iconName: 'callout' },
-                  // Nightly 'stamp-tool': opens Drawboard's Stamp card.
-                  ...(isFeatureOn('stamp-tool') ? [{ id: 'stamp', label: 'Stamp', iconName: 'stamp', picker: true }] : []),
-                  // Nightly 'insert-image': picks a picture and drops it on the page.
-                  ...(isFeatureOn('insert-image') ? [{ id: 'image', label: 'Image', iconName: 'image', action: true }] : []),
-                  // Nightly 'image-camera': take a photo and drop it on the page.
-                  ...(imageCameraEnabled ? [{ id: 'camera', label: 'Camera', iconName: 'camera', action: 'camera' }] : []),
-                  // Nightly 'link-tool': drag a box, then say where it links (Shift+H).
-                  ...(linkToolOn ? [{ id: 'hyperlink', label: 'Hyperlink', iconName: 'hyperlink' }] : []),
-                  // Nightly 'comment-pins': the pin split button (N; M cycles the type).
-                  ...(pinsDocOn ? [{ id: 'pin', label: 'Page comment', pin: true }] : []),
-                  // Nightly 'snapshot-tool': drag an area, it is copied as a picture.
-                  ...(snapshotToolEnabled ? [{ id: 'snapshot', label: 'Snapshot', iconName: 'snapshot' }] : []),
-                  // Nightly 'signature-tool': saved signatures, click the page to sign.
-                  ...(signatureToolEnabled ? [{ id: 'signature', label: 'Signature', iconName: 'signature', picker: 'signature' }] : []),
-                  // Nightly 'text-highlight-tool': Select text that highlights as you drag.
-                  ...(textDragToolsOn ? [{ id: 'text-highlight', label: 'Highlight text', iconName: 'textHighlightTool', highlightMode: 'highlight' }] : []),
-                  // Nightly 'text-markup-tools': Drawboard Review's other text tools.
-                  ...(textMarkupToolsEnabled ? [
-                    { id: 'text-underline', label: 'Underline text', iconName: 'textUnderlineTool', highlightMode: 'underline' },
-                    { id: 'text-squiggly', label: 'Squiggle text', iconName: 'textSquiggleTool', highlightMode: 'squiggly' },
-                    { id: 'text-strikeout', label: 'Strike through text', iconName: 'textStrikeTool', highlightMode: 'strikeout' },
-                    { id: 'text-redact', label: 'Redact text', iconName: 'textRedactTool', highlightMode: 'redact' },
-                  ] : []),
-                  // Nightly 'area-redact': drag a box over any part of the page to black it out.
-                  ...(areaRedactEnabled ? [{ id: 'area-redact', label: 'Redact area', iconName: 'areaRedactTool' }] : []),
-                  // Nightly 'text-review-remove': drag over words to take their marks off.
-                  ...(textReviewRemoveEnabled ? [{ id: 'text-remove', label: 'Remove text marks', iconName: 'textRemoveTool', highlightMode: 'remove' }] : []),
-                  // Nightly 'note-tool': click the page to leave a sticky note.
-                  // Imported PDF notes still render through pdfAnnotationImporter.
-                  ...(noteToolEnabled ? [{ id: 'sticky-note', label: 'Note', iconName: 'stickyNote' }] : []),
-                  // Nightly 'equation-tool': type LaTeX, it lands mid-page as a picture.
-                  ...(equationToolEnabled ? [{ id: 'equation', label: 'Equation', iconName: 'equation', action: 'equation' }] : []),
-                  // Nightly 'audio-note': record or pick a clip, pinned mid-page as a speaker badge.
-                  ...(audioNoteEnabled ? [{ id: 'audio-note', label: 'Audio note', iconName: 'audioNote', action: 'audio-note' }] : []),
-                  // TODO: Revisit native PDF text markup tools later. Underline,
-                  // squiggly, and strike-through are hidden from the toolbar for now.
-                  // { id: 'underline', label: 'Underline', iconName: 'underline', menu: 'underline' },
-                  // { id: 'strikeout', label: 'Strike Through', iconName: 'strikeout', menu: 'strike' }
-                ].map(t => {
-                  const isUnderlineMenu = t.menu === 'underline';
-                  const isStrikeMenu = t.menu === 'strike';
-                  const popupOpen = isUnderlineMenu ? underlineCaretPopupOpen : (isStrikeMenu ? strikeCaretPopupOpen : false);
-                  const popupRef = isUnderlineMenu ? underlineCaretPopupRef : strikeCaretPopupRef;
-                  const caretAttr = isUnderlineMenu ? 'data-underline-caret-button' : 'data-strike-caret-button';
-                  const isActiveUnderline = isUnderlineMenu && (activeTool === 'underline' || activeTool === 'squiggly');
-                  const isActiveStrike = isStrikeMenu && activeTool === 'strikeout';
-                  const isActive = t.highlightMode ? (textDragKindOf(textHighlightMode) === t.highlightMode && activeTool === 'text-select') : t.picker === 'signature' ? signatureCardOpen : t.picker ? stampPickerOpen : (isActiveUnderline || isActiveStrike || activeTool === t.id);
+            {subRowCategory === 'review' && (() => {
+              // Owner 2026-11-25: keep the Text sub-row compact (6 slots max
+              // instead of 19 sprawling buttons + overflow). Related tools sit
+              // in sub-toolbar menus; when only one tool in a group is enabled
+              // it renders as a plain 1-click button.
+              const isItemActive = (t) => (
+                t.highlightMode
+                  ? (textDragKindOf(textHighlightMode) === t.highlightMode && activeTool === 'text-select')
+                  : t.picker === 'signature'
+                    ? signatureCardOpen
+                    : t.picker
+                      ? stampPickerOpen
+                      : activeTool === t.id
+              );
 
-                  const onMainClick = (e) => {
-                    if (t.highlightMode) {
-                      if (stampPickerOpen) setStampPickerOpen(false);
-                      if (signatureCardOpen) setSignatureCardOpen(false);
-                      const next = !(textDragKindOf(textHighlightMode) === t.highlightMode && activeTool === 'text-select');
-                      if (next) setActiveToolLogged('text-select', { source: 'toolbar', keepTextHighlight: true });
-                      setTextHighlightMode(next ? t.highlightMode : false);
-                      return;
-                    }
-                    if (t.picker === 'signature') {
-                      if (stampPickerOpen) setStampPickerOpen(false);
-                      setSignatureCardOpen(!signatureCardOpen);
-                      return;
-                    }
-                    if (signatureCardOpen) setSignatureCardOpen(false);
-                    if (t.picker) {
-                      setStampPickerOpen(!stampPickerOpen);
-                      return;
-                    }
-                    if (t.action === 'camera') {
-                      if (stampPickerOpen) setStampPickerOpen(false);
-                      window.dispatchEvent(new CustomEvent(IMAGE_CAMERA_OPEN_EVENT));
-                      return;
-                    }
-                    if (t.action === 'equation' || t.action === 'audio-note') {
-                      if (stampPickerOpen) setStampPickerOpen(false);
-                      window.dispatchEvent(new CustomEvent(t.action === 'equation' ? EQUATION_OPEN_EVENT : AUDIO_NOTE_OPEN_EVENT));
-                      return;
-                    }
-                    if (t.action) {
-                      if (stampPickerOpen) setStampPickerOpen(false);
-                      pickImageToInsert();
-                      return;
-                    }
-                    if (stampPickerOpen) setStampPickerOpen(false);
-                    if (isUnderlineMenu) {
-                      e.stopPropagation();
-                      setActiveTool(activeTool === 'squiggly' ? 'squiggly' : 'underline');
-                      setUnderlineCaretPopupOpen((open) => !open);
-                      setStrikeCaretPopupOpen(false);
-                      return;
-                    }
-                    if (isStrikeMenu) {
-                      e.stopPropagation();
-                      setActiveTool('strikeout');
-                      setStrikeCaretPopupOpen((open) => !open);
-                      setUnderlineCaretPopupOpen(false);
-                      return;
-                    }
-                    setActiveTool(t.id);
-                    setUnderlineCaretPopupOpen(false);
-                    setStrikeCaretPopupOpen(false);
-                  };
+              const onSelectReviewItem = (t) => {
+                if (t.highlightMode) {
+                  if (stampPickerOpen) setStampPickerOpen(false);
+                  if (signatureCardOpen) setSignatureCardOpen(false);
+                  const next = !(textDragKindOf(textHighlightMode) === t.highlightMode && activeTool === 'text-select');
+                  if (next) setActiveToolLogged('text-select', { source: 'toolbar', keepTextHighlight: true });
+                  setTextHighlightMode(next ? t.highlightMode : false);
+                  return;
+                }
+                if (t.picker === 'signature') {
+                  if (stampPickerOpen) setStampPickerOpen(false);
+                  setSignatureCardOpen(!signatureCardOpen);
+                  return;
+                }
+                if (signatureCardOpen) setSignatureCardOpen(false);
+                if (t.picker) {
+                  setStampPickerOpen(!stampPickerOpen);
+                  return;
+                }
+                if (t.action === 'camera') {
+                  if (stampPickerOpen) setStampPickerOpen(false);
+                  window.dispatchEvent(new CustomEvent(IMAGE_CAMERA_OPEN_EVENT));
+                  return;
+                }
+                if (t.action === 'equation' || t.action === 'audio-note') {
+                  if (stampPickerOpen) setStampPickerOpen(false);
+                  window.dispatchEvent(new CustomEvent(t.action === 'equation' ? EQUATION_OPEN_EVENT : AUDIO_NOTE_OPEN_EVENT));
+                  return;
+                }
+                if (t.action) {
+                  if (stampPickerOpen) setStampPickerOpen(false);
+                  pickImageToInsert();
+                  return;
+                }
+                if (stampPickerOpen) setStampPickerOpen(false);
+                setActiveTool(t.id);
+                setUnderlineCaretPopupOpen(false);
+                setStrikeCaretPopupOpen(false);
+              };
 
-                  if (t.pin) {
+              const withActive = (list) => list.map((t) => ({ ...t, active: isItemActive(t) }));
+
+              const directTools = [
+                { id: 'text', label: 'Text', iconName: 'textBox' },
+                { id: 'callout', label: 'Callout', iconName: 'callout' },
+              ];
+
+              const textMarkupTools = withActive([
+                ...(textDragToolsOn ? [{ id: 'text-highlight', label: 'Highlight text', iconName: 'textHighlightTool', highlightMode: 'highlight' }] : []),
+                ...(textMarkupToolsEnabled ? [
+                  { id: 'text-underline', label: 'Underline text', iconName: 'textUnderlineTool', highlightMode: 'underline' },
+                  { id: 'text-squiggly', label: 'Squiggle text', iconName: 'textSquiggleTool', highlightMode: 'squiggly' },
+                  { id: 'text-strikeout', label: 'Strike through text', iconName: 'textStrikeTool', highlightMode: 'strikeout' },
+                ] : []),
+                ...(textReviewRemoveEnabled ? [{ id: 'text-remove', label: 'Remove text marks', iconName: 'textRemoveTool', highlightMode: 'remove' }] : []),
+              ]);
+
+              const redactTools = withActive([
+                ...(textMarkupToolsEnabled ? [{ id: 'text-redact', label: 'Redact text', iconName: 'textRedactTool', highlightMode: 'redact' }] : []),
+                ...(areaRedactEnabled ? [{ id: 'area-redact', label: 'Redact area', iconName: 'areaRedactTool' }] : []),
+              ]);
+
+              const pinGroupItems = [
+                ...(pinsDocOn ? [{ id: 'pin', label: 'Page comment', pin: true }] : []),
+              ];
+
+              const noteExtraTools = withActive([
+                ...(noteToolEnabled ? [{ id: 'sticky-note', label: 'Note', iconName: 'stickyNote' }] : []),
+                ...(audioNoteEnabled ? [{ id: 'audio-note', label: 'Audio note', iconName: 'audioNote', action: 'audio-note' }] : []),
+              ]);
+
+              const insertTools = withActive([
+                ...(isFeatureOn('stamp-tool') ? [{ id: 'stamp', label: 'Stamp', iconName: 'stamp', picker: true }] : []),
+                ...(signatureToolEnabled ? [{ id: 'signature', label: 'Signature', iconName: 'signature', picker: 'signature' }] : []),
+                ...(isFeatureOn('insert-image') ? [{ id: 'image', label: 'Image', iconName: 'image', action: true }] : []),
+                ...(imageCameraEnabled ? [{ id: 'camera', label: 'Camera', iconName: 'camera', action: 'camera' }] : []),
+                ...(snapshotToolEnabled ? [{ id: 'snapshot', label: 'Snapshot', iconName: 'snapshot' }] : []),
+                ...(linkToolOn ? [{ id: 'hyperlink', label: 'Hyperlink', iconName: 'hyperlink' }] : []),
+                ...(equationToolEnabled ? [{ id: 'equation', label: 'Equation', iconName: 'equation', action: 'equation' }] : []),
+              ]);
+
+              return (
+                <>
+                  {directTools.map((t) => {
+                    const isActive = isItemActive(t);
                     return (
-                      <PinToolButton
-                        key="pin"
-                        active={activeTool === 'pin'}
-                        glyphSize={CHROME_GLYPH}
-                        onArm={() => { if (stampPickerOpen) setStampPickerOpen(false); setActiveTool('pin'); }}
-                      />
+                      <button
+                        key={t.id}
+                        type="button"
+                        data-morph-icon={t.iconName}
+                        data-tool-switch="true"
+                        onClick={() => onSelectReviewItem(t)}
+                        {...chromeTip(t.label, 'below')}
+                        className={`btn chrome-subcontrol ${isActive ? 'btn-active' : 'btn-ghost'}`}
+                        aria-pressed={isActive}
+                        aria-label={t.label}
+                      >
+                        <Icon name={t.iconName} size={CHROME_GLYPH} />
+                      </button>
                     );
-                  }
+                  })}
 
-                  const button = (
-                    <button
-                      key={t.id}
-                      {...((isUnderlineMenu || isStrikeMenu) ? { [caretAttr]: 'true' } : {})}
-                      // w49: which glyph this tool shows, so a group switch can morph it (utils/loadoutTransition.js).
-                      data-morph-icon={t.iconName}
-                      data-tool-switch="true"
-                      onClick={onMainClick}
-                      {...chromeTip(isUnderlineMenu ? (activeTool === 'squiggly' ? 'Wavy underline' : 'Underline') : isStrikeMenu ? 'Strike through' : t.label, 'below')}
-                      // UX 2026-09-16 (desktop sizing pass): shared
-                      // .chrome-subcontrol box + shared 18px glyph, as the
-                      // Draw and Shapes rows.
-                      className={`btn chrome-subcontrol ${isActive ? 'btn-active' : 'btn-ghost'}`}
-                      aria-pressed={isActive}
-                      style={{ position: 'relative' }}
-                      // KAL-65: the instant chip above IS this control's tooltip;
-                      // a native title= would stack the OS tooltip on top of it.
-                      aria-label={isUnderlineMenu ? (activeTool === 'squiggly' ? 'Wavy underline' : 'Underline') : isStrikeMenu ? 'Strike through' : t.label}
-                    >
-                      <Icon name={t.iconName} size={CHROME_GLYPH} />
-                      {(isUnderlineMenu || isStrikeMenu) && (
-                        <div
-                          {...{ [caretAttr]: 'true' }}
-                          onClick={onMainClick}
-                          style={{
-                            position: 'absolute',
-                            left: '50%',
-                            top: '50%',
-                            transform: 'translate(12px, -50%)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            padding: '2px',
-                            pointerEvents: 'auto',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          <Icon name="chevronDown" size={12} color="var(--text-3)" />
-                        </div>
-                      )}
-                    </button>
-                  );
+                  <ReviewToolGroupButton
+                    groupId="text-markup"
+                    groupLabel="Text markup"
+                    defaultIconName="textHighlightTool"
+                    items={textMarkupTools}
+                    glyphSize={CHROME_GLYPH}
+                    onSelectItem={onSelectReviewItem}
+                  />
 
-                  if (!isUnderlineMenu && !isStrikeMenu) return button;
+                  <ReviewToolGroupButton
+                    groupId="redact"
+                    groupLabel="Redact"
+                    defaultIconName="textRedactTool"
+                    items={redactTools}
+                    glyphSize={CHROME_GLYPH}
+                    onSelectItem={onSelectReviewItem}
+                  />
 
-                  let popupFixedTop = 0;
-                  let popupFixedLeft = 0;
-                  if (popupOpen && typeof document !== 'undefined') {
-                    const btnEl = document.querySelector(`[${caretAttr}="true"]`);
-                    if (btnEl) {
-                      const r = btnEl.getBoundingClientRect();
-                      // UX 2026-05-14: flip popup DOWN below the button
-                      // since the sub-toolbar moved to the top of the
-                      // screen.
-                      popupFixedTop = r.bottom + 6;
-                      popupFixedLeft = r.left + r.width / 2;
-                    }
-                  }
-
-                  const optionStyle = (selected, disabled = false) => ({
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'flex-start',
-                    gap: '8px',
-                    padding: '6px 10px',
-                    background: selected ? 'var(--surface-3)' : 'transparent',
-                    border: 'none',
-                    borderRadius: '4px',
-                    color: disabled ? 'var(--text-disabled)' : 'var(--text-2)',
-                    textAlign: 'left',
-                    cursor: disabled ? 'not-allowed' : 'pointer',
-                    fontSize: '12px',
-                    fontFamily: 'inherit',
-                    outline: 'none',
-                    whiteSpace: 'nowrap'
-                  });
-
-                  const renderOption = ({ tool, label, disabled = false }) => (
-                    <button
-                      key={label}
-                      disabled={disabled}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (disabled) return;
-                        setActiveTool(tool);
-                        setUnderlineCaretPopupOpen(false);
-                        setStrikeCaretPopupOpen(false);
+                  {pinGroupItems.length > 0 ? (
+                    <PinToolButton
+                      key="pin"
+                      active={activeTool === 'pin'}
+                      glyphSize={CHROME_GLYPH}
+                      onArm={() => {
+                        if (stampPickerOpen) setStampPickerOpen(false);
+                        if (signatureCardOpen) setSignatureCardOpen(false);
+                        setActiveTool('pin');
                       }}
-                      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = 'var(--hover)'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = activeTool === tool ? 'var(--surface-3)' : 'transparent'; }}
-                      style={optionStyle(activeTool === tool, disabled)}
-                    >
-                      {label}
-                    </button>
-                  );
+                      extraItems={noteExtraTools}
+                      onSelectExtra={onSelectReviewItem}
+                    />
+                  ) : (
+                    <ReviewToolGroupButton
+                      groupId="notes"
+                      groupLabel="Notes"
+                      defaultIconName="stickyNote"
+                      items={noteExtraTools}
+                      glyphSize={CHROME_GLYPH}
+                      onSelectItem={onSelectReviewItem}
+                    />
+                  )}
 
-                  return (
-                    <div key={t.id} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                      {button}
-                      {popupOpen && createPortal(
-                        <div
-                          ref={popupRef}
-                          data-underline-caret-popup={isUnderlineMenu ? 'true' : undefined}
-                          data-strike-caret-popup={isStrikeMenu ? 'true' : undefined}
-                          style={{
-                            position: 'fixed',
-                            top: `${popupFixedTop}px`,
-                            left: `${popupFixedLeft}px`,
-                            transform: 'translate(-50%, 0)',
-                            backgroundColor: 'var(--surface-2)',
-                            backgroundImage: 'none',
-                            border: '1px solid var(--border)',
-                            borderRadius: '6px',
-                            boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
-                            zIndex: 999999,
-                            display: 'flex',
-                            flexDirection: 'column',
-                            padding: '4px',
-                            minWidth: isUnderlineMenu ? '150px' : '166px',
-                            color: 'var(--text-2)',
-                            pointerEvents: 'auto',
-                            cursor: 'default',
-                            fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif',
-                            fontSize: '12px'
-                          }}
-                        >
-                          <div style={{
-                            padding: '4px 8px',
-                            fontSize: '10px',
-                            color: 'var(--text-3)',
-                            fontWeight: 600,
-                            borderBottom: '1px solid var(--border)',
-                            marginBottom: '4px'
-                          }}>
-                            {isUnderlineMenu ? 'Underline type' : 'Strike type'}
-                          </div>
-                          {isUnderlineMenu ? (
-                            <>
-                              {renderOption({ tool: 'underline', label: 'Regular underline' })}
-                              {renderOption({ tool: 'squiggly', label: 'Wavy underline' })}
-                              {renderOption({ tool: 'underline', label: 'Dashed underline', disabled: true })}
-                            </>
-                          ) : (
-                            <>
-                              {renderOption({ tool: 'strikeout', label: 'Straight strike through' })}
-                              {renderOption({ tool: 'strikeout', label: 'Dashed strike through', disabled: true })}
-                              {renderOption({ tool: 'strikeout', label: 'Wavy strike through', disabled: true })}
-                            </>
-                          )}
-                        </div>,
-                        document.body
-                      )}
-                    </div>
-                  );
-                })}
-              </>
-            )}
+                  <ReviewToolGroupButton
+                    groupId="insert"
+                    groupLabel="Insert"
+                    defaultIconName="stamp"
+                    items={insertTools}
+                    glyphSize={CHROME_GLYPH}
+                    onSelectItem={onSelectReviewItem}
+                  />
+                </>
+              );
+            })()}
 
             {subRowCategory === 'survey' && (() => {
               const modules = selectedTemplate?.modules || selectedTemplate?.spaces || [];

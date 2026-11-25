@@ -814,14 +814,7 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
-    hyperlink: (size, color, style, className) => (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <g stroke={color} strokeWidth={ICON_STROKE_WIDTH} strokeLinecap="round" strokeLinejoin="round">
-          <path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7" />
-          <path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" />
-        </g>
-      </svg>
-    ),
+    hyperlink: (size, color, style, className) => renderMaskIcon(textHyperlinkUrl, size, color, style, className),
 
     video: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
@@ -1016,27 +1009,14 @@ const ICON_RENDERERS = {
       'M4 8v-2a2 2 0 0 1 2 -2h2', 'M4 16v2a2 2 0 0 0 2 2h2', 'M16 4h2a2 2 0 0 1 2 2v2', 'M16 20h2a2 2 0 0 0 2 -2v-2',
       'M9 12a3 3 0 1 0 6 0a3 3 0 1 0 -6 0',
     ]),
-    // Text group drag tools (Drawboard Review: Text highlight, Underline,
-    // Squiggle, Strikethrough). Stroked, so they sit in the tool row with the
-    // rest; the selection bar keeps its filled letterforms.
-    textHighlightTool: (size, color, style, className) => strokeGlyph(size, color, style, className, [
-      'm6 15 4.5-11 4.5 11', 'M7.6 11h5.8', 'M4 18.5h16a.5.5 0 0 1 .5.5v1.5a.5.5 0 0 1-.5.5H4a.5.5 0 0 1-.5-.5V19a.5.5 0 0 1 .5-.5Z',
-    ]),
-    textUnderlineTool: (size, color, style, className) => strokeGlyph(size, color, style, className, [
-      'M6 4v6a6 6 0 0 0 12 0V4', 'M4 20h16',
-    ]),
-    textSquiggleTool: (size, color, style, className) => strokeGlyph(size, color, style, className, [
-      'M7 3.5v6a5 5 0 0 0 10 0v-6',
-      'M3.5 19.5c1.5-1.5 2.75-1.5 4.25 0s2.75 1.5 4.25 0 2.75-1.5 4.25 0 2.75 1.5 4.25 0',
-    ]),
-    textStrikeTool: (size, color, style, className) => strokeGlyph(size, color, style, className, [
-      'M16 4H9a3 3 0 0 0-2.83 4', 'M14 12a4 4 0 0 1 0 8H6', 'M4 12h16',
-    ]),
-    textRedactTool: (size, color, style, className) => strokeGlyph(size, color, style, className, [
-      'M4 5h16', 'M4 19h9',
-      'M4 9.5h16a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1Z',
-      { d: 'M5.5 11.25h13v1.5h-13z', fill: true },
-    ]),
+    // Text group drag tools share the exact same glyphs as the text-selection
+    // bar (formatHighlight / formatUnderline / formatSquiggle / formatStrikethrough /
+    // formatRedact) so every surface uses one consistent icon per mark.
+    textHighlightTool: (size, color, style, className) => renderMaskIcon(textHighlightUrl, size, color, style, className),
+    textUnderlineTool: (size, color, style, className) => renderMaskIcon(textUnderlineUrl, size, color, style, className),
+    textSquiggleTool: (size, color, style, className) => renderMaskIcon(textSquiggleUrl, size, color, style, className),
+    textStrikeTool: (size, color, style, className) => renderMaskIcon(textStrikethroughUrl, size, color, style, className),
+    textRedactTool: (size, color, style, className) => renderMaskIcon(textRedactUrl, size, color, style, className),
     // Redact area (Drawboard Review > Redaction): Lucide "scan" corners (ISC) round a solid box.
     areaRedactTool: (size, color, style, className) => strokeGlyph(size, color, style, className, [
       'M3 7V5a2 2 0 0 1 2-2h2', 'M17 3h2a2 2 0 0 1 2 2v2', 'M21 17v2a2 2 0 0 1-2 2h-2', 'M7 21H5a2 2 0 0 1-2-2v-2',
