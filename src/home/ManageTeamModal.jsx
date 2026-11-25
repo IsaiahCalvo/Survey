@@ -538,8 +538,8 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
       .map((r) => ({
         id: r.user_id,
         userId: r.user_id,
-        name: (r.email || '').split('@')[0] || 'Teammate',
-        initials: initialsOf((r.email || '').split('@')[0] || 'Teammate'),
+        name: r.name || (r.email || '').split('@')[0] || 'Teammate',
+        initials: initialsOf(r.name || (r.email || '').split('@')[0] || 'Teammate'),
         email: r.email || '',
         role: roleLabel(r.role),
         color: colorFor(r.user_id),

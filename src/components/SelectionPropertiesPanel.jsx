@@ -22,6 +22,8 @@ import Icon from '../Icons';
 import { QuickColourDots } from './QuickStyleControls';
 import { useSelectedItems, viewerBounds } from './SelectionQuickBar.jsx';
 import { isFeatureOn } from '../featureFlags.js';
+import { typedFieldJustLeft } from '../utils/typingTarget.js';
+import { showToast } from '../utils/toast.js';
 import { LINE_STYLE_SAMPLE_ICONS, lineStyleOptionsWith } from '../utils/lineStyleOptions.js';
 import { ARROWHEAD_MENU_ORDER, ARROWHEAD_SHORT_LABELS } from './Callout/types.js';
 import { LineEndingsPanel } from './LineEndingsPicker.jsx';
@@ -371,6 +373,24 @@ export default function SelectionPropertiesPanel({
     }
     return { list, objects, kinds, pageNumber: pages.size === 1 ? [...pages][0] : null };
   }, [annotationsByPage, items]);
+
+  // Someone else deleted the mark being edited here (r5b #21, 2026-11-24): the
+  // panel used to close without a word. The last picked marks are kept after
+  // the pick clears, because the pick and the page can change in either order.
+  const lastPickedRef = useRef([]);
+  useEffect(() => {
+    const before = lastPickedRef.current;
+    const now = picked.objects.map((o) => ({ id: objectId(o), page: picked.list.find((item) => String(item.id) === objectId(o))?.pageNumber }));
+    if (now.length > 0) lastPickedRef.current = now;
+    if (before.length === 0 || !annotationsByPage) return;
+    const gone = before.filter(({ id, page }) => page != null
+      && !now.some((n) => n.id === id)
+      && !(annotationsByPage?.[page]?.objects || []).some((o) => objectId(o) === id));
+    if (gone.length === 0) return;
+    lastPickedRef.current = lastPickedRef.current.filter(({ id }) => !gone.some((g) => g.id === id));
+    if (!typedFieldJustLeft()) return;
+    showToast(gone.length === 1 ? 'Someone else deleted the mark you were editing.' : 'Someone else deleted the marks you were editing.', 'info');
+  }, [annotationsByPage, picked]);
 
   // Pinned, it docks beside the viewer and stays up with nothing picked.
   const docked = Boolean(flagOn && enabled && !phone && pinned && dockEl);

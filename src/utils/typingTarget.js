@@ -16,8 +16,9 @@ const ARROW_OWNING_WIDGETS = [
  * textarea, a menu / listbox / slider / tab / dialog widget) — arrow keys
  * must work there, never move the selection.
  */
-export function isTypingTarget(element) {
+export function isTypingTarget(element, now = Date.now()) {
   if (!element) return false;
+  if (isOrphanTyping(element, now)) return true;
   const tag = String(element.tagName || '').toUpperCase();
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
   if (element.isContentEditable === true) return true;
@@ -32,4 +33,76 @@ export function isTypingTarget(element) {
     if (element.closest(ARROW_OWNING_WIDGETS)) return true;
   }
   return false;
+}
+
+// The field someone was typing in can vanish under them: another person
+// deletes the mark whose note they are editing and the panel unmounts. Focus
+// falls to <body>, so the rest of the word would fire single-key tool
+// shortcuts (audit r5b #21: " more" armed the Eraser). Keys that reach
+// <body> right after the typed-in field left the page still count as typing,
+// until a pause or a click.
+const ORPHAN_TYPING_MS = 1500;
+let lastField = null;
+let lastFieldKeyAt = 0;
+
+function isPageRoot(element) {
+  if (typeof document === 'undefined') return false;
+  return element === document.body || element === document.documentElement;
+}
+
+/**
+ * True when focus has fallen to the page because the field being typed in was
+ * removed a moment ago. Handlers with their own form-field test call this.
+ */
+export function isOrphanTyping(element, now = Date.now()) {
+  if (!lastField || !isPageRoot(element)) return false;
+  if (lastField.isConnected !== false) return false;
+  return now - lastFieldKeyAt <= ORPHAN_TYPING_MS;
+}
+
+// Keys that close a field on purpose: Escape, Tab, Cmd/Ctrl+Enter, and Enter
+// in a one-line field. The field going away after one of these is the
+// person's own doing, so the next key is a shortcut again (a text box closed
+// with Escape, then Q for Callout).
+function leavesField(tag, key) {
+  if (!key) return false;
+  if (key.key === 'Escape' || key.key === 'Tab') return true;
+  if (key.key !== 'Enter') return false;
+  return tag === 'INPUT' || key.metaKey === true || key.ctrlKey === true;
+}
+
+/** Note a keydown (window capture). Exported for tests. */
+export function noteTypingKey(target, now = Date.now(), key = null) {
+  if (!target) return;
+  if (isOrphanTyping(target, now)) { lastFieldKeyAt = now; return; }
+  const tag = String(target.tagName || '').toUpperCase();
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable === true) {
+    if (leavesField(tag, key)) { forgetTypingField(); return; }
+    lastField = target;
+    lastFieldKeyAt = now;
+  } else {
+    // A key pressed outside any field (Escape then Delete) means the person
+    // left the field themselves.
+    forgetTypingField();
+  }
+}
+
+/**
+ * Was the person typing in a field that was taken off the page under them,
+ * with no click or outside key since? The Properties panel uses this to say
+ * that someone else deleted the mark being edited.
+ */
+export function typedFieldJustLeft(withinMs = 10000, now = Date.now()) {
+  return Boolean(lastField && lastField.isConnected === false && now - lastFieldKeyAt <= withinMs);
+}
+
+/** A click anywhere ends the orphan-typing grace. Exported for tests. */
+export function forgetTypingField() {
+  lastField = null;
+  lastFieldKeyAt = 0;
+}
+
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+  window.addEventListener('keydown', (event) => noteTypingKey(event?.target, Date.now(), event), true);
+  window.addEventListener('pointerdown', forgetTypingField, true);
 }

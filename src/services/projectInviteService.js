@@ -265,6 +265,41 @@ export async function acceptProjectInvite(token) {
 /**
  * Get active collaborators for a project.
  */
+/**
+ * Put each person's account name (and email, where the row has none) on
+ * project_collaborators rows, so team lists read "Cal Tester", not "qa-c" or
+ * "Teammate" (audit r5b #2, #5). Best effort: without the lookup the rows
+ * come back as they were.
+ */
+async function withPeopleNames(rows, projectIds) {
+  const ids = [...new Set((projectIds || []).filter(Boolean))];
+  if (!rows.length || !ids.length) return rows;
+  try {
+    const { data, error } = await supabase.rpc('project_people_names', { p_project_ids: ids });
+    if (error || !Array.isArray(data)) return rows;
+    const byUser = new Map(data.map((p) => [String(p.user_id), p]));
+    return rows.map((row) => {
+      const person = byUser.get(String(row.user_id));
+      if (!person) return row;
+      return { ...row, name: person.name || row.name || null, email: row.email || person.email || null };
+    });
+  } catch {
+    return rows;
+  }
+}
+
+/** The people of one project by user id: name and email (owner included). */
+export async function listProjectPeopleNames(projectIds) {
+  const ids = [...new Set((projectIds || []).filter(Boolean))];
+  if (!ids.length) return [];
+  try {
+    const { data, error } = await supabase.rpc('project_people_names', { p_project_ids: ids });
+    return error || !Array.isArray(data) ? [] : data;
+  } catch {
+    return [];
+  }
+}
+
 export async function getProjectCollaborators(projectId) {
   if (!projectId) return { data: [], error: null };
 
@@ -279,7 +314,7 @@ export async function getProjectCollaborators(projectId) {
     return { data: [], error };
   }
 
-  return { data: data || [], error: null };
+  return { data: await withPeopleNames(data || [], [projectId]), error: null };
 }
 
 /**
@@ -302,7 +337,7 @@ export async function listProjectCollaboratorsForProjects(projectIds) {
     return { data: [], error };
   }
 
-  return { data: data || [], error: null };
+  return { data: await withPeopleNames(data || [], ids), error: null };
 }
 
 const NOT_ALLOWED_MESSAGE = 'Only a project owner can change or remove people.';

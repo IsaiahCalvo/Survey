@@ -81,7 +81,8 @@ for (const layout of LAYOUTS) {
         content_sha256: crypto.createHash('sha256').update(bytes).digest('hex'),
       }));
       await must('collab', admin.from('project_collaborators').insert({ project_id: projectId, user_id: editorId, role: 'editor', status: 'active', email: E2E_ACCOUNTS.editor.email }));
-      const editorName = E2E_ACCOUNTS.editor.email.split('@')[0];
+      // Team lists show the account name, not the email's first part (r5b #2/#5).
+      const editorName = 'Eddie Editor';
 
       await page.addInitScript(() => { localStorage.setItem('survey.flag.project-issues', '1'); });
       try {
