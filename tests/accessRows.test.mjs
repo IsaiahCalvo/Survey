@@ -50,3 +50,19 @@ test('Manage Access and Manage Team both build their pending rows through access
   const team = readFileSync(new URL('../src/home/ManageTeamModal.jsx', import.meta.url), 'utf8');
   assert.match(team, /visibleOpenInvites\(invites, memberList\)/);
 });
+
+test('r5b #8: project access rows: team roles, owners, no repeats of document members', async () => {
+  const { projectAccessRows } = await import('../src/home/accessRows.js');
+  const rows = projectAccessRows({
+    team: [
+      { user_id: 'v', role: 'viewer', email: 'v@x' },
+      { user_id: 'e', role: 'editor', name: 'Eddie', email: 'e@x' },
+      { user_id: 'd', role: 'editor', email: 'd@x' },
+    ],
+    people: [{ user_id: 'o', name: 'Olive', email: 'o@x' }, { user_id: 'e', name: 'Eddie', email: 'e@x' }, { user_id: 'me', name: 'Doc owner' }],
+    projectName: 'Bellmawr',
+    exclude: ['d', 'me', null],
+  });
+  assert.deepEqual(rows.map((r) => [r.user_id, r.role, r.projectName]), [['o', 'owner', 'Bellmawr'], ['e', 'editor', 'Bellmawr'], ['v', 'viewer', 'Bellmawr']]);
+  assert.deepEqual(projectAccessRows(), []);
+});

@@ -161,3 +161,31 @@ export function cleanInviteMessage(raw) {
     .slice(0, INVITE_MESSAGE_MAX)
     .trim();
 }
+
+/**
+ * r5b #8: the people who reach a document through its project, one row each:
+ * its active collaborators with their project role, and project owners (in
+ * `people` with no collaborator row). `exclude` drops anyone already listed
+ * for the document itself (its own members and its owner).
+ */
+export function projectAccessRows({ team = [], people = [], projectName = '', exclude = [] } = {}) {
+  const skip = new Set((exclude || []).filter(Boolean));
+  const named = new Map((people || []).filter((p) => p?.user_id).map((p) => [p.user_id, p]));
+  const rows = [];
+  const seen = new Set();
+  for (const c of team || []) {
+    const id = c?.user_id;
+    if (!id || skip.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    const who = named.get(id);
+    rows.push({ user_id: id, role: norm(c.role) || 'viewer', name: c.name || who?.name || '', email: c.email || who?.email || '', projectName });
+  }
+  for (const p of people || []) {
+    const id = p?.user_id;
+    if (!id || skip.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    rows.push({ user_id: id, role: 'owner', name: p.name || '', email: p.email || '', projectName });
+  }
+  const rank = { owner: 0, editor: 1, commenter: 2, viewer: 3 };
+  return rows.sort((a, b) => (rank[a.role] ?? 9) - (rank[b.role] ?? 9) || String(a.name || a.email).localeCompare(String(b.name || b.email)));
+}
