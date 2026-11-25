@@ -178,6 +178,7 @@ const PDFSidebar = React.forwardRef(({
   onCurrentMatchIndexChange,
   onDuplicatePage,
   onInsertBlankPage,
+  onInsertTemplatePage,
   onDeletePage,
   onCutPage,
   onCopyPage,
@@ -1186,6 +1187,7 @@ const PDFSidebar = React.forwardRef(({
                 onNavigateToPage={onNavigateToPage}
                 onDuplicatePage={onDuplicatePage}
                 onInsertBlankPage={onInsertBlankPage}
+                onInsertTemplatePage={onInsertTemplatePage}
                 onDeletePage={onDeletePage}
                 onCutPage={onCutPage}
                 onCopyPage={onCopyPage}
