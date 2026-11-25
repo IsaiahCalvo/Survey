@@ -70,6 +70,30 @@ export function releasedOnChrome(event) {
   return Boolean(el?.closest?.(CHROME));
 }
 
+/**
+ * Pick the text selection an action should act on (#1693).
+ * A finished drag (`preferLive`) always captures fresh from the DOM rather
+ * than letting a stale selected text-markup annotation or lagging render state
+ * hijack the drag. Even for non-drag clicks, the synchronous ref wins over
+ * lagging React state.
+ */
+export function resolveTextSelectionForAction({
+  preferLive = false,
+  selectedMarkup = null,
+  selectedMarkupSelection = null,
+  liveSelectionRef = null,
+  liveSelectionState = null,
+  captureLive = null,
+} = {}) {
+  if (preferLive) {
+    return captureLive?.() || liveSelectionRef || liveSelectionState || null;
+  }
+  if (selectedMarkup?.data?.type === 'text-markup') {
+    return selectedMarkupSelection || null;
+  }
+  return liveSelectionRef || captureLive?.() || liveSelectionState || null;
+}
+
 export function useTextHighlightMode({ on, wrapperRef, kind = 'highlight', paint, getSelection, apply }) {
   const latest = useRef({ getSelection, apply });
   latest.current = { getSelection, apply };

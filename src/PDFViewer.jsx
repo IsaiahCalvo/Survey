@@ -437,7 +437,7 @@ import { EQUATION_EDIT_EVENT, EQUATION_OPEN_EVENT, applyEquationEdit, selectedEq
 import { AUDIO_NOTE_OPEN_EVENT, AUDIO_NOTE_PLAY_EVENT, selectedAudioOf } from './utils/audioNote.js';
 import SnapshotTool from './components/SnapshotTool.jsx';
 import PageTemplatePicker from './components/PageTemplatePicker.jsx';
-import { useTextHighlightMode, textDragKindOf } from './hooks/useTextHighlightMode.js';
+import { useTextHighlightMode, textDragKindOf, resolveTextSelectionForAction } from './hooks/useTextHighlightMode.js';
 import { buildTextMarkupRemoveTransaction } from './utils/textMarkupRemove.js';
 import { selectPageMarkup } from './services/thumbnailRender.js';
 import { announceLocalMarkEdit } from './utils/localMarkEdit.js';
@@ -36374,12 +36374,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   }, [liveTextSelectionActionSelection, selectedTextMarkupActionSelection, textMarkupPaintByType]);
 
   const handleTextSelectionAction = useCallback(async (action, options = {}) => {
-    const selectedMarkup = ['select', 'text-select'].includes(activeTool)
+    const selectedMarkup = !options.preferLiveSelection && ['select', 'text-select'].includes(activeTool)
       ? selectedToolbarAnnotationRef.current?.annotation
       : null;
-    const selection = selectedMarkup?.data?.type === 'text-markup'
-      ? selectedTextMarkupActionSelection
-      : (liveTextSelectionActionSelection || liveTextSelectionRef.current || capturePdfjsTextSelection());
+    const selection = resolveTextSelectionForAction({
+      preferLive: Boolean(options.preferLiveSelection),
+      selectedMarkup,
+      selectedMarkupSelection: selectedTextMarkupActionSelection,
+      liveSelectionRef: liveTextSelectionRef.current,
+      liveSelectionState: liveTextSelectionActionSelection,
+      captureLive: capturePdfjsTextSelection,
+    });
     if (!selection) return;
     const markupType = action;
     if (!['highlight', 'underline', 'squiggly', 'strikeout', 'link', 'redact'].includes(markupType)) return;
@@ -36585,11 +36590,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         }),
         activeRegionId,
       }));
-    const toggleOff = buildTextMarkupRangeToggleOffTransaction(
-      annotationsByPageRef.current || {},
-      annotations,
-      markupType,
-    );
+    const toggleOff = options.allowToggleOff !== false
+      ? buildTextMarkupRangeToggleOffTransaction(
+        annotationsByPageRef.current || {},
+        annotations,
+        markupType,
+      )
+      : null;
     if (toggleOff && markupType !== 'link') {
       const committed = commitTextMarkupDocumentTransaction(toggleOff, {
         source: 'text-markup:toggle-off-live-selection',
@@ -36706,7 +36713,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     },
     apply: () => (textDragKind === 'remove'
       ? handleTextSelectionRemove({ keepSelection: false })
-      : handleTextSelectionAction(textDragKind, { keepSelection: false })),
+      : handleTextSelectionAction(textDragKind, { keepSelection: false, preferLiveSelection: true, allowToggleOff: false })),
   });
   const handleTextSelectionCopy = useCallback(async (selection) => {
     const copied = await copyTextSelection(selection?.text);
