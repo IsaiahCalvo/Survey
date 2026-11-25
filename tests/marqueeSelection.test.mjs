@@ -170,6 +170,60 @@ test('resolveMarqueeHits crossing mode touches one text-range quad', () => {
   assert.deepEqual(annotationIndices, [0]);
 });
 
+test('resolveMarqueeHits window mode selects enclosed text-markups (underline, strikeout, squiggly, highlight)', () => {
+  const mk = (id, markupType, left, top, right, bottom, type = 'path') => ({
+    id,
+    type,
+    left,
+    top,
+    width: right - left,
+    height: bottom - top,
+    data: {
+      id,
+      type: 'text-markup',
+      markupType,
+      quads: [{ x1: left, y1: top, x2: right, y2: top, x3: left, y3: bottom, x4: right, y4: bottom }],
+    },
+  });
+  const objects = [
+    mk('u1', 'underline', 20, 20, 60, 32, 'group'),
+    mk('s1', 'strikeout', 20, 40, 70, 52, 'path'),
+    mk('q1', 'squiggly', 20, 60, 65, 72, 'path'),
+    mk('h1', 'highlight', 20, 80, 75, 92, 'group'),
+    mk('outside', 'strikeout', 200, 20, 260, 32, 'path'),
+  ];
+  // Full L->R window encloses indices 0..3, misses index 4
+  const full = resolveMarqueeHits({
+    marqueeRect: { left: 10, top: 10, right: 90, bottom: 100 },
+    direction: 'window',
+    annotations: { objects },
+    callouts: [],
+    pageWidth: 400,
+    pageHeight: 200,
+  });
+  assert.deepEqual(full.annotationIndices, [0, 1, 2, 3]);
+  // Partial L->R window only clips the right edge of index 1 -> must NOT select it
+  const partial = resolveMarqueeHits({
+    marqueeRect: { left: 10, top: 35, right: 50, bottom: 58 },
+    direction: 'window',
+    annotations: { objects },
+    callouts: [],
+    pageWidth: 400,
+    pageHeight: 200,
+  });
+  assert.deepEqual(partial.annotationIndices, []);
+  // Snug L->R window around the visible squiggle line at y=72 (below letter top y=60) selects it
+  const snugSquiggle = resolveMarqueeHits({
+    marqueeRect: { left: 15, top: 68, right: 70, bottom: 76 },
+    direction: 'window',
+    annotations: { objects },
+    callouts: [],
+    pageWidth: 400,
+    pageHeight: 200,
+  });
+  assert.deepEqual(snugSquiggle.annotationIndices, [2]);
+});
+
 test('resolveMarqueeHits crossing mode: unfilled rect blank interior is not selected', () => {
   const marquee = { left: 40, top: 40, right: 60, bottom: 60 };
   const annotations = {
