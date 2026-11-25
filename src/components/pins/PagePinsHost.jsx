@@ -31,6 +31,7 @@ import {
   mentionsInText,
   notifyCommentMentions,
   personLabel,
+  setMarkCommentResolved,
   updatePagePin,
 } from '../../services/markComments.js';
 import { getPagePinsState, setPagePinsState, usePagePins } from '../../services/pagePinsStore.js';
@@ -419,7 +420,7 @@ function PinComposer({ draft, people, coarse, onSave, onDiscard }) {
   );
 }
 
-function PinCard({ pin, replies, people, userId, canWrite, panelOn, documentId, onClose, onEditBody, onDelete, onReply, onStatus, onDeleteReply }) {
+function PinCard({ pin, replies, people, userId, canWrite, panelOn, documentId, onClose, onEditBody, onDelete, onReply, onStatus, onDeleteReply, onResolve }) {
   const tip = useTooltip();
   const [pos, cardRef] = useBesideAnchor(pin.id, 360, true);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -428,6 +429,11 @@ function PinCard({ pin, replies, people, userId, canWrite, panelOn, documentId, 
   const author = people.find((p) => p.id === pin.authorId);
   const mine = Boolean(userId && pin.authorId === userId);
   const title = pin.kind === 'comment' ? 'Comment' : pinCode(pin);
+  // r5b #17/#18: a comment pin resolves and reopens from its own card, and a
+  // resolved one says so (no reply box until it is reopened).
+  const resolvedAt = pin.kind === 'comment' ? pin.comment?.resolvedAt || null : null;
+  const resolvedBy = resolvedAt ? pin.comment?.resolvedBy || null : null;
+  const resolver = resolvedBy ? people.find((p) => p.id === resolvedBy) : null;
   const copyLink = async (id) => {
     setMenuOpen(false);
     try {
@@ -471,6 +477,9 @@ function PinCard({ pin, replies, people, userId, canWrite, panelOn, documentId, 
               {mine && canWrite && (
                 <button type="button" role="menuitem" style={{ ...textBtn, display: 'block', width: '100%', textAlign: 'left', color: 'var(--text-1)' }} onClick={() => { setMenuOpen(false); setEditing(true); }}>Edit</button>
               )}
+              {pin.kind === 'comment' && canWrite && onResolve && (
+                <button type="button" role="menuitem" data-pin-card-resolve="true" style={{ ...textBtn, display: 'block', width: '100%', textAlign: 'left', color: 'var(--text-1)' }} onClick={() => { setMenuOpen(false); onResolve(!resolvedAt); }}>{resolvedAt ? 'Reopen' : 'Resolve'}</button>
+              )}
               <button type="button" role="menuitem" style={{ ...textBtn, display: 'block', width: '100%', textAlign: 'left', color: 'var(--text-1)' }} onClick={() => copyLink(pin.id)}>Copy Link</button>
               {canWrite && (mine || !pin.authorId) && (
                 <button type="button" role="menuitem" style={{ ...textBtn, display: 'block', width: '100%', textAlign: 'left', color: 'var(--danger, #d14343)' }} onClick={() => { setMenuOpen(false); onDelete(); }}>Delete</button>
@@ -512,7 +521,15 @@ function PinCard({ pin, replies, people, userId, canWrite, panelOn, documentId, 
           })}
         </div>
       )}
-      {canWrite && (
+      {resolvedAt && (
+        <div data-pin-card-resolved="true" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-3)', margin: '0 0 2px 32px' }}>
+          <span>Resolved{resolvedBy ? ` by ${resolvedBy === userId ? 'you' : personLabel(resolver)}` : ''} · {timeLabel(resolvedAt)}</span>
+          {canWrite && onResolve && (
+            <button type="button" style={{ ...textBtn, padding: '0 4px', color: 'var(--text-1)' }} data-pin-card-reopen="true" onClick={() => onResolve(false)}>Reopen</button>
+          )}
+        </div>
+      )}
+      {canWrite && !resolvedAt && (
         <PinTextBox people={people} placeholder="Add a reply" enterSaves onSubmit={onReply} minHeight={32} />
       )}
     </div>,
@@ -692,6 +709,24 @@ export default function PagePinsHost({
               showToast(err?.message || 'Could not post the reply');
               return false;
             }
+          }}
+          onResolve={async (resolved) => {
+            const pinId = openPin.id;
+            const run = async (next, quiet) => {
+              try {
+                applyLocal(await setMarkCommentResolved(supabase, { commentId: pinId, resolved: next }));
+                // A resolved pin hides; its card goes with it.
+                if (next) setPagePinsState((s) => (s.openId === pinId ? { openId: null } : null));
+                if (!quiet) {
+                  showToast(next ? 'Comment resolved' : 'Comment reopened', 'success', {
+                    action: { label: 'Undo', onClick: () => { run(!next, true); } },
+                  });
+                }
+              } catch (err) {
+                showToast(err?.message || (next ? 'Could not resolve the comment' : 'Could not reopen the comment'));
+              }
+            };
+            await run(resolved, false);
           }}
           onDeleteReply={async (reply) => {
             try { applyLocal(await deleteMarkComment(supabase, reply.id)); } catch (err) { showToast(err?.message || 'Could not delete the reply'); }
