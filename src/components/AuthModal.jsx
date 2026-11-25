@@ -19,7 +19,7 @@ import Icon from '../Icons';
 import './AuthModal.css';
 import { isGoogleSignInHidden } from '../utils/accountPlatform';
 import { isFeatureOn } from '../featureFlags.js';
-import { companyDomainFrom, companySignInErrorMessage, clearCompanySignInRequired, companySignInOfferMessage, companySignInRequiredMessage, peekCompanySignInRequired } from '../utils/companySignIn.js';
+import { companyDomainFrom, companySignInErrorMessage, clearCompanySignInRequired, companySignInOfferMessage, companySignInRequiredMessage, noteCompanySignInAttempt, peekCompanySignInRequired, takeCompanySignInFailure } from '../utils/companySignIn.js';
 import { companySignInForEmail, ssoRequiredForEmail } from '../services/companyService.js';
 import { termsAcceptance } from '../legal/legalVersions';
 import { SUITE_ACCOUNT_NAME, SUITE_APPS_LINE } from '../suite/suiteName.js';
@@ -97,6 +97,17 @@ export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' })
     }, 1000);
     return () => clearInterval(intervalId);
   }, [resendLastSentAt]);
+
+  // Back from a company sign-in that failed: open on company sign-in and say
+  // why, instead of the plain form with the reason hidden in the address.
+  useEffect(() => {
+    if (!isOpen) return;
+    const failure = takeCompanySignInFailure();
+    if (!failure) return;
+    setMode('sso');
+    if (failure.domain) setSsoDomain(failure.domain);
+    setError(failure.message);
+  }, [isOpen]);
 
   // Signed out because the company requires its own sign-in: open on
   // company sign-in and say why.
@@ -193,6 +204,7 @@ export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' })
         const domain = companyDomainFrom(ssoDomain);
         if (!domain) throw new Error('Enter your work email or company domain, like acme.com.');
         try {
+          noteCompanySignInAttempt(domain);
           await signInWithSSO(domain, captchaToken);
         } catch (ssoError) {
           throw new Error(companySignInErrorMessage(ssoError, domain));

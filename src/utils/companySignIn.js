@@ -66,3 +66,52 @@ export const companySignInOfferMessage = (domain) =>
 
 export const companySignInRequiredMessage = (domain) =>
   `${domain ? `${domain} asks` : 'Your company asks'} you to sign in with your work account. Continue with company SSO below.`;
+
+// A company sign-in that fails at Supabase comes back to the app with the
+// reason only in the address (`?error_code=saml_assertion_no_email&...`), and
+// the form looked as if nothing had happened. The form remembers the domain
+// before it leaves, then reads, explains and removes the reason on return.
+const ATTEMPT_KEY = 'survey.companySignInAttempt';
+
+export function noteCompanySignInAttempt(domain) {
+  try { sessionStorage.setItem(ATTEMPT_KEY, domain || ''); } catch { /* storage off */ }
+}
+
+const FAILURE_PARAMS = ['error', 'error_code', 'error_description'];
+
+function failureMessage(code, description) {
+  if (code === 'saml_assertion_no_email' || /does not contain an email/i.test(description)) {
+    return "Your company's sign-in didn't send your email address to Survey. Ask your IT team to include the email claim, then try again.";
+  }
+  if (/relaystate has expired|try logging in again/i.test(description)) {
+    return 'Company sign-in took too long to finish. Please try again.';
+  }
+  return `Company sign-in didn't finish${description ? `: ${description}` : '.'} Please try again.`;
+}
+
+/**
+ * The company sign-in failure in this address, or null. Only a SAML/SSO error,
+ * or any error right after this tab started company sign-in, counts. Removes
+ * the reason from the address so a reload doesn't show it again.
+ * @returns {{ domain: string, message: string } | null}
+ */
+export function takeCompanySignInFailure(win = typeof window !== 'undefined' ? window : null) {
+  if (!win?.location) return null;
+  let attempt = null;
+  try { attempt = win.sessionStorage?.getItem(ATTEMPT_KEY) ?? null; } catch { /* storage off */ }
+  const url = new URL(win.location.href);
+  const hash = new URLSearchParams(url.hash.replace(/^#/, ''));
+  const from = url.searchParams.has('error_code') || url.searchParams.has('error') ? url.searchParams : hash;
+  const code = from.get('error_code') || '';
+  const description = from.get('error_description') || '';
+  if (!code && !from.get('error')) return null;
+  const isCompany = /^(saml|sso)_/.test(code) || /saml|sso/i.test(description);
+  if (!isCompany && attempt === null) return null;
+  for (const key of FAILURE_PARAMS) { url.searchParams.delete(key); hash.delete(key); }
+  const rest = hash.toString();
+  try {
+    win.history?.replaceState?.(win.history.state, '', `${url.pathname}${url.search}${rest ? `#${rest}` : ''}`);
+  } catch { /* history off */ }
+  try { win.sessionStorage?.removeItem(ATTEMPT_KEY); } catch { /* storage off */ }
+  return { domain: attempt || '', message: failureMessage(code, description) };
+}

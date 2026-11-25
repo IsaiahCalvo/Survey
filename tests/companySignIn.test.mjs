@@ -72,3 +72,30 @@ test('a failed password on a company-sign-in email moves the form to company sig
   assert.doesNotMatch(migration, /require_sso/, 'offered whether or not the company requires it');
   assert.match(migration, /grant execute on function public\.company_sign_in_for_email\(text\) to anon/);
 });
+
+function fakeWindow(href, attempt) {
+  const store = new Map(attempt == null ? [] : [['survey.companySignInAttempt', attempt]]);
+  const win = {
+    location: { href },
+    sessionStorage: { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, v), removeItem: (k) => store.delete(k) },
+    history: { state: null, replaceState: (_s, _t, next) => { win.replaced = next; } },
+  };
+  return win;
+}
+
+test('a failed company sign-in comes back with a plain reason and a clean address', async () => {
+  const { takeCompanySignInFailure } = await import('../src/utils/companySignIn.js');
+  const win = fakeWindow('https://surveytool.app/?error=invalid_request&error_code=saml_assertion_no_email&error_description=SAML+Assertion+does+not+contain+an+email+address', 'acme.com');
+  const failure = takeCompanySignInFailure(win);
+  assert.equal(failure.domain, 'acme.com');
+  assert.match(failure.message, /didn't send your email address/);
+  assert.equal(win.replaced, '/');
+  assert.equal(win.sessionStorage.getItem('survey.companySignInAttempt'), null);
+  assert.equal(takeCompanySignInFailure(fakeWindow('https://surveytool.app/?tab=1')), null);
+  // An unrelated error with no company sign-in under way is left alone.
+  assert.equal(takeCompanySignInFailure(fakeWindow('https://surveytool.app/#error=access_denied&error_code=otp_expired')), null);
+  const late = takeCompanySignInFailure(fakeWindow('https://surveytool.app/?x=2#error=server_error&error_description=SAML+RelayState+has+expired.+Try+logging+in+again%3F', ''));
+  assert.match(late.message, /took too long/);
+  assert.match(AUTH_MODAL_SOURCE, /noteCompanySignInAttempt\(domain\);\s*await signInWithSSO/);
+  assert.match(AUTH_MODAL_SOURCE, /takeCompanySignInFailure\(\)/);
+});

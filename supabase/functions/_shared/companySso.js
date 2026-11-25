@@ -63,3 +63,26 @@ export function signOnErrorText(status, body) {
   if (/metadata/i.test(msg)) return `Survey could not read the sign-on details: ${msg}`;
   return msg ? `Company sign-in could not be connected: ${msg}` : 'Company sign-in could not be connected. Try again.';
 }
+
+// Where Survey finds the person's email and name in a company's SAML answer.
+// Supabase reads only the attribute names it is told. Entra (Microsoft) sends
+// the email under the long "emailaddress" claim name, Google and Okta under
+// short ones; without this map Entra sign-ins fail with
+// saml_assertion_no_email. The first name present wins.
+export const SAML_ATTRIBUTE_MAPPING = Object.freeze({
+  keys: {
+    email: {
+      names: [
+        'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress',
+        'email',
+        'mail',
+        'Email',
+        'urn:oid:0.9.2342.19200300.100.1.3',
+        'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn',
+      ],
+    },
+    given_name: { names: ['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname', 'given_name', 'firstName', 'urn:oid:2.5.4.42'] },
+    family_name: { names: ['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname', 'family_name', 'lastName', 'urn:oid:2.5.4.4'] },
+    name: { names: ['http://schemas.microsoft.com/identity/claims/displayname', 'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name', 'name', 'displayName'] },
+  },
+});
