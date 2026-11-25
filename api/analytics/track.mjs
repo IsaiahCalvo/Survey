@@ -2,6 +2,8 @@ const COLLECTOR_URL = 'https://analytics.agent-native.com/api/analytics/track';
 const PRODUCTION_ORIGINS = new Set([
   'https://surveytool.app',
   'https://www.surveytool.app',
+  // Survey Nightly, a preview alias of the same Vercel project.
+  'https://surveytool-nightly.vercel.app',
 ]);
 const MAX_BODY_BYTES = 32 * 1024;
 const MAX_EVENTS_PER_MINUTE = 60;

@@ -64,7 +64,10 @@ export const resolveSurveyAnalyticsEndpoint = (locationLike = globalThis.window?
   const hostname = String(locationLike?.hostname || '').toLowerCase();
   const isOfficialOrigin = locationLike?.protocol === 'https:'
     && !locationLike?.port
-    && (hostname === 'surveytool.app' || hostname === 'www.surveytool.app');
+    && (hostname === 'surveytool.app' || hostname === 'www.surveytool.app'
+      // Nightly is the same Vercel project, so it has its own proxy route; a
+      // call to surveytool.app from here is cross-origin and CORS blocks it.
+      || hostname === 'surveytool-nightly.vercel.app');
   if (isOfficialOrigin) return DEFAULT_ENDPOINT;
   return HOSTED_PROXY_ENDPOINT;
 };

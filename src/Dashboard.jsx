@@ -1345,6 +1345,16 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         return;
       }
       await uploadBrowserPdf(file, { projectId, openAfterUpload });
+    } else if (file) {
+      // A picker can still hand back another kind of file (a .kvjob, or "All
+      // files" chosen in the dialog). Say where it goes instead of doing nothing.
+      const isJobFile = /\.kvjob$/i.test(String(file.name || ''));
+      showToast(
+        isJobFile && suiteOn
+          ? 'A job file goes into a Project: open a Project, then choose From a job file.'
+          : `Upload takes a PDF${photoUploadOn ? ' or a photo' : ''}.`,
+        'error',
+      );
     }
     // Reset input
     event.target.value = '';

@@ -2008,6 +2008,22 @@ export default function App({ devPreviewReturnTab = null }) {
     return () => window.removeEventListener(DEVICE_FILE_LEAVE_EVENT, onLeave);
   }, []);
 
+  // A different account signed in on this page without a reload (the old
+  // session was ended from another app or copy, then someone else signed in):
+  // the old account's documents must not stay open. Left open, the new
+  // account kept writing presence and marks to them and got 403s, and could
+  // read what the old account had on screen. A session that only lapses
+  // (no user, then the same user again) keeps its tabs.
+  const lastSignedInUserIdRef = useRef(null);
+  useEffect(() => {
+    if (!signedInUserId) return;
+    const previous = lastSignedInUserIdRef.current;
+    lastSignedInUserIdRef.current = signedInUserId;
+    if (!previous || previous === signedInUserId) return;
+    const ids = tabsRef.current.filter((t) => t.id !== HOME_TAB_ID).map((t) => t.id);
+    if (ids.length) closeTabsNowRef.current(ids);
+  }, [signedInUserId]);
+
   const requestCloseTabs = async (tabIds, action = 'close') => {
     const ids = (tabIds || []).filter((id) => id !== HOME_TAB_ID);
     if (!ids.length) return;
