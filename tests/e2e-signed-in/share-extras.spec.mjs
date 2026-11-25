@@ -6,7 +6,7 @@
 // iPhone and Android sizes, the phone app on iOS and Android.
 import crypto from 'node:crypto';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
-import { E2E_ACCOUNTS } from './accounts.mjs';
+import { E2E_ACCOUNTS, E2E_PROJECT } from './accounts.mjs';
 import { RUN, must } from './accountFixtures.mjs';
 import { adminClient, expect, test } from './helpers.mjs';
 
@@ -193,6 +193,42 @@ test.describe('Share extras, flag off', () => {
       const share = page.getByRole('dialog', { name: 'Share document' });
       await expect(share).toBeVisible();
       await expect(share.getByTestId('share-message')).toHaveCount(0);
+    } finally {
+      await doc.remove();
+    }
+  });
+});
+
+// Audit r5b #8: people on the document's project can open it too, so the
+// access list shows them (role from the project, "Via <project>") and counts
+// them, without a role menu of its own.
+test.describe('share dialog, project members', () => {
+  test.use({ viewport: { width: 1400, height: 900 } });
+  test('lists the project team as access via the project', async ({ page }) => {
+    test.setTimeout(120_000);
+    const admin = adminClient();
+    const ownerId = await userIdOf(admin, E2E_ACCOUNTS.owner);
+    const editorId = await userIdOf(admin, E2E_ACCOUNTS.editor);
+    const viewerId = await userIdOf(admin, E2E_ACCOUNTS.viewer);
+    const name = `SX project ${RUN}.pdf`;
+    const doc = await addDoc(admin, ownerId, name);
+    await must('in project', admin.from('documents').update({ project_id: E2E_PROJECT.id }).eq('id', doc.id).select('id'));
+    const { data: project } = await admin.from('projects').select('name').eq('id', E2E_PROJECT.id).single();
+    await page.addInitScript(() => localStorage.setItem('survey.flag.share-extras', '1'));
+    try {
+      await signInAt(page, E2E_ACCOUNTS.owner, '/');
+      const dialog = await openShare(page, { use: {}, phone: false }, name);
+      const via = dialog.locator('[data-kal31-row="project-member"]');
+      await expect(via).toHaveCount(2);
+      await expect.poll(() => via.evaluateAll((els) => els.map((e) => e.getAttribute('data-access-user')))).toEqual([editorId, viewerId]);
+      await expect(via.first()).toContainText('Eddie Editor');
+      await expect(via.first()).toContainText('Editor');
+      await expect(via.first().locator('[data-access-via]')).toHaveText(`Via ${project.name}`);
+      await expect(dialog.locator('[data-access-sort]')).toContainText('People (3)');
+      await via.first().getByRole('button', { name: 'More' }).click();
+      const menu = visible(page.locator('[data-access-menu-surface="true"]'));
+      await expect(menu.getByRole('menuitem')).toHaveCount(1);
+      await expect(menu.getByRole('menuitem', { name: 'Copy email' })).toBeVisible();
     } finally {
       await doc.remove();
     }

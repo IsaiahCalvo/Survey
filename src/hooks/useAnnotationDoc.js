@@ -70,6 +70,7 @@ import { isDeviceDocumentId } from '../services/deviceFiles.js';
 import { sealCutoverIfCovered } from '../services/legacyCutoverSeal.js';
 import { loadAllNonSurveyMarkerAnnotations } from '../services/annotationCloudSync.js';
 import { invalidateDocumentMetadata, resolveDocumentMetadata } from '../services/documentMetadataResolver.js';
+import { presentEditBlocked } from '../utils/viewOnlyRefusal.js';
 
 const SPACES_KEY = 'spaces';
 function livePreviewPublicChannelInDev() {
@@ -1880,6 +1881,7 @@ export function useAnnotationDoc({
   ), []);
 
   const clearEditBlocked = useCallback(() => { clearEditBlockedRef.current?.(); }, []);
+  const shown = presentEditBlocked({ editBlocked, syncStatus, docRole });
 
   return {
     initialHydration,
@@ -1897,11 +1899,11 @@ export function useAnnotationDoc({
     hasLocalStore,
     beginBulkImport,
     whenBulkImportSaved,
-    status: syncStatus,
+    status: shown.syncStatus,
     queueSize: syncQueueSize,
     liveMarkerOverlay,
     offlineCopy,
-    editBlocked,
+    editBlocked: shown.editBlocked,
     clearEditBlocked,
     rebaseOpeningEdits,
   };

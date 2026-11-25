@@ -29,6 +29,7 @@ import {
   resendDocumentInvite,
   buildInviteUrl,
 } from '../services/documentInviteService';
+import { getProjectCollaborators, listProjectPeopleNames } from '../services/projectInviteService';
 import {
   sendPermissionChangedEmail,
   sendAccessRemovedEmail,
@@ -36,7 +37,7 @@ import {
 import { copyTextToClipboard } from '../utils/clipboard';
 import { grantRememberedDocumentTemplates } from '../services/sharedTemplates.js';
 import { supabase } from '../supabaseClient';
-import { accessInviteRows, memberIdentity, withOwnerRow, sortAccessMembers, openedLabel } from './accessRows';
+import { accessInviteRows, memberIdentity, withOwnerRow, sortAccessMembers, openedLabel, projectAccessRows } from './accessRows';
 import AccessSortSelect from './AccessSortSelect.jsx';
 import { presenceInitials } from '../components/presenceIdentity.js';
 import { USER_INITIALS_INK, userColorFill } from '../utils/userColors.js';
@@ -132,6 +133,7 @@ function AccessRow({ rowProps, pending = false, avatar, primary, secondary, role
   );
 }
 
+const NO_VIA = Object.freeze([]);
 const NO_LIST = { documentId: null, members: [], invites: [], ownerProfile: null, activity: null };
 
 export default function AccessManagementModal({ open, onClose, kind = 'document', item = null, user = null }) {
@@ -154,6 +156,8 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
   const invites = fresh ? list.invites : NO_LIST.invites;
   const ownerProfile = fresh ? list.ownerProfile : null;
   const activity = fresh ? list.activity : null;
+  // r5b #8: people who reach this document through its project.
+  const viaProject = fresh ? (list.viaProject || NO_VIA) : NO_VIA;
   // Share dialog extras (Nightly flag share-extras): the owner always listed
   // first, "(you)" on your row, sort by Role / Name / Activity.
   const [extrasOn] = useState(() => isFeatureOn('share-extras'));
@@ -182,17 +186,30 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
     setLoading(true);
     setError('');
     try {
-      const [colRes, invRes, owner, opens] = await Promise.all([
+      const projectId = kind === 'document' ? (item?.project_id || null) : null;
+      const [colRes, invRes, owner, opens, projectTeam, projectPeople, projectRow] = await Promise.all([
         getDocumentCollaborators(documentId),
         listDocumentInvites(documentId),
         getDocumentOwnerProfile(documentId).catch(() => null),
         extrasOn
           ? Promise.resolve(supabase.rpc('get_document_member_activity', { doc_id: documentId })).catch(() => null)
           : null,
+        projectId ? getProjectCollaborators(projectId).catch(() => null) : null,
+        projectId ? listProjectPeopleNames([projectId]) : null,
+        projectId
+          ? Promise.resolve(supabase.from('projects').select('name').eq('id', projectId).maybeSingle()).catch(() => null)
+          : null,
       ]);
+      const docMembers = Array.isArray(colRes?.data) ? colRes.data : [];
       setList({
         documentId,
-        members: Array.isArray(colRes?.data) ? colRes.data : [],
+        members: docMembers,
+        viaProject: projectId ? projectAccessRows({
+          team: projectTeam?.data,
+          people: projectPeople,
+          projectName: projectRow?.data?.name || '',
+          exclude: [...docMembers.map((m) => m.user_id), item?.user_id, owner?.user_id],
+        }) : NO_VIA,
         invites: Array.isArray(invRes?.data) ? invRes.data : [],
         ownerProfile: owner || null,
         activity: Array.isArray(opens?.data)
@@ -205,7 +222,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
     } finally {
       setLoading(false);
     }
-  }, [documentId, extrasOn]);
+  }, [documentId, extrasOn, kind, item?.project_id, item?.user_id]);
 
   useEffect(() => {
     if (!open) return;
@@ -341,7 +358,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
 
           {extrasOn && (
             <div data-access-sort="" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '8px 18px', borderBottom: `1px solid ${C.rule}` }}>
-              <span style={{ fontSize: 12, fontWeight: 600 }}>People ({shownMembers.length})</span>
+              <span style={{ fontSize: 12, fontWeight: 600 }}>People ({shownMembers.length + viaProject.length})</span>
               <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: C.muted }}>
                 Sort by
                 <AccessSortSelect value={sortKey} onChange={setSortKey} />
@@ -363,7 +380,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
                 reopen, or after a change) keeps the rows where they are. */}
             {loading && !fresh && <div style={{ padding: '20px 12px', color: C.muted, fontSize: 12 }}>Loading collaborators…</div>}
 
-            {fresh && shownMembers.length === 0 && emailPending.length === 0 && activeLinks.length === 0 && (
+            {fresh && shownMembers.length === 0 && viaProject.length === 0 && emailPending.length === 0 && activeLinks.length === 0 && (
               <div style={{ padding: '20px 12px', color: C.muted, fontSize: 12 }}>No collaborators yet. Use Invite to add one.</div>
             )}
 
@@ -410,6 +427,36 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
                     } },
                     (extrasOn && docOwnerId && m.user_id === docOwnerId) ? null
                       : { label: 'Remove access', danger: true, disabled: busy, reason: isLastOwner ? 'At least one owner must remain' : null, onClick: () => handleRemove(m) },
+                  ]}
+                />
+              );
+            })}
+
+            {/* r5b #8: access through the project. Their role is changed on the
+                project's team, so the row only says where it comes from. */}
+            {viaProject.map((m) => {
+              const ident = identOf(m);
+              const menuKey = `p:${m.user_id}`;
+              return (
+                <AccessRow
+                  key={`via-${m.user_id}`}
+                  rowProps={{ 'data-kal31-row': 'project-member', 'data-kal31-role': m.role, 'data-access-user': m.user_id }}
+                  you={Boolean(currentUser?.id) && m.user_id === currentUser.id}
+                  avatar={{ text: initialsOf(ident.primary), background: colorFor(m.user_id || m.email), color: USER_INITIALS_INK }}
+                  primary={ident.primary}
+                  secondary={ident.secondary}
+                  role={roleLabel(m.role)}
+                  status={<span data-access-via="" style={{ color: 'var(--text-2)', fontWeight: 400 }}>{m.projectName ? `Via ${m.projectName}` : 'Via the project'}</span>}
+                  tip={tip}
+                  menuOpen={openMenu === menuKey}
+                  onMenu={() => setOpenMenu(openMenu === menuKey ? null : menuKey)}
+                  onCloseMenu={() => setOpenMenu(null)}
+                  menuItems={[
+                    { label: 'Copy email', disabled: !m.email, onClick: async () => {
+                      const result = await copyTextToClipboard(m.email, { surface: 'document_access_member_email' });
+                      if (result.ok) { setError(''); setStatus('Email copied.'); }
+                      else { setStatus(''); setError('Survey could not copy this email.'); }
+                    } },
                   ]}
                 />
               );

@@ -138,3 +138,28 @@ test('the owner\'s other window is told at once when the document goes to Archiv
     await doc.remove();
   }
 });
+
+test('made a Viewer after a refused change: no lasting error, even after reload (round 5 #19)', async ({ page }) => {
+  test.setTimeout(180_000);
+  const doc = await seedDocument('made viewer');
+  const admin = adminClient();
+  try {
+    await openAsEditor(page, doc.name);
+    const demote = await admin.from('document_collaborators').update({ role: 'viewer' }).eq('document_id', doc.id).eq('role', 'editor').select('id');
+    if (demote.error) throw demote.error;
+    // The server turns this mark down: the editor is a Viewer now.
+    await drawRect(page, 0.5, 0.6);
+    await expect(page.getByText('You can no longer edit this document. Your last change was not saved.').filter({ visible: true }).first()).toBeVisible({ timeout: 15_000 });
+
+    await page.reload();
+    await expect(page.locator(`${PAGE} canvas`).first()).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText('View-only access').filter({ visible: true }).first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('button', { name: /^Up to date/ }).filter({ visible: true }).first()).toBeVisible({ timeout: 30_000 });
+    await page.waitForTimeout(3_000);
+    await expect(page.getByText(/You can no longer edit this document/).filter({ visible: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /^Not saved/ }).filter({ visible: true })).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => document.body.getAttribute('data-readonly'))).toBe('true');
+  } finally {
+    await doc.remove();
+  }
+});
