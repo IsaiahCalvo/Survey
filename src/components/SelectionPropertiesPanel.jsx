@@ -24,6 +24,7 @@ import { useSelectedItems, viewerBounds } from './SelectionQuickBar.jsx';
 import { isFeatureOn } from '../featureFlags.js';
 import { typedFieldJustLeft } from '../utils/typingTarget.js';
 import { showToast } from '../utils/toast.js';
+import { publishChromeInset } from '../utils/chromeInsets.js';
 import { LINE_STYLE_SAMPLE_ICONS, lineStyleOptionsWith } from '../utils/lineStyleOptions.js';
 import { ARROWHEAD_MENU_ORDER, ARROWHEAD_SHORT_LABELS } from './Callout/types.js';
 import { LineEndingsPanel } from './LineEndingsPicker.jsx';
@@ -395,6 +396,14 @@ export default function SelectionPropertiesPanel({
   // Pinned, it docks beside the viewer and stays up with nothing picked.
   const docked = Boolean(flagOn && enabled && !phone && pinned && dockEl);
   const active = docked || (flagOn && enabled && !phone && open && picked.list.length > 0);
+
+  // r5b #13: the page notice (StorageFailureBanner) ends at this panel, so
+  // its Retry and close stay in reach: 260px docked, 260 + its 10px gap floating.
+  useEffect(() => {
+    if (!active) return undefined;
+    publishChromeInset('rightPanel', docked ? '260px' : '270px');
+    return () => publishChromeInset('rightPanel', null);
+  }, [active, docked]);
 
   // Sit on the right of the viewer, under the tool bar. Measured before paint,
   // so a panel just unpinned (no frame yet this session) never blinks out.

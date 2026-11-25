@@ -84,7 +84,11 @@ test('the notice keeps its z-index and stops at the right rail', () => {
   const banner = rule(css, '.storage-banner');
   // Its order among the document tab's own layers is unchanged.
   assert.equal(zOf(banner), 100020);
-  assert.match(banner, /right:\s*var\(--app-right-rail-width, 48px\);/);
+  // r5b #13: and at the Properties panel when it is up.
+  assert.match(banner, /right:\s*calc\(var\(--app-right-rail-width, 48px\) \+ var\(--app-right-panel-width, 0px\)\);/);
+  const props = read('src/components/SelectionPropertiesPanel.jsx');
+  assert.match(props, /publishChromeInset\('rightPanel', docked \? '260px' : '270px'\)/);
+  assert.match(props, /return \(\) => publishChromeInset\('rightPanel', null\)/);
   assert.match(banner, /left:\s*var\(--app-sidebar-width, 48px\);/);
   const rail = read('src/SurveySpacesRail.jsx');
   assert.match(rail, /publishChromeInset\('right', mobileMode \? '0px' : `\$\{desktopSurveyPanelShown \? 48 \+ 320 : 48\}px`\)/);
