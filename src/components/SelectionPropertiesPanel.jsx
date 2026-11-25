@@ -420,7 +420,30 @@ export default function SelectionPropertiesPanel({
     return () => window.removeEventListener('resize', place);
   }, [active, docked]);
 
-  // Callouts and Survey Markers are boxes in the page layer, not page objects.
+  // Callouts and Survey Markers are boxes in the page layer, not page objects,
+  // so their place is read from the drawn layer. A drag, an undo or another
+  // screen's move redraws them without changing the pick, so watch the
+  // layers they sit in and read again after each redraw (tester #1717: X/Y
+  // kept the moved place after an undo, and the old place after a drag).
+  const [layerTick, setLayerTick] = useState(0);
+  const boxPages = useMemo(() => [...new Set(picked.list
+    .filter((item) => item.typeKey === 'callout' || item.typeKey === 'surveyMarker')
+    .map((item) => item.pageNumber))], [picked.list]);
+  useEffect(() => {
+    if (!active || boxPages.length === 0 || typeof MutationObserver !== 'function') return undefined;
+    let frameId = 0;
+    const bump = () => {
+      if (frameId) return;
+      frameId = requestAnimationFrame(() => { frameId = 0; setLayerTick((n) => n + 1); });
+    };
+    const observer = new MutationObserver(bump);
+    for (const page of boxPages) {
+      const svg = document.querySelector(`svg[data-svg-annotation-layer="${page}"]`);
+      if (svg) observer.observe(svg, { attributes: true, childList: true, subtree: true });
+    }
+    bump();
+    return () => { observer.disconnect(); if (frameId) cancelAnimationFrame(frameId); };
+  }, [active, boxPages, annotationsByPage]);
   const extraBoxes = useMemo(() => {
     if (!active) return [];
     return picked.list
@@ -437,7 +460,9 @@ export default function SelectionPropertiesPanel({
         return { left: Math.min(a.x, b.x), top: Math.min(a.y, b.y), width: Math.abs(b.x - a.x), height: Math.abs(b.y - a.y) };
       })
       .filter(Boolean);
-  }, [active, picked.list]);
+    // layerTick: read again after the layer redraws (see above).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, picked.list, layerTick]);
 
   const transform = useMemo(
     () => (active ? readTransform(picked.objects, extraBoxes) : null),
