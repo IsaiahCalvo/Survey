@@ -173,3 +173,66 @@ test('KAL-779: the header offers Send back to Plot only on a Project a job came 
   const tree = readFileSync(new URL('../src/home/ProjectsFolderTree.jsx', import.meta.url), 'utf8');
   assert.match(tree, /onSendBackToPlot && isJobProject\(open\?\.id\)/);
 });
+
+test('#1594: field-added markers on a job page with no Plot-origin marker are included, not dropped as notPlaced', async () => {
+  const { jobPagesOf } = await import('../src/suite/jobReturn.js');
+  // Case 1: two separate PDFs (B01 has Plot-origin markers, B02 was empty when sent from Plot).
+  const twoPdfManifest = {
+    ...manifest,
+    pages: [
+      { pageId: 'B01', file: 'pages/B01.pdf', pageIndex: 0, widthPt: 1000, heightPt: 500, title: 'B01 First Floor', source: { app: 'plot', nativeId: 'sheet-1' } },
+      { pageId: 'B02', file: 'pages/B02.pdf', pageIndex: 0, widthPt: 1200, heightPt: 600, title: 'B02 Second Floor', source: { app: 'plot', nativeId: 'sheet-2' } },
+    ],
+  };
+  const doc1Markers = arrive();
+  const doc2Markers = {
+    'mk-b02': {
+      id: 'mk-b02', name: 'C-2-01', categoryId: 'c-cam', libraryEntryId: 'e-cam', suiteId: 'mk-b02',
+      pageNumber: 1, bounds: { x: 295, y: 145, width: 10, height: 10 }, location: 'Hall 2',
+    },
+  };
+  const docs = [
+    { documentId: 'doc-1', name: 'Hoboken - B01 First Floor.pdf', markers: doc1Markers },
+    { documentId: 'doc-2', name: 'Hoboken - B02 Second Floor.pdf', markers: doc2Markers },
+  ];
+  const pagesMap = jobPagesOf(docs, twoPdfManifest);
+  assert.equal(pagesMap.get('doc-2\x001')?.pageId, 'B02');
+
+  const { manifest: back, counts } = buildReturnManifest({
+    manifest: twoPdfManifest,
+    documents: docs,
+    libraryOf: (m) => (m.categoryId === 'c-cam' ? { categoryName: 'Camera' } : null),
+  });
+  assert.equal(counts.added, 1);
+  assert.equal(counts.notPlaced, 0);
+  const added = back.items.find((i) => i.suiteId === 'mk-b02');
+  assert.equal(added?.pageId, 'B02');
+  assert.deepEqual(added?.position, { x: 0.25, y: 0.25 });
+
+  // Case 2: multi-page single PDF where page 1 has Plot-origin markers and page 2 has a field-added marker.
+  const multiPageManifest = {
+    ...manifest,
+    pages: [
+      { pageId: 'B01', file: 'pages/set.pdf', pageIndex: 0, widthPt: 1000, heightPt: 500, title: 'B01 First Floor', source: { app: 'plot', nativeId: 'sheet-1' } },
+      { pageId: 'B02', file: 'pages/set.pdf', pageIndex: 1, widthPt: 1200, heightPt: 600, title: 'B02 Second Floor', source: { app: 'plot', nativeId: 'sheet-2' } },
+    ],
+  };
+  const combinedMarkers = {
+    ...arrive(),
+    'mk-p2': {
+      id: 'mk-p2', name: 'C-2-02', categoryId: 'c-cam', libraryEntryId: 'e-cam', suiteId: 'mk-p2',
+      pageNumber: 2, bounds: { x: 595, y: 295, width: 10, height: 10 },
+    },
+  };
+  const res2 = buildReturnManifest({
+    manifest: multiPageManifest,
+    documents: [{ documentId: 'doc-set', markers: combinedMarkers }],
+    libraryOf: (m) => (m.categoryId === 'c-cam' ? { categoryName: 'Camera' } : null),
+  });
+  assert.equal(res2.counts.added, 1);
+  assert.equal(res2.counts.notPlaced, 0);
+  const added2 = res2.manifest.items.find((i) => i.suiteId === 'mk-p2');
+  assert.equal(added2?.pageId, 'B02');
+  assert.deepEqual(added2?.position, { x: 0.5, y: 0.5 });
+});
+

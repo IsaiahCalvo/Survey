@@ -2222,21 +2222,22 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
           import('./services/annotationDocSync.js'),
         ]);
         const { manifest, zip } = await open(file);
-        const { data: rows, error } = await supabase.from('documents').select('id').eq('project_id', project.id).eq('archived', false);
+        const { data: rows, error } = await supabase.from('documents').select('id, name').eq('project_id', project.id).eq('archived', false);
         if (error) throw new Error('Could not read the Project\'s drawings.');
         const documents = [];
         const marksByDoc = new Map();
         for (const row of rows || []) {
           const handle = await openAnnotationDoc({ documentId: row.id, supabase, actorUserId: user.id, enableRealtime: false });
           try {
-            documents.push({ documentId: row.id, markers: handle.getSurveyMarkers() || {} });
+            documents.push({ documentId: row.id, name: row.name || '', markers: handle.getSurveyMarkers() || {} });
             marksByDoc.set(row.id, handle.getByPage() || {});
           } finally {
             if (typeof handle.destroy === 'function') await handle.destroy();
           }
         }
         const markups = [];
-        for (const at of ret.jobPagesOf(documents).values()) {
+        const matchedPages = ret.jobPagesOf(documents, manifest);
+        for (const at of matchedPages.values()) {
           const marks = marksByDoc.get(at.documentId)?.[at.pageNumber] || [];
           markups.push(...ret.markupsFromPage(marks, { pageId: at.pageId, page: at.page }));
         }
@@ -2250,7 +2251,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
           return null;
         };
         const { manifest: back, counts } = ret.buildReturnManifest({ manifest, documents, markups, libraryOf: categoryName });
-        if (!documents.some((d) => Object.values(d.markers).some((m) => m?.suiteOrigin))) {
+        if (matchedPages.size === 0 && !documents.some((d) => Object.values(d.markers).some((m) => m?.suiteOrigin))) {
           showToast('Nothing in this Project came from that job file, so there is nothing to send back.', 'error');
           return;
         }
@@ -2269,6 +2270,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
           counts.relocated && `${counts.relocated} with a new Location`,
           counts.added && `${counts.added} added`,
           counts.markups && `${counts.markups} red ${counts.markups === 1 ? 'line' : 'lines'}`,
+          counts.notPlaced && `${counts.notPlaced} not on a job page`,
         ].filter(Boolean);
         showToast(parts.length ? `Saved for Plot: ${parts.join(', ')}.` : 'Saved for Plot. Nothing changed in the field.', 'success');
       } catch (err) {
