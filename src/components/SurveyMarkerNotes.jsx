@@ -159,9 +159,13 @@ function SurveyNoteField({ text, onSave, variant, autoFocus, onAutoFocused, read
   // so does leaving the app.
   useEffect(() => {
     const onHide = () => { if (document.visibilityState === 'hidden') commit(); };
+    // A reload or a closed tab while typing keeps the words too.
+    const onLeave = () => commit();
     document.addEventListener('visibilitychange', onHide);
+    window.addEventListener('pagehide', onLeave);
     return () => {
       document.removeEventListener('visibilitychange', onHide);
+      window.removeEventListener('pagehide', onLeave);
       window.clearTimeout(savedTimerRef.current);
       commit();
     };
@@ -193,6 +197,14 @@ function SurveyNoteField({ text, onSave, variant, autoFocus, onAutoFocused, read
               }
             }}
             onKeyDown={(event) => {
+              // Enter saves the note and leaves the field, the same as
+              // clicking away; Shift+Enter starts a new line (tester #1716:
+              // a note ended with Enter stayed unsaved and a reload lost it).
+              if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent?.isComposing && !readOnly) {
+                event.preventDefault();
+                event.currentTarget.blur();
+                return;
+              }
               if (event.key === 'Escape') {
                 event.stopPropagation();
                 setDraft(savedRef.current);
