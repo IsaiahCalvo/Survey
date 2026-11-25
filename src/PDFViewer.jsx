@@ -22553,6 +22553,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   useEffect(() => {
     if (!editBlockedReason || !isActive) return undefined;
     const release = claimBodyReadOnly('annotation-edit-blocked');
+    // Made a Viewer: the View-only banner says so; no lasting error (#19).
+    if (editBlockedReason === 'view-only') return release;
     const text = {
       archived: 'This document was moved to Archive. Restore it from Archive to keep working on it.',
       gone: 'This document was moved to Archive or deleted, or your access was removed. Your last change was not saved.',
