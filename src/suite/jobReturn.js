@@ -102,9 +102,9 @@ export function buildReturnManifest({ manifest, documents = [], libraryOf = () =
   const sentById = new Map(items.filter((i) => clean(i?.suiteId)).map((i) => [clean(i.suiteId), i]));
   const counts = { moved: 0, retagged: 0, relocated: 0, added: 0, unchanged: 0, notInSurvey: 0, markups: 0, notPlaced: 0 };
 
-  // Each page of each document that holds an arrived marker is that job
-  // page, with the size it was placed at: new markers there land on it.
-  const pageOf = jobPagesOf(documents);
+  // Each page of each document that holds an arrived marker (or matches a page
+  // of the job file by sibling file / document name) maps to its job page (#1594).
+  const pageOf = jobPagesOf(documents, manifest);
 
   const back = new Map();
   const added = [];
@@ -304,16 +304,104 @@ export function markupsFromPage(annotations, { pageId, page, author = null }) {
   return out;
 }
 
-/** The job page (and the size it was placed at) each document page is, from the markers that arrived on it. */
-export function jobPagesOf(documents) {
+const normDocName = (value) => String(value || '').trim().replace(/\.pdf$/i, '').toLowerCase();
+
+function manifestFileGroups(manifest) {
+  const pages = list(manifest?.pages).filter((p) => clean(p?.pageId));
+  if (!pages.length) return [];
+  const byFile = new Map();
+  for (const page of pages) {
+    const file = clean(page.file) || `pages/${clean(page.pageId)}.pdf`;
+    const group = byFile.get(file) || [];
+    group.push(page);
+    byFile.set(file, group);
+  }
+  const jobName = clean(manifest?.job?.name) || 'Job file';
+  const fileCount = byFile.size;
+  return [...byFile.entries()].map(([file, rawGroup]) => {
+    const ordered = Number.isInteger(rawGroup[0]?.pageIndex) && rawGroup.every((p) => Number.isInteger(p.pageIndex))
+      ? [...rawGroup].sort((a, b) => a.pageIndex - b.pageIndex)
+      : rawGroup;
+    const first = ordered[0];
+    const baseFile = file.replace(/^.*\//, '');
+    const floorName = clean(first?.title) || clean(first?.floor) || baseFile.replace(/\.pdf$/i, '');
+    const uploadName = fileCount > 1 && floorName && floorName !== jobName
+      ? `${jobName} - ${floorName}`
+      : jobName;
+    const names = new Set([normDocName(uploadName), normDocName(baseFile)]);
+    if (ordered.length === 1) {
+      if (floorName) names.add(normDocName(floorName));
+      if (clean(first?.pageId)) names.add(normDocName(first.pageId));
+    }
+    names.delete('');
+    return { file, pages: ordered, names };
+  });
+}
+
+function fallbackPageSize(page, doc, pageNumber) {
+  const fromDoc = doc?.pageSizes?.[pageNumber];
+  if (fromDoc && Number(fromDoc.width) > 0 && Number(fromDoc.height) > 0) return fromDoc;
+  const width = Number(page?.widthPt);
+  const height = Number(page?.heightPt);
+  return Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0
+    ? { width, height, rotation: 0 }
+    : null;
+}
+
+/**
+ * The job page (and the size it was placed at) each document page is, from the
+ * markers that arrived on it, plus any remaining manifest pages matched by
+ * sibling multi-page file or exact uploaded document name (#1594).
+ */
+export function jobPagesOf(documents, manifest = null) {
   const pages = new Map();
+  const docOriginPageIds = new Map();
   for (const doc of list(documents)) {
+    const docId = doc?.documentId || '';
     for (const marker of Object.values(doc?.markers || {})) {
       const origin = marker?.suiteOrigin;
       if (!origin?.pageId || !origin.page || marker.pageNumber == null) continue;
-      const key = `${doc.documentId || ''}\0${marker.pageNumber}`;
-      if (!pages.has(key)) pages.set(key, { documentId: doc.documentId || '', pageNumber: Number(marker.pageNumber), pageId: origin.pageId, page: origin.page });
+      const key = `${docId}\0${marker.pageNumber}`;
+      if (!pages.has(key)) {
+        pages.set(key, { documentId: docId, pageNumber: Number(marker.pageNumber), pageId: origin.pageId, page: origin.page });
+      }
+      if (!docOriginPageIds.has(docId)) docOriginPageIds.set(docId, new Set());
+      docOriginPageIds.get(docId).add(clean(origin.pageId));
     }
+  }
+  const groups = manifest ? manifestFileGroups(manifest) : [];
+  if (!groups.length) return pages;
+
+  const groupByPageId = new Map();
+  for (const group of groups) {
+    for (const page of group.pages) groupByPageId.set(clean(page.pageId), group);
+  }
+  const registerGroup = (doc, group) => {
+    const docId = doc?.documentId || '';
+    group.pages.forEach((page, index) => {
+      const pageNumber = index + 1;
+      const key = `${docId}\0${pageNumber}`;
+      if (pages.has(key)) return;
+      const dims = fallbackPageSize(page, doc, pageNumber);
+      if (!dims) return;
+      pages.set(key, { documentId: docId, pageNumber, pageId: clean(page.pageId), page: dims });
+    });
+  };
+
+  for (const doc of list(documents)) {
+    const docId = doc?.documentId || '';
+    const originIds = docOriginPageIds.get(docId);
+    if (originIds?.size) {
+      for (const pageId of originIds) {
+        const group = groupByPageId.get(pageId);
+        if (group) registerGroup(doc, group);
+      }
+      continue;
+    }
+    const nameKey = normDocName(doc?.name);
+    if (!nameKey) continue;
+    const matches = groups.filter((g) => g.names.has(nameKey));
+    if (matches.length === 1) registerGroup(doc, matches[0]);
   }
   return pages;
 }
