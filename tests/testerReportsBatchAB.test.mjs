@@ -129,6 +129,6 @@ test('#1636: the extra-name question comes before the bytes go back up', () => {
 
 test('#1635: the unsaved dot holds while "Up to date" waits to confirm', () => {
   const src = read('src/PDFViewer.jsx');
-  assert.match(src, /const holdDot = Boolean\(confirmTimer\);/);
+  assert.match(src, /const holdDot = Boolean\(confirmTimer\) \|\| opening;/);
   assert.match(src, /if \(unsaved && holdDot\) return unsaved;/);
 });

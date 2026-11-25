@@ -90,3 +90,11 @@ test('the site policy only reaches what the pages use', () => {
   assert.ok(directive(siteRule, 'script-src').includes("'wasm-unsafe-eval'"));
   assert.ok(directive(siteRule, 'worker-src').includes('blob:'));
 });
+
+test('#1676: /privacy and /terms go to their own pages, not the app shell', () => {
+  const config = JSON.parse(fs.readFileSync(path.join(root, 'vercel.json'), 'utf8'));
+  for (const page of ['privacy', 'terms']) {
+    const hit = (config.redirects || []).find((r) => r.source === `/${page}`);
+    assert.equal(hit?.destination, `/${page}.html`, page);
+  }
+});

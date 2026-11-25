@@ -33,7 +33,25 @@ let lastDeliveryWarningAt = 0;
 // The server has no collector set up (Survey Nightly, a preview copy: 503
 // analytics_not_configured). Asking again cannot change that, so this page
 // stops sending (tester report #1628: a red 503 on every event).
-let collectorNotConfigured = false;
+// It is remembered for the tab (sessionStorage) for an hour, so a reload does
+// not send a fresh burst of events that all fail the same way (retest of
+// #1628: 12 red 503s after a reload).
+const NOT_CONFIGURED_KEY = 'survey-analytics-not-configured-until';
+const NOT_CONFIGURED_MS = 60 * 60_000;
+const readNotConfigured = () => {
+  try {
+    return Number(globalThis.window?.sessionStorage?.getItem(NOT_CONFIGURED_KEY) || 0) > Date.now();
+  } catch { return false; }
+};
+let collectorNotConfigured = readNotConfigured();
+const rememberNotConfigured = () => {
+  collectorNotConfigured = true;
+  try { window.sessionStorage.setItem(NOT_CONFIGURED_KEY, String(Date.now() + NOT_CONFIGURED_MS)); } catch { /* fine */ }
+};
+// Until the collector has answered once, later events wait for that first
+// answer instead of all going out at once (page load fires several together).
+let firstAnswer = null;
+let answeredOnce = false;
 
 const safeIdentifier = (value, limit = 240) => String(value || '').replace(/[\r\n]+/g, ' ').slice(0, limit);
 
@@ -119,7 +137,7 @@ const observeDelivery = async (request) => {
       body = await response.json().catch(() => null);
     }
     if (Number(response.status) === 503 && body?.error === 'analytics_not_configured') {
-      collectorNotConfigured = true;
+      rememberNotConfigured();
       const off = { ok: false, reason: 'not_configured', status: 503, disabled: true };
       publishDeliveryStatus(off);
       return off;
@@ -185,6 +203,11 @@ const deliverSurveyAnalyticsEvent = async (event, properties = {}) => {
     return result;
   }
 
+  if (!answeredOnce && firstAnswer) {
+    await firstAnswer;
+    if (collectorNotConfigured) return { ok: false, reason: 'not_configured', status: 503, disabled: true };
+  }
+
   const request = window.location.protocol === 'file:'
     && typeof window.electronAPI?.trackSurveyAnalytics === 'function'
     ? window.electronAPI.trackSurveyAnalytics({ payload, accessToken })
@@ -197,7 +220,11 @@ const deliverSurveyAnalyticsEvent = async (event, properties = {}) => {
       body: JSON.stringify(payload),
       keepalive: true,
     });
-  return observeDelivery(request);
+  const delivery = observeDelivery(request);
+  if (!answeredOnce && !firstAnswer) {
+    firstAnswer = delivery.finally(() => { answeredOnce = true; firstAnswer = null; });
+  }
+  return delivery;
 };
 
 export function trackSurveyAnalyticsEvent(event, properties = {}) {
