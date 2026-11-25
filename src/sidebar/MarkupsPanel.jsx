@@ -307,7 +307,14 @@ export default function MarkupsPanel({
                   type="button"
                   className="markups-panel__row"
                   data-markup-row={row.id}
-                  onClick={() => { onRequestSheetClose?.(); onOpenMark?.(row); }}
+                  onClick={(event) => {
+                    // Shift adds the row's mark to the pick; Ctrl / Cmd adds
+                    // or takes it out, as in a file list (tester #1624).
+                    const toggle = Boolean(event.metaKey || event.ctrlKey);
+                    const add = toggle || event.shiftKey;
+                    if (!add) onRequestSheetClose?.();
+                    onOpenMark?.(row, add ? { add: true, toggle } : undefined);
+                  }}
                   onContextMenu={(event) => {
                     const point = listMenuPointFrom(event);
                     if (point) setRowMenu({ row, ...point });

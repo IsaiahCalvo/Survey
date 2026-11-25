@@ -218,12 +218,16 @@ export function planSelectionQuickBar({ items, api, entityCount = 0, locked = fa
   const style = !link && !locked && !anyNoPaint && every(STYLE_KINDS)
     && typeof api?.setLineBorderStyle === 'function'
     && caps?.lineStyle !== false;
-  // Measurement (Nightly 'measure-edit'): exactly one measurement picked, and
-  // the published pick is that very mark (api.selectedMeasure).
-  const measure = !locked && list.length === 1
+  // Measurement (Nightly 'measure-edit'): the published pick
+  // (api.selectedMeasure) is this very mark, or (tester report #1629) every
+  // picked mark is one of the measurements it publishes for a group.
+  const measureIds = Array.isArray(api?.selectedMeasure?.ids) ? api.selectedMeasure.ids.map(String) : null;
+  const measure = !locked
     && typeof api?.patchSelectedMeasure === 'function'
     && api?.selectedMeasure?.mark != null
-    && String(api.selectedMeasure.id) === String(list[0].id);
+    && (list.length === 1
+      ? String(api.selectedMeasure.id) === String(list[0].id)
+      : Boolean(measureIds) && list.every((item) => measureIds.includes(String(item.id))));
   // By kind (Nightly 'mark-bar-by-kind'): fill for closed shapes and text,
   // start / end for open lines, size / bold / align for words. A mixed pick
   // shows a part only when every mark picked can take it.

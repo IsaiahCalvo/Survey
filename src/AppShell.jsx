@@ -4789,9 +4789,19 @@ export default function App({ devPreviewReturnTab = null }) {
 
                 {/* Nightly 'pen-types': Drawboard's three pens (a tool
                     setting, so only while the Pen is armed). */}
-                {isFeatureOn('pen-types') && bottomToolbarApi.activeTool === 'pen' && toolbarSlot('pen', (compact) => (
-                  <PenTypeMenu tip={chromeTip} compact={compact} />
-                ))}
+                {isFeatureOn('pen-types') && bottomToolbarApi.selectedPenType && typeof bottomToolbarApi.setSelectedPenType === 'function'
+                  ? toolbarSlot('pen', (compact) => (
+                    // Picked Pen strokes (tester report #1619): the pill edits them.
+                    <PenTypeMenu
+                      tip={chromeTip}
+                      compact={compact}
+                      value={bottomToolbarApi.selectedPenType.type}
+                      onPick={bottomToolbarApi.setSelectedPenType}
+                    />
+                  ))
+                  : (isFeatureOn('pen-types') && bottomToolbarApi.activeTool === 'pen' && toolbarSlot('pen', (compact) => (
+                    <PenTypeMenu tip={chromeTip} compact={compact} />
+                  )))}
                 {(bottomToolbarApi.contextTool === 'pen'
                   || bottomToolbarApi.contextTool === 'highlighter'
                   || bottomToolbarApi.contextTool === 'tape'

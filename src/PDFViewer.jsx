@@ -211,10 +211,12 @@ import {
   applyRestyleChange,
   applyRestyleChangeToPage,
   calloutRestylePatch,
+  inkPenTypeOf,
   isFilledInkPath,
   planGroupUpdate,
   resolveGroupWrite,
   resolveGroupPaintWrite,
+  rebuildInkAsPenType,
   resolvePickedMembers,
   restyleCapabilities,
   summarizeSelectionRestyle,
@@ -3916,6 +3918,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // changes ride the same selected-edit write, so each is one save and one
   // undo step. The change is applied to the mark as saved right now.
   const handlePatchSelectedMeasure = useCallback((changes) => {
+    // Two or more measurements picked (tester report #1629): every one takes
+    // the change, as one save per page and one undo step.
+    if (restyleGroupRef.current && applyRestyleToGroup({ kind: 'apply', apply: (obj) => applyMeasureEdit(obj, changes) })) return;
     handlePatchSelectedAnnotation({}, (obj) => applyMeasureEdit(obj, changes));
   }, [handlePatchSelectedAnnotation]);
   // Nightly 'link-tool': Edit hyperlink's target / style / colour, one save
@@ -3929,7 +3934,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   }, [handlePatchSelectedAnnotation]);
   // Nightly 'hatch-fill': the picked shape's line pattern, same one-save write.
   const handleSetSelectedHatch = useCallback((pattern) => {
+    // A group (tester report #1639): every shape in it takes the pattern.
+    if (restyleGroupRef.current && applyRestyleToGroup({ kind: 'apply', apply: (obj) => applyHatch(obj, pattern) })) return;
     handlePatchSelectedAnnotation({}, (obj) => applyHatch(obj, pattern));
+  }, [handlePatchSelectedAnnotation]);
+  // Nightly 'pen-types' (tester report #1619): the picked Pen stroke(s)
+  // rebuilt as another pen, one save per page and one undo step.
+  const handleSetSelectedPenType = useCallback((type) => {
+    if (restyleGroupRef.current && applyRestyleToGroup({ kind: 'penType', type })) return;
+    const current = selectedToolbarAnnotationRef.current?.annotation;
+    if (!current || !rebuildInkAsPenType(current, type)) return;
+    handlePatchSelectedAnnotation({}, (obj) => rebuildInkAsPenType(obj, type) || obj);
   }, [handlePatchSelectedAnnotation]);
   // Nightly 'equation-tool': the picked equation redrawn, same one-save write.
   const handlePatchSelectedEquation = useCallback((changes) => {
@@ -5093,6 +5108,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       summary,
       firstTextStyle,
       annotationSelection,
+      // The picked page marks themselves (callouts aside), for the per-tool
+      // group controls: hatch pattern, Measurement, pen type.
+      annotations: annotationMembers.map(({ annotation }) => annotation),
       calloutIds: calloutMembers.map((callout) => callout.id),
       key: `${annotationSelection?.key || ''}#${calloutMembers.map((callout) => callout.id).join(',')}`,
     } : null;
@@ -24758,10 +24776,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     // Compare current with saved to detect changes. jsonEqual answers exactly
     // like comparing the two JSON.stringify strings, without building them
     // (w29: ~70 ms per change on a 3,000-mark document).
+    // While the status reads "Up to date" and the timer above waits to
+    // confirm, the dot holds: the cloud copy landing on open is not a change
+    // (tester #1635: the tab flashed the dot after a reload). An edit flips
+    // the status to pending, which re-runs this check and shows the dot.
+    const holdDot = Boolean(confirmTimer);
     const reportUnsaved = (matchesSaved) => {
       pendingUnsavedCheckRef.current = null;
       if (waitingByPageRef.current === annotationsByPage) waitingByPageRef.current = null;
       const unsaved = !matchesSaved && Object.keys(annotationsByPage).length > 0;
+      if (unsaved && holdDot) return unsaved;
       if (unsaved) setHasUnsavedAnnotations(true);
       if (onUnsavedAnnotationsChange) onUnsavedAnnotationsChange(unsaved);
       return unsaved;
@@ -27914,6 +27938,39 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     // mode toggle, so the picked marks can be restyled together.
     const groupSummary = pickBarTool === 'select' ? (restyleGroup?.summary || null) : null;
     if (groupSummary) selectionMappedTool = groupSummary.contextTool;
+    // A group made only of page marks, for the per-tool group controls
+    // (tester reports #1629, #1639): every member a measurement, or every
+    // member a shape that can hold a hatch.
+    const groupMarks = groupSummary && !(restyleGroup?.calloutIds?.length) && Array.isArray(restyleGroup?.annotations)
+      && restyleGroup.annotations.length > 1 ? restyleGroup.annotations : null;
+    const groupMeasure = measureEditOn && groupMarks && groupMarks.every((mark) => getMeasureKind(mark))
+      ? {
+        id: 'group',
+        ids: groupMarks.map((mark) => String(getAnnotationRenderIdentity(mark).annotationId || '')),
+        mark: groupMarks[0],
+        scale: pageScaleFromObjects(annotationsByPage?.[restyleGroup?.annotationSelection?.pageNumber]?.objects)
+          || metaScaleForPage(measureScaleMeta, restyleGroup?.annotationSelection?.pageNumber),
+        group: true,
+      }
+      : null;
+    // Nightly 'pen-types': the picked Pen strokes' pen (null when they differ).
+    const penTypesOn = isFeatureOn('pen-types');
+    const pickedPenType = (() => {
+      if (!penTypesOn || pickBarTool !== 'select') return undefined;
+      if (groupSummary) {
+        if (!groupMarks || !groupMarks.every((mark) => inkPenTypeOf(mark))) return undefined;
+        const types = new Set(groupMarks.map((mark) => inkPenTypeOf(mark)));
+        return types.size === 1 ? [...types][0] : null;
+      }
+      if (selectedToolbarCallout) return undefined;
+      return inkPenTypeOf(selectedAnnot) || undefined;
+    })();
+    const groupHatch = hatchFillEnabled && groupMarks && groupMarks.every((mark) => hatchShapeKind(mark))
+      ? (() => {
+        const patterns = new Set(groupMarks.map((mark) => hatchPatternOf(mark)));
+        return { id: 'group', pattern: patterns.size === 1 ? [...patterns][0] : null, mixed: patterns.size > 1 };
+      })()
+      : null;
     const contextTool = (pickBarTool === 'select' && selectionMappedTool)
       ? selectionMappedTool
       : activeTool;
@@ -28175,13 +28232,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       selectedPolyline: !groupSummary && selectedType === 'polyline' ? { curved: polySplineStep(selectedAnnot) > 0 } : null,
       // One picked measurement (Nightly 'measure-edit'): the mark, its id and
       // the page's scale (what its label reads), for the Measurement popover.
-      selectedMeasure: measureEditOn && !groupSummary && !selectedToolbarCallout && getMeasureKind(selectedAnnot)
+      selectedMeasure: groupMeasure || (measureEditOn && !groupSummary && !selectedToolbarCallout && getMeasureKind(selectedAnnot)
         ? {
           id: String(selectedAnnotationId || ''),
           mark: selectedAnnot,
           scale: pageScaleFromObjects(pageObjects) || metaScaleForPage(measureScaleMeta, selectedToolbarAnnotation?.pageNumber),
         }
-        : null,
+        : null),
       patchSelectedMeasure: measureEditOn ? handlePatchSelectedMeasure : null,
       // One picked link mark (Nightly 'link-tool'): "Go to ..." and Link.
       selectedLink: linkToolOn && !groupSummary ? selectedLinkForHost : null,
@@ -28191,7 +28248,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       selectedNote: noteToolEnabled && !groupSummary ? selectedNoteForHost : null,
       editSelectedNote: noteToolEnabled ? editSelectedNote : null,
       // One picked shape's hatch pattern (Nightly 'hatch-fill'), for the properties panel.
-      selectedHatch: hatchFillEnabled && !groupSummary ? selectedHatchForPanel : null,
+      selectedHatch: hatchFillEnabled ? (groupSummary ? groupHatch : selectedHatchForPanel) : null,
+      // The picked Pen stroke(s)' pen type: { type } (type null = mixed), or null.
+      selectedPenType: pickedPenType === undefined ? null : { type: pickedPenType },
+      setSelectedPenType: penTypesOn ? handleSetSelectedPenType : null,
       setSelectedHatch: hatchFillEnabled ? handleSetSelectedHatch : null,
       // One picked image's keep-proportions lock (Nightly 'mark-bar-by-kind').
       selectedImageShape: markBarByKindOn && !groupSummary ? selectedImageShapeForBar : null,
@@ -28374,6 +28434,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     editSelectedNote,
     selectedHatchForPanel,
     handleSetSelectedHatch,
+    handleSetSelectedPenType,
     selectedImageShapeForBar,
     handleSetSelectedImageKeepShape,
     selectedEquationForHost,
@@ -30589,7 +30650,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   }, []);
 
   // Markups list: go to a mark and pick it (a callout is shown, not picked).
-  const openMarkupRow = useCallback((row) => {
+  const openMarkupRow = useCallback((row, { add = false, toggle = false } = {}) => {
     const page = Number(row?.pageNumber);
     if (!Number.isFinite(page) || page < 1) return;
     // Asking for a mark while all marks are hidden shows them again, so the
@@ -30607,7 +30668,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     const box = obj ? getAnnotationWorldAABB(obj) : null;
     focusHistoryMark(page, box && box.width >= 0 ? { left: box.left, top: box.top, width: Math.max(box.width, 1), height: Math.max(box.height, 1) } : null);
     if (obj && obj?.data?.type !== 'callout') {
-      setPendingSvgSelection({ pageNumber: page, annotationIndices: [index], tick: Date.now() });
+      // Shift / Ctrl / Cmd on a row (tester #1624): add to the pick, or for
+      // Ctrl / Cmd take an already picked mark out.
+      setPendingSvgSelection(add
+        ? { pageNumber: page, annotationIndex: index, addToSelection: true, toggleSelection: toggle, tick: Date.now() }
+        : { pageNumber: page, annotationIndices: [index], tick: Date.now() });
     }
   }, [focusHistoryMark]);
 

@@ -1,5 +1,6 @@
 // Nightly 'insert-image' (Drawboard parity, t2-tools-deep.md gap 4): the Text
-// group's Image button picks a picture and drops it mid-page as a mark that
+// group's Image button picks a picture; with a mouse it follows the pointer
+// and lands where the page is clicked (tester report #1633), as a mark that
 // moves like a shape; a pasted picture lands under the pointer; one Undo takes
 // each away. Phone web and phone app: Image in the Text group drops it too.
 import { E2E_ACCOUNTS } from './accounts.mjs';
@@ -39,7 +40,7 @@ const imageBox = (marks, n) => marks.nth(n).locator('image').evaluate((el) => ({
   href: el.getAttribute('href') || '',
 }));
 
-test('Image drops a picture mid-page at 150 x 75 pt; it moves like a shape; a pasted one lands under the pointer; Undo', async ({ page }) => {
+test('Image places a picture at the click at 150 x 75 pt; it moves like a shape; a pasted one lands under the pointer; Undo', async ({ page }) => {
   test.setTimeout(180_000);
   await flagOn(page, true);
   const sheet = await seedSheet('Insert image desktop');
@@ -50,6 +51,15 @@ test('Image drops a picture mid-page at 150 x 75 pt; it moves like a shape; a pa
     const chooser = page.waitForEvent('filechooser');
     await page.getByRole('button', { name: 'Image', exact: true }).filter({ visible: true }).first().click();
     await (await chooser).setFiles({ name: 'valve.png', mimeType: 'image/png', buffer: png });
+    // Nothing lands until the page is clicked: the picture follows the pointer.
+    const scale = box.width / 612;
+    const cx = box.x + 306 * scale;
+    const cy = box.y + 396 * scale;
+    await page.waitForTimeout(800);
+    await expect(marks).toHaveCount(0);
+    await page.mouse.move(cx - 40, cy - 40);
+    await page.mouse.move(cx, cy, { steps: 4 });
+    await page.mouse.click(cx, cy);
     await expect(marks).toHaveCount(1);
     const first = await imageBox(marks, 0);
     expect(first.href.startsWith('data:image/png;base64,')).toBe(true);
@@ -58,12 +68,9 @@ test('Image drops a picture mid-page at 150 x 75 pt; it moves like a shape; a pa
     expect(first.x + first.w / 2).toBeCloseTo(306, 0);
     expect(first.y + first.h / 2).toBeCloseTo(396, 0);
 
-    // It is picked; drag it 60 pt right with the Select tool.
-    const scale = box.width / 612;
+    // Drag it 60 pt right with the Select tool.
     await page.keyboard.press('Escape');
     await page.keyboard.press('v');
-    const cx = box.x + 306 * scale;
-    const cy = box.y + 396 * scale;
     await page.mouse.click(cx, cy);
     await page.mouse.move(cx, cy);
     await page.mouse.down();
