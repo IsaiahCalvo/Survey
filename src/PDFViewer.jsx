@@ -22475,6 +22475,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     offlineCopy: annotationOfflineCopy,
     editBlocked: annotationEditBlocked,
     clearEditBlocked: clearAnnotationEditBlocked,
+    rebaseOpeningEdits: rebaseAnnotationOpeningEdits,
   } = useAnnotationDoc({
     documentId: pdfFile?.id || null,
     userId: annotationActorId,
@@ -24676,6 +24677,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     }
 
     setAnnotationsByPage(initialAnnotationsByPage);
+    // A touch while the store opens must not turn these painted marks into
+    // "added by the user" (#1658).
+    if (isCloudBackedDoc) rebaseAnnotationOpeningEdits?.(pdfFile?.id, initialAnnotationsByPage);
     savedAnnotationsByPageRef.current = initialAnnotationsByPage; // Track as saved
     setCallouts(loadedCallouts);
     setHasUnsavedAnnotations(false); // Reset unsaved flag
@@ -24913,7 +24917,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // hydrate, so we avoid the blank-PDF wait without pushing stale rows back up.
   useEffect(() => {
     if (!pdfId || !pdfFile?.id) return;
-    if (countAnnotationPageObjects(annotationsByPage) === 0) return;
+    // Empty before the store has opened is just "not loaded yet". Empty after
+    // it opened is real (every mark deleted) and must replace the copy, or the
+    // next open paints the deleted marks again (#1658).
+    if (countAnnotationPageObjects(annotationsByPage) === 0
+      && !(normalAnnotationHydration?.ready === true && normalAnnotationHydration?.documentId === pdfFile.id)) return;
     saveCloudRenderAnnotationsByPage(
       pdfId,
       {
@@ -24922,7 +24930,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       },
       annotationsByPage
     );
-  }, [pdfId, pdfFile?.id, pdfFile?.cutoverCompletedAt, annotationsByPage]);
+  }, [pdfId, pdfFile?.id, pdfFile?.cutoverCompletedAt, annotationsByPage, normalAnnotationHydration]);
 
   // Survey data (marks, spaces, callouts) persists through the Y.Doc
   // (cloudSyncForceFlush); only the document row's view metadata is saved here.

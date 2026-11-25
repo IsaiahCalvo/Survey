@@ -1188,6 +1188,17 @@ export function useAnnotationDoc({
     };
   }, [opening, isActive, documentId]);
 
+  // The viewer paints its own display copy of the marks while the store opens
+  // (the cloud render cache). A touch before that paint fixed the baseline on
+  // the empty screen, so every painted mark would count as one the user added
+  // and be written back: marks deleted last session came back (#1658). Move
+  // the baseline to what the viewer painted; edits count from there.
+  const rebaseOpeningEdits = useCallback((forDocumentId, byPage) => {
+    const current = openingEditsRef.current;
+    if (!forDocumentId || current.documentId !== forDocumentId || current.done || !current.byPage) return;
+    openingEditsRef.current = { ...current, byPage: byPage || {} };
+  }, []);
+
   // The executor closes over document/template/user state and can legitimately
   // change after the durable handle opened. Reinstalling it also triggers an
   // immediate recovery attempt for work that was waiting on that context.
@@ -1892,5 +1903,6 @@ export function useAnnotationDoc({
     offlineCopy,
     editBlocked,
     clearEditBlocked,
+    rebaseOpeningEdits,
   };
 }
