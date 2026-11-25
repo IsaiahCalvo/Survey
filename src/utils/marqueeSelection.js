@@ -175,6 +175,27 @@ function doesRectIntersectCallout(marqueeRect, callout, pageWidth, pageHeight) {
   return geom.segments.some((segment) => doesRectIntersectObject(marqueeRect, segment));
 }
 
+function textMarkupWindowQuadBox(obj, quad) {
+  const left = Math.min(Number(quad.x1), Number(quad.x2), Number(quad.x3), Number(quad.x4));
+  const right = Math.max(Number(quad.x1), Number(quad.x2), Number(quad.x3), Number(quad.x4));
+  const top = Math.min(Number(quad.y1), Number(quad.y2), Number(quad.y3), Number(quad.y4));
+  const bottom = Math.max(Number(quad.y1), Number(quad.y2), Number(quad.y3), Number(quad.y4));
+  const markupType = String(obj?.data?.markupType || obj?.exportType || '').toLowerCase();
+  const halfStroke = (Number.isFinite(obj?.data?.lineWidth) ? Math.max(0, obj.data.lineWidth) : 1.2) / 2;
+  if (markupType === 'strikeout') {
+    const mid = (top + bottom) / 2;
+    return { left, right, top: mid - halfStroke, bottom: mid + halfStroke };
+  }
+  if (markupType === 'underline') {
+    return { left, right, top: Math.max(top, bottom - Math.max(halfStroke * 2, 1.2)), bottom };
+  }
+  if (markupType === 'squiggly') {
+    const amp = Math.max(0.7, Math.min(1.8, Math.max(1, bottom - top) * 0.12));
+    return { left, right, top: Math.max(top, bottom - amp), bottom };
+  }
+  return { left, right, top, bottom };
+}
+
 export function resolveMarqueeHits({
   marqueeRect,
   direction,
@@ -218,6 +239,19 @@ export function resolveMarqueeHits({
     }
 
     if (direction === 'window') {
+      if (obj?.data?.type === 'text-markup') {
+        const quads = Array.isArray(obj.data.quads) ? obj.data.quads : [];
+        const allInside = quads.length > 0 && quads.every((quad) => (
+          isBBoxFullyContained(marqueeRect, textMarkupWindowQuadBox(obj, quad))
+        ));
+        if (allInside) {
+          emitDiag({ index: i, included: true, reason: 'window-text-range-contained', bbox, obj });
+          annotationIndices.push(i);
+        } else {
+          emitDiag({ index: i, included: false, reason: 'window-text-range-not-contained', bbox, obj });
+        }
+        continue;
+      }
       const shape = toFabricShape(obj);
       if (isObjectFullyInRect(marqueeRect, shape)) {
         emitDiag({ index: i, included: true, reason: 'window-contained', bbox, obj });
@@ -243,8 +277,10 @@ export function resolveMarqueeHits({
         if (quadHit) {
           emitDiag({ index: i, included: true, reason: 'crossing-text-range-hit', bbox, obj });
           annotationIndices.push(i);
-          continue;
+        } else {
+          emitDiag({ index: i, included: false, reason: 'crossing-text-range-miss', bbox, obj });
         }
+        continue;
       }
       const shape = toFabricShape(obj);
       if (doesRectIntersectObject(marqueeRect, shape)) {
