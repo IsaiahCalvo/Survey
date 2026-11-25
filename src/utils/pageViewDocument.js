@@ -34,10 +34,17 @@ export function getPageViewBase(doc) {
 // Stable identity of what a view page shows (source page + extra rotation).
 // The base document's own page n has key `${n - 1}`, matching the old
 // per-index cache keys, so the first operation still hits warm caches.
+const blankViewBaseKey = (blank) => (
+  `blank:${Math.round(blank.width)}x${Math.round(blank.height)}${blank.paper ? `:${blank.paper}` : ''}`
+);
+
 export function pageViewKey(doc, pageIndex) {
   const entry = doc?.[VIEW]?.entries?.[pageIndex];
   if (!entry) return String(pageIndex);
-  if (entry.blank) return `blank:${Math.round(entry.blank.width)}x${Math.round(entry.blank.height)}${entry.blank.paper ? `:${entry.blank.paper}` : ''}`;
+  if (entry.blank) {
+    const base = blankViewBaseKey(entry.blank);
+    return entry.rot ? `${base}r${entry.rot}` : base;
+  }
   return entry.rot ? `${entry.src - 1}r${entry.rot}` : String(entry.src - 1);
 }
 
@@ -45,8 +52,9 @@ export function pageViewKey(doc, pageIndex) {
 // Lets a cache paint a just-rotated page from its upright bitmap at once.
 export function pageViewUprightKey(doc, pageIndex) {
   const entry = doc?.[VIEW]?.entries?.[pageIndex];
-  if (!entry || entry.blank || !entry.rot) return null;
-  return { key: String(entry.src - 1), rotation: entry.rot };
+  if (!entry || !entry.rot) return null;
+  const key = entry.blank ? blankViewBaseKey(entry.blank) : String(entry.src - 1);
+  return { key, rotation: entry.rot };
 }
 
 // { [pageNumber]: { width, height } } at scale 1, rotation applied; pages

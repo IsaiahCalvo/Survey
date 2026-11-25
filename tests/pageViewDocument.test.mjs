@@ -176,3 +176,33 @@ test('an inserted blank page renders white and has no text', async () => {
   await blank.render({ canvasContext: ctx, viewport: blank.getViewport({ scale: 1 }) }).promise;
   assert.deepEqual(calls, ['#ffffff', [0, 0, 10, 20]]);
 });
+
+test('rotating a blank or template page changes pageViewKey and exposes pageViewUprightKey (#1642)', () => {
+  const base = fakeBase();
+  const inserted = applyPageViewOperation(base, { type: 'insert', afterPage: 1 }, {
+    sizesByPage: { 1: { width: 792, height: 612 } },
+  });
+  const uprightKey = pageViewKey(inserted, 1);
+  assert.equal(uprightKey, 'blank:792x612');
+  assert.equal(pageViewUprightKey(inserted, 1), null);
+
+  const rotated90 = applyPageViewOperation(inserted, { type: 'rotate', page: 2, delta: 90 });
+  assert.equal(pageViewKey(rotated90, 1), 'blank:792x612r90');
+  assert.deepEqual(pageViewUprightKey(rotated90, 1), { key: uprightKey, rotation: 90 });
+
+  const rotated180 = applyPageViewOperation(rotated90, { type: 'rotate', page: 2, delta: 90 });
+  assert.equal(pageViewKey(rotated180, 1), 'blank:792x612r180');
+  assert.deepEqual(pageViewUprightKey(rotated180, 1), { key: uprightKey, rotation: 180 });
+
+  const fullTurn = applyPageViewOperation(rotated180, { type: 'rotate', page: 2, delta: 180 });
+  assert.equal(pageViewKey(fullTurn, 1), uprightKey);
+  assert.equal(pageViewUprightKey(fullTurn, 1), null);
+
+  const templated = applyPageViewOperation(base, { type: 'insert', afterPage: 1, paper: 'isometric' }, {
+    sizesByPage: { 1: { width: 792, height: 612 } },
+  });
+  const rotatedTemplate = applyPageViewOperation(templated, { type: 'rotate', page: 2, delta: 90 });
+  assert.equal(pageViewKey(rotatedTemplate, 1), 'blank:792x612:isometricr90');
+  assert.deepEqual(pageViewUprightKey(rotatedTemplate, 1), { key: 'blank:792x612:isometric', rotation: 90 });
+});
+
