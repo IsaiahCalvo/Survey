@@ -26,6 +26,7 @@ import { dashForLineStyle, isDashLineStyle, lineStyleForDash } from './lineStyle
 import { renderPathToSvgAttrs } from './svgPathAttrs.js';
 import { createInkAnnotation, boundsOfCommands } from './paperAnnotationGeometry.js';
 import { createVariableInk } from './productionPaperInk.js';
+import { penWidthFactors } from './penTypes.js';
 import { isAbsoluteInkGeometry } from './inkGeometryTransform.js';
 import { cloudEngineKindForShape, toolSupportsCloudBorderStyle } from './pdfAnnotationAppearance.js';
 import { getAnnotationRenderIdentity } from './annotationStorageIdentity.js';
@@ -313,6 +314,58 @@ export function rebuildInkAtWidth(annotation, width) {
 }
 
 
+/** 'basic' | 'pro' | 'calligraphy' for a Pen stroke that can be rebuilt, else null. */
+export function inkPenTypeOf(annotation) {
+  if (!canRebuildInkWidth(annotation)) return null;
+  const tool = annotation.tool || annotation.data?.tool;
+  if (tool === 'highlighter' || annotation.data?.tape === true) return null;
+  const type = annotation.data?.penType;
+  if (type === 'pro' || type === 'calligraphy') return type;
+  return Array.isArray(annotation.data?.penWidths) ? 'pro' : 'basic';
+}
+
+/**
+ * Rebuilds a Pen stroke as another pen type (Nightly 'pen-types', tester
+ * report #1619), from its centreline at its own width. Calligraphy reads the
+ * direction of the line again; Pro has no speed or pressure left to read, so
+ * it is full width with Pro's short taper at the start. Null when the mark
+ * can't be rebuilt or already is that type.
+ */
+export function rebuildInkAsPenType(annotation, type) {
+  if (type !== 'basic' && type !== 'pro' && type !== 'calligraphy') return null;
+  const current = inkPenTypeOf(annotation);
+  if (!current || current === type) return null;
+  const width = Number(annotation.sourceWidth);
+  if (!Number.isFinite(width) || width <= 0) return null;
+  const centerline = annotation.paperCenterline;
+  const factors = type === 'basic' ? null : penWidthFactors(centerline, type, width);
+  const penWidths = factors ? factors.map((f) => Math.round(f * 1000) / 1000) : null;
+  const ink = penWidths
+    ? createVariableInk(centerline, penWidths, { id: annotation.id, color: annotation.fill, width })
+    : createInkAnnotation(centerline, {
+      id: annotation.id,
+      color: annotation.fill,
+      width,
+      sloppiness: Number(annotation.sloppiness ?? annotation.data?.sloppiness) || 0,
+    });
+  if (!Array.isArray(ink?.cmds) || ink.cmds.length === 0) return null;
+  const bounds = boundsOfCommands(ink.cmds);
+  const data = { ...(annotation.data || {}) };
+  delete data.penWidths;
+  delete data.penType;
+  if (penWidths) { data.penWidths = penWidths; data.penType = type; }
+  return {
+    ...annotation,
+    data,
+    path: ink.cmds,
+    polygons: ink.polygons,
+    sourceWidth: ink.sourceWidth,
+    width: bounds.w,
+    height: bounds.h,
+  };
+}
+
+
 const mergeData = (annotation, dataPatch) => ({
   ...annotation,
   data: { ...(annotation.data || {}), ...dataPatch },
@@ -433,6 +486,16 @@ export function applyRestyleChange(annotation, change) {
       const start = change.on ? endStyle : NONE_ARROWHEAD;
       if ((annotation.data?.startArrowheadStyle ?? NONE_ARROWHEAD) === start) return null;
       return mergeData(annotation, { startArrowheadStyle: start });
+    }
+    case 'penType':
+      return rebuildInkAsPenType(annotation, change.type);
+    case 'apply': {
+      // A tool's own one-mark edit run on every member of a group (the hatch
+      // pattern, the Measurement popover, the pen type): `apply` hands back
+      // the same object when the mark can't take it or nothing changes.
+      if (typeof change.apply !== 'function') return null;
+      const next = change.apply(annotation);
+      return next && next !== annotation ? next : null;
     }
     default:
       return null;
