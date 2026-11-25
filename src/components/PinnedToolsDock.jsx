@@ -67,6 +67,7 @@ import { getCategoryGlyphLabel } from '../viewerShared.js';
 import { setMarkerDrawMode, useShownMarkerDrawMode } from '../survey/markerDrawMode.js';
 import { getMarkerShapeProviders, subscribeMarkerShapeProviders } from '../survey/markerShapeProviders.js';
 import { PinIcon, getPinnedToolsStore, usePinnedTools } from '../pinnedTools/pinnedToolsShared.jsx';
+import { pickImageToInsert } from './InsertImage.jsx';
 import './PinnedToolsDock.css';
 
 export { PinIcon, getPinnedToolsStore, usePinnedTools };
@@ -155,8 +156,13 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
   // Survey pins (Nightly 'survey-mode-tools') belong to Survey mode's set and
   // show only there, and only where the flag is on.
   const [surveyToolsOn] = useState(() => isFeatureOn('survey-mode-tools'));
+  const [insertImageOn] = useState(() => isFeatureOn('insert-image'));
   const surveyPinsShown = surveyToolsOn && state.pinSet === 'survey';
-  const pins = surveyPinsShown ? state.pins : state.pins.filter((pin) => !isSurveyPinKind(pin.kind));
+  const pins = state.pins.filter((pin) => {
+    if (!surveyPinsShown && isSurveyPinKind(pin.kind)) return false;
+    if (!insertImageOn && pinKind(pin.kind)?.action === 'insert-image') return false;
+    return true;
+  });
   const { visible } = state;
   const shownMarkerMode = useShownMarkerDrawMode();
   const shapeProviders = useSyncExternalStore(subscribeMarkerShapeProviders, getMarkerShapeProviders, getMarkerShapeProviders);
@@ -244,6 +250,14 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
   const arm = useCallback((pin) => {
     const current = apiRef.current;
     if (!current || !pin) return;
+    if (pinKind(pin.kind)?.action === 'insert-image') {
+      if (sessionRef.current) {
+        endPinSession(sessionRef.current);
+        setSession(null);
+      }
+      pickImageToInsert();
+      return;
+    }
     if (isSurveyPinKind(pin.kind)) {
       // A survey pin goes through the survey bar's own handlers; a drawing
       // pin left armed gives its tool its own settings back.
@@ -1376,6 +1390,7 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
           currentKind={currentKind}
           onPinCurrent={pinCurrent}
           onAdd={(kindId) => addPin(kindId, startingStyleFor(apiRef.current, sessionRef.current, kindId))}
+          insertImage={insertImageOn}
           surveyChoices={surveyPinsShown ? surveyPinChoices(api.surveyToolbar, { smartFillReady }) : null}
           onAddSurvey={(choice) => addPin(choice.kind, {}, choice.ref || null)}
           onUnpin={unpin}
@@ -1423,7 +1438,7 @@ function menuPosition(rect, placement, width = 240) {
 
 function PinnedToolsMenu({
   menuRef, menu, placement, phone, pins, hiddenPins, renderPin, compact, pinSet, editing, currentKind, onPinCurrent, onAdd,
-  onUnpin, onDuplicate, onPlacement, onToggleCompact, onToggleEditing, onHide, api, surveyChoices = null, onAddSurvey,
+  onUnpin, onDuplicate, onPlacement, onToggleCompact, onToggleEditing, onHide, api, insertImage = false, surveyChoices = null, onAddSurvey,
 }) {
   // The picker's search words; a fresh picker starts empty.
   const [query, setQuery] = useState('');
@@ -1497,7 +1512,7 @@ function PinnedToolsMenu({
     );
   }
   const groups = ['Draw', 'Shapes', 'Text'];
-  const found = matchPinKinds(query);
+  const found = matchPinKinds(query, { includeImage: insertImage });
   // Survey mode (Nightly 'survey-mode-tools'): its own things come first.
   const surveyFound = surveyChoices ? matchSurveyPinChoices(query, surveyChoices) : [];
   const searching = query.trim().length > 0;

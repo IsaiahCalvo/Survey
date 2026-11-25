@@ -34,6 +34,18 @@ export const PINNABLE_TOOLS = Object.freeze([
   { id: 'callout', tool: 'callout', label: 'Callout', iconName: 'callout', group: 'Text' },
 ].map((entry) => Object.freeze(entry)));
 
+// Action tools that can be found in "Find a tool" and pinned to the dock when
+// their Nightly flag is on (#1663). Kept separate from PINNABLE_TOOLS because
+// they run an action rather than carrying stroke/width settings.
+export const INSERT_IMAGE_PIN_KIND = Object.freeze({
+  id: 'image',
+  tool: 'image',
+  label: 'Insert image',
+  iconName: 'image',
+  group: 'Text',
+  action: 'insert-image',
+});
+
 const KIND_BY_ID = new Map(PINNABLE_TOOLS.map((entry) => [entry.id, entry]));
 
 // Other words people type for a tool in the "Pin a tool" search.
@@ -51,13 +63,15 @@ const PIN_KIND_WORDS = Object.freeze({
   counter: 'count number tally',
   text: 'type note words label',
   callout: 'note leader label comment',
+  image: 'image insert picture photo paste',
 });
 
 /** The pinnable tools whose name, group or other words hold every typed word. */
-export function matchPinKinds(query) {
+export function matchPinKinds(query, { includeImage = false } = {}) {
+  const pool = includeImage ? [...PINNABLE_TOOLS, INSERT_IMAGE_PIN_KIND] : PINNABLE_TOOLS;
   const words = String(query || '').toLowerCase().split(/\s+/).filter(Boolean);
-  if (!words.length) return PINNABLE_TOOLS;
-  return PINNABLE_TOOLS.filter((kind) => {
+  if (!words.length) return pool;
+  return pool.filter((kind) => {
     const hay = `${kind.label} ${kind.group} ${PIN_KIND_WORDS[kind.id] || ''}`.toLowerCase();
     return words.every((word) => hay.includes(word));
   });
@@ -76,8 +90,8 @@ const FILL_TOOLS = new Set(['rect', 'ellipse', 'polygon', 'callout', 'counter'])
 // Tools with a size and no colour: the eraser.
 const SIZE_ONLY_TOOLS = new Set(['eraser']);
 
-// Survey pins (surveyPins.js) are kinds too, so the dock draws and names them.
-export const pinKind = (id) => KIND_BY_ID.get(id) || surveyPinKind(id);
+// Survey pins (surveyPins.js) and action pins are kinds too, so the dock draws and names them.
+export const pinKind = (id) => KIND_BY_ID.get(id) || (id === INSERT_IMAGE_PIN_KIND.id ? INSERT_IMAGE_PIN_KIND : null) || surveyPinKind(id);
 
 /** The pin kind for an armed tool and line style ('rect' + cloud = Cloud). */
 export function pinKindForTool(tool, lineStyle) {
@@ -107,7 +121,7 @@ const cleanNumber = (value, min, max) => {
  */
 export function pinStyleFor(kindId, raw = {}) {
   const kind = pinKind(kindId);
-  if (!kind || kind.survey) return {};
+  if (!kind || kind.survey || kind.action) return {};
   const style = {};
   if (SIZE_ONLY_TOOLS.has(kind.tool)) {
     const size = cleanNumber(raw.strokeWidth, 1, 100);

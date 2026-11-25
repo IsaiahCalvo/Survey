@@ -12,6 +12,7 @@ import {
   INSERTED_IMAGE_MAX_PX,
   fitPixels,
   insertedImageItem,
+  openImageFilePicker,
 } from '../utils/insertedImage.js';
 
 async function decode(file) {
@@ -97,21 +98,10 @@ export async function armImageFile(file) {
 
 /** Open the file picker; the picture chosen lands where the page is clicked next. */
 export function pickImageToInsert() {
-  if (typeof document === 'undefined') return;
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = 'image/png,image/jpeg,image/gif,image/webp';
-  input.setAttribute('data-insert-image-input', 'true');
-  input.style.display = 'none';
-  input.addEventListener('change', () => {
-    const file = input.files?.[0];
-    input.remove();
-    if (!file) return;
+  return openImageFilePicker((file) => {
     if (canAim()) armImageFile(file);
     else insertImageFile(file);
-  }, { once: true });
-  document.body.appendChild(input);
-  input.click();
+  });
 }
 
 /** Mount once per open document: a pasted picture becomes an image mark. */

@@ -84,3 +84,47 @@ export const jpegDataUrlToBytes = (dataUrl) => {
     : Buffer.from(match[1], 'base64').toString('binary');
   return Uint8Array.from(binary, (char) => char.charCodeAt(0));
 };
+
+/**
+ * Open a hidden image file picker (#1663). Skips read-only documents, clears
+ * any stale picker left behind by a dismissed OS dialog, removes the input on
+ * cancel as well as change, and uses visually-hidden styling instead of
+ * display:none so accessibility and browser tools still see the file input.
+ */
+export function openImageFilePicker(onFile, doc = typeof document === 'undefined' ? null : document) {
+  if (!doc?.body || doc.body.getAttribute?.('data-readonly') === 'true') return false;
+  for (const stale of doc.querySelectorAll?.('input[data-insert-image-input="true"]') || []) {
+    stale.remove?.();
+  }
+  const input = doc.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/png,image/jpeg,image/gif,image/webp';
+  input.setAttribute('data-insert-image-input', 'true');
+  input.setAttribute('aria-label', 'Insert image');
+  Object.assign(input.style, {
+    position: 'fixed',
+    top: '0',
+    left: '0',
+    width: '1px',
+    height: '1px',
+    opacity: '0',
+    overflow: 'hidden',
+    clipPath: 'inset(50%)',
+    pointerEvents: 'none',
+  });
+  let cleaned = false;
+  const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
+    input.remove();
+  };
+  input.addEventListener('change', () => {
+    const file = input.files?.[0];
+    cleanup();
+    if (file) onFile?.(file);
+  }, { once: true });
+  input.addEventListener('cancel', cleanup, { once: true });
+  doc.body.appendChild(input);
+  input.click();
+  return true;
+}
