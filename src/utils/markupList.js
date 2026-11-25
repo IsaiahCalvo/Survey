@@ -34,6 +34,7 @@ export const MARKUP_KINDS = Object.freeze([
   ['counter', 'Counter', 'Counters'],
   ['pen', 'Pen', 'Pen strokes'],
   ['highlighter', 'Highlighter', 'Highlighter strokes'],
+  ['tape', 'Tape', 'Tape strips'],
   ['markup', 'Text highlight', 'Text highlights'],
   ['image', 'Image or stamp', 'Images and stamps'],
   ['mark', 'Other mark', 'Other marks'],
@@ -52,6 +53,9 @@ function kindOf(obj) {
   // A stamp from the Stamp card is drawn as a text box or a group; it lists
   // with images and stamps, not under Text boxes.
   if (data.type === 'stamp' || data.stamp || data.stampPreset) return 'image';
+  // A tape strip is drawn as a pen path; it lists as Tape, as Properties
+  // and the PDF export name it.
+  if (data.tape === true) return 'tape';
   const type = data.type === 'callout' ? 'callout' : (data.type === 'text-markup' ? 'text-markup' : obj?.type);
   return historyTypeKey(type, obj);
 }

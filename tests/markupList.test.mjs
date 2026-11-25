@@ -234,3 +234,11 @@ test('Survey Markers are counted for the empty list, not listed (Survey #1613)',
   assert.equal(countSurveyMarkers(byPage), 0);
   assert.equal(countSurveyMarkers(null), 0);
 });
+
+test('Muse batch F: a tape strip lists as Tape, not Pen', async () => {
+  const mod = await import('../src/utils/markupList.js');
+  const kinds = mod.MARKUP_KINDS.map(([key]) => key);
+  assert.ok(kinds.includes('tape'));
+  const src = (await import('node:fs')).readFileSync(new URL('../src/utils/markupList.js', import.meta.url), 'utf8');
+  assert.match(src, /if \(data\.tape === true\) return 'tape';/);
+});
