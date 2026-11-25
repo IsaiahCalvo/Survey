@@ -104,21 +104,39 @@ export async function sendWalkToProject({
   };
   const missing = new Map();
   const floors = walk.floors || [];
+  let firstDownloadError = null;
+  const countSkippedNodes = (floor) => {
+    // Its Category nodes are still counted, so the totals add up.
+    for (const node of floor.nodes || []) {
+      if (node.node_type_id == null) totals.defaultNodes += 1;
+      else totals.unplaced += 1;
+    }
+  };
 
   for (const floor of floors) {
     const asset = floor.asset;
     if (!asset?.storage_path || String(asset.format || '').toLowerCase() !== 'pdf') {
       totals.skippedFloors.push({ floorId: floor.id, name: floor.name, reason: asset ? 'not a PDF' : 'no drawing' });
-      // Its Category nodes are still counted, so the totals add up.
-      for (const node of floor.nodes) {
-        if (node.node_type_id == null) totals.defaultNodes += 1;
-        else totals.unplaced += 1;
-      }
+      countSkippedNodes(floor);
       continue;
     }
 
-    const { data: blob, error } = await download(asset.storage_path);
-    if (error || !blob) throw new Error(`Could not download "${floor.name}": ${error?.message || 'no file'}`);
+    let blob = null;
+    let downloadError = null;
+    try {
+      const res = await download(asset.storage_path);
+      blob = res?.data ?? null;
+      downloadError = res?.error ?? null;
+    } catch (err) {
+      downloadError = err;
+    }
+    if (downloadError || !blob) {
+      const detail = downloadError?.message || (typeof downloadError === 'string' && downloadError) || 'no file';
+      if (!firstDownloadError) firstDownloadError = new Error(`Could not download "${floor.name}": ${detail}`);
+      totals.skippedFloors.push({ floorId: floor.id, name: floor.name, reason: `could not download: ${detail}` });
+      countSkippedNodes(floor);
+      continue;
+    }
     const name = pdfName(walk.walk?.name, floor, floors.length);
     const file = typeof File === 'function' ? new File([blob], name, { type: 'application/pdf' }) : blob;
     const pageSize = await pageSizes(blob);
@@ -159,6 +177,10 @@ export async function sendWalkToProject({
       if (typeof handle.destroy === 'function') await handle.destroy();
     }
     if (linkTemplate) await linkTemplate(doc.id);
+  }
+
+  if (totals.documents.length === 0 && firstDownloadError) {
+    throw firstDownloadError;
   }
 
   totals.notInModule = [...missing.values()];
