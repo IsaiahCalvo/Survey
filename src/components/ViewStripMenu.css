@@ -1,0 +1,150 @@
+/* The View drawer (ViewStripMenu.jsx, Nightly 'view-strip').
+
+   Owner 2026-11-25: a drawer, not a pop-up. It sits flush on the rail's left
+   edge, as tall as the rail's lower block (Zoom in down to the viewer's
+   foot), and slides out from behind the rail and back in on the side-panel
+   time (suite Motion table: --motion-panel). Its rows spread evenly down
+   that height: View at the top, the view buttons on the foot, and Fit,
+   Pages and Scroll evenly between. */
+.view-drawer {
+  position: absolute;
+  right: 100%;
+  bottom: 0;
+  z-index: 6000;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: 320px;
+  padding: 10px 14px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-right: 0;
+  border-bottom: 0;
+  /* Only the corner that stands out over the page is rounded: the right
+     side meets the rail and the foot meets the viewer's foot. */
+  border-radius: var(--radius-md) 0 0 0;
+  /* Cast left and up only, so nothing shades the rail beside it. */
+  box-shadow: -16px 0 32px -14px rgba(0, 0, 0, 0.55);
+  color: var(--text-1);
+  font: var(--menu-font);
+  text-align: left;
+  cursor: default;
+}
+
+/* Slide out from behind the rail: the drawer moves its own width while its
+   right side stays cut at the rail's edge, so it comes out of the rail
+   rather than over it. The cut reaches past the top and left so the shadow
+   rides along. */
+@keyframes view-drawer-in {
+  from {
+    transform: translateX(100%);
+    clip-path: inset(-48px 100% 0 -64px);
+  }
+  to {
+    transform: translateX(0);
+    clip-path: inset(-48px 0 0 -64px);
+  }
+}
+
+@keyframes view-drawer-out {
+  from {
+    transform: translateX(0);
+    clip-path: inset(-48px 0 0 -64px);
+  }
+  to {
+    transform: translateX(100%);
+    clip-path: inset(-48px 100% 0 -64px);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .view-drawer[data-phase='open'] {
+    animation: view-drawer-in var(--motion-panel) var(--ease-out);
+  }
+  .view-drawer[data-phase='closing'] {
+    animation: view-drawer-out var(--motion-panel) var(--ease-in) forwards;
+    pointer-events: none;
+  }
+}
+
+.view-drawer__head {
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 2px;
+}
+
+.view-drawer__title {
+  font: 600 13px/18px var(--font-ui);
+  color: var(--text-1);
+}
+
+/* Fit, Pages (Columns in a Grid) and Scroll: spread evenly down the space
+   between the title and the view buttons. */
+.view-drawer__sections {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-evenly;
+  gap: 12px;
+  padding: 10px 0;
+}
+
+.view-drawer__section {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* The labels share one width, so every row's choices start on one line. */
+.view-drawer__label {
+  flex: 0 0 52px;
+  padding: 0 2px;
+  color: var(--text-2);
+}
+
+/* One choice row: a hairline frame, the choices sharing its width. The
+   choices keep the shared step states (RailFlyout.css .rail-flyout__step):
+   hover --hover, press --pressed at once, chosen --surface-3. */
+.view-drawer__choices {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.view-drawer__choices > .rail-flyout__step {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: var(--radius-xs);
+  white-space: nowrap;
+}
+
+/* Page by page is the one long word; it takes the room it needs. */
+.view-drawer__choices > .rail-flyout__step[data-view-scroll='page'] {
+  flex: 1.6 1 0;
+}
+
+/* The view buttons on the drawer's foot, spread across its width. */
+.view-drawer__tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+@media (pointer: coarse) {
+  .view-drawer__choices > .rail-flyout__step { height: 36px; }
+}
+
+/* #1660: the floating Properties panel sits above the right rail's host, so
+   while the drawer is out the rail rises over the panel (as for rail cards). */
+#chrome-right-host:has(.view-drawer) {
+  z-index: 5750 !important;
+}

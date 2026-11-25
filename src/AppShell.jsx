@@ -6216,10 +6216,11 @@ export default function App({ devPreviewReturnTab = null }) {
                     )}
                 </>
               );
-              // Nightly 'view-strip' (owner 2026-11-24): the View card the
-              // rail's Page fit button opens (ViewStripMenu.jsx). The fit
-              // list's eleven rows become three short rows of choices (Fit,
-              // Pages, Scroll), and the view buttons sit under them in one row.
+              // Nightly 'view-strip' (owner 2026-11-24, drawer 2026-11-25): the
+              // View drawer the rail's Page fit button slides out
+              // (ViewStripMenu.jsx). The fit list's eleven rows become three
+              // rows of choices (Fit, Pages, Scroll) spread down the drawer,
+              // and the view buttons sit on its foot in one row.
               const viewCardBody = () => {
                 const gridOn = isGridMode(pageSpread);
                 const columns = gridOn ? pageSpread.slice(5) : null;
@@ -6263,14 +6264,16 @@ export default function App({ devPreviewReturnTab = null }) {
                     {label}
                   </button>
                 );
+                // A label, then its choices sharing the rest of the row.
                 const row = (id, label, steps) => (
-                  <div role="radiogroup" aria-labelledby={id} className="rail-flyout__columns">
-                    <span id={id} className="rail-flyout__label">{label}</span>
-                    <span className="rail-flyout__steps">{steps}</span>
+                  <div role="radiogroup" aria-labelledby={id} className="view-drawer__section">
+                    <span id={id} className="view-drawer__label">{label}</span>
+                    <span className="view-drawer__choices">{steps}</span>
                   </div>
                 );
                 return (
                   <>
+                    <div className="view-drawer__sections">
                     {row('view-card-fit', 'Fit', ZOOM_MODE_OPTIONS.filter((o) => o.id !== ZOOM_MODES.MANUAL).map((o) => step({
                       key: o.id,
                       label: o.label.replace(/^Fit\s+/i, '').replace(/^./, (c) => c.toUpperCase()),
@@ -6306,8 +6309,8 @@ export default function App({ devPreviewReturnTab = null }) {
                         })))}
                       </>
                     )}
-                    <div role="separator" className="rail-flyout__divider" />
-                    <div role="toolbar" aria-label="View options" className="rail-flyout__tools">
+                    </div>
+                    <div role="toolbar" aria-label="View options" className="view-drawer__tools">
                       {viewButtons('above')}
                     </div>
                   </>
@@ -6406,7 +6409,7 @@ export default function App({ devPreviewReturnTab = null }) {
                           {...chromeTip(open ? undefined : `View: ${api.zoomDropdownLabel}`, 'left')}
                           style={{ ...footerBtn(), position: 'relative', width: `${RAIL_SPLIT_CONTROL_W}px`, color: open ? 'var(--text-1)' : (fitMode !== ZOOM_MODES.MANUAL ? 'var(--text-2)' : 'var(--text-3)') }}
                         >
-                          {/* The caret points left: the card slides out over
+                          {/* The caret points left: the drawer slides out over
                               the page. The glyph is the current fit's. */}
                           <Icon name="chevronLeft" size={RAIL_CARET} color="currentColor" style={{ position: 'absolute', left: '2px', top: 0, bottom: 0, margin: 'auto 0' }} />
                           <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
