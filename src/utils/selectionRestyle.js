@@ -27,7 +27,11 @@ import { renderPathToSvgAttrs } from './svgPathAttrs.js';
 import { createInkAnnotation, boundsOfCommands } from './paperAnnotationGeometry.js';
 import { createVariableInk } from './productionPaperInk.js';
 import { penWidthFactors } from './penTypes.js';
-import { isAbsoluteInkGeometry } from './inkGeometryTransform.js';
+import {
+  createInkPathAffine,
+  getInkCommandBounds,
+  isAbsoluteInkGeometry,
+} from './inkGeometryTransform.js';
 import { cloudEngineKindForShape, toolSupportsCloudBorderStyle } from './pdfAnnotationAppearance.js';
 import { getAnnotationRenderIdentity } from './annotationStorageIdentity.js';
 import { isArrowLineMark, isCounterMark, markToolForAnnotation } from './markToolGroup.js';
@@ -334,6 +338,131 @@ export function rebuildInkAtWidth(annotation, width) {
     sourceWidth: ink.sourceWidth,
     width: bounds.w,
     height: bounds.h,
+  };
+}
+
+/**
+ * KAL-812: resizing a native pen / highlighter stroke transforms its
+ * centreline and rebuilds the outline at the stroke's original width instead
+ * of scaling the outline thicker. Partly erased strokes and imported outlines
+ * cannot be rebuilt from a centreline (see canRebuildInkWidth) and stay on
+ * their affine transform.
+ */
+export function rebuildResizedPaperInk(resized, original = resized) {
+  if (!resized || !original || !canRebuildInkWidth(original)) return resized;
+  const baseWidth = Number(original.sourceWidth);
+  if (!Number.isFinite(baseWidth) || baseWidth <= 0) return resized;
+  const targetWidth = baseWidth * inkDrawScale(original);
+  if (!Number.isFinite(targetWidth) || targetWidth <= 0) return resized;
+
+  const commands = Array.isArray(resized.path) && resized.path.length
+    ? resized.path
+    : resized.cmds;
+  if (!Array.isArray(commands) || commands.length === 0) return resized;
+
+  const composed = createInkPathAffine(resized, commands, {
+    polygons: resized.polygons,
+    centerline: resized.paperCenterline,
+  });
+  const pageCenterline = original.paperCenterline.map((pt) => {
+    const mapped = composed.point(pt.x, pt.y);
+    return { x: mapped.x, y: mapped.y };
+  });
+  if (
+    pageCenterline.length === 0
+    || !pageCenterline.every((pt) => Number.isFinite(pt.x) && Number.isFinite(pt.y))
+  ) {
+    return resized;
+  }
+
+  // Keep the stroke's own rotation when resizing in its frame (no shear);
+  // if a rotated stroke was sheared nonuniformly in a group, give it an
+  // upright local frame so the rebuilt selection box matches its new shape.
+  const hasSkew = Math.abs(Number(resized.skewX) || 0) > 1e-4
+    || Math.abs(Number(resized.skewY) || 0) > 1e-4;
+  const keepAngle = hasSkew ? 0 : (Number(original.angle) || 0);
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const pt of pageCenterline) {
+    if (pt.x < minX) minX = pt.x;
+    if (pt.y < minY) minY = pt.y;
+    if (pt.x > maxX) maxX = pt.x;
+    if (pt.y > maxY) maxY = pt.y;
+  }
+  const pcx = (minX + maxX) / 2;
+  const pcy = (minY + maxY) / 2;
+
+  let localCenterline = pageCenterline;
+  let cosA = 1;
+  let sinA = 0;
+  if (keepAngle !== 0) {
+    const rad = (keepAngle * Math.PI) / 180;
+    cosA = Math.cos(rad);
+    sinA = Math.sin(rad);
+    localCenterline = pageCenterline.map((pt) => {
+      const dx = pt.x - pcx;
+      const dy = pt.y - pcy;
+      return {
+        x: pcx + (cosA * dx + sinA * dy),
+        y: pcy + (-sinA * dx + cosA * dy),
+      };
+    });
+  }
+
+  const sloppiness = Number(original.sloppiness ?? original.data?.sloppiness) || 0;
+  const penWidths = original.data?.penWidths;
+  const color = resized.fill ?? original.fill;
+  const ink = Array.isArray(penWidths) && penWidths.length === localCenterline.length
+    ? createVariableInk(localCenterline, penWidths, { id: original.id, color, width: targetWidth })
+    : createInkAnnotation(localCenterline, {
+      id: original.id,
+      color,
+      width: targetWidth,
+      sloppiness,
+    });
+  if (!Array.isArray(ink?.cmds) || ink.cmds.length === 0) return resized;
+
+  const bounds = getInkCommandBounds(ink.cmds);
+  if (!bounds) return resized;
+  const bcx = (bounds.minX + bounds.maxX) / 2;
+  const bcy = (bounds.minY + bounds.maxY) / 2;
+  const worldCx = keepAngle === 0
+    ? bcx
+    : pcx + (cosA * (bcx - pcx) - sinA * (bcy - pcy));
+  const worldCy = keepAngle === 0
+    ? bcy
+    : pcy + (sinA * (bcx - pcx) + cosA * (bcy - pcy));
+
+  return {
+    ...resized,
+    path: ink.cmds,
+    polygons: ink.polygons,
+    paperCenterline: localCenterline,
+    sourceWidth: ink.sourceWidth,
+    left: worldCx,
+    top: worldCy,
+    width: bounds.width,
+    height: bounds.height,
+    pathOffset: { x: bcx, y: bcy },
+    originX: 'center',
+    originY: 'center',
+    angle: keepAngle,
+    scaleX: 1,
+    scaleY: 1,
+    flipX: false,
+    flipY: false,
+    skewX: 0,
+    skewY: 0,
+    inkGeometrySpace: 'local',
+    inkGeometryOrigin: 'center-v1',
+    data: {
+      ...(resized.data || {}),
+      inkGeometrySpace: 'local',
+      inkGeometryOrigin: 'center-v1',
+    },
   };
 }
 
