@@ -1,3 +1,5 @@
+import { isEndOfContentNode } from './textLayerEndOfContent.js';
+
 const interactiveTextLayerForNode = (node) => {
   const element = node?.nodeType === 1 ? node : node?.parentElement;
   return element?.closest?.('.pdfjsTextLayer.is-interactive') || null;
@@ -71,7 +73,9 @@ export function getCaretBoundaryFromClientPoint(documentRef, clientX, clientY, r
     } catch { /* unsupported point */ }
   }
   const nativeLayer = interactiveTextLayerForNode(node);
-  if (node && nativeLayer && (!root || (root === nativeLayer && node !== root))) {
+  // The drag guard's blank block (textLayerEndOfContent.js) is no place to
+  // start or end a range: fall back to the nearest glyph.
+  if (node && nativeLayer && !isEndOfContentNode(node) && (!root || (root === nativeLayer && node !== root))) {
     return { node, offset: clampBoundaryOffset(node, offset) };
   }
   return geometryBoundaryFromPoint(documentRef, root, clientX, clientY);
