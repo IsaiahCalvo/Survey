@@ -20,7 +20,7 @@ test('presence writes the account name, else the email', () => {
 });
 
 test('project people lookup: members only, owners included, adds no data', () => {
-  const sql = read('supabase/migrations/20261124223000_project_people_names.sql');
+  const sql = read('supabase/migrations/20261125170000_project_people_names.sql');
   assert.match(sql, /SECURITY DEFINER/);
   assert.match(sql, /SET search_path = ''/);
   assert.match(sql, /project_item_member\(pid, auth\.uid\(\)\)/, 'only projects the caller belongs to');
