@@ -7,8 +7,8 @@ import {
   resolveReadOnlyReason,
 } from '../src/lib/collab/documentRole.js';
 
-test('KNOWN_DOCUMENT_ROLES lists owner/editor/viewer', () => {
-  assert.deepEqual([...KNOWN_DOCUMENT_ROLES], ['owner', 'editor', 'viewer']);
+test('KNOWN_DOCUMENT_ROLES lists owner/editor/commenter/viewer', () => {
+  assert.deepEqual([...KNOWN_DOCUMENT_ROLES].sort(), ['commenter', 'editor', 'owner', 'viewer']);
 });
 
 test('fetchMyDocumentRole fails open on missing inputs and errors', async () => {

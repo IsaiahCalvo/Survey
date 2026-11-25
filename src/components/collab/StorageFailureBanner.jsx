@@ -266,9 +266,10 @@ export const PHONE_BRIEF_BY_CODE = {
  * baseline nudge still live in the stylesheet and reach the glyph through
  * `currentColor`. Reference behaviour matched: the dismiss cross below.
  */
-const WarningIcon = () => (
-  <Icon name="warningTriangle" size={16} className="storage-banner__icon" />
+const WarningIcon = ({ info = false }) => (
+  <Icon name={info ? 'infoCircle' : 'warningTriangle'} size={16} className="storage-banner__icon" />
 );
+const INFO_CODES = new Set(['viewer_access', 'commenter_access']);
 
 /**
  * Storage-failure banner. Single component, 8 codes — extension surface for
@@ -388,7 +389,7 @@ export function StorageFailureBanner({
       role="alert"
       aria-live="polite"
     >
-      <WarningIcon />
+      <WarningIcon info={INFO_CODES.has(code)} />
       <div className="storage-banner__text">
         <div className="storage-banner__heading">
           {confirmingDismiss ? 'Hide this warning?' : heading}

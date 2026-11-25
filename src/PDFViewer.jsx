@@ -28198,6 +28198,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       toolBarContextTool: subToolTool,
       hasLiveTextSelection: !!liveTextSelection?.pages?.length,
       textMarkupSelectionRect,
+      // r5b #7: a Viewer's (and a Commenter's) mark tools show disabled with
+      // a "View only" tip instead of looking live and doing nothing.
+      canDraw: canRestoreFromHistory,
+      canWriteComments,
       activeCategoryDropdown,
       lastDrawTool,
       lastShapeTool,
@@ -28433,6 +28437,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   }, [
     isActive,
     onBottomToolbarApiChange,
+    canRestoreFromHistory,
+    canWriteComments,
     bottomToolbarRef,
     zoomInputRef,
     zoomMenuRef,

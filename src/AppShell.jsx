@@ -2901,6 +2901,11 @@ export default function App({ devPreviewReturnTab = null }) {
   useDropInRow(textBarEl, textFormatRowEl, false);
   const selectArmed = !!bottomToolbarApi && isSelectFamilyTool(bottomToolbarApi.activeTool);
   const selectModesInToolBar = selectArmed && toolBarGroup === 'select';
+  // r5b #7: a Viewer can't draw, so Draw / Shapes / Survey (and Text, unless
+  // they may still comment) show disabled with a "View only" tip instead of
+  // looking live and doing nothing (SUITE-RULES states table: Disabled).
+  const toolsViewOnly = bottomToolbarApi?.canDraw === false;
+  const textViewOnly = toolsViewOnly && bottomToolbarApi?.canWriteComments !== true;
   // Owner 2026-10-01 (Spaces toolbar): "it shouldn't be in a floating toolbar
   // ... make it into a sub-toolbar option." While a Space's areas are being
   // edited the tool bar is in AREAS mode: the area shapes and the Add /
@@ -3862,6 +3867,7 @@ export default function App({ devPreviewReturnTab = null }) {
                      whose tool group keeps its sub-row for as long as one of
                      that group's tools is the armed tool. Shapes and Text below
                      carry the same guard, so all three behave alike. */
+                  if (toolsViewOnly) return;
                   leaveAreasMode();
                   if (bottomToolbarApi.activeCategoryDropdown === 'draw') return;
                   bottomToolbarApi.setActiveCategoryDropdown('draw');
@@ -3869,7 +3875,8 @@ export default function App({ devPreviewReturnTab = null }) {
                     bottomToolbarApi.setActiveTool(bottomToolbarApi.lastDrawTool, { source: 'category-tab' });
                   }
                 }}
-                {...chromeTip('Draw', 'below')}
+                {...chromeTip(toolsViewOnly ? 'View only' : 'Draw', 'below')}
+                aria-disabled={toolsViewOnly || undefined}
                 className={`btn chrome-control ${isToolGroupPressed({ activeTool: bottomToolbarApi.activeTool, activeCategoryDropdown: bottomToolbarApi.activeCategoryDropdown, group: 'draw', toolIds: ['pen', 'highlighter', 'text-highlight', 'tape', 'laser', 'eraser'] }) ? 'btn-active' : 'btn-default'}`}
                 aria-pressed={isToolGroupPressed({ activeTool: bottomToolbarApi.activeTool, activeCategoryDropdown: bottomToolbarApi.activeCategoryDropdown, group: 'draw', toolIds: ['pen', 'highlighter', 'text-highlight', 'tape', 'laser', 'eraser'] })}
                 data-tool-group="true"
@@ -3885,6 +3892,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   /* UX 2026-09-22: see Draw above — a second click on the lit
                      Shapes button keeps the shape row, because closing it used
                      to leave a shape tool armed and unseeable. */
+                  if (toolsViewOnly) return;
                   leaveAreasMode();
                   if (bottomToolbarApi.activeCategoryDropdown === 'shape') return;
                   bottomToolbarApi.setActiveCategoryDropdown('shape');
@@ -3892,7 +3900,8 @@ export default function App({ devPreviewReturnTab = null }) {
                     bottomToolbarApi.setActiveTool(bottomToolbarApi.lastShapeTool, { source: 'category-tab' });
                   }
                 }}
-                {...chromeTip('Shapes', 'below')}
+                {...chromeTip(toolsViewOnly ? 'View only' : 'Shapes', 'below')}
+                aria-disabled={toolsViewOnly || undefined}
                 className={`btn chrome-control ${isToolGroupPressed({ activeTool: bottomToolbarApi.activeTool, activeCategoryDropdown: bottomToolbarApi.activeCategoryDropdown, group: 'shape', toolIds: ['rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'counter'] }) ? 'btn-active' : 'btn-default'}`}
                 aria-pressed={isToolGroupPressed({ activeTool: bottomToolbarApi.activeTool, activeCategoryDropdown: bottomToolbarApi.activeCategoryDropdown, group: 'shape', toolIds: ['rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'counter'] })}
                 data-tool-group="true"
@@ -3907,6 +3916,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 onClick={() => {
                   /* UX 2026-09-22: see Draw above — a second click on the lit
                      Text button keeps its row, for the same reason. */
+                  if (textViewOnly) return;
                   leaveAreasMode();
                   if (bottomToolbarApi.activeCategoryDropdown === 'review') return;
                   bottomToolbarApi.setActiveCategoryDropdown('review');
@@ -3914,7 +3924,8 @@ export default function App({ devPreviewReturnTab = null }) {
                     bottomToolbarApi.setActiveTool(bottomToolbarApi.lastReviewTool, { source: 'category-tab' });
                   }
                 }}
-                {...chromeTip('Text', 'below')}
+                {...chromeTip(textViewOnly ? 'View only' : 'Text', 'below')}
+                aria-disabled={textViewOnly || undefined}
                 className={`btn chrome-control ${isToolGroupPressed({ activeTool: bottomToolbarApi.activeTool, activeCategoryDropdown: bottomToolbarApi.activeCategoryDropdown, group: 'review', toolIds: REVIEW_TOOL_IDS }) ? 'btn-active' : 'btn-default'}`}
                 aria-pressed={isToolGroupPressed({ activeTool: bottomToolbarApi.activeTool, activeCategoryDropdown: bottomToolbarApi.activeCategoryDropdown, group: 'review', toolIds: REVIEW_TOOL_IDS })}
                 data-tool-group="true"
@@ -3943,8 +3954,9 @@ export default function App({ devPreviewReturnTab = null }) {
               >
                 <button
                   type="button"
-                  onClick={() => { leaveAreasMode(); bottomToolbarApi.surveyToolbar?.onArmMarker(); }}
-                  {...chromeTip('Survey', 'below')}
+                  onClick={() => { if (toolsViewOnly) return; leaveAreasMode(); bottomToolbarApi.surveyToolbar?.onArmMarker(); }}
+                  {...chromeTip(toolsViewOnly ? 'View only' : 'Survey', 'below')}
+                  aria-disabled={toolsViewOnly || undefined}
                   className={`btn chrome-control ${surveyRowShown ? 'btn-active' : 'btn-default'}`}
                   data-tool-group="true"
                   data-tool-switch="true"

@@ -1196,10 +1196,14 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
     const survey = isSurveyPinKind(pin.kind)
       ? surveyPinStatus(pin, { toolbar: api.surveyToolbar, activeTool, shownMode: shownMarkerMode, smartFillReady })
       : null;
-    const unavailable = Boolean(survey && !survey.available);
+    // r5b #7: a Viewer keeps their pins, dimmed, with "View only".
+    const viewOnly = api?.canDraw === false;
+    const unavailable = viewOnly || Boolean(survey && !survey.available);
     // A survey pin whose thing is not in the template in use stays (it may
     // be the next document's), dimmed, and says why.
-    const description = unavailable ? `${pinDescription(pin)}: not in this template` : pinDescription(pin);
+    const description = viewOnly
+      ? `${pinDescription(pin)}: view only`
+      : (unavailable ? `${pinDescription(pin)}: not in this template` : pinDescription(pin));
     const pressed = survey ? survey.pressed : armedPin === pin;
     return (
       <div
@@ -1238,6 +1242,7 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
               return;
             }
             if (inMenu) closeMenu();
+            if (viewOnly) return;
             arm(pin);
           }}
           onContextMenu={(event) => {

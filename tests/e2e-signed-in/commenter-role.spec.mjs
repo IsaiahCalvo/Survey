@@ -72,6 +72,10 @@ test('a Commenter comments, replies and resolves, but cannot draw', async ({ pag
     const row = panel.locator(`[data-comment-thread="${thread.id}"]`);
     await expect(row).toBeVisible({ timeout: 60_000 });
     await expect(page.getByText('Comment-only access')).toBeVisible({ timeout: 30_000 });
+    // r5b #7: the mark tools say they can't be used; Text stays (its comment pin).
+    await expect(page.getByRole('button', { name: 'Draw', exact: true })).toHaveAttribute('aria-disabled', 'true');
+    await expect(page.getByRole('button', { name: 'Shapes', exact: true })).toHaveAttribute('aria-disabled', 'true');
+    await expect(page.getByRole('button', { name: 'Text', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
 
     // Reply in the app.
     await row.locator(`[data-comment-reply="${thread.id}"]`).click();

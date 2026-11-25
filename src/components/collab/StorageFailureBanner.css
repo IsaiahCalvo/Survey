@@ -64,6 +64,25 @@
   font-family: var(--font-ui);
 }
 
+/* Plain news, not a failure (r5b #7, #13): View-only and Comment-only access
+   are a plain surface inside the ordinary hairline with a quiet info glyph;
+   "Live sync is offline" says the work is safe on this device, so it wears
+   the caution box, not the red one (tokens.css ONE CALM ALERT). */
+.storage-banner:is([data-code='viewer_access'], [data-code='commenter_access']) {
+  background: var(--surface-2);
+  border: var(--alert-neutral-border);
+}
+.storage-banner:is([data-code='viewer_access'], [data-code='commenter_access']) .storage-banner__icon {
+  color: var(--text-3);
+}
+.storage-banner[data-code='transport_offline'] {
+  background: linear-gradient(var(--alert-warning-bg), var(--alert-warning-bg)), var(--surface-1);
+  border: var(--alert-warning-border);
+}
+.storage-banner[data-code='transport_offline'] .storage-banner__icon {
+  color: var(--warning);
+}
+
 .storage-banner__icon {
   /* UX: 16x16 warning icon, vertical-align nudged 2px so it sits on the heading
      baseline. Color inherits via `currentColor` in the SVG so the icon adopts

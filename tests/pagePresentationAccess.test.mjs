@@ -14,7 +14,7 @@ const actions = source.slice(source.indexOf('  const handleMirrorPage = useCallb
 function simulate(overrides = {}) {
   const calls = { writes: [], reads: 0, subscriptions: 0, mirrors: 0, resets: 0, renders: [] };
   const scope = {
-    pdfFile: { id: 'doc' }, user: { id: 'editor' }, documentOwnerId: 'owner', yjsDocRole: 'editor', documentLocked: false, yjsAccessRevoked: false,
+    pdfFile: { id: 'doc' }, user: { id: 'editor' }, documentOwnerId: 'owner', yjsDocRole: 'editor', yjsCanComment: true, documentLocked: false, yjsAccessRevoked: false,
     normalAnnotationHydration: { ready: true, documentId: 'doc' },
     pagePresentationMetaSetRef: {}, pagePresentationMetaGetRef: {}, pagePresentationStateRef: { current: { 1: { mirrorH: true } } },
     PAGE_PRESENTATION_META_KEY, normalizePagePresentations,
