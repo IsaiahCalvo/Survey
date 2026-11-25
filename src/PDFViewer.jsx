@@ -24776,10 +24776,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     // Compare current with saved to detect changes. jsonEqual answers exactly
     // like comparing the two JSON.stringify strings, without building them
     // (w29: ~70 ms per change on a 3,000-mark document).
+    // While the status reads "Up to date" and the timer above waits to
+    // confirm, the dot holds: the cloud copy landing on open is not a change
+    // (tester #1635: the tab flashed the dot after a reload). An edit flips
+    // the status to pending, which re-runs this check and shows the dot.
+    const holdDot = Boolean(confirmTimer);
     const reportUnsaved = (matchesSaved) => {
       pendingUnsavedCheckRef.current = null;
       if (waitingByPageRef.current === annotationsByPage) waitingByPageRef.current = null;
       const unsaved = !matchesSaved && Object.keys(annotationsByPage).length > 0;
+      if (unsaved && holdDot) return unsaved;
       if (unsaved) setHasUnsavedAnnotations(true);
       if (onUnsavedAnnotationsChange) onUnsavedAnnotationsChange(unsaved);
       return unsaved;
@@ -30644,7 +30650,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   }, []);
 
   // Markups list: go to a mark and pick it (a callout is shown, not picked).
-  const openMarkupRow = useCallback((row) => {
+  const openMarkupRow = useCallback((row, { add = false, toggle = false } = {}) => {
     const page = Number(row?.pageNumber);
     if (!Number.isFinite(page) || page < 1) return;
     // Asking for a mark while all marks are hidden shows them again, so the
@@ -30662,7 +30668,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     const box = obj ? getAnnotationWorldAABB(obj) : null;
     focusHistoryMark(page, box && box.width >= 0 ? { left: box.left, top: box.top, width: Math.max(box.width, 1), height: Math.max(box.height, 1) } : null);
     if (obj && obj?.data?.type !== 'callout') {
-      setPendingSvgSelection({ pageNumber: page, annotationIndices: [index], tick: Date.now() });
+      // Shift / Ctrl / Cmd on a row (tester #1624): add to the pick, or for
+      // Ctrl / Cmd take an already picked mark out.
+      setPendingSvgSelection(add
+        ? { pageNumber: page, annotationIndex: index, addToSelection: true, toggleSelection: toggle, tick: Date.now() }
+        : { pageNumber: page, annotationIndices: [index], tick: Date.now() });
     }
   }, [focusHistoryMark]);
 

@@ -1334,7 +1334,8 @@ const SVGAnnotationLayerBody = memo(({
     setSelectedSurveyMarkerId(null);
     setSurveyMarkerPreviewBounds(null);
     surveyMarkerDragRef.current = null;
-    if (pendingSelection.subtractFromSelection) {
+    if (pendingSelection.subtractFromSelection
+      || (pendingSelection.toggleSelection === true && selectedIds.has(pendingSelection.annotationIndex))) {
       selectAnnotations([...selectedIds].filter((index) => index !== pendingSelection.annotationIndex));
     } else {
       selectAnnotation(pendingSelection.annotationIndex, pendingSelection.addToSelection === true);

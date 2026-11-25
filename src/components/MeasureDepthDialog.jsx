@@ -39,7 +39,7 @@ export default function MeasureDepthDialog({ kind, initialDepth = 1, scale = nul
           e.stopPropagation();
           cardRef.current?.querySelector('[data-measure-depth]')?.focus();
         }}
-        onClick={(e) => { if (e.target === e.currentTarget) e.stopPropagation(); }}
+        onClick={(e) => e.stopPropagation()}
       >
         <form
           ref={cardRef}

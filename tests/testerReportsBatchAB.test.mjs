@@ -108,3 +108,27 @@ test('#1633: a picked picture follows the pointer and lands at the click', () =>
   assert.match(src, /if \(canAim\(\)\) armImageFile\(file\);\s*else insertImageFile\(file\);/);
   assert.match(src, /armLibraryItem\(item\);/);
 });
+
+test('#1624: Shift / Ctrl / Cmd on an Annotations row adds to the pick or takes it out', () => {
+  const panel = read('src/sidebar/MarkupsPanel.jsx');
+  assert.match(panel, /const toggle = Boolean\(event\.metaKey \|\| event\.ctrlKey\);/);
+  assert.match(panel, /onOpenMark\?\.\(row, add \? \{ add: true, toggle \} : undefined\)/);
+  const viewer = read('src/PDFViewer.jsx');
+  assert.match(viewer, /annotationIndex: index, addToSelection: true, toggleSelection: toggle/);
+  const layer = read('src/components/SVGAnnotationLayer.jsx');
+  assert.match(layer, /pendingSelection\.toggleSelection === true && selectedIds\.has\(pendingSelection\.annotationIndex\)/);
+});
+
+test('#1636: the extra-name question comes before the bytes go back up', () => {
+  const all = read('src/Dashboard.jsx');
+  const src = all.slice(all.indexOf('const uploadBrowserPdf = async'));
+  const ask = src.indexOf('if (askDuplicates) await maybeOfferAlias(resolvedDoc, file.name, contentSha);');
+  const heal = src.indexOf(".upload(resolvedDoc.file_path, file, { upsert: true, contentType: 'application/pdf' })");
+  assert.ok(ask > 0 && heal > 0 && ask < heal);
+});
+
+test('#1635: the unsaved dot holds while "Up to date" waits to confirm', () => {
+  const src = read('src/PDFViewer.jsx');
+  assert.match(src, /const holdDot = Boolean\(confirmTimer\);/);
+  assert.match(src, /if \(unsaved && holdDot\) return unsaved;/);
+});

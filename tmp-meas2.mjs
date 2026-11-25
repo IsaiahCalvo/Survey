@@ -1,0 +1,15 @@
+import { writeFileSync } from 'node:fs';
+import { PDFDocument } from 'pdf-lib';
+import { buildLineCommitJSON } from './src/utils/annotationCreationCommit.js';
+import { scaleFromPreset, stampMeasure, applyMeasureEdit } from './src/utils/measure/measureScale.js';
+const { savePDFWithAnnotationsPdfLib, measureReadingsPrintGate } = await import('./src/utils/pdfAnnotationsPdfLib.js'); measureReadingsPrintGate.on = () => true;
+const Q = scaleFromPreset('1/4');
+let m = stampMeasure(buildLineCommitJSON({ tool: 'line', id: 'len', start: { x: 1000, y: 800 }, end: { x: 1387, y: 800 }, strokeColor: '#e53935', strokeOpacity: 100, strokeWidth: 2 }), 'length', Q, { dim: true });
+m = applyMeasureEdit(m, { label: 'QA6-edit2' });
+m = applyMeasureEdit(m, { fields: ['label','length'] });
+console.log(JSON.stringify(m.data.measure));
+const source = await PDFDocument.create(); source.addPage([2592, 1728]);
+const bytes = await source.save();
+const file = { name: 'b.pdf', async arrayBuffer() { return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength); } };
+const out = await savePDFWithAnnotationsPdfLib(file, { 1: { objects: [m] } }, { 1: { width: 2592, height: 1728 } }, null, { returnBytes: true, actionType: 'pdf-export', documentId: 'x' });
+writeFileSync(process.argv[2], out);

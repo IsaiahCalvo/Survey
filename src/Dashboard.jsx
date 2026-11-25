@@ -1010,6 +1010,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         // spawn a second tab of the same document under the new name (the
         // tab-matcher keys on the name), double-mounting the viewer.
         if (resolvedDoc.content_sha256 === contentSha && resolvedDoc.name !== file.name) {
+          // The extra-name question first, before the slow re-upload (#1636).
+          await maybeOfferAlias(resolvedDoc, file.name, contentSha);
           // A deduped row does not GUARANTEE a durable object (a prior failed
           // upload can leave a row whose object is missing). We hold identical
           // bytes — store them AT THE ROW'S OWN file_path (which is what the
@@ -1030,7 +1032,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
           if (!(duplicateGate.archiveDocId && replacesWithOlderVersion(resolvedDoc))) {
             await archiveReplacedDocument(duplicateGate.archiveDocId, resolvedDoc.id);
           }
-          await maybeOfferAlias(resolvedDoc, file.name, contentSha);
           if (openAfterUpload) await handleDocumentClick(resolvedDoc);
           refetchAllDocuments();
           perfUpload.end(file.name);
@@ -1201,6 +1202,10 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     // by its own identity (a second same-document tab under the new name
     // double-mounts the viewer — see the Electron path note).
     if (resolvedDoc.content_sha256 === contentSha && resolvedDoc.name !== file.name) {
+      // Ask about the extra name first, before the bytes go back up: the
+      // upload below can take seconds, and the question came only after it,
+      // so Upload looked like it did nothing (tester #1636).
+      if (askDuplicates) await maybeOfferAlias(resolvedDoc, file.name, contentSha);
       // A deduped row does not GUARANTEE a durable object (a prior failed
       // upload can leave a row whose object is missing). We hold identical
       // bytes — store them AT THE ROW'S OWN file_path (which is what the
@@ -1220,7 +1225,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       if (!(duplicateGate.archiveDocId && replacesWithOlderVersion(resolvedDoc))) {
         await archiveReplacedDocument(duplicateGate.archiveDocId, resolvedDoc.id);
       }
-      if (askDuplicates) await maybeOfferAlias(resolvedDoc, file.name, contentSha);
       if (wantsOpen()) await handleDocumentClick(resolvedDoc);
       refetchAllDocuments();
       file.id = resolvedDoc.id; // device-files: the caller carries marks into it
