@@ -190,3 +190,42 @@ test('a new pick mid-gesture reads the page again, and a lock badge it finds is 
   assert.equal(bar.getAttribute('data-visible'), 'true');
   assert.equal(bar.querySelector('[aria-label="Delete"]'), null, 'no Delete on a locked pick');
 });
+
+test('holding Shift hides the bar so Shift-click reaches nearby marks, and release restores it (#1655)', async () => {
+  const { bar } = await mountBar();
+  assert.equal(bar.getAttribute('data-visible'), 'true');
+
+  // Holding Shift steps the bar aside synchronously before a Shift-click lands.
+  await act(async () => {
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', shiftKey: true, bubbles: true }));
+  });
+  assert.equal(bar.getAttribute('data-visible'), 'false');
+
+  // Releasing Shift brings the bar back.
+  await act(async () => {
+    window.dispatchEvent(new KeyboardEvent('keyup', { key: 'Shift', shiftKey: false, bubbles: true }));
+  });
+  await frame();
+  assert.equal(bar.getAttribute('data-visible'), 'true');
+
+  // Window blur while Shift is held also restores the bar.
+  await act(async () => {
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', shiftKey: true, bubbles: true }));
+  });
+  assert.equal(bar.getAttribute('data-visible'), 'false');
+  await act(async () => {
+    window.dispatchEvent(new Event('blur'));
+  });
+  await frame();
+  assert.equal(bar.getAttribute('data-visible'), 'true');
+
+  // Keyboard navigation inside the bar (Shift+Tab) keeps the bar visible.
+  const btn = bar.querySelector('button');
+  assert.ok(btn, 'bar has a focusable button');
+  btn.focus();
+  await act(async () => {
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', shiftKey: true, bubbles: true }));
+  });
+  assert.equal(bar.getAttribute('data-visible'), 'true');
+});
+
