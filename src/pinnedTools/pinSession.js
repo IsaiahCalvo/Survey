@@ -110,7 +110,7 @@ export function pinEditFromViewer(session, pin, api, now = Date.now()) {
 /** The settings a NEW pin of `kindId` starts with: the tool's own. */
 export function startingStyleFor(api, session, kindId) {
   const kind = pinKind(kindId);
-  if (!kind || typeof api?.readToolStyle !== 'function') return {};
+  if (!kind || kind.action || typeof api?.readToolStyle !== 'function') return {};
   const cls = kind.lineStyle === 'cloud' ? 'cloud' : 'plain';
   // While a pin of this tool is armed the viewer holds the PIN's settings;
   // the tool's own are the ones the session saved.

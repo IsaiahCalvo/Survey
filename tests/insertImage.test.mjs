@@ -80,3 +80,96 @@ test('an exported PDF carries a placed JPEG picture as a Stamp annotation', asyn
   assert.equal(annots?.size?.(), 1);
   assert.equal(annots.lookup(0).get(PDFName.of('Subtype')).toString(), '/Stamp');
 });
+
+test('#1663: Find a tool matches Insert image when insert-image is on, and pins it without a style badge', async () => {
+  const { matchPinKinds, makePin, pinBadge, pinDescription, pinFaceColor, pinKind, sanitizePinnedToolsState } = await import('../src/pinnedTools/pinnedTools.js');
+  assert.deepEqual(matchPinKinds('image').map((k) => k.id), [], 'hidden when the flag is off');
+  assert.deepEqual(matchPinKinds('image', { includeImage: true }).map((k) => k.id), ['image']);
+  assert.deepEqual(matchPinKinds('insert', { includeImage: true }).map((k) => k.id), ['image']);
+  assert.deepEqual(matchPinKinds('photo', { includeImage: true }).map((k) => k.id), ['image']);
+  assert.equal(pinKind('image')?.group, 'Text');
+  assert.equal(pinKind('image')?.action, 'insert-image');
+  const pin = makePin('image', { strokeWidth: 4, strokeColor: '#ff0000' }, 'img-pin');
+  assert.deepEqual(pin, { id: 'img-pin', kind: 'image', style: {} });
+  assert.equal(pinDescription(pin), 'Insert image');
+  assert.equal(pinBadge(pin), '');
+  assert.equal(pinFaceColor(pin), null);
+  const saved = sanitizePinnedToolsState({ pins: [{ id: 'img-pin', kind: 'image', style: {} }] });
+  assert.deepEqual(saved.pins, [{ id: 'img-pin', kind: 'image', style: {} }]);
+  assert.match(read('src/components/PinnedToolsDock.jsx'), /pickImageToInsert/);
+  assert.match(read('src/components/PinnedToolsDock.jsx'), /includeImage:\s*insertImage/);
+});
+
+test('#1663: openImageFilePicker skips read-only docs, removes stale inputs, cleans up on cancel, and keeps the input accessible', async () => {
+  const { openImageFilePicker } = await import('../src/utils/insertedImage.js');
+  const children = [];
+  let readonly = false;
+  let clicks = 0;
+  let picked = null;
+  const makeEl = () => {
+    const attrs = new Map();
+    const listeners = new Map();
+    const el = {
+      type: '',
+      accept: '',
+      style: {},
+      files: [],
+      setAttribute: (k, v) => attrs.set(k, String(v)),
+      getAttribute: (k) => attrs.get(k) ?? null,
+      addEventListener: (type, fn) => {
+        const list = listeners.get(type) || [];
+        list.push(fn);
+        listeners.set(type, list);
+      },
+      dispatch: (type) => {
+        for (const fn of (listeners.get(type) || []).splice(0)) fn();
+      },
+      click: () => { clicks += 1; },
+      remove: () => {
+        const i = children.indexOf(el);
+        if (i >= 0) children.splice(i, 1);
+      },
+    };
+    return el;
+  };
+  const fakeDoc = {
+    body: {
+      getAttribute: (k) => (k === 'data-readonly' && readonly ? 'true' : null),
+      appendChild: (el) => { children.push(el); return el; },
+    },
+    createElement: () => makeEl(),
+    querySelectorAll: (sel) => (sel.includes('data-insert-image-input') ? [...children] : []),
+  };
+
+  readonly = true;
+  assert.equal(openImageFilePicker((f) => { picked = f; }, fakeDoc), false);
+  assert.equal(children.length, 0, 'read-only document does not open image picker');
+  assert.equal(clicks, 0);
+
+  readonly = false;
+  assert.equal(openImageFilePicker((f) => { picked = f; }, fakeDoc), true);
+  assert.equal(children.length, 1);
+  assert.equal(clicks, 1);
+  const first = children[0];
+  assert.equal(first.getAttribute('aria-label'), 'Insert image');
+  assert.notEqual(first.style.display, 'none', 'visually hidden rather than display:none');
+
+  // A repeat click replaces any stale input instead of leaking another one.
+  assert.equal(openImageFilePicker((f) => { picked = f; }, fakeDoc), true);
+  assert.equal(children.length, 1);
+  assert.notEqual(children[0], first);
+  assert.equal(clicks, 2);
+
+  // Canceling the file picker removes the input cleanly.
+  children[0].dispatch('cancel');
+  assert.equal(children.length, 0);
+
+  // Picking a file invokes onFile and removes the input.
+  openImageFilePicker((f) => { picked = f; }, fakeDoc);
+  const fakeFile = { name: 'valve.png', type: 'image/png' };
+  children[0].files = [fakeFile];
+  children[0].dispatch('change');
+  assert.equal(children.length, 0);
+  assert.equal(picked, fakeFile);
+  assert.match(read('src/components/InsertImage.jsx'), /openImageFilePicker/);
+});
