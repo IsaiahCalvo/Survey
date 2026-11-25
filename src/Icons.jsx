@@ -1689,11 +1689,15 @@ const ICON_ALIASES = {
   textGroup: 'scanText',
   highlighter: 'highlighterTool',
   pan: 'formatPan',
-  underline: 'formatUnderline',
-  strikeout: 'formatStrikethrough',
-  squiggly: 'formatSquiggle',
+  // A text mark has one icon everywhere (owner 2026-11-25): the Text row's
+  // stroked tool glyph, in the row, the text-selection bar, the quick menu
+  // and every list that names the mark. formatUnderline / formatStrikethrough
+  // stay the filled letterforms of a text box's own B I U S styling.
+  underline: 'textUnderlineTool',
+  strikeout: 'textStrikeTool',
+  squiggly: 'textSquiggleTool',
   hyperlink: 'formatHyperlink',
-  redact: 'formatRedact',
+  redact: 'textRedactTool',
 };
 
 /* Owner 2026-10-02 (phone/desktop consistency): an icon given no colour draws

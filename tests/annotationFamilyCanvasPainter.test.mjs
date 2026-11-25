@@ -90,11 +90,13 @@ test('text-markup highlight fills its quads with the markup colour and opacity (
   assert.equal(fill.fillStyle, '#ffeb3b');
   assert.equal(fill.alpha, 0.4);
   assert.equal(fill.op, 'multiply');
+  // A highlight made here reaches past its first and last letters by
+  // padTextHighlightQuad's pad (18% of the 12pt line height = 2.16pt).
   const moves = calls.filter((c) => c.name === 'moveTo').map((c) => c.args);
-  assert.deepEqual(moves, [[10, 10]]);
+  assert.deepEqual(moves, [[7.84, 10]]);
   const lines = calls.filter((c) => c.name === 'lineTo').map((c) => c.args);
   // Quad order x1 -> x2 -> x4 -> x3, same as renderTextMarkup's path.
-  assert.deepEqual(lines, [[60, 10], [60, 22], [10, 22]]);
+  assert.deepEqual(lines, [[62.16, 10], [62.16, 22], [7.84, 22]]);
 });
 
 test('text-markup strikeout strokes the quad mid-line at the authored width', () => {
