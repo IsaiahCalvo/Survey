@@ -186,6 +186,10 @@ import { isNoSpaceCluster } from './textWrapMode.js';
 // same for Math.min / Math.max spreads.
 const PDF_OPERATOR_PUSH_CHUNK = 1024;
 
+// A revealed tape's outline in the export (#1654): the page draws 2 px at half strength.
+const TAPE_REVEALED_EXPORT_OPACITY = 0.5;
+const TAPE_REVEALED_EXPORT_WIDTH = 1.5;
+
 /** `target.push(...items)` without the one-argument-per-item spread. */
 const appendAllInto = (target, items) => {
   for (let index = 0; index < items.length; index += 1) target.push(items[index]);
@@ -508,6 +512,8 @@ const stampExportedAppAnnotation = (pdfDoc, ref, { modified = null, created = nu
     subtype,
     appType: metadata.appType,
     hasCloudBorder,
+    // #1653: a tape is saved as pen ink; its subject is Tape, as Properties says.
+    tape: metadata.data?.tape === true,
   })));
   // A mark's note (Nightly 'mark-note') is its comment in other apps, when
   // the mark has no words of its own (a text box's words, a measure's
@@ -1566,7 +1572,12 @@ const createFilledPaperInkAnnotation = (pdfDoc, page, fabricObj, pageHeight, opt
       )
     : (fabricObj.fill || fabricObj.stroke || '#000000');
   const color = hexToRGB(sourcePaint || '#000000');
-  const alpha = paintAlpha(sourcePaint, fabricObj.opacity);
+  // #1654: a revealed tape (data.tapeRevealed) is a faded outline on the
+  // page, so what is under it shows; the export draws the same outline
+  // instead of the solid band.
+  const revealedTape = !hasAnalyticPaperSource
+    && fabricObj?.data?.tape === true && fabricObj.data.tapeRevealed === true;
+  const alpha = paintAlpha(sourcePaint, fabricObj.opacity) * (revealedTape ? TAPE_REVEALED_EXPORT_OPACITY : 1);
   const useMultiply = fabricObj.globalCompositeOperation === 'multiply'
     || fabricObj.tool === 'highlighter';
   const needsGraphicsState = alpha < 0.99999 || useMultiply;
@@ -1585,6 +1596,10 @@ const createFilledPaperInkAnnotation = (pdfDoc, page, fabricObj, pageHeight, opt
       hasAnalyticPaperSource && !sourceIsFill && !survivorFill ? 'RG' : 'rg'
     }`,
   );
+  if (revealedTape) {
+    content.push(`${pdfNumberText(color.red)} ${pdfNumberText(color.green)} ${pdfNumberText(color.blue)} RG`);
+    content.push(`${pdfNumberText(TAPE_REVEALED_EXPORT_WIDTH)} w`, '1 j');
+  }
 
   if (survivorFill) {
     for (const polygon of polygons) {
@@ -1774,7 +1789,7 @@ const createFilledPaperInkAnnotation = (pdfDoc, page, fabricObj, pageHeight, opt
     }
   }
   if (!hasAnalyticPaperSource) {
-    content.push(fabricObj?.fillRule === 'nonzero' ? 'f' : 'f*');
+    content.push(revealedTape ? 'S' : (fabricObj?.fillRule === 'nonzero' ? 'f' : 'f*'));
   }
   content.push('Q');
 

@@ -61,6 +61,10 @@ const DATA_ALLOWLIST = [
   'pdfCloudVertexState',
   // Nightly 'mark-subject': the mark's own subject, written as /Subj too.
   'subject',
+  // Tape (beta 'tape-tool'): pen ink with this flag; its /Subj is Tape
+  // (#1653) and a revealed tape stays revealed after a round trip.
+  'tape',
+  'tapeRevealed',
   // Nightly 'mark-note': the mark's note, written as /Contents too when
   // the mark has no words of its own.
   'note',

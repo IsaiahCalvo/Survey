@@ -99,8 +99,9 @@ const SUBJECT_BY_SUBTYPE = Object.freeze({
 });
 
 /** A readable /Subj for a Survey mark ("Rectangle", "Arrow", "Cloud"...). */
-export function readableMarkSubject({ subtype = null, appType = null, hasCloudBorder = false } = {}) {
+export function readableMarkSubject({ subtype = null, appType = null, hasCloudBorder = false, tape = false } = {}) {
   const type = String(appType || '').toLowerCase();
+  if (tape) return 'Tape';
   if (type === 'arrow') return 'Arrow';
   if (hasCloudBorder) return 'Cloud';
   if (type === 'highlighter' || type === 'highlight') return 'Highlight';

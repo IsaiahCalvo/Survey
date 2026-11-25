@@ -22910,6 +22910,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // Nightly 'page-templates': the page menu's "Template page below" picker.
   const [pageTemplatesEnabled] = useState(() => isFeatureOn('page-templates'));
   const [pageTemplatePicker, setPageTemplatePicker] = useState(null);
+  // #1648: the Pages panel's page menus offer "Template page below" too, as
+  // the viewer's own page menu does.
+  const handleInsertTemplatePage = useMemo(
+    () => (pageTemplatesEnabled ? (page) => setPageTemplatePicker({ afterPage: page }) : undefined),
+    [pageTemplatesEnabled],
+  );
   const [snapshotToolEnabled] = useState(() => isFeatureOn('snapshot-tool'));
   const [signatureToolEnabled] = useState(() => isFeatureOn('signature-tool'));
   const [textHighlightToolEnabled] = useState(() => isFeatureOn('text-highlight-tool'));
@@ -38555,6 +38561,7 @@ ${pageBlocks}
       onCurrentMatchIndexChange: handleCurrentMatchIndexChange,
       onDuplicatePage: handleDuplicatePage,
       onInsertBlankPage: handleInsertBlankPage,
+      onInsertTemplatePage: handleInsertTemplatePage,
       onDeletePage: deletePageWithUndo,
       onCutPage: handleCutPage,
       onCopyPage: handleCopyPage,
@@ -39539,7 +39546,7 @@ ${pageBlocks}
             paste: (page, position) => { if (clipboardPage) handlePastePage(page, clipboardPage, clipboardType, position); },
             duplicate: handleDuplicatePage,
             insertBlank: handleInsertBlankPage,
-            ...(pageTemplatesEnabled ? { insertTemplate: (page) => setPageTemplatePicker({ afterPage: page }) } : {}),
+            ...(handleInsertTemplatePage ? { insertTemplate: handleInsertTemplatePage } : {}),
             rotate: handleRotatePage,
             mirror: handleMirrorPage,
             reset: handleResetPage,
@@ -40385,6 +40392,7 @@ ${pageBlocks}
                                 onRotatePageCW={handleRotatePageCW}
                                 onRotatePageCCW={handleRotatePageCCW}
                                 onInsertBlankPage={handleInsertBlankPage}
+                                onInsertTemplatePage={handleInsertTemplatePage}
                                 pageClipboard={pageClipboardPayload}
                                 onPastePageHere={handlePastePageHere}
                                 onPaintCommitted={handleLegacyOverlayPaintCommitted}
