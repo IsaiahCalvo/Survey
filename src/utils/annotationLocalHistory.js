@@ -1121,3 +1121,40 @@ export function dropAlreadyPresentRestoreTargets(annotationsByPage, action) {
   }
   return action;
 }
+
+/**
+ * Round 5 #14: an Undo of "draw a mark" takes the mark away, and Redo brings
+ * it back. Redo used to bring back the mark as it was drawn, quietly undoing
+ * whatever a teammate did to it since (a resize). Before the Undo runs, the
+ * step's created marks are copied as they are on the page now, so Redo
+ * brings back the mark as it last was.
+ */
+export function refreshCreatedSnapshots(action, annotationsByPage) {
+  if (!action || typeof action !== 'object' || !annotationsByPage) return action;
+  if (action.type === 'fabric:document-batch') {
+    const actions = (action.actions || []).map((child) => refreshCreatedSnapshots(child, annotationsByPage));
+    return actions.every((child, i) => child === action.actions[i]) ? action : { ...action, actions };
+  }
+  const page = annotationsByPage[String(action.pageNumber)] || annotationsByPage[action.pageNumber];
+  const objects = getObjects(page);
+  if (!objects.length) return action;
+  const current = (entry, snapshot) => {
+    const index = findEntryObjectIndex(objects, entry, snapshot);
+    return index >= 0 ? cloneJson(objects[index]) : null;
+  };
+  if (action.type === 'fabric:create') {
+    const now = current(action, action.annotation);
+    return now ? { ...action, annotation: now } : action;
+  }
+  if (action.type === 'fabric:batch' && (action.created || []).length) {
+    let changed = false;
+    const created = action.created.map((entry) => {
+      const now = current(entry, entry.annotation);
+      if (!now) return entry;
+      changed = true;
+      return { ...entry, annotation: now };
+    });
+    return changed ? { ...action, created } : action;
+  }
+  return action;
+}

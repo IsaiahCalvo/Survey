@@ -176,7 +176,7 @@ import { PageRenderCache } from './utils/pdfCache';
 import { UndoToast } from './components/collab/UndoToast.jsx';
 import { applyAnnotationGroupId, findGroupMembers, generateGroupId, getAnnotationGroupId, getCalloutGroupId } from './utils/annotationGroups';
 import { buildCrossPageMovePlan } from './utils/crossPageMove.js';
-import { applyAnnotationHistoryAction, dropAlreadyPresentRestoreTargets, getAnnotationHistoryId, buildAnnotationHistoryAction, buildPreciseAnnotationHistoryAction, createGestureTouchRecord, endPagePreviewGesture, filterAnnotationHistoryActionByOwner, invertAnnotationHistoryAction, recordGestureTouchesFromAction, restrictAnnotationHistoryActionFields } from './utils/annotationLocalHistory';
+import { applyAnnotationHistoryAction, dropAlreadyPresentRestoreTargets, getAnnotationHistoryId, buildAnnotationHistoryAction, buildPreciseAnnotationHistoryAction, createGestureTouchRecord, endPagePreviewGesture, filterAnnotationHistoryActionByOwner, invertAnnotationHistoryAction, recordGestureTouchesFromAction, refreshCreatedSnapshots, restrictAnnotationHistoryActionFields } from './utils/annotationLocalHistory';
 import { normalizeMergedHistoryObject } from './utils/historyMergeNormalize';
 import {
   buildAtomicTextMarkupPageMutation,
@@ -14592,10 +14592,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       const inverse = invertAnnotationHistoryAction(localAction);
       isUndoingRef.current = true;
       try {
+	        // Redo brings the marks back as they are now, a teammate's edits included (#14).
+	        const redoAction = refreshCreatedSnapshots(localAction, annotationsByPageRef.current);
 	        const localOutcome = applyLocalAnnotationHistoryAction(inverse);
 	        if (localOutcome === 'applied') {
 	          localAnnotationUndoRef.current = localAnnotationUndoRef.current.slice(0, -1);
-	          localAnnotationRedoRef.current = [...localAnnotationRedoRef.current, localAction].slice(-100);
+	          localAnnotationRedoRef.current = [...localAnnotationRedoRef.current, redoAction].slice(-100);
 	          setLocalAnnotationHistoryVersion((prev) => prev + 1);
 	          pushHistoryDebugEvent('local_annotation_undo_applied', {
 	            historySource: 'local annotation history',
