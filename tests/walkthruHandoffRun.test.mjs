@@ -97,3 +97,54 @@ test('a failed download stops with a plain message', async () => {
     download: async () => ({ data: null, error: { message: 'not allowed' } }), newId: ids(),
   }), /Could not download "Collier NYC": not allowed/);
 });
+
+test('a failed PDF download on one floor skips that floor and still sends remaining PDF floors (#1595)', async () => {
+  const fake = fakeDocs();
+  let docSeq = 0;
+  const twoFloorWalk = {
+    walk: { id: 'w2', name: 'Annex' },
+    nodeTypes: [{ id: 'nt-cam', name: 'Camera' }],
+    floors: [
+      {
+        id: 'f1', name: 'Floor 1', asset: { format: 'pdf', storage_path: 'u/w2/f1.pdf' },
+        nodes: [
+          { id: 'n1', page_index: 0, x_pct: 0.5, y_pct: 0.5, node_type_id: 'nt-cam', title: 'C-1', suite_device_id: 's1' },
+          { id: 'n2', page_index: 0, x_pct: 0.2, y_pct: 0.2, node_type_id: null, title: 'note' },
+        ],
+      },
+      {
+        id: 'f2', name: 'Floor 2', asset: { format: 'pdf', storage_path: 'u/w2/f2.pdf' },
+        nodes: [
+          { id: 'n3', page_index: 0, x_pct: 0.4, y_pct: 0.6, node_type_id: 'nt-cam', title: 'C-2', suite_device_id: 's2' },
+        ],
+      },
+    ],
+  };
+
+  const out = await sendWalkToProject({
+    supabase: {}, walk: twoFloorWalk, template, moduleId: 'm1', categoryFor: { 'nt-cam': 'c-cam' },
+    addPdfToProject: async (file, name) => {
+      fake.added.push(name);
+      return { id: `doc-${++docSeq}` };
+    },
+    openDoc: fake.openDoc,
+    pageSizes: async () => () => ({ width: 1000, height: 500, rotation: 0 }),
+    download: async (path) => (path.endsWith('f1.pdf')
+      ? { data: null, error: { message: 'Object not found' } }
+      : { data: new Blob(['%PDF-1.4']), error: null }),
+    newId: ids(),
+  });
+
+  assert.deepEqual(fake.added, ['Annex - Floor 2.pdf']);
+  assert.equal(out.documents.length, 1);
+  assert.equal(out.documents[0].floorId, 'f2');
+  assert.equal(out.added, 1);
+  assert.equal(out.defaultNodes, 1);
+  assert.equal(out.unplaced, 1);
+  assert.deepEqual(out.skippedFloors, [
+    { floorId: 'f1', name: 'Floor 1', reason: 'could not download: Object not found' },
+  ]);
+  const state = fake.docs.get('doc-1');
+  assert.equal(state.markers['new-1'].suiteId, 's2');
+});
+
