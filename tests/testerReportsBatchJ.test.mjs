@@ -40,13 +40,20 @@ test('#1649: a mouse press that moves on a tile becomes a library drag; a still 
   }
 });
 
-test('#1649: the Signature and Stamp cards and the Library panel start the drag from a tile press', () => {
+test('#1649: the Signature and Stamp cards and the Library panel start the drag from a tile press', async () => {
   for (const file of ['src/components/SignatureCard.jsx', 'src/components/StampPickerCard.jsx']) {
     const src = read(file);
+    assert.match(src, /withOwnHandlers\(/, `${file} must merge tooltip props with onPointerDown via withOwnHandlers`);
     assert.match(src, /dragPressRef\.current = phone \? null : watchLibraryPressDrag\(event, item\);/, file);
     assert.match(src, /if \(!dragged\) pick\(item\);/, file);
+    assert.doesNotMatch(src, /onPointerDown=\{[\s\S]{0,400}\{\.\.\.chip\(/, `${file} must not spread chip() after onPointerDown`);
   }
   assert.match(read('src/markLibrary/MarkLibraryPanel.jsx'), /press\.current = watchLibraryPressDrag\(event, item\);/);
+  const { kindLabel, kindOfObject } = await import('../src/utils/selectionProperties.js');
+  const sigObj = { type: 'image', src: 'data:image/png;base64,AA==', data: { insertedImage: true, signature: true } };
+  assert.equal(kindOfObject(sigObj), 'signature');
+  assert.equal(kindLabel([kindOfObject(sigObj)]), 'Signature');
+  assert.match(read('src/components/SignatureCard.jsx'), /signature:\s*true/);
 });
 
 test('#1657: a pin takes the press only with select, pan, text select or the Pin tool', async () => {

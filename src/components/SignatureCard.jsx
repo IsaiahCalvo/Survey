@@ -19,6 +19,7 @@ import { createPortal } from 'react-dom';
 import Icon from '../Icons';
 import DialogCard, { DIALOG_FIELD_STYLE, DIALOG_LABEL_STYLE } from './DialogCard.jsx';
 import { viewerBounds } from './SelectionQuickBar.jsx';
+import { withOwnHandlers } from './Tooltip.jsx';
 import {
   armLibraryItem,
   disarmLibraryItem,
@@ -68,7 +69,10 @@ const useArmedId = () => useSyncExternalStore(
 /** A saved signature as the placement's item (a picture mark). */
 export function signatureItem(row) {
   const item = insertedImageItem({ src: row.src, pixelWidth: row.width, pixelHeight: row.height, name: row.title });
-  return item ? { ...item, id: `${SIGNATURE_ITEM_PREFIX}${row.id}` } : null;
+  if (!item) return null;
+  const object = item.payload?.items?.[0]?.object;
+  if (object) object.data = { ...(object.data || {}), signature: true };
+  return { ...item, id: `${SIGNATURE_ITEM_PREFIX}${row.id}` };
 }
 
 const PAD_W = SIGNATURE_PAD_W;
@@ -307,16 +311,20 @@ export default function SignatureCard({ enabled = false, phone = false, tip = nu
                     aria-label={row.title}
                     className="signature-card__tile"
                     data-signature-id={row.id}
-                    onPointerDown={(event) => {
-                      pointerTypeRef.current = event.pointerType || 'mouse';
-                      dragPressRef.current = phone ? null : watchLibraryPressDrag(event, item);
-                    }}
+                    {...withOwnHandlers(
+                      chip(phone ? row.title : `${row.title}: pick or drag onto the page`, 'below'),
+                      {
+                        onPointerDown: (event) => {
+                          pointerTypeRef.current = event.pointerType || 'mouse';
+                          dragPressRef.current = phone ? null : watchLibraryPressDrag(event, item);
+                        },
+                      },
+                    )}
                     onClick={() => {
                       const dragged = dragPressRef.current?.dragging;
                       dragPressRef.current = null;
                       if (!dragged) pick(item);
                     }}
-                    {...chip(phone ? row.title : `${row.title}: pick, then click the page`, 'below')}
                   >
                     <img src={row.src} alt="" draggable={false} />
                     <span className="signature-card__title">{row.title}</span>
