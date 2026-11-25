@@ -124,7 +124,7 @@ test('wiring: flag, migration, viewer host and layer, tool button, rail card, ph
   const service = read('src/services/markComments.js');
   assert.match(service, /pin_x, pin_y, pin_kind, pin_status, pin_number[,']/);
   // Pan leaves pins to their own press.
-  assert.match(read('src/components/pins/PagePinsLayer.jsx'), /data-pan-interactive="true"/);
+  assert.match(read('src/components/pins/PagePinsLayer.jsx'), /data-pan-interactive=\{passThrough \? undefined : 'true'\}/);
 });
 
 test('the composer saves once and only with a status the pin kind takes (Bugbot on #1387)', () => {

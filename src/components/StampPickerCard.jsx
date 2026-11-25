@@ -20,6 +20,7 @@ import {
   getArmedLibraryItem,
   placeLibraryItem,
   subscribeLibraryPlacement,
+  watchLibraryPressDrag,
 } from '../markLibrary/markLibraryPlacement.js';
 import {
   STAMP_BOX,
@@ -82,6 +83,8 @@ export default function StampPickerCard({ enabled = false, phone = false, tip = 
   const items = useMemo(() => stampPresetItems(), []);
   const [frame, setFrame] = useState(null);
   const pointerTypeRef = useRef('mouse');
+  // A press that moved into a drag (dropped where it is let go) is not a pick.
+  const dragPressRef = useRef(null);
   const active = enabled && isOpen;
 
   useEffect(() => {
@@ -154,8 +157,15 @@ export default function StampPickerCard({ enabled = false, phone = false, tip = 
               aria-label={item.name}
               className="stamp-card__tile"
               data-stamp-preset={item.id.slice(item.id.indexOf(':') + 1)}
-              onPointerDown={(event) => { pointerTypeRef.current = event.pointerType || 'mouse'; }}
-              onClick={() => pick(item)}
+              onPointerDown={(event) => {
+                pointerTypeRef.current = event.pointerType || 'mouse';
+                dragPressRef.current = phone ? null : watchLibraryPressDrag(event, item);
+              }}
+              onClick={() => {
+                const dragged = dragPressRef.current?.dragging;
+                dragPressRef.current = null;
+                if (!dragged) pick(item);
+              }}
               {...chip(item.name, 'below')}
             >
               <StampTile item={item} />

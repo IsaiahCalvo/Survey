@@ -9,7 +9,8 @@
 //     on the Draw pad.
 //   - Pick a signature (blue ring), then click the page: it lands centred on
 //     the click and stays picked, so each further click signs again. Esc or
-//     another tool lets go. A finger only pans (house rule), so a tap on a
+//     another tool lets go. Or drag a tile onto the page: it lands where it
+//     is let go. A finger only pans (house rule), so a tap on a
 //     tile drops it in the middle of the page in view.
 // Placement is the mark library's (markLibraryPlacement.js): a picture mark,
 // one save, one Undo step, and the new signature becomes the selection.
@@ -24,6 +25,7 @@ import {
   getArmedLibraryItem,
   placeLibraryItem,
   subscribeLibraryPlacement,
+  watchLibraryPressDrag,
 } from '../markLibrary/markLibraryPlacement.js';
 import { insertedImageItem } from '../utils/insertedImage.js';
 import { getSignatureStore } from '../signature/signatureStore.js';
@@ -233,6 +235,8 @@ export default function SignatureCard({ enabled = false, phone = false, tip = nu
   const [frame, setFrame] = useState(null);
   const [adding, setAdding] = useState(false);
   const pointerTypeRef = useRef('mouse');
+  // A press that moved into a drag (dropped where it is let go) is not a pick.
+  const dragPressRef = useRef(null);
   const active = enabled && isOpen;
 
   useEffect(() => {
@@ -303,8 +307,15 @@ export default function SignatureCard({ enabled = false, phone = false, tip = nu
                     aria-label={row.title}
                     className="signature-card__tile"
                     data-signature-id={row.id}
-                    onPointerDown={(event) => { pointerTypeRef.current = event.pointerType || 'mouse'; }}
-                    onClick={() => pick(item)}
+                    onPointerDown={(event) => {
+                      pointerTypeRef.current = event.pointerType || 'mouse';
+                      dragPressRef.current = phone ? null : watchLibraryPressDrag(event, item);
+                    }}
+                    onClick={() => {
+                      const dragged = dragPressRef.current?.dragging;
+                      dragPressRef.current = null;
+                      if (!dragged) pick(item);
+                    }}
                     {...chip(phone ? row.title : `${row.title}: pick, then click the page`, 'below')}
                   >
                     <img src={row.src} alt="" draggable={false} />
