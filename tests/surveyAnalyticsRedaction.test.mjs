@@ -78,6 +78,10 @@ test('local and Tailscale shells use the hosted same-account proxy instead of a 
     '/api/analytics/track',
   );
   assert.equal(
+    resolveSurveyAnalyticsEndpoint({ protocol: 'https:', hostname: 'surveytool-nightly.vercel.app' }),
+    '/api/analytics/track',
+  );
+  assert.equal(
     resolveSurveyAnalyticsEndpoint({ protocol: 'http:', hostname: 'localhost' }),
     'https://surveytool.app/api/analytics/track',
   );
