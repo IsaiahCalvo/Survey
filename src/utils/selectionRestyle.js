@@ -229,15 +229,15 @@ export function readRestyleStyle(annotation) {
   if (isRecolourableTextMarkup(annotation)) {
     const source = isVisiblePaint(annotation.fill) ? annotation.fill : annotation.stroke;
     style.strokeColor = colorToHex(source);
-    const rawOpacity = Number(annotation.opacity);
+    const rawOpacity = annotation.opacity == null ? NaN : Number(annotation.opacity);
     style.strokeOpacity = Number.isFinite(rawOpacity)
       ? clampPct(rawOpacity * 100)
-      : (isVisiblePaint(source) ? colorToOpacity(source) : 0);
+      : (isVisiblePaint(source) ? colorToOpacity(source) : null);
     return style;
   }
   if (isStickyNote(annotation)) {
     style.strokeColor = colorToHex(annotation.fill);
-    style.strokeOpacity = isVisiblePaint(annotation.fill) ? colorToOpacity(annotation.fill) : 0;
+    style.strokeOpacity = isVisiblePaint(annotation.fill) ? colorToOpacity(annotation.fill) : null;
     return style;
   }
   const inkBody = isFilledInkPath(annotation);
