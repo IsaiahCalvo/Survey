@@ -23,11 +23,14 @@
 const VARS = {
   left: '--app-sidebar-width',
   right: '--app-right-rail-width',
+  // The Properties panel on the right, floating or docked (r5b #13: the
+  // notice ends at it, so its Retry and close stay in reach).
+  rightPanel: '--app-right-panel-width',
   top: '--app-chrome-top',
   bannerTop: '--app-banner-top',
 };
 
-let insets = Object.freeze({ left: null, right: null, top: null, bannerTop: null });
+let insets = Object.freeze({ left: null, right: null, rightPanel: null, top: null, bannerTop: null });
 const listeners = new Set();
 
 export function getChromeInsets() {
@@ -39,7 +42,7 @@ export function subscribeChromeInsets(listener) {
   return () => listeners.delete(listener);
 }
 
-/** key: 'left' | 'right' | 'top' | 'bannerTop'; value: a CSS length, or null to clear. */
+/** key: 'left' | 'right' | 'rightPanel' | 'top' | 'bannerTop'; value: a CSS length, or null to clear. */
 export function publishChromeInset(key, value) {
   if (!(key in VARS)) return;
   const next = value == null ? null : String(value);

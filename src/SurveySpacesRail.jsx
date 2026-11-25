@@ -1542,7 +1542,7 @@ const SurveySpacesRail = ({
       checklist: shownLines(category, nextResponses),
       responses: nextResponses,
       entities: selectedTemplate?.entities,
-      currentEntityId: moduleData?.entityId || currentMarker.entityId || null,
+      currentEntityId: currentMarker.entityId || moduleData?.entityId || null,
     });
     if (!completeEntity) return;
     applyEntitySelectionForMarker(annotationId, markerModuleId, category, completeEntity.id, { automatic: true });
@@ -1910,9 +1910,9 @@ const SurveySpacesRail = ({
     let body = null;
     if (isOpen) {
       const { moduleData } = findMarkerMatchingItem(annotationId, markerModuleId, category);
-      const currentEntityId = moduleData.entityId || surveyMarkers[annotationId]?.entityId;
+      const currentEntityId = surveyMarkers[annotationId]?.entityId || moduleData.entityId;
       const currentEntity = currentEntityId ? entitiesMap.get(currentEntityId) : null;
-      const entityName = currentEntity?.name || moduleData.entityName || surveyMarkers[annotationId]?.entityName || 'None';
+      const entityName = currentEntity?.name || surveyMarkers[annotationId]?.entityName || moduleData.entityName || 'None';
       hasEntity = Boolean(currentEntityId || entityName !== 'None');
       entityLabel = `Entity: ${hasEntity ? entityName : 'none'}. Choose Survey Marker entity`;
       const entityOptions = [
@@ -3754,10 +3754,10 @@ const SurveySpacesRail = ({
                                                     controls below stay desktop-only. */}
                                                 {mobileMode && (() => {
                                                   const { moduleData } = findMarkerMatchingItem(annotationId, selectedModuleId, category);
-                                                  const rowEntityId = moduleData.entityId || surveyMarkers[annotationId]?.entityId;
+                                                  const rowEntityId = surveyMarkers[annotationId]?.entityId || moduleData.entityId;
                                                   const dotColor = (rowEntityId ? entitiesMap.get(rowEntityId)?.color : null)
-                                                    || moduleData.entityColor
                                                     || surveyMarkers[annotationId]?.entityColor
+                                                    || moduleData.entityColor
                                                     || null;
                                                   const isOpenOnPhone = annotationId === mobileDetailMarkerId;
                                                   return renderMobileSurveyMarker(surveyMarker, category, surveyMarkerName, fallbackName, {
@@ -3801,10 +3801,13 @@ const SurveySpacesRail = ({
                                                 {!mobileMode && (() => {
                                                   const surveyMarkerData = surveyMarkers[annotationId];
                                                   const { moduleData } = findMarkerMatchingItem(annotationId, selectedModuleId, category);
-                                                  const currentEntityId = moduleData.entityId || surveyMarkerData?.entityId || '';
+                                                  // r5b #16: the marker's own status (shared, what the plan
+                                                  // draws) wins over this person's item copy, which a
+                                                  // collaborator's change doesn't reach.
+                                                  const currentEntityId = surveyMarkerData?.entityId || moduleData.entityId || '';
                                                   const currentEntity = currentEntityId ? entitiesMap.get(currentEntityId) : null;
-                                                  const selectedEntityColor = currentEntity?.color || moduleData.entityColor || surveyMarkerData?.entityColor || null;
-                                                  const selectedEntityName = currentEntity?.name || moduleData.entityName || surveyMarkerData?.entityName || '';
+                                                  const selectedEntityColor = currentEntity?.color || surveyMarkerData?.entityColor || moduleData.entityColor || null;
+                                                  const selectedEntityName = currentEntity?.name || surveyMarkerData?.entityName || moduleData.entityName || '';
                                                   const isEntityDropdownOpen = openEntityDropdownId === entityDropdownId;
                                                   const entityOptions = [
                                                     { id: '', name: 'None', color: null },

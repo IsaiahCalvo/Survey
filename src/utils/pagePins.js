@@ -69,6 +69,9 @@ export function pinStatusColor(kind, status) {
 }
 
 export function isPinDone(pin) {
+  // r5b #18: a resolved comment is done for everyone, so its pin hides like a
+  // closed issue (shown again with "Show done" or when its link opens it).
+  if (pin?.kind === 'comment') return Boolean(pin.comment?.resolvedAt);
   return Boolean(pin && DONE[pin.kind]?.includes(pin.status));
 }
 

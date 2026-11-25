@@ -166,6 +166,55 @@ test('N, click, composer, save; M to Issue; status hides a done pin; Show pins; 
   }
 });
 
+// Audit r5b #17/#18: a comment pin resolves from its own card, a resolved
+// one hides for everyone (also after a reload), and its card says Resolved.
+test('a resolved comment pin hides, and resolves or reopens from its card', async ({ page }) => {
+  test.setTimeout(180_000);
+  await flagOn(page, true);
+  const sheet = await seedSheet('Pins resolve');
+  try {
+    const { docId } = await pinRows(sheet.name);
+    const owner = await apiClientFor(E2E_ACCOUNTS.owner);
+    const add = async (body, x) => (await owner.rpc('add_page_pin', { p_document_id: docId, p_page_number: 1, p_x: x, p_y: 120, p_kind: 'comment', p_body: body, p_status: null, p_mentions: [] })).data;
+    const open = await add('Still open', 120);
+    const done = await add('Already settled', 260);
+    const openId = (Array.isArray(open) ? open[0] : open).id;
+    const doneId = (Array.isArray(done) ? done[0] : done).id;
+    expect((await owner.rpc('set_mark_comment_resolved', { p_comment_id: doneId, p_resolved: true })).error).toBeFalsy();
+
+    const { pins } = await openSheet(page, sheet);
+    await expect(pins).toHaveCount(1);
+    await expect(page.locator(`[data-page-pin-id="${openId}"]`)).toHaveCount(1);
+
+    await page.locator(`[data-page-pin-id="${openId}"]`).click();
+    await card(page).locator('[data-pin-card-menu]').click();
+    await card(page).locator('[data-pin-card-resolve]').click();
+    await expect(card(page)).toHaveCount(0);
+    await expect(pins).toHaveCount(0);
+    const admin = adminClient();
+    await expect.poll(async () => (await admin.from('mark_comments').select('resolved_at').eq('id', openId).single()).data?.resolved_at).toBeTruthy();
+
+    // Still hidden after a reload. "Show done items" brings resolved pins
+    // back; the card says Resolved and can reopen it.
+    await page.reload();
+    const again = page.locator('.survey-pdfjs-page-div[data-page-number="1"]').filter({ visible: true }).first();
+    await expect(again.locator('canvas').first()).toBeVisible({ timeout: 60_000 });
+    await page.waitForTimeout(1500);
+    await expect(again.locator('[data-page-pin-id]')).toHaveCount(0);
+    await page.locator('[data-pin-filter-toggle]').filter({ visible: true }).click();
+    await page.locator('[data-pin-filter-menu] [data-pin-filter="done"]').click();
+    await page.keyboard.press('Escape');
+    await expect(again.locator('[data-page-pin-id]')).toHaveCount(2);
+    await again.locator(`[data-page-pin-id="${doneId}"]`).click();
+    await expect(card(page).locator('[data-pin-card-resolved]')).toContainText('Resolved by you');
+    await expect(card(page).getByPlaceholder('Add a reply')).toHaveCount(0);
+    await card(page).locator('[data-pin-card-reopen]').click();
+    await expect.poll(async () => (await admin.from('mark_comments').select('resolved_at').eq('id', doneId).single()).data?.resolved_at ?? null).toBeNull();
+  } finally {
+    await sheet.remove();
+  }
+});
+
 test('without the flag there is no Pin button and N does nothing', async ({ page }) => {
   test.setTimeout(120_000);
   await flagOn(page, false);

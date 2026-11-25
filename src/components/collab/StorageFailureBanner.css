@@ -41,7 +41,7 @@
   position: fixed;
   top: var(--app-banner-top, var(--app-chrome-top, 96px));
   left: var(--app-sidebar-width, 48px);
-  right: var(--app-right-rail-width, 48px);
+  right: calc(var(--app-right-rail-width, 48px) + var(--app-right-panel-width, 0px));
   margin: 8px 8px 0;
   z-index: 100020;
   pointer-events: none;

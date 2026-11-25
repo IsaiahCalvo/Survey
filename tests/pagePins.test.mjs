@@ -50,6 +50,9 @@ test('status colours and done statuses follow Drawboard', () => {
   assert.equal(isPinDone({ kind: 'task', status: 'closed' }), true);
   assert.equal(isPinDone({ kind: 'task', status: 'in-review' }), false);
   assert.equal(isPinDone({ kind: 'comment', status: null }), false);
+  // r5b #18: a resolved comment is done for everyone, so its pin hides.
+  assert.equal(isPinDone({ kind: 'comment', status: null, comment: { resolvedAt: '2026-11-25T18:00:00Z' } }), true);
+  assert.equal(isPinShown({ id: 'r', kind: 'comment', comment: { resolvedAt: '2026-11-25T18:00:00Z' } }, { comments: true, issues: true, tasks: true, done: false }), false);
 });
 
 test('a comment row maps to a pin; replies and deleted rows do not', () => {
