@@ -219,3 +219,18 @@ test('a named measurement lists by its name and caption, its reading kept', () =
   assert.equal(row.text, 'Room 101 · 50.00 sq ft');
   assert.equal(row.measure.text, '50.00 sq ft');
 });
+
+test('Survey Markers are counted for the empty list, not listed (Survey #1613)', async () => {
+  const { countSurveyMarkers } = await import('../src/utils/markupList.js');
+  const pages = {
+    1: { objects: [
+      { id: 'm1', type: 'highlight-survey' },
+      { id: 'm2', type: 'surveyMarker' },
+      { id: 'm3', type: 'highlight-survey', visible: false },
+    ] },
+  };
+  assert.equal(buildMarkupRows(pages).length, 0);
+  assert.equal(countSurveyMarkers(pages), 2);
+  assert.equal(countSurveyMarkers(byPage), 0);
+  assert.equal(countSurveyMarkers(null), 0);
+});
