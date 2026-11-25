@@ -24,6 +24,7 @@ import {
   isCenterOriginInkGeometry,
   scaleInRotatedFrameAroundMatrix,
 } from '../utils/inkGeometryTransform.js';
+import { rebuildResizedPaperInk } from '../utils/selectionRestyle.js';
 import { buildCaretAnchor } from '../utils/doubleTapEditEntry.js';
 import { deepClone } from '../utils/deepClone.js';
 import { maxOf, minOf } from '../utils/arrayExtrema.js';
@@ -3219,11 +3220,15 @@ export function useSVGInteraction({
         const objType = orig.objType;
 
         if (objType === 'path' && Array.isArray(target.path)) {
+          const sourcePath = annotations?.objects?.[idx] || target;
           Object.assign(
             target,
-            applyPageAffineToInkObject(
-              annotations?.objects?.[idx] || target,
-              groupPageMatrix,
+            rebuildResizedPaperInk(
+              applyPageAffineToInkObject(
+                sourcePath,
+                groupPageMatrix,
+              ),
+              sourcePath,
             ),
           );
         } else if (objType === 'line') {
@@ -5523,22 +5528,25 @@ export function useSVGInteraction({
         String(obj?.type || '').toLowerCase() === 'path'
         && Array.isArray(pathResizePageMatrix)
       ) {
-        Object.assign(obj, applyPageAffineToInkObject(obj, pathResizePageMatrix));
+        Object.assign(obj, rebuildResizedPaperInk(applyPageAffineToInkObject(obj, pathResizePageMatrix), obj));
       } else if (isAbsoluteInkGeometry(obj) || isCenterOriginInkGeometry(obj)) {
         // Page-space ink is first represented through object transform fields
         // (center origin + scale) so Q/C curves and parallel eraser/export
-        // carriers remain byte-stable. This also scales open-stroke width with
-        // the object, including non-uniform resize.
+        // carriers remain byte-stable. Native paper ink then rebuilds its
+        // outline from the moved centreline at its original width (KAL-812).
         Object.assign(
           obj,
-          commitInkObjectResize(
+          rebuildResizedPaperInk(
+            commitInkObjectResize(
+              obj,
+              {
+                scaleX: newScaleX,
+                scaleY: newScaleY,
+                visibleLeft: newLeft,
+                visibleTop: newTop,
+              },
+            ),
             obj,
-            {
-              scaleX: newScaleX,
-              scaleY: newScaleY,
-              visibleLeft: newLeft,
-              visibleTop: newTop,
-            },
           ),
         );
       } else {
