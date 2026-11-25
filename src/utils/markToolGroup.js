@@ -56,6 +56,7 @@ export function markToolForAnnotation(annotation) {
   const type = lower(annotation.type);
   if (annotation.data?.type === 'text-markup') return 'text-markup';
   if (annotation.data?.type === 'callout') return 'callout';
+  if (annotation.data?.type === 'note') return 'note';
   if (type === 'rect') return 'rect';
   if (type === 'ellipse' || (type === 'circle' && !isCounterMark(annotation))) return 'ellipse';
   // Tape (beta 'tape-tool') is pen ink with its own tool bar.

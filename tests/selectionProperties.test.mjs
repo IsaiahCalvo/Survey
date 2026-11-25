@@ -151,7 +151,7 @@ test('arrow steps and the blur after them measure from moves already sent', () =
 });
 
 test('Selected colors: a swatch recolours every use of that colour in the pick, locked marks kept', async () => {
-  const { recolourObject } = await import('../src/utils/selectionProperties.js');
+  const { recolourObject, recolourableColoursOf } = await import('../src/utils/selectionProperties.js');
   const red = { type: 'rect', stroke: '#E11D2E', fill: '#e11d2e' };
   assert.deepEqual(recolourObject(red, '#e11d2e', '#0066D4'), { type: 'rect', stroke: '#0066D4', fill: '#0066D4' }, 'stroke and fill alike, any case');
   assert.deepEqual(recolourObject({ stroke: '#E11D2E', fill: '#FFF9C4' }, '#E11D2E', '#000000'), { stroke: '#000000', fill: '#FFF9C4' });
@@ -159,9 +159,27 @@ test('Selected colors: a swatch recolours every use of that colour in the pick, 
   assert.equal(recolourObject(red, '#E11D2E', '#e11d2e'), null, 'the same colour is no change');
   assert.equal(recolourObject(red, '', '#000000'), null);
 
+  // Regression #1694: sticky notes only expose and recolour their visible fill (never unused stroke),
+  // strikeouts / text-markups recolour both fill and stroke, and raster images (signatures / snapshots)
+  // expose no editable colours.
+  const note = { type: 'rect', fill: '#FFD43B', stroke: 'rgba(0, 0, 0, 0.4)', data: { type: 'note', surveyNote: true } };
+  assert.deepEqual(recolourableColoursOf(note), ['#FFD43B']);
+  assert.deepEqual(recolourObject(note, 'rgba(0, 0, 0, 0.4)', '#DC2626'), null, 'unused note stroke is ignored');
+  assert.equal(recolourObject(note, '#FFD43B', '#DC2626').fill, '#DC2626');
+  const strike = { type: 'path', fill: '#ef4444', stroke: '#ef4444', data: { type: 'text-markup', markupType: 'strikeout' } };
+  assert.deepEqual(recolourableColoursOf(strike), ['#ef4444']);
+  assert.deepEqual(recolourObject(strike, '#ef4444', '#2563EB'), {
+    ...strike,
+    fill: '#2563EB',
+    stroke: '#2563EB',
+  });
+  const sig = { type: 'image', src: 'data:image/png;base64,AA==', stroke: '#111111', data: { insertedImage: true } };
+  assert.deepEqual(recolourableColoursOf(sig), []);
+  assert.equal(recolourObject(sig, '#111111', '#DC2626'), null);
+
   const layer = read('src/components/SVGAnnotationLayer.jsx');
   assert.match(layer, /if \(detail\.op === 'recolour'\) \{/);
-  assert.match(layer, /if \(!object \|\| object\.locked \|\| !canMoveAnnotation\(object\)\) continue;\s*const next = recolourObject\(object, detail\.from, detail\.to\);/);
+  assert.match(layer, /if \(!object \|\| object\.locked \|\| isUserLocked\(object\) \|\| \(!canMoveAnnotation\(object\) && object\.data\?\.type !== 'text-markup'\)\) continue;\s*const next = recolourObject\(object, detail\.from, detail\.to\);/);
   assert.match(layer, /action: 'recolour'/);
   const panel = read('src/components/SelectionPropertiesPanel.jsx');
   assert.match(panel, /op: 'recolour', from, to/);

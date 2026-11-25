@@ -4135,7 +4135,7 @@ const SVGAnnotationLayerBody = memo(({
         let updated = null;
         for (const i of t.selectedIds || []) {
           const object = objects[i];
-          if (!object || object.locked || !canMoveAnnotation(object)) continue;
+          if (!object || object.locked || isUserLocked(object) || (!canMoveAnnotation(object) && object.data?.type !== 'text-markup')) continue;
           const next = recolourObject(object, detail.from, detail.to);
           if (!next) continue;
           updated = updated || deepClone(t.annotations);

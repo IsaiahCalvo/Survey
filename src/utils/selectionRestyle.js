@@ -150,12 +150,22 @@ export function canRebuildInkWidth(annotation) {
  * transaction), stamps and images, Survey Markers and callouts are not
  * restyled through this module; callouts go through calloutRestylePatch.
  */
+const isStickyNote = (annotation) => annotation?.data?.type === 'note';
+const isRecolourableTextMarkup = (annotation) => annotation?.data?.type === 'text-markup'
+  && lower(annotation?.data?.markupType || annotation?.exportType) !== 'redact';
+
 export function restyleCapabilities(annotation) {
   const none = {
     stroke: false, fill: false, width: false, lineStyle: false, cloud: false, arrowheads: false,
   };
   if (!annotation || typeof annotation !== 'object') return none;
-  if (annotation.data?.type === 'callout' || annotation.data?.type === 'text-markup') return none;
+  if (annotation.data?.type === 'callout') return none;
+  if (annotation.data?.type === 'text-markup') {
+    return isRecolourableTextMarkup(annotation) ? { ...none, stroke: true } : none;
+  }
+  if (isStickyNote(annotation)) {
+    return { ...none, stroke: true };
+  }
   if (isCounter(annotation)) return none;
   const type = lower(annotation.type);
   if (type === 'path') {
@@ -216,6 +226,20 @@ export function readRestyleStyle(annotation) {
     arrowheadStyle: null,
   };
   if (!caps.stroke) return style;
+  if (isRecolourableTextMarkup(annotation)) {
+    const source = isVisiblePaint(annotation.fill) ? annotation.fill : annotation.stroke;
+    style.strokeColor = colorToHex(source);
+    const rawOpacity = annotation.opacity == null ? NaN : Number(annotation.opacity);
+    style.strokeOpacity = Number.isFinite(rawOpacity)
+      ? clampPct(rawOpacity * 100)
+      : (isVisiblePaint(source) ? colorToOpacity(source) : null);
+    return style;
+  }
+  if (isStickyNote(annotation)) {
+    style.strokeColor = colorToHex(annotation.fill);
+    style.strokeOpacity = isVisiblePaint(annotation.fill) ? colorToOpacity(annotation.fill) : null;
+    return style;
+  }
   const inkBody = isFilledInkPath(annotation);
   const strokeSource = inkBody ? annotation.fill : annotation.stroke;
   style.strokeColor = colorToHex(strokeSource);
@@ -404,8 +428,16 @@ export function applyRestyleChange(annotation, change) {
         // it back on, or picking a colour would look like it did nothing.
         : (current.strokeOpacity > 0 ? current.strokeOpacity : 100);
       if (color === current.strokeColor && opacity === current.strokeOpacity) return null;
+      if (isRecolourableTextMarkup(annotation)) {
+        return {
+          ...annotation,
+          fill: color,
+          stroke: color,
+          opacity: Math.max(0, Math.min(1, opacity / 100)),
+        };
+      }
       const paint = composeColorForPatch(color, opacity);
-      return inkBody ? { ...annotation, fill: paint } : { ...annotation, stroke: paint };
+      return (inkBody || isStickyNote(annotation)) ? { ...annotation, fill: paint } : { ...annotation, stroke: paint };
     }
     case 'fillColor':
     case 'fillOpacity': {

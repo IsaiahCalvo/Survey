@@ -32,6 +32,7 @@ const hasLook = (style) => Boolean(style) && Object.values(style).some((value) =
  */
 export function copyMarkFormat(object) {
   if (!object || typeof object !== 'object') return null;
+  if (object.data?.type === 'text-markup') return null;
   const callout = legacyCalloutOf(object);
   const style = callout ? readCalloutRestyleStyle(callout) : readRestyleStyle(object);
   if (!hasLook(style)) return null;
