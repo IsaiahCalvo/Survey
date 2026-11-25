@@ -290,7 +290,7 @@ export default function WalkthruHandoffDialog({
                   return <div key={typeId} className="wt-link__linked">{type?.name} ({nodeCount.get(typeId) || 0}): linked in the library</div>;
                 })}
                 {rows.length > 0 && (
-                  <div className="wt-link" role="table" aria-label="Link Walkthru Categories to this Module" data-walkthru-link-table="">
+                  <div className="wt-link" role="table" aria-label={fromJob ? `Link ${walk?.source || 'job file'} Categories to this Module` : 'Link Walkthru Categories to this Module'} data-walkthru-link-table="">
                     <div className="wt-link__row wt-link__row--head" role="row">
                       <span role="columnheader">{fromJob ? `In ${walk?.source || 'the job file'}` : 'In Walkthru'}</span>
                       <span role="columnheader">In this Module</span>
