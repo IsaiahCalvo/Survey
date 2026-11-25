@@ -19,8 +19,8 @@ import Icon from '../Icons';
 import './AuthModal.css';
 import { isGoogleSignInHidden } from '../utils/accountPlatform';
 import { isFeatureOn } from '../featureFlags.js';
-import { companyDomainFrom, companySignInErrorMessage, clearCompanySignInRequired, companySignInRequiredMessage, peekCompanySignInRequired } from '../utils/companySignIn.js';
-import { ssoRequiredForEmail } from '../services/companyService.js';
+import { companyDomainFrom, companySignInErrorMessage, clearCompanySignInRequired, companySignInOfferMessage, companySignInRequiredMessage, noteCompanySignInAttempt, peekCompanySignInRequired, takeCompanySignInFailure } from '../utils/companySignIn.js';
+import { companySignInForEmail, ssoRequiredForEmail } from '../services/companyService.js';
 import { termsAcceptance } from '../legal/legalVersions';
 import { SUITE_ACCOUNT_NAME, SUITE_APPS_LINE } from '../suite/suiteName.js';
 
@@ -98,6 +98,17 @@ export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' })
     return () => clearInterval(intervalId);
   }, [resendLastSentAt]);
 
+  // Back from a company sign-in that failed: open on company sign-in and say
+  // why, instead of the plain form with the reason hidden in the address.
+  useEffect(() => {
+    if (!isOpen) return;
+    const failure = takeCompanySignInFailure();
+    if (!failure) return;
+    setMode('sso');
+    if (failure.domain) setSsoDomain(failure.domain);
+    setError(failure.message);
+  }, [isOpen]);
+
   // Signed out because the company requires its own sign-in: open on
   // company sign-in and say why.
   useEffect(() => {
@@ -137,7 +148,24 @@ export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' })
           setError(companySignInRequiredMessage(domain));
           return;
         }
-        await signIn(email, password, captchaToken);
+        try {
+          await signIn(email, password, captchaToken);
+        } catch (signInError) {
+          // A work email whose company signs in with its own account usually
+          // has no Survey password: move to company sign-in instead of
+          // leaving "email and password don't match" on screen.
+          if (await companySignInForEmail(email)) {
+            const domain = companyDomainFrom(email);
+            setMode('sso');
+            setSsoDomain(domain);
+            setPassword('');
+            // The failed password try used up this Turnstile token.
+            resetCaptcha();
+            setError(companySignInOfferMessage(domain));
+            return;
+          }
+          throw signInError;
+        }
         onClose();
       } else if (mode === 'signup') {
         if (password !== confirmPassword) {
@@ -176,6 +204,7 @@ export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' })
         const domain = companyDomainFrom(ssoDomain);
         if (!domain) throw new Error('Enter your work email or company domain, like acme.com.');
         try {
+          noteCompanySignInAttempt(domain);
           await signInWithSSO(domain, captchaToken);
         } catch (ssoError) {
           throw new Error(companySignInErrorMessage(ssoError, domain));
