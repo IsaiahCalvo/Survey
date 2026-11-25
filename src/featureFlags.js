@@ -217,7 +217,7 @@ export const FEATURE_FLAGS = Object.freeze({
   // Owner 2026-11-23: the right rail is too tall below Page fit, and Share
   // and Export are one job. Both match Walkthru (SUITE-RULES, "Where things
   // sit").
-  'view-strip': Object.freeze({ label: 'Right rail: Page fit opens one small View card with Fit, Pages, Scroll and the view buttons (Paper, Thin PDF lines, Page grid and more)', stage: 'beta' }),
+  'view-strip': Object.freeze({ label: 'Right rail: Page fit slides out the View drawer with Fit, Pages, Scroll and the view buttons (Paper, Thin PDF lines, Page grid and more)', stage: 'beta' }),
   'share-export-one': Object.freeze({ label: 'Top bar: Share and Export are one Share button; its menu shares first, then every export', stage: 'beta' }),
   'paper-overlays': Object.freeze({ label: 'Viewer: Paper button (rail) lays notebook, graph, isometric, hex or music paper over every page; this sitting only', stage: 'beta' }),
   // Drawboard Projects parity spec SS-31 / MS-30 (2026-11-10): a subject on

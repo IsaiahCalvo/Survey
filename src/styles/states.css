@@ -186,8 +186,9 @@
      (owner 2026-10-02: one model for every icon in the chrome).
      Not inside a rail pop-up (RailFlyout): its rows light with the menu's
      gliding strip, and this opaque plate painted over the strip, so hovering
-     a row looked like nothing happened (owner 2026-11-10). */
-  #chrome-right-host button:not(:disabled):not([aria-disabled='true']):not([data-glyph-only]):not(.chrome-icon-btn):not(.rail-flyout *):hover:not(:active) {
+     a row looked like nothing happened (owner 2026-11-10). Nor in the View
+     drawer (ViewStripMenu.jsx), whose choices paint their own states. */
+  #chrome-right-host button:not(:disabled):not([aria-disabled='true']):not([data-glyph-only]):not(.chrome-icon-btn):not(.rail-flyout *):not(.view-drawer *):hover:not(:active) {
     background-color: var(--hover) !important;
   }
   /* A text .chrome-control (none today) would still show it is clickable.
