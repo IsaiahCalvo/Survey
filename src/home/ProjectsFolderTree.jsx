@@ -691,10 +691,32 @@ export default function ProjectsFolderTree({
 
   /* ---- Project-list mutations (local state) ---------------------------- */
 
+  // The host's create flow (a dialog, then the database) adds the project
+  // later. Remember which projects were here when New project was pressed,
+  // and open the first new one that arrives, so an import that follows goes
+  // into it, not the project open before (Survey #1601). Forgotten after
+  // 10 minutes so an unrelated project arriving later is never picked.
+  const pendingNewProjectRef = useRef(null);
+  useEffect(() => {
+    const pending = pendingNewProjectRef.current;
+    if (!pending) return;
+    if (Date.now() - pending.at > 10 * 60 * 1000) { pendingNewProjectRef.current = null; return; }
+    const added = localProjects.find((p) => p?.id != null && !pending.ids.has(p.id));
+    if (!added) return;
+    pendingNewProjectRef.current = null;
+    setSearch('');
+    setOpenId(added.id);
+    if (isPhoneLayout()) setMobileDrillOpenId(added.id);
+  }, [localProjects]);
+
   const handleNewProject = useCallback(() => {
     // Defer to the host flow if provided, otherwise create a local project so
     // the button is never a dead no-op.
-    if (onCreateProject) { onCreateProject(); return; }
+    if (onCreateProject) {
+      pendingNewProjectRef.current = { ids: new Set(localProjects.map((p) => p?.id)), at: Date.now() };
+      onCreateProject();
+      return;
+    }
     const id = nextLocalId();
     const proj = {
       id, name: `Untitled Project ${localProjects.length + 1}`,
@@ -704,7 +726,7 @@ export default function ProjectsFolderTree({
     };
     setLocalProjects((prev) => [proj, ...prev]);
     setOpenId(id);
-  }, [onCreateProject, localProjects.length, user]);
+  }, [onCreateProject, localProjects, user]);
 
   const duplicateProjects = useCallback(async (ids) => {
     const targets = pickByIds(localProjects, ids);

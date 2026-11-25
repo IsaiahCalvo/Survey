@@ -6,6 +6,14 @@
 -- older clips have none and still count as 0.
 -- Same signature, same result columns, same caller rights: only audio_totals changes.
 
+-- Walkthru runs in its own schema on the shared database; a fresh local stack
+-- (E2E) has no walkthru schema, so this is skipped there.
+do $walkthruhomeaudio$
+begin
+  if to_regprocedure('walkthru.get_walkthrough_home_summary(integer,timestamp with time zone,uuid)') is null then
+    return;
+  end if;
+  execute $migration$
 create or replace function walkthru.get_walkthrough_home_summary(
   p_limit integer default 51,
   p_before_updated_at timestamp with time zone default null::timestamp with time zone,
@@ -150,3 +158,6 @@ as $function$
    and tc.asset_rank = 1
   order by vw.updated_at desc, vw.id desc;
 $function$;
+$migration$;
+end
+$walkthruhomeaudio$;
