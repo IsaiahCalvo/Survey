@@ -60,12 +60,15 @@ test('KAL-31: invite-tokens migration enforces 3-role set + RPC contract', () =>
   }
 });
 
-test('KAL-31: ShareModal defaults to Viewer and exposes only viewer/editor/owner', () => {
+test('KAL-31: ShareModal defaults to Viewer and takes its roles from the shared list', () => {
   const src = fs.readFileSync(
     path.join(repoRoot, 'src/home/ShareModal.jsx'),
     'utf8',
   );
-  match(src, /const ROLE_OPTIONS\s*=\s*\['Viewer',\s*'Editor',\s*'Owner'\]/);
+  // Owner 2026-11-24 brought Commenter back behind the Nightly flag
+  // commenter-role; without it the picker is exactly Viewer, Editor, Owner
+  // (tests/commenterRole.test.mjs checks the list itself).
+  match(src, /roleNamesHighToLow\(\)\.slice\(\)\.reverse\(\)/);
   // Default useState role is Viewer.
   match(src, /useState\('Viewer'\)/);
   // Free-user gating message is present.
@@ -96,13 +99,14 @@ test('KAL-31: document owners always reach Manage Access from Share', () => {
   match(src, /manage:\s*!!single\s*&&\s*!!user\?\.id\s*&&\s*single\.user_id\s*===\s*user\.id/);
 });
 
-test('KAL-31: AccessManagementModal exposes only viewer/editor/owner', () => {
+test('KAL-31: AccessManagementModal takes its roles from the shared list', () => {
   const src = fs.readFileSync(
     path.join(repoRoot, 'src/home/AccessManagementModal.jsx'),
     'utf8',
   );
-  match(src, /const ROLES\s*=\s*\['Owner',\s*'Editor',\s*'Viewer'\]/);
-  ok(!/Commenter/i.test(src), 'AccessManagementModal must not advertise Commenter');
+  // Commenter only through the Nightly-gated list (owner 2026-11-24).
+  match(src, /const ROLES_NOW = \(\) => roleNamesHighToLow\(\);/);
+  ok(!/'Commenter'/.test(src), 'AccessManagementModal must not hard-code Commenter');
 });
 
 test('KAL-31 Phase C: send-email function has invite/permission-changed/access-removed templates', () => {

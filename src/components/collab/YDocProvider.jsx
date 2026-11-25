@@ -111,6 +111,7 @@ import {
 import { auditResidue } from '../../lib/collab/cleanupResidueAudit.js';
 import { isOwner } from '../../lib/collab/permissionScope.js';
 import { fetchMyDocumentRole } from '../../lib/collab/documentRole.js';
+import { canCommentRole, drawingRole } from '../../utils/collaboratorRoles.js';
 import { CleanupResidueReviewPanel } from './CleanupResidueReviewPanel.jsx';
 
 // Phase 35 Plan 05 — sticky-per-document dismissal persistence. Stored as a
@@ -173,6 +174,7 @@ const NULL_CTX_DISABLED = Object.freeze({
   // 2026-07-01 — effective document role ('owner'|'editor'|'viewer'|null).
   // null on the disabled shape = fail open (read-write presentation).
   docRole: null,
+  canComment: null,
   transportState: null,
   loginExpired: false,
   reSignInModalOpen: false,
@@ -283,7 +285,11 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
   // plus the viewer_access banner below. A viewer promoted mid-session picks
   // up edit access on reload (deliberate — the Phase 28 accessRevoked path
   // stays the only live mid-session flip and takes precedence).
-  const [docRole, setDocRole] = useState(null);
+  const [accessRole, setDocRole] = useState(null);
+  // A Commenter draws as a Viewer (every docRole === 'viewer' check holds for
+  // them) and may still comment (canComment). Owner 2026-11-24.
+  const docRole = drawingRole(accessRole);
+  const canComment = accessRole == null ? null : canCommentRole(accessRole);
   const [viewerBannerDismissed, setViewerBannerDismissed] = useState(false);
 
   // Phase 29 — per-user Y.UndoManager mount.
@@ -1383,8 +1389,12 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
     accessRevoked,
     // 2026-07-01 — effective document role ('owner'|'editor'|'viewer'|null).
     // ReadOnlyGate reads this to engage the view-only presentation for
-    // role === 'viewer'; null fails open to read-write.
+    // role === 'viewer'; null fails open to read-write. A Commenter reads as
+    // 'viewer' here.
     docRole,
+    // May this person post and answer comments (owner, editor, commenter)?
+    // null until the role is known.
+    canComment,
     transportState,
     isDocShared,
     loginExpired,
@@ -1462,6 +1472,7 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
     role,
     accessRevoked,
     docRole,
+    canComment,
     transportState,
     isDocShared,
     loginExpired,
@@ -1663,7 +1674,7 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
       {docRole === 'viewer' && !accessRevoked && !viewerBannerDismissed &&
        (!storageState || storageState.code === 'ok') && (
         <StorageFailureBanner
-          code="viewer_access"
+          code={accessRole === 'commenter' ? 'commenter_access' : 'viewer_access'}
           onDismiss={() => setViewerBannerDismissed(true)}
         />
       )}

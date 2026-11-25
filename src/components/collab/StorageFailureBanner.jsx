@@ -165,6 +165,11 @@ const COPY = {
     body: "You have view-only access to this document. You can look through everything here, but you can't make changes.",
     action: null,
   },
+  // Owner 2026-11-24: a Commenter reads and comments, never draws.
+  commenter_access: {
+    body: "You can comment on this document. You can look through everything and add comments, but you can't draw or change answers.",
+    action: null,
+  },
 };
 
 // Phase 28 — per-variant headings (Phase 27 originally used a single shared
@@ -199,6 +204,7 @@ const HEADING_BY_CODE = {
   sync_residue_cleanup: 'Old annotations to clean up',
   // 2026-07-01 — viewer-role read-only notice (informational, not a failure).
   viewer_access: 'View-only access',
+  commenter_access: 'Comment-only access',
 };
 
 // Phase 28 — per-variant secondary metadata. Phase 27 codes share the original
@@ -232,6 +238,7 @@ const SECONDARY_BY_CODE = {
   // 2026-07-01 — viewer-role notice: point at the escalation path rather than
   // implying the app is broken.
   viewer_access: 'Ask the document owner for edit access if you need to make changes',
+  commenter_access: 'Ask the document owner for edit access if you need to make changes',
 };
 
 // Phone only (launch polish 2026-11-02): the codes whose notice shrinks to one
@@ -268,7 +275,7 @@ const WarningIcon = () => (
  * any future CRDT-layer failure mode that wants the same chrome.
  *
  * @param {object} props
- * @param {'quota_exceeded'|'invalid_state'|'version_mismatch'|'blocked'|'transport_offline'|'permission_revoked'|'login_expiry_failure'|'annotation_remote_deleted'|'sync_queue_stuck'|'sync_deletions_pending'|'sync_residue_cleanup'|'viewer_access'} props.code
+ * @param {'quota_exceeded'|'invalid_state'|'version_mismatch'|'blocked'|'transport_offline'|'permission_revoked'|'login_expiry_failure'|'annotation_remote_deleted'|'sync_queue_stuck'|'sync_deletions_pending'|'sync_residue_cleanup'|'viewer_access'|'commenter_access'} props.code
  * @param {() => void} props.onDismiss - hides banner for this session only.
  *   IGNORED for `permission_revoked` — kicked-out is a permanent state for
  *   the session; banner stays until the user closes the document.

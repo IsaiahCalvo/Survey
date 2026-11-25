@@ -26,7 +26,8 @@ import {
 // accept page resolves the token across all three kinds.
 export { buildInviteUrl };
 
-const ROLE_SET = new Set(['viewer', 'editor', 'owner']);
+// 'commenter': owner 2026-11-24, offered by the Nightly pickers only.
+const ROLE_SET = new Set(['viewer', 'commenter', 'editor', 'owner']);
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 function normalizeRole(role) {
