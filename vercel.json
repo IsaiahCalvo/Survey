@@ -23,6 +23,8 @@
     { "source": "/compare/:slug", "destination": "/compare/:slug/index.html" },
     { "source": "/tools", "destination": "/tools/index.html" },
     { "source": "/tools/:tool", "destination": "/tools/:tool/index.html" },
+    { "source": "/privacy", "destination": "/privacy.html" },
+    { "source": "/terms", "destination": "/terms.html" },
     { "source": "/(.*)/assets/(.*)", "destination": "/assets/$2" },
     { "source": "/((?!assets/|api/).*)", "destination": "/index.html" }
   ],
@@ -39,13 +41,13 @@
       ]
     },
     {
-      "source": "/((?!(?:welcome|features|devices|pricing|faq|status|delete-account|whats-new|use-with-ai|kal-voe|use-cases|compare|tools|teams)(?:/|$)|(?:privacy|terms|404|google-connected)\\.html$).*)",
+      "source": "/((?!(?:welcome|features|devices|pricing|faq|status|delete-account|whats-new|use-with-ai|kal-voe|use-cases|compare|tools|privacy|terms|teams)(?:/|$)|(?:privacy|terms|404|google-connected)\\.html$).*)",
       "headers": [
         { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self' 'sha256-BGc+jgl/EbMGuqYayQWZd27/gSnabh2TUC+dHMGaq1I=' 'sha256-dcveo2muxWvLrM7H8rn3NZpgPKxGwVXzgVaZei7nzqk=' 'sha256-n3tAjTvPpo6um2+lJHK+WmlF1AnFUNQAHQPkNhpkzMM=' 'wasm-unsafe-eval' https://challenges.cloudflare.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src https://huggingface.co https://*.hf.co 'self' data: blob: https://surveytool.app https://cvamwtpsuvxvjdnotbeg.supabase.co wss://cvamwtpsuvxvjdnotbeg.supabase.co https://*.r2.cloudflarestorage.com https://graph.microsoft.com https://login.microsoftonline.com https://*.sharepoint.com https://*.1drv.com https://*.livefilestore.com https://*.microsoftpersonalcontent.com https://api.onedrive.com https://www.googleapis.com; worker-src 'self' blob:; frame-src 'self' blob: https://challenges.cloudflare.com https://login.microsoftonline.com https://docs.google.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" }
       ]
     },
     {
-      "source": "/((?:welcome|features|devices|pricing|faq|status|delete-account|whats-new|use-with-ai|kal-voe|use-cases|compare|tools)(?:/.*)?|(?:privacy|terms|404|google-connected)\\.html)",
+      "source": "/((?:welcome|features|devices|pricing|faq|status|delete-account|whats-new|use-with-ai|kal-voe|use-cases|compare|tools|privacy|terms)(?:/.*)?|(?:privacy|terms|404|google-connected)\\.html)",
       "headers": [
         { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self' 'sha256-wsmnxD6kqdZZ/V2wQ85d92sMux2lvh7NN1y5/Y5SS5c=' 'sha256-WHLZ/YELHqy+opU9IqvqRd2140XchvBrOUUNPpZayho=' 'sha256-pPAtw/xaq8uUTJ7yw5xve/j51EShs2BaJeN83cAKRV4=' 'sha256-LD/KC18ObHl/LVNmg9OM7PRajdnDlaAvYMdx/t9v2Qk=' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self' data: blob:; worker-src 'self' blob:; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" }
       ]

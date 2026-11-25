@@ -32,6 +32,8 @@ const STATIC_PAGES = [
   ['/status', /Status/i],
   // Google Play's required account-deletion link points here.
   ['/delete-account', /Delete your account/i],
+  ['/privacy', /Privacy Policy/i],
+  ['/terms', /Terms of Service/i],
   ['/tools', /PDF tools/i],
   ['/tools/merge-pdf', /Merge/i],
 ];

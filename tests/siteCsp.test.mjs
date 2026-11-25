@@ -51,14 +51,20 @@ test('every site and tool page gets the site policy and not the app one', () => 
     assert.ok(ruleRegex(siteRule).test(url), `${url} must get the site policy`);
     assert.ok(!ruleRegex(appRule).test(url), `${url} must not get the app policy`);
   }
-  // Rewrites also serve these with a trailing slash.
-  for (const url of ['/welcome/', '/tools/merge-pdf/', '/use-cases/punch-lists/']) {
-    assert.ok(ruleRegex(siteRule).test(url), url);
+  // Rewrites also serve these with a trailing slash, plus clean /privacy and /terms paths (#1676).
+  for (const url of ['/welcome/', '/tools/merge-pdf/', '/use-cases/punch-lists/', '/privacy', '/privacy/', '/terms', '/terms/']) {
+    assert.ok(ruleRegex(siteRule).test(url), `${url} must get the site policy`);
+    assert.ok(!ruleRegex(appRule).test(url), `${url} must not get the app policy`);
+  }
+  const catchAllIdx = vercel.rewrites.findIndex((r) => r.destination === '/index.html');
+  for (const [source, destination] of [['/privacy', '/privacy.html'], ['/terms', '/terms.html']]) {
+    const idx = vercel.rewrites.findIndex((r) => r.source === source && r.destination === destination);
+    assert.ok(idx >= 0 && idx < catchAllIdx, `${source} must rewrite to ${destination} before the SPA catch-all`);
   }
 });
 
 test('app paths and look-alikes never get the site policy', () => {
-  for (const url of ['/', '/app', '/flags', '/kits', '/agent-link', '/toolsx', '/welcome-anything', '/privacy.htmlx', '/assets/x.js']) {
+  for (const url of ['/', '/app', '/flags', '/kits', '/agent-link', '/toolsx', '/welcome-anything', '/privacyx', '/termsx', '/privacy.htmlx', '/assets/x.js']) {
     assert.ok(!ruleRegex(siteRule).test(url), `${url} is the app`);
     assert.ok(ruleRegex(appRule).test(url), `${url} keeps the app policy`);
   }
