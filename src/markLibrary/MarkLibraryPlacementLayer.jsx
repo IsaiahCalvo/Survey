@@ -70,6 +70,25 @@ export default function MarkLibraryPlacementLayer({ active = false, rootRef = nu
     return registerLibraryPlacer((item, where) => placeRef.current?.(item, where));
   }, [active]);
 
+  // #1649: a fast press-drag can emit pointerup in the same frame that
+  // beginLibraryDrag triggers a re-render, before the item-scoped effect below
+  // has mounted its listeners. Keep the drag-release drop wired while active.
+  useEffect(() => {
+    if (!active) return undefined;
+    const onDragUp = (event) => {
+      const current = getLibraryDrag();
+      if (!current) return;
+      const dragged = current.item;
+      endLibraryDrag();
+      setGhost(null);
+      if (pageElementAt(rootRef?.current || null, event.clientX, event.clientY)) {
+        placeLibraryItem(dragged, { clientX: event.clientX, clientY: event.clientY });
+      }
+    };
+    window.addEventListener('pointerup', onDragUp, true);
+    return () => window.removeEventListener('pointerup', onDragUp, true);
+  }, [active, rootRef]);
+
   const armed = getArmedLibraryItem();
   const drag = getLibraryDrag();
   const item = drag?.item || armed?.item || null;

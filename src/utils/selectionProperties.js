@@ -62,6 +62,7 @@ const KIND_NAMES = Object.freeze({
   counter: 'Counter',
   stamp: 'Stamp',
   image: 'Image',
+  signature: 'Signature',
   equation: 'Equation',
   audioNote: 'Audio note',
   measure: 'Measurement',
@@ -90,9 +91,10 @@ export function kindOfObject(object, typeKey = null) {
   }
   if (type === 'textbox' || type === 'i-text' || type === 'text') return 'text';
   if (type === 'image') {
-    // #1656: an equation and an audio note are inserted images underneath.
+    // #1656 / #1649: equations, audio notes and signatures are inserted images underneath.
     if (typeof data.equation?.tex === 'string') return 'equation';
     if (data.audio?.src) return 'audioNote';
+    if (data.signature === true) return 'signature';
     return 'image';
   }
   return KIND_NAMES[type] ? type : 'rect';

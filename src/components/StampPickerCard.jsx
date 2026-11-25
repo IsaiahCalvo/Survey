@@ -14,6 +14,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'reac
 import { createPortal } from 'react-dom';
 import Icon from '../Icons';
 import { viewerBounds } from './SelectionQuickBar.jsx';
+import { withOwnHandlers } from './Tooltip.jsx';
 import {
   armLibraryItem,
   disarmLibraryItem,
@@ -157,16 +158,20 @@ export default function StampPickerCard({ enabled = false, phone = false, tip = 
               aria-label={item.name}
               className="stamp-card__tile"
               data-stamp-preset={item.id.slice(item.id.indexOf(':') + 1)}
-              onPointerDown={(event) => {
-                pointerTypeRef.current = event.pointerType || 'mouse';
-                dragPressRef.current = phone ? null : watchLibraryPressDrag(event, item);
-              }}
+              {...withOwnHandlers(
+                chip(item.name, 'below'),
+                {
+                  onPointerDown: (event) => {
+                    pointerTypeRef.current = event.pointerType || 'mouse';
+                    dragPressRef.current = phone ? null : watchLibraryPressDrag(event, item);
+                  },
+                },
+              )}
               onClick={() => {
                 const dragged = dragPressRef.current?.dragging;
                 dragPressRef.current = null;
                 if (!dragged) pick(item);
               }}
-              {...chip(item.name, 'below')}
             >
               <StampTile item={item} />
             </button>
