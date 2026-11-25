@@ -12233,6 +12233,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     undoManager: yjsUndoManager,
     undoCtx: yjsUndoCtx,
     docRole: yjsDocRole,
+    canComment: yjsCanComment,
     transportState: yjsTransportState,
     isDocShared: yjsIsDocShared,
     accessRevoked: yjsAccessRevoked,
@@ -13446,6 +13447,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   }, [documentLocked, documentOwnerId, pdfFile?.id, user?.id, yjsAccessRevoked, yjsDocRole]);
   const canRestoreFromHistoryRef = useRef(canRestoreFromHistory);
   canRestoreFromHistoryRef.current = canRestoreFromHistory;
+  // Comments and comment pins: anyone who may draw, and a Commenter (owner
+  // 2026-11-24), who reads as 'viewer' for every drawing check.
+  const canWriteComments = canRestoreFromHistory
+    || (yjsCanComment === true && !yjsAccessRevoked && !documentLocked);
 
   const requireSpaceManagement = useCallback(() => {
     if (canManageSpaces) return true;
@@ -28193,6 +28198,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       toolBarContextTool: subToolTool,
       hasLiveTextSelection: !!liveTextSelection?.pages?.length,
       textMarkupSelectionRect,
+      // r5b #7: a Viewer's (and a Commenter's) mark tools show disabled with
+      // a "View only" tip instead of looking live and doing nothing.
+      canDraw: canRestoreFromHistory,
+      canWriteComments,
       activeCategoryDropdown,
       lastDrawTool,
       lastShapeTool,
@@ -28428,6 +28437,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   }, [
     isActive,
     onBottomToolbarApiChange,
+    canRestoreFromHistory,
+    canWriteComments,
     bottomToolbarRef,
     zoomInputRef,
     zoomMenuRef,
@@ -38650,6 +38661,7 @@ ${pageBlocks}
       onLayersChange: handleLayersChange,
       onActiveLayerChange: setActiveLayerId,
       canEditLayers: canRestoreFromHistory,
+      canWriteComments,
       markLibraryEnabled,
       markupListEnabled,
       // The Markups list, the properties panel and the bar's author chip
@@ -38767,6 +38779,7 @@ ${pageBlocks}
     handleCascadeRestoreRegion,
     handleRestoreHistoryContext,
     canRestoreFromHistory,
+    canWriteComments,
     getHistoryMarkIndex,
     locateHistoryMark,
     focusHistoryMark,
@@ -39354,7 +39367,7 @@ ${pageBlocks}
           isActive={isActive !== false}
           documentId={pdfFile?.id || null}
           userId={user?.id || null}
-          readOnly={Boolean(documentLocked) || yjsDocRole === 'viewer'}
+          readOnly={!canWriteComments}
           activeTool={activeTool}
           setActiveTool={setActiveTool}
           panelOn={isFeatureOn('mark-comments')}
@@ -40940,7 +40953,7 @@ ${pageBlocks}
                                   pageWidth={resolvedPageSize.width}
                                   pageHeight={resolvedPageSize.height}
                                   activeTool={activeTool}
-                                  readOnly={Boolean(documentLocked) || yjsDocRole === 'viewer'}
+                                  readOnly={!canWriteComments}
                                 />
                               )}
 

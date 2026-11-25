@@ -37,11 +37,13 @@ import { C } from '../uiPalette';
 import { useTooltip } from '../components/Tooltip';
 import ValueSelect from '../components/ValueSelect.jsx';
 import { isFeatureOn } from '../featureFlags.js';
+import { roleNamesHighToLow } from '../utils/collaboratorRoles.js';
 import { cleanInviteMessage, INVITE_MESSAGE_MAX } from './accessRows.js';
 
 
 const KIND_LABEL = { document: 'document', project: 'project', template: 'template' };
-const ROLE_OPTIONS = ['Viewer', 'Editor', 'Owner'];
+// Commenter only where the Nightly flag is on (collaboratorRoles.js).
+const roleOptionsNow = () => roleNamesHighToLow().slice().reverse();
 
 const PAID_TIERS = new Set(['pro', 'enterprise', 'developer']);
 
@@ -299,7 +301,7 @@ export default function ShareModal({
               label="Permission"
               value={role}
               onChange={setRole}
-              options={ROLE_OPTIONS.map((r) => ({ value: r, label: r }))}
+              options={roleOptionsNow().map((r) => ({ value: r, label: r }))}
               size="sm"
               width="104px"
             />

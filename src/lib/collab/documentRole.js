@@ -19,14 +19,15 @@
 
 // Role strings the RPC is known to return. Anything else (malformed payload,
 // a future role this build doesn't know) resolves to null = fail open.
-export const KNOWN_DOCUMENT_ROLES = Object.freeze(['owner', 'editor', 'viewer']);
+// 'commenter' (owner 2026-11-24): reads as a viewer for drawing, may comment.
+export const KNOWN_DOCUMENT_ROLES = Object.freeze(['owner', 'editor', 'commenter', 'viewer']);
 
 /**
  * Resolve the current user's effective role on a document.
  *
  * @param {{ rpc?: Function }|null|undefined} supabaseClient
  * @param {string|null|undefined} docId
- * @returns {Promise<'owner'|'editor'|'viewer'|null>} null on no access OR any error (fail open)
+ * @returns {Promise<'owner'|'editor'|'commenter'|'viewer'|null>} null on no access OR any error (fail open)
  */
 export async function fetchMyDocumentRole(supabaseClient, docId) {
   if (!docId || typeof supabaseClient?.rpc !== 'function') return null;
@@ -55,6 +56,6 @@ export async function fetchMyDocumentRole(supabaseClient, docId) {
  */
 export function resolveReadOnlyReason({ accessRevoked, docRole } = {}) {
   if (accessRevoked) return 'revoked';
-  if (docRole === 'viewer') return 'viewer';
+  if (docRole === 'viewer' || docRole === 'commenter') return 'viewer';
   return null;
 }

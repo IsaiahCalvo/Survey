@@ -38,6 +38,7 @@ import ValueSelect from '../components/ValueSelect.jsx';
 import { listMemberProjectEdits } from '../services/memberActivity.js';
 import { isFeatureOn } from '../featureFlags.js';
 import { saveFile } from '../tools/browser.js';
+import { roleNamesHighToLow } from '../utils/collaboratorRoles.js';
 import {
   INVITE_CSV_EXAMPLE, INVITE_NOTE_MAX, csvRoleSummary, parseInviteCsv, teamCsv, teamCsvFileName,
 } from '../teamPlus/teamCsv.js';
@@ -78,9 +79,10 @@ const BONE_200 = C.inkSoft;
 const GOLD = C.gold;
 const DANGER = C.danger;
 
-const ROLES = ["Owner", "Editor", "Viewer"];
-const ROLE_CHOICES = ROLES.slice().reverse().map((r) => ({ value: r, label: r }));
-const ROLE_ORDER = { Owner: 0, Editor: 1, Viewer: 2 };
+// Commenter only where the Nightly flag is on (collaboratorRoles.js).
+const ROLES_NOW = () => roleNamesHighToLow();
+const ROLE_CHOICES_NOW = () => ROLES_NOW().slice().reverse().map((r) => ({ value: r, label: r }));
+const ROLE_ORDER = { Owner: 0, Editor: 1, Commenter: 2, Viewer: 3 };
 const PAID_TIERS = new Set(['pro', 'enterprise', 'developer']);
 
 /* Every member's face is their own pastel from their user id
@@ -362,7 +364,7 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
             <div style={{ fontSize: 11, letterSpacing: 0, color: INK_200, fontWeight: 600, marginBottom: 8 }}>Share link</div>
             <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 96px 82px", gap: 6 }}>
               <div className="nums" style={{ fontFamily: activeInvite ? MONO_FONT : "inherit", flex: 1, minWidth: 0, background: INK_800, border: `1px solid ${INK_500}`, borderRadius: 6, padding: "0 11px", height: 30, display: "flex", alignItems: "center", fontSize: 12, color: activeInvite ? BONE_200 : INK_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{url}</div>
-              <ValueSelect label="Link permission" value={linkRole} onChange={setLinkRole} options={ROLE_CHOICES} size="sm" />
+              <ValueSelect label="Link permission" value={linkRole} onChange={setLinkRole} options={ROLE_CHOICES_NOW()} size="sm" />
               <button onClick={copyLink} disabled={busy || !!blockedReason} className="hub-btn">{copied ? "Copied" : "Copy link"}</button>
             </div>
             <div style={{ fontSize: 11, color: INK_200, marginTop: 8, lineHeight: 1.4 }}>Anyone with this invite link can join as {linkRole}. Free users enter as Viewer until upgrade.</div>
@@ -372,7 +374,7 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
             <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 96px", gap: 6 }}>
               <textarea value={emails} onChange={(e) => setEmails(e.target.value)} placeholder="name@example.com, name@example.com" rows={3} style={{ width: "100%", background: INK_800, border: `1px solid ${INK_500_FIELD}`, borderRadius: 6, padding: "9px 11px", fontSize: 13, fontFamily: "inherit", color: BONE_100, resize: "vertical", outline: "none", minHeight: 72, lineHeight: 1.45, boxSizing: "border-box" }}/>
               <div style={{ alignSelf: "start", minWidth: 0 }}>
-                <ValueSelect label="Email invite permission" value={emailRole} onChange={setEmailRole} options={ROLE_CHOICES} size="sm" />
+                <ValueSelect label="Email invite permission" value={emailRole} onChange={setEmailRole} options={ROLE_CHOICES_NOW()} size="sm" />
               </div>
             </div>
             <div style={{ fontSize: 11, color: INK_200, marginTop: 8, lineHeight: 1.4 }}>Separate addresses with commas. Each invitee gets an email with a link to join as {emailRole}.</div>
@@ -588,7 +590,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
     const arr = filteredMembers().slice();
     if (sortKey === "default") {
       arr.sort((a, b) => {
-        const r = (ROLE_ORDER[a.role] ?? 3) - (ROLE_ORDER[b.role] ?? 3);
+        const r = (ROLE_ORDER[a.role] ?? 4) - (ROLE_ORDER[b.role] ?? 4);
         if (r !== 0) return r;
         return (Date.parse(a.added) || 0) - (Date.parse(b.added) || 0);
       });
@@ -596,7 +598,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
     }
     const sign = sortDir === "asc" ? 1 : -1;
     if (sortKey === "name") arr.sort((a, b) => sign * a.name.localeCompare(b.name));
-    else if (sortKey === "role") arr.sort((a, b) => sign * ((ROLE_ORDER[a.role] ?? 3) - (ROLE_ORDER[b.role] ?? 3)) || (Date.parse(a.added) || 0) - (Date.parse(b.added) || 0));
+    else if (sortKey === "role") arr.sort((a, b) => sign * ((ROLE_ORDER[a.role] ?? 4) - (ROLE_ORDER[b.role] ?? 4)) || (Date.parse(a.added) || 0) - (Date.parse(b.added) || 0));
     else if (sortKey === "added") arr.sort((a, b) => sign * ((Date.parse(a.added) || 0) - (Date.parse(b.added) || 0)));
     return arr;
   };
@@ -790,7 +792,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                   )}
                   {bulkRoleOpen && someSel && (
                     <div data-manage-team-dismiss-surface="true" onClick={(e) => e.stopPropagation()} style={{ position: "absolute", right: 0, top: "calc(100% + 4px)", zIndex: 200, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: 6, padding: 4, minWidth: 130, boxShadow: "0 12px 30px rgba(0,0,0,0.5)" }}>
-                      {ROLES.map(r => (
+                      {ROLES_NOW().map(r => (
                         <button key={r} onClick={() => setRoleBulk(r)} style={{ display: "block", width: "100%", textAlign: "left", background: "transparent", border: 0, color: BONE_100, padding: "6px 10px", fontSize: 12, borderRadius: 4, cursor: "pointer", fontFamily: "inherit" }}>{r}</button>
                       ))}
                     </div>
@@ -870,7 +872,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                           className="hub-btn hub-btn--field" style={{ maxWidth: "100%" }}>{m.role}<Icon name="chevronDown" size={14} color="var(--text-3)" style={{ display: "block", flex: "none" }} /></button>
                         {openRoleSel === m.id && (
                           <div data-kal31-role-menu="true" data-manage-team-dismiss-surface="true" onClick={(e) => e.stopPropagation()} style={{ position: "absolute", left: 0, top: "calc(100% + 4px)", zIndex: 50, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: 6, padding: 4, minWidth: 110, boxShadow: "0 12px 30px rgba(0,0,0,0.5)" }}>
-                            {ROLES.map(r => (
+                            {ROLES_NOW().map(r => (
                               <button key={r} data-kal31-role-option={r.toLowerCase()} disabled={busy || (lastOwnerLocked && r !== 'Owner')} onClick={() => { setRole(m.id, r); setOpenRoleSel(null); }} style={{ display: "block", width: "100%", textAlign: "left", background: "transparent", border: 0, color: r === m.role ? GOLD : (lastOwnerLocked && r !== 'Owner' ? INK_300 : BONE_100), padding: "6px 10px", fontSize: 12, borderRadius: 4, cursor: busy || (lastOwnerLocked && r !== 'Owner') ? "not-allowed" : "pointer", fontFamily: "inherit" }}>{r}</button>
                             ))}
                           </div>

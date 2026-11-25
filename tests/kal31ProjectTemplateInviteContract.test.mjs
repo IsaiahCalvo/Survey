@@ -166,7 +166,8 @@ test('ShareModal routes project/template kinds to the right service (no Phase-A 
   match(src, /createDocumentInvite/);
   // Locked UI invariants kept: single role selector, tier gate, honest link
   // placeholder, explicit access copy.
-  match(src, /const ROLE_OPTIONS\s*=\s*\['Viewer',\s*'Editor',\s*'Owner'\]/);
+  // Roles come from the shared list (Commenter only under the Nightly flag).
+  match(src, /roleNamesHighToLow\(\)\.slice\(\)\.reverse\(\)/);
   match(src, /Free plan accounts cannot create invite links/);
   match(src, /Press Copy link to create a secure/);
   match(src, /Anyone with this invite link can join as/);

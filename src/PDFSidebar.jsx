@@ -271,6 +271,8 @@ const PDFSidebar = React.forwardRef(({
   onLayersChange = null,
   onActiveLayerChange = null,
   canEditLayers = true,
+  // Comments: an editor's rights, or a Commenter's (owner 2026-11-24).
+  canWriteComments = null,
   // Mark library tab ('mark-library' flag, beta). false = no tab, no panel.
   markLibraryEnabled = false,
   // Comments panel ('mark-comments' flag, Nightly). Needs a cloud document.
@@ -1261,7 +1263,7 @@ const PDFSidebar = React.forwardRef(({
                   user={user}
                   isActive={activeTab === 'comments' && !isCollapsed}
                   pageNum={pageNum}
-                  canWrite={canEditLayers}
+                  canWrite={canWriteComments ?? canEditLayers}
                   locateHistoryMark={locateHistoryMark}
                   focusHistoryMark={focusHistoryMark}
                   selectHistoryMark={selectHistoryMark}

@@ -513,6 +513,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Polygon and Polyline: with a mark picked, the first click drops the pick and places the first point',
     stage: 'rollout',
   }),
+  'commenter-role': Object.freeze({
+    label: 'Commenter role: share a document or project so people can read, comment and reply, but not draw or answer',
+    stage: 'beta',
+  }),
   'marker-tap-card': Object.freeze({
     label: 'Marker tap card: a tapped Survey Marker shows its Category, Tag and checklist items; Expand opens the Survey panel on it',
     stage: 'beta',

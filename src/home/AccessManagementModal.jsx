@@ -47,6 +47,7 @@ import DismissBarrier from '../components/DismissBarrier';
 import MenuRows from '../components/MenuRows.jsx';
 import { menuAtButton, menuRowHeight } from '../utils/menuItems.js';
 import { isFeatureOn } from '../featureFlags.js';
+import { roleNamesHighToLow } from '../utils/collaboratorRoles.js';
 
 // Invite dates read like the rest of the dialog ("Opened Nov 16"), not a
 // lowercase "created 11/17/2026". The year only when it isn't this one: the
@@ -61,7 +62,8 @@ const shortDate = (value) => {
 const GuestLinksSection = lazy(() => import('../guest/GuestLinksSection.jsx'));
 
 
-const ROLES = ['Owner', 'Editor', 'Viewer'];
+// Commenter only where the Nightly flag is on (collaboratorRoles.js).
+const ROLES_NOW = () => roleNamesHighToLow();
 const MONO_FONT = '"JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace';
 
 /* Avatar colours for collaborators: each person's own pastel from their user
@@ -395,7 +397,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
                   menuItems={[
                     // Share extras: the document's own owner keeps it whatever
                     // their row says, so their row offers only Copy email.
-                    ...(extrasOn && docOwnerId && m.user_id === docOwnerId ? [] : ROLES).filter((role) => role.toLowerCase() !== rl).map((role) => ({
+                    ...(extrasOn && docOwnerId && m.user_id === docOwnerId ? [] : ROLES_NOW()).filter((role) => role.toLowerCase() !== rl).map((role) => ({
                       label: `Make ${role.toLowerCase()}`,
                       disabled: busy,
                       reason: isLastOwner ? 'At least one owner must remain' : null,
