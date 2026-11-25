@@ -10,6 +10,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { createPortal } from 'react-dom';
 import Icon from '../Icons';
 import { showToast } from '../utils/toast';
+import { mergeNoteEdit } from '../utils/noteMerge.js';
 import { useConfirmDialog } from './dialogPrompts';
 import {
   buildNoteWithMedia,
@@ -27,6 +28,9 @@ import { useTooltip } from './Tooltip';
 import './surveyMarkerNotes.css';
 
 const SAVED_TICK_MS = 1600;
+// How long after a save another screen's note may still have been made at
+// the same instant, unseen.
+const LOST_SAVE_MS = 10_000;
 // One background migration per marker per session (audit §4: legacy base64
 // photos/videos move to files once, by an editor who opens the marker).
 const migrationsStarted = new Set();
@@ -60,10 +64,37 @@ function SurveyNoteField({ text, onSave, variant, autoFocus, onAutoFocused, read
   const onSaveRef = useRef(onSave);
   onSaveRef.current = onSave;
   const savedTimerRef = useRef(0);
+  // The note as it stood when typing began: another screen's save meanwhile
+  // is kept beside these words, not replaced by them (round 5 #15).
+  const baseRef = useRef(text);
+
+  // This screen's last save, for a few seconds: a save from another screen
+  // made at the same instant can win over it (round 5 #15).
+  const lastSaveRef = useRef(null);
 
   // Someone else's edit (or an Excel pull) lands while you are not typing.
   useEffect(() => {
-    if (!focusedRef.current) setDraft(text);
+    if (focusedRef.current) return;
+    const last = lastSaveRef.current;
+    // Our own save coming back is not someone else's.
+    if (last && text !== last.mine) lastSaveRef.current = null;
+    // Both screens saved at once and the other one's words won: add ours
+    // back after theirs. Only the screen whose save lost sees this, so the
+    // note is joined once.
+    if (last && Date.now() - last.at < LOST_SAVE_MS && text !== last.mine) {
+      const edit = mergeNoteEdit({ base: last.base, theirs: text, mine: last.mine });
+      if (edit?.merged) {
+        onSaveRef.current(edit.text);
+        savedRef.current = edit.text;
+        baseRef.current = edit.text;
+        draftRef.current = edit.text;
+        setDraft(edit.text);
+        showToast('This note changed on another screen while you typed. Both are kept.', 'info');
+        return;
+      }
+    }
+    setDraft(text);
+    baseRef.current = text;
   }, [text]);
 
   useLayoutEffect(() => {
@@ -90,9 +121,22 @@ function SurveyNoteField({ text, onSave, variant, autoFocus, onAutoFocused, read
   }, [autoFocus, onAutoFocused]);
 
   const commit = useCallback(() => {
-    if (draftRef.current === savedRef.current) return false;
-    onSaveRef.current(draftRef.current);
-    savedRef.current = draftRef.current;
+    const edit = mergeNoteEdit({ base: baseRef.current, theirs: savedRef.current, mine: draftRef.current });
+    if (!edit) {
+      // Nothing new typed here: show the note as it is now.
+      if (draftRef.current !== savedRef.current && !focusedRef.current) setDraft(savedRef.current);
+      baseRef.current = savedRef.current;
+      return false;
+    }
+    lastSaveRef.current = { base: baseRef.current, mine: edit.text, at: Date.now() };
+    onSaveRef.current(edit.text);
+    savedRef.current = edit.text;
+    baseRef.current = edit.text;
+    if (edit.merged) {
+      draftRef.current = edit.text;
+      setDraft(edit.text);
+      showToast('This note changed on another screen while you typed. Both are kept.', 'info');
+    }
     return true;
   }, []);
 

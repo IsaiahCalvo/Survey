@@ -74,6 +74,7 @@ import { publishSideRoom, subscribeRightPanelYield } from './sidebar/panelLayout
 import { publishChromeInset } from './utils/chromeInsets.js';
 import { useProLock } from './hooks/useProLock.js';
 import { keyboardControlProps } from './utils/keyboardActivation.js';
+import { REMOTE_ANSWERS_EVENT, remoteAnswerMessage } from './utils/remoteAnswerChanges.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
@@ -697,6 +698,31 @@ const SurveySpacesRail = ({
     return () => window.clearTimeout(timer);
   }, [isSurveyPanelCollapsed, mobileMode]);
   const desktopSurveyPanelShown = !isSurveyPanelCollapsed || railPanelLeaving;
+  // Round 5 #15: an answer on the open Survey Marker changed on another
+  // screen. Say so, instead of the answer quietly flipping under you.
+  const remoteAnswerViewRef = useRef(null);
+  remoteAnswerViewRef.current = { expanded: expandedSurveyMarkers, template: selectedTemplate };
+  useEffect(() => {
+    if (!tabActive || typeof window === 'undefined') return undefined;
+    const onRemote = (event) => {
+      const { expanded, template } = remoteAnswerViewRef.current || {};
+      const changes = (event?.detail?.changes || []).filter((c) => expanded?.[c.markerId]);
+      if (!changes.length) return;
+      const itemTextOf = (itemId) => {
+        for (const mod of template?.modules || []) {
+          for (const cat of mod?.categories || []) {
+            const item = (cat?.checklist || []).find((it) => it?.id === itemId);
+            if (item) return item.text;
+          }
+        }
+        return '';
+      };
+      showToast(remoteAnswerMessage(changes, itemTextOf), 'info', { id: 'survey-remote-answer' });
+    };
+    window.addEventListener(REMOTE_ANSWERS_EVENT, onRemote);
+    return () => window.removeEventListener(REMOTE_ANSWERS_EVENT, onRemote);
+  }, [tabActive]);
+
   // KAL-420 follow-up (2026-10-13): publish what this rail covers on the
   // right, as PDFSidebar publishes the left rail's width, so the
   // storage / clean-up notice (StorageFailureBanner.css) ends at the rail

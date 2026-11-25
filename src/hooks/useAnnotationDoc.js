@@ -71,6 +71,7 @@ import { sealCutoverIfCovered } from '../services/legacyCutoverSeal.js';
 import { loadAllNonSurveyMarkerAnnotations } from '../services/annotationCloudSync.js';
 import { invalidateDocumentMetadata, resolveDocumentMetadata } from '../services/documentMetadataResolver.js';
 import { presentEditBlocked } from '../utils/viewOnlyRefusal.js';
+import { announceRemoteAnswers } from '../utils/remoteAnswerChanges.js';
 
 const SPACES_KEY = 'spaces';
 function livePreviewPublicChannelInDev() {
@@ -900,7 +901,11 @@ export function useAnnotationDoc({
         const s = handle.getMeta(SPACES_KEY);
         if (Array.isArray(s)) setSpaces(s);
         const sm = handle.getSurveyMarkers();
-        if (sm && typeof sm === 'object') setSurveyMarkers(sm);
+        if (sm && typeof sm === 'object') {
+          // Round 5 #15: the open Survey Marker says when an answer changed.
+          announceRemoteAnswers(surveyMarkersRef.current, sm);
+          setSurveyMarkers(sm);
+        }
         setDeletedPdfAnnotations(handle.getDeletedPdfAnnotations?.() || []);
       });
 
