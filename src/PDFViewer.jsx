@@ -21,7 +21,7 @@ import { pdfjsAssetOptions } from './utils/pdfjsAssets.js';
 import { loadPdfjs } from './utils/pdfWorkerConfig';
 import { deepClone } from './utils/deepClone.js';
 import { jsonEqual, jsonEqualSteps } from './utils/jsonEqual.js';
-import { isCloudSaveConfirmed } from './utils/cloudSaveBaseline.js';
+import { isCloudDocumentOpening, isCloudSaveConfirmed } from './utils/cloudSaveBaseline.js';
 import { mergeEditOntoCurrent } from './utils/dragCommitMerge.js';
 import { buildRemovePageToast, buildSpaceDeleteToast, countSpaceCascadeImpact, isSpaceScopedEntry, resolveSpaceCascadeScope } from './utils/spaceCascadeImpact.js';
 import { EMBEDDED_IMPORT_INCOMPLETE_KEY, EMBEDDED_IMPORT_MARKER_KEY, embeddedImportDecision, embeddedImportFailedPages, embeddedImportMarkerDecision, selectEmbeddedImportObjects } from './utils/embeddedImportGate.js';
@@ -24790,7 +24790,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     // confirm, the dot holds: the cloud copy landing on open is not a change
     // (tester #1635: the tab flashed the dot after a reload). An edit flips
     // the status to pending, which re-runs this check and shows the dot.
-    const holdDot = Boolean(confirmTimer);
+    // The same holds while the document is still opening (the engine is
+    // hydrating its cloud copy) with nothing of this device's waiting to go up:
+    // the dot showed through "Syncing" for ~4 s after a reload (retest of
+    // #1635). An edit queues an upload, so it still shows the dot.
+    const opening = !!pdfFile?.id && cloudSyncEnabled && !cloudSyncQueueSize
+      && isCloudDocumentOpening(cloudSyncStatus);
+    const holdDot = Boolean(confirmTimer) || opening;
     const reportUnsaved = (matchesSaved) => {
       pendingUnsavedCheckRef.current = null;
       if (waitingByPageRef.current === annotationsByPage) waitingByPageRef.current = null;

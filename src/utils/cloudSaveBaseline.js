@@ -16,3 +16,10 @@ export function isCloudSaveConfirmed({ isCloudDocument, cloudSyncEnabled, status
   // tab dot ignores the device's online state (the sync light shows it).
   return getSyncStatusViewModel(status, queueSize, false, { offline: false }).state === 'synced';
 }
+
+// The engine is still bringing the cloud copy in (a fresh open or a reload).
+// Marks that land then are the saved copy arriving, not an edit.
+export function isCloudDocumentOpening(status) {
+  const stage = status?.stage;
+  return stage === 'hydrating' || stage === 'migrating';
+}

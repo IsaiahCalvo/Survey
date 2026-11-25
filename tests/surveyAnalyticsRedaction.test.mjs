@@ -164,3 +164,12 @@ test('native crash events are acknowledged only after the hosted collector accep
   assert.match(analyticsSource, /ids: \[id\]/);
   assert.doesNotMatch(analyticsSource, /ids: deliveredIds/);
 });
+
+test('#1628 retest: a not-configured collector is remembered for the tab, and a page load sends one probe first', () => {
+  assert.match(analyticsSource, /const NOT_CONFIGURED_KEY = 'survey-analytics-not-configured-until';/);
+  assert.match(analyticsSource, /let collectorNotConfigured = readNotConfigured\(\);/);
+  assert.match(analyticsSource, /body\?\.error === 'analytics_not_configured'\) \{\n\s*rememberNotConfigured\(\);/);
+  // Later events wait for the first answer, then stop if it said "not configured".
+  assert.match(analyticsSource, /if \(!answeredOnce && firstAnswer\) \{\n\s*await firstAnswer;\n\s*if \(collectorNotConfigured\) return/);
+  assert.match(analyticsSource, /firstAnswer = delivery\.finally\(/);
+});

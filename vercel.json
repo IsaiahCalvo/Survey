@@ -3,6 +3,10 @@
   "git": {
     "deploymentEnabled": false
   },
+  "redirects": [
+    { "source": "/privacy", "destination": "/privacy.html", "permanent": true },
+    { "source": "/terms", "destination": "/terms.html", "permanent": true }
+  ],
   "rewrites": [
     { "source": "/api/public-status.json", "destination": "https://cvamwtpsuvxvjdnotbeg.supabase.co/storage/v1/object/public/app-public/status.json" },
     { "source": "/mcp", "destination": "https://cvamwtpsuvxvjdnotbeg.supabase.co/functions/v1/survey-mcp?via=site" },
