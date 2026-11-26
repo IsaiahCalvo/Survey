@@ -71,7 +71,7 @@
 .view-drawer__head {
   display: flex;
   align-items: center;
-  min-height: 28px;
+  min-height: 20px;
   padding: 0 2px;
 }
 
@@ -80,94 +80,184 @@
   color: var(--text-1);
 }
 
-/* Fit, Pages (Columns in a Grid) and Scroll: spread evenly down the space
-   between the title and the view buttons. */
+/* Owner 2026-11-26 ("the layout is boring"): each group is a small caption
+   over a row of cards, the groups spread down the drawer's height on one
+   rhythm, and the view buttons sit in a tray on the foot. */
 .view-drawer__sections {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
-  justify-content: space-evenly;
-  gap: 12px;
-  padding: 10px 0;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 0 10px;
 }
 
 .view-drawer__section {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  gap: 5px;
 }
 
-/* The labels share one width, so every row's choices start on one line. */
-.view-drawer__label {
-  flex: 0 0 60px;
+.view-drawer__caption {
   padding: 0 2px;
-  color: var(--text-2);
+  font: 500 11px/13px var(--font-ui);
+  letter-spacing: 0.02em;
+  color: var(--text-3);
 }
 
-/* One choice row: a hairline frame, the choices sharing its width. The
-   choices keep the shared step states (RailFlyout.css .rail-flyout__step):
-   hover --hover, press --pressed at once, chosen --surface-3. */
-.view-drawer__choices {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  gap: 2px;
-  padding: 2px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+.view-drawer__cards {
+  display: grid;
+  grid-template-columns: repeat(var(--cards, 3), minmax(0, 1fr));
+  gap: 6px;
 }
 
-.view-drawer__choices > .rail-flyout__step {
-  flex: 1 1 0;
-  min-width: 0;
-  height: 28px;
-  padding: 0 6px;
-  border-radius: var(--radius-xs);
-  white-space: nowrap;
-}
-
-/* A tile: the picture over its word, as Drawboard's View settings shows
-   page views and fits (owner 2026-11-26). The glyph follows the word's ink,
-   so a chosen tile's picture is full strength too. */
-.view-drawer__choices > .view-drawer__tile {
+/* A card rests on raised (a well on the panel), hovers to raised-2 and
+   presses to pressed-2 (suite colour table: a control that rests on
+   raised). Chosen: the selected fill, its word full strength and its
+   picture gold (accent: "a chosen icon"). Hover never repaints it. */
+.view-drawer__card {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
-  height: 46px;
+  gap: 2px;
+  min-width: 0;
+  height: 40px;
   padding: 0 4px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: var(--hover);
+  color: var(--text-2);
+  font: inherit;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-state) var(--ease-out),
+    border-color var(--motion-state) var(--ease-out),
+    color var(--motion-state) var(--ease-out);
 }
 
-.view-drawer__tile .view-drawer__word {
+.view-drawer__glyph {
+  display: inline-flex;
+  color: var(--text-3);
+  transition: color var(--motion-state) var(--ease-out);
+}
+
+.view-drawer__word {
   font: 500 11px/13px var(--font-ui);
+  white-space: nowrap;
 }
 
-.view-drawer__tile[aria-checked='true'] .view-drawer__word {
+@media (hover: hover) {
+  .view-drawer__card:not([aria-checked='true']):not([aria-disabled='true']):hover {
+    background: var(--surface-3);
+    color: var(--text-1);
+  }
+  .view-drawer__card:not([aria-checked='true']):not([aria-disabled='true']):hover .view-drawer__glyph {
+    color: var(--text-2);
+  }
+}
+
+.view-drawer__card[aria-checked='true'] {
+  background: var(--surface-3);
+  border-color: var(--border);
+  color: var(--text-1);
+  cursor: default;
+}
+
+.view-drawer__card[aria-checked='true'] .view-drawer__word {
   font-weight: 600;
 }
 
-.view-drawer__tile > svg {
-  flex: none;
+.view-drawer__card[aria-checked='true'] .view-drawer__glyph {
+  color: var(--accent);
 }
 
-/* Page by page is the one long word; it takes the room it needs. */
-.view-drawer__choices > .rail-flyout__step[data-view-scroll='page'] {
-  flex: 1.6 1 0;
+.view-drawer__card:active:not([aria-disabled='true']) {
+  background: var(--pressed-2, var(--pressed));
+  transition-duration: 0s;
 }
 
-/* The view buttons on the drawer's foot, spread across its width. */
+.view-drawer__card:focus-visible,
+.view-drawer__chip:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.view-drawer__card[aria-disabled='true'] {
+  background: transparent;
+  border-color: var(--border);
+  border-style: dashed;
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+.view-drawer__card[aria-disabled='true'] .view-drawer__glyph {
+  color: inherit;
+}
+
+/* A Grid's columns: one quiet strip under the Pages cards. */
+.view-drawer__columns {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: 2px;
+  padding: 0 2px;
+}
+
+.view-drawer__columns-label {
+  flex: 1 1 auto;
+  font: 500 11px/13px var(--font-ui);
+  color: var(--text-3);
+}
+
+.view-drawer__chip {
+  min-width: 26px;
+  height: 24px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-2);
+  font: 500 12px/14px var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-state) var(--ease-out),
+    color var(--motion-state) var(--ease-out);
+}
+
+@media (hover: hover) {
+  .view-drawer__chip:not([aria-checked='true']):hover {
+    background: var(--hover);
+    color: var(--text-1);
+  }
+}
+
+.view-drawer__chip[aria-checked='true'] {
+  background: var(--surface-3);
+  color: var(--accent);
+  font-weight: 600;
+  cursor: default;
+}
+
+.view-drawer__chip:active {
+  background: var(--pressed);
+  transition-duration: 0s;
+}
+
+/* The view buttons in a tray on the drawer's foot, spread across it. */
 .view-drawer__tools {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-top: 10px;
-  border-top: 1px solid var(--border);
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
 }
 
 @media (pointer: coarse) {
-  .view-drawer__choices > .rail-flyout__step { height: 36px; }
-  .view-drawer__choices > .view-drawer__tile { height: 52px; }
+  .view-drawer__card { height: 52px; }
+  .view-drawer__chip { min-width: 36px; height: 36px; }
 }
 
 /* #1660: the floating Properties panel sits above the right rail's host, so

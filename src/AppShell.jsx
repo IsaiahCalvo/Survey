@@ -6250,8 +6250,10 @@ export default function App({ devPreviewReturnTab = null }) {
                   }
                   refit();
                 };
-                // A choice with a glyph is a tile: the picture over its word,
-                // as in Drawboard's View settings (owner 2026-11-26).
+                // A choice is a card: its picture over its word, as in
+                // Drawboard's View settings (owner 2026-11-26). The chosen
+                // card takes the selected fill and its picture turns gold.
+                // A Grid's column counts are small number chips.
                 const step = ({ key, label, glyph = null, on, off = false, onPick, ...rest }) => (
                   <button
                     key={key}
@@ -6259,28 +6261,29 @@ export default function App({ devPreviewReturnTab = null }) {
                     role="radio"
                     aria-checked={on}
                     aria-disabled={off || undefined}
-                    className={`rail-flyout__step rail-flyout__step--word${glyph ? ' view-drawer__tile' : ''}`}
+                    className={glyph ? 'view-drawer__card' : 'view-drawer__chip'}
                     onClick={() => { if (!on && !off) onPick(); }}
                     {...rest}
                   >
-                    {glyph && <Icon name={glyph} size={20} color="currentColor" />}
+                    {glyph && <span className="view-drawer__glyph"><Icon name={glyph} size={20} color="currentColor" /></span>}
                     <span className="view-drawer__word">{label}</span>
                   </button>
                 );
                 const FIT_GLYPHS = { [ZOOM_MODES.FIT_PAGE]: 'fitPage', [ZOOM_MODES.FIT_WIDTH]: 'fitWidth', [ZOOM_MODES.FIT_HEIGHT]: 'fitHeight' };
                 const SPREAD_GLYPHS = { single: 'pagesSingle', double: 'pagesDouble', cover: 'pagesCover', grid: 'pagesGrid' };
                 const SCROLL_GLYPHS = { down: 'scrollDown', across: 'scrollAcross', page: 'scrollPageByPage' };
-                // A label, then its choices sharing the rest of the row.
-                const row = (id, label, steps) => (
-                  <div role="radiogroup" aria-labelledby={id} className="view-drawer__section">
-                    <span id={id} className="view-drawer__label">{label}</span>
-                    <span className="view-drawer__choices">{steps}</span>
+                // A caption over its cards, the cards sharing the full width.
+                const section = (id, label, cards, extra = null) => (
+                  <div className="view-drawer__section">
+                    <span id={id} className="view-drawer__caption">{label}</span>
+                    <div role="radiogroup" aria-labelledby={id} className="view-drawer__cards" style={{ '--cards': cards.length }}>{cards}</div>
+                    {extra}
                   </div>
                 );
                 return (
                   <>
                     <div className="view-drawer__sections">
-                    {row('view-card-fit', 'Fit', ZOOM_MODE_OPTIONS.filter((o) => o.id !== ZOOM_MODES.MANUAL).map((o) => step({
+                    {section('view-card-fit', 'Fit', ZOOM_MODE_OPTIONS.filter((o) => o.id !== ZOOM_MODES.MANUAL).map((o) => step({
                       key: o.id,
                       label: o.label.replace(/^Fit\s+/i, '').replace(/^./, (c) => c.toUpperCase()),
                       glyph: FIT_GLYPHS[o.id] || 'fitPage',
@@ -6291,23 +6294,27 @@ export default function App({ devPreviewReturnTab = null }) {
                     })))}
                     {pageSpreadsOn && !isNarrowShell && (
                       <>
-                        {row('view-card-pages', 'Pages', PAGE_SPREAD_OPTIONS.map((o) => step({
+                        {section('view-card-pages', 'Pages', PAGE_SPREAD_OPTIONS.map((o) => step({
                           key: o.id,
                           label: o.label,
                           glyph: SPREAD_GLYPHS[o.id],
                           'data-page-spread': o.id,
                           on: o.id === 'grid' ? gridOn : o.id === pageSpread,
                           onPick: () => { setPageSpreadMode(o.id); refit(); },
-                        })))}
-                        {gridOn && row('view-card-columns', 'Columns', ['auto', ...GRID_COLUMN_CHOICES.map(String)].map((n) => step({
-                          key: n,
-                          label: n === 'auto' ? 'Auto' : n,
-                          'aria-label': n === 'auto' ? 'Columns from the page count' : `${n} columns`,
-                          'data-grid-columns': n,
-                          on: n === columns,
-                          onPick: () => { setPageSpreadMode(`grid-${n}`); refit(); },
-                        })))}
-                        {row('view-card-scroll', 'Scroll', scrollChoices.map(([id, label, off]) => step({
+                        })), gridOn && (
+                          <div role="radiogroup" aria-labelledby="view-card-columns" className="view-drawer__columns">
+                            <span id="view-card-columns" className="view-drawer__columns-label">Columns</span>
+                            {['auto', ...GRID_COLUMN_CHOICES.map(String)].map((n) => step({
+                              key: n,
+                              label: n === 'auto' ? 'Auto' : n,
+                              'aria-label': n === 'auto' ? 'Columns from the page count' : `${n} columns`,
+                              'data-grid-columns': n,
+                              on: n === columns,
+                              onPick: () => { setPageSpreadMode(`grid-${n}`); refit(); },
+                            }))}
+                          </div>
+                        ))}
+                        {section('view-card-scroll', 'Scroll', scrollChoices.map(([id, label, off]) => step({
                           key: id,
                           label,
                           glyph: SCROLL_GLYPHS[id],
