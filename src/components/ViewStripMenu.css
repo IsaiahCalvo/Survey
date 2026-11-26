@@ -4,8 +4,8 @@
    edge, as tall as the rail's lower block (Zoom in down to the viewer's
    foot), and slides out from behind the rail and back in on the side-panel
    time (suite Motion table: --motion-panel). Its rows spread evenly down
-   that height: View at the top, the view buttons on the foot, and Fit,
-   Pages and Scroll evenly between. */
+   that height: View at the top, the view switches on the foot, and Fit,
+   Pages, Columns and Scroll evenly between. */
 .view-drawer {
   position: absolute;
   right: 100%;
@@ -14,7 +14,7 @@
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  width: 320px;
+  width: 336px;
   padding: 10px 14px 10px;
   background: var(--surface-2);
   /* The right side is a hairline divider against the rail (owner
@@ -80,184 +80,196 @@
   color: var(--text-1);
 }
 
-/* Owner 2026-11-26 ("the layout is boring"): each group is a small caption
-   over a row of cards, the groups spread down the drawer's height on one
-   rhythm, and the view buttons sit in a tray on the foot. */
-.view-drawer__sections {
+/* Owner 2026-11-26 ("nothing shifting", "the row of three, then four,
+   then three throws me off"): every row has one shape - name and chosen
+   value on the left, one control of one fixed width on the right - and
+   every row is always drawn, so a click changes colours, never places. The
+   rows spread down the drawer; the named view switches sit on the foot. */
+.view-drawer__rows {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 8px;
-  padding: 8px 0 10px;
-}
-
-.view-drawer__section {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.view-drawer__caption {
-  padding: 0 2px;
-  font: 500 11px/13px var(--font-ui);
-  letter-spacing: 0.02em;
-  color: var(--text-3);
-}
-
-.view-drawer__cards {
-  display: grid;
-  grid-template-columns: repeat(var(--cards, 3), minmax(0, 1fr));
   gap: 6px;
+  padding: 10px 0 12px;
 }
 
-/* A card rests on raised (a well on the panel), hovers to raised-2 and
-   presses to pressed-2 (suite colour table: a control that rests on
-   raised). Chosen: the selected fill, its word full strength and its
-   picture gold (accent: "a chosen icon"). Hover never repaints it. */
-.view-drawer__card {
+.view-drawer__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.view-drawer__name {
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
+  gap: 1px;
+  padding: 0 2px;
+}
+
+.view-drawer__label {
+  font: 500 13px/16px var(--font-ui);
+  color: var(--text-1);
+}
+
+/* The chosen value under the name: fixed height, so a longer word never
+   moves the row. */
+.view-drawer__value {
+  height: 13px;
+  overflow: hidden;
+  font: 400 11px/13px var(--font-ui);
+  color: var(--text-3);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.view-drawer__row[data-off] .view-drawer__label,
+.view-drawer__row[data-off] .view-drawer__value {
+  color: var(--text-disabled);
+}
+
+/* One segmented control per row, all the same width, so the rows line up
+   in one column whether they hold three choices or six. The frame is a
+   well (raised); a choice hovers to raised-2 and presses to pressed-2. */
+.view-drawer__seg {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: repeat(var(--cells, 3), minmax(0, 1fr));
   gap: 2px;
-  min-width: 0;
-  height: 40px;
-  padding: 0 4px;
-  border: 1px solid transparent;
+  width: 208px;
+  padding: 2px;
   border-radius: var(--radius-sm);
   background: var(--hover);
-  color: var(--text-2);
-  font: inherit;
-  cursor: pointer;
-  transition:
-    background-color var(--motion-state) var(--ease-out),
-    border-color var(--motion-state) var(--ease-out),
-    color var(--motion-state) var(--ease-out);
 }
 
-.view-drawer__glyph {
+.view-drawer__cell {
   display: inline-flex;
-  color: var(--text-3);
-  transition: color var(--motion-state) var(--ease-out);
-}
-
-.view-drawer__word {
-  font: 500 11px/13px var(--font-ui);
-  white-space: nowrap;
-}
-
-@media (hover: hover) {
-  .view-drawer__card:not([aria-checked='true']):not([aria-disabled='true']):hover {
-    background: var(--surface-3);
-    color: var(--text-1);
-  }
-  .view-drawer__card:not([aria-checked='true']):not([aria-disabled='true']):hover .view-drawer__glyph {
-    color: var(--text-2);
-  }
-}
-
-.view-drawer__card[aria-checked='true'] {
-  background: var(--surface-3);
-  border-color: var(--border);
-  color: var(--text-1);
-  cursor: default;
-}
-
-.view-drawer__card[aria-checked='true'] .view-drawer__word {
-  font-weight: 600;
-}
-
-.view-drawer__card[aria-checked='true'] .view-drawer__glyph {
-  color: var(--accent);
-}
-
-.view-drawer__card:active:not([aria-disabled='true']) {
-  background: var(--pressed-2, var(--pressed));
-  transition-duration: 0s;
-}
-
-.view-drawer__card:focus-visible,
-.view-drawer__chip:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: -2px;
-}
-
-.view-drawer__card[aria-disabled='true'] {
-  background: transparent;
-  border-color: var(--border);
-  border-style: dashed;
-  color: var(--text-disabled);
-  cursor: not-allowed;
-}
-
-.view-drawer__card[aria-disabled='true'] .view-drawer__glyph {
-  color: inherit;
-}
-
-/* A Grid's columns: one quiet strip under the Pages cards. */
-.view-drawer__columns {
-  display: flex;
   align-items: center;
-  gap: 2px;
-  margin-top: 2px;
-  padding: 0 2px;
-}
-
-.view-drawer__columns-label {
-  flex: 1 1 auto;
-  font: 500 11px/13px var(--font-ui);
-  color: var(--text-3);
-}
-
-.view-drawer__chip {
-  min-width: 26px;
-  height: 24px;
-  padding: 0 6px;
+  justify-content: center;
+  min-width: 0;
+  height: 28px;
+  padding: 0;
   border: 0;
-  border-radius: var(--radius-xs);
+  border-radius: calc(var(--radius-sm) - 2px);
   background: transparent;
-  color: var(--text-2);
+  color: var(--text-3);
   font: 500 12px/14px var(--font-ui);
   font-variant-numeric: tabular-nums;
   cursor: pointer;
   transition:
     background-color var(--motion-state) var(--ease-out),
+    box-shadow var(--motion-state) var(--ease-out),
     color var(--motion-state) var(--ease-out);
 }
 
 @media (hover: hover) {
-  .view-drawer__chip:not([aria-checked='true']):hover {
-    background: var(--hover);
+  .view-drawer__cell:not([aria-checked='true']):not([aria-disabled='true']):hover {
+    background: var(--surface-3);
     color: var(--text-1);
   }
 }
 
-.view-drawer__chip[aria-checked='true'] {
+/* Chosen: the selected fill with a hairline, its picture gold (accent: "a
+   chosen icon"). Hover never repaints it. */
+.view-drawer__cell[aria-checked='true'] {
   background: var(--surface-3);
+  box-shadow: inset 0 0 0 1px var(--border);
   color: var(--accent);
   font-weight: 600;
   cursor: default;
 }
 
-.view-drawer__chip:active {
+.view-drawer__cell:active:not([aria-disabled='true']) {
+  background: var(--pressed-2, var(--pressed));
+  transition-duration: 0s;
+}
+
+.view-drawer__cell[aria-disabled='true'] {
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+.view-drawer__cell:focus-visible,
+.view-drawer__toggle:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+/* The view buttons: named switches in an even three-across grid over a
+   hairline. On: the selected fill, the word full strength, the picture
+   gold. */
+.view-drawer__toggles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.view-drawer__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 28px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-state) var(--ease-out),
+    color var(--motion-state) var(--ease-out);
+}
+
+.view-drawer__toggle > svg,
+.view-drawer__toggle > span:first-child:not(.view-drawer__word) {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  color: var(--text-3);
+  transition: color var(--motion-state) var(--ease-out);
+}
+
+.view-drawer__toggle .view-drawer__word {
+  min-width: 0;
+  overflow: hidden;
+  font: 500 12px/14px var(--font-ui);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+@media (hover: hover) {
+  .view-drawer__toggle:not([data-on='true']):hover {
+    background: var(--hover);
+    color: var(--text-1);
+  }
+}
+
+.view-drawer__toggle[data-on='true'] {
+  background: var(--surface-3);
+  color: var(--text-1);
+}
+
+.view-drawer__toggle[data-on='true'] > svg,
+.view-drawer__toggle[data-on='true'] > span:first-child:not(.view-drawer__word) {
+  color: var(--accent);
+}
+
+.view-drawer__toggle:active {
   background: var(--pressed);
   transition-duration: 0s;
 }
 
-/* The view buttons in a tray on the drawer's foot, spread across it. */
-.view-drawer__tools {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 2px 6px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-}
-
 @media (pointer: coarse) {
-  .view-drawer__card { height: 52px; }
-  .view-drawer__chip { min-width: 36px; height: 36px; }
+  .view-drawer__cell,
+  .view-drawer__toggle { height: 40px; }
 }
 
 /* #1660: the floating Properties panel sits above the right rail's host, so
