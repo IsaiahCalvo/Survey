@@ -166,7 +166,7 @@ export default function FeatureFlagsPage() {
     const { error } = await supabase.from('feature_flags').update(patch).eq('key', key);
     if (error) { setMessage('That change did not save. Try again.'); return; }
     setMessage('Saved. People see it the next time they reload Survey.');
-    await refreshFeatureFlags(supabase);
+    await refreshFeatureFlags(supabase, { force: true });
     load();
   };
 

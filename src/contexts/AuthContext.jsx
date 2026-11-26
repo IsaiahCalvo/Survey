@@ -24,6 +24,7 @@ import { pdfByteCache } from '../services/pdfByteCache.js';
 import { loadAccountExportKits } from '../services/exportFormats/accountKits.js';
 import { isFeatureOn } from '../featureFlags.js';
 import { clearCompanySignInRequired, markCompanySignInRequired } from '../utils/companySignIn.js';
+import { createBackoffState } from '../utils/pollingBackoff.js';
 
 // Where Supabase sends the browser back after a Google or company sign-in.
 // In Electron window.location.origin may be file://, which can't take a
@@ -479,35 +480,77 @@ export const AuthProvider = ({ children }) => {
     // 2026-10-07 (phone loading): a saved sign-in whose refresh could not
     // reach the network is NOT a signed-out start. `loading` stays true (the
     // home keeps its quiet "Loading documents…") and the read is tried again
-    // when the connection returns, the app comes back to the front, or every
-    // 5 s - so the app finishes loading by itself, signed in, instead of
-    // showing the sign-in sheet to someone who is already signed in.
+    // when the connection returns, the app comes back to the front, or with
+    // exponential backoff (5 s -> 10 s -> 20 s -> 40 s -> 60 s max, #1773)
+    // so an Auth 504 outage does not hammer /auth/v1/token every 5 s.
+    const AUTH_BOOT_RETRY_BASE_MS = 5_000;
+    const AUTH_BOOT_RETRY_MAX_MS = 60_000;
     let bootDone = false;
     let bootRetryTimer = null;
+    let bootWaitingForRetry = false;
     let bootReading = false;
-    const stopBootRetry = () => {
-      if (bootRetryTimer) clearInterval(bootRetryTimer);
+    const bootBackoff = createBackoffState({
+      baseMs: AUTH_BOOT_RETRY_BASE_MS,
+      maxMs: AUTH_BOOT_RETRY_MAX_MS,
+    });
+    const isTabVisible = () => typeof document === 'undefined' || document.visibilityState === 'visible';
+    const isDeviceOnline = () => typeof navigator === 'undefined' || navigator.onLine !== false;
+    const clearBootRetryTimer = () => {
+      if (bootRetryTimer) clearTimeout(bootRetryTimer);
       bootRetryTimer = null;
-      window.removeEventListener('online', readBootSession);
+    };
+    const scheduleBootRetry = (delayMs) => {
+      clearBootRetryTimer();
+      if (bootDone || !bootWaitingForRetry || !isTabVisible() || !isDeviceOnline()) return;
+      bootRetryTimer = setTimeout(() => {
+        bootRetryTimer = null;
+        if (bootDone || !isTabVisible() || !isDeviceOnline()) return;
+        readBootSession();
+      }, Math.max(0, delayMs));
+    };
+    const stopBootRetry = () => {
+      bootWaitingForRetry = false;
+      clearBootRetryTimer();
+      bootBackoff.reset();
+      window.removeEventListener('online', readBootSessionOnOnline);
       document.removeEventListener('visibilitychange', readBootSessionWhenVisible);
     };
-    function readBootSessionWhenVisible() {
-      if (document.visibilityState === 'visible') readBootSession();
+    function readBootSessionOnOnline() {
+      if (bootDone || !bootWaitingForRetry) return;
+      bootBackoff.reset();
+      if (isTabVisible()) readBootSession({ force: true });
     }
-    function readBootSession() {
+    function readBootSessionWhenVisible() {
+      if (bootDone || !bootWaitingForRetry || !isTabVisible() || !isDeviceOnline()) return;
+      if (bootBackoff.isBlocked()) {
+        if (!bootRetryTimer) scheduleBootRetry(bootBackoff.remainingMs());
+        return;
+      }
+      readBootSession();
+    }
+    function readBootSession({ force = false } = {}) {
       if (bootDone || bootReading) return;
+      if (!force && bootWaitingForRetry && (!isTabVisible() || !isDeviceOnline())) return;
+      if (!force && bootBackoff.isBlocked()) {
+        scheduleBootRetry(bootBackoff.remainingMs());
+        return;
+      }
+      clearBootRetryTimer();
       bootReading = true;
       readStartupSession('AuthProvider.getSession')
         .then(async ({ session, offline }) => {
           bootReading = false;
           if (bootDone) return;
           if (!session && offline) {
-            if (!bootRetryTimer) {
+            const firstWait = !bootWaitingForRetry;
+            bootWaitingForRetry = true;
+            const delayMs = bootBackoff.recordFailure();
+            if (firstWait) {
               authDebug('initial session read is waiting for the network');
-              bootRetryTimer = setInterval(readBootSession, 5_000);
-              window.addEventListener('online', readBootSession);
+              window.addEventListener('online', readBootSessionOnOnline);
               document.addEventListener('visibilitychange', readBootSessionWhenVisible);
             }
+            scheduleBootRetry(delayMs);
             return;
           }
           bootDone = true;
@@ -528,7 +571,7 @@ export const AuthProvider = ({ children }) => {
           await finishAuthBoot(null);
         });
     }
-    readBootSession();
+    readBootSession({ force: true });
 
     // Listen for auth changes. Supabase fires an INITIAL_SESSION event
     // during boot which can briefly hand us a null session BEFORE the dev
@@ -546,7 +589,7 @@ export const AuthProvider = ({ children }) => {
       // A real auth event (the token refresh that finally got through, a
       // sign-in, a sign-out) settles a start-up that was waiting for the
       // network; the handler below then sets the user and ends `loading`.
-      if (bootRetryTimer) {
+      if (bootWaitingForRetry || bootRetryTimer) {
         bootDone = true;
         stopBootRetry();
       }

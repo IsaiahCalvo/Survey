@@ -112,6 +112,7 @@ import { auditResidue } from '../../lib/collab/cleanupResidueAudit.js';
 import { isOwner } from '../../lib/collab/permissionScope.js';
 import { fetchMyDocumentRole } from '../../lib/collab/documentRole.js';
 import { canCommentRole, drawingRole } from '../../utils/collaboratorRoles.js';
+import { createBackoffState } from '../../utils/pollingBackoff.js';
 import { CleanupResidueReviewPanel } from './CleanupResidueReviewPanel.jsx';
 
 // Phase 35 Plan 05 — sticky-per-document dismissal persistence. Stored as a
@@ -565,10 +566,12 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
     // so consumers can render leader/loser-aware UI without re-attaching listeners.
     // UX: 100ms tick is fast enough that "leader" usually appears within 1-2 frames
     // on a fresh mount; clears as soon as a definitive role is known.
+    let roleChecks = 0;
     const roleInterval = setInterval(() => {
+      roleChecks += 1;
       const currentRole = handle.role();
       setRole(currentRole);
-      if (currentRole !== 'unknown') {
+      if (currentRole !== 'unknown' || roleChecks >= 100) {
         clearInterval(roleInterval);
       }
     }, 100);
@@ -1096,11 +1099,24 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
       setBannerDismissed(false);
     };
     window.addEventListener(STORAGE_FAILURE_EVENT, onStorageFailure);
-    const retry = () => drainQueue({
-      userId, documentId: docId, ...handlers, shouldContinue: () => !cancelled,
-    }).catch(() => { /* storage failure event shows the banner; pending work stays queued */ });
+    let retryInFlight = false;
+    const runDrain = () => {
+      if (cancelled || retryInFlight) return Promise.resolve();
+      retryInFlight = true;
+      return drainQueue({
+        userId, documentId: docId, ...handlers, shouldContinue: () => !cancelled,
+      })
+        .catch(() => { /* storage failure event shows the banner; pending work stays queued */ })
+        .finally(() => { retryInFlight = false; });
+    };
+    const retry = () => runDrain();
+    const scheduledRetry = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+      void runDrain();
+    };
     retryDualWriteQueueRef.current = retry;
-    const handle = setInterval(retry, 1_000);
+    const handle = setInterval(scheduledRetry, 1_000);
 
     return () => {
       cancelled = true;
@@ -1498,6 +1514,8 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
     // throw and take the whole viewer down on load.
     if (!supabase) { setIsDocShared(false); return undefined; }
     let cancelled = false;
+    let inFlight = false;
+    const sharedBackoff = createBackoffState({ baseMs: 30_000, maxMs: 300_000 });
     const refreshSharedState = async (options) => {
       // w34 (2026-09-25): the 30 s fallback poll (called with no options)
       // skips while the tab is hidden (background tab, minimised window): it
@@ -1506,6 +1524,10 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
       // first check, realtime collaborator changes and becoming visible again
       // always run ({ force: true }), so nothing a change sends is dropped.
       if (!options?.force && typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+      if (inFlight) return;
+      if (!options?.force && sharedBackoff.isBlocked()) return;
+      inFlight = true;
       try {
         // "Shared" = an explicit active row for another user, or my own
         // collaborator row when I am not the owner. The latter matters because
@@ -1517,16 +1539,22 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
           const session = await getSupabaseSession('YDocProvider.isDocShared');
           myId = session?.user?.id ?? null;
         } catch { myId = null; }
-        if (!myId) { if (!cancelled) setIsDocShared(null); return; }
+        if (!myId) {
+          sharedBackoff.recordFailure();
+          if (!cancelled) setIsDocShared(null);
+          return;
+        }
         const { data, error } = await supabase
           .from('document_collaborators')
           .select('user_id')
           .eq('document_id', docId)
           .eq('status', 'active');
         if (error) {
+          sharedBackoff.recordFailure();
           if (!cancelled) setIsDocShared(null);
           return;
         }
+        sharedBackoff.recordSuccess();
         const activeCollaboratorUserIds = (data || [])
           .map((row) => row?.user_id)
           .filter(Boolean);
@@ -1550,7 +1578,12 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
             currentRole,
           }));
         }
-      } catch { if (!cancelled) setIsDocShared(null); }
+      } catch {
+        sharedBackoff.recordFailure();
+        if (!cancelled) setIsDocShared(null);
+      } finally {
+        inFlight = false;
+      }
     };
     void refreshSharedState({ force: true });
 
@@ -1570,14 +1603,24 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
       .subscribe();
     const refreshTimer = setInterval(refreshSharedState, 30_000);
     const refreshWhenShown = () => {
-      if (document.visibilityState !== 'hidden') void refreshSharedState({ force: true });
+      if (document.visibilityState !== 'hidden' && !sharedBackoff.isBlocked()) {
+        void refreshSharedState({ force: true });
+      }
+    };
+    const refreshWhenOnline = () => {
+      sharedBackoff.reset();
+      if (typeof document === 'undefined' || document.visibilityState !== 'hidden') {
+        void refreshSharedState();
+      }
     };
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', refreshWhenShown);
+    if (typeof window !== 'undefined') window.addEventListener('online', refreshWhenOnline);
 
     return () => {
       cancelled = true;
       clearInterval(refreshTimer);
       if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', refreshWhenShown);
+      if (typeof window !== 'undefined') window.removeEventListener('online', refreshWhenOnline);
       try { supabase.removeChannel(collaboratorChannel); } catch { /* best effort */ }
     };
   }, [docId]);
