@@ -1,11 +1,15 @@
 /* Nightly 'comment-pins': the Pin tool's split button (desktop tool row) and
-   the "On the page" card on the right rail. Owner 2026-11-24 ("I don't even
+   the "On the page" card on the right rail. With Nightly 'view-strip' the
+   View drawer leaves that card out (owner 2026-11-26: "a lot of this seems
+   extra"), so the same switches sit under the tool's Comment / Issue / Task
+   choices. Owner 2026-11-24 ("I don't even
    know what a pin is"): Survey already says pin for Pinned tools and Counter
    pins, so the words people see call these comments, issues and tasks on the
    page; the code keeps its pin names. */
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import RailFlyout from '../RailFlyout.jsx';
+import '../PageGridSettings.css';
 import { useTooltip } from '../Tooltip';
 import { PinKindGlyph } from './PinGlyphs.jsx';
 import { setPagePinsState, usePagePins } from '../../services/pagePinsStore.js';
@@ -84,7 +88,7 @@ export function PinToolButton({ active, onArm, glyphSize = 18 }) {
             position: 'fixed',
             top: rect.bottom + 6,
             left: rect.left,
-            minWidth: 150,
+            minWidth: 200,
             padding: 4,
             background: 'var(--surface-2)',
             border: '1px solid var(--surface-3)',
@@ -125,6 +129,11 @@ export function PinToolButton({ active, onArm, glyphSize = 18 }) {
               {PIN_KIND_LABELS[k]}
             </button>
           ))}
+          <div aria-hidden="true" style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
+          <div role="group" aria-labelledby="pin-kind-filter-caption" data-pin-kind-filter="true" className="page-grid-settings" style={{ padding: '2px 8px 4px', gap: 4 }}>
+            <span id="pin-kind-filter-caption" style={{ padding: '4px 2px 2px', font: '500 11px/13px var(--font-ui)', color: 'var(--text-3)' }}>On the page</span>
+            <PinFilterSwitches tipSide="right" />
+          </div>
         </div>,
         document.body,
       )}
@@ -138,21 +147,54 @@ const SWITCHES = [
   ['tasks', 'Tasks'],
 ];
 
-/** The rail's "On the page" card. `renderButton({ open, ref, onClick, on })`. */
-export function PinFilterMenu({ renderButton }) {
+/** Show all, Comments, Issues, Tasks and Show done ones: what shows on the page. */
+function PinFilterSwitches({ tipSide }) {
   const tip = useTooltip();
-  const enabled = usePagePins((s) => s.enabled);
   const filter = usePagePins((s) => s.filter);
   const userId = usePagePins((s) => s.userId);
+  const set = (next) => {
+    setPagePinsState({ filter: next });
+    savePinFilter(userId, next);
+  };
+  const allOn = pinFilterAllOn(filter);
+  return (
+    <>
+      <button type="button" role="switch" aria-checked={allOn} data-pin-filter="all" className="page-grid-settings__switch" onClick={() => set(togglePinFilterMaster(filter))}>
+        <span style={{ fontWeight: 600 }}>Show all</span>
+        <span className="page-grid-settings__knob" aria-hidden="true" />
+      </button>
+      {SWITCHES.map(([key, label]) => (
+        <button key={key} type="button" role="switch" aria-checked={filter[key]} data-pin-filter={key} className="page-grid-settings__switch" onClick={() => set({ ...filter, [key]: !filter[key] })}>
+          <span>{label}</span>
+          <span className="page-grid-settings__knob" aria-hidden="true" />
+        </button>
+      ))}
+      <div style={{ height: 1, background: 'var(--surface-3)', margin: '4px 0' }} />
+      <button
+        type="button"
+        role="switch"
+        aria-checked={filter.done}
+        data-pin-filter="done"
+        className="page-grid-settings__switch"
+        {...tip('An issue is done when it is Closed, Approved or Rejected; a task when it is Closed.', tipSide)}
+        onClick={() => set({ ...filter, done: !filter.done })}
+      >
+        <span>Show done ones</span>
+        <span className="page-grid-settings__knob" aria-hidden="true" />
+      </button>
+    </>
+  );
+}
+
+/** The rail's "On the page" card. `renderButton({ open, ref, onClick, on })`. */
+export function PinFilterMenu({ renderButton }) {
+  const enabled = usePagePins((s) => s.enabled);
+  const filter = usePagePins((s) => s.filter);
   const [open, setOpen] = useState(false);
   const buttonRef = useRef(null);
   const cardRef = useRef(null);
   useOutsideClose(open, setOpen, [buttonRef, cardRef]);
   if (!enabled) return null;
-  const set = (next) => {
-    setPagePinsState({ filter: next });
-    savePinFilter(userId, next);
-  };
   const allOn = pinFilterAllOn(filter);
   return (
     <div className="page-grid-menu">
@@ -160,29 +202,7 @@ export function PinFilterMenu({ renderButton }) {
       {open && (
         <RailFlyout cardRef={cardRef} role="dialog" aria-label="Comments, issues and tasks" title="On the page" data-pin-filter-menu="true" className="page-grid-settings__card">
           <div className="page-grid-settings">
-            <button type="button" role="switch" aria-checked={allOn} data-pin-filter="all" className="page-grid-settings__switch" onClick={() => set(togglePinFilterMaster(filter))}>
-              <span style={{ fontWeight: 600 }}>Show all</span>
-              <span className="page-grid-settings__knob" aria-hidden="true" />
-            </button>
-            {SWITCHES.map(([key, label]) => (
-              <button key={key} type="button" role="switch" aria-checked={filter[key]} data-pin-filter={key} className="page-grid-settings__switch" onClick={() => set({ ...filter, [key]: !filter[key] })}>
-                <span>{label}</span>
-                <span className="page-grid-settings__knob" aria-hidden="true" />
-              </button>
-            ))}
-            <div style={{ height: 1, background: 'var(--surface-3)', margin: '4px 0' }} />
-            <button
-              type="button"
-              role="switch"
-              aria-checked={filter.done}
-              data-pin-filter="done"
-              className="page-grid-settings__switch"
-              {...tip('An issue is done when it is Closed, Approved or Rejected; a task when it is Closed.', 'left')}
-              onClick={() => set({ ...filter, done: !filter.done })}
-            >
-              <span>Show done ones</span>
-              <span className="page-grid-settings__knob" aria-hidden="true" />
-            </button>
+            <PinFilterSwitches tipSide="left" />
           </div>
         </RailFlyout>
       )}

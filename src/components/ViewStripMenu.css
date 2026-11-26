@@ -4,7 +4,7 @@
    edge, as tall as the rail's lower block (Zoom in down to the viewer's
    foot), and slides out from behind the rail and back in on the side-panel
    time (suite Motion table: --motion-panel). Its rows spread evenly down
-   that height: View at the top, the view switches on the foot, and Fit,
+   that height: View at the top, the view settings on the foot, and Fit,
    Pages, Columns and Scroll evenly between. */
 .view-drawer {
   position: absolute;
@@ -14,7 +14,7 @@
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  width: 336px;
+  width: 348px;
   padding: 10px 14px 10px;
   background: var(--surface-2);
   /* The right side is a hairline divider against the rail (owner
@@ -198,30 +198,32 @@
   outline-offset: -2px;
 }
 
-/* The view buttons: named switches in an even three-across grid over a
-   hairline. On: the selected fill, the word full strength, the picture
-   gold. */
+/* The view settings: one even row over a hairline, each a picture over
+   its name (owner 2026-11-26: only what changes the view stays here). On:
+   the selected fill, the word full strength, the picture gold. */
 .view-drawer__toggles {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 4px;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 2px;
   padding-top: 10px;
   border-top: 1px solid var(--border);
 }
 
 .view-drawer__toggle {
-  display: inline-flex;
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  gap: 3px;
   min-width: 0;
-  height: 28px;
-  padding: 0 6px;
+  height: 46px;
+  padding: 0;
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-2);
   font: inherit;
-  text-align: left;
   cursor: pointer;
   transition:
     background-color var(--motion-state) var(--ease-out),
@@ -231,16 +233,16 @@
 .view-drawer__toggle > svg,
 .view-drawer__toggle > span:first-child:not(.view-drawer__word) {
   flex: 0 0 auto;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   color: var(--text-3);
   transition: color var(--motion-state) var(--ease-out);
 }
 
 .view-drawer__toggle .view-drawer__word {
-  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
-  font: 500 12px/14px var(--font-ui);
+  font: 500 11px/13px var(--font-ui);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -268,8 +270,8 @@
 }
 
 @media (pointer: coarse) {
-  .view-drawer__cell,
-  .view-drawer__toggle { height: 40px; }
+  .view-drawer__cell { height: 40px; }
+  .view-drawer__toggle { height: 52px; }
 }
 
 /* #1660: the floating Properties panel sits above the right rail's host, so
