@@ -1870,6 +1870,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // KAL-819 (Nightly, with the suite look): a panel opening or closing glides
   // the page to its new fit (zoomToScale) instead of snapping.
   const [bandRefitGlides] = useState(() => isFeatureOn('one-look'));
+  const [nativeBounceOn] = useState(() => isFeatureOn('native-bounce'));
   // What may draw right now (pageRasterQueue kinds): during a pinch or a
   // ctrl+wheel zoom nothing does (pages a pinch reveals are not mounted until
   // it ends anyway, and a draw slice costs a whole frame); while a pan, a
@@ -3894,7 +3895,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   useEffect(() => {
     const el = scrollerRef.current;
     if (!el || isMobileSurface) return undefined;
-    const overscroll = createWheelOverscroll();
+    const overscroll = createWheelOverscroll({ mac: nativeBounceOn });
+    // Nightly `native-bounce` above: the Safari / Chrome Mac rubber band (lets
+    // go the moment the fingers lift; see createMacWheelOverscroll).
+    let lastAxis = 'y';
     const rails = createAxisSnap(WHEEL_AXIS_SNAP);
     const hasOwnWheelScroller = (target, root) => {
       for (let node = target; node && node !== root && node.nodeType === 1; node = node.parentElement) {
@@ -3984,7 +3988,15 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       // jitter never wobbles the page at the left/right edge.
       const vertical = Math.abs(dy) >= Math.abs(dx);
       const delta = vertical ? dy : dx;
-      if (!delta) return;
+      if (!delta) {
+        // An empty event is how Chrome on Windows says the fingers lifted.
+        if (nativeBounceOn && !dx && !dy) {
+          overscroll.wheel(lastAxis, { delta: 0, room: 0, dimension: 1, now });
+          if (overscroll.active()) schedule();
+        }
+        return;
+      }
+      lastAxis = vertical ? 'y' : 'x';
       const result = overscroll.wheel(vertical ? 'y' : 'x', {
         delta,
         room: vertical
@@ -4031,7 +4043,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       overscroll.reset();
       if (show(0, 0)) setLiveGestureFrame((frame) => frame + 1);
     };
-  }, [getHorizontalPanRange, getHorizontalScrollMax, isMobileSurface, paintLiveFrame]);
+  }, [getHorizontalPanRange, getHorizontalScrollMax, isMobileSurface, nativeBounceOn, paintLiveFrame]);
 
   // ---- pan: Space always overrides the active tool; writes are rAF-batched --
   const setPanInteraction = useCallback((active) => {

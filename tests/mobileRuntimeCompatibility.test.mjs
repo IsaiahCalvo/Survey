@@ -381,7 +381,7 @@ test('mobile pinch and pan rubber-band past edges and zoom limits, then ease hom
 // lifecycle (gesture-start -> zoomGeneration, one commit, settle) is unchanged.
 test('desktop wheel and trackpad rubber-band at document edges and zoom limits', () => {
   assert.match(PDFJS_VIEWER_SOURCE, /from '\.\.\/utils\/elasticEdges\.js'/);
-  assert.match(PDFJS_VIEWER_SOURCE, /const overscroll = createWheelOverscroll\(\);/);
+  assert.match(PDFJS_VIEWER_SOURCE, /const overscroll = createWheelOverscroll\(\{ mac: nativeBounceOn \}\);/);
   assert.match(PDFJS_VIEWER_SOURCE, /if \(!el \|\| isMobileSurface\) return undefined;\s*const overscroll/);
   // 2026-10-04 (owner: "it gets stuck sometimes"): the wheel controller is
   // the ONE owner of its offset (wheelShiftRef, added on top of any other

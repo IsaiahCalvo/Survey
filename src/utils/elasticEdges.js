@@ -434,7 +434,8 @@ const mean = (list) => (list.length ? list.reduce((a, b) => a + b, 0) / list.len
  * The controller is the ONE owner of the wheel overscroll offset; the viewer
  * only draws frame(now).
  */
-export function createWheelOverscroll({ omega = ELASTIC_SPRING_OMEGA } = {}) {
+export function createWheelOverscroll({ omega = ELASTIC_SPRING_OMEGA, mac = false } = {}) {
+  if (mac) return createMacWheelOverscroll();
   const makeAxis = () => ({
     mode: 'idle', excess: 0, x0: 0, v0: 0, t0: 0, pulses: [], dim: 1,
     lastT: -Infinity, vel: 0, notch: false, hadRoom: false,
@@ -602,6 +603,274 @@ export function createWheelOverscroll({ omega = ELASTIC_SPRING_OMEGA } = {}) {
         // Watchdog: a stretch nobody is feeding goes home even if the idle
         // timer was lost.
         if (s.mode === 'stretch' && now - s.lastT > WHEEL_STRETCH_WATCHDOG_MS) { toSpring(s, now); s.v0 = 0; }
+        for (const p of s.pulses) if (p.t0 === null) p.t0 = now;
+        const { x, v } = stateAt(s, now);
+        if (s.mode === 'spring') {
+          const pulsesLive = s.pulses.some((p) => (now - p.t0) / 1000 < NOTCH_PULSE_LIFE_S);
+          const settled = Math.abs(x) < 0.2 && Math.abs(v) < 6;
+          if (!pulsesLive && (settled || now - s.t0 > ELASTIC_SPRING_MAX_MS)) {
+            s.mode = 'idle';
+            s.pulses = [];
+            continue;
+          }
+        }
+        out[name] = x;
+        out.active = true;
+      }
+      return out;
+    },
+    active() { return axes.x.mode !== 'idle' || axes.y.mode !== 'idle'; },
+    reset() { axes = { x: makeAxis(), y: makeAxis() }; },
+  };
+}
+
+// ---- desktop, Nightly flag `native-bounce`: the Mac trackpad, done the
+// Safari / Chrome way ---------------------------------------------------------
+// Owner 2026-11-25: "the page spring-back is not 100% like Drawboard ... This
+// should be some native thing." Replaying real macOS trackpad recordings
+// (Safari and Chrome, from the MIT-licensed wheel-gestures test fixtures, in
+// tests/fixtures/mac-trackpad/) through createWheelOverscroll above showed why
+// it felt off next to a native app:
+//   - a normal swipe at an edge drove the page into the 30% cap and held it
+//     there flat, like hitting a wall, for 150-250 ms;
+//   - after the fingers lifted it rode the momentum tail and only went home
+//     ~240 ms late (the tail detector waits for the deltas to drop to 65% of
+//     the stream's strongest, and the first momentum event is the strongest);
+//   - a slow pull whose deltas wobble down read as "fingers lifted", so the
+//     page sprang home under the fingers.
+// The browser's own rubber band (WebKit ScrollingEffectsController.mm, Blink
+// elastic_overscroll_controller*.cc) knows when the fingers lift from the
+// wheel phases, springs home at once with the fingers' speed, and ignores the
+// momentum after that. Pages do not get the phases, but every recording shows
+// the lift: the fingers' events (every 8-11 ms) stop, ~24 ms pass, and the
+// first momentum event is clearly bigger (it carries the speed at 60 Hz).
+// This controller watches for that, and for a smooth decay as a backup.
+//   - Stretch: the iOS rubber band of the pushed px (wheel px count half,
+//     since trackpad deltas are accelerated), with a soft cap at 30% of the
+//     view that it nears ever more slowly and never sits flat against.
+//   - Release: Blink / WebKit's Mac curve x(t) = (x0 + 0.31 v t) e^(-12.5 t):
+//     the page starts home the instant the fingers lift (no slow start), and
+//     a lift that was still moving runs on a little first.
+//   - Momentum into an edge: the same curve from the edge with the stream's
+//     speed, a small bounce like Safari's (3600 px/s peaks at ~33 px).
+// Mouse notches keep the quick pulse from the controller above.
+export const MAC_RUBBERBAND_DECAY = 20 / 1.6; // Blink kRubberbandStiffness / kRubberbandPeriod
+export const MAC_RUBBERBAND_AMPLITUDE = 0.31; // Blink kRubberbandAmplitude
+export const MAC_WHEEL_STRETCH_SCALE = 0.5;
+const MAC_FLING_BOUNCE_FRACTION = 0.12;
+const MAC_LIFT_GAP_MS = 18;
+const MAC_LIFT_GAP_RATIO = 1.4;
+const MAC_LIFT_JUMP = 1.15;
+const MAC_DECAY_EVENTS = 6;
+const MAC_DECAY_MIN_INTERVAL_MS = 13;
+
+/** Blink / WebKit's Mac rubber band return: offset at t s from x0, launched with b = 0.31 v (px/s). */
+export function macRubberBandSpring(x0, b, t, k = MAC_RUBBERBAND_DECAY) {
+  const x = finite(x0);
+  const bb = finite(b);
+  const time = Math.max(0, finite(t));
+  const e = Math.exp(-k * time);
+  return { x: (x + bb * time) * e, v: (bb - k * (x + bb * time)) * e };
+}
+
+const sortedOf = (list) => [...list].sort((a, b) => a - b);
+const median = (list) => (list.length ? sortedOf(list)[Math.floor(list.length / 2)] : 0);
+// The fingers' pace: Chrome mixes 8 ms and 16 ms events, so the lower middle.
+const lowerMedian = (list) => (list.length ? sortedOf(list)[Math.floor((list.length - 1) / 2)] : 0);
+
+export function createMacWheelOverscroll() {
+  const k = MAC_RUBBERBAND_DECAY;
+  const makeAxis = () => ({
+    mode: 'idle', force: 0, x0: 0, b: 0, t0: 0, pulses: [], dim: 1,
+    lastT: -Infinity, vel: 0, notch: false, hadRoom: false, momentum: false,
+    gaps: [], deltas: [], ignore: false, floor: 0, growth: 0,
+    tailUntil: -Infinity, tailFloor: 0,
+  });
+  let axes = { x: makeAxis(), y: makeAxis() };
+  const capOf = (s) => s.dim * ELASTIC_MAX_BOUNCE_FRACTION;
+  const shownFor = (s, force) => {
+    const cap = capOf(s);
+    const rb = Math.abs(rubberBand(force * MAC_WHEEL_STRETCH_SCALE, s.dim));
+    return Math.sign(force) * cap * Math.tanh(rb / cap);
+  };
+  const forceFor = (s, shown) => {
+    const cap = capOf(s);
+    const u = Math.min(Math.abs(shown) / cap, 0.999);
+    const rb = cap * Math.atanh(u);
+    return (Math.sign(shown) * Math.abs(inverseRubberBand(rb, s.dim))) / MAC_WHEEL_STRETCH_SCALE;
+  };
+  const stateAt = (s, now) => {
+    if (s.mode === 'stretch') return { x: shownFor(s, s.force), v: 0 };
+    if (s.mode !== 'spring') return { x: 0, v: 0 };
+    let { x, v } = macRubberBandSpring(s.x0, s.b, (now - s.t0) / 1000, k);
+    for (const p of s.pulses) {
+      if (p.t0 === null) continue;
+      const q = notchPulse(p.a, (now - p.t0) / 1000, WHEEL_NOTCH_OMEGA);
+      x += q.x;
+      v += q.v;
+    }
+    return { x, v };
+  };
+  // Keep whatever is showing, moving as it moves (no jump, no change of speed).
+  const toSpring = (s, now) => {
+    const { x, v } = stateAt(s, now);
+    s.mode = 'spring'; s.x0 = x; s.b = v + k * x; s.t0 = now; s.pulses = []; s.force = 0;
+  };
+  // Fingers lifted (or stopped): home from here at once, carrying `velocity`
+  // (px/s, + = further past the far edge) like Blink's momentum-animated state.
+  // Running on is capped so the page never goes past the soft cap.
+  const springHome = (s, now, velocity = 0) => {
+    const { x } = stateAt(s, now);
+    let b = MAC_RUBBERBAND_AMPLITUDE * finite(velocity);
+    const room = Math.max(0, capOf(s) - Math.abs(x));
+    const maxB = room * k * Math.E;
+    if (Math.sign(b) === Math.sign(x) || !x) b = Math.sign(b) * Math.min(Math.abs(b), maxB);
+    s.mode = 'spring'; s.x0 = x; s.b = b; s.t0 = now; s.pulses = []; s.force = 0;
+  };
+  const toStretch = (s, now) => {
+    const { x } = stateAt(s, now);
+    s.mode = 'stretch'; s.force = x ? forceFor(s, x) : 0; s.pulses = [];
+  };
+  const ignoreRest = (s, level) => { s.ignore = true; s.floor = level; s.growth = 0; };
+  // A smooth run of shrinking deltas at the momentum's 60 Hz pace: the fingers
+  // have lifted even though the recording showed no clear gap.
+  const decaying = (s, n = MAC_DECAY_EVENTS) => {
+    const d = s.deltas;
+    if (d.length < n || median(s.gaps) < MAC_DECAY_MIN_INTERVAL_MS) return false;
+    const run = d.slice(-n);
+    for (let i = 1; i < run.length; i += 1) if (run[i] > run[i - 1] * 1.2 + 0.5) return false;
+    const half = Math.floor(n / 2);
+    return mean(run.slice(half)) < 0.85 * mean(run.slice(0, half));
+  };
+
+  function wheelAxis(name, { delta = 0, room = 0, dimension = 1, notch = false, cancelable = false, now = 0 } = {}) {
+    const s = axes[name];
+    const d = finite(delta);
+    s.dim = Math.max(1, finite(dimension, 1));
+    const dt = now - s.lastT;
+    const abs = Math.abs(d);
+    let lifted = false;
+    if (!(dt < STREAM_GAP_MS)) {
+      const tailGoesOn = now < s.tailUntil && !notch;
+      s.notch = Boolean(notch);
+      s.hadRoom = false;
+      s.momentum = tailGoesOn;
+      s.vel = d * 60;
+      s.gaps = []; s.deltas = []; s.growth = 0;
+      s.ignore = tailGoesOn; s.floor = tailGoesOn ? s.tailFloor : 0;
+      s.tailUntil = -Infinity;
+    } else if (abs) {
+      // The fingers lifting: a pause well past the fingers' own pace, then a
+      // clearly bigger delta (the first momentum event, at 60 Hz).
+      if (!s.momentum && s.gaps.length >= 2 && s.deltas.length >= 2
+        && dt >= MAC_LIFT_GAP_MS && dt >= MAC_LIFT_GAP_RATIO * lowerMedian(s.gaps.slice(-4))
+        && abs >= 3 && abs >= MAC_LIFT_JUMP * mean(s.deltas.slice(-2))) {
+        s.momentum = true;
+        lifted = true;
+      }
+      // Speed as Blink keeps it: each event's delta over its time, except the
+      // jump into momentum (it would read as a far faster finger).
+      if (!lifted) s.vel = (d / Math.max(4, dt)) * 1000;
+      s.gaps.push(dt);
+      if (s.gaps.length > 8) s.gaps.shift();
+    }
+    s.lastT = now;
+    const dir = Math.sign(d);
+    if (!dir) {
+      // Chrome on Windows sends one empty event when the fingers lift off a
+      // precision touchpad (its wheel phase "ended"): the same lift, said outright.
+      if (dt < STREAM_GAP_MS && s.deltas.length >= 2 && !s.momentum && !s.notch) {
+        s.momentum = true;
+        if (s.mode === 'stretch') {
+          springHome(s, now, Math.sign(s.force) === Math.sign(s.vel) ? s.vel : 0);
+          // The momentum starts bigger than the slowing fingers: its own first
+          // event sets the level it is watched against.
+          ignoreRest(s, 0);
+        }
+      }
+      return NONE;
+    }
+    if (room > 0.5) s.hadRoom = true;
+    s.deltas.push(abs);
+    if (s.deltas.length > 8) s.deltas.shift();
+    const level = mean(s.deltas.slice(-RECENT_EVENTS));
+    if (!s.momentum && decaying(s)) s.momentum = true;
+    const cur = stateAt(s, now).x;
+    const over = Math.abs(cur) > 0.01;
+    if (over && Math.sign(cur) !== dir) {
+      // Back in while past the edge: undo the stretch first, like a finger.
+      s.ignore = false;
+      if (s.mode === 'stretch' && cancelable) {
+        const next = s.force + d;
+        if (Math.sign(next) === Math.sign(s.force)) { s.force = next; return { prevent: true, scrollBy: 0 }; }
+        s.force = 0; s.mode = 'idle';
+        return { prevent: true, scrollBy: next };
+      }
+      if (s.mode === 'stretch') springHome(s, now);
+      return NONE;
+    }
+    const overflow = over ? d : (abs > room ? d - dir * Math.max(0, room) : 0);
+    if (!overflow) return NONE;
+    if (s.notch) {
+      if (s.mode !== 'spring') toSpring(s, now);
+      const headroom = Math.max(0, 1 - Math.abs(cur) / (s.dim * WHEEL_NOTCH_MAX_FRACTION));
+      const peak = WHEEL_NOTCH_SHARE * Math.abs(rubberBand(overflow, s.dim)) * headroom;
+      s.pulses = s.pulses.filter((p) => p.t0 === null || (now - p.t0) / 1000 < NOTCH_PULSE_LIFE_S);
+      s.pulses.push({ t0: null, a: Math.sign(overflow) * (peak / NOTCH_PULSE_PEAK) });
+      return NONE;
+    }
+    if (s.ignore) {
+      // The rest of the momentum: ignored while it decays. Three clearly
+      // faster events in a row are fingers pushing again. Speed per 60 Hz
+      // frame, so two events the browser merged into one never look faster.
+      const rate = (abs * (1000 / 60)) / Math.min(50, Math.max(1000 / 60, dt < STREAM_GAP_MS ? dt : 0));
+      s.floor = Math.min(s.floor || rate, rate);
+      s.growth = rate > s.floor * 1.5 + 2 ? s.growth + 1 : 0;
+      if (s.growth < 3) return NONE;
+      s.ignore = false; s.growth = 0; s.momentum = false;
+      toStretch(s, now);
+      s.force += overflow;
+      return NONE;
+    }
+    if (s.momentum) {
+      if (s.mode === 'stretch') {
+        // The fingers lifted while stretched: home now with their speed.
+        springHome(s, now, Math.sign(s.force) === Math.sign(s.vel) ? s.vel : 0);
+      } else if (s.hadRoom) {
+        // Momentum running into the edge: a small bounce with its speed.
+        // Kept to a small bounce (at most 12% of the view), like Safari's.
+        toSpring(s, now);
+        s.b += MAC_RUBBERBAND_AMPLITUDE * (Math.sign(s.vel) === dir ? s.vel : d * 60);
+        const maxB = s.dim * MAC_FLING_BOUNCE_FRACTION * k * Math.E;
+        s.b = Math.max(-maxB, Math.min(maxB, s.b));
+      }
+      ignoreRest(s, abs);
+      return NONE;
+    }
+    if (s.mode !== 'stretch') toStretch(s, now);
+    s.force += overflow;
+    return NONE;
+  }
+
+  function release(now) {
+    for (const s of Object.values(axes)) {
+      if (s.mode === 'stretch') springHome(s, now);
+      if (s.ignore) { s.tailUntil = s.lastT + TAIL_MEMORY_MS; s.tailFloor = s.floor; }
+      s.ignore = false; s.growth = 0; s.momentum = false;
+      s.lastT = -Infinity;
+    }
+  }
+
+  return {
+    wheel: wheelAxis,
+    idle: release,
+    release,
+    frame(now) {
+      const out = { x: 0, y: 0, active: false };
+      for (const name of ['x', 'y']) {
+        const s = axes[name];
+        if (s.mode === 'idle') continue;
+        if (s.mode === 'stretch' && now - s.lastT > WHEEL_STRETCH_WATCHDOG_MS) springHome(s, now);
         for (const p of s.pulses) if (p.t0 === null) p.t0 = now;
         const { x, v } = stateAt(s, now);
         if (s.mode === 'spring') {
