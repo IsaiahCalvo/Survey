@@ -17,8 +17,9 @@
   width: 320px;
   padding: 10px 14px 10px;
   background: var(--surface-2);
+  /* The right side is a hairline divider against the rail (owner
+     2026-11-26: "a divider line between it and the right rail"). */
   border: 1px solid var(--border);
-  border-right: 0;
   border-bottom: 0;
   /* Only the corner that stands out over the page is rounded: the right
      side meets the rail and the foot meets the viewer's foot. */
@@ -98,7 +99,7 @@
 
 /* The labels share one width, so every row's choices start on one line. */
 .view-drawer__label {
-  flex: 0 0 52px;
+  flex: 0 0 60px;
   padding: 0 2px;
   color: var(--text-2);
 }
@@ -125,6 +126,31 @@
   white-space: nowrap;
 }
 
+/* A tile: the picture over its word, as Drawboard's View settings shows
+   page views and fits (owner 2026-11-26). The glyph follows the word's ink,
+   so a chosen tile's picture is full strength too. */
+.view-drawer__choices > .view-drawer__tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 46px;
+  padding: 0 4px;
+}
+
+.view-drawer__tile .view-drawer__word {
+  font: 500 11px/13px var(--font-ui);
+}
+
+.view-drawer__tile[aria-checked='true'] .view-drawer__word {
+  font-weight: 600;
+}
+
+.view-drawer__tile > svg {
+  flex: none;
+}
+
 /* Page by page is the one long word; it takes the room it needs. */
 .view-drawer__choices > .rail-flyout__step[data-view-scroll='page'] {
   flex: 1.6 1 0;
@@ -141,6 +167,7 @@
 
 @media (pointer: coarse) {
   .view-drawer__choices > .rail-flyout__step { height: 36px; }
+  .view-drawer__choices > .view-drawer__tile { height: 52px; }
 }
 
 /* #1660: the floating Properties panel sits above the right rail's host, so

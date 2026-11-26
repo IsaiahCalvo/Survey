@@ -6250,20 +6250,26 @@ export default function App({ devPreviewReturnTab = null }) {
                   }
                   refit();
                 };
-                const step = ({ key, label, on, off = false, onPick, ...rest }) => (
+                // A choice with a glyph is a tile: the picture over its word,
+                // as in Drawboard's View settings (owner 2026-11-26).
+                const step = ({ key, label, glyph = null, on, off = false, onPick, ...rest }) => (
                   <button
                     key={key}
                     type="button"
                     role="radio"
                     aria-checked={on}
                     aria-disabled={off || undefined}
-                    className="rail-flyout__step rail-flyout__step--word"
+                    className={`rail-flyout__step rail-flyout__step--word${glyph ? ' view-drawer__tile' : ''}`}
                     onClick={() => { if (!on && !off) onPick(); }}
                     {...rest}
                   >
-                    {label}
+                    {glyph && <Icon name={glyph} size={20} color="currentColor" />}
+                    <span className="view-drawer__word">{label}</span>
                   </button>
                 );
+                const FIT_GLYPHS = { [ZOOM_MODES.FIT_PAGE]: 'fitPage', [ZOOM_MODES.FIT_WIDTH]: 'fitWidth', [ZOOM_MODES.FIT_HEIGHT]: 'fitHeight' };
+                const SPREAD_GLYPHS = { single: 'pagesSingle', double: 'pagesDouble', cover: 'pagesCover', grid: 'pagesGrid' };
+                const SCROLL_GLYPHS = { down: 'scrollDown', across: 'scrollAcross', page: 'scrollPageByPage' };
                 // A label, then its choices sharing the rest of the row.
                 const row = (id, label, steps) => (
                   <div role="radiogroup" aria-labelledby={id} className="view-drawer__section">
@@ -6277,6 +6283,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     {row('view-card-fit', 'Fit', ZOOM_MODE_OPTIONS.filter((o) => o.id !== ZOOM_MODES.MANUAL).map((o) => step({
                       key: o.id,
                       label: o.label.replace(/^Fit\s+/i, '').replace(/^./, (c) => c.toUpperCase()),
+                      glyph: FIT_GLYPHS[o.id] || 'fitPage',
                       'aria-label': o.label,
                       'data-fit-mode': o.id,
                       on: o.id === api.zoomMode,
@@ -6287,6 +6294,7 @@ export default function App({ devPreviewReturnTab = null }) {
                         {row('view-card-pages', 'Pages', PAGE_SPREAD_OPTIONS.map((o) => step({
                           key: o.id,
                           label: o.label,
+                          glyph: SPREAD_GLYPHS[o.id],
                           'data-page-spread': o.id,
                           on: o.id === 'grid' ? gridOn : o.id === pageSpread,
                           onPick: () => { setPageSpreadMode(o.id); refit(); },
@@ -6302,6 +6310,7 @@ export default function App({ devPreviewReturnTab = null }) {
                         {row('view-card-scroll', 'Scroll', scrollChoices.map(([id, label, off]) => step({
                           key: id,
                           label,
+                          glyph: SCROLL_GLYPHS[id],
                           'data-view-scroll': id,
                           on: scroll === id,
                           off,

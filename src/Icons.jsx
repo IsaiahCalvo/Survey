@@ -1592,6 +1592,48 @@ const ICON_RENDERERS = {
         <rect x="6" y="3" width="12" height="18" rx="1.33" stroke={color} strokeWidth="1.5" /><path d="M9 7H15M9 11H15M9 15H13" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
       </svg>
     ),
+    // The View drawer's page views and scroll ways (Nightly 'view-strip',
+    // owner 2026-11-26: pictures as Drawboard's View settings has them).
+    // Pages drawn the size and corner of fitPage, so the three rows read as
+    // one set.
+    pagesSingle: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
+        <rect x="7" y="4" width="10" height="16" rx="1.11" stroke={color} strokeWidth="1.5" />
+      </svg>
+    ),
+    pagesDouble: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
+        <rect x="3.5" y="5" width="7.75" height="14" rx="0.86" stroke={color} strokeWidth="1.5" /><rect x="12.75" y="5" width="7.75" height="14" rx="0.86" stroke={color} strokeWidth="1.5" />
+      </svg>
+    ),
+    // Cover: the first page stands alone on the right, so its left partner
+    // is an empty dashed slot.
+    pagesCover: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
+        <rect x="3.5" y="5" width="7.75" height="14" rx="0.86" stroke={color} strokeWidth="1.5" strokeDasharray="2 2" opacity="0.5" /><rect x="12.75" y="5" width="7.75" height="14" rx="0.86" stroke={color} strokeWidth="1.5" />
+      </svg>
+    ),
+    pagesGrid: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
+        <rect x="4" y="4" width="6.75" height="6.75" rx="0.75" stroke={color} strokeWidth="1.5" /><rect x="13.25" y="4" width="6.75" height="6.75" rx="0.75" stroke={color} strokeWidth="1.5" /><rect x="4" y="13.25" width="6.75" height="6.75" rx="0.75" stroke={color} strokeWidth="1.5" /><rect x="13.25" y="13.25" width="6.75" height="6.75" rx="0.75" stroke={color} strokeWidth="1.5" />
+      </svg>
+    ),
+    scrollDown: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
+        <rect x="4" y="3" width="10" height="8" rx="0.89" stroke={color} strokeWidth="1.5" /><rect x="4" y="13" width="10" height="8" rx="0.89" stroke={color} strokeWidth="1.5" /><path d="M19 6V18M19 18L16.75 15.75M19 18L21.25 15.75" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+    scrollAcross: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
+        <rect x="3" y="3" width="8" height="10" rx="0.89" stroke={color} strokeWidth="1.5" /><rect x="13" y="3" width="8" height="10" rx="0.89" stroke={color} strokeWidth="1.5" /><path d="M6 19H18M18 19L15.75 16.75M18 19L15.75 21.25" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+    // Page by page: one page, turned like a book's.
+    scrollPageByPage: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
+        <rect x="8" y="4" width="8" height="16" rx="0.89" stroke={color} strokeWidth="1.5" /><path d="M5 9.5L2.5 12L5 14.5M19 9.5L21.5 12L19 14.5" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
     // Full screen: four corners pulled out to the screen's edges.
     focusMode: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style} className={className}>
